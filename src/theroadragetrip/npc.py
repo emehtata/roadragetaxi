@@ -1119,7 +1119,8 @@ class TripGroup:
     `boarded_resident_ids == set(member_resident_ids)` is exactly the
     section 19 "everyone's back" check - no separate group-state enum is
     needed on top of it, since per-member granularity already lives in
-    pedestrian.PedestrianState.
+    pedestrian.PedestrianState. `disembarked_resident_ids` prevents a returned
+    member being materialized outside again until the next stop.
     """
     group_id: int
     vehicle_id: int
@@ -1129,6 +1130,7 @@ class TripGroup:
     activity_duration_s: float = 0.0
     boarded_resident_ids: Set[int] = field(default_factory=set)
     wait_deadline_sim_time: Optional[float] = None
+    disembarked_resident_ids: Set[int] = field(default_factory=set)  # once per stop, even after reboarding
 
     @property
     def all_aboard(self) -> bool:
@@ -2123,7 +2125,8 @@ def update_npc(
                 # dropped from member_resident_ids entirely (not marked
                 # boarded) so OCCUPANTS/debug reporting never overcounts
                 # a passenger who was actually left behind.
-                stranded = set(group.member_resident_ids) - group.boarded_resident_ids
+                # Passengers may be left behind; the car still needs its actual driver.
+                stranded = set(group.member_resident_ids) - group.boarded_resident_ids - {vehicle.owner_id}
                 for resident_id in stranded:
                     resident = resident_manager.get(resident_id)
                     if resident is not None:
@@ -3148,6 +3151,9 @@ def continue_npc_trip(
     candidate forever" fallback spawn_deterministic_npc already uses for
     a brand-new trip.
     """
+    group = vehicle.trip_group
+    if group is not None and (not group.all_aboard or vehicle.owner_id not in group.boarded_resident_ids):
+        return False
     origin = (vehicle.car.x, vehicle.car.y)
     if destination_query_point is not None:
         query_points = [destination_query_point]
@@ -3221,6 +3227,7 @@ def continue_npc_trip(
                 vehicle.trip_group.activity_type = random.choice(NPC_TRIP_ACTIVITY_TYPES)
                 vehicle.trip_group.destination_entrance = None
                 vehicle.trip_group.wait_deadline_sim_time = None
+                vehicle.trip_group.disembarked_resident_ids.clear()
             return True
     return False
 

@@ -579,7 +579,7 @@ class PedestrianManager:
                 continue
             pending_members = [
                 resident_id for resident_id in trip_group.member_resident_ids
-                if resident_id not in linked_residents
+                if resident_id not in linked_residents and resident_id not in trip_group.disembarked_resident_ids
             ]
             if not pending_members:
                 continue
@@ -595,16 +595,19 @@ class PedestrianManager:
                 spawn_x, spawn_y = _fanned_out_position(
                     entry_x, entry_y, index, total_members, heading=getattr(vehicle, "heading", 0.0),
                 )
-                pedestrian = self.spawn_pedestrian_at(spawn_x, spawn_y, getattr(vehicle, "heading", 0.0))
+                pedestrian = self.spawn_pedestrian_at(
+                    spawn_x, spawn_y, getattr(vehicle, "heading", 0.0), resident_id=resident_id,
+                )
                 if pedestrian is None:
                     # The fanned-out point landed somewhere with no nearby
                     # walkable way - fall back to the exact entry point
                     # (a minor overlap between members is fine; not
                     # spawning the passenger at all is not).
-                    pedestrian = self.spawn_pedestrian_at(entry_x, entry_y, getattr(vehicle, "heading", 0.0))
+                    pedestrian = self.spawn_pedestrian_at(
+                        entry_x, entry_y, getattr(vehicle, "heading", 0.0), resident_id=resident_id,
+                    )
                 if pedestrian is None:
                     continue
-                pedestrian.resident_id = resident_id
                 pedestrian.linked_vehicle_id = id(vehicle)
                 pedestrian.linked_building_entrance = trip_group.destination_entrance
                 pedestrian.destination = trip_group.destination_entrance
@@ -617,9 +620,10 @@ class PedestrianManager:
                 pedestrian.state = "walking_to_building"
                 pedestrian.animation_state = "walking"
                 pedestrian.door_grace_timer = 5.0
-                trip_group.boarded_resident_ids.discard(resident_id)
-                self.add_pedestrian(pedestrian)
-                linked_residents.add(resident_id)
+                if self.add_pedestrian(pedestrian):
+                    trip_group.disembarked_resident_ids.add(resident_id)
+                    trip_group.boarded_resident_ids.discard(resident_id)
+                    linked_residents.add(resident_id)
 
     def track_vomit(self, puddles) -> None:
         """A pedestrian walking into a vomit puddle curses (the bubble and
@@ -857,7 +861,7 @@ class PedestrianManager:
         vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
         vehicle = next((candidate for candidate in vehicles if id(candidate) == pedestrian.linked_vehicle_id), None)
         trip_group = getattr(vehicle, "trip_group", None) if vehicle is not None else None
-        if vehicle is None or trip_group is None:
+        if vehicle is None or trip_group is None or pedestrian.resident_id not in trip_group.member_resident_ids:
             pedestrian.linked_vehicle_id = None
             return False
         if pedestrian.state == "walking_to_building":
@@ -2262,6 +2266,7 @@ class PedestrianManager:
     ) -> bool:
         """Update pedestrian simulation: despawning, spawning, waypoint traversal, traffic lights, and evasion."""
         self.sim_time += dt
+        self.pedestrians = [ped for ped in self.pedestrians if ped.state != PedestrianState.DESPAWNING.value]
         stage_started = (time.perf_counter(), time.thread_time())
         self.update_lod(player_car, dt)
         self._record("pedestrians:lod", stage_started)
@@ -2327,8 +2332,6 @@ class PedestrianManager:
                     outside_viewport = not (vmin_x <= ped.x <= vmax_x and vmin_y <= ped.y <= vmax_y)
                 ped.offscreen_timer = ped.offscreen_timer + population_check_dt if outside_viewport else 0.0
                 at_door = self._at_building_entrance(ped.x, ped.y)
-                if ped.state == "despawning":
-                    continue
                 if ped.spawned_at_door and not at_door:
                     ped.spawned_at_door = False
                 outside_long_enough = ped.offscreen_timer >= 5.0

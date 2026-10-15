@@ -6,6 +6,9 @@ See [the plan](../npc-traffic-safety-2026-10-15.md) for conclusions and limits.
 
 - `summary.json`: complete run metadata, sampled state/recovery counts,
   low-progress flags, half-minute population checkpoints and tick distribution.
+- `lifecycle-fix-smoke.json`: subsequent 120-second final lifecycle-patch run;
+  includes boarding/stop state and sampled trip transitions. Its source commit
+  plus runtime-patch hash distinguish it from the unmodified ten-minute baseline.
 - `incidents.jsonl`: both actual collision callbacks, with pre-response poses,
   endpoint overlaps, nearby obstacles and five-second sampled histories.
 - `client-episodes.json`: 139 sampled two-metre/30-second low-displacement
@@ -13,9 +16,10 @@ See [the plan](../npc-traffic-safety-2026-10-15.md) for conclusions and limits.
   this is not a list of confirmed deadlocks. `last_s` for the collector includes
   socket shutdown; individual episodes end with their last state sample.
 - `readonly_client.py`: diagnostic local socket reader; sends no commands.
-- `probes.py`, `probes-results.json`: six small reproductions of current defects.
-  Their assertions document the *unfixed baseline*, not legal compliance;
-  replace/invert them as the corresponding planned fixes land.
+- `probes.py`: six diagnostic probes, updated as fixes land. The passenger
+  rematerialization probe now expects the fixed behavior; other gaps remain.
+- `probes-results.json`: preserved original *unfixed* observations at `b885d0b`,
+  not the current probe results or a legal-compliance certificate.
 
 The full 406-frame gzip trace and ordinary server log remain locally under
 `/tmp/rrt-traffic-observation-2026-10-15`; only collision histories and episode

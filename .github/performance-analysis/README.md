@@ -6,7 +6,7 @@ This folder contains technical deep-dives into rendering performance, bottleneck
 
 ### [npc-traffic-safety-2026-10-15.md](./npc-traffic-safety-2026-10-15.md)
 
-**Status**: Ten-minute observation and next-phase plan; no gameplay fixes implemented
+**Status**: Ten-minute observation and next-phase plan; first passenger-lifecycle fix implemented, remaining safety/scheduling work planned
 
 **Date**: 2026-10-15
 

@@ -1594,11 +1594,11 @@ def test_update_npc_parked_short_circuits_without_a_trip_group():
     assert vehicle.speed == 0.0
 
 
-def test_update_npc_strands_a_straggler_after_the_return_timeout():
+@pytest.mark.parametrize("driver_returned", [False, True])
+def test_return_timeout_leaves_missing_passengers_but_never_the_driver(driver_returned):
     """multi-passenger-car.md section 20: never wait forever - once the
-    deadline passes, a still-missing member is dropped from the group
-    (not marked boarded) so all_aboard becomes true and the resident is
-    freed from the group rather than left permanently stuck."""
+    deadline passes, missing passengers are released, but departure still
+    requires the actual driver to be aboard."""
     ways = _straight_chain()
     tw = TrafficWorld(ways)
     residents = ResidentManager()
@@ -1613,8 +1613,14 @@ def test_update_npc_strands_a_straggler_after_the_return_timeout():
     assert vehicle.state == NPCState.PARKED
 
     group = vehicle.trip_group
+    if len(group.member_resident_ids) == 1:
+        passenger = residents.create(mode="riding")
+        passenger.trip_group_id = group.group_id
+        group.member_resident_ids.append(passenger.resident_id)
     # Simulate everyone having disembarked (as pedestrian.py would).
     group.boarded_resident_ids.clear()
+    if driver_returned:
+        group.boarded_resident_ids.add(vehicle.owner_id)
     original_members = list(group.member_resident_ids)
 
     # One tick to set the wait deadline, then fast-forward well past it.
@@ -1623,11 +1629,14 @@ def test_update_npc_strands_a_straggler_after_the_return_timeout():
     tw.advance_time(group.activity_duration_s + NPC_GROUP_RETURN_GRACE_S + 1.0)
 
     update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
-    assert group.all_aboard
-    assert group.member_resident_ids == []
+    assert group.all_aboard == driver_returned
+    assert group.member_resident_ids == [vehicle.owner_id]
     for resident_id in original_members:
         resident = residents.get(resident_id)
-        assert resident.trip_group_id is None
+        assert resident.trip_group_id == (group.group_id if resident_id == vehicle.owner_id else None)
+    if not driver_returned:
+        assert not continue_npc_trip(vehicle, driver, tw, ways)
+        assert vehicle.state == NPCState.PARKED
 
 
 def test_update_npc_does_not_strand_a_group_that_returns_in_time():

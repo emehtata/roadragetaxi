@@ -8,6 +8,7 @@ traffic decisions, collision response, routing or recovery.
 from __future__ import annotations
 
 import argparse
+import hashlib
 from collections import Counter, deque
 from datetime import datetime, timezone
 import json
@@ -86,6 +87,7 @@ def main():
     minutes = []
     tick_ms = []
     ped_states = Counter()
+    trip_transitions = Counter()
     original_check = manager._check_vehicle_collision
     began = time.monotonic()
     clock = [0.0]
@@ -110,6 +112,12 @@ def main():
                                         "stop_position": decision.stop_position},
                            "route": [[p.x, p.y] for p in driver.path[max(0, driver.path_index - 2):driver.path_index + 6]],
                            "destination": driver.destination})
+            group = getattr(vehicle, "trip_group", None)
+            if group is not None:
+                result["trip_group"] = {"id": group.group_id, "members": list(group.member_resident_ids),
+                                        "boarded": sorted(group.boarded_resident_ids),
+                                        "disembarked": sorted(group.disembarked_resident_ids),
+                                        "all_aboard": group.all_aboard}
         return result
 
     def collision_check(vehicle, obstacles, *positional, **kwargs):
@@ -136,7 +144,9 @@ def main():
         return result
 
     manager._check_vehicle_collision = collision_check
+    runtime_patch = subprocess.check_output(["git", "diff", "HEAD", "--", "src/theroadragetrip"])
     metadata = {"source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+                "runtime_patch_sha256": hashlib.sha256(runtime_patch).hexdigest() if runtime_patch else None,
                 "started_utc": datetime.now(timezone.utc).isoformat(), "seed": seed,
                 "requested_wall_s": args.seconds, "tick_rate": 30,
                 "ways": len(world.ways), "buildings": len(world.buildings),
@@ -166,6 +176,11 @@ def main():
                     old = previous.get(identifier)
                     if old is not None and old["recovery"] != row["recovery"]:
                         recoveries[f'{old["recovery"]}->{row["recovery"]}'] += 1
+                    if old is not None and old["state"] != row["state"]:
+                        if row["state"] == "PARKED":
+                            trip_transitions["arrivals"] += 1
+                        elif old["state"] == "PARKED":
+                            trip_transitions["departures"] += 1
                     previous[identifier] = row
                     if abs(vehicle.speed) < 0.5:
                         wait_seconds[vehicle.debug_waiting_for or "unlabelled active driver"] += 1
@@ -200,6 +215,7 @@ def main():
                "collision_events": len(incidents),
                "unique_crashed_ids": sorted({i for e in incidents for i in e["new_crashed"]}),
                "recovery_transitions_sampled": dict(recoveries),
+               "trip_transitions_sampled": dict(trip_transitions),
                "stopped_driver_samples_by_reason": dict(wait_seconds),
                "pedestrian_state_samples": dict(ped_states),
                "low_progress_vehicles": stalls, "progress": minutes,

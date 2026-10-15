@@ -1,10 +1,11 @@
-"""Diagnostic probes of the unfixed baseline, not passing-compliance tests.
-Invert the relevant expectations when implementing each planned fix.
+"""Diagnostic traffic probes, not a general legal-compliance test suite.
+Assertions track implemented fixes and remaining gaps; probes-results.json
+preserves the original b885d0b observations, not the current expectations.
 """
 import json
 from types import SimpleNamespace as NS
 from theroadragetrip.pedestrian import PedestrianManager, PedestrianNetwork
-from theroadragetrip.npc import NPCState, NPCVehicleManager, place_parked_npc
+from theroadragetrip.npc import NPCState, NPCVehicleManager, TripGroup, place_parked_npc
 from theroadragetrip.osm import Way, StopSign
 from theroadragetrip.physics import Car
 from theroadragetrip.residents import ResidentManager
@@ -12,11 +13,11 @@ from theroadragetrip.traffic_rules import crossing_yield_decision, decide_traffi
 
 results = {}
 manager = PedestrianManager([], target_count=0)
-group = NS(member_resident_ids=[101], boarded_resident_ids={101}, destination_entrance=None)
+group = TripGroup(group_id=1, vehicle_id=1, member_resident_ids=[101], boarded_resident_ids={101})
 vehicle = NS(state=NPCState.PARKED, trip_group=group, x=0, y=0, heading=0, width_m=1.8)
 manager.traffic_vehicles = [vehicle]
 manager.entrance_locations = [(10, 0)]
-manager.spawn_pedestrian_at = lambda *args: NS(resident_id=None)
+manager.spawn_pedestrian_at = lambda *args, **kwargs: NS(resident_id=kwargs.get("resident_id"))
 manager._materialize_parked_drivers()
 assert len(manager.pedestrians) == 1 and not group.boarded_resident_ids
 ped = manager.pedestrians[0]
@@ -26,8 +27,8 @@ manager._update_linked_driver(ped, 1/30)
 assert group.boarded_resident_ids == {101} and ped.state == 'despawning'
 manager.pedestrians.clear()
 manager._materialize_parked_drivers()
-assert len(manager.pedestrians) == 1 and not group.boarded_resident_ids
-results['reboarded_member_rematerialized_next_frame'] = True
+assert not manager.pedestrians and group.boarded_resident_ids == {101}
+results['reboarded_member_rematerialized_next_frame'] = False
 
 car = Car(-10, 0, 0, 0)
 car.way = Way([(-100,0),(100,0)], 'residential', 3.5)

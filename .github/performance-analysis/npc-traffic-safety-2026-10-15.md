@@ -1,8 +1,9 @@
 # NPC traffic safety and liveness: next-phase plan
 
 Date: 2026-10-15. Runtime baseline: `b885d0b` (`release/0.17.0alpha`).
-This is an observation, gap analysis and implementation plan. **No gameplay
-behavior was changed.** Diagnostic scripts are not imported by the game.
+The original work was an observation, gap analysis and implementation plan,
+without gameplay changes. Subsequent implementation is recorded at the end;
+diagnostic scripts are not imported by the game.
 
 ## Decision
 
@@ -345,3 +346,54 @@ population targets, increasing blanket braking distances, or making red-light
 queues trigger recovery. Those can hide symptoms without fixing the observed
 failures. The subsequent intersection/pedestrian work should be paired so
 neither side implements an incompatible right-of-way model.
+
+## Implementation progress — passenger lifecycle
+
+First atomic step implemented after the baseline observation:
+
+- Track successful disembarkation once per member per stop, independently of
+  current boarded membership. Returned members stay aboard after their
+  pedestrian disappears; successful continuation resets the per-stop record.
+- Remove explicitly despawning pedestrians before the next movement update, so
+  a reboarded person cannot become an ordinary walker again while still counted
+  aboard. Failed disembark spawns leave the person aboard and may retry.
+- Pass the existing Resident ID to `spawn_pedestrian_at` instead of allocating
+  an unrelated Resident and then overwriting the pedestrian's identity.
+- Detach pedestrians removed from a group by its return deadline; they cannot
+  subsequently board that old group. The actual driver is never discarded as a
+  timed-out passenger, and trip continuation requires the driver to be aboard.
+  A missing driver leaves the car safely parked; unreachable return routes and
+  safe cancellation remain part of the following scheduling/recovery step.
+
+Four initial regression cases failed on the old code and passed with the fix.
+Coverage now includes full pedestrian update loops for one/three members,
+post-reboarding cleanup and delayed population ticks, two actual visits and
+departures through both NPC/pedestrian managers, failed-spawn retry, preserved
+Resident identities, and return-deadline driver/passenger separation. The small
+two-visit fixture isolates lifecycle/turnover; it does not certify dense-city
+parking geometry or pedestrian traffic-law compliance.
+
+Validation: **1,421 Python tests passed, 2 skipped**; focused NPC/pedestrian
+coverage: **274 passed**. The diagnostic probe now expects no rematerialization;
+its archived original `probes-results.json` remains unchanged. STOP, yellow,
+pedestrian routing/signals, physical-layer collision filtering and trajectory
+safety are still pending; no improvement to those behaviors is claimed.
+
+Final-code real-time Oulu smoke check: **120.028 seconds, 3,593 ticks**, separate
+from test-suite execution, using the same clear/dry fixture and seed. The
+[recorded summary](npc-traffic-safety-2026-10-15-data/lifecycle-fix-smoke.json)
+identifies `c0315fc` plus SHA-256 of the uncommitted runtime patch; that patch
+was verified unchanged after the run. Groups in vehicles 3 and 7 remained fully
+boarded after disembarkation/return, rather than being recreated outside.
+Sampled arrivals numbered 21, but **no departures were sampled**: parked,
+fully boarded cars still expose the continuation scheduling failure described
+in step 2. Final counts were 40 total, 21 parked, 14 other non-crashed states and
+5 remaining wrecks. There were **five collision events**; no collision-reduction
+claim is made, and this shorter run is not a controlled collision-rate comparison
+to the ten-minute baseline. Seeded trajectories also change when the unnecessary
+Resident allocations/random draws are removed.
+
+Next atomic step: resumable continuation/recovery jobs with explicit timeout
+versus no-route outcomes and fair service for already waiting vehicles. The
+small-fixture two-departure test establishes the lifecycle works when routing
+can finish; it must not be mistaken for restored Oulu traffic throughput.
