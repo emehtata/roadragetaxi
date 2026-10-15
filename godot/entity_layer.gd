@@ -794,10 +794,41 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 		var head := c + h * radius * 0.6
 		draw_circle(head, maxf(_px(2.0), radius * 0.48), RS.PED_HAIR)
 		draw_circle(head, maxf(_px(1.0), radius * 0.35), RS.PED_HEAD)
+		if ped.get("activity", "") == "ice_hockey":
+			_hockey_stick(c, h, side, radius, float(ped.get("stick_swing", 0.0)))
 	if ped.get("curse_timer", 0.0) > 0.0:
 		var timer: float = ped["curse_timer"]
 		_bubble(c - Vector2(0, radius + _px(6.0)), str(ped.get("curse_text", "@#*!%")), RS.CURSE_TEXT, RS.CURSE_BORDER,
 			1.0 if timer >= 0.5 else timer / 0.5)
+
+
+## An ice hockey player's stick: from the right hand forward to the blade on
+## the ice; a hit (state stick_swing, seconds left) sweeps it through.
+const STICK_SWING_S := 0.3  # ice_hockey.py STICK_SWING_S
+const STICK_SHAFT := Color8(150, 110, 60)
+const STICK_BLADE := Color8(25, 25, 28)
+
+
+func _hockey_stick(c: Vector2, h: Vector2, side: Vector2, radius: float, swing: float) -> void:
+	var hand := c + side * radius * 0.55 + h * radius * 0.2
+	var reach := (h * 1.7 + side * 0.5).normalized() * radius * 2.4
+	if swing > 0.0:  # the follow-through: swept across, back to rest as the swing ends
+		reach = reach.rotated(-1.2 * swing / STICK_SWING_S)
+	var blade_root := hand + reach
+	draw_line(hand, blade_root, STICK_SHAFT, maxf(_px(1.0), radius * 0.12))
+	draw_line(blade_root, blade_root - side * radius * 0.55, STICK_BLADE, maxf(_px(1.5), radius * 0.18))
+
+
+## Pucks on the rinks (state "pucks"): small and black, where the
+## simulation slid them (moved on toward the next state's spot).
+func _pucks(a: Dictionary, b: Dictionary, t: float) -> void:
+	var now: Array = a.get("pucks", [])
+	var next: Array = b.get("pucks", [])
+	for i in now.size():
+		var p: Array = now[i]
+		var q: Array = next[i] if next.size() == now.size() else p
+		var at := MapMath.point(origin, lerpf(p[0], q[0], t), lerpf(p[1], q[1], t))
+		draw_circle(at, maxf(_px(2.5), 0.12), STICK_BLADE)
 
 
 ## A text bubble whose bottom centre is at `anchor`, drawn in screen
@@ -951,6 +982,8 @@ func _draw() -> void:
 			continue
 		_pedestrian(c, p.z, ped, lerpf(ped.get("animation_time", 0.0), next.get("animation_time", 0.0), t))
 		count += 1
+	if not underground:
+		_pucks(a, b, t)
 	var later_npc_rows := _by_id(b.get("npcs", []))
 	for npc in a.get("npcs", []):  # NPC drivers out of their car are drawn as pedestrians
 		if underground or not npc.get("is_on_foot", false):

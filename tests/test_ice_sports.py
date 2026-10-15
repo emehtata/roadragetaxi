@@ -55,3 +55,34 @@ def test_an_ice_rink_is_closed_you_crash_into_its_boards():
     car = Car(x=20.0, y=11.0, heading=1.57, speed=8.0)
     assert taxi.check_fence_collision(car, [rink], 1.0, previous_position=(20.0, 6.0))
     assert (car.x, car.y, car.speed) == (20.0, 6.0, 0.0)
+
+
+def test_hockey_players_hit_the_puck_around_the_rink():
+    import random
+
+    from theroadragetrip.activities.plugins import ice_hockey
+    from theroadragetrip.geo import point_in_polygon
+
+    random.seed(3)
+    ice_hockey._pucks.clear()  # module state: other tests' rinks
+    manager = _manager()
+    manager.sports_ice_open = True
+    car = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
+    for step in range(4):
+        manager.sim_time = step * 2.0
+        manager.ensure_ice_skaters(car)
+    players = [p for p in manager.pedestrians if p.activity and p.activity.plugin_id == "ice_hockey"]
+    assert len(players) >= 2
+    assert {tuple(p.color) for p in players} == set(ice_hockey.TEAM_COLORS)  # two teams
+
+    puck = next(iter(ice_hockey._pucks.values()))
+    seen, swings = set(), 0
+    for _ in range(300):  # 30 s
+        manager.sim_time += 0.1
+        for player in players:
+            manager._update_activity(player, 0.1)
+            swings += player.stick_swing == ice_hockey.STICK_SWING_S
+        seen.add((round(puck.x), round(puck.y)))
+        assert point_in_polygon(puck.x, puck.y, RINK)
+    assert swings >= 3 and len(seen) > 20  # hit around, not sitting still
+    assert ice_hockey.puck_positions() == [[round(puck.x, 2), round(puck.y, 2)]]

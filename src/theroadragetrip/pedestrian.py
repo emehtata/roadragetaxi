@@ -381,6 +381,7 @@ class Pedestrian:
     speed_variation_factor: float = 1.0  # Multiplier on base_speed (0.9 - 1.1)
     # Cursing / reaction state
     curse_timer: float = 0.0
+    stick_swing: float = 0.0  # ice hockey: seconds left of a stick swing (the client shows it)
     curse_text: str = "@#*!%"
     # Dodging / evasive state
     dodge_vx: float = 0.0
