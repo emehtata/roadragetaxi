@@ -317,7 +317,14 @@ func light_at(at: Vector2) -> float:
 			var d: float = chunk.street_lights[i].distance_to(at)
 			if d < reach:
 				total += (1.0 - d / reach) * (1.0 - d / reach)
+		if _flood_group != null and _flood_group.visible:  # under the floodlights: near daylight
+			for ring in chunk._data.get("floodlit", []):
+				if Geometry2D.is_point_in_polygon(at, ring):
+					return FLOODLIGHT_ON_PEOPLE
 	return minf(total, 1.5)
+
+
+const FLOODLIGHT_ON_PEOPLE := 3.0  # light_at in a floodlit field: saturates vehicle_light to near white
 
 
 ## 3D buildings: canopies in view project with the camera, so they redraw each frame.

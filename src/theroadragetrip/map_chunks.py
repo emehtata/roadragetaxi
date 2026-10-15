@@ -26,7 +26,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           # godot-16 (static_world.py)
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
-          "canopy_heights", "floodlit", "rinks")
+          "canopy_heights", "floodlit", "rinks", "floodlight_poles")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate")
@@ -136,6 +136,22 @@ def rink_frame(points) -> list | None:
     angle = math.atan2(y1 - y0, x1 - x0) if side_a >= side_b else math.atan2(y2 - y1, x2 - x1)
     centre = rectangle.centroid
     return [round(centre.x, 2), round(centre.y, 2), round(angle, 4), round(max(side_a, side_b), 2), round(min(side_a, side_b), 2)]
+
+
+FLOODLIGHT_POLE_OUT_M = 2.0  # outside the field's rectangle
+
+
+def floodlight_poles(points) -> list:
+    """A floodlit field's light poles: its rectangle's corners and the middle
+    of each long side, FLOODLIGHT_POLE_OUT_M outside it."""
+    frame = rink_frame(points)
+    if frame is None:
+        return []
+    cx, cy, angle, length, width = frame
+    ux, uy = math.cos(angle), math.sin(angle)
+    half_u, half_v = length / 2.0 + FLOODLIGHT_POLE_OUT_M, width / 2.0 + FLOODLIGHT_POLE_OUT_M
+    return [(cx + ux * u * half_u - uy * v * half_v, cy + uy * u * half_u + ux * v * half_v)
+            for u, v in ((-1, -1), (0, -1), (1, -1), (-1, 1), (0, 1), (1, 1))]
 
 
 def _item_rect(item) -> tuple[float, float, float, float] | None:
@@ -335,6 +351,9 @@ class ChunkIndex:
                 self._chunk(cell)["landuse"].append([static_world._rgb(color), seasonal, ring])
                 if kind in FLOODLIT_KINDS:
                     self._chunk(cell)["floodlit"].append(ring)
+            if kind in FLOODLIT_KINDS:
+                for pole in floodlight_poles(scenery.points_m):
+                    self._add("floodlight_poles", [pole], [round(pole[0], 2), round(pole[1], 2)])
             if kind == "ice_rink":  # closed all round (taxi.SOLID_AREA_KINDS): its boards
                 self._add("railings", scenery.points_m[:1], ["boards", _line(list(scenery.points_m) + [scenery.points_m[0]])])
                 frame = rink_frame(scenery.points_m)

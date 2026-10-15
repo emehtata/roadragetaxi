@@ -145,6 +145,8 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_add_layer(6, _draw_lamp_heads, _heads))
 		_heads.material = EMISSIVE
 		set_lights_on(false)
+	if not message.get("floodlight_poles", []).is_empty():  # their masts, always; the heads light with the floods
+		_px_layers.append(_add_layer(8, _draw_floodlight_poles))
 	if not message.get("floodlit", []).is_empty():
 		var add := CanvasItemMaterial.new()
 		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
@@ -974,6 +976,23 @@ func _draw_floodlights(node: Node2D) -> void:
 	for ring in _data.get("floodlit", []):
 		if Detail._valid(ring):
 			node.draw_colored_polygon(ring, FLOODLIGHT)
+	for pole in _data.get("floodlight_poles", []):  # the lamp heads, glowing
+		var at := MapMath.point(_origin, pole[0], pole[1])
+		node.draw_circle(at, 3.0, FLOODLIGHT_HALO)
+		node.draw_circle(at, 0.7, FLOODLIGHT_HEAD)
+
+
+const FLOODLIGHT_HALO := Color(1.0, 0.96, 0.85, 0.25)
+const FLOODLIGHT_HEAD := Color(1.0, 0.98, 0.92, 1.0)
+const FLOODLIGHT_MAST := Color8(70, 72, 76)
+
+
+## A floodlight pole's mast seen from above: a dark disc and its shadow.
+func _draw_floodlight_poles(node: Node2D) -> void:
+	for pole in _data.get("floodlight_poles", []):
+		var at := MapMath.point(_origin, pole[0], pole[1])
+		node.draw_circle(at + Vector2(0.25, 0.25), maxf(_px(2.0), 0.3), Color(0, 0, 0, 0.3))
+		node.draw_circle(at, maxf(_px(2.0), 0.3), FLOODLIGHT_MAST)
 
 
 func _draw_light_pools(node: Node2D) -> void:

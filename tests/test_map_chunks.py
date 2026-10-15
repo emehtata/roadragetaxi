@@ -381,3 +381,14 @@ def test_an_ice_rink_gets_its_boards_and_a_frame_for_its_hockey_markings():
     assert (round(x), round(y), round(length), round(width)) == (100, 100, 60, 30)
     assert round(math.cos(2 * (rink_angle - angle)), 6) == 1.0  # along the long side, either way
     assert [r[0] for r in here["railings"]].count("boards") == 1
+
+
+def test_floodlit_fields_get_light_poles_round_them():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    pitch = [(100.0, 100.0), (200.0, 100.0), (200.0, 160.0), (100.0, 160.0)]
+    world.sceneries = [Scenery(points_m=pitch, kind="pitch"), Scenery(points_m=[(300.0, 300.0), (340.0, 300.0), (340.0, 330.0)], kind="park")]
+    poles = map_chunks.ChunkIndex(world, size=500.0).message("0_0")["floodlight_poles"]
+    assert sorted((round(x), round(y)) for x, y in poles) == [
+        (98, 98), (98, 162), (150, 98), (150, 162), (202, 98), (202, 162)]  # corners and long-side middles, 2 m out
