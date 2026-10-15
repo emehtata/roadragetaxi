@@ -344,7 +344,12 @@ func _map_point_menu() -> void:
 	var show_pin := func():
 		drive.disabled = browser.pin == Vector2.INF
 		if not drive.disabled:
-			place.text = "%.5f, %.5f  (%s)" % [browser.pin.x, browser.pin.y, _t("map_point_settings") % nearest_city(_city_locations, browser.pin.x, browser.pin.y)]
+			var pin := browser.pin
+			var settings: String = _t("map_point_settings") % nearest_city(_city_locations, pin.x, pin.y)
+			place.text = "%.5f, %.5f  (%s)" % [pin.x, pin.y, settings]
+			_reverse_geocode(pin, func(name: String):
+				if browser.pin == pin and is_instance_valid(place):  # not a stale answer
+					place.text = "%s  (%s)" % [name, settings])
 	show_pin.call()
 	browser.picked.connect(func(latitude: float, longitude: float):
 		_settings.set_value("gig", "point_latitude", latitude)
@@ -354,6 +359,27 @@ func _map_point_menu() -> void:
 	_button(_t("back"), _city_menu)
 	_back_action = _city_menu
 	_focus_menu()
+
+
+## The pin's municipality/village name from OSM Nominatim (one request per
+## click, within its 1 request/s policy); offline, callback never fires.
+func _reverse_geocode(pin: Vector2, callback: Callable) -> void:
+	var request := HTTPRequest.new()
+	add_child(request)
+	request.request_completed.connect(func(result: int, code: int, _headers, body: PackedByteArray):
+		request.queue_free()
+		if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+			return
+		var data = JSON.parse_string(body.get_string_from_utf8())
+		if data is Dictionary and data.has("address"):
+			var address: Dictionary = data["address"]
+			for key in ["village", "town", "city", "municipality", "hamlet"]:
+				if address.has(key):
+					callback.call(str(address[key]))
+					return)
+	var agent := "RoadRageTrip/%s (Godot)" % ProjectSettings.get_setting("application/config/version")
+	request.request("https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&lat=%.5f&lon=%.5f&accept-language=%s"
+		% [pin.x, pin.y, _language], ["User-Agent: " + agent])
 
 
 static func nearest_city(locations: Array, latitude: float, longitude: float) -> String:
