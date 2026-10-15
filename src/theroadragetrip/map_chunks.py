@@ -300,9 +300,15 @@ class ChunkIndex:
         """godot-16: the rest of what the client draws from the map (static_world.py)."""
         from .map_style import FLOODLIT_KINDS, FROZEN_IN_WINTER_KINDS, SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS
 
-        for scenery in getattr(world, "sceneries", ()):
-            if len(scenery.points_m) < 3:
-                continue
+        # Biggest first, so nested areas draw on top (a pitch inside its
+        # sports centre, a park inside a residential area). A container's
+        # bbox is never smaller than its contents'.
+        def bbox_area(scenery) -> float:
+            xs = [p[0] for p in scenery.points_m]
+            ys = [p[1] for p in scenery.points_m]
+            return (max(xs) - min(xs)) * (max(ys) - min(ys))
+
+        for scenery in sorted((s for s in getattr(world, "sceneries", ()) if len(s.points_m) >= 3), key=bbox_area, reverse=True):
             kind = str(scenery.kind).lower()
             island = kind == "traffic_island" or getattr(scenery, "kerbed", False)  # redrawn above the roads
             color = SCENERY_COLORS.get(kind, (38, 105, 38))

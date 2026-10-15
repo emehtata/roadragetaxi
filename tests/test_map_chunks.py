@@ -355,3 +355,14 @@ def test_sports_lights_burn_only_from_7_to_22():
     from theroadragetrip.calendar import sports_lights_hours
 
     assert [sports_lights_hours(datetime(2026, 1, 10, h, 30)) for h in (6, 7, 21, 22)] == [False, True, True, False]
+
+
+def test_nested_areas_draw_on_top_of_their_container():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    pitch = Scenery(points_m=[(10.0, 10.0), (60.0, 10.0), (60.0, 40.0), (10.0, 40.0)], kind="pitch")
+    centre = Scenery(points_m=[(0.0, 0.0), (200.0, 0.0), (200.0, 150.0), (0.0, 150.0)], kind="sports_centre")
+    world.sceneries = [pitch, centre]  # OSM order: the container last
+    here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    assert [area[1] for area in here["landuse"]] == [0, 2]  # sports centre under, the pitch over it
