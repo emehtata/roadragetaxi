@@ -16,6 +16,7 @@ var _body: VBoxContainer
 var _cities: Array = []
 var _city_locations: Array = []
 var _city := "Oulu"
+var _start_place := ""  # its name from the picker's reverse geocode; "": unknown
 var _start_point := Vector2.INF  # a custom gig start (latitude, longitude); INF: the city's centre
 var _language := "en"
 var _settings := ConfigFile.new()
@@ -347,8 +348,10 @@ func _map_point_menu() -> void:
 			var pin := browser.pin
 			var settings: String = _t("map_point_settings") % nearest_city(_city_locations, pin.x, pin.y)
 			place.text = "%.5f, %.5f  (%s)" % [pin.x, pin.y, settings]
+			_start_place = ""
 			_reverse_geocode(pin, func(name: String):
 				if browser.pin == pin and is_instance_valid(place):  # not a stale answer
+					_start_place = name
 					place.text = "%s  (%s)" % [name, settings])
 	show_pin.call()
 	browser.picked.connect(func(latitude: float, longitude: float):
@@ -631,6 +634,8 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
 		if _start_point != Vector2.INF:
 			args.append_array(["--bbox", point_bbox(_start_point.x, _start_point.y)])
+			if _start_place != "":
+				args.append_array(["--place-name", _start_place])
 	args.append_array(map_source_args(_settings.get_value("map", "osm_source", ""), _pbf_path()))
 	if _settings.has_section_key("game", "historical_weather"):  # else the server's config decides
 		args.append("--historical-weather" if _settings.get_value("game", "historical_weather") else "--no-historical-weather")

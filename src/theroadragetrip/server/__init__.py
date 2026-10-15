@@ -418,6 +418,8 @@ class SimulationServer:
         """The start sign's name: the catalog city, or for a custom start
         (--bbox) the nearest town/village on the loaded map."""
         if getattr(self.args, "bbox", None):
+            if getattr(self.args, "place_name", None):  # the map picker's reverse geocode
+                return self.args.place_name
             towns = [p for p in self.world.places if p.kind in ("city", "town", "village")]
             if towns:
                 return min(towns, key=lambda p: (p.x - self.car.x) ** 2 + (p.y - self.car.y) ** 2).name

@@ -23,6 +23,7 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
     map_config = config["map"] if config else {}
     traffic_config = config["traffic"] if config else {}
     experimental_config = config["experimental"] if config else {}
+    p.add_argument("--place-name", type=str, default=None, help="start sign name for a custom --bbox start")
     p.add_argument("--bbox", type=str, default=game.get("bbox") or None, help="south,west,north,east (lat/lon)")
     p.add_argument(
         "--preset",
