@@ -363,6 +363,8 @@ class ChunkIndex:
                 self._chunk(cell)["landuse"].append([static_world._rgb(color), seasonal, ring])
                 if kind in FLOODLIT_KINDS:
                     self._chunk(cell)["floodlit"].append(ring)
+                if island:
+                    self._chunk(cell)["traffic_islands"].append([static_world._rgb(color), seasonal, ring])
             if kind in FLOODLIT_KINDS:
                 for pole in floodlight_poles(scenery.points_m, kind):
                     cell = (round(pole[0] / FLOODLIGHT_POLE_MERGE_M), round(pole[1] / FLOODLIGHT_POLE_MERGE_M))
@@ -376,11 +378,10 @@ class ChunkIndex:
             if kind in ("ice_rink", "stadium"):  # closed all round (taxi.SOLID_AREA_KINDS): boards, or a wall
                 outline = _line(list(scenery.points_m) + [scenery.points_m[0]])
                 self._add("railings", scenery.points_m[:1], ["boards" if kind == "ice_rink" else "wall", outline])
+            if kind == "ice_rink":
                 frame = rink_frame(scenery.points_m)
                 if frame is not None:  # its hockey markings, drawn in winter
                     self._add("rinks", scenery.points_m[:1], frame)
-                if island:
-                    self._chunk(cell)["traffic_islands"].append([static_world._rgb(color), seasonal, ring])
         for deck in static_world.rail_bridge_decks(world.railways, bridge_parts=bridge_parts):
             for cell, ring in static_world.clipped_pieces(deck, self.size):
                 self._chunk(cell)["rail_decks"].append(ring)

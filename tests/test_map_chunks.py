@@ -409,3 +409,16 @@ def test_soccer_pitches_get_a_frame_for_their_lines():
                        Scenery(points_m=[(300.0, 300.0), (330.0, 300.0), (330.0, 320.0), (300.0, 320.0)], kind="pitch", sport="tennis")]
     (frame,) = map_chunks.ChunkIndex(world, size=500.0).message("0_0")["soccer_pitches"]
     assert [round(v) for v in (frame[0], frame[1], frame[3], frame[4])] == [152, 134, 105, 68]
+
+
+def test_kerbed_islands_and_traffic_islands_redraw_over_the_roads_and_only_rinks_get_hockey_lines():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    square = [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)]
+    world.sceneries = [Scenery(points_m=square, kind="traffic_island"),
+                       Scenery(points_m=[(x + 100, y) for x, y in square], kind="grass", kerbed=True),
+                       Scenery(points_m=[(x + 200, y + 200) for x, y in square], kind="stadium")]
+    here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    assert len(here["traffic_islands"]) == 2
+    assert here["rinks"] == []  # a stadium is no rink
