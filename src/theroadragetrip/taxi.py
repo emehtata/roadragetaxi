@@ -568,16 +568,15 @@ class TaxiManager:
     def set_language(self, language: str) -> None:
         self.language = language
 
-    def check_speed_cameras(self, car: Car, cameras: List[SpeedCamera], penalty: int = 300) -> bool:
+    def check_speed_cameras(self, car: Car, cameras: List[SpeedCamera], penalty: int = 300,
+                            previous_position=None) -> bool:
         """Fine a speeding car seen in a camera's directional 50-meter zone."""
         hit = False
         visible_ids: set[int] = set()
         for camera_index, camera in enumerate(cameras):
-            dx = camera.x - car.x
-            dy = camera.y - car.y
-            if dx * dx + dy * dy > 60.0 * 60.0:
+            if camera.layer != getattr(car, "layer", 0) or camera.map_level != getattr(car, "map_level", 0):
                 continue
-            if not camera_sees_car(camera, car.x, car.y, car.heading):
+            if not camera_sees_car(camera, car.x, car.y, car.heading, previous_position):
                 continue
             visible_ids.add(camera_index)
             if abs(car.speed) * 3.6 <= camera.speed_limit_kmh:

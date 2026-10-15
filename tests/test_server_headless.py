@@ -193,6 +193,29 @@ def test_road_name_and_limit_follow_the_way_under_the_taxi(tmp_path, monkeypatch
     assert _state(server)["road"] == {"name": "Living Street", "speed_limit_kmh": None, "layer": 0, "bridge": False}
 
 
+def test_speed_camera_detects_a_fast_drive_on_the_first_tick(tmp_path, monkeypatch):
+    import math
+    from theroadragetrip.police import SpeedCamera
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    server._on_foot = False
+    server._slow_check_elapsed = 0.0
+    car = server.car
+    car.engine_on = True
+    car.speed = 200 / 3.6
+    server.world.speed_cameras = [SpeedCamera(
+        car.x + 20 * math.cos(car.heading), car.y + 20 * math.sin(car.heading), car.heading, 50, None,
+        layer=car.layer, map_level=car.map_level,
+    )]
+    before = server.world.taxi_mgr.total_score
+    server.tick(1 / 30)
+    assert server.world.taxi_mgr.total_score == before - 300
+    assert server.world.taxi_mgr.speed_camera_flash_index == 0
+    assert server.world.taxi_mgr.speed_camera_notice_timer > 0
+    server.tick(1 / 30)
+    assert server.world.taxi_mgr.total_score == before - 300
+
+
 def test_speed_camera_notice_is_flagged_while_its_timer_runs(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
     taxi_mgr = server.world.taxi_mgr
