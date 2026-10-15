@@ -72,47 +72,22 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
-	var body := StyleBoxFlat.new()
-	body.bg_color = Color8(14, 16, 20)
-	body.border_color = Color8(70, 78, 88)
-	body.set_border_width_all(3)
-	body.set_corner_radius_all(34)
-	body.set_content_margin_all(14)
+	var body := device_style()
 	body.shadow_color = Color(0, 0, 0, 0.55)
 	body.shadow_size = 2000
 	add_theme_stylebox_override("panel", body)
 	var screen := PanelContainer.new()
-	var glass := StyleBoxFlat.new()
-	glass.bg_color = Color8(24, 27, 33)
-	glass.set_corner_radius_all(24)
-	glass.set_content_margin_all(0)
-	screen.add_theme_stylebox_override("panel", glass)
+	screen.add_theme_stylebox_override("panel", screen_style())
 	add_child(screen)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	screen.add_child(box)
-	# Status bar: the game clock, signal and battery (and the notch between).
-	var bar := HBoxContainer.new()
-	bar.add_theme_constant_override("separation", 6)
-	var bar_margin := MarginContainer.new()
-	for side in ["left", "right"]:
-		bar_margin.add_theme_constant_override("margin_" + side, 22)
-	bar_margin.add_theme_constant_override("margin_top", 10)
-	bar_margin.add_child(bar)
+	var bar_margin := make_status_bar()
 	box.add_child(bar_margin)
-	_clock = _label(14, Color8(235, 238, 242))
-	bar.add_child(_clock)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.add_child(spacer)
-	bar.add_child(_label(13, Color8(235, 238, 242), "▂▄▆█ 5G"))
-	_battery_label = _label(13, Color8(235, 238, 242))
-	bar.add_child(_battery_label)
-	_battery_icon = Control.new()
-	_battery_icon.custom_minimum_size = Vector2(26, 14)
-	_battery_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_clock = bar_margin.get_node("Bar/Clock")
+	_battery_label = bar_margin.get_node("Bar/BatteryLabel")
+	_battery_icon = bar_margin.get_node("Bar/BatteryIcon")
 	_battery_icon.draw.connect(_draw_battery)
-	bar.add_child(_battery_icon)
 	# The app's header.
 	var header := PanelContainer.new()
 	var header_style := StyleBoxFlat.new()
@@ -137,7 +112,7 @@ func _ready() -> void:
 	_rows = VBoxContainer.new()
 	_rows.add_theme_constant_override("separation", 10)
 	list_margin.add_child(_rows)
-	_details = _label(13, Color8(150, 160, 170))  # what the selected card can't fit (none today: kept for the tests' sake)
+	_details = _label(13, Color8(150, 160, 170))
 	_details.visible = false
 	box.add_child(_details)
 	var buttons := HBoxContainer.new()
@@ -153,6 +128,57 @@ func _ready() -> void:
 	_close = _app_button(Color8(48, 54, 62), Color8(220, 225, 230))
 	_close.pressed.connect(close)
 	buttons.add_child(_close)
+	box.add_child(home_indicator())
+	set_language(language)
+	_refresh()
+
+
+static func device_style() -> StyleBoxFlat:
+	var body := StyleBoxFlat.new()
+	body.bg_color = Color8(14, 16, 20)
+	body.border_color = Color8(70, 78, 88)
+	body.set_border_width_all(3)
+	body.set_corner_radius_all(34)
+	body.set_content_margin_all(14)
+	return body
+
+
+static func screen_style() -> StyleBoxFlat:
+	var glass := StyleBoxFlat.new()
+	glass.bg_color = Color8(24, 27, 33)
+	glass.set_corner_radius_all(24)
+	glass.set_content_margin_all(0)
+	return glass
+
+
+static func make_status_bar() -> MarginContainer:
+	var bar := HBoxContainer.new()
+	bar.name = "Bar"
+	bar.add_theme_constant_override("separation", 6)
+	var bar_margin := MarginContainer.new()
+	for side in ["left", "right"]:
+		bar_margin.add_theme_constant_override("margin_" + side, 22)
+	bar_margin.add_theme_constant_override("margin_top", 10)
+	bar_margin.add_child(bar)
+	var clock := _label(14, Color8(235, 238, 242))
+	clock.name = "Clock"
+	bar.add_child(clock)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(spacer)
+	bar.add_child(_label(13, Color8(235, 238, 242), "▂▄▆█ 5G"))
+	var battery_label := _label(13, Color8(235, 238, 242))
+	battery_label.name = "BatteryLabel"
+	bar.add_child(battery_label)
+	var battery_icon := Control.new()
+	battery_icon.name = "BatteryIcon"
+	battery_icon.custom_minimum_size = Vector2(26, 14)
+	battery_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bar.add_child(battery_icon)
+	return bar_margin
+
+
+static func home_indicator() -> MarginContainer:
 	var home := ColorRect.new()  # the home indicator
 	home.color = Color8(120, 126, 134)
 	home.custom_minimum_size = Vector2(120, 4)
@@ -160,12 +186,10 @@ func _ready() -> void:
 	var home_margin := MarginContainer.new()
 	home_margin.add_theme_constant_override("margin_bottom", 8)
 	home_margin.add_child(home)
-	box.add_child(home_margin)
-	set_language(language)
-	_refresh()
+	return home_margin
 
 
-func _label(font_size: int, color: Color, text := "") -> Label:
+static func _label(font_size: int, color: Color, text := "") -> Label:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_size_override("font_size", font_size)
@@ -222,16 +246,20 @@ static func battery_step(level: float, on_charger: bool, game_dt: float) -> Arra
 
 
 func _draw_battery() -> void:
-	var s := _battery_icon.size
+	draw_battery(_battery_icon, battery, charging)
+
+
+static func draw_battery(icon: Control, level: float, on_charger: bool) -> void:
+	var s := icon.size
 	var body := Rect2(1, 2, s.x - 5, s.y - 4)
 	var ink := Color8(235, 238, 242)
-	_battery_icon.draw_rect(body, ink, false, 1.5)
-	_battery_icon.draw_rect(Rect2(body.end.x, body.position.y + body.size.y * 0.3, 2, body.size.y * 0.4), ink)  # the tip
-	var fill := Color8(90, 210, 110) if charging else (Color8(235, 80, 70) if battery <= BATTERY_CHARGER_AT else ink)
-	_battery_icon.draw_rect(Rect2(body.position + Vector2(2, 2), Vector2((body.size.x - 4) * battery / 100.0, body.size.y - 4)), fill)
-	if charging:  # the charger's bolt across it
+	icon.draw_rect(body, ink, false, 1.5)
+	icon.draw_rect(Rect2(body.end.x, body.position.y + body.size.y * 0.3, 2, body.size.y * 0.4), ink)
+	var fill := Color8(90, 210, 110) if on_charger else (Color8(235, 80, 70) if level <= BATTERY_CHARGER_AT else ink)
+	icon.draw_rect(Rect2(body.position + Vector2(2, 2), Vector2((body.size.x - 4) * level / 100.0, body.size.y - 4)), fill)
+	if on_charger:
 		var c := body.get_center()
-		_battery_icon.draw_colored_polygon(PackedVector2Array([c + Vector2(1, -6), c + Vector2(-4, 1), c + Vector2(0, 1),
+		icon.draw_colored_polygon(PackedVector2Array([c + Vector2(1, -6), c + Vector2(-4, 1), c + Vector2(0, 1),
 			c + Vector2(-1, 6), c + Vector2(4, -1), c + Vector2(0, -1)]), Color8(255, 220, 40))
 
 

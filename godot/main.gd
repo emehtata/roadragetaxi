@@ -625,6 +625,7 @@ func _present(state: Dictionary) -> void:
 	if state.has("game_time_seconds"):
 		phone.set_game_seconds(float(state["game_time_seconds"]))
 	phone.show_phone(state.get("phone", {}))
+	navigation_phone.show_status(phone)
 	navigation_phone.show_navigation(state.get("navigation", {}), nav_overlay.show_route, phone.is_open)
 	_refresh_inspector(state)
 	var target: Dictionary = entities.current_target(state)

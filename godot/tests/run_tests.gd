@@ -1266,6 +1266,17 @@ func test_navigation_route() -> void:
 	var device := NavigationPhone.new()
 	root.add_child(device)
 	device.language = "fi"
+	var offer_phone := Phone.new()
+	root.add_child(offer_phone)
+	offer_phone.clock_text = "23:59"
+	offer_phone.battery = 19.0
+	offer_phone.charging = true
+	device.show_status(offer_phone)
+	check(device._clock.text == "23:59" and device._battery_label.text == "  19%", "navigation phone: same clock and battery as offer app")
+	check(device._charging and device._battery == offer_phone.battery, "navigation phone: shares charging state, not a second battery simulation")
+	check(device.get_theme_stylebox("panel").bg_color == offer_phone.get_theme_stylebox("panel").bg_color, "phones share device styling")
+	check(device._clock.get_parent().get_child(2).text == "▂▄▆█ 5G", "navigation phone: signal indicator matches offer app")
+	offer_phone.free()
 	var instruction := {"instruction": {"maneuver": "left", "distance_m": 125.0, "street": "Kirkkokatu"}}
 	device.show_navigation(instruction, true, false)
 	check(device.visible and device._distance.text == "125 m" and device._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")

@@ -7,27 +7,41 @@ var _arrow: Control
 var _distance: Label
 var _street: Label
 var _maneuver := "no_target"
+var _clock: Label
+var _battery_label: Label
+var _battery_icon: Control
+var _battery := 100.0
+var _charging := false
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	position = Vector2(16, 125)
-	custom_minimum_size = Vector2(210, 240)
-	var body := StyleBoxFlat.new()
-	body.bg_color = Color8(14, 16, 20)
-	body.border_color = Color8(70, 78, 88)
-	body.set_border_width_all(3)
-	body.set_corner_radius_all(22)
-	body.set_content_margin_all(16)
-	add_theme_stylebox_override("panel", body)
+	custom_minimum_size = Vector2(270, 280)
+	add_theme_stylebox_override("panel", Phone.device_style())
+	var screen := PanelContainer.new()
+	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	screen.add_theme_stylebox_override("panel", Phone.screen_style())
+	add_child(screen)
 	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(box)
-	var speaker := Label.new()
-	speaker.text = "━━"
-	speaker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	speaker.add_theme_color_override("font_color", Color8(80, 90, 100))
-	box.add_child(speaker)
+	screen.add_child(box)
+	var status := Phone.make_status_bar()
+	box.add_child(status)
+	_clock = status.get_node("Bar/Clock")
+	_battery_label = status.get_node("Bar/BatteryLabel")
+	_battery_icon = status.get_node("Bar/BatteryIcon")
+	_battery_icon.draw.connect(func(): Phone.draw_battery(_battery_icon, _battery, _charging))
+	var title := Phone._label(20, Color8(20, 20, 20), "RageCab")
+	var header := PanelContainer.new()
+	var header_style := StyleBoxFlat.new()
+	header_style.bg_color = Color8(255, 199, 0)
+	header_style.set_content_margin_all(8)
+	header_style.content_margin_left = 18
+	header.add_theme_stylebox_override("panel", header_style)
+	header.add_child(title)
+	box.add_child(header)
 	_arrow = Control.new()
 	_arrow.custom_minimum_size = Vector2(170, 90)
 	_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -42,7 +56,16 @@ func _ready() -> void:
 	_street.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_street.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_street)
+	box.add_child(Phone.home_indicator())
 	hide()
+
+
+func show_status(phone: Phone) -> void:
+	_clock.text = phone.clock_text
+	_battery = phone.battery
+	_charging = phone.charging
+	_battery_label.text = "  %d%%" % roundi(_battery)
+	_battery_icon.queue_redraw()
 
 
 func show_navigation(navigation: Dictionary, enabled: bool, full_phone_open: bool) -> void:
