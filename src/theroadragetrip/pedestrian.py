@@ -2277,8 +2277,10 @@ class PedestrianManager:
         """Detect close approach and trigger pedestrian or cyclist avoidance."""
         car_speed = player_car.speed
         car_moving = abs(car_speed) > 1.5
-        car_dir_x = math.cos(player_car.heading)
-        car_dir_y = -math.sin(player_car.heading)
+        # The way the taxi is actually going: backwards when reversing.
+        travel = 1.0 if car_speed >= 0.0 else -1.0
+        car_dir_x = math.cos(player_car.heading) * travel
+        car_dir_y = -math.sin(player_car.heading) * travel
         car_perp_x = math.sin(player_car.heading)
         car_perp_y = -math.cos(player_car.heading)
         cyclist_collision = False
@@ -2299,11 +2301,11 @@ class PedestrianManager:
             dy = ped.y - player_car.y
             dist_sq = dx * dx + dy * dy
 
-            # Longitudinal distance along car trajectory and lateral offset across car width
+            # Distance along the taxi's travel and lateral offset across its width
             long_dist = dx * car_dir_x + dy * car_dir_y
             lat_offset = abs(dx * car_perp_x + dy * car_perp_y)
 
-            # Check if car is heading directly at pedestrian in its driving corridor
+            # The taxi driving at them, near, in its path: the only reason to curse
             is_directly_ahead = (
                 car_moving
                 and 0.0 < long_dist < 3.5  # Only when close ahead (within 3.5m)
@@ -2328,7 +2330,8 @@ class PedestrianManager:
                 if getattr(ped, "is_cyclist", False) and not was_dodging:
                     cyclist_collision = True
 
-                if ped.curse_timer <= 0.0:
+                # Merely close (a stopped or passing taxi): step aside, no cursing.
+                if is_directly_ahead and ped.curse_timer <= 0.0:
                     self.curses.append((ped.x, ped.y))  # for the sound, drained by the simulation
                     ped.curse_timer = 2.0
                     ped.curse_text = random.choice(CURSE_SYMBOLS)

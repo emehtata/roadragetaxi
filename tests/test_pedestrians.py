@@ -1816,3 +1816,17 @@ def test_v11_components_match_brute_force_and_follow_graph_rebuilds():
 
 
 
+
+
+@pytest.mark.parametrize("car, curses", [
+    (Car(x=19.0, y=0.0, heading=0.0, speed=0.0), False),  # stopped right next to them: steps aside, no curse
+    (Car(x=21.0, y=0.0, heading=0.0, speed=10.0), False),  # just past them, driving away
+    (Car(x=23.0, y=0.0, heading=0.0, speed=-4.0), True),  # reversing into them
+])
+def test_a_pedestrian_curses_only_at_a_taxi_coming_at_them(car, curses):
+    footway = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    ped_mgr = PedestrianManager([footway], target_count=1)
+    ped = Pedestrian(20.0, 0.0, 0.0, 1.4, 1.4, footway, 0, 1, (255, 0, 0))
+    ped_mgr.pedestrians = [ped]
+    ped_mgr.check_player_avoidance(car, dt=0.05)
+    assert (ped.curse_timer > 0.0) == curses and bool(ped_mgr.curses) == curses
