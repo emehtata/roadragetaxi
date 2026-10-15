@@ -699,7 +699,10 @@ func _draw() -> void:
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
 			draw_colored_polygon(polygon, water_color)
-			if _season[1] > 0.05:
+			# Ice breaks up only while spring follows winter: once summer
+			# weight appears (Oulu: mid-May) the spring weight is just
+			# young greenery, and floes in June looked wrong.
+			if _season[1] > 0.05 and _season[2] < 0.05:
 				for floe in spring_ice_floes(polygon, _origin):
 					_draw_ice_floe(floe)
 	for line in _data.get("water_lines", []):  # a stream or river line, 3 m wide
