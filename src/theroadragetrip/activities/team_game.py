@@ -148,8 +148,10 @@ class Ball:
         if self.held_by is not None:  # at its holder's feet or stick blade
             holder = self.held_by
             ahead_x, ahead_y = math.cos(holder.heading), math.sin(holder.heading)
-            self.x = holder.x + ahead_x * rules.ball_ahead_m + ahead_y * rules.ball_side_m
-            self.y = holder.y + ahead_y * rules.ball_ahead_m - ahead_x * rules.ball_side_m
+            x = holder.x + ahead_x * rules.ball_ahead_m + ahead_y * rules.ball_side_m
+            y = holder.y + ahead_y * rules.ball_ahead_m - ahead_x * rules.ball_side_m
+            # Never through the boards or over the line: at the holder's feet then.
+            self.x, self.y = (x, y) if point_in_polygon(x, y, self.field.points_m) else (holder.x, holder.y)
             return
         speed = math.hypot(self.vx, self.vy)
         if dt <= 0.0 or speed <= 0.0:

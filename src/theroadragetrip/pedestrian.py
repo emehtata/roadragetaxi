@@ -16,6 +16,7 @@ from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import MIN_UNACCOMPANIED_AGE, ResidentManager
 from .activities import ActivityContext, ActivityInstance, ActivityLocation, ActivityManager
 from .activities.plugins.ice_skating import FIELD_ACTIVITIES
+from .activities.plugins.ice_hockey import SKATERS_PER_TEAM
 from .activities.plugins.soccer import FIELD_PLAYERS_MAX, is_soccer_pitch
 from .map_style import FROZEN_IN_WINTER_KINDS
 
@@ -26,7 +27,7 @@ from .map_style import FROZEN_IN_WINTER_KINDS
 ICE_SKATER_CHECK_S = 2.0
 ICE_M2_PER_SKATER = 500.0
 ICE_SKATERS_MIN, ICE_SKATERS_MAX = 2, 8
-HOCKEY_PLAYERS_MIN, HOCKEY_PLAYERS_MAX = 6, 10
+HOCKEY_PLAYERS_MIN = HOCKEY_PLAYERS_MAX = 2 * (SKATERS_PER_TEAM + 1)  # a full game: 5 skaters and a goalie a side
 SOCCER_M2_PER_PLAYER = 300.0
 SOCCER_PLAYERS_MIN, SOCCER_PLAYERS_MAX = 8, 2 * (FIELD_PLAYERS_MAX + 1)  # two goalies and up to 10 a side
 SPORTS_SPAWNS_PER_CHECK = 2

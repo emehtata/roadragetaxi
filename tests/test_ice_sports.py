@@ -82,7 +82,8 @@ def test_pond_hockey_two_teams_with_goalies_hit_the_puck_around_the_rink():
     from theroadragetrip.geo import point_in_polygon
 
     manager, players, puck = _hockey_game(3)
-    assert len(players) >= 6
+    teams = [puck.players[id(p)] for p in players]
+    assert len(players) == 12 and teams.count(0) == teams.count(1) == 6  # a goalie and 5 skaters a side
     assert {tuple(p.color) for p in players} == set(ice_hockey.TEAM_COLORS)  # two teams
     seen, swings = set(), 0
     for _ in range(300):  # 30 s
