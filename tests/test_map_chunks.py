@@ -366,3 +366,18 @@ def test_nested_areas_draw_on_top_of_their_container():
     world.sceneries = [pitch, centre]  # OSM order: the container last
     here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
     assert [area[1] for area in here["landuse"]] == [1, 2]  # sports centre (snowy) under, the pitch over it
+
+
+def test_an_ice_rink_gets_its_boards_and_a_frame_for_its_hockey_markings():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    angle = 0.3  # a 60 x 30 m rink, turned
+    corners = [(-30.0, -15.0), (30.0, -15.0), (30.0, 15.0), (-30.0, 15.0)]
+    rink = [(100.0 + x * math.cos(angle) - y * math.sin(angle), 100.0 + x * math.sin(angle) + y * math.cos(angle)) for x, y in corners]
+    world.sceneries = [Scenery(points_m=rink, kind="ice_rink")]
+    here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    (x, y, rink_angle, length, width), = here["rinks"]
+    assert (round(x), round(y), round(length), round(width)) == (100, 100, 60, 30)
+    assert round(math.cos(2 * (rink_angle - angle)), 6) == 1.0  # along the long side, either way
+    assert [r[0] for r in here["railings"]].count("boards") == 1

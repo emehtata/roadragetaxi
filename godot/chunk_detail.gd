@@ -45,6 +45,111 @@ static func draw_areas(chunk, node: Node2D, key: String) -> void:
 			node.draw_colored_polygon(polygon, color)
 
 
+## Ice hockey markings (IIHF, laid out on a 60 x 30 m rink and scaled to
+## each rink's own rectangle, state chunk "rinks"): centre and blue lines,
+## goal lines, the centre circle and faceoff circles and spots, goal
+## creases and goals. Only on frozen ice, like the ice itself.
+const RINK_RED := Color8(200, 32, 44)
+const RINK_BLUE := Color8(32, 84, 190)
+const RINK_CREASE := Color8(126, 184, 236)
+const RINK_NET := Color8(236, 238, 240)
+const IIHF_LENGTH := 60.0
+const IIHF_WIDTH := 30.0
+const GOAL_LINE_U := 26.0  # 4 m from the end boards
+const BLUE_LINE_U := 8.75
+const GOAL_LINE_HALF_V := 12.5  # inside the corner rounding (OSM rinks often have sharper corners than 8.5 m)
+const FACEOFF_V := 7.0
+const FACEOFF_RADIUS := 4.5
+
+
+static func draw_rink_markings(chunk, node: Node2D) -> void:
+	if chunk._season[0] < FIELDS_FROZEN_WINTER_WEIGHT:
+		return  # gravel in summer: no markings
+	for rink in chunk._data.get("rinks", []):
+		var frame := RinkFrame.new(chunk, rink, float(rink[3]) / IIHF_LENGTH, float(rink[4]) / IIHF_WIDTH)
+		var r := frame.radius_scale
+		var half_width := IIHF_WIDTH / 2.0
+		frame.line(node, 0.0, -half_width, 0.0, half_width, RINK_RED, 0.3)
+		for side: float in [-1.0, 1.0]:
+			var blue: float = side * BLUE_LINE_U
+			var goal: float = side * GOAL_LINE_U
+			frame.line(node, blue, -half_width, blue, half_width, RINK_BLUE, 0.3)
+			frame.line(node, goal, -GOAL_LINE_HALF_V, goal, GOAL_LINE_HALF_V, RINK_RED, 0.1)
+			# The goal crease: a light blue half circle in front of the goal, toward centre ice.
+			frame.fill_arc(node, goal, 0.0, 1.8 * r, PI if side > 0.0 else 0.0, RINK_CREASE)
+			# The goal: 1.83 m wide, 1.12 m deep behind the goal line.
+			var back: float = goal + side * 1.12 / frame.scale_u
+			frame.fill_quad(node, goal, -0.915, back, 0.915, RINK_NET)
+			frame.polyline(node, [[goal, -0.915], [back, -0.915], [back, 0.915], [goal, 0.915]], RINK_RED, 0.12)
+			for v: float in [-FACEOFF_V, FACEOFF_V]:
+				frame.circle(node, side * (GOAL_LINE_U - 6.0), v, FACEOFF_RADIUS * r, RINK_RED, 0.1)
+				frame.spot(node, side * (GOAL_LINE_U - 6.0), v, 0.3 * r, RINK_RED)
+				frame.spot(node, side * (BLUE_LINE_U - 1.5), v, 0.3 * r, RINK_RED)
+		frame.circle(node, 0.0, 0.0, FACEOFF_RADIUS * r, RINK_BLUE, 0.1)
+		frame.spot(node, 0.0, 0.0, 0.15 * r, RINK_BLUE)
+
+
+## A rink's markings space: (u, v) metres on a 60 x 30 m IIHF rink, u along
+## its length, mapped onto this rink's rectangle and into chunk points.
+class RinkFrame:
+	var chunk
+	var centre: Vector2
+	var axis_u: Vector2
+	var axis_v: Vector2
+	var scale_u: float
+	var scale_v: float
+	var radius_scale: float
+
+	func _init(owner, rink: Array, u_scale: float, v_scale: float) -> void:
+		chunk = owner
+		centre = Vector2(rink[0], rink[1])
+		axis_u = Vector2(cos(rink[2]), sin(rink[2]))
+		axis_v = Vector2(-axis_u.y, axis_u.x)
+		scale_u = u_scale
+		scale_v = v_scale
+		radius_scale = minf(scale_u, scale_v)
+
+	func at(u: float, v: float) -> Vector2:
+		var world := centre + axis_u * u * scale_u + axis_v * v * scale_v
+		return MapMath.point(chunk._origin, world.x, world.y)
+
+	## A point `radius` world metres from (u, v), in direction `angle` of the rink's axes.
+	func around(u: float, v: float, radius: float, angle: float) -> Vector2:
+		var world := centre + axis_u * u * scale_u + axis_v * v * scale_v + (axis_u * cos(angle) + axis_v * sin(angle)) * radius
+		return MapMath.point(chunk._origin, world.x, world.y)
+
+	func line(node: Node2D, u0: float, v0: float, u1: float, v1: float, color: Color, width: float) -> void:
+		node.draw_line(at(u0, v0), at(u1, v1), color, width)
+
+	func polyline(node: Node2D, uvs: Array, color: Color, width: float) -> void:
+		var points := PackedVector2Array()
+		for uv in uvs:
+			points.append(at(uv[0], uv[1]))
+		node.draw_polyline(points, color, width)
+
+	func fill_quad(node: Node2D, u0: float, v0: float, u1: float, v1: float, color: Color) -> void:
+		node.draw_colored_polygon(PackedVector2Array([at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)]), color)
+
+	func circle(node: Node2D, u: float, v: float, radius: float, color: Color, width: float) -> void:
+		var points := PackedVector2Array()
+		for i in 33:
+			points.append(around(u, v, radius, TAU * i / 32.0))
+		node.draw_polyline(points, color, width)
+
+	func spot(node: Node2D, u: float, v: float, radius: float, color: Color) -> void:
+		var points := PackedVector2Array()
+		for i in 12:
+			points.append(around(u, v, radius, TAU * i / 12.0))
+		node.draw_colored_polygon(points, color)
+
+	## A filled half circle centred on (u, v), bulging toward `facing` (rink angle: 0 is +u).
+	func fill_arc(node: Node2D, u: float, v: float, radius: float, facing: float, color: Color) -> void:
+		var points := PackedVector2Array([at(u, v)])
+		for i in 17:
+			points.append(around(u, v, radius, facing - PI / 2.0 + PI * i / 16.0))
+		node.draw_colored_polygon(points, color)
+
+
 ## Parking spaces: asphalt bays with a light edge.
 static func draw_parking(chunk, node: Node2D) -> void:
 	var edges := PackedVector2Array()

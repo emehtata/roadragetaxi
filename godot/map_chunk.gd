@@ -103,6 +103,8 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
+	if not message.get("rinks", []).is_empty():  # on the landuse: hockey markings on frozen rinks
+		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_rink_markings(self, node)))
 	for z in _roads_by_z:
 		var layer_z: int = z
 		_road_layers.append(_add_layer(z, func(node: Node2D): _draw_roads(layer_z, node)))

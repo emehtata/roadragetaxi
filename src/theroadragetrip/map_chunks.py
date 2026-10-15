@@ -26,7 +26,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           # godot-16 (static_world.py)
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
-          "canopy_heights", "floodlit")
+          "canopy_heights", "floodlit", "rinks")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate")
@@ -119,6 +119,23 @@ REGION_MARGIN_M = 100.0
 _REGION_LISTS = ("ways", "railways", "waters", "buildings", "sceneries", "scenery_objects", "taxi_stops", "railings",
                  "street_light_points", "parking_spaces", "curbs", "crossings", "speed_bumps", "stop_signs",
                  "yield_signs", "bus_stops", "level_ways", "places")
+
+
+def rink_frame(points) -> list | None:
+    """[centre x, centre y, angle of the long side (rad), length, width] of
+    a rink's smallest enclosing rectangle - where its hockey markings go."""
+    from shapely.geometry import Polygon
+
+    rectangle = Polygon(points).minimum_rotated_rectangle
+    if rectangle.geom_type != "Polygon":
+        return None
+    (x0, y0), (x1, y1), (x2, y2) = list(rectangle.exterior.coords)[:3]
+    side_a, side_b = math.hypot(x1 - x0, y1 - y0), math.hypot(x2 - x1, y2 - y1)
+    if min(side_a, side_b) < 5.0:
+        return None
+    angle = math.atan2(y1 - y0, x1 - x0) if side_a >= side_b else math.atan2(y2 - y1, x2 - x1)
+    centre = rectangle.centroid
+    return [round(centre.x, 2), round(centre.y, 2), round(angle, 4), round(max(side_a, side_b), 2), round(min(side_a, side_b), 2)]
 
 
 def _item_rect(item) -> tuple[float, float, float, float] | None:
@@ -320,6 +337,9 @@ class ChunkIndex:
                     self._chunk(cell)["floodlit"].append(ring)
             if kind == "ice_rink":  # closed all round (taxi.SOLID_AREA_KINDS): its boards
                 self._add("railings", scenery.points_m[:1], ["boards", _line(list(scenery.points_m) + [scenery.points_m[0]])])
+                frame = rink_frame(scenery.points_m)
+                if frame is not None:  # its hockey markings, drawn in winter
+                    self._add("rinks", scenery.points_m[:1], frame)
                 if island:
                     self._chunk(cell)["traffic_islands"].append([static_world._rgb(color), seasonal, ring])
         for deck in static_world.rail_bridge_decks(world.railways, bridge_parts=bridge_parts):
