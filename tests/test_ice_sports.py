@@ -84,7 +84,9 @@ def test_pond_hockey_two_teams_with_goalies_hit_the_puck_around_the_rink():
     manager, players, puck = _hockey_game(3)
     teams = [puck.players[id(p)] for p in players]
     assert len(players) == 12 and teams.count(0) == teams.count(1) == 6  # a goalie and 5 skaters a side
-    assert {tuple(p.color) for p in players} == set(ice_hockey.TEAM_COLORS)  # two teams
+    jerseys = {team: {tuple(p.color) for p in players if puck.players[id(p)] == team} for team in (0, 1)}
+    assert all(len(j) == 1 and j <= set(ice_hockey.TEAM_COLORS) for j in jerseys.values())  # a team in one jersey...
+    assert jerseys[0] != jerseys[1]  # ...unlike the other's
     seen, swings = set(), 0
     for _ in range(300):  # 30 s
         manager.sim_time += 0.1

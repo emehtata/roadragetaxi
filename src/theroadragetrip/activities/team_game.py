@@ -72,7 +72,7 @@ class Rules:
     restart_s: float
     spot_move_s: float
     support_ahead_u: float  # teammates of the carrier: this far ahead of the ball
-    team_colors: Tuple[Tuple[int, int, int], Tuple[int, int, int]]
+    team_colors: Tuple[Tuple[int, int, int], ...]  # the jersey palette: each game draws its two teams' from it
     max_players: int  # both teams, goalies included: a full game takes no more
     # Fouls (soccer): a player knocked down by an opponent wins their team a
     # free kick where it happened - a penalty kick from the spot inside the
@@ -90,7 +90,7 @@ class Rules:
     kickoff: bool = False
     centre_circle_m: float = 0.0
     set_piece_s: float = 0.0
-    goalie_colors: Optional[Tuple[Tuple[int, int, int], Tuple[int, int, int]]] = None  # None: the team's own
+    goalie_colors: bool = False  # goalies in jerseys of their own (from the palette, unlike both teams'); else the team's
 
 
 @dataclass
@@ -117,6 +117,7 @@ class Ball:
     shots: Tuple[int, int] = (0, 0)  # (from the attacking zone, from outside it)
     set_piece: Optional[str] = None  # a dead-ball restart under way: "kickoff" or "penalty", until its taker plays it
     in_place: set = field(default_factory=set)  # id(player)s at their set-piece spots
+    colors: Tuple = ()  # this game's jerseys: (team 0, team 1, goalie 0, goalie 1)
     set_pieces: Tuple[int, int] = (0, 0)  # (free kicks, penalties) awarded
 
     @property
@@ -312,8 +313,12 @@ class TeamGamePlugin(ActivityPlugin):
             frame = rink_frame(field_scenery.points_m)
             if frame is None:
                 return None
+            # Each game its own jerseys: two teams', and the goalies' unlike both.
+            picks = random.sample(self.rules.team_colors, 4)
+            colors = tuple(picks) if self.rules.goalie_colors else (picks[0], picks[1], picks[0], picks[1])
             ball = self.balls[id(field_scenery)] = Ball(
-                rules=self.rules, field=field_scenery, frame=frame, x=frame[0], y=frame[1], updated=sim_time)
+                rules=self.rules, field=field_scenery, frame=frame, x=frame[0], y=frame[1], updated=sim_time,
+                colors=colors)
         return ball
 
     def ball_positions(self) -> list:
@@ -352,7 +357,7 @@ class TeamGamePlugin(ActivityPlugin):
         ball.players[id(pedestrian)] = team
         instance.data["team"] = team
         instance.data["own_color"] = pedestrian.color
-        pedestrian.color = self.rules.team_colors[team]
+        pedestrian.color = ball.colors[team]
         instance.data["spot"] = None
         instance.data["spot_elapsed_s"] = self.rules.spot_move_s
 
@@ -372,8 +377,7 @@ class TeamGamePlugin(ActivityPlugin):
                 ball.held_by = None
         if team not in ball.goalies:  # every team has a goalie: the first to notice it has none
             ball.goalies[team] = pedestrian
-            if self.rules.goalie_colors is not None:
-                pedestrian.color = self.rules.goalie_colors[team]
+            pedestrian.color = ball.colors[2 + team]
         pedestrian.hockey_goalie = ball.goalies[team] is pedestrian
         ball.advance(context.sim_time)
         if is_down(pedestrian, instance, dt):  # knocked over: down a moment, the play goes on

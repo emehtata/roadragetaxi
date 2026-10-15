@@ -53,7 +53,10 @@ def test_soccer_is_played_with_a_white_ball_that_stays_on_the_pitch():
         seen.add((round(ball.x / 5), round(ball.y / 5)))
         assert point_in_polygon(ball.x, ball.y, PITCH) or ball.held_by is not None
     assert len(seen) > 30 and sum(ball.goals) >= 1  # all over the pitch, and goals
-    assert sorted(ball.goalies) == [0, 1] and {tuple(g.color) for g in ball.goalies.values()} == set(soccer.GOALIE_COLORS)
+    assert sorted(ball.goalies) == [0, 1]
+    goalies = [tuple(ball.goalies[t].color) for t in (0, 1)]
+    teams = [{tuple(p.color) for p in players if ball.players[id(p)] == t and p is not ball.goalies[t]} for t in (0, 1)]
+    assert all(len(t) == 1 for t in teams) and len(set(goalies) | teams[0] | teams[1]) == 4  # four different jerseys
     assert ball.shots[0] / max(1, sum(ball.shots)) >= 0.8  # mostly from the final third
     assert soccer.ball_positions() == [[round(ball.x, 2), round(ball.y, 2)]]
 
@@ -170,3 +173,11 @@ def test_at_a_penalty_everyone_but_the_taker_and_the_goalie_leaves_the_box():
     assert ball.shots[0] == shots[0] + 1  # the kick: a shot
     inside = [p for p, (u, v) in places if p is not keeper and u * attack > soccer.GOAL_U - 16.5 and abs(v) <= 20.16]
     assert len(inside) == 1  # the taker alone, at the spot
+
+
+def test_games_draw_their_jerseys_from_the_palette():
+    seen = set()
+    for seed in range(8):
+        manager, players, ball = _game(seed, checks=2)
+        seen.update(ball.colors[:2])
+    assert len(seen) >= 5  # not always red against blue

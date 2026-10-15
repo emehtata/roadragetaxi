@@ -11,8 +11,9 @@ from ..team_game import Rules, TeamGamePlugin
 # On a 105 x 68 m FIFA pitch (chunk_detail.gd's markings): team 0 attacks +u.
 GOAL_U, GOAL_HALF_WIDTH = 52.5, 3.66
 FINAL_THIRD_U = 17.5
-TEAM_COLORS = ((200, 30, 40), (30, 70, 190))
-GOALIE_COLORS = ((230, 200, 40), (40, 160, 70))
+# Jerseys, each game two teams' and two goalies' of them, all different.
+TEAM_COLORS = ((200, 30, 40), (30, 70, 190), (240, 200, 30), (30, 140, 60), (25, 25, 30),
+               (240, 120, 20), (120, 40, 150), (90, 170, 230), (120, 20, 40), (240, 240, 240))
 FIELD_PLAYERS_MAX = 10  # a side, besides the goalie
 
 
@@ -30,7 +31,7 @@ RULES = Rules(
     ball_ahead_m=0.5, ball_side_m=0.0,  # at the feet
     zone_shot_rate=0.5, zone_pass_rate=0.5, neutral_pass_rate=0.4, long_shot_rate=0.012,
     steal_chance=0.35, shot_scores=0.15, goalie_hold_s=1.2, restart_s=4.0, spot_move_s=6.0,
-    support_ahead_u=15.0, team_colors=TEAM_COLORS, goalie_colors=GOALIE_COLORS,
+    support_ahead_u=15.0, team_colors=TEAM_COLORS, goalie_colors=True,
     max_players=2 * (FIELD_PLAYERS_MAX + 1),
     kickoff=True, centre_circle_m=9.15, set_piece_s=6.0,
     fouls=True, knockdown_chance=0.002, penalty_area_u=16.5, penalty_area_half_v=20.16, penalty_spot_u=11.0, penalty_scores=0.75,

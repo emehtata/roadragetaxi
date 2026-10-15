@@ -9,7 +9,9 @@ from ..team_game import STICK_SWING_S, Ball, Rules, TeamGamePlugin
 from .ice_skating import SKATING_SPEED_MPS
 
 Puck = Ball
-TEAM_COLORS = ((200, 30, 40), (30, 70, 190))
+# Jerseys, each game two of them (no white: on white ice it would vanish).
+TEAM_COLORS = ((200, 30, 40), (30, 70, 190), (240, 200, 30), (30, 140, 60), (25, 25, 30),
+               (240, 120, 20), (120, 40, 150), (90, 170, 230), (120, 20, 40))
 SKATERS_PER_TEAM = 5  # and a goalie: 12 on the ice
 # On a 60 x 30 m IIHF rink (chunk_detail.gd's markings): team 0 attacks +u.
 GOAL_U, GOAL_HALF_WIDTH = 26.0, 0.915
