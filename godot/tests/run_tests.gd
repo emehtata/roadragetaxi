@@ -744,12 +744,14 @@ func test_phone() -> void:
 	check(phone._status.text == "That request is no longer available." and not phone._accept.disabled, "a refused accept is told, and the row can be answered again")
 	phone.accept_selected()
 	phone.handle_result({"type": "phone_result", "action": "accept", "item_id": "offer-2", "request_id": 2.0, "ok": true, "reason": ""})
-	check(not phone.is_open and phone.pending.is_empty(), "an accepted fare closes the phone")
+	check(phone.is_open and phone.pending.is_empty(), "an accepted fare keeps the shared phone open")
 	phone.show_phone({"busy": true, "items": []})
 	phone.open()
 	check(phone._status.text == "Finish the current fare first." and phone._rows.get_child_count() == 0, "the simulation's state replaces the rows: busy")
+	check(phone.navigation.visible and not phone._offers.visible and not phone._buttons.visible, "accepted fare switches the phone to navigation")
 
 	phone.show_phone({"busy": false, "items": [_offer("offer-3", "Liisa")]})
+	check(not phone.navigation.visible and phone._offers.visible and phone._buttons.visible, "finished fare switches back to the fare picker")
 	phone.accept_selected()
 	phone.show_phone({"busy": false, "items": [_offer("offer-4", "Matti")]})  # offer-3 expired meanwhile
 	check(phone.pending.is_empty() and phone.selected_id == "offer-4" and phone._rows.get_child_count() == 1, "an expired offer disappears with its pending request")
@@ -1199,6 +1201,12 @@ func test_road_rage() -> void:
 	main._unhandled_input(_key_event(KEY_SPACE))
 	main.send({})
 	check(sim._last_command["road_rage"] == false, "not while the phone is open")
+	main.phone.busy = true
+	main._unhandled_input(_key_event(KEY_SPACE))
+	main._unhandled_input(_key_event(KEY_X))
+	main.send({})
+	check(sim._last_command["road_rage"] == true and sim._last_command["cancel_ride"] == true, "navigation leaves road rage and fare cancellation available")
+	main.phone.busy = false
 	main.phone.is_open = false
 	main._unhandled_input(_key_event(KEY_SPACE))
 	main._unhandled_input(_key_event(KEY_G))
@@ -1266,24 +1274,22 @@ func test_navigation_route() -> void:
 	var phone_viewport := SubViewport.new()
 	phone_viewport.size = Vector2i(1280, 720)
 	root.add_child(phone_viewport)
-	var device := NavigationPhone.new()
+	var device := Phone.new()
 	phone_viewport.add_child(device)
-	device.language = "fi"
-	var offer_phone := Phone.new()
-	root.add_child(offer_phone)
-	check(is_equal_approx(device.custom_minimum_size.aspect(), offer_phone.custom_minimum_size.aspect()), "navigation phone: same portrait proportions as fare picker")
-	offer_phone.clock_text = "23:59"
-	offer_phone.battery = 19.0
-	offer_phone.charging = true
-	device.show_status(offer_phone)
-	check(device._clock.text == "23:59" and device._battery_label.text == "  19%", "navigation phone: same clock and battery as offer app")
-	check(device._charging and device._battery == offer_phone.battery, "navigation phone: shares charging state, not a second battery simulation")
-	check(device.get_theme_stylebox("panel").bg_color == offer_phone.get_theme_stylebox("panel").bg_color, "phones share device styling")
+	device.set_language("fi")
+	device.clock_text = "23:59"
+	device.battery = 19.0
+	device.charging = true
+	device.set_game_seconds(0.0)
+	device.open()
+	device.show_phone({"busy": true, "items": []})
+	check(is_equal_approx((device.size * device.scale).x, 270.0) and is_equal_approx(device.size.aspect(), Phone.DEVICE_SIZE.aspect()), "shared phone: compact portrait dimensions")
+	check(device._clock.text == "23:59" and device._battery_label.text == "  19%", "shared phone: clock and live battery")
 	check(device._clock.get_parent().get_child(2).text == "▂▄▆█ 5G", "navigation phone: signal indicator matches offer app")
-	offer_phone.free()
 	var instruction := {"instruction": {"maneuver": "left", "distance_m": 125.0, "street": "Kirkkokatu"}}
-	device.show_navigation(instruction, true, false)
-	check(device.visible and device._distance.text == "125 m" and device._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
+	device.show_navigation(instruction)
+	var app = device.navigation
+	check(device.visible and app.visible and app._distance.text == "125 m" and app._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
 	device.update_layout()
 	var default_position: Vector2 = device.position
 	var press := InputEventMouseButton.new()
@@ -1297,10 +1303,14 @@ func test_navigation_route() -> void:
 	check(device.position == default_position + drag.relative, "navigation phone: follows drag offset")
 	press.pressed = false
 	device.layout.handle(press)
-	device.show_navigation(instruction, false, false)
+	device.close()
 	check(not device.layout.rects.has("navigation_phone"), "navigation phone: hidden device cannot intercept HUD clicks")
-	device.show_navigation(instruction, true, false)
+	device.open()
 	check(device.position == default_position + drag.relative, "navigation phone: retains moved position when shown again")
+	check(device.layout.panel_at(device.position + Vector2(20, 150)) == "", "phone: only header drags, app buttons remain clickable")
+	device.show_phone({"busy": false, "items": [_offer("offer-1", "Aino")]})
+	check(device.position == default_position + drag.relative and not app.visible and device._offers.visible, "switching apps keeps phone position")
+	device.show_phone({"busy": true, "items": []})
 	device.layout.reset()
 	device.update_layout()
 	check(device.position == default_position, "navigation phone: shared layout reset restores position")
@@ -1308,19 +1318,21 @@ func test_navigation_route() -> void:
 	var right: PackedVector2Array = NavigationPhone.arrow_points("right")
 	check(left.size() == 3 and left[-1].x < left[-2].x and left[0].x == left[1].x, "navigation phone: left arrow has a 90 degree bend")
 	check(right.size() == 3 and right[-1].x > right[-2].x, "navigation phone: right arrow points right")
-	device.show_navigation(instruction, true, true)
-	check(not device.visible, "full offer phone hides the mounted navigation phone")
-	device.show_navigation({}, true, false)
-	check(device.visible and device._distance.text == "" and device._street.text == "Ei määränpäätä", "navigation phone: no stale instruction without a destination")
-	device.show_navigation({"instruction": {"maneuver": "routing"}}, true, false)
-	check(device._street.text == "Lasketaan reittiä…", "navigation phone: routing status")
-	device.show_navigation({"instruction": {"maneuver": "unreachable"}}, true, false)
-	check(device._street.text == "VIRHE: GPS-signaalia ei löydy" and device._distance.text == "", "navigation phone: missing route shows GPS error without stale distance")
-	device.language = "en"
-	device.show_navigation({"instruction": {"maneuver": "unreachable"}}, true, false)
-	check(device._street.text == "ERROR: GPS signal not found", "navigation phone: English GPS error")
-	device.show_navigation(instruction, false, false)
+	device.show_navigation({})
+	check(device.visible and app._distance.text == "" and app._street.text == "Ei määränpäätä", "navigation phone: no stale instruction without a destination")
+	device.show_navigation({"instruction": {"maneuver": "routing"}})
+	check(app._street.text == "Lasketaan reittiä…", "navigation phone: routing status")
+	device.show_navigation({"instruction": {"maneuver": "unreachable"}})
+	check(app._street.text == "VIRHE: GPS-signaalia ei löydy" and app._distance.text == "", "navigation phone: missing route shows GPS error without stale distance")
+	device.set_language("en")
+	device.show_navigation({"instruction": {"maneuver": "unreachable"}})
+	check(app._street.text == "ERROR: GPS signal not found", "navigation phone: English GPS error")
+	device._unhandled_input(_key(KEY_N))
 	check(not device.visible, "navigation phone: N off hides the device")
+	device._unhandled_input(_key(KEY_N))
+	check(device.visible and app.visible, "N opens the same phone with the active app")
+	device._unhandled_input(_key(KEY_P))
+	check(not device.visible, "P closes the same phone N opened")
 	device.free()
 	phone_viewport.free()
 	var nav: Control = load("res://nav_overlay.gd").new()
@@ -1328,7 +1340,8 @@ func test_navigation_route() -> void:
 	var n := _key_event(KEY_N)
 	n.physical_keycode = KEY_N
 	nav._unhandled_input(n)
-	check(nav.show_route and not nav.show_compass, "N shows the route; the compass stays as it was")
+	check(not nav.show_route and not nav.show_compass, "N is handled by the shared phone, not a separate overlay")
+	nav.show_route = true
 	var echo := _key_event(KEY_N)
 	echo.physical_keycode = KEY_N
 	echo.echo = true
@@ -1339,7 +1352,7 @@ func test_navigation_route() -> void:
 	nav._unhandled_input(c)
 	check(nav.show_route and nav.show_compass, "C toggles only the compass")
 	nav._unhandled_input(n)
-	check(not nav.show_route, "N again hides it")
+	check(nav.show_route, "overlay leaves phone visibility to the shared phone")
 	nav.free()
 	var driving := {"on_foot": false, "player": {"engine_on": true}}
 	check(FileAccess.get_file_as_string("res://i18n.gd").contains("N   Navigation"), "F1 help names N")

@@ -11,12 +11,13 @@ extends PanelContainer
 
 const T := preload("res://i18n.gd")
 const DEVICE_SIZE := Vector2(390, 660)
+const DEVICE_SCALE := 270.0 / DEVICE_SIZE.x
 
 signal request(action: String, item_id: String, request_id: int)  # main sends it to the simulation
 signal sound(group: String, variation: int)  # main plays it (ui.phone_open: 0 opens, 1 closes)
 
 const ACTIONS := {
-	"phone_toggle": [KEY_P],
+	"phone_toggle": [KEY_P, KEY_N],
 	"phone_close": [KEY_ESCAPE],
 	"phone_accept": [KEY_ENTER, KEY_KP_ENTER],
 	"phone_reject": [KEY_X],
@@ -56,6 +57,10 @@ var _battery_label: Label
 var _battery_icon: Control
 var _last_game_seconds := -1.0
 var _expiry_max := {}  # item id -> the longest time left seen (the card's countdown bar)
+var layout = preload("res://hud_layout.gd").new(false)
+var navigation: VBoxContainer
+var _offers: ScrollContainer
+var _buttons: HBoxContainer
 
 
 func _ready() -> void:
@@ -67,15 +72,11 @@ func _ready() -> void:
 				event.physical_keycode = key
 				InputMap.action_add_event(action, event)
 	visible = false
-	# The device: a portrait phone in the middle, the world dimmed around it
-	# (a huge soft shadow is the dimming - no extra full-screen node).
 	custom_minimum_size = DEVICE_SIZE
-	set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
-	grow_horizontal = Control.GROW_DIRECTION_BOTH
-	grow_vertical = Control.GROW_DIRECTION_BOTH
+	set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE)
+	size = DEVICE_SIZE
+	scale = Vector2.ONE * DEVICE_SCALE
 	var body := device_style()
-	body.shadow_color = Color(0, 0, 0, 0.55)
-	body.shadow_size = 2000
 	add_theme_stylebox_override("panel", body)
 	var screen := PanelContainer.new()
 	screen.add_theme_stylebox_override("panel", screen_style())
@@ -99,7 +100,7 @@ func _ready() -> void:
 	var header_rows := VBoxContainer.new()
 	header_rows.add_theme_constant_override("separation", 0)
 	header.add_child(header_rows)
-	_title = _label(24, Color8(20, 20, 20))
+	_title = _label(29, Color8(20, 20, 20))
 	header_rows.add_child(_title)
 	_status = _label(14, Color8(45, 40, 20))
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -110,13 +111,21 @@ func _ready() -> void:
 		list_margin.add_theme_constant_override("margin_" + side, 12)
 	list_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(list_margin)
+	_offers = ScrollContainer.new()
+	_offers.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	list_margin.add_child(_offers)
 	_rows = VBoxContainer.new()
+	_rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rows.add_theme_constant_override("separation", 10)
-	list_margin.add_child(_rows)
+	_offers.add_child(_rows)
+	navigation = preload("res://navigation_phone.gd").new()
+	navigation.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list_margin.add_child(navigation)
 	_details = _label(13, Color8(150, 160, 170))
 	_details.visible = false
 	box.add_child(_details)
 	var buttons := HBoxContainer.new()
+	_buttons = buttons
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	buttons.add_theme_constant_override("separation", 10)
 	box.add_child(buttons)
@@ -132,6 +141,25 @@ func _ready() -> void:
 	box.add_child(home_indicator())
 	set_language(language)
 	_refresh()
+	resized.connect(update_layout)
+	visibility_changed.connect(update_layout)
+	get_viewport().size_changed.connect(update_layout)
+	update_layout()
+
+
+func update_layout() -> void:
+	if not is_visible_in_tree():
+		layout.rects.erase("navigation_phone")
+		return
+	var physical_size := size * scale
+	position = layout.place("navigation_phone", Rect2(Vector2(16, 125), physical_size), get_viewport_rect().size).position
+	# Only the header drags; offer cards, scrolling and buttons remain clickable.
+	layout.rects["navigation_phone"] = Rect2(position, Vector2(physical_size.x, 100 * scale.y))
+
+
+func show_navigation(route: Dictionary) -> void:
+	navigation.language = language
+	navigation.show_navigation(route)
 
 
 static func device_style() -> StyleBoxFlat:
@@ -161,19 +189,19 @@ static func make_status_bar() -> MarginContainer:
 		bar_margin.add_theme_constant_override("margin_" + side, 22)
 	bar_margin.add_theme_constant_override("margin_top", 10)
 	bar_margin.add_child(bar)
-	var clock := _label(14, Color8(235, 238, 242))
+	var clock := _label(20, Color8(235, 238, 242))
 	clock.name = "Clock"
 	bar.add_child(clock)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(spacer)
-	bar.add_child(_label(13, Color8(235, 238, 242), "▂▄▆█ 5G"))
-	var battery_label := _label(13, Color8(235, 238, 242))
+	bar.add_child(_label(19, Color8(235, 238, 242), "▂▄▆█ 5G"))
+	var battery_label := _label(19, Color8(235, 238, 242))
 	battery_label.name = "BatteryLabel"
 	bar.add_child(battery_label)
 	var battery_icon := Control.new()
 	battery_icon.name = "BatteryIcon"
-	battery_icon.custom_minimum_size = Vector2(26, 14)
+	battery_icon.custom_minimum_size = Vector2(38, 20)
 	battery_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bar.add_child(battery_icon)
 	return bar_margin
@@ -332,7 +360,7 @@ func selected() -> Dictionary:
 
 func can_answer() -> bool:
 	var item := selected()
-	return connected and not item.is_empty() and item.get("status") in ANSWERABLE and not is_pending(item["id"])
+	return connected and not busy and not item.is_empty() and item.get("status") in ANSWERABLE and not is_pending(item["id"])
 
 
 func is_pending(item_id: String) -> bool:
@@ -368,10 +396,7 @@ func handle_result(result: Dictionary) -> void:
 	pending.erase(request_id)
 	if asked == null:
 		return  # not ours, or already resolved by the row disappearing
-	if result.get("ok", false):
-		if result.get("action") == "accept":
-			close()  # the fare is on, back to driving
-	else:
+	if not result.get("ok", false):
 		notice = T.text("phone_gone" if result.get("reason") == "gone" else "phone_answer_failed", language)
 	_refresh()
 
@@ -386,6 +411,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	elif event.is_action("phone_close"):
 		close()
+	elif busy:
+		return  # navigation must not consume fare-selection or driving keys
 	elif event.is_action("phone_accept"):
 		accept_selected()
 	elif event.is_action("phone_reject"):
@@ -420,11 +447,17 @@ func _refresh() -> void:
 	for i in min(items.size(), _rows.get_child_count()):  # values and selection: in place, no rebuild
 		_fill_card(_rows.get_child(i), i)
 	_status.text = status_text(connected, busy, items, notice, language)
+	_status.visible = not busy
+	_offers.visible = not busy
+	navigation.visible = busy
+	_buttons.visible = not busy
 	_clock.text = clock_text
 	var item := selected()
 	_details.text = details_text(item, language) if not item.is_empty() else ""
 	_accept.disabled = not can_answer()
 	_reject.disabled = not can_answer()
+	size = DEVICE_SIZE  # app changes must not retain a transient larger minimum size
+	set_deferred("size", DEVICE_SIZE)
 
 
 ## One offer as the app shows it: a tappable card (the whole card selects;
@@ -454,7 +487,7 @@ func _card(index: int) -> Button:
 	card.add_child(lines)
 	var top := HBoxContainer.new()
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var title := _label(17, Color8(245, 245, 240))
+	var title := _label(21, Color8(245, 245, 240))
 	title.name = "Title"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.clip_text = true
@@ -463,7 +496,7 @@ func _card(index: int) -> Button:
 	badge.name = "Badge"
 	top.add_child(badge)
 	lines.add_child(top)
-	var body := _label(13, Color8(190, 205, 212))
+	var body := _label(17, Color8(190, 205, 212))
 	body.name = "Body"
 	body.clip_text = true
 	body.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS

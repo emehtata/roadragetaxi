@@ -236,7 +236,7 @@ These credits are also shown in the game on the loading, menu and pause screens.
 | `C` | Toggle compass (off by default) |
 | `N` | Toggle yellow route to the active pickup or dropoff target |
 | `Space` | Rattiraivo / Road Rage: trigger the taxi rage effect |
-| `P` | Open taxi phone and view three ride offers |
+| `P` / `N` | Toggle compact phone: fare picker when idle, navigation during an accepted fare |
 | `1` - `3` | Accept a selected ride in the taxi phone |
 | `F1` | Open the full tutorial and control list |
 | `F3` | Toggle the diagnostic text |

@@ -27,7 +27,6 @@ const T := preload("res://i18n.gd")
 @onready var phone: Phone = $Ui/Phone
 @onready var instruments: Control = $Ui/Instruments
 @onready var nav_overlay: Control = $Ui/NavOverlay
-var navigation_phone: Control
 @onready var night: Node2D = $NightLayer
 @onready var labels: Control = $Ui/Labels
 @onready var flash: ColorRect = $Sky/Flash
@@ -112,8 +111,6 @@ var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, m
 
 
 func _ready() -> void:
-	navigation_phone = preload("res://navigation_phone.gd").new()
-	$Ui.add_child(navigation_phone)
 	_apply_language()
 	_build_help()
 	_build_inspector()
@@ -171,7 +168,7 @@ func _ready() -> void:
 			"--labels":  # start with labels: 1 streets, 2 everything (L), for screenshots
 				labels.mode = int(args[i + 1])
 			"--navigation":  # godot-final-04: start with the route shown (N), for screenshots
-				$Ui/NavOverlay.show_route = true
+				phone.call_deferred("open")
 			"--next-train":  # godot-final-07: start with the J board shown, for screenshots
 				show_next_train = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
@@ -181,7 +178,7 @@ func _ready() -> void:
 		_entered_taxi = true
 	instruments.layout = hud_layout
 	hud.layout = hud_layout
-	navigation_phone.layout = hud_layout
+	phone.layout = hud_layout
 	sim.world_received.connect(_on_world)
 	sim.state_received.connect(_on_state)
 	# One new chunk per frame (godot-16): a chunk's first drawing takes ~10-20 ms, and crossing into
@@ -210,7 +207,6 @@ func _apply_language() -> void:
 	hud.language = language
 	MapChunk.language = language
 	phone.set_language(language)
-	navigation_phone.language = language
 	instruments.language = language
 	nav_overlay.language = language
 	entities.language = language
@@ -225,7 +221,6 @@ func _on_connection(up: bool) -> void:
 	print("simulation ", "connected" if up else "disconnected")
 	phone.set_connected(up)
 	if not up:  # a new connection starts over: header, chunks, states
-		navigation_phone.hide()
 		_clear_focus()
 		entities.buffer.clear()
 		map_layer.clear()
@@ -354,10 +349,13 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.pressed and _inspect_panel.visible and _inspect_panel.get_global_rect().has_point(event.position):
 		return  # the Back button gets the click, even if a HUD panel overlaps it
+	if event is InputEventMouseButton and event.pressed and phone.visible and phone.get_global_rect().has_point(event.position):
+		if not hud_layout.rects.get("navigation_phone", Rect2()).has_point(event.position):
+			return  # phone app controls take priority over HUD panels beneath them
 	if _start_sign == null and hud.visible and hud_layout.handle(event):
 		instruments.queue_redraw()
 		hud._layout()
-		navigation_phone.update_layout()
+		phone.update_layout()
 		get_viewport().set_input_as_handled()
 
 
@@ -388,16 +386,16 @@ func _unhandled_input(event: InputEvent) -> void:
 				hud_layout.reset()
 				instruments.queue_redraw()
 				hud._layout()
-				navigation_phone.update_layout()
+				phone.update_layout()
 			KEY_F:
 				_interact_pending = true
 			KEY_G:
 				_refuel_pending = true
 			KEY_J:
-				if not phone.is_open:
+				if not phone.is_open or phone.busy:
 					show_next_train = not show_next_train
 			KEY_SPACE:
-				if not phone.is_open and not summary_shown:  # never while the phone is open
+				if (not phone.is_open or phone.busy) and not summary_shown:
 					_road_rage_pending = true
 			KEY_V:
 				speed_limiter = not speed_limiter
@@ -410,7 +408,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_H:
 				_home_pending = true
 			KEY_X:
-				if not phone.is_open:
+				if not phone.is_open or phone.busy:
 					_cancel_ride_pending = true
 			KEY_T:
 				_reset_trip_pending = true
@@ -488,6 +486,7 @@ func _process(delta: float) -> void:
 		else:
 			camera.position = focused
 	entities.px_per_m = camera.zoom.x
+	nav_overlay.show_route = phone.is_open and phone.busy
 	entities.show_route = nav_overlay.show_route
 	if _selftest and _selftest_start != Vector2.INF and _selftest_time > 0.5:
 		var raw: float = entities.now()
@@ -628,8 +627,7 @@ func _present(state: Dictionary) -> void:
 	if state.has("game_time_seconds"):
 		phone.set_game_seconds(float(state["game_time_seconds"]))
 	phone.show_phone(state.get("phone", {}))
-	navigation_phone.show_status(phone)
-	navigation_phone.show_navigation(state.get("navigation", {}), nav_overlay.show_route, phone.is_open)
+	phone.show_navigation(state.get("navigation", {}))
 	_refresh_inspector(state)
 	var target: Dictionary = entities.current_target(state)
 	var target_screen := Vector2.ZERO

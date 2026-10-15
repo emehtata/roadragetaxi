@@ -9,7 +9,7 @@ const RS := preload("res://render_style.gd")
 const T := preload("res://i18n.gd")
 
 var show_compass := false
-var show_route := false  # N: route line plus the compact navigation phone (main.gd)
+var show_route := false  # main.gd: the shared phone is displaying navigation
 var _font: Font
 var _target: Dictionary = {}
 var _target_screen := Vector2.ZERO  # target position on screen
@@ -27,8 +27,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_C:
 		show_compass = not show_compass
 		queue_redraw()
-	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_N:
-		show_route = not show_route  # presentation only: the server plans the route either way
 
 
 ## Called each frame by main.gd: the target, where it is on screen, where
