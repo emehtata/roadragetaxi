@@ -53,6 +53,8 @@ from ..climate import appearance_with_snow_depth, typical_temperature
 
 logger = logging.getLogger(__name__)
 
+SPORTS_ICE_DARKNESS = 0.5  # darker than this (sun ~3 degrees down) and unlit: nobody skates
+
 # Nominal viewport used only for NPC/pedestrian spawn-despawn culling
 # (advance_simulation's viewport_bounds) - the server has no real screen
 # or zoom level, so it assumes the client's default zoom rather than
@@ -405,15 +407,26 @@ class SimulationServer:
         self.world.fields_frozen = season[0] >= FIELDS_FROZEN_WINTER_WEIGHT
         return season
 
-    def calendar_state(self) -> dict:
-        """What a client needs of the calendar (state "calendar"): the date,
-        how fast game time runs, and the sun - computed here, never by the
-        client. The sun is at the city's latitude and longitude."""
+    def _sun_altitude(self) -> float:
         altitude, _, _ = solar_altitude_and_events_on(
             self.calendar.date, self.calendar.time_seconds,
             getattr(self.world, "sun_latitude", self.calendar.latitude), getattr(self.world, "sun_longitude", 25.47),
             finnish_utc_offset_hours(self.calendar.current),
         )
+        return altitude
+
+    def _update_sports_ice(self) -> None:
+        """Who may skate (pedestrians' ice activities): the fields are frozen
+        and it is light - daylight, or the floodlights' hours."""
+        self.season_weights()  # world.fields_frozen, for this tick's physics too
+        lit = darkness_for_sun_altitude(self._sun_altitude()) < SPORTS_ICE_DARKNESS or sports_lights_hours(self.calendar.current)
+        self.world.pedestrian_mgr.sports_ice_open = self.world.fields_frozen and lit
+
+    def calendar_state(self) -> dict:
+        """What a client needs of the calendar (state "calendar"): the date,
+        how fast game time runs, and the sun - computed here, never by the
+        client. The sun is at the city's latitude and longitude."""
+        altitude = self._sun_altitude()
         season = self.season_weights()
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": season,
@@ -576,7 +589,7 @@ class SimulationServer:
         if self.calendar.date != previous_date:
             self.world.weather.season = self.calendar.season  # the thermal season follows the calendar
         observed = self._update_outside()
-        self.season_weights()  # world.fields_frozen, for this tick's physics
+        self._update_sports_ice()
         self.world.weather.update(dt * time_scale, dt, outside_temperature_c=self.world.weather.outside_temperature_c,
                                   observed=observed)
         if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once

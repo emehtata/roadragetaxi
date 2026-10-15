@@ -14,7 +14,15 @@ from .npc import NPCState
 from .performance import advance_chunked
 from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import MIN_UNACCOMPANIED_AGE, ResidentManager
-from .activities import ActivityContext, ActivityInstance, ActivityManager
+from .activities import ActivityContext, ActivityInstance, ActivityLocation, ActivityManager
+from .map_style import FROZEN_IN_WINTER_KINDS
+
+
+# People kept on open sports ice near the player (ensure_ice_skaters): one
+# per ICE_M2_PER_SKATER of field, ICE_SKATERS_MIN..MAX a field.
+ICE_SKATER_CHECK_S = 2.0
+ICE_M2_PER_SKATER = 500.0
+ICE_SKATERS_MIN, ICE_SKATERS_MAX = 2, 8
 
 logger = logging.getLogger(__name__)
 
@@ -471,6 +479,8 @@ class PedestrianManager:
         self.traffic_manager = traffic_manager
         self.residents = residents if residents is not None else ResidentManager()
         self.sim_time: float = 0.0
+        self.sports_ice_open = False  # server: fields frozen, and daylight or floodlit hours
+        self._ice_checked_at = -1e9
         self._population_update_elapsed: float = 4.9
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
         self._taxi_stop_visibility_initialized = False
@@ -1723,6 +1733,39 @@ class PedestrianManager:
                 stop.y,
                 customer not in visible_pedestrians,
             )
+            return
+
+    def ensure_ice_skaters(self, player_car: Car) -> None:
+        """Keep a few people on open sports ice near the player: skaters on
+        frozen pitches, a hockey game on rinks. Bounded: one check every
+        ICE_SKATER_CHECK_S, at most one spawn per check."""
+        if not self.sports_ice_open or self.sim_time - self._ice_checked_at < ICE_SKATER_CHECK_S:
+            return
+        self._ice_checked_at = self.sim_time
+        from .activities.plugins.park_leisure import sample_interior_point
+
+        on_ice: Dict[int, int] = {}
+        for ped in self.pedestrians:
+            if ped.activity is not None and ped.activity.plugin_id in ("ice_skating", "ice_hockey") and ped.activity.location:
+                key = id(ped.activity.location.extra)
+                on_ice[key] = on_ice.get(key, 0) + 1
+        for field in self.nearby_sceneries(player_car.x, player_car.y, self.spawn_radius_m):
+            if field.kind not in FROZEN_IN_WINTER_KINDS or len(field.points_m) < 3:
+                continue
+            minx, miny, maxx, maxy = compute_bbox(field.points_m)
+            wanted = max(ICE_SKATERS_MIN, min(ICE_SKATERS_MAX, int((maxx - minx) * (maxy - miny) / ICE_M2_PER_SKATER)))
+            if on_ice.get(id(field), 0) >= wanted:
+                continue
+            point = sample_interior_point(field)
+            skater = self.spawn_pedestrian_at(*point) if point is not None else None
+            if skater is None or not self.add_pedestrian(skater):
+                continue
+            plugin = self.activity_manager.registry.get("ice_hockey" if field.kind == "ice_rink" else "ice_skating")
+            skater.activity = ActivityInstance(
+                plugin_id=plugin.definition.id, location=ActivityLocation(point[0], point[1], extra=field),
+                started_sim_time=self.sim_time)
+            skater.state = "performing_activity"
+            plugin.start(self._activity_context(skater), skater.activity)
             return
 
     def _build_junction_grid(self) -> None:

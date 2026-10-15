@@ -318,6 +318,8 @@ class ChunkIndex:
                 self._chunk(cell)["landuse"].append([static_world._rgb(color), seasonal, ring])
                 if kind in FLOODLIT_KINDS:
                     self._chunk(cell)["floodlit"].append(ring)
+            if kind == "ice_rink":  # closed all round (taxi.SOLID_AREA_KINDS): its boards
+                self._add("railings", scenery.points_m[:1], ["boards", _line(list(scenery.points_m) + [scenery.points_m[0]])])
                 if island:
                     self._chunk(cell)["traffic_islands"].append([static_world._rgb(color), seasonal, ring])
         for deck in static_world.rail_bridge_decks(world.railways, bridge_parts=bridge_parts):

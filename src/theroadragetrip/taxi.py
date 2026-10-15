@@ -54,7 +54,8 @@ LANDMARK_STAND_M = 800.0  # ...but first its taxi stand, this close (terminals s
 # Popular long-fare destinations besides towns (world_places.py), weighted
 # as if a town of this many people.
 LANDMARK_WEIGHTS = {"airport": 100_000, "railway_station": 10_000}
-GREET_RADIUS_M = 2.0  # how close the driver on foot must be to greet a booked rail customer
+GREET_RADIUS_M = 2.0
+SOLID_AREA_KINDS = ("construction", "ice_rink")  # fenced all round: a crash, never a drive-in  # how close the driver on foot must be to greet a booked rail customer
 
 
 def car_hits_tree_trunk(car: Car, tree_x: float, tree_y: float) -> bool:
@@ -541,7 +542,7 @@ class TaxiManager:
             self._fence_collision_count = 0
         if len(sceneries) > self._fence_collision_count:
             for scenery in sceneries[self._fence_collision_count:]:
-                if str(getattr(scenery, "kind", "")).lower() != "construction":
+                if str(getattr(scenery, "kind", "")).lower() not in SOLID_AREA_KINDS:
                     continue
                 bbox = getattr(scenery, "bbox", (0.0, 0.0, 0.0, 0.0))
                 if bbox == (0.0, 0.0, 0.0, 0.0):
@@ -783,7 +784,8 @@ class TaxiManager:
         previous_position: Optional[Tuple[float, float]] = None,
         penalty: int = 150,
     ) -> bool:
-        """Stop the car at a construction-site fence and apply one crash penalty per impact."""
+        """Stop the car at a construction-site fence or an ice rink's boards
+        (SOLID_AREA_KINDS) and apply one crash penalty per impact."""
         expired = [fid for fid, t in self._crashed_fence_cooldowns.items() if sim_time - t > 3.0]
         for fid in expired:
             del self._crashed_fence_cooldowns[fid]

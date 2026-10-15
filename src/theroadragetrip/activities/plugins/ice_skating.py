@@ -1,0 +1,81 @@
+"""Skate on a frozen sports field (a Finnish winter: pitches and rinks are
+flooded for skating). Only while the server says the ice is open
+(PedestrianManager.sports_ice_open: frozen, and daylight or floodlit
+hours); skaters leave when it closes. They glide straight between points
+on the ice - not along footways - at skating speed.
+"""
+from __future__ import annotations
+
+import math
+import random
+from typing import Optional, Tuple
+
+from ...map_style import FROZEN_IN_WINTER_KINDS
+from ..base import ActivityContext, ActivityDefinition, ActivityInstance, ActivityLocation, ActivityPlugin
+from .park_leisure import sample_interior_point
+
+SEARCH_RADIUS_M = 120.0
+SKATING_SPEED_MPS = 3.5
+
+
+def open_ice(context: ActivityContext, radius_m: float = SEARCH_RADIUS_M, kinds=FROZEN_IN_WINTER_KINDS) -> list:
+    """Frozen fields of `kinds` near the pedestrian, while the ice is open."""
+    manager = context.pedestrian_manager
+    if not getattr(manager, "sports_ice_open", False):
+        return []
+    pedestrian = context.pedestrian
+    return [s for s in manager.nearby_sceneries(pedestrian.x, pedestrian.y, radius_m)
+            if s.kind in kinds and len(s.points_m) >= 3]
+
+
+def glide(pedestrian, target: Tuple[float, float], dt: float, speed: float = SKATING_SPEED_MPS) -> bool:
+    """Straight across the ice toward `target`; True once there."""
+    dx, dy = target[0] - pedestrian.x, target[1] - pedestrian.y
+    distance = math.hypot(dx, dy)
+    if distance <= 0.5:
+        return True
+    pedestrian.heading = math.atan2(dy, dx)
+    step = min(distance, speed * dt)
+    pedestrian.x += dx / distance * step
+    pedestrian.y += dy / distance * step
+    pedestrian.speed = speed
+    pedestrian.animation_state = "walking"
+    return False
+
+
+class IceSkatingPlugin(ActivityPlugin):
+    definition = ActivityDefinition(
+        id="ice_skating",
+        name="Ice skating",
+        min_duration_s=60.0,
+        max_duration_s=240.0,
+        cooldown_s=300.0,
+        base_weight=1.5,
+    )
+
+    def find_location(self, context: ActivityContext) -> Optional[ActivityLocation]:
+        fields = open_ice(context)
+        if not fields:
+            return None
+        field = random.choice(fields)
+        point = sample_interior_point(field)
+        return ActivityLocation(x=point[0], y=point[1], extra=field) if point else None
+
+    def start(self, context: ActivityContext, instance: ActivityInstance) -> None:
+        instance.data["duration_s"] = random.uniform(self.definition.min_duration_s, self.definition.max_duration_s)
+        instance.data["elapsed_s"] = 0.0
+        instance.data["field"] = instance.location.extra if instance.location is not None else None
+        instance.data["target"] = None
+
+    def update(self, context: ActivityContext, instance: ActivityInstance, dt: float) -> bool:
+        instance.data["elapsed_s"] += dt
+        field = instance.data.get("field")
+        if field is None or not getattr(context.pedestrian_manager, "sports_ice_open", False):
+            return True  # the ice closed (dark, or thawed): off home
+        target = instance.data.get("target")
+        if target is None or glide(context.pedestrian, target, dt):
+            instance.data["target"] = sample_interior_point(field)  # a new lap
+        return instance.data["elapsed_s"] >= instance.data["duration_s"]
+
+
+PLUGIN = IceSkatingPlugin()

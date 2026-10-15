@@ -926,10 +926,10 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 ## One draw call per style (a city has thousands of fences: a call per
 ## dash cost megabytes of draw commands).
 func _draw_railings(node: Node2D) -> void:
-	var lines := {"hedge": PackedVector2Array(), "wall": PackedVector2Array(), "fence": PackedVector2Array()}
+	var lines := {"hedge": PackedVector2Array(), "wall": PackedVector2Array(), "fence": PackedVector2Array(), "boards": PackedVector2Array()}
 	for railing in _data["railings"]:
 		var points := _points(railing[1])
-		var kind := str(railing[0]) if railing[0] in ["hedge", "wall"] else "fence"
+		var kind := str(railing[0]) if railing[0] in ["hedge", "wall", "boards"] else "fence"
 		if kind == "fence":
 			for dash in dashes(points, 0.8, 0.4):
 				lines["fence"].append_array(PackedVector2Array([dash[0], dash[1]]))
@@ -940,6 +940,8 @@ func _draw_railings(node: Node2D) -> void:
 		node.draw_multiline(lines["hedge"], Color8(58, 92, 48), maxf(_px(2.0), 0.25))
 	if not lines["wall"].is_empty():
 		node.draw_multiline(lines["wall"], Color8(128, 122, 112), maxf(_px(2.0), 0.25))
+	if not lines["boards"].is_empty():  # an ice rink's boards: white, solid
+		node.draw_multiline(lines["boards"], Color8(240, 242, 244), maxf(_px(2.0), 0.3))
 	if not lines["fence"].is_empty():
 		# 0.12 m is a pixel or so at normal zoom: a hairline then (no triangles per dash).
 		node.draw_multiline(lines["fence"], Color8(150, 145, 130), -1.0 if 0.12 * _px_per_m < 1.5 else 0.12)

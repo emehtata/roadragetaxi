@@ -704,6 +704,7 @@ def advance_simulation(
     if not taxi_mgr.current_passenger and taxi_waiter_elapsed >= 0.2:
         taxi_waiter_elapsed = 0.0
         pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
+    pedestrian_mgr.ensure_ice_skaters(car)
     with frame_profiler.section("pedestrians"):
         pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds, game_time_seconds=game_time_seconds)
         pedestrian_mgr.track_vomit(taxi_mgr.vomit_puddles + pedestrian_mgr.vomit_puddles)
