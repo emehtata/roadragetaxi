@@ -226,3 +226,17 @@ def test_a_pitch_keeps_its_sport():
     pitch = {"type": "way", "id": 9, "nodes": [1, 2, 3, 4, 1], "tags": {"leisure": "pitch", "sport": "soccer"}}
     (scenery,) = [s for s in build_ways(nodes + [pitch]).sceneries if s.kind == "pitch"]
     assert scenery.sport == "soccer"
+
+
+def test_a_stadium_outline_is_open_ground_not_a_roof():
+    from theroadragetrip.osm.build import build_ways
+
+    nodes = [{"type": "node", "id": i, "lat": lat, "lon": lon}
+             for i, (lat, lon) in enumerate([(65.0, 25.4), (65.0, 25.402), (65.001, 25.402), (65.001, 25.4)], start=1)]
+    stadium = {"type": "way", "id": 9, "nodes": [1, 2, 3, 4, 1],
+               "tags": {"building": "commercial", "leisure": "stadium", "name": "Heinäpään jalkapallostadion"}}
+    hall = {"type": "way", "id": 10, "nodes": [1, 2, 3, 4, 1],
+            "tags": {"building": "air-supported", "leisure": "sports_centre", "name": "Oulun jalkapallohalli"}}
+    world = build_ways(nodes + [stadium, hall])
+    assert [b.name for b in world.buildings] == ["Oulun jalkapallohalli"]  # the dome is a building
+    assert [s.kind for s in world.sceneries if s.name == "Heinäpään jalkapallostadion"] == ["stadium"]

@@ -75,7 +75,8 @@ MAGIC = b"RWC\0"
 # 24: river areas (water=river, waterway=riverbank) have kind "river".
 # 25: sea from coastline is clipped to the fetched bbox (it flooded land).
 # 26: Scenery.sport (soccer pitches).
-FORMAT_VERSION = 26
+# 27: a leisure=stadium outline is ground, not a building (it roofed the pitch).
+FORMAT_VERSION = 27
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

@@ -86,6 +86,13 @@ KERB_ROAD_CROSSING_MARGIN_M = 1.0  # extra gap beyond the road's half width
 _KERB_CROSSING_GRID_CELL_M = 50.0
 
 
+def _is_building(tags: dict) -> bool:
+    """Whether an area is a building. A leisure=stadium outline often carries
+    a building=* tag too, but it is the open grounds round the pitch - its
+    roofed stands are mapped as their own building=roof/bleachers."""
+    return ("building" in tags or "building:part" in tags) and tags.get("leisure") != "stadium"
+
+
 def _water_kind(tags: dict) -> Optional[str]:
     """A river's area (natural=water + water=river, or the old
     waterway=riverbank) is "river": its ice is not safe to drive on."""
@@ -584,7 +591,7 @@ def build_ways(
                     connector_ways[nid].append((way_id, tags))
             if include_bus_stops and tags.get("public_transport") == "platform":
                 bus_platforms_raw.append((tags, node_ids, way_id))
-            if "building" in tags or "building:part" in tags:
+            if _is_building(tags):
                 building_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking_space":
                 parking_space_raw.append((tags, node_ids, way_id))
@@ -1223,7 +1230,7 @@ def build_ways(
             xs = [p[0] for p in pts]
             ys = [p[1] for p in pts]
             ibbox = (min(xs), min(ys), max(xs), max(ys))
-            if "building" in tags:
+            if _is_building(tags):
                 housenumber = tags.get("addr:housenumber")
                 street = tags.get("addr:street")
                 center_x = sum(point[0] for point in pts) / len(pts)
