@@ -561,9 +561,6 @@ class TrafficWorld:
             if (light.x - x) ** 2 + (light.y - y) ** 2 <= radius_sq
         ]
 
-    def let_taxi_pick_up_waiter(self, taxi_stops, pedestrians, dt: float = 1.0 / 60.0) -> None:
-        return None
-
     def sync_map_data(
         self, ways, traffic_lights=None, crossings=None, parking_spaces=None,
         logical_intersections=None, **_kwargs,

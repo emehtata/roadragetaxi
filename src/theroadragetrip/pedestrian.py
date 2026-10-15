@@ -439,7 +439,7 @@ class Pedestrian:
     # spec property, see activities/base.py's ActivityInstance.
     activity: Optional[ActivityInstance] = None
     activity_flags: Dict[str, Any] = field(default_factory=dict)
-    # NPC-004 section 17: a departed accident driver's visible mood -
+    # collision-avoidance section 17: a departed accident driver's visible mood -
     # separate from animation_state, which the activity system already
     # overwrites to "idle" while performing an activity (would otherwise
     # clobber "annoyed" the moment the phone-checking activity starts).
@@ -596,6 +596,8 @@ class PedestrianManager:
         for vehicle in vehicles:
             if getattr(vehicle, "state", "driving") != NPCState.PARKED:
                 continue
+            if getattr(vehicle, "is_taxi", False):
+                continue  # a taxi's driver stays at the wheel (competitor_taxis.py)
             trip_group = getattr(vehicle, "trip_group", None)
             if trip_group is None or not self.entrance_locations:
                 continue

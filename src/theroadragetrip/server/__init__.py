@@ -32,7 +32,7 @@ from .. import protocol
 from ..navigation_route import NavigationRoute
 from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, ChunkIndex, cell_of, chunk_id, plan
 from ..tile_streaming import world_to_tile
-from .map_sync import MapStreamer
+from .map_sync import MapStreamer, prepare_initial_window
 from ..protocol import LOCAL_PLAYER_ID
 from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
 from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_altitude_and_events_on
@@ -213,6 +213,10 @@ class SimulationServer:
             bus_stops_enabled, roadworks_enabled, city_choice.career, self.career_file,
             self.gig_odometer_file, self.language,
         )
+        self.initial_map_preparation = (
+            prepare_initial_window(self.world) if self._auto_fetch
+            else {"started": False, "integrated_tiles": 0, "elapsed_s": 0.0}
+        )
         self.car = self.world.car
         # weather is per-session state constructed fresh alongside
         # `world` rather than something load_world itself returns -
@@ -298,6 +302,7 @@ class SimulationServer:
         self._indexed_tiles = set(self._map_streamer.manager.loaded_tiles) if self._map_streamer is not None else None
         self._map_growth: list = []  # the background rebuild's results, swapped in by ticks in order
         self._server_time = 0.0
+        self._game_day_notice_shown = False
 
         self._listener: Optional[Listener] = None
         self._running = False
@@ -433,10 +438,12 @@ class SimulationServer:
         client. The sun is at the city's latitude and longitude."""
         altitude = self._sun_altitude()
         season = self.season_weights()
+        arena_crowds = getattr(self.world, "arena_crowds", None)
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": season,
                 "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
-                "sports_lights": sports_lights_hours(self.calendar.current)}
+                "sports_lights": sports_lights_hours(self.calendar.current),
+                "arena_lights": bool(arena_crowds and arena_crowds.lights_on(self.calendar.current))}
 
     def start(self, host: str, port: int) -> None:
         self._listener = Listener(host, port, self._on_client_connect)
@@ -464,6 +471,15 @@ class SimulationServer:
         with self._clients_lock:
             self._client_chunks[connection] = (set(), None)
             self._clients.append(connection)
+        if not self._game_day_notice_shown:
+            games = self.world.arena_crowds.schedule_on(self.calendar.date)
+            if games:
+                schedule = "; ".join(
+                    f"{game.home_team}–{game.away_team} {game.start:%H:%M} ({game.venue_name})"
+                    for game in games
+                )
+                self._notify(tr(self.language, "game_day_schedule", schedule=schedule), 10.0)
+            self._game_day_notice_shown = True
 
     def _apply_incoming_messages(self) -> None:
         with self._clients_lock:

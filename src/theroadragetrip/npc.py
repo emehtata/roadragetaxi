@@ -1,7 +1,7 @@
-"""NPC-001: the first properly architected autonomous NPC car.
+"""autonomous-driving: the first properly architected autonomous NPC car.
 
 One Resident -> one Driver -> one NPCVehicle -> one preplanned OSM route,
-driven with real traffic rules. See .github/prompts/NPC-001.md.
+driven with real traffic rules. See .github/prompts/autonomous-driving.md.
 
 Layering (section 18 of that spec):
 
@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
 from .activities import ActivityInstance, ActivityLocation
+from .competitor_taxis import COMPETITOR_TAXIS, is_competitor, make_competitor
 from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
 from .osm import Curb, ParkingSpace, Way
@@ -34,17 +35,17 @@ from .vehicles.base import VEHICLE_DEFINITIONS, vehicle_definition
 
 
 class NPCState:
-    """Vehicle state machine (NPC-001 section 10).
+    """Vehicle state machine (autonomous-driving section 10).
 
     The architecture must support future states without rework, but
-    NPC-001 only implemented a subset originally; NPC-004 adds the two it
+    autonomous-driving only implemented a subset originally; collision-avoidance adds the two it
     reserved by name (CRASHED, and REVERSING in place of the more generic
     DISABLED) - DRIVER_EXITED/ABANDONED/DESPAWNING still aren't needed as
     separate states: "driver exited" is NPCVehicle.driver_departed (an
     orthogonal flag, not a motion state - the vehicle can be CRASHED with
     or without a departed driver for one frame), and DESPAWNING is a
     one-shot removal with nothing to observe mid-way, same reasoning
-    NPC-003 v2's README already gives for not adding it either.
+    vehicle-population v2's README already gives for not adding it either.
     """
     SPAWNING = "SPAWNING"
     CRUISING = "CRUISING"
@@ -54,12 +55,12 @@ class NPCState:
     PARKING = "PARKING"  # final approach into a dedicated parking space (NPC-more.md section 14)
     ARRIVING = "ARRIVING"
     PARKED = "PARKED"  # stopped and settled at the destination (multi-passenger-car.md section 17)
-    REVERSING = "REVERSING"  # NPC-004: controlled backing-up during stuck recovery
-    CRASHED = "CRASHED"  # NPC-004: stopped after an actual collision, driver may have departed
+    REVERSING = "REVERSING"  # collision-avoidance: controlled backing-up during stuck recovery
+    CRASHED = "CRASHED"  # collision-avoidance: stopped after an actual collision, driver may have departed
 
 
 class NPCAvailability:
-    """NPC-003 section 7: whether unrelated logic may claim this vehicle.
+    """vehicle-population section 7: whether unrelated logic may claim this vehicle.
 
     Orthogonal to NPCState (which describes physical motion - parked vs
     driving vs turning). Only meaningful for a household vehicle
@@ -100,11 +101,11 @@ ARRIVAL_DECEL_MPS2 = 3.0  # comfortable braking rate approaching the final desti
 NPC_ARRIVAL_BRAKING_HORIZON_M = 80.0
 NPC_FOOTPRINT_VIOLATION_CRAWL_MPS = 2.0  # never a hard 0 - see update_npc's live footprint check
 NPC_LIVE_FOOTPRINT_CLEARANCE_M = 0.05  # a hair's width - only an actual overlap counts live, not lag
-# NPC-003: is_vehicle_pose_valid's curb/building scan costs ~1-2ms against
+# vehicle-population: is_vehicle_pose_valid's curb/building scan costs ~1-2ms against
 # real dense OSM data (measured: real Oulu data, ~13 nearby curbs/
 # buildings per query even with a small grid cell size - candidate count
 # is genuine local density, not a grid-tuning artifact). Harmless at the
-# single always-on NPC-001 car; with NPC-003's real population, several
+# single always-on autonomous-driving car; with vehicle-population's real population, several
 # vehicles can be driving at once and this was the dominant per-frame
 # cost (profiled: 5 concurrently-driving vehicles added ~9ms/frame, this
 # check alone accounting for ~98% of it). It's a rare-trip physics-drift
@@ -126,7 +127,7 @@ NPC_FOOTPRINT_CHECK_INTERVAL_S = 0.2
 # population placement - roughly a car's length.
 NPC_MIN_VEHICLE_SPACING_M = 7.0
 
-# NPC-004 section 2: vehicle-following avoidance. Mirrors
+# collision-avoidance section 2: vehicle-following avoidance. Mirrors
 # nearest_traffic_light_ahead's own forward-cone shape (detection distance/
 # lateral limit), just narrower laterally since a vehicle occupies one lane,
 # not a whole intersection approach.
@@ -141,12 +142,12 @@ NPC_PASS_ONCOMING_CHECK_M = 60.0  # the oncoming lane must be empty this far ahe
 NPC_PASS_CLEARANCE_M = 2.0  # back in lane once this far past it
 NPC_PASS_SPEED_MPS = 6.0
 
-# NPC-005: Road Rage. Wider than NPC_AVOIDANCE_*'s own strict single-lane
+# living-traffic: Road Rage. Wider than NPC_AVOIDANCE_*'s own strict single-lane
 # cone (a horn should plausibly affect a car slightly off to the side,
 # not just one dead ahead in exactly the same lane) but the same
 # nearest_vehicle_ahead forward-cone projection - only the single
 # nearest driving vehicle ahead reacts; any queue behind it is the
-# existing NPC-004 avoidance logic reacting to *that* vehicle slowing
+# existing collision-avoidance avoidance logic reacting to *that* vehicle slowing
 # down, not scripted - see trigger_road_rage's docstring.
 NPC_ROAD_RAGE_DETECTION_DISTANCE_M = 40.0
 NPC_ROAD_RAGE_LATERAL_LIMIT_M = 6.0
@@ -154,7 +155,7 @@ NPC_ROAD_RAGE_REACTION_DURATION_S = 8.0
 NPC_ROAD_RAGE_YIELD_SPEED_MPS = 1.5  # a slow, visible crawl - not a hard stop (see update_npc's own footprint-crawl precedent for why never 0)
 NPC_ROAD_RAGE_EDGE_MARGIN_M = 0.5
 
-# NPC-004 section 3/8: stuck detection. Checked on the same throttled-cache
+# collision-avoidance section 3/8: stuck detection. Checked on the same throttled-cache
 # cadence as the footprint check (NPC_FOOTPRINT_CHECK_INTERVAL_S) rather
 # than every frame - this is a recovery safety net, not a per-frame
 # correctness requirement.
@@ -164,7 +165,7 @@ NPC_SNOW_TRACTOR_FACTOR = 8.0  # while it snows, tractors (ploughs) are this muc
 NPC_CRASH_CLEAR_S = 60.0  # a wreck is towed away after this long, even in view: it blocks the road
 NPC_STUCK_TIMEOUT_S = 8.0  # accumulated stuck time before recovery triggers
 
-# NPC-004 section 6/7: reverse recovery. A short, straight, controlled
+# collision-avoidance section 6/7: reverse recovery. A short, straight, controlled
 # back-up - not a reverse-parking maneuver - just enough to clear whatever
 # was blocking forward progress before re-routing.
 NPC_REVERSE_DISTANCE_M = 6.0
@@ -176,8 +177,8 @@ NPC_CORNER_BRAKING_DECEL_MPS2 = 3.0  # comfortable braking rate approaching a co
 NPC_TURN_SIGNAL_MIN_DISTANCE_M = 30.0  # start blinking at least this far before a turn...
 NPC_TURN_SIGNAL_LEAD_S = 3.0  # ...or this many seconds of travel ahead, whichever is farther
 NPC_CORNER_LOOKAHEAD_M = 40.0  # how far ahead to start braking for an upcoming turn
-LANE_BIAS_LOOKAHEAD_M = 20.0  # start easing into a turn lane this far before the corner (NPC-002 section 5)
-# NPC-003 v2: the "car" vehicle plugin (vehicles/plugins/car.py) is now the
+LANE_BIAS_LOOKAHEAD_M = 20.0  # start easing into a turn lane this far before the corner (intersection-rules section 5)
+# vehicle-population v2: the "car" vehicle plugin (vehicles/plugins/car.py) is now the
 # canonical source for these three values - derived here, once, at import
 # time, so every existing call site in this module and in tests keeps
 # working unchanged. vehicles/ never imports npc.py (one-directional, same
@@ -190,7 +191,7 @@ NPC_VEHICLE_WIDTH_M = _car_plugin_definition.width_m
 # multi-passenger-car.md section 2: capacity lives in one constant, never a
 # hardcoded literal in passenger-management logic.
 NPC_CAR_CAPACITY = _car_plugin_definition.capacity
-# NPC-003 v2: real-world-ish car body color distribution (roughly ordered
+# vehicle-population v2: real-world-ish car body color distribution (roughly ordered
 # by actual new-car popularity - white/black/gray/silver dominate, with a
 # handful of real accent colors) - every NPC vehicle used to be the exact
 # same flat gray (reported: "cars must have variety of colors").
@@ -219,7 +220,7 @@ NPC_GROUP_RETURN_GRACE_S = 60.0
 # yet an individual per-passenger choice.
 NPC_TRIP_ACTIVITY_TYPES = ("shopping", "work", "visit", "service", "errand", "other")
 
-# NPC-003: population management (NPCVehicleManager). Mirrors
+# vehicle-population: population management (NPCVehicleManager). Mirrors
 # pedestrian.py's PedestrianManager population-tick constants (same
 # staggered spawn/despawn pattern, just car-scale radii - a car is
 # relevant to the player from farther away than a pedestrian is).
@@ -251,7 +252,7 @@ NPC_TRIP_START_PROBABILITY_PER_TICK = 0.08
 # simply tries again next tick, no different from any other "don't get
 # stuck on one candidate" fallback in this module.
 NPC_TRIP_START_ATTEMPTS_PER_TICK = 1
-# NPC-005: the flat probability/attempts-cap pair above has no idea how
+# living-traffic: the flat probability/attempts-cap pair above has no idea how
 # many vehicles are *currently driving* - with the default 8%-per-idle-
 # vehicle roll and only 1 real attempt per 5s tick, the steady-state
 # driving count settles far below target_count regardless of population
@@ -326,10 +327,10 @@ def prioritize_transit_spawn_nodes(nodes, indices, x: float, y: float, heading: 
     return [item[2] for item in aligned] + [index for index in indices if index not in aligned_ids]
 # Default fraction of the vehicle population that should be actively
 # driving at any moment, independent of total population size (client-
-# server-016.md/NPC-005: moving traffic is a first-class target, not a
+# server-016.md/living-traffic: moving traffic is a first-class target, not a
 # side effect of the total-population target).
 NPC_TARGET_MOVING_FRACTION = 0.5
-# NPC-003 v2: continue_npc_trip (an already-driving vehicle picking its
+# vehicle-population v2: continue_npc_trip (an already-driving vehicle picking its
 # *next* destination once its passengers have reboarded) shares
 # find_and_start_npc_trip's exact same plan_route cost profile - measured
 # over a second per call against real dense OSM data even to succeed once.
@@ -340,7 +341,7 @@ NPC_TARGET_MOVING_FRACTION = 0.5
 # reboarding in the same tick can't stack into one multi-second frame.
 NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK = 1
 NPC_CONTINUE_TRIP_TIME_BUDGET_S = 0.1
-# NPC-004: recovery reroute attempts for STUCK vehicles - same one-
+# collision-avoidance: recovery reroute attempts for STUCK vehicles - same one-
 # expensive-plan_route-call-per-tick discipline as the two constants above.
 NPC_RECOVERY_ATTEMPTS_PER_TICK = 1
 # find_and_start_npc_trip's own BFS search width - deliberately much
@@ -356,13 +357,13 @@ NPC_TRIP_START_CANDIDATE_POINTS = 4
 # even at the smaller NPC_TRIP_START_CANDIDATE_POINTS width). A count cap
 # alone doesn't bound a single unusually expensive plan_route call; this
 # does. Rewriting plan_route's own performance is out of scope here (a
-# separate, pre-existing system - see NPC-003 section 1's "do not
+# separate, pre-existing system - see vehicle-population section 1's "do not
 # duplicate/rewrite the traffic manager").
 NPC_TRIP_START_TIME_BUDGET_S = 0.5
 # Section 13: fraction of the population that gets a household (and thus
 # a home to return to) rather than being a plain autonomous TRAFFIC_VEHICLE.
 NPC_HOUSEHOLD_VEHICLE_FRACTION = 0.3
-# NPC-003 v2 section 9: chance a new household-eligible vehicle joins an
+# vehicle-population v2 section 9: chance a new household-eligible vehicle joins an
 # existing household that still owns fewer than 2 vehicles, instead of
 # always founding a brand new one-vehicle household. Not spatial (a real
 # household's second car isn't always parked next to the first either) -
@@ -395,7 +396,7 @@ def _lane_offset_point(
     player's car), just returning a point instead of mutating a Car. When
     a turn is coming up (`maneuver`), bias within that same right-hand
     half of the road instead: hug the curb for a right turn, hug the
-    centerline for a left turn - NPC-002 section 5's required lane
+    centerline for a left turn - intersection-rules section 5's required lane
     selection, without inventing a discrete per-lane model nothing else
     in this codebase has (the player's own lane placement is this same
     continuous half-width offset); real turn:lanes-tagged lane geometry
@@ -472,7 +473,7 @@ def _round_corner(
     samples: int = CORNER_SAMPLE_COUNT,
 ) -> List[Tuple[float, float]]:
     """Replace a sharp route vertex with a sampled quadratic-Bezier arc
-    (NPC-001 section 9), so a turn is a smooth curve, never a pivot on a
+    (autonomous-driving section 9), so a turn is a smooth curve, never a pivot on a
     single point. corner_pt is used as the Bezier control point."""
     in_dx, in_dy = corner_pt[0] - prev_pt[0], corner_pt[1] - prev_pt[1]
     out_dx, out_dy = next_pt[0] - corner_pt[0], next_pt[1] - corner_pt[1]
@@ -636,7 +637,7 @@ def route_stays_on_road(
     small or lopsided graph that can, in principle, let a node close to
     the *start* look like a cheaper stand-in target than actually driving
     the real path, producing a route that quietly cuts across a corner
-    instead of following the road through it. NPC-001 section 5 requires
+    instead of following the road through it. autonomous-driving section 5 requires
     verifying the route has real road segments before ever spawning a
     vehicle onto it - this is that check.
 
@@ -648,7 +649,7 @@ def route_stays_on_road(
     the road, but must remain tightly bounded so it cannot become a
     cross-lawn shortcut (NPC-more.md section 6's "safe driveway or
     building courtyard"). initial_segment_tolerance_m is the same idea mirrored at
-    the *start* (NPC-003: a vehicle departing from an off-road parked
+    the *start* (vehicle-population: a vehicle departing from an off-road parked
     position - see start_npc_trip's origin_is_off_road).
     """
     return run_route_steps(_route_stays_on_road_steps(
@@ -813,7 +814,7 @@ def _route_crosses_obstacles(
     _densify_path/_path_headings) - the shared engine behind
     route_crosses_curbs and route_crosses_buildings.
 
-    skip_leading_m (NPC-003: departing from an off-road parked position -
+    skip_leading_m (vehicle-population: departing from an off-road parked position -
     see start_npc_trip's origin_is_off_road) skips this much distance from
     the very start of the path before sampling begins - the same
     reasoning _align_approach_to_parking_orientation/destination_is_off_
@@ -938,7 +939,7 @@ def build_driving_path(
     """Turn a raw centerline route (TrafficWorld.plan_route's output) into
     a lane-correct, corner-smoothed path for an NPC to follow.
 
-    Kept as one function for NPC-001 (one vehicle, no need for a generic
+    Kept as one function for autonomous-driving (one vehicle, no need for a generic
     multi-stage pipeline object yet), but route planning (the caller),
     lane offsetting, and corner rounding remain distinct, independently
     testable steps - see build_driving_path's own helpers.
@@ -1031,7 +1032,7 @@ def build_driving_path(
 
 @dataclass
 class Driver:
-    """Driving-specific state and decisions (NPC-001 section 4).
+    """Driving-specific state and decisions (autonomous-driving section 4).
 
     Owns the driving *decisions*; never touches rendering.
     """
@@ -1043,7 +1044,7 @@ class Driver:
     current_way: Optional[Way] = None
     target_speed_mps: float = 0.0
     decision: TrafficDecision = field(default_factory=lambda: TrafficDecision(TrafficAction.PROCEED, 0.0))
-    # NPC-004 stuck detection (section 3/8): sampled every
+    # collision-avoidance stuck detection (section 3/8): sampled every
     # NPC_STUCK_CHECK_INTERVAL_S: if displacement since the last sample is
     # under NPC_STUCK_MIN_PROGRESS_M, stuck_timer_s accumulates instead of
     # resetting - covers "not moving", "oscillating", and "spinning without
@@ -1059,7 +1060,7 @@ class Driver:
     recovery_stage: str = "NORMAL"
     route_job_pending: bool = False
     reverse_start_position: Optional[Tuple[float, float]] = None
-    # NPC-005: an orthogonal timed flag, not a new NPCState - matches
+    # living-traffic: an orthogonal timed flag, not a new NPCState - matches
     # this module's existing convention of keeping reactive/temporary
     # conditions (driver_departed, recovery_stage) separate from the
     # vehicle's core physical state, since the vehicle keeps being
@@ -1090,7 +1091,7 @@ class Driver:
     @property
     def next_way(self) -> Optional[Way]:
         """The road beyond the upcoming turn, or None if still on/past the
-        last one (NPC-002 section 21's debug HUD "next way")."""
+        last one (intersection-rules section 21's debug HUD "next way")."""
         for point in self.path[self.path_index:]:
             if point.way is not None and point.way is not self.current_way:
                 return point.way
@@ -1144,7 +1145,7 @@ class TripGroup:
 
 @dataclass
 class NPCVehicle:
-    """Physical NPC vehicle (NPC-001 section 3).
+    """Physical NPC vehicle (autonomous-driving section 3).
 
     All physical simulation state lives in `car` (physics.Car, driven by
     the same update_car_physics the player uses - no duplicated physics).
@@ -1158,6 +1159,7 @@ class NPCVehicle:
     vehicle_type: str = "car"  # a vehicles/ plugin id (see vehicles/README.md) - never branched on here, only looked up
     color: Tuple[int, int, int] = (150, 155, 165)
     is_taxi: bool = False
+    taxi_job: object = None  # a competitor taxi's fare (competitor_taxis.TaxiJob), None when free
     is_police: bool = False
     is_on_foot: bool = False
     fallen: bool = False
@@ -1175,8 +1177,8 @@ class NPCVehicle:
     turn_signal: str = ""
     turn_signal_elapsed: float = 0.0
     debug_waiting_for: str = ""
-    crashed_timer: float = 0.0  # NPC-004: seconds since state became CRASHED (debug/despawn timing)
-    # NPC-004 section 12/13: once True, this vehicle's driver has
+    crashed_timer: float = 0.0  # collision-avoidance: seconds since state became CRASHED (debug/despawn timing)
+    # collision-avoidance section 12/13: once True, this vehicle's driver has
     # permanently left it (accident response) - every place that would
     # otherwise resume/reassign driving on this vehicle (start a new trip,
     # continue a trip, get claimed by reserve_household_vehicle, get
@@ -1185,20 +1187,20 @@ class NPCVehicle:
     driver_departed: bool = False
     capacity: int = NPC_CAR_CAPACITY
     trip_group: Optional[TripGroup] = None
-    # NPC-003 sections 6, 13: "traffic" (autonomous, no owner, current
+    # vehicle-population sections 6, 13: "traffic" (autonomous, no owner, current
     # behavior) or "household" (has a home to return to, reservable).
     vehicle_kind: str = "traffic"
     household_id: Optional[int] = None
     home_position: Optional[Tuple[float, float]] = None
     home_parking_space: object = None  # same shape as reserved_parking_space
     availability: str = NPCAvailability.AVAILABLE
-    # NPC-003 section 12: True while this household vehicle's current trip
+    # vehicle-population section 12: True while this household vehicle's current trip
     # is "drive home" - once it parks, the manager retires the trip
     # outright (no building-visit detour) instead of calling
     # continue_npc_trip again. False for every other leg (including a
     # traffic vehicle's endless errands, which never sets it).
     returning_home: bool = False
-    # NPC-003 perf: is_vehicle_pose_valid's live footprint safety net
+    # vehicle-population perf: is_vehicle_pose_valid's live footprint safety net
     # (see NPC_FOOTPRINT_CHECK_INTERVAL_S) runs at a reduced rate, not
     # every frame - this is its own per-vehicle accumulator/cache so a
     # skipped frame reuses the last real result instead of assuming clear.
@@ -1256,7 +1258,7 @@ class NPCVehicle:
 
 
 def has_active_driver(vehicle: NPCVehicle, resident_manager: ResidentManager) -> bool:
-    """The fundamental NPC-001 invariant: moving NPC vehicle == active
+    """The fundamental autonomous-driving invariant: moving NPC vehicle == active
     driver Resident. A vehicle whose owning Resident isn't currently
     driving it must never be treated as under power."""
     if vehicle.owner_id is None:
@@ -1266,14 +1268,14 @@ def has_active_driver(vehicle: NPCVehicle, resident_manager: ResidentManager) ->
 
 
 def reserve_household_vehicle(vehicle: NPCVehicle) -> bool:
-    """NPC-003 section 7: claim a household vehicle for an upcoming trip
+    """vehicle-population section 7: claim a household vehicle for an upcoming trip
     (the future Resident shopping/errand system will call this instead of
     searching for "the nearest NPC car"). Returns False - and reserves
     nothing - if the vehicle isn't a household vehicle, isn't currently
     AVAILABLE (already RESERVED/IN_USE by another trip), or isn't
     genuinely idle (mid-trip, still has a trip group out and about).
 
-    NPC-004 section 12: a vehicle whose driver has permanently departed
+    collision-avoidance section 12: a vehicle whose driver has permanently departed
     (accident response) must never be reassigned another trip, even if it
     otherwise looks idle/available."""
     if vehicle.vehicle_kind != "household":
@@ -1325,7 +1327,7 @@ def _plan_and_validate_npc_route(
     the roadside-parking fallback, which relies on the normal lane-offset
     to hug the curb.
 
-    origin_is_off_road (NPC-003: start_npc_trip, an idle vehicle placed by
+    origin_is_off_road (vehicle-population: start_npc_trip, an idle vehicle placed by
     place_parked_npc departing from a lot/yard/off-road parking spot for
     the first time) is the same idea mirrored at the *start* - the first
     leg out of a real parking lot or yard legitimately crosses its own
@@ -1493,7 +1495,7 @@ def spawn_npc(
     vehicle_type: str = "car",
 ) -> Optional[Tuple[int, Driver, NPCVehicle]]:
     """Create the Resident -> Driver -> NPCVehicle chain for one NPC
-    (NPC-001 sections 5, 11, 12).
+    (autonomous-driving sections 5, 11, 12).
 
     The route is planned and validated BEFORE anything is created; a
     vehicle is never spawned to then go hunting for a route while
@@ -1540,7 +1542,7 @@ def _begin_trip_on_vehicle(
 ) -> Driver:
     """Create the Resident group -> TripGroup -> Driver for a vehicle
     about to start driving `path` for the first time - shared by
-    spawn_npc (a brand-new vehicle) and start_npc_trip (NPC-003: an
+    spawn_npc (a brand-new vehicle) and start_npc_trip (vehicle-population: an
     existing idle parked vehicle beginning its first/next trip). Mutates
     `vehicle` in place (position/heading, owner_id, way, destination,
     travel_route, trip_group, state, parking reservation) and returns the
@@ -1548,14 +1550,14 @@ def _begin_trip_on_vehicle(
 
     1. create/select the Resident group, 2. designate its first member as
     driver, 3. place the vehicle at the route's start, 4. associate
-    vehicle<->Driver<->TripGroup - in that order, per NPC-001 section 11 -
+    vehicle<->Driver<->TripGroup - in that order, per autonomous-driving section 11 -
     never a moving vehicle first with a driver attached after.
 
     multi-passenger-car.md sections 2, 5: the group is never auto-filled
     to capacity - a lone driver (group size 1) is exactly as valid as a
     full car.
 
-    member_resident_ids (NPC-003 section 6): a household vehicle's trip
+    member_resident_ids (vehicle-population section 6): a household vehicle's trip
     group is drawn from its *own* already-existing household members
     (created once, at population-fill time, and reused across every trip
     that household ever takes) rather than a fresh anonymous group each
@@ -1654,7 +1656,7 @@ def start_npc_trip(
     member_resident_ids: Optional[List[int]] = None,
     deadline: Optional[float] = None,
 ) -> Optional[Driver]:
-    """NPC-003: an existing idle parked vehicle (see place_parked_npc)
+    """vehicle-population: an existing idle parked vehicle (see place_parked_npc)
     starts its first/next trip - the population-fill counterpart of
     spawn_npc, reusing the exact same route planning/validation
     (_plan_and_validate_npc_route) and trip-group creation
@@ -1736,7 +1738,7 @@ def npc_target_count_for_population(population: Optional[int]) -> int:
 
 def _nearest_route_node_index(traffic_world: TrafficWorld, x: float, y: float) -> Optional[int]:
     """The route graph node nearest (x, y), or None if the graph is empty -
-    NPC-003: where an idle parked vehicle's BFS destination search
+    vehicle-population: where an idle parked vehicle's BFS destination search
     (find_and_start_npc_trip) should start from, mirroring how
     spawn_deterministic_npc's own origin_index is just a node index into
     this same graph."""
@@ -1777,7 +1779,7 @@ def _nearest_route_node_index(traffic_world: TrafficWorld, x: float, y: float) -
 def _point_in_viewport(
     x: float, y: float, viewport_bounds: Tuple[float, float, float, float], margin_m: float = 0.0,
 ) -> bool:
-    """NPC-003 v2: same check pedestrian.py's spawn_pedestrian/population
+    """vehicle-population v2: same check pedestrian.py's spawn_pedestrian/population
     culling already use to avoid the player ever seeing a spawn/despawn
     pop - viewport_bounds is (minx, miny, maxx, maxy) in world meters.
 
@@ -1812,7 +1814,7 @@ def find_and_start_npc_trip(
     other_vehicle_positions: Optional[List[Tuple[float, float]]] = None,
     time_budget_s: float = NPC_TRIP_START_TIME_BUDGET_S,
 ) -> Optional[Driver]:
-    """NPC-003: an idle parked vehicle (population tick decided it's time
+    """vehicle-population: an idle parked vehicle (population tick decided it's time
     for its next errand) picks *some* reachable destination and starts a
     trip - the population-management counterpart of spawn_deterministic_
     npc, reusing its exact same "BFS out from a graph node, try every
@@ -2054,7 +2056,7 @@ def _update_npc_reversing(
     manager: object,
     pedestrian_mgr: object,
 ) -> None:
-    """NPC-004 section 6/7: a short, controlled, straight-line back-up -
+    """collision-avoidance section 6/7: a short, controlled, straight-line back-up -
     entered by _run_population_tick's recovery scan once a plain reroute
     from the current position failed to clear a stuck vehicle. Never plans
     a route itself (that stays on the throttled population tick, never
@@ -2216,7 +2218,7 @@ def update_npc(
     spatial_grid: Optional[SpatialWayGrid] = None,
 ) -> None:
     """Advance one NPC's driving decision and physics by one frame
-    (NPC-001 sections 5-10). Pure simulation.
+    (autonomous-driving sections 5-10). Pure simulation.
 
     Performance (section 16): the route is never recalculated here (only
     once, in spawn_npc); the per-frame scan is the traffic-light lookup,
@@ -2224,8 +2226,8 @@ def update_npc(
     player's own red-light assist already makes every frame. The live
     footprint check (below) is *not* cheap against real dense OSM data
     (profiled: ~1-2ms/call, dominated by genuine nearby curb/building
-    count, not a spatial-grid tuning issue) - harmless at NPC-001's single
-    always-on car, but a real per-frame cost multiplied across NPC-003's
+    count, not a spatial-grid tuning issue) - harmless at autonomous-driving's single
+    always-on car, but a real per-frame cost multiplied across vehicle-population's
     whole population, so it runs at a reduced rate (see
     NPC_FOOTPRINT_CHECK_INTERVAL_S) rather than every frame.
 
@@ -2335,7 +2337,7 @@ def update_npc(
             decision = crossing_decision
     driver.decision = decision
     driver.target_speed_mps = decision.target_speed_mps
-    # NPC-003 v2 section 4: a vehicle plugin's own max speed (e.g. a bus/
+    # vehicle-population v2 section 4: a vehicle plugin's own max speed (e.g. a bus/
     # truck slower than ordinary traffic) - a cheap clamp on top of the
     # road's own speed limit, not a new physics/acceleration model.
     max_speed_kmh = vehicle_definition(vehicle.vehicle_type).max_speed_kmh
@@ -2374,7 +2376,7 @@ def update_npc(
         corner_cap = math.sqrt(corner_speed * corner_speed + 2.0 * NPC_CORNER_BRAKING_DECEL_MPS2 * corner_distance)
         driver.target_speed_mps = min(driver.target_speed_mps, corner_cap)
 
-    # NPC-004 section 2: slow/stop for whatever's directly ahead in this
+    # collision-avoidance section 2: slow/stop for whatever's directly ahead in this
     # lane (another NPC, the player's car, a crashed vehicle - all satisfy
     # the same x/y duck type) - the exact same safe-follow-distance
     # braking math already used for corner_cap/arrival_cap above, just with
@@ -2431,7 +2433,7 @@ def update_npc(
     else:
         driver.pass_wait_s = 0.0
 
-    # NPC-005: Road Rage. A timed clamp, not a state change - the vehicle
+    # living-traffic: Road Rage. A timed clamp, not a state change - the vehicle
     # keeps obeying every other rule above it (traffic lights, corners,
     # the vehicle ahead of *it*) at a reduced ceiling, exactly like the
     # footprint-violation crawl below already does for a different
@@ -2461,7 +2463,7 @@ def update_npc(
         # its own (reported: NPC stuck oscillating in place forever).
         driver.target_speed_mps = min(driver.target_speed_mps, NPC_FOOTPRINT_VIOLATION_CRAWL_MPS)
 
-    # NPC-004 section 3/8: stuck/oscillation/spin detection - a single
+    # collision-avoidance section 3/8: stuck/oscillation/spin detection - a single
     # "did this vehicle actually displace since the last check" test covers
     # all three failure modes the spec lists (no progress, oscillating,
     # spinning in place), since each of them fails this same test. Excludes
@@ -2517,7 +2519,7 @@ def update_npc(
             else "awaiting route job" if driver.route_job_pending else "stuck - awaiting recovery"
         )
     elif driver.road_rage_until_sim_time is not None:
-        # NPC-005: still whatever state its actual speed implies (a crawl
+        # living-traffic: still whatever state its actual speed implies (a crawl
         # is CRUISING, a full stop behind something is WAITING) - this
         # only overrides the *label*, matching every other reason here
         # being a specific string rather than a dedicated NPCState.
@@ -2786,7 +2788,7 @@ def _point_is_clear_of_vehicles(
 
 def _parking_area_containing(point: Optional[Tuple[float, float]], sceneries: Optional[List]):
     """Return the Scenery(kind="parking") polygon containing `point`, or
-    None. NPC-004 section 4/5: identifies which parking area a vehicle is
+    None. collision-avoidance section 4/5: identifies which parking area a vehicle is
     currently sitting in, purely by point-in-polygon against the map's own
     already-loaded lot outlines - no persistent parking-area id needed on
     ParkingSpace/Scenery, since this only ever runs at destination-search
@@ -2921,7 +2923,7 @@ def _pick_npc_destination_candidates_steps(
     legitimately sit closer together than min_spacing_m (adjacent painted
     bays in the same lot).
 
-    own_position (NPC-004 section 4/5): the vehicle's own actual current
+    own_position (collision-avoidance section 4/5): the vehicle's own actual current
     position, used only to identify which parking area (if any) it's
     currently sitting in - a dedicated-space candidate inside that *same*
     area is excluded, so an ordinary errand search never proposes "drive
@@ -3080,7 +3082,7 @@ def place_parked_npc(
     vehicle_type: str = "car",
     color: Optional[Tuple[int, int, int]] = None,
 ) -> Optional[NPCVehicle]:
-    """NPC-003 sections 5, 20: place a vehicle already at rest at a valid
+    """vehicle-population sections 5, 20: place a vehicle already at rest at a valid
     parking location - the cheap population-fill path, unlike spawn_npc
     (which plans and validates a whole route to get there). No Driver/
     TripGroup/Resident is created here - an empty parked car doesn't need
@@ -3092,7 +3094,7 @@ def place_parked_npc(
     never spawn into an impossible position and hope collision resolves
     it) - the caller tries the next candidate.
     """
-    # NPC-003 v2: vehicle_type is a vehicles/ plugin id - dimensions and
+    # vehicle-population v2: vehicle_type is a vehicles/ plugin id - dimensions and
     # capacity are plugin data, not a branch here (falls back to "car" for
     # an unknown/unregistered id, the same defensive default spawn_npc's
     # own Car construction implicitly used before plugins existed).
@@ -3156,7 +3158,7 @@ def _bfs_destination_order(nodes, edges, origin_index: int, max_hops: int = NPC_
     A destination chosen this way is, by construction, connected to the
     origin by a real, moderate-length chain of road edges. Picking
     instead "whichever node is farthest away by straight-line distance"
-    (tried first, see NPC-001 dev notes) routinely chose a node at the
+    (tried first, see autonomous-driving dev notes) routinely chose a node at the
     edge of the map whose real road path was a long detour (river,
     one-way streets, ...) - exactly the case where plan_route's
     nearest-node "last mile" heuristic (its own docstring) can end up
@@ -3204,7 +3206,7 @@ def spawn_deterministic_npc(
     building_grid: Optional[SpatialWayGrid] = None,
 ) -> Optional[Tuple[int, Driver, NPCVehicle]]:
     """Pick a deterministic origin/destination from the loaded OSM map and
-    spawn NPC-001's one NPC there (section 12).
+    spawn autonomous-driving's one NPC there (section 12).
 
     Both points come from TrafficWorld's OWN route graph - not merely
     from "the largest connected drivable component" by a different
@@ -3289,7 +3291,7 @@ def continue_npc_trip(
     candidates, _plan_and_validate_npc_route), never a second, parallel
     routing implementation.
 
-    destination_query_point (NPC-003 section 12): a household vehicle
+    destination_query_point (vehicle-population section 12): a household vehicle
     returning home searches for candidates *around its home position*
     directly - a single well-defined target, not a BFS walk. Every other
     caller (the default, no destination_query_point) BFS-walks the real
@@ -3413,7 +3415,7 @@ def _apply_npc_continuation(vehicle, driver, plan) -> None:
 
 
 class NPCVehicleManager:
-    """NPC-003: owns the whole NPC vehicle population - the same role
+    """vehicle-population: owns the whole NPC vehicle population - the same role
     pedestrian.PedestrianManager plays for pedestrians. Replaces
     main.py's old "spawn exactly one NPC, retry forever if it fails"
     logic with a real, persistent, gradually-filled population of
@@ -3445,9 +3447,10 @@ class NPCVehicleManager:
         self.household_manager = HouseholdManager()
         self.target_count = target_count
         self.min_count = min_count if min_count is not None else max(1, int(target_count * 0.6))
+        self.competitor_taxis = COMPETITOR_TAXIS  # of the moving-traffic spawns (competitor_taxis.py)
         self.max_count = max_count if max_count is not None else max(self.min_count, int(target_count * 1.5))
         self.household_fraction = household_fraction
-        # NPC-005: a *stable* target (target_count's own steady-state
+        # living-traffic: a *stable* target (target_count's own steady-state
         # size), not derived from the momentarily-fluctuating current
         # vehicle count - see _run_population_tick's trip-start step.
         self.target_moving_count = max(1, int(target_count * target_moving_fraction))
@@ -3478,7 +3481,7 @@ class NPCVehicleManager:
         }
         self._previous_player_pose: Optional[Tuple[float, float, float]] = None
         self.include_experimental = include_experimental
-        # NPC-003 v2 section 14: vehicle_type is picked from the registered
+        # vehicle-population v2 section 14: vehicle_type is picked from the registered
         # road-vehicle plugins' own traffic_weight, not a hardcoded "always
         # car" - a caller (main.py) may override with its own {id: weight}
         # (e.g. config's vehicle_distribution), defaulting to None here to
@@ -3509,7 +3512,7 @@ class NPCVehicleManager:
 
     def _pick_vehicle_type(self) -> str:
         """Weighted choice among road-vehicle plugins with a positive
-        weight (NPC-003 v2 section 14) - falls back to "car" if every
+        weight (vehicle-population v2 section 14) - falls back to "car" if every
         weight is zero (e.g. an all-zero override) so population fill
         never silently stalls."""
         if (self.snowy and self.vehicle_distribution.get("tractor", 0.0) > 0.0
@@ -3550,7 +3553,7 @@ class NPCVehicleManager:
             "reserved": 0,
             "household": 0,
             "autonomous": 0,
-            # NPC-005: the *target*, not just the current count, so "roads
+            # living-traffic: the *target*, not just the current count, so "roads
             # full of parked cars" is a diagnosable number. getattr-guarded:
             # population_counts() must stay safe against a manager built via
             # __new__ with only .vehicles set.
@@ -3578,17 +3581,17 @@ class NPCVehicleManager:
         return counts
 
     def population_counts_by_type(self) -> Dict[str, int]:
-        """NPC-003 v2 section 22's debug "vehicles by plugin type" line."""
+        """vehicle-population v2 section 22's debug "vehicles by plugin type" line."""
         counts: Dict[str, int] = {}
         for vehicle in self.vehicles:
             counts[vehicle.vehicle_type] = counts.get(vehicle.vehicle_type, 0) + 1
         return counts
 
     def trigger_road_rage(self, x: float, y: float, heading: float, sim_time: float) -> Optional[int]:
-        """NPC-005: the player's rage-shout/horn action reaches exactly
+        """living-traffic: the player's rage-shout/horn action reaches exactly
         one real driver - the single nearest currently-driving vehicle
         ahead (nearest_vehicle_ahead's same forward-cone projection
-        NPC-004's own following-distance avoidance already uses, just
+        collision-avoidance's own following-distance avoidance already uses, just
         wider - see the NPC_ROAD_RAGE_* constants' comment). That driver
         yields (update_npc slows it and steers it toward the safe right edge
         while road_rage_until_sim_time is in the future); any queue that
@@ -3619,7 +3622,7 @@ class NPCVehicleManager:
     def request_vehicle(
         self, household: Household, passengers: int = 1, purpose: Optional[str] = None,
     ) -> Optional[NPCVehicle]:
-        """NPC-003 v2 section 10: the one generic entry point a future
+        """vehicle-population v2 section 10: the one generic entry point a future
         Resident shopping/errand system calls - "find a vehicle that can
         carry N Residents [and is suitable for `purpose`], reserve it
         atomically". Does not implement the shopping system itself (see
@@ -3695,7 +3698,7 @@ class NPCVehicleManager:
         )
 
     def _make_household(self, vehicle: NPCVehicle, resident_manager: ResidentManager) -> None:
-        # NPC-003 v2 section 14: not every vehicle plugin is eligible for
+        # vehicle-population v2 section 14: not every vehicle plugin is eligible for
         # household ownership (a truck/bus rolled into the household
         # fraction just stays a plain traffic vehicle instead).
         if not vehicle_definition(vehicle.vehicle_type).household_eligible:
@@ -3824,7 +3827,7 @@ class NPCVehicleManager:
         previous_vehicle_pose: Optional[Tuple[float, float, float]] = None,
         previous_obstacle_poses: Optional[Dict[int, Tuple[float, float, float]]] = None,
     ) -> None:
-        """NPC-004 section 9/10/11: pairwise oriented-box overlap test
+        """collision-avoidance section 9/10/11: pairwise oriented-box overlap test
         against `nearby_obstacles` (already spatially bounded by the
         caller - never all-to-all). `nearby_obstacles` may hold other
         `NPCVehicle`s and/or the player's own `Car` (same x/y/heading/
@@ -3910,7 +3913,7 @@ class NPCVehicleManager:
         pedestrian_mgr: object,
         sim_time: float,
     ) -> None:
-        """NPC-004 sections 10-19: stop the vehicle, sever its driver link
+        """collision-avoidance sections 10-19: stop the vehicle, sever its driver link
         permanently (driver_departed - checked by reserve_household_vehicle
         and the idle/ready-vehicle filters above so nothing ever resumes or
         reassigns this vehicle), and turn every Resident actually aboard at
@@ -3920,7 +3923,7 @@ class NPCVehicleManager:
         idle-parked) still becomes a stopped obstacle, just without anyone
         to eject - nobody was aboard.
 
-        NPC-005: this is also where a live trip_group gets resolved before
+        living-traffic: this is also where a live trip_group gets resolved before
         the vehicle can ever despawn - despawn only requires "no driver in
         self.drivers", so leaving passengers dangling in vehicle.trip_group
         here would let a later despawn silently discard them (Definition of
@@ -3984,7 +3987,7 @@ class NPCVehicleManager:
             return
         family_walks = {}
         for index, resident_id in enumerate(occupant_ids):
-            # NPC-004 section 15: the same passenger-side offset
+            # collision-avoidance section 15: the same passenger-side offset
             # PedestrianManager._vehicle_entry_position already uses for
             # boarding/alighting - a walkable point beside the car, never
             # inside it or in the lane it's blocking. Staggered per occupant
@@ -4026,7 +4029,7 @@ class NPCVehicleManager:
                 )
                 pedestrian.state = "walking_to_activity"
 
-    def _handle_parked_vehicle(self, vehicle: NPCVehicle) -> None:
+    def _handle_parked_vehicle(self, vehicle: NPCVehicle, sim_time: float = 0.0) -> None:
         """Per-frame, cheap only: retirement checks that need to happen
         the instant a vehicle parks. Deciding and routing to the *next*
         destination is deliberately NOT done here - continue_npc_trip's
@@ -4042,6 +4045,10 @@ class NPCVehicleManager:
         bounded by NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK)."""
         if vehicle.trip_group is None:
             self._retire_trip(vehicle)
+            return
+        if is_competitor(vehicle) and vehicle.taxi_job is not None:
+            if vehicle.taxi_job.at_stop(sim_time):  # the passenger has left: free for the next fare
+                vehicle.taxi_job = None
             return
         if vehicle.vehicle_kind == "household" and vehicle.returning_home:
             # Arrived home (section 12) - the trip is simply over, no
@@ -4310,6 +4317,9 @@ class NPCVehicleManager:
                 return
             if result is None:
                 stats["failed"] += 1
+                if is_competitor(vehicle) and vehicle.taxi_job is not None and job["kind"] == "continue":
+                    if vehicle.taxi_job.route_failed():
+                        vehicle.taxi_job = None  # no way there: the fare is lost
                 if job["kind"] == "recovery":
                     # A failed search is not evidence that reversing is safe.
                     driver.recovery_stage = "HOLD"
@@ -4345,6 +4355,8 @@ class NPCVehicleManager:
                 _apply_npc_continuation(vehicle, driver, result)
                 if vehicle.vehicle_kind == "household":
                     vehicle.returning_home = job["kind"] == "continue"
+                if is_competitor(vehicle) and vehicle.taxi_job is not None and job["kind"] == "continue":
+                    vehicle.taxi_job.departing()
                 stats["continued"] += 1
             stats["ready"] += 1
             return
@@ -4440,7 +4452,7 @@ class NPCVehicleManager:
         claimed_points: List[Tuple[int, Tuple[float, float]]],
         deadline: float,
     ) -> Optional[Driver]:
-        """NPC-005: create a moving vehicle on a real road node near (but
+        """living-traffic: create a moving vehicle on a real road node near (but
         not in view of) the player and start its validated trip at once -
         the same place_parked_npc -> find_and_start_npc_trip -> real
         Resident group/TripGroup/Driver chain every other trip uses, so a
@@ -4457,6 +4469,8 @@ class NPCVehicleManager:
 
     def _apply_transit_spawn(self, result, resident_manager: ResidentManager, claimed_points) -> Driver:
         vehicle, plan = result
+        if vehicle.vehicle_type == "car" and sum(map(is_competitor, self.vehicles)) < self.competitor_taxis:
+            make_competitor(vehicle)  # (docs/competitor-taxis.md: it drives on, then waits parked for a fare)
         driver = _apply_npc_trip(vehicle, resident_manager, plan)
         self.vehicles.append(vehicle)
         self.drivers[vehicle.vehicle_id] = driver
@@ -4579,7 +4593,7 @@ class NPCVehicleManager:
         remaining = len(self.vehicles)
         for vehicle in self.vehicles:
             far = (vehicle.x - player_x) ** 2 + (vehicle.y - player_y) ** 2 > despawn_radius_sq
-            # NPC-004 section 18: a CRASHED vehicle is also despawn-eligible
+            # collision-avoidance section 18: a CRASHED vehicle is also despawn-eligible
             # once far and out of view - its driver (if any) already left
             # via _trigger_vehicle_accident (self.drivers.pop), so the
             # "no driver" half of this check is trivially satisfied; the
@@ -4601,9 +4615,9 @@ class NPCVehicleManager:
             # resolution of its occupants.
             far_moving = (
                 far
-                and vehicle.state not in (NPCState.PARKED, NPCState.CRASHED)
+                and (vehicle.state not in (NPCState.PARKED, NPCState.CRASHED) or is_competitor(vehicle))
                 and self.drivers.get(vehicle.vehicle_id) is not None
-            )
+            )  # (a competitor waits parked with its driver aboard: released when far all the same)
             if far_moving and not visible and remaining > self.min_count:
                 if vehicle.trip_group is not None:
                     for resident_id in vehicle.trip_group.member_resident_ids:
@@ -4757,7 +4771,7 @@ class NPCVehicleManager:
         # capping *attempts*, not just candidates, is what actually bounds
         # this tick's worst case.
         trip_starts_this_tick = 0
-        # NPC-005: moving traffic is a first-class target, independent of
+        # living-traffic: moving traffic is a first-class target, independent of
         # total population - "driving" here matches population_counts()'s
         # own definition (state != PARKED) for consistency with the debug
         # panel's numbers.
@@ -4788,7 +4802,7 @@ class NPCVehicleManager:
             # for a future Resident-initiated trip) must not be grabbed by
             # this unrelated "start a random trip" roll.
             and vehicle.availability == NPCAvailability.AVAILABLE
-            # NPC-004 section 12: state != PARKED already excludes a CRASHED
+            # collision-avoidance section 12: state != PARKED already excludes a CRASHED
             # vehicle, but this makes the "never resumes" invariant explicit
             # rather than incidental.
             and not vehicle.driver_departed
@@ -4822,7 +4836,7 @@ class NPCVehicleManager:
                     viewport_bounds, list(claimed_points), preferred_heading=transit_heading,
                 ), traffic_world)
         random.shuffle(idle_candidates)
-        # NPC-005 occupancy invariant: a household's members are shared
+        # living-traffic occupancy invariant: a household's members are shared
         # across its (up to NPC_MAX_VEHICLES_PER_HOUSEHOLD) vehicles, so a
         # member already riding in one must never also be folded into a
         # trip starting on another. Resident.active_vehicle_id/
@@ -4879,6 +4893,8 @@ class NPCVehicleManager:
             and vehicle.trip_group is not None and vehicle.trip_group.all_aboard
             and self.drivers.get(vehicle.vehicle_id) is not None
             and not (vehicle.vehicle_kind == "household" and vehicle.returning_home)
+            # A competitor drives only for a fare's next leg; free, it waits.
+            and (not is_competitor(vehicle) or (vehicle.taxi_job is not None and vehicle.taxi_job.state == "await_departure"))
             and not any(job["vehicle"] is vehicle for job in self._route_jobs)
         ]
         self._existing_route_last_frame = {
@@ -4907,7 +4923,8 @@ class NPCVehicleManager:
                 steps = _continue_npc_trip_steps(
                     vehicle, traffic_world, ways, spatial_grid, parking_spaces, sceneries,
                     buildings, curbs, curb_grid, building_grid,
-                    vehicle.home_position if vehicle.vehicle_kind == "household" else None,
+                    vehicle.home_position if vehicle.vehicle_kind == "household"
+                    else vehicle.taxi_job.target if is_competitor(vehicle) else None,
                     [pos for vid, pos in claimed_points if vid != vehicle.vehicle_id],
                 )
             else:
@@ -4941,7 +4958,7 @@ class NPCVehicleManager:
         pedestrian_mgr: object = None,
         current_way=None,
     ) -> None:
-        # NPC-004: nearby_vehicles_at (avoidance/collision) reads
+        # collision-avoidance: nearby_vehicles_at (avoidance/collision) reads
         # self.spatial_grid, which used to only get rebuilt at population-
         # tick cadence (every NPC_POPULATION_TICK_S=5s) or on initial
         # fill - fine when nothing ever queried it, but every vehicle
@@ -4972,7 +4989,7 @@ class NPCVehicleManager:
                 # doesn't tick physics/decisions while this far away - not
                 # "outside camera = nonexistent".
                 continue
-            # NPC-004 section 2: only vehicles actually near this one need
+            # collision-avoidance section 2: only vehicles actually near this one need
             # to be considered for avoidance (never all-to-all) - the same
             # spatial-grid-bounded query pattern every other proximity check
             # in this module already uses. The player's own car is a cheap
@@ -4996,7 +5013,7 @@ class NPCVehicleManager:
                 spatial_grid=spatial_grid,
             )
             if vehicle.state == NPCState.PARKED:
-                self._handle_parked_vehicle(vehicle)
+                self._handle_parked_vehicle(vehicle, traffic_world.sim_time)
 
         # Collision is a post-physics phase. Reindex moved vehicles, query a
         # swept local area, then test current and interpolated poses. This

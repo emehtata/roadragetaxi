@@ -15,11 +15,13 @@ import sys
 import time
 from types import SimpleNamespace
 
+from .arena_crowds import ArenaCrowds
 from .career import (load_career_balance, load_career_distance, load_gig_balance, load_gig_fuel,
                      load_gig_odometer, save_gig_odometer)
 from .level_routing import LevelRouteGraphs
 from .level_transitions import LevelTransitions, resolve_connectors
 from .map_level import SURFACE_LEVEL, LevelRoadNetworks
+from .competitor_taxis import Dispatcher
 from .npc import NPCVehicleManager, npc_target_count_for_population
 from .osm import (AutoFetchManager, build_ways, city_bin_available, city_bin_path, fetch_osm_ways,
                   fetch_osm_ways_from_pbf, load_city_ways, load_local_sample, local_pbf_available,
@@ -177,11 +179,17 @@ def load_world(
         res, elements_count = load_future.result()
         load_executor.shutdown(wait=True)
         if args.build_in_process:
-            # Startup reports detailed build progress in-process. Streaming
-            # cache misses use a worker after that, so they cannot stall ticks.
-            world_cache.enable_process_build(functools.partial(
-                build_ways, include_bus_stops=bus_stops_enabled,
-            ))
+            # Startup reports detailed progress in-process. Streaming cache
+            # misses use a worker after that, so they cannot stall ticks.
+            process_build = functools.partial(build_ways, include_bus_stops=bus_stops_enabled)
+            if getattr(args, "osm_source", "overpass") == "pbf" and local_pbf_available(
+                getattr(args, "osm_pbf_path", None),
+            ):
+                world_cache.enable_process_pbf_pipeline(
+                    process_build, getattr(args, "osm_pbf_path", None),
+                )
+            else:
+                world_cache.enable_process_build(process_build)
         crossings = getattr(res, "crossings", [])
         stop_signs = getattr(res, "stop_signs", [])
         yield_signs = getattr(res, "yield_signs", [])
@@ -357,8 +365,8 @@ def load_world(
         residents=residents,
         logical_intersections=logical_intersections,
     )
-    # NPC-003: a real, persistent, gradually-filled NPC vehicle
-    # population (replaces NPC-001's single deterministic demo car).
+    # vehicle-population: a real, persistent, gradually-filled NPC vehicle
+    # population (replaces autonomous-driving's single deterministic demo car).
     # Filled here, during loading, so an initial population exists the
     # moment gameplay starts - see NPCVehicleManager.populate_initial's
     # own docstring for why a plain loop is fine at load time even though
@@ -380,7 +388,7 @@ def load_world(
         progress_callback=lambda fraction: on_load_progress(0.88 + 0.06 * fraction, "Preparing NPC traffic..."),
     )
     logger.info(
-        "NPC-003: populated %d/%d NPC vehicles (%d household, %d autonomous), by type: %s",
+        "vehicle-population: populated %d/%d NPC vehicles (%d household, %d autonomous), by type: %s",
         len(npc_manager.vehicles), npc_manager.target_count,
         npc_manager.population_counts()["household"], npc_manager.population_counts()["autonomous"],
         npc_manager.population_counts_by_type(),
@@ -482,8 +490,12 @@ def load_world(
     railway_mgr.associate_taxi_stands(taxi_mgr.taxi_stops)
     railway_mgr.bookings.destination_for = lambda stand: taxi_mgr.pick_phone_dropoff(stand.x, stand.y)
     taxi_mgr.rail_bookings = railway_mgr.bookings
+    arena_crowds = ArenaCrowds(
+        pedestrian_mgr, taxi_stops, chosen_city, to_metres=latlon_to_world_metres(),
+    )
 
     return SimpleNamespace(
+        arena_crowds=arena_crowds,
         railway_mgr=railway_mgr,
         auto_fetch_manager=auto_fetch_manager,
         base_pedestrian_count=base_pedestrian_count,
@@ -506,6 +518,7 @@ def load_world(
         npc_drivers=npc_drivers,
         npcs=npcs,
         npc_manager=npc_manager,
+        competitor_dispatcher=Dispatcher(),  # competitor taxis take phone fares (competitor_taxis.py)
         parking_garages=parking_garages,
         level_ways=level_ways,
         level_connectors=level_connectors,

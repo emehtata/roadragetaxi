@@ -1107,7 +1107,7 @@ func _draw() -> void:
 	taxi_sign_on = a.get("taxi", {}).get("current_passenger") is Dictionary  # a fare on: the roof light lit
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
 		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under)
-	taxi_sign_on = false  # NPC taxis: no fare of theirs is known, unlit
+	taxi_sign_on = false
 	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
 	if smoke_timer > 0.0:
 		_smoke(taxi_at, taxi.z, taxi_length, 5.0 - smoke_timer)
@@ -1126,6 +1126,7 @@ func _draw() -> void:
 		if not view_rect.has_point(c):
 			continue
 		body_style = absi(hash(npc["id"]))  # its own body, every frame the same
+		taxi_sign_on = npc.get("taxi_fare", false)  # a competitor taxi with a passenger aboard
 		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
 			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
 			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false),

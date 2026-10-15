@@ -284,7 +284,7 @@ def advance_simulation(
         audio.play_group("vehicle.horn", 0.45)
         rage_power = max(0.0, rage_power - RAGE_SHOUT_COST)
         rage_shout = random.choice(RAGE_SHOUTS)
-        # NPC-005: Road Rage reaches exactly one real NPC driver - whichever
+        # living-traffic: Road Rage reaches exactly one real NPC driver - whichever
         # is nearest ahead of the player right now (trigger_road_rage).
         world.npc_manager.trigger_road_rage(car.x, car.y, car.heading, sim_time=world.traffic_mgr.sim_time)
 
@@ -704,13 +704,16 @@ def advance_simulation(
     if not taxi_mgr.current_passenger and taxi_waiter_elapsed >= 0.2:
         taxi_waiter_elapsed = 0.0
         pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
+    arena_crowds = getattr(world, "arena_crowds", None)
+    if now is not None and arena_crowds is not None:
+        arena_crowds.update(now, (car.x, car.y))
     pedestrian_mgr.ensure_sports_players(car, viewport_bounds)
     with frame_profiler.section("pedestrians"):
         pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds, game_time_seconds=game_time_seconds)
         pedestrian_mgr.track_vomit(taxi_mgr.vomit_puddles + pedestrian_mgr.vomit_puddles)
     if on_foot:
         audio.update_footsteps(player_pedestrian.speed, dt, running=command.sprint)
-    traffic_mgr.let_taxi_pick_up_waiter(taxi_stops, pedestrian_mgr.pedestrians, dt)
+    world.competitor_dispatcher.update(taxi_mgr, npc_manager, dt)  # competitors take phone fares
     waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
     if waiting_pedestrian is not None:
         pedestrian_mgr.pedestrians.remove(waiting_pedestrian)
