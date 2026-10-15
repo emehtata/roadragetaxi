@@ -942,3 +942,10 @@ def test_nearby_collision_trees_reflects_removal_from_an_already_indexed_scenery
     mgr.invalidate_tree_collision_index()
     found_after = mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
     assert {(fx, fy) for _, _, fx, fy in found_after} == {(1.0, 1.0)}
+
+
+def test_unnamed_road_is_a_valid_stop():
+    way = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="service", half_width_m=3.0)
+    taxi_mgr = TaxiManager(ways=[way], places=[Place(x=200.0, y=50.0, name="Kaukovainio", kind="suburb")], language="en")
+    target = taxi_mgr.pick_random_road_point(0.0, 0.0, 50.0, 400.0)
+    assert target is not None and target.address == "Roadside, Kaukovainio"

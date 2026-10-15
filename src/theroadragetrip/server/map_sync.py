@@ -82,7 +82,7 @@ def map_sync_steps(world):
     # go): a worker thread, the tick yielding meanwhile, so no tick waits for it.
     found = {}
     ways = list(w.ways)
-    search = threading.Thread(target=lambda: found.setdefault("ways", connected_drivable_ways(ways, named=True)),
+    search = threading.Thread(target=lambda: found.setdefault("ways", connected_drivable_ways(ways)),
                               name="taxi-roads", daemon=True)
     search.start()
     while search.is_alive():

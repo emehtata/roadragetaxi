@@ -689,12 +689,9 @@ def compute_largest_connected_road_component(ways: List, min_share: Optional[flo
     return [drivable[i] for i in largest_comp]
 
 
-def connected_drivable_ways(ways: List, named: bool = False) -> List:
+def connected_drivable_ways(ways: List) -> List:
     connected = compute_largest_connected_road_component(ways, MAJOR_COMPONENT_SHARE) if ways else []
     candidates = [w for w in connected if is_car_road(w) and len(w.points_m) >= 2]
-    if named:
-        named_candidates = [w for w in candidates if getattr(w, "name", None)]
-        candidates = named_candidates or candidates
     return candidates or [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
 
 

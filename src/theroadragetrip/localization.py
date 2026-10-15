@@ -169,6 +169,7 @@ TRANSLATIONS = {
         "walking_named": "{name} kävelee taksiin...",
         "boarded_destination": "{name} nousi kyytiin! Määränpää: {address}",
         "long_fare_address": "{name}: tarkka osoite on {address}",
+        "roadside": "Tienvarsi",
         "fare_complete_points": "Kyyti valmis! Hinta {amount}, tippi {tip}, +{earned} pistettä ({avg:.0f} km/h keskiarvo, {seconds:.1f} s)",
     },
     "en": {
@@ -336,6 +337,7 @@ TRANSLATIONS = {
         "walking_named": "{name} is walking to the taxi...",
         "boarded_destination": "{name} boarded! Destination: {address}",
         "long_fare_address": "{name}: the exact address is {address}",
+        "roadside": "Roadside",
         "fare_complete_points": "Fare complete! Fare {amount}, tip {tip}, +{earned} pts ({avg:.0f} km/h average in {seconds:.1f}s)",
     },
 }

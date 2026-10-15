@@ -1100,9 +1100,9 @@ class TaxiManager:
         connected: Optional[List[Way]] = None,
     ) -> None:
         """Update road and place references when map expands dynamically.
-        `connected`: connected_drivable_ways(ways, named=True) computed by the
+        `connected`: connected_drivable_ways(ways) computed by the
         caller already (map sync does it off the tick)."""
-        self.ways = connected if connected is not None else connected_drivable_ways(ways, named=True)
+        self.ways = connected if connected is not None else connected_drivable_ways(ways)
         if places is not None:
             self.places = places
         if buildings is not None:
@@ -1250,6 +1250,12 @@ class TaxiManager:
                 return f"{street}, {district}"
             return f"{street}"
 
+    def roadside_address(self, x: float, y: float) -> str:
+        """An address for a point with no named road near: the roadside of its district."""
+        district = self.get_nearest_district(x, y)
+        roadside = tr(self.language, "roadside")
+        return f"{roadside}, {district}" if district else roadside
+
     def pick_random_building_point(
         self,
         ref_x: Optional[float] = None,
@@ -1344,7 +1350,8 @@ class TaxiManager:
         min_dist: float = 0.0,
         max_dist: float = float("inf"),
     ) -> Optional[TaxiTarget]:
-        """Pick a valid road coordinate with a verified real street name within distance constraints."""
+        """Pick a road coordinate within distance constraints; an unnamed
+        road (a service road, a track) is as good a stop as a street."""
         if not self.ways:
             return None
 
@@ -1356,8 +1363,6 @@ class TaxiManager:
                 continue
 
             way_name = getattr(w, "name", None)
-            if not way_name:
-                continue
 
             # Pick a random segment in this way
             idx = random.randint(0, len(w.points_m) - 2)
@@ -1372,9 +1377,7 @@ class TaxiManager:
                 if not (min_dist <= dist <= max_dist):
                     continue
 
-            addr = self.generate_address_for_point(px, py, way_name)
-            if not addr:
-                continue
+            addr = self.generate_address_for_point(px, py, way_name) or self.roadside_address(px, py)
 
             district = self.get_nearest_district(px, py)
             return TaxiTarget(
@@ -1386,10 +1389,10 @@ class TaxiManager:
                 radius_m=self.pickup_radius_m,
             )
 
-        # If strict distance search didn't match, pick any named way
+        # If strict distance search didn't match, pick any way
         for w in candidate_ways:
             way_name = getattr(w, "name", None)
-            if not way_name or len(w.points_m) < 2:
+            if len(w.points_m) < 2:
                 continue
             idx = random.randint(0, len(w.points_m) - 2)
             p1 = w.points_m[idx]
@@ -1397,16 +1400,14 @@ class TaxiManager:
             t = random.uniform(0.1, 0.9)
             px = p1[0] + t * (p2[0] - p1[0])
             py = p1[1] + t * (p2[1] - p1[1])
-            addr = self.generate_address_for_point(px, py, way_name)
-            if addr:
-                return TaxiTarget(
-                    x=px,
-                    y=py,
-                    address=addr,
-                    way_name=way_name,
-                    district_name=self.get_nearest_district(px, py),
-                    radius_m=self.pickup_radius_m,
-                )
+            return TaxiTarget(
+                x=px,
+                y=py,
+                address=self.generate_address_for_point(px, py, way_name) or self.roadside_address(px, py),
+                way_name=way_name,
+                district_name=self.get_nearest_district(px, py),
+                radius_m=self.pickup_radius_m,
+            )
         return None
 
     def pick_random_taxi_stop(
@@ -1441,7 +1442,7 @@ class TaxiManager:
         return TaxiTarget(
             x=x,
             y=y,
-            address=self.generate_address_for_point(x, y, way_name) or "Taxi stop",
+            address=self.generate_address_for_point(x, y, way_name) or self.roadside_address(x, y),
             way_name=way_name,
             district_name=self.get_nearest_district(x, y),
             radius_m=self.pickup_radius_m,
@@ -1628,8 +1629,8 @@ class TaxiManager:
         name, x, y, _, landmark = random.choices(towns, weights=[town[3] for town in towns])[0]
         return TaxiTarget(x=x, y=y, address=name, radius_m=self.pickup_radius_m, municipality=name, venue_type=landmark)
 
-    def _resolve_long_dropoff(self, passenger: TaxiPassenger, dt: float, car: Car) -> None:
-        """Near a long fare's town: its street address, once the map has one."""
+    def _resolve_long_dropoff(self, passenger: TaxiPassenger, dt: float) -> None:
+        """Near a long fare's town: its address, once the map has a road there."""
         self.long_fare_retry_timer -= dt
         if self.long_fare_retry_timer > 0.0:
             return
@@ -1637,8 +1638,6 @@ class TaxiManager:
         town = passenger.dropoff
         if town.venue_type in LANDMARK_WEIGHTS:  # the place itself: its road, its name
             final = self.pick_random_road_point(town.x, town.y, 0.0, LANDMARK_SNAP_M)
-            if final is None and math.hypot(car.x - town.x, car.y - town.y) <= LANDMARK_SNAP_M:
-                final = TaxiTarget(x=car.x, y=car.y, address="", radius_m=self.pickup_radius_m)  # unnamed access road: here
         else:
             final = (self.pick_random_building_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M)
                      or self.pick_random_road_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M))
@@ -2182,7 +2181,7 @@ class TaxiManager:
             )
             if target.municipality is not None:  # a long fare: no stop at the bare town centre
                 if dist_to_target <= LONG_FARE_RESOLVE_M:
-                    self._resolve_long_dropoff(self.current_passenger, dt, car)
+                    self._resolve_long_dropoff(self.current_passenger, dt)
             elif dist_to_target <= target.radius_m:
                 if is_stopped:
                     # Completed fare!
