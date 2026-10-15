@@ -36,6 +36,18 @@ var ambient := Color.WHITE  # the world's ambient multiply (main.gd): lit vehicl
 var _tint = null  # while a vehicle is drawn: its light (ambient + street light); its shapes go to _cars
 var _cars: Node2D  # the vehicles, unshaded: each tinted by its own light instead of the world's ambient
 var _route_node: Node2D  # the navigation route, unshaded (_draw_route)
+# People (and pucks) are drawn unshaded, each tinted by the light where they
+# stand (ambient + street lights + floodlights, like the vehicles), so a
+# floodlit rink shows its jerseys; text bubbles and tags go on _overlay,
+# unshaded and untinted, never dimmed by the night. _draw collects both
+# (_people_rows, _overlays); the helpers draw on _canvas with _lit colours.
+var _people: Node2D
+var _overlay: Node2D
+var _people_rows: Array = []  # [position, heading, ped, animation time]
+var _puck_frame: Array = []  # [a, b, t] for _pucks
+var _overlays: Array[Callable] = []
+var _canvas: CanvasItem = self
+var _lit_tint := Color.WHITE
 var _route_now := PackedVector2Array()
 const ROUTE_NIGHT_VISIBILITY := 0.55  # 0: as dark as the night, 1: as clear as by day
 var _car_shapes: Array = []  # [kind, ...] this frame: ["poly", points, fill, outline, width], ["circle", ...], ["line", ...]
@@ -121,10 +133,23 @@ func _ready() -> void:
 	_route_node.material = preload("res://emissive.tres")
 	_route_node.draw.connect(_draw_route)
 	add_child(_route_node)  # before the vehicles' node: under them
+	_people = Node2D.new()  # before the vehicles' node: under them
+	_people.material = preload("res://emissive.tres")
+	_people.draw.connect(_draw_people)
+	add_child(_people)
 	_cars = Node2D.new()
 	_cars.material = preload("res://emissive.tres")  # lit by vehicle_light, not the ambient multiply
 	_cars.draw.connect(func(): _paint(_cars, _car_shapes))
 	add_child(_cars)
+	_overlay = Node2D.new()
+	_overlay.z_index = 5  # text over everything on the map
+	_overlay.material = preload("res://emissive.tres")
+	_overlay.draw.connect(func():
+		_canvas = _overlay
+		for overlay in _overlays:
+			overlay.call()
+		_canvas = self)
+	add_child(_overlay)
 	_cars_under = Node2D.new()
 	_cars_under.z_index = -9  # 10 - 9: z 1, the ground roads' level, under every bridge deck
 	_cars_under.material = preload("res://emissive.tres")
@@ -769,38 +794,41 @@ func _fallen(c: Vector2, h: Vector2, side: Vector2, radius: float, clothing: Col
 	var shoulders := c + h * radius * 0.45
 	_rotated_ellipse(c + Vector2(0, radius * 0.25), h, radius * 1.5, radius * 0.75, RS.PED_SHADOW)
 	if hockey:
-		draw_line(c + side * radius * 1.15 - h * radius * 0.9, c + side * radius * 1.15 + h * radius * 1.3,
-			STICK_SHAFT, maxf(_px(1.0), radius * 0.12))
+		_canvas.draw_line(c + side * radius * 1.15 - h * radius * 0.9, c + side * radius * 1.15 + h * radius * 1.3,
+			_person_lit(STICK_SHAFT), maxf(_px(1.0), radius * 0.12))
 	for limb_side: float in [-1.0, 1.0]:
-		draw_line(hip, hip - h * radius * 0.95 + side * radius * 0.45 * limb_side, RS.PED_LEGS, maxf(_px(1.0), radius * 0.28))
-		draw_line(shoulders, shoulders + h * radius * 0.2 + side * radius * 0.9 * limb_side, clothing, maxf(_px(1.0), radius * 0.22))
+		_canvas.draw_line(hip, hip - h * radius * 0.95 + side * radius * 0.45 * limb_side, _person_lit(RS.PED_LEGS), maxf(_px(1.0), radius * 0.28))
+		_canvas.draw_line(shoulders, shoulders + h * radius * 0.2 + side * radius * 0.9 * limb_side, _person_lit(clothing), maxf(_px(1.0), radius * 0.22))
 	_rotated_ellipse(c, h, radius * 0.8, radius * 0.5, clothing)
 	var head := shoulders + h * radius * 0.5
-	draw_circle(head, maxf(_px(2.0), radius * 0.42), RS.PED_HAIR)
-	draw_circle(head + h * radius * 0.08, maxf(_px(1.0), radius * 0.3), RS.PED_HEAD)
+	_canvas.draw_circle(head, maxf(_px(2.0), radius * 0.42), _person_lit(RS.PED_HAIR))
+	_canvas.draw_circle(head + h * radius * 0.08, maxf(_px(1.0), radius * 0.3), _person_lit(RS.PED_HEAD))
 
 
 ## An ellipse with its `rx` axis along `along`.
 func _rotated_ellipse(c: Vector2, along: Vector2, rx: float, ry: float, color: Color) -> void:
-	draw_set_transform(c, along.angle(), Vector2(rx, ry))
-	draw_circle(Vector2.ZERO, 1.0, color)
-	draw_set_transform(Vector2.ZERO)
+	_canvas.draw_set_transform(c, along.angle(), Vector2(rx, ry))
+	_canvas.draw_circle(Vector2.ZERO, 1.0, _person_lit(color))
+	_canvas.draw_set_transform(Vector2.ZERO)
 
 
 func _ellipse(c: Vector2, rx: float, ry: float, color: Color) -> void:
-	draw_set_transform(c, 0.0, Vector2(rx, ry))
-	draw_circle(Vector2.ZERO, 1.0, color)
-	draw_set_transform(Vector2.ZERO)
+	_canvas.draw_set_transform(c, 0.0, Vector2(rx, ry))
+	_canvas.draw_circle(Vector2.ZERO, 1.0, _person_lit(color))
+	_canvas.draw_set_transform(Vector2.ZERO)
 
 
 ## A pedestrian: shadow, legs
 ## stepping with animation_time, body, head facing the heading; fallen ones
 ## lie down, people going indoors are an outline; then any cursing bubble.
 func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: float) -> void:
+	if _canvas == self:  # drawn lit on _people (_draw_people)
+		_people_rows.append([c, heading, ped, animation_time])
+		return
 	var radius := maxf(_px(4.0), ped.get("radius_m", 0.45))
 	var clothing: Color = _rgb(ped.get("color", [200, 200, 200]))
 	if ped.get("state", "") in INDOORS:
-		draw_arc(c, radius, 0.0, TAU, 16, RS.PED_INDOORS, _px(1.0))
+		_canvas.draw_arc(c, radius, 0.0, TAU, 16, _person_lit(RS.PED_INDOORS), _px(1.0))
 		return
 	var h := Vector2(cos(heading), -sin(heading))
 	var side := Vector2(-h.y, h.x)
@@ -813,12 +841,12 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 		var leg_start := c - h * radius * 0.15 + down * 0.45
 		for leg_side: float in [-1.0, 1.0]:
 			var leg_end: Vector2 = leg_start + side * radius * (0.42 * leg_side + gait * 0.10 * leg_side) + h * radius * 0.12 + down * 0.45
-			draw_line(leg_start, leg_end, RS.PED_LEGS, maxf(_px(1.0), radius * 0.28))
+			_canvas.draw_line(leg_start, leg_end, _person_lit(RS.PED_LEGS), maxf(_px(1.0), radius * 0.28))
 		_ellipse(c + down * 0.425, radius * 0.72, radius * 0.775, RS.PED_SHADOW)
 		_ellipse(c + down * 0.405, radius * 0.58, radius * 0.625, clothing)
 		var head := c + h * radius * 0.6
-		draw_circle(head, maxf(_px(2.0), radius * 0.48), RS.PED_HAIR)
-		draw_circle(head, maxf(_px(1.0), radius * 0.35), RS.PED_HEAD)
+		_canvas.draw_circle(head, maxf(_px(2.0), radius * 0.48), _person_lit(RS.PED_HAIR))
+		_canvas.draw_circle(head, maxf(_px(1.0), radius * 0.35), _person_lit(RS.PED_HEAD))
 		if ped.get("activity", "") == "ice_hockey":
 			var goalie: bool = ped.get("hockey_goalie", false)
 			if goalie:  # leg pads, either side
@@ -845,47 +873,73 @@ func _hockey_stick(c: Vector2, h: Vector2, side: Vector2, radius: float, swing: 
 	if swing > 0.0:  # the follow-through: swept across, back to rest as the swing ends
 		reach = reach.rotated(-1.2 * swing / STICK_SWING_S)
 	var blade_root := hand + reach
-	draw_line(hand, blade_root, STICK_SHAFT, maxf(_px(1.0), radius * 0.12))
+	_canvas.draw_line(hand, blade_root, _person_lit(STICK_SHAFT), maxf(_px(1.0), radius * 0.12))
 	# A goalie's stick has the wide paddle and blade.
-	draw_line(blade_root, blade_root - side * radius * (0.8 if goalie else 0.55), STICK_BLADE, maxf(_px(1.5), radius * (0.3 if goalie else 0.18)))
+	_canvas.draw_line(blade_root, blade_root - side * radius * (0.8 if goalie else 0.55), _person_lit(STICK_BLADE), maxf(_px(1.5), radius * (0.3 if goalie else 0.18)))
 
 
 ## Pucks on the rinks (state "pucks"): small and black, where the
 ## simulation slid them (moved on toward the next state's spot).
 func _pucks(a: Dictionary, b: Dictionary, t: float) -> void:
+	if _canvas == self:
+		_puck_frame = [a, b, t]
+		return
 	var now: Array = a.get("pucks", [])
 	var next: Array = b.get("pucks", [])
 	for i in now.size():
 		var p: Array = now[i]
 		var q: Array = next[i] if next.size() == now.size() else p
 		var at := MapMath.point(origin, lerpf(p[0], q[0], t), lerpf(p[1], q[1], t))
-		draw_circle(at, maxf(_px(2.5), 0.12), STICK_BLADE)
+		_lit_tint = vehicle_light(light_level * float(light_at.call(at)), ambient)
+		_canvas.draw_circle(at, maxf(_px(2.5), 0.12), _person_lit(STICK_BLADE))
 
 
 ## A text bubble whose bottom centre is at `anchor`, drawn in screen
 ## pixels (constant size whatever the zoom).
 func _bubble(anchor: Vector2, text: String, text_color: Color, border: Color, alpha := 1.0, font_size := 14, tail := false) -> void:
+	if _canvas == self:  # text never dims: on _overlay
+		_overlays.append(_bubble.bind(anchor, text, text_color, border, alpha, font_size, tail))
+		return
 	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	var box := Rect2(Vector2(-size.x / 2.0 - 4.0, -size.y - 4.0 - (8.0 if tail else 0.0)), size + Vector2(8.0, 4.0))
-	draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)
-	draw_rect(box, Color(1, 1, 1, minf(240.0 / 255.0, alpha)))
-	draw_rect(box, Color(border, alpha), false, 1.0)
+	_canvas.draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)
+	_canvas.draw_rect(box, Color(1, 1, 1, minf(240.0 / 255.0, alpha)))
+	_canvas.draw_rect(box, Color(border, alpha), false, 1.0)
 	if tail:
-		draw_colored_polygon(PackedVector2Array([Vector2(-7, -8), Vector2(7, -8), Vector2(0, 0)]), Color(1, 1, 1, alpha))
-	draw_string(_font, box.position + Vector2(4.0, size.y - 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(text_color, alpha))
-	draw_set_transform(Vector2.ZERO)
+		_canvas.draw_colored_polygon(PackedVector2Array([Vector2(-7, -8), Vector2(7, -8), Vector2(0, 0)]), Color(1, 1, 1, alpha))
+	_canvas.draw_string(_font, box.position + Vector2(4.0, size.y - 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(text_color, alpha))
+	_canvas.draw_set_transform(Vector2.ZERO)
 
 
 ## A label with a dark background (the target and customer tags).
 func _tag(anchor: Vector2, text: String, text_color: Color, border = null, font_size := 14) -> void:
+	if _canvas == self:  # text never dims: on _overlay
+		_overlays.append(_tag.bind(anchor, text, text_color, border, font_size))
+		return
 	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	var box := Rect2(Vector2(-size.x / 2.0 - 4.0, -size.y / 2.0 - 2.0), size + Vector2(8.0, 4.0))
-	draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)
-	draw_rect(box, Color8(20, 20, 20, 220))
+	_canvas.draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)
+	_canvas.draw_rect(box, Color8(20, 20, 20, 220))
 	if border != null:
-		draw_rect(box, border, false, 1.0)
-	draw_string(_font, box.position + Vector2(4.0, size.y - 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
-	draw_set_transform(Vector2.ZERO)
+		_canvas.draw_rect(box, border, false, 1.0)
+	_canvas.draw_string(_font, box.position + Vector2(4.0, size.y - 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
+	_canvas.draw_set_transform(Vector2.ZERO)
+
+
+## A person's colour in the light they stand in (_lit_tint, set per person).
+func _person_lit(color: Color) -> Color:
+	return Color(color.r * _lit_tint.r, color.g * _lit_tint.g, color.b * _lit_tint.b, color.a)
+
+
+func _draw_people() -> void:
+	_canvas = _people
+	for row in _people_rows:
+		_lit_tint = vehicle_light(light_level * float(light_at.call(row[0])), ambient)
+		_pedestrian(row[0], row[1], row[2], row[3])
+	if not _puck_frame.is_empty():
+		_pucks(_puck_frame[0], _puck_frame[1], _puck_frame[2])
+	_lit_tint = Color.WHITE
+	_canvas = self
 
 
 func _rgb(values: Array) -> Color:
@@ -984,6 +1038,9 @@ func _draw() -> void:
 	var t: float = _frame["t"]
 	var count := 0
 	_lamp_polys.clear()
+	_people_rows.clear()
+	_puck_frame = []
+	_overlays.clear()
 	_car_shapes.clear()
 	_under_shapes.clear()
 	_under_lamps.clear()
@@ -1079,6 +1136,8 @@ func _draw() -> void:
 	_booked_arrow(a, b, t, later_peds)
 
 	drawn_entities = count + _trains_drawn
+	_people.queue_redraw()
+	_overlay.queue_redraw()
 	_cars.queue_redraw()
 	_cars_under.queue_redraw()
 	_lamps.queue_redraw()  # this frame's lamps and halos, collected above
