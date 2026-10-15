@@ -106,6 +106,7 @@ var language := "en"
 
 var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
 var holidays: Node = preload("res://holiday_layer.gd").new()
+var _tram_states := {}  # tram id -> its state last frame: the bell when one sets off
 var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, multiplied over the world canvas
 
 
@@ -118,6 +119,7 @@ func _ready() -> void:
 	weather.setup($Sky, map_layer)
 	add_child(holidays)
 	holidays.setup(map_layer)
+	holidays.audio = audio
 	entities.lamp_near = map_layer.lamp_near
 	entities.light_at = map_layer.light_at  # street light on the vehicles  # reflectors and long beams look up working street lights
 	entities.covered = map_layer.covered  # headlights under a higher road
@@ -588,6 +590,7 @@ func _present(state: Dictionary) -> void:
 	for key in loops:
 		audio.set_loop(key, loops[key])
 	_train_loop(state)
+	_feature_loops(state)
 	var crowd := station_ambience(state.get("railway"), Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y),
 		audio._config.get("ranges_m", {}).get("station.ambience", [15.0, 150.0]))
 	audio.set_loop("station_crowd", crowd[0] * 0.6, 1.0, crowd[1])
@@ -637,7 +640,7 @@ func _train_loop(state: Dictionary) -> void:
 	var best := INF
 	var speed := 0.0
 	for train in state.get("trains", []):
-		if train["state"] != "RUNNING" or train["speed"] < 2.0 or train["cars"].is_empty():
+		if is_tram(train) or train["state"] != "RUNNING" or train["speed"] < 2.0 or train["cars"].is_empty():
 			continue
 		var at := Vector2(train["cars"][0][0], train["cars"][0][1])
 		if at.distance_to(audio.player_at) < best:
@@ -645,6 +648,68 @@ func _train_loop(state: Dictionary) -> void:
 			nearest = at
 			speed = train["speed"]
 	audio.set_loop("train_running", minf(1.0, speed / 20.0) if nearest != null else 0.0, 1.0, nearest)
+
+
+static func is_tram(train: Dictionary) -> bool:
+	return str(train.get("id", "")).begins_with("tram-")
+
+
+## The nearest of `points` ([x, y] world metres) to `from`, or null.
+static func nearest_point(points: Array, from: Vector2):
+	var best = null
+	var best_distance := INF
+	for point in points:
+		var at := Vector2(point[0], point[1])
+		if at.distance_to(from) < best_distance:
+			best_distance = at.distance_to(from)
+			best = at
+	return best
+
+
+## Trams, tractors, ploughs, sports and arena crowds: each a loop at its
+## nearest source (the audio manager attenuates by distance); a tram's bell
+## when it sets off from a stop near the listener.
+func _feature_loops(state: Dictionary) -> void:
+	var from: Vector2 = audio.player_at
+	var tram = null
+	var tram_speed := 0.0
+	var states := {}
+	for train in state.get("trains", []):
+		if not is_tram(train) or train["cars"].is_empty():
+			continue
+		var at := Vector2(train["cars"][0][0], train["cars"][0][1])
+		states[train["id"]] = train["state"]
+		if _tram_states.get(train["id"], "") == "DWELLING" and train["state"] == "RUNNING" and at.distance_to(from) < 150.0:
+			audio.handle_event({"type": "sound", "group": "railway.tram_bell", "at": [at.x, at.y]})
+		if train["speed"] > 0.5 and (tram == null or at.distance_to(from) < tram.distance_to(from)):
+			tram = at
+			tram_speed = train["speed"]
+	_tram_states = states
+	audio.set_loop("tram_running", minf(1.0, tram_speed / 10.0) if tram != null else 0.0, 1.0, tram)
+	var tractor = null
+	var tractor_speed := 0.0
+	for npc in state.get("npcs", []):
+		if npc.get("vehicle_type", "") != "tractor" or npc.get("state", "") in ["PARKED", "CRASHED"]:
+			continue
+		var at := Vector2(npc["x"], npc["y"])
+		if tractor == null or at.distance_to(from) < tractor.distance_to(from):
+			tractor = at
+			tractor_speed = absf(npc.get("speed", 0.0))
+	audio.set_loop("tractor", 0.7 if tractor != null else 0.0, 0.85 + minf(tractor_speed / 15.0, 0.4), tractor)
+	audio.set_loop("plough", minf(1.0, tractor_speed / 6.0) if tractor != null and entities.ploughing else 0.0, 1.0, tractor)
+	var skaters: Array = []
+	for ped in state.get("pedestrians", []):
+		if ped.get("activity", "") == "ice_skating":
+			skaters.append([ped["x"], ped["y"]])
+	var skater = nearest_point(skaters, from)
+	audio.set_loop("ice_skating", 0.6 if skater != null else 0.0, 1.0, skater)
+	var puck = nearest_point(state.get("pucks", []), from)
+	audio.set_loop("ice_hockey", 0.8 if puck != null else 0.0, 1.0, puck)
+	var ball = nearest_point(state.get("balls", []), from)
+	audio.set_loop("soccer", 0.7 if ball != null else 0.0, 1.0, ball)
+	var calendar = state.get("calendar")
+	var arena = nearest_point(calendar.get("arena_games", []), from) if typeof(calendar) == TYPE_DICTIONARY else null
+	audio.set_loop("arena_crowd", 0.8 if arena != null else 0.0, 1.0, arena)
 
 
 ## 0 by day, 1 at night, fading over an hour at dusk (21-22) and dawn (5-6).

@@ -118,6 +118,10 @@ class ArenaCrowds:
         return any(event.start - ARRIVAL_BEFORE <= now < event.start + GAME_DURATION + DEPARTURE_WINDOW
                    for event in self.events)
 
+    def games_in_progress(self, now: datetime) -> list[tuple[float, float]]:
+        """Where a game is being played right now (the crowd heard outside)."""
+        return [event.point for event in self.events if event.start <= now < event.start + GAME_DURATION]
+
     def update(self, now: datetime, taxi_position: tuple[float, float]) -> None:
         if self._next_update is not None and now < self._next_update:
             return

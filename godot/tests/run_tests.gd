@@ -114,8 +114,21 @@ func test_holiday_events() -> void:
 	check(not events.decorations.visible and not events.bursts.visible and events.yards.is_empty(), "underground: holiday effects hidden")
 	events.update(0.016, {"calendar": null}, view, false)
 	check(events.yards.is_empty() and not events.bursts.visible, "old server: no events, no cached yards")
+	# Sounds: each site whistles at launch and bangs at its burst, once per cycle.
+	var site := PackedVector2Array([Vector2.ZERO])
+	var heard: Array = []
+	var clock := 0.5  # a window with one burst (1 s) and one launch (5 s)
+	for frame in 300:  # 5 s at 60 fps: one cycle
+		heard.append_array(events.firework_sounds(site, clock, clock + 1.0 / 60.0))
+		clock += 1.0 / 60.0
+	var groups := heard.map(func(sound): return sound[0])
+	check(groups.count("holiday.firework_launch") == 1 and groups.count("holiday.firework_burst") == 1, "fireworks: one whistle and one bang per rocket")
+	check(heard[groups.find("holiday.firework_burst")][1] == Vector2(0, -30), "fireworks: the bang where it bursts")
 	events.free()
 	map.free()
+	# Feature loops at their nearest source; trams have their own rumble.
+	check(Main.nearest_point([[0, 0], [5, 5], [50, 0]], Vector2(6, 6)) == Vector2(5, 5) and Main.nearest_point([], Vector2.ZERO) == null, "the nearest sound source")
+	check(Main.is_tram({"id": "tram-3"}) and not Main.is_tram({"id": 12345}), "trams told apart from trains")
 
 
 func test_chunk_queue() -> void:

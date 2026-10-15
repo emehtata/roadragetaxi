@@ -173,3 +173,12 @@ def test_arena_lights_cover_arrivals_game_and_departures():
     assert crowds.lights_on(start - timedelta(hours=1))
     assert crowds.lights_on(start + timedelta(hours=2, minutes=59))
     assert not crowds.lights_on(start + timedelta(hours=3))
+
+
+def test_the_game_is_heard_at_the_arena_only_while_it_is_played():
+    crowds = ArenaCrowds(SimpleNamespace(pedestrians=[]), [], "Oulu", [fixture()], to_metres=lambda lat, lon: (10.0, 20.0))
+    start = crowds.events[0].start
+    assert crowds.games_in_progress(start - timedelta(minutes=1)) == []  # arrivals: no game yet
+    assert crowds.games_in_progress(start) == [(10.0, 20.0)]
+    assert crowds.games_in_progress(start + timedelta(hours=2, minutes=29)) == [(10.0, 20.0)]
+    assert crowds.games_in_progress(start + timedelta(hours=2, minutes=30)) == []

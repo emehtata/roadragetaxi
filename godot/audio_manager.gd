@@ -102,7 +102,7 @@ func resolve(event: Dictionary) -> Array:
 		var files: Array = group["files"]
 		var variation: int = step.get("variation", event.get("variation", _pick_variation(step["group"], files.size())))
 		var action := {"group": step["group"], "file": files[clampi(variation, 0, files.size() - 1)],
-			"volume": float(step.get("volume", 1.0)), "bus": bus_for(step["group"])}
+			"volume": float(step.get("volume", event.get("volume", 1.0))), "bus": bus_for(step["group"])}
 		var at = event.get("at")
 		if at == null and group["category"] in _config.get("player_categories", []):
 			at = [player_at.x, player_at.y]

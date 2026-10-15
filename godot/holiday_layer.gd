@@ -4,6 +4,7 @@ extends Node
 
 const COLORS := [Color(1.0, 0.3, 0.2), Color(0.3, 0.8, 1.0), Color(1.0, 0.8, 0.2), Color(0.6, 1.0, 0.4)]
 var map_layer: Node2D
+var audio: Node  # AudioManager: the fireworks' whistles and bangs (main.gd sets it)
 var yards := PackedVector2Array()
 var sites := PackedVector2Array()  # firework launch points in the view
 const SITE_CELL_M := 80.0
@@ -58,6 +59,11 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool) -> 
 		decorations.queue_redraw()
 	if fireworks:
 		bursts.queue_redraw()
+		if audio != null:
+			for sound in firework_sounds(sites, clock - delta, clock):
+				var at: Vector2 = sound[1]
+				audio.handle_event({"type": "sound", "group": sound[0], "volume": 0.6,
+					"at": [at.x + map_layer.origin.x, map_layer.origin.y - at.y]})
 
 
 func _draw_decorations() -> void:
@@ -91,6 +97,19 @@ static func firework_sites(view: Rect2) -> PackedVector2Array:
 				if result.size() >= MAX_SITES:
 					return result
 	return result
+
+
+## The sounds due between `before` and `now` (clock seconds): a rocket's
+## whistle at launch, its bang at the burst, high where it bursts. [[group, at]]
+static func firework_sounds(points: PackedVector2Array, before: float, now: float) -> Array:
+	var due: Array = []
+	for at in points:
+		var offset := absf(at.x * 0.17 + at.y * 0.31)
+		for event: Array in [[0.0, "holiday.firework_launch", at], [RISE_S, "holiday.firework_burst", at - Vector2(0, 30)]]:
+			var mark: float = event[0]
+			if floorf((now + offset - mark) / CYCLE_S) > floorf((before + offset - mark) / CYCLE_S):
+				due.append([event[1], event[2]])
+	return due
 
 
 func _draw_fireworks() -> void:

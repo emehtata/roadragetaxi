@@ -445,7 +445,9 @@ class SimulationServer:
                 "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
                 "sports_lights": sports_lights_hours(self.calendar.current),
                 "holidays": holiday_events(self.calendar.current),
-                "arena_lights": bool(arena_crowds and arena_crowds.lights_on(self.calendar.current))}
+                "arena_lights": bool(arena_crowds and arena_crowds.lights_on(self.calendar.current)),
+                "arena_games": [[round(x, 1), round(y, 1)] for x, y in arena_crowds.games_in_progress(self.calendar.current)]
+                if arena_crowds else []}
 
     def start(self, host: str, port: int) -> None:
         self._listener = Listener(host, port, self._on_client_connect)
