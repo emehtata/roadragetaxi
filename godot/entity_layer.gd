@@ -761,6 +761,32 @@ func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false
 		draw_circle(puff, _px(3.0 + offset_t * 5.0), smoke)
 
 
+## Someone lying flat along `h` (their heading, head first): spread out -
+## legs splayed behind, arms flung to the sides; a hockey player's stick
+## dropped beside them.
+func _fallen(c: Vector2, h: Vector2, side: Vector2, radius: float, clothing: Color, hockey: bool) -> void:
+	var hip := c - h * radius * 0.35
+	var shoulders := c + h * radius * 0.45
+	_rotated_ellipse(c + Vector2(0, radius * 0.25), h, radius * 1.5, radius * 0.75, RS.PED_SHADOW)
+	if hockey:
+		draw_line(c + side * radius * 1.15 - h * radius * 0.9, c + side * radius * 1.15 + h * radius * 1.3,
+			STICK_SHAFT, maxf(_px(1.0), radius * 0.12))
+	for limb_side: float in [-1.0, 1.0]:
+		draw_line(hip, hip - h * radius * 0.95 + side * radius * 0.45 * limb_side, RS.PED_LEGS, maxf(_px(1.0), radius * 0.28))
+		draw_line(shoulders, shoulders + h * radius * 0.2 + side * radius * 0.9 * limb_side, clothing, maxf(_px(1.0), radius * 0.22))
+	_rotated_ellipse(c, h, radius * 0.8, radius * 0.5, clothing)
+	var head := shoulders + h * radius * 0.5
+	draw_circle(head, maxf(_px(2.0), radius * 0.42), RS.PED_HAIR)
+	draw_circle(head + h * radius * 0.08, maxf(_px(1.0), radius * 0.3), RS.PED_HEAD)
+
+
+## An ellipse with its `rx` axis along `along`.
+func _rotated_ellipse(c: Vector2, along: Vector2, rx: float, ry: float, color: Color) -> void:
+	draw_set_transform(c, along.angle(), Vector2(rx, ry))
+	draw_circle(Vector2.ZERO, 1.0, color)
+	draw_set_transform(Vector2.ZERO)
+
+
 func _ellipse(c: Vector2, rx: float, ry: float, color: Color) -> void:
 	draw_set_transform(c, 0.0, Vector2(rx, ry))
 	draw_circle(Vector2.ZERO, 1.0, color)
@@ -781,8 +807,7 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 	var down := Vector2(0, radius)
 	_ellipse(c + down * 0.675, radius * 0.8, radius * 0.325, RS.PED_SHADOW)
 	if ped.get("animation_state", "walking") == "fallen":
-		_ellipse(c, radius * 1.15, radius * 0.35, clothing)
-		draw_circle(c + Vector2(radius, -radius * 0.1), radius * 0.35, RS.PED_HEAD)
+		_fallen(c, h, side, radius, clothing, ped.get("activity", "") == "ice_hockey")
 	else:
 		var gait := sin(animation_time * 10.0) if ped.get("animation_state", "walking") == "walking" else 0.0
 		var leg_start := c - h * radius * 0.15 + down * 0.45
