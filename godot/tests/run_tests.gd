@@ -79,9 +79,43 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_buildings_3d()
 	test_resent_chunk_buildings()
 	test_performance_paths()
+	test_holiday_events()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
+
+
+func test_holiday_events() -> void:
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "holiday_yards": [[20, 20], [40, 40]]})
+	var view := Rect2(0, -100, 100, 100)
+	check(map.holiday_yards(view).size() == 2, "holiday yards: server points in world coordinates")
+	check(map.holiday_yards(view, 1).size() == 1, "holiday yards: bounded count")
+	check(map.holiday_yards(Rect2(1000, 1000, 10, 10)).is_empty(), "holiday yards: culled outside view")
+	var events: Node = preload("res://holiday_layer.gd").new()
+	root.add_child(events)
+	events.setup(map)
+	var state := {"calendar": {"holidays": {"halloween": true}}}
+	events.update(0.016, state, view, false)
+	check(events.decorations.visible and not events.bursts.visible and events.yards.size() == 2, "Halloween: yards lit, no fireworks")
+	state.calendar.holidays = {"fireworks": true}
+	events.update(0.016, state, view, false)
+	check(not events.decorations.visible and events.bursts.visible, "New Year: only fireworks")
+	check(not events.sites.is_empty() and events.yards.is_empty(), "New Year: fireworks rise over the town, no yard query")
+	var town := Rect2(-2000, -2000, 4000, 4000)
+	var sites: PackedVector2Array = events.firework_sites(town)
+	check(sites.size() == 12 and sites == events.firework_sites(town), "fireworks: at most 12 sites, the same ones every refresh")
+	var all_in := true
+	for at in events.firework_sites(view):
+		all_in = all_in and view.has_point(at)
+	check(all_in, "fireworks: sites inside the view")
+	events.update(0.016, state, view, true)
+	check(not events.decorations.visible and not events.bursts.visible and events.yards.is_empty(), "underground: holiday effects hidden")
+	events.update(0.016, {"calendar": null}, view, false)
+	check(events.yards.is_empty() and not events.bursts.visible, "old server: no events, no cached yards")
+	events.free()
+	map.free()
 
 
 func test_chunk_queue() -> void:

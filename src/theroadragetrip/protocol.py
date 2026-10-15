@@ -31,11 +31,13 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import asdict
+from datetime import date
 from typing import Optional
 
 from .activities.plugins.ice_hockey import puck_positions
 from .activities.plugins.soccer import ball_positions
 from .fuel import fuel_station_price_cents, nearest_fuel_station
+from .holiday_events import santa_costume
 from .localization import tr
 from .rail_bookings import PASSENGER_MET, PASSENGER_WAITING
 from .simulation import PlayerCommand
@@ -152,7 +154,7 @@ def _npc_to_dict(npc, residents=None) -> dict:
     }
 
 
-def _pedestrian_to_dict(ped, residents=None) -> dict:
+def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
     return {
         "id": ped.resident_id,
         "x": ped.x,
@@ -167,6 +169,7 @@ def _pedestrian_to_dict(ped, residents=None) -> dict:
         "curse_text": ped.curse_text,
         "mood": ped.mood,
         "is_cyclist": ped.is_cyclist,
+        "costume": "santa" if santa_costume(ped, (residents or {}).get(ped.resident_id), santa_day) else "",
         "resident": _resident_to_dict((residents or {}).get(ped.resident_id)),
         "blood_alcohol_promille": getattr(ped, "blood_alcohol_promille", 0.0),
         "activity": getattr(getattr(ped, "activity", None), "plugin_id", ""),
@@ -407,6 +410,7 @@ def build_state_message(
     player_at = (player_pedestrian.x, player_pedestrian.y) if on_foot else (car.x, car.y)
     fallen_trees, knocked_posts = _fallen_and_knocked(world, *player_at)
     residents = getattr(getattr(world, "residents", None), "residents", {})
+    santa_day = date.fromisoformat(calendar["date"]) if calendar and calendar.get("holidays", {}).get("santas") else None
     state = {
         "fallen_trees": fallen_trees,  # [x, y, angle] (the way the taxi hit it)
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
@@ -440,7 +444,7 @@ def build_state_message(
             "x": player_pedestrian.x, "y": player_pedestrian.y, "heading": player_pedestrian.heading,
         },
         "npcs": [_npc_to_dict(npc, residents) for npc in world.npc_manager.vehicles],
-        "pedestrians": [_pedestrian_to_dict(p, residents) for p in world.pedestrian_mgr.pedestrians if p.resident_id is not None],
+        "pedestrians": [_pedestrian_to_dict(p, residents, santa_day) for p in world.pedestrian_mgr.pedestrians if p.resident_id is not None],
         "pucks": puck_positions(),  # ice hockey: [[x, y], ...]
         "balls": ball_positions(),  # soccer: [[x, y], ...]
         "vomit_puddles": [list(point) for point in taxi_mgr.vomit_puddles + world.pedestrian_mgr.vomit_puddles],

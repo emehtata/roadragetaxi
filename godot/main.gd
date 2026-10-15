@@ -105,6 +105,7 @@ var language := "en"
 
 
 var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
+var holidays: Node = preload("res://holiday_layer.gd").new()
 var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, multiplied over the world canvas
 
 
@@ -115,6 +116,8 @@ func _ready() -> void:
 	add_child(weather)
 	add_child(world_light)
 	weather.setup($Sky, map_layer)
+	add_child(holidays)
+	holidays.setup(map_layer)
 	entities.lamp_near = map_layer.lamp_near
 	entities.light_at = map_layer.light_at  # street light on the vehicles  # reflectors and long beams look up working street lights
 	entities.covered = map_layer.covered  # headlights under a higher road
@@ -606,6 +609,7 @@ func _present(state: Dictionary) -> void:
 	map_layer.set_map_level(level)
 	entities.underground = level != 0
 	weather.update(get_process_delta_time(), state, entities.player_position(), level != 0)
+	holidays.update(get_process_delta_time(), state, view, level != 0)
 	map_layer.set_flash(state.get("speed_camera_flash"))
 	labels.update_view(get_viewport().get_canvas_transform(), map_layer.chunk_count(), level != 0)
 	map_layer.set_obstacles(state.get("fallen_trees", []), state.get("knocked_posts", []))

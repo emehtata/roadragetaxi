@@ -18,6 +18,7 @@ import math
 from . import static_world
 from .fuel import fuel_station_price_cents
 from .geo import dist_point_to_segment
+from .holiday_events import house_yard_spot
 from .map_level import SURFACE_MAP_LEVELS
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
 
@@ -26,7 +27,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           # godot-16 (static_world.py)
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
-          "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches")
+          "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate")
@@ -287,6 +288,9 @@ class ChunkIndex:
                 continue
             chunk["buildings"].append(_line(building.points_m))  # buildings and their styles in step
             chunk["building_styles"].append(static_world.building_style(building))
+            yard = house_yard_spot(building, world)
+            if yard is not None:
+                self._add("holiday_yards", [yard], yard)
         for stop in getattr(world, "taxi_stops", ()):
             self._add("taxi_stands", ((stop.x, stop.y),), [round(stop.x, 1), round(stop.y, 1)])
         for station in getattr(world, "scenery_objects", ()):  # fuel pumps and their price signs

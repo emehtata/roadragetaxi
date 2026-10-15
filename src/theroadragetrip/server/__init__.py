@@ -439,10 +439,12 @@ class SimulationServer:
         altitude = self._sun_altitude()
         season = self.season_weights()
         arena_crowds = getattr(self.world, "arena_crowds", None)
+        from ..holiday_events import holiday_events
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": season,
                 "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
                 "sports_lights": sports_lights_hours(self.calendar.current),
+                "holidays": holiday_events(self.calendar.current),
                 "arena_lights": bool(arena_crowds and arena_crowds.lights_on(self.calendar.current))}
 
     def start(self, host: str, port: int) -> None:

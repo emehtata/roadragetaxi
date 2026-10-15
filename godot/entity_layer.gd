@@ -827,6 +827,9 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 		return
 	var radius := maxf(_px(4.0), ped.get("radius_m", 0.45))
 	var clothing: Color = _rgb(ped.get("color", [200, 200, 200]))
+	var santa: bool = ped.get("costume", "") == "santa"
+	if santa:
+		clothing = Color8(190, 30, 35)
 	if ped.get("state", "") in INDOORS:
 		_canvas.draw_arc(c, radius, 0.0, TAU, 16, _person_lit(RS.PED_INDOORS), _px(1.0))
 		return
@@ -847,6 +850,13 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 		var head := c + h * radius * 0.6
 		_canvas.draw_circle(head, maxf(_px(2.0), radius * 0.48), _person_lit(RS.PED_HAIR))
 		_canvas.draw_circle(head, maxf(_px(1.0), radius * 0.35), _person_lit(RS.PED_HEAD))
+		if santa:
+			_canvas.draw_line(c - side * radius * 0.5, c + side * radius * 0.5, _person_lit(Color.WHITE), radius * 0.20)
+			_canvas.draw_line(head - side * radius * 0.38, head + side * radius * 0.38, _person_lit(Color.WHITE), radius * 0.22)
+			_canvas.draw_circle(head + h * radius * 0.26, radius * 0.3, _person_lit(Color.WHITE))  # beard
+			var tip := head - h * radius * 0.65 + side * radius * 0.3
+			_canvas.draw_colored_polygon(PackedVector2Array([head - side * radius * 0.4, head + side * radius * 0.4, tip]), _person_lit(clothing))
+			_canvas.draw_circle(tip, radius * 0.17, _person_lit(Color.WHITE))
 		if ped.get("activity", "") == "ice_hockey":
 			var goalie: bool = ped.get("hockey_goalie", false)
 			if goalie:  # leg pads, either side

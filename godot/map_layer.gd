@@ -208,6 +208,24 @@ func chunk_count() -> int:
 	return _chunks.size()
 
 
+func holiday_yards(view: Rect2, limit := 64) -> PackedVector2Array:
+	var result := PackedVector2Array()
+	var scanned := 0
+	for chunk in _chunks.values():
+		if not view.intersects(chunk._bounds_rect):
+			continue
+		for row in chunk._data.get("holiday_yards", []):
+			scanned += 1
+			if scanned > 2048:  # shortcut: cap dense-yard queries; index them if this hides visible yards.
+				return result
+			var at := MapMath.point(origin, row[0], row[1])
+			if view.has_point(at):
+				result.append(at)
+				if result.size() >= limit:
+					return result
+	return result
+
+
 func has_chunk(chunk_id: String) -> bool:
 	return _chunks.has(chunk_id)
 

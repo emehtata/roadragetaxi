@@ -285,6 +285,18 @@ def test_the_calendar_crosses_the_wire(tmp_path, monkeypatch):
     assert old["state"]["calendar"] is None
 
 
+def test_holidays_follow_the_server_calendar(tmp_path, monkeypatch):
+    from datetime import datetime
+
+    server = _build_server(tmp_path, monkeypatch)
+    server.calendar.current = datetime(2026, 12, 31, 23, 59, 59)
+    assert server.calendar_state()["holidays"]["fireworks"]
+    server.calendar.advance(2)
+    assert server.calendar_state()["holidays"]["fireworks"]
+    server.calendar.current = datetime(2027, 1, 1, 2)
+    assert not any(server.calendar_state()["holidays"].values())
+
+
 
 
 def test_the_season_weights_come_from_the_calendar(tmp_path, monkeypatch):
