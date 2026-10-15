@@ -1,7 +1,7 @@
 import argparse
 from datetime import datetime
 
-from ..config import load_config, cities_from_config
+from ..config import load_config, cities_from_config, load_city_catalog
 from ..game_args import parse_args
 
 DEFAULT_PORT = 8765
@@ -31,6 +31,7 @@ def parse_server_args():
     parser.add_argument("--historical-weather", action=argparse.BooleanOptionalAction, default=None,
                         help="FMI observed/forecast weather for the city and game time (default: config game.historical_weather)")
 
-    args = parse_args(config, city_names=list(city_centers), parser=parser)
+    # Any municipality: a map-picker start takes its nearest one's settings.
+    args = parse_args(config, city_names=list(city_centers) + [n for n in load_city_catalog() if n not in city_centers], parser=parser)
     args.no_menu = True  # a server can never show an interactive menu
     return args, config

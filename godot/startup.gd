@@ -14,7 +14,8 @@ var _game: Node
 var _panel: PanelContainer
 var _body: VBoxContainer
 var _cities: Array = []
-var _city_locations: Array = []
+var _city_locations: Array = []  # the menu's cities
+var _municipalities: Array = []  # every municipality: the map picker's nearest settings
 var _city := "Oulu"
 var _start_place := ""  # its name from the picker's reverse geocode; "": unknown
 var _start_point := Vector2.INF  # a custom gig start (latitude, longitude); INF: the city's centre
@@ -44,12 +45,14 @@ func _ready() -> void:
 		var at := command_line.find(option)
 		if at >= 0 and at + 1 < command_line.size():
 			_server_extra.append_array([option, command_line[at + 1]])
-	_city_locations = _server_query("--list-city-locations")
+	_municipalities = _server_query("--list-city-locations")
+	_city_locations = _municipalities.filter(func(city): return city.get("menu", true))
 	_cities.assign(_city_locations.map(func(city): return str(city["name"])))
 	print("startup: %d cities from the simulation (%s)" % [_cities.size(), "release" if Paths.exported() else "repo"])
 	if _cities.is_empty():
 		_cities = ["Oulu"]
 		_city_locations = [{"name": "Oulu", "latitude": 65.012, "longitude": 25.468}]
+		_municipalities = _city_locations
 	_city = _settings.get_value("gig", "city", _cities[0])  # the last gig city, remembered
 	if not _city in _cities:
 		_city = _cities[0]
@@ -340,13 +343,13 @@ func _map_point_menu() -> void:
 	_body.add_child(place)
 	var drive := _button(_t("drive"), func():
 		_start_point = browser.pin
-		_city = nearest_city(_city_locations, browser.pin.x, browser.pin.y)
+		_city = nearest_city(_municipalities, browser.pin.x, browser.pin.y)
 		_time_menu())
 	var show_pin := func():
 		drive.disabled = browser.pin == Vector2.INF
 		if not drive.disabled:
 			var pin := browser.pin
-			var settings: String = _t("map_point_settings") % nearest_city(_city_locations, pin.x, pin.y)
+			var settings: String = _t("map_point_settings") % nearest_city(_municipalities, pin.x, pin.y)
 			place.text = "%.5f, %.5f  (%s)" % [pin.x, pin.y, settings]
 			_start_place = ""
 			_reverse_geocode(pin, func(name: String):

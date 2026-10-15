@@ -2,7 +2,7 @@ import logging
 import json
 import multiprocessing
 
-from ..config import cities_from_config
+from ..config import cities_from_config, load_city_catalog
 from ..game_args import configure_logging
 from ..performance import tune_interpreter
 from ..parent_watch import exit_with_parent
@@ -20,10 +20,13 @@ def main() -> None:
         print(json.dumps(list(cities_from_config(config)[0]), ensure_ascii=False))
         return
     if args.list_city_locations:
+        # The menu's cities, then every other municipality (menu: false)
+        # for the map picker's nearest-municipality settings.
         centers = cities_from_config(config)[0]
+        others = {name: c for name, c in load_city_catalog().items() if name not in centers}
         print(json.dumps([
-            {"name": name, "latitude": latitude, "longitude": longitude}
-            for name, (latitude, longitude) in centers.items()
+            {"name": name, "latitude": latitude, "longitude": longitude, "menu": name in centers}
+            for name, (latitude, longitude) in {**centers, **others}.items()
         ], ensure_ascii=False))
         return
     if args.clear_cache:  # [OSM files, world caches] removed
