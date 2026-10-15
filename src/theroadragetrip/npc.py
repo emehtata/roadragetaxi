@@ -344,6 +344,13 @@ NPC_CONTINUE_TRIP_TIME_BUDGET_S = 0.1
 # collision-avoidance: recovery reroute attempts for STUCK vehicles - same one-
 # expensive-plan_route-call-per-tick discipline as the two constants above.
 NPC_RECOVERY_ATTEMPTS_PER_TICK = 1
+# A car whose recovery found no route holds (stopped, a legal wait) only
+# for a while: then it replans to a new destination from where it stands
+# (another NPC_HOLD_RETRY_TICKS population ticks later after each failure).
+# A hold was permanent, and held cars piled up into a city-wide jam. After
+# NPC_HOLD_GIVE_UP_ATTEMPTS failures an unseen held car is released.
+NPC_HOLD_RETRY_TICKS = 5
+NPC_HOLD_GIVE_UP_ATTEMPTS = 3
 # find_and_start_npc_trip's own BFS search width - deliberately much
 # smaller than spawn_deterministic_npc's NPC_DESTINATION_CANDIDATE_LIMIT
 # (40), which is a one-time, loading-screen-time cost for the game's
@@ -1058,6 +1065,8 @@ class Driver:
     # field in this module (NPCState/NPCAvailability are the only "real"
     # enums here).
     recovery_stage: str = "NORMAL"
+    hold_retry_tick: int = 0  # HOLD: the population tick it replans to a new destination at
+    hold_failures: int = 0  # HOLD: replans that found nothing either
     route_job_pending: bool = False
     reverse_start_position: Optional[Tuple[float, float]] = None
     # living-traffic: an orthogonal timed flag, not a new NPCState - matches
@@ -4320,7 +4329,11 @@ class NPCVehicleManager:
                 if is_competitor(vehicle) and vehicle.taxi_job is not None and job["kind"] == "continue":
                     if vehicle.taxi_job.route_failed():
                         vehicle.taxi_job = None  # no way there: the fare is lost
+                if job["kind"] == "unhold":  # no new destination from here either: hold longer
+                    driver.hold_failures += 1
+                    driver.hold_retry_tick = self._population_tick_number + NPC_HOLD_RETRY_TICKS * (driver.hold_failures + 1)
                 if job["kind"] == "recovery":
+                    driver.hold_retry_tick = self._population_tick_number + NPC_HOLD_RETRY_TICKS
                     # A failed search is not evidence that reversing is safe.
                     driver.recovery_stage = "HOLD"
                     vehicle.state = NPCState.WAITING
@@ -4353,8 +4366,9 @@ class NPCVehicleManager:
                 stats["recovered"] += 1
             else:
                 _apply_npc_continuation(vehicle, driver, result)
+                driver.hold_failures = 0
                 if vehicle.vehicle_kind == "household":
-                    vehicle.returning_home = job["kind"] == "continue"
+                    vehicle.returning_home = job["kind"] in ("continue", "unhold")
                 if is_competitor(vehicle) and vehicle.taxi_job is not None and job["kind"] == "continue":
                     vehicle.taxi_job.departing()
                 stats["continued"] += 1
@@ -4618,7 +4632,10 @@ class NPCVehicleManager:
                 and (vehicle.state not in (NPCState.PARKED, NPCState.CRASHED) or is_competitor(vehicle))
                 and self.drivers.get(vehicle.vehicle_id) is not None
             )  # (a competitor waits parked with its driver aboard: released when far all the same)
-            if far_moving and not visible and remaining > self.min_count:
+            held_driver = self.drivers.get(vehicle.vehicle_id)
+            given_up = (getattr(held_driver, "recovery_stage", None) == "HOLD"
+                        and held_driver.hold_failures >= NPC_HOLD_GIVE_UP_ATTEMPTS)
+            if (far_moving or given_up) and not visible and remaining > self.min_count:
                 if vehicle.trip_group is not None:
                     for resident_id in vehicle.trip_group.member_resident_ids:
                         member = resident_manager.get(resident_id)
@@ -4911,20 +4928,29 @@ class NPCVehicleManager:
             and not any(job["vehicle"] is vehicle for job in self._route_jobs)
         ]
         stuck.sort(key=last_served)
+        held = [
+            vehicle for vehicle in self.vehicles
+            if getattr(driver := self.drivers.get(vehicle.vehicle_id), "recovery_stage", None) == "HOLD"
+            and driver.hold_failures < NPC_HOLD_GIVE_UP_ATTEMPTS
+            and driver.hold_retry_tick <= self._population_tick_number
+            and not any(job["vehicle"] is vehicle for job in self._route_jobs)
+        ]
+        held.sort(key=last_served)
         existing = (
             [("continue", vehicle) for vehicle in ready[:NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK]]
             + [("recovery", vehicle) for vehicle in stuck[:NPC_RECOVERY_ATTEMPTS_PER_TICK]]
+            + [("unhold", vehicle) for vehicle in held[:NPC_RECOVERY_ATTEMPTS_PER_TICK]]
         )
         existing.sort(key=lambda item: last_served(item[1]))
         for kind, vehicle in existing:
             if len(self._route_jobs) >= NPC_MAX_ROUTE_JOBS:
                 break
-            if kind == "continue":
+            if kind in ("continue", "unhold"):  # (unhold: a held car, a new destination from where it stands)
                 steps = _continue_npc_trip_steps(
                     vehicle, traffic_world, ways, spatial_grid, parking_spaces, sceneries,
                     buildings, curbs, curb_grid, building_grid,
                     vehicle.home_position if vehicle.vehicle_kind == "household"
-                    else vehicle.taxi_job.target if is_competitor(vehicle) else None,
+                    else vehicle.taxi_job.target if is_competitor(vehicle) and vehicle.taxi_job is not None else None,
                     [pos for vid, pos in claimed_points if vid != vehicle.vehicle_id],
                 )
             else:

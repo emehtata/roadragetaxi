@@ -1386,6 +1386,57 @@ def test_population_tick_holds_safely_when_no_route_exists():
     assert manager.route_job_stats["safe_holds"] == 1
 
 
+def test_a_held_car_replans_to_a_new_destination_instead_of_holding_forever():
+    """A failed recovery holds the car - for a while. A permanent hold left
+    car after car standing in its lane until the whole city was jammed."""
+    from theroadragetrip.npc import NPC_HOLD_RETRY_TICKS, spawn_npc
+
+    ways = _city_block_grid()
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    origin = (_CENTER[0], _CENTER[1] - 20.0)
+    _, driver, vehicle = spawn_npc(1, residents, traffic_world, ways, origin, (origin[0] + 80.0, origin[1]))
+    manager.vehicles.append(vehicle)
+    manager.drivers[vehicle.vehicle_id] = driver
+    driver.recovery_stage = "STUCK"
+    driver.destination = (1_000_000.0, 1_000_000.0)  # unreachable: the recovery fails
+    tick = lambda: manager._run_population_tick(
+        _CENTER[0], _CENTER[1], residents, traffic_world, ways, None, None, None, None, None, None, None,
+    )
+    tick()
+    _finish_route_jobs(manager, *_CENTER, residents, traffic_world)
+    assert driver.recovery_stage == "HOLD"
+    for _ in range(NPC_HOLD_RETRY_TICKS - 1):  # held a while: no replanning yet
+        tick()
+        assert not manager._route_jobs and driver.recovery_stage == "HOLD"
+    tick()  # ...then a new destination from where it stands
+    _finish_route_jobs(manager, *_CENTER, residents, traffic_world)
+    assert driver.recovery_stage == "NORMAL" and driver.hold_failures == 0
+    assert driver.destination != (1_000_000.0, 1_000_000.0)
+    assert vehicle.state != NPCState.WAITING or vehicle.debug_waiting_for != "recovery failed - no validated route"
+
+
+def test_an_unseen_car_that_cannot_get_anywhere_is_released():
+    from theroadragetrip.npc import NPC_HOLD_GIVE_UP_ATTEMPTS, spawn_npc
+
+    ways = _city_block_grid()
+    traffic_world = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1, min_count=0)
+    origin = (_CENTER[0], _CENTER[1] - 20.0)
+    _, driver, vehicle = spawn_npc(1, residents, traffic_world, ways, origin, (origin[0] + 80.0, origin[1]))
+    manager.vehicles.append(vehicle)
+    manager.drivers[vehicle.vehicle_id] = driver
+    driver.recovery_stage, driver.hold_failures = "HOLD", NPC_HOLD_GIVE_UP_ATTEMPTS
+    viewport_elsewhere = (5000.0, 5000.0, 5100.0, 5100.0)
+    manager._run_population_tick(
+        _CENTER[0], _CENTER[1], residents, traffic_world, ways, None, None, None, None, None, None, None,
+        viewport_bounds=viewport_elsewhere,
+    )
+    assert manager.drivers.get(vehicle.vehicle_id) is None  # released, out of sight
+
+
 def test_manager_update_avoidance_still_works_without_a_player_car():
     """Regression: nearby_vehicles_at (its own spatial-grid query) yields,
     it doesn't return a list. update() used to only materialize it into a
