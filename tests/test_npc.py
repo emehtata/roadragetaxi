@@ -897,8 +897,8 @@ def test_place_parked_npc_aligns_with_the_parking_space_not_the_road():
     the parking space's own axis."""
     ways = [Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)]
     space = ParkingSpace(
-        points_m=[(50.0, 4.0), (51.0, 4.0), (51.0, 10.0), (50.0, 10.0)],
-        bbox=(50.0, 4.0, 51.0, 10.0),
+        points_m=[(49.0, 4.0), (52.0, 4.0), (52.0, 10.0), (49.0, 10.0)],
+        bbox=(49.0, 4.0, 52.0, 10.0),
     )
     vehicle = place_parked_npc(1, (50.5, 7.0), space, ways=ways)
     assert vehicle is not None
@@ -1798,12 +1798,14 @@ def test_spawn_npc_group_size_never_exceeds_a_small_custom_capacity(monkeypatch)
     """multi-passenger-car.md Test 11: different vehicle capacities (2, 5,
     7) all work without changing the underlying passenger logic."""
     import theroadragetrip.npc as npc_module
+    from dataclasses import replace
 
     ways = _straight_chain()
     tw = TrafficWorld(ways)
     residents = ResidentManager()
     for capacity in (2, 5, 7):
-        monkeypatch.setattr(npc_module, "NPC_CAR_CAPACITY", capacity)
+        monkeypatch.setitem(npc_module.VEHICLE_DEFINITIONS, "car",
+                            replace(npc_module.vehicle_definition("car"), capacity=capacity))
         for i in range(10):
             spawned = spawn_npc(100 * capacity + i, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
             assert spawned is not None
@@ -1946,7 +1948,7 @@ def test_trigger_road_rage_skips_crashed_behind_too_far_and_too_lateral_vehicles
     manager = NPCVehicleManager(target_count=0)
     placed = {}
     for vid, at in ((1, (30.0, 0.0)), (2, (-15.0, 0.0)), (3, (45.0, 0.0)), (4, (20.0, 8.0)), (5, (35.0, 0.0))):
-        spawned = spawn_npc(vid, residents, tw, ways, at, (200.0, 0.0))
+        spawned = spawn_npc(vid, residents, tw, ways, (60.0, 0.0), (200.0, 0.0))
         assert spawned is not None
         _, driver, vehicle = spawned
         vehicle.car.x, vehicle.car.y = at

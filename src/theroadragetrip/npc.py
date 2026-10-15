@@ -933,6 +933,7 @@ def build_driving_path(
     corner_radius_m: float = CORNER_RADIUS_M,
     skip_final_lane_offset: bool = False,
     aligned_parking_approach: bool = False,
+    skip_initial_lane_offset: bool = False,
 ) -> List[PathPoint]:
     """Turn a raw centerline route (TrafficWorld.plan_route's output) into
     a lane-correct, corner-smoothed path for an NPC to follow.
@@ -1006,7 +1007,7 @@ def build_driving_path(
     for i, (x, y) in enumerate(route_points):
         seg = min(i, n - 2)
         bias = _upcoming_maneuver(i)
-        if (i == n - 1 and skip_final_lane_offset) or (i == n - 2 and aligned_parking_approach):
+        if (i == 0 and skip_initial_lane_offset) or (i == n - 1 and skip_final_lane_offset) or (i == n - 2 and aligned_parking_approach):
             lx, ly = x, y
         else:
             lx, ly = _lane_offset_point(segment_way[seg], x, y, segment_heading[seg], vehicle_width_m, maneuver=bias)
@@ -1307,6 +1308,9 @@ def _plan_and_validate_npc_route(
     destination_is_off_road: bool = False,
     origin_is_off_road: bool = False,
     deadline: Optional[float] = None,
+    vehicle_length_m: float = NPC_VEHICLE_LENGTH_M,
+    vehicle_width_m: float = NPC_VEHICLE_WIDTH_M,
+    preserve_origin: bool = False,
 ) -> Optional[List[PathPoint]]:
     """Plan and fully validate a drivable path from origin to destination -
     the shared "never move a vehicle onto an unchecked route" core of both
@@ -1341,6 +1345,8 @@ def _plan_and_validate_npc_route(
         curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
         parking_space=parking_space, destination_is_off_road=destination_is_off_road,
         origin_is_off_road=origin_is_off_road,
+        vehicle_length_m=vehicle_length_m, vehicle_width_m=vehicle_width_m,
+        preserve_origin=preserve_origin,
     ), deadline)
 
 
@@ -1357,6 +1363,9 @@ def _plan_and_validate_npc_route_steps(
     parking_space=None,
     destination_is_off_road: bool = False,
     origin_is_off_road: bool = False,
+    vehicle_length_m: float = NPC_VEHICLE_LENGTH_M,
+    vehicle_width_m: float = NPC_VEHICLE_WIDTH_M,
+    preserve_origin: bool = False,
 ) -> RouteSteps:
     """_plan_and_validate_npc_route as a resumable job: the route search
     and the curb/building sampling both yield per unit of work. Pure -
@@ -1364,6 +1373,12 @@ def _plan_and_validate_npc_route_steps(
     raw_route = yield from traffic_world.plan_route_steps(origin, destination)
     if raw_route is None:
         return None
+    if preserve_origin and len(raw_route) >= 3 and (
+        math.hypot(raw_route[1][0] - origin[0], raw_route[1][1] - origin[1]) <= vehicle_width_m * 2.0
+        and is_point_on_road(*origin, ways=ways, spatial_grid=spatial_grid, car_roads_only=True)
+    ):
+        # An already lane-positioned car must not turn into its lateral graph snap.
+        raw_route = [raw_route[0], *raw_route[2:]]
     if origin_is_off_road and len(raw_route) >= 3:
         # Join the first directed road edge, not its junction behind the driveway.
         px, py, _, gap = closest_point_and_dist_to_segment(
@@ -1417,12 +1432,23 @@ def _plan_and_validate_npc_route_steps(
     path = build_driving_path(
         deduped_route, ways, spatial_grid=spatial_grid, skip_final_lane_offset=destination_is_off_road,
         aligned_parking_approach=final_segment_count == 2,
+        vehicle_width_m=vehicle_width_m,
+        skip_initial_lane_offset=origin_is_off_road or preserve_origin,
     )
     yield
     if len(path) < 2:
         return None
+    if not origin_is_off_road:
+        start_heading = math.atan2(path[1].y - path[0].y, path[1].x - path[0].x)
+        if not _npc_body_on_road(
+            path[0].x, path[0].y, start_heading, vehicle_length_m, vehicle_width_m,
+            ways, spatial_grid, getattr(path[0].way, "layer", 0),
+            getattr(path[0].way, "map_level", None) or 0,
+        ):
+            return None
     final_heading = math.atan2(path[-1].y - path[-2].y, path[-1].x - path[-2].x)
-    if _parking_overlaps_walkway(path[-1].x, path[-1].y, final_heading, ways, spatial_grid):
+    if _parking_overlaps_walkway(path[-1].x, path[-1].y, final_heading, ways, spatial_grid,
+                                 length_m=vehicle_length_m, width_m=vehicle_width_m):
         return None
     path_points = [(p.x, p.y) for p in path]
     skip_leading_m = NPC_PARKING_ACCESS_TOLERANCE_M if origin_is_off_road else 0.0
@@ -1435,14 +1461,14 @@ def _plan_and_validate_npc_route_steps(
     # since a wide vehicle clips a curb at a corner or roundabout island,
     # not at the road's own centerline.
     if (yield from _route_crosses_obstacles_steps(
-        path_points, NPC_VEHICLE_LENGTH_M, NPC_VEHICLE_WIDTH_M, CURB_CLEARANCE_MARGIN_M,
+        path_points, vehicle_length_m, vehicle_width_m, CURB_CLEARANCE_MARGIN_M,
         curbs=curbs or [], curb_grid=curb_grid,
         skip_leading_m=skip_leading_m, skip_trailing_m=driveway_skip_m,
     )):
         return None
     # NPC-more.md section 13: never drive through a building polygon.
     if (yield from _route_crosses_obstacles_steps(
-        path_points, NPC_VEHICLE_LENGTH_M, NPC_VEHICLE_WIDTH_M, BUILDING_CLEARANCE_MARGIN_M,
+        path_points, vehicle_length_m, vehicle_width_m, BUILDING_CLEARANCE_MARGIN_M,
         buildings=buildings or [], building_grid=building_grid, skip_leading_m=skip_leading_m,
     )):
         return None
@@ -1474,19 +1500,22 @@ def spawn_npc(
     already "driving". Returns None if no valid route exists.
     """
     destination_is_off_road = destination_is_off_road or parking_space is not None
+    definition = vehicle_definition(vehicle_type)
     path = _plan_and_validate_npc_route(
         traffic_world, ways, origin, destination, spatial_grid=spatial_grid,
         curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
         parking_space=parking_space, destination_is_off_road=destination_is_off_road,
+        vehicle_length_m=definition.length_m, vehicle_width_m=definition.width_m,
     )
     if path is None:
         return None
 
     start = path[0]
-    car = Car(x=start.x, y=start.y, heading=0.0, speed=0.0, length_m=NPC_VEHICLE_LENGTH_M, width_m=NPC_VEHICLE_WIDTH_M)
+    car = Car(x=start.x, y=start.y, heading=0.0, speed=0.0,
+              length_m=definition.length_m, width_m=definition.width_m)
     vehicle = NPCVehicle(
         vehicle_id=vehicle_id, car=car, vehicle_type=vehicle_type,
-        color=color if color is not None else random.choice(NPC_VEHICLE_COLORS), capacity=NPC_CAR_CAPACITY,
+        color=color if color is not None else random.choice(NPC_VEHICLE_COLORS), capacity=definition.capacity,
     )
     driver = _begin_trip_on_vehicle(
         vehicle,
@@ -1651,6 +1680,7 @@ def start_npc_trip(
         # tier): it only loosens validation, never a correctness risk.
         origin_is_off_road=True,
         deadline=deadline,
+        vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
     )
     if path is None:
         return None
@@ -1856,6 +1886,7 @@ def _find_npc_trip_steps(
             raw_destination[0], raw_destination[1], parking_spaces, sceneries, buildings,
             ways=ways, spatial_grid=spatial_grid, other_vehicle_positions=other_vehicle_positions,
             own_position=origin,
+            vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
         )
         for destination, target_space in destination_candidates:
             yield
@@ -1867,6 +1898,7 @@ def _find_npc_trip_steps(
                 curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
                 parking_space=target_space, destination_is_off_road=destination_is_off_road,
                 origin_is_off_road=True,
+                vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
             )
             if path is not None:
                 return path, destination, target_space, destination_is_off_road
@@ -2073,6 +2105,18 @@ def _update_npc_reversing(
     )
 
 
+def _npc_body_on_road(x, y, heading, length_m, width_m, ways, spatial_grid, layer, map_level=0):
+    radius = math.hypot(length_m, width_m) * 0.5
+    nearby = list(spatial_grid.ways_in_rect(x - radius, y - radius, x + radius, y + radius)) if spatial_grid else ways
+    nearby = [way for way in nearby if on_map_level(way, map_level)]
+    c, s = math.cos(heading), math.sin(heading)
+    return all(is_point_on_road(
+        x + c * along - s * across, y + s * along + c * across,
+        ways=nearby, car_roads_only=True, layer=layer,
+    ) for along in (-length_m * 0.5, 0.0, length_m * 0.5)
+      for across in (-width_m * 0.5, 0.0, width_m * 0.5))
+
+
 def _npc_motion_stays_on_road(vehicle, driver, previous, ways, spatial_grid=None) -> bool:
     """Check the actual-size swept body, allowing only the bounded parking leg."""
     car = vehicle.car
@@ -2135,12 +2179,8 @@ def _npc_motion_stays_on_road(vehicle, driver, previous, ways, spatial_grid=None
         x = previous[0] + (car.x - previous[0]) * t
         y = previous[1] + (car.y - previous[1]) * t
         heading = previous[2] + angle_diff(car.heading, previous[2]) * t
-        c, s = math.cos(heading), math.sin(heading)
-        covered = all(is_point_on_road(
-            x + c * along - s * across, y + s * along + c * across,
-            ways=nearby, car_roads_only=True, layer=layer,
-        ) for along in (-vehicle.length_m * 0.5, 0.0, vehicle.length_m * 0.5)
-          for across in (-vehicle.width_m * 0.5, 0.0, vehicle.width_m * 0.5))
+        covered = _npc_body_on_road(x, y, heading, vehicle.length_m, vehicle.width_m,
+                                    nearby, None, layer, car.map_level)
         if not covered and not parking_access(x, y):
             return False
     return True
@@ -2828,11 +2868,14 @@ def _pick_npc_destination_candidates(
     other_vehicle_positions: Optional[List[Tuple[float, float]]] = None,
     own_position: Optional[Tuple[float, float]] = None,
     deadline: Optional[float] = None,
+    vehicle_length_m: float = NPC_VEHICLE_LENGTH_M,
+    vehicle_width_m: float = NPC_VEHICLE_WIDTH_M,
 ) -> List[Tuple[Tuple[float, float], object]]:
     """Run parking selection synchronously, discarding incomplete searches on timeout."""
     return run_route_steps(_pick_npc_destination_candidates_steps(
         x, y, parking_spaces, sceneries, buildings, ways, spatial_grid,
         search_radius_m, limit, other_vehicle_positions, own_position,
+        vehicle_length_m, vehicle_width_m,
     ), deadline=deadline) or []
 
 
@@ -2848,6 +2891,8 @@ def _pick_npc_destination_candidates_steps(
     limit: int = NPC_PARKING_CANDIDATE_LIMIT,
     other_vehicle_positions: Optional[List[Tuple[float, float]]] = None,
     own_position: Optional[Tuple[float, float]] = None,
+    vehicle_length_m: float = NPC_VEHICLE_LENGTH_M,
+    vehicle_width_m: float = NPC_VEHICLE_WIDTH_M,
 ) -> RouteSteps:
     """Every acceptable place to stop near (x, y), in NPC-more.md section
     2's tier order (dedicated space > parking lot > building yard >
@@ -2905,7 +2950,7 @@ def _pick_npc_destination_candidates_steps(
         dist_sq = (cx - x) ** 2 + (cy - y) ** 2
         if dist_sq > radius_sq:
             continue
-        if not _parking_space_fits_vehicle(space):
+        if not _parking_space_fits_vehicle(space, vehicle_length_m, vehicle_width_m):
             continue
         if own_parking_area is not None and _parking_area_containing((cx, cy), [own_parking_area]) is not None:
             continue
@@ -2955,6 +3000,7 @@ def _pick_npc_destination_candidates_steps(
         yield
         if _parking_overlaps_walkway(
             *point, _resting_heading(*point, space, ways, spatial_grid), ways, spatial_grid,
+            vehicle_length_m, vehicle_width_m,
         ):
             continue
         candidates.append((point, space))
@@ -3052,6 +3098,8 @@ def place_parked_npc(
     # own Car construction implicitly used before plugins existed).
     definition = vehicle_definition(vehicle_type)
     length_m, width_m = definition.length_m, definition.width_m
+    if parking_space is not None and not _parking_space_fits_vehicle(parking_space, length_m, width_m):
+        return None
     heading = _resting_heading(point[0], point[1], parking_space, ways, spatial_grid)
     if _parking_overlaps_walkway(*point, heading, ways, spatial_grid, length_m, width_m):
         return None
@@ -3298,6 +3346,7 @@ def _continue_npc_trip_steps(
             query_point[0], query_point[1], parking_spaces, sceneries, buildings,
             ways=ways, spatial_grid=spatial_grid, other_vehicle_positions=other_vehicle_positions,
             own_position=origin,
+            vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
         )
         for destination, target_space in destination_candidates:
             destination_is_off_road = destination != query_point
@@ -3306,6 +3355,7 @@ def _continue_npc_trip_steps(
                 curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
                 parking_space=target_space, destination_is_off_road=destination_is_off_road,
                 origin_is_off_road=True,
+                vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
             )
             if path is None:
                 continue
@@ -3320,6 +3370,8 @@ def _recover_npc_trip_steps(vehicle, driver, traffic_world, ways, spatial_grid,
         spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid,
         buildings=buildings, building_grid=building_grid,
         parking_space=vehicle.reserved_parking_space, destination_is_off_road=True,
+        vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
+        preserve_origin=True,
     )
     if path is None:
         return None
@@ -4105,6 +4157,7 @@ class NPCVehicleManager:
                 continue
             path = build_driving_path(
                 raw_route, ways, spatial_grid=spatial_grid, skip_final_lane_offset=True,
+                vehicle_width_m=vehicle.width_m,
             )
             yield
             if len(path) >= 2:
@@ -4470,6 +4523,21 @@ class NPCVehicleManager:
                 claimed_points, through_point=(player_x, player_y),
             )
             if plan is not None:
+                start, aim = plan[0][:2]
+                heading = math.atan2(aim.y - start.y, aim.x - start.x)
+                if not _npc_body_on_road(
+                    start.x, start.y, heading, vehicle.length_m, vehicle.width_m, ways,
+                    spatial_grid, getattr(start.way, "layer", 0),
+                    getattr(start.way, "map_level", None) or 0,
+                ) or not is_vehicle_pose_valid(
+                    start.x, start.y, heading, length_m=vehicle.length_m, width_m=vehicle.width_m,
+                    curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
+                ):
+                    release_npc_parking_reservation(vehicle)
+                    if tries >= NPC_TRANSIT_SPAWN_NODE_TRIES:
+                        break
+                    continue
+                vehicle.car.x, vehicle.car.y, vehicle.car.heading = start.x, start.y, heading
                 return vehicle, plan
             release_npc_parking_reservation(vehicle)
             if tries >= NPC_TRANSIT_SPAWN_NODE_TRIES:

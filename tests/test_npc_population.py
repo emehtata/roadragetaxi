@@ -1334,7 +1334,8 @@ def test_population_tick_reroutes_a_stuck_vehicle_when_a_valid_route_exists():
     traffic_world = TrafficWorld(ways)
     residents = ResidentManager()
     manager = NPCVehicleManager(target_count=1)
-    result = spawn_npc(1, residents, traffic_world, ways, _CENTER, (_CENTER[0] + 80.0, _CENTER[1]))
+    origin = (_CENTER[0], _CENTER[1] - 20.0)  # on a road, not the middle of a block
+    result = spawn_npc(1, residents, traffic_world, ways, origin, (origin[0] + 80.0, origin[1]))
     assert result is not None
     _, driver, vehicle = result
     manager.vehicles.append(vehicle)
@@ -1363,7 +1364,8 @@ def test_population_tick_holds_safely_when_no_route_exists():
     traffic_world = TrafficWorld(ways)
     residents = ResidentManager()
     manager = NPCVehicleManager(target_count=1)
-    result = spawn_npc(1, residents, traffic_world, ways, _CENTER, (_CENTER[0] + 80.0, _CENTER[1]))
+    origin = (_CENTER[0], _CENTER[1] - 20.0)  # on a road, not the middle of a block
+    result = spawn_npc(1, residents, traffic_world, ways, origin, (origin[0] + 80.0, origin[1]))
     assert result is not None
     _, driver, vehicle = result
     manager.vehicles.append(vehicle)
@@ -1638,9 +1640,10 @@ def test_waiting_car_retargets_when_another_car_owns_its_destination():
     traffic_world = TrafficWorld(ways)
     residents = ResidentManager()
     manager = NPCVehicleManager(target_count=2)
-    blocker = place_parked_npc(1, _CENTER, None)
+    destination = (_CENTER[0], _CENTER[1] - 20.0)
+    blocker = place_parked_npc(1, destination, None)
     blocker.availability = NPCAvailability.RESERVED
-    result = spawn_npc(2, residents, traffic_world, ways, (_CENTER[0] - 80.0, _CENTER[1]), _CENTER)
+    result = spawn_npc(2, residents, traffic_world, ways, (destination[0] - 80.0, destination[1]), destination)
     assert result is not None
     _, driver, follower = result
     follower.state = NPCState.WAITING

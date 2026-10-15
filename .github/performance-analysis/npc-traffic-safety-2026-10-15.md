@@ -527,3 +527,60 @@ the current guard is not proof that every freshly spawned footprint was valid.
 The 16 holds and low departure count fail the maturity/liveness targets. Do not
 relax the road boundary or count the 20 non-PARKED labels as useful throughput
 to hide these failures. No automatic off-road obstacle bypass is enabled.
+
+## Iteration — actual vehicle sizes and safe initial poses
+
+Carry plugin length/width through synchronous and resumable route validation,
+curb/building checks, endpoint walkway exclusion, lane placement and parking-bay
+selection. Direct `spawn_npc` now constructs the selected plugin's actual body
+and capacity rather than a default car carrying another type's name. Parked
+placement also refuses a mapped bay too small for the selected plugin.
+
+Before publishing through traffic, validate the actual lane-offset starting
+pose against the sampled road envelope and curb/building footprints. Update the
+unpublished candidate to that exact pose before the existing commit-time player
+distance, visibility and live vehicle-clearance checks; the seed graph-node
+coordinate is not a substitute for where the car will actually appear.
+Invalid candidates remain unpublished and still obey the spawn-attempt limit.
+Ordinary direct spawns similarly require a road-contained starting footprint.
+
+Preserve actual parked and recovering origins in lane construction instead of
+offsetting them a second time. Recovery also removes a short, artificial
+sideways graph-snap connector when the car is already on the carriageway; it
+must not interpret that connector as an abrupt physical turn.
+
+New tests cover five plugin bodies/capacities, a bus on a car-width road, curb
+clearance that differs between car and bus, car bays rejected for buses,
+unpublished off-road transit starts, actual parked origins and lane-positioned
+truck recovery. Fixtures testing recovery/rage selection now spawn on genuine
+roads before setting up their selection conditions, not inside grid blocks or
+beyond the road's endpoint. The parking-orientation fixture now has a car-width
+bay rather than a one-metre-wide strip. Assertions about the actual behavior
+under test remain in place.
+
+Full suite: **1,463 passed, 2 skipped**. This is not a maturity certificate.
+The independently seeded [household replay](npc-traffic-safety-2026-10-15-data/household-seed-123.py)
+still fails with a recovery hold; the same seeded household test was reproduced
+as failing against baseline `dd7a87e` loaded in a separate diagnostic process.
+The normal test's unseeded/global-RNG-dependent trajectory can pass while this
+specific approach fails. Keep that evidence visible rather than treating an
+arbitrary successful RNG trajectory as general household-turnover coverage.
+This iteration does not yet validate full road containment along every planned
+turn, turning feasibility, verified access for generic yard targets, predictive
+vehicle conflicts or pedestrian/junction duties.
+
+Real-time Oulu check: **120.011 seconds, 3,593 ticks**; the
+[saved summary](npc-traffic-safety-2026-10-15-data/actual-dimensions-smoke.json)
+records `dd7a87e` plus the unchanged runtime patch fingerprint. There were
+**9 rejected boundary proposals, 1 sampled departure, 5 collisions and 13
+recovery holds**, again with **zero completed recovery plans**. Tick p50/p95/p99
+were **8.86/11.84/16.67 ms**, maximum **24.52 ms**; worst routing work was
+**6.35 ms**. Dimensions/spawn validation alone have not restored useful traffic
+flow or solved collision safety. The two short runs have different trajectories
+and populations, so their collision totals are not normalized improvement or
+regression estimates. Some first-motion blocks remain at path index 1: valid
+initial containment does not prove the following maneuver is feasible.
+
+The observation preceded four independently pushed map-picker/coastline commits.
+The NPC change rebased cleanly over them; the combined branch then passed
+**1,465 tests, 2 skipped**. No overwrite or force push was used.
