@@ -76,7 +76,8 @@ MAGIC = b"RWC\0"
 # 25: sea from coastline is clipped to the fetched bbox (it flooded land).
 # 26: Scenery.sport (soccer pitches).
 # 27: a leisure=stadium outline is ground, not a building (it roofed the pitch).
-FORMAT_VERSION = 27
+# 28: building=stadium is stadium ground too (Bolt Arena's roof).
+FORMAT_VERSION = 28
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

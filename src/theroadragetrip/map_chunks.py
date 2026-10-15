@@ -393,6 +393,7 @@ class ChunkIndex:
 
         pole_cells: set = set()
         pitches = [s.points_m for s in getattr(world, "sceneries", ()) if s.kind == "pitch" and len(s.points_m) >= 3]
+        stadiums: list = []  # the stadiums given stands so far (biggest first)
         for scenery in sorted((s for s in getattr(world, "sceneries", ()) if len(s.points_m) >= 3), key=bbox_area, reverse=True):
             kind = str(scenery.kind).lower()
             island = kind == "traffic_island" or getattr(scenery, "kerbed", False)  # redrawn above the roads
@@ -411,7 +412,10 @@ class ChunkIndex:
                     if cell not in pole_cells:  # neighbouring fields share their poles
                         pole_cells.add(cell)
                         self._add("floodlight_poles", [pole[:2]], [round(v, 3) for v in pole])
-            if kind == "stadium":  # stands all round (taxi.SOLID_AREA_KINDS): a 3D building, the pitch open
+            if kind == "stadium" and not any(  # (one stand ring: a stadium is often both leisure= and building=stadium)
+                    built.contains(Polygon(scenery.points_m).representative_point()) for built in stadiums):
+                stadiums.append(Polygon(scenery.points_m).buffer(0))
+                # Stands all round (taxi.SOLID_AREA_KINDS): a 3D building, the pitch open.
                 for piece in stadium_stands(scenery.points_m, pitches):
                     centre = Polygon(piece).representative_point()
                     chunk = self._chunk(cell_of(centre.x, centre.y, self.size))

@@ -86,11 +86,28 @@ KERB_ROAD_CROSSING_MARGIN_M = 1.0  # extra gap beyond the road's half width
 _KERB_CROSSING_GRID_CELL_M = 50.0
 
 
+def _stadium_as_ground(tags: dict) -> dict:
+    """building=stadium (Bolt Arena's outline) is a stadium like
+    leisure=stadium: its grounds, the stands drawn round its pitch."""
+    if tags.get("building") == "stadium" and "leisure" not in tags:
+        return {**tags, "leisure": "stadium"}
+    return tags
+
+
+# Sports played under a roof: a stadium for them is a hall (Helsingin jäähalli).
+INDOOR_SPORTS = frozenset({"ice_hockey", "basketball", "volleyball", "floorball", "handball", "futsal", "bandy_indoor"})
+
+
 def _is_building(tags: dict) -> bool:
     """Whether an area is a building. A leisure=stadium outline often carries
     a building=* tag too, but it is the open grounds round the pitch - its
-    roofed stands are mapped as their own building=roof/bleachers."""
-    return ("building" in tags or "building:part" in tags) and tags.get("leisure") != "stadium"
+    roofed stands are mapped as their own building=roof/bleachers - unless
+    its sport is an indoor one: then it is an arena, roof and all."""
+    if not ("building" in tags or "building:part" in tags):
+        return False
+    if tags.get("leisure") != "stadium":
+        return True
+    return bool(INDOOR_SPORTS.intersection((tags.get("sport") or "").split(";")))
 
 
 def _water_kind(tags: dict) -> Optional[str]:
@@ -572,7 +589,7 @@ def build_ways(
             if tags.get("amenity") == "parking_entrance":
                 connector_nodes[nid] = tags
         elif el_type == "way":
-            tags = el.get("tags", {})
+            tags = _stadium_as_ground(el.get("tags", {}))
             node_ids = el.get("nodes", [])
             way_id = el.get("id")
             if way_id is not None:
@@ -628,7 +645,7 @@ def build_ways(
             if tags.get("barrier") == "kerb":
                 curb_raw.append((tags, node_ids))
         elif el_type == "relation":
-            tags = el.get("tags", {})
+            tags = _stadium_as_ground(el.get("tags", {}))
             if tags.get("type") == "multipolygon":
                 members = el.get("members", [])
                 relations_raw.append((tags, members))

@@ -444,3 +444,13 @@ def test_a_stadium_gets_its_stands_round_an_open_pitch():
         assert not any(r[0] == "wall" for r in here["railings"])
     world.sceneries = [Scenery(points_m=outline, kind="stadium")]  # no pitch mapped: stands 15 m deep
     assert len(map_chunks.ChunkIndex(world, size=500.0).message("0_0")["buildings"]) == 4
+
+
+def test_a_stadium_mapped_twice_gets_one_ring_of_stands():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    world.buildings = []
+    outline = [(100.0, 100.0), (240.0, 100.0), (240.0, 200.0), (100.0, 200.0)]
+    world.sceneries = [Scenery(points_m=outline, kind="stadium", name="Bolt Arena"), Scenery(points_m=outline[::-1], kind="stadium")]
+    assert len(map_chunks.ChunkIndex(world, size=500.0).message("0_0")["buildings"]) == 4

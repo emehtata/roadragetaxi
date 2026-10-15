@@ -240,3 +240,23 @@ def test_a_stadium_outline_is_open_ground_not_a_roof():
     world = build_ways(nodes + [stadium, hall])
     assert [b.name for b in world.buildings] == ["Oulun jalkapallohalli"]  # the dome is a building
     assert [s.kind for s in world.sceneries if s.name == "Heinäpään jalkapallostadion"] == ["stadium"]
+
+
+def test_a_building_stadium_is_stadium_ground_too():
+    from theroadragetrip.osm.build import build_ways
+
+    nodes = [{"type": "node", "id": i, "lat": lat, "lon": lon}
+             for i, (lat, lon) in enumerate([(60.18, 24.92), (60.18, 24.922), (60.181, 24.922), (60.181, 24.92)], start=1)]
+    arena = {"type": "way", "id": 9, "nodes": [1, 2, 3, 4, 1], "tags": {"building": "stadium", "building:levels": "5"}}
+    world = build_ways(nodes + [arena])
+    assert not world.buildings and [s.kind for s in world.sceneries] == ["stadium"]
+
+
+def test_an_indoor_arena_stays_a_roofed_building():
+    from theroadragetrip.osm.build import build_ways
+
+    nodes = [{"type": "node", "id": i, "lat": lat, "lon": lon}
+             for i, (lat, lon) in enumerate([(60.18, 24.92), (60.18, 24.922), (60.181, 24.922), (60.181, 24.92)], start=1)]
+    hall = {"type": "way", "id": 9, "nodes": [1, 2, 3, 4, 1],
+            "tags": {"building": "yes", "leisure": "stadium", "sport": "ice_hockey", "name": "Helsingin jäähalli"}}
+    assert [b.name for b in build_ways(nodes + [hall]).buildings] == ["Helsingin jäähalli"]
