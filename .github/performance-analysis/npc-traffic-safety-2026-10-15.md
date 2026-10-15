@@ -466,3 +466,64 @@ Final validation: **1,442 Python tests passed, 2 skipped**; observation harness
 self-check and saved JSON validation passed. No Godot/rendering test was needed
 for this server-only scheduling change. No junction/pedestrian legal rules were
 changed, and no general Finnish-law compliance is claimed.
+
+## Iteration — prevent unapproved off-road motion
+
+User observation: NPCs visibly drove off-road. Ordinary travel must remain on
+the carriageway; obstacles alone do not authorize an unchecked ground bypass.
+This iteration adds a bounded, server-side live road-envelope guard for forward
+and reverse physics. It samples nine actual-body points at up to one-metre swept
+increments, capped at 32 poses. A rejected proposal is not published: retain the
+previous pose, stop, label the boundary blockage and request the existing route
+recovery. Both OSM layer and logical garage level constrain road coverage.
+This is sampled protection, not an exact continuous polygon-containment proof.
+
+Keep existing parking entry/departure within a short corridor around the planned
+approach, including curved legs. Track the actual parked departure origin, not
+the lane-offset route point. A transit endpoint merely flagged off-road does not
+grant an exception when its endpoint is on the carriageway. A stationary safe
+hold does not become STUCK merely because its existing pose is outside the road.
+The parking corridors still rely on existing route/destination validation;
+verified access, full bay footprint and generic-yard removal remain necessary
+before claiming compliance with the new off-road policy.
+
+Related causes fixed: preserve the off-road destination flag on continuation;
+do not lane-offset an explicitly supplied parking destination; join the directed
+road edge instead of routing a driveway exit through a junction behind it;
+limit lookahead through sampled turns; apply yard pace over the entire bounded
+approach/departure, not just the final waypoint. These are connected movement
+fixes required to keep the household and two-visit turnover regressions working
+under the guard, not permission to weaken the boundary when a route stalls.
+
+Added regressions cover actual car/truck dimensions, indexed/unindexed roads,
+bad headings, swept gaps, footways, bridge/garage levels, middle-of-trip and
+transit-endpoint exemptions, actual parked origins, curved approach speed and
+reverse road edges. The reverse-distance test now starts far enough inside its
+road to reverse legally; a separate test verifies refusal at the road endpoint.
+Arrival tests accept both coasting ARRIVING and already-stationary PARKED while
+retaining destination-distance/parking-occupancy assertions.
+
+Validation before the real-map run: **1,452 Python tests passed, 2 skipped**;
+after the final level-filter changes, the focused NPC/pedestrian suite passed
+**305 tests**. No claim of traffic maturity is made: route waits, collision
+prediction, verified parking access and the ordered junction/pedestrian work
+still need iteration and multi-seed acceptance soaks.
+
+Real-time Oulu check: **120.024 seconds, 3,593 ticks**, run separately from the
+test suite. The [saved summary](npc-traffic-safety-2026-10-15-data/road-boundary-smoke.json)
+records the unchanged runtime patch fingerprint against `90f9dc0` and the first
+blocked proposal for each affected vehicle. **13 boundary proposals were
+blocked**, with **1 sampled departure, 1 collision and 16 recovery holds**.
+There were **zero successful recovery plans**. Tick p50/p95/p99 were
+**8.07/11.00/15.58 ms**, maximum **30.07 ms**; worst routing slice work was
+**5.80 ms**, still above its nominal budget for a non-preemptible operation.
+This short run is not a controlled collision-rate improvement claim.
+
+The safety/liveness tradeoff is explicit: containment exposes bad routes instead
+of letting cars leave the road. Several first blocks occurred at path index 1,
+including a 7.5 m vehicle. Rejecting unsafe initial poses and carrying actual
+vehicle dimensions through spawn/route/parking validation is the next iteration;
+the current guard is not proof that every freshly spawned footprint was valid.
+The 16 holds and low departure count fail the maturity/liveness targets. Do not
+relax the road boundary or count the 20 non-PARKED labels as useful throughput
+to hide these failures. No automatic off-road obstacle bypass is enabled.

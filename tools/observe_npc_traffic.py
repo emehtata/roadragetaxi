@@ -89,6 +89,10 @@ def main():
     ped_states = Counter()
     trip_transitions = Counter()
     original_check = manager._check_vehicle_collision
+    import theroadragetrip.npc as npc_module
+    original_boundary_check = npc_module._npc_motion_stays_on_road
+    boundary_events = []
+    boundary_ids = set()
     began = time.monotonic()
     clock = [0.0]
 
@@ -143,7 +147,16 @@ def main():
             print("COLLISION", round(clock[0], 1), before["id"], "contacts", contacts, "new", new, flush=True)
         return result
 
+    def boundary_check(vehicle, driver, previous, ways, spatial_grid=None):
+        result = original_boundary_check(vehicle, driver, previous, ways, spatial_grid)
+        if not result and vehicle.vehicle_id not in boundary_ids and len(boundary_events) < 50:
+            boundary_ids.add(vehicle.vehicle_id)
+            boundary_events.append({"elapsed_s": round(clock[0], 3), "previous_pose": previous,
+                                    "proposed_pose": pose(vehicle)})
+        return result
+
     manager._check_vehicle_collision = collision_check
+    npc_module._npc_motion_stays_on_road = boundary_check
     runtime_patch = subprocess.check_output(["git", "diff", "HEAD", "--", "src/theroadragetrip"])
     metadata = {"source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
                 "runtime_patch_sha256": hashlib.sha256(runtime_patch).hexdigest() if runtime_patch else None,
@@ -206,6 +219,7 @@ def main():
             time.sleep(max(0.0, 1 / 30 - (time.perf_counter() - start)))
     finally:
         manager._check_vehicle_collision = original_check
+        npc_module._npc_motion_stays_on_road = original_boundary_check
         server._running = False
         server._listener.close()
     ordered = sorted(tick_ms)
@@ -213,6 +227,8 @@ def main():
                "actual_wall_s": time.monotonic() - began, "ticks": len(tick_ms),
                "simulated_physics_s": len(tick_ms) / 30, "unique_vehicles": len(seen),
                "collision_events": len(incidents),
+               "road_boundary_blocks": manager.population_diagnostics.get("road_boundary_blocks", 0),
+               "first_boundary_blocks": boundary_events,
                "unique_crashed_ids": sorted({i for e in incidents for i in e["new_crashed"]}),
                "recovery_transitions_sampled": dict(recoveries),
                "route_jobs": {

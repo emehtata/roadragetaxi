@@ -24,8 +24,9 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from .activities import ActivityInstance, ActivityLocation
 from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
+from .map_level import on_map_level
 from .osm import Curb, ParkingSpace, Way
-from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, update_car_physics
+from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, is_point_on_road, update_car_physics
 from .residents import Household, HouseholdManager, ResidentManager
 from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision
 from .traffic_world import _ROUTE_NODE_GRID_CELL_M, RouteSteps, TrafficWorld, run_route_steps
@@ -1073,6 +1074,8 @@ class Driver:
     lookahead_distance_m: float = 0.0
     steering_input: float = 0.0
     destination_is_off_road: bool = False
+    origin_is_off_road: bool = False
+    trip_origin: Optional[Tuple[float, float]] = None
     passing: Optional[object] = None  # the stalled vehicle being driven around in the oncoming lane
     pass_wait_s: float = 0.0
 
@@ -1361,6 +1364,13 @@ def _plan_and_validate_npc_route_steps(
     raw_route = yield from traffic_world.plan_route_steps(origin, destination)
     if raw_route is None:
         return None
+    if origin_is_off_road and len(raw_route) >= 3:
+        # Join the first directed road edge, not its junction behind the driveway.
+        px, py, _, gap = closest_point_and_dist_to_segment(
+            *origin, *raw_route[1], *raw_route[2],
+        )
+        if gap <= NPC_PARKING_ACCESS_TOLERANCE_M:
+            raw_route = [raw_route[0], (px, py), *raw_route[2:]]
     access_path = getattr(parking_space, "access_path", ()) if parking_space is not None else ()
     if len(access_path) >= 2:
         # Route through the generated driveway's road-edge mouth rather
@@ -1463,6 +1473,7 @@ def spawn_npc(
     vehicle is never spawned to then go hunting for a route while
     already "driving". Returns None if no valid route exists.
     """
+    destination_is_off_road = destination_is_off_road or parking_space is not None
     path = _plan_and_validate_npc_route(
         traffic_world, ways, origin, destination, spatial_grid=spatial_grid,
         curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
@@ -1496,6 +1507,7 @@ def _begin_trip_on_vehicle(
     parking_space=None,
     member_resident_ids: Optional[List[int]] = None,
     destination_is_off_road: bool = False,
+    origin_is_off_road: bool = False,
 ) -> Driver:
     """Create the Resident group -> TripGroup -> Driver for a vehicle
     about to start driving `path` for the first time - shared by
@@ -1586,6 +1598,8 @@ def _begin_trip_on_vehicle(
         destination=destination,
         destination_is_off_road=destination_is_off_road,
         current_way=start.way,
+        origin_is_off_road=origin_is_off_road,
+        trip_origin=(vehicle.car.x, vehicle.car.y),
     )
     if parking_space is not None:
         parking_space.reserved = True
@@ -1664,6 +1678,7 @@ def _apply_npc_trip(
         parking_space,
         member_resident_ids=member_resident_ids,
         destination_is_off_road=destination_is_off_road,
+        origin_is_off_road=True,
     )
 
 
@@ -1978,6 +1993,8 @@ def _path_follow_target(driver: Driver, x: float, y: float, speed_mps: float) ->
         NPC_PATH_LOOKAHEAD_BASE_M + abs(speed_mps) * NPC_PATH_LOOKAHEAD_TIME_S,
         NPC_PATH_LOOKAHEAD_MIN_M, NPC_PATH_LOOKAHEAD_MAX_M,
     )
+    if any(point.is_turn for point in path[segment:segment + 4]):
+        lookahead = NPC_PATH_LOOKAHEAD_MIN_M
     driver.lookahead_distance_m = lookahead
     remaining = lookahead
     index = segment
@@ -2056,6 +2073,93 @@ def _update_npc_reversing(
     )
 
 
+def _npc_motion_stays_on_road(vehicle, driver, previous, ways, spatial_grid=None) -> bool:
+    """Check the actual-size swept body, allowing only the bounded parking leg."""
+    car = vehicle.car
+    distance = math.hypot(car.x - previous[0], car.y - previous[1])
+    rotation = abs(angle_diff(car.heading, previous[2]))
+    if distance < 1e-9 and rotation < 1e-9:
+        return True
+    samples = max(1, math.ceil((distance + rotation * vehicle.length_m * 0.5) / 1.0))
+    if samples > 32:
+        return False
+    radius = math.hypot(vehicle.length_m, vehicle.width_m) * 0.5
+    minx, miny = min(previous[0], car.x) - radius, min(previous[1], car.y) - radius
+    maxx, maxy = max(previous[0], car.x) + radius, max(previous[1], car.y) + radius
+    nearby = list(spatial_grid.ways_in_rect(minx, miny, maxx, maxy)) if spatial_grid is not None else [
+        way for way in ways if not getattr(way, "bbox", None) or way.bbox == (0.0, 0.0, 0.0, 0.0) or (
+            way.bbox[2] + way.half_width_m >= minx and way.bbox[0] - way.half_width_m <= maxx
+            and way.bbox[3] + way.half_width_m >= miny and way.bbox[1] - way.half_width_m <= maxy
+        )
+    ]
+    layer = getattr(driver.current_way, "layer", car.layer)
+    nearby = [way for way in nearby if on_map_level(way, car.map_level)]
+    path = driver.path
+
+    def parking_access(x, y):
+        legs = []
+        if len(path) >= 2 and (
+            vehicle.reserved_parking_space is not None or (
+                driver.destination_is_off_road and not is_point_on_road(
+                    path[-1].x, path[-1].y, ways=nearby, car_roads_only=True, layer=layer,
+                )
+            )
+        ):
+            remaining = NPC_PARKING_ACCESS_TOLERANCE_M * 2.0
+            for index in range(len(path) - 2, max(-1, len(path) - 34), -1):
+                a, b = path[index], path[index + 1]
+                remaining -= math.hypot(b.x - a.x, b.y - a.y)
+                if remaining < 0.0:
+                    break
+                legs.append((a, b))
+        if driver.origin_is_off_road and driver.trip_origin is not None and len(path) >= 2 and not is_point_on_road(
+            *driver.trip_origin, ways=nearby, car_roads_only=True, layer=layer,
+        ):
+            legs.append((PathPoint(*driver.trip_origin), path[0]))
+            remaining = NPC_PARKING_ACCESS_TOLERANCE_M * 2.0
+            for a, b in zip(path[:32], path[1:33]):
+                remaining -= math.hypot(b.x - a.x, b.y - a.y)
+                if remaining < 0.0:
+                    break
+                legs.append((a, b))
+        for a, b in legs:
+            if math.hypot(b.x - a.x, b.y - a.y) > NPC_PARKING_ACCESS_TOLERANCE_M * 2.0:
+                continue
+            *_, gap = closest_point_and_dist_to_segment(x, y, a.x, a.y, b.x, b.y)
+            if gap <= vehicle.width_m * 0.5 + 0.3:
+                return True
+        return False
+
+    for step in range(1, samples + 1):
+        t = step / samples
+        x = previous[0] + (car.x - previous[0]) * t
+        y = previous[1] + (car.y - previous[1]) * t
+        heading = previous[2] + angle_diff(car.heading, previous[2]) * t
+        c, s = math.cos(heading), math.sin(heading)
+        covered = all(is_point_on_road(
+            x + c * along - s * across, y + s * along + c * across,
+            ways=nearby, car_roads_only=True, layer=layer,
+        ) for along in (-vehicle.length_m * 0.5, 0.0, vehicle.length_m * 0.5)
+          for across in (-vehicle.width_m * 0.5, 0.0, vehicle.width_m * 0.5))
+        if not covered and not parking_access(x, y):
+            return False
+    return True
+
+
+def _enforce_npc_road_motion(vehicle, driver, previous, traffic_world, spatial_grid, manager):
+    if _npc_motion_stays_on_road(vehicle, driver, previous, traffic_world.ways, spatial_grid):
+        return
+    vehicle.car.x, vehicle.car.y, vehicle.car.heading = previous
+    vehicle.car.speed = 0.0
+    vehicle.state = NPCState.WAITING
+    vehicle.debug_waiting_for = "road boundary - awaiting validated route"
+    driver.target_speed_mps = 0.0
+    driver.recovery_stage = "STUCK"
+    if manager is not None:
+        diagnostics = manager.population_diagnostics
+        diagnostics["road_boundary_blocks"] = diagnostics.get("road_boundary_blocks", 0) + 1
+
+
 def update_npc(
     vehicle: NPCVehicle,
     driver: Driver,
@@ -2069,6 +2173,7 @@ def update_npc(
     nearby_obstacles: Optional[List] = None,
     manager: object = None,
     pedestrian_mgr: object = None,
+    spatial_grid: Optional[SpatialWayGrid] = None,
 ) -> None:
     """Advance one NPC's driving decision and physics by one frame
     (NPC-001 sections 5-10). Pure simulation.
@@ -2099,7 +2204,9 @@ def update_npc(
 
     if vehicle.state == NPCState.REVERSING:
         _set_turn_signal(vehicle, "", dt)
+        previous = (vehicle.car.x, vehicle.car.y, vehicle.car.heading)
         _update_npc_reversing(vehicle, driver, dt, manager, pedestrian_mgr)
+        _enforce_npc_road_motion(vehicle, driver, previous, traffic_world, spatial_grid, manager)
         return
 
     if vehicle.state == NPCState.PARKED:
@@ -2162,8 +2269,13 @@ def update_npc(
     # the most route validation allows) is driven at yard pace - not the
     # whole final leg, which can be a long straight road stretch.
     in_offroad_approach = (
-        driver.destination_is_off_road and approaching_final_waypoint
-        and distance_to_target <= NPC_PARKING_ACCESS_TOLERANCE_M
+        driver.destination_is_off_road
+        and distance_to_target <= NPC_PARKING_ACCESS_TOLERANCE_M * 2.0
+    )
+    in_offroad_departure = (
+        driver.origin_is_off_road and driver.trip_origin is not None
+        and math.hypot(vehicle.x - driver.trip_origin[0], vehicle.y - driver.trip_origin[1])
+        <= NPC_PARKING_ACCESS_TOLERANCE_M * 2.0
     )
 
     nearby_lights = traffic_world._nearby_traffic_lights(vehicle.car.x, vehicle.car.y)
@@ -2201,14 +2313,8 @@ def update_npc(
         )
         arrival_cap = math.sqrt(2.0 * ARRIVAL_DECEL_MPS2 * max(0.0, remaining_m - (NPC_ARRIVAL_RADIUS_M if footprint_clear else 0.0)))
         driver.target_speed_mps = min(driver.target_speed_mps, arrival_cap)
-    if approaching_final_waypoint:
-        if in_offroad_approach:
-            # The last segment into a yard, lot or dedicated parking space
-            # is deliberately allowed to leave the mapped road.  It is not,
-            # however, still a 40/50 km/h road: enter it at a cautious pace.
-            driver.target_speed_mps = min(
-                driver.target_speed_mps, NPC_OFFROAD_APPROACH_SPEED_MPS
-            )
+    if in_offroad_approach or in_offroad_departure:
+        driver.target_speed_mps = min(driver.target_speed_mps, NPC_OFFROAD_APPROACH_SPEED_MPS)
 
     # Brake for a sharp corner the same comfortable way, well before
     # reaching it - nothing else here ever slows the vehicle down for the
@@ -2450,10 +2556,12 @@ def update_npc(
     # speed-limiter branch - the same mechanism backing the player's
     # speed-limiter HUD toggle - so throttle just asks for "as fast as
     # currently allowed" rather than needing its own brake/throttle logic.
+    previous_pose = (vehicle.car.x, vehicle.car.y, vehicle.car.heading)
     update_car_physics(
         vehicle.car, throttle=1.0, brake=0.0, steer_left=steer_left, steer_right=steer_right, dt=dt,
         block_offroad=False, speed_limit_mps=driver.target_speed_mps,
     )
+    _enforce_npc_road_motion(vehicle, driver, previous_pose, traffic_world, spatial_grid, manager)
 
 
 def _largest_route_graph_component(nodes: List[Tuple[float, float, int]], edges: dict) -> List[int]:
@@ -3220,6 +3328,8 @@ def _recover_npc_trip_steps(vehicle, driver, traffic_world, ways, spatial_grid,
 
 def _apply_npc_continuation(vehicle, driver, plan) -> None:
     path, destination, target_space, _ = plan
+    driver.origin_is_off_road = vehicle.state == NPCState.PARKED
+    driver.trip_origin = (vehicle.x, vehicle.y)
     release_npc_parking_reservation(vehicle)
     vehicle.destination = destination
     vehicle.travel_route = [(p.x, p.y) for p in path]
@@ -3239,6 +3349,7 @@ def _apply_npc_continuation(vehicle, driver, plan) -> None:
     driver.destination = destination
     driver.current_way = path[0].way
     driver.recovery_stage = "NORMAL"
+    driver.destination_is_off_road = plan[3]
     if vehicle.trip_group is not None:
         vehicle.trip_group.activity_duration_s = random.uniform(
             NPC_BUILDING_VISIT_MIN_S, NPC_BUILDING_VISIT_MAX_S
@@ -4814,6 +4925,7 @@ class NPCVehicleManager:
                 vehicle, driver, dt, traffic_world, resident_manager,
                 curbs=curbs, buildings=buildings, curb_grid=curb_grid, building_grid=building_grid,
                 nearby_obstacles=nearby_obstacles, manager=self, pedestrian_mgr=pedestrian_mgr,
+                spatial_grid=spatial_grid,
             )
             if vehicle.state == NPCState.PARKED:
                 self._handle_parked_vehicle(vehicle)

@@ -173,6 +173,15 @@ Law: §§ 5, 9, 18–23, 30–35, 43–46, 58–62, 99; annexes 5.1–5.2 for ve
 Implementation guidance: distinguish lawful traffic waits from failed routes.
 Recovery cannot bypass queues, sidewalks, barriers, crossings or rail hazards.
 
+**Game policy (2026-10-15):** ordinary NPC travel must stay on the carriageway.
+An obstacle does not automatically authorize an off-road bypass: require a
+demonstrably necessary, otherwise-unavoidable, safe and lawful maneuver. Until
+that maneuver is validated, stop/reroute rather than drive across open ground.
+Keep verified parking/driveway access distinct from ordinary travel; an arbitrary
+generated yard destination is not proof of access permission. See § 18's limited
+exception for other parts of the road; it is not blanket permission to leave the
+road or use pedestrian space.
+
 ## Parking and passenger stops
 
 Law: [§§ 36–41](https://www.finlex.fi/fi/lainsaadanto/2018/729#chp_3__sec_36),

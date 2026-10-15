@@ -257,9 +257,9 @@ def test_npc_settles_close_to_its_building_yard_point_not_partway_back_to_the_ro
 
     for _ in range(3600):
         update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
-        if vehicle.state == NPCState.ARRIVING:
+        if vehicle.state in (NPCState.ARRIVING, NPCState.PARKED):
             break
-    assert vehicle.state == NPCState.ARRIVING
+    assert vehicle.state in (NPCState.ARRIVING, NPCState.PARKED)
     final_point = driver.path[-1]
     final_distance = math.hypot(vehicle.x - final_point.x, vehicle.y - final_point.y)
     assert final_distance < NPC_ARRIVAL_RADIUS_M
@@ -1117,9 +1117,9 @@ def test_npc_reserved_space_becomes_occupied_on_arrival():
 
     for _ in range(3600):  # 400m trip - longer than the usual 200m test budget
         update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
-        if vehicle.state == NPCState.ARRIVING:
+        if vehicle.state in (NPCState.ARRIVING, NPCState.PARKED):
             break
-    assert vehicle.state == NPCState.ARRIVING
+    assert vehicle.state in (NPCState.ARRIVING, NPCState.PARKED)
     assert space.occupied is True
 
 
@@ -1471,7 +1471,7 @@ def test_reversing_backs_up_and_hands_back_to_stuck_recovery():
     ways = _straight_chain(count=20)
     tw = TrafficWorld(ways)
     residents = ResidentManager()
-    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    result = spawn_npc(1, residents, tw, ways, (40.0, 0.0), (200.0, 0.0))
     assert result is not None
     _, driver, vehicle = result
     vehicle.state = NPCState.REVERSING
