@@ -17,7 +17,7 @@ from .localization import tr
 from .fare import calculate_fare_cents, format_euros, tip_cents_from_happiness
 from .police import SpeedCamera, camera_sees_car
 from .rail_bookings import ACCEPTED, IN_TAXI, MISSED, PASSENGER_MET, TRAIN_ARRIVING, waiting_booking
-from .residents import MIN_UNACCOMPANIED_AGE, Resident, ResidentManager
+from .residents import CITY_DATA, MIN_UNACCOMPANIED_AGE, Resident, ResidentManager
 from .traffic_rules import nearest_traffic_light_ahead
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,14 @@ POST_KINDS = ("bollard", "street_lamp")  # solid poles the taxi can hit
 POST_RADIUS_M = 0.15
 TREE_TRUNK_RADIUS_M = 0.4
 POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stopping the taxi
+# Long fares: a phone offer to another municipality. Only the town is known
+# at first (its map isn't loaded); the edge arrow points the way, and near
+# the town the street address is picked from the map streamed in by then.
+LONG_FARE_CHANCE = 0.10
+LONG_FARE_MIN_M = 20_000.0
+LONG_FARE_MAX_M = 100_000.0
+LONG_FARE_RESOLVE_M = 1500.0  # this close to the town centre its map is loaded
+LONG_FARE_RETRY_S = 2.0  # bounded: one address search per this, until one is found
 GREET_RADIUS_M = 2.0  # how close the driver on foot must be to greet a booked rail customer
 
 
@@ -62,6 +70,7 @@ class TaxiTarget:
     district_name: Optional[str] = None
     radius_m: float = 20.0  # Pickup/dropoff stop radius
     venue_type: Optional[str] = None
+    municipality: Optional[str] = None  # a long fare's town, until its address is picked
 
 
 @dataclass
@@ -110,6 +119,23 @@ class TaxiState:
     CLIENT_WALKING_TO_CAR = "WALKING"
     DRIVING_TO_DROPOFF = "DROPOFF"
     COMPLETED = "COMPLETED"
+
+
+_municipality_points: Optional[List[Tuple[str, float, float, int]]] = None
+
+
+def municipality_points() -> List[Tuple[str, float, float, int]]:
+    """(name, x, y, population) of every bundled municipality, in map metres."""
+    global _municipality_points
+    if _municipality_points is None:
+        from pyproj import Transformer
+        transformer = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True)
+        _municipality_points = []
+        for entry in CITY_DATA.values():
+            coords = entry.get("koordinaatit") or {}
+            x, y = transformer.transform(float(coords["longitude"]), float(coords["latitude"]))
+            _municipality_points.append((entry["taajama"], x, y, int(entry.get("väkiluku") or 1)))
+    return _municipality_points
 
 
 def speed_bonus_points(speed_kmh: float) -> int:
@@ -209,6 +235,7 @@ class TaxiManager:
         self.notification_timer: float = 0.0
         self.next_offer_timer: float = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
         self.stand_wait_timer: float = 0.0
+        self.long_fare_retry_timer: float = 0.0
 
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
@@ -1579,6 +1606,33 @@ class TaxiManager:
             return dropoff
         return self.pick_random_road_point(ref_x=pickup_x, ref_y=pickup_y, min_dist=self.min_distance_m, max_dist=float("inf"))
 
+    def pick_long_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
+        """Another municipality LONG_FARE_MIN_M..MAX_M away, bigger towns
+        likelier; only its centre is known until the taxi gets near."""
+        towns = [(name, x, y, pop) for name, x, y, pop in municipality_points()
+                 if LONG_FARE_MIN_M <= math.hypot(x - pickup_x, y - pickup_y) <= LONG_FARE_MAX_M]
+        if not towns:
+            return None
+        name, x, y, _ = random.choices(towns, weights=[pop for *_, pop in towns])[0]
+        return TaxiTarget(x=x, y=y, address=name, radius_m=self.pickup_radius_m, municipality=name)
+
+    def _resolve_long_dropoff(self, passenger: TaxiPassenger, dt: float) -> None:
+        """Near a long fare's town: its street address, once the map has one."""
+        self.long_fare_retry_timer -= dt
+        if self.long_fare_retry_timer > 0.0:
+            return
+        self.long_fare_retry_timer = LONG_FARE_RETRY_S
+        town = passenger.dropoff
+        final = (self.pick_random_building_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M)
+                 or self.pick_random_road_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M))
+        if final is None:
+            return
+        final.address = f"{final.address}, {town.municipality}"
+        passenger.dropoff = final
+        self.notification_msg = tr(self.language, "long_fare_address", name=passenger.name, address=final.address)
+        self.notification_timer = 6.0
+        logger.info("Long fare address picked: passenger=%s dropoff=%s", passenger.name, final.address)
+
     def generate_offers(
         self, car_x: float, car_y: float, count: int = 3, append: bool = False
     ) -> List[TaxiOffer]:
@@ -1593,7 +1647,10 @@ class TaxiManager:
             pickup = self.pick_phone_pickup(car_x, car_y)
             if not pickup:
                 continue
-            dropoff = self.pick_phone_dropoff(pickup.x, pickup.y)
+            dropoff = None
+            if random.random() < LONG_FARE_CHANCE:
+                dropoff = self.pick_long_dropoff(pickup.x, pickup.y)
+            dropoff = dropoff or self.pick_phone_dropoff(pickup.x, pickup.y)
             if not dropoff:
                 continue
             passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity()
@@ -2103,7 +2160,10 @@ class TaxiManager:
                 self.elapsed_time,
                 self.fare_started_at or self._current_game_datetime(),
             )
-            if dist_to_target <= target.radius_m:
+            if target.municipality is not None:  # a long fare: no stop at the bare town centre
+                if dist_to_target <= LONG_FARE_RESOLVE_M:
+                    self._resolve_long_dropoff(self.current_passenger, dt)
+            elif dist_to_target <= target.radius_m:
                 if is_stopped:
                     # Completed fare!
                     p = self.current_passenger

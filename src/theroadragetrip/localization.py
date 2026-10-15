@@ -168,6 +168,7 @@ TRANSLATIONS = {
         "passenger_vomited_outside": "Asiakas oksensi ja lähti kävellen – kyyti menetetty.",
         "walking_named": "{name} kävelee taksiin...",
         "boarded_destination": "{name} nousi kyytiin! Määränpää: {address}",
+        "long_fare_address": "{name}: tarkka osoite on {address}",
         "fare_complete_points": "Kyyti valmis! Hinta {amount}, tippi {tip}, +{earned} pistettä ({avg:.0f} km/h keskiarvo, {seconds:.1f} s)",
     },
     "en": {
@@ -334,6 +335,7 @@ TRANSLATIONS = {
         "passenger_vomited_outside": "The passenger threw up and walked off - the fare is lost.",
         "walking_named": "{name} is walking to the taxi...",
         "boarded_destination": "{name} boarded! Destination: {address}",
+        "long_fare_address": "{name}: the exact address is {address}",
         "fare_complete_points": "Fare complete! Fare {amount}, tip {tip}, +{earned} pts ({avg:.0f} km/h average in {seconds:.1f}s)",
     },
 }
