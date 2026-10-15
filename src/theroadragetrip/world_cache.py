@@ -93,7 +93,9 @@ MAGIC = b"RWC\0"
 # 26: Scenery.sport (soccer pitches).
 # 27: a leisure=stadium outline is ground, not a building (it roofed the pitch).
 # 28: building=stadium is stadium ground too (Bolt Arena's roof).
-FORMAT_VERSION = 28
+# 29: Railway.stops (tram stops on a tram line).
+# 30: tram stops beside their track join it (29's lists only had those on it).
+FORMAT_VERSION = 30
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

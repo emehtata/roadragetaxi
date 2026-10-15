@@ -253,6 +253,7 @@ class TaxiManager:
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
         self._crashed_fence_cooldowns: Dict[int, float] = {}  # scenery id -> timestamp cooldown
+        self._tram_crash_at = -1e9  # sim time of the last tram crash (one penalty an impact)
         self._crashed_post_cooldowns: Dict[int, float] = {}  # bollard/lamp id -> timestamp cooldown
         self._post_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._post_ref = None
@@ -833,6 +834,39 @@ class TaxiManager:
             return True
 
         return False
+
+    def check_tram_collision(
+        self,
+        player_car: Car,
+        tram_mgr,
+        sim_time: float,
+        previous_position: Optional[Tuple[float, float]] = None,
+        penalty: int = 300,
+    ) -> bool:
+        """Driving into a tram (trams.py): stopped where it was, one penalty
+        an impact. A taxi a tram moved into (it overlapped at its previous
+        position too) is never held there: it can always drive out."""
+        if tram_mgr is None or not tram_mgr.trams:
+            return False
+        corners = get_oriented_box_corners(
+            player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
+        )
+        if not tram_mgr.hits(corners):
+            return False
+        if previous_position is not None and not tram_mgr.hits(get_oriented_box_corners(
+            previous_position[0], previous_position[1], player_car.heading, player_car.length_m, player_car.width_m
+        )):
+            player_car.x, player_car.y = previous_position
+            player_car.speed = 0.0
+        self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
+        if sim_time - self._tram_crash_at > 3.0:
+            self._tram_crash_at = sim_time
+            self.total_score -= penalty
+            self.adjust_passenger_happiness(-30.0)
+            self.notification_msg = tr(self.language, "tram_crash", penalty=penalty)
+            self.notification_timer = 3.5
+            logger.info("Player crashed into a tram: -%d pts", penalty)
+        return True
 
     def _nearby_posts(self, objects: List[Any], x: float, y: float):
         """Bollards and lamp posts near (x, y) from a 20 m grid, indexing

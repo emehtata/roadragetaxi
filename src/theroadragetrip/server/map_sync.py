@@ -116,6 +116,8 @@ def map_sync_steps(world):
     if getattr(w, "railway_mgr", None) is not None:
         for _ in w.railway_mgr.rebuild_steps(w.railways):
             yield "railways"
+    if getattr(w, "tram_mgr", None) is not None:
+        w.tram_mgr.rebuild(w.railways)  # (the tram network: small, one step)
     yield "railways"
     with w.auto_fetch_manager.lock:
         w.auto_fetch_manager._attempted_endpoints.clear()

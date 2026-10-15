@@ -246,7 +246,8 @@ class RailGraph:
 NODE_SPACING_M = 50.0
 
 
-def build_rail_graph(railways: Sequence) -> RailGraph:
+def build_rail_graph(railways: Sequence, kind: str = "rail") -> RailGraph:
+    """The track of `kind` (railway=rail for trains, tram for trams.py)."""
     graph = RailGraph()
 
     def node(p) -> int:
@@ -258,7 +259,7 @@ def build_rail_graph(railways: Sequence) -> RailGraph:
         return graph.key_of[key]
 
     for railway in railways:
-        if getattr(railway, "kind", "rail") != "rail":
+        if getattr(railway, "kind", "rail") != kind:
             continue
         # Long straight OSM segments get extra nodes every <= NODE_SPACING_M
         # so a station always has track nodes to stop at.

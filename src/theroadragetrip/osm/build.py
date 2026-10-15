@@ -7,7 +7,7 @@ import math
 import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-from ..geo import compute_bbox, point_in_polygon
+from ..geo import compute_bbox, dist_point_to_segment, point_in_polygon
 
 
 logger = logging.getLogger(__name__)
@@ -84,6 +84,9 @@ MIN_TRAFFIC_ISLAND_WIDTH_M = 1.5
 # ~2700 points, which made NPC route validation reject 98% of trips.
 KERB_ROAD_CROSSING_MARGIN_M = 1.0  # extra gap beyond the road's half width
 _KERB_CROSSING_GRID_CELL_M = 50.0
+
+
+TRAM_STOP_SNAP_M = 15.0  # a tram stop beside its track (Railway.stops; trams.py snaps it the same)
 
 
 def _stadium_as_ground(tags: dict) -> dict:
@@ -543,6 +546,7 @@ def build_ways(
     relations_raw: List[Tuple[dict, List[dict]]] = []
     garage_raw: List[Tuple[dict, str, int, object]] = []  # (tags, osm type, osm id, node ids / members)
     connector_nodes: Dict[int, dict] = {}  # amenity=parking_entrance node id -> tags
+    tram_stop_names: Dict[int, str] = {}  # tram stop node id -> its name (Railway.stops)
     connector_ways: Dict[int, List[Tuple[int, dict]]] = defaultdict(list)  # node id -> ways through it
 
     for el in elements:
@@ -568,6 +572,8 @@ def build_ways(
                 yield_signs_raw.append((tags, nid))
             if tags.get("highway") == "taxi_stop" or tags.get("amenity") == "taxi":
                 taxi_stops_raw.append((tags, nid))
+            if tags.get("railway") == "tram_stop" or (tags.get("public_transport") == "stop_position" and tags.get("tram") == "yes"):
+                tram_stop_names[nid] = tags.get("name", "")
             if include_bus_stops and (tags.get("highway") == "bus_stop" or tags.get("public_transport") in ("platform", "stop_position")):
                 bus_stops_raw.append((tags, nid))
             if "entrance" in tags:
@@ -944,6 +950,23 @@ def build_ways(
                 track_ref=tags.get("railway:track_ref", "").strip().lstrip("0"),
             )
         )
+    # Tram stops are mostly mapped beside the track (on the platform side),
+    # not as one of its nodes: each joins the nearest tram line this near.
+    tram_lines = [r for r in railways if r.kind == "tram"]
+    for nid, name in tram_stop_names.items():
+        if nid not in nodes_m:
+            continue
+        x, y = nodes_m[nid]
+        best = None
+        for line in tram_lines:
+            minx, miny, maxx, maxy = line.bbox
+            if not (minx - TRAM_STOP_SNAP_M <= x <= maxx + TRAM_STOP_SNAP_M and miny - TRAM_STOP_SNAP_M <= y <= maxy + TRAM_STOP_SNAP_M):
+                continue
+            gap = min(dist_point_to_segment(x, y, *a, *b) for a, b in zip(line.points_m, line.points_m[1:]))
+            if gap <= TRAM_STOP_SNAP_M and (best is None or gap < best[0]):
+                best = (gap, line)
+        if best is not None:
+            best[1].stops.append((x, y, name))
 
     for tags, node_ids in railing_raw:
         pts, ibbox = process_node_ids(node_ids)

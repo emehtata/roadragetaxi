@@ -21,6 +21,7 @@ from .career import (load_career_balance, load_career_distance, load_gig_balance
 from .level_routing import LevelRouteGraphs
 from .level_transitions import LevelTransitions, resolve_connectors
 from .map_level import SURFACE_LEVEL, LevelRoadNetworks
+from .trams import TramManager
 from .competitor_taxis import Dispatcher
 from .npc import NPCVehicleManager, npc_target_count_for_population
 from .osm import (AutoFetchManager, build_ways, city_bin_available, city_bin_path, fetch_osm_ways,
@@ -497,6 +498,7 @@ def load_world(
     return SimpleNamespace(
         arena_crowds=arena_crowds,
         railway_mgr=railway_mgr,
+        tram_mgr=TramManager(railways, chosen_city),  # trams on their rails where the city has them (trams.py)
         auto_fetch_manager=auto_fetch_manager,
         base_pedestrian_count=base_pedestrian_count,
         bounds=bounds,

@@ -169,6 +169,18 @@ def _rage_from_speeding(
     return max(0.0, rage_power - delta)
 
 
+def _tram_obstacles(car, world) -> list:
+    """What a tram must not run into (trams.TramManager.update): the taxi
+    and NPC cars at their front, middle and back, and pedestrians."""
+    points = []
+    for vehicle in [car, *getattr(world.npc_manager, "vehicles", ())]:
+        half = getattr(vehicle, "length_m", 4.5) / 2.0
+        dx, dy = math.cos(vehicle.heading) * half, math.sin(vehicle.heading) * half
+        points += [(vehicle.x, vehicle.y), (vehicle.x + dx, vehicle.y + dy), (vehicle.x - dx, vehicle.y - dy)]
+    points += [(p.x, p.y) for p in world.pedestrian_mgr.pedestrians]
+    return points
+
+
 def advance_simulation(
     dt: float,
     command: PlayerCommand,
@@ -475,6 +487,8 @@ def advance_simulation(
         if len(taxi_mgr.fallen_trees) > fallen_before:
             audio.play_group("collision.tree_fall")
         fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
+        tram_crash = on_surface and taxi_mgr.check_tram_collision(
+            car, getattr(world, "tram_mgr", None), traffic_mgr.sim_time, previous_position)
         # Bollards and lamp posts are OSM nodes without a level: surface only.
         post_crash = on_surface and taxi_mgr.check_post_collision(
             car, scenery_objects, traffic_mgr.sim_time, previous_position
@@ -501,6 +515,7 @@ def advance_simulation(
         audio.on_rise("crash_building", building_crash, "collision.building", 0.8),
         audio.on_rise("crash_tree", tree_crash, "collision.tree", 0.8),
         audio.on_rise("crash_fence", fence_crash, "collision.fence", 0.8),
+        audio.on_rise("crash_tram", tram_crash, "collision.building", 0.9),  # a heavy steel body
         audio.on_rise("crash_post", post_crash, "collision.guardrail", 0.8),  # a metal pole
         audio.on_rise("crash_guardrail", bridge_edge_crash, "collision.guardrail", 0.8),
     ])
@@ -546,6 +561,10 @@ def advance_simulation(
                 )
             railway_mgr.view_point = (camx, camy)
             railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), now)
+    tram_mgr = getattr(world, "tram_mgr", None)
+    if tram_mgr is not None and tram_mgr.has_track:
+        with frame_profiler.section("trams"):
+            tram_mgr.update(dt, (camx, camy), viewport_bounds, _tram_obstacles(car, world))
 
     # Update taxi missions & pickups
     previous_taxi_state = taxi_mgr.state

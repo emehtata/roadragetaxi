@@ -32,7 +32,11 @@ const TRAIN_PROFILES := {
 	"restaurant": [Color8(46, 125, 60), Color8(245, 245, 240)],
 	"family": [Color8(96, 170, 92), null],
 	"pet": [Color8(34, 100, 70), null],
+	# Trams (trams.py): their sections, a light roof stripe down the middle.
+	"tram_helsinki": [Color8(20, 140, 70), Color8(235, 240, 235)],
+	"tram_tampere": [Color8(185, 25, 40), Color8(240, 240, 240)],
 }
+const TRAM_WIDTH_M := 2.4  # trams.py TRAM_WIDTH_M
 
 # Pedestrians (appearance isn't sent: these are the defaults, with the
 # pedestrian's own colour as clothing)

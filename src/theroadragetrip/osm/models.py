@@ -84,6 +84,9 @@ class Railway:
     # OSM railway:track_ref without leading zeros ("011" -> "11"): the
     # station track number, which timetable platform codes refer to.
     track_ref: str = ""
+    # A tram line's stops on it (OSM railway=tram_stop, or a tram
+    # public_transport=stop_position, nodes of this way): (x, y, name).
+    stops: List[Tuple[float, float, str]] = field(default_factory=list)
 
 
 @dataclass

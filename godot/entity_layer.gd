@@ -1227,7 +1227,7 @@ func _train_car(c: Vector2, heading: float, length: float, profile: String, node
 	var f := _forward(heading)
 	var r := _right(heading)
 	var hl := length / 2.0
-	var hw := RS.TRAIN_WIDTH_M / 2.0
+	var hw := (RS.TRAM_WIDTH_M if profile.begins_with("tram") else RS.TRAIN_WIDTH_M) / 2.0
 	var body := _rect(c, f, r, hl, -hl, hw)
 	if not drawable(body):  # a car of no length or a bad heading
 		return

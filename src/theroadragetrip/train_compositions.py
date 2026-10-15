@@ -46,6 +46,9 @@ PROFILES = {
     "restaurant": ((46, 125, 60), (245, 245, 240)),  # green with a white stripe
     "family": ((96, 170, 92), None),  # lighter green (playground car)
     "pet": ((34, 100, 70), None),  # blue-ish darker green (pet compartment)
+    # Trams (trams.py TRAM_CITIES): drawn like train cars, a light roof stripe.
+    "tram_helsinki": ((20, 140, 70), (235, 240, 235)),  # HSL green
+    "tram_tampere": ((185, 25, 40), (240, 240, 240)),  # Tampere red
 }
 
 

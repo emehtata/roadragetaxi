@@ -203,6 +203,15 @@ def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
     }
 
 
+def _trams_to_dicts(tram_mgr) -> list:
+    """Trams drawn like trains (the state's "trains"), their sections their cars."""
+    if tram_mgr is None:
+        return []
+    return [{"id": f"tram-{tram.tram_id}", "state": tram.state, "speed": tram.speed_mps,
+             "cars": [[round(x, 2), round(y, 2), round(h, 4), length, look] for x, y, h, length, look in tram_mgr.cars(tram)]}
+            for tram in tram_mgr.trams]
+
+
 def _train_to_dict(train) -> dict:
     return {
         "id": id(train),
@@ -436,7 +445,8 @@ def build_state_message(
         "balls": ball_positions(),  # soccer: [[x, y], ...]
         "vomit_puddles": [list(point) for point in taxi_mgr.vomit_puddles + world.pedestrian_mgr.vomit_puddles],
         "vomit_footprints": [list(point) for point in world.pedestrian_mgr.vomit_footprints],
-        "trains": [_train_to_dict(t) for t in getattr(getattr(world, "railway_mgr", None), "trains", ())],
+        "trains": [_train_to_dict(t) for t in getattr(getattr(world, "railway_mgr", None), "trains", ())]
+                  + _trams_to_dicts(getattr(world, "tram_mgr", None)),
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
                     "road_snow": round(weather.road_snow, 1),
                     "plowed_cells": [[x, y, round(depth, 1)] for (x, y), depth in weather.plowed_cells.items()
