@@ -297,8 +297,84 @@ map caches were reused and test-suite runs overlapped the benchmark. It uses a
 socket client rather than a rendered Godot client; it cannot establish FPS gains
 or prove all early-population stalls are eliminated.
 
-Deferred: static geometry caching (not yet justified by these measurements),
+At this first step, deferred: static parking geometry caching (not yet justified by these measurements),
 snow redraw, tyre-track rendering and the remaining plan phases. A single
 geometry query, index rebuild or sort remains non-preemptible; yielding between
 candidates is not a hard real-time guarantee. Hardware-GPU FPS improvement is
 not established by this first step.
+
+### Step 2 — road-snow redraws
+
+Implemented chunk-local, visible-coverage invalidation: depth beyond fully white
+does not dirty roads, already covered plough records stop dirtying them, and
+cleared cells without eligible road geometry do not dirty the chunk. Snow depth
+and plough baselines are still retained so subsequent snowfall and melt work.
+Coverage uses 30 steps over the original 0–3 cm whitening range. Existing
+clean-on-arrival baselines after snowfall stops remain intact.
+
+Two-metre segment/cell sampling now happens once during chunk preparation on the
+existing parsing worker, not during snowfall redraws. Surfaces draw a uniform
+snow colour and overlay only cached segments whose plough cover differs.
+Markings have separate, zoom-dependent canvas items at their original road z;
+snow no longer rebuilds markings, and zoom no longer rebuilds road surfaces.
+Necessary snow redraws are coalesced by chunk ID and scheduled for at most two
+chunks per frame; replacement/unload cannot leave a stale chunk reference.
+No server physics, plough decisions, lights, bridge layers or particle counts
+were changed.
+
+Rendered comparison: Godot 4.7.2, 1280×720, compatibility renderer on the same
+llvmpipe software device, VSync off, Oulu PBF, seed 20261014, stationary January
+noon taxi, falling snow at −10 °C and fragmented ploughing. Each fresh run used
+`analysis_driver.py --seconds 20 --repeats 1 --only day_snow_plowed
+--instrument-roads`, excluding the first five seconds of client frames.
+The baseline loaded `map_layer.gd` and `map_chunk.gd` from `55861f4` as temporary
+scripts into the same scene; client preparation and the rest of the application
+were current in both. Actors remained live (15 NPCs at the end in both; movement
+and plough-cell counts were similar, not byte-identical). Runs were sequential,
+without tests or another benchmark running concurrently.
+
+| Ploughed-snow scene | Old road renderer | New road renderer |
+|---|---:|---:|
+| Average rendered FPS | 26.7 | 35.3 |
+| Frame p95 | 55.89 ms | 35.64 ms |
+| Frame p99 | 129.85 ms | 38.69 ms |
+| Worst frame | 131.43 ms | 44.56 ms |
+| Frames over 66.7 ms | 16 | 0 |
+| Road draw callbacks | 1,042 | 86 |
+| Total road draw callback CPU | 1,569.33 ms | 197.37 ms |
+| Largest road draw callback | 14.07 ms | 6.27 ms |
+
+The old callback includes markings; the new callback measures surfaces only,
+because markings no longer redraw with snow. Do not interpret the higher new
+average callback time as a regression: only the smaller set of genuinely changed
+chunks remains. This short comparison supports removal of the periodic hitch,
+not universal FPS or hard real-time guarantees.
+
+A separate final-code four-scenario run recorded p99/worst frames:
+clear **33.27/44.62 ms**, falling snow **39.58/40.40 ms**, ploughed snow
+**46.47/56.49 ms**, stopped snow **42.26/49.78 ms**; none exceeded 66.7 ms.
+Only repeat 1 is retained: repeat 0 was exploratory and preceded the final
+overlay-only refinement. These live-population scenes are not exact before/after
+matches to the original matrix. Raw reports:
+[baseline](weather-traffic-2026-10-14-data/snow-optimization-baseline.json),
+[controlled final](weather-traffic-2026-10-14-data/snow-optimization-controlled.json),
+[final-code scenarios](weather-traffic-2026-10-14-data/snow-optimization-matrix.json).
+
+Validation: **729 Godot checks passed**, including cache cell coordinates,
+road eligibility, saturation, plough changes, reaccumulation, melting,
+new-area baselines, unload and two-chunk scheduling. A separate rendered pixel
+test passed nine checks for dry/snowy/ploughed/melted roads, subsequent snowfall,
+untouched sections, bridge snow, visible markings and unchanged footways:
+`godot --path godot --script res://tests/road_snow_render.gd --audio-driver Dummy
+--resolution 400x240`. The existing unit harness still reports its UI/input and
+shutdown resource warnings; no new script or rendering errors were observed.
+
+Limits: the **5 ms snow-work target is not fully met**—a dense chunk callback
+still reached 6.27 ms (7.26 ms in the four-scenario run), and two chunks can draw
+in one frame. The queue bounds chunk count, not elapsed draw time, and can take
+about 0.8 seconds to drain 49 changed chunks at 30 FPS. Cached segment arrays
+add memory/preparation work; the baseline comparison shares current preparation,
+so its memory counters do not isolate that cost. Server startup still included
+a >200 ms tick; this rendering step does not fix that. Hardware GPU, full night/
+weather matrix, long cold streaming, tyre-track optimization and finer draw-work
+slicing remain unverified or deferred.

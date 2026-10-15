@@ -7,12 +7,15 @@ extends Node2D
 
 const MapChunk := preload("res://map_chunk.gd")
 const Buildings3D := preload("res://buildings_3d.gd")
+# shortcut: two whole chunks per frame; split further if one dense chunk exceeds 5 ms.
+const SNOW_REDRAW_CHUNKS_PER_FRAME := 2
 
 var origin := Vector2.ZERO
 var road_snow := 0.0
 var plowed_cells: Array = []
 var snowing := false
 var _snow_baselines: Dictionary = {}  # preserve a new area's clean start across chunk refreshes
+var _snow_redraws: Dictionary = {}
 var wetness := 0.0  # road wetness as last applied (bucketed, see set_wetness)
 var px_per_m := 9.0  # the camera zoom, for the chunks' pixel-sized points
 var phases: Dictionary = {}  # traffic-light phases as last applied (state "traffic_lights")
@@ -87,6 +90,7 @@ func clear() -> void:
 	for chunk in _chunks.values():
 		_free_chunk(chunk)
 	_chunks.clear()
+	_snow_redraws.clear()
 
 
 ## A chunk's buildings into the shared group, farthest from the current view
@@ -196,6 +200,7 @@ func add_chunk(message: Dictionary) -> bool:
 		_add_buildings(chunk)
 	add_building_meshes(chunk)
 	_chunks[chunk_id] = chunk
+	_snow_redraws.erase(chunk_id)  # its initial draw already uses the latest snow
 	return true
 
 
@@ -322,7 +327,22 @@ func set_road_snow(depth: float, cells: Array, falling := true) -> void:
 		var id: String = chunk._data["chunk_id"]
 		_snow_baselines[id] = minf(float(_snow_baselines[id]), depth)
 		chunk.snow_baseline = float(_snow_baselines[id])
-		chunk.set_road_snow(depth, cells)
+		if chunk.set_road_snow(depth, cells, false) and not chunk._road_layers.is_empty():
+			_snow_redraws[id] = true
+	set_process(not _snow_redraws.is_empty())
+
+
+func _process(_delta: float) -> void:
+	var remaining := SNOW_REDRAW_CHUNKS_PER_FRAME
+	for id in _snow_redraws.keys():
+		_snow_redraws.erase(id)
+		var chunk = _chunks.get(id)
+		if chunk != null:
+			chunk.redraw_road_snow()
+			remaining -= 1
+			if remaining == 0:
+				break
+	set_process(not _snow_redraws.is_empty())
 
 
 ## A chunk the server resent (changed) swapped in for the drawn one in the

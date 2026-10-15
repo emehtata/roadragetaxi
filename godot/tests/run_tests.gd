@@ -63,6 +63,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_audio()
 	test_hud()
 	test_map_chunks()
+	test_road_snow_invalidation()
 	test_commands_carry_the_player_id()
 	test_phone()
 	test_rendering()
@@ -311,6 +312,61 @@ func test_map_chunks() -> void:
 	map.replace_chunk({"chunk_id": "clean"})
 	check(map._chunks["clean"].snow_baseline == 4.0, "refreshing a clean area preserves its snow baseline")
 	map.free()
+
+
+func test_road_snow_invalidation() -> void:
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.set_road_snow(3.0, [], true)
+	for i in 5:
+		map.add_chunk({"chunk_id": str(i), "bounds": [0, 0, 100, 100], "roads": [
+			{"points": [[0, 5], [100, 5]], "half_width_m": 3.0, "drivable": true},
+			{"points": [[0, 15], [100, 15]], "drivable": false},
+			{"points": [[0, 25], [100, 25]], "drivable": true, "layer": -1},
+		]})
+	var chunk = map._chunks["0"]
+	check(not chunk._road_layers[0] in chunk._px_layers, "zoom-dependent markings do not rebuild road surfaces")
+	check(chunk._snow_cells.has(Vector2i(0, 0)) and not chunk._snow_cells.has(Vector2i(0, 1)) and not chunk._snow_cells.has(Vector2i(0, 2)), "snow geometry excludes footways and underground roads")
+	map.set_road_snow(5.0, [], true)
+	check(map._snow_redraws.is_empty(), "already white roads do not redraw as depth grows")
+	map.set_road_snow(5.0, [[0, 1, 5.0]], true)
+	check(map._snow_redraws.is_empty(), "plough cells without snow-eligible road geometry do not redraw roads")
+	map.set_road_snow(5.0, [[0, 0, 5.0]], true)
+	check(map._snow_redraws.size() == 5 and chunk._plowed_cover[Vector2i(0, 0)] == 0.0, "ploughing saturated snow schedules affected chunks")
+	map._process(0.0)
+	check(map._snow_redraws.size() == 3, "at most two chunks redraw for snow in one frame")
+	map.set_road_snow(6.0, [[0, 0, 5.0]], true)
+	check(is_equal_approx(chunk._plowed_cover[Vector2i(0, 0)], 1.0 / 3.0), "ploughed cells regain cover under new snowfall")
+	map.set_road_snow(8.0, [[0, 0, 5.0]], true)
+	check(chunk._plowed_cover.is_empty(), "fully covered ploughed cells return to uniform snow rendering")
+	map._process(0.0)
+	map._process(0.0)
+	map._process(0.0)
+	map.set_road_snow(9.0, [[0, 0, 5.0]], true)
+	check(map._snow_redraws.is_empty(), "further accumulation does not redraw covered plough cells")
+	map.set_road_snow(1.5, [], false)
+	check(chunk._snow_cover == 0.5 and map._snow_redraws.size() == 5, "melt updates visible road cover")
+	map.add_chunk({"chunk_id": "new", "roads": [{"points": [[0, 5], [10, 5]], "drivable": true}]})
+	check(map._chunks["new"]._snow_cover == 0.0, "new roads stay clean after snowfall stops")
+	map.set_road_snow(2.5, [], true)
+	check(is_equal_approx(map._chunks["new"]._snow_cover, 1.0 / 3.0), "new clean roads accumulate subsequent snowfall")
+	map.set_road_snow(0.0, [], false)
+	check(chunk._snow_cover == 0.0 and map._chunks["new"].snow_baseline == 0.0, "melt resets clean-road baselines")
+	map.clear()
+	map._process(0.0)
+	check(map._snow_redraws.is_empty(), "unloaded chunks do not leave pending redraws")
+	map.free()
+	var origin := Vector2(1000, 2000)
+	var segments := MapChunk._road_snow_segments(PackedVector2Array([Vector2(5, -5), Vector2(25, -5)]), origin)
+	var point_count := 0
+	for cell in segments:
+		var points: PackedVector2Array = segments[cell]
+		point_count += points.size()
+		for i in range(0, points.size(), 2):
+			var midpoint := (points[i] + points[i + 1]) * 0.5
+			var world := origin + Vector2(midpoint.x, -midpoint.y)
+			check(cell == Vector2i(floori(world.x / 10.0), floori(world.y / 10.0)), "cached snow samples keep world cell and north/south orientation")
+	check(point_count == 20, "snow geometry keeps the original two-metre sampling")
 
 
 func test_rendering() -> void:

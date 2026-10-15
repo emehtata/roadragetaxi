@@ -8,6 +8,10 @@
 - `steady-snow-profile.txt`: later ploughed-snow 180-tick cProfile attribution.
 - `analysis_driver.py`, `client_driver.gd`: diagnostic harnesses; never imported by
   the game. They alter in-memory test conditions only, not game source or settings.
+- `snow-optimization-baseline.json`, `snow-optimization-controlled.json`: sequential
+  old/new road-renderer comparison after the parking optimization.
+- `snow-optimization-matrix.json`: final-code four-scenario rendered smoke check
+  (repeat 1 only; exploratory repeat 0 discarded).
 
 These harnesses intentionally record the local machine's exact Godot and PBF paths.
 Inspect those paths before reproducing elsewhere. Run from the repository root
