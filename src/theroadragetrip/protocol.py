@@ -169,6 +169,7 @@ def _pedestrian_to_dict(ped, residents=None) -> dict:
         "blood_alcohol_promille": getattr(ped, "blood_alcohol_promille", 0.0),
         "activity": getattr(getattr(ped, "activity", None), "plugin_id", ""),
         "stick_swing": getattr(ped, "stick_swing", 0.0),
+        "hockey_goalie": getattr(ped, "hockey_goalie", False),
     }
 
 

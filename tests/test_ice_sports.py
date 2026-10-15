@@ -57,25 +57,32 @@ def test_an_ice_rink_is_closed_you_crash_into_its_boards():
     assert (car.x, car.y, car.speed) == (20.0, 6.0, 0.0)
 
 
-def test_hockey_players_hit_the_puck_around_the_rink():
+def _hockey_game(seed):
     import random
 
     from theroadragetrip.activities.plugins import ice_hockey
-    from theroadragetrip.geo import point_in_polygon
 
-    random.seed(3)
+    random.seed(seed)
     ice_hockey._pucks.clear()  # module state: other tests' rinks
     manager = _manager()
     manager.sports_ice_open = True
     car = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
-    for step in range(4):
+    for step in range(8):  # a check every 2 s, one player each
         manager.sim_time = step * 2.0
         manager.ensure_ice_skaters(car)
     players = [p for p in manager.pedestrians if p.activity and p.activity.plugin_id == "ice_hockey"]
-    assert len(players) >= 2
-    assert {tuple(p.color) for p in players} == set(ice_hockey.TEAM_COLORS)  # two teams
+    for player in players:
+        player.activity.data["duration_s"] = 1e9  # the whole test long
+    return manager, players, next(iter(ice_hockey._pucks.values()))
 
-    puck = next(iter(ice_hockey._pucks.values()))
+
+def test_pond_hockey_two_teams_with_goalies_hit_the_puck_around_the_rink():
+    from theroadragetrip.activities.plugins import ice_hockey
+    from theroadragetrip.geo import point_in_polygon
+
+    manager, players, puck = _hockey_game(3)
+    assert len(players) >= 6
+    assert {tuple(p.color) for p in players} == set(ice_hockey.TEAM_COLORS)  # two teams
     seen, swings = set(), 0
     for _ in range(300):  # 30 s
         manager.sim_time += 0.1
@@ -84,5 +91,30 @@ def test_hockey_players_hit_the_puck_around_the_rink():
             swings += player.stick_swing == ice_hockey.STICK_SWING_S
         seen.add((round(puck.x), round(puck.y)))
         assert point_in_polygon(puck.x, puck.y, RINK)
+    assert sorted(puck.goalies) == [0, 1] and sum(p.hockey_goalie for p in players) == 2
     assert swings >= 3 and len(seen) > 20  # hit around, not sitting still
     assert ice_hockey.puck_positions() == [[round(puck.x, 2), round(puck.y, 2)]]
+
+
+def test_goalies_save_most_shots_and_restart_play_after_a_goal():
+    goals, saves, restarts = 0, 0, []
+    for seed in range(4):
+        manager, players, puck = _hockey_game(seed)
+        held = conceding = None
+        for _ in range(3000):  # 5 min a game
+            manager.sim_time += 0.1
+            scored_before = sum(puck.goals)
+            for player in players:
+                manager._update_activity(player, 0.1)
+            if sum(puck.goals) > scored_before:
+                goals += 1
+                conceding = puck.restart_team
+            if puck.held_by is not None and puck.held_by is not held:
+                if conceding is not None:  # the first to take the puck after a goal
+                    restarts.append(puck.held_by is puck.goalies.get(conceding))
+                    conceding = None
+                else:
+                    saves += 1
+            held = puck.held_by
+    assert goals > 0 and saves > goals  # most shots are saved
+    assert restarts and all(restarts)  # out of the net by the conceding goalie

@@ -795,7 +795,11 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 		draw_circle(head, maxf(_px(2.0), radius * 0.48), RS.PED_HAIR)
 		draw_circle(head, maxf(_px(1.0), radius * 0.35), RS.PED_HEAD)
 		if ped.get("activity", "") == "ice_hockey":
-			_hockey_stick(c, h, side, radius, float(ped.get("stick_swing", 0.0)))
+			var goalie: bool = ped.get("hockey_goalie", false)
+			if goalie:  # leg pads, either side
+				for pad_side: float in [-1.0, 1.0]:
+					_ellipse(c + side * radius * 0.55 * pad_side + down * 0.2, radius * 0.22, radius * 0.5, GOALIE_PADS)
+			_hockey_stick(c, h, side, radius, float(ped.get("stick_swing", 0.0)), goalie)
 	if ped.get("curse_timer", 0.0) > 0.0:
 		var timer: float = ped["curse_timer"]
 		_bubble(c - Vector2(0, radius + _px(6.0)), str(ped.get("curse_text", "@#*!%")), RS.CURSE_TEXT, RS.CURSE_BORDER,
@@ -807,16 +811,18 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 const STICK_SWING_S := 0.3  # ice_hockey.py STICK_SWING_S
 const STICK_SHAFT := Color8(150, 110, 60)
 const STICK_BLADE := Color8(25, 25, 28)
+const GOALIE_PADS := Color8(236, 236, 230)
 
 
-func _hockey_stick(c: Vector2, h: Vector2, side: Vector2, radius: float, swing: float) -> void:
+func _hockey_stick(c: Vector2, h: Vector2, side: Vector2, radius: float, swing: float, goalie := false) -> void:
 	var hand := c + side * radius * 0.55 + h * radius * 0.2
 	var reach := (h * 1.7 + side * 0.5).normalized() * radius * 2.4
 	if swing > 0.0:  # the follow-through: swept across, back to rest as the swing ends
 		reach = reach.rotated(-1.2 * swing / STICK_SWING_S)
 	var blade_root := hand + reach
 	draw_line(hand, blade_root, STICK_SHAFT, maxf(_px(1.0), radius * 0.12))
-	draw_line(blade_root, blade_root - side * radius * 0.55, STICK_BLADE, maxf(_px(1.5), radius * 0.18))
+	# A goalie's stick has the wide paddle and blade.
+	draw_line(blade_root, blade_root - side * radius * (0.8 if goalie else 0.55), STICK_BLADE, maxf(_px(1.5), radius * (0.3 if goalie else 0.18)))
 
 
 ## Pucks on the rinks (state "pucks"): small and black, where the

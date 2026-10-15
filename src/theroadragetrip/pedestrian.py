@@ -19,10 +19,12 @@ from .map_style import FROZEN_IN_WINTER_KINDS
 
 
 # People kept on open sports ice near the player (ensure_ice_skaters): one
-# per ICE_M2_PER_SKATER of field, ICE_SKATERS_MIN..MAX a field.
+# per ICE_M2_PER_SKATER of field, ICE_SKATERS_MIN..MAX a field - on a rink
+# HOCKEY_PLAYERS_MIN..MAX: two goalies and skaters for both teams.
 ICE_SKATER_CHECK_S = 2.0
 ICE_M2_PER_SKATER = 500.0
 ICE_SKATERS_MIN, ICE_SKATERS_MAX = 2, 8
+HOCKEY_PLAYERS_MIN, HOCKEY_PLAYERS_MAX = 6, 10
 
 logger = logging.getLogger(__name__)
 
@@ -382,6 +384,7 @@ class Pedestrian:
     # Cursing / reaction state
     curse_timer: float = 0.0
     stick_swing: float = 0.0  # ice hockey: seconds left of a stick swing (the client shows it)
+    hockey_goalie: bool = False  # ice hockey: in goal (pads, a wide stick)
     curse_text: str = "@#*!%"
     # Dodging / evasive state
     dodge_vx: float = 0.0
@@ -1754,7 +1757,8 @@ class PedestrianManager:
             if field.kind not in FROZEN_IN_WINTER_KINDS or len(field.points_m) < 3:
                 continue
             minx, miny, maxx, maxy = compute_bbox(field.points_m)
-            wanted = max(ICE_SKATERS_MIN, min(ICE_SKATERS_MAX, int((maxx - minx) * (maxy - miny) / ICE_M2_PER_SKATER)))
+            low, high = (HOCKEY_PLAYERS_MIN, HOCKEY_PLAYERS_MAX) if field.kind == "ice_rink" else (ICE_SKATERS_MIN, ICE_SKATERS_MAX)
+            wanted = max(low, min(high, int((maxx - minx) * (maxy - miny) / ICE_M2_PER_SKATER)))
             if on_ice.get(id(field), 0) >= wanted:
                 continue
             point = sample_interior_point(field)
