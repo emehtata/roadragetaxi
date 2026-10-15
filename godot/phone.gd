@@ -112,6 +112,9 @@ func _ready() -> void:
 	list_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(list_margin)
 	_offers = ScrollContainer.new()
+	_offers.focus_mode = Control.FOCUS_NONE
+	_offers.get_v_scroll_bar().focus_mode = Control.FOCUS_NONE
+	_offers.get_h_scroll_bar().focus_mode = Control.FOCUS_NONE
 	_offers.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	list_margin.add_child(_offers)
 	_rows = VBoxContainer.new()
@@ -228,6 +231,7 @@ static func _label(font_size: int, color: Color, text := "") -> Label:
 
 func _app_button(fill: Color, text_color: Color) -> Button:
 	var button := Button.new()
+	button.focus_mode = Control.FOCUS_NONE
 	button.custom_minimum_size = Vector2(108, 38)
 	button.add_theme_color_override("font_color", text_color)
 	button.add_theme_color_override("font_disabled_color", text_color.darkened(0.5))
@@ -417,10 +421,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		accept_selected()
 	elif event.is_action("phone_reject"):
 		reject_selected()
-	elif event is InputEventKey and (event.physical_keycode in [KEY_UP, KEY_DOWN] or event.keycode in [KEY_UP, KEY_DOWN]) and not items.is_empty():
-		var down: bool = event.physical_keycode == KEY_DOWN or event.keycode == KEY_DOWN
-		var at := maxi(0, items.map(func(item): return item["id"]).find(selected_id))
-		select(clampi(at + (1 if down else -1), 0, items.size() - 1))
 	else:
 		handled = false
 		for i in 3:

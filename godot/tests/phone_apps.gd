@@ -33,6 +33,8 @@ func run() -> void:
 	click.pressed = false
 	viewport.push_input(click)
 	assert(phone.selected_id == "offer-1", "compact offer cards must be clickable")
+	assert(viewport.gui_get_focus_owner() == null, "phone controls must not take keyboard focus")
+	check_driving_keys(viewport, phone)
 	var requests: Array = []
 	phone.request.connect(func(action, item_id, request_id): requests.append([action, item_id, request_id]))
 	click = click.duplicate()
@@ -43,6 +45,7 @@ func run() -> void:
 	click.pressed = false
 	viewport.push_input(click)
 	assert(requests == [["accept", "offer-1", 1]], "compact accept button sends the selected offer")
+	assert(viewport.gui_get_focus_owner() == null, "clicking Accept must not capture driving keys")
 	phone.handle_result({"request_id": 1, "action": "accept", "ok": true})
 	assert(phone.is_open, "accepting a fare keeps the shared phone open")
 	var position := phone.position
@@ -51,6 +54,7 @@ func run() -> void:
 	await process_frame
 	assert(phone.size == Phone.DEVICE_SIZE and phone.position == position, "navigation keeps the same device size and position")
 	assert(phone.navigation.visible and not phone._offers.visible)
+	check_driving_keys(viewport, phone)
 	phone.show_phone({"busy": false, "items": offers})
 	await process_frame
 	await process_frame
@@ -59,3 +63,19 @@ func run() -> void:
 	viewport.free()
 	print("Shared phone layout and GUI clicks passed")
 	quit()
+
+
+func check_driving_keys(viewport: SubViewport, phone: Phone) -> void:
+	var selected := phone.selected_id
+	var drive := DriveInput.new()
+	for code in [KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
+		for pressed in [true, false]:
+			var event := InputEventKey.new()
+			event.physical_keycode = code
+			event.keycode = code
+			event.pressed = pressed
+			drive.handle(event)
+			viewport.push_input(event)
+			assert(not viewport.is_input_handled(), "phone must leave arrow presses and releases unhandled")
+			assert(drive.any_held() == pressed, "driving retains the arrow press/release")
+			assert(phone.selected_id == selected, "driving must not select phone offers")
