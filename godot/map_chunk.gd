@@ -2,7 +2,8 @@
 ## never a node per road), stacked by z (roads by layer, then wet roads
 ## and puddles, then railways, then buildings):
 ##
-##   z0  water (this node): another chunk's lake can't cover a bridge
+##   z0  water (this node): another chunk's lake can't cover a bridge;
+##       sports field markings (over every chunk's landuse)
 ##   z1  roads at ground level and below, lowest layer first
 ##   z2+ bridges: layer 1, 2, 3 (higher clamps to 3)
 ##   z5  wet-road darkening and sheen, puddles (weather; alpha follows wetness)
@@ -103,10 +104,12 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
-	if not message.get("soccer_pitches", []).is_empty():  # on the landuse: soccer lines on bare pitches
-		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_soccer_markings(self, node)))
-	if not message.get("rinks", []).is_empty():  # on the landuse: hockey markings on frozen rinks
-		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_rink_markings(self, node)))
+	# Field markings at z0, over every chunk's landuse (z-1): at -1 a neighbouring
+	# chunk's piece of the same pitch painted over the part reaching into it.
+	if not message.get("soccer_pitches", []).is_empty():  # soccer lines on bare pitches
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_soccer_markings(self, node)))
+	if not message.get("rinks", []).is_empty():  # hockey markings on frozen rinks
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_rink_markings(self, node)))
 	for z in _roads_by_z:
 		var layer_z: int = z
 		_road_layers.append(_add_layer(z, func(node: Node2D): _draw_roads(layer_z, node)))
