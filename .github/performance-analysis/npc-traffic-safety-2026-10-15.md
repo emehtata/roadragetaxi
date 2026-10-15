@@ -1,0 +1,347 @@
+# NPC traffic safety and liveness: next-phase plan
+
+Date: 2026-10-15. Runtime baseline: `b885d0b` (`release/0.17.0alpha`).
+This is an observation, gap analysis and implementation plan. **No gameplay
+behavior was changed.** Diagnostic scripts are not imported by the game.
+
+## Decision
+
+Fix the trip lifecycle and recovery pipeline alongside collision prevention.
+Simply reducing collisions is an insufficient success criterion: traffic can
+stop crashing because nearly all vehicles have stopped making useful trips.
+Keep authoritative decisions on the Python server, map levels separate, and
+per-frame work bounded. Do not remove collision checks, pedestrians, sidewalk
+protection or legitimate legal waits to improve the numbers.
+
+## Observation method and limits
+
+The requested ten-minute run uses `tools/observe_npc_traffic.py`, a real-time
+30 Hz `SimulationServer` listening on localhost, without a graphical client.
+The player remains stationary in the taxi. Oulu's local PBF supplies 8,851 ways
+and 2,767 buildings; targets are 40 NPC vehicles, 20 moving,
+and 60 ordinary pedestrians. Actual populations are measured, not assumed.
+The seed is 20261015. Weather is held clear/dry at 18 °C to isolate traffic.
+Historical weather, timetable downloads and map growth are disabled. Home and
+outside-weather UI work are bypassed; NPC decisions and collision response are
+unchanged. The ordinary no-fare calendar still runs at 60×; physical movement
+uses fixed 1/30-second steps, paced against real time.
+
+Collision instrumentation captures pre-response poses, dimensions, decisions,
+nearby obstacles and five seconds of 4 Hz movement history. A separate read-only
+socket client joins partway through the run, sends no controls, and samples
+vehicle/pedestrian motion at approximately 1 Hz. A 30-second, two-metre
+low-displacement flag is diagnostic only: parked visits and legal red-light
+waits are not automatically stalls. Continuous client episodes and active-driver
+poses are needed to distinguish them. Timed route budgets make seeded runs
+not bit-for-bit deterministic; recording also adds some overhead.
+
+The completed duration, tick count, final populations, crash count and waiting
+measurements follow below. Raw reports and reproduction scripts are in
+[the evidence folder](npc-traffic-safety-2026-10-15-data/README.md).
+Headless observation does not establish rendered FPS. One stationary, dry-city
+run cannot certify Finnish-law compliance or cover motorway, ice, snow, moving
+player, dense queues, every junction, or cold streamed-map behavior. Pedestrian
+state samples are not a pedestrian-injury detector. No claim of zero pedestrian
+collisions is made.
+
+### Completed ten-minute result
+
+| Measurement | Result |
+|---|---:|
+| Actual elapsed wall time | 600.023 s |
+| Simulation ticks / physical time advanced | 17,886 / 596.2 s |
+| Calendar advancement with the normal 60× no-fare clock | approximately 9.94 game hours |
+| Distinct NPC vehicle IDs seen | 47 |
+| Vehicle collision events / distinct crashed NPCs | 2 / 4 |
+| Final population | 40 total, 32 PARKED, 8 other states |
+| Sampled STUCK → REVERSING / REVERSING → STUCK transitions | 258 / 258 |
+| Server tick p50 / p95 / p99 / maximum | 5.53 / 8.76 / 15.84 / 168.00 ms |
+
+The run started at 06:09:49 UTC and finished at 06:19:49 UTC on 2026-10-15.
+The read-only client sampled 406 states from approximately 191.4–599.1 seconds.
+All 32 parked cars remained within two metres of their first client position
+throughout that 407.7-second window. The remaining eight never appeared as
+healthy cruising traffic: their samples were WAITING, REVERSING or PARKING;
+their maximum excursions from the first sampled pose were only 9.4–19.3 m.
+Some samples still had speed above 0.5 m/s during these local maneuvers, so
+“actually moving” alone also cannot establish useful trip progress.
+
+The client collector found 139 low-displacement episodes: 44 vehicle and 95
+pedestrian episodes. These include intentional parking/visits/activities and
+must **not** be read as 139 deadlocks. The longest contiguous sampled pedestrian
+`waiting_at_light` episode was about 12.15 seconds; an indefinite pedestrian
+signal wait was not observed in this interval. Nor was a persistent mutual
+vehicle wait-for cycle established. The confirmed late-run problem is traffic
+lifecycle collapse and local recovery livelock, not proven junction gridlock.
+The low overall tick p99 is not evidence of healthy traffic performance after
+the workload has collapsed into mostly parked/stalled vehicles.
+
+## Observed collisions
+
+Both initial collisions reported road layer 0. Neither involved the stationary
+player. The evidence includes endpoint OBB overlaps, not just nearby cars.
+
+| Time after start | Vehicles and place | What the recorded history establishes |
+|---|---|---|
+| 44.307 s | 31, an 11.0 × 2.5 m vehicle on Hallituskatu; 49, a 4.3 × 1.8 m car on Mäkelininkatu | 31 received right-hand-yield braking and was fully stopped for over two seconds before impact. 49 approached at 30 km/h and hit at 16.4 km/h, despite a zero target speed and a “waiting for vehicle ahead” label. |
+| 50.462 s | 38, a 4.3 × 1.8 m car; 57, a 7.5 × 2.3 m vehicle; both reported Kirkkokatu | 57 was stopped with a right-hand-yield decision. 38 still had `PROCEED`, “no relevant light ahead”, and a 30 km/h target/actual speed at impact. The vehicles' headings differed by about 80°. |
+
+The first case disproves “having a yield decision is sufficient”: the stopped
+vehicle's body still conflicted with the approaching trajectory, and the other
+driver did not stop in time. The second exposes a similar occupied-path hazard
+while one vehicle is mid-turn. Relative to 38's actual heading at impact, 57's
+centre was 4.63 m laterally away, outside the fixed 2.5 m centre-based following
+cone, despite their bodies overlapping. Avoidance actually uses the steering
+target bearing, which was not recorded: the exact missed query is an inference,
+not a fully replayed controller trace. Full-body trajectory prediction and
+earlier stop geometry are needed, not a blanket reversal of right-hand priority.
+
+Road names/current-way metadata are not proof of legal approach ownership:
+`update_npc` adopts the next path point's way during turns. Exact OSM approach,
+sign applicability, stop-line and incoming/outgoing lane evidence were not all
+captured, so this report does not assign legal blame to a specific driver.
+
+## Population collapse and repeated recovery
+
+By 60 seconds the run reported 20 driving vehicles. By 180 seconds it reported
+only eight, with 32 parked. Trip-start attempts/successes had plateaued at 72/45
+by 150 seconds and remained unchanged at subsequent checkpoints.
+“Driving” here includes WAITING, PARKING and REVERSING; it is not an actual-speed
+or successful-trip measure.
+
+In the client trace from approximately 191–318 seconds, vehicles 18, 28, 53,
+66, 72 and 74 ended only 0–1.8 m from their first sampled positions, repeatedly
+cycling among waiting, reversing and footprint-blocked parking. Vehicles 46 and
+64 also repeatedly recovered, but had larger net displacement. The stopped
+population must not be counted as healthy throughput. These observations show
+recovery livelock/failed approaches; they do **not** by themselves prove a
+multi-vehicle right-of-way deadlock.
+
+### Confirmed trip-lifecycle defect
+
+`PedestrianManager._materialize_parked_drivers` materializes every trip member
+absent from the pedestrian list. `_update_linked_driver` correctly marks a
+returning person boarded, then despawns that pedestrian. On the next frame the
+materializer sees the same person absent, spawns them outside again and clears
+their boarded flag. This can defeat `all_aboard` before the five-second
+population tick gets a chance to continue the trip. Parked vehicles retain
+drivers/groups, so they are neither idle trip-start candidates nor replaceable
+empty parked vehicles. A population full of these cars cannot replenish moving
+traffic.
+
+A diagnostic reproduction calls the real materialize → reboard → despawn →
+materialize sequence and confirms the boarded flag is cleared again. This is a
+confirmed mechanism consistent with the population plateau, not a claim that
+all 32 parked cars have individually been proven to hit it. Existing lifecycle
+tests call the linked-person updater but do not adequately cover the next full
+manager frame with rematerialization before trip continuation.
+
+The six isolated baseline probes are saved as
+[probes.py](npc-traffic-safety-2026-10-15-data/probes.py) with
+[recorded outcomes](npc-traffic-safety-2026-10-15-data/probes-results.json).
+All reproduced their stated defects. The existing crossing/NPC-population/
+pedestrian test subsets still passed **158 tests**, demonstrating why passing
+the present suite does not cover these missing acceptance scenarios.
+
+### Other inspected recovery hazards
+
+- `_run_population_tick` still runs trip continuation and recovery route searches
+  synchronously against a shared eight-millisecond deadline. Timeout and genuine
+  no-route both become an empty/None result. Recovery can then reverse although
+  no route impossibility was established; repeated restarts can starve searches.
+- Stuck detection exempts any crossing decision and broad final-approach states.
+  Other blocked vehicles can loop through STUCK/REVERSING without a finite
+  failure outcome or demonstrated forward-route progress.
+- Reverse clearance is a circle behind the car, not a swept actual-size body
+  checked against every relevant road user, curb/building and legal maneuver.
+- Live footprint violation permits a crawl instead of preventing entry into the
+  invalid pose. Route validation still uses generic NPC dimensions in important
+  checks, while observed vehicles include 7.5 m and 11 m bodies.
+
+These inspected hazards need targeted instrumentation/replays to apportion
+their contribution to each observed recovery loop; do not treat every mechanism
+as separately proven by the ten-minute run.
+
+## Finnish-law gap map
+
+Authority: [current Finnish Tieliikennelaki 729/2018](https://www.finlex.fi/fi/lainsaadanto/2018/729),
+whose indexed consolidation identifies 2026-04-17; checked 2026-10-15. The full
+page exceeded the browsing fetch limit; targeted indexed excerpts and the
+repository's [Finnish NPC law guide](../../docs/finnish-npc-traffic-law.md) were
+used. Implementers must recheck applicable current sections and exceptions.
+The short legal requirements below are distinct from the proposed game algorithms.
+
+| Legal duty | Current gap / evidence | Next implementation requirement |
+|---|---|---|
+| §§ 3–5, 20: anticipate danger, control speed and maintain safe clearance. | Both measured collisions struck an already stopped vehicle. Narrow centre cones do not represent an angled long body. | Predict actual-size swept conflicts along the intended movement and maintain a feasible braking envelope. |
+| §§ 24–25: apply approach-specific priority and show yielding early. | Heading-ray intersections substitute for connected approaches; path metadata changes during turns. | Bind incoming/outgoing lanes, entry duties and signs to one real junction and conflict movement. |
+| § 28: avoid obstructing crossing traffic if stopped in a junction. | Yielding did not ensure the whole stopped vehicle cleared the other's route; exit-space admission is absent. | Stop before conflict boundaries with front/rear overhang considered; require receiving-lane storage. |
+| § 74, annexes 2 and 3.2: obey applicable signals and STOP controls. | A no-traffic STOP probe returns no stop decision. Yellow uses cruise rather than actual speed. A relevant light bypasses other crossing evaluation. | Independent B6 full-stop latch; actual-speed yellow commitment; retain turning and pedestrian duties on green. |
+| §§ 24, 27, 29: protect pedestrians, including crossing intent and turning conflicts. | Ordinary NPC forward control has no equivalent of the needed crossing-intent/pedestrian constraint. | Add a shared pedestrian conflict input; do not rely on last-second player-only dodges. |
+| §§ 30–35: safe meeting, passing, reversing and departure. | Passing/reversing checks are geometric shortcuts without full legal scope or swept pedestrian/obstacle clearance. | Validate legality, visibility, opposite traffic, full swept area and return space before committing. |
+| §§ 13–16: use lawful walking space/crossings, exercise care and cross without delay. | Disconnected networks fall back to a straight connector; route-specific walkers bypass the generic light gate. | Lawful foot routing plus the same crossing gate for every walking purpose. |
+| § 74, annex 2: use the pedestrian signal first, otherwise the signal in the walking direction. | “Any nearby approach green/yellow” blocks pedestrians, independent of their crossing or direction; it can stop an already-entered pedestrian. | Bind the actual crossing/signal and preserve crossing-clearance progress after entry. |
+| Map separation is an implementation requirement for applying those duties correctly. | A separate probe confirms collision handling can crash two vehicles at identical x/y on different layers; following queries also lack equivalent filtering. | One consistent physical map-level test in prediction, following, collision, crossing, passing and recovery. |
+
+No observed crash is presented as proof of every law gap. STOP, yellow,
+different-layer collision and pedestrian-routing/signal defects were separately
+probed; they were not necessarily exercised by the two recorded road crashes.
+There is no legal “wait N seconds, then ignore priority” rule. Timers below are
+diagnostic/game-policy thresholds, not statutory permissions.
+
+## Ordered implementation plan
+
+### 1. Restore a sound trip lifecycle and measure useful throughput (P0)
+
+First atomic fix: one per-stop lifecycle for alighting, visiting, returning,
+boarding and ready-to-depart. Materialize each person exactly once per stop;
+reboarding must remain committed until departure/next stop. Keep person, driver,
+vehicle and parking reservations consistent. Expired stragglers must not be
+recreated as members of the same stop. Never despawn occupied cars merely to
+satisfy the moving-traffic target.
+
+Exercise full `PedestrianManager.update` plus `NPCVehicleManager.update`, including
+the next frame after reboarding and the delayed population tick. Test multiple
+members, unavailable pedestrian spawn points, partial return, expired members,
+household return-home and crash cleanup. At least two complete park–visit–return–
+depart cycles must succeed for the same car without cloned residents.
+
+Add console/report counters for completed legs, actual moving vehicle-seconds,
+ready-to-depart age, boarded/member counts, route-job age, timeout versus no-route,
+recovery attempts and route arc-length progress. Do not call non-PARKED count
+“moving” without also reporting actual speed. Retain bounded queries/work.
+
+### 2. Make continuation/recovery resumable and resolve bad approaches (P0)
+
+Reuse the existing round-robin route jobs for continuation and recovery, with
+graph-revision, vehicle-state, reservation and occupant rechecks on commit.
+Distinguish budget exhaustion, invalid geometry and unreachable destination.
+Give existing blocked/ready vehicles fair service; new spawns must not consume
+every work slice. Track progress along the route, not only centre displacement.
+
+Carry the actual plugin length/width and turning capability through route,
+parking and live swept validation. Avoid steering a large vehicle through a
+car-sized accepted approach. Stop before a predicted invalid pose. Try a
+different verified legal stop or abandon the trip safely when an approach is
+unusable; do not repeat the identical invalid goal indefinitely.
+
+Reverse only after explicit safe/legal clearance of the swept body, including
+pedestrians, player, stationary cars, curbs, buildings and map level. Preserve
+engine/gear behavior. Exhausted work budget must never itself authorize reverse.
+Cap repeated maneuver attempts and escalate a persistent unresolved case to a
+diagnosed safe hold/reroute, not forced driving or visible teleportation.
+
+Acceptance: each eligible job advances under load and has an observable outcome;
+valid deferred routes eventually complete without increasing frame budgets.
+The recorded footprint/recovery cases must either finish or reach a stable,
+explained safe fallback, not alternate forever between the same poses.
+
+### 3. Prevent the two recorded occupied-path collisions (P0)
+
+Add a short, spatially bounded trajectory/footprint safety horizon using actual
+speed, dimensions, steering response and available braking grip. A geometric
+collision threat must constrain motion regardless of who has legal priority.
+Include stationary/yielding/parked/wreck bodies and angled vehicles, not just
+centres within a narrow forward cone. Preserve the existing swept collision
+detector as a final safety net and regression oracle; do not hide crashes by
+changing overlap thresholds or disabling response.
+
+Use the captured Hallituskatu/Mäkelininkatu and Kirkkokatu geometries as regression
+fixtures. Capture more controller detail on rerun: lookahead target/bearing,
+incoming lane, active constraint/blocker, predicted contact time and braking
+margin. Tests must prove both non-collision **and later safe progress**, with
+7.5/11 m vehicles, turning traffic, queues and permuted update order. Repeat the
+different-layer probe with real manager updates: bridges must not block/crash
+unrelated ground traffic, while same-level overlap remains detected.
+
+### 4. Connected junction duties and lawful queue management (P1)
+
+Reuse mapped logical intersections; resolve control applicability and movement
+conflicts from connected approaches rather than infinite heading rays. Keep
+entry-from-yard/parking duties separate from ordinary right-hand priority.
+Handle B5 versus B6, signed priority endings/directions, left-turn/oncoming
+conflicts, roundabout entry/exit and green-light residual duties explicitly.
+Missing sign data must differ from confirmed absence. Keep an already-entered
+movement's incoming identity stable until it clears the conflict.
+
+Require downstream capacity before entering a box. Record wait reason, blocking
+entity/conflict, stop position and next reevaluation; release promptly when the
+constraint clears. Detect persistent wait-for cycles without city-wide all-pairs
+scans. Scheduling may support explicit safe concessions (a game policy), but
+must not give an arbitrary vehicle ID or elapsed timer legal priority. No
+reversing around red lights, pedestrian waits or a legitimately queued leader.
+
+Test rotated/mirrored unsigned junctions, T junctions, STOP with no traffic,
+opposite-facing signs, green left turns, blocked exits, four-way contention,
+queue spillback and bridge separation. A non-conflicting green/priority vehicle
+must resume when its actual blocker clears; permanent legal obstructions must
+remain safe and be diagnosed rather than “solved” by violating priority.
+
+### 5. One pedestrian safety gate for every walking purpose (P1, alongside 4)
+
+Route ordinary walkers, shopping/activities, taxi-stop customers, vehicle
+approaches, group returns and crash evacuees through the same movement gate.
+Currently `_walk_route_to`, linked-driver/activity handling and vehicle approach
+can return before generic light handling. Fixing only ordinary wandering would
+leave most purposeful walking unprotected.
+
+Use typed walking/crossing connections with layer and access evidence. Prefer
+nearby lawful crossing/underpass/overpass routes; absent those, assess the allowed
+road-edge/perpendicular crossing fallback. Do not treat a direct connector
+between disconnected graphs as automatically walkable. Use the appropriate
+road edge when sidewalks/shoulders are unavailable, with documented exceptions.
+Do not invent a statutory numeric meaning for “nearby”.
+
+Represent approach/intent → wait → committed crossing → clear. Match the actual
+pedestrian signal; use the correct directional vehicle signal only as the legal
+fallback. Recheck before entry, but do not freeze a lawful pedestrian halfway
+across because another traffic approach turns green. Preserve layer separation,
+refuges and crossing length. Use approaching vehicle distance **and speed**,
+stopping capability and relevant paths rather than a radial “within 10 m and
+moving” veto. Vehicle yielding and pedestrian entry must coordinate so each does
+not wait forever for the other. Clear crossings without unnecessary delay;
+activities/boarding waits must stay out of the carriageway/crossing.
+
+Tests: pedestrian red/green and phase change during crossing; waiting intent at
+an unsignalized zebra; turning car; parallel traffic; different layers; refuge;
+slow/vulnerable walker; disconnected network; missing sidewalk; each purposeful
+walking branch; a stopped yielding car allowing entry and resuming only after
+clearance. Keep mounted cyclists separate from pedestrians/walked bicycles and
+apply their relevant controls, not an unconditional zebra priority.
+
+### 6. Acceptance soak and performance guardrails
+
+Turn both crash histories and the isolated probes into failing behavior tests
+before their fixes, then assert safe passage, clearance and resumption rather
+than merely checking helper outputs. Add real-map fixtures with stable OSM IDs.
+
+After each atomic change run the traffic/pedestrian test subsets. Then repeat
+the same ten-minute Oulu soak for at least three seeds and add a 30-minute soak.
+Include 0/20/40/80 actors, moving player, parking turnover, bus/truck plugins,
+day/night, rain/snow/ice, streamed topology changes and constrained intersections.
+Use event-based logs so diagnostics do not become a new per-frame bottleneck.
+
+Engineering acceptance targets (not legal rules): zero collisions in the
+deterministic regression scenarios; no same-stop passenger rematerialization;
+continued completed-leg throughput in every late-soak minute; no unexplained
+ready-to-depart or recovery episode over 30 seconds; route jobs demonstrably
+progress under the existing budget; no persistent unreported wait cycle.
+Classify intentional visits, red/rail/pedestrian waits and external permanent
+blockages separately—never shorten them just to satisfy a timeout statistic.
+Report collisions per vehicle-km **and** moving vehicle-hours, completions,
+safe-fallback rate and actual moving fraction. This run did not measure vehicle-
+kilometres accurately enough to supply a reliable normalized baseline rate.
+
+Maintain server tick p99 under 33.3 ms in a warmed 30 Hz run and keep routing/
+population work within existing slices; report worst ticks and diagnostic
+overhead rather than trading correctness for timing. Retest rendering separately.
+
+## First implementation batch
+
+Start with the next-frame reboarding regression and its lifecycle fix, then
+resumable continuation/recovery with explicit outcomes, then the two full-body
+collision regressions. Do not begin by changing global yielding delays, lowering
+population targets, increasing blanket braking distances, or making red-light
+queues trigger recovery. Those can hide symptoms without fixing the observed
+failures. The subsequent intersection/pedestrian work should be paired so
+neither side implements an incompatible right-of-way model.

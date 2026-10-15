@@ -4,6 +4,17 @@ This folder contains technical deep-dives into rendering performance, bottleneck
 
 ## Contents
 
+### [npc-traffic-safety-2026-10-15.md](./npc-traffic-safety-2026-10-15.md)
+
+**Status**: Ten-minute observation and next-phase plan; no gameplay fixes implemented
+
+**Date**: 2026-10-15
+
+**Focus**: Two recorded NPC crashes, traffic collapsing into parked/recovery states,
+confirmed passenger rematerialization, and Finnish-law gaps in vehicle/pedestrian
+controls. Includes collision histories, waiting evidence, baseline probes and
+ordered safety/liveness acceptance tests.
+
 ### [weather-traffic-2026-10-14.md](./weather-traffic-2026-10-14.md)
 
 **Status**: Analysis and optimization plan only; no runtime changes
