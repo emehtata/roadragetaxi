@@ -455,12 +455,13 @@ func _build_2_5d() -> void:
 	building_node = Node2D.new()
 	building_node.draw.connect(_draw_volumes)
 	var view := _building_view
+	var snow := float(_season[0])
 	if not build_async:
-		_buildings_ready(_build_timed(buildings, styles, origin, view))
+		_buildings_ready(_build_timed(buildings, styles, origin, view, snow))
 		return
 	# godot-18: built on a worker thread (up to ~45 ms for a dense chunk, in the
 	# frame that added it); the chunk shows at once, its buildings when ready.
-	_building_task = WorkerThreadPool.add_task(func(): _buildings_ready.call_deferred(_build_timed(buildings, styles, origin, view)))
+	_building_task = WorkerThreadPool.add_task(func(): _buildings_ready.call_deferred(_build_timed(buildings, styles, origin, view, snow)))
 
 
 ## The buildings of the chunk this one replaces (a resend after the map
@@ -505,9 +506,9 @@ func _meshes_ready(arrays: Dictionary) -> void:
 var _building_task := -1
 
 
-static func _build_timed(buildings: Array, styles: Array, origin: Vector2, view_centre := Vector2.ZERO) -> Dictionary:
+static func _build_timed(buildings: Array, styles: Array, origin: Vector2, view_centre := Vector2.ZERO, snow_cover := 0.0) -> Dictionary:
 	var started := Time.get_ticks_usec()
-	var volumes := B25.build(buildings, styles, origin, view_centre)
+	var volumes := B25.build(buildings, styles, origin, view_centre, snow_cover)
 	volumes["build_usec"] = Time.get_ticks_usec() - started
 	volumes["view_centre"] = view_centre
 	return volumes
@@ -566,10 +567,11 @@ func set_building_view(view_centre: Vector2) -> void:
 	var styles: Array = _data.get("building_styles", [])
 	var origin := _origin
 	var view := _building_view
+	var snow := float(_season[0])
 	if build_async:
-		_building_task = WorkerThreadPool.add_task(func(): _buildings_ready.call_deferred(_build_timed(buildings, styles, origin, view)))
+		_building_task = WorkerThreadPool.add_task(func(): _buildings_ready.call_deferred(_build_timed(buildings, styles, origin, view, snow)))
 	else:
-		_buildings_ready(_build_timed(buildings, styles, origin, view))
+		_buildings_ready(_build_timed(buildings, styles, origin, view, snow))
 
 
 ## The buildings' triangles go to the renderer, which keeps its own copy:
@@ -579,9 +581,9 @@ func _draw_volumes() -> void:
 	if _building_task >= 0 or _volumes.is_empty():
 		return  # still being built (godot-18)
 	var started := Time.get_ticks_usec()
-	if _volumes.get("points", PackedVector2Array()).is_empty():
+	if _volumes.get("points", PackedVector2Array()).is_empty() or _volumes.get("snow_cover", 0.0) != _season[0]:
 		var hulls: Array = _volumes.get("hulls", [])
-		_volumes = B25.build(_data.get("buildings", []), _data.get("building_styles", []), _origin, _building_view)
+		_volumes = B25.build(_data.get("buildings", []), _data.get("building_styles", []), _origin, _building_view, float(_season[0]))
 		_volumes["hulls"] = hulls if not hulls.is_empty() else _volumes["hulls"]
 	_triangles_colored(building_node, _volumes["points"], _volumes["indices"], _volumes["colors"])
 	for key in ["points", "colors", "indices"]:
@@ -638,6 +640,8 @@ func set_season(weights: Array) -> bool:
 	if weights == _season or weights.size() != 4:
 		return false
 	_season = weights
+	if building_node != null:
+		building_node.queue_redraw()
 	queue_redraw()
 	if _trees != null:
 		_trees.queue_redraw()

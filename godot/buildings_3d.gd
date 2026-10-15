@@ -31,7 +31,11 @@ var _camera: Camera3D
 var _sprite: Sprite2D
 
 
-static func _make_material(flat := false) -> StandardMaterial3D:
+static func _make_material(flat := false) -> Material:
+	if not flat:
+		var roof := ShaderMaterial.new()
+		roof.shader = preload("res://building_snow.gdshader")
+		return roof
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.cull_mode = BaseMaterial3D.CULL_BACK  # godot-22: _tri winds every triangle toward its outward side
@@ -127,7 +131,7 @@ func _process(_delta: float) -> void:
 ## windows fade from an ordinary window under that light to their own warm
 ## light as `level` (Daylight.artificial) rises - no geometry is rebuilt.
 func set_light(level: float, ambient: Color) -> void:
-	_shared["material"].albedo_color = ambient
+	_shared["material"].set_shader_parameter("ambient", ambient)
 	_shared["lit"].albedo_color = lit_color(level, ambient)
 	if (level > 0.01) != _lit_on:  # the lit meshes in or out (by day they'd only cost)
 		_lit_on = level > 0.01
@@ -146,6 +150,10 @@ func set_arena_lights(on: bool) -> void:
 
 var _lit_on := false
 var _arena_on := false
+
+
+func set_snow(cover: float) -> void:
+	_shared["material"].set_shader_parameter("snow_cover", clampf(cover, 0.0, 1.0))
 
 
 ## The lit windows' multiplier over their (warm, varied) vertex colours: at
@@ -173,7 +181,7 @@ func instance_count() -> int:
 ## One chunk's mesh arrays (any thread): {"verts", "colors", "lit" (the
 ## lit windows' verts), "stats"}.
 static func build(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
-	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "lit": PackedVector3Array(),
+	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "lit": PackedVector3Array(),
 		"arena": PackedVector3Array(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
 	for i in buildings.size():
@@ -190,7 +198,7 @@ static func meshes(arrays: Dictionary) -> Array:
 	var instances: Array = []
 	if arrays["verts"].is_empty():
 		return instances
-	var mesh := _mesh(arrays["verts"], arrays["colors"])
+	var mesh := _mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"])
 	instances.append(_instance(mesh, _shared["material"], LAYER_BUILDINGS))
 	if not arrays["lit"].is_empty():
 		var colors := PackedColorArray()  # warm, each window a little brighter or dimmer (deterministic)
@@ -210,11 +218,13 @@ static func meshes(arrays: Dictionary) -> Array:
 static var _shared := {"material": _make_material(), "lit": _make_material(true), "arena": _make_material(true)}
 
 
-static func _mesh(verts: PackedVector3Array, colors: PackedColorArray) -> ArrayMesh:
+static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask := PackedVector2Array()) -> ArrayMesh:
 	var surface := []
 	surface.resize(Mesh.ARRAY_MAX)
 	surface[Mesh.ARRAY_VERTEX] = verts
 	surface[Mesh.ARRAY_COLOR] = colors
+	if not roof_mask.is_empty():
+		surface[Mesh.ARRAY_TEX_UV] = roof_mask
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface)
 	return mesh
@@ -233,14 +243,19 @@ static func _instance(mesh: ArrayMesh, material: Material, layer: int) -> MeshIn
 ## Godot's front faces are clockwise, i.e. (b - a) x (c - a) points away.
 ## Footprints come either way round, so the winding is decided here, once.
 static func _tri(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, color: Color, facing: Vector3, key := "verts") -> void:
-	if (b - a).cross(c - a).dot(facing) > 0.0:
+	var normal := (b - a).cross(c - a)
+	if normal.dot(facing) > 0.0:
 		var t := b
 		b = c
 		c = t
+		normal = -normal
 	out[key].append_array(PackedVector3Array([a, b, c]))
 	if key != "verts":
 		return
 	out["colors"].append_array(PackedColorArray([color, color, color]))
+	var shade := 0.90 if facing.y > 0.5 and Vector2(-normal.x, -normal.z).dot(LIGHT) < -0.001 else 1.0
+	var mask := Vector2(1.0 if facing.y > 0.5 else 0.0, shade)
+	out["roof_mask"].append_array(PackedVector2Array([mask, mask, mask]))
 
 
 static func _quad(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color, facing: Vector3, key := "verts") -> void:

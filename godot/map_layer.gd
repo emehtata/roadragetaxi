@@ -99,6 +99,7 @@ func _layer_3d() -> Node2D:
 		buildings_3d = Buildings3D.new()  # its sprites carry their own z (7, lit windows 21)
 		add_child(buildings_3d)
 		buildings_3d.set_arena_lights(arena_lights_on)
+		buildings_3d.set_snow(float(season[0]))
 	return buildings_3d
 
 
@@ -319,6 +320,8 @@ func set_season(weights: Array) -> void:
 	if weights.size() != 4 or weights == season:
 		return
 	season = weights
+	if buildings_3d != null:
+		buildings_3d.set_snow(float(season[0]))
 	if _ground != null:
 		_ground.queue_redraw()
 	for chunk in _chunks.values():

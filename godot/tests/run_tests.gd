@@ -77,6 +77,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_rest_of_static_world()
 	test_buildings_2_5d()
 	test_buildings_3d()
+	test_roof_snow()
 	test_resent_chunk_buildings()
 	test_performance_paths()
 	test_startup_progress()
@@ -125,6 +126,42 @@ func test_startup_progress() -> void:
 	OS.kill(shell._server_pid)
 	shell._server_pid = -1
 	shell.free()
+
+
+func test_roof_snow() -> void:
+	var box := PackedVector2Array([Vector2(0, 0), Vector2(20, 0), Vector2(20, 10), Vector2(0, 10)])
+	for pitched in [0, 1]:
+		var style := [[92, 57, 48], pitched, 8.0, [], [158, 105, 82], 2, 1]
+		var summer: Dictionary = B25.build([box], [style], Vector2.ZERO)
+		var winter: Dictionary = B25.build([box], [style], Vector2.ZERO, Vector2.ZERO, 1.0)
+		var partial: Dictionary = B25.build([box], [style], Vector2.ZERO, Vector2.ZERO, 0.5)
+		check(summer.points == winter.points and summer.indices == winter.indices, "roof snow: 2D geometry stays the same")
+		check(Array(winter.colors).any(func(color): return color.is_equal_approx(B25.ROOF_SNOW)) and not Array(summer.colors).any(func(color): return color.is_equal_approx(B25.ROOF_SNOW)), "roof snow: both flat and pitched 2D roofs whiten")
+		check(partial.colors.has(Color8(92, 57, 48).lerp(B25.ROOF_SNOW, 0.5)), "roof snow: partial cover blends")
+		check(summer.colors.count(B25.WINDOW) == winter.colors.count(B25.WINDOW) and summer.lit_points == winter.lit_points, "roof snow: windows untouched")
+		var arrays: Dictionary = B3.build([box], [style], Vector2.ZERO)
+		check(arrays.roof_mask.size() == arrays.verts.size(), "roof snow: every 3D vertex carries its surface mask")
+		var masked := 0
+		var correct := true
+		for i in range(0, arrays.verts.size(), 3):
+			var normal: Vector3 = (arrays.verts[i + 1] - arrays.verts[i]).cross(arrays.verts[i + 2] - arrays.verts[i]).normalized()
+			var roof: bool = absf(normal.y) > 0.5
+			correct = correct and (arrays.roof_mask[i].x == 1.0) == roof
+			masked += int(arrays.roof_mask[i].x)
+		check(correct and masked > 0, "roof snow: roof facets only, never vertical walls or windows")
+	MapChunk.buildings_3d = true
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.set_season([1.0, 0.0, 0.0, 0.0])
+	map.add_chunk({"chunk_id": "snow", "bounds": [0, 0, 100, 100], "buildings": [[[0, 0], [20, 0], [20, 10], [0, 10]]], "building_styles": [[[92, 57, 48], 1, 8.0, [], [158, 105, 82], 2, 1]]})
+	var mesh: Mesh = map._chunks["snow"].meshes_3d[0].mesh
+	check(B3._shared.material.get_shader_parameter("snow_cover") == 1.0, "roof snow: a newly loaded winter chunk is snowy immediately")
+	map.set_season([0.5, 0.0, 0.5, 0.0])
+	check(B3._shared.material.get_shader_parameter("snow_cover") == 0.5 and map._chunks["snow"].meshes_3d[0].mesh == mesh, "roof snow: thaw changes only a uniform, no mesh rebuild")
+	map.set_season([0.0, 0.0, 1.0, 0.0])
+	check(B3._shared.material.get_shader_parameter("snow_cover") == 0.0, "roof snow: summer restores original roofs")
+	map.free()
+	MapChunk.buildings_3d = false
 
 
 func test_holiday_events() -> void:
@@ -2001,10 +2038,10 @@ func test_buildings_3d() -> void:
 	check(map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D).all(func(n): return n.layers == B3.LAYER_BUILDINGS), "every instance is in the one building view (godot-final-09)")
 	check(map.buildings_3d.get_children().filter(func(n): return n is SubViewport).size() == 1 and map.buildings_3d.get_children().filter(func(n): return n is Sprite2D).size() == 1, "one viewport, one composite: no lit-window pass")
 	map.buildings_3d.set_light(0.0, Color.WHITE)
-	check(lit_instances.all(func(n): return not n.visible) and B3._shared["material"].albedo_color == Color.WHITE, "by day: the buildings as they are, the lit windows not drawn at all")
+	check(lit_instances.all(func(n): return not n.visible) and B3._shared["material"].get_shader_parameter("ambient") == Color.WHITE, "by day: the buildings as they are, the lit windows not drawn at all")
 	var dusk := Color(0.6, 0.65, 0.8)
 	map.buildings_3d.set_light(0.5, dusk)
-	check(B3._shared["material"].albedo_color == dusk and lit_instances.all(func(n): return n.visible), "the buildings take the ambient light in their own material")
+	check(B3._shared["material"].get_shader_parameter("ambient") == dusk and lit_instances.all(func(n): return n.visible), "the buildings take the ambient light in their own material")
 	check(B3._shared["lit"].albedo_color.is_equal_approx(B3.lit_color(0.0, dusk).lerp(Color.WHITE, 0.5)), "the windows half way to their own light")
 	map.buildings_3d.set_light(1.0, Color(0.15, 0.2, 0.34))
 	check(B3._shared["lit"].albedo_color.is_equal_approx(Color.WHITE) and lit_instances.size() <= 1, "fully lit at night, whatever the ambient; one lit mesh per chunk")
