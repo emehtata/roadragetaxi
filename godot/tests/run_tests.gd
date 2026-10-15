@@ -1242,6 +1242,11 @@ func test_navigation_route() -> void:
 	check(device.visible and device._distance.text == "" and device._street.text == "Ei määränpäätä", "navigation phone: no stale instruction without a destination")
 	device.show_navigation({"instruction": {"maneuver": "routing"}}, true, false)
 	check(device._street.text == "Lasketaan reittiä…", "navigation phone: routing status")
+	device.show_navigation({"instruction": {"maneuver": "unreachable"}}, true, false)
+	check(device._street.text == "VIRHE: GPS-signaalia ei löydy" and device._distance.text == "", "navigation phone: missing route shows GPS error without stale distance")
+	device.language = "en"
+	device.show_navigation({"instruction": {"maneuver": "unreachable"}}, true, false)
+	check(device._street.text == "ERROR: GPS signal not found", "navigation phone: English GPS error")
 	device.show_navigation(instruction, false, false)
 	check(not device.visible, "navigation phone: N off hides the device")
 	device.free()
