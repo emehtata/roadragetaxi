@@ -55,7 +55,7 @@ LANDMARK_STAND_M = 800.0  # ...but first its taxi stand, this close (terminals s
 # as if a town of this many people.
 LANDMARK_WEIGHTS = {"airport": 100_000, "railway_station": 10_000}
 GREET_RADIUS_M = 2.0
-SOLID_AREA_KINDS = ("construction", "ice_rink")  # fenced all round: a crash, never a drive-in  # how close the driver on foot must be to greet a booked rail customer
+SOLID_AREA_KINDS = ("construction", "ice_rink", "stadium")  # fenced or walled all round: a crash, never a drive-in  # how close the driver on foot must be to greet a booked rail customer
 
 
 def car_hits_tree_trunk(car: Car, tree_x: float, tree_y: float) -> bool:

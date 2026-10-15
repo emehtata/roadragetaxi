@@ -179,3 +179,11 @@ def test_skaters_never_overlap_and_a_faster_one_knocks_the_slower_down():
         manager.sim_time += 0.1
         manager._update_activity(slow, 0.1)
     assert slow.animation_state != "fallen"
+
+
+def test_a_stadium_is_walled_you_crash_into_it():
+    taxi = TaxiManager([Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)])
+    stadium = Scenery([(0.0, 10.0), (120.0, 10.0), (120.0, 90.0), (0.0, 90.0)], "stadium", bbox=(0.0, 10.0, 120.0, 90.0))
+    car = Car(x=60.0, y=11.0, heading=1.57, speed=8.0)
+    assert taxi.check_fence_collision(car, [stadium], 1.0, previous_position=(60.0, 6.0))
+    assert car.speed == 0.0

@@ -373,8 +373,9 @@ class ChunkIndex:
                 frame = rink_frame(scenery.points_m)
                 if frame is not None:
                     self._add("soccer_pitches", scenery.points_m[:1], frame)
-            if kind == "ice_rink":  # closed all round (taxi.SOLID_AREA_KINDS): its boards
-                self._add("railings", scenery.points_m[:1], ["boards", _line(list(scenery.points_m) + [scenery.points_m[0]])])
+            if kind in ("ice_rink", "stadium"):  # closed all round (taxi.SOLID_AREA_KINDS): boards, or a wall
+                outline = _line(list(scenery.points_m) + [scenery.points_m[0]])
+                self._add("railings", scenery.points_m[:1], ["boards" if kind == "ice_rink" else "wall", outline])
                 frame = rink_frame(scenery.points_m)
                 if frame is not None:  # its hockey markings, drawn in winter
                     self._add("rinks", scenery.points_m[:1], frame)
