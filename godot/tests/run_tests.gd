@@ -1263,8 +1263,11 @@ func test_label_modes() -> void:
 ## godot-final-04: the server's route, N to show it (C stays the compass).
 func test_navigation_route() -> void:
 	var NavigationPhone := preload("res://navigation_phone.gd")
+	var phone_viewport := SubViewport.new()
+	phone_viewport.size = Vector2i(1280, 720)
+	root.add_child(phone_viewport)
 	var device := NavigationPhone.new()
-	root.add_child(device)
+	phone_viewport.add_child(device)
 	device.language = "fi"
 	var offer_phone := Phone.new()
 	root.add_child(offer_phone)
@@ -1281,6 +1284,26 @@ func test_navigation_route() -> void:
 	var instruction := {"instruction": {"maneuver": "left", "distance_m": 125.0, "street": "Kirkkokatu"}}
 	device.show_navigation(instruction, true, false)
 	check(device.visible and device._distance.text == "125 m" and device._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
+	device.update_layout()
+	var default_position: Vector2 = device.position
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = device.position + Vector2(20, 20)
+	var drag := InputEventMouseMotion.new()
+	drag.relative = Vector2(100, -40)
+	check(device.layout.handle(press) and device.layout.handle(drag), "navigation phone: participates in shared HUD dragging")
+	device.update_layout()
+	check(device.position == default_position + drag.relative, "navigation phone: follows drag offset")
+	press.pressed = false
+	device.layout.handle(press)
+	device.show_navigation(instruction, false, false)
+	check(not device.layout.rects.has("navigation_phone"), "navigation phone: hidden device cannot intercept HUD clicks")
+	device.show_navigation(instruction, true, false)
+	check(device.position == default_position + drag.relative, "navigation phone: retains moved position when shown again")
+	device.layout.reset()
+	device.update_layout()
+	check(device.position == default_position, "navigation phone: shared layout reset restores position")
 	var left: PackedVector2Array = NavigationPhone.arrow_points("left")
 	var right: PackedVector2Array = NavigationPhone.arrow_points("right")
 	check(left.size() == 3 and left[-1].x < left[-2].x and left[0].x == left[1].x, "navigation phone: left arrow has a 90 degree bend")
@@ -1299,6 +1322,7 @@ func test_navigation_route() -> void:
 	device.show_navigation(instruction, false, false)
 	check(not device.visible, "navigation phone: N off hides the device")
 	device.free()
+	phone_viewport.free()
 	var nav: Control = load("res://nav_overlay.gd").new()
 	check(not nav.show_route and not nav.show_compass, "N and C start off")
 	var n := _key_event(KEY_N)

@@ -12,6 +12,7 @@ var _battery_label: Label
 var _battery_icon: Control
 var _battery := 100.0
 var _charging := false
+var layout = preload("res://hud_layout.gd").new(false)
 
 
 func _ready() -> void:
@@ -58,7 +59,17 @@ func _ready() -> void:
 	_street.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_street)
 	box.add_child(Phone.home_indicator())
+	resized.connect(update_layout)
+	visibility_changed.connect(update_layout)
+	get_viewport().size_changed.connect(update_layout)
 	hide()
+
+
+func update_layout() -> void:
+	if not is_visible_in_tree():
+		layout.rects.erase("navigation_phone")
+		return
+	position = layout.place("navigation_phone", Rect2(Vector2(16, 125), size), get_viewport_rect().size).position
 
 
 func show_status(phone: Phone) -> void:

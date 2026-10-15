@@ -181,6 +181,7 @@ func _ready() -> void:
 		_entered_taxi = true
 	instruments.layout = hud_layout
 	hud.layout = hud_layout
+	navigation_phone.layout = hud_layout
 	sim.world_received.connect(_on_world)
 	sim.state_received.connect(_on_state)
 	# One new chunk per frame (godot-16): a chunk's first drawing takes ~10-20 ms, and crossing into
@@ -356,6 +357,7 @@ func _input(event: InputEvent) -> void:
 	if _start_sign == null and hud.visible and hud_layout.handle(event):
 		instruments.queue_redraw()
 		hud._layout()
+		navigation_phone.update_layout()
 		get_viewport().set_input_as_handled()
 
 
@@ -386,6 +388,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				hud_layout.reset()
 				instruments.queue_redraw()
 				hud._layout()
+				navigation_phone.update_layout()
 			KEY_F:
 				_interact_pending = true
 			KEY_G:
