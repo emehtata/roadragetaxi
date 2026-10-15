@@ -361,7 +361,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 	if _start_sign != null and event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode != KEY_ESCAPE:  # any key but Esc starts
+		if event.keycode == KEY_F12:  # a screenshot of the sign itself
+			save_screenshot()
+		elif event.keycode != KEY_ESCAPE:  # any key but Esc and F12 starts
 			_start_sign.queue_free()
 			_start_sign = null
 		get_viewport().set_input_as_handled()
