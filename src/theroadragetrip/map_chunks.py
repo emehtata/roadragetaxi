@@ -298,7 +298,7 @@ class ChunkIndex:
 
     def _add_static_world(self, world, bridge_parts) -> None:
         """godot-16: the rest of what the client draws from the map (static_world.py)."""
-        from .map_style import SCENERY_COLORS, SPECKLE_SCENERY_KINDS
+        from .map_style import SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS
 
         for scenery in getattr(world, "sceneries", ()):
             if len(scenery.points_m) < 3:
@@ -306,7 +306,7 @@ class ChunkIndex:
             kind = str(scenery.kind).lower()
             island = kind == "traffic_island" or getattr(scenery, "kerbed", False)  # redrawn above the roads
             color = SCENERY_COLORS.get(kind, (38, 105, 38))
-            seasonal = 1 if kind in SPECKLE_SCENERY_KINDS or kind in ("residential", "recreation_ground") else 0
+            seasonal = 1 if kind in SPECKLE_SCENERY_KINDS or kind in SEASONAL_GROUND_KINDS else 0
             for cell, ring in static_world.clipped_pieces(scenery.points_m, self.size):
                 self._chunk(cell)["landuse"].append([static_world._rgb(color), seasonal, ring])
                 if island:

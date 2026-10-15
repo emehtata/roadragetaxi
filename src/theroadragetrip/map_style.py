@@ -83,6 +83,12 @@ SPECKLE_SCENERY_KINDS = frozenset({
     "sand", "beach", "grassland", "shrubbery", "wetland", "traffic_island",
 })
 
+# Open ground without speckles that still follows the season (snow in
+# winter): flowerbeds stayed pink under snow before.
+SEASONAL_GROUND_KINDS = frozenset({
+    "residential", "recreation_ground", "flowerbed", "pitch", "playground", "horse_riding",
+})
+
 DISTRICT_PLACE_KINDS = {
     "suburb", "neighbourhood", "quarter", "village", "town", "city", "hamlet",
 }
