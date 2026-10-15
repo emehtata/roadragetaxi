@@ -40,3 +40,19 @@ def test_long_fare_to_an_airport_keeps_its_name(monkeypatch):
     dropoff = taxi.current_passenger.dropoff
     assert dropoff.address == "Kemi-Tornion lentoasema" and dropoff.municipality is None
     assert abs(dropoff.y - (airport[1] + 100)) < 1.0
+
+
+def test_long_fare_to_an_airport_prefers_its_taxi_stand(monkeypatch):
+    from theroadragetrip.osm import TaxiStop
+    airport = (430_000.0, 7_250_000.0)
+    monkeypatch.setattr(taxi_module, "_municipality_points", [("Oulun lentoasema", *airport, 100_000, "airport")])
+    stand = TaxiStop(x=airport[0] + 500, y=airport[1])
+    taxi = TaxiManager(ways=[], taxi_stops=[stand])
+    target = taxi.pick_long_dropoff(430_000.0, 7_210_000.0)
+    taxi.current_passenger = TaxiPassenger(name="Aino", pickup=TaxiTarget(0, 0, "x"), dropoff=target, boarded=True)
+    taxi.state = TaxiState.DRIVING_TO_DROPOFF
+    taxi.sync_map_data([Way(points_m=[(airport[0] - 50, airport[1]), (airport[0] + 50, airport[1])],
+                            highway="service", half_width_m=3.0)])
+    taxi.update(Car(x=airport[0], y=airport[1], heading=0.0, speed=0.0), 3.0)
+    dropoff = taxi.current_passenger.dropoff
+    assert (dropoff.x, dropoff.y) == (stand.x, stand.y) and dropoff.address == "Oulun lentoasema"

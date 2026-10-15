@@ -50,6 +50,7 @@ LONG_FARE_MAX_M = 100_000.0
 LONG_FARE_RESOLVE_M = 1500.0  # this close to the town centre its map is loaded
 LONG_FARE_RETRY_S = 2.0  # bounded: one address search per this, until one is found
 LANDMARK_SNAP_M = 400.0  # an airport/station drop-off: the nearest road this close
+LANDMARK_STAND_M = 800.0  # ...but first its taxi stand, this close (terminals sit off the mapped point)
 # Popular long-fare destinations besides towns (world_places.py), weighted
 # as if a town of this many people.
 LANDMARK_WEIGHTS = {"airport": 100_000, "railway_station": 10_000}
@@ -1636,8 +1637,9 @@ class TaxiManager:
             return
         self.long_fare_retry_timer = LONG_FARE_RETRY_S
         town = passenger.dropoff
-        if town.venue_type in LANDMARK_WEIGHTS:  # the place itself: its road, its name
-            final = self.pick_random_road_point(town.x, town.y, 0.0, LANDMARK_SNAP_M)
+        if town.venue_type in LANDMARK_WEIGHTS:  # the place itself: its taxi stand, else its road; its name
+            final = (self.pick_random_taxi_stop(town.x, town.y, 0.0, LANDMARK_STAND_M)
+                     or self.pick_random_road_point(town.x, town.y, 0.0, LANDMARK_SNAP_M))
         else:
             final = (self.pick_random_building_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M)
                      or self.pick_random_road_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M))

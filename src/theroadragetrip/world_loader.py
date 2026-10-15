@@ -436,6 +436,7 @@ def load_world(
         stop_signs=stop_signs,
         crossings=crossings,
         parking_spaces=parking_spaces,
+        taxi_stops=taxi_stops,
         logical_intersections=logical_intersections,
         yield_signs=yield_signs,
         curbs=curbs,

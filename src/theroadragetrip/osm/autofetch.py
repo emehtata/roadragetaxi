@@ -140,7 +140,7 @@ def _map_object_key(obj) -> tuple:
 # same 17-entry dict literal independently.
 _WORLD_SECTIONS = (
     "ways", "waters", "buildings", "sceneries", "places",
-    "traffic_lights", "crossings", "bus_stops", "parking_spaces",
+    "traffic_lights", "crossings", "bus_stops", "taxi_stops", "parking_spaces",
     "logical_intersections", "stop_signs", "yield_signs", "curbs",
     "scenery_objects", "speed_bumps", "railways", "railings", "parking_garages", "level_ways", "level_connectors",
 )
@@ -261,6 +261,7 @@ class AutoFetchManager:
         stop_signs: Optional[List[StopSign]] = None,
         crossings: Optional[List[Crossing]] = None,
         bus_stops: Optional[List[BusStop]] = None,
+        taxi_stops: Optional[List] = None,  # TaxiManager.taxi_stops: a far airport's stand once streamed in
         parking_spaces: Optional[List[ParkingSpace]] = None,
         logical_intersections: Optional[List[LogicalIntersection]] = None,
         yield_signs: Optional[List[YieldSign]] = None,
@@ -288,6 +289,7 @@ class AutoFetchManager:
         self.stop_signs = stop_signs if stop_signs is not None else []
         self.crossings = crossings if crossings is not None else []
         self.bus_stops = bus_stops if bus_stops is not None else []
+        self.taxi_stops = taxi_stops if taxi_stops is not None else []
         self.parking_spaces = parking_spaces if parking_spaces is not None else []
         self.logical_intersections = logical_intersections if logical_intersections is not None else []
         self.yield_signs = yield_signs if yield_signs is not None else []
@@ -1343,6 +1345,7 @@ class AutoFetchManager:
             new_crossings = getattr(res, "crossings", [])
             new_stop_signs = getattr(res, "stop_signs", [])
             new_bus_stops = getattr(res, "bus_stops", [])
+            new_taxi_stops = getattr(res, "taxi_stops", [])
             new_parking_spaces = getattr(res, "parking_spaces", [])
             new_logical_intersections = getattr(res, "logical_intersections", [])
             new_yield_signs = getattr(res, "yield_signs", [])
@@ -1409,6 +1412,7 @@ class AutoFetchManager:
                 added_stop_signs = _extend_unique(self.stop_signs, new_stop_signs)
                 added_crossings = _extend_unique(self.crossings, new_crossings)
                 added_bus_stops = _extend_unique(self.bus_stops, new_bus_stops)
+                _extend_unique(self.taxi_stops, new_taxi_stops)
                 added_parking_spaces = _extend_unique(self.parking_spaces, new_parking_spaces)
                 _extend_unique(self.logical_intersections, new_logical_intersections)
                 _extend_unique(self.yield_signs, new_yield_signs)
