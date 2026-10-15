@@ -162,3 +162,19 @@ def test_a_tram_follows_its_osm_line_at_a_junction():
         for _ in range(20):
             nxt = manager._next_node(before, junction, line)
             assert (manager.graph.points[nxt][1] > manager.graph.points[junction][1] + 1e-6) == north, line
+
+
+def test_tamperes_light_rail_is_tram_track_with_its_lines_and_stops():
+    from theroadragetrip.osm.build import build_ways
+
+    nodes = [{"type": "node", "id": 1, "lat": 61.50, "lon": 23.76}, {"type": "node", "id": 3, "lat": 61.50, "lon": 23.78},
+             {"type": "node", "id": 2, "lat": 61.50, "lon": 23.77,
+              "tags": {"railway": "stop", "public_transport": "stop_position", "light_rail": "yes", "name": "Keskustori"}}]
+    track = {"type": "way", "id": 9, "nodes": [1, 2, 3], "tags": {"railway": "light_rail"}}
+    line = {"type": "relation", "id": 70, "tags": {"type": "route", "route": "light_rail", "ref": "1"},
+            "members": [{"type": "way", "ref": 9, "role": ""}]}
+    (railway,) = build_ways(nodes + [track, line]).railways
+    assert railway.kind == "light_rail" and railway.lines == ["1"] and [s[2] for s in railway.stops] == ["Keskustori"]
+    manager = TramManager([railway], "Tampere")
+    assert manager.has_track and list(manager.stop_nodes.values()) == ["Keskustori"] and manager.profile == "tram_tampere"
+    assert not build_rail_graph([railway]).edges  # trains keep off it

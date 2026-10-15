@@ -76,3 +76,12 @@ of the time, and stop at 13-17 different stops in 3 minutes.
 
 Still not: the line number shown on the tram; terminal loops beyond the
 loaded map; NPC cars giving way to trams.
+
+**Light rail is tram track (2026-10-15).** Tampere maps its tram as
+`railway=light_rail`, its lines as `route=light_rail` and its stops as
+`railway=stop` + `light_rail=yes` stop positions; Helsinki's Raide-Jokeri
+is light rail too. All of these count as tram track, lines and stops
+(`osm/build.py TRAM_KINDS`, world cache format 32); trains keep to
+`railway=rail`. Tampere: lines 1 and 3, trams on their own line's track
+85-93 % of the time (lines leave the loaded map), 9 stops served in 3
+minutes.

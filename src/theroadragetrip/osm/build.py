@@ -86,6 +86,9 @@ KERB_ROAD_CROSSING_MARGIN_M = 1.0  # extra gap beyond the road's half width
 _KERB_CROSSING_GRID_CELL_M = 50.0
 
 
+# Tram track and lines: railway=/route= tram, or light_rail (Tampere's tram,
+# Helsinki's Raide-Jokeri). trams.py runs on both; trains keep to rail.
+TRAM_KINDS = ("tram", "light_rail")
 TRAM_STOP_SNAP_M = 15.0  # a tram stop beside its track (Railway.stops; trams.py snaps it the same)
 
 
@@ -573,8 +576,10 @@ def build_ways(
                 yield_signs_raw.append((tags, nid))
             if tags.get("highway") == "taxi_stop" or tags.get("amenity") == "taxi":
                 taxi_stops_raw.append((tags, nid))
-            if tags.get("railway") == "tram_stop" or (tags.get("public_transport") == "stop_position" and tags.get("tram") == "yes"):
-                tram_stop_names[nid] = tags.get("name", "")
+            if tags.get("railway") == "tram_stop" or (
+                tags.get("railway") in ("stop", "station", "halt") or tags.get("public_transport") == "stop_position"
+            ) and (tags.get("tram") == "yes" or tags.get("light_rail") == "yes"):
+                tram_stop_names[nid] = tags.get("name", "")  # (Tampere maps its tram as light rail)
             if include_bus_stops and (tags.get("highway") == "bus_stop" or tags.get("public_transport") in ("platform", "stop_position")):
                 bus_stops_raw.append((tags, nid))
             if "entrance" in tags:
@@ -653,7 +658,7 @@ def build_ways(
                 curb_raw.append((tags, node_ids))
         elif el_type == "relation":
             tags = _stadium_as_ground(el.get("tags", {}))
-            if tags.get("type") == "route" and tags.get("route") == "tram":  # a tram line: its ways (Railway.lines)
+            if tags.get("type") == "route" and tags.get("route") in TRAM_KINDS:  # a tram line: its ways (Railway.lines)
                 line = tags.get("ref") or tags.get("name") or str(el.get("id"))
                 for member in el.get("members", []):
                     if member.get("type") == "way":
@@ -959,7 +964,7 @@ def build_ways(
         )
     # Tram stops are mostly mapped beside the track (on the platform side),
     # not as one of its nodes: each joins the nearest tram line this near.
-    tram_lines = [r for r in railways if r.kind == "tram"]
+    tram_lines = [r for r in railways if r.kind in TRAM_KINDS]
     for nid, name in tram_stop_names.items():
         if nid not in nodes_m:
             continue

@@ -1,7 +1,7 @@
 """Trams on their rails (docs/trams.md), in the cities that have them.
 
-The tram network (OSM railway=tram) is a rail graph (trains.build_rail_graph
-of kind "tram"). A tram serves one of the OSM tram lines on its track
+The tram network (OSM railway=tram, or light_rail - how Tampere maps its
+tram) is a rail graph (trains.build_rail_graph of those kinds). A tram serves one of the OSM tram lines on its track
 (Railway.lines, the route=tram relations): at a junction it takes the way
 its line goes on; off its line's mapped track, mostly straight on. It
 stops at the tram stops on its way (Railway.stops),
@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .geo import dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
+from .osm.build import TRAM_KINDS
 from .trains import NODE_SPACING_M, build_rail_graph
 
 NODE_REACH_M = NODE_SPACING_M + 5.0  # a track segment's nodes lie this near any point on it
@@ -92,10 +93,10 @@ class TramManager:
         """The tram network (again, as more map streams in). Trams keep
         running on their own node lists; nodes are never renumbered away
         from the same point (a node's id is its merged position)."""
-        self.graph = build_rail_graph(railways, kind="tram")
+        self.graph = build_rail_graph(railways, kind=TRAM_KINDS)
         self.stop_nodes: Dict[int, str] = {}
         for railway in railways:
-            for x, y, name in getattr(railway, "stops", ()) if getattr(railway, "kind", "") == "tram" else ():
+            for x, y, name in getattr(railway, "stops", ()) if getattr(railway, "kind", "") in TRAM_KINDS else ():
                 near = self.graph.nodes_near((x, y), STOP_SNAP_M)
                 if near:
                     self.stop_nodes[min(near, key=lambda n: math.dist(self.graph.points[n], (x, y)))] = name
