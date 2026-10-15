@@ -49,6 +49,10 @@ LONG_FARE_MIN_M = 20_000.0
 LONG_FARE_MAX_M = 100_000.0
 LONG_FARE_RESOLVE_M = 1500.0  # this close to the town centre its map is loaded
 LONG_FARE_RETRY_S = 2.0  # bounded: one address search per this, until one is found
+LANDMARK_SNAP_M = 400.0  # an airport/station drop-off: the nearest road this close
+# Popular long-fare destinations besides towns (world_places.py), weighted
+# as if a town of this many people.
+LANDMARK_WEIGHTS = {"airport": 100_000, "railway_station": 10_000}
 GREET_RADIUS_M = 2.0  # how close the driver on foot must be to greet a booked rail customer
 
 
@@ -70,7 +74,7 @@ class TaxiTarget:
     district_name: Optional[str] = None
     radius_m: float = 20.0  # Pickup/dropoff stop radius
     venue_type: Optional[str] = None
-    municipality: Optional[str] = None  # a long fare's town, until its address is picked
+    municipality: Optional[str] = None  # a long fare's town/landmark, until its address is picked
 
 
 @dataclass
@@ -121,20 +125,27 @@ class TaxiState:
     COMPLETED = "COMPLETED"
 
 
-_municipality_points: Optional[List[Tuple[str, float, float, int]]] = None
+_municipality_points: Optional[List[Tuple[str, float, float, int, Optional[str]]]] = None
 
 
-def municipality_points() -> List[Tuple[str, float, float, int]]:
-    """(name, x, y, population) of every bundled municipality, in map metres."""
+def municipality_points() -> List[Tuple[str, float, float, int, Optional[str]]]:
+    """(name, x, y, weight, landmark type) of every long-fare destination in
+    map metres: bundled municipalities (weight: population, type None) and
+    airports/railway stations (LANDMARK_WEIGHTS)."""
     global _municipality_points
     if _municipality_points is None:
         from pyproj import Transformer
+        from .world_places import load_places
         transformer = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True)
         _municipality_points = []
         for entry in CITY_DATA.values():
             coords = entry.get("koordinaatit") or {}
             x, y = transformer.transform(float(coords["longitude"]), float(coords["latitude"]))
-            _municipality_points.append((entry["taajama"], x, y, int(entry.get("väkiluku") or 1)))
+            _municipality_points.append((entry["taajama"], x, y, int(entry.get("väkiluku") or 1), None))
+        for place in load_places():
+            if place.type in LANDMARK_WEIGHTS:
+                x, y = transformer.transform(place.lon, place.lat)
+                _municipality_points.append((place.name, x, y, LANDMARK_WEIGHTS[place.type], place.type))
     return _municipality_points
 
 
@@ -1607,27 +1618,36 @@ class TaxiManager:
         return self.pick_random_road_point(ref_x=pickup_x, ref_y=pickup_y, min_dist=self.min_distance_m, max_dist=float("inf"))
 
     def pick_long_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
-        """Another municipality LONG_FARE_MIN_M..MAX_M away, bigger towns
-        likelier; only its centre is known until the taxi gets near."""
-        towns = [(name, x, y, pop) for name, x, y, pop in municipality_points()
-                 if LONG_FARE_MIN_M <= math.hypot(x - pickup_x, y - pickup_y) <= LONG_FARE_MAX_M]
+        """Another municipality, airport or railway station LONG_FARE_MIN_M..
+        MAX_M away, bigger ones likelier; only its spot is known until the
+        taxi gets near."""
+        towns = [town for town in municipality_points()
+                 if LONG_FARE_MIN_M <= math.hypot(town[1] - pickup_x, town[2] - pickup_y) <= LONG_FARE_MAX_M]
         if not towns:
             return None
-        name, x, y, _ = random.choices(towns, weights=[pop for *_, pop in towns])[0]
-        return TaxiTarget(x=x, y=y, address=name, radius_m=self.pickup_radius_m, municipality=name)
+        name, x, y, _, landmark = random.choices(towns, weights=[town[3] for town in towns])[0]
+        return TaxiTarget(x=x, y=y, address=name, radius_m=self.pickup_radius_m, municipality=name, venue_type=landmark)
 
-    def _resolve_long_dropoff(self, passenger: TaxiPassenger, dt: float) -> None:
+    def _resolve_long_dropoff(self, passenger: TaxiPassenger, dt: float, car: Car) -> None:
         """Near a long fare's town: its street address, once the map has one."""
         self.long_fare_retry_timer -= dt
         if self.long_fare_retry_timer > 0.0:
             return
         self.long_fare_retry_timer = LONG_FARE_RETRY_S
         town = passenger.dropoff
-        final = (self.pick_random_building_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M)
-                 or self.pick_random_road_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M))
+        if town.venue_type in LANDMARK_WEIGHTS:  # the place itself: its road, its name
+            final = self.pick_random_road_point(town.x, town.y, 0.0, LANDMARK_SNAP_M)
+            if final is None and math.hypot(car.x - town.x, car.y - town.y) <= LANDMARK_SNAP_M:
+                final = TaxiTarget(x=car.x, y=car.y, address="", radius_m=self.pickup_radius_m)  # unnamed access road: here
+        else:
+            final = (self.pick_random_building_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M)
+                     or self.pick_random_road_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M))
         if final is None:
             return
-        final.address = f"{final.address}, {town.municipality}"
+        if town.venue_type in LANDMARK_WEIGHTS:
+            final.address, final.venue_type = town.address, town.venue_type
+        else:
+            final.address = f"{final.address}, {town.municipality}"
         passenger.dropoff = final
         self.notification_msg = tr(self.language, "long_fare_address", name=passenger.name, address=final.address)
         self.notification_timer = 6.0
@@ -2162,7 +2182,7 @@ class TaxiManager:
             )
             if target.municipality is not None:  # a long fare: no stop at the bare town centre
                 if dist_to_target <= LONG_FARE_RESOLVE_M:
-                    self._resolve_long_dropoff(self.current_passenger, dt)
+                    self._resolve_long_dropoff(self.current_passenger, dt, car)
             elif dist_to_target <= target.radius_m:
                 if is_stopped:
                     # Completed fare!
