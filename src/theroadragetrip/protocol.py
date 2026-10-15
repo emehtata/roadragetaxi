@@ -207,7 +207,7 @@ def _trams_to_dicts(tram_mgr) -> list:
     """Trams drawn like trains (the state's "trains"), their sections their cars."""
     if tram_mgr is None:
         return []
-    return [{"id": f"tram-{tram.tram_id}", "state": tram.state, "speed": tram.speed_mps,
+    return [{"id": f"tram-{tram.tram_id}", "state": tram.state, "speed": tram.speed_mps, "line": tram.line or "",
              "cars": [[round(x, 2), round(y, 2), round(h, 4), length, look] for x, y, h, length, look in tram_mgr.cars(tram)]}
             for tram in tram_mgr.trams]
 

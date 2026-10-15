@@ -547,6 +547,7 @@ def build_ways(
     garage_raw: List[Tuple[dict, str, int, object]] = []  # (tags, osm type, osm id, node ids / members)
     connector_nodes: Dict[int, dict] = {}  # amenity=parking_entrance node id -> tags
     tram_stop_names: Dict[int, str] = {}  # tram stop node id -> its name (Railway.stops)
+    tram_line_refs: Dict[int, Set[str]] = defaultdict(set)  # tram way id -> the lines over it (Railway.lines)
     connector_ways: Dict[int, List[Tuple[int, dict]]] = defaultdict(list)  # node id -> ways through it
 
     for el in elements:
@@ -621,7 +622,7 @@ def build_ways(
             elif tags.get("barrier") in ("fence", "railing", "hedge", "wall"):
                 railing_raw.append((tags, node_ids))
             elif tags.get("railway") in ("rail", "light_rail", "tram", "narrow_gauge", "funicular"):
-                railway_raw.append((tags, node_ids))
+                railway_raw.append((tags, node_ids, way_id))
             elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
                 water_raw.append((tags, node_ids))
             elif tags.get("natural") == "coastline":
@@ -652,6 +653,11 @@ def build_ways(
                 curb_raw.append((tags, node_ids))
         elif el_type == "relation":
             tags = _stadium_as_ground(el.get("tags", {}))
+            if tags.get("type") == "route" and tags.get("route") == "tram":  # a tram line: its ways (Railway.lines)
+                line = tags.get("ref") or tags.get("name") or str(el.get("id"))
+                for member in el.get("members", []):
+                    if member.get("type") == "way":
+                        tram_line_refs[member.get("ref")].add(line)
             if tags.get("type") == "multipolygon":
                 members = el.get("members", [])
                 relations_raw.append((tags, members))
@@ -927,7 +933,7 @@ def build_ways(
         if not has_area_or_leisure_tag and (is_explicitly_tagged_island or looks_like_a_compact_island):
             sceneries.append(Scenery(points_m=pts, kind="traffic_island", bbox=ibbox))
 
-    for tags, node_ids in railway_raw:
+    for tags, node_ids, way_id in railway_raw:
         pts, ibbox = process_node_ids(node_ids)
         if not pts or len(pts) < 2:
             continue
@@ -948,6 +954,7 @@ def build_ways(
                 is_bridge=railway_is_bridge,
                 layer=railway_layer,
                 track_ref=tags.get("railway:track_ref", "").strip().lstrip("0"),
+                lines=sorted(tram_line_refs.get(way_id, ())),
             )
         )
     # Tram stops are mostly mapped beside the track (on the platform side),

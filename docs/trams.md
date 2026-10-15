@@ -6,8 +6,9 @@ track.
 
 ## Current state
 
-Phase 1 (below) is implemented: `trams.py` (`TramManager`), driven by the
-simulation each tick and drawn by the client like train cars.
+Phases 1-2 (below) are implemented: `trams.py` (`TramManager`), driven by
+the simulation each tick and drawn by the client like train cars. Trams
+serve the real OSM tram lines (phase 2).
 
 ## Design
 
@@ -53,6 +54,25 @@ Not yet:
   `docs/finnish-npc-traffic-law.md`); they do not see trams at all yet,
   so a car may stand on the rails and hold a tram.
 - Real tram lines (OSM route relations) and timetables; terminal loops.
+  (Lines: phase 2. Timetables are not wanted.)
 - Passengers boarding and leaving at stops; tram sounds.
 - Trams at traffic lights (they brake for the cars queueing there, but do
   not read the signals themselves).
+
+## Phase 2 (2026-10-15): OSM tram lines
+
+Trams serve the real lines instead of wandering the network. Each OSM
+`route=tram` relation's `ref` ("7", "1T") is recorded on its member tram
+ways (`Railway.lines`, world cache format 31; Overpass now fetches the
+relations) and on the rail graph's edges (`RailGraph.lines`). A tram is
+spawned on track carrying a line (not a depot siding) and serves one of
+its lines; at a junction it takes the way its line goes on - keeping
+right, as both directions' tracks carry the line's number - and only off
+its line's mapped track falls back to straight on. No timetables.
+
+Measured in central Helsinki: lines 1, 1T, 2, 3, 4, 5, 6, 7, 8, 8T, 9, 10
+on 3,095 of 3,590 track edges; trams stay on their own line's track 100 %
+of the time, and stop at 13-17 different stops in 3 minutes.
+
+Still not: the line number shown on the tram; terminal loops beyond the
+loaded map; NPC cars giving way to trams.

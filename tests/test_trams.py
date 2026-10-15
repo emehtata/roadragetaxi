@@ -137,3 +137,28 @@ def test_trams_keep_right_on_a_double_line():
         (ax, ay), (bx, by) = manager.graph.points[tram.nodes[-2]], manager.graph.points[tram.nodes[-1]]
         assert (by < 1.0) == (bx > ax)  # on y=0 it heads east, on y=3.5 west: the right-hand track
     assert seen >= 10
+
+
+def test_a_tram_follows_its_osm_line_at_a_junction():
+    from theroadragetrip.osm.build import build_ways
+
+    # A tram line west -> east that forks north-east at a junction where the
+    # straight track carries another line.
+    nodes = [{"type": "node", "id": i, "lat": lat, "lon": lon} for i, (lat, lon) in
+             enumerate([(60.17, 24.90), (60.17, 24.92), (60.17, 24.94), (60.175, 24.935)], start=1)]
+    ways = [{"type": "way", "id": 11, "nodes": [1, 2], "tags": {"railway": "tram"}},
+            {"type": "way", "id": 12, "nodes": [2, 3], "tags": {"railway": "tram"}},
+            {"type": "way", "id": 13, "nodes": [2, 4], "tags": {"railway": "tram"}}]
+    lines = [{"type": "relation", "id": 101, "tags": {"type": "route", "route": "tram", "ref": "7"},
+              "members": [{"type": "way", "ref": 11, "role": ""}, {"type": "way", "ref": 13, "role": ""}]},
+             {"type": "relation", "id": 102, "tags": {"type": "route", "route": "tram", "ref": "4"},
+              "members": [{"type": "way", "ref": 11, "role": ""}, {"type": "way", "ref": 12, "role": ""}]}]
+    railways = build_ways(nodes + ways + lines).railways
+    assert {tuple(r.lines) for r in railways} == {("4", "7"), ("4",), ("7",)}
+    manager = TramManager(railways, "Helsinki", rng=random.Random(1))
+    junction = manager.graph.node_at(next(r for r in railways if r.lines == ["4", "7"]).points_m[-1])
+    before = max(manager.graph.edges[junction], key=lambda n: -manager.graph.points[n][0])  # the node west of it
+    for line, north in (("7", True), ("4", False)):
+        for _ in range(20):
+            nxt = manager._next_node(before, junction, line)
+            assert (manager.graph.points[nxt][1] > manager.graph.points[junction][1] + 1e-6) == north, line

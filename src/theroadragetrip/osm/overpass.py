@@ -180,6 +180,7 @@ def fetch_osm_ways(
       way["natural"~"{natural_scenery_regex}"]({south},{west},{north},{east});
       way["place"~"suburb|neighbourhood|quarter|village"]({south},{west},{north},{east});
       relation["natural"="water"]({south},{west},{north},{east});
+      relation["route"="tram"]({south},{west},{north},{east});
     relation["natural"="bay"]({south},{west},{north},{east});
     relation["natural"="strait"]({south},{west},{north},{east});
       relation["landuse"="reservoir"]({south},{west},{north},{east});

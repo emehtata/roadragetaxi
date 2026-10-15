@@ -95,7 +95,8 @@ MAGIC = b"RWC\0"
 # 28: building=stadium is stadium ground too (Bolt Arena's roof).
 # 29: Railway.stops (tram stops on a tram line).
 # 30: tram stops beside their track join it (29's lists only had those on it).
-FORMAT_VERSION = 30
+# 31: Railway.lines (the tram lines over a tram way).
+FORMAT_VERSION = 31
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

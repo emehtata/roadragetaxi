@@ -1,8 +1,10 @@
 """Trams on their rails (docs/trams.md), in the cities that have them.
 
 The tram network (OSM railway=tram) is a rail graph (trains.build_rail_graph
-of kind "tram"). A tram follows it - mostly straight on at a junction,
-sometimes turning - stops at the tram stops on its way (Railway.stops),
+of kind "tram"). A tram serves one of the OSM tram lines on its track
+(Railway.lines, the route=tram relations): at a junction it takes the way
+its line goes on; off its line's mapped track, mostly straight on. It
+stops at the tram stops on its way (Railway.stops),
 and brakes for anything on its track ahead: the taxi, cars, people,
 another tram. Trams are kept near the viewpoint only: spawned out of
 sight, removed far away; a tram at a dead end of the loaded track turns
@@ -68,6 +70,7 @@ class Tram:
     dwell_until: float = 0.0
     served_stop: Optional[int] = None  # the stop node it last stood at (not again until past it)
     held_since: Optional[float] = None  # sim time it began HOLDING
+    line: Optional[str] = None  # the OSM tram line it serves ("7"), None off any mapped line
     cumulative: List[float] = field(default_factory=list)
 
     @property
@@ -121,10 +124,14 @@ class TramManager:
                     return False
         return True
 
-    def _next_node(self, previous: int, node: int) -> Optional[int]:
-        """Where a tram on previous -> node goes on: the straightest way,
-        usually; never back, nor round a corner sharper than MAX_TURN_RAD,
-        nor over to the wrong-way track of a double line if it can help it."""
+    def _lines_on(self, a: int, b: int) -> set:
+        return self.graph.lines.get(frozenset((a, b)), set())
+
+    def _next_node(self, previous: int, node: int, line: Optional[str] = None) -> Optional[int]:
+        """Where a tram on previous -> node goes on: where its line goes on,
+        if mapped; else the straightest way, usually. Never back, nor round
+        a corner sharper than MAX_TURN_RAD, nor over to the wrong-way track
+        of a double line if it can help it."""
         px, py = self._point(previous)
         nx, ny = self._point(node)
         heading = math.atan2(ny - py, nx - px)
@@ -139,6 +146,15 @@ class TramManager:
         if not options:
             return None
         right = [option for option in options if self._keeps_right(node, option[1])]
+        if line is not None:
+            # Its line's way, keeping right (both directions' tracks carry the
+            # line's number); else its line's way all the same - just past a
+            # junction a diverging branch can still run close beside the
+            # other track and look like the wrong-way one.
+            on_line = [option for option in options if line in self._lines_on(node, option[1])]
+            pick = [option for option in on_line if option in right] or on_line
+            if pick:
+                return min(pick)[1]  # (the straightest, should two carry it)
         options = right or options
         options.sort()
         if len(options) == 1 or self.rng.random() < STRAIGHT_ON_CHANCE:
@@ -155,7 +171,7 @@ class TramManager:
         tail. False: a dead end ahead within the lookahead."""
         open_ahead = True
         while tram.cumulative[-1] - tram.front_m < LOOKAHEAD_M:
-            following = self._next_node(tram.nodes[-2], tram.nodes[-1]) if len(tram.nodes) >= 2 else None
+            following = self._next_node(tram.nodes[-2], tram.nodes[-1], tram.line) if len(tram.nodes) >= 2 else None
             if following is None:
                 open_ahead = False
                 break
@@ -195,6 +211,8 @@ class TramManager:
     def _spawn(self, near: Tuple[float, float], view) -> Optional[Tram]:
         nodes = [n for n in self.graph.nodes_near(near, SPAWN_RADIUS_M)
                  if len(self.graph.edges.get(n, {})) == 2 and not _in_view(self._point(n), view)]
+        on_lines = [n for n in nodes if any(self._lines_on(n, m) for m in self.graph.edges[n])]
+        nodes = on_lines or nodes  # on a line's track, not a depot siding, where there is one
         if not nodes:
             return None
         start = self.rng.choice(nodes)
@@ -202,13 +220,14 @@ class TramManager:
         self.rng.shuffle(ends)
         ends.sort(key=lambda previous: not self._keeps_right(previous, start))  # the right-hand way first
         previous = ends[0]
+        lines = sorted(self._lines_on(previous, start))
         tram = Tram(nodes=[previous, start], front_m=0.0, sections=self.sections, profile=self.profile,
-                    speed_mps=TRAM_SPEED_MPS)
+                    speed_mps=TRAM_SPEED_MPS, line=self.rng.choice(lines) if lines else None)
         self._measure(tram)
         # Grow its track behind it too (reversed walk), so its body fits.
         back = [start, previous]
         while len(back) >= 2 and sum(math.dist(self._point(a), self._point(b)) for a, b in zip(back, back[1:])) < tram.length_m + 5.0:
-            following = self._next_node(back[-2], back[-1])
+            following = self._next_node(back[-2], back[-1], tram.line)
             if following is None:
                 return None
             back.append(following)

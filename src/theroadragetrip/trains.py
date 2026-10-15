@@ -228,6 +228,7 @@ class RailGraph:
     key_of: Dict[Tuple[int, int], int] = field(default_factory=dict)
     grid: Dict[Tuple[int, int], List[int]] = field(default_factory=dict)
     tracks: Dict[int, set] = field(default_factory=dict)  # node -> OSM track numbers through it
+    lines: Dict[frozenset, set] = field(default_factory=dict)  # edge {a, b} -> the tram lines over it (Railway.lines)
 
     GRID_M = 100.0
 
@@ -272,11 +273,14 @@ def build_rail_graph(railways: Sequence, kind: str = "rail") -> RailGraph:
         if track_ref:
             for node_id in ids:
                 graph.tracks.setdefault(node_id, set()).add(track_ref)
+        lines = getattr(railway, "lines", ())
         for a, b in zip(ids, ids[1:]):
             if a != b:
                 d = math.dist(graph.points[a], graph.points[b])
                 graph.edges.setdefault(a, {})[b] = d
                 graph.edges.setdefault(b, {})[a] = d
+                if lines:
+                    graph.lines.setdefault(frozenset((a, b)), set()).update(lines)
     return graph
 
 

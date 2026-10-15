@@ -87,6 +87,8 @@ class Railway:
     # A tram line's stops on it (OSM railway=tram_stop, or a tram
     # public_transport=stop_position, nodes of this way): (x, y, name).
     stops: List[Tuple[float, float, str]] = field(default_factory=list)
+    # The tram lines (OSM route=tram relations' ref, e.g. "7") running over it.
+    lines: List[str] = field(default_factory=list)
 
 
 @dataclass
