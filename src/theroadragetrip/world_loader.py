@@ -117,10 +117,10 @@ def load_world(
     Exits the process if the OSM data fails to load or the bbox contains no
     map features.
     """
-    sun_latitude, sun_longitude = city_centers.get(
-        chosen_city,
-        ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0),
-    )
+    bbox_center = ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0)
+    # A custom start (--bbox) can be far from its nearest catalog city:
+    # sun and weather follow the map actually loaded.
+    sun_latitude, sun_longitude = bbox_center if getattr(args, "bbox", None) else city_centers.get(chosen_city, bbox_center)
 
     def on_load_progress(fraction: float, message: str) -> None:
         loading_state[0] = max(0.0, min(1.0, fraction))

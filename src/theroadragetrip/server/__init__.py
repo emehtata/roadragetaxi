@@ -414,12 +414,21 @@ class SimulationServer:
         logger.info("Simulation server listening on %s:%d", self.host, self.port)
         self._running = True
 
+    def _place_name(self) -> str:
+        """The start sign's name: the catalog city, or for a custom start
+        (--bbox) the nearest town/village on the loaded map."""
+        if getattr(self.args, "bbox", None):
+            towns = [p for p in self.world.places if p.kind in ("city", "town", "village")]
+            if towns:
+                return min(towns, key=lambda p: (p.x - self.car.x) ** 2 + (p.y - self.car.y) ** 2).name
+        return str(self.chosen_city or "")
+
     def _on_client_connect(self, connection) -> None:
         logger.info("Client connected")
         # Who it is and the map origin first; the map chunks around the
         # player and every tick's state follow from the tick loop.
         connection.send(protocol.build_world_message((self.car.x, self.car.y), CHUNK_SIZE_M, LOCAL_PLAYER_ID,
-                                                     str(self.chosen_city or ""), self.start_forecast))
+                                                     self._place_name(), self.start_forecast))
         with self._clients_lock:
             self._client_chunks[connection] = (set(), None)
             self._clients.append(connection)
