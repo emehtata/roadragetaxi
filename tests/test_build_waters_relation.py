@@ -95,3 +95,26 @@ def test_coastline_becomes_sea_on_its_right_side():
     island = [(40, -10), (60, -10), (60, 10), (40, 10), (40, -10)]
     rings = _sea_polygons([island], (0, -50, 100, 50))
     assert sum(Polygon(r).area for r in rings) == 10000 - 400
+
+
+def test_sea_stays_inside_the_fetched_bbox():
+    from theroadragetrip.osm.build import build_ways
+    from theroadragetrip.world_loader import with_fetch_bbox
+
+    bbox = (65.00, 25.40, 65.01, 25.42)
+    nodes = [
+        {"type": "node", "id": 1, "lat": 65.005, "lon": 25.39},  # coastline west -> east: sea south
+        {"type": "node", "id": 2, "lat": 65.005, "lon": 25.43},
+        {"type": "node", "id": 3, "lat": 65.008, "lon": 25.41},  # a road running far out of the bbox
+        {"type": "node", "id": 4, "lat": 64.90, "lon": 25.41},
+    ]
+    ways = [
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"natural": "coastline"}},
+        {"type": "way", "id": 11, "nodes": [3, 4], "tags": {"highway": "residential", "name": "Pitkätie"}},
+    ]
+    seas = [w for w in build_ways(with_fetch_bbox(nodes + ways, bbox)).waters if w.kind == "sea"]
+    assert seas
+    road = build_ways(nodes + ways).ways[0].points_m
+    halfway = (road[0][1] + road[1][1]) / 2  # the road leaves the bbox long before this
+    assert all(min(y for _, y in w.points_m) > halfway for w in seas)  # sea not down along the road
+    assert not [w for w in build_ways(nodes + ways).waters if w.kind == "sea"]  # bbox unknown: no sea

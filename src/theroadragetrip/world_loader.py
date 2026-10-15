@@ -42,6 +42,13 @@ from .world_places import load_places
 logger = logging.getLogger(__name__)
 
 
+def with_fetch_bbox(elements, fetch_bbox):
+    """The elements plus the (south, west, north, east) they were fetched
+    for: build_ways clips sea from coastline to it (coastline is complete
+    only there; ways reaching out of it are not)."""
+    return list(elements) + [{"type": "fetch_bbox", "bounds": list(fetch_bbox)}]
+
+
 def resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=None):
     """Pick where OSM data comes from: live Overpass, or a local .osm.pbf
     extract via osmium-tool (osm_source=pbf) - no downloads, no rate
@@ -52,7 +59,7 @@ def resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=None):
     def _use_overpass(fetch_bbox, **fetch_kwargs):
         if progress_callback is not None:
             fetch_kwargs.setdefault("progress_callback", progress_callback)
-        return fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints, **fetch_kwargs)
+        return with_fetch_bbox(fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints, **fetch_kwargs), fetch_bbox)
 
     if getattr(args, "osm_source", "overpass") == "pbf":
         pbf_path = getattr(args, "osm_pbf_path", None)
@@ -60,7 +67,7 @@ def resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=None):
             def _use_pbf(fetch_bbox, **fetch_kwargs):
                 if progress_callback is not None:
                     fetch_kwargs.setdefault("progress_callback", progress_callback)
-                return fetch_osm_ways_from_pbf(fetch_bbox, pbf_path=pbf_path, **fetch_kwargs)
+                return with_fetch_bbox(fetch_osm_ways_from_pbf(fetch_bbox, pbf_path=pbf_path, **fetch_kwargs), fetch_bbox)
 
             return _use_pbf
         logger.warning(

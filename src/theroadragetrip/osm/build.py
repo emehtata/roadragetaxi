@@ -506,6 +506,7 @@ def build_ways(
     ways_raw: List[Tuple[dict, str, List[int]]] = []
     water_raw: List[Tuple[dict, List[int]]] = []
     coast_raw: List[List[int]] = []
+    fetch_bbox = None  # (south, west, north, east): world_loader.with_fetch_bbox
     curb_raw: List[Tuple[dict, List[int]]] = []
     railway_raw: List[Tuple[dict, List[int]]] = []
     railing_raw: List[Tuple[dict, List[int]]] = []
@@ -522,6 +523,9 @@ def build_ways(
 
     for el in elements:
         el_type = el.get("type")
+        if el_type == "fetch_bbox":
+            fetch_bbox = el["bounds"]
+            continue
         if el_type == "node":
             nid = el["id"]
             node_ids_list.append(nid)
@@ -833,17 +837,19 @@ def build_ways(
             layer = 0
         waters.append(Water(points_m=pts, kind=kind, is_polygon=is_poly, name=name, bbox=ibbox, layer=layer))
 
-    if coast_raw:
-        coast_nodes = {nid for ids in coast_raw for nid in ids}
-        # Clip to the area the rest of the data covers: coastline ways run
-        # on for kilometres past the fetched bbox.
+    if coast_raw and fetch_bbox is not None:
+        # Clip to the fetched bbox: coastline is complete only inside it
+        # (every coastline way crossing it was fetched); roads reaching out
+        # of it are not, and the sea between used to swallow land there.
+        # Without a known bbox (an old raw cache) there is no sea at all.
         # ponytail: a chunk with no coastline crossing it gets no sea even if
         # it is all open water; needs a land/sea seed (e.g. OSM water polygons
         # dataset) if that shows up.
-        inner = [pt for nid, pt in nodes_m.items() if nid not in coast_nodes]
-        if inner:
-            rect = (min(p[0] for p in inner), min(p[1] for p in inner),
-                    max(p[0] for p in inner), max(p[1] for p in inner))
+        south, west, north, east = fetch_bbox
+        (x0, y0), (x1, y1), (x2, y2), (x3, y3) = (
+            transformer.transform(lon, lat) for lon, lat in ((west, south), (west, north), (east, south), (east, north)))
+        rect = (max(x0, x1), max(y0, y2), min(x2, x3), min(y1, y3))  # the projected box's inner rectangle
+        if rect[0] < rect[2] and rect[1] < rect[3]:
             coast_lines = [pts for pts, _ in map(process_node_ids, coast_raw) if pts]
             for ring in _sea_polygons(coast_lines, rect):
                 waters.append(Water(points_m=ring, kind="sea", is_polygon=True, bbox=compute_bbox(ring)))
