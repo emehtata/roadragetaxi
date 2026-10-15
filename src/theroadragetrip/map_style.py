@@ -70,7 +70,8 @@ SCENERY_COLORS = {
     "bathing_place": (152, 168, 128), "swimming_pool": (68, 165, 185),
     "sports_centre": (122, 110, 94), "sports_hall": (122, 110, 94),
     "fitness_centre": (122, 110, 94), "fitness_station": (98, 142, 78),
-    "stadium": (122, 110, 94), "ice_rink": (150, 140, 120),  # gravel/asphalt; ice in winter "horse_riding": (152, 132, 92),
+    "stadium": (122, 110, 94), "bleachers": (150, 146, 140), "horse_riding": (152, 132, 92),
+    "ice_rink": (150, 140, 120),  # gravel/asphalt; ice in winter
     "firepit": (100, 90, 70), "outdoor_seating": (112, 102, 92), "sauna": (112, 92, 72),
     "parking": (98, 98, 98), "pedestrian_area": (125, 120, 112), "fuel": (92, 88, 84),
     "traffic_island": (112, 150, 86),
