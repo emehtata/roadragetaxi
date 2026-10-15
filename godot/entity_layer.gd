@@ -818,6 +818,8 @@ func _ellipse(c: Vector2, rx: float, ry: float, color: Color) -> void:
 	_canvas.draw_set_transform(Vector2.ZERO)
 
 
+const SANTA_HAT := [Vector2(0, -0.4), Vector2(0, 0.4), Vector2(-0.65, 0.3)]
+
 ## A pedestrian: shadow, legs
 ## stepping with animation_time, body, head facing the heading; fallen ones
 ## lie down, people going indoors are an outline; then any cursing bubble.
@@ -855,7 +857,10 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 			_canvas.draw_line(head - side * radius * 0.38, head + side * radius * 0.38, _person_lit(Color.WHITE), radius * 0.22)
 			_canvas.draw_circle(head + h * radius * 0.26, radius * 0.3, _person_lit(Color.WHITE))  # beard
 			var tip := head - h * radius * 0.65 + side * radius * 0.3
-			_canvas.draw_colored_polygon(PackedVector2Array([head - side * radius * 0.4, head + side * radius * 0.4, tip]), _person_lit(clothing))
+			# Triangulate near zero: tiny world-coordinate hats lose precision far from the origin.
+			_canvas.draw_set_transform(head, -heading, Vector2.ONE * radius)
+			_canvas.draw_colored_polygon(PackedVector2Array(SANTA_HAT), _person_lit(clothing))
+			_canvas.draw_set_transform(Vector2.ZERO)
 			_canvas.draw_circle(tip, radius * 0.17, _person_lit(Color.WHITE))
 		if ped.get("activity", "") == "ice_hockey":
 			var goalie: bool = ped.get("hockey_goalie", false)
