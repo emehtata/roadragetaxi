@@ -25,6 +25,8 @@ ICE_SKATER_CHECK_S = 2.0
 ICE_M2_PER_SKATER = 500.0
 ICE_SKATERS_MIN, ICE_SKATERS_MAX = 2, 8
 HOCKEY_PLAYERS_MIN, HOCKEY_PLAYERS_MAX = 6, 10
+ICE_VIEW_MARGIN_M = 60.0  # ice sports run only on fields this near the viewport
+ICE_ACTIVITIES = ("ice_skating", "ice_hockey")
 
 logger = logging.getLogger(__name__)
 
@@ -1739,22 +1741,50 @@ class PedestrianManager:
             )
             return
 
-    def ensure_ice_skaters(self, player_car: Car) -> None:
-        """Keep a few people on open sports ice near the player: skaters on
-        frozen pitches, a hockey game on rinks. Bounded: one check every
-        ICE_SKATER_CHECK_S, at most one spawn per check."""
-        if not self.sports_ice_open or self.sim_time - self._ice_checked_at < ICE_SKATER_CHECK_S:
+    def ensure_ice_skaters(
+        self, player_car: Car, viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+    ) -> None:
+        """Ice sports where the camera looks: frozen fields in the viewport
+        (plus ICE_VIEW_MARGIN_M) keep a few people on the ice - skaters on
+        pitches, a hockey game on rinks - and players of a field that has
+        left that area go (their game stops; nothing runs unseen). Bounded:
+        one check every ICE_SKATER_CHECK_S, at most one spawn per check."""
+        if self.sim_time - self._ice_checked_at < ICE_SKATER_CHECK_S:
             return
         self._ice_checked_at = self.sim_time
         from .activities.plugins.park_leisure import sample_interior_point
 
+        if viewport_bounds is None:  # headless: around the player
+            viewport_bounds = (player_car.x - self.spawn_radius_m, player_car.y - self.spawn_radius_m,
+                               player_car.x + self.spawn_radius_m, player_car.y + self.spawn_radius_m)
+        vminx, vminy, vmaxx, vmaxy = (viewport_bounds[0] - ICE_VIEW_MARGIN_M, viewport_bounds[1] - ICE_VIEW_MARGIN_M,
+                                      viewport_bounds[2] + ICE_VIEW_MARGIN_M, viewport_bounds[3] + ICE_VIEW_MARGIN_M)
+
+        def in_view(field) -> bool:
+            minx, miny, maxx, maxy = compute_bbox(field.points_m)
+            return minx <= vmaxx and maxx >= vminx and miny <= vmaxy and maxy >= vminy
+
         on_ice: Dict[int, int] = {}
+        kept = []
         for ped in self.pedestrians:
-            if ped.activity is not None and ped.activity.plugin_id in ("ice_skating", "ice_hockey") and ped.activity.location:
-                key = id(ped.activity.location.extra)
-                on_ice[key] = on_ice.get(key, 0) + 1
-        for field in self.nearby_sceneries(player_car.x, player_car.y, self.spawn_radius_m):
-            if field.kind not in FROZEN_IN_WINTER_KINDS or len(field.points_m) < 3:
+            instance = ped.activity
+            if instance is not None and instance.plugin_id in ICE_ACTIVITIES and instance.location:
+                field = instance.location.extra
+                if not in_view(field):  # out of sight: the player leaves the ice and the game
+                    plugin = self.activity_manager.registry.get(instance.plugin_id)
+                    if ped.state == "performing_activity":
+                        plugin.finish(self._activity_context(ped), instance)
+                    self._end_activity(ped, instance)
+                    continue
+                on_ice[id(field)] = on_ice.get(id(field), 0) + 1
+            kept.append(ped)
+        self.pedestrians = kept
+        if not self.sports_ice_open:
+            return
+        centre_x, centre_y = (vminx + vmaxx) / 2.0, (vminy + vmaxy) / 2.0
+        reach = math.hypot(vmaxx - vminx, vmaxy - vminy) / 2.0
+        for field in self.nearby_sceneries(centre_x, centre_y, reach):
+            if field.kind not in FROZEN_IN_WINTER_KINDS or len(field.points_m) < 3 or not in_view(field):
                 continue
             minx, miny, maxx, maxy = compute_bbox(field.points_m)
             low, high = (HOCKEY_PLAYERS_MIN, HOCKEY_PLAYERS_MAX) if field.kind == "ice_rink" else (ICE_SKATERS_MIN, ICE_SKATERS_MAX)

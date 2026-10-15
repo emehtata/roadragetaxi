@@ -118,3 +118,24 @@ def test_goalies_save_most_shots_and_restart_play_after_a_goal():
             held = puck.held_by
     assert goals > 0 and saves > goals  # most shots are saved
     assert restarts and all(restarts)  # out of the net by the conceding goalie
+
+
+def test_ice_sports_play_only_where_the_camera_looks():
+    from theroadragetrip.activities.plugins import ice_hockey
+
+    ice_hockey._pucks.clear()
+    manager = _manager()
+    manager.sports_ice_open = True
+    car = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
+    far_view = (1000.0, 1000.0, 1200.0, 1150.0)
+    manager.ensure_ice_skaters(car, far_view)
+    assert not manager.pedestrians  # the rink is not in view: no game there
+
+    for step in range(1, 4):
+        manager.sim_time = step * 2.0
+        manager.ensure_ice_skaters(car, (-50.0, -50.0, 150.0, 90.0))  # the camera over the rink
+    assert len(manager.pedestrians) == 3 and ice_hockey.puck_positions()
+
+    manager.sim_time += 2.0
+    manager.ensure_ice_skaters(car, far_view)  # the camera moved on (the taxi did not)
+    assert not manager.pedestrians and not ice_hockey.puck_positions()
