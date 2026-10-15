@@ -365,4 +365,4 @@ def test_nested_areas_draw_on_top_of_their_container():
     centre = Scenery(points_m=[(0.0, 0.0), (200.0, 0.0), (200.0, 150.0), (0.0, 150.0)], kind="sports_centre")
     world.sceneries = [pitch, centre]  # OSM order: the container last
     here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
-    assert [area[1] for area in here["landuse"]] == [0, 2]  # sports centre under, the pitch over it
+    assert [area[1] for area in here["landuse"]] == [1, 2]  # sports centre (snowy) under, the pitch over it

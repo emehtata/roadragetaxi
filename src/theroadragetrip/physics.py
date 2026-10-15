@@ -70,7 +70,7 @@ SURFACE_MAX_GRIP_G = {
 # Off-road ground (see off_road_ground_kind) has no Way.surface to read a
 # grip from, so it maps straight to a surface bucket; "road"/"hard" fall
 # through to the normal way-surface/asphalt logic.
-GROUND_KIND_MAX_GRIP_G = {"soft": "grass", "sand": "sand"}
+GROUND_KIND_MAX_GRIP_G = {"soft": "grass", "sand": "sand", "ice": "ice"}
 # OSM Way.surface values that map to a rougher-than-asphalt bucket. There's
 # no in-game weather system to ever pick "wet_asphalt" (no rain state
 # exists), so it's defined for completeness/future use but unreachable today.
@@ -403,30 +403,41 @@ def off_road_ground_kind(
     py: float,
     sceneries: Optional[List] = None,
     scenery_grid: Optional["SpatialWayGrid"] = None,
+    frozen: bool = False,
 ) -> str:
     """Classify open ground at (px, py) as "soft" (grass/earth - muddy dirt
     trails), "sand" (lighter sand tracks) or "hard" (a mapped surface that
     leaves no trail, only ordinary tyre marks when skidding). Precedence:
     any hard polygon containing the point wins (a plaza inside a park),
     then sand, then soft; a point in no mapped polygon at all is unmapped
-    open ground, treated as soft."""
+    open ground, treated as soft. With `frozen` (winter: Finnish sports
+    fields are flooded for skating) a pitch or rink is "ice", over all else."""
+    from .map_style import FROZEN_IN_WINTER_KINDS
+
     candidates = (
         scenery_grid.ways_in_rect(px, py, px, py) if scenery_grid is not None else (sceneries or ())
     )
     found_sand = False
+    found_hard = False
     for scenery in candidates:
         kind = getattr(scenery, "kind", None)
-        if kind in SOFT_GROUND_SCENERY_KINDS:
+        freezes = frozen and kind in FROZEN_IN_WINTER_KINDS
+        if kind in SOFT_GROUND_SCENERY_KINDS and not freezes:  # (a grass pitch is soft, unless frozen)
             continue
         bbox = getattr(scenery, "bbox", None)
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0) and not (bbox[0] <= px <= bbox[2] and bbox[1] <= py <= bbox[3]):
             continue
         points = getattr(scenery, "points_m", ())
         if len(points) >= 3 and point_in_polygon(px, py, points):
-            if kind not in SAND_SCENERY_KINDS:
-                return "hard"
-            found_sand = True
-    return "sand" if found_sand else "soft"
+            if freezes:
+                return "ice"
+            if kind in SAND_SCENERY_KINDS:
+                found_sand = True
+            elif not frozen:
+                return "hard"  # nothing can be ice: the first hard polygon decides
+            else:
+                found_hard = True
+    return "hard" if found_hard else "sand" if found_sand else "soft"
 
 
 def is_point_on_soft_ground(
@@ -1633,6 +1644,7 @@ def update_car_physics(
     wetness: float = 0.0,
     black_ice: float = 0.0,
     wind: Tuple[float, float] = (0.0, 0.0),
+    fields_frozen: bool = False,
 ) -> bool:
     """Update car speed, heading, and position.
 
@@ -1991,7 +2003,7 @@ def update_car_physics(
         ):
             car.ground_kind = "hard"
         else:
-            car.ground_kind = off_road_ground_kind(target_x, target_y, scenery_grid=scenery_grid)
+            car.ground_kind = off_road_ground_kind(target_x, target_y, scenery_grid=scenery_grid, frozen=fields_frozen)
         if car.ground_kind == "sand":
             speed_cap = SAND_MAX_SPEED
             if throttle > 0.0:

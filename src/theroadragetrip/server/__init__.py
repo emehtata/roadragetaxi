@@ -34,6 +34,7 @@ from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, ChunkIndex, cell_of, chunk_i
 from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer
 from ..protocol import LOCAL_PLAYER_ID
+from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
 from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_altitude_and_events_on
 from ..career import career_path, gig_odometer_path, load_career
 from ..config import CONFIG_PATH, cities_from_config, default_city_configuration, get_overpass_endpoints
@@ -372,7 +373,7 @@ class SimulationServer:
         if snow >= 0.1 and abs(car.speed) > 0.1:
             return {"kind": "snow", "intensity": round(min(1.0, snow / 3.0), 2), "front": True}
         ground = (
-            off_road_ground_kind(car.x, car.y, scenery_grid=world.scenery_grid)
+            off_road_ground_kind(car.x, car.y, scenery_grid=world.scenery_grid, frozen=getattr(world, "fields_frozen", False))
             if on_surface and surface_way is None
             and not is_point_on_parking_space(car.x, car.y, world.parking_spaces)
             and not is_point_in_parking_lot(car.x, car.y, scenery_grid=world.scenery_grid)
@@ -382,7 +383,8 @@ class SimulationServer:
         skidding = skidmark_should_mark(car.skid_amount, wetness=world.weather.wetness, hard_surface=not soft)
         if not (skidding or (soft and abs(car.speed) > 1.0)):
             return None
-        kind = ("snow" if self.calendar.season == Season.WINTER else "sand" if ground == "sand" else "dirt") if soft else "rubber"
+        # Skidding on a frozen field scratches the ice pale, never black.
+        kind = ("snow" if self.calendar.season == Season.WINTER else "sand" if ground == "sand" else "dirt") if soft else "snow" if ground == "ice" else "rubber"
         return {"kind": kind, "intensity": round(skidmark_intensity(car.skid_amount) if skidding else 1.0, 2),
                 "front": bool(tire_tracks_include_front_wheels(soft, skidding, getattr(car, "front_lockup", False)))}
 
@@ -390,6 +392,18 @@ class SimulationServer:
     def _game_time_seconds(self) -> float:
         """Seconds since local midnight on the calendar (not a clock of its own)."""
         return self.calendar.time_seconds
+
+    def season_weights(self) -> list:
+        """[winter, spring, summer, autumn] the client blends, at 0.05 steps;
+        also sets world.fields_frozen (physics) from the same winter weight
+        the client freezes the fields by, so look and grip agree."""
+        look = self.calendar.seasonal_appearance  # continuous weights, for the client to blend
+        observed = self.weather_history.get(self.calendar.current) if self.weather_history is not None else None
+        if observed is not None and observed.snow_depth_cm is not None:  # FMI's measured snow, over the date's guess
+            look = appearance_with_snow_depth(look, observed.snow_depth_cm)
+        season = [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]
+        self.world.fields_frozen = season[0] >= FIELDS_FROZEN_WINTER_WEIGHT
+        return season
 
     def calendar_state(self) -> dict:
         """What a client needs of the calendar (state "calendar"): the date,
@@ -400,12 +414,9 @@ class SimulationServer:
             getattr(self.world, "sun_latitude", self.calendar.latitude), getattr(self.world, "sun_longitude", 25.47),
             finnish_utc_offset_hours(self.calendar.current),
         )
-        look = self.calendar.seasonal_appearance  # continuous weights, for the client to blend
-        observed = self.weather_history.get(self.calendar.current) if self.weather_history is not None else None
-        if observed is not None and observed.snow_depth_cm is not None:  # FMI's measured snow, over the date's guess
-            look = appearance_with_snow_depth(look, observed.snow_depth_cm)
+        season = self.season_weights()
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
-                "season": [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)],
+                "season": season,
                 "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
                 "sports_lights": sports_lights_hours(self.calendar.current)}
 
@@ -565,6 +576,7 @@ class SimulationServer:
         if self.calendar.date != previous_date:
             self.world.weather.season = self.calendar.season  # the thermal season follows the calendar
         observed = self._update_outside()
+        self.season_weights()  # world.fields_frozen, for this tick's physics
         self.world.weather.update(dt * time_scale, dt, outside_temperature_c=self.world.weather.outside_temperature_c,
                                   observed=observed)
         if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once

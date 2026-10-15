@@ -29,6 +29,7 @@ static func _valid(polygon: PackedVector2Array) -> bool:
 
 
 const RINK_ICE := Color8(196, 222, 236)  # a flooded, frozen sports field
+const FIELDS_FROZEN_WINTER_WEIGHT := 0.5  # map_style.py: the same, for the ice grip
 
 
 ## Landuse fills: each piece in its kind's colour, green kinds through the
@@ -40,7 +41,7 @@ static func draw_areas(chunk, node: Node2D, key: String) -> void:
 			var color := _rgb(area[0])
 			match int(area[1]):
 				1: color = chunk.seasonal_color(color, chunk._season)
-				2: color = color.lerp(RINK_ICE, clampf(chunk._season[0], 0.0, 1.0))
+				2: color = RINK_ICE if chunk._season[0] >= FIELDS_FROZEN_WINTER_WEIGHT else chunk.seasonal_color(color, chunk._season)
 			node.draw_colored_polygon(polygon, color)
 
 

@@ -87,11 +87,14 @@ SPECKLE_SCENERY_KINDS = frozenset({
 # winter): flowerbeds stayed pink under snow before.
 SEASONAL_GROUND_KINDS = frozenset({
     "residential", "recreation_ground", "flowerbed", "playground", "horse_riding",
+    "sports_centre", "stadium",
 })
 
 # Finnish winter: sports fields and rinks are flooded and frozen for
-# skating - ice, not snow, under the winter weight.
+# skating - ice, not snow, once the winter (snow) weight reaches
+# FIELDS_FROZEN_WINTER_WEIGHT: drawn as ice and driven on with ice grip.
 FROZEN_IN_WINTER_KINDS = frozenset({"pitch", "ice_rink"})
+FIELDS_FROZEN_WINTER_WEIGHT = 0.5  # godot chunk_detail.gd uses the same
 
 # Floodlit when dark, 07-22 (server: sports_lights_on).
 FLOODLIT_KINDS = frozenset({"pitch", "ice_rink", "track", "stadium"})

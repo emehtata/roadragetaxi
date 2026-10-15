@@ -375,6 +375,7 @@ def advance_simulation(
                 wetness=weather.road_grip_wetness,
                 black_ice=weather.road_ice_fraction,
                 wind=weather.wind_vector_mps,
+                fields_frozen=getattr(world, "fields_frozen", False),
             )
         car.braking = brake > 0.0 and car.speed > 0.05
         midpoint = (

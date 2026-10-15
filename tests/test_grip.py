@@ -349,3 +349,16 @@ def test_15_rain_lowers_the_cornering_grip_ceiling_for_the_same_corner_and_speed
     )
     assert wet_car.max_grip_g < dry_car.max_grip_g
     assert wet_car.grip_usage > dry_car.grip_usage
+
+
+def test_a_frozen_pitch_is_ice_inside_its_sports_centre():
+    from theroadragetrip.osm.models import Scenery
+    from theroadragetrip.physics import SURFACE_MAX_GRIP_G, _surface_max_grip_g, off_road_ground_kind
+
+    centre = Scenery(points_m=[(0.0, 0.0), (200.0, 0.0), (200.0, 150.0), (0.0, 150.0)], kind="sports_centre")
+    pitch = Scenery(points_m=[(10.0, 10.0), (60.0, 10.0), (60.0, 40.0), (10.0, 40.0)], kind="pitch")
+    sceneries = [centre, pitch]  # the hard container first
+    assert off_road_ground_kind(30.0, 20.0, sceneries, frozen=True) == "ice"
+    assert off_road_ground_kind(30.0, 20.0, sceneries, frozen=False) == "hard"
+    assert off_road_ground_kind(150.0, 100.0, sceneries, frozen=True) == "hard"  # the centre's own ground
+    assert _surface_max_grip_g(None, "simulation", ground_kind="ice") == SURFACE_MAX_GRIP_G["ice"]
