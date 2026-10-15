@@ -1322,6 +1322,7 @@ def _plan_and_validate_npc_route(
     vehicle_length_m: float = NPC_VEHICLE_LENGTH_M,
     vehicle_width_m: float = NPC_VEHICLE_WIDTH_M,
     preserve_origin: bool = False,
+    origin_heading: Optional[float] = None,
 ) -> Optional[List[PathPoint]]:
     """Plan and fully validate a drivable path from origin to destination -
     the shared "never move a vehicle onto an unchecked route" core of both
@@ -1358,6 +1359,7 @@ def _plan_and_validate_npc_route(
         origin_is_off_road=origin_is_off_road,
         vehicle_length_m=vehicle_length_m, vehicle_width_m=vehicle_width_m,
         preserve_origin=preserve_origin,
+        origin_heading=origin_heading,
     ), deadline)
 
 
@@ -1377,6 +1379,7 @@ def _plan_and_validate_npc_route_steps(
     vehicle_length_m: float = NPC_VEHICLE_LENGTH_M,
     vehicle_width_m: float = NPC_VEHICLE_WIDTH_M,
     preserve_origin: bool = False,
+    origin_heading: Optional[float] = None,
 ) -> RouteSteps:
     """_plan_and_validate_npc_route as a resumable job: the route search
     and the curb/building sampling both yield per unit of work. Pure -
@@ -1450,7 +1453,9 @@ def _plan_and_validate_npc_route_steps(
     if len(path) < 2:
         return None
     if not origin_is_off_road:
-        start_heading = math.atan2(path[1].y - path[0].y, path[1].x - path[0].x)
+        start_heading = origin_heading if origin_heading is not None else math.atan2(
+            path[1].y - path[0].y, path[1].x - path[0].x,
+        )
         if not _npc_body_on_road(
             path[0].x, path[0].y, start_heading, vehicle_length_m, vehicle_width_m,
             ways, spatial_grid, getattr(path[0].way, "layer", 0),
@@ -1603,6 +1608,10 @@ def _begin_trip_on_vehicle(
     driver_resident.active_vehicle_id = vehicle.vehicle_id
 
     start, aim = path[0], path[1]
+    origin_requires_access = origin_is_off_road and not is_point_on_road(
+        start.x, start.y, ways=[way for way in (vehicle.way, start.way) if way is not None],
+        car_roads_only=True,
+    )
     vehicle.car.x, vehicle.car.y = start.x, start.y
     vehicle.car.heading = math.atan2(aim.y - start.y, aim.x - start.x)
     vehicle.car.speed = 0.0
@@ -1638,7 +1647,7 @@ def _begin_trip_on_vehicle(
         destination=destination,
         destination_is_off_road=destination_is_off_road,
         current_way=start.way,
-        origin_is_off_road=origin_is_off_road,
+        origin_is_off_road=origin_requires_access,
         trip_origin=(vehicle.car.x, vehicle.car.y),
     )
     if parking_space is not None:
@@ -2128,6 +2137,48 @@ def _npc_body_on_road(x, y, heading, length_m, width_m, ways, spatial_grid, laye
       for across in (-width_m * 0.5, 0.0, width_m * 0.5))
 
 
+def _npc_parking_access(vehicle, driver, x, y, ways, spatial_grid=None, layer=None) -> bool:
+    """Recognize the same bounded access corridor in motion and recovery."""
+    path = driver.path
+    if len(path) < 2:
+        return False
+    layer = getattr(driver.current_way, "layer", vehicle.car.layer) if layer is None else layer
+    reach = NPC_PARKING_ACCESS_TOLERANCE_M * 2.0
+    legs = []
+    if math.hypot(x - path[-1].x, y - path[-1].y) <= reach and (
+        vehicle.reserved_parking_space is not None or (
+            driver.destination_is_off_road and not is_point_on_road(
+                path[-1].x, path[-1].y, ways=ways, spatial_grid=spatial_grid,
+                car_roads_only=True, layer=layer,
+            )
+        )
+    ):
+        remaining = reach
+        for index in range(len(path) - 2, max(-1, len(path) - 34), -1):
+            a, b = path[index], path[index + 1]
+            remaining -= math.hypot(b.x - a.x, b.y - a.y)
+            if remaining < 0.0:
+                break
+            legs.append((a, b))
+    if driver.origin_is_off_road and driver.trip_origin is not None and (
+        math.hypot(x - driver.trip_origin[0], y - driver.trip_origin[1]) <= reach
+    ):
+        legs.append((PathPoint(*driver.trip_origin), path[0]))
+        remaining = reach
+        for a, b in zip(path[:32], path[1:33]):
+            remaining -= math.hypot(b.x - a.x, b.y - a.y)
+            if remaining < 0.0:
+                break
+            legs.append((a, b))
+    for a, b in legs:
+        if math.hypot(b.x - a.x, b.y - a.y) > reach:
+            continue
+        *_, gap = closest_point_and_dist_to_segment(x, y, a.x, a.y, b.x, b.y)
+        if gap <= vehicle.width_m * 0.5 + 0.3:
+            return True
+    return False
+
+
 def _npc_motion_stays_on_road(vehicle, driver, previous, ways, spatial_grid=None) -> bool:
     """Check the actual-size swept body, allowing only the bounded parking leg."""
     car = vehicle.car
@@ -2149,41 +2200,6 @@ def _npc_motion_stays_on_road(vehicle, driver, previous, ways, spatial_grid=None
     ]
     layer = getattr(driver.current_way, "layer", car.layer)
     nearby = [way for way in nearby if on_map_level(way, car.map_level)]
-    path = driver.path
-
-    def parking_access(x, y):
-        legs = []
-        if len(path) >= 2 and (
-            vehicle.reserved_parking_space is not None or (
-                driver.destination_is_off_road and not is_point_on_road(
-                    path[-1].x, path[-1].y, ways=nearby, car_roads_only=True, layer=layer,
-                )
-            )
-        ):
-            remaining = NPC_PARKING_ACCESS_TOLERANCE_M * 2.0
-            for index in range(len(path) - 2, max(-1, len(path) - 34), -1):
-                a, b = path[index], path[index + 1]
-                remaining -= math.hypot(b.x - a.x, b.y - a.y)
-                if remaining < 0.0:
-                    break
-                legs.append((a, b))
-        if driver.origin_is_off_road and driver.trip_origin is not None and len(path) >= 2 and not is_point_on_road(
-            *driver.trip_origin, ways=nearby, car_roads_only=True, layer=layer,
-        ):
-            legs.append((PathPoint(*driver.trip_origin), path[0]))
-            remaining = NPC_PARKING_ACCESS_TOLERANCE_M * 2.0
-            for a, b in zip(path[:32], path[1:33]):
-                remaining -= math.hypot(b.x - a.x, b.y - a.y)
-                if remaining < 0.0:
-                    break
-                legs.append((a, b))
-        for a, b in legs:
-            if math.hypot(b.x - a.x, b.y - a.y) > NPC_PARKING_ACCESS_TOLERANCE_M * 2.0:
-                continue
-            *_, gap = closest_point_and_dist_to_segment(x, y, a.x, a.y, b.x, b.y)
-            if gap <= vehicle.width_m * 0.5 + 0.3:
-                return True
-        return False
 
     for step in range(1, samples + 1):
         t = step / samples
@@ -2192,7 +2208,7 @@ def _npc_motion_stays_on_road(vehicle, driver, previous, ways, spatial_grid=None
         heading = previous[2] + angle_diff(car.heading, previous[2]) * t
         covered = _npc_body_on_road(x, y, heading, vehicle.length_m, vehicle.width_m,
                                     nearby, None, layer, car.map_level)
-        if not covered and not parking_access(x, y):
+        if not covered and not _npc_parking_access(vehicle, driver, x, y, nearby, None, layer):
             return False
     return True
 
@@ -3376,6 +3392,7 @@ def _continue_npc_trip_steps(
 
 def _recover_npc_trip_steps(vehicle, driver, traffic_world, ways, spatial_grid,
                             curbs, curb_grid, buildings, building_grid) -> RouteSteps:
+    in_access = _npc_parking_access(vehicle, driver, vehicle.x, vehicle.y, ways, spatial_grid)
     path = yield from _plan_and_validate_npc_route_steps(
         traffic_world, ways, (vehicle.x, vehicle.y), driver.destination,
         spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid,
@@ -3383,6 +3400,8 @@ def _recover_npc_trip_steps(vehicle, driver, traffic_world, ways, spatial_grid,
         parking_space=vehicle.reserved_parking_space, destination_is_off_road=True,
         vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
         preserve_origin=True,
+        origin_is_off_road=in_access,
+        origin_heading=vehicle.heading,
     )
     if path is None:
         return None
@@ -3391,7 +3410,10 @@ def _recover_npc_trip_steps(vehicle, driver, traffic_world, ways, spatial_grid,
 
 def _apply_npc_continuation(vehicle, driver, plan) -> None:
     path, destination, target_space, _ = plan
-    driver.origin_is_off_road = vehicle.state == NPCState.PARKED
+    driver.origin_is_off_road = vehicle.state == NPCState.PARKED and not is_point_on_road(
+        vehicle.x, vehicle.y, ways=[way for way in (vehicle.way, path[0].way) if way is not None],
+        car_roads_only=True,
+    )
     driver.trip_origin = (vehicle.x, vehicle.y)
     release_npc_parking_reservation(vehicle)
     vehicle.destination = destination

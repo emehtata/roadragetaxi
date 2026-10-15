@@ -114,3 +114,11 @@ def test_reverse_cannot_leave_end_of_road():
     assert vehicle.car.x > -2
     assert vehicle.car.speed == 0
     assert "road boundary" in vehicle.debug_waiting_for
+
+
+def test_replanned_departure_cannot_move_access_permission_across_map():
+    way = Way(points_m=[(-100, 0), (300, 0)], highway="residential", half_width_m=4)
+    vehicle = NPCVehicle(1, Car(x=100, y=6, heading=0, speed=0))
+    driver = Driver(1, 1, [PathPoint(100, 6), PathPoint(110, 0), PathPoint(200, 0)],
+                    (200, 0), current_way=way, origin_is_off_road=True, trip_origin=(0, 6))
+    assert not _npc_motion_stays_on_road(vehicle, driver, (99.9, 6, 0), [way])

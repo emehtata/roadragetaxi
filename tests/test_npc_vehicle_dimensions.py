@@ -2,11 +2,12 @@
 import pytest
 
 from theroadragetrip.npc import (
-    NPCVehicleManager, PathPoint, _pick_npc_destination_candidates, _recover_npc_trip_steps,
-    find_and_start_npc_trip, place_parked_npc, spawn_npc,
+    Driver, NPCVehicle, NPCVehicleManager, PathPoint, _pick_npc_destination_candidates, _recover_npc_trip_steps,
+    _begin_trip_on_vehicle, find_and_start_npc_trip, place_parked_npc, spawn_npc,
 )
 from theroadragetrip.osm import Curb, ParkingSpace, Way
 from theroadragetrip.residents import ResidentManager
+from theroadragetrip.physics import Car
 from theroadragetrip.traffic_world import TrafficWorld, run_route_steps
 from theroadragetrip.vehicles.base import vehicle_definition
 
@@ -95,3 +96,34 @@ def test_parked_trip_starts_at_actual_position_without_lane_offset_snap():
     assert driver is not None
     assert (vehicle.x, vehicle.y) == origin
     assert (driver.path[0].x, driver.path[0].y) == origin
+
+
+@pytest.mark.parametrize("x,allowed", [(41, True), (45, False)])
+def test_recovery_reuses_only_the_existing_parking_corridor(x, allowed):
+    ways = roads()
+    world = TrafficWorld(ways)
+    vehicle = NPCVehicle(1, Car(x=x, y=-4.5, heading=0, speed=0))
+    driver = Driver(1, 1, [PathPoint(40, -6), PathPoint(40, 0), PathPoint(80, 0), PathPoint(120, 0)],
+                    (120, 0), current_way=ways[1], origin_is_off_road=True, trip_origin=(40, -6))
+    plan = run_route_steps(_recover_npc_trip_steps(
+        vehicle, driver, world, ways, None, None, None, None, None,
+    ))
+    assert (plan is not None) == allowed
+    assert driver.trip_origin == (40, -6)  # retrying cannot renew the permission anchor
+
+
+def test_onroad_parked_start_does_not_gain_offroad_permission():
+    ways, residents = roads(), ResidentManager()
+    vehicle = place_parked_npc(1, (40, 0), None, ways=ways)
+    driver = find_and_start_npc_trip(vehicle, residents, TrafficWorld(ways), ways)
+    assert driver is not None
+    assert not driver.origin_is_off_road
+
+
+def test_incoming_road_counts_when_first_path_way_is_outgoing_road():
+    incoming = Way(points_m=[(-30, 0), (30, 0)], highway="residential", half_width_m=3)
+    outgoing = Way(points_m=[(0, -30), (0, 30)], highway="residential", half_width_m=3)
+    vehicle = NPCVehicle(1, Car(10, 0, 0, 0), way=incoming)
+    driver = _begin_trip_on_vehicle(vehicle, [PathPoint(10, 0, outgoing), PathPoint(0, 20, outgoing)],
+                                    ResidentManager(), (0, 20), origin_is_off_road=True)
+    assert not driver.origin_is_off_road
