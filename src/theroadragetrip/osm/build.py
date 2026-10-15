@@ -94,6 +94,45 @@ def _water_kind(tags: dict) -> Optional[str]:
     return None
 
 
+def _sea_polygons(coast_lines, rect) -> List[List[Tuple[float, float]]]:
+    """Sea areas inside rect from natural=coastline polylines. OSM draws
+    coastline with land on its left and water on its right; open sea has no
+    polygon of its own. Returns hole-free closed rings (Water has no holes).
+    """
+    from shapely import STRtree
+    from shapely.geometry import LineString, box
+    from shapely.ops import split, unary_union
+
+    lines = [LineString(pts) for pts in coast_lines if len(pts) >= 2]
+    if not lines:
+        return []
+    coast = unary_union(lines)
+    region = box(*rect)
+    faces = list(split(region, coast).geoms) if coast.intersects(region) else [region]
+    segs = [seg for pts in coast_lines for seg in zip(pts, pts[1:])]
+    tree = STRtree([LineString(seg) for seg in segs])
+    seas = []
+    for face in faces:
+        if face.area < 1.0:
+            continue
+        rp = face.representative_point()
+        # Nearest coastline segment decides the side: right of it = sea.
+        (ax, ay), (bx, by) = segs[tree.nearest(rp)]
+        if (bx - ax) * (rp.y - ay) - (by - ay) * (rp.x - ax) < 0:
+            seas.append(face)
+    rings = []
+    while seas:
+        poly = seas.pop()
+        if poly.interiors:
+            # Cut through the first hole so no piece keeps it.
+            hx = poly.interiors[0].centroid.x
+            cut = LineString([(hx, poly.bounds[1] - 1), (hx, poly.bounds[3] + 1)])
+            seas.extend(g for g in split(poly, cut).geoms if g.area >= 1.0)
+            continue
+        rings.append([(float(x), float(y)) for x, y in poly.exterior.coords])
+    return rings
+
+
 def _segment_intersection_t(a, b, p, q) -> Optional[float]:
     """Parameter t along a->b where it crosses p->q, or None."""
     denom = (b[0] - a[0]) * (q[1] - p[1]) - (b[1] - a[1]) * (q[0] - p[0])
@@ -466,6 +505,7 @@ def build_ways(
     ways_by_id: Dict[int, dict] = {}
     ways_raw: List[Tuple[dict, str, List[int]]] = []
     water_raw: List[Tuple[dict, List[int]]] = []
+    coast_raw: List[List[int]] = []
     curb_raw: List[Tuple[dict, List[int]]] = []
     railway_raw: List[Tuple[dict, List[int]]] = []
     railing_raw: List[Tuple[dict, List[int]]] = []
@@ -550,6 +590,8 @@ def build_ways(
                 railway_raw.append((tags, node_ids))
             elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
                 water_raw.append((tags, node_ids))
+            elif tags.get("natural") == "coastline":
+                coast_raw.append(node_ids)
             elif tags.get("amenity") in ("parking", "fuel") or tags.get("landuse") == "parking":
                 scenery_raw.append((tags, node_ids))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
@@ -790,6 +832,21 @@ def build_ways(
         except (TypeError, ValueError):
             layer = 0
         waters.append(Water(points_m=pts, kind=kind, is_polygon=is_poly, name=name, bbox=ibbox, layer=layer))
+
+    if coast_raw:
+        coast_nodes = {nid for ids in coast_raw for nid in ids}
+        # Clip to the area the rest of the data covers: coastline ways run
+        # on for kilometres past the fetched bbox.
+        # ponytail: a chunk with no coastline crossing it gets no sea even if
+        # it is all open water; needs a land/sea seed (e.g. OSM water polygons
+        # dataset) if that shows up.
+        inner = [pt for nid, pt in nodes_m.items() if nid not in coast_nodes]
+        if inner:
+            rect = (min(p[0] for p in inner), min(p[1] for p in inner),
+                    max(p[0] for p in inner), max(p[1] for p in inner))
+            coast_lines = [pts for pts, _ in map(process_node_ids, coast_raw) if pts]
+            for ring in _sea_polygons(coast_lines, rect):
+                waters.append(Water(points_m=ring, kind="sea", is_polygon=True, bbox=compute_bbox(ring)))
 
     for tags, node_ids in curb_raw:
         pts, ibbox = process_node_ids(node_ids)

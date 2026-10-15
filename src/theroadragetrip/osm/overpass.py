@@ -167,6 +167,7 @@ def fetch_osm_ways(
       way["natural"="water"]({south},{west},{north},{east});
     way["natural"="bay"]({south},{west},{north},{east});
     way["natural"="strait"]({south},{west},{north},{east});
+    way["natural"="coastline"]({south},{west},{north},{east});
       way["waterway"]({south},{west},{north},{east});
       way["landuse"="reservoir"]({south},{west},{north},{east});
       way["building"]({south},{west},{north},{east});

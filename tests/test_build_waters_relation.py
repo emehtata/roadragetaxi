@@ -82,3 +82,16 @@ def test_relation_multipolygon_pedestrian_area():
     assert sceneries[0].kind == "pedestrian_area"
     assert sceneries[0].surface == "paving_stones"
     assert len(sceneries[0].points_m) == 5
+
+
+def test_coastline_becomes_sea_on_its_right_side():
+    from theroadragetrip.osm.build import _sea_polygons
+    from shapely.geometry import Polygon
+
+    # Eastward coastline: land north (left), sea south (right).
+    (ring,) = _sea_polygons([[(-10, 0), (110, 0)]], (0, -50, 100, 50))
+    assert max(y for _, y in ring) == 0 and Polygon(ring).area == 5000
+    # Counterclockwise island ring in open sea: the island is cut out.
+    island = [(40, -10), (60, -10), (60, 10), (40, 10), (40, -10)]
+    rings = _sea_polygons([island], (0, -50, 100, 50))
+    assert sum(Polygon(r).area for r in rings) == 10000 - 400
