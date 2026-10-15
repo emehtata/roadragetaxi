@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from ..base import ActivityContext, ActivityDefinition, ActivityInstance, ActivityLocation, ActivityPlugin
-from .ice_skating import SKATING_SPEED_MPS, glide, open_ice
+from .ice_skating import SKATING_SPEED_MPS, collide, glide, is_down, open_ice, others_on
 from .park_leisure import sample_interior_point
 
 PUCK_FRICTION_MPS2 = 1.0
@@ -233,12 +233,15 @@ class IceHockeyPlugin(ActivityPlugin):
             puck.goalies[team] = pedestrian
         pedestrian.hockey_goalie = puck.goalies[team] is pedestrian
         puck.advance(context.sim_time)
+        if is_down(pedestrian, instance, dt):  # knocked over: on the ice a moment, the play goes on
+            return False
         mates = [p for p in roster if puck.players[id(p)] == team and p is not pedestrian]
         skating_mates = [p for p in mates if p is not puck.goalies.get(team)]
         if pedestrian.hockey_goalie:
             self._goalie(context, puck, team, skating_mates, dt)
         else:
             self._skater(context, instance, puck, team, skating_mates, dt)
+        collide(pedestrian, others_on(puck.rink, pedestrian, roster))
         return instance.data["elapsed_s"] >= instance.data["duration_s"]
 
     @staticmethod

@@ -15,6 +15,7 @@ from .performance import advance_chunked
 from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import MIN_UNACCOMPANIED_AGE, ResidentManager
 from .activities import ActivityContext, ActivityInstance, ActivityLocation, ActivityManager
+from .activities.plugins.ice_skating import ICE_ACTIVITIES
 from .map_style import FROZEN_IN_WINTER_KINDS
 
 
@@ -26,7 +27,6 @@ ICE_M2_PER_SKATER = 500.0
 ICE_SKATERS_MIN, ICE_SKATERS_MAX = 2, 8
 HOCKEY_PLAYERS_MIN, HOCKEY_PLAYERS_MAX = 6, 10
 ICE_VIEW_MARGIN_M = 60.0  # ice sports run only on fields this near the viewport
-ICE_ACTIVITIES = ("ice_skating", "ice_hockey")
 
 logger = logging.getLogger(__name__)
 

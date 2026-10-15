@@ -1,3 +1,4 @@
+import math
 from theroadragetrip.osm import Scenery, Way
 from theroadragetrip.pedestrian import PedestrianManager
 from theroadragetrip.physics import Car
@@ -139,3 +140,29 @@ def test_ice_sports_play_only_where_the_camera_looks():
     manager.sim_time += 2.0
     manager.ensure_ice_skaters(car, far_view)  # the camera moved on (the taxi did not)
     assert not manager.pedestrians and not ice_hockey.puck_positions()
+
+
+def test_skaters_never_overlap_and_a_faster_one_knocks_the_slower_down():
+    from theroadragetrip.activities.plugins.ice_skating import FALL_S, SKATER_RADIUS_M
+
+    manager = _manager("pitch")
+    manager.sports_ice_open = True
+    car = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
+    for step in range(2):
+        manager.sim_time = step * 2.0
+        manager.ensure_ice_skaters(car)
+    fast, slow = manager.pedestrians
+    fast.x, fast.y, slow.x, slow.y = 10.0, 20.0, 12.0, 20.0
+    fast.activity.data["target"] = (30.0, 20.0)  # straight through the slow one
+    for _ in range(10):
+        manager.sim_time += 0.1
+        slow.activity.data["target"] = (slow.x, slow.y)  # standing still on the ice
+        manager._update_activity(slow, 0.1)
+        manager._update_activity(fast, 0.1)
+        assert math.hypot(fast.x - slow.x, fast.y - slow.y) >= 2 * SKATER_RADIUS_M - 1e-6
+    assert slow.animation_state == "fallen" and fast.animation_state != "fallen"
+    fast.x, fast.y = 35.0, 28.0  # skated off
+    for _ in range(int(FALL_S / 0.1) + 2):  # up again after the fall
+        manager.sim_time += 0.1
+        manager._update_activity(slow, 0.1)
+    assert slow.animation_state != "fallen"
