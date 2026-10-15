@@ -33,6 +33,45 @@ CHUNK_INPUTS_READY = "chunk_inputs_ready"
 # over 7-12 s of ticks.
 SYNC_SETTLE_S = 1.0
 SYNC_WAIT_FOR_FETCH_S = 3.0
+INITIAL_PREPARE_TIMEOUT_S = 190.0
+
+
+def prepare_initial_window(world, timeout_s: float = INITIAL_PREPARE_TIMEOUT_S) -> dict[str, object]:
+    """Finish a missing initial tile window before gameplay begins.
+
+    Startup has no frame to protect, so doing the merge and one derived-data
+    sync here is both faster and smoother than spreading the same work over
+    the first playable seconds. Failure or timeout is non-fatal: the ordinary
+    MapStreamer sees the still-missing tiles and continues in gameplay.
+    """
+    manager = world.auto_fetch_manager
+    started = time.perf_counter()
+    if not manager.start_initial_tile_streaming():
+        return {"started": False, "integrated_tiles": 0, "elapsed_s": 0.0}
+
+    logger.info("Cold-start map preparation started")
+    deadline = started + timeout_s
+    while manager.get_fetching() and time.perf_counter() < deadline:
+        time.sleep(0.02)
+    if manager.get_fetching():
+        elapsed = time.perf_counter() - started
+        logger.warning("Cold-start map preparation timed out after %.1f s; continuing in gameplay", elapsed)
+        return {"started": True, "integrated_tiles": 0, "elapsed_s": elapsed, "timed_out": True}
+
+    integrated = manager.integrate_completed_tiles()
+    if integrated:
+        for _stage in map_sync_steps(world):
+            pass
+        # These changes are already reflected in the initial ChunkIndex built
+        # after this function returns; a later runtime merge must not rebuild
+        # them as if they were new.
+        manager.take_dirty_rect()
+    elapsed = time.perf_counter() - started
+    logger.info(
+        "Cold-start map preparation complete: integrated_tiles=%d elapsed=%.2f s",
+        integrated, elapsed,
+    )
+    return {"started": True, "integrated_tiles": integrated, "elapsed_s": elapsed, "timed_out": False}
 
 
 def map_sync_steps(world):
@@ -71,6 +110,8 @@ def map_sync_steps(world):
     # new roads gone, house bays added, the street-lamp grid the lights are
     # placed from): MapStreamer starts the chunk rebuild here, while the
     # gameplay graphs below are still being brought up to date.
+    if getattr(w, "arena_crowds", None) is not None:
+        w.arena_crowds.sync_buildings(w.buildings)
     yield CHUNK_INPUTS_READY
     if getattr(w, "railway_mgr", None) is not None:
         for _ in w.railway_mgr.rebuild_steps(w.railways):

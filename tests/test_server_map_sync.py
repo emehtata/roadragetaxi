@@ -39,6 +39,65 @@ class FakeManager:
         return False
 
 
+def test_cold_start_finishes_initial_merge_and_sync_before_gameplay(monkeypatch):
+    stages = []
+
+    class InitialManager(FakeManager):
+        def __init__(self):
+            super().__init__()
+            self.dirty_taken = 0
+
+        def start_initial_tile_streaming(self):
+            self.fetching = False
+            return True
+
+        def integrate_completed_tiles(self, budget_s=None):
+            assert budget_s is None
+            self.integrated += 1
+            return 9
+
+        def take_dirty_rect(self):
+            self.dirty_taken += 1
+            return (0.0, 0.0, 100.0, 100.0)
+
+    manager = InitialManager()
+
+    def sync_steps(world):
+        stages.append("sync")
+        yield "done"
+
+    monkeypatch.setattr(map_sync, "map_sync_steps", sync_steps)
+
+    result = map_sync.prepare_initial_window(SimpleNamespace(auto_fetch_manager=manager))
+
+    assert result["integrated_tiles"] == 9
+    assert stages == ["sync"]
+    assert manager.dirty_taken == 1
+
+
+def test_cold_start_is_a_noop_when_startup_bbox_already_covers_the_window():
+    manager = FakeManager()
+    manager.start_initial_tile_streaming = lambda: False
+
+    result = map_sync.prepare_initial_window(SimpleNamespace(auto_fetch_manager=manager))
+
+    assert result == {"started": False, "integrated_tiles": 0, "elapsed_s": 0.0}
+
+
+def test_cold_start_timeout_leaves_runtime_streaming_as_the_fallback(monkeypatch):
+    manager = FakeManager()
+    manager.fetching = True
+    manager.start_initial_tile_streaming = lambda: True
+    monkeypatch.setattr(map_sync.time, "sleep", lambda seconds: None)
+
+    result = map_sync.prepare_initial_window(
+        SimpleNamespace(auto_fetch_manager=manager), timeout_s=0.0,
+    )
+
+    assert result["timed_out"] is True
+    assert manager.integrated == 0
+
+
 def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch):
     synced_steps = []
 

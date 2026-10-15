@@ -1,4 +1,5 @@
 import struct
+from concurrent.futures import Future
 
 import pytest
 
@@ -192,6 +193,37 @@ def test_world_cache_can_build_a_miss_in_a_worker_process(tmp_path):
 
     assert loaded.ways
     assert manager.path_for("worker-area").exists()
+
+
+def test_local_pbf_cold_pipeline_fetches_and_builds_inside_worker(tmp_path, sample_world, monkeypatch):
+    calls = []
+
+    class ImmediateExecutor:
+        def submit(self, function, *args):
+            calls.append((function, args))
+            manager.writer.write(args[0], sample_world, area_id=args[1])
+            future = Future()
+            future.set_result(None)
+            return future
+
+        def shutdown(self, **kwargs):
+            pass
+
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox: (_ for _ in ()).throw(AssertionError("loader-thread fetch")),
+        build_func=lambda elements: (_ for _ in ()).throw(AssertionError("loader-thread build")),
+    )
+    manager._build_executor = ImmediateExecutor()
+    manager._process_build_func = build_ways
+    manager._process_pbf_path = "/maps/finland.osm.pbf"
+
+    loaded = manager.load_area("pbf-worker-area", (1, 2, 3, 4), allow_covering=False)
+    manager.close()
+
+    assert loaded.ways == sample_world.ways
+    assert calls[0][0].__name__ == "_fetch_pbf_build_and_write_cache"
+    assert calls[0][1][3] == "/maps/finland.osm.pbf"
 
 
 def test_world_cache_falls_back_when_the_worker_process_breaks(tmp_path, sample_world):

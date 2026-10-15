@@ -12,6 +12,7 @@ import struct
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -27,6 +28,21 @@ def _build_and_write_cache(path: str, area_id: str, elements: Any, build_func: C
     """Process-worker entry point: keep the CPU-heavy map build off the server GIL."""
     world = build_func(elements)
     BinaryWorldCacheWriter().write(path, world, area_id=area_id)
+
+
+def _fetch_pbf_build_and_write_cache(
+    path: str, area_id: str, bbox, pbf_path, build_func: Callable, force_refresh: bool,
+) -> None:
+    """Process-worker cold path: extraction, XML/JSON conversion and build.
+
+    Keeping the element dictionaries inside this process avoids both GIL
+    stalls in the simulation server and a large cross-process pickle.
+    """
+    from .osm.pbf_source import fetch_osm_ways_from_pbf
+
+    elements = fetch_osm_ways_from_pbf(bbox, pbf_path=pbf_path, force_refresh=force_refresh)
+    elements = list(elements) + [{"type": "fetch_bbox", "bounds": list(bbox)}]
+    _build_and_write_cache(path, area_id, elements, build_func)
 
 
 def default_world_cache_dir() -> Path:
@@ -415,6 +431,7 @@ class WorldCacheManager:
         self._prepare_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="world-prepare")
         self._build_executor = None
         self._process_build_func = None
+        self._process_pbf_path = None
         self._futures: dict[str, Future] = {}
         self._lock = threading.Lock()
 
@@ -426,6 +443,11 @@ class WorldCacheManager:
                 max_workers=1, mp_context=multiprocessing.get_context("spawn"),
                 initializer=exit_with_parent, initargs=(os.getpid(),),  # no orphan if the server is killed
             )
+
+    def enable_process_pbf_pipeline(self, build_func: Callable, pbf_path=None) -> None:
+        """Run the complete cold local-PBF conversion in the build worker."""
+        self.enable_process_build(build_func)
+        self._process_pbf_path = pbf_path if pbf_path is not None else ""
 
     @staticmethod
     def area_id(bbox: tuple[float, float, float, float]) -> str:
@@ -566,22 +588,37 @@ class WorldCacheManager:
             raise FileNotFoundError(f"no valid world cache for {area_id}")
         logger.info("[WorldCache] Cache miss %s; loading OSM data from configured source", area_id)
         fetch_kwargs = {"force_refresh": True, **kwargs} if force_refresh else kwargs
-        elements = self.fetch_func(bbox, **fetch_kwargs)
-        if self._build_executor is not None:
+        if self._build_executor is not None and self._process_pbf_path is not None:
             try:
                 self._build_executor.submit(
-                    _build_and_write_cache, str(path), area_id, elements, self._process_build_func,
+                    _fetch_pbf_build_and_write_cache, str(path), area_id, bbox,
+                    self._process_pbf_path or None, self._process_build_func, force_refresh,
                 ).result()
                 world = self.loader.load(path)
-            except (concurrent.futures.process.BrokenProcessPool, OSError) as error:
-                logger.warning("[WorldCache] Process build failed; using loader thread: %s", error)
+            except (BrokenProcessPool, OSError) as error:
+                logger.warning("[WorldCache] Process PBF pipeline failed; using loader thread: %s", error)
                 self._build_executor.shutdown(wait=False, cancel_futures=True)
                 self._build_executor = None
+                elements = self.fetch_func(bbox, **fetch_kwargs)
                 world = self.build_func(elements)
                 self.writer.write(path, world, area_id=area_id)
         else:
-            world = self.build_func(elements)
-            self.writer.write(path, world, area_id=area_id)
+            elements = self.fetch_func(bbox, **fetch_kwargs)
+            if self._build_executor is not None:
+                try:
+                    self._build_executor.submit(
+                        _build_and_write_cache, str(path), area_id, elements, self._process_build_func,
+                    ).result()
+                    world = self.loader.load(path)
+                except (BrokenProcessPool, OSError) as error:
+                    logger.warning("[WorldCache] Process build failed; using loader thread: %s", error)
+                    self._build_executor.shutdown(wait=False, cancel_futures=True)
+                    self._build_executor = None
+                    world = self.build_func(elements)
+                    self.writer.write(path, world, area_id=area_id)
+            else:
+                world = self.build_func(elements)
+                self.writer.write(path, world, area_id=area_id)
         logger.info("[WorldCache] Cache created %s in %.1f ms", path, (time.perf_counter() - started) * 1000.0)
         return world
 

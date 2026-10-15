@@ -156,6 +156,12 @@ def load_osm_cache(
                 )
             with open(path, "r", encoding="utf-8") as f:
                 d = json.load(f)
+        except FileNotFoundError:
+            # The exact bbox is checked before covering cache entries. It is
+            # normal for that file not to exist yet, so do not report a
+            # routine cold-cache lookup as a warning.
+            logger.debug("Cache miss %s", path)
+            continue
         except (OSError, json.JSONDecodeError) as e:
             logger.warning("Failed to read cache %s: %s", path, e)
             continue

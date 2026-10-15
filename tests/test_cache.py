@@ -34,6 +34,29 @@ def test_cache_loads_covering_bbox(tmp_path, monkeypatch):
     assert load_osm_cache((64.8, 25.35, 65.0, 25.45)) is None
 
 
+def test_missing_exact_cache_file_is_a_normal_miss(tmp_path, monkeypatch, caplog):
+    import logging
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    caplog.set_level(logging.WARNING)
+
+    assert load_osm_cache((64.9, 25.3, 65.0, 25.4)) is None
+    assert "Failed to read cache" not in caplog.text
+
+
+def test_invalid_cache_file_still_warns(tmp_path, monkeypatch, caplog):
+    import logging
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    (tmp_path / "bbox_64p9_25p3_65p0_25p4.json").write_text("not json", encoding="utf-8")
+    caplog.set_level(logging.WARNING)
+
+    assert load_osm_cache((64.9, 25.3, 65.0, 25.4)) is None
+    assert "Failed to read cache" in caplog.text
+
+
 def test_cache_can_skip_a_covering_file_much_larger_than_the_request(tmp_path, monkeypatch):
     import theroadragetrip.osm as osm
 
