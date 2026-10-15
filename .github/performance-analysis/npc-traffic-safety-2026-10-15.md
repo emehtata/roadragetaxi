@@ -397,3 +397,72 @@ Next atomic step: resumable continuation/recovery jobs with explicit timeout
 versus no-route outcomes and fair service for already waiting vehicles. The
 small-fixture two-departure test establishes the lifecycle works when routing
 can finish; it must not be mistaken for restored Oulu traffic throughput.
+
+## Implementation progress — resumable continuation/recovery (step 2a)
+
+Continuation, destination-conflict rerouting and recovery now use the existing
+round-robin generator scheduler. Planning no longer restarts at the shared
+population deadline. An unfinished generator stays pending; only a completed
+search returning no validated plan counts as failure. The scheduler retains
+its **2 ms frame budget and 0.5 ms slices**, with the existing caveat that a
+single geometry operation is not preemptible.
+
+Fresh idle/transit jobs may occupy only half of the eight job slots. Existing
+ready/stuck trips are admitted oldest-last-served first, including competition
+between continuation and recovery. A vehicle cannot acquire duplicate jobs on
+successive population ticks. Pending recovery brakes to a stop and keeps its
+route state rather than crawling while planning or reversing on budget expiry.
+
+Before applying a delayed result, check the graph revision, vehicle presence,
+driver/group identity, occupant/owner membership, vehicle state/origin,
+destination, home intent and parking reservation identity/state. Recheck the
+chosen destination against current vehicle claims and parking occupancy.
+Discarding a result leaves the existing route/reservation/group intact; household
+home intent changes only after commit. Successful continuation preserves the
+same driver and group and resets only the next stop's visit bookkeeping.
+
+A fully failed recovery now enters a diagnosed, stationary `HOLD` instead of
+assuming a route failure proves reverse clearance. This is a conservative game
+fallback, **not** a claim that stopping there resolves an obstruction legally.
+Such holds can still block other traffic. Automatic alternative-stop selection,
+actual-plugin-size/turning validation, route arc-length progress, safe/legal
+swept reverse clearance and bounded maneuver escalation remain **step 2b**;
+step 2 as a whole is not complete. Completed validation failures still report
+“no validated route,” not an invented distinction between unreachable graph
+and invalid geometry. STOP, pedestrian/junction duties, physical-layer safety
+and the two measured occupied-path collisions remain later work.
+
+Regression coverage includes zero-budget multi-frame progress alongside an
+endless competing spawn job, no premature mutation/reverse, pending-job reuse,
+reserved queue capacity, graph/driver/group/occupant/state/origin changes,
+stolen reservations, newly occupied destinations and atomic household home
+intent. The real two-visit manager-loop lifecycle test remains in the suite.
+The observation harness now records completed continuation/recovery counts,
+safe holds and pending route-job age alongside its original traffic evidence.
+
+Real-time Oulu smoke: **180.014 seconds, 5,389 ticks**, same clear/dry seed and
+map fixture, run separately from heavy tests. The
+[saved summary](npc-traffic-safety-2026-10-15-data/resumable-routes-smoke.json)
+identifies `9ce6e3e` plus runtime patch SHA-256; the runtime patch was unchanged
+during observation. There were **2 sampled departures, 10 completed recovery
+plans, 4 safe holds and 6 collision events**. The continuation counter also
+includes destination-conflict reroutes; sampled park-to-driving transitions are
+the independent departure check. Tick p50/p95/p99 were **7.49/10.16/14.72 ms**,
+maximum **27.75 ms**. Worst routing work was **6.38 ms**, above its nominal 2 ms
+budget because an individual operation remains non-preemptible.
+
+Seven continuation jobs were still pending; the oldest was **2,208 frames
+(73.6 simulated seconds)**. Successful resumption is now observable, but this
+does **not** meet the plan's unexplained-wait/late-soak-throughput acceptance
+targets or prove restored traffic flow. Final population was 35, with 25 parked
+and 8 in other non-crashed states; those states are not proof of useful motion.
+Six collisions in this short run do not establish a collision-rate improvement
+or regression against either earlier fixture. Next: investigate expensive
+rejected approach candidates, actual-size geometry and bounded safe alternatives
+in step 2b, then the occupied-path safety regressions. The three-seed ten-minute
+and thirty-minute acceptance soaks remain outstanding.
+
+Final validation: **1,442 Python tests passed, 2 skipped**; observation harness
+self-check and saved JSON validation passed. No Godot/rendering test was needed
+for this server-only scheduling change. No junction/pedestrian legal rules were
+changed, and no general Finnish-law compliance is claimed.

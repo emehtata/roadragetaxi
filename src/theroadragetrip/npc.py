@@ -1055,6 +1055,7 @@ class Driver:
     # field in this module (NPCState/NPCAvailability are the only "real"
     # enums here).
     recovery_stage: str = "NORMAL"
+    route_job_pending: bool = False
     reverse_start_position: Optional[Tuple[float, float]] = None
     # NPC-005: an orthogonal timed flag, not a new NPCState - matches
     # this module's existing convention of keeping reactive/temporary
@@ -2355,14 +2356,20 @@ def update_npc(
             driver.recovery_stage = "STUCK"
             driver.stuck_timer_s = 0.0
 
+    if driver.route_job_pending or driver.recovery_stage in ("STUCK", "HOLD"):
+        driver.target_speed_mps = 0.0
+
     # State machine (section 10) - priority order is what a real driver
     # would report as "what am I doing right now".
     if not footprint_clear:
         vehicle.state = NPCState.PARKING if approaching_final_waypoint and abs(vehicle.car.speed) > 0.05 else NPCState.WAITING
         vehicle.debug_waiting_for = "footprint blocked (curb/building)"
-    elif driver.recovery_stage == "STUCK":
+    elif driver.recovery_stage in ("STUCK", "HOLD") or driver.route_job_pending:
         vehicle.state = NPCState.WAITING
-        vehicle.debug_waiting_for = "stuck - awaiting recovery"
+        vehicle.debug_waiting_for = (
+            "recovery failed - no validated route" if driver.recovery_stage == "HOLD"
+            else "awaiting route job" if driver.route_job_pending else "stuck - awaiting recovery"
+        )
     elif driver.road_rage_until_sim_time is not None:
         # NPC-005: still whatever state its actual speed implies (a crawl
         # is CRUISING, a full stop behind something is WAITING) - this
@@ -3151,85 +3158,95 @@ def continue_npc_trip(
     candidate forever" fallback spawn_deterministic_npc already uses for
     a brand-new trip.
     """
+    plan = run_route_steps(_continue_npc_trip_steps(
+        vehicle, traffic_world, ways, spatial_grid, parking_spaces, sceneries,
+        buildings, curbs, curb_grid, building_grid, destination_query_point,
+        other_vehicle_positions,
+    ), time.perf_counter() + time_budget_s)
+    if plan is None:
+        return False
+    _apply_npc_continuation(vehicle, driver, plan)
+    return True
+
+
+def _continue_npc_trip_steps(
+    vehicle, traffic_world, ways, spatial_grid=None, parking_spaces=None,
+    sceneries=None, buildings=None, curbs=None, curb_grid=None, building_grid=None,
+    destination_query_point=None, other_vehicle_positions=None,
+) -> RouteSteps:
+    """Plan without changing occupants, reservations or the current route."""
     group = vehicle.trip_group
     if group is not None and (not group.all_aboard or vehicle.owner_id not in group.boarded_resident_ids):
-        return False
+        return None
+    if destination_query_point is None:
+        return (yield from _find_npc_trip_steps(
+            vehicle, traffic_world, ways, spatial_grid, parking_spaces, sceneries,
+            buildings, curbs, curb_grid, building_grid, other_vehicle_positions,
+        ))
     origin = (vehicle.car.x, vehicle.car.y)
-    if destination_query_point is not None:
-        query_points = [destination_query_point]
-    else:
-        origin_index = _nearest_route_node_index(traffic_world, origin[0], origin[1])
-        if origin_index is None:
-            return False
-        nodes = traffic_world._route_nodes
-        edges = traffic_world._route_edges
-        road_points = _bfs_destination_order(nodes, edges, origin_index)[:NPC_TRIP_START_CANDIDATE_POINTS]
-        query_points = [(nodes[index][0], nodes[index][1]) for index in road_points]
-        if not query_points:
-            return False
-
-    # NPC-003 v2: plan_route's own cost against real dense OSM data is
-    # highly variable and can genuinely run past a second for a real,
-    # multi-hop-away destination (the whole point of the BFS walk above -
-    # see this session's find_and_start_npc_trip, which faces the exact
-    # same cost and already budgets it the same way). Checked between
-    # candidate collection, footprint checks and route steps. Individual
-    # geometry operations are not preemptible, so one unusually expensive
-    # operation can still exceed the budget.
-    deadline = time.perf_counter() + time_budget_s
-    for query_point in query_points:
-        if time.perf_counter() > deadline:
-            break
-        destination_candidates = _pick_npc_destination_candidates(
+    for query_point in [destination_query_point]:
+        yield
+        destination_candidates = yield from _pick_npc_destination_candidates_steps(
             query_point[0], query_point[1], parking_spaces, sceneries, buildings,
             ways=ways, spatial_grid=spatial_grid, other_vehicle_positions=other_vehicle_positions,
-            own_position=origin, deadline=deadline,
+            own_position=origin,
         )
         for destination, target_space in destination_candidates:
-            if time.perf_counter() > deadline:
-                break
             destination_is_off_road = destination != query_point
-            path = _plan_and_validate_npc_route(
+            path = yield from _plan_and_validate_npc_route_steps(
                 traffic_world, ways, origin, destination, spatial_grid=spatial_grid,
                 curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
                 parking_space=target_space, destination_is_off_road=destination_is_off_road,
                 origin_is_off_road=True,
-                deadline=deadline,
             )
             if path is None:
                 continue
-            release_npc_parking_reservation(vehicle)
-            vehicle.destination = destination
-            vehicle.travel_route = [(p.x, p.y) for p in path]
-            vehicle.destination_parking_space_id = None
-            vehicle.state = NPCState.CRUISING
-            vehicle.debug_waiting_for = ""
-            if target_space is not None:
-                target_space.reserved = True
-                target_space.vehicle_id = vehicle.vehicle_id
-                vehicle.destination_parking_space_id = getattr(target_space, "osm_id", None)
-                vehicle.reserved_parking_space = target_space
-            driver.path = path
-            driver.path_index = 1
-            driver.route_segment_index = 0
-            driver.route_segment_t = 0.0
-            driver.steering_input = 0.0
-            driver.destination = destination
-            driver.current_way = path[0].way
-            if vehicle.trip_group is not None:
-                # Reset per-stop bookkeeping for the next park-visit-return
-                # cycle (section 21's Destination A -> B -> C loop) - a fresh
-                # activity duration and destination entrance, a fresh wait
-                # deadline once parked again.
-                vehicle.trip_group.activity_duration_s = random.uniform(
-                    NPC_BUILDING_VISIT_MIN_S, NPC_BUILDING_VISIT_MAX_S
-                )
-                vehicle.trip_group.activity_type = random.choice(NPC_TRIP_ACTIVITY_TYPES)
-                vehicle.trip_group.destination_entrance = None
-                vehicle.trip_group.wait_deadline_sim_time = None
-                vehicle.trip_group.disembarked_resident_ids.clear()
-            return True
-    return False
+            return path, destination, target_space, destination_is_off_road
+    return None
+
+
+def _recover_npc_trip_steps(vehicle, driver, traffic_world, ways, spatial_grid,
+                            curbs, curb_grid, buildings, building_grid) -> RouteSteps:
+    path = yield from _plan_and_validate_npc_route_steps(
+        traffic_world, ways, (vehicle.x, vehicle.y), driver.destination,
+        spatial_grid=spatial_grid, curbs=curbs, curb_grid=curb_grid,
+        buildings=buildings, building_grid=building_grid,
+        parking_space=vehicle.reserved_parking_space, destination_is_off_road=True,
+    )
+    if path is None:
+        return None
+    return path, driver.destination, vehicle.reserved_parking_space, True
+
+
+def _apply_npc_continuation(vehicle, driver, plan) -> None:
+    path, destination, target_space, _ = plan
+    release_npc_parking_reservation(vehicle)
+    vehicle.destination = destination
+    vehicle.travel_route = [(p.x, p.y) for p in path]
+    vehicle.destination_parking_space_id = None
+    vehicle.state = NPCState.CRUISING
+    vehicle.debug_waiting_for = ""
+    if target_space is not None:
+        target_space.reserved = True
+        target_space.vehicle_id = vehicle.vehicle_id
+        vehicle.destination_parking_space_id = getattr(target_space, "osm_id", None)
+        vehicle.reserved_parking_space = target_space
+    driver.path = path
+    driver.path_index = 1
+    driver.route_segment_index = 0
+    driver.route_segment_t = 0.0
+    driver.steering_input = 0.0
+    driver.destination = destination
+    driver.current_way = path[0].way
+    driver.recovery_stage = "NORMAL"
+    if vehicle.trip_group is not None:
+        vehicle.trip_group.activity_duration_s = random.uniform(
+            NPC_BUILDING_VISIT_MIN_S, NPC_BUILDING_VISIT_MAX_S
+        )
+        vehicle.trip_group.activity_type = random.choice(NPC_TRIP_ACTIVITY_TYPES)
+        vehicle.trip_group.destination_entrance = None
+        vehicle.trip_group.wait_deadline_sim_time = None
+        vehicle.trip_group.disembarked_resident_ids.clear()
 
 
 class NPCVehicleManager:
@@ -3285,9 +3302,11 @@ class NPCVehicleManager:
         self._route_jobs: List[dict] = []
         self._route_job_cursor = 0
         self._route_job_frame = 0
+        self._existing_route_last_frame: Dict[int, int] = {}
         self.route_job_stats = {
             "queued": 0, "ready": 0, "failed": 0, "stale": 0, "discarded": 0,
             "max_frame_ms": 0.0, "waits_frames": collections.deque(maxlen=2000),
+            "continued": 0, "recovered": 0, "safe_holds": 0,
         }
         self.population_diagnostics = {
             "trip_start_attempts": 0, "successful_trip_starts": 0,
@@ -4017,7 +4036,49 @@ class NPCVehicleManager:
             "revision": traffic_world.route_graph_revision, "queued_frame": self._route_job_frame,
         })
         self.route_job_stats["queued"] += 1
-        self.population_diagnostics["trip_start_attempts"] += 1
+        if kind in ("trip", "transit"):
+            self.population_diagnostics["trip_start_attempts"] += 1
+
+    def _enqueue_existing_route_job(self, kind, vehicle, steps, traffic_world) -> None:
+        driver = self.drivers[vehicle.vehicle_id]
+        group = vehicle.trip_group
+        self._enqueue_route_job(kind, vehicle, steps, traffic_world)
+        self._route_jobs[-1].update(
+            driver=driver, group=group,
+            occupants=None if group is None else (
+                tuple(group.member_resident_ids), frozenset(group.boarded_resident_ids), vehicle.owner_id,
+            ),
+            origin=(vehicle.x, vehicle.y), destination=driver.destination,
+            state=vehicle.state, reservation=vehicle.reserved_parking_space,
+            reservation_state=None if vehicle.reserved_parking_space is None else (
+                vehicle.reserved_parking_space.reserved, vehicle.reserved_parking_space.occupied,
+                vehicle.reserved_parking_space.vehicle_id,
+            ),
+            returning_home=vehicle.returning_home,
+        )
+        self._existing_route_last_frame[vehicle.vehicle_id] = self._route_job_frame
+        driver.route_job_pending = True
+
+    def _existing_route_job_valid(self, job) -> bool:
+        vehicle, driver = job["vehicle"], job["driver"]
+        group = vehicle.trip_group
+        return (
+            vehicle in self.vehicles and self.drivers.get(vehicle.vehicle_id) is driver
+            and group is job["group"] and vehicle.state == job["state"]
+            and driver.destination == job["destination"]
+            and vehicle.reserved_parking_space is job["reservation"]
+            and (vehicle.reserved_parking_space is None or (
+                (vehicle.reserved_parking_space.reserved, vehicle.reserved_parking_space.occupied,
+                 vehicle.reserved_parking_space.vehicle_id) == job["reservation_state"]
+            ))
+            and vehicle.returning_home == job["returning_home"]
+            and math.hypot(vehicle.x - job["origin"][0], vehicle.y - job["origin"][1]) < 0.5
+            and (group is None or (
+                (tuple(group.member_resident_ids), frozenset(group.boarded_resident_ids), vehicle.owner_id)
+                == job["occupants"] and group.all_aboard
+                and vehicle.owner_id in group.boarded_resident_ids
+            ))
+        )
 
     def _advance_route_jobs(
         self, player_x: float, player_y: float, resident_manager: ResidentManager,
@@ -4039,8 +4100,12 @@ class NPCVehicleManager:
             job = self._route_jobs[index]
             if job["revision"] != traffic_world.route_graph_revision or (
                 job["kind"] == "trip" and job["vehicle"] not in self.vehicles
+            ) or (
+                "driver" in job and not self._existing_route_job_valid(job)
             ):
                 job["steps"].close()
+                if "driver" in job:
+                    job["driver"].route_job_pending = False
                 del self._route_jobs[index]
                 self.route_job_stats["stale" if job["revision"] != traffic_world.route_graph_revision else "discarded"] += 1
                 continue
@@ -4072,6 +4137,53 @@ class NPCVehicleManager:
         a transit spawn point is still out of view and clear."""
         stats = self.route_job_stats
         claimed_points = self._claimed_vehicle_points()
+        if "driver" in job:
+            valid = self._existing_route_job_valid(job)
+            vehicle, driver = job["vehicle"], job["driver"]
+            driver.route_job_pending = False
+            if not valid:
+                stats["discarded"] += 1
+                return
+            if result is None:
+                stats["failed"] += 1
+                if job["kind"] == "recovery":
+                    # A failed search is not evidence that reversing is safe.
+                    driver.recovery_stage = "HOLD"
+                    vehicle.state = NPCState.WAITING
+                    vehicle.debug_waiting_for = "recovery failed - no validated route"
+                    stats["safe_holds"] += 1
+                return
+            space = result[2]
+            if (
+                (space is not None and space is not vehicle.reserved_parking_space and (
+                    getattr(space, "reserved", False) or getattr(space, "occupied", False)
+                ))
+                or not _point_is_clear_of_vehicles(
+                    result[1], [pos for vid, pos in claimed_points if vid != vehicle.vehicle_id],
+                )
+            ):
+                stats["discarded"] += 1
+                return
+            if job["kind"] == "recovery":
+                path = result[0]
+                driver.path = path
+                driver.path_index = 1
+                driver.route_segment_index = 0
+                driver.route_segment_t = 0.0
+                driver.steering_input = 0.0
+                driver.current_way = path[0].way
+                driver.recovery_stage = "NORMAL"
+                vehicle.travel_route = [(p.x, p.y) for p in path]
+                vehicle.state = NPCState.CRUISING
+                vehicle.debug_waiting_for = ""
+                stats["recovered"] += 1
+            else:
+                _apply_npc_continuation(vehicle, driver, result)
+                if vehicle.vehicle_kind == "household":
+                    vehicle.returning_home = job["kind"] == "continue"
+                stats["continued"] += 1
+            stats["ready"] += 1
+            return
         if job["kind"] == "transit":
             if result is None:
                 stats["failed"] += 1
@@ -4446,17 +4558,16 @@ class NPCVehicleManager:
             ])
             if not taken:
                 continue
-            if continue_npc_trip(
-                vehicle, driver, traffic_world, ways, spatial_grid=spatial_grid,
+            if any(job["vehicle"] is vehicle for job in self._route_jobs):
+                continue
+            if len(self._route_jobs) >= NPC_MAX_ROUTE_JOBS:
+                break
+            self._enqueue_existing_route_job("reroute", vehicle, _continue_npc_trip_steps(
+                vehicle, traffic_world, ways, spatial_grid=spatial_grid,
                 parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
                 curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
                 other_vehicle_positions=[pos for vid, pos in claimed_points if vid != vehicle.vehicle_id],
-                time_budget_s=max(0.0, population_deadline - time.perf_counter()),
-            ):
-                driver.recovery_stage = "NORMAL"
-                if vehicle.vehicle_kind == "household":
-                    vehicle.returning_home = False  # retry home after this stop, not at the substitute spot
-                claimed_points.append((vehicle.vehicle_id, vehicle.destination))
+            ), traffic_world)
             break  # at most one reroute per tick
 
         # 3. Roll idle parked vehicles for "start a new trip now" (section
@@ -4515,7 +4626,7 @@ class NPCVehicleManager:
                 trip_starts_this_tick < trip_start_attempt_cap
                 and transit_spawns < NPC_TRANSIT_SPAWNS_PER_TICK
                 and currently_moving + transit_spawns < self.target_moving_count
-                and len(self._route_jobs) < NPC_MAX_ROUTE_JOBS
+                and len(self._route_jobs) < NPC_MAX_ROUTE_JOBS // 2
             ):
                 trip_starts_this_tick += 1
                 # At the population target, moving traffic replaces an idle
@@ -4549,7 +4660,7 @@ class NPCVehicleManager:
             for resident_id in other_vehicle.trip_group.member_resident_ids
         }
         for vehicle in idle_candidates:
-            if trip_starts_this_tick >= trip_start_attempt_cap or len(self._route_jobs) >= NPC_MAX_ROUTE_JOBS:
+            if trip_starts_this_tick >= trip_start_attempt_cap or len(self._route_jobs) >= NPC_MAX_ROUTE_JOBS // 2:
                 break
             if any(job["vehicle"] is vehicle for job in self._route_jobs):
                 continue
@@ -4581,102 +4692,52 @@ class NPCVehicleManager:
                 ],
             ), traffic_world, member_resident_ids=member_resident_ids)
 
-        # 4. Continue already-driving vehicles that are parked, all
-        # aboard, and waiting for their next destination (deferred out of
-        # the per-frame update() loop - see _handle_parked_vehicle and
-        # NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK's own comments for why).
-        # Retirement (trip_group is None, or a household vehicle that just
-        # arrived home) is already handled per-frame in
-        # _handle_parked_vehicle - this only ever sees vehicles that
-        # genuinely need a next destination.
-        continue_attempts_this_tick = 0
-        ready_vehicles = [
+        # Existing trips use reserved job slots; fresh population work cannot
+        # fill the queue before a ready passenger group or stuck car is served.
+        ready = [
             vehicle for vehicle in self.vehicles
             if vehicle.state == NPCState.PARKED
+            and vehicle.trip_group is not None and vehicle.trip_group.all_aboard
             and self.drivers.get(vehicle.vehicle_id) is not None
-            and vehicle.trip_group is not None
-            and vehicle.trip_group.all_aboard
             and not (vehicle.vehicle_kind == "household" and vehicle.returning_home)
+            and not any(job["vehicle"] is vehicle for job in self._route_jobs)
         ]
-        random.shuffle(ready_vehicles)
-        for vehicle in ready_vehicles:
-            if continue_attempts_this_tick >= NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK:
-                break
-            continue_attempts_this_tick += 1
-            driver = self.drivers[vehicle.vehicle_id]
-            other_positions = [
-                pos for vid, pos in claimed_points if vid != vehicle.vehicle_id
-            ]
-            if vehicle.vehicle_kind == "household":
-                departed = continue_npc_trip(
-                    vehicle, driver, traffic_world, ways, spatial_grid=spatial_grid,
-                    parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
-                    curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
-                    destination_query_point=vehicle.home_position,
-                    other_vehicle_positions=other_positions,
-                    time_budget_s=max(0.0, population_deadline - time.perf_counter()),
-                )
-                if departed:
-                    vehicle.returning_home = True
-            else:
-                departed = continue_npc_trip(
-                    vehicle, driver, traffic_world, ways, spatial_grid=spatial_grid,
-                    parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
-                    curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
-                    other_vehicle_positions=other_positions,
-                    time_budget_s=max(0.0, population_deadline - time.perf_counter()),
-                )
-            # Same same-tick claim as section 3 above - a later vehicle in
-            # this loop (or section 3, if it runs after this in a future
-            # refactor) must see this new destination immediately.
-            if departed and vehicle.destination is not None:
-                claimed_points.append((vehicle.vehicle_id, vehicle.destination))
+        self._existing_route_last_frame = {
+            vid: frame for vid, frame in self._existing_route_last_frame.items() if vid in vehicles_by_id
+        }
+        def last_served(vehicle):
+            return self._existing_route_last_frame.get(vehicle.vehicle_id, -1)
 
-        # 5. Recovery (NPC-004 section 3/6/8): a vehicle update_npc marked
-        # STUCK either gets a fresh route from wherever it currently sits,
-        # or - if none validates - backs up in a controlled way and tries
-        # again on a later tick (see NPCState.REVERSING/
-        # _update_npc_reversing). plan_route is exactly the "over a second
-        # against real dense OSM data" cost find_and_start_npc_trip's own
-        # docstring already warns about, so this stays off the per-frame
-        # path (update_npc only ever flags "STUCK", never replans) and
-        # bounded the same way every other occasional/expensive step in
-        # this tick already is.
-        recovery_attempts_this_tick = 0
-        stuck_vehicles = [
+        ready.sort(key=last_served)
+        stuck = [
             vehicle for vehicle in self.vehicles
             if getattr(self.drivers.get(vehicle.vehicle_id), "recovery_stage", None) == "STUCK"
+            and abs(vehicle.car.speed) < 0.05
+            and not any(job["vehicle"] is vehicle for job in self._route_jobs)
         ]
-        random.shuffle(stuck_vehicles)
-        for vehicle in stuck_vehicles:
-            if recovery_attempts_this_tick >= NPC_RECOVERY_ATTEMPTS_PER_TICK:
+        stuck.sort(key=last_served)
+        existing = (
+            [("continue", vehicle) for vehicle in ready[:NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK]]
+            + [("recovery", vehicle) for vehicle in stuck[:NPC_RECOVERY_ATTEMPTS_PER_TICK]]
+        )
+        existing.sort(key=lambda item: last_served(item[1]))
+        for kind, vehicle in existing:
+            if len(self._route_jobs) >= NPC_MAX_ROUTE_JOBS:
                 break
-            recovery_attempts_this_tick += 1
-            driver = self.drivers[vehicle.vehicle_id]
-            origin = (vehicle.car.x, vehicle.car.y)
-            path = _plan_and_validate_npc_route(
-                traffic_world, ways, origin, driver.destination, spatial_grid=spatial_grid,
-                curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
-                parking_space=vehicle.reserved_parking_space, destination_is_off_road=True,
-                deadline=population_deadline,
-            )
-            if path is not None:
-                driver.path = path
-                driver.path_index = 1
-                driver.route_segment_index = 0
-                driver.route_segment_t = 0.0
-                driver.steering_input = 0.0
-                driver.current_way = path[0].way
-                driver.recovery_stage = "NORMAL"
-                vehicle.state = NPCState.CRUISING
-                vehicle.debug_waiting_for = ""
+            if kind == "continue":
+                steps = _continue_npc_trip_steps(
+                    vehicle, traffic_world, ways, spatial_grid, parking_spaces, sceneries,
+                    buildings, curbs, curb_grid, building_grid,
+                    vehicle.home_position if vehicle.vehicle_kind == "household" else None,
+                    [pos for vid, pos in claimed_points if vid != vehicle.vehicle_id],
+                )
             else:
-                # No route validates from here - back up a bounded amount
-                # before trying again, rather than retrying the identical
-                # failing plan forever from the identical stuck position.
-                vehicle.state = NPCState.REVERSING
-                driver.recovery_stage = "REVERSING"
-                driver.reverse_start_position = None
+                vehicle.state = NPCState.WAITING
+                steps = _recover_npc_trip_steps(
+                    vehicle, self.drivers[vehicle.vehicle_id], traffic_world, ways,
+                    spatial_grid, curbs, curb_grid, buildings, building_grid,
+                )
+            self._enqueue_existing_route_job(kind, vehicle, steps, traffic_world)
 
         self.rebuild_spatial_grid()
         self.population_diagnostics["population_update_duration_s"] = time.perf_counter() - population_tick_started

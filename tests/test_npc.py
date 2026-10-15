@@ -1713,7 +1713,11 @@ def test_continue_npc_trip_returns_false_with_no_reachable_destination(monkeypat
     destination_before = vehicle.destination
     path_before = driver.path
 
-    monkeypatch.setattr(npc_module, "_pick_npc_destination_candidates", lambda *a, **k: [])
+    def no_candidates(*args, **kwargs):
+        yield
+        return []
+
+    monkeypatch.setattr(npc_module, "_pick_npc_destination_candidates_steps", no_candidates)
     ok = continue_npc_trip(vehicle, driver, tw, ways)
     assert ok is False
     assert vehicle.destination == destination_before

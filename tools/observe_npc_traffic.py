@@ -215,6 +215,14 @@ def main():
                "collision_events": len(incidents),
                "unique_crashed_ids": sorted({i for e in incidents for i in e["new_crashed"]}),
                "recovery_transitions_sampled": dict(recoveries),
+               "route_jobs": {
+                   **{key: value for key, value in manager.route_job_stats.items() if key != "waits_frames"},
+                   "waits_frames": list(manager.route_job_stats["waits_frames"]),
+                   "pending": [{"kind": job["kind"],
+                                "vehicle_id": getattr(job["vehicle"], "vehicle_id", None),
+                                "age_frames": manager._route_job_frame - job["queued_frame"]}
+                               for job in manager._route_jobs],
+               },
                "trip_transitions_sampled": dict(trip_transitions),
                "stopped_driver_samples_by_reason": dict(wait_seconds),
                "pedestrian_state_samples": dict(ped_states),
