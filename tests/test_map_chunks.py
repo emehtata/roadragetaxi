@@ -424,20 +424,23 @@ def test_kerbed_islands_and_traffic_islands_redraw_over_the_roads_and_only_rinks
     assert here["rinks"] == []  # a stadium is no rink
 
 
-def test_a_stadium_gets_a_3d_wall_round_it():
+def test_a_stadium_gets_its_stands_round_an_open_pitch():
     from shapely.geometry import Polygon
+    from shapely.ops import unary_union
     from theroadragetrip.osm.models import Scenery
 
     world = _obstacle_world()
     world.buildings = []
-    outline = [(100.0, 100.0), (220.0, 100.0), (220.0, 190.0), (100.0, 190.0)]
+    outline = [(100.0, 100.0), (240.0, 100.0), (240.0, 200.0), (100.0, 200.0)]
+    pitch = [(117.5, 116.0), (222.5, 116.0), (222.5, 184.0), (117.5, 184.0)]  # 105 x 68 inside
     for ring in (outline, outline[::-1]):  # either winding
-        world.sceneries = [Scenery(points_m=ring, kind="stadium")]
+        world.sceneries = [Scenery(points_m=ring, kind="stadium"), Scenery(points_m=pitch, kind="pitch", sport="soccer")]
         here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
-        assert len(here["buildings"]) == 4 and all(s == map_chunks.STADIUM_WALL_STYLE for s in here["building_styles"])
-        for piece in here["buildings"]:
-            wall = Polygon(piece)
-            side = max(wall.exterior.length / 2.0 - 0.8, 0.0)
-            assert abs(wall.area - side * 0.8) < 1.0  # a 0.8 m thin strip along a side...
-            assert Polygon(outline).buffer(0.01).contains(wall)  # ...inside the outline
-        assert not any(r[0] == "wall" for r in here["railings"])  # the 3D wall, not a 2D line
+        assert len(here["buildings"]) == 4 and all(s == map_chunks.STADIUM_STAND_STYLE for s in here["building_styles"])
+        stands = unary_union([Polygon(piece) for piece in here["buildings"]])
+        open_middle = Polygon(pitch).buffer(map_chunks.STADIUM_PITCH_MARGIN_M, join_style=2)
+        assert abs(stands.area - (Polygon(outline).area - open_middle.area)) < 1.0  # the whole ring...
+        assert stands.intersection(open_middle).area < 1.0  # ...and the pitch open
+        assert not any(r[0] == "wall" for r in here["railings"])
+    world.sceneries = [Scenery(points_m=outline, kind="stadium")]  # no pitch mapped: stands 15 m deep
+    assert len(map_chunks.ChunkIndex(world, size=500.0).message("0_0")["buildings"]) == 4

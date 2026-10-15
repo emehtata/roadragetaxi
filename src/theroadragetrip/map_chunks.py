@@ -138,29 +138,41 @@ def rink_frame(points) -> list | None:
     return [round(centre.x, 2), round(centre.y, 2), round(angle, 4), round(max(side_a, side_b), 2), round(min(side_a, side_b), 2)]
 
 
-STADIUM_WALL_HEIGHT_M = 6.0
-STADIUM_WALL_THICKNESS_M = 0.8
-# A building style (static_world.building_style): flat concrete top, no gable, no
-# entrances, concrete walls, one storey, category 3 a plain wall (buildings_3d.gd: no windows).
-STADIUM_WALL_STYLE = [[158, 156, 150], 0, STADIUM_WALL_HEIGHT_M, [], [176, 172, 164], 1, 3]
+STADIUM_STAND_HEIGHT_M = 12.0
+STADIUM_PITCH_MARGIN_M = 3.0  # round the pitch inside the stands (touchlines, benches)
+STADIUM_STAND_DEPTH_M = 15.0  # the stands' depth when no pitch is mapped inside
+# A building style (static_world.building_style): a dark flat roof over the
+# seating, no gable, no entrances, a light facade, category 3 a plain wall
+# (buildings_3d.gd: no window rows).
+STADIUM_STAND_STYLE = [[72, 74, 78], 0, STADIUM_STAND_HEIGHT_M, [], [214, 216, 218], 1, 3]
 
 
-def stadium_walls(points) -> list:
-    """A stadium's outer wall as building footprints: one thin quad per
-    outline edge, STADIUM_WALL_THICKNESS_M into the stadium."""
-    ring = list(points[:-1]) if len(points) > 1 and points[0] == points[-1] else list(points)
-    if len(ring) < 3:
+def stadium_stands(points, pitches=()) -> list:
+    """A stadium's covered stands as building footprints: the ring between
+    its outline and the pitch inside it (STADIUM_PITCH_MARGIN_M round it;
+    without one mapped, STADIUM_STAND_DEPTH_M deep), cut along the open
+    middle's axes into hole-free pieces (buildings_3d.gd takes no holes)."""
+    from shapely.geometry import LineString, Polygon
+    from shapely.ops import split
+
+    outline = Polygon(points).buffer(0)
+    inside = [Polygon(p).buffer(STADIUM_PITCH_MARGIN_M, join_style=2) for p in pitches
+              if Polygon(p).representative_point().within(outline)]
+    middle = inside[0] if inside else outline.buffer(-STADIUM_STAND_DEPTH_M, join_style=2)
+    ring = outline.difference(middle)
+    if ring.is_empty or middle.is_empty:
         return []
-    area2 = sum(ax * by - bx * ay for (ax, ay), (bx, by) in zip(ring, ring[1:] + ring[:1]))
-    inward = 1.0 if area2 > 0 else -1.0  # counter-clockwise: the inside is to the left
-    walls = []
-    for (ax, ay), (bx, by) in zip(ring, ring[1:] + ring[:1]):
-        length = math.hypot(bx - ax, by - ay)
-        if length < 0.1:
-            continue
-        nx, ny = -(by - ay) / length * inward * STADIUM_WALL_THICKNESS_M, (bx - ax) / length * inward * STADIUM_WALL_THICKNESS_M
-        walls.append([(ax, ay), (bx, by), (bx + nx, by + ny), (ax + nx, ay + ny)])
-    return walls
+    frame = rink_frame(list(middle.exterior.coords))
+    cx, cy = middle.centroid.x, middle.centroid.y
+    angle = frame[2] if frame is not None else 0.0
+    reach = math.hypot(*(b - a for a, b in zip(outline.bounds[:2], outline.bounds[2:])))
+    pieces = [ring]
+    for turn in (0.0, math.pi / 2.0):  # cut through the middle, along and across
+        dx, dy = math.cos(angle + turn) * reach, math.sin(angle + turn) * reach
+        cut = LineString([(cx - dx, cy - dy), (cx + dx, cy + dy)])
+        pieces = [part for piece in pieces for part in split(piece, cut).geoms]
+    return [[(round(x, 2), round(y, 2)) for x, y in part.exterior.coords[:-1]]
+            for part in pieces if part.geom_type == "Polygon" and part.area > 1.0]
 
 
 FLOODLIGHT_POLE_OUT_M = 2.0  # outside the field's rectangle
@@ -366,6 +378,8 @@ class ChunkIndex:
 
     def _add_static_world(self, world, bridge_parts) -> None:
         """godot-16: the rest of what the client draws from the map (static_world.py)."""
+        from shapely.geometry import Polygon
+
         from .activities.plugins.soccer import is_soccer_pitch
         from .map_style import FLOODLIT_KINDS, FROZEN_IN_WINTER_KINDS, SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS
 
@@ -378,6 +392,7 @@ class ChunkIndex:
             return (max(xs) - min(xs)) * (max(ys) - min(ys))
 
         pole_cells: set = set()
+        pitches = [s.points_m for s in getattr(world, "sceneries", ()) if s.kind == "pitch" and len(s.points_m) >= 3]
         for scenery in sorted((s for s in getattr(world, "sceneries", ()) if len(s.points_m) >= 3), key=bbox_area, reverse=True):
             kind = str(scenery.kind).lower()
             island = kind == "traffic_island" or getattr(scenery, "kerbed", False)  # redrawn above the roads
@@ -396,11 +411,12 @@ class ChunkIndex:
                     if cell not in pole_cells:  # neighbouring fields share their poles
                         pole_cells.add(cell)
                         self._add("floodlight_poles", [pole[:2]], [round(v, 3) for v in pole])
-            if kind == "stadium":  # walled all round (taxi.SOLID_AREA_KINDS): a 3D wall like a building's
-                for piece in stadium_walls(scenery.points_m):
-                    chunk = self._chunk(cell_of(sum(p[0] for p in piece) / 4.0, sum(p[1] for p in piece) / 4.0, self.size))
+            if kind == "stadium":  # stands all round (taxi.SOLID_AREA_KINDS): a 3D building, the pitch open
+                for piece in stadium_stands(scenery.points_m, pitches):
+                    centre = Polygon(piece).representative_point()
+                    chunk = self._chunk(cell_of(centre.x, centre.y, self.size))
                     chunk["buildings"].append(_line(piece))
-                    chunk["building_styles"].append(STADIUM_WALL_STYLE)
+                    chunk["building_styles"].append(STADIUM_STAND_STYLE)
             if is_soccer_pitch(scenery):  # its FIFA lines, drawn while there is no snow
                 frame = rink_frame(scenery.points_m)
                 if frame is not None:
