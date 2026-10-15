@@ -1874,12 +1874,22 @@ func test_rest_of_static_world() -> void:
 	entities._frame = {"a": gap, "b": gap, "t": 0.0}
 	entities._lay_track()
 	check(entities._last_track == null, "no mark: the trail breaks")
+	var long_trail = load("res://entity_layer.gd").new()
+	root.add_child(long_trail)
+	for i in 500:  # one unbroken mark: split in segments, each its own canvas item
+		var marked := {"player": {"x": i * 0.6, "y": 0.0, "heading": 0.0}, "on_foot": false, "tire_mark": {"kind": "rubber"}}
+		long_trail._frame = {"a": marked, "b": marked, "t": 0.0}
+		long_trail._lay_track()
+	check(long_trail._trails.size() == 3 and long_trail._trails.all(func(s): return s[1].size() <= long_trail.TRACK_SEGMENT)
+		and long_trail._trails[1][1][0] == long_trail._trails[0][1][-1], "a long trail: 200-point segments, joined end to start")
+	long_trail.free()
 	var before: int = entities._track_points
 	var snowing := {"player": {"x": 0.0, "y": 0.0, "heading": 0.0}, "on_foot": true, "weather": {"weather_type": "snow"}}
 	entities._frame = {"a": snowing, "b": snowing, "t": 0.0}
 	entities._snowfall += entities.TRACK_SNOW_COVER_S * 0.5
-	check(is_equal_approx(entities._snow_cover(entities._trails[0][1][0]), 0.5) and entities._track_points == before,
-		"snowing: the tracks fade under fresh snow")
+	entities._bury_tracks()
+	check(is_equal_approx(entities._snow_cover(entities._trails[0][1][0]), 0.5) and entities._track_points == before
+		and is_equal_approx(entities._trails[0][2].modulate.a, 0.5), "snowing: the tracks fade under fresh snow (modulate, no redraw)")
 	entities._snowfall += entities.TRACK_SNOW_COVER_S
 	entities._bury_tracks()
 	check(entities._track_points == 0 and entities._trails.is_empty(), "snowed over: they're gone")

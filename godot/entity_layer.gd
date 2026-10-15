@@ -59,7 +59,8 @@ var covered := func(_at: Vector2, _layer: int) -> bool: return false  # MapLayer
 var _trains: Node2D  # trains, z 12: above the canopies and rail bridges (z 11), drawn last
 var _trains_drawn := 0
 var _tracks: Node2D  # tyre tracks, z 8 (before roadworks and signs)
-var _trails: Array = []  # [kind, [[position, heading, intensity, front, snowfall when laid], ...]]
+var _trails: Array = []  # [kind, [[position, heading, intensity, front, snowfall when laid], ...], its Node2D]
+const TRACK_SEGMENT := 200  # points per trail segment: a new point redraws only its own segment
 const TRACK_SNOW_COVER_S := 120.0  # seconds of snowfall that cover a tyre track completely
 var _snowfall := 0.0  # seconds it has snowed (real time) since the client started
 var _snow_clock := 0.0
@@ -119,7 +120,6 @@ func _ready() -> void:
 	add_child(_trains)
 	_tracks = Node2D.new()
 	_tracks.z_index = -2
-	_tracks.draw.connect(_draw_tracks)
 	add_child(_tracks)
 	_glow = Node2D.new()
 	var add := CanvasItemMaterial.new()
@@ -261,7 +261,8 @@ func update_frame(delta: float) -> void:
 func _lay_track() -> void:
 	if not is_equal_approx(_last_track_px, px_per_m):
 		_last_track_px = px_per_m
-		_tracks.queue_redraw()
+		for trail in _trails:  # line widths are in pixels
+			trail[2].queue_redraw()
 	if _frame.is_empty():
 		return
 	var a: Dictionary = _frame["a"]
@@ -271,7 +272,6 @@ func _lay_track() -> void:
 		if _snowfall - _snow_drawn > 0.25:
 			_snow_drawn = _snowfall
 			_bury_tracks()
-			_tracks.queue_redraw()
 	_snow_clock = now
 	var mark = a.get("tire_mark")
 	if typeof(mark) != TYPE_DICTIONARY or a.get("on_foot", false):
@@ -281,16 +281,29 @@ func _lay_track() -> void:
 	var at := Vector2(taxi.x, taxi.y)
 	var kind := str(mark.get("kind", "rubber"))
 	if _last_track == null or _trails.is_empty() or _trails[-1][0] != kind:
-		_trails.append([kind, []])
+		_new_trail(kind, [])
 	elif at.distance_to(_last_track[0]) < 0.5 and absf(angle_difference(taxi.z, _last_track[1])) < deg_to_rad(4.0):
 		return
+	elif _trails[-1][1].size() >= TRACK_SEGMENT:  # full: carry on in a new segment from its last point
+		_new_trail(kind, [_trails[-1][1][-1]])
+		_track_points += 1
 	_trails[-1][1].append([at, taxi.z, float(mark.get("intensity", 1.0)), bool(mark.get("front", false)), _snowfall])
 	_last_track = [at, taxi.z]
 	_track_points += 1
 	if _track_points > 4000:
 		while not _trails.is_empty() and _track_points > 3500:
-			_track_points -= _trails.pop_front()[1].size()
-	_tracks.queue_redraw()
+			var oldest: Array = _trails.pop_front()
+			_track_points -= oldest[1].size()
+			oldest[2].queue_free()
+	_trails[-1][2].queue_redraw()
+
+
+func _new_trail(kind: String, points: Array) -> void:
+	var node := Node2D.new()
+	_tracks.add_child(node)
+	var trail := [kind, points, node]
+	node.draw.connect(_draw_trail.bind(trail))
+	_trails.append(trail)
 
 
 ## How much of a track point fresh snow has covered, 0..1.
@@ -298,40 +311,38 @@ func _snow_cover(point: Array) -> float:
 	return clampf((_snowfall - point[4]) / TRACK_SNOW_COVER_S, 0.0, 1.0)
 
 
-## Points snowed over completely go (a trail's start first: it is the oldest).
+## Fresh snow fades each segment as a whole (its modulate: no redraw) by its
+## newest point, and a segment snowed over completely goes.
 func _bury_tracks() -> void:
 	for trail in _trails:
-		while not trail[1].is_empty() and _snow_cover(trail[1][0]) >= 1.0:
-			trail[1].pop_front()
-			_track_points -= 1
-	_trails = _trails.filter(func(trail): return not trail[1].is_empty())
+		var cover := _snow_cover(trail[1][-1])
+		trail[2].modulate.a = 1.0 - cover
+		if cover >= 1.0:
+			_track_points -= trail[1].size()
+			trail[2].queue_free()
+	_trails = _trails.filter(func(trail): return _snow_cover(trail[1][-1]) < 1.0)
 
 
-## Each trail's tyre lines: the rear axle (1.2 m behind the centre), the
-## front one too where the fronts locked; faint to dark by intensity. One
-## call per kind.
-func _draw_tracks() -> void:
+## One trail segment's tyre lines: the rear axle (1.2 m behind the centre),
+## the front one too where the fronts locked; faint to dark by intensity.
+func _draw_trail(trail: Array) -> void:
 	var started := Time.get_ticks_usec()
-	var lines := {}
-	for trail in _trails:
-		var kind: String = trail[0]
-		if not lines.has(kind):
-			lines[kind] = [PackedVector2Array(), PackedColorArray()]
-		var style: Array = TRACK_STYLES.get(kind, TRACK_STYLES["rubber"])
-		var previous = null
-		for point in trail[1]:
-			if previous != null:
-				var color: Color = style[0].lerp(style[1], point[2])
-				color.a *= 1.0 - _snow_cover(point)
-				for axle: float in ([-1.2, 1.2] if point[3] else [-1.2]):
-					for side: float in [-0.72, 0.72]:
-						lines[kind][0].append(previous[0] + _forward(previous[1]) * axle + _right(previous[1]) * side)
-						lines[kind][0].append(point[0] + _forward(point[1]) * axle + _right(point[1]) * side)
-						lines[kind][1].append(color)
-			previous = point
-	for kind in lines:
-		if not lines[kind][1].is_empty():
-			_tracks.draw_multiline_colors(lines[kind][0], lines[kind][1], maxf(_px(3.0), TRACK_STYLES[kind][2]))
+	var node: Node2D = trail[2]
+	var style: Array = TRACK_STYLES.get(trail[0], TRACK_STYLES["rubber"])
+	var points := PackedVector2Array()
+	var colors := PackedColorArray()
+	var previous = null
+	for point in trail[1]:
+		if previous != null:
+			var color: Color = style[0].lerp(style[1], point[2])
+			for axle: float in ([-1.2, 1.2] if point[3] else [-1.2]):
+				for side: float in [-0.72, 0.72]:
+					points.append(previous[0] + _forward(previous[1]) * axle + _right(previous[1]) * side)
+					points.append(point[0] + _forward(point[1]) * axle + _right(point[1]) * side)
+					colors.append(color)
+		previous = point
+	if not colors.is_empty():
+		node.draw_multiline_colors(points, colors, maxf(_px(3.0), style[2]))
 	preload("res://perf.gd").add("tracks_draw", Time.get_ticks_usec() - started)
 
 
