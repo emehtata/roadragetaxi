@@ -488,11 +488,18 @@ def is_point_in_water(
 
 
 def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
-    """Return whether all four corners are in water, except while on a bridge."""
-    if current_way is not None and getattr(current_way, "is_bridge", False):
-        return False
-    road_layer = getattr(current_way, "layer", getattr(car, "layer", 0))
-    include_open_waterways = not (current_way is not None and is_car_road(current_way))
+    """All four corners in water, excluding the actual solid road surface.
+
+    OSM water can overlap a causeway/bridge approach whose way lacks bridge=yes.
+    A stale nearby road reference must not protect a car that left its surface.
+    """
+    road_layer = getattr(car, "layer", 0)
+    road = current_way if (
+        current_way is not None and is_car_road(current_way)
+        and not getattr(current_way, "is_ice_road", False)
+        and on_map_level(current_way, getattr(car, "map_level", 0))
+        and getattr(current_way, "layer", 0) == road_layer
+    ) else None
     half_length = getattr(car, "length_m", 4.0) * 0.5
     half_width = getattr(car, "width_m", 1.8) * 0.5
     forward_x = math.cos(car.heading)
@@ -505,15 +512,15 @@ def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
         (-half_length, half_width),
         (-half_length, -half_width),
     )
-    return bool(waters) and all(
-        is_point_in_water(
-            car.x + forward_x * longitudinal + right_x * lateral,
-            car.y + forward_y * longitudinal + right_y * lateral,
-            waters,
-            layer=road_layer,
-            include_open_waterways=include_open_waterways,
-        )
+    world_corners = (
+        (car.x + forward_x * longitudinal + right_x * lateral,
+         car.y + forward_y * longitudinal + right_y * lateral)
         for longitudinal, lateral in corners
+    )
+    return bool(waters) and all(
+        not (road is not None and is_point_on_road(x, y, ways=[road], car_roads_only=True, layer=road_layer))
+        and is_point_in_water(x, y, waters, layer=road_layer)
+        for x, y in world_corners
     )
 
 

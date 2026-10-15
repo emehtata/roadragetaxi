@@ -27,6 +27,33 @@ def test_startup_progress_reaches_the_render_chunk_stage(tmp_path, monkeypatch):
     assert "buildings" in report["detail"]
 
 
+def test_sinking_is_cancelled_when_current_geometry_is_dry(tmp_path, monkeypatch):
+    server = _build_server(tmp_path, monkeypatch)
+    server._on_foot = False
+    server._water_elapsed = 4.99  # a previous map tile incorrectly reported water
+    server.world.waters = []
+    origin = (server.car.x, server.car.y)
+    server.tick(1 / 30)
+    assert server._water_elapsed == 0
+    assert (server.car.x, server.car.y) == origin  # no erroneous water respawn
+
+
+def test_sinking_continues_when_the_car_really_is_in_open_water(tmp_path, monkeypatch):
+    from theroadragetrip.osm import Water
+    from datetime import datetime
+
+    server = _build_server(tmp_path, monkeypatch)
+    server.calendar.current = datetime(2026, 9, 30, 19)
+    server._on_foot = False
+    server._water_elapsed = 1
+    server.car.x = server.car.y = 1_000_000  # outside the sample's roads and obstacles
+    x, y = server.car.x, server.car.y
+    server.world.waters = [Water([(x - 20, y - 20), (x + 20, y - 20), (x + 20, y + 20),
+                                  (x - 20, y + 20), (x - 20, y - 20)], "river", True)]
+    server.tick(1 / 30)
+    assert server._water_elapsed > 1
+
+
 def test_server_builds_and_ticks_with_no_client_connected(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
     assert server._chunks_index._encoded == {}  # distant chunks are encoded lazily, not on startup

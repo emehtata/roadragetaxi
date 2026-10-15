@@ -147,6 +147,34 @@ def test_bridge_over_water_does_not_trigger_water_respawn():
     assert not is_car_fully_in_water(car, [lake], current_way=bridge)
 
 
+def test_solid_road_surface_overrides_overlapping_water_without_a_bridge_tag():
+    lake = Water([(-30, -30), (30, -30), (30, 30), (-30, 30), (-30, -30)], "river", True)
+    road = Way([(-25, 0), (25, 0)], "primary", 5.5, name="Merikosken sillat")
+    car = Car(0, 0, math.pi / 4, 0)
+    assert is_point_in_water(car.x, car.y, [lake])
+    assert not is_car_fully_in_water(car, [lake], current_way=road)
+    assert not physics.water_sinks_car(car, [lake], road, 9, .1)
+
+
+def test_a_stale_road_or_bridge_reference_does_not_prevent_offroad_sinking():
+    lake = Water([(-30, -30), (30, -30), (30, 30), (-30, 30), (-30, -30)], "river", True)
+    road = Way([(-25, 0), (25, 0)], "primary", 4)
+    car = Car(0, 15, 0, 0)
+    assert physics.water_sinks_car(car, [lake], road, 9, .1)
+    road.is_bridge = True
+    assert physics.water_sinks_car(car, [lake], road, 9, .1)
+    car.x, car.y = 35, 0
+    assert not is_car_fully_in_water(car, [lake], current_way=road)
+
+
+def test_ice_road_is_not_a_solid_surface_when_ice_does_not_hold():
+    lake = Water([(-30, -30), (30, -30), (30, 30), (-30, 30), (-30, -30)], "river", True)
+    road = Way([(-25, 0), (25, 0)], "track", 4, is_ice_road=True)
+    car = Car(0, 0, 0, 0)
+    assert physics.water_sinks_car(car, [lake], road, 9, .1)
+    assert physics.water_sinks_car(car, [lake], road, 1, .1, rng=lambda: 0)
+
+
 def test_raised_road_layer_does_not_trigger_water_respawn():
     lake = Water(
         points_m=[(-20.0, -20.0), (20.0, -20.0), (20.0, 20.0), (-20.0, 20.0), (-20.0, -20.0)],

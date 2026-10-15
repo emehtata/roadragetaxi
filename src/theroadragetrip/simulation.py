@@ -32,6 +32,7 @@ from .physics import (
     STEER_SPEED_FACTOR,
     get_current_road_at_car,
     is_car_colliding_with_bridge_edge,
+    is_car_fully_in_water,
     SINK_S,
     pull_car_inside_bridge_edge,
     respawn_car,
@@ -423,7 +424,9 @@ def advance_simulation(
                 car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True,
             )
         # water_elapsed: seconds the taxi has been sinking (0: afloat or on ice)
-        if water_elapsed == 0.0 and on_surface and not entered_roadwork and water_sinks_car(
+        if water_elapsed > 0.0 and (not on_surface or not is_car_fully_in_water(car, waters, current_way)):
+            water_elapsed = 0.0  # streamed geometry can correct a false water overlap
+        elif water_elapsed == 0.0 and on_surface and not entered_roadwork and water_sinks_car(
                 car, waters, current_way, now.month if now is not None else None, dt):
             water_elapsed = dt
             audio.play_group("vehicle.water_splash")
