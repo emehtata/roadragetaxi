@@ -388,7 +388,13 @@ def test_floodlit_fields_get_light_poles_round_them():
 
     world = _obstacle_world()
     pitch = [(100.0, 100.0), (200.0, 100.0), (200.0, 160.0), (100.0, 160.0)]
-    world.sceneries = [Scenery(points_m=pitch, kind="pitch"), Scenery(points_m=[(300.0, 300.0), (340.0, 300.0), (340.0, 330.0)], kind="park")]
+    next_pitch = [(200.0, 100.0), (300.0, 100.0), (300.0, 160.0), (200.0, 160.0)]  # shares a side
+    tennis = [(100.0, 300.0), (124.0, 300.0), (124.0, 311.0), (100.0, 311.0)]
+    world.sceneries = [Scenery(points_m=ring, kind="pitch") for ring in (pitch, next_pitch, tennis)]
     poles = map_chunks.ChunkIndex(world, size=500.0).message("0_0")["floodlight_poles"]
-    assert sorted((round(x), round(y)) for x, y in poles) == [
-        (98, 98), (98, 162), (150, 98), (150, 162), (202, 98), (202, 162)]  # corners and long-side middles, 2 m out
+    assert sorted((round(p[0]), round(p[1])) for p in poles) == [  # corners and long-side middles, 2 m out
+        (98, 98), (98, 162), (150, 98), (150, 162), (202, 98), (202, 162),  # the shared corners once
+        (250, 98), (250, 162), (302, 98), (302, 162)]  # no poles for the tennis court
+    for x, y, direction, reach in poles:  # street-light pools aimed into the field
+        assert 15.0 <= reach <= 40.0
+        assert max(math.cos(direction - math.atan2(130.0 - y, cx - x)) for cx in (150.0, 250.0)) > 0.99

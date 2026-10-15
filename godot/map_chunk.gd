@@ -145,8 +145,6 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_add_layer(6, _draw_lamp_heads, _heads))
 		_heads.material = EMISSIVE
 		set_lights_on(false)
-	if not message.get("floodlight_poles", []).is_empty():  # their masts, always; the heads light with the floods
-		_px_layers.append(_add_layer(8, _draw_floodlight_poles))
 	if not message.get("floodlit", []).is_empty():
 		var add := CanvasItemMaterial.new()
 		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
@@ -969,30 +967,35 @@ const EMISSIVE := preload("res://emissive.tres")  # unshaded: lamps, signals and
 
 ## Floodlit sports places (state calendar.sports_lights): the whole field
 ## brightly lit, added over the ground.
-const FLOODLIGHT := Color(0.95, 0.93, 0.85, 0.55)
+const FLOODLIGHT := Color(0.95, 0.93, 0.85, 0.22)
 
 
 func _draw_floodlights(node: Node2D) -> void:
-	for ring in _data.get("floodlit", []):
+	for ring in _data.get("floodlit", []):  # an even wash over the field...
 		if Detail._valid(ring):
 			node.draw_colored_polygon(ring, FLOODLIGHT)
-	for pole in _data.get("floodlight_poles", []):  # the lamp heads, glowing
-		var at := MapMath.point(_origin, pole[0], pole[1])
-		node.draw_circle(at, 3.0, FLOODLIGHT_HALO)
-		node.draw_circle(at, 0.7, FLOODLIGHT_HEAD)
+	# ...and the poles' pools and lamp heads, drawn like street lights
+	# (pool_fans), stronger: sports floodlights.
+	var poles: Array = _data.get("floodlight_poles", [])
+	var positions := PackedVector2Array()
+	for pole in poles:
+		positions.append(MapMath.point(_origin, pole[0], pole[1]))
+	var fans := pool_fans(positions, poles, PackedInt32Array())
+	var colors := PackedColorArray()
+	colors.resize(fans[0].size())
+	for centre in fans[2]:
+		colors[centre] = Color(POOL_CORE.r * FLOODLIGHT_POOL, POOL_CORE.g * FLOODLIGHT_POOL, POOL_CORE.b * FLOODLIGHT_POOL)
+		for k in POOL_STEPS:
+			colors[centre + 1 + k] = Color(POOL_MID.r * FLOODLIGHT_POOL, POOL_MID.g * FLOODLIGHT_POOL, POOL_MID.b * FLOODLIGHT_POOL)
+			colors[centre + 1 + POOL_STEPS + k] = POOL_EDGE
+	if not fans[1].is_empty():
+		RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), fans[1], fans[0], colors)
+	var head := maxf(_px(1.0), 0.35)
+	for at in positions:
+		node.draw_circle(at, head, Color8(235, 235, 220))
 
 
-const FLOODLIGHT_HALO := Color(1.0, 0.96, 0.85, 0.25)
-const FLOODLIGHT_HEAD := Color(1.0, 0.98, 0.92, 1.0)
-const FLOODLIGHT_MAST := Color8(70, 72, 76)
-
-
-## A floodlight pole's mast seen from above: a dark disc and its shadow.
-func _draw_floodlight_poles(node: Node2D) -> void:
-	for pole in _data.get("floodlight_poles", []):
-		var at := MapMath.point(_origin, pole[0], pole[1])
-		node.draw_circle(at + Vector2(0.25, 0.25), maxf(_px(2.0), 0.3), Color(0, 0, 0, 0.3))
-		node.draw_circle(at, maxf(_px(2.0), 0.3), FLOODLIGHT_MAST)
+const FLOODLIGHT_POOL := 1.6  # a floodlight pool: the street lights' pool, this much brighter
 
 
 func _draw_light_pools(node: Node2D) -> void:

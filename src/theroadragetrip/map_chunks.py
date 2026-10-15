@@ -139,19 +139,29 @@ def rink_frame(points) -> list | None:
 
 
 FLOODLIGHT_POLE_OUT_M = 2.0  # outside the field's rectangle
+FLOODLIGHT_MIN_AREA_M2 = 2000.0  # smaller fields (tennis courts...) have no poles of their own; rinks always do
+FLOODLIGHT_POLE_MERGE_M = 10.0  # poles of neighbouring fields closer than this are one
 
 
-def floodlight_poles(points) -> list:
-    """A floodlit field's light poles: its rectangle's corners and the middle
-    of each long side, FLOODLIGHT_POLE_OUT_M outside it."""
+def floodlight_poles(points, kind: str = "pitch") -> list:
+    """A floodlit field's light poles as street lights ([x, y, direction,
+    pool reach], map_chunk.gd pool_fans): its rectangle's corners and the
+    middle of each long side, FLOODLIGHT_POLE_OUT_M outside it, each aimed
+    at the field's centre with a pool reaching across it."""
     frame = rink_frame(points)
     if frame is None:
         return []
     cx, cy, angle, length, width = frame
+    if kind != "ice_rink" and length * width < FLOODLIGHT_MIN_AREA_M2:
+        return []
     ux, uy = math.cos(angle), math.sin(angle)
     half_u, half_v = length / 2.0 + FLOODLIGHT_POLE_OUT_M, width / 2.0 + FLOODLIGHT_POLE_OUT_M
-    return [(cx + ux * u * half_u - uy * v * half_v, cy + uy * u * half_u + ux * v * half_v)
-            for u, v in ((-1, -1), (0, -1), (1, -1), (-1, 1), (0, 1), (1, 1))]
+    reach = max(15.0, min(40.0, width * 0.9))
+    poles = []
+    for u, v in ((-1, -1), (0, -1), (1, -1), (-1, 1), (0, 1), (1, 1)):
+        x, y = cx + ux * u * half_u - uy * v * half_v, cy + uy * u * half_u + ux * v * half_v
+        poles.append((x, y, math.atan2(cy - y, cx - x), reach))
+    return poles
 
 
 def _item_rect(item) -> tuple[float, float, float, float] | None:
@@ -341,6 +351,7 @@ class ChunkIndex:
             ys = [p[1] for p in scenery.points_m]
             return (max(xs) - min(xs)) * (max(ys) - min(ys))
 
+        pole_cells: set = set()
         for scenery in sorted((s for s in getattr(world, "sceneries", ()) if len(s.points_m) >= 3), key=bbox_area, reverse=True):
             kind = str(scenery.kind).lower()
             island = kind == "traffic_island" or getattr(scenery, "kerbed", False)  # redrawn above the roads
@@ -352,8 +363,11 @@ class ChunkIndex:
                 if kind in FLOODLIT_KINDS:
                     self._chunk(cell)["floodlit"].append(ring)
             if kind in FLOODLIT_KINDS:
-                for pole in floodlight_poles(scenery.points_m):
-                    self._add("floodlight_poles", [pole], [round(pole[0], 2), round(pole[1], 2)])
+                for pole in floodlight_poles(scenery.points_m, kind):
+                    cell = (round(pole[0] / FLOODLIGHT_POLE_MERGE_M), round(pole[1] / FLOODLIGHT_POLE_MERGE_M))
+                    if cell not in pole_cells:  # neighbouring fields share their poles
+                        pole_cells.add(cell)
+                        self._add("floodlight_poles", [pole[:2]], [round(v, 3) for v in pole])
             if kind == "ice_rink":  # closed all round (taxi.SOLID_AREA_KINDS): its boards
                 self._add("railings", scenery.points_m[:1], ["boards", _line(list(scenery.points_m) + [scenery.points_m[0]])])
                 frame = rink_frame(scenery.points_m)
