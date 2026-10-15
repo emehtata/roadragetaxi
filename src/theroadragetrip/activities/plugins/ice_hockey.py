@@ -2,11 +2,15 @@
 activity; the game is the rink's Puck: it slides with ice friction and
 bounces off the boards. Two teams (red and blue jerseys), each with a
 goalie - the team's first player - who stays in the crease, slides across
-with the puck, catches what comes at the goal and passes it up ice. Of
-the skaters the nearest of each team chases the puck, the rest hold spots
-in the play; whoever reaches it hits it - a pass, or a shot at the other
-goal. A shot's fate is decided when it is hit: SHOT_SCORES of them go in,
-the goalie saves the rest (and any loose puck reaching the goal). After a
+with the puck, catches what comes at the goal and passes it up ice. A
+skater who reaches the puck carries it on the stick: outside the
+offensive zone (before the other team's blue line) they skate it forward
+or pass to a teammate further up, with the odd long shot; inside it they
+shoot or pass - so most shots come from the zone. The nearest opponent
+chases the carrier and pokes the puck off them; the carrier's teammates
+skate ahead in support. A shot's fate is decided when it is hit:
+SHOT_SCORES of them go in, the goalie saves the rest (and any loose puck
+reaching the goal). After a
 goal there is no face-off, as on a pond: the conceding goalie takes the
 puck out of the net while the scorers back off, and passes it to offence.
 """
@@ -25,9 +29,18 @@ PUCK_FRICTION_MPS2 = 1.0
 PUCK_BOUNCE = 0.6  # speed kept off the boards
 HIT_REACH_M = 1.2
 HIT_COOLDOWN_S = 0.6
-PASS_SPEED_MPS = (7.0, 12.0)
+PASS_SPEED_MPS = (6.0, 10.0)
 SHOT_SPEED_MPS = (16.0, 26.0)
-SHOT_CHANCE = 0.35  # of a skater's hits; the rest are passes
+CARRY_SPEED_MPS = 3.0  # skating with the puck on the stick
+# A carried puck on the stick's blade (entity_layer.gd _hockey_stick draws it there):
+# this far ahead of the carrier and to their right.
+STICK_REACH_M, STICK_SIDE_M = 1.0, 0.2
+BLUE_LINE_U = 8.75  # past the other team's blue line: the offensive zone
+# A carrier's choices, chances per second: in the offensive zone shoot or
+# pass; before it pass forward, or (rarely) shoot from distance.
+ZONE_SHOT_RATE, ZONE_PASS_RATE = 0.9, 0.35
+NEUTRAL_PASS_RATE, LONG_SHOT_RATE = 0.3, 0.03
+STEAL_CHANCE = 0.4  # an opponent's poke check at the carrier's puck
 SHOT_SCORES = 0.20  # of shots: past the goalie
 GOALIE_HOLD_S = 0.8  # a caught puck, before the goalie passes it out
 RESTART_S = 3.0  # after a goal: only the conceding team may touch the puck
@@ -55,9 +68,10 @@ class Puck:
     shot_scores: bool = False  # the puck in flight is a shot that goes in
     restart_team: Optional[int] = None  # after a goal, until restart_until: only this team plays it
     restart_until: float = -1e9
-    held_by: object = None  # a goalie holding a caught puck
+    held_by: object = None  # who has the puck: a goalie who caught it, a skater carrying it
     held_since: float = 0.0
     goals: Tuple[int, int] = (0, 0)
+    shots: Tuple[int, int] = (0, 0)  # (from the offensive zone, from outside it)
 
     def uv(self, x: float, y: float) -> Tuple[float, float]:
         """(x, y) in IIHF rink metres: u along the rink (goals at +-26), v across."""
@@ -91,8 +105,11 @@ class Puck:
 
         dt = min(0.5, sim_time - self.updated)
         self.updated = sim_time
-        if self.held_by is not None:
-            self.x, self.y = self.held_by.x, self.held_by.y
+        if self.held_by is not None:  # on the blade of its holder's stick
+            holder = self.held_by
+            ahead_x, ahead_y = math.cos(holder.heading), math.sin(holder.heading)
+            self.x = holder.x + ahead_x * STICK_REACH_M + ahead_y * STICK_SIDE_M
+            self.y = holder.y + ahead_y * STICK_REACH_M - ahead_x * STICK_SIDE_M
             return
         speed = math.hypot(self.vx, self.vy)
         if dt <= 0.0 or speed <= 0.0:
@@ -136,16 +153,21 @@ class Puck:
         pedestrian.heading = math.atan2(dy, dx)
         pedestrian.stick_swing = STICK_SWING_S
 
-    def skater_hit(self, pedestrian, team: int, sim_time: float, mates: List) -> None:
-        """A shot at the other goal (decided now: in, or saved), or a pass."""
-        if mates and random.random() >= SHOT_CHANCE:
-            mate = random.choice(mates)
-            self.hit_toward(pedestrian, (mate.x, mate.y), random.uniform(*PASS_SPEED_MPS), sim_time)
-            return
+    def attack_u(self, pedestrian, team: int) -> float:
+        """How far up ice `pedestrian` is for `team`: past BLUE_LINE_U is the offensive zone."""
+        return self.uv(pedestrian.x, pedestrian.y)[0] * -math.copysign(1.0, self.defends_u(team))
+
+    def shoot(self, pedestrian, team: int, sim_time: float) -> None:
+        """At the other goal; decided now: in, or saved."""
+        in_zone = self.attack_u(pedestrian, team) > BLUE_LINE_U
+        self.shots = (self.shots[0] + in_zone, self.shots[1] + (not in_zone))
         scores = random.random() < SHOT_SCORES
         self.hit_toward(pedestrian, self.world(-self.defends_u(team), random.uniform(-0.6, 0.6)),
                         random.uniform(*SHOT_SPEED_MPS), sim_time)
         self.shot_scores = scores
+
+    def pass_to(self, pedestrian, mate, sim_time: float) -> None:
+        self.hit_toward(pedestrian, (mate.x, mate.y), random.uniform(*PASS_SPEED_MPS), sim_time)
 
     def goalie_pass(self, goalie, team: int, sim_time: float, mates: List) -> None:
         """Out of the crease to offence: to the teammate furthest up ice."""
@@ -234,6 +256,8 @@ class IceHockeyPlugin(ActivityPlugin):
         pedestrian.hockey_goalie = puck.goalies[team] is pedestrian
         puck.advance(context.sim_time)
         if is_down(pedestrian, instance, dt):  # knocked over: on the ice a moment, the play goes on
+            if puck.held_by is pedestrian:
+                puck.held_by = None  # the puck comes loose
             return False
         mates = [p for p in roster if puck.players[id(p)] == team and p is not pedestrian]
         skating_mates = [p for p in mates if p is not puck.goalies.get(team)]
@@ -267,26 +291,68 @@ class IceHockeyPlugin(ActivityPlugin):
     def _skater(context: ActivityContext, instance: ActivityInstance, puck: Puck, team: int, mates: List, dt: float) -> None:
         pedestrian = context.pedestrian
         now = context.sim_time
+        if puck.held_by is pedestrian:
+            IceHockeyPlugin._carry(pedestrian, puck, team, mates, now, dt)
+            return
         waiting = puck.restart_team is not None and puck.restart_team != team and now < puck.restart_until
+        holder = puck.held_by
+        ours = holder is not None and puck.players.get(id(holder)) == team
         to_puck = math.hypot(puck.x - pedestrian.x, puck.y - pedestrian.y)
-        chaser = (puck.held_by is None and not waiting
+        chaser = (not waiting and not ours and holder not in puck.goalies.values()
                   and all(to_puck <= math.hypot(puck.x - m.x, puck.y - m.y) for m in mates))
-        if chaser:
+        if chaser:  # a loose puck to take, or the carrier to poke it off
             if to_puck <= HIT_REACH_M and now - puck.last_hit >= HIT_COOLDOWN_S:
-                puck.skater_hit(pedestrian, team, now, mates)
+                puck.last_hit = now
+                if holder is None or random.random() < STEAL_CHANCE:
+                    puck.held_by, puck.held_since = pedestrian, now
+                    puck.shot_scores = False
+                    pedestrian.stick_swing = STICK_SWING_S
             else:
                 glide(pedestrian, (puck.x, puck.y), dt, SKATING_SPEED_MPS * 1.4)
             return
-        # Hold a spot in the play: between a place on the ice and the puck
-        # (back toward centre ice while the other team restarts).
+        # Hold a spot in the play: between a place on the ice and the puck -
+        # ahead of it in support while our team has it, back toward centre
+        # ice while the other team restarts.
         instance.data["spot_elapsed_s"] += dt
         if instance.data["spot"] is None or instance.data["spot_elapsed_s"] >= SPOT_MOVE_S:
             instance.data["spot_elapsed_s"] = 0.0
             instance.data["spot"] = sample_interior_point(puck.rink)
         spot = instance.data["spot"] or (puck.x, puck.y)
-        focus = puck.world(0.0, 0.0) if waiting else (puck.x, puck.y)
+        if waiting:
+            focus = puck.world(0.0, 0.0)
+        elif ours:
+            u, v = puck.uv(puck.x, puck.y)
+            ahead = -math.copysign(1.0, puck.defends_u(team))
+            focus = puck.world(max(-20.0, min(20.0, u + ahead * 10.0)), v)
+        else:
+            focus = (puck.x, puck.y)
         if glide(pedestrian, ((spot[0] + focus[0]) / 2.0, (spot[1] + focus[1]) / 2.0), dt, SKATING_SPEED_MPS):
             pedestrian.heading = math.atan2(puck.y - pedestrian.y, puck.x - pedestrian.x)
+
+    @staticmethod
+    def _carry(pedestrian, puck: Puck, team: int, mates: List, now: float, dt: float) -> None:
+        """With the puck on the stick: shoot or pass in the offensive zone;
+        before it skate it forward, pass it up, or now and then shoot from far."""
+        up = puck.attack_u(pedestrian, team)
+        ahead = [m for m in mates if puck.attack_u(m, team) > up + 2.0]
+        roll = random.random()
+        if up > BLUE_LINE_U:
+            if roll < ZONE_SHOT_RATE * dt or up > GOAL_U - 3.0:
+                puck.shoot(pedestrian, team, now)
+                return
+            if mates and roll < (ZONE_SHOT_RATE + ZONE_PASS_RATE) * dt:
+                puck.pass_to(pedestrian, random.choice(mates), now)
+                return
+        else:
+            if roll < LONG_SHOT_RATE * dt:
+                puck.shoot(pedestrian, team, now)
+                return
+            if ahead and roll < (LONG_SHOT_RATE + NEUTRAL_PASS_RATE) * dt:
+                puck.pass_to(pedestrian, random.choice(ahead), now)
+                return
+        attack = -math.copysign(1.0, puck.defends_u(team))
+        lane = puck.uv(pedestrian.x, pedestrian.y)[1]
+        glide(pedestrian, puck.world(attack * (GOAL_U - 4.0), max(-6.0, min(6.0, lane))), dt, CARRY_SPEED_MPS)
 
     def finish(self, context: ActivityContext, instance: ActivityInstance) -> None:
         puck: Optional[Puck] = instance.data.get("puck")

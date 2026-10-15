@@ -114,11 +114,23 @@ def test_goalies_save_most_shots_and_restart_play_after_a_goal():
                 if conceding is not None:  # the first to take the puck after a goal
                     restarts.append(puck.held_by is puck.goalies.get(conceding))
                     conceding = None
-                else:
+                elif puck.held_by in puck.goalies.values():  # a goalie caught it (skaters carry it too)
                     saves += 1
             held = puck.held_by
     assert goals > 0 and saves > goals  # most shots are saved
     assert restarts and all(restarts)  # out of the net by the conceding goalie
+
+
+def test_most_shots_come_from_the_offensive_zone_after_carrying_and_passing():
+    in_zone = outside = 0
+    for seed in range(4):
+        manager, players, puck = _hockey_game(seed)
+        for _ in range(3000):  # 5 min a game
+            manager.sim_time += 0.1
+            for player in players:
+                manager._update_activity(player, 0.1)
+        in_zone, outside = in_zone + puck.shots[0], outside + puck.shots[1]
+    assert in_zone + outside > 50 and in_zone / (in_zone + outside) >= 0.85  # about 90 %
 
 
 def test_ice_sports_play_only_where_the_camera_looks():
