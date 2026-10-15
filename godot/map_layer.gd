@@ -146,7 +146,14 @@ func set_building_view(view_centre: Vector2) -> void:
 var light_level := 0.0
 
 
+var _ambient := Color.WHITE  # the world's ambient multiply (set_light): the ground's clear colour takes it too
+
+
 func set_light(level: float, ambient: Color) -> void:
+	if not ambient.is_equal_approx(_ambient):
+		_ambient = Color(ambient, 1.0)
+		if _ground != null:
+			_ground.queue_redraw()
 	if MapChunk.buildings_3d:
 		_layer_3d().set_light(level, ambient)
 	if is_equal_approx(level, light_level) and (level > 0.01) == lights_on:
@@ -406,7 +413,10 @@ func _draw_ground() -> void:
 	# Ground, under the chunks: snow cover with the winter weight (on this
 	# light ground other seasonal palettes turned it brown, so only snow).
 	# godot-18: the viewport's clear colour, not a full-screen rectangle - one less layer to fill every frame.
-	RenderingServer.set_default_clear_color(Color(0.27, 0.33, 0.25).lerp(Color8(230, 236, 240), clampf(season[0], 0.0, 1.0)))
+	# The world's ambient multiply (CanvasModulate) never reaches the clear
+	# colour, so the night is applied here: snow-white open ground glowed in the dark.
+	var ground := Color(0.27, 0.33, 0.25).lerp(Color8(230, 236, 240), clampf(season[0], 0.0, 1.0))
+	RenderingServer.set_default_clear_color(ground * _ambient)
 
 
 ## The underground view: below
