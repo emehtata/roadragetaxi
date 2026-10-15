@@ -17,7 +17,7 @@ var _charging := false
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	position = Vector2(16, 125)
-	custom_minimum_size = Vector2(270, 280)
+	custom_minimum_size = Phone.DEVICE_SIZE * (270.0 / Phone.DEVICE_SIZE.x)
 	add_theme_stylebox_override("panel", Phone.device_style())
 	var screen := PanelContainer.new()
 	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -44,6 +44,7 @@ func _ready() -> void:
 	box.add_child(header)
 	_arrow = Control.new()
 	_arrow.custom_minimum_size = Vector2(170, 90)
+	_arrow.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_arrow.draw.connect(_draw_arrow)
 	box.add_child(_arrow)

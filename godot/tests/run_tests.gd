@@ -1268,6 +1268,7 @@ func test_navigation_route() -> void:
 	device.language = "fi"
 	var offer_phone := Phone.new()
 	root.add_child(offer_phone)
+	check(is_equal_approx(device.custom_minimum_size.aspect(), offer_phone.custom_minimum_size.aspect()), "navigation phone: same portrait proportions as fare picker")
 	offer_phone.clock_text = "23:59"
 	offer_phone.battery = 19.0
 	offer_phone.charging = true

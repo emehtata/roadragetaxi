@@ -10,6 +10,7 @@ class_name Phone
 extends PanelContainer
 
 const T := preload("res://i18n.gd")
+const DEVICE_SIZE := Vector2(390, 660)
 
 signal request(action: String, item_id: String, request_id: int)  # main sends it to the simulation
 signal sound(group: String, variation: int)  # main plays it (ui.phone_open: 0 opens, 1 closes)
@@ -68,7 +69,7 @@ func _ready() -> void:
 	visible = false
 	# The device: a portrait phone in the middle, the world dimmed around it
 	# (a huge soft shadow is the dimming - no extra full-screen node).
-	custom_minimum_size = Vector2(390, 660)
+	custom_minimum_size = DEVICE_SIZE
 	set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
