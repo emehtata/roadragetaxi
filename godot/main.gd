@@ -57,6 +57,9 @@ var _entered_taxi := false  # the "Press F" hint until the driver first gets in
 var hud_layout = preload("res://hud_layout.gd").new()  # the movable panels, saved (U / F2 resets)
 var _start_sign: PanelContainer  # the start sign: city and forecast, any key starts
 var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
+var _lead := Vector2.ZERO  # camera look-ahead, metres
+const LEAD_S := 0.6  # look this far ahead of the taxi at its speed
+const LEAD_MAX := 0.3  # at most this share of the view
 var _state_usec := 0.0  # handling one state (parse + buffer), smoothed
 var _interp_usec := 0.0  # sampling + blending one frame, smoothed
 
@@ -428,6 +431,17 @@ func _unhandled_input(event: InputEvent) -> void:
 				_zoom(0.8)
 
 
+## Look ahead of the taxi: at 72 km/h the centred view showed only ~2 s of
+## road ahead. Eased (exponentially) so steering and braking don't swing the
+## view. No speed zoom: every zoom change redraws the pixel-sized map layers
+## (13 fps in the selftest).
+func _camera_lead(delta: float) -> Vector2:
+	var view := get_viewport().get_visible_rect().size / camera.zoom.x
+	var target: Vector2 = (entities.player_velocity() * LEAD_S).limit_length(minf(view.x, view.y) * LEAD_MAX)
+	_lead = _lead.lerp(target, 1.0 - exp(-3.0 * delta))
+	return _lead
+
+
 func _zoom(factor: float) -> void:
 	camera.zoom = Vector2.ONE * clampf(camera.zoom.x * factor, 3.0, 24.0)
 
@@ -476,7 +490,7 @@ func _process(delta: float) -> void:
 			get_viewport().get_texture().get_image().save_png(_screenshot_path)
 			print("screenshot saved: ", _screenshot_path)
 			get_tree().quit()
-	camera.position = entities.player_position()
+	camera.position = entities.player_position() + _camera_lead(delta)
 	if _focus.get("kind") == "pan":
 		camera.position = _focus["position"]
 	elif _focus.has("id"):
@@ -1076,7 +1090,7 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 			"trains": state["trains"].size(), "npcs": state["npcs"].size(), "pedestrians": state["pedestrians"].size(),
 			"drawn_entities": entities.drawn_entities, "map_chunks": map_layer.chunk_count(),
 			"on_foot": state["on_foot"], "speed_mps": state["player"]["speed"], "hud_speed": hud_text["speed"],
-			"hud_money": hud_text["money"], "camera_follows": camera.position.distance_to(entities.player_position()) < 1.0,
+			"hud_money": hud_text["money"], "camera_follows": camera.position.distance_to(entities.player_position() + _lead) < 1.0,
 			"state_ms": _state_usec / 1000.0, "interp_draw_ms": _interp_usec / 1000.0,
 			"buffered_states": entities.buffer.size(), "underruns_6s": entities.buffer.underruns,
 			"underrun_episodes": entities.buffer.underrun_episodes, "longest_underrun_ms": entities.buffer.longest_underrun_s * 1000.0,

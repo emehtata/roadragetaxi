@@ -173,6 +173,14 @@ func shown_state() -> Dictionary:
 
 
 ## The player's interpolated position (the camera follows it).
+## The taxi's velocity in canvas metres per second (y down); zero on foot.
+func player_velocity() -> Vector2:
+	if _frame.is_empty() or _frame["a"].get("on_foot", false):
+		return Vector2.ZERO
+	var player: Dictionary = _frame["a"]["player"]
+	return _forward(float(player.get("heading", 0.0))) * float(player.get("speed", 0.0))
+
+
 func player_position() -> Vector2:
 	if _frame.is_empty():
 		return Vector2.ZERO
