@@ -28,6 +28,7 @@ var lights_on := false
 var _pool_group: Node2D  # every loaded chunk's street-light pools (each chunk's: their union, added once)
 var _flood_group: Node2D  # every loaded chunk's floodlit sports places
 var sports_hours := false  # state calendar.sports_lights: 07-22, when floodlights may burn
+var arena_lights_on := false
 var building_view_centre := Vector2.ZERO
 
 
@@ -54,6 +55,16 @@ func set_sports_hours(on: bool) -> void:
 	if on != sports_hours:
 		sports_hours = on
 		_show_floods()
+
+
+func set_arena_lights(on: bool) -> void:
+	if on == arena_lights_on:
+		return
+	arena_lights_on = on
+	if buildings_3d != null:
+		buildings_3d.set_arena_lights(on)
+	for chunk in _chunks.values():
+		chunk.set_arena_lights(on)
 
 
 func _ready() -> void:
@@ -87,6 +98,7 @@ func _layer_3d() -> Node2D:
 	if buildings_3d == null:
 		buildings_3d = Buildings3D.new()  # its sprites carry their own z (7, lit windows 21)
 		add_child(buildings_3d)
+		buildings_3d.set_arena_lights(arena_lights_on)
 	return buildings_3d
 
 
@@ -219,6 +231,7 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.set_obstacles(fallen, knocked)
 	chunk.set_season(season)
 	chunk.set_lights_on(lights_on)
+	chunk.set_arena_lights(arena_lights_on)
 	chunk.set_flash(flash)
 	add_child(chunk)
 	if not chunk._data.get("level_roads", []).is_empty() and _underground != null:

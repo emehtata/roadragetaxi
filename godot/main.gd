@@ -556,6 +556,7 @@ func _present(state: Dictionary) -> void:
 	if typeof(calendar) == TYPE_DICTIONARY:
 		map_layer.set_season(calendar.get("season", []))
 		map_layer.set_sports_hours(bool(calendar.get("sports_lights", false)))
+		map_layer.set_arena_lights(bool(calendar.get("arena_lights", false)))
 	# godot-lights-01: the world's light from the sun's altitude, continuously - the
 	# ambient multiply (CanvasModulate: no fill) and how strongly the lights show.
 	var altitude := Daylight.altitude(state) if is_nan(override_altitude) else override_altitude

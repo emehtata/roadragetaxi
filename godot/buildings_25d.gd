@@ -66,6 +66,7 @@ static func unit(seed: float) -> float:
 static func build(buildings: Array, styles: Array, origin: Vector2, view_centre := Vector2.ZERO) -> Dictionary:
 	var out := {"points": PackedVector2Array(), "colors": PackedColorArray(), "indices": PackedInt32Array(),
 		"lit_points": PackedVector2Array(), "lit_indices": PackedInt32Array(), "hulls": [],
+		"arena_points": PackedVector2Array(), "arena_indices": PackedInt32Array(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0}}  # counts for the performance report
 	var order: Array = []
 	for i in buildings.size():
@@ -114,6 +115,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	var wall_color := Color8(int(style[4][0]), int(style[4][1]), int(style[4][2])) if style.size() > 4 else Color8(139, 139, 137)
 	var floors: int = int(style[5]) if style.size() > 5 else maxi(1, roundi(height / 3.0))
 	var category: int = int(style[6]) if style.size() > 6 else 0
+	var arena := style.size() > 7 and int(style[7]) == 1
 	var up := lift(height, centre, view_centre)
 	var depth := up.length()
 	var roof := footprint.duplicate()
@@ -140,7 +142,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		var edge := b - a
 		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
 		_quad(out, a, b, b + up, a + up, _shade(wall_color, normal, up))
-		_windows(out, a, b, up, stories, category, seed_base + i * 7.13)
+		_windows(out, a, b, up, stories, category, seed_base + i * 7.13, arena)
 	_doors(out, footprint, style[3] if style.size() > 3 else [], walls, up, stories, origin)
 	_polygon(out, roof, roof_color)
 	if style.size() > 1 and int(style[1]) == 1:
@@ -153,7 +155,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 ## windows a floor (2 on a house, every other floor), centred along the
 ## wall, a storefront row on a commercial ground floor; lit at night by
 ## LIT_PROBABILITY, deterministically.
-static func _windows(out: Dictionary, a: Vector2, b: Vector2, up: Vector2, stories: int, category: int, seed: float) -> void:
+static func _windows(out: Dictionary, a: Vector2, b: Vector2, up: Vector2, stories: int, category: int, seed: float, arena: bool) -> void:
 	var length := a.distance_to(b)
 	if length < 12.0 / 9.0 or up.length() < 0.5:
 		return
@@ -176,6 +178,8 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, up: Vector2, stori
 			if unit(seed + f * 3.71 + w * 1.37) < LIT_PROBABILITY[2 if storefront else category if category == 1 else 0]:
 				_quad(out, p[0], p[1], p[2], p[3], WINDOW_LIT, "lit_")
 				out["stats"]["lit"] += 1
+			if arena:
+				_quad(out, p[0], p[1], p[2], p[3], WINDOW_LIT, "arena_")
 
 
 ## Doors at the OSM entrances, on the nearest wall if that wall is

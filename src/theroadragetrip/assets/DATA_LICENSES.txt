@@ -21,6 +21,16 @@ train_compositions.json.gz
   length and service flags by theroadragetrip/composition_import.py (refreshed weekly). Provided
   as is, without warranty.
 
+sports_fixtures.json.gz
+  Match schedules, results, teams, attendances and venue names retrieved
+  2026-10-15 from the public Liiga and Veikkausliiga result services:
+  https://www.liiga.fi/api/v2/schedule
+  https://www.veikkausliiga.com/tilastot/
+  Modified: the 2025-26 and 2026-27 Liiga seasons and the calendar-year
+  2025 and 2026 Veikkausliiga seasons were normalized to UTC JSON with
+  game crowd windows. Provided as is, without warranty. The source data
+  remains copyright of Liiga, Veikkausliiga and their data providers.
+
 finnish_first_names.json.gz, finnish_surnames.json.gz
   Finnish first names and surnames from the population information system
   name data (Väestötietojärjestelmän suomalaisten nimiaineistot), Digital and

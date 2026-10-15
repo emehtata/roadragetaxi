@@ -144,6 +144,7 @@ TRANSLATIONS = {
         "new_request": "Uusi kyyti odottaa puhelimessa. Paina P.",
         "prebooked_taxi": "ENNAKKOTILAUS",
         "rail_booking_notice": "Ennakkotilaus: {train}, {station} {arrival}.",
+        "game_day_schedule": "Pelipäivä: {schedule}",
         "rail_booking_accepted": "Ennakkotilaus hyväksytty: {train}, {station} {arrival}.",
         "rail_booking_missed": "Ennakkotilaus menetetty: asiakas ei saanut kyytiä ({train}, {station}).",
         "booking_pending": "ODOTTAA", "booking_accepted": "HYVÄKSYTTY",
@@ -170,6 +171,7 @@ TRANSLATIONS = {
         "boarded_destination": "{name} nousi kyytiin! Määränpää: {address}",
         "long_fare_address": "{name}: tarkka osoite on {address}",
         "roadside": "Tienvarsi",
+        "competitor_took_fare": "Kilpaileva taksi ehti ensin: {name}",
         "fare_complete_points": "Kyyti valmis! Hinta {amount}, tippi {tip}, +{earned} pistettä ({avg:.0f} km/h keskiarvo, {seconds:.1f} s)",
     },
     "en": {
@@ -312,6 +314,7 @@ TRANSLATIONS = {
         "new_request": "A new ride is waiting in the phone. Press P.",
         "prebooked_taxi": "PRE-BOOKED TAXI",
         "rail_booking_notice": "Pre-booked taxi: {train}, {station} {arrival}.",
+        "game_day_schedule": "Game day: {schedule}",
         "rail_booking_accepted": "Pre-booking accepted: {train}, {station} {arrival}.",
         "rail_booking_missed": "Pre-booking missed: the passenger got no ride ({train}, {station}).",
         "booking_pending": "PENDING", "booking_accepted": "ACCEPTED",
@@ -338,6 +341,7 @@ TRANSLATIONS = {
         "boarded_destination": "{name} boarded! Destination: {address}",
         "long_fare_address": "{name}: the exact address is {address}",
         "roadside": "Roadside",
+        "competitor_took_fare": "A rival taxi got there first: {name}",
         "fare_complete_points": "Fare complete! Fare {amount}, tip {tip}, +{earned} pts ({avg:.0f} km/h average in {seconds:.1f}s)",
     },
 }

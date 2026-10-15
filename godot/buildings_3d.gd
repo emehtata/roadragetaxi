@@ -136,7 +136,16 @@ func set_light(level: float, ambient: Color) -> void:
 				node.visible = _lit_on
 
 
+func set_arena_lights(on: bool) -> void:
+	_arena_on = on
+	_shared["arena"].albedo_color = Color.WHITE
+	for node in _view.get_children():
+		if node is MeshInstance3D and node.material_override == _shared["arena"]:
+			node.visible = on
+
+
 var _lit_on := false
+var _arena_on := false
 
 
 ## The lit windows' multiplier over their (warm, varied) vertex colours: at
@@ -152,6 +161,8 @@ func add(instances: Array) -> void:
 		if node.get_parent() == null:
 			if node.material_override == _shared["lit"]:
 				node.visible = _lit_on
+			elif node.material_override == _shared["arena"]:
+				node.visible = _arena_on
 			_view.add_child(node)
 
 
@@ -163,6 +174,7 @@ func instance_count() -> int:
 ## lit windows' verts), "stats"}.
 static func build(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "lit": PackedVector3Array(),
+		"arena": PackedVector3Array(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
 	for i in buildings.size():
 		var footprint: PackedVector2Array = buildings[i]
@@ -187,10 +199,15 @@ static func meshes(arrays: Dictionary) -> Array:
 			var shade := 0.82 + 0.18 * B25.unit(float(i / 6) * 0.61803 + arrays["lit"][i - i % 6].x * 0.013)
 			colors[i] = Color(WINDOW_LIT_NIGHT.r * shade, WINDOW_LIT_NIGHT.g * shade, WINDOW_LIT_NIGHT.b * shade)
 		instances.append(_instance(_mesh(arrays["lit"], colors), _shared["lit"], LAYER_BUILDINGS))
+	if not arrays["arena"].is_empty():
+		var colors := PackedColorArray()
+		colors.resize(arrays["arena"].size())
+		colors.fill(WINDOW_LIT_NIGHT)
+		instances.append(_instance(_mesh(arrays["arena"], colors), _shared["arena"], LAYER_BUILDINGS))
 	return instances
 
 
-static var _shared := {"material": _make_material(), "lit": _make_material(true)}
+static var _shared := {"material": _make_material(), "lit": _make_material(true), "arena": _make_material(true)}
 
 
 static func _mesh(verts: PackedVector3Array, colors: PackedColorArray) -> ArrayMesh:
@@ -221,14 +238,14 @@ static func _tri(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, color: Col
 		b = c
 		c = t
 	out[key].append_array(PackedVector3Array([a, b, c]))
-	if key == "lit":
+	if key != "verts":
 		return
 	out["colors"].append_array(PackedColorArray([color, color, color]))
 
 
-static func _quad(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color, facing: Vector3, lit := false) -> void:
-	_tri(out, a, b, c, color, facing, "lit" if lit else "verts")
-	_tri(out, a, c, d, color, facing, "lit" if lit else "verts")
+static func _quad(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color, facing: Vector3, key := "verts") -> void:
+	_tri(out, a, b, c, color, facing, key)
+	_tri(out, a, c, d, color, facing, key)
 
 
 static func _polygon(out: Dictionary, polygon: PackedVector2Array, heights: PackedFloat32Array, color: Color) -> void:
@@ -244,6 +261,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	var wall_color := Color8(int(style[4][0]), int(style[4][1]), int(style[4][2])) if style.size() > 4 else Color8(139, 139, 137)
 	var floors: int = maxi(1, int(style[5]) if style.size() > 5 else roundi(height / 3.0))
 	var category: int = int(style[6]) if style.size() > 6 else 0
+	var arena := style.size() > 7 and int(style[7]) == 1
 	var gabled := style.size() > 1 and int(style[1]) == 1
 	var outward_sign := -1.0 if B25.signed_area(footprint) > 0.0 else 1.0
 	var centre := Vector2.ZERO
@@ -263,7 +281,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		var shade := 0.72 + 0.28 * clampf(normal.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
 		_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), Color(wall_color.r * shade, wall_color.g * shade, wall_color.b * shade), to_3d(normal))
 		out["stats"]["walls"] += 1
-		_windows(out, a, b, normal, height, floors, category, seed_base + i * 7.13)
+		_windows(out, a, b, normal, height, floors, category, seed_base + i * 7.13, arena)
 	_doors(out, footprint, style[3] if style.size() > 3 else [], outward_sign, height, floors, origin)
 	if gabled:
 		_gabled(out, footprint, height, roof_color, wall_color)
@@ -280,7 +298,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 const CATEGORY_WALL := 3  # a plain wall (a stadium's stands, map_chunks.stadium_stands): no window rows
 
 
-static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, height: float, floors: int, category: int, seed: float) -> void:
+static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, height: float, floors: int, category: int, seed: float, arena: bool) -> void:
 	var length := a.distance_to(b)
 	if length < 12.0 / 9.0 or category == CATEGORY_WALL:
 		return
@@ -299,13 +317,17 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, h
 			var at := a + (b - a) * ((w + 1.0) / (count + 1.0))
 			var p0 := at - along * half
 			var p1 := at + along * half
-			for lit in [false, true]:
-				if lit and not unit_lit(seed + f * 3.71 + w * 1.37, storefront, category):
-					continue
-				var o := normal * (LIT_OUT if lit else WINDOW_OUT)
-				_quad(out, to_3d(p0 + o, bottom), to_3d(p1 + o, bottom), to_3d(p1 + o, bottom + tall), to_3d(p0 + o, bottom + tall),
-					B25.STOREFRONT if storefront else B25.WINDOW, to_3d(normal), lit)
-				out["stats"]["lit" if lit else "windows"] += 1
+			var color: Color = B25.STOREFRONT if storefront else B25.WINDOW
+			var o := normal * WINDOW_OUT
+			_quad(out, to_3d(p0 + o, bottom), to_3d(p1 + o, bottom), to_3d(p1 + o, bottom + tall), to_3d(p0 + o, bottom + tall), color, to_3d(normal))
+			out["stats"]["windows"] += 1
+			if unit_lit(seed + f * 3.71 + w * 1.37, storefront, category):
+				o = normal * LIT_OUT
+				_quad(out, to_3d(p0 + o, bottom), to_3d(p1 + o, bottom), to_3d(p1 + o, bottom + tall), to_3d(p0 + o, bottom + tall), color, to_3d(normal), "lit")
+				out["stats"]["lit"] += 1
+			if arena:
+				o = normal * (LIT_OUT + 0.01)
+				_quad(out, to_3d(p0 + o, bottom), to_3d(p1 + o, bottom), to_3d(p1 + o, bottom + tall), to_3d(p0 + o, bottom + tall), color, to_3d(normal), "arena")
 
 
 static func unit_lit(seed: float, storefront: bool, category: int) -> bool:

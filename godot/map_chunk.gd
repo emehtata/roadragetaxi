@@ -431,7 +431,9 @@ func label_candidates() -> Array:
 var _volumes: Dictionary = {}  # buildings_25d.build: the chunk's buildings as triangle lists
 var building_node: Node2D = null  # drawn in MapLayer's building group (ordered far to near across chunks)
 var _lit_windows: Node2D = null  # the lit windows' glow, z 21 (over the night tint), additive
+var _arena_windows: Node2D = null  # every arena window, visible only during its match window
 var _darkness := 0.0  # as last set (lit windows built later take it)
+var _arena_lights_on := false
 var _building_view := Vector2.ZERO
 var _built_view := Vector2.INF
 
@@ -530,6 +532,15 @@ func _buildings_ready(volumes: Dictionary) -> void:
 	if _lit_windows != null:
 		_lit_windows.queue_redraw()
 		set_darkness(_darkness)
+	if not _volumes["arena_indices"].is_empty() and _arena_windows == null:
+		_arena_windows = Node2D.new()
+		var add := CanvasItemMaterial.new()
+		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		_arena_windows.material = add
+		_arena_windows.visible = _arena_lights_on
+		_add_layer(21, func(node: Node2D): _triangles(node, _volumes["arena_points"], _volumes["arena_indices"], B25.WINDOW_LIT), _arena_windows)
+	if _arena_windows != null:
+		_arena_windows.queue_redraw()
 
 
 func set_building_view(view_centre: Vector2) -> void:
@@ -588,6 +599,12 @@ func set_darkness(darkness: float) -> void:
 	var intensity := clampf((darkness - 0.25) / 0.25, 0.0, 1.0)
 	_lit_windows.visible = intensity > 0.0
 	_lit_windows.modulate = Color(1, 1, 1, 165.0 / 255.0 * intensity)
+
+
+func set_arena_lights(on: bool) -> void:
+	_arena_lights_on = on
+	if _arena_windows != null:
+		_arena_windows.visible = on
 
 
 static func _triangles_colored(node: Node2D, points: PackedVector2Array, indices: PackedInt32Array, colors: PackedColorArray) -> void:

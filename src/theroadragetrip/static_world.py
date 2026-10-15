@@ -175,7 +175,8 @@ def building_style(building) -> list:
     return [_rgb(roof), 1 if rb._uses_gabled_roof(building) else 0, round(rb._building_render_height(building), 1),
             [[round(x, 1), round(y, 1)] for x, y in getattr(building, "entrances", ())],
             _rgb(wall), rb._building_window_story_count(building),
-            1 if rb._building_is_house(building) else 2 if rb._building_is_commercial(building) else 0]
+            1 if rb._building_is_house(building) else 2 if rb._building_is_commercial(building) else 0] + \
+        ([1] if getattr(building, "arena_windows", False) else [])
 
 
 def inherit_part_colours(buildings) -> int:
