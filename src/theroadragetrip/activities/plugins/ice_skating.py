@@ -19,7 +19,8 @@ SKATING_SPEED_MPS = 3.5
 SKATER_RADIUS_M = 0.45  # two skaters closer than twice this collide
 KNOCKDOWN_SPEED_DIFF_MPS = 1.5  # this much faster than the other: the slower one falls
 FALL_S = 2.5  # down on the ice before getting up
-ICE_ACTIVITIES = ("ice_skating", "ice_hockey")
+# Played on a sports field: these people collide, and go when the field leaves the view.
+FIELD_ACTIVITIES = ("ice_skating", "ice_hockey", "soccer")
 
 
 def open_ice(context: ActivityContext, radius_m: float = SEARCH_RADIUS_M, kinds=FROZEN_IN_WINTER_KINDS) -> list:
@@ -50,7 +51,7 @@ def glide(pedestrian, target: Tuple[float, float], dt: float, speed: float = SKA
 def others_on(field, pedestrian, pedestrians) -> list:
     """The other people skating or playing on `field`."""
     return [p for p in pedestrians
-            if p is not pedestrian and p.activity is not None and p.activity.plugin_id in ICE_ACTIVITIES
+            if p is not pedestrian and p.activity is not None and p.activity.plugin_id in FIELD_ACTIVITIES
             and p.activity.location is not None and p.activity.location.extra is field]
 
 

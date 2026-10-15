@@ -89,6 +89,53 @@ static func draw_rink_markings(chunk, node: Node2D) -> void:
 		frame.spot(node, 0.0, 0.0, 0.15 * r, RINK_BLUE)
 
 
+## Soccer pitch markings (FIFA, laid out on 105 x 68 m and scaled to each
+## pitch's rectangle, state chunk "soccer_pitches"): the boundary, halfway
+## line, centre circle and spot, penalty and goal areas, penalty spots and
+## arcs, corner arcs and the goals. Only while there is no snow on the
+## pitch (server SOCCER_SNOW_WEIGHT, the same weight soccer is played by).
+const PITCH_LINE := Color8(244, 246, 240)
+const PITCH_NET := Color8(205, 210, 205)
+const FIFA_LENGTH := 105.0
+const FIFA_WIDTH := 68.0
+const PITCH_SNOW_WEIGHT := 0.05
+const PITCH_LINE_WIDTH := 0.12
+
+
+static func draw_soccer_markings(chunk, node: Node2D) -> void:
+	if chunk._season[0] >= PITCH_SNOW_WEIGHT:
+		return  # under snow
+	for pitch in chunk._data.get("soccer_pitches", []):
+		var frame := RinkFrame.new(chunk, pitch, float(pitch[3]) / FIFA_LENGTH, float(pitch[4]) / FIFA_WIDTH)
+		var r := frame.radius_scale
+		var half_u := FIFA_LENGTH / 2.0
+		var half_v := FIFA_WIDTH / 2.0
+		var w := PITCH_LINE_WIDTH
+		frame.polyline(node, [[-half_u, -half_v], [half_u, -half_v], [half_u, half_v], [-half_u, half_v], [-half_u, -half_v]], PITCH_LINE, w)
+		frame.line(node, 0.0, -half_v, 0.0, half_v, PITCH_LINE, w)
+		frame.circle(node, 0.0, 0.0, 9.15 * r, PITCH_LINE, w)
+		frame.spot(node, 0.0, 0.0, 0.2 * r, PITCH_LINE)
+		for side: float in [-1.0, 1.0]:
+			var goal: float = side * half_u
+			var box: float = goal - side * 16.5
+			var small: float = goal - side * 5.5
+			frame.polyline(node, [[goal, -20.16], [box, -20.16], [box, 20.16], [goal, 20.16]], PITCH_LINE, w)
+			frame.polyline(node, [[goal, -9.16], [small, -9.16], [small, 9.16], [goal, 9.16]], PITCH_LINE, w)
+			var spot: float = goal - side * 11.0
+			frame.spot(node, spot, 0.0, 0.2 * r, PITCH_LINE)
+			# The penalty arc: the 9.15 m circle round the spot, outside the area.
+			var half_arc := acos(5.5 / 9.15)
+			var facing := PI if side > 0.0 else 0.0
+			frame.arc(node, spot, 0.0, 9.15 * r, facing - half_arc, facing + half_arc, PITCH_LINE, w)
+			for v: float in [-half_v, half_v]:  # corner arcs, into the pitch
+				var start := atan2(-signf(v), -side)
+				frame.arc(node, goal, v, 1.0 * r, start - PI / 4.0, start + PI / 4.0, PITCH_LINE, w)
+			# The goal: 7.32 m between the posts, a net 2 m deep behind the line.
+			var back: float = goal + side * 2.0 / frame.scale_u
+			frame.fill_quad(node, goal, -3.66, back, 3.66, PITCH_NET)
+			frame.polyline(node, [[goal, -3.66], [back, -3.66], [back, 3.66], [goal, 3.66]], PITCH_LINE, 0.2)
+
+
 ## A rink's markings space: (u, v) metres on a 60 x 30 m IIHF rink, u along
 ## its length, mapped onto this rink's rectangle and into chunk points.
 class RinkFrame:
@@ -134,6 +181,13 @@ class RinkFrame:
 		var points := PackedVector2Array()
 		for i in 33:
 			points.append(around(u, v, radius, TAU * i / 32.0))
+		node.draw_polyline(points, color, width)
+
+	## An arc round (u, v) from angle `from` to `to` (rink angles: 0 is +u).
+	func arc(node: Node2D, u: float, v: float, radius: float, from: float, to: float, color: Color, width: float) -> void:
+		var points := PackedVector2Array()
+		for i in 17:
+			points.append(around(u, v, radius, lerpf(from, to, i / 16.0)))
 		node.draw_polyline(points, color, width)
 
 	func spot(node: Node2D, u: float, v: float, radius: float, color: Color) -> void:

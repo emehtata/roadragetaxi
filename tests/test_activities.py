@@ -73,7 +73,7 @@ def test_discover_registers_all_built_in_plugins():
         "eating_drinking", "traffic_watching", "shop_window_watching",
         "bus_stop_waiting", "photography", "exercise_jogging",
         "two_person_conversation", "small_group_conversation", "ball_game", "playground",
-        "ice_skating", "ice_hockey",
+        "ice_skating", "ice_hockey", "soccer",
     }
 
 

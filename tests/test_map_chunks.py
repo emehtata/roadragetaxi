@@ -398,3 +398,14 @@ def test_floodlit_fields_get_light_poles_round_them():
     for x, y, direction, reach in poles:  # street-light pools aimed into the field
         assert 15.0 <= reach <= 40.0
         assert max(math.cos(direction - math.atan2(130.0 - y, cx - x)) for cx in (150.0, 250.0)) > 0.99
+
+
+def test_soccer_pitches_get_a_frame_for_their_lines():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    pitch = [(100.0, 100.0), (205.0, 100.0), (205.0, 168.0), (100.0, 168.0)]
+    world.sceneries = [Scenery(points_m=pitch, kind="pitch", sport="soccer;pesäpallo"),
+                       Scenery(points_m=[(300.0, 300.0), (330.0, 300.0), (330.0, 320.0), (300.0, 320.0)], kind="pitch", sport="tennis")]
+    (frame,) = map_chunks.ChunkIndex(world, size=500.0).message("0_0")["soccer_pitches"]
+    assert [round(v) for v in (frame[0], frame[1], frame[3], frame[4])] == [152, 134, 105, 68]

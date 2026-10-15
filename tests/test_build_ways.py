@@ -216,3 +216,13 @@ def test_build_ways_preserves_water_layer():
 
     assert len(waters) == 1
     assert waters[0].layer == -1
+
+
+def test_a_pitch_keeps_its_sport():
+    from theroadragetrip.osm.build import build_ways
+
+    nodes = [{"type": "node", "id": i, "lat": lat, "lon": lon}
+             for i, (lat, lon) in enumerate([(65.0, 25.4), (65.0, 25.402), (65.001, 25.402), (65.001, 25.4)], start=1)]
+    pitch = {"type": "way", "id": 9, "nodes": [1, 2, 3, 4, 1], "tags": {"leisure": "pitch", "sport": "soccer"}}
+    (scenery,) = [s for s in build_ways(nodes + [pitch]).sceneries if s.kind == "pitch"]
+    assert scenery.sport == "soccer"

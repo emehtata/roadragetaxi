@@ -773,7 +773,7 @@ def build_ways(
                 ways_raw.append(({"highway": "footway"}, "footway", [end_id, centreline_ids[t]], None))
         sceneries.append(Scenery(
             points_m=pts, kind=kind, name=name, bbox=ibbox, surface=surface,
-            kerbed=tags.get("barrier") == "kerb",
+            kerbed=tags.get("barrier") == "kerb", sport=tags.get("sport"),
         ))
 
     for tags, node_ids, parking_id in parking_space_raw:
@@ -1275,7 +1275,8 @@ def build_ways(
                 ))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
-                scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, kerbed=relation_is_kerbed)
+                scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, kerbed=relation_is_kerbed,
+                                  sport=tags.get("sport"))
                 plant_trees([scenery], ways, real_trees=real_trees_m, real_tree_tags=real_tree_tags)
                 sceneries.append(scenery)
             elif "place" in tags and name and pts:

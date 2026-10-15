@@ -21,13 +21,13 @@ def _inside(ped):
 def test_open_ice_gets_hockey_players_who_stay_on_it_and_leave_when_it_closes():
     manager = _manager()
     car = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
-    manager.ensure_ice_skaters(car)
+    manager.ensure_sports_players(car)
     assert not manager.pedestrians  # the ice is not open (summer, or dark and unlit)
 
     manager.sports_ice_open = True
     for step in range(3):
         manager.sim_time = step * 2.0
-        manager.ensure_ice_skaters(car)
+        manager.ensure_sports_players(car)
     players = [p for p in manager.pedestrians if p.activity and p.activity.plugin_id == "ice_hockey"]
     assert len(players) >= 2 and all(_inside(p) for p in players)
 
@@ -46,8 +46,8 @@ def test_open_ice_gets_hockey_players_who_stay_on_it_and_leave_when_it_closes():
 def test_a_frozen_pitch_gets_skaters():
     manager = _manager("pitch")
     manager.sports_ice_open = True
-    manager.ensure_ice_skaters(Car(x=20.0, y=0.0, heading=0.0, speed=0.0))
-    assert [p.activity.plugin_id for p in manager.pedestrians] == ["ice_skating"]
+    manager.ensure_sports_players(Car(x=20.0, y=0.0, heading=0.0, speed=0.0))
+    assert [p.activity.plugin_id for p in manager.pedestrians] == ["ice_skating"] * 2  # two a check
 
 
 def test_an_ice_rink_is_closed_you_crash_into_its_boards():
@@ -70,7 +70,7 @@ def _hockey_game(seed):
     car = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
     for step in range(8):  # a check every 2 s, one player each
         manager.sim_time = step * 2.0
-        manager.ensure_ice_skaters(car)
+        manager.ensure_sports_players(car)
     players = [p for p in manager.pedestrians if p.activity and p.activity.plugin_id == "ice_hockey"]
     for player in players:
         player.activity.data["duration_s"] = 1e9  # the whole test long
@@ -141,16 +141,16 @@ def test_ice_sports_play_only_where_the_camera_looks():
     manager.sports_ice_open = True
     car = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
     far_view = (1000.0, 1000.0, 1200.0, 1150.0)
-    manager.ensure_ice_skaters(car, far_view)
+    manager.ensure_sports_players(car, far_view)
     assert not manager.pedestrians  # the rink is not in view: no game there
 
     for step in range(1, 4):
         manager.sim_time = step * 2.0
-        manager.ensure_ice_skaters(car, (-50.0, -50.0, 150.0, 90.0))  # the camera over the rink
-    assert len(manager.pedestrians) == 3 and ice_hockey.puck_positions()
+        manager.ensure_sports_players(car, (-50.0, -50.0, 150.0, 90.0))  # the camera over the rink
+    assert len(manager.pedestrians) == 6 and ice_hockey.puck_positions()  # two a check
 
     manager.sim_time += 2.0
-    manager.ensure_ice_skaters(car, far_view)  # the camera moved on (the taxi did not)
+    manager.ensure_sports_players(car, far_view)  # the camera moved on (the taxi did not)
     assert not manager.pedestrians and not ice_hockey.puck_positions()
 
 
@@ -162,7 +162,7 @@ def test_skaters_never_overlap_and_a_faster_one_knocks_the_slower_down():
     car = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
     for step in range(2):
         manager.sim_time = step * 2.0
-        manager.ensure_ice_skaters(car)
+        manager.ensure_sports_players(car)
     fast, slow = manager.pedestrians
     fast.x, fast.y, slow.x, slow.y = 10.0, 20.0, 12.0, 20.0
     fast.activity.data["target"] = (30.0, 20.0)  # straight through the slow one

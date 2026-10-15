@@ -34,6 +34,7 @@ from dataclasses import asdict
 from typing import Optional
 
 from .activities.plugins.ice_hockey import puck_positions
+from .activities.plugins.soccer import ball_positions
 from .fuel import fuel_station_price_cents, nearest_fuel_station
 from .localization import tr
 from .rail_bookings import PASSENGER_MET, PASSENGER_WAITING
@@ -431,6 +432,7 @@ def build_state_message(
         "npcs": [_npc_to_dict(npc, residents) for npc in world.npc_manager.vehicles],
         "pedestrians": [_pedestrian_to_dict(p, residents) for p in world.pedestrian_mgr.pedestrians if p.resident_id is not None],
         "pucks": puck_positions(),  # ice hockey: [[x, y], ...]
+        "balls": ball_positions(),  # soccer: [[x, y], ...]
         "vomit_puddles": [list(point) for point in taxi_mgr.vomit_puddles + world.pedestrian_mgr.vomit_puddles],
         "vomit_footprints": [list(point) for point in world.pedestrian_mgr.vomit_footprints],
         "trains": [_train_to_dict(t) for t in getattr(getattr(world, "railway_mgr", None), "trains", ())],

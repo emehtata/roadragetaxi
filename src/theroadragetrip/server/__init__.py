@@ -53,7 +53,8 @@ from ..climate import appearance_with_snow_depth, typical_temperature
 
 logger = logging.getLogger(__name__)
 
-SPORTS_ICE_DARKNESS = 0.5  # darker than this (sun ~3 degrees down) and unlit: nobody skates
+SPORTS_ICE_DARKNESS = 0.5  # darker than this (sun ~3 degrees down) and unlit: nobody skates or plays
+SOCCER_SNOW_WEIGHT = 0.05  # a winter (snow) weight under this: the pitches are bare
 
 # Nominal viewport used only for NPC/pedestrian spawn-despawn culling
 # (advance_simulation's viewport_bounds) - the server has no real screen
@@ -415,12 +416,16 @@ class SimulationServer:
         )
         return altitude
 
-    def _update_sports_ice(self) -> None:
-        """Who may skate (pedestrians' ice activities): the fields are frozen
-        and it is light - daylight, or the floodlights' hours."""
-        self.season_weights()  # world.fields_frozen, for this tick's physics too
+    def _update_sports(self) -> None:
+        """What may be played on the sports fields (the pedestrians' sports
+        activities): ice when the fields are frozen, soccer when the pitches
+        are bare - and only when light: daylight, or the floodlights' hours.
+        Also world.fields_frozen, for this tick's physics."""
+        season = self.season_weights()
         lit = darkness_for_sun_altitude(self._sun_altitude()) < SPORTS_ICE_DARKNESS or sports_lights_hours(self.calendar.current)
         self.world.pedestrian_mgr.sports_ice_open = self.world.fields_frozen and lit
+        # Soccer: no snow on the pitch at all (godot chunk_detail.gd draws its lines by the same weight).
+        self.world.pedestrian_mgr.soccer_open = season[0] < SOCCER_SNOW_WEIGHT and lit
 
     def calendar_state(self) -> dict:
         """What a client needs of the calendar (state "calendar"): the date,
@@ -589,7 +594,7 @@ class SimulationServer:
         if self.calendar.date != previous_date:
             self.world.weather.season = self.calendar.season  # the thermal season follows the calendar
         observed = self._update_outside()
-        self._update_sports_ice()
+        self._update_sports()
         self.world.weather.update(dt * time_scale, dt, outside_temperature_c=self.world.weather.outside_temperature_c,
                                   observed=observed)
         if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once

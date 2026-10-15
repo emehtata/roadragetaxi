@@ -26,7 +26,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           # godot-16 (static_world.py)
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
-          "canopy_heights", "floodlit", "rinks", "floodlight_poles")
+          "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate")
@@ -341,6 +341,7 @@ class ChunkIndex:
 
     def _add_static_world(self, world, bridge_parts) -> None:
         """godot-16: the rest of what the client draws from the map (static_world.py)."""
+        from .activities.plugins.soccer import is_soccer_pitch
         from .map_style import FLOODLIT_KINDS, FROZEN_IN_WINTER_KINDS, SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS
 
         # Biggest first, so nested areas draw on top (a pitch inside its
@@ -368,6 +369,10 @@ class ChunkIndex:
                     if cell not in pole_cells:  # neighbouring fields share their poles
                         pole_cells.add(cell)
                         self._add("floodlight_poles", [pole[:2]], [round(v, 3) for v in pole])
+            if is_soccer_pitch(scenery):  # its FIFA lines, drawn while there is no snow
+                frame = rink_frame(scenery.points_m)
+                if frame is not None:
+                    self._add("soccer_pitches", scenery.points_m[:1], frame)
             if kind == "ice_rink":  # closed all round (taxi.SOLID_AREA_KINDS): its boards
                 self._add("railings", scenery.points_m[:1], ["boards", _line(list(scenery.points_m) + [scenery.points_m[0]])])
                 frame = rink_frame(scenery.points_m)

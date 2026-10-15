@@ -15,7 +15,8 @@ from .performance import advance_chunked
 from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import MIN_UNACCOMPANIED_AGE, ResidentManager
 from .activities import ActivityContext, ActivityInstance, ActivityLocation, ActivityManager
-from .activities.plugins.ice_skating import ICE_ACTIVITIES
+from .activities.plugins.ice_skating import FIELD_ACTIVITIES
+from .activities.plugins.soccer import FIELD_PLAYERS_MAX, is_soccer_pitch
 from .map_style import FROZEN_IN_WINTER_KINDS
 
 
@@ -26,6 +27,9 @@ ICE_SKATER_CHECK_S = 2.0
 ICE_M2_PER_SKATER = 500.0
 ICE_SKATERS_MIN, ICE_SKATERS_MAX = 2, 8
 HOCKEY_PLAYERS_MIN, HOCKEY_PLAYERS_MAX = 6, 10
+SOCCER_M2_PER_PLAYER = 300.0
+SOCCER_PLAYERS_MIN, SOCCER_PLAYERS_MAX = 8, 2 * (FIELD_PLAYERS_MAX + 1)  # two goalies and up to 10 a side
+SPORTS_SPAWNS_PER_CHECK = 2
 ICE_VIEW_MARGIN_M = 60.0  # ice sports run only on fields this near the viewport
 
 logger = logging.getLogger(__name__)
@@ -486,6 +490,7 @@ class PedestrianManager:
         self.residents = residents if residents is not None else ResidentManager()
         self.sim_time: float = 0.0
         self.sports_ice_open = False  # server: fields frozen, and daylight or floodlit hours
+        self.soccer_open = False  # server: no snow on the pitches, and daylight or floodlit hours
         self._ice_checked_at = -1e9
         self._population_update_elapsed: float = 4.9
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
@@ -1741,14 +1746,25 @@ class PedestrianManager:
             )
             return
 
-    def ensure_ice_skaters(
+    def _field_game(self, field) -> Optional[Tuple[str, int, int, float]]:
+        """What is played on `field` now: (activity, fewest, most people, m2 a person), or None."""
+        if self.sports_ice_open and field.kind in FROZEN_IN_WINTER_KINDS:
+            if field.kind == "ice_rink":
+                return "ice_hockey", HOCKEY_PLAYERS_MIN, HOCKEY_PLAYERS_MAX, ICE_M2_PER_SKATER
+            return "ice_skating", ICE_SKATERS_MIN, ICE_SKATERS_MAX, ICE_M2_PER_SKATER
+        if self.soccer_open and is_soccer_pitch(field):
+            return "soccer", SOCCER_PLAYERS_MIN, SOCCER_PLAYERS_MAX, SOCCER_M2_PER_PLAYER
+        return None
+
+    def ensure_sports_players(
         self, player_car: Car, viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
     ) -> None:
-        """Ice sports where the camera looks: frozen fields in the viewport
-        (plus ICE_VIEW_MARGIN_M) keep a few people on the ice - skaters on
-        pitches, a hockey game on rinks - and players of a field that has
-        left that area go (their game stops; nothing runs unseen). Bounded:
-        one check every ICE_SKATER_CHECK_S, at most one spawn per check."""
+        """Sports where the camera looks: fields in the viewport (plus
+        ICE_VIEW_MARGIN_M) keep people playing what the season allows
+        (_field_game) - skaters on frozen pitches, hockey on rinks, soccer
+        on summer pitches - and players of a field that has left that area
+        go (their game stops; nothing runs unseen). Bounded: one check every
+        ICE_SKATER_CHECK_S, at most SPORTS_SPAWNS_PER_CHECK spawns a check."""
         if self.sim_time - self._ice_checked_at < ICE_SKATER_CHECK_S:
             return
         self._ice_checked_at = self.sim_time
@@ -1768,7 +1784,7 @@ class PedestrianManager:
         kept = []
         for ped in self.pedestrians:
             instance = ped.activity
-            if instance is not None and instance.plugin_id in ICE_ACTIVITIES and instance.location:
+            if instance is not None and instance.plugin_id in FIELD_ACTIVITIES and instance.location:
                 field = instance.location.extra
                 if not in_view(field):  # out of sight: the player leaves the ice and the game
                     plugin = self.activity_manager.registry.get(instance.plugin_id)
@@ -1779,29 +1795,33 @@ class PedestrianManager:
                 on_ice[id(field)] = on_ice.get(id(field), 0) + 1
             kept.append(ped)
         self.pedestrians = kept
-        if not self.sports_ice_open:
+        if not (self.sports_ice_open or self.soccer_open):
             return
         centre_x, centre_y = (vminx + vmaxx) / 2.0, (vminy + vmaxy) / 2.0
         reach = math.hypot(vmaxx - vminx, vmaxy - vminy) / 2.0
+        spawns = 0
         for field in self.nearby_sceneries(centre_x, centre_y, reach):
-            if field.kind not in FROZEN_IN_WINTER_KINDS or len(field.points_m) < 3 or not in_view(field):
+            game = self._field_game(field) if len(field.points_m) >= 3 and in_view(field) else None
+            if game is None:
                 continue
+            plugin_id, low, high, m2_each = game
             minx, miny, maxx, maxy = compute_bbox(field.points_m)
-            low, high = (HOCKEY_PLAYERS_MIN, HOCKEY_PLAYERS_MAX) if field.kind == "ice_rink" else (ICE_SKATERS_MIN, ICE_SKATERS_MAX)
-            wanted = max(low, min(high, int((maxx - minx) * (maxy - miny) / ICE_M2_PER_SKATER)))
-            if on_ice.get(id(field), 0) >= wanted:
-                continue
-            point = sample_interior_point(field)
-            skater = self.spawn_pedestrian_at(*point) if point is not None else None
-            if skater is None or not self.add_pedestrian(skater):
-                continue
-            plugin = self.activity_manager.registry.get("ice_hockey" if field.kind == "ice_rink" else "ice_skating")
-            skater.activity = ActivityInstance(
-                plugin_id=plugin.definition.id, location=ActivityLocation(point[0], point[1], extra=field),
-                started_sim_time=self.sim_time)
-            skater.state = "performing_activity"
-            plugin.start(self._activity_context(skater), skater.activity)
-            return
+            wanted = max(low, min(high, int((maxx - minx) * (maxy - miny) / m2_each)))
+            while on_ice.get(id(field), 0) < wanted and spawns < SPORTS_SPAWNS_PER_CHECK:
+                spawns += 1
+                point = sample_interior_point(field)
+                player = self.spawn_pedestrian_at(*point) if point is not None else None
+                if player is None or not self.add_pedestrian(player):
+                    continue
+                plugin = self.activity_manager.registry.get(plugin_id)
+                player.activity = ActivityInstance(
+                    plugin_id=plugin_id, location=ActivityLocation(point[0], point[1], extra=field),
+                    started_sim_time=self.sim_time)
+                player.state = "performing_activity"
+                plugin.start(self._activity_context(player), player.activity)
+                on_ice[id(field)] = on_ice.get(id(field), 0) + 1
+            if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                return
 
     def _build_junction_grid(self) -> None:
         """Build spatial grid indexing way endpoints and vertices for seamless path transitions."""

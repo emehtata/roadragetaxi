@@ -865,6 +865,7 @@ const STICK_SWING_S := 0.3  # ice_hockey.py STICK_SWING_S
 const STICK_SHAFT := Color8(150, 110, 60)
 const STICK_BLADE := Color8(25, 25, 28)
 const GOALIE_PADS := Color8(236, 236, 230)
+const SOCCER_BALL := Color8(250, 250, 250)
 
 
 func _hockey_stick(c: Vector2, h: Vector2, side: Vector2, radius: float, swing: float, goalie := false) -> void:
@@ -884,14 +885,20 @@ func _pucks(a: Dictionary, b: Dictionary, t: float) -> void:
 	if _canvas == self:
 		_puck_frame = [a, b, t]
 		return
-	var now: Array = a.get("pucks", [])
-	var next: Array = b.get("pucks", [])
-	for i in now.size():
-		var p: Array = now[i]
-		var q: Array = next[i] if next.size() == now.size() else p
-		var at := MapMath.point(origin, lerpf(p[0], q[0], t), lerpf(p[1], q[1], t))
-		_lit_tint = vehicle_light(light_level * float(light_at.call(at)), ambient)
-		_canvas.draw_circle(at, maxf(_px(2.5), 0.12), _person_lit(STICK_BLADE))
+	for key in ["pucks", "balls"]:  # hockey pucks black; soccer balls white, outlined
+		var now: Array = a.get(key, [])
+		var next: Array = b.get(key, [])
+		for i in now.size():
+			var p: Array = now[i]
+			var q: Array = next[i] if next.size() == now.size() else p
+			var at := MapMath.point(origin, lerpf(p[0], q[0], t), lerpf(p[1], q[1], t))
+			_lit_tint = vehicle_light(light_level * float(light_at.call(at)), ambient)
+			if key == "pucks":
+				_canvas.draw_circle(at, maxf(_px(2.5), 0.12), _person_lit(STICK_BLADE))
+			else:
+				var radius := maxf(_px(3.0), 0.11)
+				_canvas.draw_circle(at, radius + maxf(_px(0.7), 0.02), _person_lit(STICK_BLADE))
+				_canvas.draw_circle(at, radius, _person_lit(SOCCER_BALL))
 
 
 ## A text bubble whose bottom centre is at `anchor`, drawn in screen

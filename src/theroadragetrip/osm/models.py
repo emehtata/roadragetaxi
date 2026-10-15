@@ -238,6 +238,7 @@ class Scenery:
     # True when this vegetation polygon is bounded by barrier=kerb and must
     # remain visible above overlapping road asphalt.
     kerbed: bool = False
+    sport: Optional[str] = None  # OSM sport=* of a pitch ("soccer", "tennis", "soccer;pesäpallo"...)
     trees: List[Tuple[float, float]] = field(default_factory=list)
     tree_variations: List[float] = field(default_factory=list)
     # Rendered species, one per entry in `trees` - "spruce"/"pine"/"birch"
