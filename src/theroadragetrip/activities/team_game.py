@@ -32,7 +32,8 @@ from .base import ActivityContext, ActivityDefinition, ActivityInstance, Activit
 from .plugins.ice_skating import collide, glide, is_down, others_on
 from .plugins.park_leisure import sample_interior_point
 
-SET_PIECE_WAIT_MAX_S = 20.0  # a taker waits no longer than this for the others to take their places
+SET_PIECE_WAIT_MAX_S = 20.0  # a taker waits no longer than this for the field players to take their places
+GOALIE_WAIT_MAX_S = 60.0  # ... and for both goalies in their goals (only so nothing waits forever)
 STICK_SWING_S = 0.3  # how long the client shows a stick swing or a kick (state pedestrian stick_swing)
 
 
@@ -319,6 +320,9 @@ class TeamGamePlugin(ActivityPlugin):
             ball = self.balls[id(field_scenery)] = Ball(
                 rules=self.rules, field=field_scenery, frame=frame, x=frame[0], y=frame[1], updated=sim_time,
                 colors=colors)
+            if self.rules.kickoff:  # a game starts with a kick-off, by either team
+                ball.set_piece, ball.in_place = "kickoff", set()
+                ball.restart_team, ball.restart_until = random.randint(0, 1), sim_time + self.rules.set_piece_s
         return ball
 
     def ball_positions(self) -> list:
@@ -418,6 +422,9 @@ class TeamGamePlugin(ActivityPlugin):
         elif ball.held_by is not goalie:
             if glide(goalie, ball.goalie_spot(team), dt, rules.run_speed_mps):
                 goalie.heading = math.atan2(ball.y - goalie.y, ball.x - goalie.x)
+                ball.in_place.add(id(goalie))  # (a set piece waits for this)
+            else:
+                ball.in_place.discard(id(goalie))
 
     def _player(self, context: ActivityContext, instance: ActivityInstance, ball: Ball, team: int, mates: List, dt: float) -> None:
         rules = self.rules
@@ -486,10 +493,13 @@ class TeamGamePlugin(ActivityPlugin):
             glide(pedestrian, (ball.x, ball.y), dt, rules.run_speed_mps)
             return
         # On the ball: wait (set_piece_s at least) until the others are in
-        # their places - the field players but the taker; not forever.
-        everyone = len(ball.players) - len(ball.goalies) - 1
-        ready = len(ball.in_place) >= everyone or now >= ball.restart_until + SET_PIECE_WAIT_MAX_S
-        if now < ball.restart_until or not ready:
+        # their places - both goalies in their goals, the field players but
+        # the taker in theirs (those no longer than SET_PIECE_WAIT_MAX_S).
+        goalie_ids = {id(g) for g in ball.goalies.values()}
+        goalies_ready = (len(goalie_ids) == 2 and goalie_ids <= ball.in_place) or now >= ball.restart_until + GOALIE_WAIT_MAX_S
+        field_ready = (len(ball.in_place - goalie_ids) >= len(ball.players) - len(goalie_ids) - 1
+                       or now >= ball.restart_until + SET_PIECE_WAIT_MAX_S)
+        if now < ball.restart_until or not (goalies_ready and field_ready):
             return
         kind, ball.set_piece, ball.restart_team = ball.set_piece, None, None
         ball.take(pedestrian, now)

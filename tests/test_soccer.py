@@ -99,14 +99,9 @@ def test_a_player_knocked_down_by_an_opponent_wins_a_free_kick_there():
     team = ball.players[id(fouled)]
     assert ball.set_pieces == (1, 0) and ball.restart_team == team and not ball.penalty
     assert (round(ball.x), round(ball.y)) == (50, 40) and (ball.vx, ball.vy) == (0.0, 0.0)
-    for _ in range(80):  # the fouled team takes it; the others wait
-        manager.sim_time += 0.1
-        for player in players:
-            manager._update_activity(player, 0.1)
-        if ball.held_by is not None or ball.last_hit == manager.sim_time:
-            break
-    taker = ball.held_by
-    assert taker is not None and ball.players[id(taker)] == team
+    ball.last_team = None
+    assert _play(manager, players, 8.0, until=lambda: ball.last_team is not None)
+    assert ball.last_team == team  # the fouled team took it; the others waited
 
 
 def test_a_foul_in_the_penalty_area_is_a_penalty_from_the_spot():
@@ -117,7 +112,7 @@ def test_a_foul_in_the_penalty_area_is_a_penalty_from_the_spot():
     assert ball.set_pieces == (0, 1) and ball.penalty
     spot_u, spot_v = ball.uv(ball.x, ball.y)
     assert round(spot_u * attack, 1) == soccer.GOAL_U - 11.0 and abs(spot_v) < 1e-6
-    for _ in range(100):  # taken: a shot straight away
+    for _ in range(600):  # taken once both goalies stand in goal: a shot
         manager.sim_time += 0.1
         for player in players:
             manager._update_activity(player, 0.1)
@@ -127,7 +122,7 @@ def test_a_foul_in_the_penalty_area_is_a_penalty_from_the_spot():
 
 
 def _play(manager, players, seconds, until=None):
-    for _ in range(int(seconds / 0.1)):
+    for _ in range(round(seconds / 0.1)):
         manager.sim_time += 0.1
         for player in players:
             manager._update_activity(player, 0.1)
@@ -181,3 +176,16 @@ def test_games_draw_their_jerseys_from_the_palette():
         manager, players, ball = _game(seed, checks=2)
         seen.update(ball.colors[:2])
     assert len(seen) >= 5  # not always red against blue
+
+
+def test_a_game_starts_with_a_kickoff_once_both_goalies_are_in_goal():
+    manager, players, ball = _game(8, checks=12)
+    assert ball.set_piece == "kickoff"  # not a loose ball
+    goalie_at_kick = None
+    for _ in range(900):  # where the goalies stood, against their goals' spots, as the ball was played
+        before = [math.hypot(g.x - ball.goalie_spot(t)[0], g.y - ball.goalie_spot(t)[1]) for t, g in ball.goalies.items()]
+        if _play(manager, players, 0.1, until=lambda: ball.set_piece is None):
+            goalie_at_kick = before
+            break
+    assert goalie_at_kick is not None and len(goalie_at_kick) == 2
+    assert max(goalie_at_kick) < 1.0  # both in goal when the ball was played
