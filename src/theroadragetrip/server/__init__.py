@@ -34,7 +34,7 @@ from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, ChunkIndex, cell_of, chunk_i
 from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer
 from ..protocol import LOCAL_PLAYER_ID
-from ..calendar import GameCalendar, darkness_for_sun_altitude, finnish_utc_offset_hours, solar_altitude_and_events_on
+from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_altitude_and_events_on
 from ..career import career_path, gig_odometer_path, load_career
 from ..config import CONFIG_PATH, cities_from_config, default_city_configuration, get_overpass_endpoints
 from ..world_loader import load_world, resolve_city
@@ -406,7 +406,8 @@ class SimulationServer:
             look = appearance_with_snow_depth(look, observed.snow_depth_cm)
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)],
-                "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3)}
+                "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
+                "sports_lights": sports_lights_hours(self.calendar.current)}
 
     def start(self, host: str, port: int) -> None:
         self._listener = Listener(host, port, self._on_client_connect)

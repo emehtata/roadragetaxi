@@ -169,6 +169,15 @@ def solar_altitude_and_events_on(
     return altitude, sunrise_minutes, sunset_minutes
 
 
+SPORTS_LIGHTS_HOURS = (7, 22)  # local time: Finnish sports fields' floodlights
+
+
+def sports_lights_hours(moment) -> bool:
+    """Whether sports places' floodlights may burn now (07-22 local); the
+    client lights them only when its street lights are on too."""
+    return SPORTS_LIGHTS_HOURS[0] <= moment.hour < SPORTS_LIGHTS_HOURS[1]
+
+
 def darkness_for_sun_altitude(altitude_deg: float) -> float:
     """0 in daylight, 1 at night: full day with the sun 6 degrees up, full
     night 12 degrees below the horizon (astronomical-ish dusk), linear

@@ -26,6 +26,8 @@ var _last_obstacles := [[], []]
 var season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] as last applied
 var lights_on := false
 var _pool_group: Node2D  # every loaded chunk's street-light pools (each chunk's: their union, added once)
+var _flood_group: Node2D  # every loaded chunk's floodlit sports places
+var sports_hours := false  # state calendar.sports_lights: 07-22, when floodlights may burn
 var building_view_centre := Vector2.ZERO
 
 
@@ -37,6 +39,21 @@ func _make_pool_group() -> void:
 	_pool_group.z_index = 6  # under the buildings (7): lamps light the street, not the roofs above them
 	_pool_group.visible = false
 	add_child(_pool_group)
+	_flood_group = Node2D.new()
+	_flood_group.z_index = 6
+	_flood_group.visible = false
+	add_child(_flood_group)
+
+
+## Floodlights: in their hours, when the street lights are on, on the surface.
+func _show_floods() -> void:
+	_flood_group.visible = sports_hours and lights_on and map_level == 0
+
+
+func set_sports_hours(on: bool) -> void:
+	if on != sports_hours:
+		sports_hours = on
+		_show_floods()
 
 
 func _ready() -> void:
@@ -137,11 +154,13 @@ func set_light(level: float, ambient: Color) -> void:
 	light_level = level
 	if _pool_group != null:
 		_pool_group.modulate = Color(1, 1, 1, level)
+		_flood_group.modulate = Color(1, 1, 1, level)
 	var on := level > 0.01
 	if on != lights_on:
 		lights_on = on
 		if _pool_group != null:
 			_pool_group.visible = on and map_level == 0
+			_show_floods()
 		for chunk in _chunks.values():
 			chunk.set_lights_on(on)
 	for chunk in _chunks.values():
@@ -160,6 +179,9 @@ func _free_chunk(chunk: Node) -> void:
 	if _pool_group != null and chunk._pools.get_parent() == _pool_group:
 		_pool_group.remove_child(chunk._pools)
 		chunk._pools.free()  # out of the tree already; the chunk's own cleanup then skips it
+	if _flood_group != null and chunk._floods.get_parent() == _flood_group:
+		_flood_group.remove_child(chunk._floods)
+		chunk._floods.free()
 	chunk.queue_free()
 
 
@@ -196,6 +218,8 @@ func add_chunk(message: Dictionary) -> bool:
 		_underground.queue_redraw()
 	if not chunk.street_lights.is_empty() and _pool_group != null:
 		_pool_group.add_child(chunk._pools)
+	if not chunk._data.get("floodlit", []).is_empty() and _flood_group != null:
+		_flood_group.add_child(chunk._floods)
 	if chunk.building_node != null and _buildings != null:
 		_add_buildings(chunk)
 	add_building_meshes(chunk)
@@ -398,6 +422,7 @@ func set_map_level(level: int) -> void:
 	_underground.queue_redraw()
 	if _pool_group != null:  # no street lights below ground
 		_pool_group.visible = lights_on and map_level == 0
+		_show_floods()
 
 
 ## The flashing speed camera, to the chunks (only theirs redraw).

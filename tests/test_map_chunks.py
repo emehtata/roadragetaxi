@@ -337,3 +337,21 @@ def test_a_region_update_keeps_the_encoding_of_a_rebuilt_chunk_that_did_not_chan
     index, changed = map_chunks.ChunkIndex.updated(old, grown, (2600.0, 0.0, 3900.0, 300.0))  # 5_0 .. 7_0 rebuilt
     assert changed == {"6_0", "7_0"}
     assert index._encoded == {"5_0": old._encoded["5_0"]}  # the unchanged one isn't encoded again
+
+
+def test_sports_fields_freeze_and_are_floodlit():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    pitch = [(10.0, 10.0), (110.0, 10.0), (110.0, 70.0), (10.0, 70.0)]
+    world.sceneries = [Scenery(points_m=pitch, kind="pitch"), Scenery(points_m=[(200.0, 200.0), (260.0, 200.0), (260.0, 260.0)], kind="flowerbed")]
+    here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    assert [area[1] for area in here["landuse"]] == [2, 1]  # pitch: frozen to ice; flowerbed: snow
+    assert len(here["floodlit"]) == 1  # only the pitch
+
+
+def test_sports_lights_burn_only_from_7_to_22():
+    from datetime import datetime
+    from theroadragetrip.calendar import sports_lights_hours
+
+    assert [sports_lights_hours(datetime(2026, 1, 10, h, 30)) for h in (6, 7, 21, 22)] == [False, True, True, False]

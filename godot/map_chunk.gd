@@ -68,6 +68,7 @@ var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
 var drivable_roads: Array = []  # [Rect2, key] per drivable road: the night tint counts them (main.gd)
 var street_lights := PackedVector2Array()  # positions, for reflectors and long beams
 var _pools := Node2D.new()
+var _floods := Node2D.new()  # floodlit sports places (MapLayer's flood group)
 var _heads := Node2D.new()
 var _broken := PackedInt32Array()  # indices of this chunk's street lights that are knocked down
 var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state calendar.season)
@@ -81,7 +82,7 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:  # light nodes of a chunk without lights never joined the tree
 		if _building_task >= 0:
 			WorkerThreadPool.wait_for_task_completion(_building_task)
-		for node in [_pools, _heads, building_node] + meshes_3d:
+		for node in [_pools, _floods, _heads, building_node] + meshes_3d:
 			if is_instance_valid(node) and node.get_parent() == null:
 				node.free()
 
@@ -142,6 +143,12 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_add_layer(6, _draw_lamp_heads, _heads))
 		_heads.material = EMISSIVE
 		set_lights_on(false)
+	if not message.get("floodlit", []).is_empty():
+		var add := CanvasItemMaterial.new()
+		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		add.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		_floods.material = add
+		_floods.draw.connect(_draw_floodlights.bind(_floods))  # drawn once; MapLayer shows and fades it
 	if not message.get("trees", []).is_empty() or not message.get("bollards", []).is_empty() or not message.get("scenery_objects", []).is_empty():
 		_trees = _add_layer(6, _draw_trees)
 		_px_layers.append(_trees)
@@ -222,7 +229,7 @@ static func _compact(data: Dictionary, origin: Vector2) -> int:
 	for road in data.get("roads", []):
 		road["points"] = _to_points(road["points"], origin)
 		count += road["points"].size()
-	for key in ["waters", "water_lines", "buildings", "parking", "curbs", "construction_fences", "railways", "rail_bridges", "rail_decks", "canopies"]:
+	for key in ["waters", "water_lines", "buildings", "parking", "curbs", "construction_fences", "railways", "rail_bridges", "rail_decks", "canopies", "floodlit"]:
 		var lines: Array = data.get(key, [])
 		for i in lines.size():
 			lines[i] = _to_points(lines[i], origin)
@@ -952,6 +959,17 @@ const POOL_STEPS := 16
 const POOL_INNER := 0.42  # the inner ring's share of the pool
 const POOL_SPREAD := 1.0  # the pool's half-length along the road, x reach: neighbouring lamps (12 m apart) overlap
 const EMISSIVE := preload("res://emissive.tres")  # unshaded: lamps, signals and boards glow through the night
+
+
+## Floodlit sports places (state calendar.sports_lights): the whole field
+## brightly lit, added over the ground.
+const FLOODLIGHT := Color(0.95, 0.93, 0.85, 0.55)
+
+
+func _draw_floodlights(node: Node2D) -> void:
+	for ring in _data.get("floodlit", []):
+		if Detail._valid(ring):
+			node.draw_colored_polygon(ring, FLOODLIGHT)
 
 
 func _draw_light_pools(node: Node2D) -> void:

@@ -28,13 +28,20 @@ static func _valid(polygon: PackedVector2Array) -> bool:
 	return polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty()
 
 
-## Landuse fills: each piece in its kind's colour, green kinds through the season.
+const RINK_ICE := Color8(196, 222, 236)  # a flooded, frozen sports field
+
+
+## Landuse fills: each piece in its kind's colour, green kinds through the
+## season (area[1] 1), sports fields frozen to ice in winter (2).
 static func draw_areas(chunk, node: Node2D, key: String) -> void:
 	for area in chunk._data.get(key, []):
 		var polygon: PackedVector2Array = chunk._points(area[2])
 		if _valid(polygon):
 			var color := _rgb(area[0])
-			node.draw_colored_polygon(polygon, chunk.seasonal_color(color, chunk._season) if area[1] else color)
+			match int(area[1]):
+				1: color = chunk.seasonal_color(color, chunk._season)
+				2: color = color.lerp(RINK_ICE, clampf(chunk._season[0], 0.0, 1.0))
+			node.draw_colored_polygon(polygon, color)
 
 
 ## Parking spaces: asphalt bays with a light edge.

@@ -26,7 +26,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           # godot-16 (static_world.py)
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
-          "canopy_heights")
+          "canopy_heights", "floodlit")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate")
@@ -298,7 +298,7 @@ class ChunkIndex:
 
     def _add_static_world(self, world, bridge_parts) -> None:
         """godot-16: the rest of what the client draws from the map (static_world.py)."""
-        from .map_style import SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS
+        from .map_style import FLOODLIT_KINDS, FROZEN_IN_WINTER_KINDS, SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS
 
         for scenery in getattr(world, "sceneries", ()):
             if len(scenery.points_m) < 3:
@@ -306,9 +306,12 @@ class ChunkIndex:
             kind = str(scenery.kind).lower()
             island = kind == "traffic_island" or getattr(scenery, "kerbed", False)  # redrawn above the roads
             color = SCENERY_COLORS.get(kind, (38, 105, 38))
-            seasonal = 1 if kind in SPECKLE_SCENERY_KINDS or kind in SEASONAL_GROUND_KINDS else 0
+            # 1: snow and seasonal palettes, 2: frozen to ice in winter, 0: as is
+            seasonal = 2 if kind in FROZEN_IN_WINTER_KINDS else 1 if kind in SPECKLE_SCENERY_KINDS or kind in SEASONAL_GROUND_KINDS else 0
             for cell, ring in static_world.clipped_pieces(scenery.points_m, self.size):
                 self._chunk(cell)["landuse"].append([static_world._rgb(color), seasonal, ring])
+                if kind in FLOODLIT_KINDS:
+                    self._chunk(cell)["floodlit"].append(ring)
                 if island:
                     self._chunk(cell)["traffic_islands"].append([static_world._rgb(color), seasonal, ring])
         for deck in static_world.rail_bridge_decks(world.railways, bridge_parts=bridge_parts):
