@@ -1602,7 +1602,14 @@ def test_v12_route_search_is_resumable_and_unreachable_fails_cheaply():
     # Different (weak) component: every search stage is skipped outright.
     unreachable = world.plan_route_steps(start, (5050.0, 5000.0))
     assert run_route_steps(unreachable) is None
-    assert sum(1 for _ in world.plan_route_steps(start, (5050.0, 5000.0))) <= 4
+    # Nearest-node preparation now yields too. Check that disconnected
+    # components skip edge expansion, rather than counting all job yields.
+    class NoSearch(dict):
+        def get(self, *args):
+            raise AssertionError("disconnected components must not expand graph edges")
+
+    world._route_edges = NoSearch(world._route_edges)
+    assert run_route_steps(world.plan_route_steps(start, (5050.0, 5000.0))) is None
 
 
 def _v12_manager_with_idle_car():

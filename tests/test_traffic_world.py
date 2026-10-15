@@ -152,6 +152,27 @@ def test_nearest_node_indices_falls_back_when_point_is_off_the_mapped_area():
     assert len(found) == 8
 
 
+def test_distant_nearest_node_lookup_has_a_fixed_grid_probe_limit():
+    from theroadragetrip.traffic_world import nearest_node_indices, nearest_node_indices_steps, run_route_steps
+
+    class Grid(dict):
+        probes = 0
+
+        def get(self, key, default=None):
+            self.probes += 1
+            assert self.probes <= 17 * 17
+            return super().get(key, default)
+
+    nodes = [(i * 200.0, 0.0, 0) for i in range(1000)]
+    grid = Grid({(i, 0): [i] for i in range(1000)})
+    target = (1_000_000.0, 1_000_000.0)
+    steps = nearest_node_indices_steps(nodes, grid, target, 8, None)
+    next(steps)
+    assert grid.probes == 0  # yields before probing, not after scanning the whole map
+    assert run_route_steps(steps) == list(range(999, 991, -1))
+    assert nearest_node_indices(nodes, grid, target, 0, None) == []
+
+
 def _v13_reference_graph(ways):
     """Synchronous route graph + weak components, as the incremental-build reference."""
     import math as _math

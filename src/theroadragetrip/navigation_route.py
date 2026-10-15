@@ -160,8 +160,10 @@ class NavigationRoute:
         self._key = key
         self.plans_started += 1
         if level == SURFACE_LEVEL:
-            layer = getattr(current_way, "layer", None) if current_way else None
-            self._job = world.traffic_mgr.plan_route_steps((car.x, car.y), (target.x, target.y), layer=layer, on_road=True)
+            # Surface roads include connected bridges of different OSM layers.
+            self._job = world.traffic_mgr.plan_route_steps(
+                (car.x, car.y), (target.x, target.y), on_road=True,
+                start_layer=getattr(current_way, "layer", None))
             self._job_started = time.perf_counter()
             return
         # Off the surface: this level's graph, out through its connectors; the
