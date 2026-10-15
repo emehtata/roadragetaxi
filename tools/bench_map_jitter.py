@@ -41,6 +41,7 @@ from pathlib import Path
 
 # godot/state_buffer.gd
 LATE_FOLLOW, EARLY_FOLLOW, CLOCK_SNAP_S, SLEW_GAIN, MAX_SLEW, DELAY_S = 0.5, 0.05, 0.25, 5.0, 0.25, 0.1
+MAX_EXTRAPOLATE_S = 0.2  # state_buffer.gd: movement carries on this long past the newest state
 FRAME_S = 1.0 / 60.0
 BACKGROUND = ("map-growth", "taxi-roads", "_background_tile_fetch")  # thread names: the map is busy
 
@@ -79,7 +80,8 @@ def replay(states) -> dict:
     """state_buffer.gd sampled every 60 fps frame, each state pushed at the first frame after it arrived."""
     offset = clock = 0.0
     has_clock, clock_local, newest, frozen_now, i = False, -1.0, None, False, 0
-    frames = frozen = episodes = snaps = off_speed = 0
+    frames = frozen = episodes = snaps = off_speed = late = late_episodes = 0
+    late_now = False
     t = states[0][1]
     while t < states[-1][1]:
         while i < len(states) and states[i][1] <= t:
@@ -100,11 +102,17 @@ def replay(states) -> dict:
             off_speed += abs(rate - 1.0) > 0.05
         clock_local = t
         frames += 1
-        frozen += clock > newest
-        episodes += clock > newest and not frozen_now
-        frozen_now = clock > newest
+        # late: past the newest state (extrapolating); frozen: past the cap too, the picture stands still
+        late += clock > newest
+        late_episodes += clock > newest and not late_now
+        late_now = clock > newest
+        stuck = clock > newest + MAX_EXTRAPOLATE_S
+        frozen += stuck
+        episodes += stuck and not frozen_now
+        frozen_now = stuck
         t += FRAME_S
     return {"frames": frames, "frozen_frames": frozen, "freezes": episodes, "frozen_s": round(frozen * FRAME_S, 1),
+            "late_frames": late, "late_episodes": late_episodes, "late_s": round(late * FRAME_S, 1),
             "clock_snaps": snaps, "wrong_speed_pct": round(100.0 * off_speed / max(1, frames), 1)}
 
 

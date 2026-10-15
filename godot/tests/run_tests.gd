@@ -258,11 +258,14 @@ func test_interpolation() -> void:
 	check(not buffer.push(1, 1.0, _state(99.0), 1.1), "an older state is dropped")
 	check(buffer.size() == 2, "the buffer is unchanged by them")
 
-	var late := buffer.sample(5.0)  # long after the newest state: hold it, don't extrapolate
-	check(late["t"] == 0.0 and late["a"]["player"]["x"] == 10.0, "a missing state holds the newest one")
-	check(buffer.underruns == 1 and buffer.underrun_episodes == 1, "and counts an underrun episode")
+	var late := buffer.sample(1.0 + 1.0 / 30.0 + 0.1 + 0.05)  # 50 ms past the newest state
+	var carried := StateBuffer.blend(late["a"]["player"], late["b"]["player"], late["t"]).x
+	check(carried > 10.0 and carried < 70.0, "a late state: movement carries on past the newest state (got %.1f)" % carried)
+	late = buffer.sample(5.0)  # long after the newest state
+	check(is_equal_approx(StateBuffer.blend(late["a"]["player"], late["b"]["player"], late["t"]).x, 70.0), "then holds, at most 0.2 s on (60 m)")
+	check(buffer.underruns == 2 and buffer.underrun_episodes == 1, "and counts an underrun episode")
 	buffer.sample(5.1)
-	check(buffer.underruns == 2 and buffer.underrun_episodes == 1 and is_equal_approx(buffer.longest_underrun_s, 0.1), "consecutive underrun frames are one episode")
+	check(buffer.underruns == 3 and buffer.underrun_episodes == 1 and is_equal_approx(buffer.longest_underrun_s, 5.1 - (1.0 + 1.0 / 30.0 + 0.15)), "consecutive underrun frames are one episode")
 	check(is_equal_approx(buffer.max_arrival_gap_s, 1.0 / 30.0), "the gap between state arrivals is measured")
 
 	# godot-09: at real map coordinates (Oulu: x ~ 428 km, y ~ 7210 km) the
