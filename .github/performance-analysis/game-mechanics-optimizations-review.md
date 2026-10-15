@@ -176,3 +176,13 @@ agrees with that plan, not as a new idea.
 Measure each change separately against the current numbers, with two runs per
 variant. Keep street lights, snow, legal yielding and sidewalk checks as they
 are; don't raise the interpolation delay as the fix (the earlier reports' rule).
+
+## Results (2026-10-15, same day)
+
+| Item | Outcome |
+| --- | --- |
+| 1 Extrapolation | Done (`877a3dd`). `bench_map_jitter.py`, 180 s at 72 km/h. Warm route east: the server was late 28 times (3.9 s), only 3 freezes (0.3 s) remain past the 0.2 s cap. Cold route south: late 20 times (1.4 s), 0 freezes. Before, every late frame was a freeze. |
+| 2 Camera look-ahead | Done (`266e3d7`), look-ahead only. The speed zoom was tried and dropped: a zoom change every frame redraws the pixel-sized map layers (selftest 13 fps instead of 138, camera steps up to 31 px). With look-ahead only: 138 fps, largest step 1.1 px. |
+| 3 Trail segments | Done (`f5e4aaa`). A new point rebuilds at most 200 points instead of up to 4,000. Snowfall fades segments by modulate, with no redraw. |
+| 4 3D buildings | Skipped. On the RTX 5060 (WSL, `GALLIUM_DRIVER=d3d12`, night, 20 s, two runs each) hiding the 3D buildings changed nothing: about 37–43 ms per frame either way. That frame time is mostly render submission on the CPU (`render_cpu` about 19.5 ms for about 1,850 draw calls; the 3D pass about 6 ms). The draw-call count is the real lever, and it needs measuring on a native Windows build, because WSL's d3d12 translation adds its own per-call CPU cost. |
+| 5 Tile worker process | Already in place (`3361e36`: cold local-PBF extraction, conversion and build in a worker process). It matches the cold route above showing no freezes. |
