@@ -73,6 +73,15 @@ class Rules:
     support_ahead_u: float  # teammates of the carrier: this far ahead of the ball
     team_colors: Tuple[Tuple[int, int, int], Tuple[int, int, int]]
     max_players: int  # both teams, goalies included: a full game takes no more
+    # Fouls (soccer): a player knocked down by an opponent wins their team a
+    # free kick where it happened - a penalty kick from the spot inside the
+    # penalty area they attack. Off for hockey (bodychecks are the game).
+    fouls: bool = False
+    knockdown_chance: float = 1.0  # of a hard bump (ice_skating.collide)
+    penalty_area_u: float = 0.0  # its depth from the goal line
+    penalty_area_half_v: float = 0.0
+    penalty_spot_u: float = 0.0  # from the goal line
+    penalty_scores: float = 0.0
     goalie_colors: Optional[Tuple[Tuple[int, int, int], Tuple[int, int, int]]] = None  # None: the team's own
 
 
@@ -98,6 +107,8 @@ class Ball:
     held_since: float = 0.0
     goals: Tuple[int, int] = (0, 0)
     shots: Tuple[int, int] = (0, 0)  # (from the attacking zone, from outside it)
+    penalty: bool = False  # the restart is a penalty kick: its taker shoots
+    set_pieces: Tuple[int, int] = (0, 0)  # (free kicks, penalties) awarded
 
     @property
     def rink(self):  # (ice hockey's name for the field)
@@ -182,6 +193,21 @@ class Ball:
             self.restart_team = None if self.last_team is None else 1 - self.last_team
             self.restart_until, self.restart_by_goalie = sim_time + rules.restart_s, False
 
+    def foul(self, fouled_team: int, x: float, y: float, sim_time: float) -> None:
+        """A foul on `fouled_team` at (x, y): their free kick there, or their
+        penalty kick from the spot inside the penalty area they attack."""
+        rules = self.rules
+        u, v = self.uv(x, y)
+        attack = -math.copysign(1.0, self.defends_u(fouled_team))
+        in_area = u * attack >= rules.goal_u - rules.penalty_area_u and abs(v) <= rules.penalty_area_half_v
+        if in_area:
+            x, y = self.world(attack * (rules.goal_u - rules.penalty_spot_u), 0.0)
+        self.held_by = None
+        self.stop_at(x, y)
+        self.penalty = in_area
+        self.set_pieces = (self.set_pieces[0] + (not in_area), self.set_pieces[1] + in_area)
+        self.restart_team, self.restart_until, self.restart_by_goalie = fouled_team, sim_time + rules.restart_s, False
+
     def _goal(self, conceding: int, sim_time: float) -> None:
         """In the net: the conceding team restarts from its goal mouth."""
         scorer = 1 - conceding
@@ -202,12 +228,12 @@ class Ball:
         pedestrian.heading = math.atan2(dy, dx)
         pedestrian.stick_swing = STICK_SWING_S
 
-    def shoot(self, pedestrian, team: int, sim_time: float) -> None:
+    def shoot(self, pedestrian, team: int, sim_time: float, scores_chance: Optional[float] = None) -> None:
         """At the other goal; decided now: in, or saved."""
         rules = self.rules
         in_zone = self.attack_u(pedestrian, team) > rules.zone_u
         self.shots = (self.shots[0] + in_zone, self.shots[1] + (not in_zone))
-        scores = random.random() < rules.shot_scores
+        scores = random.random() < (rules.shot_scores if scores_chance is None else scores_chance)
         self.hit_toward(pedestrian, self.world(-self.defends_u(team), random.uniform(-rules.shot_aim_v, rules.shot_aim_v)),
                         random.uniform(*rules.shot_speed_mps), sim_time)
         self.shot_scores = scores
@@ -313,12 +339,17 @@ class TeamGamePlugin(ActivityPlugin):
                 ball.held_by = None  # the ball comes loose
             return False
         mates = [p for p in roster if ball.players[id(p)] == team and p is not pedestrian]
-        field_mates = [p for p in mates if p is not ball.goalies.get(team)]
+        # Teammates still up: one lying on the ground isn't "nearer the ball".
+        field_mates = [p for p in mates if p is not ball.goalies.get(team)
+                       and (p.activity is None or p.activity.data.get("fallen_s", 0.0) <= 0.0)]
         if pedestrian.hockey_goalie:
             self._goalie(context, ball, team, field_mates, dt)
         else:
             self._player(context, instance, ball, team, field_mates, dt)
-        collide(pedestrian, others_on(ball.field, pedestrian, roster))
+        for fallen, by in collide(pedestrian, others_on(ball.field, pedestrian, roster), self.rules.knockdown_chance):
+            fouled = ball.players.get(id(fallen))
+            if self.rules.fouls and fouled is not None and ball.players.get(id(by)) == 1 - fouled:
+                ball.foul(fouled, fallen.x, fallen.y, context.sim_time)
         return instance.data["elapsed_s"] >= instance.data["duration_s"]
 
     def _goalie(self, context: ActivityContext, ball: Ball, team: int, mates: List, dt: float) -> None:
@@ -334,8 +365,9 @@ class TeamGamePlugin(ActivityPlugin):
                 ball.take(goalie, now)
             else:
                 glide(goalie, (ball.x, ball.y), dt, rules.run_speed_mps)
-        elif ball.held_by is None and near and math.hypot(ball.vx, ball.vy) < 2.0 and now - ball.last_hit >= rules.cooldown_s:
-            ball.goalie_pass(goalie, team, now, mates)  # a loose ball at the goal: clear it
+        elif (ball.held_by is None and near and math.hypot(ball.vx, ball.vy) < 2.0 and now - ball.last_hit >= rules.cooldown_s
+              and not (ball.restart_team not in (None, team) and now < ball.restart_until)):
+            ball.goalie_pass(goalie, team, now, mates)  # a loose ball at the goal: clear it (not the others' restart)
         elif ball.held_by is not goalie:
             if glide(goalie, ball.goalie_spot(team), dt, rules.run_speed_mps):
                 goalie.heading = math.atan2(ball.y - goalie.y, ball.x - goalie.x)
@@ -360,8 +392,11 @@ class TeamGamePlugin(ActivityPlugin):
                 ball.last_hit = now
                 if holder is None or random.random() < rules.steal_chance:
                     ball.take(pedestrian, now)
-                    ball.restart_team = None  # (a throw-in taken: play on)
+                    ball.restart_team = None  # (a throw-in or free kick taken: play on)
                     pedestrian.stick_swing = STICK_SWING_S
+                    if ball.penalty:  # from the spot: straight at the goal
+                        ball.penalty = False
+                        ball.shoot(pedestrian, team, now, rules.penalty_scores)
             else:
                 glide(pedestrian, (ball.x, ball.y), dt, rules.run_speed_mps * rules.chase_factor)
             return

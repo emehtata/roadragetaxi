@@ -32,6 +32,7 @@ RULES = Rules(
     steal_chance=0.35, shot_scores=0.15, goalie_hold_s=1.2, restart_s=4.0, spot_move_s=6.0,
     support_ahead_u=15.0, team_colors=TEAM_COLORS, goalie_colors=GOALIE_COLORS,
     max_players=2 * (FIELD_PLAYERS_MAX + 1),
+    fouls=True, knockdown_chance=0.002, penalty_area_u=16.5, penalty_area_half_v=20.16, penalty_spot_u=11.0, penalty_scores=0.75,
 )
 
 PLUGIN = TeamGamePlugin(RULES, base_weight=1.5)

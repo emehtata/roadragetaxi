@@ -55,13 +55,15 @@ def others_on(field, pedestrian, pedestrians) -> list:
             and p.activity.location is not None and p.activity.location.extra is field]
 
 
-def knock_down(pedestrian) -> None:
+def knock_down(pedestrian) -> bool:
+    """Down they go; False if they already were."""
     if pedestrian.activity is not None:
         if pedestrian.activity.data.get("fallen_s", 0.0) > 0.0:
-            return  # already down: skating into them doesn't start the fall over
+            return False  # already down: skating into them doesn't start the fall over
         pedestrian.activity.data["fallen_s"] = FALL_S
     pedestrian.animation_state = "fallen"
     pedestrian.speed = 0.0
+    return True
 
 
 def is_down(pedestrian, instance, dt: float) -> bool:
@@ -76,9 +78,12 @@ def is_down(pedestrian, instance, dt: float) -> bool:
     return True
 
 
-def collide(pedestrian, others) -> None:
+def collide(pedestrian, others, knockdown_chance: float = 1.0) -> list:
     """Skaters don't overlap: two too close are pushed apart, and one at
-    least KNOCKDOWN_SPEED_DIFF_MPS faster knocks the slower one down."""
+    least KNOCKDOWN_SPEED_DIFF_MPS faster knocks the slower one down (with
+    `knockdown_chance`: on grass most such bumps are only shoulders).
+    Returns the knockdowns: [(who fell, who knocked them down)]."""
+    knocked = []
     reach = 2.0 * SKATER_RADIUS_M
     for other in others:
         dx, dy = other.x - pedestrian.x, other.y - pedestrian.y
@@ -89,10 +94,15 @@ def collide(pedestrian, others) -> None:
         push = (reach - distance) / 2.0
         pedestrian.x, pedestrian.y = pedestrian.x - nx * push, pedestrian.y - ny * push
         other.x, other.y = other.x + nx * push, other.y + ny * push
+        if knockdown_chance < 1.0 and random.random() >= knockdown_chance:
+            continue
         if pedestrian.speed - other.speed >= KNOCKDOWN_SPEED_DIFF_MPS:
-            knock_down(other)
+            if knock_down(other):
+                knocked.append((other, pedestrian))
         elif other.speed - pedestrian.speed >= KNOCKDOWN_SPEED_DIFF_MPS:
-            knock_down(pedestrian)
+            if knock_down(pedestrian):
+                knocked.append((pedestrian, other))
+    return knocked
 
 
 class IceSkatingPlugin(ActivityPlugin):

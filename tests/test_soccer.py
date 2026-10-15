@@ -76,3 +76,47 @@ def test_no_soccer_while_the_pitch_is_closed():
     for player in players:
         manager._update_activity(player, 0.1)
     assert all(p.activity is None for p in players)
+
+
+def _foul(manager, players, ball, fouled_team, x, y):
+    fouled = next(p for p in players if ball.players[id(p)] == fouled_team and p is not ball.goalies.get(fouled_team))
+    by = next(p for p in players if ball.players[id(p)] == 1 - fouled_team and p is not ball.goalies.get(1 - fouled_team))
+    fouled.x, fouled.y, fouled.speed = x, y, 0.0
+    by.x, by.y, by.speed = x - 0.5, y, 6.0
+    from theroadragetrip.activities.plugins.ice_skating import collide
+    for fallen, knocker in collide(by, [fouled]):
+        ball.foul(ball.players[id(fallen)], fallen.x, fallen.y, manager.sim_time)
+    return fouled
+
+
+def test_a_player_knocked_down_by_an_opponent_wins_a_free_kick_there():
+    manager, players, ball = _game(4, checks=12)
+    fouled = _foul(manager, players, ball, 0, 50.0, 40.0)  # midfield
+    team = ball.players[id(fouled)]
+    assert ball.set_pieces == (1, 0) and ball.restart_team == team and not ball.penalty
+    assert (round(ball.x), round(ball.y)) == (50, 40) and (ball.vx, ball.vy) == (0.0, 0.0)
+    for _ in range(80):  # the fouled team takes it; the others wait
+        manager.sim_time += 0.1
+        for player in players:
+            manager._update_activity(player, 0.1)
+        if ball.held_by is not None or ball.last_hit == manager.sim_time:
+            break
+    taker = ball.held_by
+    assert taker is not None and ball.players[id(taker)] == team
+
+
+def test_a_foul_in_the_penalty_area_is_a_penalty_from_the_spot():
+    manager, players, ball = _game(5, checks=12)
+    attack = -1.0 if ball.defends_u(0) > 0 else 1.0  # team 0's goal to attack
+    x, y = ball.world(attack * (soccer.GOAL_U - 8.0), 4.0)  # inside the box
+    _foul(manager, players, ball, 0, x, y)
+    assert ball.set_pieces == (0, 1) and ball.penalty
+    spot_u, spot_v = ball.uv(ball.x, ball.y)
+    assert round(spot_u * attack, 1) == soccer.GOAL_U - 11.0 and abs(spot_v) < 1e-6
+    for _ in range(100):  # taken: a shot straight away
+        manager.sim_time += 0.1
+        for player in players:
+            manager._update_activity(player, 0.1)
+        if not ball.penalty:
+            break
+    assert not ball.penalty and ball.shots[0] >= 1
