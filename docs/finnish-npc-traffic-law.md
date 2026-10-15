@@ -173,6 +173,13 @@ Law: §§ 5, 9, 18–23, 30–35, 43–46, 58–62, 99; annexes 5.1–5.2 for ve
 Implementation guidance: distinguish lawful traffic waits from failed routes.
 Recovery cannot bypass queues, sidewalks, barriers, crossings or rail hazards.
 
+**Game cleanup exception (2026-10-15):** after recovery fails and three
+subsequent new-destination routing attempts also fail, despawn the held vehicle
+even in view and below the population minimum. Release its trip links and
+parking reservation through normal despawn cleanup. This is explicit jam
+cleanup, not legal permission to move unsafely or expire an ordinary red-light,
+yielding or following wait. Residents remain in the registry.
+
 **Game policy (2026-10-15):** ordinary NPC travel must stay on the carriageway.
 An obstacle does not automatically authorize an off-road bypass: require a
 demonstrably necessary, otherwise-unavoidable, safe and lawful maneuver. Until

@@ -348,7 +348,8 @@ NPC_RECOVERY_ATTEMPTS_PER_TICK = 1
 # for a while: then it replans to a new destination from where it stands
 # (another NPC_HOLD_RETRY_TICKS population ticks later after each failure).
 # A hold was permanent, and held cars piled up into a city-wide jam. After
-# NPC_HOLD_GIVE_UP_ATTEMPTS failures an unseen held car is released.
+# NPC_HOLD_GIVE_UP_ATTEMPTS failures a held car is removed, even in view:
+# explicit jam-cleanup exception, not a timeout for lawful traffic waits.
 NPC_HOLD_RETRY_TICKS = 5
 NPC_HOLD_GIVE_UP_ATTEMPTS = 3
 # find_and_start_npc_trip's own BFS search width - deliberately much
@@ -3457,6 +3458,8 @@ class NPCVehicleManager:
     beyond despawn_radius_m is ever removed (section 19: never mid-trip,
     never with passengers out), and even then it's replaced by fresh
     population fill elsewhere, not left permanently below target.
+    Explicit cleanup exceptions: timed-out wrecks and repeatedly failed
+    HOLD routes may be removed even in view and below the minimum count.
     """
 
     def __init__(
@@ -4623,7 +4626,8 @@ class NPCVehicleManager:
         # currently see (pedestrian.py's PedestrianManager uses the same
         # viewport check) - despawn_radius_m normally already guarantees
         # this, but a heavily zoomed-out viewport can exceed it (reported:
-        # "cars spawn/despawn in viewport").
+        # "cars spawn/despawn in viewport"). Repeated routing failures
+        # are the explicit jam-cleanup exception below.
         despawn_radius_sq = self.despawn_radius_m * self.despawn_radius_m
         kept = []
         remaining = len(self.vehicles)
@@ -4657,7 +4661,7 @@ class NPCVehicleManager:
             held_driver = self.drivers.get(vehicle.vehicle_id)
             given_up = (getattr(held_driver, "recovery_stage", None) == "HOLD"
                         and held_driver.hold_failures >= NPC_HOLD_GIVE_UP_ATTEMPTS)
-            if (far_moving or given_up) and not visible and remaining > self.min_count:
+            if given_up or (far_moving and not visible and remaining > self.min_count):
                 if vehicle.trip_group is not None:
                     for resident_id in vehicle.trip_group.member_resident_ids:
                         member = resident_manager.get(resident_id)

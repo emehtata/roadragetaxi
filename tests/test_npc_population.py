@@ -1437,6 +1437,49 @@ def test_an_unseen_car_that_cannot_get_anywhere_is_released():
     assert manager.drivers.get(vehicle.vehicle_id) is None  # released, out of sight
 
 
+@pytest.mark.parametrize("stage,failures,removed", [
+    ("HOLD", 3, True),
+    ("HOLD", 2, False),
+    ("NORMAL", 99, False),
+    ("STUCK", 99, False),
+])
+def test_repeated_route_failure_cleanup_is_allowed_in_view_and_below_minimum(stage, failures, removed):
+    ways = _city_block_grid()
+    world = TrafficWorld(ways)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=0, min_count=1)
+    origin = (_CENTER[0], _CENTER[1] - 20.0)
+    _, driver, vehicle = spawn_npc(1, residents, world, ways, origin, (origin[0] + 80, origin[1]))
+    members = list(vehicle.trip_group.member_resident_ids)
+    manager.vehicles.append(vehicle)
+    manager.drivers[1] = driver
+    vehicle.state = NPCState.WAITING
+    vehicle.debug_waiting_for = "yielding to traffic from right"
+    driver.recovery_stage, driver.hold_failures = stage, failures
+    driver.hold_retry_tick = 1_000_000  # only completed failures count, not elapsed waiting
+    space = SimpleNamespace(reserved=True, occupied=False, vehicle_id=1)
+    vehicle.reserved_parking_space = space
+    manager._trip_start_failures[1] = 2
+    manager._trip_retry_after_tick[1] = 10
+    visible = (origin[0] - 100, origin[1] - 100, origin[0] + 100, origin[1] + 100)
+    manager._run_population_tick(
+        *origin, residents, world, ways, None, None, None, None, None, None, None,
+        viewport_bounds=visible,
+    )
+    assert (vehicle not in manager.vehicles) == removed
+    assert (1 not in manager.drivers) == removed
+    if removed:
+        assert vehicle.trip_group is None
+        assert not space.reserved and space.vehicle_id is None
+        assert 1 not in manager._trip_start_failures and 1 not in manager._trip_retry_after_tick
+        for resident_id in members:
+            member = residents.get(resident_id)
+            assert member is not None  # cleanup does not delete people
+            assert member.active_vehicle_id is None and member.trip_group_id is None
+    else:
+        assert vehicle.trip_group is not None and space.reserved
+
+
 def test_manager_update_avoidance_still_works_without_a_player_car():
     """Regression: nearby_vehicles_at (its own spatial-grid query) yields,
     it doesn't return a list. update() used to only materialize it into a
