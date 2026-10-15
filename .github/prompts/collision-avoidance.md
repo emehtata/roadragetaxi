@@ -1,17 +1,17 @@
-# NPC-004 — NPC Vehicle Collision and Avoidance System
+# collision-avoidance — NPC Vehicle Collision and Avoidance System
 
-Implement NPC-004 for **Road Rage Taxi 0.15.0alpha**.
+Implement collision-avoidance for **Road Rage Taxi 0.15.0alpha**.
 
 The goal is to make NPC vehicles behave safely and naturally around other vehicles, obstacles, parking areas, and the player taxi, while providing a believable accident response when a collision actually occurs.
 
-**IMPORTANT: Audit the existing implementation before making changes. Reuse the current traffic manager, road/lane graph, spatial indexes, vehicle system, parking system, pedestrian system, and NPC-003 vehicle plugin architecture wherever possible. Do not create a parallel traffic or vehicle architecture.**
+**IMPORTANT: Audit the existing implementation before making changes. Reuse the current traffic manager, road/lane graph, spatial indexes, vehicle system, parking system, pedestrian system, and vehicle-population vehicle plugin architecture wherever possible. Do not create a parallel traffic or vehicle architecture.**
 
 ## 1. Audit existing implementation first
 
 Before changing code, inspect the current implementation of:
 
 * NPC vehicle spawning and lifecycle
-* Vehicle Core / NPC-003 vehicle plugins
+* Vehicle Core / vehicle-population vehicle plugins
 * Traffic manager
 * Road and lane graph
 * Vehicle routing
@@ -28,7 +28,7 @@ Before changing code, inspect the current implementation of:
 
 Identify what already works and what is missing.
 
-Implement only the functionality required for NPC-004.
+Implement only the functionality required for collision-avoidance.
 
 ---
 
@@ -444,7 +444,7 @@ After reaching the roadside:
 * use the existing phone activity if available
 * otherwise implement the smallest compatible phone-use state required
 
-No dialogue or voice generation is required for NPC-004.
+No dialogue or voice generation is required for collision-avoidance.
 
 The important gameplay effect is:
 
@@ -501,9 +501,9 @@ Each accident needs its own state and lifecycle.
 
 ---
 
-# 20. Integration with NPC-003 vehicle architecture
+# 20. Integration with vehicle-population vehicle architecture
 
-Follow the existing NPC-003 design:
+Follow the existing vehicle-population design:
 
 * vehicles are persistent simulation entities
 * vehicle types are plugins
@@ -615,7 +615,7 @@ If the existing debug rendering supports traffic information, consider showing:
 * parking-area ID
 * destination parking-space ID
 
-Do not introduce a large new debug subsystem solely for NPC-004.
+Do not introduce a large new debug subsystem solely for collision-avoidance.
 
 ---
 

@@ -88,7 +88,7 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
         # not cover (fallback only applies to a missing *key*, not an
         # empty *value*).
         default=int(traffic_config.get("traffic_count") or 0) or None,
-        help="Target NPC vehicle population (NPC-003; default: scaled from the city's population)",
+        help="Target NPC vehicle population (vehicle-population; default: scaled from the city's population)",
     )
     p.add_argument(
         "--npc-vehicle-min", type=int,
@@ -103,7 +103,7 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
     p.add_argument(
         "--enable-two-wheelers", action="store_true",
         default=experimental_config.getboolean("enable_two_wheelers", fallback=False),
-        help="Include motorcycles in the NPC vehicle population (NPC-003, experimental)",
+        help="Include motorcycles in the NPC vehicle population (vehicle-population, experimental)",
     )
     # No CLI flag - [traffic] vehicle_distribution is a config-file-only
     # knob (a comma-separated "id:weight" list has no clean single-flag

@@ -1,4 +1,4 @@
-"""Tests for NPC-003: a real, persistent, configurable NPC vehicle
+"""Tests for vehicle-population: a real, persistent, configurable NPC vehicle
 population (theroadragetrip.npc.NPCVehicleManager)."""
 import math
 import random
@@ -141,7 +141,7 @@ def test_snow_dispatches_a_tractor_if_the_population_has_no_working_plough():
 
 
 def test_populate_initial_respects_a_car_only_distribution_override():
-    """NPC-003 v2 section 14: vehicle_distribution is an explicit override,
+    """vehicle-population v2 section 14: vehicle_distribution is an explicit override,
     not just a default-mix detail - pinning it to one plugin id must
     produce a population entirely of that type."""
     ways = _city_block_grid()
@@ -200,7 +200,7 @@ def test_transit_spawn_prefers_nodes_ahead_on_the_same_road_corridor():
 
 
 def test_trip_start_attempts_boost_when_below_the_moving_traffic_target(monkeypatch):
-    """NPC-005: a flat 1-attempt-per-tick cap meant the steady-state
+    """living-traffic: a flat 1-attempt-per-tick cap meant the steady-state
     driving count settled far below target_count regardless of
     population size - "roads full of parked cars" (the reported bug).
     When the population is under its moving-traffic target, more than
@@ -233,7 +233,7 @@ def test_trip_start_attempts_boost_when_below_the_moving_traffic_target(monkeypa
 
 
 def test_trip_start_never_double_books_a_household_member_already_mid_trip(monkeypatch):
-    """NPC-005 occupancy invariant: a household can own two vehicles
+    """living-traffic occupancy invariant: a household can own two vehicles
     (NPC_MAX_VEHICLES_PER_HOUSEHOLD), but its member Residents are shared
     across them. If its only member is already riding in one (a live,
     not-yet-retired trip_group), the population tick must not also fold
@@ -532,7 +532,7 @@ def test_autonomous_vehicle_has_no_household():
 
 def test_two_households_stay_independent():
     """A household can own up to NPC_MAX_VEHICLES_PER_HOUSEHOLD vehicles
-    (NPC-003 v2 section 9), but two *different* households' vehicles and
+    (vehicle-population v2 section 9), but two *different* households' vehicles and
     members must never mix."""
     from theroadragetrip.npc import NPC_MAX_VEHICLES_PER_HOUSEHOLD
 
@@ -558,7 +558,7 @@ def test_two_households_stay_independent():
 
 
 def test_household_can_own_two_vehicles():
-    """NPC-003 v2 section 9's explicit acceptance criterion: a household
+    """vehicle-population v2 section 9's explicit acceptance criterion: a household
     can own zero, one, or two vehicles - forced deterministic here since
     NPC_SECOND_HOUSEHOLD_VEHICLE_PROBABILITY is a low-probability roll."""
     manager = NPCVehicleManager(target_count=2, household_fraction=1.0)
@@ -603,7 +603,7 @@ def test_household_owned_second_vehicle_never_exceeds_max():
 
 
 def test_non_household_eligible_plugin_never_becomes_household_kind():
-    """NPC-003 v2 section 14: a truck/bus rolled into the household
+    """vehicle-population v2 section 14: a truck/bus rolled into the household
     fraction stays a plain traffic vehicle - not every plugin is eligible
     for household ownership."""
     manager = NPCVehicleManager(target_count=1, household_fraction=1.0)
@@ -870,7 +870,7 @@ def test_release_household_vehicle_is_idempotent():
 
 
 def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
-    """NPC-003 v2 acceptance criterion ("vehicle ownership persists") and
+    """vehicle-population v2 acceptance criterion ("vehicle ownership persists") and
     this project's own testing checklist ("household association
     survives a full drive-park-drive-home cycle") - not just the single
     leg most other tests exercise."""
@@ -904,7 +904,7 @@ def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
     # updates it expects and the vehicle oscillates in place forever
     # instead of actually completing turns.
     #
-    # NPC-004: this synthetic map has no traffic lights/right-of-way logic
+    # collision-avoidance: this synthetic map has no traffic lights/right-of-way logic
     # at its many unsignalized intersections, so - now that real vehicle-
     # vehicle collision detection exists - an occasional crash during a
     # long, continuous, multi-minute drive is a legitimate, intentional
@@ -959,7 +959,7 @@ def test_explicit_vehicle_distribution_override_bypasses_experimental_gate():
 def _driving_vehicle(residents, x, y, heading=0.0, vehicle_id=1):
     """A parked NPCVehicle wired up with a real active driver (owner_id +
     resident.active_vehicle_id both matching) - place_parked_npc alone
-    creates an empty, driverless vehicle, so NPC-004's accident response
+    creates an empty, driverless vehicle, so collision-avoidance's accident response
     (which reads has_active_driver) needs this extra wiring in tests."""
     vehicle = place_parked_npc(vehicle_id, (x, y), None, vehicle_type="car")
     vehicle.car.heading = heading
@@ -970,7 +970,7 @@ def _driving_vehicle(residents, x, y, heading=0.0, vehicle_id=1):
 
 
 def test_trigger_vehicle_accident_stops_the_vehicle_and_ejects_the_driver():
-    """NPC-004 sections 10-17: collision -> stopped CRASHED vehicle,
+    """collision-avoidance sections 10-17: collision -> stopped CRASHED vehicle,
     driver permanently severed, and (since someone was actually driving)
     a new annoyed pedestrian checking their phone nearby."""
     residents = ResidentManager()
@@ -1049,7 +1049,7 @@ def test_trigger_vehicle_accident_with_no_driver_still_becomes_an_obstacle():
 
 
 def test_trigger_vehicle_accident_also_ejects_passengers_not_just_the_driver(monkeypatch):
-    """NPC-005 Definition of Done: vehicle removal (crash -> eventual
+    """living-traffic Definition of Done: vehicle removal (crash -> eventual
     despawn) cannot orphan occupants. The old code only ejected the
     driver and left vehicle.trip_group live - a passenger riding along
     would silently vanish (no pedestrian ever spawned for them, and
@@ -1161,7 +1161,7 @@ def test_begin_trip_caps_and_deduplicates_supplied_household_members():
 
 
 def test_check_vehicle_collision_crashes_both_overlapping_npc_vehicles():
-    """NPC-004 section 10: an actual NPC-NPC overlap must crash *both*
+    """collision-avoidance section 10: an actual NPC-NPC overlap must crash *both*
     vehicles, each getting its own independent accident."""
     residents = ResidentManager()
     manager = NPCVehicleManager(target_count=1)
@@ -1324,7 +1324,7 @@ def test_swept_player_collision_rolls_taxi_back_before_npc():
 
 
 def test_population_tick_reroutes_a_stuck_vehicle_when_a_valid_route_exists():
-    """NPC-004 section 3/6/8's recovery step: a vehicle update_npc flagged
+    """collision-avoidance section 3/6/8's recovery step: a vehicle update_npc flagged
     STUCK gets a fresh route from wherever it currently sits, planned off
     the throttled population tick (never per-frame - see that function's
     own comment on why), and resumes normal driving."""

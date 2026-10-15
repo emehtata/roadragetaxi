@@ -1,4 +1,4 @@
-# NPC-002 — Intersection and Traffic Rules
+# intersection-rules — Intersection and Traffic Rules
 
 Repository:
 
@@ -10,11 +10,11 @@ Target branch:
 
 ## Objective
 
-Implement **NPC-002: Intersection and Traffic Rules**.
+Implement **intersection-rules: Intersection and Traffic Rules**.
 
-NPC-001 has successfully introduced a single Resident-driven NPC vehicle that can follow a planned OSM route.
+autonomous-driving has successfully introduced a single Resident-driven NPC vehicle that can follow a planned OSM route.
 
-The goal of NPC-002 is to make that **same single NPC vehicle reliably understand and negotiate real road intersections**.
+The goal of intersection-rules is to make that **same single NPC vehicle reliably understand and negotiate real road intersections**.
 
 Do NOT add multiple NPC vehicles yet.
 
@@ -32,7 +32,7 @@ Before modifying code, inspect the current implementation on:
 
 `release/0.15.0alpha`
 
-In particular inspect everything introduced or modified for NPC-001.
+In particular inspect everything introduced or modified for autonomous-driving.
 
 Identify the actual classes/modules currently responsible for:
 
@@ -68,13 +68,13 @@ Do NOT create duplicate implementations of:
 
 Extend existing abstractions where appropriate.
 
-Before implementing anything, provide a short architectural summary of what NPC-001 currently does and where NPC-002 should integrate with it.
+Before implementing anything, provide a short architectural summary of what autonomous-driving currently does and where intersection-rules should integrate with it.
 
 ---
 
 # 2. KEEP THE ONE-CAR SCOPE
 
-NPC-002 must continue to use exactly ONE autonomous NPC vehicle.
+intersection-rules must continue to use exactly ONE autonomous NPC vehicle.
 
 The structure remains:
 
@@ -179,7 +179,7 @@ Verify the coordinate-system convention before implementing this.
 
 # 5. LANE SELECTION
 
-NPC-002 must make lane selection explicit.
+intersection-rules must make lane selection explicit.
 
 The NPC must not simply drive along the geometric center of the entire road if the road contains usable lane information.
 
@@ -206,7 +206,7 @@ Do not assume that all roads have complete lane tagging.
 
 Implement deterministic fallback behavior for roads without detailed lane data.
 
-Do not invent globally stored lane information merely for NPC-002.
+Do not invent globally stored lane information merely for intersection-rules.
 
 ---
 
@@ -224,7 +224,7 @@ If the graph already guarantees directional validity, rely on that instead of im
 
 # 7. TRAFFIC LIGHTS
 
-This is a major part of NPC-002.
+This is a major part of intersection-rules.
 
 The NPC must correctly interpret the traffic signal relevant to its movement.
 
@@ -364,7 +364,7 @@ If explicit stop-line data is unavailable, calculate a sensible fallback from th
 
 # 12. INTERSECTION APPROACH
 
-Add an explicit driving state for approaching an intersection if NPC-001 does not already have one.
+Add an explicit driving state for approaching an intersection if autonomous-driving does not already have one.
 
 Recommended states:
 
@@ -478,7 +478,7 @@ Do not unnecessarily enter a turning trajectory for straight movement.
 
 # 17. SMOOTH TURN TRAJECTORY
 
-Reuse the smooth-turn implementation from NPC-001 if it is already correct.
+Reuse the smooth-turn implementation from autonomous-driving if it is already correct.
 
 If it needs improvement, improve it rather than creating a second turning system.
 
@@ -762,7 +762,7 @@ depending on the signal state.
 
 # 25. PERFORMANCE REQUIREMENTS
 
-Do not regress the performance work completed in NPC-001 / release 0.15.0alpha.
+Do not regress the performance work completed in autonomous-driving / release 0.15.0alpha.
 
 In particular:
 
@@ -813,7 +813,7 @@ TrafficManager
     └── ...
 ```
 
-NPC-002 should establish clean per-driver state without creating global assumptions that only one vehicle can ever exist.
+intersection-rules should establish clean per-driver state without creating global assumptions that only one vehicle can ever exist.
 
 The current debug NPC can remain special/deterministic.
 
@@ -821,9 +821,9 @@ The current debug NPC can remain special/deterministic.
 
 # 28. REGRESSION PROTECTION
 
-NPC-001 already works.
+autonomous-driving already works.
 
-Do not sacrifice that behavior while implementing NPC-002.
+Do not sacrifice that behavior while implementing intersection-rules.
 
 The existing NPC must still:
 
@@ -846,7 +846,7 @@ Implement incrementally in this order:
 
 ### Step 1
 
-Inspect NPC-001 and summarize the existing architecture.
+Inspect autonomous-driving and summarize the existing architecture.
 
 ### Step 2
 
@@ -896,7 +896,7 @@ Run the game and manually verify several different real OSM intersections.
 
 # 30. ACCEPTANCE CRITERIA
 
-NPC-002 is complete only when the single NPC can reliably:
+intersection-rules is complete only when the single NPC can reliably:
 
 * detect an upcoming intersection
 * determine whether it is going straight, left or right

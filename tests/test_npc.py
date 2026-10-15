@@ -1,4 +1,4 @@
-"""Tests for NPC-001: the first autonomous NPC car (theroadragetrip.npc)."""
+"""Tests for autonomous-driving: the first autonomous NPC car (theroadragetrip.npc)."""
 import math
 from types import SimpleNamespace
 
@@ -288,7 +288,7 @@ def test_yellow_is_a_distinct_decision_not_treated_as_green():
 
 
 def test_decision_carries_the_actual_light_it_was_based_on():
-    """NPC-002 section 18/21: the decision must expose which physical
+    """intersection-rules section 18/21: the decision must expose which physical
     signal it judged relevant, not just a text reason - so a debug HUD (or
     a test) can check the movement it actually allows."""
     tl = TrafficLight(
@@ -311,7 +311,7 @@ def test_opposite_direction_light_is_ignored():
 
 
 def test_stop_position_remains_stable_while_approaching():
-    """NPC-002 section 8/11: the stop target must not be recomputed to a
+    """intersection-rules section 8/11: the stop target must not be recomputed to a
     new arbitrary point every frame - it should stay pinned to the stop
     line regardless of how far away the vehicle currently is."""
     tl = TrafficLight(x=100.0, y=0.0, cycle_time=1e9, offset=0.0, direction_angle=0.0)
@@ -359,7 +359,7 @@ def test_corner_safe_speed_is_well_under_a_typical_cruising_speed():
 
 
 def test_update_npc_clamps_target_speed_to_the_vehicle_plugins_max_speed():
-    """NPC-003 v2 section 4: a vehicle plugin's own max speed (bus/truck
+    """vehicle-population v2 section 4: a vehicle plugin's own max speed (bus/truck
     slower than ordinary traffic) caps target_speed_mps on top of the
     road's own speed limit - not a new physics/acceleration model, just
     one extra clamp."""
@@ -453,7 +453,7 @@ def test_right_turn_produces_a_smooth_trajectory_aligned_with_outgoing_road():
     assert all(p.maneuver == "right" for p in turn_points)
     outgoing_heading = math.degrees(math.atan2(path[-1].y - path[-2].y, path[-1].x - path[-2].x))
     assert math.isclose(outgoing_heading, -90.0, abs_tol=1.0)
-    # NPC-002 section 14/17: heading must change continuously through the
+    # intersection-rules section 14/17: heading must change continuously through the
     # arc - no single-vertex 90-degree pivot.
     headings = [
         math.degrees(math.atan2(b.y - a.y, b.x - a.x)) for a, b in zip(path, path[1:])
@@ -477,7 +477,7 @@ def test_left_turn_produces_a_smooth_trajectory_aligned_with_outgoing_road():
 
 
 def test_lane_offset_point_hugs_curb_for_right_turn_centerline_for_left():
-    """NPC-002 section 5/14/15: lane selection must not just drive the
+    """intersection-rules section 5/14/15: lane selection must not just drive the
     geometric center - a turning maneuver should bias within the
     right-hand half of the road: further right (curb) for a right turn,
     closer to the centerline for a left turn, than default cruising."""
@@ -783,7 +783,7 @@ def test_pick_npc_destination_candidates_accepts_a_building_yard_point_far_from_
 
 
 def test_pick_npc_destination_candidates_excludes_a_space_in_the_same_parking_area():
-    """NPC-004 section 4/5: an ordinary errand search must never propose
+    """collision-avoidance section 4/5: an ordinary errand search must never propose
     "drive to a different space in the same lot you're already parked in"
     as a destination - that's the exact pointless trip the spec forbids."""
     lot = Scenery(
@@ -1226,7 +1226,7 @@ def test_update_npc_recovery_still_triggers_when_final_pose_stays_blocked(monkey
 
 
 def test_update_npc_slows_down_for_a_stopped_vehicle_ahead():
-    """NPC-004 section 2: a stationary obstacle directly ahead in this
+    """collision-avoidance section 2: a stationary obstacle directly ahead in this
     vehicle's own lane must cap its speed - previously nothing at all
     checked other vehicles, only curbs/buildings and traffic lights."""
     ways = _straight_chain(count=20)
@@ -1327,7 +1327,7 @@ def test_update_npc_avoidance_uses_the_steering_target_not_the_lagging_current_h
 
 
 def test_trigger_road_rage_finds_the_nearest_driving_vehicle_ahead():
-    """NPC-005: the player's horn/Road Rage action must reach exactly one
+    """living-traffic: the player's horn/Road Rage action must reach exactly one
     real driver - the nearest currently-driving vehicle ahead - not a
     whole area, and never a parked one."""
     from theroadragetrip.npc import NPCVehicleManager
@@ -1414,7 +1414,7 @@ def test_road_rage_yield_target_stays_inside_the_road_and_skips_turns():
 
 
 def test_update_npc_stuck_detection_triggers_recovery_after_timeout():
-    """NPC-004 section 3/8: a vehicle that wants to move but makes no real
+    """collision-avoidance section 3/8: a vehicle that wants to move but makes no real
     progress for NPC_STUCK_TIMEOUT_S must flag itself for recovery -
     covers "not moving"/"oscillating"/"spinning" alike since all three
     fail the same real-displacement test."""
@@ -1464,7 +1464,7 @@ def test_update_npc_stuck_detection_does_not_trigger_for_a_normal_red_light():
 
 
 def test_reversing_backs_up_and_hands_back_to_stuck_recovery():
-    """NPC-004 section 6/7: REVERSING drives straight backward until
+    """collision-avoidance section 6/7: REVERSING drives straight backward until
     NPC_REVERSE_DISTANCE_M is covered, then stops and flags STUCK again so
     the population tick retries routing from the new position - it must
     never loop in REVERSING forever."""
@@ -1939,7 +1939,7 @@ def test_right_turn_lane_bias_keeps_clear_of_the_road_edge():
 
 def test_trigger_road_rage_skips_crashed_behind_too_far_and_too_lateral_vehicles():
     """godot-final-05: the eligibility the shared road-rage action relies on
-    (40 m ahead, within 6 m sideways, driving) - unchanged NPC-005 rule."""
+    (40 m ahead, within 6 m sideways, driving) - unchanged living-traffic rule."""
     from theroadragetrip.npc import NPCVehicleManager
 
     ways = _straight_chain(count=20)

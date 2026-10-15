@@ -1,4 +1,4 @@
-Implement NPC-001 for Road Rage Taxi.
+Implement autonomous-driving for Road Rage Taxi.
 
 Repository:
 https://github.com/emehtata/roadragetaxi
@@ -9,7 +9,7 @@ release/0.15.0alpha
 Goal:
 Introduce the first properly architected autonomous NPC car.
 
-NPC-001 is intentionally a SMALL vertical slice:
+autonomous-driving is intentionally a SMALL vertical slice:
 ONE Resident
 → ONE Driver
 → ONE NPC vehicle
@@ -161,7 +161,7 @@ Use the existing TrafficWorld route-planning functionality.
 
 Do not implement a second A* or road graph.
 
-For NPC-001:
+For autonomous-driving:
 
 - select a deterministic origin
 - select a deterministic destination
@@ -186,7 +186,7 @@ The driver must know:
 6. LANE SELECTION
 ==================================================
 
-Introduce a small lane-planning abstraction even if NPC-001 only needs simple lane logic.
+Introduce a small lane-planning abstraction even if autonomous-driving only needs simple lane logic.
 
 The architecture should distinguish:
 
@@ -198,7 +198,7 @@ Traffic rules
     ↓
 Vehicle controller
 
-For NPC-001 implement enough lane planning to correctly handle:
+For autonomous-driving implement enough lane planning to correctly handle:
 
 - right-hand traffic
 - straight movement
@@ -234,7 +234,7 @@ and provide:
 - reason
 - steering/lane guidance where needed
 
-At minimum NPC-001 must understand:
+At minimum autonomous-driving must understand:
 
 - speed limits where available
 - red traffic lights
@@ -290,7 +290,7 @@ Use the existing movement/physics conventions where possible.
 9. SMOOTH TURNS
 ==================================================
 
-This is an important NPC-001 requirement.
+This is an important autonomous-driving requirement.
 
 NPC cars must NOT perform sharp 90-degree pivot turns.
 
@@ -368,7 +368,7 @@ The state machine should make the current behavior easy to inspect.
 11. RESIDENT / DRIVER LIFECYCLE
 ==================================================
 
-NPC-001 must establish the lifecycle rules needed for future simulation.
+autonomous-driving must establish the lifecycle rules needed for future simulation.
 
 When the NPC car is spawned:
 
@@ -517,7 +517,7 @@ Do not make them part of the normal game rendering path when debug mode is disab
 16. PERFORMANCE
 ==================================================
 
-NPC-001 must not reintroduce the performance problems recently fixed.
+autonomous-driving must not reintroduce the performance problems recently fixed.
 
 Be especially careful with:
 
@@ -613,7 +613,7 @@ Use small, testable components.
 
 Do not over-engineer a generic framework for dozens of future vehicle types yet.
 
-NPC-001 should be simple, but the boundaries must be correct.
+autonomous-driving should be simple, but the boundaries must be correct.
 
 ==================================================
 19. DO NOT IMPLEMENT YET
@@ -637,13 +637,13 @@ Explicitly do NOT implement:
 
 Those will come later.
 
-NPC-001 is about proving the architecture with ONE car.
+autonomous-driving is about proving the architecture with ONE car.
 
 ==================================================
 20. ACCEPTANCE CRITERIA
 ==================================================
 
-NPC-001 is complete only when:
+autonomous-driving is complete only when:
 
 - the game starts normally
 - existing gameplay remains functional
@@ -704,6 +704,6 @@ After implementation:
 5. report any architectural compromises
 6. report any remaining limitations
 
-Most importantly, do not declare NPC-001 complete merely because the car moves.
+Most importantly, do not declare autonomous-driving complete merely because the car moves.
 
 The purpose of this milestone is to establish a sound architecture that can later support many Resident-driven NPC vehicles without having to rewrite the fundamental driving model.

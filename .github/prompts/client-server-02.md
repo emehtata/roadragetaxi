@@ -923,7 +923,7 @@ Phase 2 is complete when all of the following are true:
 * [ ] New server tests pass.
 * [ ] Protocol/integration tests pass.
 * [ ] Game still starts normally.
-* [ ] NPC-004 behaviour remains intact.
+* [ ] collision-avoidance behaviour remains intact.
 * [ ] No obvious FPS regression.
 * [ ] No new periodic stuttering caused by communication.
 * [ ] Architecture documentation is updated.

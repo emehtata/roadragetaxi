@@ -27,7 +27,7 @@ class TrafficDecision:
     stop_position: Optional[Tuple[float, float]] = None
     reason: str = ""
     # The actual TrafficLight object this decision was based on, if any -
-    # NPC-002 section 18/21: lets callers (debug HUD, tests) see exactly
+    # intersection-rules section 18/21: lets callers (debug HUD, tests) see exactly
     # which physical signal was judged relevant, not just a text reason.
     light: Optional[object] = None
 
@@ -84,7 +84,7 @@ def nearest_vehicle_ahead(
     """Return (distance_ahead_m, obstacle) for the nearest of `obstacles`
     actually in this vehicle's own lane ahead of it, or None.
 
-    NPC-004 section 2: the exact same forward-cone projection
+    collision-avoidance section 2: the exact same forward-cone projection
     nearest_traffic_light_ahead already uses (longitudinal/lateral
     dot-product test) - a lane is a narrow corridor, so an obstacle a couple
     of lanes over must never be mistaken for one actually blocking this

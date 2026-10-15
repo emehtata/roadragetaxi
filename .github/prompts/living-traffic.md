@@ -1,6 +1,6 @@
-# NPC-005 — Living NPC Traffic, Occupants and Road Rage
+# living-traffic — Living NPC Traffic, Occupants and Road Rage
 
-You are implementing **NPC-005** for the Road Rage Taxi project.
+You are implementing **living-traffic** for the Road Rage Taxi project.
 
 Repository:
 
@@ -58,7 +58,7 @@ Before making code changes, produce a concise plan describing:
 3. Current Resident/person/vehicle relationships.
 4. Current enter/leave vehicle lifecycle.
 5. Current Road Rage behaviour.
-6. What is missing for NPC-005.
+6. What is missing for living-traffic.
 7. Which existing systems will be extended.
 8. Which files are expected to change.
 9. How the changes will preserve single-player performance.
@@ -69,7 +69,7 @@ Do not wait for user confirmation unless you encounter a genuinely ambiguous arc
 
 ## Phase 2 — Implement incrementally
 
-Implement NPC-005 in logical, testable steps.
+Implement living-traffic in logical, testable steps.
 
 After each major step:
 
@@ -86,7 +86,7 @@ Run the complete relevant test suite.
 
 Then run the actual game and perform the manual gameplay tests described below.
 
-Do not claim NPC-005 is complete based solely on static code inspection.
+Do not claim living-traffic is complete based solely on static code inspection.
 
 ---
 
@@ -449,7 +449,7 @@ For example, later we may support:
 - stubborn
 - aggressive
 
-NPC-005 does not need a full personality system unless the current architecture already supports one.
+living-traffic does not need a full personality system unless the current architecture already supports one.
 
 ---
 
@@ -475,7 +475,7 @@ pedestrian/person simulation
 
 If the current person simulation already supports this, integrate it.
 
-If implementing the full behaviour is too large for NPC-005, establish the correct lifecycle/state hooks and implement the minimum safe behaviour.
+If implementing the full behaviour is too large for living-traffic, establish the correct lifecycle/state hooks and implement the minimum safe behaviour.
 
 Do not compromise the person/vehicle ownership model merely to produce a visual Road Rage effect.
 
@@ -693,7 +693,7 @@ Do NOT add:
 
 unless profiling demonstrates that they are actually necessary.
 
-The primary NPC-005 problem is **traffic behaviour and lifecycle**, not hypothetical optimization.
+The primary living-traffic problem is **traffic behaviour and lifecycle**, not hypothetical optimization.
 
 ---
 
@@ -899,7 +899,7 @@ Verify:
 
 # FUTURE COMPATIBILITY
 
-NPC-005 should not implement multiplayer or a 3D client.
+living-traffic should not implement multiplayer or a 3D client.
 
 However, keep the simulation boundaries clean enough to support future work involving:
 
@@ -919,7 +919,7 @@ Do not prematurely build those systems now.
 
 # DEFINITION OF DONE
 
-NPC-005 is complete only when:
+living-traffic is complete only when:
 
 1. Moving traffic is a first-class population category.
 2. The player regularly encounters moving NPC traffic.
@@ -973,6 +973,6 @@ Explicitly answer:
 3. Can occupants safely enter and leave vehicles?
 4. Does Road Rage cause NPCs to slow/yield/pull aside instead of disappearing?
 5. Can traffic interactions create secondary congestion?
-6. Did NPC-005 introduce measurable frame-time regression?
+6. Did living-traffic introduce measurable frame-time regression?
 
 Do not claim these are successful unless they were actually tested.

@@ -1,4 +1,4 @@
-# NPC-003 — Plugin-Based NPC Vehicle System and Population
+# vehicle-population — Plugin-Based NPC Vehicle System and Population
 
 ## Goal
 
@@ -1107,4 +1107,4 @@ The implementation is complete when:
 
 Do not implement the shopping system itself in this task unless required for integration testing.
 
-The primary goal of NPC-003 is to establish a robust, extensible **Plugin-Based Vehicle System and persistent NPC vehicle population** that later Resident behavior can build upon.
+The primary goal of vehicle-population is to establish a robust, extensible **Plugin-Based Vehicle System and persistent NPC vehicle population** that later Resident behavior can build upon.

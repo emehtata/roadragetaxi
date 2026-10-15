@@ -112,7 +112,7 @@ class Resident:
     # any) this resident is currently travelling with - None once they
     # leave the group (reboard timeout, or never in one to begin with).
     trip_group_id: Optional[int] = None
-    # NPC-003 section 6: which Household (if any) this resident belongs to -
+    # vehicle-population section 6: which Household (if any) this resident belongs to -
     # most spawned residents have none (not every household owns a car).
     household_id: Optional[int] = None
     lod_level: int = 0
@@ -241,10 +241,10 @@ class ResidentManager:
 
 @dataclass
 class Household:
-    """NPC-003 section 6: the minimal ownership entity linking a home
+    """vehicle-population section 6: the minimal ownership entity linking a home
     position to whichever Residents live there and whichever NPCVehicles
     (0, 1, or more) they own. Deliberately simple - "the exact ownership
-    model can initially be simple" (NPC-003 section 6) - just enough that
+    model can initially be simple" (vehicle-population section 6) - just enough that
     a future Resident-trip system can ask "does my household own a car,
     and where does it live" without a special case per caller.
 
