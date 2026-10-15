@@ -2,9 +2,10 @@
 on a real TrafficWorld route graph."""
 
 from types import SimpleNamespace
+import pytest
 
 from theroadragetrip.geo import dist_point_to_segment
-from theroadragetrip.navigation_route import ROUTE_TOLERANCE_M, NavigationRoute, simplify_polyline
+from theroadragetrip.navigation_route import ROUTE_TOLERANCE_M, NavigationRoute, simplify_polyline, next_turn
 from theroadragetrip.osm import Way
 from theroadragetrip.taxi import TaxiTarget
 from theroadragetrip.traffic_world import TrafficWorld, run_route_steps
@@ -37,6 +38,41 @@ def test_no_target_no_route_and_no_search():
     world, car, nav = _world(), SimpleNamespace(x=0.0, y=0.0, map_level=0), NavigationRoute()
     nav.update(world, car)
     assert nav.points == [] and nav._job is None and nav.plans_started == 0
+    assert nav.instruction == {"maneuver": "no_target"}
+
+
+@pytest.mark.parametrize("end,maneuver,angle", [((100, 100), "left", 90), ((100, -100), "right", -90)])
+def test_next_turn_has_direction_and_route_distance(end, maneuver, angle):
+    result = next_turn([(0, 0), (100, 0), end], 25, -2)
+    assert result["maneuver"] == maneuver and result["angle_deg"] == angle
+    assert result["distance_m"] == 75
+    after = next_turn([(0, 0), (100, 0), end], 100, 20 if end[1] > 0 else -20)
+    assert after["maneuver"] == "straight" and after["distance_m"] == 80
+
+
+def test_next_turn_counts_intermediate_segments_and_arrival():
+    points = [(0, 0), (40, 0), (100, 0), (100, 100)]
+    assert next_turn(points, 20, 0)["distance_m"] == 80
+    assert next_turn(points, 100, 95)["maneuver"] == "arrive"
+    assert next_turn([], 0, 0) is None
+
+
+def test_named_next_street_follows_the_outgoing_road_and_resets_with_target():
+    first = Way([(0, 0), (100, 0)], "residential", 4, name="Isokatu")
+    second = Way([(100, 0), (100, 100)], "residential", 4, name="Kirkkokatu")
+    world = _world(TrafficWorld([first, second]), TaxiTarget(x=100, y=100, address="Kirkkokatu 10"))
+    car, nav = SimpleNamespace(x=0, y=0, map_level=0), NavigationRoute()
+    _finish(nav, world, car)
+    assert nav.instruction == {"maneuver": "left", "distance_m": 100, "angle_deg": 90, "street": "Kirkkokatu"}
+    car.x = 70
+    nav.update(world, car)
+    assert nav.instruction["distance_m"] == 30
+    car.x, car.y = 100, 20
+    nav.update(world, car)
+    assert nav.instruction["maneuver"] == "straight"
+    world.taxi_mgr.target = None
+    nav.update(world, car)
+    assert nav.instruction == {"maneuver": "no_target"}
 
 
 def test_a_pickup_gets_a_route_from_the_taxi_to_the_target_once():

@@ -10,20 +10,48 @@ The route lifecycle, for every client:
   most `budget_s` per tick, so the 30 Hz tick never stalls on a long search.
 - **Off the surface,** `world.level_routes.plan` gives this level's leg.
 - **What is published:** only a finished route, compacted once with
-  `simplify_polyline`, as the state's `navigation.points`.
+  `simplify_polyline`, as the state's `navigation.points`, plus the next-turn
+  instruction (direction, route distance and outgoing street) for the phone.
 """
 
 from __future__ import annotations
 
 import time
+import math
 from typing import List, Optional, Sequence, Tuple
 
-from .geo import dist_point_to_segment
-from .map_level import SURFACE_LEVEL
+from .geo import dist_point_to_segment, closest_point_and_dist_to_segment, angle_diff
+from .map_level import SURFACE_LEVEL, on_map_level
 
 ROUTE_DEVIATION_M = 35.0  # farther than this from every segment -> re-plan
 ROUTE_TOLERANCE_M = 0.5  # simplify_polyline: no dropped point lies farther than this from the line
 ROUTE_BUDGET_S = 0.002  # route search per tick
+
+
+def next_turn(points, x, y):
+    """Next geometric turn and distance along the route, never straight-line distance."""
+    if len(points) < 2:
+        return None
+    nearest = None
+    for i, (a, b) in enumerate(zip(points, points[1:])):
+        px, py, _, gap = closest_point_and_dist_to_segment(x, y, *a, *b)
+        candidate = (gap, -i, px, py)
+        if nearest is None or candidate < nearest:
+            nearest = candidate
+    _, negative_index, px, py = nearest
+    index = -negative_index
+    distance = math.hypot(points[index + 1][0] - px, points[index + 1][1] - py)
+    for i in range(index + 1, len(points) - 1):
+        a, b, c = points[i - 1:i + 2]
+        incoming = math.atan2(b[1] - a[1], b[0] - a[0])
+        outgoing = math.atan2(c[1] - b[1], c[0] - b[0])
+        turn = math.degrees(angle_diff(outgoing, incoming))
+        if abs(turn) >= 30:
+            return {"maneuver": "uturn" if abs(turn) >= 150 else "left" if turn > 0 else "right",
+                    "distance_m": round(distance, 1), "angle_deg": round(turn), "turn_index": i}
+        distance += math.hypot(c[0] - b[0], c[1] - b[1])
+    return {"maneuver": "arrive" if distance <= 10 else "straight", "distance_m": round(distance, 1),
+            "angle_deg": 0, "turn_index": len(points) - 1}
 
 
 def simplify_polyline(points: Sequence[Tuple[float, float]], tolerance_m: float = ROUTE_TOLERANCE_M) -> List[Tuple[float, float]]:
@@ -60,12 +88,15 @@ class NavigationRoute:
         self._key = None  # (target, level, graph revision) the route and job belong to
         self._job = None  # the surface route search in progress
         self._job_started = 0.0
+        self.instruction = {"maneuver": "no_target"}
+        self._street_names = {}
 
     def update(self, world, car, current_way=None) -> None:
         """Once per server tick, after the simulation step."""
         target = world.taxi_mgr.get_current_target()
         if target is None:
             self._job, self._key, self.points = None, None, []
+            self.instruction = {"maneuver": "no_target"}
             return
         traffic = world.traffic_mgr
         level = getattr(car, "map_level", SURFACE_LEVEL)
@@ -79,6 +110,43 @@ class NavigationRoute:
             self._start(world, car, current_way, target, level, key)
         if self._job is not None:
             self._advance()
+        self._update_instruction(world, car, current_way)
+
+    def _update_instruction(self, world, car, current_way):
+        if self._job is not None:
+            self.instruction = {"maneuver": "routing"}
+            return
+        instruction = next_turn(self.points, car.x, car.y)
+        if instruction is None:
+            self.instruction = {"maneuver": "unreachable"}
+            return
+        index = instruction.pop("turn_index")
+        if index not in self._street_names:
+            name = ""
+            if index < len(self.points) - 1:
+                a, b = self.points[index:index + 2]
+                length = math.hypot(b[0] - a[0], b[1] - a[1])
+                t = min(.5, 8.0 / max(length, .001))
+                x, y = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+                grid = getattr(world, "spatial_grid", None)
+                ways = grid.ways_in_rect(x - 4, y - 4, x + 4, y + 4) if grid else getattr(world.traffic_mgr, "ways", ())
+                best = None
+                heading = math.atan2(b[1] - a[1], b[0] - a[0])
+                for way in ways:
+                    if not getattr(way, "is_drivable", True) or not on_map_level(way, getattr(car, "map_level", 0)):
+                        continue
+                    if current_way is not None and way.layer != current_way.layer:
+                        continue
+                    for start, end in zip(way.points_m, way.points_m[1:]):
+                        gap = dist_point_to_segment(x, y, *start, *end)
+                        alignment = abs(math.sin(math.atan2(end[1] - start[1], end[0] - start[0]) - heading))
+                        if gap <= way.half_width_m and alignment < .5:
+                            key = (gap, alignment)
+                            if best is None or key < best:
+                                best, name = key, way.name or ""
+            self._street_names[index] = name
+        instruction["street"] = self._street_names[index]
+        self.instruction = instruction
 
     def _off_route(self, car) -> bool:
         if len(self.points) < 2:
@@ -117,5 +185,6 @@ class NavigationRoute:
         self.worst_slice_s = max(self.worst_slice_s, time.perf_counter() - started)
 
     def _publish(self, route: Optional[Sequence[Tuple[float, float]]]) -> None:
+        self._street_names = {}
         self.raw_point_count = len(route) if route else 0
         self.points = [[round(x, 2), round(y, 2)] for x, y in simplify_polyline(route)] if route and len(route) >= 2 else []

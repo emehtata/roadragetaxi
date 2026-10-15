@@ -27,6 +27,7 @@ const T := preload("res://i18n.gd")
 @onready var phone: Phone = $Ui/Phone
 @onready var instruments: Control = $Ui/Instruments
 @onready var nav_overlay: Control = $Ui/NavOverlay
+var navigation_phone: Control
 @onready var night: Node2D = $NightLayer
 @onready var labels: Control = $Ui/Labels
 @onready var flash: ColorRect = $Sky/Flash
@@ -111,6 +112,8 @@ var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, m
 
 
 func _ready() -> void:
+	navigation_phone = preload("res://navigation_phone.gd").new()
+	$Ui.add_child(navigation_phone)
 	_apply_language()
 	_build_help()
 	_build_inspector()
@@ -206,6 +209,7 @@ func _apply_language() -> void:
 	hud.language = language
 	MapChunk.language = language
 	phone.set_language(language)
+	navigation_phone.language = language
 	instruments.language = language
 	nav_overlay.language = language
 	entities.language = language
@@ -220,6 +224,7 @@ func _on_connection(up: bool) -> void:
 	print("simulation ", "connected" if up else "disconnected")
 	phone.set_connected(up)
 	if not up:  # a new connection starts over: header, chunks, states
+		navigation_phone.hide()
 		_clear_focus()
 		entities.buffer.clear()
 		map_layer.clear()
@@ -620,6 +625,7 @@ func _present(state: Dictionary) -> void:
 	if state.has("game_time_seconds"):
 		phone.set_game_seconds(float(state["game_time_seconds"]))
 	phone.show_phone(state.get("phone", {}))
+	navigation_phone.show_navigation(state.get("navigation", {}), nav_overlay.show_route, phone.is_open)
 	_refresh_inspector(state)
 	var target: Dictionary = entities.current_target(state)
 	var target_screen := Vector2.ZERO

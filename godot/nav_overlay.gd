@@ -9,7 +9,7 @@ const RS := preload("res://render_style.gd")
 const T := preload("res://i18n.gd")
 
 var show_compass := false
-var show_route := false  # N, off by default: drawn by EntityLayer
+var show_route := false  # N: route line plus the compact navigation phone (main.gd)
 var _font: Font
 var _target: Dictionary = {}
 var _target_screen := Vector2.ZERO  # target position on screen

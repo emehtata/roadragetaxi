@@ -2,6 +2,9 @@ class_name I18n
 extends RefCounted
 ## UI text by key: Finnish and English.
 const FI := { "choose_start": "Valitse pelitapa", "career": "Ura",
+	"nav_left": "Käänny vasemmalle", "nav_right": "Käänny oikealle", "nav_uturn": "Tee U-käännös",
+	"nav_straight": "Jatka suoraan", "nav_arrive": "Määränpää", "nav_no_target": "Ei määränpäätä",
+	"nav_routing": "Lasketaan reittiä…", "nav_unreachable": "Reittiä ei löytynyt",
 	"startup_starting": "Käynnistetään palvelinta…", "startup_world": "Ladataan karttaa ja valmistellaan liikennettä…",
 	"startup_tiles": "Ladataan ympäröiviä karttaruutuja…", "startup_merging": "Yhdistetään karttaruutuja…",
 	"startup_indexes": "Päivitetään kartan hakemistoja ja reititystä…", "startup_weather": "Valmistellaan säätä ja ennustetta…",
@@ -49,6 +52,9 @@ const FI := { "choose_start": "Valitse pelitapa", "career": "Ura",
 }
 
 const EN := {
+	"nav_left": "Turn left", "nav_right": "Turn right", "nav_uturn": "Make a U-turn",
+	"nav_straight": "Continue straight", "nav_arrive": "Destination", "nav_no_target": "No destination",
+	"nav_routing": "Calculating route…", "nav_unreachable": "No route found",
 	"startup_starting": "Starting the server…", "startup_world": "Loading the map and preparing traffic…",
 	"startup_tiles": "Loading surrounding map tiles…", "startup_merging": "Merging map tiles…",
 	"startup_indexes": "Updating map indexes and routing…", "startup_weather": "Preparing weather and forecast…",

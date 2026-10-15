@@ -1225,6 +1225,26 @@ func test_label_modes() -> void:
 
 ## godot-final-04: the server's route, N to show it (C stays the compass).
 func test_navigation_route() -> void:
+	var NavigationPhone := preload("res://navigation_phone.gd")
+	var device := NavigationPhone.new()
+	root.add_child(device)
+	device.language = "fi"
+	var instruction := {"instruction": {"maneuver": "left", "distance_m": 125.0, "street": "Kirkkokatu"}}
+	device.show_navigation(instruction, true, false)
+	check(device.visible and device._distance.text == "125 m" and device._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
+	var left: PackedVector2Array = NavigationPhone.arrow_points("left")
+	var right: PackedVector2Array = NavigationPhone.arrow_points("right")
+	check(left.size() == 3 and left[-1].x < left[-2].x and left[0].x == left[1].x, "navigation phone: left arrow has a 90 degree bend")
+	check(right.size() == 3 and right[-1].x > right[-2].x, "navigation phone: right arrow points right")
+	device.show_navigation(instruction, true, true)
+	check(not device.visible, "full offer phone hides the mounted navigation phone")
+	device.show_navigation({}, true, false)
+	check(device.visible and device._distance.text == "" and device._street.text == "Ei määränpäätä", "navigation phone: no stale instruction without a destination")
+	device.show_navigation({"instruction": {"maneuver": "routing"}}, true, false)
+	check(device._street.text == "Lasketaan reittiä…", "navigation phone: routing status")
+	device.show_navigation(instruction, false, false)
+	check(not device.visible, "navigation phone: N off hides the device")
+	device.free()
 	var nav: Control = load("res://nav_overlay.gd").new()
 	check(not nav.show_route and not nav.show_compass, "N and C start off")
 	var n := _key_event(KEY_N)
