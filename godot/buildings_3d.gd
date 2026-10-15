@@ -277,9 +277,12 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 ## Window slots on a real wall: up to 3 a floor (2 on a
 ## house, every other floor), a storefront row on a commercial ground floor,
 ## lit deterministically (LIT_PROBABILITY).
+const CATEGORY_WALL := 3  # a plain wall (a stadium's, map_chunks.stadium_walls): no windows
+
+
 static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, height: float, floors: int, category: int, seed: float) -> void:
 	var length := a.distance_to(b)
-	if length < 12.0 / 9.0:
+	if length < 12.0 / 9.0 or category == CATEGORY_WALL:
 		return
 	var house := category == 1
 	var along := (b - a) / length

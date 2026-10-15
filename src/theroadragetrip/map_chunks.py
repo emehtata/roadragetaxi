@@ -138,6 +138,31 @@ def rink_frame(points) -> list | None:
     return [round(centre.x, 2), round(centre.y, 2), round(angle, 4), round(max(side_a, side_b), 2), round(min(side_a, side_b), 2)]
 
 
+STADIUM_WALL_HEIGHT_M = 6.0
+STADIUM_WALL_THICKNESS_M = 0.8
+# A building style (static_world.building_style): flat concrete top, no gable, no
+# entrances, concrete walls, one storey, category 3 a plain wall (buildings_3d.gd: no windows).
+STADIUM_WALL_STYLE = [[158, 156, 150], 0, STADIUM_WALL_HEIGHT_M, [], [176, 172, 164], 1, 3]
+
+
+def stadium_walls(points) -> list:
+    """A stadium's outer wall as building footprints: one thin quad per
+    outline edge, STADIUM_WALL_THICKNESS_M into the stadium."""
+    ring = list(points[:-1]) if len(points) > 1 and points[0] == points[-1] else list(points)
+    if len(ring) < 3:
+        return []
+    area2 = sum(ax * by - bx * ay for (ax, ay), (bx, by) in zip(ring, ring[1:] + ring[:1]))
+    inward = 1.0 if area2 > 0 else -1.0  # counter-clockwise: the inside is to the left
+    walls = []
+    for (ax, ay), (bx, by) in zip(ring, ring[1:] + ring[:1]):
+        length = math.hypot(bx - ax, by - ay)
+        if length < 0.1:
+            continue
+        nx, ny = -(by - ay) / length * inward * STADIUM_WALL_THICKNESS_M, (bx - ax) / length * inward * STADIUM_WALL_THICKNESS_M
+        walls.append([(ax, ay), (bx, by), (bx + nx, by + ny), (ax + nx, ay + ny)])
+    return walls
+
+
 FLOODLIGHT_POLE_OUT_M = 2.0  # outside the field's rectangle
 FLOODLIGHT_MIN_AREA_M2 = 2000.0  # smaller fields (tennis courts...) have no poles of their own; rinks always do
 FLOODLIGHT_POLE_MERGE_M = 10.0  # poles of neighbouring fields closer than this are one
@@ -371,14 +396,18 @@ class ChunkIndex:
                     if cell not in pole_cells:  # neighbouring fields share their poles
                         pole_cells.add(cell)
                         self._add("floodlight_poles", [pole[:2]], [round(v, 3) for v in pole])
+            if kind == "stadium":  # walled all round (taxi.SOLID_AREA_KINDS): a 3D wall like a building's
+                for piece in stadium_walls(scenery.points_m):
+                    chunk = self._chunk(cell_of(sum(p[0] for p in piece) / 4.0, sum(p[1] for p in piece) / 4.0, self.size))
+                    chunk["buildings"].append(_line(piece))
+                    chunk["building_styles"].append(STADIUM_WALL_STYLE)
             if is_soccer_pitch(scenery):  # its FIFA lines, drawn while there is no snow
                 frame = rink_frame(scenery.points_m)
                 if frame is not None:
                     self._add("soccer_pitches", scenery.points_m[:1], frame)
-            if kind in ("ice_rink", "stadium"):  # closed all round (taxi.SOLID_AREA_KINDS): boards, or a wall
+            if kind == "ice_rink":  # closed all round (taxi.SOLID_AREA_KINDS): its boards
                 outline = _line(list(scenery.points_m) + [scenery.points_m[0]])
-                self._add("railings", scenery.points_m[:1], ["boards" if kind == "ice_rink" else "wall", outline])
-            if kind == "ice_rink":
+                self._add("railings", scenery.points_m[:1], ["boards", outline])
                 frame = rink_frame(scenery.points_m)
                 if frame is not None:  # its hockey markings, drawn in winter
                     self._add("rinks", scenery.points_m[:1], frame)
