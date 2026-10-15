@@ -162,7 +162,7 @@ CHANGED_AREA_MARGIN_M = 50.0
 
 
 class SimulationServer:
-    def __init__(self, args, config, city_choice=None):
+    def __init__(self, args, config, city_choice=None, startup_progress=None):
         """`city_choice` (a `_choose_city`-shaped SimpleNamespace) lets an
         embedding client that already ran its own interactive city menu
         hand the resolved choice straight to the server, instead of the
@@ -171,6 +171,9 @@ class SimulationServer:
         standalone `python -m theroadragetrip.server` process (no client
         menu involved) resolves it here instead, CLI-driven, no menu."""
         self.args = args
+        from .startup_progress import StartupProgress
+        progress = startup_progress or StartupProgress(getattr(args, "startup_progress", None))
+        progress("starting")
         self.tick_rate = max(1.0, float(getattr(args, "tick_rate", 30.0)))
         self.audio = EventAudio()
         self.language = getattr(args, "language", None) or config.get("game", "language", fallback="") or "en"
@@ -207,16 +210,19 @@ class SimulationServer:
         self.cities_list = city_choice.cities_list
         self.career = city_choice.career
 
+        progress("world")
         self.world = load_world(
             city_choice.chosen_city, city_choice.camera_city_name, city_choice.bbox,
             city_choice.city_centers, args, city_choice.force_refresh, overpass_endpoints,
             bus_stops_enabled, roadworks_enabled, city_choice.career, self.career_file,
             self.gig_odometer_file, self.language,
+            progress=lambda fraction, message: progress("world", message),
         )
         self.initial_map_preparation = (
-            prepare_initial_window(self.world) if self._auto_fetch
+            prepare_initial_window(self.world, progress=progress) if self._auto_fetch
             else {"started": False, "integrated_tiles": 0, "elapsed_s": 0.0}
         )
+        progress("weather")
         self.car = self.world.car
         # weather is per-session state constructed fresh alongside
         # `world` rather than something load_world itself returns -
@@ -290,10 +296,12 @@ class SimulationServer:
         self._clients_lock = threading.Lock()
         self._clients: list = []
         # Per connection: the map chunks it has, and the player cell they were planned for.
+        progress("lights", f"{len(self.world.ways)} roads")
         self.world.street_light_points = place_street_lights(self.world)  # before the chunks carry them
         # Build the index now, but encode only the nearby chunks a client asks
         # for. Some rural maps contain far-flung geometry in thousands of
         # irrelevant buckets; eagerly encoding all of them delayed startup.
+        progress("chunks", f"{len(self.world.buildings)} buildings; {len(self.world.street_light_points)} lights")
         self._chunks_index = ChunkIndex(self.world)
         self._client_chunks: dict = {}
         self._map_streamer = MapStreamer(self.world, self._map_grew) if self._auto_fetch else None
@@ -978,6 +986,15 @@ _NullFrameProfiler.INSTANCE = _NullFrameProfiler()
 
 
 def run_server(args, config) -> SimulationServer:
-    server = SimulationServer(args, config)
-    server.start(args.host, args.port)
+    from .startup_progress import StartupProgress
+
+    progress = StartupProgress(getattr(args, "startup_progress", None))
+    try:
+        server = SimulationServer(args, config, startup_progress=progress)
+        progress("connecting")
+        server.start(args.host, args.port)
+        progress("ready")
+    except Exception as exc:
+        progress("error", f"{type(exc).__name__}: {exc}")
+        raise
     return server

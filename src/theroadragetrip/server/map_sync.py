@@ -36,7 +36,7 @@ SYNC_WAIT_FOR_FETCH_S = 3.0
 INITIAL_PREPARE_TIMEOUT_S = 190.0
 
 
-def prepare_initial_window(world, timeout_s: float = INITIAL_PREPARE_TIMEOUT_S) -> dict[str, object]:
+def prepare_initial_window(world, timeout_s: float = INITIAL_PREPARE_TIMEOUT_S, progress=None) -> dict[str, object]:
     """Finish a missing initial tile window before gameplay begins.
 
     Startup has no frame to protect, so doing the merge and one derived-data
@@ -45,6 +45,8 @@ def prepare_initial_window(world, timeout_s: float = INITIAL_PREPARE_TIMEOUT_S) 
     MapStreamer sees the still-missing tiles and continues in gameplay.
     """
     manager = world.auto_fetch_manager
+    if progress is not None:
+        progress("tiles")
     started = time.perf_counter()
     if not manager.start_initial_tile_streaming():
         return {"started": False, "integrated_tiles": 0, "elapsed_s": 0.0}
@@ -52,16 +54,21 @@ def prepare_initial_window(world, timeout_s: float = INITIAL_PREPARE_TIMEOUT_S) 
     logger.info("Cold-start map preparation started")
     deadline = started + timeout_s
     while manager.get_fetching() and time.perf_counter() < deadline:
+        if progress is not None:
+            progress("tiles", manager.get_progress_message())
         time.sleep(0.02)
     if manager.get_fetching():
         elapsed = time.perf_counter() - started
         logger.warning("Cold-start map preparation timed out after %.1f s; continuing in gameplay", elapsed)
         return {"started": True, "integrated_tiles": 0, "elapsed_s": elapsed, "timed_out": True}
 
+    if progress is not None:
+        progress("merging")
     integrated = manager.integrate_completed_tiles()
     if integrated:
         for _stage in map_sync_steps(world):
-            pass
+            if progress is not None:
+                progress("indexes", _stage)
         # These changes are already reflected in the initial ChunkIndex built
         # after this function returns; a later runtime merge must not rebuild
         # them as if they were new.

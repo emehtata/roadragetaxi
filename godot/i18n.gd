@@ -2,6 +2,13 @@ class_name I18n
 extends RefCounted
 ## UI text by key: Finnish and English.
 const FI := { "choose_start": "Valitse pelitapa", "career": "Ura",
+	"startup_starting": "Käynnistetään palvelinta…", "startup_world": "Ladataan karttaa ja valmistellaan liikennettä…",
+	"startup_tiles": "Ladataan ympäröiviä karttaruutuja…", "startup_merging": "Yhdistetään karttaruutuja…",
+	"startup_indexes": "Päivitetään kartan hakemistoja ja reititystä…", "startup_weather": "Valmistellaan säätä ja ennustetta…",
+	"startup_lights": "Sijoitetaan katuvaloja…", "startup_chunks": "Rakennetaan piirrettäviä karttalohkoja…",
+	"startup_connecting": "Avataan yhteyttä simulaatioon…", "startup_ready": "Simulaatio valmis — yhdistetään…",
+	"startup_error": "Käynnistys epäonnistui", "startup_elapsed": "Kulunut %d s · viimeisin tilapäivitys %d s sitten",
+	"startup_exited": "Simulaatiopalvelin sulkeutui ennen yhteyden muodostumista.",
 	"gig_driver": "Keikkakuski", "settings": "Asetukset", "meter": "mittari %.2f €", "happiness": "tyytyväisyys %d%%", "real_data": "TODELLINEN DATA", "real_data_detail": "Peli voi käyttää todellista dataa kaupungista ja ajasta, jossa pelaat.", "realtime_trains": "Todelliset junien aikataulut (Digitraffic)", "continue": "Jatka", "map_loading": "Ladataan karttaa…", "map_fetching": "haetaan edessä olevaa aluetta", "map_merging": "liitetään karttaan", "map_syncing": "valmistellaan teitä ja liikennettä", "map_building": "piirretään uutta aluetta", "clear_cache": "Tyhjennä välimuisti kokonaan", "reset_home": "Poista taksin koti", "confirm_reset_home": "Poistetaanko taksikuskin koti kaikista kaupungeista?", "confirm_clear_cache": "Tyhjennetäänkö karttavälimuisti? Kartat ladataan uudelleen.", "cache_cleared_done": "Karttavälimuisti tyhjennetty.", "cache_clear_failed": "Karttavälimuistia ei voitu tyhjentää.", "cancel": "Peruuta", "delete": "Poista", "clear": "Tyhjennä", "clearing": "Tyhjennetään…", "fares": "Kyydit", "map_overpass": "Karttadata: Overpass (verkko)", "map_pbf": "Karttadata: paikallinen .osm.pbf-tiedosto", "hint_enter_taxi": "Painamalla F pääset sisään taksiisi", "hint_start_engine": "Käynnistä moottori painamalla E", "weather_forecast_24h": "Arvioitu sää seuraavalle 24 tunnille", "press_any_key_start": "Paina mitä tahansa aloittaaksesi", "weather_source_observed": "havainto", "snow_depth": "lumi %.0f cm", "weather_source_forecast": "ennuste", "start_time": "ALOITUSAIKA", "year": "Vuosi", "month": "Kuukausi", "day": "Päivä", "hour": "Tunti", "minute": "Minuutti", "now": "Nyt", "start": "Aloita", "historical_weather": "FMI-sää (havainnot ja ennusteet)", "quit": "Lopeta peli",
 	"choose_city": "VALITSE KAUPUNKI", "drive": "Aloita", "custom_map_point": "Oma karttapiste >", "map_point_settings": "liikenne kuten %s", "map_point_help": "Napsauta aloituspaikka. Vedä tai nuolinäppäimet: siirrä, rulla tai +/-: zoomaa, välilyönti: keskikohta.", "back": "Takaisin",
 	"pbf_missing": "SUOMEN KARTTAA EI LÖYDY", "pbf_download_offer": "Ladataanko Suomen OpenStreetMap-tiedosto? Lataus on suuri ja tallennetaan käyttäjäkohtaiseen kansioon.",
@@ -42,6 +49,13 @@ const FI := { "choose_start": "Valitse pelitapa", "career": "Ura",
 }
 
 const EN := {
+	"startup_starting": "Starting the server…", "startup_world": "Loading the map and preparing traffic…",
+	"startup_tiles": "Loading surrounding map tiles…", "startup_merging": "Merging map tiles…",
+	"startup_indexes": "Updating map indexes and routing…", "startup_weather": "Preparing weather and forecast…",
+	"startup_lights": "Placing street lights…", "startup_chunks": "Building renderable map chunks…",
+	"startup_connecting": "Opening the simulation connection…", "startup_ready": "Simulation ready — connecting…",
+	"startup_error": "Startup failed", "startup_elapsed": "Elapsed %d s · last status update %d s ago",
+	"startup_exited": "The simulation server exited before connecting.",
 	"choose_start": "Choose how to start", "career": "Career", "gig_driver": "Gig driver", "settings": "Settings", "meter": "meter %.2f €",
 	"happiness": "happiness %d%%", "real_data": "REAL-WORLD DATA", "real_data_detail": "The game can use real data for the city and time you play in.",
 	"realtime_trains": "Real train timetables (Digitraffic)", "continue": "Continue", "map_loading": "Loading map…",
@@ -90,3 +104,23 @@ static func text(key: String, language: String) -> String:
 
 static func weather(value: String, language: String) -> String:
 	return text("weather_" + value, language) if EN.has("weather_" + value) else value.capitalize()
+
+
+static func startup_detail(value: String, language: String) -> String:
+	const DETAILS := {
+		"Initializing scenery engine...": "Alustetaan karttamoottoria…",
+		"Preparing road index...": "Rakennetaan tiehakemistoa…",
+		"Preparing house parking...": "Valmistellaan talojen pysäköintipaikkoja…",
+		"Preparing building and scenery indexes...": "Rakennetaan rakennusten ja maaston hakemistoja…",
+		"Preparing railways and timetables...": "Valmistellaan rautateitä ja aikatauluja…",
+		"Preparing taxi missions...": "Valmistellaan taksitehtäviä…",
+		"Preparing taxi world...": "Valmistellaan taksin ympäristöä…",
+		"Preparing NPC traffic...": "Valmistellaan muuta liikennettä…",
+		"Preparing pedestrians...": "Valmistellaan jalankulkijoita…",
+		"Starting game...": "Valmistellaan junia ja pelimaailmaa…",
+		"Ready": "Karttapohja valmis",
+		"road_grid": "Tiehakemisto", "building_grid": "Rakennushakemisto", "scenery_grid": "Maastohakemisto",
+		"house_parking": "Talojen pysäköintipaikat", "small_grids": "Veden, kaiteiden ja liikenneohjausten hakemistot",
+		"trees_under_roads": "Teiden alle jäävät puut",
+	}
+	return DETAILS.get(value, value) if language == "fi" else value

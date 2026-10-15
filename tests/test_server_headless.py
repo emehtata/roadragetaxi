@@ -16,6 +16,17 @@ def _build_server(tmp_path, monkeypatch, extra=()):
     return SimulationServer(args, config)
 
 
+def test_startup_progress_reaches_the_render_chunk_stage(tmp_path, monkeypatch):
+    import json
+
+    status = tmp_path / "startup.json"
+    _build_server(tmp_path, monkeypatch, ["--startup-progress", str(status)])
+    report = json.loads(status.read_text())
+    assert report["stage"] == "chunks"
+    assert report["history"] == ["starting", "world", "weather", "lights", "chunks"]
+    assert "buildings" in report["detail"]
+
+
 def test_server_builds_and_ticks_with_no_client_connected(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
     assert server._chunks_index._encoded == {}  # distant chunks are encoded lazily, not on startup

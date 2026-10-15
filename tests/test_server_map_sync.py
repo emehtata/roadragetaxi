@@ -68,11 +68,14 @@ def test_cold_start_finishes_initial_merge_and_sync_before_gameplay(monkeypatch)
 
     monkeypatch.setattr(map_sync, "map_sync_steps", sync_steps)
 
-    result = map_sync.prepare_initial_window(SimpleNamespace(auto_fetch_manager=manager))
+    progress = []
+    result = map_sync.prepare_initial_window(SimpleNamespace(auto_fetch_manager=manager),
+                                            progress=lambda *row: progress.append(row))
 
     assert result["integrated_tiles"] == 9
     assert stages == ["sync"]
     assert manager.dirty_taken == 1
+    assert progress == [("tiles",), ("merging",), ("indexes", "done")]
 
 
 def test_cold_start_is_a_noop_when_startup_bbox_already_covers_the_window():

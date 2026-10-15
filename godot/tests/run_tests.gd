@@ -79,10 +79,52 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_buildings_3d()
 	test_resent_chunk_buildings()
 	test_performance_paths()
+	test_startup_progress()
 	test_holiday_events()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
+
+
+func test_startup_progress() -> void:
+	var Startup := preload("res://startup.gd")
+	check(Startup.startup_status("{}").is_empty() and Startup.startup_status("[]").is_empty(), "startup: invalid or absent status ignored")
+	check(Startup.startup_status('{"stage":3,"detail":"x","history":[]}').is_empty(), "startup: malformed stage ignored")
+	var shell := Startup.new()  # no _ready/menu process launch
+	shell._language = "fi"
+	var temporary := OS.get_environment("TEMP") if OS.get_name() == "Windows" else "/tmp"
+	shell._startup_path = temporary.path_join("rrt-startup-test-%d.json" % OS.get_process_id())
+	shell._startup_started = Time.get_ticks_msec() - 5000
+	shell._startup_changed_at = shell._startup_started
+	shell._startup_stage = Label.new()
+	shell._startup_detail = Label.new()
+	shell._startup_elapsed = Label.new()
+	shell._startup_history = Label.new()
+	shell._startup_bar = ProgressBar.new()
+	for node in [shell._startup_stage, shell._startup_detail, shell._startup_elapsed, shell._startup_history, shell._startup_bar]:
+		shell.add_child(node)
+	var file := FileAccess.open(shell._startup_path, FileAccess.WRITE)
+	check(file != null, "startup: status fixture is writable")
+	if file == null:
+		shell.free()
+		return
+	file.store_string(JSON.stringify({"stage": "world", "detail": "Preparing NPC traffic...", "history": ["starting", "world"]}))
+	file.close()
+	shell._server_pid = OS.create_process("powershell.exe", ["-NoProfile", "-Command", "Start-Sleep -Seconds 10"]) if OS.get_name() == "Windows" else OS.create_process("/bin/sleep", ["10"])
+	check(shell._server_pid > 0, "startup: child process available for liveness check")
+	shell._loading = true
+	shell._process(0.5)
+	check(shell._startup_detail.text == "Valmistellaan muuta liikennettä…", "startup: Finnish substage reaches the visible label")
+	check(shell._startup_elapsed.text.begins_with("Kulunut 5 s"), "startup: elapsed time keeps updating")
+	check(shell._startup_history.text.contains("Käynnistetään palvelinta"), "startup: recent stages shown")
+	file = FileAccess.open(shell._startup_path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"stage": "error", "detail": "ValueError: broken map", "history": ["world", "error"]}))
+	file.close()
+	shell._process(0.5)
+	check(not shell._loading and shell._startup_stage.text == "KÄYNNISTYS EPÄONNISTUI" and shell._startup_detail.text == "ValueError: broken map", "startup: server error replaces endless loading")
+	OS.kill(shell._server_pid)
+	shell._server_pid = -1
+	shell.free()
 
 
 func test_holiday_events() -> void:

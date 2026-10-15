@@ -23,6 +23,16 @@ var _language := "en"
 var _settings := ConfigFile.new()
 var _server_extra: Array[String] = []
 var _loading := false
+var _startup_path := ""
+var _startup_started := 0
+var _startup_poll := 0.0
+var _startup_stage: Label
+var _startup_detail: Label
+var _startup_elapsed: Label
+var _startup_history: Label
+var _startup_bar: ProgressBar
+var _startup_last: Dictionary = {}
+var _startup_changed_at := 0
 var _focusables: Array[Control] = []
 var _back_action := Callable()
 var _logo: TextureRect
@@ -632,7 +642,31 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_settings.save("user://settings.cfg")
 	_clear()
 	_title(_t("loading"), _t("starting"))
+	_startup_path = ProjectSettings.globalize_path("user://startup-%d.json" % OS.get_process_id())
+	_remove_startup_status()
+	_startup_started = Time.get_ticks_msec()
+	_startup_poll = 0.0
+	_startup_changed_at = _startup_started
+	_startup_last = {}
+	_startup_bar = ProgressBar.new()
+	_startup_bar.indeterminate = true
+	_startup_bar.show_percentage = false  # stages have no reliable total duration
+	_startup_bar.custom_minimum_size = Vector2(520, 20)
+	_body.add_child(_startup_bar)
+	_startup_stage = Label.new()
+	_startup_stage.text = _t("startup_starting")
+	_body.add_child(_startup_stage)
+	_startup_detail = Label.new()
+	_startup_detail.custom_minimum_size.x = 520
+	_startup_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_body.add_child(_startup_detail)
+	_startup_elapsed = Label.new()
+	_body.add_child(_startup_elapsed)
+	_startup_history = Label.new()
+	_startup_history.add_theme_color_override("font_color", Color8(170, 185, 200))
+	_body.add_child(_startup_history)
 	var args := ["--port", str(PORT), "--game-mode", mode, "--language", _language, "--parent-pid", str(OS.get_process_id())]
+	args.append_array(["--startup-progress", _startup_path])
 	if mode == "gig_driver":
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
 		if _start_point != Vector2.INF:
@@ -648,6 +682,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	var command := Paths.server_command(args)  # the repo's .venv, or the release's bundled server
 	_server_pid = OS.create_process(command[0], command[1])
 	if _server_pid <= 0:
+		_clear()
 		_title(_t("start_failed"), _t("start_failed_detail"))
 		_button(_t("back"), _main_menu)
 		_back_action = _main_menu
@@ -659,8 +694,54 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	add_child(_game)
 	move_child(_game, 1)
 	_loading = true
+	_button(_t("cancel"), _stop_game)
+	_back_action = _stop_game
+	_focus_menu()
 	for bus in ["Master", "Game", "Environment", "UI"]:
 		_set_volume(bus, _settings.get_value("audio", bus, 1.0))
+
+
+static func startup_status(text: String) -> Dictionary:
+	var parsed = JSON.parse_string(text)
+	return parsed if parsed is Dictionary and parsed.get("stage") is String and parsed.get("detail") is String and parsed.get("history") is Array else {}
+
+
+func _process(delta: float) -> void:
+	if not _loading:
+		return
+	_startup_poll -= delta
+	if _startup_poll > 0.0:
+		return
+	_startup_poll = 0.5
+	var now := Time.get_ticks_msec()
+	if FileAccess.file_exists(_startup_path):
+		var file := FileAccess.open(_startup_path, FileAccess.READ)
+		if file != null:
+			var status := startup_status(file.get_as_text()) if file.get_length() <= 16384 else {}
+			file.close()  # allow the Python process to replace the file on Windows too
+			if not status.is_empty() and status != _startup_last:
+				_startup_last = status
+				_startup_changed_at = now
+				_startup_stage.text = _t("startup_" + status.stage)
+				_startup_detail.text = T.startup_detail(status.detail, _language)
+				var previous: Array[String] = []
+				for stage in status.history.slice(0, -1):
+					previous.append("· " + _t("startup_" + str(stage)))
+				_startup_history.text = "\n".join(previous)
+	_startup_elapsed.text = _t("startup_elapsed") % [(now - _startup_started) / 1000, (now - _startup_changed_at) / 1000]
+	if _startup_last.get("stage", "") == "error" or not OS.is_process_running(_server_pid):
+		_loading = false
+		_startup_bar.indeterminate = false
+		_startup_stage.text = _t("start_failed")
+		if _startup_last.get("stage", "") != "error":
+			_startup_detail.text = _t("startup_exited") + "\n" + _startup_detail.text
+
+
+func _remove_startup_status() -> void:
+	if _startup_path != "":
+		for path in [_startup_path, _startup_path + ".tmp"]:
+			if FileAccess.file_exists(path):
+				DirAccess.remove_absolute(path)
 
 
 func _offer_pbf_download(mode: String) -> void:
@@ -786,6 +867,7 @@ func _server_connected(up: bool) -> void:
 	if not up or not _loading:
 		return
 	_loading = false
+	_remove_startup_status()
 	_panel.visible = false
 	_back.visible = false
 
@@ -843,7 +925,9 @@ func _stop_game() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed("ui_cancel"):
 		return
-	if _game != null:
+	if _loading:
+		_stop_game()
+	elif _game != null:
 		if _game.phone.is_open:
 			return
 		if get_tree().paused:
@@ -869,6 +953,7 @@ func _stop_server() -> void:
 	if _server_pid > 0:
 		OS.kill(_server_pid)
 		_server_pid = -1
+	_remove_startup_status()
 
 
 func _notification(what: int) -> void:

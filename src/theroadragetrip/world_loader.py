@@ -277,11 +277,13 @@ def load_world(
     # Spatial index for fast O(1) road collision detection
     spatial_grid = SpatialWayGrid(map_level=SURFACE_LEVEL)  # surface driving network (map_level.py)
     spatial_grid.rebuild(ways)
+    on_load_progress(0.72, "Preparing house parking...")
     generated_house_bays = generate_detached_house_parking(
         buildings, ways, parking_spaces, spatial_grid
     )
     if generated_house_bays:
         logger.info("Generated %d detached-house residential parking bays", generated_house_bays)
+    on_load_progress(0.74, "Preparing building and scenery indexes...")
     building_grid = SpatialWayGrid()
     building_grid.rebuild(buildings)
     scenery_grid = SpatialWayGrid()
@@ -475,12 +477,11 @@ def load_world(
     )
     auto_fetch_manager.initialize_player_tile(car.x, car.y, fetched_area_metres(bbox))
     auto_fetch_manager.soft_boundary_enabled = args.auto_fetch
-    on_load_progress(1.0, "Ready")
-    logger.info("Entering gameplay loop")
 
     # Trains are simulation (advance_simulation updates them): built with the
     # world so a headless server has them too.
     # The real timetable (Digitraffic), or - turned off - trains at a fixed interval.
+    on_load_progress(0.99, "Preparing railways and timetables...")
     timetable = load_timetable() if getattr(args, "train_timetable", True) else None
     if getattr(args, "train_timetable", True):
         refresh_if_stale(timetable)  # weekly, in the background: the next start gets it
@@ -494,6 +495,8 @@ def load_world(
     arena_crowds = ArenaCrowds(
         pedestrian_mgr, taxi_stops, chosen_city, to_metres=latlon_to_world_metres(),
     )
+    on_load_progress(1.0, "Ready")
+    logger.info("World preparation complete")
 
     return SimpleNamespace(
         arena_crowds=arena_crowds,
