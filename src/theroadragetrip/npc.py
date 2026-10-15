@@ -1834,7 +1834,7 @@ def _find_npc_trip_steps(
     for destination_index in road_points:
         yield
         raw_destination = (nodes[destination_index][0], nodes[destination_index][1])
-        destination_candidates = _pick_npc_destination_candidates(
+        destination_candidates = yield from _pick_npc_destination_candidates_steps(
             raw_destination[0], raw_destination[1], parking_spaces, sceneries, buildings,
             ways=ways, spatial_grid=spatial_grid, other_vehicle_positions=other_vehicle_positions,
             own_position=origin,
@@ -2709,7 +2709,28 @@ def _pick_npc_destination_candidates(
     limit: int = NPC_PARKING_CANDIDATE_LIMIT,
     other_vehicle_positions: Optional[List[Tuple[float, float]]] = None,
     own_position: Optional[Tuple[float, float]] = None,
+    deadline: Optional[float] = None,
 ) -> List[Tuple[Tuple[float, float], object]]:
+    """Run parking selection synchronously, discarding incomplete searches on timeout."""
+    return run_route_steps(_pick_npc_destination_candidates_steps(
+        x, y, parking_spaces, sceneries, buildings, ways, spatial_grid,
+        search_radius_m, limit, other_vehicle_positions, own_position,
+    ), deadline=deadline) or []
+
+
+def _pick_npc_destination_candidates_steps(
+    x: float,
+    y: float,
+    parking_spaces: Optional[List] = None,
+    sceneries: Optional[List] = None,
+    buildings: Optional[List] = None,
+    ways: Optional[List[Way]] = None,
+    spatial_grid: Optional[SpatialWayGrid] = None,
+    search_radius_m: float = NPC_DESTINATION_SEARCH_RADIUS_M,
+    limit: int = NPC_PARKING_CANDIDATE_LIMIT,
+    other_vehicle_positions: Optional[List[Tuple[float, float]]] = None,
+    own_position: Optional[Tuple[float, float]] = None,
+) -> RouteSteps:
     """Every acceptable place to stop near (x, y), in NPC-more.md section
     2's tier order (dedicated space > parking lot > building yard >
     roadside shoulder on a quiet street as an explicit last resort),
@@ -2748,6 +2769,9 @@ def _pick_npc_destination_candidates(
     routed). Not applied to the lot/yard/roadside tiers, which already have
     their own vehicle-spacing exclusion above for a different reason.
     """
+    if limit <= 0:
+        return []
+    yield
     radius_sq = search_radius_m * search_radius_m
     own_parking_area = _parking_area_containing(own_position, sceneries)
 
@@ -2757,6 +2781,7 @@ def _pick_npc_destination_candidates(
     # only matters *within* whichever single tier actually has anything.
     space_candidates = []
     for _idx, space, cx, cy in _parking_spaces_near(parking_spaces, x, y, search_radius_m):
+        yield
         if getattr(space, "occupied", False) or getattr(space, "reserved", False):
             continue
         dist_sq = (cx - x) ** 2 + (cy - y) ** 2
@@ -2773,6 +2798,7 @@ def _pick_npc_destination_candidates(
     else:
         lot_candidates = []
         for scenery in sceneries or ():
+            yield
             if getattr(scenery, "kind", None) != "parking":
                 continue
             bbox = getattr(scenery, "bbox", None)
@@ -2789,6 +2815,7 @@ def _pick_npc_destination_candidates(
             building_candidates = []
             reach_sq = (search_radius_m + NPC_BUILDING_YARD_REACH_M) ** 2
             for building in buildings or ():
+                yield
                 if bbox_distance_sq(getattr(building, "bbox", None), x, y) > reach_sq:
                     continue  # its yard can't be in range: skip the outline walk (a whole city of them, per pick)
                 point = _building_yard_point(building, x, y)
@@ -2805,9 +2832,17 @@ def _pick_npc_destination_candidates(
         if roadside is not None and _point_is_clear_of_vehicles(roadside, other_vehicle_positions):
             ordered = [(0.0, roadside, None)]
 
-    return [(point, space) for _, point, space in ordered
-            if not _parking_overlaps_walkway(*point, _resting_heading(*point, space, ways, spatial_grid),
-                                             ways, spatial_grid)][:limit]
+    candidates = []
+    for _, point, space in ordered:
+        yield
+        if _parking_overlaps_walkway(
+            *point, _resting_heading(*point, space, ways, spatial_grid), ways, spatial_grid,
+        ):
+            continue
+        candidates.append((point, space))
+        if len(candidates) >= limit:
+            break
+    return candidates
 
 
 def _resting_heading(
@@ -3132,10 +3167,9 @@ def continue_npc_trip(
     # multi-hop-away destination (the whole point of the BFS walk above -
     # see this session's find_and_start_npc_trip, which faces the exact
     # same cost and already budgets it the same way). Checked between
-    # candidates only (Python has no preemption for a single already-
-    # running plan_route call) - a single unusually expensive call can
-    # still occasionally exceed this, a known limitation shared with
-    # find_and_start_npc_trip.
+    # candidate collection, footprint checks and route steps. Individual
+    # geometry operations are not preemptible, so one unusually expensive
+    # operation can still exceed the budget.
     deadline = time.perf_counter() + time_budget_s
     for query_point in query_points:
         if time.perf_counter() > deadline:
@@ -3143,7 +3177,7 @@ def continue_npc_trip(
         destination_candidates = _pick_npc_destination_candidates(
             query_point[0], query_point[1], parking_spaces, sceneries, buildings,
             ways=ways, spatial_grid=spatial_grid, other_vehicle_positions=other_vehicle_positions,
-            own_position=origin,
+            own_position=origin, deadline=deadline,
         )
         for destination, target_space in destination_candidates:
             if time.perf_counter() > deadline:
@@ -4315,6 +4349,7 @@ class NPCVehicleManager:
             len(self.vehicles) < self.target_count
             and spawned_this_tick < NPC_POPULATION_SPAWN_LIMIT_PER_TICK
             and attempts < max_attempts
+            and time.perf_counter() < population_deadline
         ):
             attempts += 1
             angle = random.uniform(0.0, 2.0 * math.pi)
@@ -4323,6 +4358,7 @@ class NPCVehicleManager:
             qy = player_y + math.sin(angle) * radius
             candidates = _pick_npc_destination_candidates(
                 qx, qy, parking_spaces, sceneries, buildings, ways=ways, spatial_grid=spatial_grid,
+                limit=1, deadline=population_deadline,
             )
             if not candidates:
                 continue

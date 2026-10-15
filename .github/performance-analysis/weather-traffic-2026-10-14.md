@@ -250,3 +250,55 @@ does not depend on precipitation temperature.
 The runtime source remained unchanged throughout this analysis. Diagnostic layer
 hiding, callback timers, actor freezing and trail injection exist only in the
 supplied standalone benchmark driver, not the game.
+
+## Implementation progress — 2026-10-15
+
+First atomic step: parking selection now stops after the requested number of
+**valid** nearest candidates, rather than checking the entire chosen tier before
+slicing. Candidate collection and footprint validation yield to the existing
+route-job scheduler. Synchronous trip continuation and population top-up use
+their existing deadline during selection too; top-up requests only the single
+candidate it actually consumes. Timeout returns no incomplete result and does
+not reserve a space. Tier precedence, distance order, full-footprint sidewalk
+checks and layer separation are unchanged. Existing job completion checks still
+reject stale graph revisions and newly occupied/reserved destinations.
+
+Controlled selection comparison against `454221d`, using the same loaded Oulu
+world (8,851 ways, 2,767 buildings, 1,643 parking spaces), 100 query points from
+`random.Random(20261014)` with independent x/y offsets uniformly sampled within
+±400 m of the initial taxi position, default radius and limit:
+
+| Selection time | Before | After |
+|---|---:|---:|
+| Median | 6.088 ms | 1.240 ms |
+| p95 | 23.909 ms | 2.077 ms |
+| Maximum | 26.601 ms | 2.567 ms |
+| Total, 100 searches | 938.632 ms | 123.761 ms |
+
+All 100 returned candidate lists were identical. Both functions ran in the same
+process and world; the old function body was loaded from Git into the current
+module's namespace for the comparison. A separate 1,064-space synthetic case
+fell from 6.038 ms to 1.915 ms median over 30 searches (identical results).
+These are selection measurements, not rendered FPS or an end-to-end tick bound.
+
+Regression coverage includes skipping invalid nearest spaces, stopping once
+enough valid spaces are found, yielding during collection/validation, timeout
+without reservation, indexed/unindexed sidewalk rejection and layer separation.
+Full Python suite: **1,414 passed, 2 skipped**, with localhost sockets enabled.
+
+A 60-second northbound Oulu PBF drive at 120 km/h (1,999 m, 1,799 ticks) recorded
+tick median/p95/p99/max of 7.9/18.9/27.6/45.7 ms, no ticks over 50 ms, no client
+interpolation freezes, and maximum state gap 64 ms. Raw output:
+[parking-optimization-driving.json](weather-traffic-2026-10-14-data/parking-optimization-driving.json).
+Command: `PYTHONPATH=src .venv/bin/python tools/bench_map_jitter.py --preset Oulu
+--osm-source pbf --drive-s 60 --speed 33.333333 --heading 1.5708 --sample-ms 45`.
+This is a regression smoke check, **not a controlled before/after**: existing
+map caches were reused and test-suite runs overlapped the benchmark. It uses a
+socket client rather than a rendered Godot client; it cannot establish FPS gains
+or prove all early-population stalls are eliminated.
+
+Deferred: static geometry caching (not yet justified by these measurements),
+snow redraw, tyre-track rendering and the remaining plan phases. A single
+geometry query, index rebuild or sort remains non-preemptible; yielding between
+candidates is not a hard real-time guarantee. Hardware-GPU FPS improvement is
+not established by this first step.

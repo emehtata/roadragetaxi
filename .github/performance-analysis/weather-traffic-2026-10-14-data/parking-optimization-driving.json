@@ -1,0 +1,271 @@
+{
+  "preset": "Oulu",
+  "osm_source": "pbf",
+  "drive_s": 60.0,
+  "speed_mps": 33.333333,
+  "heading": 1.5708,
+  "distance_m": 1999,
+  "ticks": {
+    "ticks": 1799,
+    "p50": 7.9,
+    "p95": 18.9,
+    "p99": 27.6,
+    "max": 45.7,
+    "over_50ms": 0,
+    "over_100ms": 0
+  },
+  "tick_start_late_ms": {
+    "p99": 1.3,
+    "max": 14,
+    "over_20ms": 0
+  },
+  "map_idle": {
+    "ticks": 740,
+    "p50": 5.2,
+    "p95": 10.6,
+    "p99": 14.3,
+    "max": 23.3,
+    "over_50ms": 0,
+    "over_100ms": 0
+  },
+  "map_busy": {
+    "ticks": 1059,
+    "p50": 10.4,
+    "p95": 21.3,
+    "p99": 30.7,
+    "max": 45.7,
+    "over_50ms": 0,
+    "over_100ms": 0
+  },
+  "busy_pct": 58.9,
+  "waiting_ms_per_tick": {
+    "_background_tile_fetch": {
+      "mean": 6.7,
+      "p95": 12.0,
+      "ticks": 62
+    },
+    "-": {
+      "mean": 0.0,
+      "p95": 0.0,
+      "ticks": 1597
+    },
+    "map-growth": {
+      "mean": 5.2,
+      "p95": 12.1,
+      "ticks": 134
+    },
+    "map-growth,taxi-roads": {
+      "mean": 10.8,
+      "p95": 18.2,
+      "ticks": 4
+    },
+    "taxi-roads": {
+      "mean": 5.2,
+      "p95": 8.0,
+      "ticks": 2
+    }
+  },
+  "slow_ticks": {
+    "count": 8,
+    "wall_ms": 311,
+    "waiting_ms": 83,
+    "phases_ms": {
+      "map_sync": 162,
+      "simulation": 133,
+      "state": 9,
+      "chunk_swap_and_resend": 5,
+      "chunk_streaming": 0,
+      "tile_streaming": 0,
+      "merge": 0
+    }
+  },
+  "full_gc": {
+    "count": 0,
+    "max_ms": 0,
+    "total_ms": 0,
+    "by_thread": [],
+    "tracked_objects_at_end": 1116857,
+    "frozen_at_end": 375,
+    "cyclic_garbage_at_end": 0
+  },
+  "young_gc": {
+    "count": 292,
+    "max_ms": 28.2,
+    "total_ms": 673,
+    "over_10ms": 16
+  },
+  "chunks": {
+    "sent": 32,
+    "resent": 6,
+    "mb": 3.4
+  },
+  "client": {
+    "states": 1799,
+    "gap_p99_ms": 49.5,
+    "gap_max_ms": 64,
+    "gaps_over_100ms": 0,
+    "frames": 3600,
+    "frozen_frames": 0,
+    "freezes": 0,
+    "frozen_s": 0.0,
+    "clock_snaps": 0,
+    "wrong_speed_pct": 0.6,
+    "worst_gaps": [
+      {
+        "t_s": 54.9,
+        "ms": 64
+      },
+      {
+        "t_s": 45.7,
+        "ms": 62
+      },
+      {
+        "t_s": 39.4,
+        "ms": 61
+      },
+      {
+        "t_s": 39.6,
+        "ms": 58
+      },
+      {
+        "t_s": 10.9,
+        "ms": 58
+      }
+    ]
+  },
+  "worst_ticks": [
+    {
+      "t_s": 45.7,
+      "wall_ms": 46,
+      "cpu_ms": 46,
+      "phases": {
+        "map_streamer": 31,
+        "simulation": 14,
+        "state": 1
+      },
+      "full_gc": []
+    },
+    {
+      "t_s": 38.8,
+      "wall_ms": 42,
+      "cpu_ms": 42,
+      "phases": {
+        "map_streamer": 27,
+        "simulation": 13,
+        "state": 1
+      },
+      "full_gc": []
+    },
+    {
+      "t_s": 39.5,
+      "wall_ms": 41,
+      "cpu_ms": 34,
+      "phases": {
+        "map_streamer": 32,
+        "simulation": 8,
+        "state": 1
+      },
+      "full_gc": []
+    },
+    {
+      "t_s": 54.9,
+      "wall_ms": 39,
+      "cpu_ms": 39,
+      "phases": {
+        "map_streamer": 34,
+        "simulation": 3,
+        "state": 1
+      },
+      "full_gc": []
+    },
+    {
+      "t_s": 10.9,
+      "wall_ms": 38,
+      "cpu_ms": 12,
+      "phases": {
+        "simulation": 27,
+        "chunk_swap_and_resend": 5,
+        "map_streamer": 4
+      },
+      "full_gc": []
+    },
+    {
+      "t_s": 10.1,
+      "wall_ms": 36,
+      "cpu_ms": 8,
+      "phases": {
+        "map_streamer": 26,
+        "simulation": 9,
+        "state": 1
+      },
+      "full_gc": []
+    },
+    {
+      "t_s": 5.2,
+      "wall_ms": 35,
+      "cpu_ms": 29,
+      "phases": {
+        "simulation": 29,
+        "map_streamer": 5,
+        "state": 1
+      },
+      "full_gc": []
+    },
+    {
+      "t_s": 39.6,
+      "wall_ms": 35,
+      "cpu_ms": 18,
+      "phases": {
+        "simulation": 29,
+        "map_streamer": 4,
+        "state": 1
+      },
+      "full_gc": []
+    },
+    {
+      "t_s": 12.2,
+      "wall_ms": 33,
+      "cpu_ms": 25,
+      "phases": {
+        "chunk_swap_and_resend": 16,
+        "simulation": 11,
+        "map_streamer": 4
+      },
+      "full_gc": []
+    },
+    {
+      "t_s": 43.2,
+      "wall_ms": 31,
+      "cpu_ms": 31,
+      "phases": {
+        "map_streamer": 24,
+        "simulation": 6,
+        "state": 1
+      },
+      "full_gc": []
+    },
+    {
+      "t_s": 2.4,
+      "wall_ms": 31,
+      "cpu_ms": 31,
+      "phases": {
+        "map_streamer": 23,
+        "simulation": 7,
+        "state": 1
+      },
+      "full_gc": []
+    },
+    {
+      "t_s": 48.2,
+      "wall_ms": 31,
+      "cpu_ms": 22,
+      "phases": {
+        "map_streamer": 14,
+        "simulation": 12,
+        "state": 4
+      },
+      "full_gc": []
+    }
+  ],
+  "log": "/tmp/rrt-parking-optimization-driving.log"
+}
