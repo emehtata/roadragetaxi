@@ -199,6 +199,22 @@ func _choose_language(language: String) -> void:
 	_settings_menu()
 
 
+## The help tooltips: an opaque dark panel with light text (the default one
+## is see-through: hard to read over the menu).
+static func help_tooltip_theme() -> Theme:
+	var theme := Theme.new()
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = Color8(24, 28, 34)
+	panel.border_color = Color8(255, 199, 0)
+	panel.set_border_width_all(1)
+	panel.set_corner_radius_all(6)
+	panel.set_content_margin_all(10)
+	theme.set_stylebox("panel", "TooltipPanel", panel)
+	theme.set_color("font_color", "TooltipLabel", Color8(235, 238, 242))
+	theme.set_font_size("font_size", "TooltipLabel", 16)
+	return theme
+
+
 ## `text` broken into lines of at most `width` characters, at spaces.
 static func wrap_lines(text: String, width: int) -> String:
 	var lines: PackedStringArray = []
@@ -233,6 +249,7 @@ func _with_help(control: Control, help_key: String) -> void:
 	question.focus_mode = Control.FOCUS_NONE
 	question.custom_minimum_size = Vector2(32, 32)
 	question.tooltip_text = wrap_lines(help.text, 60)  # a tooltip doesn't wrap: one long line ran off screen
+	question.theme = help_tooltip_theme()
 	question.pressed.connect(func():
 		help.visible = not help.visible
 		_center_panel())

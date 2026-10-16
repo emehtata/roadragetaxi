@@ -97,6 +97,8 @@ func test_settings_help() -> void:
 	check(questions.all(func(q): return Array(q.tooltip_text.split("\n")).all(func(l): return l.length() <= 60)), "settings: help tooltips wrap at 60 characters")
 	check(questions.size() >= 10 and questions.all(func(q): return q.tooltip_text != "" and not q.tooltip_text.begins_with("help_")),
 		"settings: every setting has a ? with its explanation (%d)" % questions.size())
+	var tip: StyleBoxFlat = questions[0].theme.get_stylebox("panel", "TooltipPanel")
+	check(tip.bg_color.a == 1.0, "settings: help tooltips on an opaque panel")
 	var help: Label = questions[0].get_parent().get_parent().get_child(1)
 	questions[0].pressed.emit()
 	check(help.visible and help.text == questions[0].tooltip_text.replace("\n", " "), "settings: clicking ? opens the explanation")
