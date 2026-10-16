@@ -201,7 +201,7 @@ git push origin v0.17.1alpha
 
 GitHub Actions builds the Godot game and bundled Python server on Windows, installs the setup EXE in a temporary directory for a smoke test, then attaches `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
 
-Recorded sounds (the TTS chatter voices) are stored in `src/theroadragetrip/sounds/`. Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`.
+Synthetic chatter voices (text-to-speech) are stored in `src/theroadragetrip/sounds/` (see its `LICENSE`). Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`; the station announcements (Chatterbox TTS) are in `src/theroadragetrip/assets/railway_announcements/`. Their licensing status is in `LICENSE_AUDIT.md`.
 
 Map, timetable and weather data:
 
@@ -212,7 +212,7 @@ Map, timetable and weather data:
 - `src/theroadragetrip/assets/kunnat.json.gz` (municipality population, age structure and area): compiled from Wikipedia, © Wikipedia contributors, license [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Modified: tables combined and converted to the game's JSON format; the file is likewise CC BY-SA 4.0.
 - Historical weather, forecasts and snow depth (opt-in, fetched from FMI at runtime and cached locally in `~/.cache/RoadRageTrip/weather_history.db`, not bundled): Finnish Meteorological Institute (FMI) open data, license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Hourly values are resampled and combined from the nearest stations.
 
-These credits are also shown in the game on the loading, menu and pause screens.
+These credits are shown in the game under **Credits** in the main menu; the map views also show © OpenStreetMap contributors. The licensing audit, with open items, is in `LICENSE_AUDIT.md`; third-party software is listed in `THIRD_PARTY_LICENSES.md`.
 
 ---
 

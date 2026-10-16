@@ -1,0 +1,163 @@
+{
+  "_doc": "Licensing inventory of everything the Windows release ships (LICENSE_AUDIT.md). tools/check_license_inventory.py fails when a shipped asset file or a bundled Python package has no entry here. Status: verified (rights and obligations established), conditional (distributable once the listed obligations are met), unresolved (rights not established), not_distributable (not distributable as currently packaged). The check never decides legal compatibility.",
+  "audited": {"branch": "release/0.18.0alpha", "commit": "fd514d1", "date": "2026-10-17"},
+  "assets": [
+    {
+      "name": "Road Rage Trip game code",
+      "paths": ["src/theroadragetrip/**/*.py", "godot/**/*.gd", "godot/**/*.tscn", "godot/**/*.tres", "godot/**/*.gdshader", "godot/project.godot", "godot/audio/audio_events.json"],
+      "purpose": "the game client and simulation server", "shipped": true,
+      "origin": "this project", "copyright": "2026 Esa Mehtätalo", "licence": "MIT",
+      "evidence": "LICENSE", "obligations": "keep the MIT notice",
+      "commercial": "yes", "status": "verified", "remediation": ""
+    },
+    {
+      "name": "OpenStreetMap places database",
+      "paths": ["src/theroadragetrip/assets/places.json"],
+      "purpose": "airports and railway stations (244 entries with their OSM ids)", "shipped": true,
+      "origin": "OpenStreetMap, Geofabrik finland-latest.osm.pbf of 2026-09-09, tools/osm/extract_places.py",
+      "copyright": "OpenStreetMap contributors", "licence": "ODbL-1.0",
+      "evidence": "https://www.openstreetmap.org/copyright; DATA_LICENSES.txt",
+      "obligations": "attribution where the data is used; the derived database stays under ODbL with a notice; offer the database (it ships in the release)",
+      "commercial": "yes, under ODbL", "status": "conditional",
+      "remediation": "in-game attribution (Credits, map views: done); ODbL notice in DATA_LICENSES.txt (present)"
+    },
+    {
+      "name": "Sample OSM extract",
+      "paths": ["sample_osm.json"],
+      "purpose": "offline sample map (--use-sample)", "shipped": true,
+      "origin": "OpenStreetMap-format sample data", "copyright": "unknown", "licence": "unknown",
+      "evidence": "none: the file has synthetic ids (1, 2, 3...), but its origin is not recorded",
+      "obligations": "unknown", "commercial": "unknown", "status": "unresolved",
+      "remediation": "record whether it is synthetic (then project-owned) or copied from OpenStreetMap (then ODbL, as places.json)"
+    },
+    {
+      "name": "Finland start minimap",
+      "paths": ["godot/finland_minimap.svg"],
+      "purpose": "the city menu's map of Finland", "shipped": true,
+      "origin": "OpenStreetMap motorway, trunk and primary roads, drawn by tools/osm/build_finland_minimap.py from a local OSM PBF",
+      "copyright": "OpenStreetMap contributors", "licence": "ODbL-1.0 (a produced work)",
+      "evidence": "tools/osm/build_finland_minimap.py",
+      "obligations": "attribution (© OpenStreetMap contributors)", "commercial": "yes",
+      "status": "conditional", "remediation": "attribution in Credits (done)"
+    },
+    {
+      "name": "Railway timetable and train compositions",
+      "paths": ["src/theroadragetrip/assets/railway_timetable.json.gz", "src/theroadragetrip/assets/train_compositions.json.gz"],
+      "purpose": "trains, stations, announcements", "shipped": true,
+      "origin": "Fintraffic / digitraffic.fi (GTFS and composition API), converted by the game's importers",
+      "copyright": "Fintraffic", "licence": "CC-BY-4.0",
+      "evidence": "https://www.digitraffic.fi/ licence statement; DATA_LICENSES.txt",
+      "obligations": "attribution 'Source: Fintraffic / digitraffic.fi, license CC 4.0 BY', indicate changes",
+      "commercial": "yes", "status": "conditional", "remediation": "attribution in Credits (done)"
+    },
+    {
+      "name": "Finnish resident names",
+      "paths": ["src/theroadragetrip/assets/finnish_first_names.json.gz", "src/theroadragetrip/assets/finnish_surnames.json.gz"],
+      "purpose": "generated residents' names", "shipped": true,
+      "origin": "DVV population information system name data (nimipalvelu.dvv.fi, avoindata.suomi.fi)",
+      "copyright": "Digital and Population Data Services Agency (DVV)", "licence": "CC-BY-4.0",
+      "evidence": "DATA_LICENSES.txt; https://avoindata.suomi.fi/",
+      "obligations": "attribution, indicate changes", "commercial": "yes",
+      "status": "conditional", "remediation": "attribution in Credits (done)"
+    },
+    {
+      "name": "Finnish municipalities",
+      "paths": ["src/theroadragetrip/assets/kunnat.json.gz"],
+      "purpose": "city list, population, map picker settings", "shipped": true,
+      "origin": "Finnish Wikipedia tables, combined", "copyright": "Wikipedia contributors", "licence": "CC-BY-SA-4.0",
+      "evidence": "DATA_LICENSES.txt; https://fi.wikipedia.org/",
+      "obligations": "attribution, indicate changes; the adapted data file stays CC BY-SA 4.0 (share-alike applies to the file, not to the game)",
+      "commercial": "yes, the file stays CC BY-SA", "status": "conditional",
+      "remediation": "attribution in Credits (done); legal review of share-alike scope advisable"
+    },
+    {
+      "name": "Liiga and Veikkausliiga fixtures",
+      "paths": ["src/theroadragetrip/assets/sports_fixtures.json.gz"],
+      "purpose": "arena crowds on match days", "shipped": true,
+      "origin": "retrieved 2026-10-15 from https://www.liiga.fi/api/v2/schedule and https://www.veikkausliiga.com/tilastot/",
+      "copyright": "Liiga, Veikkausliiga and their data providers (per DATA_LICENSES.txt)",
+      "licence": "none found", "evidence": "no terms of use found for redistribution",
+      "obligations": "unknown", "commercial": "unknown", "status": "unresolved",
+      "remediation": "obtain permission, or replace with a licensed source, or ship no dataset (bare facts fetched at runtime, subject to the services' terms); legal review"
+    },
+    {
+      "name": "Generated sound effects",
+      "paths": ["src/theroadragetrip/assets/audio/**"],
+      "purpose": "vehicle, weather, ambience, UI, sports and holiday sounds", "shipped": true,
+      "origin": "generated with Stable Audio Open 1.0 (stabilityai/stable-audio-open-1.0) by tools/generate_audio.py",
+      "copyright": "not established", "licence": "model licence not archived (believed to be the Stability AI Community License: unverified)",
+      "evidence": "audio_catalog.json 'generator'; no licence text archived",
+      "obligations": "per the model licence (revenue limits, attribution): to be confirmed",
+      "commercial": "unknown until the licence text is confirmed", "status": "unresolved",
+      "remediation": "archive the model's licence text as accepted; confirm the commercial-use and attribution terms; legal review"
+    },
+    {
+      "name": "Station announcements",
+      "paths": ["src/theroadragetrip/assets/railway_announcements/**"],
+      "purpose": "station loudspeaker announcements", "shipped": true,
+      "origin": "Chatterbox Multilingual TTS (ai-audio-studio) cloning the reference voice voices/female/eeva.wav",
+      "copyright": "not established", "licence": "not established",
+      "evidence": "manifest.json voice: eeva, reference female/eeva.wav",
+      "obligations": "consent of the person whose voice was cloned; Chatterbox model terms",
+      "commercial": "unknown", "status": "unresolved",
+      "remediation": "written consent from the speaker, or regenerate with a voice the project has rights to"
+    },
+    {
+      "name": "Chatter voices",
+      "paths": ["src/theroadragetrip/sounds/**"],
+      "purpose": "driver and passenger speech", "shipped": true,
+      "origin": "text-to-speech: Microsoft Azure Speech (utils/ttsazure.py) and/or Chatterbox cloning voices/female/default.wav",
+      "copyright": "not established", "licence": "not established",
+      "evidence": "sounds/LICENSE; no per-file record of the tool or voice",
+      "obligations": "Azure Speech output terms; consent for any cloned reference voice",
+      "commercial": "unknown", "status": "unresolved",
+      "remediation": "record the tool and voice per file; confirm Microsoft's terms; consent for cloned voices"
+    },
+    {
+      "name": "Chatter lines",
+      "paths": ["src/theroadragetrip/assets/driver_chatter.json", "src/theroadragetrip/assets/passenger_chatter.json"],
+      "purpose": "the speech texts", "shipped": true, "origin": "this project", "copyright": "2026 Esa Mehtätalo (assumed)",
+      "licence": "project-owned (to confirm)", "evidence": "no third-party source recorded",
+      "obligations": "none if original", "commercial": "yes if original", "status": "conditional", "remediation": "confirm the lines were written for the game, not copied"
+    },
+    {
+      "name": "Images and icons",
+      "paths": ["src/theroadragetrip/img/**", "src/theroadragetrip/assets/*.png", "src/theroadragetrip/assets/*.ico", "src/theroadragetrip/assets/*.xpm", "godot/icon.ico"],
+      "purpose": "loading image, rage faces, people atlas, taxi icon, two-wheeler sprites", "shipped": true,
+      "origin": "not recorded", "copyright": "not established", "licence": "not established",
+      "evidence": "commit messages only",
+      "obligations": "unknown", "commercial": "unknown", "status": "unresolved",
+      "remediation": "record each image's origin (own work, bought, AI-generated with which service) and its licence or terms"
+    },
+    {
+      "name": "Licence and documentation files",
+      "paths": ["src/theroadragetrip/assets/DATA_LICENSES.txt", "src/theroadragetrip/assets/railway_announcements/README.md", "src/theroadragetrip/assets/railway_announcements/manifest.json", "src/theroadragetrip/assets/railway_announcements/place_forms.json"],
+      "purpose": "notices and metadata", "shipped": true, "origin": "this project", "copyright": "2026 Esa Mehtätalo",
+      "licence": "MIT", "evidence": "LICENSE", "obligations": "none", "commercial": "yes", "status": "verified", "remediation": ""
+    }
+  ],
+  "python_packages": {
+    "requests": {"licence": "Apache-2.0", "status": "verified", "obligations": "licence and NOTICE (collect_licenses.py)"},
+    "urllib3": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
+    "idna": {"licence": "BSD-3-Clause", "status": "verified", "obligations": "licence (collect_licenses.py)"},
+    "charset-normalizer": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
+    "certifi": {"licence": "MPL-2.0", "status": "conditional", "obligations": "licence; source of the covered file available (upstream, unmodified)"},
+    "pyproj": {"licence": "MIT (with PROJ, MIT)", "status": "verified", "obligations": "licences incl. LICENSE_proj (collect_licenses.py)"},
+    "shapely": {"licence": "BSD-3-Clause, bundles GEOS (LGPL-2.1) as a separate DLL", "status": "conditional", "obligations": "LGPL text (LICENSE_GEOS) and GEOS source with each release (windows-release.yml); the DLL stays replaceable"},
+    "numpy": {"licence": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0, bundles OpenBLAS/LAPACK and possibly the GCC runtime", "status": "conditional", "obligations": "numpy's licence files (collect_licenses.py); verify the Windows wheel's bundled-library notices"},
+    "pyinstaller": {"licence": "GPL-2.0-or-later with the bootloader exception", "status": "conditional", "obligations": "COPYING.txt (collect_licenses.py); the exception permits the built program under its own terms"}
+  },
+  "bundled_software": {
+    "Godot Engine 4.7.2": {"licence": "MIT plus its components' licences", "status": "conditional", "obligations": "licenses/godot/LICENSES.txt (tools/godot_licenses.gd) and the Credits screen"},
+    "Python runtime": {"licence": "PSF-2.0", "status": "conditional", "obligations": "python/LICENSE.txt; verify it lists the Windows build's bundled libraries"},
+    "osmium-tool 1.19.1 and libraries": {"licence": "GPL-3.0-only (osmium-tool); BSL-1.0, MIT, Zlib, bzip2, BSD-2-Clause, Microsoft runtime terms", "status": "conditional", "obligations": "licence texts in server/osmium/licenses; source and build recipe attached to each release"}
+  },
+  "runtime_services": {
+    "OpenStreetMap tile server (tile.openstreetmap.org)": {"use": "start-map picker tiles", "status": "unresolved", "obligations": "attribution (shown); the OSMF tile usage policy limits heavy use: review for a commercial release"},
+    "Nominatim (nominatim.openstreetmap.org)": {"use": "start-map place names", "status": "unresolved", "obligations": "the Nominatim usage policy (1 request/s, identifying User-Agent, no heavy use): review for a commercial release"},
+    "Overpass API (overpass-api.de, overpass.openstreetmap.fr)": {"use": "map data while driving", "status": "conditional", "obligations": "ODbL attribution (shown); each server's usage policy"},
+    "Geofabrik downloads": {"use": "the Finland .osm.pbf the player downloads", "status": "conditional", "obligations": "ODbL attribution (shown)"},
+    "Digitraffic (rata.digitraffic.fi)": {"use": "weekly timetable and composition refresh", "status": "conditional", "obligations": "CC BY 4.0 attribution (shown)"},
+    "FMI open data (opendata.fmi.fi)": {"use": "historical weather (opt-in)", "status": "conditional", "obligations": "CC BY 4.0 attribution (shown)"}
+  }
+}
