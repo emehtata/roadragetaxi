@@ -2351,6 +2351,9 @@ def update_npc(
     decision = decide_traffic_action(
         vehicle.car.x, vehicle.car.y, vehicle.car.heading, nearby_lights, traffic_world.sim_time,
         speed_limit_mps=speed_limit_mps,
+        actual_speed_mps=vehicle.car.speed,
+        stop_buffer_m=max(4.0, vehicle.length_m * 0.5 + 2.0),
+        yellow_stop_light=(driver.decision.light if driver.decision.reason == "yellow light, stopping in time" else None),
     )
     crossing_decision = None
     if decision.light is None:

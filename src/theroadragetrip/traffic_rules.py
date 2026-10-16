@@ -180,13 +180,16 @@ def decide_traffic_action(
     detection_distance_m: float = 45.0,
     stop_buffer_m: float = 4.0,
     deceleration_mps2: float = 3.0,
+    actual_speed_mps: Optional[float] = None,
+    yellow_stop_light=None,
 ) -> TrafficDecision:
     """Return a PROCEED/SLOW/STOP decision for the traffic light ahead of
     (x, y, heading), if any govern this lane.
 
     Yellow is a transition, not green: a vehicle already too close to stop
     comfortably keeps going (it's committed), everyone else brakes for the
-    line - never treated as a plain "go".
+    line. `yellow_stop_light` retains a previous stopping decision for the
+    same signal; tick-level speed variation must not turn it into permission.
     """
     cruise_speed = speed_limit_mps if speed_limit_mps is not None else 13.9  # ~50 km/h fallback
     nearest = nearest_traffic_light_ahead(x, y, heading, traffic_lights, detection_distance_m)
@@ -216,11 +219,12 @@ def decide_traffic_action(
     # Yellow: only brake if there's still comfortable room to stop in time;
     # a vehicle already inside the braking-too-late zone is committed and
     # proceeds through, exactly like a real driver would.
-    if available_distance >= cruise_speed ** 2 / (2.0 * deceleration_mps2):
+    speed = cruise_speed if actual_speed_mps is None else abs(actual_speed_mps)
+    if tl is yellow_stop_light or available_distance >= speed ** 2 / (2.0 * deceleration_mps2):
         return TrafficDecision(
-            TrafficAction.SLOW, min(cruise_speed, comfortable_stop_speed), stop_position,
+            TrafficAction.SLOW, min(cruise_speed, comfortable_stop_speed, speed), stop_position,
             reason="yellow light, stopping in time", light=tl,
         )
     return TrafficDecision(
-        TrafficAction.PROCEED, cruise_speed, reason="yellow light, already committed", light=tl,
+        TrafficAction.PROCEED, min(cruise_speed, speed), reason="yellow light, already committed", light=tl,
     )
