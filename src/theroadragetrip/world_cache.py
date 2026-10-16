@@ -567,7 +567,9 @@ class WorldCacheManager:
             force_refresh,
         )
         path = self.path_for(area_id)
-        fresh = path.exists() and (
+        # A point (the game start) is looked up in every cached area that holds
+        # it: an area with exactly this request's id is just one of them.
+        fresh = point is None and path.exists() and (
             self.cache_ttl is None or time.time() - path.stat().st_mtime <= self.cache_ttl
         )
         if not force_refresh and fresh:
@@ -583,7 +585,7 @@ class WorldCacheManager:
                     path.unlink()
                 except OSError:
                     pass
-        elif path.exists() and not fresh:
+        elif point is None and path.exists() and not fresh:
             logger.info("[WorldCache] Cache expired %s", path)
         if not force_refresh and allow_covering:
             covering_world = self._load_covering_area(bbox, point=point)
@@ -591,7 +593,15 @@ class WorldCacheManager:
                 return covering_world
         if self.fetch_func is None or self.build_func is None or bbox is None:
             raise FileNotFoundError(f"no valid world cache for {area_id}")
-        logger.info("[WorldCache] Cache miss %s; loading OSM data from configured source", area_id)
+        if force_refresh:
+            searched = "refresh forced"
+        elif not allow_covering:
+            searched = f"no cached area {area_id}"
+        elif point is not None:
+            searched = f"no cached area holds the point lat={point[0]:.6f} lon={point[1]:.6f}"
+        else:
+            searched = f"no cached area {area_id}, and none covers its bbox"
+        logger.info("[WorldCache] Not in the cache (%s); loading OSM data from the configured source", searched)
         fetch_kwargs = {"force_refresh": True, **kwargs} if force_refresh else kwargs
         if self._build_executor is not None and self._process_pbf_path is not None:
             try:

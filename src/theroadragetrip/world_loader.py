@@ -167,8 +167,8 @@ def load_world(
                     elements, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
                 )
                 return result, len(elements)
-            return world_cache.load_area(
-                area_id, bbox, force_refresh=force_refresh or args.no_cache,
+            return world_cache.load_area(  # any cached area holding the start (the taxi spawns at the centre)
+                area_id, bbox, force_refresh=force_refresh or args.no_cache, point=bbox_center,
             ), 0
 
         load_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="startup-map")
