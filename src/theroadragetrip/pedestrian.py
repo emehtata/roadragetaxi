@@ -337,6 +337,18 @@ class PedestrianNetwork:
         return [start] + [self.nodes[index] for index in path] + [target]
 
 
+# target_count is how many pedestrians the player should see; about a quarter
+# of the spawn disc is in view (142 x 80 m of a 120 m disc), so the disc holds POPULATION_PER_SHOWN times
+# that. Only pedestrians inside the disc count: car passengers and people
+# mid-activity are kept wherever they are, and counted they filled the whole
+# budget far behind a driving player (nobody spawned around the taxi).
+PEDESTRIAN_SPAWN_RADIUS_M = 120.0
+PEDESTRIAN_DESPAWN_RADIUS_M = 170.0
+POPULATION_PER_SHOWN = 4.0
+PEDESTRIAN_SPAWNS_PER_CHECK = 10  # per population check (was 2 per 5 s: the road ahead stayed empty)
+POPULATION_CHECK_S = 2.0  # was 5 s
+
+
 class PedestrianState(str, Enum):
     """Stable state names for pedestrian AI and renderer integrations."""
 
@@ -410,7 +422,6 @@ class Pedestrian:
     fall_timer: float = 0.0
     fall_cooldown: float = 0.0
     door_grace_timer: float = 0.0
-    offscreen_timer: float = 0.0
     spawned_at_door: bool = False
     state: str = "walking"
     animation_state: str = "walking"
@@ -465,8 +476,8 @@ class PedestrianManager:
         self,
         ways: List[Way],
         target_count: int = 15,
-        spawn_radius_m: float = 120.0,
-        despawn_radius_m: float = 160.0,
+        spawn_radius_m: float = PEDESTRIAN_SPAWN_RADIUS_M,
+        despawn_radius_m: float = PEDESTRIAN_DESPAWN_RADIUS_M,
         traffic_lights: Optional[List[TrafficLight]] = None,
         crossings: Optional[List[Crossing]] = None,
         logical_intersections: Optional[List[LogicalIntersection]] = None,
@@ -1615,6 +1626,11 @@ class PedestrianManager:
             self.profiler.record(name, wall_ms)
             self.profiler.record(name.split(":")[0] + (":pedestrians" if name.startswith("map_sync") else "") + ":wait", max(0.0, wall_ms - cpu_ms))
 
+    @property
+    def population_target(self) -> int:
+        """How many pedestrians the spawn disc holds so about target_count are in view."""
+        return math.ceil(self.target_count * POPULATION_PER_SHOWN)
+
     def set_target_count(self, target_count: int, player_car: Optional[Car] = None) -> None:
         """Adjust the pedestrian target; when it is lowered, discard the
         farthest pedestrians over it. Only on a lower target: the game calls
@@ -1627,12 +1643,13 @@ class PedestrianManager:
         if new_target_count != self.target_count:
             self.target_count = new_target_count
             self._population_update_elapsed = 0.5
-        if lowered and len(self.pedestrians) > self.target_count:
+        population = self.population_target
+        if lowered and len(self.pedestrians) > population:
             held = [ped for ped in self.pedestrians if getattr(ped, "held_by", None) is not None]
             free = [ped for ped in self.pedestrians if getattr(ped, "held_by", None) is None]
             if player_car is not None:
                 free.sort(key=lambda ped: math.hypot(ped.x - player_car.x, ped.y - player_car.y))
-            keep = max(0, self.target_count - len(held))
+            keep = max(0, population - len(held))
             for dropped in free[keep:]:
                 if dropped.activity is not None:
                     self.activity_manager.release(dropped.activity.location)
@@ -2380,7 +2397,7 @@ class PedestrianManager:
         self._amenity_spawn_elapsed += dt
         self._population_update_elapsed += dt
 
-        if self._population_update_elapsed >= 5.0:
+        if self._population_update_elapsed >= POPULATION_CHECK_S:
             population_check_dt = self._population_update_elapsed
             self._population_update_elapsed = 0.0
 
@@ -2388,6 +2405,7 @@ class PedestrianManager:
             stage_started = (time.perf_counter(), time.thread_time())
             kept_peds = []
             d_sq = self.despawn_radius_m * self.despawn_radius_m
+            forget_sq = 4.0 * d_sq  # twice the despawn radius: people mid-activity go too
             vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
             for ped in self.pedestrians:
                 linked_vehicle_id = ped.current_vehicle_id or ped.reserved_vehicle_id
@@ -2421,7 +2439,10 @@ class PedestrianManager:
                 # activity (walking to a bench, sitting, ...) must not be
                 # culled and immediately re-spawned elsewhere.
                 if ped.activity is not None:
-                    kept_peds.append(ped)
+                    if (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2 <= forget_sq:
+                        kept_peds.append(ped)
+                    else:  # far behind a driving player: they piled up (hundreds)
+                        self.activity_manager.release(ped.activity.location)
                     continue
                 # Owned by another system (e.g. a rail passenger waiting at
                 # a station): its owner decides when it goes.
@@ -2430,23 +2451,24 @@ class PedestrianManager:
                     continue
                 ped.door_grace_timer = max(0.0, ped.door_grace_timer - population_check_dt)
                 dist_sq = (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2
-                outside_viewport = False
-                if viewport_bounds is not None:
-                    vmin_x, vmin_y, vmax_x, vmax_y = viewport_bounds
-                    outside_viewport = not (vmin_x <= ped.x <= vmax_x and vmin_y <= ped.y <= vmax_y)
-                ped.offscreen_timer = ped.offscreen_timer + population_check_dt if outside_viewport else 0.0
                 at_door = self._at_building_entrance(ped.x, ped.y)
                 if ped.spawned_at_door and not at_door:
                     ped.spawned_at_door = False
-                outside_long_enough = ped.offscreen_timer >= 5.0
+                # Out of view is no reason to go: spawns land outside it to
+                # walk in (removed after 5 s off-screen, most never did).
                 if (
                     dist_sq <= d_sq
-                    and not outside_long_enough
                     and (not at_door or ped.spawned_at_door or ped.door_grace_timer > 0.0)
                 ):
                     kept_peds.append(ped)
             self.pedestrians = kept_peds
             self._record("pedestrians:despawn", stage_started)
+            spawn_sq = self.spawn_radius_m * self.spawn_radius_m
+            nearby_count = sum(
+                1 for ped in self.pedestrians
+                if (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2 <= spawn_sq
+            )
+            population_target = self.population_target
             stage_started = (time.perf_counter(), time.thread_time())
 
             game_hour = ((game_time_seconds or 0.0) / 3600.0) % 24.0
@@ -2457,19 +2479,19 @@ class PedestrianManager:
                     entrance for entrance in self.amenity_entrance_locations
                     if math.hypot(entrance[0] - player_car.x, entrance[1] - player_car.y) <= self.spawn_radius_m
                 ]
-                amenity_pedestrian_limit = self.target_count + 10
-                if nearby_amenity_entrances and len(self.pedestrians) < amenity_pedestrian_limit:
+                if nearby_amenity_entrances and nearby_count < population_target + 10:
                     entrance_x, entrance_y = random.choice(nearby_amenity_entrances)
                     amenity_pedestrian = self.spawn_pedestrian_at_door(entrance_x, entrance_y)
                     if amenity_pedestrian is not None:
                         self.add_pedestrian(amenity_pedestrian)
+                        nearby_count += 1
                 self._amenity_spawn_elapsed = 0.0
 
             # Spawn new pedestrians up to target_count
             attempts = 0
             spawned_this_update = 0
-            spawn_limit = self.target_count if viewport_bounds is None else 2
-            max_attempts = max(50, self.target_count * 5)
+            spawn_limit = population_target if viewport_bounds is None else PEDESTRIAN_SPAWNS_PER_CHECK
+            max_attempts = spawn_limit * 4  # a bounded check: population x 5 attempts cost up to ~40 ms ticks
             nearby_venues = [
                 location for location in self.venue_locations
                 if math.hypot(location[0] - player_car.x, location[1] - player_car.y) <= self.spawn_radius_m
@@ -2479,7 +2501,7 @@ class PedestrianManager:
                 if math.hypot(entrance[0] - player_car.x, entrance[1] - player_car.y) <= self.spawn_radius_m
             ]
             while (
-                len(self.pedestrians) < self.target_count
+                nearby_count + spawned_this_update < population_target
                 and attempts < max_attempts
                 and spawned_this_update < spawn_limit
             ):

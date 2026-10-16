@@ -154,6 +154,22 @@ def _npc_to_dict(npc, residents=None) -> dict:
     }
 
 
+def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
+    """The pedestrians a client draws: the nearest to the camera, at most the
+    population the spawn disc holds (POPULATION_PER_SHOWN x the target) - a
+    train's worth of passengers or a big activity crowd no longer floods every
+    state. Everyone another system holds (booked rail passengers, stand
+    customers) always goes: the phone, the meet arrow and the inspector use them."""
+    people = [p for p in pedestrian_mgr.pedestrians if p.resident_id is not None]
+    cap = pedestrian_mgr.population_target
+    if len(people) <= cap:
+        return people
+    kept = lambda p: getattr(p, "held_by", None) is not None or getattr(p, "is_taxi_stop_waiter", False)
+    always = [p for p in people if kept(p)]
+    others = sorted((p for p in people if not kept(p)), key=lambda p: (p.x - camx) ** 2 + (p.y - camy) ** 2)
+    return always + others[:max(0, cap - len(always))]
+
+
 def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
     return {
         "id": ped.resident_id,
@@ -444,7 +460,7 @@ def build_state_message(
             "x": player_pedestrian.x, "y": player_pedestrian.y, "heading": player_pedestrian.heading,
         },
         "npcs": [_npc_to_dict(npc, residents) for npc in world.npc_manager.vehicles],
-        "pedestrians": [_pedestrian_to_dict(p, residents, santa_day) for p in world.pedestrian_mgr.pedestrians if p.resident_id is not None],
+        "pedestrians": [_pedestrian_to_dict(p, residents, santa_day) for p in shown_pedestrians(world.pedestrian_mgr, camx, camy)],
         "pucks": puck_positions(),  # ice hockey: [[x, y], ...]
         "balls": ball_positions(),  # soccer: [[x, y], ...]
         "vomit_puddles": [list(point) for point in taxi_mgr.vomit_puddles + world.pedestrian_mgr.vomit_puddles],
