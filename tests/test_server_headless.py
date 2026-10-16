@@ -56,10 +56,58 @@ def test_sinking_continues_when_the_car_really_is_in_open_water(tmp_path, monkey
 
 def test_server_builds_and_ticks_with_no_client_connected(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
+    assert server.world.speed_cameras == []
     assert server._chunks_index._encoded == {}  # distant chunks are encoded lazily, not on startup
     for _ in range(30):
         server.tick(1.0 / 30.0)
     assert server._tick == 30
+    assert server.world.speed_cameras == []
+
+
+def test_runtime_camera_is_sent_to_loaded_clients_with_stable_id(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from theroadragetrip.map_chunks import cell_of, chunk_id
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.osm import Way
+
+    server = _build_server(tmp_path, monkeypatch)
+    x, y = server.car.x, server.car.y
+    server.world.spatial_grid = SpatialWayGrid([
+        Way([(x + 600, y), (x + 1600, y)], "primary", 4),
+    ])
+    server._camera_spawner.remaining_s = 0
+    # Capture only sends for a camera's loaded chunk, not all clients/chunks.
+    sent = []
+    class Connection:
+        def send(self, message):
+            sent.append(message)
+    connection = Connection()
+    loaded = {chunk_id(*cell_of(x + offset, y - 5)) for offset in range(500, 1801, 100)}
+    server._client_chunks = {connection: (loaded, None)}
+    server._update_speed_cameras(1 / 30)
+    assert len(server.world.speed_cameras) == 1
+    camera = server.world.speed_cameras[0]
+    cid = chunk_id(*cell_of(camera.x, camera.y))
+    assert server._chunks_index.message(cid)["speed_cameras"][0][0] == 0
+    assert sent == [server._chunks_index.encoded(cid)]
+    server.car.x += 4000
+    server.world.spatial_grid = SpatialWayGrid([
+        Way([(x + 4600, y), (x + 5600, y)], "primary", 4),
+    ])
+    server._camera_spawner.remaining_s = 0
+    server._update_speed_cameras(1 / 30)
+    assert len(server.world.speed_cameras) == 2
+    second = server.world.speed_cameras[1]
+    second_cid = chunk_id(*cell_of(second.x, second.y))
+    assert server._chunks_index.message(second_cid)["speed_cameras"][0][0] == 1
+    assert server._chunks_index.message(cid)["speed_cameras"][0][0] == 0
+    assert len(sent) == 1  # the second camera's chunk isn't loaded by this client
+    # Existing-camera IDs survive the next creation and an in-flight map build
+    # cannot race an append into the index it is replacing.
+    server._map_streamer = SimpleNamespace(hold=True)
+    server._camera_spawner.remaining_s = 0
+    server._update_speed_cameras(1000)
+    assert server.world.speed_cameras == [camera, second]
 
 
 def test_game_time_advances(tmp_path, monkeypatch):

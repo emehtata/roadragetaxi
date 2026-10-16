@@ -7,6 +7,42 @@ from theroadragetrip.physics import Car
 from theroadragetrip.taxi import TaxiManager
 
 
+def test_runtime_cameras_start_empty_wait_and_remain_sparse():
+    from theroadragetrip.police import SpeedCameraSpawner
+    from theroadragetrip.physics import SpatialWayGrid
+
+    spawner = SpeedCameraSpawner(seed=1)
+    grid = SpatialWayGrid([road(length=2000)])
+    cameras = []
+    car = Car(0, 0, 0, 0)
+    assert 120 <= spawner.remaining_s <= 300
+    assert spawner.update(119, car, grid, cameras) is None
+    assert cameras == []
+    camera = spawner.update(spawner.remaining_s, car, grid, cameras)
+    assert cameras == [camera] and camera is not None
+    assert math.hypot(camera.x, camera.y) >= 300
+    assert 120 <= spawner.remaining_s <= 300
+    # A huge elapsed time must not create a catch-up batch. The existing
+    # camera also excludes other positions along this short stretch.
+    assert spawner.update(10000, car, grid, cameras) is None
+    assert cameras == [camera]
+
+
+@pytest.mark.parametrize("highway,car_level,road_level", [
+    ("service", 0, None), ("residential", 0, None),
+    ("primary", -1, None), ("primary", 0, -1),
+])
+def test_runtime_cameras_reject_minor_roads_and_garage_levels(highway, car_level, road_level):
+    from theroadragetrip.police import SpeedCameraSpawner
+    from theroadragetrip.physics import SpatialWayGrid
+
+    way = Way([(0, 0), (2000, 0)], highway, 4, map_level=road_level)
+    spawner = SpeedCameraSpawner(seed=1)
+    cameras = []
+    assert spawner.update(1000, Car(0, 0, 0, 0, map_level=car_level), SpatialWayGrid([way]), cameras) is None
+    assert cameras == []
+
+
 def road(length=1000.0, name="Test Road"):
     return Way([(0.0, 0.0), (length, 0.0)], "primary", 4.0, name=name, speed_limit_kmh=50)
 

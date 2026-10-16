@@ -297,3 +297,28 @@ plus preservation of elevated railway rendering. Headless client suite:
 **822 checks, 0 failed**. Diff check passes. Visual gameplay was not rerun;
 the suite also emits startup
 signal-connection and resource-cleanup diagnostics outside this change.
+
+### Runtime speed-camera placement (2026-10-17)
+
+Removed the startup batch (up to 20 cameras in the opening map). All existing
+camera placement was procedural, not imported mapped cameras. New games now
+start with none. The authoritative server attempts one camera after a random
+120–300 seconds of physical simulation time, then schedules another interval.
+There is no catch-up batch after a long tick. These are game-design timings,
+not a change to legal speed limits or enforcement rules.
+
+Candidates come from the existing nearby road grid (up to 128 roads within
+2 km), retain the existing main-road/direction/roadside placement rules and
+exclude garage roads. Placement must be 300–2,000 m from the taxi and at least
+1,500 m from any existing camera. If nothing qualifies, skip that interval.
+Existing cameras remain fixed for the session; append-only IDs preserve flash
+and enforcement identity. Runtime insertion invalidates just the affected chunk's
+wire cache and resends it only to clients already holding it. New clients/chunks
+get it normally. Placement pauses while map growth copies/swaps chunk indexes,
+preventing lost camera updates. No whole-map rebuild or protocol change.
+
+Validation: timer/startup/spacing/road-and-floor exclusions,
+affected-chunk cache invalidation, client delivery/stable IDs, and map-growth
+hold regression. Full suite: **1,657 passed, 2 skipped** (50.47 s); compile
+and diff checks pass. Existing overspeed detection tests remain unchanged.
+Rendering is unchanged; visual gameplay has not been rerun.

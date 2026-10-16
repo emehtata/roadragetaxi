@@ -31,6 +31,7 @@ from typing import Optional
 from .. import protocol
 from ..navigation_route import NavigationRoute
 from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, ChunkIndex, cell_of, chunk_id, plan
+from ..police import SpeedCameraSpawner
 from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer, prepare_initial_window
 from ..protocol import LOCAL_PLAYER_ID
@@ -303,6 +304,7 @@ class SimulationServer:
         # irrelevant buckets; eagerly encoding all of them delayed startup.
         progress("chunks", f"{len(self.world.buildings)} buildings; {len(self.world.street_light_points)} lights")
         self._chunks_index = ChunkIndex(self.world)
+        self._camera_spawner = SpeedCameraSpawner()
         self._client_chunks: dict = {}
         self._map_streamer = MapStreamer(self.world, self._map_grew) if self._auto_fetch else None
         # The tiles the chunk index was built with (None: the map never grows). A chunk
@@ -700,9 +702,23 @@ class SimulationServer:
             self._map_streamer.tick(self.car.x, self.car.y, math.cos(self.car.heading) * self.car.speed,
                                     math.sin(self.car.heading) * self.car.speed, urgent=not self.central_chunk_ready())
         self._prepare_home_map()
+        self._update_speed_cameras(dt)
         self._stream_map_chunks()
         self.navigation.update(self.world, self.car, self._current_way)
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
+
+    def _update_speed_cameras(self, dt: float) -> None:
+        # Do not mutate an index while map growth is copying/replacing it.
+        if self._map_streamer is not None and self._map_streamer.hold:
+            return
+        camera = self._camera_spawner.update(dt, self.car, self.world.spatial_grid, self.world.speed_cameras)
+        if camera is None:
+            return
+        cid = self._chunks_index.add_speed_camera(camera, len(self.world.speed_cameras) - 1)
+        with self._clients_lock:
+            for connection, (loaded, _) in list(self._client_chunks.items()):
+                if cid in loaded:
+                    connection.send(self._chunks_index.encoded(cid))
 
     def _prepare_home_map(self) -> None:
         """Once per home, while the map is idle: warm the cache for the area

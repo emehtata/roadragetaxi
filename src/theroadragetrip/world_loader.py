@@ -31,7 +31,6 @@ from .osm.cache import OSM_CACHE_TTL_S
 from .parking import generate_detached_house_parking
 from .pedestrian import PedestrianManager, PlayerPedestrian
 from .physics import Car, SpatialWayGrid, respawn_car
-from .police import place_speed_cameras
 from .residents import ResidentManager
 from .roadworks import create_roadworks
 from .taxi import TaxiManager
@@ -351,13 +350,7 @@ def load_world(
             taxi_mgr.balance_cents = saved_balance_cents
     else:
         taxi_mgr.balance_cents = load_career_balance(career_file)
-    speed_cameras = place_speed_cameras(
-        ways,
-        bounds,
-        camera_city_name,
-        seed=random.randrange(2**32),
-    )
-    logger.info("Placed %d hidden speed cameras", len(speed_cameras))
+    speed_cameras = []  # created gradually during gameplay, not in the opening tiles
     # Keep road, signal, and resident services for taxi missions.
     on_load_progress(0.86, "Preparing taxi world...")
     traffic_mgr = TrafficWorld(
