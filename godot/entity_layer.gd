@@ -489,6 +489,8 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 	var r := _right(heading)
 	var front := c + f * (1.0 + width * 0.55)
 	var polygons: Array = []
+	var lamps := []
+	var tips := []
 	for side: float in [-1.0, 1.0]:
 		var side_v := r * side
 		var lamp := front + side_v * width * 0.35
@@ -499,10 +501,14 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 			near = lamp - side_v * (width * 0.35 + 0.3)
 		var far_width := 4.5 * 1.7
 		polygons.append(PackedVector2Array([lamp, near, tip + side_v * far_width, tip]))
+		lamps.append(lamp)
+		tips.append(tip)
 		var cap := PackedVector2Array()
 		for i in 12:
 			cap.append(tip + side_v * far_width * 0.5 + Vector2(cos(TAU * i / 12.0), sin(TAU * i / 12.0)) * far_width * 0.5)
 		polygons.append(cap)
+	# Between the two beams: lit too (the road straight ahead was a dark wedge).
+	polygons.append(PackedVector2Array([lamps[0], lamps[1], tips[1], tips[0]]))
 	return polygons
 
 

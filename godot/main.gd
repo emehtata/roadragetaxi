@@ -594,6 +594,7 @@ func _present(state: Dictionary) -> void:
 		world_light.color = ambient
 	map_layer.set_light(lights, ambient)
 	entities.ambient = ambient
+	night.ambient = ambient
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5
 	var night_started := Time.get_ticks_usec()
 	entities.light_level = lights

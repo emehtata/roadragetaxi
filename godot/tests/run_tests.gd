@@ -1837,11 +1837,12 @@ func test_static_world() -> void:
 
 	# Headlight beams: two quads and two caps per car, 15 m; long beams 45 m.
 	var beams := EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0)
-	check(beams.size() == 4 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 3.0), "a beam reaches 15 m ahead, its tip shifted right")
+	check(beams.size() == 5 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 3.0), "a beam reaches 15 m ahead, its tip shifted right")
+	check(beams[4] == PackedVector2Array([beams[0][0], beams[2][0], beams[2][3], beams[0][3]]), "the road between the two beams is lit too (no dark wedge ahead)")
 	check(is_equal_approx(EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 45.0)[2][3].x, 45.0), "long beams reach 45 m")
 	var train := {"id": 1, "cars": [[0.0, 0.0, 0.0, 20.0, "locomotive"], [-20.0, 0.0, 0.0, 20.0, "standard"]]}
 	var train_beams := EntityLayer2.train_beams(train, train, 0.0, Vector2.ZERO)
-	check(train_beams.size() == 4 and is_equal_approx(train_beams[0][0].x, 10.0) and train_beams[0][3].x > 60.0, "a train's beams start at the lead car's nose and reach far ahead")
+	check(train_beams.size() == 5 and is_equal_approx(train_beams[0][0].x, 10.0) and train_beams[0][3].x > 60.0, "a train's beams start at the lead car's nose and reach far ahead")
 	# beam [lamp, near, far side, tip]; heading 0 is +x, its right side +y: the left beam (side -1) is polygon 0
 	check(train_beams[0][1].y > 0.0 and train_beams[0][3].y > 0.0 and train_beams[2][1].y < 0.0 and train_beams[2][3].y < 0.0, "a train's two beams overlap over the track, no dark gap between them")
 	check(is_equal_approx(train_beams[0][3].y, -train_beams[2][3].y), "a train's beams are symmetric: straight ahead, not to the right")
@@ -1862,11 +1863,14 @@ func test_static_world() -> void:
 	root.add_child(night)
 	var two_cars: Array = EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0) + EntityLayer2.beam_polygons(Vector2(0, 20), PI, 1.8, 45.0)
 	night.show_lights(1.0, Rect2(0, 0, 10, 10), two_cars)
-	check(night.visible and night.beam_triangles.size() == 4 * 6 and night.beam_points.size() == 4 * 4, "two cars, four lamps: four quads in one batch (the caps left out)")
-	check(night.beam_colors[0] == Color(NightLayer.BEAM, 1.0) and night.beam_colors[2] == Color(0, 0, 0, 1.0), "bright at the lamp, nothing at the far end")
-	check(night.get_child_count() == 1 and (night.beams.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED, "one node; light the ambient multiply doesn't darken")
+	check(night.visible and night.beam_triangles.size() == 6 * 6 and night.beam_points.size() == 6 * 4, "two cars: two beams and the middle each, in one batch (the caps left out)")
+	check(night.beam_colors[0] == Color(1, 1, 1, 1.0) and night.beam_colors[2] == Color(0, 0, 0, 1.0), "full strength at the lamp, nothing at the far end")
+	check(night.get_child_count() == 1 and (night.beams.material as ShaderMaterial).shader.code.contains("hint_screen_texture"),
+		"one node; the beams brighten the screen under them (the road shows), not a grey tint")
+	check(is_equal_approx(NightLayer.beam_gain(Color.WHITE), 0.0) and NightLayer.beam_gain(Daylight.NIGHT) > 2.5 and NightLayer.beam_gain(Color.BLACK) == 6.0,
+		"no gain by day, about back to daylight at night, capped in the dark")
 	night.show_lights(0.5, Rect2(0, 0, 10, 10), two_cars)
-	check(night.beam_colors[0].is_equal_approx(Color(NightLayer.BEAM * 0.5, 1.0)) and night.beam_points.size() == 16, "half the light at dusk; the arrays reused")
+	check(night.beam_colors[0].is_equal_approx(Color(0.5, 0.5, 0.5, 1.0)) and night.beam_points.size() == 24, "half the light at dusk; the arrays reused")
 	night.show_lights(0.0, Rect2(0, 0, 10, 10), two_cars)
 	check(not night.visible and night.beam_triangles.is_empty(), "day: no beams")
 	var source: String = (NightLayer as Script).source_code
