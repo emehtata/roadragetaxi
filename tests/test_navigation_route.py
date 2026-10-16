@@ -1,11 +1,11 @@
 """godot-final-04: the server-owned navigation route (navigation_route.py),
 on a real TrafficWorld route graph."""
 
-import time
 from types import SimpleNamespace
+import pytest
 
 from theroadragetrip.geo import dist_point_to_segment
-from theroadragetrip.navigation_route import ROUTE_TOLERANCE_M, NavigationRoute, simplify_polyline
+from theroadragetrip.navigation_route import ROUTE_TOLERANCE_M, NavigationRoute, simplify_polyline, next_turn
 from theroadragetrip.osm import Way
 from theroadragetrip.taxi import TaxiTarget
 from theroadragetrip.traffic_world import TrafficWorld, run_route_steps
@@ -38,6 +38,41 @@ def test_no_target_no_route_and_no_search():
     world, car, nav = _world(), SimpleNamespace(x=0.0, y=0.0, map_level=0), NavigationRoute()
     nav.update(world, car)
     assert nav.points == [] and nav._job is None and nav.plans_started == 0
+    assert nav.instruction == {"maneuver": "no_target"}
+
+
+@pytest.mark.parametrize("end,maneuver,angle", [((100, 100), "left", 90), ((100, -100), "right", -90)])
+def test_next_turn_has_direction_and_route_distance(end, maneuver, angle):
+    result = next_turn([(0, 0), (100, 0), end], 25, -2)
+    assert result["maneuver"] == maneuver and result["angle_deg"] == angle
+    assert result["distance_m"] == 75
+    after = next_turn([(0, 0), (100, 0), end], 100, 20 if end[1] > 0 else -20)
+    assert after["maneuver"] == "straight" and after["distance_m"] == 80
+
+
+def test_next_turn_counts_intermediate_segments_and_arrival():
+    points = [(0, 0), (40, 0), (100, 0), (100, 100)]
+    assert next_turn(points, 20, 0)["distance_m"] == 80
+    assert next_turn(points, 100, 95)["maneuver"] == "arrive"
+    assert next_turn([], 0, 0) is None
+
+
+def test_named_next_street_follows_the_outgoing_road_and_resets_with_target():
+    first = Way([(0, 0), (100, 0)], "residential", 4, name="Isokatu")
+    second = Way([(100, 0), (100, 100)], "residential", 4, name="Kirkkokatu")
+    world = _world(TrafficWorld([first, second]), TaxiTarget(x=100, y=100, address="Kirkkokatu 10"))
+    car, nav = SimpleNamespace(x=0, y=0, map_level=0), NavigationRoute()
+    _finish(nav, world, car)
+    assert nav.instruction == {"maneuver": "left", "distance_m": 100, "angle_deg": 90, "street": "Kirkkokatu"}
+    car.x = 70
+    nav.update(world, car)
+    assert nav.instruction["distance_m"] == 30
+    car.x, car.y = 100, 20
+    nav.update(world, car)
+    assert nav.instruction["maneuver"] == "straight"
+    world.taxi_mgr.target = None
+    nav.update(world, car)
+    assert nav.instruction == {"maneuver": "no_target"}
 
 
 def test_a_pickup_gets_a_route_from_the_taxi_to_the_target_once():
@@ -175,3 +210,45 @@ def test_navigation_starts_the_way_the_taxis_one_way_road_goes():
     world.taxi_mgr.target = TaxiTarget(x=0.0, y=300.0, address="Edessä 2")  # ahead on the same segment
     _finish(nav, world, car)
     assert nav.points == [[0.0, 200.0], [0.0, 300.0]]
+
+
+def test_navigation_crosses_connected_bridge_layers_on_a_long_fare():
+    roads = [Way([(i * 100.0, 0), ((i + 1) * 100.0, 0)], "primary", 4,
+                 layer=1 if i == 250 else 0) for i in range(500)]
+    world = _world(TrafficWorld(roads), TaxiTarget(49990, 0, "Distant town"))
+    car = SimpleNamespace(x=10.0, y=0.0, map_level=0)
+    nav = NavigationRoute(budget_s=.001)
+    for _ in range(10000):
+        car.x += 1.0  # driving continues while the long route is being calculated
+        nav.update(world, car, roads[0])
+        if nav._job is None:
+            break
+    assert nav._job is None and nav.points[-1] == [49990.0, 0.0]
+    assert nav.plans_started == 1
+    assert nav.worst_slice_s < .01
+    for _ in range(30):
+        car.x += 1.0
+        nav.update(world, car, roads[0])
+    assert nav.plans_started == 1  # normal driving must not restart the job
+
+
+def test_distant_off_map_fare_lookup_is_resumable():
+    traffic = TrafficWorld(_grid(blocks=35))
+    world = _world(traffic, TaxiTarget(50000, 50000, "Unloaded town"))
+    car, nav = SimpleNamespace(x=0.0, y=0.0, map_level=0), NavigationRoute(budget_s=0)
+    nav.update(world, car)
+    assert nav._job is not None  # even nearest-node preparation yields
+    assert nav.worst_slice_s < .01
+
+
+def test_navigation_does_not_start_on_a_bridge_over_the_taxi():
+    ground = Way([(0, 0), (100, 0), (100, 100), (50, 100)], "primary", 4)
+    bridge = Way([(50, -100), (50, 100)], "primary", 4, layer=1)
+    world = _world(TrafficWorld([ground, bridge]), TaxiTarget(50, 90, "Bridge"))
+    car, nav = SimpleNamespace(x=50.0, y=0.0, map_level=0), NavigationRoute()
+    for _ in range(10000):
+        nav.update(world, car, ground)
+        if nav._job is None:
+            break
+    assert nav.points[1] == [100.0, 0.0]  # follow ground road to the actual bridge connection
+    assert nav.points[-1] == [50.0, 90.0]

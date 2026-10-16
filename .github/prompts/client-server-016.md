@@ -533,7 +533,7 @@ Do not regress existing functionality.
 
 The optimization must preserve:
 
-* NPC-004 traffic behavior
+* collision-avoidance traffic behavior
 * NPC driving
 * curved turns
 * cruising speed

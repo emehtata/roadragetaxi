@@ -1,6 +1,8 @@
 import math
 from types import SimpleNamespace
 
+import pytest
+
 from theroadragetrip import map_chunks
 
 
@@ -22,7 +24,7 @@ def test_a_feature_is_in_every_chunk_it_touches_and_negative_cells_work():
     world = SimpleNamespace(ways=[way], railways=[], waters=[], buildings=[])
     index = map_chunks.ChunkIndex(world, size=500.0)
     assert len(index.message("-1_0")["roads"]) == 1 and len(index.message("1_0")["roads"]) == 1
-    assert index.message("0_0")["roads"] == []  # no vertex there (see module docstring)
+    assert len(index.message("0_0")["roads"]) == 1  # the segment crosses it without a vertex there
     assert index.message("1_0")["bounds"] == [500.0, 0.0, 1000.0, 500.0]
 
 
@@ -58,7 +60,7 @@ def test_gameplay_points_are_each_in_exactly_one_chunk():
     assert here["fuel_stations"] == [{"x": 30.0, "y": 60.0, "angle": 0.5, "is_area": True, "name": "Neste",
                                       "price_cents": fuel_station_price_cents(world.scenery_objects[0])}]
     # Posts by list index (stable for the session, unlike the missing roadwork ids), at
-    # Pygame's render position; a non-renderable post is not sent.
+    # their render position (protocol.traffic_light_render_point); a non-renderable post is not sent.
     assert here["traffic_lights"] == [{"id": 0, "x": 102.0, "y": 50.0, "angle": round(math.pi / 2, 4)}]
     assert east["traffic_lights"] == [{"id": 1, "x": 600.0, "y": 50.0, "angle": 0.0}]
     # A roadwork crossing the chunk edge goes to its midpoint's chunk only.
@@ -175,12 +177,12 @@ def test_static_world_lists_in_the_chunks():
     assert len(here["rail_decks"]) == 1  # the bridge track's deck
     assert [l for l in here["labels"] if l[2] == "Hupisaaret"][0][3] == static_world.LABEL_AREA
     assert any(l[2] == "Sininen talo" and l[3] == static_world.LABEL_BUILDING for l in here["labels"])
-    assert [l[0] for l in here["landuse"]] == [[100, 145, 80], [170, 142, 96]]  # park, construction (render/scenery.py colours)
+    assert [l[0] for l in here["landuse"]] == [[100, 145, 80], [170, 142, 96]]  # park, construction (map_style.py colours)
 
 
-def test_road_style_follows_pygames_road_look():
+def test_road_style_follows_the_map_style():
     from theroadragetrip import static_world
-    from theroadragetrip.render.common import road_color_for_way
+    from theroadragetrip.map_style import road_color_for_way
 
     two_way = SimpleNamespace(is_drivable=True, highway="primary", lanes=4, oneway=0, is_ice_road=False, surface="")
     oneway = SimpleNamespace(is_drivable=True, highway="residential", lanes=1, oneway=-1, is_ice_road=False, surface="", is_bridge=True)
@@ -200,8 +202,30 @@ def test_bridge_guardrails_run_along_the_outside_only():
     assert ys == [-3.0, 9.5]  # the two outer edges, nothing between the carriageways, no end caps
 
 
+def test_parallel_tracks_form_one_bridge_over_a_below_grade_road():
+    from shapely.geometry import Polygon
+    from theroadragetrip import static_world
+    from theroadragetrip.osm.models import Railway, Way
+
+    road = Way([(50.0, -10.0), (50.0, 30.0)], "primary", 4.0, is_tunnel=True, layer=-1)
+    tracks = [Railway([(0.0, y), (100.0, y)]) for y in (10.0, 17.0)]
+    parts = static_world.rail_bridge_parts(tracks, [road])
+    decks = static_world.rail_bridge_decks(tracks, [road])
+
+    assert len(parts) == 2
+    assert len(decks) == 1
+    assert Polygon(decks[0]).bounds == pytest.approx((43.0, 8.3, 57.0, 18.7))
+
+    world = _obstacle_world()
+    world.ways = [road]
+    world.railways = tracks
+    chunk = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    assert len(chunk["rail_bridges"]) == 2
+    assert len(chunk["rail_decks"]) == 1
+
+
 def test_bus_stop_shapes_follow_the_nearest_road():
-    """godot-16: render/roads.py draw_bus_stops' bay and shelter, computed once."""
+    """godot-16: a bus stop's bay and shelter, computed once."""
     from theroadragetrip import static_world
 
     road = SimpleNamespace(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=3.0, is_drivable=True, layer=0)
@@ -212,31 +236,12 @@ def test_bus_stop_shapes_follow_the_nearest_road():
     assert static_world.bus_stop_shapes(SimpleNamespace(x=50.0, y=80.0, layer=0, shelter=False), [road]) is None  # beyond 45 m
 
 
-def test_buildings_have_one_owner_and_their_facade_style():
-    """godot-17: a building drawn as a volume belongs to one chunk (its
-    centre's); its style carries the wall colour, floors and category the
-    facades and windows use (render/buildings.py's own picks)."""
-    from theroadragetrip.osm.models import Building
-    from theroadragetrip.render import buildings as rb
-    from theroadragetrip import static_world
-
-    across = Building([(480.0, 10.0), (530.0, 10.0), (530.0, 30.0), (480.0, 30.0)], building_type="apartments", levels=5)
-    canopy = Building([(490.0, 100.0), (520.0, 100.0), (520.0, 120.0), (490.0, 120.0)], building_type="roof")
-    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[across, canopy])
-    index = map_chunks.ChunkIndex(world, size=500.0)
-    west, east = index.message("0_0"), index.message("1_0")
-    assert west["buildings"] == [] and len(east["buildings"]) == 1  # centre x = 505: east owns it, once
-    roof, gabled, height, entrances, wall, floors, category = east["building_styles"][0]
-    assert floors == 5 and category == 0 and wall in [list(c) for c in rb.BUILDING_WALL_COLORS]
-    assert rb.BUILDING_WALL_COLORS.index(tuple(wall)) == rb.BUILDING_ROOF_COLORS.index(tuple(roof))  # the pair Pygame uses
-    assert east["canopies"] and east["canopy_heights"] == [static_world.building_style(canopy)[2]]
-    assert static_world.building_style(Building([(0, 0), (9, 0), (9, 9)], building_type="house"))[6] == 1
 
 
 def test_garage_aisles_are_not_sent_as_surface_roads():
     """Bug: a map_level -1 garage aisle (kept in world.ways) was sent with
-    the surface roads, so Godot drew it over the street map. Pygame's
-    draw_ways takes only SURFACE_MAP_LEVELS; underground roads are
+    the surface roads, so Godot drew it over the street map. The surface
+    roads are only SURFACE_MAP_LEVELS; underground roads are
     level_roads, shown on their own level."""
     street = SimpleNamespace(points_m=[(0.0, 5.0), (100.0, 5.0)], half_width_m=4.0, highway="residential",
                              is_drivable=True, layer=0, map_level=0)
@@ -267,7 +272,7 @@ def test_garage_crossings_and_bumps_are_not_surface_markings():
 
 
 def test_a_river_line_is_a_line_not_a_filled_area():
-    """render/waters.py fills only closed water areas: Oulujoki's centre line
+    """Only closed water areas are filled: Oulujoki's centre line
     (waterway=river, open) sent as an area flooded the city."""
     from types import SimpleNamespace
 
@@ -279,3 +284,173 @@ def test_a_river_line_is_a_line_not_a_filled_area():
     chunks = ChunkIndex(world)._chunks.values()
     assert sum(len(c["waters"]) for c in chunks) == 1
     assert sum(len(c["water_lines"]) for c in chunks) >= 1
+
+
+def test_buildings_have_one_owner_and_their_facade_style():
+    """godot-17: a building drawn as a volume belongs to one chunk (its
+    centre's); its style carries the wall colour, floors and category the
+    facades and windows use (building_style.py's picks)."""
+    from theroadragetrip.osm.models import Building
+    from theroadragetrip import building_style as rb
+    from theroadragetrip import static_world
+
+    across = Building([(480.0, 10.0), (530.0, 10.0), (530.0, 30.0), (480.0, 30.0)], building_type="apartments", levels=5)
+    canopy = Building([(490.0, 100.0), (520.0, 100.0), (520.0, 120.0), (490.0, 120.0)], building_type="roof")
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[across, canopy])
+    index = map_chunks.ChunkIndex(world, size=500.0)
+    west, east = index.message("0_0"), index.message("1_0")
+    assert west["buildings"] == [] and len(east["buildings"]) == 1  # centre x = 505: east owns it, once
+    roof, gabled, height, entrances, wall, floors, category = east["building_styles"][0]
+    assert floors == 5 and category == 0 and wall in [list(c) for c in rb.BUILDING_WALL_COLORS]
+    assert rb.BUILDING_WALL_COLORS.index(tuple(wall)) == rb.BUILDING_ROOF_COLORS.index(tuple(roof))  # a matching wall and roof pair
+    assert east["canopies"] and east["canopy_heights"] == [static_world.building_style(canopy)[2]]
+    assert static_world.building_style(Building([(0, 0), (9, 0), (9, 9)], building_type="house"))[6] == 1
+
+
+def test_a_region_update_matches_a_full_rebuild_and_keeps_the_other_chunks():
+    def road(x0, x1, y):
+        return SimpleNamespace(points_m=[(x0, y), (x1, y)], half_width_m=3.0, highway="primary", is_drivable=True,
+                               layer=0, bbox=(x0, y, x1, y))
+
+    old_roads = [road(0.0, 400.0, 10.0), road(3000.0, 3400.0, 10.0)]
+    new_road = road(3100.0, 3900.0, 260.0)  # merged later, in and next to the far chunks only
+    old = map_chunks.ChunkIndex(SimpleNamespace(ways=old_roads, railways=[], waters=[], buildings=[]))
+    old.encoded("0_0")
+    grown = SimpleNamespace(ways=old_roads + [new_road], railways=[], waters=[], buildings=[])
+    index, changed = map_chunks.ChunkIndex.updated(old, grown, new_road.bbox)
+
+    assert index._chunks == map_chunks.ChunkIndex(grown)._chunks
+    assert changed == {"6_0", "7_0"}  # the chunks the new road reaches
+    assert index._chunks["0_0"] is old._chunks["0_0"] and index._encoded["0_0"] is old._encoded["0_0"]  # untouched, kept
+
+
+def test_a_region_update_keeps_the_encoding_of_a_rebuilt_chunk_that_did_not_change():
+    def road(x0, x1, y):
+        return SimpleNamespace(points_m=[(x0, y), (x1, y)], half_width_m=3.0, highway="primary", is_drivable=True,
+                               layer=0, bbox=(x0, y, x1, y))
+
+    old_roads = [road(3000.0, 3400.0, 10.0)]
+    old = map_chunks.ChunkIndex(SimpleNamespace(ways=old_roads, railways=[], waters=[], buildings=[]))
+    old.encoded("5_0")
+    old.encoded("6_0")
+    grown = SimpleNamespace(ways=old_roads + [road(3100.0, 3900.0, 260.0)], railways=[], waters=[], buildings=[])
+    index, changed = map_chunks.ChunkIndex.updated(old, grown, (2600.0, 0.0, 3900.0, 300.0))  # 5_0 .. 7_0 rebuilt
+    assert changed == {"6_0", "7_0"}
+    assert index._encoded == {"5_0": old._encoded["5_0"]}  # the unchanged one isn't encoded again
+
+
+def test_sports_fields_freeze_and_are_floodlit():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    pitch = [(10.0, 10.0), (110.0, 10.0), (110.0, 70.0), (10.0, 70.0)]
+    world.sceneries = [Scenery(points_m=pitch, kind="pitch"), Scenery(points_m=[(200.0, 200.0), (260.0, 200.0), (260.0, 260.0)], kind="flowerbed")]
+    here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    assert [area[1] for area in here["landuse"]] == [2, 1]  # pitch: frozen to ice; flowerbed: snow
+    assert len(here["floodlit"]) == 1  # only the pitch
+
+
+def test_sports_lights_burn_only_from_7_to_22():
+    from datetime import datetime
+    from theroadragetrip.calendar import sports_lights_hours
+
+    assert [sports_lights_hours(datetime(2026, 1, 10, h, 30)) for h in (6, 7, 21, 22)] == [False, True, True, False]
+
+
+def test_nested_areas_draw_on_top_of_their_container():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    pitch = Scenery(points_m=[(10.0, 10.0), (60.0, 10.0), (60.0, 40.0), (10.0, 40.0)], kind="pitch")
+    centre = Scenery(points_m=[(0.0, 0.0), (200.0, 0.0), (200.0, 150.0), (0.0, 150.0)], kind="sports_centre")
+    world.sceneries = [pitch, centre]  # OSM order: the container last
+    here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    assert [area[1] for area in here["landuse"]] == [1, 2]  # sports centre (snowy) under, the pitch over it
+
+
+def test_an_ice_rink_gets_its_boards_and_a_frame_for_its_hockey_markings():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    angle = 0.3  # a 60 x 30 m rink, turned
+    corners = [(-30.0, -15.0), (30.0, -15.0), (30.0, 15.0), (-30.0, 15.0)]
+    rink = [(100.0 + x * math.cos(angle) - y * math.sin(angle), 100.0 + x * math.sin(angle) + y * math.cos(angle)) for x, y in corners]
+    world.sceneries = [Scenery(points_m=rink, kind="ice_rink")]
+    here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    (x, y, rink_angle, length, width), = here["rinks"]
+    assert (round(x), round(y), round(length), round(width)) == (100, 100, 60, 30)
+    assert round(math.cos(2 * (rink_angle - angle)), 6) == 1.0  # along the long side, either way
+    assert [r[0] for r in here["railings"]].count("boards") == 1
+
+
+def test_floodlit_fields_get_light_poles_round_them():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    pitch = [(100.0, 100.0), (200.0, 100.0), (200.0, 160.0), (100.0, 160.0)]
+    next_pitch = [(200.0, 100.0), (300.0, 100.0), (300.0, 160.0), (200.0, 160.0)]  # shares a side
+    tennis = [(100.0, 300.0), (124.0, 300.0), (124.0, 311.0), (100.0, 311.0)]
+    world.sceneries = [Scenery(points_m=ring, kind="pitch") for ring in (pitch, next_pitch, tennis)]
+    poles = map_chunks.ChunkIndex(world, size=500.0).message("0_0")["floodlight_poles"]
+    assert sorted((round(p[0]), round(p[1])) for p in poles) == [  # corners and long-side middles, 2 m out
+        (98, 98), (98, 162), (150, 98), (150, 162), (202, 98), (202, 162),  # the shared corners once
+        (250, 98), (250, 162), (302, 98), (302, 162)]  # no poles for the tennis court
+    for x, y, direction, reach in poles:  # street-light pools aimed into the field
+        assert 15.0 <= reach <= 40.0
+        assert max(math.cos(direction - math.atan2(130.0 - y, cx - x)) for cx in (150.0, 250.0)) > 0.99
+
+
+def test_soccer_pitches_get_a_frame_for_their_lines():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    pitch = [(100.0, 100.0), (205.0, 100.0), (205.0, 168.0), (100.0, 168.0)]
+    world.sceneries = [Scenery(points_m=pitch, kind="pitch", sport="soccer;pesäpallo"),
+                       Scenery(points_m=[(300.0, 300.0), (330.0, 300.0), (330.0, 320.0), (300.0, 320.0)], kind="pitch", sport="tennis")]
+    (frame,) = map_chunks.ChunkIndex(world, size=500.0).message("0_0")["soccer_pitches"]
+    assert [round(v) for v in (frame[0], frame[1], frame[3], frame[4])] == [152, 134, 105, 68]
+
+
+def test_kerbed_islands_and_traffic_islands_redraw_over_the_roads_and_only_rinks_get_hockey_lines():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    square = [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)]
+    world.sceneries = [Scenery(points_m=square, kind="traffic_island"),
+                       Scenery(points_m=[(x + 100, y) for x, y in square], kind="grass", kerbed=True),
+                       Scenery(points_m=[(x + 200, y + 200) for x, y in square], kind="stadium")]
+    here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+    assert len(here["traffic_islands"]) == 2
+    assert here["rinks"] == []  # a stadium is no rink
+
+
+def test_a_stadium_gets_its_stands_round_an_open_pitch():
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    world.buildings = []
+    outline = [(100.0, 100.0), (240.0, 100.0), (240.0, 200.0), (100.0, 200.0)]
+    pitch = [(117.5, 116.0), (222.5, 116.0), (222.5, 184.0), (117.5, 184.0)]  # 105 x 68 inside
+    for ring in (outline, outline[::-1]):  # either winding
+        world.sceneries = [Scenery(points_m=ring, kind="stadium"), Scenery(points_m=pitch, kind="pitch", sport="soccer")]
+        here = map_chunks.ChunkIndex(world, size=500.0).message("0_0")
+        assert len(here["buildings"]) == 4 and all(s == map_chunks.STADIUM_STAND_STYLE for s in here["building_styles"])
+        stands = unary_union([Polygon(piece) for piece in here["buildings"]])
+        open_middle = Polygon(pitch).buffer(map_chunks.STADIUM_PITCH_MARGIN_M, join_style=2)
+        assert abs(stands.area - (Polygon(outline).area - open_middle.area)) < 1.0  # the whole ring...
+        assert stands.intersection(open_middle).area < 1.0  # ...and the pitch open
+        assert not any(r[0] == "wall" for r in here["railings"])
+    world.sceneries = [Scenery(points_m=outline, kind="stadium")]  # no pitch mapped: stands 15 m deep
+    assert len(map_chunks.ChunkIndex(world, size=500.0).message("0_0")["buildings"]) == 4
+
+
+def test_a_stadium_mapped_twice_gets_one_ring_of_stands():
+    from theroadragetrip.osm.models import Scenery
+
+    world = _obstacle_world()
+    world.buildings = []
+    outline = [(100.0, 100.0), (240.0, 100.0), (240.0, 200.0), (100.0, 200.0)]
+    world.sceneries = [Scenery(points_m=outline, kind="stadium", name="Bolt Arena"), Scenery(points_m=outline[::-1], kind="stadium")]
+    assert len(map_chunks.ChunkIndex(world, size=500.0).message("0_0")["buildings"]) == 4

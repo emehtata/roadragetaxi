@@ -1,4 +1,4 @@
-"""The Godot client draws trains with Pygame's palette: render_style.gd's
+"""The Godot client draws trains with the compositions' palette: render_style.gd's
 TRAIN_PROFILES must match train_compositions.PROFILES."""
 import re
 from pathlib import Path

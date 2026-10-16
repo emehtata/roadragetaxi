@@ -2,7 +2,6 @@
 announcement events, and state.railway."""
 
 import random
-import sys
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -11,14 +10,9 @@ from theroadragetrip.server import EventAudio
 from theroadragetrip.station_announcer import StationAnnouncer
 
 
-def test_speech_helper_imports_no_pygame():
-    import importlib
-    import subprocess
-
-    out = subprocess.run([sys.executable, "-c", "import sys; import theroadragetrip.speech; print('pygame' in sys.modules)"],
-                         capture_output=True, text=True, env={"PYTHONPATH": "src", "PATH": ""})
-    assert out.stdout.strip() == "False", out.stderr
-    assert importlib.import_module("theroadragetrip.speech") is speech
+def test_chatter_ogg_duration_is_read_without_decoding():
+    recording = next(speech.SOUND_DIRS["driver"].glob("*.ogg"))
+    assert 0.1 < speech.ogg_duration(recording) < 30.0
 
 
 def test_driver_line_event_falls_back_to_the_finnish_recording_with_the_english_text():
@@ -66,13 +60,19 @@ def test_passenger_chatter_waits_its_random_interval():
     audio = EventAudio(rng=random.Random(3))
     audio.update_passenger_speech(False, "woman", "fi", 1 / 30, "Aino")  # off the meter: the interval restarts
     interval = audio._speech.interval
-    assert 5.0 <= interval <= 20.0
+    assert 45.0 <= interval <= 120.0
     ticks = 0
-    while not audio.events and ticks < 30 * 25:
+    while not audio.events and ticks < 30 * 125:
         audio.update_passenger_speech(True, "woman", "fi", 1 / 30, "Aino")
         audio.advance(1 / 30)
         ticks += 1
     assert audio.events and abs(ticks / 30 - interval) < 0.05
+    audio.take_events()
+    assert 45.0 <= audio._speech.interval <= 120.0
+    for _ in range(30 * 44):
+        audio.advance(1 / 30)
+        audio.update_passenger_speech(True, "woman", "fi", 1 / 30, "Aino")
+    assert audio.take_events() == []
 
 
 def test_no_catalog_or_no_recording_is_quiet(monkeypatch):

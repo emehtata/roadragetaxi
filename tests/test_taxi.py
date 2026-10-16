@@ -1,5 +1,4 @@
 import gc
-import math
 import time
 from types import SimpleNamespace
 
@@ -265,6 +264,51 @@ def test_taxi_venue_target_accepts_named_amenity_place():
     assert target.address == "Kulmapubi"
     assert target.venue_type == "pub"
     assert target.way_name == "Pihakatu"
+
+
+def test_the_indexed_road_searches_find_what_a_scan_of_every_road_finds():
+    import random
+
+    rng = random.Random(7)
+    streets = [Way(points_m=[(float(x), float(y)) for x in range(0, 3001, 300)], highway="residential", half_width_m=4.0,
+                   name=f"Katu {y}") for y in range(0, 3001, 300)]
+    streets += [Way(points_m=[(float(x), float(y)) for y in range(0, 3001, 300)], highway="residential", half_width_m=4.0,
+                    name=f"Tie {x}") for x in range(0, 3001, 300)]
+    houses = [Building(points_m=[(x, y), (x + 15.0, y), (x + 15.0, y + 10.0), (x, y + 10.0)], name=f"Talo {i}")
+              for i, (x, y) in enumerate((rng.uniform(-600, 3600), rng.uniform(-600, 3600)) for _ in range(120))]
+    taxi_mgr = TaxiManager(ways=streets, buildings=houses)
+    assert len(taxi_mgr.ways) == len(streets)  # one connected network: every street is searched
+    targets = [SimpleNamespace(x=rng.uniform(-2000, 5000), y=rng.uniform(-2000, 5000)) for _ in range(40)]
+    limits = [dict(ref_x=rng.uniform(0, 3000), ref_y=rng.uniform(0, 3000), min_dist=150.0, max_dist=1200.0) for _ in range(20)]
+    limits += [dict(ref_x=rng.uniform(0, 3000), ref_y=rng.uniform(0, 3000), min_dist=800.0) for _ in range(20)]
+
+    def searches():
+        picks = []
+        for seed, kwargs in enumerate(limits):
+            random.seed(seed)
+            picks.append(taxi_mgr.pick_random_building_point(**kwargs))
+        return [taxi_mgr.passenger_waiting_position(target) for target in targets], picks
+
+    indexed = searches()
+    taxi_mgr._ways_near = lambda x, y, reach: taxi_mgr.ways  # every road, in order: the scan it replaces
+    assert indexed == searches() and sum(pick is not None for pick in indexed[1]) > 20
+
+
+def test_a_building_out_of_range_is_skipped_before_the_road_scan(monkeypatch):
+    import theroadragetrip.taxi as taxi_module
+
+    road = Way(points_m=[(float(x), 0.0) for x in range(0, 10001, 500)], highway="residential", half_width_m=4.5, name="Pitkätie")
+
+    def house(x, name):
+        return Building(points_m=[(x, 30.0), (x + 20.0, 30.0), (x + 20.0, 50.0), (x, 50.0)], name=name)
+
+    taxi_mgr = TaxiManager(ways=[road], buildings=[house(5000.0 + 200.0 * i, f"Kaukana {i}") for i in range(20)]
+                           + [house(600.0, "Lähellä")])
+    scans = []
+    monkeypatch.setattr(taxi_module, "is_car_road", lambda way, real=taxi_module.is_car_road: scans.append(way) or real(way))
+    target = taxi_mgr.pick_random_building_point(ref_x=0.0, ref_y=0.0, min_dist=150.0, max_dist=1200.0)
+    assert target is not None and target.address == "Lähellä"
+    assert len(scans) == 5  # the one road, from the near house's four corners and centre - the far ones never
 
 
 def test_taxi_mission_lifecycle():
@@ -898,3 +942,10 @@ def test_nearby_collision_trees_reflects_removal_from_an_already_indexed_scenery
     mgr.invalidate_tree_collision_index()
     found_after = mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
     assert {(fx, fy) for _, _, fx, fy in found_after} == {(1.0, 1.0)}
+
+
+def test_unnamed_road_is_a_valid_stop():
+    way = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="service", half_width_m=3.0)
+    taxi_mgr = TaxiManager(ways=[way], places=[Place(x=200.0, y=50.0, name="Kaukovainio", kind="suburb")], language="en")
+    target = taxi_mgr.pick_random_road_point(0.0, 0.0, 50.0, 400.0)
+    assert target is not None and target.address == "Roadside, Kaukovainio"

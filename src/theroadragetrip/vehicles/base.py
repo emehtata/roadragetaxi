@@ -28,6 +28,8 @@ VEHICLE_DEFINITIONS = {
         VehicleDefinition("van", "Van", "car", 5.2, 2.0, 8, household_eligible=True, traffic_weight=0.08),
         VehicleDefinition("truck", "Truck", "car", 7.5, 2.3, 2, 80.0, errand_eligible=False, traffic_weight=0.05),
         VehicleDefinition("bus", "Bus", "car", 11.0, 2.5, 40, 70.0, errand_eligible=False, traffic_weight=0.02),
+        # Snow ploughing and other work later; for now ordinary slow traffic.
+        VehicleDefinition("tractor", "Tractor", "car", 4.0, 2.2, 1, 60.0, passenger_eligible=False, errand_eligible=False, traffic_weight=0.02),
         VehicleDefinition("motorcycle", "Motorcycle", "motorcycle", 2.0, 0.7, 1, household_eligible=True, traffic_weight=0.10, experimental=True),
         VehicleDefinition("bicycle", "Bicycle", "bicycle", 1.8, 0.5, 1, requires_parking=False, is_road_vehicle=False),
     )

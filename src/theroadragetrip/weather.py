@@ -6,10 +6,8 @@ so rain particles, wet-road tint, puddles and splashes all read one shared
 WeatherSystem instead of each tracking their own notion of "is it raining".
 
 Rain particle positions are stored as screen-fraction coordinates (0..1
-on each axis) rather than pixels, so this module never needs to import
-SCREEN_W/SCREEN_H from render/ (render/ imports from game-state modules
-like this one, not the other way around) - render/weather.py converts to
-pixels at draw time using whatever screen size it's actually given.
+on each axis) rather than pixels: the renderer converts to pixels at draw time
+using whatever screen size it has.
 """
 import copy
 import math
@@ -29,6 +27,9 @@ class WeatherType(str, Enum):
 
 SNOW_MAX_TEMPERATURE_C = 1.0
 SLUSH_MAX_TEMPERATURE_C = 5.0
+# A station's present-weather sensor misreads fine snow as drizzle in the
+# cold: reported rain this cold falls as snow (and reported snow this warm as slush).
+OBSERVED_RAIN_MIN_TEMPERATURE_C = -2.0
 
 
 # Automatic weather durations in game-seconds. Autumn and winter use
@@ -53,8 +54,7 @@ LIGHTNING_FLASH_DURATION_S = 0.22
 
 # Wetness dynamics, in game-seconds - matches the game clock's own hour/
 # minute units regardless of how fast time_scale is currently running it
-# (main()'s time_scale is 1x with a passenger, 60x without - see
-# main()'s game_time_seconds update). Rain wets faster than drying dries:
+# (time_scale is 1x with a passenger, 60x without). Rain wets faster than drying dries:
 # a road visibly darkens within minutes of rain starting but takes longer
 # to fully dry once it stops.
 RAIN_WETTING_DURATION_S = 10.0 * 60.0  # 0 -> 1 wetness over 10 game-minutes of rain
@@ -71,7 +71,7 @@ RAIN_SPEED_VARIATION = (0.75, 1.3)  # per-particle multiplier, assigned once at 
 
 # Splashes: visual only (WEATHER_RAIN.md #5 - vehicle physics are never
 # touched here), real-time lifetime like rain particles. Edge-triggered by
-# the caller (main() only spawns one when the car *enters* a puddle, not
+# the caller (it only spawns one when the car *enters* a puddle, not
 # every frame it spends inside one) so continuously driving through a
 # puddle doesn't flood the pool.
 SPLASH_LIFETIME_S = 0.5
@@ -98,6 +98,10 @@ def weather_type_for_observation(kind: str, temperature_c: Optional[float]) -> W
     if kind == "":
         return WeatherType.CLEAR
     if kind != "precipitation":
+        if temperature_c is not None and kind in ("rain", "slush") and temperature_c <= OBSERVED_RAIN_MIN_TEMPERATURE_C:
+            return WeatherType.SNOW
+        if temperature_c is not None and kind == "snow" and temperature_c >= SLUSH_MAX_TEMPERATURE_C:
+            return WeatherType.SLUSH
         return WeatherType(kind)
     if temperature_c is None or temperature_c <= SNOW_MAX_TEMPERATURE_C:
         return WeatherType.SNOW
@@ -152,6 +156,8 @@ class WeatherSystem:
         self.weather_type = weather_type or WeatherType.CLEAR
         self._following_observation = False
         self.wetness = 0.0  # 0.0 dry .. 1.0 fully wet; independent of weather_type -
+        self.road_snow = 0.0  # centimetres; fully white at three centimetres
+        self.plowed_cells = {}  # 10 m road cells -> snow level when last cleared
         # CLEAR does not imply dry, e.g. right after rain stops (see #9).
         self._rng = random.Random()
         self.is_thunderstorm = False
@@ -160,8 +166,7 @@ class WeatherSystem:
         self._lightning_timer = self._rng.uniform(*LIGHTNING_INTERVAL_RANGE_S)
         # Each entry: [x_fraction, y_fraction, speed_factor]. Recycled in
         # place (wrap to a fresh random x/y when a streak falls off the
-        # bottom) rather than reallocated - render/weather.py maps these
-        # to actual screen pixels.
+        # bottom) rather than reallocated.
         self.rain_particles = [self._spawn_rain_particle() for _ in range(RAIN_PARTICLE_COUNT)]
         if not self._automatic:
             self._weather_timer = float("inf")
@@ -389,6 +394,24 @@ class WeatherSystem:
         else:
             self.is_thunderstorm = False
 
+    def road_snow_at(self, x: float, y: float) -> float:
+        cell = (math.floor(x / 10.0), math.floor(y / 10.0))
+        return max(0.0, self.road_snow - self.plowed_cells.get(cell, 0.0))
+
+    def plow_road(self, start, end) -> None:
+        if self.road_snow <= 0.0:
+            return
+        distance = math.hypot(end[0] - start[0], end[1] - start[1])
+        steps = max(1, math.ceil(distance / 2.0))
+        for step in range(steps + 1):
+            t = step / steps
+            cell = (math.floor((start[0] + (end[0] - start[0]) * t) / 10.0),
+                    math.floor((start[1] + (end[1] - start[1]) * t) / 10.0))
+            self.plowed_cells[cell] = self.road_snow
+        # Keep streaming trips from retaining an unlimited history of cleared roads.
+        while len(self.plowed_cells) > 4096:
+            del self.plowed_cells[next(iter(self.plowed_cells))]
+
     def update(
         self,
         game_dt: float,
@@ -403,7 +426,7 @@ class WeatherSystem:
         generated weather for this hour; otherwise the generator runs,
         continuing from whatever was last observed.
 
-        `game_dt` is dt * time_scale - the same delta main() uses to
+        `game_dt` is dt * time_scale - the same delta the server uses to
         advance game_time_seconds - so drying/wetting tracks the game
         clock, not wall-clock time. `real_dt` is the plain per-frame dt:
         rain must fall at a consistent visual speed regardless of how
@@ -425,9 +448,20 @@ class WeatherSystem:
                     # Observations ended (e.g. game time passed "now"): the
                     # generator takes over from the last observed state.
                     self._following_observation = False
-                    self._weather_timer = self._next_weather_duration()
+                    if self._season in (Season.AUTUMN, Season.WINTER):
+                        self._start_autumn_or_winter_period()
+                    else:
+                        self._weather_timer = self._next_weather_duration()
                 self._advance_automatic_weather(game_dt)
                 self._apply_precipitation_temperature()
+            if self.weather_type == WeatherType.SNOW:
+                self.road_snow += game_dt / 600.0
+            elif self._outside_temperature_c is not None and self._outside_temperature_c > 0.0:
+                self.road_snow = max(0.0, self.road_snow - game_dt / 1800.0)
+                for cell, cleared_at in self.plowed_cells.items():
+                    self.plowed_cells[cell] = min(cleared_at, self.road_snow)
+            if self.road_snow == 0.0:
+                self.plowed_cells.clear()
             if self.weather_type in (WeatherType.RAIN, WeatherType.SLUSH):
                 self.wetness = min(1.0, self.wetness + game_dt / RAIN_WETTING_DURATION_S)
             elif self.road_ice_fraction > 0.0:

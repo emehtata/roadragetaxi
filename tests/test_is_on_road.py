@@ -147,6 +147,34 @@ def test_bridge_over_water_does_not_trigger_water_respawn():
     assert not is_car_fully_in_water(car, [lake], current_way=bridge)
 
 
+def test_solid_road_surface_overrides_overlapping_water_without_a_bridge_tag():
+    lake = Water([(-30, -30), (30, -30), (30, 30), (-30, 30), (-30, -30)], "river", True)
+    road = Way([(-25, 0), (25, 0)], "primary", 5.5, name="Merikosken sillat")
+    car = Car(0, 0, math.pi / 4, 0)
+    assert is_point_in_water(car.x, car.y, [lake])
+    assert not is_car_fully_in_water(car, [lake], current_way=road)
+    assert not physics.water_sinks_car(car, [lake], road, 9, .1)
+
+
+def test_a_stale_road_or_bridge_reference_does_not_prevent_offroad_sinking():
+    lake = Water([(-30, -30), (30, -30), (30, 30), (-30, 30), (-30, -30)], "river", True)
+    road = Way([(-25, 0), (25, 0)], "primary", 4)
+    car = Car(0, 15, 0, 0)
+    assert physics.water_sinks_car(car, [lake], road, 9, .1)
+    road.is_bridge = True
+    assert physics.water_sinks_car(car, [lake], road, 9, .1)
+    car.x, car.y = 35, 0
+    assert not is_car_fully_in_water(car, [lake], current_way=road)
+
+
+def test_ice_road_is_not_a_solid_surface_when_ice_does_not_hold():
+    lake = Water([(-30, -30), (30, -30), (30, 30), (-30, 30), (-30, -30)], "river", True)
+    road = Way([(-25, 0), (25, 0)], "track", 4, is_ice_road=True)
+    car = Car(0, 0, 0, 0)
+    assert physics.water_sinks_car(car, [lake], road, 9, .1)
+    assert physics.water_sinks_car(car, [lake], road, 1, .1, rng=lambda: 0)
+
+
 def test_raised_road_layer_does_not_trigger_water_respawn():
     lake = Water(
         points_m=[(-20.0, -20.0), (20.0, -20.0), (20.0, 20.0), (-20.0, 20.0), (-20.0, -20.0)],
@@ -209,3 +237,43 @@ def test_sand_and_beach_are_their_own_ground_kind():
     assert physics.off_road_ground_kind(200.0, 200.0, sceneries=[park, beach]) == "soft"
     assert physics.off_road_ground_kind(50.0, 50.0, sceneries=[park, beach, plaza]) == "hard"
     assert not physics.is_point_on_soft_ground(10.0, 10.0, sceneries=[beach])
+
+
+def test_ice_holds_on_lakes_in_winter_but_river_ice_may_break():
+    square = [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0), (-10.0, -10.0)]
+    lake = Water(points_m=square, kind="water", is_polygon=True)
+    river = Water(points_m=square, kind="river", is_polygon=True)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    assert physics.water_sinks_car(car, [lake], None, 6, 0.1)  # open water: under at once
+    assert physics.water_sinks_car(car, [lake], None, None, 0.1)
+    assert not physics.water_sinks_car(car, [lake], None, 1, 0.1, rng=lambda: 0.0)  # lake ice holds
+    assert physics.water_sinks_car(car, [river], None, 2, 0.1, rng=lambda: 0.0)  # river ice breaks...
+    assert not physics.water_sinks_car(car, [river], None, 2, 0.1, rng=lambda: 0.99)  # ...sometimes
+    car.x = 9.5  # one wheel in the water: nothing happens
+    assert not physics.water_sinks_car(car, [lake], None, 6, 0.1)
+
+
+def test_river_areas_are_built_as_river():
+    from theroadragetrip.osm.build import _water_kind
+    assert _water_kind({"natural": "water", "water": "river"}) == "river"
+    assert _water_kind({"waterway": "riverbank"}) == "river"
+    assert _water_kind({"natural": "water", "water": "lake"}) is None
+
+
+def test_a_map_pin_starts_the_car_on_the_nearest_road_point():
+    from types import SimpleNamespace
+    near = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=3.0, name="Near")
+    far = Way(points_m=[(0.0, 500.0), (100.0, 500.0)], highway="residential", half_width_m=3.0, name="Far")
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    stops = [SimpleNamespace(x=50.0, y=500.0)]  # a taxi stop elsewhere does not win over the pin
+    respawn_car(car, [near, far], near_center=True, bounds=(0.0, 0.0, 100.0, 500.0), taxi_stops=stops, start_point=(37.0, 8.0))
+    assert abs(car.x - 37.0) < 0.01 and abs(car.y) < 3.0
+
+
+def test_a_map_pin_reaches_a_side_street_joining_a_road_midway():
+    main = Way(points_m=[(0.0, 0.0), (100.0, 0.0), (200.0, 0.0)], highway="secondary", half_width_m=4.0, name="Main")
+    main2 = Way(points_m=[(200.0, 0.0), (300.0, 0.0)], highway="secondary", half_width_m=4.0, name="Main 2")
+    side = Way(points_m=[(100.0, 0.0), (100.0, 60.0)], highway="residential", half_width_m=3.0, name="Side")  # joins mid-way
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    respawn_car(car, [main, main2, side], near_center=True, bounds=(0.0, 0.0, 300.0, 60.0), start_point=(104.0, 50.0))
+    assert abs(car.y - 50.0) < 0.01 and abs(car.x - 100.0) < 3.0

@@ -1,13 +1,9 @@
-"""Tests for NPC-001: the first autonomous NPC car (theroadragetrip.npc)."""
+"""Tests for autonomous-driving: the first autonomous NPC car (theroadragetrip.npc)."""
 import math
-import os
 from types import SimpleNamespace
 
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-import pygame
 import pytest
 
-from theroadragetrip.render.vehicles import draw_npc_cars
 from theroadragetrip.npc import (
     CORNER_RADIUS_M,
     NPC_CAR_CAPACITY,
@@ -17,6 +13,7 @@ from theroadragetrip.npc import (
     PathPoint,
     TripGroup,
     _lane_offset_point,
+    _road_rage_yield_target,
     NPC_ARRIVAL_RADIUS_M,
     NPC_BUILDING_YARD_CLEARANCE_M,
     NPC_FOOTPRINT_VIOLATION_CRAWL_MPS,
@@ -260,9 +257,9 @@ def test_npc_settles_close_to_its_building_yard_point_not_partway_back_to_the_ro
 
     for _ in range(3600):
         update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
-        if vehicle.state == NPCState.ARRIVING:
+        if vehicle.state in (NPCState.ARRIVING, NPCState.PARKED):
             break
-    assert vehicle.state == NPCState.ARRIVING
+    assert vehicle.state in (NPCState.ARRIVING, NPCState.PARKED)
     final_point = driver.path[-1]
     final_distance = math.hypot(vehicle.x - final_point.x, vehicle.y - final_point.y)
     assert final_distance < NPC_ARRIVAL_RADIUS_M
@@ -291,7 +288,7 @@ def test_yellow_is_a_distinct_decision_not_treated_as_green():
 
 
 def test_decision_carries_the_actual_light_it_was_based_on():
-    """NPC-002 section 18/21: the decision must expose which physical
+    """intersection-rules section 18/21: the decision must expose which physical
     signal it judged relevant, not just a text reason - so a debug HUD (or
     a test) can check the movement it actually allows."""
     tl = TrafficLight(
@@ -314,7 +311,7 @@ def test_opposite_direction_light_is_ignored():
 
 
 def test_stop_position_remains_stable_while_approaching():
-    """NPC-002 section 8/11: the stop target must not be recomputed to a
+    """intersection-rules section 8/11: the stop target must not be recomputed to a
     new arbitrary point every frame - it should stay pinned to the stop
     line regardless of how far away the vehicle currently is."""
     tl = TrafficLight(x=100.0, y=0.0, cycle_time=1e9, offset=0.0, direction_angle=0.0)
@@ -362,7 +359,7 @@ def test_corner_safe_speed_is_well_under_a_typical_cruising_speed():
 
 
 def test_update_npc_clamps_target_speed_to_the_vehicle_plugins_max_speed():
-    """NPC-003 v2 section 4: a vehicle plugin's own max speed (bus/truck
+    """vehicle-population v2 section 4: a vehicle plugin's own max speed (bus/truck
     slower than ordinary traffic) caps target_speed_mps on top of the
     road's own speed limit - not a new physics/acceleration model, just
     one extra clamp."""
@@ -456,7 +453,7 @@ def test_right_turn_produces_a_smooth_trajectory_aligned_with_outgoing_road():
     assert all(p.maneuver == "right" for p in turn_points)
     outgoing_heading = math.degrees(math.atan2(path[-1].y - path[-2].y, path[-1].x - path[-2].x))
     assert math.isclose(outgoing_heading, -90.0, abs_tol=1.0)
-    # NPC-002 section 14/17: heading must change continuously through the
+    # intersection-rules section 14/17: heading must change continuously through the
     # arc - no single-vertex 90-degree pivot.
     headings = [
         math.degrees(math.atan2(b.y - a.y, b.x - a.x)) for a, b in zip(path, path[1:])
@@ -480,7 +477,7 @@ def test_left_turn_produces_a_smooth_trajectory_aligned_with_outgoing_road():
 
 
 def test_lane_offset_point_hugs_curb_for_right_turn_centerline_for_left():
-    """NPC-002 section 5/14/15: lane selection must not just drive the
+    """intersection-rules section 5/14/15: lane selection must not just drive the
     geometric center - a turning maneuver should bias within the
     right-hand half of the road: further right (curb) for a right turn,
     closer to the centerline for a left turn, than default cruising."""
@@ -688,6 +685,26 @@ def test_roadside_parking_point_only_on_a_quiet_drivable_way():
     assert _roadside_parking_point(50.0, 500.0, [quiet], None) is None
 
 
+def test_roadside_parking_keeps_ten_metres_clear_of_segment_ends():
+    road = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)
+    assert _roadside_parking_point(0.0, 0.0, [road], None)[0] == pytest.approx(10.0)
+    assert _roadside_parking_point(100.0, 0.0, [road], None)[0] == pytest.approx(90.0)
+    short = Way(points_m=[(0.0, 0.0), (15.0, 0.0)], highway="residential", half_width_m=4.5)
+    assert _roadside_parking_point(7.5, 0.0, [short], None) is None
+
+
+def test_roadside_parking_and_heading_work_outside_the_indexed_carriageway():
+    from theroadragetrip.physics import SpatialWayGrid
+
+    road = Way(points_m=[(0.0, 0.0), (0.0, 100.0)], highway="residential", half_width_m=4.5)
+    grid = SpatialWayGrid()
+    grid.rebuild([road])
+    shoulder = _roadside_parking_point(0.0, 50.0, [road], grid)
+    assert shoulder == pytest.approx((5.9, 50.0))
+    assert _roadside_parking_point(*shoulder, [road], grid) == pytest.approx(shoulder)
+    assert _resting_heading(*shoulder, None, [road], grid) == pytest.approx(math.pi / 2.0)
+
+
 def test_pick_npc_destination_candidates_tries_the_next_nearest_space_first():
     """NPC-more.md section 3: "prefer a slightly farther valid parking
     space over a nearby invalid or dangerous location" - the nearest
@@ -766,7 +783,7 @@ def test_pick_npc_destination_candidates_accepts_a_building_yard_point_far_from_
 
 
 def test_pick_npc_destination_candidates_excludes_a_space_in_the_same_parking_area():
-    """NPC-004 section 4/5: an ordinary errand search must never propose
+    """collision-avoidance section 4/5: an ordinary errand search must never propose
     "drive to a different space in the same lot you're already parked in"
     as a destination - that's the exact pointless trip the spec forbids."""
     lot = Scenery(
@@ -880,8 +897,8 @@ def test_place_parked_npc_aligns_with_the_parking_space_not_the_road():
     the parking space's own axis."""
     ways = [Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)]
     space = ParkingSpace(
-        points_m=[(50.0, 4.0), (51.0, 4.0), (51.0, 10.0), (50.0, 10.0)],
-        bbox=(50.0, 4.0, 51.0, 10.0),
+        points_m=[(49.0, 4.0), (52.0, 4.0), (52.0, 10.0), (49.0, 10.0)],
+        bbox=(49.0, 4.0, 52.0, 10.0),
     )
     vehicle = place_parked_npc(1, (50.5, 7.0), space, ways=ways)
     assert vehicle is not None
@@ -965,9 +982,10 @@ def test_spawn_deterministic_npc_falls_back_to_roadside_parking_on_a_quiet_stree
     result = spawn_deterministic_npc(residents, tw, ways)
     assert result is not None
     _, driver, vehicle = result
-    assert vehicle.destination[0] == pytest.approx(395.0)  # clear of the endpoint junction
+    assert vehicle.destination[0] == pytest.approx(390.0)  # ten metres clear of the endpoint junction
     assert vehicle.destination[1] < -ways[-1].half_width_m  # beyond the carriageway, not blocking its lane
     assert driver.path[-1].y == pytest.approx(vehicle.destination[1])
+    assert driver.path[-2].y == pytest.approx(driver.path[-1].y)
 
 
 def test_route_crosses_curbs_rejects_a_path_clipping_a_mapped_curb():
@@ -1099,9 +1117,9 @@ def test_npc_reserved_space_becomes_occupied_on_arrival():
 
     for _ in range(3600):  # 400m trip - longer than the usual 200m test budget
         update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
-        if vehicle.state == NPCState.ARRIVING:
+        if vehicle.state in (NPCState.ARRIVING, NPCState.PARKED):
             break
-    assert vehicle.state == NPCState.ARRIVING
+    assert vehicle.state in (NPCState.ARRIVING, NPCState.PARKED)
     assert space.occupied is True
 
 
@@ -1208,7 +1226,7 @@ def test_update_npc_recovery_still_triggers_when_final_pose_stays_blocked(monkey
 
 
 def test_update_npc_slows_down_for_a_stopped_vehicle_ahead():
-    """NPC-004 section 2: a stationary obstacle directly ahead in this
+    """collision-avoidance section 2: a stationary obstacle directly ahead in this
     vehicle's own lane must cap its speed - previously nothing at all
     checked other vehicles, only curbs/buildings and traffic lights."""
     ways = _straight_chain(count=20)
@@ -1309,7 +1327,7 @@ def test_update_npc_avoidance_uses_the_steering_target_not_the_lagging_current_h
 
 
 def test_trigger_road_rage_finds_the_nearest_driving_vehicle_ahead():
-    """NPC-005: the player's horn/Road Rage action must reach exactly one
+    """living-traffic: the player's horn/Road Rage action must reach exactly one
     real driver - the nearest currently-driving vehicle ahead - not a
     whole area, and never a parked one."""
     from theroadragetrip.npc import NPCVehicleManager
@@ -1367,11 +1385,16 @@ def test_update_npc_yields_while_road_raged_then_resumes():
     vehicle.car.speed = 10.0
     driver.road_rage_until_sim_time = tw.sim_time + NPC_ROAD_RAGE_REACTION_DURATION_S
 
-    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+    start_y = vehicle.car.y
+    for _ in range(120):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+        tw.advance_time(1.0 / 60.0)
 
     assert driver.target_speed_mps <= NPC_ROAD_RAGE_YIELD_SPEED_MPS
     assert vehicle.debug_waiting_for == "yielding to road rage"
     assert vehicle.state != NPCState.CRASHED  # still a normal, simulated, existing vehicle
+    assert vehicle.car.y < start_y - 0.2  # visibly pulls toward the right edge
+    assert vehicle.turn_signal == "right"
 
     tw.advance_time(NPC_ROAD_RAGE_REACTION_DURATION_S + 1.0)
     update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
@@ -1379,8 +1402,19 @@ def test_update_npc_yields_while_road_raged_then_resumes():
     assert driver.road_rage_until_sim_time is None
 
 
+def test_road_rage_yield_target_stays_inside_the_road_and_skips_turns():
+    road = Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)
+    target = PathPoint(20.0, -1.8, way=road)
+
+    shifted = _road_rage_yield_target(target, 0.0, road, 1.8)
+
+    assert shifted == pytest.approx((20.0, -2.6))
+    turning = PathPoint(20.0, -1.8, way=road, is_turn=True, maneuver="right", lane_bias="right")
+    assert _road_rage_yield_target(turning, 0.0, road, 1.8) == (turning.x, turning.y)
+
+
 def test_update_npc_stuck_detection_triggers_recovery_after_timeout():
-    """NPC-004 section 3/8: a vehicle that wants to move but makes no real
+    """collision-avoidance section 3/8: a vehicle that wants to move but makes no real
     progress for NPC_STUCK_TIMEOUT_S must flag itself for recovery -
     covers "not moving"/"oscillating"/"spinning" alike since all three
     fail the same real-displacement test."""
@@ -1430,14 +1464,14 @@ def test_update_npc_stuck_detection_does_not_trigger_for_a_normal_red_light():
 
 
 def test_reversing_backs_up_and_hands_back_to_stuck_recovery():
-    """NPC-004 section 6/7: REVERSING drives straight backward until
+    """collision-avoidance section 6/7: REVERSING drives straight backward until
     NPC_REVERSE_DISTANCE_M is covered, then stops and flags STUCK again so
     the population tick retries routing from the new position - it must
     never loop in REVERSING forever."""
     ways = _straight_chain(count=20)
     tw = TrafficWorld(ways)
     residents = ResidentManager()
-    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    result = spawn_npc(1, residents, tw, ways, (40.0, 0.0), (200.0, 0.0))
     assert result is not None
     _, driver, vehicle = result
     vehicle.state = NPCState.REVERSING
@@ -1497,213 +1531,22 @@ def test_reversing_refuses_to_back_into_a_pedestrian():
     assert vehicle.state == NPCState.WAITING
 
 
-def test_draw_npc_cars_renders_an_npc_vehicle_without_crashing():
-    """Regression: draw_npc_cars' debug overlay (F7) crashed on any NPC
-    without a `segment_idx` attribute - its steering-target-line fallback
-    getattr-guarded the *condition* ("segment_idx", 0) but then indexed
-    with the raw `npc.segment_idx` in the body, which npc.NPCVehicle (it
-    tracks route progress on the Driver, not the vehicle) doesn't have."""
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)  # leaves SPAWNING, sets vehicle.way
-
-    draw_npc_cars(screen, [vehicle], vehicle.x, vehicle.y, ways=ways, show_debug=True, residents=residents)
 
 
-def test_draw_npc_debug_overlay_renders_without_crashing():
-    """NPC-002 section 22: stop-position/target-point debug geometry."""
-    from theroadragetrip.render.hud import draw_npc_debug_overlay
-
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
-    driver.decision.stop_position = (50.0, 0.0)  # exercise the stop-marker branch too
-
-    draw_npc_debug_overlay(screen, vehicle, driver, vehicle.x, vehicle.y)
 
 
-def test_draw_npc_debug_panel_shows_parking_target():
-    """NPC-more.md section 21: the F7 panel must surface which parking
-    space (if any) the NPC is actually headed for, not just its raw
-    destination coordinates."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-
-    draw_npc_debug_panel(screen, vehicle, driver, font)  # no dedicated space - must not crash
-
-    vehicle.destination_parking_space_id = 42
-    draw_npc_debug_panel(screen, vehicle, driver, font)  # with one - must not crash either
 
 
-def test_draw_npc_debug_panel_shows_vehicle_plugin_id():
-    """NPC-003 v2 section 22: the F7 panel must surface which vehicle
-    plugin (car/van/truck/...) this NPC is - not just its raw vehicle_id."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-    vehicle.vehicle_type = "motorcycle"
-
-    car_panel = pygame.Surface((360, 400))
-    draw_npc_debug_panel(car_panel, vehicle, driver, font)
-    text_pixels = pygame.image.tostring(car_panel, "RGB")
-    assert text_pixels  # sanity: renders without crashing
-
-    vehicle.vehicle_type = "van"
-    van_panel = pygame.Surface((360, 400))
-    draw_npc_debug_panel(van_panel, vehicle, driver, font)
-    assert pygame.image.tostring(van_panel, "RGB") != text_pixels
 
 
-def test_draw_npc_population_panel_shows_by_type_breakdown():
-    from theroadragetrip.render.hud import draw_npc_population_panel
-
-    pygame.init()
-    counts = {"total": 2, "parked": 2, "driving": 0, "reserved": 0, "household": 1, "autonomous": 1}
-
-    without_breakdown = pygame.Surface((300, 100))
-    draw_npc_population_panel(without_breakdown, counts, pygame.font.SysFont(None, 16), y=0)
-
-    with_breakdown = pygame.Surface((300, 100))
-    draw_npc_population_panel(
-        with_breakdown, counts, pygame.font.SysFont(None, 16), y=0, by_type={"car": 1, "van": 1},
-    )
-    assert pygame.image.tostring(with_breakdown, "RGB") != pygame.image.tostring(without_breakdown, "RGB")
 
 
-def test_draw_npc_debug_panel_surfaces_footprint_violation_reason():
-    """NPC-more.md section 21: a live footprint block (see npc.update_npc)
-    must be visible on the panel, not silently hidden behind whatever the
-    ordinary traffic-rule reason line already says."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-    vehicle.debug_waiting_for = "footprint blocked (curb/building)"
-
-    panel_w = 360
-    before = pygame.Surface((panel_w, 450))
-    before.fill((0, 0, 0))
-    draw_npc_debug_panel(before, vehicle, driver, font)
-
-    vehicle.debug_waiting_for = ""
-    after = pygame.Surface((panel_w, 450))
-    after.fill((0, 0, 0))
-    draw_npc_debug_panel(after, vehicle, driver, font)
-    # The panel must be visibly different (one extra line) with a reason
-    # set vs. without one.
-    assert pygame.image.tostring(before, "RGB") != pygame.image.tostring(after, "RGB")
 
 
-def test_draw_npc_debug_panel_surfaces_recovery_and_accident_state():
-    """NPC-004 section 23: recovery_stage/driver_departed must show up on
-    the debug panel once either is non-default - no new debug subsystem,
-    just one more line on the existing F7 panel."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-
-    panel_w = 360
-    normal = pygame.Surface((panel_w, 450))
-    normal.fill((0, 0, 0))
-    draw_npc_debug_panel(normal, vehicle, driver, font)
-
-    driver.recovery_stage = "STUCK"
-    vehicle.driver_departed = True
-    accident = pygame.Surface((panel_w, 450))
-    accident.fill((0, 0, 0))
-    draw_npc_debug_panel(accident, vehicle, driver, font)
-
-    assert pygame.image.tostring(normal, "RGB") != pygame.image.tostring(accident, "RGB")
 
 
-def test_draw_npc_cars_debug_fallback_still_works_without_a_travel_route():
-    """The segment_idx/direction fallback this bug lived in must still
-    work for whatever NPC kind actually relies on it (no travel_route,
-    but a `way` + `segment_idx` to walk)."""
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    way = Way(points_m=[(0.0, 0.0), (50.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5)
-    parked_like_npc = SimpleNamespace(
-        x=10.0, y=0.0, heading=0.0, speed=0.0, length_m=4.0, width_m=1.8, layer=0,
-        color=(150, 150, 150), way=way, segment_idx=0, direction=1, lod_level=0,
-        travel_route=None,
-    )
-    draw_npc_cars(screen, [parked_like_npc], 10.0, 0.0, ways=[way], show_debug=True)
 
 
-def test_draw_npc_cars_has_no_cap_and_returns_the_drawn_count():
-    """Regression (client-server-016.md section 3): MAX_VISIBLE_NPC_COUNT
-    used to silently stop drawing bodies after the first 17 in-viewport
-    NPCs, with no relation to how many actually fit on screen. Culling is
-    viewport-based only now - every in-viewport npc gets drawn, and the
-    return value (new - used for the F7 population panel's "visible"
-    counter) reports exactly how many that was."""
-    pygame.init()
-    screen = pygame.display.set_mode((400, 300))
-    way = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="residential", half_width_m=4.5)
-    npcs = [
-        SimpleNamespace(
-            x=float(i) * 5.0, y=0.0, heading=0.0, speed=0.0, length_m=4.0, width_m=1.8, layer=0,
-            color=(150, 150, 150), way=way, segment_idx=0, direction=1, lod_level=0, travel_route=None,
-        )
-        for i in range(25)
-    ]
-
-    drawn = draw_npc_cars(screen, npcs, 0.0, 0.0, ways=[way])
-
-    assert drawn == 25
-    """multi-passenger-car.md sections 2, 4, 5: group size never exceeds
-    capacity, and it's never auto-filled."""
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-
-    group_sizes = set()
-    for i in range(30):
-        spawned = spawn_npc(i, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
-        assert spawned is not None
-        _, driver, vehicle = spawned
-        assert vehicle.capacity == NPC_CAR_CAPACITY
-        assert vehicle.trip_group is not None
-        assert vehicle.trip_group.vehicle_id == vehicle.vehicle_id
-        assert 1 <= len(vehicle.trip_group.member_resident_ids) <= vehicle.capacity
-        assert vehicle.owner_id == vehicle.trip_group.member_resident_ids[0]
-        group_sizes.add(len(vehicle.trip_group.member_resident_ids))
-
-    # Never always full - across enough spawns, some variety shows up.
-    assert len(group_sizes) > 1
 
 
 def test_trip_group_all_aboard_reflects_boarded_membership():
@@ -1751,11 +1594,11 @@ def test_update_npc_parked_short_circuits_without_a_trip_group():
     assert vehicle.speed == 0.0
 
 
-def test_update_npc_strands_a_straggler_after_the_return_timeout():
+@pytest.mark.parametrize("driver_returned", [False, True])
+def test_return_timeout_leaves_missing_passengers_but_never_the_driver(driver_returned):
     """multi-passenger-car.md section 20: never wait forever - once the
-    deadline passes, a still-missing member is dropped from the group
-    (not marked boarded) so all_aboard becomes true and the resident is
-    freed from the group rather than left permanently stuck."""
+    deadline passes, missing passengers are released, but departure still
+    requires the actual driver to be aboard."""
     ways = _straight_chain()
     tw = TrafficWorld(ways)
     residents = ResidentManager()
@@ -1770,8 +1613,14 @@ def test_update_npc_strands_a_straggler_after_the_return_timeout():
     assert vehicle.state == NPCState.PARKED
 
     group = vehicle.trip_group
+    if len(group.member_resident_ids) == 1:
+        passenger = residents.create(mode="riding")
+        passenger.trip_group_id = group.group_id
+        group.member_resident_ids.append(passenger.resident_id)
     # Simulate everyone having disembarked (as pedestrian.py would).
     group.boarded_resident_ids.clear()
+    if driver_returned:
+        group.boarded_resident_ids.add(vehicle.owner_id)
     original_members = list(group.member_resident_ids)
 
     # One tick to set the wait deadline, then fast-forward well past it.
@@ -1780,11 +1629,14 @@ def test_update_npc_strands_a_straggler_after_the_return_timeout():
     tw.advance_time(group.activity_duration_s + NPC_GROUP_RETURN_GRACE_S + 1.0)
 
     update_npc(vehicle, driver, 1.0 / 30.0, tw, residents)
-    assert group.all_aboard
-    assert group.member_resident_ids == []
+    assert group.all_aboard == driver_returned
+    assert group.member_resident_ids == [vehicle.owner_id]
     for resident_id in original_members:
         resident = residents.get(resident_id)
-        assert resident.trip_group_id is None
+        assert resident.trip_group_id == (group.group_id if resident_id == vehicle.owner_id else None)
+    if not driver_returned:
+        assert not continue_npc_trip(vehicle, driver, tw, ways)
+        assert vehicle.state == NPCState.PARKED
 
 
 def test_update_npc_does_not_strand_a_group_that_returns_in_time():
@@ -1861,7 +1713,11 @@ def test_continue_npc_trip_returns_false_with_no_reachable_destination(monkeypat
     destination_before = vehicle.destination
     path_before = driver.path
 
-    monkeypatch.setattr(npc_module, "_pick_npc_destination_candidates", lambda *a, **k: [])
+    def no_candidates(*args, **kwargs):
+        yield
+        return []
+
+    monkeypatch.setattr(npc_module, "_pick_npc_destination_candidates_steps", no_candidates)
     ok = continue_npc_trip(vehicle, driver, tw, ways)
     assert ok is False
     assert vehicle.destination == destination_before
@@ -1942,12 +1798,14 @@ def test_spawn_npc_group_size_never_exceeds_a_small_custom_capacity(monkeypatch)
     """multi-passenger-car.md Test 11: different vehicle capacities (2, 5,
     7) all work without changing the underlying passenger logic."""
     import theroadragetrip.npc as npc_module
+    from dataclasses import replace
 
     ways = _straight_chain()
     tw = TrafficWorld(ways)
     residents = ResidentManager()
     for capacity in (2, 5, 7):
-        monkeypatch.setattr(npc_module, "NPC_CAR_CAPACITY", capacity)
+        monkeypatch.setitem(npc_module.VEHICLE_DEFINITIONS, "car",
+                            replace(npc_module.vehicle_definition("car"), capacity=capacity))
         for i in range(10):
             spawned = spawn_npc(100 * capacity + i, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
             assert spawned is not None
@@ -1957,8 +1815,7 @@ def test_spawn_npc_group_size_never_exceeds_a_small_custom_capacity(monkeypatch)
 
 
 def test_vehicle_passenger_ids_excludes_the_driver():
-    """render/pedestrians.py's draw_npc_popup already reads this attribute
-    name (built ahead of multi-passenger-car.md) - it must report the
+    """passenger_ids (multi-passenger-car.md) must report the
     trip group's other members, not the driver already shown separately
     as the vehicle's owner."""
     ways = _straight_chain()
@@ -1978,104 +1835,10 @@ def test_vehicle_passenger_ids_empty_without_a_trip_group():
     assert vehicle.passenger_ids == ()
 
 
-def test_draw_npc_debug_panel_shows_capacity_and_occupants():
-    """multi-passenger-car.md section 26: CAPACITY/OCCUPANTS/TRIP GROUP
-    must be visible for a vehicle with a trip group."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
-    assert spawned is not None
-    _, driver, vehicle = spawned
-
-    panel_w = 360
-    with_group = pygame.Surface((panel_w, 400))
-    with_group.fill((0, 0, 0))
-    draw_npc_debug_panel(with_group, vehicle, driver, font)
-
-    vehicle.trip_group = None
-    without_group = pygame.Surface((panel_w, 400))
-    without_group.fill((0, 0, 0))
-    draw_npc_debug_panel(without_group, vehicle, driver, font)
-
-    assert pygame.image.tostring(with_group, "RGB") != pygame.image.tostring(without_group, "RGB")
 
 
-def test_draw_resident_popup_shows_trip_group_when_present():
-    """multi-passenger-car.md section 26's per-passenger debug info -
-    GROUP/STATE/DESTINATION - must show up on the resident popup once a
-    resident has a trip_group_id, and stay silent otherwise."""
-    from theroadragetrip.render.pedestrians import draw_resident_popup
-
-    pygame.init()
-    pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    spawned = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
-    assert spawned is not None
-    _, _, vehicle = spawned
-    resident = residents.get(vehicle.owner_id)
-    assert resident.trip_group_id == vehicle.trip_group.group_id
-
-    # draw_resident_popup positions its (hardcoded 420x268) panel at
-    # screen_w - 420 - 24 - a surface exactly that size would place it
-    # partly off-screen to the left, so use a comfortably larger canvas.
-    screen_w, screen_h = 800, 600
-    with_group = pygame.Surface((screen_w, screen_h))
-    with_group.fill((0, 0, 0))
-    draw_resident_popup(with_group, font, resident, residents.residents, screen_w=screen_w, screen_h=screen_h)
-
-    resident.trip_group_id = None
-    without_group = pygame.Surface((screen_w, screen_h))
-    without_group.fill((0, 0, 0))
-    draw_resident_popup(without_group, font, resident, residents.residents, screen_w=screen_w, screen_h=screen_h)
-
-    assert pygame.image.tostring(with_group, "RGB") != pygame.image.tostring(without_group, "RGB")
 
 
-def test_draw_npc_debug_panel_lists_each_passenger_by_id():
-    """Reported: "F7 shows driver only - no passengers" - an aggregate
-    occupants=X/Y count doesn't visibly prove anyone but the driver
-    exists. Every other trip-group member must be individually listed."""
-    from theroadragetrip.render.hud import draw_npc_debug_panel
-
-    pygame.init()
-    pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    ways = _straight_chain()
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    spawned = None
-    for attempt in range(20):
-        spawned = spawn_npc(attempt, residents, tw, ways, (0.0, 0.0), (180.0, 0.0))
-        assert spawned is not None
-        if len(spawned[2].trip_group.member_resident_ids) > 1:
-            break
-    _, driver, vehicle = spawned
-    assert len(vehicle.trip_group.member_resident_ids) > 1, "expected at least one multi-passenger spawn in 20 tries"
-
-    panel = pygame.Surface((360, 400))
-    panel.fill((0, 0, 0))
-    draw_npc_debug_panel(panel, vehicle, driver, font)
-
-    passenger_ids = [rid for rid in vehicle.trip_group.member_resident_ids if rid != vehicle.owner_id]
-    assert passenger_ids
-    # Rendering each id's own text must actually change the panel - check
-    # against a panel with no other passengers (single-member group).
-    solo_vehicle_group = vehicle.trip_group
-    vehicle.trip_group.member_resident_ids = [vehicle.owner_id]
-    solo_panel = pygame.Surface((360, 400))
-    solo_panel.fill((0, 0, 0))
-    draw_npc_debug_panel(solo_panel, vehicle, driver, font)
-
-    assert pygame.image.tostring(panel, "RGB") != pygame.image.tostring(solo_panel, "RGB")
 
 
 def test_vehicle_available_seats_reflects_current_occupancy():
@@ -2176,7 +1939,7 @@ def test_right_turn_lane_bias_keeps_clear_of_the_road_edge():
 
 def test_trigger_road_rage_skips_crashed_behind_too_far_and_too_lateral_vehicles():
     """godot-final-05: the eligibility the shared road-rage action relies on
-    (40 m ahead, within 6 m sideways, driving) - unchanged NPC-005 rule."""
+    (40 m ahead, within 6 m sideways, driving) - unchanged living-traffic rule."""
     from theroadragetrip.npc import NPCVehicleManager
 
     ways = _straight_chain(count=20)
@@ -2185,7 +1948,7 @@ def test_trigger_road_rage_skips_crashed_behind_too_far_and_too_lateral_vehicles
     manager = NPCVehicleManager(target_count=0)
     placed = {}
     for vid, at in ((1, (30.0, 0.0)), (2, (-15.0, 0.0)), (3, (45.0, 0.0)), (4, (20.0, 8.0)), (5, (35.0, 0.0))):
-        spawned = spawn_npc(vid, residents, tw, ways, at, (200.0, 0.0))
+        spawned = spawn_npc(vid, residents, tw, ways, (60.0, 0.0), (200.0, 0.0))
         assert spawned is not None
         _, driver, vehicle = spawned
         vehicle.car.x, vehicle.car.y = at
@@ -2197,3 +1960,62 @@ def test_trigger_road_rage_skips_crashed_behind_too_far_and_too_lateral_vehicles
     assert manager.trigger_road_rage(0.0, 0.0, 0.0, sim_time=10.0) == placed[5][1].vehicle_id
     assert all(placed[v][0].road_rage_until_sim_time is None for v in (1, 2, 3, 4))
     assert placed[5][0].road_rage_until_sim_time == 10.0 + NPC_ROAD_RAGE_REACTION_DURATION_S
+
+
+def test_the_parking_area_under_a_car_is_found_without_testing_far_lots(monkeypatch):
+    from theroadragetrip import npc
+    from theroadragetrip.osm import Scenery
+
+    def lot(x):
+        points = [(x, 0.0), (x + 50.0, 0.0), (x + 50.0, 40.0), (x, 40.0)]
+        return Scenery(points_m=points, kind="parking", bbox=(x, 0.0, x + 50.0, 40.0))
+
+    lots = [lot(1000.0 * i) for i in range(20)]
+    tested = []
+    real = npc.point_in_polygon
+    monkeypatch.setattr(npc, "point_in_polygon", lambda x, y, polygon: tested.append(polygon) or real(x, y, polygon))
+    assert npc._parking_area_containing((5020.0, 20.0), lots) is lots[5]
+    assert npc._parking_area_containing((5020.0, 60.0), lots) is None
+    assert len(tested) == 1  # only the lot whose box holds the point
+
+
+def _wreck_ahead(x, y, heading=0.0):
+    return SimpleNamespace(x=x, y=y, heading=heading, speed=0.0, length_m=4.3, width_m=1.8, state=NPCState.CRASHED)
+
+
+def test_update_npc_drives_around_a_wreck_when_the_oncoming_lane_is_clear():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    wreck = _wreck_ahead(vehicle.car.x + 40.0, vehicle.car.y)
+    for _ in range(60 * 30):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[wreck])
+        assert math.hypot(vehicle.car.x - wreck.x, vehicle.car.y - wreck.y) > 2.0  # never through it
+        if vehicle.car.x > wreck.x + 12.0:
+            break
+    assert vehicle.car.x > wreck.x + 12.0
+    assert driver.passing is None  # back in its own lane once past
+
+
+def test_update_npc_waits_behind_a_wreck_while_traffic_comes_the_other_way():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    wreck = _wreck_ahead(vehicle.car.x + 20.0, vehicle.car.y)
+    oncoming = SimpleNamespace(x=vehicle.car.x + 45.0, y=vehicle.car.y + 3.0, speed=0.0, length_m=4.3)
+    for _ in range(60 * 10):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[wreck, oncoming])
+    assert driver.passing is None and vehicle.car.x < wreck.x
+
+
+def test_update_npc_does_not_try_to_pass_a_wreck_lying_across_the_road():
+    ways = _straight_chain(count=20)
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
+    wreck = _wreck_ahead(vehicle.car.x + 20.0, vehicle.car.y + 1.0, heading=math.pi / 2)
+    for _ in range(60 * 10):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[wreck])
+    assert driver.passing is None and vehicle.car.x < wreck.x

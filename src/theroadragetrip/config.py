@@ -112,7 +112,7 @@ DEFAULT_CONFIG = {
         "use_prebuilt_roads": "false",
     },
     "traffic": {
-        # NPC-003: target/min/max NPC vehicle population. traffic_count
+        # vehicle-population: target/min/max NPC vehicle population. traffic_count
         # was previously read nowhere - the game spawned exactly one NPC
         # vehicle regardless of this setting.
         "traffic_count": "",  # empty: scaled from the city's population
@@ -121,7 +121,7 @@ DEFAULT_CONFIG = {
         "pedestrian_count": "20",
         "cyclist_count": "8",
         "parking_density": "0.5",
-        # NPC-003 v2: overrides the registered vehicle plugins' own
+        # vehicle-population v2: overrides the registered vehicle plugins' own
         # traffic_weight (vehicles/plugins/*.py) for the general NPC
         # population mix - comma-separated "id:weight" pairs, e.g.
         # "car:0.8,van:0.1,truck:0.1". Empty (default) means "use each
@@ -136,8 +136,8 @@ DEFAULT_CONFIG = {
         "subtitles_enabled": "true",
     },
     "speech": {
-        "min_interval": "5.0",
-        "max_interval": "20.0",
+        "min_interval": "45.0",
+        "max_interval": "120.0",
     },
     "experimental": {
         "enable_two_wheelers": "false",

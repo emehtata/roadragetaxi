@@ -16,8 +16,8 @@ from .physics import (
 from .localization import tr
 from .fare import calculate_fare_cents, format_euros, tip_cents_from_happiness
 from .police import SpeedCamera, camera_sees_car
-from .rail_bookings import ACCEPTED, IN_TAXI, MISSED, PASSENGER_MET, TRAIN_ARRIVING, waiting_booking
-from .residents import MIN_UNACCOMPANIED_AGE, Resident, ResidentManager
+from .rail_bookings import ACCEPTED, IN_TAXI, MISSED, PASSENGER_MET, PASSENGER_WAITING, TRAIN_ARRIVING, waiting_booking
+from .residents import CITY_DATA, MIN_UNACCOMPANIED_AGE, Resident, ResidentManager
 from .traffic_rules import nearest_traffic_light_ahead
 
 logger = logging.getLogger(__name__)
@@ -39,8 +39,32 @@ NIGHTLIFE_VENUE_TYPES = {
 MOTION_SICKNESS_THRESHOLD = 8.0
 POST_KINDS = ("bollard", "street_lamp")  # solid poles the taxi can hit
 POST_RADIUS_M = 0.15
+TREE_TRUNK_RADIUS_M = 0.4
 POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stopping the taxi
-GREET_RADIUS_M = 2.0  # how close the driver on foot must be to greet a booked rail customer
+# Long fares: a phone offer to another municipality. Only the town is known
+# at first (its map isn't loaded); the edge arrow points the way, and near
+# the town the street address is picked from the map streamed in by then.
+LONG_FARE_CHANCE = 0.10
+LONG_FARE_MIN_M = 20_000.0
+LONG_FARE_MAX_M = 100_000.0
+LONG_FARE_RESOLVE_M = 1500.0  # this close to the town centre its map is loaded
+LONG_FARE_RETRY_S = 2.0  # bounded: one address search per this, until one is found
+LANDMARK_SNAP_M = 400.0  # an airport/station drop-off: the nearest road this close
+LANDMARK_STAND_M = 800.0  # ...but first its taxi stand, this close (terminals sit off the mapped point)
+# Popular long-fare destinations besides towns (world_places.py), weighted
+# as if a town of this many people.
+LANDMARK_WEIGHTS = {"airport": 100_000, "railway_station": 10_000}
+GREET_RADIUS_M = 2.0
+SOLID_AREA_KINDS = ("construction", "ice_rink", "stadium")  # fenced or walled all round: a crash, never a drive-in  # how close the driver on foot must be to greet a booked rail customer
+
+
+def car_hits_tree_trunk(car: Car, tree_x: float, tree_y: float) -> bool:
+    """Whether the circular trunk touches the car's oriented body."""
+    dx, dy = tree_x - car.x, tree_y - car.y
+    cos_h, sin_h = math.cos(car.heading), math.sin(car.heading)
+    outside_x = max(0.0, abs(dx * cos_h + dy * sin_h) - car.length_m * 0.5)
+    outside_y = max(0.0, abs(-dx * sin_h + dy * cos_h) - car.width_m * 0.5)
+    return math.hypot(outside_x, outside_y) <= TREE_TRUNK_RADIUS_M
 
 @dataclass
 class TaxiTarget:
@@ -52,6 +76,7 @@ class TaxiTarget:
     district_name: Optional[str] = None
     radius_m: float = 20.0  # Pickup/dropoff stop radius
     venue_type: Optional[str] = None
+    municipality: Optional[str] = None  # a long fare's town/landmark, until its address is picked
 
 
 @dataclass
@@ -100,6 +125,30 @@ class TaxiState:
     CLIENT_WALKING_TO_CAR = "WALKING"
     DRIVING_TO_DROPOFF = "DROPOFF"
     COMPLETED = "COMPLETED"
+
+
+_municipality_points: Optional[List[Tuple[str, float, float, int, Optional[str]]]] = None
+
+
+def municipality_points() -> List[Tuple[str, float, float, int, Optional[str]]]:
+    """(name, x, y, weight, landmark type) of every long-fare destination in
+    map metres: bundled municipalities (weight: population, type None) and
+    airports/railway stations (LANDMARK_WEIGHTS)."""
+    global _municipality_points
+    if _municipality_points is None:
+        from pyproj import Transformer
+        from .world_places import load_places
+        transformer = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True)
+        _municipality_points = []
+        for entry in CITY_DATA.values():
+            coords = entry.get("koordinaatit") or {}
+            x, y = transformer.transform(float(coords["longitude"]), float(coords["latitude"]))
+            _municipality_points.append((entry["taajama"], x, y, int(entry.get("väkiluku") or 1), None))
+        for place in load_places():
+            if place.type in LANDMARK_WEIGHTS:
+                x, y = transformer.transform(place.lon, place.lat)
+                _municipality_points.append((place.name, x, y, LANDMARK_WEIGHTS[place.type], place.type))
+    return _municipality_points
 
 
 def speed_bonus_points(speed_kmh: float) -> int:
@@ -162,6 +211,7 @@ class TaxiManager:
     ):
         # Filter to the largest connected road network to avoid isolated trapped roads
         self.ways = connected_drivable_ways(ways)
+        self._ways_grid = None  # (the self.ways list it indexes, SpatialWayGrid, id(way) -> position): _ways_near
         self.places = places or []
         self.buildings = buildings or []
         self.taxi_stops = taxi_stops or []
@@ -198,10 +248,12 @@ class TaxiManager:
         self.notification_timer: float = 0.0
         self.next_offer_timer: float = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
         self.stand_wait_timer: float = 0.0
+        self.long_fare_retry_timer: float = 0.0
 
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
         self._crashed_fence_cooldowns: Dict[int, float] = {}  # scenery id -> timestamp cooldown
+        self._tram_crash_at = -1e9  # sim time of the last tram crash (one penalty an impact)
         self._crashed_post_cooldowns: Dict[int, float] = {}  # bollard/lamp id -> timestamp cooldown
         self._post_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._post_ref = None
@@ -287,6 +339,14 @@ class TaxiManager:
         either way the game clock runs in real time, not 60x (a waiting
         booking's pickup window is game time)."""
         return self.current_passenger is not None or bool(self.rail_bookings is not None and self.rail_bookings.waiting())
+
+    def has_job(self) -> bool:
+        """A fare on, or an accepted pre-booking not yet finished: the phone
+        takes nothing more until it's done (nothing is queued)."""
+        return self.current_passenger is not None or any(
+            booking.status in (ACCEPTED, TRAIN_ARRIVING, PASSENGER_WAITING, PASSENGER_MET)
+            for booking in (self.rail_bookings.bookings if self.rail_bookings is not None else ())
+        )
 
     def meet_booking(self):
         """The booking the driver is meeting now: the earliest-arriving
@@ -491,7 +551,7 @@ class TaxiManager:
             self._fence_collision_count = 0
         if len(sceneries) > self._fence_collision_count:
             for scenery in sceneries[self._fence_collision_count:]:
-                if str(getattr(scenery, "kind", "")).lower() != "construction":
+                if str(getattr(scenery, "kind", "")).lower() not in SOLID_AREA_KINDS:
                     continue
                 bbox = getattr(scenery, "bbox", (0.0, 0.0, 0.0, 0.0))
                 if bbox == (0.0, 0.0, 0.0, 0.0):
@@ -516,16 +576,15 @@ class TaxiManager:
     def set_language(self, language: str) -> None:
         self.language = language
 
-    def check_speed_cameras(self, car: Car, cameras: List[SpeedCamera], penalty: int = 300) -> bool:
+    def check_speed_cameras(self, car: Car, cameras: List[SpeedCamera], penalty: int = 300,
+                            previous_position=None) -> bool:
         """Fine a speeding car seen in a camera's directional 50-meter zone."""
         hit = False
         visible_ids: set[int] = set()
         for camera_index, camera in enumerate(cameras):
-            dx = camera.x - car.x
-            dy = camera.y - car.y
-            if dx * dx + dy * dy > 60.0 * 60.0:
+            if camera.layer != getattr(car, "layer", 0) or camera.map_level != getattr(car, "map_level", 0):
                 continue
-            if not camera_sees_car(camera, car.x, car.y, car.heading):
+            if not camera_sees_car(camera, car.x, car.y, car.heading, previous_position):
                 continue
             visible_ids.add(camera_index)
             if abs(car.speed) * 3.6 <= camera.speed_limit_kmh:
@@ -687,11 +746,11 @@ class TaxiManager:
         for key in expired:
             del self._crashed_tree_cooldowns[key]
 
-        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5 + 1.0
+        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5 + TREE_TRUNK_RADIUS_M
         for scenery_index, tree_index, tree_x, tree_y in self._nearby_collision_trees(
             sceneries, player_car.x, player_car.y, radius
         ):
-                if math.hypot(player_car.x - tree_x, player_car.y - tree_y) > radius:
+                if not car_hits_tree_trunk(player_car, tree_x, tree_y):
                     continue
                 if ways and is_point_on_road(tree_x, tree_y, ways=ways, car_roads_only=True):
                     continue
@@ -700,17 +759,6 @@ class TaxiManager:
                     restore_x, restore_y = previous_position
                 else:
                     restore_x, restore_y = player_car.x, player_car.y
-                away_x = restore_x - tree_x
-                away_y = restore_y - tree_y
-                away_distance = math.hypot(away_x, away_y)
-                if away_distance < radius:
-                    if away_distance < 1e-6:
-                        away_x = -math.cos(player_car.heading)
-                        away_y = -math.sin(player_car.heading)
-                        away_distance = 1.0
-                    safe_distance = radius + 0.2
-                    restore_x = tree_x + away_x / away_distance * safe_distance
-                    restore_y = tree_y + away_y / away_distance * safe_distance
                 player_car.x, player_car.y = restore_x, restore_y
                 impact_speed_kmh = abs(player_car.speed) * 3.6
                 player_car.speed = 0.0
@@ -719,12 +767,7 @@ class TaxiManager:
                     "shake": 0.55,
                     "leaves": 1.2,
                     "angle": player_car.heading,
-                    # World position, so render/scenery.py's draw_trees()
-                    # can tell whether this specific tree could even be
-                    # visible right now, instead of treating *any* effect
-                    # anywhere in the whole loaded map as a reason to
-                    # bypass the tree cache globally, forever (see its
-                    # docstring for why that mattered).
+                    # World position: the client finds the tree to shake.
                     "x": tree_x,
                     "y": tree_y,
                 }
@@ -749,7 +792,8 @@ class TaxiManager:
         previous_position: Optional[Tuple[float, float]] = None,
         penalty: int = 150,
     ) -> bool:
-        """Stop the car at a construction-site fence and apply one crash penalty per impact."""
+        """Stop the car at a construction-site fence or an ice rink's boards
+        (SOLID_AREA_KINDS) and apply one crash penalty per impact."""
         expired = [fid for fid, t in self._crashed_fence_cooldowns.items() if sim_time - t > 3.0]
         for fid in expired:
             del self._crashed_fence_cooldowns[fid]
@@ -797,6 +841,39 @@ class TaxiManager:
             return True
 
         return False
+
+    def check_tram_collision(
+        self,
+        player_car: Car,
+        tram_mgr,
+        sim_time: float,
+        previous_position: Optional[Tuple[float, float]] = None,
+        penalty: int = 300,
+    ) -> bool:
+        """Driving into a tram (trams.py): stopped where it was, one penalty
+        an impact. A taxi a tram moved into (it overlapped at its previous
+        position too) is never held there: it can always drive out."""
+        if tram_mgr is None or not tram_mgr.trams:
+            return False
+        corners = get_oriented_box_corners(
+            player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
+        )
+        if not tram_mgr.hits(corners):
+            return False
+        if previous_position is not None and not tram_mgr.hits(get_oriented_box_corners(
+            previous_position[0], previous_position[1], player_car.heading, player_car.length_m, player_car.width_m
+        )):
+            player_car.x, player_car.y = previous_position
+            player_car.speed = 0.0
+        self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
+        if sim_time - self._tram_crash_at > 3.0:
+            self._tram_crash_at = sim_time
+            self.total_score -= penalty
+            self.adjust_passenger_happiness(-30.0)
+            self.notification_msg = tr(self.language, "tram_crash", penalty=penalty)
+            self.notification_timer = 3.5
+            logger.info("Player crashed into a tram: -%d pts", penalty)
+        return True
 
     def _nearby_posts(self, objects: List[Any], x: float, y: float):
         """Bollards and lamp posts near (x, y) from a 20 m grid, indexing
@@ -944,8 +1021,7 @@ class TaxiManager:
                 continue
             # The bump spans width_m across the road, centered on (x, y);
             # build that short perpendicular segment and test whether the
-            # car's movement this frame crossed it - same shape draw_speed_bumps()
-            # renders.
+            # car's movement this frame crossed it.
             angle = getattr(bump, "direction_angle", None) or 0.0
             half_w = getattr(bump, "width_m", 3.5) * 0.5
             perp_x, perp_y = -math.sin(angle), math.cos(angle)
@@ -1065,9 +1141,12 @@ class TaxiManager:
         ways: List[Way],
         places: Optional[List[Place]] = None,
         buildings: Optional[List[Building]] = None,
+        connected: Optional[List[Way]] = None,
     ) -> None:
-        """Update road and place references when map expands dynamically."""
-        self.ways = connected_drivable_ways(ways, named=True)
+        """Update road and place references when map expands dynamically.
+        `connected`: connected_drivable_ways(ways) computed by the
+        caller already (map sync does it off the tick)."""
+        self.ways = connected if connected is not None else connected_drivable_ways(ways)
         if places is not None:
             self.places = places
         if buildings is not None:
@@ -1106,18 +1185,34 @@ class TaxiManager:
             return best_name
         return None
 
+    def _ways_near(self, x: float, y: float, reach: float) -> List[Way]:
+        """self.ways that may come within `reach` of (x, y), in self.ways
+        order - a nearest-road search over them ends on the same road as one
+        over every way, ties included. The index is built on first use after
+        the ways change (map sync)."""
+        if self._ways_grid is None or self._ways_grid[0] is not self.ways:
+            self._ways_grid = (self.ways, SpatialWayGrid(self.ways, cell_size=250.0),
+                               {id(way): index for index, way in enumerate(self.ways)})
+        _, grid, order = self._ways_grid
+        return sorted(grid.ways_in_rect(x - reach, y - reach, x + reach, y + reach), key=lambda way: order[id(way)])
+
     def passenger_waiting_position(self, target: TaxiTarget) -> Tuple[float, float, float]:
         """Place a phone passenger at the right edge of the nearest road."""
-        nearest = None
-        nearest_distance = float("inf")
-        for way in self.ways:
-            for start, end in zip(way.points_m, way.points_m[1:]):
-                px, py, _, distance = closest_point_and_dist_to_segment(
-                    target.x, target.y, start[0], start[1], end[0], end[1]
-                )
-                if distance < nearest_distance:
-                    nearest = (way, start, end, px, py)
-                    nearest_distance = distance
+        reach = 250.0
+        while True:  # the nearest road found within `reach` is the nearest of all
+            nearest = None
+            nearest_distance = float("inf")
+            for way in self._ways_near(target.x, target.y, reach):
+                for start, end in zip(way.points_m, way.points_m[1:]):
+                    px, py, _, distance = closest_point_and_dist_to_segment(
+                        target.x, target.y, start[0], start[1], end[0], end[1]
+                    )
+                    if distance < nearest_distance:
+                        nearest = (way, start, end, px, py)
+                        nearest_distance = distance
+            if nearest_distance <= reach or reach > 1e6:
+                break
+            reach *= 4.0
         if nearest is None:
             return target.x, target.y, 0.0
 
@@ -1199,6 +1294,12 @@ class TaxiManager:
                 return f"{street}, {district}"
             return f"{street}"
 
+    def roadside_address(self, x: float, y: float) -> str:
+        """An address for a point with no named road near: the roadside of its district."""
+        district = self.get_nearest_district(x, y)
+        roadside = tr(self.language, "roadside")
+        return f"{roadside}, {district}" if district else roadside
+
     def pick_random_building_point(
         self,
         ref_x: Optional[float] = None,
@@ -1234,10 +1335,19 @@ class TaxiManager:
                 center_y = building.y
                 anchors = [(center_x, center_y)]
             anchors.append((center_x, center_y))
+            # A road point within max_road_distance of an anchor is within `reach` of the
+            # centre: only those roads are scanned, and a building that can't meet the
+            # distance limits is skipped before any.
+            reach = max_road_distance + max(math.hypot(ax - center_x, ay - center_y) for ax, ay in anchors)
+            if ref_x is not None and ref_y is not None:
+                centre_distance = math.hypot(center_x - ref_x, center_y - ref_y)
+                if centre_distance + reach < min_dist or centre_distance - reach > max_dist:
+                    continue
             nearest: Optional[Tuple[float, float, str, float]] = None
+            nearby = self._ways_near(center_x, center_y, reach)
 
             for anchor_x, anchor_y in anchors:
-                for way in self.ways:
+                for way in nearby:
                     if len(way.points_m) < 2 or not is_car_road(way):
                         continue
                     for start, end in zip(way.points_m, way.points_m[1:]):
@@ -1284,7 +1394,8 @@ class TaxiManager:
         min_dist: float = 0.0,
         max_dist: float = float("inf"),
     ) -> Optional[TaxiTarget]:
-        """Pick a valid road coordinate with a verified real street name within distance constraints."""
+        """Pick a road coordinate within distance constraints; an unnamed
+        road (a service road, a track) is as good a stop as a street."""
         if not self.ways:
             return None
 
@@ -1296,8 +1407,6 @@ class TaxiManager:
                 continue
 
             way_name = getattr(w, "name", None)
-            if not way_name:
-                continue
 
             # Pick a random segment in this way
             idx = random.randint(0, len(w.points_m) - 2)
@@ -1312,9 +1421,7 @@ class TaxiManager:
                 if not (min_dist <= dist <= max_dist):
                     continue
 
-            addr = self.generate_address_for_point(px, py, way_name)
-            if not addr:
-                continue
+            addr = self.generate_address_for_point(px, py, way_name) or self.roadside_address(px, py)
 
             district = self.get_nearest_district(px, py)
             return TaxiTarget(
@@ -1326,10 +1433,10 @@ class TaxiManager:
                 radius_m=self.pickup_radius_m,
             )
 
-        # If strict distance search didn't match, pick any named way
+        # If strict distance search didn't match, pick any way
         for w in candidate_ways:
             way_name = getattr(w, "name", None)
-            if not way_name or len(w.points_m) < 2:
+            if len(w.points_m) < 2:
                 continue
             idx = random.randint(0, len(w.points_m) - 2)
             p1 = w.points_m[idx]
@@ -1337,16 +1444,14 @@ class TaxiManager:
             t = random.uniform(0.1, 0.9)
             px = p1[0] + t * (p2[0] - p1[0])
             py = p1[1] + t * (p2[1] - p1[1])
-            addr = self.generate_address_for_point(px, py, way_name)
-            if addr:
-                return TaxiTarget(
-                    x=px,
-                    y=py,
-                    address=addr,
-                    way_name=way_name,
-                    district_name=self.get_nearest_district(px, py),
-                    radius_m=self.pickup_radius_m,
-                )
+            return TaxiTarget(
+                x=px,
+                y=py,
+                address=self.generate_address_for_point(px, py, way_name) or self.roadside_address(px, py),
+                way_name=way_name,
+                district_name=self.get_nearest_district(px, py),
+                radius_m=self.pickup_radius_m,
+            )
         return None
 
     def pick_random_taxi_stop(
@@ -1381,7 +1486,7 @@ class TaxiManager:
         return TaxiTarget(
             x=x,
             y=y,
-            address=self.generate_address_for_point(x, y, way_name) or "Taxi stop",
+            address=self.generate_address_for_point(x, y, way_name) or self.roadside_address(x, y),
             way_name=way_name,
             district_name=self.get_nearest_district(x, y),
             radius_m=self.pickup_radius_m,
@@ -1431,6 +1536,7 @@ class TaxiManager:
 
         passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity()
         nausea_delay = self.nausea_delay_for_pickup(pickup_target)
+        ped_x, ped_y, ped_heading = self.passenger_waiting_position(pickup_target)
         self.current_passenger = TaxiPassenger(
             name=passenger_name,
             pickup=pickup_target,
@@ -1438,9 +1544,9 @@ class TaxiManager:
             gender=passenger_gender,
             resident_id=resident_id,
             weight_kg=passenger_weight_kg,
-            ped_x=self.passenger_waiting_position(pickup_target)[0],
-            ped_y=self.passenger_waiting_position(pickup_target)[1],
-            ped_heading=self.passenger_waiting_position(pickup_target)[2],
+            ped_x=ped_x,
+            ped_y=ped_y,
+            ped_heading=ped_heading,
             ped_speed=2.2,
             is_walking_to_car=False,
             boarded=False,
@@ -1556,6 +1662,41 @@ class TaxiManager:
             return dropoff
         return self.pick_random_road_point(ref_x=pickup_x, ref_y=pickup_y, min_dist=self.min_distance_m, max_dist=float("inf"))
 
+    def pick_long_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
+        """Another municipality, airport or railway station LONG_FARE_MIN_M..
+        MAX_M away, bigger ones likelier; only its spot is known until the
+        taxi gets near."""
+        towns = [town for town in municipality_points()
+                 if LONG_FARE_MIN_M <= math.hypot(town[1] - pickup_x, town[2] - pickup_y) <= LONG_FARE_MAX_M]
+        if not towns:
+            return None
+        name, x, y, _, landmark = random.choices(towns, weights=[town[3] for town in towns])[0]
+        return TaxiTarget(x=x, y=y, address=name, radius_m=self.pickup_radius_m, municipality=name, venue_type=landmark)
+
+    def _resolve_long_dropoff(self, passenger: TaxiPassenger, dt: float) -> None:
+        """Near a long fare's town: its address, once the map has a road there."""
+        self.long_fare_retry_timer -= dt
+        if self.long_fare_retry_timer > 0.0:
+            return
+        self.long_fare_retry_timer = LONG_FARE_RETRY_S
+        town = passenger.dropoff
+        if town.venue_type in LANDMARK_WEIGHTS:  # the place itself: its taxi stand, else its road; its name
+            final = (self.pick_random_taxi_stop(town.x, town.y, 0.0, LANDMARK_STAND_M)
+                     or self.pick_random_road_point(town.x, town.y, 0.0, LANDMARK_SNAP_M))
+        else:
+            final = (self.pick_random_building_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M)
+                     or self.pick_random_road_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M))
+        if final is None:
+            return
+        if town.venue_type in LANDMARK_WEIGHTS:
+            final.address, final.venue_type = town.address, town.venue_type
+        else:
+            final.address = f"{final.address}, {town.municipality}"
+        passenger.dropoff = final
+        self.notification_msg = tr(self.language, "long_fare_address", name=passenger.name, address=final.address)
+        self.notification_timer = 6.0
+        logger.info("Long fare address picked: passenger=%s dropoff=%s", passenger.name, final.address)
+
     def generate_offers(
         self, car_x: float, car_y: float, count: int = 3, append: bool = False
     ) -> List[TaxiOffer]:
@@ -1570,11 +1711,15 @@ class TaxiManager:
             pickup = self.pick_phone_pickup(car_x, car_y)
             if not pickup:
                 continue
-            dropoff = self.pick_phone_dropoff(pickup.x, pickup.y)
+            dropoff = None
+            if random.random() < LONG_FARE_CHANCE:
+                dropoff = self.pick_long_dropoff(pickup.x, pickup.y)
+            dropoff = dropoff or self.pick_phone_dropoff(pickup.x, pickup.y)
             if not dropoff:
                 continue
             passenger_name, passenger_gender, resident_id, passenger_weight_kg = self._new_passenger_identity()
             nausea_delay = self.nausea_delay_for_pickup(pickup)
+            ped_x, ped_y, ped_heading = self.passenger_waiting_position(pickup)
             passenger = TaxiPassenger(
                 name=passenger_name,
                 pickup=pickup,
@@ -1582,9 +1727,9 @@ class TaxiManager:
                 gender=passenger_gender,
                 resident_id=resident_id,
                 weight_kg=passenger_weight_kg,
-                ped_x=self.passenger_waiting_position(pickup)[0],
-                ped_y=self.passenger_waiting_position(pickup)[1],
-                ped_heading=self.passenger_waiting_position(pickup)[2],
+                ped_x=ped_x,
+                ped_y=ped_y,
+                ped_heading=ped_heading,
                 ped_speed=2.2,
                 is_drunk=math.isfinite(nausea_delay),
                 nausea_delay=nausea_delay,
@@ -1616,7 +1761,7 @@ class TaxiManager:
     def accept_offer(self, index: int, car_x: float, car_y: float) -> bool:
         """Activate one phone offer and remove the offer list."""
         items = self.phone_items()
-        if index < 0 or index >= len(items):
+        if index < 0 or index >= len(items) or self.has_job():
             return False
         kind, item = items[index]
         if kind == "booking":
@@ -2079,7 +2224,10 @@ class TaxiManager:
                 self.elapsed_time,
                 self.fare_started_at or self._current_game_datetime(),
             )
-            if dist_to_target <= target.radius_m:
+            if target.municipality is not None:  # a long fare: no stop at the bare town centre
+                if dist_to_target <= LONG_FARE_RESOLVE_M:
+                    self._resolve_long_dropoff(self.current_passenger, dt)
+            elif dist_to_target <= target.radius_m:
                 if is_stopped:
                     # Completed fare!
                     p = self.current_passenger

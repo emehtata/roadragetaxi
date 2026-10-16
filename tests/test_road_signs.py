@@ -3,7 +3,6 @@ section 21: these were parsed since day one but never had a renderer)."""
 
 import math
 from theroadragetrip.osm import StopSign, YieldSign, build_ways
-from theroadragetrip.render import draw_stop_signs, draw_yield_signs
 from theroadragetrip.world_cache import BinaryWorldCacheLoader, BinaryWorldCacheWriter
 
 
@@ -99,80 +98,9 @@ def test_stop_signs_round_trip_through_world_cache(tmp_path):
     assert loaded.stop_signs[0].y == world.stop_signs[0].y
 
 
-def test_draw_stop_signs_paints_the_octagon_red():
-    import pygame
-
-    pygame.init()
-    try:
-        screen_w, screen_h, px_per_m = 200, 200, 8.0
-        screen = pygame.Surface((screen_w, screen_h))
-        screen.fill((40, 90, 40))  # grass green background
-
-        sign = StopSign(x=0.0, y=0.0, direction_angle=0.0)
-        draw_stop_signs(screen, [sign], 0.0, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
-
-        center = (screen_w // 2, screen_h // 2)
-        pixel = tuple(screen.get_at(center))[:3]
-        assert pixel == (220, 30, 30)
-    finally:
-        pygame.quit()
 
 
-def test_draw_yield_signs_paints_a_triangle():
-    import pygame
-
-    pygame.init()
-    try:
-        screen_w, screen_h, px_per_m = 200, 200, 8.0
-        screen = pygame.Surface((screen_w, screen_h))
-        background = (40, 90, 40)
-        screen.fill(background)
-
-        sign = YieldSign(x=0.0, y=0.0, direction_angle=0.0)
-        draw_yield_signs(screen, [sign], 0.0, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
-
-        painted = pygame.surfarray.array3d(screen)
-        assert (painted != background).any()
-    finally:
-        pygame.quit()
 
 
-def test_yield_sign_heading_uses_north_up_screen_coordinates(monkeypatch):
-    import pygame
-
-    pygame.init()
-    try:
-        polygons = []
-        monkeypatch.setattr(
-            pygame.draw, "polygon",
-            lambda _screen, _color, points, *args, **kwargs: polygons.append(points),
-        )
-        screen = pygame.Surface((200, 200))
-        sign = YieldSign(x=0.0, y=0.0, direction_angle=math.pi / 2.0)
-
-        draw_yield_signs(screen, [sign], 0.0, 0.0, px_per_m=8.0, screen_w=200, screen_h=200)
-
-        tip_x, tip_y = polygons[0][0]
-        assert math.isclose(tip_x, 100.0, abs_tol=0.01)
-        assert tip_y < 100.0  # world +Y (north) is screen -Y (up)
-    finally:
-        pygame.quit()
 
 
-def test_draw_stop_signs_skips_signs_outside_the_viewport():
-    import pygame
-
-    pygame.init()
-    try:
-        screen_w, screen_h, px_per_m = 200, 200, 8.0
-        screen = pygame.Surface((screen_w, screen_h))
-        background = (40, 90, 40)
-        screen.fill(background)
-
-        far_sign = StopSign(x=10_000.0, y=10_000.0)
-        draw_stop_signs(screen, [far_sign], 0.0, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
-
-        painted = pygame.surfarray.array3d(screen)
-        assert (painted == background).all()
-    finally:
-        pygame.quit()

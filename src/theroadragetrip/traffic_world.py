@@ -22,6 +22,9 @@ from .residents import ResidentManager
 # since this only needs to bound "how many cells to scan to find a
 # handful of nearby graph nodes", not represent individual roads.
 _ROUTE_NODE_GRID_CELL_M = 200.0
+# Transit spawning and route snapping search nearby graph nodes. Long OSM
+# segments otherwise leave main roads with no usable node for hundreds of metres.
+ROUTE_MAX_EDGE_LENGTH_M = 100.0
 # plan_route joins start/target to any of several nearby graph nodes with a
 # straight off-road "connector". Priced at plain distance, a connector from
 # a node well before a corner beat driving the corner itself (e.g. 60 m +
@@ -152,7 +155,21 @@ class RouteGraphBuild:
         if not self.include(way) or len(way.points_m) < 2:
             return
         layer = getattr(way, "layer", 0)
-        point_ids = [self._node_id(point, layer) for point in way.points_m]
+        point_ids = []
+        for segment_index, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
+            if segment_index == 0:
+                point_ids.append(self._node_id(start, layer))
+            distance = math.hypot(end[0] - start[0], end[1] - start[1])
+            steps = max(1, math.ceil(distance / ROUTE_MAX_EDGE_LENGTH_M))
+            for step in range(1, steps + 1):
+                if step == steps:
+                    point_ids.append(self._node_id(end, layer))
+                else:
+                    ratio = step / steps
+                    point_ids.append(self._layer_node_id((
+                        start[0] + (end[0] - start[0]) * ratio,
+                        start[1] + (end[1] - start[1]) * ratio,
+                    ), layer))
         oneway = getattr(way, "oneway", 0)
         nodes, edges = self.nodes, self.edges
         for first, second in zip(point_ids, point_ids[1:]):
@@ -165,6 +182,10 @@ class RouteGraphBuild:
 
 
 def nearest_node_indices(nodes, node_grid, point: Tuple[float, float], count: int, allowed) -> List[int]:
+    return run_route_steps(nearest_node_indices_steps(nodes, node_grid, point, count, allowed))
+
+
+def nearest_node_indices_steps(nodes, node_grid, point: Tuple[float, float], count: int, allowed) -> RouteSteps:
     """The `count` nodes in `allowed` closest to `point`, found by
     expanding outward through `_route_node_grid`'s cells instead of
     sorting the *entire* route graph (client-server-016.md: plan_route
@@ -180,19 +201,25 @@ def nearest_node_indices(nodes, node_grid, point: Tuple[float, float], count: in
     only, not the final path, so an occasional imperfect ordering here
     can't produce a wrong route, at most a marginally different one.
     """
+    if count <= 0:
+        return []
     cell_size = _ROUTE_NODE_GRID_CELL_M
     cx = math.floor(point[0] / cell_size)
     cy = math.floor(point[1] / cell_size)
     found: List[int] = []
     radius = 0
     extra_ring = False
-    max_radius = max(1, len(node_grid))
+    # Distant fares can be outside the streamed map. Never search thousands
+    # of empty rings; fall back to a sliced scan of the actual nodes instead.
+    max_radius = 8
     while radius <= max_radius:
         for dx in range(-radius, radius + 1):
             for dy in range(-radius, radius + 1):
                 if max(abs(dx), abs(dy)) != radius:
                     continue  # only the newly-added outer ring
+                yield
                 for index in node_grid.get((cx + dx, cy + dy), ()):
+                    yield
                     if allowed is None or index in allowed:
                         found.append(index)
         if len(found) >= count:
@@ -201,17 +228,19 @@ def nearest_node_indices(nodes, node_grid, point: Tuple[float, float], count: in
             extra_ring = True
         radius += 1
     if not found:
-        # point is nowhere near any mapped road (e.g. a genuinely
-        # unreachable/off-map destination) - the grid can't help
-        # here since expanding from point's own cell never reaches
-        # the populated area within a sane radius. Rare; fall back
-        # to the exhaustive sort plan_route always used to do.
-        found = list(range(len(nodes))) if allowed is None else list(allowed)
-    found.sort(
-        key=lambda index: (nodes[index][0] - point[0]) ** 2
-        + (nodes[index][1] - point[1]) ** 2
-    )
-    return found[:count]
+        # No nearby mapped road: scan real nodes with a bounded heap,
+        # yielding per candidate instead of sorting the entire graph.
+        found = range(len(nodes)) if allowed is None else allowed
+    nearest = []
+    for index in found:
+        yield
+        distance = (nodes[index][0] - point[0]) ** 2 + (nodes[index][1] - point[1]) ** 2
+        item = (-distance, -index)
+        if len(nearest) < count:
+            heapq.heappush(nearest, item)
+        elif item > nearest[0]:
+            heapq.heapreplace(nearest, item)
+    return [-index for _distance, index in sorted(nearest, reverse=True)]
 
 
 ROUTE_SNAP_M = 12.0  # on_road: a start/target this close to a road segment joins it there
@@ -250,6 +279,7 @@ def graph_route_steps(
     target: Tuple[float, float],
     layer: Optional[int] = None,
     on_road: bool = False,
+    start_layer: Optional[int] = None,
 ) -> RouteSteps:
     """A shortest route on one route graph (anything with nodes, edges,
     node_grid and component_parent: a RouteGraphBuild, or TrafficWorld's
@@ -261,7 +291,9 @@ def graph_route_steps(
     it on its own segment, in that segment's allowed directions, at its
     distance along it - not at whichever nearby node is cheapest, which is
     often the opposite carriageway or behind on a one-way street. Falls back
-    to the nearest-node candidates off-road or when that finds no route."""
+    to the nearest-node candidates off-road or when that finds no route.
+    `start_layer` constrains the initial road segment, not connected bridges
+    encountered later on the surface route."""
     # None = every node allowed (layer is None): no whole-graph set per call.
     allowed = None if layer is None else {
         index for index, node in enumerate(graph.nodes) if node[2] == layer
@@ -274,8 +306,8 @@ def graph_route_steps(
     # two lists exactly as before.
     node_count = len(graph.nodes) if allowed is None else len(allowed)
     max_candidate_count = 64
-    ranked_starts = nearest_node_indices(graph.nodes, graph.node_grid, start, max_candidate_count, allowed)
-    ranked_targets = nearest_node_indices(graph.nodes, graph.node_grid, target, max_candidate_count, allowed)
+    ranked_starts = yield from nearest_node_indices_steps(graph.nodes, graph.node_grid, start, max_candidate_count, allowed)
+    ranked_targets = yield from nearest_node_indices_steps(graph.nodes, graph.node_grid, target, max_candidate_count, allowed)
     nodes = graph.nodes
     parent = graph.component_parent
 
@@ -346,6 +378,8 @@ def graph_route_steps(
     if on_road:
         yield
         start_edges = _edges_at(graph, start, allowed)
+        if start_layer is not None:
+            start_edges = [edge for edge in start_edges if nodes[edge[0]][2] == start_layer and nodes[edge[1]][2] == start_layer]
         yield  # one lookup per step: each scans the 3x3 cells around its point
         target_edges = _edges_at(graph, target, allowed)
         if start_edges and target_edges:
@@ -532,10 +566,11 @@ class TrafficWorld:
         target: Tuple[float, float],
         layer: Optional[int] = None,
         on_road: bool = False,
+        start_layer: Optional[int] = None,
     ) -> RouteSteps:
         """plan_route as a resumable job on the surface graph - see
         graph_route_steps (on_road: the player's navigation)."""
-        return graph_route_steps(_SurfaceGraphView(self), start, target, layer, on_road)
+        return graph_route_steps(_SurfaceGraphView(self), start, target, layer, on_road, start_layer)
 
     def _nearby_traffic_lights(self, x: float, y: float, radius_m: float = 60.0) -> List[TrafficLight]:
         radius_sq = radius_m * radius_m
@@ -543,9 +578,6 @@ class TrafficWorld:
             light for light in self.traffic_lights
             if (light.x - x) ** 2 + (light.y - y) ** 2 <= radius_sq
         ]
-
-    def let_taxi_pick_up_waiter(self, taxi_stops, pedestrians, dt: float = 1.0 / 60.0) -> None:
-        return None
 
     def sync_map_data(
         self, ways, traffic_lights=None, crossings=None, parking_spaces=None,

@@ -1,0 +1,2302 @@
+{
+  "source_commit": "dd7a87e02f4f6e4a27158ddc806c1bcaeb958658",
+  "runtime_patch_sha256": "b1b7ef74e782595f89374d253cbce536b094cfd9a30fc04e0bc6e9cc4db6de5e",
+  "started_utc": "2026-10-15T09:10:30.488484+00:00",
+  "seed": 20261015,
+  "requested_wall_s": 120.0,
+  "tick_rate": 30,
+  "ways": 8851,
+  "buildings": 2767,
+  "fixture": "stationary Oulu taxi; clear/dry 18 C; local PBF; no historical weather, train timetable or map growth",
+  "player_start": [
+    428135.0107489875,
+    7210731.155285021,
+    -0.5821750971242079
+  ],
+  "port": 45953,
+  "finished_utc": "2026-10-15T09:12:32.753244+00:00",
+  "actual_wall_s": 120.01059357099803,
+  "ticks": 3593,
+  "simulated_physics_s": 119.76666666666667,
+  "unique_vehicles": 41,
+  "collision_events": 5,
+  "road_boundary_blocks": 9,
+  "first_boundary_blocks": [
+    {
+      "elapsed_s": 15.343,
+      "previous_pose": [
+        428066.77256711404,
+        7210601.665201604,
+        1.4816052599023497
+      ],
+      "proposed_pose": {
+        "id": 32,
+        "x": 428066.78081460117,
+        "y": 7210601.757426152,
+        "heading": 1.4816052599023497,
+        "speed": 2.7777777777777777,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "CRUISING",
+        "wait": "",
+        "way": {
+          "highway": null,
+          "name": null,
+          "layer": null,
+          "half_width_m": null,
+          "priority_road": null,
+          "oneway": null
+        },
+        "path_index": 1,
+        "path_length": 2,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 2.7777777777777777,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428066.6690737092,
+            7210600.507923962
+          ],
+          [
+            428071.2327593038,
+            7210651.539690784
+          ]
+        ],
+        "destination": [
+          428071.2327593038,
+          7210651.539690784
+        ],
+        "trip_group": {
+          "id": 12,
+          "members": [
+            43,
+            44,
+            45
+          ],
+          "boarded": [
+            43,
+            44,
+            45
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    {
+      "elapsed_s": 56.155,
+      "previous_pose": [
+        428035.39149823907,
+        7210764.74367591,
+        -1.691733220520412
+      ],
+      "proposed_pose": {
+        "id": 27,
+        "x": 428035.37714477524,
+        "y": 7210764.602786799,
+        "heading": -1.6723237772684885,
+        "speed": 4.24855119377473,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "PARKING",
+        "wait": "footprint blocked (curb/building)",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 63,
+        "path_length": 64,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 2.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428035.1903340986,
+            7210765.680952448
+          ],
+          [
+            428035.20368033426,
+            7210765.2477073185
+          ],
+          [
+            428037.15539848426,
+            7210729.742921608
+          ]
+        ],
+        "destination": [
+          428037.15539848426,
+          7210729.742921608
+        ],
+        "trip_group": {
+          "id": 11,
+          "members": [
+            39,
+            40,
+            41,
+            42
+          ],
+          "boarded": [
+            39,
+            40,
+            41,
+            42
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    {
+      "elapsed_s": 56.789,
+      "previous_pose": [
+        428199.72511405207,
+        7210805.88434315,
+        3.748945519749839
+      ],
+      "proposed_pose": {
+        "id": 39,
+        "x": 428199.6492208967,
+        "y": 7210805.8312996095,
+        "heading": 3.751596040191446,
+        "speed": 2.7777777777777777,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "PARKING",
+        "wait": "",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 40,
+        "path_length": 41,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 2.7777777777777777,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428200.8660371341,
+            7210807.405805564
+          ],
+          [
+            428200.72047015047,
+            7210807.277869766
+          ],
+          [
+            428191.7525553872,
+            7210799.362774695
+          ]
+        ],
+        "destination": [
+          428191.7525553872,
+          7210799.362774695
+        ],
+        "trip_group": {
+          "id": 14,
+          "members": [
+            53,
+            54,
+            55,
+            56,
+            57
+          ],
+          "boarded": [
+            53,
+            54,
+            55,
+            56,
+            57
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    {
+      "elapsed_s": 59.294,
+      "previous_pose": [
+        427934.9782397475,
+        7210649.59615072,
+        0.45285771195555713
+      ],
+      "proposed_pose": {
+        "id": 93,
+        "x": 427935.06149904575,
+        "y": 7210649.636663402,
+        "heading": 0.45285771195555713,
+        "speed": 2.7777777777777777,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "TURNING",
+        "wait": "",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 1,
+        "path_length": 23,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 2.7777777777777777,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            427933.7669437376,
+            7210649.006752875
+          ],
+          [
+            427957.09680849686,
+            7210660.358703082
+          ],
+          [
+            427958.82973915583,
+            7210661.3045726735
+          ],
+          [
+            427960.43172944826,
+            7210662.392033553
+          ],
+          [
+            427961.9027793742,
+            7210663.621085719
+          ],
+          [
+            427963.24288893375,
+            7210664.991729176
+          ],
+          [
+            427964.4520581268,
+            7210666.50396392
+          ]
+        ],
+        "destination": [
+          427974.67892324366,
+          7210717.362084018
+        ],
+        "trip_group": {
+          "id": 31,
+          "members": [
+            140,
+            141,
+            142
+          ],
+          "boarded": [
+            140,
+            141,
+            142
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    {
+      "elapsed_s": 63.068,
+      "previous_pose": [
+        428067.077329968,
+        7210905.104124205,
+        2.0528148241704915
+      ],
+      "proposed_pose": {
+        "id": 74,
+        "x": 428066.9601307098,
+        "y": 7210905.355967068,
+        "heading": 2.0063553858325833,
+        "speed": 8.333333333333334,
+        "length": 7.5,
+        "width": 2.3,
+        "state": "CRUISING",
+        "wait": "",
+        "way": {
+          "highway": "residential",
+          "name": "Kirkkokatu",
+          "layer": 0,
+          "half_width_m": 4.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 13,
+        "path_length": 51,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 8.333333333333334,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428069.7468109392,
+            7210901.603259126
+          ],
+          [
+            428069.87906677386,
+            7210901.917357872
+          ],
+          [
+            428071.5833645478,
+            7210905.676301952
+          ],
+          [
+            428091.9472791084,
+            7210937.147735177
+          ],
+          [
+            428103.1970692938,
+            7210953.559521661
+          ],
+          [
+            428102.8180331746,
+            7210955.342084726
+          ],
+          [
+            428102.748769819,
+            7210955.8668708475
+          ],
+          [
+            428102.793670498,
+            7210956.252853833
+          ]
+        ],
+        "destination": [
+          428295.90159595833,
+          7210785.53679237
+        ],
+        "trip_group": {
+          "id": 26,
+          "members": [
+            115,
+            116
+          ],
+          "boarded": [
+            115,
+            116
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    {
+      "elapsed_s": 75.993,
+      "previous_pose": [
+        428114.99387938174,
+        7210765.73371459,
+        -0.431763129451352
+      ],
+      "proposed_pose": {
+        "id": 9,
+        "x": 428115.0562709378,
+        "y": 7210765.7102254825,
+        "heading": -0.36006665471421906,
+        "speed": 2.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "WAITING",
+        "wait": "footprint blocked (curb/building)",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 1,
+        "path_length": 118,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 2.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428114.45408175467,
+            7210766.781101303
+          ],
+          [
+            428119.7952386233,
+            7210777.325367765
+          ],
+          [
+            428119.90246827895,
+            7210777.590775374
+          ],
+          [
+            428119.9312894094,
+            7210777.808831974
+          ],
+          [
+            428119.8817020146,
+            7210777.979537565
+          ],
+          [
+            428119.75370609463,
+            7210778.102892149
+          ],
+          [
+            428119.54730164947,
+            7210778.178895724
+          ]
+        ],
+        "destination": [
+          427836.8935005154,
+          7210966.467402389
+        ],
+        "trip_group": {
+          "id": 3,
+          "members": [
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "boarded": [
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    {
+      "elapsed_s": 86.88,
+      "previous_pose": [
+        428336.4344866283,
+        7210727.759463411,
+        -1.5918145890928768
+      ],
+      "proposed_pose": {
+        "id": 85,
+        "x": 428336.4356294673,
+        "y": 7210727.726863773,
+        "heading": -1.535753877424138,
+        "speed": 0.9785899284182552,
+        "length": 5.2,
+        "width": 2.0,
+        "state": "CRUISING",
+        "wait": "",
+        "way": {
+          "highway": "residential",
+          "name": "M\u00e4kelininkatu",
+          "layer": 0,
+          "half_width_m": 4.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 38,
+        "path_length": 78,
+        "recovery": "NORMAL",
+        "stuck_s": 3.0,
+        "target_speed": 4.979307024764881,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428339.25689337205,
+            7210732.859649845
+          ],
+          [
+            428336.5401561536,
+            7210728.753662439
+          ],
+          [
+            428335.55708949664,
+            7210727.2654408915
+          ],
+          [
+            428335.55048001447,
+            7210724.4218865
+          ],
+          [
+            428335.4854881714,
+            7210723.600704628
+          ],
+          [
+            428335.2949189634,
+            7210723.032861939
+          ],
+          [
+            428334.9787723904,
+            7210722.71835843
+          ],
+          [
+            428334.53704845265,
+            7210722.657194106
+          ]
+        ],
+        "destination": [
+          428199.3936333943,
+          7210870.901706294
+        ],
+        "trip_group": {
+          "id": 29,
+          "members": [
+            132
+          ],
+          "boarded": [
+            132
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    {
+      "elapsed_s": 92.691,
+      "previous_pose": [
+        428175.08212658414,
+        7210859.475488747,
+        -1.634555513398758
+      ],
+      "proposed_pose": {
+        "id": 69,
+        "x": 428175.08267951186,
+        "y": 7210859.408824373,
+        "heading": -1.5625023155633257,
+        "speed": 2.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "PARKING",
+        "wait": "footprint blocked (curb/building)",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 48,
+        "path_length": 49,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 2.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428192.77195220365,
+            7210850.062683137
+          ],
+          [
+            428189.4544093297,
+            7210851.369175178
+          ],
+          [
+            428175.95468146715,
+            7210860.284312159
+          ]
+        ],
+        "destination": [
+          428175.95468146715,
+          7210860.284312159
+        ],
+        "trip_group": {
+          "id": 24,
+          "members": [
+            106,
+            107,
+            108
+          ],
+          "boarded": [
+            106,
+            107,
+            108
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    {
+      "elapsed_s": 100.84,
+      "previous_pose": [
+        428149.96757708874,
+        7210818.326926035,
+        0.7247414985707212
+      ],
+      "proposed_pose": {
+        "id": 21,
+        "x": 428150.014172408,
+        "y": 7210818.374605387,
+        "heading": 0.7968963272493603,
+        "speed": 2.0,
+        "length": 7.5,
+        "width": 2.3,
+        "state": "PARKING",
+        "wait": "footprint blocked (curb/building)",
+        "way": {
+          "highway": "residential",
+          "name": "Isokatu",
+          "layer": 0,
+          "half_width_m": 4.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 49,
+        "path_length": 50,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 2.0,
+        "decision": {
+          "action": "SLOW",
+          "reason": "yielding to traffic from right",
+          "stop_position": [
+            428160.5124290639,
+            7210827.66430686
+          ]
+        },
+        "route": [
+          [
+            428150.6302442011,
+            7210832.024413545
+          ],
+          [
+            428150.3814335634,
+            7210830.684456354
+          ],
+          [
+            428148.5726503306,
+            7210818.6356051285
+          ]
+        ],
+        "destination": [
+          428148.5726503306,
+          7210818.6356051285
+        ],
+        "trip_group": {
+          "id": 8,
+          "members": [
+            34
+          ],
+          "boarded": [
+            34
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    }
+  ],
+  "unique_crashed_ids": [
+    8,
+    17,
+    20,
+    26,
+    47,
+    51,
+    55,
+    61,
+    74
+  ],
+  "recovery_transitions_sampled": {
+    "NORMAL->STUCK": 13,
+    "STUCK->HOLD": 13
+  },
+  "route_jobs": {
+    "queued": 77,
+    "ready": 39,
+    "failed": 25,
+    "stale": 0,
+    "discarded": 9,
+    "max_frame_ms": 6.347107999317814,
+    "continued": 1,
+    "recovered": 0,
+    "safe_holds": 13,
+    "waits_frames": [
+      5,
+      7,
+      6,
+      7,
+      7,
+      8,
+      8,
+      10,
+      8,
+      9,
+      7,
+      9,
+      11,
+      15,
+      16,
+      17,
+      4,
+      9,
+      11,
+      507,
+      539,
+      10,
+      12,
+      9,
+      12,
+      11,
+      12,
+      14,
+      23,
+      9,
+      10,
+      17,
+      613,
+      10,
+      20,
+      680,
+      11,
+      12,
+      499,
+      13,
+      11,
+      22,
+      36,
+      13,
+      3,
+      10,
+      510,
+      2,
+      2,
+      539,
+      5,
+      604,
+      11,
+      11,
+      19,
+      88,
+      9,
+      13,
+      13,
+      16,
+      471,
+      11,
+      598,
+      3,
+      8,
+      566,
+      4,
+      213,
+      1,
+      4,
+      3,
+      8,
+      132
+    ],
+    "pending": [
+      {
+        "kind": "trip",
+        "vehicle_id": 1,
+        "age_frames": 292
+      },
+      {
+        "kind": "trip",
+        "vehicle_id": 45,
+        "age_frames": 292
+      },
+      {
+        "kind": "trip",
+        "vehicle_id": 2,
+        "age_frames": 292
+      },
+      {
+        "kind": "continue",
+        "vehicle_id": 77,
+        "age_frames": 112
+      }
+    ]
+  },
+  "trip_transitions_sampled": {
+    "arrivals": 11,
+    "departures": 1
+  },
+  "stopped_driver_samples_by_reason": {
+    "stuck - awaiting recovery": 19,
+    "recovery failed - no validated route": 354,
+    "red light ahead": 52,
+    "yielding to traffic from right": 52,
+    "red+yellow light ahead": 16,
+    "unlabelled active driver": 480,
+    "waiting for vehicle ahead": 62,
+    "footprint blocked (curb/building)": 167
+  },
+  "pedestrian_state_samples": {
+    "walking": 739,
+    "entering_building": 77,
+    "crossing": 30,
+    "waiting_at_light": 31,
+    "walking_to_activity": 500,
+    "performing_activity": 268,
+    "walking_to_building": 682,
+    "fallen": 9,
+    "in_building": 967
+  },
+  "low_progress_vehicles": {
+    "32": {
+      "first_flag_s": 45.10050700500142,
+      "samples_flagged": 75,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 32,
+        "x": 428066.77256711404,
+        "y": 7210601.665201604,
+        "heading": 1.4816052599023497,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "WAITING",
+        "wait": "recovery failed - no validated route",
+        "way": {
+          "highway": null,
+          "name": null,
+          "layer": null,
+          "half_width_m": null,
+          "priority_road": null,
+          "oneway": null
+        },
+        "path_index": 1,
+        "path_length": 2,
+        "recovery": "HOLD",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428066.6690737092,
+            7210600.507923962
+          ],
+          [
+            428071.2327593038,
+            7210651.539690784
+          ]
+        ],
+        "destination": [
+          428071.2327593038,
+          7210651.539690784
+        ],
+        "trip_group": {
+          "id": 12,
+          "members": [
+            43,
+            44,
+            45
+          ],
+          "boarded": [
+            43,
+            44,
+            45
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    "5": {
+      "first_flag_s": 70.14837505299874,
+      "samples_flagged": 50,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 5,
+        "x": 428178.3006032229,
+        "y": 7210710.8083871715,
+        "heading": 2.339289614110777,
+        "speed": 0.0,
+        "length": 5.2,
+        "width": 2.0,
+        "state": "PARKED",
+        "wait": "",
+        "way": {
+          "highway": "living_street",
+          "name": "Hallituskatu",
+          "layer": 0,
+          "half_width_m": 4.0,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 17,
+        "path_length": 18,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428187.74302750034,
+            7210701.037178158
+          ],
+          [
+            428187.63249280467,
+            7210701.144912137
+          ],
+          [
+            428177.2638761842,
+            7210711.890181963
+          ]
+        ],
+        "destination": [
+          428177.2638761842,
+          7210711.890181963
+        ],
+        "trip_group": {
+          "id": 2,
+          "members": [
+            8,
+            9
+          ],
+          "boarded": [],
+          "disembarked": [
+            8,
+            9
+          ],
+          "all_aboard": false
+        }
+      }
+    },
+    "3": {
+      "first_flag_s": 75.15789019099975,
+      "samples_flagged": 45,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 3,
+        "x": 428134.2140436273,
+        "y": 7210728.198123648,
+        "heading": 3.035353865137628,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "PARKED",
+        "wait": "",
+        "way": {
+          "highway": "living_street",
+          "name": "Hallituskatu",
+          "layer": 0,
+          "half_width_m": 4.0,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 19,
+        "path_length": 20,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428145.20087057207,
+            7210727.110857738
+          ],
+          [
+            428144.7013668447,
+            7210727.17856628
+          ],
+          [
+            428132.723786102,
+            7210728.35076022
+          ]
+        ],
+        "destination": [
+          428132.723786102,
+          7210728.35076022
+        ],
+        "trip_group": {
+          "id": 1,
+          "members": [
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "boarded": [],
+          "disembarked": [
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "all_aboard": false
+        }
+      }
+    },
+    "34": {
+      "first_flag_s": 79.16564381699936,
+      "samples_flagged": 41,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 34,
+        "x": 428248.8438300705,
+        "y": 7210707.530958766,
+        "heading": 2.4344631770486815,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "PARKED",
+        "wait": "",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 27,
+        "path_length": 28,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "SLOW",
+          "reason": "yielding to traffic from right",
+          "stop_position": [
+            428224.48556782346,
+            7210728.346304462
+          ]
+        },
+        "route": [
+          [
+            428271.68657233915,
+            7210691.820544167
+          ],
+          [
+            428260.1460563554,
+            7210697.741508995
+          ],
+          [
+            428247.7086470138,
+            7210708.508723826
+          ]
+        ],
+        "destination": [
+          428247.7086470138,
+          7210708.508723826
+        ],
+        "trip_group": {
+          "id": 13,
+          "members": [
+            48,
+            49,
+            50,
+            51,
+            52
+          ],
+          "boarded": [],
+          "disembarked": [
+            48,
+            49,
+            50,
+            51,
+            52
+          ],
+          "all_aboard": false
+        }
+      }
+    },
+    "16": {
+      "first_flag_s": 81.16944962900016,
+      "samples_flagged": 39,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 16,
+        "x": 428063.75886432844,
+        "y": 7210689.9472708525,
+        "heading": 0.8147996189165373,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "PARKED",
+        "wait": "",
+        "way": {
+          "highway": "residential",
+          "name": "Isokatu",
+          "layer": 0,
+          "half_width_m": 4.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 45,
+        "path_length": 46,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428052.57124573627,
+            7210678.410691621
+          ],
+          [
+            428052.8716871098,
+            7210678.714502003
+          ],
+          [
+            428063.7587134011,
+            7210689.947521927
+          ]
+        ],
+        "destination": [
+          428063.7587134011,
+          7210689.947521927
+        ],
+        "trip_group": {
+          "id": 6,
+          "members": [
+            26,
+            27
+          ],
+          "boarded": [],
+          "disembarked": [
+            26,
+            27
+          ],
+          "all_aboard": false
+        }
+      }
+    },
+    "27": {
+      "first_flag_s": 86.17879595100021,
+      "samples_flagged": 34,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 27,
+        "x": 428035.39149823907,
+        "y": 7210764.74367591,
+        "heading": -1.691733220520412,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "WAITING",
+        "wait": "footprint blocked (curb/building)",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 63,
+        "path_length": 64,
+        "recovery": "HOLD",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428035.1903340986,
+            7210765.680952448
+          ],
+          [
+            428035.20368033426,
+            7210765.2477073185
+          ],
+          [
+            428037.15539848426,
+            7210729.742921608
+          ]
+        ],
+        "destination": [
+          428037.15539848426,
+          7210729.742921608
+        ],
+        "trip_group": {
+          "id": 11,
+          "members": [
+            39,
+            40,
+            41,
+            42
+          ],
+          "boarded": [
+            39,
+            40,
+            41,
+            42
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    "39": {
+      "first_flag_s": 86.17879595100021,
+      "samples_flagged": 34,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 39,
+        "x": 428199.72511405207,
+        "y": 7210805.88434315,
+        "heading": 3.748945519749839,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "WAITING",
+        "wait": "recovery failed - no validated route",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 40,
+        "path_length": 41,
+        "recovery": "HOLD",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428200.8660371341,
+            7210807.405805564
+          ],
+          [
+            428200.72047015047,
+            7210807.277869766
+          ],
+          [
+            428191.7525553872,
+            7210799.362774695
+          ]
+        ],
+        "destination": [
+          428191.7525553872,
+          7210799.362774695
+        ],
+        "trip_group": {
+          "id": 14,
+          "members": [
+            53,
+            54,
+            55,
+            56,
+            57
+          ],
+          "boarded": [
+            53,
+            54,
+            55,
+            56,
+            57
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    "93": {
+      "first_flag_s": 89.18472112000018,
+      "samples_flagged": 31,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 93,
+        "x": 427934.9782397475,
+        "y": 7210649.59615072,
+        "heading": 0.45285771195555713,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "WAITING",
+        "wait": "recovery failed - no validated route",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 1,
+        "path_length": 23,
+        "recovery": "HOLD",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            427933.7669437376,
+            7210649.006752875
+          ],
+          [
+            427957.09680849686,
+            7210660.358703082
+          ],
+          [
+            427958.82973915583,
+            7210661.3045726735
+          ],
+          [
+            427960.43172944826,
+            7210662.392033553
+          ],
+          [
+            427961.9027793742,
+            7210663.621085719
+          ],
+          [
+            427963.24288893375,
+            7210664.991729176
+          ],
+          [
+            427964.4520581268,
+            7210666.50396392
+          ]
+        ],
+        "destination": [
+          427974.67892324366,
+          7210717.362084018
+        ],
+        "trip_group": {
+          "id": 31,
+          "members": [
+            140,
+            141,
+            142
+          ],
+          "boarded": [
+            140,
+            141,
+            142
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    "75": {
+      "first_flag_s": 94.19396729199798,
+      "samples_flagged": 26,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 75,
+        "x": 428283.79120775615,
+        "y": 7210635.195034512,
+        "heading": 1.9036529554592505,
+        "speed": 0.0,
+        "length": 5.2,
+        "width": 2.0,
+        "state": "WAITING",
+        "wait": "recovery failed - no validated route",
+        "way": {
+          "highway": "residential",
+          "name": "M\u00e4kelininkatu",
+          "layer": 0,
+          "half_width_m": 4.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 6,
+        "path_length": 58,
+        "recovery": "HOLD",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428284.7625063822,
+            7210633.937397983
+          ],
+          [
+            428283.65483119164,
+            7210634.346864153
+          ],
+          [
+            428282.8633970714,
+            7210634.890804926
+          ],
+          [
+            428282.3882040214,
+            7210635.569220308
+          ],
+          [
+            428282.2292520418,
+            7210636.382110296
+          ],
+          [
+            428282.3865411325,
+            7210637.329474891
+          ],
+          [
+            428282.86007129354,
+            7210638.411314092
+          ],
+          [
+            428284.904166007,
+            7210642.129858569
+          ]
+        ],
+        "destination": [
+          428268.1592749066,
+          7210772.315666232
+        ],
+        "trip_group": {
+          "id": 27,
+          "members": [
+            117,
+            118,
+            119,
+            120,
+            121,
+            122,
+            123
+          ],
+          "boarded": [
+            117,
+            118,
+            119,
+            120,
+            121,
+            122,
+            123
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    "10": {
+      "first_flag_s": 100.20548738700018,
+      "samples_flagged": 20,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 10,
+        "x": 428220.4819117187,
+        "y": 7210742.047355221,
+        "heading": -1.314881270173154,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "WAITING",
+        "wait": "yielding to traffic from right",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 50,
+        "path_length": 67,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "STOP",
+          "reason": "yielding to traffic from right",
+          "stop_position": [
+            428220.4819117187,
+            7210742.047355221
+          ]
+        },
+        "route": [
+          [
+            428241.09218673926,
+            7210779.710598832
+          ],
+          [
+            428238.52971506986,
+            7210777.711039972
+          ],
+          [
+            428215.80146095005,
+            7210733.379720377
+          ],
+          [
+            428215.3588396378,
+            7210732.681146889
+          ],
+          [
+            428214.85910264624,
+            7210732.200682927
+          ],
+          [
+            428214.30224997527,
+            7210731.9383284915
+          ],
+          [
+            428213.6882816251,
+            7210731.894083582
+          ],
+          [
+            428213.0171975956,
+            7210732.067948199
+          ]
+        ],
+        "destination": [
+          428207.3140776443,
+          7210747.362228051
+        ],
+        "trip_group": {
+          "id": 5,
+          "members": [
+            22,
+            23,
+            24,
+            25
+          ],
+          "boarded": [
+            22,
+            23,
+            24,
+            25
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    "56": {
+      "first_flag_s": 101.20773696099786,
+      "samples_flagged": 19,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 56,
+        "x": 428219.4924208698,
+        "y": 7210600.822705556,
+        "heading": 0.7534471632885446,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "PARKED",
+        "wait": "",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 34,
+        "path_length": 35,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428216.1548414547,
+            7210598.940530136
+          ],
+          [
+            428217.11243518355,
+            7210599.6534642
+          ],
+          [
+            428220.5904879492,
+            7210601.84136304
+          ]
+        ],
+        "destination": [
+          428220.5904879492,
+          7210601.84136304
+        ],
+        "trip_group": {
+          "id": 21,
+          "members": [
+            92,
+            93,
+            94,
+            95
+          ],
+          "boarded": [],
+          "disembarked": [
+            92,
+            93,
+            94,
+            95
+          ],
+          "all_aboard": false
+        }
+      }
+    },
+    "9": {
+      "first_flag_s": 102.20982084999923,
+      "samples_flagged": 18,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 9,
+        "x": 428114.99387938174,
+        "y": 7210765.73371459,
+        "heading": -0.431763129451352,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "WAITING",
+        "wait": "footprint blocked (curb/building)",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 1,
+        "path_length": 118,
+        "recovery": "HOLD",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428114.45408175467,
+            7210766.781101303
+          ],
+          [
+            428119.7952386233,
+            7210777.325367765
+          ],
+          [
+            428119.90246827895,
+            7210777.590775374
+          ],
+          [
+            428119.9312894094,
+            7210777.808831974
+          ],
+          [
+            428119.8817020146,
+            7210777.979537565
+          ],
+          [
+            428119.75370609463,
+            7210778.102892149
+          ],
+          [
+            428119.54730164947,
+            7210778.178895724
+          ]
+        ],
+        "destination": [
+          427836.8935005154,
+          7210966.467402389
+        ],
+        "trip_group": {
+          "id": 3,
+          "members": [
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "boarded": [
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    "60": {
+      "first_flag_s": 102.20982084999923,
+      "samples_flagged": 18,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 60,
+        "x": 428287.040466423,
+        "y": 7210685.061134489,
+        "heading": 2.331878204361442,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "PARKED",
+        "wait": "",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 30,
+        "path_length": 31,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428300.30633300805,
+            7210671.904280971
+          ],
+          [
+            428296.9514195858,
+            7210674.617578439
+          ],
+          [
+            428286.002799622,
+            7210686.141263465
+          ]
+        ],
+        "destination": [
+          428286.002799622,
+          7210686.141263465
+        ],
+        "trip_group": {
+          "id": 22,
+          "members": [
+            98,
+            99,
+            100,
+            101,
+            102
+          ],
+          "boarded": [],
+          "disembarked": [
+            98,
+            99,
+            100,
+            101,
+            102
+          ],
+          "all_aboard": false
+        }
+      }
+    },
+    "71": {
+      "first_flag_s": 103.21166501599873,
+      "samples_flagged": 17,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 71,
+        "x": 428259.7614493336,
+        "y": 7210590.993333599,
+        "heading": 0.5900173818493942,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "PARKED",
+        "wait": "",
+        "way": {
+          "highway": "service",
+          "name": null,
+          "layer": 0,
+          "half_width_m": 3.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 39,
+        "path_length": 40,
+        "recovery": "NORMAL",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428253.3058776469,
+            7210586.340976311
+          ],
+          [
+            428253.7362801423,
+            7210586.607115223
+          ],
+          [
+            428261.0038158681,
+            7210591.831031266
+          ]
+        ],
+        "destination": [
+          428261.0038158681,
+          7210591.831031266
+        ],
+        "trip_group": {
+          "id": 25,
+          "members": [
+            109,
+            110,
+            111,
+            112
+          ],
+          "boarded": [],
+          "disembarked": [
+            109,
+            110,
+            111,
+            112
+          ],
+          "all_aboard": false
+        }
+      }
+    },
+    "52": {
+      "first_flag_s": 109.22313226500046,
+      "samples_flagged": 11,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 52,
+        "x": 428219.5732446707,
+        "y": 7210735.376824789,
+        "heading": 1.0783107326731403,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "WAITING",
+        "wait": "recovery failed - no validated route",
+        "way": {
+          "highway": "secondary",
+          "name": "Uusikatu",
+          "layer": 0,
+          "half_width_m": 5.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 24,
+        "path_length": 80,
+        "recovery": "HOLD",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "SLOW",
+          "reason": "red light ahead",
+          "stop_position": [
+            428235.7811528543,
+            7210765.5824843105
+          ]
+        },
+        "route": [
+          [
+            428208.4661867119,
+            7210715.662019734
+          ],
+          [
+            428215.70975123567,
+            7210728.21977359
+          ],
+          [
+            428241.4487103197,
+            7210775.842673819
+          ],
+          [
+            428243.21430039656,
+            7210778.8777818475
+          ],
+          [
+            428243.6763065916,
+            7210779.864422616
+          ],
+          [
+            428243.8852651253,
+            7210780.800939563
+          ],
+          [
+            428243.84117599775,
+            7210781.687332692
+          ],
+          [
+            428243.544039209,
+            7210782.523602001
+          ]
+        ],
+        "destination": [
+          428018.1011539188,
+          7210687.867583215
+        ],
+        "trip_group": {
+          "id": 19,
+          "members": [
+            78,
+            79,
+            80,
+            81,
+            82
+          ],
+          "boarded": [
+            78,
+            79,
+            80,
+            81,
+            82
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    "85": {
+      "first_flag_s": 113.23059738599841,
+      "samples_flagged": 7,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 85,
+        "x": 428336.4344866283,
+        "y": 7210727.759463411,
+        "heading": -1.5918145890928768,
+        "speed": 0.0,
+        "length": 5.2,
+        "width": 2.0,
+        "state": "WAITING",
+        "wait": "recovery failed - no validated route",
+        "way": {
+          "highway": "residential",
+          "name": "M\u00e4kelininkatu",
+          "layer": 0,
+          "half_width_m": 4.5,
+          "priority_road": false,
+          "oneway": 0
+        },
+        "path_index": 38,
+        "path_length": 78,
+        "recovery": "HOLD",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428339.25689337205,
+            7210732.859649845
+          ],
+          [
+            428336.5401561536,
+            7210728.753662439
+          ],
+          [
+            428335.55708949664,
+            7210727.2654408915
+          ],
+          [
+            428335.55048001447,
+            7210724.4218865
+          ],
+          [
+            428335.4854881714,
+            7210723.600704628
+          ],
+          [
+            428335.2949189634,
+            7210723.032861939
+          ],
+          [
+            428334.9787723904,
+            7210722.71835843
+          ],
+          [
+            428334.53704845265,
+            7210722.657194106
+          ]
+        ],
+        "destination": [
+          428199.3936333943,
+          7210870.901706294
+        ],
+        "trip_group": {
+          "id": 29,
+          "members": [
+            132
+          ],
+          "boarded": [
+            132
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    },
+    "94": {
+      "first_flag_s": 115.23427173799791,
+      "samples_flagged": 5,
+      "last_flag_s": 119.24221684000076,
+      "last_pose": {
+        "id": 94,
+        "x": 428289.44046219613,
+        "y": 7210631.501627819,
+        "heading": 2.5428415108305895,
+        "speed": 0.0,
+        "length": 4.3,
+        "width": 1.8,
+        "state": "WAITING",
+        "wait": "recovery failed - no validated route",
+        "way": {
+          "highway": "residential",
+          "name": "Hallituskatu",
+          "layer": 0,
+          "half_width_m": 4.5,
+          "priority_road": false,
+          "oneway": 1
+        },
+        "path_index": 3,
+        "path_length": 42,
+        "recovery": "HOLD",
+        "stuck_s": 0.0,
+        "target_speed": 0.0,
+        "decision": {
+          "action": "PROCEED",
+          "reason": "no relevant light ahead",
+          "stop_position": null
+        },
+        "route": [
+          [
+            428313.25898429035,
+            7210615.250131218
+          ],
+          [
+            428293.9009346499,
+            7210628.447241211
+          ],
+          [
+            428288.1751021751,
+            7210632.356129933
+          ],
+          [
+            428280.0630968975,
+            7210637.966183309
+          ],
+          [
+            428271.8938476945,
+            7210645.232712189
+          ],
+          [
+            428234.49975870654,
+            7210670.169880865
+          ],
+          [
+            428211.28158190945,
+            7210685.661200976
+          ],
+          [
+            428205.7670285247,
+            7210688.302843862
+          ]
+        ],
+        "destination": [
+          428158.72097155754,
+          7210552.349014471
+        ],
+        "trip_group": {
+          "id": 32,
+          "members": [
+            151,
+            152,
+            153,
+            154,
+            155
+          ],
+          "boarded": [
+            151,
+            152,
+            153,
+            154,
+            155
+          ],
+          "disembarked": [],
+          "all_aboard": true
+        }
+      }
+    }
+  },
+  "progress": [
+    {
+      "elapsed_s": 0.01,
+      "npcs": {
+        "total": 2,
+        "parked": 2,
+        "driving": 0,
+        "reserved": 0,
+        "household": 0,
+        "autonomous": 2,
+        "moving_target": 20,
+        "road_rage": 0,
+        "trip_start_attempts": 4,
+        "successful_trip_starts": 0,
+        "route_failures": 0,
+        "waiting_for_trips": 2
+      },
+      "pedestrians": 0,
+      "incidents": 0,
+      "stalled_ids": []
+    },
+    {
+      "elapsed_s": 30.04,
+      "npcs": {
+        "total": 23,
+        "parked": 3,
+        "driving": 20,
+        "reserved": 0,
+        "household": 0,
+        "autonomous": 23,
+        "moving_target": 20,
+        "road_rage": 0,
+        "trip_start_attempts": 32,
+        "successful_trip_starts": 20,
+        "route_failures": 2,
+        "waiting_for_trips": 3
+      },
+      "pedestrians": 4,
+      "incidents": 0,
+      "stalled_ids": []
+    },
+    {
+      "elapsed_s": 60.06,
+      "npcs": {
+        "total": 34,
+        "parked": 7,
+        "driving": 20,
+        "reserved": 0,
+        "household": 0,
+        "autonomous": 34,
+        "moving_target": 20,
+        "road_rage": 0,
+        "trip_start_attempts": 47,
+        "successful_trip_starts": 31,
+        "route_failures": 6,
+        "waiting_for_trips": 3
+      },
+      "pedestrians": 33,
+      "incidents": 4,
+      "stalled_ids": [
+        32
+      ]
+    },
+    {
+      "elapsed_s": 90.09,
+      "npcs": {
+        "total": 39,
+        "parked": 10,
+        "driving": 20,
+        "reserved": 0,
+        "household": 0,
+        "autonomous": 39,
+        "moving_target": 20,
+        "road_rage": 0,
+        "trip_start_attempts": 55,
+        "successful_trip_starts": 36,
+        "route_failures": 9,
+        "waiting_for_trips": 2
+      },
+      "pedestrians": 45,
+      "incidents": 5,
+      "stalled_ids": [
+        3,
+        5,
+        16,
+        27,
+        32,
+        34,
+        39,
+        93
+      ]
+    }
+  ],
+  "tick_ms": {
+    "p50": 8.864235001965426,
+    "p95": 11.839598999358714,
+    "p99": 16.66925999961677,
+    "max": 24.523711002984783
+  },
+  "final_population": {
+    "total": 34,
+    "parked": 13,
+    "driving": 19,
+    "reserved": 0,
+    "household": 0,
+    "autonomous": 34,
+    "moving_target": 20,
+    "road_rage": 0,
+    "trip_start_attempts": 61,
+    "successful_trip_starts": 38,
+    "route_failures": 12,
+    "waiting_for_trips": 3
+  }
+}

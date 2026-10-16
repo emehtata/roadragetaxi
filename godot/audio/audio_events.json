@@ -14,7 +14,9 @@
     ],
     "Environment": [
       "ambient",
-      "weather"
+      "weather",
+      "sport",
+      "holiday"
     ],
     "UI": [
       "ui"
@@ -87,6 +89,46 @@
     "railway.announcement": [
       60.0,
       300.0
+    ],
+    "vehicle.tractor_engine": [
+      10.0,
+      150.0
+    ],
+    "vehicle.plough_scrape": [
+      8.0,
+      120.0
+    ],
+    "railway.tram_running": [
+      10.0,
+      150.0
+    ],
+    "railway.tram_bell": [
+      10.0,
+      150.0
+    ],
+    "sport.ice_skating": [
+      6.0,
+      80.0
+    ],
+    "sport.ice_hockey": [
+      10.0,
+      120.0
+    ],
+    "sport.soccer": [
+      10.0,
+      120.0
+    ],
+    "sport.arena_crowd": [
+      40.0,
+      400.0
+    ],
+    "holiday.firework_launch": [
+      30.0,
+      500.0
+    ],
+    "holiday.firework_burst": [
+      60.0,
+      1200.0
     ]
   },
   "player_categories": [
@@ -150,6 +192,41 @@
     "station_luggage": {
       "group": "station.ambience",
       "variation": 1,
+      "positional": true
+    },
+    "tractor": {
+      "group": "vehicle.tractor_engine",
+      "variation": "alternate",
+      "positional": true
+    },
+    "plough": {
+      "group": "vehicle.plough_scrape",
+      "variation": "alternate",
+      "positional": true
+    },
+    "tram_running": {
+      "group": "railway.tram_running",
+      "variation": "alternate",
+      "positional": true
+    },
+    "ice_skating": {
+      "group": "sport.ice_skating",
+      "variation": "alternate",
+      "positional": true
+    },
+    "ice_hockey": {
+      "group": "sport.ice_hockey",
+      "variation": "alternate",
+      "positional": true
+    },
+    "soccer": {
+      "group": "sport.soccer",
+      "variation": "alternate",
+      "positional": true
+    },
+    "arena_crowd": {
+      "group": "sport.arena_crowd",
+      "variation": "alternate",
       "positional": true
     }
   }

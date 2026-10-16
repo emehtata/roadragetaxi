@@ -1,4 +1,5 @@
 """Station announcements are assembled from the clip manifest."""
+from pathlib import Path
 from types import SimpleNamespace
 
 from theroadragetrip.station_announcer import AnnouncementScript, StationAnnouncer, number_components
@@ -60,14 +61,10 @@ def test_commuter_trains_without_a_type_clip_are_not_announced():
     assert AnnouncementScript(MANIFEST).files("arrived", "K", "8247", "Tikkurila", "Helsinki", "Kerava", "4") == []
 
 
-def test_no_announcement_out_of_earshot_or_without_clips(tmp_path):
+def test_no_announcement_without_clips(tmp_path):
     announcer = StationAnnouncer(asset_dir=tmp_path)  # no manifest at all
     assert announcer.script is None
-    audio = SimpleNamespace(enabled=True, levels=lambda *a, **k: (0.0, 0.0))
-    train = SimpleNamespace(service=SimpleNamespace(train_type="IC", number="57", origin="Helsinki", destination="Oulu"))
-    assert not announcer.announce(audio, "arrived", train, (0, 60, "Tampere", 0, 0, (0, 0), "3"), (0.0, 0.0))
-    announcer.script = AnnouncementScript(MANIFEST)
-    assert not announcer.announce(audio, "arrived", train, (0, 60, "Tampere", 0, 0, (0, 0), "3"), (0.0, 0.0))
+    assert announcer.event("arrived", train(), STOP, (0.0, 0.0)) is None
 
 
 def test_numbers_are_never_split_by_a_pause():
@@ -78,59 +75,6 @@ def test_numbers_are_never_split_by_a_pause():
     assert ["platforms/raiteelle.ogg", "numbers/teens/13.ogg"] in phrases
 
 
-class FakeChannel:
-    """The reserved announcement channel: busy until the test finishes the clip."""
-
-    def __init__(self):
-        self.playing, self.queued, self.volume, self.started = None, None, None, []
-
-    def get_busy(self):
-        return self.playing is not None
-
-    def get_queue(self):
-        return self.queued
-
-    def play(self, sound):
-        assert self.playing is None, "a clip was started over another one"
-        self.playing = sound
-        self.started.append(sound)
-
-    def queue(self, sound):
-        assert self.playing is not None and self.queued is None, "one clip lined up behind the playing one"
-        self.queued = sound
-        self.started.append(sound)
-
-    def set_volume(self, left, right):
-        self.volume = (left, right)
-
-    def finish(self):
-        """The playing clip ends; a queued one takes over at once, gaplessly."""
-        self.playing, self.queued = self.queued, None
-
-
-def announcer_with_fake_audio(monkeypatch, levels=lambda *a, **k: (1.0, 1.0)):
-    import theroadragetrip.station_announcer as sa
-
-    announcer = StationAnnouncer.__new__(StationAnnouncer)
-    announcer.script = AnnouncementScript(MANIFEST)
-    announcer._pause, announcer._clips, announcer._playing = "connectors/pause_short.ogg", {}, None
-    announcer._sentence_pause = "connectors/pause_medium.ogg"
-    announcer._queue, announcer._channel = sa.deque(), FakeChannel()
-    announcer.platforms = []
-    announcer._clip = lambda file: file  # a clip "sound" is its file name here
-    now = [100.0]
-    monkeypatch.setattr(sa.time, "monotonic", lambda: now[0])
-    audio = SimpleNamespace(enabled=True, levels=levels)
-    return announcer, audio, now
-
-
-def play_all(announcer, audio, frames=200):
-    for _ in range(frames):
-        announcer.update(audio)
-        announcer._channel.finish()  # each clip ends before the next frame
-    return announcer._channel.started
-
-
 STOP = (0, 60, "Tampere", 0, 0, (0, 0), "3")
 
 
@@ -138,78 +82,18 @@ def train(number="57"):
     return SimpleNamespace(service=SimpleNamespace(train_type="IC", number=number, origin="Helsinki", destination="Oulu"))
 
 
-def test_clips_play_one_by_one_with_pauses_only_between_phrases(monkeypatch):
-    announcer, audio, _ = announcer_with_fake_audio(monkeypatch)
-    assert announcer.announce(audio, "arrived", train("22"), STOP, (0, 0))
-    assert play_all(announcer, audio) == [
-        "phrases/attention.ogg", "connectors/pause_medium.ogg",  # "Hyvät matkustajat." ends a sentence
-        "train_types/intercity.ogg", "numbers/tens/20.ogg", "numbers/units/2.ogg",  # 22: no pause inside
-        "connectors/pause_short.ogg", "places/from/helsinki.ogg",
-        "connectors/pause_short.ogg", "phrases/arriving.ogg",
-        "connectors/pause_short.ogg", "platforms/raiteelle.ogg", "numbers/units/3.ogg",
-    ]
-    announcer.announce(audio, "departed", train("519"), STOP, (0, 0))
-    assert play_all(announcer, audio)[12:15] == [  # after the 12 arrival clips
-        "train_types/intercity.ogg", "numbers/hundreds/500.ogg", "numbers/teens/19.ogg",  # 19: one clip
-    ]
+def scripted_announcer(platforms=()):
+    announcer = StationAnnouncer(asset_dir=Path("/nonexistent"), platforms=platforms)
+    announcer.script = AnnouncementScript(MANIFEST)
+    announcer._pause, announcer._sentence_pause = "connectors/pause_short.ogg", "connectors/pause_medium.ogg"
+    return announcer
 
 
-def test_the_next_clip_is_lined_up_behind_the_playing_one_gaplessly(monkeypatch):
-    announcer, audio, _ = announcer_with_fake_audio(monkeypatch)
-    announcer.announce(audio, "arrived", train("22"), STOP, (0, 0))
-    for _ in range(10):
-        announcer.update(audio)  # the first clip still playing: exactly one more lined up
-    assert announcer._channel.started == ["phrases/attention.ogg", "connectors/pause_medium.ogg"]
-    announcer._channel.finish()  # the pause starts the instant the attention clip ends
-    assert announcer._channel.playing == "connectors/pause_medium.ogg"
-    announcer.update(audio)
-    announcer._channel.finish()
-    announcer.update(audio)
-    # train + number, back to back: "InterCity kaksikymmentä kaksi"
-    assert announcer._channel.playing == "train_types/intercity.ogg"
-    assert announcer._channel.queued == "numbers/tens/20.ogg"
-
-
-def test_a_departure_soon_after_the_arrival_waits_its_turn(monkeypatch):
-    announcer, audio, _ = announcer_with_fake_audio(monkeypatch)
-    announcer.announce(audio, "arrived", train(), STOP, (0, 0))
-    announcer.announce(audio, "departed", train(), STOP, (0, 0))
-    started = play_all(announcer, audio)
-    arrival_end = started.index("platforms/raiteelle.ogg") + 1
-    assert started[0] == "phrases/attention.ogg" and started[arrival_end + 1] == "train_types/intercity.ogg"
-    assert started[arrival_end:].count("phrases/departing.ogg") == 1 and "phrases/departing.ogg" not in started[:arrival_end]
-
-
-def test_a_stale_waiting_announcement_is_dropped_but_the_one_on_air_finishes(monkeypatch):
-    announcer, audio, now = announcer_with_fake_audio(monkeypatch)
-    announcer.announce(audio, "arrived", train(), STOP, (0, 0))
-    announcer.announce(audio, "departed", train(), STOP, (0, 0))
-    now[0] += 30.0  # the arrival talks on; the departure has waited too long
-    started = play_all(announcer, audio)
-    assert started[-1] == "numbers/units/3.ogg" and "phrases/arriving.ogg" in started
-    assert "phrases/departing.ogg" not in started
-
-
-def test_each_clip_starts_at_the_volume_of_the_current_distance(monkeypatch):
-    level = [(1.0, 1.0)]
-    announcer, audio, _ = announcer_with_fake_audio(monkeypatch, levels=lambda *a, **k: level[0])
-    announcer.announce(audio, "arrived", train(), STOP, (0, 0))
-    announcer.update(audio)
-    assert announcer._channel.volume == (1.0, 1.0)
-    announcer._channel.finish()
-    level[0] = (0.2, 0.4)  # the player drove away and to the side
-    announcer.update(audio)
-    assert announcer._channel.volume == (0.2, 0.4)
-
-
-def test_each_clip_file_is_loaded_once(monkeypatch, tmp_path):
-    import pygame
-
-    loads = []
-    monkeypatch.setattr(pygame.mixer, "Sound", lambda path: loads.append(path) or object())
-    announcer = StationAnnouncer(asset_dir=tmp_path)
-    first = announcer._clip("numbers/units/3.ogg")
-    assert announcer._clip("numbers/units/3.ogg") is first and len(loads) == 1
+def test_the_event_lists_the_clips_with_pauses_only_between_phrases():
+    event = scripted_announcer().event("arrived", train("22"), STOP, (0, 0))
+    assert event["type"] == "station_announcement" and event["station"] == "Tampere"
+    assert event["clips"][:5] == ["phrases/attention.ogg", "connectors/pause_medium.ogg",
+                                  "train_types/intercity.ogg", "numbers/tens/20.ogg", "numbers/units/2.ogg"]
 
 
 # -- every train type of the timetable, against the real clip set ---------
@@ -278,28 +162,14 @@ def test_the_log_line_says_the_announcement_in_finnish():
     assert REAL_SCRIPT.sentence(phrases) == "Hyvät matkustajat. InterCity kaksikymmentä kaksi Rovaniemeltä saapuu raiteelle yksi"
 
 
-def test_announcements_come_from_the_station_platforms_not_the_train(monkeypatch):
+def test_announcements_come_from_the_station_platforms_not_the_train():
     """The loudspeaker heard is the platform point nearest the player."""
-    heard_at = []
-    announcer, audio, _ = announcer_with_fake_audio(
-        monkeypatch, levels=lambda name, volume, at=None: heard_at.append(at) or (1.0, 1.0))
     platform = SimpleNamespace(points_m=[(0.0, 10.0), (100.0, 10.0)])   # along the track, 10 m off it
     far_platform = SimpleNamespace(points_m=[(0.0, 900.0), (100.0, 900.0)])  # another station
-    announcer.platforms = [platform, far_platform]
-    audio.listener = (80.0, 40.0)
-    train_stop = (50.0, 0.0)  # where the train stops
-    assert announcer.announce(audio, "arrived", train(), STOP, train_stop)
-    assert heard_at[-1] == (80.0, 10.0)  # straight across from the player, on the platform
-    audio.listener = (5.0, 40.0)  # the player walks along: so does the nearest loudspeaker
-    announcer._channel.finish()
-    announcer.update(audio)
-    assert heard_at[-1] == (5.0, 10.0)
+    announcer = scripted_announcer([platform, far_platform])
+    assert announcer.event("arrived", train(), STOP, (50.0, 0.0), (80.0, 40.0))["at"] == [80.0, 10.0]
+    assert announcer.event("arrived", train(), STOP, (50.0, 0.0), (5.0, 40.0))["at"] == [5.0, 10.0]
 
 
-def test_a_station_without_mapped_platforms_announces_from_the_stop(monkeypatch):
-    heard_at = []
-    announcer, audio, _ = announcer_with_fake_audio(
-        monkeypatch, levels=lambda name, volume, at=None: heard_at.append(at) or (1.0, 1.0))
-    audio.listener = (80.0, 40.0)
-    announcer.announce(audio, "arrived", train(), STOP, (50.0, 0.0))
-    assert heard_at[-1] == (50.0, 0.0)
+def test_a_station_without_mapped_platforms_announces_from_the_stop():
+    assert scripted_announcer().event("arrived", train(), STOP, (50.0, 0.0), (80.0, 40.0))["at"] == [50.0, 0.0]

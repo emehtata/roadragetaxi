@@ -12,15 +12,16 @@
 extends RefCounted
 
 const UP := Vector2(0.0, -1.0)  # fallback for a building exactly under the camera
-const BUILDING_HEIGHT_SCALE := 0.35  # metres of screen lift per metre of height (Pygame's ratio), no cap
+const BUILDING_HEIGHT_SCALE := 0.35  # metres of screen lift per metre of height, no cap
 const SHADOW := Color8(45, 42, 39, 110)
 const RIDGE := Color8(58, 55, 52)
 const WINDOW := Color8(58, 80, 94)
 const STOREFRONT := Color8(84, 106, 122)
 const DOOR := Color8(58, 48, 42)
-const WINDOW_LIT := Color8(232, 189, 108)  # render/buildings.py WINDOW_LIT_COLOR
-const LIT_PROBABILITY := [0.12, 0.08, 0.03]  # other / house / storefront (render/buildings.py)
+const WINDOW_LIT := Color8(232, 189, 108)
+const LIT_PROBABILITY := [0.12, 0.08, 0.03]  # other / house / storefront
 const CANOPY_POST := Color8(105, 110, 112)
+const ROOF_SNOW := Color8(215, 224, 232)  # cooler than ground snow, so roof edges stay visible
 
 
 ## The screen offset of height h (metres) above the ground.
@@ -51,9 +52,8 @@ static func visible_walls(footprint: PackedVector2Array, roof_offset := UP) -> P
 	return walls
 
 
-## A deterministic unit value per window (render/buildings.py
-## _pseudo_random_unit), seeded by the building's position - the same after
-## every reload (Pygame seeds by id(), which changes every run).
+## A deterministic unit value per window, seeded by the building's
+## position - the same after every reload.
 static func unit(seed: float) -> float:
 	var f := sin(seed * 12.9898) * 43758.5453
 	return f - floor(f)
@@ -64,9 +64,10 @@ static func unit(seed: float) -> float:
 ## glow, and per building the screen hull (headlights skip it).
 ## `buildings`: footprints (layer coordinates); `styles`: the server's
 ## [roof, gabled, height, entrances, wall, floors, category].
-static func build(buildings: Array, styles: Array, origin: Vector2, view_centre := Vector2.ZERO) -> Dictionary:
-	var out := {"points": PackedVector2Array(), "colors": PackedColorArray(), "indices": PackedInt32Array(),
+static func build(buildings: Array, styles: Array, origin: Vector2, view_centre := Vector2.ZERO, snow_cover := 0.0) -> Dictionary:
+	var out := {"snow_cover": snow_cover, "points": PackedVector2Array(), "colors": PackedColorArray(), "indices": PackedInt32Array(),
 		"lit_points": PackedVector2Array(), "lit_indices": PackedInt32Array(), "hulls": [],
+		"arena_points": PackedVector2Array(), "arena_indices": PackedInt32Array(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0}}  # counts for the performance report
 	var order: Array = []
 	for i in buildings.size():
@@ -79,7 +80,7 @@ static func build(buildings: Array, styles: Array, origin: Vector2, view_centre 
 	order.sort_custom(func(a, b): return a[0].distance_squared_to(view_centre) > b[0].distance_squared_to(view_centre))
 	for entry in order:
 		var style: Array = styles[entry[1]] if entry[1] < styles.size() else []
-		_building(out, buildings[entry[1]], style, entry[0], origin, view_centre)
+		_building(out, buildings[entry[1]], style, entry[0], origin, view_centre, snow_cover)
 	return out
 
 
@@ -109,12 +110,14 @@ static func _shade(color: Color, normal: Vector2, roof_offset: Vector2) -> Color
 	return Color(color.r * f, color.g * f, color.b * f, color.a)
 
 
-static func _building(out: Dictionary, footprint: PackedVector2Array, style: Array, centre: Vector2, origin: Vector2, view_centre: Vector2) -> void:
+static func _building(out: Dictionary, footprint: PackedVector2Array, style: Array, centre: Vector2, origin: Vector2, view_centre: Vector2, snow_cover := 0.0) -> void:
 	var roof_color := Color8(int(style[0][0]), int(style[0][1]), int(style[0][2])) if style.size() > 0 else Color8(83, 86, 87)
+	roof_color = roof_color.lerp(ROOF_SNOW, clampf(snow_cover, 0.0, 1.0))
 	var height: float = style[2] if style.size() > 2 else 8.0
 	var wall_color := Color8(int(style[4][0]), int(style[4][1]), int(style[4][2])) if style.size() > 4 else Color8(139, 139, 137)
 	var floors: int = int(style[5]) if style.size() > 5 else maxi(1, roundi(height / 3.0))
 	var category: int = int(style[6]) if style.size() > 6 else 0
+	var arena := style.size() > 7 and int(style[7]) == 1
 	var up := lift(height, centre, view_centre)
 	var depth := up.length()
 	var roof := footprint.duplicate()
@@ -133,7 +136,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	out["stats"]["buildings"] += 1
 	out["stats"]["walls"] += walls.size()
 	walls.sort_custom(func(a, b): return (footprint[a] + footprint[(a + 1) % footprint.size()]).distance_squared_to(view_centre) > (footprint[b] + footprint[(b + 1) % footprint.size()]).distance_squared_to(view_centre))
-	var stories := mini(floors, maxi(1, int(depth * 9.0 / 3.0)))  # Pygame: at most a floor per 3 px of facade
+	var stories := mini(floors, maxi(1, int(depth * 9.0 / 3.0)))  # at most a floor per 3 px of facade
 	var seed_base := roundf(centre.x + origin.x) * 0.0001 + roundf(-centre.y + origin.y) * 0.00013
 	for i in walls:
 		var a := footprint[i]
@@ -141,20 +144,20 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		var edge := b - a
 		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
 		_quad(out, a, b, b + up, a + up, _shade(wall_color, normal, up))
-		_windows(out, a, b, up, stories, category, seed_base + i * 7.13)
+		_windows(out, a, b, up, stories, category, seed_base + i * 7.13, arena)
 	_doors(out, footprint, style[3] if style.size() > 3 else [], walls, up, stories, origin)
 	_polygon(out, roof, roof_color)
 	if style.size() > 1 and int(style[1]) == 1:
-		_gabled(out, roof, roof_color)
+		_gabled(out, roof, roof_color, snow_cover)
 	var hull := Geometry2D.convex_hull(footprint + roof)
 	out["hulls"].append(hull)
 
 
-## render/buildings.py _iter_building_window_slots on an extruded wall: up to 3
+## Window slots on an extruded wall: up to 3
 ## windows a floor (2 on a house, every other floor), centred along the
 ## wall, a storefront row on a commercial ground floor; lit at night by
-## Pygame's probabilities, deterministically.
-static func _windows(out: Dictionary, a: Vector2, b: Vector2, up: Vector2, stories: int, category: int, seed: float) -> void:
+## LIT_PROBABILITY, deterministically.
+static func _windows(out: Dictionary, a: Vector2, b: Vector2, up: Vector2, stories: int, category: int, seed: float, arena: bool) -> void:
 	var length := a.distance_to(b)
 	if length < 12.0 / 9.0 or up.length() < 0.5:
 		return
@@ -177,10 +180,12 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, up: Vector2, stori
 			if unit(seed + f * 3.71 + w * 1.37) < LIT_PROBABILITY[2 if storefront else category if category == 1 else 0]:
 				_quad(out, p[0], p[1], p[2], p[3], WINDOW_LIT, "lit_")
 				out["stats"]["lit"] += 1
+			if arena:
+				_quad(out, p[0], p[1], p[2], p[3], WINDOW_LIT, "arena_")
 
 
 ## Doors at the OSM entrances, on the nearest wall if that wall is
-## visible (render/buildings.py does the same on its facades): one storey high.
+## visible: one storey high.
 static func _doors(out: Dictionary, footprint: PackedVector2Array, entrances: Array, walls: Array, up: Vector2, stories: int, origin: Vector2) -> void:
 	for entrance in entrances:
 		var at := MapMath.point(origin, entrance[0], entrance[1])
@@ -202,9 +207,9 @@ static func _doors(out: Dictionary, footprint: PackedVector2Array, entrances: Ar
 		_quad(out, foot - along * half, foot + along * half, foot + along * half + top, foot - along * half + top, DOOR)
 
 
-## render/buildings.py _draw_gabled_roof on the raised roof: two facets
+## A gabled roof, raised: two facets
 ## along the longest edge, one lighter, one darker, and the ridge.
-static func _gabled(out: Dictionary, roof: PackedVector2Array, color: Color) -> void:
+static func _gabled(out: Dictionary, roof: PackedVector2Array, color: Color, snow_cover := 0.0) -> void:
 	var longest := 0
 	for i in roof.size():
 		if roof[i].distance_squared_to(roof[(i + 1) % roof.size()]) > roof[longest].distance_squared_to(roof[(longest + 1) % roof.size()]):
@@ -229,7 +234,7 @@ static func _gabled(out: Dictionary, roof: PackedVector2Array, color: Color) -> 
 	var r0 := centre + axis * lo
 	var r1 := centre + axis * hi
 	var n := normal * 0.12
-	_quad(out, r0 - n, r1 - n, r1 + n, r0 + n, RIDGE)
+	_quad(out, r0 - n, r1 - n, r1 + n, r0 + n, RIDGE.lerp(ROOF_SNOW, clampf(snow_cover, 0.0, 1.0)))
 
 
 ## Canopies (open roofs) raised by their height: four thin posts from the

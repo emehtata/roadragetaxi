@@ -1,4 +1,4 @@
-## Movable HUD panels (main()'s hud_layout / hud_dragging, more panels):
+## Movable HUD panels:
 ## each panel is drawn at its default rectangle plus the offset the player
 ## dragged it by, always kept whole on screen; U (or F2) resets them all.
 ## The offsets are saved to user://hud_layout.cfg.

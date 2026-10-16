@@ -1,7 +1,8 @@
 """Real weekly passenger-train timetable -> scheduled trains on this map.
 
-assets/railway_timetable.json.gz is made by tools/import_railway_timetable.py
-from Digitraffic's GTFS (no network at runtime). Matching is geometric and
+assets/railway_timetable.json.gz is made by railway_import.py from
+Digitraffic's GTFS; the game refreshes a copy in the user cache weekly
+(refresh_if_stale), in the background, keeping the old one if that fails. Matching is geometric and
 generic (no city special cases): a train's ordered stations form a rough
 path; it concerns this map if that path passes near a train route's
 midpoint, and it enters from whichever route end comes first along its own
@@ -14,20 +15,21 @@ import gzip
 import json
 import logging
 import math
+import threading
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-try:
-    from zoneinfo import ZoneInfo
-    FINLAND = ZoneInfo("Europe/Helsinki")
-except Exception:  # pragma: no cover - tzdata missing: DST handling degrades to EET
-    FINLAND = timezone(timedelta(hours=2))
+from .calendar import FINLAND_TZ as FINLAND  # the system time-zone database, else the Finnish rule
 
 logger = logging.getLogger(__name__)
 
+from .osm.cache import default_cache_root
+
 DEFAULT_TIMETABLE_PATH = Path(__file__).with_name("assets") / "railway_timetable.json.gz"
+USER_TIMETABLE_PATH = Path(default_cache_root()) / "railway_timetable.json.gz"  # the weekly refreshed copy
+REFRESH_AFTER = timedelta(days=7)
 SUPPORTED_VERSION = 4
 # How close a train's station-to-station path must pass a route's midpoint.
 # Straight lines between stations cut corners, so this is generous; lines
@@ -101,14 +103,16 @@ class StationCall:
 def load_timetable(path: Optional[Path] = None) -> Optional[dict]:
     """The imported timetable, or None (missing/broken) - trains then fall
     back to the phase-1 fixed interval."""
-    path = Path(path) if path is not None else DEFAULT_TIMETABLE_PATH
+    if path is None:
+        path = USER_TIMETABLE_PATH if USER_TIMETABLE_PATH.exists() else DEFAULT_TIMETABLE_PATH
+    path = Path(path)
     try:
         with gzip.open(path, "rt", encoding="utf-8") as source:
             document = json.load(source)
         if document.get("version") != SUPPORTED_VERSION:
             raise ValueError(f"unsupported version {document.get('version')!r}")
     except FileNotFoundError:
-        logger.warning("Railway timetable missing (%s): run tools/import_railway_timetable.py", path)
+        logger.warning("Railway timetable missing (%s): run python -m theroadragetrip.railway_import", path)
         return None
     except (OSError, ValueError, EOFError) as exc:
         logger.warning("Railway timetable unusable (%s): %s", exc, path)
@@ -119,6 +123,41 @@ def load_timetable(path: Optional[Path] = None) -> Optional[dict]:
         document.get("valid_from"), document.get("valid_until"), document.get("downloaded_at"),
     )
     return document
+
+
+def refresh_in_background(downloaded_at: Optional[str], update: Callable[[], None], what: str,
+                          now: Optional[datetime] = None) -> Optional[threading.Thread]:
+    """Run `update` (download + atomic write) in a background thread when
+    `downloaded_at` (ISO UTC) is over REFRESH_AFTER old or missing. This run
+    keeps what it loaded; the next start reads the new file. A failure is
+    logged and leaves the existing file as it was."""
+    try:
+        downloaded = datetime.fromisoformat(downloaded_at.replace("Z", "+00:00"))
+        if (now or datetime.now(timezone.utc)) - downloaded < REFRESH_AFTER:
+            return None
+    except (AttributeError, ValueError):
+        pass  # no or unreadable timestamp: refresh
+
+    def run() -> None:
+        try:
+            update()
+            logger.info("%s refreshed from Digitraffic", what)
+        except Exception as exc:  # network, HTTP, bad feed, disk
+            logger.warning("%s refresh failed (%s); keeping the current one", what, exc)
+
+    thread = threading.Thread(target=run, name=f"{what} refresh", daemon=True)
+    thread.start()
+    return thread
+
+
+def refresh_if_stale(document: Optional[dict], path: Path = USER_TIMETABLE_PATH,
+                     now: Optional[datetime] = None) -> Optional[threading.Thread]:
+    """A new timetable to `path` when `document` is a week old (refresh_in_background)."""
+    def update() -> None:
+        from . import railway_import
+        railway_import.write(railway_import.convert(railway_import.download()), path)
+
+    return refresh_in_background((document or {}).get("downloaded_at"), update, "Railway timetable", now)
 
 
 def service_time(service_day: date, seconds: int) -> datetime:
@@ -185,12 +224,15 @@ def match_timetable(
     radius_m: float = MATCH_RADIUS_M,
     prepared: Optional[list] = None,
     has_track: Optional[Callable[[Tuple[float, float]], bool]] = None,
+    on_route: Optional[List[Dict[str, Optional[float]]]] = None,
 ) -> List[ScheduledPass]:
     """Every timetable train that passes near a route, with its entry end
     and its time there. Runs once per route rebuild, never per frame.
     has_track(point): whether any track of the map is near a station - it
     may be a stop even off the network's longest line (e.g. a terminus
-    beside a yard)."""
+    beside a yard). Each train is matched on its own, so `prepared` may be
+    split across calls; on_route (per route: station code -> distance
+    along it) then carries the station projections from call to call."""
     if prepared is None:
         prepared = prepare_timetable(timetable, to_metres)
     ends = []
@@ -198,7 +240,8 @@ def match_timetable(
         mx, my, _ = route.point_at(route.length / 2)
         ends.append((route.points[0], (mx, my), route.points[-1]))
     passes = []
-    on_route: List[Dict[str, Optional[float]]] = [{} for _ in routes]  # code -> distance along route
+    if on_route is None:
+        on_route = [{} for _ in routes]
 
     def station_along(index: int, code: str, point) -> Optional[float]:
         if code not in on_route[index]:
@@ -209,6 +252,7 @@ def match_timetable(
         return on_route[index][code]
 
     for train, stops, path, cumulative, (minx, miny, maxx, maxy) in prepared:
+        candidates = []  # (distance from the route's middle, pass) for this train
         for index, (start, middle, end) in enumerate(ends):
             if not (minx - radius_m <= middle[0] <= maxx + radius_m and miny - radius_m <= middle[1] <= maxy + radius_m):
                 continue
@@ -240,7 +284,7 @@ def match_timetable(
             first, last = (min(local_calls), max(local_calls)) if local_calls else (segment + 1, segment)
             came_from = stops[first - 1][0] if first > 0 else None
             going_to = stops[last + 1][0] if last + 1 < len(stops) else None
-            passes.append(ScheduledPass(
+            candidates.append((distance, ScheduledPass(
                 train_type=train["type"], number=train["number"],
                 origin=train["origin"], destination=train["destination"], days=train["days"],
                 # When the train should be at its first stop here (so it
@@ -252,7 +296,17 @@ def match_timetable(
                 came_from=came_from, going_to=going_to,
                 calls=tuple(timetable["stations"][stop[2]][2] for stop in stops if stop[4]),
                 category=train.get("category", ""),
-            ))
+            )))
+        # One train, one train on the map: parallel routes (several lines
+        # into one station) all match it. The nearest route keeps it; another
+        # only if it calls at none of the same stations (a separate line).
+        kept: List[set] = []
+        for _, scheduled in sorted(candidates, key=lambda candidate: candidate[0]):
+            stations = {stop[2] for stop in scheduled.stops}
+            if any(stations & other or not (stations or other) for other in kept):
+                continue
+            kept.append(stations)
+            passes.append(scheduled)
     return passes
 
 

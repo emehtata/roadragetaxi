@@ -6,7 +6,6 @@ from theroadragetrip.geo import dist_point_to_segment
 from theroadragetrip.osm import SpeedBump, Way, build_ways
 from theroadragetrip.osm.build import _snap_to_nearest_road
 from theroadragetrip.physics import Car
-from theroadragetrip.render import SPEED_BUMP_COLOR, draw_speed_bumps
 from theroadragetrip.taxi import TaxiManager
 from theroadragetrip.world_cache import BinaryWorldCacheLoader, BinaryWorldCacheWriter
 
@@ -156,25 +155,6 @@ def test_speed_bumps_round_trip_through_world_cache(tmp_path):
     assert loaded.speed_bumps[0].x == world.speed_bumps[0].x
 
 
-def test_draw_speed_bumps_paints_darker_than_the_road():
-    import pygame
-
-    pygame.init()
-    try:
-        screen_w, screen_h, px_per_m = 200, 200, 8.0
-        screen = pygame.Surface((screen_w, screen_h))
-        road_color = (142, 142, 138)
-        screen.fill(road_color)
-
-        bump = SpeedBump(x=0.0, y=0.0, direction_angle=0.0, width_m=3.0, kind="bump")
-        draw_speed_bumps(screen, [bump], 0.0, 0.0, px_per_m=px_per_m, screen_w=screen_w, screen_h=screen_h)
-
-        center = (screen_w // 2, screen_h // 2)
-        pixel = tuple(screen.get_at(center))[:3]
-        assert pixel == SPEED_BUMP_COLOR
-        assert sum(pixel) < sum(road_color), "speed bump must render darker than the road"
-    finally:
-        pygame.quit()
 
 
 def test_check_speed_bump_has_no_penalty_under_the_safe_speed():

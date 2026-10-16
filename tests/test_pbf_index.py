@@ -262,3 +262,21 @@ def test_interrupted_build_does_not_leave_a_resumable_partial_cell(tmp_path, mon
 
     assert not list(index_dir.glob("*.osm.pbf"))
     assert not list(index_dir.glob("*.tmp"))
+
+
+def test_the_windows_release_runs_its_bundled_osmium(tmp_path, monkeypatch):
+    """windows-release.yml ships osmium-tool beside the frozen server
+    (server/osmium/osmium.exe): that one first, else PATH."""
+    import sys
+
+    bundled = tmp_path / "osmium" / "osmium.exe"
+    bundled.parent.mkdir()
+    bundled.write_bytes(b"")
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "RoadRageServer.exe"))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(pbf_index.shutil, "which", lambda _name: None)
+    assert pbf_index.osmium_command() == str(bundled)
+    monkeypatch.setattr(sys, "frozen", False)
+    assert pbf_index.osmium_command() is None  # a source checkout: PATH only
+    monkeypatch.setattr(pbf_index.shutil, "which", lambda _name: "/usr/bin/osmium")
+    assert pbf_index.osmium_command() == "osmium"

@@ -257,3 +257,13 @@ def meters_to_latlon(
         return lat, lon
     except Exception:
         return None, None
+
+
+def bbox_distance_sq(bbox, x: float, y: float) -> float:
+    """Squared distance from (x, y) to an object's bbox; 0 when unknown
+    (a zero bbox), so a missing bbox never excludes anything."""
+    if not bbox or bbox == (0.0, 0.0, 0.0, 0.0):
+        return 0.0
+    dx = max(bbox[0] - x, 0.0, x - bbox[2])
+    dy = max(bbox[1] - y, 0.0, y - bbox[3])
+    return dx * dx + dy * dy

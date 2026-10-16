@@ -67,6 +67,20 @@ def test_reverse_acceleration_is_slower_than_forward():
     assert reverse.speed == -2.5
 
 
+def test_engine_off_cannot_power_car_forward_or_reverse():
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, engine_on=False)
+
+    update_car_physics(car, throttle=1.0, brake=0.0, steer_left=0.0, steer_right=0.0, dt=1.0)
+    assert car.speed == 0.0
+
+    update_car_physics(car, throttle=0.0, brake=1.0, steer_left=0.0, steer_right=0.0, dt=1.0)
+    assert car.speed == 0.0
+
+    rolling = Car(x=0.0, y=0.0, heading=0.0, speed=5.0, engine_on=False)
+    update_car_physics(rolling, throttle=0.0, brake=1.0, steer_left=0.0, steer_right=0.0, dt=0.1)
+    assert 0.0 <= rolling.speed < 5.0
+
+
 def test_speed_limiter_brakes_smoothly_to_limit():
     car = Car(x=0.0, y=0.0, heading=0.0, speed=20.0)
 

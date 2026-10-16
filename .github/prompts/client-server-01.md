@@ -3,7 +3,7 @@ You are working on the Road Rage Taxi codebase.
 Repository:
 https://github.com/emehtata/roadragetaxi
 
-We have now completed the NPC-004 phase. Before implementing further major gameplay systems, we want to begin Phase 1 of a longer-term architectural change:
+We have now completed the collision-avoidance phase. Before implementing further major gameplay systems, we want to begin Phase 1 of a longer-term architectural change:
 
 # PHASE 1 — Separate Game Simulation from Rendering
 
@@ -432,7 +432,7 @@ After refactoring:
 
 * The game must still start normally.
 * Existing controls must work.
-* NPC-004 behaviour must remain unchanged.
+* collision-avoidance behaviour must remain unchanged.
 * Traffic behaviour must remain unchanged.
 * Resident behaviour must remain unchanged.
 * Pedestrian behaviour must remain unchanged.

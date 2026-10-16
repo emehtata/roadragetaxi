@@ -8,18 +8,12 @@ that "the client isn't reading" fills them after a few KiB, deterministically.
 """
 
 import json
-import os
 import socket
 import sys
 import threading
 import time
 
 import pytest
-
-pytestmark = pytest.mark.skipif(
-    os.environ.get("SDL_VIDEODRIVER") not in (None, "dummy"),
-    reason="requires a headless-safe SDL driver",
-)
 
 TICK = 1.0 / 30.0
 
@@ -74,7 +68,6 @@ def server(monkeypatch):
 
     monkeypatch.setattr(transport, "SEND_BUFFER_BYTES", 4096)
     monkeypatch.setattr(transport, "SEND_STALL_TIMEOUT_S", 0.5)
-    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
     monkeypatch.setattr(sys, "argv", ["prog", "--use-sample", "--no-menu"])
     from theroadragetrip.server import run_server
     from theroadragetrip.server.cli import parse_server_args

@@ -1,4 +1,5 @@
 import struct
+from concurrent.futures import Future
 
 import pytest
 
@@ -8,12 +9,18 @@ from theroadragetrip.world_cache import (
     BinaryWorldCacheWriter,
     InvalidWorldCache,
     WorldCacheManager,
+    default_world_cache_dir,
 )
 
 
 @pytest.fixture
 def sample_world():
     return build_ways(load_local_sample())
+
+
+def test_default_world_cache_uses_the_os_cache_root(monkeypatch):
+    monkeypatch.setattr("theroadragetrip.world_cache.default_cache_root", lambda: "/user-cache/RoadRageTrip")
+    assert default_world_cache_dir().as_posix() == "/user-cache/RoadRageTrip/world"
 
 
 def test_rwc_round_trip_preserves_game_data(tmp_path, sample_world):
@@ -172,6 +179,78 @@ def test_world_cache_manager_hit_avoids_fetch(tmp_path, sample_world):
     assert calls == []
 
 
+def test_world_cache_can_build_a_miss_in_a_worker_process(tmp_path):
+    elements = load_local_sample()
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox: elements,
+        build_func=build_ways,
+    )
+    manager.enable_process_build(build_ways)
+
+    loaded = manager.load_area("worker-area", (1, 2, 3, 4), allow_covering=False)
+    manager.close()
+
+    assert loaded.ways
+    assert manager.path_for("worker-area").exists()
+
+
+def test_local_pbf_cold_pipeline_fetches_and_builds_inside_worker(tmp_path, sample_world, monkeypatch):
+    calls = []
+
+    class ImmediateExecutor:
+        def submit(self, function, *args):
+            calls.append((function, args))
+            manager.writer.write(args[0], sample_world, area_id=args[1])
+            future = Future()
+            future.set_result(None)
+            return future
+
+        def shutdown(self, **kwargs):
+            pass
+
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox: (_ for _ in ()).throw(AssertionError("loader-thread fetch")),
+        build_func=lambda elements: (_ for _ in ()).throw(AssertionError("loader-thread build")),
+    )
+    manager._build_executor = ImmediateExecutor()
+    manager._process_build_func = build_ways
+    manager._process_pbf_path = "/maps/finland.osm.pbf"
+
+    loaded = manager.load_area("pbf-worker-area", (1, 2, 3, 4), allow_covering=False)
+    manager.close()
+
+    assert loaded.ways == sample_world.ways
+    assert calls[0][0].__name__ == "_fetch_pbf_build_and_write_cache"
+    assert calls[0][1][3] == "/maps/finland.osm.pbf"
+
+
+def test_world_cache_falls_back_when_the_worker_process_breaks(tmp_path, sample_world):
+    from concurrent.futures.process import BrokenProcessPool
+
+    class BrokenExecutor:
+        def submit(self, *args):
+            raise BrokenProcessPool("worker stopped")
+
+        def shutdown(self, **kwargs):
+            pass
+
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox: [],
+        build_func=lambda elements: sample_world,
+    )
+    manager._build_executor = BrokenExecutor()
+    manager._process_build_func = build_ways
+
+    loaded = manager.load_area("fallback-area", (1, 2, 3, 4), allow_covering=False)
+    manager.close()
+
+    assert loaded is sample_world
+    assert manager.path_for("fallback-area").exists()
+
+
 def test_world_cache_manager_preload(tmp_path, sample_world):
     manager = WorldCacheManager(
         tmp_path,
@@ -182,6 +261,21 @@ def test_world_cache_manager_preload(tmp_path, sample_world):
     assert future.result().ways
     assert manager.path_for("preloaded").exists()
     manager.close()
+
+
+def test_world_cache_miss_does_not_claim_configured_source_is_overpass(tmp_path, sample_world, caplog):
+    manager = WorldCacheManager(
+        tmp_path,
+        fetch_func=lambda bbox: [],
+        build_func=lambda elements: sample_world,
+    )
+
+    with caplog.at_level("INFO"):
+        manager.load_area("pbf-area", (1, 2, 3, 4))
+    manager.close()
+
+    assert "loading OSM data from configured source" in caplog.text
+    assert "downloading Overpass JSON" not in caplog.text
 
 
 def test_world_cache_manager_uses_covering_area_without_fetch(tmp_path, sample_world):

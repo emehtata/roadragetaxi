@@ -1,4 +1,4 @@
-## Headlights (render/vehicles.py draw_headlight_beams), godot-lights-01: the
+## Headlights, godot-lights-01: the
 ## world's darkness is now main.gd's CanvasModulate (Daylight.ambient_color,
 ## by solar altitude) - no tint polygon at all. This draws every vehicle's
 ## beams in one triangle batch on top: additive and unshaded (the ambient
@@ -58,4 +58,6 @@ static func quad(polygon: PackedVector2Array, near: Color, far: Color, points: P
 
 
 func _draw_beams() -> void:
+	if beam_triangles.is_empty():  # queued, then the beams went before the draw
+		return
 	RenderingServer.canvas_item_add_triangle_array(beams.get_canvas_item(), beam_triangles, beam_points, beam_colors)

@@ -2,11 +2,10 @@
 import json
 import types
 
-from theroadragetrip.main.debug_tools import _write_debug_snapshot, find_feature_at
+from theroadragetrip.debug_snapshot import _write_debug_snapshot, find_feature_at
 from theroadragetrip.npc import spawn_npc
 from theroadragetrip.osm import Building, Curb, Way
 from theroadragetrip.physics import Car
-from theroadragetrip.render import screen_to_world, world_to_screen
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
 from theroadragetrip import tile_streaming
@@ -136,10 +135,9 @@ def _write_minimal_snapshot(path, **overrides):
 
 
 def test_debug_snapshot_includes_npc_state(tmp_path):
-    """A screenshot's JSON should carry the same NPC driving/routing state
-    the F7 debug overlay shows on screen (draw_npc_debug_panel), so an NPC
-    bug (wrong destination, stuck state, ...) can be diagnosed from the
-    JSON alone without needing that overlay enabled at capture time."""
+    """A screenshot's JSON should carry the NPC driving/routing state,
+    so an NPC bug (wrong destination, stuck state, ...) can be diagnosed
+    from the JSON alone."""
     ways = [
         Way(points_m=[(i * 20.0, 0.0), ((i + 1) * 20.0, 0.0)], highway="residential", half_width_m=4.5)
         for i in range(10)
@@ -228,20 +226,5 @@ def test_find_feature_at_returns_none_when_nothing_is_within_tolerance():
     assert find_feature_at(500.0, 500.0, ways=[way]) is None
 
 
-def test_screen_to_world_is_the_inverse_of_world_to_screen():
-    """RENDER-audit.md section 19: the feature inspector maps a mouse click
-    back to world coordinates before calling find_feature_at - it must be
-    the algebraic inverse of world_to_screen (within 1px of rounding)."""
-    camx, camy, px_per_m = 1234.5, -678.9, 12.0
-    for wx, wy in [(0.0, 0.0), (100.0, -50.0), (1234.5, -678.9), (-300.0, 900.0)]:
-        sx, sy = world_to_screen(wx, wy, camx, camy, px_per_m=px_per_m)
-        rx, ry = screen_to_world(sx, sy, camx, camy, px_per_m=px_per_m)
-        assert abs(rx - wx) < 1.0 / px_per_m + 1e-6
-        assert abs(ry - wy) < 1.0 / px_per_m + 1e-6
 
 
-def test_screen_to_world_center_of_screen_is_the_camera_position():
-    from theroadragetrip.render import SCREEN_H, SCREEN_W
-    wx, wy = screen_to_world(SCREEN_W / 2, SCREEN_H / 2, 500.0, 250.0)
-    assert abs(wx - 500.0) < 1e-6
-    assert abs(wy - 250.0) < 1e-6

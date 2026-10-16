@@ -4,6 +4,7 @@ import math
 import os
 import shutil
 import sys
+import tempfile
 import time
 from typing import List, Optional, Tuple
 
@@ -17,12 +18,16 @@ CACHE_VERSION = "v0.15.0alpha.2"
 OSM_CACHE_TTL_S = 14 * 24 * 3600
 
 
-def _default_cache_dir() -> str:
+def default_cache_root() -> str:
     if sys.platform.startswith("win"):
         data_dir = os.getenv("LOCALAPPDATA") or os.getenv("APPDATA") or os.path.expanduser("~")
     else:
         data_dir = os.getenv("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
-    return os.path.join(data_dir, "RoadRageTrip", "osm_cache")
+    return os.path.join(data_dir, "RoadRageTrip")
+
+
+def _default_cache_dir() -> str:
+    return os.path.join(default_cache_root(), "osm_cache")
 
 
 CACHE_DIR = _default_cache_dir()
@@ -98,7 +103,10 @@ def _legacy_bbox_cache_path(path: str) -> str:
 def load_osm_cache(
     bbox: Tuple[float, float, float, float],
     point: Optional[Tuple[float, float]] = None,
+    max_cover_ratio: Optional[float] = None,
 ) -> Optional[List[dict]]:
+    """The cached elements for `bbox`: its own file, or one covering it (or
+    `point`) - one covering more than max_cover_ratio times its area is skipped."""
     from . import CACHE_DIR  # re-read each call so tests can monkeypatch theroadragetrip.osm.CACHE_DIR
 
     requested_south, requested_west, requested_north, requested_east = bbox
@@ -136,12 +144,24 @@ def load_osm_cache(
                         continue
                 elif not covers_request:
                     continue
+                if max_cover_ratio is not None and path != paths[0]:
+                    ratio = (north - south) * (east - west) / max(
+                        1e-12, (requested_north - requested_south) * (requested_east - requested_west))
+                    if ratio > max_cover_ratio:
+                        logger.info("Cache skip %s: %.0fx the requested area", os.path.basename(path), ratio)
+                        continue
                 logger.info(
                     "Cache candidate %s: point=%s request_covered=%s",
                     os.path.basename(path), covers_point, covers_request,
                 )
             with open(path, "r", encoding="utf-8") as f:
                 d = json.load(f)
+        except FileNotFoundError:
+            # The exact bbox is checked before covering cache entries. It is
+            # normal for that file not to exist yet, so do not report a
+            # routine cold-cache lookup as a warning.
+            logger.debug("Cache miss %s", path)
+            continue
         except (OSError, json.JSONDecodeError) as e:
             logger.warning("Failed to read cache %s: %s", path, e)
             continue
@@ -192,12 +212,25 @@ def save_osm_cache(bbox: Tuple[float, float, float, float], elements: List[dict]
 
     os.makedirs(CACHE_DIR, exist_ok=True)
     path = _bbox_cache_path(bbox)
+    # Atomic: written beside it under a unique name, then renamed over it, so
+    # an interrupted save (or two threads saving one bbox) never leaves a
+    # truncated file that looks like a cache.
+    temporary = None
     try:
-        with open(path, "w", encoding="utf-8") as f:
+        fd, temporary = tempfile.mkstemp(prefix=os.path.basename(path) + ".", suffix=".tmp", dir=CACHE_DIR)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump({"version": CACHE_VERSION, "fetched_at": time.time(), "elements": elements}, f)
+        os.replace(temporary, path)
+        temporary = None
         logger.info("Saved OSM cache to %s", path)
     except Exception as e:
         logger.warning("Failed to save cache %s: %s", path, e)
+    finally:
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
 
 
 def clear_osm_cache() -> int:

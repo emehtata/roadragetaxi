@@ -1,8 +1,8 @@
-# Godot client (0.16.0g-alpha experiment)
+# Godot client
 
 Python stays the authoritative simulation. Godot (`godot/`) is a rendering,
-audio, UI and input client only. Pygame still works unchanged. There is no
-BIN; the map comes from the existing OSM pipeline.
+audio, UI and input client only. There is no BIN; the map comes from the
+existing OSM pipeline.
 
 ## Architecture
 
@@ -33,16 +33,9 @@ BIN; the map comes from the existing OSM pipeline.
                                          │
                             HUD (hud.gd) ◄┴► AudioManager (audio_events.json → game sound catalog)
                                               buses: Master > Game, Environment, UI
-
- Pygame client (python -m theroadragetrip [--connect]) - unchanged, same transport
 ```
 
-Before this experiment, `main()` ran the Pygame window, input and the
-simulation in one loop. `simulation.advance_simulation()` had already been
-split out (see [simulation-rendering.md](simulation-rendering.md)), and a
-headless server already broadcast states. Phase 1 moved trains into
-`advance_simulation`. Phase 2 added interpolation, audio, the HUD, map
-streaming and player identity.
+How the simulation was split from the first client: [simulation-rendering.md](archive/simulation-rendering.md).
 
 ## Responsibilities
 
@@ -86,7 +79,7 @@ shook while the taxi looked steady (godot-09).
 ## Outgoing network traffic (`transport.py`)
 
 The simulation tick never writes to a socket. Each connection
-(`LineJSONConnection`, used by the server and by Pygame's `--connect` client)
+(`LineJSONConnection`)
 has its own reader thread and its own sender thread. A slow client therefore
 only ever holds up its own sender.
 
@@ -94,6 +87,7 @@ only ever holds up its own sender.
 |---|---|---|
 | `_on_client_connect` (accept thread) | `world` | `send()`: reliable FIFO |
 | `_stream_map_chunks` (tick) | `chunk_unload`, then `chunk` (pre-encoded bytes, nearest first) | `send()`: reliable FIFO |
+| `_apply_map_growth` (tick) | `chunk` for each changed chunk the client has (nearest first, replaces its copy) | `send()`: reliable FIFO |
 | `_broadcast_state` (tick) | `state` | `send_state()`: the pending-state slot |
 
 - **Reliable FIFO.** World, chunks and unloads are delivered once each, in
@@ -194,7 +188,7 @@ Buses are created at start: Master > Game, Environment, UI.
 
 Event-to-sound mapping is data. `audio_events.json`:
 - maps `train_arrived` to brakes plus doors open, and `train_departed` to
-  doors closing plus horn, the same as Pygame's `_play_rail_sounds`
+  doors closing plus horn
 - passes every `sound` event straight through to the catalog group of
   that name
 - assigns catalog categories to buses
@@ -221,8 +215,7 @@ How sounds are chosen:
   (as `audio.py` does).
 - A loop plays a fixed variation, default the first. With
   `"variation": "alternate"` it picks a new one each time it (re)starts,
-  never the previous one. The day bed uses this, as Pygame does with
-  `set_loop(..., variation=None)`, so its two generated loops alternate
+  never the previous one. The day bed uses this, so its two generated loops alternate
   from one morning to the next.
 
 `make audio-check` (`tools/validate_audio_assets.py`) fails on:
@@ -269,8 +262,7 @@ simulation's own timer (10–60 s) and expire after 30–90 s. Bookings follow
 `rail_bookings.py`: PENDING, then ACCEPTED, then the train's progress, or
 DECLINED or MISSED.
 
-**State.** Each state carries `phone: {busy, items}`, built like Pygame's
-`draw_phone_offers` shows them:
+**State.** Each state carries `phone: {busy, items}`, built by `protocol._phone_to_dict`:
 - offers: `id` "offer-N" (a stable `TaxiOffer.offer_id`), name, pickup,
   dropoff, `pickup_distance_m`, `trip_distance_m`, `time_remaining_s`
 - bookings: `id` "booking-N", train, station, arrival, dropoff,
@@ -283,11 +275,11 @@ An ordinary offer has no fare until the taximeter runs, so the UI says
 request_id}`; `SimClient.send_phone` sends it on top of the current
 controls.
 - The server queues these like enter/exit actions and applies each one
-  once in the tick, using the same `accept_offer`/`reject_offer` as Pygame.
+  once in the tick, using `accept_offer`/`reject_offer`.
   A gone or non-pending item is refused.
 - It answers with a `{"type": "phone_result", action, item_id, request_id,
   ok, reason}` event. On success it also plays `ui.accept` or `ui.reject`
-  as a sound event, as Pygame does.
+  as a sound event.
 - Malformed requests are ignored. Requests go through the existing
   non-blocking queues, so they can't stall the tick.
 
@@ -301,25 +293,23 @@ events and reports the throttle sent and the taxi's speed after each
 release.
 
 **UI.** `phone.gd` is a `PanelContainer` on the right. The road stays
-visible, and the simulation does not pause; Pygame does pause, see below.
+visible, and the simulation does not pause, see below.
 - Keys are InputMap actions added by the phone: P toggles, Esc closes, 1–3
   pick a row, Enter accepts, X rejects. Buttons do the same.
 - No phone key is a driving, taxi or camera key, so driving keeps working
   with the phone open.
-- Opening plays `ui.phone_open` variation 0 and closing plays variation 1,
-  as in Pygame.
+- Opening plays `ui.phone_open` variation 0 and closing plays variation 1.
 
 **Updates.**
 - Rows are rebuilt only when the set of rows or their statuses change.
   Values (distances, time left) and the selection update in place.
 - A request disables answering that row until its `phone_result` arrives,
   or until the row disappears (expired or taken), which resolves it.
-- An accepted fare closes the phone, as in Pygame.
+- An accepted fare closes the phone.
 - On disconnect the rows and pending requests are cleared and actions are
   disabled. After reconnecting, the phone shows only what new states say.
 
-**Difference from Pygame:** Pygame stops the clock (`dt = 0`) while its
-phone is open. The Godot client doesn't, because a shared server shouldn't
+**Not paused:** the clock runs while the phone is open, because a shared server shouldn't
 pause for one client's UI. Expiring offers therefore keep counting down.
 
 **Tests:**
@@ -336,9 +326,9 @@ pause for one client's UI. Expiring offers therefore keep counting down.
 ## Map streaming (`map_chunks.py`, `map_layer.gd`, `map_chunk.gd`)
 
 - `ChunkIndex` buckets the world's existing OSM objects (`ways`,
-  `railways`, `waters`, `buildings`) by 500 m cell. It is built and
-  JSON-encoded once at server startup, so sending a chunk is only queueing
-  its bytes. A feature belongs to every chunk where it
+  `railways`, `waters`, `buildings`) by 500 m cell. It is built at server
+  startup and each chunk JSON-encoded once, when first sent, so sending it
+  again is only queueing its bytes. A feature belongs to every chunk where it
   has a vertex.
 - Each tick, the server finds the player's cell. When it changed for a
   connection, `plan()` works out what that client needs:
@@ -349,8 +339,17 @@ pause for one client's UI. Expiring offers therefore keep counting down.
 - The server tracks which chunks each connection has, so nothing is sent
   twice. A reconnect starts from empty.
 - The client adds and removes chunks as told. Each chunk is its own
-  canvas item, drawn once, so the others never redraw. A duplicate chunk
-  is ignored.
+  canvas item, drawn once, so the others never redraw. A chunk message for
+  a chunk already drawn replaces it in the same frame (no hole).
+- `main.gd` draws queued chunks first, up to `CHUNK_BUDGET_USEC` (4 ms) a
+  frame - another one only if it fits by the last one's cost, always at
+  least one - and frees unloaded chunks only once nothing waits to be
+  drawn. The latest message for a chunk wins: a newer copy replaces a
+  queued one and cancels a pending unload.
+- When the map grows, the server rebuilds only the chunks the merged
+  objects changed (`ChunkIndex.updated`, from the streamer's dirty
+  rectangle), the player's 3×3 first, and resends the changed ones a
+  client has, nearest first, without an unload before each.
 - Water is drawn one z-level below roads and buildings, so another
   chunk's lake can't cover a bridge.
 - The client doesn't request chunks; Python decides, because it knows
@@ -377,10 +376,9 @@ make godot-test                         # Godot unit tests, no server
 # audio check: server running, then
 godot --path godot -- --port 8765 --audiotest /tmp/phases > log.txt
 python tools/analyse_godot_audio.py log.txt
-python -m theroadragetrip --connect 127.0.0.1:8765   # Pygame client on the same server
 ```
 
-Python tests: `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest -q`
+Python tests: `python -m pytest -q`
 (see `tests/test_client_server_integration.py`, `tests/test_slow_clients.py`
 and `tests/test_map_chunks.py`).
 
@@ -402,8 +400,7 @@ beside the game and the client reads its sounds, speech, rage faces and logo
 from the server's `_internal/theroadragetrip` - nothing is shipped twice.
 The workflow smoke-tests the server (`--list-cities`), exports with Godot
 4.7.2 and its Windows templates (cached), zips the folder, builds the Inno
-Setup installer (`installer/RoadRageTrip.iss`), and still builds the Pygame
-version as its own zip. The local `.osm.pbf` is not shipped (gitignored);
+Setup installer (`installer/RoadRageTrip.iss`). The local `.osm.pbf` is not shipped (gitignored);
 releases read the map from Overpass.
 
 A local equivalent on Linux: `godot --headless --path godot --export-release
@@ -509,20 +506,16 @@ Nobody has listened to it; these are measurements of the output.
 - **Coordinates:** placed sounds use the same map coordinates as drawing
   (`MapMath.point`, y flipped). The camera is the 2D listener.
 
-**Differences from Pygame audio**
-- Engine: Godot uses the idle loop pitched by speed; Pygame crossfades rev
-  layers.
-- Train rumble: Godot plays one loop for the nearest moving train; Pygame
-  plays the loudest intercity and commuter trains as two layers.
-- Distance: Godot uses its own attenuation curve up to the same "silent
-  beyond" ranges. Pygame uses inverse distance with a soft fade-out.
-- Door sound when getting in: getting in now plays `vehicle.door_open` in
-  both clients; it was `door_close` before godot-03. Passengers boarding
-  still get `door_close`.
+**Notes**
+- Engine: one idle loop, pitched by speed.
+- Train rumble: one loop for the nearest moving train.
+- Distance: Godot's own attenuation curve up to each group's "silent
+  beyond" range.
+- Door sound: getting in plays `vehicle.door_open`; passengers boarding
+  get `door_close`.
 - Measurements are not listening. Every check above is about levels,
   panning, timing and counts. The new sounds also passed a manual
   listening review (2026-10-03).
-- No station announcements or passenger speech yet; that is a later phase.
 
 ## Buildings: 2D map + lightweight 3D layer (godot-21, prototype)
 
@@ -556,21 +549,10 @@ godot-21 section.
 - **Menus:** Godot owns the first-run language choice and the keyboard/mouse
   main, city, settings and pause screens, and starts or stops the Python
   server for the selected career/gig session.
-- **Missing sounds:** no station announcements or passenger speech in
-  Godot. The pedestrian curse is generated and validated but wasn't
-  triggered in the scripted test.
+- **Untested sound:** the pedestrian curse is generated and validated but
+  isn't triggered in the scripted test.
 - **Native Windows** performance and audio were not measured.
 - **3D buildings** cost about 8.6 ms a frame on software GL: the 3D pass
   (about 4.3 ms, mostly meshes) plus the full-screen composite (about 4.3 ms).
   The composite is inherent to the SubViewport design (godot-23 in the parity
   doc).
-
-## Migration from Pygame
-
-Keep both clients on the same server. Move one presentation feature at a
-time, with Pygame as the visual reference:
-1. phone and offer UI
-2. station announcements
-3. sprites
-
-Retire Pygame only when the Godot client covers everything.

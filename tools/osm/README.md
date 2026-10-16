@@ -1,5 +1,18 @@
 # Finland road binary builder
 
+## Finland startup minimap
+
+Regenerate the Godot city-selection map from the local Finland PBF:
+
+```bash
+python tools/osm/build_finland_minimap.py \
+  src/theroadragetrip/assets/osm/finland-latest.osm.pbf \
+  godot/finland_minimap.svg
+```
+
+The small SVG contains Finland's coastline plus `motorway`, `trunk`, and
+`primary` roads; city markers come from the current configured city catalog at runtime.
+
 `build_finland_roads.py` is a standalone converter for the future Road Rage
 Taxi NPC routing dataset. It extracts the selected drivable road ways from a
 local Finland OpenStreetMap PBF and writes a deterministic, portable binary

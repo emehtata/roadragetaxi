@@ -1,5 +1,4 @@
-## Dashboard instruments from the shown state, laid out and drawn as
-## Pygame's draw_hud (render/hud.py): the needle fuel gauge with its reserve
+## Dashboard instruments from the shown state: the needle fuel gauge with its reserve
 ## zone and econometer, the rage face and bar, the water countdown, and the
 ## trip / odometer readout. Presentation only - every value comes from the
 ## simulation. Redrawn only when a displayed value changes.
@@ -8,8 +7,8 @@ extends Control
 const T := preload("res://i18n.gd")
 
 const Paths := preload("res://paths.gd")
-const RAGE_ATLAS := "assets/ragefaceatlas.png"  # the same image Pygame uses, in the Python package
-const WATER_LIMIT_S := 10.0  # main(): water_time_remaining = 10 - water_elapsed
+const RAGE_ATLAS := "assets/ragefaceatlas.png"  # in the Python package
+const WATER_LIMIT_S := 5.0  # the server's SINK_S: water_elapsed counts the sinking
 const RESERVE_L := 10.0
 const TEXT_OUTLINE := Color8(20, 24, 28, 230)
 const TEXT_OUTLINE_PX := 4
@@ -30,7 +29,7 @@ func _ready() -> void:
 	_faces = load_rage_faces(Paths.package_path(RAGE_ATLAS))
 
 
-## The 11 face frames, cropped from the atlas as hud.py _load_rage_face_frames.
+## The 11 face frames, cropped from the atlas.
 static func load_rage_faces(path: String) -> Array[Texture2D]:
 	var faces: Array[Texture2D] = []
 	var atlas := Image.load_from_file(path)
@@ -62,14 +61,14 @@ func show_state(state: Dictionary) -> void:
 		queue_redraw()
 
 
-## render/hud.py _draw_fuel_meter's station line: the pump in refuelling
+## The fuel meter's station line: the pump in refuelling
 ## range, priced by the server ("" without one, or with a malformed price).
 static func price_text(state: Dictionary, language := "en") -> String:
 	var taxi = state.get("taxi", {})
 	var cents = taxi.get("fuel_station_price_cents") if typeof(taxi) == TYPE_DICTIONARY else null
 	if not typeof(cents) in [TYPE_INT, TYPE_FLOAT] or cents < 0:
 		return ""
-	return T.text("refuel_price", language, "G: REFUEL  %.2f €/L") % (int(cents) / 100.0)
+	return T.text("refuel_price", language) % (int(cents) / 100.0)
 
 
 ## Finnish speed limit sign C32, as Wikimedia's Finland_road_sign_C32-*.svg
@@ -167,7 +166,7 @@ static func speed_limit(state: Dictionary) -> int:
 
 static func trip_text(trip_m: float, odometer_m: float, language := "en") -> String:
 	var trip := "%d m" % roundi(trip_m) if trip_m < 1000.0 else "%.2f km" % (trip_m / 1000.0)
-	return "%s: %s · %s: %.1f km" % [T.text("trip", language, "Trip"), trip, T.text("odometer", language, "Odometer"), odometer_m / 1000.0]
+	return "%s: %s · %s: %.1f km" % [T.text("trip", language), trip, T.text("odometer", language), odometer_m / 1000.0]
 
 
 ## Needle angle (radians, screen y down) for a fuel fraction: E at the left, F at the right.
@@ -185,33 +184,33 @@ func _draw() -> void:
 	_draw_rage(Vector2(size.x - 190, size.y - 246), _state.get("rage_power", 0.0))
 	var water: float = _state.get("water_elapsed", 0.0)
 	if water > 0.0:
-		var text := T.text("in_water", language, "In water: %.1f s") % (WATER_LIMIT_S - water)
+		var text := T.text("in_water", language) % (WATER_LIMIT_S - water)
 		var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18)
 		var box := Rect2(Vector2(size.x / 2.0 - text_size.x / 2.0 - 12.0, 78.0 - text_size.y / 2.0 - 5.0), text_size + Vector2(24, 10))
 		draw_rect(box, Color8(35, 25, 15, 225))
 		draw_rect(box, Color8(230, 120, 60), false, 2.0)
 		draw_string(_font, box.position + Vector2(12, text_size.y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color8(255, 210, 140))
 	var limit := speed_limit(_state)
-	if limit > 0:  # hud.py: the round limit sign under the clock
+	if limit > 0:  # the round limit sign under the clock
 		_draw_limit_sign(Vector2(size.x - 48.0, 76.0), 31.0, limit)
 	# A dark outline keeps the light text readable on snow and on grass alike (godot-16).
 	var trip := trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0), language)
-	# hud.py's meters box, top left.
+	# The meters box, top left.
 	var trip_size := _font.get_string_size(trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
 	var meters: Rect2 = layout.place("meters", Rect2(4, 4, trip_size.x + 16, 28), size)
 	draw_rect(meters, Color8(15, 20, 25, 210))
 	draw_string(_font, meters.position + Vector2(8, 14 + _font.get_ascent(15) / 2.0 - 2), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color8(255, 245, 190))
 
 
-## The dial's reading: |speed| in km/h up to the car's top speed (hud.py
-## clamps the same; reversing reads positive).
+## The dial's reading: |speed| in km/h up to the car's top speed
+## (reversing reads positive).
 static func speed_kmh(speed_mps: float) -> float:
 	return clampf(absf(speed_mps) * 3.6, 0.0, MAX_SPEED_KMH)
 
 
-## hud.py _draw_analog_speedometer: 0..210 km/h over 270 degrees from
+## The analog speedometer: 0..210 km/h over 270 degrees from
 ## lower left, ticks every 10 (labels every 20), the red needle, the
-## number and "km/h" below; then _draw_speedometer_indicators' chips.
+## number and "km/h" below; then the indicator chips.
 static func speed_angle(kmh: float) -> float:
 	return deg_to_rad(135.0 + kmh / MAX_SPEED_KMH * 270.0)
 
@@ -286,14 +285,14 @@ func _draw_fuel(at: Vector2, player: Dictionary) -> void:
 	var economy := "%.1f l/100 km" % player.get("fuel_consumption_l_per_100km", 0.0) if absf(player.get("speed", 0.0)) > 0.5 \
 		else "%.1f l/h" % player.get("idle_fuel_consumption_l_per_hour", 0.0)
 	draw_string(_font, at + Vector2(74, 22), economy, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
-	draw_string(_font, at + Vector2(74, 40), T.text("fuel", language, "FUEL"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
+	draw_string(_font, at + Vector2(74, 40), T.text("fuel", language), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
 	var price := price_text(_state, language)
 	if price != "":
 		draw_string(_font, at + Vector2(74, 62), price, HORIZONTAL_ALIGNMENT_LEFT, 150, 14, Color8(255, 215, 90))
 
 
 func _draw_rage(at: Vector2, rage: float) -> void:
-	var text := T.text("rage", language, "Rage: %d%%") % roundi(rage * 100.0)
+	var text := T.text("rage", language) % roundi(rage * 100.0)
 	var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
 	var face: Texture2D = _faces[mini(10, maxi(0, int(clampf(rage, 0.0, 1.0) * 10.0)))] if _faces.size() == 11 else null
 	var face_size := face.get_size() if face != null else Vector2.ZERO

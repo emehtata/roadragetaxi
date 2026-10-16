@@ -314,7 +314,7 @@ Do not introduce network synchronization for camera state.
 
 This refactoring must NOT change:
 
-* NPC-004 behaviour
+* collision-avoidance behaviour
 * NPC driving
 * Resident behaviour
 * pedestrian behaviour

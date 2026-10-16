@@ -64,8 +64,8 @@ SIGNAL_GREEN_S = 10.0
 SIGNAL_YELLOW_S = 2.0
 # No separate all-red clearance phase: the sequence is exactly
 # red -> red+yellow -> green -> yellow -> red, matching the local
-# (Finnish) signal convention this game otherwise follows. render's
-# draw_traffic_lights doesn't light anything for an "all-red" state, so a
+# (Finnish) signal convention this game otherwise follows. The
+# client doesn't light anything for an "all-red" state, so a
 # non-zero duration here used to show as every lamp going dark for a beat
 # every cycle.
 SIGNAL_ALL_RED_S = 0.0

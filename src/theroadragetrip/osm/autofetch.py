@@ -2,11 +2,13 @@ import concurrent.futures
 import logging
 import math
 import multiprocessing
+import os
 import threading
 import time
 from typing import List, Optional, Set, Tuple
 
 
+from ..parent_watch import exit_with_parent
 from ..performance import advance_chunked
 from ..tile_streaming import TileCoord, active_tiles, lookahead_tiles, tile_bbox, tile_changes, world_to_tile
 
@@ -55,6 +57,11 @@ def _tile_intersects_bounds(tile: TileCoord, bounds: Tuple[float, float, float, 
     tminx, tminy, tmaxx, tmaxy = tile_bbox(tile)
     bminx, bminy, bmaxx, bmaxy = bounds
     return not (tmaxx < bminx or tminx > bmaxx or tmaxy < bminy or tminy > bmaxy)
+
+
+def _tile_within(tile: TileCoord, area: Tuple[float, float, float, float]) -> bool:
+    tminx, tminy, tmaxx, tmaxy = tile_bbox(tile)
+    return area[0] <= tminx and area[1] <= tminy and tmaxx <= area[2] and tmaxy <= area[3]
 
 
 def _snap_projected_bbox(
@@ -133,17 +140,16 @@ def _map_object_key(obj) -> tuple:
 # same 17-entry dict literal independently.
 _WORLD_SECTIONS = (
     "ways", "waters", "buildings", "sceneries", "places",
-    "traffic_lights", "crossings", "bus_stops", "parking_spaces",
+    "traffic_lights", "crossings", "bus_stops", "taxi_stops", "parking_spaces",
     "logical_intersections", "stop_signs", "yield_signs", "curbs",
     "scenery_objects", "speed_bumps", "railways", "railings", "parking_garages", "level_ways", "level_connectors",
 )
 
 # Per-frame wall-clock budget for the incremental tile-world merge
-# (bin-loader-v5.md). A dedicated constant, not MAP_SYNC_BUDGET_S or
-# render/roads.py's INCREMENTAL_REBUILD_BUDGET_S: the tile merge runs at a
+# (bin-loader-v5.md). A dedicated constant, not MAP_SYNC_BUDGET_S: the tile merge runs at a
 # different point in the frame (in the tile-streaming block, before the
-# map_sync_stage machine even starts), so stacking it on top of one of
-# those existing budgets would let two unrelated 4ms allowances land in the
+# map_sync_stage machine even starts), so stacking it on top of that
+# budget would let two unrelated 4ms allowances land in the
 # same frame without either budget accounting for the other. Same order of
 # magnitude as both by the same reasoning (small enough that even a worst-
 # case stack of several per-frame budgets stays well under a 60fps frame's
@@ -202,7 +208,7 @@ INACTIVE_TILE_EVICTION_BATCH = 6
 # Minimum time a tile must have sat inactive before it's even a candidate
 # for eviction - independent of memory pressure. A long real play session
 # routinely already sits over tile_memory_budget_mb just from everything
-# else loaded (pygame, the rest of the process, a big already-streamed
+# else loaded (the rest of the process, a big already-streamed
 # world), so without this floor a tile became eligible the instant it left
 # the active window: a player driving one tile over and immediately back
 # (a very common "quick look, then return" movement) evicted the tile they
@@ -255,6 +261,7 @@ class AutoFetchManager:
         stop_signs: Optional[List[StopSign]] = None,
         crossings: Optional[List[Crossing]] = None,
         bus_stops: Optional[List[BusStop]] = None,
+        taxi_stops: Optional[List] = None,  # TaxiManager.taxi_stops: a far airport's stand once streamed in
         parking_spaces: Optional[List[ParkingSpace]] = None,
         logical_intersections: Optional[List[LogicalIntersection]] = None,
         yield_signs: Optional[List[YieldSign]] = None,
@@ -282,6 +289,7 @@ class AutoFetchManager:
         self.stop_signs = stop_signs if stop_signs is not None else []
         self.crossings = crossings if crossings is not None else []
         self.bus_stops = bus_stops if bus_stops is not None else []
+        self.taxi_stops = taxi_stops if taxi_stops is not None else []
         self.parking_spaces = parking_spaces if parking_spaces is not None else []
         self.logical_intersections = logical_intersections if logical_intersections is not None else []
         self.yield_signs = yield_signs if yield_signs is not None else []
@@ -344,6 +352,9 @@ class AutoFetchManager:
         # says it's worth it. Value is the time.monotonic() the tile went
         # inactive, for oldest-first eviction.
         self._inactive_tile_since: dict[TileCoord, float] = {}
+        # Union of the extents of objects merged in or unloaded since the
+        # last take_dirty_rect(): where the server's map chunks changed.
+        self.dirty_rect: Optional[tuple[float, float, float, float]] = None
         self.tile_memory_budget_mb = tile_memory_budget_mb
         self.last_process_memory_mb: Optional[float] = None
         # Off unless runtime streaming is on (main sets it from
@@ -483,7 +494,13 @@ class AutoFetchManager:
             if missing_core and previous_player_tile is not None and current_tile is not None:
                 delta_x = current_tile.x - previous_player_tile.x
                 delta_y = current_tile.y - previous_player_tile.y
-                if delta_x and not delta_y:
+                # Only a step into a neighbouring tile has a "new leading
+                # column": after a jump (a Home relocation) the whole 3x3 is
+                # new, and trimming it to two rows left a row for a second,
+                # separate extraction (another ~11 s against the PBF).
+                if abs(delta_x) + abs(delta_y) != 1:
+                    pass
+                elif delta_x and not delta_y:
                     # +sign(delta_x): the genuinely new leading column, not
                     # the trailing one - it was `-` here, which kept only
                     # already-loaded columns and silently skipped querying
@@ -514,6 +531,23 @@ class AutoFetchManager:
             daemon=True,
         ).start()
         return True
+
+    def prepare_window(self, x: float, y: float):
+        """Warm the cache for the 3x3 tile window a jump to (x, y) would
+        request (start_tile_streaming asks for exactly this region after a
+        jump), in the background; nothing is merged. Returns the future, or
+        None: no cache to warm, the window already loaded, or already cached."""
+        if self.world_cache_manager is None or not hasattr(self.world_cache_manager, "prepare_region"):
+            return None
+        core = tuple(sorted(active_tiles(world_to_tile(x, y))))
+        with self.lock:
+            if set(core) <= self.loaded_tiles:
+                return None
+        bbox = _meters_bbox_to_latlon(self.transformer, *self._tiles_bbox(core))
+        future = self.world_cache_manager.prepare_region(bbox)
+        if future is not None:
+            logger.info("Preparing the map around (%.0f, %.0f) in the background: tiles %s..%s", x, y, core[0], core[-1])
+        return future
 
     def start_initial_tile_streaming(self) -> bool:
         """Fetch missing tiles for the initial active 3x3 region once."""
@@ -549,8 +583,10 @@ class AutoFetchManager:
             max(box[3] for box in boxes),
         ) if boxes else (0.0, 0.0, 0.0, 0.0)
 
-    def initialize_player_tile(self, x: float, y: float) -> TileCoord:
-        """Seed tile tracking from the already loaded startup world."""
+    def initialize_player_tile(self, x: float, y: float, fetched=None) -> TileCoord:
+        """Seed tile tracking from the already loaded startup world.
+        `fetched`: the metres rectangle the startup world was actually
+        extracted for - only tiles wholly inside it count as loaded."""
         current_tile = world_to_tile(x, y)
         with self.lock:
             self.player_tile = current_tile
@@ -569,9 +605,13 @@ class AutoFetchManager:
             # nominally inside the same oversized starting tile, so
             # start_tile_streaming() never sees anything "missing" and no
             # fetch is ever triggered - the road just runs out.
+            # The world's own bounds overstate that: ways and areas crossing
+            # the startup bbox come whole, reaching hundreds of metres past
+            # it. A tile just touched by them was marked loaded with most of
+            # its territory never extracted - a road ended there for good.
             self.loaded_tiles = {
                 tile for tile in self.active_tiles
-                if _tile_intersects_bounds(tile, self.bounds)
+                if (_tile_within(tile, fetched) if fetched is not None else _tile_intersects_bounds(tile, self.bounds))
             }
             self._unload_tiles(set(self._tile_objects) - self.active_tiles)
         return current_tile
@@ -588,6 +628,21 @@ class AutoFetchManager:
 
     @staticmethod
     def _item_tiles(item) -> set[TileCoord]:
+        rect = AutoFetchManager._item_rect(item)
+        if rect is None:
+            return set()
+        min_x, min_y, max_x, max_y = rect
+        first = world_to_tile(min_x, min_y)
+        last = world_to_tile(max_x, max_y)
+        return {
+            TileCoord(tile_x, tile_y)
+            for tile_x in range(first.x, last.x + 1)
+            for tile_y in range(first.y, last.y + 1)
+        }
+
+    @staticmethod
+    def _item_rect(item) -> Optional[tuple[float, float, float, float]]:
+        """An object's extent in metres, None when it has none."""
         bbox = getattr(item, "bbox", None)
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
             min_x, min_y, max_x, max_y = bbox
@@ -608,18 +663,27 @@ class AutoFetchManager:
         else:
             points = getattr(item, "points_m", ())
             if not points:
-                return set()
+                return None
             min_x = min(point[0] for point in points)
             min_y = min(point[1] for point in points)
             max_x = max(point[0] for point in points)
             max_y = max(point[1] for point in points)
-        first = world_to_tile(min_x, min_y)
-        last = world_to_tile(max_x, max_y)
-        return {
-            TileCoord(tile_x, tile_y)
-            for tile_x in range(first.x, last.x + 1)
-            for tile_y in range(first.y, last.y + 1)
-        }
+        return min_x, min_y, max_x, max_y
+
+    def _mark_dirty(self, item) -> None:
+        """Grow dirty_rect by an object that entered or left the world."""
+        rect = self._item_rect(item)
+        if rect is None:
+            return
+        d = self.dirty_rect
+        self.dirty_rect = rect if d is None else (min(d[0], rect[0]), min(d[1], rect[1]), max(d[2], rect[2]), max(d[3], rect[3]))
+
+    def take_dirty_rect(self) -> Optional[tuple[float, float, float, float]]:
+        """The area changed by merges and unloads since the last call (the map
+        chunks to rebuild there), and start over. None: nothing changed."""
+        with self.lock:
+            rect, self.dirty_rect = self.dirty_rect, None
+            return rect
 
     def _background_tile_fetch(
         self,
@@ -851,6 +915,7 @@ class AutoFetchManager:
         owners.update(owned_tiles)
         if is_new_key:
             target.append(item)
+            self._mark_dirty(item)
 
     def _merge_world_bounds(self, world) -> None:
         world_bounds = getattr(world, "bounds", None)
@@ -913,6 +978,7 @@ class AutoFetchManager:
                         continue
                     owners_by_key.pop(key, None)
                     keys_to_remove.setdefault(section, set()).add(key)
+                    self._mark_dirty(objects[key])
             if tile_objects:
                 any_removed = True
                 self.map_revision += 1
@@ -1262,7 +1328,8 @@ class AutoFetchManager:
                     try:
                         if self._build_executor is None:
                             self._build_executor = concurrent.futures.ProcessPoolExecutor(
-                                max_workers=1, mp_context=context
+                                max_workers=1, mp_context=context,
+                                initializer=exit_with_parent, initargs=(os.getpid(),),  # no orphan if the server is killed
                             )
                         res = self._build_executor.submit(self.build_func, elems).result()
                     except (concurrent.futures.process.BrokenProcessPool, OSError) as exc:
@@ -1278,6 +1345,7 @@ class AutoFetchManager:
             new_crossings = getattr(res, "crossings", [])
             new_stop_signs = getattr(res, "stop_signs", [])
             new_bus_stops = getattr(res, "bus_stops", [])
+            new_taxi_stops = getattr(res, "taxi_stops", [])
             new_parking_spaces = getattr(res, "parking_spaces", [])
             new_logical_intersections = getattr(res, "logical_intersections", [])
             new_yield_signs = getattr(res, "yield_signs", [])
@@ -1344,6 +1412,7 @@ class AutoFetchManager:
                 added_stop_signs = _extend_unique(self.stop_signs, new_stop_signs)
                 added_crossings = _extend_unique(self.crossings, new_crossings)
                 added_bus_stops = _extend_unique(self.bus_stops, new_bus_stops)
+                _extend_unique(self.taxi_stops, new_taxi_stops)
                 added_parking_spaces = _extend_unique(self.parking_spaces, new_parking_spaces)
                 _extend_unique(self.logical_intersections, new_logical_intersections)
                 _extend_unique(self.yield_signs, new_yield_signs)

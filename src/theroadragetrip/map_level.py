@@ -9,9 +9,9 @@ An object without one is surface world - every world object today -
 visible on level 0 only, so level 0 renders exactly as before. A level is
 never inferred from geometry (e.g. lying inside a garage polygon).
 
-Roads (garage-04.md): draw_ways draws only SURFACE_MAP_LEVELS from the
-surface network; draw_level_ways draws one explicit level from
-level_view_ways. Underground, main() skips the level-less surface layers.
+Roads (garage-04.md): the surface map has only SURFACE_MAP_LEVELS from the
+surface network; an off-surface level draws its roads from
+level_view_ways. Underground, the level-less surface layers are skipped.
 """
 
 from typing import Optional
@@ -63,13 +63,12 @@ def surface_visible(current_level: int) -> bool:
     return current_level == SURFACE_LEVEL
 
 
-# Way.map_level values the surface road cache (render/roads.draw_ways) keeps.
+# Way.map_level values the surface roads keep.
 SURFACE_MAP_LEVELS = (None, SURFACE_LEVEL)
 
 
 def level_view_ways(ways, level_ways) -> list:
-    """Roads on some off-surface level (render/roads.draw_level_ways,
-    LevelRoadNetworks): all of level_ways plus surface-network ways that
+    """Roads on some off-surface level (LevelRoadNetworks): all of level_ways plus surface-network ways that
     explicitly state an off-surface level - a level=-1 parking aisle, or a
     level=0;-1 ramp, which also stays on the surface. Built when map data
     changes, never per frame."""

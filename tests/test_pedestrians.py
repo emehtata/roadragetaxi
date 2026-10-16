@@ -15,7 +15,6 @@ from theroadragetrip.pedestrian import (
 )
 from theroadragetrip.npc import NPCState, spawn_npc, update_npc
 from theroadragetrip.physics import Car
-from theroadragetrip.render import draw_pedestrians
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
 
@@ -1381,6 +1380,127 @@ def test_full_trip_group_lifecycle_reboards_and_frees_the_vehicle():
             assert ped.state == PedestrianState.DESPAWNING.value
 
 
+@pytest.mark.parametrize("member_count", [1, 3])
+def test_reboarded_members_stay_aboard_through_full_pedestrian_updates(member_count):
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    group = vehicle.trip_group
+    group.member_resident_ids = [vehicle.owner_id] + [
+        residents.create(mode="riding").resident_id for _ in range(member_count - 1)
+    ]
+    group.boarded_resident_ids = set(group.member_resident_ids)
+    original_members = set(group.member_resident_ids)
+    group.activity_duration_s = 0.2
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    player = Car(x=170.0, y=-20.0, heading=0.0, speed=0.0)
+    original_residents = set(residents.residents)
+    manager.update(player, dt=1 / 30)
+    assert not group.all_aboard
+    for _ in range(6000):
+        manager.update(player, dt=1 / 30)
+        update_npc(vehicle, driver, 1 / 30, tw, residents)
+        tw.advance_time(1 / 30)
+        if group.all_aboard:
+            break
+    assert group.all_aboard
+    assert set(group.member_resident_ids) == original_members
+    assert set(residents.residents) == original_residents
+    for _ in range(180):  # Include cleanup and more than one population tick.
+        manager.update(player, dt=1 / 30)
+        update_npc(vehicle, driver, 1 / 30, tw, residents)
+        tw.advance_time(1 / 30)
+        assert group.all_aboard
+        assert not any(p.resident_id in group.member_resident_ids for p in manager.pedestrians)
+
+
+def test_group_completes_two_visits_and_departs_through_real_manager_updates():
+    from theroadragetrip.npc import NPCVehicleManager
+
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    npcs = NPCVehicleManager(target_count=1, min_count=1, max_count=1)
+    npcs.vehicles.append(vehicle)
+    npcs.drivers[vehicle.vehicle_id] = driver
+    tw.npcs = npcs.vehicles
+    venues = [Building(
+        points_m=[(x - 4, 10), (x + 4, 10), (x + 4, 20), (x - 4, 20)],
+        bbox=(x - 4, 10, x + 4, 20), entrances=[(x, 10)],
+    ) for x in range(0, 201, 20)]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=venues)
+    player = Car(170, -20, 0, 0)
+    group = vehicle.trip_group
+    original_members = set(group.member_resident_ids)
+    original_residents = set(residents.residents)
+    departures = 0
+    previous_state = vehicle.state
+    for _ in range(18000):
+        if vehicle.state == NPCState.PARKED:
+            group.activity_duration_s = 0.2
+        tw.advance_time(1 / 30)
+        npcs.update(1 / 30, player.x, player.y, residents, tw, ways,
+                    player_car=player, pedestrian_mgr=manager)
+        manager.update(player, dt=1 / 30)
+        if previous_state == NPCState.PARKED and vehicle.state != NPCState.PARKED:
+            departures += 1
+            assert group.all_aboard
+            assert not group.disembarked_resident_ids
+            assert set(group.member_resident_ids) == original_members
+            assert set(residents.residents) == original_residents
+            assert not any(p.resident_id in original_members for p in manager.pedestrians)
+            if departures == 2:
+                break
+        previous_state = vehicle.state
+    assert departures == 2, (vehicle.state, vehicle.debug_waiting_for, vehicle.x, vehicle.y,
+                             driver.destination, driver.path_index, len(driver.path), driver.recovery_stage)
+
+
+def test_reboarded_pedestrian_cannot_resume_walking_before_population_cleanup():
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    manager._materialize_parked_drivers()
+    pedestrian = manager.pedestrians[0]
+    pedestrian.state = PedestrianState.ENTERING_VEHICLE.value
+    pedestrian.vehicle_entry_timer = 0.0
+    manager._update_linked_driver(pedestrian, 1 / 30)
+    assert pedestrian.state == PedestrianState.DESPAWNING.value
+    manager.update(Car(170, -20, 0, 0), dt=1 / 30)
+    assert pedestrian not in manager.pedestrians
+    assert pedestrian.resident_id in vehicle.trip_group.boarded_resident_ids
+
+
+def test_expired_group_member_cannot_reboard_after_being_left_behind():
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    manager._materialize_parked_drivers()
+    pedestrian = manager.pedestrians[0]
+    group = vehicle.trip_group
+    group.member_resident_ids.remove(pedestrian.resident_id)
+    pedestrian.state = PedestrianState.ENTERING_VEHICLE.value
+    pedestrian.vehicle_entry_timer = 0.0
+    assert not manager._update_linked_driver(pedestrian, 1 / 30)
+    assert pedestrian.linked_vehicle_id is None
+    assert pedestrian.resident_id not in group.boarded_resident_ids
+
+
+def test_failed_disembark_spawn_retries_without_marking_member_outside(monkeypatch):
+    ways, building, tw, residents, driver, vehicle = _park_a_trip_group_vehicle()
+    tw.npcs = [vehicle]
+    manager = PedestrianManager(ways, target_count=0, traffic_manager=tw, residents=residents, venue_buildings=[building])
+    spawn = manager.spawn_pedestrian_at
+    monkeypatch.setattr(manager, "spawn_pedestrian_at", lambda *args, **kwargs: None)
+    manager.update(Car(170, -20, 0, 0), dt=1 / 30)
+    group = vehicle.trip_group
+    assert group.all_aboard
+    assert not group.disembarked_resident_ids
+    assert not manager.pedestrians
+    monkeypatch.setattr(manager, "spawn_pedestrian_at", spawn)
+    manager.update(Car(170, -20, 0, 0), dt=1 / 30)
+    assert group.disembarked_resident_ids == set(group.member_resident_ids)
+    assert not group.boarded_resident_ids
+    assert {p.resident_id for p in manager.pedestrians} == set(group.member_resident_ids)
+
+
 def test_find_available_parked_vehicle_ignores_trip_group_vehicles():
     """multi-passenger-car.md section 16: the generic 'grab any nearby
     idle vehicle' mechanic must never claim a vehicle that belongs to a
@@ -1694,48 +1814,19 @@ def test_v11_components_match_brute_force_and_follow_graph_rebuilds():
     assert len(incremental._component_parent) == len(incremental.nodes)
 
 
-def test_only_a_phone_user_draws_a_phone_next_to_the_head():
-    import pygame
-    from types import SimpleNamespace
-
-    pygame.init()
-    ground = Way(points_m=[(-50.0, 0.0), (50.0, 0.0)], highway="footway", half_width_m=5.0)
-
-    def draw(activity):
-        pedestrian = Pedestrian(0.0, 0.0, 0.0, 0.0, 1.0, ground, 0, 1, (200, 50, 50))
-        pedestrian.mood = "annoyed"
-        pedestrian.activity = activity
-        screen = pygame.Surface((400, 400))
-        draw_pedestrians(screen, [pedestrian], camx=0.0, camy=0.0, px_per_m=8.0, ways=[ground], screen_w=400, screen_h=400)
-        return screen
-
-    passenger = draw(None)
-    caller = draw(SimpleNamespace(plugin_id="phone_usage", data={}))
-    lit = [
-        (x, y) for x in range(400) for y in range(400)
-        if caller.get_at((x, y))[:3] == (120, 200, 255)
-    ]
-    assert lit and not any(passenger.get_at(p)[:3] == (120, 200, 255) for p in lit)
-    # Held at the head (screen centre 200,200), not floating off to one side.
-    assert all(abs(x - 200) <= 8 and abs(y - 200) <= 8 for x, y in lit)
 
 
-def test_residents_wanting_a_taxi_raise_a_yellow_hand():
-    import pygame
-    from theroadragetrip.render.pedestrians import TAXI_HAIL_COLOR
 
-    pygame.init()
-    ground = Way(points_m=[(-50.0, 0.0), (50.0, 0.0)], highway="footway", half_width_m=5.0)
 
-    def yellow_pixels(**flags):
-        pedestrian = Pedestrian(0.0, 0.0, 0.0, 0.0, 1.0, ground, 0, 1, (200, 50, 50))
-        for name, value in flags.items():
-            setattr(pedestrian, name, value)
-        screen = pygame.Surface((200, 200))
-        draw_pedestrians(screen, [pedestrian], camx=0.0, camy=0.0, px_per_m=8.0, ways=[ground], screen_w=200, screen_h=200)
-        return [(x, y) for x in range(200) for y in range(200) if screen.get_at((x, y))[:3] == TAXI_HAIL_COLOR]
-
-    assert yellow_pixels() == []
-    for flag in ("wants_taxi", "is_walking_to_taxi_stop", "is_taxi_stop_waiter"):
-        hand = yellow_pixels(**{flag: True})
-        assert hand and all(abs(x - 100) <= 20 and abs(y - 100) <= 20 for x, y in hand), flag  # at the body
+@pytest.mark.parametrize("car, curses", [
+    (Car(x=19.0, y=0.0, heading=0.0, speed=0.0), False),  # stopped right next to them: steps aside, no curse
+    (Car(x=21.0, y=0.0, heading=0.0, speed=10.0), False),  # just past them, driving away
+    (Car(x=23.0, y=0.0, heading=0.0, speed=-4.0), True),  # reversing into them
+])
+def test_a_pedestrian_curses_only_at_a_taxi_coming_at_them(car, curses):
+    footway = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    ped_mgr = PedestrianManager([footway], target_count=1)
+    ped = Pedestrian(20.0, 0.0, 0.0, 1.4, 1.4, footway, 0, 1, (255, 0, 0))
+    ped_mgr.pedestrians = [ped]
+    ped_mgr.check_player_avoidance(car, dt=0.05)
+    assert (ped.curse_timer > 0.0) == curses and bool(ped_mgr.curses) == curses

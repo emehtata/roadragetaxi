@@ -73,6 +73,7 @@ def test_discover_registers_all_built_in_plugins():
         "eating_drinking", "traffic_watching", "shop_window_watching",
         "bus_stop_waiting", "photography", "exercise_jogging",
         "two_person_conversation", "small_group_conversation", "ball_game", "playground",
+        "ice_skating", "ice_hockey", "soccer",
     }
 
 
@@ -572,35 +573,6 @@ def test_activity_pedestrians_survive_population_culling_far_from_player():
     assert all(count == 1 for count in counts[3:]), f"pedestrian count fluctuated: {counts}"
 
 
-def test_resident_popup_shows_the_ongoing_activity():
-    """Clicking a resident mid-activity must surface what they're doing -
-    duck-typed off pedestrian.activity, not a registry lookup (see
-    render/pedestrians.py's draw_resident_popup)."""
-    import pygame
-
-    from theroadragetrip.activities import ActivityInstance
-    from theroadragetrip.render.pedestrians import draw_resident_popup
-
-    pygame.init()
-    pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    manager, pedestrian = _make_manager_and_pedestrian()
-    resident = manager.residents.get(pedestrian.resident_id)
-
-    screen_w, screen_h = 800, 600
-    without_activity = pygame.Surface((screen_w, screen_h))
-    without_activity.fill((0, 0, 0))
-    draw_resident_popup(without_activity, font, resident, manager.residents.residents, screen_w=screen_w, screen_h=screen_h)
-
-    pedestrian.activity = ActivityInstance(
-        plugin_id="bench_sitting", location=None, started_sim_time=0.0,
-        data={"duration_s": 30.0, "elapsed_s": 12.0},
-    )
-    with_activity = pygame.Surface((screen_w, screen_h))
-    with_activity.fill((0, 0, 0))
-    draw_resident_popup(with_activity, font, resident, manager.residents.residents, pedestrian=pedestrian, screen_w=screen_w, screen_h=screen_h)
-
-    assert pygame.image.tostring(with_activity, "RGB") != pygame.image.tostring(without_activity, "RGB")
 
 
 def test_set_target_count_releases_activity_reservation_when_trimming():
@@ -647,27 +619,3 @@ def test_explain_candidates_reports_no_location_and_can_start_false():
     assert explanations["ball_game"] == "can_start() is False"
 
 
-def test_draw_activity_debug_panel_shows_current_activity_and_candidates():
-    import pygame
-
-    from theroadragetrip.activities import ActivityInstance
-    from theroadragetrip.render.hud import draw_activity_debug_panel
-
-    pygame.init()
-    pygame.display.set_mode((400, 300))
-    font = pygame.font.SysFont(None, 16)
-    manager, pedestrian = _make_manager_and_pedestrian()
-
-    without_activity = pygame.Surface((500, 700))
-    without_activity.fill((0, 0, 0))
-    draw_activity_debug_panel(without_activity, pedestrian, [("phone_usage", "OK, weight=1.50")], font)
-
-    pedestrian.activity = ActivityInstance(
-        plugin_id="phone_usage", location=None, started_sim_time=0.0, data={"duration_s": 20.0, "elapsed_s": 5.0}
-    )
-    pedestrian.state = "performing_activity"
-    with_activity = pygame.Surface((500, 700))
-    with_activity.fill((0, 0, 0))
-    draw_activity_debug_panel(with_activity, pedestrian, [("phone_usage", "cooldown, 10s left")], font)
-
-    assert pygame.image.tostring(with_activity, "RGB") != pygame.image.tostring(without_activity, "RGB")

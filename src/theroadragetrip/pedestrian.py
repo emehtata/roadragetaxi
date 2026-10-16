@@ -9,12 +9,29 @@ from collections import deque
 from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 from .osm import OPEN_ROOF_BUILDING_TYPES, BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
-from .geo import angle_diff, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
+from .geo import angle_diff, bbox_distance_sq, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 from .npc import NPCState
 from .performance import advance_chunked
 from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import MIN_UNACCOMPANIED_AGE, ResidentManager
-from .activities import ActivityContext, ActivityInstance, ActivityManager
+from .activities import ActivityContext, ActivityInstance, ActivityLocation, ActivityManager
+from .activities.plugins.ice_skating import FIELD_ACTIVITIES
+from .activities.plugins.ice_hockey import SKATERS_PER_TEAM
+from .activities.plugins.soccer import FIELD_PLAYERS_MAX, is_soccer_pitch
+from .map_style import FROZEN_IN_WINTER_KINDS
+
+
+# People kept on open sports ice near the player (ensure_ice_skaters): one
+# per ICE_M2_PER_SKATER of field, ICE_SKATERS_MIN..MAX a field - on a rink
+# HOCKEY_PLAYERS_MIN..MAX: two goalies and skaters for both teams.
+ICE_SKATER_CHECK_S = 2.0
+ICE_M2_PER_SKATER = 500.0
+ICE_SKATERS_MIN, ICE_SKATERS_MAX = 2, 8
+HOCKEY_PLAYERS_MIN = HOCKEY_PLAYERS_MAX = 2 * (SKATERS_PER_TEAM + 1)  # a full game: 5 skaters and a goalie a side
+SOCCER_M2_PER_PLAYER = 300.0
+SOCCER_PLAYERS_MIN, SOCCER_PLAYERS_MAX = 8, 2 * (FIELD_PLAYERS_MAX + 1)  # two goalies and up to 10 a side
+SPORTS_SPAWNS_PER_CHECK = 2
+ICE_VIEW_MARGIN_M = 60.0  # ice sports run only on fields this near the viewport
 
 logger = logging.getLogger(__name__)
 
@@ -373,6 +390,8 @@ class Pedestrian:
     speed_variation_factor: float = 1.0  # Multiplier on base_speed (0.9 - 1.1)
     # Cursing / reaction state
     curse_timer: float = 0.0
+    stick_swing: float = 0.0  # ice hockey: seconds left of a stick swing (the client shows it)
+    hockey_goalie: bool = False  # ice hockey: in goal (pads, a wide stick)
     curse_text: str = "@#*!%"
     # Dodging / evasive state
     dodge_vx: float = 0.0
@@ -420,7 +439,7 @@ class Pedestrian:
     # spec property, see activities/base.py's ActivityInstance.
     activity: Optional[ActivityInstance] = None
     activity_flags: Dict[str, Any] = field(default_factory=dict)
-    # NPC-004 section 17: a departed accident driver's visible mood -
+    # collision-avoidance section 17: a departed accident driver's visible mood -
     # separate from animation_state, which the activity system already
     # overwrites to "idle" while performing an activity (would otherwise
     # clobber "annoyed" the moment the phone-checking activity starts).
@@ -471,6 +490,9 @@ class PedestrianManager:
         self.traffic_manager = traffic_manager
         self.residents = residents if residents is not None else ResidentManager()
         self.sim_time: float = 0.0
+        self.sports_ice_open = False  # server: fields frozen, and daylight or floodlit hours
+        self.soccer_open = False  # server: no snow on the pitches, and daylight or floodlit hours
+        self._ice_checked_at = -1e9
         self._population_update_elapsed: float = 4.9
         self._visible_taxi_stops: Set[Tuple[float, float, Optional[int]]] = set()
         self._taxi_stop_visibility_initialized = False
@@ -499,6 +521,10 @@ class PedestrianManager:
 
         self.ped_ways: List[Way] = []
         self._spawn_ways: List[Way] = []
+        # ((cell, list)): spawn_pedestrian found no way within reach in that
+        # 1 km cell of this _spawn_ways list (a Home jump before its map has
+        # loaded) - not searched again until either changes.
+        self._no_spawn_ways_at = None
         # id(way) for way in self.ped_ways, kept up to date wherever
         # ped_ways is (re)built - spawn_pedestrian() used to recompute this
         # set from scratch on every single spawn *attempt* (not just
@@ -522,7 +548,7 @@ class PedestrianManager:
         # advance_incremental_sync, bin-loader-v3.md) - None/"done" when
         # no rebuild is in progress.
         self._sync_stage: Optional[str] = None
-        # Optional FrameProfiler (main.py sets it) for nested stage timers.
+        # Optional profiler (record(name, ms)) for nested stage timers; None in the server.
         self.profiler = None
         self.sync_stats = {"jobs": 0, "frames": 0, "completed": 0, "routes": 0}
         self._sync_source_ways: Optional[List[Way]] = None
@@ -570,12 +596,14 @@ class PedestrianManager:
         for vehicle in vehicles:
             if getattr(vehicle, "state", "driving") != NPCState.PARKED:
                 continue
+            if getattr(vehicle, "is_taxi", False):
+                continue  # a taxi's driver stays at the wheel (competitor_taxis.py)
             trip_group = getattr(vehicle, "trip_group", None)
             if trip_group is None or not self.entrance_locations:
                 continue
             pending_members = [
                 resident_id for resident_id in trip_group.member_resident_ids
-                if resident_id not in linked_residents
+                if resident_id not in linked_residents and resident_id not in trip_group.disembarked_resident_ids
             ]
             if not pending_members:
                 continue
@@ -591,16 +619,19 @@ class PedestrianManager:
                 spawn_x, spawn_y = _fanned_out_position(
                     entry_x, entry_y, index, total_members, heading=getattr(vehicle, "heading", 0.0),
                 )
-                pedestrian = self.spawn_pedestrian_at(spawn_x, spawn_y, getattr(vehicle, "heading", 0.0))
+                pedestrian = self.spawn_pedestrian_at(
+                    spawn_x, spawn_y, getattr(vehicle, "heading", 0.0), resident_id=resident_id,
+                )
                 if pedestrian is None:
                     # The fanned-out point landed somewhere with no nearby
                     # walkable way - fall back to the exact entry point
                     # (a minor overlap between members is fine; not
                     # spawning the passenger at all is not).
-                    pedestrian = self.spawn_pedestrian_at(entry_x, entry_y, getattr(vehicle, "heading", 0.0))
+                    pedestrian = self.spawn_pedestrian_at(
+                        entry_x, entry_y, getattr(vehicle, "heading", 0.0), resident_id=resident_id,
+                    )
                 if pedestrian is None:
                     continue
-                pedestrian.resident_id = resident_id
                 pedestrian.linked_vehicle_id = id(vehicle)
                 pedestrian.linked_building_entrance = trip_group.destination_entrance
                 pedestrian.destination = trip_group.destination_entrance
@@ -613,9 +644,10 @@ class PedestrianManager:
                 pedestrian.state = "walking_to_building"
                 pedestrian.animation_state = "walking"
                 pedestrian.door_grace_timer = 5.0
-                trip_group.boarded_resident_ids.discard(resident_id)
-                self.add_pedestrian(pedestrian)
-                linked_residents.add(resident_id)
+                if self.add_pedestrian(pedestrian):
+                    trip_group.disembarked_resident_ids.add(resident_id)
+                    trip_group.boarded_resident_ids.discard(resident_id)
+                    linked_residents.add(resident_id)
 
     def track_vomit(self, puddles) -> None:
         """A pedestrian walking into a vomit puddle curses (the bubble and
@@ -853,7 +885,7 @@ class PedestrianManager:
         vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
         vehicle = next((candidate for candidate in vehicles if id(candidate) == pedestrian.linked_vehicle_id), None)
         trip_group = getattr(vehicle, "trip_group", None) if vehicle is not None else None
-        if vehicle is None or trip_group is None:
+        if vehicle is None or trip_group is None or pedestrian.resident_id not in trip_group.member_resident_ids:
             pedestrian.linked_vehicle_id = None
             return False
         if pedestrian.state == "walking_to_building":
@@ -1032,9 +1064,7 @@ class PedestrianManager:
         # cell overlaps the way's bbox, the way cannot possibly cross a
         # building's interior.
         # A way whose bbox was never computed (the dataclass default)
-        # must not be treated as sitting at the world origin - same "bb
-        # and bb != (0,0,0,0)" convention render/roads.py's
-        # _start_road_rebuild already uses for the same reason.
+        # must not be treated as sitting at the world origin.
         cell_size = self._building_grid_cell_size
         bbox = way.bbox
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0):
@@ -1719,6 +1749,83 @@ class PedestrianManager:
             )
             return
 
+    def _field_game(self, field) -> Optional[Tuple[str, int, int, float]]:
+        """What is played on `field` now: (activity, fewest, most people, m2 a person), or None."""
+        if self.sports_ice_open and field.kind in FROZEN_IN_WINTER_KINDS:
+            if field.kind == "ice_rink":
+                return "ice_hockey", HOCKEY_PLAYERS_MIN, HOCKEY_PLAYERS_MAX, ICE_M2_PER_SKATER
+            return "ice_skating", ICE_SKATERS_MIN, ICE_SKATERS_MAX, ICE_M2_PER_SKATER
+        if self.soccer_open and is_soccer_pitch(field):
+            return "soccer", SOCCER_PLAYERS_MIN, SOCCER_PLAYERS_MAX, SOCCER_M2_PER_PLAYER
+        return None
+
+    def ensure_sports_players(
+        self, player_car: Car, viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
+    ) -> None:
+        """Sports where the camera looks: fields in the viewport (plus
+        ICE_VIEW_MARGIN_M) keep people playing what the season allows
+        (_field_game) - skaters on frozen pitches, hockey on rinks, soccer
+        on summer pitches - and players of a field that has left that area
+        go (their game stops; nothing runs unseen). Bounded: one check every
+        ICE_SKATER_CHECK_S, at most SPORTS_SPAWNS_PER_CHECK spawns a check."""
+        if self.sim_time - self._ice_checked_at < ICE_SKATER_CHECK_S:
+            return
+        self._ice_checked_at = self.sim_time
+        from .activities.plugins.park_leisure import sample_interior_point
+
+        if viewport_bounds is None:  # headless: around the player
+            viewport_bounds = (player_car.x - self.spawn_radius_m, player_car.y - self.spawn_radius_m,
+                               player_car.x + self.spawn_radius_m, player_car.y + self.spawn_radius_m)
+        vminx, vminy, vmaxx, vmaxy = (viewport_bounds[0] - ICE_VIEW_MARGIN_M, viewport_bounds[1] - ICE_VIEW_MARGIN_M,
+                                      viewport_bounds[2] + ICE_VIEW_MARGIN_M, viewport_bounds[3] + ICE_VIEW_MARGIN_M)
+
+        def in_view(field) -> bool:
+            minx, miny, maxx, maxy = compute_bbox(field.points_m)
+            return minx <= vmaxx and maxx >= vminx and miny <= vmaxy and maxy >= vminy
+
+        on_ice: Dict[int, int] = {}
+        kept = []
+        for ped in self.pedestrians:
+            instance = ped.activity
+            if instance is not None and instance.plugin_id in FIELD_ACTIVITIES and instance.location:
+                field = instance.location.extra
+                if not in_view(field):  # out of sight: the player leaves the ice and the game
+                    plugin = self.activity_manager.registry.get(instance.plugin_id)
+                    if ped.state == "performing_activity":
+                        plugin.finish(self._activity_context(ped), instance)
+                    self._end_activity(ped, instance)
+                    continue
+                on_ice[id(field)] = on_ice.get(id(field), 0) + 1
+            kept.append(ped)
+        self.pedestrians = kept
+        if not (self.sports_ice_open or self.soccer_open):
+            return
+        centre_x, centre_y = (vminx + vmaxx) / 2.0, (vminy + vmaxy) / 2.0
+        reach = math.hypot(vmaxx - vminx, vmaxy - vminy) / 2.0
+        spawns = 0
+        for field in self.nearby_sceneries(centre_x, centre_y, reach):
+            game = self._field_game(field) if len(field.points_m) >= 3 and in_view(field) else None
+            if game is None:
+                continue
+            plugin_id, low, high, m2_each = game
+            minx, miny, maxx, maxy = compute_bbox(field.points_m)
+            wanted = max(low, min(high, int((maxx - minx) * (maxy - miny) / m2_each)))
+            while on_ice.get(id(field), 0) < wanted and spawns < SPORTS_SPAWNS_PER_CHECK:
+                spawns += 1
+                point = sample_interior_point(field)
+                player = self.spawn_pedestrian_at(*point) if point is not None else None
+                if player is None or not self.add_pedestrian(player):
+                    continue
+                plugin = self.activity_manager.registry.get(plugin_id)
+                player.activity = ActivityInstance(
+                    plugin_id=plugin_id, location=ActivityLocation(point[0], point[1], extra=field),
+                    started_sim_time=self.sim_time)
+                player.state = "performing_activity"
+                plugin.start(self._activity_context(player), player.activity)
+                on_ice[id(field)] = on_ice.get(id(field), 0) + 1
+            if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                return
+
     def _build_junction_grid(self) -> None:
         """Build spatial grid indexing way endpoints and vertices for seamless path transitions."""
         self._junction_grid.clear()
@@ -1857,8 +1964,15 @@ class PedestrianManager:
         if not nearby_ways or not valid_ways:
             fallback_radius = max(r, 1000.0)
             fallback_radius_sq = fallback_radius * fallback_radius
+            empty_at = (int(near_x // fallback_radius), int(near_y // fallback_radius))
+            skip = self._no_spawn_ways_at
+            if skip is not None and skip[0] == empty_at and skip[1] is self._spawn_ways:  # same list: map unchanged
+                return None  # searched already: nothing within reach here until the map changes or the player moves
+            # Only ways whose bbox reaches the radius: next to an empty
+            # area (a Home jump before its map has loaded) this sorted every
+            # way in the world on every spawn attempt - seconds per tick.
             nearest_ways = sorted(
-                self._spawn_ways,
+                (way for way in self._spawn_ways if bbox_distance_sq(way.bbox, near_x, near_y) <= fallback_radius_sq),
                 key=lambda way: min(
                     (point[0] - near_x) ** 2 + (point[1] - near_y) ** 2
                     for point in way.points_m
@@ -1872,6 +1986,7 @@ class PedestrianManager:
                 ) <= fallback_radius_sq
             ][:30]
             if not valid_ways:
+                self._no_spawn_ways_at = (empty_at, self._spawn_ways)
                 return None
 
         # self._ped_way_ids is exactly {id(way) for way in self.ped_ways},
@@ -2185,8 +2300,10 @@ class PedestrianManager:
         """Detect close approach and trigger pedestrian or cyclist avoidance."""
         car_speed = player_car.speed
         car_moving = abs(car_speed) > 1.5
-        car_dir_x = math.cos(player_car.heading)
-        car_dir_y = -math.sin(player_car.heading)
+        # The way the taxi is actually going: backwards when reversing.
+        travel = 1.0 if car_speed >= 0.0 else -1.0
+        car_dir_x = math.cos(player_car.heading) * travel
+        car_dir_y = -math.sin(player_car.heading) * travel
         car_perp_x = math.sin(player_car.heading)
         car_perp_y = -math.cos(player_car.heading)
         cyclist_collision = False
@@ -2207,11 +2324,11 @@ class PedestrianManager:
             dy = ped.y - player_car.y
             dist_sq = dx * dx + dy * dy
 
-            # Longitudinal distance along car trajectory and lateral offset across car width
+            # Distance along the taxi's travel and lateral offset across its width
             long_dist = dx * car_dir_x + dy * car_dir_y
             lat_offset = abs(dx * car_perp_x + dy * car_perp_y)
 
-            # Check if car is heading directly at pedestrian in its driving corridor
+            # The taxi driving at them, near, in its path: the only reason to curse
             is_directly_ahead = (
                 car_moving
                 and 0.0 < long_dist < 3.5  # Only when close ahead (within 3.5m)
@@ -2236,7 +2353,8 @@ class PedestrianManager:
                 if getattr(ped, "is_cyclist", False) and not was_dodging:
                     cyclist_collision = True
 
-                if ped.curse_timer <= 0.0:
+                # Merely close (a stopped or passing taxi): step aside, no cursing.
+                if is_directly_ahead and ped.curse_timer <= 0.0:
                     self.curses.append((ped.x, ped.y))  # for the sound, drained by the simulation
                     ped.curse_timer = 2.0
                     ped.curse_text = random.choice(CURSE_SYMBOLS)
@@ -2252,6 +2370,7 @@ class PedestrianManager:
     ) -> bool:
         """Update pedestrian simulation: despawning, spawning, waypoint traversal, traffic lights, and evasion."""
         self.sim_time += dt
+        self.pedestrians = [ped for ped in self.pedestrians if ped.state != PedestrianState.DESPAWNING.value]
         stage_started = (time.perf_counter(), time.thread_time())
         self.update_lod(player_car, dt)
         self._record("pedestrians:lod", stage_started)
@@ -2317,8 +2436,6 @@ class PedestrianManager:
                     outside_viewport = not (vmin_x <= ped.x <= vmax_x and vmin_y <= ped.y <= vmax_y)
                 ped.offscreen_timer = ped.offscreen_timer + population_check_dt if outside_viewport else 0.0
                 at_door = self._at_building_entrance(ped.x, ped.y)
-                if ped.state == "despawning":
-                    continue
                 if ped.spawned_at_door and not at_door:
                     ped.spawned_at_door = False
                 outside_long_enough = ped.offscreen_timer >= 5.0

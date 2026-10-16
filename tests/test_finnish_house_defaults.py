@@ -1,12 +1,7 @@
 from theroadragetrip.npc import _pick_npc_destination_candidates
 from theroadragetrip.osm import Building, Way
-from theroadragetrip.render.buildings import (
-    _building_render_height,
-    _nearest_house_driveway,
-    _uses_gabled_roof,
-    generate_detached_house_parking,
-    generate_detached_house_parking_chunk,
-)
+from theroadragetrip.building_style import _building_render_height, _uses_gabled_roof
+from theroadragetrip.parking import _nearest_house_driveway, generate_detached_house_parking, generate_detached_house_parking_chunk
 
 
 def _detached_house(**kwargs):

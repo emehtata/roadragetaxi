@@ -3,20 +3,50 @@
 from __future__ import annotations
 
 import binascii
+import concurrent.futures
 import logging
+import multiprocessing
 import os
 import shutil
 import struct
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from .parent_watch import exit_with_parent
+from .osm.cache import default_cache_root
 from .tile_streaming import TileCoord
 
 logger = logging.getLogger(__name__)
+
+
+def _build_and_write_cache(path: str, area_id: str, elements: Any, build_func: Callable) -> None:
+    """Process-worker entry point: keep the CPU-heavy map build off the server GIL."""
+    world = build_func(elements)
+    BinaryWorldCacheWriter().write(path, world, area_id=area_id)
+
+
+def _fetch_pbf_build_and_write_cache(
+    path: str, area_id: str, bbox, pbf_path, build_func: Callable, force_refresh: bool,
+) -> None:
+    """Process-worker cold path: extraction, XML/JSON conversion and build.
+
+    Keeping the element dictionaries inside this process avoids both GIL
+    stalls in the simulation server and a large cross-process pickle.
+    """
+    from .osm.pbf_source import fetch_osm_ways_from_pbf
+
+    elements = fetch_osm_ways_from_pbf(bbox, pbf_path=pbf_path, force_refresh=force_refresh)
+    elements = list(elements) + [{"type": "fetch_bbox", "bounds": list(bbox)}]
+    _build_and_write_cache(path, area_id, elements, build_func)
+
+
+def default_world_cache_dir() -> Path:
+    return Path(default_cache_root()) / "world"
 
 MAGIC = b"RWC\0"
 # Bump whenever a change to map-generation logic (not just this file's byte
@@ -58,7 +88,16 @@ MAGIC = b"RWC\0"
 # 22: level_connectors section (amenity=parking_entrance, garage-07.md).
 # 23: underground roads with an explicit multi-level level=* are kept
 # (garage-09.md).
-FORMAT_VERSION = 23
+# 24: river areas (water=river, waterway=riverbank) have kind "river".
+# 25: sea from coastline is clipped to the fetched bbox (it flooded land).
+# 26: Scenery.sport (soccer pitches).
+# 27: a leisure=stadium outline is ground, not a building (it roofed the pitch).
+# 28: building=stadium is stadium ground too (Bolt Arena's roof).
+# 29: Railway.stops (tram stops on a tram line).
+# 30: tram stops beside their track join it (29's lists only had those on it).
+# 31: Railway.lines (the tram lines over a tram way).
+# 32: light rail stops and lines are tram ones (Tampere).
+FORMAT_VERSION = 32
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -359,7 +398,7 @@ class BinaryWorldCacheLoader:
 
 def clear_world_cache(cache_dir: str | os.PathLike[str] | None = None) -> int:
     """Delete all cached world files."""
-    target_dir = Path(cache_dir or (Path.home() / ".cache" / "RoadRageTrip" / "world"))
+    target_dir = Path(cache_dir or default_world_cache_dir())
     if not target_dir.is_dir():
         return 0
     removed = 0
@@ -382,15 +421,37 @@ class WorldCacheManager:
     def __init__(self, cache_dir: str | os.PathLike[str] | None = None,
                  fetch_func: Callable | None = None, build_func: Callable | None = None,
                  cache_ttl: float | None = None):
-        self.cache_dir = Path(cache_dir or (Path.home() / ".cache" / "RoadRageTrip" / "world"))
+        self.cache_dir = Path(cache_dir or default_world_cache_dir())
         self.fetch_func = fetch_func
         self.build_func = build_func
         self.cache_ttl = cache_ttl
         self.writer = BinaryWorldCacheWriter()
         self.loader = BinaryWorldCacheLoader()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="world-cache")
+        # Background preparation (prepare_region) has its own worker: a
+        # foreground streaming request never waits behind a ~10 s extraction
+        # for a place the player may never go. One at a time, never for an
+        # area already in flight (shared _futures).
+        self._prepare_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="world-prepare")
+        self._build_executor = None
+        self._process_build_func = None
+        self._process_pbf_path = None
         self._futures: dict[str, Future] = {}
         self._lock = threading.Lock()
+
+    def enable_process_build(self, build_func: Callable) -> None:
+        """Build future cache misses in a spawned worker and return them via RWC."""
+        self._process_build_func = build_func
+        if self._build_executor is None:
+            self._build_executor = concurrent.futures.ProcessPoolExecutor(
+                max_workers=1, mp_context=multiprocessing.get_context("spawn"),
+                initializer=exit_with_parent, initargs=(os.getpid(),),  # no orphan if the server is killed
+            )
+
+    def enable_process_pbf_pipeline(self, build_func: Callable, pbf_path=None) -> None:
+        """Run the complete cold local-PBF conversion in the build worker."""
+        self.enable_process_build(build_func)
+        self._process_pbf_path = pbf_path if pbf_path is not None else ""
 
     @staticmethod
     def area_id(bbox: tuple[float, float, float, float]) -> str:
@@ -418,6 +479,33 @@ class WorldCacheManager:
     def preload_region(self, bbox, **kwargs) -> Future:
         """Load one combined streaming region instead of one request per tile."""
         return self.preload(self.area_id(bbox), bbox, allow_covering=False, **kwargs)
+
+    def is_fresh(self, area_id: str) -> bool:
+        """A cache file for area_id exists and is within the TTL (not validated:
+        a broken one is rebuilt when it is loaded)."""
+        try:
+            modified = self.path_for(area_id).stat().st_mtime
+        except OSError:
+            return False
+        return self.cache_ttl is None or time.time() - modified <= self.cache_ttl
+
+    def prepare_region(self, bbox) -> Future | None:
+        """Make sure the cache holds `bbox`'s streaming region, in the
+        background, without keeping the world it builds: None when a fresh
+        file is already there. A streaming request for the same region while
+        this runs gets the same future (preload), so the area is built once."""
+        area_id = self.area_id(bbox)
+        if self.is_fresh(area_id):
+            return None
+        future = self.preload(area_id, bbox, allow_covering=False, executor=self._prepare_executor)
+
+        def forget(done: Future) -> None:  # the result isn't kept here: a prepared world is cache, not memory
+            with self._lock:
+                if self._futures.get(area_id) is done:
+                    del self._futures[area_id]
+
+        future.add_done_callback(forget)
+        return future
 
     def clear(self) -> int:
         """Delete all cached world files managed by this instance."""
@@ -502,19 +590,47 @@ class WorldCacheManager:
                 return covering_world
         if self.fetch_func is None or self.build_func is None or bbox is None:
             raise FileNotFoundError(f"no valid world cache for {area_id}")
-        logger.info("[WorldCache] Cache miss %s; downloading Overpass JSON", area_id)
+        logger.info("[WorldCache] Cache miss %s; loading OSM data from configured source", area_id)
         fetch_kwargs = {"force_refresh": True, **kwargs} if force_refresh else kwargs
-        elements = self.fetch_func(bbox, **fetch_kwargs)
-        world = self.build_func(elements)
-        self.writer.write(path, world, area_id=area_id)
+        if self._build_executor is not None and self._process_pbf_path is not None:
+            try:
+                self._build_executor.submit(
+                    _fetch_pbf_build_and_write_cache, str(path), area_id, bbox,
+                    self._process_pbf_path or None, self._process_build_func, force_refresh,
+                ).result()
+                world = self.loader.load(path)
+            except (BrokenProcessPool, OSError) as error:
+                logger.warning("[WorldCache] Process PBF pipeline failed; using loader thread: %s", error)
+                self._build_executor.shutdown(wait=False, cancel_futures=True)
+                self._build_executor = None
+                elements = self.fetch_func(bbox, **fetch_kwargs)
+                world = self.build_func(elements)
+                self.writer.write(path, world, area_id=area_id)
+        else:
+            elements = self.fetch_func(bbox, **fetch_kwargs)
+            if self._build_executor is not None:
+                try:
+                    self._build_executor.submit(
+                        _build_and_write_cache, str(path), area_id, elements, self._process_build_func,
+                    ).result()
+                    world = self.loader.load(path)
+                except (BrokenProcessPool, OSError) as error:
+                    logger.warning("[WorldCache] Process build failed; using loader thread: %s", error)
+                    self._build_executor.shutdown(wait=False, cancel_futures=True)
+                    self._build_executor = None
+                    world = self.build_func(elements)
+                    self.writer.write(path, world, area_id=area_id)
+            else:
+                world = self.build_func(elements)
+                self.writer.write(path, world, area_id=area_id)
         logger.info("[WorldCache] Cache created %s in %.1f ms", path, (time.perf_counter() - started) * 1000.0)
         return world
 
-    def preload(self, area_id: str, bbox=None, **kwargs) -> Future:
+    def preload(self, area_id: str, bbox=None, executor=None, **kwargs) -> Future:
         with self._lock:
             future = self._futures.get(area_id)
             if future is None or future.done():
-                future = self._executor.submit(self.load_area, area_id, bbox, **kwargs)
+                future = (executor or self._executor).submit(self.load_area, area_id, bbox, **kwargs)
                 self._futures[area_id] = future
             return future
 
@@ -526,3 +642,6 @@ class WorldCacheManager:
 
     def close(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
+        self._prepare_executor.shutdown(wait=False, cancel_futures=True)
+        if self._build_executor is not None:
+            self._build_executor.shutdown(wait=False, cancel_futures=True)

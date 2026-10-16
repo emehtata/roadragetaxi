@@ -1,6 +1,10 @@
 # The Road Rage Trip 🚗
 
-A top-down 2D driving game proof-of-concept (PoC) in Python and Pygame that proceduralizes environment creation using real-world OpenStreetMap (OSM) data from Finland.
+A top-down 2D driving game proof-of-concept (PoC) - a Godot client and a Python simulation server - that proceduralizes environment creation using real-world OpenStreetMap (OSM) data from Finland.
+
+For traffic development, agents must read the [Finnish NPC traffic-law guide](docs/finnish-npc-traffic-law.md), including its legal references, current implementation gaps and acceptance scenarios.
+
+The [weather and traffic performance analysis](.github/performance-analysis/weather-traffic-2026-10-14.md) records current benchmarks and a proposed optimization plan; its optimizations are not yet implemented.
 
 ## Miksi rattiraivo?
 
@@ -47,59 +51,28 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 ## Project Structure
 
 ```text
+├── godot/                 # The game client (Godot 4): menus, map, vehicles, HUD, sound
+│   ├── main.gd            # Connects to the server, applies its state, handles the keys
+│   ├── paths.gd           # Finds (or starts) the bundled simulation server
+│   └── ...                # map_chunk / map_layer, entity_layer, hud, instruments, audio_manager...
 ├── src/
-│   └── theroadragetrip/
-│       ├── __init__.py    # Package exports
-│       ├── __main__.py    # Module entrypoint (`python3 -m theroadragetrip`)
-│       ├── geo.py         # Projection and geometric calculations (clamp, segment distance, lat/lon conversion)
-│       ├── main/           # CLI arguments and the Pygame main loop
-│       │   ├── __init__.py       # main(): the Pygame main loop itself (still one large function)
-│       │   ├── cli.py             # Argument parsing and logging setup
-│       │   ├── menu_input.py      # Small hit-testing/shortcut helpers shared by the menus below
-│       │   ├── startup_screens.py # Language chooser, city editor, and outdated-cache confirmation screens
-│       │   └── debug_tools.py     # F12 screenshot + debug JSON snapshot
-│       ├── osm/            # OSM data models, fetching, disk caching, and tile streaming
-│       │   ├── __init__.py       # Re-exports the full public OSM API from the submodules below
-│       │   ├── constants.py      # City/bbox presets, road widths, and OSM speed-limit parsing
-│       │   ├── overpass.py       # Overpass query building, diagnostics, and network fetching
-│       │   ├── pbf_source.py     # Local .osm.pbf extract via osmium-tool - offline alternative to Overpass
-│       │   ├── cache.py          # Disk JSON cache for fetched OSM elements
-│       │   ├── models.py         # Way/Water/Building/TrafficLight/Place/... data classes
-│       │   ├── traffic_signals.py # Traffic-light deduplication and logical intersection building
-│       │   ├── trees.py          # Procedural tree placement in off-road scenery
-│       │   ├── build.py          # build_ways: assembles parsed OSM elements into game objects
-│       │   └── autofetch.py      # AutoFetchManager: background tile streaming
-│       ├── pedestrian.py  # Pedestrian and cyclist simulation, road crossing, and evasion
-│       ├── physics.py     # Car dataclass, vehicle dynamics, road collision, and lane assist
-│       ├── police.py      # Hidden speed-camera placement and directional detection
-│       ├── localization.py # Finnish and English translations
-│       ├── render/         # Pygame rendering, split by concern
-│       │   ├── __init__.py    # Re-exports the full public rendering API from the submodules below
-│       │   ├── common.py      # Shared constants, coordinate/viewport helpers, and the static-cache infrastructure
-│       │   ├── scenery.py     # Parks, forests, grass texture, and parking spaces
-│       │   ├── waters.py      # Lakes, reservoirs, and waterways
-│       │   ├── buildings.py   # Building footprints, facades, windows, and venue signs
-│       │   ├── roads.py       # Road surfaces, street lighting, roadworks, crossings, traffic lights, bus/taxi stops, speed cameras
-│       │   ├── vehicles.py    # Taxi, NPC, and police car rendering, headlights, cyclists, NPC debug overlays
-│       │   ├── pedestrians.py # Pedestrian rendering, resident popups, and night reflectors
-│       │   ├── labels.py      # Street and place name labels
-│       │   ├── navigation.py  # Compass, suggested route, and taxi target waypoint
-│       │   ├── hud.py         # HUD, speedometer, rage face, day/night overlay, phone offers, frame profiler
-│       │   └── menus.py       # Loading, city/mode selection, pause, settings, tutorial, and city-editor screens
-│       ├── assets/         # Image sprites and chatter data
-│       │   ├── passenger_chatter.json # 50 Finnish/English passenger lines
-│       │   └── driver_chatter.json    # Situation-specific driver lines
-│       ├── audio.py        # Optional music, effects, and situation chatter playback
-│       ├── career.py       # Career progress and odometer persistence
-│       ├── config.py       # INI loading, city configuration, and Overpass endpoints
-│       ├── roadworks.py    # Temporary roadwork and traffic-light generation
-│       ├── taxi.py        # Taxi passenger missions, hailing, address generator, fares, and violations
-│       └── traffic_world.py # Resident-first traffic services, route navigation, and signal queries
-├── tests/                 # Unit tests (pytest)
-├── utils/                 # Optional offline tools, including Azure TTS generation
-├── sample_osm.json        # Bundled sample OSM data
-├── sample_osm_large.json  # Expanded sample OSM data
-├── road_rage_trip.py      # Top-level backward-compatible launch shim
+│   └── theroadragetrip/   # The simulation server (Python, no display)
+│       ├── __main__.py    # `python -m theroadragetrip` = `python -m theroadragetrip.server`
+│       ├── server/        # The server loop, its CLI, and map streaming to the client (map_sync.py)
+│       ├── protocol.py    # The JSON messages sent to the client every tick
+│       ├── simulation.py  # The per-tick gameplay simulation
+│       ├── world_loader.py # Loads and builds the world for a city
+│       ├── map_chunks.py  # The static map, cut into chunks for the client
+│       ├── osm/           # OSM data models, fetching (Overpass or .osm.pbf), caching, tile streaming
+│       ├── physics.py     # Vehicle dynamics, road collision, lane assist
+│       ├── npc.py, pedestrian.py, residents.py, traffic_world.py # Traffic and people
+│       ├── taxi.py, fare.py, career.py # Taxi missions, fares, career
+│       ├── trains.py, station_announcer.py, ... # Railway timetable, trains, announcements
+│       ├── street_lights.py, building_style.py, map_style.py, parking.py # Map look shared with the client
+│       └── assets/, sounds/ # Data, chatter and sound files
+├── tests/                 # Server tests (pytest); the Godot tests are under godot/
+├── tools/, utils/         # Asset validation, data importers, TTS generation, audits
+├── road_rage_server.py    # Entry point of the bundled server (PyInstaller)
 ├── requirements.txt       # Dependencies
 └── pyproject.toml         # Build & package metadata
 ```
@@ -131,22 +104,12 @@ make run
 # Start with DEBUG-level logging
 make run-debug
 
-# Legacy Pygame client
-source .venv/bin/activate
-PYTHONPATH=src python -m theroadragetrip
+# Server alone, then the client connected to it (see `make help`)
+make run-server PRESET=helsinki
+make run-godot
 
-# Run offline with bundled sample data
-make run-sample
-
-# Switch between named presets (e.g. Oulu or Helsinki)
-python3 road_rage_trip.py --preset helsinki
-python3 road_rage_trip.py --preset oulu
-
-# Custom bounding box: south,west,north,east (lat/lon)
-python3 road_rage_trip.py --bbox "60.150,24.88,60.205,25.02"
-
-# Enable dynamic background auto-fetch
-python3 road_rage_trip.py --auto-fetch --fetch-margin 50 --fetch-tile-size 500
+# Read the map from a local .osm.pbf extract instead of Overpass
+make run-pbf
 
 ```
 
@@ -190,8 +153,8 @@ comments_enabled = true
 subtitles_enabled = true
 
 [speech]
-min_interval = 5.0
-max_interval = 20.0
+min_interval = 45.0
+max_interval = 120.0
 
 [experimental]
 enable_two_wheelers = false
@@ -221,7 +184,7 @@ The `[map] overpass_endpoints` setting contains a comma-separated list of Overpa
 
 The pause-menu **Comment audio** setting controls driver and passenger comment sounds. **Subtitles** displays the selected comment in a cinematic black subtitle bar at the bottom of the screen; audio and subtitles can be enabled independently.
 
-Passenger chatter plays only during an active ride to the destination. One entry is selected randomly every 5–20 seconds from `assets/passenger_chatter.json`; the matching pre-rendered WAV is selected from `sounds/passenger_chatter/` using the passenger's gender, language, and entry hash. Event chatter filters passenger lines by mood for nausea, water, pickup, dropoff, and collisions.
+Passenger chatter plays only during an active ride to the destination. One entry is selected randomly every 5–20 seconds from `assets/passenger_chatter.json`; the matching pre-rendered OGG is selected from `sounds/passenger_chatter/` using the passenger's gender, language, and entry hash. Event chatter filters passenger lines by mood for nausea, water, pickup, dropoff, and collisions.
 
 Driver chatter uses `assets/driver_chatter.json` and matching files in `sounds/driver_chatter/`. Lines are filtered by gameplay situation and include a short per-situation cooldown so repeated physics events do not spam audio.
 
@@ -232,19 +195,19 @@ Other common development commands are `make test`, `make compile`, and `make che
 Run the Windows release workflow on the release branch to test the setup installer, then merge the branch and tag `master` to publish the Windows package:
 
 ```bash
-git tag v0.16.0g-alpha
-git push origin v0.16.0g-alpha
+git tag v0.17.0alpha
+git push origin v0.17.0alpha
 ```
 
 GitHub Actions builds the Godot game and bundled Python server on Windows, installs the setup EXE in a temporary directory for a smoke test, then attaches `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
 
-Recorded sounds (the CC0 police siren, and the TTS chatter voices) are stored in `src/theroadragetrip/sounds/`; attribution is in that directory's license file. Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`.
+Recorded sounds (the TTS chatter voices) are stored in `src/theroadragetrip/sounds/`. Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`.
 
 Map, timetable and weather data:
 
 - `src/theroadragetrip/assets/places.json` (airports and railway stations) is derived from OpenStreetMap data, © OpenStreetMap contributors, available under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/); the file itself is likewise under the ODbL.
-- `src/theroadragetrip/assets/railway_timetable.json.gz` (passenger-train timetable): Source: Fintraffic / [digitraffic.fi](https://www.digitraffic.fi/), license [CC 4.0 BY](https://creativecommons.org/licenses/by/4.0/). Modified: converted from GTFS to a compact one-week timetable by `tools/import_railway_timetable.py`. The data is provided as is, without warranty.
-- `src/theroadragetrip/assets/train_compositions.json.gz` (learned train compositions): Source: Fintraffic / [digitraffic.fi](https://www.digitraffic.fi/), license [CC 4.0 BY](https://creativecommons.org/licenses/by/4.0/). Modified: condensed to vehicle type, length and service flags by `tools/import_train_compositions.py`.
+- `src/theroadragetrip/assets/railway_timetable.json.gz` (passenger-train timetable): Source: Fintraffic / [digitraffic.fi](https://www.digitraffic.fi/), license [CC 4.0 BY](https://creativecommons.org/licenses/by/4.0/). Modified: converted from GTFS to a compact one-week timetable by `theroadragetrip/railway_import.py`; the game refreshes its copy from Digitraffic weekly. The data is provided as is, without warranty.
+- `src/theroadragetrip/assets/train_compositions.json.gz` (learned train compositions): Source: Fintraffic / [digitraffic.fi](https://www.digitraffic.fi/), license [CC 4.0 BY](https://creativecommons.org/licenses/by/4.0/). Modified: condensed to vehicle type, length and service flags by `theroadragetrip/composition_import.py`, refreshed weekly.
 - `src/theroadragetrip/assets/finnish_first_names.json.gz` and `finnish_surnames.json.gz` (resident names): Digital and Population Data Services Agency (DVV) name data, [nimipalvelu.dvv.fi](https://nimipalvelu.dvv.fi/), license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Modified: the most common names selected and converted to the game's JSON format.
 - `src/theroadragetrip/assets/kunnat.json.gz` (municipality population, age structure and area): compiled from Wikipedia, © Wikipedia contributors, license [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Modified: tables combined and converted to the game's JSON format; the file is likewise CC BY-SA 4.0.
 - Historical weather, forecasts and snow depth (opt-in, fetched from FMI at runtime and cached locally in `~/.cache/RoadRageTrip/weather_history.db`, not bundled): Finnish Meteorological Institute (FMI) open data, license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Hourly values are resampled and combined from the nearest stations.
@@ -263,9 +226,7 @@ These credits are also shown in the game on the loading, menu and pause screens.
 | `D` / `Right Arrow` | Steer Right |
 | `+` / `=` | Zoom in (increase pixels per meter) |
 | `-` | Zoom out (decrease pixels per meter) |
-| `PageUp` / `PageDown` | Advance or rewind the debug clock by one hour |
 | `R` | Respawn car on a random road (penalizes active fare if client onboard) |
-| `Home` | Debug respawn near a random current map bbox edge (for auto-fetch testing) |
 | `X` | Reject phone offer, or cancel / discard active pickup or onboard passenger mission (score penalty) |
 | `T` | Reset trip meter to 0 |
 | `L` | Cycle labels: off, street names, then street plus building/venue names |
@@ -275,20 +236,19 @@ These credits are also shown in the game on the loading, menu and pause screens.
 | `C` | Toggle compass (off by default) |
 | `N` | Toggle yellow route to the active pickup or dropoff target |
 | `Space` | Rattiraivo / Road Rage: trigger the taxi rage effect |
-| `P` | Open taxi phone and view three ride offers |
+| `P` / `N` | Toggle compact phone: fare picker when idle, navigation during an accepted fare |
 | `1` - `3` | Accept a selected ride in the taxi phone |
 | `F1` | Open the full tutorial and control list |
-| `F3` | Toggle the diagnostic text HUD and frame profiler |
-| `F9` | Start or stop runtime `cProfile` collection |
-| `F10` | Save collected runtime profile as `.prof` in `screenshots/` |
-| `F12` | Save screenshot plus matching runtime diagnostic JSON in `screenshots/` |
+| `F3` | Toggle the diagnostic text |
+| `E` | Start or stop the engine |
+| `F` | Get in or out of the taxi; greet a booked passenger |
+| `G` | Refuel at a pump |
+| `J` | Show the next train |
+| `U` / `F2` | Reset the HUD layout |
+| `F12` | Save a screenshot plus the server's diagnostic JSON |
 | `Esc` | Open pause menu (Continue, Tutorial, Settings, Change City, Exit) |
 
 The F12 JSON includes all car properties, taxi mission state, map counts and bounds, camera and viewport data, and auto-fetch edge-trigger diagnostics.
-
-To inspect a saved profile, run `python -m pstats screenshots/profile_*.prof` or open it with a compatible profiler such as SnakeViz. Collect 10-20 seconds of normal gameplay between `F9` and `F10`; profiling can lower FPS while active.
-
-With `F3` enabled, the profiler overlay reports frame time, rolling average, FPS, spike count, and the slowest subsystem from the last spike. It also records render stages (roads, buildings, actors, lighting, and labels); spike thresholds are 25, 50, and 100 ms.
 
 The pause menu's **Settings** screen changes language and master, background, and effects volume. Left/right adjusts values; Escape returns to the pause menu. At a taxi stand, customers appear occasionally when a stand enters view, either already nearby or outside the screen, then walk to the stand before boarding. Existing pedestrians can also become customers. In areas without taxi stands, a nearby interested pedestrian can hail the taxi while stopped or while it passes. Completed passengers leave beside the taxi and continue walking.
 
@@ -296,16 +256,16 @@ The pause menu's **Settings** screen changes language and master, background, an
 
 ## CLI Options
 
+The server's options (`python -m theroadragetrip.server --help`); the Godot client passes them on after `--`.
+
 | Flag | Description |
 | :--- | :--- |
 | `--preset` | Named preset from `[cities]` (defaults include `oulu`, `helsinki`, `tampere`, `espoo`, `turku`, `vantaa`, `jyväskylä`, `kuopio`, `lahti`, `sysmä`) |
 | `--bbox` | Custom bounding box: `south,west,north,east` |
-| `--no-menu` | Skip interactive city selection startup menu |
 | `--use-sample` | Skip network and use bundled offline sample JSON |
 | `--force-refresh` / `--no-cache` | Ignore disk cache and query Overpass fresh |
 | `--osm-source` | `overpass` (default) or `pbf` - read OSM data from a local `.osm.pbf` extract instead of the network, via `osmium extract` (requires `osmium-tool` installed: `apt install osmium-tool` / `brew install osmium-tool`) |
 | `--osm-pbf-path` | Path to the `.osm.pbf` file for `--osm-source pbf` (default: `assets/osm/finland-latest.osm.pbf`) |
-| `--px-per-m` | Initial camera zoom (default: `9.0`) |
 | `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `--auto-fetch` | Enable non-blocking background tile fetching near bounds |
 | `--no-auto-fetch` | Disable on-demand background map expansion |
@@ -313,6 +273,18 @@ The pause menu's **Settings** screen changes language and master, background, an
 | `--fetch-tile-size`| Base auto-fetch tile size in meters (default: `1000.0`) |
 | `--build-in-process` | Build auto-fetched map data outside the gameplay process |
 | `--pedestrian-count` | Target number of pedestrians (default: `20`) |
+
+When PBF map data is selected in the Godot settings and no usable file is present,
+the game offers to download Finland from Geofabrik. It stores the file in Godot's
+per-user data directory (`%APPDATA%\\Godot\\app_userdata\\Road Rage Trip (Godot client)\\maps`
+on Windows, normally `~/.local/share/godot/app_userdata/Road Rage Trip (Godot client)/maps`
+on Linux), never beside the installed executable. If the selected PBF is over
+30 days old, the game offers to download a newer copy or continue with the existing file.
+
+Runtime caches use `%LOCALAPPDATA%\\RoadRageTrip` on Windows and
+`${XDG_CACHE_HOME:-~/.cache}/RoadRageTrip` on Linux. OSM downloads and FMI
+weather history are under `osm_cache/`; built map worlds are under `world/`.
+Train timetables and compositions are bundled assets, not runtime caches.
 
 ---
 
@@ -325,9 +297,11 @@ Run unit tests with pytest:
 pytest tests/ -v
 ```
 
-Run in headless / CI environments without a physical display:
+Godot tests and a short self-driving smoke run against a real server:
 ```bash
-SDL_VIDEODRIVER=dummy python3 road_rage_trip.py --use-sample
+make godot-test
+make godot-selftest
+make audio-check
 ```
 ## Binary world cache
 

@@ -4,7 +4,6 @@ import json
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-import pygame
 
 from theroadragetrip.fare import calculate_fare_cents
 from theroadragetrip.pedestrian import PlayerPedestrian
@@ -20,7 +19,6 @@ from theroadragetrip.rail_bookings import (
     RailBookingManager,
     waiting_booking,
 )
-from theroadragetrip.render.pedestrians import BOOKED_CUSTOMER_COLOR, draw_booked_passenger_arrow, draw_pedestrians
 from theroadragetrip.simulation import apply_enter_exit_vehicle, remove_boarded_rail_walker
 from theroadragetrip.station_passengers import SYNC_INTERVAL_S, StationPassengerView
 from theroadragetrip.taxi import GREET_RADIUS_M, TaxiManager, TaxiState
@@ -351,34 +349,6 @@ def test_an_out_of_view_arrival_stays_data_until_its_station_is_seen():
     assert passenger.pedestrian.resident_id == pedestrian.resident_id  # the same person again
 
 
-def _drawn(draw):
-    screen = pygame.Surface((200, 200))
-    draw(screen)
-    return screen
-
-
-def _count(screen, color):
-    return sum(1 for x in range(200) for y in range(200) if screen.get_at((x, y))[:3] == color)
-
-
-def test_arrow_and_white_card_are_drawn_without_any_name_text():
-    class NoText:
-        def render(self, *args, **kwargs):
-            raise AssertionError("the meet & greet needs no text")
-
-    booked = SimpleNamespace(x=0.0, y=0.0, heading=0.0, radius_m=0.45)
-    arrow = _drawn(lambda screen: draw_booked_passenger_arrow(screen, booked, 0.0, 0.0, 10.0, 200, 200))
-    assert _count(arrow, BOOKED_CUSTOMER_COLOR) > 0
-
-    player = PlayerPedestrian(x=0.0, y=0.0)
-    plain = _drawn(lambda screen: draw_pedestrians(screen, [player], 0.0, 0.0, font=NoText(), px_per_m=10.0,
-                                                   screen_w=200, screen_h=200))
-    player.name_card = True
-    carded = _drawn(lambda screen: draw_pedestrians(screen, [player], 0.0, 0.0, font=NoText(), px_per_m=10.0,
-                                                    screen_w=200, screen_h=200))
-    assert _count(carded, (255, 255, 255)) > _count(plain, (255, 255, 255))
-
-
 def test_from_accepting_the_panel_says_who_off_which_train_and_where():
     """Regression: after accepting a pre-booking nothing stayed on screen
     until the passenger was already waiting at the stand."""
@@ -408,7 +378,7 @@ def test_from_accepting_the_panel_says_who_off_which_train_and_where():
 
 def test_the_meet_crosses_the_wire_step_by_step():
     """godot-11: the Godot client draws the meet panel and the arrow from
-    protocol's `meet`, which follows meet_prompt as Pygame's main() does."""
+    protocol's `meet`, which follows meet_prompt."""
     from theroadragetrip import protocol
 
     bookings, train = booked_train("Aino Virtanen")
@@ -443,3 +413,25 @@ def test_no_meet_on_the_wire_without_a_booking_or_after_it_is_missed():
     bookings.update(NOW + PICKUP_WINDOW + timedelta(seconds=1))
     assert passenger.booking.status == MISSED
     assert protocol._meet_to_dict(manager, PlayerPedestrian(x=0.0, y=0.0), "en") is None
+
+
+def test_the_phone_queues_nothing_while_a_job_is_on():
+    """Bug: with a fare on, an Ennakkotilaus could still be accepted, and the
+    booked client was waiting right after the drop-off. Nothing is queued."""
+    from theroadragetrip.protocol import _phone_to_dict
+    from theroadragetrip.taxi import TaxiOffer, TaxiTarget
+
+    bookings, train = booked_train("Aino Virtanen")  # one pre-booking accepted
+    manager = taxi(bookings)
+    eero = SimpleNamespace(name="Eero", pickup=TaxiTarget(x=10.0, y=0.0, address="A"), dropoff=TaxiTarget(x=90.0, y=0.0, address="B"))
+    manager.offers = [TaxiOffer(passenger=eero, pickup_distance_m=100.0)]
+    offer_index = len(manager.phone_items()) - 1
+    assert not manager.accept_offer(offer_index, 0.0, 0.0) and manager.current_passenger is None
+    assert _phone_to_dict(manager, SimpleNamespace(x=0.0, y=0.0))["busy"]
+
+    pending, train = booked_train()
+    passenger = RailPassenger("Helsinki", "Oulu", ("IC", "57"), ON_TRAIN, name="Liisa", intent=TAXI, taxi_stand=STAND)
+    booking = pending.consider(passenger, train, NOW - timedelta(minutes=22), Always())
+    manager = taxi(pending)
+    manager.current_passenger = SimpleNamespace(name="Eero")  # a fare on
+    assert not manager.accept_offer(0, 0.0, 0.0) and booking.status == "PENDING"

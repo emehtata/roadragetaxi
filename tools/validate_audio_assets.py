@@ -1,6 +1,6 @@
 """Check the game's sound assets and every reference to them.
 
-    SDL_AUDIODRIVER=dummy python tools/validate_audio_assets.py
+    python tools/validate_audio_assets.py   (needs ffmpeg)
 
 Problems found (exit 1 if any):
 - a catalog file that is missing, not OGG, used by two entries, too quiet to
@@ -16,8 +16,9 @@ load each file is checked by the Godot test suite (make godot-test).
 """
 from __future__ import annotations
 
+import array
 import json
-import os
+import math
 import re
 import sys
 from pathlib import Path
@@ -34,17 +35,17 @@ _GROUP_CALL = re.compile(r"""(?:play_group|set_loop|on_rise)\(\s*(?:"[^"]*"\s*,\
 
 
 def _levels(path: Path):
-    """(duration s, channels, RMS dBFS) of a decoded file, via pygame's mixer."""
-    import numpy as np
-    import pygame
+    """(duration s, RMS dBFS) of a decoded file, via ffmpeg (44.1 kHz mono)."""
+    import subprocess
 
-    if not pygame.mixer.get_init():
-        os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
-        pygame.mixer.init(44100, -16, 2)
-    sound = pygame.mixer.Sound(str(path))
-    samples = pygame.sndarray.array(sound).astype(np.float64) / 32768.0
-    rms = float(np.sqrt(np.mean(samples ** 2))) if samples.size else 0.0
-    return sound.get_length(), 20.0 * np.log10(rms) if rms > 1e-9 else -200.0
+    pcm = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-f", "s16le", "-ac", "1", "-ar", "44100", "-"],
+                         capture_output=True, check=True).stdout
+    samples = array.array("h")
+    samples.frombytes(pcm[:len(pcm) - len(pcm) % samples.itemsize])
+    if sys.byteorder != "little":
+        samples.byteswap()
+    rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples)) / 32768.0 if samples else 0.0
+    return len(samples) / 44100.0, 20.0 * math.log10(rms) if rms > 1e-9 else -200.0
 
 
 def _channels(path: Path) -> int:

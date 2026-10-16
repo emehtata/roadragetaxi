@@ -1,4 +1,4 @@
-"""Player-taxi fuel consumption, independent of rendering and Pygame."""
+"""Player-taxi fuel consumption, independent of rendering."""
 from __future__ import annotations
 
 from dataclasses import dataclass

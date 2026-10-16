@@ -184,18 +184,6 @@ def test_clicking_a_train_car_finds_that_car():
     assert manager.vehicle_at(cars[2][0], 30.0) is None  # beside the track
 
 
-def test_car_popup_lists_its_passengers():
-    import pygame
-    from theroadragetrip.render.vehicles import draw_train_car_popup
-
-    pygame.init()
-    flow = PassengerFlow()
-    train = seated_train()
-    flow.populate(train, NOON)
-    diners = flow.in_car(train, 2)
-    screen = pygame.Surface((1280, 720))
-    draw_train_car_popup(screen, pygame.font.SysFont(None, 22), train, 2, diners, "fi", 1280)
-    assert pygame.transform.average_color(screen.subsurface((900, 150, 300, 60)))[:3] != (0, 0, 0)
 
 
 def test_waiting_passengers_stand_where_their_own_train_stops_not_at_the_station_point():

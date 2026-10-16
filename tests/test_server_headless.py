@@ -1,19 +1,12 @@
 """client-server-02.md step 18: the server works without any client
 connected, with no graphical environment required."""
 
-import os
 import sys
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    os.environ.get("SDL_VIDEODRIVER") not in (None, "dummy"),
-    reason="requires a headless-safe SDL driver",
-)
-
 
 def _build_server(tmp_path, monkeypatch, extra=()):
-    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
     argv = ["prog", "--use-sample", "--no-menu", "--no-historical-weather", *extra]
     monkeypatch.setattr(sys, "argv", argv)
     from theroadragetrip.server.cli import parse_server_args
@@ -23,25 +16,50 @@ def _build_server(tmp_path, monkeypatch, extra=()):
     return SimulationServer(args, config)
 
 
+def test_startup_progress_reaches_the_render_chunk_stage(tmp_path, monkeypatch):
+    import json
+
+    status = tmp_path / "startup.json"
+    _build_server(tmp_path, monkeypatch, ["--startup-progress", str(status)])
+    report = json.loads(status.read_text())
+    assert report["stage"] == "chunks"
+    assert report["history"] == ["starting", "world", "weather", "lights", "chunks"]
+    assert "buildings" in report["detail"]
+
+
+def test_sinking_is_cancelled_when_current_geometry_is_dry(tmp_path, monkeypatch):
+    server = _build_server(tmp_path, monkeypatch)
+    server._on_foot = False
+    server._water_elapsed = 4.99  # a previous map tile incorrectly reported water
+    server.world.waters = []
+    origin = (server.car.x, server.car.y)
+    server.tick(1 / 30)
+    assert server._water_elapsed == 0
+    assert (server.car.x, server.car.y) == origin  # no erroneous water respawn
+
+
+def test_sinking_continues_when_the_car_really_is_in_open_water(tmp_path, monkeypatch):
+    from theroadragetrip.osm import Water
+    from datetime import datetime
+
+    server = _build_server(tmp_path, monkeypatch)
+    server.calendar.current = datetime(2026, 9, 30, 19)
+    server._on_foot = False
+    server._water_elapsed = 1
+    server.car.x = server.car.y = 1_000_000  # outside the sample's roads and obstacles
+    x, y = server.car.x, server.car.y
+    server.world.waters = [Water([(x - 20, y - 20), (x + 20, y - 20), (x + 20, y + 20),
+                                  (x - 20, y + 20), (x - 20, y - 20)], "river", True)]
+    server.tick(1 / 30)
+    assert server._water_elapsed > 1
+
+
 def test_server_builds_and_ticks_with_no_client_connected(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
     assert server._chunks_index._encoded == {}  # distant chunks are encoded lazily, not on startup
     for _ in range(30):
         server.tick(1.0 / 30.0)
     assert server._tick == 30
-
-
-def test_server_never_opens_a_graphical_display(tmp_path, monkeypatch):
-    import pygame
-
-    # Patch set_mode itself (not pygame.display.get_surface(), which is
-    # shared global state another test module's own real display could
-    # leave set) - this is only ever true if the server code path never
-    # calls it, regardless of what else is running in the same process.
-    monkeypatch.setattr(pygame.display, "set_mode", lambda *a, **k: pytest.fail("server opened a display"))
-    server = _build_server(tmp_path, monkeypatch)
-    for _ in range(5):
-        server.tick(1.0 / 30.0)
 
 
 def test_game_time_advances(tmp_path, monkeypatch):
@@ -75,6 +93,32 @@ def test_npc_and_pedestrian_population_advance(tmp_path, monkeypatch):
     # counts, which depend on the bundled sample map's size.
     assert isinstance(server.world.npc_manager.vehicles, list)
     assert isinstance(server.world.pedestrian_mgr.pedestrians, list)
+
+
+def test_moving_tractor_clears_road_snow_and_reports_it_to_client(tmp_path, monkeypatch):
+    from theroadragetrip.npc import place_parked_npc
+    from theroadragetrip.weather import WeatherType
+
+    server = _build_server(tmp_path, monkeypatch)
+    weather = server.world.weather
+    weather._automatic = False
+    weather.weather_type = WeatherType.CLEAR
+    weather.road_snow = 3.0
+    tractor = place_parked_npc(999, (server.car.x, server.car.y), None, vehicle_type="tractor")
+    tractor.way = server.world.ways[0]
+    tractor.car.speed = 1.0
+    manager = server.world.npc_manager
+    manager.vehicles[:] = [tractor]
+    manager.drivers[tractor.vehicle_id] = object()
+    monkeypatch.setattr(manager, "update", lambda *args, **kwargs: None)
+
+    server.tick(1.0 / 30.0)
+
+    assert manager.snowy  # ploughs stay active after the snowfall stops
+    assert weather.plowed_cells
+    wire = _state(server)["weather"]
+    assert wire["road_snow"] == 3.0
+    assert wire["plowed_cells"][0][2] == 3.0
 
 
 def test_player_commands_reach_the_simulation(tmp_path, monkeypatch):
@@ -164,7 +208,7 @@ def test_train_state_omits_the_unused_label():
 
 
 def test_road_name_and_limit_follow_the_way_under_the_taxi(tmp_path, monkeypatch):
-    """godot-11: Pygame's HUD rules - the OSM name, else the highway type;
+    """godot-11: the HUD's road name - the OSM name, else the highway type;
     no road (and no limit) off-road."""
     from types import SimpleNamespace
 
@@ -174,6 +218,29 @@ def test_road_name_and_limit_follow_the_way_under_the_taxi(tmp_path, monkeypatch
     assert _state(server)["road"] == {"name": "Isokatu", "speed_limit_kmh": 40, "layer": 1, "bridge": True}
     server._current_way = SimpleNamespace(name="", highway="living_street", speed_limit_kmh=None)
     assert _state(server)["road"] == {"name": "Living Street", "speed_limit_kmh": None, "layer": 0, "bridge": False}
+
+
+def test_speed_camera_detects_a_fast_drive_on_the_first_tick(tmp_path, monkeypatch):
+    import math
+    from theroadragetrip.police import SpeedCamera
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    server._on_foot = False
+    server._slow_check_elapsed = 0.0
+    car = server.car
+    car.engine_on = True
+    car.speed = 200 / 3.6
+    server.world.speed_cameras = [SpeedCamera(
+        car.x + 20 * math.cos(car.heading), car.y + 20 * math.sin(car.heading), car.heading, 50, None,
+        layer=car.layer, map_level=car.map_level,
+    )]
+    before = server.world.taxi_mgr.total_score
+    server.tick(1 / 30)
+    assert server.world.taxi_mgr.total_score == before - 300
+    assert server.world.taxi_mgr.speed_camera_flash_index == 0
+    assert server.world.taxi_mgr.speed_camera_notice_timer > 0
+    server.tick(1 / 30)
+    assert server.world.taxi_mgr.total_score == before - 300
 
 
 def test_speed_camera_notice_is_flagged_while_its_timer_runs(tmp_path, monkeypatch):
@@ -215,6 +282,18 @@ def test_traffic_light_phases_name_posts_in_the_chunks(tmp_path, monkeypatch):
     posts = {str(post["id"]) for cid in server._chunks_index._chunks for post in server._chunks_index.message(cid)["traffic_lights"]}
     assert set(phases) <= posts
     assert set(phases.values()) <= {"green", "yellow", "red", "red+yellow", "all-red"}
+
+
+def test_the_driver_on_foot_turns_on_the_spot(tmp_path, monkeypatch):
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch)
+    walker = server.world.player_pedestrian  # on foot at the start
+    start = (walker.x, walker.y, walker.heading)
+    server._latest_command = PlayerCommand(turn=1.0)
+    for _ in range(10):
+        server.tick(1.0 / 30.0)
+    assert walker.heading != start[2] and (walker.x, walker.y) == start[:2]
 
 
 def test_the_calendar_is_the_one_clock_and_carries_the_sun(tmp_path, monkeypatch):
@@ -267,24 +346,18 @@ def test_the_calendar_crosses_the_wire(tmp_path, monkeypatch):
     assert old["state"]["calendar"] is None
 
 
-def test_the_server_places_street_lights_as_pygame_does(tmp_path, monkeypatch):
-    """godot-15: the same placement render/roads.py runs per view, once over the map."""
-    from theroadragetrip.render import roads
+def test_holidays_follow_the_server_calendar(tmp_path, monkeypatch):
+    from datetime import datetime
 
     server = _build_server(tmp_path, monkeypatch)
-    lights = server.world.street_light_points
-    assert lights, "the sample map has lit roads"
-    xs = [x for x, *_ in lights]; ys = [y for _, y, *_ in lights]
-    work = roads._snapshot_street_light_job("t", (min(xs) - 50, min(ys) - 50, max(xs) + 50, max(ys) + 50), server.world.ways,
-                                            None, server.world.buildings, None, server.world.street_lamps, server.world.street_lamp_grid,
-                                            server.world.parking_spaces)
-    while not roads._advance_street_light_prep(work):
-        pass
-    while not roads._advance_street_light_placement(work):
-        pass
-    assert sorted(work["lamps"]) == sorted(lights)
-    sent = [light for cid in server._chunks_index._chunks for light in server._chunks_index.message(cid)["street_lights"]]
-    assert len(sent) == len(lights)  # every light in exactly one chunk
+    server.calendar.current = datetime(2026, 12, 31, 23, 59, 59)
+    assert server.calendar_state()["holidays"]["fireworks"]
+    server.calendar.advance(2)
+    assert server.calendar_state()["holidays"]["fireworks"]
+    server.calendar.current = datetime(2027, 1, 1, 2)
+    assert not any(server.calendar_state()["holidays"].values())
+
+
 
 
 def test_the_season_weights_come_from_the_calendar(tmp_path, monkeypatch):
@@ -300,9 +373,23 @@ def test_the_season_weights_come_from_the_calendar(tmp_path, monkeypatch):
     assert summer == [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]
 
 
+def test_measured_snow_depth_decides_the_snow_cover(tmp_path, monkeypatch):
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    server = _build_server(tmp_path, monkeypatch)
+    server.calendar.current = datetime(2026, 1, 15, 12, 0)
+    depth = {"cm": 0.0}
+    server.weather_history = SimpleNamespace(get=lambda moment: SimpleNamespace(snow_depth_cm=depth["cm"]))
+    assert server.calendar_state()["season"][0] == 0.0  # a snowless January: bare ground
+    depth["cm"] = 30.0
+    assert server.calendar_state()["season"][0] == 1.0
+    server.calendar.current = datetime(2026, 10, 10, 12, 0)  # early snow in October
+    assert server.calendar_state()["season"][0] == 1.0
+
+
 def test_tyre_marks_flash_and_level_in_the_state(tmp_path, monkeypatch):
-    """godot-16: per tick, the taxi's map level, its tyre mark (as main() decides
-    it) and the flashing speed camera."""
+    """godot-16: per tick, the taxi's map level, its tyre mark and the flashing speed camera."""
     server = _build_server(tmp_path, monkeypatch)
     assert _state(server)["player"]["map_level"] == 0 and _state(server)["tire_mark"] is None
     assert _state(server)["speed_camera_flash"] is None
@@ -315,9 +402,28 @@ def test_tyre_marks_flash_and_level_in_the_state(tmp_path, monkeypatch):
     assert server._tyre_mark(previous=(server.car.x, server.car.y)) is None  # not moving: nothing laid
 
 
+def test_normal_driving_leaves_tracks_on_snowy_roads_but_not_plowed_roads(tmp_path, monkeypatch):
+    server = _build_server(tmp_path, monkeypatch)
+    server._on_foot = False
+    road = server.world.ways[0]
+    server.car.x, server.car.y = road.points_m[0]
+    server.car.speed = 2.0
+    server.car.skid_amount = 0.0
+    weather = server.world.weather
+    weather.road_snow = 3.0
+    previous = (server.car.x - 1.0, server.car.y)
+    assert server._tyre_mark(previous) == {"kind": "snow", "intensity": 1.0, "front": True}
+    assert server._tyre_mark((server.car.x, server.car.y)) is None
+    weather.plow_road((server.car.x, server.car.y), (server.car.x, server.car.y))
+    assert server._tyre_mark(previous) is None
+    server.car.map_level = -1
+    weather.plowed_cells.clear()
+    assert server._tyre_mark(previous) is None
+
+
 def test_the_running_fare_crosses_the_wire(tmp_path, monkeypatch):
     """godot-final-03: the mission bar's live values, straight from TaxiManager.
-    The meter's three are null until the meter starts (Pygame shows them only then)."""
+    The meter's three are null until the meter starts."""
     import json
     from datetime import datetime
 
@@ -374,8 +480,7 @@ def test_the_pump_in_refuelling_range_sends_its_price(tmp_path, monkeypatch):
 
 def test_the_navigation_route_crosses_the_wire(tmp_path, monkeypatch):
     """godot-final-04: state.navigation.points - the server's cached route,
-    world metres, unchanged through encode/decode; discrete under interpolation."""
-    import json
+    world metres, unchanged through encode/decode."""
 
     from theroadragetrip import protocol
 
@@ -392,18 +497,11 @@ def test_the_navigation_route_crosses_the_wire(tmp_path, monkeypatch):
         navigation={"points": server.navigation.points})
     wire = protocol.decode(protocol.encode(message))
     assert wire["state"]["navigation"]["points"] == points  # a new client's first state carries the cached route
-    other = json.loads(json.dumps(wire["state"]))
-    other["navigation"] = {"points": [[0.0, 0.0], [9.0, 9.0]]}
-    blended = protocol.interpolate_state(wire["state"], other, 0.5)
-    assert blended["navigation"]["points"] == [[0.0, 0.0], [9.0, 9.0]]  # the newest route, never a blend
 
 
 def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypatch):
-    """godot-final-05: SPACE moved from Pygame's event loop into the shared
-    simulation - cost 0.25, the 0.45 horn, a shout for 5 s, the nearest
-    driver ahead provoked once; nothing below 0.25."""
-    import json
-    from pathlib import Path
+    """godot-final-05: SPACE is the simulation's - cost 0.25, the 0.45 horn,
+    a shout for 5 s, the nearest driver ahead provoked once; nothing below 0.25."""
 
     from theroadragetrip import protocol
     from theroadragetrip.simulation import RAGE_SHOUTS, PlayerCommand
@@ -429,7 +527,7 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
 
     server._rage_power = 0.25  # exactly the cost: accepted, down to zero
     server._pending_road_rages = 1
-    at = (server.car.x, server.car.y, server.car.heading, server.world.traffic_mgr.sim_time)  # as the tick starts (main(): the press before the step)
+    at = (server.car.x, server.car.y, server.car.heading, server.world.traffic_mgr.sim_time)  # as the tick starts (the press before the step)
     server.tick(1.0 / 30.0)
     assert server._rage_power == pytest.approx(0.0, abs=0.01)
     assert [e for e in sent[-1] if e.get("group") == "vehicle.horn"] == [{"type": "sound", "group": "vehicle.horn"}]
@@ -458,13 +556,6 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
     assert len(calls) == 3 and server._rage_power == pytest.approx(0.1, abs=0.01)
     assert sum(1 for events in sent[-3:] for e in events if e.get("group") == "vehicle.horn") == 2
 
-    wire = protocol.decode(protocol.encode({"type": "state", "version": protocol.PROTOCOL_VERSION, "state": state}))
-    later = json.loads(json.dumps(wire["state"]))
-    later["road_rage"] = None
-    assert protocol.interpolate_state(wire["state"], later, 0.5)["road_rage"] is None  # discrete: the newest
-    main_source = Path(protocol.__file__).with_name("main").joinpath("__init__.py").read_text(encoding="utf-8")
-    assert "trigger_road_rage" not in main_source and "RAGE_SHOUT_COST" not in main_source  # Pygame only queues the press now
-
 
 def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
     """godot-final-06: is_thunderstorm and the gust-adjusted wind vector,
@@ -472,7 +563,6 @@ def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
     splashes, volumes or a made-up precipitation intensity)."""
     import json
 
-    from theroadragetrip import protocol
     from theroadragetrip.weather import WeatherType
 
     server = _build_server(tmp_path, monkeypatch)
@@ -485,7 +575,7 @@ def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
     assert state["is_thunderstorm"] is True
     assert state["wind_vector_mps"] == [round(v, 3) for v in weather.wind_vector_mps]
     assert set(state) == {"weather_type", "wetness", "lightning_intensity", "is_thunderstorm", "wind_vector_mps",
-                          "source", "temperature_c"}
+                          "source", "temperature_c", "road_snow", "plowed_cells"}
     for vector in ((0.0, 0.0), (3.25, -7.5), (-12.0, 4.0), (float("nan"), float("inf"))):
         monkeypatch.setattr(type(weather), "wind_vector_mps", property(lambda self, v=vector: v))  # restored after the test
         wire = json.loads(json.dumps(_state(server)["weather"]))["wind_vector_mps"]
@@ -493,7 +583,7 @@ def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
 
 
 def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path, monkeypatch, caplog):
-    """main()'s historical weather on the server: the FMI hour replaces the
+    """Historical weather on the server: the FMI hour replaces the
     generated precipitation, its temperature reaches the state; off: generated
     weather and the climate's typical temperature."""
     from theroadragetrip.weather import WeatherType
@@ -510,7 +600,8 @@ def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path,
             pass
 
         def get(self, moment):
-            return HourlyWeather(temperature_c=-3.5, precipitation_mm=2.0, wawa=71)
+            return HourlyWeather(temperature_c=-3.5, precipitation_mm=2.0, wawa=71,
+                                 wind_speed_mps=6.5, wind_from_deg=225.0, snow_depth_cm=2.0)
 
         def source_at(self, moment):
             return "observed"
@@ -520,16 +611,18 @@ def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path,
     with caplog.at_level(logging.INFO, logger="theroadragetrip.server"):
         server.tick(1.0 / 30.0)
         server.tick(1.0 / 30.0)
-        server._forecast()
+        forecast = server._forecast()
     assert sum("FMI weather now" in record.message for record in caplog.records) == 1
     assert any("FMI weather " in record.message for record in caplog.records)
     weather = _state(server)["weather"]
     assert weather["source"] == "observed" and weather["temperature_c"] == -3.5
     assert server.world.weather.weather_type == WeatherType.SNOW
+    assert forecast[0]["wind_speed_mps"] == 6.5 and forecast[0]["wind_from_deg"] == 225.0
+    assert forecast[0]["snow_depth_cm"] == 2.0
 
 
 def test_start_time_starts_the_calendar_clamped_to_a_year_back(tmp_path, monkeypatch):
-    """The gig start picker (Pygame's choose_start_datetime) via --start-time."""
+    """The gig start picker's time via --start-time."""
     from datetime import date, datetime, timedelta
 
     picked = (datetime.now() - timedelta(days=40)).replace(hour=7, minute=15, second=0, microsecond=0)
@@ -557,14 +650,16 @@ def test_npc_brake_lamps_when_slowing_or_standing_in_traffic():
 
 
 def test_the_world_message_carries_the_start_sign(tmp_path, monkeypatch):
-    """main()'s draw_game_start_overlay: the city and a 24-hour forecast,
+    """The start sign: the city and a 24-hour forecast,
     now and every 6 hours; the engine starts off (E after getting in)."""
     from theroadragetrip import protocol
 
     server = _build_server(tmp_path, monkeypatch)
     forecast = server.start_forecast
     assert len(forecast) == 5 and forecast[0]["source"] == "generated"
-    assert all(set(line) == {"time", "temperature_c", "weather", "source"} for line in forecast)
+    assert all(set(line) == {"time", "temperature_c", "weather", "source", "wind_speed_mps", "wind_from_deg", "snow_depth_cm"}
+               for line in forecast)
+    assert all(line["time"].endswith(":00") for line in forecast)
     assert forecast[0]["weather"] in ("clear", "rain", "slush", "snow", "thunderstorm")
     message = protocol.build_world_message((0.0, 0.0), 250.0, "p1", "Oulu", forecast)
     assert message["city"] == "Oulu" and message["forecast"] == forecast
@@ -581,3 +676,23 @@ def test_f12_debug_snapshot_is_written_by_the_server(tmp_path, monkeypatch):
     data = json.loads(path.read_text())
     assert data and isinstance(data, dict)
 
+
+
+def test_the_server_places_its_street_lights_with_the_placement_job(tmp_path, monkeypatch):
+    """godot-15: street_lights.py's placement, run once over the map."""
+    from theroadragetrip import street_lights as roads
+
+    server = _build_server(tmp_path, monkeypatch)
+    lights = server.world.street_light_points
+    assert lights, "the sample map has lit roads"
+    xs = [x for x, *_ in lights]; ys = [y for _, y, *_ in lights]
+    work = roads._snapshot_street_light_job("t", (min(xs) - 50, min(ys) - 50, max(xs) + 50, max(ys) + 50), server.world.ways,
+                                            None, server.world.buildings, None, server.world.street_lamps, server.world.street_lamp_grid,
+                                            server.world.parking_spaces)
+    while not roads._advance_street_light_prep(work):
+        pass
+    while not roads._advance_street_light_placement(work):
+        pass
+    assert sorted(work["lamps"]) == sorted(lights)
+    sent = [light for cid in server._chunks_index._chunks for light in server._chunks_index.message(cid)["street_lights"]]
+    assert len(sent) == len(lights)  # every light in exactly one chunk

@@ -34,6 +34,40 @@ def test_cache_loads_covering_bbox(tmp_path, monkeypatch):
     assert load_osm_cache((64.8, 25.35, 65.0, 25.45)) is None
 
 
+def test_missing_exact_cache_file_is_a_normal_miss(tmp_path, monkeypatch, caplog):
+    import logging
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    caplog.set_level(logging.WARNING)
+
+    assert load_osm_cache((64.9, 25.3, 65.0, 25.4)) is None
+    assert "Failed to read cache" not in caplog.text
+
+
+def test_invalid_cache_file_still_warns(tmp_path, monkeypatch, caplog):
+    import logging
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    (tmp_path / "bbox_64p9_25p3_65p0_25p4.json").write_text("not json", encoding="utf-8")
+    caplog.set_level(logging.WARNING)
+
+    assert load_osm_cache((64.9, 25.3, 65.0, 25.4)) is None
+    assert "Failed to read cache" in caplog.text
+
+
+def test_cache_can_skip_a_covering_file_much_larger_than_the_request(tmp_path, monkeypatch):
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    sample = [{"type": "node", "id": 1}]
+    save_osm_cache((64.0, 24.0, 66.0, 26.0), sample)
+
+    assert load_osm_cache((64.9, 25.4, 65.0, 25.5), max_cover_ratio=4.0) is None
+    assert load_osm_cache((64.9, 25.4, 65.0, 25.5)) == sample
+
+
 def test_cache_migrates_legacy_pjson_filename(tmp_path, monkeypatch):
     import json
     import theroadragetrip.osm as osm
@@ -249,8 +283,8 @@ def test_fetch_query_requests_the_newly_rendered_point_and_barrier_kinds(monkeyp
 def test_fetch_query_requests_any_landuse_or_leisure_way(monkeypatch):
     """Regression: the query used to whitelist a handful of landuse/leisure
     values (forest|grass|park|meadow|...), but build_ways() (osm/build.py)
-    classifies *any* landuse=*/leisure=* way as scenery and render/scenery.
-    py:SCENERY_COLORS already has colors for dozens more (farmland,
+    classifies *any* landuse=*/leisure=* way as scenery and map_style.py:
+    SCENERY_COLORS already has colors for dozens more (farmland,
     cemetery, sports_centre, nature_reserve, ...) - the narrower query just
     meant osm_source=overpass silently dropped everything outside its
     whitelist, while osm_source=pbf (unfiltered osmium extract) kept it, so
@@ -566,3 +600,26 @@ def test_the_server_clears_the_map_cache_and_says_how_much(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["prog", "--clear-cache", "--use-sample", "--no-menu"])
     server_main.main()
     assert json.loads(capsys.readouterr().out.strip().splitlines()[-1]) == [4, 2]
+
+
+def test_cache_root_is_platform_specific(monkeypatch):
+    import theroadragetrip.osm.cache as cache
+
+    monkeypatch.setattr(cache.sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\Me\AppData\Local")
+    assert cache.default_cache_root() == r"C:\Users\Me\AppData\Local/RoadRageTrip"
+    monkeypatch.setattr(cache.sys, "platform", "linux")
+    monkeypatch.setenv("XDG_CACHE_HOME", "/var/tmp/my-cache")
+    assert cache.default_cache_root() == "/var/tmp/my-cache/RoadRageTrip"
+
+
+def test_cache_skips_a_much_bigger_covering_file_when_asked(tmp_path, monkeypatch):
+    import theroadragetrip.osm as osm
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path))
+    sample = [{"type": "node", "id": 1}]
+    save_osm_cache((64.9, 25.3, 65.1, 25.5), sample)
+    small = (64.95, 25.35, 65.0, 25.40)  # the file is 16x its area
+    assert load_osm_cache(small) == sample
+    assert load_osm_cache(small, max_cover_ratio=4.0) is None
+    assert load_osm_cache((64.9, 25.3, 65.0, 25.45), max_cover_ratio=4.0) == sample  # 2.7x

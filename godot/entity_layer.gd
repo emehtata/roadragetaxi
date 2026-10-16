@@ -4,11 +4,10 @@
 ## entity appearing, its colour, a train's cars, lamps) comes from the
 ## earlier one.
 ##
-## What is drawn, and how, follows Pygame's renderers (named per function)
-## at the same scale in metres. Draw order matches Pygame's: pedestrians,
+## Everything is drawn in metres. Draw order: pedestrians,
 ## the job target, the taxi, NPC vehicles, smoke, then trains on top.
 ## Entities outside the visible area (plus a margin) are skipped. Text and
-## a few minimum sizes are in screen pixels, as in Pygame.
+## a few minimum sizes are in screen pixels.
 extends Node2D
 
 const RS := preload("res://render_style.gd")
@@ -37,6 +36,18 @@ var ambient := Color.WHITE  # the world's ambient multiply (main.gd): lit vehicl
 var _tint = null  # while a vehicle is drawn: its light (ambient + street light); its shapes go to _cars
 var _cars: Node2D  # the vehicles, unshaded: each tinted by its own light instead of the world's ambient
 var _route_node: Node2D  # the navigation route, unshaded (_draw_route)
+# People (and pucks) are drawn unshaded, each tinted by the light where they
+# stand (ambient + street lights + floodlights, like the vehicles), so a
+# floodlit rink shows its jerseys; text bubbles and tags go on _overlay,
+# unshaded and untinted, never dimmed by the night. _draw collects both
+# (_people_rows, _overlays); the helpers draw on _canvas with _lit colours.
+var _people: Node2D
+var _overlay: Node2D
+var _people_rows: Array = []  # [position, heading, ped, animation time]
+var _puck_frame: Array = []  # [a, b, t] for _pucks
+var _overlays: Array[Callable] = []
+var _canvas: CanvasItem = self
+var _lit_tint := Color.WHITE
 var _route_now := PackedVector2Array()
 const ROUTE_NIGHT_VISIBILITY := 0.55  # 0: as dark as the night, 1: as clear as by day
 var _car_shapes: Array = []  # [kind, ...] this frame: ["poly", points, fill, outline, width], ["circle", ...], ["line", ...]
@@ -45,21 +56,29 @@ var language := "en"
 var _reflectors: Node2D  # made in _ready (an instance never in the tree leaks nothing)
 var underground := false  # the taxi below ground (state player.map_level): only it and the walker are shown
 var covered := func(_at: Vector2, _layer: int) -> bool: return false  # MapLayer.covered (headlights under a bridge)
-var _trains: Node2D  # trains, z 12: above the canopies and rail bridges (z 11), as Pygame draws them last
+var _trains: Node2D  # trains, z 12: above the canopies and rail bridges (z 11), drawn last
 var _trains_drawn := 0
-var _tracks: Node2D  # tyre tracks, z 8 (render/roads.py draw_tire_tracks, before roadworks and signs)
-var _trails: Array = []  # [kind, [[position, heading, intensity, front], ...]]
+var _tracks: Node2D  # tyre tracks, z 8 (before roadworks and signs)
+var _trails: Array = []  # [kind, [[position, heading, intensity, front, snowfall when laid], ...], its Node2D]
+const TRACK_SEGMENT := 200  # points per trail segment: a new point redraws only its own segment
+const TRACK_SNOW_COVER_S := 120.0  # seconds of snowfall that cover a tyre track completely
+var _snowfall := 0.0  # seconds it has snowed (real time) since the client started
+var _snow_clock := 0.0
+var _snow_drawn := 0.0
 var _track_points := 0
 var _last_track = null  # where the last mark was laid (null: the trail is broken)
 var _last_track_px := 0.0
 # Vehicle lamps: drawn unshaded (the night's ambient multiply leaves them
 # bright) and, as it gets dark, with an additive glow - tail lamps a red
 # halo, brake lamps a bigger, brighter one, the reversing lamp a white wash
-# behind the car (godot-lights-01 style; Pygame draws none of the glow).
+# behind the car (godot-lights-01 style).
 var light_level := 0.0  # Daylight.artificial (main.gd)
 var _lamps: Node2D
 var _glow: Node2D
 var _lamp_polys: Array = []  # [points, colour] this frame
+var _cars_under: Node2D  # vehicles under a bridge: below the decks (z 2+), their shapes and lamps
+var _under_shapes: Array = []
+var _under_lamps: Array = []
 var glow_points := PackedVector2Array()
 var glow_colors := PackedColorArray()
 var glow_triangles := PackedInt32Array()
@@ -67,7 +86,7 @@ const GLOW_STEPS := 10
 const TAIL_GLOW := [Color(0.30, 0.03, 0.02), 0.9]  # added colour at the lamp, reach in metres
 const BRAKE_GLOW := [Color(0.65, 0.05, 0.03), 2.2]
 const REVERSE_GLOW := [Color(0.55, 0.55, 0.50), 4.5]
-const TAXI_SIGN_GLOW := [Color(0.35, 0.30, 0.05), 1.6]  # the roof light during a fare, a small yellow halo
+const TAXI_SIGN_GLOW := [Color(0.35, 0.30, 0.05), 1.6]  # the roof light of a free taxi, a small yellow halo
 var body_style := 0  # an NPC car's body (CAR_SHAPES), from its id: the same car keeps its look
 # Car bodies from above, in half-lengths from the centre (+ front): windshield
 # front, roof front, roof rear, rear window rear, roof half-width, an extra.
@@ -81,10 +100,11 @@ const CAR_SHAPES := [
 	[0.36, 0.06, -0.46, -0.66, 0.76, ""],  # city car
 ]
 const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
-var taxi_sign_on := false  # the taxi being drawn has a fare on (its roof light lit)
-const TRACK_STYLES := {  # render/roads.py draw_tire_tracks: [faint, dark, width m]
+var taxi_sign_on := false  # the taxi being drawn is free for a fare (its roof light lit)
+var ploughing := false  # snowing: tractors carry a plough blade and a flashing beacon
+const TRACK_STYLES := {  # [faint, dark, width m]
 	"rubber": [Color8(110, 110, 110), Color8(28, 28, 28), 0.24], "dirt": [Color8(150, 138, 118), Color8(105, 68, 38), 0.75],
-	"sand": [Color8(222, 208, 170), Color8(178, 158, 114), 0.75], "snow": [Color8(214, 226, 232), Color8(142, 169, 181), 0.75],
+	"sand": [Color8(222, 208, 170), Color8(178, 158, 114), 0.75], "snow": [Color8(214, 226, 232), Color8(142, 169, 181), 0.30],
 }
 
 
@@ -100,7 +120,6 @@ func _ready() -> void:
 	add_child(_trains)
 	_tracks = Node2D.new()
 	_tracks.z_index = -2
-	_tracks.draw.connect(_draw_tracks)
 	add_child(_tracks)
 	_glow = Node2D.new()
 	var add := CanvasItemMaterial.new()
@@ -114,16 +133,33 @@ func _ready() -> void:
 	_route_node.material = preload("res://emissive.tres")
 	_route_node.draw.connect(_draw_route)
 	add_child(_route_node)  # before the vehicles' node: under them
+	_people = Node2D.new()  # before the vehicles' node: under them
+	_people.material = preload("res://emissive.tres")
+	_people.draw.connect(_draw_people)
+	add_child(_people)
 	_cars = Node2D.new()
 	_cars.material = preload("res://emissive.tres")  # lit by vehicle_light, not the ambient multiply
-	_cars.draw.connect(_draw_cars)
+	_cars.draw.connect(func(): _paint(_cars, _car_shapes))
 	add_child(_cars)
+	_overlay = Node2D.new()
+	_overlay.z_index = 5  # text over everything on the map
+	_overlay.material = preload("res://emissive.tres")
+	_overlay.draw.connect(func():
+		_canvas = _overlay
+		for overlay in _overlays:
+			overlay.call()
+		_canvas = self)
+	add_child(_overlay)
+	_cars_under = Node2D.new()
+	_cars_under.z_index = -9  # 10 - 9: z 1, the ground roads' level, under every bridge deck
+	_cars_under.material = preload("res://emissive.tres")
+	_cars_under.draw.connect(func():
+		_paint(_cars_under, _under_shapes)
+		_paint_lamps(_cars_under, _under_lamps))
+	add_child(_cars_under)
 	_lamps = Node2D.new()
 	_lamps.material = preload("res://emissive.tres")
-	_lamps.draw.connect(func():
-		for lamp in _lamp_polys:
-			if drawable(lamp[0]):
-				_lamps.draw_colored_polygon(lamp[0], lamp[1]))
+	_lamps.draw.connect(func(): _paint_lamps(_lamps, _lamp_polys))
 	add_child(_lamps)
 
 
@@ -137,6 +173,14 @@ func shown_state() -> Dictionary:
 
 
 ## The player's interpolated position (the camera follows it).
+## The taxi's velocity in canvas metres per second (y down); zero on foot.
+func player_velocity() -> Vector2:
+	if _frame.is_empty() or _frame["a"].get("on_foot", false):
+		return Vector2.ZERO
+	var player: Dictionary = _frame["a"]["player"]
+	return _forward(float(player.get("heading", 0.0))) * float(player.get("speed", 0.0))
+
+
 func player_position() -> Vector2:
 	if _frame.is_empty():
 		return Vector2.ZERO
@@ -220,15 +264,23 @@ func update_frame(delta: float) -> void:
 
 ## The server says each tick whether the taxi marks the ground (state
 ## tire_mark: kind, intensity, front); the trail follows the drawn taxi,
-## a point every 0.5 m or 4 degrees (main()'s sampling), at most 4000
+## a point every 0.5 m or 4 degrees, at most 4000
 ## points (the oldest trails go, down to 3500).
 func _lay_track() -> void:
 	if not is_equal_approx(_last_track_px, px_per_m):
 		_last_track_px = px_per_m
-		_tracks.queue_redraw()
+		for trail in _trails:  # line widths are in pixels
+			trail[2].queue_redraw()
 	if _frame.is_empty():
 		return
 	var a: Dictionary = _frame["a"]
+	var now := Time.get_ticks_msec() / 1000.0
+	if _snow_clock > 0.0 and str(a.get("weather", {}).get("weather_type", "")) == "snow":
+		_snowfall += now - _snow_clock  # fresh snow covers the tracks laid before it
+		if _snowfall - _snow_drawn > 0.25:
+			_snow_drawn = _snowfall
+			_bury_tracks()
+	_snow_clock = now
 	var mark = a.get("tire_mark")
 	if typeof(mark) != TYPE_DICTIONARY or a.get("on_foot", false):
 		_last_track = null
@@ -237,42 +289,68 @@ func _lay_track() -> void:
 	var at := Vector2(taxi.x, taxi.y)
 	var kind := str(mark.get("kind", "rubber"))
 	if _last_track == null or _trails.is_empty() or _trails[-1][0] != kind:
-		_trails.append([kind, []])
+		_new_trail(kind, [])
 	elif at.distance_to(_last_track[0]) < 0.5 and absf(angle_difference(taxi.z, _last_track[1])) < deg_to_rad(4.0):
 		return
-	_trails[-1][1].append([at, taxi.z, float(mark.get("intensity", 1.0)), bool(mark.get("front", false))])
+	elif _trails[-1][1].size() >= TRACK_SEGMENT:  # full: carry on in a new segment from its last point
+		_new_trail(kind, [_trails[-1][1][-1]])
+		_track_points += 1
+	_trails[-1][1].append([at, taxi.z, float(mark.get("intensity", 1.0)), bool(mark.get("front", false)), _snowfall])
 	_last_track = [at, taxi.z]
 	_track_points += 1
 	if _track_points > 4000:
 		while not _trails.is_empty() and _track_points > 3500:
-			_track_points -= _trails.pop_front()[1].size()
-	_tracks.queue_redraw()
+			var oldest: Array = _trails.pop_front()
+			_track_points -= oldest[1].size()
+			oldest[2].queue_free()
+	_trails[-1][2].queue_redraw()
 
 
-## Each trail's tyre lines: the rear axle (1.2 m behind the centre), the
-## front one too where the fronts locked; faint to dark by intensity. One
-## call per kind.
-func _draw_tracks() -> void:
-	var started := Time.get_ticks_usec()
-	var lines := {}
+func _new_trail(kind: String, points: Array) -> void:
+	var node := Node2D.new()
+	_tracks.add_child(node)
+	var trail := [kind, points, node]
+	node.draw.connect(_draw_trail.bind(trail))
+	_trails.append(trail)
+
+
+## How much of a track point fresh snow has covered, 0..1.
+func _snow_cover(point: Array) -> float:
+	return clampf((_snowfall - point[4]) / TRACK_SNOW_COVER_S, 0.0, 1.0)
+
+
+## Fresh snow fades each segment as a whole (its modulate: no redraw) by its
+## newest point, and a segment snowed over completely goes.
+func _bury_tracks() -> void:
 	for trail in _trails:
-		var kind: String = trail[0]
-		if not lines.has(kind):
-			lines[kind] = [PackedVector2Array(), PackedColorArray()]
-		var style: Array = TRACK_STYLES.get(kind, TRACK_STYLES["rubber"])
-		var previous = null
-		for point in trail[1]:
-			if previous != null:
-				var color: Color = style[0].lerp(style[1], point[2])
-				for axle: float in ([-1.2, 1.2] if point[3] else [-1.2]):
-					for side: float in [-0.72, 0.72]:
-						lines[kind][0].append(previous[0] + _forward(previous[1]) * axle + _right(previous[1]) * side)
-						lines[kind][0].append(point[0] + _forward(point[1]) * axle + _right(point[1]) * side)
-						lines[kind][1].append(color)
-			previous = point
-	for kind in lines:
-		if not lines[kind][1].is_empty():
-			_tracks.draw_multiline_colors(lines[kind][0], lines[kind][1], maxf(_px(3.0), TRACK_STYLES[kind][2]))
+		var cover := _snow_cover(trail[1][-1])
+		trail[2].modulate.a = 1.0 - cover
+		if cover >= 1.0:
+			_track_points -= trail[1].size()
+			trail[2].queue_free()
+	_trails = _trails.filter(func(trail): return _snow_cover(trail[1][-1]) < 1.0)
+
+
+## One trail segment's tyre lines: the rear axle (1.2 m behind the centre),
+## the front one too where the fronts locked; faint to dark by intensity.
+func _draw_trail(trail: Array) -> void:
+	var started := Time.get_ticks_usec()
+	var node: Node2D = trail[2]
+	var style: Array = TRACK_STYLES.get(trail[0], TRACK_STYLES["rubber"])
+	var points := PackedVector2Array()
+	var colors := PackedColorArray()
+	var previous = null
+	for point in trail[1]:
+		if previous != null:
+			var color: Color = style[0].lerp(style[1], point[2])
+			for axle: float in ([-1.2, 1.2] if point[3] else [-1.2]):
+				for side: float in [-0.72, 0.72]:
+					points.append(previous[0] + _forward(previous[1]) * axle + _right(previous[1]) * side)
+					points.append(point[0] + _forward(point[1]) * axle + _right(point[1]) * side)
+					colors.append(color)
+		previous = point
+	if not colors.is_empty():
+		node.draw_multiline_colors(points, colors, maxf(_px(3.0), style[2]))
 	preload("res://perf.gd").add("tracks_draw", Time.get_ticks_usec() - started)
 
 
@@ -283,7 +361,7 @@ func _process(_delta: float) -> void:
 var _reflectors_drawn := false
 
 
-## render/pedestrians.py draw_pedestrian_reflectors: at deep night a bright
+## Reflectors: at deep night a bright
 ## point on everyone not lit - not in the taxi's beam cone, not within 10 m
 ## of a working street light.
 func _draw_reflectors() -> void:
@@ -311,7 +389,7 @@ func _draw_reflectors() -> void:
 			_reflectors.draw_circle(at, maxf(_px(1.0), 0.35), Color8(255, 255, 245))
 
 
-## In the taxi's headlight cone (render/pedestrians.py is_lit): ahead within
+## In the taxi's headlight cone: ahead within
 ## 15 m, sideways within 1.5 m + 0.35 per metre ahead.
 static func reflector_lit(at: Vector2, taxi: Vector2, heading: float) -> bool:
 	var delta := at - taxi
@@ -319,7 +397,7 @@ static func reflector_lit(at: Vector2, taxi: Vector2, heading: float) -> bool:
 	return ahead > 0.0 and ahead <= 15.0 and absf(delta.dot(_right(heading))) <= 1.5 + ahead * 0.35
 
 
-## render/vehicles.py draw_headlight_beams, in metres: two beams per vehicle
+## Headlight beams, in metres: two beams per vehicle
 ## with its engine on (the taxi first, then NPCs near the view, at most 80),
 ## each a quad from the lamp to 15 m ahead and a round cap; an NPC far from a
 ## street light (22 m) with nothing oncoming (45 m) has long beams (45 m).
@@ -336,7 +414,7 @@ func headlight_beams() -> Array:
 	var road: Dictionary = a.get("road", {}) if typeof(a.get("road")) == TYPE_DICTIONARY else {}
 	if player.get("engine_on", false):
 		var p := StateBuffer.blend(player, b.get("player", player), t, origin)
-		# Under a higher road (render/vehicles.py): no beams - unless on a bridge itself.
+		# Under a higher road: no beams - unless on a bridge itself.
 		if road.get("bridge", false) or not covered.call(Vector2(p.x, p.y), int(road.get("layer", 0))):
 			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false])
 	var later := _by_id(b.get("npcs", []))
@@ -359,17 +437,40 @@ func headlight_beams() -> Array:
 		var length := beam_length(lamp_near.call(c, 22.0), oncoming(vehicle, vehicles))
 		polygons.append_array(beam_polygons(c, vehicle[1], maxf(_px(3.0), vehicle[2]), length))
 		drawn += 1
+	if not underground:
+		var later_trains := _by_id(b.get("trains", []))
+		for train in a.get("trains", []):
+			var beams := train_beams(train, later_trains.get(train["id"], train), t, origin)
+			if not beams.is_empty() and shown.grow(TRAIN_BEAM_M).has_point(beams[0][0]):
+				polygons.append_array(beams)
 	return polygons
 
 
-## Automatic high beam, the taxi's as every NPC's (Pygame gives it to NPCs
-## only): 45 m on a dark road, dipped to 15 m within 22 m of a street
+const TRAIN_BEAM_M := 60.0
+
+
+## A train's headlights: two long beams from the nose of its lead car (the
+## first car, facing the way it runs), standing or moving; [] without cars.
+static func train_beams(train: Dictionary, next: Dictionary, t: float, origin: Vector2) -> Array:
+	var cars: Array = train.get("cars", [])
+	if cars.is_empty():
+		return []
+	var car: Array = cars[0]
+	var to: Array = next.get("cars", cars)[0] if not next.get("cars", []).is_empty() else car
+	var heading := lerp_angle(float(car[2]), float(to[2]), t)
+	var f := _forward(heading)
+	var nose := MapMath.point(origin, lerpf(car[0], to[0], t), lerpf(car[1], to[1], t)) + f * float(car[3]) / 2.0
+	var width: float = RS.TRAIN_WIDTH_M
+	return beam_polygons(nose - f * (1.0 + width * 0.55), heading, width, TRAIN_BEAM_M, true)
+
+
+## Automatic high beam, the taxi's as every NPC's: 45 m on a dark road, dipped to 15 m within 22 m of a street
 ## light or with a vehicle coming the other way.
 static func beam_length(near_street_light: bool, has_oncoming: bool) -> float:
 	return 15.0 if near_street_light or has_oncoming else 45.0
 
 
-## Another vehicle within 45 m ahead, heading the other way (Pygame's has_oncoming_vehicle).
+## Another vehicle within 45 m ahead, heading the other way.
 static func oncoming(vehicle: Array, vehicles: Array) -> bool:
 	var f := _forward(vehicle[1])
 	for other in vehicles:
@@ -382,8 +483,8 @@ static func oncoming(vehicle: Array, vehicles: Array) -> bool:
 	return false
 
 
-## One vehicle's two beams and caps (Pygame's quad and circle per side).
-static func beam_polygons(c: Vector2, heading: float, width: float, length: float) -> Array:
+## One vehicle's two beams and caps (a quad and a circle per side).
+static func beam_polygons(c: Vector2, heading: float, width: float, length: float, straight := false) -> Array:
 	var f := _forward(heading)
 	var r := _right(heading)
 	var front := c + f * (1.0 + width * 0.55)
@@ -391,8 +492,11 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 	for side: float in [-1.0, 1.0]:
 		var side_v := r * side
 		var lamp := front + side_v * width * 0.35
-		var tip := c + f * length + r * (3.0 if side < 0.0 else 2.25)
+		var tip := c + f * length + r * (3.0 if side < 0.0 else 2.25)  # a car's beams lean right (the kerb side)
 		var near := lamp + side_v * minf(4.5 * 0.08, width * 0.10)
+		if straight:  # a train's: straight ahead, each from just past the centre line outward - they overlap over the track
+			tip = c + f * length - side_v * 0.5
+			near = lamp - side_v * (width * 0.35 + 0.3)
 		var far_width := 4.5 * 1.7
 		polygons.append(PackedVector2Array([lamp, near, tip + side_v * far_width, tip]))
 		var cap := PackedVector2Array()
@@ -402,7 +506,13 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 	return polygons
 
 
-## Pygame's draw_npc_cars draws neither police (their own renderer) nor
+## The taxi's roof sign is lit while it is free for a fare, off with a fare
+## on (from the job until the drop-off).
+static func taxi_sign_lit(taxi: Dictionary) -> bool:
+	return not (taxi.get("current_passenger") is Dictionary)
+
+
+## NPC vehicles drawn as vehicles: not police (their own look), not
 ## drivers on foot, nor the far level-of-detail band.
 static func drawn_as_vehicle(npc: Dictionary) -> bool:
 	return not npc.get("is_police", false) and not npc.get("is_on_foot", false) and npc.get("lod_level", 0) < 2
@@ -432,8 +542,7 @@ static func _right(heading: float) -> Vector2:
 	return Vector2(sin(heading), cos(heading))
 
 
-## Vehicle-local rectangle (Pygame's _vehicle_point convention: +long is
-## forward, +lat is the vehicle's right side), as a polygon.
+## Vehicle-local rectangle (+long is forward, +lat is the vehicle's right side), as a polygon.
 ## A quad across the car: `front_half` wide at `front`, `rear_half` at `rear`.
 static func _trapezoid(c: Vector2, f: Vector2, r: Vector2, front: float, rear: float, front_half: float, rear_half: float) -> PackedVector2Array:
 	return PackedVector2Array([c + f * front + r * front_half, c + f * front - r * front_half,
@@ -458,8 +567,7 @@ func _poly(points: PackedVector2Array, fill: Color, outline = null, width := -1.
 		draw_polyline(closed, outline, width)
 
 
-## A vehicle body by type (render/vehicles.py _draw_vehicle, _draw_bus,
-## _draw_truck; two-wheelers are sprites in Pygame, a body and rider here),
+## A vehicle body by type (two-wheelers a body and rider),
 ## then its lamps (_draw_vehicle_lights).
 ## A vehicle's light: the world's ambient plus the street light on it, the
 ## LED pool's colour - its colours are multiplied by this (drawn unshaded),
@@ -487,27 +595,60 @@ static func lamp_glow(at: Vector2, glow: Array, level: float, points: PackedVect
 
 
 func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Color, kind: String,
-		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
+		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false,
+		under := false) -> void:
 	_tint = vehicle_light(light_level * float(light_at.call(c)), ambient)  # lit by the street lights it stands under
+	var shapes := _car_shapes
+	var lamps := _lamp_polys
+	var level := light_level
+	if under:  # under a bridge: drawn below its deck, lamps and all; no halos (they'd shine through it)
+		_car_shapes = _under_shapes
+		_lamp_polys = _under_lamps
+		light_level = 0.0  # in the body only the halos read it
 	_vehicle_body(c, heading, length, width, color, kind, is_taxi, engine_on, braking, reversing, turn_signal, signal_elapsed, fallen)
+	_car_shapes = shapes
+	_lamp_polys = lamps
+	light_level = level
 	_tint = null
 
 
-func _draw_cars() -> void:
-	for shape in _car_shapes:
+static func _paint(node: Node2D, shapes: Array) -> void:
+	for shape in shapes:
 		match shape[0]:
 			"poly":
 				if not drawable(shape[1]):
 					continue
-				_cars.draw_colored_polygon(shape[1], shape[2])
+				node.draw_colored_polygon(shape[1], shape[2])
 				if shape[3] != null:
 					var closed: PackedVector2Array = shape[1].duplicate()
 					closed.append(shape[1][0])
-					_cars.draw_polyline(closed, shape[3], shape[4])
+					node.draw_polyline(closed, shape[3], shape[4])
 			"circle":
-				_cars.draw_circle(shape[1], shape[2], shape[3])
+				node.draw_circle(shape[1], shape[2], shape[3])
 			"line":
-				_cars.draw_line(shape[1], shape[2], shape[3], shape[4])
+				node.draw_line(shape[1], shape[2], shape[3], shape[4])
+
+
+## Lamps are quads already: submit their two triangles directly, avoiding
+## Godot's polygon triangulator for sub-pixel shapes far from the origin.
+static func lamp_mesh(lamps: Array) -> Array:
+	var points := PackedVector2Array()
+	var colors := PackedColorArray()
+	var triangles := PackedInt32Array()
+	for lamp in lamps:
+		if lamp[0].size() != 4 or not drawable(lamp[0]):
+			continue
+		var base := points.size()
+		points.append_array(lamp[0])
+		colors.append_array(PackedColorArray([lamp[1], lamp[1], lamp[1], lamp[1]]))
+		triangles.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+	return [points, colors, triangles]
+
+
+static func _paint_lamps(node: Node2D, lamps: Array) -> void:
+	var mesh := lamp_mesh(lamps)
+	if not mesh[2].is_empty():
+		RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), mesh[2], mesh[0], mesh[1])
 
 
 ## A polygon Godot can triangulate: finite points, some area. A lamp or a
@@ -516,14 +657,26 @@ func _draw_cars() -> void:
 static func drawable(points: PackedVector2Array) -> bool:
 	if points.size() < 3:
 		return false
-	var area := 0.0
+	# Points are 32-bit floats kilometres from the origin (~0.5 mm steps at
+	# 5 km): a tiny lamp there that passes fixed limits still fails Godot's
+	# triangulation. The limits grow with the distance - 5 mm at 5 km.
+	var tolerance := maxf(1e-4, (absf(points[0].x) + absf(points[0].y)) * 1e-6)
+	var tolerance_sq := tolerance * tolerance
+	var winding := 0.0
 	for i in points.size():
 		var a := points[i]
 		var b := points[(i + 1) % points.size()]
-		if not (is_finite(a.x) and is_finite(a.y)):
+		var c := points[(i + 2) % points.size()]
+		if not (is_finite(a.x) and is_finite(a.y)) or a.distance_squared_to(b) <= tolerance_sq:
 			return false
-		area += a.x * b.y - b.x * a.y
-	return absf(area) > 1e-6
+		var cross := (b - a).cross(c - b)
+		if absf(cross) <= tolerance_sq:
+			return false
+		if winding == 0.0:
+			winding = signf(cross)
+		elif cross * winding < 0.0:
+			return false
+	return true
 
 
 func _lit(color: Color) -> Color:
@@ -554,6 +707,24 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			for hatch: float in [hl * 0.55, -hl * 0.62]:
 				_poly(_rect(c, f, r, hatch + hl * 0.07, hatch - hl * 0.07, hw * 0.30), detail, Color8(30, 30, 30))
 			_poly(_rect(c, f, r, hl * 0.05, -hl * 0.26, hw * 0.28), detail, Color8(30, 30, 30))
+		"tractor":  # big rear wheels, small front ones, a narrow bonnet, the cab over the rear axle
+			var tyre := Color8(25, 25, 25)
+			for side: float in [1.0, -1.0]:
+				_poly(_rect(c + r * hw * 0.80 * side, f, r, -hl * 0.20, -hl * 0.90, hw * 0.20), tyre)
+				_poly(_rect(c + r * hw * 0.62 * side, f, r, hl * 0.90, hl * 0.50, hw * 0.13), tyre)
+			_poly(_rect(c, f, r, hl, -hl * 0.10, hw * 0.36), color, RS.OUTLINE)
+			_poly(_rect(c, f, r, -hl * 0.05, -hl * 0.95, hw * 0.58), color, RS.OUTLINE)
+			_poly(_rect(c, f, r, -hl * 0.15, -hl * 0.85, hw * 0.48), RS.WINDSHIELD)
+			_poly(_rect(c, f, r, -hl * 0.30, -hl * 0.72, hw * 0.40), color.darkened(0.12))
+			if ploughing:  # an angled blade ahead, wider than the tractor, and the amber beacon on the cab
+				_poly(PackedVector2Array([c + f * hl * 1.30 + r * hw * 1.2, c + f * hl * 1.16 + r * hw * 1.2,
+					c + f * hl * 1.02 - r * hw * 1.2, c + f * hl * 1.16 - r * hw * 1.2]), Color8(240, 150, 20), RS.OUTLINE)
+				_car_shapes.append(["line", c + f * hl * 1.02, c + f * hl * 0.9, _lit(Color8(60, 60, 60)), maxf(_px(1.0), hw * 0.12)])
+				var beacon := _rect(c - f * hl * 0.5, f, r, hl * 0.08, -hl * 0.08, hw * 0.12)
+				if fmod(_clock, 0.8) < 0.4:
+					_lamp_polys.append([beacon, RS.TURN_SIGNAL])  # unshaded: it shines at night
+				else:
+					_poly(beacon, RS.TURN_SIGNAL.darkened(0.5))
 		"truck":
 			_poly(_rect(c, f, r, hl * 0.18, -hl, hw), color, RS.OUTLINE)
 			_poly(_rect(c, f, r, hl * 0.08, -hl * 0.86, hw * 0.78), color.lightened(28.0 / 255.0))
@@ -622,8 +793,8 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 				_lamp_polys.append([_rect(lamp, f, r, light_w * 0.6, -light_w * 0.6, maxf(_px(1.0), light_len * 0.45) * 0.5), RS.TURN_SIGNAL])
 
 
-## Four rising, fading puffs (render/vehicles.py crash smoke and exhaust;
-## sizes in Pygame's screen pixels). `behind` trails them out of the back.
+## Four rising, fading puffs (crash smoke and exhaust; sizes in screen
+## pixels). `behind` trails them out of the back.
 func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false) -> void:
 	var f := _forward(heading)
 	var r := _right(heading)
@@ -640,78 +811,190 @@ func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false
 		draw_circle(puff, _px(3.0 + offset_t * 5.0), smoke)
 
 
+## Someone lying flat along `h` (their heading, head first): spread out -
+## legs splayed behind, arms flung to the sides; a hockey player's stick
+## dropped beside them.
+func _fallen(c: Vector2, h: Vector2, side: Vector2, radius: float, clothing: Color, hockey: bool) -> void:
+	var hip := c - h * radius * 0.35
+	var shoulders := c + h * radius * 0.45
+	_rotated_ellipse(c + Vector2(0, radius * 0.25), h, radius * 1.5, radius * 0.75, RS.PED_SHADOW)
+	if hockey:
+		_canvas.draw_line(c + side * radius * 1.15 - h * radius * 0.9, c + side * radius * 1.15 + h * radius * 1.3,
+			_person_lit(STICK_SHAFT), maxf(_px(1.0), radius * 0.12))
+	for limb_side: float in [-1.0, 1.0]:
+		_canvas.draw_line(hip, hip - h * radius * 0.95 + side * radius * 0.45 * limb_side, _person_lit(RS.PED_LEGS), maxf(_px(1.0), radius * 0.28))
+		_canvas.draw_line(shoulders, shoulders + h * radius * 0.2 + side * radius * 0.9 * limb_side, _person_lit(clothing), maxf(_px(1.0), radius * 0.22))
+	_rotated_ellipse(c, h, radius * 0.8, radius * 0.5, clothing)
+	var head := shoulders + h * radius * 0.5
+	_canvas.draw_circle(head, maxf(_px(2.0), radius * 0.42), _person_lit(RS.PED_HAIR))
+	_canvas.draw_circle(head + h * radius * 0.08, maxf(_px(1.0), radius * 0.3), _person_lit(RS.PED_HEAD))
+
+
+## An ellipse with its `rx` axis along `along`.
+func _rotated_ellipse(c: Vector2, along: Vector2, rx: float, ry: float, color: Color) -> void:
+	_canvas.draw_set_transform(c, along.angle(), Vector2(rx, ry))
+	_canvas.draw_circle(Vector2.ZERO, 1.0, _person_lit(color))
+	_canvas.draw_set_transform(Vector2.ZERO)
+
+
 func _ellipse(c: Vector2, rx: float, ry: float, color: Color) -> void:
-	draw_set_transform(c, 0.0, Vector2(rx, ry))
-	draw_circle(Vector2.ZERO, 1.0, color)
-	draw_set_transform(Vector2.ZERO)
+	_canvas.draw_set_transform(c, 0.0, Vector2(rx, ry))
+	_canvas.draw_circle(Vector2.ZERO, 1.0, _person_lit(color))
+	_canvas.draw_set_transform(Vector2.ZERO)
 
 
-## A pedestrian as render/pedestrians.py draw_pedestrians: shadow, legs
+const SANTA_HAT := [Vector2(0, -0.4), Vector2(0, 0.4), Vector2(-0.65, 0.3)]
+
+## A pedestrian: shadow, legs
 ## stepping with animation_time, body, head facing the heading; fallen ones
 ## lie down, people going indoors are an outline; then any cursing bubble.
 func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: float) -> void:
+	if _canvas == self:  # drawn lit on _people (_draw_people)
+		_people_rows.append([c, heading, ped, animation_time])
+		return
 	var radius := maxf(_px(4.0), ped.get("radius_m", 0.45))
 	var clothing: Color = _rgb(ped.get("color", [200, 200, 200]))
+	var santa: bool = ped.get("costume", "") == "santa"
+	if santa:
+		clothing = Color8(190, 30, 35)
 	if ped.get("state", "") in INDOORS:
-		draw_arc(c, radius, 0.0, TAU, 16, RS.PED_INDOORS, _px(1.0))
+		_canvas.draw_arc(c, radius, 0.0, TAU, 16, _person_lit(RS.PED_INDOORS), _px(1.0))
 		return
 	var h := Vector2(cos(heading), -sin(heading))
 	var side := Vector2(-h.y, h.x)
 	var down := Vector2(0, radius)
 	_ellipse(c + down * 0.675, radius * 0.8, radius * 0.325, RS.PED_SHADOW)
 	if ped.get("animation_state", "walking") == "fallen":
-		_ellipse(c, radius * 1.15, radius * 0.35, clothing)
-		draw_circle(c + Vector2(radius, -radius * 0.1), radius * 0.35, RS.PED_HEAD)
+		_fallen(c, h, side, radius, clothing, ped.get("activity", "") == "ice_hockey")
 	else:
 		var gait := sin(animation_time * 10.0) if ped.get("animation_state", "walking") == "walking" else 0.0
 		var leg_start := c - h * radius * 0.15 + down * 0.45
 		for leg_side: float in [-1.0, 1.0]:
 			var leg_end: Vector2 = leg_start + side * radius * (0.42 * leg_side + gait * 0.10 * leg_side) + h * radius * 0.12 + down * 0.45
-			draw_line(leg_start, leg_end, RS.PED_LEGS, maxf(_px(1.0), radius * 0.28))
+			_canvas.draw_line(leg_start, leg_end, _person_lit(RS.PED_LEGS), maxf(_px(1.0), radius * 0.28))
 		_ellipse(c + down * 0.425, radius * 0.72, radius * 0.775, RS.PED_SHADOW)
 		_ellipse(c + down * 0.405, radius * 0.58, radius * 0.625, clothing)
 		var head := c + h * radius * 0.6
-		draw_circle(head, maxf(_px(2.0), radius * 0.48), RS.PED_HAIR)
-		draw_circle(head, maxf(_px(1.0), radius * 0.35), RS.PED_HEAD)
+		_canvas.draw_circle(head, maxf(_px(2.0), radius * 0.48), _person_lit(RS.PED_HAIR))
+		_canvas.draw_circle(head, maxf(_px(1.0), radius * 0.35), _person_lit(RS.PED_HEAD))
+		if santa:
+			_canvas.draw_line(c - side * radius * 0.5, c + side * radius * 0.5, _person_lit(Color.WHITE), radius * 0.20)
+			_canvas.draw_line(head - side * radius * 0.38, head + side * radius * 0.38, _person_lit(Color.WHITE), radius * 0.22)
+			_canvas.draw_circle(head + h * radius * 0.26, radius * 0.3, _person_lit(Color.WHITE))  # beard
+			var tip := head - h * radius * 0.65 + side * radius * 0.3
+			# Triangulate near zero: tiny world-coordinate hats lose precision far from the origin.
+			_canvas.draw_set_transform(head, -heading, Vector2.ONE * radius)
+			_canvas.draw_colored_polygon(PackedVector2Array(SANTA_HAT), _person_lit(clothing))
+			_canvas.draw_set_transform(Vector2.ZERO)
+			_canvas.draw_circle(tip, radius * 0.17, _person_lit(Color.WHITE))
+		if ped.get("activity", "") == "ice_hockey":
+			var goalie: bool = ped.get("hockey_goalie", false)
+			if goalie:  # leg pads, either side
+				for pad_side: float in [-1.0, 1.0]:
+					_ellipse(c + side * radius * 0.55 * pad_side + down * 0.2, radius * 0.22, radius * 0.5, GOALIE_PADS)
+			_hockey_stick(c, h, side, radius, float(ped.get("stick_swing", 0.0)), goalie)
 	if ped.get("curse_timer", 0.0) > 0.0:
 		var timer: float = ped["curse_timer"]
 		_bubble(c - Vector2(0, radius + _px(6.0)), str(ped.get("curse_text", "@#*!%")), RS.CURSE_TEXT, RS.CURSE_BORDER,
 			1.0 if timer >= 0.5 else timer / 0.5)
 
 
+## An ice hockey player's stick: from the right hand forward to the blade on
+## the ice; a hit (state stick_swing, seconds left) sweeps it through.
+const STICK_SWING_S := 0.3  # ice_hockey.py STICK_SWING_S
+const STICK_SHAFT := Color8(150, 110, 60)
+const STICK_BLADE := Color8(25, 25, 28)
+const GOALIE_PADS := Color8(236, 236, 230)
+const SOCCER_BALL := Color8(250, 250, 250)
+
+
+func _hockey_stick(c: Vector2, h: Vector2, side: Vector2, radius: float, swing: float, goalie := false) -> void:
+	var hand := c + side * radius * 0.55 + h * radius * 0.2
+	var reach := (h * 1.7 + side * 0.5).normalized() * radius * 2.4
+	if swing > 0.0:  # the follow-through: swept across, back to rest as the swing ends
+		reach = reach.rotated(-1.2 * swing / STICK_SWING_S)
+	var blade_root := hand + reach
+	_canvas.draw_line(hand, blade_root, _person_lit(STICK_SHAFT), maxf(_px(1.0), radius * 0.12))
+	# A goalie's stick has the wide paddle and blade.
+	_canvas.draw_line(blade_root, blade_root - side * radius * (0.8 if goalie else 0.55), _person_lit(STICK_BLADE), maxf(_px(1.5), radius * (0.3 if goalie else 0.18)))
+
+
+## Pucks on the rinks (state "pucks"): small and black, where the
+## simulation slid them (moved on toward the next state's spot).
+func _pucks(a: Dictionary, b: Dictionary, t: float) -> void:
+	if _canvas == self:
+		_puck_frame = [a, b, t]
+		return
+	for key in ["pucks", "balls"]:  # hockey pucks black; soccer balls white, outlined
+		var now: Array = a.get(key, [])
+		var next: Array = b.get(key, [])
+		for i in now.size():
+			var p: Array = now[i]
+			var q: Array = next[i] if next.size() == now.size() else p
+			var at := MapMath.point(origin, lerpf(p[0], q[0], t), lerpf(p[1], q[1], t))
+			_lit_tint = vehicle_light(light_level * float(light_at.call(at)), ambient)
+			if key == "pucks":
+				_canvas.draw_circle(at, maxf(_px(2.5), 0.12), _person_lit(STICK_BLADE))
+			else:
+				var radius := maxf(_px(3.0), 0.11)
+				_canvas.draw_circle(at, radius + maxf(_px(0.7), 0.02), _person_lit(STICK_BLADE))
+				_canvas.draw_circle(at, radius, _person_lit(SOCCER_BALL))
+
+
 ## A text bubble whose bottom centre is at `anchor`, drawn in screen
-## pixels (constant size whatever the zoom), like Pygame's bubbles.
+## pixels (constant size whatever the zoom).
 func _bubble(anchor: Vector2, text: String, text_color: Color, border: Color, alpha := 1.0, font_size := 14, tail := false) -> void:
+	if _canvas == self:  # text never dims: on _overlay
+		_overlays.append(_bubble.bind(anchor, text, text_color, border, alpha, font_size, tail))
+		return
 	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	var box := Rect2(Vector2(-size.x / 2.0 - 4.0, -size.y - 4.0 - (8.0 if tail else 0.0)), size + Vector2(8.0, 4.0))
-	draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)
-	draw_rect(box, Color(1, 1, 1, minf(240.0 / 255.0, alpha)))
-	draw_rect(box, Color(border, alpha), false, 1.0)
+	_canvas.draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)
+	_canvas.draw_rect(box, Color(1, 1, 1, minf(240.0 / 255.0, alpha)))
+	_canvas.draw_rect(box, Color(border, alpha), false, 1.0)
 	if tail:
-		draw_colored_polygon(PackedVector2Array([Vector2(-7, -8), Vector2(7, -8), Vector2(0, 0)]), Color(1, 1, 1, alpha))
-	draw_string(_font, box.position + Vector2(4.0, size.y - 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(text_color, alpha))
-	draw_set_transform(Vector2.ZERO)
+		_canvas.draw_colored_polygon(PackedVector2Array([Vector2(-7, -8), Vector2(7, -8), Vector2(0, 0)]), Color(1, 1, 1, alpha))
+	_canvas.draw_string(_font, box.position + Vector2(4.0, size.y - 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(text_color, alpha))
+	_canvas.draw_set_transform(Vector2.ZERO)
 
 
-## A label with a dark background (Pygame's target and customer tags).
+## A label with a dark background (the target and customer tags).
 func _tag(anchor: Vector2, text: String, text_color: Color, border = null, font_size := 14) -> void:
+	if _canvas == self:  # text never dims: on _overlay
+		_overlays.append(_tag.bind(anchor, text, text_color, border, font_size))
+		return
 	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	var box := Rect2(Vector2(-size.x / 2.0 - 4.0, -size.y / 2.0 - 2.0), size + Vector2(8.0, 4.0))
-	draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)
-	draw_rect(box, Color8(20, 20, 20, 220))
+	_canvas.draw_set_transform(anchor, 0.0, Vector2.ONE / px_per_m)
+	_canvas.draw_rect(box, Color8(20, 20, 20, 220))
 	if border != null:
-		draw_rect(box, border, false, 1.0)
-	draw_string(_font, box.position + Vector2(4.0, size.y - 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
-	draw_set_transform(Vector2.ZERO)
+		_canvas.draw_rect(box, border, false, 1.0)
+	_canvas.draw_string(_font, box.position + Vector2(4.0, size.y - 1.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
+	_canvas.draw_set_transform(Vector2.ZERO)
+
+
+## A person's colour in the light they stand in (_lit_tint, set per person).
+func _person_lit(color: Color) -> Color:
+	return Color(color.r * _lit_tint.r, color.g * _lit_tint.g, color.b * _lit_tint.b, color.a)
+
+
+func _draw_people() -> void:
+	_canvas = _people
+	for row in _people_rows:
+		_lit_tint = vehicle_light(light_level * float(light_at.call(row[0])), ambient)
+		_pedestrian(row[0], row[1], row[2], row[3])
+	if not _puck_frame.is_empty():
+		_pucks(_puck_frame[0], _puck_frame[1], _puck_frame[2])
+	_lit_tint = Color.WHITE
+	_canvas = self
 
 
 func _rgb(values: Array) -> Color:
 	return Color8(int(values[0]), int(values[1]), int(values[2]))
 
 
-## The job target and the waiting customer (render/navigation.py
-## draw_taxi_target); the off-screen arrow is screen UI (nav_overlay.gd).
-## render/navigation.py draw_navigation_route: the server's route (state
+## The job target and the waiting customer; the off-screen arrow is screen UI (nav_overlay.gd).
+## The navigation route: the server's route (state
 ## navigation.points) above the roads and pedestrians, under the target
 ## marker and the vehicles - dark edge, gold centre. Converted once per new route.
 ## Drawn on its own unshaded node, tinted half way from the night's
@@ -745,7 +1028,7 @@ func route_for(state: Dictionary) -> PackedVector2Array:
 
 
 ## The server's active rage shout ([text, alpha]: full, fading over the last
-## 0.5 s as draw_car), or [] - nothing for absent, malformed or expired state.
+## 0.5 s), or [] - nothing for absent, malformed or expired state.
 static func shout_for(state: Dictionary) -> Array:
 	var shout = state.get("road_rage")
 	if not shout is Dictionary or typeof(shout.get("text")) != TYPE_STRING or shout["text"] == "" \
@@ -779,7 +1062,7 @@ func _target(state: Dictionary) -> void:
 		draw_arc(at, radius, 0.0, TAU, 48, main_color, _px(2.0))
 		draw_circle(at, _px(7.0), main_color)
 		draw_arc(at, _px(7.0), 0.0, TAU, 24, RS.OUTLINE, _px(2.0))
-		_tag(at - Vector2(0, radius + _px(14.0)), "[%s] %s" % [T.text("pickup", language, "Pickup") if target["is_pickup"] else T.text("destination", language, "Destination"), target.get("address", "")],
+		_tag(at - Vector2(0, radius + _px(14.0)), "[%s] %s" % [T.text("pickup", language) if target["is_pickup"] else T.text("destination", language), target.get("address", "")],
 			Color.WHITE, main_color)
 	var passenger: Dictionary = state["taxi"]["current_passenger"]
 	if target["is_pickup"] and not passenger.get("boarded", false) and not passenger.get("rail_booking", false) and passenger.has("ped"):
@@ -802,7 +1085,12 @@ func _draw() -> void:
 	var t: float = _frame["t"]
 	var count := 0
 	_lamp_polys.clear()
+	_people_rows.clear()
+	_puck_frame = []
+	_overlays.clear()
 	_car_shapes.clear()
+	_under_shapes.clear()
+	_under_lamps.clear()
 	glow_points.clear()
 	glow_colors.clear()
 	glow_triangles.clear()
@@ -829,8 +1117,10 @@ func _draw() -> void:
 			continue
 		_pedestrian(c, p.z, ped, lerpf(ped.get("animation_time", 0.0), next.get("animation_time", 0.0), t))
 		count += 1
+	if not underground:
+		_pucks(a, b, t)
 	var later_npc_rows := _by_id(b.get("npcs", []))
-	for npc in a.get("npcs", []):  # NPC drivers out of their car: Pygame adds them to the pedestrians
+	for npc in a.get("npcs", []):  # NPC drivers out of their car are drawn as pedestrians
 		if underground or not npc.get("is_on_foot", false):
 			continue
 		var p := StateBuffer.blend(npc, later_npc_rows.get(npc["id"], npc), t, origin)
@@ -850,21 +1140,24 @@ func _draw() -> void:
 	var taxi := StateBuffer.blend(player, b.get("player", player), t, origin)
 	var taxi_at := Vector2(taxi.x, taxi.y)
 	var taxi_length: float = player.get("length_m", 4.4)
-	if player.get("engine_on", false):
+	var road: Dictionary = a.get("road", {}) if typeof(a.get("road")) == TYPE_DICTIONARY else {}
+	var taxi_under: bool = not road.get("bridge", false) and covered.call(taxi_at, int(road.get("layer", 0)))
+	if player.get("engine_on", false) and not taxi_under:
 		_smoke(taxi_at, taxi.z, taxi_length, _clock, true)  # exhaust
-	taxi_sign_on = a.get("taxi", {}).get("current_passenger") is Dictionary  # a fare on: the roof light lit
+	taxi_sign_on = taxi_sign_lit(a.get("taxi", {}))
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
-		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0)
-	taxi_sign_on = false  # NPC taxis: no fare of theirs is known, unlit
+		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under)
+	taxi_sign_on = false
 	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
 	if smoke_timer > 0.0:
 		_smoke(taxi_at, taxi.z, taxi_length, 5.0 - smoke_timer)
 	var shout := shout_for(a)
-	if not shout.is_empty():  # render/vehicles.py draw_car: the rage shout above the taxi, before the NPCs
+	if not shout.is_empty():  # the rage shout above the taxi, before the NPCs
 		_bubble(taxi_at - Vector2(0.0, maxf(_px(22.0), 0.7 * taxi_length) + _px(6.0)), shout[0], RS.SHOUT, RS.SHOUT_BORDER, shout[1])
 	count += 1
 
 	var later_npcs := _by_id(b.get("npcs", []))
+	ploughing = str(a.get("weather", {}).get("weather_type", "")) == "snow" or float(a.get("weather", {}).get("road_snow", 0.0)) > 0.1
 	for npc in a.get("npcs", []):
 		if underground or not drawn_as_vehicle(npc):
 			continue
@@ -873,9 +1166,11 @@ func _draw() -> void:
 		if not view_rect.has_point(c):
 			continue
 		body_style = absi(hash(npc["id"]))  # its own body, every frame the same
+		taxi_sign_on = not npc.get("taxi_fare", false)  # a competitor taxi: lit when free, off with a passenger aboard
 		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
 			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
-			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false))
+			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false),
+			int(npc.get("layer", 0)) <= 0 and covered.call(c, int(npc.get("layer", 0))))
 		var crashed: float = npc.get("crashed_timer", 0.0)
 		if crashed > 0.0:
 			_smoke(c, p.z, npc["length_m"], crashed if is_finite(crashed) else _clock)
@@ -884,19 +1179,22 @@ func _draw() -> void:
 	if a.get("taxi", {}).get("current_passenger") is Dictionary:
 		var passenger: Dictionary = a["taxi"]["current_passenger"]
 		if a["taxi"].get("state") == "DROPOFF" and passenger.get("nausea_warning_timer", 0.0) > 0.0:
-			_bubble(taxi_at - Vector2(0, maxf(_px(34.0), 2.5)), T.text("nausea", language, "I feel sick!"), RS.NAUSEA_TEXT, RS.NAUSEA_TEXT, 1.0, 16, true)
+			_bubble(taxi_at - Vector2(0, maxf(_px(34.0), 2.5)), T.text("nausea", language), RS.NAUSEA_TEXT, RS.NAUSEA_TEXT, 1.0, 16, true)
 
 	_booked_arrow(a, b, t, later_peds)
 
 	drawn_entities = count + _trains_drawn
+	_people.queue_redraw()
+	_overlay.queue_redraw()
 	_cars.queue_redraw()
+	_cars_under.queue_redraw()
 	_lamps.queue_redraw()  # this frame's lamps and halos, collected above
 	_glow.queue_redraw()
 	interp_usec = Time.get_ticks_usec() - started
 	preload("res://perf.gd").add("entities_draw", interp_usec)
 
 
-## Trains, last (render/vehicles.py draw_trains after the bridge rails),
+## Trains, last (after the bridge rails),
 ## from the same sample as everything else.
 func _draw_trains() -> void:
 	_trains_drawn = 0
@@ -920,7 +1218,7 @@ func _draw_trains() -> void:
 
 
 ## This frame's lightning flash alpha (main.gd shows it above the night
-## tint, as Pygame draws lightning after it).
+## tint).
 func lightning_now() -> float:
 	return 0.0 if _frame.is_empty() else lightning_alpha(_frame["a"], _frame["b"], _frame["t"])
 
@@ -948,7 +1246,7 @@ static func booked_arrow_at(a: Dictionary, b: Dictionary, t: float, later_peds: 
 	return MapMath.point(origin, arrow["x"], arrow["y"])
 
 
-## render/pedestrians.py draw_booked_passenger_arrow: a downward arrow over
+## The booked passenger's arrow: a downward arrow over
 ## the booked passenger, sized in screen pixels.
 func _booked_arrow(a: Dictionary, b: Dictionary, t: float, later_peds: Dictionary) -> void:
 	var at := booked_arrow_at(a, b, t, later_peds, origin)
@@ -961,7 +1259,7 @@ func _booked_arrow(a: Dictionary, b: Dictionary, t: float, later_peds: Dictionar
 	_poly(arrow, RS.BOOKED_CUSTOMER, RS.OUTLINE, _px(2.0))
 
 
-## One train vehicle (render/vehicles.py draw_trains): body in its profile
+## One train vehicle: body in its profile
 ## colour, a white cab front on a locomotive, a white stripe along a
 ## restaurant car, a dark roof line.
 func _train_car(c: Vector2, heading: float, length: float, profile: String, node: CanvasItem = self) -> void:
@@ -969,7 +1267,7 @@ func _train_car(c: Vector2, heading: float, length: float, profile: String, node
 	var f := _forward(heading)
 	var r := _right(heading)
 	var hl := length / 2.0
-	var hw := RS.TRAIN_WIDTH_M / 2.0
+	var hw := (RS.TRAM_WIDTH_M if profile.begins_with("tram") else RS.TRAIN_WIDTH_M) / 2.0
 	var body := _rect(c, f, r, hl, -hl, hw)
 	if not drawable(body):  # a car of no length or a bad heading
 		return

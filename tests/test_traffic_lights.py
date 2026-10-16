@@ -37,24 +37,6 @@ def test_single_signal_node_generates_a_full_four_way_intersection():
     assert len(intersection.approaches) == 4
 
 
-def test_signal_is_drawn_on_the_right_roadside_without_moving_its_control_point():
-    from theroadragetrip.render.roads import (
-        _traffic_light_render_position,
-        _traffic_light_rotation_degrees,
-    )
-
-    lights, _ = build_traffic_light_system([(0.0, 0.0, 0)], list(_four_way_ways().values()))
-    southbound = next(light for light in lights if math.isclose(light.direction_angle, 1.5 * math.pi))
-
-    assert math.isclose(southbound.x, 0.0, abs_tol=1e-9)
-    assert math.isclose(southbound.y, 14.0)
-    render_x, render_y = _traffic_light_render_position(southbound)
-    assert math.isclose(render_x, -4.75)
-    assert math.isclose(render_y, 14.0)
-    assert math.isclose(_traffic_light_rotation_degrees(southbound), 180.0)
-
-    eastbound = next(light for light in lights if math.isclose(light.direction_angle, 0.0))
-    assert math.isclose(_traffic_light_rotation_degrees(eastbound), -90.0)
 
 
 def test_north_south_and_east_west_are_on_separate_phases():
@@ -136,7 +118,7 @@ def test_irregular_five_way_junction_never_shows_conflicting_greens():
 
 
 def test_generated_signal_never_reaches_the_all_red_state():
-    """Regression: draw_traffic_lights doesn't light any lamp for an
+    """Regression: the client doesn't light any lamp for an
     "all-red" state (it isn't part of the normal cycle), so a non-zero
     all_red_duration made every generated light go fully dark for a beat
     every cycle - "no lights shown". Generated signal groups must never
@@ -499,42 +481,6 @@ def test_build_ways_end_to_end_generates_logical_intersections():
     assert len(result.traffic_lights) == 4
 
 
-def test_traffic_light_always_lights_at_least_one_lamp():
-    """Regression: an "all-red" state (which the generator itself never
-    produces any more, but the dataclass still allows) lit no lamp at all
-    - every color rendered dim, reading as a broken/off light rather than
-    a red one. Every reachable state must light at least one lamp bright."""
-    import pygame
-
-    from theroadragetrip.render import draw_traffic_lights
-
-    pygame.init()
-    try:
-        screen = pygame.Surface((100, 100))
-        bright_colors = {(255, 30, 30), (255, 210, 0), (40, 240, 60)}
-
-        for state in ("red", "red+yellow", "green", "yellow", "all-red"):
-            group = SignalGroup(
-                approach_id="test",
-                cycle_time=10.0,
-                green_duration=10.0 if state == "green" else 0.0,
-                yellow_duration=10.0 if state == "yellow" else 0.0,
-                all_red_duration=10.0 if state == "all-red" else 0.0,
-                red_duration=10.0 if state == "red" else 0.0,
-                red_yellow_duration=10.0 if state == "red+yellow" else 0.0,
-            )
-            assert group.get_state(0.0) == state
-            light = TrafficLight(x=0.0, y=0.0, signal_group=group, direction_angle=0.0)
-
-            screen.fill((0, 0, 0))
-            draw_traffic_lights(screen, [light], 0.0, 0.0, 0.0, px_per_m=10.0, screen_w=100, screen_h=100)
-
-            colors_seen = {
-                tuple(screen.get_at((x, y)))[:3] for x in range(100) for y in range(100)
-            }
-            assert colors_seen & bright_colors, f"state {state!r} lit no lamp"
-    finally:
-        pygame.quit()
 
 
 def test_signal_point_is_assigned_to_the_arm_it_actually_sits_on():
@@ -574,3 +520,16 @@ def test_signal_point_is_assigned_to_the_arm_it_actually_sits_on():
         f"the point sitting on the ramp's own vertex was attached to the wrong arm "
         f"(direction_angle={math.degrees(ramp_light.direction_angle):.1f} degrees)"
     )
+
+
+def test_signal_is_drawn_on_the_right_roadside_without_moving_its_control_point():
+    from theroadragetrip.protocol import traffic_light_render_point
+
+    lights, _ = build_traffic_light_system([(0.0, 0.0, 0)], list(_four_way_ways().values()))
+    southbound = next(light for light in lights if math.isclose(light.direction_angle, 1.5 * math.pi))
+
+    assert math.isclose(southbound.x, 0.0, abs_tol=1e-9)
+    assert math.isclose(southbound.y, 14.0)
+    render_x, render_y = traffic_light_render_point(southbound)  # the map chunk's post, for the Godot client
+    assert math.isclose(render_x, -4.75)
+    assert math.isclose(render_y, 14.0)

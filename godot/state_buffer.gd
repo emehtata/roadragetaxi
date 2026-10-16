@@ -4,8 +4,10 @@
 ## Rendering runs `delay` seconds behind the newest state, so the state
 ## after the render time has normally already arrived. Movement is then
 ## blended between two known states instead of snapping to whatever came in
-## last. Only interpolation: past the newest state the picture holds still
-## (no prediction; Python stays authoritative).
+## last. Past the newest state (a late state: a server stall) movement carries
+## on along the last two states for at most MAX_EXTRAPOLATE_S, then holds -
+## the picture no longer freezes on every short stall. Python stays
+## authoritative: the next state takes over.
 ##
 ## Why 0.1 s by default: states come every 1/30 s (33 ms). Interpolating
 ## needs one interval of headroom, and two more absorb arrival jitter (a
@@ -17,6 +19,7 @@ const MAX_STATES := 16
 const LATE_FOLLOW := 0.5
 const EARLY_FOLLOW := 0.05
 const CLOCK_SNAP_S := 0.25
+const MAX_EXTRAPOLATE_S := 0.2  # a crash or a stop overshoots at most speed x this
 # The render clock follows its target (local time + offset - delay) by
 # running slightly fast or slow - never by jumping, so it never goes back:
 # a backward step moved everything back a little and the next frames forward
@@ -139,6 +142,12 @@ func sample(local_now: float) -> Dictionary:
 				_underrun_since = local_now
 				underrun_episodes += 1
 			longest_underrun_s = maxf(longest_underrun_s, local_now - _underrun_since)
+			var newest: Dictionary = _states[-1]
+			var before: Dictionary = _states[-2]
+			var span: float = newest["time"] - before["time"]
+			if span > 0.0:
+				return {"a": before["state"], "b": newest["state"],
+					"t": 1.0 + minf(at - newest["time"], MAX_EXTRAPOLATE_S) / span}
 		return {"a": _states[-1]["state"], "b": _states[-1]["state"], "t": 0.0}
 	if at <= _states[0]["time"]:
 		return {"a": _states[0]["state"], "b": _states[0]["state"], "t": 0.0}

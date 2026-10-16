@@ -2,13 +2,11 @@
 
 Owns the one authoritative `world`/`car`, runs `simulation.advance_simulation`
 at a fixed rate, and publishes a state snapshot to every connected client
-after each tick. Never opens a Pygame display - see
-docs/architecture/simulation-rendering.md for the full boundary writeup,
-including the one remaining (display-free) Pygame touchpoint here:
-`pygame.time.Clock` for tick pacing.
+after each tick, to the Godot client. No display: it runs on
+a machine with no graphical environment.
 
 Live map expansion (auto-fetch as the car nears the loaded bbox's edge):
-server/map_sync.py streams and merges tiles, runs main()'s map sync in
+server/map_sync.py streams and merges tiles, runs the map sync in
 budgeted steps, and the server resends the chunks that changed
 (--no-auto-fetch turns it off). The server runs the same
 `advance_simulation` tick as the old single-process game otherwise.
@@ -29,28 +27,34 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
 
-import pygame
 
 from .. import protocol
 from ..navigation_route import NavigationRoute
-from ..map_chunks import CHUNK_SIZE_M, ChunkIndex, cell_of, plan
-from .map_sync import MapStreamer
+from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, ChunkIndex, cell_of, chunk_id, plan
+from ..tile_streaming import world_to_tile
+from .map_sync import MapStreamer, prepare_initial_window
 from ..protocol import LOCAL_PLAYER_ID
-from ..calendar import GameCalendar, darkness_for_sun_altitude, solar_altitude_and_events_on
+from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
+from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_altitude_and_events_on
 from ..career import career_path, gig_odometer_path, load_career
 from ..config import CONFIG_PATH, cities_from_config, default_city_configuration, get_overpass_endpoints
-from ..main import _choose_city, _load_world
-from ..render import SCREEN_H, SCREEN_W
+from ..world_loader import load_world, resolve_city
+from ..viewport import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..physics import reset_trip, respawn_car
+from ..home import CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home
+from ..localization import tr
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
 from ..weather_history import WeatherHistory, precipitation_from_observation
-from ..main.startup_screens import _clamp_start_datetime
+from ..calendar import clamp_start_datetime
 from ..osm import CACHE_DIR
-from ..climate import typical_temperature
+from ..climate import appearance_with_snow_depth, typical_temperature
 
 logger = logging.getLogger(__name__)
+
+SPORTS_ICE_DARKNESS = 0.5  # darker than this (sun ~3 degrees down) and unlit: nobody skates or plays
+SOCCER_SNOW_WEIGHT = 0.05  # a winter (snow) weight under this: the pitches are bare
 
 # Nominal viewport used only for NPC/pedestrian spawn-despawn culling
 # (advance_simulation's viewport_bounds) - the server has no real screen
@@ -80,7 +84,7 @@ class EventAudio(NullAudio):
     def __init__(self, rng=None) -> None:
         self.events: list = []
         self._edges: dict = {}
-        # Speech (godot-final-07): speech.py chooses as Pygame does; a line
+        # Speech (godot-final-07): speech.py chooses the line; a line
         # is "busy" until its recording would have finished, on the
         # simulation clock (advance()).
         import random as _random
@@ -152,8 +156,13 @@ def npc_braking(npc, last_speed: float, dt: float) -> bool:
         return True
     return dt > 0.0 and (abs(last_speed) - abs(npc.speed)) / dt > NPC_BRAKE_DECEL_MPS2
 
+# How far past the merged objects' extent the map sync's own edits reach
+# (a new road's generated house bays ~35 m, the trees it removes, its lamps).
+CHANGED_AREA_MARGIN_M = 50.0
+
+
 class SimulationServer:
-    def __init__(self, args, config, city_choice=None):
+    def __init__(self, args, config, city_choice=None, startup_progress=None):
         """`city_choice` (a `_choose_city`-shaped SimpleNamespace) lets an
         embedding client that already ran its own interactive city menu
         hand the resolved choice straight to the server, instead of the
@@ -162,6 +171,9 @@ class SimulationServer:
         standalone `python -m theroadragetrip.server` process (no client
         menu involved) resolves it here instead, CLI-driven, no menu."""
         self.args = args
+        from .startup_progress import StartupProgress
+        progress = startup_progress or StartupProgress(getattr(args, "startup_progress", None))
+        progress("starting")
         self.tick_rate = max(1.0, float(getattr(args, "tick_rate", 30.0)))
         self.audio = EventAudio()
         self.language = getattr(args, "language", None) or config.get("game", "language", fallback="") or "en"
@@ -191,41 +203,42 @@ class SimulationServer:
                 )
             else:
                 city_centers, bbox_presets = cities_from_config(config)
-                city_choice = _choose_city(
-                    None, "gig_driver", city_centers, bbox_presets, self.career_file, None,
-                    None, None, pygame.time.Clock(), config, self.language, args,
-                    args.force_refresh, False,
-                )
+                city_choice = resolve_city(args, city_centers, bbox_presets)
         self.chosen_city = city_choice.chosen_city
         self.bbox = city_choice.bbox  # the loaded box (the F12 debug JSON)
         self.camera_city_name = city_choice.camera_city_name
         self.cities_list = city_choice.cities_list
         self.career = city_choice.career
 
-        self.world = _load_world(
+        progress("world")
+        self.world = load_world(
             city_choice.chosen_city, city_choice.camera_city_name, city_choice.bbox,
-            city_choice.city_centers, None, None, pygame.time.Clock(), args,
-            city_choice.force_refresh, overpass_endpoints, bus_stops_enabled,
-            roadworks_enabled, city_choice.career, self.career_file, self.gig_odometer_file,
-            self.language, headless=True,
+            city_choice.city_centers, args, city_choice.force_refresh, overpass_endpoints,
+            bus_stops_enabled, roadworks_enabled, city_choice.career, self.career_file,
+            self.gig_odometer_file, self.language,
+            progress=lambda fraction, message: progress("world", message),
         )
+        self.initial_map_preparation = (
+            prepare_initial_window(self.world, progress=progress) if self._auto_fetch
+            else {"started": False, "integrated_tiles": 0, "elapsed_s": 0.0}
+        )
+        progress("weather")
         self.car = self.world.car
-        # weather is per-session state main() constructs fresh alongside
-        # `world` rather than something _load_world itself returns -
+        # weather is per-session state constructed fresh alongside
+        # `world` rather than something load_world itself returns -
         # attached onto `world` here so protocol.py's state builder (which
         # reads world.weather, matching how it reads every other manager)
         # doesn't need a separate parameter for it.
-        # The game's one calendar (godot-14), as main() keeps it: game time,
+        # The game's one calendar (godot-14): game time,
         # date and the weather's season follow from it. The server starts
-        # today at 18:00, as it always has; Pygame's career default is
-        # another date, chosen on its start screen.
-        start = getattr(args, "start_time", None)  # the gig start picker's (Pygame's choose_start_datetime), a year back at most
+        # today at 18:00 unless --start-time says otherwise.
+        start = getattr(args, "start_time", None)  # the gig start picker's, a year back at most
         if start is not None:
-            start = _clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
+            start = clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
         self.calendar = GameCalendar(start or datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),
                                      latitude=getattr(self.world, "sun_latitude", 65.01))
         self.world.weather = WeatherSystem(season=self.calendar.season)
-        # Historical weather (main()'s, opt-in): FMI observations/forecast for
+        # Historical weather (opt-in): FMI observations/forecast for
         # this city and game time where known, generated weather otherwise.
         historical = getattr(args, "historical_weather", None)
         if historical is None:
@@ -268,6 +281,12 @@ class SimulationServer:
         self._pending_refuels = 0  # edge-triggered too: one press buys fuel once, never again each tick
         self._pending_road_rages = 0  # SPACE presses, likewise
         self._pending_respawns = 0
+        self._pending_homes = 0
+        self.homes_file = homes_path(CONFIG_PATH)
+        self._home = load_home(self.homes_file, str(self.chosen_city or ""))  # kept between gigs, per city
+        self._home_confirm_s = 0.0  # a second H within this: the new yard becomes home
+        self._prepared_home = None  # the home whose map was last handed to the background preparation
+        self._home_preparation = None  # its future (cancelled if home moves before it starts)
         self._pending_cancels = 0
         self._pending_trip_resets = 0
         self._road_rage = None  # the active shout: {"text", "timer"}
@@ -277,15 +296,21 @@ class SimulationServer:
         self._clients_lock = threading.Lock()
         self._clients: list = []
         # Per connection: the map chunks it has, and the player cell they were planned for.
+        progress("lights", f"{len(self.world.ways)} roads")
         self.world.street_light_points = place_street_lights(self.world)  # before the chunks carry them
         # Build the index now, but encode only the nearby chunks a client asks
         # for. Some rural maps contain far-flung geometry in thousands of
         # irrelevant buckets; eagerly encoding all of them delayed startup.
+        progress("chunks", f"{len(self.world.buildings)} buildings; {len(self.world.street_light_points)} lights")
         self._chunks_index = ChunkIndex(self.world)
         self._client_chunks: dict = {}
         self._map_streamer = MapStreamer(self.world, self._map_grew) if self._auto_fetch else None
-        self._map_growth = None  # the background rebuild's result, swapped in by a tick
+        # The tiles the chunk index was built with (None: the map never grows). A chunk
+        # beyond them would reach the client half-built and be resent when its tile merges.
+        self._indexed_tiles = set(self._map_streamer.manager.loaded_tiles) if self._map_streamer is not None else None
+        self._map_growth: list = []  # the background rebuild's results, swapped in by ticks in order
         self._server_time = 0.0
+        self._game_day_notice_shown = False
 
         self._listener: Optional[Listener] = None
         self._running = False
@@ -297,11 +322,12 @@ class SimulationServer:
                                  lambda moment: typical_temperature(moment, self.calendar.latitude))
 
     def _forecast(self) -> list:
-        """main()'s start-screen forecast: now and every 6 h for 24 h - the
+        """The start-screen forecast: now and every 6 h for 24 h - the
         temperature (observed/forecast, else typical), the weather (FMI's
         precipitation where known, else the generator's prediction) and
         where it came from."""
-        moments = [self.calendar.current + timedelta(hours=offset) for offset in range(0, 25, 6)]
+        first_hour = self.calendar.current.replace(minute=0, second=0, microsecond=0)
+        moments = [first_hour + timedelta(hours=offset) for offset in range(0, 25, 6)]
         history = self.weather_history
         observed = [history.get(moment) if history is not None else None for moment in moments]
         temperatures = [o.temperature_c if o is not None and o.temperature_c is not None
@@ -315,7 +341,10 @@ class SimulationServer:
                 thunder = seen_thunder and condition.value == "rain"
             source = seen.source if seen is not None else "generated"
             lines.append({"time": f"{moment:%d.%m. %H:%M}", "temperature_c": round(temperature, 1),
-                          "weather": "thunderstorm" if thunder else condition.value, "source": source})
+                          "weather": "thunderstorm" if thunder else condition.value, "source": source,
+                          "wind_speed_mps": seen.wind_speed_mps if seen is not None else None,
+                          "wind_from_deg": seen.wind_from_deg if seen is not None else None,
+                          "snow_depth_cm": seen.snow_depth_cm if seen is not None else None})
             if source in ("observed", "forecast"):
                 logger.info("FMI weather %s: %s", f"{moment:%d.%m. %H:%M}", source)
         return lines
@@ -325,13 +354,14 @@ class SimulationServer:
         temperature (observed, else the climate's typical), on the weather
         for the state; queues the next 48 h in the background (cheap)."""
         moment, weather = self.calendar.current, self.world.weather
+        fmi_moment = moment.replace(minute=0, second=0, microsecond=0)
         observed = None
         if self.weather_history is not None:
-            self.weather_history.request(moment, moment + timedelta(hours=48))
-            observed = self.weather_history.get(moment)
+            self.weather_history.request(fmi_moment, fmi_moment + timedelta(hours=48))
+            observed = self.weather_history.get(fmi_moment)
         source = observed.source if observed is not None else "generated"
         if source in ("observed", "forecast") and source != getattr(weather, "weather_source", None):
-            logger.info("FMI weather now %s: %s", f"{moment:%d.%m. %H:%M}", source)
+            logger.info("FMI weather now %s: %s", f"{fmi_moment:%d.%m. %H:%M}", source)
         weather.weather_source = source
         weather.outside_temperature_c = (observed.temperature_c if observed is not None and observed.temperature_c is not None
                                          else typical_temperature(moment, self.calendar.latitude))
@@ -339,7 +369,7 @@ class SimulationServer:
 
     def _tyre_mark(self, previous) -> Optional[dict]:
         """Whether the taxi lays a tyre mark this tick, and which, decided as
-        Pygame's main() decides it (SKIDMARK.md): rubber on a hard surface
+        SKIDMARK.md says: rubber on a hard surface
         when the tyres slip enough, a dirt (sand, snow) trail off-road on
         soft ground whenever moving. None when nothing is laid. The client
         keeps the trail."""
@@ -355,8 +385,11 @@ class SimulationServer:
         on_surface = getattr(car, "map_level", SURFACE_LEVEL) == SURFACE_LEVEL
         surface_way = get_current_road_at_car(car, ways=world.ways, spatial_grid=world.spatial_grid, car_roads_only=False) \
             if on_surface else None
+        snow = world.weather.road_snow_at(car.x, car.y) if surface_way is not None else 0.0
+        if snow >= 0.1 and abs(car.speed) > 0.1:
+            return {"kind": "snow", "intensity": round(min(1.0, snow / 3.0), 2), "front": True}
         ground = (
-            off_road_ground_kind(car.x, car.y, scenery_grid=world.scenery_grid)
+            off_road_ground_kind(car.x, car.y, scenery_grid=world.scenery_grid, frozen=getattr(world, "fields_frozen", False))
             if on_surface and surface_way is None
             and not is_point_on_parking_space(car.x, car.y, world.parking_spaces)
             and not is_point_in_parking_lot(car.x, car.y, scenery_grid=world.scenery_grid)
@@ -366,7 +399,8 @@ class SimulationServer:
         skidding = skidmark_should_mark(car.skid_amount, wetness=world.weather.wetness, hard_surface=not soft)
         if not (skidding or (soft and abs(car.speed) > 1.0)):
             return None
-        kind = ("snow" if self.calendar.season == Season.WINTER else "sand" if ground == "sand" else "dirt") if soft else "rubber"
+        # Skidding on a frozen field scratches the ice pale, never black.
+        kind = ("snow" if self.calendar.season == Season.WINTER else "sand" if ground == "sand" else "dirt") if soft else "snow" if ground == "ice" else "rubber"
         return {"kind": kind, "intensity": round(skidmark_intensity(car.skid_amount) if skidding else 1.0, 2),
                 "front": bool(tire_tracks_include_front_wheels(soft, skidding, getattr(car, "front_lockup", False)))}
 
@@ -375,18 +409,53 @@ class SimulationServer:
         """Seconds since local midnight on the calendar (not a clock of its own)."""
         return self.calendar.time_seconds
 
+    def season_weights(self) -> list:
+        """[winter, spring, summer, autumn] the client blends, at 0.05 steps;
+        also sets world.fields_frozen (physics) from the same winter weight
+        the client freezes the fields by, so look and grip agree."""
+        look = self.calendar.seasonal_appearance  # continuous weights, for the client to blend
+        observed = self.weather_history.get(self.calendar.current) if self.weather_history is not None else None
+        if observed is not None and observed.snow_depth_cm is not None:  # FMI's measured snow, over the date's guess
+            look = appearance_with_snow_depth(look, observed.snow_depth_cm)
+        season = [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]
+        self.world.fields_frozen = season[0] >= FIELDS_FROZEN_WINTER_WEIGHT
+        return season
+
+    def _sun_altitude(self) -> float:
+        altitude, _, _ = solar_altitude_and_events_on(
+            self.calendar.date, self.calendar.time_seconds,
+            getattr(self.world, "sun_latitude", self.calendar.latitude), getattr(self.world, "sun_longitude", 25.47),
+            finnish_utc_offset_hours(self.calendar.current),
+        )
+        return altitude
+
+    def _update_sports(self) -> None:
+        """What may be played on the sports fields (the pedestrians' sports
+        activities): ice when the fields are frozen, soccer when the pitches
+        are bare - and only when light: daylight, or the floodlights' hours.
+        Also world.fields_frozen, for this tick's physics."""
+        season = self.season_weights()
+        lit = darkness_for_sun_altitude(self._sun_altitude()) < SPORTS_ICE_DARKNESS or sports_lights_hours(self.calendar.current)
+        self.world.pedestrian_mgr.sports_ice_open = self.world.fields_frozen and lit
+        # Soccer: no snow on the pitch at all (godot chunk_detail.gd draws its lines by the same weight).
+        self.world.pedestrian_mgr.soccer_open = season[0] < SOCCER_SNOW_WEIGHT and lit
+
     def calendar_state(self) -> dict:
         """What a client needs of the calendar (state "calendar"): the date,
         how fast game time runs, and the sun - computed here, never by the
         client. The sun is at the city's latitude and longitude."""
-        altitude, _, _ = solar_altitude_and_events_on(
-            self.calendar.date, self.calendar.time_seconds,
-            getattr(self.world, "sun_latitude", self.calendar.latitude), getattr(self.world, "sun_longitude", 25.47),
-        )
-        look = self.calendar.seasonal_appearance  # continuous weights, as Pygame's renderers blend them
+        altitude = self._sun_altitude()
+        season = self.season_weights()
+        arena_crowds = getattr(self.world, "arena_crowds", None)
+        from ..holiday_events import holiday_events
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
-                "season": [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)],
-                "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3)}
+                "season": season,
+                "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
+                "sports_lights": sports_lights_hours(self.calendar.current),
+                "holidays": holiday_events(self.calendar.current),
+                "arena_lights": bool(arena_crowds and arena_crowds.lights_on(self.calendar.current)),
+                "arena_games": [[round(x, 1), round(y, 1)] for x, y in arena_crowds.games_in_progress(self.calendar.current)]
+                if arena_crowds else []}
 
     def start(self, host: str, port: int) -> None:
         self._listener = Listener(host, port, self._on_client_connect)
@@ -394,15 +463,35 @@ class SimulationServer:
         logger.info("Simulation server listening on %s:%d", self.host, self.port)
         self._running = True
 
+    def _place_name(self) -> str:
+        """The start sign's name: the catalog city, or for a custom start
+        (--bbox) the nearest town/village on the loaded map."""
+        if getattr(self.args, "bbox", None):
+            if getattr(self.args, "place_name", None):  # the map picker's reverse geocode
+                return self.args.place_name
+            towns = [p for p in self.world.places if p.kind in ("city", "town", "village")]
+            if towns:
+                return min(towns, key=lambda p: (p.x - self.car.x) ** 2 + (p.y - self.car.y) ** 2).name
+        return str(self.chosen_city or "")
+
     def _on_client_connect(self, connection) -> None:
         logger.info("Client connected")
         # Who it is and the map origin first; the map chunks around the
         # player and every tick's state follow from the tick loop.
         connection.send(protocol.build_world_message((self.car.x, self.car.y), CHUNK_SIZE_M, LOCAL_PLAYER_ID,
-                                                     str(self.chosen_city or ""), self.start_forecast))
+                                                     self._place_name(), self.start_forecast))
         with self._clients_lock:
             self._client_chunks[connection] = (set(), None)
             self._clients.append(connection)
+        if not self._game_day_notice_shown:
+            games = self.world.arena_crowds.schedule_on(self.calendar.date)
+            if games:
+                schedule = "; ".join(
+                    f"{game.home_team}–{game.away_team} {game.start:%H:%M} ({game.venue_name})"
+                    for game in games
+                )
+                self._notify(tr(self.language, "game_day_schedule", schedule=schedule), 10.0)
+            self._game_day_notice_shown = True
 
     def _apply_incoming_messages(self) -> None:
         with self._clients_lock:
@@ -417,7 +506,7 @@ class SimulationServer:
                 command, interact = protocol.command_from_message(message)
                 phone = protocol.phone_request_from_message(message)
                 with self._command_lock:
-                    self._latest_command = replace(command, refuel=False, road_rage=False, respawn=False,
+                    self._latest_command = replace(command, refuel=False, road_rage=False, respawn=False, home=False,
                                                    cancel_ride=False, reset_trip=False)  # the held part only
                     if interact:
                         self._pending_interacts += 1
@@ -427,13 +516,15 @@ class SimulationServer:
                         self._pending_road_rages += 1
                     if command.respawn:
                         self._pending_respawns += 1
+                    if command.home:
+                        self._pending_homes += 1
                     if command.cancel_ride:
                         self._pending_cancels += 1
                     if command.reset_trip:
                         self._pending_trip_resets += 1
                     if phone is not None:
                         self._phone_requests.append(phone)
-                    snapshot = message.get("debug_snapshot")  # F12 in the client: Pygame's screenshot JSON
+                    snapshot = message.get("debug_snapshot")  # F12 in the client: the screenshot's JSON
                     if isinstance(snapshot, str) and snapshot.endswith(".json"):
                         self._debug_snapshots.append(snapshot)
         with self._clients_lock:
@@ -453,11 +544,11 @@ class SimulationServer:
                 self._latest_command = PlayerCommand()
 
     def write_debug_snapshot(self, path: str) -> None:
-        """main()'s F12 JSON (debug_tools._write_debug_snapshot) for the
+        """The F12 JSON (debug_snapshot.py) for the
         client's screenshot, from the server's world; the client's view is
         the server's camera at its zoom."""
-        from ..main.debug_tools import _write_debug_snapshot
-        from ..render.common import get_viewport_bounds
+        from ..viewport import get_viewport_bounds
+        from ..debug_snapshot import _write_debug_snapshot
 
         w = self.world
         try:
@@ -494,6 +585,8 @@ class SimulationServer:
                 self._pending_road_rages -= 1
                 command = replace(command, road_rage=True)
             respawn = self._pending_respawns > 0
+            home = self._pending_homes > 0
+            self._pending_homes -= int(home)
             cancel_ride = self._pending_cancels > 0
             reset_trip_meter = self._pending_trip_resets > 0
             self._pending_respawns -= int(respawn)
@@ -514,21 +607,25 @@ class SimulationServer:
             respawn_car(self.car, self.world.ways, waters=self.world.waters, taxi_stops=self.world.taxi_stops)
             self.world.taxi_mgr.handle_respawn(self.car.x, self.car.y)
             self._camx, self._camy = self.car.x, self.car.y
+        self._home_confirm_s = max(0.0, self._home_confirm_s - dt)
+        if home:
+            self._home_pressed()
         if cancel_ride:
             self.world.taxi_mgr.discard_mission(self.car.x, self.car.y)
         if reset_trip_meter:
             reset_trip(self.car)
 
-        # Game time runs 60x while there is no fare, 1:1 during one (main()).
+        # Game time runs 60x while there is no fare, 1:1 during one.
         time_scale = self._time_scale = 1.0 if self.world.taxi_mgr.has_active_job() else 60.0
         previous_date = self.calendar.date
         self.calendar.advance(dt * time_scale)
         if self.calendar.date != previous_date:
-            self.world.weather.season = self.calendar.season  # main()'s _sync_thermal_season
+            self.world.weather.season = self.calendar.season  # the thermal season follows the calendar
         observed = self._update_outside()
+        self._update_sports()
         self.world.weather.update(dt * time_scale, dt, outside_temperature_c=self.world.weather.outside_temperature_c,
                                   observed=observed)
-        if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once (as main())
+        if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once
             self.audio.play_group("weather.thunder", 0.8)
             self._lightning_event_id = self.world.weather.lightning_event_id
 
@@ -564,10 +661,10 @@ class SimulationServer:
             now=self.calendar.current,
         )
         self._tire_mark = self._tyre_mark(previous=(car_x, car_y))
-        for npc in self.world.npc_manager.vehicles:  # brake lamps (Pygame has none for NPCs)
+        for npc in self.world.npc_manager.vehicles:  # brake lamps
             npc.braking = npc_braking(npc, getattr(npc, "_last_speed", npc.speed), dt)
             npc._last_speed = npc.speed
-        if self._road_rage is not None:  # main(): the shout counts down in real time
+        if self._road_rage is not None:  # the shout counts down in real time
             timer = max(0.0, self._road_rage["timer"] - dt)
             self._road_rage = {"text": self._road_rage["text"], "timer": round(timer, 3)} if timer > 0.0 else None
         if result.rage_shout:
@@ -587,7 +684,7 @@ class SimulationServer:
         railway_mgr = getattr(self.world, "railway_mgr", None)
         if railway_mgr is not None:
             for kind, x, y, train, stop in railway_mgr.sound_events:
-                if stop is not None:  # main()'s _play_rail_sounds: the station's announcement, from its platform
+                if stop is not None:  # the station's announcement, from its platform
                     platform = stop[5] if len(stop) > 5 and stop[5] is not None else (x, y)
                     announcement = self.announcer.event(kind, train, stop, platform, (self.car.x, self.car.y))
                     if announcement is not None:
@@ -597,18 +694,72 @@ class SimulationServer:
                     "train": f"{train.service.train_type} {train.service.number}" if train.service else None,
                 })
             railway_mgr.sound_events.clear()
-        if self._map_growth is not None:
+        if self._map_growth:
             self._apply_map_growth()
-        if self._map_streamer is not None:  # main(): auto-fetch near the edge, then map sync
+        if self._map_streamer is not None:  # auto-fetch near the edge, then map sync
             self._map_streamer.tick(self.car.x, self.car.y, math.cos(self.car.heading) * self.car.speed,
-                                    math.sin(self.car.heading) * self.car.speed)
+                                    math.sin(self.car.heading) * self.car.speed, urgent=not self.central_chunk_ready())
+        self._prepare_home_map()
         self._stream_map_chunks()
         self.navigation.update(self.world, self.car, self._current_way)
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
 
+    def _prepare_home_map(self) -> None:
+        """Once per home, while the map is idle: warm the cache for the area
+        an H jump will load (AutoFetchManager.prepare_window). Optional - a
+        failure only means the jump loads it then."""
+        streamer = self._map_streamer
+        if streamer is None or self._home is None or self._prepared_home == self._home[:2] or streamer.status():
+            return
+        if self._home_preparation is not None:
+            self._home_preparation.cancel()  # an older home's, not started yet: no longer wanted
+        self._prepared_home = self._home[:2]
+        try:
+            self._home_preparation = streamer.manager.prepare_window(*self._home[:2])
+        except Exception:
+            logger.exception("Home map preparation failed to start")
+            self._home_preparation = None
+
+    def central_chunk_ready(self) -> bool:
+        """Whether the map chunk under the player has roads - what the client
+        needs first; False right after a jump into an unloaded area."""
+        player = self.world.player_pedestrian if self._on_foot else self.car
+        chunk = self._chunks_index._chunks.get(chunk_id(*cell_of(player.x, player.y)))
+        return bool(chunk and chunk.get("roads"))
+
+    def _home_pressed(self) -> None:
+        """H: in a house yard, make it home (a new one asks first: H
+        again); anywhere else, the taxi respawns at home."""
+        from ..physics import get_current_road_at_car
+
+        car, w, language = self.car, self.world, self.language
+        if self._on_foot:
+            return self._notify(tr(language, "home_on_foot"))
+        way = get_current_road_at_car(car, ways=w.ways, spatial_grid=w.spatial_grid, car_roads_only=False)
+        in_yard = at_house_yard(car.x, car.y, way, w.parking_spaces, getattr(w, "building_grid", None))
+        if in_yard and not is_same_home(self._home, car.x, car.y):
+            if abs(car.speed) > 0.5:
+                return self._notify(tr(language, "home_stop"))
+            if self._home is not None and self._home_confirm_s <= 0.0:
+                self._home_confirm_s = CONFIRM_S
+                return self._notify(tr(language, "home_confirm"), CONFIRM_S)
+            self._home, self._home_confirm_s = (car.x, car.y, car.heading), 0.0
+            save_home(self.homes_file, str(self.chosen_city or ""), self._home)
+            return self._notify(tr(language, "home_saved"))
+        if self._home is None:
+            return self._notify(tr(language, "home_not_yard"))
+        respawn_car(car, w.ways, waters=w.waters, taxi_stops=w.taxi_stops)  # the usual respawn's resets (fuel, engine)
+        car.x, car.y, car.heading = self._home
+        car.speed, car.layer, car.map_level = 0.0, 0, 0
+        self._notify(tr(language, "home_arrived"))  # a lost fare's notice (handle_respawn) wins
+        w.taxi_mgr.handle_respawn(car.x, car.y)
+        self._camx, self._camy = car.x, car.y
+
+    def _notify(self, message: str, seconds: float = 3.0) -> None:
+        self.world.taxi_mgr.notification_msg, self.world.taxi_mgr.notification_timer = message, seconds
+
     def _apply_phone_request(self, request: dict) -> dict:
-        """Accept or reject a phone row by id through the taxi manager - the
-        same calls (and sounds) as the Pygame phone - and say how it went."""
+        """Accept or reject a phone row by id through the taxi manager - and say how it went."""
         taxi_mgr = self.world.taxi_mgr
         index = taxi_mgr.phone_item_index(request["item_id"])
         ok, reason = False, "gone"  # expired, taken or declined meanwhile
@@ -625,57 +776,104 @@ class SimulationServer:
         return {"type": "phone_result", "action": request["action"], "item_id": request["item_id"],
                 "request_id": request["request_id"], "ok": ok, "reason": reason}
 
-    def _map_grew(self, old_bounds, new_bounds) -> None:
-        """A map sync finished: light the new roads and rebuild the chunks in
-        the background (seconds on a city; the streamer holds further merges
-        meanwhile, so the world stays as synced); _apply_map_growth swaps
-        them in on a later tick."""
+    def _map_grew(self, old_bounds, new_bounds, dirty=None) -> None:
+        """A map sync finished: light the new roads and rebuild the chunks the
+        merges changed (`dirty`, metres; ChunkIndex.updated - the rest are
+        kept) in the background, the streamer holding further merges
+        meanwhile so the world stays as synced; _apply_map_growth swaps them
+        in on a later tick. The chunks around the player come first, as their
+        own result (after a Home jump: the destination drawn seconds before
+        the rest of the area is rebuilt)."""
+        covered = set(self._map_streamer.sync_tiles)
+
         def build():
             started = time.perf_counter()
-            known = {(round(x, 1), round(y, 1)) for x, y, *_ in self.world.street_light_points}
-            lights = list(self.world.street_light_points) + [
+            index, previous = self._chunks_index, self.world.street_light_points
+            if dirty is None:
+                self._map_growth.append((previous, index, set(), old_bounds, new_bounds, 0.0, True, covered))
+                return
+            margin = CHANGED_AREA_MARGIN_M
+            area = (dirty[0] - margin, dirty[1] - margin, dirty[2] + margin, dirty[3] + margin)
+            ix, iy = cell_of(self.car.x, self.car.y)
+            near = (max(area[0], (ix - 1) * CHUNK_SIZE_M), max(area[1], (iy - 1) * CHUNK_SIZE_M),
+                    min(area[2], (ix + 2) * CHUNK_SIZE_M), min(area[3], (iy + 2) * CHUNK_SIZE_M))
+
+            def encode_in_reach(index, changed):
+                # What the next ticks send (resends, the new tiles' chunks) is encoded
+                # here rather than in a tick: 2-20 ms a chunk.
+                for cid in changed:
+                    cx, cy = (int(part) for part in cid.split("_"))
+                    if max(abs(cx - ix), abs(cy - iy)) <= LOAD_RADIUS:
+                        index.encoded(cid)
+
+            if near[0] < near[2] and near[1] < near[3]:
+                # The player's 3x3 chunks changed: those first, with the street
+                # lights known so far (after a Home jump the destination is drawn
+                # a second or more sooner; its new lamps come with the next pass).
+                index, changed = ChunkIndex.updated(index, self.world, near)
+                encode_in_reach(index, changed)
+                self._map_growth.append((previous, index, changed, old_bounds, new_bounds,
+                                         time.perf_counter() - started, False, covered))
+            lights_started = time.perf_counter()
+            known = {(round(x, 1), round(y, 1)) for x, y, *_ in previous}
+            lights = list(previous) + [
                 lamp for lamp in place_street_lights(self.world, outside=old_bounds)
                 if (round(lamp[0], 1), round(lamp[1], 1)) not in known]
-            self.world.street_light_points, previous = lights, self.world.street_light_points
+            lights_s = time.perf_counter() - lights_started
+            self.world.street_light_points = lights
             try:
-                index = ChunkIndex(self.world)
+                index, changed = ChunkIndex.updated(index, self.world, area)
             finally:
                 self.world.street_light_points = previous  # the tick's own until the swap
-            old_chunks = self._chunks_index._chunks  # compared here: seconds with big lakes in many chunks
-            changed = {cid for cid in set(old_chunks) | set(index._chunks) if old_chunks.get(cid) != index._chunks.get(cid)}
-            self._map_growth = (lights, index, changed, old_bounds, new_bounds, time.perf_counter() - started)
+            encode_in_reach(index, changed)
+            self._map_growth.append((lights, index, changed, old_bounds, new_bounds, time.perf_counter() - started, True,
+                                     covered))
+            logger.info("Map chunks rebuilt for %.0f x %.0f m (lights %.0f ms)", area[2] - area[0], area[3] - area[1],
+                        lights_s * 1000.0)
 
         self._map_streamer.hold = True
         threading.Thread(target=build, name="map-growth", daemon=True).start()
 
     def _apply_map_growth(self) -> None:
-        """Swap in the grown map's lamps and chunks; resend every chunk a
-        client has whose content changed (new roads across the old edge,
-        lamps, buildings...)."""
-        lights, index, changed, old_bounds, new_bounds, build_s = self._map_growth
-        self._map_growth = None
+        """Swap in the grown map's lamps and chunks (the next result of the
+        background rebuild); resend every chunk a client has whose content
+        changed (new roads across the old edge, lamps, buildings...)."""
+        lights, index, changed, old_bounds, new_bounds, build_s, final, covered = self._map_growth.pop(0)
         self._chunks_index = index
         self.world.street_light_points = lights
-        self._map_streamer.hold = False
+        self._map_streamer.hold = not final
+        if final and self._indexed_tiles is not None:
+            self._indexed_tiles = covered
+        player = self.world.player_pedestrian if self._on_foot else self.car
+        px, py = cell_of(player.x, player.y)
+
+        def distance(cid: str) -> int:
+            ix, iy = (int(part) for part in cid.split("_"))
+            return max(abs(ix - px), abs(iy - py))
+
         with self._clients_lock:
             for connection, (loaded, _) in list(self._client_chunks.items()):
-                for cid in loaded & changed:
-                    connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
+                # Nearest first; a resent chunk replaces the client's copy as it is drawn (no unload, no hole).
+                for cid in sorted(loaded & changed, key=distance):
                     connection.send(self._chunks_index.encoded(cid))
                 self._client_chunks[connection] = (loaded, None)  # replan: the new area may be in reach
-        logger.info("Map grew %s -> %s: %d chunks changed, built in %.0f ms", old_bounds, new_bounds, len(changed),
-                    build_s * 1000.0)
+        logger.info("Map grew %s -> %s: %d chunks changed%s, built in %.0f ms", old_bounds, new_bounds, len(changed),
+                    "" if final else " around the player", build_s * 1000.0)
 
     def _stream_map_chunks(self) -> None:
         """Each client gets the map chunks around the player it doesn't have
-        yet and is told to drop far ones - replanned only when the player
-        enters another chunk."""
+        yet and is told to drop far ones - replanned when the player enters
+        another chunk and after every map growth. Beyond the player's own 3x3
+        a chunk waits until the chunk index has its tile (_indexed_tiles);
+        the player's own are sent at once (after a Home jump the destination
+        is drawn as it arrives)."""
         with self._clients_lock:
             clients = list(self._clients)
         if not clients:
             return
         player = self.world.player_pedestrian if self._on_foot else self.car
         cell = cell_of(player.x, player.y)
+        indexed = self._indexed_tiles
         for connection in clients:
             loaded, planned_for = self._client_chunks.get(connection, (set(), None))
             if planned_for == cell:
@@ -685,6 +883,10 @@ class SimulationServer:
                 connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
                 loaded.discard(cid)
             for cid in to_load:
+                ix, iy = (int(part) for part in cid.split("_"))
+                if indexed is not None and max(abs(ix - cell[0]), abs(iy - cell[1])) > 1 \
+                        and world_to_tile((ix + 0.5) * CHUNK_SIZE_M, (iy + 0.5) * CHUNK_SIZE_M) not in indexed:
+                    continue
                 connection.send(self._chunks_index.encoded(cid))
                 loaded.add(cid)
             self._client_chunks[connection] = (loaded, cell)
@@ -698,7 +900,7 @@ class SimulationServer:
             should_stop=should_stop, city_summary=city_summary, events=events,
             server_time=self._server_time,
             current_way=self._current_way, language=self.language, calendar=self.calendar_state(), tire_mark=self._tire_mark,
-            navigation={"points": self.navigation.points}, road_rage=self._road_rage,
+            navigation={"points": self.navigation.points, "instruction": self.navigation.instruction}, road_rage=self._road_rage,
             map_loading=self._map_streamer.status() if self._map_streamer is not None else "",
             map_loading_detail=self._map_streamer.manager.get_progress_message() if self._map_streamer is not None else "",
             railway=protocol.railway_state(getattr(self.world, "railway_mgr", None), self.car.x, self.car.y, self.calendar.current),
@@ -723,13 +925,11 @@ class SimulationServer:
 
 
 def place_street_lights(world, outside=None) -> list:
-    """Every street light of the map, placed once with Pygame's own
-    placement (render/roads.py: explicit OSM lamps first, then lit roads at
-    fixed spacing, clear of junctions and buildings) - Pygame runs it per
-    view region in frame-budgeted steps; here it runs to the end over the
-    whole map (Oulu: ~21,500 lights, ~1.7 s at startup).
+    """Every street light of the map, placed once (street_lights.py:
+    explicit OSM lamps first, then lit roads at fixed spacing, clear of
+    junctions and buildings), run to the end over the whole map (Oulu: ~21,500 lights, ~1.7 s at startup).
     [(x, y, road direction, pool radius m)]."""
-    from ..render import roads
+    from .. import street_lights as roads
 
     ways = world.ways
     if outside is not None:  # a map that grew: only ways reaching out of the old bounds
@@ -786,6 +986,15 @@ _NullFrameProfiler.INSTANCE = _NullFrameProfiler()
 
 
 def run_server(args, config) -> SimulationServer:
-    server = SimulationServer(args, config)
-    server.start(args.host, args.port)
+    from .startup_progress import StartupProgress
+
+    progress = StartupProgress(getattr(args, "startup_progress", None))
+    try:
+        server = SimulationServer(args, config, startup_progress=progress)
+        progress("connecting")
+        server.start(args.host, args.port)
+        progress("ready")
+    except Exception as exc:
+        progress("error", f"{type(exc).__name__}: {exc}")
+        raise
     return server

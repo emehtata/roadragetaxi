@@ -4,7 +4,6 @@ import pytest
 
 from theroadragetrip.calendar import GameCalendar, Season
 from theroadragetrip.climate import SeasonalAppearance
-from theroadragetrip.render.scenery import seasonal_vegetation_color
 from theroadragetrip.weather import WeatherSystem
 
 
@@ -34,24 +33,8 @@ def test_calendar_crosses_midnight_and_leap_day():
     assert calendar.season == Season.WINTER
 
 
-def test_seasonal_palette_keeps_summer_and_changes_other_seasons():
-    green = (40, 100, 40)
-    assert seasonal_vegetation_color(green, Season.SUMMER) == green
-    assert min(seasonal_vegetation_color(green, Season.WINTER)) >= 218
-    spring = seasonal_vegetation_color(green, Season.SPRING)
-    assert sum(spring) > sum(green)
-    autumn = seasonal_vegetation_color(green, Season.AUTUMN)
-    assert autumn[0] > autumn[2]
 
 
-def test_seasonal_palette_blends_instead_of_switching_colors():
-    green = (40, 100, 80)
-    halfway = SeasonalAppearance(summer=0.5, autumn=0.5)
-    blended = seasonal_vegetation_color(green, Season.SUMMER, halfway)
-    autumn = seasonal_vegetation_color(green, Season.AUTUMN)
-
-    assert green[0] < blended[0] < autumn[0]
-    assert autumn[2] < blended[2] < green[2]
 
 
 def test_clear_winter_still_uses_slippery_road_grip_value():
@@ -59,3 +42,39 @@ def test_clear_winter_still_uses_slippery_road_grip_value():
     winter = WeatherSystem(season=Season.WINTER)
     assert summer.road_grip_wetness == 0.0
     assert winter.road_grip_wetness == 1.0
+
+
+@pytest.mark.parametrize("rule_only", [False, True])
+def test_the_clock_follows_finnish_summer_time(monkeypatch, rule_only):
+    import theroadragetrip.calendar as calendar_module
+    if rule_only:  # no time-zone database
+        monkeypatch.setattr(calendar_module, "FINLAND_TZ", calendar_module.FinnishRuleTime())
+    from theroadragetrip.calendar import finnish_utc_offset_hours, solar_altitude_and_events_on
+    assert finnish_utc_offset_hours(datetime(2026, 1, 15, 12)) == 2.0
+    assert finnish_utc_offset_hours(datetime(2026, 7, 15, 12)) == 3.0
+    spring = GameCalendar(datetime(2026, 3, 29, 2, 59, 30))  # last Sunday of March
+    spring.advance(60)
+    assert spring.current == datetime(2026, 3, 29, 4, 0, 30)  # 03:00 never comes
+    autumn = GameCalendar(datetime(2026, 10, 25, 3, 59, 30))  # last Sunday of October
+    autumn.advance(60)
+    assert autumn.current == datetime(2026, 10, 25, 3, 0, 30) and autumn.current.fold == 1
+    assert finnish_utc_offset_hours(autumn.current) == 2.0
+    autumn.advance(3600)
+    assert autumn.current == datetime(2026, 10, 25, 4, 0, 30)
+    # the sun: winter's 12:00 is an hour later in solar time than summer time would make it
+    _, winter_rise, _ = solar_altitude_and_events_on(datetime(2026, 12, 1).date(), 43200, 65.0, 25.5)
+    _, summer_clock_rise, _ = solar_altitude_and_events_on(datetime(2026, 12, 1).date(), 43200, 65.0, 25.5, 3.0)
+    assert abs((summer_clock_rise - winter_rise) - 60.0) < 0.01
+
+
+def test_the_finnish_rule_matches_the_time_zone_database():
+    from datetime import timedelta, timezone
+    from zoneinfo import ZoneInfo
+    from theroadragetrip.calendar import FinnishRuleTime
+    rule, database = FinnishRuleTime(), ZoneInfo("Europe/Helsinki")
+    moment = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    while moment.year < 2027:
+        by_rule, by_database = moment.astimezone(rule), moment.astimezone(database)
+        assert by_rule.replace(tzinfo=None) == by_database.replace(tzinfo=None) and by_rule.fold == by_database.fold
+        assert by_rule.utcoffset() == by_database.utcoffset()
+        moment += timedelta(minutes=30)

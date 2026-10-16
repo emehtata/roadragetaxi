@@ -8,8 +8,7 @@ def test_logical_intersections_survive_construction_and_sync():
     """Regression: TrafficWorld silently dropped logical_intersections -
     never accepted at construction, and sync_map_data's **_kwargs quietly
     swallowed it too - so traffic_mgr.logical_intersections stayed empty
-    for the whole game, and the debug HUD's stop-line overlay
-    (draw_logical_intersections) never had anything to draw."""
+    for the whole game."""
     road = Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)
     world = TrafficWorld([road], logical_intersections=["fake-intersection"])
     assert world.logical_intersections == ["fake-intersection"]
@@ -153,11 +152,32 @@ def test_nearest_node_indices_falls_back_when_point_is_off_the_mapped_area():
     assert len(found) == 8
 
 
+def test_distant_nearest_node_lookup_has_a_fixed_grid_probe_limit():
+    from theroadragetrip.traffic_world import nearest_node_indices, nearest_node_indices_steps, run_route_steps
+
+    class Grid(dict):
+        probes = 0
+
+        def get(self, key, default=None):
+            self.probes += 1
+            assert self.probes <= 17 * 17
+            return super().get(key, default)
+
+    nodes = [(i * 200.0, 0.0, 0) for i in range(1000)]
+    grid = Grid({(i, 0): [i] for i in range(1000)})
+    target = (1_000_000.0, 1_000_000.0)
+    steps = nearest_node_indices_steps(nodes, grid, target, 8, None)
+    next(steps)
+    assert grid.probes == 0  # yields before probing, not after scanning the whole map
+    assert run_route_steps(steps) == list(range(999, 991, -1))
+    assert nearest_node_indices(nodes, grid, target, 0, None) == []
+
+
 def _v13_reference_graph(ways):
-    """The pre-V13 synchronous _build_route_graph + weak components, kept
-    verbatim as the exactness reference for the incremental build."""
+    """Synchronous route graph + weak components, as the incremental-build reference."""
     import math as _math
     from theroadragetrip.physics import is_car_road
+    from theroadragetrip.traffic_world import ROUTE_MAX_EDGE_LENGTH_M
 
     nodes, edges, buckets = [], {}, {}
 
@@ -176,7 +196,19 @@ def _v13_reference_graph(ways):
         if not is_car_road(way) or len(way.points_m) < 2:
             continue
         layer = getattr(way, "layer", 0)
-        point_ids = [node_id(point, layer) for point in way.points_m]
+        point_ids = []
+        for segment_index, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
+            if segment_index == 0:
+                point_ids.append(node_id(start, layer))
+            distance = _math.hypot(end[0] - start[0], end[1] - start[1])
+            steps = max(1, _math.ceil(distance / ROUTE_MAX_EDGE_LENGTH_M))
+            for step in range(1, steps + 1):
+                if step == steps:
+                    point_ids.append(node_id(end, layer))
+                else:
+                    ratio = step / steps
+                    point_ids.append(node_id((start[0] + (end[0] - start[0]) * ratio,
+                                              start[1] + (end[1] - start[1]) * ratio), layer))
         oneway = getattr(way, "oneway", 0)
         for first, second in zip(point_ids, point_ids[1:]):
             distance = _math.hypot(nodes[second][0] - nodes[first][0], nodes[second][1] - nodes[first][1])
@@ -288,3 +320,11 @@ def test_v13_budgeted_sync_snapshots_input_bumps_revision_once_and_unloads_clean
     world.sync_map_data(ways[:10])
     assert world.route_graph_revision == revision + 2
     assert list(_v13_state(world)) == list(_v13_reference_graph(ways[:10]))
+
+
+def test_long_road_segments_have_route_nodes_for_traffic_spawning():
+    world = TrafficWorld([Way([(0.0, 0.0), (500.0, 0.0)], "primary", 4.0)])
+
+    xs = sorted(node[0] for node in world._route_nodes)
+
+    assert xs == [0.0, 100.0, 200.0, 300.0, 400.0, 500.0]

@@ -70,7 +70,7 @@ SURFACE_MAX_GRIP_G = {
 # Off-road ground (see off_road_ground_kind) has no Way.surface to read a
 # grip from, so it maps straight to a surface bucket; "road"/"hard" fall
 # through to the normal way-surface/asphalt logic.
-GROUND_KIND_MAX_GRIP_G = {"soft": "grass", "sand": "sand"}
+GROUND_KIND_MAX_GRIP_G = {"soft": "grass", "sand": "sand", "ice": "ice"}
 # OSM Way.surface values that map to a rougher-than-asphalt bucket. There's
 # no in-game weather system to ever pick "wet_asphalt" (no rain state
 # exists), so it's defined for completeness/future use but unreachable today.
@@ -403,30 +403,41 @@ def off_road_ground_kind(
     py: float,
     sceneries: Optional[List] = None,
     scenery_grid: Optional["SpatialWayGrid"] = None,
+    frozen: bool = False,
 ) -> str:
     """Classify open ground at (px, py) as "soft" (grass/earth - muddy dirt
     trails), "sand" (lighter sand tracks) or "hard" (a mapped surface that
     leaves no trail, only ordinary tyre marks when skidding). Precedence:
     any hard polygon containing the point wins (a plaza inside a park),
     then sand, then soft; a point in no mapped polygon at all is unmapped
-    open ground, treated as soft."""
+    open ground, treated as soft. With `frozen` (winter: Finnish sports
+    fields are flooded for skating) a pitch or rink is "ice", over all else."""
+    from .map_style import FROZEN_IN_WINTER_KINDS
+
     candidates = (
         scenery_grid.ways_in_rect(px, py, px, py) if scenery_grid is not None else (sceneries or ())
     )
     found_sand = False
+    found_hard = False
     for scenery in candidates:
         kind = getattr(scenery, "kind", None)
-        if kind in SOFT_GROUND_SCENERY_KINDS:
+        freezes = frozen and kind in FROZEN_IN_WINTER_KINDS
+        if kind in SOFT_GROUND_SCENERY_KINDS and not freezes:  # (a grass pitch is soft, unless frozen)
             continue
         bbox = getattr(scenery, "bbox", None)
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0) and not (bbox[0] <= px <= bbox[2] and bbox[1] <= py <= bbox[3]):
             continue
         points = getattr(scenery, "points_m", ())
         if len(points) >= 3 and point_in_polygon(px, py, points):
-            if kind not in SAND_SCENERY_KINDS:
-                return "hard"
-            found_sand = True
-    return "sand" if found_sand else "soft"
+            if freezes:
+                return "ice"
+            if kind in SAND_SCENERY_KINDS:
+                found_sand = True
+            elif not frozen:
+                return "hard"  # nothing can be ice: the first hard polygon decides
+            else:
+                found_hard = True
+    return "hard" if found_hard else "sand" if found_sand else "soft"
 
 
 def is_point_on_soft_ground(
@@ -477,11 +488,18 @@ def is_point_in_water(
 
 
 def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
-    """Return whether all four corners are in water, except while on a bridge."""
-    if current_way is not None and getattr(current_way, "is_bridge", False):
-        return False
-    road_layer = getattr(current_way, "layer", getattr(car, "layer", 0))
-    include_open_waterways = not (current_way is not None and is_car_road(current_way))
+    """All four corners in water, excluding the actual solid road surface.
+
+    OSM water can overlap a causeway/bridge approach whose way lacks bridge=yes.
+    A stale nearby road reference must not protect a car that left its surface.
+    """
+    road_layer = getattr(car, "layer", 0)
+    road = current_way if (
+        current_way is not None and is_car_road(current_way)
+        and not getattr(current_way, "is_ice_road", False)
+        and on_map_level(current_way, getattr(car, "map_level", 0))
+        and getattr(current_way, "layer", 0) == road_layer
+    ) else None
     half_length = getattr(car, "length_m", 4.0) * 0.5
     half_width = getattr(car, "width_m", 1.8) * 0.5
     forward_x = math.cos(car.heading)
@@ -494,16 +512,33 @@ def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
         (-half_length, half_width),
         (-half_length, -half_width),
     )
-    return bool(waters) and all(
-        is_point_in_water(
-            car.x + forward_x * longitudinal + right_x * lateral,
-            car.y + forward_y * longitudinal + right_y * lateral,
-            waters,
-            layer=road_layer,
-            include_open_waterways=include_open_waterways,
-        )
+    world_corners = (
+        (car.x + forward_x * longitudinal + right_x * lateral,
+         car.y + forward_y * longitudinal + right_y * lateral)
         for longitudinal, lateral in corners
     )
+    return bool(waters) and all(
+        not (road is not None and is_point_on_road(x, y, ways=[road], car_roads_only=True, layer=road_layer))
+        and is_point_in_water(x, y, waters, layer=road_layer)
+        for x, y in world_corners
+    )
+
+
+ICE_MONTHS = (1, 2)  # lakes and sea carry a car; rivers (current) stay treacherous
+RIVER_KINDS = frozenset({"river", "stream", "canal", "drain", "ditch", "brook", "rapids"})
+RIVER_ICE_BREAK_PER_S = 0.3  # the chance per second on river ice that it gives way
+SINK_S = 5.0  # sinking, then a respawn
+
+
+def water_sinks_car(car: Car, waters: List, current_way, month: Optional[int], dt: float, rng=random.random) -> bool:
+    """Whether the car goes under this tick: fully in open water, or on river
+    ice that breaks. Lake and sea ice hold in January-February."""
+    if not is_car_fully_in_water(car, waters, current_way=current_way):
+        return False
+    if month not in ICE_MONTHS:
+        return True
+    rivers = [w for w in waters if w.kind in RIVER_KINDS]
+    return is_point_in_water(car.x, car.y, rivers) and rng() < 1.0 - math.exp(-RIVER_ICE_BREAK_PER_S * dt)
 
 
 def is_car_colliding_with_bridge_edge(car: Car, current_way=None, ways: Optional[List] = None) -> bool:
@@ -512,8 +547,7 @@ def is_car_colliding_with_bridge_edge(car: Car, current_way=None, ways: Optional
     A divided bridge is often split into parallel carriageway Ways (e.g. one
     per direction); the boundary between them is an inner seam, not a real
     guardrail - the renderer already unions overlapping bridge lanes so no
-    rail is drawn between them (see draw_ways's bridge_polygons in
-    render/roads.py). A corner that crosses current_way's own edge but is
+    rail is drawn between them (static_world.py's guardrails). A corner that crosses current_way's own edge but is
     still within another bridge way's half-width is on that shared seam,
     not a real crash.
     """
@@ -605,8 +639,16 @@ def pull_car_inside_bridge_edge(car: Car, current_way=None) -> None:
     car.y = nearest[1] + (car.y - nearest[1]) * scale
 
 
-def compute_largest_connected_road_component(ways: List) -> List:
-    """Find the largest connected component among drivable car roads."""
+# connected_drivable_ways keeps every road network at least this share of the
+# largest one's length: a Home in another part of the region is its own
+# network until the roads between are loaded, and must not lose its rides to
+# the start city's larger one; parking-lot stubs and other fragments stay out.
+MAJOR_COMPONENT_SHARE = 0.1
+
+
+def compute_largest_connected_road_component(ways: List, min_share: Optional[float] = None) -> List:
+    """Find the largest connected component among drivable car roads - or,
+    with min_share, every component at least that share of its length."""
     drivable = [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
     if not drivable:
         return ways
@@ -657,16 +699,17 @@ def compute_largest_connected_road_component(ways: List) -> List:
     def component_total_length(comp: List[int]) -> float:
         return sum(drivable[widx].total_length_m for widx in comp)
 
+    if min_share is not None:
+        lengths = [component_total_length(comp) for comp in components]
+        floor = max(lengths) * min_share
+        return [drivable[i] for comp, length in zip(components, lengths) if length >= floor for i in comp]
     largest_comp = max(components, key=component_total_length)
     return [drivable[i] for i in largest_comp]
 
 
-def connected_drivable_ways(ways: List, named: bool = False) -> List:
-    connected = compute_largest_connected_road_component(ways) if ways else []
+def connected_drivable_ways(ways: List) -> List:
+    connected = compute_largest_connected_road_component(ways, MAJOR_COMPONENT_SHARE) if ways else []
     candidates = [w for w in connected if is_car_road(w) and len(w.points_m) >= 2]
-    if named:
-        named_candidates = [w for w in candidates if getattr(w, "name", None)]
-        candidates = named_candidates or candidates
     return candidates or [w for w in ways if is_car_road(w) and len(w.points_m) >= 2]
 
 
@@ -689,8 +732,10 @@ def respawn_car(
     waters: Optional[List] = None,
     taxi_stops: Optional[List] = None,
     near_edge: bool = False,
+    start_point: Optional[Tuple[float, float]] = None,
 ) -> None:
-    """Place the car on a main connected drivable land road, avoiding isolated road segments."""
+    """Place the car on a main connected drivable land road, avoiding isolated road segments.
+    start_point: exactly on the road point nearest it (a map pin)."""
     if not ways:
         return
     if car.fuel_l <= 0.0:
@@ -733,6 +778,22 @@ def respawn_car(
             x = start[0] + (end[0] - start[0]) * progress
             y = start[1] + (end[1] - start[1]) * progress
             heading = math.atan2(end[1] - start[1], end[0] - start[0])
+            _place_car_on_right_lane(car, way, x, y, heading)
+            car.speed = 0.0
+            car.layer = getattr(way, "layer", 0)
+            return
+
+    if start_point is not None:
+        best = None
+        # any car road, not only the main network: that joins roads at their
+        # ends only, so a side street off a road's middle would not count
+        for way in [w for w in ways if is_car_road(w) and not getattr(w, "is_ice_road", False)] or ways:
+            for p1, p2 in zip(way.points_m, way.points_m[1:]):
+                x, y, _, distance = closest_point_and_dist_to_segment(*start_point, p1[0], p1[1], p2[0], p2[1])
+                if (best is None or distance < best[0]) and not (waters and is_point_in_water(x, y, waters)):
+                    best = (distance, way, x, y, math.atan2(p2[1] - p1[1], p2[0] - p1[0]))
+        if best is not None:
+            _, way, x, y, heading = best
             _place_car_on_right_lane(car, way, x, y, heading)
             car.speed = 0.0
             car.layer = getattr(way, "layer", 0)
@@ -1590,6 +1651,7 @@ def update_car_physics(
     wetness: float = 0.0,
     black_ice: float = 0.0,
     wind: Tuple[float, float] = (0.0, 0.0),
+    fields_frozen: bool = False,
 ) -> bool:
     """Update car speed, heading, and position.
 
@@ -1619,6 +1681,8 @@ def update_car_physics(
     """
     entry_x, entry_y, entry_heading = car.x, car.y, car.heading
     entry_speed = car.speed
+    if not car.engine_on:
+        throttle = 0.0
     # The gear change: having come to a stop against the travel direction,
     # the car waits GEAR_CHANGE_S at zero before it moves the other way
     # (car.gear_hold_dir: +1 forward is held, -1 reverse is held).
@@ -1664,7 +1728,7 @@ def update_car_physics(
         if entry_speed < 0.0 <= car.speed:  # stopped from reverse: the forward gear takes a moment
             car.speed = 0.0
             gear_hold, gear_hold_dir = GEAR_CHANGE_S, 1
-    elif brake > 0:
+    elif brake > 0 and (car.speed > 0.0 or car.engine_on):
         using_longitudinal_tire_grip = True
         braking_driven = True
         if car.speed > 0.0:
@@ -1946,7 +2010,7 @@ def update_car_physics(
         ):
             car.ground_kind = "hard"
         else:
-            car.ground_kind = off_road_ground_kind(target_x, target_y, scenery_grid=scenery_grid)
+            car.ground_kind = off_road_ground_kind(target_x, target_y, scenery_grid=scenery_grid, frozen=fields_frozen)
         if car.ground_kind == "sand":
             speed_cap = SAND_MAX_SPEED
             if throttle > 0.0:

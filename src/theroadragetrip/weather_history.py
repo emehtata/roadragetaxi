@@ -26,11 +26,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-try:
-    from zoneinfo import ZoneInfo
-    GAME_TIMEZONE = ZoneInfo("Europe/Helsinki")
-except Exception:  # pragma: no cover - tzdata missing (e.g. bare Windows)
-    GAME_TIMEZONE = timezone(timedelta(hours=2))
+from .calendar import FINLAND_TZ as GAME_TIMEZONE  # the system time-zone database, else the Finnish rule
 
 logger = logging.getLogger(__name__)
 
@@ -279,23 +275,16 @@ class WeatherHistory:
     # -- lookups (main thread, never blocking) ------------------------------
 
     def get(self, moment: datetime) -> Optional[HourlyWeather]:
-        """Observed weather at a game time; temperature interpolated between
-        hours. None when that hour isn't known (yet)."""
-        utc_hour = game_time_to_utc_hour(moment)
-        hour = math.floor(utc_hour)
+        """FMI weather for the hour beginning at `moment`; None if unknown."""
+        hour = math.floor(game_time_to_utc_hour(moment))
         with self._lock:
             current = self._hours.get(hour) or self._forecast_hours.get(hour)
-            following = self._hours.get(hour + 1) or self._forecast_hours.get(hour + 1)
             latest_snow = self._latest_snow[1]
         if current is None:
             return None
         if current.source == "forecast" and current.snow_depth_cm is None and latest_snow is not None:
             # No snow-depth forecast: the ground keeps its last observed snow.
             current = replace(current, snow_depth_cm=latest_snow)
-        if current.temperature_c is not None and following is not None and following.temperature_c is not None:
-            fraction = utc_hour - hour
-            temperature = current.temperature_c + (following.temperature_c - current.temperature_c) * fraction
-            return replace(current, temperature_c=temperature)
         return current
 
     def source_at(self, moment: datetime) -> str:

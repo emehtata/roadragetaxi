@@ -12,6 +12,8 @@ from .physics import connected_drivable_ways
 
 logger = logging.getLogger(__name__)
 
+SPEED_CAMERA_HIGHWAYS = {"motorway", "trunk", "primary", "secondary", "tertiary"}
+
 
 @dataclass(frozen=True)
 class SpeedCamera:
@@ -20,6 +22,10 @@ class SpeedCamera:
     heading: float
     speed_limit_kmh: int
     way_id: Optional[int]
+    road_offset_m: float = 0.0  # pole to watched road centre, positive to the camera's left
+    road_half_width_m: float = 8.0
+    layer: int = 0
+    map_level: int = 0
 
 
 def camera_count(ways: List[Way], city_name: Optional[str] = None) -> int:
@@ -38,7 +44,10 @@ def place_speed_cameras(
     seed: Optional[int] = None,
 ) -> List[SpeedCamera]:
     """Place directional cameras across the connected road network."""
-    candidates = [way for way in ways if way.is_drivable and len(way.points_m) >= 2]
+    candidates = [
+        way for way in ways
+        if way.is_drivable and way.highway in SPEED_CAMERA_HIGHWAYS and len(way.points_m) >= 2
+    ]
     if not candidates:
         return []
     target_count = camera_count(ways, city_name)
@@ -54,6 +63,9 @@ def place_speed_cameras(
         end = way.points_m[segment_index + 1]
         dx = end[0] - start[0]
         dy = end[1] - start[1]
+        if way.oneway == -1:
+            start, end = end, start
+            dx, dy = -dx, -dy
         segment_length = math.hypot(dx, dy)
         if segment_length < 30.0:
             continue
@@ -65,6 +77,10 @@ def place_speed_cameras(
             math.atan2(dy, dx),
             way.speed_limit_kmh,
             way.osm_id,
+            road_offset_m=right_offset,
+            road_half_width_m=way.half_width_m,
+            layer=getattr(way, "layer", 0),
+            map_level=getattr(way, "map_level", None) or 0,
         ))
     for index, camera in enumerate(result, start=1):
         logger.info(
@@ -79,11 +95,32 @@ def place_speed_cameras(
     return result
 
 
-def camera_sees_car(camera: SpeedCamera, car_x: float, car_y: float, heading: float) -> bool:
+def camera_sees_car(camera: SpeedCamera, car_x: float, car_y: float, heading: float,
+                    previous_position=None) -> bool:
     """Return true while a car approaches from the camera's 50-meter viewing direction."""
     dx = car_x - camera.x
     dy = car_y - camera.y
     forward = dx * math.cos(camera.heading) + dy * math.sin(camera.heading)
-    lateral = abs(dx * -math.sin(camera.heading) + dy * math.cos(camera.heading))
+    lateral = dx * -math.sin(camera.heading) + dy * math.cos(camera.heading) - camera.road_offset_m
     heading_error = abs(angle_diff(heading, camera.heading))
-    return -50.0 <= forward <= 0.0 and lateral <= 8.0 and heading_error <= math.radians(60.0)
+    if heading_error > math.radians(60.0):
+        return False
+    if previous_position is None:
+        return -50.0 <= forward <= 0.0 and abs(lateral) <= camera.road_half_width_m
+    # Clip this tick's movement against the watched road rectangle: even a
+    # very fast car must not jump over the entire zone between observations.
+    px, py = previous_position[0] - camera.x, previous_position[1] - camera.y
+    old_forward = px * math.cos(camera.heading) + py * math.sin(camera.heading)
+    old_lateral = px * -math.sin(camera.heading) + py * math.cos(camera.heading) - camera.road_offset_m
+    enter, leave = 0.0, 1.0
+    for a, b, low, high in ((old_forward, forward, -50.0, 0.0),
+                            (old_lateral, lateral, -camera.road_half_width_m, camera.road_half_width_m)):
+        if abs(b - a) < 1e-9:
+            if not low <= a <= high:
+                return False
+            continue
+        t1, t2 = (low - a) / (b - a), (high - a) / (b - a)
+        enter, leave = max(enter, min(t1, t2)), min(leave, max(t1, t2))
+        if enter > leave:
+            return False
+    return True

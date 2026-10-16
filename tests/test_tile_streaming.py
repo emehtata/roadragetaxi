@@ -11,7 +11,6 @@ from theroadragetrip.tile_streaming import (
 from theroadragetrip.osm import AutoFetchManager, Way
 from theroadragetrip.osm import MapData
 from theroadragetrip.world_cache import WorldCacheManager
-from theroadragetrip.render import invalidate_static_caches
 from theroadragetrip.physics import SpatialWayGrid
 from concurrent.futures import Future
 import time
@@ -205,11 +204,10 @@ def test_tile_streaming_loads_missing_tiles_in_background():
 
 def test_background_tile_fetch_reports_progress_message():
     """Regression: the loading screen shown while a background tile fetch
-    is in flight (main()'s _wait_for_active_tile_fetch) got stuck at 0%
+    is in flight got stuck at 0%
     with no detail the whole time - _background_tile_fetch never wired a
     progress_callback into fetch_func/build_func at all, so fetch_progress
-    only ever jumped straight from 0.0 to 1.0 and fetch_message (which the
-    loading screen now also shows - see render/menus.py) stayed empty."""
+    only ever jumped straight from 0.0 to 1.0 and fetch_message stayed empty."""
 
     class Transformer:
         def transform(self, x, y):
@@ -357,6 +355,33 @@ def test_cardinal_tile_transition_batches_two_by_three_region():
     # direction of travel) plus the current one for edge continuity - not
     # the trailing, already-loaded column behind the player.
     assert cache.calls == [(-1000.0, 1000.0, 2000.0, 3000.0)]
+
+
+def test_a_jump_along_one_axis_requests_the_whole_new_window_at_once():
+    """A Home relocation 12 tiles south is not a one-tile step: trimming it
+    to the "leading" rows left a row for a second extraction."""
+    class Transformer:
+        def transform(self, x, y):
+            return x, y
+
+    class TileCache:
+        def __init__(self):
+            self.calls = []
+
+        def preload_region(self, bbox, **kwargs):
+            self.calls.append(bbox)
+            future = Future()
+            future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+            return future
+
+    cache = TileCache()
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), Transformer(), world_cache_manager=cache)
+    manager.initialize_player_tile(500.0, 500.0)
+    assert manager.start_tile_streaming(500.0, -11500.0)
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+    assert cache.calls == [(-13000.0, -1000.0, -10000.0, 2000.0)]  # the full 3x3 around tile (0, -12)
 
 
 def test_cardinal_tile_transition_requests_the_leading_not_trailing_edge():
@@ -624,6 +649,19 @@ def test_startup_does_not_claim_tiles_the_startup_world_never_reached():
         set_tile_size_m(original)
 
 
+def test_startup_only_claims_tiles_inside_the_fetched_area():
+    """Bug (Oulu, Kajaanintie east): ways and areas crossing the startup bbox
+    come whole, so the world's bounds reached 900 m past the fetched area
+    into the next tile; that tile was marked loaded, never fetched, and the
+    road ended there for good. Only tiles wholly inside the fetched area count."""
+    # Fetched 0..1300 m east; features stretch the bounds to 1900 m.
+    manager = AutoFetchManager([], (0.0, 0.0, 1900.0, 1000.0), transformer=None)
+    manager.initialize_player_tile(500.0, 500.0, fetched=(-1000.0, -1000.0, 1300.0, 2000.0))
+    assert TileCoord(0, 0) in manager.loaded_tiles
+    assert TileCoord(1, 0) not in manager.loaded_tiles  # only touched by the overhanging features
+    assert TileCoord(1, 0) in manager.active_tiles - manager.loaded_tiles - manager.pending_tiles
+
+
 def test_tile_map_revision_changes_when_streamed_map_changes():
     manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
     assert manager.get_map_revision() == 0
@@ -681,8 +719,6 @@ def test_integrated_streamed_road_reaches_spatial_grid():
     assert list(grid.ways_in_rect(1590.0, 90.0, 1710.0, 110.0)) == [road]
 
 
-def test_static_cache_invalidation_is_available_for_tile_changes():
-    invalidate_static_caches()
 
 
 def test_tile_merge_cost_does_not_scale_with_already_loaded_ways(monkeypatch):
@@ -840,8 +876,8 @@ def test_returning_before_eviction_cancels_it():
 
 def test_quick_there_and_back_survives_eviction_even_over_memory_budget(monkeypatch):
     """Regression: a real, long play session routinely already sits over
-    tile_memory_budget_mb just from everything else loaded (pygame, the
-    rest of the process, a big already-streamed world) - so without a
+    tile_memory_budget_mb just from everything else loaded (the rest
+    of the process, a big already-streamed world) - so without a
     grace period, "should_evict" was true essentially always, and driving
     one tile over and immediately back (a common quick out-and-back move)
     evicted the tile just left before the player had any chance to

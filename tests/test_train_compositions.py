@@ -4,13 +4,10 @@ from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
-import pygame
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
-import import_train_compositions as importer  # noqa: E402
+from theroadragetrip import composition_import as importer  # noqa: E402
 from theroadragetrip.osm.models import Railway  # noqa: E402
-from theroadragetrip.render.vehicles import draw_trains  # noqa: E402
 from theroadragetrip.train_compositions import (  # noqa: E402
     GENERIC, LOCOMOTIVE_LENGTH_M, PROFILES, VEHICLE_GAP_M, TrainComposition, load_compositions, resolve, vehicle_profile,
 )
@@ -103,8 +100,9 @@ def test_visual_profiles_stay_green_with_a_striped_restaurant_car():
     assert vehicle_profile("wagon", ["playground"]) == "family"
     assert vehicle_profile("wagon", ["something-new"]) == "standard"
     assert vehicle_profile("locomotive", []) == "locomotive"
-    for base, _ in PROFILES.values():
-        assert base[1] > base[0] and base[1] > base[2]  # green dominates every vehicle
+    for name, (base, _) in PROFILES.items():
+        if not name.startswith("tram_"):  # (trams wear their city's colours: Tampere's are red)
+            assert base[1] > base[0] and base[1] > base[2]  # green dominates every VR vehicle
     assert PROFILES["restaurant"][1] == (245, 245, 240)  # white stripe
 
 
@@ -123,21 +121,6 @@ def test_offline_import_failure_keeps_the_learned_database(tmp_path, monkeypatch
     assert "no compositions fetched" in capsys.readouterr().err and path.read_bytes() == before
 
 
-def test_trains_of_any_length_are_drawn_vehicle_by_vehicle():
-    pygame.init()
-    route = TrainRoute([(0.0, 0.0), (1000.0, 0.0)])
-    for count in (3, 5, 12):
-        vehicles = ((19.6, "locomotive"),) + ((26.4, "standard"),) * (count - 2) + ((26.4, "restaurant"),)
-        train = Train(route, 750.0, 1, composition=TrainComposition(vehicles))
-        centres = [x for x, _, _ in train.cars()]
-        assert len(centres) == count and centres == sorted(centres, reverse=True)  # front first, in order
-        screen = pygame.Surface((1600, 80))  # 4 px/m around x = 600 m: 400..800 m
-        draw_trains(screen, SimpleNamespace(trains=[train], routes=[]), 600.0, 0.0, px_per_m=4.0, screen_w=1600, screen_h=80)
-        to_px = lambda x: round((x - 600.0) * 4 + 800)  # noqa: E731
-        restaurant = to_px(centres[-1])
-        assert screen.get_at((restaurant, 40))[:3] == PROFILES["restaurant"][1]  # its white stripe
-        assert screen.get_at((restaurant, 44))[:3] == PROFILES["restaurant"][0]  # on green
-        assert screen.get_at((to_px(centres[0]), 40))[:3] == PROFILES["locomotive"][0]
 
 
 def test_a_far_end_locomotive_is_recorded_as_is_but_drawn_at_the_front():
@@ -153,3 +136,22 @@ def test_a_far_end_locomotive_is_recorded_as_is_but_drawn_at_the_front():
     pulled = {"vehicles": [["locomotive", "Sr3", None, []], ["wagon", "Ein", 27.0, []]]}
     assert resolve({"latest": {"2": pulled}}, "IC", "2", None).types == ("Sr3", "Ein")  # already in front
 
+
+
+def test_refresh_if_stale_adds_to_a_copy_and_keeps_the_file_on_failure(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from theroadragetrip import train_compositions
+
+    path = tmp_path / "compositions.json.gz"
+    database = importer.load(path)
+    importer.merge(database, [digitraffic(21, "2026-09-25", [IC21])], "2026-10-10T06:00:00Z")
+    importer.write(database, path)
+    now = datetime(2026, 10, 13, tzinfo=timezone.utc)
+    assert train_compositions.refresh_if_stale(database, path, now) is None  # 3 days old
+    before = path.read_bytes()
+    monkeypatch.setattr(importer, "download", lambda day: [])  # nothing published
+    train_compositions.refresh_if_stale(database, path, datetime(2026, 10, 20, tzinfo=timezone.utc)).join()
+    assert path.read_bytes() == before
+    monkeypatch.setattr(importer, "download", lambda day: [digitraffic(8, day.isoformat(), [PENDOLINO], train_type="S")])
+    train_compositions.refresh_if_stale(database, path, datetime(2026, 10, 20, tzinfo=timezone.utc)).join()
+    assert set(load_compositions(path)["latest"]) == {"21", "8"}  # added to, not replaced

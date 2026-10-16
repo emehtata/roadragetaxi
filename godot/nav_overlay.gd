@@ -1,7 +1,6 @@
-## Screen-space navigation aids from render/navigation.py: the arrow at
+## Screen-space navigation aids: the arrow at
 ## the screen edge pointing to an off-screen pickup / drop-off with its
-## distance (draw_taxi_target), and the compass (draw_compass, C toggles,
-## off by default as in Pygame). The target itself comes from the
+## distance, and the compass (C toggles, off by default). The target itself comes from the
 ## simulation's state (EntityLayer.current_target); nothing is routed here.
 extends Control
 
@@ -10,7 +9,7 @@ const RS := preload("res://render_style.gd")
 const T := preload("res://i18n.gd")
 
 var show_compass := false
-var show_route := false  # N (render/navigation.py draw_navigation_route), off by default: drawn by EntityLayer
+var show_route := false  # main.gd: the shared phone is displaying navigation
 var _font: Font
 var _target: Dictionary = {}
 var _target_screen := Vector2.ZERO  # target position on screen
@@ -28,8 +27,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_C:
 		show_compass = not show_compass
 		queue_redraw()
-	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_N:
-		show_route = not show_route  # presentation only: the server plans the route either way
 
 
 ## Called each frame by main.gd: the target, where it is on screen, where
@@ -74,7 +71,7 @@ func _draw() -> void:
 		var arrow := PackedVector2Array([tip, left, right])
 		draw_colored_polygon(arrow, color)
 		draw_polyline(PackedVector2Array([tip, left, right, tip]), RS.OUTLINE, 1.0)
-		var text := "%s %s" % [T.text("pickup", language, "PICKUP") if _target["is_pickup"] else T.text("dropoff", language, "DROPOFF"), distance_text(delta.length())]
+		var text := "%s %s" % [T.text("pickup", language) if _target["is_pickup"] else T.text("dropoff", language), distance_text(delta.length())]
 		var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
 		var label_y := at.y + 18.0 if at.y < size.y - 40.0 else at.y - 18.0
 		var box := Rect2(Vector2(at.x - text_size.x / 2.0 - 3.0, label_y - text_size.y / 2.0 - 2.0), text_size + Vector2(6, 4))

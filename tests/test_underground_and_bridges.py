@@ -8,7 +8,6 @@ from theroadragetrip.physics import (
     pull_car_inside_bridge_edge,
     update_car_physics,
 )
-from theroadragetrip.render import draw_ways
 
 
 def test_underground_parking_aisles_remain_drivable():
@@ -138,9 +137,8 @@ def test_bridge_guardrail_ignores_segment_when_car_is_not_on_it():
 
 def test_no_false_guardrail_crash_on_the_seam_between_divided_bridge_lanes():
     """Regression: a divided highway bridge is often split into one Way per
-    direction. draw_ways already unions overlapping bridge lanes so no
-    guardrail is drawn between them (see bridge_polygons in
-    render/roads.py) - but the collision check used to know nothing about
+    direction. The map unions overlapping bridge lanes so no guardrail
+    is drawn between them (static_world.bridge_guardrails) - but the collision check used to know nothing about
     the neighboring lane, so a car near the shared inner seam (well inside
     the combined bridge deck, nowhere near a real rail) registered a crash."""
     northbound = Way(
@@ -170,33 +168,3 @@ def test_no_false_guardrail_crash_on_the_seam_between_divided_bridge_lanes():
     assert is_car_colliding_with_bridge_edge(outer_car, northbound, ways=[northbound, southbound])
 
 
-def test_non_drivable_bridge_ways_still_get_guardrails():
-    """Regression: cycleway/footway bridges used to skip the guardrail pass
-    entirely - draw_ways returned early for any non-drivable way before
-    ever reaching the is_bridge check that drivable roads use, so a
-    bridge=yes bike/foot path rendered with no railing at all."""
-    import pygame
-    from theroadragetrip.render.roads import BRIDGE_GUARDRAIL_COLOR
-    pygame.init()
-
-    def guardrail_pixel_count(is_bridge: bool) -> int:
-        surf = pygame.Surface((800, 600))
-        surf.fill((0, 0, 0))
-        cycleway = Way(
-            points_m=[(80.0, 100.0), (120.0, 100.0)],
-            highway="cycleway",
-            half_width_m=1.5,
-            is_drivable=False,
-            is_bridge=is_bridge,
-        )
-        draw_ways(surf, [cycleway], camx=100.0, camy=100.0, px_per_m=8.0, screen_w=800, screen_h=600)
-        return sum(
-            1
-            for x in range(800)
-            for y in range(600)
-            if tuple(surf.get_at((x, y)))[:3] == BRIDGE_GUARDRAIL_COLOR
-        )
-
-    assert guardrail_pixel_count(is_bridge=False) == 0
-    assert guardrail_pixel_count(is_bridge=True) > 0
-    pygame.quit()

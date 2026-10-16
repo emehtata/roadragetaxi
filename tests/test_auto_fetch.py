@@ -1,5 +1,3 @@
-import types
-import sys
 import time
 from concurrent.futures import Future
 

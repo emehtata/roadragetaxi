@@ -1,15 +1,12 @@
 import csv
-import gzip
 import io
 import json
 import sys
 import zipfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-
-import import_railway_timetable as importer  # noqa: E402
+from theroadragetrip import railway_import as importer  # noqa: E402
 from theroadragetrip.osm.models import Railway  # noqa: E402
 from theroadragetrip.train_timetable import TimetableClock, load_timetable, match_timetable, service_time  # noqa: E402
 from theroadragetrip.trains import MAX_ACTIVE_TRAINS, RailwayManager  # noqa: E402
@@ -142,6 +139,20 @@ def test_many_scheduled_trains_stay_capped():
     manager = RailwayManager(NORTH_SOUTH_TRACK, timetable(*many), metres)
     run(manager, datetime(2026, 9, 28, 10, 0), 60)
     assert len(manager.trains) == MAX_ACTIVE_TRAINS
+
+
+def test_a_sliced_rebuild_matches_the_whole_timetable_and_commits_at_its_end():
+    from theroadragetrip.trains import MATCH_SLICE_TRAINS
+
+    many = timetable(*[train([("S", 36000 + i * 60), ("N", 37000 + i * 60)], number=str(i)) for i in range(2 * MATCH_SLICE_TRAINS + 5)])
+    whole = RailwayManager(NORTH_SOUTH_TRACK, many, metres)
+    sliced = RailwayManager([], many, metres)
+    steps = sliced.rebuild_steps(NORTH_SOUTH_TRACK)
+    next(steps)
+    assert sliced.routes == []  # the old network serves while slicing
+    assert sum(1 for _ in steps) >= 3 and len(sliced.routes) == 1
+    assert sliced.clock.passes == whole.clock.passes and len(whole.clock.passes) == 2 * MATCH_SLICE_TRAINS + 5
+    assert [station[:2] for station in sliced.stations] == [station[:2] for station in whole.stations]
 
 
 def test_clock_counts_todays_trains_and_ignores_a_first_call_backlog():
@@ -362,3 +373,28 @@ def test_train_reaches_its_station_at_the_scheduled_game_time_at_60x():
     assert arrived_at is not None
     assert abs((arrived_at - datetime(2026, 9, 28, 10, 0)).total_seconds()) < 3 * 60
     assert manager.trains[0].distance_m > 0.0  # it came from the south end's side, not mid-platform
+
+
+def test_refresh_if_stale_weekly_and_keeps_the_file_on_failure(tmp_path, monkeypatch):
+    from theroadragetrip import train_timetable
+
+    now = datetime(2026, 10, 13, 12, tzinfo=timezone.utc)
+    assert train_timetable.refresh_if_stale({"downloaded_at": "2026-10-07T12:00:00Z"}, tmp_path / "t.gz", now) is None
+    path = tmp_path / "t.gz"
+    path.write_bytes(b"old")
+    monkeypatch.setattr(importer, "download", lambda: (_ for _ in ()).throw(OSError("offline")))
+    train_timetable.refresh_if_stale({"downloaded_at": "2026-10-05T12:00:00Z"}, path, now).join()
+    assert path.read_bytes() == b"old"
+    monkeypatch.setattr(importer, "download", _gtfs_zip)
+    train_timetable.refresh_if_stale(None, path, now).join()
+    assert load_timetable(path)["version"] == train_timetable.SUPPORTED_VERSION
+
+
+def test_a_train_on_parallel_routes_is_matched_once():
+    # Two lines into one station (Helsinki): both match the train; only one may run it.
+    stations = {"S": [0.0, 0.0, "South"], "M1": [0.06, 0.0, "Alpha"], "N": [0.2, 0.0, "North"]}
+    route = RailwayManager(NORTH_SOUTH_TRACK).routes[0]
+    calls_at_alpha = train([("S", 36000), ("M1", 36600), ("N", 38400)], number="24")
+    passing = train([("S", 40000), ("N", 41000)], number="25")
+    passes = match_timetable(timetable(calls_at_alpha, passing, stations=stations), [route, route], metres)
+    assert sorted(p.number for p in passes) == ["24", "25"]

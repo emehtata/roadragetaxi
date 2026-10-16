@@ -9,7 +9,7 @@ from theroadragetrip.physics import (
     is_point_on_road,
     update_car_physics,
 )
-from theroadragetrip.taxi import TaxiManager
+from theroadragetrip.taxi import TaxiManager, car_hits_tree_trunk
 
 
 def test_is_car_road_filtering():
@@ -313,7 +313,18 @@ def test_tree_collision_stops_and_penalizes_once():
 
     assert crashed is True
     assert crashed_again is False
-    assert math.hypot(car.x, car.y) > math.hypot(car.length_m, car.width_m) * 0.5 + 1.0
+    assert (car.x, car.y) == (-3.0, 0.0)
+    assert not car_hits_tree_trunk(car, 0.0, 0.0)
     assert car.speed == 0.0
     assert score_after_crash == -100
     assert taxi_manager.total_score == score_after_crash
+
+
+def test_tree_collision_uses_trunk_not_crown_edge():
+    scenery = Scenery(points_m=[(-5.0, -5.0), (5.0, -5.0), (5.0, 5.0)], kind="park", trees=[(0.0, 0.0)])
+    manager = TaxiManager(ways=[])
+    beside_crown = Car(x=0.0, y=2.0, heading=0.0, speed=4.0)
+    touching_trunk = Car(x=0.0, y=1.25, heading=0.0, speed=4.0)
+
+    assert not manager.check_tree_collision(beside_crown, [scenery], sim_time=1.0)
+    assert manager.check_tree_collision(touching_trunk, [scenery], sim_time=2.0, previous_position=(0.0, 2.0))

@@ -33,6 +33,18 @@ import tempfile
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
+
+def osmium_command() -> Optional[str]:
+    """The `osmium` program (osmium-tool) to run, or None without one: the
+    Windows release ships it beside the server (server/osmium/osmium.exe,
+    windows-release.yml); elsewhere it comes from PATH."""
+    import sys
+
+    bundled = Path(sys.executable).parent / "osmium" / "osmium.exe"
+    if getattr(sys, "frozen", False) and bundled.is_file():
+        return str(bundled)
+    return "osmium" if shutil.which("osmium") else None
+
 logger = logging.getLogger(__name__)
 
 # Degrees, not meters: an .osm.pbf's own header bbox (and osmium's --bbox)
@@ -77,7 +89,7 @@ def _source_bbox(pbf_path: Path) -> Tuple[float, float, float, float]:
     to compute one - no slower than the indexing pass that follows anyway.
     """
     result = subprocess.run(
-        ["osmium", "fileinfo", "--json", str(pbf_path)],
+        [osmium_command() or "osmium", "fileinfo", "--json", str(pbf_path)],
         capture_output=True, text=True, check=True,
     )
     boxes = json.loads(result.stdout)["header"]["boxes"]
@@ -86,7 +98,7 @@ def _source_bbox(pbf_path: Path) -> Tuple[float, float, float, float]:
         return west, south, east, north
 
     result = subprocess.run(
-        ["osmium", "fileinfo", "-e", "--json", str(pbf_path)],
+        [osmium_command() or "osmium", "fileinfo", "-e", "--json", str(pbf_path)],
         capture_output=True, text=True, check=True,
     )
     bbox = json.loads(result.stdout)["data"]["bbox"]
@@ -141,7 +153,7 @@ def build_index(
             force = True
             logger.info("PBF index parameters changed - rebuilding %s from scratch", index_dir)
 
-    if shutil.which("osmium") is None:
+    if osmium_command() is None:
         raise RuntimeError("Building a PBF index requires the 'osmium' command-line tool (osmium-tool).")
 
     if progress_callback:
@@ -167,7 +179,7 @@ def build_index(
             continue  # resuming a previous (interrupted) build - this cell is already done
         cw, cs, ce, cn = cell["bbox"]
         cmd = [
-            "osmium", "extract",
+            osmium_command(), "extract",
             "--bbox", f"{cw - cell_padding_deg},{cs - cell_padding_deg},{ce + cell_padding_deg},{cn + cell_padding_deg}",
             "-s", strategy, "-f", "pbf", "-O",
             "-o", str(temp_path),

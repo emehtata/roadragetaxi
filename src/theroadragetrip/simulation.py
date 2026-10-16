@@ -1,17 +1,10 @@
-"""The per-tick gameplay simulation, kept independent of Pygame.
+"""The per-tick gameplay simulation the server runs.
 
-``advance_simulation`` is the extracted "update phase" of ``main()``'s
-gameplay loop (physics, collisions, camera follow, and the taxi/NPC/
-traffic/pedestrian manager updates). It is moved here verbatim from
-``main/__init__.py`` so it can be called without a display - by tests, by
-``--headless`` mode, and eventually by an alternate (non-Pygame) client or
-a server. See ``docs/architecture/simulation-rendering.md``.
-
-This module must never import pygame, directly or indirectly. Player
-input crosses the boundary as a plain ``PlayerCommand``, not raw key
-state; the rendering/HUD phase and the map/tile-streaming pipeline stay
-in ``main()`` since they own genuinely Pygame- or client-only concerns
-(loading-screen event pumping, HUD dragging, debug overlays).
+``advance_simulation`` is one tick: physics, collisions, camera follow,
+and the taxi/NPC/traffic/pedestrian manager updates. Player input
+crosses the boundary as a plain ``PlayerCommand``, not raw key state;
+map streaming lives in server/map_sync.py. History:
+``docs/architecture/archive/simulation-rendering.md``.
 """
 
 from __future__ import annotations
@@ -40,12 +33,15 @@ from .physics import (
     get_current_road_at_car,
     is_car_colliding_with_bridge_edge,
     is_car_fully_in_water,
+    SINK_S,
     pull_car_inside_bridge_edge,
     respawn_car,
     update_car_physics,
+    water_sinks_car,
 )
 from .station_passengers import StationPassengerView, track_checker
 from .taxi import TaxiState
+from .viewport import get_viewport_bounds
 
 RAGE_DISTANCE_TO_FULL_M = 400.0
 RAGE_GAIN_SCALE = 1.0 / 3.0
@@ -59,8 +55,7 @@ RAGE_SHOUT_DURATION_S = 5.0
 @dataclass
 class PlayerCommand:
     """Everything the current frame's player input contributes to the
-    simulation tick - built from raw key state by ``main()`` (or a future
-    non-Pygame client) before crossing into ``advance_simulation``."""
+    simulation tick - built from the client's input by the server before crossing into ``advance_simulation``."""
 
     throttle: float = 0.0
     brake: float = 0.0
@@ -79,14 +74,15 @@ class PlayerCommand:
     engine_on: Optional[bool] = None
     road_rage: bool = False  # SPACE: one press (the server counts presses like refuel)
     respawn: bool = False
+    home: bool = False  # H: choose this yard as home / respawn at home (one press)
     cancel_ride: bool = False
     reset_trip: bool = False
 
 
 @dataclass
 class SimulationFrameResult:
-    """The handful of scalars that change during a tick and that ``main()``
-    still needs afterward for rendering, HUD, or outer-loop control. Every
+    """The handful of scalars that change during a tick and that the
+    server still needs afterward. Every
     other effect of a tick (car/pedestrian/manager state) is mutated in
     place on the objects already passed in."""
 
@@ -122,8 +118,7 @@ def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, bloc
 def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None) -> bool:
     """The 'F' key's get-in/get-out-of-the-car action - authoritative
     gameplay logic (a distance check gates re-entry), so it belongs on
-    the simulation side of the boundary, not decided by a client. Moved
-    verbatim from main()'s event handler. On foot by a pre-booked rail
+    the simulation side of the boundary, not decided by a client. On foot by a pre-booked rail
     customer, F greets them instead (they stay a pedestrian and walk to
     the taxi). Returns the new on_foot value."""
     if on_foot and taxi_mgr is not None and taxi_mgr.greet_booked_passenger(player_pedestrian, car) is not None:
@@ -175,6 +170,18 @@ def _rage_from_speeding(
     return max(0.0, rage_power - delta)
 
 
+def _tram_obstacles(car, world) -> list:
+    """What a tram must not run into (trams.TramManager.update): the taxi
+    and NPC cars at their front, middle and back, and pedestrians."""
+    points = []
+    for vehicle in [car, *getattr(world.npc_manager, "vehicles", ())]:
+        half = getattr(vehicle, "length_m", 4.5) / 2.0
+        dx, dy = math.cos(vehicle.heading) * half, math.sin(vehicle.heading) * half
+        points += [(vehicle.x, vehicle.y), (vehicle.x + dx, vehicle.y + dy), (vehicle.x - dx, vehicle.y - dy)]
+    points += [(p.x, p.y) for p in world.pedestrian_mgr.pedestrians]
+    return points
+
+
 def advance_simulation(
     dt: float,
     command: PlayerCommand,
@@ -213,8 +220,7 @@ def advance_simulation(
     now=None,
 ) -> SimulationFrameResult:
     """Run one gameplay tick: physics, collisions, camera follow, and the
-    taxi/NPC/traffic/pedestrian manager updates. Extracted verbatim from
-    ``main()``'s inline update phase - see module docstring."""
+    taxi/NPC/traffic/pedestrian manager updates."""
 
     ways = world.ways
     spatial_grid = world.spatial_grid
@@ -253,7 +259,7 @@ def advance_simulation(
         else:
             player_pedestrian.speed = min(0.0, player_pedestrian.speed + FRICTION * dt)
 
-        if abs(player_pedestrian.speed) > 0.05 and abs(steer_input) > 0.01:
+        if abs(steer_input) > 0.01:  # a person turns on the spot too, unlike a car
             steer_effective = STEER_RATE / (1.0 + abs(player_pedestrian.speed) * STEER_SPEED_FACTOR)
             player_pedestrian.heading += (
                 steer_input * steer_effective * dt * (1.0 if player_pedestrian.speed >= 0.0 else -1.0)
@@ -265,7 +271,7 @@ def advance_simulation(
         )
 
     audio.player_position = (car.x, car.y)  # where the taxi's own sounds come from
-    immobilized = taxi_mgr.tree_wait_timer > 0.0
+    immobilized = taxi_mgr.tree_wait_timer > 0.0 or water_elapsed > 0.0  # sinking: no driving out
     score_at_start = taxi_mgr.total_score
     loud_event = False  # a crash/camera/vomit sound already tells of this tick's lost points
     car.driver_mass_kg = 0.0 if on_foot else 90.0
@@ -286,12 +292,12 @@ def advance_simulation(
             audio.play_group("vehicle.engine_start" if car.engine_on else "vehicle.engine_stop")
 
     rage_shout = None
-    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # main()'s SPACE: horn, shout, the nearest driver ahead
+    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # SPACE: horn, shout, the nearest driver ahead
         audio.play_driver_line("rage", language)
         audio.play_group("vehicle.horn", 0.45)
         rage_power = max(0.0, rage_power - RAGE_SHOUT_COST)
         rage_shout = random.choice(RAGE_SHOUTS)
-        # NPC-005: Road Rage reaches exactly one real NPC driver - whichever
+        # living-traffic: Road Rage reaches exactly one real NPC driver - whichever
         # is nearest ahead of the player right now (trigger_road_rage).
         world.npc_manager.trigger_road_rage(car.x, car.y, car.heading, sim_time=world.traffic_mgr.sim_time)
 
@@ -382,6 +388,7 @@ def advance_simulation(
                 wetness=weather.road_grip_wetness,
                 black_ice=weather.road_ice_fraction,
                 wind=weather.wind_vector_mps,
+                fields_frozen=getattr(world, "fields_frozen", False),
             )
         car.braking = brake > 0.0 and car.speed > 0.05
         midpoint = (
@@ -416,22 +423,23 @@ def advance_simulation(
             current_way = get_current_road_at_car(
                 car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True,
             )
-        in_water = on_surface and not entered_roadwork and is_car_fully_in_water(car, waters, current_way=current_way)
-        audio.on_rise("water", in_water, "vehicle.water_splash")
-        if in_water:
-            water_elapsed = min(10.0, water_elapsed + dt)
-            taxi_mgr.notification_msg = (
-                f"{tr(language, 'water_timer')}: {max(0.0, 10.0 - water_elapsed):.1f} s"
-            )
-            taxi_mgr.notification_timer = 0.2
-            if water_elapsed >= 10.0:
+        # water_elapsed: seconds the taxi has been sinking (0: afloat or on ice)
+        if water_elapsed > 0.0 and (not on_surface or not is_car_fully_in_water(car, waters, current_way)):
+            water_elapsed = 0.0  # streamed geometry can correct a false water overlap
+        elif water_elapsed == 0.0 and on_surface and not entered_roadwork and water_sinks_car(
+                car, waters, current_way, now.month if now is not None else None, dt):
+            water_elapsed = dt
+            audio.play_group("vehicle.water_splash")
+        elif water_elapsed > 0.0:
+            water_elapsed += dt
+        if water_elapsed > 0.0:
+            car.speed = 0.0  # the HUD counts down from water_elapsed
+            if water_elapsed >= SINK_S:
                 respawn_car(car, ways, waters=waters, taxi_stops=taxi_stops)
                 taxi_mgr.handle_respawn(car.x, car.y)
                 taxi_mgr.notification_msg = tr(language, "water_driving")
                 taxi_mgr.notification_timer = 1.5
                 water_elapsed = 0.0
-        else:
-            water_elapsed = 0.0
     if immobilized:
         car.speed = 0.0
     movement_distance = math.hypot(car.x - previous_position[0], car.y - previous_position[1])
@@ -482,6 +490,8 @@ def advance_simulation(
         if len(taxi_mgr.fallen_trees) > fallen_before:
             audio.play_group("collision.tree_fall")
         fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
+        tram_crash = on_surface and taxi_mgr.check_tram_collision(
+            car, getattr(world, "tram_mgr", None), traffic_mgr.sim_time, previous_position)
         # Bollards and lamp posts are OSM nodes without a level: surface only.
         post_crash = on_surface and taxi_mgr.check_post_collision(
             car, scenery_objects, traffic_mgr.sim_time, previous_position
@@ -508,6 +518,7 @@ def advance_simulation(
         audio.on_rise("crash_building", building_crash, "collision.building", 0.8),
         audio.on_rise("crash_tree", tree_crash, "collision.tree", 0.8),
         audio.on_rise("crash_fence", fence_crash, "collision.fence", 0.8),
+        audio.on_rise("crash_tram", tram_crash, "collision.building", 0.9),  # a heavy steel body
         audio.on_rise("crash_post", post_crash, "collision.guardrail", 0.8),  # a metal pole
         audio.on_rise("crash_guardrail", bridge_edge_crash, "collision.guardrail", 0.8),
     ])
@@ -538,7 +549,7 @@ def advance_simulation(
     camx += (target_camx - camx) * cam_lerp_factor
     camy += (target_camy - camy) * cam_lerp_factor
 
-    viewport_bounds = _viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, margin_m=30.0)
+    viewport_bounds = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, margin_m=30.0)
 
     # Trains: timetable trains, their passengers and pre-bookings follow the
     # game clock (`now`, a datetime); presentation (drawing, train sounds,
@@ -553,6 +564,10 @@ def advance_simulation(
                 )
             railway_mgr.view_point = (camx, camy)
             railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), now)
+    tram_mgr = getattr(world, "tram_mgr", None)
+    if tram_mgr is not None and tram_mgr.has_track:
+        with frame_profiler.section("trams"):
+            tram_mgr.update(dt, (camx, camy), viewport_bounds, _tram_obstacles(car, world))
 
     # Update taxi missions & pickups
     previous_taxi_state = taxi_mgr.state
@@ -576,6 +591,11 @@ def advance_simulation(
         audio.play_group("passenger.vomit")
         loud_event = True
     with frame_profiler.section("npc"):
+        traffic_mgr.stop_signs = getattr(world, "stop_signs", ())
+        traffic_mgr.yield_signs = getattr(world, "yield_signs", ())
+        npc_manager.snowy = weather.weather_type.value == "snow" or weather.road_snow > 0.1
+        plough_positions = {v.vehicle_id: (v.x, v.y) for v in npc_manager.vehicles
+                            if v.vehicle_type == "tractor" and v.vehicle_id in npc_manager.drivers}
         npc_manager.update(
             dt, car.x, car.y, residents, traffic_mgr, ways,
             spatial_grid=spatial_grid, parking_spaces=parking_spaces,
@@ -583,7 +603,14 @@ def advance_simulation(
             curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
             viewport_bounds=viewport_bounds,
             player_car=car, pedestrian_mgr=pedestrian_mgr,
+            current_way=current_way,
         )
+        if npc_manager.snowy:
+            for vehicle in npc_manager.vehicles:
+                start = plough_positions.get(vehicle.vehicle_id)
+                if (start is not None and abs(vehicle.car.speed) > 0.1
+                        and vehicle.way is not None and vehicle.car.map_level == SURFACE_LEVEL):
+                    weather.plow_road(start, (vehicle.x, vehicle.y))
     for x, y in npc_manager.accidents:
         audio.play_group("collision.vehicle", at=(x, y))
     npc_manager.accidents.clear()
@@ -689,22 +716,26 @@ def advance_simulation(
             if not was_wrong_way:
                 audio.play_driver_line("wrong_way", language)
         taxi_mgr.check_pedestrian_way_violation(car, slow_check_dt, ways=drive_ways, spatial_grid=drive_grid)
-        if on_surface and taxi_mgr.check_speed_cameras(car, speed_cameras):
-            audio.play_group("gameplay.speed_camera")
-            audio.play_driver_line("speed_camera", language)
-            loud_event = True
+    if not on_foot and on_surface and taxi_mgr.check_speed_cameras(car, speed_cameras, previous_position=previous_position):
+        audio.play_group("gameplay.speed_camera")
+        audio.play_driver_line("speed_camera", language)
+        loud_event = True
     # Advance signals and taxi-world time; no autonomous vehicle update.
     with frame_profiler.section("traffic"):
         traffic_mgr.advance_time(dt)
     if not taxi_mgr.current_passenger and taxi_waiter_elapsed >= 0.2:
         taxi_waiter_elapsed = 0.0
         pedestrian_mgr.ensure_taxi_stop_waiter(taxi_stops, car, viewport_bounds=viewport_bounds)
+    arena_crowds = getattr(world, "arena_crowds", None)
+    if now is not None and arena_crowds is not None:
+        arena_crowds.update(now, (car.x, car.y))
+    pedestrian_mgr.ensure_sports_players(car, viewport_bounds)
     with frame_profiler.section("pedestrians"):
         pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds, game_time_seconds=game_time_seconds)
         pedestrian_mgr.track_vomit(taxi_mgr.vomit_puddles + pedestrian_mgr.vomit_puddles)
     if on_foot:
         audio.update_footsteps(player_pedestrian.speed, dt, running=command.sprint)
-    traffic_mgr.let_taxi_pick_up_waiter(taxi_stops, pedestrian_mgr.pedestrians, dt)
+    world.competitor_dispatcher.update(taxi_mgr, npc_manager, dt)  # competitors take phone fares
     waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
     if waiting_pedestrian is not None:
         pedestrian_mgr.pedestrians.remove(waiting_pedestrian)
@@ -732,11 +763,3 @@ def advance_simulation(
     )
 
 
-def _viewport_bounds(
-    camx: float, camy: float, px_per_m: float, screen_w: int, screen_h: int, margin_m: float,
-) -> tuple:
-    """Local copy of render.common.get_viewport_bounds's formula, kept here
-    so this module never imports the (Pygame-touching) render package."""
-    half_w_m = (screen_w / 2.0) / max(0.01, px_per_m) + margin_m
-    half_h_m = (screen_h / 2.0) / max(0.01, px_per_m) + margin_m
-    return (camx - half_w_m, camy - half_h_m, camx + half_w_m, camy + half_h_m)

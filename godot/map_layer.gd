@@ -7,8 +7,15 @@ extends Node2D
 
 const MapChunk := preload("res://map_chunk.gd")
 const Buildings3D := preload("res://buildings_3d.gd")
+# shortcut: two whole chunks per frame; split further if one dense chunk exceeds 5 ms.
+const SNOW_REDRAW_CHUNKS_PER_FRAME := 2
 
 var origin := Vector2.ZERO
+var road_snow := 0.0
+var plowed_cells: Array = []
+var snowing := false
+var _snow_baselines: Dictionary = {}  # preserve a new area's clean start across chunk refreshes
+var _snow_redraws: Dictionary = {}
 var wetness := 0.0  # road wetness as last applied (bucketed, see set_wetness)
 var px_per_m := 9.0  # the camera zoom, for the chunks' pixel-sized points
 var phases: Dictionary = {}  # traffic-light phases as last applied (state "traffic_lights")
@@ -19,6 +26,9 @@ var _last_obstacles := [[], []]
 var season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] as last applied
 var lights_on := false
 var _pool_group: Node2D  # every loaded chunk's street-light pools (each chunk's: their union, added once)
+var _flood_group: Node2D  # every loaded chunk's floodlit sports places
+var sports_hours := false  # state calendar.sports_lights: 07-22, when floodlights may burn
+var arena_lights_on := false
 var building_view_centre := Vector2.ZERO
 
 
@@ -30,6 +40,31 @@ func _make_pool_group() -> void:
 	_pool_group.z_index = 6  # under the buildings (7): lamps light the street, not the roofs above them
 	_pool_group.visible = false
 	add_child(_pool_group)
+	_flood_group = Node2D.new()
+	_flood_group.z_index = 6
+	_flood_group.visible = false
+	add_child(_flood_group)
+
+
+## Floodlights: in their hours, when the street lights are on, on the surface.
+func _show_floods() -> void:
+	_flood_group.visible = sports_hours and lights_on and map_level == 0
+
+
+func set_sports_hours(on: bool) -> void:
+	if on != sports_hours:
+		sports_hours = on
+		_show_floods()
+
+
+func set_arena_lights(on: bool) -> void:
+	if on == arena_lights_on:
+		return
+	arena_lights_on = on
+	if buildings_3d != null:
+		buildings_3d.set_arena_lights(on)
+	for chunk in _chunks.values():
+		chunk.set_arena_lights(on)
 
 
 func _ready() -> void:
@@ -63,6 +98,8 @@ func _layer_3d() -> Node2D:
 	if buildings_3d == null:
 		buildings_3d = Buildings3D.new()  # its sprites carry their own z (7, lit windows 21)
 		add_child(buildings_3d)
+		buildings_3d.set_arena_lights(arena_lights_on)
+		buildings_3d.set_snow(float(season[0]))
 	return buildings_3d
 
 
@@ -83,6 +120,7 @@ func clear() -> void:
 	for chunk in _chunks.values():
 		_free_chunk(chunk)
 	_chunks.clear()
+	_snow_redraws.clear()
 
 
 ## A chunk's buildings into the shared group, farthest from the current view
@@ -121,7 +159,14 @@ func set_building_view(view_centre: Vector2) -> void:
 var light_level := 0.0
 
 
+var _ambient := Color.WHITE  # the world's ambient multiply (set_light): the ground's clear colour takes it too
+
+
 func set_light(level: float, ambient: Color) -> void:
+	if not ambient.is_equal_approx(_ambient):
+		_ambient = Color(ambient, 1.0)
+		if _ground != null:
+			_ground.queue_redraw()
 	if MapChunk.buildings_3d:
 		_layer_3d().set_light(level, ambient)
 	if is_equal_approx(level, light_level) and (level > 0.01) == lights_on:
@@ -129,11 +174,13 @@ func set_light(level: float, ambient: Color) -> void:
 	light_level = level
 	if _pool_group != null:
 		_pool_group.modulate = Color(1, 1, 1, level)
+		_flood_group.modulate = Color(1, 1, 1, level)
 	var on := level > 0.01
 	if on != lights_on:
 		lights_on = on
 		if _pool_group != null:
 			_pool_group.visible = on and map_level == 0
+			_show_floods()
 		for chunk in _chunks.values():
 			chunk.set_lights_on(on)
 	for chunk in _chunks.values():
@@ -148,14 +195,36 @@ func _free_chunk(chunk: Node) -> void:
 	for node in chunk.meshes_3d:
 		node.free()
 	chunk.meshes_3d = []
+	chunk.drop_stale_buildings()
 	if _pool_group != null and chunk._pools.get_parent() == _pool_group:
 		_pool_group.remove_child(chunk._pools)
 		chunk._pools.free()  # out of the tree already; the chunk's own cleanup then skips it
+	if _flood_group != null and chunk._floods.get_parent() == _flood_group:
+		_flood_group.remove_child(chunk._floods)
+		chunk._floods.free()
 	chunk.queue_free()
 
 
 func chunk_count() -> int:
 	return _chunks.size()
+
+
+func holiday_yards(view: Rect2, limit := 64) -> PackedVector2Array:
+	var result := PackedVector2Array()
+	var scanned := 0
+	for chunk in _chunks.values():
+		if not view.intersects(chunk._bounds_rect):
+			continue
+		for row in chunk._data.get("holiday_yards", []):
+			scanned += 1
+			if scanned > 2048:  # shortcut: cap dense-yard queries; index them if this hides visible yards.
+				return result
+			var at := MapMath.point(origin, row[0], row[1])
+			if view.has_point(at):
+				result.append(at)
+				if result.size() >= limit:
+					return result
+	return result
 
 
 func has_chunk(chunk_id: String) -> bool:
@@ -171,22 +240,30 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.name = "Chunk_" + chunk_id
 	chunk._building_view = building_view_centre
 	chunk.setup(message, origin)
+	if not _snow_baselines.has(chunk_id):
+		_snow_baselines[chunk_id] = 0.0 if snowing else road_snow
+	chunk.snow_baseline = float(_snow_baselines[chunk_id])
 	chunk.set_wetness(wetness)
+	chunk.set_road_snow(road_snow, plowed_cells)
 	chunk.set_px_per_m(px_per_m)
 	chunk.set_phases(phases)
 	chunk.set_obstacles(fallen, knocked)
 	chunk.set_season(season)
 	chunk.set_lights_on(lights_on)
+	chunk.set_arena_lights(arena_lights_on)
 	chunk.set_flash(flash)
 	add_child(chunk)
 	if not chunk._data.get("level_roads", []).is_empty() and _underground != null:
 		_underground.queue_redraw()
 	if not chunk.street_lights.is_empty() and _pool_group != null:
 		_pool_group.add_child(chunk._pools)
+	if not chunk._data.get("floodlit", []).is_empty() and _flood_group != null:
+		_flood_group.add_child(chunk._floods)
 	if chunk.building_node != null and _buildings != null:
 		_add_buildings(chunk)
 	add_building_meshes(chunk)
 	_chunks[chunk_id] = chunk
+	_snow_redraws.erase(chunk_id)  # its initial draw already uses the latest snow
 	return true
 
 
@@ -228,7 +305,7 @@ func set_obstacles(fallen_trees: Array, knocked_posts: Array) -> void:
 		_knocked_posts.queue_redraw()
 
 
-## render/scenery.py: a post hit hard lies bent over the way the taxi went
+## A post hit hard lies bent over the way the taxi went
 ## (a street lamp 4 m, a bollard 0.9 m).
 func _draw_knocked_posts() -> void:
 	for post in knocked.values():
@@ -243,6 +320,8 @@ func set_season(weights: Array) -> void:
 	if weights.size() != 4 or weights == season:
 		return
 	season = weights
+	if buildings_3d != null:
+		buildings_3d.set_snow(float(season[0]))
 	if _ground != null:
 		_ground.queue_redraw()
 	for chunk in _chunks.values():
@@ -279,7 +358,14 @@ func light_at(at: Vector2) -> float:
 			var d: float = chunk.street_lights[i].distance_to(at)
 			if d < reach:
 				total += (1.0 - d / reach) * (1.0 - d / reach)
+		if _flood_group != null and _flood_group.visible:  # under the floodlights: near daylight
+			for ring in chunk._data.get("floodlit", []):
+				if Geometry2D.is_point_in_polygon(at, ring):
+					return FLOODLIGHT_ON_PEOPLE
 	return minf(total, 1.5)
+
+
+const FLOODLIGHT_ON_PEOPLE := 3.0  # light_at in a floodlit field: saturates vehicle_light to near white
 
 
 ## 3D buildings: canopies in view project with the camera, so they redraw each frame.
@@ -291,7 +377,7 @@ func canopies_moved(view: Rect2) -> void:
 
 
 ## The weather's road wetness 0..1 (state "weather.wetness"). Applied in
-## steps of 3/255 overlay alpha, as Pygame's wet-road cache does, so a slowly
+## steps of 3/255 overlay alpha, so a slowly
 ## drying road doesn't touch every chunk every tick.
 func set_wetness(value: float) -> bool:
 	var stepped := roundf(clampf(value, 0.0, 1.0) * 30.0) / 30.0
@@ -303,6 +389,52 @@ func set_wetness(value: float) -> bool:
 	return true
 
 
+func set_road_snow(depth: float, cells: Array, falling := true) -> void:
+	snowing = falling
+	if depth == road_snow and cells == plowed_cells:
+		return
+	road_snow = depth
+	plowed_cells = cells
+	for chunk in _chunks.values():
+		var id: String = chunk._data["chunk_id"]
+		_snow_baselines[id] = minf(float(_snow_baselines[id]), depth)
+		chunk.snow_baseline = float(_snow_baselines[id])
+		if chunk.set_road_snow(depth, cells, false) and not chunk._road_layers.is_empty():
+			_snow_redraws[id] = true
+	set_process(not _snow_redraws.is_empty())
+
+
+func _process(_delta: float) -> void:
+	var remaining := SNOW_REDRAW_CHUNKS_PER_FRAME
+	for id in _snow_redraws.keys():
+		_snow_redraws.erase(id)
+		var chunk = _chunks.get(id)
+		if chunk != null:
+			chunk.redraw_road_snow()
+			remaining -= 1
+			if remaining == 0:
+				break
+	set_process(not _snow_redraws.is_empty())
+
+
+## A chunk the server resent (changed) swapped in for the drawn one in the
+## same frame, so there is no hole; its old buildings stay until the new
+## chunk's are built (MapChunk.keep_until_built). A new chunk is just added.
+func replace_chunk(message: Dictionary) -> void:
+	var old = _chunks.get(message["chunk_id"])
+	var keep: Array = []
+	if old != null:
+		keep = old.stale_buildings + old.meshes_3d
+		old.stale_buildings = []
+		old.meshes_3d = []
+		if old.building_node != null and old.building_node.get_parent() == _buildings:
+			keep.append(old.building_node)
+			old.building_node = null
+		remove_chunk(message["chunk_id"])
+	add_chunk(message)
+	_chunks[message["chunk_id"]].keep_until_built(keep)
+
+
 func remove_chunk(chunk_id: String) -> bool:
 	if not _chunks.has(chunk_id):
 		return false
@@ -312,16 +444,18 @@ func remove_chunk(chunk_id: String) -> bool:
 
 
 func _draw_ground() -> void:
-	# Ground, under the chunks: snow cover with the winter weight. (Pygame's
-	# other seasonal palettes are tuned to its dark grass; on this lighter
-	# ground autumn turns brown, so only the snow is taken.)
+	# Ground, under the chunks: snow cover with the winter weight (on this
+	# light ground other seasonal palettes turned it brown, so only snow).
 	# godot-18: the viewport's clear colour, not a full-screen rectangle - one less layer to fill every frame.
-	RenderingServer.set_default_clear_color(Color(0.27, 0.33, 0.25).lerp(Color8(230, 236, 240), clampf(season[0], 0.0, 1.0)))
+	# The world's ambient multiply (CanvasModulate) never reaches the clear
+	# colour, so the night is applied here: snow-white open ground glowed in the dark.
+	var ground := Color(0.27, 0.33, 0.25).lerp(Color8(230, 236, 240), clampf(season[0], 0.0, 1.0))
+	RenderingServer.set_default_clear_color(ground * _ambient)
 
 
-## render/roads.py draw_level_ways and main()'s underground view: below
+## The underground view: below
 ## ground, a dark fill over the surface map and the current level's roads;
-## on the surface, the covered (level 0) roads Pygame draws there.
+## on the surface, the covered (level 0) roads.
 func _draw_underground() -> void:
 	if map_level != 0:
 		_underground.draw_rect(Rect2(-100000, -100000, 200000, 200000), Color8(34, 34, 38))
@@ -339,6 +473,7 @@ func set_map_level(level: int) -> void:
 	_underground.queue_redraw()
 	if _pool_group != null:  # no street lights below ground
 		_pool_group.visible = lights_on and map_level == 0
+		_show_floods()
 
 
 ## The flashing speed camera, to the chunks (only theirs redraw).
@@ -351,7 +486,7 @@ func set_flash(index) -> void:
 
 
 ## Whether `at` (layer coordinates) is under a road on a higher layer than
-## `layer` (render/common.py _covered_by_higher_road): headlights there
+## `layer`: headlights there
 ## are hidden by the bridge above.
 func covered(at: Vector2, layer: int) -> bool:
 	for chunk in _chunks.values():

@@ -37,12 +37,13 @@ var _recent_events: Array = []
 var _command_timer := 0.0
 var _interact_pending := false
 var _refuel_pending := false  # G: one press, sent once (the server buys once per press)
-var show_next_train := false  # J (main()'s show_next_train): the nearest station's board, local only
+var show_next_train := false  # J: the nearest station's board, local only
 var _road_rage_pending := false  # SPACE: one press, sent once; the simulation decides if there's rage to spend
-var speed_limiter := true  # V (render/hud.py "V = limiter"): a session toggle, reported in every command
+var speed_limiter := true  # V: a session toggle, reported in every command
 var red_light_assist := false  # B: likewise
 var lane_assist := false  # K: likewise
 var _respawn_pending := false
+var _home_pending := false  # H: choose this yard as home / back home
 var _cancel_ride_pending := false
 var _reset_trip_pending := false
 var _help: PanelContainer
@@ -51,11 +52,14 @@ var _inspect_label: Label
 var _focus := {}  # {kind: pan|pedestrian|npc, id or position}; empty follows the player
 var _pan_button := 0
 var summary_shown := false  # the career city summary is up: the session is over, no more driving commands
-var _engine_on := false  # main(): the driver starts on foot, E starts the engine after getting in
+var _engine_on := false  # the driver starts on foot, E starts the engine after getting in
 var _entered_taxi := false  # the "Press F" hint until the driver first gets in
 var hud_layout = preload("res://hud_layout.gd").new()  # the movable panels, saved (U / F2 resets)
-var _start_sign: PanelContainer  # main()'s draw_game_start_overlay: city and forecast, any key starts
+var _start_sign: PanelContainer  # the start sign: city and forecast, any key starts
 var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
+var _lead := Vector2.ZERO  # camera look-ahead, metres
+const LEAD_S := 0.6  # look this far ahead of the taxi at its speed
+const LEAD_MAX := 0.3  # at most this share of the view
 var _state_usec := 0.0  # handling one state (parse + buffer), smoothed
 var _interp_usec := 0.0  # sampling + blending one frame, smoothed
 
@@ -77,7 +81,20 @@ var _phone_check := {}  # selftest: what the phone saw and how an accept went
 var _phone_wait := 0.0  # --phone-wait S: after driving, wait up to S s for a real offer and accept it
 var events_presented := 0
 var _audiotest := false
-var _chunk_queue: Array = []  # chunk messages waiting for their frame
+var _chunk_queue: Array = []  # chunk messages waiting for their frame, nearest first (as the server sends them)
+var _chunk_unload_queue: Array[String] = []  # old meshes freed once no chunk is waiting to be drawn
+## Per frame: chunks are added until this much time has gone (at least one;
+## a chunk with buildings takes ~10-20 ms, an empty one far less), then
+## unloads the same way once nothing waits to be drawn - after a Home jump the
+## destination is drawn first and the old area's chunks are freed afterwards.
+const CHUNK_BUDGET_USEC := 4000
+## A chunk's first draw runs later in the frame it is added in: ~1 us a point of
+## its geometry (headless; a dense city chunk is ~10k points).
+const DRAW_USEC_PER_POINT := 1.0
+const CHUNK_SIZE_M := 500.0  # map_chunks.CHUNK_SIZE_M: chunk "ix_iy" covers [ix, ix + 1) x [iy, iy + 1) of these
+const JUMP_M := 500.0  # the player moving this far between two states is a jump (Home, respawn)
+var _last_player_at = null  # Vector2 metres, the last state's
+var _jumped_usec := 0  # when the last jump was seen, until the chunk under the player is drawn
 var _last_frame_usec := 0  # frame-time accounting (godot-18): real time between frames, not the smoothed delta
 var _bench := 0.0  # --bench SECONDS: drive-through measurement, then the report as JSON
 var _bench_left := 0.0
@@ -91,6 +108,8 @@ var language := "en"
 
 
 var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
+var holidays: Node = preload("res://holiday_layer.gd").new()
+var _tram_states := {}  # tram id -> its state last frame: the bell when one sets off
 var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, multiplied over the world canvas
 
 
@@ -101,6 +120,9 @@ func _ready() -> void:
 	add_child(weather)
 	add_child(world_light)
 	weather.setup($Sky, map_layer)
+	add_child(holidays)
+	holidays.setup(map_layer)
+	holidays.audio = audio
 	entities.lamp_near = map_layer.lamp_near
 	entities.light_at = map_layer.light_at  # street light on the vehicles  # reflectors and long beams look up working street lights
 	entities.covered = map_layer.covered  # headlights under a higher road
@@ -126,6 +148,8 @@ func _ready() -> void:
 				add_child.call_deferred(tester)
 			"--screenshot":
 				_screenshot_path = args[i + 1]
+			"--screenshot-wait":  # seconds of play before the screenshot (default 6), e.g. for phone offers
+				_screenshot_wait = float(args[i + 1])
 			"--wetness":  # presentation override for visual checks (never sent to Python)
 				override_wetness = float(args[i + 1])
 			"--sun-altitude":  # godot-lights-01 visual checks: the sun at this altitude (never sent to Python)
@@ -149,7 +173,7 @@ func _ready() -> void:
 			"--labels":  # start with labels: 1 streets, 2 everything (L), for screenshots
 				labels.mode = int(args[i + 1])
 			"--navigation":  # godot-final-04: start with the route shown (N), for screenshots
-				$Ui/NavOverlay.show_route = true
+				phone.call_deferred("open")
 			"--next-train":  # godot-final-07: start with the J board shown, for screenshots
 				show_next_train = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
@@ -159,12 +183,13 @@ func _ready() -> void:
 		_entered_taxi = true
 	instruments.layout = hud_layout
 	hud.layout = hud_layout
+	phone.layout = hud_layout
 	sim.world_received.connect(_on_world)
 	sim.state_received.connect(_on_state)
 	# One new chunk per frame (godot-16): a chunk's first drawing takes ~10-20 ms, and crossing into
 	# a new area brings a whole row of them at once.
-	sim.chunk_received.connect(func(message: Dictionary): _chunk_queue.append(message))
-	sim.chunk_unloaded.connect(_unload_chunk)
+	sim.chunk_received.connect(_queue_chunk)
+	sim.chunk_unloaded.connect(_queue_chunk_unload)
 	sim.connection_changed.connect(_on_connection)
 	phone.sound.connect(func(group: String, variation: int): audio.handle_event({"type": "sound", "group": group, "variation": variation}))
 	phone.request.connect(func(action: String, item_id: String, request_id: int): sim.send_phone(action, item_id, request_id))
@@ -185,6 +210,7 @@ func set_language(value: String) -> void:
 
 func _apply_language() -> void:
 	hud.language = language
+	MapChunk.language = language
 	phone.set_language(language)
 	instruments.language = language
 	nav_overlay.language = language
@@ -193,7 +219,7 @@ func _apply_language() -> void:
 		_help.queue_free()
 		_build_help()
 	if _inspect_panel != null:
-		_inspect_panel.get_node("Rows/Back").text = T.text("back_to_taxi", language, "Back to taxi")
+		_inspect_panel.get_node("Rows/Back").text = T.text("back_to_taxi", language)
 
 
 func _on_connection(up: bool) -> void:
@@ -207,13 +233,71 @@ func _on_connection(up: bool) -> void:
 		audio.stop_voices()
 
 
-func _unload_chunk(chunk_id: String) -> void:
+func _process_chunk_queues(started_usec: int) -> void:
+	# Another one only if it fits too: a 3 ms frame doesn't start a 20 ms chunk. A chunk costs
+	# its add (cheap: the worker prepared it) and its first draw, later in this frame, by its points.
+	var at := started_usec
+	var spent := 0
+	var last := 0
+	while not _chunk_queue.is_empty():
+		var draw := int(_chunk_queue[0].get("prepared", {}).get("points", 0) * DRAW_USEC_PER_POINT)
+		if spent > 0 and spent + last + draw > CHUNK_BUDGET_USEC:
+			break
+		map_layer.replace_chunk(_chunk_queue.pop_front())
+		var now := Time.get_ticks_usec()
+		last = now - at
+		Perf.add("chunk_add", last)
+		spent += last + draw
+		at = now
+	if not _chunk_queue.is_empty():
+		return  # unloads wait: drawing what the player needs comes first
+	while not _chunk_unload_queue.is_empty() and (spent == 0 or spent + last <= CHUNK_BUDGET_USEC):
+		map_layer.remove_chunk(_chunk_unload_queue.pop_front())
+		var now := Time.get_ticks_usec()
+		last = now - at
+		Perf.add("chunk_unload", last)
+		spent += last
+		at = now
+
+
+## After a jump (Home, respawn): how long until the chunk under the player
+## is drawn with its roads - "relocation_visible" in --bench and F3.
+func _time_relocation(state: Dictionary, now_usec: int) -> void:
+	if not state.has("player"):
+		return
+	var at := Vector2(state["player"]["x"], state["player"]["y"])
+	if _last_player_at != null and at.distance_to(_last_player_at) > JUMP_M:
+		_jumped_usec = now_usec
+	_last_player_at = at
+	if _jumped_usec == 0:
+		return
+	var chunk = map_layer._chunks.get("%d_%d" % [floori(at.x / CHUNK_SIZE_M), floori(at.y / CHUNK_SIZE_M)])
+	if chunk != null and not chunk._data.get("roads", []).is_empty():
+		Perf.add("relocation_visible", now_usec - _jumped_usec)
+		print("relocation: the map under the player drawn %.0f ms after the jump" % ((now_usec - _jumped_usec) / 1000.0))
+		_jumped_usec = 0
+
+
+## The latest message for a chunk wins: a newer copy (the server resends a
+## changed chunk) replaces a queued one and cancels a pending unload of it.
+func _queue_chunk(message: Dictionary) -> void:
+	var chunk_id: String = message["chunk_id"]
+	_chunk_unload_queue.erase(chunk_id)
+	for i in _chunk_queue.size():
+		if _chunk_queue[i]["chunk_id"] == chunk_id:
+			_chunk_queue[i] = message
+			return
+	_chunk_queue.append(message)
+
+
+func _queue_chunk_unload(chunk_id: String) -> void:
 	_chunk_queue = _chunk_queue.filter(func(m): return m["chunk_id"] != chunk_id)  # gone before it was ever drawn
-	map_layer.remove_chunk(chunk_id)
+	_chunk_unload_queue.append(chunk_id)
 
 
 func _on_world(world: Dictionary) -> void:
 	_chunk_queue.clear()  # a new world (reconnect): the old one's chunks are void
+	_chunk_unload_queue.clear()
 	var origin := Vector2(world["center"][0], world["center"][1])
 	map_layer.set_origin(origin)
 	entities.origin = origin
@@ -232,16 +316,15 @@ func _on_state(message: Dictionary) -> void:
 	_state_usec = lerpf(_state_usec, float(Time.get_ticks_usec() - started + sim.parse_usec), 0.1)
 
 
-## F12 (main/__init__.py): the window as screenshot_<ns>.png in Pygame's
-## folder (debug_tools._screenshot_directory), and the server writes the
-## debug JSON (_write_debug_snapshot) beside it.
+## F12: the window as screenshot_<ns>.png in the screenshots folder, and
+## the server writes the debug JSON beside it.
 func save_screenshot() -> String:
 	var path := screenshot_directory(OS.get_name(), OS.get_environment("USERPROFILE")).path_join(
 		"screenshot_%d.png" % int(Time.get_unix_time_from_system() * 1e9))
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var error := get_viewport().get_texture().get_image().save_png(path)
 	print("Screenshot " + (path if error == OK else "failed: %s" % error_string(error)))
-	sim.send_debug_snapshot(path.get_basename() + ".json")  # Pygame's debug JSON beside it, from the server
+	sim.send_debug_snapshot(path.get_basename() + ".json")  # the debug JSON beside it, from the server
 	return path
 
 
@@ -251,7 +334,7 @@ static func screenshot_directory(os_name: String, user_profile: String) -> Strin
 	return OS.get_environment("PWD").path_join("screenshots") if OS.has_environment("PWD") else "screenshots"
 
 
-## Mouse on a HUD panel: drag it (main()'s hud_dragging), kept on screen.
+## Mouse on a HUD panel: drag it, kept on screen.
 func _input(event: InputEvent) -> void:
 	drive.handle(event)
 	if event is InputEventMouseButton:
@@ -271,9 +354,13 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.pressed and _inspect_panel.visible and _inspect_panel.get_global_rect().has_point(event.position):
 		return  # the Back button gets the click, even if a HUD panel overlaps it
+	if event is InputEventMouseButton and event.pressed and phone.visible and phone.get_global_rect().has_point(event.position):
+		if not hud_layout.rects.get("navigation_phone", Rect2()).has_point(event.position):
+			return  # phone app controls take priority over HUD panels beneath them
 	if _start_sign == null and hud.visible and hud_layout.handle(event):
 		instruments.queue_redraw()
 		hud._layout()
+		phone.update_layout()
 		get_viewport().set_input_as_handled()
 
 
@@ -289,7 +376,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 	if _start_sign != null and event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode != KEY_ESCAPE:  # main(): any key but Esc starts
+		if event.keycode == KEY_F12:  # a screenshot of the sign itself
+			save_screenshot()
+		elif event.keycode != KEY_ESCAPE:  # any key but Esc and F12 starts
 			_start_sign.queue_free()
 			_start_sign = null
 		get_viewport().set_input_as_handled()
@@ -298,19 +387,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.keycode:
 			KEY_F12:
 				save_screenshot()
-			KEY_U, KEY_F2:  # main(): the HUD layout back to default
+			KEY_U, KEY_F2:  # the HUD layout back to default
 				hud_layout.reset()
 				instruments.queue_redraw()
 				hud._layout()
+				phone.update_layout()
 			KEY_F:
 				_interact_pending = true
 			KEY_G:
 				_refuel_pending = true
 			KEY_J:
-				if not phone.is_open:
+				if not phone.is_open or phone.busy:
 					show_next_train = not show_next_train
 			KEY_SPACE:
-				if not phone.is_open and not summary_shown:  # main(): never while the phone is open
+				if (not phone.is_open or phone.busy) and not summary_shown:
 					_road_rage_pending = true
 			KEY_V:
 				speed_limiter = not speed_limiter
@@ -320,8 +410,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				lane_assist = not lane_assist
 			KEY_R:
 				_respawn_pending = true
+			KEY_H:
+				_home_pending = true
 			KEY_X:
-				if not phone.is_open:
+				if not phone.is_open or phone.busy:
 					_cancel_ride_pending = true
 			KEY_T:
 				_reset_trip_pending = true
@@ -339,6 +431,17 @@ func _unhandled_input(event: InputEvent) -> void:
 				_zoom(1.25)
 			KEY_MINUS, KEY_KP_SUBTRACT:
 				_zoom(0.8)
+
+
+## Look ahead of the taxi: at 72 km/h the centred view showed only ~2 s of
+## road ahead. Eased (exponentially) so steering and braking don't swing the
+## view. No speed zoom: every zoom change redraws the pixel-sized map layers
+## (13 fps in the selftest).
+func _camera_lead(delta: float) -> Vector2:
+	var view := get_viewport().get_visible_rect().size / camera.zoom.x
+	var target: Vector2 = (entities.player_velocity() * LEAD_S).limit_length(minf(view.x, view.y) * LEAD_MAX)
+	_lead = _lead.lerp(target, 1.0 - exp(-3.0 * delta))
+	return _lead
 
 
 func _zoom(factor: float) -> void:
@@ -367,11 +470,10 @@ func _process(delta: float) -> void:
 	if _last_frame_usec > 0 and not entities.shown_state().is_empty() and (_bench <= 0.0 or _bench - _bench_left > 5.0):
 		Perf.frame((now_usec - _last_frame_usec) / 1000.0)  # --bench: after 5 s of warm-up (the first chunks)
 	_last_frame_usec = now_usec
-	if not _chunk_queue.is_empty():
-		map_layer.add_chunk(_chunk_queue.pop_front())
-		Perf.add("chunk_add", Time.get_ticks_usec() - now_usec)
+	_process_chunk_queues(now_usec)
 	entities.update_frame(delta)  # first: the camera below and the drawing use this one sample
 	var state: Dictionary = entities.shown_state()
+	_time_relocation(state, now_usec)
 	_interp_usec = lerpf(_interp_usec, float(entities.interp_usec), 0.1)
 	if _selftest:
 		_run_selftest(delta, state)
@@ -390,7 +492,7 @@ func _process(delta: float) -> void:
 			get_viewport().get_texture().get_image().save_png(_screenshot_path)
 			print("screenshot saved: ", _screenshot_path)
 			get_tree().quit()
-	camera.position = entities.player_position()
+	camera.position = entities.player_position() + _camera_lead(delta)
 	if _focus.get("kind") == "pan":
 		camera.position = _focus["position"]
 	elif _focus.has("id"):
@@ -400,6 +502,7 @@ func _process(delta: float) -> void:
 		else:
 			camera.position = focused
 	entities.px_per_m = camera.zoom.x
+	nav_overlay.show_route = phone.is_open and phone.busy
 	entities.show_route = nav_overlay.show_route
 	if _selftest and _selftest_start != Vector2.INF and _selftest_time > 0.5:
 		var raw: float = entities.now()
@@ -448,7 +551,7 @@ func _present(state: Dictionary) -> void:
 			return  # the session is over: the summary stays, even when the server goes away
 		hud.visible = false
 		debug_label.visible = true
-		debug_label.text = T.text("waiting", language, "Waiting for the simulation at %s:%d …") % [sim.host, sim.port]
+		debug_label.text = T.text("waiting", language) % [sim.host, sim.port]
 		return
 	if not hud.visible:  # the simulation is here: the HUD replaces the waiting text (F3 brings the readout back)
 		hud.visible = true
@@ -480,6 +583,8 @@ func _present(state: Dictionary) -> void:
 	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()
 	if typeof(calendar) == TYPE_DICTIONARY:
 		map_layer.set_season(calendar.get("season", []))
+		map_layer.set_sports_hours(bool(calendar.get("sports_lights", false)))
+		map_layer.set_arena_lights(bool(calendar.get("arena_lights", false)))
 	# godot-lights-01: the world's light from the sun's altitude, continuously - the
 	# ambient multiply (CanvasModulate: no fill) and how strongly the lights show.
 	var altitude := Daylight.altitude(state) if is_nan(override_altitude) else override_altitude
@@ -508,6 +613,7 @@ func _present(state: Dictionary) -> void:
 	for key in loops:
 		audio.set_loop(key, loops[key])
 	_train_loop(state)
+	_feature_loops(state)
 	var crowd := station_ambience(state.get("railway"), Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y),
 		audio._config.get("ranges_m", {}).get("station.ambience", [15.0, 150.0]))
 	audio.set_loop("station_crowd", crowd[0] * 0.6, 1.0, crowd[1])
@@ -520,6 +626,7 @@ func _present(state: Dictionary) -> void:
 	instruments.chips = [lane_assist, speed_limiter, nav_overlay.show_route]  # K, V, N under the speedometer
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
+	map_layer.set_road_snow(float(state.get("weather", {}).get("road_snow", 0.0)), state.get("weather", {}).get("plowed_cells", []), state.get("weather", {}).get("weather_type", "") == "snow")
 	map_layer.set_px_per_m(camera.zoom.x)  # after the camera is placed; only reads its zoom
 	map_layer.set_building_view(camera.position)
 	map_layer.set_traffic_lights(state.get("traffic_lights", {}))
@@ -528,11 +635,15 @@ func _present(state: Dictionary) -> void:
 	map_layer.set_map_level(level)
 	entities.underground = level != 0
 	weather.update(get_process_delta_time(), state, entities.player_position(), level != 0)
+	holidays.update(get_process_delta_time(), state, view, level != 0)
 	map_layer.set_flash(state.get("speed_camera_flash"))
 	labels.update_view(get_viewport().get_canvas_transform(), map_layer.chunk_count(), level != 0)
 	map_layer.set_obstacles(state.get("fallen_trees", []), state.get("knocked_posts", []))
 	phone.clock_text = hud._clock.text.get_slice(" ", 1) if hud._clock.text.contains(" ") else hud._clock.text
+	if state.has("game_time_seconds"):
+		phone.set_game_seconds(float(state["game_time_seconds"]))
 	phone.show_phone(state.get("phone", {}))
+	phone.show_navigation(state.get("navigation", {}))
 	_refresh_inspector(state)
 	var target: Dictionary = entities.current_target(state)
 	var target_screen := Vector2.ZERO
@@ -544,8 +655,7 @@ func _present(state: Dictionary) -> void:
 		_update_debug(state)
 
 
-## The nearest moving train rumbles from where it is (Pygame mixes the
-## loudest intercity and commuter train as two layers; one is enough here).
+## The nearest moving train rumbles from where it is (one train is enough).
 func _train_loop(state: Dictionary) -> void:
 	if override_train_at != Vector2.INF:
 		audio.set_loop("train_running", 0.8, 1.0, override_train_at)
@@ -554,7 +664,7 @@ func _train_loop(state: Dictionary) -> void:
 	var best := INF
 	var speed := 0.0
 	for train in state.get("trains", []):
-		if train["state"] != "RUNNING" or train["speed"] < 2.0 or train["cars"].is_empty():
+		if is_tram(train) or train["state"] != "RUNNING" or train["speed"] < 2.0 or train["cars"].is_empty():
 			continue
 		var at := Vector2(train["cars"][0][0], train["cars"][0][1])
 		if at.distance_to(audio.player_at) < best:
@@ -562,6 +672,68 @@ func _train_loop(state: Dictionary) -> void:
 			nearest = at
 			speed = train["speed"]
 	audio.set_loop("train_running", minf(1.0, speed / 20.0) if nearest != null else 0.0, 1.0, nearest)
+
+
+static func is_tram(train: Dictionary) -> bool:
+	return str(train.get("id", "")).begins_with("tram-")
+
+
+## The nearest of `points` ([x, y] world metres) to `from`, or null.
+static func nearest_point(points: Array, from: Vector2):
+	var best = null
+	var best_distance := INF
+	for point in points:
+		var at := Vector2(point[0], point[1])
+		if at.distance_to(from) < best_distance:
+			best_distance = at.distance_to(from)
+			best = at
+	return best
+
+
+## Trams, tractors, ploughs, sports and arena crowds: each a loop at its
+## nearest source (the audio manager attenuates by distance); a tram's bell
+## when it sets off from a stop near the listener.
+func _feature_loops(state: Dictionary) -> void:
+	var from: Vector2 = audio.player_at
+	var tram = null
+	var tram_speed := 0.0
+	var states := {}
+	for train in state.get("trains", []):
+		if not is_tram(train) or train["cars"].is_empty():
+			continue
+		var at := Vector2(train["cars"][0][0], train["cars"][0][1])
+		states[train["id"]] = train["state"]
+		if _tram_states.get(train["id"], "") == "DWELLING" and train["state"] == "RUNNING" and at.distance_to(from) < 150.0:
+			audio.handle_event({"type": "sound", "group": "railway.tram_bell", "at": [at.x, at.y]})
+		if train["speed"] > 0.5 and (tram == null or at.distance_to(from) < tram.distance_to(from)):
+			tram = at
+			tram_speed = train["speed"]
+	_tram_states = states
+	audio.set_loop("tram_running", minf(1.0, tram_speed / 10.0) if tram != null else 0.0, 1.0, tram)
+	var tractor = null
+	var tractor_speed := 0.0
+	for npc in state.get("npcs", []):
+		if npc.get("vehicle_type", "") != "tractor" or npc.get("state", "") in ["PARKED", "CRASHED"]:
+			continue
+		var at := Vector2(npc["x"], npc["y"])
+		if tractor == null or at.distance_to(from) < tractor.distance_to(from):
+			tractor = at
+			tractor_speed = absf(npc.get("speed", 0.0))
+	audio.set_loop("tractor", 0.7 if tractor != null else 0.0, 0.85 + minf(tractor_speed / 15.0, 0.4), tractor)
+	audio.set_loop("plough", minf(1.0, tractor_speed / 6.0) if tractor != null and entities.ploughing else 0.0, 1.0, tractor)
+	var skaters: Array = []
+	for ped in state.get("pedestrians", []):
+		if ped.get("activity", "") == "ice_skating":
+			skaters.append([ped["x"], ped["y"]])
+	var skater = nearest_point(skaters, from)
+	audio.set_loop("ice_skating", 0.6 if skater != null else 0.0, 1.0, skater)
+	var puck = nearest_point(state.get("pucks", []), from)
+	audio.set_loop("ice_hockey", 0.8 if puck != null else 0.0, 1.0, puck)
+	var ball = nearest_point(state.get("balls", []), from)
+	audio.set_loop("soccer", 0.7 if ball != null else 0.0, 1.0, ball)
+	var calendar = state.get("calendar")
+	var arena = nearest_point(calendar.get("arena_games", []), from) if typeof(calendar) == TYPE_DICTIONARY else null
+	audio.set_loop("arena_crowd", 0.8 if arena != null else 0.0, 1.0, arena)
 
 
 ## 0 by day, 1 at night, fading over an hour at dusk (21-22) and dawn (5-6).
@@ -588,7 +760,7 @@ func show_summary(state: Dictionary) -> void:
 	hud.show_summary(Hud.summary_text(state, language))
 
 
-## audio.py spatial_levels' gain: full within `range[0]`, 1/distance
+## The distance gain: full within `range[0]`, 1/distance
 ## beyond, faded out over the last quarter of `range[1]`.
 static func heard(listener: Vector2, at: Vector2, range_m: Array) -> float:
 	var distance := listener.distance_to(at)
@@ -597,7 +769,7 @@ static func heard(listener: Vector2, at: Vector2, range_m: Array) -> float:
 	return range_m[0] / maxf(range_m[0], distance) * minf(1.0, (range_m[1] - distance) / (0.25 * range_m[1]))
 
 
-## main()'s _play_rail_sounds station crowd: of the stations with people
+## The station crowd: of the stations with people
 ## waiting, the one heard loudest; [volume min(1, waiting / 30), world position].
 static func station_ambience(railway, listener: Vector2, range_m: Array) -> Array:
 	var best := [0.0, 0.0, null]  # heard, volume, at
@@ -615,7 +787,7 @@ static func station_ambience(railway, listener: Vector2, range_m: Array) -> Arra
 	return [best[1], best[2]]
 
 
-## main()'s update_ambience weather layers from the server's state: rain
+## The weather ambience layers from the server's state: rain
 ## and slush 0.6, heavy rain 0.7 in a thunderstorm, wind by its gusting
 ## speed, wet tyres by wetness and speed (slush: its own variation). An older
 ## server without the wind or thunderstorm: those stay silent.
@@ -643,7 +815,7 @@ static func weather_loops(state: Dictionary) -> Dictionary:
 	}
 
 
-## main()'s start sign: the city, the 24-hour forecast (the source in
+## The start sign: the city, the 24-hour forecast (the source in
 ## brackets with historical weather) and "press any key".
 static func start_sign(world: Dictionary, language: String) -> PanelContainer:
 	var sign := PanelContainer.new()
@@ -657,13 +829,18 @@ static func start_sign(world: Dictionary, language: String) -> PanelContainer:
 	var lines := VBoxContainer.new()
 	lines.add_theme_constant_override("separation", 6)
 	sign.add_child(lines)
-	var rows := [[str(world.get("city", "")).to_upper(), 46, Color.WHITE], [T.text("weather_forecast_24h", language, "Weather forecast for the next 24 hours"), 20, Color8(180, 220, 255)]]
+	var rows := [[str(world.get("city", "")).to_upper(), 46, Color.WHITE], [T.text("weather_forecast_24h", language), 20, Color8(180, 220, 255)]]
 	for line in world.get("forecast", []):
 		if line is Dictionary:
 			var source := str(line.get("source", "generated"))
-			rows.append(["%s   %+.0f °C   %s%s" % [line.get("time", ""), float(line.get("temperature_c", 0.0)), T.weather(str(line.get("weather", "")), language),
-				"" if source == "generated" else "   (%s)" % T.text("weather_source_" + source, language, source)], 20, Color.WHITE])
-	rows.append([T.text("press_any_key_start", language, "Press any key to start"), 24, Color.WHITE])
+			var wind := ""
+			if line.get("wind_speed_mps") != null and line.get("wind_from_deg") != null:
+				wind = "   %.1f m/s %s %.0f°" % [float(line.wind_speed_mps), wind_arrow(float(line.wind_from_deg)), float(line.wind_from_deg)]
+			if line.get("snow_depth_cm") != null and float(line.snow_depth_cm) >= 0.5:  # "0 cm" is no snow: not shown
+				wind += "   " + T.text("snow_depth", language) % float(line.snow_depth_cm)
+			rows.append(["%s   %+.0f °C   %s%s%s" % [line.get("time", ""), float(line.get("temperature_c", 0.0)), T.weather(str(line.get("weather", "")), language), wind,
+				"" if source == "generated" else "   (%s)" % T.text("weather_source_" + source, language)], 20, Color.WHITE])
+	rows.append([T.text("press_any_key_start", language), 24, Color.WHITE])
 	for row in rows:
 		var label := Label.new()
 		label.text = row[0]
@@ -677,15 +854,22 @@ static func start_sign(world: Dictionary, language: String) -> PanelContainer:
 	return sign
 
 
+## FMI reports where wind comes from; the arrow points where it blows.
+static func wind_arrow(wind_from_deg: float) -> String:
+	var arrows := ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"]
+	return arrows[int(round(fposmod(wind_from_deg + 180.0, 360.0) / 45.0)) % arrows.size()]
+
+
 ## One command to the simulation (it validates and applies it). The
 ## presses (F, G) go out once, in the next command only.
 func send(controls: Dictionary) -> void:
 	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist,
-		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending)
+		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending, _home_pending)
 	_interact_pending = false
 	_refuel_pending = false
 	_road_rage_pending = false
 	_respawn_pending = false
+	_home_pending = false
 	_cancel_ride_pending = false
 	_reset_trip_pending = false
 	sim.send_command(command)
@@ -693,9 +877,9 @@ func send(controls: Dictionary) -> void:
 
 static func command_for(controls: Dictionary, engine_on: bool, interact: bool, refuel: bool,
 		limiter := true, assist := false, road_rage := false, lane := false, respawn := false,
-		cancel_ride := false, reset_trip := false) -> Dictionary:
+		cancel_ride := false, reset_trip := false, home := false) -> Dictionary:
 	var command := {"speed_limiter_enabled": limiter, "red_light_assist_enabled": assist, "refuel": refuel, "road_rage": road_rage,
-		"lane_assist_enabled": lane, "respawn": respawn, "cancel_ride": cancel_ride, "reset_trip": reset_trip,
+		"lane_assist_enabled": lane, "respawn": respawn, "home": home, "cancel_ride": cancel_ride, "reset_trip": reset_trip,
 		"engine_on": engine_on, "interact": interact}
 	command.merge(controls, true)
 	return command
@@ -711,7 +895,7 @@ func _build_help() -> void:
 	var text := Label.new()
 	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	text.add_theme_font_size_override("font_size", 18)
-	text.text = T.text("controls_help", language, "CONTROLS\n\nWASD / arrows   Drive or walk       Shift   Sprint\nF   Enter / exit taxi               E   Engine\nP   Phone                            1–3 / Enter / X   Phone actions\nSpace   Road rage                   G   Refuel\nR   Respawn taxi                    X   Cancel fare\nT   Reset trip meter                K   Lane assist\nV   Speed limiter                   B   Red-light assist\nN   Navigation                      C   Compass\nJ   Train board                     L   Labels\n+ / - / Wheel   Zoom                Esc   Pause\nCtrl+drag / Middle-drag   Pan        Click NPC   Inspect\nF1   Close help                     F3   Diagnostics\nMouse   Drag HUD panels             U   Reset HUD layout\nF12   Screenshot")
+	text.text = T.text("controls_help", language)
 	_help.add_child(text)
 
 
@@ -733,7 +917,7 @@ func _build_inspector() -> void:
 	_inspect_panel.add_child(rows)
 	var back := Button.new()
 	back.name = "Back"
-	back.text = T.text("back_to_taxi", language, "Back to taxi")
+	back.text = T.text("back_to_taxi", language)
 	back.pressed.connect(_clear_focus)
 	rows.add_child(back)
 	_inspect_label = Label.new()
@@ -752,7 +936,7 @@ func _refresh_inspector(state: Dictionary) -> void:
 	if _focus.is_empty() or _inspect_panel == null:
 		return
 	if _focus.get("kind") == "pan":
-		_inspect_label.text = T.text("pan_view", language, "Panned view")
+		_inspect_label.text = T.text("pan_view", language)
 		return
 	var key := "pedestrians" if _focus["kind"] == "pedestrian" else "npcs"
 	for row in state.get(key, []):
@@ -763,22 +947,22 @@ func _refresh_inspector(state: Dictionary) -> void:
 		for npc in state.get("npcs", []):
 			for person in npc.get("occupants", []):
 				if person.get("id") == _focus["id"]:
-					_inspect_label.text = _character_text("pedestrian", {"id": _focus["id"], "resident": person, "state": T.text("in_vehicle", language, "in vehicle")})
+					_inspect_label.text = _character_text("pedestrian", {"id": _focus["id"], "resident": person, "state": T.text("in_vehicle", language)})
 					return
 
 
 func _character_text(kind: String, row: Dictionary) -> String:
-	var unknown := T.text("unknown", language, "Unknown")
+	var unknown := T.text("unknown", language)
 	if kind == "pedestrian":
 		var resident: Dictionary = row.get("resident") if row.get("resident") is Dictionary else {}
 		return "\n".join([
-			"%s #%s" % [T.text("resident", language, "Resident"), row.get("id", "?")],
+			"%s #%s" % [T.text("resident", language), row.get("id", "?")],
 			str(resident.get("name", unknown)),
-			"%s: %s" % [T.text("born", language, "Born"), resident.get("birth_date", unknown)],
-			"%s: %s" % [T.text("gender", language, "Gender"), resident.get("gender", unknown) if resident.get("gender") != null else unknown],
-			"%s: %s" % [T.text("status", language, "State"), row.get("state", unknown)],
-			"%s: %s" % [T.text("activity", language, "Activity"), str(row.get("activity", "")).replace("_", " ") if row.get("activity", "") != "" else unknown],
-			"%s: %.2f ‰" % [T.text("blood_alcohol", language, "Blood alcohol"), float(row.get("blood_alcohol_promille", 0.0))],
+			"%s: %s" % [T.text("born", language), resident.get("birth_date", unknown)],
+			"%s: %s" % [T.text("gender", language), resident.get("gender", unknown) if resident.get("gender") != null else unknown],
+			"%s: %s" % [T.text("status", language), row.get("state", unknown)],
+			"%s: %s" % [T.text("activity", language), str(row.get("activity", "")).replace("_", " ") if row.get("activity", "") != "" else unknown],
+			"%s: %.2f ‰" % [T.text("blood_alcohol", language), float(row.get("blood_alcohol_promille", 0.0))],
 		])
 	var owner: Dictionary = row.get("owner") if row.get("owner") is Dictionary else {}
 	var occupants := PackedStringArray()
@@ -786,12 +970,12 @@ func _character_text(kind: String, row: Dictionary) -> String:
 		if person is Dictionary:
 			occupants.append(person.get("name", unknown))
 	return "\n".join([
-		"%s #%s" % [T.text("npc_vehicle", language, "NPC vehicle"), row.get("id", "?")],
-		"%s: %s" % [T.text("type", language, "Type"), row.get("vehicle_type", unknown)],
-		"%s: %s" % [T.text("status", language, "State"), row.get("state", unknown)],
-		"%s: %.0f km/h" % [T.text("speed", language, "Speed"), absf(float(row.get("speed", 0.0))) * 3.6],
-		"%s: %s" % [T.text("owner", language, "Owner"), owner.get("name", unknown)],
-		"%s: %s" % [T.text("occupants", language, "Occupants"), ", ".join(occupants) if not occupants.is_empty() else unknown],
+		"%s #%s" % [T.text("npc_vehicle", language), row.get("id", "?")],
+		"%s: %s" % [T.text("type", language), row.get("vehicle_type", unknown)],
+		"%s: %s" % [T.text("status", language), row.get("state", unknown)],
+		"%s: %.0f km/h" % [T.text("speed", language), absf(float(row.get("speed", 0.0))) * 3.6],
+		"%s: %s" % [T.text("owner", language), owner.get("name", unknown)],
+		"%s: %s" % [T.text("occupants", language), ", ".join(occupants) if not occupants.is_empty() else unknown],
 	])
 
 
@@ -844,7 +1028,7 @@ func _update_debug(state: Dictionary) -> void:
 	_perf_counters()
 	var f := Perf.summary()
 	debug_label.text = "\n".join([
-		"Road Rage Trip - Godot client 0.16.0g-alpha   player %s" % sim.player_id,
+		"Road Rage Trip - %s   player %s" % [ProjectSettings.get_setting("application/config/version"), sim.player_id],
 		"tick %d   %d fps   states %d   buffered %d   delay %d ms   underruns %d" % [_tick, Engine.get_frames_per_second(),
 			_states_received, entities.buffer.size(), entities.buffer.delay * 1000, entities.buffer.underruns],
 		"state %.2f ms   interpolate+draw %.2f ms   map chunks %d   drawn %d" % [_state_usec / 1000.0, _interp_usec / 1000.0,
@@ -908,7 +1092,7 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 			"trains": state["trains"].size(), "npcs": state["npcs"].size(), "pedestrians": state["pedestrians"].size(),
 			"drawn_entities": entities.drawn_entities, "map_chunks": map_layer.chunk_count(),
 			"on_foot": state["on_foot"], "speed_mps": state["player"]["speed"], "hud_speed": hud_text["speed"],
-			"hud_money": hud_text["money"], "camera_follows": camera.position.distance_to(entities.player_position()) < 1.0,
+			"hud_money": hud_text["money"], "camera_follows": camera.position.distance_to(entities.player_position() + _lead) < 1.0,
 			"state_ms": _state_usec / 1000.0, "interp_draw_ms": _interp_usec / 1000.0,
 			"buffered_states": entities.buffer.size(), "underruns_6s": entities.buffer.underruns,
 			"underrun_episodes": entities.buffer.underrun_episodes, "longest_underrun_ms": entities.buffer.longest_underrun_s * 1000.0,

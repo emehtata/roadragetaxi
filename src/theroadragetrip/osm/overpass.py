@@ -122,7 +122,7 @@ def fetch_osm_ways(
     south, west, north, east = bbox
     # landuse/leisure below are unfiltered by value, not a whitelist regex:
     # build_ways() (osm/build.py) classifies any landuse=*/leisure=* way as
-    # scenery regardless of its value, and render/scenery.py:SCENERY_COLORS
+    # scenery regardless of its value, and map_style.py:SCENERY_COLORS
     # already covers dozens of specific values (farmland, cemetery,
     # sports_centre, nature_reserve, ...) - a narrower whitelist here just
     # meant osm_source=overpass silently dropped everything outside it,
@@ -167,6 +167,7 @@ def fetch_osm_ways(
       way["natural"="water"]({south},{west},{north},{east});
     way["natural"="bay"]({south},{west},{north},{east});
     way["natural"="strait"]({south},{west},{north},{east});
+    way["natural"="coastline"]({south},{west},{north},{east});
       way["waterway"]({south},{west},{north},{east});
       way["landuse"="reservoir"]({south},{west},{north},{east});
       way["building"]({south},{west},{north},{east});
@@ -179,6 +180,7 @@ def fetch_osm_ways(
       way["natural"~"{natural_scenery_regex}"]({south},{west},{north},{east});
       way["place"~"suburb|neighbourhood|quarter|village"]({south},{west},{north},{east});
       relation["natural"="water"]({south},{west},{north},{east});
+      relation["route"~"^(tram|light_rail)$"]({south},{west},{north},{east});
     relation["natural"="bay"]({south},{west},{north},{east});
     relation["natural"="strait"]({south},{west},{north},{east});
       relation["landuse"="reservoir"]({south},{west},{north},{east});

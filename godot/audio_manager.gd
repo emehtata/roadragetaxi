@@ -26,12 +26,12 @@ var _groups: Dictionary = {}  # catalog group id -> {"files": [absolute paths], 
 var _streams: Dictionary = {}  # path -> AudioStream (loaded once)
 var _loops: Dictionary = {}  # key -> AudioStreamPlayer
 var _bus_of_category: Dictionary = {}
-var _last_variation: Dictionary = {}  # group -> index last picked, so a random pick never repeats it back to back (as audio.py)
+var _last_variation: Dictionary = {}  # group -> index last picked, so a random pick never repeats it back to back
 var _foot_at := Vector2.INF
 var _foot_distance := 0.0
 const FOOTSTEP_M := 0.8
 # godot-final-07: one voice (driver/passenger speech) and one station loudspeaker.
-const ANNOUNCEMENT_MAX_WAIT_MS := 20000  # station_announcer.py MAX_WAIT_S: a queued announcement older is dropped
+const ANNOUNCEMENT_MAX_WAIT_MS := 20000  # a queued announcement older is dropped (stale: the train is long gone)
 var package_root: String = preload("res://paths.gd").package_root()  # the repo's or the release's
 var speech_player := AudioStreamPlayer.new()
 var announcer := AudioStreamPlayer2D.new()
@@ -102,7 +102,7 @@ func resolve(event: Dictionary) -> Array:
 		var files: Array = group["files"]
 		var variation: int = step.get("variation", event.get("variation", _pick_variation(step["group"], files.size())))
 		var action := {"group": step["group"], "file": files[clampi(variation, 0, files.size() - 1)],
-			"volume": float(step.get("volume", 1.0)), "bus": bus_for(step["group"])}
+			"volume": float(step.get("volume", event.get("volume", 1.0))), "bus": bus_for(step["group"])}
 		var at = event.get("at")
 		if at == null and group["category"] in _config.get("player_categories", []):
 			at = [player_at.x, player_at.y]
@@ -252,7 +252,7 @@ func loop_playing(key: String) -> bool:
 
 
 ## The recording of a server "speech" event, or "" for a malformed one: only
-## sounds/<driver|passenger>_chatter/<f|m>_<fi|en>_<hex hash>.wav, never a path from the wire.
+## sounds/<driver|passenger>_chatter/<f|m>_<fi|en>_<hex hash>.ogg, never a path from the wire.
 func speech_file(event: Dictionary) -> String:
 	var speaker = event.get("speaker")
 	var gender = event.get("gender")
@@ -261,7 +261,7 @@ func speech_file(event: Dictionary) -> String:
 	if not speaker in ["driver", "passenger"] or not gender in ["f", "m"] or not language in ["fi", "en"] \
 			or typeof(key) != TYPE_STRING or key.is_empty() or key.length() > 32 or not key.is_valid_hex_number():
 		return ""
-	return package_root.path_join("sounds/%s_chatter/%s_%s_%s.wav" % [speaker, gender, language, key])
+	return package_root.path_join("sounds/%s_chatter/%s_%s_%s.ogg" % [speaker, gender, language, key])
 
 
 ## Plays a "speech" event on the one voice; false (and silent) if it's
@@ -313,7 +313,7 @@ func _next_clip() -> void:
 			announcer.position = MapMath.point(origin, waiting[2].x, waiting[2].y)
 	while not _announcing.is_empty():
 		var stream := _stream(_announcing.pop_front())
-		if stream != null:  # a missing clip is skipped, the rest still plays (as Pygame)
+		if stream != null:  # a missing clip is skipped, the rest still plays
 			announcer.stream = stream
 			announcer.play()
 			played_groups["announcement_clips"] = played_groups.get("announcement_clips", 0) + 1
@@ -333,8 +333,6 @@ func _stream(path: String) -> AudioStream:
 		var stream: AudioStream = null
 		if path.ends_with(".ogg"):
 			stream = AudioStreamOggVorbis.load_from_file(path)
-		elif path.ends_with(".wav"):  # the chatter recordings (PCM WAV), decoded once
-			stream = AudioStreamWAV.load_from_file(path)
 		if stream == null:
 			push_warning("AudioManager: could not load %s" % path)
 		_streams[path] = stream

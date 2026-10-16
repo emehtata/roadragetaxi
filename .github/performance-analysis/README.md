@@ -4,6 +4,31 @@ This folder contains technical deep-dives into rendering performance, bottleneck
 
 ## Contents
 
+### [npc-traffic-safety-2026-10-15.md](./npc-traffic-safety-2026-10-15.md)
+
+**Status**: Ten-minute observation and next-phase plan; first passenger-lifecycle fix implemented, remaining safety/scheduling work planned
+
+**Date**: 2026-10-15
+
+**Focus**: Two recorded NPC crashes, traffic collapsing into parked/recovery states,
+confirmed passenger rematerialization, and Finnish-law gaps in vehicle/pedestrian
+controls. Includes collision histories, waiting evidence, baseline probes and
+ordered safety/liveness acceptance tests.
+
+### [weather-traffic-2026-10-14.md](./weather-traffic-2026-10-14.md)
+
+**Status**: Analysis and optimization plan only; no runtime changes
+
+**Date**: 2026-10-14
+
+**Focus**: Rendered day/night/rain/slush/snow matrix, ploughed roads, tyre-track stress and driving jitter; confirms global snow redraw hitches, eager sidewalk-aware parking scans, repeated track rebuilds and steady building-render cost. Includes raw measurements and diagnostic reproduction harnesses; software-renderer limitations are explicit.
+
+### [map-loading-02.md](./map-loading-02.md)
+
+**Status**: Implemented; cold tile loads remain
+**Date**: 2026-10-14
+**Focus**: Stalls and UI jitter while the map grows: the GC tuning lost with the Pygame client (full collections up to ~0.6 s), GIL sharing with background map work, chunk resends, two syncs per tile step; warm-route freezes 24–31 → 0–1, clock snaps 10–13 → 0; `tools/bench_map_jitter.py`
+
 ### [bin-loader-v6-illuminated-windows.md](./bin-loader-v6-illuminated-windows.md)
 
 **Status**: Implemented; corrects V4 attribution

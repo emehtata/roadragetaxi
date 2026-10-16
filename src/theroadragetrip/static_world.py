@@ -1,5 +1,5 @@
-"""The rest of the static world for chunk streaming (godot-16): what Pygame
-draws from the map, prepared once at server start for clients that draw
+"""The rest of the static world for chunk streaming (godot-16): what the
+client draws from the map, prepared once at server start for clients that draw
 from chunks (the Godot client). Everything here is static and visual: no
 collision, no routing.
 
@@ -12,8 +12,8 @@ one twice and an unloaded chunk takes exactly its own features along:
   span kilometres, more than the loaded chunks around the player
 - bridge guardrail segments: their midpoint's chunk
 
-Styles (colours, roof colours, gabled roofs) come from the same functions
-Pygame's renderers use, computed here once instead of per frame.
+Styles (colours, roof colours, gabled roofs) come from building_style.py
+and map_style.py, computed here once.
 """
 
 from __future__ import annotations
@@ -25,9 +25,10 @@ from shapely.ops import unary_union
 
 from .geo import dist_point_to_segment
 
-GUARDRAIL_JOIN_M = 3.0  # render/roads.py draw_ways: close gaps between parallel bridge ways (~3 px at any zoom)
-RAIL_BRIDGE_JOIN_M = 1.5  # render/roads.py _RAILWAY_BRIDGE_JOIN_M
-RAIL_DECK_HALF_M = 2.6 / 2.0 + 0.4  # half a sleeper + the deck margin (render/roads.py)
+GUARDRAIL_JOIN_M = 3.0  # close gaps between parallel bridge ways (~3 px at any zoom)
+RAIL_BRIDGE_JOIN_M = 2.5  # one platform across ordinary parallel-track spacing
+RAIL_DECK_HALF_M = 2.6 / 2.0 + 0.4  # half a sleeper + the deck margin
+RAIL_UNDERPASS_MARGIN_M = 3.0  # deck/abutment beyond each side of the road cutting
 LABEL_DISTRICT, LABEL_WATER, LABEL_AREA, LABEL_BUILDING, LABEL_ROAD = range(5)
 
 
@@ -59,10 +60,10 @@ def clipped_pieces(points, size: float):
 
 
 def road_style(way) -> dict:
-    """The parts of render/roads.py draw_ways' look that aren't geometry:
+    """The parts of a road's look that aren't geometry:
     colour (road_color_for_way), centre line (dashed, or solid on a two-way
     road of 3+ lanes), one-way chevrons, bridge."""
-    from .render.common import road_color_for_way
+    from .map_style import road_color_for_way
 
     style = {"color": _rgb(road_color_for_way(way))}
     if way.is_drivable:
@@ -79,19 +80,28 @@ def road_style(way) -> dict:
     return style
 
 
+_OWN_CENTERLINE_M = 50.0  # a bridge outline's own centrelines lie within its bounds; margin for safety
+
+
 def _side_edges(polygons, centerlines, max_angle=math.radians(30)):
     """Boundary edges of the union running along a centreline (not the flat
-    ends): render/roads.py draw_ways' guardrails, in world metres."""
+    ends): the bridge guardrails, in world metres."""
     merged = unary_union([p.buffer(GUARDRAIL_JOIN_M) for p in polygons]).buffer(-GUARDRAIL_JOIN_M)
     edges = []
     for polygon in getattr(merged, "geoms", [merged]):
         if polygon.is_empty or polygon.geom_type != "Polygon":
             continue
         ring = list(polygon.exterior.coords)
+        # Only this bridge's own centrelines can be nearest to its edges (a
+        # closer one would have joined it): not every bridge on the map per edge.
+        minx, miny, maxx, maxy = polygon.bounds
+        own = [s for s in centerlines if min(s[0][0], s[1][0]) <= maxx + _OWN_CENTERLINE_M
+               and max(s[0][0], s[1][0]) >= minx - _OWN_CENTERLINE_M and min(s[0][1], s[1][1]) <= maxy + _OWN_CENTERLINE_M
+               and max(s[0][1], s[1][1]) >= miny - _OWN_CENTERLINE_M] or centerlines
         for a, b in zip(ring, ring[1:]):
             angle = math.atan2(b[1] - a[1], b[0] - a[0])
             mid = ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
-            best = min(centerlines, key=lambda s: dist_point_to_segment(mid[0], mid[1], s[0][0], s[0][1], s[1][0], s[1][1]))
+            best = min(own, key=lambda s: dist_point_to_segment(mid[0], mid[1], s[0][0], s[0][1], s[1][0], s[1][1]))
             seg_angle = math.atan2(best[1][1] - best[0][1], best[1][0] - best[0][0])
             if abs((angle - seg_angle + math.pi / 2.0) % math.pi - math.pi / 2.0) < max_angle:
                 edges.append((a, b))
@@ -110,10 +120,33 @@ def bridge_guardrails(ways) -> list:
     return _side_edges(polygons, centerlines) if polygons else []
 
 
-def rail_bridge_decks(railways):
+def rail_bridge_parts(railways, ways=()):
+    """Track lines above vehicles, including untagged track over an underpass."""
+    parts = [LineString(r.points_m) for r in railways if r.is_bridge and len(r.points_m) >= 2]
+    underpasses = [
+        LineString(w.points_m).buffer(max(0.5, w.half_width_m) + RAIL_UNDERPASS_MARGIN_M)
+        for w in ways
+        if len(w.points_m) >= 2 and getattr(w, "is_drivable", True)
+        and (getattr(w, "is_tunnel", False) or getattr(w, "layer", 0) < 0)
+    ]
+    if not underpasses:
+        return parts
+    covered = unary_union(underpasses)
+    for railway in railways:
+        if railway.is_bridge or len(railway.points_m) < 2:
+            continue
+        intersection = LineString(railway.points_m).intersection(covered)
+        if intersection.geom_type == "LineString" and not intersection.is_empty:
+            parts.append(intersection)
+        else:
+            parts.extend(line for line in getattr(intersection, "geoms", ()) if line.geom_type == "LineString" and not line.is_empty)
+    return parts
+
+
+def rail_bridge_decks(railways, ways=(), bridge_parts=None):
     """Deck polygons (union of the bridge tracks' sleeper width + margin)
-    for render/roads.py's rail bridges."""
-    lines = [LineString(r.points_m) for r in railways if r.is_bridge and len(r.points_m) >= 2]
+    for the rail bridges."""
+    lines = bridge_parts if bridge_parts is not None else rail_bridge_parts(railways, ways)
     if not lines:
         return []
     decks = unary_union([l.buffer(RAIL_DECK_HALF_M, cap_style="flat", join_style="mitre").buffer(RAIL_BRIDGE_JOIN_M)
@@ -123,11 +156,11 @@ def rail_bridge_decks(railways):
 
 def building_style(building) -> list:
     """[roof colour, gabled, height m, entrances, wall colour, floors,
-    category] as render/buildings.py picks them: colours named in the
+    category] as building_style.py picks them: colours named in the
     building's (Finnish) name, else the per-building texture pick; the OSM
     entrances ([x, y] each); its floor count (OSM levels, else height / 3);
     category 1 house, 2 commercial, 0 other (the window rules)."""
-    from .render import buildings as rb
+    from . import building_style as rb
 
     named = rb._building_colors_from_name(getattr(building, "colour_name", None) or getattr(building, "name", None))
     if named is not None:
@@ -142,7 +175,8 @@ def building_style(building) -> list:
     return [_rgb(roof), 1 if rb._uses_gabled_roof(building) else 0, round(rb._building_render_height(building), 1),
             [[round(x, 1), round(y, 1)] for x, y in getattr(building, "entrances", ())],
             _rgb(wall), rb._building_window_story_count(building),
-            1 if rb._building_is_house(building) else 2 if rb._building_is_commercial(building) else 0]
+            1 if rb._building_is_house(building) else 2 if rb._building_is_commercial(building) else 0] + \
+        ([1] if getattr(building, "arena_windows", False) else [])
 
 
 def inherit_part_colours(buildings) -> int:
@@ -151,7 +185,7 @@ def inherit_part_colours(buildings) -> int:
     (`colour_name`): Valkealinnantalo's taller unnamed part otherwise
     covered its white roof with a palette brown. Returns how many."""
     from .geo import point_in_polygon
-    from .render import buildings as rb
+    from . import building_style as rb
 
     named = [b for b in buildings if len(b.points_m) >= 3 and rb._building_colors_from_name(getattr(b, "name", None))]
     count = 0
@@ -179,13 +213,13 @@ def building_owner(building):
 
 
 def is_open_roof(building) -> bool:
-    from .render.buildings import _is_open_roof
+    from .building_style import _is_open_roof
 
     return _is_open_roof(building)
 
 
 def bus_stop_shapes(stop, ways):
-    """render/roads.py draw_bus_stops' bay, shelter and label from the
+    """A bus stop's bay, shelter and label from the
     nearest same-layer drivable road within 45 m; None without one."""
     nearest = None
     for way in ways:
@@ -217,11 +251,11 @@ def bus_stop_shapes(stop, ways):
 
 
 def labels(world) -> list:
-    """Label candidates as render/labels.py chooses them, by priority:
+    """Label candidates, by priority:
     districts, named waters, named areas, buildings (their places and
     their own name), roads. [x, y, text, category]; the client declutters
-    per view, as Pygame does."""
-    from .render.labels import DISTRICT_PLACE_KINDS
+    per view."""
+    from .map_style import DISTRICT_PLACE_KINDS
 
     found = []
     for place in getattr(world, "places", ()):

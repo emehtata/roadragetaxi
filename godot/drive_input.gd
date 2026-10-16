@@ -47,7 +47,7 @@ func any_held() -> bool:
 	return not _held.is_empty()
 
 
-## The command's control fields, as Pygame's main() builds PlayerCommand:
+## The command's control fields (simulation.PlayerCommand):
 ## driving keys drive the taxi, or walk the player when on foot.
 func controls(on_foot: bool) -> Dictionary:
 	var up := held(UP)

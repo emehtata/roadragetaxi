@@ -14,7 +14,7 @@
       "one_shot": 1,
       "loop": 2
     },
-    "reason": "pygame.mixer (the game's audio stack) loads OGG; ~10x smaller than WAV in git."
+    "reason": "Godot loads OGG Vorbis; ~10x smaller than WAV in git."
   },
   "root": "src/theroadragetrip/assets/audio",
   "priorities": [
@@ -27,9 +27,11 @@
     "ambient",
     "collision",
     "gameplay",
+    "holiday",
     "passenger",
     "pedestrian",
     "railway",
+    "sport",
     "station",
     "taxi",
     "ui",
@@ -191,8 +193,7 @@
       "description": "Taxi engine cranking and starting.",
       "trigger": "E key turns engine on (command.engine_on).",
       "source": [
-        "src/theroadragetrip/main/__init__.py:1712",
-        "src/theroadragetrip/simulation.py:248"
+        "src/theroadragetrip/simulation.py:286"
       ],
       "priority": "required",
       "loop": false,
@@ -278,7 +279,7 @@
       "description": "Taxi engine switching off.",
       "trigger": "E key turns engine off.",
       "source": [
-        "src/theroadragetrip/main/__init__.py:1712"
+        "src/theroadragetrip/simulation.py:286"
       ],
       "priority": "strong_candidate",
       "loop": false,
@@ -985,7 +986,7 @@
       "description": "Taxi horn.",
       "trigger": "Space: rage shout plays carhorn_takes.",
       "source": [
-        "src/theroadragetrip/main/__init__.py:1718"
+        "src/theroadragetrip/simulation.py:291"
       ],
       "priority": "strong_candidate",
       "loop": false,
@@ -2518,7 +2519,7 @@
       "description": "Phone raised / put away.",
       "trigger": "P key toggles phone_open.",
       "source": [
-        "src/theroadragetrip/main/__init__.py:1685"
+        "godot/phone.gd"
       ],
       "priority": "strong_candidate",
       "loop": false,
@@ -2990,8 +2991,7 @@
       "description": "Menu cursor move and select.",
       "trigger": "Menu key handling (city, settings, pause menus).",
       "source": [
-        "src/theroadragetrip/main/menu_input.py",
-        "src/theroadragetrip/render/menus.py"
+        "not played yet: the Godot menus are silent"
       ],
       "priority": "optional",
       "loop": false,
@@ -3432,7 +3432,6 @@
       "description": "Thunder following a lightning flash.",
       "trigger": "weather.lightning_event_id changes (thunderstorm).",
       "source": [
-        "src/theroadragetrip/main/__init__.py:1491",
         "src/theroadragetrip/weather.py:126"
       ],
       "priority": "required",
@@ -3847,7 +3846,7 @@
       "description": "Quiet night city ambience.",
       "trigger": "Darkness from solar altitude (as street lights use) replaces the day bed.",
       "source": [
-        "src/theroadragetrip/render/roads.py:draw_street_lights (darkness)"
+        "godot/main.gd (city_night by darkness)"
       ],
       "priority": "optional",
       "loop": true,
@@ -3887,12 +3886,702 @@
           "reviewed": "2026-09-25"
         }
       ]
+    },
+    "vehicle.tractor_engine": {
+      "category": "vehicle",
+      "event": "tractor_moving",
+      "description": "Farm tractor driving by: slow diesel engine.",
+      "trigger": "The nearest NPC tractor in hearing range (state npcs vehicle_type tractor).",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loops; volume by distance, pitch by speed.",
+      "generation": {
+        "prompt": "Farm tractor diesel engine running at low revs, chugging slowly along a road, exterior, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.tractor_engine.01",
+          "file": "vehicle/vehicle_tractor_engine_01.ogg",
+          "variation": 1,
+          "variant": "tractor diesel engine idling and chugging",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "tractor diesel engine idling and chugging. Farm tractor diesel engine running at low revs, chugging slowly along a road, exterior, seamless loop, isolated sound effect",
+          "seed": 1366950298,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.044,
+          "rms_dbfs": -13.7
+        },
+        {
+          "id": "vehicle.tractor_engine.02",
+          "file": "vehicle/vehicle_tractor_engine_02.ogg",
+          "variation": 2,
+          "variant": "tractor engine pulling at higher revs",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "tractor engine pulling at higher revs. Farm tractor diesel engine running at low revs, chugging slowly along a road, exterior, seamless loop, isolated sound effect",
+          "seed": 3363000352,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 3,
+          "raw_silent_fraction": 0.129,
+          "rms_dbfs": -14.1
+        }
+      ]
+    },
+    "vehicle.plough_scrape": {
+      "category": "vehicle",
+      "event": "tractor_ploughing",
+      "description": "Snow plough blade scraping the road.",
+      "trigger": "The nearest tractor while it snows or the road has snow (entity_layer ploughing).",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loops, layered over vehicle.tractor_engine.",
+      "generation": {
+        "prompt": "Steel snow plough blade scraping and pushing snow on an asphalt road, grinding scrape and snow rush, exterior, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.plough_scrape.01",
+          "file": "vehicle/vehicle_plough_scrape_01.ogg",
+          "variation": 1,
+          "variant": "steady blade scrape pushing snow",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "steady blade scrape pushing snow. Steel snow plough blade scraping and pushing snow on an asphalt road, grinding scrape and snow rush, exterior, seamless loop, isolated sound effect",
+          "seed": 1356457982,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.02,
+          "rms_dbfs": -21.6
+        },
+        {
+          "id": "vehicle.plough_scrape.02",
+          "file": "vehicle/vehicle_plough_scrape_02.ogg",
+          "variation": 2,
+          "variant": "heavier scrape with snow piling up",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "heavier scrape with snow piling up. Steel snow plough blade scraping and pushing snow on an asphalt road, grinding scrape and snow rush, exterior, seamless loop, isolated sound effect",
+          "seed": 3385898564,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.008,
+          "rms_dbfs": -22.7
+        }
+      ]
+    },
+    "sport.ice_skating": {
+      "category": "sport",
+      "event": "skating",
+      "description": "Skate blades on outdoor ice.",
+      "trigger": "The nearest ice_skating pedestrian (state pedestrians activity).",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loops; volume by distance.",
+      "generation": {
+        "prompt": "Ice skates gliding and carving on an outdoor frozen rink, blade scrapes and swooshes, several skaters, exterior, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.ice_skating.01",
+          "file": "sport/sport_ice_skating_01.ogg",
+          "variation": 1,
+          "variant": "a few skaters gliding and carving",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a few skaters gliding and carving. Ice skates gliding and carving on an outdoor frozen rink, blade scrapes and swooshes, several skaters, exterior, seamless loop, isolated sound effect",
+          "seed": 3334816619,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 208,
+          "raw_silent_fraction": 0.262,
+          "rms_dbfs": -29.8
+        },
+        {
+          "id": "sport.ice_skating.02",
+          "file": "sport/sport_ice_skating_02.ogg",
+          "variation": 2,
+          "variant": "busy rink, many skates scraping",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "busy rink, many skates scraping. Ice skates gliding and carving on an outdoor frozen rink, blade scrapes and swooshes, several skaters, exterior, seamless loop, isolated sound effect",
+          "seed": 1607209681,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 145,
+          "raw_silent_fraction": 0.112,
+          "rms_dbfs": -27.3
+        }
+      ]
+    },
+    "sport.ice_hockey": {
+      "category": "sport",
+      "event": "ice_hockey_game",
+      "description": "Pond hockey: skates, stick slaps and puck on boards.",
+      "trigger": "The nearest puck in play (state pucks).",
+      "source": [
+        "godot/main.gd",
+        "src/theroadragetrip/activities/plugins/ice_hockey.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loops; volume by distance.",
+      "generation": {
+        "prompt": "Outdoor ice hockey game, skates scraping, hockey sticks slapping a puck, puck hitting wooden boards, players skating, exterior, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.ice_hockey.01",
+          "file": "sport/sport_ice_hockey_01.ogg",
+          "variation": 1,
+          "variant": "stick slaps and skates, puck on boards",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "stick slaps and skates, puck on boards. Outdoor ice hockey game, skates scraping, hockey sticks slapping a puck, puck hitting wooden boards, players skating, exterior, seamless loop, isolated sound effect",
+          "seed": 3708019005,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 693,
+          "raw_silent_fraction": 0.862,
+          "rms_dbfs": -33.9
+        },
+        {
+          "id": "sport.ice_hockey.02",
+          "file": "sport/sport_ice_hockey_02.ogg",
+          "variation": 2,
+          "variant": "fast play, slap shots and skate stops",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "fast play, slap shots and skate stops. Outdoor ice hockey game, skates scraping, hockey sticks slapping a puck, puck hitting wooden boards, players skating, exterior, seamless loop, isolated sound effect",
+          "seed": 1141551239,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 1680,
+          "raw_silent_fraction": 0.481,
+          "rms_dbfs": -29.1
+        }
+      ]
+    },
+    "sport.soccer": {
+      "category": "sport",
+      "event": "soccer_game",
+      "description": "Amateur football: ball kicks and running on grass.",
+      "trigger": "The nearest ball in play (state balls).",
+      "source": [
+        "godot/main.gd",
+        "src/theroadragetrip/activities/plugins/soccer.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loops; volume by distance.",
+      "generation": {
+        "prompt": "Amateur football match on a grass field, ball kicks thumping, players running on grass, distant whistle, exterior, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.soccer.01",
+          "file": "sport/sport_soccer_01.ogg",
+          "variation": 1,
+          "variant": "ball kicks and running on grass",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "ball kicks and running on grass. Amateur football match on a grass field, ball kicks thumping, players running on grass, distant whistle, exterior, seamless loop, isolated sound effect",
+          "seed": 208972263,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.029,
+          "rms_dbfs": -30.5
+        },
+        {
+          "id": "sport.soccer.02",
+          "file": "sport/sport_soccer_02.ogg",
+          "variation": 2,
+          "variant": "busier play, kicks, a referee whistle",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "busier play, kicks, a referee whistle. Amateur football match on a grass field, ball kicks thumping, players running on grass, distant whistle, exterior, seamless loop, isolated sound effect",
+          "seed": 2508060765,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.036,
+          "rms_dbfs": -24.9
+        }
+      ]
+    },
+    "sport.arena_crowd": {
+      "category": "sport",
+      "event": "arena_game",
+      "description": "Ice hockey arena crowd heard from outside: muffled roar and cheering.",
+      "trigger": "A Liiga game in progress (state calendar.arena_games).",
+      "source": [
+        "src/theroadragetrip/arena_crowds.py",
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loops; volume by distance to the arena.",
+      "generation": {
+        "prompt": "Large ice hockey arena crowd cheering and roaring, heard muffled from outside the building, drums and horns far away, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, clear speech, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.arena_crowd.01",
+          "file": "sport/sport_arena_crowd_01.ogg",
+          "variation": 1,
+          "variant": "steady muffled crowd murmur and cheers",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "steady muffled crowd murmur and cheers. Large ice hockey arena crowd cheering and roaring, heard muffled from outside the building, drums and horns far away, seamless loop, isolated sound effect",
+          "seed": 2911305106,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.115,
+          "rms_dbfs": -18.8
+        },
+        {
+          "id": "sport.arena_crowd.02",
+          "file": "sport/sport_arena_crowd_02.ogg",
+          "variation": 2,
+          "variant": "louder roar, a goal celebration far inside",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "louder roar, a goal celebration far inside. Large ice hockey arena crowd cheering and roaring, heard muffled from outside the building, drums and horns far away, seamless loop, isolated sound effect",
+          "seed": 881830952,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 4,
+          "raw_silent_fraction": 0.051,
+          "rms_dbfs": -17.5
+        }
+      ]
+    },
+    "railway.tram_running": {
+      "category": "railway",
+      "event": "tram_moving",
+      "description": "A tram running on street rails: electric hum and wheel squeal.",
+      "trigger": "The nearest moving tram (state trains ids tram-*).",
+      "source": [
+        "src/theroadragetrip/trams.py",
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 2,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loops; volume by distance and tram speed.",
+      "generation": {
+        "prompt": "City tram running on street rails, electric motor whine, wheels rolling and squealing in a curve, exterior, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "railway.tram_running.01",
+          "file": "railway/railway_tram_running_01.ogg",
+          "variation": 1,
+          "variant": "tram rolling, electric motor hum",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "tram rolling, electric motor hum. City tram running on street rails, electric motor whine, wheels rolling and squealing in a curve, exterior, seamless loop, isolated sound effect",
+          "seed": 2913718751,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.003,
+          "rms_dbfs": -15.9
+        },
+        {
+          "id": "railway.tram_running.02",
+          "file": "railway/railway_tram_running_02.ogg",
+          "variation": 2,
+          "variant": "tram wheels squealing through a curve",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "tram wheels squealing through a curve. City tram running on street rails, electric motor whine, wheels rolling and squealing in a curve, exterior, seamless loop, isolated sound effect",
+          "seed": 883064933,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-15",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 68,
+          "raw_silent_fraction": 0.006,
+          "rms_dbfs": -20.5
+        }
+      ]
+    },
+    "railway.tram_bell": {
+      "category": "railway",
+      "event": "tram_departing",
+      "description": "The tram's warning bell as it sets off.",
+      "trigger": "A nearby tram starting to move from a stop.",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.6,
+        1.5
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "One-shot, placed at the tram.",
+      "generation": {
+        "prompt": "Tram warning bell ding ding, city streetcar bell, exterior, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "railway.tram_bell.01",
+          "file": "railway/railway_tram_bell_01.ogg",
+          "variation": 1,
+          "variant": "two quick bell dings",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "two quick bell dings. Tram warning bell ding ding, city streetcar bell, exterior, isolated sound effect",
+          "seed": 3491588103,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-15",
+          "duration_s": 1.601,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.386,
+          "rms_dbfs": -18.6
+        },
+        {
+          "id": "railway.tram_bell.02",
+          "file": "railway/railway_tram_bell_02.ogg",
+          "variation": 2,
+          "variant": "single bright bell ding",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "single bright bell ding. Tram warning bell ding ding, city streetcar bell, exterior, isolated sound effect",
+          "seed": 1226062269,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-15",
+          "duration_s": 1.577,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.261,
+          "rms_dbfs": -20.8
+        }
+      ]
+    },
+    "holiday.firework_launch": {
+      "category": "holiday",
+      "event": "firework_rocket",
+      "description": "A firework rocket whistling up.",
+      "trigger": "A firework site's rocket rising (godot/holiday_layer.gd).",
+      "source": [
+        "godot/holiday_layer.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.8,
+        1.6
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "One-shot, placed at the site.",
+      "generation": {
+        "prompt": "Firework rocket launching and whistling up into the sky, whoosh, exterior night, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "holiday.firework_launch.01",
+          "file": "holiday/holiday_firework_launch_01.ogg",
+          "variation": 1,
+          "variant": "short whistle and whoosh",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "short whistle and whoosh. Firework rocket launching and whistling up into the sky, whoosh, exterior night, isolated sound effect",
+          "seed": 4053809382,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-15",
+          "duration_s": 1.218,
+          "raw_clipped_samples": 43,
+          "raw_silent_fraction": 0.491,
+          "rms_dbfs": -17.1
+        },
+        {
+          "id": "holiday.firework_launch.02",
+          "file": "holiday/holiday_firework_launch_02.ogg",
+          "variation": 2,
+          "variant": "rising whistle",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "rising whistle. Firework rocket launching and whistling up into the sky, whoosh, exterior night, isolated sound effect",
+          "seed": 1755933020,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-15",
+          "duration_s": 1.71,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.314,
+          "rms_dbfs": -17.0
+        }
+      ]
+    },
+    "holiday.firework_burst": {
+      "category": "holiday",
+      "event": "firework_burst",
+      "description": "A firework bursting: bang and crackle.",
+      "trigger": "A firework site's burst (godot/holiday_layer.gd).",
+      "source": [
+        "godot/holiday_layer.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        1.0,
+        3.0
+      ],
+      "variations": 4,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "One-shot, placed at the site.",
+      "generation": {
+        "prompt": "Firework exploding in the night sky, loud bang followed by crackling sparks, distant echo, exterior, isolated sound effect",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "holiday.firework_burst.01",
+          "file": "holiday/holiday_firework_burst_01.ogg",
+          "variation": 1,
+          "variant": "deep boom with echo",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "deep boom with echo. Firework exploding in the night sky, loud bang followed by crackling sparks, distant echo, exterior, isolated sound effect",
+          "seed": 1648463039,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-15",
+          "duration_s": 1.322,
+          "raw_clipped_samples": 125,
+          "raw_silent_fraction": 0.735,
+          "rms_dbfs": -29.4
+        },
+        {
+          "id": "holiday.firework_burst.02",
+          "file": "holiday/holiday_firework_burst_02.ogg",
+          "variation": 2,
+          "variant": "bang and long crackle",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "bang and long crackle. Firework exploding in the night sky, loud bang followed by crackling sparks, distant echo, exterior, isolated sound effect",
+          "seed": 4215856389,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-15",
+          "duration_s": 1.661,
+          "raw_clipped_samples": 40,
+          "raw_silent_fraction": 0.913,
+          "rms_dbfs": -33.8
+        },
+        {
+          "id": "holiday.firework_burst.03",
+          "file": "holiday/holiday_firework_burst_03.ogg",
+          "variation": 3,
+          "variant": "sharp bang, short crackle",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "sharp bang, short crackle. Firework exploding in the night sky, loud bang followed by crackling sparks, distant echo, exterior, isolated sound effect",
+          "seed": 2354048403,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-15",
+          "duration_s": 2.455,
+          "raw_clipped_samples": 234,
+          "raw_silent_fraction": 0.791,
+          "rms_dbfs": -31.5
+        },
+        {
+          "id": "holiday.firework_burst.04",
+          "file": "holiday/holiday_firework_burst_04.ogg",
+          "variation": 4,
+          "variant": "double bang",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "double bang. Firework exploding in the night sky, loud bang followed by crackling sparks, distant echo, exterior, isolated sound effect",
+          "seed": 304838704,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-15",
+          "duration_s": 2.324,
+          "raw_clipped_samples": 388,
+          "raw_silent_fraction": 0.586,
+          "rms_dbfs": -27.7
+        }
+      ]
     }
   },
   "excluded": [
     {
       "id": "police.siren",
-      "reason": "police_car_siren-esp.wav is loaded (AudioManager.update_police_siren) but nothing triggers it: the game has no police vehicles or pursuits, only speed cameras."
+      "reason": "the game has no police vehicles or pursuits, only speed cameras."
     },
     {
       "id": "gameplay.police_stop / gameplay.red_light_violation",
