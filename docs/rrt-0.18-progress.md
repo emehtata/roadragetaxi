@@ -109,3 +109,40 @@ weather-specific braking, STOP-sign latching, movement-specific green conflicts,
 or general traffic compliance. No fresh rendered FPS, long-running city metrics,
 or event-linked journey completion rates are claimed. The remaining slices
 above, including the controlled long-running baseline, are still required.
+
+## Slice 2 complete: sign delivery and mandatory STOP
+
+Confirmed that
+`TrafficWorld` ignored `stop_signs` passed by map synchronization, startup did
+not pass either sign list, and streamed synchronization omitted give-way signs.
+Sign positions are roadside posts, not separately mapped stop lines: the first
+implementation must label its projected-post stopping position as a conservative
+game fallback, not claim exact stop-line/junction visibility compliance.
+
+Implemented both sign delivery paths and a local nine-cell sign query, replacing
+per-vehicle whole-map sign scans. The driver latches a full stop once per approach;
+the latch survives equivalent streamed sign objects, clears after leaving, and
+does not remove the independent crossing-yield check. Irrelevant opposite/upper
+road signs and give-way signs do not force an unconditional stop. Operational
+signals take precedence. Roadside applicability now accounts for road width.
+
+Validation: 8 rotated car/bus stop/resume trajectories, 4 negative/green cases,
+crossing-yield-after-stop and stream-replacement tests. Full suite: **1,621
+passed, 2 skipped** (49.82 s). One earlier non-escalated socket test was blocked
+by the sandbox; the complete socket-enabled run above passed.
+
+Legal reference: B6, annex 3.2, and signal precedence under section 8;
+[2026 amendment 281](https://www.finlex.fi/fi/lainsaadanto/saadoskokoelma/2026/281)
+(effective 2026-05-01) checked alongside the consolidated act on 2026-10-17.
+The game uses <0.05 m/s as stopped and a projected-post position with a 1 m
+nose margin. Exact mapped stop lines, junction visibility and advance plates
+are not implemented by this slice. No PBF parser/loader/render optimization.
+
+## Continuation checkpoint
+
+Next: resident lifecycle cleanup. Audit shows normal trip retirement discards
+the vehicle group but intentionally leaves resident trip/active-vehicle links
+stale. Inspect retirement callers and multi-manager boarding tests, then clear
+only links belonging to the retiring trip while preserving household/vehicle
+ownership. Do not infer physical occupancy from ownership. After a tested
+lifecycle slice, resume the ordered plan; broader city baseline remains pending.

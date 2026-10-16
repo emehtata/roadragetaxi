@@ -26,10 +26,10 @@ from .activities import ActivityInstance, ActivityLocation
 from .competitor_taxis import COMPETITOR_TAXIS, is_competitor, make_competitor
 from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
-from .osm import Curb, ParkingSpace, Way
+from .osm import Curb, ParkingSpace, StopSign, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, is_point_on_road, update_car_physics
 from .residents import Household, HouseholdManager, ResidentManager
-from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision
+from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision, stop_sign_decision
 from .traffic_world import _ROUTE_NODE_GRID_CELL_M, RouteSteps, TrafficWorld, run_route_steps
 from .vehicles.base import VEHICLE_DEFINITIONS, vehicle_definition
 
@@ -1052,6 +1052,8 @@ class Driver:
     current_way: Optional[Way] = None
     target_speed_mps: float = 0.0
     decision: TrafficDecision = field(default_factory=lambda: TrafficDecision(TrafficAction.PROCEED, 0.0))
+    stop_sign_key: Optional[tuple] = None
+    stop_sign_satisfied: bool = False
     # collision-avoidance stuck detection (section 3/8): sampled every
     # NPC_STUCK_CHECK_INTERVAL_S: if displacement since the last sample is
     # under NPC_STUCK_MIN_PROGRESS_M, stuck_timer_s accumulates instead of
@@ -2357,13 +2359,21 @@ def update_npc(
     )
     crossing_decision = None
     if decision.light is None:
+        signs = traffic_world.nearby_signs(vehicle.x, vehicle.y)
         crossing_decision = crossing_yield_decision(
             vehicle, nearby_obstacles or (),
-            signs=[*getattr(traffic_world, "stop_signs", ()), *getattr(traffic_world, "yield_signs", ())],
+            signs=signs,
             speed_limit_mps=speed_limit_mps,
         )
         if crossing_decision is not None and crossing_decision.target_speed_mps <= decision.target_speed_mps:
             decision = crossing_decision
+        stop_decision = stop_sign_decision(vehicle, driver, [sign for sign in signs if isinstance(sign, StopSign)], speed_limit_mps)
+        if stop_decision is not None:
+            crossing_decision = stop_decision if crossing_decision is None else crossing_decision
+            if stop_decision.target_speed_mps <= decision.target_speed_mps:
+                decision = stop_decision
+    else:
+        driver.stop_sign_key, driver.stop_sign_satisfied = None, False
     driver.decision = decision
     driver.target_speed_mps = decision.target_speed_mps
     # vehicle-population v2 section 4: a vehicle plugin's own max speed (e.g. a bus/

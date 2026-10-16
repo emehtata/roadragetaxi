@@ -113,17 +113,54 @@ def nearest_vehicle_ahead(
     return nearest
 
 
+def sign_distance_ahead(vehicle, sign):
+    """Longitudinal distance for this approach's sign, not an opposite/upper road."""
+    fx, fy = math.cos(vehicle.heading), math.sin(vehicle.heading)
+    dx, dy = sign.x - vehicle.x, sign.y - vehicle.y
+    direction = getattr(sign, "direction_angle", None)
+    if (getattr(sign, "layer", 0) != getattr(getattr(vehicle, "way", None), "layer", 0)
+            or abs(dx * fy - dy * fx) > getattr(sign, "road_half_width_m", 3.5) + 1.0
+            or direction is not None and abs(angle_diff(direction, vehicle.heading)) >= math.pi / 4):
+        return None
+    return dx * fx + dy * fy
+
+
+def stop_sign_decision(vehicle, driver, signs, speed_limit_mps=None):
+    """Stop once per approach, then retain the separate crossing-yield duties."""
+    candidates = []
+    for sign in signs:
+        distance = sign_distance_ahead(vehicle, sign)
+        if distance is not None and -vehicle.length_m <= distance <= 45:
+            candidates.append((distance, sign))
+    if not candidates:
+        driver.stop_sign_key, driver.stop_sign_satisfied = None, False
+        return None
+    distance, sign = min(candidates, key=lambda item: item[0])
+    key = (sign.id, round(sign.x, 2), round(sign.y, 2), sign.layer, sign.direction_angle)
+    if key != driver.stop_sign_key:
+        driver.stop_sign_key, driver.stop_sign_satisfied = key, False
+    # The map stores the post, not a stop line: project it onto the approach,
+    # leaving the nose 1 m short. Explicit stop-line geometry remains a gap.
+    gap = max(0.0, distance - vehicle.length_m / 2 - 1.0)
+    if driver.stop_sign_satisfied:
+        return None
+    if gap <= .25 and abs(vehicle.speed) < .05:
+        driver.stop_sign_satisfied = True
+        return TrafficDecision(TrafficAction.STOP, 0.0, reason="STOP sign: full stop completed")
+    cap = 0.0 if gap <= .1 else math.sqrt(2 * 3.0 * gap)
+    if speed_limit_mps is not None:
+        cap = min(cap, speed_limit_mps)
+    fx, fy = math.cos(vehicle.heading), math.sin(vehicle.heading)
+    return TrafficDecision(TrafficAction.STOP if cap == 0 else TrafficAction.SLOW, cap,
+                           (vehicle.x + fx * gap, vehicle.y + fy * gap), "STOP sign: mandatory stop")
+
+
 def crossing_yield_decision(vehicle, obstacles, *, signs=(), speed_limit_mps=None):
     """Brake before conflicting traffic from the right at an unsignalled crossing."""
     def signed(car):
-        fx, fy = math.cos(car.heading), math.sin(car.heading)
         for sign in signs:
-            dx, dy = sign.x - car.x, sign.y - car.y
-            direction = getattr(sign, "direction_angle", None)
-            if (getattr(sign, "layer", 0) == getattr(getattr(car, "way", None), "layer", 0)
-                    and -8.0 < dx * fx + dy * fy < 35.0
-                    and abs(dx * fy - dy * fx) < 4.0
-                    and (direction is None or abs(angle_diff(direction, car.heading)) < math.pi / 4.0)):
+            distance = sign_distance_ahead(car, sign)
+            if distance is not None and -8.0 < distance < 35:
                 return True
         return False
 

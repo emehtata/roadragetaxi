@@ -362,6 +362,7 @@ def load_world(
     on_load_progress(0.86, "Preparing taxi world...")
     traffic_mgr = TrafficWorld(
         ways,
+        stop_signs=stop_signs, yield_signs=yield_signs,
         traffic_lights=traffic_lights,
         crossings=crossings,
         parking_spaces=parking_spaces,
