@@ -187,6 +187,15 @@ LANE_BIAS_LOOKAHEAD_M = 20.0  # start easing into a turn lane this far before th
 _car_plugin_definition = VEHICLE_DEFINITIONS["car"]
 NPC_VEHICLE_LENGTH_M = _car_plugin_definition.length_m  # the default NPC car's dimensions - shared so footprint checks always match the spawned Car
 NPC_VEHICLE_WIDTH_M = _car_plugin_definition.width_m
+NPC_MAX_VEHICLE_HALF_LENGTH_M = max(definition.length_m for definition in VEHICLE_DEFINITIONS.values()) * .5
+
+
+def following_detection_distance(vehicle) -> float:
+    """See a stopped lead before comfortable braking plus a one-second margin."""
+    speed = abs(vehicle.speed)
+    return max(NPC_AVOIDANCE_DETECTION_DISTANCE_M,
+               speed * speed / (2 * NPC_AVOIDANCE_DECEL_MPS2) + speed
+               + vehicle.length_m * .5 + NPC_MAX_VEHICLE_HALF_LENGTH_M + NPC_AVOIDANCE_MIN_GAP_M)
 
 # multi-passenger-car.md section 2: capacity lives in one constant, never a
 # hardcoded literal in passenger-management logic.
@@ -2448,7 +2457,7 @@ def update_npc(
     lead = nearest_vehicle_ahead(
         vehicle.car.x, vehicle.car.y, avoidance_heading, [o for o in nearby_obstacles or () if o is not passing],
         self_id=id(vehicle),
-        detection_distance_m=NPC_AVOIDANCE_DETECTION_DISTANCE_M,
+        detection_distance_m=following_detection_distance(vehicle),
         lateral_limit_m=NPC_AVOIDANCE_LATERAL_LIMIT_M,
     )
     if lead is not None:
@@ -5079,7 +5088,8 @@ class NPCVehicleManager:
             # avoidance inside update_npc); a generator can only be
             # iterated once, so the second consumer would otherwise
             # silently see nothing at all whenever player_car is None.
-            nearby_obstacles = list(self.nearby_vehicles_at(vehicle.x, vehicle.y, 65.0))
+            nearby_obstacles = list(self.nearby_vehicles_at(
+                vehicle.x, vehicle.y, max(65.0, following_detection_distance(vehicle))))
             if player_car is not None:
                 nearby_obstacles.append(player_car)
             update_npc(

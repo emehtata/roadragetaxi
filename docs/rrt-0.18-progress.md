@@ -161,3 +161,43 @@ using the existing observation tool (sample map, no PBF). Inspect its collisions
 and low-progress reports before starting demand work. Tool changes and the
 observation report are the next independent slice; do not include them in the
 retirement commit. Broader city/event validation remains pending.
+
+### Slice 4 complete: fresh observation and stopping-distance lookahead
+
+The existing `tools/observe_npc_traffic.py` now accepts `--use-sample` and
+`--unpaced` (fixed-step physics duration, not an FPS benchmark). A 600-second,
+18,000-tick offline sample run found 2 collision events, 15 successful trip
+starts, no sampled arrival/departure transitions, and repeated STUCK/recovery
+cycles. Nine ways/two buildings do not represent city-wide demand or events.
+One collision was a roughly 61 km/h NPC rear-ending the stationary player;
+the fixed 30 m detection cone was shorter than comfortable stopping distance.
+
+Implemented: derive
+following detection and the manager's spatial-query radius from current speed,
+braking distance, one second of margin and vehicle lengths. Existing cone/lane
+tests and braking caps remain; no global vehicle scan or population cap.
+All 16 new rotated car/bus-versus-player/NPC trajectories failed before the fix
+and pass after it. Full suite: **1,639 passed, 2 skipped** (51.58 s).
+
+Evidence is committed in `.github/performance-analysis/rrt-0.18-offline-baseline.json`
+and `rrt-0.18-offline-following.json`, including source revision, runtime patch
+hash, seed, compact incident poses and low-progress records. Original full
+temporary logs remain under `/tmp/rrt-018-{lifecycle,following}-observation/`.
+
+Repeat result: the player rear-end did not recur, but **5 collision events**
+occurred versus 2 before; **23 successful trip starts** versus 15, no sampled
+arrival transitions in either run. Timed route-job scheduling and subsequent
+random choices diverge, so these are not a controlled collision-rate improvement.
+The deterministic following trajectories establish the specific fix; the
+observation still fails general safety/liveness goals. Tick p50/p95/p99:
+baseline 0.77/1.37/2.55 ms, following 0.84/1.41/2.50 ms. Both ran alongside tests;
+these timings are diagnostic, not isolated performance or rendered FPS claims.
+The one-second detection margin is game policy; the stopping/following duties
+come from sections 5 and 20 of the consolidated Finnish act checked 2026-10-17.
+
+Resume here: **recovery claims success without physical progress**. The baseline
+had 290 `recovered` route commits and thousands of stationary-driver samples;
+valid-looking paths repeatedly reverse direction near the same blocked pose.
+Bound repeated recovery plans by actual displacement, distinguish legal waits,
+retain safe HOLD/new-destination recovery and documented cleanup. Add regressions
+before claiming this issue fixed. No demand/event maturity claim yet.

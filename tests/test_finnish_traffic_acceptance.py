@@ -7,7 +7,8 @@ import random
 
 import pytest
 
-from theroadragetrip.npc import NPCState, spawn_npc, update_npc
+from theroadragetrip.npc import NPCState, NPCVehicleManager, place_parked_npc, spawn_npc, update_npc
+from theroadragetrip.physics import Car
 from theroadragetrip.osm import StopSign, YieldSign, TrafficLight, Way
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
@@ -129,3 +130,36 @@ def test_irrelevant_stop_or_green_signal_does_not_force_a_stop(kind):
         update_npc(vehicle, driver, 1 / 30, world, residents)
         assert vehicle.speed > 5
     assert vehicle.x > sign.x
+
+
+@pytest.mark.parametrize("heading", [0.0, math.pi / 2, math.pi, -math.pi / 2])
+@pytest.mark.parametrize("vehicle_type", ["car", "bus"])
+@pytest.mark.parametrize("lead_kind", ["player", "npc"])
+def test_high_speed_follower_stops_behind_stationary_vehicle(heading, vehicle_type, lead_kind):
+    fx, fy = math.cos(heading), math.sin(heading)
+    ways = [Way([(i * 20 * fx, i * 20 * fy), ((i + 1) * 20 * fx, (i + 1) * 20 * fy)],
+                "primary", 4.5, speed_limit_kmh=120) for i in range(50)]
+    world, residents = TrafficWorld(ways), ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, world, ways, (40 * fx, 40 * fy), (900 * fx, 900 * fy), vehicle_type=vehicle_type)
+    vehicle.car.speed = 30  # 108 km/h: the old fixed 30 m cone is far too short
+    lead_position = (vehicle.x + 180 * fx, vehicle.y + 180 * fy)
+    manager = NPCVehicleManager(target_count=0, min_count=0)
+    manager._population_elapsed = -1e6  # isolate following, not new trip selection
+    manager.vehicles.append(vehicle)
+    manager.drivers[1] = driver
+    player = Car(*lead_position, heading, 0) if lead_kind == "player" else None
+    if lead_kind == "npc":
+        lead = place_parked_npc(2, lead_position, None)
+        lead.car.heading = heading
+        manager.vehicles.append(lead)
+    else:
+        lead = player
+    for _ in range(450):
+        world.advance_time(1 / 30)
+        manager.update(1 / 30, vehicle.x, vehicle.y, residents, world, ways, player_car=player)
+        gap = (lead.x - vehicle.x) * fx + (lead.y - vehicle.y) * fy - (lead.length_m + vehicle.length_m) / 2
+        assert gap >= 0, "foreseeable stopped traffic must not be rear-ended"
+        assert vehicle.state != NPCState.CRASHED
+        if vehicle.speed < .05:
+            break
+    assert vehicle.speed < .05 and vehicle.state == NPCState.WAITING
