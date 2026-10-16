@@ -83,9 +83,18 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_startup_progress()
 	test_holiday_events()
 	test_settings_help()
+	test_minimap_is_exported()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
+
+
+## The city menu reads finland_minimap.svg as text (FileAccess): an imported
+## texture isn't exported as the file, so the map was missing from the
+## Windows release. "Keep File" exports it as it is.
+func test_minimap_is_exported() -> void:
+	check(FileAccess.get_file_as_string("res://finland_minimap.svg.import").contains('importer="keep"'),
+		"the Finland minimap SVG is exported as a file (Keep File import)")
 
 
 func test_settings_help() -> void:
