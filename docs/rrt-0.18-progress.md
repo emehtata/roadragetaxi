@@ -140,9 +140,24 @@ are not implemented by this slice. No PBF parser/loader/render optimization.
 
 ## Continuation checkpoint
 
-Next: resident lifecycle cleanup. Audit shows normal trip retirement discards
-the vehicle group but intentionally leaves resident trip/active-vehicle links
-stale. Inspect retirement callers and multi-manager boarding tests, then clear
-only links belonging to the retiring trip while preserving household/vehicle
-ownership. Do not infer physical occupancy from ownership. After a tested
-lifecycle slice, resume the ordered plan; broader city baseline remains pending.
+### Slice 3 complete: retirement and resident trip reuse
+
+Normal retirement now clears only the retiring group's resident trip and
+active-vehicle links, restoring household/walking mode while preserving registry
+identity and household/vehicle ownership. A stale group cannot unlink a resident
+already assigned to a different trip. Beginning a reused trip assigns the real
+driver/riding modes and active-vehicle links to all members, not only the driver.
+The live-trip-group admission check remains: a visit outside the vehicle does
+not make somebody available for a simultaneous second trip.
+
+Validation: a real vehicle-manager + pedestrian-manager drive-home/retire/next-trip
+cycle, stale-group protection and existing two-visit/reboarding tests pass.
+Full suite: **1,623 passed, 2 skipped** (51.35 s). Physical disembarkation still
+uses existing trip-group boarded membership; this slice does not redesign that
+ownership or clear identities while a visit remains in progress.
+
+Next checkpoint: a fresh offline ten-minute fixed-step observation has completed
+using the existing observation tool (sample map, no PBF). Inspect its collisions
+and low-progress reports before starting demand work. Tool changes and the
+observation report are the next independent slice; do not include them in the
+retirement commit. Broader city/event validation remains pending.

@@ -935,6 +935,64 @@ def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
     assert distance_from_home < 100.0
 
 
+def test_retiring_home_trip_clears_resident_links_and_allows_the_next_trip():
+    from theroadragetrip.npc import start_npc_trip
+    ways = [Way([(i * 20, 0), ((i + 1) * 20, 0)], "residential", 4.5) for i in range(20)]
+    traffic, residents = TrafficWorld(ways), ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, traffic, ways, (40, 0), (120, 0))
+    manager = NPCVehicleManager(target_count=0, min_count=0)
+    manager.vehicles.append(vehicle)
+    manager.drivers[1] = driver
+    traffic.npcs = manager.vehicles
+    household = manager.household_manager.create((120, 0))
+    members = set(vehicle.trip_group.member_resident_ids)
+    household.member_resident_ids.update(members)
+    household.vehicle_ids.add(1)
+    for resident_id in members:
+        residents.get(resident_id).household_id = household.household_id
+    vehicle.household_id = household.household_id
+    vehicle.vehicle_kind = "household"
+    vehicle.home_position = household.home_position
+    vehicle.returning_home = True
+    pedestrians = PedestrianManager(ways, target_count=0, traffic_manager=traffic, residents=residents)
+    player = Car(80, 100, 0, 0)
+    original_ids = set(residents.residents)
+    for _ in range(3000):
+        traffic.advance_time(1 / 30)
+        manager.update(1 / 30, player.x, player.y, residents, traffic, ways, pedestrian_mgr=pedestrians)
+        pedestrians.update(player, dt=1 / 30)
+        if vehicle.trip_group is None:
+            break
+    assert vehicle.state == NPCState.PARKED and vehicle.trip_group is None
+    assert vehicle.owner_id is None and 1 not in manager.drivers
+    assert set(residents.residents) == original_ids
+    assert not any(p.resident_id in members for p in pedestrians.pedestrians)
+    for resident_id in members:
+        member = residents.get(resident_id)
+        assert member.trip_group_id is None and member.active_vehicle_id is None
+        assert member.mode == "household"
+        assert member.household_id == household.household_id and 1 in member.vehicle_ids
+    next_driver = start_npc_trip(vehicle, residents, traffic, ways, (240, 0), member_resident_ids=sorted(members))
+    assert next_driver is not None
+    assert set(vehicle.trip_group.member_resident_ids) == members
+    for resident_id in members:
+        member = residents.get(resident_id)
+        assert member.active_vehicle_id == 1 and member.trip_group_id == vehicle.trip_group.group_id
+        assert member.mode == ("driving" if resident_id == vehicle.owner_id else "riding")
+
+
+def test_retiring_stale_group_does_not_unlink_a_residents_newer_trip():
+    manager, residents = NPCVehicleManager(target_count=0), ResidentManager()
+    old_member = residents.create(mode="riding")
+    old_member.trip_group_id, old_member.active_vehicle_id = 99, 2
+    vehicle = place_parked_npc(1, (0, 0), None)
+    vehicle.owner_id = old_member.resident_id
+    vehicle.trip_group = TripGroup(1, 1, [old_member.resident_id], boarded_resident_ids={old_member.resident_id})
+    manager._retire_trip(vehicle, residents)
+    assert old_member.trip_group_id == 99 and old_member.active_vehicle_id == 2
+    assert old_member.mode == "riding"
+
+
 def test_experimental_vehicles_excluded_from_default_distribution():
     """Motorcycle is marked experimental (vehicles/plugins/motorcycle.py) -
     off by default, matching config's [experimental] enable_two_wheelers

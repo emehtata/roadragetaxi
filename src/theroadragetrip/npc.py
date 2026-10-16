@@ -1608,7 +1608,8 @@ def _begin_trip_on_vehicle(
     driver_resident = members[0]
     for member in members:
         member.vehicle_ids.add(vehicle.vehicle_id)
-    driver_resident.active_vehicle_id = vehicle.vehicle_id
+        member.active_vehicle_id = vehicle.vehicle_id
+        member.mode = "driving" if member is driver_resident else "riding"
 
     start, aim = path[0], path[1]
     origin_requires_access = origin_is_off_road and not is_point_on_road(
@@ -3849,14 +3850,25 @@ class NPCVehicleManager:
                 progress_callback(len(self.vehicles) / self.target_count)
         self.rebuild_spatial_grid()
 
-    def _retire_trip(self, vehicle: NPCVehicle) -> None:
+    def _retire_trip(self, vehicle: NPCVehicle, resident_manager: ResidentManager) -> None:
         """A trip is fully over (a household vehicle just arrived home, or
         - defensively - a vehicle with no group somehow still had a
         driver): release the driver and let it sit idle until the next
         population-tick roll (or a future Resident-trip reservation)
-        sends it out again. The Residents themselves are untouched -
-        still real, still remembering their household/trip_group_id -
-        only the vehicle's own bookkeeping resets."""
+        sends it out again. Clear only this trip's occupancy links; persistent
+        resident identities, households and vehicle ownership remain intact."""
+        group = vehicle.trip_group
+        member_ids = set(group.member_resident_ids) if group is not None else set()
+        if vehicle.owner_id is not None:
+            member_ids.add(vehicle.owner_id)
+        for resident_id in member_ids:
+            member = resident_manager.get(resident_id)
+            if member is None or member.trip_group_id not in (None, group.group_id if group else None):
+                continue  # a stale roster cannot unlink a resident's newer trip
+            member.trip_group_id = None
+            if member.active_vehicle_id in (None, vehicle.vehicle_id):
+                member.active_vehicle_id = None
+                member.mode = "household" if member.household_id is not None else "walking"
         self.drivers.pop(vehicle.vehicle_id, None)
         vehicle.trip_group = None
         vehicle.returning_home = False
@@ -4076,7 +4088,7 @@ class NPCVehicleManager:
                 )
                 pedestrian.state = "walking_to_activity"
 
-    def _handle_parked_vehicle(self, vehicle: NPCVehicle, sim_time: float = 0.0) -> None:
+    def _handle_parked_vehicle(self, vehicle: NPCVehicle, resident_manager: ResidentManager, sim_time: float = 0.0) -> None:
         """Per-frame, cheap only: retirement checks that need to happen
         the instant a vehicle parks. Deciding and routing to the *next*
         destination is deliberately NOT done here - continue_npc_trip's
@@ -4091,7 +4103,7 @@ class NPCVehicleManager:
         ready to continue" vehicles a few at a time (its own step 4,
         bounded by NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK)."""
         if vehicle.trip_group is None:
-            self._retire_trip(vehicle)
+            self._retire_trip(vehicle, resident_manager)
             return
         if is_competitor(vehicle) and vehicle.taxi_job is not None:
             if vehicle.taxi_job.at_stop(sim_time):  # the passenger has left: free for the next fare
@@ -4102,7 +4114,7 @@ class NPCVehicleManager:
             # building-visit detour the way an ordinary errand stop gets;
             # the household's residents are already accounted for, they
             # don't need to "visit" their own home as a timed activity.
-            self._retire_trip(vehicle)
+            self._retire_trip(vehicle, resident_manager)
 
     def _replaceable_parked_vehicle(
         self, player_x: float, player_y: float, viewport_bounds: Optional[Tuple[float, float, float, float]],
@@ -4895,11 +4907,10 @@ class NPCVehicleManager:
         # living-traffic occupancy invariant: a household's members are shared
         # across its (up to NPC_MAX_VEHICLES_PER_HOUSEHOLD) vehicles, so a
         # member already riding in one must never also be folded into a
-        # trip starting on another. Resident.active_vehicle_id/
-        # trip_group_id are NOT this signal - both are left deliberately
-        # stale after a normal trip retires (see _retire_trip's own
-        # docstring: "Residents themselves are untouched"). The only
-        # reliable "currently mid-trip" signal is membership in some
+        # trip starting on another. Use membership in a live trip group,
+        # not occupancy links: a member visiting a building still belongs
+        # to the unfinished journey even while outside its vehicle.
+        # The reliable "currently mid-trip" signal is membership in some
         # vehicle's still-live trip_group (None once that vehicle's trip
         # actually retires) - collected once per tick, not per household.
         currently_busy_resident_ids = {
@@ -5078,7 +5089,7 @@ class NPCVehicleManager:
                 spatial_grid=spatial_grid,
             )
             if vehicle.state == NPCState.PARKED:
-                self._handle_parked_vehicle(vehicle, traffic_world.sim_time)
+                self._handle_parked_vehicle(vehicle, resident_manager, traffic_world.sim_time)
 
         # Collision is a post-physics phase. Reindex moved vehicles, query a
         # swept local area, then test current and interpolated poses. This
