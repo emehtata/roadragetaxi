@@ -361,6 +361,8 @@ NPC_RECOVERY_ATTEMPTS_PER_TICK = 1
 # explicit jam-cleanup exception, not a timeout for lawful traffic waits.
 NPC_HOLD_RETRY_TICKS = 5
 NPC_HOLD_GIVE_UP_ATTEMPTS = 3
+NPC_RECOVERY_MAX_WITHOUT_PROGRESS = 3
+NPC_RECOVERY_PROGRESS_M = 5.0
 # find_and_start_npc_trip's own BFS search width - deliberately much
 # smaller than spawn_deterministic_npc's NPC_DESTINATION_CANDIDATE_LIMIT
 # (40), which is a one-time, loading-screen-time cost for the game's
@@ -1077,6 +1079,8 @@ class Driver:
     # field in this module (NPCState/NPCAvailability are the only "real"
     # enums here).
     recovery_stage: str = "NORMAL"
+    recovery_anchor: Optional[Tuple[float, float]] = None
+    recovery_route_attempts: int = 0
     hold_retry_tick: int = 0  # HOLD: the population tick it replans to a new destination at
     hold_failures: int = 0  # HOLD: replans that found nothing either
     route_job_pending: bool = False
@@ -2282,6 +2286,14 @@ def update_npc(
         _set_turn_signal(vehicle, "", dt)
         return
 
+    # shortcut: displacement can count a large wiggle; use route progress if observed.
+    if driver.recovery_anchor is not None and math.hypot(
+        vehicle.x - driver.recovery_anchor[0], vehicle.y - driver.recovery_anchor[1],
+    ) >= NPC_RECOVERY_PROGRESS_M:
+        driver.recovery_anchor = None
+        driver.recovery_route_attempts = 0
+        driver.hold_failures = 0
+
     if vehicle.state == NPCState.REVERSING:
         _set_turn_signal(vehicle, "", dt)
         previous = (vehicle.car.x, vehicle.car.y, vehicle.car.heading)
@@ -2529,7 +2541,8 @@ def update_npc(
     # kicked into REVERSING mid-parking).
     waiting_for_light = decision.light is not None and decision.action != TrafficAction.PROCEED
     finishing_approach = approaching_final_waypoint or vehicle.state in (NPCState.PARKING, NPCState.ARRIVING)
-    if waiting_for_light or crossing_decision is not None or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
+    waiting_in_queue = avoidance_blocked and lead is not None and not _is_stalled(lead[1])
+    if waiting_for_light or crossing_decision is not None or waiting_in_queue or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
         driver.stuck_timer_s = 0.0
         driver.stuck_check_position = None
         driver.stuck_check_elapsed_s = 0.0
@@ -4383,6 +4396,9 @@ class NPCVehicleManager:
             if not valid:
                 stats["discarded"] += 1
                 return
+            if job["kind"] == "recovery" and result is not None:
+                if driver.recovery_route_attempts >= NPC_RECOVERY_MAX_WITHOUT_PROGRESS:
+                    result = None  # another valid-looking path is not evidence of physical progress
             if result is None:
                 stats["failed"] += 1
                 if is_competitor(vehicle) and vehicle.taxi_job is not None and job["kind"] == "continue":
@@ -4396,7 +4412,9 @@ class NPCVehicleManager:
                     # A failed search is not evidence that reversing is safe.
                     driver.recovery_stage = "HOLD"
                     vehicle.state = NPCState.WAITING
-                    vehicle.debug_waiting_for = "recovery failed - no validated route"
+                    vehicle.debug_waiting_for = ("recovery exhausted - no driving progress"
+                                                 if driver.recovery_route_attempts >= NPC_RECOVERY_MAX_WITHOUT_PROGRESS
+                                                 else "recovery failed - no validated route")
                     stats["safe_holds"] += 1
                 return
             space = result[2]
@@ -4411,6 +4429,9 @@ class NPCVehicleManager:
                 stats["discarded"] += 1
                 return
             if job["kind"] == "recovery":
+                if driver.recovery_anchor is None:
+                    driver.recovery_anchor = (vehicle.x, vehicle.y)
+                driver.recovery_route_attempts += 1
                 path = result[0]
                 driver.path = path
                 driver.path_index = 1
@@ -4425,7 +4446,10 @@ class NPCVehicleManager:
                 stats["recovered"] += 1
             else:
                 _apply_npc_continuation(vehicle, driver, result)
-                driver.hold_failures = 0
+                if job["kind"] == "unhold" and driver.recovery_route_attempts >= NPC_RECOVERY_MAX_WITHOUT_PROGRESS:
+                    driver.hold_failures += 1  # reset only after this new route actually moves the vehicle
+                else:
+                    driver.hold_failures = 0
                 if vehicle.vehicle_kind == "household":
                     vehicle.returning_home = job["kind"] in ("continue", "unhold")
                 if is_competitor(vehicle) and vehicle.taxi_job is not None and job["kind"] == "continue":

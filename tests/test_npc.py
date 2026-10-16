@@ -1428,7 +1428,8 @@ def test_update_npc_stuck_detection_triggers_recovery_after_timeout():
     # A stopped obstacle right on top of it, every single frame - wants to
     # drive, physically cannot make progress, exactly the failure mode
     # section 3 describes ("stuck against another vehicle or obstacle").
-    blocker = SimpleNamespace(x=vehicle.car.x + 4.0, y=vehicle.car.y, speed=0.0, length_m=4.3)
+    blocker = SimpleNamespace(x=vehicle.car.x + 4.0, y=vehicle.car.y, speed=0.0, length_m=4.3,
+                              state=NPCState.CRASHED)
 
     elapsed = 0.0
     dt = NPC_STUCK_CHECK_INTERVAL_S

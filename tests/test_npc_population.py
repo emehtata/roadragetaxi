@@ -1994,6 +1994,57 @@ def test_fresh_trip_jobs_leave_capacity_for_ready_groups():
     assert [job for job in manager._route_jobs if job["vehicle"] is vehicle] == [first_job]
 
 
+def test_recovery_routes_without_physical_progress_eventually_hold():
+    manager, residents, world, ways, vehicle, driver, plan = _existing_job_fixture("recovery")
+
+    def completed():
+        yield
+        return plan
+
+    for _ in range(npc_module.NPC_RECOVERY_MAX_WITHOUT_PROGRESS):
+        vehicle.state = NPCState.WAITING
+        driver.recovery_stage = "STUCK"
+        manager._enqueue_existing_route_job("recovery", vehicle, completed(), world)
+        _finish_route_jobs(manager, vehicle.x, vehicle.y, residents, world)
+        assert driver.recovery_stage == "NORMAL"
+    vehicle.state = NPCState.WAITING
+    driver.recovery_stage = "STUCK"
+    manager._enqueue_existing_route_job("recovery", vehicle, completed(), world)
+    _finish_route_jobs(manager, vehicle.x, vehicle.y, residents, world)
+    assert driver.recovery_stage == "HOLD" and vehicle.state == NPCState.WAITING
+    assert "no driving progress" in vehicle.debug_waiting_for
+    assert manager.route_job_stats["recovered"] == npc_module.NPC_RECOVERY_MAX_WITHOUT_PROGRESS
+
+    # A successful-looking new destination does not erase failed movement history.
+    for attempt in range(1, npc_module.NPC_HOLD_GIVE_UP_ATTEMPTS + 1):
+        manager._enqueue_existing_route_job("unhold", vehicle, completed(), world)
+        _finish_route_jobs(manager, vehicle.x, vehicle.y, residents, world)
+        assert driver.hold_failures == attempt
+        vehicle.state = NPCState.WAITING
+        driver.recovery_stage = "STUCK"
+        manager._enqueue_existing_route_job("recovery", vehicle, completed(), world)
+        _finish_route_jobs(manager, vehicle.x, vehicle.y, residents, world)
+        assert driver.recovery_stage == "HOLD"
+
+    original_residents = set(residents.residents)
+    members = set(vehicle.trip_group.member_resident_ids)
+    manager._next_vehicle_id = 2
+    manager.update(1 / 30, vehicle.x, vehicle.y, residents, world, ways,
+                   viewport_bounds=(vehicle.x - 20, vehicle.y - 20, vehicle.x + 20, vehicle.y + 20))
+    assert all(candidate is not vehicle for candidate in manager.vehicles)
+    assert set(residents.residents) == original_residents
+    assert all(residents.get(rid).trip_group_id is None for rid in members)
+
+
+def test_actual_driving_progress_resets_recovery_attempt_history():
+    manager, residents, world, ways, vehicle, driver, plan = _existing_job_fixture("recovery")
+    driver.recovery_anchor = (vehicle.x - npc_module.NPC_RECOVERY_PROGRESS_M, vehicle.y)
+    driver.recovery_route_attempts = npc_module.NPC_RECOVERY_MAX_WITHOUT_PROGRESS
+    driver.hold_failures = 2
+    npc_module.update_npc(vehicle, driver, 1 / 30, world, residents)
+    assert driver.recovery_anchor is None and driver.recovery_route_attempts == driver.hold_failures == 0
+
+
 def test_recovery_discards_an_in_place_stolen_parking_reservation():
     manager, residents, world, ways, vehicle, driver, plan = _existing_job_fixture("recovery")
     space = SimpleNamespace(reserved=True, occupied=False, vehicle_id=vehicle.vehicle_id)

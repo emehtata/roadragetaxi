@@ -201,3 +201,62 @@ valid-looking paths repeatedly reverse direction near the same blocked pose.
 Bound repeated recovery plans by actual displacement, distinguish legal waits,
 retain safe HOLD/new-destination recovery and documented cleanup. Add regressions
 before claiming this issue fixed. No demand/event maturity claim yet.
+
+### Slice 5: bound physically unsuccessful recovery (2026-10-17)
+
+Implemented three recovery route commits per five metres of real displacement,
+then safe HOLD and the existing bounded new-destination/failed-car cleanup path.
+Successful-looking unhold plans retain the failure history until the car moves.
+Ordinary queue waits are excluded from stuck recovery; wrecks/parked obstacles
+still qualify. Regression coverage checks the limit, resident-link cleanup,
+physical-progress reset and queue resumption. Initial full suite exposed an old
+generic stopped-obstacle fixture; it now explicitly represents a wreck, and the
+queue exemption excludes wrecks. Focused suite: **154 passed**. Full validation
+result: **1,642 passed, 2 skipped** (51.77 s); compile-check and diff-check pass.
+
+The first 600-second offline repeat completed: 9 collision events, 46 trip starts,
+19.06 seconds wall time. This is **not** a safety pass or a collision-rate
+improvement. Recoveries may terminate instead of repeat forever, but executable
+initial-heading routes and junction safety still need work. Original logs:
+`/tmp/rrt-018-recovery-observation/`. No PBF/rendering work performed.
+
+Final-code repeat evidence is committed as
+`.github/performance-analysis/rrt-0.18-offline-recovery.json` (raw logs in
+`/tmp/rrt-018-recovery-final-observation/`). Same fixture/seed and 18,000 ticks:
+**12 collision events**, **41 successful starts**, no sampled trip completions,
+77 recovery route commits and 70 safe holds. Tick p50/p95/p99:
+0.97/1.60/2.97 ms; 19.13 s wall time. As before, tests ran concurrently and
+route-job timing changes subsequent random paths. More starts/replacement traffic
+are not proof of completed journeys or improved collision rates. `recovered`
+continues to count committed plans, not successfully driven recovery. The
+deterministic regression establishes bounded retries and cleanup, not city safety.
+
+The three-plan/five-metre threshold is game policy. It measures displacement,
+not monotonic route progress; a large wiggle could reset it. Upgrade to a
+route-progress measure if observations demonstrate that failure. No reversing,
+off-road permission, collision suppression or population cap was added.
+
+### Exact resume point after slice 5
+
+1. **Reproduce a remaining collision deterministically before editing.** In the
+   final report at 66.433 s, stopped vehicle 10 at (423668.42, 7207194.47),
+   heading -1.623, is hit by vehicle 14 at (423669.36, 7207198.54), heading
+   -1.806, speed 2.83 m/s. Both are labelled WAITING. Inspect route-target
+   versus physical-heading lead detection and full-footprint stopping at low
+   speed; the first impact alone does not establish which branch is wrong.
+   Later collisions include impacts into already crashed cars. Preserve
+   collision detection and lawful yielding; do not just shorten despawn timers.
+2. **Initial-heading route executability:** repeated plans point behind a held
+   vehicle, then road-footprint guards stop motion. Validate the departure
+   connector/body sweep from its real pose; cleanup is only a fallback.
+3. **Pedestrian signal lifecycle:** inspect the generic red-light check in
+   `PedestrianManager.update` and `_is_pedestrian_red_light`; currently an
+   already-crossing person can be reclassified as waiting. First verify legal
+   crossing/clearance requirements and actual entry/exit geometry; the current
+   CROSSING flag alone is proximity-based and is not proof of legal entry.
+4. Add completed/cancelled trip accounting and deterministic full drive/visit/
+   home cycles before moving into demand rhythms and shared events. The sample
+   observation records no arrival transitions and cannot certify those phases.
+
+Keep the ordered plan above. PBF work remains excluded, no tags/releases, and
+the unrelated untracked `roadragetaxi.code-workspace` must remain untouched.

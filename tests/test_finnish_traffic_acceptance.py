@@ -163,3 +163,18 @@ def test_high_speed_follower_stops_behind_stationary_vehicle(heading, vehicle_ty
         if vehicle.speed < .05:
             break
     assert vehicle.speed < .05 and vehicle.state == NPCState.WAITING
+
+
+def test_legal_queue_wait_does_not_trigger_recovery_and_resumes_when_clear():
+    from theroadragetrip.npc import NPC_STUCK_TIMEOUT_S
+    ways = [Way([(i * 20, 0), ((i + 1) * 20, 0)], "residential", 4.5) for i in range(20)]
+    world, residents = TrafficWorld(ways), ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, world, ways, (40, 0), (360, 0))
+    lead = Car(vehicle.x + 6, vehicle.y, 0, 0)
+    for _ in range(math.ceil((NPC_STUCK_TIMEOUT_S + 10) * 30)):
+        update_npc(vehicle, driver, 1 / 30, world, residents, nearby_obstacles=[lead])
+        assert driver.recovery_stage == "NORMAL"
+        assert vehicle.x < lead.x - (lead.length_m + vehicle.length_m) / 2
+    for _ in range(120):
+        update_npc(vehicle, driver, 1 / 30, world, residents, nearby_obstacles=[])
+    assert vehicle.speed > 1
