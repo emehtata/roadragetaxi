@@ -16,7 +16,9 @@ load each file is checked by the Godot test suite (make godot-test).
 """
 from __future__ import annotations
 
+import array
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -36,13 +38,14 @@ def _levels(path: Path):
     """(duration s, RMS dBFS) of a decoded file, via ffmpeg (44.1 kHz mono)."""
     import subprocess
 
-    import numpy as np
-
     pcm = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-f", "s16le", "-ac", "1", "-ar", "44100", "-"],
                          capture_output=True, check=True).stdout
-    samples = np.frombuffer(pcm, dtype="<i2").astype(np.float64) / 32768.0
-    rms = float(np.sqrt(np.mean(samples ** 2))) if samples.size else 0.0
-    return samples.size / 44100.0, 20.0 * np.log10(rms) if rms > 1e-9 else -200.0
+    samples = array.array("h")
+    samples.frombytes(pcm[:len(pcm) - len(pcm) % samples.itemsize])
+    if sys.byteorder != "little":
+        samples.byteswap()
+    rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples)) / 32768.0 if samples else 0.0
+    return len(samples) / 44100.0, 20.0 * math.log10(rms) if rms > 1e-9 else -200.0
 
 
 def _channels(path: Path) -> int:

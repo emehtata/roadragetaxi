@@ -1,12 +1,30 @@
 """godot-03.md: the sound assets and every reference to them stay valid
 (tools/validate_audio_assets.py); Godot-side loading is in godot/tests."""
 import json
+import math
+import subprocess
 import sys
+from types import SimpleNamespace
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 import validate_audio_assets as validator  # noqa: E402
+
+
+def test_audio_levels_use_standard_library_pcm_math(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(stdout=b"\x00\x00\x00\x40\xff"),
+    )
+
+    duration, dbfs = validator._levels(tmp_path / "clip.ogg")
+
+    assert duration == pytest.approx(2 / 44100)
+    assert dbfs == pytest.approx(20 * math.log10(math.sqrt(0.5) / 2))
 
 
 def test_every_sound_asset_and_reference_is_valid():

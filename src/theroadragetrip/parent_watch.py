@@ -18,7 +18,14 @@ def is_alive(pid: int) -> bool:
         if not handle:
             return False
         try:
-            return kernel32.WaitForSingleObject(handle, 0) != 0  # WAIT_OBJECT_0: it has exited
+            result = kernel32.WaitForSingleObject(handle, 0)
+            if result == 0:  # WAIT_OBJECT_0
+                return False
+            if result == 258:  # WAIT_TIMEOUT
+                return True
+            if result == 0xFFFFFFFF:  # WAIT_FAILED
+                raise ctypes.WinError(ctypes.get_last_error())
+            raise OSError(f"Unexpected WaitForSingleObject result: {result}")
         finally:
             kernel32.CloseHandle(handle)
     try:
