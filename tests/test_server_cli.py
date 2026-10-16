@@ -17,3 +17,7 @@ def test_server_preset_choices_are_limited_to_configured_cities(monkeypatch, tmp
 
     with pytest.raises(SystemExit):
         cli.parse_server_args()
+
+    monkeypatch.setattr(sys, "argv", ["server", "--preset", "Oulu"])
+    args, _config = cli.parse_server_args()
+    assert args.preset == "Oulu"

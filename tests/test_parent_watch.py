@@ -46,3 +46,8 @@ def test_windows_process_wait_results(monkeypatch):
     result = 42
     with pytest.raises(OSError, match="Unexpected WaitForSingleObject result"):
         parent_watch.is_alive(123)
+    monkeypatch.setattr(ctypes, "WinError", lambda code: OSError(f"Windows error {code}"), raising=False)
+    monkeypatch.setattr(ctypes, "get_last_error", lambda: 5, raising=False)
+    result = 0xFFFFFFFF
+    with pytest.raises(OSError, match="Windows error 5"):
+        parent_watch.is_alive(123)
