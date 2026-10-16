@@ -16,7 +16,7 @@ from .physics import (
 from .localization import tr
 from .fare import calculate_fare_cents, format_euros, tip_cents_from_happiness
 from .police import SpeedCamera, camera_sees_car
-from .rail_bookings import ACCEPTED, IN_TAXI, MISSED, PASSENGER_MET, TRAIN_ARRIVING, waiting_booking
+from .rail_bookings import ACCEPTED, IN_TAXI, MISSED, PASSENGER_MET, PASSENGER_WAITING, TRAIN_ARRIVING, waiting_booking
 from .residents import CITY_DATA, MIN_UNACCOMPANIED_AGE, Resident, ResidentManager
 from .traffic_rules import nearest_traffic_light_ahead
 
@@ -339,6 +339,14 @@ class TaxiManager:
         either way the game clock runs in real time, not 60x (a waiting
         booking's pickup window is game time)."""
         return self.current_passenger is not None or bool(self.rail_bookings is not None and self.rail_bookings.waiting())
+
+    def has_job(self) -> bool:
+        """A fare on, or an accepted pre-booking not yet finished: the phone
+        takes nothing more until it's done (nothing is queued)."""
+        return self.current_passenger is not None or any(
+            booking.status in (ACCEPTED, TRAIN_ARRIVING, PASSENGER_WAITING, PASSENGER_MET)
+            for booking in (self.rail_bookings.bookings if self.rail_bookings is not None else ())
+        )
 
     def meet_booking(self):
         """The booking the driver is meeting now: the earliest-arriving
@@ -1753,7 +1761,7 @@ class TaxiManager:
     def accept_offer(self, index: int, car_x: float, car_y: float) -> bool:
         """Activate one phone offer and remove the offer list."""
         items = self.phone_items()
-        if index < 0 or index >= len(items):
+        if index < 0 or index >= len(items) or self.has_job():
             return False
         kind, item = items[index]
         if kind == "booking":

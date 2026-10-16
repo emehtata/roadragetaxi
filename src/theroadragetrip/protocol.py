@@ -249,7 +249,7 @@ def _phone_to_dict(taxi_mgr, car) -> dict:
                 "time_remaining_s": round(item.time_remaining_s, 1),
             })
     # busy: a fare is under way - new offers wait until it ends ("finish or cancel").
-    return {"busy": taxi_mgr.current_passenger is not None, "items": items}
+    return {"busy": taxi_mgr.has_job(), "items": items}  # a job on: nothing more is accepted
 
 
 def _line(points) -> list:

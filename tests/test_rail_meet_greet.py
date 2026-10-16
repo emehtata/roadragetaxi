@@ -413,3 +413,25 @@ def test_no_meet_on_the_wire_without_a_booking_or_after_it_is_missed():
     bookings.update(NOW + PICKUP_WINDOW + timedelta(seconds=1))
     assert passenger.booking.status == MISSED
     assert protocol._meet_to_dict(manager, PlayerPedestrian(x=0.0, y=0.0), "en") is None
+
+
+def test_the_phone_queues_nothing_while_a_job_is_on():
+    """Bug: with a fare on, an Ennakkotilaus could still be accepted, and the
+    booked client was waiting right after the drop-off. Nothing is queued."""
+    from theroadragetrip.protocol import _phone_to_dict
+    from theroadragetrip.taxi import TaxiOffer, TaxiTarget
+
+    bookings, train = booked_train("Aino Virtanen")  # one pre-booking accepted
+    manager = taxi(bookings)
+    eero = SimpleNamespace(name="Eero", pickup=TaxiTarget(x=10.0, y=0.0, address="A"), dropoff=TaxiTarget(x=90.0, y=0.0, address="B"))
+    manager.offers = [TaxiOffer(passenger=eero, pickup_distance_m=100.0)]
+    offer_index = len(manager.phone_items()) - 1
+    assert not manager.accept_offer(offer_index, 0.0, 0.0) and manager.current_passenger is None
+    assert _phone_to_dict(manager, SimpleNamespace(x=0.0, y=0.0))["busy"]
+
+    pending, train = booked_train()
+    passenger = RailPassenger("Helsinki", "Oulu", ("IC", "57"), ON_TRAIN, name="Liisa", intent=TAXI, taxi_stand=STAND)
+    booking = pending.consider(passenger, train, NOW - timedelta(minutes=22), Always())
+    manager = taxi(pending)
+    manager.current_passenger = SimpleNamespace(name="Eero")  # a fare on
+    assert not manager.accept_offer(0, 0.0, 0.0) and booking.status == "PENDING"
