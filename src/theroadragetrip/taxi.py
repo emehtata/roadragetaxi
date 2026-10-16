@@ -619,6 +619,7 @@ class TaxiManager:
         previous_position: Optional[Tuple[float, float]] = None,
         penalty: int = 200,
         ways: Optional[List[Way]] = None,
+        current_way: Optional[Way] = None,
     ) -> bool:
         """Stop the car at a building footprint and apply one crash penalty per impact."""
         expired = [bid for bid, t in self._crashed_building_cooldowns.items() if sim_time - t > 3.0]
@@ -631,8 +632,26 @@ class TaxiManager:
         )
 
         car_level = getattr(player_car, "map_level", SURFACE_LEVEL)
+        # OSM bridge layers and logical garage floors are separate coordinates.
+        on_elevated_bridge = (
+            car_level == SURFACE_LEVEL
+            and current_way is not None
+            and on_map_level(current_way, car_level)
+            and current_way.is_bridge
+            and current_way.layer > 0
+            and current_way.layer == getattr(player_car, "layer", 0)
+            and is_car_road(current_way)
+            and any(
+                dist_point_to_segment(player_car.x, player_car.y, a[0], a[1], b[0], b[1])
+                <= current_way.half_width_m
+                for a, b in zip(current_way.points_m, current_way.points_m[1:])
+            )
+        )
         for building in self._nearby_collision_buildings(buildings, player_car.x, player_car.y, car_radius):
             if not on_map_level(building, car_level):  # only the car's own map level collides
+                continue
+            # shortcut: surface building heights lack bridge clearance; use deck support until elevations exist.
+            if on_elevated_bridge:
                 continue
             points = getattr(building, "points_m", [])
             if len(points) < 3:

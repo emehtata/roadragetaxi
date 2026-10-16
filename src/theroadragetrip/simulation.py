@@ -481,7 +481,8 @@ def advance_simulation(
         # and not checked off the surface (their indexes stay untouched).
         # Road-overlap exemptions use the player's own level's roads.
         building_crash = taxi_mgr.check_building_collision(
-            car, buildings, traffic_mgr.sim_time, previous_position, ways=drive_ways
+            car, buildings, traffic_mgr.sim_time, previous_position, ways=drive_ways,
+            current_way=current_way,
         )
         fallen_before = len(taxi_mgr.fallen_trees)
         tree_crash = on_surface and taxi_mgr.check_tree_collision(

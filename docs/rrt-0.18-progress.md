@@ -260,3 +260,25 @@ off-road permission, collision suppression or population cap was added.
 
 Keep the ordered plan above. PBF work remains excluded, no tags/releases, and
 the unrelated untracked `roadragetaxi.code-workspace` must remain untouched.
+
+### Screenshot fix: building beneath Joutsensilta (2026-10-17)
+
+Screenshot `1792188346686098944` places the taxi at
+(428036.2884, 7209070.0431), on Joutsensilta, OSM layer 1 but logical
+map level 0. These are intentionally different coordinates. Building collision
+only checked the logical floor; the road-footprint overlap fallback does not
+cover a roadside building touched by the car's collision radius.
+
+The simulation now passes its current road to building collision. Surface
+buildings are ignored only while that road is a car-drivable, positive-layer
+bridge matching the taxi's layer/floor and the taxi centre remains on its deck
+corridor. A stale bridge reference after leaving the corridor, a different
+layer/floor, ordinary roads and garage-floor buildings retain collision checks.
+The building itself is not deleted or changed; rendering is unchanged.
+
+Added eight regression cases for bridge clearance and negative cases. Focused
+collision/level suites: **68 passed**. Full suite: **1,650 passed, 2 skipped**
+(56.02 s). Compile and diff checks pass. Visual gameplay was not rerun.
+Limitation: OSM building heights and bridge deck elevations do not currently
+provide a shared physical clearance model. Deck support is the explicit game
+fallback, not a general three-dimensional collision solution. No PBF work.
