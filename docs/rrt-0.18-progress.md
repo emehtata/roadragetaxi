@@ -282,3 +282,18 @@ collision/level suites: **68 passed**. Full suite: **1,650 passed, 2 skipped**
 Limitation: OSM building heights and bridge deck elevations do not currently
 provide a shared physical clearance model. Deck support is the explicit game
 fallback, not a general three-dimensional collision solution. No PBF work.
+
+### Screenshot fix: ground railways beneath road bridges (2026-10-17)
+
+Screenshot `1792188564863280896` shows Poikkimaantie at OSM layer 2.
+The Godot chunk renderer drew all ground tracks at z6, above road decks
+(z2–4), irrespective of the server's correct road layer. Ground ballast,
+sleepers and rails now draw at z1 after ground roads, below elevated decks.
+The separate elevated railway/deck rendering remains at z11. No map parsing,
+physics, routing or per-frame work changed.
+
+Godot regression covers road layers 1/2/3 and both cross-chunk arrival orders,
+plus preservation of elevated railway rendering. Headless client suite:
+**822 checks, 0 failed**. Diff check passes. Visual gameplay was not rerun;
+the suite also emits startup
+signal-connection and resource-cleanup diagnostics outside this change.

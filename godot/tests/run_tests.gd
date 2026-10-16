@@ -458,6 +458,22 @@ func test_map_chunks() -> void:
 	check(map.add_chunk({"chunk_id": "1_3"}) and map.chunk_count() == 2, "a new area's chunk is added")
 	check(map.remove_chunk("1_2") and not map.has_chunk("1_2") and map.chunk_count() == 1, "a distant chunk is removed")
 	check(not map.remove_chunk("9_9"), "removing an unknown chunk is harmless")
+	# Separate chunks must obey the same vertical order, regardless of arrival.
+	for config in [[1, false], [1, true], [2, false], [2, true], [3, false], [3, true]]:
+		var ground := {"chunk_id": "ground", "railways": [[[0, -10], [0, 10]]]}
+		var bridge := {"chunk_id": "bridge", "roads": [
+			{"points": [[-10, 0], [10, 0]], "half_width_m": 4.0, "drivable": true, "layer": config[0]}],
+			"rail_bridges": [[[5, -10], [5, 10]]]}
+		for message in ([bridge, ground] if config[1] else [ground, bridge]):
+			map.add_chunk(message)
+		var tracks = map._chunks["ground"].get_node("GroundTracks")
+		var deck = map._chunks["bridge"]._road_layers[0]
+		check(tracks.z_index < deck.z_index, "ground rails stay below a road bridge in either chunk order")
+		check(tracks.z_index >= 1, "ground rails remain visible over surface roads at level crossings")
+		check(map._chunks["bridge"]._px_layers.any(func(node): return node.z_index == 11),
+			"elevated railways retain their above-traffic bridge layer")
+		map.remove_chunk("ground")
+		map.remove_chunk("bridge")
 	map.set_road_snow(3.0, [[0, 0, 3.0]])
 	map.add_chunk({"chunk_id": "snow", "bounds": [0, 0, 100, 100], "roads": [{"points": [[0, 5], [100, 5]], "half_width_m": 3.0, "drivable": true}]})
 	var snowy = map._chunks["snow"]

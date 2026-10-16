@@ -4,10 +4,10 @@
 ##
 ##   z0  water (this node): another chunk's lake can't cover a bridge;
 ##       sports field markings (over every chunk's landuse)
-##   z1  roads at ground level and below, lowest layer first
+##   z1  roads at ground level and below, then ground railway tracks
 ##   z2+ bridges: layer 1, 2, 3 (higher clamps to 3)
 ##   z5  wet-road darkening and sheen, puddles (weather; alpha follows wetness)
-##   z6  railways; trees, bollards, fuel pumps (trees and scenery objects
+##   z6  trees, bollards, fuel pumps (trees and scenery objects
 ##       before buildings); a felled tree lies down, a knocked bollard
 ##       is drawn by MapLayer from the state instead
 ##   z7  buildings
@@ -123,7 +123,9 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_guardrails(self, node)))
 	if not message.get("bus_stops", []).is_empty():
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_bus_stops(self, node)))
-	_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_tracks(self, node, "railways")))
+	var ground_tracks := _add_layer(1, func(node: Node2D): Detail.draw_tracks(self, node, "railways"))
+	ground_tracks.name = "GroundTracks"
+	_px_layers.append(ground_tracks)
 	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails
 		_season_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands")))
 	var canopy_supports := _add_layer(7, _draw_canopy_supports)
