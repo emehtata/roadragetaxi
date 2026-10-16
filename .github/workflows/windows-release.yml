@@ -20,6 +20,7 @@ permissions:
 
 env:
   GODOT_VERSION: "4.7.2"
+  OSMIUM_VERSION: "1.19.1"  # bundled for local .osm.pbf maps (conda-forge, win-64)
 
 jobs:
   build-windows:
@@ -50,6 +51,54 @@ jobs:
           --add-data "src/theroadragetrip/assets;theroadragetrip/assets"
           --distpath build/server --workpath build/server-work
           road_rage_server.py
+
+      - name: Bundle osmium-tool (local .osm.pbf maps)
+        # GPL-3.0-only: shipped as a separate program the server runs
+        # (THIRD_PARTY_LICENSES.md); its source goes with every release below.
+        shell: pwsh
+        run: |
+          & "$env:CONDA\Scripts\conda.exe" create --yes --quiet --prefix "$PWD\osmium-env" --override-channels -c conda-forge "osmium-tool=${{ env.OSMIUM_VERSION }}"
+          if ($LASTEXITCODE -ne 0) { throw "conda could not install osmium-tool" }
+          $dest = "build/server/RoadRageServer/osmium"
+          New-Item -ItemType Directory -Force "$dest/licenses" | Out-Null
+          Copy-Item osmium-env/Library/bin/osmium.exe $dest
+          Copy-Item osmium-env/Library/bin/*.dll $dest
+          Copy-Item osmium-env/*.dll $dest  # the MSVC runtime and the UCRT (vc14_runtime, ucrt)
+          foreach ($meta in Get-ChildItem osmium-env/conda-meta/*.json) {
+            $package = Get-Content $meta -Raw | ConvertFrom-Json
+            $licenses = Join-Path $package.extracted_package_dir "info/licenses"
+            if (Test-Path $licenses) {
+              Copy-Item -Recurse $licenses "$dest/licenses/$($package.name)"
+            }
+            "$($package.name) $($package.version): $($package.license)" | Add-Content "$dest/licenses/PACKAGES.txt"
+          }
+          Get-ChildItem $dest
+
+      - name: Smoke-test the bundled osmium
+        shell: pwsh
+        run: |
+          $osmium = "build/server/RoadRageServer/osmium/osmium.exe"
+          & $osmium --version
+          if ($LASTEXITCODE -ne 0) { throw "the bundled osmium does not run" }
+          @'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <osm version="0.6">
+            <node id="1" lat="65.01" lon="25.46" version="1"/>
+            <node id="2" lat="65.02" lon="25.47" version="1"/>
+            <way id="10" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/></way>
+          </osm>
+          '@ | Set-Content -Encoding utf8 smoke.osm
+          & $osmium cat smoke.osm -o smoke.osm.pbf -O
+          & $osmium extract --bbox 25.45,65.0,25.48,65.03 --strategy=smart -f osm -O -o smoke-extract.osm smoke.osm.pbf
+          if ($LASTEXITCODE -ne 0 -or -not ((Get-Content smoke-extract.osm -Raw) -match 'way id="10"')) { throw "the bundled osmium could not extract" }
+
+      - name: The source of the bundled osmium-tool (GPL-3.0)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Invoke-WebRequest "https://github.com/osmcode/osmium-tool/archive/refs/tags/v${{ env.OSMIUM_VERSION }}.tar.gz" -OutFile "dist/osmium-tool-${{ env.OSMIUM_VERSION }}-source.tar.gz"
+          # The build scripts used (GPLv3 Corresponding Source): conda-forge's recipe.
+          Invoke-WebRequest "https://github.com/conda-forge/osmium-tool-feedstock/archive/refs/heads/main.tar.gz" -OutFile "dist/osmium-tool-feedstock-recipe.tar.gz"
 
       - name: Smoke-test the server
         shell: pwsh
@@ -98,6 +147,7 @@ jobs:
           & $godot --headless --path godot --export-release "Windows Desktop" "$PWD/dist/RoadRageTrip/RoadRageTrip.exe"
           if (-not (Test-Path dist/RoadRageTrip/RoadRageTrip.exe)) { throw "the Godot export produced no RoadRageTrip.exe" }
           Move-Item build/server/RoadRageServer dist/RoadRageTrip/server
+          Copy-Item THIRD_PARTY_LICENSES.md dist/RoadRageTrip/
           Get-ChildItem dist/RoadRageTrip
 
       - name: Package release
@@ -114,9 +164,11 @@ jobs:
           $setup = (Resolve-Path dist/RoadRageTrip-Setup.exe).Path
           $result = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$install" -Wait -PassThru
           if ($result.ExitCode -ne 0) { throw "setup exited with $($result.ExitCode)" }
-          foreach ($file in @("RoadRageTrip.exe", "RoadRageTrip.pck", "server/RoadRageServer.exe", "server/_internal/theroadragetrip/img/theroadragetrip_1672_941.png", "server/_internal/theroadragetrip/assets/audio/audio_catalog.json")) {
+          foreach ($file in @("RoadRageTrip.exe", "RoadRageTrip.pck", "server/RoadRageServer.exe", "server/osmium/osmium.exe", "THIRD_PARTY_LICENSES.md", "server/_internal/theroadragetrip/img/theroadragetrip_1672_941.png", "server/_internal/theroadragetrip/assets/audio/audio_catalog.json")) {
             if (-not (Test-Path (Join-Path $install $file))) { throw "installed file missing: $file" }
           }
+          & (Join-Path $install "server/osmium/osmium.exe") --version
+          if ($LASTEXITCODE -ne 0) { throw "the installed osmium does not run" }
           $cities = & (Join-Path $install "server/RoadRageServer.exe") --list-cities | Select-Object -Last 1
           if (-not ($cities | ConvertFrom-Json).Count) { throw "installed server lists no cities" }
           $log = Join-Path $env:RUNNER_TEMP "godot-startup.log"
@@ -132,6 +184,8 @@ jobs:
           path: |
             dist/RoadRageTrip-windows-x64.zip
             dist/RoadRageTrip-Setup.exe
+            dist/osmium-tool-*-source.tar.gz
+            dist/osmium-tool-feedstock-recipe.tar.gz
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
@@ -140,4 +194,5 @@ jobs:
         run: >-
           gh release create "${{ github.ref_name }}"
           dist/RoadRageTrip-windows-x64.zip dist/RoadRageTrip-Setup.exe
+          dist/osmium-tool-${{ env.OSMIUM_VERSION }}-source.tar.gz dist/osmium-tool-feedstock-recipe.tar.gz
           --generate-notes

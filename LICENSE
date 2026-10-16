@@ -31,3 +31,6 @@ Data files listed in `src/theroadragetrip/assets/DATA_LICENSES.txt`
 `finnish_surnames.json.gz`, Wikipedia-derived `kunnat.json.gz`) are likewise
 excluded from this MIT license and are provided under the licenses stated
 there (ODbL 1.0, CC BY 4.0, CC BY-SA 4.0).
+
+The Windows release also bundles third-party programs, among them osmium-tool
+(GPL-3.0) for local `.osm.pbf` maps; see `THIRD_PARTY_LICENSES.md`.

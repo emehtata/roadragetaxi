@@ -31,14 +31,13 @@ purely a speed optimization, never required for correctness.
 """
 import logging
 import os
-import shutil
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
-from ..utils.pbf_index import default_index_dir, index_is_stale, tiles_for_bbox
+from ..utils.pbf_index import default_index_dir, index_is_stale, osmium_command, tiles_for_bbox
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +60,9 @@ COVERING_CACHE_MAX_RATIO = 4.0
 
 def local_pbf_available(pbf_path: Optional[Path] = None) -> bool:
     """Whether a local .pbf extract source is actually usable here: the
-    file exists and the `osmium` CLI (osmium-tool) is on PATH."""
+    file exists and the `osmium` CLI (osmium-tool) is bundled or on PATH."""
     path = Path(pbf_path) if pbf_path else DEFAULT_FINLAND_PBF_PATH
-    return path.is_file() and shutil.which("osmium") is not None
+    return path.is_file() and osmium_command() is not None
 
 
 def fetch_osm_ways_from_pbf(
@@ -97,7 +96,7 @@ def fetch_osm_ways_from_pbf(
     path = Path(pbf_path) if pbf_path else DEFAULT_FINLAND_PBF_PATH
     if not path.is_file():
         raise FileNotFoundError(f"Local OSM extract not found: {path}")
-    if shutil.which("osmium") is None:
+    if osmium_command() is None:
         raise RuntimeError(
             "osm_source=pbf requires the 'osmium' command-line tool "
             "(osmium-tool). Install it with your package manager, e.g. "
@@ -161,7 +160,7 @@ def _extract_elements(source_pbf: Path, bbox: Tuple[float, float, float, float])
     with tempfile.TemporaryDirectory() as tmp_dir:
         out_path = os.path.join(tmp_dir, "extract.osm")
         cmd = [
-            "osmium", "extract",
+            osmium_command(), "extract",
             "--bbox", f"{west},{south},{east},{north}",
             f"--strategy={EXTRACT_STRATEGY}",
             "-f", "osm",
