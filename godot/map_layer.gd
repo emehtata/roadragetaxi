@@ -76,7 +76,7 @@ func _ready() -> void:
 	_buildings.z_index = 7
 	add_child(_buildings)
 	_underground = Node2D.new()  # level roads (and the dark below ground), over the surface map
-	_underground.z_index = 9
+	_underground.z_index = 11  # covers every surface bridge, below the player's entities (12)
 	_underground.draw.connect(_draw_underground)
 	add_child(_underground)
 	_make_pool_group()

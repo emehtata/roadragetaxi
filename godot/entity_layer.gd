@@ -56,7 +56,7 @@ var language := "en"
 var _reflectors: Node2D  # made in _ready (an instance never in the tree leaks nothing)
 var underground := false  # the taxi below ground (state player.map_level): only it and the walker are shown
 var covered := func(_at: Vector2, _layer: int) -> bool: return false  # MapLayer.covered (headlights under a bridge)
-var _trains: Node2D  # trains, z 12: above the canopies and rail bridges (z 11), drawn last
+var _trains: Node2D  # trains, z 14: above the canopies and rail bridges (z 13), drawn last
 var _trains_drawn := 0
 var _tracks: Node2D  # tyre tracks, z 8 (before roadworks and signs)
 var _trails: Array = []  # [kind, [[position, heading, intensity, front, snowfall when laid], ...], its Node2D]
@@ -111,7 +111,7 @@ const TRACK_STYLES := {  # [faint, dark, width m]
 func _ready() -> void:
 	_font = ThemeDB.fallback_font
 	_reflectors = Node2D.new()
-	_reflectors.z_index = 12  # above the night tint (20) and the street lights (21): 10 + 12
+	_reflectors.z_index = 10  # above the night tint (20): 12 + 10
 	_reflectors.draw.connect(_draw_reflectors)
 	add_child(_reflectors)
 	_trains = Node2D.new()
@@ -151,7 +151,7 @@ func _ready() -> void:
 		_canvas = self)
 	add_child(_overlay)
 	_cars_under = Node2D.new()
-	_cars_under.z_index = -9  # 10 - 9: z 1, the ground roads' level, under every bridge deck
+	_cars_under.z_index = -11  # 12 - 11: ground roads (1), under every bridge deck
 	_cars_under.material = preload("res://emissive.tres")
 	_cars_under.draw.connect(func():
 		_paint(_cars_under, _under_shapes)

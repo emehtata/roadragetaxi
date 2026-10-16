@@ -460,8 +460,9 @@ func test_map_chunks() -> void:
 	check(not map.remove_chunk("9_9"), "removing an unknown chunk is harmless")
 	# Separate chunks must obey the same vertical order, regardless of arrival.
 	for config in [[1, false], [1, true], [2, false], [2, true], [3, false], [3, true]]:
-		var ground := {"chunk_id": "ground", "railways": [[[0, -10], [0, 10]]]}
-		var bridge := {"chunk_id": "bridge", "roads": [
+		var ground := {"chunk_id": "ground", "railways": [[[0, -10], [0, 10]]],
+			"buildings": [[[-5, -5], [5, -5], [5, 5], [-5, 5]]]}
+		var bridge := {"chunk_id": "bridge", "bounds": [-20, -20, 20, 20], "roads": [
 			{"points": [[-10, 0], [10, 0]], "half_width_m": 4.0, "drivable": true, "layer": config[0]}],
 			"rail_bridges": [[[5, -10], [5, 10]]]}
 		for message in ([bridge, ground] if config[1] else [ground, bridge]):
@@ -469,9 +470,17 @@ func test_map_chunks() -> void:
 		var tracks = map._chunks["ground"].get_node("GroundTracks")
 		var deck = map._chunks["bridge"]._road_layers[0]
 		check(tracks.z_index < deck.z_index, "ground rails stay below a road bridge in either chunk order")
+		check(map._buildings.z_index < deck.z_index, "road bridges cover ground building volumes across chunks")
+		check(map._underground.z_index > deck.z_index, "underground view covers all surface bridge layers")
 		check(tracks.z_index >= 1, "ground rails remain visible over surface roads at level crossings")
-		check(map._chunks["bridge"]._px_layers.any(func(node): return node.z_index == 11),
+		check(map._chunks["bridge"]._px_layers.any(func(node): return node.z_index == 13),
 			"elevated railways retain their above-traffic bridge layer")
+		var weather: Array = map._chunks["bridge"]._bridge_weather[0]
+		map.set_wetness(1.0)
+		check(weather.all(func(node): return node.z_index == deck.z_index and node.visible),
+			"bridge wet shading and puddles remain on the deck above buildings")
+		map.set_wetness(0.0)
+		check(weather.all(func(node): return not node.visible), "dry bridges hide all weather passes")
 		map.remove_chunk("ground")
 		map.remove_chunk("bridge")
 	map.set_road_snow(3.0, [[0, 0, 3.0]])
@@ -1446,7 +1455,14 @@ func test_navigation_route() -> void:
 	var scene: Node = load("res://main.tscn").instantiate()
 	var z: int = scene.get_node("EntityLayer").z_index
 	scene.free()
-	check(z > 7 and z < 11, "the entity layer (z %d) sits above the roads and buildings (z 7), under canopies and rail bridges (z 11)" % z)
+	check(z > MapChunk.road_z(3) and z < 13, "entities (z %d) stay above all road decks, below canopies and rail bridges" % z)
+	var entities := EntityLayer.new()
+	entities.z_index = z
+	root.add_child(entities)
+	check(z + entities._cars_under.z_index == 1, "under-bridge vehicles retain their absolute ground layer")
+	check(z + entities._trains.z_index > 13, "trains remain above their railway bridge decks")
+	check(z + entities._reflectors.z_index == 22, "reflectors retain their above-night-tint layer")
+	entities.free()
 
 
 ## godot-final-03: the running fare in the mission line, the pump price in the gauge.
@@ -2051,7 +2067,7 @@ func test_buildings_2_5d() -> void:
 	check(is_equal_approx(Detail.canopy_height(map._chunks["0_0"], map._chunks["0_0"]._data["canopies"][0]), 6.0), "a canopy is raised by its own height")
 	map.set_map_level(-3)
 	check(map._underground.z_index > map._buildings.z_index, "below ground the dark view covers the buildings")
-	check(map._buildings.z_index < 11, "rail bridges (z 11) stay above the buildings")
+	check(map._buildings.z_index < 13, "rail bridges (z 13) stay above the buildings")
 	map.remove_chunk("0_1")
 	check(map._buildings.get_child_count() == 1, "a chunk's buildings go with it")
 	check(map.find_children("*", "CollisionObject2D", true, false).is_empty(), "no collision")

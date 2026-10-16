@@ -322,3 +322,36 @@ affected-chunk cache invalidation, client delivery/stable IDs, and map-growth
 hold regression. Full suite: **1,657 passed, 2 skipped** (50.47 s); compile
 and diff checks pass. Existing overspeed detection tests remain unchanged.
 Rendering is unchanged; visual gameplay has not been rerun.
+
+### Building/road-bridge compositing (2026-10-17)
+
+Screenshot `1792189216740344064` shows ground building roofs painted over
+Joutsensilta. Collision separation was fixed earlier; the renderer still placed
+road decks (z2–4) below both 2D and composited 3D buildings (z7).
+
+Road layers 1–3 now occupy z8–10, above ground buildings, preserving their order
+even across chunks. The underground mask is z11; road vehicles are z12;
+canopies/rail bridges z13, trains z14 and price boards z15. Under-bridge vehicles
+remain at absolute z1; reflectors remain z22. Deck wet shading/puddles stay with
+their deck rather than disappearing beneath it or painting all ground effects
+above roofs. Their extra static canvas items are limited to three per occupied
+bridge layer (maximum three layers), hidden when dry. No per-frame geometry
+rebuild, map-data changes, collision changes or PBF work.
+
+Validation: cross-chunk order, all bridge layers, underground occlusion,
+vehicle/canopy order and wet/dry passes are covered by the client suite.
+The new `godot/tests/bridge_occlusion.gd` also renders actual pixels using Mesa
+OpenGL compatibility: **both 2D and 3D building cases failed with the original
+road ordering and pass with the fix**. The bridge covers the roof, with the
+uncovered building still visible. Passing images were inspected and saved in
+`/tmp/rrt-bridge-buildings-{2d,3d}.png`; rerun the script on a display to recreate.
+The first sandboxed display attempt failed; the approved desktop run succeeded.
+Python logical-level render tests: **5 passed**. Final client suite:
+**850 checks, 0 failed**; diff check passes. Editor import generated the new
+test script's UID, but sandbox restrictions prevented saving editor preferences
+and opening its local listening sockets; the standalone tests above completed.
+
+This remains ordered 2D compositing, not a shared physical-elevation depth
+buffer: arbitrary tall-building/bridge clearances and layer-aware street-light
+metadata are not solved. Full gameplay/FPS was not benchmarked. The existing
+client-suite startup/cleanup diagnostics remain outside this fix.
