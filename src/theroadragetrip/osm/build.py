@@ -124,43 +124,156 @@ def _water_kind(tags: dict) -> Optional[str]:
     return None
 
 
+def _is_water_area(tags):
+    return (tags.get("natural") in ("water", "bay", "strait")
+            or tags.get("landuse") == "reservoir" or tags.get("waterway") == "riverbank")
+
+
+def _water_rings(poly):
+    """Preserve holes in the hole-free Water/wire format by splitting areas."""
+    from shapely.geometry import LineString
+    from shapely.ops import split
+
+    pending = [poly]
+    rings = []
+    while pending:
+        part = pending.pop()
+        if not part.is_valid:
+            logger.warning("Invalid water polygon; refusing to fill it")
+            continue
+        if part.is_empty or part.area == 0:
+            continue
+        if part.interiors:
+            hx = part.interiors[0].centroid.x
+            pieces = list(split(part, LineString([(hx, part.bounds[1]), (hx, part.bounds[3])])).geoms)
+            if sum(len(p.interiors) for p in pieces) >= len(part.interiors):
+                logger.warning("Could not split water island holes safely; refusing to fill polygon")
+                continue
+            pending.extend(pieces)
+        else:
+            rings.append([(float(x), float(y)) for x, y in part.exterior.coords])
+    return rings
+
+
 def _sea_polygons(coast_lines, rect) -> List[List[Tuple[float, float]]]:
-    """Sea areas inside rect from natural=coastline polylines. OSM draws
-    coastline with land on its left and water on its right; open sea has no
-    polygon of its own. Returns hole-free closed rings (Water has no holes).
+    """Polygonize directed coastline/bounds; classify from shared boundary edges.
+
+    A CCW face has its interior left of its exterior edges (right of holes).
+    Matching coast direction therefore means land, opposite means sea.
+    Ambiguous or incomplete faces are never assumed to be sea.
     """
     from shapely import STRtree
     from shapely.geometry import LineString, box
-    from shapely.ops import split, unary_union
+    from shapely.geometry.polygon import orient
+    from shapely.ops import polygonize_full, unary_union
 
-    lines = [LineString(pts) for pts in coast_lines if len(pts) >= 2]
+    if any(len(pts) < 2 for pts in coast_lines):
+        logger.warning("Degenerate coastline fragment; sea classification withheld")
+        return []
+    lines = [LineString(pts) for pts in coast_lines]
     if not lines:
         return []
-    coast = unary_union(lines)
     region = box(*rect)
-    faces = list(split(region, coast).geoms) if coast.intersects(region) else [region]
-    segs = [seg for pts in coast_lines for seg in zip(pts, pts[1:])]
-    tree = STRtree([LineString(seg) for seg in segs])
-    seas = []
-    for face in faces:
-        if face.area < 1.0:
-            continue
-        rp = face.representative_point()
-        # Nearest coastline segment decides the side: right of it = sea.
-        (ax, ay), (bx, by) = segs[tree.nearest(rp)]
-        if (bx - ax) * (rp.y - ay) - (by - ay) * (rp.x - ax) < 0:
-            seas.append(face)
+    if any(not line.is_valid or not line.is_simple for line in lines):
+        logger.warning("Invalid/self-intersecting coastline; sea classification withheld")
+        return []
+    clipped = unary_union([line.intersection(region) for line in lines])
+    degrees = collections.Counter()
+    for line in getattr(clipped, "geoms", [clipped]):
+        if line.geom_type == "LineString" and not line.is_empty:
+            degrees.update((line.coords[0], line.coords[-1]))
+    if any(degree > 2 for degree in degrees.values()):
+        logger.warning("Branching/intersecting coastline; sea classification withheld")
+        return []
+    faces, cuts, dangles, invalid = polygonize_full(unary_union([region.boundary, clipped]))
+    broken = unary_union([cuts, dangles, invalid])
+    if not broken.is_empty:
+        logger.warning("Incomplete coastline: %d cuts, %d dangles, %d invalid rings",
+                       len(cuts.geoms), len(dangles.geoms), len(invalid.geoms))
+    segments = [LineString([a, b]) for line in lines for a, b in zip(line.coords, list(line.coords)[1:]) if a != b]
+    tree = STRtree(segments)
     rings = []
-    while seas:
-        poly = seas.pop()
-        if poly.interiors:
-            # Cut through the first hole so no piece keeps it.
-            hx = poly.interiors[0].centroid.x
-            cut = LineString([(hx, poly.bounds[1] - 1), (hx, poly.bounds[3] + 1)])
-            seas.extend(g for g in split(poly, cut).geoms if g.area >= 1.0)
+    ambiguous = 0
+    for face in faces.geoms:
+        if not broken.is_empty and face.intersection(broken).length > 0:
+            ambiguous += 1
             continue
-        rings.append([(float(x), float(y)) for x, y in poly.exterior.coords])
+        directed = orient(face, sign=1)
+        sides = set()
+        for boundary in [directed.exterior, *directed.interiors]:
+            for a, b in zip(boundary.coords, list(boundary.coords)[1:]):
+                edge = LineString([a, b])
+                for index in tree.query(edge, predicate="intersects"):
+                    segment = segments[index]
+                    if edge.intersection(segment).length == 0:
+                        continue
+                    c, d = segment.coords
+                    sides.add((b[0] - a[0]) * (d[0] - c[0]) + (b[1] - a[1]) * (d[1] - c[1]) < 0)
+        if not sides:
+            # A complete surrounding ring can establish an offshore/inland
+            # region even if its coastline is outside the requested bounds.
+            from shapely.geometry import Polygon
+            enclosing = [line for line in lines if line.is_ring and Polygon(line).covers(face)]
+            if enclosing:
+                sides.add(not Polygon(min(enclosing, key=lambda line: Polygon(line).area)).exterior.is_ccw)
+        if sides == {True}:
+            rings.extend(_water_rings(face))
+        elif sides != {False}:
+            ambiguous += 1
+    if ambiguous:
+        logger.warning("Sea classification withheld for %d ambiguous/incomplete faces", ambiguous)
     return rings
+
+
+def _relation_waters(tags, members, ways_by_id, process_node_ids):
+    """Stitch outer/inner members without filling islands or closing gaps."""
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+
+    roles = {role: [m["ref"] for m in members if m.get("type") == "way"
+                    and m.get("role", "") in (("outer", "") if role == "outer" else ("inner",))]
+             for role in ("outer", "inner")}
+    for wid in roles["outer"] + roles["inner"]:
+        way = ways_by_id.get(wid)
+        if not way or not process_node_ids(way.get("nodes", []))[0]:
+            logger.warning("Incomplete water relation member %s; area fill withheld", wid)
+            return []
+    rings = {role: _stitch_member_ways_into_rings(ids, ways_by_id, lambda ids: process_node_ids(ids)[0])
+             for role, ids in roles.items()}
+    if any(not closed for _, closed in rings["inner"]):
+        logger.warning("Open water relation island ring; area fill withheld")
+        return []
+    holes = [Polygon(pts) for pts, _ in rings["inner"]]
+    if any(not hole.is_valid for hole in holes):
+        logger.warning("Invalid water relation island ring; area fill withheld")
+        return []
+    kind = _water_kind(tags) or tags.get("natural") or tags.get("landuse") or "water"
+    try:
+        layer = int(float(str(tags.get("layer", 0)).strip()))
+    except (ValueError, TypeError):
+        layer = 0
+    waters = []
+    assigned = set()
+    for pts, closed in rings["outer"]:
+        if not closed:
+            logger.warning("Open water relation outer ring; retaining line, not inventing closure")
+            waters.append(Water(pts, kind, False, name=tags.get("name"), bbox=compute_bbox(pts), layer=layer))
+            continue
+        outer = Polygon(pts)
+        if not outer.is_valid:
+            logger.warning("Invalid water relation outer ring; area fill withheld")
+            continue
+        selected = [i for i, hole in enumerate(holes) if outer.covers(hole)]
+        assigned.update(selected)
+        area = outer.difference(unary_union([holes[i] for i in selected]))
+        for poly in getattr(area, "geoms", [area]):
+            if poly.geom_type == "Polygon":
+                waters.extend(Water(ring, kind, True, name=tags.get("name"), bbox=compute_bbox(ring), layer=layer)
+                              for ring in _water_rings(poly))
+    if len(assigned) != len(holes):
+        logger.warning("Water relation has islands without a complete containing outer; area fill withheld")
+        return []
+    return waters
 
 
 def _segment_intersection_t(a, b, p, q) -> Optional[float]:
@@ -534,7 +647,7 @@ def build_ways(
     entrance_node_ids: set[int] = set()
     ways_by_id: Dict[int, dict] = {}
     ways_raw: List[Tuple[dict, str, List[int]]] = []
-    water_raw: List[Tuple[dict, List[int]]] = []
+    water_raw: List[Tuple[dict, List[int], int]] = []
     coast_raw: List[List[int]] = []
     fetch_bbox = None  # (south, west, north, east): world_loader.with_fetch_bbox
     curb_raw: List[Tuple[dict, List[int]]] = []
@@ -620,6 +733,10 @@ def build_ways(
                     connector_ways[nid].append((way_id, tags))
             if include_bus_stops and tags.get("public_transport") == "platform":
                 bus_platforms_raw.append((tags, node_ids, way_id))
+            # Coastline can also be a fence, wall or weir. Keep its topology
+            # independently of those features; it is never an ordinary area.
+            if tags.get("natural") == "coastline":
+                coast_raw.append(node_ids)
             if _is_building(tags):
                 building_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking_space":
@@ -628,10 +745,10 @@ def build_ways(
                 railing_raw.append((tags, node_ids))
             elif tags.get("railway") in ("rail", "light_rail", "tram", "narrow_gauge", "funicular"):
                 railway_raw.append((tags, node_ids, way_id))
-            elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
-                water_raw.append((tags, node_ids))
             elif tags.get("natural") == "coastline":
-                coast_raw.append(node_ids)
+                pass  # already collected, including coastline + waterway tags
+            elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
+                water_raw.append((tags, node_ids, way_id))
             elif tags.get("amenity") in ("parking", "fuel") or tags.get("landuse") == "parking":
                 scenery_raw.append((tags, node_ids))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
@@ -865,11 +982,20 @@ def build_ways(
     # 2. Water polygons and waterways
     if progress_callback:
         progress_callback(0.84, f"Building water features ({len(water_raw)} elements)...")
-    for tags, node_ids in water_raw:
+    water_members = {m["ref"] for tags, members in relations_raw if _is_water_area(tags)
+                     for m in members if m.get("type") == "way"}
+    for tags, node_ids, way_id in water_raw:
+        if way_id in water_members and _is_water_area(tags) and node_ids[0] == node_ids[-1]:
+            continue  # the relation's holes, not a duplicate outer fill, define this area
         pts, ibbox = process_node_ids(node_ids)
         if not pts or len(pts) < 2:
             continue
         is_poly = pts[0] == pts[-1]
+        if is_poly:
+            from shapely.geometry import Polygon
+            if not Polygon(pts).is_valid:
+                logger.warning("Invalid water way %s; retaining line, not filling polygon", way_id)
+                is_poly = False
         kind = _water_kind(tags) or tags.get("natural") or tags.get("waterway") or tags.get("landuse") or "water"
         name = tags.get("name")
         try:
@@ -879,19 +1005,30 @@ def build_ways(
         waters.append(Water(points_m=pts, kind=kind, is_polygon=is_poly, name=name, bbox=ibbox, layer=layer))
 
     if coast_raw and fetch_bbox is not None:
-        # Clip to the fetched bbox: coastline is complete only inside it
-        # (every coastline way crossing it was fetched); roads reaching out
-        # of it are not, and the sea between used to swallow land there.
-        # Without a known bbox (an old raw cache) there is no sea at all.
-        # ponytail: a chunk with no coastline crossing it gets no sea even if
-        # it is all open water; needs a land/sea seed (e.g. OSM water polygons
-        # dataset) if that shows up.
+        # Requested bounds are not proof of complete coastline coverage.
+        # Preserve gaps as disconnected lines so polygonization can diagnose
+        # them; never close missing nodes with a fabricated straight edge.
         south, west, north, east = fetch_bbox
         (x0, y0), (x1, y1), (x2, y2), (x3, y3) = (
             transformer.transform(lon, lat) for lon, lat in ((west, south), (west, north), (east, south), (east, north)))
         rect = (max(x0, x1), max(y0, y2), min(x2, x3), min(y1, y3))  # the projected box's inner rectangle
         if rect[0] < rect[2] and rect[1] < rect[3]:
-            coast_lines = [pts for pts, _ in map(process_node_ids, coast_raw) if pts]
+            coast_lines = []
+            missing = 0
+            for node_ids in coast_raw:
+                part = []
+                for nid in node_ids:
+                    if nid in nodes_m:
+                        part.append(nodes_m[nid])
+                    else:
+                        missing += 1
+                        if len(part) >= 2:
+                            coast_lines.append(part)
+                        part = []
+                if len(part) >= 2:
+                    coast_lines.append(part)
+            if missing:
+                logger.warning("Coastline has %d missing node references; preserving gaps", missing)
             for ring in _sea_polygons(coast_lines, rect):
                 waters.append(Water(points_m=ring, kind="sea", is_polygon=True, bbox=compute_bbox(ring)))
 
@@ -1278,6 +1415,9 @@ def build_ways(
                 f"Processed multipolygon {relation_index + 1}/{relation_count}",
             )
         name = tags.get("name")
+        if _is_water_area(tags):
+            waters.extend(_relation_waters(tags, members, ways_by_id, process_node_ids))
+            continue
         for pts, is_closed in rings:
             xs = [p[0] for p in pts]
             ys = [p[1] for p in pts]
@@ -1307,13 +1447,6 @@ def build_ways(
                     texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
                     **_level_metadata(tags),
                 ))
-            elif tags.get("natural") in ("water", "bay", "strait") or tags.get("landuse") == "reservoir":
-                kind = _water_kind(tags) or tags.get("natural") or tags.get("landuse") or "water"
-                try:
-                    layer = int(float(str(tags.get("layer", 0)).strip()))
-                except (TypeError, ValueError):
-                    layer = 0
-                waters.append(Water(points_m=pts, kind=kind, is_polygon=is_closed, name=name, bbox=ibbox, layer=layer))
             elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
                 sceneries.append(Scenery(
                     points_m=pts, kind="parking", name=name, bbox=ibbox,

@@ -355,3 +355,11 @@ This remains ordered 2D compositing, not a shared physical-elevation depth
 buffer: arbitrary tall-building/bridge clearances and layer-aware street-light
 metadata are not solved. Full gameplay/FPS was not benchmarked. The existing
 client-suite startup/cleanup diagnostics remain outside this fix.
+
+### Active water-geometry task (2026-10-17)
+
+Follow `.github/prompts/rrt-018-waters.md`. Detailed audit, confirmed real Oulu
+geometry failures, implemented fixes, validation and remaining screenshot-wide
+reproduction are recorded in [rrt-0.18-waters-progress.md](rrt-0.18-waters-progress.md).
+This does not resume the excluded PBF-stuttering work or mark the broader living
+city/safety target complete.

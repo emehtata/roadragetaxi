@@ -97,7 +97,8 @@ MAGIC = b"RWC\0"
 # 30: tram stops beside their track join it (29's lists only had those on it).
 # 31: Railway.lines (the tram lines over a tram way).
 # 32: light rail stops and lines are tram ones (Tampere).
-FORMAT_VERSION = 32
+# 33: directed sea-face classification, complete coastline collection and water island holes.
+FORMAT_VERSION = 33
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
