@@ -148,6 +148,8 @@ func _ready() -> void:
 				add_child.call_deferred(tester)
 			"--screenshot":
 				_screenshot_path = args[i + 1]
+			"--screenshot-wait":  # seconds of play before the screenshot (default 6), e.g. for phone offers
+				_screenshot_wait = float(args[i + 1])
 			"--wetness":  # presentation override for visual checks (never sent to Python)
 				override_wetness = float(args[i + 1])
 			"--sun-altitude":  # godot-lights-01 visual checks: the sun at this altitude (never sent to Python)
