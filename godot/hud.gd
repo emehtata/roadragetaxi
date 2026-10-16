@@ -29,7 +29,23 @@ var _map_sign := Label.new()  # the map growing at its edge: wait for it (state.
 var language := "en"
 
 
+var osm_credit := Label.new()  # the map data's attribution, always on in the game view
+
+
 func _ready() -> void:
+	# ODbL: credit where the map is shown (the start map credits its tiles itself).
+	osm_credit.text = "© OpenStreetMap contributors"
+	osm_credit.add_theme_font_size_override("font_size", 12)
+	osm_credit.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
+	osm_credit.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	osm_credit.add_theme_constant_override("outline_size", 3)
+	osm_credit.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 6)
+	osm_credit.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	osm_credit.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	osm_credit.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	osm_credit.offset_right -= 160.0  # left of the rage-face panel in the bottom-right corner
+	osm_credit.offset_left -= 160.0
+	add_child(osm_credit)
 	var meet_style := _box(Color8(16, 35, 55), Color8(90, 200, 255))
 	meet_style.set_corner_radius_all(5)
 	_meet.add_theme_stylebox_override("normal", meet_style)

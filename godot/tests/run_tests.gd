@@ -83,6 +83,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_startup_progress()
 	test_holiday_events()
 	test_settings_help()
+	test_credits()
 	test_minimap_is_exported()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -95,6 +96,21 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 func test_minimap_is_exported() -> void:
 	check(FileAccess.get_file_as_string("res://finland_minimap.svg.import").contains('importer="keep"'),
 		"the Finland minimap SVG is exported as a file (Keep File import)")
+
+
+## Licensing: the attributions players must be able to find (LICENSE_AUDIT.md).
+func test_credits() -> void:
+	var credits: String = preload("res://startup.gd").credits_text()
+	for required in ["© OpenStreetMap contributors", "Open Database License", "openstreetmap.org/copyright",
+			"Fintraffic / digitraffic.fi", "CC 4.0 BY", "Finnish Meteorological Institute", "Digital and Population Data Services Agency",
+			"© Wikipedia contributors", "CC BY-SA 4.0", "Liiga", "Veikkausliiga", "MIT License", "osmium-tool", "Godot Engine"]:
+		check(credits.contains(required), "credits name: %s" % required)
+	check(Engine.get_license_text().contains("Godot"), "the Godot licence text is available to the credits")
+	var scene: Node = load("res://main.tscn").instantiate()
+	root.add_child(scene)
+	var hud = scene.get_node("Ui/Hud")
+	check(hud.osm_credit.text == "© OpenStreetMap contributors" and hud.osm_credit.get_parent() == hud, "the game view credits OpenStreetMap")
+	scene.free()
 
 
 func test_settings_help() -> void:
