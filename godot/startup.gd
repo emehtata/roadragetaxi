@@ -199,6 +199,20 @@ func _choose_language(language: String) -> void:
 	_settings_menu()
 
 
+## `text` broken into lines of at most `width` characters, at spaces.
+static func wrap_lines(text: String, width: int) -> String:
+	var lines: PackedStringArray = []
+	var line := ""
+	for word in text.split(" "):
+		if line != "" and line.length() + 1 + word.length() > width:
+			lines.append(line)
+			line = word
+		else:
+			line = word if line == "" else line + " " + word
+	lines.append(line)
+	return "\n".join(lines)
+
+
 ## A setting with its "?": hovering shows the explanation as a tooltip,
 ## clicking opens it under the setting (and closes it again).
 func _with_help(control: Control, help_key: String) -> void:
@@ -218,7 +232,7 @@ func _with_help(control: Control, help_key: String) -> void:
 	question.text = "?"
 	question.focus_mode = Control.FOCUS_NONE
 	question.custom_minimum_size = Vector2(32, 32)
-	question.tooltip_text = help.text
+	question.tooltip_text = wrap_lines(help.text, 60)  # a tooltip doesn't wrap: one long line ran off screen
 	question.pressed.connect(func():
 		help.visible = not help.visible
 		_center_panel())

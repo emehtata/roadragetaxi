@@ -94,11 +94,12 @@ func test_settings_help() -> void:
 	shell._build_shell()
 	shell._settings_menu()
 	var questions: Array = shell._body.find_children("*", "Button", true, false).filter(func(b): return b.text == "?")
+	check(questions.all(func(q): return Array(q.tooltip_text.split("\n")).all(func(l): return l.length() <= 60)), "settings: help tooltips wrap at 60 characters")
 	check(questions.size() >= 10 and questions.all(func(q): return q.tooltip_text != "" and not q.tooltip_text.begins_with("help_")),
 		"settings: every setting has a ? with its explanation (%d)" % questions.size())
 	var help: Label = questions[0].get_parent().get_parent().get_child(1)
 	questions[0].pressed.emit()
-	check(help.visible and help.text == questions[0].tooltip_text, "settings: clicking ? opens the explanation")
+	check(help.visible and help.text == questions[0].tooltip_text.replace("\n", " "), "settings: clicking ? opens the explanation")
 	questions[0].pressed.emit()
 	check(not help.visible, "settings: clicking it again closes it")
 	shell.free()
