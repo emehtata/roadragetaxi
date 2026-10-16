@@ -78,8 +78,6 @@ func _ready() -> void:
 			return
 	if first_run:
 		_language_menu()
-	elif not (_settings.has_section_key("game", "historical_weather") and _settings.has_section_key("game", "train_timetable")):
-		_online_menu()  # asked once, also of players from before the question existed
 	else:
 		_main_menu()
 
@@ -193,34 +191,41 @@ func _choose_language(language: String) -> void:
 	_language = language
 	_settings.set_value("game", "language", language)
 	_settings.save("user://settings.cfg")
-	if _settings.has_section_key("game", "historical_weather") and _settings.has_section_key("game", "train_timetable"):
-		_main_menu()
-	else:
-		_online_menu()  # the first run: ask once (Settings changes it later)
+	# The first run: the settings next, real-world data on unless chosen otherwise.
+	for key in ["historical_weather", "train_timetable"]:
+		if not _settings.has_section_key("game", key):
+			_settings.set_value("game", key, true)
+	_settings.save("user://settings.cfg")
+	_settings_menu()
 
 
-## First run: the real-world data, each a choice - FMI's weather for the
-## city and time, Digitraffic's train timetable (off: trains at a fixed
-## interval). Both on by default; Continue saves them.
-func _online_menu() -> void:
-	_clear()
-	_title(_t("real_data"), _t("real_data_detail"))
-	var choices := {"historical_weather": [_t("historical_weather"), true],
-		"train_timetable": [_t("realtime_trains"), true]}
-	for key in choices:
-		var check := CheckButton.new()
-		check.text = choices[key][0]
-		check.button_pressed = _settings.get_value("game", key, choices[key][1])
-		_settings.set_value("game", key, check.button_pressed)
-		check.toggled.connect(func(on: bool): _settings.set_value("game", key, on))
-		_body.add_child(check)
-		_focusables.append(check)
-	var go := _button(_t("continue"), func():
-		_settings.save("user://settings.cfg")
-		_main_menu())
-	_back_action = Callable()
-	_focus_menu()
-	go.call_deferred("grab_focus")
+## A setting with its "?": hovering shows the explanation as a tooltip,
+## clicking opens it under the setting (and closes it again).
+func _with_help(control: Control, help_key: String) -> void:
+	var box := VBoxContainer.new()
+	var row := HBoxContainer.new()
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if control.get_parent() != null:  # _button already placed it in the list
+		control.get_parent().remove_child(control)
+	row.add_child(control)
+	var help := Label.new()
+	help.text = _t(help_key)
+	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	help.custom_minimum_size.x = 420
+	help.modulate = Color(0.8, 0.85, 0.9)
+	help.visible = false
+	var question := Button.new()
+	question.text = "?"
+	question.focus_mode = Control.FOCUS_NONE
+	question.custom_minimum_size = Vector2(32, 32)
+	question.tooltip_text = help.text
+	question.pressed.connect(func():
+		help.visible = not help.visible
+		_center_panel())
+	row.add_child(question)
+	box.add_child(row)
+	box.add_child(help)
+	_body.add_child(box)
 
 
 func _main_menu() -> void:
@@ -559,7 +564,7 @@ func _settings_menu() -> void:
 		_settings.save("user://settings.cfg")
 		if _game != null:
 			_game.set_language(_language))
-	_body.add_child(language)
+	_with_help(language, "help_language")
 	_focusables.append(language)
 	var historical := CheckButton.new()  # FMI weather for the city and game time
 	historical.text = _t("historical_weather")
@@ -567,7 +572,7 @@ func _settings_menu() -> void:
 	historical.toggled.connect(func(on: bool):
 		_settings.set_value("game", "historical_weather", on)
 		_settings.save("user://settings.cfg"))
-	_body.add_child(historical)
+	_with_help(historical, "help_historical_weather")
 	_focusables.append(historical)
 	var timetable := CheckButton.new()  # the real Digitraffic timetable, else trains at a fixed interval
 	timetable.text = _t("realtime_trains")
@@ -575,31 +580,32 @@ func _settings_menu() -> void:
 	timetable.toggled.connect(func(on: bool):
 		_settings.set_value("game", "train_timetable", on)
 		_settings.save("user://settings.cfg"))
-	_body.add_child(timetable)
+	_with_help(timetable, "help_train_timetable")
 	_focusables.append(timetable)
 	var source := OptionButton.new()  # --osm-source: the map from Overpass, or a local .osm.pbf via osmium
 	source.add_item(_t("map_overpass"))
 	source.add_item(_t("map_pbf"))
 	source.selected = 1 if _settings.get_value("map", "osm_source", "overpass") == "pbf" else 0
-	_body.add_child(source)
+	_with_help(source, "help_map_source")
 	_focusables.append(source)
 	var pbf_path := LineEdit.new()
 	pbf_path.placeholder_text = downloaded_pbf_path()
 	pbf_path.text = _settings.get_value("map", "osm_pbf_path", "")
-	pbf_path.visible = source.selected == 1
 	pbf_path.text_changed.connect(func(text: String):
 		_settings.set_value("map", "osm_pbf_path", text.strip_edges())
 		_settings.save("user://settings.cfg"))
 	source.item_selected.connect(func(index: int):
 		_settings.set_value("map", "osm_source", "pbf" if index == 1 else "overpass")
 		_settings.save("user://settings.cfg")
-		pbf_path.visible = index == 1)
-	_body.add_child(pbf_path)
+		pbf_path.get_parent().get_parent().visible = index == 1)
+	_with_help(pbf_path, "help_pbf_path")
+	pbf_path.get_parent().get_parent().visible = source.selected == 1
 	_focusables.append(pbf_path)
-	_button(_t("manage_pbf"), _pbf_menu)
+	_with_help(_button(_t("manage_pbf"), _pbf_menu), "help_manage_pbf")
 	if _game == null:  # a running server keeps its home in memory
-		_button(_t("reset_home"), _confirm_reset_home)
-	for item in [[_t("master_volume"), "Master"], [_t("game_volume"), "Game"], [_t("environment_volume"), "Environment"], [_t("ui_volume"), "UI"]]:
+		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
+	for item in [[_t("master_volume"), "Master", "help_master_volume"], [_t("game_volume"), "Game", "help_game_volume"],
+			[_t("environment_volume"), "Environment", "help_environment_volume"], [_t("ui_volume"), "UI", "help_ui_volume"]]:
 		var row := HBoxContainer.new()
 		var label := Label.new()
 		label.text = item[0]
@@ -613,7 +619,7 @@ func _settings_menu() -> void:
 		slider.value = _settings.get_value("audio", item[1], 1.0)
 		slider.value_changed.connect(func(value: float): _set_volume(item[1], value))
 		row.add_child(slider)
-		_body.add_child(row)
+		_with_help(row, item[2])
 		_focusables.append(slider)
 	var back := _pause_menu if _game != null else _main_menu
 	_button(_t("back"), back)

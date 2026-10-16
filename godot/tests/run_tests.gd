@@ -82,9 +82,26 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_performance_paths()
 	test_startup_progress()
 	test_holiday_events()
+	test_settings_help()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
+
+
+func test_settings_help() -> void:
+	var shell = preload("res://startup.gd").new()
+	root.add_child(shell)
+	shell._build_shell()
+	shell._settings_menu()
+	var questions: Array = shell._body.find_children("*", "Button", true, false).filter(func(b): return b.text == "?")
+	check(questions.size() >= 10 and questions.all(func(q): return q.tooltip_text != "" and not q.tooltip_text.begins_with("help_")),
+		"settings: every setting has a ? with its explanation (%d)" % questions.size())
+	var help: Label = questions[0].get_parent().get_parent().get_child(1)
+	questions[0].pressed.emit()
+	check(help.visible and help.text == questions[0].tooltip_text, "settings: clicking ? opens the explanation")
+	questions[0].pressed.emit()
+	check(not help.visible, "settings: clicking it again closes it")
+	shell.free()
 
 
 func test_startup_progress() -> void:
