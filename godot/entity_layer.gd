@@ -86,7 +86,7 @@ const GLOW_STEPS := 10
 const TAIL_GLOW := [Color(0.30, 0.03, 0.02), 0.9]  # added colour at the lamp, reach in metres
 const BRAKE_GLOW := [Color(0.65, 0.05, 0.03), 2.2]
 const REVERSE_GLOW := [Color(0.55, 0.55, 0.50), 4.5]
-const TAXI_SIGN_GLOW := [Color(0.35, 0.30, 0.05), 1.6]  # the roof light during a fare, a small yellow halo
+const TAXI_SIGN_GLOW := [Color(0.35, 0.30, 0.05), 1.6]  # the roof light of a free taxi, a small yellow halo
 var body_style := 0  # an NPC car's body (CAR_SHAPES), from its id: the same car keeps its look
 # Car bodies from above, in half-lengths from the centre (+ front): windshield
 # front, roof front, roof rear, rear window rear, roof half-width, an extra.
@@ -100,7 +100,7 @@ const CAR_SHAPES := [
 	[0.36, 0.06, -0.46, -0.66, 0.76, ""],  # city car
 ]
 const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
-var taxi_sign_on := false  # the taxi being drawn has a fare on (its roof light lit)
+var taxi_sign_on := false  # the taxi being drawn is free for a fare (its roof light lit)
 var ploughing := false  # snowing: tractors carry a plough blade and a flashing beacon
 const TRACK_STYLES := {  # [faint, dark, width m]
 	"rubber": [Color8(110, 110, 110), Color8(28, 28, 28), 0.24], "dirt": [Color8(150, 138, 118), Color8(105, 68, 38), 0.75],
@@ -504,6 +504,12 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 			cap.append(tip + side_v * far_width * 0.5 + Vector2(cos(TAU * i / 12.0), sin(TAU * i / 12.0)) * far_width * 0.5)
 		polygons.append(cap)
 	return polygons
+
+
+## The taxi's roof sign is lit while it is free for a fare, off with a fare
+## on (from the job until the drop-off).
+static func taxi_sign_lit(taxi: Dictionary) -> bool:
+	return not (taxi.get("current_passenger") is Dictionary)
 
 
 ## NPC vehicles drawn as vehicles: not police (their own look), not
@@ -1138,7 +1144,7 @@ func _draw() -> void:
 	var taxi_under: bool = not road.get("bridge", false) and covered.call(taxi_at, int(road.get("layer", 0)))
 	if player.get("engine_on", false) and not taxi_under:
 		_smoke(taxi_at, taxi.z, taxi_length, _clock, true)  # exhaust
-	taxi_sign_on = a.get("taxi", {}).get("current_passenger") is Dictionary  # a fare on: the roof light lit
+	taxi_sign_on = taxi_sign_lit(a.get("taxi", {}))
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
 		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under)
 	taxi_sign_on = false
@@ -1160,7 +1166,7 @@ func _draw() -> void:
 		if not view_rect.has_point(c):
 			continue
 		body_style = absi(hash(npc["id"]))  # its own body, every frame the same
-		taxi_sign_on = npc.get("taxi_fare", false)  # a competitor taxi with a passenger aboard
+		taxi_sign_on = not npc.get("taxi_fare", false)  # a competitor taxi: lit when free, off with a passenger aboard
 		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
 			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
 			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false),

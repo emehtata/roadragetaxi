@@ -523,6 +523,14 @@ func test_rendering() -> void:
 			amber_count += 1
 	check(amber_count == 4, "crashed car has four hazard lamps")
 	signal_car.free()
+	check(Entities.taxi_sign_lit({"current_passenger": null}) and not Entities.taxi_sign_lit({"current_passenger": passenger}),
+		"the roof sign: lit when free, off with a fare on")
+	var free_taxi := Entities.new()
+	free_taxi._tint = Color.WHITE
+	free_taxi.taxi_sign_on = true
+	free_taxi._vehicle(Vector2.ZERO, 0.0, 4.5, 1.8, RS.TAXI_BODY, "car", true, true, false, false, "", 0.0)
+	check(free_taxi._lamp_polys.any(func(lamp): return lamp[1] == RS.TAXI_SIGN), "a free taxi's roof sign shines")
+	free_taxi.free()
 
 	# Wet roads: darken 90/255 at full wetness, no sheen below 0.15.
 	var dry := RS.wet_alphas(0.0)
