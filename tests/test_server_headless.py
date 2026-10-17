@@ -708,6 +708,33 @@ def test_start_time_starts_the_calendar_clamped_to_a_year_back(tmp_path, monkeyp
     assert _build_server(tmp_path, monkeypatch, ["--start-time", "2001-02-03T04:05"]).calendar.current.date() >= date.today() - timedelta(days=366)
 
 
+def test_missing_current_weather_uses_previous_cache_until_exact_hour_arrives(tmp_path, monkeypatch, caplog):
+    from types import SimpleNamespace
+    from theroadragetrip.weather_history import HourlyWeather, game_time_to_utc_hour
+
+    server = _build_server(tmp_path, monkeypatch)
+    previous = HourlyWeather(temperature_c=7, wawa=61)
+    calls = []
+    def fallback(moment):
+        calls.append(moment)
+        return int(game_time_to_utc_hour(moment)) - 1, previous
+    history = SimpleNamespace(request=lambda *a: None, get=lambda moment: None, previous=fallback)
+    server.weather_history = history
+    with caplog.at_level("WARNING"):
+        for _ in range(2):
+            seen = server._update_outside()
+            server.world.weather.update(0.001, 0, outside_temperature_c=7, observed=seen)
+    assert len(calls) == 1
+    assert server.world.weather.weather_type.value == "rain"
+    assert sum("using cached" in r.message for r in caplog.records) == 1
+    current = HourlyWeather(temperature_c=7, wawa=0, source="forecast")
+    history.get = lambda moment: current
+    seen = server._update_outside()
+    assert seen == current
+    server.world.weather.update(0.001, 0, outside_temperature_c=7, observed=seen)
+    assert server.world.weather.weather_type.value == "clear"
+
+
 def test_npc_brake_lamps_when_slowing_or_standing_in_traffic():
     from types import SimpleNamespace
 

@@ -22,7 +22,7 @@ import math
 import os
 import threading
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
@@ -47,7 +47,7 @@ from ..home import CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home
 from ..localization import tr
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
-from ..weather_history import WeatherHistory, precipitation_from_observation
+from ..weather_history import WeatherHistory, precipitation_from_observation, game_time_to_utc_hour
 from ..calendar import clamp_start_datetime
 from ..osm import CACHE_DIR
 from ..climate import appearance_with_snow_depth, typical_temperature
@@ -361,6 +361,18 @@ class SimulationServer:
         if self.weather_history is not None:
             self.weather_history.request(fmi_moment, fmi_moment + timedelta(hours=48))
             observed = self.weather_history.get(fmi_moment)
+            if observed is None or precipitation_from_observation(observed)[0] is None:
+                if getattr(self, "_fallback_weather_hour", None) != fmi_moment:
+                    self._fallback_weather_hour = fmi_moment
+                    self._fallback_weather = self.weather_history.previous(fmi_moment)
+                    if self._fallback_weather is not None:
+                        hour, previous = self._fallback_weather
+                        logger.warning("FMI precipitation unavailable for %s; using cached %s from %s UTC (%.1f h old)",
+                                       fmi_moment.isoformat(), previous.source,
+                                       datetime.fromtimestamp(hour * 3600, timezone.utc).isoformat(),
+                                       game_time_to_utc_hour(fmi_moment) - hour)
+                if self._fallback_weather is not None:
+                    observed = self._fallback_weather[1]
         source = observed.source if observed is not None else "generated"
         if source in ("observed", "forecast") and source != getattr(weather, "weather_source", None):
             logger.info("FMI weather now %s: %s", f"{fmi_moment:%d.%m. %H:%M}", source)

@@ -297,6 +297,32 @@ class WeatherHistory:
         observed = self.get(moment)
         return observed.source if observed is not None else "generated"
 
+    def previous(self, moment: datetime):
+        """Latest earlier FMI hour with precipitation, including unloaded disk history.
+        Returns (UTC epoch hour, weather) or None; caller caches this per game hour."""
+        hour = math.floor(game_time_to_utc_hour(moment))
+        with self._lock:
+            candidates = {h: w for h, w in self._forecast_hours.items() if h < hour}
+            candidates.update({h: w for h, w in self._hours.items()
+                               if h < hour and precipitation_from_observation(w)[0] is not None})
+            if self._db is not None:
+                for table, source, snow in (("weather_hours_v4", "observed", "snow_depth"),
+                                            ("forecast_hours_v2", "forecast", "NULL")):
+                    try:
+                        row = self._db.execute(
+                            f"SELECT hour,temperature,precipitation,wawa,{snow},wind_speed,wind_from,cloud "
+                            f"FROM {table} WHERE location=? AND hour<? AND (wawa IS NOT NULL OR precipitation IS NOT NULL) "
+                            "ORDER BY hour DESC LIMIT 1", (self.location, hour),
+                        ).fetchone()
+                    except sqlite3.Error:
+                        continue
+                    if row is not None:
+                        h, temperature, precipitation, wawa, depth, speed, direction, cloud = row
+                        if h not in candidates or source == "observed":
+                            candidates[h] = HourlyWeather(temperature, precipitation, wawa, depth, speed, direction, source, cloud)
+            usable = [(h, w) for h, w in candidates.items() if precipitation_from_observation(w)[0] is not None]
+            return max(usable, key=lambda item: item[0]) if usable else None
+
     def is_covered(self, moment: datetime) -> bool:
         chunk = math.floor(game_time_to_utc_hour(moment)) // FETCH_CHUNK_HOURS
         with self._lock:

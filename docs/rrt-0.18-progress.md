@@ -666,3 +666,25 @@ suites: **55 passed** (seed 743673077); compile/diff checks pass. No schema
 change, cache deletion, generator or rendering change. No live FMI requests or
 full-game replay; genuinely missing hours may still require downloading their
 containing chunk, rather than a separate per-hour query.
+
+### Use previous cached FMI weather for a missing current hour (2026-10-17)
+
+Current-hour precipitation now falls back to the latest strictly earlier usable
+FMI observation or forecast for this location. Search both loaded data and the
+existing SQLite history, so an observation outside the loaded three-day chunk
+can be reused. Temperature-only records and future hours are not fallback
+candidates. Exact-hour FMI precipitation always wins, including when it arrives
+after startup. Missing-hour fallback is selected once per game hour, not queried
+from SQLite each frame; the console warns with the original UTC hour and age.
+No save, map, audio, cache-schema or weather-generator changes.
+
+Tests cover disk history, location isolation, future exclusion, temperature-only
+entries, newer usable forecast selection, repeated fallback without repeated
+lookup/logging, and replacement by exact-hour dry weather. Weather/history and
+socket-free server checks: **96 passed, 1 deselected** (the unrelated local-socket
+test), seed 743673077. Compile and diff checks pass.
+
+Limits: the requested fallback intentionally has no age cutoff, so old cached
+weather can be inaccurate. With no usable earlier FMI record, generated weather
+remains the last resort. Missing-hour fallback applies to current conditions;
+the start-screen future forecast still uses exact-hour FMI where available.

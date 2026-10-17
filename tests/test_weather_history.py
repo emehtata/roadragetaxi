@@ -20,6 +20,32 @@ FIXTURE = (Path(__file__).parent / "data" / "fmi_oulu_2025-01-15.xml").read_text
 OULU = (65.0121, 25.4651)
 
 
+def test_previous_weather_uses_latest_usable_past_hour_not_future_or_other_location(tmp_path):
+    moment = datetime(2025, 1, 15, 2)
+    cache = tmp_path / "weather.db"
+    original = WeatherHistory(*OULU, cache_path=cache, fetch=_fake_fmi([]))
+    original.request(moment, moment)
+    original.wait_idle(5.0)
+    later = WeatherHistory(*OULU, cache_path=cache)
+    with later._lock:
+        later._open_cache()
+    assert later.previous(moment) is None  # no earlier usable hour in this fixture
+    result = later.previous(moment + timedelta(hours=10))
+    assert result is not None
+    h, weather = result
+    assert h < game_time_to_utc_hour(moment + timedelta(hours=10))
+    assert weather.wawa is not None
+    later._forecast_hours[h + 1] = HourlyWeather(temperature_c=5)  # skip temperature-only hours
+    assert later.previous(moment + timedelta(hours=10)) == result
+    later._forecast_hours[h + 2] = HourlyWeather(wawa=61, source="forecast")
+    later._hours[h + 2] = HourlyWeather(temperature_c=5)
+    assert later.previous(moment + timedelta(hours=10))[0] == h + 2
+    other = WeatherHistory(60, 20, cache_path=cache)
+    with other._lock:
+        other._open_cache()
+    assert other.previous(moment + timedelta(hours=10)) is None
+
+
 @pytest.mark.parametrize("kind", ["observations", "forecast"])
 @pytest.mark.parametrize("failure", ["offline", "malformed", "empty"])
 def test_fmi_failures_and_empty_responses_warn_in_console(caplog, kind, failure):
