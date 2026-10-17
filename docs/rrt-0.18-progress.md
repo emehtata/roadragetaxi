@@ -809,6 +809,11 @@ updated again only after 0.18 is actually published.
 
 ### Market the taxi antihero and rage superpower (2026-10-18)
 
+Weather marketing follow-up: replaced availability/cache/fallback detail in
+the weather feature with player-facing atmosphere and driving stakes in Finnish,
+English and the HTML fallback. Three Node website checks, JavaScript syntax
+and diff checks passed. Copy only; no browser render or deployment.
+
 Release-ready copy correction: per user request, both languages now describe
 the latest version, not an upcoming update or unpublished development branch.
 Hero, rage feature, screenshot note, release-note headings/lead and download
