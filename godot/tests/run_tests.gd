@@ -1372,7 +1372,7 @@ func test_navigation_route() -> void:
 	var instruction := {"instruction": {"maneuver": "left", "distance_m": 125.0, "street": "Kirkkokatu"}}
 	device.show_navigation(instruction)
 	var app = device.navigation
-	check(device.visible and app.visible and app._distance.text == "125 m" and app._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
+	check(device.visible and app.visible and app._distance.text == "130 m" and app._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
 	device.update_layout()
 	var default_position: Vector2 = device.position
 	var press := InputEventMouseButton.new()
@@ -1401,6 +1401,13 @@ func test_navigation_route() -> void:
 	var right: PackedVector2Array = NavigationPhone.arrow_points("right")
 	check(left.size() == 3 and left[-1].x < left[-2].x and left[0].x == left[1].x, "navigation phone: left arrow has a 90 degree bend")
 	check(right.size() == 3 and right[-1].x > right[-2].x, "navigation phone: right arrow points right")
+	var shown := []
+	for metres in [3.4, 9.6, 14.0, 87.0, 455.0, 996.0, 1049.0, 1050.0, 12345.0]:
+		shown.append(NavigationPhone.format_distance(metres))
+	check(shown == ["3 m", "10 m", "10 m", "90 m", "460 m", "1.0 km", "1.0 km", "1.1 km", "12.3 km"],
+		"navigation phone: 1 m under 10 m, 10 m steps under 1 km, 100 m steps above: %s" % [shown])
+	device.show_navigation({"instruction": {"maneuver": "left", "distance_m": 87.0, "total_m": 2345.0, "street": "Torikatu"}})
+	check(app._distance.text == "90 m" and app._total.text == "Yhteensä 2.3 km", "navigation phone: next turn and the total driving distance")
 	device.show_navigation({})
 	check(device.visible and app._distance.text == "" and app._street.text == "Ei määränpäätä", "navigation phone: no stale instruction without a destination")
 	device.show_navigation({"instruction": {"maneuver": "routing"}})

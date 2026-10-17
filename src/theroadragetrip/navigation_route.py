@@ -29,7 +29,8 @@ ROUTE_BUDGET_S = 0.002  # route search per tick
 
 
 def next_turn(points, x, y):
-    """Next geometric turn and distance along the route, never straight-line distance."""
+    """Next geometric turn and distance along the route, never straight-line
+    distance, and the whole remaining route (total_m)."""
     if len(points) < 2:
         return None
     nearest = None
@@ -41,6 +42,7 @@ def next_turn(points, x, y):
     _, negative_index, px, py = nearest
     index = -negative_index
     distance = math.hypot(points[index + 1][0] - px, points[index + 1][1] - py)
+    total = round(distance + sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(points[index + 1:], points[index + 2:])), 1)
     for i in range(index + 1, len(points) - 1):
         a, b, c = points[i - 1:i + 2]
         incoming = math.atan2(b[1] - a[1], b[0] - a[0])
@@ -48,10 +50,10 @@ def next_turn(points, x, y):
         turn = math.degrees(angle_diff(outgoing, incoming))
         if abs(turn) >= 30:
             return {"maneuver": "uturn" if abs(turn) >= 150 else "left" if turn > 0 else "right",
-                    "distance_m": round(distance, 1), "angle_deg": round(turn), "turn_index": i}
+                    "distance_m": round(distance, 1), "total_m": total, "angle_deg": round(turn), "turn_index": i}
         distance += math.hypot(c[0] - b[0], c[1] - b[1])
     return {"maneuver": "arrive" if distance <= 10 else "straight", "distance_m": round(distance, 1),
-            "angle_deg": 0, "turn_index": len(points) - 1}
+            "total_m": total, "angle_deg": 0, "turn_index": len(points) - 1}
 
 
 def simplify_polyline(points: Sequence[Tuple[float, float]], tolerance_m: float = ROUTE_TOLERANCE_M) -> List[Tuple[float, float]]:
