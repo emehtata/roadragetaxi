@@ -128,3 +128,12 @@ def _close_started_servers(monkeypatch):
     yield
     for server in started:
         server.close()
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """The random order's seed, also under -q (pytest-randomly prints it only
+    in the header, which -q hides): rerun a failure with -p randomly
+    --randomly-seed=N."""
+    seed = getattr(config.option, "randomly_seed", None)
+    if seed is not None and getattr(config.option, "randomly_reorganize", True):
+        terminalreporter.write_line(f"random order: --randomly-seed={seed}")

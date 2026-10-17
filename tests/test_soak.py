@@ -64,8 +64,11 @@ def _invariants(npcs, pedestrians, residents):
 @pytest.mark.parametrize("seed", range(1, 1 + max(1, int(SCALE))))
 def test_city_traffic_and_walkers_stay_consistent_for_minutes(seed):
     """Ten NPC cars and walkers on a 9 x 9 block grid for minutes of game
-    time: no duplicate or orphaned vehicle, driver, walker or resident,
-    counts stay within their targets, nothing grows without bound."""
+    time: no duplicate or orphaned vehicle, driver, walker or resident, cars
+    within their maximum, and walkers, residents and live objects settle
+    instead of growing. (Walkers have no fixed ceiling: the target is for
+    the spawn disc, and people further out, stepping out of cars or at
+    doors come on top.)"""
     sys.path.insert(0, os.path.dirname(__file__))
     from test_npc_population import _CENTER, _SPAWN_RADIUS_M, _city_block_grid
     from theroadragetrip.npc import NPCVehicleManager
@@ -86,23 +89,26 @@ def test_city_traffic_and_walkers_stay_consistent_for_minutes(seed):
     traffic.npcs = npcs.vehicles
     ticks = int(3000 * SCALE)
     half_objects = None
-    peak_vehicles = peak_walkers = 0
+    peak_vehicles = 0
+    walkers_by_half = [0, 0]
     for tick in range(ticks):
         traffic.advance_time(1 / 30)
         npcs.update(1 / 30, px, py, residents, traffic, ways, pedestrian_mgr=pedestrians)
         pedestrians.update(player, dt=1 / 30)
         _invariants(npcs, pedestrians, residents)
         peak_vehicles = max(peak_vehicles, len(npcs.vehicles))
-        peak_walkers = max(peak_walkers, len(pedestrians.pedestrians))
+        half = int(tick >= ticks // 2)
+        walkers_by_half[half] = max(walkers_by_half[half], len(pedestrians.pedestrians))
         if tick == ticks // 2:
             gc.collect()
             half_objects = len(gc.get_objects())
+            half_residents = len(residents.residents)
     gc.collect()
     end_objects = len(gc.get_objects())
     assert npcs.vehicles, "the traffic died out"
-    assert peak_walkers >= 10, "too few walkers for this to test them"
+    assert walkers_by_half[0] >= 10, "too few walkers for this to test them"
     assert peak_vehicles <= npcs.max_count
-    assert peak_walkers <= pedestrians.population_target + 20
-    assert len(residents.residents) < 400, "residents pile up"
+    assert walkers_by_half[1] <= walkers_by_half[0] * 1.5 + 5, f"walkers keep growing: {walkers_by_half}"
+    assert len(residents.residents) <= half_residents * 1.5 + 20, "residents pile up"
     # The second half runs in a settled state: live objects must not keep growing.
     assert end_objects < half_objects * 1.2, (half_objects, end_objects)

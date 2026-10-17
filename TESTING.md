@@ -12,7 +12,7 @@ installs `requirements.txt` into `.venv`.
 | --- | --- | --- | --- |
 | Python suite, in random order | `make test` (or `.venv/bin/python -m pytest -q`) | ~90 s | nothing else |
 | One file or test | `.venv/bin/python -m pytest -q tests/test_taxi.py -k lifecycle` | | |
-| Reproduce an order | `pytest -p randomly --randomly-seed=N` (the seed is printed at the top of each run) | | |
+| Reproduce an order | `pytest -p randomly --randomly-seed=N` (each run ends with `random order: --randomly-seed=N`) | | |
 | Fixed order | `pytest -p no:randomly` | | |
 | Compile check | `make compile` | | |
 | Audio catalogue | `make audio-check` | | |
