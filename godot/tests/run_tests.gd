@@ -60,6 +60,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_i18n()
 	test_chunk_queue()
 	test_interpolation()
+	test_vehicle_body_triangles()
 	test_audio()
 	test_hud()
 	test_map_chunks()
@@ -382,6 +383,18 @@ func test_interpolation() -> void:
 	check(events.take_due_events(10.3).is_empty(), "and only once")
 	events.push(1, 10.0, _state(0.0, 0.0, [{"type": "sound", "group": "vehicle.door_close"}]), 10.4)
 	check(events.take_due_events(11.0).is_empty(), "a re-sent state doesn't replay its events")
+
+
+func test_vehicle_body_triangles() -> void:
+	for offset in [Vector2.ZERO, Vector2(5000, -5000), Vector2(100000, 100000)]:
+		for winding in [1.0, -1.0]:
+			var body := PackedVector2Array([offset + Vector2(-2, -1), offset + Vector2(2, -1),
+				offset + Vector2(2, 1), offset + Vector2(-2, 1)])
+			if winding < 0:
+				body.reverse()
+			check(EntityLayer2.body_triangles(body) == PackedInt32Array([0, 1, 2, 0, 2, 3]), "convex vehicle body submits triangles at distant coordinates in either winding")
+	check(EntityLayer2.body_triangles(PackedVector2Array([Vector2.ZERO, Vector2.ONE, Vector2(2, 2)])).is_empty(), "collapsed vehicle body is skipped")
+	check(EntityLayer2.body_triangles(PackedVector2Array([Vector2.ZERO, Vector2(2, 2), Vector2(0, 2), Vector2(2, 0)])).is_empty(), "crossed vehicle body is skipped")
 
 
 func test_audio() -> void:

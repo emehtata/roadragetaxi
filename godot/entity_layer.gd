@@ -625,9 +625,10 @@ static func _paint(node: Node2D, shapes: Array) -> void:
 	for shape in shapes:
 		match shape[0]:
 			"poly":
-				if not drawable(shape[1]):
+				var indices := body_triangles(shape[1])
+				if indices.is_empty():
 					continue
-				node.draw_colored_polygon(shape[1], shape[2])
+				RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), indices, shape[1], PackedColorArray([shape[2]]))
 				if shape[3] != null:
 					var closed: PackedVector2Array = shape[1].duplicate()
 					closed.append(shape[1][0])
@@ -636,6 +637,16 @@ static func _paint(node: Node2D, shapes: Array) -> void:
 				node.draw_circle(shape[1], shape[2], shape[3])
 			"line":
 				node.draw_line(shape[1], shape[2], shape[3], shape[4])
+
+
+## Body parts are convex: avoid the polygon triangulator's coordinate precision limits.
+static func body_triangles(points: PackedVector2Array) -> PackedInt32Array:
+	var indices := PackedInt32Array()
+	if not drawable(points):
+		return indices
+	for i in range(1, points.size() - 1):
+		indices.append_array(PackedInt32Array([0, i, i + 1]))
+	return indices
 
 
 ## Lamps are quads already: submit their two triangles directly, avoiding

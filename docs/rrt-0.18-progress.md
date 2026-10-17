@@ -688,3 +688,22 @@ Limits: the requested fallback intentionally has no age cutoff, so old cached
 weather can be inaccurate. With no usable earlier FMI record, generated weather
 remains the last resort. Missing-hour fallback applies to current conditions;
 the start-screen future forecast still uses exact-hour FMI where available.
+
+### Bypass vehicle-body polygon triangulation (2026-10-17)
+
+Reported `_paint:630` is the vehicle-body polygon submission, not lamps or
+pedestrians. Its convex/finite/degeneracy check remains, but body fills now
+submit explicit triangle fans, like the existing lamp meshes, instead of asking
+Godot to triangulate map-relative coordinates. Outlines remain unchanged. Shared
+`_paint` covers both ordinary and under-bridge vehicle bodies. No simulation,
+traffic, weather or audio changes.
+
+Tests: six convex coordinate/winding combinations plus collapsed and crossed
+geometry; client suite **919 checks, 0 failed**. OpenGL rendered regression
+`godot/tests/vehicle_body.gd`: **3 positions, 0 failed**, including coordinates
+100 km from the origin; filled pixels verified, no triangulation error. Existing
+client-suite startup signal/anchor/input and shutdown-leak diagnostics remain.
+Diff checks pass. The exact original session geometry was not captured/replayed;
+the precision mechanism is suspected, while bypassing that triangulator in the
+reported fill path is verified. Keep body parts convex as required by the
+existing drawable guard.
