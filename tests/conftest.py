@@ -109,3 +109,22 @@ def pytest_pyfunc_call(pyfuncitem):
         except AssertionError:
             if attempt == TIMING_ATTEMPTS - 1:
                 raise
+
+
+@pytest.fixture(autouse=True)
+def _close_started_servers(monkeypatch):
+    """Close every simulation server a test starts, pass or fail: left
+    open, each kept its world, port and threads for the rest of the run."""
+    from theroadragetrip import server as server_module
+
+    started = []
+    real_run_server = server_module.run_server
+
+    def run_server(*args, **kwargs):
+        started.append(real_run_server(*args, **kwargs))
+        return started[-1]
+
+    monkeypatch.setattr(server_module, "run_server", run_server)
+    yield
+    for server in started:
+        server.close()

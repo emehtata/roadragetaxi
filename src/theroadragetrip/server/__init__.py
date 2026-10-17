@@ -465,6 +465,17 @@ class SimulationServer:
         logger.info("Simulation server listening on %s:%d", self.host, self.port)
         self._running = True
 
+    def close(self) -> None:
+        """Stop listening and drop every client (tests; an embedding host).
+        The process exit does this for the standalone server."""
+        self._running = False
+        if self._listener is not None:
+            self._listener.close()
+        with self._clients_lock:
+            clients, self._clients = list(self._clients), []
+        for connection in clients:
+            connection.close()
+
     def _place_name(self) -> str:
         """The start sign's name: the catalog city, or for a custom start
         (--bbox) the nearest town/village on the loaded map."""

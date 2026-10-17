@@ -401,3 +401,22 @@ _seen: dict = {}
 def _peek(connection):
     _seen.setdefault(connection, []).extend(connection.try_recv_all())
     return _seen[connection]
+
+
+def test_a_closed_server_stops_listening_and_drops_its_clients(monkeypatch):
+    import socket
+
+    from theroadragetrip import transport
+
+    server = _start_server(monkeypatch)
+    connection = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    server.close()
+    with pytest.raises(OSError):
+        socket.create_connection((server.host, server.port), timeout=0.5)
+    deadline = time.monotonic() + 2.0
+    while not connection.is_closed and time.monotonic() < deadline:
+        connection.try_recv_all()
+        time.sleep(0.02)
+    assert connection.is_closed
+    server.close()  # twice is harmless

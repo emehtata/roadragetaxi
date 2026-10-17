@@ -269,7 +269,11 @@ class Listener:
             self._on_connect(LineJSONConnection(client_sock))
 
     def close(self) -> None:
-        try:
-            self._sock.close()
-        except OSError:
-            pass
+        # shutdown first: close alone neither wakes the accept thread nor,
+        # on Linux, stops the kernel listening while accept() is blocked
+        for stop in (lambda: self._sock.shutdown(socket.SHUT_RDWR), self._sock.close):
+            try:
+                stop()
+            except OSError:
+                pass
+        self._thread.join(timeout=1.0)
