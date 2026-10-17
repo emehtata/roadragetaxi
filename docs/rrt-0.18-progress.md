@@ -809,6 +809,16 @@ updated again only after 0.18 is actually published.
 
 ### Market the taxi antihero and rage superpower (2026-10-18)
 
+Player-facing copy pass: rewrote technical feature/release descriptions in both
+languages and the Finnish fallback. Removed engine/server badges, map-data
+jargon, rendering/layer details, background tile loading, spawn/recovery terms,
+HUD shorthand and cache explanations. Focus now stays on familiar streets,
+night shifts, discoveries, fares and smoother driving. Kept controls, future
+ideas clearly marked, installer links, source-repository link and the general
+unfinished-game warning. Website checks now reject selected developer jargon
+in translations and visible HTML text. Three Node checks and six focused pytest
+checks passed; no game changes, deployment or browser render.
+
 Weather marketing follow-up: replaced availability/cache/fallback detail in
 the weather feature with player-facing atmosphere and driving stakes in Finnish,
 English and the HTML fallback. Three Node website checks, JavaScript syntax

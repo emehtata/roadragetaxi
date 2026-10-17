@@ -6,6 +6,7 @@ const { test } = require('node:test');
 
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const script = fs.readFileSync(path.join(__dirname, 'script.js'), 'utf8');
+const technicalCopy = /\b(?:Godot|Python|OSM|OpenStreetMap|NPC|HUD|API|FMI|Digitraffic)\b|renderö|karttaruut|reitinhaun palautuminen|spawn clearances|map layers|cached data/i;
 const section = id => html.split(`id="${id}"`)[1].split('</section>')[0];
 const counts = {
   '.hero-meta span': 3,
@@ -60,6 +61,7 @@ for (const language of ['fi', 'en']) {
       assert.doesNotMatch(JSON.stringify(t), /0\.18\.0/);
       assert.doesNotMatch(JSON.stringify(t), /tuleva päivitys|tulevassa päivityksessä|seuraava päivitys|next update|upcoming update|development branch|kehityshaarassa/i);
       assert.match(t.notesKicker, /UUSIN VERSIO|LATEST VERSION/);
+      assert.doesNotMatch(JSON.stringify(t), technicalCopy);
       assert.match(nodes.get('.release-callout p').textContent, /0\.17\.1alpha/);
       nodes.get('.language-toggle').listeners.click();
       assert.notEqual(document.documentElement.lang, current);
@@ -69,6 +71,7 @@ for (const language of ['fi', 'en']) {
 
 test('download links target the published installer and local images exist', () => {
   assert.doesNotMatch(html, /0\.18\.0/);
+  assert.doesNotMatch(html.replace(/<[^>]*>/g, ''), technicalCopy);
   const downloads = [...html.matchAll(/href="([^"]+releases\/download\/[^\"]+)"/g)];
   assert.equal(downloads.length, 3);
   for (const [, url] of downloads) assert.equal(url, 'https://github.com/emehtata/roadragetaxi/releases/download/v0.17.1alpha/RoadRageTrip-Setup.exe');
