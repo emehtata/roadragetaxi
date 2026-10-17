@@ -69,6 +69,42 @@ def test_populate_initial_reaches_target_count():
     assert len(manager.vehicles) == 8
 
 
+def test_initial_population_does_not_fill_parking_beside_player_spawn(monkeypatch):
+    player = (428980.81947864796, 7210271.678917232)
+    point = (428979.25997948594, 7210274.267445893)  # screenshot NPC 13, only 3.02 m away
+    ways = [Way(points_m=[(point[0] - 100, point[1]), (point[0] + 100, point[1])],
+                highway="service", half_width_m=4.5)]
+    monkeypatch.setattr(npc_module, "_pick_npc_destination_candidates", lambda *a, **kw: [(point, None)])
+    manager = NPCVehicleManager(target_count=1, vehicle_distribution={"car": 1.0})
+    manager.populate_initial(*player, ResidentManager(), ways)
+    assert manager.vehicles == []
+
+
+@pytest.mark.parametrize("kind,distance,allowed", [("car", 3.0, False), ("car", 8.0, True),
+                                                  ("bus", 8.0, False), ("bus", 11.0, True)])
+@pytest.mark.parametrize("angle", [0.0, math.pi / 2, math.pi, -math.pi / 2])
+def test_new_parked_vehicles_leave_player_clearance_for_their_size(kind, distance, allowed, angle):
+    from theroadragetrip.geo import boxes_intersect
+
+    manager = NPCVehicleManager(target_count=1)
+    point = (distance * math.cos(angle), distance * math.sin(angle))
+    vehicle = manager._place_one(point, None, [], None, None, None, None, None,
+                                 vehicle_type=kind, player_position=(0.0, 0.0))
+    assert (vehicle is not None) == allowed
+    if vehicle is not None:
+        for heading in (0.0, math.pi / 2, math.pi, -math.pi / 2):
+            assert not boxes_intersect(0, 0, heading, 4.0, 1.8,
+                                       vehicle.x, vehicle.y, vehicle.heading, vehicle.length_m, vehicle.width_m)
+
+
+def test_rejected_player_overlap_does_not_claim_parking_space():
+    manager = NPCVehicleManager(target_count=1)
+    space = SimpleNamespace(occupied=False, reserved=False, vehicle_id=None)
+    assert manager._place_one((1.0, 1.0), space, [], None, None, None, None, None,
+                               player_position=(0.0, 0.0)) is None
+    assert not space.occupied and not space.reserved and space.vehicle_id is None
+
+
 def test_populate_initial_gives_vehicles_a_variety_of_colors():
     """Reported: every NPC vehicle was the exact same flat gray."""
     ways = _city_block_grid()

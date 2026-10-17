@@ -3800,6 +3800,7 @@ class NPCVehicleManager:
         buildings: Optional[List],
         building_grid: Optional[SpatialWayGrid],
         vehicle_type: Optional[str] = None,
+        player_position: Optional[Tuple[float, float]] = None,
     ) -> Optional[NPCVehicle]:
         """Place one new parked vehicle - a thin wrapper around
         place_parked_npc that also rejects a spot too close to a vehicle
@@ -3809,10 +3810,19 @@ class NPCVehicleManager:
         claimed = [pos for _, pos in self._claimed_vehicle_points()]
         if not _point_is_clear_of_vehicles(point, claimed):
             return None
+        kind = vehicle_type or self._pick_vehicle_type()
+        if player_position is not None:
+            definition = vehicle_definition(kind)
+            # Bounding circles protect the taxi at any heading, including long NPC vehicles and door clearance.
+            clearance = max(NPC_MIN_VEHICLE_SPACING_M,
+                            math.hypot(definition.length_m, definition.width_m) * 0.5
+                            + math.hypot(NPC_VEHICLE_LENGTH_M, NPC_VEHICLE_WIDTH_M) * 0.5 + 1.0)
+            if not _point_is_clear_of_vehicles(point, [player_position], min_spacing_m=clearance):
+                return None
         return place_parked_npc(
             self._next_id(), point, parking_space, ways=ways, spatial_grid=spatial_grid,
             curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
-            vehicle_type=vehicle_type or self._pick_vehicle_type(),
+            vehicle_type=kind,
         )
 
     def _make_household(self, vehicle: NPCVehicle, resident_manager: ResidentManager) -> None:
@@ -3930,6 +3940,7 @@ class NPCVehicleManager:
                 continue
             vehicle = self._place_one(
                 point, parking_space, ways, spatial_grid, curbs, curb_grid, buildings, building_grid,
+                player_position=(player_x, player_y),
             )
             if vehicle is None:
                 continue
@@ -4712,7 +4723,8 @@ class NPCVehicleManager:
                 continue
             if any(True for _ in self.nearby_vehicles_at(point[0], point[1], NPC_TRANSIT_SPAWN_CLEARANCE_M)):
                 continue
-            vehicle = self._place_one(point, None, ways, spatial_grid, curbs, curb_grid, buildings, building_grid)
+            vehicle = self._place_one(point, None, ways, spatial_grid, curbs, curb_grid, buildings, building_grid,
+                                      player_position=(player_x, player_y))
             if vehicle is None:
                 continue
             tries += 1
@@ -4894,6 +4906,7 @@ class NPCVehicleManager:
                 continue
             vehicle = self._place_one(
                 point, parking_space, ways, spatial_grid, curbs, curb_grid, buildings, building_grid,
+                player_position=(player_x, player_y),
             )
             if vehicle is None:
                 continue

@@ -585,3 +585,38 @@ fetch with normal `configure_logging('INFO')` visibly emits the warning to the
 console without file logging. No real FMI request or full suite rerun needed
 for these diagnostics. The previously diagnosed generated-thunder/source-label
 problem remains a separate, unchanged issue.
+
+### Reserve player clearance during NPC population placement (2026-10-17)
+
+Screenshot `1792253226651350016`: taxi trip distance is only 0.537 m; NPC 13
+is crashed 3.022 m away. Their oriented footprints intersect at the recorded
+poses (also when shifting the taxi back by its entire recorded travel distance).
+Initial population placement checked other NPC positions/reservations but never
+the already-placed player taxi. A screenshot-coordinate startup regression
+reproduces the unsafe parked-car placement before the fix.
+
+The shared `_place_one` helper now accepts the current player position. Startup,
+runtime parked top-up and transit staging all supply it. Reject before assigning
+a vehicle ID or claiming a parking space. Clearance is at least the existing
+7 m spacing, increased for long vehicle definitions using both vehicles'
+bounding-circle radii plus 1 m. The taxi envelope uses the conservative default
+NPC car dimensions, larger than the current player taxi. This is a spawn policy,
+not an arbitrary traffic stop/despawn or a legal parking-rule change. Other
+collision and reservation validation stays in place; no per-frame city scan.
+
+Tests: captured spawn coordinates, four directions × car/bus × too-close/safe,
+actual player-body nonintersection at four headings for accepted positions, and
+no parking claim on rejection. Focused NPC/population/acceptance suites:
+**321 passed** (seed 2319294418); compile/diff checks pass. Full results below.
+
+Full run (seed 743673077): **1,816 passed, 2 skipped**, one client/server
+fixed-sleep timing failure in 88.20 s: after 50 ms, `try_recv_latest` returned
+an initial map `chunk` rather than the expected `state`. It failed before any
+movement assertion. Isolated retry passes, and all **14 integration tests pass**
+together on retry (7.18 s, same seed). That unrelated timing-sensitive test was
+not changed in this spawn fix.
+
+Limits: no complete original Oulu session/render replay. This prevents new NPCs
+being placed into the player envelope; it does not relocate existing wrecks,
+change ordinary moving-car avoidance or make manual taxi respawn search existing
+vehicles. No Godot/rendering or map-source change.
