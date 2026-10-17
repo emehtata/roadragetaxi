@@ -100,12 +100,36 @@ def command_player_id(message: dict) -> str:
     return str(message.get("player_id") or LOCAL_PLAYER_ID)
 
 
+COMMAND_RANGES = {  # the analogue inputs and their valid range; the rest are flags
+    "throttle": (0.0, 1.0), "brake": (0.0, 1.0), "steer_left": (0.0, 1.0), "steer_right": (0.0, 1.0),
+    "forward": (-1.0, 1.0), "turn": (-1.0, 1.0),
+}
+
+
+def _command_field(name: str, value):
+    """`value` as the command field `name` expects, or None when it isn't one."""
+    if name in COMMAND_RANGES:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            return None
+        low, high = COMMAND_RANGES[name]
+        return min(high, max(low, float(value)))
+    return value if isinstance(value, bool) else None
+
+
 def command_from_message(message: dict) -> tuple[PlayerCommand, bool]:
-    """The inverse of `build_command_message` - used by the server."""
-    payload = dict(message["command"])
-    interact = bool(payload.pop("interact", False))
-    command = PlayerCommand(**{k: payload[k] for k in PlayerCommand.__dataclass_fields__ if k in payload})
-    return command, interact
+    """The inverse of `build_command_message` - used by the server. Client
+    input is never trusted: a field of the wrong type keeps its default,
+    analogue inputs are clamped to their range, and a missing or malformed
+    payload is no input. A bad command must not stop the server's tick."""
+    payload = message.get("command")
+    if not isinstance(payload, dict):
+        return PlayerCommand(), False
+    fields = {}
+    for name in PlayerCommand.__dataclass_fields__:
+        value = _command_field(name, payload.get(name))
+        if value is not None:
+            fields[name] = value
+    return PlayerCommand(**fields), payload.get("interact") is True
 
 
 def _resident_to_dict(resident) -> Optional[dict]:
