@@ -32,11 +32,12 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Called each frame by main.gd: the target, where it is on screen, where
 ## the camera is in the world, and the taxi's heading.
 func update_view(target: Dictionary, target_screen: Vector2, camera_world: Vector2, heading: float) -> void:
+	var had_target := not _target.is_empty()
 	_target = target
 	_target_screen = target_screen
 	_camera_world = camera_world
 	_heading = heading
-	if not target.is_empty() or show_compass:
+	if had_target or not target.is_empty() or show_compass:
 		queue_redraw()
 
 

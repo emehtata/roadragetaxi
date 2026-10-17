@@ -550,3 +550,21 @@ no per-person surcharge, child-seat equipment, child voice assets or general
 on-foot family-following AI was added. Ages follow the existing resident age
 calculation. No manual live-game visual/FPS session was performed. Existing
 Godot UI and shutdown diagnostics remain unrelated.
+
+### Clear stale destination arrow after a fare ends (2026-10-17)
+
+Screenshot `1792252652673803008` shows the destination arrow despite no fare;
+JSON confirms `current_passenger=null`, state PICKUP and zero passenger mass.
+The server and navigation target already clear on vomiting exits. Godot's
+`NavOverlay.update_view` queued drawing only for a nonempty target or enabled
+compass, so clearing the last target with compass off left old canvas commands
+visible indefinitely. Remember whether a target existed and request the one
+redraw needed to erase it; idle no-target frames remain redraw-free. This covers
+vomiting, cancellation and completed fares without changing their server logic.
+
+Rendered `godot/tests/nav_clear.gd` checks a visible destination arrow then empty
+target, with compass off/on. Old condition reproduces failure with compass off;
+fixed condition passes both pixel checks. Navigation/group Python tests:
+**30 passed** (seed 1339655107). No whole Python suite rerun for this client-only
+two-line fix. Godot suite: **911 checks, 0 failed**; existing UI/shutdown
+diagnostics remain unrelated.
