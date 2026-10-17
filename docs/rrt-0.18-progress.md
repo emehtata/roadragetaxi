@@ -806,3 +806,56 @@ The existing font hosts were blocked for bounded offline rendering, so final
 downloaded-font appearance remains unverified. No site deployment or release
 tag; no game/simulation, user-save or audio changes. Download labels should be
 updated again only after 0.18 is actually published.
+
+### Implement arcade rage road clearance (2026-10-18)
+
+Replaced the old one-driver, 40 m, eight-second slow crawl and edge steering.
+An accepted shout (existing 0.25 rage cost, horn and five-second visible line)
+now activates ten seconds of direct NPC roadside displacement. Lookahead is
+ten seconds at the taxi's current speed plus body/movement margin: about 583 m
+plus margin at 210 km/h, with a 60 m minimum at low speed. Follow loaded road
+bends and the straightest connected continuation, retaining each segment's
+bridge layer and the taxi's logical map level. Recompute as the taxi moves;
+newly arriving/spawned cars are affected during the active window.
+
+`road_rage.py` owns this temporary state under `NPCVehicleManager`, on the Python
+server only. Clearance runs before taxi physics/collisions and before NPC
+movement. All eligible vehicles are moved immediately, including oncoming,
+waiting, parked and crashed vehicles; no normal steering/light/right-of-way
+decision can veto it. Circle envelopes account for full vehicle dimensions;
+crowded slots are spaced outward without overlapping other NPC bodies, and
+late job-completion spawns are reindexed before slot selection. No identities,
+occupants, trip groups, parking claims or original crash states are discarded.
+Held cars skip normal driving, parked departure and population recovery/trip
+candidates. After the active window, return to the original road position only
+outside the taxi's forward corridor/proximity envelope and with the slot clear
+of other vehicles; restart from rest rather than pop back at cruising speed.
+Prune references when ordinary population/wreck cleanup removes a held car.
+
+Updated the traffic-law guide with the explicit user-requested arcade exception;
+ordinary NPC routing/parking still has no permission to use it. Removed obsolete
+nearest-driver/crawl tests and replaced them with corridor and lifecycle tests.
+Four headings at 210 km/h, all five moving/waiting/parked/wreck/oncoming cases,
+large vehicle dimensions, curves/continuations, separate bridge/map levels,
+new arrivals, 25-car overlapping jam, occupied rejoin slots, dense road vertices,
+real NPC update loops, repeat-shout timing, population recovery exclusion and
+minimal-manager diagnostics are covered. A full server-tick control reproduces
+a collision with an NPC five metres ahead at 210 km/h without rage, while rage
+clears that body before the collision pass.
+
+Verification: final full run **1,849 passed, 2 skipped** (93.63 s, seed
+743673077), including the held-population, late-spawn and actual server-tick
+collision regressions. Earlier focused NPC/population/server run: **312 passed**
+(one local-socket test deselected). Compile/diff checks pass.
+Synthetic 100-car initial clearance: **23.07 ms**;
+rolling updates: median **0.33 ms**, p95 **0.38 ms**, max **0.73 ms**, before the
+additional O(population) entry reindex. This is a synthetic Python measurement,
+not an overall FPS claim. No audio/rendering/protocol or save format change.
+
+Limits: artificial roadside slots deliberately bypass terrain/building/water
+and lawful parking checks. This is arcade clearance, not emergency priority or
+general traffic-law compliance. Pedestrians, trains and scenery are not moved.
+Unknown turns are not predicted, only loaded connected geometry is followed,
+and the corridor walk is capped at 4,096 vertices per pass. Normal scenery,
+pedestrian/rail and bridge-edge hazards still exist for the taxi. No full Oulu
+rendered driving replay or Windows build was performed for this change.

@@ -599,7 +599,7 @@ def test_the_navigation_route_crosses_the_wire(tmp_path, monkeypatch):
 
 def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypatch):
     """godot-final-05: SPACE is the simulation's - cost 0.25, the 0.45 horn,
-    a shout for 5 s, the nearest driver ahead provoked once; nothing below 0.25."""
+    a shout for 5 s and arcade clearance once; nothing below 0.25."""
 
     from theroadragetrip import protocol
     from theroadragetrip.simulation import RAGE_SHOUTS, PlayerCommand
@@ -631,7 +631,7 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
     assert [e for e in sent[-1] if e.get("group") == "vehicle.horn"] == [{"type": "sound", "group": "vehicle.horn"}]
     assert len(calls) == 1
     args, kwargs = calls[0]
-    assert args == at[:3] and kwargs == {"sim_time": at[3]}
+    assert args == () and kwargs == {"sim_time": at[3]}
     shout = _state(server)  # no road_rage passed: the builder's default
     state = protocol.build_state_message(
         tick=1, world=server.world, car=server.car, on_foot=False, player_pedestrian=server.world.player_pedestrian,
@@ -653,6 +653,42 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
     server.tick(1.0 / 30.0)
     assert len(calls) == 3 and server._rage_power == pytest.approx(0.1, abs=0.01)
     assert sum(1 for events in sent[-3:] for e in events if e.get("group") == "vehicle.horn") == 2
+
+
+@pytest.mark.parametrize("rage", [False, True])
+def test_210_kmh_shout_clears_a_close_npc_before_the_collision_pass(tmp_path, monkeypatch, rage):
+    from theroadragetrip.npc import NPCState, NPCVehicle
+    from theroadragetrip.osm import Way
+    from theroadragetrip.physics import Car, SpatialWayGrid
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch)
+    # Isolated road, clear of the sample map's buildings, water and signals.
+    road = Way([(1_000_000, 1_000_000), (1_002_000, 1_000_000)], "primary", 7)
+    server.world.ways = [road]
+    server.world.spatial_grid = SpatialWayGrid([road])
+    server.car.x, server.car.y, server.car.heading = 1_000_100, 999_998, 0
+    server.car.speed = 210 / 3.6
+    server.car.engine_on = True
+    server._current_way = road
+    server._on_foot = False
+    vehicle = NPCVehicle(12345, Car(server.car.x + 5, server.car.y, 0, 0), state=NPCState.WAITING)
+    manager = server.world.npc_manager
+    manager.vehicles = [vehicle]
+    manager.drivers.clear()
+    manager._previous_player_pose = server.car.x, server.car.y, server.car.heading
+    manager.rebuild_spatial_grid()
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    server._rage_power = 1 if rage else 0
+    server._pending_road_rages = 1
+    server.tick(1 / 30)
+    if rage:
+        assert vehicle.vehicle_id in manager.road_rage.held
+        assert vehicle.state != NPCState.CRASHED
+        assert server.world.taxi_mgr.taxi_smoke_timer == 0
+        assert not manager.accidents
+    else:
+        assert vehicle.state == NPCState.CRASHED
 
 
 def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):

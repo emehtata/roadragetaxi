@@ -307,14 +307,12 @@ def advance_simulation(
             audio.play_group("vehicle.engine_start" if car.engine_on else "vehicle.engine_stop")
 
     rage_shout = None
-    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # SPACE: horn, shout, the nearest driver ahead
+    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # SPACE: horn, shout, arcade clearance
         audio.play_driver_line("rage", language)
         audio.play_group("vehicle.horn", 0.45)
         rage_power = max(0.0, rage_power - RAGE_SHOUT_COST)
         rage_shout = random.choice(RAGE_SHOUTS)
-        # living-traffic: Road Rage reaches exactly one real NPC driver - whichever
-        # is nearest ahead of the player right now (trigger_road_rage).
-        world.npc_manager.trigger_road_rage(car.x, car.y, car.heading, sim_time=world.traffic_mgr.sim_time)
+        world.npc_manager.trigger_road_rage(sim_time=world.traffic_mgr.sim_time)
 
     if command.refuel:
         station = nearest_fuel_station(scenery_objects, car.x, car.y)
@@ -363,6 +361,8 @@ def advance_simulation(
     current_way = get_current_road_at_car(
         car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True, current_way=current_way
     )
+    if not on_foot:
+        npc_manager.road_rage.update(npc_manager, car, traffic_mgr.sim_time, drive_ways, drive_grid, current_way)
     speed_limit_mps = None
     if speed_limiter_enabled and current_way:
         speed_limit_mps = current_way.speed_limit_kmh / 3.6

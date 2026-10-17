@@ -238,8 +238,9 @@ Law: §§ 7, 10–12, 17, 47–51, 55, 57, 90–95, 98, 105, 141, 144–149 and 
   lighting has separate duties/exceptions (§ 50); disabling parked headlight
   beams must not erase required visibility.
 - Horn warnings are for danger; other horn use is restricted to overtaking
-  outside built-up areas (§ 47). **Game policy:** rage/horn pull-aside is gameplay,
-  not legal priority; NPC reactions must still be safe and obey controls.
+  outside built-up areas (§ 47). A horn does not assign legal priority. The
+  player rage action has the explicit arcade exception below; ordinary NPC
+  driving and horn reactions do not acquire that exception.
 - § 55 normally limits unnecessary combustion-engine idling to two minutes.
   Before departure below −15 °C the allowance is four minutes, with separate
   readiness/work exceptions. Compulsory traffic waits are not unnecessary idling.
@@ -280,6 +281,29 @@ metered trip, not a per-person charge. Generated family children are ages 7–17
 new solo rail-fare identities are adults. Child-restraint equipment and continued
 on-foot family cohesion after dropoff are not modeled by this change; do not
 describe these tests as full child-transport legal compliance.
+
+### Rage clearance: explicit arcade exception (2026-10-18)
+
+The player's accepted rage shout immediately relocates NPC vehicles out of the
+forward road corridor, without steering, traffic-control or ordinary parking
+rules. This deliberately overrides the older slow, nearest-driver pull-aside
+policy. Lookahead is at least ten seconds at the taxi's current speed (about
+583 m at 210 km/h, plus clearance); new entrants are affected for ten simulation
+seconds at the normal real-time traffic cadence, not the accelerated calendar.
+Moving, waiting, parked and crashed NPC vehicles can be displaced. No occupant
+identities, parking claims or original crash state are discarded. Their normal
+driving updates are suspended while held; after the active window they return
+only outside the taxi's forward corridor and nearby safety envelope, with no
+other NPC vehicle occupying the original slot.
+
+This is **not Finnish traffic-law compliance**, emergency-vehicle priority,
+ordinary shoulder parking or permission for routine NPC off-road recovery.
+Roadside positions are artificial clearance slots; buildings, water and legal
+parking evidence are not validated there. Separate bridge/map levels remain
+separate, and this does not move pedestrians, trains or scenery. Only loaded,
+connected road geometry can be followed; at ambiguous junctions, clearance
+follows the straightest continuation and is recalculated as the taxi turns.
+There is no promise to predict an unchosen turn or clear unloaded map data.
 
 ## Existing code and known compliance gaps
 
