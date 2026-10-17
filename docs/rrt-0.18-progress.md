@@ -774,3 +774,35 @@ Full Python suite: **1,835 passed, 2 skipped** in 90.36 s, seed 743673077.
 The previously timing-sensitive networking checks passed in this run (no claim
 that their fixed-wait sensitivity was repaired). Compile/diff checks pass. Windows packaging was
 updated but an actual Windows executable/installer has not been built here.
+
+### Refresh bilingual website for release preparation
+
+Marketing downloads now point to the published `v0.17.1alpha` installer, while
+the release-notes section explicitly previews the not-yet-published 0.18.0alpha.
+Finnish and English cover group fares/parent accompaniment (game policy), map
+layer and lake fixes, sun-driven shadows/high beams, FMI cache fallback and
+traffic/spawn work without promising flawless traffic. Corrected phone N/P
+controls, generated street-light placement and weather availability claims;
+added F/E/G/J controls and seasonal-event copy. Historical screenshot assets are
+retained and explicitly labeled earlier alpha builds, rather than relabeled as
+0.18 captures. The isolated Oulu comparison capture had an empty phone and was
+not suitable to replace the existing populated-phone marketing image.
+
+Fixed the two localization crashes: 19 feature cards had 18 translations, and
+five release-note rows had four. Now both languages cover 20 features (including
+calendar events), all five preview notes and 13 control rows. Hero metadata and
+the gallery disclaimer also translate. Chromium inspection with remote fonts
+blocked exposed clipped hero headings/download actions; responsive font sizing,
+content width and height now keep the actions visible with fallback fonts.
+
+Verification: **3 Node checks passed**, covering both startup languages,
+repeated toggles, HTML/data row parity, current installer links and local image
+paths. **6 focused pytest checks passed**, including the Node wrapper, version
+and licence inventory checks (seed 743673077). JavaScript syntax/diff checks
+pass. Real headless Chromium-shell renders verified Finnish desktop (1440×1000)
+and English mobile (390×844), including translated release text. Full Chromium
+CLI stalled; it was stopped and the working headless-shell check substituted.
+The existing font hosts were blocked for bounded offline rendering, so final
+downloaded-font appearance remains unverified. No site deployment or release
+tag; no game/simulation, user-save or audio changes. Download labels should be
+updated again only after 0.18 is actually published.
