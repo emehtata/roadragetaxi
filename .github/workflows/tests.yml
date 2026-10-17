@@ -26,9 +26,14 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+        # ffmpeg (audio checks), osmium-tool (local .osm.pbf maps) and
+        # PyInstaller (its licence ships in the release) are what the
+        # game's build and tools use; their tests check them for real
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg osmium-tool
+          python -m pip install -r requirements.txt pyinstaller
       - name: Tests (random order)
-        run: python -m pytest -q -p randomly
+        run: python -m pytest -q -rs -p randomly
       - name: Compile check
         run: python -m compileall -q src/theroadragetrip
       - name: Audio assets

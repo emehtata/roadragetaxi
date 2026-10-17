@@ -112,6 +112,8 @@ def test_fetch_from_pbf_raises_cleanly_when_osmium_extract_hangs(tmp_path, monke
         raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
 
     monkeypatch.setattr(subprocess, "run", _hangs)
+    # osmium is found (it hangs, not missing) whether or not this machine has it
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
 
     with pytest.raises(RuntimeError, match="timed out"):
         fetch_osm_ways_from_pbf((64.0, 25.0, 64.1, 25.1), pbf_path=pbf_path)
