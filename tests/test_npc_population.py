@@ -2158,3 +2158,22 @@ def test_a_car_parked_on_the_shoulder_finds_its_way_back():
     shoulder = _roadside_parking_point((ax + bx) / 2.0, (ay + by) / 2.0, ways, None)
     assert shoulder is not None
     assert _roadside_parking_point(shoulder[0], shoulder[1], ways, None) is not None
+
+
+def test_a_trip_home_to_a_spot_beside_the_road_may_leave_the_road():
+    """Bug: the home spot, picked unchanged as the destination, counted as
+    on the road, so the last metres into it were refused at the road edge
+    and the car stalled beside home until it was given up (seed-dependent
+    failure of the full trip-cycle test)."""
+    from theroadragetrip.npc import _pick_npc_destination_candidates, continue_npc_trip
+
+    ways = [Way([(i * 20, 0), ((i + 1) * 20, 0)], "residential", 4.5) for i in range(20)]
+    traffic, residents = TrafficWorld(ways), ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, traffic, ways, (40, 0), (120, 0))
+    vehicle.state = NPCState.PARKED
+    vehicle.trip_group = None
+    # A household's home is where its car was parked: a roadside spot
+    (home, _), *_ = _pick_npc_destination_candidates(300.0, -5.0, None, None, None, ways=ways)
+    assert home[1] < -4.5  # beside the road: its edge is at y = -4.5
+    assert continue_npc_trip(vehicle, driver, traffic, ways, destination_query_point=home)
+    assert driver.destination == home and driver.destination_is_off_road

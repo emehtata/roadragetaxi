@@ -3414,7 +3414,12 @@ def _continue_npc_trip_steps(
             vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
         )
         for destination, target_space in destination_candidates:
-            destination_is_off_road = destination != query_point
+            # Unlike a road node, the query point (a household's home spot)
+            # can itself be off the road: kept unchanged, it still needs the
+            # parking leg, or the car stalls at the road edge beside home.
+            destination_is_off_road = destination != query_point or not is_point_on_road(
+                destination[0], destination[1], ways=ways, spatial_grid=spatial_grid, car_roads_only=True,
+            )
             path = yield from _plan_and_validate_npc_route_steps(
                 traffic_world, ways, origin, destination, spatial_grid=spatial_grid,
                 curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
