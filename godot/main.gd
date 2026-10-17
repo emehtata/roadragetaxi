@@ -100,6 +100,8 @@ var _bench := 0.0  # --bench SECONDS: drive-through measurement, then the report
 var _bench_left := 0.0
 var _bench_hide: PackedStringArray = []
 var override_altitude := NAN  # --sun-altitude
+var override_azimuth := NAN  # --sun-azimuth (degrees from grid north), for the shadow checks
+var override_cloud := NAN  # --cloud-cover (0 clear .. 1 overcast)
 var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
 var override_rain := -1.0
 var override_train_at := Vector2.INF
@@ -154,6 +156,10 @@ func _ready() -> void:
 				override_wetness = float(args[i + 1])
 			"--sun-altitude":  # godot-lights-01 visual checks: the sun at this altitude (never sent to Python)
 				override_altitude = float(args[i + 1])
+			"--sun-azimuth":  # rrt-018-shadows visual checks, like --sun-altitude
+				override_azimuth = float(args[i + 1])
+			"--cloud-cover":
+				override_cloud = float(args[i + 1])
 			"--bench-hide":  # godot-18 profiling: hide layers ("z7,labels,...": chunk layers by z, or named groups)
 				_bench_hide = args[i + 1].split(",")
 			"--bench":  # godot-18: record SECONDS of frames once the simulation is here, print BENCH {json}, quit
@@ -593,6 +599,8 @@ func _present(state: Dictionary) -> void:
 	if not ambient.is_equal_approx(world_light.color):
 		world_light.color = ambient
 	map_layer.set_light(lights, ambient)
+	map_layer.set_sun(altitude, Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth,
+		Daylight.cloud_cover(state) if is_nan(override_cloud) else override_cloud)
 	entities.ambient = ambient
 	night.ambient = ambient
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5

@@ -19,3 +19,4 @@ window/size/viewport_height=720
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
+lights_and_shadows/directional_shadow/size=2048

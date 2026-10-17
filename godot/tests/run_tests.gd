@@ -77,6 +77,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_rest_of_static_world()
 	test_buildings_2_5d()
 	test_buildings_3d()
+	test_sun_and_shadows()
 	test_roof_snow()
 	test_resent_chunk_buildings()
 	test_performance_paths()
@@ -2111,6 +2112,51 @@ static func _area(polygons: Array) -> float:
 ## godot-18: the optimisations keep the picture - same areas tinted, lit,
 ## drawn - with less work.
 ## godot-21: the 3D building layer's geometry and its alignment with the 2D map.
+## rrt-018-shadows: the sun's direction in the 3D view's axes, the sunlight
+## (and shadow) strength by altitude and cloud, and the shadow light's
+## switching. What the shadows look like: tests/shadow_scene.gd.
+func test_sun_and_shadows() -> void:
+	check(Daylight.sunlight(-5.0, 0.0) == 0.0 and Daylight.sunlight(0.5, 0.0) == 0.0, "no direct sun (no shadows) below the horizon")
+	check(Daylight.sunlight(30.0, 0.0) == 1.0 and Daylight.sunlight(30.0, 0.2) == 1.0, "a clear sky: full sunlight")
+	check(Daylight.sunlight(30.0, 0.95) == 0.0 and Daylight.sunlight(30.0, 1.0) == 0.0, "overcast: no direct sun")
+	var partly := Daylight.sunlight(30.0, 0.6)
+	check(partly > 0.2 and partly < 0.8, "partly cloudy: in between (%.2f)" % partly)
+	var worst := 0.0
+	for i in 400:
+		worst = maxf(worst, absf(Daylight.sunlight(i * 0.05, 0.0) - Daylight.sunlight((i + 1) * 0.05, 0.0)))
+		worst = maxf(worst, absf(Daylight.sunlight(30.0, i / 400.0) - Daylight.sunlight(30.0, (i + 1) / 400.0)))
+	check(worst < 0.02, "sunlight changes without steps (at most %.4f per step)" % worst)
+	var south := Daylight.sun_direction(50.0, 180.0)
+	var east := Daylight.sun_direction(20.0, 90.0)
+	var north := Daylight.sun_direction(10.0, 0.0)
+	var west := Daylight.sun_direction(10.0, 270.0)
+	check(south.z > 0.6 and absf(south.x) < 1e-5 and east.x > 0.9 and north.z < -0.9 and west.x < -0.9, "azimuth from grid north: south +z, east +x, north -z, west -x")
+	check(is_equal_approx(south.length(), 1.0) and is_equal_approx(south.y, sin(deg_to_rad(50.0))), "a unit vector at the sun's elevation")
+	check(is_equal_approx(Daylight.sun_direction(2.0, 180.0).y, sin(deg_to_rad(Daylight.SHADOW_MIN_ELEVATION_DEG))), "a low sun's shadows are capped in length")
+	var overhead := B3.sun_basis(Vector3.UP)
+	check((-overhead.z).is_equal_approx(Vector3.DOWN), "the sun straight overhead shines straight down")
+	check((-B3.sun_basis(south).z).is_equal_approx(-south), "the light shines away from the sun (Godot's -z)")
+	check(Daylight.azimuth({"calendar": {"sun_azimuth_deg": 123.5}}) == 123.5 and Daylight.azimuth({}) == 180.0, "the server's azimuth; an older server: south")
+	check(Daylight.cloud_cover({"weather": {"cloud_cover": 0.7}}) == 0.7 and Daylight.cloud_cover({}) == 0.0, "the server's cloud cover; none: clear")
+	var layer = B3.new()
+	root.add_child(layer)
+	layer.set_sun(40.0, 180.0, 0.0)
+	check(layer._sun.visible and layer._shadow_sprite.visible and layer._shadow_view.render_target_update_mode == SubViewport.UPDATE_ALWAYS, "daylight: the sun casts")
+	layer.set_sun(-10.0, 0.0, 0.0)
+	check(not layer._sun.visible and not layer._shadow_sprite.visible and layer._shadow_view.render_target_update_mode == SubViewport.UPDATE_DISABLED, "night: no sun, the shadow view isn't rendered")
+	layer.set_sun(40.0, 180.0, 1.0)
+	check(not layer._sun.visible, "overcast: no shadows")
+	var arrays: Dictionary = B3.build([PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10), Vector2(0, 10)])], [], Vector2.ZERO)
+	var instances: Array = B3.meshes(arrays)
+	var casters := instances.filter(func(node): return node.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
+	var prism_triangles: int = casters[0].mesh.surface_get_array_len(0) / 3 if casters.size() == 1 else -1
+	check(casters.size() == 1 and casters[0].layers == B3.LAYER_SHADOW_GROUND and prism_triangles == 4 * 2 + 2, "each chunk casts through shadows-only prisms: 4 walls and a roof, no windows")
+	check(instances[0].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "the drawn buildings cast nothing themselves")
+	for node in instances:
+		node.free()
+	layer.queue_free()
+
+
 func test_buildings_3d() -> void:
 	check(B3.to_3d(Vector2(12.5, -40.0)) == Vector3(12.5, 0.0, -40.0), "2D (x, y) -> 3D (x, 0, y)")
 	check(B3.to_3d(Vector2(1, 2), 7.0).y == 7.0, "height is the 3D y")
@@ -2195,8 +2241,13 @@ func test_buildings_3d() -> void:
 		"building_styles": [style]})
 	check(map.buildings_3d != null and map.buildings_3d.instance_count() >= 1, "a chunk's mesh (and its lit windows) join the 3D layer")
 	var lit_instances: Array = map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D and n.material_override == B3._shared["lit"])
-	check(map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D).all(func(n): return n.layers == B3.LAYER_BUILDINGS), "every instance is in the one building view (godot-final-09)")
-	check(map.buildings_3d.get_children().filter(func(n): return n is SubViewport).size() == 1 and map.buildings_3d.get_children().filter(func(n): return n is Sprite2D).size() == 1, "one viewport, one composite: no lit-window pass")
+	var ground: Node = map.buildings_3d._shadow_ground
+	var drawn: Array = map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D and n != ground and n.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
+	check(drawn.all(func(n): return n.layers == B3.LAYER_BUILDINGS), "every drawn instance is in the one building view (godot-final-09)")
+	# rrt-018-shadows adds the shadow view (the ground and shadows-only casters) - still no lit-window pass
+	var views: Array = map.buildings_3d.get_children().filter(func(n): return n is SubViewport)
+	var sprites: Array = map.buildings_3d.get_children().filter(func(n): return n is Sprite2D)
+	check(views == [map.buildings_3d._view, map.buildings_3d._shadow_view] and sprites.size() == 2, "the building view and the shadow view: no lit-window pass")
 	map.buildings_3d.set_light(0.0, Color.WHITE)
 	check(lit_instances.all(func(n): return not n.visible) and B3._shared["material"].get_shader_parameter("ambient") == Color.WHITE, "by day: the buildings as they are, the lit windows not drawn at all")
 	var dusk := Color(0.6, 0.65, 0.8)
