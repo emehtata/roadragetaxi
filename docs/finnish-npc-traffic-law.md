@@ -263,6 +263,24 @@ Law: §§ 7, 10–12, 17, 47–51, 55, 57, 90–95, 98, 105, 141, 144–149 and 
   **Game policy:** 60-second wreck removal is cleanup, not a legal towing deadline.
   Preserve people/occupants and collision hazards until properly resolved.
 
+### Taxi fare groups: game policy (2026-10-17)
+
+All fare passengers under 18 must travel with at least one adult in their
+registered `parent_ids`. This is the requested **game policy**, not a claim that
+Finnish law universally prohibits unaccompanied minors taking taxis. A stranger
+does not qualify. Street/stand/rail pickup must find the actual parent within
+5 m, not teleport one from elsewhere. An occupied parent cannot be borrowed.
+Picking up a parent also includes their nearby minor children, subject to seats.
+
+The current player taxi allows four passengers plus its driver. Validate unique
+identities, capacity and accompaniment at offer acceptance and while serving the
+fare. Everyone reaches the car before boarding as a group; dropoff, cancellation
+and vomiting exits preserve and release every identity. Fare pricing remains one
+metered trip, not a per-person charge. Generated family children are ages 7–17;
+new solo rail-fare identities are adults. Child-restraint equipment and continued
+on-foot family cohesion after dropoff are not modeled by this change; do not
+describe these tests as full child-transport legal compliance.
+
 ## Existing code and known compliance gaps
 
 Inspection baseline: 2026-10-14. This is not an exhaustive audit.

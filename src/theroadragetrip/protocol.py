@@ -223,6 +223,9 @@ def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
         return None
     return {
         "name": passenger.name,
+        "resident_id": passenger.resident_id,
+        "passenger_count": len(passenger.members),
+        "companions": [_passenger_to_dict(p) for p in passenger.companions],
         "gender": passenger.gender,
         "weight_kg": passenger.weight_kg,
         "is_drunk": passenger.is_drunk,
@@ -284,6 +287,7 @@ def _phone_to_dict(taxi_mgr, car) -> dict:
             items.append({
                 "id": f"offer-{item.offer_id}", "kind": "offer", "status": "AVAILABLE",
                 "name": passenger.name, "pickup": passenger.pickup.address, "dropoff": passenger.dropoff.address,
+                "passenger_count": 1 + len(getattr(passenger, "companions", ())),
                 "pickup_distance_m": round(math.hypot(car.x - passenger.pickup.x, car.y - passenger.pickup.y)),
                 "trip_distance_m": round(math.hypot(passenger.dropoff.x - passenger.pickup.x, passenger.dropoff.y - passenger.pickup.y)),
                 "time_remaining_s": round(item.time_remaining_s, 1),

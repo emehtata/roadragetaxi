@@ -109,8 +109,11 @@ class StationPassengerView:
         if spot is None:
             return False
         x, y, _, _ = spot
+        resident_id = passenger.resident_id
+        if resident_id is None and passenger.intent == TAXI and getattr(self.pedestrians, "residents", None) is not None:
+            resident_id = self.pedestrians.residents.create("walking", min_age=18).resident_id
         pedestrian = self.pedestrians.spawn_pedestrian_at(
-            x, y, heading=self.rng.uniform(-math.pi, math.pi), resident_id=passenger.resident_id,
+            x, y, heading=self.rng.uniform(-math.pi, math.pi), resident_id=resident_id,
         )
         if pedestrian is None:
             return False
@@ -156,7 +159,10 @@ class StationPassengerView:
         if passenger.pedestrian is not None or stand is None:
             return passenger.pedestrian is not None
         x, y = self._stand_spot(stand)
-        pedestrian = self.pedestrians.spawn_pedestrian_at(x, y, resident_id=passenger.resident_id)
+        resident_id = passenger.resident_id
+        if resident_id is None and getattr(self.pedestrians, "residents", None) is not None:
+            resident_id = self.pedestrians.residents.create("walking", min_age=18).resident_id
+        pedestrian = self.pedestrians.spawn_pedestrian_at(x, y, resident_id=resident_id)
         if pedestrian is None:
             return False
         if passenger.resident_id is None:

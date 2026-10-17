@@ -506,3 +506,47 @@ it passes at seed 743673077. No unrelated pedestrian behavior/test edits made.
 Full rerun: **1,781 passed, 2 skipped** in 100.33 s (seed 743673077).
 Second actual Inari build with clipped-area conservation and validity assertions:
 **2.47 s**, all outputs valid. No Godot or traffic changes.
+
+### Group taxi fares and parent accompaniment (2026-10-17)
+
+Screenshot `1792251484263926016` identifies Maria Eronen, born 2017-03-04.
+The old fare generator allowed solo children from age seven. Fare organizers
+are now generated as adults; ordinary generated requests can include 2–4 people,
+including family fares with newly generated children linked to their actual
+adult parent in the resident registry. Children under 18 require an adult from
+their `parent_ids`, not just another adult. This is an explicit game policy,
+documented in the traffic guide, not a statutory unaccompanied-taxi age claim.
+
+Keep the existing lead passenger API and attach bounded companion records.
+Street/stand pickups require a parent physically within 5 m and not driving;
+when the parent hails, nearby children join too. Companion pedestrians transfer
+to the fare representation without duplication. Rail greetings receive the
+local pedestrians too, and newly visualized solo rail-taxi identities are adults.
+Offer acceptance and live fare updates reject invalid/duplicate/over-capacity
+groups. The five-seat taxi holds four passengers plus its driver. Everyone walks
+to the door before the group boards, and all boarded weights contribute to mass.
+Long-distance destination resolution updates every member. Dropoff, cancellation
+and vomiting release the same resident identities; cancellation has a one-shot
+release queue to avoid lost or duplicate passengers. One meter/one payment per
+group. Godot draws all waiting companions and shows the phone-offer group count.
+
+Checks include child alone/stranger/distant parent/driving parent rejection,
+parent-first and child-first pickup, group boarding wait, identity-preserving
+dropoff, duplicate/capacity rejection, generated families, cancellation/vomiting,
+protocol data, and real server mass/cancellation updates. Focused lifecycle,
+rail and protocol suites: 118 passed before the last positioning-only changes;
+server/group tests: 11 passed. First full run: 1,790 passed, 2 skipped (seed
+743673077), before two final tests were added. Final run recorded below.
+
+Second full run: **1,792 passed, 2 skipped**, 100.05 s (seed 743673077).
+After the final parent-actually-aboard/occupied-parent safeguards and their test,
+focused fare/lifecycle/rail/protocol/headless-server tests: **138 passed**,
+13.54 s (same seed). Godot: **910 checks, 0 failed**; compile/diff checks pass.
+Rendered the real phone card, spotted/fixed fourth-line overflow by combining
+count with the trip line, and inspected `/tmp/rrt-group-phone.png` after repair.
+
+Limits: representative lead still supplies fare dialogue, happiness and nausea;
+no per-person surcharge, child-seat equipment, child voice assets or general
+on-foot family-following AI was added. Ages follow the existing resident age
+calculation. No manual live-game visual/FPS session was performed. Existing
+Godot UI and shutdown diagnostics remain unrelated.

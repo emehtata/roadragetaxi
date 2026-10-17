@@ -163,5 +163,6 @@ def test_a_dropped_off_passenger_walks_on_as_the_same_person():
     woman = residents.create("taxi")
     manager = PedestrianManager([Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)],
                                 target_count=0, residents=residents)
-    passenger_steps_out(manager, SimpleNamespace(resident_id=woman.resident_id), 50.0, 1.0, 0.0)
+    from theroadragetrip.taxi import TaxiPassenger
+    passenger_steps_out(manager, TaxiPassenger("Test", None, None, resident_id=woman.resident_id), 50.0, 1.0, 0.0)
     assert [ped.resident_id for ped in manager.pedestrians] == [woman.resident_id]

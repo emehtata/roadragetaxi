@@ -768,6 +768,9 @@ func _offer(id: String, name: String, metres: int = 800, seconds: float = 40.0) 
 
 
 func test_phone() -> void:
+	check(Phone.card_text({"passenger_count": 3}, "fi").contains("3 matkustajaa")
+		and Phone.card_text({"passenger_count": 2}, "en").contains("2 passengers"), "fare cards show group size in both languages")
+	check(Phone.card_text({"passenger_count": 3}).split("\n").size() == 3, "group count fits the existing three-line fare card")
 	var phone: Phone = preload("res://phone.gd").new()
 	root.add_child(phone)
 	var sounds: Array = []

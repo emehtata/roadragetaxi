@@ -27,6 +27,35 @@ def test_startup_progress_reaches_the_render_chunk_stage(tmp_path, monkeypatch):
     assert "buildings" in report["detail"]
 
 
+def test_group_fare_mass_and_cancellation_release_everyone_once(tmp_path, monkeypatch):
+    from theroadragetrip.taxi import TaxiPassenger, TaxiState, TaxiTarget
+
+    server = _build_server(tmp_path, monkeypatch)
+    taxi = server.world.taxi_mgr
+    parent = taxi.residents.create(age=40)
+    child = taxi.residents.create(age=9)
+    child.parent_ids = {parent.resident_id}
+    pickup = TaxiTarget(server.car.x, server.car.y, "Pickup")
+    dropoff = TaxiTarget(server.car.x + 1000, server.car.y, "Dropoff")
+    party = TaxiPassenger("Parent", pickup, dropoff, resident_id=parent.resident_id, weight_kg=80,
+                         boarded=True, nausea_delay=float("inf"))
+    party.companions = [TaxiPassenger("Child", pickup, dropoff, resident_id=child.resident_id,
+                                     weight_kg=30, boarded=True, nausea_delay=float("inf"))]
+    taxi.current_passenger = party
+    taxi.state = TaxiState.DRIVING_TO_DROPOFF
+    monkeypatch.setattr(taxi, "generate_offers", lambda *a, **kw: [])
+    server.tick(1 / 30)
+    assert server.car.passenger_mass_kg == 110
+    released = []
+    monkeypatch.setattr(server.world.pedestrian_mgr, "spawn_pedestrian_at",
+                        lambda *a, **kw: released.append(kw["resident_id"]))
+    taxi.discard_mission(server.car.x, server.car.y)
+    server.tick(1 / 30)
+    server.tick(1 / 30)
+    assert sorted(released) == sorted([parent.resident_id, child.resident_id])
+    assert server.car.passenger_mass_kg == 0
+
+
 def test_sinking_is_cancelled_when_current_geometry_is_dry(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
     server._on_foot = False

@@ -119,13 +119,7 @@ def test_offer_generation_is_suppressed_while_passenger_is_active():
 def test_phone_offers_are_cleared_while_passenger_is_active():
     way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
     taxi_mgr = TaxiManager(ways=[way])
-    taxi_mgr.current_passenger = SimpleNamespace(
-        boarded=False,
-        nausea_resolved=False,
-        nausea_vomited=False,
-        pickup=None,
-        dropoff=None,
-    )
+    taxi_mgr.current_passenger = TaxiPassenger("Test", pickup=None, dropoff=None)
     taxi_mgr.offers = [object(), object()]
 
     taxi_mgr.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), 0.1)

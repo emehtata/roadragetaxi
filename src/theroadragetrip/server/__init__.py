@@ -619,6 +619,7 @@ class SimulationServer:
         if interact:
             self._on_foot = apply_enter_exit_vehicle(
                 self.car, self.world.player_pedestrian, self._on_foot, self.audio, self.world.taxi_mgr,
+                self.world.pedestrian_mgr.pedestrians,
             )
 
         self.car.lane_assist_enabled = command.lane_assist_enabled

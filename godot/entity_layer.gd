@@ -1074,15 +1074,18 @@ func _target(state: Dictionary) -> void:
 		_tag(at - Vector2(0, radius + _px(14.0)), "[%s] %s" % [T.text("pickup", language) if target["is_pickup"] else T.text("destination", language), target.get("address", "")],
 			Color.WHITE, main_color)
 	var passenger: Dictionary = state["taxi"]["current_passenger"]
-	if target["is_pickup"] and not passenger.get("boarded", false) and not passenger.get("rail_booking", false) and passenger.has("ped"):
-		var ped: Array = passenger["ped"]
-		var c := MapMath.point(origin, ped[0], ped[1])
-		var radius := maxf(_px(4.0), 0.5)
-		draw_circle(c, radius + _px(2.0), RS.OUTLINE)
-		draw_circle(c, radius, RS.CUSTOMER_COLOR)
-		draw_circle(c + _forward(ped[2]) * radius * 0.9, maxf(_px(1.0), radius * 0.45), Color.WHITE)
-		_tag(c - Vector2(0, radius + _px(12.0)), ("[TO TAXI] %s" if passenger.get("is_walking_to_car", false) else "[P] %s") % passenger.get("name", ""),
-			Color8(255, 230, 80))
+	if target["is_pickup"] and not passenger.get("boarded", false) and passenger.has("ped"):
+		for member in [passenger] + passenger.get("companions", []):
+			if member.get("rail_booking", false):
+				continue  # The booked lead has its own pedestrian; companions use the fare representation.
+			var ped: Array = member["ped"]
+			var c := MapMath.point(origin, ped[0], ped[1])
+			var radius := maxf(_px(4.0), 0.5)
+			draw_circle(c, radius + _px(2.0), RS.OUTLINE)
+			draw_circle(c, radius, RS.CUSTOMER_COLOR)
+			draw_circle(c + _forward(ped[2]) * radius * 0.9, maxf(_px(1.0), radius * 0.45), Color.WHITE)
+			_tag(c - Vector2(0, radius + _px(12.0)), ("[TO TAXI] %s" if member.get("is_walking_to_car", false) else "[P] %s") % member.get("name", ""),
+				Color8(255, 230, 80))
 
 
 func _draw() -> void:

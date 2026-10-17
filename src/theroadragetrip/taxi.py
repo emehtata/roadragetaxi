@@ -17,7 +17,7 @@ from .localization import tr
 from .fare import calculate_fare_cents, format_euros, tip_cents_from_happiness
 from .police import SpeedCamera, camera_sees_car
 from .rail_bookings import ACCEPTED, IN_TAXI, MISSED, PASSENGER_MET, PASSENGER_WAITING, TRAIN_ARRIVING, waiting_booking
-from .residents import CITY_DATA, MIN_UNACCOMPANIED_AGE, Resident, ResidentManager
+from .residents import CITY_DATA, Resident, ResidentManager
 from .traffic_rules import nearest_traffic_light_ahead
 
 logger = logging.getLogger(__name__)
@@ -104,6 +104,11 @@ class TaxiPassenger:
     # rail_bookings.TaxiBooking when this is a pre-booked rail customer: its
     # destination and pre-booking fee (on top of the normal fare) ride along.
     rail_booking: Any = None
+    companions: List["TaxiPassenger"] = field(default_factory=list)
+
+    @property
+    def members(self) -> List["TaxiPassenger"]:
+        return [self, *self.companions]
 
 
 _offer_ids = itertools.count(1)
@@ -224,6 +229,7 @@ class TaxiManager:
         self.game_time_seconds = 18.0 * 60.0 * 60.0
 
         self.current_passenger: Optional[TaxiPassenger] = None
+        self.released_parties: List[TaxiPassenger] = []
         self.rail_bookings = None
         self.driver_on_foot = False  # set every tick by simulation.advance_simulation
         self.offers: List[TaxiOffer] = []
@@ -288,7 +294,7 @@ class TaxiManager:
     def _new_passenger_identity(
         self, resident: Optional[Resident] = None
     ) -> tuple[str, str, int, float]:
-        resident = resident or self.residents.create("walking", min_age=MIN_UNACCOMPANIED_AGE)
+        resident = resident or self.residents.create("walking", min_age=18)
         gender = {"female": "woman", "male": "man"}.get(resident.gender, "woman")
         return (
             f"{resident.first_name} {resident.surname}",
@@ -296,6 +302,81 @@ class TaxiManager:
             resident.resident_id,
             resident.weight_kg,
         )
+
+    def _make_party(self, passenger: TaxiPassenger, *, generated=False, pedestrians=()) -> bool:
+        """One fare, at most four passengers; minors travel with their own adult parent."""
+        ids = [passenger.resident_id]
+        resident = self.residents.get(passenger.resident_id)
+        if resident is None:
+            return True  # Legacy/test passengers without a registry identity.
+        if self.residents.age_of(resident) < 18:
+            passenger.is_drunk = False
+            passenger.nausea_delay = float("inf")
+        if not generated and self.residents.age_of(resident) >= 18:
+            ids.extend(p.resident_id for p in pedestrians
+                       if getattr(p, "resident_id", None) in resident.child_ids
+                       and self.residents.get(p.resident_id) is not None
+                       and self.residents.age_of(self.residents.get(p.resident_id)) < 18
+                       and math.hypot(p.x - passenger.ped_x, p.y - passenger.ped_y) <= 5.0)
+        if generated and random.random() < 0.35:
+            for _ in range(random.randint(1, 3)):
+                member = self.residents.create("walking", min_age=18)
+                ids.append(member.resident_id)
+        parent_age = self.residents.age_of(resident)
+        if generated and len(ids) <= 2 and 25 <= parent_age <= 61 and random.random() < 0.25:
+            child = self.residents.create("walking", age=random.randint(max(7, parent_age - 44), min(17, parent_age - 18)))
+            # This newly generated family travels together; don't borrow a parent elsewhere in the city.
+            for pid in child.parent_ids:
+                self.residents.get(pid).child_ids.discard(child.resident_id)
+            child.parent_ids = {resident.resident_id}
+            resident.child_ids.add(child.resident_id)
+            ids.append(child.resident_id)
+        for rid in list(ids):
+            child = self.residents.get(rid)
+            if child is None or self.residents.age_of(child) >= 18:
+                continue
+            parents = [self.residents.get(pid) for pid in sorted(child.parent_ids)]
+            parents = [p for p in parents if p is not None and self.residents.age_of(p) >= 18]
+            reserved = {p.resident_id for offer in self.offers for p in offer.passenger.members}
+            parents = [p for p in parents if p.active_vehicle_id is None
+                       and (p.resident_id in ids or p.resident_id not in reserved)]
+            if not generated:
+                parents = [p for p in parents if any(
+                    getattr(ped, "resident_id", None) == p.resident_id and math.hypot(ped.x - passenger.ped_x, ped.y - passenger.ped_y) <= 5.0
+                    for ped in pedestrians)]
+            if not parents:
+                return False
+            parent = next((p for p in parents if p.resident_id in ids), parents[0])
+            if parent.resident_id not in ids:
+                ids.append(parent.resident_id)
+        if len(set(ids)) != len(ids) or len(ids) > 4:
+            return False
+        passenger.companions = []
+        for index, rid in enumerate(ids[1:], 1):
+            member = self.residents.get(rid)
+            name, gender, _, weight = self._new_passenger_identity(member)
+            pedestrian = next((p for p in pedestrians if p.resident_id == rid), None)
+            passenger.companions.append(TaxiPassenger(
+                name, passenger.pickup, passenger.dropoff, gender=gender, resident_id=rid, weight_kg=weight,
+                ped_x=pedestrian.x if pedestrian else passenger.ped_x + math.cos(passenger.ped_heading) * index * 0.8,
+                ped_y=pedestrian.y if pedestrian else passenger.ped_y + math.sin(passenger.ped_heading) * index * 0.8,
+                ped_speed=passenger.ped_speed, boarded=passenger.boarded,
+                is_walking_to_car=passenger.is_walking_to_car, nausea_delay=float("inf"),
+            ))
+        return True
+
+    def _party_valid(self, passenger: TaxiPassenger) -> bool:
+        members = passenger.members
+        ids = [p.resident_id for p in members if p.resident_id is not None]
+        if len(members) > 4 or len(ids) != len(set(ids)) or any(p.companions for p in passenger.companions):
+            return False
+        if passenger.boarded and not all(p.boarded for p in members):
+            return False
+        if any((r := self.residents.get(rid)) is not None and r.active_vehicle_id is not None for rid in ids):
+            return False
+        adults = {rid for rid in ids if (r := self.residents.get(rid)) is not None and self.residents.age_of(r) >= 18}
+        return all(r is None or self.residents.age_of(r) >= 18 or bool(r.parent_ids & adults)
+                   for p in members for r in [self.residents.get(p.resident_id)])
 
     def nausea_delay_for_pickup(self, pickup: TaxiTarget) -> float:
         return nausea_delay_for_pickup(pickup, self.game_time_seconds)
@@ -395,7 +476,7 @@ class TaxiManager:
             return None
         return booking, pedestrian
 
-    def greet_booked_passenger(self, player: Any, car: Car) -> Optional[Any]:
+    def greet_booked_passenger(self, player: Any, car: Car, pedestrians=()) -> Optional[Any]:
         """The driver's explicit greeting: the only way to PASSENGER_MET. The
         passenger then walks to the taxi; returns their pedestrian (now the
         fare's) or None."""
@@ -405,6 +486,7 @@ class TaxiManager:
         booking, pedestrian = found
         if not self._board_waiting_pedestrian(
             pedestrian, self.make_target(car.x, car.y), "stand_boarded", walk_to_car=True, booking=booking,
+            pedestrians=pedestrians,
         ):
             return None
         # The same pedestrian walks to the taxi door along the footways (the
@@ -1572,6 +1654,9 @@ class TaxiManager:
             is_drunk=math.isfinite(nausea_delay),
             nausea_delay=nausea_delay,
         )
+        if not self._make_party(self.current_passenger, generated=True):
+            self.current_passenger = None
+            return
         self.state = TaxiState.WAITING_FOR_PICKUP
         self.elapsed_time = 0.0
         self.notification_msg = tr(
@@ -1712,6 +1797,8 @@ class TaxiManager:
         else:
             final.address = f"{final.address}, {town.municipality}"
         passenger.dropoff = final
+        for companion in passenger.companions:
+            companion.dropoff = final
         self.notification_msg = tr(self.language, "long_fare_address", name=passenger.name, address=final.address)
         self.notification_timer = 6.0
         logger.info("Long fare address picked: passenger=%s dropoff=%s", passenger.name, final.address)
@@ -1753,6 +1840,8 @@ class TaxiManager:
                 is_drunk=math.isfinite(nausea_delay),
                 nausea_delay=nausea_delay,
             )
+            if not self._make_party(passenger, generated=True):
+                continue
             offers.append(TaxiOffer(
                 passenger=passenger,
                 pickup_distance_m=math.hypot(car_x - pickup.x, car_y - pickup.y),
@@ -1792,6 +1881,8 @@ class TaxiManager:
                 )
                 self.notification_timer = 5.0
             return accepted
+        if not self._party_valid(item.passenger):
+            return False
         self.current_passenger = item.passenger
         self.offers = []
         self.state = TaxiState.WAITING_FOR_PICKUP
@@ -1839,6 +1930,7 @@ class TaxiManager:
         message_key: str,
         walk_to_car: bool = False,
         booking: Any = None,
+        pedestrians=(),
     ) -> bool:
         """Turn a nearby waiting pedestrian into a fare, optionally walking to
         the car first. A booked rail customer keeps the booking's destination."""
@@ -1870,6 +1962,8 @@ class TaxiManager:
             nausea_delay=self.nausea_delay_for_pickup(pickup) if is_drunk else float("inf"),
             rail_booking=booking,
         )
+        if not self._make_party(passenger, pedestrians=pedestrians):
+            return False
         if booking is not None:
             booking.status = PASSENGER_MET
         self.current_passenger = passenger
@@ -1878,6 +1972,9 @@ class TaxiManager:
             passenger.boarded = False
             passenger.is_walking_to_car = True
             self.state = TaxiState.CLIENT_WALKING_TO_CAR
+            for member in passenger.companions:
+                member.boarded = False
+                member.is_walking_to_car = True
         else:
             self.state = TaxiState.DRIVING_TO_DROPOFF
             self.fare_started_at = self._current_game_datetime()
@@ -1907,6 +2004,9 @@ class TaxiManager:
             dropoff.address,
             walk_to_car,
         )
+        companion_ids = {p.resident_id for p in passenger.companions}
+        if isinstance(pedestrians, list):
+            pedestrians[:] = [p for p in pedestrians if getattr(p, "resident_id", None) not in companion_ids]
         return True
 
     def check_waiting_pickup(self, car: Car, pedestrians: List[Any], dt: float) -> Optional[Any]:
@@ -1938,6 +2038,7 @@ class TaxiManager:
                     pickup,
                     "hail_boarded",
                     walk_to_car=True,
+                    pedestrians=pedestrians,
                 ):
                     return pedestrian
             self.stand_wait_timer = 0.0
@@ -1981,6 +2082,7 @@ class TaxiManager:
             pickup,
             message_key,
             walk_to_car=message_key in ("stand_boarded", "hail_boarded"),
+            pedestrians=pedestrians,
         ):
             self.stand_wait_timer = 0.0
             return pedestrian
@@ -2021,6 +2123,7 @@ class TaxiManager:
         self.notification_msg = msg
         self.notification_timer = 5.0
         logger.info("Taxi mission discarded: passenger=%s reason=%s penalty=%d", p_name, reason, penalty)
+        self.released_parties.append(self.current_passenger)
         self.current_passenger = None
         self.live_fare_cents = 0
         self.state = TaxiState.WAITING_FOR_PICKUP
@@ -2152,6 +2255,10 @@ class TaxiManager:
         if not self.current_passenger:
             return
 
+        if not self._party_valid(self.current_passenger):
+            self.discard_mission(car.x, car.y, penalty=0, reason="Invalid passenger group")
+            return
+
         self._update_passenger_nausea(car, dt)
         if self.current_passenger and self.current_passenger.nausea_vomited:
             return
@@ -2169,6 +2276,8 @@ class TaxiManager:
                     # Car arrived at pickup area and stopped: client begins walking to taxi
                     self.state = TaxiState.CLIENT_WALKING_TO_CAR
                     self.current_passenger.is_walking_to_car = True
+                    for member in self.current_passenger.companions:
+                        member.is_walking_to_car = True
                     self.notification_msg = tr(self.language, "walking_named", name=self.current_passenger.name)
                     self.notification_timer = 3.0
                     logger.info("Passenger reached pickup: passenger=%s walking to taxi", self.current_passenger.name)
@@ -2189,6 +2298,16 @@ class TaxiManager:
             dx = door_x - p.ped_x
             dy = door_y - p.ped_y
             dist_to_door = math.hypot(dx, dy)
+            companions_ready = True
+            for member in p.companions:
+                mx, my = door_x - member.ped_x, door_y - member.ped_y
+                distance = math.hypot(mx, my)
+                if distance > 0.8:
+                    member.ped_heading = math.atan2(my, mx)
+                    step = min(distance, member.ped_speed * dt)
+                    member.ped_x += math.cos(member.ped_heading) * step
+                    member.ped_y += math.sin(member.ped_heading) * step
+                    companions_ready = False
 
             # If player drives away too fast while passenger is boarding, passenger cancels/abandons
             if dist_to_target > target.radius_m * 1.8:
@@ -2196,12 +2315,15 @@ class TaxiManager:
                 return
 
             if dist_to_door <= 0.8 or (walker is not None and not walker.is_walking_to_taxi_stop):
-                if not is_stopped:
+                if not is_stopped or not companions_ready:
                     return
                 if p.rail_booking is not None and self.driver_on_foot:
                     return  # a booked customer waits at the door for the driver
                 # Client reached taxi door and boarded!
                 p.boarded = True
+                for member in p.companions:
+                    member.boarded = True
+                    member.is_walking_to_car = False
                 if p.rail_booking is not None:
                     p.rail_booking.status = IN_TAXI
                 p.is_walking_to_car = False
