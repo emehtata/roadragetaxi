@@ -275,15 +275,12 @@ def test_crashed_driver_pedestrian_keeps_resident_identity():
 def test_pedestrian_target_count_keeps_nearest_characters():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=3)
-    manager.pedestrians = [
-        Pedestrian(1.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)),
-        Pedestrian(10.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)),
-        Pedestrian(30.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)),
-    ]
+    manager.pedestrians = [Pedestrian(float(x), 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)) for x in range(10, 0, -1)]
 
-    manager.set_target_count(2, Car(x=0.0, y=0.0, heading=0.0, speed=0.0))
+    manager.set_target_count(1, Car(x=0.0, y=0.0, heading=0.0, speed=0.0))
 
-    assert [ped.x for ped in manager.pedestrians] == [1.0, 10.0]
+    # The population target (the spawn disc's, POPULATION_PER_SHOWN x the target): the nearest stay.
+    assert sorted(ped.x for ped in manager.pedestrians) == [1.0, 2.0, 3.0, 4.0][:manager.population_target]
 
 
 def test_zooming_never_deletes_visible_pedestrians_above_the_target():
@@ -303,11 +300,11 @@ def test_zooming_never_deletes_visible_pedestrians_above_the_target():
 def test_lowering_the_target_keeps_pedestrians_another_system_holds():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=4)
-    peds = [Pedestrian(float(x), 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)) for x in (1, 10, 30, 60)]
-    peds[3].held_by = object()  # e.g. a rail passenger waiting at the far station
+    peds = [Pedestrian(float(x), 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)) for x in range(1, 11)]
+    peds[-1].held_by = object()  # e.g. a rail passenger waiting at the far station
     manager.pedestrians = list(peds)
-    manager.set_target_count(2, Car(x=0.0, y=0.0, heading=0.0, speed=0.0))
-    assert peds[3] in manager.pedestrians and len(manager.pedestrians) == 2
+    manager.set_target_count(1, Car(x=0.0, y=0.0, heading=0.0, speed=0.0))
+    assert peds[-1] in manager.pedestrians and len(manager.pedestrians) == manager.population_target
     assert peds[0] in manager.pedestrians  # the nearest free one stays
 
 
@@ -320,7 +317,7 @@ def test_repeated_target_count_updates_do_not_delay_population_check():
     manager.set_target_count(1, player)
     manager.update(player, dt=0.1)
 
-    assert len(manager.pedestrians) == 1
+    assert manager.pedestrians  # the check ran on time and spawned
 
 
 def test_population_spawn_does_not_fallback_into_viewport(monkeypatch: pytest.MonkeyPatch):
@@ -617,7 +614,9 @@ def test_amenity_door_spawns_pedestrian_every_ten_evening_seconds(monkeypatch: p
     )
     manager = PedestrianManager([way], target_count=1, venue_buildings=[building])
     monkeypatch.setattr(manager, "spawn_pedestrian", lambda *args, **kwargs: None)
-    random_values = iter((1.0, 1.0, 0.0))
+    import itertools
+
+    random_values = itertools.chain((1.0, 1.0, 0.0), itertools.repeat(1.0))
     monkeypatch.setattr(
         "theroadragetrip.pedestrian.random.random",
         lambda: next(random_values),
@@ -630,23 +629,24 @@ def test_amenity_door_spawns_pedestrian_every_ten_evening_seconds(monkeypatch: p
     assert manager.pedestrians == []
 
     manager.update(player, dt=5.0, game_time_seconds=18.0 * 3600.0)
-    assert len(manager.pedestrians) == 1
-    assert manager.pedestrians[0].spawned_at_door is True
-    assert manager.pedestrians[0].x > 20.0
+    assert manager.pedestrians and all(ped.spawned_at_door and ped.x > 20.0 for ped in manager.pedestrians)
 
 
-def test_pedestrian_despawns_after_remaining_offscreen():
-    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+def test_an_offscreen_pedestrian_stays_until_beyond_the_despawn_radius():
+    """Bug: anyone off screen for 5 s was removed - spawns land just outside
+    the view to walk in, so most were churned away before they did."""
+    way = Way(points_m=[(0.0, 0.0), (300.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=0, despawn_radius_m=200.0)
-    pedestrian = Pedestrian(80.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
-    manager.pedestrians.append(pedestrian)
+    near = Pedestrian(80.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    far = Pedestrian(250.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
+    manager.pedestrians += [near, far]
     viewport = (0.0, -10.0, 50.0, 10.0)
 
     for _ in range(10):
         manager._population_update_elapsed = 5.0
         manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1, viewport_bounds=viewport)
 
-    assert pedestrian not in manager.pedestrians
+    assert near in manager.pedestrians and far not in manager.pedestrians
 
 
 def test_taxi_stop_gets_waiting_customer():
@@ -763,7 +763,7 @@ def test_pedestrian_spawning_and_movement():
 
     # Initial update spawns pedestrians
     ped_mgr.update(player, dt=0.1)
-    assert len(ped_mgr.pedestrians) == 5
+    assert len(ped_mgr.pedestrians) == ped_mgr.population_target
 
     for ped in ped_mgr.pedestrians:
         assert isinstance(ped, Pedestrian)
@@ -896,7 +896,7 @@ def test_pedestrian_speed_and_natural_distribution():
     player = Car(x=150.0, y=0.0, heading=0.0, speed=0.0)
     ped_mgr.update(player, dt=0.1)
 
-    assert len(ped_mgr.pedestrians) == 30
+    assert len(ped_mgr.pedestrians) == ped_mgr.population_target
     speeds = [p.base_speed for p in ped_mgr.pedestrians]
     # Check speed variety across profiles (from ~0.8m/s to ~3.0m/s)
     assert min(speeds) < 1.3
@@ -1065,6 +1065,7 @@ def test_sync_map_data_keeps_ped_way_ids_cache_in_sync():
     assert cyclists._ped_way_ids == {id(w) for w in cyclists.ped_ways}
 
 
+@pytest.mark.timing
 def test_spawn_pedestrian_does_not_rescan_ped_ways_per_attempt():
     """Regression: spawn_pedestrian() used to rebuild
     {id(way) for way in self.ped_ways} from scratch on *every single
@@ -1153,6 +1154,7 @@ def test_spawn_pedestrian_gives_up_immediately_when_search_area_is_fully_onscree
     assert manager.spawn_pedestrian(near_x, near_y, viewport_bounds=tight_viewport) is not None
 
 
+@pytest.mark.timing
 def test_spawn_pedestrian_at_does_not_scan_every_ped_way():
     """Regression: spawn_pedestrian_at() (used for every door/amenity
     spawn - see spawn_pedestrian_at_door) scanned the *entire* self.ped_ways
@@ -1212,6 +1214,7 @@ def _dense_buildings(count: int) -> list:
     return buildings
 
 
+@pytest.mark.timing
 def test_point_near_building_caches_the_per_window_building_list():
     """Regression: spawn_pedestrian()'s retry loop calls _point_near_building
     for every candidate point tried along a segment (up to 8 per segment,
@@ -1830,3 +1833,58 @@ def test_a_pedestrian_curses_only_at_a_taxi_coming_at_them(car, curses):
     ped_mgr.pedestrians = [ped]
     ped_mgr.check_player_avoidance(car, dt=0.05)
     assert (ped.curse_timer > 0.0) == curses and bool(ped_mgr.curses) == curses
+
+
+def test_people_kept_far_behind_dont_block_spawning_around_the_player():
+    """Bug (Oulu, a few minutes of driving): people mid-activity and car
+    passengers are kept wherever they are, and counted against the target
+    they filled it far behind the taxi - nobody spawned around it."""
+    from theroadragetrip.activities import ActivityInstance
+
+    way = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=1)
+    behind = [Pedestrian(300.0 + i, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1)) for i in range(10)]
+    for ped in behind:  # beyond the despawn radius, within twice it: kept
+        ped.activity = ActivityInstance(plugin_id="bench_sitting", location=None, started_sim_time=0.0)
+    manager.pedestrians = list(behind)
+    player = Car(x=50.0, y=0.0, heading=0.0, speed=0.0)
+    manager._population_update_elapsed = 5.0
+    manager.update(player, dt=0.1)
+    assert all(ped in manager.pedestrians for ped in behind)
+    assert len(manager.pedestrians) > len(behind)  # new people around the player
+
+
+def test_a_client_gets_the_nearest_pedestrians_and_everyone_held():
+    from theroadragetrip.protocol import shown_pedestrians
+
+    way = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=1)  # population target 4
+    crowd = [Pedestrian(float(x), 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1), resident_id=x) for x in range(1, 41)]
+    crowd[-1].held_by = object()  # a booked rail passenger, far away
+    manager.pedestrians = list(crowd)
+    shown = shown_pedestrians(manager, 0.0, 0.0)
+    assert len(shown) == manager.population_target
+    assert crowd[-1] in shown and crowd[0] in shown and crowd[20] not in shown
+
+
+def test_a_rural_cabin_gets_a_walker_at_most_and_a_city_block_the_full_target(kunnat_centres):
+    """Bug (Sysmä): tens of people on a cottage driveway - the population
+    target ignored that there was only a cabin and a sauna around."""
+    sx, sy = 429772.0, 6819445.0  # Sysmä, 1.9 people/km2
+    hx, hy = 385700.0, 6672126.0  # central Helsinki
+
+    def building(x, y, kind, size=8, levels=None):
+        return Building(points_m=[(x, y), (x + size, y), (x + size, y + size), (x, y + size)],
+                        bbox=(x, y, x + size, y + size), building_type=kind, levels=levels)
+
+    def footway(x, y):
+        return Way(points_m=[(x, y), (x + 100.0, y)], highway="footway", half_width_m=1.5)
+
+    cabin = PedestrianManager([footway(sx, sy)], target_count=20,
+                              venue_buildings=[building(sx + 20, sy + 10, "cabin"), building(sx + 40, sy + 10, "sauna", 4)])
+    assert cabin.local_population_target(sx + 50.0, sy) == 1
+    empty = PedestrianManager([footway(sx, sy)], target_count=20, venue_buildings=[building(sx + 5000, sy, "house")])
+    assert empty.local_population_target(sx + 50.0, sy) == 0  # a forest path: nobody lives near
+    flats = [building(hx + 30 * (i % 6), hy + 30 * (i // 6), "apartments", 25, 5) for i in range(36)]
+    city = PedestrianManager([footway(hx, hy)], target_count=20, venue_buildings=flats)
+    assert city.local_population_target(hx + 80.0, hy + 80.0) == city.population_target

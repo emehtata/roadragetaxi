@@ -13,15 +13,12 @@ from theroadragetrip.npc import (
     PathPoint,
     TripGroup,
     _lane_offset_point,
-    _road_rage_yield_target,
     NPC_ARRIVAL_RADIUS_M,
     NPC_BUILDING_YARD_CLEARANCE_M,
     NPC_FOOTPRINT_VIOLATION_CRAWL_MPS,
     NPC_GROUP_RETURN_GRACE_S,
     NPC_AVOIDANCE_MIN_GAP_M,
     NPC_REVERSE_DISTANCE_M,
-    NPC_ROAD_RAGE_REACTION_DURATION_S,
-    NPC_ROAD_RAGE_YIELD_SPEED_MPS,
     NPC_STUCK_CHECK_INTERVAL_S,
     NPC_STUCK_TIMEOUT_S,
     _update_npc_reversing,
@@ -356,6 +353,50 @@ def test_corner_safe_speed_is_well_under_a_typical_cruising_speed():
     high, the corner-braking cap it feeds isn't actually protecting
     anything."""
     assert _corner_safe_speed_mps() * 3.6 < 30.0
+
+
+@pytest.mark.parametrize("layer", [-1, 0, 1, 2])
+def test_npc_road_layer_survives_driving_and_reaches_protocol(layer):
+    from theroadragetrip.debug_snapshot import _npc_snapshot
+    from theroadragetrip.protocol import _npc_to_dict
+
+    ways = [Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="secondary",
+                half_width_m=5.0, layer=layer, is_bridge=layer > 0)]
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (20.0, 0.0), (300.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    assert _npc_to_dict(vehicle)["layer"] == layer  # before the first simulation tick
+    for _ in range(120):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+    assert vehicle.speed > 0.0
+    assert _npc_to_dict(vehicle)["layer"] == layer
+    snapshot = _npc_snapshot(vehicle, driver)
+    assert snapshot["layer"] == layer
+    assert snapshot["map_level"] == 0
+    assert snapshot["lod_level"] == vehicle.lod_level
+    assert snapshot["is_on_foot"] == vehicle.is_on_foot
+
+
+@pytest.mark.parametrize("from_layer,to_layer", [(0, 1), (1, 0), (1, 2), (0, -1)])
+def test_npc_layer_changes_only_when_reaching_route_road(from_layer, to_layer):
+    from theroadragetrip.npc import _enforce_npc_road_motion
+
+    road = Way(points_m=[(10.0, 0.0), (100.0, 0.0)], highway="secondary",
+               half_width_m=4.0, layer=to_layer)
+    vehicle = NPCVehicle(vehicle_id=1, car=Car(x=0.0, y=0.0, heading=0.0, speed=0.0, layer=from_layer))
+    driver = Driver(resident_id=1, vehicle_id=1, path=[], destination=(100.0, 0.0), current_way=road)
+    tw = TrafficWorld([road])
+    _enforce_npc_road_motion(vehicle, driver, (0.0, 0.0, 0.0), tw, None, None)
+    assert vehicle.layer == from_layer  # lookahead road isn't beneath the car yet
+    vehicle.car.x = 30.0
+    _enforce_npc_road_motion(vehicle, driver, (29.0, 0.0, 0.0), tw, None, None)
+    assert vehicle.layer == to_layer
+    # An unrelated bridge crossing this route must not steal the car's layer.
+    tw.ways.append(Way(points_m=[(30.0, -20.0), (30.0, 20.0)], highway="secondary", half_width_m=4.0, layer=3))
+    _enforce_npc_road_motion(vehicle, driver, (30.0, 0.0, 0.0), tw, None, None)
+    assert vehicle.layer == to_layer
 
 
 def test_update_npc_clamps_target_speed_to_the_vehicle_plugins_max_speed():
@@ -1326,93 +1367,6 @@ def test_update_npc_avoidance_uses_the_steering_target_not_the_lagging_current_h
     assert driver.target_speed_mps < 5.0
 
 
-def test_trigger_road_rage_finds_the_nearest_driving_vehicle_ahead():
-    """living-traffic: the player's horn/Road Rage action must reach exactly one
-    real driver - the nearest currently-driving vehicle ahead - not a
-    whole area, and never a parked one."""
-    from theroadragetrip.npc import NPCVehicleManager
-
-    ways = _straight_chain(count=20)
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    manager = NPCVehicleManager(target_count=0)
-
-    near = spawn_npc(1, residents, tw, ways, (20.0, 0.0), (200.0, 0.0))
-    far = spawn_npc(2, residents, tw, ways, (60.0, 0.0), (200.0, 0.0))
-    assert near is not None and far is not None
-    for _, driver, vehicle in (near, far):
-        manager.vehicles.append(vehicle)
-        manager.drivers[vehicle.vehicle_id] = driver
-
-    reacted_id = manager.trigger_road_rage(0.0, 0.0, 0.0, sim_time=100.0)
-
-    assert reacted_id == near[2].vehicle_id
-    assert near[1].road_rage_until_sim_time == 100.0 + NPC_ROAD_RAGE_REACTION_DURATION_S
-    assert far[1].road_rage_until_sim_time is None
-
-
-def test_trigger_road_rage_ignores_parked_vehicles_and_returns_none_if_nothing_ahead():
-    from theroadragetrip.npc import NPCVehicleManager
-
-    ways = _straight_chain(count=20)
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    manager = NPCVehicleManager(target_count=0)
-
-    result = spawn_npc(1, residents, tw, ways, (20.0, 0.0), (200.0, 0.0))
-    assert result is not None
-    _, driver, vehicle = result
-    vehicle.state = NPCState.PARKED
-    manager.vehicles.append(vehicle)
-    manager.drivers[vehicle.vehicle_id] = driver
-
-    assert manager.trigger_road_rage(0.0, 0.0, 0.0, sim_time=100.0) is None
-    assert driver.road_rage_until_sim_time is None
-
-
-def test_update_npc_yields_while_road_raged_then_resumes():
-    """The reacting driver must actually slow down while road_rage_until_
-    sim_time is in the future, and resume normal driving once it elapses
-    - the vehicle never disappears or changes state, only its speed
-    ceiling changes (see update_npc's own comment on why this is a timed
-    clamp, not a new NPCState)."""
-    ways = _straight_chain(count=20)
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    result = spawn_npc(1, residents, tw, ways, (0.0, 0.0), (200.0, 0.0))
-    assert result is not None
-    _, driver, vehicle = result
-    vehicle.car.speed = 10.0
-    driver.road_rage_until_sim_time = tw.sim_time + NPC_ROAD_RAGE_REACTION_DURATION_S
-
-    start_y = vehicle.car.y
-    for _ in range(120):
-        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
-        tw.advance_time(1.0 / 60.0)
-
-    assert driver.target_speed_mps <= NPC_ROAD_RAGE_YIELD_SPEED_MPS
-    assert vehicle.debug_waiting_for == "yielding to road rage"
-    assert vehicle.state != NPCState.CRASHED  # still a normal, simulated, existing vehicle
-    assert vehicle.car.y < start_y - 0.2  # visibly pulls toward the right edge
-    assert vehicle.turn_signal == "right"
-
-    tw.advance_time(NPC_ROAD_RAGE_REACTION_DURATION_S + 1.0)
-    update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
-
-    assert driver.road_rage_until_sim_time is None
-
-
-def test_road_rage_yield_target_stays_inside_the_road_and_skips_turns():
-    road = Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)
-    target = PathPoint(20.0, -1.8, way=road)
-
-    shifted = _road_rage_yield_target(target, 0.0, road, 1.8)
-
-    assert shifted == pytest.approx((20.0, -2.6))
-    turning = PathPoint(20.0, -1.8, way=road, is_turn=True, maneuver="right", lane_bias="right")
-    assert _road_rage_yield_target(turning, 0.0, road, 1.8) == (turning.x, turning.y)
-
-
 def test_update_npc_stuck_detection_triggers_recovery_after_timeout():
     """collision-avoidance section 3/8: a vehicle that wants to move but makes no real
     progress for NPC_STUCK_TIMEOUT_S must flag itself for recovery -
@@ -1428,7 +1382,8 @@ def test_update_npc_stuck_detection_triggers_recovery_after_timeout():
     # A stopped obstacle right on top of it, every single frame - wants to
     # drive, physically cannot make progress, exactly the failure mode
     # section 3 describes ("stuck against another vehicle or obstacle").
-    blocker = SimpleNamespace(x=vehicle.car.x + 4.0, y=vehicle.car.y, speed=0.0, length_m=4.3)
+    blocker = SimpleNamespace(x=vehicle.car.x + 4.0, y=vehicle.car.y, speed=0.0, length_m=4.3,
+                              state=NPCState.CRASHED)
 
     elapsed = 0.0
     dt = NPC_STUCK_CHECK_INTERVAL_S
@@ -1935,31 +1890,6 @@ def test_right_turn_lane_bias_keeps_clear_of_the_road_edge():
         right = -_lane_offset_point(road, 50.0, 0.0, 0.0, maneuver="right")[1]
         assert cruise <= right
         assert half_width - (right + NPC_VEHICLE_WIDTH_M / 2) > CURB_CLEARANCE_MARGIN_M or right == cruise
-
-
-def test_trigger_road_rage_skips_crashed_behind_too_far_and_too_lateral_vehicles():
-    """godot-final-05: the eligibility the shared road-rage action relies on
-    (40 m ahead, within 6 m sideways, driving) - unchanged living-traffic rule."""
-    from theroadragetrip.npc import NPCVehicleManager
-
-    ways = _straight_chain(count=20)
-    tw = TrafficWorld(ways)
-    residents = ResidentManager()
-    manager = NPCVehicleManager(target_count=0)
-    placed = {}
-    for vid, at in ((1, (30.0, 0.0)), (2, (-15.0, 0.0)), (3, (45.0, 0.0)), (4, (20.0, 8.0)), (5, (35.0, 0.0))):
-        spawned = spawn_npc(vid, residents, tw, ways, (60.0, 0.0), (200.0, 0.0))
-        assert spawned is not None
-        _, driver, vehicle = spawned
-        vehicle.car.x, vehicle.car.y = at
-        manager.vehicles.append(vehicle)
-        manager.drivers[vehicle.vehicle_id] = driver
-        placed[vid] = (driver, vehicle)
-    placed[1][1].state = NPCState.CRASHED  # 30 m ahead, but crashed
-    # 2: behind; 3: 45 m ahead (> 40); 4: 8 m to the side (> 6); 5: 35 m ahead - the one
-    assert manager.trigger_road_rage(0.0, 0.0, 0.0, sim_time=10.0) == placed[5][1].vehicle_id
-    assert all(placed[v][0].road_rage_until_sim_time is None for v in (1, 2, 3, 4))
-    assert placed[5][0].road_rage_until_sim_time == 10.0 + NPC_ROAD_RAGE_REACTION_DURATION_S
 
 
 def test_the_parking_area_under_a_car_is_found_without_testing_far_lots(monkeypatch):

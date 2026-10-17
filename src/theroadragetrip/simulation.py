@@ -115,13 +115,15 @@ def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, bloc
     return x, y
 
 
-def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None) -> bool:
+def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None, pedestrians=()) -> bool:
     """The 'F' key's get-in/get-out-of-the-car action - authoritative
     gameplay logic (a distance check gates re-entry), so it belongs on
     the simulation side of the boundary, not decided by a client. On foot by a pre-booked rail
     customer, F greets them instead (they stay a pedestrian and walk to
     the taxi). Returns the new on_foot value."""
-    if on_foot and taxi_mgr is not None and taxi_mgr.greet_booked_passenger(player_pedestrian, car) is not None:
+    if on_foot and taxi_mgr is not None and taxi_mgr.greet_booked_passenger(
+        player_pedestrian, car, pedestrians,
+    ) is not None:
         audio.play_group("gameplay.meet_greet")
         return on_foot
     if not on_foot:
@@ -144,6 +146,19 @@ def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_
         audio.play_group("vehicle.door_open")  # getting in: the door opens (passengers boarding get door_close)
         return False
     return on_foot
+
+
+def passenger_steps_out(pedestrian_mgr, passenger, x: float, y: float, heading: float) -> None:
+    """The taxi passenger walks on from (x, y) as the same resident - not a
+    stranger (reported: a woman dropped off became a man)."""
+    for index, member in enumerate(passenger.members):
+        member.boarded = False
+        member.is_walking_to_car = False
+        pedestrian = pedestrian_mgr.spawn_pedestrian_at(x + math.cos(heading) * index * 0.6,
+                                                      y + math.sin(heading) * index * 0.6,
+                                                      heading=heading, resident_id=member.resident_id)
+        if pedestrian is not None:
+            pedestrian_mgr.pedestrians.append(pedestrian)
 
 
 def remove_boarded_rail_walker(taxi_mgr, pedestrian_mgr) -> None:
@@ -279,7 +294,7 @@ def advance_simulation(
     player_pedestrian.name_card = on_foot and taxi_mgr.meet_booking() is not None
     passenger = taxi_mgr.current_passenger
     car.passenger_mass_kg = (
-        passenger.weight_kg
+        sum(member.weight_kg for member in passenger.members if member.boarded)
         if passenger is not None and getattr(passenger, "boarded", False)
         else 0.0
     )
@@ -292,14 +307,12 @@ def advance_simulation(
             audio.play_group("vehicle.engine_start" if car.engine_on else "vehicle.engine_stop")
 
     rage_shout = None
-    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # SPACE: horn, shout, the nearest driver ahead
+    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # SPACE: horn, shout, arcade clearance
         audio.play_driver_line("rage", language)
         audio.play_group("vehicle.horn", 0.45)
         rage_power = max(0.0, rage_power - RAGE_SHOUT_COST)
         rage_shout = random.choice(RAGE_SHOUTS)
-        # living-traffic: Road Rage reaches exactly one real NPC driver - whichever
-        # is nearest ahead of the player right now (trigger_road_rage).
-        world.npc_manager.trigger_road_rage(car.x, car.y, car.heading, sim_time=world.traffic_mgr.sim_time)
+        world.npc_manager.trigger_road_rage(sim_time=world.traffic_mgr.sim_time)
 
     if command.refuel:
         station = nearest_fuel_station(scenery_objects, car.x, car.y)
@@ -348,6 +361,8 @@ def advance_simulation(
     current_way = get_current_road_at_car(
         car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True, current_way=current_way
     )
+    if not on_foot:
+        npc_manager.road_rage.update(npc_manager, car, traffic_mgr.sim_time, drive_ways, drive_grid, current_way)
     speed_limit_mps = None
     if speed_limiter_enabled and current_way:
         speed_limit_mps = current_way.speed_limit_kmh / 3.6
@@ -481,7 +496,8 @@ def advance_simulation(
         # and not checked off the surface (their indexes stay untouched).
         # Road-overlap exemptions use the player's own level's roads.
         building_crash = taxi_mgr.check_building_collision(
-            car, buildings, traffic_mgr.sim_time, previous_position, ways=drive_ways
+            car, buildings, traffic_mgr.sim_time, previous_position, ways=drive_ways,
+            current_way=current_way,
         )
         fallen_before = len(taxi_mgr.fallen_trees)
         tree_crash = on_surface and taxi_mgr.check_tree_collision(
@@ -583,6 +599,11 @@ def advance_simulation(
     vomited_before = previous_passenger is not None and previous_passenger.nausea_vomited
     with frame_profiler.section("taxi"):
         taxi_mgr.update(car, dt, game_time_seconds=game_time_seconds)
+    party_released = any(party is previous_passenger for party in taxi_mgr.released_parties)
+    for party in taxi_mgr.released_parties:
+        x, y = (car.x, car.y) if party.boarded else (party.ped_x, party.ped_y)
+        passenger_steps_out(pedestrian_mgr, party, x, y, car.heading)
+    taxi_mgr.released_parties.clear()
     if len(taxi_mgr.offers) > offers_before:
         audio.play_group("ui.new_offer")
     if taxi_mgr.completed_fares > fares_before:
@@ -593,6 +614,7 @@ def advance_simulation(
     with frame_profiler.section("npc"):
         traffic_mgr.stop_signs = getattr(world, "stop_signs", ())
         traffic_mgr.yield_signs = getattr(world, "yield_signs", ())
+        npc_manager.clock = now
         npc_manager.snowy = weather.weather_type.value == "snow" or weather.road_snow > 0.1
         plough_positions = {v.vehicle_id: (v.x, v.y) for v in npc_manager.vehicles
                             if v.vehicle_type == "tractor" and v.vehicle_id in npc_manager.drivers}
@@ -622,11 +644,8 @@ def advance_simulation(
     if vomited_passenger is not None:
         audio.play_group("passenger.vomit")
         audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)
-        passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
-            vomited_passenger.ped_x, vomited_passenger.ped_y, heading=vomited_passenger.ped_heading,
-        )
-        if passenger_pedestrian is not None:
-            pedestrian_mgr.pedestrians.append(passenger_pedestrian)
+        passenger_steps_out(pedestrian_mgr, vomited_passenger, vomited_passenger.ped_x, vomited_passenger.ped_y,
+                            vomited_passenger.ped_heading)
     current_passenger = taxi_mgr.current_passenger
     if (
         current_passenger is not None
@@ -667,17 +686,13 @@ def advance_simulation(
         and previous_passenger is not None
         and taxi_mgr.current_passenger is None
         and vomited_passenger is None
+        and not party_released
     ):
         audio.play_passenger_line_for_situation("dropoff", previous_passenger.gender, language, previous_passenger.name)
         audio.play_driver_line("dropoff", language)
         audio.play_group("vehicle.door_open")
-        passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
-            car.x + math.sin(car.heading) * 1.8,
-            car.y - math.cos(car.heading) * 1.8,
-            heading=car.heading,
-        )
-        if passenger_pedestrian is not None:
-            pedestrian_mgr.pedestrians.append(passenger_pedestrian)
+        passenger_steps_out(pedestrian_mgr, previous_passenger, car.x + math.sin(car.heading) * 1.8,
+                            car.y - math.cos(car.heading) * 1.8, car.heading)
 
     should_stop = False
     city_summary = None

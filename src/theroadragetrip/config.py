@@ -22,9 +22,9 @@ DEFAULT_OVERPASS_ENDPOINTS = (
 
 def _default_config_path() -> Path:
     if sys.platform.startswith("win"):
-        config_dir = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming"))
-    else:
-        config_dir = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
+        config_dir = Path(os.getenv("APPDATA") or Path.home() / "AppData" / "Roaming")
+    else:  # an empty variable is unset (XDG spec), not the working directory
+        config_dir = Path(os.getenv("XDG_CONFIG_HOME") or Path.home() / ".config")
     return config_dir / "RoadRageTrip" / "roadragetrip.ini"
 
 

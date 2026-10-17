@@ -27,7 +27,7 @@ def calculate_fare_cents(distance_m: float, duration_s: float, started_at: datet
 
 
 def format_euros(cents: int, language: str = "fi") -> str:
-    separator = "," if language == "fi" else "."
+    separator = "," if language in ("fi", "de") else "."
     euros, remainder = divmod(max(0, int(cents)), 100)
     return f"{euros}{separator}{remainder:02d} €"
 

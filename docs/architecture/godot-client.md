@@ -548,7 +548,10 @@ godot-21 section.
 - **Single player only**, though identified by `player_id`.
 - **Menus:** Godot owns the first-run language choice and the keyboard/mouse
   main, city, settings and pause screens, and starts or stops the Python
-  server for the selected career/gig session.
+  server for the selected career/gig session. Finnish, English and German are
+  selectable. The optional validated `command.language` keeps server messages
+  and new speech subtitles aligned after an in-game language change. Missing
+  driver/passenger recordings use Finnish audio, retaining translated subtitles.
 - **Untested sound:** the pedestrian curse is generated and validated but
   isn't triggered in the scripted test.
 - **Native Windows** performance and audio were not measured.

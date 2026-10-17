@@ -119,13 +119,7 @@ def test_offer_generation_is_suppressed_while_passenger_is_active():
 def test_phone_offers_are_cleared_while_passenger_is_active():
     way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
     taxi_mgr = TaxiManager(ways=[way])
-    taxi_mgr.current_passenger = SimpleNamespace(
-        boarded=False,
-        nausea_resolved=False,
-        nausea_vomited=False,
-        pickup=None,
-        dropoff=None,
-    )
+    taxi_mgr.current_passenger = TaxiPassenger("Test", pickup=None, dropoff=None)
     taxi_mgr.offers = [object(), object()]
 
     taxi_mgr.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), 0.1)
@@ -772,6 +766,7 @@ def _grid_buildings(count, spacing=30.0, size=10.0, cols=200):
     return buildings
 
 
+@pytest.mark.timing
 def test_nearby_collision_buildings_indexes_incrementally_not_the_whole_list(gc_paused):
     """Regression: _nearby_collision_buildings() rebuilt its whole spatial
     grid - every building ever loaded, not just the newly-added ones -
@@ -834,6 +829,7 @@ def _grid_fences(count, spacing=30.0, size=10.0, cols=200):
     return fences
 
 
+@pytest.mark.timing
 def test_nearby_collision_fences_indexes_incrementally_not_the_whole_list(gc_paused):
     """Same fix, same reason, as the buildings test above -
     _nearby_collision_fences() had the identical whole-list-rebuild bug."""
@@ -881,6 +877,7 @@ def _grid_sceneries_with_trees(count, trees_per=8, spacing=50.0, cols=100):
     return out
 
 
+@pytest.mark.timing
 def test_nearby_collision_trees_indexes_incrementally_not_the_whole_map(gc_paused):
     """Regression: same bug family as buildings/fences, but trickier -
     an individual scenery's own .trees list can change after that

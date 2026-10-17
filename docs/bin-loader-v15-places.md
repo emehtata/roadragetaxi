@@ -32,7 +32,7 @@ Developer guide: [places.md](places.md).
 | 2 | OSM extraction utilities | `utils/pbf_index.py` (grid cells for bbox streaming) and `osm/build.py` (Overpass-shaped elements → game objects). The places tool needs only the parser. |
 | 3 | Dependencies that parse `.osm.pbf` | Only the external `osmium-tool` CLI; there is no Python PBF library. No new dependency was added. |
 | 4 | Map/coordinate abstractions | Game objects use local metres (`points_m`, EPSG:3067 through pyproj). Places are stored as WGS84 `lat`/`lon`, so any city can project them with its own transformer. |
-| 5 | JSON data-loading conventions | Static data lives in `assets/` and is read with `Path(__file__).with_name("assets")` (as in `residents.py`), shipped as `assets/*` package data. `places.json` follows this. |
+| 5 | JSON data-loading conventions | Static data lives in `assets/` and is read with `Path(__file__).with_name("assets")` (as in `residents.py`), shipped as `assets/*` package data. `places.json.gz` follows this. |
 | 6 | Tests for map/PBF | `test_pbf_source.py`, `test_pbf_index.py` and `test_tile_streaming.py` build small PBFs with osmium, or skip without it. The new tests use the same pattern. |
 | 7 | Tools directory | `tools/osm/` (standalone scripts that add `src` to `sys.path`). The new tool lives there. |
 | 8 | Runtime data directories | `src/theroadragetrip/assets/`; there is no `data/` directory in the game package. |
@@ -43,8 +43,8 @@ Developer guide: [places.md](places.md).
 
 - **Tool location:** `tools/osm/extract_places.py` instead of
   `tools/extract_places.py`, next to the repo's other OSM tools.
-- **Output location:** `src/theroadragetrip/assets/places.json` instead of
-  `data/places.json`, because that is where the game's runtime data is
+- **Output location:** `src/theroadragetrip/assets/places.json.gz` instead of
+  `data/places.json.gz`, because that is where the game's runtime data is
   loaded from and packaged.
 - **Report location:** `docs/bin-loader-v15-places.md` as suggested; the
   developer guide is `docs/places.md`.
@@ -55,7 +55,7 @@ Developer guide: [places.md](places.md).
 |---|---|
 | `tools/osm/places_config.py` | `PlaceCategory` and the `airport` / `railway_station` definitions |
 | `tools/osm/extract_places.py` | CLI and pure core: osmium `tags-filter` pass, reuse of `_parse_osm_xml`, representative points, dedupe, deterministic JSON |
-| `src/theroadragetrip/assets/places.json` | generated from the real PBF (59 KB, 244 places) |
+| `src/theroadragetrip/assets/places.json.gz` | generated from the real PBF (59 KB, 244 places) |
 | `src/theroadragetrip/world_places.py` | runtime loader: `load_places`, `WorldPlaces.by_type/get/find/within` |
 | `src/theroadragetrip/main/__init__.py` | loads the places at world load and logs those within 50 km of the city |
 | `tests/test_extract_places.py` | 14 tests |
@@ -195,7 +195,7 @@ extraction took 14 s:
 
 ## 9. Runtime integration
 
-`theroadragetrip.world_places.load_places()` reads `assets/places.json`
+`theroadragetrip.world_places.load_places()` reads `assets/places.json.gz`
 (a missing or invalid file gives an empty set with a warning, never a
 crash). It returns `WorldPlaces` with `by_type`, `get`, `find` (any name)
 and `within(lat, lon, radius_m)`. `_load_world` loads it once and logs the
@@ -233,7 +233,7 @@ places, no threading and no new dependency.
 - [x] OSM source identity preserved (244/244 `osm`, plus `osm_duplicates` when merged).
 - [x] Duplicates handled deterministically (section 6; tested; 0 in real data).
 - [x] Output ordering deterministic (byte-identical rerun).
-- [x] `places.json` generated from the real Finland PBF (timestamp 2026-09-09T20:21:20Z).
+- [x] `places.json.gz` generated from the real Finland PBF (timestamp 2026-09-09T20:21:20Z).
 - [x] Important Finnish airports and stations present (section 7; none missing).
 - [x] Runtime loading independent of the PBF (`world_places.load_places`).
 - [x] BIN architecture untouched and disabled.

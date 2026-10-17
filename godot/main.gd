@@ -100,6 +100,8 @@ var _bench := 0.0  # --bench SECONDS: drive-through measurement, then the report
 var _bench_left := 0.0
 var _bench_hide: PackedStringArray = []
 var override_altitude := NAN  # --sun-altitude
+var override_azimuth := NAN  # --sun-azimuth (degrees from grid north), for the shadow checks
+var override_cloud := NAN  # --cloud-cover (0 clear .. 1 overcast)
 var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
 var override_rain := -1.0
 var override_train_at := Vector2.INF
@@ -154,6 +156,10 @@ func _ready() -> void:
 				override_wetness = float(args[i + 1])
 			"--sun-altitude":  # godot-lights-01 visual checks: the sun at this altitude (never sent to Python)
 				override_altitude = float(args[i + 1])
+			"--sun-azimuth":  # rrt-018-shadows visual checks, like --sun-altitude
+				override_azimuth = float(args[i + 1])
+			"--cloud-cover":
+				override_cloud = float(args[i + 1])
 			"--bench-hide":  # godot-18 profiling: hide layers ("z7,labels,...": chunk layers by z, or named groups)
 				_bench_hide = args[i + 1].split(",")
 			"--bench":  # godot-18: record SECONDS of frames once the simulation is here, print BENCH {json}, quit
@@ -593,7 +599,10 @@ func _present(state: Dictionary) -> void:
 	if not ambient.is_equal_approx(world_light.color):
 		world_light.color = ambient
 	map_layer.set_light(lights, ambient)
+	map_layer.set_sun(altitude, Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth,
+		Daylight.cloud_cover(state) if is_nan(override_cloud) else override_cloud)
 	entities.ambient = ambient
+	night.ambient = ambient
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5
 	var night_started := Time.get_ticks_usec()
 	entities.light_level = lights
@@ -865,6 +874,7 @@ static func wind_arrow(wind_from_deg: float) -> String:
 func send(controls: Dictionary) -> void:
 	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist,
 		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending, _home_pending)
+	command["language"] = language
 	_interact_pending = false
 	_refuel_pending = false
 	_road_rage_pending = false
@@ -959,9 +969,9 @@ func _character_text(kind: String, row: Dictionary) -> String:
 			"%s #%s" % [T.text("resident", language), row.get("id", "?")],
 			str(resident.get("name", unknown)),
 			"%s: %s" % [T.text("born", language), resident.get("birth_date", unknown)],
-			"%s: %s" % [T.text("gender", language), resident.get("gender", unknown) if resident.get("gender") != null else unknown],
-			"%s: %s" % [T.text("status", language), row.get("state", unknown)],
-			"%s: %s" % [T.text("activity", language), str(row.get("activity", "")).replace("_", " ") if row.get("activity", "") != "" else unknown],
+			"%s: %s" % [T.text("gender", language), T.value_label(resident.get("gender"), language)],
+			"%s: %s" % [T.text("status", language), T.value_label(row.get("state"), language)],
+			"%s: %s" % [T.text("activity", language), T.value_label(row.get("activity"), language)],
 			"%s: %.2f ‰" % [T.text("blood_alcohol", language), float(row.get("blood_alcohol_promille", 0.0))],
 		])
 	var owner: Dictionary = row.get("owner") if row.get("owner") is Dictionary else {}
@@ -971,8 +981,8 @@ func _character_text(kind: String, row: Dictionary) -> String:
 			occupants.append(person.get("name", unknown))
 	return "\n".join([
 		"%s #%s" % [T.text("npc_vehicle", language), row.get("id", "?")],
-		"%s: %s" % [T.text("type", language), row.get("vehicle_type", unknown)],
-		"%s: %s" % [T.text("status", language), row.get("state", unknown)],
+		"%s: %s" % [T.text("type", language), T.value_label(row.get("vehicle_type"), language)],
+		"%s: %s" % [T.text("status", language), T.value_label(row.get("state"), language)],
 		"%s: %.0f km/h" % [T.text("speed", language), absf(float(row.get("speed", 0.0))) * 3.6],
 		"%s: %s" % [T.text("owner", language), owner.get("name", unknown)],
 		"%s: %s" % [T.text("occupants", language), ", ".join(occupants) if not occupants.is_empty() else unknown],

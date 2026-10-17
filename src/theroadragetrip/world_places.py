@@ -1,4 +1,4 @@
-"""Fixed world places (airports, railway stations, ...) from assets/places.json.
+"""Fixed world places (airports, railway stations, ...) from assets/places.json.gz.
 
 The JSON is generated at build time from the Finland OSM PBF by
 tools/osm/extract_places.py (docs/places.md) - the game never reads the
@@ -8,6 +8,7 @@ with the city's own transformer when a local metre position is needed.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 import math
@@ -17,7 +18,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PLACES_PATH = Path(__file__).with_name("assets") / "places.json"
+DEFAULT_PLACES_PATH = Path(__file__).with_name("assets") / "places.json.gz"
 SUPPORTED_VERSION = 1
 _CORE_KEYS = {"id", "type", "name", "lat", "lon", "osm", "names"}
 
@@ -78,11 +79,13 @@ class WorldPlaces:
 
 
 def load_places(path: Optional[Path] = None) -> WorldPlaces:
-    """Load places.json; a missing or broken file gives an empty set (the
+    """Load places.json.gz; a missing or broken file gives an empty set (the
     game runs without it), logged rather than raised."""
     path = Path(path) if path is not None else DEFAULT_PLACES_PATH
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
+        opener = gzip.open if path.suffix == ".gz" else open
+        with opener(path, "rt", encoding="utf-8") as stream:
+            document = json.load(stream)
         if not isinstance(document, dict):
             raise ValueError("places document must be an object")
         if document.get("version") != SUPPORTED_VERSION:
@@ -108,7 +111,7 @@ def load_places(path: Optional[Path] = None) -> WorldPlaces:
     except FileNotFoundError:
         logger.warning("World places file missing: %s", path)
         return WorldPlaces()
-    except (OSError, ValueError, KeyError, TypeError) as exc:
+    except (OSError, EOFError, ValueError, KeyError, TypeError) as exc:
         logger.warning("World places file unusable (%s): %s", exc, path)
         return WorldPlaces()
     return WorldPlaces(places)

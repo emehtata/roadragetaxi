@@ -1,3 +1,4 @@
+import gzip
 import json
 import logging
 import math
@@ -33,30 +34,31 @@ def _default_cache_dir() -> str:
 CACHE_DIR = _default_cache_dir()
 
 
-def load_local_sample(path: str = "sample_osm.json") -> Optional[List[dict]]:
+def load_local_sample(path: str = "sample_osm.json.gz") -> Optional[List[dict]]:
     """Load a small local sample OSM 'elements' list for offline testing.
 
-    Tries the provided path, package-relative samples, and `sample_osm_large.json`.
+    Tries the provided path, package-relative samples, and `sample_osm_large.json.gz`.
     """
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     bundle_dir = getattr(sys, "_MEIPASS", "")
     candidates = [
         path,
         os.path.join(root_dir, path),
-        os.path.join(root_dir, "sample_osm.json"),
-        "sample_osm_large.json",
-        os.path.join(root_dir, "sample_osm_large.json"),
+        os.path.join(root_dir, "sample_osm.json.gz"),
+        "sample_osm_large.json.gz",
+        os.path.join(root_dir, "sample_osm_large.json.gz"),
     ]
     if bundle_dir:
         candidates.extend([
             os.path.join(bundle_dir, path),
-            os.path.join(bundle_dir, "sample_osm.json"),
-            os.path.join(bundle_dir, "sample_osm_large.json"),
+            os.path.join(bundle_dir, "sample_osm.json.gz"),
+            os.path.join(bundle_dir, "sample_osm_large.json.gz"),
         ])
     for p in candidates:
         if not os.path.exists(p):
             continue
-        with open(p, "r", encoding="utf-8") as f:
+        opener = gzip.open if p.endswith(".gz") else open
+        with opener(p, "rt", encoding="utf-8") as f:
             d = json.load(f)
         return d.get("elements")
     return None

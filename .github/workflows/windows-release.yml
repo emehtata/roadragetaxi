@@ -45,12 +45,17 @@ jobs:
           --name RoadRageServer --paths src
           --collect-submodules theroadragetrip
           --icon "src/theroadragetrip/assets/road_rage_trip_taxi.ico"
-          --add-data "sample_osm.json;."
+          --add-data "sample_osm.json.gz;."
           --add-data "src/theroadragetrip/img;theroadragetrip/img"
           --add-data "src/theroadragetrip/sounds;theroadragetrip/sounds"
           --add-data "src/theroadragetrip/assets;theroadragetrip/assets"
           --distpath build/server --workpath build/server-work
           road_rage_server.py
+
+      - name: Collect the bundled software's licences
+        # Each package's own licence files and the Python runtime's licence
+        # (THIRD_PARTY_LICENSES.md); PACKAGES.txt lists versions and licences.
+        run: python tools/collect_licenses.py build/server/RoadRageServer/licenses/python
 
       - name: Bundle osmium-tool (local .osm.pbf maps)
         # GPL-3.0-only: shipped as a separate program the server runs
@@ -92,13 +97,16 @@ jobs:
           & $osmium extract --bbox 25.45,65.0,25.48,65.03 --strategy=smart -f osm -O -o smoke-extract.osm smoke.osm.pbf
           if ($LASTEXITCODE -ne 0 -or -not ((Get-Content smoke-extract.osm -Raw) -match 'way id="10"')) { throw "the bundled osmium could not extract" }
 
-      - name: The source of the bundled osmium-tool (GPL-3.0)
+      - name: The source of the bundled osmium-tool (GPL-3.0) and GEOS (LGPL-2.1)
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Invoke-WebRequest "https://github.com/osmcode/osmium-tool/archive/refs/tags/v${{ env.OSMIUM_VERSION }}.tar.gz" -OutFile "dist/osmium-tool-${{ env.OSMIUM_VERSION }}-source.tar.gz"
           # The build scripts used (GPLv3 Corresponding Source): conda-forge's recipe.
           Invoke-WebRequest "https://github.com/conda-forge/osmium-tool-feedstock/archive/refs/heads/main.tar.gz" -OutFile "dist/osmium-tool-feedstock-recipe.tar.gz"
+          # GEOS (LGPL-2.1, bundled by shapely as a separate DLL): its source, the version shapely ships.
+          $geos = python -c "import shapely; print(shapely.geos_version_string)"
+          Invoke-WebRequest "https://github.com/libgeos/geos/releases/download/$geos/geos-$geos.tar.bz2" -OutFile "dist/geos-$geos-source.tar.bz2"
 
       - name: Smoke-test the server
         shell: pwsh
@@ -148,6 +156,9 @@ jobs:
           if (-not (Test-Path dist/RoadRageTrip/RoadRageTrip.exe)) { throw "the Godot export produced no RoadRageTrip.exe" }
           Move-Item build/server/RoadRageServer dist/RoadRageTrip/server
           Copy-Item THIRD_PARTY_LICENSES.md dist/RoadRageTrip/
+          New-Item -ItemType Directory -Force dist/RoadRageTrip/licenses/godot | Out-Null
+          & $godot --headless -s "$PWD/tools/godot_licenses.gd" -- "$PWD/dist/RoadRageTrip/licenses/godot/LICENSES.txt"
+          if (-not (Test-Path dist/RoadRageTrip/licenses/godot/LICENSES.txt)) { throw "no Godot licence notices" }
           Get-ChildItem dist/RoadRageTrip
 
       - name: Package release
@@ -164,7 +175,7 @@ jobs:
           $setup = (Resolve-Path dist/RoadRageTrip-Setup.exe).Path
           $result = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$install" -Wait -PassThru
           if ($result.ExitCode -ne 0) { throw "setup exited with $($result.ExitCode)" }
-          foreach ($file in @("RoadRageTrip.exe", "RoadRageTrip.pck", "server/RoadRageServer.exe", "server/osmium/osmium.exe", "THIRD_PARTY_LICENSES.md", "server/_internal/theroadragetrip/img/theroadragetrip_1672_941.png", "server/_internal/theroadragetrip/assets/audio/audio_catalog.json")) {
+          foreach ($file in @("RoadRageTrip.exe", "RoadRageTrip.pck", "server/RoadRageServer.exe", "server/osmium/osmium.exe", "THIRD_PARTY_LICENSES.md", "licenses/godot/LICENSES.txt", "server/licenses/python/PACKAGES.txt", "server/licenses/python/python/LICENSE.txt", "server/licenses/python/shapely/licenses/LICENSE_GEOS", "server/_internal/theroadragetrip/img/theroadragetrip_1672_941.png", "server/_internal/theroadragetrip/assets/audio/audio_catalog.json")) {
             if (-not (Test-Path (Join-Path $install $file))) { throw "installed file missing: $file" }
           }
           & (Join-Path $install "server/osmium/osmium.exe") --version
@@ -186,6 +197,7 @@ jobs:
             dist/RoadRageTrip-Setup.exe
             dist/osmium-tool-*-source.tar.gz
             dist/osmium-tool-feedstock-recipe.tar.gz
+            dist/geos-*-source.tar.bz2
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
@@ -195,4 +207,5 @@ jobs:
           gh release create "${{ github.ref_name }}"
           dist/RoadRageTrip-windows-x64.zip dist/RoadRageTrip-Setup.exe
           dist/osmium-tool-${{ env.OSMIUM_VERSION }}-source.tar.gz dist/osmium-tool-feedstock-recipe.tar.gz
+          (Get-ChildItem dist/geos-*-source.tar.bz2).FullName
           --generate-notes

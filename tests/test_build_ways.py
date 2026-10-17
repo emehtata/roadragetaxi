@@ -10,6 +10,8 @@ def test_maxspeed_tag_is_primary_speed_limit_source():
 import sys
 import types
 
+import pytest
+
 # Provide a lightweight fake `pyproj` so tests don't need the real dependency.
 fake_pyproj = types.SimpleNamespace()
 
@@ -23,7 +25,15 @@ class FakeTransformer:
         return (lon * 1000.0, lat * 1000.0)
 
 fake_pyproj.Transformer = FakeTransformer
-sys.modules["pyproj"] = fake_pyproj
+
+
+@pytest.fixture(autouse=True)
+def _fake_pyproj(monkeypatch):
+    """The fake pyproj for this module's tests only, restored after each:
+    installed at import, it leaked into every later test (cached
+    municipality centres projected with it, e.g. a long fare to nowhere)."""
+    monkeypatch.setitem(sys.modules, "pyproj", fake_pyproj)
+
 
 from theroadragetrip.osm import build_ways
 

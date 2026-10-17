@@ -41,6 +41,22 @@ def test_priority_road_overrides_default_right_hand_rule():
     assert crossing_yield_decision(north, [east]) is not None
 
 
+def test_completed_stop_does_not_remove_crossing_yield_or_repeat_after_map_refresh():
+    from theroadragetrip.osm import StopSign
+    from theroadragetrip.traffic_rules import stop_sign_decision
+    east, north = cars()
+    east.speed = 0
+    sign = StopSign(east.x + east.length_m / 2 + 1, east.y, id=9, direction_angle=0)
+    driver = SimpleNamespace(stop_sign_key=None, stop_sign_satisfied=False)
+    assert stop_sign_decision(east, driver, [sign]).target_speed_mps == 0
+    assert driver.stop_sign_satisfied
+    refreshed = StopSign(sign.x, sign.y, id=9, direction_angle=0)
+    assert stop_sign_decision(east, driver, [refreshed]) is None
+    assert crossing_yield_decision(east, [north], signs=[refreshed]) is not None
+    stop_sign_decision(east, driver, [])
+    assert not driver.stop_sign_satisfied
+
+
 def test_parallel_parked_and_different_level_vehicles_do_not_cause_yielding():
     east, north = cars()
     north.heading = 0.0

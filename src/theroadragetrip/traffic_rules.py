@@ -113,17 +113,54 @@ def nearest_vehicle_ahead(
     return nearest
 
 
+def sign_distance_ahead(vehicle, sign):
+    """Longitudinal distance for this approach's sign, not an opposite/upper road."""
+    fx, fy = math.cos(vehicle.heading), math.sin(vehicle.heading)
+    dx, dy = sign.x - vehicle.x, sign.y - vehicle.y
+    direction = getattr(sign, "direction_angle", None)
+    if (getattr(sign, "layer", 0) != getattr(getattr(vehicle, "way", None), "layer", 0)
+            or abs(dx * fy - dy * fx) > getattr(sign, "road_half_width_m", 3.5) + 1.0
+            or direction is not None and abs(angle_diff(direction, vehicle.heading)) >= math.pi / 4):
+        return None
+    return dx * fx + dy * fy
+
+
+def stop_sign_decision(vehicle, driver, signs, speed_limit_mps=None):
+    """Stop once per approach, then retain the separate crossing-yield duties."""
+    candidates = []
+    for sign in signs:
+        distance = sign_distance_ahead(vehicle, sign)
+        if distance is not None and -vehicle.length_m <= distance <= 45:
+            candidates.append((distance, sign))
+    if not candidates:
+        driver.stop_sign_key, driver.stop_sign_satisfied = None, False
+        return None
+    distance, sign = min(candidates, key=lambda item: item[0])
+    key = (sign.id, round(sign.x, 2), round(sign.y, 2), sign.layer, sign.direction_angle)
+    if key != driver.stop_sign_key:
+        driver.stop_sign_key, driver.stop_sign_satisfied = key, False
+    # The map stores the post, not a stop line: project it onto the approach,
+    # leaving the nose 1 m short. Explicit stop-line geometry remains a gap.
+    gap = max(0.0, distance - vehicle.length_m / 2 - 1.0)
+    if driver.stop_sign_satisfied:
+        return None
+    if gap <= .25 and abs(vehicle.speed) < .05:
+        driver.stop_sign_satisfied = True
+        return TrafficDecision(TrafficAction.STOP, 0.0, reason="STOP sign: full stop completed")
+    cap = 0.0 if gap <= .1 else math.sqrt(2 * 3.0 * gap)
+    if speed_limit_mps is not None:
+        cap = min(cap, speed_limit_mps)
+    fx, fy = math.cos(vehicle.heading), math.sin(vehicle.heading)
+    return TrafficDecision(TrafficAction.STOP if cap == 0 else TrafficAction.SLOW, cap,
+                           (vehicle.x + fx * gap, vehicle.y + fy * gap), "STOP sign: mandatory stop")
+
+
 def crossing_yield_decision(vehicle, obstacles, *, signs=(), speed_limit_mps=None):
     """Brake before conflicting traffic from the right at an unsignalled crossing."""
     def signed(car):
-        fx, fy = math.cos(car.heading), math.sin(car.heading)
         for sign in signs:
-            dx, dy = sign.x - car.x, sign.y - car.y
-            direction = getattr(sign, "direction_angle", None)
-            if (getattr(sign, "layer", 0) == getattr(getattr(car, "way", None), "layer", 0)
-                    and -8.0 < dx * fx + dy * fy < 35.0
-                    and abs(dx * fy - dy * fx) < 4.0
-                    and (direction is None or abs(angle_diff(direction, car.heading)) < math.pi / 4.0)):
+            distance = sign_distance_ahead(car, sign)
+            if distance is not None and -8.0 < distance < 35:
                 return True
         return False
 
@@ -180,13 +217,16 @@ def decide_traffic_action(
     detection_distance_m: float = 45.0,
     stop_buffer_m: float = 4.0,
     deceleration_mps2: float = 3.0,
+    actual_speed_mps: Optional[float] = None,
+    yellow_stop_light=None,
 ) -> TrafficDecision:
     """Return a PROCEED/SLOW/STOP decision for the traffic light ahead of
     (x, y, heading), if any govern this lane.
 
     Yellow is a transition, not green: a vehicle already too close to stop
     comfortably keeps going (it's committed), everyone else brakes for the
-    line - never treated as a plain "go".
+    line. `yellow_stop_light` retains a previous stopping decision for the
+    same signal; tick-level speed variation must not turn it into permission.
     """
     cruise_speed = speed_limit_mps if speed_limit_mps is not None else 13.9  # ~50 km/h fallback
     nearest = nearest_traffic_light_ahead(x, y, heading, traffic_lights, detection_distance_m)
@@ -216,11 +256,12 @@ def decide_traffic_action(
     # Yellow: only brake if there's still comfortable room to stop in time;
     # a vehicle already inside the braking-too-late zone is committed and
     # proceeds through, exactly like a real driver would.
-    if available_distance >= cruise_speed ** 2 / (2.0 * deceleration_mps2):
+    speed = cruise_speed if actual_speed_mps is None else abs(actual_speed_mps)
+    if tl is yellow_stop_light or available_distance >= speed ** 2 / (2.0 * deceleration_mps2):
         return TrafficDecision(
-            TrafficAction.SLOW, min(cruise_speed, comfortable_stop_speed), stop_position,
+            TrafficAction.SLOW, min(cruise_speed, comfortable_stop_speed, speed), stop_position,
             reason="yellow light, stopping in time", light=tl,
         )
     return TrafficDecision(
-        TrafficAction.PROCEED, cruise_speed, reason="yellow light, already committed", light=tl,
+        TrafficAction.PROCEED, min(cruise_speed, speed), reason="yellow light, already committed", light=tl,
     )

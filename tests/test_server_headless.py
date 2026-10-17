@@ -27,6 +27,56 @@ def test_startup_progress_reaches_the_render_chunk_stage(tmp_path, monkeypatch):
     assert "buildings" in report["detail"]
 
 
+@pytest.mark.parametrize("hour,minute,second,expected", [(17, 0, 0, True), (18, 0, 0, True),
+                                                       (20, 29, 59, True), (20, 30, 0, False), (23, 0, 0, False)])
+def test_match_day_notice_excludes_finished_games(tmp_path, monkeypatch, hour, minute, second, expected):
+    from datetime import datetime
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    server = _build_server(tmp_path, monkeypatch)
+    server.calendar.current = datetime(2026, 10, 17, hour, minute, second)
+    game = SimpleNamespace(start=datetime(2026, 10, 17, 18), home_team="Kärpät", away_team="Sport", venue_name="Arena")
+    server.world.arena_crowds = SimpleNamespace(schedule_on=lambda day: [game])
+    notices = []
+    monkeypatch.setattr(server, "_notify", lambda *args: notices.append(args))
+    connection = Mock()
+    server._on_client_connect(connection)
+    assert bool(notices) == expected
+    assert server._game_day_notice_shown
+    server._on_client_connect(connection)
+    assert len(notices) == int(expected)  # do not repeat the notice on reconnect
+
+
+def test_group_fare_mass_and_cancellation_release_everyone_once(tmp_path, monkeypatch):
+    from theroadragetrip.taxi import TaxiPassenger, TaxiState, TaxiTarget
+
+    server = _build_server(tmp_path, monkeypatch)
+    taxi = server.world.taxi_mgr
+    parent = taxi.residents.create(age=40)
+    child = taxi.residents.create(age=9)
+    child.parent_ids = {parent.resident_id}
+    pickup = TaxiTarget(server.car.x, server.car.y, "Pickup")
+    dropoff = TaxiTarget(server.car.x + 1000, server.car.y, "Dropoff")
+    party = TaxiPassenger("Parent", pickup, dropoff, resident_id=parent.resident_id, weight_kg=80,
+                         boarded=True, nausea_delay=float("inf"))
+    party.companions = [TaxiPassenger("Child", pickup, dropoff, resident_id=child.resident_id,
+                                     weight_kg=30, boarded=True, nausea_delay=float("inf"))]
+    taxi.current_passenger = party
+    taxi.state = TaxiState.DRIVING_TO_DROPOFF
+    monkeypatch.setattr(taxi, "generate_offers", lambda *a, **kw: [])
+    server.tick(1 / 30)
+    assert server.car.passenger_mass_kg == 110
+    released = []
+    monkeypatch.setattr(server.world.pedestrian_mgr, "spawn_pedestrian_at",
+                        lambda *a, **kw: released.append(kw["resident_id"]))
+    taxi.discard_mission(server.car.x, server.car.y)
+    server.tick(1 / 30)
+    server.tick(1 / 30)
+    assert sorted(released) == sorted([parent.resident_id, child.resident_id])
+    assert server.car.passenger_mass_kg == 0
+
+
 def test_sinking_is_cancelled_when_current_geometry_is_dry(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
     server._on_foot = False
@@ -56,10 +106,58 @@ def test_sinking_continues_when_the_car_really_is_in_open_water(tmp_path, monkey
 
 def test_server_builds_and_ticks_with_no_client_connected(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
+    assert server.world.speed_cameras == []
     assert server._chunks_index._encoded == {}  # distant chunks are encoded lazily, not on startup
     for _ in range(30):
         server.tick(1.0 / 30.0)
     assert server._tick == 30
+    assert server.world.speed_cameras == []
+
+
+def test_runtime_camera_is_sent_to_loaded_clients_with_stable_id(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from theroadragetrip.map_chunks import cell_of, chunk_id
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.osm import Way
+
+    server = _build_server(tmp_path, monkeypatch)
+    x, y = server.car.x, server.car.y
+    server.world.spatial_grid = SpatialWayGrid([
+        Way([(x + 600, y), (x + 1600, y)], "primary", 4),
+    ])
+    server._camera_spawner.remaining_s = 0
+    # Capture only sends for a camera's loaded chunk, not all clients/chunks.
+    sent = []
+    class Connection:
+        def send(self, message):
+            sent.append(message)
+    connection = Connection()
+    loaded = {chunk_id(*cell_of(x + offset, y - 5)) for offset in range(500, 1801, 100)}
+    server._client_chunks = {connection: (loaded, None)}
+    server._update_speed_cameras(1 / 30)
+    assert len(server.world.speed_cameras) == 1
+    camera = server.world.speed_cameras[0]
+    cid = chunk_id(*cell_of(camera.x, camera.y))
+    assert server._chunks_index.message(cid)["speed_cameras"][0][0] == 0
+    assert sent == [server._chunks_index.encoded(cid)]
+    server.car.x += 4000
+    server.world.spatial_grid = SpatialWayGrid([
+        Way([(x + 4600, y), (x + 5600, y)], "primary", 4),
+    ])
+    server._camera_spawner.remaining_s = 0
+    server._update_speed_cameras(1 / 30)
+    assert len(server.world.speed_cameras) == 2
+    second = server.world.speed_cameras[1]
+    second_cid = chunk_id(*cell_of(second.x, second.y))
+    assert server._chunks_index.message(second_cid)["speed_cameras"][0][0] == 1
+    assert server._chunks_index.message(cid)["speed_cameras"][0][0] == 0
+    assert len(sent) == 1  # the second camera's chunk isn't loaded by this client
+    # Existing-camera IDs survive the next creation and an in-flight map build
+    # cannot race an append into the index it is replacing.
+    server._map_streamer = SimpleNamespace(hold=True)
+    server._camera_spawner.remaining_s = 0
+    server._update_speed_cameras(1000)
+    assert server.world.speed_cameras == [camera, second]
 
 
 def test_game_time_advances(tmp_path, monkeypatch):
@@ -501,7 +599,7 @@ def test_the_navigation_route_crosses_the_wire(tmp_path, monkeypatch):
 
 def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypatch):
     """godot-final-05: SPACE is the simulation's - cost 0.25, the 0.45 horn,
-    a shout for 5 s, the nearest driver ahead provoked once; nothing below 0.25."""
+    a shout for 5 s and arcade clearance once; nothing below 0.25."""
 
     from theroadragetrip import protocol
     from theroadragetrip.simulation import RAGE_SHOUTS, PlayerCommand
@@ -533,7 +631,7 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
     assert [e for e in sent[-1] if e.get("group") == "vehicle.horn"] == [{"type": "sound", "group": "vehicle.horn"}]
     assert len(calls) == 1
     args, kwargs = calls[0]
-    assert args == at[:3] and kwargs == {"sim_time": at[3]}
+    assert args == () and kwargs == {"sim_time": at[3]}
     shout = _state(server)  # no road_rage passed: the builder's default
     state = protocol.build_state_message(
         tick=1, world=server.world, car=server.car, on_foot=False, player_pedestrian=server.world.player_pedestrian,
@@ -557,6 +655,42 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
     assert sum(1 for events in sent[-3:] for e in events if e.get("group") == "vehicle.horn") == 2
 
 
+@pytest.mark.parametrize("rage", [False, True])
+def test_210_kmh_shout_clears_a_close_npc_before_the_collision_pass(tmp_path, monkeypatch, rage):
+    from theroadragetrip.npc import NPCState, NPCVehicle
+    from theroadragetrip.osm import Way
+    from theroadragetrip.physics import Car, SpatialWayGrid
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch)
+    # Isolated road, clear of the sample map's buildings, water and signals.
+    road = Way([(1_000_000, 1_000_000), (1_002_000, 1_000_000)], "primary", 7)
+    server.world.ways = [road]
+    server.world.spatial_grid = SpatialWayGrid([road])
+    server.car.x, server.car.y, server.car.heading = 1_000_100, 999_998, 0
+    server.car.speed = 210 / 3.6
+    server.car.engine_on = True
+    server._current_way = road
+    server._on_foot = False
+    vehicle = NPCVehicle(12345, Car(server.car.x + 5, server.car.y, 0, 0), state=NPCState.WAITING)
+    manager = server.world.npc_manager
+    manager.vehicles = [vehicle]
+    manager.drivers.clear()
+    manager._previous_player_pose = server.car.x, server.car.y, server.car.heading
+    manager.rebuild_spatial_grid()
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    server._rage_power = 1 if rage else 0
+    server._pending_road_rages = 1
+    server.tick(1 / 30)
+    if rage:
+        assert vehicle.vehicle_id in manager.road_rage.held
+        assert vehicle.state != NPCState.CRASHED
+        assert server.world.taxi_mgr.taxi_smoke_timer == 0
+        assert not manager.accidents
+    else:
+        assert vehicle.state == NPCState.CRASHED
+
+
 def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
     """godot-final-06: is_thunderstorm and the gust-adjusted wind vector,
     straight from WeatherSystem; nothing else new (no particles, ripples,
@@ -575,7 +709,7 @@ def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
     assert state["is_thunderstorm"] is True
     assert state["wind_vector_mps"] == [round(v, 3) for v in weather.wind_vector_mps]
     assert set(state) == {"weather_type", "wetness", "lightning_intensity", "is_thunderstorm", "wind_vector_mps",
-                          "source", "temperature_c", "road_snow", "plowed_cells"}
+                          "source", "temperature_c", "road_snow", "plowed_cells", "cloud_cover"}
     for vector in ((0.0, 0.0), (3.25, -7.5), (-12.0, 4.0), (float("nan"), float("inf"))):
         monkeypatch.setattr(type(weather), "wind_vector_mps", property(lambda self, v=vector: v))  # restored after the test
         wire = json.loads(json.dumps(_state(server)["weather"]))["wind_vector_mps"]
@@ -629,6 +763,33 @@ def test_start_time_starts_the_calendar_clamped_to_a_year_back(tmp_path, monkeyp
     server = _build_server(tmp_path, monkeypatch, ["--start-time", picked.isoformat()])
     assert server.calendar.current == picked
     assert _build_server(tmp_path, monkeypatch, ["--start-time", "2001-02-03T04:05"]).calendar.current.date() >= date.today() - timedelta(days=366)
+
+
+def test_missing_current_weather_uses_previous_cache_until_exact_hour_arrives(tmp_path, monkeypatch, caplog):
+    from types import SimpleNamespace
+    from theroadragetrip.weather_history import HourlyWeather, game_time_to_utc_hour
+
+    server = _build_server(tmp_path, monkeypatch)
+    previous = HourlyWeather(temperature_c=7, wawa=61)
+    calls = []
+    def fallback(moment):
+        calls.append(moment)
+        return int(game_time_to_utc_hour(moment)) - 1, previous
+    history = SimpleNamespace(request=lambda *a: None, get=lambda moment: None, previous=fallback)
+    server.weather_history = history
+    with caplog.at_level("WARNING"):
+        for _ in range(2):
+            seen = server._update_outside()
+            server.world.weather.update(0.001, 0, outside_temperature_c=7, observed=seen)
+    assert len(calls) == 1
+    assert server.world.weather.weather_type.value == "rain"
+    assert sum("using cached" in r.message for r in caplog.records) == 1
+    current = HourlyWeather(temperature_c=7, wawa=0, source="forecast")
+    history.get = lambda moment: current
+    seen = server._update_outside()
+    assert seen == current
+    server.world.weather.update(0.001, 0, outside_temperature_c=7, observed=seen)
+    assert server.world.weather.weather_type.value == "clear"
 
 
 def test_npc_brake_lamps_when_slowing_or_standing_in_traffic():

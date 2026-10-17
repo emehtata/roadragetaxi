@@ -37,6 +37,8 @@ def main():
     parser.add_argument("--seconds", type=float, default=600.0)
     parser.add_argument("--out", type=Path, default=Path("/tmp/rrt-traffic-observation"))
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--use-sample", action="store_true", help="Use the offline sample instead of the historical Oulu PBF fixture")
+    parser.add_argument("--unpaced", action="store_true", help="Run --seconds of fixed-step simulation, not wall-clock time; not an FPS benchmark")
     args = parser.parse_args()
     if args.self_test:
         assert low_progress([(0, 0, 0), (30, 1, 0)])
@@ -54,6 +56,8 @@ def main():
                 "--osm-pbf-path", "/home/ubuntu/.local/share/godot/app_userdata/Road Rage Trip (Godot client)/maps/finland-latest.osm.pbf",
                 "--no-historical-weather", "--no-train-timetable", "--npc-vehicle-count", "40",
                 "--npc-vehicle-min", "20", "--pedestrian-count", "60", "--start-time", "2026-10-15T12:00"]
+    if args.use_sample:
+        sys.argv += ["--use-sample"]
     from theroadragetrip.server import SimulationServer
     from theroadragetrip.server.cli import parse_server_args
     from theroadragetrip.performance import tune_interpreter
@@ -161,15 +165,17 @@ def main():
     metadata = {"source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
                 "runtime_patch_sha256": hashlib.sha256(runtime_patch).hexdigest() if runtime_patch else None,
                 "started_utc": datetime.now(timezone.utc).isoformat(), "seed": seed,
-                "requested_wall_s": args.seconds, "tick_rate": 30,
+                "requested_wall_s": None if args.unpaced else args.seconds,
+                "requested_physics_s": args.seconds if args.unpaced else None,
+                "paced": not args.unpaced, "tick_rate": 30,
                 "ways": len(world.ways), "buildings": len(world.buildings),
-                "fixture": "stationary Oulu taxi; clear/dry 18 C; local PBF; no historical weather, train timetable or map growth",
+                "fixture": "stationary Oulu taxi; clear/dry 18 C; " + ("offline sample" if args.use_sample else "local PBF") + "; no historical weather, train timetable or map growth",
                 "player_start": [server.car.x, server.car.y, server.car.heading], "port": server.port}
     (args.out / "metadata.json").write_text(json.dumps(metadata, indent=2))
     next_history = next_sample = next_report = 0.0
     print("START", metadata, flush=True)
     try:
-        while (elapsed := time.monotonic() - began) < args.seconds:
+        while (elapsed := len(tick_ms) / 30 if args.unpaced else time.monotonic() - began) < args.seconds:
             clock[0] = elapsed
             start = time.perf_counter()
             server.tick(1 / 30)
@@ -216,7 +222,8 @@ def main():
                 (args.out / "progress.json").write_text(json.dumps(record, indent=2))
                 print("PROGRESS", json.dumps(record), flush=True)
                 next_report = elapsed + 30.0
-            time.sleep(max(0.0, 1 / 30 - (time.perf_counter() - start)))
+            if not args.unpaced:
+                time.sleep(max(0.0, 1 / 30 - (time.perf_counter() - start)))
     finally:
         manager._check_vehicle_collision = original_check
         npc_module._npc_motion_stays_on_road = original_boundary_check

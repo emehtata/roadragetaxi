@@ -63,7 +63,7 @@ def test_named_next_street_follows_the_outgoing_road_and_resets_with_target():
     world = _world(TrafficWorld([first, second]), TaxiTarget(x=100, y=100, address="Kirkkokatu 10"))
     car, nav = SimpleNamespace(x=0, y=0, map_level=0), NavigationRoute()
     _finish(nav, world, car)
-    assert nav.instruction == {"maneuver": "left", "distance_m": 100, "angle_deg": 90, "street": "Kirkkokatu"}
+    assert nav.instruction == {"maneuver": "left", "distance_m": 100, "total_m": 200, "angle_deg": 90, "street": "Kirkkokatu"}
     car.x = 70
     nav.update(world, car)
     assert nav.instruction["distance_m"] == 30
@@ -252,3 +252,9 @@ def test_navigation_does_not_start_on_a_bridge_over_the_taxi():
             break
     assert nav.points[1] == [100.0, 0.0]  # follow ground road to the actual bridge connection
     assert nav.points[-1] == [50.0, 90.0]
+
+
+def test_next_turn_gives_the_whole_remaining_driving_distance():
+    points = [(0, 0), (40, 0), (100, 0), (100, 100)]
+    assert next_turn(points, 20, 0)["total_m"] == 180  # 80 to the turn, then 100
+    assert next_turn(points, 100, 30)["total_m"] == 70

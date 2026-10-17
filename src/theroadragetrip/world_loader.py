@@ -31,7 +31,6 @@ from .osm.cache import OSM_CACHE_TTL_S
 from .parking import generate_detached_house_parking
 from .pedestrian import PedestrianManager, PlayerPedestrian
 from .physics import Car, SpatialWayGrid, respawn_car
-from .police import place_speed_cameras
 from .residents import ResidentManager
 from .roadworks import create_roadworks
 from .taxi import TaxiManager
@@ -168,8 +167,8 @@ def load_world(
                     elements, progress_callback=on_build_progress, include_bus_stops=bus_stops_enabled
                 )
                 return result, len(elements)
-            return world_cache.load_area(
-                area_id, bbox, force_refresh=force_refresh or args.no_cache,
+            return world_cache.load_area(  # any cached area holding the start (the taxi spawns at the centre)
+                area_id, bbox, force_refresh=force_refresh or args.no_cache, point=bbox_center,
             ), 0
 
         load_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="startup-map")
@@ -306,8 +305,8 @@ def load_world(
     # Spawn car on a road near center (avoiding water)
     car = Car(x=(minx + maxx) / 2, y=(miny + maxy) / 2, heading=0.0, speed=0.0)
     if ways:
-        to_metres = latlon_to_world_metres() if getattr(args, "bbox", None) else None
-        pin = to_metres((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0) if to_metres else None  # a map pick's centre
+        to_metres = latlon_to_world_metres()
+        pin = to_metres(sun_latitude, sun_longitude) if to_metres else None
         respawn_car(car, ways, near_center=True, bounds=bounds, waters=waters, taxi_stops=taxi_stops, start_point=pin)
         car.engine_on = False  # the driver starts on foot; E starts it after getting in
     career_total_distance_m = None
@@ -327,10 +326,6 @@ def load_world(
     # Initialize Taxi Manager for game mode
     on_load_progress(0.80, "Preparing taxi missions...")
     residents = ResidentManager(city_name=chosen_city)
-    residents.set_city_center_m((minx + maxx) / 2.0, (miny + maxy) / 2.0)
-    city_center = city_centers.get(chosen_city)
-    if city_center is not None:
-        residents.set_city_center_latlon(*city_center)
     # Build-time dataset (tools/osm/extract_places.py), not the PBF.
     nearby_places = load_places().within(sun_latitude, sun_longitude, NEARBY_PLACES_RADIUS_M)
     logger.info(
@@ -351,17 +346,12 @@ def load_world(
             taxi_mgr.balance_cents = saved_balance_cents
     else:
         taxi_mgr.balance_cents = load_career_balance(career_file)
-    speed_cameras = place_speed_cameras(
-        ways,
-        bounds,
-        camera_city_name,
-        seed=random.randrange(2**32),
-    )
-    logger.info("Placed %d hidden speed cameras", len(speed_cameras))
+    speed_cameras = []  # created gradually during gameplay, not in the opening tiles
     # Keep road, signal, and resident services for taxi missions.
     on_load_progress(0.86, "Preparing taxi world...")
     traffic_mgr = TrafficWorld(
         ways,
+        stop_signs=stop_signs, yield_signs=yield_signs,
         traffic_lights=traffic_lights,
         crossings=crossings,
         parking_spaces=parking_spaces,

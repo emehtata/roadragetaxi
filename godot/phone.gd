@@ -546,12 +546,15 @@ static func card_text(item: Dictionary, language := "en") -> String:
 			T.text("phone_to_short", language) % item.get("dropoff", "?"),
 			(T.text("phone_fee_short", language) % (item["surcharge_cents"] / 100.0)) if item.has("surcharge_cents") else ""]
 		if item.get("status", "") != "PENDING":
-			booking.append(T.text("phone_status", language) % str(item.get("status", "?")).to_lower().replace("_", " "))
+			booking.append(T.text("phone_status", language) % T.value_label(item.get("status"), language))
 		return "\n".join(booking.filter(func(line): return line != ""))
 	var lines: Array = []
 	lines.append(T.text("phone_pickup_short", language) % item.get("pickup", "?"))
 	lines.append(T.text("phone_to_short", language) % item.get("dropoff", "?"))
-	lines.append(T.text("phone_trip_meter", language) % distance_text(item.get("trip_distance_m"), language))
+	if int(item.get("passenger_count", 1)) > 1:
+		lines.append(T.text("phone_group", language) % [int(item["passenger_count"]), distance_text(item.get("trip_distance_m"), language)])
+	else:
+		lines.append(T.text("phone_trip_meter", language) % distance_text(item.get("trip_distance_m"), language))
 	return "\n".join(lines)
 
 
@@ -583,7 +586,7 @@ static func row_text(number: int, item: Dictionary, waiting: bool, language := "
 	if waiting:
 		return head + T.text("phone_waiting", language)
 	if item.get("status", "") not in ANSWERABLE:
-		return head + " - " + str(item.get("status", "")).to_lower().replace("_", " ")
+		return head + " - " + T.value_label(item.get("status"), language)
 	return head
 
 
@@ -593,7 +596,7 @@ static func details_text(item: Dictionary, language := "en") -> String:
 		lines.append(T.text("phone_booking_pickup", language) % [item.get("pickup", "?"), item.get("arrival", "?")])
 		lines.append(T.text("phone_to", language) % item.get("dropoff", "?"))
 		lines.append((T.text("phone_fee", language) % (item["surcharge_cents"] / 100.0)) if item.has("surcharge_cents") else T.text("phone_fee_unavailable", language))
-		lines.append(T.text("phone_status", language) % str(item.get("status", "?")).to_lower().replace("_", " "))
+		lines.append(T.text("phone_status", language) % T.value_label(item.get("status"), language))
 	else:
 		lines.append(T.text("phone_pickup", language) % item.get("pickup", "?"))
 		lines.append(T.text("phone_to", language) % item.get("dropoff", "?"))

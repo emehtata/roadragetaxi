@@ -22,7 +22,7 @@ import math
 import os
 import threading
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
@@ -31,22 +31,24 @@ from typing import Optional
 from .. import protocol
 from ..navigation_route import NavigationRoute
 from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, ChunkIndex, cell_of, chunk_id, plan
+from ..police import SpeedCameraSpawner
 from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer, prepare_initial_window
 from ..protocol import LOCAL_PLAYER_ID
 from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
-from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_altitude_and_events_on
+from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_position_on, grid_azimuth
 from ..career import career_path, gig_odometer_path, load_career
+from ..arena_crowds import GAME_DURATION
 from ..config import CONFIG_PATH, cities_from_config, default_city_configuration, get_overpass_endpoints
 from ..world_loader import load_world, resolve_city
 from ..viewport import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..physics import reset_trip, respawn_car
 from ..home import CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home
-from ..localization import tr
+from ..localization import SUPPORTED_LANGUAGES, tr
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
-from ..weather_history import WeatherHistory, precipitation_from_observation
+from ..weather_history import WeatherHistory, precipitation_from_observation, game_time_to_utc_hour
 from ..calendar import clamp_start_datetime
 from ..osm import CACHE_DIR
 from ..climate import appearance_with_snow_depth, typical_temperature
@@ -303,6 +305,7 @@ class SimulationServer:
         # irrelevant buckets; eagerly encoding all of them delayed startup.
         progress("chunks", f"{len(self.world.buildings)} buildings; {len(self.world.street_light_points)} lights")
         self._chunks_index = ChunkIndex(self.world)
+        self._camera_spawner = SpeedCameraSpawner()
         self._client_chunks: dict = {}
         self._map_streamer = MapStreamer(self.world, self._map_grew) if self._auto_fetch else None
         # The tiles the chunk index was built with (None: the map never grows). A chunk
@@ -359,6 +362,18 @@ class SimulationServer:
         if self.weather_history is not None:
             self.weather_history.request(fmi_moment, fmi_moment + timedelta(hours=48))
             observed = self.weather_history.get(fmi_moment)
+            if observed is None or precipitation_from_observation(observed)[0] is None:
+                if getattr(self, "_fallback_weather_hour", None) != fmi_moment:
+                    self._fallback_weather_hour = fmi_moment
+                    self._fallback_weather = self.weather_history.previous(fmi_moment)
+                    if self._fallback_weather is not None:
+                        hour, previous = self._fallback_weather
+                        logger.warning("FMI precipitation unavailable for %s; using cached %s from %s UTC (%.1f h old)",
+                                       fmi_moment.isoformat(), previous.source,
+                                       datetime.fromtimestamp(hour * 3600, timezone.utc).isoformat(),
+                                       game_time_to_utc_hour(fmi_moment) - hour)
+                if self._fallback_weather is not None:
+                    observed = self._fallback_weather[1]
         source = observed.source if observed is not None else "generated"
         if source in ("observed", "forecast") and source != getattr(weather, "weather_source", None):
             logger.info("FMI weather now %s: %s", f"{fmi_moment:%d.%m. %H:%M}", source)
@@ -422,12 +437,18 @@ class SimulationServer:
         return season
 
     def _sun_altitude(self) -> float:
-        altitude, _, _ = solar_altitude_and_events_on(
-            self.calendar.date, self.calendar.time_seconds,
-            getattr(self.world, "sun_latitude", self.calendar.latitude), getattr(self.world, "sun_longitude", 25.47),
+        return self._sun_position()[0]
+
+    def _sun_position(self) -> tuple:
+        """(altitude, azimuth) in degrees; the azimuth clockwise from the
+        map's grid north (EPSG:3067 +y), which the client's 3D view uses."""
+        latitude = getattr(self.world, "sun_latitude", self.calendar.latitude)
+        longitude = getattr(self.world, "sun_longitude", 25.47)
+        altitude, azimuth = solar_position_on(
+            self.calendar.date, self.calendar.time_seconds, latitude, longitude,
             finnish_utc_offset_hours(self.calendar.current),
         )
-        return altitude
+        return altitude, grid_azimuth(azimuth, latitude, longitude)
 
     def _update_sports(self) -> None:
         """What may be played on the sports fields (the pedestrians' sports
@@ -444,13 +465,13 @@ class SimulationServer:
         """What a client needs of the calendar (state "calendar"): the date,
         how fast game time runs, and the sun - computed here, never by the
         client. The sun is at the city's latitude and longitude."""
-        altitude = self._sun_altitude()
+        altitude, azimuth = self._sun_position()
         season = self.season_weights()
         arena_crowds = getattr(self.world, "arena_crowds", None)
         from ..holiday_events import holiday_events
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": season,
-                "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
+                "sun_altitude_deg": round(altitude, 2), "sun_azimuth_deg": round(azimuth, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
                 "sports_lights": sports_lights_hours(self.calendar.current),
                 "holidays": holiday_events(self.calendar.current),
                 "arena_lights": bool(arena_crowds and arena_crowds.lights_on(self.calendar.current)),
@@ -462,6 +483,17 @@ class SimulationServer:
         self.host, self.port = self._listener.host, self._listener.port
         logger.info("Simulation server listening on %s:%d", self.host, self.port)
         self._running = True
+
+    def close(self) -> None:
+        """Stop listening and drop every client (tests; an embedding host).
+        The process exit does this for the standalone server."""
+        self._running = False
+        if self._listener is not None:
+            self._listener.close()
+        with self._clients_lock:
+            clients, self._clients = list(self._clients), []
+        for connection in clients:
+            connection.close()
 
     def _place_name(self) -> str:
         """The start sign's name: the catalog city, or for a custom start
@@ -484,7 +516,8 @@ class SimulationServer:
             self._client_chunks[connection] = (set(), None)
             self._clients.append(connection)
         if not self._game_day_notice_shown:
-            games = self.world.arena_crowds.schedule_on(self.calendar.date)
+            games = [game for game in self.world.arena_crowds.schedule_on(self.calendar.date)
+                     if self.calendar.current < game.start + GAME_DURATION]
             if games:
                 schedule = "; ".join(
                     f"{game.home_team}–{game.away_team} {game.start:%H:%M} ({game.venue_name})"
@@ -505,6 +538,10 @@ class SimulationServer:
                     continue
                 command, interact = protocol.command_from_message(message)
                 phone = protocol.phone_request_from_message(message)
+                requested_language = message.get("command", {}).get("language") if isinstance(message.get("command"), dict) else None
+                if isinstance(requested_language, str) and requested_language in SUPPORTED_LANGUAGES and requested_language != self.language:
+                    self.language = requested_language
+                    self.world.taxi_mgr.set_language(requested_language)
                 with self._command_lock:
                     self._latest_command = replace(command, refuel=False, road_rage=False, respawn=False, home=False,
                                                    cancel_ride=False, reset_trip=False)  # the held part only
@@ -600,6 +637,7 @@ class SimulationServer:
         if interact:
             self._on_foot = apply_enter_exit_vehicle(
                 self.car, self.world.player_pedestrian, self._on_foot, self.audio, self.world.taxi_mgr,
+                self.world.pedestrian_mgr.pedestrians,
             )
 
         self.car.lane_assist_enabled = command.lane_assist_enabled
@@ -700,9 +738,23 @@ class SimulationServer:
             self._map_streamer.tick(self.car.x, self.car.y, math.cos(self.car.heading) * self.car.speed,
                                     math.sin(self.car.heading) * self.car.speed, urgent=not self.central_chunk_ready())
         self._prepare_home_map()
+        self._update_speed_cameras(dt)
         self._stream_map_chunks()
         self.navigation.update(self.world, self.car, self._current_way)
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
+
+    def _update_speed_cameras(self, dt: float) -> None:
+        # Do not mutate an index while map growth is copying/replacing it.
+        if self._map_streamer is not None and self._map_streamer.hold:
+            return
+        camera = self._camera_spawner.update(dt, self.car, self.world.spatial_grid, self.world.speed_cameras)
+        if camera is None:
+            return
+        cid = self._chunks_index.add_speed_camera(camera, len(self.world.speed_cameras) - 1)
+        with self._clients_lock:
+            for connection, (loaded, _) in list(self._client_chunks.items()):
+                if cid in loaded:
+                    connection.send(self._chunks_index.encoded(cid))
 
     def _prepare_home_map(self) -> None:
         """Once per home, while the map is idle: warm the cache for the area

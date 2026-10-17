@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import heapq
+import itertools
 import math
 import time
 from typing import Any, Generator, List, Optional, Tuple
@@ -428,9 +429,14 @@ class TrafficWorld:
         parking_spaces: Optional[List] = None,
         residents: Optional[ResidentManager] = None,
         logical_intersections: Optional[List] = None,
+        stop_signs: Optional[List] = None,
+        yield_signs: Optional[List] = None,
     ) -> None:
         self.ways = ways
         self.traffic_lights = traffic_lights or []
+        self.stop_signs = stop_signs or []
+        self.yield_signs = yield_signs or []
+        self._index_signs()
         self.crossings = crossings or []
         self.residents = residents or ResidentManager()
         self.sim_time = 0.0
@@ -513,7 +519,7 @@ class TrafficWorld:
 
     def start_map_sync(
         self, ways, traffic_lights=None, crossings=None, parking_spaces=None,
-        logical_intersections=None, **_kwargs,
+        logical_intersections=None, stop_signs=None, yield_signs=None, **_kwargs,
     ) -> None:
         """Begin a budgeted rebuild (bin-loader-v13.md) of the route graph
         and parking grid from a snapshot of `ways`/`parking_spaces`. The
@@ -522,6 +528,12 @@ class TrafficWorld:
         lists are cheap and applied immediately, as before."""
         if traffic_lights is not None:
             self.traffic_lights = traffic_lights
+        if stop_signs is not None or yield_signs is not None:
+            if stop_signs is not None:
+                self.stop_signs = stop_signs
+            if yield_signs is not None:
+                self.yield_signs = yield_signs
+            self._index_signs()
         if crossings is not None:
             self.crossings = crossings
         if logical_intersections is not None:
@@ -579,13 +591,26 @@ class TrafficWorld:
             if (light.x - x) ** 2 + (light.y - y) ** 2 <= radius_sq
         ]
 
+    def _index_signs(self) -> None:
+        self._sign_grid = {}
+        for sign in itertools.chain(self.stop_signs, self.yield_signs):
+            cell = (math.floor(sign.x / 100), math.floor(sign.y / 100))
+            self._sign_grid.setdefault(cell, []).append(sign)
+
+    def nearby_signs(self, x: float, y: float) -> list:
+        cx, cy = math.floor(x / 100), math.floor(y / 100)
+        return [sign for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                for sign in self._sign_grid.get((cx + dx, cy + dy), ())
+                if math.hypot(sign.x - x, sign.y - y) <= 100]
+
     def sync_map_data(
         self, ways, traffic_lights=None, crossings=None, parking_spaces=None,
-        logical_intersections=None, **_kwargs,
+        logical_intersections=None, stop_signs=None, yield_signs=None, **_kwargs,
     ) -> None:
         """Synchronous form of start_map_sync()/advance_map_sync()."""
         self.start_map_sync(
             ways, traffic_lights=traffic_lights, crossings=crossings,
             parking_spaces=parking_spaces, logical_intersections=logical_intersections,
+            stop_signs=stop_signs, yield_signs=yield_signs,
         )
         self.advance_map_sync(math.inf)

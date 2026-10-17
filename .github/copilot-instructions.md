@@ -16,6 +16,7 @@ Quick start (commands)
 - Custom Overpass endpoints: `OVERPASS_ENDPOINTS="https://overpass.kumi.systems/api/interpreter" make run-server`
 
 High-level architecture / data flow
+- Keep externally sourced JSON datasets gzip-compressed (`.json.gz`) in the repository; update loaders, exporters, tests and packaging together. Hand-authored configuration and project-generated reports need not be compressed.
 - `server/`: the server loop (`SimulationServer`), its CLI, live map expansion (`map_sync.py`).
 - `world_loader.py`: loads and builds a city's world (OSM fetch, caches, derived structures).
 - `simulation.py`: one gameplay tick (`advance_simulation`), input as `PlayerCommand`.
@@ -40,7 +41,7 @@ Important implementation details for an AI agent
 
 External integrations & failure handling
 - Overpass API endpoints are in `DEFAULT_OVERPASS_ENDPOINTS`. Requests have retries, exponential backoff, and per-endpoint attempts.
-- Bundled sample data (`sample_osm.json`) only with `--use-sample`.
+- Bundled sample data (`sample_osm.json.gz`) only with `--use-sample`.
 - Environment override: `OVERPASS_ENDPOINTS` (comma-separated) can be used to change endpoints at runtime.
 - Caching: OSM JSON under the user cache dir with TTL, built worlds as `.rwc` files; `--force-refresh` / `--no-cache` bypass them.
 - Logging: `logging` (configure with `--log-level`).

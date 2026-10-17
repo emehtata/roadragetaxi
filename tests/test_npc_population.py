@@ -69,6 +69,42 @@ def test_populate_initial_reaches_target_count():
     assert len(manager.vehicles) == 8
 
 
+def test_initial_population_does_not_fill_parking_beside_player_spawn(monkeypatch):
+    player = (428980.81947864796, 7210271.678917232)
+    point = (428979.25997948594, 7210274.267445893)  # screenshot NPC 13, only 3.02 m away
+    ways = [Way(points_m=[(point[0] - 100, point[1]), (point[0] + 100, point[1])],
+                highway="service", half_width_m=4.5)]
+    monkeypatch.setattr(npc_module, "_pick_npc_destination_candidates", lambda *a, **kw: [(point, None)])
+    manager = NPCVehicleManager(target_count=1, vehicle_distribution={"car": 1.0})
+    manager.populate_initial(*player, ResidentManager(), ways)
+    assert manager.vehicles == []
+
+
+@pytest.mark.parametrize("kind,distance,allowed", [("car", 3.0, False), ("car", 8.0, True),
+                                                  ("bus", 8.0, False), ("bus", 11.0, True)])
+@pytest.mark.parametrize("angle", [0.0, math.pi / 2, math.pi, -math.pi / 2])
+def test_new_parked_vehicles_leave_player_clearance_for_their_size(kind, distance, allowed, angle):
+    from theroadragetrip.geo import boxes_intersect
+
+    manager = NPCVehicleManager(target_count=1)
+    point = (distance * math.cos(angle), distance * math.sin(angle))
+    vehicle = manager._place_one(point, None, [], None, None, None, None, None,
+                                 vehicle_type=kind, player_position=(0.0, 0.0))
+    assert (vehicle is not None) == allowed
+    if vehicle is not None:
+        for heading in (0.0, math.pi / 2, math.pi, -math.pi / 2):
+            assert not boxes_intersect(0, 0, heading, 4.0, 1.8,
+                                       vehicle.x, vehicle.y, vehicle.heading, vehicle.length_m, vehicle.width_m)
+
+
+def test_rejected_player_overlap_does_not_claim_parking_space():
+    manager = NPCVehicleManager(target_count=1)
+    space = SimpleNamespace(occupied=False, reserved=False, vehicle_id=None)
+    assert manager._place_one((1.0, 1.0), space, [], None, None, None, None, None,
+                               player_position=(0.0, 0.0)) is None
+    assert not space.occupied and not space.reserved and space.vehicle_id is None
+
+
 def test_populate_initial_gives_vehicles_a_variety_of_colors():
     """Reported: every NPC vehicle was the exact same flat gray."""
     ways = _city_block_grid()
@@ -935,6 +971,64 @@ def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
     assert distance_from_home < 100.0
 
 
+def test_retiring_home_trip_clears_resident_links_and_allows_the_next_trip():
+    from theroadragetrip.npc import start_npc_trip
+    ways = [Way([(i * 20, 0), ((i + 1) * 20, 0)], "residential", 4.5) for i in range(20)]
+    traffic, residents = TrafficWorld(ways), ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, traffic, ways, (40, 0), (120, 0))
+    manager = NPCVehicleManager(target_count=0, min_count=0)
+    manager.vehicles.append(vehicle)
+    manager.drivers[1] = driver
+    traffic.npcs = manager.vehicles
+    household = manager.household_manager.create((120, 0))
+    members = set(vehicle.trip_group.member_resident_ids)
+    household.member_resident_ids.update(members)
+    household.vehicle_ids.add(1)
+    for resident_id in members:
+        residents.get(resident_id).household_id = household.household_id
+    vehicle.household_id = household.household_id
+    vehicle.vehicle_kind = "household"
+    vehicle.home_position = household.home_position
+    vehicle.returning_home = True
+    pedestrians = PedestrianManager(ways, target_count=0, traffic_manager=traffic, residents=residents)
+    player = Car(80, 100, 0, 0)
+    original_ids = set(residents.residents)
+    for _ in range(3000):
+        traffic.advance_time(1 / 30)
+        manager.update(1 / 30, player.x, player.y, residents, traffic, ways, pedestrian_mgr=pedestrians)
+        pedestrians.update(player, dt=1 / 30)
+        if vehicle.trip_group is None:
+            break
+    assert vehicle.state == NPCState.PARKED and vehicle.trip_group is None
+    assert vehicle.owner_id is None and 1 not in manager.drivers
+    assert set(residents.residents) == original_ids
+    assert not any(p.resident_id in members for p in pedestrians.pedestrians)
+    for resident_id in members:
+        member = residents.get(resident_id)
+        assert member.trip_group_id is None and member.active_vehicle_id is None
+        assert member.mode == "household"
+        assert member.household_id == household.household_id and 1 in member.vehicle_ids
+    next_driver = start_npc_trip(vehicle, residents, traffic, ways, (240, 0), member_resident_ids=sorted(members))
+    assert next_driver is not None
+    assert set(vehicle.trip_group.member_resident_ids) == members
+    for resident_id in members:
+        member = residents.get(resident_id)
+        assert member.active_vehicle_id == 1 and member.trip_group_id == vehicle.trip_group.group_id
+        assert member.mode == ("driving" if resident_id == vehicle.owner_id else "riding")
+
+
+def test_retiring_stale_group_does_not_unlink_a_residents_newer_trip():
+    manager, residents = NPCVehicleManager(target_count=0), ResidentManager()
+    old_member = residents.create(mode="riding")
+    old_member.trip_group_id, old_member.active_vehicle_id = 99, 2
+    vehicle = place_parked_npc(1, (0, 0), None)
+    vehicle.owner_id = old_member.resident_id
+    vehicle.trip_group = TripGroup(1, 1, [old_member.resident_id], boarded_resident_ids={old_member.resident_id})
+    manager._retire_trip(vehicle, residents)
+    assert old_member.trip_group_id == 99 and old_member.active_vehicle_id == 2
+    assert old_member.mode == "riding"
+
+
 def test_experimental_vehicles_excluded_from_default_distribution():
     """Motorcycle is marked experimental (vehicles/plugins/motorcycle.py) -
     off by default, matching config's [experimental] enable_two_wheelers
@@ -1158,6 +1252,22 @@ def test_begin_trip_caps_and_deduplicates_supplied_household_members():
     assert len(vehicle.trip_group.member_resident_ids) == vehicle.capacity
     assert len(set(vehicle.trip_group.member_resident_ids)) == vehicle.capacity
     assert vehicle.trip_group.boarded_resident_ids == set(vehicle.trip_group.member_resident_ids)
+
+
+@pytest.mark.parametrize("npc_obstacle", [False, True])
+@pytest.mark.parametrize("layer,map_level,collides", [(0, 0, False), (1, 0, True), (1, -1, False)])
+def test_vehicle_collision_respects_bridge_and_floor_levels(npc_obstacle, layer, map_level, collides):
+    from theroadragetrip.npc import NPCVehicle
+    from theroadragetrip.physics import Car
+
+    manager = NPCVehicleManager()
+    residents = ResidentManager()
+    pedestrian_mgr = SimpleNamespace()
+    vehicle = NPCVehicle(vehicle_id=1, car=Car(x=0.0, y=0.0, heading=0.0, speed=4.0, layer=1))
+    other_car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, layer=layer, map_level=map_level)
+    obstacle = NPCVehicle(vehicle_id=2, car=other_car) if npc_obstacle else other_car
+    manager._check_vehicle_collision(vehicle, [obstacle], residents, pedestrian_mgr, sim_time=50.0)
+    assert (vehicle.state == NPCState.CRASHED) == collides
 
 
 def test_check_vehicle_collision_crashes_both_overlapping_npc_vehicles():
@@ -1936,6 +2046,60 @@ def test_fresh_trip_jobs_leave_capacity_for_ready_groups():
     assert [job for job in manager._route_jobs if job["vehicle"] is vehicle] == [first_job]
 
 
+def test_recovery_routes_without_physical_progress_eventually_hold():
+    manager, residents, world, ways, vehicle, driver, plan = _existing_job_fixture("recovery")
+
+    def completed():
+        yield
+        return plan
+
+    for _ in range(npc_module.NPC_RECOVERY_MAX_WITHOUT_PROGRESS):
+        vehicle.state = NPCState.WAITING
+        driver.recovery_stage = "STUCK"
+        manager._enqueue_existing_route_job("recovery", vehicle, completed(), world)
+        _finish_route_jobs(manager, vehicle.x, vehicle.y, residents, world)
+        assert driver.recovery_stage == "NORMAL"
+    vehicle.state = NPCState.WAITING
+    driver.recovery_stage = "STUCK"
+    manager._enqueue_existing_route_job("recovery", vehicle, completed(), world)
+    _finish_route_jobs(manager, vehicle.x, vehicle.y, residents, world)
+    assert driver.recovery_stage == "HOLD" and vehicle.state == NPCState.WAITING
+    assert "no driving progress" in vehicle.debug_waiting_for
+    assert manager.route_job_stats["recovered"] == npc_module.NPC_RECOVERY_MAX_WITHOUT_PROGRESS
+
+    # A successful-looking new destination does not erase failed movement history.
+    for attempt in range(1, npc_module.NPC_HOLD_GIVE_UP_ATTEMPTS + 1):
+        manager._enqueue_existing_route_job("unhold", vehicle, completed(), world)
+        _finish_route_jobs(manager, vehicle.x, vehicle.y, residents, world)
+        assert driver.hold_failures == attempt
+        vehicle.state = NPCState.WAITING
+        driver.recovery_stage = "STUCK"
+        manager._enqueue_existing_route_job("recovery", vehicle, completed(), world)
+        _finish_route_jobs(manager, vehicle.x, vehicle.y, residents, world)
+        assert driver.recovery_stage == "HOLD"
+
+    original_residents = set(residents.residents)
+    members = set(vehicle.trip_group.member_resident_ids)
+    manager._next_vehicle_id = 2
+    # This tick is about the given-up vehicle's removal: no top-up spawns,
+    # whose new residents (on some seeds) would muddle the check below.
+    manager.target_count = manager.target_moving_count = 0
+    manager.update(1 / 30, vehicle.x, vehicle.y, residents, world, ways,
+                   viewport_bounds=(vehicle.x - 20, vehicle.y - 20, vehicle.x + 20, vehicle.y + 20))
+    assert all(candidate is not vehicle for candidate in manager.vehicles)
+    assert set(residents.residents) == original_residents
+    assert all(residents.get(rid).trip_group_id is None for rid in members)
+
+
+def test_actual_driving_progress_resets_recovery_attempt_history():
+    manager, residents, world, ways, vehicle, driver, plan = _existing_job_fixture("recovery")
+    driver.recovery_anchor = (vehicle.x - npc_module.NPC_RECOVERY_PROGRESS_M, vehicle.y)
+    driver.recovery_route_attempts = npc_module.NPC_RECOVERY_MAX_WITHOUT_PROGRESS
+    driver.hold_failures = 2
+    npc_module.update_npc(vehicle, driver, 1 / 30, world, residents)
+    assert driver.recovery_anchor is None and driver.recovery_route_attempts == driver.hold_failures == 0
+
+
 def test_recovery_discards_an_in_place_stolen_parking_reservation():
     manager, residents, world, ways, vehicle, driver, plan = _existing_job_fixture("recovery")
     space = SimpleNamespace(reserved=True, occupied=False, vehicle_id=vehicle.vehicle_id)
@@ -2002,32 +2166,36 @@ def test_a_taxi_rolled_back_from_a_wreck_is_not_put_back_into_it():
     assert not tick(contact - 0.5)  # reversing away is free at once
 
 
-def test_traffic_follows_the_buildings_around_the_player():
+def test_traffic_follows_the_people_around_the_player():
     """The city's NPC target is for its built-up parts: a remote road with a
-    few houses gets a car or two, a town centre all of it, recounted as the
-    player moves."""
+    few houses gets a car or two, a block of flats all of it, recounted as
+    the player moves."""
     from types import SimpleNamespace
 
-    from theroadragetrip.npc import NPC_FULL_TRAFFIC_BUILDINGS
+    from theroadragetrip.npc import NPC_FULL_TRAFFIC_PEOPLE
     from theroadragetrip.physics import SpatialWayGrid
 
-    def house(x, y):
-        return SimpleNamespace(points_m=[(x, y), (x + 8, y), (x + 8, y + 8), (x, y + 8)], bbox=(x, y, x + 8, y + 8))
+    def house(x, y, kind="house", size=8, levels=None):
+        return SimpleNamespace(
+            points_m=[(x, y), (x + size, y), (x + size, y + size), (x, y + size)], bbox=(x, y, x + size, y + size),
+            building_type=kind, levels=levels, height_m=8.0, height_is_explicit=False,
+        )
 
-    town = [house(5000 + (i % 15) * 20, (i // 15) * 20) for i in range(NPC_FULL_TRAFFIC_BUILDINGS + 30)]
+    # 20 x 20 m blocks of flats, 4 floors: 40 residents each
+    town = [house(5000 + (i % 10) * 25, (i // 10) * 25, "apartments", 20, 4) for i in range(round(NPC_FULL_TRAFFIC_PEOPLE / 40) + 10)]
     grid = SpatialWayGrid()
     grid.rebuild([house(0, 0), house(30, 40)] + town)
     manager = NPCVehicleManager(target_count=20)
 
-    manager.set_local_density(10.0, 10.0, grid)  # two houses by the road
+    manager.set_local_density(10.0, 10.0, grid)  # two houses by the road: their car
     assert manager.target_count == 1 and manager.min_count == 0
-    manager.set_local_density(5100.0, 100.0, grid)  # the town
+    manager.set_local_density(5100.0, 100.0, grid)  # the town (no clock: the peak hour)
     assert manager.target_count == 20 and manager.min_count == manager.city_min_count
-    assert manager.target_moving_count == max(1, int(20 * manager.target_moving_fraction))
-    manager.set_local_density(-20000.0, 0.0, grid)  # an empty forest road: one passing car at most
-    assert manager.target_count == 1
+    assert manager.population_diagnostics["traffic_demand"]["expected_moving"] == pytest.approx(20 * manager.target_moving_fraction)
+    manager.set_local_density(-20000.0, 0.0, grid)  # an empty forest road: nothing forced there
+    assert manager.target_count == 0 and manager.target_moving_count == 0
     manager.set_local_density(-20000.0, 0.0, grid, current_way=Way([(0, 0), (100, 0)], "primary", 4.0))
-    assert manager.target_count == 5  # a main road keeps passing traffic even without nearby buildings
+    assert manager.population_diagnostics["traffic_demand"]["through"] > 0  # a main road carries passing traffic
 
 
 def test_a_car_parked_on_the_shoulder_finds_its_way_back():
@@ -2042,3 +2210,22 @@ def test_a_car_parked_on_the_shoulder_finds_its_way_back():
     shoulder = _roadside_parking_point((ax + bx) / 2.0, (ay + by) / 2.0, ways, None)
     assert shoulder is not None
     assert _roadside_parking_point(shoulder[0], shoulder[1], ways, None) is not None
+
+
+def test_a_trip_home_to_a_spot_beside_the_road_may_leave_the_road():
+    """Bug: the home spot, picked unchanged as the destination, counted as
+    on the road, so the last metres into it were refused at the road edge
+    and the car stalled beside home until it was given up (seed-dependent
+    failure of the full trip-cycle test)."""
+    from theroadragetrip.npc import _pick_npc_destination_candidates, continue_npc_trip
+
+    ways = [Way([(i * 20, 0), ((i + 1) * 20, 0)], "residential", 4.5) for i in range(20)]
+    traffic, residents = TrafficWorld(ways), ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, traffic, ways, (40, 0), (120, 0))
+    vehicle.state = NPCState.PARKED
+    vehicle.trip_group = None
+    # A household's home is where its car was parked: a roadside spot
+    (home, _), *_ = _pick_npc_destination_candidates(300.0, -5.0, None, None, None, ways=ways)
+    assert home[1] < -4.5  # beside the road: its edge is at y = -4.5
+    assert continue_npc_trip(vehicle, driver, traffic, ways, destination_query_point=home)
+    assert driver.destination == home and driver.destination_is_off_road

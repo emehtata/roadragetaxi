@@ -1,6 +1,6 @@
 Third-party data in this directory (excluded from the project's MIT license)
 
-places.json
+places.json.gz
   Airports and railway stations extracted from OpenStreetMap by
   tools/osm/extract_places.py.
   © OpenStreetMap contributors. Available under the Open Database License
@@ -30,6 +30,8 @@ sports_fixtures.json.gz
   2025 and 2026 Veikkausliiga seasons were normalized to UTC JSON with
   game crowd windows. Provided as is, without warranty. The source data
   remains copyright of Liiga, Veikkausliiga and their data providers.
+  Status: UNRESOLVED - no licence or redistribution terms found; see
+  LICENSE_AUDIT.md before a commercial release.
 
 finnish_first_names.json.gz, finnish_surnames.json.gz
   Finnish first names and surnames from the population information system
@@ -51,3 +53,16 @@ kunnat.json.gz
 Weather shown in the game (not stored here) is Finnish Meteorological
 Institute (FMI) open data, CC BY 4.0, fetched at runtime when historical
 weather is enabled.
+
+godot/finland_minimap.svg (the city menu's map, shipped in the game)
+  Drawn from OpenStreetMap motorway, trunk and primary roads by
+  tools/osm/build_finland_minimap.py. © OpenStreetMap contributors, ODbL 1.0
+  (https://www.openstreetmap.org/copyright).
+
+sample_osm.json.gz (repository root, shipped with the server)
+  Offline sample map for --use-sample. Its origin is not recorded:
+  UNRESOLVED (see LICENSE_AUDIT.md).
+
+Sounds and images: see src/theroadragetrip/sounds/LICENSE and LICENSE_AUDIT.md
+for their status (several items are unresolved). The game shows these credits
+under Credits in the main menu.

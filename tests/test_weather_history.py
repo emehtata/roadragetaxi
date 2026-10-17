@@ -2,6 +2,8 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from theroadragetrip.climate import SeasonalAppearance, appearance_with_snow_depth
 from theroadragetrip.weather import WeatherSystem, WeatherType, weather_type_for_observation
 from theroadragetrip.weather_history import (
@@ -16,6 +18,60 @@ from theroadragetrip.weather_history import (
 
 FIXTURE = (Path(__file__).parent / "data" / "fmi_oulu_2025-01-15.xml").read_text()
 OULU = (65.0121, 25.4651)
+
+
+def test_previous_weather_uses_latest_usable_past_hour_not_future_or_other_location(tmp_path):
+    moment = datetime(2025, 1, 15, 2)
+    cache = tmp_path / "weather.db"
+    original = WeatherHistory(*OULU, cache_path=cache, fetch=_fake_fmi([]))
+    original.request(moment, moment)
+    original.wait_idle(5.0)
+    later = WeatherHistory(*OULU, cache_path=cache)
+    with later._lock:
+        later._open_cache()
+    assert later.previous(moment) is None  # no earlier usable hour in this fixture
+    result = later.previous(moment + timedelta(hours=10))
+    assert result is not None
+    h, weather = result
+    assert h < game_time_to_utc_hour(moment + timedelta(hours=10))
+    assert weather.wawa is not None
+    later._forecast_hours[h + 1] = HourlyWeather(temperature_c=5)  # skip temperature-only hours
+    assert later.previous(moment + timedelta(hours=10)) == result
+    later._forecast_hours[h + 2] = HourlyWeather(wawa=61, source="forecast")
+    later._hours[h + 2] = HourlyWeather(temperature_c=5)
+    assert later.previous(moment + timedelta(hours=10))[0] == h + 2
+    other = WeatherHistory(60, 20, cache_path=cache)
+    with other._lock:
+        other._open_cache()
+    assert other.previous(moment + timedelta(hours=10)) is None
+
+
+@pytest.mark.parametrize("kind", ["observations", "forecast"])
+@pytest.mark.parametrize("failure", ["offline", "malformed", "empty"])
+def test_fmi_failures_and_empty_responses_warn_in_console(caplog, kind, failure):
+    calls = []
+    def fetch(*args):
+        calls.append(args)
+        if failure == "offline":
+            raise OSError("network offline")
+        return "not XML" if failure == "malformed" else "<FeatureCollection/>"
+    history = WeatherHistory(*OULU, fetch=fetch, fetch_forecast=fetch)
+    moment = datetime(2025, 1, 15) if kind == "observations" else datetime(2999, 1, 1)
+    with caplog.at_level("WARNING", logger="theroadragetrip.weather_history"):
+        history.request(moment, moment)
+        history.wait_idle(5.0)
+    assert len(calls) == 1
+    warning = next(record.getMessage() for record in caplog.records if record.levelname == "WARNING")
+    assert ("FMI forecast" if kind == "forecast" else "FMI weather history") in warning
+    assert history.location in warning and "generated weather" in warning
+    if failure == "empty":
+        assert "no usable hourly data" in warning
+    else:
+        assert "fetch failed" in warning and "retry in 60 s" in warning
+        assert ("OSError: network offline" if failure == "offline" else "ParseError:") in warning
+        history.request(moment, moment)
+        history.wait_idle(5.0)
+        assert len(calls) == 1  # logging must not defeat the retry backoff
 
 
 def test_real_fmi_response_takes_each_parameter_from_the_nearest_station_that_has_it():
@@ -69,6 +125,43 @@ def test_future_is_never_requested_and_failures_back_off():
     broken.request(datetime(2025, 1, 15), datetime(2025, 1, 15))  # within the retry delay: no new fetch
     broken.wait_idle(5.0)
     assert calls == ["x"] and broken.get(datetime(2025, 1, 15)) is None
+
+
+def test_old_recent_observations_are_permanent_but_missing_hours_can_be_fetched(tmp_path):
+    cache = tmp_path / "weather.db"
+    moment = datetime(2025, 1, 15, 2)
+    original = WeatherHistory(*OULU, cache_path=cache, fetch=_fake_fmi([]))
+    original.request(moment, moment)
+    original.wait_idle(5.0)
+    expected = original.get(moment)
+    assert expected is not None
+    chunk = int(game_time_to_utc_hour(moment)) // FETCH_CHUNK_HOURS
+    # Simulate a chunk downloaded while it was still incomplete, years ago.
+    with original._db:
+        original._db.execute("DELETE FROM fetched_chunks_v4")
+        original._db.execute("INSERT INTO recent_chunks_v4 VALUES (?, ?, ?)",
+                             (original.location, chunk, chunk * FETCH_CHUNK_HOURS * 3600))
+    calls = []
+
+    def offline(*args):
+        calls.append(args)
+        raise OSError("offline")
+
+    restarted = WeatherHistory(*OULU, cache_path=cache, fetch=offline)
+    restarted.request(moment, moment)
+    restarted.wait_idle(5.0)
+    assert restarted.get(moment) == expected
+    assert calls == []  # old observations do not expire with the recent-chunk timer
+    missing = moment + timedelta(hours=10)
+    assert restarted.get(missing) is None
+    restarted.request(moment, missing)
+    restarted.wait_idle(5.0)
+    assert len(calls) == 1  # incomplete historical chunks must still fill genuinely missing hours
+    assert restarted.get(moment) == expected
+    again = WeatherHistory(*OULU, cache_path=cache, fetch=offline)
+    again.request(moment, moment)
+    again.wait_idle(5.0)
+    assert again.get(moment) == expected and len(calls) == 1
 
 
 def test_chunks_are_three_days_of_utc_hours():
@@ -200,3 +293,84 @@ def test_recent_chunks_and_the_forecast_are_cached_for_an_hour(tmp_path, monkeyp
     monkeypatch.setattr(wh.time, "time", lambda: real_time() + 2 * 3600)  # two hours later
     session()
     assert len(observation_calls) > calls and len(forecast_calls) == 2
+
+
+@pytest.mark.parametrize("failure", ["offline", "malformed", "empty"])
+@pytest.mark.parametrize("restart", [False, True])
+def test_stale_forecast_survives_failed_refresh_and_restart(tmp_path, monkeypatch, failure, restart):
+    import threading
+    import theroadragetrip.weather_history as wh
+
+    cache = tmp_path / "weather.db"
+    future = datetime(2999, 1, 1)  # request only a forecast, independent of today's observation chunk
+    moment = datetime(2026, 9, 24, 20)
+    history = WeatherHistory(*OULU, cache_path=cache, fetch_forecast=lambda *a: FORECAST_FIXTURE)
+    history.request(future, future)
+    history.wait_idle(5.0)
+    expected = history.get(moment)
+    assert expected is not None
+    original_age = history._forecast_fetched_at
+    real_time, real_monotonic = wh.time.time, wh.time.monotonic
+    monkeypatch.setattr(wh.time, "time", lambda: real_time() + 2 * 3600)
+    monkeypatch.setattr(wh.time, "monotonic", lambda: real_monotonic() + 2 * 3600)
+    started, release = threading.Event(), threading.Event()
+    calls = []
+
+    def fail(*args):
+        calls.append(args)
+        started.set()
+        assert release.wait(5.0)
+        if failure == "offline":
+            raise OSError("offline")
+        return "not XML" if failure == "malformed" else "<FeatureCollection/>"
+
+    if restart:
+        history = WeatherHistory(*OULU, cache_path=cache, fetch_forecast=fail)
+    else:
+        history._fetch_forecast = fail
+    history.request(future, future)
+    try:
+        assert started.wait(5.0)  # stale data is usable even while the network request is pending
+        assert history.get(moment) == expected
+    finally:
+        release.set()
+        history.wait_idle(5.0)
+    assert history.get(moment) == expected
+    assert history._forecast_fetched_at == pytest.approx(original_age, abs=0.1)
+    history.request(future, future)
+    history.wait_idle(5.0)
+    assert len(calls) == 1  # retry backoff, not a fetch per game tick
+
+    # Neither memory nor the last successful disk cache was erased or marked fresh.
+    later = WeatherHistory(*OULU, cache_path=cache)
+    with later._lock:
+        later._open_cache()
+        assert not later._load_cached_forecast()
+    assert later.get(moment) == expected
+    assert later.get(datetime(2999, 1, 1)) is None  # never extrapolate beyond cached hours
+
+
+def test_successful_refresh_replaces_and_persists_forecast(tmp_path, monkeypatch):
+    import theroadragetrip.weather_history as wh
+
+    cache = tmp_path / "weather.db"
+    future = datetime(2999, 1, 1)
+    moment = datetime(2026, 9, 24, 20)
+    history = WeatherHistory(*OULU, cache_path=cache, fetch_forecast=lambda *a: FORECAST_FIXTURE)
+    history.request(future, future)
+    history.wait_idle(5.0)
+    old = history.get(moment)
+    real_monotonic = wh.time.monotonic
+    monkeypatch.setattr(wh.time, "monotonic", lambda: real_monotonic() + 2 * 3600)
+    from dataclasses import replace
+    new = replace(old, temperature_c=old.temperature_c + 1)
+    hour = int(game_time_to_utc_hour(moment))
+    monkeypatch.setattr(wh, "parse_fmi_forecast", lambda xml: {hour: new})
+    history.request(future, future)
+    history.wait_idle(5.0)
+    assert history.get(moment) == new
+    later = WeatherHistory(*OULU, cache_path=cache)
+    with later._lock:
+        later._open_cache()
+        assert later._load_cached_forecast()
+    assert later.get(moment) == new

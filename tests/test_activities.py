@@ -564,13 +564,18 @@ def test_activity_pedestrians_survive_population_culling_far_from_player():
     pedestrian.activity = ActivityInstance(plugin_id="bench_sitting", location=None, started_sim_time=0.0)
     pedestrian.state = "walking_to_activity"
 
-    far_away_player = Car(x=5000.0, y=5000.0, heading=0.0, speed=0.0)
+    # Beyond the despawn radius, within twice it: kept (no cull-and-respawn churn).
+    beyond_despawn = Car(x=manager.despawn_radius_m * 1.5, y=0.0, heading=0.0, speed=0.0)
+    manager.target_count = 0  # only this one pedestrian
     counts = []
     for _ in range(60):
-        manager.update(far_away_player, dt=0.2)
+        manager.update(beyond_despawn, dt=0.2)
         counts.append(len(manager.pedestrians))
 
     assert all(count == 1 for count in counts[3:]), f"pedestrian count fluctuated: {counts}"
+    # Far behind a driving player they don't pile up: gone, the spot released.
+    manager.update(Car(x=5000.0, y=5000.0, heading=0.0, speed=0.0), dt=2.0)
+    assert manager.pedestrians == []
 
 
 

@@ -1,5 +1,7 @@
 import time
 
+import pytest
+
 from theroadragetrip.osm import ParkingSpace, Way
 from theroadragetrip.traffic_world import TrafficWorld
 
@@ -105,6 +107,7 @@ def _large_city_block_grid(block_count: int, step_m: float):
     return ways
 
 
+@pytest.mark.timing
 def test_plan_route_stays_fast_on_a_large_graph():
     """Regression (client-server-016.md section 9/10): plan_route used to
     sort *every* node in the whole route graph, twice, on every call,
@@ -150,6 +153,19 @@ def test_nearest_node_indices_falls_back_when_point_is_off_the_mapped_area():
     found = world._nearest_node_indices((1_000_000.0, 1_000_000.0), 8, allowed)
 
     assert len(found) == 8
+
+
+def test_stop_and_yield_signs_survive_startup_and_stream_replacement():
+    from theroadragetrip.osm import StopSign, YieldSign
+    stop, give_way = StopSign(10, 0, id=1), YieldSign(20, 0, id=2)
+    world = TrafficWorld([], stop_signs=[stop], yield_signs=[give_way])
+    assert world.nearby_signs(0, 0) == [stop, give_way]
+    replacement = StopSign(30, 0, id=3)
+    world.start_map_sync([], stop_signs=[replacement], yield_signs=[])
+    assert world.nearby_signs(0, 0) == [replacement]
+    world.advance_map_sync(float("inf"))
+    world.sync_map_data([], stop_signs=[])
+    assert world.nearby_signs(0, 0) == []
 
 
 def test_distant_nearest_node_lookup_has_a_fixed_grid_probe_limit():

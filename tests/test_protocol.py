@@ -79,3 +79,49 @@ def test_the_waiting_customer_crosses_the_wire():
     assert data["ped"] == [11.5, 19.0, 1.25] and data["is_walking_to_car"] is True
     assert data["boarded"] is False and data["rail_booking"] is False
     assert json.loads(json.dumps(data)) == data  # plain JSON on the wire
+
+
+@pytest.mark.parametrize("message", [
+    {}, {"command": None}, {"command": [1, 2]}, {"command": "throttle"}, {"command": {}},
+])
+def test_a_command_without_a_valid_payload_is_no_input(message):
+    """These raised in the server's tick, which nothing catches: one bad
+    client command stopped the server."""
+    command, interact = protocol.command_from_message(message)
+    assert command == PlayerCommand() and interact is False
+
+
+def test_command_fields_of_the_wrong_type_or_range_are_not_trusted():
+    command, interact = protocol.command_from_message({"command": {
+        "throttle": "full", "brake": float("nan"), "steer_left": 50, "steer_right": -3,
+        "forward": True, "turn": -7.5, "sprint": "yes", "refuel": 1, "respawn": True,
+        "engine_on": "off", "interact": "true", "unknown_field": 1,
+    }})
+    assert command == PlayerCommand(steer_left=1.0, steer_right=0.0, turn=-1.0, respawn=True)
+    assert interact is False  # only a real true presses the key
+
+
+def test_extremely_large_json_integers_are_clamped_without_overflow():
+    wire = protocol.encode({"type": "command", "version": protocol.PROTOCOL_VERSION,
+                            "command": {"throttle": 10**400, "forward": -(10**400)}})
+    decoded = protocol.decode(wire.rstrip(b"\n"))
+    command, _ = protocol.command_from_message(decoded)
+    assert command.throttle == 1.0 and command.forward == -1.0
+
+
+def test_random_command_payloads_never_raise_and_stay_in_range():
+    import random
+
+    rng = random.Random(18)
+    junk = [None, True, False, 0, 1, -1, 2.5, -1e9, 1e309, float("nan"), "", "x", [], {}, [1], {"a": 1}]
+    names = list(PlayerCommand.__dataclass_fields__) + ["interact", "extra"]
+    for _ in range(2000):
+        payload = {name: rng.choice(junk) for name in rng.sample(names, rng.randint(0, len(names)))}
+        command, interact = protocol.command_from_message({"command": payload})
+        assert isinstance(interact, bool)
+        for name, (low, high) in protocol.COMMAND_RANGES.items():
+            value = getattr(command, name)
+            assert isinstance(value, float) and low <= value <= high
+        for name in PlayerCommand.__dataclass_fields__:
+            if name not in protocol.COMMAND_RANGES:
+                assert isinstance(getattr(command, name), bool) or (name == "engine_on" and command.engine_on is None)

@@ -5,7 +5,7 @@ compact weekly timetable the game reads (theroadragetrip.train_timetable).
     PYTHONPATH=src python -m theroadragetrip.railway_import [--zip gtfs-passenger.zip] [OUTPUT]
 
 Stations are matched to OSM railway stations from the committed
-assets/places.json (station code, else nearest within 1 km) so trains stop
+assets/places.json.gz (station code, else nearest within 1 km) so trains stop
 at the mapped station. Downloads
 https://rata.digitraffic.fi/api/v1/trains/gtfs-passenger.zip
 (~6 MB) unless --zip is given. The game refreshes its own copy weekly
@@ -38,7 +38,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 GTFS_URL = "https://rata.digitraffic.fi/api/v1/trains/gtfs-passenger.zip"
 DEFAULT_OUTPUT = Path(__file__).with_name("assets") / "railway_timetable.json.gz"
 FORMAT_VERSION = 4  # 4: platform (track) code per call + platform positions
-PLACES_PATH = Path(__file__).with_name("assets") / "places.json"
+PLACES_PATH = Path(__file__).with_name("assets") / "places.json.gz"
 # GTFS -> OSM station match: same station code within CODE_MATCH_M, else the
 # nearest OSM railway station within NEAR_MATCH_M (coordinates differ by
 # tens of metres between the datasets).
@@ -90,11 +90,12 @@ def _identity(route: dict, trip: dict) -> Tuple[str, str]:
 
 
 def _osm_stations() -> List[dict]:
-    """OSM railway stations from the committed places.json (see
+    """OSM railway stations from the committed places.json.gz (see
     tools/osm/extract_places.py); empty if it is missing."""
     try:
-        document = json.loads(PLACES_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        with gzip.open(PLACES_PATH, "rt", encoding="utf-8") as stream:
+            document = json.load(stream)
+    except (OSError, EOFError, ValueError):
         return []
     return [place for place in document.get("places", []) if place.get("type") == "railway_station"]
 

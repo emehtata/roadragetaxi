@@ -496,6 +496,14 @@ class ChunkIndex:
             data = self._encoded[cid] = encode(self.message(cid))
         return data
 
+    def add_speed_camera(self, camera, index: int) -> str:
+        """Add one runtime camera without rebuilding static map geometry."""
+        cid = chunk_id(*cell_of(camera.x, camera.y, self.size))
+        self._add("speed_cameras", ((camera.x, camera.y),),
+                  [index, round(camera.x, 2), round(camera.y, 2), round(camera.heading, 3)])
+        self._encoded.pop(cid, None)
+        return cid
+
     def encode_all(self) -> None:
         for cid in self._chunks:
             self.encoded(cid)

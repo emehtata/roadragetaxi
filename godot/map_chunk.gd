@@ -1,20 +1,21 @@
 ## One map chunk, drawn once into a few canvas items (one draw list each,
-## never a node per road), stacked by z (roads by layer, then wet roads
-## and puddles, then railways, then buildings):
+## never a node per road), stacked by z (ground, buildings, elevated decks,
+## then vehicles and elevated railways):
 ##
 ##   z0  water (this node): another chunk's lake can't cover a bridge;
 ##       sports field markings (over every chunk's landuse)
-##   z1  roads at ground level and below, lowest layer first
-##   z2+ bridges: layer 1, 2, 3 (higher clamps to 3)
-##   z5  wet-road darkening and sheen, puddles (weather; alpha follows wetness)
-##   z6  railways; trees, bollards, fuel pumps (trees and scenery objects
+##   z1  roads at ground level and below, then ground railway tracks
+##   z8-10 bridges: layer 1, 2, 3 (higher clamps to 3), above ground buildings
+##   z5  ground wet-road darkening and sheen, puddles (deck weather shares its z)
+##   z6  trees, bollards, fuel pumps (trees and scenery objects
 ##       before buildings); a felled tree lies down, a knocked bollard
 ##       is drawn by MapLayer from the state instead
 ##   z7  buildings
 ##   z8  railings/walls/hedges, construction-site fences, roadworks,
 ##       taxi-stand signs; traffic-light posts (own node, redrawn
 ##       only when one of its lights changes phase - the phase is the server's)
-##   z11 fuel price boards: above the vehicles
+##   z13 canopies and rail bridges: above the vehicles (12)
+##   z15 fuel price boards: above the trains (14)
 ##   (z20 the night tint: night_layer.gd)
 ##   z6 street-light heads, behind buildings; the light pool is added onto the
 ##       tinted scene at z6;
@@ -47,6 +48,7 @@ var _roads_by_z: Dictionary = {}  # z -> [road]
 var _wet_darken := Node2D.new()
 var _wet_sheen := Node2D.new()
 var _puddles := Node2D.new()
+var _bridge_weather: Array = []  # [darkening, sheen, puddles], at each deck's z
 var _puddle_spots: Array = []  # [{"at", "radius", "reveal", "shape"}]
 var _water_ripple_spots: Array = []  # cached once; weather_layer animates their rings
 var _wetness := 0.0
@@ -113,6 +115,11 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	for z in _roads_by_z:
 		var layer_z: int = z
 		_road_layers.append(_add_layer(z, func(node: Node2D): _draw_roads(layer_z, node)))
+		if z > 1:
+			var dark := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
+			var sheen := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
+			var puddles := _add_layer(z, func(node: Node2D): _draw_puddles(node, layer_z))
+			_bridge_weather.append([dark, sheen, puddles])
 		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_road_markings(layer_z, node)))
 	_add_layer(5, _draw_wet, _wet_darken)
 	_add_layer(5, _draw_wet, _wet_sheen)
@@ -123,7 +130,9 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_guardrails(self, node)))
 	if not message.get("bus_stops", []).is_empty():
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_bus_stops(self, node)))
-	_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_tracks(self, node, "railways")))
+	var ground_tracks := _add_layer(1, func(node: Node2D): Detail.draw_tracks(self, node, "railways"))
+	ground_tracks.name = "GroundTracks"
+	_px_layers.append(ground_tracks)
 	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails
 		_season_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands")))
 	var canopy_supports := _add_layer(7, _draw_canopy_supports)
@@ -132,12 +141,12 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	if not message.get("curbs", []).is_empty() or not message.get("crossings", []).is_empty() or not message.get("speed_bumps", []).is_empty():
 		# Under the light pools (6): crossings and kerbs are lit like the road.
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_road_features(self, node)))
-	if not message.get("canopies", []).is_empty():  # z11: above the vehicles; then rail bridges, then (entities) trains
-		var canopy_roofs := _add_layer(11, func(node: Node2D): Detail.draw_canopies(self, node))
+	if not message.get("canopies", []).is_empty():  # above vehicles; then rail bridges, then trains
+		var canopy_roofs := _add_layer(13, func(node: Node2D): Detail.draw_canopies(self, node))
 		_px_layers.append(canopy_roofs)
 		_canopy_layers.append(canopy_roofs)
 	if not message.get("rail_bridges", []).is_empty() or not message.get("rail_decks", []).is_empty():
-		_px_layers.append(_add_layer(11, func(node: Node2D): Detail.draw_rail_bridges(self, node)))
+		_px_layers.append(_add_layer(13, func(node: Node2D): Detail.draw_rail_bridges(self, node)))
 	if not message.get("railings", []).is_empty():
 		_px_layers.append(_add_layer(8, _draw_railings))
 	if not message.get("street_lights", []).is_empty():
@@ -163,7 +172,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_add_layer(8, _draw_fences))
 	if not message.get("fuel_stations", []).is_empty():
 		_px_layers.append(_add_layer(6, _draw_fuel_pumps))
-		var boards := _add_layer(13, _draw_fuel_boards)  # above the trains (z12)
+		var boards := _add_layer(15, _draw_fuel_boards)  # above the trains (14)
 		boards.material = EMISSIVE  # lit price boards
 		_px_layers.append(boards)
 	if not message.get("roadworks", []).is_empty() or not message.get("taxi_stands", []).is_empty():
@@ -179,6 +188,10 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_water_ripple_spots = prepared["water_ripple_spots"]
 	_build_2_5d()
 	set_wetness(_wetness)
+
+
+static func road_z(layer: int) -> int:
+	return 1 if layer <= 0 else 7 + mini(layer, BRIDGE_Z_MAX)
 
 
 ## setup()'s data part, nodes aside, kept in message["prepared"]: pure, so the
@@ -203,7 +216,7 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 			for point in road["points"]:
 				box = box.expand(MapMath.point(origin, point[0], point[1]))
 			drivable.append([box, "%s,%s" % [road["points"][0][0], road["points"][0][1]]])
-		var z := clampi(int(road.get("layer", 0)), 0, BRIDGE_Z_MAX) + 1
+		var z := road_z(int(road.get("layer", 0)))
 		if not roads_by_z.has(z):
 			roads_by_z[z] = []
 		roads_by_z[z].append(road)
@@ -273,7 +286,7 @@ static func _clip_to_bounds(data: Dictionary, bounds: PackedVector2Array, bounds
 	for z in roads_by_z:  # the layers' lists, refilled in place
 		roads_by_z[z].clear()
 	for road in roads:
-		var z := clampi(int(road.get("layer", 0)), 0, BRIDGE_Z_MAX) + 1
+		var z := road_z(int(road.get("layer", 0)))
 		if roads_by_z.has(z):
 			roads_by_z[z].append(road)
 	for key in ["railways", "rail_bridges", "water_lines"]:
@@ -318,18 +331,26 @@ func set_wetness(wetness: float) -> void:
 	var alphas := RS.wet_alphas(wetness)
 	_wet_darken.modulate = Color(RS.WET_DARKEN, alphas[0])
 	_wet_sheen.modulate = Color(RS.WET_SHEEN, alphas[1])
+	var wet_nodes: Array = [_wet_darken, _wet_sheen]
+	var puddle_nodes: Array = [_puddles]
+	for layers in _bridge_weather:
+		layers[0].modulate = _wet_darken.modulate
+		layers[1].modulate = _wet_sheen.modulate
+		wet_nodes.append_array([layers[0], layers[1]])
+		puddle_nodes.append(layers[2])
 	# godot-18: hidden when dry - at alpha 0 they still blended every road twice
 	# each frame. A canvas item hidden when it entered the tree didn't draw
 	# its strokes when shown later (found in a windowed run), so becoming
 	# visible asks for a redraw.
-	for node in [_wet_darken, _wet_sheen]:
+	for node in wet_nodes:
 		var show: bool = node.modulate.a > 0.0
 		if show and not node.visible:
 			node.queue_redraw()
 		node.visible = show
-	_puddles.visible = wetness > 0.0
-	if not _puddle_spots.is_empty() and (wetness > 0.0 or previous > 0.0):
-		_puddles.queue_redraw()
+	for node in puddle_nodes:
+		node.visible = wetness > 0.0
+		if not _puddle_spots.is_empty() and (wetness > 0.0 or previous > 0.0):
+			node.queue_redraw()
 
 
 ## Screen pixels per metre (the camera zoom): the point layers keep
@@ -836,9 +857,9 @@ func _draw_road_markings(z: int, node: Node2D) -> void:
 
 
 ## White strokes over drivable roads, tinted by the node's modulate.
-func _draw_wet(node: Node2D) -> void:
+func _draw_wet(node: Node2D, z: int = 1) -> void:
 	for road in _data.get("roads", []):
-		if not road.get("drivable", false):
+		if not road.get("drivable", false) or road_z(int(road.get("layer", 0))) != z:
 			continue
 		var line := _points(road["points"])
 		# godot-18: the part inside the chunk (clip_polyline_with_polygon, used before, returns the part outside)
@@ -848,8 +869,10 @@ func _draw_wet(node: Node2D) -> void:
 				node.draw_polyline(part, Color.WHITE, 2.0 * float(road.get("half_width_m", 1.5)))
 
 
-func _draw_puddles(node: Node2D) -> void:
+func _draw_puddles(node: Node2D, z: int = 1) -> void:
 	for spot in _puddle_spots:
+		if int(spot.get("z", 1)) != z:
+			continue
 		var strength := RS.puddle_strength(_wetness, spot["reveal"])
 		if strength <= 0.0:
 			continue
@@ -1274,5 +1297,6 @@ static func puddle_spots(roads: Array, bounds: Rect2, origin: Vector2) -> Array:
 				shape.append(1.0 + rng.randf_range(-RS.PUDDLE_SHAPE_JITTER, RS.PUDDLE_SHAPE_JITTER))
 			var phase := rng.randf()  # the ripple's place in its 2.4 s cycle
 			if bounds.size == Vector2.ZERO or bounds.has_point(at):
-				spots.append({"at": at, "radius": maxf(RS.PUDDLE_MIN_RADIUS_M, radius), "reveal": reveal, "shape": shape, "phase": phase})
+				spots.append({"at": at, "radius": maxf(RS.PUDDLE_MIN_RADIUS_M, radius), "reveal": reveal, "shape": shape, "phase": phase,
+					"z": road_z(int(road.get("layer", 0)))})
 	return spots

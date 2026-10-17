@@ -258,7 +258,7 @@ func speech_file(event: Dictionary) -> String:
 	var gender = event.get("gender")
 	var language = event.get("language")
 	var key = event.get("hash")
-	if not speaker in ["driver", "passenger"] or not gender in ["f", "m"] or not language in ["fi", "en"] \
+	if not speaker in ["driver", "passenger"] or not gender in ["f", "m"] or not language in I18n.LANGUAGES \
 			or typeof(key) != TYPE_STRING or key.is_empty() or key.length() > 32 or not key.is_valid_hex_number():
 		return ""
 	return package_root.path_join("sounds/%s_chatter/%s_%s_%s.ogg" % [speaker, gender, language, key])

@@ -6,6 +6,20 @@ import pytest
 from theroadragetrip import map_chunks
 
 
+def test_runtime_camera_updates_only_its_chunk_and_invalidates_wire_cache():
+    from theroadragetrip.police import SpeedCamera
+
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[])
+    index = map_chunks.ChunkIndex(world)
+    before = index.encoded("0_0")
+    other = index.encoded("2_0")
+    camera = SpeedCamera(100, 100, 0, 50, 1)
+    assert index.add_speed_camera(camera, 7) == "0_0"
+    assert index.message("0_0")["speed_cameras"] == [[7, 100, 100, 0]]
+    assert index.encoded("0_0") != before
+    assert index.encoded("2_0") is other
+
+
 def test_plan_loads_the_square_around_the_player_nearest_first():
     to_load, to_drop = map_chunks.plan(set(), (0, 0), load_radius=1)
     assert to_load[0] == "0_0" and len(to_load) == 9 and to_drop == []

@@ -1,6 +1,8 @@
 import sys
 import types
 
+import pytest
+
 fake_pyproj = types.SimpleNamespace()
 
 
@@ -14,7 +16,15 @@ class FakeTransformer:
 
 
 fake_pyproj.Transformer = FakeTransformer
-sys.modules["pyproj"] = fake_pyproj
+
+
+@pytest.fixture(autouse=True)
+def _fake_pyproj(monkeypatch):
+    """The fake pyproj for this module's tests only, restored after each:
+    installed at import, it leaked into every later test (cached
+    municipality centres projected with it, e.g. a long fare to nowhere)."""
+    monkeypatch.setitem(sys.modules, "pyproj", fake_pyproj)
+
 
 from theroadragetrip.osm import build_ways, AutoFetchManager, Way
 from theroadragetrip.physics import Car

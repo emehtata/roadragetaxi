@@ -23,7 +23,7 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 - **Ride Requests & Taxi Stands**: Ride requests arrive one at a time by phone, 10-60 seconds apart, and expire after 30-90 seconds when no passenger is onboard. Select one with `1`, `2`, or `3`, or reject the selected offer with `X`; phone offers and taxi-stand customers can coexist. The game starts at 18:00. From 20:00 to 00:00, rides favor homes to bars, restaurants, pubs, and nightclubs, plus trips between those venues. From 00:00 to 05:00, passengers leave taxi stands for home addresses; from 05:00 to 08:00, rides run between homes. From 08:00 to 12:00, bar and nightlife destinations are excluded. Phone rides normally start and end at named buildings or street addresses. Wait stopped at a taxi stand and its customer walks visibly to the taxi before boarding. Maps without taxi stands can trigger occasional street hails; only a small share of pedestrians want a taxi. A passing taxi can notice a hail, but the passenger only boards after the taxi stops.
 - **Nighttime Passenger Condition**: Passenger nausea is more common between 20:00 and 05:00, with the highest risk from 01:00 to 05:00; venue type adds further risk for bars, pubs, and nightclubs.
 - **Passenger After Drop-off**: After a completed fare, the passenger leaves the taxi beside the car and continues as an ordinary walking pedestrian.
-- **Situation Chatter**: Passenger and driver lines are selected randomly from situation-appropriate Finnish and English chatter. Driver lines cover rage, collisions, water, traffic violations, police, pickup, and dropoff; passenger lines are filtered by mood.
+- **Situation Chatter**: Passenger and driver lines have Finnish, English and German subtitles. Missing voice recordings fall back to Finnish. Driver lines cover rage, collisions, water, traffic violations, police, pickup, and dropoff; passenger lines are filtered by mood.
 - **Navigation Waypoints & Compass Pointer**: Displays visual waypoint zones, address tags, off-screen edge indicators, and an optional compass navigation pointer to client locations. The compass is hidden by default and toggled with `C`.
 - **Suggested Route**: Press `N` to show a yellow route from the taxi to the active pickup or dropoff target. The route follows connected OSM roads, respects one-way streets, refreshes when the target or streamed map changes, and recalculates when the taxi leaves it.
 - **Buildings & Scenery**: Renders building footprints, parks, forests, and green spaces with street/place name labels (`L` key).
@@ -35,7 +35,7 @@ Koska muut kuskit ovat idiootteja ja ajavat miten sattuu. Vähemmästäkin hermo
 - **Tree Crash Effects**: Tree impacts shake the tree and scatter leaves; impacts above 80 km/h knock the tree down, smoke the taxi, and immobilize it for five seconds.
 - **Roadworks**: Random roadworks add temporary traffic lights and can make NPC traffic slow or stop naturally.
 - **Hidden Police Cameras**: One to twenty directional speed cameras are distributed across the connected road network; Helsinki has 20. Cameras are not tied to taxi stops. Driving above the local speed limit within its 50-meter approach zone costs 300 points.
-- **Finnish & English**: The first launch asks for a language. The language can be changed later from the pause menu and is saved in `roadragetrip.ini`.
+- **Finnish, English & German**: The first launch asks for a language. Change it later in the pause menu's settings. Godot saves the choice in its per-user `settings.cfg`; menus, notifications and new speech subtitles follow the selected language. Missing voice recordings use Finnish audio.
 - **Audio Settings**: Master, background, and effects volumes plus comment audio and subtitles are adjustable at runtime from the pause menu and persist in the INI file.
 - **Coordinate Projection**: Converts WGS84 (lat/lon) coordinates to metric ETRS-TM35FIN (EPSG:3067) using `pyproj`.
 - **Arcade Vehicle Physics & Road Containment**: Responsive throttle, braking, friction, speed-dependent steering, and strict car-road boundary collision containment (blocks driving off-road into pedestrian paths, lakes, or off-road scenery).
@@ -113,7 +113,7 @@ make run-pbf
 
 ```
 
-On the first launch, the game creates `roadragetrip.ini` under the platform configuration directory (`$XDG_CONFIG_HOME/RoadRageTrip/` on Linux, `%APPDATA%/RoadRageTrip/` on Windows) and asks for Finnish or English. Edit that file to set the city, map fetching, zoom, logging, pedestrian, language, audio, and police-camera values. Career progress and the total odometer are stored beside the INI file. The `[cities]` section contains editable `name = latitude, longitude` entries; add or remove cities there. Command-line options override the INI values for one launch.
+On the first launch, the game creates `roadragetrip.ini` under the platform configuration directory (`$XDG_CONFIG_HOME/RoadRageTrip/` on Linux, `%APPDATA%/RoadRageTrip/` on Windows); the Godot client offers Finnish, English and German. Edit that file to set the city, map fetching, zoom, logging, pedestrian, language, audio, and police-camera values. Career progress and the total odometer are stored beside the INI file. The `[cities]` section contains editable `name = latitude, longitude` entries; add or remove cities there. Command-line options override the INI values for one launch.
 
 For example, set `preset = helsinki` under `[game]` to run Helsinki with its resident and pedestrian simulation.
 
@@ -123,7 +123,7 @@ The game reads `roadragetrip.ini` from the platform configuration directory desc
 
 ```ini
 [game]
-language =             # fi or en; blank asks on first launch
+language =             # fi, en or de; the Godot menu passes its saved choice
 preset =               # e.g. oulu or helsinki
 bbox =                 # south,west,north,east; overrides preset when set
 no_menu = false
@@ -172,7 +172,7 @@ lahti = 60.982674, 25.661509
 sysmä = 61.502271, 25.680613
 ```
 
-`[game] language` selects Finnish (`fi`) or English (`en`). Leave it blank only for the first-run language chooser. The pause menu can change and save the language and audio values while playing.
+`[game] language` sets the server's default to Finnish (`fi`), English (`en`) or German (`de`). The Godot first-run chooser and pause-menu settings save their choice separately and pass it to the server. Missing driver or passenger recordings fall back to Finnish while subtitles keep the selected language.
 
 The `[cities]` section accepts any city name followed by `latitude, longitude`. Invalid coordinate entries are ignored. Command-line flags override matching INI values for the current launch.
 
@@ -195,24 +195,24 @@ Other common development commands are `make test`, `make compile`, and `make che
 Run the Windows release workflow on the release branch to test the setup installer, then merge the branch and tag `master` to publish the Windows package:
 
 ```bash
-git tag v0.17.1alpha
-git push origin v0.17.1alpha
+git tag v0.18.0alpha
+git push origin v0.18.0alpha
 ```
 
 GitHub Actions builds the Godot game and bundled Python server on Windows, installs the setup EXE in a temporary directory for a smoke test, then attaches `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
 
-Recorded sounds (the TTS chatter voices) are stored in `src/theroadragetrip/sounds/`. Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`.
+Synthetic chatter voices (text-to-speech) are stored in `src/theroadragetrip/sounds/` (see its `LICENSE`). Generated sound effects (Stable Audio Open) live in `src/theroadragetrip/assets/audio/`, catalogued in `audio_catalog.json`; the station announcements (Chatterbox TTS) are in `src/theroadragetrip/assets/railway_announcements/`. Their licensing status is in `LICENSE_AUDIT.md`.
 
 Map, timetable and weather data:
 
-- `src/theroadragetrip/assets/places.json` (airports and railway stations) is derived from OpenStreetMap data, © OpenStreetMap contributors, available under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/); the file itself is likewise under the ODbL.
+- `src/theroadragetrip/assets/places.json.gz` (airports and railway stations) is derived from OpenStreetMap data, © OpenStreetMap contributors, available under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/); the file itself is likewise under the ODbL.
 - `src/theroadragetrip/assets/railway_timetable.json.gz` (passenger-train timetable): Source: Fintraffic / [digitraffic.fi](https://www.digitraffic.fi/), license [CC 4.0 BY](https://creativecommons.org/licenses/by/4.0/). Modified: converted from GTFS to a compact one-week timetable by `theroadragetrip/railway_import.py`; the game refreshes its copy from Digitraffic weekly. The data is provided as is, without warranty.
 - `src/theroadragetrip/assets/train_compositions.json.gz` (learned train compositions): Source: Fintraffic / [digitraffic.fi](https://www.digitraffic.fi/), license [CC 4.0 BY](https://creativecommons.org/licenses/by/4.0/). Modified: condensed to vehicle type, length and service flags by `theroadragetrip/composition_import.py`, refreshed weekly.
 - `src/theroadragetrip/assets/finnish_first_names.json.gz` and `finnish_surnames.json.gz` (resident names): Digital and Population Data Services Agency (DVV) name data, [nimipalvelu.dvv.fi](https://nimipalvelu.dvv.fi/), license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Modified: the most common names selected and converted to the game's JSON format.
 - `src/theroadragetrip/assets/kunnat.json.gz` (municipality population, age structure and area): compiled from Wikipedia, © Wikipedia contributors, license [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Modified: tables combined and converted to the game's JSON format; the file is likewise CC BY-SA 4.0.
 - Historical weather, forecasts and snow depth (opt-in, fetched from FMI at runtime and cached locally in `~/.cache/RoadRageTrip/weather_history.db`, not bundled): Finnish Meteorological Institute (FMI) open data, license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Hourly values are resampled and combined from the nearest stations.
 
-These credits are also shown in the game on the loading, menu and pause screens.
+These credits are shown in the game under **Credits** in the main menu; the map views also show © OpenStreetMap contributors. The licensing audit, with open items, is in `LICENSE_AUDIT.md`; third-party software is listed in `THIRD_PARTY_LICENSES.md`.
 
 ---
 

@@ -56,7 +56,7 @@ var language := "en"
 var _reflectors: Node2D  # made in _ready (an instance never in the tree leaks nothing)
 var underground := false  # the taxi below ground (state player.map_level): only it and the walker are shown
 var covered := func(_at: Vector2, _layer: int) -> bool: return false  # MapLayer.covered (headlights under a bridge)
-var _trains: Node2D  # trains, z 12: above the canopies and rail bridges (z 11), drawn last
+var _trains: Node2D  # trains, z 14: above the canopies and rail bridges (z 13), drawn last
 var _trains_drawn := 0
 var _tracks: Node2D  # tyre tracks, z 8 (before roadworks and signs)
 var _trails: Array = []  # [kind, [[position, heading, intensity, front, snowfall when laid], ...], its Node2D]
@@ -111,7 +111,7 @@ const TRACK_STYLES := {  # [faint, dark, width m]
 func _ready() -> void:
 	_font = ThemeDB.fallback_font
 	_reflectors = Node2D.new()
-	_reflectors.z_index = 12  # above the night tint (20) and the street lights (21): 10 + 12
+	_reflectors.z_index = 10  # above the night tint (20): 12 + 10
 	_reflectors.draw.connect(_draw_reflectors)
 	add_child(_reflectors)
 	_trains = Node2D.new()
@@ -151,7 +151,7 @@ func _ready() -> void:
 		_canvas = self)
 	add_child(_overlay)
 	_cars_under = Node2D.new()
-	_cars_under.z_index = -9  # 10 - 9: z 1, the ground roads' level, under every bridge deck
+	_cars_under.z_index = -11  # 12 - 11: ground roads (1), under every bridge deck
 	_cars_under.material = preload("res://emissive.tres")
 	_cars_under.draw.connect(func():
 		_paint(_cars_under, _under_shapes)
@@ -399,8 +399,7 @@ static func reflector_lit(at: Vector2, taxi: Vector2, heading: float) -> bool:
 
 ## Headlight beams, in metres: two beams per vehicle
 ## with its engine on (the taxi first, then NPCs near the view, at most 80),
-## each a quad from the lamp to 15 m ahead and a round cap; an NPC far from a
-## street light (22 m) with nothing oncoming (45 m) has long beams (45 m).
+## each a quad and round cap: dipped 15 m, high 150 m across both lanes.
 ## Polygons in layer coordinates, from this frame's sample.
 func headlight_beams() -> Array:
 	var polygons: Array = []
@@ -418,7 +417,7 @@ func headlight_beams() -> Array:
 		if road.get("bridge", false) or not covered.call(Vector2(p.x, p.y), int(road.get("layer", 0))):
 			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false])
 	var later := _by_id(b.get("npcs", []))
-	var area := view_rect.grow(45.0 - CULL_MARGIN_M)
+	var area := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	for npc in a.get("npcs", []):
 		if npc.get("is_on_foot", false) or npc.get("state", "") == "PARKED":
 			continue
@@ -426,7 +425,7 @@ func headlight_beams() -> Array:
 		var layer := int(npc.get("layer", 0))  # an NPC on a raised layer counts as on its bridge
 		if area.has_point(Vector2(p.x, p.y)) and not underground and (layer > 0 or not covered.call(Vector2(p.x, p.y), layer)):
 			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true])
-	var shown := view_rect.grow(30.0 - CULL_MARGIN_M)
+	var shown := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	var drawn := 0
 	for vehicle in vehicles:
 		if drawn >= 80:
@@ -447,6 +446,7 @@ func headlight_beams() -> Array:
 
 
 const TRAIN_BEAM_M := 60.0
+const HIGH_BEAM_M := 150.0
 
 
 ## A train's headlights: two long beams from the nose of its lead car (the
@@ -464,13 +464,13 @@ static func train_beams(train: Dictionary, next: Dictionary, t: float, origin: V
 	return beam_polygons(nose - f * (1.0 + width * 0.55), heading, width, TRAIN_BEAM_M, true)
 
 
-## Automatic high beam, the taxi's as every NPC's: 45 m on a dark road, dipped to 15 m within 22 m of a street
+## Automatic high beam, the taxi's as every NPC's: 150 m on a dark road, dipped to 15 m within 22 m of a street
 ## light or with a vehicle coming the other way.
 static func beam_length(near_street_light: bool, has_oncoming: bool) -> float:
-	return 15.0 if near_street_light or has_oncoming else 45.0
+	return 15.0 if near_street_light or has_oncoming else HIGH_BEAM_M
 
 
-## Another vehicle within 45 m ahead, heading the other way.
+## Another vehicle within high-beam reach ahead, heading the other way.
 static func oncoming(vehicle: Array, vehicles: Array) -> bool:
 	var f := _forward(vehicle[1])
 	for other in vehicles:
@@ -478,7 +478,7 @@ static func oncoming(vehicle: Array, vehicles: Array) -> bool:
 			continue
 		var delta: Vector2 = other[0] - vehicle[0]
 		var distance := delta.length()
-		if distance > 0.1 and distance <= 45.0 and delta.dot(f) / distance > 0.2 and f.dot(_forward(other[1])) < -0.5:
+		if distance > 0.1 and distance <= HIGH_BEAM_M and delta.dot(f) / distance > 0.2 and f.dot(_forward(other[1])) < -0.5:
 			return true
 	return false
 
@@ -488,21 +488,30 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 	var f := _forward(heading)
 	var r := _right(heading)
 	var front := c + f * (1.0 + width * 0.55)
+	var high := not straight and length > 15.0
 	var polygons: Array = []
+	var lamps := []
+	var tips := []
 	for side: float in [-1.0, 1.0]:
 		var side_v := r * side
 		var lamp := front + side_v * width * 0.35
 		var tip := c + f * length + r * (3.0 if side < 0.0 else 2.25)  # a car's beams lean right (the kerb side)
+		if high:
+			tip = c + f * length  # High beams illuminate both lanes, without the dipped beam's kerb bias.
 		var near := lamp + side_v * minf(4.5 * 0.08, width * 0.10)
 		if straight:  # a train's: straight ahead, each from just past the centre line outward - they overlap over the track
 			tip = c + f * length - side_v * 0.5
 			near = lamp - side_v * (width * 0.35 + 0.3)
-		var far_width := 4.5 * 1.7
+		var far_width := 22.5 if high else 4.5 * 1.7
 		polygons.append(PackedVector2Array([lamp, near, tip + side_v * far_width, tip]))
+		lamps.append(lamp)
+		tips.append(tip)
 		var cap := PackedVector2Array()
 		for i in 12:
 			cap.append(tip + side_v * far_width * 0.5 + Vector2(cos(TAU * i / 12.0), sin(TAU * i / 12.0)) * far_width * 0.5)
 		polygons.append(cap)
+	# Between the two beams: lit too (the road straight ahead was a dark wedge).
+	polygons.append(PackedVector2Array([lamps[0], lamps[1], tips[1], tips[0]]))
 	return polygons
 
 
@@ -616,9 +625,10 @@ static func _paint(node: Node2D, shapes: Array) -> void:
 	for shape in shapes:
 		match shape[0]:
 			"poly":
-				if not drawable(shape[1]):
+				var indices := body_triangles(shape[1])
+				if indices.is_empty():
 					continue
-				node.draw_colored_polygon(shape[1], shape[2])
+				RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), indices, shape[1], PackedColorArray([shape[2]]))
 				if shape[3] != null:
 					var closed: PackedVector2Array = shape[1].duplicate()
 					closed.append(shape[1][0])
@@ -627,6 +637,16 @@ static func _paint(node: Node2D, shapes: Array) -> void:
 				node.draw_circle(shape[1], shape[2], shape[3])
 			"line":
 				node.draw_line(shape[1], shape[2], shape[3], shape[4])
+
+
+## Body parts are convex: avoid the polygon triangulator's coordinate precision limits.
+static func body_triangles(points: PackedVector2Array) -> PackedInt32Array:
+	var indices := PackedInt32Array()
+	if not drawable(points):
+		return indices
+	for i in range(1, points.size() - 1):
+		indices.append_array(PackedInt32Array([0, i, i + 1]))
+	return indices
 
 
 ## Lamps are quads already: submit their two triangles directly, avoiding
@@ -1065,15 +1085,22 @@ func _target(state: Dictionary) -> void:
 		_tag(at - Vector2(0, radius + _px(14.0)), "[%s] %s" % [T.text("pickup", language) if target["is_pickup"] else T.text("destination", language), target.get("address", "")],
 			Color.WHITE, main_color)
 	var passenger: Dictionary = state["taxi"]["current_passenger"]
-	if target["is_pickup"] and not passenger.get("boarded", false) and not passenger.get("rail_booking", false) and passenger.has("ped"):
-		var ped: Array = passenger["ped"]
-		var c := MapMath.point(origin, ped[0], ped[1])
-		var radius := maxf(_px(4.0), 0.5)
-		draw_circle(c, radius + _px(2.0), RS.OUTLINE)
-		draw_circle(c, radius, RS.CUSTOMER_COLOR)
-		draw_circle(c + _forward(ped[2]) * radius * 0.9, maxf(_px(1.0), radius * 0.45), Color.WHITE)
-		_tag(c - Vector2(0, radius + _px(12.0)), ("[TO TAXI] %s" if passenger.get("is_walking_to_car", false) else "[P] %s") % passenger.get("name", ""),
-			Color8(255, 230, 80))
+	if target["is_pickup"] and not passenger.get("boarded", false) and passenger.has("ped"):
+		for member in [passenger] + passenger.get("companions", []):
+			if member.get("rail_booking", false):
+				continue  # The booked lead has its own pedestrian; companions use the fare representation.
+			var ped: Array = member["ped"]
+			var c := MapMath.point(origin, ped[0], ped[1])
+			var radius := maxf(_px(4.0), 0.5)
+			draw_circle(c, radius + _px(2.0), RS.OUTLINE)
+			draw_circle(c, radius, RS.CUSTOMER_COLOR)
+			draw_circle(c + _forward(ped[2]) * radius * 0.9, maxf(_px(1.0), radius * 0.45), Color.WHITE)
+			_tag(c - Vector2(0, radius + _px(12.0)), passenger_tag(member, language),
+				Color8(255, 230, 80))
+
+
+static func passenger_tag(member: Dictionary, lang: String) -> String:
+	return "[%s] %s" % [T.text("to_taxi", lang) if member.get("is_walking_to_car", false) else T.text("pickup", lang), member.get("name", "")]
 
 
 func _draw() -> void:

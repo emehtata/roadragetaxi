@@ -56,3 +56,44 @@ static func altitude(state: Dictionary) -> float:
 	if typeof(darkness) in [TYPE_INT, TYPE_FLOAT]:
 		return (1.0 - clampf(darkness, 0.0, 1.0)) * 18.0 - 12.0
 	return 90.0
+
+
+# --- Direct sunlight and building shadows (rrt-018-shadows) ---------------
+# The server's sun: `calendar.sun_azimuth_deg`, clockwise from the map's grid
+# north; the 3D building view has +x east, +y up, -z north (2D y is south).
+const SUN_LOW_DEG := 1.0  # direct sunlight (shadows) begin at this altitude...
+const SUN_FULL_DEG := 12.0  # ...and are at full strength from here up
+# The light never comes from lower than this, so a low sun's shadow is at
+# most 1 / tan(8 deg) ~ 7x the building's height, not tens of times (the
+# shadows are faint down there anyway: see sunlight()).
+const SHADOW_MIN_ELEVATION_DEG := 8.0
+const CLOUD_CLEAR := 0.3  # cloud cover at or below: full sunlight
+const CLOUD_OVERCAST := 0.9  # at or above: no direct sun, no shadows
+
+
+## How strongly the sun shines directly, 0..1: rises smoothly with the
+## altitude and falls smoothly with the cloud cover (0 clear .. 1 overcast).
+## Its shadows' contrast follows it; 0 at night and under an overcast sky.
+static func sunlight(altitude_deg: float, cloud_cover: float) -> float:
+	return _smoother(SUN_LOW_DEG, SUN_FULL_DEG, altitude_deg) * (1.0 - _smoother(CLOUD_CLEAR, CLOUD_OVERCAST, cloud_cover))
+
+
+## A unit vector towards the sun in the 3D building view's axes.
+static func sun_direction(altitude_deg: float, azimuth_deg: float) -> Vector3:
+	var elevation := deg_to_rad(maxf(altitude_deg, SHADOW_MIN_ELEVATION_DEG))
+	var azimuth := deg_to_rad(azimuth_deg)
+	return Vector3(sin(azimuth) * cos(elevation), sin(elevation), -cos(azimuth) * cos(elevation))
+
+
+## The sun's azimuth from a state; an older server without one: due south.
+static func azimuth(state: Dictionary) -> float:
+	var calendar = state.get("calendar")
+	var value = calendar.get("sun_azimuth_deg") if calendar is Dictionary else null
+	return float(value) if typeof(value) in [TYPE_INT, TYPE_FLOAT] and is_finite(value) else 180.0
+
+
+## The sky's cloud cover from a state (weather.cloud_cover); unknown: clear.
+static func cloud_cover(state: Dictionary) -> float:
+	var weather = state.get("weather")
+	var value = weather.get("cloud_cover") if weather is Dictionary else null
+	return clampf(float(value), 0.0, 1.0) if typeof(value) in [TYPE_INT, TYPE_FLOAT] and is_finite(value) else 0.0

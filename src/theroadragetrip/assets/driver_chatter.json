@@ -8,6 +8,7 @@
       "mood": "angry",
       "fi": "Pois alta, vittu, minulla on kiire!",
       "en": "Move over, damn it, I am in a hurry!",
+      "de": "Aus dem Weg, verdammt, ich hab’s eilig!",
       "hash": "8010943d90ec7464"
     },
     {
@@ -16,6 +17,7 @@
       "mood": "angry",
       "fi": "Mikä siinä on, perkele, kaasua!",
       "en": "What is wrong with you, for God's sake, use the gas!",
+      "de": "Was stimmt nicht mit dir? Gib endlich Gas!",
       "hash": "b02f2b15e16d59cb"
     },
     {
@@ -24,6 +26,7 @@
       "mood": "furious",
       "fi": "Nyt riitti tämä saatanan sähläys!",
       "en": "I have had enough of this damn mess!",
+      "de": "Ich hab die Schnauze voll von diesem verdammten Chaos!",
       "hash": "efddb36bbbcb311f"
     },
     {
@@ -32,6 +35,7 @@
       "mood": "frustrated",
       "fi": "Koko kaupunki on yhtä helvetin sumppua.",
       "en": "The whole city is one hell of a traffic jam.",
+      "de": "Die ganze Stadt ist ein einziger verdammter Stau.",
       "hash": "ad4db2b33c9ada57"
     },
     {
@@ -40,6 +44,7 @@
       "mood": "angry",
       "fi": "Älä tunge siihen väliin, saatana!",
       "en": "Do not squeeze in there, damn it!",
+      "de": "Drängel dich da nicht rein, verdammt!",
       "hash": "2e97bdb8fd2beba8"
     },
     {
@@ -48,6 +53,7 @@
       "mood": "shocked",
       "fi": "Vittu. Tuo oli minun vikani.",
       "en": "Shit. That one was my fault.",
+      "de": "Scheiße. Das war mein Fehler.",
       "hash": "3149a033a3b8cff4"
     },
     {
@@ -56,6 +62,7 @@
       "mood": "angry",
       "fi": "Katso nyt vähän eteesi, perkele!",
       "en": "Watch where you are going, damn it!",
+      "de": "Pass doch auf, wo du hinfährst, verdammt!",
       "hash": "1377ec433ed4257f"
     },
     {
@@ -64,6 +71,7 @@
       "mood": "shocked",
       "fi": "Ei saatana, ei kai taas yksi lommo.",
       "en": "Oh shit, please do not tell me that is another dent.",
+      "de": "Oh Scheiße, bitte nicht noch eine Delle.",
       "hash": "0d26fb488c1c02a7"
     },
     {
@@ -72,6 +80,7 @@
       "mood": "frustrated",
       "fi": "Tämä päivä ei voi mennä enää huonommin, helvetti.",
       "en": "This day cannot get any worse, damn it.",
+      "de": "Dieser verdammte Tag kann nicht mehr schlimmer werden.",
       "hash": "4e91e0073532b524"
     },
     {
@@ -80,6 +89,7 @@
       "mood": "determined",
       "fi": "Auto kulkee vielä. Jatketaan.",
       "en": "The car still moves. Keep going.",
+      "de": "Die Karre fährt noch. Weiter geht’s.",
       "hash": "5061b2c1581b0508"
     },
     {
@@ -88,6 +98,7 @@
       "mood": "concerned",
       "fi": "Rauhoitu, etsitään sinulle paikka pysähtyä.",
       "en": "Take it easy, I will find somewhere to stop.",
+      "de": "Ganz ruhig, ich finde einen Platz zum Anhalten.",
       "hash": "c1f6a5b57d34b41b"
     },
     {
@@ -96,6 +107,7 @@
       "mood": "disgusted",
       "fi": "Voi saatana, ei auton penkille!",
       "en": "Oh shit, not on the car seat!",
+      "de": "Oh Scheiße, nicht auf den Autositz!",
       "hash": "03ab85655184edfc"
     },
     {
@@ -104,6 +116,7 @@
       "mood": "panicked",
       "fi": "Ikkuna auki, nopeasti, perkele!",
       "en": "Open the window, quickly, damn it!",
+      "de": "Mach schnell das Fenster auf, verdammt!",
       "hash": "6c1d02803cc529e3"
     },
     {
@@ -112,6 +125,7 @@
       "mood": "frustrated",
       "fi": "Tämä tulee helvetin kalliiksi siivota.",
       "en": "This will be damn expensive to clean.",
+      "de": "Die Reinigung wird verdammt teuer.",
       "hash": "c80dfb75295d99a0"
     },
     {
@@ -120,6 +134,7 @@
       "mood": "relieved",
       "fi": "Hyvä, ehdimme pysähtyä ajoissa.",
       "en": "Good, we stopped in time.",
+      "de": "Gut, wir haben rechtzeitig angehalten.",
       "hash": "aede6908fd8e67e1"
     },
     {
@@ -128,6 +143,7 @@
       "mood": "nervous",
       "fi": "Kamera näki tuon varmasti, voi perkele.",
       "en": "That camera definitely saw that, damn it.",
+      "de": "Der Blitzer hat das garantiert gesehen, verdammt.",
       "hash": "d7e1dd436f3613a0"
     },
     {
@@ -136,6 +152,7 @@
       "mood": "defiant",
       "fi": "Ei tässä risteyksessä ketään ollut, saatana.",
       "en": "There was nobody in that intersection, damn it.",
+      "de": "Da war doch niemand auf der Kreuzung, verdammt.",
       "hash": "f92446f1597c628c"
     },
     {
@@ -144,6 +161,7 @@
       "mood": "worried",
       "fi": "Hiljempaa, hiljempaa, vittu!",
       "en": "Slow down, slow down, damn it!",
+      "de": "Bremsen, bremsen, verdammt!",
       "hash": "ff66fab0b4413ee0"
     },
     {
@@ -152,6 +170,7 @@
       "mood": "confused",
       "fi": "Hetkinen, tämä ei ollutkaan oikea suunta, perkele.",
       "en": "Wait, this was not the right way, damn it.",
+      "de": "Moment, das war der falsche Weg, verdammt.",
       "hash": "b159b60315991f59"
     },
     {
@@ -160,6 +179,7 @@
       "mood": "frustrated",
       "fi": "Yksisuuntainen katu, tietenkin, saatana.",
       "en": "A one-way street, of course, damn it.",
+      "de": "Eine Einbahnstraße, na klar, verdammt.",
       "hash": "d3b8d4ed53512c5b"
     },
     {
@@ -168,6 +188,7 @@
       "mood": "panicked",
       "fi": "Poliisit ovat perässä, helvetti!",
       "en": "The police are after me, shit!",
+      "de": "Die Polizei ist hinter mir her, Scheiße!",
       "hash": "f0104b35e4814e4c"
     },
     {
@@ -176,6 +197,7 @@
       "mood": "defiant",
       "fi": "Minä en pysähdy vielä, vittu.",
       "en": "I am not stopping yet, damn it.",
+      "de": "Ich halte noch nicht an, verdammt.",
       "hash": "9f71e7d81f92e8da"
     },
     {
@@ -184,6 +206,7 @@
       "mood": "nervous",
       "fi": "Ehkä olisi pitänyt ajaa rauhallisemmin, perkele.",
       "en": "Maybe I should have driven more carefully, damn it.",
+      "de": "Ich hätte wohl vorsichtiger fahren sollen, verdammt.",
       "hash": "51c3206f01ee6aa9"
     },
     {
@@ -192,6 +215,7 @@
       "mood": "alarmed",
       "fi": "Tuo ei ollut tie, se oli vettä, saatana!",
       "en": "That was not a road, it was water, damn it!",
+      "de": "Das war keine Straße, das war Wasser, verdammt!",
       "hash": "db4ef5d270c95f7c"
     },
     {
@@ -200,6 +224,7 @@
       "mood": "panicked",
       "fi": "Pois vedestä ennen kuin uppoamme, helvetti!",
       "en": "Get out of the water before we sink, shit!",
+      "de": "Raus aus dem Wasser, bevor wir absaufen, Scheiße!",
       "hash": "4dc59fbc254f6d65"
     },
     {
@@ -208,6 +233,7 @@
       "mood": "relieved",
       "fi": "Silta pelasti tämän matkan.",
       "en": "That bridge saved this trip.",
+      "de": "Die Brücke hat uns die Fahrt gerettet.",
       "hash": "bf1d24b9a9f3a6fc"
     },
     {
@@ -216,6 +242,7 @@
       "mood": "good",
       "fi": "Asiakas kyytiin ja menoksi.",
       "en": "Passenger aboard, let us go.",
+      "de": "Fahrgast an Bord, los geht’s.",
       "hash": "59994c799eb858b4"
     },
     {
@@ -224,6 +251,7 @@
       "mood": "relieved",
       "fi": "Perillä ehjänä. Se on jo saavutus.",
       "en": "We arrived in one piece. That is something.",
+      "de": "In einem Stück angekommen. Immerhin.",
       "hash": "a47405273acb2bfb"
     },
     {
@@ -232,6 +260,7 @@
       "mood": "proud",
       "fi": "Siinä oli hyvä kyyti.",
       "en": "That was a good ride.",
+      "de": "Das war eine gute Fahrt.",
       "hash": "be0145fa1665cc7d"
     },
     {
@@ -240,6 +269,7 @@
       "mood": "sad",
       "fi": "Tämä kyyti olisi voinut päättyä paremmin.",
       "en": "This ride could have ended better.",
+      "de": "Diese Fahrt hätte besser enden können.",
       "hash": "d35b57176c59c3a4"
     }
   ]

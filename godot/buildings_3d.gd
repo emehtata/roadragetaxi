@@ -25,10 +25,26 @@ const LAYER_BUILDINGS := 1
 # ordinary window colour (day) to lit (night) - no second camera, viewport,
 # occluders or composite. Bright, so they read through the night tint.
 const WINDOW_LIT_NIGHT := Color8(255, 222, 142)
+# rrt-018-shadows: the sun lights only a ground plane (the buildings are
+# unshaded, their light is baked into their colours); the buildings cast
+# its shadows. A second view of the SAME 3D world sees nothing but that
+# plane - white in the sun, darker in shadow - and is multiplied over the map
+# under the buildings (z 6). The Compatibility renderer has no working
+# shadow_to_opacity, so the shadows can't be alpha in the building view.
+const LAYER_SHADOW_GROUND := 2
+const SHADOW_DARKNESS := 0.45  # how much a shadow darkens the ground in full, clear-sky sunlight
+const SHADOW_VIEW_SCALE := 2  # the shadow view renders at 1/2 resolution, smoothed up (shadows need no more)
+const SHADOW_GROUND_MARGIN := 1.3  # the plane covers this times the view (the camera moves between frames)
 
 var _view: SubViewport
 var _camera: Camera3D
 var _sprite: Sprite2D
+var _sun: DirectionalLight3D
+var _shadow_ground: MeshInstance3D
+var _shadow_view: SubViewport
+var _shadow_camera: Camera3D
+var _shadow_sprite: Sprite2D
+var _sun_key := Vector3(INF, INF, INF)  # the (altitude, azimuth, cloud) applied last
 
 
 static func _make_material(flat := false) -> Material:
@@ -48,6 +64,93 @@ func _ready() -> void:
 	_view = _make_view(LAYER_BUILDINGS)
 	_camera = _view.get_child(0)
 	_sprite = _make_sprite(_view, 7)
+	_sun = make_sun()
+	_view.add_child(_sun)
+	_shadow_ground = make_shadow_ground()
+	_view.add_child(_shadow_ground)
+	_shadow_view = SubViewport.new()  # the same world: no building geometry twice
+	_shadow_view.world_3d = _view.find_world_3d()  # its own_world_3d (world_3d itself is unset)
+	_shadow_view.transparent_bg = false
+	_shadow_view.msaa_3d = Viewport.MSAA_DISABLED
+	_shadow_view.positional_shadow_atlas_size = 0
+	_shadow_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_shadow_camera = Camera3D.new()
+	_shadow_camera.fov = FOV
+	_shadow_camera.keep_aspect = Camera3D.KEEP_HEIGHT
+	_shadow_camera.cull_mask = LAYER_SHADOW_GROUND
+	_shadow_camera.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	var white := Environment.new()  # nothing there (off the plane): multiplied by 1, unchanged
+	white.background_mode = Environment.BG_COLOR
+	white.background_color = Color.WHITE
+	_shadow_camera.environment = white
+	_shadow_view.add_child(_shadow_camera)
+	add_child(_shadow_view)
+	_shadow_sprite = _make_sprite(_shadow_view, 6)  # under the buildings (7), over the ground and roads
+	var multiply := CanvasItemMaterial.new()
+	multiply.blend_mode = CanvasItemMaterial.BLEND_MODE_MUL
+	_shadow_sprite.material = multiply
+	_shadow_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	_shadow_sprite.visible = false
+
+
+## The sun's light: one orthogonal shadow map (the top-down view needs no
+## splits), off until set_sun() turns it on.
+static func make_sun() -> DirectionalLight3D:
+	var sun := DirectionalLight3D.new()
+	sun.shadow_enabled = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_blend_splits = false
+	sun.shadow_bias = 0.05
+	sun.shadow_normal_bias = 0.5
+	# All on the shadow view's layer: a camera culls the light itself and every
+	# caster outside its mask. The casters are shadows-only copies of the
+	# building meshes (meshes()), so the shadow view draws only the ground.
+	sun.layers = LAYER_SHADOW_GROUND
+	sun.light_cull_mask = LAYER_SHADOW_GROUND
+	sun.shadow_caster_mask = LAYER_SHADOW_GROUND
+	sun.visible = false
+	return sun
+
+
+static func make_shadow_ground() -> MeshInstance3D:
+	var plane := PlaneMesh.new()
+	plane.size = Vector2.ONE
+	var material := ShaderMaterial.new()
+	material.shader = preload("res://shadow_ground.gdshader")
+	var ground := MeshInstance3D.new()
+	ground.mesh = plane
+	ground.material_override = material
+	ground.layers = LAYER_SHADOW_GROUND
+	ground.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ground.visible = false
+	return ground
+
+
+## The sun from the server (Daylight): its direction, and how strong its
+## shadows are by altitude and cloud cover. Applied only when it changed
+## (the server rounds to 0.01 degrees); off at night and under overcast.
+func set_sun(altitude_deg: float, azimuth_deg: float, cloud_cover: float) -> void:
+	var key := Vector3(altitude_deg, azimuth_deg, cloud_cover)
+	if key.is_equal_approx(_sun_key):
+		return
+	_sun_key = key
+	var strength := Daylight.sunlight(altitude_deg, cloud_cover)
+	var on := strength > 0.01
+	_sun.visible = on
+	_shadow_ground.visible = on
+	_shadow_sprite.visible = on
+	_shadow_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS if on else SubViewport.UPDATE_DISABLED  # no cost at night or overcast
+	if not on:
+		return
+	_sun.basis = sun_basis(Daylight.sun_direction(altitude_deg, azimuth_deg))
+	_shadow_ground.material_override.set_shader_parameter("darkness", SHADOW_DARKNESS * strength)
+
+
+## A light whose -z (where Godot's directional light shines) points away
+## from `towards_sun`.
+static func sun_basis(towards_sun: Vector3) -> Basis:
+	var up := Vector3.UP if absf(towards_sun.y) < 0.999 else Vector3.FORWARD
+	return Basis.looking_at(-towards_sun, up)
 
 
 func _make_view(mask: int) -> SubViewport:
@@ -120,6 +223,20 @@ func _process(_delta: float) -> void:
 	_camera.position = Vector3(centre.x, height, centre.y)
 	_camera.near = maxf(1.0, height * 0.02)
 	_camera.far = height + 1.0
+	if _shadow_ground.visible:  # under the whole view; shadows only as far as the camera sees
+		if _shadow_view.size != size / SHADOW_VIEW_SCALE:
+			_shadow_view.size = size / SHADOW_VIEW_SCALE
+		_shadow_camera.position = _camera.position
+		_shadow_camera.near = _camera.near
+		# Far beyond the ground: with the ground at the far plane (as the
+		# building camera has it) the orthogonal shadow fit loses every shadow.
+		_shadow_camera.far = height * 2.0 + 10.0
+		_shadow_sprite.position = centre
+		_shadow_sprite.scale = _sprite.scale * SHADOW_VIEW_SCALE
+		var view_m := Vector2(size) / camera_2d.zoom
+		_shadow_ground.position = Vector3(centre.x, 0.0, centre.y)
+		_shadow_ground.scale = Vector3(view_m.x * SHADOW_GROUND_MARGIN, 1.0, view_m.y * SHADOW_GROUND_MARGIN)
+		_sun.directional_shadow_max_distance = Vector2(height, view_m.length() * 0.5 * SHADOW_GROUND_MARGIN).length()
 	_sprite.position = centre
 	_sprite.scale = Vector2.ONE / camera_2d.zoom
 
@@ -175,14 +292,14 @@ func add(instances: Array) -> void:
 
 
 func instance_count() -> int:
-	return _view.get_child_count() - 1  # minus the camera
+	return _view.get_child_count() - 3  # minus the camera, the sun and the shadow ground
 
 
 ## One chunk's mesh arrays (any thread): {"verts", "colors", "lit" (the
 ## lit windows' verts), "stats"}.
 static func build(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "lit": PackedVector3Array(),
-		"arena": PackedVector3Array(),
+		"arena": PackedVector3Array(), "shadow": PackedVector3Array(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
 	for i in buildings.size():
 		var footprint: PackedVector2Array = buildings[i]
@@ -200,6 +317,13 @@ static func meshes(arrays: Dictionary) -> Array:
 		return instances
 	var mesh := _mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"])
 	instances.append(_instance(mesh, _shared["material"], LAYER_BUILDINGS))
+	# rrt-018-shadows: each building as a plain prism (walls and a flat roof,
+	# no windows or doors: a fifth of the triangles), not drawn, only casting
+	# the sun's shadow in the shadow view (its layer)
+	if not arrays["shadow"].is_empty():
+		var caster := _instance(_mesh(arrays["shadow"], PackedColorArray()), _shared["caster"], LAYER_SHADOW_GROUND)
+		caster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		instances.append(caster)
 	if not arrays["lit"].is_empty():
 		var colors := PackedColorArray()  # warm, each window a little brighter or dimmer (deterministic)
 		colors.resize(arrays["lit"].size())
@@ -215,14 +339,22 @@ static func meshes(arrays: Dictionary) -> Array:
 	return instances
 
 
-static var _shared := {"material": _make_material(), "lit": _make_material(true), "arena": _make_material(true)}
+static var _shared := {"material": _make_material(), "lit": _make_material(true), "arena": _make_material(true),
+	"caster": _caster_material()}  # the shadows-only prisms: any opaque material casts (the unshaded shader didn't)
+
+
+static func _caster_material() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED  # the prisms' winding doesn't matter
+	return m
 
 
 static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask := PackedVector2Array()) -> ArrayMesh:
 	var surface := []
 	surface.resize(Mesh.ARRAY_MAX)
 	surface[Mesh.ARRAY_VERTEX] = verts
-	surface[Mesh.ARRAY_COLOR] = colors
+	if not colors.is_empty():
+		surface[Mesh.ARRAY_COLOR] = colors
 	if not roof_mask.is_empty():
 		surface[Mesh.ARRAY_TEX_UV] = roof_mask
 	var mesh := ArrayMesh.new()
@@ -298,6 +430,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		out["stats"]["walls"] += 1
 		_windows(out, a, b, normal, height, floors, category, seed_base + i * 7.13, arena)
 	_doors(out, footprint, style[3] if style.size() > 3 else [], outward_sign, height, floors, origin)
+	_shadow_prism(out["shadow"], footprint, height)
 	if gabled:
 		_gabled(out, footprint, height, roof_color, wall_color)
 	else:
@@ -305,6 +438,18 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		heights.resize(footprint.size())
 		heights.fill(height)
 		_polygon(out, footprint, heights, roof_color)
+
+
+## The building's shadow caster: its walls and a flat roof at the eaves
+## (a gable's ridge is left out: a little shorter shadow, far fewer cases).
+static func _shadow_prism(verts: PackedVector3Array, footprint: PackedVector2Array, height: float) -> void:
+	for i in footprint.size():
+		var a := footprint[i]
+		var b := footprint[(i + 1) % footprint.size()]
+		verts.append_array(PackedVector3Array([to_3d(a), to_3d(b), to_3d(b, height), to_3d(a), to_3d(b, height), to_3d(a, height)]))
+	var triangles := Geometry2D.triangulate_polygon(footprint)
+	for t in triangles:
+		verts.append(to_3d(footprint[t], height))
 
 
 ## Window slots on a real wall: up to 3 a floor (2 on a

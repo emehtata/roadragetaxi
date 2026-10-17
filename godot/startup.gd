@@ -144,7 +144,11 @@ func _focus_menu() -> void:
 		var control := _focusables[i]
 		control.focus_neighbor_top = control.get_path_to(_focusables[(i - 1 + _focusables.size()) % _focusables.size()])
 		control.focus_neighbor_bottom = control.get_path_to(_focusables[(i + 1) % _focusables.size()])
-	_focusables[0].call_deferred("grab_focus")
+	var first_id := _focusables[0].get_instance_id()
+	(func():
+		var first := instance_from_id(first_id) as Control
+		if is_instance_valid(first) and first.is_inside_tree():
+			first.grab_focus()).call_deferred()
 
 
 func _title(text: String, subtitle := "") -> void:
@@ -181,9 +185,9 @@ func _button(text: String, action: Callable) -> Button:
 
 func _language_menu() -> void:
 	_clear()
-	_title("CHOOSE LANGUAGE / VALITSE KIELI")
-	_button("English", func(): _choose_language("en"))
-	_button("Suomi", func(): _choose_language("fi"))
+	_title("LANGUAGE / KIELI / SPRACHE")
+	for code in T.LANGUAGES:
+		_button(T.LANGUAGE_NAMES[code], _choose_language.bind(code))
 	_focus_menu()
 
 
@@ -259,6 +263,71 @@ func _with_help(control: Control, help_key: String) -> void:
 	_body.add_child(box)
 
 
+## The data, sounds and software the game uses and their licences
+## (LICENSE_AUDIT.md, THIRD_PARTY_LICENSES.md, assets/DATA_LICENSES.txt), as
+## BBCode. In English: licence names and attribution lines stay as their
+## licensors write them.
+static func credits_text() -> String:
+	var lines := PackedStringArray([
+		"[b]Road Rage Trip[/b] © 2026 Esa Mehtätalo. The game's own code is under the MIT License; the data, sounds and software below are not.",
+		"",
+		"[b]Map data[/b]",
+		"© OpenStreetMap contributors. Map data is available under the Open Database License (ODbL) 1.0: [url=https://www.openstreetmap.org/copyright]openstreetmap.org/copyright[/url]. Read live from Overpass API servers or from a Geofabrik extract of Finland; airports and stations (places.json.gz) and the Finland minimap are derived from it and likewise under the ODbL.",
+		"Start-map tiles © OpenStreetMap contributors (tile.openstreetmap.org); place names by Nominatim.",
+		"",
+		"[b]Trains[/b]",
+		"Source: Fintraffic / digitraffic.fi, license CC 4.0 BY ([url=https://creativecommons.org/licenses/by/4.0/]creativecommons.org/licenses/by/4.0[/url]). Modified: the passenger timetable and train compositions are condensed for the game.",
+		"",
+		"[b]Weather[/b]",
+		"Finnish Meteorological Institute (FMI) open data, CC BY 4.0. Modified: resampled and combined from the nearest stations.",
+		"",
+		"[b]Resident names[/b]",
+		"Digital and Population Data Services Agency (DVV) name data, CC BY 4.0 ([url=https://nimipalvelu.dvv.fi/]nimipalvelu.dvv.fi[/url]). Modified: the most common names selected.",
+		"",
+		"[b]Municipalities[/b]",
+		"Compiled from Wikipedia, © Wikipedia contributors, CC BY-SA 4.0 ([url=https://creativecommons.org/licenses/by-sa/4.0/]creativecommons.org/licenses/by-sa/4.0[/url]). Modified: tables combined; the data file is likewise CC BY-SA 4.0.",
+		"",
+		"[b]Ice hockey and football fixtures[/b]",
+		"Schedules, results and attendances from the public Liiga and Veikkausliiga result services; the source data remains copyright of Liiga, Veikkausliiga and their data providers.",
+		"",
+		"[b]Sounds[/b]",
+		"Sound effects generated with Stable Audio Open (Stability AI). Speech and station announcements generated with Chatterbox (Resemble AI) and Microsoft Azure Speech.",
+		"",
+		"[b]Software[/b]",
+		"Godot Engine (MIT, © Godot Engine contributors), its components below, Python and its libraries, and osmium-tool (GPL-3.0; its source is published with every release). Full notices: THIRD_PARTY_LICENSES.md in the game folder.",
+	])
+	return "\n".join(lines)
+
+
+func _credits_menu() -> void:
+	_clear()
+	_title(_t("credits").to_upper())
+	var text := RichTextLabel.new()
+	text.bbcode_enabled = true
+	text.custom_minimum_size = Vector2(640, 420)
+	text.scroll_active = true
+	text.text = credits_text() + "\n\n[b]Godot Engine[/b]\n" + Engine.get_license_text() + "\n" + _godot_components()
+	text.meta_clicked.connect(func(meta): OS.shell_open(str(meta)))
+	_body.add_child(text)
+	_focusables.append(text)
+	_button(_t("back"), _main_menu)
+	_back_action = _main_menu
+	_focus_menu()
+
+
+## Godot's third-party components and their licences (Engine.get_copyright_info).
+static func _godot_components() -> String:
+	var lines := PackedStringArray()
+	var licences: Dictionary = Engine.get_license_info()
+	for component in Engine.get_copyright_info():
+		for part in component["parts"]:
+			lines.append("%s: %s, %s" % [component["name"], ", ".join(part["copyright"]), part["license"]])
+	lines.append("")
+	for name in licences:
+		lines.append("[b]%s[/b]\n%s" % [name, licences[name]])
+	return "\n".join(lines)
+
+
 func _main_menu() -> void:
 	get_tree().paused = false
 	_clear()
@@ -266,6 +335,7 @@ func _main_menu() -> void:
 	var career := _button(_t("career"), func(): _start("career"))
 	var gig := _button(_t("gig_driver"), _city_menu)
 	_button(_t("settings"), _settings_menu)
+	_button(_t("credits"), _credits_menu)
 	_button(_t("clear_cache"), _confirm_clear_cache)
 	_button(_t("quit"), get_tree().quit)
 	_focus_menu()
@@ -586,15 +656,16 @@ func _settings_menu() -> void:
 	_clear()
 	_title(_t("settings").to_upper())
 	var language := OptionButton.new()
-	language.add_item("English")
-	language.add_item("Suomi")
-	language.selected = 1 if _language == "fi" else 0
+	for code in T.LANGUAGES:
+		language.add_item(T.LANGUAGE_NAMES[code])
+	language.selected = maxi(0, T.LANGUAGES.find(_language))
 	language.item_selected.connect(func(index: int):
-		_language = "fi" if index == 1 else "en"
+		_language = T.LANGUAGES[index]
 		_settings.set_value("game", "language", _language)
 		_settings.save("user://settings.cfg")
 		if _game != null:
-			_game.set_language(_language))
+			_game.set_language(_language)
+		_settings_menu.call_deferred())
 	_with_help(language, "help_language")
 	_focusables.append(language)
 	var historical := CheckButton.new()  # FMI weather for the city and game time

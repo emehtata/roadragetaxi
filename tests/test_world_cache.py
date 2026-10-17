@@ -274,7 +274,7 @@ def test_world_cache_miss_does_not_claim_configured_source_is_overpass(tmp_path,
         manager.load_area("pbf-area", (1, 2, 3, 4))
     manager.close()
 
-    assert "loading OSM data from configured source" in caplog.text
+    assert "loading OSM data from the configured source" in caplog.text
     assert "downloading Overpass JSON" not in caplog.text
 
 
@@ -371,3 +371,21 @@ def test_pending_count_counts_unfinished_loads_under_the_lock():
     finished.set_result(None)
     manager._futures, manager._lock = {"a": Future(), "b": finished}, threading.Lock()
     assert manager.pending_count() == 1
+
+
+def test_the_start_is_looked_up_by_its_point_in_every_cached_area(tmp_path, sample_world, caplog):
+    """The game start asks for a point, not for an area with exactly its
+    request's id: any cached area holding the point is the start's world."""
+    fetched = []
+    manager = WorldCacheManager(tmp_path, fetch_func=lambda bbox: fetched.append(bbox) or [],
+                                build_func=lambda elements: sample_world)
+    wide = manager.area_id((61.40, 25.60, 61.60, 25.80))  # an earlier, wider area around the point
+    manager.writer.write(manager.path_for(wide), sample_world, area_id=wide)
+    request = (61.489158, 25.665502, 61.516622, 25.722976)
+    with caplog.at_level("INFO"):
+        world = manager.load_area(manager.area_id(request), request, point=(61.50, 25.69))
+        assert world.ways and fetched == []  # no exact file, no fetch: the wide area holds the start
+        manager.load_area(manager.area_id((60.1, 24.9, 60.2, 25.0)), (60.1, 24.9, 60.2, 25.0), point=(60.15, 24.95))
+    manager.close()
+    assert "Point cache hit " + wide in caplog.text
+    assert "no cached area holds the point lat=60.150000 lon=24.950000" in caplog.text and len(fetched) == 1

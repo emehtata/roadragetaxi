@@ -1,0 +1,254 @@
+"""Trajectory acceptance cases for docs/finnish-npc-traffic-law.md.
+
+These cover named scenarios, not general Finnish-law certification.
+"""
+import math
+import random
+
+import pytest
+
+from theroadragetrip.npc import NPCState, NPCVehicleManager, place_parked_npc, spawn_npc, update_npc
+from theroadragetrip.physics import Car
+from theroadragetrip.osm import StopSign, YieldSign, TrafficLight, Way
+from theroadragetrip.residents import ResidentManager
+from theroadragetrip.traffic_world import TrafficWorld
+from theroadragetrip.traffic_rules import TrafficAction, decide_traffic_action
+
+
+@pytest.fixture(autouse=True)
+def fixed_seed():
+    previous = random.getstate()
+    random.seed(20261017)
+    yield
+    random.setstate(previous)
+
+
+@pytest.mark.parametrize("actual,limit,expected", [(0, 13.9, TrafficAction.SLOW),
+                                                  (2, 13.9, TrafficAction.SLOW),
+                                                  (20, 5, TrafficAction.PROCEED)])
+def test_yellow_feasibility_uses_actual_speed_not_the_limit(actual, limit, expected):
+    signal = TrafficLight(10, 0, direction_angle=0)
+    signal.get_state = lambda now: "yellow"
+    decision = decide_traffic_action(0, 0, 0, [signal], 0, speed_limit_mps=limit, actual_speed_mps=actual)
+    assert decision.action == expected
+    assert decision.target_speed_mps <= actual
+
+
+def test_yellow_stop_latch_is_specific_to_the_signal_and_clears_on_green():
+    signal = TrafficLight(10, 0, direction_angle=0)
+    signal.get_state = lambda now: "yellow"
+    first = decide_traffic_action(0, 0, 0, [signal], 0, actual_speed_mps=2)
+    assert first.action == TrafficAction.SLOW
+    # Speed perturbation near the stopping-distance boundary must not cancel braking.
+    stopped = decide_traffic_action(5, 0, 0, [signal], 0, actual_speed_mps=3, yellow_stop_light=first.light)
+    assert stopped.action == TrafficAction.SLOW
+    other = TrafficLight(10, 0, direction_angle=0)
+    other.get_state = lambda now: "yellow"
+    assert decide_traffic_action(5, 0, 0, [other], 0, actual_speed_mps=3, yellow_stop_light=first.light).action == TrafficAction.PROCEED
+    signal.get_state = lambda now: "green"
+    assert decide_traffic_action(5, 0, 0, [signal], 0, actual_speed_mps=0, yellow_stop_light=first.light).action == TrafficAction.PROCEED
+
+
+@pytest.mark.parametrize("heading", [0.0, math.pi / 2, math.pi, -math.pi / 2])
+@pytest.mark.parametrize("vehicle_type", ["car", "bus"])
+def test_slow_vehicle_stops_on_yellow_waits_on_red_and_resumes_on_green(heading, vehicle_type):
+    fx, fy = math.cos(heading), math.sin(heading)
+    ways = [Way([(i * 20 * fx, i * 20 * fy), ((i + 1) * 20 * fx, (i + 1) * 20 * fy)],
+                "residential", 4.5) for i in range(20)]
+    world, residents = TrafficWorld(ways), ResidentManager()
+    result = spawn_npc(1, residents, world, ways, (40 * fx, 40 * fy), (360 * fx, 360 * fy), vehicle_type=vehicle_type)
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 2.0
+    signal = TrafficLight(vehicle.x + 10 * fx, vehicle.y + 10 * fy, direction_angle=heading)
+    phase = ["yellow"]
+    signal.get_state = lambda now: phase[0]
+    world.traffic_lights = [signal]
+
+    for state, ticks in [("yellow", 90), ("red", 300)]:
+        phase[0] = state
+        for _ in range(ticks):
+            update_npc(vehicle, driver, 1 / 30, world, residents)
+            nose_to_signal = (signal.x - vehicle.x) * fx + (signal.y - vehicle.y) * fy - vehicle.length_m / 2
+            assert nose_to_signal >= 0, "whole vehicle must remain behind the signal"
+            assert driver.recovery_stage == "NORMAL", "a legal light wait is not stuck recovery"
+        if state == "yellow":
+            assert vehicle.speed <= 2.1, "do not accelerate to beat yellow"
+        else:
+            assert abs(vehicle.speed) < .1
+            assert vehicle.state == NPCState.WAITING
+
+    stopped = (vehicle.x, vehicle.y)
+    phase[0] = "green"
+    for _ in range(120):
+        update_npc(vehicle, driver, 1 / 30, world, residents)
+    assert (vehicle.x - stopped[0]) * fx + (vehicle.y - stopped[1]) * fy > 5
+    assert vehicle.speed > 1
+
+
+def _freeway_transit(heading=0.0, vehicle_type="car"):
+    from theroadragetrip.npc import PathPoint
+    fx, fy = math.cos(heading), math.sin(heading)
+    way = Way([(0, 0), (2000 * fx, 2000 * fy)], "motorway", 5,
+              speed_limit_kmh=120, oneway=1, name="Pohjantie")
+    path = [PathPoint(x * fx + 2 * fy, x * fy - 2 * fx, way=way) for x in range(300, 1301, 20)]
+    vehicle = place_parked_npc(1, (path[0].x, path[0].y), None, vehicle_type=vehicle_type)
+    plan = (path, (path[-1].x, path[-1].y), None, False)
+    manager = NPCVehicleManager(target_count=1, min_count=1, max_count=1)
+    return manager, ResidentManager(), TrafficWorld([way]), vehicle, plan
+
+
+@pytest.mark.parametrize("heading", [0, math.pi / 2, math.pi, -math.pi / 2])
+@pytest.mark.parametrize("vehicle_type", ["car", "truck"])
+def test_freeway_transit_is_already_moving_when_committed_and_keeps_driving(heading, vehicle_type):
+    from theroadragetrip.vehicles.base import vehicle_definition
+    manager, residents, world, vehicle, plan = _freeway_transit(heading, vehicle_type)
+    fx, fy = math.cos(heading), math.sin(heading)
+    manager._finish_route_job({"kind": "transit", "vehicle": None, "members": None, "world": world},
+                              (vehicle, plan), 0, 0, residents, None)
+    assert vehicle in manager.vehicles
+    maximum = vehicle_definition(vehicle_type).max_speed_kmh or 120
+    assert vehicle.speed == pytest.approx(min(96, maximum) / 3.6)
+    origin = (vehicle.x, vehicle.y)
+    player = Car(2 * fy, -2 * fx, heading, 110 / 3.6)
+    for _ in range(150):
+        player.x += player.speed * fx / 30
+        player.y += player.speed * fy / 30
+        manager.update(1 / 30, player.x, player.y, residents, world, world.ways, player_car=player)
+        assert vehicle.state not in ("PARKED", "CRASHED", "REVERSING")
+        assert vehicle.speed > 15
+    assert (vehicle.x - origin[0]) * fx + (vehicle.y - origin[1]) * fy > 80
+
+
+@pytest.mark.parametrize("reason", ["short", "turn", "blocked", "player_near", "signal"])
+def test_unsafe_freeway_spawn_is_discarded_instead_of_creating_stopped_traffic(reason):
+    from theroadragetrip.npc import PathPoint
+    manager, residents, world, vehicle, plan = _freeway_transit()
+    player_x = 0
+    if reason == "short":
+        plan = ([plan[0][0], PathPoint(vehicle.x + 10, vehicle.y, way=world.ways[0])], plan[1], None, False)
+    elif reason == "turn":
+        plan[0][1].is_turn = True
+    elif reason == "blocked":
+        manager.target_count = 2  # rejection must be the gap, not a full population
+        manager.vehicles.append(place_parked_npc(2, (vehicle.x + 70, vehicle.y), None))
+    elif reason == "player_near":
+        player_x = vehicle.x - 70
+    elif reason == "signal":
+        world.traffic_lights = [TrafficLight(vehicle.x + 70, vehicle.y, direction_angle=0)]
+    before = list(manager.vehicles)
+    manager._finish_route_job({"kind": "transit", "vehicle": None, "members": None, "world": world},
+                              (vehicle, plan), player_x, vehicle.y, residents, None)
+    assert manager.vehicles == before
+    assert not manager.drivers
+    assert not residents.residents
+    assert manager.route_job_stats["discarded"] == 1
+
+
+@pytest.mark.parametrize("highway", ["motorway", "motorway_link", "trunk", "trunk_link"])
+def test_freeway_is_never_a_generated_roadside_parking_destination(highway):
+    from theroadragetrip.npc import _roadside_parking_point
+    way = Way([(0, 0), (1000, 0)], highway, 5)
+    assert _roadside_parking_point(500, 0, [way], None) is None
+
+
+@pytest.mark.parametrize("vehicle_type", ["tractor", "bus", "bicycle"])
+def test_ineligible_vehicle_is_not_seeded_as_freeway_traffic(vehicle_type):
+    manager, residents, world, vehicle, plan = _freeway_transit(vehicle_type=vehicle_type)
+    manager._finish_route_job({"kind": "transit", "vehicle": None, "members": None, "world": world},
+                              (vehicle, plan), 0, 0, residents, None)
+    assert not manager.vehicles and not manager.drivers and not residents.residents
+
+
+@pytest.mark.parametrize("heading", [0.0, math.pi / 2, math.pi, -math.pi / 2])
+@pytest.mark.parametrize("vehicle_type", ["car", "bus"])
+def test_stop_sign_requires_full_stop_without_traffic_then_releases(heading, vehicle_type):
+    fx, fy = math.cos(heading), math.sin(heading)
+    ways = [Way([(i * 20 * fx, i * 20 * fy), ((i + 1) * 20 * fx, (i + 1) * 20 * fy)],
+                "residential", 4.5) for i in range(20)]
+    world, residents = TrafficWorld(ways), ResidentManager()
+    result = spawn_npc(1, residents, world, ways, (40 * fx, 40 * fy), (360 * fx, 360 * fy), vehicle_type=vehicle_type)
+    assert result is not None
+    _, driver, vehicle = result
+    vehicle.car.speed = 6.0
+    sign = StopSign(vehicle.x + 40 * fx + 3 * fy, vehicle.y + 40 * fy - 3 * fx, id=12, direction_angle=heading)
+    world.sync_map_data(ways, stop_signs=[sign])
+    stopped = False
+    for _ in range(600):
+        update_npc(vehicle, driver, 1 / 30, world, residents)
+        nose_to_sign = (sign.x - vehicle.x) * fx + (sign.y - vehicle.y) * fy - vehicle.length_m / 2
+        if driver.stop_sign_satisfied and not stopped:
+            assert abs(vehicle.speed) < .05 and nose_to_sign >= 0
+            stopped = True
+        assert stopped or nose_to_sign >= 0, "must stop before crossing the sign position"
+        assert driver.recovery_stage == "NORMAL"
+    assert stopped
+    assert (vehicle.x - sign.x) * fx + (vehicle.y - sign.y) * fy > 10
+
+
+@pytest.mark.parametrize("kind", ["opposite", "upper", "yield", "green"])
+def test_irrelevant_stop_or_green_signal_does_not_force_a_stop(kind):
+    ways = [Way([(i * 20, 0), ((i + 1) * 20, 0)], "residential", 4.5) for i in range(20)]
+    world, residents = TrafficWorld(ways), ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, world, ways, (40, 0), (360, 0))
+    vehicle.car.speed = 6
+    sign_type = YieldSign if kind == "yield" else StopSign
+    sign = sign_type(vehicle.x + 30, vehicle.y - 3, direction_angle=math.pi if kind == "opposite" else 0,
+                     layer=1 if kind == "upper" else 0)
+    world.sync_map_data(ways, stop_signs=[] if kind == "yield" else [sign], yield_signs=[sign] if kind == "yield" else [])
+    if kind == "green":
+        light = TrafficLight(sign.x, vehicle.y, direction_angle=0)
+        light.get_state = lambda now: "green"
+        world.traffic_lights = [light]
+    for _ in range(180):
+        update_npc(vehicle, driver, 1 / 30, world, residents)
+        assert vehicle.speed > 5
+    assert vehicle.x > sign.x
+
+
+@pytest.mark.parametrize("heading", [0.0, math.pi / 2, math.pi, -math.pi / 2])
+@pytest.mark.parametrize("vehicle_type", ["car", "bus"])
+@pytest.mark.parametrize("lead_kind", ["player", "npc"])
+def test_high_speed_follower_stops_behind_stationary_vehicle(heading, vehicle_type, lead_kind):
+    fx, fy = math.cos(heading), math.sin(heading)
+    ways = [Way([(i * 20 * fx, i * 20 * fy), ((i + 1) * 20 * fx, (i + 1) * 20 * fy)],
+                "primary", 4.5, speed_limit_kmh=120) for i in range(50)]
+    world, residents = TrafficWorld(ways), ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, world, ways, (40 * fx, 40 * fy), (900 * fx, 900 * fy), vehicle_type=vehicle_type)
+    vehicle.car.speed = 30  # 108 km/h: the old fixed 30 m cone is far too short
+    lead_position = (vehicle.x + 180 * fx, vehicle.y + 180 * fy)
+    manager = NPCVehicleManager(target_count=0, min_count=0)
+    manager._population_elapsed = -1e6  # isolate following, not new trip selection
+    manager.vehicles.append(vehicle)
+    manager.drivers[1] = driver
+    player = Car(*lead_position, heading, 0) if lead_kind == "player" else None
+    if lead_kind == "npc":
+        lead = place_parked_npc(2, lead_position, None)
+        lead.car.heading = heading
+        manager.vehicles.append(lead)
+    else:
+        lead = player
+    for _ in range(450):
+        world.advance_time(1 / 30)
+        manager.update(1 / 30, vehicle.x, vehicle.y, residents, world, ways, player_car=player)
+        gap = (lead.x - vehicle.x) * fx + (lead.y - vehicle.y) * fy - (lead.length_m + vehicle.length_m) / 2
+        assert gap >= 0, "foreseeable stopped traffic must not be rear-ended"
+        assert vehicle.state != NPCState.CRASHED
+        if vehicle.speed < .05:
+            break
+    assert vehicle.speed < .05 and vehicle.state == NPCState.WAITING
+
+
+def test_legal_queue_wait_does_not_trigger_recovery_and_resumes_when_clear():
+    from theroadragetrip.npc import NPC_STUCK_TIMEOUT_S
+    ways = [Way([(i * 20, 0), ((i + 1) * 20, 0)], "residential", 4.5) for i in range(20)]
+    world, residents = TrafficWorld(ways), ResidentManager()
+    _, driver, vehicle = spawn_npc(1, residents, world, ways, (40, 0), (360, 0))
+    lead = Car(vehicle.x + 6, vehicle.y, 0, 0)
+    for _ in range(math.ceil((NPC_STUCK_TIMEOUT_S + 10) * 30)):
+        update_npc(vehicle, driver, 1 / 30, world, residents, nearby_obstacles=[lead])
+        assert driver.recovery_stage == "NORMAL"
+        assert vehicle.x < lead.x - (lead.length_m + vehicle.length_m) / 2
+    for _ in range(120):
+        update_npc(vehicle, driver, 1 / 30, world, residents, nearby_obstacles=[])
+    assert vehicle.speed > 1

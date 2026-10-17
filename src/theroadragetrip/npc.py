@@ -26,10 +26,12 @@ from .activities import ActivityInstance, ActivityLocation
 from .competitor_taxis import COMPETITOR_TAXIS, is_competitor, make_competitor
 from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
-from .osm import Curb, ParkingSpace, Way
-from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, is_point_on_road, update_car_physics
+from .osm import Curb, ParkingSpace, StopSign, Way
+from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, get_road_layer_at_point, is_point_on_road, update_car_physics
+from .population import people_within, traffic_demand
+from .road_rage import RoadRageClearance
 from .residents import Household, HouseholdManager, ResidentManager
-from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision
+from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision, stop_sign_decision
 from .traffic_world import _ROUTE_NODE_GRID_CELL_M, RouteSteps, TrafficWorld, run_route_steps
 from .vehicles.base import VEHICLE_DEFINITIONS, vehicle_definition
 
@@ -142,19 +144,6 @@ NPC_PASS_ONCOMING_CHECK_M = 60.0  # the oncoming lane must be empty this far ahe
 NPC_PASS_CLEARANCE_M = 2.0  # back in lane once this far past it
 NPC_PASS_SPEED_MPS = 6.0
 
-# living-traffic: Road Rage. Wider than NPC_AVOIDANCE_*'s own strict single-lane
-# cone (a horn should plausibly affect a car slightly off to the side,
-# not just one dead ahead in exactly the same lane) but the same
-# nearest_vehicle_ahead forward-cone projection - only the single
-# nearest driving vehicle ahead reacts; any queue behind it is the
-# existing collision-avoidance avoidance logic reacting to *that* vehicle slowing
-# down, not scripted - see trigger_road_rage's docstring.
-NPC_ROAD_RAGE_DETECTION_DISTANCE_M = 40.0
-NPC_ROAD_RAGE_LATERAL_LIMIT_M = 6.0
-NPC_ROAD_RAGE_REACTION_DURATION_S = 8.0
-NPC_ROAD_RAGE_YIELD_SPEED_MPS = 1.5  # a slow, visible crawl - not a hard stop (see update_npc's own footprint-crawl precedent for why never 0)
-NPC_ROAD_RAGE_EDGE_MARGIN_M = 0.5
-
 # collision-avoidance section 3/8: stuck detection. Checked on the same throttled-cache
 # cadence as the footprint check (NPC_FOOTPRINT_CHECK_INTERVAL_S) rather
 # than every frame - this is a recovery safety net, not a per-frame
@@ -187,6 +176,15 @@ LANE_BIAS_LOOKAHEAD_M = 20.0  # start easing into a turn lane this far before th
 _car_plugin_definition = VEHICLE_DEFINITIONS["car"]
 NPC_VEHICLE_LENGTH_M = _car_plugin_definition.length_m  # the default NPC car's dimensions - shared so footprint checks always match the spawned Car
 NPC_VEHICLE_WIDTH_M = _car_plugin_definition.width_m
+NPC_MAX_VEHICLE_HALF_LENGTH_M = max(definition.length_m for definition in VEHICLE_DEFINITIONS.values()) * .5
+
+
+def following_detection_distance(vehicle) -> float:
+    """See a stopped lead before comfortable braking plus a one-second margin."""
+    speed = abs(vehicle.speed)
+    return max(NPC_AVOIDANCE_DETECTION_DISTANCE_M,
+               speed * speed / (2 * NPC_AVOIDANCE_DECEL_MPS2) + speed
+               + vehicle.length_m * .5 + NPC_MAX_VEHICLE_HALF_LENGTH_M + NPC_AVOIDANCE_MIN_GAP_M)
 
 # multi-passenger-car.md section 2: capacity lives in one constant, never a
 # hardcoded literal in passenger-management logic.
@@ -352,6 +350,8 @@ NPC_RECOVERY_ATTEMPTS_PER_TICK = 1
 # explicit jam-cleanup exception, not a timeout for lawful traffic waits.
 NPC_HOLD_RETRY_TICKS = 5
 NPC_HOLD_GIVE_UP_ATTEMPTS = 3
+NPC_RECOVERY_MAX_WITHOUT_PROGRESS = 3
+NPC_RECOVERY_PROGRESS_M = 5.0
 # find_and_start_npc_trip's own BFS search width - deliberately much
 # smaller than spawn_deterministic_npc's NPC_DESTINATION_CANDIDATE_LIMIT
 # (40), which is a one-time, loading-screen-time cost for the game's
@@ -458,19 +458,6 @@ def _oncoming_lane_clear(x: float, y: float, heading: float, offset_m: float, wi
         if -3.0 < along < NPC_PASS_ONCOMING_CHECK_M and offset_m * 0.5 < left < offset_m * 1.5 + 1.0:
             return False
     return True
-
-
-def _road_rage_yield_target(
-    target: PathPoint, heading: float, way: Optional[Way], vehicle_width_m: float,
-) -> Tuple[float, float]:
-    """Move a straight-road steering target toward the safe right edge."""
-    if way is None or target.is_turn or target.lane_bias is not None:
-        return target.x, target.y
-    half_width = max(0.0, getattr(way, "half_width_m", 0.0))
-    edge_offset = max(0.0, half_width - vehicle_width_m * 0.5 - NPC_ROAD_RAGE_EDGE_MARGIN_M)
-    lane_x, lane_y = _lane_offset_point(way, 0.0, 0.0, heading, vehicle_width_m)
-    extra = max(0.0, edge_offset - math.hypot(lane_x, lane_y))
-    return target.x + math.sin(heading) * extra, target.y - math.cos(heading) * extra
 
 
 def _round_corner(
@@ -1052,6 +1039,8 @@ class Driver:
     current_way: Optional[Way] = None
     target_speed_mps: float = 0.0
     decision: TrafficDecision = field(default_factory=lambda: TrafficDecision(TrafficAction.PROCEED, 0.0))
+    stop_sign_key: Optional[tuple] = None
+    stop_sign_satisfied: bool = False
     # collision-avoidance stuck detection (section 3/8): sampled every
     # NPC_STUCK_CHECK_INTERVAL_S: if displacement since the last sample is
     # under NPC_STUCK_MIN_PROGRESS_M, stuck_timer_s accumulates instead of
@@ -1066,18 +1055,12 @@ class Driver:
     # field in this module (NPCState/NPCAvailability are the only "real"
     # enums here).
     recovery_stage: str = "NORMAL"
+    recovery_anchor: Optional[Tuple[float, float]] = None
+    recovery_route_attempts: int = 0
     hold_retry_tick: int = 0  # HOLD: the population tick it replans to a new destination at
     hold_failures: int = 0  # HOLD: replans that found nothing either
     route_job_pending: bool = False
     reverse_start_position: Optional[Tuple[float, float]] = None
-    # living-traffic: an orthogonal timed flag, not a new NPCState - matches
-    # this module's existing convention of keeping reactive/temporary
-    # conditions (driver_departed, recovery_stage) separate from the
-    # vehicle's core physical state, since the vehicle keeps being
-    # whatever NPCState its speed/position naturally imply while yielding
-    # (CRUISING at a crawl, or WAITING if fully stopped) - it never stops
-    # being simulated or disappears. None = not currently reacting.
-    road_rage_until_sim_time: Optional[float] = None
     # Cached continuous route progress used by the path follower.  Unlike
     # path_index this is a position along a segment, so steering does not
     # jump merely because a waypoint entered a bookkeeping radius.
@@ -1606,7 +1589,8 @@ def _begin_trip_on_vehicle(
     driver_resident = members[0]
     for member in members:
         member.vehicle_ids.add(vehicle.vehicle_id)
-    driver_resident.active_vehicle_id = vehicle.vehicle_id
+        member.active_vehicle_id = vehicle.vehicle_id
+        member.mode = "driving" if member is driver_resident else "riding"
 
     start, aim = path[0], path[1]
     origin_requires_access = origin_is_off_road and not is_point_on_road(
@@ -1629,6 +1613,10 @@ def _begin_trip_on_vehicle(
         member.trip_group_id = trip_group.group_id
     vehicle.owner_id = driver_resident.resident_id
     vehicle.way = start.way
+    vehicle.car.layer = get_road_layer_at_point(
+        vehicle.x, vehicle.y, current_layer=vehicle.layer,
+        ways=[start.way] if start.way is not None else [], heading=vehicle.heading,
+    )
     vehicle.destination = destination
     vehicle.travel_route = [(p.x, p.y) for p in path]
     vehicle.trip_group = trip_group
@@ -1711,6 +1699,33 @@ def start_npc_trip(
     )
 
 
+def _transit_initial_speed(vehicle, plan) -> Optional[float]:
+    """Seed freeway through traffic already moving, or reject a short/turning start."""
+    path = plan[0]
+    way = path[0].way
+    if way is None or way.highway not in ("motorway", "motorway_link", "trunk", "trunk_link"):
+        return 0.0
+    speed = way.speed_limit_kmh / 3.6 * 0.8  # game policy: enter at 80% of the road limit
+    definition = vehicle_definition(vehicle.vehicle_type)
+    maximum = definition.max_speed_kmh
+    if not definition.is_road_vehicle or (maximum is not None and maximum <= 70):
+        return None  # ordinary slow traffic cannot be seeded as motorway traffic
+    if maximum is not None:
+        speed = min(speed, maximum / 3.6)
+    horizon = speed * speed / (2 * ARRIVAL_DECEL_MPS2) + speed + vehicle.length_m
+    remaining = sum(math.hypot(b.x - a.x, b.y - a.y) for a, b in zip(path, path[1:]))
+    if speed <= 0 or remaining < horizon or _distance_to_next_turn(
+        path, 0, path[0].x, path[0].y, max_lookahead_m=horizon,
+    ) is not None:
+        return None
+    return speed
+
+
+def _transit_clearance(vehicle, speed):
+    return max(NPC_TRANSIT_SPAWN_CLEARANCE_M,
+               speed * speed / (2 * ARRIVAL_DECEL_MPS2) + speed + vehicle.length_m)
+
+
 def _apply_npc_trip(
     vehicle: NPCVehicle,
     resident_manager: ResidentManager,
@@ -1735,13 +1750,13 @@ def _apply_npc_trip(
 
 NPC_TARGET_COUNT_DEFAULT = 40  # when the city's population is unknown
 # The city's target is for its built-up parts: around the player it scales
-# with the buildings within the spawn radius - a town centre (this many or
-# more) gets all of it, a remote road with a few houses a car or two, an
-# empty forest road one passing car at most.
-NPC_FULL_TRAFFIC_BUILDINGS = 120
+# with the people the buildings within the spawn radius account for
+# (population.py) - a town centre (this many or more) gets all of it, a
+# remote road with a few houses a car or two, an empty forest road one
+# passing car at most.
+NPC_FULL_TRAFFIC_PEOPLE = 1500.0
 NPC_LOCAL_TARGET_CELL_M = 100.0  # recounted when the player moves into another cell this size
-NPC_MAIN_ROAD_TRAFFIC_FRACTION = 0.25
-NPC_MAIN_ROAD_HIGHWAYS = {"motorway", "trunk", "primary", "secondary", "tertiary"}
+NPC_DEMAND_ROLL_TICKS = 30  # population ticks (1 min): how long one draw of a fractional moving target holds
 NPC_TARGET_COUNT_MIN = 15
 NPC_TARGET_COUNT_MAX = 100
 
@@ -2216,6 +2231,11 @@ def _npc_motion_stays_on_road(vehicle, driver, previous, ways, spatial_grid=None
 
 def _enforce_npc_road_motion(vehicle, driver, previous, traffic_world, spatial_grid, manager):
     if _npc_motion_stays_on_road(vehicle, driver, previous, traffic_world.ways, spatial_grid):
+        # Follow the occupied route road, not an overlapping bridge or a lookahead road not yet reached.
+        vehicle.car.layer = get_road_layer_at_point(
+            vehicle.x, vehicle.y, current_layer=vehicle.layer,
+            ways=[driver.current_way] if driver.current_way is not None else [], heading=vehicle.heading,
+        )
         return
     vehicle.car.x, vehicle.car.y, vehicle.car.heading = previous
     vehicle.car.speed = 0.0
@@ -2269,6 +2289,14 @@ def update_npc(
         release_npc_parking_reservation(vehicle)
         _set_turn_signal(vehicle, "", dt)
         return
+
+    # shortcut: displacement can count a large wiggle; use route progress if observed.
+    if driver.recovery_anchor is not None and math.hypot(
+        vehicle.x - driver.recovery_anchor[0], vehicle.y - driver.recovery_anchor[1],
+    ) >= NPC_RECOVERY_PROGRESS_M:
+        driver.recovery_anchor = None
+        driver.recovery_route_attempts = 0
+        driver.hold_failures = 0
 
     if vehicle.state == NPCState.REVERSING:
         _set_turn_signal(vehicle, "", dt)
@@ -2351,16 +2379,27 @@ def update_npc(
     decision = decide_traffic_action(
         vehicle.car.x, vehicle.car.y, vehicle.car.heading, nearby_lights, traffic_world.sim_time,
         speed_limit_mps=speed_limit_mps,
+        actual_speed_mps=vehicle.car.speed,
+        stop_buffer_m=max(4.0, vehicle.length_m * 0.5 + 2.0),
+        yellow_stop_light=(driver.decision.light if driver.decision.reason == "yellow light, stopping in time" else None),
     )
     crossing_decision = None
     if decision.light is None:
+        signs = traffic_world.nearby_signs(vehicle.x, vehicle.y)
         crossing_decision = crossing_yield_decision(
             vehicle, nearby_obstacles or (),
-            signs=[*getattr(traffic_world, "stop_signs", ()), *getattr(traffic_world, "yield_signs", ())],
+            signs=signs,
             speed_limit_mps=speed_limit_mps,
         )
         if crossing_decision is not None and crossing_decision.target_speed_mps <= decision.target_speed_mps:
             decision = crossing_decision
+        stop_decision = stop_sign_decision(vehicle, driver, [sign for sign in signs if isinstance(sign, StopSign)], speed_limit_mps)
+        if stop_decision is not None:
+            crossing_decision = stop_decision if crossing_decision is None else crossing_decision
+            if stop_decision.target_speed_mps <= decision.target_speed_mps:
+                decision = stop_decision
+    else:
+        driver.stop_sign_key, driver.stop_sign_satisfied = None, False
     driver.decision = decision
     driver.target_speed_mps = decision.target_speed_mps
     # vehicle-population v2 section 4: a vehicle plugin's own max speed (e.g. a bus/
@@ -2434,7 +2473,7 @@ def update_npc(
     lead = nearest_vehicle_ahead(
         vehicle.car.x, vehicle.car.y, avoidance_heading, [o for o in nearby_obstacles or () if o is not passing],
         self_id=id(vehicle),
-        detection_distance_m=NPC_AVOIDANCE_DETECTION_DISTANCE_M,
+        detection_distance_m=following_detection_distance(vehicle),
         lateral_limit_m=NPC_AVOIDANCE_LATERAL_LIMIT_M,
     )
     if lead is not None:
@@ -2458,20 +2497,6 @@ def update_npc(
                 driver.passing, driver.pass_wait_s = lead[1], 0.0
     else:
         driver.pass_wait_s = 0.0
-
-    # living-traffic: Road Rage. A timed clamp, not a state change - the vehicle
-    # keeps obeying every other rule above it (traffic lights, corners,
-    # the vehicle ahead of *it*) at a reduced ceiling, exactly like the
-    # footprint-violation crawl below already does for a different
-    # reason, so it can never fight those into an unsafe combination.
-    road_rage_active = False
-    if driver.road_rage_until_sim_time is not None:
-        if traffic_world.sim_time >= driver.road_rage_until_sim_time:
-            driver.road_rage_until_sim_time = None
-        else:
-            road_rage_active = True
-            driver.target_speed_mps = min(driver.target_speed_mps, NPC_ROAD_RAGE_YIELD_SPEED_MPS)
-            _set_turn_signal(vehicle, "right", dt)
 
     if at_destination and footprint_clear:
         driver.target_speed_mps = 0.0
@@ -2506,7 +2531,8 @@ def update_npc(
     # kicked into REVERSING mid-parking).
     waiting_for_light = decision.light is not None and decision.action != TrafficAction.PROCEED
     finishing_approach = approaching_final_waypoint or vehicle.state in (NPCState.PARKING, NPCState.ARRIVING)
-    if waiting_for_light or crossing_decision is not None or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
+    waiting_in_queue = avoidance_blocked and lead is not None and not _is_stalled(lead[1])
+    if waiting_for_light or crossing_decision is not None or waiting_in_queue or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
         driver.stuck_timer_s = 0.0
         driver.stuck_check_position = None
         driver.stuck_check_elapsed_s = 0.0
@@ -2544,13 +2570,6 @@ def update_npc(
             "recovery failed - no validated route" if driver.recovery_stage == "HOLD"
             else "awaiting route job" if driver.route_job_pending else "stuck - awaiting recovery"
         )
-    elif driver.road_rage_until_sim_time is not None:
-        # living-traffic: still whatever state its actual speed implies (a crawl
-        # is CRUISING, a full stop behind something is WAITING) - this
-        # only overrides the *label*, matching every other reason here
-        # being a specific string rather than a dedicated NPCState.
-        vehicle.state = NPCState.CRUISING if abs(vehicle.car.speed) > 0.3 else NPCState.WAITING
-        vehicle.debug_waiting_for = "yielding to road rage"
     elif at_destination:
         # ARRIVING while still coasting to a stop; PARKED (multi-passenger-
         # car.md section 17) once genuinely stationary - the same 0.05 m/s
@@ -2605,10 +2624,6 @@ def update_npc(
         steer_left = steer_right = 0.0
     else:
         target_x, target_y = target.x, target.y
-        if road_rage_active:
-            target_x, target_y = _road_rage_yield_target(
-                target, avoidance_heading, driver.current_way, vehicle.width_m,
-            )
         desired_heading = math.atan2(target_y - vehicle.car.y, target_x - vehicle.car.x)
         heading_error = angle_diff(desired_heading, vehicle.car.heading)
         requested_steer = clamp(heading_error / math.radians(STEER_FULL_ANGLE_DEG), -1.0, 1.0)
@@ -3377,7 +3392,12 @@ def _continue_npc_trip_steps(
             vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
         )
         for destination, target_space in destination_candidates:
-            destination_is_off_road = destination != query_point
+            # Unlike a road node, the query point (a household's home spot)
+            # can itself be off the road: kept unchanged, it still needs the
+            # parking leg, or the car stalls at the road edge beside home.
+            destination_is_off_road = destination != query_point or not is_point_on_road(
+                destination[0], destination[1], ways=ways, spatial_grid=spatial_grid, car_roads_only=True,
+            )
             path = yield from _plan_and_validate_npc_route_steps(
                 traffic_world, ways, origin, destination, spatial_grid=spatial_grid,
                 curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
@@ -3476,6 +3496,7 @@ class NPCVehicleManager:
         target_moving_fraction: float = NPC_TARGET_MOVING_FRACTION,
     ) -> bool:
         self.vehicles: List[NPCVehicle] = []
+        self.road_rage = RoadRageClearance()
         self.drivers: Dict[int, Driver] = {}
         self.accidents: List[Tuple[float, float]] = []  # crash positions for the sound, drained by the simulation
         self.household_manager = HouseholdManager()
@@ -3493,6 +3514,12 @@ class NPCVehicleManager:
         self.city_target_count, self.city_min_count = self.target_count, self.min_count
         self.target_moving_fraction = target_moving_fraction
         self._local_density_cell = None
+        self._local_people = 0.0
+        self.clock = None  # the game clock (a datetime), set by the simulation; None: demand ignores time
+        self.demand_rng = random.Random()  # seeded by tests
+        self._demand_draw: Optional[float] = None
+        self._demand_draw_tick = 0
+        self.trip_start_probability = NPC_TRIP_START_PROBABILITY_PER_TICK
         self.spawn_radius_m = spawn_radius_m
         self.despawn_radius_m = despawn_radius_m
         self.simulation_radius_m = simulation_radius_m
@@ -3598,6 +3625,7 @@ class NPCVehicleManager:
             "route_failures": getattr(self, "population_diagnostics", {}).get("route_generation_failures", 0),
             "waiting_for_trips": getattr(self, "population_diagnostics", {}).get("vehicles_waiting_for_trips", 0),
         }
+        rage_held = getattr(getattr(self, "road_rage", None), "held", {})
         for vehicle in self.vehicles:
             if vehicle.vehicle_kind == "household":
                 counts["household"] += 1
@@ -3609,8 +3637,7 @@ class NPCVehicleManager:
                 counts["parked"] += 1
             elif vehicle.state != NPCState.CRASHED:
                 counts["driving"] += 1
-            driver = getattr(self, "drivers", {}).get(vehicle.vehicle_id)
-            if driver is not None and driver.road_rage_until_sim_time is not None:
+            if vehicle.vehicle_id in rage_held:
                 counts["road_rage"] += 1
         return counts
 
@@ -3621,37 +3648,9 @@ class NPCVehicleManager:
             counts[vehicle.vehicle_type] = counts.get(vehicle.vehicle_type, 0) + 1
         return counts
 
-    def trigger_road_rage(self, x: float, y: float, heading: float, sim_time: float) -> Optional[int]:
-        """living-traffic: the player's rage-shout/horn action reaches exactly
-        one real driver - the single nearest currently-driving vehicle
-        ahead (nearest_vehicle_ahead's same forward-cone projection
-        collision-avoidance's own following-distance avoidance already uses, just
-        wider - see the NPC_ROAD_RAGE_* constants' comment). That driver
-        yields (update_npc slows it and steers it toward the safe right edge
-        while road_rage_until_sim_time is in the future); any queue that
-        forms behind it is the existing avoidance logic reacting to *that*
-        vehicle slowing down, not
-        anything scripted here - this function only ever touches the one
-        vehicle it finds, never a whole area.
-
-        Returns the reacting vehicle's id, or None if nothing was ahead
-        to react."""
-        driving_vehicles = [
-            vehicle for vehicle in self.vehicles
-            if vehicle.state not in (NPCState.PARKED, NPCState.CRASHED)
-            and self.drivers.get(vehicle.vehicle_id) is not None
-        ]
-        lead = nearest_vehicle_ahead(
-            x, y, heading, driving_vehicles,
-            detection_distance_m=NPC_ROAD_RAGE_DETECTION_DISTANCE_M,
-            lateral_limit_m=NPC_ROAD_RAGE_LATERAL_LIMIT_M,
-        )
-        if lead is None:
-            return None
-        _, vehicle = lead
-        driver = self.drivers[vehicle.vehicle_id]
-        driver.road_rage_until_sim_time = sim_time + NPC_ROAD_RAGE_REACTION_DURATION_S
-        return vehicle.vehicle_id
+    def trigger_road_rage(self, sim_time: float) -> None:
+        """Activate the explicit ten-second arcade road-clearance exception."""
+        self.road_rage.activate(sim_time)
 
     def request_vehicle(
         self, household: Household, passengers: int = 1, purpose: Optional[str] = None,
@@ -3716,6 +3715,7 @@ class NPCVehicleManager:
         buildings: Optional[List],
         building_grid: Optional[SpatialWayGrid],
         vehicle_type: Optional[str] = None,
+        player_position: Optional[Tuple[float, float]] = None,
     ) -> Optional[NPCVehicle]:
         """Place one new parked vehicle - a thin wrapper around
         place_parked_npc that also rejects a spot too close to a vehicle
@@ -3725,10 +3725,19 @@ class NPCVehicleManager:
         claimed = [pos for _, pos in self._claimed_vehicle_points()]
         if not _point_is_clear_of_vehicles(point, claimed):
             return None
+        kind = vehicle_type or self._pick_vehicle_type()
+        if player_position is not None:
+            definition = vehicle_definition(kind)
+            # Bounding circles protect the taxi at any heading, including long NPC vehicles and door clearance.
+            clearance = max(NPC_MIN_VEHICLE_SPACING_M,
+                            math.hypot(definition.length_m, definition.width_m) * 0.5
+                            + math.hypot(NPC_VEHICLE_LENGTH_M, NPC_VEHICLE_WIDTH_M) * 0.5 + 1.0)
+            if not _point_is_clear_of_vehicles(point, [player_position], min_spacing_m=clearance):
+                return None
         return place_parked_npc(
             self._next_id(), point, parking_space, ways=ways, spatial_grid=spatial_grid,
             curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
-            vehicle_type=vehicle_type or self._pick_vehicle_type(),
+            vehicle_type=kind,
         )
 
     def _make_household(self, vehicle: NPCVehicle, resident_manager: ResidentManager) -> None:
@@ -3763,24 +3772,44 @@ class NPCVehicleManager:
         vehicle.home_parking_space = vehicle.reserved_parking_space
 
     def set_local_density(self, player_x: float, player_y: float, building_grid, current_way=None) -> None:
-        """Scale the population to the buildings within the spawn radius
-        (NPC_FULL_TRAFFIC_BUILDINGS: the city's whole target). Cheap: only
-        recounted when the player enters another NPC_LOCAL_TARGET_CELL_M cell."""
+        """Scale the population to the people the buildings within the spawn
+        radius account for (NPC_FULL_TRAFFIC_PEOPLE: the city's whole
+        target), and moving traffic to the traffic demand at the game clock
+        (population.traffic_demand). People are recounted only when the
+        player enters another NPC_LOCAL_TARGET_CELL_M cell.
+
+        Moving traffic is an expectation, not a minimum: below one car the
+        target is 1 for a share of the NPC_DEMAND_ROLL_TICKS periods, so a
+        remote road at night stays empty for long stretches."""
         if building_grid is None:
             return
-        on_main_road = getattr(current_way, "highway", None) in NPC_MAIN_ROAD_HIGHWAYS
-        cell = (math.floor(player_x / NPC_LOCAL_TARGET_CELL_M), math.floor(player_y / NPC_LOCAL_TARGET_CELL_M), on_main_road)
-        if cell == self._local_density_cell:
-            return
-        self._local_density_cell = cell
-        r = self.spawn_radius_m
-        nearby = sum(1 for _ in building_grid.ways_in_rect(player_x - r, player_y - r, player_x + r, player_y + r))
-        fraction = min(1.0, nearby / NPC_FULL_TRAFFIC_BUILDINGS)
-        if on_main_road:
-            fraction = max(NPC_MAIN_ROAD_TRAFFIC_FRACTION, fraction)
-        self.target_count = max(1, round(self.city_target_count * fraction))
-        self.min_count = min(self.city_min_count, max(0, round(self.city_min_count * fraction)))
-        self.target_moving_count = max(1, int(self.target_count * self.target_moving_fraction))
+        highway = getattr(current_way, "highway", None)
+        month = self.clock.month if self.clock is not None else None
+        cell = (math.floor(player_x / NPC_LOCAL_TARGET_CELL_M), math.floor(player_y / NPC_LOCAL_TARGET_CELL_M), month)
+        if cell != self._local_density_cell:
+            self._local_density_cell = cell
+            r = self.spawn_radius_m
+            self._local_people = people_within(
+                building_grid.ways_in_rect(player_x - r, player_y - r, player_x + r, player_y + r),
+                player_x, player_y, r, month,
+            )
+        fraction = min(1.0, self._local_people / NPC_FULL_TRAFFIC_PEOPLE)
+        demand = traffic_demand(fraction, highway, self.clock)
+        if self._demand_draw is None or self._population_tick_number >= self._demand_draw_tick + NPC_DEMAND_ROLL_TICKS:
+            self._demand_draw = self.demand_rng.random()
+            self._demand_draw_tick = self._population_tick_number
+        expected_moving = self.city_target_count * self.target_moving_fraction * demand["demand"]
+        self.target_moving_count = math.floor(expected_moving) + (self._demand_draw < expected_moving % 1.0)
+        # Parked cars belong to the households around, whatever the hour;
+        # passing traffic needs room on top of them.
+        households = 1 if self._local_people > 0 else 0  # anyone living here has a car parked
+        self.target_count = max(round(self.city_target_count * fraction), households, self.target_moving_count)
+        self.min_count = min(self.city_min_count, round(self.city_min_count * fraction))
+        self.trip_start_probability = NPC_TRIP_START_PROBABILITY_PER_TICK * demand["hour"]
+        self.population_diagnostics["traffic_demand"] = {
+            **demand, "people": round(self._local_people), "highway": highway,
+            "expected_moving": round(expected_moving, 3), "moving_target": self.target_moving_count,
+        }
 
     def populate_initial(
         self,
@@ -3826,6 +3855,7 @@ class NPCVehicleManager:
                 continue
             vehicle = self._place_one(
                 point, parking_space, ways, spatial_grid, curbs, curb_grid, buildings, building_grid,
+                player_position=(player_x, player_y),
             )
             if vehicle is None:
                 continue
@@ -3836,14 +3866,25 @@ class NPCVehicleManager:
                 progress_callback(len(self.vehicles) / self.target_count)
         self.rebuild_spatial_grid()
 
-    def _retire_trip(self, vehicle: NPCVehicle) -> None:
+    def _retire_trip(self, vehicle: NPCVehicle, resident_manager: ResidentManager) -> None:
         """A trip is fully over (a household vehicle just arrived home, or
         - defensively - a vehicle with no group somehow still had a
         driver): release the driver and let it sit idle until the next
         population-tick roll (or a future Resident-trip reservation)
-        sends it out again. The Residents themselves are untouched -
-        still real, still remembering their household/trip_group_id -
-        only the vehicle's own bookkeeping resets."""
+        sends it out again. Clear only this trip's occupancy links; persistent
+        resident identities, households and vehicle ownership remain intact."""
+        group = vehicle.trip_group
+        member_ids = set(group.member_resident_ids) if group is not None else set()
+        if vehicle.owner_id is not None:
+            member_ids.add(vehicle.owner_id)
+        for resident_id in member_ids:
+            member = resident_manager.get(resident_id)
+            if member is None or member.trip_group_id not in (None, group.group_id if group else None):
+                continue  # a stale roster cannot unlink a resident's newer trip
+            member.trip_group_id = None
+            if member.active_vehicle_id in (None, vehicle.vehicle_id):
+                member.active_vehicle_id = None
+                member.mode = "household" if member.household_id is not None else "walking"
         self.drivers.pop(vehicle.vehicle_id, None)
         vehicle.trip_group = None
         vehicle.returning_home = False
@@ -3874,6 +3915,10 @@ class NPCVehicleManager:
         for obstacle in nearby_obstacles:
             if obstacle is vehicle:
                 continue
+            other_car = getattr(obstacle, "car", obstacle)
+            if (vehicle.layer != getattr(other_car, "layer", 0)
+                    or vehicle.car.map_level != getattr(other_car, "map_level", 0)):
+                continue  # Overlapping screen footprints on separate road/floor levels cannot collide.
             obstacle_is_npc = isinstance(obstacle, NPCVehicle)
             obstacle_already_crashed = obstacle_is_npc and obstacle.state == NPCState.CRASHED
             if vehicle_already_crashed and obstacle_already_crashed:
@@ -4063,7 +4108,7 @@ class NPCVehicleManager:
                 )
                 pedestrian.state = "walking_to_activity"
 
-    def _handle_parked_vehicle(self, vehicle: NPCVehicle, sim_time: float = 0.0) -> None:
+    def _handle_parked_vehicle(self, vehicle: NPCVehicle, resident_manager: ResidentManager, sim_time: float = 0.0) -> None:
         """Per-frame, cheap only: retirement checks that need to happen
         the instant a vehicle parks. Deciding and routing to the *next*
         destination is deliberately NOT done here - continue_npc_trip's
@@ -4078,7 +4123,7 @@ class NPCVehicleManager:
         ready to continue" vehicles a few at a time (its own step 4,
         bounded by NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK)."""
         if vehicle.trip_group is None:
-            self._retire_trip(vehicle)
+            self._retire_trip(vehicle, resident_manager)
             return
         if is_competitor(vehicle) and vehicle.taxi_job is not None:
             if vehicle.taxi_job.at_stop(sim_time):  # the passenger has left: free for the next fare
@@ -4089,7 +4134,7 @@ class NPCVehicleManager:
             # building-visit detour the way an ordinary errand stop gets;
             # the household's residents are already accounted for, they
             # don't need to "visit" their own home as a timed activity.
-            self._retire_trip(vehicle)
+            self._retire_trip(vehicle, resident_manager)
 
     def _replaceable_parked_vehicle(
         self, player_x: float, player_y: float, viewport_bounds: Optional[Tuple[float, float, float, float]],
@@ -4239,6 +4284,7 @@ class NPCVehicleManager:
         self._route_jobs.append({
             "kind": kind, "vehicle": vehicle, "steps": steps, "members": member_resident_ids,
             "revision": traffic_world.route_graph_revision, "queued_frame": self._route_job_frame,
+            "world": traffic_world,
         })
         self.route_job_stats["queued"] += 1
         if kind in ("trip", "transit"):
@@ -4349,6 +4395,9 @@ class NPCVehicleManager:
             if not valid:
                 stats["discarded"] += 1
                 return
+            if job["kind"] == "recovery" and result is not None:
+                if driver.recovery_route_attempts >= NPC_RECOVERY_MAX_WITHOUT_PROGRESS:
+                    result = None  # another valid-looking path is not evidence of physical progress
             if result is None:
                 stats["failed"] += 1
                 if is_competitor(vehicle) and vehicle.taxi_job is not None and job["kind"] == "continue":
@@ -4362,7 +4411,9 @@ class NPCVehicleManager:
                     # A failed search is not evidence that reversing is safe.
                     driver.recovery_stage = "HOLD"
                     vehicle.state = NPCState.WAITING
-                    vehicle.debug_waiting_for = "recovery failed - no validated route"
+                    vehicle.debug_waiting_for = ("recovery exhausted - no driving progress"
+                                                 if driver.recovery_route_attempts >= NPC_RECOVERY_MAX_WITHOUT_PROGRESS
+                                                 else "recovery failed - no validated route")
                     stats["safe_holds"] += 1
                 return
             space = result[2]
@@ -4377,6 +4428,9 @@ class NPCVehicleManager:
                 stats["discarded"] += 1
                 return
             if job["kind"] == "recovery":
+                if driver.recovery_anchor is None:
+                    driver.recovery_anchor = (vehicle.x, vehicle.y)
+                driver.recovery_route_attempts += 1
                 path = result[0]
                 driver.path = path
                 driver.path_index = 1
@@ -4391,7 +4445,10 @@ class NPCVehicleManager:
                 stats["recovered"] += 1
             else:
                 _apply_npc_continuation(vehicle, driver, result)
-                driver.hold_failures = 0
+                if job["kind"] == "unhold" and driver.recovery_route_attempts >= NPC_RECOVERY_MAX_WITHOUT_PROGRESS:
+                    driver.hold_failures += 1  # reset only after this new route actually moves the vehicle
+                else:
+                    driver.hold_failures = 0
                 if vehicle.vehicle_kind == "household":
                     vehicle.returning_home = job["kind"] in ("continue", "unhold")
                 if is_competitor(vehicle) and vehicle.taxi_job is not None and job["kind"] == "continue":
@@ -4405,6 +4462,8 @@ class NPCVehicleManager:
                 self.population_diagnostics["route_generation_failures"] += 1
                 return
             vehicle, _plan = result
+            initial_speed = _transit_initial_speed(vehicle, _plan)
+            clearance = _transit_clearance(vehicle, initial_speed or 0.0)
             distance_sq = (vehicle.x - player_x) ** 2 + (vehicle.y - player_y) ** 2
             victim = self._replaceable_parked_vehicle(player_x, player_y, viewport_bounds)
             if victim is not None and len(self.vehicles) < self.target_count:
@@ -4412,15 +4471,21 @@ class NPCVehicleManager:
                 if not far:
                     victim = None
             if (
-                (len(self.vehicles) >= self.target_count and victim is None)
+                initial_speed is None
+                or (initial_speed > 0 and distance_sq < clearance ** 2)
+                or (len(self.vehicles) >= self.target_count and victim is None)
                 or distance_sq > self.simulation_radius_m ** 2
                 or (viewport_bounds is not None and _point_in_viewport(
                     vehicle.x, vehicle.y, viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M,
                 ))
                 or not _point_is_clear_of_vehicles(
                     (vehicle.x, vehicle.y), [(other.x, other.y) for other in self.vehicles],
-                    NPC_TRANSIT_SPAWN_CLEARANCE_M,
+                    clearance,
                 )
+                or (initial_speed > 0 and job.get("world") is not None and (
+                    job["world"]._nearby_traffic_lights(vehicle.x, vehicle.y, radius_m=clearance)
+                    or job["world"].nearby_signs(vehicle.x, vehicle.y)
+                ))
                 or (result[1][2] is None and not _point_is_clear_of_vehicles(
                     result[1][1], [pos for _, pos in claimed_points]
                 ))
@@ -4506,11 +4571,18 @@ class NPCVehicleManager:
         ), deadline)
         return None if result is None else self._apply_transit_spawn(result, resident_manager, claimed_points)
 
-    def _apply_transit_spawn(self, result, resident_manager: ResidentManager, claimed_points) -> Driver:
+    def _apply_transit_spawn(self, result, resident_manager: ResidentManager, claimed_points) -> Optional[Driver]:
         vehicle, plan = result
+        speed = _transit_initial_speed(vehicle, plan)
+        if speed is None:
+            release_npc_parking_reservation(vehicle)
+            return None
         if vehicle.vehicle_type == "car" and sum(map(is_competitor, self.vehicles)) < self.competitor_taxis:
             make_competitor(vehicle)  # (docs/competitor-taxis.md: it drives on, then waits parked for a fare)
         driver = _apply_npc_trip(vehicle, resident_manager, plan)
+        if speed > 0:
+            vehicle.car.speed = speed  # parked-trip setup deliberately reset it to zero
+            driver.target_speed_mps = speed
         self.vehicles.append(vehicle)
         self.drivers[vehicle.vehicle_id] = driver
         if vehicle.destination is not None:
@@ -4566,7 +4638,8 @@ class NPCVehicleManager:
                 continue
             if any(True for _ in self.nearby_vehicles_at(point[0], point[1], NPC_TRANSIT_SPAWN_CLEARANCE_M)):
                 continue
-            vehicle = self._place_one(point, None, ways, spatial_grid, curbs, curb_grid, buildings, building_grid)
+            vehicle = self._place_one(point, None, ways, spatial_grid, curbs, curb_grid, buildings, building_grid,
+                                      player_position=(player_x, player_y))
             if vehicle is None:
                 continue
             tries += 1
@@ -4591,6 +4664,18 @@ class NPCVehicleManager:
                         break
                     continue
                 vehicle.car.x, vehicle.car.y, vehicle.car.heading = start.x, start.y, heading
+                speed = _transit_initial_speed(vehicle, plan)
+                clearance = _transit_clearance(vehicle, speed or 0.0)
+                if speed is None or (speed > 0 and (
+                    math.hypot(vehicle.x - player_x, vehicle.y - player_y) < clearance
+                    or any(True for _ in self.nearby_vehicles_at(vehicle.x, vehicle.y, clearance))
+                    or traffic_world._nearby_traffic_lights(vehicle.x, vehicle.y, radius_m=clearance)
+                    or traffic_world.nearby_signs(vehicle.x, vehicle.y)
+                )):
+                    release_npc_parking_reservation(vehicle)
+                    if tries >= NPC_TRANSIT_SPAWN_NODE_TRIES:
+                        break
+                    continue
                 return vehicle, plan
             release_npc_parking_reservation(vehicle)
             if tries >= NPC_TRANSIT_SPAWN_NODE_TRIES:
@@ -4736,6 +4821,7 @@ class NPCVehicleManager:
                 continue
             vehicle = self._place_one(
                 point, parking_space, ways, spatial_grid, curbs, curb_grid, buildings, building_grid,
+                player_position=(player_x, player_y),
             )
             if vehicle is None:
                 continue
@@ -4784,7 +4870,8 @@ class NPCVehicleManager:
         vehicles_by_id = {vehicle.vehicle_id: vehicle for vehicle in self.vehicles}
         for vehicle in self.vehicles:
             driver = self.drivers.get(vehicle.vehicle_id)
-            if (driver is None or vehicle.state != NPCState.WAITING or vehicle.destination is None
+            if (vehicle.vehicle_id in self.road_rage.held or driver is None
+                    or vehicle.state != NPCState.WAITING or vehicle.destination is None
                     or vehicle.reserved_parking_space is not None):
                 continue
             taken = not _point_is_clear_of_vehicles(vehicle.destination, [
@@ -4840,6 +4927,7 @@ class NPCVehicleManager:
         idle_candidates = [
             vehicle for vehicle in self.vehicles
             if vehicle.state == NPCState.PARKED
+            and vehicle.vehicle_id not in self.road_rage.held
             and self.drivers.get(vehicle.vehicle_id) is None
             # Section 7: a RESERVED vehicle (e.g. reserve_household_vehicle,
             # for a future Resident-initiated trip) must not be grabbed by
@@ -4882,11 +4970,10 @@ class NPCVehicleManager:
         # living-traffic occupancy invariant: a household's members are shared
         # across its (up to NPC_MAX_VEHICLES_PER_HOUSEHOLD) vehicles, so a
         # member already riding in one must never also be folded into a
-        # trip starting on another. Resident.active_vehicle_id/
-        # trip_group_id are NOT this signal - both are left deliberately
-        # stale after a normal trip retires (see _retire_trip's own
-        # docstring: "Residents themselves are untouched"). The only
-        # reliable "currently mid-trip" signal is membership in some
+        # trip starting on another. Use membership in a live trip group,
+        # not occupancy links: a member visiting a building still belongs
+        # to the unfinished journey even while outside its vehicle.
+        # The reliable "currently mid-trip" signal is membership in some
         # vehicle's still-live trip_group (None once that vehicle's trip
         # actually retires) - collected once per tick, not per household.
         currently_busy_resident_ids = {
@@ -4903,7 +4990,7 @@ class NPCVehicleManager:
             # Below the moving target the random roll is skipped: it only
             # exists to pace an already-satisfied population, and at 8% per
             # candidate it left the player alone on the road.
-            if not below_moving_target and random.random() >= NPC_TRIP_START_PROBABILITY_PER_TICK:
+            if not below_moving_target and random.random() >= self.trip_start_probability:
                 continue
             trip_starts_this_tick += 1
             member_resident_ids = None
@@ -4933,6 +5020,7 @@ class NPCVehicleManager:
         ready = [
             vehicle for vehicle in self.vehicles
             if vehicle.state == NPCState.PARKED
+            and vehicle.vehicle_id not in self.road_rage.held
             and vehicle.trip_group is not None and vehicle.trip_group.all_aboard
             and self.drivers.get(vehicle.vehicle_id) is not None
             and not (vehicle.vehicle_kind == "household" and vehicle.returning_home)
@@ -4950,6 +5038,7 @@ class NPCVehicleManager:
         stuck = [
             vehicle for vehicle in self.vehicles
             if getattr(self.drivers.get(vehicle.vehicle_id), "recovery_stage", None) == "STUCK"
+            and vehicle.vehicle_id not in self.road_rage.held
             and abs(vehicle.car.speed) < 0.05
             and not any(job["vehicle"] is vehicle for job in self._route_jobs)
         ]
@@ -4957,6 +5046,7 @@ class NPCVehicleManager:
         held = [
             vehicle for vehicle in self.vehicles
             if getattr(driver := self.drivers.get(vehicle.vehicle_id), "recovery_stage", None) == "HOLD"
+            and vehicle.vehicle_id not in self.road_rage.held
             and driver.hold_failures < NPC_HOLD_GIVE_UP_ATTEMPTS
             and driver.hold_retry_tick <= self._population_tick_number
             and not any(job["vehicle"] is vehicle for job in self._route_jobs)
@@ -5022,6 +5112,8 @@ class NPCVehicleManager:
         # dict clear + re-insert per vehicle, trivial next to the per-
         # vehicle decision/physics work below.
         self.rebuild_spatial_grid()
+        if player_car is not None:
+            self.road_rage.update(self, player_car, traffic_world.sim_time, ways, spatial_grid, current_way)
         previous_poses = {id(v): (v.x, v.y, v.heading) for v in self.vehicles}
         for vehicle in self.vehicles:
             if vehicle.state == NPCState.CRASHED:
@@ -5032,6 +5124,8 @@ class NPCVehicleManager:
         if player_car is not None:
             self._previous_player_pose = (player_car.x, player_car.y, player_car.heading)
         for vehicle in self.vehicles:
+            if vehicle.vehicle_id in self.road_rage.held:
+                continue
             driver = self.drivers.get(vehicle.vehicle_id)
             if driver is None:
                 continue  # idle, parked - nothing to simulate until it starts a trip
@@ -5055,7 +5149,8 @@ class NPCVehicleManager:
             # avoidance inside update_npc); a generator can only be
             # iterated once, so the second consumer would otherwise
             # silently see nothing at all whenever player_car is None.
-            nearby_obstacles = list(self.nearby_vehicles_at(vehicle.x, vehicle.y, 65.0))
+            nearby_obstacles = list(self.nearby_vehicles_at(
+                vehicle.x, vehicle.y, max(65.0, following_detection_distance(vehicle))))
             if player_car is not None:
                 nearby_obstacles.append(player_car)
             update_npc(
@@ -5065,7 +5160,7 @@ class NPCVehicleManager:
                 spatial_grid=spatial_grid,
             )
             if vehicle.state == NPCState.PARKED:
-                self._handle_parked_vehicle(vehicle, traffic_world.sim_time)
+                self._handle_parked_vehicle(vehicle, resident_manager, traffic_world.sim_time)
 
         # Collision is a post-physics phase. Reindex moved vehicles, query a
         # swept local area, then test current and interpolated poses. This

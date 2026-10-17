@@ -60,6 +60,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_i18n()
 	test_chunk_queue()
 	test_interpolation()
+	test_vehicle_body_triangles()
 	test_audio()
 	test_hud()
 	test_map_chunks()
@@ -77,12 +78,14 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_rest_of_static_world()
 	test_buildings_2_5d()
 	test_buildings_3d()
+	test_sun_and_shadows()
 	test_roof_snow()
 	test_resent_chunk_buildings()
 	test_performance_paths()
 	test_startup_progress()
 	test_holiday_events()
 	test_settings_help()
+	test_credits()
 	test_minimap_is_exported()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -97,10 +100,24 @@ func test_minimap_is_exported() -> void:
 		"the Finland minimap SVG is exported as a file (Keep File import)")
 
 
+## Licensing: the attributions players must be able to find (LICENSE_AUDIT.md).
+func test_credits() -> void:
+	var credits: String = preload("res://startup.gd").credits_text()
+	for required in ["© OpenStreetMap contributors", "Open Database License", "openstreetmap.org/copyright",
+			"Fintraffic / digitraffic.fi", "CC 4.0 BY", "Finnish Meteorological Institute", "Digital and Population Data Services Agency",
+			"© Wikipedia contributors", "CC BY-SA 4.0", "Liiga", "Veikkausliiga", "MIT License", "osmium-tool", "Godot Engine"]:
+		check(credits.contains(required), "credits name: %s" % required)
+	check(Engine.get_license_text().contains("Godot"), "the Godot licence text is available to the credits")
+	var scene: Node = load("res://main.tscn").instantiate()
+	root.add_child(scene)
+	var hud = scene.get_node("Ui/Hud")
+	check(hud.osm_credit.text == "© OpenStreetMap contributors" and hud.osm_credit.get_parent() == hud, "the game view credits OpenStreetMap")
+	scene.free()
+
+
 func test_settings_help() -> void:
 	var shell = preload("res://startup.gd").new()
 	root.add_child(shell)
-	shell._build_shell()
 	shell._settings_menu()
 	var questions: Array = shell._body.find_children("*", "Button", true, false).filter(func(b): return b.text == "?")
 	check(questions.all(func(q): return Array(q.tooltip_text.split("\n")).all(func(l): return l.length() <= 60)), "settings: help tooltips wrap at 60 characters")
@@ -113,6 +130,11 @@ func test_settings_help() -> void:
 	check(help.visible and help.text == questions[0].tooltip_text.replace("\n", " "), "settings: clicking ? opens the explanation")
 	questions[0].pressed.emit()
 	check(not help.visible, "settings: clicking it again closes it")
+	shell._language = "de"
+	shell._settings_menu()
+	var language_picker: OptionButton = shell._focusables[0]
+	check(language_picker.item_count == 3 and language_picker.get_item_text(language_picker.selected) == "Deutsch", "settings: German selected from three languages")
+	check(shell._body.find_children("*", "Label", true, false).any(func(label): return label.text == "EINSTELLUNGEN"), "German settings title")
 	shell.free()
 
 
@@ -270,7 +292,36 @@ func test_chunk_queue() -> void:
 func test_i18n() -> void:
 	check(I18n.FI.keys().filter(func(k): return not I18n.EN.has(k)).is_empty(), "every Finnish text has English")
 	check(I18n.EN.keys().filter(func(k): return not I18n.FI.has(k)).is_empty(), "every English text has Finnish")
+	check(I18n.EN.keys().filter(func(k): return not I18n.DE.has(k)).is_empty(), "every English text has German")
+	check(I18n.DE.keys().filter(func(k): return not I18n.EN.has(k)).is_empty(), "every German text has English")
+	check(I18n.LANGUAGES.has("de") and I18n.LANGUAGE_NAMES.de == "Deutsch", "German is selectable")
+	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "de") == "[ZUM TAXI] Aino", "German walking passenger tag")
+	check(Phone.status_text(true, false, [], "", "de") == "Zurzeit keine Fahrtanfragen.", "German phone status")
+	check(Phone.card_text({"passenger_count": 3}, "de").contains("3 Fahrgäste"), "German group fare")
+	check(I18n.startup_detail("Preparing NPC traffic...", "de") == "Verkehr wird vorbereitet…", "German startup details")
+	check(I18n.text("settings", "de") == "EINSTELLUNGEN" and I18n.text("nav_left", "de") == "Links abbiegen", "German settings and navigation")
+	check(Hud.subtitle_text({"speaker": "driver", "text": "Hallo!"}, "de") == "Fahrer: Hallo!", "German subtitle speaker")
 	check(Phone.status_text(true, false, [], "", "fi") == "Ei kyytipyyntöjä juuri nyt.", "the phone reads the Finnish table")
+	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "fi") == "[TAKSILLE] Aino", "walking passenger tag is Finnish")
+	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "en") == "[TO TAXI] Aino", "walking passenger tag is English")
+	check(EntityLayer.passenger_tag({"name": "Aino"}, "fi") == "[NOUTO] Aino", "waiting passenger tag uses the selected language")
+	for status in ["PENDING", "ACCEPTED", "TRAIN_ARRIVING", "PASSENGER_WAITING", "PASSENGER_MET", "IN_TAXI", "DECLINED", "MISSED"]:
+		var item := {"id": "booking-1", "kind": "booking", "name": "Aino", "status": status}
+		check(Phone.details_text(item, "fi").contains("Tila: " + I18n.value_label(status, "fi")), "Finnish booking details: " + status)
+		check(Phone.details_text(item, "en").contains("Status: " + I18n.value_label(status, "en")), "English booking details: " + status)
+		if status != "PENDING":
+			check(Phone.card_text(item, "fi").contains("Tila: " + I18n.value_label(status, "fi")), "Finnish booking card: " + status)
+			check(Phone.row_text(1, item, false, "fi").ends_with(I18n.value_label(status, "fi")), "Finnish booking title: " + status)
+	check(I18n.value_label(null, "fi") == "-" and I18n.value_label("", "en") == "Unknown", "missing inspector values use translated placeholders")
+	check(I18n.value_label("future_state", "fi") == "future state", "unknown future values remain readable")
+	for key in I18n.FI:
+		var pattern := RegEx.new()
+		pattern.compile("%(?:[0-9.]+)?[sdf]|%%")
+		var fi_args := pattern.search_all(I18n.FI[key]).map(func(m): return m.get_string())
+		var en_args := pattern.search_all(I18n.EN[key]).map(func(m): return m.get_string())
+		check(fi_args == en_args, "translation format arguments match: " + key)
+		var de_args := pattern.search_all(I18n.DE[key]).map(func(m): return m.get_string())
+		check(fi_args == de_args, "German format arguments match: " + key)
 
 
 func test_interpolation() -> void:
@@ -367,6 +418,18 @@ func test_interpolation() -> void:
 	check(events.take_due_events(11.0).is_empty(), "a re-sent state doesn't replay its events")
 
 
+func test_vehicle_body_triangles() -> void:
+	for offset in [Vector2.ZERO, Vector2(5000, -5000), Vector2(100000, 100000)]:
+		for winding in [1.0, -1.0]:
+			var body := PackedVector2Array([offset + Vector2(-2, -1), offset + Vector2(2, -1),
+				offset + Vector2(2, 1), offset + Vector2(-2, 1)])
+			if winding < 0:
+				body.reverse()
+			check(EntityLayer2.body_triangles(body) == PackedInt32Array([0, 1, 2, 0, 2, 3]), "convex vehicle body submits triangles at distant coordinates in either winding")
+	check(EntityLayer2.body_triangles(PackedVector2Array([Vector2.ZERO, Vector2.ONE, Vector2(2, 2)])).is_empty(), "collapsed vehicle body is skipped")
+	check(EntityLayer2.body_triangles(PackedVector2Array([Vector2.ZERO, Vector2(2, 2), Vector2(0, 2), Vector2(2, 0)])).is_empty(), "crossed vehicle body is skipped")
+
+
 func test_audio() -> void:
 	var audio := AudioManager.new()
 	root.add_child(audio)  # _ready loads the config and the game's catalog
@@ -458,6 +521,31 @@ func test_map_chunks() -> void:
 	check(map.add_chunk({"chunk_id": "1_3"}) and map.chunk_count() == 2, "a new area's chunk is added")
 	check(map.remove_chunk("1_2") and not map.has_chunk("1_2") and map.chunk_count() == 1, "a distant chunk is removed")
 	check(not map.remove_chunk("9_9"), "removing an unknown chunk is harmless")
+	# Separate chunks must obey the same vertical order, regardless of arrival.
+	for config in [[1, false], [1, true], [2, false], [2, true], [3, false], [3, true]]:
+		var ground := {"chunk_id": "ground", "railways": [[[0, -10], [0, 10]]],
+			"buildings": [[[-5, -5], [5, -5], [5, 5], [-5, 5]]]}
+		var bridge := {"chunk_id": "bridge", "bounds": [-20, -20, 20, 20], "roads": [
+			{"points": [[-10, 0], [10, 0]], "half_width_m": 4.0, "drivable": true, "layer": config[0]}],
+			"rail_bridges": [[[5, -10], [5, 10]]]}
+		for message in ([bridge, ground] if config[1] else [ground, bridge]):
+			map.add_chunk(message)
+		var tracks = map._chunks["ground"].get_node("GroundTracks")
+		var deck = map._chunks["bridge"]._road_layers[0]
+		check(tracks.z_index < deck.z_index, "ground rails stay below a road bridge in either chunk order")
+		check(map._buildings.z_index < deck.z_index, "road bridges cover ground building volumes across chunks")
+		check(map._underground.z_index > deck.z_index, "underground view covers all surface bridge layers")
+		check(tracks.z_index >= 1, "ground rails remain visible over surface roads at level crossings")
+		check(map._chunks["bridge"]._px_layers.any(func(node): return node.z_index == 13),
+			"elevated railways retain their above-traffic bridge layer")
+		var weather: Array = map._chunks["bridge"]._bridge_weather[0]
+		map.set_wetness(1.0)
+		check(weather.all(func(node): return node.z_index == deck.z_index and node.visible),
+			"bridge wet shading and puddles remain on the deck above buildings")
+		map.set_wetness(0.0)
+		check(weather.all(func(node): return not node.visible), "dry bridges hide all weather passes")
+		map.remove_chunk("ground")
+		map.remove_chunk("bridge")
 	map.set_road_snow(3.0, [[0, 0, 3.0]])
 	map.add_chunk({"chunk_id": "snow", "bounds": [0, 0, 100, 100], "roads": [{"points": [[0, 5], [100, 5]], "half_width_m": 3.0, "drivable": true}]})
 	var snowy = map._chunks["snow"]
@@ -670,6 +758,17 @@ func test_mouse_inspection() -> void:
 	root.add_child(main)
 	check(main._character_text("pedestrian", {"id": 7, "resident": {"name": "Aino Korhonen", "birth_date": "1990-04-05"}}).contains("Aino Korhonen"), "inspector shows the resident name")
 	check(main._character_text("npc", {"id": 8, "owner": {"name": "Aino Korhonen"}, "occupants": [{"name": "Aino Korhonen"}]}).contains("Aino Korhonen"), "vehicle inspector shows its people")
+	main.set_language("fi")
+	var person_text: String = main._character_text("pedestrian", {"state": "waiting_at_light", "activity": "bench_sitting", "resident": {"gender": "female"}})
+	check(person_text.contains("Sukupuoli: nainen") and person_text.contains("Tila: odottaa liikennevaloissa") and person_text.contains("Puuhailee: istuu penkillä"), "inspector translates gender, state and activity")
+	var vehicle_text: String = main._character_text("npc", {"vehicle_type": "truck", "state": "CRUISING"})
+	check(vehicle_text.contains("Tyyppi: kuorma-auto") and vehicle_text.contains("Tila: ajaa"), "inspector translates vehicle type and driving state")
+	main.set_language("en")
+	check(main._character_text("npc", {"vehicle_type": "truck", "state": "CRUISING"}).contains("State: driving"), "inspector switches back to English")
+	main.set_language("de")
+	check(main._character_text("pedestrian", {"resident": {"gender": "woman"}, "state": "walking"}).contains("Geschlecht: weiblich"), "German resident gender matches server values")
+	check(main._character_text("npc", {"vehicle_type": "truck", "state": "CRUISING"}).contains("Zustand: fährt"), "German vehicle inspector")
+	main.set_language("en")
 	main.entities._frame = {"a": state, "b": state, "t": 0.0}
 	state["pedestrians"] = [pedestrian]
 	pedestrian["x"] = 1.0  # inside the headless viewport, so GUI routing is exercised
@@ -726,6 +825,9 @@ func _offer(id: String, name: String, metres: int = 800, seconds: float = 40.0) 
 
 
 func test_phone() -> void:
+	check(Phone.card_text({"passenger_count": 3}, "fi").contains("3 matkustajaa")
+		and Phone.card_text({"passenger_count": 2}, "en").contains("2 passengers"), "fare cards show group size in both languages")
+	check(Phone.card_text({"passenger_count": 3}).split("\n").size() == 3, "group count fits the existing three-line fare card")
 	var phone: Phone = preload("res://phone.gd").new()
 	root.add_child(phone)
 	var sounds: Array = []
@@ -1331,7 +1433,7 @@ func test_navigation_route() -> void:
 	var instruction := {"instruction": {"maneuver": "left", "distance_m": 125.0, "street": "Kirkkokatu"}}
 	device.show_navigation(instruction)
 	var app = device.navigation
-	check(device.visible and app.visible and app._distance.text == "125 m" and app._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
+	check(device.visible and app.visible and app._distance.text == "130 m" and app._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
 	device.update_layout()
 	var default_position: Vector2 = device.position
 	var press := InputEventMouseButton.new()
@@ -1360,6 +1462,13 @@ func test_navigation_route() -> void:
 	var right: PackedVector2Array = NavigationPhone.arrow_points("right")
 	check(left.size() == 3 and left[-1].x < left[-2].x and left[0].x == left[1].x, "navigation phone: left arrow has a 90 degree bend")
 	check(right.size() == 3 and right[-1].x > right[-2].x, "navigation phone: right arrow points right")
+	var shown := []
+	for metres in [3.4, 9.6, 14.0, 87.0, 455.0, 996.0, 1049.0, 1050.0, 12345.0]:
+		shown.append(NavigationPhone.format_distance(metres))
+	check(shown == ["3 m", "10 m", "10 m", "90 m", "460 m", "1.0 km", "1.0 km", "1.1 km", "12.3 km"],
+		"navigation phone: 1 m under 10 m, 10 m steps under 1 km, 100 m steps above: %s" % [shown])
+	device.show_navigation({"instruction": {"maneuver": "left", "distance_m": 87.0, "total_m": 2345.0, "street": "Torikatu"}})
+	check(app._distance.text == "90 m" and app._total.text == "Yhteensä 2.3 km", "navigation phone: next turn and the total driving distance")
 	device.show_navigation({})
 	check(device.visible and app._distance.text == "" and app._street.text == "Ei määränpäätä", "navigation phone: no stale instruction without a destination")
 	device.show_navigation({"instruction": {"maneuver": "routing"}})
@@ -1430,7 +1539,14 @@ func test_navigation_route() -> void:
 	var scene: Node = load("res://main.tscn").instantiate()
 	var z: int = scene.get_node("EntityLayer").z_index
 	scene.free()
-	check(z > 7 and z < 11, "the entity layer (z %d) sits above the roads and buildings (z 7), under canopies and rail bridges (z 11)" % z)
+	check(z > MapChunk.road_z(3) and z < 13, "entities (z %d) stay above all road decks, below canopies and rail bridges" % z)
+	var entities := EntityLayer.new()
+	entities.z_index = z
+	root.add_child(entities)
+	check(z + entities._cars_under.z_index == 1, "under-bridge vehicles retain their absolute ground layer")
+	check(z + entities._trains.z_index > 13, "trains remain above their railway bridge decks")
+	check(z + entities._reflectors.z_index == 22, "reflectors retain their above-night-tint layer")
+	entities.free()
 
 
 ## godot-final-03: the running fare in the mission line, the pump price in the gauge.
@@ -1787,22 +1903,39 @@ func test_static_world() -> void:
 	check(map._pool_group.get_child_count() == 1, "no duplicate pools after a revisit")
 	map.free()
 
-	# Headlight beams: two quads and two caps per car, 15 m; long beams 45 m.
+	# Headlight beams: dipped 15 m; high beams 150 m, covering both lanes.
 	var beams := EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0)
-	check(beams.size() == 4 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 3.0), "a beam reaches 15 m ahead, its tip shifted right")
-	check(is_equal_approx(EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 45.0)[2][3].x, 45.0), "long beams reach 45 m")
+	check(beams.size() == 5 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 3.0), "a beam reaches 15 m ahead, its tip shifted right")
+	check(beams[4] == PackedVector2Array([beams[0][0], beams[2][0], beams[2][3], beams[0][3]]), "the road between the two beams is lit too (no dark wedge ahead)")
+	for heading in [0.0, PI / 2.0, PI, -PI / 2.0]:
+		var high := EntityLayer2.beam_polygons(Vector2.ZERO, heading, 1.8, EntityLayer2.HIGH_BEAM_M)
+		var forward := Vector2.RIGHT.rotated(-heading)
+		var right := Vector2.DOWN.rotated(-heading)
+		check(is_equal_approx(high[0][3].dot(forward), 150.0), "high beams reach 150 m at every heading")
+		for lane in [-3.5, 0.0, 3.5]:
+			var at: Vector2 = forward * 30.0 + right * lane
+			check(high.any(func(poly): return Geometry2D.is_point_in_polygon(at, poly)), "high beams cover the opposing lane, centre and own lane 30 m ahead")
 	var train := {"id": 1, "cars": [[0.0, 0.0, 0.0, 20.0, "locomotive"], [-20.0, 0.0, 0.0, 20.0, "standard"]]}
 	var train_beams := EntityLayer2.train_beams(train, train, 0.0, Vector2.ZERO)
-	check(train_beams.size() == 4 and is_equal_approx(train_beams[0][0].x, 10.0) and train_beams[0][3].x > 60.0, "a train's beams start at the lead car's nose and reach far ahead")
+	check(train_beams.size() == 5 and is_equal_approx(train_beams[0][0].x, 10.0) and train_beams[0][3].x > 60.0, "a train's beams start at the lead car's nose and reach far ahead")
 	# beam [lamp, near, far side, tip]; heading 0 is +x, its right side +y: the left beam (side -1) is polygon 0
 	check(train_beams[0][1].y > 0.0 and train_beams[0][3].y > 0.0 and train_beams[2][1].y < 0.0 and train_beams[2][3].y < 0.0, "a train's two beams overlap over the track, no dark gap between them")
 	check(is_equal_approx(train_beams[0][3].y, -train_beams[2][3].y), "a train's beams are symmetric: straight ahead, not to the right")
 	check(EntityLayer2.train_beams({"id": 2, "cars": []}, {}, 0.0, Vector2.ZERO).is_empty(), "no cars, no train beams")
-	check(EntityLayer2.beam_length(false, false) == 45.0 and EntityLayer2.beam_length(true, false) == 15.0 and EntityLayer2.beam_length(false, true) == 15.0, "high beam on a dark road, dipped by street lights and oncoming traffic")
+	check(EntityLayer2.beam_length(false, false) == 150.0 and EntityLayer2.beam_length(true, false) == 15.0 and EntityLayer2.beam_length(false, true) == 15.0, "high beam on a dark road, dipped by street lights and oncoming traffic")
 	check(not FileAccess.get_file_as_string("res://entity_layer.gd").contains("if vehicle[3] and not lamp_near"), "the taxi gets the high beam too")
 	var car := [Vector2.ZERO, 0.0, 1.8, true]
 	check(EntityLayer2.oncoming(car, [car, [Vector2(30, 0), PI, 1.8, true]]), "a car 30 m ahead coming the other way dips the beams")
+	check(EntityLayer2.oncoming(car, [car, [Vector2(140, -3.5), PI, 1.8, true]]), "oncoming cars within the longer beam dip it before glare")
+	check(not EntityLayer2.oncoming(car, [car, [Vector2(170, -3.5), PI, 1.8, true]]), "oncoming cars beyond beam reach do not dip it")
 	check(not EntityLayer2.oncoming(car, [car, [Vector2(30, 0), 0.0, 1.8, true]]), "one going the same way doesn't")
+	var offscreen := EntityLayer2.new()
+	offscreen.view_rect = Rect2(-40, -40, 80, 80)  # 10 m view plus the usual 30 m cull margin
+	var lighting_state := {"player": {"x": 0.0, "y": 0.0, "heading": 0.0, "engine_on": false},
+		"npcs": [{"id": 1, "x": -100.0, "y": 0.0, "heading": 0.0, "width_m": 1.8}]}
+	offscreen._frame = {"a": lighting_state, "b": lighting_state, "t": 0.0}
+	check(offscreen.headlight_beams().size() == 5, "off-screen headlights remain drawn while their long beam reaches the view")
+	offscreen.free()
 
 
 	# Reflectors: not in the taxi's cone.
@@ -1814,11 +1947,16 @@ func test_static_world() -> void:
 	root.add_child(night)
 	var two_cars: Array = EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0) + EntityLayer2.beam_polygons(Vector2(0, 20), PI, 1.8, 45.0)
 	night.show_lights(1.0, Rect2(0, 0, 10, 10), two_cars)
-	check(night.visible and night.beam_triangles.size() == 4 * 6 and night.beam_points.size() == 4 * 4, "two cars, four lamps: four quads in one batch (the caps left out)")
-	check(night.beam_colors[0] == Color(NightLayer.BEAM, 1.0) and night.beam_colors[2] == Color(0, 0, 0, 1.0), "bright at the lamp, nothing at the far end")
-	check(night.get_child_count() == 1 and (night.beams.material as CanvasItemMaterial).light_mode == CanvasItemMaterial.LIGHT_MODE_UNSHADED, "one node; light the ambient multiply doesn't darken")
+	check(night.visible and night.beam_triangles.size() == 6 * 6 and night.beam_points.size() == 6 * 4, "two cars: two beams and the middle each, in one batch (the caps left out)")
+	check(night.beam_colors[0] == Color(1, 1, 1, 1.0) and night.beam_colors[2] == Color(0, 0, 0, 1.0), "full strength at the lamp, nothing at the far end")
+	check(night.get_child_count() == 1 and (night.beams.material as ShaderMaterial).shader.code.contains("hint_screen_texture"),
+		"one node; the beams brighten the screen under them (the road shows), not a grey tint")
+	check((night.beams.material as ShaderMaterial).shader.code.contains("blend_add"),
+		"overlapping beams add illumination instead of replacing it")
+	check(is_equal_approx(NightLayer.beam_gain(Color.WHITE), 0.0) and NightLayer.beam_gain(Daylight.NIGHT) > 2.5 and NightLayer.beam_gain(Color.BLACK) == 6.0,
+		"no gain by day, about back to daylight at night, capped in the dark")
 	night.show_lights(0.5, Rect2(0, 0, 10, 10), two_cars)
-	check(night.beam_colors[0].is_equal_approx(Color(NightLayer.BEAM * 0.5, 1.0)) and night.beam_points.size() == 16, "half the light at dusk; the arrays reused")
+	check(night.beam_colors[0].is_equal_approx(Color(0.5, 0.5, 0.5, 1.0)) and night.beam_points.size() == 24, "half the light at dusk; the arrays reused")
 	night.show_lights(0.0, Rect2(0, 0, 10, 10), two_cars)
 	check(not night.visible and night.beam_triangles.is_empty(), "day: no beams")
 	var source: String = (NightLayer as Script).source_code
@@ -2035,7 +2173,7 @@ func test_buildings_2_5d() -> void:
 	check(is_equal_approx(Detail.canopy_height(map._chunks["0_0"], map._chunks["0_0"]._data["canopies"][0]), 6.0), "a canopy is raised by its own height")
 	map.set_map_level(-3)
 	check(map._underground.z_index > map._buildings.z_index, "below ground the dark view covers the buildings")
-	check(map._buildings.z_index < 11, "rail bridges (z 11) stay above the buildings")
+	check(map._buildings.z_index < 13, "rail bridges (z 13) stay above the buildings")
 	map.remove_chunk("0_1")
 	check(map._buildings.get_child_count() == 1, "a chunk's buildings go with it")
 	check(map.find_children("*", "CollisionObject2D", true, false).is_empty(), "no collision")
@@ -2052,6 +2190,51 @@ static func _area(polygons: Array) -> float:
 ## godot-18: the optimisations keep the picture - same areas tinted, lit,
 ## drawn - with less work.
 ## godot-21: the 3D building layer's geometry and its alignment with the 2D map.
+## rrt-018-shadows: the sun's direction in the 3D view's axes, the sunlight
+## (and shadow) strength by altitude and cloud, and the shadow light's
+## switching. What the shadows look like: tests/shadow_scene.gd.
+func test_sun_and_shadows() -> void:
+	check(Daylight.sunlight(-5.0, 0.0) == 0.0 and Daylight.sunlight(0.5, 0.0) == 0.0, "no direct sun (no shadows) below the horizon")
+	check(Daylight.sunlight(30.0, 0.0) == 1.0 and Daylight.sunlight(30.0, 0.2) == 1.0, "a clear sky: full sunlight")
+	check(Daylight.sunlight(30.0, 0.95) == 0.0 and Daylight.sunlight(30.0, 1.0) == 0.0, "overcast: no direct sun")
+	var partly := Daylight.sunlight(30.0, 0.6)
+	check(partly > 0.2 and partly < 0.8, "partly cloudy: in between (%.2f)" % partly)
+	var worst := 0.0
+	for i in 400:
+		worst = maxf(worst, absf(Daylight.sunlight(i * 0.05, 0.0) - Daylight.sunlight((i + 1) * 0.05, 0.0)))
+		worst = maxf(worst, absf(Daylight.sunlight(30.0, i / 400.0) - Daylight.sunlight(30.0, (i + 1) / 400.0)))
+	check(worst < 0.02, "sunlight changes without steps (at most %.4f per step)" % worst)
+	var south := Daylight.sun_direction(50.0, 180.0)
+	var east := Daylight.sun_direction(20.0, 90.0)
+	var north := Daylight.sun_direction(10.0, 0.0)
+	var west := Daylight.sun_direction(10.0, 270.0)
+	check(south.z > 0.6 and absf(south.x) < 1e-5 and east.x > 0.9 and north.z < -0.9 and west.x < -0.9, "azimuth from grid north: south +z, east +x, north -z, west -x")
+	check(is_equal_approx(south.length(), 1.0) and is_equal_approx(south.y, sin(deg_to_rad(50.0))), "a unit vector at the sun's elevation")
+	check(is_equal_approx(Daylight.sun_direction(2.0, 180.0).y, sin(deg_to_rad(Daylight.SHADOW_MIN_ELEVATION_DEG))), "a low sun's shadows are capped in length")
+	var overhead := B3.sun_basis(Vector3.UP)
+	check((-overhead.z).is_equal_approx(Vector3.DOWN), "the sun straight overhead shines straight down")
+	check((-B3.sun_basis(south).z).is_equal_approx(-south), "the light shines away from the sun (Godot's -z)")
+	check(Daylight.azimuth({"calendar": {"sun_azimuth_deg": 123.5}}) == 123.5 and Daylight.azimuth({}) == 180.0, "the server's azimuth; an older server: south")
+	check(Daylight.cloud_cover({"weather": {"cloud_cover": 0.7}}) == 0.7 and Daylight.cloud_cover({}) == 0.0, "the server's cloud cover; none: clear")
+	var layer = B3.new()
+	root.add_child(layer)
+	layer.set_sun(40.0, 180.0, 0.0)
+	check(layer._sun.visible and layer._shadow_sprite.visible and layer._shadow_view.render_target_update_mode == SubViewport.UPDATE_ALWAYS, "daylight: the sun casts")
+	layer.set_sun(-10.0, 0.0, 0.0)
+	check(not layer._sun.visible and not layer._shadow_sprite.visible and layer._shadow_view.render_target_update_mode == SubViewport.UPDATE_DISABLED, "night: no sun, the shadow view isn't rendered")
+	layer.set_sun(40.0, 180.0, 1.0)
+	check(not layer._sun.visible, "overcast: no shadows")
+	var arrays: Dictionary = B3.build([PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10), Vector2(0, 10)])], [], Vector2.ZERO)
+	var instances: Array = B3.meshes(arrays)
+	var casters := instances.filter(func(node): return node.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
+	var prism_triangles: int = casters[0].mesh.surface_get_array_len(0) / 3 if casters.size() == 1 else -1
+	check(casters.size() == 1 and casters[0].layers == B3.LAYER_SHADOW_GROUND and prism_triangles == 4 * 2 + 2, "each chunk casts through shadows-only prisms: 4 walls and a roof, no windows")
+	check(instances[0].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "the drawn buildings cast nothing themselves")
+	for node in instances:
+		node.free()
+	layer.queue_free()
+
+
 func test_buildings_3d() -> void:
 	check(B3.to_3d(Vector2(12.5, -40.0)) == Vector3(12.5, 0.0, -40.0), "2D (x, y) -> 3D (x, 0, y)")
 	check(B3.to_3d(Vector2(1, 2), 7.0).y == 7.0, "height is the 3D y")
@@ -2136,8 +2319,13 @@ func test_buildings_3d() -> void:
 		"building_styles": [style]})
 	check(map.buildings_3d != null and map.buildings_3d.instance_count() >= 1, "a chunk's mesh (and its lit windows) join the 3D layer")
 	var lit_instances: Array = map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D and n.material_override == B3._shared["lit"])
-	check(map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D).all(func(n): return n.layers == B3.LAYER_BUILDINGS), "every instance is in the one building view (godot-final-09)")
-	check(map.buildings_3d.get_children().filter(func(n): return n is SubViewport).size() == 1 and map.buildings_3d.get_children().filter(func(n): return n is Sprite2D).size() == 1, "one viewport, one composite: no lit-window pass")
+	var ground: Node = map.buildings_3d._shadow_ground
+	var drawn: Array = map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D and n != ground and n.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
+	check(drawn.all(func(n): return n.layers == B3.LAYER_BUILDINGS), "every drawn instance is in the one building view (godot-final-09)")
+	# rrt-018-shadows adds the shadow view (the ground and shadows-only casters) - still no lit-window pass
+	var views: Array = map.buildings_3d.get_children().filter(func(n): return n is SubViewport)
+	var sprites: Array = map.buildings_3d.get_children().filter(func(n): return n is Sprite2D)
+	check(views == [map.buildings_3d._view, map.buildings_3d._shadow_view] and sprites.size() == 2, "the building view and the shadow view: no lit-window pass")
 	map.buildings_3d.set_light(0.0, Color.WHITE)
 	check(lit_instances.all(func(n): return not n.visible) and B3._shared["material"].get_shader_parameter("ambient") == Color.WHITE, "by day: the buildings as they are, the lit windows not drawn at all")
 	var dusk := Color(0.6, 0.65, 0.8)

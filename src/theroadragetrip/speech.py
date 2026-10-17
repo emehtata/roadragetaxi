@@ -22,6 +22,7 @@ import random
 import struct
 from pathlib import Path
 from typing import Callable, Optional
+from .localization import SUPPORTED_LANGUAGES
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def recorded_lines(speaker: str) -> dict:
     found = {}
     for path in SOUND_DIRS[speaker].glob("*.ogg"):
         parts = path.stem.split("_", 2)
-        if len(parts) != 3 or parts[0] not in ("f", "m") or parts[1] not in ("fi", "en"):
+        if len(parts) != 3 or parts[0] not in ("f", "m") or parts[1] not in SUPPORTED_LANGUAGES:
             continue
         try:
             found[tuple(parts)] = ogg_duration(path)
@@ -108,7 +109,7 @@ class Speech:
         if busy or now - self._driver_times.get(situation, -1e9) < DRIVER_COOLDOWN_S:
             return None
         candidates = [line for line in self.lines["driver"]
-                      if isinstance(line, dict) and line.get("situation") == situation and line.get(language)]
+                      if isinstance(line, dict) and line.get("situation") == situation and (line.get(language) or line.get("fi"))]
         if not candidates:
             return None
         entry = self.rng.choice(candidates)
@@ -123,7 +124,7 @@ class Speech:
     def passenger_for_situation(self, situation: str, gender: str, language: str, speaker_name: Optional[str], busy: bool) -> Optional[dict]:
         moods = MOODS_BY_SITUATION.get(situation)
         candidates = [line for line in self.lines["passenger"]
-                      if isinstance(line, dict) and line.get(language) and (moods is None or line.get("mood") in moods)]
+                      if isinstance(line, dict) and (line.get(language) or line.get("fi")) and (moods is None or line.get("mood") in moods)]
         if not candidates:
             return None
         return self._passenger(self.rng.choice(candidates), gender, language, speaker_name, busy)
@@ -137,7 +138,7 @@ class Speech:
         self.interval -= dt
         if self.interval > 0.0:
             return None
-        candidates = [line for line in self.lines["passenger"] if isinstance(line, dict) and line.get(language)]
+        candidates = [line for line in self.lines["passenger"] if isinstance(line, dict) and (line.get(language) or line.get("fi"))]
         if not candidates:
             return None
         line = self._passenger(self.rng.choice(candidates), gender, language, speaker_name, busy)
@@ -150,11 +151,13 @@ class Speech:
 
     def _passenger(self, entry: dict, gender: str, language: str, speaker_name, busy: bool) -> Optional[dict]:
         key = (gender_code(gender), language, str(entry.get("hash")))
+
+        if not self.available("passenger", key) and language != "fi":
+            key = (key[0], "fi", key[2])
         if busy or not self.available("passenger", key):
             return None
         return self._line("passenger", key, entry, language, speaker_name)
 
     @staticmethod
     def _line(speaker: str, key: tuple, entry: dict, language: str, speaker_name) -> dict:
-        # No text in `language`: the recording still plays, without a subtitle.
-        return {"speaker": speaker, "key": key, "text": str(entry.get(language, "") or ""), "speaker_name": speaker_name, "mood": entry.get("mood")}
+        return {"speaker": speaker, "key": key, "text": str(entry.get(language) or entry.get("fi") or ""), "speaker_name": speaker_name, "mood": entry.get("mood")}

@@ -76,7 +76,7 @@ func _ready() -> void:
 	_buildings.z_index = 7
 	add_child(_buildings)
 	_underground = Node2D.new()  # level roads (and the dark below ground), over the surface map
-	_underground.z_index = 9
+	_underground.z_index = 11  # covers every surface bridge, below the player's entities (12)
 	_underground.draw.connect(_draw_underground)
 	add_child(_underground)
 	_make_pool_group()
@@ -160,6 +160,12 @@ var light_level := 0.0
 
 
 var _ambient := Color.WHITE  # the world's ambient multiply (set_light): the ground's clear colour takes it too
+
+
+## rrt-018-shadows: the sun for the 3D buildings' shadows (Buildings3D.set_sun).
+func set_sun(altitude_deg: float, azimuth_deg: float, cloud_cover: float) -> void:
+	if MapChunk.buildings_3d:
+		_layer_3d().set_sun(altitude_deg, azimuth_deg, cloud_cover)
 
 
 func set_light(level: float, ambient: Color) -> void:

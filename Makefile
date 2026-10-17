@@ -5,7 +5,7 @@ GODOT ?= $(HOME)/tools/godot/Godot_v$(GODOT_VERSION)-stable_linux.x86_64
 PORT ?= 8765
 PRESET ?= Oulu
 
-.PHONY: help venv install run run-debug run-pbf index-pbf run-server fetch-godot run-godot run-godot-all godot-selftest godot-test audio-check test compile check clean stop
+.PHONY: help venv install run run-debug run-pbf index-pbf run-server fetch-godot run-godot run-godot-all godot-selftest godot-selftest-sample godot-test audio-check test compile check clean stop
 
 help:
 	@printf '%s\n' \
@@ -19,6 +19,7 @@ help:
 		'run-godot              Start the Godot client against a running server (GODOT=path)' \
 		'run-godot-all          Start the server in the background, then the Godot client' \
 		'godot-selftest         Server + headless Godot selftest, prints a JSON report' \
+		'godot-selftest-sample  The same on the bundled sample map: offline, fails unless ok' \
 		'godot-test             Run the Godot client unit tests (no server needed)' \
 		'audio-check            Validate the sound catalog, files and every reference to them' \
 		'test                   Run the test suite' \
@@ -65,12 +66,19 @@ run-godot: godot/.godot
 run-godot-all: godot/.godot
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 & \
 	server=$$!; trap 'kill $$server' EXIT INT TERM; \
-	sleep 5; $(GODOT) --path godot -- --skip-menu --port $(PORT)
+	$(PYTHON) tools/wait_for_port.py 127.0.0.1 $(PORT) 180 && $(GODOT) --path godot -- --skip-menu --port $(PORT)
 
 godot-selftest: godot/.godot
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 & \
 	server=$$!; trap 'kill $$server' EXIT INT TERM; \
-	sleep 5; $(GODOT) --headless --path godot -- --port $(PORT) --selftest
+	$(PYTHON) tools/wait_for_port.py 127.0.0.1 $(PORT) 180 && \
+	$(GODOT) --headless --path godot -- --port $(PORT) --selftest
+
+godot-selftest-sample: godot/.godot
+	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --use-sample --no-historical-weather --port $(PORT) --tick-rate 30 & \
+	server=$$!; trap 'kill $$server' EXIT INT TERM; \
+	$(PYTHON) tools/wait_for_port.py 127.0.0.1 $(PORT) 60 && \
+	$(GODOT) --headless --path godot -- --port $(PORT) --selftest | tee /dev/stderr | grep -q 'SELFTEST {.*"ok":true'
 
 godot-test:
 	$(GODOT) --headless --path godot --import

@@ -6,6 +6,7 @@ var language := "en"
 var _arrow: Control
 var _distance: Label
 var _street: Label
+var _total: Label
 var _maneuver := "no_target"
 
 
@@ -28,6 +29,10 @@ func _ready() -> void:
 	_street.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_street.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_street)
+	_total = Label.new()
+	_total.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_total.add_theme_font_size_override("font_size", 23)
+	add_child(_total)
 	hide()
 
 
@@ -37,11 +42,21 @@ func show_navigation(navigation: Dictionary) -> void:
 	if maneuver != _maneuver:
 		_maneuver = maneuver
 		_arrow.queue_redraw()
-	var distance := float(instruction.get("distance_m", 0.0))
-	_distance.text = ("%d m" % roundi(distance) if distance < 1000 else "%.1f km" % (distance / 1000)) if instruction.has("distance_m") else ""
+	_distance.text = format_distance(float(instruction["distance_m"])) if instruction.has("distance_m") else ""
+	_total.text = T.text("nav_total", language) % format_distance(float(instruction["total_m"])) if instruction.has("total_m") else ""
 	var street := str(instruction.get("street", ""))
 	_street.text = street if street != "" else T.text("nav_" + maneuver, language)
 	tooltip_text = T.text("nav_" + maneuver, language)
+
+
+## As precise as a driver needs: 100 m steps from 1 km up, 10 m from 10 m,
+## 1 m below that.
+static func format_distance(metres: float) -> String:
+	if metres >= 1000.0:
+		return "%.1f km" % (roundf(metres / 100.0) / 10.0)
+	var step := 10 if metres >= 10.0 else 1
+	var rounded := roundi(metres / step) * step
+	return "1.0 km" if rounded >= 1000 else "%d m" % rounded
 
 
 ## Screen-coordinate arrow geometry; a left turn is an actual bent arrow,

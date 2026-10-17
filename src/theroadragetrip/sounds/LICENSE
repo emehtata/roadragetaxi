@@ -1,1 +1,14 @@
-- police_car_siren-esp.wav by Felfa -- https://freesound.org/s/264408/ -- License: Creative Commons 0
+Sound files in this directory (excluded from the project's MIT license)
+
+driver_chatter/, passenger_chatter/
+  Synthetic speech generated for this project from the lines in
+  assets/driver_chatter.json and assets/passenger_chatter.json, with text-to-
+  speech tools (Microsoft Azure Speech via utils/ttsazure.py, and Chatterbox
+  Multilingual TTS in the separate ai-audio-studio project).
+
+  Status: UNRESOLVED. Which tool, voice and reference recording produced each
+  file is not recorded, so the terms that apply to each file are not yet
+  established. See LICENSE_AUDIT.md (sound section) before redistributing.
+
+The police siren recording that this file used to list was removed from the
+game; nothing else in this directory comes from a third party.

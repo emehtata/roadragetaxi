@@ -1,9 +1,12 @@
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+
 from theroadragetrip.osm.models import Railway
+from theroadragetrip.residents import ResidentManager
 from theroadragetrip.station_passengers import StationPassengerView, VISIBLE_RADIUS_M
-from theroadragetrip.train_passengers import ARRIVED, ON_TRAIN, WAITING, PassengerFlow, RailPassenger
+from theroadragetrip.train_passengers import ARRIVED, ON_TRAIN, TAXI, WAITING, PassengerFlow, RailPassenger
 from theroadragetrip.trains import RailwayManager
 
 WALKWAY = SimpleNamespace(points_m=[(20.0, -200.0), (20.0, 200.0)])  # a platform path at x=20
@@ -62,6 +65,28 @@ def test_never_placed_on_a_track_and_data_only_without_a_safe_walkway():
     assert passenger.pedestrian is None and peds.pedestrians == []
     far = FakePedestrians(ways=[SimpleNamespace(points_m=[(500.0, 0.0), (500.0, 10.0)])])
     assert not StationPassengerView(far).show(waiting(), standing=True)  # no walkway within reach
+
+
+def test_failed_station_spawn_removes_its_new_resident():
+    peds = FakePedestrians()
+    peds.residents = ResidentManager()
+    peds.spawn_pedestrian_at = lambda *args, **kwargs: None
+    passenger = waiting()
+    passenger.intent = TAXI
+
+    assert not StationPassengerView(peds).show(passenger, standing=True)
+    assert peds.residents.residents == {}
+
+
+def test_failed_stand_spawn_removes_its_new_resident():
+    peds = FakePedestrians()
+    peds.residents = ResidentManager()
+    peds.spawn_pedestrian_at = lambda *args, **kwargs: None
+    passenger = waiting()
+    passenger.taxi_stand = SimpleNamespace(x=20.0, y=0.0)
+
+    assert not StationPassengerView(peds).show_at_stand(passenger)
+    assert peds.residents.residents == {}
 
 
 def test_hiding_keeps_the_journey_and_showing_again_is_the_same_person():
@@ -143,6 +168,7 @@ def test_visible_passengers_never_change_train_timing():
     assert all(p.pedestrian is None for group in manager.passengers.waiting.values() for g in group.values() for p in g)
 
 
+@pytest.mark.timing
 def test_a_whole_train_stepping_off_is_spread_over_frames():
     import time
     from theroadragetrip import station_passengers

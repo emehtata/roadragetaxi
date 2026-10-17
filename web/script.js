@@ -1,93 +1,121 @@
 const translations = {
   fi: {
     navGame: 'Peli', navFeatures: 'Ominaisuudet', navRoadmap: 'Tulossa', navHow: 'Näin pelaat', navNotes: 'Julkaisutiedot', download: 'Lataa peli', release: 'Lataa Windows-asennus', explore: 'Tutustu peliin',
-    kicker: 'Avoimen maailman taksipeli · Suomi', title: 'Vie asiakkaat perille.<br><em>Haasta tie.</em>', copy: 'Oikeita suomalaisia katuja. Neljä vuodenaikaa. Taksamittari käy, ja asiakas arvioi jokaisen mutkan.',
-    screenshotsKicker: 'PELIKUVIA / GODOT 0.17.0alpha', platform: 'GODOT + PYTHON-PALVELIN',
-    introKicker: '01 / TYÖ', intro: 'Yksi kaupunki.<br><span>Loputtomasti tekosyitä.</span>', lead: 'The Road Rage Trip on ylhäältä kuvattu taksipeli, joka perustuu Suomen oikeisiin OpenStreetMap-katuihin.',
-    introText: 'Nouda asiakkaita puhelimesta, taksiasemilta tai kadulta. Aja heidät perille, seuraa ehdotettua reittiä ja pidä pisteesi kasassa, kun liikenne, kamerat, sää ja tie itse testaavat hermojasi.',
+    kicker: 'Suomalainen taksi. Yliluonnollinen raivo.', title: 'Asiakas kyytiin.<br><em>Raivo irti.</em>', copy: 'Ruuhka ei väistä kohteliaisuudella. Kerää raivoa, huuda muut kuskit sivuun ja paina kaasu pohjaan. Uusimmassa versiossa taksin antisankarin raivo on todellinen supervoima.',
+    screenshotsKicker: 'PELIKUVIA', platform: 'SUOMALAINEN TAKSISEIKKAILU', mapData: 'OIKEAT SUOMALAISET KADUT', openSource: 'SINÄ RATISSA',
+    screenshotsNote: 'Kuvat ovat aiemmista peliversioista. Henkilöiden nimet arvotaan satunnaisesti, eivätkä ne tarkoita oikeita ihmisiä.',
+    screenshots: [
+      ['Kaupunki ja junat', 'Helsinki päivällä: vesistöt, sillat ja junien saapumistaulu'],
+      ['Yöruuhka', 'Iltaruuhka Helsingin valaistuilla kaduilla'],
+      ['Talvi ja junat', 'Lumisade Oulun asemalla, juna raiteilla'],
+      ['RageCab-puhelin', 'RageCab-puhelin sateisessa Helsingissä: junamatkustajan ennakkotilaus ja kyytipyyntö rinnakkain'],
+      ['Suomen kartta', 'Aloituspaikan valinta Suomen kartalta'],
+      ['Sääennuste', 'Aloitusnäyttö ja oikea sääennuste'],
+    ],
+    navLabel: 'Päänavigaatio', homeLabel: 'The Road Rage Tripin etusivu', heroLabel: 'The Road Rage Tripin latauskuva',
+    introKicker: '01 / ANTISANKARI', intro: 'Lyhyt pinna.<br><span>Yliluonnollinen raivo.</span>', lead: 'The Road Rage Trip on ylhäältä kuvattu taksipeli Suomen oikeilla kaduilla. Sinä olet sen antisankari: taksikuski, jonka raivo siirtää autot tieltä.',
+    introText: 'Asiakas odottaa. Koko katu seisoo. Sinä et. Kun raivoa on tarpeeksi, paina SPACE ja huuda ruuhka helvettiin. Uusimmassa versiossa muut autot siirtyvät suoraan tien sivuun ja edessäsi pidetään ajoväylä auki vähintään kymmenen sekunnin ajan. Vaikka mittarissa olisi 210 km/h. Ei sankaripuheita. Taksamittari käy.',
     featureKicker: '02 / KONEPELLIN ALLA', featureTitle: 'Kauniisti<br><em>ärtyneille.</em>', featureIntro: 'Tämä ei ole pelkkä tausta. Tieverkosto, sää, jalankulkijat ja sääntöjen rikkomisen seuraukset elävät ympärilläsi.',
     features: [
-      ['Oikeita teitä, oikeita paikkoja', 'Aja suomalaisilla kaduilla, jotka muodostuvat OpenStreetMap-datasta rakennuksineen, puistoineen, vesistöineen, puineen ja nimettyine kohteineen.'],
-      ['Raivo on polttoaineesi', 'Ylinopeus täyttää raivomittarin. Pura se huudolla: torvi pärähtää, kuljettaja kiroaa ja raivonaama mittarissa vääntyy irvistykseen.'],
-      ['Kadut ovat täynnä muita kuskeja', 'Sedanit, farmarit, maasturit, avolavat ja urheiluautot, pakettiautot, kuorma-autot ja bussit ajavat, väistävät toisiaan ja parkkeeraavat oikeasti. Jos kaksi törmää, kuljettaja pysähtyy, astuu ulos, kiroilee tien varressa ja soittaa jollekulle - eikä palaa enää autoonsa.'],
-      ['Pidä silmät tiellä', 'Piilossa olevat peltikamerat valvovat 50 metrin lähestymisalueita. Puut huojuvat, lehdet lentävät, ja kova kolari jättää taksin savuamaan ja pysähtyneeksi viideksi sekunniksi.'],
-      ['Reitti elää', 'Paina N ja näet keltaisen ehdotetun reitin aktiiviselle kyydille. Reitti kunnioittaa yksisuuntaisia katuja ja laskee itsensä uudelleen, jos eksyt.'],
-      ['Kaupunki kasvaa ympärillä', 'Uusia OSM-karttaruutuja haetaan taustalla ajon edetessä. Rakennukset, puistot, metsät, vesistöt ja jalankulkijat liittyvät maailmaan ilman latausruutua.'],
-      ['Siltoja ja vesistöjä', 'Vesistöt renderöidään teiden alle, ja sillat kuljettavat liikenteen niiden yli omalla tasollaan. Tieverkko ja vesialueet muodostavat ajettavan kaupunkimaiseman.'],
+      ['Oikeita teitä, oikeita paikkoja', 'Tunnista tuttu risteys, oikaise puiston ohi ja etsi asiakkaan osoite. Oikeat suomalaiset kadut ovat sinun pelikenttäsi.'],
+      ['Huuda ruuhka helvettiin', 'Raivo ei ole pelkkä ilme mittarissa. Se on supervoimasi. Ylinopeus kasvattaa raivoa; kun sitä riittää, SPACE raivaa muut autot sivuun. Raivohuuto pitää tien auki vähintään kymmeneksi sekunniksi ja raivaa sitä pidemmältä, mitä kovempaa ajat. Sinä painat kaasua. Muut väistävät.'],
+      ['Kadut ovat täynnä muita kuskeja', 'Henkilöautot, pakettiautot, kuorma-autot ja bussit jakavat kadut kanssasi. Kolarista voi seurata tienvarren sanaharkka. Pidä pää kylmänä – tai kerää tarpeeksi raivoa ja huuda tie auki.'],
+      ['Pidä silmät tiellä', 'Peltikamera voi yllättää juuri kun vauhti alkaa maistua. Puut huojuvat, lehdet lentävät, ja kova kolari jättää taksin savuamaan ja pysähtyneeksi viideksi sekunniksi.'],
+      ['Reitti elää', 'Paina N tai P ja avaa puhelin. Aktiivisella kyydillä se näyttää seuraavan käännöksen, etäisyyden ja kadunnimen. Vapaana sama puhelin näyttää kyytipyynnöt.'],
+      ['Kaupunki kasvaa ympärillä', 'Jatka tutuilta kaduilta kohti uusia maisemia. Keskusta vaihtuu lähiöihin, metsiin ja rantateihin, ja seuraava asiakas odottaa jo jossain edessä.'],
+      ['Siltoja ja vesistöjä', 'Ylitä joki, seuraa rantatietä ja löydä reitti siltojen kautta. Vesi tekee maisemasta kauniin, mutta taksisi paikka on kuivalla maalla.'],
       ['Sade kastelee tien', 'Sää muuttuu lennossa: sade kastelee tien vähitellen, lätäköt roiskuvat renkaiden alla ja märkä asfaltti vie pitoa juuri silloin kun sitä eniten tarvitset.'],
-      ['Yö syttyy valoihin', 'Katuvalot ovat tarkalleen siellä, missä OpenStreetMap-data sanoo oikeiden lyhtypylväiden olevan, ja rakennusten ikkunat hehkuvat satunnaisesti pimeän tultua. Yöllä kaupunki näyttää siltä, missä joku oikeasti asuu.'],
-      ['Jalankulkijoilla on syke', 'Asukkaat kävelevät omille ovilleen, tarkistavat puhelintaan, istuvat penkillä tai lenkkeilevät - ja horjuvat baarista kotiin promillella 0.5-3.0. Yöllä he hohtavat himmeästi, ennen kuin ajovalo tai katulamppu löytää heidät.'],
+      ['Yö syttyy valoihin', 'Katuvalot, hehkuvat ikkunat ja vastaantulijoiden ajovalot halkovat pimeyttä. Yövuorossa tuttu kaupunki näyttää toiset kasvonsa.'],
+      ['Jalankulkijoilla on syke', 'Asukkaat kävelevät omille ovilleen, tarkistavat puhelintaan, istuvat penkillä tai lenkkeilevät – ja horjuvat baarista kotiin. Pidä silmät auki: kaikki eivät kulje suoraan.'],
       ['Liikennevalot ovat osa peliä', 'Risteykset ja liikennevalot ohjaavat sekä sinua että jalankulkijoita. Punaisia päin ajaminen näkyy suoraan taksin pistemäärässä.'],
-      ['Neljä suomalaista vuodenaikaa', 'Valitse keikkakuskina aloituspäivä ja kellonaika. Talvi jäädyttää vedet ja peittää maan lumeen, kevät tuo jäälautat, kesä vihertää ja syksy värjää maiseman ruskaan.'],
-      ['Jokainen kyyti kartuttaa kassaa', 'Taksamittari laskee lähtö-, kilometri- ja aikamaksun kellon mukaan. Seuraa hintaa ajon aikana, saa maksu perillä ja kasvata HUDissa näkyvää saldoa.'],
+      ['Neljä suomalaista vuodenaikaa', 'Valitse keikkakuskina aloituspäivä ja kellonaika. Lumi kertyy teille ja katoille, renkaat jättävät jälkiä ja auraajat puhdistavat katuja. Kevät tuo jäälautat, kesä vihreyden ja syksy ruskan.'],
+      ['Jokainen kyyti kartuttaa kassaa', 'Mittari käy, matka etenee ja kassa kasvaa. Vie asiakas perille, nappaa maksu ja etsi seuraava kyyti.'],
       ['Asiakas muistaa ajotyylisi', 'Törmäykset ja holtiton ajo syövät tyytyväisyyttä. Reipas, ajoissa perille päättyvä kyyti voi tuoda jopa kymmenen euron tipin.'],
-      ['Junat kulkevat aikataulussa', 'Oikea VR:n aikataulu Digitrafficista: junat saapuvat valot päällä, asemalla kuulutetaan ja matkalaukkujen kanssa odottava asiakas on jo varannut kyytinsä.'],
-      ['Sää suoraan ikkunasta', 'Halutessasi peli hakee Ilmatieteen laitoksen oikean sään. Tie on yhtä märkä kuin viimeisen tunnin sade sen jätti, ja talvella lumi pöllyää renkaiden alla.'],
+      ['Junat kulkevat aikataulussa', 'Oikeat juna-aikataulut herättävät asemat eloon: junat saapuvat valot päällä, asemalla kuulutetaan ja matkalaukkujen kanssa odottava asiakas on jo varannut kyytinsä.'],
+      ['Sää oikeasta maailmasta', 'Ota oikea sää käyttöön ja kohtaa valitsemasi paikan ja ajan keli ratin takana. Sade piiskaa tuulilasia, pakkanen puree ja liukas tie koettelee hermojasi. Asiakas haluaa silti perille.'],
       ['Tankki ei täyty itsestään', 'Polttoaine kuluu ajaessa. Aja huoltoasemalle, tankkaa pumpun hintaan ja palaa asiakkaiden pariin ennen kuin mittari näyttää tyhjää.'],
-      ['Maan alle ja kerroksiin', 'Pysäköintihallit ja parkkitalot ovat mukana oikeasta OSM-datasta. Aja rampista alas, ja kaupunki vaihtuu betonikerrokseen - navigaattori osaa reitin sinnekin.'],
+      ['Maan alle ja kerroksiin', 'Kaikki asiakkaat eivät odota kadunkulmassa. Aja rampista pysäköintihalliin ja nouda kyyti myös maan alta – navigaattori näyttää tietä.'],
+      ['RageCab soittaa', 'Sama siirrettävä puhelin näyttää vapaan taksin kyydit ja junamatkustajien ennakkotilaukset. Hyväksytyllä kyydillä se vaihtuu navigaattoriksi.'],
+      ['Juhlat näkyvät kaupungissa', 'Uudenvuodenyön ilotulitukset, halloweenin kurpitsat ja lyhdyt sekä jouluaattona kaduilla kulkevat joulupukit seuraavat pelin kalenteria.'],
     ],
-    roadmapKicker: '03 / SEURAAVAKSI', roadmapTitle: 'Tie jatkuu.<br><em>Kaaos kasvaa.</em>', roadmapIntro: 'Tämä rakennetaan saman asukas- ja jalankulkijamoottorin päälle, joka pyörittää peliä jo nyt.', roadmapSoon: 'TULOSSA',
+    roadmapKicker: '03 / SEURAAVAKSI', roadmapTitle: 'Tie jatkuu.<br><em>Kaaos kasvaa.</em>', roadmapIntro: 'Kaupunki ei aio tehdä työvuorostasi helpompaa. Seuraavaksi kaduille on luvassa vielä lisää hankaluuksia.', roadmapSoon: 'TULOSSA',
     roadmapCards: [
       ['Idiootit pyörällä', 'Pyöräilijät liittyvät joukkoon: väistelevät, ajavat päin punaisia ja tekevät juuri sitä, mitä pyöräilijät parhaiten osaavat.'],
       ['Poliisin takaa-ajot', 'Piilokamerat eivät riitä ikuisesti. Oikeat poliisiautot lähtevät perään sireenit päällä, ja pakoon pääseminen vaatii muutakin kuin huudon.'],
       ['Taksikuskien tappelut', 'Kun raivo ei enää mahdu sanoihin, astu ulos autosta ja selvitä asia vanhalla tavalla.'],
     ],
     howKicker: '04 / RATTIIN', howTitle: 'Tunne<br><span>säännöt.</span><br>Riko rauha.', howLead: 'Kaupunki on sinun pelikenttäsi. Pisteet voit pilata itse.',
-    controls: ['Aja, jarruta, ohjaa', 'Avaa taksin puhelin', 'Raivohuuto: raivaa tie', 'Näytä ehdotettu reitti', 'Kaista-avustin', 'Nopeusrajoitin', 'Liikennevaloavustin', 'Respawn, T nollaa trippimittarin', 'Tauko, asetukset ja kaupungin vaihto'],
-    notesKicker: '05 / TULOSSA 0.17.0alpha', notesTitle: 'Mitä on<br><em>tulossa.</em>', notesLead: 'Seuraava julkaisu tuo koko Suomen kartan, junat ja oikean sään peliin.',
+    controls: ['Aja, jarruta, ohjaa (myös nuolinäppäimet)', 'RageCab-puhelin: 1–3 hyväksyy, X hylkää', 'Raivohuuto: raivaa tie', 'Puhelin: kyytipyynnöt tai navigointi', 'Kaista-avustin', 'Nopeusrajoitin', 'Liikennevaloavustin', 'Palauta taksi tielle, T nollaa trippimittarin', 'Tauko, asetukset ja kaupungin vaihto', 'Astu taksiin tai ulos', 'Käynnistä tai sammuta moottori', 'Tankkaa huoltoasemalla', 'Junien saapumistaulu'],
+    notesKicker: '05 / UUSIN VERSIO', notesTitle: 'Uusin<br><em>versio.</em>', notesLead: 'Uusimmassa versiossa raivo raivaa tien. Mukana myös seuruekyydit sekä parannuksia karttaan, säähän ja liikenteeseen.',
     notes: [
-      ['Valitse paikka Suomen kartalta', 'Klikkaa aloituspaikka Suomen kartalta ja lataa valmiit kartat suoraan pelistä.'],
-      ['Junat ja asemat', 'Oikea aikataulu, kuulutukset ja junien valot yöllä.'],
-      ['Oikea sää', 'Ilmatieteen laitoksen säähavainnot ja vuodenaikojen sääefektit.'],
-      ['Kevyempi ja nopeampi', 'Vanha Pygame-asiakas on poistettu: yksi Godot-peli, yksi palvelin.'],
+      ['Raivo on supervoima', 'Uusi raivohuuto siirtää muut autot suoraan tien sivuun ja pitää ajoväylän auki vähintään kymmenen sekuntia. Raivaus ulottuu kymmenen ajosekunnin päähän myös 210 km/h nopeudessa.'],
+      ['Yksi kyyti, monta matkustajaa', 'Seuruekyydit kuljettavat enintään neljä matkustajaa. Lapset matkustavat vanhempansa seurassa.'],
+      ['Sillat, rannat ja järvet', 'Selkeämmät sillat, rannat ja saaret tekevät reitin löytämisestä helpompaa. Myös järviseudulla pääset nopeammin ratin taakse.'],
+      ['Valoa ja varjoa', 'Auringon suunnan mukaan piirtyvät rakennusten varjot ja pidemmät, vastaantulevallekin kaistalle yltävät kaukovalot.'],
+      ['Keli jatkuu, vuoro vaihtuu', 'Palaa samaan paikkaan ja aikaan ilman yllättävää kelinvaihdosta. Sää pysyy aiempaa johdonmukaisempana pelikertojen välillä.'],
+      ['Sujuvammin matkaan', 'Muut autot ilmestyvät turvallisemman välimatkan päähän, ja eksyneet kuskit löytävät paremmin takaisin reitille. Vähemmän turhia esteitä, enemmän ajamista.'],
     ],
-    releaseKicker: 'UUSIN JULKAISU', releaseTitle: 'Seuraava kyyti<br>odottaa.', releaseText: 'Lataa Windows-asennuspaketti v0.16.0g-alpha ja lähde tien päälle.', releaseButton: 'Lataa Windows-asennus',
-    scroll: 'VIERITÄ ALASPÄIN', toggle: 'Vaihda kieleksi English',
+    releaseKicker: 'LADATTAVISSA / 0.17.1alpha', releaseTitle: 'Seuraava kyyti<br>odottaa.', releaseText: 'Lataa Windows-asennuspaketti 0.17.1alpha. Peli on kehitysvaiheessa: virheitä ja suorituskykyongelmia voi esiintyä.', releaseButton: 'Lataa Windows-asennus',
+    scroll: 'VIERITÄ ALASPÄIN', toggle: 'Vaihda englanniksi',
   },
   en: {
     navGame: 'Game', navFeatures: 'Features', navRoadmap: "What's next", navHow: 'How to play', navNotes: 'Release notes', download: 'Download', release: 'Download Windows installer', explore: 'Explore the game',
-    kicker: 'Open-world taxi driving · Finland', title: 'Deliver fares.<br><em>Unleash the rage.</em>', copy: 'Real Finnish streets. Four changing seasons. The meter is running, and your passenger judges every turn.',
-    screenshotsKicker: 'GAMEPLAY SCREENSHOTS / GODOT 0.17.0alpha', platform: 'GODOT + PYTHON SERVER',
-    introKicker: '01 / THE JOB', intro: 'One city.<br><span>Infinite excuses.</span>', lead: 'The Road Rage Trip is a top-down taxi game powered by real OpenStreetMap roads from Finland.',
-    introText: 'Pick up passengers from the phone, taxi stands, or the street. Get them there, follow the suggested route, and keep your score intact while traffic, cameras, weather, and the road itself test your patience.',
+    kicker: 'Finnish taxi. Supernatural rage.', title: 'Deliver fares.<br><em>Unleash the rage.</em>', copy: 'Traffic won’t move for manners. Build rage, shout other drivers aside, and floor it. In the latest version, your taxi antihero’s rage is a real superpower.',
+    screenshotsKicker: 'GAMEPLAY SCREENSHOTS', platform: 'FINNISH TAXI ADVENTURE', mapData: 'REAL FINNISH STREETS', openSource: 'YOU AT THE WHEEL',
+    screenshotsNote: 'Screenshots show earlier game versions. Character names are randomly generated and do not represent real people.',
+    screenshots: [
+      ['City and trains', 'Helsinki by day: waterways, bridges and the train arrival board'],
+      ['Night traffic', 'Evening traffic on Helsinki’s illuminated streets'],
+      ['Winter and trains', 'Snowfall at Oulu station, with a train on the tracks'],
+      ['RageCab phone', 'RageCab phone in rainy Helsinki: a train passenger’s prebooking beside a ride request'],
+      ['Map of Finland', 'Choosing a starting location on the map of Finland'],
+      ['Weather forecast', 'Start screen with a real weather forecast'],
+    ],
+    navLabel: 'Main navigation', homeLabel: 'The Road Rage Trip home', heroLabel: 'The Road Rage Trip loading artwork',
+    introKicker: '01 / THE ANTIHERO', intro: 'Short fuse.<br><span>Supernatural rage.</span>', lead: 'The Road Rage Trip is a top-down taxi game on real Finnish streets. You are its antihero: a cab driver whose rage moves cars out of the way.',
+    introText: 'Your passenger is waiting. The whole street is stuck. You aren’t. Build enough rage, hit SPACE, and shout traffic to hell. In the latest version, other cars move straight to the roadside and your path stays clear for at least ten seconds. Even at 210 km/h. No heroic speeches. The meter is running.',
     featureKicker: '02 / UNDER THE HOOD', featureTitle: 'Built for the<br><em>beautifully irritated.</em>', featureIntro: 'Not a backdrop. Roads, weather, pedestrians, and consequences are alive around you.',
     features: [
-      ['Real roads, real places', 'Drive Finnish city streets generated from OpenStreetMap data, with buildings, parks, forests, water, trees, and named destinations.'],
-      ['Rage is your fuel gauge', 'Speeding fills your rage meter. Spend it with a shout: the horn blares, your driver curses, and the rage face on the meter twists into a grimace.'],
-      ['The streets are full of other drivers', 'Sedans, estates, SUVs, pickups and sports coupes, vans, trucks, and buses drive, avoid each other, and actually park. If two collide, the driver stops, gets out, curses on the roadside, and calls someone - and never gets back in that car.'],
-      ['Eyes on the road', 'Hidden speed cameras watch 50-meter approach zones on real roads. Trees sway, leaves fly, and a hard enough crash leaves the taxi smoking and stuck for five seconds.'],
-      ['Routes that react', 'Press N to show a yellow suggested route to the active fare. It respects one-way streets and recalculates when you leave it.'],
-      ['A city that keeps growing', 'New OSM map tiles stream in as you approach the edge of the loaded area. Buildings, scenery, water, and pedestrians join the world while you drive.'],
-      ['Bridges and water', 'Water is rendered beneath the road network, while bridges carry traffic across it on their own layer. Roads and water areas shape the city you drive through.'],
+      ['Real roads, real places', 'Recognize a familiar junction, cut past the park, and find your passenger’s address. Real Finnish streets are your playground.'],
+      ['Shout traffic to hell', 'Rage isn’t just a face on your dashboard. It is your superpower. Speeding builds rage; with enough in the tank, SPACE shoves other cars aside. Your rage shout keeps the road clear for at least ten seconds, looking farther ahead the faster you drive. You floor it. They move.'],
+      ['The streets are full of other drivers', 'Cars, vans, trucks and buses share the streets with you. Crashes can lead to roadside arguments. Keep your cool – or build enough rage to shout your way through.'],
+      ['Eyes on the road', 'A hidden speed camera can catch you just as you start enjoying the speed. Trees sway, leaves fly, and a hard enough crash leaves the taxi smoking and stuck for five seconds.'],
+      ['Routes that react', 'Press N or P to open the phone. During an active fare it shows the next turn, distance and street name. When you are free, the same phone shows ride requests.'],
+      ['A city that keeps growing', 'Leave familiar streets behind and discover what lies ahead. City streets give way to neighborhoods, forests and waterfront roads. Your next passenger is out there somewhere.'],
+      ['Bridges and water', 'Cross the river, follow the waterfront, and find your way over the bridges. The water looks beautiful. Your taxi belongs on dry land.'],
       ['Rain that changes the drive', 'Weather shifts in real time: rain slowly wets the road, puddles splash under your tires, and wet asphalt steals your grip exactly when you need it most.'],
-      ['The city lights up at night', "Streetlights stand exactly where OpenStreetMap says real lamp posts stand, and building windows glow at random once it's dark. At night, the city looks like somewhere people actually live."],
-      ['Pedestrians with a pulse', 'Residents walk to their own doors, check their phones, sit on benches, or go for a jog - and stumble home from the bar at 0.5-3.0 promille. At night they glow faintly until a headlight or streetlight finds them.'],
+      ['The city lights up at night', 'Streetlights, glowing windows and oncoming headlights cut through the dark. On the night shift, a familiar city shows a different face.'],
+      ['Pedestrians with a pulse', 'Residents walk to their own doors, check their phones, sit on benches, or go for a jog – and stumble home from the bar. Keep your eyes open: not everyone walks a straight line.'],
       ['Traffic lights play along', 'Junctions and signals guide both you and every pedestrian around you. Running a red shows up directly in the taxi score.'],
-      ['Four Finnish seasons', 'Choose your starting date and time in freelance-driver mode. Winter freezes the water and blankets the land in snow, spring brings floating ice, summer turns green, and autumn colors the scenery.'],
-      ['Every fare grows your balance', 'The taxi meter combines a time-dependent starting fee with distance and time charges. Watch the price during the ride, collect at the destination, and build the balance shown in the HUD.'],
+      ['Four Finnish seasons', 'Choose your starting date and time in freelance-driver mode. Snow accumulates on roads and roofs, tires leave tracks and ploughs clear the streets. Spring brings floating ice, summer greenery and autumn colors.'],
+      ['Every fare grows your balance', 'The meter runs, the journey continues, and your balance grows. Get your passenger there, collect the fare, and find your next ride.'],
       ['Passengers remember your driving', 'Crashes and reckless driving hurt satisfaction. A fast ride that arrives on time can earn a tip of up to ten euros.'],
-      ['Trains run on time', "The real train timetable from Digitraffic: trains roll in with headlights blazing, the station announces them, and a passenger with luggage has already booked your ride."],
-      ['Weather straight from outside', "Opt in and the game pulls live weather from the Finnish Meteorological Institute. The road is exactly as wet as the last hour's rain left it, and winter snow kicks up behind your tires."],
+      ['Trains run on time', "Real train timetables bring stations to life: trains roll in with headlights blazing, the station announces them, and a passenger with luggage has already booked your ride."],
+      ['Weather from the real world', 'Switch on real weather and face the conditions for your chosen place and time. Rain lashes the windshield, frost bites, and slippery roads test your nerve. Your passenger still expects to get there.'],
       ['The tank won’t fill itself', "Fuel burns as you drive. Pull into a gas station, fill up at the pump price, and get back to your fares before the gauge hits empty."],
-      ['Underground and upstairs', "Underground and multi-storey car parks come straight from OSM. Drive down the ramp and the city turns into a concrete deck - and the navigator knows the way in."],
+      ['Underground and upstairs', "Not every passenger waits on a street corner. Take the ramp into a car park and pick up fares underground, with your navigator showing the way."],
+      ['RageCab is calling', 'One movable phone handles ride requests and train-passenger prebookings while you are free. Accept a fare and it switches to navigation.'],
+      ['Holidays come to town', 'New Year fireworks, Halloween pumpkins and lanterns, and Santas wandering the streets on Christmas Eve follow the game calendar.'],
     ],
-    roadmapKicker: "03 / WHAT'S NEXT", roadmapTitle: 'The road continues.<br><em>Chaos grows.</em>', roadmapIntro: "This is just the start - all of it is being built on the same resident and pedestrian engine already running today.", roadmapSoon: 'SOON',
+    roadmapKicker: "03 / WHAT'S NEXT", roadmapTitle: 'The road continues.<br><em>Chaos grows.</em>', roadmapIntro: "The city isn’t about to make your shift easier. There is more trouble heading for these streets.", roadmapSoon: 'SOON',
     roadmapCards: [
       ['Idiot cyclists', 'Cyclists join the chaos: weaving through traffic, running red lights, and doing exactly what cyclists do best.'],
       ['Police car chases', 'Hidden cameras only go so far. Real police cars will give chase with sirens on, and losing them will take more than a shout.'],
       ['Taxi driver brawls', "When rage doesn't fit in words anymore, step out of the car and settle it the old-fashioned way."],
     ],
-    howKicker: '04 / TAKE THE WHEEL', howTitle: 'Know the<br><span>rules.</span><br>Break the calm.', howLead: 'The city is yours to navigate. The score is yours to ruin.',
-    controls: ['Drive, brake, steer', 'Open the taxi phone', 'Rage shout: clear the way', 'Show suggested route', 'Lane assist', 'Speed limiter', 'Traffic-light assist', 'Respawn, T resets trip meter', 'Pause, settings, change city'],
-    notesKicker: '05 / COMING IN 0.17.0alpha', notesTitle: "What's<br><em>coming.</em>", notesLead: 'The next release brings all of Finland, trains, and real weather into the game.',
+    howKicker: '04 / TAKE THE WHEEL', howTitle: 'Know the<br><span>rules.</span><br>Break the calm.', howLead: 'The city is your playground. The score is yours to ruin.',
+    controls: ['Drive, brake, steer (arrow keys also work)', 'RageCab phone: 1–3 accept, X declines', 'Rage shout: clear the way', 'Phone: ride requests or navigation', 'Lane assist', 'Speed limiter', 'Traffic-light assist', 'Return the taxi to the road, T resets trip meter', 'Pause, settings, change city', 'Enter or leave the taxi', 'Start or stop the engine', 'Refuel at a gas station', 'Train arrival board'],
+    notesKicker: '05 / LATEST VERSION', notesTitle: 'The latest<br><em>version.</em>', notesLead: 'In the latest version, rage clears the road. Group fares and improvements to maps, weather and traffic round out the ride.',
     notes: [
-      ['Pick a spot on the map of Finland', 'Click your starting point on a map of Finland and download ready-made maps right in the game.'],
-      ['Trains and stations', 'The real timetable, station announcements, and train headlights at night.'],
-      ['Real weather', 'Live observations from the Finnish Meteorological Institute plus seasonal weather effects.'],
-      ['Leaner and faster', 'The old Pygame client is gone: one Godot game, one server.'],
+      ['Rage is your superpower', 'The new rage shout moves other cars straight to the roadside and keeps your path clear for at least ten seconds. Clearance reaches ten driving seconds ahead, even at 210 km/h.'],
+      ['One fare, several passengers', 'Group fares carry up to four passengers. Children ride with their parent.'],
+      ['Bridges, coasts and lakes', 'Clearer bridges, coastlines and islands help you find your way. Get behind the wheel sooner in lake country, too.'],
+      ['Light and shadow', 'Building shadows follow the sun, while longer high beams also cover the opposing lane.'],
+      ['Another shift, familiar weather', 'Return to the same place and time without a surprise change of weather. Conditions stay more consistent between sessions.'],
+      ['A smoother start to your shift', 'Other cars appear at safer distances, and lost drivers find their way back more reliably. Fewer needless obstacles. More driving.'],
     ],
-    releaseKicker: 'LATEST RELEASE', releaseTitle: 'Your next fare<br>is waiting.', releaseText: 'Download the v0.16.0g-alpha Windows installer and hit the road.', releaseButton: 'Download Windows installer',
-    scroll: 'SCROLL TO EXPLORE', toggle: 'Vaihda kieleksi Suomi',
+    releaseKicker: 'AVAILABLE / 0.17.1alpha', releaseTitle: 'Your next fare<br>is waiting.', releaseText: 'Download the 0.17.1alpha Windows installer. This is a work-in-progress alpha: bugs and performance issues remain.', releaseButton: 'Download Windows installer',
+    scroll: 'SCROLL TO EXPLORE', toggle: 'Switch to Finnish',
   },
 };
 
@@ -99,6 +127,9 @@ const controls = document.querySelectorAll('.control-row span');
 function setLanguage(next) {
   language = next;
   const t = translations[language];
+  document.querySelector('nav').setAttribute('aria-label', t.navLabel);
+  document.querySelector('.brand').setAttribute('aria-label', t.homeLabel);
+  document.querySelector('.hero-image').setAttribute('aria-label', t.heroLabel);
   navLinks[0].textContent = t.navGame;
   navLinks[1].textContent = t.navFeatures;
   navLinks[2].textContent = t.navRoadmap;
@@ -114,8 +145,15 @@ function setLanguage(next) {
   document.querySelector('.intro-grid > div p:last-child').textContent = t.introText;
   document.querySelector('.intro .section-kicker').textContent = t.introKicker;
   document.querySelector('.hero .eyebrow').lastChild.textContent = ` ${t.kicker}`;
-  document.querySelector('.hero-meta span').textContent = t.platform;
+  document.querySelectorAll('.hero-meta span').forEach((node, index) => {
+    node.textContent = [t.platform, t.mapData, t.openSource][index];
+  });
   document.querySelector('#screenshots-title').textContent = t.screenshotsKicker;
+  document.querySelector('.screenshot-note').textContent = t.screenshotsNote;
+  document.querySelectorAll('.screenshot-grid figure').forEach((figure, index) => {
+    figure.querySelector('figcaption').textContent = t.screenshots[index][0];
+    figure.querySelector('img').setAttribute('alt', t.screenshots[index][1]);
+  });
   document.querySelector('#features .section-kicker').textContent = t.featureKicker;
   document.querySelector('#features .feature-heading h2').innerHTML = t.featureTitle;
   document.querySelector('#features .feature-heading p').textContent = t.featureIntro;

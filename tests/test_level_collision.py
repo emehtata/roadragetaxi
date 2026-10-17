@@ -51,3 +51,36 @@ def test_level_switching_reuses_the_collision_index():
         grid_state = (manager._building_collision_ref, manager._building_collision_count)
         assert grid_state == (buildings, len(buildings))
     assert results == [True, True, False, True]  # -2 is an empty level: no fallback to the surface
+
+
+@pytest.mark.parametrize("layer,on_bridge,car_y,car_level,building_level,crashes", [
+    (1, True, 3.8, 0, None, False),
+    (1, True, 3.8, 0, 0, False),
+    (0, False, 3.8, 0, None, True),
+    (1, False, 3.8, 0, None, True),
+    (1, True, 8.0, 0, None, True),
+    (1, True, 0.0, -1, -1, True),
+])
+def test_bridge_support_separates_ground_buildings_without_disabling_other_collisions(
+    layer, on_bridge, car_y, car_level, building_level, crashes,
+):
+    # A roadside building can touch the car's collision radius without its
+    # footprint crossing the road centreline/corridor (Joutsensilta screenshot).
+    building = Building([(4, car_y + 1.2), (8, car_y + 1.2), (8, car_y + 5), (4, car_y + 5)],
+                        map_level=building_level)
+    road = Way([(0, 0), (20, 0)], "secondary", 4.0, layer=layer, is_bridge=on_bridge)
+    car = Car(x=5, y=car_y, heading=0, speed=4, layer=layer, map_level=car_level)
+    manager = TaxiManager(ways=[])
+    assert manager.check_building_collision(car, [building], 1, current_way=road) is crashes
+    assert car.speed == (0 if crashes else 4)
+    assert manager.total_score == (-200 if crashes else 0)
+
+
+@pytest.mark.parametrize("road_layer,road_level", [(2, None), (1, -1)])
+def test_unrelated_bridge_cannot_exempt_a_building_collision(road_layer, road_level):
+    road = Way([(0, 0), (20, 0)], "secondary", 4, is_bridge=True,
+               layer=road_layer, map_level=road_level)
+    car = Car(x=5, y=0, heading=0, speed=4, layer=1)
+    assert TaxiManager(ways=[]).check_building_collision(
+        car, [Building(SQUARE)], 1, current_way=road,
+    ) is True

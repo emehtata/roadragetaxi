@@ -100,12 +100,38 @@ def command_player_id(message: dict) -> str:
     return str(message.get("player_id") or LOCAL_PLAYER_ID)
 
 
+COMMAND_RANGES = {  # the analogue inputs and their valid range; the rest are flags
+    "throttle": (0.0, 1.0), "brake": (0.0, 1.0), "steer_left": (0.0, 1.0), "steer_right": (0.0, 1.0),
+    "forward": (-1.0, 1.0), "turn": (-1.0, 1.0),
+}
+
+
+def _command_field(name: str, value):
+    """`value` as the command field `name` expects, or None when it isn't one."""
+    if name in COMMAND_RANGES:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        if isinstance(value, float) and not math.isfinite(value):
+            return None
+        low, high = COMMAND_RANGES[name]
+        return float(min(high, max(low, value)))
+    return value if isinstance(value, bool) else None
+
+
 def command_from_message(message: dict) -> tuple[PlayerCommand, bool]:
-    """The inverse of `build_command_message` - used by the server."""
-    payload = dict(message["command"])
-    interact = bool(payload.pop("interact", False))
-    command = PlayerCommand(**{k: payload[k] for k in PlayerCommand.__dataclass_fields__ if k in payload})
-    return command, interact
+    """The inverse of `build_command_message` - used by the server. Client
+    input is never trusted: a field of the wrong type keeps its default,
+    analogue inputs are clamped to their range, and a missing or malformed
+    payload is no input. A bad command must not stop the server's tick."""
+    payload = message.get("command")
+    if not isinstance(payload, dict):
+        return PlayerCommand(), False
+    fields = {}
+    for name in PlayerCommand.__dataclass_fields__:
+        value = _command_field(name, payload.get(name))
+        if value is not None:
+            fields[name] = value
+    return PlayerCommand(**fields), payload.get("interact") is True
 
 
 def _resident_to_dict(resident) -> Optional[dict]:
@@ -154,6 +180,22 @@ def _npc_to_dict(npc, residents=None) -> dict:
     }
 
 
+def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
+    """The pedestrians a client draws: the nearest to the camera, at most the
+    population the spawn disc holds (POPULATION_PER_SHOWN x the target) - a
+    train's worth of passengers or a big activity crowd no longer floods every
+    state. Everyone another system holds (booked rail passengers, stand
+    customers) always goes: the phone, the meet arrow and the inspector use them."""
+    people = [p for p in pedestrian_mgr.pedestrians if p.resident_id is not None]
+    cap = pedestrian_mgr.population_target
+    if len(people) <= cap:
+        return people
+    kept = lambda p: getattr(p, "held_by", None) is not None or getattr(p, "is_taxi_stop_waiter", False)
+    always = [p for p in people if kept(p)]
+    others = sorted((p for p in people if not kept(p)), key=lambda p: (p.x - camx) ** 2 + (p.y - camy) ** 2)
+    return always + others[:max(0, cap - len(always))]
+
+
 def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
     return {
         "id": ped.resident_id,
@@ -183,6 +225,9 @@ def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
         return None
     return {
         "name": passenger.name,
+        "resident_id": passenger.resident_id,
+        "passenger_count": len(passenger.members),
+        "companions": [_passenger_to_dict(p) for p in passenger.companions],
         "gender": passenger.gender,
         "weight_kg": passenger.weight_kg,
         "is_drunk": passenger.is_drunk,
@@ -244,6 +289,7 @@ def _phone_to_dict(taxi_mgr, car) -> dict:
             items.append({
                 "id": f"offer-{item.offer_id}", "kind": "offer", "status": "AVAILABLE",
                 "name": passenger.name, "pickup": passenger.pickup.address, "dropoff": passenger.dropoff.address,
+                "passenger_count": 1 + len(getattr(passenger, "companions", ())),
                 "pickup_distance_m": round(math.hypot(car.x - passenger.pickup.x, car.y - passenger.pickup.y)),
                 "trip_distance_m": round(math.hypot(passenger.dropoff.x - passenger.pickup.x, passenger.dropoff.y - passenger.pickup.y)),
                 "time_remaining_s": round(item.time_remaining_s, 1),
@@ -416,7 +462,8 @@ def build_state_message(
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
         "game_time_seconds": game_time_seconds,
         # {"date": "YYYY-MM-DD", "time_scale": game s per real s, "sun_altitude_deg",
-        #  "darkness": 0 day .. 1 night} - the server's calendar and sun (godot-14).
+        #  "sun_azimuth_deg" (clockwise from the map's grid north), "darkness": 0 day
+        #  .. 1 night} - the server's calendar and sun (godot-14, rrt-018-shadows).
         "calendar": calendar,
         "sim_time": traffic_mgr.sim_time,
         "on_foot": on_foot,
@@ -444,7 +491,7 @@ def build_state_message(
             "x": player_pedestrian.x, "y": player_pedestrian.y, "heading": player_pedestrian.heading,
         },
         "npcs": [_npc_to_dict(npc, residents) for npc in world.npc_manager.vehicles],
-        "pedestrians": [_pedestrian_to_dict(p, residents, santa_day) for p in world.pedestrian_mgr.pedestrians if p.resident_id is not None],
+        "pedestrians": [_pedestrian_to_dict(p, residents, santa_day) for p in shown_pedestrians(world.pedestrian_mgr, camx, camy)],
         "pucks": puck_positions(),  # ice hockey: [[x, y], ...]
         "balls": ball_positions(),  # soccer: [[x, y], ...]
         "vomit_puddles": [list(point) for point in taxi_mgr.vomit_puddles + world.pedestrian_mgr.vomit_puddles],
@@ -453,6 +500,8 @@ def build_state_message(
                   + _trams_to_dicts(getattr(world, "tram_mgr", None)),
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
                     "road_snow": round(weather.road_snow, 1),
+                    # 0 clear .. 1 overcast: dims the sunlight and building shadows (rrt-018-shadows)
+                    "cloud_cover": round(getattr(weather, "cloud_cover", 0.0), 3),
                     "plowed_cells": [[x, y, round(depth, 1)] for (x, y), depth in weather.plowed_cells.items()
                                      if abs(x * 10.0 - car.x) < 600.0 and abs(y * 10.0 - car.y) < 600.0],
                     "lightning_intensity": weather.lightning_intensity,  # 1 at a strike, fading

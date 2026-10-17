@@ -4,6 +4,7 @@ import math
 import random
 import logging
 from dataclasses import dataclass
+from itertools import islice
 from typing import List, Optional, Tuple
 
 from .geo import angle_diff
@@ -13,6 +14,41 @@ from .physics import connected_drivable_ways
 logger = logging.getLogger(__name__)
 
 SPEED_CAMERA_HIGHWAYS = {"motorway", "trunk", "primary", "secondary", "tertiary"}
+
+
+class SpeedCameraSpawner:
+    """Occasional roadside cameras, never a batch in the opening map."""
+
+    def __init__(self, seed=None):
+        self.rng = random.Random(seed)
+        self.remaining_s = self.rng.uniform(120.0, 300.0)
+
+    def update(self, dt, car, spatial_grid, cameras):
+        self.remaining_s -= dt
+        if self.remaining_s > 0:
+            return None
+        self.remaining_s = self.rng.uniform(120.0, 300.0)
+        if getattr(car, "map_level", 0) != 0:
+            return None
+        bounds = (car.x - 2000, car.y - 2000, car.x + 2000, car.y + 2000)
+        candidates = list(islice(spatial_grid.ways_in_rect(*bounds), 128))
+        self.rng.shuffle(candidates)
+        for way in candidates:
+            if getattr(way, "map_level", None) not in (None, 0):
+                continue
+            placed = place_speed_cameras([way], bounds, seed=self.rng.getrandbits(32))
+            if not placed:
+                continue
+            camera = placed[0]
+            if not 300 <= math.hypot(camera.x - car.x, camera.y - car.y) <= 2000:
+                continue
+            if any(math.hypot(camera.x - old.x, camera.y - old.y) < 1500 for old in cameras):
+                continue
+            cameras.append(camera)  # append-only: camera IDs are list indices
+            logger.info("Created speed camera %d during gameplay at x=%.1f y=%.1f limit=%d km/h",
+                        len(cameras) - 1, camera.x, camera.y, camera.speed_limit_kmh)
+            return camera
+        return None
 
 
 @dataclass(frozen=True)
@@ -82,16 +118,6 @@ def place_speed_cameras(
             layer=getattr(way, "layer", 0),
             map_level=getattr(way, "map_level", None) or 0,
         ))
-    for index, camera in enumerate(result, start=1):
-        logger.info(
-            "Speed camera %d placed at x=%.1f y=%.1f heading=%.1f deg limit=%d km/h osm_way_id=%s",
-            index,
-            camera.x,
-            camera.y,
-            math.degrees(camera.heading),
-            camera.speed_limit_kmh,
-            camera.way_id,
-        )
     return result
 
 

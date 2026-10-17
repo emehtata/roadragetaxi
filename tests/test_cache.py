@@ -12,7 +12,7 @@ from theroadragetrip.osm import (
 def test_cache_save_and_load(tmp_path, monkeypatch):
     test_bbox = (64.970, 25.370, 64.990, 25.410)
     sample = load_local_sample()
-    assert sample is not None, "sample_osm.json missing"
+    assert sample is not None, "sample_osm.json.gz missing"
 
     monkeypatch.setattr("theroadragetrip.osm.CACHE_DIR", str(tmp_path))
     save_osm_cache(test_bbox, sample)
