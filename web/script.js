@@ -1,7 +1,7 @@
 const translations = {
   fi: {
     navGame: 'Peli', navFeatures: 'Ominaisuudet', navRoadmap: 'Tulossa', navHow: 'Näin pelaat', navNotes: 'Julkaisutiedot', download: 'Lataa peli', release: 'Lataa Windows-asennus', explore: 'Tutustu peliin',
-    kicker: 'Avoimen maailman taksipeli · Suomi', title: 'Vie asiakkaat perille.<br><em>Haasta tie.</em>', copy: 'Oikeita suomalaisia katuja. Neljä vuodenaikaa. Taksamittari käy, ja asiakas arvioi jokaisen mutkan.',
+    kicker: 'Avoimen maailman taksipeli · Suomi', title: 'Asiakas kyytiin.<br><em>Raivo irti.</em>', copy: 'Oikeita suomalaisia katuja. Neljä vuodenaikaa. Taksamittari käy, ja asiakas arvioi jokaisen mutkan.',
     screenshotsKicker: 'PELIKUVIA / GODOT-ALPHA', platform: 'GODOT + PYTHON-PALVELIN', mapData: 'OIKEA OSM-DATA', openSource: 'AVOINTA LÄHDEKOODIA',
     screenshotsNote: 'Kuvat ovat aiemmista alpha-versioista; 0.18.0alpha on valmisteilla. Henkilöiden nimet arvotaan satunnaisesti, eivätkä ne tarkoita oikeita ihmisiä.',
     introKicker: '01 / TYÖ', intro: 'Yksi kaupunki.<br><span>Loputtomasti tekosyitä.</span>', lead: 'The Road Rage Trip on ylhäältä kuvattu taksipeli, joka perustuu Suomen oikeisiin OpenStreetMap-katuihin.',
