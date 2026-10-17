@@ -398,11 +398,21 @@ class WeatherHistory:
                 stations = parse_fmi_timevaluepair(self._fetch(self.lat, self.lon, start_hour, end_hour))
                 hours = nearest_station_values(stations, self.lat, self.lon)
             except Exception as exc:  # network/parse failure: stay on generated weather
-                logger.warning("FMI weather history fetch failed for %s (%s)", self.location, exc)
+                logger.warning(
+                    "FMI weather history fetch failed for %s, UTC hours %d-%d: %s: %s; "
+                    "cached data retained, generated weather used where FMI data is unavailable; retry in %.0f s",
+                    self.location, start_hour, end_hour, type(exc).__name__, exc, FETCH_RETRY_DELAY_S,
+                )
                 with self._lock:
                     self._pending.clear()
                 self._retry_after = time.monotonic() + FETCH_RETRY_DELAY_S
                 return
+            if not hours:
+                logger.warning(
+                    "FMI weather history returned no usable hourly data for %s, UTC hours %d-%d; "
+                    "using cached or generated weather where FMI data is unavailable",
+                    self.location, start_hour, end_hour,
+                )
             complete = end_hour < datetime.now(timezone.utc).timestamp() / 3600.0 - 2
             with self._lock:
                 self._hours.update(hours)
@@ -444,11 +454,21 @@ class WeatherHistory:
         try:
             hours = parse_fmi_forecast(self._fetch_forecast(self.lat, self.lon))
         except Exception as exc:
-            logger.warning("FMI forecast fetch failed for %s (%s)", self.location, exc)
+            logger.warning(
+                "FMI forecast fetch failed for %s: %s: %s; "
+                "cached data retained, generated weather used where FMI data is unavailable; retry in %.0f s",
+                self.location, type(exc).__name__, exc, FETCH_RETRY_DELAY_S,
+            )
             with self._lock:
                 self._pending.clear()
             self._retry_after = time.monotonic() + FETCH_RETRY_DELAY_S
             return False
+        if not hours:
+            logger.warning(
+                "FMI forecast returned no usable hourly data for %s; "
+                "using cached or generated weather where FMI data is unavailable",
+                self.location,
+            )
         with self._lock:
             self._forecast_hours = hours
             self._forecast_fetched_at = time.monotonic()

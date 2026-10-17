@@ -2,6 +2,8 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from theroadragetrip.climate import SeasonalAppearance, appearance_with_snow_depth
 from theroadragetrip.weather import WeatherSystem, WeatherType, weather_type_for_observation
 from theroadragetrip.weather_history import (
@@ -16,6 +18,34 @@ from theroadragetrip.weather_history import (
 
 FIXTURE = (Path(__file__).parent / "data" / "fmi_oulu_2025-01-15.xml").read_text()
 OULU = (65.0121, 25.4651)
+
+
+@pytest.mark.parametrize("kind", ["observations", "forecast"])
+@pytest.mark.parametrize("failure", ["offline", "malformed", "empty"])
+def test_fmi_failures_and_empty_responses_warn_in_console(caplog, kind, failure):
+    calls = []
+    def fetch(*args):
+        calls.append(args)
+        if failure == "offline":
+            raise OSError("network offline")
+        return "not XML" if failure == "malformed" else "<FeatureCollection/>"
+    history = WeatherHistory(*OULU, fetch=fetch, fetch_forecast=fetch)
+    moment = datetime(2025, 1, 15) if kind == "observations" else datetime(2999, 1, 1)
+    with caplog.at_level("WARNING", logger="theroadragetrip.weather_history"):
+        history.request(moment, moment)
+        history.wait_idle(5.0)
+    assert len(calls) == 1
+    warning = next(record.getMessage() for record in caplog.records if record.levelname == "WARNING")
+    assert ("FMI forecast" if kind == "forecast" else "FMI weather history") in warning
+    assert history.location in warning and "generated weather" in warning
+    if failure == "empty":
+        assert "no usable hourly data" in warning
+    else:
+        assert "fetch failed" in warning and "retry in 60 s" in warning
+        assert ("OSError: network offline" if failure == "offline" else "ParseError:") in warning
+        history.request(moment, moment)
+        history.wait_idle(5.0)
+        assert len(calls) == 1  # logging must not defeat the retry backoff
 
 
 def test_real_fmi_response_takes_each_parameter_from_the_nearest_station_that_has_it():

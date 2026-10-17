@@ -568,3 +568,20 @@ fixed condition passes both pixel checks. Navigation/group Python tests:
 **30 passed** (seed 1339655107). No whole Python suite rerun for this client-only
 two-line fix. Godot suite: **911 checks, 0 failed**; existing UI/shutdown
 diagnostics remain unrelated.
+
+### FMI fetch-failure console diagnostics (2026-10-17)
+
+Observation and forecast network/XML exceptions already logged WARNING, but now
+include exception type/reason, location, observation UTC-hour range where
+applicable, existing 60-second retry backoff, and explicit cached/generated
+fallback wording. Empty parsed observation/forecast responses also warn instead
+of reporting only a successful zero-hour fetch. No fetch scheduling, cache,
+weather generation or forecast-source attribution behavior changed.
+
+Six parameterized tests cover offline, malformed XML and empty responses for
+both queries, including unchanged exception retry backoff. Weather/history
+suites: **47 passed** (seed 2340526910); compile/diff checks pass. A fake offline
+fetch with normal `configure_logging('INFO')` visibly emits the warning to the
+console without file logging. No real FMI request or full suite rerun needed
+for these diagnostics. The previously diagnosed generated-thunder/source-label
+problem remains a separate, unchanged issue.
