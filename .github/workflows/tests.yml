@@ -1,0 +1,70 @@
+name: Tests
+
+# Release gates, TESTING.md: every push and pull request runs the Python
+# suite (in random order, pytest-randomly, seed printed in the log), the
+# compile and audio checks, the Godot client tests, and the server + headless
+# client selftest on the bundled sample map (no network). Windows packaging
+# is checked by windows-release.yml (manual run, or a v* tag).
+
+on:
+  push:
+    branches: [master, "release/**"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.7.2"
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Tests (random order)
+        run: python -m pytest -q -p randomly
+      - name: Compile check
+        run: python -m compileall -q src/theroadragetrip
+      - name: Audio assets
+        run: PYTHONPATH=src python tools/validate_audio_assets.py
+
+  godot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Fetch Godot
+        run: |
+          curl -fsSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip && mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot-bin && chmod +x godot-bin
+      - name: Import the project
+        run: ./godot-bin --headless --path godot --import
+      - name: Client tests
+        run: ./godot-bin --headless --path godot --script res://tests/run_tests.gd
+      - name: Server + client selftest (sample map, offline)
+        run: |
+          PYTHONPATH=src python -m theroadragetrip.server --use-sample --no-historical-weather --port 8765 --tick-rate 30 > server.log 2>&1 &
+          python tools/wait_for_port.py 127.0.0.1 8765 60
+          ./godot-bin --headless --path godot -- --port 8765 --selftest | tee selftest.log
+          grep -q 'SELFTEST {.*"ok":true' selftest.log
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-logs
+          path: |
+            server.log
+            selftest.log
+          if-no-files-found: ignore
