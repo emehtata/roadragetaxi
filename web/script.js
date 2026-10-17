@@ -4,6 +4,15 @@ const translations = {
     kicker: 'Suomalainen taksi. Yliluonnollinen raivo.', title: 'Asiakas kyytiin.<br><em>Raivo irti.</em>', copy: 'Ruuhka ei väistä kohteliaisuudella. Kerää raivoa, huuda muut kuskit sivuun ja paina kaasu pohjaan. Uusimmassa versiossa taksin antisankarin raivo on todellinen supervoima.',
     screenshotsKicker: 'PELIKUVIA', platform: 'SUOMALAINEN TAKSISEIKKAILU', mapData: 'OIKEAT SUOMALAISET KADUT', openSource: 'SINÄ RATISSA',
     screenshotsNote: 'Kuvat ovat aiemmista peliversioista. Henkilöiden nimet arvotaan satunnaisesti, eivätkä ne tarkoita oikeita ihmisiä.',
+    screenshots: [
+      ['Kaupunki ja junat', 'Helsinki päivällä: vesistöt, sillat ja junien saapumistaulu'],
+      ['Yöruuhka', 'Iltaruuhka Helsingin valaistuilla kaduilla'],
+      ['Talvi ja junat', 'Lumisade Oulun asemalla, juna raiteilla'],
+      ['RageCab-puhelin', 'RageCab-puhelin sateisessa Helsingissä: junamatkustajan ennakkotilaus ja kyytipyyntö rinnakkain'],
+      ['Suomen kartta', 'Aloituspaikan valinta Suomen kartalta'],
+      ['Sääennuste', 'Aloitusnäyttö ja oikea sääennuste'],
+    ],
+    navLabel: 'Päänavigaatio', homeLabel: 'The Road Rage Tripin etusivu', heroLabel: 'The Road Rage Tripin latauskuva',
     introKicker: '01 / ANTISANKARI', intro: 'Lyhyt pinna.<br><span>Yliluonnollinen raivo.</span>', lead: 'The Road Rage Trip on ylhäältä kuvattu taksipeli Suomen oikeilla kaduilla. Sinä olet sen antisankari: taksikuski, jonka raivo siirtää autot tieltä.',
     introText: 'Asiakas odottaa. Koko katu seisoo. Sinä et. Kun raivoa on tarpeeksi, paina SPACE ja huuda ruuhka helvettiin. Uusimmassa versiossa muut autot siirtyvät suoraan tien sivuun ja edessäsi pidetään ajoväylä auki vähintään kymmenen sekunnin ajan. Vaikka mittarissa olisi 210 km/h. Ei sankaripuheita. Taksamittari käy.',
     featureKicker: '02 / KONEPELLIN ALLA', featureTitle: 'Kauniisti<br><em>ärtyneille.</em>', featureIntro: 'Tämä ei ole pelkkä tausta. Tieverkosto, sää, jalankulkijat ja sääntöjen rikkomisen seuraukset elävät ympärilläsi.',
@@ -47,13 +56,22 @@ const translations = {
       ['Sujuvammin matkaan', 'Muut autot ilmestyvät turvallisemman välimatkan päähän, ja eksyneet kuskit löytävät paremmin takaisin reitille. Vähemmän turhia esteitä, enemmän ajamista.'],
     ],
     releaseKicker: 'LADATTAVISSA / 0.17.1alpha', releaseTitle: 'Seuraava kyyti<br>odottaa.', releaseText: 'Lataa Windows-asennuspaketti 0.17.1alpha. Peli on kehitysvaiheessa: virheitä ja suorituskykyongelmia voi esiintyä.', releaseButton: 'Lataa Windows-asennus',
-    scroll: 'VIERITÄ ALASPÄIN', toggle: 'Vaihda kieleksi English',
+    scroll: 'VIERITÄ ALASPÄIN', toggle: 'Vaihda englanniksi',
   },
   en: {
     navGame: 'Game', navFeatures: 'Features', navRoadmap: "What's next", navHow: 'How to play', navNotes: 'Release notes', download: 'Download', release: 'Download Windows installer', explore: 'Explore the game',
     kicker: 'Finnish taxi. Supernatural rage.', title: 'Deliver fares.<br><em>Unleash the rage.</em>', copy: 'Traffic won’t move for manners. Build rage, shout other drivers aside, and floor it. In the latest version, your taxi antihero’s rage is a real superpower.',
-    screenshotsKicker: 'GAMEPLAY SCREENSHOTS', platform: 'FINNISH TAXI MAYHEM', mapData: 'REAL FINNISH STREETS', openSource: 'YOU AT THE WHEEL',
+    screenshotsKicker: 'GAMEPLAY SCREENSHOTS', platform: 'FINNISH TAXI ADVENTURE', mapData: 'REAL FINNISH STREETS', openSource: 'YOU AT THE WHEEL',
     screenshotsNote: 'Screenshots show earlier game versions. Character names are randomly generated and do not represent real people.',
+    screenshots: [
+      ['City and trains', 'Helsinki by day: waterways, bridges and the train arrival board'],
+      ['Night traffic', 'Evening traffic on Helsinki’s illuminated streets'],
+      ['Winter and trains', 'Snowfall at Oulu station, with a train on the tracks'],
+      ['RageCab phone', 'RageCab phone in rainy Helsinki: a train passenger’s prebooking beside a ride request'],
+      ['Map of Finland', 'Choosing a starting location on the map of Finland'],
+      ['Weather forecast', 'Start screen with a real weather forecast'],
+    ],
+    navLabel: 'Main navigation', homeLabel: 'The Road Rage Trip home', heroLabel: 'The Road Rage Trip loading artwork',
     introKicker: '01 / THE ANTIHERO', intro: 'Short fuse.<br><span>Supernatural rage.</span>', lead: 'The Road Rage Trip is a top-down taxi game on real Finnish streets. You are its antihero: a cab driver whose rage moves cars out of the way.',
     introText: 'Your passenger is waiting. The whole street is stuck. You aren’t. Build enough rage, hit SPACE, and shout traffic to hell. In the latest version, other cars move straight to the roadside and your path stays clear for at least ten seconds. Even at 210 km/h. No heroic speeches. The meter is running.',
     featureKicker: '02 / UNDER THE HOOD', featureTitle: 'Built for the<br><em>beautifully irritated.</em>', featureIntro: 'Not a backdrop. Roads, weather, pedestrians, and consequences are alive around you.',
@@ -70,7 +88,7 @@ const translations = {
       ['Pedestrians with a pulse', 'Residents walk to their own doors, check their phones, sit on benches, or go for a jog – and stumble home from the bar. Keep your eyes open: not everyone walks a straight line.'],
       ['Traffic lights play along', 'Junctions and signals guide both you and every pedestrian around you. Running a red shows up directly in the taxi score.'],
       ['Four Finnish seasons', 'Choose your starting date and time in freelance-driver mode. Snow accumulates on roads and roofs, tires leave tracks and ploughs clear the streets. Spring brings floating ice, summer greenery and autumn colors.'],
-      ['Every fare grows your balance', 'The meter runs, the miles add up, and your balance grows. Get your passenger there, collect the fare, and find your next ride.'],
+      ['Every fare grows your balance', 'The meter runs, the journey continues, and your balance grows. Get your passenger there, collect the fare, and find your next ride.'],
       ['Passengers remember your driving', 'Crashes and reckless driving hurt satisfaction. A fast ride that arrives on time can earn a tip of up to ten euros.'],
       ['Trains run on time', "Real train timetables bring stations to life: trains roll in with headlights blazing, the station announces them, and a passenger with luggage has already booked your ride."],
       ['Weather from the real world', 'Switch on real weather and face the conditions for your chosen place and time. Rain lashes the windshield, frost bites, and slippery roads test your nerve. Your passenger still expects to get there.'],
@@ -85,7 +103,7 @@ const translations = {
       ['Police car chases', 'Hidden cameras only go so far. Real police cars will give chase with sirens on, and losing them will take more than a shout.'],
       ['Taxi driver brawls', "When rage doesn't fit in words anymore, step out of the car and settle it the old-fashioned way."],
     ],
-    howKicker: '04 / TAKE THE WHEEL', howTitle: 'Know the<br><span>rules.</span><br>Break the calm.', howLead: 'The city is yours to navigate. The score is yours to ruin.',
+    howKicker: '04 / TAKE THE WHEEL', howTitle: 'Know the<br><span>rules.</span><br>Break the calm.', howLead: 'The city is your playground. The score is yours to ruin.',
     controls: ['Drive, brake, steer (arrow keys also work)', 'RageCab phone: 1–3 accept, X declines', 'Rage shout: clear the way', 'Phone: ride requests or navigation', 'Lane assist', 'Speed limiter', 'Traffic-light assist', 'Return the taxi to the road, T resets trip meter', 'Pause, settings, change city', 'Enter or leave the taxi', 'Start or stop the engine', 'Refuel at a gas station', 'Train arrival board'],
     notesKicker: '05 / LATEST VERSION', notesTitle: 'The latest<br><em>version.</em>', notesLead: 'In the latest version, rage clears the road. Group fares and improvements to maps, weather and traffic round out the ride.',
     notes: [
@@ -97,7 +115,7 @@ const translations = {
       ['A smoother start to your shift', 'Other cars appear at safer distances, and lost drivers find their way back more reliably. Fewer needless obstacles. More driving.'],
     ],
     releaseKicker: 'AVAILABLE / 0.17.1alpha', releaseTitle: 'Your next fare<br>is waiting.', releaseText: 'Download the 0.17.1alpha Windows installer. This is a work-in-progress alpha: bugs and performance issues remain.', releaseButton: 'Download Windows installer',
-    scroll: 'SCROLL TO EXPLORE', toggle: 'Vaihda kieleksi Suomi',
+    scroll: 'SCROLL TO EXPLORE', toggle: 'Switch to Finnish',
   },
 };
 
@@ -109,6 +127,9 @@ const controls = document.querySelectorAll('.control-row span');
 function setLanguage(next) {
   language = next;
   const t = translations[language];
+  document.querySelector('nav').setAttribute('aria-label', t.navLabel);
+  document.querySelector('.brand').setAttribute('aria-label', t.homeLabel);
+  document.querySelector('.hero-image').setAttribute('aria-label', t.heroLabel);
   navLinks[0].textContent = t.navGame;
   navLinks[1].textContent = t.navFeatures;
   navLinks[2].textContent = t.navRoadmap;
@@ -129,6 +150,10 @@ function setLanguage(next) {
   });
   document.querySelector('#screenshots-title').textContent = t.screenshotsKicker;
   document.querySelector('.screenshot-note').textContent = t.screenshotsNote;
+  document.querySelectorAll('.screenshot-grid figure').forEach((figure, index) => {
+    figure.querySelector('figcaption').textContent = t.screenshots[index][0];
+    figure.querySelector('img').setAttribute('alt', t.screenshots[index][1]);
+  });
   document.querySelector('#features .section-kicker').textContent = t.featureKicker;
   document.querySelector('#features .feature-heading h2').innerHTML = t.featureTitle;
   document.querySelector('#features .feature-heading p').textContent = t.featureIntro;

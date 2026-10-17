@@ -10,6 +10,7 @@ const technicalCopy = /\b(?:Godot|Python|OSM|OpenStreetMap|NPC|HUD|API|FMI|Digit
 const section = id => html.split(`id="${id}"`)[1].split('</section>')[0];
 const counts = {
   '.hero-meta span': 3,
+  '.screenshot-grid figure': (html.match(/<figure>/g) || []).length,
   'nav a': (html.split('</nav>')[0].match(/<a /g) || []).length - 1, // exclude the brand
   '.control-row span': (section('how-to-play').match(/class="control-row"/g) || []).length,
   '#features .feature-card': (section('features').match(/<article /g) || []).length,
@@ -50,6 +51,30 @@ for (const language of ['fi', 'en']) {
     for (let toggle = 0; toggle < 3; toggle++) {
       const current = document.documentElement.lang;
       const t = vm.runInContext(`translations.${current}`, context);
+      const other = vm.runInContext(`translations.${current === 'fi' ? 'en' : 'fi'}`, context);
+      assert.deepEqual(Object.keys(t).sort(), Object.keys(other).sort());
+      for (const key of ['features', 'notes', 'controls']) {
+        assert.equal(t[key].length, other[key].length, key);
+        t[key].forEach((entry, i) => {
+          assert.deepEqual(JSON.stringify(entry).match(/\d+/g), JSON.stringify(other[key][i]).match(/\d+/g), `${key}[${i}] numeric promises`);
+        });
+      }
+      assert.equal(lists.get('.screenshot-grid figure').length, t.screenshots.length);
+      lists.get('.screenshot-grid figure').forEach((figure, i) => {
+        assert.equal(figure.querySelector('figcaption').textContent, t.screenshots[i][0]);
+        assert.equal(figure.querySelector('img').alt, t.screenshots[i][1]);
+      });
+      assert.equal(nodes.get('nav')['aria-label'], t.navLabel);
+      assert.equal(nodes.get('.brand')['aria-label'], t.homeLabel);
+      assert.equal(nodes.get('.hero-image')['aria-label'], t.heroLabel);
+      assert.equal(nodes.get('.language-toggle')['aria-label'], t.toggle);
+      if (current === 'fi') {
+        assert(html.includes(t.featureIntro));
+        t.screenshots.forEach(([caption, alt]) => {
+          assert(html.includes(`<figcaption>${caption}</figcaption>`));
+          assert(html.includes(`alt="${alt}"`));
+        });
+      }
       for (const [selector, key] of [['#features .feature-card', 'features'], ['#roadmap .feature-card', 'roadmapCards'], ['#release-notes .notes-list li', 'notes']]) {
         assert.equal(lists.get(selector).length, t[key].length, `${current} ${key}`);
         const heading = key === 'notes' ? 'strong' : 'h3';

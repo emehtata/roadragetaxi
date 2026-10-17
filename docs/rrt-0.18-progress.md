@@ -809,6 +809,18 @@ updated again only after 0.18 is actually published.
 
 ### Market the taxi antihero and rage superpower (2026-10-18)
 
+Bilingual content review: compared every feature, release note, roadmap card,
+control and heading. Gameplay promises, limits, future-feature status and
+downloads match. Aligned the English adventure badge and playground wording;
+removed the miles-only phrasing. Fixed Finnish no-JavaScript feature introduction
+to include the full description. Gallery captions now switch languages rather
+than mixing both; all six image descriptions, navigation/home/hero accessibility
+labels and language-switch labels are localized too. Added checks for matching
+translation keys, numeric claims per feature/note/control, translated gallery and
+accessibility labels through repeated toggles, and Finnish gallery fallback.
+Three Node checks and six focused pytest checks passed (seed 743673077), plus
+JavaScript syntax/diff checks. No deployment or browser layout render.
+
 Player-facing copy pass: rewrote technical feature/release descriptions in both
 languages and the Finnish fallback. Removed engine/server badges, map-data
 jargon, rendering/layer details, background tile loading, spawn/recovery terms,
