@@ -707,3 +707,27 @@ Diff checks pass. The exact original session geometry was not captured/replayed;
 the precision mechanism is suspected, while bypassing that triangulator in the
 reported fill path is verified. Keep body parts convex as required by the
 existing drawable guard.
+
+### Start 0.18.0alpha release preparation (2026-10-17)
+
+Aligned Python package version `0.18.0a0` (PEP 440), Godot displayed version
+`0.18.0alpha`, Windows EXE file/product version `0.18.0.0`, Inno Setup version
+`0.18.0alpha`, and the README tag example. Added a consistency regression so the
+installer and exported client cannot silently retain a different version.
+Historical version references and untracked user prompt files are untouched.
+
+Godot: **920 checks, 0 failed**, with existing signal/anchor/input and cleanup
+diagnostics. Compile and diff checks pass. Full Python suite (seed 743673077):
+**1,827 passed, 2 skipped, 1 failed** in 91.02 s. The known fixed-50-ms-wait
+integration test received an initial map `chunk` rather than a `state`, matching
+the earlier documented timing failure. Integration/version retry: **14 passed,
+1 failed** in 6.84 s; the original state test passed, but the fixed-wait map-chunk
+test collected 46 of 49 expected chunks before its assertion. The new version
+consistency test passes. Networking timing checks therefore remain an explicit
+release gate, not a claimed clean suite.
+
+Not published: no tag, GitHub release or master merge. Next gates: review full
+test results, Windows build/installer and in-game smoke testing (especially the
+reported intermittent audio crackle), review release notes and the unresolved
+asset-rights items already recorded in `LICENSE_AUDIT.md`. A `v*` tag triggers
+the Windows workflow's public release publishing step; do not tag prematurely.

@@ -195,8 +195,8 @@ Other common development commands are `make test`, `make compile`, and `make che
 Run the Windows release workflow on the release branch to test the setup installer, then merge the branch and tag `master` to publish the Windows package:
 
 ```bash
-git tag v0.17.1alpha
-git push origin v0.17.1alpha
+git tag v0.18.0alpha
+git push origin v0.18.0alpha
 ```
 
 GitHub Actions builds the Godot game and bundled Python server on Windows, installs the setup EXE in a temporary directory for a smoke test, then attaches `RoadRageTrip-windows-x64.zip` and `RoadRageTrip-Setup.exe` to the GitHub Release. Use the EXE installer for a normal Windows installation, or extract the zip and launch `RoadRageTrip.exe`; no Python installation is required.
