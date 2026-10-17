@@ -45,7 +45,7 @@ REQUEST_TIMEOUT_S = 30.0
 FETCH_RETRY_DELAY_S = 60.0  # after a failed fetch (offline), wait before asking FMI again
 # Game times after the latest observation: FMI's meteorologist-edited point
 # forecast (~72 h ahead, hourly). Refreshed at most once per real hour and
-# kept in memory only - it changes, unlike observations.
+# cached on disk too; stale hours remain usable if a refresh fails.
 FMI_FORECAST_QUERY = "fmi::forecast::edited::weather::scandinavia::point::timevaluepair"
 FMI_FORECAST_PARAMETERS = ("Temperature", "Precipitation1h", "WeatherSymbol3", "WindSpeedMS", "WindDirection", "TotalCloudCover")  # cloud %
 FORECAST_REFRESH_S = 3600.0
@@ -364,14 +364,14 @@ class WeatherHistory:
         return True
 
     def _load_cached_forecast(self) -> bool:
-        """Called with the lock held. True if a forecast under an hour old
-        came from SQLite (it then ages from its real fetch time)."""
+        """Load even stale hours for offline use; return whether still fresh.
+        Called with the lock held; age always follows the real fetch time."""
         if self._db is None:
             return False
         try:
             rows = self._db.execute(
                 "SELECT hour, fetched_at, temperature, precipitation, wawa, wind_speed, wind_from, cloud FROM forecast_hours_v2"
-                " WHERE location=? AND fetched_at>?", (self.location, time.time() - FORECAST_REFRESH_S),
+                " WHERE location=?", (self.location,),
             ).fetchall()
         except sqlite3.Error:
             return False
@@ -380,7 +380,7 @@ class WeatherHistory:
         self._forecast_hours = {hour: HourlyWeather(temperature, precipitation, wawa, None, wind_speed, wind_from, "forecast", cloud)
                                 for hour, _, temperature, precipitation, wawa, wind_speed, wind_from, cloud in rows}
         self._forecast_fetched_at = time.monotonic() - (time.time() - min(row[1] for row in rows))
-        return True
+        return time.monotonic() - self._forecast_fetched_at <= FORECAST_REFRESH_S
 
     def _work(self) -> None:
         while True:
@@ -453,6 +453,8 @@ class WeatherHistory:
         """Fetch the point forecast; False (and back off) on failure."""
         try:
             hours = parse_fmi_forecast(self._fetch_forecast(self.lat, self.lon))
+            if not hours:
+                raise ValueError("no usable hourly data")
         except Exception as exc:
             logger.warning(
                 "FMI forecast fetch failed for %s: %s: %s; "
@@ -463,12 +465,6 @@ class WeatherHistory:
                 self._pending.clear()
             self._retry_after = time.monotonic() + FETCH_RETRY_DELAY_S
             return False
-        if not hours:
-            logger.warning(
-                "FMI forecast returned no usable hourly data for %s; "
-                "using cached or generated weather where FMI data is unavailable",
-                self.location,
-            )
         with self._lock:
             self._forecast_hours = hours
             self._forecast_fetched_at = time.monotonic()

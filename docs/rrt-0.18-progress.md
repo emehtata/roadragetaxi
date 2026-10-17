@@ -620,3 +620,31 @@ Limits: no complete original Oulu session/render replay. This prevents new NPCs
 being placed into the player envelope; it does not relocate existing wrecks,
 change ordinary moving-car avoidance or make manual taxi respawn search existing
 vehicles. No Godot/rendering or map-source change.
+
+### Keep the last good FMI forecast across failed refreshes (2026-10-17)
+
+Successful forecast fetches already persisted to the OS-specific SQLite weather
+cache. However, startup ignored entries older than one hour, and an empty FMI
+response replaced both memory and disk forecasts with nothing. This could leave
+generated weather after a restart despite a previously downloaded forecast.
+
+Load saved forecast hours regardless of fetch age, retaining the original fetch
+timestamp. The one-hour refresh policy still queues an update, but existing
+hours are immediately available while it runs. Network/parse failures and empty
+responses retain the last successful forecast, without marking it fresh, and
+apply the existing 60-second retry backoff. Successful refreshes still replace
+and persist the forecast. Cache location/schema and generated weather are
+unchanged; the proposed deterministic-generator changes were withdrawn in favor
+of the requested cache fallback.
+
+Tests: six cases (offline/malformed/empty × in-session/restart) verify immediate
+stale-cache availability during a blocked fetch, retention in memory and disk,
+original fetch age and retry backoff. A successful-refresh test verifies the
+new values survive restart. Weather/history suites: **54 passed**, seed
+743673077. Server suite: **40 passed** with local-socket permission (the
+restricted run could not create its test socket). Compile and diff checks pass.
+
+Limits: stale forecasts can be inaccurate, and only explicitly cached hours are
+used—there is no extrapolation beyond their time range. No live FMI outage or
+rendered game replay was performed. Missing cache/hour still uses generated
+weather; this does not make cold startup wait indefinitely for FMI.
