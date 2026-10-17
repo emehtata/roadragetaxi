@@ -185,9 +185,9 @@ func _button(text: String, action: Callable) -> Button:
 
 func _language_menu() -> void:
 	_clear()
-	_title("CHOOSE LANGUAGE / VALITSE KIELI")
-	_button("English", func(): _choose_language("en"))
-	_button("Suomi", func(): _choose_language("fi"))
+	_title("LANGUAGE / KIELI / SPRACHE")
+	for code in T.LANGUAGES:
+		_button(T.LANGUAGE_NAMES[code], _choose_language.bind(code))
 	_focus_menu()
 
 
@@ -656,11 +656,11 @@ func _settings_menu() -> void:
 	_clear()
 	_title(_t("settings").to_upper())
 	var language := OptionButton.new()
-	language.add_item("English")
-	language.add_item("Suomi")
-	language.selected = 1 if _language == "fi" else 0
+	for code in T.LANGUAGES:
+		language.add_item(T.LANGUAGE_NAMES[code])
+	language.selected = maxi(0, T.LANGUAGES.find(_language))
 	language.item_selected.connect(func(index: int):
-		_language = "fi" if index == 1 else "en"
+		_language = T.LANGUAGES[index]
 		_settings.set_value("game", "language", _language)
 		_settings.save("user://settings.cfg")
 		if _game != null:

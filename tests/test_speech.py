@@ -110,6 +110,23 @@ def test_native_voice_is_preferred_and_missing_both_is_silent():
     assert selector._passenger(entry, "woman", "de", "Aino", False) is None
 
 
+def test_german_subtitles_exist_for_every_shipped_line_and_finnish_audio_plays():
+    for speaker in ("driver", "passenger"):
+        assert all(line.get("de") for line in speech.load_lines(speaker))
+    audio = EventAudio(rng=random.Random(4))
+    audio.play_driver_line("pickup", "de")
+    (event,) = audio.take_events()
+    assert event["language"] == "fi"
+    entry = next(line for line in speech.load_lines("driver") if line["hash"] == event["hash"])
+    assert event["text"] == entry["de"]
+    audio.advance(30.0)
+    audio.play_passenger_line_for_situation("pickup", "woman", "de", "Aino")
+    (event,) = audio.take_events()
+    assert event["language"] == "fi" and event["gender"] == "f"
+    entry = next(line for line in speech.load_lines("passenger") if line["hash"] == event["hash"])
+    assert event["text"] == entry["de"]
+
+
 def _train(kind_number="28"):
     service = SimpleNamespace(train_type="IC", number=kind_number, origin="Rovaniemi", destination="Helsinki", category="")
     return SimpleNamespace(service=service)

@@ -874,6 +874,7 @@ static func wind_arrow(wind_from_deg: float) -> String:
 func send(controls: Dictionary) -> void:
 	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist,
 		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending, _home_pending)
+	command["language"] = language
 	_interact_pending = false
 	_refuel_pending = false
 	_road_rage_pending = false

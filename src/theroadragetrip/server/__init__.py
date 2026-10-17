@@ -45,7 +45,7 @@ from ..viewport import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..physics import reset_trip, respawn_car
 from ..home import CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home
-from ..localization import tr
+from ..localization import SUPPORTED_LANGUAGES, tr
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
 from ..weather_history import WeatherHistory, precipitation_from_observation, game_time_to_utc_hour
@@ -538,6 +538,10 @@ class SimulationServer:
                     continue
                 command, interact = protocol.command_from_message(message)
                 phone = protocol.phone_request_from_message(message)
+                requested_language = message.get("command", {}).get("language") if isinstance(message.get("command"), dict) else None
+                if isinstance(requested_language, str) and requested_language in SUPPORTED_LANGUAGES and requested_language != self.language:
+                    self.language = requested_language
+                    self.world.taxi_mgr.set_language(requested_language)
                 with self._command_lock:
                     self._latest_command = replace(command, refuel=False, road_rage=False, respawn=False, home=False,
                                                    cancel_ride=False, reset_trip=False)  # the held part only

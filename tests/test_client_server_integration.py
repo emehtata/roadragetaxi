@@ -19,6 +19,28 @@ def _start_server(monkeypatch):
     return server
 
 
+def test_client_language_change_reaches_notifications_and_speech(monkeypatch):
+    from theroadragetrip import protocol, transport
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _start_server(monkeypatch)
+    connection = transport.connect(server.host, server.port)
+    try:
+        for language in ("de", ["fi"], "../fi", "fi", "en"):
+            message = protocol.build_command_message(PlayerCommand(), interact=False, seq=1)
+            message["command"]["language"] = language
+            connection.send(message)
+            expected = language if isinstance(language, str) and language in ("de", "fi", "en") else "de"
+            assert _tick_until(server, lambda: server.language == expected)
+            assert server.world.taxi_mgr.language == expected
+        server.audio.advance(30.0)
+        server.audio.play_driver_line("pickup", "de")
+        (event,) = server.audio.take_events()
+        assert event["language"] == "fi" and event["text"] == "Fahrgast an Bord, los geht’s."
+    finally:
+        connection.close()
+
+
 def test_client_connects_receives_state_and_commands_reach_the_simulation(monkeypatch):
     from theroadragetrip import protocol, transport
     from theroadragetrip.simulation import PlayerCommand

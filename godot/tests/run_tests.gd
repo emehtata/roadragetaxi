@@ -130,6 +130,11 @@ func test_settings_help() -> void:
 	check(help.visible and help.text == questions[0].tooltip_text.replace("\n", " "), "settings: clicking ? opens the explanation")
 	questions[0].pressed.emit()
 	check(not help.visible, "settings: clicking it again closes it")
+	shell._language = "de"
+	shell._settings_menu()
+	var language_picker: OptionButton = shell._focusables[0]
+	check(language_picker.item_count == 3 and language_picker.get_item_text(language_picker.selected) == "Deutsch", "settings: German selected from three languages")
+	check(shell._body.find_children("*", "Label", true, false).any(func(label): return label.text == "EINSTELLUNGEN"), "German settings title")
 	shell.free()
 
 
@@ -287,6 +292,15 @@ func test_chunk_queue() -> void:
 func test_i18n() -> void:
 	check(I18n.FI.keys().filter(func(k): return not I18n.EN.has(k)).is_empty(), "every Finnish text has English")
 	check(I18n.EN.keys().filter(func(k): return not I18n.FI.has(k)).is_empty(), "every English text has Finnish")
+	check(I18n.EN.keys().filter(func(k): return not I18n.DE.has(k)).is_empty(), "every English text has German")
+	check(I18n.DE.keys().filter(func(k): return not I18n.EN.has(k)).is_empty(), "every German text has English")
+	check(I18n.LANGUAGES.has("de") and I18n.LANGUAGE_NAMES.de == "Deutsch", "German is selectable")
+	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "de") == "[ZUM TAXI] Aino", "German walking passenger tag")
+	check(Phone.status_text(true, false, [], "", "de") == "Zurzeit keine Fahrtanfragen.", "German phone status")
+	check(Phone.card_text({"passenger_count": 3}, "de").contains("3 Fahrgäste"), "German group fare")
+	check(I18n.startup_detail("Preparing NPC traffic...", "de") == "Verkehr wird vorbereitet…", "German startup details")
+	check(I18n.text("settings", "de") == "EINSTELLUNGEN" and I18n.text("nav_left", "de") == "Links abbiegen", "German settings and navigation")
+	check(Hud.subtitle_text({"speaker": "driver", "text": "Hallo!"}, "de") == "Fahrer: Hallo!", "German subtitle speaker")
 	check(Phone.status_text(true, false, [], "", "fi") == "Ei kyytipyyntöjä juuri nyt.", "the phone reads the Finnish table")
 	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "fi") == "[TAKSILLE] Aino", "walking passenger tag is Finnish")
 	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "en") == "[TO TAXI] Aino", "walking passenger tag is English")
@@ -306,6 +320,8 @@ func test_i18n() -> void:
 		var fi_args := pattern.search_all(I18n.FI[key]).map(func(m): return m.get_string())
 		var en_args := pattern.search_all(I18n.EN[key]).map(func(m): return m.get_string())
 		check(fi_args == en_args, "translation format arguments match: " + key)
+		var de_args := pattern.search_all(I18n.DE[key]).map(func(m): return m.get_string())
+		check(fi_args == de_args, "German format arguments match: " + key)
 
 
 func test_interpolation() -> void:
@@ -749,6 +765,10 @@ func test_mouse_inspection() -> void:
 	check(vehicle_text.contains("Tyyppi: kuorma-auto") and vehicle_text.contains("Tila: ajaa"), "inspector translates vehicle type and driving state")
 	main.set_language("en")
 	check(main._character_text("npc", {"vehicle_type": "truck", "state": "CRUISING"}).contains("State: driving"), "inspector switches back to English")
+	main.set_language("de")
+	check(main._character_text("pedestrian", {"resident": {"gender": "woman"}, "state": "walking"}).contains("Geschlecht: weiblich"), "German resident gender matches server values")
+	check(main._character_text("npc", {"vehicle_type": "truck", "state": "CRUISING"}).contains("Zustand: fährt"), "German vehicle inspector")
+	main.set_language("en")
 	main.entities._frame = {"a": state, "b": state, "t": 0.0}
 	state["pedestrians"] = [pedestrian]
 	pedestrian["x"] = 1.0  # inside the headless viewport, so GUI routing is exercised

@@ -2,6 +2,7 @@ import argparse
 from datetime import datetime
 
 from ..config import load_config, cities_from_config
+from ..localization import SUPPORTED_LANGUAGES
 from ..game_args import parse_args
 
 DEFAULT_PORT = 8765
@@ -20,7 +21,7 @@ def parse_server_args():
     parser.add_argument("--tick-rate", type=float, default=30.0, help="Simulation ticks per second")
     parser.add_argument("--startup-progress", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--game-mode", choices=["career", "gig_driver"], default="gig_driver")
-    parser.add_argument("--language", choices=["en", "fi"], default=None)
+    parser.add_argument("--language", choices=SUPPORTED_LANGUAGES, default=None)
     parser.add_argument("--list-cities", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--list-city-locations", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--clear-cache", action="store_true",

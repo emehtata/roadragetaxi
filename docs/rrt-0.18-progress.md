@@ -807,6 +807,36 @@ downloaded-font appearance remains unverified. No site deployment or release
 tag; no game/simulation, user-save or audio changes. Download labels should be
 updated again only after 0.18 is actually published.
 
+### German game language (2026-10-18)
+
+Added Deutsch to first-run and settings language selection, persisted through
+the existing Godot settings path and passed as `--language de` to the server.
+All 222 Python message keys and all Godot UI keys have German translations,
+including navigation, settings help, loading details, passenger labels, phone
+booking/group fares and inspector values. Added German subtitles to all 30
+driver and 50 passenger lines without changing their Finnish hashes or audio
+assets. Driver/passenger playback uses the separately tested Finnish fallback;
+German recordings would be preferred if installed later. The recording scanner
+and client file allowlist recognize the supported German language code.
+
+Live language changes also send validated `command.language` to the server,
+updating both server and taxi-manager language for subsequent notifications and
+speech. Malformed/unknown codes are ignored. Existing messages already on screen
+are not retroactively rewritten. Euro receipts use a decimal comma for German.
+Updated README and client architecture notes; website language remains unchanged.
+Legal credits, Finnish place/street names and station audio are retained.
+
+Verification: **1,863 Python tests passed, 2 skipped** (92.94 s, seed 743673077)
+and **1,502 Godot checks passed, zero failed**. The Godot harness still reports
+its existing anchor/input warnings and shutdown resource leaks. Also passed 43
+focused localization/speech/fare/client-server checks, website regression checks,
+Python compile and diff checks. Coverage includes all-language key/argument
+parity, German menu selection, inspector/phone/navigation/subtitles, real German
+speech events backed by Finnish OGG files, and live language switching through
+a socket with malformed codes ignored. Tests use isolated saves/config/cache
+paths; no player bank data or real career was used. No new voice generation,
+interactive layout replay or Windows build performed.
+
 ### Missing voice recordings fall back to Finnish (2026-10-18)
 
 Both driver and passenger speech now select the Finnish recording when a clip

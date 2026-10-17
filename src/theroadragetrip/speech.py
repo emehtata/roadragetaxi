@@ -22,6 +22,7 @@ import random
 import struct
 from pathlib import Path
 from typing import Callable, Optional
+from .localization import SUPPORTED_LANGUAGES
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def recorded_lines(speaker: str) -> dict:
     found = {}
     for path in SOUND_DIRS[speaker].glob("*.ogg"):
         parts = path.stem.split("_", 2)
-        if len(parts) != 3 or parts[0] not in ("f", "m") or parts[1] not in ("fi", "en"):
+        if len(parts) != 3 or parts[0] not in ("f", "m") or parts[1] not in SUPPORTED_LANGUAGES:
             continue
         try:
             found[tuple(parts)] = ogg_duration(path)
