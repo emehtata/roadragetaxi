@@ -1864,15 +1864,24 @@ def test_a_client_gets_the_nearest_pedestrians_and_everyone_held():
     assert crowd[-1] in shown and crowd[0] in shown and crowd[20] not in shown
 
 
-def test_a_rural_driveway_gets_few_people_and_a_city_block_the_full_target():
+def test_a_rural_cabin_gets_a_walker_at_most_and_a_city_block_the_full_target(kunnat_centres):
     """Bug (Sysmä): tens of people on a cottage driveway - the population
-    target ignored that there were only a couple of houses around."""
-    def house(x, y):
-        return Building(points_m=[(x, y), (x + 8, y), (x + 8, y + 8), (x, y + 8)], bbox=(x, y, x + 8, y + 8))
+    target ignored that there was only a cabin and a sauna around."""
+    sx, sy = 429772.0, 6819445.0  # Sysmä, 1.9 people/km2
+    hx, hy = 385700.0, 6672126.0  # central Helsinki
 
-    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
-    rural = PedestrianManager([way], target_count=20, venue_buildings=[house(20, 10), house(60, -20)])
-    assert rural.local_population_target(50.0, 0.0) == 2 * 2 + 2
-    city = PedestrianManager([way], target_count=20,
-                             venue_buildings=[house(10 * (i % 10), 12 * (i // 10)) for i in range(50)])
-    assert city.local_population_target(50.0, 0.0) == city.population_target
+    def building(x, y, kind, size=8, levels=None):
+        return Building(points_m=[(x, y), (x + size, y), (x + size, y + size), (x, y + size)],
+                        bbox=(x, y, x + size, y + size), building_type=kind, levels=levels)
+
+    def footway(x, y):
+        return Way(points_m=[(x, y), (x + 100.0, y)], highway="footway", half_width_m=1.5)
+
+    cabin = PedestrianManager([footway(sx, sy)], target_count=20,
+                              venue_buildings=[building(sx + 20, sy + 10, "cabin"), building(sx + 40, sy + 10, "sauna", 4)])
+    assert cabin.local_population_target(sx + 50.0, sy) == 1
+    empty = PedestrianManager([footway(sx, sy)], target_count=20, venue_buildings=[building(sx + 5000, sy, "house")])
+    assert empty.local_population_target(sx + 50.0, sy) == 0  # a forest path: nobody lives near
+    flats = [building(hx + 30 * (i % 6), hy + 30 * (i // 6), "apartments", 25, 5) for i in range(36)]
+    city = PedestrianManager([footway(hx, hy)], target_count=20, venue_buildings=flats)
+    assert city.local_population_target(hx + 80.0, hy + 80.0) == city.population_target

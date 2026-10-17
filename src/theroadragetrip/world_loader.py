@@ -326,10 +326,6 @@ def load_world(
     # Initialize Taxi Manager for game mode
     on_load_progress(0.80, "Preparing taxi missions...")
     residents = ResidentManager(city_name=chosen_city)
-    residents.set_city_center_m((minx + maxx) / 2.0, (miny + maxy) / 2.0)
-    city_center = city_centers.get(chosen_city)
-    if city_center is not None:
-        residents.set_city_center_latlon(*city_center)
     # Build-time dataset (tools/osm/extract_places.py), not the PBF.
     nearby_places = load_places().within(sun_latitude, sun_longitude, NEARBY_PLACES_RADIUS_M)
     logger.info(

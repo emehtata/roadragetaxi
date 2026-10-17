@@ -1,7 +1,6 @@
 """City residents who may walk or control vehicles."""
 import gzip
 import json
-import math
 import random
 from datetime import date, timedelta
 from dataclasses import dataclass, field
@@ -132,29 +131,6 @@ class ResidentManager:
         self._next_id = 1
         self.city_name = city_name
         self.city_data = CITY_DATA.get(city_name.casefold()) if city_name else None
-        self.city_center_m: Optional[tuple[float, float]] = None
-
-    def set_city_center_m(self, x: float, y: float) -> None:
-        self.city_center_m = (x, y)
-
-    def set_city_center_latlon(self, latitude: float, longitude: float) -> None:
-        try:
-            from pyproj import Transformer
-            transformer = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True)
-            self.city_center_m = transformer.transform(longitude, latitude)
-        except (ImportError, RuntimeError, ValueError):
-            self.city_center_m = None
-
-    def density_spawn_probability(self, x: float, y: float) -> float:
-        if not self.city_data or self.city_center_m is None:
-            return 1.0
-        density = max(0.0, float(self.city_data.get("väestöntiheys_henkiloa_km2", 0.0)))
-        area_km2 = max(1.0, float(self.city_data.get("pinta_ala_km2", 1.0)))
-        radius_m = math.sqrt(area_km2 * 1_000_000.0 / math.pi)
-        distance = math.hypot(x - self.city_center_m[0], y - self.city_center_m[1])
-        center_factor = 0.25 + 0.75 * math.exp(-distance / radius_m)
-        density_factor = 0.15 + 0.85 * min(1.0, density / 100.0)
-        return max(0.05, min(1.0, center_factor * density_factor))
 
     def create(
         self,

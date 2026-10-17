@@ -38,13 +38,6 @@ def test_every_resident_has_a_stable_weight_between_50_and_120_kg():
     } == original_weights
 
 
-def test_city_density_is_higher_near_city_center():
-    manager = ResidentManager("Tampere")
-    manager.set_city_center_m(0.0, 0.0)
-
-    assert manager.density_spawn_probability(0.0, 0.0) > manager.density_spawn_probability(10000.0, 0.0)
-
-
 def test_minor_is_created_with_an_adult_parent():
     manager = ResidentManager()
     child = manager.create(age=12)

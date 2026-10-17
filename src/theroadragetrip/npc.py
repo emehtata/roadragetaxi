@@ -28,6 +28,7 @@ from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_p
 from .map_level import on_map_level
 from .osm import Curb, ParkingSpace, StopSign, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, is_point_on_road, update_car_physics
+from .population import people_within
 from .residents import Household, HouseholdManager, ResidentManager
 from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision, stop_sign_decision
 from .traffic_world import _ROUTE_NODE_GRID_CELL_M, RouteSteps, TrafficWorld, run_route_steps
@@ -1751,10 +1752,11 @@ def _apply_npc_trip(
 
 NPC_TARGET_COUNT_DEFAULT = 40  # when the city's population is unknown
 # The city's target is for its built-up parts: around the player it scales
-# with the buildings within the spawn radius - a town centre (this many or
-# more) gets all of it, a remote road with a few houses a car or two, an
-# empty forest road one passing car at most.
-NPC_FULL_TRAFFIC_BUILDINGS = 120
+# with the people the buildings within the spawn radius account for
+# (population.py) - a town centre (this many or more) gets all of it, a
+# remote road with a few houses a car or two, an empty forest road one
+# passing car at most.
+NPC_FULL_TRAFFIC_PEOPLE = 1500.0
 NPC_LOCAL_TARGET_CELL_M = 100.0  # recounted when the player moves into another cell this size
 NPC_MAIN_ROAD_TRAFFIC_FRACTION = 0.25
 NPC_MAIN_ROAD_HIGHWAYS = {"motorway", "trunk", "primary", "secondary", "tertiary"}
@@ -3799,8 +3801,8 @@ class NPCVehicleManager:
         vehicle.home_parking_space = vehicle.reserved_parking_space
 
     def set_local_density(self, player_x: float, player_y: float, building_grid, current_way=None) -> None:
-        """Scale the population to the buildings within the spawn radius
-        (NPC_FULL_TRAFFIC_BUILDINGS: the city's whole target). Cheap: only
+        """Scale the population to the people the buildings within the spawn
+        radius account for (NPC_FULL_TRAFFIC_PEOPLE: the city's whole target). Cheap: only
         recounted when the player enters another NPC_LOCAL_TARGET_CELL_M cell."""
         if building_grid is None:
             return
@@ -3810,8 +3812,8 @@ class NPCVehicleManager:
             return
         self._local_density_cell = cell
         r = self.spawn_radius_m
-        nearby = sum(1 for _ in building_grid.ways_in_rect(player_x - r, player_y - r, player_x + r, player_y + r))
-        fraction = min(1.0, nearby / NPC_FULL_TRAFFIC_BUILDINGS)
+        people = people_within(building_grid.ways_in_rect(player_x - r, player_y - r, player_x + r, player_y + r), player_x, player_y, r)
+        fraction = min(1.0, people / NPC_FULL_TRAFFIC_PEOPLE)
         if on_main_road:
             fraction = max(NPC_MAIN_ROAD_TRAFFIC_FRACTION, fraction)
         self.target_count = max(1, round(self.city_target_count * fraction))

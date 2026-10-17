@@ -14,6 +14,7 @@ from .npc import NPCState
 from .performance import advance_chunked
 from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import MIN_UNACCOMPANIED_AGE, ResidentManager
+from .population import municipality_at, walkers_within
 from .activities import ActivityContext, ActivityInstance, ActivityLocation, ActivityManager
 from .activities.plugins.ice_skating import FIELD_ACTIVITIES
 from .activities.plugins.ice_hockey import SKATERS_PER_TEAM
@@ -347,7 +348,6 @@ PEDESTRIAN_DESPAWN_RADIUS_M = 170.0
 POPULATION_PER_SHOWN = 4.0
 PEDESTRIAN_SPAWNS_PER_CHECK = 10  # per population check (was 2 per 5 s: the road ahead stayed empty)
 POPULATION_CHECK_S = 2.0  # was 5 s
-PEOPLE_PER_BUILDING = 2  # out walking at once, per mapped building within the spawn disc
 
 
 class PedestrianState(str, Enum):
@@ -1016,27 +1016,23 @@ class PedestrianManager:
         self._building_grid = venue["building_grid"]
         self._near_building_window_cache = {}
 
-    def _buildings_within(self, x: float, y: float, radius: float) -> int:
-        """How many mapped buildings have their centre within `radius` of (x, y)."""
+    def _buildings_near(self, x: float, y: float, radius: float):
+        """Buildings in the grid cells the disc touches (a building may repeat)."""
         cell_size = self._building_grid_cell_size
-        seen: Set[int] = set()
-        r_sq = radius * radius
         for cx in range(math.floor((x - radius) / cell_size), math.floor((x + radius) / cell_size) + 1):
             for cy in range(math.floor((y - radius) / cell_size), math.floor((y + radius) / cell_size) + 1):
-                for building in self._building_grid.get((cx, cy), ()):
-                    min_x, min_y, max_x, max_y = building.bbox
-                    if id(building) not in seen and ((min_x + max_x) / 2 - x) ** 2 + ((min_y + max_y) / 2 - y) ** 2 <= r_sq:
-                        seen.add(id(building))
-        return len(seen)
+                yield from self._building_grid.get((cx, cy), ())
 
     def local_population_target(self, x: float, y: float) -> int:
-        """population_target, but no more than the buildings around can
-        account for: the residents live in them. A cottage driveway in Sysmä
-        got the city's 80 walkers packed onto its few ways."""
+        """population_target, but no more than the buildings around and the
+        municipality's walking share account for (population.py). A cottage
+        driveway in Sysmä got the city's 80 walkers packed onto its few ways."""
         if not self._building_grid:  # no building data at all: nothing to say how dense it is
             return self.population_target
-        nearby = self._buildings_within(x, y, self.spawn_radius_m)
-        return min(self.population_target, PEOPLE_PER_BUILDING * nearby + 2)
+        walkers = walkers_within(
+            self._buildings_near(x, y, self.spawn_radius_m), x, y, self.spawn_radius_m, municipality_at(x, y)
+        )
+        return min(self.population_target, walkers)
 
     def _point_inside_building(self, x: float, y: float) -> bool:
         """Return whether a point is inside a mapped building footprint."""
@@ -2099,9 +2095,6 @@ class PedestrianManager:
                     if self._point_inside_building(x, y):
                         continue
                     if not self._point_near_building(x, y):
-                        continue
-
-                    if random.random() > self.residents.density_spawn_probability(x, y):
                         continue
 
                     if max_distance_m is not None and math.hypot(x - near_x, y - near_y) > max_distance_m:

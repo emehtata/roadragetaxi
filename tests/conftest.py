@@ -36,3 +36,15 @@ def _no_timetable_refresh(monkeypatch, tmp_path):
     monkeypatch.setattr(world_loader, "refresh_if_stale", lambda document: None)
     monkeypatch.setattr(train_compositions, "USER_COMPOSITIONS_PATH", tmp_path / "no-user-compositions.json.gz")
     monkeypatch.setattr(world_loader, "refresh_compositions_if_stale", lambda database: None)
+
+
+@pytest.fixture
+def kunnat_centres(monkeypatch):
+    """Sysmä's and Helsinki's centres in map metres. Some test modules
+    replace pyproj with a fake at import, which would mis-project the
+    cached municipality centres (taxi.municipality_points)."""
+    from theroadragetrip import taxi
+    monkeypatch.setattr(taxi, "_municipality_points", [
+        ("Sysmä", 429772.8, 6819445.3, 1793, None),
+        ("Helsinki", 385700.4, 6672126.7, 690000, None),
+    ])
