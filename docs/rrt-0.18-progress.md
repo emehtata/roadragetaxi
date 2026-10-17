@@ -807,6 +807,23 @@ downloaded-font appearance remains unverified. No site deployment or release
 tag; no game/simulation, user-save or audio changes. Download labels should be
 updated again only after 0.18 is actually published.
 
+### Market the taxi antihero and rage superpower (2026-10-18)
+
+Updated Finnish and English website hero, introduction and highlighted rage
+feature around the taxi antihero: build enough rage, shout other drivers aside,
+and floor it. Finnish copy leads with “Ei viittaa. Ei pinnaa.” and “Huuda ruuhka
+helvettiin”; English uses “No cape. No patience.” and “Shout traffic to hell”.
+Added the ten-second clearance and 210 km/h example to both upcoming-release
+note lists. Updated Finnish no-JavaScript fallback and search description too.
+The new power is explicitly coming in 0.18.0alpha; downloadable installer links
+remain 0.17.1alpha. No invulnerability or scenery-clearing promise.
+
+Verification: **3 Node checks and 6 focused pytest checks passed** (seed
+743673077), covering both languages, repeated toggles, row parity, installer
+links, local assets, release versions and licence inventory. JavaScript syntax
+and diff checks pass. Copy-only change; no new browser render, full game test
+run or website deployment performed.
+
 ### Implement arcade rage road clearance (2026-10-18)
 
 Replaced the old one-driver, 40 m, eight-second slow crawl and edge steering.

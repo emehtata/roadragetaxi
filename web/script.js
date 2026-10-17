@@ -1,15 +1,15 @@
 const translations = {
   fi: {
     navGame: 'Peli', navFeatures: 'Ominaisuudet', navRoadmap: 'Tulossa', navHow: 'Näin pelaat', navNotes: 'Julkaisutiedot', download: 'Lataa peli', release: 'Lataa Windows-asennus', explore: 'Tutustu peliin',
-    kicker: 'Avoimen maailman taksipeli · Suomi', title: 'Asiakas kyytiin.<br><em>Raivo irti.</em>', copy: 'Oikeita suomalaisia katuja. Neljä vuodenaikaa. Taksamittari käy, ja asiakas arvioi jokaisen mutkan.',
+    kicker: 'Suomalainen taksi. Yliluonnollinen raivo.', title: 'Asiakas kyytiin.<br><em>Raivo irti.</em>', copy: 'Ruuhka ei väistä kohteliaisuudella. Kerää raivoa, huuda muut kuskit sivuun ja paina kaasu pohjaan. Taksin antisankarin uusi supervoima saapuu versiossa 0.18.0alpha.',
     screenshotsKicker: 'PELIKUVIA / GODOT-ALPHA', platform: 'GODOT + PYTHON-PALVELIN', mapData: 'OIKEA OSM-DATA', openSource: 'AVOINTA LÄHDEKOODIA',
     screenshotsNote: 'Kuvat ovat aiemmista alpha-versioista; 0.18.0alpha on valmisteilla. Henkilöiden nimet arvotaan satunnaisesti, eivätkä ne tarkoita oikeita ihmisiä.',
-    introKicker: '01 / TYÖ', intro: 'Yksi kaupunki.<br><span>Loputtomasti tekosyitä.</span>', lead: 'The Road Rage Trip on ylhäältä kuvattu taksipeli, joka perustuu Suomen oikeisiin OpenStreetMap-katuihin.',
-    introText: 'Nouda asiakkaita puhelimesta, taksiasemilta tai kadulta. Aja heidät perille, seuraa ehdotettua reittiä ja pidä pisteesi kasassa, kun liikenne, kamerat, sää ja tie itse testaavat hermojasi.',
+    introKicker: '01 / ANTISANKARI', intro: 'Ei viittaa.<br><span>Ei pinnaa.</span>', lead: 'The Road Rage Trip on ylhäältä kuvattu taksipeli Suomen oikeilla kaduilla. Sinä olet sen antisankari: taksikuski, jonka raivo siirtää autot tieltä.',
+    introText: 'Asiakas odottaa. Koko katu seisoo. Sinä et. Kun raivoa on tarpeeksi, paina SPACE ja huuda ruuhka helvettiin. Versiossa 0.18.0alpha muut autot siirtyvät suoraan tien sivuun ja edessäsi pidetään ajoväylä auki vähintään kymmenen sekunnin ajan. Vaikka mittarissa olisi 210 km/h. Ei sankaripuheita. Taksamittari käy.',
     featureKicker: '02 / KONEPELLIN ALLA', featureTitle: 'Kauniisti<br><em>ärtyneille.</em>', featureIntro: 'Tämä ei ole pelkkä tausta. Tieverkosto, sää, jalankulkijat ja sääntöjen rikkomisen seuraukset elävät ympärilläsi.',
     features: [
       ['Oikeita teitä, oikeita paikkoja', 'Aja suomalaisilla kaduilla, jotka muodostuvat OpenStreetMap-datasta rakennuksineen, puistoineen, vesistöineen, puineen ja nimettyine kohteineen.'],
-      ['Raivo on polttoaineesi', 'Ylinopeus täyttää raivomittarin. Pura se huudolla: torvi pärähtää, kuljettaja kiroaa ja raivonaama mittarissa vääntyy irvistykseen.'],
+      ['Huuda ruuhka helvettiin', 'Raivo ei ole pelkkä ilme mittarissa. Se on supervoimasi. Ylinopeus kasvattaa raivoa; kun sitä riittää, SPACE raivaa muut autot sivuun. 0.18.0alpha pitää tien auki vähintään kymmeneksi sekunniksi ja raivaa sitä pidemmältä, mitä kovempaa ajat. Sinä painat kaasua. Muut väistävät.'],
       ['Kadut ovat täynnä muita kuskeja', 'Henkilöautot, pakettiautot, kuorma-autot ja bussit jakavat kadut kanssasi. Kolarista voi seurata tienvarren sanaharkka. Liikennekäyttäytymistä kehitetään edelleen: tämä on alpha, ei virheetön liikennesimulaattori.'],
       ['Pidä silmät tiellä', 'Piilossa olevat peltikamerat valvovat 50 metrin lähestymisalueita. Puut huojuvat, lehdet lentävät, ja kova kolari jättää taksin savuamaan ja pysähtyneeksi viideksi sekunniksi.'],
       ['Reitti elää', 'Paina N tai P ja avaa puhelin. Aktiivisella kyydillä se näyttää seuraavan käännöksen, etäisyyden ja kadunnimen. Vapaana sama puhelin näyttää kyytipyynnöt.'],
@@ -39,6 +39,7 @@ const translations = {
     controls: ['Aja, jarruta, ohjaa (myös nuolinäppäimet)', 'RageCab-puhelin: 1–3 hyväksyy, X hylkää', 'Raivohuuto: raivaa tie', 'Puhelin: kyytipyynnöt tai navigointi', 'Kaista-avustin', 'Nopeusrajoitin', 'Liikennevaloavustin', 'Respawn, T nollaa trippimittarin', 'Tauko, asetukset ja kaupungin vaihto', 'Astu taksiin tai ulos', 'Käynnistä tai sammuta moottori', 'Tankkaa huoltoasemalla', 'Junien saapumistaulu'],
     notesKicker: '05 / VALMISTEILLA 0.18.0alpha', notesTitle: 'Seuraava<br><em>päivitys.</em>', notesLead: '0.18.0alpha on kehityshaarassa, ei vielä ladattavana julkaisuna. Nyt ladattava Windows-versio on 0.17.1alpha.',
     notes: [
+      ['Raivo on supervoima', 'Uusi raivohuuto siirtää NPC-autot suoraan tien sivuun ja pitää ajoväylän auki vähintään kymmenen sekuntia. Raivaus ulottuu kymmenen ajosekunnin päähän myös 210 km/h nopeudessa.'],
       ['Yksi kyyti, monta matkustajaa', 'Seuruekyydit kuljettavat enintään neljä matkustajaa. Alaikäiset matkustavat oman aikuisen vanhempansa kanssa pelin perhekäytännön mukaisesti.'],
       ['Sillat, rannat ja järvet', 'Korjauksia siltojen, rakennusten ja raiteiden tasoihin sekä rannikoihin ja järvien saariin. Järvialueiden kartanvalmistelua on rajattu turhan työn vähentämiseksi.'],
       ['Valoa ja varjoa', 'Auringon suunnan mukaan piirtyvät rakennusten varjot ja pidemmät, vastaantulevallekin kaistalle yltävät kaukovalot.'],
@@ -50,15 +51,15 @@ const translations = {
   },
   en: {
     navGame: 'Game', navFeatures: 'Features', navRoadmap: "What's next", navHow: 'How to play', navNotes: 'Release notes', download: 'Download', release: 'Download Windows installer', explore: 'Explore the game',
-    kicker: 'Open-world taxi driving · Finland', title: 'Deliver fares.<br><em>Unleash the rage.</em>', copy: 'Real Finnish streets. Four changing seasons. The meter is running, and your passenger judges every turn.',
+    kicker: 'Finnish taxi. Supernatural rage.', title: 'Deliver fares.<br><em>Unleash the rage.</em>', copy: 'Traffic won’t move for manners. Build rage, shout other drivers aside, and floor it. Your taxi antihero’s new superpower arrives in 0.18.0alpha.',
     screenshotsKicker: 'GAMEPLAY SCREENSHOTS / GODOT ALPHA', platform: 'GODOT + PYTHON SERVER', mapData: 'REAL OSM DATA', openSource: 'OPEN SOURCE',
     screenshotsNote: 'Screenshots show earlier alpha builds; 0.18.0alpha is in preparation. Character names are randomly generated and do not represent real people.',
-    introKicker: '01 / THE JOB', intro: 'One city.<br><span>Infinite excuses.</span>', lead: 'The Road Rage Trip is a top-down taxi game powered by real OpenStreetMap roads from Finland.',
-    introText: 'Pick up passengers from the phone, taxi stands, or the street. Get them there, follow the suggested route, and keep your score intact while traffic, cameras, weather, and the road itself test your patience.',
+    introKicker: '01 / THE ANTIHERO', intro: 'No cape.<br><span>No patience.</span>', lead: 'The Road Rage Trip is a top-down taxi game on real Finnish streets. You are its antihero: a cab driver whose rage moves cars out of the way.',
+    introText: 'Your passenger is waiting. The whole street is stuck. You aren’t. Build enough rage, hit SPACE, and shout traffic to hell. In 0.18.0alpha, other cars move straight to the roadside and your path stays clear for at least ten seconds. Even at 210 km/h. No heroic speeches. The meter is running.',
     featureKicker: '02 / UNDER THE HOOD', featureTitle: 'Built for the<br><em>beautifully irritated.</em>', featureIntro: 'Not a backdrop. Roads, weather, pedestrians, and consequences are alive around you.',
     features: [
       ['Real roads, real places', 'Drive Finnish city streets generated from OpenStreetMap data, with buildings, parks, forests, water, trees, and named destinations.'],
-      ['Rage is your fuel gauge', 'Speeding fills your rage meter. Spend it with a shout: the horn blares, your driver curses, and the rage face on the meter twists into a grimace.'],
+      ['Shout traffic to hell', 'Rage isn’t just a face on your dashboard. It is your superpower. Speeding builds rage; with enough in the tank, SPACE shoves other cars aside. 0.18.0alpha keeps the road clear for at least ten seconds, looking farther ahead the faster you drive. You floor it. They move.'],
       ['The streets are full of other drivers', 'Cars, vans, trucks and buses share the streets with you. Crashes can lead to roadside arguments. Traffic behavior is still being refined: this is an alpha, not a flawless traffic simulator.'],
       ['Eyes on the road', 'Hidden speed cameras watch 50-meter approach zones on real roads. Trees sway, leaves fly, and a hard enough crash leaves the taxi smoking and stuck for five seconds.'],
       ['Routes that react', 'Press N or P to open the phone. During an active fare it shows the next turn, distance and street name. When you are free, the same phone shows ride requests.'],
@@ -88,6 +89,7 @@ const translations = {
     controls: ['Drive, brake, steer (arrow keys also work)', 'RageCab phone: 1–3 accept, X declines', 'Rage shout: clear the way', 'Phone: ride requests or navigation', 'Lane assist', 'Speed limiter', 'Traffic-light assist', 'Respawn, T resets trip meter', 'Pause, settings, change city', 'Enter or leave the taxi', 'Start or stop the engine', 'Refuel at a gas station', 'Train arrival board'],
     notesKicker: '05 / IN PREPARATION: 0.18.0alpha', notesTitle: 'The next<br><em>update.</em>', notesLead: '0.18.0alpha is on the development branch, not yet a downloadable release. The available Windows build is 0.17.1alpha.',
     notes: [
+      ['Rage is your superpower', 'The new rage shout moves NPC cars straight to the roadside and keeps your path clear for at least ten seconds. Clearance reaches ten driving seconds ahead, even at 210 km/h.'],
       ['One fare, several passengers', 'Group fares carry up to four passengers. Minors travel with their own adult parent under the game’s family policy.'],
       ['Bridges, coasts and lakes', 'Fixes to bridge, building and railway layers, coastlines and lake islands. Lake-region map preparation now avoids unnecessary work outside the fetched region.'],
       ['Light and shadow', 'Building shadows follow the sun, while longer high beams also cover the opposing lane.'],
