@@ -56,7 +56,8 @@ for (const language of ['fi', 'en']) {
       }
       assert.equal(t.controls.length, counts['.control-row span']);
       assert.equal(nodes.get('.release-callout p').textContent, t.releaseText);
-      assert.match(nodes.get('#release-notes .section-kicker').textContent, /0\.18\.0alpha/);
+      assert.equal(nodes.get('#release-notes .section-kicker').textContent, t.notesKicker);
+      assert.doesNotMatch(JSON.stringify(t), /0\.18\.0/);
       assert.match(nodes.get('.release-callout p').textContent, /0\.17\.1alpha/);
       nodes.get('.language-toggle').listeners.click();
       assert.notEqual(document.documentElement.lang, current);
@@ -65,6 +66,7 @@ for (const language of ['fi', 'en']) {
 }
 
 test('download links target the published installer and local images exist', () => {
+  assert.doesNotMatch(html, /0\.18\.0/);
   const downloads = [...html.matchAll(/href="([^"]+releases\/download\/[^\"]+)"/g)];
   assert.equal(downloads.length, 3);
   for (const [, url] of downloads) assert.equal(url, 'https://github.com/emehtata/roadragetaxi/releases/download/v0.17.1alpha/RoadRageTrip-Setup.exe');

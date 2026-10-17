@@ -809,6 +809,13 @@ updated again only after 0.18 is actually published.
 
 ### Market the taxi antihero and rage superpower (2026-10-18)
 
+Version-neutral copy follow-up: removed explicit 0.18.0 references from both
+website languages, the Finnish fallback and search description. Upcoming
+features remain labelled as the next update; published installer version and
+links are unchanged. Website tests now reject reintroducing the removed version
+in either translation or HTML. Three Node checks, JavaScript syntax and diff
+checks passed; no deployment or new browser render.
+
 Marketing follow-up: replaced FMI, VR, Digitraffic and weather-provider names
 with general weather and train-timetable wording in both languages and the
 Finnish HTML fallback, including upcoming-release notes. Kept map-data source
