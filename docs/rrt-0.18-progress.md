@@ -731,3 +731,19 @@ test results, Windows build/installer and in-game smoke testing (especially the
 reported intermittent audio crackle), review release notes and the unresolved
 asset-rights items already recorded in `LICENSE_AUDIT.md`. A `v*` tag triggers
 the Windows workflow's public release publishing step; do not tag prematurely.
+
+### Suppress match-day notices after the match ends (2026-10-17)
+
+Client-connect schedule notices now omit games whose modeled end time is at or
+before the current game time. Reuses `arena_crowds.GAME_DURATION` (2 h 30 min),
+the same end boundary as arena game activity, rather than a separate duration.
+Upcoming and ongoing games still appear; an entirely finished schedule produces
+no notification. Existing once-per-session notification behavior is unchanged.
+No spectator, routing, audio, or fixture-data changes.
+
+Regression cases cover before kickoff, kickoff, one second before modeled end,
+exact end, late evening, and reconnect deduplication. Real final-whistle times
+are not provided by the current model; unusually long/short games retain the
+existing estimated duration. No rendered game replay or Windows build here.
+Server/arena/version suites: **57 passed, 1 deselected** (local-socket test),
+seed 743673077. Compile and diff checks pass.

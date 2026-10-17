@@ -38,6 +38,7 @@ from ..protocol import LOCAL_PLAYER_ID
 from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
 from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_position_on, grid_azimuth
 from ..career import career_path, gig_odometer_path, load_career
+from ..arena_crowds import GAME_DURATION
 from ..config import CONFIG_PATH, cities_from_config, default_city_configuration, get_overpass_endpoints
 from ..world_loader import load_world, resolve_city
 from ..viewport import SCREEN_H, SCREEN_W
@@ -515,7 +516,8 @@ class SimulationServer:
             self._client_chunks[connection] = (set(), None)
             self._clients.append(connection)
         if not self._game_day_notice_shown:
-            games = self.world.arena_crowds.schedule_on(self.calendar.date)
+            games = [game for game in self.world.arena_crowds.schedule_on(self.calendar.date)
+                     if self.calendar.current < game.start + GAME_DURATION]
             if games:
                 schedule = "; ".join(
                     f"{game.home_team}–{game.away_team} {game.start:%H:%M} ({game.venue_name})"

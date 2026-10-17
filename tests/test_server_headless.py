@@ -27,6 +27,27 @@ def test_startup_progress_reaches_the_render_chunk_stage(tmp_path, monkeypatch):
     assert "buildings" in report["detail"]
 
 
+@pytest.mark.parametrize("hour,minute,second,expected", [(17, 0, 0, True), (18, 0, 0, True),
+                                                       (20, 29, 59, True), (20, 30, 0, False), (23, 0, 0, False)])
+def test_match_day_notice_excludes_finished_games(tmp_path, monkeypatch, hour, minute, second, expected):
+    from datetime import datetime
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    server = _build_server(tmp_path, monkeypatch)
+    server.calendar.current = datetime(2026, 10, 17, hour, minute, second)
+    game = SimpleNamespace(start=datetime(2026, 10, 17, 18), home_team="Kärpät", away_team="Sport", venue_name="Arena")
+    server.world.arena_crowds = SimpleNamespace(schedule_on=lambda day: [game])
+    notices = []
+    monkeypatch.setattr(server, "_notify", lambda *args: notices.append(args))
+    connection = Mock()
+    server._on_client_connect(connection)
+    assert bool(notices) == expected
+    assert server._game_day_notice_shown
+    server._on_client_connect(connection)
+    assert len(notices) == int(expected)  # do not repeat the notice on reconnect
+
+
 def test_group_fare_mass_and_cancellation_release_everyone_once(tmp_path, monkeypatch):
     from theroadragetrip.taxi import TaxiPassenger, TaxiState, TaxiTarget
 
