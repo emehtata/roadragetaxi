@@ -86,6 +86,80 @@ def test_slow_vehicle_stops_on_yellow_waits_on_red_and_resumes_on_green(heading,
     assert vehicle.speed > 1
 
 
+def _freeway_transit(heading=0.0, vehicle_type="car"):
+    from theroadragetrip.npc import PathPoint
+    fx, fy = math.cos(heading), math.sin(heading)
+    way = Way([(0, 0), (2000 * fx, 2000 * fy)], "motorway", 5,
+              speed_limit_kmh=120, oneway=1, name="Pohjantie")
+    path = [PathPoint(x * fx + 2 * fy, x * fy - 2 * fx, way=way) for x in range(300, 1301, 20)]
+    vehicle = place_parked_npc(1, (path[0].x, path[0].y), None, vehicle_type=vehicle_type)
+    plan = (path, (path[-1].x, path[-1].y), None, False)
+    manager = NPCVehicleManager(target_count=1, min_count=1, max_count=1)
+    return manager, ResidentManager(), TrafficWorld([way]), vehicle, plan
+
+
+@pytest.mark.parametrize("heading", [0, math.pi / 2, math.pi, -math.pi / 2])
+@pytest.mark.parametrize("vehicle_type", ["car", "truck"])
+def test_freeway_transit_is_already_moving_when_committed_and_keeps_driving(heading, vehicle_type):
+    from theroadragetrip.vehicles.base import vehicle_definition
+    manager, residents, world, vehicle, plan = _freeway_transit(heading, vehicle_type)
+    fx, fy = math.cos(heading), math.sin(heading)
+    manager._finish_route_job({"kind": "transit", "vehicle": None, "members": None, "world": world},
+                              (vehicle, plan), 0, 0, residents, None)
+    assert vehicle in manager.vehicles
+    maximum = vehicle_definition(vehicle_type).max_speed_kmh or 120
+    assert vehicle.speed == pytest.approx(min(96, maximum) / 3.6)
+    origin = (vehicle.x, vehicle.y)
+    player = Car(2 * fy, -2 * fx, heading, 110 / 3.6)
+    for _ in range(150):
+        player.x += player.speed * fx / 30
+        player.y += player.speed * fy / 30
+        manager.update(1 / 30, player.x, player.y, residents, world, world.ways, player_car=player)
+        assert vehicle.state not in ("PARKED", "CRASHED", "REVERSING")
+        assert vehicle.speed > 15
+    assert (vehicle.x - origin[0]) * fx + (vehicle.y - origin[1]) * fy > 80
+
+
+@pytest.mark.parametrize("reason", ["short", "turn", "blocked", "player_near", "signal"])
+def test_unsafe_freeway_spawn_is_discarded_instead_of_creating_stopped_traffic(reason):
+    from theroadragetrip.npc import PathPoint
+    manager, residents, world, vehicle, plan = _freeway_transit()
+    player_x = 0
+    if reason == "short":
+        plan = ([plan[0][0], PathPoint(vehicle.x + 10, vehicle.y, way=world.ways[0])], plan[1], None, False)
+    elif reason == "turn":
+        plan[0][1].is_turn = True
+    elif reason == "blocked":
+        manager.target_count = 2  # rejection must be the gap, not a full population
+        manager.vehicles.append(place_parked_npc(2, (vehicle.x + 70, vehicle.y), None))
+    elif reason == "player_near":
+        player_x = vehicle.x - 70
+    elif reason == "signal":
+        world.traffic_lights = [TrafficLight(vehicle.x + 70, vehicle.y, direction_angle=0)]
+    before = list(manager.vehicles)
+    manager._finish_route_job({"kind": "transit", "vehicle": None, "members": None, "world": world},
+                              (vehicle, plan), player_x, vehicle.y, residents, None)
+    assert manager.vehicles == before
+    assert not manager.drivers
+    assert not residents.residents
+    assert manager.route_job_stats["discarded"] == 1
+
+
+@pytest.mark.parametrize("highway", ["motorway", "motorway_link", "trunk", "trunk_link"])
+def test_freeway_is_never_a_generated_roadside_parking_destination(highway):
+    from theroadragetrip.npc import _roadside_parking_point
+    way = Way([(0, 0), (1000, 0)], highway, 5)
+    assert _roadside_parking_point(500, 0, [way], None) is None
+
+
+@pytest.mark.parametrize("vehicle_type", ["tractor", "bus", "bicycle"])
+def test_ineligible_vehicle_is_not_seeded_as_freeway_traffic(vehicle_type):
+    manager, residents, world, vehicle, plan = _freeway_transit(vehicle_type=vehicle_type)
+    manager._finish_route_job({"kind": "transit", "vehicle": None, "members": None, "world": world},
+                              (vehicle, plan), 0, 0, residents, None)
+    assert not manager.vehicles and not manager.drivers and not residents.residents
+
+
 @pytest.mark.parametrize("heading", [0.0, math.pi / 2, math.pi, -math.pi / 2])
 @pytest.mark.parametrize("vehicle_type", ["car", "bus"])
 def test_stop_sign_requires_full_stop_without_traffic_then_releases(heading, vehicle_type):

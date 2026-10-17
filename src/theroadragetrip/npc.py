@@ -1728,6 +1728,33 @@ def start_npc_trip(
     )
 
 
+def _transit_initial_speed(vehicle, plan) -> Optional[float]:
+    """Seed freeway through traffic already moving, or reject a short/turning start."""
+    path = plan[0]
+    way = path[0].way
+    if way is None or way.highway not in ("motorway", "motorway_link", "trunk", "trunk_link"):
+        return 0.0
+    speed = way.speed_limit_kmh / 3.6 * 0.8  # game policy: enter at 80% of the road limit
+    definition = vehicle_definition(vehicle.vehicle_type)
+    maximum = definition.max_speed_kmh
+    if not definition.is_road_vehicle or (maximum is not None and maximum <= 70):
+        return None  # ordinary slow traffic cannot be seeded as motorway traffic
+    if maximum is not None:
+        speed = min(speed, maximum / 3.6)
+    horizon = speed * speed / (2 * ARRIVAL_DECEL_MPS2) + speed + vehicle.length_m
+    remaining = sum(math.hypot(b.x - a.x, b.y - a.y) for a, b in zip(path, path[1:]))
+    if speed <= 0 or remaining < horizon or _distance_to_next_turn(
+        path, 0, path[0].x, path[0].y, max_lookahead_m=horizon,
+    ) is not None:
+        return None
+    return speed
+
+
+def _transit_clearance(vehicle, speed):
+    return max(NPC_TRANSIT_SPAWN_CLEARANCE_M,
+               speed * speed / (2 * ARRIVAL_DECEL_MPS2) + speed + vehicle.length_m)
+
+
 def _apply_npc_trip(
     vehicle: NPCVehicle,
     resident_manager: ResidentManager,
@@ -4318,6 +4345,7 @@ class NPCVehicleManager:
         self._route_jobs.append({
             "kind": kind, "vehicle": vehicle, "steps": steps, "members": member_resident_ids,
             "revision": traffic_world.route_graph_revision, "queued_frame": self._route_job_frame,
+            "world": traffic_world,
         })
         self.route_job_stats["queued"] += 1
         if kind in ("trip", "transit"):
@@ -4495,6 +4523,8 @@ class NPCVehicleManager:
                 self.population_diagnostics["route_generation_failures"] += 1
                 return
             vehicle, _plan = result
+            initial_speed = _transit_initial_speed(vehicle, _plan)
+            clearance = _transit_clearance(vehicle, initial_speed or 0.0)
             distance_sq = (vehicle.x - player_x) ** 2 + (vehicle.y - player_y) ** 2
             victim = self._replaceable_parked_vehicle(player_x, player_y, viewport_bounds)
             if victim is not None and len(self.vehicles) < self.target_count:
@@ -4502,15 +4532,21 @@ class NPCVehicleManager:
                 if not far:
                     victim = None
             if (
-                (len(self.vehicles) >= self.target_count and victim is None)
+                initial_speed is None
+                or (initial_speed > 0 and distance_sq < clearance ** 2)
+                or (len(self.vehicles) >= self.target_count and victim is None)
                 or distance_sq > self.simulation_radius_m ** 2
                 or (viewport_bounds is not None and _point_in_viewport(
                     vehicle.x, vehicle.y, viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M,
                 ))
                 or not _point_is_clear_of_vehicles(
                     (vehicle.x, vehicle.y), [(other.x, other.y) for other in self.vehicles],
-                    NPC_TRANSIT_SPAWN_CLEARANCE_M,
+                    clearance,
                 )
+                or (initial_speed > 0 and job.get("world") is not None and (
+                    job["world"]._nearby_traffic_lights(vehicle.x, vehicle.y, radius_m=clearance)
+                    or job["world"].nearby_signs(vehicle.x, vehicle.y)
+                ))
                 or (result[1][2] is None and not _point_is_clear_of_vehicles(
                     result[1][1], [pos for _, pos in claimed_points]
                 ))
@@ -4596,11 +4632,18 @@ class NPCVehicleManager:
         ), deadline)
         return None if result is None else self._apply_transit_spawn(result, resident_manager, claimed_points)
 
-    def _apply_transit_spawn(self, result, resident_manager: ResidentManager, claimed_points) -> Driver:
+    def _apply_transit_spawn(self, result, resident_manager: ResidentManager, claimed_points) -> Optional[Driver]:
         vehicle, plan = result
+        speed = _transit_initial_speed(vehicle, plan)
+        if speed is None:
+            release_npc_parking_reservation(vehicle)
+            return None
         if vehicle.vehicle_type == "car" and sum(map(is_competitor, self.vehicles)) < self.competitor_taxis:
             make_competitor(vehicle)  # (docs/competitor-taxis.md: it drives on, then waits parked for a fare)
         driver = _apply_npc_trip(vehicle, resident_manager, plan)
+        if speed > 0:
+            vehicle.car.speed = speed  # parked-trip setup deliberately reset it to zero
+            driver.target_speed_mps = speed
         self.vehicles.append(vehicle)
         self.drivers[vehicle.vehicle_id] = driver
         if vehicle.destination is not None:
@@ -4681,6 +4724,18 @@ class NPCVehicleManager:
                         break
                     continue
                 vehicle.car.x, vehicle.car.y, vehicle.car.heading = start.x, start.y, heading
+                speed = _transit_initial_speed(vehicle, plan)
+                clearance = _transit_clearance(vehicle, speed or 0.0)
+                if speed is None or (speed > 0 and (
+                    math.hypot(vehicle.x - player_x, vehicle.y - player_y) < clearance
+                    or any(True for _ in self.nearby_vehicles_at(vehicle.x, vehicle.y, clearance))
+                    or traffic_world._nearby_traffic_lights(vehicle.x, vehicle.y, radius_m=clearance)
+                    or traffic_world.nearby_signs(vehicle.x, vehicle.y)
+                )):
+                    release_npc_parking_reservation(vehicle)
+                    if tries >= NPC_TRANSIT_SPAWN_NODE_TRIES:
+                        break
+                    continue
                 return vehicle, plan
             release_npc_parking_reservation(vehicle)
             if tries >= NPC_TRANSIT_SPAWN_NODE_TRIES:

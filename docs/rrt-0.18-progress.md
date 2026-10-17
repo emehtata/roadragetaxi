@@ -363,3 +363,55 @@ geometry failures, implemented fixes, validation and remaining screenshot-wide
 reproduction are recorded in [rrt-0.18-waters-progress.md](rrt-0.18-waters-progress.md).
 This does not resume the excluded PBF-stuttering work or mark the broader living
 city/safety target complete.
+
+### Motorway transit spawning: no stopped cars inserted into flowing lanes
+
+2026-10-17. User report: stopped NPCs appear on Pohjantie while the player is
+driving above 100 km/h. The graphify query (`spawn transit speed parked`) located
+the transit/parked creation chain; its older line locations were verified against
+the live source rather than treated as current behavioral evidence.
+
+Confirmed root cause: `_apply_transit_spawn` uses `_apply_npc_trip`, whose shared
+`_begin_trip_on_vehicle` intentionally sets speed to zero for departures from
+parking. That was also applied to newly inserted through traffic. Highway transit
+now receives an initial speed *after* the parked-trip setup: 80% of its starting
+road limit, capped by the vehicle plugin's maximum. This is a game policy, not a
+statutory minimum speed. Ordinary parking departures remain unchanged.
+
+The same policy is conservatively applied to motorway/trunk and their links.
+New freeway traffic is rejected, not inserted stationary, if its route is too
+short to brake comfortably, has a nearby turn, is near controls, or lacks a clear
+braking-distance-plus-one-second gap from traffic/player. Conditions are checked
+both during route preparation and at asynchronous commit, before replacing an
+existing vehicle or creating residents. Nearby control presence conservatively
+rejects the spawn even if the current phase is permissive. Live traffic decisions,
+collision checks and lawful waits remain unchanged. No population cap or unsafe
+forced acceleration was added.
+
+The model's non-road vehicles and vehicles capped at 70 km/h or less cannot be
+seeded on this freeway path (currently includes the 60 km/h tractor and 70 km/h
+bus definition). This is about these model definitions, not a blanket ban on real
+buses. It does not certify vehicle eligibility across every ordinary route.
+
+Legal references checked against the consolidated
+[Tieliikennelaki 729/2018](https://www.finlex.fi/fi/lainsaadanto/2018/729),
+2026-04-17 consolidation: section 37 prohibits discretionary motorway stops but
+allows compulsory traffic/yield/emergency stops; section 58 regulates eligible
+motor vehicles. Trunk-road classification alone is not proof of motorway signing;
+the shared spawn policy there is deliberately conservative.
+
+Validation: eight rotated car/truck scenarios check the first committed frame and
+five seconds of actual manager/physics updates alongside a 110 km/h player.
+The zero-initial-speed reproduction failed all eight pre-fix initialization
+cases (the initial reproduction used car/bus; the final eligible positive cases
+use car/truck). Rejection tests cover fresh traffic, nearby player, short route,
+turn, control, slow/non-road vehicles and forbidden roadside destinations.
+Acceptance suite: **61 passed** (seed 1111877103); broader NPC/parking/priority
+suite: **300 passed** before the final eligibility cases. Compile/diff checks
+pass. Full randomized suite: **1,766 passed, 2 skipped** (87.83 s),
+`--randomly-seed=3594144049`.
+
+Limitations/resume: these are deterministic synthetic motorway trajectories, not
+a replay of actual Pohjantie map data. They establish spawn initialization and
+bounded safety rejection, not freedom from later routing stalls, collisions or
+weather-dependent braking errors. No PBF/map optimization or Godot change.
