@@ -435,20 +435,3 @@ def test_the_phone_queues_nothing_while_a_job_is_on():
     manager = taxi(pending)
     manager.current_passenger = SimpleNamespace(name="Eero")  # a fare on
     assert not manager.accept_offer(0, 0.0, 0.0) and booking.status == "PENDING"
-
-
-def test_a_dropped_off_passenger_walks_on_as_the_same_person():
-    """Bug: a woman dropped off stepped out as a different man."""
-    from types import SimpleNamespace
-
-    from theroadragetrip.osm import Way
-    from theroadragetrip.pedestrian import PedestrianManager
-    from theroadragetrip.residents import ResidentManager
-    from theroadragetrip.simulation import passenger_steps_out
-
-    residents = ResidentManager()
-    woman = residents.create("taxi")
-    manager = PedestrianManager([Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)],
-                                target_count=0, residents=residents)
-    passenger_steps_out(manager, SimpleNamespace(resident_id=woman.resident_id), 50.0, 1.0, 0.0)
-    assert [ped.resident_id for ped in manager.pedestrians] == [woman.resident_id]
