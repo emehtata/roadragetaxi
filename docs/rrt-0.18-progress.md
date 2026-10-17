@@ -809,6 +809,13 @@ updated again only after 0.18 is actually published.
 
 ### Market the taxi antihero and rage superpower (2026-10-18)
 
+Marketing follow-up: replaced FMI, VR, Digitraffic and weather-provider names
+with general weather and train-timetable wording in both languages and the
+Finnish HTML fallback, including upcoming-release notes. Kept map-data source
+references intact; no data-source configuration or gameplay behavior changed.
+JavaScript syntax, three Node website checks and diff checks passed. No browser
+render or deployment performed for this copy-only follow-up.
+
 Updated Finnish and English website hero, introduction and highlighted rage
 feature around the taxi antihero: build enough rage, shout other drivers aside,
 and floor it. Finnish copy leads with “Lyhyt pinna. Yliluonnollinen raivo.” and
