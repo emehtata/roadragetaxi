@@ -28,7 +28,7 @@ from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_p
 from .map_level import on_map_level
 from .osm import Curb, ParkingSpace, StopSign, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, is_point_on_road, update_car_physics
-from .population import people_within
+from .population import people_within, traffic_demand
 from .residents import Household, HouseholdManager, ResidentManager
 from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision, stop_sign_decision
 from .traffic_world import _ROUTE_NODE_GRID_CELL_M, RouteSteps, TrafficWorld, run_route_steps
@@ -1758,8 +1758,7 @@ NPC_TARGET_COUNT_DEFAULT = 40  # when the city's population is unknown
 # passing car at most.
 NPC_FULL_TRAFFIC_PEOPLE = 1500.0
 NPC_LOCAL_TARGET_CELL_M = 100.0  # recounted when the player moves into another cell this size
-NPC_MAIN_ROAD_TRAFFIC_FRACTION = 0.25
-NPC_MAIN_ROAD_HIGHWAYS = {"motorway", "trunk", "primary", "secondary", "tertiary"}
+NPC_DEMAND_ROLL_TICKS = 30  # population ticks (1 min): how long one draw of a fractional moving target holds
 NPC_TARGET_COUNT_MIN = 15
 NPC_TARGET_COUNT_MAX = 100
 
@@ -3531,6 +3530,12 @@ class NPCVehicleManager:
         self.city_target_count, self.city_min_count = self.target_count, self.min_count
         self.target_moving_fraction = target_moving_fraction
         self._local_density_cell = None
+        self._local_people = 0.0
+        self.clock = None  # the game clock (a datetime), set by the simulation; None: demand ignores time
+        self.demand_rng = random.Random()  # seeded by tests
+        self._demand_draw: Optional[float] = None
+        self._demand_draw_tick = 0
+        self.trip_start_probability = NPC_TRIP_START_PROBABILITY_PER_TICK
         self.spawn_radius_m = spawn_radius_m
         self.despawn_radius_m = despawn_radius_m
         self.simulation_radius_m = simulation_radius_m
@@ -3802,23 +3807,43 @@ class NPCVehicleManager:
 
     def set_local_density(self, player_x: float, player_y: float, building_grid, current_way=None) -> None:
         """Scale the population to the people the buildings within the spawn
-        radius account for (NPC_FULL_TRAFFIC_PEOPLE: the city's whole target). Cheap: only
-        recounted when the player enters another NPC_LOCAL_TARGET_CELL_M cell."""
+        radius account for (NPC_FULL_TRAFFIC_PEOPLE: the city's whole
+        target), and moving traffic to the traffic demand at the game clock
+        (population.traffic_demand). People are recounted only when the
+        player enters another NPC_LOCAL_TARGET_CELL_M cell.
+
+        Moving traffic is an expectation, not a minimum: below one car the
+        target is 1 for a share of the NPC_DEMAND_ROLL_TICKS periods, so a
+        remote road at night stays empty for long stretches."""
         if building_grid is None:
             return
-        on_main_road = getattr(current_way, "highway", None) in NPC_MAIN_ROAD_HIGHWAYS
-        cell = (math.floor(player_x / NPC_LOCAL_TARGET_CELL_M), math.floor(player_y / NPC_LOCAL_TARGET_CELL_M), on_main_road)
-        if cell == self._local_density_cell:
-            return
-        self._local_density_cell = cell
-        r = self.spawn_radius_m
-        people = people_within(building_grid.ways_in_rect(player_x - r, player_y - r, player_x + r, player_y + r), player_x, player_y, r)
-        fraction = min(1.0, people / NPC_FULL_TRAFFIC_PEOPLE)
-        if on_main_road:
-            fraction = max(NPC_MAIN_ROAD_TRAFFIC_FRACTION, fraction)
-        self.target_count = max(1, round(self.city_target_count * fraction))
-        self.min_count = min(self.city_min_count, max(0, round(self.city_min_count * fraction)))
-        self.target_moving_count = max(1, int(self.target_count * self.target_moving_fraction))
+        highway = getattr(current_way, "highway", None)
+        month = self.clock.month if self.clock is not None else None
+        cell = (math.floor(player_x / NPC_LOCAL_TARGET_CELL_M), math.floor(player_y / NPC_LOCAL_TARGET_CELL_M), month)
+        if cell != self._local_density_cell:
+            self._local_density_cell = cell
+            r = self.spawn_radius_m
+            self._local_people = people_within(
+                building_grid.ways_in_rect(player_x - r, player_y - r, player_x + r, player_y + r),
+                player_x, player_y, r, month,
+            )
+        fraction = min(1.0, self._local_people / NPC_FULL_TRAFFIC_PEOPLE)
+        demand = traffic_demand(fraction, highway, self.clock)
+        if self._demand_draw is None or self._population_tick_number >= self._demand_draw_tick + NPC_DEMAND_ROLL_TICKS:
+            self._demand_draw = self.demand_rng.random()
+            self._demand_draw_tick = self._population_tick_number
+        expected_moving = self.city_target_count * self.target_moving_fraction * demand["demand"]
+        self.target_moving_count = math.floor(expected_moving) + (self._demand_draw < expected_moving % 1.0)
+        # Parked cars belong to the households around, whatever the hour;
+        # passing traffic needs room on top of them.
+        households = 1 if self._local_people > 0 else 0  # anyone living here has a car parked
+        self.target_count = max(round(self.city_target_count * fraction), households, self.target_moving_count)
+        self.min_count = min(self.city_min_count, round(self.city_min_count * fraction))
+        self.trip_start_probability = NPC_TRIP_START_PROBABILITY_PER_TICK * demand["hour"]
+        self.population_diagnostics["traffic_demand"] = {
+            **demand, "people": round(self._local_people), "highway": highway,
+            "expected_moving": round(expected_moving, 3), "moving_target": self.target_moving_count,
+        }
 
     def populate_initial(
         self,
@@ -4962,7 +4987,7 @@ class NPCVehicleManager:
             # Below the moving target the random roll is skipped: it only
             # exists to pace an already-satisfied population, and at 8% per
             # candidate it left the player alone on the road.
-            if not below_moving_target and random.random() >= NPC_TRIP_START_PROBABILITY_PER_TICK:
+            if not below_moving_target and random.random() >= self.trip_start_probability:
                 continue
             trip_starts_this_tick += 1
             member_resident_ids = None

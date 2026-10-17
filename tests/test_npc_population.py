@@ -2132,15 +2132,15 @@ def test_traffic_follows_the_people_around_the_player():
     grid.rebuild([house(0, 0), house(30, 40)] + town)
     manager = NPCVehicleManager(target_count=20)
 
-    manager.set_local_density(10.0, 10.0, grid)  # two houses by the road
+    manager.set_local_density(10.0, 10.0, grid)  # two houses by the road: their car
     assert manager.target_count == 1 and manager.min_count == 0
-    manager.set_local_density(5100.0, 100.0, grid)  # the town
+    manager.set_local_density(5100.0, 100.0, grid)  # the town (no clock: the peak hour)
     assert manager.target_count == 20 and manager.min_count == manager.city_min_count
-    assert manager.target_moving_count == max(1, int(20 * manager.target_moving_fraction))
-    manager.set_local_density(-20000.0, 0.0, grid)  # an empty forest road: one passing car at most
-    assert manager.target_count == 1
+    assert manager.population_diagnostics["traffic_demand"]["expected_moving"] == pytest.approx(20 * manager.target_moving_fraction)
+    manager.set_local_density(-20000.0, 0.0, grid)  # an empty forest road: nothing forced there
+    assert manager.target_count == 0 and manager.target_moving_count == 0
     manager.set_local_density(-20000.0, 0.0, grid, current_way=Way([(0, 0), (100, 0)], "primary", 4.0))
-    assert manager.target_count == 5  # a main road keeps passing traffic even without nearby buildings
+    assert manager.population_diagnostics["traffic_demand"]["through"] > 0  # a main road carries passing traffic
 
 
 def test_a_car_parked_on_the_shoulder_finds_its_way_back():
