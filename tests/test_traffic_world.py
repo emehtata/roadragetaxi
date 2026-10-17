@@ -1,5 +1,7 @@
 import time
 
+import pytest
+
 from theroadragetrip.osm import ParkingSpace, Way
 from theroadragetrip.traffic_world import TrafficWorld
 
@@ -105,6 +107,7 @@ def _large_city_block_grid(block_count: int, step_m: float):
     return ways
 
 
+@pytest.mark.timing
 def test_plan_route_stays_fast_on_a_large_graph():
     """Regression (client-server-016.md section 9/10): plan_route used to
     sort *every* node in the whole route graph, twice, on every call,

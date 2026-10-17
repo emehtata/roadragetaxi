@@ -83,3 +83,29 @@ def _local_only_connect(sock, address):
 @pytest.fixture(autouse=True)
 def _no_network(monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", _local_only_connect)
+
+
+TIMING_ATTEMPTS = 3
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", f"timing: a wall-clock budget test, run up to {TIMING_ATTEMPTS} times (TESTING.md)",
+    )
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_pyfunc_call(pyfuncitem):
+    """A `timing` test passes when one of TIMING_ATTEMPTS runs meets its
+    budget: a busy machine only ever adds time, a regression fails them all.
+    Budget asserts in the fast suite failed now and then under load."""
+    if pyfuncitem.get_closest_marker("timing") is None:
+        return None
+    arguments = {name: pyfuncitem.funcargs[name] for name in pyfuncitem._fixtureinfo.argnames}
+    for attempt in range(TIMING_ATTEMPTS):
+        try:
+            pyfuncitem.obj(**arguments)
+            return True
+        except AssertionError:
+            if attempt == TIMING_ATTEMPTS - 1:
+                raise

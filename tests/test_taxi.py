@@ -772,6 +772,7 @@ def _grid_buildings(count, spacing=30.0, size=10.0, cols=200):
     return buildings
 
 
+@pytest.mark.timing
 def test_nearby_collision_buildings_indexes_incrementally_not_the_whole_list(gc_paused):
     """Regression: _nearby_collision_buildings() rebuilt its whole spatial
     grid - every building ever loaded, not just the newly-added ones -
@@ -834,6 +835,7 @@ def _grid_fences(count, spacing=30.0, size=10.0, cols=200):
     return fences
 
 
+@pytest.mark.timing
 def test_nearby_collision_fences_indexes_incrementally_not_the_whole_list(gc_paused):
     """Same fix, same reason, as the buildings test above -
     _nearby_collision_fences() had the identical whole-list-rebuild bug."""
@@ -881,6 +883,7 @@ def _grid_sceneries_with_trees(count, trees_per=8, spacing=50.0, cols=100):
     return out
 
 
+@pytest.mark.timing
 def test_nearby_collision_trees_indexes_incrementally_not_the_whole_map(gc_paused):
     """Regression: same bug family as buildings/fences, but trickier -
     an individual scenery's own .trees list can change after that

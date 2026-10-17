@@ -1,6 +1,8 @@
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+
 from theroadragetrip.osm.models import Railway
 from theroadragetrip.station_passengers import StationPassengerView, VISIBLE_RADIUS_M
 from theroadragetrip.train_passengers import ARRIVED, ON_TRAIN, WAITING, PassengerFlow, RailPassenger
@@ -143,6 +145,7 @@ def test_visible_passengers_never_change_train_timing():
     assert all(p.pedestrian is None for group in manager.passengers.waiting.values() for g in group.values() for p in g)
 
 
+@pytest.mark.timing
 def test_a_whole_train_stepping_off_is_spread_over_frames():
     import time
     from theroadragetrip import station_passengers

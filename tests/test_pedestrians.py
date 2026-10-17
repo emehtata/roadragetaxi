@@ -1065,6 +1065,7 @@ def test_sync_map_data_keeps_ped_way_ids_cache_in_sync():
     assert cyclists._ped_way_ids == {id(w) for w in cyclists.ped_ways}
 
 
+@pytest.mark.timing
 def test_spawn_pedestrian_does_not_rescan_ped_ways_per_attempt():
     """Regression: spawn_pedestrian() used to rebuild
     {id(way) for way in self.ped_ways} from scratch on *every single
@@ -1153,6 +1154,7 @@ def test_spawn_pedestrian_gives_up_immediately_when_search_area_is_fully_onscree
     assert manager.spawn_pedestrian(near_x, near_y, viewport_bounds=tight_viewport) is not None
 
 
+@pytest.mark.timing
 def test_spawn_pedestrian_at_does_not_scan_every_ped_way():
     """Regression: spawn_pedestrian_at() (used for every door/amenity
     spawn - see spawn_pedestrian_at_door) scanned the *entire* self.ped_ways
@@ -1212,6 +1214,7 @@ def _dense_buildings(count: int) -> list:
     return buildings
 
 
+@pytest.mark.timing
 def test_point_near_building_caches_the_per_window_building_list():
     """Regression: spawn_pedestrian()'s retry loop calls _point_near_building
     for every candidate point tried along a segment (up to 8 per segment,
