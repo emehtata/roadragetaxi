@@ -648,3 +648,21 @@ Limits: stale forecasts can be inaccurate, and only explicitly cached hours are
 used—there is no extrapolation beyond their time range. No live FMI outage or
 rendered game replay was performed. Missing cache/hour still uses generated
 weather; this does not make cold startup wait indefinitely for FMI.
+
+### Preserve FMI observations independently of refresh age (2026-10-17)
+
+Completed observation chunks remain permanently cached as before. Previously,
+expired recent-chunk markers prevented loading their retained observation rows
+on restart. Now those rows are loaded regardless of age and remain available
+even if a subsequent fetch fails. If every requested hour is already observed,
+no observation request is queued, even for an old incomplete chunk. Missing
+hours still allow a fetch; an incomplete chunk must not be marked complete just
+because real time has advanced. Forecast refresh rules are unchanged.
+
+Regression: simulate an old incomplete chunk, restart without requests for known
+hours, request missing hours with an offline fetch, then restart again and verify
+the original observation survives without another request. Weather/history
+suites: **55 passed** (seed 743673077); compile/diff checks pass. No schema
+change, cache deletion, generator or rendering change. No live FMI requests or
+full-game replay; genuinely missing hours may still require downloading their
+containing chunk, rather than a separate per-hour query.

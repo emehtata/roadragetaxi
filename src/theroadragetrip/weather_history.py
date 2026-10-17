@@ -319,6 +319,10 @@ class WeatherHistory:
                     continue
                 if self._load_cached_chunk(chunk):
                     continue
+                first_hour = max(chunk * FETCH_CHUNK_HOURS, math.floor(game_time_to_utc_hour(start)))
+                last_hour = min((chunk + 1) * FETCH_CHUNK_HOURS - 1, math.floor(game_time_to_utc_hour(end)))
+                if all(hour in self._hours for hour in range(first_hour, last_hour + 1)):
+                    continue  # existing observations never expire; fetch only when hours are missing
                 self._pending.append(chunk)
             reaches_future = game_time_to_utc_hour(end) > datetime.now(timezone.utc).timestamp() / 3600.0
             forecast_stale = (
@@ -339,17 +343,21 @@ class WeatherHistory:
             worker.join(timeout_s)
 
     def _load_cached_chunk(self, chunk: int) -> bool:
-        """Called with the lock held. True if the chunk came from SQLite."""
+        """Load retained observations; True if no refresh is needed.
+        Called with the lock held. Only incomplete chunks can expire."""
         if self._db is None:
             return False
         try:
-            if self._db.execute(
+            complete = self._db.execute(
                 "SELECT 1 FROM fetched_chunks_v4 WHERE location=? AND chunk=?", (self.location, chunk),
-            ).fetchone() is None and self._db.execute(
-                "SELECT 1 FROM recent_chunks_v4 WHERE location=? AND chunk=? AND fetched_at>?",
-                (self.location, chunk, time.time() - RECENT_REFRESH_S),
-            ).fetchone() is None:
+            ).fetchone() is not None
+            recent = self._db.execute(
+                "SELECT fetched_at FROM recent_chunks_v4 WHERE location=? AND chunk=?",
+                (self.location, chunk),
+            ).fetchone()
+            if not complete and recent is None:
                 return False
+            fresh = complete or recent[0] > time.time() - RECENT_REFRESH_S
             rows = self._db.execute(
                 "SELECT hour, temperature, precipitation, wawa, snow_depth, wind_speed, wind_from, cloud FROM weather_hours_v4"
                 " WHERE location=? AND hour>=? AND hour<?",
@@ -360,8 +368,9 @@ class WeatherHistory:
         for hour, temperature, precipitation, wawa, snow_depth, wind_speed, wind_from, cloud in rows:
             self._hours[hour] = HourlyWeather(temperature, precipitation, wawa, snow_depth, wind_speed, wind_from, cloud_cover=cloud)
         self._remember_snow(self._hours)
-        self._covered_chunks.add(chunk)
-        return True
+        if fresh:
+            self._covered_chunks.add(chunk)
+        return fresh
 
     def _load_cached_forecast(self) -> bool:
         """Load even stale hours for offline use; return whether still fresh.

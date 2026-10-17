@@ -101,6 +101,43 @@ def test_future_is_never_requested_and_failures_back_off():
     assert calls == ["x"] and broken.get(datetime(2025, 1, 15)) is None
 
 
+def test_old_recent_observations_are_permanent_but_missing_hours_can_be_fetched(tmp_path):
+    cache = tmp_path / "weather.db"
+    moment = datetime(2025, 1, 15, 2)
+    original = WeatherHistory(*OULU, cache_path=cache, fetch=_fake_fmi([]))
+    original.request(moment, moment)
+    original.wait_idle(5.0)
+    expected = original.get(moment)
+    assert expected is not None
+    chunk = int(game_time_to_utc_hour(moment)) // FETCH_CHUNK_HOURS
+    # Simulate a chunk downloaded while it was still incomplete, years ago.
+    with original._db:
+        original._db.execute("DELETE FROM fetched_chunks_v4")
+        original._db.execute("INSERT INTO recent_chunks_v4 VALUES (?, ?, ?)",
+                             (original.location, chunk, chunk * FETCH_CHUNK_HOURS * 3600))
+    calls = []
+
+    def offline(*args):
+        calls.append(args)
+        raise OSError("offline")
+
+    restarted = WeatherHistory(*OULU, cache_path=cache, fetch=offline)
+    restarted.request(moment, moment)
+    restarted.wait_idle(5.0)
+    assert restarted.get(moment) == expected
+    assert calls == []  # old observations do not expire with the recent-chunk timer
+    missing = moment + timedelta(hours=10)
+    assert restarted.get(missing) is None
+    restarted.request(moment, missing)
+    restarted.wait_idle(5.0)
+    assert len(calls) == 1  # incomplete historical chunks must still fill genuinely missing hours
+    assert restarted.get(moment) == expected
+    again = WeatherHistory(*OULU, cache_path=cache, fetch=offline)
+    again.request(moment, moment)
+    again.wait_idle(5.0)
+    assert again.get(moment) == expected and len(calls) == 1
+
+
 def test_chunks_are_three_days_of_utc_hours():
     moment = datetime(2025, 1, 15, 12)
     chunk = int(game_time_to_utc_hour(moment)) // FETCH_CHUNK_HOURS
