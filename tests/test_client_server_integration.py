@@ -420,3 +420,56 @@ def test_a_closed_server_stops_listening_and_drops_its_clients(monkeypatch):
         time.sleep(0.02)
     assert connection.is_closed
     server.close()  # twice is harmless
+
+
+def test_one_refuel_press_buys_fuel_once_and_refused_presses_cost_nothing(monkeypatch):
+    """Refuelling end to end: a client's press reaches the server, buys
+    exactly the price x litres once; pressing again, while moving, or with
+    a full tank charges nothing."""
+    from types import SimpleNamespace
+
+    from theroadragetrip import protocol, transport
+    from theroadragetrip.fuel import calculate_fuel_purchase, fuel_station_price_cents
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _start_server(monkeypatch)
+    car, taxi = server.car, server.world.taxi_mgr
+    pump = SimpleNamespace(kind="fuel", id=4242, x=car.x + 3.0, y=car.y)
+    server.world.scenery_objects = list(getattr(server.world, "scenery_objects", ())) + [pump]
+    connection = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    seq = iter(range(1, 100))
+
+    def press(**fields):
+        connection.send(protocol.build_command_message(PlayerCommand(**fields), interact=False, seq=next(seq)))
+        time.sleep(0.05)
+        for _ in range(5):  # the press, then ticks with the key released
+            server.tick(1.0 / 30.0)
+
+    server._on_foot = False  # the sample world starts on foot; refuelling is from the driver's seat
+    car.speed, car.fuel_l, taxi.balance_cents = 0.0, 10.0, 5_000
+    expected = calculate_fuel_purchase(10.0, car.fuel_capacity_l, 5_000, fuel_station_price_cents(pump))
+    assert 0 < expected.cost_cents <= 5_000
+    press(refuel=True)
+    assert taxi.balance_cents == 5_000 - expected.cost_cents
+    fuel_after = car.fuel_l
+    assert fuel_after == pytest.approx(min(car.fuel_capacity_l, 10.0 + expected.liters), abs=0.05)
+
+    balance = taxi.balance_cents
+    press()  # no new press: nothing more bought
+    assert taxi.balance_cents == balance
+
+    car.fuel_l, car.speed = 20.0, 5.0
+    server._latest_command = PlayerCommand()
+    press(refuel=True)  # moving: refused
+    assert taxi.balance_cents == balance and car.fuel_l <= 20.0
+
+    car.speed, car.fuel_l = 0.0, car.fuel_capacity_l
+    press(refuel=True)  # full tank: refused
+    assert taxi.balance_cents == balance
+
+    car.fuel_l = 10.0
+    server._on_foot = True
+    press(refuel=True)  # on foot: refused
+    assert taxi.balance_cents == balance and "taxi" in taxi.notification_msg.lower()
+    connection.close()
