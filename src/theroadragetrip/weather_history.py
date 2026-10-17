@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 FMI_WFS_URL = "https://opendata.fmi.fi/wfs"
 FMI_STORED_QUERY = "fmi::observations::weather::timevaluepair"
-FMI_PARAMETERS = ("t2m", "r_1h", "wawa", "snow_aws", "ws_10min", "wd_10min")
+FMI_PARAMETERS = ("t2m", "r_1h", "wawa", "snow_aws", "ws_10min", "wd_10min", "n_man")  # n_man: cloud cover, oktas 0-8
 # Around the city centre: ~65 km each way at 61-65 N. Many stations report
 # only temperature/wind (Sysmä's nearest, Luhanka 25 km, has no rain gauge
 # or present-weather sensor; the nearest with rain were 39-61 km away), and
@@ -47,7 +47,7 @@ FETCH_RETRY_DELAY_S = 60.0  # after a failed fetch (offline), wait before asking
 # forecast (~72 h ahead, hourly). Refreshed at most once per real hour and
 # kept in memory only - it changes, unlike observations.
 FMI_FORECAST_QUERY = "fmi::forecast::edited::weather::scandinavia::point::timevaluepair"
-FMI_FORECAST_PARAMETERS = ("Temperature", "Precipitation1h", "WeatherSymbol3", "WindSpeedMS", "WindDirection")
+FMI_FORECAST_PARAMETERS = ("Temperature", "Precipitation1h", "WeatherSymbol3", "WindSpeedMS", "WindDirection", "TotalCloudCover")  # cloud %
 FORECAST_REFRESH_S = 3600.0
 RECENT_REFRESH_S = 3600.0  # a cached chunk still reaching into the last hours: fetched again after this
 FORECAST = "forecast"  # pending-work marker next to observation chunk numbers
@@ -69,6 +69,7 @@ class HourlyWeather:
     wind_speed_mps: Optional[float] = None  # 10-min mean at 10 m
     wind_from_deg: Optional[float] = None  # bearing the wind blows from
     source: str = "observed"  # "observed" (FMI station) or "forecast" (FMI edited forecast)
+    cloud_cover: Optional[float] = None  # 0 clear .. 1 overcast (observed oktas / 8, forecast % / 100)
 
 
 def parse_fmi_timevaluepair(xml_text: str) -> Dict[Tuple[float, float], Dict[str, Dict[int, float]]]:
@@ -128,6 +129,8 @@ def nearest_station_values(
             snow_depth_cm=max(0.0, snow) if snow is not None else None,
             wind_speed_mps=picked.get("ws_10min"),
             wind_from_deg=picked.get("wd_10min"),
+            # n_man is 0-8 oktas; 9 is "sky obscured" (fog): overcast for the sun
+            cloud_cover=min(1.0, picked["n_man"] / 8.0) if "n_man" in picked else None,
         )
     return result
 
@@ -198,6 +201,7 @@ def parse_fmi_forecast(xml_text: str) -> Dict[int, HourlyWeather]:
     symbol = series.get("WeatherSymbol3", {})
     wind_speed = series.get("WindSpeedMS", {})
     wind_from = series.get("WindDirection", {})
+    cloud = series.get("TotalCloudCover", {})
     return {
         hour: HourlyWeather(
             temperature_c=temperature.get(hour),
@@ -206,6 +210,7 @@ def parse_fmi_forecast(xml_text: str) -> Dict[int, HourlyWeather]:
             wind_speed_mps=wind_speed.get(hour),
             wind_from_deg=wind_from.get(hour),
             source="forecast",
+            cloud_cover=max(0.0, min(1.0, cloud[hour] / 100.0)) if hour in cloud else None,
         )
         for hour in sorted(set(temperature) | set(precipitation) | set(symbol))
     }
@@ -255,17 +260,17 @@ class WeatherHistory:
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 self._db = sqlite3.connect(str(cache_path), check_same_thread=False)
                 self._db.executescript(
-                    # _v3: wind added, wider station search; older chunks are fetched again.
-                    "CREATE TABLE IF NOT EXISTS weather_hours_v3 (location TEXT, hour INTEGER, temperature REAL,"
-                    " precipitation REAL, wawa INTEGER, snow_depth REAL, wind_speed REAL, wind_from REAL,"
+                    # _v4: cloud cover added (_v3: wind, wider station search); older chunks are fetched again.
+                    "CREATE TABLE IF NOT EXISTS weather_hours_v4 (location TEXT, hour INTEGER, temperature REAL,"
+                    " precipitation REAL, wawa INTEGER, snow_depth REAL, wind_speed REAL, wind_from REAL, cloud REAL,"
                     " PRIMARY KEY (location, hour));"
-                    "CREATE TABLE IF NOT EXISTS fetched_chunks_v3 (location TEXT, chunk INTEGER,"
+                    "CREATE TABLE IF NOT EXISTS fetched_chunks_v4 (location TEXT, chunk INTEGER,"
                     " PRIMARY KEY (location, chunk));"
                     # Not final yet (the last hours, the forecast): reused for an hour of wall time.
-                    "CREATE TABLE IF NOT EXISTS recent_chunks_v3 (location TEXT, chunk INTEGER, fetched_at REAL,"
+                    "CREATE TABLE IF NOT EXISTS recent_chunks_v4 (location TEXT, chunk INTEGER, fetched_at REAL,"
                     " PRIMARY KEY (location, chunk));"
-                    "CREATE TABLE IF NOT EXISTS forecast_hours_v1 (location TEXT, hour INTEGER, fetched_at REAL,"
-                    " temperature REAL, precipitation REAL, wawa INTEGER, wind_speed REAL, wind_from REAL,"
+                    "CREATE TABLE IF NOT EXISTS forecast_hours_v2 (location TEXT, hour INTEGER, fetched_at REAL,"
+                    " temperature REAL, precipitation REAL, wawa INTEGER, wind_speed REAL, wind_from REAL, cloud REAL,"
                     " PRIMARY KEY (location, hour));"
                 )
             except sqlite3.Error as exc:
@@ -339,21 +344,21 @@ class WeatherHistory:
             return False
         try:
             if self._db.execute(
-                "SELECT 1 FROM fetched_chunks_v3 WHERE location=? AND chunk=?", (self.location, chunk),
+                "SELECT 1 FROM fetched_chunks_v4 WHERE location=? AND chunk=?", (self.location, chunk),
             ).fetchone() is None and self._db.execute(
-                "SELECT 1 FROM recent_chunks_v3 WHERE location=? AND chunk=? AND fetched_at>?",
+                "SELECT 1 FROM recent_chunks_v4 WHERE location=? AND chunk=? AND fetched_at>?",
                 (self.location, chunk, time.time() - RECENT_REFRESH_S),
             ).fetchone() is None:
                 return False
             rows = self._db.execute(
-                "SELECT hour, temperature, precipitation, wawa, snow_depth, wind_speed, wind_from FROM weather_hours_v3"
+                "SELECT hour, temperature, precipitation, wawa, snow_depth, wind_speed, wind_from, cloud FROM weather_hours_v4"
                 " WHERE location=? AND hour>=? AND hour<?",
                 (self.location, chunk * FETCH_CHUNK_HOURS, (chunk + 1) * FETCH_CHUNK_HOURS),
             ).fetchall()
         except sqlite3.Error:
             return False
-        for hour, temperature, precipitation, wawa, snow_depth, wind_speed, wind_from in rows:
-            self._hours[hour] = HourlyWeather(temperature, precipitation, wawa, snow_depth, wind_speed, wind_from)
+        for hour, temperature, precipitation, wawa, snow_depth, wind_speed, wind_from, cloud in rows:
+            self._hours[hour] = HourlyWeather(temperature, precipitation, wawa, snow_depth, wind_speed, wind_from, cloud_cover=cloud)
         self._remember_snow(self._hours)
         self._covered_chunks.add(chunk)
         return True
@@ -365,15 +370,15 @@ class WeatherHistory:
             return False
         try:
             rows = self._db.execute(
-                "SELECT hour, fetched_at, temperature, precipitation, wawa, wind_speed, wind_from FROM forecast_hours_v1"
+                "SELECT hour, fetched_at, temperature, precipitation, wawa, wind_speed, wind_from, cloud FROM forecast_hours_v2"
                 " WHERE location=? AND fetched_at>?", (self.location, time.time() - FORECAST_REFRESH_S),
             ).fetchall()
         except sqlite3.Error:
             return False
         if not rows:
             return False
-        self._forecast_hours = {hour: HourlyWeather(temperature, precipitation, wawa, None, wind_speed, wind_from, "forecast")
-                                for hour, _, temperature, precipitation, wawa, wind_speed, wind_from in rows}
+        self._forecast_hours = {hour: HourlyWeather(temperature, precipitation, wawa, None, wind_speed, wind_from, "forecast", cloud)
+                                for hour, _, temperature, precipitation, wawa, wind_speed, wind_from, cloud in rows}
         self._forecast_fetched_at = time.monotonic() - (time.time() - min(row[1] for row in rows))
         return True
 
@@ -410,18 +415,18 @@ class WeatherHistory:
                 if self._db is not None:
                     try:
                         self._db.executemany(
-                            "INSERT OR REPLACE INTO weather_hours_v3 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                            "INSERT OR REPLACE INTO weather_hours_v4 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             [(self.location, hour, w.temperature_c, w.precipitation_mm, w.wawa, w.snow_depth_cm,
-                              w.wind_speed_mps, w.wind_from_deg)
+                              w.wind_speed_mps, w.wind_from_deg, w.cloud_cover)
                              for hour, w in hours.items()],
                         )
                         if complete:
                             self._db.execute(
-                                "INSERT OR REPLACE INTO fetched_chunks_v3 VALUES (?, ?)", (self.location, chunk),
+                                "INSERT OR REPLACE INTO fetched_chunks_v4 VALUES (?, ?)", (self.location, chunk),
                             )
                         else:
                             self._db.execute(
-                                "INSERT OR REPLACE INTO recent_chunks_v3 VALUES (?, ?, ?)", (self.location, chunk, time.time()),
+                                "INSERT OR REPLACE INTO recent_chunks_v4 VALUES (?, ?, ?)", (self.location, chunk, time.time()),
                             )
                         self._db.commit()
                     except sqlite3.Error as exc:
@@ -450,11 +455,11 @@ class WeatherHistory:
             self._pending.remove(FORECAST)
             if self._db is not None:
                 try:
-                    self._db.execute("DELETE FROM forecast_hours_v1 WHERE location=?", (self.location,))
+                    self._db.execute("DELETE FROM forecast_hours_v2 WHERE location=?", (self.location,))
                     self._db.executemany(
-                        "INSERT OR REPLACE INTO forecast_hours_v1 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT OR REPLACE INTO forecast_hours_v2 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         [(self.location, hour, time.time(), w.temperature_c, w.precipitation_mm, w.wawa,
-                          w.wind_speed_mps, w.wind_from_deg) for hour, w in hours.items()],
+                          w.wind_speed_mps, w.wind_from_deg, w.cloud_cover) for hour, w in hours.items()],
                     )
                     self._db.commit()
                 except sqlite3.Error as exc:

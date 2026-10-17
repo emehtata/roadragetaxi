@@ -128,17 +128,14 @@ def finnish_local_time(utc: datetime) -> datetime:
     return utc.replace(tzinfo=timezone.utc).astimezone(FINLAND_TZ).replace(tzinfo=None)
 
 
-def solar_altitude_and_events_on(
-    game_date: date, game_time_seconds: float, latitude: float, longitude: float, utc_offset_hours: Optional[float] = None,
-) -> Tuple[float, float, float]:
-    """(sun altitude in degrees, sunrise and sunset in local minutes) for a
-    date and time of day - the solar model the server sends (godot-14). Sunrise/sunset: 0 and 1440 under the midnight sun, NaN in
-    the polar night."""
+def _solar_geometry(game_date: date, game_time_seconds: float, latitude: float, longitude: float,
+                    utc_offset_hours: Optional[float]) -> Tuple[float, float, float, float]:
+    """(declination, hour angle, equation of time in minutes, UTC offset) -
+    the one solar model behind the altitude, azimuth and sunrise/sunset."""
     if utc_offset_hours is None:  # the day's offset at noon
         utc_offset_hours = finnish_utc_offset_hours(datetime.combine(game_date, datetime.min.time().replace(hour=12)))
     day_of_year = game_date.timetuple().tm_yday
     declination = math.radians(23.45 * math.sin(math.radians(360.0 * (284.0 + day_of_year) / 365.0)))
-    latitude_radians = math.radians(latitude)
     gamma = 2.0 * math.pi / 365.0 * (day_of_year - 1.0)
     equation_of_time = 229.18 * (
         0.000075
@@ -148,11 +145,54 @@ def solar_altitude_and_events_on(
         - 0.040849 * math.sin(2.0 * gamma)
     )
     solar_minutes = game_time_seconds / 60.0 + equation_of_time + 4.0 * longitude - 60.0 * utc_offset_hours
-    hour_angle = math.radians(solar_minutes / 4.0 - 180.0)
-    altitude = math.degrees(math.asin(
+    hour_angle = math.radians(solar_minutes / 4.0 - 180.0)  # 0 at solar noon, negative in the morning
+    return declination, hour_angle, equation_of_time, utc_offset_hours
+
+
+def solar_position_on(
+    game_date: date, game_time_seconds: float, latitude: float, longitude: float, utc_offset_hours: Optional[float] = None,
+) -> Tuple[float, float]:
+    """(altitude, azimuth) of the sun in degrees. Azimuth: clockwise from
+    TRUE north, 0..360 (90 east, 180 south, 270 west); map north differs by
+    grid_azimuth's convergence."""
+    declination, hour_angle, _, _ = _solar_geometry(game_date, game_time_seconds, latitude, longitude, utc_offset_hours)
+    latitude_radians = math.radians(latitude)
+    altitude = math.degrees(math.asin(max(-1.0, min(1.0,
         math.sin(latitude_radians) * math.sin(declination)
         + math.cos(latitude_radians) * math.cos(declination) * math.cos(hour_angle)
+    ))))
+    # Measured from south towards west, then turned to from-north: defined at
+    # every altitude (atan2 of the horizontal components), no zenith division.
+    from_south = math.atan2(
+        math.sin(hour_angle),
+        math.cos(hour_angle) * math.sin(latitude_radians) - math.tan(declination) * math.cos(latitude_radians),
+    )
+    return altitude, (math.degrees(from_south) + 180.0) % 360.0
+
+
+TM35FIN_CENTRAL_MERIDIAN_DEG = 27.0  # EPSG:3067, the map's metres
+
+
+def grid_azimuth(true_azimuth_deg: float, latitude: float, longitude: float) -> float:
+    """A true-north azimuth as the map's (EPSG:3067) grid azimuth: grid
+    north leans from true north by the meridian convergence, about
+    (longitude - 27 deg) x sin(latitude) - -1.4 deg in Oulu, +1.7 in Joensuu."""
+    convergence = math.degrees(math.atan(
+        math.tan(math.radians(longitude - TM35FIN_CENTRAL_MERIDIAN_DEG)) * math.sin(math.radians(latitude))
     ))
+    return (true_azimuth_deg - convergence) % 360.0
+
+
+def solar_altitude_and_events_on(
+    game_date: date, game_time_seconds: float, latitude: float, longitude: float, utc_offset_hours: Optional[float] = None,
+) -> Tuple[float, float, float]:
+    """(sun altitude in degrees, sunrise and sunset in local minutes) for a
+    date and time of day - the solar model the server sends (godot-14). Sunrise/sunset: 0 and 1440 under the midnight sun, NaN in
+    the polar night."""
+    declination, _, equation_of_time, utc_offset_hours = _solar_geometry(
+        game_date, game_time_seconds, latitude, longitude, utc_offset_hours)
+    altitude, _ = solar_position_on(game_date, game_time_seconds, latitude, longitude, utc_offset_hours)
+    latitude_radians = math.radians(latitude)
     sunrise_cosine = (
         math.cos(math.radians(90.833)) / (math.cos(latitude_radians) * math.cos(declination))
         - math.tan(latitude_radians) * math.tan(declination)

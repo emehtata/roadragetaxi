@@ -456,7 +456,8 @@ def build_state_message(
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
         "game_time_seconds": game_time_seconds,
         # {"date": "YYYY-MM-DD", "time_scale": game s per real s, "sun_altitude_deg",
-        #  "darkness": 0 day .. 1 night} - the server's calendar and sun (godot-14).
+        #  "sun_azimuth_deg" (clockwise from the map's grid north), "darkness": 0 day
+        #  .. 1 night} - the server's calendar and sun (godot-14, rrt-018-shadows).
         "calendar": calendar,
         "sim_time": traffic_mgr.sim_time,
         "on_foot": on_foot,
@@ -493,6 +494,8 @@ def build_state_message(
                   + _trams_to_dicts(getattr(world, "tram_mgr", None)),
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
                     "road_snow": round(weather.road_snow, 1),
+                    # 0 clear .. 1 overcast: dims the sunlight and building shadows (rrt-018-shadows)
+                    "cloud_cover": round(getattr(weather, "cloud_cover", 0.0), 3),
                     "plowed_cells": [[x, y, round(depth, 1)] for (x, y), depth in weather.plowed_cells.items()
                                      if abs(x * 10.0 - car.x) < 600.0 and abs(y * 10.0 - car.y) < 600.0],
                     "lightning_intensity": weather.lightning_intensity,  # 1 at a strike, fading

@@ -87,6 +87,21 @@ WIND_WEIBULL_SHAPE = 2.0
 WIND_CHANGE_INTERVAL_S = (60.0 * 60.0, 3.0 * 60.0 * 60.0)  # new generated target every 1-3 game hours
 WIND_DIRECTION_WANDER_DEG = 40.0
 WIND_SETTLE_S = 20.0 * 60.0  # game-time constant towards a new mean
+# Cloud cover, 0 clear .. 1 overcast (rrt-018-shadows): it dims the direct
+# sunlight and the building shadows. Observed (FMI n_man / forecast cloud %)
+# when the weather follows history; generated otherwise: a new target every
+# 1-4 game hours from a seasonal mix of clear / partly cloudy / overcast skies
+# (ESTIMATES of Finnish climate - autumn and winter mostly overcast), eased
+# towards over CLOUD_SETTLE_S. Rain, slush or snow need clouds: generated
+# cover is then at least PRECIPITATION_MIN_CLOUD (not 1 - showers have breaks).
+CLOUD_CHANGE_INTERVAL_S = (60.0 * 60.0, 4.0 * 60.0 * 60.0)
+CLOUD_SETTLE_S = 15.0 * 60.0
+PRECIPITATION_MIN_CLOUD = 0.85
+CLOUD_REGIMES = ((0.0, 0.25), (0.3, 0.7), (0.8, 1.0))  # clear, partly cloudy, overcast
+CLOUD_REGIME_WEIGHTS = {
+    Season.SPRING: (0.35, 0.35, 0.30), Season.SUMMER: (0.35, 0.40, 0.25),
+    Season.AUTUMN: (0.15, 0.30, 0.55), Season.WINTER: (0.15, 0.25, 0.60),
+}
 WIND_GUST_AMPLITUDE = 0.35  # +-35% of the mean speed
 TREE_LEAN_PER_WIND_SQ = 0.004  # crown shift m per (m/s)^2: 10 m/s -> 0.4 m, 20 m/s -> 1.6 m
 TREE_MAX_LEAN_M = 2.0
@@ -183,6 +198,9 @@ class WeatherSystem:
         self._wind_target = (self.wind_speed_mps, self.wind_from_deg)
         self._wind_timer = self._rng.uniform(*WIND_CHANGE_INTERVAL_S)
         self._gust_time = self._rng.uniform(0.0, 100.0)
+        self._cloud_target = self._generated_cloud()
+        self.cloud_cover = self._cloud_target
+        self._cloud_timer = self._rng.uniform(*CLOUD_CHANGE_INTERVAL_S)
         if not self._automatic and self.weather_type == WeatherType.RAIN:
             self._roll_thunderstorm()
 
@@ -363,6 +381,24 @@ class WeatherSystem:
         turn = (target_from - self.wind_from_deg + 180.0) % 360.0 - 180.0  # shortest way round
         self.wind_from_deg = (self.wind_from_deg + turn * blend) % 360.0
 
+    def _generated_cloud(self) -> float:
+        low, high = self._rng.choices(CLOUD_REGIMES, weights=CLOUD_REGIME_WEIGHTS[self._season])[0]
+        return self._rng.uniform(low, high)
+
+    def _advance_clouds(self, game_dt: float, observed) -> None:
+        observed_cloud = getattr(observed, "cloud_cover", None)
+        if observed_cloud is not None:
+            self._cloud_target = float(observed_cloud)
+        else:
+            self._cloud_timer -= game_dt
+            if self._cloud_timer <= 0.0:
+                self._cloud_timer = self._rng.uniform(*CLOUD_CHANGE_INTERVAL_S)
+                self._cloud_target = self._generated_cloud()
+            if self.is_precipitating:
+                self._cloud_target = max(self._cloud_target, PRECIPITATION_MIN_CLOUD)
+        blend = 1.0 - math.exp(-game_dt / CLOUD_SETTLE_S)
+        self.cloud_cover += (self._cloud_target - self.cloud_cover) * blend
+
     def _follow_observation(self, kind: str, thunder: bool) -> None:
         self._following_observation = True
         weather_type = weather_type_for_observation(kind, self._outside_temperature_c)
@@ -454,6 +490,7 @@ class WeatherSystem:
                         self._weather_timer = self._next_weather_duration()
                 self._advance_automatic_weather(game_dt)
                 self._apply_precipitation_temperature()
+            self._advance_clouds(game_dt, observed)
             if self.weather_type == WeatherType.SNOW:
                 self.road_snow += game_dt / 600.0
             elif self._outside_temperature_c is not None and self._outside_temperature_c > 0.0:

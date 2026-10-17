@@ -623,7 +623,7 @@ def test_weather_audio_facts_cross_the_wire(tmp_path, monkeypatch):
     assert state["is_thunderstorm"] is True
     assert state["wind_vector_mps"] == [round(v, 3) for v in weather.wind_vector_mps]
     assert set(state) == {"weather_type", "wetness", "lightning_intensity", "is_thunderstorm", "wind_vector_mps",
-                          "source", "temperature_c", "road_snow", "plowed_cells"}
+                          "source", "temperature_c", "road_snow", "plowed_cells", "cloud_cover"}
     for vector in ((0.0, 0.0), (3.25, -7.5), (-12.0, 4.0), (float("nan"), float("inf"))):
         monkeypatch.setattr(type(weather), "wind_vector_mps", property(lambda self, v=vector: v))  # restored after the test
         wire = json.loads(json.dumps(_state(server)["weather"]))["wind_vector_mps"]

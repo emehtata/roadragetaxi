@@ -36,7 +36,7 @@ from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer, prepare_initial_window
 from ..protocol import LOCAL_PLAYER_ID
 from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
-from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_altitude_and_events_on
+from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_position_on, grid_azimuth
 from ..career import career_path, gig_odometer_path, load_career
 from ..config import CONFIG_PATH, cities_from_config, default_city_configuration, get_overpass_endpoints
 from ..world_loader import load_world, resolve_city
@@ -424,12 +424,18 @@ class SimulationServer:
         return season
 
     def _sun_altitude(self) -> float:
-        altitude, _, _ = solar_altitude_and_events_on(
-            self.calendar.date, self.calendar.time_seconds,
-            getattr(self.world, "sun_latitude", self.calendar.latitude), getattr(self.world, "sun_longitude", 25.47),
+        return self._sun_position()[0]
+
+    def _sun_position(self) -> tuple:
+        """(altitude, azimuth) in degrees; the azimuth clockwise from the
+        map's grid north (EPSG:3067 +y), which the client's 3D view uses."""
+        latitude = getattr(self.world, "sun_latitude", self.calendar.latitude)
+        longitude = getattr(self.world, "sun_longitude", 25.47)
+        altitude, azimuth = solar_position_on(
+            self.calendar.date, self.calendar.time_seconds, latitude, longitude,
             finnish_utc_offset_hours(self.calendar.current),
         )
-        return altitude
+        return altitude, grid_azimuth(azimuth, latitude, longitude)
 
     def _update_sports(self) -> None:
         """What may be played on the sports fields (the pedestrians' sports
@@ -446,13 +452,13 @@ class SimulationServer:
         """What a client needs of the calendar (state "calendar"): the date,
         how fast game time runs, and the sun - computed here, never by the
         client. The sun is at the city's latitude and longitude."""
-        altitude = self._sun_altitude()
+        altitude, azimuth = self._sun_position()
         season = self.season_weights()
         arena_crowds = getattr(self.world, "arena_crowds", None)
         from ..holiday_events import holiday_events
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": season,
-                "sun_altitude_deg": round(altitude, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
+                "sun_altitude_deg": round(altitude, 2), "sun_azimuth_deg": round(azimuth, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
                 "sports_lights": sports_lights_hours(self.calendar.current),
                 "holidays": holiday_events(self.calendar.current),
                 "arena_lights": bool(arena_crowds and arena_crowds.lights_on(self.calendar.current)),
