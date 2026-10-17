@@ -1862,3 +1862,17 @@ def test_a_client_gets_the_nearest_pedestrians_and_everyone_held():
     shown = shown_pedestrians(manager, 0.0, 0.0)
     assert len(shown) == manager.population_target
     assert crowd[-1] in shown and crowd[0] in shown and crowd[20] not in shown
+
+
+def test_a_rural_driveway_gets_few_people_and_a_city_block_the_full_target():
+    """Bug (Sysmä): tens of people on a cottage driveway - the population
+    target ignored that there were only a couple of houses around."""
+    def house(x, y):
+        return Building(points_m=[(x, y), (x + 8, y), (x + 8, y + 8), (x, y + 8)], bbox=(x, y, x + 8, y + 8))
+
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    rural = PedestrianManager([way], target_count=20, venue_buildings=[house(20, 10), house(60, -20)])
+    assert rural.local_population_target(50.0, 0.0) == 2 * 2 + 2
+    city = PedestrianManager([way], target_count=20,
+                             venue_buildings=[house(10 * (i % 10), 12 * (i // 10)) for i in range(50)])
+    assert city.local_population_target(50.0, 0.0) == city.population_target

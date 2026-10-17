@@ -347,6 +347,7 @@ PEDESTRIAN_DESPAWN_RADIUS_M = 170.0
 POPULATION_PER_SHOWN = 4.0
 PEDESTRIAN_SPAWNS_PER_CHECK = 10  # per population check (was 2 per 5 s: the road ahead stayed empty)
 POPULATION_CHECK_S = 2.0  # was 5 s
+PEOPLE_PER_BUILDING = 2  # out walking at once, per mapped building within the spawn disc
 
 
 class PedestrianState(str, Enum):
@@ -1014,6 +1015,28 @@ class PedestrianManager:
         self._entrance_grid = venue["entrance_grid"]
         self._building_grid = venue["building_grid"]
         self._near_building_window_cache = {}
+
+    def _buildings_within(self, x: float, y: float, radius: float) -> int:
+        """How many mapped buildings have their centre within `radius` of (x, y)."""
+        cell_size = self._building_grid_cell_size
+        seen: Set[int] = set()
+        r_sq = radius * radius
+        for cx in range(math.floor((x - radius) / cell_size), math.floor((x + radius) / cell_size) + 1):
+            for cy in range(math.floor((y - radius) / cell_size), math.floor((y + radius) / cell_size) + 1):
+                for building in self._building_grid.get((cx, cy), ()):
+                    min_x, min_y, max_x, max_y = building.bbox
+                    if id(building) not in seen and ((min_x + max_x) / 2 - x) ** 2 + ((min_y + max_y) / 2 - y) ** 2 <= r_sq:
+                        seen.add(id(building))
+        return len(seen)
+
+    def local_population_target(self, x: float, y: float) -> int:
+        """population_target, but no more than the buildings around can
+        account for: the residents live in them. A cottage driveway in Sysmä
+        got the city's 80 walkers packed onto its few ways."""
+        if not self._building_grid:  # no building data at all: nothing to say how dense it is
+            return self.population_target
+        nearby = self._buildings_within(x, y, self.spawn_radius_m)
+        return min(self.population_target, PEOPLE_PER_BUILDING * nearby + 2)
 
     def _point_inside_building(self, x: float, y: float) -> bool:
         """Return whether a point is inside a mapped building footprint."""
@@ -2468,7 +2491,7 @@ class PedestrianManager:
                 1 for ped in self.pedestrians
                 if (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2 <= spawn_sq
             )
-            population_target = self.population_target
+            population_target = self.local_population_target(player_car.x, player_car.y)
             stage_started = (time.perf_counter(), time.thread_time())
 
             game_hour = ((game_time_seconds or 0.0) / 3600.0) % 24.0
