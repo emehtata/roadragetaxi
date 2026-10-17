@@ -98,7 +98,8 @@ MAGIC = b"RWC\0"
 # 31: Railway.lines (the tram lines over a tram way).
 # 32: light rail stops and lines are tram ones (Tampere).
 # 33: directed sea-face classification, complete coastline collection and water island holes.
-FORMAT_VERSION = 33
+# 34: water relation geometry is clipped to its fetched region before island splitting.
+FORMAT_VERSION = 34
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

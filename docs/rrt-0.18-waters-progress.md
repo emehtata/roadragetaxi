@@ -128,3 +128,20 @@ compileall and diff-check (`make check`). No dependencies added.
   dam or weir with an open-water area, or break genuine docks/river areas.
 - Keep unrelated untracked `license-audit.md` and `roadragetaxi.code-workspace`
   untouched. Continue the broader 0.18 work from `rrt-0.18-progress.md` separately.
+
+## Inari performance follow-up (2026-10-17)
+
+The island-hole splitting above caused pathological startup work for Inarijärvi:
+its smart-complete relation includes 5,224 member ways, 5,066 of them inner.
+Water relations now use prepared outer containment, then clip validated water
+minus islands to the projected fetch footprint before hole-free splitting.
+No missing/invalid-island validation was removed, and bounds-free callers retain
+whole-relation behavior. Cache format 34 rebuilds old processed geometry without
+deleting the PBF or raw extracts. Completion progress now follows water work.
+
+Actual local Inari raw-cache replay: full map geometry build **2.36 s**, second
+run with area/validity assertions **2.47 s**. All three split inputs are inside
+the fetch footprint, all output polygons valid, and summed output area agrees
+with each clipped polygon (including islands) within 0.01 m²/relative 1e-9.
+This checks geometry build, not full game/network/weather startup or FPS.
+See `rrt-0.18-progress.md` for regression results and continuation status.

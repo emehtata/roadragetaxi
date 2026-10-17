@@ -225,10 +225,11 @@ def _sea_polygons(coast_lines, rect) -> List[List[Tuple[float, float]]]:
     return rings
 
 
-def _relation_waters(tags, members, ways_by_id, process_node_ids):
+def _relation_waters(tags, members, ways_by_id, process_node_ids, region=None):
     """Stitch outer/inner members without filling islands or closing gaps."""
     from shapely.geometry import Polygon
     from shapely.ops import unary_union
+    from shapely.prepared import prep
 
     roles = {role: [m["ref"] for m in members if m.get("type") == "way"
                     and m.get("role", "") in (("outer", "") if role == "outer" else ("inner",))]
@@ -263,9 +264,13 @@ def _relation_waters(tags, members, ways_by_id, process_node_ids):
         if not outer.is_valid:
             logger.warning("Invalid water relation outer ring; area fill withheld")
             continue
-        selected = [i for i, hole in enumerate(holes) if outer.covers(hole)]
+        prepared = prep(outer)
+        selected = [i for i, hole in enumerate(holes) if prepared.covers(hole)]
         assigned.update(selected)
         area = outer.difference(unary_union([holes[i] for i in selected]))
+        if region is not None:
+            # Smart PBF extracts contain whole lakes; split islands only in the loaded area.
+            area = area.intersection(region)
         for poly in getattr(area, "geoms", [area]):
             if poly.geom_type == "Polygon":
                 waters.extend(Water(ring, kind, True, name=tags.get("name"), bbox=compute_bbox(ring), layer=layer)
@@ -1387,6 +1392,13 @@ def build_ways(
         progress_end=0.97,
     )
 
+    water_region = None
+    if fetch_bbox is not None:
+        from shapely.geometry import Polygon
+        south, west, north, east = fetch_bbox
+        water_region = Polygon([transformer.transform(lon, lat) for lon, lat in
+                                ((west, south), (east, south), (east, north), (west, north))])
+
     # 5. Multipolygon Relations (stitched into proper closed rings)
     if progress_callback:
         progress_callback(0.97, f"Processing {len(relations_raw)} multipolygon relations...")
@@ -1406,6 +1418,12 @@ def build_ways(
             (ways_by_id.get(way_id, {}).get("tags", {}).get("barrier") == "kerb")
             for way_id in outer_way_ids
         )
+        if _is_water_area(tags):
+            waters.extend(_relation_waters(tags, members, ways_by_id, process_node_ids, water_region))
+            if progress_callback:
+                progress_callback(0.97 + 0.01 * (relation_index + 1) / relation_count,
+                                  f"Processed multipolygon {relation_index + 1}/{relation_count}")
+            continue
         rings = _stitch_member_ways_into_rings(
             outer_way_ids, ways_by_id, lambda nids: process_node_ids(nids)[0]
         )
@@ -1415,9 +1433,6 @@ def build_ways(
                 f"Processed multipolygon {relation_index + 1}/{relation_count}",
             )
         name = tags.get("name")
-        if _is_water_area(tags):
-            waters.extend(_relation_waters(tags, members, ways_by_id, process_node_ids))
-            continue
         for pts, is_closed in rings:
             xs = [p[0] for p in pts]
             ys = [p[1] for p in pts]

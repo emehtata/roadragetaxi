@@ -473,3 +473,36 @@ Godot suite: **908 checks, 0 failed**; existing UI/exit diagnostics remain. This
 change, not calibrated real-world photometry; no live driving/FPS benchmark or
 Python suite rerun (Python unchanged). Existing beam/building masking behavior
 is unchanged.
+
+### Inari cold-start water geometry (2026-10-17)
+
+Screenshot `1792250709006802176` stalled at 120 s on multipolygon 1/21.
+The actual cached Inari extract (bbox 68.88648,27.12946,68.91352,27.20454)
+contains 213,093 elements. Smart PBF extraction includes all of Inarijärvi
+relation 402543: 158 outer and 5,066 inner member ways. A bounded 30-second
+pre-fix profile of that relation did not finish: 21.57 s in `_water_rings`,
+including repeated validity checks and splitting; containment also cost 6.52 s.
+
+Fix: retain complete-reference/closed-ring/validity/containing-outer validation;
+prepare each outer geometry once for island containment. Subtract all validated
+islands, then intersect the result with the four-corner projected fetch region
+before converting holes to hole-free renderer polygons. This preserves islands
+crossing tile boundaries and avoids splitting thousands of distant islands.
+Without fetch bounds, preserve existing whole-relation behavior. Water relations
+no longer stitch outers twice, and their completion message follows the actual
+water processing. The heartbeat remains only a liveness indication.
+
+The actual Inari extract's complete `build_ways` stage now finishes in **2.36 s**,
+with multipolygon 1/21 complete at 2.32 s (started at 0.66 s), returning 121
+water records. This is map geometry build time, not an end-to-end startup claim.
+Processed-cache format is 34 so old unbounded geometry is rebuilt; raw PBF/JSON
+data is retained. Focused water/cache/PBF/startup tests: **61 passed** (seed
+3053193970), including an island spanning adjacent clipped regions. Existing
+Oulu flooding and incomplete-island regressions pass. Compile/diff checks pass.
+First full run: 1,780 passed, 2 skipped, one pedestrian red-light failure (seed
+1820452096). The same isolated test fails with both changed modules replaced in
+memory by their HEAD versions, establishing a pre-existing seed-dependent issue;
+it passes at seed 743673077. No unrelated pedestrian behavior/test edits made.
+Full rerun: **1,781 passed, 2 skipped** in 100.33 s (seed 743673077).
+Second actual Inari build with clipped-area conservation and validity assertions:
+**2.47 s**, all outputs valid. No Godot or traffic changes.

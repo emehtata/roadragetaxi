@@ -58,6 +58,36 @@ def test_final_oulu_waters_leave_screenshot_land_dry(monkeypatch):
     assert all(box(*fixture["bounds"]).covers(Polygon(w.points_m)) for w in waters if w.kind == "sea")
 
 
+def test_large_water_relation_is_clipped_before_splitting_islands(monkeypatch):
+    from theroadragetrip.osm import build
+
+    coords = [(-100, -100), (100, -100), (100, 100), (-100, 100),
+              (3, 3), (7, 3), (7, 7), (3, 7),
+              (40, 40), (50, 40), (50, 50), (40, 50)]
+    elements = [dict(type="node", id=i, x=x, y=y) for i, (x, y) in enumerate(coords, 1)]
+    elements += [dict(type="way", id=i, nodes=nodes, tags={}) for i, nodes in
+                 [(10, [1, 2, 3, 4, 1]), (11, [5, 6, 7, 8, 5]), (12, [9, 10, 11, 12, 9])]]
+    elements.append(dict(type="relation", id=20, tags={"natural": "water", "type": "multipolygon"},
+                         members=[dict(type="way", ref=i, role="outer" if i == 10 else "inner")
+                                  for i in (10, 11, 12)]))
+    original = build._water_rings
+    split_inputs = []
+    def checked_split(poly):
+        split_inputs.append(poly)
+        assert box(0, 0, 10, 10).covers(poly)
+        return original(poly)
+    monkeypatch.setattr(build, "_water_rings", checked_split)
+    geometry = []
+    for bounds in [(0, 0, 5, 10), (5, 0, 10, 10)]:
+        result = build_projected(elements, bounds, monkeypatch)
+        geometry.extend(Polygon(w.points_m) for w in result.waters if w.is_polygon)
+    assert split_inputs
+    water = unary_union(geometry)
+    expected = box(0, 0, 10, 10).difference(box(3, 3, 7, 7))
+    assert water.symmetric_difference(expected).area == pytest.approx(0.0)
+    assert not water.covers(Point(5, 5))  # island straddles the tile seam
+
+
 @pytest.mark.parametrize("extra", [{"waterway": "boatyard"}, {"waterway": "weir"}, {"barrier": "wall"}])
 def test_coastline_is_collected_independently_of_its_other_tags(extra, monkeypatch):
     elements = [dict(type="node", id=i, x=x, y=y) for i, (x, y) in
