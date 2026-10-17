@@ -968,9 +968,9 @@ func _character_text(kind: String, row: Dictionary) -> String:
 			"%s #%s" % [T.text("resident", language), row.get("id", "?")],
 			str(resident.get("name", unknown)),
 			"%s: %s" % [T.text("born", language), resident.get("birth_date", unknown)],
-			"%s: %s" % [T.text("gender", language), resident.get("gender", unknown) if resident.get("gender") != null else unknown],
-			"%s: %s" % [T.text("status", language), row.get("state", unknown)],
-			"%s: %s" % [T.text("activity", language), str(row.get("activity", "")).replace("_", " ") if row.get("activity", "") != "" else unknown],
+			"%s: %s" % [T.text("gender", language), T.value_label(resident.get("gender"), language)],
+			"%s: %s" % [T.text("status", language), T.value_label(row.get("state"), language)],
+			"%s: %s" % [T.text("activity", language), T.value_label(row.get("activity"), language)],
 			"%s: %.2f ‰" % [T.text("blood_alcohol", language), float(row.get("blood_alcohol_promille", 0.0))],
 		])
 	var owner: Dictionary = row.get("owner") if row.get("owner") is Dictionary else {}
@@ -980,8 +980,8 @@ func _character_text(kind: String, row: Dictionary) -> String:
 			occupants.append(person.get("name", unknown))
 	return "\n".join([
 		"%s #%s" % [T.text("npc_vehicle", language), row.get("id", "?")],
-		"%s: %s" % [T.text("type", language), row.get("vehicle_type", unknown)],
-		"%s: %s" % [T.text("status", language), row.get("state", unknown)],
+		"%s: %s" % [T.text("type", language), T.value_label(row.get("vehicle_type"), language)],
+		"%s: %s" % [T.text("status", language), T.value_label(row.get("state"), language)],
 		"%s: %.0f km/h" % [T.text("speed", language), absf(float(row.get("speed", 0.0))) * 3.6],
 		"%s: %s" % [T.text("owner", language), owner.get("name", unknown)],
 		"%s: %s" % [T.text("occupants", language), ", ".join(occupants) if not occupants.is_empty() else unknown],

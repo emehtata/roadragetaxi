@@ -807,6 +807,36 @@ downloaded-font appearance remains unverified. No site deployment or release
 tag; no game/simulation, user-save or audio changes. Download labels should be
 updated again only after 0.18 is actually published.
 
+### Game localization audit and passenger labels (2026-10-18)
+
+Fixed hard-coded `[TO TAXI]` in the Godot passenger overlay: Finnish now shows
+`[TAKSILLE]`, English keeps `[TO TAXI]`, and waiting passengers use the translated
+pickup label. Both lead passengers and companions use the same formatter.
+Reviewed menus, HUD, phone, inspection panels, loading/progress and server text
+tables. Booking status values in phone titles/cards/details now use translations
+instead of raw English enums. Inspector gender, pedestrian/vehicle states,
+activity names and vehicle types are translated through the existing FI/EN
+tables. Unknown future enum values retain a readable fallback; names, addresses,
+real-world signs, legal attributions and developer diagnostics are not rewritten.
+
+Changing language rebuilds the open settings menu, not just the running HUD.
+Deferred menu focus checks the control still exists/is attached after a menu
+rebuild. Removed the test's duplicate shell construction, which previously
+registered the same viewport signal twice. Also translated the Python table's
+Finnish settings-arrow hints and respawn label.
+
+Verification: **1,221 Godot checks, zero failed** in isolated XDG data/config/cache
+directories. Existing anchor/input warnings and shutdown resource-leak reports
+remain; no rendered interactive replay or Windows build. **51 focused Python
+tests passed**. Full Python suite: **1,851 passed, 2 skipped, 1 failed** (94.28 s,
+seed 743673077): the unrelated reconnect test received world/chunks before its
+state message. That test plus the three new localization tests passed on rerun
+(4 passed). No transport behavior was changed to mask the timing failure.
+New checks cover language-key and format-argument parity, all current vehicle
+types/pedestrian/NPC states/activity names, passenger tags, phone booking statuses
+and actual inspector text. A static audit found no missing literal server `tr`
+keys. Diff checks pass. User saves/bank data were not used.
+
 ### Market the taxi antihero and rage superpower (2026-10-18)
 
 Bilingual content review: compared every feature, release note, roadmap card,

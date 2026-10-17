@@ -1095,8 +1095,12 @@ func _target(state: Dictionary) -> void:
 			draw_circle(c, radius + _px(2.0), RS.OUTLINE)
 			draw_circle(c, radius, RS.CUSTOMER_COLOR)
 			draw_circle(c + _forward(ped[2]) * radius * 0.9, maxf(_px(1.0), radius * 0.45), Color.WHITE)
-			_tag(c - Vector2(0, radius + _px(12.0)), ("[TO TAXI] %s" if member.get("is_walking_to_car", false) else "[P] %s") % member.get("name", ""),
+			_tag(c - Vector2(0, radius + _px(12.0)), passenger_tag(member, language),
 				Color8(255, 230, 80))
+
+
+static func passenger_tag(member: Dictionary, lang: String) -> String:
+	return "[%s] %s" % [T.text("to_taxi", lang) if member.get("is_walking_to_car", false) else T.text("pickup", lang), member.get("name", "")]
 
 
 func _draw() -> void:

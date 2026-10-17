@@ -118,7 +118,6 @@ func test_credits() -> void:
 func test_settings_help() -> void:
 	var shell = preload("res://startup.gd").new()
 	root.add_child(shell)
-	shell._build_shell()
 	shell._settings_menu()
 	var questions: Array = shell._body.find_children("*", "Button", true, false).filter(func(b): return b.text == "?")
 	check(questions.all(func(q): return Array(q.tooltip_text.split("\n")).all(func(l): return l.length() <= 60)), "settings: help tooltips wrap at 60 characters")
@@ -289,6 +288,24 @@ func test_i18n() -> void:
 	check(I18n.FI.keys().filter(func(k): return not I18n.EN.has(k)).is_empty(), "every Finnish text has English")
 	check(I18n.EN.keys().filter(func(k): return not I18n.FI.has(k)).is_empty(), "every English text has Finnish")
 	check(Phone.status_text(true, false, [], "", "fi") == "Ei kyytipyyntöjä juuri nyt.", "the phone reads the Finnish table")
+	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "fi") == "[TAKSILLE] Aino", "walking passenger tag is Finnish")
+	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "en") == "[TO TAXI] Aino", "walking passenger tag is English")
+	check(EntityLayer.passenger_tag({"name": "Aino"}, "fi") == "[NOUTO] Aino", "waiting passenger tag uses the selected language")
+	for status in ["PENDING", "ACCEPTED", "TRAIN_ARRIVING", "PASSENGER_WAITING", "PASSENGER_MET", "IN_TAXI", "DECLINED", "MISSED"]:
+		var item := {"id": "booking-1", "kind": "booking", "name": "Aino", "status": status}
+		check(Phone.details_text(item, "fi").contains("Tila: " + I18n.value_label(status, "fi")), "Finnish booking details: " + status)
+		check(Phone.details_text(item, "en").contains("Status: " + I18n.value_label(status, "en")), "English booking details: " + status)
+		if status != "PENDING":
+			check(Phone.card_text(item, "fi").contains("Tila: " + I18n.value_label(status, "fi")), "Finnish booking card: " + status)
+			check(Phone.row_text(1, item, false, "fi").ends_with(I18n.value_label(status, "fi")), "Finnish booking title: " + status)
+	check(I18n.value_label(null, "fi") == "-" and I18n.value_label("", "en") == "Unknown", "missing inspector values use translated placeholders")
+	check(I18n.value_label("future_state", "fi") == "future state", "unknown future values remain readable")
+	for key in I18n.FI:
+		var pattern := RegEx.new()
+		pattern.compile("%(?:[0-9.]+)?[sdf]|%%")
+		var fi_args := pattern.search_all(I18n.FI[key]).map(func(m): return m.get_string())
+		var en_args := pattern.search_all(I18n.EN[key]).map(func(m): return m.get_string())
+		check(fi_args == en_args, "translation format arguments match: " + key)
 
 
 func test_interpolation() -> void:
@@ -725,6 +742,13 @@ func test_mouse_inspection() -> void:
 	root.add_child(main)
 	check(main._character_text("pedestrian", {"id": 7, "resident": {"name": "Aino Korhonen", "birth_date": "1990-04-05"}}).contains("Aino Korhonen"), "inspector shows the resident name")
 	check(main._character_text("npc", {"id": 8, "owner": {"name": "Aino Korhonen"}, "occupants": [{"name": "Aino Korhonen"}]}).contains("Aino Korhonen"), "vehicle inspector shows its people")
+	main.set_language("fi")
+	var person_text: String = main._character_text("pedestrian", {"state": "waiting_at_light", "activity": "bench_sitting", "resident": {"gender": "female"}})
+	check(person_text.contains("Sukupuoli: nainen") and person_text.contains("Tila: odottaa liikennevaloissa") and person_text.contains("Puuhailee: istuu penkillä"), "inspector translates gender, state and activity")
+	var vehicle_text: String = main._character_text("npc", {"vehicle_type": "truck", "state": "CRUISING"})
+	check(vehicle_text.contains("Tyyppi: kuorma-auto") and vehicle_text.contains("Tila: ajaa"), "inspector translates vehicle type and driving state")
+	main.set_language("en")
+	check(main._character_text("npc", {"vehicle_type": "truck", "state": "CRUISING"}).contains("State: driving"), "inspector switches back to English")
 	main.entities._frame = {"a": state, "b": state, "t": 0.0}
 	state["pedestrians"] = [pedestrian]
 	pedestrian["x"] = 1.0  # inside the headless viewport, so GUI routing is exercised

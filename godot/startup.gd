@@ -144,7 +144,11 @@ func _focus_menu() -> void:
 		var control := _focusables[i]
 		control.focus_neighbor_top = control.get_path_to(_focusables[(i - 1 + _focusables.size()) % _focusables.size()])
 		control.focus_neighbor_bottom = control.get_path_to(_focusables[(i + 1) % _focusables.size()])
-	_focusables[0].call_deferred("grab_focus")
+	var first_id := _focusables[0].get_instance_id()
+	(func():
+		var first := instance_from_id(first_id) as Control
+		if is_instance_valid(first) and first.is_inside_tree():
+			first.grab_focus()).call_deferred()
 
 
 func _title(text: String, subtitle := "") -> void:
@@ -660,7 +664,8 @@ func _settings_menu() -> void:
 		_settings.set_value("game", "language", _language)
 		_settings.save("user://settings.cfg")
 		if _game != null:
-			_game.set_language(_language))
+			_game.set_language(_language)
+		_settings_menu.call_deferred())
 	_with_help(language, "help_language")
 	_focusables.append(language)
 	var historical := CheckButton.new()  # FMI weather for the city and game time
