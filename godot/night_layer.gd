@@ -24,14 +24,14 @@ var beam_triangles := PackedInt32Array()
 ## evenly - in the dark the road was hard to see. A little warm glow on top.
 const BEAM_SHADER := """
 shader_type canvas_item;
-render_mode unshaded;
+render_mode unshaded, blend_add;
 uniform sampler2D screen_texture : hint_screen_texture, filter_linear;
 uniform float gain = 3.0;
 uniform vec3 glow = vec3(0.34, 0.33, 0.28);
 void fragment() {
 	float strength = COLOR.r;
 	vec3 under = texture(screen_texture, SCREEN_UV).rgb;
-	COLOR = vec4(under * (1.0 + gain * strength) + glow * strength * 0.3, 1.0);
+	COLOR = vec4((under * gain + glow * 0.3) * strength, 1.0);
 }
 """
 var ambient := Color.WHITE  # the world's ambient multiply (main.gd): darker night, more gain

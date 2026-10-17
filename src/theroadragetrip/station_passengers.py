@@ -110,12 +110,16 @@ class StationPassengerView:
             return False
         x, y, _, _ = spot
         resident_id = passenger.resident_id
+        created_resident_id = None
         if resident_id is None and passenger.intent == TAXI and getattr(self.pedestrians, "residents", None) is not None:
             resident_id = self.pedestrians.residents.create("walking", min_age=18).resident_id
+            created_resident_id = resident_id
         pedestrian = self.pedestrians.spawn_pedestrian_at(
             x, y, heading=self.rng.uniform(-math.pi, math.pi), resident_id=resident_id,
         )
         if pedestrian is None:
+            if created_resident_id is not None:
+                self.pedestrians.residents.remove(created_resident_id)
             return False
         if passenger.resident_id is None:  # shown the first time: the resident becomes them
             self._become(pedestrian.resident_id, passenger)
@@ -160,10 +164,14 @@ class StationPassengerView:
             return passenger.pedestrian is not None
         x, y = self._stand_spot(stand)
         resident_id = passenger.resident_id
+        created_resident_id = None
         if resident_id is None and getattr(self.pedestrians, "residents", None) is not None:
             resident_id = self.pedestrians.residents.create("walking", min_age=18).resident_id
+            created_resident_id = resident_id
         pedestrian = self.pedestrians.spawn_pedestrian_at(x, y, resident_id=resident_id)
         if pedestrian is None:
+            if created_resident_id is not None:
+                self.pedestrians.residents.remove(created_resident_id)
             return False
         if passenger.resident_id is None:
             self._become(pedestrian.resident_id, passenger)

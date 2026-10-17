@@ -1,8 +1,11 @@
 """The licensing inventory covers everything shipped (LICENSE_AUDIT.md)."""
 import gzip
+import importlib.metadata
 import json
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -34,6 +37,10 @@ def test_a_new_unlisted_asset_or_package_is_reported():
 
 
 def test_the_bundled_packages_licences_are_collected(tmp_path):
+    try:
+        importlib.metadata.distribution("pyinstaller")
+    except importlib.metadata.PackageNotFoundError:
+        pytest.skip("PyInstaller is only installed in the packaging environment")
     rows = collect_licenses.collect(tmp_path)
     assert any(row.startswith("shapely ") for row in rows) and any(row.startswith("certifi ") for row in rows)
     assert (tmp_path / "shapely" / "licenses" / "LICENSE_GEOS").is_file()  # GEOS, LGPL-2.1

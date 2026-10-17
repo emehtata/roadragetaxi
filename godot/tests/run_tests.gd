@@ -1907,6 +1907,8 @@ func test_static_world() -> void:
 	check(night.beam_colors[0] == Color(1, 1, 1, 1.0) and night.beam_colors[2] == Color(0, 0, 0, 1.0), "full strength at the lamp, nothing at the far end")
 	check(night.get_child_count() == 1 and (night.beams.material as ShaderMaterial).shader.code.contains("hint_screen_texture"),
 		"one node; the beams brighten the screen under them (the road shows), not a grey tint")
+	check((night.beams.material as ShaderMaterial).shader.code.contains("blend_add"),
+		"overlapping beams add illumination instead of replacing it")
 	check(is_equal_approx(NightLayer.beam_gain(Color.WHITE), 0.0) and NightLayer.beam_gain(Daylight.NIGHT) > 2.5 and NightLayer.beam_gain(Color.BLACK) == 6.0,
 		"no gain by day, about back to daylight at night, capped in the dark")
 	night.show_lights(0.5, Rect2(0, 0, 10, 10), two_cars)

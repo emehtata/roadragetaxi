@@ -101,6 +101,14 @@ def test_command_fields_of_the_wrong_type_or_range_are_not_trusted():
     assert interact is False  # only a real true presses the key
 
 
+def test_extremely_large_json_integers_are_clamped_without_overflow():
+    wire = protocol.encode({"type": "command", "version": protocol.PROTOCOL_VERSION,
+                            "command": {"throttle": 10**400, "forward": -(10**400)}})
+    decoded = protocol.decode(wire.rstrip(b"\n"))
+    command, _ = protocol.command_from_message(decoded)
+    assert command.throttle == 1.0 and command.forward == -1.0
+
+
 def test_random_command_payloads_never_raise_and_stay_in_range():
     import random
 

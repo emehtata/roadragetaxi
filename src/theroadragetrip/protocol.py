@@ -109,10 +109,12 @@ COMMAND_RANGES = {  # the analogue inputs and their valid range; the rest are fl
 def _command_field(name: str, value):
     """`value` as the command field `name` expects, or None when it isn't one."""
     if name in COMMAND_RANGES:
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        if isinstance(value, float) and not math.isfinite(value):
             return None
         low, high = COMMAND_RANGES[name]
-        return min(high, max(low, float(value)))
+        return float(min(high, max(low, value)))
     return value if isinstance(value, bool) else None
 
 
