@@ -1,5 +1,18 @@
+import ipaddress
 import os
+import socket
 import sys
+import tempfile
+
+# Isolate every per-user path before the game is imported: its config,
+# saves (career, gig odometer, homes), OSM and world caches and timetables
+# are module-level paths read from these at import. Server subprocesses
+# started by tests inherit them. Without this a test wrote into the
+# player's real OSM cache.
+_USER_DIRS = tempfile.TemporaryDirectory(prefix="rrt-test-home-")
+for _name in ("HOME", "USERPROFILE", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "APPDATA", "LOCALAPPDATA"):
+    os.environ[_name] = os.path.join(_USER_DIRS.name, _name.lower())
+    os.makedirs(os.environ[_name], exist_ok=True)
 
 # Ensure src/ is on sys.path so tests can import the package without installing it.
 ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -48,3 +61,25 @@ def kunnat_centres(monkeypatch):
         ("Sysmä", 429772.8, 6819445.3, 1793, None),
         ("Helsinki", 385700.4, 6672126.7, 690000, None),
     ])
+
+
+_real_connect = socket.socket.connect
+
+
+def _local_only_connect(sock, address):
+    """Tests never reach a live service (Overpass, Digitraffic, FMI, tiles):
+    a connection to anything but this machine fails the test."""
+    host = address[0] if isinstance(address, tuple) else None
+    if host is not None:
+        try:
+            local = ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            local = host == "localhost"
+        if not local:
+            raise AssertionError(f"test tried to reach the network: {address!r} (fake the fetch instead)")
+    return _real_connect(sock, address)
+
+
+@pytest.fixture(autouse=True)
+def _no_network(monkeypatch):
+    monkeypatch.setattr(socket.socket, "connect", _local_only_connect)
