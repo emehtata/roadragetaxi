@@ -807,6 +807,17 @@ downloaded-font appearance remains unverified. No site deployment or release
 tag; no game/simulation, user-save or audio changes. Download labels should be
 updated again only after 0.18 is actually published.
 
+### Missing voice recordings fall back to Finnish (2026-10-18)
+
+Both driver and passenger speech now select the Finnish recording when a clip
+for the requested language is absent. This covers situation responses, periodic
+chatter and explicitly requested lines while retaining gender and the existing
+busy/cooldown rules. Subtitles retain the requested language when translated;
+missing text falls back to Finnish instead of silencing an available recording.
+No available recording remains silent. Thirteen speech tests passed, including
+German subtitles with Finnish voices, both genders, all passenger entry points,
+native-voice preference and no-recording behavior. No audio generation required.
+
 ### Game localization audit and passenger labels (2026-10-18)
 
 Fixed hard-coded `[TO TAXI]` in the Godot passenger overlay: Finnish now shows

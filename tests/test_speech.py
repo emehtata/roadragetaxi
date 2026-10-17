@@ -2,6 +2,7 @@
 announcement events, and state.railway."""
 
 import random
+import pytest
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -83,6 +84,30 @@ def test_no_catalog_or_no_recording_is_quiet(monkeypatch):
     assert audio.take_events() == []
     silent = speech.Speech(lambda speaker, key: False)
     assert silent.driver("pickup", "fi", "man", 0.0, False) is None
+
+
+@pytest.mark.parametrize("speaker", ["driver", "passenger"])
+@pytest.mark.parametrize("gender,code", [("woman", "f"), ("man", "m")])
+def test_missing_voice_uses_finnish_but_keeps_requested_subtitle(speaker, gender, code):
+    selector = speech.Speech(lambda who, key: key[1] == "fi", rng=random.Random(1))
+    entry = {"hash": "abc", "fi": "Hei!", "de": "Hallo!", "situation": "pickup", "mood": "good"}
+    selector.lines = {"driver": [entry], "passenger": [entry]}
+    if speaker == "driver":
+        result = selector.driver("pickup", "de", gender, 0.0, False)
+    else:
+        result = selector.passenger_for_situation("pickup", gender, "de", "Aino", False)
+        assert selector.passenger_line("Hei!", gender, "de", "Aino", False)["key"] == (code, "fi", "abc")
+        selector.interval = 0.0
+        assert selector.passenger_tick(True, gender, "de", 0.1, "Aino", False)["key"] == (code, "fi", "abc")
+    assert result["key"] == (code, "fi", "abc") and result["text"] == "Hallo!"
+
+
+def test_native_voice_is_preferred_and_missing_both_is_silent():
+    selector = speech.Speech(lambda who, key: True)
+    entry = {"hash": "abc", "fi": "Hei!", "de": "Hallo!"}
+    assert selector._passenger(entry, "woman", "de", "Aino", False)["key"][1] == "de"
+    selector.available = lambda who, key: False
+    assert selector._passenger(entry, "woman", "de", "Aino", False) is None
 
 
 def _train(kind_number="28"):
