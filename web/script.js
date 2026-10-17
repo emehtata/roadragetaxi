@@ -4,7 +4,7 @@ const translations = {
     kicker: 'Suomalainen taksi. Yliluonnollinen raivo.', title: 'Asiakas kyytiin.<br><em>Raivo irti.</em>', copy: 'Ruuhka ei väistä kohteliaisuudella. Kerää raivoa, huuda muut kuskit sivuun ja paina kaasu pohjaan. Taksin antisankarin uusi supervoima saapuu versiossa 0.18.0alpha.',
     screenshotsKicker: 'PELIKUVIA / GODOT-ALPHA', platform: 'GODOT + PYTHON-PALVELIN', mapData: 'OIKEA OSM-DATA', openSource: 'AVOINTA LÄHDEKOODIA',
     screenshotsNote: 'Kuvat ovat aiemmista alpha-versioista; 0.18.0alpha on valmisteilla. Henkilöiden nimet arvotaan satunnaisesti, eivätkä ne tarkoita oikeita ihmisiä.',
-    introKicker: '01 / ANTISANKARI', intro: 'Ei viittaa.<br><span>Ei pinnaa.</span>', lead: 'The Road Rage Trip on ylhäältä kuvattu taksipeli Suomen oikeilla kaduilla. Sinä olet sen antisankari: taksikuski, jonka raivo siirtää autot tieltä.',
+    introKicker: '01 / ANTISANKARI', intro: 'Lyhyt pinna.<br><span>Yliluonnollinen raivo.</span>', lead: 'The Road Rage Trip on ylhäältä kuvattu taksipeli Suomen oikeilla kaduilla. Sinä olet sen antisankari: taksikuski, jonka raivo siirtää autot tieltä.',
     introText: 'Asiakas odottaa. Koko katu seisoo. Sinä et. Kun raivoa on tarpeeksi, paina SPACE ja huuda ruuhka helvettiin. Versiossa 0.18.0alpha muut autot siirtyvät suoraan tien sivuun ja edessäsi pidetään ajoväylä auki vähintään kymmenen sekunnin ajan. Vaikka mittarissa olisi 210 km/h. Ei sankaripuheita. Taksamittari käy.',
     featureKicker: '02 / KONEPELLIN ALLA', featureTitle: 'Kauniisti<br><em>ärtyneille.</em>', featureIntro: 'Tämä ei ole pelkkä tausta. Tieverkosto, sää, jalankulkijat ja sääntöjen rikkomisen seuraukset elävät ympärilläsi.',
     features: [
@@ -54,7 +54,7 @@ const translations = {
     kicker: 'Finnish taxi. Supernatural rage.', title: 'Deliver fares.<br><em>Unleash the rage.</em>', copy: 'Traffic won’t move for manners. Build rage, shout other drivers aside, and floor it. Your taxi antihero’s new superpower arrives in 0.18.0alpha.',
     screenshotsKicker: 'GAMEPLAY SCREENSHOTS / GODOT ALPHA', platform: 'GODOT + PYTHON SERVER', mapData: 'REAL OSM DATA', openSource: 'OPEN SOURCE',
     screenshotsNote: 'Screenshots show earlier alpha builds; 0.18.0alpha is in preparation. Character names are randomly generated and do not represent real people.',
-    introKicker: '01 / THE ANTIHERO', intro: 'No cape.<br><span>No patience.</span>', lead: 'The Road Rage Trip is a top-down taxi game on real Finnish streets. You are its antihero: a cab driver whose rage moves cars out of the way.',
+    introKicker: '01 / THE ANTIHERO', intro: 'Short fuse.<br><span>Supernatural rage.</span>', lead: 'The Road Rage Trip is a top-down taxi game on real Finnish streets. You are its antihero: a cab driver whose rage moves cars out of the way.',
     introText: 'Your passenger is waiting. The whole street is stuck. You aren’t. Build enough rage, hit SPACE, and shout traffic to hell. In 0.18.0alpha, other cars move straight to the roadside and your path stays clear for at least ten seconds. Even at 210 km/h. No heroic speeches. The meter is running.',
     featureKicker: '02 / UNDER THE HOOD', featureTitle: 'Built for the<br><em>beautifully irritated.</em>', featureIntro: 'Not a backdrop. Roads, weather, pedestrians, and consequences are alive around you.',
     features: [

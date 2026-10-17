@@ -811,8 +811,10 @@ updated again only after 0.18 is actually published.
 
 Updated Finnish and English website hero, introduction and highlighted rage
 feature around the taxi antihero: build enough rage, shout other drivers aside,
-and floor it. Finnish copy leads with “Ei viittaa. Ei pinnaa.” and “Huuda ruuhka
-helvettiin”; English uses “No cape. No patience.” and “Shout traffic to hell”.
+and floor it. Finnish copy leads with “Lyhyt pinna. Yliluonnollinen raivo.” and
+“Huuda ruuhka helvettiin”; English uses “Short fuse. Supernatural rage.” and
+“Shout traffic to hell”. The user-approved short-fuse slogan replaces the
+less clear cape/patience wordplay.
 Added the ten-second clearance and 210 km/h example to both upcoming-release
 note lists. Updated Finnish no-JavaScript fallback and search description too.
 The new power is explicitly coming in 0.18.0alpha; downloadable installer links
