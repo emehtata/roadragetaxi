@@ -146,6 +146,14 @@ def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_
     return on_foot
 
 
+def passenger_steps_out(pedestrian_mgr, passenger, x: float, y: float, heading: float) -> None:
+    """The taxi passenger walks on from (x, y) as the same resident - not a
+    stranger (reported: a woman dropped off became a man)."""
+    pedestrian = pedestrian_mgr.spawn_pedestrian_at(x, y, heading=heading, resident_id=passenger.resident_id)
+    if pedestrian is not None:
+        pedestrian_mgr.pedestrians.append(pedestrian)
+
+
 def remove_boarded_rail_walker(taxi_mgr, pedestrian_mgr) -> None:
     """A greeted rail customer walked to the taxi as their own pedestrian;
     once they have boarded, that pedestrian leaves the world."""
@@ -624,11 +632,8 @@ def advance_simulation(
     if vomited_passenger is not None:
         audio.play_group("passenger.vomit")
         audio.play_passenger_line("Nyt alkaa jo helpottaa.", vomited_passenger.gender, language, vomited_passenger.name)
-        passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
-            vomited_passenger.ped_x, vomited_passenger.ped_y, heading=vomited_passenger.ped_heading,
-        )
-        if passenger_pedestrian is not None:
-            pedestrian_mgr.pedestrians.append(passenger_pedestrian)
+        passenger_steps_out(pedestrian_mgr, vomited_passenger, vomited_passenger.ped_x, vomited_passenger.ped_y,
+                            vomited_passenger.ped_heading)
     current_passenger = taxi_mgr.current_passenger
     if (
         current_passenger is not None
@@ -673,13 +678,8 @@ def advance_simulation(
         audio.play_passenger_line_for_situation("dropoff", previous_passenger.gender, language, previous_passenger.name)
         audio.play_driver_line("dropoff", language)
         audio.play_group("vehicle.door_open")
-        passenger_pedestrian = pedestrian_mgr.spawn_pedestrian_at(
-            car.x + math.sin(car.heading) * 1.8,
-            car.y - math.cos(car.heading) * 1.8,
-            heading=car.heading,
-        )
-        if passenger_pedestrian is not None:
-            pedestrian_mgr.pedestrians.append(passenger_pedestrian)
+        passenger_steps_out(pedestrian_mgr, previous_passenger, car.x + math.sin(car.heading) * 1.8,
+                            car.y - math.cos(car.heading) * 1.8, car.heading)
 
     should_stop = False
     city_summary = None
