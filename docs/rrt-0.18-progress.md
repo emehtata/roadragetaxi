@@ -455,3 +455,21 @@ layers, not physical deck heights; contact across a layer-transition boundary
 is not modeled. Existing live-session cars need a simulation update/restart;
 already crashed cars keep their frozen pose/layer until normal wreck cleanup.
 Broader layer-aware following/traffic priority remains a separate task.
+
+### Longer high beams across both lanes (2026-10-17)
+
+Screenshot `1792250192564635904` showed the short, kerb-biased headlight cone.
+Godot high beams now reach 150 m instead of 45 m and spread symmetrically across
+both lanes (22.5 m half-width at the far end). Dipped beams retain their 15 m
+reach/right bias, and train beams are unchanged. The oncoming detection range
+and off-screen beam culling margin now match the 150 m reach. Existing automatic
+dipping near street lights and oncoming traffic, bridge hiding, the 80-car cap
+and batched rendering remain in place; no new lights or polygon clipping.
+
+Tests cover four headings, both lanes 30 m ahead, reach, automatic dipping and
+off-screen beam retention. Rendered low/high comparisons pass for the opposing
+lane at 30 m and straight ahead at 90 m; images `/tmp/rrt-headlights-*.png`.
+Godot suite: **908 checks, 0 failed**; existing UI/exit diagnostics remain. This is a visual tuning
+change, not calibrated real-world photometry; no live driving/FPS benchmark or
+Python suite rerun (Python unchanged). Existing beam/building masking behavior
+is unchanged.

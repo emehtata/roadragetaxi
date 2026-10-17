@@ -399,8 +399,7 @@ static func reflector_lit(at: Vector2, taxi: Vector2, heading: float) -> bool:
 
 ## Headlight beams, in metres: two beams per vehicle
 ## with its engine on (the taxi first, then NPCs near the view, at most 80),
-## each a quad from the lamp to 15 m ahead and a round cap; an NPC far from a
-## street light (22 m) with nothing oncoming (45 m) has long beams (45 m).
+## each a quad and round cap: dipped 15 m, high 150 m across both lanes.
 ## Polygons in layer coordinates, from this frame's sample.
 func headlight_beams() -> Array:
 	var polygons: Array = []
@@ -418,7 +417,7 @@ func headlight_beams() -> Array:
 		if road.get("bridge", false) or not covered.call(Vector2(p.x, p.y), int(road.get("layer", 0))):
 			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false])
 	var later := _by_id(b.get("npcs", []))
-	var area := view_rect.grow(45.0 - CULL_MARGIN_M)
+	var area := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	for npc in a.get("npcs", []):
 		if npc.get("is_on_foot", false) or npc.get("state", "") == "PARKED":
 			continue
@@ -426,7 +425,7 @@ func headlight_beams() -> Array:
 		var layer := int(npc.get("layer", 0))  # an NPC on a raised layer counts as on its bridge
 		if area.has_point(Vector2(p.x, p.y)) and not underground and (layer > 0 or not covered.call(Vector2(p.x, p.y), layer)):
 			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true])
-	var shown := view_rect.grow(30.0 - CULL_MARGIN_M)
+	var shown := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	var drawn := 0
 	for vehicle in vehicles:
 		if drawn >= 80:
@@ -447,6 +446,7 @@ func headlight_beams() -> Array:
 
 
 const TRAIN_BEAM_M := 60.0
+const HIGH_BEAM_M := 150.0
 
 
 ## A train's headlights: two long beams from the nose of its lead car (the
@@ -464,13 +464,13 @@ static func train_beams(train: Dictionary, next: Dictionary, t: float, origin: V
 	return beam_polygons(nose - f * (1.0 + width * 0.55), heading, width, TRAIN_BEAM_M, true)
 
 
-## Automatic high beam, the taxi's as every NPC's: 45 m on a dark road, dipped to 15 m within 22 m of a street
+## Automatic high beam, the taxi's as every NPC's: 150 m on a dark road, dipped to 15 m within 22 m of a street
 ## light or with a vehicle coming the other way.
 static func beam_length(near_street_light: bool, has_oncoming: bool) -> float:
-	return 15.0 if near_street_light or has_oncoming else 45.0
+	return 15.0 if near_street_light or has_oncoming else HIGH_BEAM_M
 
 
-## Another vehicle within 45 m ahead, heading the other way.
+## Another vehicle within high-beam reach ahead, heading the other way.
 static func oncoming(vehicle: Array, vehicles: Array) -> bool:
 	var f := _forward(vehicle[1])
 	for other in vehicles:
@@ -478,7 +478,7 @@ static func oncoming(vehicle: Array, vehicles: Array) -> bool:
 			continue
 		var delta: Vector2 = other[0] - vehicle[0]
 		var distance := delta.length()
-		if distance > 0.1 and distance <= 45.0 and delta.dot(f) / distance > 0.2 and f.dot(_forward(other[1])) < -0.5:
+		if distance > 0.1 and distance <= HIGH_BEAM_M and delta.dot(f) / distance > 0.2 and f.dot(_forward(other[1])) < -0.5:
 			return true
 	return false
 
@@ -488,6 +488,7 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 	var f := _forward(heading)
 	var r := _right(heading)
 	var front := c + f * (1.0 + width * 0.55)
+	var high := not straight and length > 15.0
 	var polygons: Array = []
 	var lamps := []
 	var tips := []
@@ -495,11 +496,13 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 		var side_v := r * side
 		var lamp := front + side_v * width * 0.35
 		var tip := c + f * length + r * (3.0 if side < 0.0 else 2.25)  # a car's beams lean right (the kerb side)
+		if high:
+			tip = c + f * length  # High beams illuminate both lanes, without the dipped beam's kerb bias.
 		var near := lamp + side_v * minf(4.5 * 0.08, width * 0.10)
 		if straight:  # a train's: straight ahead, each from just past the centre line outward - they overlap over the track
 			tip = c + f * length - side_v * 0.5
 			near = lamp - side_v * (width * 0.35 + 0.3)
-		var far_width := 4.5 * 1.7
+		var far_width := 22.5 if high else 4.5 * 1.7
 		polygons.append(PackedVector2Array([lamp, near, tip + side_v * far_width, tip]))
 		lamps.append(lamp)
 		tips.append(tip)

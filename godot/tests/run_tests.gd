@@ -1843,11 +1843,18 @@ func test_static_world() -> void:
 	check(map._pool_group.get_child_count() == 1, "no duplicate pools after a revisit")
 	map.free()
 
-	# Headlight beams: two quads and two caps per car, 15 m; long beams 45 m.
+	# Headlight beams: dipped 15 m; high beams 150 m, covering both lanes.
 	var beams := EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0)
 	check(beams.size() == 5 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 3.0), "a beam reaches 15 m ahead, its tip shifted right")
 	check(beams[4] == PackedVector2Array([beams[0][0], beams[2][0], beams[2][3], beams[0][3]]), "the road between the two beams is lit too (no dark wedge ahead)")
-	check(is_equal_approx(EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 45.0)[2][3].x, 45.0), "long beams reach 45 m")
+	for heading in [0.0, PI / 2.0, PI, -PI / 2.0]:
+		var high := EntityLayer2.beam_polygons(Vector2.ZERO, heading, 1.8, EntityLayer2.HIGH_BEAM_M)
+		var forward := Vector2.RIGHT.rotated(-heading)
+		var right := Vector2.DOWN.rotated(-heading)
+		check(is_equal_approx(high[0][3].dot(forward), 150.0), "high beams reach 150 m at every heading")
+		for lane in [-3.5, 0.0, 3.5]:
+			var at: Vector2 = forward * 30.0 + right * lane
+			check(high.any(func(poly): return Geometry2D.is_point_in_polygon(at, poly)), "high beams cover the opposing lane, centre and own lane 30 m ahead")
 	var train := {"id": 1, "cars": [[0.0, 0.0, 0.0, 20.0, "locomotive"], [-20.0, 0.0, 0.0, 20.0, "standard"]]}
 	var train_beams := EntityLayer2.train_beams(train, train, 0.0, Vector2.ZERO)
 	check(train_beams.size() == 5 and is_equal_approx(train_beams[0][0].x, 10.0) and train_beams[0][3].x > 60.0, "a train's beams start at the lead car's nose and reach far ahead")
@@ -1855,11 +1862,20 @@ func test_static_world() -> void:
 	check(train_beams[0][1].y > 0.0 and train_beams[0][3].y > 0.0 and train_beams[2][1].y < 0.0 and train_beams[2][3].y < 0.0, "a train's two beams overlap over the track, no dark gap between them")
 	check(is_equal_approx(train_beams[0][3].y, -train_beams[2][3].y), "a train's beams are symmetric: straight ahead, not to the right")
 	check(EntityLayer2.train_beams({"id": 2, "cars": []}, {}, 0.0, Vector2.ZERO).is_empty(), "no cars, no train beams")
-	check(EntityLayer2.beam_length(false, false) == 45.0 and EntityLayer2.beam_length(true, false) == 15.0 and EntityLayer2.beam_length(false, true) == 15.0, "high beam on a dark road, dipped by street lights and oncoming traffic")
+	check(EntityLayer2.beam_length(false, false) == 150.0 and EntityLayer2.beam_length(true, false) == 15.0 and EntityLayer2.beam_length(false, true) == 15.0, "high beam on a dark road, dipped by street lights and oncoming traffic")
 	check(not FileAccess.get_file_as_string("res://entity_layer.gd").contains("if vehicle[3] and not lamp_near"), "the taxi gets the high beam too")
 	var car := [Vector2.ZERO, 0.0, 1.8, true]
 	check(EntityLayer2.oncoming(car, [car, [Vector2(30, 0), PI, 1.8, true]]), "a car 30 m ahead coming the other way dips the beams")
+	check(EntityLayer2.oncoming(car, [car, [Vector2(140, -3.5), PI, 1.8, true]]), "oncoming cars within the longer beam dip it before glare")
+	check(not EntityLayer2.oncoming(car, [car, [Vector2(170, -3.5), PI, 1.8, true]]), "oncoming cars beyond beam reach do not dip it")
 	check(not EntityLayer2.oncoming(car, [car, [Vector2(30, 0), 0.0, 1.8, true]]), "one going the same way doesn't")
+	var offscreen := EntityLayer2.new()
+	offscreen.view_rect = Rect2(-40, -40, 80, 80)  # 10 m view plus the usual 30 m cull margin
+	var lighting_state := {"player": {"x": 0.0, "y": 0.0, "heading": 0.0, "engine_on": false},
+		"npcs": [{"id": 1, "x": -100.0, "y": 0.0, "heading": 0.0, "width_m": 1.8}]}
+	offscreen._frame = {"a": lighting_state, "b": lighting_state, "t": 0.0}
+	check(offscreen.headlight_beams().size() == 5, "off-screen headlights remain drawn while their long beam reaches the view")
+	offscreen.free()
 
 
 	# Reflectors: not in the taxi's cone.
