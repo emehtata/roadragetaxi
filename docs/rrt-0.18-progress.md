@@ -415,3 +415,43 @@ Limitations/resume: these are deterministic synthetic motorway trajectories, not
 a replay of actual Pohjantie map data. They establish spawn initialization and
 bounded safety rejection, not freedom from later routing stalls, collisions or
 weather-dependent braking errors. No PBF/map optimization or Godot change.
+
+### Invisible NPC collision on Hailuodon pengertie (2026-10-17)
+
+Evidence: `screenshot_1792238617608587008` shows the player stopped on a layer-1
+bridge. Its JSON records crashed competitor taxi 254 about 4.17 m ahead, but the
+car is absent from the image. The old snapshot omitted NPC layer/LOD/on-foot
+fields, so its exact client visibility inputs cannot be reconstructed.
+
+Confirmed code defect: NPC physics calls have no road data and consequently do
+not update `Car.layer`. Trip initialization also left the default layer zero.
+Godot correctly routes a layer-zero car covered by a bridge below the deck,
+making an on-bridge NPC invisible. Initialize the layer from the occupied start
+road and refresh it after accepted motion, using only the current route road.
+The existing geometric lookup keeps the old layer until that road is actually
+beneath the car and cannot select an unrelated crossing bridge. Rejected motion
+does not change the layer. This also covers reverse motion through the shared
+motion-enforcement path. No city-wide lookup or client driving decision added.
+
+The shared collision narrow phase previously ignored road/floor levels entirely;
+it now excludes vehicles on different road layers or interior map levels,
+including player/NPC and NPC/NPC pairs. Same-level wrecks remain solid.
+Snapshots now record the NPC layer, map level, LOD and on-foot flag.
+
+Validation: four road-layer spawn/update/protocol/snapshot cases, four transition
+and unrelated-crossing cases, six collision separation/positive cases. Rendered
+Godot regression verifies visible deck cars and hidden under-bridge cars with
+both building rendering modes (six pixel checks including the existing building
+checks, all passing). The original layer-one spawn assertion reproduced zero
+instead of one before initialization was fixed. Focused NPC/traffic/protocol/
+collision suite: **334 passed** (seed 2364576114). Full Python suite:
+**1,780 passed, 2 skipped** in 99.75 s (seed 743673077). Godot suite:
+**889 checks, 0 failed**; existing anchor/input/duplicate-signal and exit-resource
+diagnostics remain. Compile and diff checks pass.
+
+Limits: this reproduces the server-layer/bridge-occlusion defect with synthetic
+geometry, not the original live session. Collision separation uses discrete OSM
+layers, not physical deck heights; contact across a layer-transition boundary
+is not modeled. Existing live-session cars need a simulation update/restart;
+already crashed cars keep their frozen pose/layer until normal wreck cleanup.
+Broader layer-aware following/traffic priority remains a separate task.

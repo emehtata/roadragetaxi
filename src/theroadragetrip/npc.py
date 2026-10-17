@@ -27,7 +27,7 @@ from .competitor_taxis import COMPETITOR_TAXIS, is_competitor, make_competitor
 from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
 from .osm import Curb, ParkingSpace, StopSign, Way
-from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, is_point_on_road, update_car_physics
+from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, get_road_layer_at_point, is_point_on_road, update_car_physics
 from .population import people_within, traffic_demand
 from .residents import Household, HouseholdManager, ResidentManager
 from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision, stop_sign_decision
@@ -1646,6 +1646,10 @@ def _begin_trip_on_vehicle(
         member.trip_group_id = trip_group.group_id
     vehicle.owner_id = driver_resident.resident_id
     vehicle.way = start.way
+    vehicle.car.layer = get_road_layer_at_point(
+        vehicle.x, vehicle.y, current_layer=vehicle.layer,
+        ways=[start.way] if start.way is not None else [], heading=vehicle.heading,
+    )
     vehicle.destination = destination
     vehicle.travel_route = [(p.x, p.y) for p in path]
     vehicle.trip_group = trip_group
@@ -2260,6 +2264,11 @@ def _npc_motion_stays_on_road(vehicle, driver, previous, ways, spatial_grid=None
 
 def _enforce_npc_road_motion(vehicle, driver, previous, traffic_world, spatial_grid, manager):
     if _npc_motion_stays_on_road(vehicle, driver, previous, traffic_world.ways, spatial_grid):
+        # Follow the occupied route road, not an overlapping bridge or a lookahead road not yet reached.
+        vehicle.car.layer = get_road_layer_at_point(
+            vehicle.x, vehicle.y, current_layer=vehicle.layer,
+            ways=[driver.current_way] if driver.current_way is not None else [], heading=vehicle.heading,
+        )
         return
     vehicle.car.x, vehicle.car.y, vehicle.car.heading = previous
     vehicle.car.speed = 0.0
@@ -3980,6 +3989,10 @@ class NPCVehicleManager:
         for obstacle in nearby_obstacles:
             if obstacle is vehicle:
                 continue
+            other_car = getattr(obstacle, "car", obstacle)
+            if (vehicle.layer != getattr(other_car, "layer", 0)
+                    or vehicle.car.map_level != getattr(other_car, "map_level", 0)):
+                continue  # Overlapping screen footprints on separate road/floor levels cannot collide.
             obstacle_is_npc = isinstance(obstacle, NPCVehicle)
             obstacle_already_crashed = obstacle_is_npc and obstacle.state == NPCState.CRASHED
             if vehicle_already_crashed and obstacle_already_crashed:

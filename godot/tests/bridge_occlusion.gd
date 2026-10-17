@@ -4,6 +4,7 @@ extends SceneTree
 
 const MapLayer := preload("res://map_layer.gd")
 const MapChunk := preload("res://map_chunk.gd")
+const Entities := preload("res://entity_layer.gd")
 
 
 func _initialize() -> void:
@@ -40,6 +41,27 @@ func _run() -> void:
 		if not ok:
 			failures += 1
 			printerr("FAIL bridge covers roof (%s): deck=%s roof=%s" % [volumes, deck_color, roof_color])
+		# The server's layer decides whether an NPC is on the deck or hidden below it.
+		for layer in [0, 1]:
+			var entities := Entities.new()
+			entities.z_index = 12
+			root.add_child(entities)
+			var at := Vector2(40, -40)
+			entities._vehicle(at, 0.0, 4.4, 1.8, Color.YELLOW, "car", true, false,
+				false, false, "", 0.0, false, layer <= 0 and map.covered(at, layer))
+			entities._cars.queue_redraw()
+			entities._cars_under.queue_redraw()
+			for frame in 3:
+				await process_frame
+				await RenderingServer.frame_post_draw
+			var car_image := root.get_texture().get_image()
+			var car_color := car_image.get_pixelv(Vector2i(centre))
+			var visible := car_color.r > car_color.b + 0.1
+			if visible != (layer == 1):
+				failures += 1
+				printerr("FAIL bridge NPC visibility: layer=%s color=%s" % [layer, car_color])
+			car_image.save_png("/tmp/rrt-bridge-npc-%s-layer%s.png" % [volumes, layer])
+			entities.free()
 		map.free()
-	print("Rendered bridge/building checks: 2, failures: ", failures)
+	print("Rendered bridge/building/NPC checks: 6, failures: ", failures)
 	quit(1 if failures else 0)

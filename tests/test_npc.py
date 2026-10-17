@@ -358,6 +358,50 @@ def test_corner_safe_speed_is_well_under_a_typical_cruising_speed():
     assert _corner_safe_speed_mps() * 3.6 < 30.0
 
 
+@pytest.mark.parametrize("layer", [-1, 0, 1, 2])
+def test_npc_road_layer_survives_driving_and_reaches_protocol(layer):
+    from theroadragetrip.debug_snapshot import _npc_snapshot
+    from theroadragetrip.protocol import _npc_to_dict
+
+    ways = [Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="secondary",
+                half_width_m=5.0, layer=layer, is_bridge=layer > 0)]
+    tw = TrafficWorld(ways)
+    residents = ResidentManager()
+    result = spawn_npc(1, residents, tw, ways, (20.0, 0.0), (300.0, 0.0))
+    assert result is not None
+    _, driver, vehicle = result
+    assert _npc_to_dict(vehicle)["layer"] == layer  # before the first simulation tick
+    for _ in range(120):
+        update_npc(vehicle, driver, 1.0 / 60.0, tw, residents)
+    assert vehicle.speed > 0.0
+    assert _npc_to_dict(vehicle)["layer"] == layer
+    snapshot = _npc_snapshot(vehicle, driver)
+    assert snapshot["layer"] == layer
+    assert snapshot["map_level"] == 0
+    assert snapshot["lod_level"] == vehicle.lod_level
+    assert snapshot["is_on_foot"] == vehicle.is_on_foot
+
+
+@pytest.mark.parametrize("from_layer,to_layer", [(0, 1), (1, 0), (1, 2), (0, -1)])
+def test_npc_layer_changes_only_when_reaching_route_road(from_layer, to_layer):
+    from theroadragetrip.npc import _enforce_npc_road_motion
+
+    road = Way(points_m=[(10.0, 0.0), (100.0, 0.0)], highway="secondary",
+               half_width_m=4.0, layer=to_layer)
+    vehicle = NPCVehicle(vehicle_id=1, car=Car(x=0.0, y=0.0, heading=0.0, speed=0.0, layer=from_layer))
+    driver = Driver(resident_id=1, vehicle_id=1, path=[], destination=(100.0, 0.0), current_way=road)
+    tw = TrafficWorld([road])
+    _enforce_npc_road_motion(vehicle, driver, (0.0, 0.0, 0.0), tw, None, None)
+    assert vehicle.layer == from_layer  # lookahead road isn't beneath the car yet
+    vehicle.car.x = 30.0
+    _enforce_npc_road_motion(vehicle, driver, (29.0, 0.0, 0.0), tw, None, None)
+    assert vehicle.layer == to_layer
+    # An unrelated bridge crossing this route must not steal the car's layer.
+    tw.ways.append(Way(points_m=[(30.0, -20.0), (30.0, 20.0)], highway="secondary", half_width_m=4.0, layer=3))
+    _enforce_npc_road_motion(vehicle, driver, (30.0, 0.0, 0.0), tw, None, None)
+    assert vehicle.layer == to_layer
+
+
 def test_update_npc_clamps_target_speed_to_the_vehicle_plugins_max_speed():
     """vehicle-population v2 section 4: a vehicle plugin's own max speed (bus/truck
     slower than ordinary traffic) caps target_speed_mps on top of the

@@ -1218,6 +1218,22 @@ def test_begin_trip_caps_and_deduplicates_supplied_household_members():
     assert vehicle.trip_group.boarded_resident_ids == set(vehicle.trip_group.member_resident_ids)
 
 
+@pytest.mark.parametrize("npc_obstacle", [False, True])
+@pytest.mark.parametrize("layer,map_level,collides", [(0, 0, False), (1, 0, True), (1, -1, False)])
+def test_vehicle_collision_respects_bridge_and_floor_levels(npc_obstacle, layer, map_level, collides):
+    from theroadragetrip.npc import NPCVehicle
+    from theroadragetrip.physics import Car
+
+    manager = NPCVehicleManager()
+    residents = ResidentManager()
+    pedestrian_mgr = SimpleNamespace()
+    vehicle = NPCVehicle(vehicle_id=1, car=Car(x=0.0, y=0.0, heading=0.0, speed=4.0, layer=1))
+    other_car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, layer=layer, map_level=map_level)
+    obstacle = NPCVehicle(vehicle_id=2, car=other_car) if npc_obstacle else other_car
+    manager._check_vehicle_collision(vehicle, [obstacle], residents, pedestrian_mgr, sim_time=50.0)
+    assert (vehicle.state == NPCState.CRASHED) == collides
+
+
 def test_check_vehicle_collision_crashes_both_overlapping_npc_vehicles():
     """collision-avoidance section 10: an actual NPC-NPC overlap must crash *both*
     vehicles, each getting its own independent accident."""
