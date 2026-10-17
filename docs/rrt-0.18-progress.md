@@ -809,6 +809,14 @@ updated again only after 0.18 is actually published.
 
 ### Market the taxi antihero and rage superpower (2026-10-18)
 
+Release-ready copy correction: per user request, both languages now describe
+the latest version, not an upcoming update or unpublished development branch.
+Hero, rage feature, screenshot note, release-note headings/lead and download
+callout were updated consistently, including Finnish HTML fallback and search
+description. Existing published installer links/version remain unchanged;
+update the download target as part of publishing the release. Three Node checks,
+JavaScript syntax and diff checks passed. No deployment or browser render.
+
 Version-neutral copy follow-up: removed explicit 0.18.0 references from both
 website languages, the Finnish fallback and search description. Upcoming
 features remain labelled as the next update; published installer version and

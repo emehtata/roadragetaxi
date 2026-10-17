@@ -58,6 +58,8 @@ for (const language of ['fi', 'en']) {
       assert.equal(nodes.get('.release-callout p').textContent, t.releaseText);
       assert.equal(nodes.get('#release-notes .section-kicker').textContent, t.notesKicker);
       assert.doesNotMatch(JSON.stringify(t), /0\.18\.0/);
+      assert.doesNotMatch(JSON.stringify(t), /tuleva päivitys|tulevassa päivityksessä|seuraava päivitys|next update|upcoming update|development branch|kehityshaarassa/i);
+      assert.match(t.notesKicker, /UUSIN VERSIO|LATEST VERSION/);
       assert.match(nodes.get('.release-callout p').textContent, /0\.17\.1alpha/);
       nodes.get('.language-toggle').listeners.click();
       assert.notEqual(document.documentElement.lang, current);
