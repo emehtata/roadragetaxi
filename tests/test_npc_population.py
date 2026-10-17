@@ -2029,6 +2029,9 @@ def test_recovery_routes_without_physical_progress_eventually_hold():
     original_residents = set(residents.residents)
     members = set(vehicle.trip_group.member_resident_ids)
     manager._next_vehicle_id = 2
+    # This tick is about the given-up vehicle's removal: no top-up spawns,
+    # whose new residents (on some seeds) would muddle the check below.
+    manager.target_count = manager.target_moving_count = 0
     manager.update(1 / 30, vehicle.x, vehicle.y, residents, world, ways,
                    viewport_bounds=(vehicle.x - 20, vehicle.y - 20, vehicle.x + 20, vehicle.y + 20))
     assert all(candidate is not vehicle for candidate in manager.vehicles)
