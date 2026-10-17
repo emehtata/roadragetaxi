@@ -1,6 +1,6 @@
-# World places (`places.json`)
+# World places (`places.json.gz`)
 
-`src/theroadragetrip/assets/places.json` is the game's list of fixed, named
+`src/theroadragetrip/assets/places.json.gz` is the game's list of fixed, named
 world locations: currently airports and railway stations. The game uses it
 to know where Oulu airport or Tampere station is without reading OSM at
 runtime.
@@ -10,7 +10,7 @@ runtime.
 ## Build-time input, runtime output
 
 ```text
-Finland OSM PBF  ->  tools/osm/extract_places.py  ->  assets/places.json  ->  theroadragetrip.world_places
+Finland OSM PBF  ->  tools/osm/extract_places.py  ->  assets/places.json.gz  ->  theroadragetrip.world_places
 ```
 
 The PBF is only an input for developers. The game never needs it for
@@ -24,7 +24,7 @@ You need `osmium-tool` (`osmium`) and the project's Python environment.
 ```bash
 python tools/osm/extract_places.py \
     src/theroadragetrip/assets/osm/finland-latest.osm.pbf \
-    src/theroadragetrip/assets/places.json
+    src/theroadragetrip/assets/places.json.gz
 ```
 
 A run takes about 15 s: one streaming osmium pass, and the PBF is never
@@ -103,7 +103,7 @@ Output order is `type`, then name (case-insensitive), then `id`.
 ```python
 from theroadragetrip.world_places import load_places
 
-places = load_places()                      # assets/places.json; empty if missing
+places = load_places()                      # assets/places.json.gz; empty if missing
 places.by_type("airport")
 places.get("airport_efou")
 places.find("Oulu", "railway_station")      # any of the place's names

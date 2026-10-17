@@ -1,3 +1,4 @@
+import gzip
 import json
 import logging
 from pathlib import Path
@@ -45,7 +46,8 @@ def test_final_water_relation_stitches_outer_members_and_preserves_island(tags, 
 
 
 def test_final_oulu_waters_leave_screenshot_land_dry(monkeypatch):
-    fixture = json.loads((Path(__file__).parent / "fixtures/oulu_waters.json").read_text())
+    with gzip.open(Path(__file__).parent / "fixtures/oulu_waters.json.gz", "rt", encoding="utf-8") as stream:
+        fixture = json.load(stream)
     waters = build_projected(fixture["elements"], fixture["bounds"], monkeypatch).waters
     land = Point(427870, 7211600)
     flooding = [w.kind for w in waters if w.is_polygon and Polygon(w.points_m).covers(land)]
@@ -213,7 +215,8 @@ def test_invalid_or_conflicting_coastline_is_diagnostic_and_deterministic(lines,
 
 
 def test_oulu_cached_coastline_does_not_fill_tuira_land():
-    fixture = json.loads((Path(__file__).parent / "fixtures/oulu_waters.json").read_text())
+    with gzip.open(Path(__file__).parent / "fixtures/oulu_waters.json.gz", "rt", encoding="utf-8") as stream:
+        fixture = json.load(stream)
     nodes = {e["id"]: (e["x"], e["y"])
              for e in fixture["elements"] if e["type"] == "node"}
     lines = [[nodes[n] for n in e["nodes"]] for e in fixture["elements"]

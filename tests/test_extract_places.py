@@ -1,3 +1,4 @@
+import gzip
 import json
 import shutil
 import subprocess
@@ -194,14 +195,14 @@ def test_cli_on_a_small_pbf_writes_json_the_game_loads(tmp_path):
     source.write_text(xml, encoding="utf-8")
     pbf = tmp_path / "fixture.osm.pbf"
     subprocess.run(["osmium", "cat", str(source), "-o", str(pbf)], check=True)
-    out = tmp_path / "places.json"
+    out = tmp_path / "places.json.gz"
 
     assert ep.main([str(pbf), str(out)]) == 0
     first = out.read_bytes()
     assert ep.main([str(pbf), str(out)]) == 0
     assert out.read_bytes() == first  # byte-identical rerun
 
-    document = json.loads(first)
+    document = json.loads(gzip.decompress(first))
     assert document["version"] == 1 and document["source"] == "fixture.osm.pbf"
     for place in document["places"]:
         assert {"id", "type", "name", "lat", "lon", "osm"} <= set(place)
@@ -221,6 +222,12 @@ def test_loader_tolerates_missing_or_wrong_files(tmp_path):
     bad.write_text('{"version": 99, "places": []}')
     assert len(load_places(bad)) == 0
     bad.write_text("{not json")
+    assert len(load_places(bad)) == 0
+
+
+def test_loader_tolerates_truncated_gzip(tmp_path):
+    bad = tmp_path / "bad.json.gz"
+    bad.write_bytes(gzip.compress(b'{"version": 1, "places": []}', mtime=0)[:12])
     assert len(load_places(bad)) == 0
 
 

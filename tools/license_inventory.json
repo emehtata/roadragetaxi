@@ -12,7 +12,7 @@
     },
     {
       "name": "OpenStreetMap places database",
-      "paths": ["src/theroadragetrip/assets/places.json"],
+      "paths": ["src/theroadragetrip/assets/places.json.gz"],
       "purpose": "airports and railway stations (244 entries with their OSM ids)", "shipped": true,
       "origin": "OpenStreetMap, Geofabrik finland-latest.osm.pbf of 2026-09-09, tools/osm/extract_places.py",
       "copyright": "OpenStreetMap contributors", "licence": "ODbL-1.0",
@@ -23,12 +23,12 @@
     },
     {
       "name": "Sample OSM extract",
-      "paths": ["sample_osm.json"],
+      "paths": ["sample_osm.json.gz"],
       "purpose": "offline sample map (--use-sample)", "shipped": true,
       "origin": "OpenStreetMap-format sample data", "copyright": "unknown", "licence": "unknown",
       "evidence": "none: the file has synthetic ids (1, 2, 3...), but its origin is not recorded",
       "obligations": "unknown", "commercial": "unknown", "status": "unresolved",
-      "remediation": "record whether it is synthetic (then project-owned) or copied from OpenStreetMap (then ODbL, as places.json)"
+      "remediation": "record whether it is synthetic (then project-owned) or copied from OpenStreetMap (then ODbL, as places.json.gz)"
     },
     {
       "name": "Finland start minimap",

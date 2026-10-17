@@ -1,6 +1,6 @@
 Third-party data in this directory (excluded from the project's MIT license)
 
-places.json
+places.json.gz
   Airports and railway stations extracted from OpenStreetMap by
   tools/osm/extract_places.py.
   © OpenStreetMap contributors. Available under the Open Database License
@@ -59,7 +59,7 @@ godot/finland_minimap.svg (the city menu's map, shipped in the game)
   tools/osm/build_finland_minimap.py. © OpenStreetMap contributors, ODbL 1.0
   (https://www.openstreetmap.org/copyright).
 
-sample_osm.json (repository root, shipped with the server)
+sample_osm.json.gz (repository root, shipped with the server)
   Offline sample map for --use-sample. Its origin is not recorded:
   UNRESOLVED (see LICENSE_AUDIT.md).
 

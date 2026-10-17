@@ -268,7 +268,7 @@ static func credits_text() -> String:
 		"[b]Road Rage Trip[/b] © 2026 Esa Mehtätalo. The game's own code is under the MIT License; the data, sounds and software below are not.",
 		"",
 		"[b]Map data[/b]",
-		"© OpenStreetMap contributors. Map data is available under the Open Database License (ODbL) 1.0: [url=https://www.openstreetmap.org/copyright]openstreetmap.org/copyright[/url]. Read live from Overpass API servers or from a Geofabrik extract of Finland; airports and stations (places.json) and the Finland minimap are derived from it and likewise under the ODbL.",
+		"© OpenStreetMap contributors. Map data is available under the Open Database License (ODbL) 1.0: [url=https://www.openstreetmap.org/copyright]openstreetmap.org/copyright[/url]. Read live from Overpass API servers or from a Geofabrik extract of Finland; airports and stations (places.json.gz) and the Finland minimap are derived from it and likewise under the ODbL.",
 		"Start-map tiles © OpenStreetMap contributors (tile.openstreetmap.org); place names by Nominatim.",
 		"",
 		"[b]Trains[/b]",

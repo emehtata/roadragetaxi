@@ -3,7 +3,7 @@
     python tools/check_license_inventory.py
 
 Reads tools/license_inventory.json. Fails (exit 1) when a file the Windows
-release ships (src/theroadragetrip/{assets,img,sounds}, sample_osm.json, the
+release ships (src/theroadragetrip/{assets,img,sounds}, sample_osm.json.gz, the
 Godot project's files) matches no entry, when a runtime Python package
 (collect_licenses.runtime_closure) has no entry, or when an entry lacks a
 required field or has an unknown status. It prints the count per status. It
@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "tools" / "license_inventory.json"
-SHIPPED = ["src/theroadragetrip/assets/", "src/theroadragetrip/img/", "src/theroadragetrip/sounds/", "sample_osm.json", "godot/"]
+SHIPPED = ["src/theroadragetrip/assets/", "src/theroadragetrip/img/", "src/theroadragetrip/sounds/", "sample_osm.json.gz", "godot/"]
 NOT_SHIPPED = ["godot/tests/", "godot/.gitignore", "godot/export_presets.cfg"]
 NOT_ASSETS = (".uid", ".import")  # Godot's per-file metadata: travels with the file it describes
 FIELDS = ("name", "paths", "purpose", "shipped", "origin", "licence", "evidence", "obligations", "commercial", "status")

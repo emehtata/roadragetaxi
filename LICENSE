@@ -26,7 +26,7 @@ see `src/theroadragetrip/sounds/LICENSE` for source, attribution, and license
 details.
 
 Data files listed in `src/theroadragetrip/assets/DATA_LICENSES.txt`
-(OpenStreetMap-derived `places.json`, Digitraffic-derived
+(OpenStreetMap-derived `places.json.gz`, Digitraffic-derived
 `railway_timetable.json.gz` and `train_compositions.json.gz`, DVV name lists `finnish_first_names.json.gz` and
 `finnish_surnames.json.gz`, Wikipedia-derived `kunnat.json.gz`) are likewise
 excluded from this MIT license and are provided under the licenses stated

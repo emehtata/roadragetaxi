@@ -45,7 +45,7 @@ excluding `tests/*`):
 - **Game executable:** Godot export (`RoadRageTrip.exe`, `.pck`).
 - **Server:** `server/RoadRageServer.exe` and `_internal/`: Python and the
   runtime packages, plus `src/theroadragetrip/{img,sounds,assets}` and
-  `sample_osm.json`.
+  `sample_osm.json.gz`.
 - **osmium-tool:** `server/osmium/`, with its libraries.
 - **Not shipped:** world and tile caches, the Finland `.osm.pbf` (the player
   downloads it), the ai-audio-studio project and its reference voices.
@@ -79,7 +79,7 @@ confirming that no closer coupling exists belongs to legal review.
 
 ### Map data (OpenStreetMap, ODbL 1.0)
 
-- `places.json` is a derived database: 244 airports and stations, each keeping
+- `places.json.gz` is a derived database: 244 airports and stations, each keeping
   its OSM id, extracted from Geofabrik's `finland-latest.osm.pbf` of 2026-09-09.
   It stays under ODbL with its notice (in `DATA_LICENSES.txt`) and ships whole,
   so the database itself is what is offered.
@@ -112,7 +112,7 @@ confirming that no closer coupling exists belongs to legal review.
 | 260 chatter clips (`sounds/`) | Azure Speech (`utils/ttsazure.py`) and/or Chatterbox cloning `voices/female/default.wav` | **Unresolved:** the tool and voice per file are not recorded |
 | Images and icons (`img/`, `assets/*.png`, `*.ico`, `*.xpm`) | Not recorded | **Unresolved** |
 | Chatter lines (JSON) | Presumably written for the game | Conditional: confirm they are original |
-| `sample_osm.json` | Synthetic-looking ids; origin not recorded | **Unresolved** |
+| `sample_osm.json.gz` | Synthetic-looking ids; origin not recorded | **Unresolved** |
 
 ### Runtime services
 
@@ -131,7 +131,7 @@ confirming that no closer coupling exists belongs to legal review.
 | Chatter voices | Per-file tool and voice; Azure output terms; consent for cloned voices | Record the provenance; regenerate where it can't be established |
 | Sound effects | The Stable Audio Open licence as accepted | Archive the licence text; confirm the commercial terms; legal review |
 | Images and icons | Origin and licence per image | Record the origin; if AI-generated, the service's terms; replace any without clear rights |
-| `sample_osm.json` | Its origin | Record it (synthetic means project-owned; copied from OSM means ODbL) |
+| `sample_osm.json.gz` | Its origin | Record it (synthetic means project-owned; copied from OSM means ODbL) |
 | OSM tiles and Nominatim | Fit with the usage policies at commercial scale | Review the policies; a commercial or self-hosted provider |
 
 ## Commercial-release checklist
@@ -149,7 +149,7 @@ confirming that no closer coupling exists belongs to legal review.
 - [ ] Chatter voices: provenance per file, terms, consent.
 - [ ] Sound effects: archive the model licence and confirm its terms.
 - [ ] Images: origin and licence per image.
-- [ ] `sample_osm.json`: origin recorded.
+- [ ] `sample_osm.json.gz`: origin recorded.
 - [ ] OSM tile and Nominatim use reviewed for a commercial release.
 - [ ] Legal review of the flagged items (GPL aggregate, CC BY-SA scope, generated media, sports data).
 

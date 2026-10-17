@@ -3,6 +3,7 @@
 Run with: PYTHONPATH=src python utils/benchmark_world_cache.py
 """
 
+import gzip
 import json
 import tempfile
 import time
@@ -24,7 +25,7 @@ def timed(function):
 
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
-    with (root / "sample_osm_large.json").open(encoding="utf-8") as stream:
+    with gzip.open(root / "sample_osm_large.json.gz", "rt", encoding="utf-8") as stream:
         elements, parse_ms, parse_memory = timed(lambda: json.load(stream)["elements"])
     world, process_ms, process_memory = timed(lambda: build_ways(elements))
     with tempfile.TemporaryDirectory() as directory:

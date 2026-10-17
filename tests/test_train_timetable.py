@@ -201,7 +201,7 @@ def test_importer_builds_weekly_masks_identities_and_merges_duplicate_runs():
     document = importer.convert(_gtfs_zip(), today=date(2026, 9, 25), downloaded_at="2026-09-25T00:00:00Z")
     assert document["reference_week"] == MONDAY.isoformat()
     # Platforms -> station; each matched by station code to the OSM station
-    # in the committed places.json (its coordinates appended).
+    # in the committed places.json.gz (its coordinates appended).
     assert document["stations"] == {
         "HKI": [60.17, 24.94, "Helsinki", 60.172097, 24.941249],
         "OL": [65.01, 25.48, "Oulu", 65.011332, 25.484336],

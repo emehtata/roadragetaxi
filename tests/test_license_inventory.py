@@ -1,4 +1,5 @@
 """The licensing inventory covers everything shipped (LICENSE_AUDIT.md)."""
+import gzip
 import json
 import sys
 from pathlib import Path
@@ -12,6 +13,17 @@ import collect_licenses  # noqa: E402
 
 def test_every_shipped_file_and_package_has_a_licensing_entry():
     assert check.main() == 0
+
+
+def test_external_json_datasets_are_gzipped_without_plain_duplicates():
+    paths = [ROOT / name for name in ("sample_osm.json.gz", "sample_osm_large.json.gz",
+                                      "tests/fixtures/oulu_waters.json.gz")]
+    paths.extend((ROOT / "src/theroadragetrip/assets").glob("*.json.gz"))
+    assert ROOT / "src/theroadragetrip/assets/places.json.gz" in paths
+    for path in paths:
+        assert not path.with_suffix("").exists(), path
+        with gzip.open(path, "rt", encoding="utf-8") as stream:
+            assert json.load(stream) is not None
 
 
 def test_a_new_unlisted_asset_or_package_is_reported():

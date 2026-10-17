@@ -75,10 +75,10 @@ caches remain usable; no PBF reindex/redownload or new fetch extent is needed.
 
 Files in this slice: `src/theroadragetrip/osm/build.py`,
 `src/theroadragetrip/world_cache.py`, `tests/test_coastline_geometry.py`,
-`tests/fixtures/oulu_waters.json`, this record, the main 0.18 progress record,
+`tests/fixtures/oulu_waters.json.gz`, this record, the main 0.18 progress record,
 and the supplied `.github/prompts/rrt-018-waters.md` task specification.
 
-`tests/fixtures/oulu_waters.json` contains only water/coastline features, relation
+`tests/fixtures/oulu_waters.json.gz` contains only water/coastline features, relation
 members and referenced nodes from the available local Oulu OSM cache. It preserves
 IDs/tags and topology, projected once into EPSG:3067, independent of process-wide
 fake pyproj modules in older tests. Source/attribution and bounds are embedded.

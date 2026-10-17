@@ -2,7 +2,7 @@
 """Extract fixed world places (airports, railway stations, ...) from an OSM
 PBF into a small committed JSON file the game loads at runtime.
 
-    python tools/osm/extract_places.py INPUT.osm.pbf OUTPUT.json
+    python tools/osm/extract_places.py INPUT.osm.pbf OUTPUT.json.gz
 
 Build-time only: the game reads the JSON (theroadragetrip.world_places),
 never the PBF. Independent of the (disabled) BIN road pipeline. Categories
@@ -17,6 +17,7 @@ sorted JSON.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import math
 import os
@@ -315,14 +316,17 @@ def build_document(input_path: Path, places: List[dict]) -> dict:
 
 
 def write_json(document: dict, output_path: Path) -> None:
-    """Atomic (temp + rename); one place per line keeps diffs readable."""
+    """Atomic (temp + rename); deterministic gzip for .gz destinations."""
     lines = [json.dumps({k: v for k, v in document.items() if k != "places"}, ensure_ascii=False)[:-1] + ', "places": [']
     places = document["places"]
     for index, place in enumerate(places):
         lines.append("  " + json.dumps(place, ensure_ascii=False) + ("," if index < len(places) - 1 else ""))
     lines.append("]}")
     temporary = output_path.with_name(output_path.name + ".tmp")
-    temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    payload = ("\n".join(lines) + "\n").encode("utf-8")
+    if output_path.suffix == ".gz":
+        payload = gzip.compress(payload, mtime=0)
+    temporary.write_bytes(payload)
     temporary.replace(output_path)
 
 
@@ -338,7 +342,7 @@ def validate_input(input_path: Path, output_path: Path) -> None:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("input", type=Path, help="OSM extract, e.g. finland-latest.osm.pbf")
-    parser.add_argument("output", type=Path, help="JSON to write, e.g. src/theroadragetrip/assets/places.json")
+    parser.add_argument("output", type=Path, help="JSON to write, e.g. src/theroadragetrip/assets/places.json.gz")
     args = parser.parse_args(argv)
     try:
         validate_input(args.input, args.output)

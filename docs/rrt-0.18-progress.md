@@ -747,3 +747,30 @@ are not provided by the current model; unusually long/short games retain the
 existing estimated duration. No rendered game replay or Windows build here.
 Server/arena/version suites: **57 passed, 1 deselected** (local-socket test),
 seed 743673077. Compile and diff checks pass.
+
+### Store remaining external JSON datasets as gzip (2026-10-17)
+
+Converted the OSM-derived places database and Oulu water regression extract to
+`.json.gz`; also converted both offline OSM samples because their provenance
+is unresolved. Existing municipality, name, sports-fixture and railway datasets
+were already gzip. The four converted files shrink from **698,558 to 181,234
+bytes**, with decompressed bytes verified identical to the prior git versions.
+Plain originals are replaced, not retained alongside compressed copies; they
+remain recoverable from git history. No rewrite of history, user saves or caches.
+
+Updated places/sample readers, GTFS-to-OSM station matching, the places exporter,
+coastline fixture tests, benchmark, PyInstaller Windows sample bundle, licence
+inventory/notices and documentation paths. The exporter retains atomic rename
+and produces deterministic gzip (`mtime=0`). Custom plain JSON inputs remain
+supported by the places and sample loaders. A truncated-gzip regression checks
+graceful places fallback; a dataset check rejects plain duplicates and validates
+all bundled gzip JSON. Added the external-dataset policy to Copilot instructions.
+Project-owned manifests/configuration, dialogue and performance reports remain
+plain JSON; no provenance or licence status is changed by compression.
+
+Focused suites before the final policy test: **151 passed, 1 deselected**
+(local-socket test). Godot: **920 checks, 0 failed**, with existing diagnostics.
+Full Python suite: **1,835 passed, 2 skipped** in 90.36 s, seed 743673077.
+The previously timing-sensitive networking checks passed in this run (no claim
+that their fixed-wait sensitivity was repaired). Compile/diff checks pass. Windows packaging was
+updated but an actual Windows executable/installer has not been built here.
