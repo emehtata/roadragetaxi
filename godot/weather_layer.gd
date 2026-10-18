@@ -50,6 +50,9 @@ var splash_node: Node2D
 var _rng := RandomNumberGenerator.new()
 var _ripple_points := PackedVector2Array()
 var _ripple_colors := PackedColorArray()
+var precipitation_enabled := true
+var ripples_enabled := true
+var splashes_enabled := true
 
 
 func _init() -> void:
@@ -94,27 +97,30 @@ func update(delta: float, state: Dictionary, taxi: Vector2, underground: bool) -
 	var started := Time.get_ticks_usec()
 	kind = "" if underground else falling(state)  # render: no rain or sky underground
 	clock += delta
-	advance_particles(delta)
+	if precipitation_enabled:
+		advance_particles(delta)
 	if precipitation != null:
-		precipitation.visible = kind != ""
-		if kind != "":
+		precipitation.visible = precipitation_enabled and kind != ""
+		if precipitation.visible:
 			precipitation.queue_redraw()
 	var wetness := float(state.get("weather", {}).get("wetness", 0.0)) if state.get("weather") is Dictionary else 0.0
 	if ripples != null:
-		ripples.visible = kind != "" and wetness > 0.0  # ambient ripples only while it falls
+		ripples.visible = ripples_enabled and kind != "" and wetness > 0.0  # ambient ripples only while it falls
 		if ripples.visible:
 			ripples.queue_redraw()
 	var player: Dictionary = state.get("player", {}) if state.get("player") is Dictionary else {}
 	var speed := absf(float(player.get("speed", 0.0)))
 	var probe := maxf(float(player.get("length_m", 4.4)), float(player.get("width_m", 1.8))) * 0.5
-	var in_puddle: bool = not underground and not state.get("on_foot", true) and speed >= SPLASH_MIN_SPEED_MPS \
+	var in_puddle: bool = splashes_enabled and not underground and not state.get("on_foot", true) and speed >= SPLASH_MIN_SPEED_MPS \
 		and puddle_at(taxi, probe, wetness) != null
 	if in_puddle and not was_in_puddle:
 		spawn_splash(taxi, minf(1.0, speed * 3.6 / 60.0))
 	was_in_puddle = in_puddle
+	if not splashes_enabled:
+		splashes.clear()
 	age_splashes(delta)
 	if splash_node != null:
-		splash_node.visible = not splashes.is_empty()
+		splash_node.visible = splashes_enabled and not splashes.is_empty()
 		if splash_node.visible:
 			splash_node.queue_redraw()
 	Perf.add("weather", Time.get_ticks_usec() - started)

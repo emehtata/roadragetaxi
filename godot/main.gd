@@ -107,6 +107,7 @@ var override_rain := -1.0
 var override_train_at := Vector2.INF
 var override_wetness := -1.0  # audio test: a moving train here (presentation only)
 var language := "en"
+var graphics: Dictionary = {}  # empty for direct scenes/tests; the launcher supplies saved defaults
 
 
 var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
@@ -116,6 +117,8 @@ var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, m
 
 
 func _ready() -> void:
+	if graphics.has("buildings_3d"):
+		MapChunk.buildings_3d = graphics["buildings_3d"]
 	_apply_language()
 	_build_help()
 	_build_inspector()
@@ -188,6 +191,7 @@ func _ready() -> void:
 		_engine_on = true  # automated runs drive straight away: no sign, no hints
 		_entered_taxi = true
 	instruments.layout = hud_layout
+	_apply_graphics()
 	hud.layout = hud_layout
 	phone.layout = hud_layout
 	sim.world_received.connect(_on_world)
@@ -206,6 +210,27 @@ func _ready() -> void:
 		if at + 1 < args.size() and not args[at + 1].begins_with("--"):
 			tester.out_path = args[at + 1]
 		add_child(tester)
+
+
+func set_graphics(options: Dictionary) -> void:
+	graphics = options.duplicate()
+	if is_node_ready():
+		_apply_graphics()
+
+
+func _apply_graphics() -> void:
+	map_layer.set_shadows_enabled(graphics.get("shadows", true))
+	weather.precipitation_enabled = graphics.get("precipitation", true)
+	weather.ripples_enabled = graphics.get("water_ripples", true)
+	weather.splashes_enabled = graphics.get("splashes", true)
+	entities.smoke_enabled = graphics.get("vehicle_smoke", true)
+	for effect in [[weather.precipitation, "precipitation"], [weather.ripples, "water_ripples"], [weather.splash_node, "splashes"]]:
+		if not graphics.get(effect[1], true):
+			effect[0].hide()
+	entities.queue_redraw()
+	if not graphics.get("lightning_flashes", true):
+		flash.hide()
+	# 3D/2D geometry stays consistent across loaded and incoming chunks until the next session.
 
 
 func set_language(value: String) -> void:
@@ -608,7 +633,7 @@ func _present(state: Dictionary) -> void:
 	entities.light_level = lights
 	night.show_lights(lights, view, entities.headlight_beams() if lights > 0.01 else [])
 	Perf.add("night_beams", Time.get_ticks_usec() - night_started)
-	var lightning: float = entities.lightning_now()
+	var lightning: float = entities.lightning_now() if graphics.get("lightning_flashes", true) else 0.0
 	if not is_equal_approx(flash.color.a, lightning):
 		flash.color.a = lightning
 	flash.visible = lightning > 0.0  # godot-18: an invisible full-screen rect is still blended every frame

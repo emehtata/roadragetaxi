@@ -58,6 +58,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
 	test_i18n()
+	test_graphics_settings()
 	test_chunk_queue()
 	test_interpolation()
 	test_vehicle_body_triangles()
@@ -322,6 +323,72 @@ func test_i18n() -> void:
 		check(fi_args == en_args, "translation format arguments match: " + key)
 		var de_args := pattern.search_all(I18n.DE[key]).map(func(m): return m.get_string())
 		check(fi_args == de_args, "German format arguments match: " + key)
+
+
+func test_graphics_settings() -> void:
+	var Graphics := preload("res://graphics_settings.gd")
+	var config := ConfigFile.new()
+	check(Graphics.read(config) == Graphics.DEFAULTS, "graphics: defaults preserve current visuals")
+	config.set_value("graphics", "shadows", "false")
+	check(Graphics.read(config).shadows, "graphics: malformed non-boolean settings use defaults")
+	for key in Graphics.DEFAULTS:
+		config.set_value("graphics", key, false)
+		for lang in I18n.LANGUAGES:
+			check(I18n.text("graphics_" + key, lang) != "graphics_" + key and I18n.text("help_graphics_" + key, lang) != "help_graphics_" + key, "graphics labels/help translated: " + key + " " + lang)
+	check(config.save("user://graphics-test.cfg") == OK, "graphics: settings saved")
+	var reloaded := ConfigFile.new()
+	check(reloaded.load("user://graphics-test.cfg") == OK and Graphics.read(reloaded).values().all(func(on): return on == false), "graphics: all disabled choices survive reload")
+	DirAccess.remove_absolute("user://graphics-test.cfg")
+	var previous_3d: bool = MapChunk.buildings_3d
+	var main: Node = load("res://main.tscn").instantiate()
+	main.set_graphics(Graphics.read(reloaded))
+	root.add_child(main)
+	check(not MapChunk.buildings_3d, "graphics: new session selects the existing 2D fallback")
+	check(not main.entities.smoke_enabled and not main.map_layer.shadows_enabled, "graphics: live render flags applied")
+	var weather = main.weather
+	var state := {"weather": {"weather_type": "rain", "wetness": 1.0}, "player": {"speed": 20.0}, "on_foot": false}
+	var original: Dictionary = state.duplicate(true)
+	var positions: PackedFloat32Array = weather.particles.duplicate()
+	weather.spawn_splash(Vector2.ZERO, 1.0)
+	weather.update(0.1, state, Vector2.ZERO, false)
+	check(not weather.precipitation.visible and not weather.ripples.visible and not weather.splash_node.visible, "graphics: disabled weather visuals stay hidden")
+	check(weather.particles == positions and weather.splashes.is_empty(), "graphics: disabled particles and splashes stop work")
+	check(state == original, "graphics: weather/driving state is untouched")
+	main.set_graphics(Graphics.DEFAULTS)
+	check(not MapChunk.buildings_3d, "graphics: changing building mode waits until next session")
+	weather.update(0.1, state, Vector2.ZERO, false)
+	check(weather.precipitation.visible and weather.ripples.visible and weather.particles != positions, "graphics: weather effects resume live")
+	check(main.entities.smoke_enabled and main.map_layer.shadows_enabled, "graphics: live flags restored")
+	main.free()
+	main = load("res://main.tscn").instantiate()
+	main.set_graphics(Graphics.DEFAULTS)
+	root.add_child(main)
+	check(MapChunk.buildings_3d, "graphics: next session uses saved 3D selection")
+	main.free()
+	MapChunk.buildings_3d = previous_3d
+	var B3 := preload("res://buildings_3d.gd")
+	var layer := B3.new()
+	root.add_child(layer)
+	layer.set_sun(40.0, 180.0, 0.0)
+	layer.set_shadows_enabled(false)
+	check(not layer._sun.visible and not layer._sun.shadow_enabled and not layer._shadow_sprite.visible and layer._shadow_view.render_target_update_mode == SubViewport.UPDATE_DISABLED, "graphics: shadows disable the light and render pass")
+	layer.set_sun(40.0, 180.0, 0.0)
+	check(not layer._sun.visible, "graphics: ordinary sun updates cannot re-enable disabled shadows")
+	layer.set_shadows_enabled(true)
+	check(layer._sun.visible and layer._sun.shadow_enabled and layer._shadow_sprite.visible and layer._shadow_view.render_target_update_mode == SubViewport.UPDATE_ALWAYS, "graphics: same sunlight restores shadows immediately")
+	layer.free()
+	var shell := preload("res://startup.gd").new()
+	root.add_child(shell)
+	shell._language = "de"
+	shell._graphics_menu()
+	var toggles: Array = shell._body.find_children("*", "CheckButton", true, false)
+	check(toggles.size() == Graphics.DEFAULTS.size(), "graphics: submenu exposes every option")
+	for toggle in toggles:
+		check(not toggle.text.begins_with("graphics_"), "graphics: menu labels reach the chosen language")
+	var first = toggles[0]
+	first.button_pressed = not first.button_pressed
+	check(shell._settings.get_value("graphics", "shadows") == first.button_pressed, "graphics: toggling saves the matching setting")
+	shell.free()
 
 
 func test_interpolation() -> void:

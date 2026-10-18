@@ -107,6 +107,26 @@ on the map; **N** is not a separate route-only toggle.
 
 ## Maps, settings and saved data
 
+### Graphics options
+
+**Settings → Graphics** has independent on/off switches, all enabled by default:
+
+- Building shadows (with 3D buildings).
+- 3D buildings: off uses the existing 2D building renderer. Start a new
+  session to apply this option; it never removes building collision geometry.
+- Water and puddle ripples.
+- Rain and snow particles.
+- Tyre splashes.
+- Vehicle smoke and exhaust.
+- Lightning flashes (thunder sounds remain).
+
+All except the building renderer apply to the current session. Choices are
+saved under `[graphics]` in Godot's `settings.cfg`. Turning effects off does not
+change the simulation: rain, wet-road grip, snow accumulation, damage, traffic
+and collisions continue normally. Road-condition markings, traffic signals and
+night-driving lights are intentionally retained. Lower settings can reduce
+rendering work; the gain depends on the scene and graphics hardware.
+
 ### Map source
 
 Choose the map source in **Settings**:

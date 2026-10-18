@@ -8,6 +8,7 @@ const PBF_MAX_AGE_S := 30 * 24 * 60 * 60
 const T := preload("res://i18n.gd")
 const Paths := preload("res://paths.gd")
 const MapBrowser := preload("res://map_browser.gd")
+const Graphics := preload("res://graphics_settings.gd")
 
 var _server_pid := -1
 var _game: Node
@@ -71,6 +72,7 @@ func _ready() -> void:
 		if flag in command_line:
 			_game = preload("res://main.tscn").instantiate()
 			_game.language = _language
+			_game.set_graphics(Graphics.read(_settings))
 			add_child(_game)
 			move_child(_game, 1)
 			_panel.visible = false
@@ -668,6 +670,7 @@ func _settings_menu() -> void:
 		_settings_menu.call_deferred())
 	_with_help(language, "help_language")
 	_focusables.append(language)
+	_button(_t("graphics"), _graphics_menu)
 	var historical := CheckButton.new()  # FMI weather for the city and game time
 	historical.text = _t("historical_weather")
 	historical.button_pressed = _settings.get_value("game", "historical_weather", false)
@@ -726,6 +729,26 @@ func _settings_menu() -> void:
 	var back := _pause_menu if _game != null else _main_menu
 	_button(_t("back"), back)
 	_back_action = back
+	_focus_menu()
+
+
+func _graphics_menu() -> void:
+	_clear()
+	_title(_t("graphics").to_upper())
+	var options := Graphics.read(_settings)
+	for key in Graphics.DEFAULTS:
+		var toggle := CheckButton.new()
+		toggle.text = _t("graphics_" + key)
+		toggle.button_pressed = options[key]
+		toggle.toggled.connect(func(on: bool):
+			_settings.set_value("graphics", key, on)
+			_settings.save("user://settings.cfg")
+			if _game != null:
+				_game.set_graphics(Graphics.read(_settings)))
+		_with_help(toggle, "help_graphics_" + key)
+		_focusables.append(toggle)
+	_button(_t("back"), _settings_menu)
+	_back_action = _settings_menu
 	_focus_menu()
 
 
@@ -798,6 +821,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		return
 	_game = preload("res://main.tscn").instantiate()
 	_game.language = _language
+	_game.set_graphics(Graphics.read(_settings))
 	_game.get_node("SimClient").connection_changed.connect(_server_connected)
 	add_child(_game)
 	move_child(_game, 1)

@@ -45,6 +45,7 @@ var _shadow_view: SubViewport
 var _shadow_camera: Camera3D
 var _shadow_sprite: Sprite2D
 var _sun_key := Vector3(INF, INF, INF)  # the (altitude, azimuth, cloud) applied last
+var shadows_enabled := true
 
 
 static func _make_material(flat := false) -> Material:
@@ -126,16 +127,25 @@ static func make_shadow_ground() -> MeshInstance3D:
 	return ground
 
 
-## The sun from the server (Daylight): its direction, and how strong its
-## shadows are by altitude and cloud cover. Applied only when it changed
-## (the server rounds to 0.01 degrees); off at night and under overcast.
+func set_shadows_enabled(on: bool) -> void:
+	if on == shadows_enabled:
+		return
+	shadows_enabled = on
+	_sun.shadow_enabled = on
+	var previous := _sun_key
+	_sun_key = Vector3(INF, INF, INF)
+	if is_finite(previous.x):
+		set_sun(previous.x, previous.y, previous.z)
+
+
+## Sun direction/strength from the server, cached until the weather or option changes.
 func set_sun(altitude_deg: float, azimuth_deg: float, cloud_cover: float) -> void:
 	var key := Vector3(altitude_deg, azimuth_deg, cloud_cover)
 	if key.is_equal_approx(_sun_key):
 		return
 	_sun_key = key
 	var strength := Daylight.sunlight(altitude_deg, cloud_cover)
-	var on := strength > 0.01
+	var on := shadows_enabled and strength > 0.01
 	_sun.visible = on
 	_shadow_ground.visible = on
 	_shadow_sprite.visible = on

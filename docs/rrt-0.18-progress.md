@@ -807,6 +807,43 @@ downloaded-font appearance remains unverified. No site deployment or release
 tag; no game/simulation, user-save or audio changes. Download labels should be
 updated again only after 0.18 is actually published.
 
+### Client graphics options (2026-10-18, master)
+
+Added Settings → Graphics with saved, default-on switches for building sun
+shadows, 3D buildings, water/puddle ripples, precipitation particles, tyre
+splashes, vehicle smoke/exhaust and lightning flashes. Labels and help cover
+Finnish, English and German. Startup reads boolean values from `[graphics]` in
+Godot `user://settings.cfg` for normal and skip-menu launches. Changes to effects
+apply live; 3D/2D choice applies on the next session, explicitly labelled, to
+avoid rebuilding every loaded chunk or mixing renderer modes during streaming.
+The existing 2D renderer retains visible buildings and all server collisions.
+CLI `--buildings` remains an explicit presentation override.
+
+Disabling shadows turns off the sun's shadow generation and shadow viewport;
+re-enabling invalidates the solar cache so the same sun position works again.
+Map layers created later inherit the shadow setting. Disabled precipitation
+does not advance particles; disabled ripples hide and stop scheduling the
+water/puddle scan. Disabled splashes skip puddle probing/spawning and clear
+old rings. Smoke returns before puff drawing. Lightning hides the flash only,
+leaving thunder and weather alone. No simulation commands/rules, physics,
+weather accumulation, collision/map layers or saves were altered.
+
+Other candidates considered: seasonal decorations/fireworks and vegetation
+animation are cosmetic but not included in this first set. Headlights, street
+lighting, traffic controls, road snow/wetness, tyre tracks and obstacles remain
+visible because they communicate driving conditions or hazards. No FPS gain is
+claimed without rendered hardware measurements. README describes the options.
+
+Verification: **1,863 Python tests passed, 2 skipped** (92.31 s, seed 743673077).
+Godot: **1,579 checks passed, zero failed**, including saved/default/malformed
+values, all-language labels/help, disabled weather work and unchanged input
+state, re-enabling, 2D/3D session selection, shadow-viewport shutdown/restoration
+at identical sun coordinates, and submenu persistence. Existing test-harness
+anchor/input warnings and exit resource-leak diagnostics remain. Thirteen
+focused packaging/render-style/localization/version tests also passed; diff
+checks pass. Tests use isolated user/config/cache paths; no player bank/save
+data used. No Windows build or interactive GPU benchmark performed.
+
 ### German game language (2026-10-18)
 
 Added Deutsch to first-run and settings language selection, persisted through

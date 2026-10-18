@@ -102,6 +102,7 @@ const CAR_SHAPES := [
 const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
 var taxi_sign_on := false  # the taxi being drawn is free for a fare (its roof light lit)
 var ploughing := false  # snowing: tractors carry a plough blade and a flashing beacon
+var smoke_enabled := true
 const TRACK_STYLES := {  # [faint, dark, width m]
 	"rubber": [Color8(110, 110, 110), Color8(28, 28, 28), 0.24], "dirt": [Color8(150, 138, 118), Color8(105, 68, 38), 0.75],
 	"sand": [Color8(222, 208, 170), Color8(178, 158, 114), 0.75], "snow": [Color8(214, 226, 232), Color8(142, 169, 181), 0.30],
@@ -816,6 +817,8 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 ## Four rising, fading puffs (crash smoke and exhaust; sizes in screen
 ## pixels). `behind` trails them out of the back.
 func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false) -> void:
+	if not smoke_enabled:
+		return
 	var f := _forward(heading)
 	var r := _right(heading)
 	var base := c + f * (length * 0.4) * (-1.0 if behind else 1.0)

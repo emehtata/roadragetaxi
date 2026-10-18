@@ -30,6 +30,7 @@ var _flood_group: Node2D  # every loaded chunk's floodlit sports places
 var sports_hours := false  # state calendar.sports_lights: 07-22, when floodlights may burn
 var arena_lights_on := false
 var building_view_centre := Vector2.ZERO
+var shadows_enabled := true
 
 
 func _make_pool_group() -> void:
@@ -98,6 +99,7 @@ func _layer_3d() -> Node2D:
 	if buildings_3d == null:
 		buildings_3d = Buildings3D.new()  # its sprites carry their own z (7, lit windows 21)
 		add_child(buildings_3d)
+		buildings_3d.set_shadows_enabled(shadows_enabled)
 		buildings_3d.set_arena_lights(arena_lights_on)
 		buildings_3d.set_snow(float(season[0]))
 	return buildings_3d
@@ -163,6 +165,12 @@ var _ambient := Color.WHITE  # the world's ambient multiply (set_light): the gro
 
 
 ## rrt-018-shadows: the sun for the 3D buildings' shadows (Buildings3D.set_sun).
+func set_shadows_enabled(on: bool) -> void:
+	shadows_enabled = on
+	if buildings_3d != null:
+		buildings_3d.set_shadows_enabled(on)
+
+
 func set_sun(altitude_deg: float, azimuth_deg: float, cloud_cover: float) -> void:
 	if MapChunk.buildings_3d:
 		_layer_3d().set_sun(altitude_deg, azimuth_deg, cloud_cover)
