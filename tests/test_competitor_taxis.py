@@ -4,10 +4,12 @@ import math
 import random
 from types import SimpleNamespace
 
+import pytest
+
 from theroadragetrip.competitor_taxis import (
     CLAIM_RADIUS_M, MAX_ROUTE_ATTEMPTS, STOP_DWELL_S, Dispatcher, TaxiJob, is_competitor, make_competitor,
 )
-from theroadragetrip.npc import NPCState, NPCVehicleManager, spawn_npc
+from theroadragetrip.npc import NPCState, NPCVehicleManager, PathPoint, place_parked_npc, spawn_npc
 from theroadragetrip.osm import Way
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
@@ -79,12 +81,13 @@ def _city_block_grid(blocks=8, step=60.0):
     return ways
 
 
-def test_a_competitor_drives_a_fare_from_pickup_to_dropoff_on_real_roads():
+@pytest.mark.parametrize("kind", ["car", "van"])
+def test_a_competitor_drives_a_fare_from_pickup_to_dropoff_on_real_roads(kind):
     random.seed(4)
     ways = _city_block_grid()
     traffic_world = TrafficWorld(ways)
     residents = ResidentManager()
-    _, driver, taxi = spawn_npc(1, residents, traffic_world, ways, (30.0, 0.0), (90.0, 0.0))
+    _, driver, taxi = spawn_npc(1, residents, traffic_world, ways, (30.0, 0.0), (90.0, 0.0), vehicle_type=kind)
     taxi.state = NPCState.PARKED  # waiting for a fare at the roadside
     make_competitor(taxi)
     manager = NPCVehicleManager(target_count=1, spawn_radius_m=300.0, vehicle_distribution={"car": 1.0})
@@ -109,3 +112,35 @@ def test_a_competitor_drives_a_fare_from_pickup_to_dropoff_on_real_roads():
         target = pickup if leg == "pickup" else dropoff
         assert math.hypot(x - target[0], y - target[1]) < 80.0, (leg, x, y)
     assert aboard_the_whole_time and is_competitor(taxi) and taxi.is_taxi
+
+
+@pytest.mark.parametrize("kind", ["car", "van", "truck", "bus"])
+def test_transit_taxi_selection_preserves_paint_dimensions_and_seats(kind):
+    from theroadragetrip.protocol import _npc_to_dict
+    from theroadragetrip.vehicles import vehicle_definition
+
+    road = Way(points_m=[(-100, 0), (200, 0)], highway="residential", half_width_m=5)
+    paint = (35, 70, 45)
+    vehicle = place_parked_npc(1, (0, -2.5), None, ways=[road], vehicle_type=kind, color=paint)
+    assert vehicle is not None
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    path = [PathPoint(0, -2.5, road), PathPoint(80, -2.5, road)]
+    assert manager._apply_transit_spawn((vehicle, (path, (80, -2.5), None, False)), residents, []) is not None
+    assert is_competitor(vehicle) == (kind in ("car", "van"))
+    definition = vehicle_definition(kind)
+    assert vehicle.color == paint
+    assert (vehicle.length_m, vehicle.width_m, vehicle.capacity) == (definition.length_m, definition.width_m, definition.capacity)
+    assert len(vehicle.trip_group.member_resident_ids) <= vehicle.capacity
+    published = _npc_to_dict(vehicle, residents.residents)
+    assert published["color"] == list(paint) and published["vehicle_type"] == kind
+    assert published["is_taxi"] == (kind in ("car", "van"))
+
+
+def test_competitor_taxis_keep_the_existing_colour_variation():
+    from theroadragetrip.npc import NPC_VEHICLE_COLORS
+
+    for paint in NPC_VEHICLE_COLORS:
+        vehicle = SimpleNamespace(color=paint)
+        make_competitor(vehicle)
+        assert vehicle.color == paint and vehicle.is_taxi

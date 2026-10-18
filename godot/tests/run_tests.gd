@@ -776,6 +776,14 @@ func test_rendering() -> void:
 	free_taxi._vehicle(Vector2.ZERO, 0.0, 4.5, 1.8, RS.TAXI_BODY, "car", true, true, false, false, "", 0.0)
 	check(free_taxi._lamp_polys.any(func(lamp): return lamp[1] == RS.TAXI_SIGN), "a free taxi's roof sign shines")
 	free_taxi.free()
+	var van_taxi := Entities.new()
+	van_taxi._tint = Color.WHITE
+	van_taxi.taxi_sign_on = true
+	var van_paint := Color8(245, 245, 245)
+	van_taxi._vehicle(Vector2.ZERO, 0.0, 5.2, 2.0, van_paint, "van", true, true, false, false, "", 0.0)
+	check(van_taxi._lamp_polys.any(func(lamp): return lamp[1] == RS.TAXI_SIGN), "a van taxi retains its illuminated roof sign")
+	check(van_taxi._car_shapes.any(func(shape): return shape[0] == "poly" and shape[2] == van_paint), "a van taxi keeps its own paint instead of becoming yellow")
+	van_taxi.free()
 
 	# Wet roads: darken 90/255 at full wetness, no sheen below 0.15.
 	var dry := RS.wet_alphas(0.0)

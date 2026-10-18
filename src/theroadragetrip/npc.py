@@ -4590,7 +4590,7 @@ class NPCVehicleManager:
         if speed is None:
             release_npc_parking_reservation(vehicle)
             return None
-        if vehicle.vehicle_type == "car" and sum(map(is_competitor, self.vehicles)) < self.competitor_taxis:
+        if vehicle.vehicle_type in ("car", "van") and sum(map(is_competitor, self.vehicles)) < self.competitor_taxis:
             make_competitor(vehicle)  # (docs/competitor-taxis.md: it drives on, then waits parked for a fare)
         driver = _apply_npc_trip(vehicle, resident_manager, plan)
         if speed > 0:

@@ -16,7 +16,6 @@ CLAIM_RATE_PER_S = 1.0 / 30.0  # ...this often: offers stay on the phone a while
 DISPATCH_INTERVAL_S = 1.0
 STOP_DWELL_S = 6.0  # at a stop: the passenger boards or leaves
 MAX_ROUTE_ATTEMPTS = 5  # a leg that cannot be routed this often: the job is dropped
-TAXI_COLOR = (240, 200, 40)
 
 
 @dataclass
@@ -65,7 +64,6 @@ def is_competitor(vehicle) -> bool:
 def make_competitor(vehicle) -> None:
     vehicle.vehicle_kind = "taxi"
     vehicle.is_taxi = True
-    vehicle.color = TAXI_COLOR
 
 
 class Dispatcher:

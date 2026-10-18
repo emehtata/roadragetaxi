@@ -11,6 +11,11 @@ Phase 1 (below) is implemented. Competitors are ordinary NPC cars of
 `vehicle_kind == "taxi"`, driven by the NPC system with all its traffic
 rules, and dispatched by `competitor_taxis.py`.
 
+NPC taxis can be cars or vans and retain the normal NPC paint variation
+(white, black, grey, silver and other colours). Van dimensions, appearance,
+collision body and capacity come from the existing van definition; conversion
+only adds the taxi role and roof sign. The player's own taxi stays yellow.
+
 ## Earlier implementation (analysed, replaced)
 
 An August 2026 version (commits 58a3afc, 4913567) spawned "rival taxis"
