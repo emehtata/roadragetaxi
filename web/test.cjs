@@ -87,7 +87,7 @@ for (const language of ['fi', 'en']) {
       assert.doesNotMatch(JSON.stringify(t), /tuleva päivitys|tulevassa päivityksessä|seuraava päivitys|next update|upcoming update|development branch|kehityshaarassa/i);
       assert.match(t.notesKicker, /UUSIN VERSIO|LATEST VERSION/);
       assert.doesNotMatch(JSON.stringify(t), technicalCopy);
-      assert.match(nodes.get('.release-callout p').textContent, /0\.17\.1alpha/);
+      assert.match(nodes.get('.release-callout p').textContent, /Windows/);
       nodes.get('.language-toggle').listeners.click();
       assert.notEqual(document.documentElement.lang, current);
     }
@@ -95,10 +95,11 @@ for (const language of ['fi', 'en']) {
 }
 
 test('download links target the published installer and local images exist', () => {
-  assert.doesNotMatch(html, /0\.18\.0/);
+  assert.doesNotMatch(html.replace(/<[^>]*>/g, ''), /0\.18\.0/);
+  assert.doesNotMatch(html + script, /0\.17\.1alpha/);
   assert.doesNotMatch(html.replace(/<[^>]*>/g, ''), technicalCopy);
   const downloads = [...html.matchAll(/href="([^"]+releases\/download\/[^\"]+)"/g)];
   assert.equal(downloads.length, 3);
-  for (const [, url] of downloads) assert.equal(url, 'https://github.com/emehtata/roadragetaxi/releases/download/v0.17.1alpha/RoadRageTrip-Setup.exe');
+  for (const [, url] of downloads) assert.equal(url, 'https://github.com/emehtata/roadragetaxi/releases/download/v0.18.0alpha/RoadRageTrip-Setup.exe');
   for (const [, asset] of html.matchAll(/(?:src|href)="(assets\/[^\"]+)"/g)) assert(fs.existsSync(path.join(__dirname, asset)), asset);
 });

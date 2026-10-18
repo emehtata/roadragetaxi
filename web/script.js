@@ -55,7 +55,7 @@ const translations = {
       ['Keli jatkuu, vuoro vaihtuu', 'Palaa samaan paikkaan ja aikaan ilman yllättävää kelinvaihdosta. Sää pysyy aiempaa johdonmukaisempana pelikertojen välillä.'],
       ['Sujuvammin matkaan', 'Muut autot ilmestyvät turvallisemman välimatkan päähän, ja eksyneet kuskit löytävät paremmin takaisin reitille. Vähemmän turhia esteitä, enemmän ajamista.'],
     ],
-    releaseKicker: 'LADATTAVISSA / 0.17.1alpha', releaseTitle: 'Seuraava kyyti<br>odottaa.', releaseText: 'Lataa Windows-asennuspaketti 0.17.1alpha. Peli on kehitysvaiheessa: virheitä ja suorituskykyongelmia voi esiintyä.', releaseButton: 'Lataa Windows-asennus',
+    releaseKicker: 'LADATTAVISSA / WINDOWS', releaseTitle: 'Seuraava kyyti<br>odottaa.', releaseText: 'Lataa uusin Windows-asennuspaketti. Peli on kehitysvaiheessa: virheitä ja suorituskykyongelmia voi esiintyä.', releaseButton: 'Lataa Windows-asennus',
     scroll: 'VIERITÄ ALASPÄIN', toggle: 'Vaihda englanniksi',
   },
   en: {
@@ -114,7 +114,7 @@ const translations = {
       ['Another shift, familiar weather', 'Return to the same place and time without a surprise change of weather. Conditions stay more consistent between sessions.'],
       ['A smoother start to your shift', 'Other cars appear at safer distances, and lost drivers find their way back more reliably. Fewer needless obstacles. More driving.'],
     ],
-    releaseKicker: 'AVAILABLE / 0.17.1alpha', releaseTitle: 'Your next fare<br>is waiting.', releaseText: 'Download the 0.17.1alpha Windows installer. This is a work-in-progress alpha: bugs and performance issues remain.', releaseButton: 'Download Windows installer',
+    releaseKicker: 'AVAILABLE / WINDOWS', releaseTitle: 'Your next fare<br>is waiting.', releaseText: 'Download the latest Windows installer. This is a work-in-progress alpha: bugs and performance issues remain.', releaseButton: 'Download Windows installer',
     scroll: 'SCROLL TO EXPLORE', toggle: 'Switch to Finnish',
   },
 };
