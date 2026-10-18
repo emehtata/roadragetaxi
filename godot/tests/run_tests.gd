@@ -57,6 +57,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
+	test_vomit_puddle()
 	test_i18n()
 	test_graphics_settings()
 	test_chunk_queue()
@@ -323,6 +324,15 @@ func test_i18n() -> void:
 		check(fi_args == en_args, "translation format arguments match: " + key)
 		var de_args := pattern.search_all(I18n.DE[key]).map(func(m): return m.get_string())
 		check(fi_args == de_args, "German format arguments match: " + key)
+
+
+func test_vomit_puddle() -> void:
+	var entities := EntityLayer.new()
+	check(entities._vomit_triangles.size() == (EntityLayer.VOMIT_EDGE.size() - 2) * 3, "irregular vomit puddle triangulates completely")
+	check(EntityLayer.VOMIT_SPLASHES.size() >= 8 and EntityLayer.VOMIT_BITS.size() >= 5, "vomit includes detached splashes and contrasting texture")
+	for splash in EntityLayer.VOMIT_SPLASHES:
+		check(not Geometry2D.is_point_in_polygon(Vector2(splash.x, splash.y), entities._vomit_edge), "vomit splash is detached from the main puddle")
+	entities.free()
 
 
 func test_graphics_settings() -> void:

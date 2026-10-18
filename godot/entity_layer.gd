@@ -860,6 +860,35 @@ func _rotated_ellipse(c: Vector2, along: Vector2, rx: float, ry: float, color: C
 	_canvas.draw_set_transform(Vector2.ZERO)
 
 
+const VOMIT_EDGE := [Vector2(-1.15, -0.12), Vector2(-0.77, -0.34), Vector2(-0.89, -0.59),
+	Vector2(-0.3, -0.5), Vector2(0.05, -0.72), Vector2(0.33, -0.48), Vector2(0.88, -0.55),
+	Vector2(0.8, -0.24), Vector2(1.24, 0.02), Vector2(0.91, 0.19), Vector2(1.04, 0.43),
+	Vector2(0.47, 0.4), Vector2(0.13, 0.67), Vector2(-0.18, 0.46), Vector2(-0.69, 0.57),
+	Vector2(-0.6, 0.3), Vector2(-1.06, 0.28), Vector2(-0.93, 0.06)]
+const VOMIT_SPLASHES := [Vector3(-1.46, -0.3, 0.11), Vector3(-1.24, -0.75, 0.07),
+	Vector3(-0.44, -0.91, 0.12), Vector3(0.32, -1.02, 0.06), Vector3(1.09, -0.78, 0.09),
+	Vector3(1.52, -0.2, 0.14), Vector3(1.73, 0.12, 0.05), Vector3(1.34, 0.58, 0.08),
+	Vector3(0.56, 0.85, 0.13), Vector3(-0.16, 0.94, 0.06), Vector3(-0.99, 0.79, 0.09)]
+const VOMIT_BITS := [Vector3(-0.66, -0.15, 0.12), Vector3(-0.3, 0.26, 0.09),
+	Vector3(0.07, -0.32, 0.1), Vector3(0.39, 0.08, 0.15), Vector3(0.75, -0.23, 0.07),
+	Vector3(0.14, 0.39, 0.06), Vector3(-0.38, -0.37, 0.05)]
+var _vomit_edge := PackedVector2Array(VOMIT_EDGE)
+var _vomit_triangles := Geometry2D.triangulate_polygon(_vomit_edge)
+
+
+func _vomit_puddle(at: Vector2, world_position: Vector2) -> void:
+	# Stable world-space variation, never animated or affected by the camera origin.
+	var angle := fposmod(world_position.dot(Vector2(0.73, 0.37)), TAU)
+	draw_set_transform(at, angle)
+	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), _vomit_triangles, _vomit_edge, PackedColorArray([Color8(105, 115, 62)]))
+	for splash in VOMIT_SPLASHES:
+		draw_circle(Vector2(splash.x, splash.y), splash.z, Color8(112, 120, 64, 220))
+	for i in VOMIT_BITS.size():
+		var bit: Vector3 = VOMIT_BITS[i]
+		draw_circle(Vector2(bit.x, bit.y), bit.z, Color8(151, 143, 79) if i % 2 == 0 else Color8(78, 88, 43))
+	draw_set_transform(Vector2.ZERO)
+
+
 func _ellipse(c: Vector2, rx: float, ry: float, color: Color) -> void:
 	_canvas.draw_set_transform(c, 0.0, Vector2(rx, ry))
 	_canvas.draw_circle(Vector2.ZERO, 1.0, _person_lit(color))
@@ -1129,7 +1158,7 @@ func _draw() -> void:
 			if point.size() >= 2:
 				var at := MapMath.point(origin, point[0], point[1])
 				if view_rect.has_point(at):
-					_ellipse(at, 1.2, 0.7, Color8(105, 115, 62))
+					_vomit_puddle(at, Vector2(point[0], point[1]))
 		for print_point in a.get("vomit_footprints", []):
 			if print_point.size() >= 3:
 				var at := MapMath.point(origin, print_point[0], print_point[1])
