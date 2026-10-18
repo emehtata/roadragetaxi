@@ -736,17 +736,22 @@ func _graphics_menu() -> void:
 	_clear()
 	_title(_t("graphics").to_upper())
 	var options := Graphics.read(_settings)
+	var toggles := {}
 	for key in Graphics.DEFAULTS:
 		var toggle := CheckButton.new()
+		toggles[key] = toggle
 		toggle.text = _t("graphics_" + key)
 		toggle.button_pressed = options[key]
 		toggle.toggled.connect(func(on: bool):
 			_settings.set_value("graphics", key, on)
 			_settings.save("user://settings.cfg")
+			if key == "buildings_3d":
+				toggles["shadows"].disabled = not on
 			if _game != null:
 				_game.set_graphics(Graphics.read(_settings)))
 		_with_help(toggle, "help_graphics_" + key)
 		_focusables.append(toggle)
+	toggles["shadows"].disabled = not options["buildings_3d"]
 	_button(_t("back"), _settings_menu)
 	_back_action = _settings_menu
 	_focus_menu()

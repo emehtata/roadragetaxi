@@ -109,9 +109,10 @@ on the map; **N** is not a separate route-only toggle.
 
 ### Graphics options
 
-**Settings → Graphics** has independent on/off switches, all enabled by default:
+**Settings → Graphics** has on/off switches, all enabled by default:
 
-- Building shadows (with 3D buildings).
+- Building shadows: disabled when 3D buildings are off; the saved preference
+  is retained for re-enabling 3D. All other effects are independent.
 - 3D buildings: off uses flat footprints without extruded walls. Start a new
   session to apply this option; it never removes building collision geometry.
 - Water and puddle ripples.

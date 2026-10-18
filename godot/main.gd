@@ -219,7 +219,7 @@ func set_graphics(options: Dictionary) -> void:
 
 
 func _apply_graphics() -> void:
-	map_layer.set_shadows_enabled(graphics.get("shadows", true))
+	map_layer.set_shadows_enabled(MapChunk.buildings_3d and graphics.get("buildings_3d", true) and graphics.get("shadows", true))
 	weather.precipitation_enabled = graphics.get("precipitation", true)
 	weather.ripples_enabled = graphics.get("water_ripples", true)
 	weather.splashes_enabled = graphics.get("splashes", true)

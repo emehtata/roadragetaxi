@@ -358,12 +358,13 @@ func test_graphics_settings() -> void:
 	check(not MapChunk.buildings_3d, "graphics: changing building mode waits until next session")
 	weather.update(0.1, state, Vector2.ZERO, false)
 	check(weather.precipitation.visible and weather.ripples.visible and weather.particles != positions, "graphics: weather effects resume live")
-	check(main.entities.smoke_enabled and main.map_layer.shadows_enabled, "graphics: live flags restored")
+	check(main.entities.smoke_enabled and not main.map_layer.shadows_enabled, "graphics: independent effects resume but 2D cannot enable 3D shadows")
 	main.free()
 	main = load("res://main.tscn").instantiate()
 	main.set_graphics(Graphics.DEFAULTS)
 	root.add_child(main)
 	check(MapChunk.buildings_3d, "graphics: next session uses saved 3D selection")
+	check(main.map_layer.shadows_enabled, "graphics: 3D session restores the saved shadow preference")
 	main.free()
 	MapChunk.buildings_3d = previous_3d
 	var B3 := preload("res://buildings_3d.gd")
@@ -388,6 +389,15 @@ func test_graphics_settings() -> void:
 	var first = toggles[0]
 	first.button_pressed = not first.button_pressed
 	check(shell._settings.get_value("graphics", "shadows") == first.button_pressed, "graphics: toggling saves the matching setting")
+	var shadow_preference: bool = first.button_pressed
+	var buildings = toggles[1]
+	buildings.button_pressed = false
+	check(first.disabled, "graphics: flat buildings disable the shadow control immediately")
+	check(first.button_pressed == shadow_preference, "graphics: disabling shadows preserves the saved preference")
+	for toggle in toggles.slice(2):
+		check(not toggle.disabled, "graphics: other effects do not depend on 3D buildings")
+	buildings.button_pressed = true
+	check(not first.disabled and first.button_pressed == shadow_preference, "graphics: enabling 3D restores the shadow control and preference")
 	shell.free()
 
 
