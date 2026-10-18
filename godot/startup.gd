@@ -670,7 +670,7 @@ func _settings_menu() -> void:
 		_settings_menu.call_deferred())
 	_with_help(language, "help_language")
 	_focusables.append(language)
-	_button(_t("graphics"), _graphics_menu)
+	_button(_t("graphics") + " >", _graphics_menu)
 	var historical := CheckButton.new()  # FMI weather for the city and game time
 	historical.text = _t("historical_weather")
 	historical.button_pressed = _settings.get_value("game", "historical_weather", false)
