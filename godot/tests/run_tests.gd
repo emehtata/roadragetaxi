@@ -388,6 +388,14 @@ func test_decorated_sites() -> void:
 			check(Geometry2D.is_point_in_polygon(at, concave), "site details stay inside concave area boundaries")
 	check(Detail.site_detail_positions(polygon, "park", Vector2.ZERO).is_empty(), "ordinary parks do not receive cemetery or biergarten decorations")
 	check(Detail.site_detail_positions(PackedVector2Array(), "cemetery", Vector2.ZERO).is_empty(), "invalid areas have no site decorations")
+	var chunk := MapChunk.new()
+	chunk.setup({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "landuse": [
+		[[88, 112, 82], 1, [[0, 0], [100, 0], [100, 100], [0, 100]], "cemetery"],
+		[[80, 120, 80], 1, [[5, 5], [95, 5], [95, 95], [5, 95]]]]}, Vector2.ZERO)
+	check(chunk._season_layers.size() == 2, "decorated sites have a separate seasonal detail layer")
+	check(chunk._season_layers[0].z_index < chunk._season_layers[1].z_index and chunk._season_layers[1].z_index < MapChunk.road_z(0),
+		"headstones draw above all grass fills but below surface roads")
+	chunk.free()
 
 
 func test_graphics_settings() -> void:

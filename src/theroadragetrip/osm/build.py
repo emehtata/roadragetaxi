@@ -748,6 +748,11 @@ def build_ways(
                 parking_space_raw.append((tags, node_ids, way_id))
             elif tags.get("barrier") in ("fence", "railing", "hedge", "wall"):
                 railing_raw.append((tags, node_ids))
+                # A cemetery/biergarten boundary can also be its enclosing wall.
+                if node_ids[0] == node_ids[-1] and (
+                    tags.get("landuse") == "cemetery" or tags.get("amenity") in ("grave_yard", "biergarten")
+                ):
+                    scenery_raw.append((tags, node_ids))
             elif tags.get("railway") in ("rail", "light_rail", "tram", "narrow_gauge", "funicular"):
                 railway_raw.append((tags, node_ids, way_id))
             elif tags.get("natural") == "coastline":

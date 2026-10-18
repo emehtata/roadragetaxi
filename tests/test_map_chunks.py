@@ -6,6 +6,15 @@ import pytest
 from theroadragetrip import map_chunks
 
 
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard"])
+def test_point_sites_are_streamed_to_the_renderer(kind):
+    from theroadragetrip.osm import SceneryObject
+
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[],
+                            scenery_objects=[SceneryObject(10, 20, kind)])
+    assert map_chunks.ChunkIndex(world).message("0_0")["scenery_objects"] == [[10, 20, kind, 0.0]]
+
+
 def test_runtime_camera_updates_only_its_chunk_and_invalidates_wire_cache():
     from theroadragetrip.police import SpeedCamera
 

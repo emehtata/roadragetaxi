@@ -243,6 +243,22 @@ def test_biergarten_and_graveyard_nodes_get_visual_markers(kind):
     assert any(obj.kind == kind for obj in world.scenery_objects)
 
 
+@pytest.mark.parametrize("barrier", ["wall", "fence", "hedge", "railing"])
+@pytest.mark.parametrize("tags, kind", [({"landuse": "cemetery"}, "cemetery"),
+                                       ({"amenity": "grave_yard"}, "grave_yard"),
+                                       ({"amenity": "biergarten"}, "biergarten")])
+def test_enclosed_sites_preserve_both_ground_and_boundary(tags, kind, barrier):
+    elements = [
+        {"type": "node", "id": i + 1, "lat": lat, "lon": lon}
+        for i, (lon, lat) in enumerate([(25, 60), (25.02, 60), (25.02, 60.02), (25, 60.02)])
+    ]
+    elements.append({"type": "way", "id": 24971057, "nodes": [1, 2, 3, 4, 1],
+                     "tags": {**tags, "barrier": barrier, "name": "Enclosed site"}})
+    world = build_ways(elements)
+    assert any(area.kind == kind and area.name == "Enclosed site" for area in world.sceneries)
+    assert world.railings
+
+
 def test_build_ways_generates_trees_in_offroad_scenery():
     elements = [
         {"type": "node", "id": 1, "lat": 60.1, "lon": 25.1},

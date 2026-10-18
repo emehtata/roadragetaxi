@@ -34,9 +34,7 @@ const FIELDS_FROZEN_WINTER_WEIGHT := 0.5  # map_style.py: the same, for the ice 
 ## Landuse fills: each piece in its kind's colour, green kinds through the
 ## season (area[1] 1), sports fields frozen to ice in winter (2).
 static func draw_areas(chunk, node: Node2D, key: String) -> void:
-	var areas: Array = chunk._data.get(key, [])
-	for index in areas.size():
-		var area = areas[index]
+	for area in chunk._data.get(key, []):
 		var polygon: PackedVector2Array = chunk._points(area[2])
 		if _valid(polygon):
 			var color := _rgb(area[0])
@@ -44,11 +42,19 @@ static func draw_areas(chunk, node: Node2D, key: String) -> void:
 				1: color = chunk.seasonal_color(color, chunk._season)
 				2: color = RINK_ICE if chunk._season[0] >= FIELDS_FROZEN_WINTER_WEIGHT else chunk.seasonal_color(color, chunk._season)
 			node.draw_colored_polygon(polygon, color)
-			if area.size() > 3 and key == "landuse":
-				if not chunk._site_details.has(index):
-					chunk._site_details[index] = site_detail_positions(polygon, str(area[3]), chunk._origin)
-				for at in chunk._site_details[index]:
-					draw_site_detail(node, at, str(area[3]), float(chunk._season[0]))
+
+
+## Above all ground fills: smaller grass plots must not paint over headstones.
+static func draw_site_details(chunk, node: Node2D) -> void:
+	var areas: Array = chunk._data.get("landuse", [])
+	for index in areas.size():
+		var area = areas[index]
+		if area.size() <= 3:
+			continue
+		if not chunk._site_details.has(index):
+			chunk._site_details[index] = site_detail_positions(chunk._points(area[2]), str(area[3]), chunk._origin)
+		for at in chunk._site_details[index]:
+			draw_site_detail(node, at, str(area[3]), float(chunk._season[0]))
 
 
 ## World-aligned decorative rows, bounded per clipped chunk and kept inside its polygon.

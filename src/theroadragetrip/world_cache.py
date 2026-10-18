@@ -100,7 +100,8 @@ MAGIC = b"RWC\0"
 # 33: directed sea-face classification, complete coastline collection and water island holes.
 # 34: water relation geometry is clipped to its fetched region before island splitting.
 # 35: retain amenity=biergarten/grave_yard areas and point scenery.
-FORMAT_VERSION = 35
+# 36: preserve cemetery/biergarten ground when its boundary is also a barrier.
+FORMAT_VERSION = 36
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

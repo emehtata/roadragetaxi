@@ -107,6 +107,8 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
+		if message["landuse"].any(func(area): return area.size() > 3):
+			_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_site_details(self, node)))
 	# Field markings at z0, over every chunk's landuse (z-1): at -1 a neighbouring
 	# chunk's piece of the same pitch painted over the part reaching into it.
 	if not message.get("soccer_pitches", []).is_empty():  # soccer lines on bare pitches
