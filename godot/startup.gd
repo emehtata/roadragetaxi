@@ -706,7 +706,7 @@ func _settings_menu() -> void:
 	_with_help(pbf_path, "help_pbf_path")
 	pbf_path.get_parent().get_parent().visible = source.selected == 1
 	_focusables.append(pbf_path)
-	_with_help(_button(_t("manage_pbf"), _pbf_menu), "help_manage_pbf")
+	_with_help(_button(_t("manage_pbf") + " >", _pbf_menu), "help_manage_pbf")
 	if _game == null:  # a running server keeps its home in memory
 		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
 	for item in [[_t("master_volume"), "Master", "help_master_volume"], [_t("game_volume"), "Game", "help_game_volume"],
