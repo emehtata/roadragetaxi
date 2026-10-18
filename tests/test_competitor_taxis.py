@@ -130,11 +130,30 @@ def test_transit_taxi_selection_preserves_paint_dimensions_and_seats(kind):
     assert is_competitor(vehicle) == (kind in ("car", "van"))
     definition = vehicle_definition(kind)
     assert vehicle.color == paint
-    assert (vehicle.length_m, vehicle.width_m, vehicle.capacity) == (definition.length_m, definition.width_m, definition.capacity)
+    seats = 9 if kind == "van" else definition.capacity
+    assert (vehicle.length_m, vehicle.width_m, vehicle.capacity) == (definition.length_m, definition.width_m, seats)
     assert len(vehicle.trip_group.member_resident_ids) <= vehicle.capacity
     published = _npc_to_dict(vehicle, residents.residents)
     assert published["color"] == list(paint) and published["vehicle_type"] == kind
     assert published["is_taxi"] == (kind in ("car", "van"))
+
+
+def test_taxi_van_seats_eight_passengers_plus_driver_and_rejects_extra_occupants():
+    from theroadragetrip.npc import _begin_trip_on_vehicle
+    from theroadragetrip.vehicles import vehicle_definition
+
+    road = Way(points_m=[(-100, 0), (200, 0)], highway="residential", half_width_m=5)
+    vehicle = place_parked_npc(1, (0, -2.5), None, ways=[road], vehicle_type="van")
+    ordinary_capacity = vehicle.capacity
+    make_competitor(vehicle)
+    assert vehicle.capacity - 1 == 8
+    assert vehicle_definition("van").capacity == ordinary_capacity  # ordinary vans are unchanged
+    residents = ResidentManager()
+    members = [residents.create().resident_id for _ in range(10)]
+    path = [PathPoint(0, -2.5, road), PathPoint(80, -2.5, road)]
+    _begin_trip_on_vehicle(vehicle, path, residents, (80, -2.5), member_resident_ids=members)
+    assert len(vehicle.trip_group.member_resident_ids) == 9
+    assert members[-1] not in vehicle.trip_group.member_resident_ids
 
 
 def test_competitor_taxis_keep_the_existing_colour_variation():

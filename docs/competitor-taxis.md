@@ -13,8 +13,10 @@ rules, and dispatched by `competitor_taxis.py`.
 
 NPC taxis can be cars or vans and retain the normal NPC paint variation
 (white, black, grey, silver and other colours). Van dimensions, appearance,
-collision body and capacity come from the existing van definition; conversion
-only adds the taxi role and roof sign. The player's own taxi stays yellow.
+collision body come from the existing van definition. Taxi vans seat eight
+passengers plus the driver (nine occupants total); ordinary vans keep their
+existing capacity. Conversion also adds the taxi role and roof sign.
+The player's own taxi stays yellow with its existing passenger capacity.
 
 ## Earlier implementation (analysed, replaced)
 

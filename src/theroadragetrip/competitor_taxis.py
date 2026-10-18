@@ -64,6 +64,8 @@ def is_competitor(vehicle) -> bool:
 def make_competitor(vehicle) -> None:
     vehicle.vehicle_kind = "taxi"
     vehicle.is_taxi = True
+    if getattr(vehicle, "vehicle_type", None) == "van":
+        vehicle.capacity = 9  # eight passengers plus the driver
 
 
 class Dispatcher:
