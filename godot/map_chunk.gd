@@ -459,8 +459,7 @@ var _building_view := Vector2.ZERO
 var _built_view := Vector2.INF
 
 
-## The chunk's radial building volumes, rebuilt only when its camera angle
-## crosses a small bucket.
+## Build either 3D meshes or flat footprints, independently of camera movement.
 func _build_2_5d() -> void:
 	var buildings: Array = _data.get("buildings", [])
 	if buildings.is_empty():
@@ -503,7 +502,7 @@ func drop_stale_buildings() -> void:
 
 static var build_async := true  # tests build in place
 static var language := "en"  # unnamed fuel stations' board (main._apply_language)
-static var buildings_3d := true  # godot-21 prototype; --buildings 2d: the godot-20 radial renderer
+static var buildings_3d := true  # --buildings 2d uses flat footprints
 var meshes_3d: Array = []  # buildings_3d.meshes, added to MapLayer's 3D building layer
 
 
@@ -566,33 +565,10 @@ func _buildings_ready(volumes: Dictionary) -> void:
 
 
 func set_building_view(view_centre: Vector2) -> void:
-	var has_buildings: bool = not _data.get("buildings", []).is_empty()
-	var has_canopies: bool = not _data.get("canopies", []).is_empty()
-	if not has_buildings and not has_canopies:
-		return
-	var from := _bounds_rect.get_center() - _built_view
-	var to := _bounds_rect.get_center() - view_centre
-	# ponytail: one angular bucket per chunk avoids rebuilding the whole city
-	# every frame; lower this threshold if close-up direction changes look stepped.
-	if _built_view != Vector2.INF and not from.is_zero_approx() and not to.is_zero_approx() and absf(from.angle_to(to)) < 0.06:
-		return
 	_building_view = view_centre
-	for node in _canopy_layers:
-		node.queue_redraw()
-	if not has_buildings or buildings_3d:
-		_built_view = view_centre
-		return
-	if _building_task >= 0:
-		return
-	var buildings: Array = _data.get("buildings", [])
-	var styles: Array = _data.get("building_styles", [])
-	var origin := _origin
-	var view := _building_view
-	var snow := float(_season[0])
-	if build_async:
-		_building_task = WorkerThreadPool.add_task(func(): _buildings_ready.call_deferred(_build_timed(buildings, styles, origin, view, snow)))
-	else:
-		_buildings_ready(_build_timed(buildings, styles, origin, view, snow))
+	if buildings_3d:
+		for node in _canopy_layers:
+			node.queue_redraw()
 
 
 ## The buildings' triangles go to the renderer, which keeps its own copy:

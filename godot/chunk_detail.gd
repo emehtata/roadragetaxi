@@ -13,7 +13,6 @@ const HALF_GAUGE := 1.435 / 2.0
 const HALF_TIE := 2.6 / 2.0
 const TIE_SPACING := 2.0
 const BUMP_LENGTHS := {"table": 2.2, "bump": 0.6, "cushion": 0.4, "hump": 0.6}
-const B25 := preload("res://buildings_25d.gd")
 const B3 := preload("res://buildings_3d.gd")
 const OPEN_ROOF := Color8(138, 145, 148, 185)
 const OPEN_ROOF_EDGE := Color8(65, 69, 71, 235)
@@ -292,22 +291,17 @@ static func draw_canopy_supports(chunk, node: Node2D) -> void:
 		for i in shadow.size():
 			shadow[i] += Vector2(0.35, 0.35)
 		node.draw_colored_polygon(shadow, Color8(30, 32, 33, 75))
-		var centre := Vector2.ZERO
-		for p in polygon:
-			centre += p
-		centre /= polygon.size()
 		var height := canopy_height(chunk, canopy)
-		var up := B25.lift(height, centre, chunk._building_view)
 		for point in polygon:
-			node.draw_line(point, _lift(chunk, point, height, up), OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
+			node.draw_line(point, _lift(chunk, point, height), OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18) + chunk._px(1.0), OPEN_ROOF_EDGE)
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18), OPEN_ROOF_POLE)
 
 
 ## A canopy point raised to `height`: with the 3D buildings, exactly where
-## their camera shows that height (godot-23); otherwise the 2D radial lift.
-static func _lift(chunk, point: Vector2, height: float, radial: Vector2) -> Vector2:
-	return B3.lift_point(point, height) if chunk.buildings_3d else point + radial
+## their camera shows that height (godot-23); otherwise the unchanged flat footprint.
+static func _lift(chunk, point: Vector2, height: float) -> Vector2:
+	return B3.lift_point(point, height) if chunk.buildings_3d else point
 
 
 ## A canopy's height (chunk canopy_heights, in step with canopies; 6 m without).
@@ -322,14 +316,9 @@ static func canopy_height(chunk, canopy) -> float:
 static func draw_canopies(chunk, node: Node2D) -> void:
 	for canopy in chunk._data.get("canopies", []):
 		var polygon: PackedVector2Array = chunk._points(canopy).duplicate()
-		var centre := Vector2.ZERO
-		for p in polygon:
-			centre += p
-		centre /= polygon.size()
 		var height := canopy_height(chunk, canopy)
-		var up := B25.lift(height, centre, chunk._building_view)
 		for i in polygon.size():
-			polygon[i] = _lift(chunk, polygon[i], height, up)
+			polygon[i] = _lift(chunk, polygon[i], height)
 		if _valid(polygon):
 			node.draw_colored_polygon(polygon, OPEN_ROOF)
 			var ring := polygon.duplicate()
