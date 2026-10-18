@@ -307,6 +307,16 @@ There is no promise to predict an unchosen turn or clear unloaded map data.
 
 ## Existing code and known compliance gaps
 
+**Visibility cleanup policy (2026-10-18):** ambient vehicles and their linked
+walking groups may be retired outside the actual client view plus a bounded,
+speed-dependent safety band, even below the population minimum. Release routes,
+parking reservations and resident trip links together; never remove a group
+with a visible linked member or an active player-fare identity. Ordinary ambient
+walkers/activities and cosmetic traces may be discarded there too. This is game
+resource management, not a legal maneuver or permission to simplify visible
+yielding, pedestrian protection, collisions or bridge/map-layer separation.
+Timetabled trains and owned booking records retain their existing lifecycle.
+
 Inspection baseline: 2026-10-14. This is not an exhaustive audit.
 
 | Area / entry point | Existing behavior and required follow-up |

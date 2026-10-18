@@ -62,6 +62,15 @@ serialized as-is.
 | `state` | server→client | every tick (30 Hz) | `tick`, `server_time` (simulation seconds), `state`: game time, `player`, `player_pedestrian`, `on_foot`, `npcs`, `pedestrians`, `trains` (`id`, `state`, `speed`, `cars` as `[x, y, heading, length, look]`), `weather` (incl. `lightning_intensity`; `is_thunderstorm` and the gusting `wind_vector_mps` `[east, north]` for the weather audio), `taxi` (incl. `speed_camera_notice`; the running fare `elapsed_time`, `live_fare_cents`, `fare_distance_m`, `passenger_happiness`, the last three null until the meter starts; `fuel_station_price_cents` of the pump in refuelling range, else null), `road` (`name`, `speed_limit_kmh`), `meet` (meet & greet panel lines and arrow target, or null), `navigation` (`points`: the server's route to the taxi target, `[[x, y], ...]` world metres, Douglas-Peucker 0.5 m, `[]` while none), `road_rage` (`{text, timer}` while the rage shout lasts, else null), `railway` (`stations` with `waiting`, `nearest_station`, its next five `arrivals`/`departures` as game-time `HH:MM`; `{}` without a railway), `traffic_lights` (`{post id: phase}` within 600 m), `fallen_trees`, `knocked_posts` (within 600 m), `calendar` (`date`, `time_scale`, `sun_altitude_deg`, `darkness`, `season` weights: the server's GameCalendar and sun), `tire_mark`, `speed_camera_flash`, `player.map_level`, `road.layer`/`road.bridge`, `events` (incl. `speech` lines and whole `station_announcement`s) |
 | `command` | client→server | client-paced (Godot: 20 Hz) | `seq`, `player_id`, `command` (`throttle`, `brake`, `steer_*`, `forward`, `turn`, `engine_on`, `speed_limiter_enabled`, `red_light_assist_enabled`, ..., and the presses `interact`, `refuel`, `road_rage`, which the server applies once each), optional `phone` request |
 
+Commands also carry optional `command.view_bounds`: `[min_x, min_y, max_x,
+max_y]` in world metres, calculated from the actual Godot camera transform.
+The server validates coordinates and extents, combines fresh connected views,
+and expires reports after two simulation seconds. Older clients without this
+field retain nominal viewport behavior. Ambient simulation uses the real view
+with a speed-dependent entry band and a safety envelope around the taxi;
+unseen ambient groups may retire even below population targets. See
+[visibility-first progress](../../.github/performance-analysis/visibility-first-2026-10-18.md).
+
 `events` are each sent once:
 - `{"type":"sound","group":"vehicle.door_close","at"?:[x,y]}`, recorded by
   `EventAudio` in place of real audio

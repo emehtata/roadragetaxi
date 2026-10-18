@@ -284,6 +284,36 @@ def _state(server):
     )["state"]
 
 
+def test_client_view_reaches_tick_and_discards_only_unseen_ambient_state(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+    from theroadragetrip.protocol import LOCAL_PLAYER_ID
+
+    server = _build_server(tmp_path, monkeypatch)
+    x, y = server.car.x, server.car.y
+    view = [x - 100, y - 70, x + 100, y + 70]
+    connection = Mock()
+    connection.is_closed = False
+    connection.try_recv_all.return_value = [{"type": "command", "player_id": LOCAL_PLAYER_ID,
+                                            "command": {"view_bounds": view}}]
+    server._clients.append(connection)
+    server._apply_incoming_messages()
+    assert server._visible_bounds() == tuple(view)
+    connection.try_recv_all.return_value = []
+    pedestrians = server.world.pedestrian_mgr
+    near = pedestrians.spawn_pedestrian_at(x, y, 0)
+    far = pedestrians.spawn_pedestrian_at(x, y, 0)
+    assert near is not None and far is not None
+    far.x, far.y = x + 2000, y + 2000
+    pedestrians.add_pedestrian(near)
+    pedestrians.add_pedestrian(far)
+    server.world.taxi_mgr.vomit_puddles[:] = [(x, y), (x + 2000, y + 2000)]
+    server.tick(1 / 30)
+    assert near in pedestrians.pedestrians and far not in pedestrians.pedestrians
+    assert server.world.taxi_mgr.vomit_puddles == [(x, y)]
+    server._server_time += 3
+    assert server._visible_bounds() is None  # stale view cannot constrain a legacy/headless tick
+
+
 def test_vomit_puddles_reach_godot(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
     server.world.taxi_mgr.vomit_puddles.append((server.car.x + 1.0, server.car.y))

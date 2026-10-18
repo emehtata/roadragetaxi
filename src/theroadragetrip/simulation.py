@@ -233,6 +233,7 @@ def advance_simulation(
     cities_list,
     outside_temperature_c: float = 15.0,
     now=None,
+    view_bounds=None,
 ) -> SimulationFrameResult:
     """Run one gameplay tick: physics, collisions, camera follow, and the
     taxi/NPC/traffic/pedestrian manager updates."""
@@ -566,6 +567,11 @@ def advance_simulation(
     camy += (target_camy - camy) * cam_lerp_factor
 
     viewport_bounds = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, margin_m=30.0)
+    ambient_bounds = None
+    if view_bounds is not None:
+        from .viewport import simulation_bounds
+        viewport_bounds = (view_bounds[0] - 30, view_bounds[1] - 30, view_bounds[2] + 30, view_bounds[3] + 30)
+        ambient_bounds = simulation_bounds(view_bounds, car.x, car.y, car.speed)
 
     # Trains: timetable trains, their passengers and pre-bookings follow the
     # game clock (`now`, a datetime); presentation (drawing, train sounds,
@@ -612,6 +618,13 @@ def advance_simulation(
         audio.play_group("passenger.vomit")
         loud_event = True
     with frame_profiler.section("npc"):
+        if ambient_bounds is not None:
+            from .viewport import in_bounds
+            party = taxi_mgr.current_passenger
+            protected = [member.resident_id for member in party.members] if party is not None else []
+            npc_manager.discard_outside(ambient_bounds, residents, pedestrian_mgr, protected)
+            pedestrian_mgr.discard_outside(ambient_bounds, protected)
+            taxi_mgr.vomit_puddles[:] = [p for p in taxi_mgr.vomit_puddles if in_bounds(ambient_bounds, p[0], p[1], 2.0)]
         traffic_mgr.stop_signs = getattr(world, "stop_signs", ())
         traffic_mgr.yield_signs = getattr(world, "yield_signs", ())
         npc_manager.clock = now
@@ -626,6 +639,7 @@ def advance_simulation(
             viewport_bounds=viewport_bounds,
             player_car=car, pedestrian_mgr=pedestrian_mgr,
             current_way=current_way,
+            active_bounds=ambient_bounds,
         )
         if npc_manager.snowy:
             for vehicle in npc_manager.vehicles:
@@ -746,7 +760,8 @@ def advance_simulation(
         arena_crowds.update(now, (car.x, car.y))
     pedestrian_mgr.ensure_sports_players(car, viewport_bounds)
     with frame_profiler.section("pedestrians"):
-        pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds, game_time_seconds=game_time_seconds)
+        pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds, game_time_seconds=game_time_seconds,
+                              active_bounds=ambient_bounds)
         pedestrian_mgr.track_vomit(taxi_mgr.vomit_puddles + pedestrian_mgr.vomit_puddles)
     if on_foot:
         audio.update_footsteps(player_pedestrian.speed, dt, running=command.sprint)

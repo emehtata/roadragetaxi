@@ -1835,6 +1835,44 @@ def test_a_pedestrian_curses_only_at_a_taxi_coming_at_them(car, curses):
     assert (ped.curse_timer > 0.0) == curses and bool(ped_mgr.curses) == curses
 
 
+def test_view_cleanup_releases_unseen_activity_but_keeps_owned_people():
+    from theroadragetrip.activities import ActivityInstance
+    from unittest.mock import Mock
+
+    way = Way(points_m=[(0, 0), (1000, 0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    actor = Pedestrian(800, 0, 0, 1, 1, way, 0, 1, (1, 1, 1))
+    actor.activity = ActivityInstance(plugin_id="bench_sitting", location=None, started_sim_time=0)
+    owner = Pedestrian(900, 0, 0, 1, 1, way, 0, 1, (1, 1, 1))
+    owner.held_by = "accepted-booking"
+    manager.pedestrians = [actor, owner]
+    release = Mock(wraps=manager.activity_manager.release)
+    manager.activity_manager.release = release
+    manager.discard_outside((-100, -100, 100, 100))
+    assert manager.pedestrians == [owner] and actor.activity is None
+    release.assert_called_once_with(None)
+
+
+def test_camera_lod_keeps_distant_visible_people_full_rate():
+    way = Way(points_m=[(0, 0), (1000, 0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    visible = Pedestrian(800, 0, 0, 1, 1, way, 0, 1, (1, 1, 1))
+    buffered = Pedestrian(150, 0, 0, 1, 1, way, 0, 1, (1, 1, 1))
+    manager.pedestrians = [visible, buffered]
+    car = Car(x=0, y=0, heading=0, speed=0)
+    manager.update_lod(car, 1 / 30, (700, -50, 900, 50))
+    assert visible.lod_level == 0 and buffered.lod_level == 1
+    assert not buffered.lod_update_due
+    manager.update_lod(car, 1 / 30, (700, -50, 900, 50))
+    manager.update_lod(car, 1 / 30, (700, -50, 900, 50))
+    assert buffered.lod_update_due
+    manager.update_lod(car, 1 / 30, (700, -50, 900, 50))
+    assert not buffered.lod_update_due  # an activity branch need not clear the previous due flag
+    manager._population_update_elapsed = 2
+    manager.update(car, 1 / 30, viewport_bounds=(700, -50, 900, 50), active_bounds=(-100, -100, 1000, 100))
+    assert visible in manager.pedestrians  # old 170 m culling must not erase the zoomed-out view
+
+
 def test_people_kept_far_behind_dont_block_spawning_around_the_player():
     """Bug (Oulu, a few minutes of driving): people mid-activity and car
     passengers are kept wherever they are, and counted against the target

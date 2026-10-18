@@ -1674,14 +1674,43 @@ class PedestrianManager:
                     self.activity_manager.release(dropped.activity.location)
             self.pedestrians = held + free[:keep]
 
-    def update_lod(self, player_car: Car, dt: float) -> None:
+    def discard_outside(self, bounds, protected_resident_ids=()):
+        """Unseen ambient walkers and activities have no continuing journey."""
+        from .viewport import in_bounds
+
+        protected = set(protected_resident_ids)
+        vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
+        live_vehicles = {id(v) for v in vehicles}
+        kept = []
+        for ped in self.pedestrians:
+            links = {ped.linked_vehicle_id, ped.current_vehicle_id, ped.reserved_vehicle_id} - {None}
+            if (in_bounds(bounds, ped.x, ped.y, ped.radius_m) or ped.resident_id in protected
+                    or getattr(ped, "held_by", None) is not None or links & live_vehicles):
+                kept.append(ped)
+                continue
+            if ped.activity is not None:
+                instance = ped.activity
+                plugin = self.activity_manager.registry.get(instance.plugin_id)
+                if plugin is not None and ped.state == "performing_activity":
+                    plugin.finish(self._activity_context(ped), instance)
+                self._end_activity(ped, instance)
+        self.pedestrians[:] = kept
+        self.vomit_puddles[:] = [p for p in self.vomit_puddles if in_bounds(bounds, p[0], p[1], 2.0)]
+        footprints = [p for p in self.vomit_footprints if in_bounds(bounds, p[0], p[1], 0.5)]
+        self.vomit_footprints.clear()
+        self.vomit_footprints.extend(footprints)
+
+    def update_lod(self, player_car: Car, dt: float, view_bounds=None) -> None:
         """Schedule pedestrian simulation using distance bands."""
         for pedestrian in self.pedestrians:
             distance = math.hypot(pedestrian.x - player_car.x, pedestrian.y - player_car.y)
             pedestrian.lod_level = 0 if distance < 500.0 else 1 if distance < 1500.0 else 2
+            if view_bounds is not None:
+                from .viewport import in_bounds
+                pedestrian.lod_level = 0 if distance < 60 or in_bounds(view_bounds, pedestrian.x, pedestrian.y, pedestrian.radius_m) else 1
             pedestrian.lod_time_accumulator += dt
             interval = PEDESTRIAN_LOD_UPDATE_INTERVALS[pedestrian.lod_level]
-            if pedestrian.lod_update_due or pedestrian.lod_time_accumulator >= interval:
+            if (view_bounds is None and pedestrian.lod_update_due) or pedestrian.lod_time_accumulator >= interval:
                 pedestrian.lod_update_dt = pedestrian.lod_time_accumulator
                 pedestrian.lod_update_due = True
                 pedestrian.lod_time_accumulator = 0.0
@@ -2400,12 +2429,14 @@ class PedestrianManager:
         dt: float,
         viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
         game_time_seconds: Optional[float] = None,
+        active_bounds=None,
     ) -> bool:
         """Update pedestrian simulation: despawning, spawning, waypoint traversal, traffic lights, and evasion."""
+        from .viewport import in_bounds
         self.sim_time += dt
         self.pedestrians = [ped for ped in self.pedestrians if ped.state != PedestrianState.DESPAWNING.value]
         stage_started = (time.perf_counter(), time.thread_time())
-        self.update_lod(player_car, dt)
+        self.update_lod(player_car, dt, viewport_bounds if active_bounds is not None else None)
         self._record("pedestrians:lod", stage_started)
         stage_started = (time.perf_counter(), time.thread_time())
         self._materialize_parked_drivers()
@@ -2455,7 +2486,8 @@ class PedestrianManager:
                 # activity (walking to a bench, sitting, ...) must not be
                 # culled and immediately re-spawned elsewhere.
                 if ped.activity is not None:
-                    if (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2 <= forget_sq:
+                    if ((ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2 <= forget_sq
+                            or (active_bounds is not None and in_bounds(active_bounds, ped.x, ped.y, ped.radius_m))):
                         kept_peds.append(ped)
                     else:  # far behind a driving player: they piled up (hundreds)
                         self.activity_manager.release(ped.activity.location)
@@ -2473,7 +2505,7 @@ class PedestrianManager:
                 # Out of view is no reason to go: spawns land outside it to
                 # walk in (removed after 5 s off-screen, most never did).
                 if (
-                    dist_sq <= d_sq
+                    (dist_sq <= d_sq or (active_bounds is not None and in_bounds(active_bounds, ped.x, ped.y, ped.radius_m)))
                     and (not at_door or ped.spawned_at_door or ped.door_grace_timer > 0.0)
                 ):
                     kept_peds.append(ped)

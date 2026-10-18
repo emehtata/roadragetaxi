@@ -57,6 +57,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
+	test_camera_view_command()
 	test_vomit_puddle()
 	test_i18n()
 	test_graphics_settings()
@@ -333,6 +334,21 @@ func test_vomit_puddle() -> void:
 	for splash in EntityLayer.VOMIT_SPLASHES:
 		check(not Geometry2D.is_point_in_polygon(Vector2(splash.x, splash.y), entities._vomit_edge), "vomit splash is detached from the main puddle")
 	entities.free()
+
+
+func test_camera_view_command() -> void:
+	var main: Node = load("res://main.tscn").instantiate()
+	root.add_child(main)
+	main.entities.origin = Vector2(1000, 2000)
+	var old_transform := root.canvas_transform
+	root.canvas_transform = Transform2D(Vector2(2, 0), Vector2(0, 2), Vector2(10, 20))
+	main.send({})
+	var bounds: Array = main.sim._last_command["view_bounds"]
+	var size := root.get_visible_rect().size
+	check(is_equal_approx(bounds[0], 995.0) and is_equal_approx(bounds[3], 2010.0), "camera report reverses the canvas transform and world y axis")
+	check(is_equal_approx(bounds[2] - bounds[0], size.x / 2.0) and is_equal_approx(bounds[3] - bounds[1], size.y / 2.0), "camera report includes zoom and viewport dimensions")
+	root.canvas_transform = old_transform
+	main.free()
 
 
 func test_graphics_settings() -> void:

@@ -3523,6 +3523,7 @@ class NPCVehicleManager:
         self.spawn_radius_m = spawn_radius_m
         self.despawn_radius_m = despawn_radius_m
         self.simulation_radius_m = simulation_radius_m
+        self._active_bounds = None
         self._trip_start_failures: Dict[int, int] = {}
         self._trip_retry_after_tick: Dict[int, int] = {}
         self._population_tick_number = 0
@@ -3848,6 +3849,10 @@ class NPCVehicleManager:
             if not candidates:
                 continue
             point, parking_space = candidates[0]
+            if self._active_bounds is not None:
+                from .viewport import in_bounds
+                if not in_bounds(self._active_bounds, point[0], point[1]):
+                    continue
             if (point[0] - player_x) ** 2 + (point[1] - player_y) ** 2 > (self.spawn_radius_m + NPC_SPAWN_RADIUS_SLACK_M) ** 2:
                 # The nearest parking to a random query point can be far
                 # away in a sparse area - a car spawned beyond the
@@ -4311,10 +4316,12 @@ class NPCVehicleManager:
         driver.route_job_pending = True
 
     def _existing_route_job_valid(self, job) -> bool:
+        from .viewport import in_bounds
         vehicle, driver = job["vehicle"], job["driver"]
         group = vehicle.trip_group
         return (
             vehicle in self.vehicles and self.drivers.get(vehicle.vehicle_id) is driver
+            and (self._active_bounds is None or in_bounds(self._active_bounds, vehicle.x, vehicle.y))
             and group is job["group"] and vehicle.state == job["state"]
             and driver.destination == job["destination"]
             and vehicle.reserved_parking_space is job["reservation"]
@@ -4462,6 +4469,12 @@ class NPCVehicleManager:
                 self.population_diagnostics["route_generation_failures"] += 1
                 return
             vehicle, _plan = result
+            if self._active_bounds is not None:
+                from .viewport import in_bounds
+                if not in_bounds(self._active_bounds, vehicle.x, vehicle.y):
+                    release_npc_parking_reservation(vehicle)
+                    stats["discarded"] += 1
+                    return
             initial_speed = _transit_initial_speed(vehicle, _plan)
             clearance = _transit_clearance(vehicle, initial_speed or 0.0)
             distance_sq = (vehicle.x - player_x) ** 2 + (vehicle.y - player_y) ** 2
@@ -4474,7 +4487,7 @@ class NPCVehicleManager:
                 initial_speed is None
                 or (initial_speed > 0 and distance_sq < clearance ** 2)
                 or (len(self.vehicles) >= self.target_count and victim is None)
-                or distance_sq > self.simulation_radius_m ** 2
+                or (self._active_bounds is None and distance_sq > self.simulation_radius_m ** 2)
                 or (viewport_bounds is not None and _point_in_viewport(
                     vehicle.x, vehicle.y, viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M,
                 ))
@@ -4617,14 +4630,21 @@ class NPCVehicleManager:
         high_x = math.floor((player_x + NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
         low_y = math.floor((player_y - NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
         high_y = math.floor((player_y + NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
+        if self._active_bounds is not None:
+            low_x, low_y = math.floor(self._active_bounds[0] / cell_size), math.floor(self._active_bounds[1] / cell_size)
+            high_x, high_y = math.floor(self._active_bounds[2] / cell_size), math.floor(self._active_bounds[3] / cell_size)
         min_sq = NPC_TRANSIT_SPAWN_MIN_DISTANCE_M ** 2
         max_sq = NPC_TRANSIT_SPAWN_MAX_DISTANCE_M ** 2
+        from .viewport import in_bounds
         ring = []
         for cell_x in range(low_x, high_x + 1):
             for cell_y in range(low_y, high_y + 1):
+                yield  # a wide/panned view still respects the route-job frame budget
                 for index in grid.get((cell_x, cell_y), ()):
                     distance_sq = (nodes[index][0] - player_x) ** 2 + (nodes[index][1] - player_y) ** 2
-                    if min_sq <= distance_sq <= max_sq:
+                    if ((self._active_bounds is None and min_sq <= distance_sq <= max_sq)
+                            or (self._active_bounds is not None and distance_sq >= min_sq
+                                and in_bounds(self._active_bounds, *nodes[index]))):
                         ring.append(index)
         random.shuffle(ring)
         ring = prioritize_transit_spawn_nodes(nodes, ring, player_x, player_y, preferred_heading)
@@ -4803,6 +4823,10 @@ class NPCVehicleManager:
             if not candidates:
                 continue
             point, parking_space = candidates[0]
+            if self._active_bounds is not None:
+                from .viewport import in_bounds
+                if not in_bounds(self._active_bounds, point[0], point[1]):
+                    continue
             if (point[0] - player_x) ** 2 + (point[1] - player_y) ** 2 > (self.spawn_radius_m + NPC_SPAWN_RADIUS_SLACK_M) ** 2:
                 # The nearest parking to a random query point can be far
                 # away in a sparse area - a car spawned beyond the
@@ -4912,6 +4936,9 @@ class NPCVehicleManager:
         simulation_radius_sq = self.simulation_radius_m * self.simulation_radius_m
 
         def _near_player(vehicle: NPCVehicle) -> bool:
+            if self._active_bounds is not None:
+                from .viewport import in_bounds
+                return in_bounds(self._active_bounds, vehicle.x, vehicle.y)
             return (vehicle.x - player_x) ** 2 + (vehicle.y - player_y) ** 2 <= simulation_radius_sq
 
         currently_moving = sum(
@@ -4983,6 +5010,8 @@ class NPCVehicleManager:
             for resident_id in other_vehicle.trip_group.member_resident_ids
         }
         for vehicle in idle_candidates:
+            if self._active_bounds is not None and not _near_player(vehicle):
+                continue
             if trip_starts_this_tick >= trip_start_attempt_cap or len(self._route_jobs) >= NPC_MAX_ROUTE_JOBS // 2:
                 break
             if any(job["vehicle"] is vehicle for job in self._route_jobs):
@@ -5059,6 +5088,8 @@ class NPCVehicleManager:
         )
         existing.sort(key=lambda item: last_served(item[1]))
         for kind, vehicle in existing:
+            if self._active_bounds is not None and not _near_player(vehicle):
+                continue
             if len(self._route_jobs) >= NPC_MAX_ROUTE_JOBS:
                 break
             if kind in ("continue", "unhold"):  # (unhold: a held car, a new destination from where it stands)
@@ -5080,6 +5111,60 @@ class NPCVehicleManager:
         self.rebuild_spatial_grid()
         self.population_diagnostics["population_update_duration_s"] = time.perf_counter() - population_tick_started
 
+    def discard_outside(self, bounds, residents, pedestrian_mgr, protected_resident_ids=()):
+        """Retire whole unseen ambient groups, including their queued work."""
+        from .viewport import in_bounds
+
+        protected = set(protected_resident_ids)
+        linked = {}
+        for ped in pedestrian_mgr.pedestrians:
+            for key in {ped.linked_vehicle_id, ped.current_vehicle_id, ped.reserved_vehicle_id} - {None}:
+                linked.setdefault(key, []).append(ped)
+        dropped = set()
+        for vehicle in self.vehicles:
+            people = linked.get(id(vehicle), [])
+            group = vehicle.trip_group
+            members = set(group.member_resident_ids) if group is not None else set()
+            radius = math.hypot(vehicle.length_m, vehicle.width_m) * 0.5
+            if (in_bounds(bounds, vehicle.x, vehicle.y, radius) or members & protected
+                    or any(in_bounds(bounds, p.x, p.y, p.radius_m) or p.resident_id in protected
+                           or getattr(p, "held_by", None) is not None for p in people)):
+                continue
+            dropped.add(id(vehicle))
+            household = self.household_manager.get(vehicle.household_id)
+            if household is not None:
+                household.vehicle_ids.discard(vehicle.vehicle_id)
+            owners = members | (household.member_resident_ids if household is not None else set())
+            owners.add(vehicle.owner_id)
+            for resident_id in owners:
+                resident = residents.get(resident_id)
+                if resident is not None:
+                    resident.vehicle_ids.discard(vehicle.vehicle_id)
+                    if group is not None and resident.trip_group_id == group.group_id:
+                        resident.trip_group_id = None
+                    if resident.active_vehicle_id in (vehicle.vehicle_id, id(vehicle)):
+                        resident.active_vehicle_id = None
+            vehicle.trip_group = None
+            release_npc_parking_reservation(vehicle)
+            self.drivers.pop(vehicle.vehicle_id, None)
+            self.road_rage.held.pop(vehicle.vehicle_id, None)
+            self._trip_start_failures.pop(vehicle.vehicle_id, None)
+            self._trip_retry_after_tick.pop(vehicle.vehicle_id, None)
+            self._existing_route_last_frame.pop(vehicle.vehicle_id, None)
+        if not dropped:
+            return
+        self.vehicles[:] = [v for v in self.vehicles if id(v) not in dropped]
+        kept_jobs = []
+        for job in self._route_jobs:
+            if id(job["vehicle"]) not in dropped:
+                kept_jobs.append(job)
+                continue
+            job["steps"].close()
+            if "driver" in job:
+                job["driver"].route_job_pending = False
+            self.route_job_stats["discarded"] += 1
+        self._route_jobs[:] = kept_jobs
+
     def update(
         self,
         dt: float,
@@ -5099,7 +5184,9 @@ class NPCVehicleManager:
         player_car: object = None,
         pedestrian_mgr: object = None,
         current_way=None,
+        active_bounds=None,
     ) -> None:
+        self._active_bounds = active_bounds
         # collision-avoidance: nearby_vehicles_at (avoidance/collision) reads
         # self.spatial_grid, which used to only get rebuilt at population-
         # tick cadence (every NPC_POPULATION_TICK_S=5s) or on initial
@@ -5114,7 +5201,10 @@ class NPCVehicleManager:
         self.rebuild_spatial_grid()
         if player_car is not None:
             self.road_rage.update(self, player_car, traffic_world.sim_time, ways, spatial_grid, current_way)
-        previous_poses = {id(v): (v.x, v.y, v.heading) for v in self.vehicles}
+        from .viewport import in_bounds
+        active = self.vehicles if active_bounds is None else [
+            v for v in self.vehicles if in_bounds(active_bounds, v.x, v.y, math.hypot(v.length_m, v.width_m) * 0.5)]
+        previous_poses = {id(v): (v.x, v.y, v.heading) for v in active}
         for vehicle in self.vehicles:
             if vehicle.state == NPCState.CRASHED:
                 vehicle.car.speed = 0.0
@@ -5130,7 +5220,8 @@ class NPCVehicleManager:
             if driver is None:
                 continue  # idle, parked - nothing to simulate until it starts a trip
             distance_sq = (vehicle.x - player_x) ** 2 + (vehicle.y - player_y) ** 2
-            if distance_sq > self.simulation_radius_m * self.simulation_radius_m:
+            if ((active_bounds is not None and id(vehicle) not in previous_poses)
+                    or (active_bounds is None and distance_sq > self.simulation_radius_m * self.simulation_radius_m)):
                 # Section 17/18: still exists, keeps its full state, just
                 # doesn't tick physics/decisions while this far away - not
                 # "outside camera = nonexistent".
@@ -5174,7 +5265,7 @@ class NPCVehicleManager:
             math.hypot(v.x - previous_poses[id(v)][0], v.y - previous_poses[id(v)][1])
             for v in self.vehicles if id(v) in previous_poses
         ), default=0.0)
-        for vehicle in self.vehicles:
+        for vehicle in active:
             previous = previous_poses.get(id(vehicle))
             if previous is None:
                 continue

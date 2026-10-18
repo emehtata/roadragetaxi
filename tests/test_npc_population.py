@@ -381,6 +381,86 @@ def test_population_tick_despawns_a_far_moving_vehicle_and_releases_its_occupant
         assert residents.get(resident_id).active_vehicle_id is None
 
 
+def test_view_cleanup_retires_group_below_minimum_and_cancels_work():
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=1, min_count=10)
+    residents = ResidentManager()
+    world = TrafficWorld(ways)
+    _, driver, vehicle = spawn_npc(1, residents, world, ways, (0, 0), (200, 0))
+    manager.vehicles.append(vehicle)
+    manager.drivers[1] = driver
+    members = list(vehicle.trip_group.member_resident_ids)
+    pedestrians = PedestrianManager(ways, residents=residents)
+    closed = []
+
+    def pending():
+        try:
+            yield
+        finally:
+            closed.append(True)
+
+    steps = pending()
+    next(steps)
+    manager._enqueue_route_job("trip", vehicle, steps, world)
+    space = SimpleNamespace(vehicle_id=1, reserved=True, occupied=True)
+    vehicle.reserved_parking_space = space
+    manager.discard_outside((1000, 1000, 1100, 1100), residents, pedestrians)
+    assert not manager.vehicles and not manager.drivers and not manager._route_jobs
+    assert closed and not space.reserved and not space.occupied and space.vehicle_id is None
+    assert all(residents.get(r).active_vehicle_id is None and residents.get(r).trip_group_id is None for r in members)
+    assert all(vehicle.vehicle_id not in residents.get(r).vehicle_ids for r in members)
+
+
+def test_view_cleanup_preserves_visible_linked_member_and_active_fare():
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=1)
+    residents = ResidentManager()
+    world = TrafficWorld(ways)
+    _, driver, vehicle = spawn_npc(1, residents, world, ways, (0, 0), (200, 0))
+    manager.vehicles.append(vehicle)
+    manager.drivers[1] = driver
+    pedestrians = SimpleNamespace(pedestrians=[])
+    member = vehicle.trip_group.member_resident_ids[0]
+    manager.discard_outside((1000, 1000, 1100, 1100), residents, pedestrians, [member])
+    assert manager.vehicles == [vehicle]
+    pedestrians.pedestrians.append(SimpleNamespace(linked_vehicle_id=id(vehicle), current_vehicle_id=None,
+                                                   reserved_vehicle_id=None, x=1050, y=1050, radius_m=0.5,
+                                                   resident_id=member))
+    manager.discard_outside((1000, 1000, 1100, 1100), residents, pedestrians)
+    assert manager.vehicles == [vehicle]
+
+
+def test_interest_skips_collision_sweeps_for_distant_retained_cars(monkeypatch):
+    manager = NPCVehicleManager(target_count=0)
+    manager._population_elapsed = 0
+    residents = ResidentManager()
+    world = TrafficWorld([])
+    for i in range(20):
+        vehicle = place_parked_npc(i + 1, (i * 100.0, 0), None)
+        assert vehicle is not None
+        manager.vehicles.append(vehicle)
+    swept = []
+    monkeypatch.setattr(manager, "_check_vehicle_collision", lambda vehicle, *a, **kw: swept.append(vehicle.vehicle_id))
+    manager.update(1 / 30, 0, 0, residents, world, [], active_bounds=(-20, -20, 20, 20))
+    assert swept == [1]
+    swept.clear()
+    manager.update(1 / 30, 0, 0, residents, world, [])
+    assert len(swept) == 20  # the old path swept every retained vehicle
+
+
+def test_zoomed_out_view_can_prepare_transit_beyond_the_old_spawn_ring(monkeypatch):
+    ways = [Way(points_m=[(0, 0), (600, 0), (700, 0)], highway="residential", half_width_m=4.5)]
+    world = TrafficWorld(ways)
+    manager = NPCVehicleManager(target_count=1)
+    manager._active_bounds = (-800, -100, 800, 100)
+    considered = []
+    monkeypatch.setattr(manager, "_place_one", lambda point, *a, **kw: considered.append(point))
+    steps = manager._transit_spawn_steps(0, 0, ResidentManager(), world, ways, None, None, None, None,
+                                        None, None, None, (-500, -50, 500, 50), [])
+    list(steps)
+    assert considered and any(point[0] >= 600 for point in considered)
+
+
 def test_no_duplicate_vehicle_ids_after_several_population_ticks():
     from theroadragetrip.npc import NPC_POPULATION_TICK_S
 

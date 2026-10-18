@@ -58,10 +58,8 @@ logger = logging.getLogger(__name__)
 SPORTS_ICE_DARKNESS = 0.5  # darker than this (sun ~3 degrees down) and unlit: nobody skates or plays
 SOCCER_SNOW_WEIGHT = 0.05  # a winter (snow) weight under this: the pitches are bare
 
-# Nominal viewport used only for NPC/pedestrian spawn-despawn culling
-# (advance_simulation's viewport_bounds) - the server has no real screen
-# or zoom level, so it assumes the client's default zoom rather than
-# tracking each connected client's actual one. See architecture doc.
+# Nominal camera fallback for headless runs and clients without view reports.
+# Godot supplies its actual world-space bounds for dynamic interest/culling.
 _DEFAULT_PX_PER_M = 9.0
 
 
@@ -297,6 +295,7 @@ class SimulationServer:
 
         self._clients_lock = threading.Lock()
         self._clients: list = []
+        self._client_views = {}  # connection -> (last simulation time, world camera bounds)
         # Per connection: the map chunks it has, and the player cell they were planned for.
         progress("lights", f"{len(self.world.ways)} roads")
         self.world.street_light_points = place_street_lights(self.world)  # before the chunks carry them
@@ -537,6 +536,11 @@ class SimulationServer:
                     logger.warning("Ignoring a command for unknown player %r", message.get("player_id"))
                     continue
                 command, interact = protocol.command_from_message(message)
+                from ..viewport import client_view_bounds
+                view = client_view_bounds(message)
+                if view is not None and max(abs((view[0] + view[2]) / 2 - self.car.x),
+                                            abs((view[1] + view[3]) / 2 - self.car.y)) <= 2000:
+                    self._client_views[connection] = (self._server_time, view)
                 phone = protocol.phone_request_from_message(message)
                 requested_language = message.get("command", {}).get("language") if isinstance(message.get("command"), dict) else None
                 if isinstance(requested_language, str) and requested_language in SUPPORTED_LANGUAGES and requested_language != self.language:
@@ -571,6 +575,7 @@ class SimulationServer:
                 if connection.error is not None:
                     logger.info("Client dropped: %s", connection.error)
                 del self._client_chunks[connection]
+                self._client_views.pop(connection, None)
             gone = len(self._clients) != before
             if gone:
                 logger.info("Client disconnected (%d remaining)", len(self._clients))
@@ -592,7 +597,7 @@ class SimulationServer:
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
             _write_debug_snapshot(
                 path, self.car, w.taxi_mgr, w.auto_fetch_manager, self.args, self.bbox or w.auto_fetch_manager.get_bounds(),
-                get_viewport_bounds(self._camx, self._camy, px_per_m=self._px_per_m, margin_m=30.0),
+                self._visible_bounds() or get_viewport_bounds(self._camx, self._camy, px_per_m=self._px_per_m, margin_m=30.0),
                 self._camx, self._camy, self._px_per_m, self._current_way, w.ways, w.waters, w.buildings,
                 w.sceneries, w.places, w.taxi_stops, w.traffic_lights, w.crossings, w.elements_count,
                 w.traffic_mgr, w.pedestrian_mgr, w.spatial_grid, 0, self.chosen_city,
@@ -697,6 +702,7 @@ class SimulationServer:
             cities_list=self.cities_list,
             outside_temperature_c=self.world.weather.outside_temperature_c,
             now=self.calendar.current,
+            view_bounds=self._visible_bounds(),
         )
         self._tire_mark = self._tyre_mark(previous=(car_x, car_y))
         for npc in self.world.npc_manager.vehicles:  # brake lamps
@@ -942,6 +948,14 @@ class SimulationServer:
                 connection.send(self._chunks_index.encoded(cid))
                 loaded.add(cid)
             self._client_chunks[connection] = (loaded, cell)
+
+    def _visible_bounds(self):
+        views = [bounds for connection, (at, bounds) in self._client_views.items()
+                 if not connection.is_closed and self._server_time - at <= 2.0]
+        if not views:
+            return None  # legacy clients and headless tests retain the nominal viewport
+        return (min(v[0] for v in views), min(v[1] for v in views),
+                max(v[2] for v in views), max(v[3] for v in views))
 
     def _broadcast_state(self, *, should_stop: bool = False, city_summary=None, events=None) -> None:
         message = protocol.build_state_message(

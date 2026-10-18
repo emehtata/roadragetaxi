@@ -4,7 +4,34 @@ and the rectangle that view covers. No drawing here."""
 
 from __future__ import annotations
 
+import math
+
 SCREEN_W, SCREEN_H = 1280, 720
+
+
+def client_view_bounds(message):
+    """Optional world-metre camera rectangle; reject unbounded/untrusted input."""
+    command = message.get("command")
+    bounds = command.get("view_bounds") if isinstance(command, dict) else None
+    if not isinstance(bounds, list) or len(bounds) != 4:
+        return None
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or abs(v) > 1e8 or not math.isfinite(v) for v in bounds):
+        return None
+    x0, y0, x1, y1 = bounds
+    if not (0 < x1 - x0 <= 2000 and 0 < y1 - y0 <= 2000):
+        return None
+    return tuple(bounds)
+
+
+def simulation_bounds(view, x, y, speed):
+    """Visible area plus entry time and a local safety envelope around the taxi."""
+    margin = 60.0 + min(240.0, abs(speed) * 3.0)
+    return (min(view[0] - margin, x - 100), min(view[1] - margin, y - 100),
+            max(view[2] + margin, x + 100), max(view[3] + margin, y + 100))
+
+
+def in_bounds(bounds, x, y, radius=0.0):
+    return bounds[0] - radius <= x <= bounds[2] + radius and bounds[1] - radius <= y <= bounds[3] + radius
 
 
 PX_PER_M = 0.7

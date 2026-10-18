@@ -900,6 +900,9 @@ func send(controls: Dictionary) -> void:
 	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist,
 		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending, _home_pending)
 	command["language"] = language
+	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()
+	command["view_bounds"] = [view.position.x + entities.origin.x, entities.origin.y - view.end.y,
+		view.end.x + entities.origin.x, entities.origin.y - view.position.y]
 	_interact_pending = false
 	_refuel_pending = false
 	_road_rage_pending = false
