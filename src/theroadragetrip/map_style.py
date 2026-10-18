@@ -66,7 +66,8 @@ SCENERY_COLORS = {
     "religious": (98, 94, 86), "military": (98, 102, 82), "railway": (108, 100, 92),
     "recreation_ground": (98, 142, 78), "brownfield": (142, 122, 96),
     "construction": (170, 142, 96), "quarry": (130, 124, 116), "landfill": (112, 102, 82),
-    "cemetery": (88, 112, 82), "marina": (132, 130, 122), "slipway": (132, 130, 122),
+    "cemetery": (88, 112, 82), "grave_yard": (88, 112, 82), "biergarten": (146, 136, 110),
+    "marina": (132, 130, 122), "slipway": (132, 130, 122),
     "bathing_place": (152, 168, 128), "swimming_pool": (68, 165, 185),
     "sports_centre": (122, 110, 94), "sports_hall": (122, 110, 94),
     "fitness_centre": (122, 110, 94), "fitness_station": (98, 142, 78),
@@ -88,7 +89,7 @@ SPECKLE_SCENERY_KINDS = frozenset({
 # winter): flowerbeds stayed pink under snow before.
 SEASONAL_GROUND_KINDS = frozenset({
     "residential", "recreation_ground", "flowerbed", "playground", "horse_riding",
-    "sports_centre", "stadium",
+    "sports_centre", "stadium", "grave_yard", "biergarten",
 })
 
 # Finnish winter: sports fields and rinks are flooded and frozen for

@@ -371,7 +371,7 @@ def _polyline_without_ranges(pts, lengths, gaps) -> List[List[Tuple[float, float
 
 def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     amenity = tags.get("amenity")
-    if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel"):
+    if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel", "biergarten", "grave_yard"):
         return amenity
     if tags.get("highway") == "street_lamp":
         # lights.md: explicit physical lamp-pole data, when mapped, is the
@@ -756,6 +756,8 @@ def build_ways(
                 water_raw.append((tags, node_ids, way_id))
             elif tags.get("amenity") in ("parking", "fuel") or tags.get("landuse") == "parking":
                 scenery_raw.append((tags, node_ids))
+            elif tags.get("amenity") in ("biergarten", "grave_yard"):
+                scenery_raw.append((tags, node_ids))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 scenery_raw.append((tags, node_ids))
             elif tags.get("railway") == "platform" and node_ids[0] == node_ids[-1]:
@@ -891,6 +893,7 @@ def build_ways(
         is_platform = tags.get("railway") == "platform"
         kind = (
             "parking" if is_parking else "fuel" if is_fuel else "pedestrian_area" if is_platform
+            else tags.get("amenity") if tags.get("amenity") in ("biergarten", "grave_yard")
             else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
         )
         name = tags.get("name")
@@ -1480,6 +1483,8 @@ def build_ways(
                     points_m=pts, kind="pedestrian_area", name=name, bbox=ibbox,
                     surface=tags.get("surface") or "paving_stones",
                 ))
+            elif tags.get("amenity") in ("biergarten", "grave_yard"):
+                sceneries.append(Scenery(points_m=pts, kind=tags["amenity"], name=name, bbox=ibbox))
             elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
                 kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, kerbed=relation_is_kerbed,

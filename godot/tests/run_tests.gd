@@ -57,6 +57,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
+	test_decorated_sites()
 	test_menu_music()
 	test_camera_view_command()
 	test_vomit_puddle()
@@ -374,6 +375,19 @@ func test_menu_music() -> void:
 	check(player.playing and shell._menu_music == player, "returning to the main menu restarts the same music player")
 	shell._set_volume("Music", 1.0)
 	shell.free()
+
+
+func test_decorated_sites() -> void:
+	var polygon := PackedVector2Array([Vector2.ZERO, Vector2(500, 0), Vector2(500, 500), Vector2(0, 500)])
+	var concave := PackedVector2Array([Vector2.ZERO, Vector2(60, 0), Vector2(60, 15), Vector2(15, 15), Vector2(15, 60), Vector2(0, 60)])
+	for kind in ["biergarten", "grave_yard", "cemetery"]:
+		var spots := Detail.site_detail_positions(polygon, kind, Vector2.ZERO)
+		check(not spots.is_empty() and spots.size() <= 256, "site decorations are populated and bounded per chunk")
+		check(spots == Detail.site_detail_positions(polygon, kind, Vector2.ZERO), "site decoration placement is deterministic")
+		for at in Detail.site_detail_positions(concave, kind, Vector2.ZERO):
+			check(Geometry2D.is_point_in_polygon(at, concave), "site details stay inside concave area boundaries")
+	check(Detail.site_detail_positions(polygon, "park", Vector2.ZERO).is_empty(), "ordinary parks do not receive cemetery or biergarten decorations")
+	check(Detail.site_detail_positions(PackedVector2Array(), "cemetery", Vector2.ZERO).is_empty(), "invalid areas have no site decorations")
 
 
 func test_graphics_settings() -> void:

@@ -34,7 +34,9 @@ const FIELDS_FROZEN_WINTER_WEIGHT := 0.5  # map_style.py: the same, for the ice 
 ## Landuse fills: each piece in its kind's colour, green kinds through the
 ## season (area[1] 1), sports fields frozen to ice in winter (2).
 static func draw_areas(chunk, node: Node2D, key: String) -> void:
-	for area in chunk._data.get(key, []):
+	var areas: Array = chunk._data.get(key, [])
+	for index in areas.size():
+		var area = areas[index]
 		var polygon: PackedVector2Array = chunk._points(area[2])
 		if _valid(polygon):
 			var color := _rgb(area[0])
@@ -42,6 +44,58 @@ static func draw_areas(chunk, node: Node2D, key: String) -> void:
 				1: color = chunk.seasonal_color(color, chunk._season)
 				2: color = RINK_ICE if chunk._season[0] >= FIELDS_FROZEN_WINTER_WEIGHT else chunk.seasonal_color(color, chunk._season)
 			node.draw_colored_polygon(polygon, color)
+			if area.size() > 3 and key == "landuse":
+				if not chunk._site_details.has(index):
+					chunk._site_details[index] = site_detail_positions(polygon, str(area[3]), chunk._origin)
+				for at in chunk._site_details[index]:
+					draw_site_detail(node, at, str(area[3]), float(chunk._season[0]))
+
+
+## World-aligned decorative rows, bounded per clipped chunk and kept inside its polygon.
+static func site_detail_positions(polygon: PackedVector2Array, kind: String, origin: Vector2) -> PackedVector2Array:
+	var positions := PackedVector2Array()
+	if kind not in ["biergarten", "grave_yard", "cemetery"] or not _valid(polygon):
+		return positions
+	var bounds := Rect2(polygon[0], Vector2.ZERO)
+	for point in polygon:
+		bounds = bounds.expand(point)
+	var spacing := 6.0 if kind == "biergarten" else 4.0
+	spacing *= maxf(1.0, ceilf(sqrt(bounds.get_area() / (spacing * spacing * 192.0))))
+	var half := 1.8 if kind == "biergarten" else 1.1
+	var x0 := ceili((bounds.position.x + origin.x) / spacing)
+	var x1 := floori((bounds.end.x + origin.x) / spacing)
+	var y0 := ceili((origin.y - bounds.end.y) / spacing)
+	var y1 := floori((origin.y - bounds.position.y) / spacing)
+	for row in range(y0, y1 + 1):
+		for column in range(x0, x1 + 1):
+			var at := MapMath.point(origin, column * spacing, row * spacing)
+			var inside := Geometry2D.is_point_in_polygon(at, polygon)
+			for offset in [Vector2(-half, -half), Vector2(half, -half), Vector2(half, half), Vector2(-half, half)]:
+				inside = inside and Geometry2D.is_point_in_polygon(at + offset, polygon)
+			if inside:
+				positions.append(at)
+				if positions.size() >= 256:
+					return positions
+	return positions
+
+
+static func draw_site_detail(node: Node2D, at: Vector2, kind: String, snow: float) -> void:
+	var snowy := Color8(215, 224, 232)
+	if kind == "biergarten":
+		var wood := Color8(140, 94, 52).lerp(snowy, snow * 0.7)
+		node.draw_rect(Rect2(at - Vector2(1.1, 0.45), Vector2(2.2, 0.9)), wood)
+		for side in [-1.0, 1.0]:
+			node.draw_rect(Rect2(at + Vector2(-1.1, side * 0.95 - 0.16), Vector2(2.2, 0.32)), wood.darkened(0.15))
+		if fposmod(sin(at.dot(Vector2(0.73, 0.37))) * 43758.0, 1.0) < 0.4:
+			node.draw_circle(at + Vector2(0.15, -0.15), 1.4, Color8(84, 78, 62, 80))
+			node.draw_circle(at, 1.25, Color8(185, 67, 45).lerp(snowy, snow * 0.8))
+			node.draw_line(at - Vector2(1.1, 0), at + Vector2(1.1, 0), Color8(236, 209, 161), 0.08)
+			node.draw_line(at - Vector2(0, 1.1), at + Vector2(0, 1.1), Color8(236, 209, 161), 0.08)
+	else:
+		node.draw_rect(Rect2(at - Vector2(0.65, 0.9), Vector2(1.3, 1.8)), Color8(68, 80, 57).lerp(snowy, snow * 0.85))
+		node.draw_rect(Rect2(at - Vector2(0.75, 1.0), Vector2(1.5, 0.4)), Color8(57, 59, 60))
+		node.draw_rect(Rect2(at - Vector2(0.65, 1.0), Vector2(1.3, 0.25)), Color8(155, 157, 150).lerp(snowy, snow * 0.5))
+		node.draw_circle(at + Vector2(0.1, 0.45), 0.18, Color8(173, 76, 79).lerp(snowy, snow))
 
 
 ## Ice hockey markings (IIHF, laid out on a 60 x 30 m rink and scaled to

@@ -152,6 +152,20 @@ def test_railings_decorations_and_street_lights_are_each_in_one_chunk():
     assert here["street_lights"] == [[100.0, 100.0, 1.25, 14.0]] and east["street_lights"] == [[600.0, 100.0, 0.0, 14.0]]
 
 
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard", "cemetery"])
+def test_decorated_site_kind_survives_chunk_clipping(kind):
+    from theroadragetrip.osm import Scenery
+
+    points = [(100, 100), (600, 100), (600, 200), (100, 200)]
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[],
+                            sceneries=[Scenery(points, kind, bbox=(100, 100, 600, 200))])
+    index = map_chunks.ChunkIndex(world)
+    for cid in ("0_0", "1_0"):
+        area = index.message(cid)["landuse"][0]
+        assert area[3] == kind and area[1] == 1
+        assert all(int(cid[0]) * 500 <= p[0] <= (int(cid[0]) + 1) * 500 for p in area[2])
+
+
 def test_landuse_is_clipped_to_the_chunks_it_covers_without_overlap():
     """godot-16: a big area is cut along the chunk grid - each piece in its
     own chunk, together exactly the original."""

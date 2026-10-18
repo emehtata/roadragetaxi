@@ -219,6 +219,30 @@ def test_associate_places_with_buildings_uses_building_geometry():
     assert buildings[1].associated_places == []
 
 
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard"])
+@pytest.mark.parametrize("as_relation", [False, True])
+def test_biergarten_and_graveyard_amenity_areas_are_preserved(kind, as_relation):
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.02},
+        {"type": "node", "id": 3, "lat": 60.02, "lon": 25.02},
+        {"type": "node", "id": 4, "lat": 60.02, "lon": 25.0},
+        {"type": "way", "id": 10, "nodes": [1, 2, 3, 4, 1],
+         "tags": {} if as_relation else {"amenity": kind, "name": "Example"}},
+    ]
+    if as_relation:
+        elements.append({"type": "relation", "id": 20, "members": [{"type": "way", "ref": 10, "role": "outer"}],
+                         "tags": {"type": "multipolygon", "amenity": kind, "name": "Example"}})
+    world = build_ways(elements)
+    assert any(area.kind == kind and area.name == "Example" for area in world.sceneries)
+
+
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard"])
+def test_biergarten_and_graveyard_nodes_get_visual_markers(kind):
+    world = build_ways([{"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"amenity": kind}}])
+    assert any(obj.kind == kind for obj in world.scenery_objects)
+
+
 def test_build_ways_generates_trees_in_offroad_scenery():
     elements = [
         {"type": "node", "id": 1, "lat": 60.1, "lon": 25.1},

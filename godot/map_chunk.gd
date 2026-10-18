@@ -76,6 +76,7 @@ var _heads := Node2D.new()
 var _broken := PackedInt32Array()  # indices of this chunk's street lights that are knocked down
 var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state calendar.season)
 var _season_layers: Array[Node2D] = []  # landuse and islands: their green kinds follow the season
+var _site_details := {}  # area index -> cached decorative positions; snow redraws only change colours
 var _signs: Node2D = null  # signs and speed cameras, if any
 var _flash = null  # the flashing speed camera's id (state speed_camera_flash)
 var stale_buildings: Array = []  # the replaced chunk's building nodes, shown until ours are built (keep_until_built)
@@ -914,6 +915,8 @@ func _draw_trees(node: Node2D) -> void:
 ## The decorative scenery objects, in metres with minimum pixel sizes.
 func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float) -> void:
 	match kind:
+		"biergarten", "grave_yard":
+			Detail.draw_site_detail(node, at, kind, float(_season[0]))
 		"bench":  # 1.4 x 0.4 m, along the path it's beside
 			node.draw_set_transform(at, -angle)
 			node.draw_rect(Rect2(-0.7, -0.2, 1.4, 0.4), Color8(120, 82, 45))

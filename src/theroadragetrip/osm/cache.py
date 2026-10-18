@@ -14,7 +14,7 @@ from typing import List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
-CACHE_VERSION = "v0.15.0alpha.2"
+CACHE_VERSION = "v0.15.0alpha.3"  # Overpass now requests biergarten/grave_yard amenities.
 # How long downloaded map data is reused before refetching; OSM_CACHE_TTL (seconds) overrides.
 OSM_CACHE_TTL_S = 14 * 24 * 3600
 

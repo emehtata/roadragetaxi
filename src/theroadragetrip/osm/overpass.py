@@ -151,6 +151,7 @@ def fetch_osm_ways(
       node["place"~"suburb|neighbourhood|quarter|village|town|city|hamlet"]({south},{west},{north},{east});
     node["natural"="tree"]({south},{west},{north},{east});
     node["amenity"~"bench|waste_basket|bicycle_parking|fountain|fuel"]({south},{west},{north},{east});
+    node["amenity"~"biergarten|grave_yard"]({south},{west},{north},{east});
     node["highway"="street_lamp"]({south},{west},{north},{east});
     node["leisure"~"picnic_table|firepit"]({south},{west},{north},{east});
     node["barrier"~"gate|bollard"]({south},{west},{north},{east});
@@ -173,6 +174,7 @@ def fetch_osm_ways(
       way["building"]({south},{west},{north},{east});
     way["amenity"="parking"]({south},{west},{north},{east});
     way["amenity"="fuel"]({south},{west},{north},{east});
+    way["amenity"~"biergarten|grave_yard"]({south},{west},{north},{east});
     way["landuse"="parking"]({south},{west},{north},{east});
     way["amenity"="parking_space"]({south},{west},{north},{east});
       way["landuse"]({south},{west},{north},{east});
@@ -187,6 +189,7 @@ def fetch_osm_ways(
       relation["building"]({south},{west},{north},{east});
     relation["highway"]({south},{west},{north},{east});
     relation["amenity"="parking"]({south},{west},{north},{east});
+    relation["amenity"~"biergarten|grave_yard"]({south},{west},{north},{east});
     relation["landuse"="parking"]({south},{west},{north},{east});
       relation["leisure"]({south},{west},{north},{east});
       relation["landuse"]({south},{west},{north},{east});
