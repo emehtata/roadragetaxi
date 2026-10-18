@@ -121,6 +121,16 @@
       "obligations": "none if original", "commercial": "yes if original", "status": "conditional", "remediation": "confirm the lines were written for the game, not copied"
     },
     {
+      "name": "Menu music",
+      "paths": ["src/theroadragetrip/assets/music/menu/*.ogg"],
+      "purpose": "looping menu background music", "shipped": true,
+      "origin": "created by the project owner with ACE-Step using model acestep-5Hz-lm-0.6B; menu_music_1.mp3 converted to Ogg Vorbis",
+      "copyright": "not established", "licence": "not established",
+      "evidence": "project owner identified ACE-Step and model acestep-5Hz-lm-0.6B on 2026-10-18",
+      "obligations": "unknown", "commercial": "unknown", "status": "unresolved",
+      "remediation": "verify the applicable ACE-Step/model terms for generated-output redistribution"
+    },
+    {
       "name": "Images and icons",
       "paths": ["src/theroadragetrip/img/**", "src/theroadragetrip/assets/*.png", "src/theroadragetrip/assets/*.ico", "src/theroadragetrip/assets/*.xpm", "godot/icon.ico"],
       "purpose": "loading image, rage faces, people atlas, taxi icon, two-wheeler sprites", "shipped": true,

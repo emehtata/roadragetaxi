@@ -155,7 +155,9 @@ optional weather/timetable updates offline.
   city definitions, traffic counts, map streaming, speech intervals and logging.
   Godot's selected launch options override the matching server defaults.
 
-The current volume controls are **Master**, **Game**, **Environment** and **UI**.
+The volume controls are **Master**, **Game**, **Environment**, **UI** and
+**Music**. Menu music loops across menu screens and pauses during gameplay;
+the pause menu plays it again until you resume.
 Do not expect the old city-list editor, endpoint editor, or independent comment
 audio/subtitle toggles in the Godot settings screen.
 

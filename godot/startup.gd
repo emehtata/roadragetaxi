@@ -39,6 +39,7 @@ var _back_action := Callable()
 var _logo: TextureRect
 var _start_time := {}  # the gig start (year, month, day, hour, minute): now, each time the picker opens
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
+var _menu_music: AudioStreamPlayer
 
 
 func _t(key: String) -> String:
@@ -48,6 +49,9 @@ func _t(key: String) -> String:
 func _ready() -> void:
 	var first_run := _settings.load("user://settings.cfg") != OK or not _settings.has_section_key("game", "language")
 	_language = _settings.get_value("game", "language", "en")
+	AudioManager.ensure_buses()
+	for bus in ["Master"] + AudioManager.BUSES:
+		AudioServer.set_bus_volume_db(AudioServer.get_bus_index(bus), linear_to_db(maxf(float(_settings.get_value("audio", bus, 1.0)), 0.0001)))
 	var command_line := OS.get_cmdline_user_args()
 	var log_level := command_line.find("--log-level")
 	if log_level >= 0 and log_level + 1 < command_line.size():
@@ -78,6 +82,7 @@ func _ready() -> void:
 			_panel.visible = false
 			_back.visible = false
 			return
+	_play_menu_music()
 	if first_run:
 		_language_menu()
 	else:
@@ -294,6 +299,7 @@ static func credits_text() -> String:
 		"",
 		"[b]Sounds[/b]",
 		"Sound effects generated with Stable Audio Open (Stability AI). Speech and station announcements generated with Chatterbox (Resemble AI) and Microsoft Azure Speech.",
+		"Menu music generated with ACE-Step (acestep-5Hz-lm-0.6B).",
 		"",
 		"[b]Software[/b]",
 		"Godot Engine (MIT, © Godot Engine contributors), its components below, Python and its libraries, and osmium-tool (GPL-3.0; its source is published with every release). Full notices: THIRD_PARTY_LICENSES.md in the game folder.",
@@ -330,8 +336,31 @@ static func _godot_components() -> String:
 	return "\n".join(lines)
 
 
+func _play_menu_music() -> void:
+	if _menu_music == null:
+		var stream := AudioStreamOggVorbis.load_from_file(Paths.package_path("assets/music/menu/menu_music_1.ogg"))
+		if stream == null:
+			push_warning("Menu music could not be loaded")
+			return
+		stream.loop = true
+		_menu_music = AudioStreamPlayer.new()
+		_menu_music.process_mode = Node.PROCESS_MODE_ALWAYS
+		_menu_music.stream = stream
+		_menu_music.bus = "Music"
+		_menu_music.volume_db = -12.0
+		add_child(_menu_music)
+	if not _menu_music.playing:
+		_menu_music.play()
+
+
+func _stop_menu_music() -> void:
+	if is_instance_valid(_menu_music):
+		_menu_music.stop()
+
+
 func _main_menu() -> void:
 	get_tree().paused = false
+	_play_menu_music()
 	_clear()
 	_title("ROAD RAGE TRIP", _t("choose_start"))
 	var career := _button(_t("career"), func(): _start("career"))
@@ -710,7 +739,8 @@ func _settings_menu() -> void:
 	if _game == null:  # a running server keeps its home in memory
 		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
 	for item in [[_t("master_volume"), "Master", "help_master_volume"], [_t("game_volume"), "Game", "help_game_volume"],
-			[_t("environment_volume"), "Environment", "help_environment_volume"], [_t("ui_volume"), "UI", "help_ui_volume"]]:
+			[_t("environment_volume"), "Environment", "help_environment_volume"], [_t("ui_volume"), "UI", "help_ui_volume"],
+			[_t("music_volume"), "Music", "help_music_volume"]]:
 		var row := HBoxContainer.new()
 		var label := Label.new()
 		label.text = item[0]
@@ -834,7 +864,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_button(_t("cancel"), _stop_game)
 	_back_action = _stop_game
 	_focus_menu()
-	for bus in ["Master", "Game", "Environment", "UI"]:
+	for bus in ["Master"] + AudioManager.BUSES:
 		_set_volume(bus, _settings.get_value("audio", bus, 1.0))
 
 
@@ -1004,6 +1034,7 @@ func _server_connected(up: bool) -> void:
 	if not up or not _loading:
 		return
 	_loading = false
+	_stop_menu_music()
 	_remove_startup_status()
 	_panel.visible = false
 	_back.visible = false
@@ -1011,6 +1042,7 @@ func _server_connected(up: bool) -> void:
 
 func _pause_menu() -> void:
 	get_tree().paused = true
+	_play_menu_music()
 	if _game != null and _game._help != null:
 		_game._help.visible = false
 	_panel.visible = true
@@ -1026,6 +1058,7 @@ func _pause_menu() -> void:
 
 
 func _resume() -> void:
+	_stop_menu_music()
 	_panel.visible = false
 	get_tree().paused = false
 
@@ -1095,5 +1128,6 @@ func _stop_server() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+		_stop_menu_music()
 		_remember_game_time()
 		_stop_server()

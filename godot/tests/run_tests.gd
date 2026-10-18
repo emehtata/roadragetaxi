@@ -57,6 +57,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
+	test_menu_music()
 	test_camera_view_command()
 	test_vomit_puddle()
 	test_i18n()
@@ -349,6 +350,30 @@ func test_camera_view_command() -> void:
 	check(is_equal_approx(bounds[2] - bounds[0], size.x / 2.0) and is_equal_approx(bounds[3] - bounds[1], size.y / 2.0), "camera report includes zoom and viewport dimensions")
 	root.canvas_transform = old_transform
 	main.free()
+
+
+func test_menu_music() -> void:
+	var shell := preload("res://startup.gd").new()
+	root.add_child(shell)
+	check(shell._menu_music != null and shell._menu_music.playing, "menu music starts on the shell's opening screen")
+	var player: AudioStreamPlayer = shell._menu_music
+	check(player.stream is AudioStreamOggVorbis and player.stream.loop and player.stream.get_length() > 120.0, "menu music uses the converted looping Ogg track")
+	check(player.bus == "Music" and AudioServer.get_bus_index("Music") >= 0, "menu music has an independent volume bus")
+	shell._settings_menu()
+	check(shell._menu_music == player and player.playing, "opening settings keeps the same music player")
+	shell._set_volume("Music", 0.25)
+	check(is_equal_approx(db_to_linear(AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Music"))), 0.25), "music slider controls the music bus")
+	shell._loading = true
+	shell._server_connected(true)
+	check(not player.playing, "gameplay connection stops menu music")
+	shell._pause_menu()
+	check(player.playing and player.process_mode == Node.PROCESS_MODE_ALWAYS, "pause menus play music even while the game tree is paused")
+	shell._resume()
+	check(not player.playing and not paused, "resuming gameplay stops menu music")
+	shell._main_menu()
+	check(player.playing and shell._menu_music == player, "returning to the main menu restarts the same music player")
+	shell._set_volume("Music", 1.0)
+	shell.free()
 
 
 func test_graphics_settings() -> void:

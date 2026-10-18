@@ -1,17 +1,17 @@
 ## All of the client's sound. Simulation events go in (`handle_event`) and
-## presentation state drives the loops (`set_loop`); nothing else in the
-## client plays audio. What an event sounds like is data: audio/audio_events.json
+## presentation state drives the loops (`set_loop`); startup.gd owns only menu
+## music. What an event sounds like is data: audio/audio_events.json
 ## maps events to groups of the game's own sound catalog, whose files are
 ## loaded from where the Python game keeps them (no copies).
 ##
 ## Buses: Master > Game (vehicle, trains, people...), Environment (ambience,
-## weather), UI. Placed sounds are AudioStreamPlayer2D nodes heard from the
+## weather), UI and Music. Placed sounds are AudioStreamPlayer2D nodes heard from the
 ## camera, which also fades them with distance.
 class_name AudioManager
 extends Node
 
 const CONFIG_PATH := "res://audio/audio_events.json"
-const BUSES := ["Game", "Environment", "UI"]
+const BUSES := ["Game", "Environment", "UI", "Music"]
 
 var origin := Vector2.ZERO  # map origin (MapMath)
 var player_at := Vector2.ZERO  # the taxi / walking player, world metres: where its own sounds come from
@@ -39,13 +39,17 @@ var announcements: Array = []  # waiting: [queued at ms, clip paths, world posit
 var _announcing: Array = []  # the clips still to play of the one on air
 
 
-func _ready() -> void:
+static func ensure_buses() -> void:
 	for bus in BUSES:
 		if AudioServer.get_bus_index(bus) == -1:
 			AudioServer.add_bus()
 			var index := AudioServer.bus_count - 1
 			AudioServer.set_bus_name(index, bus)
 			AudioServer.set_bus_send(index, "Master")
+
+
+func _ready() -> void:
+	ensure_buses()
 	load_config(CONFIG_PATH)
 	speech_player.bus = "Game"
 	add_child(speech_player)
