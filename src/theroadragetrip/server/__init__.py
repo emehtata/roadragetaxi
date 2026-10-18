@@ -873,10 +873,11 @@ class SimulationServer:
                 self._map_growth.append((previous, index, changed, old_bounds, new_bounds,
                                          time.perf_counter() - started, False, covered))
             lights_started = time.perf_counter()
-            known = {(round(x, 1), round(y, 1)) for x, y, *_ in previous}
-            lights = list(previous) + [
-                lamp for lamp in place_street_lights(self.world, outside=old_bounds)
-                if (round(lamp[0], 1), round(lamp[1], 1)) not in known]
+            # A merged tile can fill a hole inside old_bounds, not just extend it.
+            # Rebuild its dirty area, retaining lamps elsewhere unchanged.
+            lights = [lamp for lamp in previous
+                      if not (area[0] <= lamp[0] <= area[2] and area[1] <= lamp[1] <= area[3])]
+            lights.extend(place_street_lights(self.world, region=area))
             lights_s = time.perf_counter() - lights_started
             self.world.street_light_points = lights
             try:
@@ -990,23 +991,27 @@ class SimulationServer:
                 next_tick = time.monotonic()  # fell behind; don't try to catch up in a burst
 
 
-def place_street_lights(world, outside=None) -> list:
-    """Every street light of the map, placed once (street_lights.py:
+def place_street_lights(world, region=None) -> list:
+    """Street lights for the whole map or a changed world-metre rectangle.
+
+    Keep surrounding roads/buildings as placement context, including when
+    a streamed tile fills a previously unloaded hole inside the map bounds.
+    Uses street_lights.py:
     explicit OSM lamps first, then lit roads at fixed spacing, clear of
-    junctions and buildings), run to the end over the whole map (Oulu: ~21,500 lights, ~1.7 s at startup).
+    junctions and buildings (Oulu: ~21,500 lights, ~1.7 s at startup).
     [(x, y, road direction, pool radius m)]."""
     from .. import street_lights as roads
 
+    bounded = region is not None
     ways = world.ways
-    if outside is not None:  # a map that grew: only ways reaching out of the old bounds
-        minx, miny, maxx, maxy = outside
-        ways = [way for way in ways if any(not (minx <= x <= maxx and miny <= y <= maxy) for x, y in way.points_m)]
-    points = [p for way in ways for p in way.points_m]
-    if not points:
-        return []
-    region = (min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points))
+    if region is None:
+        points = [p for way in ways for p in way.points_m]
+        if not points:
+            return []
+        region = (min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points))
     work = roads._snapshot_street_light_job(
-        "server", region, ways, None, world.buildings, None,
+        "server", region, ways, getattr(world, "spatial_grid", None) if bounded else None,
+        world.buildings, getattr(world, "building_grid", None) if bounded else None,
         getattr(world, "street_lamps", None), getattr(world, "street_lamp_grid", None),
         getattr(world, "parking_spaces", None),
     )
@@ -1018,10 +1023,7 @@ def place_street_lights(world, outside=None) -> list:
     # Parking lots with mapped spots: the poles stand where two back-to-back
     # rows meet, at the spots' shared corners; the aisle-guessed lamps around
     # them go. Lots without mapped spots keep the aisle placement.
-    spaces = getattr(world, "parking_spaces", None) or []
-    if outside is not None:
-        minx, miny, maxx, maxy = outside
-        spaces = [p for p in spaces if not (minx <= p.bbox[0] and p.bbox[2] <= maxx and miny <= p.bbox[1] and p.bbox[3] <= maxy)]
+    spaces = work["parking_spaces"] if bounded else (getattr(world, "parking_spaces", None) or [])
     poles = roads.parking_row_lamps(spaces)
     if poles:
         near_pole = roads.PARKING_POLE_CLEARANCE_M ** 2
@@ -1035,6 +1037,8 @@ def place_street_lights(world, outside=None) -> list:
             return any((x - p[0]) ** 2 + (y - p[1]) ** 2 < near_pole
                        for gx in (cx - 1, cx, cx + 1) for gy in (cy - 1, cy, cy + 1) for p in grid.get((gx, gy), ()))
         lamps = [lamp for lamp in lamps if not by_a_pole(lamp[0], lamp[1])] + poles
+    if bounded:
+        lamps = [lamp for lamp in lamps if region[0] <= lamp[0] <= region[2] and region[1] <= lamp[1] <= region[3]]
     return lamps
 
 

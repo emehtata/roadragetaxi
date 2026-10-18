@@ -43,6 +43,62 @@ def test_lamps_stand_beside_the_lit_roads_and_mapped_lamps_come_first():
     assert all(math.isfinite(direction) for _, _, direction, _ in placed)
 
 
+def test_dirty_region_lights_a_new_primary_road_inside_existing_map_bounds():
+    from types import SimpleNamespace
+    from theroadragetrip.server import place_street_lights
+
+    way = Way(points_m=[(-300, 0), (300, 0)], highway="primary", half_width_m=6, lit="yes")
+    world = SimpleNamespace(ways=[way], buildings=[], parking_spaces=[])
+    area = (-100, -30, 100, 30)
+    full = place_street_lights(world)
+    regional = place_street_lights(world, region=area)
+    assert regional
+    assert sorted(regional) == sorted(p for p in full if area[0] <= p[0] <= area[2] and area[1] <= p[1] <= area[3])
+    way.lit = "no"
+    assert place_street_lights(world, region=area) == []
+
+
+def test_streamed_interior_tile_rebuilds_lamps_and_resends_lit_chunks(monkeypatch):
+    from types import SimpleNamespace
+    import theroadragetrip.server as server_module
+
+    class InlineThread:
+        def __init__(self, *, target, **kwargs):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(server_module.threading, "Thread", InlineThread)
+    road = Way(points_m=[(-300, 0), (300, 0)], highway="primary", half_width_m=6, lit="yes")
+    retained = (1000, 1000, 0, 8)
+    obsolete = (0, 10, 0, 8)
+    previous = [retained, obsolete]
+    world = SimpleNamespace(ways=[road], buildings=[], parking_spaces=[], street_light_points=previous)
+    encoded_lights = []
+    index = SimpleNamespace(encoded=lambda cid: None)
+
+    def updated(old, world, area):
+        encoded_lights.append(list(world.street_light_points))
+        return index, {"0_0"}
+
+    monkeypatch.setattr(server_module.ChunkIndex, "updated", updated)
+    server = SimpleNamespace(world=world, car=SimpleNamespace(x=0, y=0), _chunks_index=index,
+                             _map_streamer=SimpleNamespace(sync_tiles={"tile"}, hold=False), _map_growth=[])
+    outer = (-2000, -2000, 2000, 2000)
+    server_module.SimulationServer._map_grew(server, outer, outer, (-100, -30, 100, 30))
+    assert len(server._map_growth) == 2  # fast nearby pass, then the fully lit replacement
+    lights = server._map_growth[-1][0]
+    assert retained in lights and obsolete not in lights
+    assert any(abs(x) < 100 and abs(y) < 20 for x, y, *_ in lights)
+    assert encoded_lights[-1] == lights  # sent chunk data includes the new lamps
+    assert world.street_light_points is previous  # only the tick swaps live state
+    assert len({(x, y) for x, y, *_ in lights}) == len(lights)
+    world.street_light_points = lights
+    server_module.SimulationServer._map_grew(server, outer, outer, (-100, -30, 100, 30))
+    assert sorted(server._map_growth[-1][0]) == sorted(lights)  # repeat merge is idempotent
+
+
 def test_parking_poles_stand_where_four_spots_meet():
     """Two back-to-back rows of mapped spots: the poles at the shared
     corners between them, about PARKING_LIGHT_SPACING_M apart; no pole on a
