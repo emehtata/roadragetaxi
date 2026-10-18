@@ -496,7 +496,8 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 	for side: float in [-1.0, 1.0]:
 		var side_v := r * side
 		var lamp := front + side_v * width * 0.35
-		var tip := c + f * length + r * (3.0 if side < 0.0 else 2.25)  # a car's beams lean right (the kerb side)
+		# Keep left/right endpoints ordered: crossed tips overlap the additive beams.
+		var tip := c + f * length + r * (2.25 if side < 0.0 else 3.0)  # kerb bias
 		if high:
 			tip = c + f * length  # High beams illuminate both lanes, without the dipped beam's kerb bias.
 		var near := lamp + side_v * minf(4.5 * 0.08, width * 0.10)

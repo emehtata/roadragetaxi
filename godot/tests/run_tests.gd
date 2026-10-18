@@ -2008,13 +2008,26 @@ func test_static_world() -> void:
 
 	# Headlight beams: dipped 15 m; high beams 150 m, covering both lanes.
 	var beams := EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0)
-	check(beams.size() == 5 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 3.0), "a beam reaches 15 m ahead, its tip shifted right")
+	check(beams.size() == 5 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 2.25), "a beam reaches 15 m ahead, its tip shifted right without crossing the other beam")
 	check(beams[4] == PackedVector2Array([beams[0][0], beams[2][0], beams[2][3], beams[0][3]]), "the road between the two beams is lit too (no dark wedge ahead)")
-	for heading in [0.0, PI / 2.0, PI, -PI / 2.0]:
+	for heading in [0.0, PI / 2.0, PI, -PI / 2.0, PI / 4.0, 4.213215031555581]:
 		var high := EntityLayer2.beam_polygons(Vector2.ZERO, heading, 1.8, EntityLayer2.HIGH_BEAM_M)
 		var forward := Vector2.RIGHT.rotated(-heading)
 		var right := Vector2.DOWN.rotated(-heading)
 		check(is_equal_approx(high[0][3].dot(forward), 150.0), "high beams reach 150 m at every heading")
+		var low := EntityLayer2.beam_polygons(Vector2.ZERO, heading, 1.8, 15.0)
+		check(low[0][3].dot(right) < low[2][3].dot(right), "dipped beam tips retain left/right ordering")
+		check(is_equal_approx(low[0][3].dot(forward), 15.0) and low[0][3].dot(right) > 0.0, "dipped beams retain short range and kerb bias")
+		for index in [0, 2, 4]:
+			check(Geometry2D.triangulate_polygon(low[index]).size() == 6, "dipped beam quads are simple and triangulate fully")
+		for ahead in [3.0, 7.0, 12.0]:
+			for lateral in range(-25, 35):
+				var sample: Vector2 = forward * ahead + right * (lateral * 0.37 + 0.013)
+				var hits := 0
+				for index in [0, 2, 4]:
+					if Geometry2D.is_point_in_polygon(sample, low[index]):
+						hits += 1
+				check(hits <= 1, "dipped beam interiors do not overlap into bright additive streaks")
 		for lane in [-3.5, 0.0, 3.5]:
 			var at: Vector2 = forward * 30.0 + right * lane
 			check(high.any(func(poly): return Geometry2D.is_point_in_polygon(at, poly)), "high beams cover the opposing lane, centre and own lane 30 m ahead")
