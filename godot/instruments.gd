@@ -20,7 +20,8 @@ var _state: Dictionary = {}
 var language := "en"
 var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
 var trip_reset_rect := Rect2()  # where the trip reset button was drawn: main.gd clicks it
-var chips := [false, false, false]  # lane assist (K), speed limiter (V), navigation (N): main.gd
+var chips := [false, false, false]
+var _housing := _make_housing()  # the dashboard cluster behind the dials  # lane assist (K), speed limiter (V), navigation (N): main.gd
 const MAX_SPEED_KMH := 210.0  # physics.MAX_SPEED: the dial's end
 
 
@@ -181,9 +182,9 @@ func _draw() -> void:
 	if _state.is_empty():
 		return
 	var player: Dictionary = _state.get("player", {})
-	_draw_fuel(Vector2(210, size.y - 100), player)
-	_draw_speedometer(Vector2(10, size.y - 236), speed_kmh(player.get("speed", 0.0)),
+	var cluster := _draw_speedometer(Vector2(10, size.y - 236), speed_kmh(player.get("speed", 0.0)),
 		odometer_lines(player.get("trip_m", 0.0), player.get("odometer_m", 0.0)))
+	_draw_fuel(cluster.position + Vector2(CLUSTER_WIDTH - 72, 92), player)
 	_draw_rage(Vector2(size.x - 190, size.y - 246), _state.get("rage_power", 0.0))
 	var water: float = _state.get("water_elapsed", 0.0)
 	if water > 0.0:
@@ -207,13 +208,18 @@ static func speed_kmh(speed_mps: float) -> float:
 ## The analog speedometer: 0..210 km/h over 270 degrees from
 ## lower left, ticks every 10 (labels every 20), the red needle, the
 ## number below, "km/h" above the hub, the odometer/trip LCD under the
-## dial; then the indicator chips.
+## dial; the fuel gauge beside it in the same cluster housing; the
+## indicator chips along the bottom.
+const CLUSTER_WIDTH := 330.0
+
 static func speed_angle(kmh: float) -> float:
 	return deg_to_rad(135.0 + kmh / MAX_SPEED_KMH * 270.0)
 
 
-func _draw_speedometer(at: Vector2, kmh: float, odometer: Array) -> void:
-	at = layout.place("speedometer", Rect2(at, Vector2(190, 222)), size).position  # the dial and its chips
+func _draw_speedometer(at: Vector2, kmh: float, odometer: Array) -> Rect2:
+	var cluster: Rect2 = layout.place("speedometer", Rect2(at, Vector2(CLUSTER_WIDTH, 226)), size)  # the whole dashboard
+	at = cluster.position
+	draw_style_box(_housing, cluster)
 	var center := at + Vector2(95, 88)
 	var radius := 68.0
 	draw_circle(center, radius, Color8(12, 16, 20))
@@ -247,7 +253,7 @@ func _draw_speedometer(at: Vector2, kmh: float, odometer: Array) -> void:
 	for label in labels:
 		widths.append(_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 20.0)
 		total += widths[-1]
-	var x := at.x + (190.0 - total) / 2.0
+	var x := at.x + (CLUSTER_WIDTH - total) / 2.0
 	for i in labels.size():
 		var chip := Rect2(x, at.y + 198, widths[i], 22)
 		var on: bool = chips[i]
@@ -255,6 +261,17 @@ func _draw_speedometer(at: Vector2, kmh: float, odometer: Array) -> void:
 		draw_rect(chip, Color8(80, 220, 110) if on else Color8(70, 78, 86), false, 1.0)
 		_centered(labels[i], chip.get_center(), 11, Color8(230, 255, 235) if on else Color8(120, 128, 135))
 		x += widths[i] + 6.0
+	return cluster
+
+
+static func _make_housing() -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color8(22, 26, 31, 230)
+	box.border_color = Color8(95, 105, 115)
+	box.set_border_width_all(2)
+	box.set_corner_radius_all(18)
+	box.corner_radius_top_left = 60  # the speedometer's round top
+	return box
 
 
 func _centered(text: String, at: Vector2, font_size: int, color: Color) -> void:
@@ -263,14 +280,12 @@ func _centered(text: String, at: Vector2, font_size: int, color: Color) -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
 
 
-func _draw_fuel(at: Vector2, player: Dictionary) -> void:
+## The fuel gauge, a half dial centred at `center` in the cluster: E to F,
+## the red reserve, consumption and the pump price under it.
+func _draw_fuel(center: Vector2, player: Dictionary) -> void:
 	var capacity := maxf(0.001, player.get("fuel_capacity_l", 50.0))
 	var fraction := clampf(player.get("fuel_l", 0.0) / capacity, 0.0, 1.0)
-	at = layout.place("fuel", Rect2(at, Vector2(230, 92 if price_text(_state, language) != "" else 78)), size).position
-	draw_rect(Rect2(at, Vector2(230, 78)), Color8(20, 25, 30, 220))
-	draw_rect(Rect2(at, Vector2(230, 78)), Color8(130, 140, 150), false, 1.0)
-	var center := at + Vector2(36, 50)
-	var radius := 30.0
+	var radius := 44.0
 	var face := PackedVector2Array([center])
 	for step in 25:
 		face.append(dial_point(center, step / 24.0, radius, PI))
@@ -291,13 +306,13 @@ func _draw_fuel(at: Vector2, player: Dictionary) -> void:
 		draw_string(_font, Vector2(x - 4, center.y - 2), label[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color8(220, 225, 215))
 	draw_line(center, dial_point(center, fraction, radius - 6), Color8(230, 65, 45), 3.0)
 	draw_circle(center, 4.0, Color8(240, 220, 170))
+	_centered(T.text("fuel", language), center + Vector2(0, -radius * 0.45), 10, Color8(160, 170, 175))
 	var economy := "%.1f l/100 km" % player.get("fuel_consumption_l_per_100km", 0.0) if absf(player.get("speed", 0.0)) > 0.5 \
 		else "%.1f l/h" % player.get("idle_fuel_consumption_l_per_hour", 0.0)
-	draw_string(_font, at + Vector2(74, 22), economy, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
-	draw_string(_font, at + Vector2(74, 40), T.text("fuel", language), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
+	_centered(economy, center + Vector2(0, 18), 13, Color8(205, 215, 220))
 	var price := price_text(_state, language)
 	if price != "":
-		draw_string(_font, at + Vector2(74, 62), price, HORIZONTAL_ALIGNMENT_LEFT, 150, 14, Color8(255, 215, 90))
+		_centered(price, center + Vector2(0, 38), 12, Color8(255, 215, 90))
 
 
 func _draw_rage(at: Vector2, rage: float) -> void:
