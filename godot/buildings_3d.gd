@@ -307,7 +307,7 @@ func instance_count() -> int:
 
 ## One chunk's mesh arrays (any thread): {"verts", "colors", "lit" (the
 ## lit windows' verts), "stats"}.
-static func build(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
+static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array = []) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "lit": PackedVector3Array(),
 		"arena": PackedVector3Array(), "shadow": PackedVector3Array(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
@@ -315,6 +315,8 @@ static func build(buildings: Array, styles: Array, origin: Vector2) -> Dictionar
 		var footprint: PackedVector2Array = buildings[i]
 		if footprint.size() >= 3 and not Geometry2D.triangulate_polygon(footprint).is_empty():
 			_building(out, footprint, styles[i] if i < styles.size() else [], origin)
+	for site in sites:
+		_crane(out, site, origin)
 	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size()) / 3
 	return out
 
@@ -448,6 +450,53 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		heights.resize(footprint.size())
 		heights.fill(height)
 		_polygon(out, footprint, heights, roof_color)
+
+
+## A tower crane on a construction site (its fence ring) big enough for
+## one: a yellow mast, the jib swung to a position-seeded angle and sized
+## to the site, the counter-jib with its concrete weights and the cab.
+## Casts its shadow like a building.
+const CRANE_YELLOW := Color8(235, 185, 30)
+const MIN_CRANE_SITE_M2 := 600.0
+
+static func _crane(out: Dictionary, site: PackedVector2Array, origin: Vector2) -> void:
+	if site.size() < 3 or absf(B25.signed_area(site)) < MIN_CRANE_SITE_M2:
+		return
+	var centre := Vector2.ZERO
+	for p in site:
+		centre += p
+	centre /= site.size()
+	var reach := 0.0
+	for p in site:
+		reach = maxf(reach, centre.distance_to(p))
+	var seed := B25.unit(roundf(centre.x + origin.x) * 0.0007 + roundf(origin.y - centre.y) * 0.0011)
+	var height := 28.0 + 16.0 * seed
+	var jib := clampf(reach * 0.9, 18.0, 50.0)
+	var d := Vector2.from_angle(TAU * B25.unit(seed * 7.31 + 0.17))
+	_box(out, centre - d * 1.0, centre + d * 1.0, 1.0, 0.0, height + 3.0, CRANE_YELLOW)  # the mast
+	_box(out, centre, centre + d * jib, 0.7, height, height + 1.4, CRANE_YELLOW)  # the jib
+	_box(out, centre, centre - d * jib * 0.3, 0.8, height, height + 1.0, CRANE_YELLOW)  # the counter-jib
+	_box(out, centre - d * jib * 0.3, centre - d * (jib * 0.3 - 3.0), 1.3, height - 1.5, height + 1.2, Color8(150, 150, 145))  # its weights
+	_box(out, centre + d * 1.0, centre + d * 3.0, 1.0, height - 2.5, height, Color8(60, 70, 80))  # the cab
+	out["stats"]["cranes"] = out["stats"].get("cranes", 0) + 1
+
+
+## A box from `a` to `b` on the ground plan, `half_width` either side,
+## between heights `bottom` and `top`: four sides and the top (never seen
+## from below), drawn and casting a shadow.
+static func _box(out: Dictionary, a: Vector2, b: Vector2, half_width: float, bottom: float, top: float, color: Color) -> void:
+	var along := (b - a).normalized()
+	var side := Vector2(-along.y, along.x) * half_width
+	var corners := [a - side, b - side, b + side, a + side]
+	for key in ["verts", "shadow"]:
+		for i in 4:
+			var p: Vector2 = corners[i]
+			var q: Vector2 = corners[(i + 1) % 4]
+			var outward := ((p + q) / 2.0 - (a + b) / 2.0).normalized()
+			var shade := 0.72 + 0.28 * clampf(outward.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+			_quad(out, to_3d(p, bottom), to_3d(q, bottom), to_3d(q, top), to_3d(p, top), Color(color.r * shade, color.g * shade, color.b * shade),
+				to_3d(outward), key)
+		_quad(out, to_3d(corners[0], top), to_3d(corners[1], top), to_3d(corners[2], top), to_3d(corners[3], top), color, Vector3.UP, key)
 
 
 ## The building's shadow caster: its walls and a flat roof at the eaves

@@ -2318,6 +2318,12 @@ func test_sun_and_shadows() -> void:
 	check(not layer._sun.visible and not layer._shadow_sprite.visible and layer._shadow_view.render_target_update_mode == SubViewport.UPDATE_DISABLED, "night: no sun, the shadow view isn't rendered")
 	layer.set_sun(40.0, 180.0, 1.0)
 	check(not layer._sun.visible, "overcast: no shadows")
+	var site := PackedVector2Array([Vector2(0, 0), Vector2(40, 0), Vector2(40, 30), Vector2(0, 30)])
+	var crane: Dictionary = B3.build([], [], Vector2.ZERO, [site, PackedVector2Array([Vector2(0, 0), Vector2(5, 0), Vector2(5, 5)])])
+	var top := 0.0
+	for v in crane["verts"]:
+		top = maxf(top, v.y)
+	check(crane["stats"].get("cranes", 0) == 1 and top >= 28.0 and not crane["shadow"].is_empty(), "a big construction site gets a tall, shadow-casting crane; a tiny one none")
 	var arrays: Dictionary = B3.build([PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10), Vector2(0, 10)])], [], Vector2.ZERO)
 	var instances: Array = B3.meshes(arrays)
 	var casters := instances.filter(func(node): return node.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)

@@ -465,15 +465,16 @@ var _built_view := Vector2.INF
 ## Build either 3D meshes or flat footprints, independently of camera movement.
 func _build_2_5d() -> void:
 	var buildings: Array = _data.get("buildings", [])
-	if buildings.is_empty():
-		return
+	var sites: Array = _data.get("construction_fences", [])  # each gets a tower crane in 3D
 	var styles: Array = _data.get("building_styles", [])
 	var origin := _origin
-	if buildings_3d:  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
+	if buildings_3d and not (buildings.is_empty() and sites.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
 		if not build_async:
-			_meshes_ready(_build_3d_timed(buildings, styles, origin))
+			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites))
 		else:
-			_building_task = WorkerThreadPool.add_task(func(): _meshes_ready.call_deferred(_build_3d_timed(buildings, styles, origin)))
+			_building_task = WorkerThreadPool.add_task(func(): _meshes_ready.call_deferred(_build_3d_timed(buildings, styles, origin, sites)))
+		return
+	if buildings.is_empty() or buildings_3d:
 		return
 	building_node = Node2D.new()
 	building_node.draw.connect(_draw_volumes)
@@ -509,9 +510,9 @@ static var buildings_3d := true  # --buildings 2d uses flat footprints
 var meshes_3d: Array = []  # buildings_3d.meshes, added to MapLayer's 3D building layer
 
 
-static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
+static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2, sites: Array = []) -> Dictionary:
 	var started := Time.get_ticks_usec()
-	var arrays := B3.build(buildings, styles, origin)
+	var arrays := B3.build(buildings, styles, origin, sites)
 	arrays["build_usec"] = Time.get_ticks_usec() - started
 	return arrays
 

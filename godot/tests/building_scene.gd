@@ -47,7 +47,8 @@ func _initialize() -> void:
 		"roads": [{"points": [[-40, 22], [190, 22]], "half_width_m": 4.0, "drivable": true, "layer": 0},
 			{"points": [[-40, 62], [190, 62]], "half_width_m": 3.0, "drivable": true, "layer": 0},
 			{"points": [[50, -40], [50, 140]], "half_width_m": 3.0, "drivable": true, "layer": 0}],
-		"canopies": [_box(130, 30, 20, 14)], "canopy_heights": [5.5]}
+		"canopies": [_box(130, 30, 20, 14)], "canopy_heights": [5.5],
+		"construction_fences": [_box(70, 90, 40, 30)]}  # a site with its tower crane
 	var map := MapLayer.new()
 	root.add_child(map)
 	await process_frame  # the map's groups exist after its _ready
