@@ -1,6 +1,6 @@
 ## Dashboard instruments from the shown state: the needle fuel gauge with its reserve
 ## zone and econometer, the rage face and bar, the water countdown, and the
-## trip / odometer readout. Presentation only - every value comes from the
+## odometer / trip LCD in the speedometer. Presentation only - every value comes from the
 ## simulation. Redrawn only when a displayed value changes.
 extends Control
 
@@ -164,9 +164,10 @@ static func speed_limit(state: Dictionary) -> int:
 	return int(road["speed_limit_kmh"])
 
 
-static func trip_text(trip_m: float, odometer_m: float, language := "en") -> String:
-	var trip := "%d m" % roundi(trip_m) if trip_m < 1000.0 else "%.2f km" % (trip_m / 1000.0)
-	return "%s: %s · %s: %.1f km" % [T.text("trip", language), trip, T.text("odometer", language), odometer_m / 1000.0]
+## The dashboard's odometer and trip lines, as a real cluster shows them:
+## whole kilometres, six digits; the trip to 0.1 km.
+static func odometer_lines(trip_m: float, odometer_m: float, language := "en") -> Array:
+	return ["%06d km" % floori(odometer_m / 1000.0), "%s %.1f km" % [T.text("trip", language).to_upper(), trip_m / 1000.0]]
 
 
 ## Needle angle (radians, screen y down) for a fuel fraction: E at the left, F at the right.
@@ -180,7 +181,8 @@ func _draw() -> void:
 		return
 	var player: Dictionary = _state.get("player", {})
 	_draw_fuel(Vector2(210, size.y - 100), player)
-	_draw_speedometer(Vector2(10, size.y - 214), speed_kmh(player.get("speed", 0.0)))
+	_draw_speedometer(Vector2(10, size.y - 236), speed_kmh(player.get("speed", 0.0)),
+		odometer_lines(player.get("trip_m", 0.0), player.get("odometer_m", 0.0), language))
 	_draw_rage(Vector2(size.x - 190, size.y - 246), _state.get("rage_power", 0.0))
 	var water: float = _state.get("water_elapsed", 0.0)
 	if water > 0.0:
@@ -193,13 +195,6 @@ func _draw() -> void:
 	var limit := speed_limit(_state)
 	if limit > 0:  # the round limit sign under the clock
 		_draw_limit_sign(Vector2(size.x - 48.0, 76.0), 31.0, limit)
-	# A dark outline keeps the light text readable on snow and on grass alike (godot-16).
-	var trip := trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0), language)
-	# The meters box, top left.
-	var trip_size := _font.get_string_size(trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
-	var meters: Rect2 = layout.place("meters", Rect2(4, 4, trip_size.x + 16, 28), size)
-	draw_rect(meters, Color8(15, 20, 25, 210))
-	draw_string(_font, meters.position + Vector2(8, 14 + _font.get_ascent(15) / 2.0 - 2), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color8(255, 245, 190))
 
 
 ## The dial's reading: |speed| in km/h up to the car's top speed
@@ -210,13 +205,14 @@ static func speed_kmh(speed_mps: float) -> float:
 
 ## The analog speedometer: 0..210 km/h over 270 degrees from
 ## lower left, ticks every 10 (labels every 20), the red needle, the
-## number and "km/h" below; then the indicator chips.
+## number below, "km/h" above the hub, the odometer/trip LCD under the
+## dial; then the indicator chips.
 static func speed_angle(kmh: float) -> float:
 	return deg_to_rad(135.0 + kmh / MAX_SPEED_KMH * 270.0)
 
 
-func _draw_speedometer(at: Vector2, kmh: float) -> void:
-	at = layout.place("speedometer", Rect2(at, Vector2(190, 200)), size).position  # the dial and its chips
+func _draw_speedometer(at: Vector2, kmh: float, odometer: Array) -> void:
+	at = layout.place("speedometer", Rect2(at, Vector2(190, 222)), size).position  # the dial and its chips
 	var center := at + Vector2(95, 88)
 	var radius := 68.0
 	draw_circle(center, radius, Color8(12, 16, 20))
@@ -231,7 +227,12 @@ func _draw_speedometer(at: Vector2, kmh: float) -> void:
 	draw_line(center, center + Vector2.from_angle(speed_angle(kmh)) * (radius - 20.0), Color8(230, 65, 45), 4.0)
 	draw_circle(center, 6.0, Color8(240, 220, 170))
 	_centered("%d" % roundi(kmh), Vector2(center.x, at.y + 132), 16, Color8(240, 240, 240))
-	_centered("km/h", Vector2(center.x, at.y + 153), 14, Color8(190, 200, 205))
+	_centered("km/h", center + Vector2(0, -24), 11, Color8(190, 200, 205))
+	var lcd := Rect2(center.x - 52, at.y + 160, 104, 34)
+	draw_rect(lcd, Color8(18, 14, 8))
+	draw_rect(lcd, Color8(90, 80, 60), false, 1.0)
+	_centered(odometer[0], Vector2(center.x, lcd.position.y + 9), 12, Color8(255, 190, 80))
+	_centered(odometer[1], Vector2(center.x, lcd.position.y + 25), 11, Color8(255, 190, 80))
 	var labels := ["LANE (K)", "LIMIT (V)", "NAVI (N)"]
 	var widths := []
 	var total := 12.0
@@ -240,7 +241,7 @@ func _draw_speedometer(at: Vector2, kmh: float) -> void:
 		total += widths[-1]
 	var x := at.x + (190.0 - total) / 2.0
 	for i in labels.size():
-		var chip := Rect2(x, at.y + 176, widths[i], 22)
+		var chip := Rect2(x, at.y + 198, widths[i], 22)
 		var on: bool = chips[i]
 		draw_rect(chip, Color8(30, 90, 45) if on else Color8(28, 32, 36))
 		draw_rect(chip, Color8(80, 220, 110) if on else Color8(70, 78, 86), false, 1.0)
