@@ -41,6 +41,8 @@ VOMIT_STEP_RADIUS_M = 0.9  # a pedestrian this close to a vomit puddle has stepp
 DIRTY_FOOTPRINTS = 6  # footprints left by shoes that went through vomit
 FOOTPRINT_SPACING_M = 0.7
 MAX_FOOTPRINTS = 300
+ALCOHOL_DECAY_PER_GAME_HOUR = 0.15  # gameplay estimate, not a medical model
+DRUNK_FROM_PROMILLE = 0.5
 
 PEDESTRIAN_COLORS = [
     (230, 80, 80),    # Red
@@ -502,6 +504,7 @@ class PedestrianManager:
         self.traffic_manager = traffic_manager
         self.residents = residents if residents is not None else ResidentManager()
         self.sim_time: float = 0.0
+        self._last_game_time_seconds: Optional[float] = None
         self.sports_ice_open = False  # server: fields frozen, and daylight or floodlit hours
         self.soccer_open = False  # server: no snow on the pitches, and daylight or floodlit hours
         self._ice_checked_at = -1e9
@@ -2436,6 +2439,13 @@ class PedestrianManager:
         """Update pedestrian simulation: despawning, spawning, waypoint traversal, traffic lights, and evasion."""
         from .viewport import in_bounds
         self.sim_time += dt
+        alcohol_dt = dt
+        if game_time_seconds is not None and self._last_game_time_seconds is not None:
+            alcohol_dt = game_time_seconds - self._last_game_time_seconds
+            if alcohol_dt < -43200.0:  # the game clock wraps at midnight
+                alcohol_dt += 86400.0
+            alcohol_dt = max(0.0, alcohol_dt)
+        self._last_game_time_seconds = game_time_seconds
         self.pedestrians = [ped for ped in self.pedestrians if ped.state != PedestrianState.DESPAWNING.value]
         stage_started = (time.perf_counter(), time.thread_time())
         self.update_lod(player_car, dt, viewport_bounds if active_bounds is not None else None)
@@ -2594,6 +2604,11 @@ class PedestrianManager:
 
         # Update walking movement
         for ped in self.pedestrians:
+            if ped.blood_alcohol_promille > 0.0 or ped.is_drunk:
+                ped.blood_alcohol_promille = max(
+                    0.0, ped.blood_alcohol_promille - ALCOHOL_DECAY_PER_GAME_HOUR * alcohol_dt / 3600.0,
+                )
+                ped.is_drunk = ped.blood_alcohol_promille >= DRUNK_FROM_PROMILLE
             if not ped.lod_update_due:
                 continue
             update_dt = max(dt, ped.lod_update_dt)

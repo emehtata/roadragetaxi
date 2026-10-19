@@ -816,7 +816,8 @@ def test_pedestrian_spawn_area_is_limited_to_building_radius():
 def test_drunk_pedestrian_walks_unevenly_and_may_vomit(monkeypatch):
     way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=0)
-    drunk = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (230, 80, 80), is_drunk=True)
+    drunk = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (230, 80, 80),
+                       is_drunk=True, blood_alcohol_promille=1.0)
     drunk.drunk_vomit_cooldown = 0.0
     manager.pedestrians = [drunk]
     monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
@@ -825,6 +826,47 @@ def test_drunk_pedestrian_walks_unevenly_and_may_vomit(monkeypatch):
 
     assert drunk.y != 0.0
     assert manager.vomit_puddles == [(20.0, 0.0)]
+
+
+def test_pedestrian_sobers_with_game_hours_and_stops_drunk_behavior(monkeypatch):
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    ped = Pedestrian(20, 0, 0, 1.3, 1.3, way, 0, 1, (230, 80, 80),
+                     is_drunk=True, blood_alcohol_promille=2.0)
+    manager.pedestrians = [ped]
+    car = Car(0, 0, 0, 0)
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 1.0)
+    manager.update(car, 0.1, game_time_seconds=10 * 3600)
+    for hour in range(1, 12):
+        manager.update(car, 0.1, game_time_seconds=((10 + hour) % 24) * 3600)
+        assert ped.is_drunk == (ped.blood_alcohol_promille >= 0.5)
+    assert ped.blood_alcohol_promille == pytest.approx(0.35, abs=0.001)
+    assert not ped.is_drunk
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
+    ped.drunk_vomit_cooldown = ped.fall_cooldown = 0.0
+    manager.update(car, 0.1, game_time_seconds=21 * 3600)
+    assert not manager.vomit_puddles and ped.fall_timer == 0.0
+    for hour in (22, 23, 0):
+        manager.update(car, 0.1, game_time_seconds=hour * 3600)
+    assert ped.blood_alcohol_promille == 0.0 and not ped.is_drunk
+
+
+@pytest.mark.parametrize("waiting,fallen,skip_lod", [(True, False, False), (False, True, False), (False, False, True)])
+def test_sobering_continues_through_waits_falls_and_lod(monkeypatch, waiting, fallen, skip_lod):
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    ped = Pedestrian(20, 0, 0, 1.3, 1.3, way, 0, 1, (230, 80, 80),
+                     is_drunk=True, blood_alcohol_promille=0.6,
+                     is_taxi_stop_waiter=waiting, fall_timer=10 if fallen else 0)
+    manager.pedestrians = [ped]
+    if skip_lod:
+        ped.lod_update_due = False
+        monkeypatch.setattr(manager, "update_lod", lambda *args: None)
+    car = Car(0, 0, 0, 0)
+    manager.update(car, 0.1, game_time_seconds=23 * 3600)
+    manager.update(car, 0.1, game_time_seconds=0)
+    assert ped.blood_alcohol_promille == pytest.approx(0.45, abs=0.001)
+    assert not ped.is_drunk
 
 
 def test_cyclist_spawn_assigns_body_color():
