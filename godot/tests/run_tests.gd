@@ -603,6 +603,7 @@ func test_nightclub_audio() -> void:
 	check(NC.week_minute("2026-10-19", 3600.0) == 60.0 and NC.week_minute("2026-10-25", 0.0) == 6 * 1440.0, "the game date's weekday (Mon 2026-10-19)")
 	var audio = NC.new()
 	root.add_child(audio)
+	check(is_equal_approx(audio.city_ambience_gain(), 1.0), "no nightclub playback leaves city ambience unchanged")
 	var open := [[0.0, 7 * 1440.0]]
 	var clubs := [[0.0, 0.0, open], [0.0, 0.0, open], [400.0, 0.0, open], [10.0, 5.0, open], [-10.0, 5.0, open], [5.0, -10.0, open]]
 	if audio._streams.is_empty():
@@ -611,18 +612,29 @@ func test_nightclub_audio() -> void:
 		audio.update(clubs, Vector2.ZERO, 600.0, Vector2.ZERO, 0.1)
 		var first: Array = audio._club_of.duplicate()
 		check(audio.playing_count() == NC.PLAYERS and not first.has("400,0"), "the nearest venues play (a duplicate is one venue), the far one doesn't")
+		var opening_gain: float = audio.city_ambience_gain()
+		for i in 60:
+			audio.update(clubs, Vector2.ZERO, 600.0, Vector2.ZERO, 0.1)
+		check(absf(audio.city_ambience_gain() - NC.CITY_AMBIENCE_MIN) < 0.001, "near a full-volume club city ambience drops to 20 percent")
+		check(opening_gain > audio.city_ambience_gain() and opening_gain < 1.0, "ambience ducks progressively with the music fade-in")
+		check(audio._players[0].volume_db > 1.9, "door-level music reaches the boosted 2 dB mix")
 		for i in 20:
 			audio.update(clubs, Vector2(float(i), 0.0), 600.0, Vector2.ZERO, 0.1)
 		check(audio._club_of == first, "moving a little: same players, no restart")
+		var nearby_gain: float = audio.city_ambience_gain()
+		audio.update(clubs, Vector2(2000.0, 0.0), 600.0, Vector2.ZERO, 0.1)
+		check(audio.city_ambience_gain() > nearby_gain and audio.city_ambience_gain() < 1.0, "ambience returns gradually while departing music fades")
 		for i in 100:
 			audio.update(clubs, Vector2(2000.0, 0.0), 600.0, Vector2.ZERO, 0.1)
 		check(audio.playing_count() == 0, "far away: every player stopped")
+		check(is_equal_approx(audio.city_ambience_gain(), 1.0), "leaving the clubs restores city ambience")
 	var missing = NC.new()
 	missing.set("_streams", [])
 	root.add_child(missing)
 	missing._streams = []
 	missing.update(clubs, Vector2.ZERO, 600.0, Vector2.ZERO, 0.1)
 	check(missing.playing_count() == 0, "no tracks: nothing plays, no crash")
+	check(is_equal_approx(missing.city_ambience_gain(), 1.0), "missing music must not suppress city ambience")
 	audio.queue_free()
 	missing.queue_free()
 

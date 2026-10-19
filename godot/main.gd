@@ -654,8 +654,9 @@ func _present(state: Dictionary) -> void:
 	flash.visible = lightning > 0.0  # godot-18: an invisible full-screen rect is still blended every frame
 	# The server's darkness; an older server without a calendar: the hour.
 	var night := (darkness if darkness >= 0.0 else _night(state.get("game_time_seconds", 12.0 * 3600.0))) if override_night < 0.0 else override_night
-	audio.set_loop("city_day", 0.5 * (1.0 - night))
-	audio.set_loop("city_night", 0.5 * night)
+	var city_gain := 0.5 * nightclubs.city_ambience_gain()
+	audio.set_loop("city_day", city_gain * (1.0 - night))
+	audio.set_loop("city_night", city_gain * night)
 	var loops := weather_loops(state)
 	if override_rain >= 0.0:
 		loops["rain"] = override_rain

@@ -20,7 +20,8 @@ const PLAYERS := 3
 const TRACKS := ["assets/music/nightclub/nightclub_dance_1.ogg", "assets/music/nightclub/nightclub_dance_2.ogg"]
 const RANGE_M := 160.0  # inaudible from here (world metres: the server's EPSG:3067 metres)
 const DOOR_M := 12.0  # full loudness this close
-const LOUDNESS_DB := -4.0  # at the door, before the Environment bus
+const LOUDNESS_DB := 2.0  # at the door, before the Environment bus (+6 dB over the original mix)
+const CITY_AMBIENCE_MIN := 0.2  # leave a quiet city bed underneath nearby music
 const CUTOFF_DOOR_HZ := 2600.0  # through the walls and doors, right outside
 const CUTOFF_FAR_HZ := 280.0  # at RANGE_M: only the bass left
 const FADE_MIN := 20.0  # game minutes: a venue opening or closing fades over this
@@ -141,3 +142,12 @@ func _fade(i: int, loudness: float, cutoff: float, blend: float) -> void:
 
 func playing_count() -> int:
 	return _players.filter(func(p): return p.playing).size()
+
+
+## Follow the loudest actual player, including its opening/closing and distance fades.
+func city_ambience_gain() -> float:
+	var strongest := 0.0
+	for i in _players.size():
+		if _club_of[i] != "" and _players[i].playing:
+			strongest = maxf(strongest, db_to_linear(_players[i].volume_db - LOUDNESS_DB))
+	return lerpf(1.0, CITY_AMBIENCE_MIN, clampf(strongest, 0.0, 1.0))

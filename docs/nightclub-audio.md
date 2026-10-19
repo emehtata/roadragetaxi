@@ -45,6 +45,10 @@ Three factors are kept apart and multiplied:
   change or the clock.
 - **Smoothing:** volume and cutoff ease toward their targets over `SMOOTH_S`
   (0.6 s). A player stops once faded out.
+- **Mix:** door-level music is boosted 6 dB over the original mix. City day/night
+  ambience follows the loudest playing club's smoothed gain, dropping to 20% of
+  its usual level at the door and recovering with distance or closing fades.
+  Weather, traffic and other sounds are unchanged; the Environment bus is not ducked.
 - **Panning:** the 2D player only pans; its own attenuation is off.
 - **Tracks:** `TRACKS`, one picked per venue by its position, started at a
   random point so neighbouring clubs aren't in step. A missing file logs a
