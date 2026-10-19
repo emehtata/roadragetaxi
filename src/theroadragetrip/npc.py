@@ -1591,7 +1591,9 @@ def _begin_trip_on_vehicle(
         members = []
     if not members:
         group_size = random.randint(1, max(1, vehicle.capacity))
-        members = [resident_manager.create(mode="driving" if i == 0 else "riding") for i in range(group_size)]
+        members = [resident_manager.create(mode="driving" if i == 0 else "riding",
+                   age=random.randint(18, 29) if vehicle.vehicle_kind == "night_cruise" else None)
+                   for i in range(group_size)]
     driver_resident = members[0]
     for member in members:
         member.vehicle_ids.add(vehicle.vehicle_id)
@@ -3627,6 +3629,7 @@ class NPCVehicleManager:
         self.min_count = min_count if min_count is not None else max(1, int(target_count * 0.6))
         self.competitor_taxis = COMPETITOR_TAXIS  # of the moving-traffic spawns (competitor_taxis.py)
         self._night_taxi_target = 0
+        self._night_cruise_target = 0
         self.line_buses = bus_lines.LINE_BUSES  # of the moving-traffic spawns (bus_lines.py)
         self.bus_stops = ()  # the world's BusStops, set by the simulation each frame
         self._bus_lines_for = None  # (id, len) of the bus_stops the cached lines came from
@@ -3948,6 +3951,8 @@ class NPCVehicleManager:
             self._demand_draw_tick = self._population_tick_number
         expected_moving = self.city_target_count * self.target_moving_fraction * demand["demand"]
         self._night_taxi_target = night_taxi_target(self.clock, fraction, min(self.city_target_count, self.max_count)) if self.competitor_taxis > 0 else 0
+        self._night_cruise_target = min(max(0, self.max_count - self._night_taxi_target), math.floor(
+            self.city_target_count * self.target_moving_fraction * demand["nightlife"]))
         self.target_moving_count = math.floor(expected_moving) + (self._demand_draw < expected_moving % 1.0)
         self.target_moving_count = min(self.max_count, self.target_moving_count + self._night_taxi_target)
         # Parked cars belong to the households around, whatever the hour;
@@ -3960,6 +3965,7 @@ class NPCVehicleManager:
             **demand, "people": round(self._local_people), "highway": highway,
             "expected_moving": round(expected_moving, 3), "moving_target": self.target_moving_count,
             "night_taxi_target": self._night_taxi_target,
+            "night_cruise_target": self._night_cruise_target,
         }
 
     def populate_initial(
@@ -4288,6 +4294,10 @@ class NPCVehicleManager:
             if vehicle.taxi_idle_until == 0.0:
                 vehicle.taxi_idle_until = sim_time + CRUISE_DWELL_S
             return  # keep its driver aboard, whether waiting or about to cruise
+        if vehicle.vehicle_kind == "night_cruise":
+            if self._night_cruise_target > 0:
+                return  # a cruising group stays aboard for its next budgeted trip
+            vehicle.vehicle_kind = "traffic"
         if is_line_bus(vehicle):
             if vehicle.bus_job is not None and vehicle.bus_job.at_stop(sim_time, vehicle.x, vehicle.y):
                 vehicle.bus_job = None  # the terminus: it waits there until retired out of sight
@@ -4753,8 +4763,13 @@ class NPCVehicleManager:
         if speed is None:
             release_npc_parking_reservation(vehicle)
             return None
-        if vehicle.vehicle_type in ("car", "van") and sum(is_competitor(v) and v.state != NPCState.CRASHED for v in self.vehicles) < max(self.competitor_taxis, self._night_taxi_target):
+        taxis = sum(is_competitor(v) and v.state != NPCState.CRASHED for v in self.vehicles)
+        cruisers = sum(v.vehicle_kind == "night_cruise" and v.state != NPCState.CRASHED for v in self.vehicles)
+        if (vehicle.vehicle_type in ("car", "van") and taxis < max(self.competitor_taxis, self._night_taxi_target)
+                and (self._night_cruise_target == 0 or taxis <= cruisers)):
             make_competitor(vehicle)
+        elif vehicle.vehicle_type == "car" and cruisers < self._night_cruise_target:
+            vehicle.vehicle_kind = "night_cruise"
         driver = _apply_npc_trip(vehicle, resident_manager, plan)
         if speed > 0:
             vehicle.car.speed = speed  # parked-trip setup deliberately reset it to zero
@@ -5122,9 +5137,12 @@ class NPCVehicleManager:
         below_moving_target = currently_moving < self.target_moving_count
         nearby_taxis = sum(1 for v in self.vehicles if is_competitor(v) and v.state != NPCState.CRASHED and _near_player(v))
         below_taxi_target = nearby_taxis < self._night_taxi_target
+        nearby_cruisers = sum(1 for v in self.vehicles if v.vehicle_kind == "night_cruise"
+                              and v.state != NPCState.CRASHED and _near_player(v))
+        below_cruise_target = nearby_cruisers < self._night_cruise_target
         trip_start_attempt_cap = (
             NPC_TRIP_START_ATTEMPTS_PER_TICK_WHEN_BELOW_MOVING_TARGET
-            if below_moving_target or below_taxi_target
+            if below_moving_target or below_taxi_target or below_cruise_target
             else NPC_TRIP_START_ATTEMPTS_PER_TICK
         )
         idle_candidates = [
@@ -5146,14 +5164,15 @@ class NPCVehicleManager:
             and self._trip_retry_after_tick.get(vehicle.vehicle_id, 0) <= self._population_tick_number
         ]
         self.population_diagnostics["vehicles_waiting_for_trips"] = len(idle_candidates)
-        if below_moving_target or below_taxi_target:
+        if below_moving_target or below_taxi_target or below_cruise_target:
             transit_x, transit_y = transit_focus or (player_x, player_y)
             transit_spawns = sum(1 for job in self._route_jobs if job["kind"] == "transit")
             while (
                 trip_starts_this_tick < trip_start_attempt_cap
                 and transit_spawns < NPC_TRANSIT_SPAWNS_PER_TICK
                 and (currently_moving + transit_spawns < self.target_moving_count
-                     or nearby_taxis + transit_spawns < self._night_taxi_target)
+                     or nearby_taxis + transit_spawns < self._night_taxi_target
+                     or nearby_cruisers + transit_spawns < self._night_cruise_target)
                 and len(self._route_jobs) < NPC_MAX_ROUTE_JOBS // 2
             ):
                 trip_starts_this_tick += 1
@@ -5277,11 +5296,16 @@ class NPCVehicleManager:
                 steps = _bus_leg_steps(vehicle, vehicle.bus_job, traffic_world, ways, spatial_grid,
                                        curbs, curb_grid, buildings, building_grid)
             elif kind in ("continue", "unhold"):  # (unhold: a held car, a new destination from where it stands)
+                query = (vehicle.home_position if vehicle.vehicle_kind == "household"
+                         else vehicle.taxi_job.target if is_competitor(vehicle) and vehicle.taxi_job is not None else None)
+                if vehicle.vehicle_kind == "night_cruise":
+                    # Local laps, not a city-wide errand search that ties up route slots.
+                    angle = random.uniform(-math.pi, math.pi)
+                    query = (vehicle.x + math.cos(angle) * 150.0, vehicle.y + math.sin(angle) * 150.0)
                 steps = _continue_npc_trip_steps(
                     vehicle, traffic_world, ways, spatial_grid, parking_spaces, sceneries,
                     buildings, curbs, curb_grid, building_grid,
-                    vehicle.home_position if vehicle.vehicle_kind == "household"
-                    else vehicle.taxi_job.target if is_competitor(vehicle) and vehicle.taxi_job is not None else None,
+                    query,
                     [pos for vid, pos in claimed_points if vid != vehicle.vehicle_id],
                 )
             else:

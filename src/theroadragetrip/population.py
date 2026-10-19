@@ -154,7 +154,12 @@ def traffic_demand(local_fraction: float, highway: Optional[str], moment) -> dic
     hour = hour_demand(moment)
     through = THROUGH_TRAFFIC.get(highway or "", 0.0)
     local = min(1.0, local_fraction)
+    # Gameplay nightlife, not commuter traffic counts: Friday/Saturday 18–05.
+    nightlife = local * 0.5 if moment is not None and (
+        moment.hour >= 18 and moment.weekday() in (4, 5)
+        or moment.hour < 5 and moment.weekday() in (5, 6)
+    ) else 0.0
     return {
-        "local": local, "through": through, "hour": hour,
-        "demand": min(1.0, max(local, through)) * hour,
+        "local": local, "through": through, "hour": hour, "nightlife": nightlife,
+        "demand": max(min(1.0, max(local, through)) * hour, nightlife),
     }
