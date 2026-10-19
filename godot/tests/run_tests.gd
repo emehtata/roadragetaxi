@@ -1175,7 +1175,7 @@ func test_speech_and_stations() -> void:
 	check(Hud.subtitle_text({"speaker": "passenger", "text": ""}) == "" and Hud.subtitle_text({}) == "", "no text: no subtitle")
 	check(Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}, "fi") == "Kuljettaja: Mennään", "the speaker in Finnish")
 	var fare_fi := Hud.fare_details({"elapsed_time": 30.0, "live_fare_cents": 1250, "fare_distance_m": 2300.0, "passenger_happiness": 80.0}, "fi")
-	check(fare_fi.contains("mittari 12.50 €") and fare_fi.contains("tyytyväisyys 80%") and not fare_fi.contains("happiness"), "the fare's details in Finnish")
+	check(not fare_fi.contains("mittari") and fare_fi.contains("tyytyväisyys 80%") and not fare_fi.contains("happiness"), "the fare's details in Finnish")
 	hud.show_subtitle({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei", "duration_s": 4.0})
 	check(hud._subtitle.visible and hud._subtitle.text == "Aino: Hei", "one subtitle shows")
 	var glow_p := PackedVector2Array()
@@ -1712,10 +1712,10 @@ func test_taxi_information() -> void:
 	var passenger := {"name": "Aino", "pickup": {"address": "Kirkkokatu 4"}, "dropoff": {"address": "Rautatientori"}}
 	var fare := {"state": "DROPOFF", "current_passenger": passenger, "elapsed_time": 61.6, "live_fare_cents": 1234,
 		"fare_distance_m": 2345.6, "passenger_happiness": 49.6}
-	check(Hud.values({"taxi": fare})["fare"] == "Drive Aino to Rautatientori · 62 s · meter 12.34 € · 2.35 km · happiness 50%", "a running fare: time, meter, distance, happiness")
+	check(Hud.values({"taxi": fare})["fare"] == "Drive Aino to Rautatientori · 62 s · 2.35 km · happiness 50%", "a running fare: time, distance, happiness")
 	var started := fare.merged({"elapsed_time": 0.0, "live_fare_cents": 0, "fare_distance_m": 0.0, "passenger_happiness": 100.0}, true)
-	check(Hud.values({"taxi": started})["fare"].ends_with("· 0 s · meter 0.00 € · 0.00 km · happiness 100%"), "zeroes and the boundaries show as they are")
-	check(Hud.values({"taxi": fare.merged({"live_fare_cents": 5}, true)})["fare"].contains("meter 0.05 €"), "a cent-level meter")
+	check(Hud.values({"taxi": started})["fare"].ends_with("· 0 s · 0.00 km · happiness 100%"), "zeroes and the boundaries show as they are")
+	check(preload("res://taxi_meter.gd").readout(5) == "   0.05" and preload("res://taxi_meter.gd").readout(123456) == "1234.56", "a cent-level taximeter")
 	var before := fare.merged({"live_fare_cents": null, "fare_distance_m": null, "passenger_happiness": null}, true)
 	check(Hud.values({"taxi": before})["fare"] == "Drive Aino to Rautatientori · 62 s", "before the meter starts: no made-up meter values")
 	var old := {"state": "DROPOFF", "current_passenger": passenger}

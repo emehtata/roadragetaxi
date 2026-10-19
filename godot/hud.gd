@@ -20,6 +20,7 @@ var _subtitle_until := 0  # real-time ms
 var _board := Label.new()  # the next trains board (J)
 var _timetable_hint_shown := false  # once a session, when the map first has timetabled stations
 var _timetable_hint_until := 0
+var _meter := preload("res://taxi_meter.gd").new()  # the seven-segment taximeter
 var _summary := Label.new()  # the city summary: covers everything once the career city is done
 var _notice_style := StyleBoxFlat.new()
 var _fare_style := StyleBoxFlat.new()
@@ -96,6 +97,7 @@ func _ready() -> void:
 	_map_sign.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_map_sign.visible = false
 	add_child(_map_sign)
+	add_child(_meter)
 	add_child(_summary)  # last child: above the HUD rows
 	_notice_style = _box(Color8(20, 30, 40, 235), Color8(255, 200, 50))
 	_notice.add_theme_stylebox_override("normal", _notice_style)
@@ -152,6 +154,10 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	_clock.text = text["clock"]
 	_weather.text = text["weather"]
 	_fare.text = text["fare"]
+	var live = state.get("taxi", {}).get("live_fare_cents")
+	_meter.visible = typeof(live) in [TYPE_INT, TYPE_FLOAT]
+	if _meter.visible:
+		_meter.cents = int(live)
 	_fare_style.border_color = text["fare_color"]
 	_fare.add_theme_color_override("font_color", text["fare_color"])
 	var start_hint: bool = text["notice"] == "" and text["start_hint"] != ""  # the start hint, blue
@@ -211,6 +217,10 @@ func _layout() -> void:
 		_fare.position = layout.place("fare", Rect2(_fare.position, _fare.size), size).position
 	else:
 		layout.rects.erase("fare")  # nothing there to grab
+	if _meter.visible:  # top middle by default
+		_meter.position = layout.place("meter", Rect2(Vector2((size.x - _meter.size.x) / 2.0, 8.0), _meter.size), size).position
+	else:
+		layout.rects.erase("meter")
 	_hint.visible = _hint.text != "" and not _notice.visible
 	_hint.position = Vector2((size.x - _hint.size.x) / 2.0, size.y - 30.0)
 	if _map_sign.visible:  # small, right under the weather line
@@ -395,15 +405,14 @@ static func summary_text(state: Dictionary, language := "en") -> String:
 
 
 ## The mission bar while driving a fare: elapsed time, then the
-## meter, its distance and the passenger's happiness once the meter runs
+## distance and the passenger's happiness once the meter runs (the fare
+## itself is on the taximeter)
 ## (the server sends those null before). Missing or malformed values are left out.
 static func fare_details(taxi: Dictionary, language := "en") -> String:
 	var parts := []
 	var numeric := func(key): return typeof(taxi.get(key)) in [TYPE_INT, TYPE_FLOAT]
 	if numeric.call("elapsed_time"):
 		parts.append("%.0f s" % taxi["elapsed_time"])
-	if numeric.call("live_fare_cents"):
-		parts.append(T.text("meter", language) % (int(taxi["live_fare_cents"]) / 100.0))
 	if numeric.call("fare_distance_m"):
 		parts.append("%.2f km" % (taxi["fare_distance_m"] / 1000.0))
 	if numeric.call("passenger_happiness"):
