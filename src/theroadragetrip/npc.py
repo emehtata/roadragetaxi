@@ -4767,8 +4767,8 @@ class NPCVehicleManager:
 
     def _transit_spawn_steps(
         self,
-        player_x: float,
-        player_y: float,
+        focus_x: float,
+        focus_y: float,
         resident_manager: ResidentManager,
         traffic_world: TrafficWorld,
         ways: List[Way],
@@ -4782,17 +4782,19 @@ class NPCVehicleManager:
         viewport_bounds: Optional[Tuple[float, float, float, float]],
         claimed_points: List[Tuple[int, Tuple[float, float]]],
         preferred_heading: Optional[float] = None,
+        player_position: Optional[Tuple[float, float]] = None,
     ) -> RouteSteps:
         """_spawn_transit_vehicle's search as a resumable job: returns
         (placed vehicle, plan) - the vehicle is not yet in self.vehicles -
         or None."""
+        player_x, player_y = player_position or (focus_x, focus_y)
         cell_size = _ROUTE_NODE_GRID_CELL_M
         nodes = traffic_world._route_nodes
         grid = traffic_world._route_node_grid
-        low_x = math.floor((player_x - NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
-        high_x = math.floor((player_x + NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
-        low_y = math.floor((player_y - NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
-        high_y = math.floor((player_y + NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
+        low_x = math.floor((focus_x - NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
+        high_x = math.floor((focus_x + NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
+        low_y = math.floor((focus_y - NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
+        high_y = math.floor((focus_y + NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
         if self._active_bounds is not None:
             low_x, low_y = math.floor(self._active_bounds[0] / cell_size), math.floor(self._active_bounds[1] / cell_size)
             high_x, high_y = math.floor(self._active_bounds[2] / cell_size), math.floor(self._active_bounds[3] / cell_size)
@@ -4804,13 +4806,15 @@ class NPCVehicleManager:
             for cell_y in range(low_y, high_y + 1):
                 yield  # a wide/panned view still respects the route-job frame budget
                 for index in grid.get((cell_x, cell_y), ()):
-                    distance_sq = (nodes[index][0] - player_x) ** 2 + (nodes[index][1] - player_y) ** 2
+                    distance_sq = (nodes[index][0] - focus_x) ** 2 + (nodes[index][1] - focus_y) ** 2
+                    # A zoomed-in view's active band can be narrower than the old
+                    # 110m ring; the viewport rejection below prevents visible spawns.
                     if ((self._active_bounds is None and min_sq <= distance_sq <= max_sq)
-                            or (self._active_bounds is not None and distance_sq >= min_sq
+                            or (self._active_bounds is not None
                                 and in_bounds(self._active_bounds, *nodes[index]))):
                         ring.append(index)
         random.shuffle(ring)
-        ring = prioritize_transit_spawn_nodes(nodes, ring, player_x, player_y, preferred_heading)
+        ring = prioritize_transit_spawn_nodes(nodes, ring, focus_x, focus_y, preferred_heading)
         tries = 0
         for index in ring:
             yield
@@ -5165,6 +5169,7 @@ class NPCVehicleManager:
                     transit_x, transit_y, resident_manager, traffic_world, ways, spatial_grid,
                     parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
                     viewport_bounds, list(claimed_points), preferred_heading=transit_heading,
+                    player_position=(player_x, player_y),
                 ), traffic_world)
         random.shuffle(idle_candidates)
         # living-traffic occupancy invariant: a household's members are shared

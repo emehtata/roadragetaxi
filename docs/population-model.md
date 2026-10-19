@@ -21,6 +21,13 @@ How many people and cars are around the player. Code:
 
 ## Model
 
+Passing traffic uses unseen route nodes inside the client's active simulation
+band. The older 110–220 m spawn ring applies only without client bounds: at
+close zoom it can exclude every usable entry road. The viewport exclusion,
+vehicle spacing, road footprint and final asynchronous commit checks still
+apply. Fast-player look-ahead chooses entry nodes, but trip destinations and
+player clearance use the actual taxi position, not that offset search centre.
+
 1. **People per building**, from its OSM `building=*` type
    (`building_people`):
    - houses: 2.5;

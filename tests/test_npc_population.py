@@ -448,6 +448,40 @@ def test_interest_skips_collision_sweeps_for_distant_retained_cars(monkeypatch):
     assert len(swept) == 20  # the old path swept every retained vehicle
 
 
+@pytest.mark.parametrize("speed", [0.0, 19.45])
+def test_zoomed_in_view_spawns_traffic_that_drives_into_view(speed):
+    from theroadragetrip.traffic_world import run_route_steps
+    from theroadragetrip.viewport import in_bounds
+
+    random.seed(4)
+    ways = [Way(points_m=[(0, 0), (100, 0), (200, 0), (300, 0), (400, 0)],
+                highway="residential", half_width_m=4.5)]
+    traffic, residents = TrafficWorld(ways), ResidentManager()
+    manager = NPCVehicleManager(target_count=1, vehicle_distribution={"car": 1.0})
+    bounds, view = (-105, -100, 105, 100), (-70, -40, 70, 40)
+    manager._active_bounds = bounds
+    manager._population_elapsed = -100  # exercise this spawn, not unrelated top-ups
+    player = Car(x=0, y=0, heading=0, speed=speed)
+    focus = transit_spawn_focus(0, 0, player, manager.simulation_radius_m)
+    result = run_route_steps(manager._transit_spawn_steps(
+        *focus, residents, traffic, ways, None, None, None, None, None, None, None, view, [],
+        preferred_heading=0, player_position=(0, 0),
+    ))
+    assert result is not None  # the old 110m exclusion rejected the only unseen node
+    vehicle, _ = result
+    assert in_bounds(bounds, vehicle.x, vehicle.y) and not in_bounds(view, vehicle.x, vehicle.y)
+    assert manager._apply_transit_spawn(result, residents, []) is not None
+    pedestrians = SimpleNamespace(pedestrians=[])
+    for _ in range(30 * 30):
+        traffic.advance_time(1 / 30)
+        manager.discard_outside(bounds, residents, pedestrians)
+        manager.update(1 / 30, 0, 0, residents, traffic, ways, viewport_bounds=view, active_bounds=bounds)
+        assert vehicle in manager.vehicles and vehicle.state != NPCState.CRASHED
+        if in_bounds(view, vehicle.x, vehicle.y):
+            break
+    assert in_bounds(view, vehicle.x, vehicle.y)
+
+
 def test_zoomed_out_view_can_prepare_transit_beyond_the_old_spawn_ring(monkeypatch):
     ways = [Way(points_m=[(0, 0), (600, 0), (700, 0)], highway="residential", half_width_m=4.5)]
     world = TrafficWorld(ways)
