@@ -644,6 +644,7 @@ func test_nightclub_audio() -> void:
 func test_car_audio() -> void:
 	var CA := preload("res://car_audio.gd")
 	var day := 1440.0
+	check(CA.SHARE_WEEKEND_NIGHT == 0.20 and CA.SHARE_EVENING == 0.10 and CA.SHARE_DAY == 0.05, "car stereo shares: 20%, 10%, 5%")
 	check(CA.share(4 * day + 23 * 60) == CA.SHARE_WEEKEND_NIGHT and CA.share(5 * day + 2 * 60) == CA.SHARE_WEEKEND_NIGHT, "Friday night, also after midnight")
 	check(CA.share(6 * day + 1 * 60) == CA.SHARE_WEEKEND_NIGHT and CA.share(0 * day + 2 * 60) == CA.SHARE_EVENING, "Saturday night into Sunday; Sunday night isn't a weekend one")
 	check(CA.share(2 * day + 14 * 60) == CA.SHARE_DAY and CA.share(1 * day + 20 * 60) == CA.SHARE_EVENING, "weekday day: few; a weekday evening: some")
@@ -658,7 +659,7 @@ func test_car_audio() -> void:
 	var chosen := 0
 	for id in 4000:
 		chosen += int(CA.draw(id) < CA.SHARE_WEEKEND_NIGHT)
-	check(chosen > 4000 * 0.07 and chosen < 4000 * 0.13, "about the share of cars (%d of 4000 at 10 %%)" % chosen)
+	check(chosen > 4000 * 0.17 and chosen < 4000 * 0.23, "about the share of cars (%d of 4000 at 20 %%)" % chosen)
 	for i in 120:
 		check(CA.gain(i + 1) <= CA.gain(i) and CA.cutoff_hz(i + 1) <= CA.cutoff_hz(i), "quieter and duller further (%d m)" % i)
 	check(CA.gain(3.0) == 1.0 and CA.cutoff_hz(3.0) >= 8000.0 and CA.cutoff_hz(60.0) < 2000.0 and CA.gain(CA.RANGE_M) == 0.0, "bright up close, bass at medium range, silent beyond")

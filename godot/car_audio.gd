@@ -22,9 +22,9 @@ const NEAR_M := 6.0  # full loudness this close
 const CUTOFF_NEAR_HZ := 9000.0  # windows down: synths and percussion still there
 const CUTOFF_FAR_HZ := 250.0  # far off: only the 808s
 # Share of eligible cars with a stereo (estimates): Fri/Sat nights, other evenings, otherwise
-const SHARE_WEEKEND_NIGHT := 0.10
-const SHARE_EVENING := 0.03
-const SHARE_DAY := 0.01
+const SHARE_WEEKEND_NIGHT := 0.20
+const SHARE_EVENING := 0.10
+const SHARE_DAY := 0.05
 const FORGET_S := 10.0  # a car unseen this long is forgotten (despawned)
 
 var _players: Array = []
