@@ -144,7 +144,7 @@
       "name": "Car stereo music",
       "paths": ["src/theroadragetrip/assets/music/cars/*.ogg"],
       "purpose": "electro pop from NPC car stereos (godot/car_audio.gd)", "shipped": true,
-      "origin": "provided by the project owner on 2026-10-19 as cars_music_1.mp3 and cars_music_2.mp3, converted to Ogg Vorbis (q1, 44.1 kHz); generator not recorded",
+      "origin": "cars_music_1/2: provided by the project owner on 2026-10-19 as MP3s, converted to Ogg Vorbis (q1, 44.1 kHz), generator not recorded; cars_bass_far_1.ogg: generated 2026-10-19 with Stable Audio Open 1.0 (ai-audio-studio, seed 1928374, 100 steps), like the sound effects",
       "copyright": "not established", "licence": "not established",
       "evidence": "none recorded",
       "obligations": "unknown", "commercial": "unknown", "status": "unresolved",
