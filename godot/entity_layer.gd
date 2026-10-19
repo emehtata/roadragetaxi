@@ -935,7 +935,14 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 	var side := Vector2(-h.y, h.x)
 	var down := Vector2(0, radius)
 	_ellipse(c + down * 0.675, radius * 0.8, radius * 0.325, RS.PED_SHADOW)
-	if ped.get("animation_state", "walking") == "fallen":
+	if ped.get("animation_state", "walking") == "sitting":
+		for sign_side: float in [-1.0, 1.0]:
+			var knee := c + h * radius * 0.8 + side * radius * sign_side * 0.7
+			_canvas.draw_line(c, knee, _person_lit(RS.PED_LEGS), radius * 0.4)
+			_canvas.draw_line(knee, knee - h * radius * 0.6, _person_lit(RS.PED_LEGS), radius * 0.3)
+		_ellipse(c, radius * 0.7, radius * 0.55, clothing)
+		_canvas.draw_circle(c - h * radius * 0.25, radius * 0.4, _person_lit(RS.PED_HEAD))
+	elif ped.get("animation_state", "walking") == "fallen":
 		_fallen(c, h, side, radius, clothing, ped.get("activity", "") == "ice_hockey")
 	else:
 		var gait := sin(animation_time * 10.0) if ped.get("animation_state", "walking") == "walking" else 0.0
@@ -1203,6 +1210,30 @@ func _draw() -> void:
 					draw_circle(Vector2.ZERO, 1.0, Color8(95, 104, 55, 210))
 					draw_set_transform(Vector2.ZERO)
 
+	if not underground:
+		var later_protests := _by_id(b.get("protests", []))
+		for group in a.get("protests", []):
+			var next_group: Dictionary = later_protests.get(group["id"], group)
+			var seated: bool = group.get("state", "SITTING") in ["SITTING", "ALARMED"]
+			for i in group.get("members", []).size():
+				var at: Array = group["members"][i]
+				var c := MapMath.point(origin, at[0], at[1])
+				if next_group.get("members", []).size() == group["members"].size():
+					var next_at: Array = next_group["members"][i]
+					c = c.lerp(MapMath.point(origin, next_at[0], next_at[1]), t)
+				if view_rect.has_point(c):
+					_pedestrian(c, float(group["heading"]) + sin(i * 7.3) * 0.35, {
+						"radius_m": 0.45, "color": [210, 100 + (i * 29) % 110, 50 + (i * 17) % 100],
+						"animation_state": "sitting" if seated else "walking" if group["state"] in ["CLEARING", "RETURNING"] else "standing"
+					}, float(a.get("sim_time", 0.0)))
+					count += 1
+			var banner_at: Array = group["members"][0]
+			var banner := MapMath.point(origin, banner_at[0], banner_at[1])
+			if view_rect.has_point(banner):
+				_canvas.draw_rect(Rect2(banner + Vector2(-3.5, -3.0), Vector2(7, 1.3)), Color8(245, 213, 70))
+				_canvas.draw_set_transform(banner + Vector2(-3.3, -2.0), 0.0, Vector2.ONE * 0.08)
+				_canvas.draw_string(ThemeDB.fallback_font, Vector2.ZERO, "ILOKAPINA", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color8(30, 30, 30))
+				_canvas.draw_set_transform(Vector2.ZERO)
 	var later_peds := _by_id(b.get("pedestrians", []))
 	for ped in ([] if underground else a.get("pedestrians", [])):  # below ground: the surface world isn't shown
 		var next: Dictionary = later_peds.get(ped["id"], ped)

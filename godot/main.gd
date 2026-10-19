@@ -700,6 +700,7 @@ func _present(state: Dictionary) -> void:
 	phone.clock_text = hud._clock.text.get_slice(" ", 1) if hud._clock.text.contains(" ") else hud._clock.text
 	if state.has("game_time_seconds"):
 		phone.set_game_seconds(float(state["game_time_seconds"]))
+	phone.protest_active = state.get("protest_active", false)
 	phone.show_phone(state.get("phone", {}))
 	phone.show_navigation(state.get("navigation", {}), hud.task_text(state.get("taxi", {}), hud.language))
 	_refresh_inspector(state)

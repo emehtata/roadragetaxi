@@ -308,12 +308,17 @@ def advance_simulation(
             audio.play_group("vehicle.engine_start" if car.engine_on else "vehicle.engine_stop")
 
     rage_shout = None
+    protests = getattr(world, "protests", None)
+    if protests is not None:
+        protests.update(dt, world, car, now, traffic_mgr.sim_time)
     if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # SPACE: horn, shout, arcade clearance
         audio.play_driver_line("rage", language)
         audio.play_group("vehicle.horn", 0.45)
         rage_power = max(0.0, rage_power - RAGE_SHOUT_COST)
         rage_shout = random.choice(RAGE_SHOUTS)
         world.npc_manager.trigger_road_rage(sim_time=world.traffic_mgr.sim_time)
+        if protests is not None:
+            protests.intimidate(car)
 
     if command.refuel:
         station = nearest_fuel_station(scenery_objects, car.x, car.y)
@@ -354,13 +359,13 @@ def advance_simulation(
     # The player drives on its own map level's road network (garage-05.md):
     # the surface one, or the level's - never the surface as a fallback.
     # NPCs below keep the surface network.
+    if not getattr(world.level_transitions, "enabled", True):
+        car.map_level = SURFACE_LEVEL
     on_surface = car.map_level == SURFACE_LEVEL
     if on_surface:
         drive_ways, drive_grid = ways, spatial_grid
     else:
         drive_ways, drive_grid = world.level_roads.network(car.map_level)
-    if not getattr(world.level_transitions, "enabled", True):
-        car.map_level = SURFACE_LEVEL
     current_way = get_current_road_at_car(
         car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True, current_way=current_way
     )
@@ -414,6 +419,9 @@ def advance_simulation(
             car.speed = 0.0
             taxi_mgr.notification_msg = tr(language, "garage_closed")
             taxi_mgr.notification_timer = 2.5
+        if protests is not None and protests.blocks_movement(car, previous_position):
+            car.x, car.y = previous_position
+            car.speed = 0.0
         midpoint = (
             (previous_position[0] + car.x) * 0.5,
             (previous_position[1] + car.y) * 0.5,
@@ -768,8 +776,11 @@ def advance_simulation(
         arena_crowds.update(now, (car.x, car.y))
     pedestrian_mgr.ensure_sports_players(car, viewport_bounds)
     with frame_profiler.section("pedestrians"):
+        pedestrian_previous = {id(p): (p.x, p.y) for p in pedestrian_mgr.pedestrians} if protests is not None and protests.groups else {}
         pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds, game_time_seconds=game_time_seconds,
                               active_bounds=ambient_bounds)
+        if pedestrian_previous:
+            protests.block_walkers(pedestrian_mgr.pedestrians, pedestrian_previous)
         pedestrian_mgr.track_vomit(taxi_mgr.vomit_puddles + pedestrian_mgr.vomit_puddles)
     if on_foot:
         audio.update_footsteps(player_pedestrian.speed, dt, running=command.sprint)

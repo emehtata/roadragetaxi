@@ -222,6 +222,9 @@ class SimulationServer:
             prepare_initial_window(self.world, progress=progress) if self._auto_fetch
             else {"started": False, "integrated_tiles": 0, "elapsed_s": 0.0}
         )
+        from ..protests import ProtestManager, ProtestSettings
+        self.world.protests = ProtestManager(ProtestSettings.from_config(config), self.chosen_city)
+        self.world.npc_manager.protests = self.world.protests
         progress("weather")
         self.car = self.world.car
         # weather is per-session state constructed fresh alongside

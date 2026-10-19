@@ -3,7 +3,7 @@ extends RefCounted
 const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
-const FI := { "choose_start": "Valitse pelitapa", "career": "Ura",
+const FI := { "phone_protest": "Ilokapina osoittaa mieltä kaupungissa. Varaudu tiesulkuihin!", "choose_start": "Valitse pelitapa", "career": "Ura",
 	"nav_left": "Käänny vasemmalle", "nav_right": "Käänny oikealle", "nav_uturn": "Tee U-käännös",
 	"nav_straight": "Jatka suoraan", "nav_arrive": "Määränpää", "nav_no_target": "Ei määränpäätä",
 	"nav_routing": "Lasketaan reittiä…", "nav_total": "Yhteensä %s", "nav_unreachable": "VIRHE: GPS-signaalia ei löydy",
@@ -151,6 +151,7 @@ const FI := { "choose_start": "Valitse pelitapa", "career": "Ura",
 }
 
 const EN := {
+	"phone_protest": "Ilokapina protests are active in the city. Expect blocked roads!",
 	"nav_left": "Turn left", "nav_right": "Turn right", "nav_uturn": "Make a U-turn",
 	"nav_straight": "Continue straight", "nav_arrive": "Destination", "nav_no_target": "No destination",
 	"nav_routing": "Calculating route…", "nav_total": "Total %s", "nav_unreachable": "ERROR: GPS signal not found",
@@ -299,6 +300,7 @@ const EN := {
 }
 
 const DE := {
+	"phone_protest": "Ilokapina demonstriert in der Stadt. Rechne mit Straßensperren!",
 	"nav_left": "Links abbiegen",
 	"nav_right": "Rechts abbiegen",
 	"nav_uturn": "Wenden",

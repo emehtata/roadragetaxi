@@ -41,6 +41,8 @@ var _next_request := 1
 var _structure := ""  # what the row buttons were built for
 var _rows: VBoxContainer
 var _status: Label
+var _protest_note: Label
+var protest_active := false
 var _details: Label
 var _accept: Button
 var _reject: Button
@@ -105,6 +107,10 @@ func _ready() -> void:
 	_status = _label(14, Color8(45, 40, 20))
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	header_rows.add_child(_status)
+	_protest_note = _label(16, Color8(100, 30, 15))
+	_protest_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_protest_note.visible = false
+	header_rows.add_child(_protest_note)
 	box.add_child(header)
 	var list_margin := MarginContainer.new()
 	for side in ["left", "right"]:
@@ -155,15 +161,15 @@ func update_layout() -> void:
 		layout.rects.erase("navigation_phone")
 		return
 	var physical_size := size * scale
+	# Seed the new default in the old offset coordinates, preserving saved placements.
+	if not layout.offsets.has("navigation_phone"):
+		layout.offsets["navigation_phone"] = Vector2(maxf(16.0, get_viewport_rect().size.x - physical_size.x - 206.0) - 16.0, 0.0)
 	position = layout.place("navigation_phone", Rect2(Vector2(16, 125), physical_size), get_viewport_rect().size).position
 	# Only the header drags; offer cards, scrolling and buttons remain clickable.
 	layout.rects["navigation_phone"] = Rect2(position, Vector2(physical_size.x, 100 * scale.y))
 
 
 func show_navigation(route: Dictionary, task := "") -> void:
-	# Seed the new default in the old offset coordinates, preserving saved placements.
-	if not layout.offsets.has("navigation_phone"):
-		layout.offsets["navigation_phone"] = Vector2(maxf(16.0, get_viewport_rect().size.x - physical_size.x - 206.0) - 16.0, 0.0)
 	navigation.language = language
 	navigation.show_navigation(route, task)
 
@@ -344,6 +350,7 @@ func show_phone(phone: Dictionary) -> void:
 func set_connected(up: bool) -> void:
 	connected = up
 	if not up:
+		protest_active = false
 		items = []
 		busy = false
 		pending.clear()
@@ -451,6 +458,8 @@ func _refresh() -> void:
 		_fill_card(_rows.get_child(i), i)
 	_status.text = status_text(connected, busy, items, notice, language)
 	_status.visible = not busy
+	_protest_note.text = T.text("phone_protest", language)
+	_protest_note.visible = protest_active
 	_offers.visible = not busy
 	navigation.visible = busy
 	_buttons.visible = not busy

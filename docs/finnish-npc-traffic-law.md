@@ -296,11 +296,18 @@ driving updates are suspended while held; after the active window they return
 only outside the taxi's forward corridor and nearby safety envelope, with no
 other NPC vehicle occupying the original slot.
 
+Ilokapina sit-ins add a separate fictional arcade exception: an accepted rage
+shout alarms a nearby protest group and moves it to the roadside after a short
+hesitation. Its server-side obstruction remains until the group finishes clearing;
+ordinary vehicles must brake/wait, and protest return requires a clear safety
+envelope. This is not ordinary pedestrian behavior or permission to drive through
+people. See [Ilokapina events](ilokapina.md) for timing and limitations.
+
 This is **not Finnish traffic-law compliance**, emergency-vehicle priority,
 ordinary shoulder parking or permission for routine NPC off-road recovery.
 Roadside positions are artificial clearance slots; buildings, water and legal
 parking evidence are not validated there. Separate bridge/map levels remain
-separate, and this does not move pedestrians, trains or scenery. Only loaded,
+separate, and vehicle rage clearance does not move ordinary pedestrians, trains or scenery. Only loaded,
 connected road geometry can be followed; at ambiguous junctions, clearance
 follows the straightest continuation and is recalculated as the taxi turns.
 There is no promise to predict an unchosen turn or clear unloaded map data.

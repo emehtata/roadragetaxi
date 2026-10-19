@@ -284,6 +284,51 @@ def _state(server):
     )["state"]
 
 
+def test_ilokapina_blocks_taxi_requires_paid_rage_and_syncs_phone_notice(tmp_path, monkeypatch):
+    from theroadragetrip.osm import Way
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.protests import ProtestGroup
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    road = Way([(1_000_000, 1_000_000), (1_002_000, 1_000_000)], "primary", 7)
+    server.world.ways = [road]
+    server.world.spatial_grid = SpatialWayGrid([road])
+    car = server.car
+    car.x, car.y, car.heading, car.speed = 1_000_100, 999_998, 0, 210/3.6
+    car.engine_on = True
+    server._current_way, server._on_foot = road, False
+    group = ProtestGroup(1, road, car.x+6, 1_000_000, 0, 24, 0)
+    manager = server.world.protests
+    manager.settings.enabled = False
+    manager.groups = [group]
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    start = car.x
+    server.tick(0.5)
+    assert car.x == start and car.speed == 0  # swept movement, not endpoint-only collision
+    assert group.state == "SITTING"
+    server._rage_power, server._pending_road_rages = 0.1, 1
+    server.tick(1/30)
+    assert group.state == "SITTING"
+    server._rage_power, server._pending_road_rages = 1, 1
+    server.tick(1/30)
+    assert group.state == "ALARMED" and server._rage_power < 0.8
+    server._latest_command = PlayerCommand(throttle=0, speed_limiter_enabled=False)
+    for _ in range(150):
+        server.tick(1/30)
+    assert group.state == "CLEARED"
+    state = _state(server)
+    assert state["protest_active"] and state["protests"][0]["state"] == "CLEARED"
+    assert len(state["protests"][0]["members"]) == 24
+    assert _state(server)["protests"] == state["protests"]  # late join gets full current state
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    for _ in range(90):
+        server.tick(1/30)
+    assert car.x > group.x + 8
+    manager.groups.clear()
+    assert not _state(server)["protest_active"]
+
+
 def test_unfinished_garage_cannot_swallow_taxi_at_speed(tmp_path, monkeypatch):
     from theroadragetrip.level_transitions import close_garage_roads
     from theroadragetrip.osm import LevelConnector, Way

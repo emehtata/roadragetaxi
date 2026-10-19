@@ -459,6 +459,8 @@ def build_state_message(
     residents = getattr(getattr(world, "residents", None), "residents", {})
     santa_day = date.fromisoformat(calendar["date"]) if calendar and calendar.get("holidays", {}).get("santas") else None
     state = {
+        "protests": getattr(world, "protests", None).snapshot(camx, camy) if getattr(world, "protests", None) else [],
+        "protest_active": bool(getattr(getattr(world, "protests", None), "groups", ())),
         "fallen_trees": fallen_trees,  # [x, y, angle] (the way the taxi hit it)
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
         "game_time_seconds": game_time_seconds,

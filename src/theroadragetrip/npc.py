@@ -2307,6 +2307,10 @@ def update_npc(
         previous = (vehicle.car.x, vehicle.car.y, vehicle.car.heading)
         _update_npc_reversing(vehicle, driver, dt, manager, pedestrian_mgr)
         _enforce_npc_road_motion(vehicle, driver, previous, traffic_world, spatial_grid, manager)
+        protests = getattr(manager, "protests", None)
+        if protests is not None and protests.blocks_movement(vehicle.car, previous):
+            vehicle.car.x, vehicle.car.y, vehicle.car.heading = previous
+            vehicle.car.speed = 0.0
         return
 
     if vehicle.state == NPCState.PARKED:
@@ -2404,6 +2408,11 @@ def update_npc(
                 decision = stop_decision
     else:
         driver.stop_sign_key, driver.stop_sign_satisfied = None, False
+    protests = getattr(manager, "protests", None)
+    protest_cap = protests.speed_cap(vehicle.car) if protests is not None else None
+    if protest_cap is not None and protest_cap < decision.target_speed_mps:
+        decision = TrafficDecision(TrafficAction.STOP if protest_cap < 0.5 else TrafficAction.SLOW,
+                                   protest_cap, reason="Ilokapina sit-in")
     driver.decision = decision
     driver.target_speed_mps = decision.target_speed_mps
     # vehicle-population v2 section 4: a vehicle plugin's own max speed (e.g. a bus/
@@ -2536,7 +2545,7 @@ def update_npc(
     waiting_for_light = decision.light is not None and decision.action != TrafficAction.PROCEED
     finishing_approach = approaching_final_waypoint or vehicle.state in (NPCState.PARKING, NPCState.ARRIVING)
     waiting_in_queue = avoidance_blocked and lead is not None and not _is_stalled(lead[1])
-    if waiting_for_light or crossing_decision is not None or waiting_in_queue or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
+    if protest_cap is not None or waiting_for_light or crossing_decision is not None or waiting_in_queue or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
         driver.stuck_timer_s = 0.0
         driver.stuck_check_position = None
         driver.stuck_check_elapsed_s = 0.0
@@ -2649,6 +2658,9 @@ def update_npc(
         block_offroad=False, speed_limit_mps=driver.target_speed_mps,
     )
     _enforce_npc_road_motion(vehicle, driver, previous_pose, traffic_world, spatial_grid, manager)
+    if protests is not None and protests.blocks_movement(vehicle.car, previous_pose):
+        vehicle.car.x, vehicle.car.y, vehicle.car.heading = previous_pose
+        vehicle.car.speed = 0.0
 
 
 def _largest_route_graph_component(nodes: List[Tuple[float, float, int]], edges: dict) -> List[int]:
