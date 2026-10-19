@@ -24,6 +24,8 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from .activities import ActivityInstance, ActivityLocation
 from .competitor_taxis import COMPETITOR_TAXIS, is_competitor, make_competitor
+from . import bus_lines
+from .bus_lines import is_line_bus
 from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
 from .osm import Curb, ParkingSpace, StopSign, Way
@@ -1153,6 +1155,7 @@ class NPCVehicle:
     color: Tuple[int, int, int] = (150, 155, 165)
     is_taxi: bool = False
     taxi_job: object = None  # a competitor taxi's fare (competitor_taxis.TaxiJob), None when free
+    bus_job: object = None  # a line bus's route and next stop (bus_lines.BusJob)
     is_police: bool = False
     is_on_foot: bool = False
     fallen: bool = False
@@ -3411,6 +3414,32 @@ def _continue_npc_trip_steps(
     return None
 
 
+BUS_STOP_ROAD_SEARCH_M = 50.0  # the roads near a stop searched for the one it stands beside
+
+
+def _bus_leg_steps(vehicle, job, traffic_world, ways, spatial_grid, curbs, curb_grid,
+                   buildings, building_grid) -> RouteSteps:
+    """A line bus's route to its next stop: the road beside it
+    (static_world.bus_stop_point), an on-road destination the planner
+    puts in the bus's own lane - a bus stops at its stop, it never parks
+    (docs/bus-lines.md)."""
+    from .static_world import bus_stop_point
+    yield
+    stop = job.target_stop
+    r = BUS_STOP_ROAD_SEARCH_M
+    near = spatial_grid.ways_in_rect(stop.x - r, stop.y - r, stop.x + r, stop.y + r) if spatial_grid is not None else ways
+    point = bus_stop_point(stop, near)
+    if point is None:
+        return None
+    path = yield from _plan_and_validate_npc_route_steps(
+        traffic_world, ways, (vehicle.car.x, vehicle.car.y), point, spatial_grid=spatial_grid,
+        curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
+        origin_is_off_road=True,  # (as every continuation: it joins the road from where it stands)
+        vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
+    )
+    return None if path is None else (path, point, None, False)
+
+
 def _recover_npc_trip_steps(vehicle, driver, traffic_world, ways, spatial_grid,
                             curbs, curb_grid, buildings, building_grid) -> RouteSteps:
     in_access = _npc_parking_access(vehicle, driver, vehicle.x, vehicle.y, ways, spatial_grid)
@@ -3503,6 +3532,10 @@ class NPCVehicleManager:
         self.target_count = target_count
         self.min_count = min_count if min_count is not None else max(1, int(target_count * 0.6))
         self.competitor_taxis = COMPETITOR_TAXIS  # of the moving-traffic spawns (competitor_taxis.py)
+        self.line_buses = bus_lines.LINE_BUSES  # of the moving-traffic spawns (bus_lines.py)
+        self.bus_stops = ()  # the world's BusStops, set by the simulation each frame
+        self._bus_lines_for = None  # (id, len) of the bus_stops the cached lines came from
+        self._bus_lines = {}
         self.max_count = max_count if max_count is not None else max(self.min_count, int(target_count * 1.5))
         self.household_fraction = household_fraction
         # living-traffic: a *stable* target (target_count's own steady-state
@@ -3571,6 +3604,25 @@ class NPCVehicleManager:
             for definition in VEHICLE_DEFINITIONS.values()
             if definition.is_road_vehicle and (self.include_experimental or not definition.experimental)
         }
+
+    def bus_lines(self) -> dict:
+        """The loaded bus lines (bus_lines.lines), rebuilt when the stops change."""
+        key = (id(self.bus_stops), len(self.bus_stops))
+        if key != self._bus_lines_for:
+            self._bus_lines_for, self._bus_lines = key, bus_lines.lines(self.bus_stops)
+        return self._bus_lines
+
+    def _retire_finished_line_buses(self, resident_manager, viewport_bounds) -> None:
+        """A line bus at its terminus (no job left) is removed once out of
+        sight: buses never turn round (an 11 m bus cannot U-turn on a city
+        street); new ones join the lines near the player (bus_lines.py)."""
+        for vehicle in [v for v in self.vehicles if is_line_bus(v) and v.bus_job is None and v.state == NPCState.PARKED]:
+            if viewport_bounds is None or not _point_in_viewport(vehicle.x, vehicle.y, viewport_bounds):
+                self._retire_trip(vehicle, resident_manager)
+                self.vehicles.remove(vehicle)
+
+    def _wants_line_bus(self) -> bool:
+        return bool(self.bus_lines()) and sum(map(is_line_bus, self.vehicles)) < self.line_buses
 
     def _pick_vehicle_type(self) -> str:
         """Weighted choice among road-vehicle plugins with a positive
@@ -4134,6 +4186,10 @@ class NPCVehicleManager:
             if vehicle.taxi_job.at_stop(sim_time):  # the passenger has left: free for the next fare
                 vehicle.taxi_job = None
             return
+        if is_line_bus(vehicle):
+            if vehicle.bus_job is not None and vehicle.bus_job.at_stop(sim_time, vehicle.x, vehicle.y):
+                vehicle.bus_job = None  # the terminus: it waits there until retired out of sight
+            return
         if vehicle.vehicle_kind == "household" and vehicle.returning_home:
             # Arrived home (section 12) - the trip is simply over, no
             # building-visit detour the way an ordinary errand stop gets;
@@ -4410,6 +4466,9 @@ class NPCVehicleManager:
                 if is_competitor(vehicle) and vehicle.taxi_job is not None and job["kind"] == "continue":
                     if vehicle.taxi_job.route_failed():
                         vehicle.taxi_job = None  # no way there: the fare is lost
+                if is_line_bus(vehicle) and vehicle.bus_job is not None and job["kind"] in ("continue", "unhold"):
+                    if vehicle.bus_job.route_failed():  # (no way to the rest of the line either)
+                        vehicle.bus_job = None
                 if job["kind"] == "unhold":  # no new destination from here either: hold longer
                     driver.hold_failures += 1
                     driver.hold_retry_tick = self._population_tick_number + NPC_HOLD_RETRY_TICKS * (driver.hold_failures + 1)
@@ -4460,6 +4519,8 @@ class NPCVehicleManager:
                     vehicle.returning_home = job["kind"] in ("continue", "unhold")
                 if is_competitor(vehicle) and vehicle.taxi_job is not None and job["kind"] == "continue":
                     vehicle.taxi_job.departing()
+                if is_line_bus(vehicle) and vehicle.bus_job is not None and job["kind"] in ("continue", "unhold"):
+                    vehicle.bus_job.departing()
                 stats["continued"] += 1
             stats["ready"] += 1
             return
@@ -4658,16 +4719,23 @@ class NPCVehicleManager:
                 continue
             if any(True for _ in self.nearby_vehicles_at(point[0], point[1], NPC_TRANSIT_SPAWN_CLEARANCE_M)):
                 continue
+            line_job = bus_lines.start_job(self.bus_lines(), *point) if self._wants_line_bus() else None
             vehicle = self._place_one(point, None, ways, spatial_grid, curbs, curb_grid, buildings, building_grid,
+                                      vehicle_type="bus" if line_job is not None else None,
                                       player_position=(player_x, player_y))
             if vehicle is None:
                 continue
             tries += 1
-            plan = yield from self._short_transit_trip_steps(
-                vehicle, point, resident_manager, traffic_world, ways, spatial_grid,
-                parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
-                claimed_points, through_point=(player_x, player_y),
-            )
+            if line_job is not None:  # a line bus: straight to the line's nearest stop (bus_lines.py)
+                vehicle.vehicle_kind, vehicle.bus_job = "bus_line", line_job
+                plan = yield from _bus_leg_steps(vehicle, line_job, traffic_world, ways, spatial_grid,
+                                                 curbs, curb_grid, buildings, building_grid)
+            else:
+                plan = yield from self._short_transit_trip_steps(
+                    vehicle, point, resident_manager, traffic_world, ways, spatial_grid,
+                    parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
+                    claimed_points, through_point=(player_x, player_y),
+                )
             if plan is not None:
                 start, aim = plan[0][:2]
                 heading = math.atan2(aim.y - start.y, aim.x - start.x)
@@ -5055,6 +5123,7 @@ class NPCVehicleManager:
             and not (vehicle.vehicle_kind == "household" and vehicle.returning_home)
             # A competitor drives only for a fare's next leg; free, it waits.
             and (not is_competitor(vehicle) or (vehicle.taxi_job is not None and vehicle.taxi_job.state == "await_departure"))
+            and (not is_line_bus(vehicle) or (vehicle.bus_job is not None and vehicle.bus_job.state == "await_departure"))
             and not any(job["vehicle"] is vehicle for job in self._route_jobs)
         ]
         self._existing_route_last_frame = {
@@ -5092,7 +5161,10 @@ class NPCVehicleManager:
                 continue
             if len(self._route_jobs) >= NPC_MAX_ROUTE_JOBS:
                 break
-            if kind in ("continue", "unhold"):  # (unhold: a held car, a new destination from where it stands)
+            if kind in ("continue", "unhold") and is_line_bus(vehicle) and vehicle.bus_job is not None:
+                steps = _bus_leg_steps(vehicle, vehicle.bus_job, traffic_world, ways, spatial_grid,
+                                       curbs, curb_grid, buildings, building_grid)
+            elif kind in ("continue", "unhold"):  # (unhold: a held car, a new destination from where it stands)
                 steps = _continue_npc_trip_steps(
                     vehicle, traffic_world, ways, spatial_grid, parking_spaces, sceneries,
                     buildings, curbs, curb_grid, building_grid,
@@ -5187,6 +5259,7 @@ class NPCVehicleManager:
         active_bounds=None,
     ) -> None:
         self._active_bounds = active_bounds
+        self._retire_finished_line_buses(resident_manager, viewport_bounds)
         # collision-avoidance: nearby_vehicles_at (avoidance/collision) reads
         # self.spatial_grid, which used to only get rebuilt at population-
         # tick cadence (every NPC_POPULATION_TICK_S=5s) or on initial

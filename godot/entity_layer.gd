@@ -1231,6 +1231,8 @@ func _draw() -> void:
 			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
 			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false),
 			int(npc.get("layer", 0)) <= 0 and covered.call(c, int(npc.get("layer", 0))))
+		if npc.get("bus_line") != null:  # a line bus: its number, like the destination display
+			_tag(c, str(npc["bus_line"]), Color8(255, 190, 60), null, 12)
 		var crashed: float = npc.get("crashed_timer", 0.0)
 		if crashed > 0.0:
 			_smoke(c, p.z, npc["length_m"], crashed if is_finite(crashed) else _clock)

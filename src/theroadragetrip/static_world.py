@@ -218,13 +218,10 @@ def is_open_roof(building) -> bool:
     return _is_open_roof(building)
 
 
-def bus_stop_shapes(stop, ways):
-    """A bus stop beside the nearest same-layer drivable road within 45 m
-    (None without one): the bay in that road's colour with "BUS" painted
-    in it (`label`, along `angle`), the E6 stop sign at the bay's front
-    end in right-hand traffic (`sign`), and a shelter or a bench behind
-    the kerb when OSM says so."""
-    from .map_style import road_color_for_way
+def _bus_stop_road(stop, ways):
+    """The nearest same-layer drivable road within 45 m of a bus stop:
+    (nearest point, unit direction t, unit normal n towards the stop, the
+    stop's side of t (+1 left), the way), or None."""
     nearest = None
     for way in ways:
         if not way.is_drivable or len(way.points_m) < 2 or getattr(way, "layer", 0) != getattr(stop, "layer", 0):
@@ -243,12 +240,32 @@ def bus_stop_shapes(stop, ways):
     if nearest is None or nearest[0] > 45.0 * 45.0:
         return None
     _, p, t, way = nearest
-    hw = way.half_width_m
     n = (-t[1], t[0])  # left of t
     side = 1.0 if (stop.x - p[0]) * n[0] + (stop.y - p[1]) * n[1] >= 0.0 else -1.0
-    n = (n[0] * side, n[1] * side)
+    return p, t, (n[0] * side, n[1] * side), side, way
+
+
+def bus_stop_point(stop, ways):
+    """The road's centre-line point beside a bus stop, or None: a bus's
+    destination on the road (the NPC planner keeps it in its own lane)."""
+    road = _bus_stop_road(stop, ways)
+    return None if road is None else road[0]
+
+
+def bus_stop_shapes(stop, ways):
+    """A bus stop beside the nearest same-layer drivable road within 45 m
+    (None without one): the bay in that road's colour with "BUS" painted
+    in it (`label`, along `angle`), the E6 stop sign at the bay's front
+    end in right-hand traffic (`sign`), and a shelter or a bench behind
+    the kerb when OSM says so."""
+    from .map_style import road_color_for_way
+    road = _bus_stop_road(stop, ways)
+    if road is None:
+        return None
+    p, t, n, side, way = road
     at = lambda along, out: [round(p[0] + t[0] * along + n[0] * out, 2), round(p[1] + t[1] * along + n[1] * out, 2)]
     front = -side  # right-hand traffic: on t's left side buses drive against t
+    hw = way.half_width_m
     depth = 3.0  # a bus is 2.55 m wide
     bay = [at(-16.0, hw), at(16.0, hw), at(11.0, hw + depth), at(-11.0, hw + depth)]
     kerb = hw + depth + 1.2  # the waiting area behind the bay's kerb

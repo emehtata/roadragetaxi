@@ -613,6 +613,40 @@ def _platform_centreline(pts: List[Tuple[float, float]]) -> Tuple[Tuple[float, f
     return (cx + ux * lo, cy + uy * lo), (cx + ux * hi, cy + uy * hi)
 
 
+BUS_ROUTE_KINDS = ("bus", "trolleybus")
+BUS_ROUTE_STOP_SNAP_M = 30.0  # a route's stop member (often its stop_position on the road) to the BusStop it belongs to
+
+
+def _bus_route_stops(tags: dict, relation_id, members: list) -> list:
+    """A route=bus relation's stops in order: (key, index, ref, type, id).
+    Its platform members when it has any (PTv2), else its stops."""
+    key = str(relation_id)
+    ref = str(tags.get("ref") or tags.get("name") or key)
+    for roles in (("platform", "platform_entry_only", "platform_exit_only"), ("stop", "stop_entry_only", "stop_exit_only")):
+        stops = [(key, index, ref, m.get("type"), m.get("ref")) for index, m in enumerate(members) if m.get("role") in roles]
+        if stops:
+            return stops
+    return []
+
+
+def _attach_bus_routes(bus_stops: list, route_members: list, nodes_m: dict) -> None:
+    """BusStop.routes: each stop the routes calling at it, as [key, index, ref]
+    (sorted by index they give the route's stop order, bus_lines.py). A
+    member is its own stop (the same OSM id) or, a node, the nearest stop
+    within BUS_ROUTE_STOP_SNAP_M."""
+    by_id = {stop.id: stop for stop in bus_stops}
+    for key, index, ref, member_type, member_id in route_members:
+        stop = by_id.get(member_id)
+        if stop is None and member_type == "node" and member_id in nodes_m:
+            x, y = nodes_m[member_id]
+            # ponytail: a scan of every stop per member; a grid if routes x stops grow large
+            nearest = min(bus_stops, key=lambda b: (b.x - x) ** 2 + (b.y - y) ** 2, default=None)
+            if nearest is not None and (nearest.x - x) ** 2 + (nearest.y - y) ** 2 <= BUS_ROUTE_STOP_SNAP_M ** 2:
+                stop = nearest
+        if stop is not None and not any(route[0] == key for route in stop.routes):
+            stop.routes.append([key, index, ref])
+
+
 def _is_bus_stop(tags: dict) -> bool:
     """A bus stop where passengers wait: highway=bus_stop, or a platform
     that is not a railway/tram one. A stop_position (the vehicle's spot on
@@ -680,6 +714,7 @@ def build_ways(
     connector_nodes: Dict[int, dict] = {}  # amenity=parking_entrance node id -> tags
     tram_stop_names: Dict[int, str] = {}  # tram stop node id -> its name (Railway.stops)
     tram_line_refs: Dict[int, Set[str]] = defaultdict(set)  # tram way id -> the lines over it (Railway.lines)
+    bus_route_members: List[Tuple[str, int, str, str, int]] = []  # (route key, member index, ref, member type, member id): BusStop.routes
     connector_ways: Dict[int, List[Tuple[int, dict]]] = defaultdict(list)  # node id -> ways through it
 
     for el in elements:
@@ -803,6 +838,8 @@ def build_ways(
                 for member in el.get("members", []):
                     if member.get("type") == "way":
                         tram_line_refs[member.get("ref")].add(line)
+            if include_bus_stops and tags.get("type") == "route" and tags.get("route") in BUS_ROUTE_KINDS:
+                bus_route_members.extend(_bus_route_stops(tags, el.get("id"), el.get("members", [])))
             if tags.get("type") == "multipolygon":
                 members = el.get("members", [])
                 relations_raw.append((tags, members))
@@ -1623,6 +1660,7 @@ def build_ways(
         pts, _ = process_node_ids(node_ids)
         if pts:
             add_bus_stop(tags, sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts), way_id)
+    _attach_bus_routes(bus_stops, bus_route_members, nodes_m)
 
     # 7. Traffic signals from OSM nodes.
     #

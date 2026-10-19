@@ -161,6 +161,7 @@ def _npc_to_dict(npc, residents=None) -> dict:
         "vehicle_type": npc.vehicle_type,
         "is_taxi": npc.is_taxi,
         "taxi_fare": getattr(getattr(npc, "taxi_job", None), "passenger_aboard", False),  # its roof light
+        "bus_line": getattr(getattr(getattr(npc, "bus_job", None), "line", None), "ref", None),  # a line bus's number
         "is_police": npc.is_police,
         "is_on_foot": npc.is_on_foot,
         "fallen": npc.fallen,

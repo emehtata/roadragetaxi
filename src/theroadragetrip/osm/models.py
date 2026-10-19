@@ -520,6 +520,7 @@ class BusStop:
     layer: int = 0
     shelter: bool = False
     bench: bool = False
+    routes: list = field(default_factory=list)  # [route key, stop index, line ref] per bus route calling here (bus_lines.py)
 
 
 @dataclass

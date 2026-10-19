@@ -199,7 +199,9 @@ def fetch_osm_ways(
     out body;
     >;
     out skel qt;
-    """
+    relation["type"="route"]["route"~"^(bus|trolleybus)$"]({south},{west},{north},{east});
+    out body;
+    """  # bus routes: their stop members only (bus_lines.py), no recursion into the whole route
 
     if progress_callback:
         progress_callback(0.1, "Checking cache...")
