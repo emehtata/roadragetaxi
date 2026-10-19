@@ -14,7 +14,7 @@ from typing import List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
-CACHE_VERSION = "v0.19.0alpha.1"  # Overpass now requests bus route relations.
+CACHE_VERSION = "v0.19.0alpha.2"  # Overpass now requests amenity=nightclub nodes.
 # How long downloaded map data is reused before refetching; OSM_CACHE_TTL (seconds) overrides.
 OSM_CACHE_TTL_S = 14 * 24 * 3600
 

@@ -371,7 +371,7 @@ def _polyline_without_ranges(pts, lengths, gaps) -> List[List[Tuple[float, float
 
 def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     amenity = tags.get("amenity")
-    if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel", "biergarten", "grave_yard"):
+    if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel", "biergarten", "grave_yard", "nightclub"):
         return amenity
     if tags.get("highway") == "street_lamp":
         # lights.md: explicit physical lamp-pole data, when mapped, is the
@@ -1610,7 +1610,8 @@ def build_ways(
                 obj_x = snap_x + normal_x * side * clearance
                 obj_y = snap_y + normal_y * side * clearance
                 angle = way_angle
-        scenery_objects.append(SceneryObject(x=obj_x, y=obj_y, kind=kind, name=tags.get("name"), id=nid, direction_angle=angle))
+        scenery_objects.append(SceneryObject(x=obj_x, y=obj_y, kind=kind, name=tags.get("name"), id=nid, direction_angle=angle,
+                                             opening_hours=tags.get("opening_hours") if kind == "nightclub" else None))
 
     # Fuel stations are frequently mapped only as an amenity=fuel area,
     # especially when the same way is also the building=roof pump canopy.

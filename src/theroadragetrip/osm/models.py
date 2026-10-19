@@ -548,6 +548,7 @@ class SceneryObject:
     id: Optional[int] = None
     direction_angle: Optional[float] = None
     is_area: bool = False
+    opening_hours: Optional[str] = None  # OSM opening_hours (nightclubs: nightlife.py)
 
 
 class MapData(tuple):

@@ -20,6 +20,7 @@ from .fuel import fuel_station_price_cents
 from .geo import dist_point_to_segment
 from .holiday_events import house_yard_spot
 from .map_level import SURFACE_MAP_LEVELS
+from .nightlife import nightclub_schedule
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
 
 _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks",
@@ -27,7 +28,8 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           # godot-16 (static_world.py)
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
-          "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards")
+          "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards",
+          "nightclubs")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard")
@@ -325,6 +327,16 @@ class ChunkIndex:
         for railing in getattr(world, "railings", ()):  # its first point's chunk
             if len(railing.points_m) >= 2:
                 self._add("railings", railing.points_m[:1], [getattr(railing, "kind", "fence"), _line(railing.points_m)])
+        # rrt-019: nightclubs for the client's music - [x, y, weekly open
+        # intervals (nightlife.py)]; an OSM point, or a building tagged one
+        for obj in getattr(world, "scenery_objects", ()):
+            if obj.kind == "nightclub":
+                self._add("nightclubs", ((obj.x, obj.y),),
+                          [round(obj.x, 1), round(obj.y, 1), nightclub_schedule(obj.opening_hours)])
+        for building in world.buildings:
+            if getattr(building, "venue_type", None) == "nightclub" and len(building.points_m) >= 3:
+                x, y = static_world.building_owner(building)
+                self._add("nightclubs", ((x, y),), [round(x, 1), round(y, 1), nightclub_schedule(None)])
         for obj in getattr(world, "scenery_objects", ()):
             if obj.kind in DECORATIVE_KINDS:
                 self._add("scenery_objects", ((obj.x, obj.y),),
