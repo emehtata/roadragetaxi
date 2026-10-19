@@ -219,8 +219,12 @@ def is_open_roof(building) -> bool:
 
 
 def bus_stop_shapes(stop, ways):
-    """A bus stop's bay, shelter and label from the
-    nearest same-layer drivable road within 45 m; None without one."""
+    """A bus stop beside the nearest same-layer drivable road within 45 m
+    (None without one): the bay in that road's colour with "BUS" painted
+    in it (`label`, along `angle`), the E6 stop sign at the bay's front
+    end in right-hand traffic (`sign`), and a shelter or a bench behind
+    the kerb when OSM says so."""
+    from .map_style import road_color_for_way
     nearest = None
     for way in ways:
         if not way.is_drivable or len(way.points_m) < 2 or getattr(way, "layer", 0) != getattr(stop, "layer", 0):
@@ -235,19 +239,28 @@ def bus_stop_shapes(stop, ways):
             d = (stop.x - p[0]) ** 2 + (stop.y - p[1]) ** 2
             if nearest is None or d < nearest[0]:
                 length = math.sqrt(length_sq)
-                nearest = (d, p, (dx / length, dy / length), way.half_width_m)
+                nearest = (d, p, (dx / length, dy / length), way)
     if nearest is None or nearest[0] > 45.0 * 45.0:
         return None
-    _, p, t, hw = nearest
-    n = (-t[1], t[0])
+    _, p, t, way = nearest
+    hw = way.half_width_m
+    n = (-t[1], t[0])  # left of t
     side = 1.0 if (stop.x - p[0]) * n[0] + (stop.y - p[1]) * n[1] >= 0.0 else -1.0
     n = (n[0] * side, n[1] * side)
     at = lambda along, out: [round(p[0] + t[0] * along + n[0] * out, 2), round(p[1] + t[1] * along + n[1] * out, 2)]
-    bay = [at(-14.0, hw), at(14.0, hw), at(10.0, hw + 2.2), at(-10.0, hw + 2.2)]
-    centre_out = hw + 3.2
-    shelter = [at(-2.5, centre_out - 1.0), at(2.5, centre_out - 1.0), at(2.5, centre_out + 1.0), at(-2.5, centre_out + 1.0)] \
-        if getattr(stop, "shelter", False) else None
-    return {"bay": bay, "shelter": shelter, "label": at(0.0, centre_out), "angle": round(math.atan2(t[1], t[0]), 3)}
+    front = -side  # right-hand traffic: on t's left side buses drive against t
+    depth = 3.0  # a bus is 2.55 m wide
+    bay = [at(-16.0, hw), at(16.0, hw), at(11.0, hw + depth), at(-11.0, hw + depth)]
+    kerb = hw + depth + 1.2  # the waiting area behind the bay's kerb
+    rect = lambda along, out, half_along, half_out: [at(along - half_along, out - half_out), at(along + half_along, out - half_out),
+                                                    at(along + half_along, out + half_out), at(along - half_along, out + half_out)]
+    shelter = rect(0.0, kerb + 0.6, 2.5, 0.8) if getattr(stop, "shelter", False) else None
+    bench = rect(0.0, kerb + 0.4, 0.9, 0.25) if getattr(stop, "bench", False) and shelter is None else None
+    angle = math.atan2(t[1], t[0])  # "BUS" along the bay, never upside down on the north-up map
+    if abs(angle) > math.pi / 2:
+        angle -= math.copysign(math.pi, angle)
+    return {"bay": bay, "color": list(road_color_for_way(way)), "label": at(0.0, hw + depth / 2.0),
+            "angle": round(angle, 3), "sign": at(front * 9.0, kerb + 0.4), "shelter": shelter, "bench": bench}
 
 
 def labels(world) -> list:

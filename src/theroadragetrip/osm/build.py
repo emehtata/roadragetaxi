@@ -613,6 +613,17 @@ def _platform_centreline(pts: List[Tuple[float, float]]) -> Tuple[Tuple[float, f
     return (cx + ux * lo, cy + uy * lo), (cx + ux * hi, cy + uy * hi)
 
 
+def _is_bus_stop(tags: dict) -> bool:
+    """A bus stop where passengers wait: highway=bus_stop, or a platform
+    that is not a railway/tram one. A stop_position (the vehicle's spot on
+    the road) is not one: it would put a second bay on the same stop."""
+    if tags.get("highway") == "bus_stop":
+        return True
+    if tags.get("public_transport") != "platform" or tags.get("railway") or tags.get("highway") not in (None, "platform"):
+        return False
+    return not any(tags.get(mode) == "yes" for mode in ("train", "tram", "subway", "light_rail", "monorail", "ferry"))
+
+
 def build_ways(
     elements: List[dict],
     progress_callback: Optional[Callable[[float, str], None]] = None,
@@ -698,7 +709,7 @@ def build_ways(
                 tags.get("railway") in ("stop", "station", "halt") or tags.get("public_transport") == "stop_position"
             ) and (tags.get("tram") == "yes" or tags.get("light_rail") == "yes"):
                 tram_stop_names[nid] = tags.get("name", "")  # (Tampere maps its tram as light rail)
-            if include_bus_stops and (tags.get("highway") == "bus_stop" or tags.get("public_transport") in ("platform", "stop_position")):
+            if include_bus_stops and _is_bus_stop(tags):
                 bus_stops_raw.append((tags, nid))
             if "entrance" in tags:
                 entrance_node_ids.add(nid)
@@ -736,7 +747,7 @@ def build_ways(
             if connector_nodes and not connector_nodes.keys().isdisjoint(node_ids):
                 for nid in set(node_ids).intersection(connector_nodes):
                     connector_ways[nid].append((way_id, tags))
-            if include_bus_stops and tags.get("public_transport") == "platform":
+            if include_bus_stops and _is_bus_stop(tags):
                 bus_platforms_raw.append((tags, node_ids, way_id))
             # Coastline can also be a fence, wall or weir. Keep its topology
             # independently of those features; it is never an ordinary area.
@@ -1597,30 +1608,21 @@ def build_ways(
         scenery_objects.append(station)
         mapped_fuel_objects.append(station)
 
+    def add_bus_stop(tags, x, y, osm_id):
+        # One stop mapped twice (a bus_stop node and its platform): keep the first.
+        if any((x - b.x) ** 2 + (y - b.y) ** 2 < 25.0 ** 2 for b in bus_stops):
+            return
+        yes = lambda key: str(tags.get(key, "")).lower() in {"yes", "true", "1"}
+        bus_stops.append(BusStop(x=x, y=y, name=tags.get("name"), id=osm_id, shelter=yes("shelter"), bench=yes("bench")))
+
     for tags, nid in bus_stops_raw:
         pt = nodes_m.get(nid)
         if pt:
-            bus_stops.append(
-                BusStop(
-                    x=pt[0],
-                    y=pt[1],
-                    name=tags.get("name"),
-                    id=nid,
-                    shelter=str(tags.get("shelter", "")).lower() in {"yes", "true", "1"},
-                )
-            )
+            add_bus_stop(tags, pt[0], pt[1], nid)
     for tags, node_ids, way_id in bus_platforms_raw:
         pts, _ = process_node_ids(node_ids)
         if pts:
-            bus_stops.append(
-                BusStop(
-                    x=sum(point[0] for point in pts) / len(pts),
-                    y=sum(point[1] for point in pts) / len(pts),
-                    name=tags.get("name"),
-                    id=way_id,
-                    shelter=str(tags.get("shelter", "")).lower() in {"yes", "true", "1"},
-                )
-            )
+            add_bus_stop(tags, sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts), way_id)
 
     # 7. Traffic signals from OSM nodes.
     #

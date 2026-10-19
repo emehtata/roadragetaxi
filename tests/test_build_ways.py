@@ -156,6 +156,20 @@ def test_build_ways_parses_public_transport_platform_as_bus_stop():
     assert len(result.bus_stops) == 1
 
 
+def test_build_ways_bus_stops_skip_rail_platforms_stop_positions_and_duplicates():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"highway": "bus_stop", "bench": "yes"}},
+        {"type": "node", "id": 2, "lat": 60.0001, "lon": 25.0, "tags": {"public_transport": "platform", "bus": "yes"}},  # the same stop, 11 m
+        {"type": "node", "id": 3, "lat": 60.01, "lon": 25.0, "tags": {"public_transport": "stop_position", "bus": "yes"}},
+        {"type": "node", "id": 4, "lat": 60.02, "lon": 25.0, "tags": {"public_transport": "platform", "railway": "platform", "train": "yes"}},
+        {"type": "node", "id": 5, "lat": 60.03, "lon": 25.0, "tags": {"public_transport": "platform", "tram": "yes"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert [(stop.id, stop.bench) for stop in result.bus_stops] == [(1, True)]
+
+
 def test_build_ways_can_exclude_bus_stops_from_world():
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"highway": "bus_stop"}},

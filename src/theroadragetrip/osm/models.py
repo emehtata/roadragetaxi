@@ -519,6 +519,7 @@ class BusStop:
     id: Optional[int] = None
     layer: int = 0
     shelter: bool = False
+    bench: bool = False
 
 
 @dataclass

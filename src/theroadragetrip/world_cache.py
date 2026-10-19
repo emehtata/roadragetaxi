@@ -102,7 +102,8 @@ MAGIC = b"RWC\0"
 # 35: retain amenity=biergarten/grave_yard areas and point scenery.
 # 36: preserve cemetery/biergarten ground when its boundary is also a barrier.
 # 37: bus stops on by default (areas cached without them rebuild).
-FORMAT_VERSION = 37
+# 38: BusStop.bench; no stop_position or rail-platform stops, one stop per 25 m.
+FORMAT_VERSION = 38
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

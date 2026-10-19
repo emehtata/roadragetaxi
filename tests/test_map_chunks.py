@@ -263,13 +263,18 @@ def test_parallel_tracks_form_one_bridge_over_a_below_grade_road():
 
 def test_bus_stop_shapes_follow_the_nearest_road():
     """godot-16: a bus stop's bay and shelter, computed once."""
-    from theroadragetrip import static_world
+    from theroadragetrip import map_style, static_world
 
-    road = SimpleNamespace(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=3.0, is_drivable=True, layer=0)
-    stop = SimpleNamespace(x=50.0, y=6.0, layer=0, shelter=True)
+    road = SimpleNamespace(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=3.0, is_drivable=True, layer=0, highway="residential")
+    stop = SimpleNamespace(x=50.0, y=6.0, layer=0, shelter=True, bench=True)
     shapes = static_world.bus_stop_shapes(stop, [road])
-    assert shapes["bay"] == [[36.0, 3.0], [64.0, 3.0], [60.0, 5.2], [40.0, 5.2]]  # on the stop's side of the road
-    assert shapes["shelter"] is not None and shapes["label"] == [50.0, 6.2] and shapes["angle"] == 0.0
+    assert shapes["bay"] == [[34.0, 3.0], [66.0, 3.0], [61.0, 6.0], [39.0, 6.0]]  # on the stop's side of the road
+    assert shapes["color"] == list(map_style.road_color_for_way(road))  # the road's own asphalt
+    # North of an eastbound road buses drive west: the sign at the bay's west (front) end; "BUS" upright.
+    assert shapes["sign"] == [41.0, 7.6] and shapes["label"] == [50.0, 4.5] and shapes["angle"] == 0.0
+    west = static_world.bus_stop_shapes(stop, [SimpleNamespace(**{**vars(road), "points_m": [(100.0, 0.0), (0.0, 0.0)]})])
+    assert west["angle"] == 0.0 and west["sign"] == [41.0, 7.6]  # the way's direction changes neither
+    assert shapes["shelter"] is not None and shapes["bench"] is None  # a shelter has its own seat
     assert static_world.bus_stop_shapes(SimpleNamespace(x=50.0, y=80.0, layer=0, shelter=False), [road]) is None  # beyond 45 m
 
 
