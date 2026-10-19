@@ -182,7 +182,7 @@ class SimulationServer:
         self.gig_odometer_file = gig_odometer_path(CONFIG_PATH)
 
         overpass_endpoints = get_overpass_endpoints(config)
-        bus_stops_enabled = config.getboolean("game", "bus_stops", fallback=False)
+        bus_stops_enabled = True  # always: an old ini's bus_stops = false (the former default) is ignored
         roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
         # Loading never streams; the map grows while playing (map_sync.py).
         self._auto_fetch = bool(getattr(args, "auto_fetch", True)) and not getattr(args, "use_sample", False)
