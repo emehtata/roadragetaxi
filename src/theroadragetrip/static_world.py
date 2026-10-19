@@ -246,10 +246,10 @@ def _bus_stop_road(stop, ways):
 
 
 def bus_stop_point(stop, ways):
-    """The road's centre-line point beside a bus stop, or None: a bus's
-    destination on the road (the NPC planner keeps it in its own lane)."""
+    """The road beside a bus stop: (centre-line point, unit normal towards
+    the stop, the way), or None. A bus stops in the lane on that side."""
     road = _bus_stop_road(stop, ways)
-    return None if road is None else road[0]
+    return None if road is None else (road[0], road[2], road[4])
 
 
 def bus_stop_shapes(stop, ways):

@@ -3415,29 +3415,48 @@ def _continue_npc_trip_steps(
 
 
 BUS_STOP_ROAD_SEARCH_M = 50.0  # the roads near a stop searched for the one it stands beside
+BUS_STOP_OVERSHOOT_M = 30.0  # a path point this near a stop, past it, is a detour beyond it (_end_at_stop)
 
 
 def _bus_leg_steps(vehicle, job, traffic_world, ways, spatial_grid, curbs, curb_grid,
                    buildings, building_grid) -> RouteSteps:
-    """A line bus's route to its next stop: the road beside it
-    (static_world.bus_stop_point), an on-road destination the planner
-    puts in the bus's own lane - a bus stops at its stop, it never parks
+    """A line bus's route to its next stop: to its lane beside the stop - the
+    lane on the stop's side, wherever the route's last road node lies (left
+    to the planner, a route reaching a node past the stop and back put it
+    in the opposite lane). A bus stops at its stop, it never parks
     (docs/bus-lines.md)."""
     from .static_world import bus_stop_point
     yield
     stop = job.target_stop
     r = BUS_STOP_ROAD_SEARCH_M
     near = spatial_grid.ways_in_rect(stop.x - r, stop.y - r, stop.x + r, stop.y + r) if spatial_grid is not None else ways
-    point = bus_stop_point(stop, near)
-    if point is None:
+    road = bus_stop_point(stop, near)
+    if road is None:
         return None
+    (px, py), (nx, ny), way = road
+    point = _lane_offset_point(way, px, py, math.atan2(nx, -ny), vehicle.width_m)  # (travelling with the stop on its right)
     path = yield from _plan_and_validate_npc_route_steps(
         traffic_world, ways, (vehicle.car.x, vehicle.car.y), point, spatial_grid=spatial_grid,
         curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
         origin_is_off_road=True,  # (as every continuation: it joins the road from where it stands)
+        destination_is_off_road=True,  # the exact end point: no lane offset of the planner's own
         vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
     )
-    return None if path is None else (path, point, None, False)
+    if path is None:
+        return None
+    return _end_at_stop(path, point, (-ny, nx)), point, None, True
+
+
+def _end_at_stop(path, point, direction) -> list:
+    """The route searches to the road node nearest the stop, often just past
+    it: the path drove on, crossed into the oncoming lane and came back.
+    Cut it where it first reaches the stop (near it, at or past it along
+    `direction`, the way the bus travels) and end it there."""
+    for k, q in enumerate(path[:-1]):
+        if k > 0 and math.hypot(q.x - point[0], q.y - point[1]) < BUS_STOP_OVERSHOOT_M \
+                and (q.x - point[0]) * direction[0] + (q.y - point[1]) * direction[1] > -1.0:
+            return path[:k] + [path[-1]]
+    return path
 
 
 def _recover_npc_trip_steps(vehicle, driver, traffic_world, ways, spatial_grid,

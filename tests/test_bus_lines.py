@@ -70,6 +70,7 @@ def test_a_line_bus_drives_its_stops_on_real_roads_then_retires_out_of_sight():
     from theroadragetrip.npc import NPCState, NPCVehicleManager, spawn_npc
     from theroadragetrip.residents import ResidentManager
     from theroadragetrip.physics import is_point_on_road
+    from theroadragetrip.static_world import bus_stop_point
     from theroadragetrip.traffic_world import TrafficWorld
     from tests.test_competitor_taxis import _city_block_grid
 
@@ -78,7 +79,8 @@ def test_a_line_bus_drives_its_stops_on_real_roads_then_retires_out_of_sight():
     traffic_world = TrafficWorld(ways)
     residents = ResidentManager()
     # On the right of the way the line goes (right-hand traffic): south of the eastbound road, east of the northbound one, ...
-    stops = [_stop(150.0, -6.5, ("1", 0, "18")), _stop(306.5, 150.0, ("1", 1, "18")), _stop(210.0, 306.5, ("1", 2, "18"))]
+    stops = [_stop(172.0, -6.5, ("1", 0, "18")),  # just before a junction: the route node nearest is past it
+             _stop(306.5, 150.0, ("1", 1, "18")), _stop(210.0, 306.5, ("1", 2, "18"))]
     for stop in stops:
         stop.layer = 0
     _, driver, bus = spawn_npc(1, residents, traffic_world, ways, (30.0, 0.0), (90.0, 0.0), vehicle_type="bus")
@@ -95,6 +97,10 @@ def test_a_line_bus_drives_its_stops_on_real_roads_then_retires_out_of_sight():
         traffic_world.advance_time(1.0 / 30.0)
         manager.update(1.0 / 30.0, 210.0, 210.0, residents, traffic_world, ways)
         job = bus.bus_job
+        if job is not None and job.state == "driving":  # approaching: never in the oncoming lane
+            (px, py), (nx, ny), _ = bus_stop_point(job.target_stop, ways)
+            if math.hypot(bus.x - px, bus.y - py) < 20.0:
+                assert (bus.x - px) * nx + (bus.y - py) * ny > 0.5, (job.target_stop.x, job.target_stop.y, bus.x, bus.y)
         if job is not None and job.state == "stopped" and (not served or served[-1][0] is not job.stopped_at):
             served.append((job.stopped_at, (bus.x, bus.y)))
         if bus not in manager.vehicles or bus.state == NPCState.CRASHED:
@@ -105,3 +111,5 @@ def test_a_line_bus_drives_its_stops_on_real_roads_then_retires_out_of_sight():
     for stop, (x, y) in served:
         assert math.hypot(x - stop.x, y - stop.y) < 12.0, (stop.x, stop.y, x, y)  # at the stop...
         assert is_point_on_road(x, y, ways=ways, car_roads_only=True)  # ...on the road, in its lane
+        (px, py), (nx, ny), _ = bus_stop_point(stop, ways)
+        assert (x - px) * nx + (y - py) * ny > 1.0, (stop.x, stop.y, x, y)  # in the lane on the stop's side, not the oncoming one
