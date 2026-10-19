@@ -120,3 +120,19 @@ def test_parking_poles_stand_where_four_spots_meet():
     assert all(pole[4] is True for pole in poles)  # all round
     assert parking_row_lamps(rows[:20]) == []  # one row: no seam
     assert parking_row_lamps([spot(i * 2.5, 0.0, None) for i in range(20)] + [spot(i * 2.5, 5.0, None) for i in range(20)]) == []
+
+
+def test_a_street_is_lit_from_one_side_and_a_divided_road_from_its_median():
+    """Reported in Oulu: streets have lamps on one side; a motorway with a
+    grass median has them in the median, none at the outer edges."""
+    street = Way(points_m=[(-140.0, 0.0), (140.0, 0.0)], highway="primary", half_width_m=4.0, lit="yes")
+    placed = _place([street], [], [])
+    assert placed and len({y > 0 for _, y, *_ in placed}) == 1  # all on one side
+
+    # Two carriageways 20 m apart (centres), each one-way: east on the south one, west on the north one
+    south = Way(points_m=[(-140.0, -10.0), (140.0, -10.0)], highway="motorway", half_width_m=4.0, lit="yes", oneway=1)
+    north = Way(points_m=[(140.0, 10.0), (-140.0, 10.0)], highway="motorway", half_width_m=4.0, lit="yes", oneway=1)
+    placed = _place([south, north], [], [])
+    assert placed and all(-6.0 < y < 6.0 for _, y, *_ in placed)  # in the median only
+    xs = sorted(x for x, *_ in placed)
+    assert all(b - a >= placement.STREET_LIGHT_MERGE_M for a, b in zip(xs, xs[1:]))  # one row, not two
