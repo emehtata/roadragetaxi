@@ -11,11 +11,21 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 COMPETITOR_TAXIS = 3  # of the NPC population's moving-traffic spawns
+NIGHT_COMPETITOR_TAXIS = 10  # busy city centres on Friday/Saturday nights
+CRUISE_DWELL_S = 10.0  # a free taxi pauses for dispatch before cruising again
 CLAIM_RADIUS_M = 1500.0  # a competitor this near an offer's pickup may take it
 CLAIM_RATE_PER_S = 1.0 / 30.0  # ...this often: offers stay on the phone a while
 DISPATCH_INTERVAL_S = 1.0
 STOP_DWELL_S = 6.0  # at a stop: the passenger boards or leaves
 MAX_ROUTE_ATTEMPTS = 5  # a leg that cannot be routed this often: the job is dropped
+
+
+def night_taxi_target(moment, local_fraction: float, city_target: int) -> int:
+    """Gameplay demand estimate, scaled to local density and the existing population budget."""
+    if moment is None:
+        return 0
+    late = (moment.hour >= 22 and moment.weekday() in (4, 5)) or (moment.hour < 6 and moment.weekday() in (5, 6))
+    return min(NIGHT_COMPETITOR_TAXIS, math.ceil(max(0, city_target) * 0.25 * max(0.0, min(1.0, local_fraction)))) if late else 0
 
 
 @dataclass
@@ -86,7 +96,8 @@ class Dispatcher:
         interval, self.elapsed = self.elapsed, 0.0
         idle = [v for v in npc_manager.vehicles
                 if is_competitor(v) and v.taxi_job is None and v.state == NPCState.PARKED
-                and npc_manager.drivers.get(v.vehicle_id) is not None]
+                and npc_manager.drivers.get(v.vehicle_id) is not None
+                and not getattr(npc_manager.drivers[v.vehicle_id], "route_job_pending", False)]
         chance = 1.0 - math.exp(-CLAIM_RATE_PER_S * interval)
         for offer in list(taxi_mgr.offers):
             if not idle:
