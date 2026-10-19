@@ -27,7 +27,7 @@ from .activities import ActivityInstance, ActivityLocation
 from .competitor_taxis import COMPETITOR_TAXIS, is_competitor, make_competitor
 from . import bus_lines
 from .bus_lines import is_line_bus
-from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_point_and_dist_to_segment, point_in_polygon, segment_distance
+from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
 from .osm import Curb, ParkingSpace, StopSign, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, get_road_layer_at_point, is_point_on_road, update_car_physics
@@ -3418,6 +3418,7 @@ def _continue_npc_trip_steps(
 BUS_STOP_ROAD_SEARCH_M = 50.0  # the roads near a stop searched for the one it stands beside
 BUS_BAY_PULL_IN_M = 20.0  # from its lane into the bay over this distance
 BUS_BAY_STRAIGHT_M = 8.0  # ...then straight along the bay to its middle
+BUS_STOP_REACHED_M = 6.0  # a path segment this near the stop's lane point passes it (either lane of the road)
 BUS_STOP_OVERSHOOT_M = 30.0  # a path point this near a stop, past it, is a detour beyond it (_end_at_stop)
 
 
@@ -3452,6 +3453,8 @@ def _bus_leg_steps(vehicle, job, traffic_world, ways, spatial_grid, curbs, curb_
     # Validated to the lane beside the stop; the pull-in to the bay is ours:
     # the bay is drawn by the game, the map's roads (and the route checks) end at the kerb.
     direction = (-ny, nx)  # the way the bus travels
+    if not _arrives_along(path, lane, direction):
+        return None  # it would reach the stop from the far side, across the oncoming lane
     path = _end_at_stop(path, lane, direction)
     along = lambda q: (q.x - lane[0]) * direction[0] + (q.y - lane[1]) * direction[1]
     keep = [q for q in path[:-1] if along(q) < -BUS_BAY_PULL_IN_M or math.hypot(q.x - lane[0], q.y - lane[1]) > BUS_STOP_OVERSHOOT_M]
@@ -3464,6 +3467,16 @@ def _bus_leg_steps(vehicle, job, traffic_world, ways, spatial_grid, curbs, curb_
     lane_out = (lane[0] - px) * nx + (lane[1] - py) * ny
     return keep + [at(-BUS_BAY_PULL_IN_M, lane_out), at(-BUS_BAY_PULL_IN_M * 0.5, kerb_side),
                    at(-BUS_BAY_STRAIGHT_M, out), at(0.0, out)], bay, None, True
+
+
+def _arrives_along(path, point, direction) -> bool:
+    """The path first reaches `point` travelling along `direction`, not
+    against it (a later pass, coming back from a node past it, is the
+    detour _end_at_stop cuts)."""
+    for a, b in zip(path, path[1:]):
+        if dist_point_to_segment(*point, a.x, a.y, b.x, b.y) < BUS_STOP_REACHED_M:
+            return (b.x - a.x) * direction[0] + (b.y - a.y) * direction[1] > 0.0
+    return False
 
 
 def _end_at_stop(path, point, direction) -> list:

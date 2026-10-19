@@ -130,3 +130,25 @@ def test_a_line_bus_keeps_its_riders_aboard_at_a_stop():
     manager._materialize_parked_drivers()
 
     assert manager.pedestrians == [] and group.disembarked_resident_ids == set()
+
+
+def test_a_stop_is_never_served_from_the_far_side():
+    """South of an eastbound street, a stop serves eastbound buses. A bus
+    coming from the east would cross the oncoming lane into the bay
+    (bug: a head-on crash with the player), so that leg is refused."""
+    from theroadragetrip.npc import _bus_leg_steps, run_route_steps
+    from theroadragetrip.traffic_world import TrafficWorld
+    from tests.test_competitor_taxis import _city_block_grid
+
+    ways = _city_block_grid()
+    traffic_world = TrafficWorld(ways)
+    stop = _stop(150.0, -6.5, ("1", 0, "18"))
+    stop.layer = 0
+    job = bus_lines.BusJob(bus_lines.Line("1", "18", [stop, stop]), 0)
+
+    def leg(x, y):
+        bus = SimpleNamespace(car=SimpleNamespace(x=x, y=y), length_m=11.0, width_m=2.5)
+        return run_route_steps(_bus_leg_steps(bus, job, traffic_world, ways, None, None, None, None, None), 1e9)
+
+    assert leg(30.0, -2.0) is not None  # from the west, the stop on its right
+    assert leg(330.0, 2.0) is None  # from the east: refused

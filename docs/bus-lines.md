@@ -93,3 +93,13 @@ got off at the first stop.
 
 Known: pulling out of a bay can briefly trip the road-boundary check;
 the recovery re-routes and the bus goes on.
+
+## Phase 3 (2026-10-19): never from the far side
+
+Played: a bus heading north-west drove into Meritaskila E's bay, which
+serves south-east-bound buses, across the oncoming lane - head-on into
+the player. A new bus heads for the nearest stop of a line, from
+whichever side its route arrives, and the pull-in assumes the stop on
+its right. A leg whose route first passes the stop travelling the other
+way (`npc._arrives_along`) is now refused: the stop is retried, then
+skipped; a spawn tries another place.
