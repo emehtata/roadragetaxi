@@ -677,7 +677,7 @@ func _present(state: Dictionary) -> void:
 	if state.has("game_time_seconds"):
 		phone.set_game_seconds(float(state["game_time_seconds"]))
 	phone.show_phone(state.get("phone", {}))
-	phone.show_navigation(state.get("navigation", {}))
+	phone.show_navigation(state.get("navigation", {}), hud.task_text(state.get("taxi", {}), hud.language))
 	_refresh_inspector(state)
 	var target: Dictionary = entities.current_target(state)
 	var target_screen := Vector2.ZERO

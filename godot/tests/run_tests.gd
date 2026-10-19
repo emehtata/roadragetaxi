@@ -653,13 +653,11 @@ func test_hud() -> void:
 	check(text["speed"] == "50 km/h", "speed (%s)" % text["speed"])
 	check(text["clock"] == "18:05", "clock (%s)" % text["clock"])
 	check(text["weather"] == "Rain, road 40% wet", "weather (%s)" % text["weather"])
-	check(text["fare"] == "Drive Aino to Rautatientori", "fare (%s)" % text["fare"])
 	var finnish := Hud.values({"on_foot": true, "taxi": {"completed_fares": 2}, "weather": {"weather_type": "rain", "wetness": 0.4}}, {}, "fi")
-	check(finnish["speed"] == "jalan" and finnish["fare"] == "Ei kyytiä – 2 ajettu" and finnish["weather"].begins_with("Sadetta"), "Finnish selection localizes the HUD")
+	check(finnish["speed"] == "jalan" and finnish["weather"].begins_with("Sadetta"), "Finnish selection localizes the HUD")
 	check(text["notice"] == "Fare paid", "notice")
 	var empty := Hud.values({})
 	check(empty["money"] == "– €" and empty["clock"] == "--:--" and empty["speed"] == "on foot", "missing fields show placeholders")
-	check(Hud.values({"taxi": {"current_passenger": null}})["fare"].begins_with("No fare"), "no passenger")
 
 
 func test_map_chunks() -> void:
@@ -1161,7 +1159,7 @@ func test_speech_and_stations() -> void:
 		"taxi": {"balance_cents": 123456, "total_score": -1200, "completed_fares": 12, "state": "PICKUP",
 			"current_passenger": {"name": "Matti Vesterinen", "pickup": {"address": "Aaltovaarantie 12, Kaakkuri, a very long address indeed that goes on"}}}})
 	var boxes := []
-	for name in ["_clock", "_money", "_weather", "_fare"]:
+	for name in ["_clock", "_money", "_weather"]:
 		var label: Label = hud.get(name)
 		boxes.append(Rect2(label.position, label.size))
 	var apart := true
@@ -1169,13 +1167,10 @@ func test_speech_and_stations() -> void:
 		apart = apart and boxes[i].position.x >= 0.0 and boxes[i].end.x <= 1280.0
 		for j in range(i + 1, boxes.size()):
 			apart = apart and not boxes[i].intersects(boxes[j])
-	check(apart and not boxes[3].intersects(Rect2(1280 - 79, 45, 62, 62)), "HUD: clock, score, weather and fare banner on screen, none overlapping, clear of the limit sign")
-	check(hud._fare_style.border_color == Color8(255, 215, 60), "HUD: the fare banner yellow while picking up")
+	check(apart and not boxes[2].intersects(Rect2(1280 - 79, 45, 62, 62)), "HUD: clock, score and weather on screen, none overlapping, clear of the limit sign")
 	check(Hud.subtitle_text({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei"}) == "Aino: Hei" and Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}) == "Driver: Mennään", "the passenger's name, else the speaker")
 	check(Hud.subtitle_text({"speaker": "passenger", "text": ""}) == "" and Hud.subtitle_text({}) == "", "no text: no subtitle")
 	check(Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}, "fi") == "Kuljettaja: Mennään", "the speaker in Finnish")
-	var fare_fi := Hud.fare_details({"elapsed_time": 30.0, "live_fare_cents": 1250, "fare_distance_m": 2300.0, "passenger_happiness": 80.0}, "fi")
-	check(not fare_fi.contains("mittari") and fare_fi.contains("tyytyväisyys 80%") and not fare_fi.contains("happiness"), "the fare's details in Finnish")
 	hud.show_subtitle({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei", "duration_s": 4.0})
 	check(hud._subtitle.visible and hud._subtitle.text == "Aino: Hei", "one subtitle shows")
 	var glow_p := PackedVector2Array()
@@ -1712,18 +1707,13 @@ func test_taxi_information() -> void:
 	var passenger := {"name": "Aino", "pickup": {"address": "Kirkkokatu 4"}, "dropoff": {"address": "Rautatientori"}}
 	var fare := {"state": "DROPOFF", "current_passenger": passenger, "elapsed_time": 61.6, "live_fare_cents": 1234,
 		"fare_distance_m": 2345.6, "passenger_happiness": 49.6}
-	check(Hud.values({"taxi": fare})["fare"] == "Drive Aino to Rautatientori · 62 s · 2.35 km · happiness 50%", "a running fare: time, distance, happiness")
-	var started := fare.merged({"elapsed_time": 0.0, "live_fare_cents": 0, "fare_distance_m": 0.0, "passenger_happiness": 100.0}, true)
-	check(Hud.values({"taxi": started})["fare"].ends_with("· 0 s · 0.00 km · happiness 100%"), "zeroes and the boundaries show as they are")
+	check(Hud.task_text(fare) == "Drive Aino to Rautatientori", "the task: who and where to")
+	check(Hud.task_text(fare.merged({"state": "PICKUP"}, true)) == "Pick up Aino at Kirkkokatu 4", "pickup task")
+	check(Hud.task_text(fare.merged({"state": "WALKING"}, true)) == "Aino is walking to the taxi", "walking task")
+	check(Hud.task_text({"completed_fares": 3}) == "", "no passenger: no task")
+	check(Hud.meter_info(fare) == "2.35 km  ☺ 50%", "the meter's distance and happiness")
+	check(Hud.meter_info(fare.merged({"fare_distance_m": null, "passenger_happiness": [1]}, true)) == "", "missing or malformed: left out")
 	check(preload("res://taxi_meter.gd").readout(5) == "   0.05" and preload("res://taxi_meter.gd").readout(123456) == "1234.56", "a cent-level taximeter")
-	var before := fare.merged({"live_fare_cents": null, "fare_distance_m": null, "passenger_happiness": null}, true)
-	check(Hud.values({"taxi": before})["fare"] == "Drive Aino to Rautatientori · 62 s", "before the meter starts: no made-up meter values")
-	var old := {"state": "DROPOFF", "current_passenger": passenger}
-	check(Hud.values({"taxi": old})["fare"] == "Drive Aino to Rautatientori", "an older server: the plain mission line")
-	check(Hud.values({"taxi": fare.merged({"live_fare_cents": "12", "passenger_happiness": [1]}, true)})["fare"] == "Drive Aino to Rautatientori · 62 s · 2.35 km", "malformed values are left out")
-	check(Hud.values({"taxi": fare.merged({"state": "PICKUP"}, true)})["fare"] == "Pick up Aino at Kirkkokatu 4", "pickup text unchanged")
-	check(Hud.values({"taxi": fare.merged({"state": "WALKING"}, true)})["fare"] == "Aino is walking to the taxi", "walking text unchanged")
-	check(Hud.values({"taxi": {"completed_fares": 3, "elapsed_time": 9.0}})["fare"] == "No fare - 3 done", "no passenger: unchanged")
 
 	check(Instruments.price_text({"taxi": {"fuel_station_price_cents": 189}}) == "G: REFUEL  1.89 €/L", "a pump in range: its price from cents")
 	check(Instruments.price_text({"taxi": {"fuel_station_price_cents": 300.0}}) == "G: REFUEL  3.00 €/L", "a whole-euro price")

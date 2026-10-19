@@ -160,9 +160,9 @@ func update_layout() -> void:
 	layout.rects["navigation_phone"] = Rect2(position, Vector2(physical_size.x, 100 * scale.y))
 
 
-func show_navigation(route: Dictionary) -> void:
+func show_navigation(route: Dictionary, task := "") -> void:
 	navigation.language = language
-	navigation.show_navigation(route)
+	navigation.show_navigation(route, task)
 
 
 static func device_style() -> StyleBoxFlat:

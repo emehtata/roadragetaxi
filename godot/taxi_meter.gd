@@ -19,6 +19,11 @@ var cents := -1:
 		if value != cents:
 			cents = value
 			queue_redraw()
+var info := "":  # distance and happiness, small on the right
+	set(value):
+		if value != info:
+			info = value
+			queue_redraw()
 
 
 func _init() -> void:
@@ -30,6 +35,7 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color8(12, 12, 14, 235))
 	draw_rect(Rect2(Vector2.ZERO, size), Color8(190, 200, 205), false, 1.0)
 	draw_string(get_theme_default_font(), Vector2(PAD, PAD + 8.0), "TAXI  €", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color8(190, 200, 205))
+	draw_string(get_theme_default_font(), Vector2(PAD, PAD + 8.0), info, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 2.0 * PAD, 10, ON)
 	var text := readout(cents)
 	var x := PAD
 	var y := PAD + 12.0

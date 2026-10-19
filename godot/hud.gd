@@ -1,4 +1,4 @@
-## The player's HUD: money, speed, game time, weather, the fare and the
+## The player's HUD: money, speed, game time, weather, the taximeter and the
 ## simulation's notice, all read from the state being shown. Only formats
 ## what Python decided (`values` is a pure state -> text mapping); no game
 ## rules here. F3 toggles the developer readout (main.gd fills it).
@@ -10,7 +10,6 @@ const T := preload("res://i18n.gd")
 @onready var _speed: Label = %Speed
 @onready var _clock: Label = %Clock
 @onready var _weather: Label = %Weather
-@onready var _fare: Label = %Fare
 @onready var _notice: Label = %Notice
 @onready var _hint: Label = %Hint
 
@@ -23,7 +22,6 @@ var _timetable_hint_until := 0
 var _meter := preload("res://taxi_meter.gd").new()  # the seven-segment taximeter
 var _summary := Label.new()  # the city summary: covers everything once the career city is done
 var _notice_style := StyleBoxFlat.new()
-var _fare_style := StyleBoxFlat.new()
 var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
 var _notice_mode := ""
 var _map_sign := Label.new()  # the map growing at its edge: wait for it (state.map_loading)  # "camera", "start" or "" (the banner)
@@ -102,10 +100,10 @@ func _ready() -> void:
 	_notice_style = _box(Color8(20, 30, 40, 235), Color8(255, 200, 50))
 	_notice.add_theme_stylebox_override("normal", _notice_style)
 	# No shared bar: the clock top right, the score
-	# box left of it, the weather under them, the fare banner top left
-	# under the trip meter (instruments.gd), notices low in the middle.
+	# box left of it, the weather under them, the taximeter top middle,
+	# notices low in the middle (the fare's task is in the phone).
 	var bar: Control = _clock.get_parent().get_parent()
-	for label: Label in [_clock, _money, _speed, _weather, _fare]:
+	for label: Label in [_clock, _money, _speed, _weather]:
 		label.get_parent().remove_child(label)
 		add_child(label)
 		label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
@@ -126,15 +124,6 @@ func _ready() -> void:
 	_money.add_theme_stylebox_override("normal", money_style)
 	_weather.add_theme_font_size_override("font_size", 15)
 	_weather.add_theme_color_override("font_color", Color8(200, 220, 240))
-	_fare_style = _box(Color8(25, 30, 35, 220), Color8(190, 200, 205))
-	_fare_style.set_border_width_all(1)
-	_fare_style.set_content_margin_all(4)
-	_fare_style.content_margin_left = 6
-	_fare_style.content_margin_right = 6
-	_fare_style.set_corner_radius_all(3)
-	_fare.add_theme_stylebox_override("normal", _fare_style)
-	_fare.clip_text = true
-	_fare.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 
 
 static func _box(fill: Color, border: Color) -> StyleBoxFlat:
@@ -153,13 +142,12 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	_speed.text = text["speed"]
 	_clock.text = text["clock"]
 	_weather.text = text["weather"]
-	_fare.text = text["fare"]
-	var live = state.get("taxi", {}).get("live_fare_cents")
+	var taxi: Dictionary = state.get("taxi", {})
+	var live = taxi.get("live_fare_cents")
 	_meter.visible = typeof(live) in [TYPE_INT, TYPE_FLOAT]
 	if _meter.visible:
 		_meter.cents = int(live)
-	_fare_style.border_color = text["fare_color"]
-	_fare.add_theme_color_override("font_color", text["fare_color"])
+		_meter.info = meter_info(taxi)
 	var start_hint: bool = text["notice"] == "" and text["start_hint"] != ""  # the start hint, blue
 	_notice.text = text["start_hint"] if start_hint else text["notice"]
 	_notice.visible = _notice.text != ""
@@ -205,18 +193,6 @@ func _layout() -> void:
 	var moved: Vector2 = layout.place("status", status, size).position - status.position
 	for label: Label in [_clock, _money, _weather]:
 		label.position += moved
-	_fare.position = Vector2(10.0, 44.0)  # under the trip meter
-	# A clipping Label reports no minimum width: measure the text instead.
-	var font := _fare.get_theme_font("font")
-	var font_size := _fare.get_theme_font_size("font_size")
-	var text_size := font.get_multiline_string_size(_fare.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-	var room := maxf(120.0, minf(_weather.position.x, size.x - 100.0) - 20.0)  # left of the weather and the sign
-	_fare.size = Vector2(minf(text_size.x + 14.0, room), text_size.y + 10.0)
-	_fare.visible = _fare.text != ""
-	if _fare.visible:
-		_fare.position = layout.place("fare", Rect2(_fare.position, _fare.size), size).position
-	else:
-		layout.rects.erase("fare")  # nothing there to grab
 	if _meter.visible:  # top middle by default
 		_meter.position = layout.place("meter", Rect2(Vector2((size.x - _meter.size.x) / 2.0, 8.0), _meter.size), size).position
 	else:
@@ -277,24 +253,6 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 		text["weather"] = T.text("road_wet", language) % [T.weather(str(weather["weather_type"]), language), roundi(weather.get("wetness", 0.0) * 100)]
 	else:
 		text["weather"] = ""
-	var passenger = taxi.get("current_passenger")
-	# Banner colours: grey idle, yellow picking up, green with the passenger.
-	text["fare_color"] = Color8(190, 200, 205)
-	if typeof(passenger) == TYPE_DICTIONARY:
-		text["fare_color"] = Color8(100, 240, 140) if taxi.get("state", "") == "DROPOFF" else Color8(255, 215, 60)
-	if passenger == null or typeof(passenger) != TYPE_DICTIONARY:
-		text["fare"] = T.text("no_fare", language) % taxi.get("completed_fares", 0)
-	else:
-		var who: String = passenger.get("name", T.text("passenger", language))
-		match taxi.get("state", ""):
-			"PICKUP":
-				text["fare"] = T.text("pick_up", language) % [who, passenger.get("pickup", {}).get("address", "?")]
-			"WALKING":
-				text["fare"] = T.text("walking_taxi", language) % who
-			"DROPOFF":
-				text["fare"] = T.text("drive_to", language) % [who, passenger.get("dropoff", {}).get("address", "?")] + fare_details(taxi, language)
-			_:
-				text["fare"] = who
 	text["notice"] = str(taxi.get("notification_msg", "")) if taxi.get("notification_timer", 0.0) > 0.0 else ""
 	text["notice_camera"] = text["notice"] != "" and taxi.get("speed_camera_notice", false)
 	# The start hints: get in (until the driver first does), then start the engine.
@@ -404,17 +362,29 @@ static func summary_text(state: Dictionary, language := "en") -> String:
 	return "\n".join(lines)
 
 
-## The mission bar while driving a fare: elapsed time, then the
-## distance and the passenger's happiness once the meter runs (the fare
-## itself is on the taximeter)
-## (the server sends those null before). Missing or malformed values are left out.
-static func fare_details(taxi: Dictionary, language := "en") -> String:
+## The fare's task for the phone's navigation app: who, and where to.
+## "" without a passenger.
+static func task_text(taxi: Dictionary, language := "en") -> String:
+	var passenger = taxi.get("current_passenger")
+	if typeof(passenger) != TYPE_DICTIONARY:
+		return ""
+	var who: String = passenger.get("name", T.text("passenger", language))
+	match taxi.get("state", ""):
+		"PICKUP":
+			return T.text("pick_up", language) % [who, passenger.get("pickup", {}).get("address", "?")]
+		"WALKING":
+			return T.text("walking_taxi", language) % who
+		"DROPOFF":
+			return T.text("drive_to", language) % [who, passenger.get("dropoff", {}).get("address", "?")]
+	return who
+
+
+## The small line on the taximeter: the fare's distance and the
+## passenger's happiness; missing or malformed values are left out.
+static func meter_info(taxi: Dictionary) -> String:
 	var parts := []
-	var numeric := func(key): return typeof(taxi.get(key)) in [TYPE_INT, TYPE_FLOAT]
-	if numeric.call("elapsed_time"):
-		parts.append("%.0f s" % taxi["elapsed_time"])
-	if numeric.call("fare_distance_m"):
+	if typeof(taxi.get("fare_distance_m")) in [TYPE_INT, TYPE_FLOAT]:
 		parts.append("%.2f km" % (taxi["fare_distance_m"] / 1000.0))
-	if numeric.call("passenger_happiness"):
-		parts.append(T.text("happiness", language) % roundi(taxi["passenger_happiness"]))
-	return "" if parts.is_empty() else " · " + " · ".join(parts)
+	if typeof(taxi.get("passenger_happiness")) in [TYPE_INT, TYPE_FLOAT]:
+		parts.append("☺ %d%%" % roundi(taxi["passenger_happiness"]))
+	return "  ".join(parts)
