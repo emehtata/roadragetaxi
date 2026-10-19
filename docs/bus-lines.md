@@ -103,3 +103,18 @@ whichever side its route arrives, and the pull-in assumes the stop on
 its right. A leg whose route first passes the stop travelling the other
 way (`npc._arrives_along`) is now refused: the stop is retried, then
 skipped; a spawn tries another place.
+
+## Phase 4 (2026-10-19): out of the bay
+
+Played: leaving a bay the bus swung sharply from where it stood (the
+planner's first turn), as if its wheels were mid-body. The leg from a
+bay now starts with the pull-in mirrored (`npc._pull_out_of_bay`):
+straight along the bay, eased to just inside the kerb, into its lane;
+the path's own first stretch beside the stop gives way to it. Measured
+on the test grid: the sharpest turn leaving a bay 76 -> 40 deg/s, and no
+road-boundary halts.
+
+Tried and reverted: turning long vehicles about their rear axle in
+physics. It is right for the body, but NPC paths are laid out for cars,
+so at a tight corner the bus's rear cut inside and the road-boundary
+check halted it. Needs wide-swinging turns for long vehicles first.

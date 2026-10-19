@@ -102,6 +102,7 @@ def test_a_line_bus_drives_its_stops_on_real_roads_then_retires_out_of_sight():
                 assert (bus.x - px) * nx + (bus.y - py) * ny > 0.5, (job.target_stop.x, job.target_stop.y, bus.x, bus.y)
         if job is not None and job.state == "stopped" and (not served or served[-1][0] is not job.stopped_at):
             served.append((job.stopped_at, (bus.x, bus.y)))
+        assert "road boundary" not in bus.debug_waiting_for, (bus.x, bus.y)  # into and out of each bay cleanly
         if bus not in manager.vehicles or bus.state == NPCState.CRASHED:
             break
     assert bus.state != NPCState.CRASHED

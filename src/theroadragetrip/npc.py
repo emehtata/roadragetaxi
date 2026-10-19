@@ -3419,6 +3419,7 @@ BUS_STOP_ROAD_SEARCH_M = 50.0  # the roads near a stop searched for the one it s
 BUS_BAY_PULL_IN_M = 20.0  # from its lane into the bay over this distance
 BUS_BAY_STRAIGHT_M = 8.0  # ...then straight along the bay to its middle
 BUS_STOP_REACHED_M = 6.0  # a path segment this near the stop's lane point passes it (either lane of the road)
+BUS_AT_BAY_M = 15.0  # this near the stop it last served, a bus leaves from its bay (_pull_out_of_bay)
 BUS_STOP_OVERSHOOT_M = 30.0  # a path point this near a stop, past it, is a detour beyond it (_end_at_stop)
 
 
@@ -3465,8 +3466,35 @@ def _bus_leg_steps(vehicle, job, traffic_world, ways, spatial_grid, curbs, curb_
     at = lambda along_m, out_m: dataclasses.replace(
         path[-1], x=px + direction[0] * along_m + nx * out_m, y=py + direction[1] * along_m + ny * out_m)
     lane_out = (lane[0] - px) * nx + (lane[1] - py) * ny
-    return keep + [at(-BUS_BAY_PULL_IN_M, lane_out), at(-BUS_BAY_PULL_IN_M * 0.5, kerb_side),
-                   at(-BUS_BAY_STRAIGHT_M, out), at(0.0, out)], bay, None, True
+    path = keep + [at(-BUS_BAY_PULL_IN_M, lane_out), at(-BUS_BAY_PULL_IN_M * 0.5, kerb_side),
+                   at(-BUS_BAY_STRAIGHT_M, out), at(0.0, out)]
+    left = job.stopped_at
+    if left is not None and math.hypot(vehicle.car.x - left.x, vehicle.car.y - left.y) < BUS_AT_BAY_M:
+        r = BUS_STOP_ROAD_SEARCH_M
+        path = _pull_out_of_bay(path, left, spatial_grid.ways_in_rect(left.x - r, left.y - r, left.x + r, left.y + r)
+                                if spatial_grid is not None else ways, vehicle.width_m)
+    return path, bay, None, True
+
+
+def _pull_out_of_bay(path, stop, ways, vehicle_width_m) -> list:
+    """Leaving a stop's bay as it came in, mirrored: straight along the bay,
+    eased out to just inside the kerb, into its lane - not the planner's
+    turn straight out from where it stands (an 11 m bus swung across the
+    road). The path's own first stretch beside the stop gives way to it."""
+    from .static_world import BUS_BAY_DEPTH_M, bus_stop_point
+    road = bus_stop_point(stop, ways)
+    if road is None or len(path) < 2:
+        return path
+    (px, py), (nx, ny), way = road
+    direction = (-ny, nx)
+    lane_out = min(max(1.2, way.half_width_m * 0.45), way.half_width_m - vehicle_width_m * 0.5)  # (_lane_offset_point's cruise lane)
+    kerb_side = way.half_width_m - vehicle_width_m * 0.5 - 0.2
+    out = way.half_width_m + BUS_BAY_DEPTH_M * 0.5
+    at = lambda along_m, out_m: dataclasses.replace(
+        path[1], x=px + direction[0] * along_m + nx * out_m, y=py + direction[1] * along_m + ny * out_m)
+    along = lambda q: (q.x - px) * direction[0] + (q.y - py) * direction[1]
+    rest = [q for q in path[1:] if along(q) > BUS_BAY_PULL_IN_M or math.hypot(q.x - px, q.y - py) > BUS_STOP_OVERSHOOT_M]
+    return [path[0], at(BUS_BAY_STRAIGHT_M, out), at(BUS_BAY_PULL_IN_M * 0.5, kerb_side), at(BUS_BAY_PULL_IN_M, lane_out)] + rest
 
 
 def _arrives_along(path, point, direction) -> bool:
