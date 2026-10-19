@@ -409,14 +409,14 @@ func headlight_beams() -> Array:
 	var a: Dictionary = _frame["a"]
 	var b: Dictionary = _frame["b"]
 	var t: float = _frame["t"]
-	var vehicles: Array = []  # [position, heading, width, is_npc]
+	var vehicles: Array = []  # [position, heading, width, is_npc, length]
 	var player: Dictionary = a["player"]
 	var road: Dictionary = a.get("road", {}) if typeof(a.get("road")) == TYPE_DICTIONARY else {}
 	if player.get("engine_on", false):
 		var p := StateBuffer.blend(player, b.get("player", player), t, origin)
 		# Under a higher road: no beams - unless on a bridge itself.
 		if road.get("bridge", false) or not covered.call(Vector2(p.x, p.y), int(road.get("layer", 0))):
-			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false])
+			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false, player.get("length_m", 4.0)])
 	var later := _by_id(b.get("npcs", []))
 	var area := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	for npc in a.get("npcs", []):
@@ -425,7 +425,7 @@ func headlight_beams() -> Array:
 		var p := StateBuffer.blend(npc, later.get(npc["id"], npc), t, origin)
 		var layer := int(npc.get("layer", 0))  # an NPC on a raised layer counts as on its bridge
 		if area.has_point(Vector2(p.x, p.y)) and not underground and (layer > 0 or not covered.call(Vector2(p.x, p.y), layer)):
-			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true])
+			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true, npc.get("length_m", 4.0)])
 	var shown := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	var drawn := 0
 	for vehicle in vehicles:
@@ -435,7 +435,7 @@ func headlight_beams() -> Array:
 		if not shown.has_point(c):
 			continue
 		var length := beam_length(lamp_near.call(c, 22.0), oncoming(vehicle, vehicles))
-		polygons.append_array(beam_polygons(c, vehicle[1], maxf(_px(3.0), vehicle[2]), length))
+		polygons.append_array(beam_polygons(c, vehicle[1], maxf(_px(3.0), vehicle[2]), length, false, vehicle[4] * 0.5))
 		drawn += 1
 	if not underground:
 		var later_trains := _by_id(b.get("trains", []))
@@ -485,10 +485,11 @@ static func oncoming(vehicle: Array, vehicles: Array) -> bool:
 
 
 ## One vehicle's two beams and caps (a quad and a circle per side).
-static func beam_polygons(c: Vector2, heading: float, width: float, length: float, straight := false) -> Array:
+## half_length: centre to the front bumper (a bus's lamps are 5.5 m ahead, not a car's 2).
+static func beam_polygons(c: Vector2, heading: float, width: float, length: float, straight := false, half_length := 0.0) -> Array:
 	var f := _forward(heading)
 	var r := _right(heading)
-	var front := c + f * (1.0 + width * 0.55)
+	var front := c + f * maxf(1.0 + width * 0.55, half_length)
 	var high := not straight and length > 15.0
 	var polygons: Array = []
 	var lamps := []
