@@ -653,7 +653,7 @@ func test_car_audio() -> void:
 		and not CA.eligible({"vehicle_type": "car", "is_police": true}), "only ordinary cars")
 	check(CA.draw(1234) == CA.draw(1234), "the same car always draws the same")
 	var car_tracks: Array = preload("res://nightclub_audio.gd").tracks_in(CA.TRACK_DIR)
-	check(car_tracks == ["assets/music/cars/cars_bass_far_1.ogg", "assets/music/cars/cars_music_1.ogg", "assets/music/cars/cars_music_2.ogg"],
+	check(car_tracks == ["assets/music/cars/cars_bass_far_1.ogg", "assets/music/cars/cars_bass_far_2.ogg", "assets/music/cars/cars_music_1.ogg", "assets/music/cars/cars_music_2.ogg"],
 		"every .ogg in the folder is a track, the MP3 originals aren't (%s)" % [car_tracks])
 	var chosen := 0
 	for id in 4000:
