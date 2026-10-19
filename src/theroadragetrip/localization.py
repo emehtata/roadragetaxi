@@ -5,6 +5,7 @@ LANGUAGE_NAMES = {"fi": "Suomi", "en": "English", "de": "Deutsch"}
 
 TRANSLATIONS = {
     "fi": {
+        "garage_closed": "Pysäköintihallit eivät ole vielä käytössä.",
         "home_saved": "Koti tallennettu! H vie taksin aina kotiin.",
         "home_confirm": "Tehdäänkö tästä pihasta uusi koti? Paina H uudelleen.",
         "home_not_yard": "Aja omakotitalon pihaan ja valitse se kodiksi painamalla H.",
@@ -176,6 +177,7 @@ TRANSLATIONS = {
         "fare_complete_points": "Kyyti valmis! Hinta {amount}, tippi {tip}, +{earned} pistettä ({avg:.0f} km/h keskiarvo, {seconds:.1f} s)",
     },
     "en": {
+        "garage_closed": "Parking garages are not available yet.",
         "home_saved": "Home saved! H always takes the taxi home.",
         "home_confirm": "Make this yard your new home? Press H again.",
         "home_not_yard": "Drive into a house yard and press H to make it your home.",
@@ -350,6 +352,7 @@ TRANSLATIONS = {
 
 
 TRANSLATIONS["de"] = {
+    "garage_closed": "Parkhäuser sind noch nicht verfügbar.",
     "home_saved": "Zuhause gespeichert! H bringt das Taxi immer nach Hause.",
     "home_confirm": "Diesen Hof als neues Zuhause festlegen? Drücke H erneut.",
     "home_not_yard": "Fahre auf einen Haushof und drücke H, um ihn als Zuhause festzulegen.",

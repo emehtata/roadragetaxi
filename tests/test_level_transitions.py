@@ -155,3 +155,46 @@ def test_the_same_stub_with_an_explicit_level_resolves():
     world = _oulu_stub_world({"level": "0;-1"})
     topologies, _ = resolve_connectors(world.level_connectors, world.ways, world.level_ways)
     assert [(t.connector.osm_id, t.destination(0), t.destination(-1)) for t in topologies] == [(2, -1, 0)]
+
+
+def test_production_disables_garage_transitions_and_cross_level_routes():
+    from theroadragetrip.world_loader import level_structures
+
+    structures = level_structures([OUTSIDE, RAMP], [GARAGE_AISLE], [_entrance()])
+    transitions = structures["level_transitions"]
+    car = Car(-10, 0, 0, 10)
+    assert _drive(transitions, car, 10, OUTSIDE) is None
+    assert car.map_level == 0
+    assert not transitions.enabled and not structures["level_routes"].edges
+
+
+@pytest.mark.parametrize("end", [-3, 2, 30])
+def test_closed_garage_entrance_blocks_near_and_fast_swept_entry(end):
+    transitions = LevelTransitions(enabled=False, entrances=[_entrance()])
+    car = Car(end, 0, 0, 210/3.6)
+    assert transitions.blocks_entry(car, (-10, 0), OUTSIDE)
+    # Passing a nearby street must not hit an entrance's invisible gate.
+    street = _road(99, [(-30, 3), (30, 3)])
+    assert not transitions.blocks_entry(car, (-10, 0), street)
+    car.layer = 1
+    assert not transitions.blocks_entry(car, (-10, 0), OUTSIDE)
+
+
+def test_closed_entrance_allows_backing_away():
+    transitions = LevelTransitions(enabled=False, entrances=[_entrance()])
+    car = Car(-10, 0, 0, -2)
+    assert not transitions.blocks_entry(car, (-2, 0), OUTSIDE)
+
+
+def test_garage_ramps_are_not_routable_but_ordinary_road_tunnels_remain_open():
+    from theroadragetrip.level_transitions import close_garage_roads
+    from theroadragetrip.physics import is_car_road
+
+    outside = _road(1, [(-30, 0), (0, 0)])
+    ramp = _road(2, [(0, 0), (30, 0)], "0;-2")
+    aisle = _road(3, [(30, 0), (60, 0)], "-2")
+    tunnel = _road(4, [(0, 20), (100, 20)], layer=-1)
+    tunnel.is_tunnel = True
+    close_garage_roads([outside, ramp, aisle, tunnel])
+    assert is_car_road(outside) and is_car_road(tunnel)
+    assert not is_car_road(ramp) and not is_car_road(aisle)

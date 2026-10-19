@@ -359,6 +359,8 @@ def advance_simulation(
         drive_ways, drive_grid = ways, spatial_grid
     else:
         drive_ways, drive_grid = world.level_roads.network(car.map_level)
+    if not getattr(world.level_transitions, "enabled", True):
+        car.map_level = SURFACE_LEVEL
     current_way = get_current_road_at_car(
         car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True, current_way=current_way
     )
@@ -407,6 +409,11 @@ def advance_simulation(
                 fields_frozen=getattr(world, "fields_frozen", False),
             )
         car.braking = brake > 0.0 and car.speed > 0.05
+        if world.level_transitions.blocks_entry(car, previous_position, approach_way):
+            car.x, car.y = previous_position
+            car.speed = 0.0
+            taxi_mgr.notification_msg = tr(language, "garage_closed")
+            taxi_mgr.notification_timer = 2.5
         midpoint = (
             (previous_position[0] + car.x) * 0.5,
             (previous_position[1] + car.y) * 0.5,

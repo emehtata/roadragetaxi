@@ -284,6 +284,35 @@ def _state(server):
     )["state"]
 
 
+def test_unfinished_garage_cannot_swallow_taxi_at_speed(tmp_path, monkeypatch):
+    from theroadragetrip.level_transitions import close_garage_roads
+    from theroadragetrip.osm import LevelConnector, Way
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.simulation import PlayerCommand
+    from theroadragetrip.world_loader import level_structures
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    road = Way([(1_000_000, 1_000_000), (1_000_200, 1_000_000)], "service", 4, osm_id=1)
+    ramp = Way([(1_000_200, 1_000_000), (1_000_230, 1_000_000)], "service", 4, osm_id=2, level="0;-2")
+    entrance = LevelConnector("node", 10, "parking_entrance", 1_000_200, 1_000_000, road_osm_ids=(1, 2))
+    server.world.ways = [road, ramp]
+    close_garage_roads(server.world.ways)
+    server.world.spatial_grid = SpatialWayGrid(server.world.ways)
+    for key, value in level_structures(server.world.ways, [], [entrance]).items():
+        setattr(server.world, key, value)
+    car = server.car
+    car.x, car.y, car.heading, car.speed = 1_000_190, 1_000_000, 0, 210/3.6
+    car.engine_on = True
+    server._on_foot, server._current_way = False, road
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    server.tick(0.5)
+    assert car.x == 1_000_190 and car.speed == 0 and car.map_level == 0
+    assert "not available" in server.world.taxi_mgr.notification_msg
+    car.map_level = -2
+    server.tick(1/30)
+    assert car.map_level == 0  # discard stale underground mode while support is disabled
+
+
 def test_client_view_reaches_tick_and_discards_only_unseen_ambient_state(tmp_path, monkeypatch):
     from unittest.mock import Mock
     from theroadragetrip.protocol import LOCAL_PLAYER_ID

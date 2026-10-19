@@ -19,7 +19,7 @@ from .arena_crowds import ArenaCrowds
 from .career import (load_career_balance, load_career_distance, load_gig_balance, load_gig_fuel,
                      load_gig_odometer, save_gig_odometer)
 from .level_routing import LevelRouteGraphs
-from .level_transitions import LevelTransitions, resolve_connectors
+from .level_transitions import LevelTransitions, resolve_connectors, close_garage_roads
 from .map_level import SURFACE_LEVEL, LevelRoadNetworks
 from .trams import TramManager
 from .competitor_taxis import Dispatcher
@@ -263,6 +263,7 @@ def load_world(
     parking_garages = getattr(res, "parking_garages", [])  # data only for now (garage-00.md)
     level_ways = getattr(res, "level_ways", [])  # underground roads for the level render gate (garage-03.md)
     level_connectors = getattr(res, "level_connectors", [])  # data only: parking entrances (garage-07.md)
+    close_garage_roads((*ways, *level_ways))
     roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
     traffic_lights.extend(roadwork_lights)
     logger.info(
@@ -560,8 +561,8 @@ def level_structures(ways, level_ways, level_connectors) -> dict:
     topologies = resolve_connectors(level_connectors, ways, level_ways)[0]
     return {
         "level_roads": level_roads,
-        "level_transitions": LevelTransitions(topologies),
-        "level_routes": LevelRouteGraphs(level_roads, topologies),
+        "level_transitions": LevelTransitions(topologies, enabled=False, entrances=level_connectors),
+        "level_routes": LevelRouteGraphs(level_roads, ()),
     }
 
 

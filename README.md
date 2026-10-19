@@ -35,7 +35,8 @@ Ei sankaripuheita. Taksamittari käy.
 ## What is in the game?
 
 - **Real Finnish streets:** cities, roads, buildings, waterways, bridges and
-  parking garages based on map data. New areas load as you travel.
+  parking garages based on map data. Garage entrances are currently closed while
+  driving support is under development. New areas load as you travel.
 - **Fares and a shared phone:** accept requests, wait at taxi stands or pick up
   someone hailing a cab. The same movable phone shows turn instructions,
   distance and street names during an accepted fare. A missing route is shown
