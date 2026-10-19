@@ -500,7 +500,12 @@ def _advance_street_light_placement(work) -> bool:
             continue
         parking_aisle = getattr(way, "service", None) == "parking_aisle"
         lamp_spacing = PARKING_LIGHT_SPACING_M if parking_aisle else STREET_LIGHT_SPACING_M
-        sides = (1.0,) if parking_aisle else (-1.0, 1.0)
+        # A street is lit from one side (Finnish practice): the left of its
+        # drawing direction, the other side if that spot is taken. A one-way
+        # carriageway (a divided road's half) from its left, the median - its
+        # twin carriageway's lamps there are the same row (see the merge below).
+        oneway = getattr(way, "oneway", 0)
+        sides = (1.0,) if parking_aisle else ((1.0, -1.0) if oneway >= 0 else (-1.0, 1.0))
         distance_to_lamp = lamp_spacing / 2.0 if parking_aisle else 0.0
         segment_lengths = getattr(way, "segment_lengths", ())
         segment_lighting = way_lit_cache.get(id(way), ())
@@ -564,11 +569,15 @@ def _advance_street_light_placement(work) -> bool:
                             for junction_x, junction_y in junction_grid.get((cell_x, cell_y), ())
                         ):
                             continue
+                        if not parking_aisle and _lamp_stands_near(work, world_x, world_y):
+                            break  # a median's lamp, placed from the twin carriageway
                         road_direction = math.atan2(-normal_y * side, -normal_x * side)
                         pool_radius_m = edge_distance + half_width + 1.0
                         cached_lamps.append((world_x, world_y, road_direction, pool_radius_m))
-                        if parking_aisle:
-                            break  # one lamp per aisle spot
+                        cell = STREET_LIGHT_MERGE_M
+                        work.setdefault("placed_grid", {}).setdefault(
+                            (math.floor(world_x / cell), math.floor(world_y / cell)), []).append((world_x, world_y))
+                        break  # one lamp per spot: one side of the street
                 distance_to_lamp += lamp_spacing
             distance_to_lamp = (segment_phase - segment_length) % lamp_spacing
             if distance_to_lamp < 1e-9:
@@ -576,6 +585,20 @@ def _advance_street_light_placement(work) -> bool:
         if time.perf_counter() >= deadline:
             break
     return work["placement_cursor"] >= len(ways)
+
+
+STREET_LIGHT_MERGE_M = 12.0  # a synthetic lamp this close to another is the same pole
+
+
+def _lamp_stands_near(work, x, y) -> bool:
+    cell = STREET_LIGHT_MERGE_M
+    grid = work.get("placed_grid", {})
+    cx, cy = math.floor(x / cell), math.floor(y / cell)
+    return any(
+        (x - px) ** 2 + (y - py) ** 2 < cell * cell
+        for gx in (cx - 1, cx, cx + 1) for gy in (cy - 1, cy, cy + 1)
+        for px, py in grid.get((gx, gy), ())
+    )
 
 
 def _point_overlaps_indexed_road(point_x, point_y, segment_grid) -> bool:
