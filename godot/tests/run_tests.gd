@@ -68,6 +68,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_vehicle_body_triangles()
 	test_audio()
 	test_nightclub_audio()
+	test_car_audio()
 	test_hud()
 	test_map_chunks()
 	test_road_snow_invalidation()
@@ -635,6 +636,57 @@ func test_nightclub_audio() -> void:
 	missing.update(clubs, Vector2.ZERO, 600.0, Vector2.ZERO, 0.1)
 	check(missing.playing_count() == 0, "no tracks: nothing plays, no crash")
 	check(is_equal_approx(missing.city_ambience_gain(), 1.0), "missing music must not suppress city ambience")
+	audio.queue_free()
+	missing.queue_free()
+
+
+## rrt-019-amikset: NPC car stereos - who has one, when, and the player pool.
+func test_car_audio() -> void:
+	var CA := preload("res://car_audio.gd")
+	var day := 1440.0
+	check(CA.share(4 * day + 23 * 60) == CA.SHARE_WEEKEND_NIGHT and CA.share(5 * day + 2 * 60) == CA.SHARE_WEEKEND_NIGHT, "Friday night, also after midnight")
+	check(CA.share(6 * day + 1 * 60) == CA.SHARE_WEEKEND_NIGHT and CA.share(0 * day + 2 * 60) == CA.SHARE_EVENING, "Saturday night into Sunday; Sunday night isn't a weekend one")
+	check(CA.share(2 * day + 14 * 60) == CA.SHARE_DAY and CA.share(1 * day + 20 * 60) == CA.SHARE_EVENING, "weekday day: few; a weekday evening: some")
+	check(CA.SHARE_DAY < CA.SHARE_EVENING and CA.SHARE_EVENING < CA.SHARE_WEEKEND_NIGHT, "more on weekend nights")
+	var car := {"vehicle_type": "car"}
+	check(CA.eligible(car) and not CA.eligible({"vehicle_type": "bus"}) and not CA.eligible({"vehicle_type": "car", "is_taxi": true})
+		and not CA.eligible({"vehicle_type": "car", "is_police": true}), "only ordinary cars")
+	check(CA.draw(1234) == CA.draw(1234), "the same car always draws the same")
+	var chosen := 0
+	for id in 4000:
+		chosen += int(CA.draw(id) < CA.SHARE_WEEKEND_NIGHT)
+	check(chosen > 4000 * 0.07 and chosen < 4000 * 0.13, "about the share of cars (%d of 4000 at 10 %%)" % chosen)
+	for i in 120:
+		check(CA.gain(i + 1) <= CA.gain(i) and CA.cutoff_hz(i + 1) <= CA.cutoff_hz(i), "quieter and duller further (%d m)" % i)
+	check(CA.gain(3.0) == 1.0 and CA.cutoff_hz(3.0) >= 8000.0 and CA.cutoff_hz(60.0) < 2000.0 and CA.gain(CA.RANGE_M) == 0.0, "bright up close, bass at medium range, silent beyond")
+	var audio = CA.new()
+	root.add_child(audio)
+	var stereo_id := -1
+	for id in 4000:
+		if CA.draw(id) < CA.SHARE_DAY:
+			stereo_id = id
+			break
+	var plain_id := 0 if CA.draw(0) >= CA.SHARE_WEEKEND_NIGHT else 1
+	var friday := 4 * day + 23 * 60
+	if audio._streams.is_empty():
+		check(true, "car tracks missing: silent, no crash")
+	else:
+		var cars := [[stereo_id, Vector2(10, 0), car], [stereo_id, Vector2(10, 0), car], [plain_id, Vector2(5, 0), car], [9999, Vector2(5, 0), {"vehicle_type": "bus"}]]
+		audio.update(cars, Vector2.ZERO, friday, 0.1)
+		check(audio.playing_count() == 1 and audio._car_of.has(stereo_id), "one stereo car plays, once; plain cars and buses don't")
+		for i in 30:  # the clock moves to a weekday day: the car keeps its stereo
+			audio.update([[stereo_id, Vector2(10 + i, 0), car]], Vector2.ZERO, 2 * day + 14 * 60, 0.1)
+		var at: Vector2 = audio._players[audio._car_of.find(stereo_id)].position
+		check(audio.playing_count() == 1 and at == Vector2(39, 0), "music follows the moving car and survives the clock")
+		check(audio.city_ambience_gain() < 1.0, "a booming car ducks the city ambience")
+		for i in 80:
+			audio.update([], Vector2.ZERO, friday, 0.2)
+		check(audio.playing_count() == 0 and not audio._car_of.has(stereo_id) and audio._stereo.is_empty(), "a despawned car releases its player and is forgotten")
+	var missing = CA.new()
+	root.add_child(missing)
+	missing._streams = []
+	missing.update([[stereo_id, Vector2(10, 0), car]], Vector2.ZERO, friday, 0.1)
+	check(missing.playing_count() == 0 and is_equal_approx(missing.city_ambience_gain(), 1.0), "no tracks: nothing plays, no crash")
 	audio.queue_free()
 	missing.queue_free()
 

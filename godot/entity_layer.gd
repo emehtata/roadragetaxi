@@ -390,6 +390,23 @@ func _draw_reflectors() -> void:
 			_reflectors.draw_circle(at, maxf(_px(1.0), 0.35), Color8(255, 255, 245))
 
 
+## rrt-019: the NPC cars being driven, at this frame's interpolated
+## positions (layer coordinates): [[id, Vector2, npc row], ...] - what the
+## car stereos (car_audio.gd) play from.
+func npc_cars() -> Array:
+	var cars: Array = []
+	if _frame.is_empty():
+		return cars
+	var a: Dictionary = _frame["a"]
+	var later := _by_id(_frame["b"].get("npcs", []))
+	for npc in a.get("npcs", []):
+		if npc.get("is_on_foot", false) or npc.get("state", "") in ["PARKED", "CRASHED"]:
+			continue
+		var p := StateBuffer.blend(npc, later.get(npc["id"], npc), _frame["t"], origin)
+		cars.append([npc["id"], Vector2(p.x, p.y), npc])
+	return cars
+
+
 ## In the taxi's headlight cone: ahead within
 ## 15 m, sideways within 1.5 m + 0.35 per metre ahead.
 static func reflector_lit(at: Vector2, taxi: Vector2, heading: float) -> bool:

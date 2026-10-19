@@ -18,12 +18,14 @@ const Hud := preload("res://hud.gd")
 const WeatherLayer := preload("res://weather_layer.gd")
 const T := preload("res://i18n.gd")
 const NightclubAudio := preload("res://nightclub_audio.gd")
+const CarAudio := preload("res://car_audio.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
 @onready var camera: Camera2D = $Camera
 @onready var audio: AudioManager = $Audio
 var nightclubs := NightclubAudio.new()  # rrt-019: the music leaking out of the venues nearby
+var car_stereos := CarAudio.new()  # rrt-019: NPC cars booming electro pop
 @onready var hud: Control = $Ui/Hud
 @onready var debug_label: Label = $Ui/Debug
 @onready var phone: Phone = $Ui/Phone
@@ -120,6 +122,7 @@ var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, m
 
 func _ready() -> void:
 	add_child(nightclubs)
+	add_child(car_stereos)
 	if graphics.has("buildings_3d"):
 		MapChunk.buildings_3d = graphics["buildings_3d"]
 	_apply_language()
@@ -654,7 +657,7 @@ func _present(state: Dictionary) -> void:
 	flash.visible = lightning > 0.0  # godot-18: an invisible full-screen rect is still blended every frame
 	# The server's darkness; an older server without a calendar: the hour.
 	var night := (darkness if darkness >= 0.0 else _night(state.get("game_time_seconds", 12.0 * 3600.0))) if override_night < 0.0 else override_night
-	var city_gain := 0.5 * nightclubs.city_ambience_gain()
+	var city_gain := 0.5 * minf(nightclubs.city_ambience_gain(), car_stereos.city_ambience_gain())
 	audio.set_loop("city_day", city_gain * (1.0 - night))
 	audio.set_loop("city_night", city_gain * night)
 	var loops := weather_loops(state)
@@ -670,6 +673,8 @@ func _present(state: Dictionary) -> void:
 	if typeof(calendar) == TYPE_DICTIONARY and calendar.has("date"):  # rrt-019: the game clock's night, not the computer's
 		nightclubs.update(map_layer.nightclubs(), Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y),
 			NightclubAudio.week_minute(calendar["date"], state.get("game_time_seconds", 0.0)), entities.origin, get_process_delta_time())
+		car_stereos.update(entities.npc_cars(), camera.position,
+			NightclubAudio.week_minute(calendar["date"], state.get("game_time_seconds", 0.0)), get_process_delta_time())
 	audio.set_loop("station_luggage", crowd[0] * 0.4, 1.0, crowd[1])
 	if state.get("should_stop", false) and not summary_shown:
 		show_summary(state)
@@ -1156,7 +1161,7 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 			"max_state_gap_ms": entities.buffer.max_arrival_gap_s * 1000.0,
 			"render_backsteps": entities.buffer.render_backsteps, "max_backstep_ms": entities.buffer.max_backstep_s * 1000.0,
 			"taxi_off_centre_px": _max_camera_lag_px, "motion": _motion_stats(), "interp_delay_ms": entities.buffer.delay * 1000.0,
-			"nightclubs_playing": nightclubs.playing_count(), "nightclubs_loaded": map_layer.nightclubs().size(), "nightclub_nearest_m": _nearest_nightclub_m(),
+			"nightclubs_playing": nightclubs.playing_count(), "car_stereos_playing": car_stereos.playing_count(), "nightclubs_loaded": map_layer.nightclubs().size(), "nightclub_nearest_m": _nearest_nightclub_m(),
 			"fps_mean": _fps_samples.reduce(func(a, b): return a + b, 0.0) / _fps_samples.size(),
 			"sounds_played": audio.played, "engine_loop": audio.loop_playing("engine"), "unhandled_events": audio.unhandled,
 			"static_memory_mib": Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
