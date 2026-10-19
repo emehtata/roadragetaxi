@@ -8,23 +8,22 @@ without a timetable.
 Phase 1 (below) is implemented. A line is one OSM `route=bus` (or
 `trolleybus`) relation: its stops in order. A few of the NPC
 population's moving-traffic spawns are line buses; each drives its line
-from the stop nearest where it spawned to the end of the line, stopping
-at every stop. Buses show their line number.
+from the stop nearest where it spawned to the end of the line, pulling
+into every stop's bay. Its riders stay aboard. Buses show their line
+number on a roof box that turns with the bus.
 
 ## Design
 
 **Server decides, client draws.** Lines, legs and stops are server
 decisions (`bus_lines.py`, `npc.py`); the client draws an ordinary NPC
-bus with its line number (`bus_line` in the NPC state) on an amber tag.
+bus with its line number (`bus_line` in the NPC state) on a roof box.
 
 **Reuse the NPC system, never a parallel driver.** As competitor taxis
 (`docs/competitor-taxis.md`), a line bus is an NPC vehicle of
 `vehicle_kind == "bus_line"`; its legs are NPC route jobs, so it obeys
 every traffic rule in `docs/finnish-npc-traffic-law.md`. Unlike a taxi
-it never parks: a leg's destination is the road's centre line beside
-the stop (`static_world.bus_stop_point`), an on-road destination the
-planner puts in the bus's own (right-hand) lane. The bus stands there,
-on the carriageway beside the stop's bay, for `STOP_DWELL_S`.
+it never parks: a leg ends in the stop's bay, beside the road on the
+stop's side (see Phase 2). The bus stands there for `STOP_DWELL_S`.
 
 **Lines from OSM, kept on the stops.** `osm/build.py` reads each route
 relation's platform members (PTv2), or its stop members when it has no
@@ -71,3 +70,26 @@ line through the NPC system).
 Not yet: passengers boarding (pedestrians already wait at stops), a
 timetable, buses using the bay itself, heading-aware turning at a
 terminus.
+
+## Phase 2 (2026-10-19): into the bay, riders aboard
+
+Played, two faults: buses stopped in the lane (or, approaching a stop
+just before a junction, drifted into the oncoming lane), and every rider
+got off at the first stop.
+
+- **Lane.** The route search ends at the road node nearest the stop,
+  often just past it: the path drove on, crossed into the oncoming lane
+  and came back. A leg's path is now cut where it first reaches the stop
+  (`npc._end_at_stop`).
+- **Bay.** The route is validated to the kerb-side lane point beside the
+  stop; the pull-in is added after validation (the bay is drawn by the
+  game, the map's roads end at the kerb): along the lane, eased to just
+  inside the kerb, into the bay and straight along it to its middle
+  (`BUS_BAY_PULL_IN_M`, `BUS_BAY_STRAIGHT_M`). It stays within the
+  driver's 30 m off-road access stretch before an off-road destination,
+  so the body leaves the carriageway only there.
+- **Riders.** The pedestrian system unloads a parked NPC's trip group to
+  walk to a building; a line bus is skipped, as a taxi is.
+
+Known: pulling out of a bay can briefly trip the road-boundary check;
+the recovery re-routes and the bus goes on.

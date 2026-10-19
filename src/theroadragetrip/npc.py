@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import collections
 import itertools
+import dataclasses
 import math
 import random
 import time
@@ -3415,17 +3416,19 @@ def _continue_npc_trip_steps(
 
 
 BUS_STOP_ROAD_SEARCH_M = 50.0  # the roads near a stop searched for the one it stands beside
+BUS_BAY_PULL_IN_M = 20.0  # from its lane into the bay over this distance
+BUS_BAY_STRAIGHT_M = 8.0  # ...then straight along the bay to its middle
 BUS_STOP_OVERSHOOT_M = 30.0  # a path point this near a stop, past it, is a detour beyond it (_end_at_stop)
 
 
 def _bus_leg_steps(vehicle, job, traffic_world, ways, spatial_grid, curbs, curb_grid,
                    buildings, building_grid) -> RouteSteps:
-    """A line bus's route to its next stop: to its lane beside the stop - the
-    lane on the stop's side, wherever the route's last road node lies (left
-    to the planner, a route reaching a node past the stop and back put it
-    in the opposite lane). A bus stops at its stop, it never parks
-    (docs/bus-lines.md)."""
-    from .static_world import bus_stop_point
+    """A line bus's route to its next stop: into the stop's bay, beside the
+    road on the stop's side - an end point of its own, wherever the route's
+    last road node lies (left to the planner, a route reaching a node past
+    the stop and back put the bus in the opposite lane). A bus stops at its
+    stop, it never parks (docs/bus-lines.md)."""
+    from .static_world import BUS_BAY_DEPTH_M, bus_stop_point
     yield
     stop = job.target_stop
     r = BUS_STOP_ROAD_SEARCH_M
@@ -3434,9 +3437,11 @@ def _bus_leg_steps(vehicle, job, traffic_world, ways, spatial_grid, curbs, curb_
     if road is None:
         return None
     (px, py), (nx, ny), way = road
-    point = _lane_offset_point(way, px, py, math.atan2(nx, -ny), vehicle.width_m)  # (travelling with the stop on its right)
+    lane = _lane_offset_point(way, px, py, math.atan2(nx, -ny), vehicle.width_m)  # (travelling with the stop on its right)
+    out = way.half_width_m + BUS_BAY_DEPTH_M * 0.5  # the middle of the bay (static_world.bus_stop_shapes)
+    bay = (px + nx * out, py + ny * out)
     path = yield from _plan_and_validate_npc_route_steps(
-        traffic_world, ways, (vehicle.car.x, vehicle.car.y), point, spatial_grid=spatial_grid,
+        traffic_world, ways, (vehicle.car.x, vehicle.car.y), lane, spatial_grid=spatial_grid,
         curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
         origin_is_off_road=True,  # (as every continuation: it joins the road from where it stands)
         destination_is_off_road=True,  # the exact end point: no lane offset of the planner's own
@@ -3444,7 +3449,21 @@ def _bus_leg_steps(vehicle, job, traffic_world, ways, spatial_grid, curbs, curb_
     )
     if path is None:
         return None
-    return _end_at_stop(path, point, (-ny, nx)), point, None, True
+    # Validated to the lane beside the stop; the pull-in to the bay is ours:
+    # the bay is drawn by the game, the map's roads (and the route checks) end at the kerb.
+    direction = (-ny, nx)  # the way the bus travels
+    path = _end_at_stop(path, lane, direction)
+    along = lambda q: (q.x - lane[0]) * direction[0] + (q.y - lane[1]) * direction[1]
+    keep = [q for q in path[:-1] if along(q) < -BUS_BAY_PULL_IN_M or math.hypot(q.x - lane[0], q.y - lane[1]) > BUS_STOP_OVERSHOOT_M]
+    # The pull-in: along its lane, eased to just inside the kerb (the body
+    # still on the road until the driver's off-road access stretch near the
+    # end), then into the bay and straight along it to the middle.
+    kerb_side = way.half_width_m - vehicle.width_m * 0.5 - 0.2
+    at = lambda along_m, out_m: dataclasses.replace(
+        path[-1], x=px + direction[0] * along_m + nx * out_m, y=py + direction[1] * along_m + ny * out_m)
+    lane_out = (lane[0] - px) * nx + (lane[1] - py) * ny
+    return keep + [at(-BUS_BAY_PULL_IN_M, lane_out), at(-BUS_BAY_PULL_IN_M * 0.5, kerb_side),
+                   at(-BUS_BAY_STRAIGHT_M, out), at(0.0, out)], bay, None, True
 
 
 def _end_at_stop(path, point, direction) -> list:

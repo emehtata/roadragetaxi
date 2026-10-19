@@ -610,6 +610,8 @@ class PedestrianManager:
                 continue
             if getattr(vehicle, "is_taxi", False):
                 continue  # a taxi's driver stays at the wheel (competitor_taxis.py)
+            if getattr(vehicle, "vehicle_kind", None) == "bus_line":
+                continue  # a line bus at a stop: its riders stay aboard (bus_lines.py)
             trip_group = getattr(vehicle, "trip_group", None)
             if trip_group is None or not self.entrance_locations:
                 continue

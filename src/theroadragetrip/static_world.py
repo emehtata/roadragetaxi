@@ -218,6 +218,9 @@ def is_open_roof(building) -> bool:
     return _is_open_roof(building)
 
 
+BUS_BAY_DEPTH_M = 3.0  # beside the carriageway; a bus is 2.55 m wide
+
+
 def _bus_stop_road(stop, ways):
     """The nearest same-layer drivable road within 45 m of a bus stop:
     (nearest point, unit direction t, unit normal n towards the stop, the
@@ -247,7 +250,7 @@ def _bus_stop_road(stop, ways):
 
 def bus_stop_point(stop, ways):
     """The road beside a bus stop: (centre-line point, unit normal towards
-    the stop, the way), or None. A bus stops in the lane on that side."""
+    the stop, the way), or None. Its bay lies beyond that way's edge."""
     road = _bus_stop_road(stop, ways)
     return None if road is None else (road[0], road[2], road[4])
 
@@ -266,7 +269,7 @@ def bus_stop_shapes(stop, ways):
     at = lambda along, out: [round(p[0] + t[0] * along + n[0] * out, 2), round(p[1] + t[1] * along + n[1] * out, 2)]
     front = -side  # right-hand traffic: on t's left side buses drive against t
     hw = way.half_width_m
-    depth = 3.0  # a bus is 2.55 m wide
+    depth = BUS_BAY_DEPTH_M
     bay = [at(-16.0, hw), at(16.0, hw), at(11.0, hw + depth), at(-11.0, hw + depth)]
     kerb = hw + depth + 1.2  # the waiting area behind the bay's kerb
     rect = lambda along, out, half_along, half_out: [at(along - half_along, out - half_out), at(along + half_along, out - half_out),

@@ -62,14 +62,13 @@ def test_unroutable_stops_are_skipped_then_the_line_ends():
 
 
 def test_a_line_bus_drives_its_stops_on_real_roads_then_retires_out_of_sight():
-    """The NPC system drives it (traffic rules and all): it stops on the road
-    beside each stop in turn, never parks, and leaves at the terminus."""
+    """The NPC system drives it (traffic rules and all): it stops in each
+    stop's bay in turn, its riders aboard, and leaves at the terminus."""
     import math
     import random
 
     from theroadragetrip.npc import NPCState, NPCVehicleManager, spawn_npc
     from theroadragetrip.residents import ResidentManager
-    from theroadragetrip.physics import is_point_on_road
     from theroadragetrip.static_world import bus_stop_point
     from theroadragetrip.traffic_world import TrafficWorld
     from tests.test_competitor_taxis import _city_block_grid
@@ -109,7 +108,25 @@ def test_a_line_bus_drives_its_stops_on_real_roads_then_retires_out_of_sight():
     assert [stops.index(stop) for stop, _ in served] == [0, 1, 2], served  # the line in order
     assert bus not in manager.vehicles and bus.vehicle_id not in manager.drivers  # retired at the terminus (no viewport: unseen)
     for stop, (x, y) in served:
+        (px, py), (nx, ny), way = bus_stop_point(stop, ways)
         assert math.hypot(x - stop.x, y - stop.y) < 12.0, (stop.x, stop.y, x, y)  # at the stop...
-        assert is_point_on_road(x, y, ways=ways, car_roads_only=True)  # ...on the road, in its lane
-        (px, py), (nx, ny), _ = bus_stop_point(stop, ways)
-        assert (x - px) * nx + (y - py) * ny > 1.0, (stop.x, stop.y, x, y)  # in the lane on the stop's side, not the oncoming one
+        assert (x - px) * nx + (y - py) * ny > way.half_width_m, (stop.x, stop.y, x, y)  # ...in its bay, off the carriageway
+
+
+def test_a_line_bus_keeps_its_riders_aboard_at_a_stop():
+    """A parked NPC car's group walks off to a building; a line bus at a stop
+    is not their destination (bug: every rider left at the first stop)."""
+    from theroadragetrip.npc import NPCState, TripGroup
+    from theroadragetrip.pedestrian import PedestrianManager
+
+    group = TripGroup(group_id=1, vehicle_id=1, member_resident_ids=[1, 2, 3])
+    bus = SimpleNamespace(state=NPCState.PARKED, vehicle_kind="bus_line", is_taxi=False, trip_group=group,
+                          x=0.0, y=0.0, heading=0.0, length_m=11.0, width_m=2.5)
+    from theroadragetrip.osm import Way
+    sidewalk = Way(points_m=[(-30.0, 5.0), (30.0, 5.0)], highway="footway", half_width_m=1.2)
+    manager = PedestrianManager([sidewalk], target_count=0, traffic_vehicles=[bus])
+    manager.entrance_locations = [(20.0, 0.0)]
+
+    manager._materialize_parked_drivers()
+
+    assert manager.pedestrians == [] and group.disembarked_resident_ids == set()
