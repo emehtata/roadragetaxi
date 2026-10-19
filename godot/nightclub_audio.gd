@@ -17,7 +17,7 @@ extends Node
 
 const Paths := preload("res://paths.gd")
 const PLAYERS := 3
-const TRACKS := ["assets/music/nightclub/nightclub_dance_1.ogg", "assets/music/nightclub/nightclub_dance_2.ogg"]
+const TRACK_DIR := "assets/music/nightclub"  # every .ogg in it is a track (tracks_in)
 const RANGE_M := 160.0  # inaudible from here (world metres: the server's EPSG:3067 metres)
 const DOOR_M := 12.0  # full loudness this close
 const LOUDNESS_DB := 2.0  # at the door, before the Environment bus (+6 dB over the original mix)
@@ -35,7 +35,7 @@ var _streams: Array = []
 
 
 func _ready() -> void:
-	for path in TRACKS:
+	for path in tracks_in(TRACK_DIR):
 		var stream := AudioStreamOggVorbis.load_from_file(Paths.package_path(path))
 		if stream == null:
 			push_warning("Nightclub music could not be loaded: %s" % path)
@@ -63,6 +63,17 @@ func _ready() -> void:
 
 ## How open a venue is at `minute` of the week (0 = Monday 00:00): 1 inside
 ## an interval, fading linearly over FADE_MIN after it opens and before it closes.
+## The .ogg files in a music folder (package path), sorted: drop a new track
+## in and it plays from the next start. Other files (an MP3 original) are ignored.
+static func tracks_in(dir: String) -> Array:
+	var tracks: Array = []
+	for file in DirAccess.get_files_at(Paths.package_path(dir)):
+		if file.get_extension().to_lower() == "ogg":
+			tracks.append(dir.path_join(file))
+	tracks.sort()
+	return tracks
+
+
 static func open_level(schedule: Array, minute: float) -> float:
 	var level := 0.0
 	for interval in schedule:

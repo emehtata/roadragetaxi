@@ -16,7 +16,7 @@ extends Node
 const NightclubAudio := preload("res://nightclub_audio.gd")
 const Paths := preload("res://paths.gd")
 const PLAYERS := 3
-const TRACKS := ["assets/music/cars/cars_music_1.ogg", "assets/music/cars/cars_music_2.ogg"]
+const TRACK_DIR := "assets/music/cars"  # every .ogg in it is a track (NightclubAudio.tracks_in)
 const RANGE_M := 120.0  # inaudible from here (world metres)
 const NEAR_M := 6.0  # full loudness this close
 const CUTOFF_NEAR_HZ := 9000.0  # windows down: synths and percussion still there
@@ -36,7 +36,7 @@ var _clock := 0.0
 
 
 func _ready() -> void:
-	for path in TRACKS:
+	for path in NightclubAudio.tracks_in(TRACK_DIR):
 		var stream := AudioStreamOggVorbis.load_from_file(Paths.package_path(path))
 		if stream == null:
 			push_warning("Car music could not be loaded: %s" % path)

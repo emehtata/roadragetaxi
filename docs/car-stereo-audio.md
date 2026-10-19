@@ -40,7 +40,7 @@ ambience follows whichever is louder, a club or a car.
 - **Position:** the car's interpolated position each frame
   (`EntityLayer.npc_cars()`, the same blend the car is drawn with), so the music
   moves with it and doesn't jump.
-- **Tracks:** `TRACKS` in `assets/music/cars/`, the owner's two tracks
+- **Tracks:** every `.ogg` in `assets/music/cars/` (read at start: drop a new one in), e.g. the owner's two tracks
   converted from MP3 to Ogg Vorbis q1. One is picked per car, started at a
   random point. Missing files leave the stereos silent.
 

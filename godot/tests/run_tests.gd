@@ -652,6 +652,9 @@ func test_car_audio() -> void:
 	check(CA.eligible(car) and not CA.eligible({"vehicle_type": "bus"}) and not CA.eligible({"vehicle_type": "car", "is_taxi": true})
 		and not CA.eligible({"vehicle_type": "car", "is_police": true}), "only ordinary cars")
 	check(CA.draw(1234) == CA.draw(1234), "the same car always draws the same")
+	var car_tracks: Array = preload("res://nightclub_audio.gd").tracks_in(CA.TRACK_DIR)
+	check(car_tracks == ["assets/music/cars/cars_bass_far_1.ogg", "assets/music/cars/cars_music_1.ogg", "assets/music/cars/cars_music_2.ogg"],
+		"every .ogg in the folder is a track, the MP3 originals aren't (%s)" % [car_tracks])
 	var chosen := 0
 	for id in 4000:
 		chosen += int(CA.draw(id) < CA.SHARE_WEEKEND_NIGHT)
@@ -1091,6 +1094,19 @@ func _offer(id: String, name: String, metres: int = 800, seconds: float = 40.0) 
 
 
 func test_phone() -> void:
+	var protest_phone := Phone.new()
+	root.add_child(protest_phone)
+	protest_phone.open()
+	for lang in ["fi", "en", "de"]:
+		protest_phone.language = lang
+		protest_phone.protest_active = true
+		for busy in [false, true]:
+			protest_phone.show_phone({"busy": busy})
+			check(protest_phone._protest_note.visible and "Ilokapina" in protest_phone._protest_note.text, "active protest note appears in both phone apps and every language")
+	protest_phone.protest_active = false
+	protest_phone.show_phone({})
+	check(not protest_phone._protest_note.visible, "inactive protest notice clears from phone")
+	protest_phone.free()
 	check(Phone.card_text({"passenger_count": 3}, "fi").contains("3 matkustajaa")
 		and Phone.card_text({"passenger_count": 2}, "en").contains("2 passengers"), "fare cards show group size in both languages")
 	check(Phone.card_text({"passenger_count": 3}).split("\n").size() == 3, "group count fits the existing three-line fare card")
@@ -1699,6 +1715,14 @@ func test_navigation_route() -> void:
 	check(device.visible and app.visible and app._distance.text == "130 m" and app._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
 	device.update_layout()
 	var default_position: Vector2 = device.position
+	var phone_rect := Rect2(device.position, device.size * device.scale)
+	check(not phone_rect.intersects(Rect2(10, 720 - 236, Instruments.CLUSTER_WIDTH, 226)), "default phone clears the dashboard")
+	check(phone_rect.end.x <= 1280 - 190, "default phone clears the rage panel")
+	device.layout.offsets["navigation_phone"] = Vector2(16, -50)
+	device.update_layout()
+	check(device.position == Vector2(32, 75), "existing custom phone placement is preserved")
+	device.layout.reset()
+	device.update_layout()
 	var press := InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true

@@ -50,7 +50,7 @@ Three factors are kept apart and multiplied:
   its usual level at the door and recovering with distance or closing fades.
   Weather, traffic and other sounds are unchanged; the Environment bus is not ducked.
 - **Panning:** the 2D player only pans; its own attenuation is off.
-- **Tracks:** `TRACKS`, one picked per venue by its position, started at a
+- **Tracks:** every `.ogg` in `assets/music/nightclub/` (`tracks_in`, read at start), one picked per venue by its position, started at a
   random point so neighbouring clubs aren't in step. A missing file logs a
   warning and the music is silent.
 - **Tuning:** the constants at the top of `nightclub_audio.gd` set loudness
@@ -62,7 +62,7 @@ Three factors are kept apart and multiplied:
 project owner's two tracks (2026-10-19), converted from MP3 to Ogg Vorbis at
 q1 (about 3 MB each; heard muffled anyway). They are listed in
 `tools/license_inventory.json`; how they were made is still to be recorded.
-To change a track, replace the file or edit `TRACKS`.
+To add a track, drop an `.ogg` into the folder; it plays from the next start.
 
 ## Checks
 
