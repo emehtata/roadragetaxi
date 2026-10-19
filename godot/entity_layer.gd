@@ -1011,6 +1011,23 @@ func _bubble(anchor: Vector2, text: String, text_color: Color, border: Color, al
 	_canvas.draw_set_transform(Vector2.ZERO)
 
 
+## A line bus's number on its roof: a dark box along the bus, turning
+## with it (never upside down), about as tall as the bus is wide.
+func _bus_number(c: Vector2, heading: float, text: String) -> void:
+	if _canvas == self:  # text never dims: on _overlay
+		_overlays.append(_bus_number.bind(c, heading, text))
+		return
+	var font_size := clampi(roundi(1.5 * px_per_m), 6, 48)
+	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var box := Rect2(Vector2(-size.x / 2.0 - 3.0, -size.y / 2.0), size + Vector2(6.0, 0.0))
+	var angle := -heading if cos(heading) >= 0.0 else PI - heading
+	_canvas.draw_set_transform(c, angle, Vector2.ONE / px_per_m)
+	_canvas.draw_rect(box, Color8(20, 20, 20, 230))
+	_canvas.draw_string(_font, Vector2(box.position.x + 3.0, _font.get_ascent(font_size) - size.y / 2.0), text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color8(255, 190, 60))
+	_canvas.draw_set_transform(Vector2.ZERO)
+
+
 ## A label with a dark background (the target and customer tags).
 func _tag(anchor: Vector2, text: String, text_color: Color, border = null, font_size := 14) -> void:
 	if _canvas == self:  # text never dims: on _overlay
@@ -1232,7 +1249,7 @@ func _draw() -> void:
 			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false),
 			int(npc.get("layer", 0)) <= 0 and covered.call(c, int(npc.get("layer", 0))))
 		if npc.get("bus_line") != null:  # a line bus: its number, like the destination display
-			_tag(c, str(npc["bus_line"]), Color8(255, 190, 60), null, 12)
+			_bus_number(c, p.z, str(npc["bus_line"]))
 		var crashed: float = npc.get("crashed_timer", 0.0)
 		if crashed > 0.0:
 			_smoke(c, p.z, npc["length_m"], crashed if is_finite(crashed) else _clock)
