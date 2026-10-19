@@ -67,6 +67,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_interpolation()
 	test_vehicle_body_triangles()
 	test_audio()
+	test_nightclub_audio()
 	test_hud()
 	test_map_chunks()
 	test_road_snow_invalidation()
@@ -578,6 +579,52 @@ func test_vehicle_body_triangles() -> void:
 			check(EntityLayer2.body_triangles(body) == PackedInt32Array([0, 1, 2, 0, 2, 3]), "convex vehicle body submits triangles at distant coordinates in either winding")
 	check(EntityLayer2.body_triangles(PackedVector2Array([Vector2.ZERO, Vector2.ONE, Vector2(2, 2)])).is_empty(), "collapsed vehicle body is skipped")
 	check(EntityLayer2.body_triangles(PackedVector2Array([Vector2.ZERO, Vector2(2, 2), Vector2(0, 2), Vector2(2, 0)])).is_empty(), "crossed vehicle body is skipped")
+
+
+## rrt-019: nightclub music - opening hours, distance, muffling, the player pool.
+func test_nightclub_audio() -> void:
+	var NC := preload("res://nightclub_audio.gd")
+	var fri := 4 * 1440.0
+	var schedule := [[fri + 1320.0, fri + 1440.0 + 240.0]]  # Friday 22:00 - Saturday 04:00
+	check(NC.open_level(schedule, fri + 1200.0) == 0.0 and NC.open_level(schedule, fri + 600.0) == 0.0, "closed in the evening and by day")
+	check(NC.open_level(schedule, fri + 1330.0) > 0.4 and NC.open_level(schedule, fri + 1330.0) < 0.6, "opening: fading in (10 of 20 minutes)")
+	check(NC.open_level(schedule, fri + 1440.0 + 60.0) == 1.0, "after midnight: open")
+	check(NC.open_level(schedule, fri + 1440.0 + 235.0) < 0.3 and NC.open_level(schedule, fri + 1440.0 + 241.0) == 0.0, "closing at 04:00: faded out")
+	var sunday := [[6 * 1440.0 + 1320.0, 7 * 1440.0 + 240.0]]
+	check(NC.open_level(sunday, 120.0) == 1.0, "Sunday night runs into Monday 02:00 (the week wraps)")
+	var worst := 0.0
+	for i in 200:
+		worst = maxf(worst, absf(NC.gain(i) - NC.gain(i + 1)))
+		check(NC.gain(i + 1) <= NC.gain(i) and NC.cutoff_hz(i + 1) <= NC.cutoff_hz(i), "quieter and more muffled further away (%d m)" % i)
+	check(worst < 0.05, "no audible step per metre (%.3f)" % worst)
+	check(NC.gain(5.0) == 1.0 and NC.gain(25.0) > 0.7, "loud at the door, still clearly there just outside")
+	check(NC.gain(NC.RANGE_M) == 0.0 and NC.gain(NC.RANGE_M + 50.0) == 0.0, "inaudible beyond the range")
+	check(NC.cutoff_hz(5.0) <= 3000.0 and NC.cutoff_hz(NC.RANGE_M) < 400.0, "through the walls: highs cut, far off only the bass")
+	check(NC.week_minute("2026-10-19", 3600.0) == 60.0 and NC.week_minute("2026-10-25", 0.0) == 6 * 1440.0, "the game date's weekday (Mon 2026-10-19)")
+	var audio = NC.new()
+	root.add_child(audio)
+	var open := [[0.0, 7 * 1440.0]]
+	var clubs := [[0.0, 0.0, open], [0.0, 0.0, open], [400.0, 0.0, open], [10.0, 5.0, open], [-10.0, 5.0, open], [5.0, -10.0, open]]
+	if audio._streams.is_empty():
+		check(true, "nightclub tracks missing: silent, no crash")
+	else:
+		audio.update(clubs, Vector2.ZERO, 600.0, Vector2.ZERO, 0.1)
+		var first: Array = audio._club_of.duplicate()
+		check(audio.playing_count() == NC.PLAYERS and not first.has("400,0"), "the nearest venues play (a duplicate is one venue), the far one doesn't")
+		for i in 20:
+			audio.update(clubs, Vector2(float(i), 0.0), 600.0, Vector2.ZERO, 0.1)
+		check(audio._club_of == first, "moving a little: same players, no restart")
+		for i in 100:
+			audio.update(clubs, Vector2(2000.0, 0.0), 600.0, Vector2.ZERO, 0.1)
+		check(audio.playing_count() == 0, "far away: every player stopped")
+	var missing = NC.new()
+	missing.set("_streams", [])
+	root.add_child(missing)
+	missing._streams = []
+	missing.update(clubs, Vector2.ZERO, 600.0, Vector2.ZERO, 0.1)
+	check(missing.playing_count() == 0, "no tracks: nothing plays, no crash")
+	audio.queue_free()
+	missing.queue_free()
 
 
 func test_audio() -> void:

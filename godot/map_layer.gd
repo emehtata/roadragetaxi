@@ -449,6 +449,15 @@ func replace_chunk(message: Dictionary) -> void:
 	_chunks[message["chunk_id"]].keep_until_built(keep)
 
 
+## rrt-019: the loaded chunks' nightclubs ([x, y, weekly open intervals]):
+## a chunk's go with it, so nothing to keep in step.
+func nightclubs() -> Array:
+	var clubs: Array = []
+	for chunk in _chunks.values():
+		clubs.append_array(chunk._data.get("nightclubs", []))
+	return clubs
+
+
 func remove_chunk(chunk_id: String) -> bool:
 	if not _chunks.has(chunk_id):
 		return false

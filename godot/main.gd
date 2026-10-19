@@ -17,11 +17,13 @@ const MapChunk := preload("res://map_chunk.gd")
 const Hud := preload("res://hud.gd")
 const WeatherLayer := preload("res://weather_layer.gd")
 const T := preload("res://i18n.gd")
+const NightclubAudio := preload("res://nightclub_audio.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
 @onready var camera: Camera2D = $Camera
 @onready var audio: AudioManager = $Audio
+var nightclubs := NightclubAudio.new()  # rrt-019: the music leaking out of the venues nearby
 @onready var hud: Control = $Ui/Hud
 @onready var debug_label: Label = $Ui/Debug
 @onready var phone: Phone = $Ui/Phone
@@ -117,6 +119,7 @@ var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, m
 
 
 func _ready() -> void:
+	add_child(nightclubs)
 	if graphics.has("buildings_3d"):
 		MapChunk.buildings_3d = graphics["buildings_3d"]
 	_apply_language()
@@ -580,6 +583,14 @@ func _process(delta: float) -> void:
 
 
 ## Sound and HUD for the state on screen; events as the picture reaches them.
+func _nearest_nightclub_m() -> float:
+	var listener := Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y)
+	var nearest := INF
+	for club in map_layer.nightclubs():
+		nearest = minf(nearest, listener.distance_to(Vector2(club[0], club[1])))
+	return snappedf(nearest, 1.0) if is_finite(nearest) else -1.0
+
+
 func _present(state: Dictionary) -> void:
 	if state.is_empty():
 		if summary_shown:
@@ -655,6 +666,9 @@ func _present(state: Dictionary) -> void:
 	var crowd := station_ambience(state.get("railway"), Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y),
 		audio._config.get("ranges_m", {}).get("station.ambience", [15.0, 150.0]))
 	audio.set_loop("station_crowd", crowd[0] * 0.6, 1.0, crowd[1])
+	if typeof(calendar) == TYPE_DICTIONARY and calendar.has("date"):  # rrt-019: the game clock's night, not the computer's
+		nightclubs.update(map_layer.nightclubs(), Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y),
+			NightclubAudio.week_minute(calendar["date"], state.get("game_time_seconds", 0.0)), entities.origin, get_process_delta_time())
 	audio.set_loop("station_luggage", crowd[0] * 0.4, 1.0, crowd[1])
 	if state.get("should_stop", false) and not summary_shown:
 		show_summary(state)
@@ -1141,6 +1155,7 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 			"max_state_gap_ms": entities.buffer.max_arrival_gap_s * 1000.0,
 			"render_backsteps": entities.buffer.render_backsteps, "max_backstep_ms": entities.buffer.max_backstep_s * 1000.0,
 			"taxi_off_centre_px": _max_camera_lag_px, "motion": _motion_stats(), "interp_delay_ms": entities.buffer.delay * 1000.0,
+			"nightclubs_playing": nightclubs.playing_count(), "nightclubs_loaded": map_layer.nightclubs().size(), "nightclub_nearest_m": _nearest_nightclub_m(),
 			"fps_mean": _fps_samples.reduce(func(a, b): return a + b, 0.0) / _fps_samples.size(),
 			"sounds_played": audio.played, "engine_loop": audio.loop_playing("engine"), "unhandled_events": audio.unhandled,
 			"static_memory_mib": Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,

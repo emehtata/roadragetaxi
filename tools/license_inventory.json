@@ -131,6 +131,16 @@
       "remediation": "verify the applicable ACE-Step/model terms for generated-output redistribution"
     },
     {
+      "name": "Nightclub music",
+      "paths": ["src/theroadragetrip/assets/music/nightclub/*.ogg"],
+      "purpose": "dance music heard outside nightclubs (godot/nightclub_audio.gd)", "shipped": true,
+      "origin": "provided by the project owner on 2026-10-19 as nightclub_dance_1.mp3 and nightclub_dance_2.mp3, converted to Ogg Vorbis (q1, 44.1 kHz); generator not recorded",
+      "copyright": "not established", "licence": "not established",
+      "evidence": "none recorded",
+      "obligations": "unknown", "commercial": "unknown", "status": "unresolved",
+      "remediation": "record how the tracks were made (tool, model) and verify its terms for generated-output redistribution"
+    },
+    {
       "name": "Images and icons",
       "paths": ["src/theroadragetrip/img/**", "src/theroadragetrip/assets/*.png", "src/theroadragetrip/assets/*.ico", "src/theroadragetrip/assets/*.xpm", "godot/icon.ico"],
       "purpose": "loading image, rage faces, people atlas, taxi icon, two-wheeler sprites", "shipped": true,
