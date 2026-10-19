@@ -388,6 +388,10 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and phone.visible and phone.get_global_rect().has_point(event.position):
 		if not hud_layout.rects.get("navigation_phone", Rect2()).has_point(event.position):
 			return  # phone app controls take priority over HUD panels beneath them
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and instruments.trip_reset_rect.grow(3).has_point(event.position):
+		_reset_trip_pending = true  # the trip LCD's reset button, same as T
+		get_viewport().set_input_as_handled()
+		return
 	if _start_sign == null and hud.visible and hud_layout.handle(event):
 		instruments.queue_redraw()
 		hud._layout()

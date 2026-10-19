@@ -834,8 +834,7 @@ func test_rendering() -> void:
 	check(Nav.distance_text(350.0) == "350m" and Nav.distance_text(2340.0) == "2.3km", "arrow distance text")
 
 	# Instruments.
-	check(Instruments.odometer_lines(940.0, 12345.0) == ["000012 km", "TRIP 0.9 km"] and Instruments.odometer_lines(1500.0, 0.0)[1] == "TRIP 1.5 km", "odometer and trip lines")
-	check(Instruments.odometer_lines(940.0, 12345.0, "fi")[1] == "MATKA 0.9 km", "instruments follow the selected language")
+	check(Instruments.odometer_lines(940.0, 12345.0) == ["12 km", "0.9 km"] and Instruments.odometer_lines(1500.0, 0.0) == ["0 km", "1.5 km"], "odometer and trip lines, no leading zeros")
 	var center := Vector2(100, 100)
 	check(Instruments.dial_point(center, 0.0, 10.0).x < 100.0 and Instruments.dial_point(center, 1.0, 10.0).x > 100.0
 		and is_equal_approx(Instruments.dial_point(center, 0.5, 10.0).y, 90.0), "fuel needle: E left, F right, half up")

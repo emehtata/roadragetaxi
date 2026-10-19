@@ -19,6 +19,7 @@ var _shown := []  # the values last drawn
 var _state: Dictionary = {}
 var language := "en"
 var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
+var trip_reset_rect := Rect2()  # where the trip reset button was drawn: main.gd clicks it
 var chips := [false, false, false]  # lane assist (K), speed limiter (V), navigation (N): main.gd
 const MAX_SPEED_KMH := 210.0  # physics.MAX_SPEED: the dial's end
 
@@ -165,9 +166,9 @@ static func speed_limit(state: Dictionary) -> int:
 
 
 ## The dashboard's odometer and trip lines, as a real cluster shows them:
-## whole kilometres, six digits; the trip to 0.1 km.
-static func odometer_lines(trip_m: float, odometer_m: float, language := "en") -> Array:
-	return ["%06d km" % floori(odometer_m / 1000.0), "%s %.1f km" % [T.text("trip", language).to_upper(), trip_m / 1000.0]]
+## whole kilometres; the trip to 0.1 km.
+static func odometer_lines(trip_m: float, odometer_m: float) -> Array:
+	return ["%d km" % floori(odometer_m / 1000.0), "%.1f km" % (trip_m / 1000.0)]
 
 
 ## Needle angle (radians, screen y down) for a fuel fraction: E at the left, F at the right.
@@ -182,7 +183,7 @@ func _draw() -> void:
 	var player: Dictionary = _state.get("player", {})
 	_draw_fuel(Vector2(210, size.y - 100), player)
 	_draw_speedometer(Vector2(10, size.y - 236), speed_kmh(player.get("speed", 0.0)),
-		odometer_lines(player.get("trip_m", 0.0), player.get("odometer_m", 0.0), language))
+		odometer_lines(player.get("trip_m", 0.0), player.get("odometer_m", 0.0)))
 	_draw_rage(Vector2(size.x - 190, size.y - 246), _state.get("rage_power", 0.0))
 	var water: float = _state.get("water_elapsed", 0.0)
 	if water > 0.0:
@@ -231,8 +232,15 @@ func _draw_speedometer(at: Vector2, kmh: float, odometer: Array) -> void:
 	var lcd := Rect2(center.x - 52, at.y + 160, 104, 34)
 	draw_rect(lcd, Color8(18, 14, 8))
 	draw_rect(lcd, Color8(90, 80, 60), false, 1.0)
-	_centered(odometer[0], Vector2(center.x, lcd.position.y + 9), 12, Color8(255, 190, 80))
-	_centered(odometer[1], Vector2(center.x, lcd.position.y + 25), 11, Color8(255, 190, 80))
+	var amber := Color8(255, 190, 80)
+	for i in 2:  # right-aligned, like LCD digits
+		draw_string(_font, Vector2(lcd.position.x + 6, lcd.position.y + 13 + i * 16), odometer[i], HORIZONTAL_ALIGNMENT_RIGHT, lcd.size.x - 12, 12 - i, amber)
+	# The trip's reset button (T), left of the trip line: a circular arrow.
+	trip_reset_rect = Rect2(lcd.position.x + 4, lcd.position.y + 18, 14, 14)
+	var c := trip_reset_rect.get_center()
+	draw_arc(c, 4.5, deg_to_rad(-60), deg_to_rad(240), 12, amber, 1.5)
+	var tip := c + Vector2.from_angle(deg_to_rad(-60)) * 4.5
+	draw_colored_polygon(PackedVector2Array([tip + Vector2(-3.5, -1), tip + Vector2(1.5, -3), tip + Vector2(1, 2.5)]), amber)
 	var labels := ["LANE (K)", "LIMIT (V)", "NAVI (N)"]
 	var widths := []
 	var total := 12.0
