@@ -85,7 +85,7 @@ DEFAULT_CONFIG = {
         "log_level": "INFO",
         "file_logging": "false",
         "roadworks_enabled": "false",
-        "bus_stops": "false",
+        "bus_stops": "true",
         "physics_realism": "arcade",
         # Real FMI weather observations for the game's city and date
         # (Settings -> historical weather); generated weather otherwise.
