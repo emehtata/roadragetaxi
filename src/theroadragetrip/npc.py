@@ -1711,8 +1711,21 @@ def _transit_initial_speed(vehicle, plan) -> Optional[float]:
     """Seed freeway through traffic already moving, or reject a short/turning start."""
     path = plan[0]
     way = path[0].way
-    if way is None or way.highway not in ("motorway", "motorway_link", "trunk", "trunk_link"):
+    if way is None:
         return 0.0
+    if way.highway not in ("motorway", "motorway_link", "trunk", "trunk_link"):
+        # Ordinary roads: already cruising too (a car standing in the road
+        # ahead of a fast player read as broken traffic), at 80 % of the limit
+        # but no faster than it can still slow down from before its next turn
+        # or its trip's end.
+        limit = way.speed_limit_kmh / 3.6 * 0.8
+        maximum = vehicle_definition(vehicle.vehicle_type).max_speed_kmh
+        if maximum is not None:
+            limit = min(limit, maximum / 3.6)
+        remaining = sum(math.hypot(b.x - a.x, b.y - a.y) for a, b in zip(path, path[1:]))
+        turn = _distance_to_next_turn(path, 0, path[0].x, path[0].y, max_lookahead_m=remaining)
+        room = max(0.0, min(remaining, turn if turn is not None else remaining) - vehicle.length_m)
+        return max(0.0, min(limit, math.sqrt(2.0 * ARRIVAL_DECEL_MPS2 * room)))
     speed = way.speed_limit_kmh / 3.6 * 0.8  # game policy: enter at 80% of the road limit
     definition = vehicle_definition(vehicle.vehicle_type)
     maximum = definition.max_speed_kmh
@@ -2225,13 +2238,25 @@ def _npc_motion_stays_on_road(vehicle, driver, previous, ways, spatial_grid=None
     layer = getattr(driver.current_way, "layer", car.layer)
     nearby = [way for way in nearby if on_map_level(way, car.map_level)]
 
+    # A turning car crossing the kerb corner was stopped there for good
+    # ("road boundary", then "stuck - awaiting recovery", in the road).
+    # Only at a junction (two roads within reach): steering back from a bad
+    # heading on an open road is "turning" too, and must stay on the road.
+    turning = vehicle.state in (NPCState.TURNING, NPCState.APPROACHING_INTERSECTION) and sum(
+        1 for way in nearby if way.is_drivable and len(way.points_m) >= 2 and min(
+            dist_point_to_segment(car.x, car.y, *a, *b) for a, b in zip(way.points_m, way.points_m[1:])
+        ) <= way.half_width_m + vehicle.width_m
+    ) >= 2
     for step in range(1, samples + 1):
         t = step / samples
         x = previous[0] + (car.x - previous[0]) * t
         y = previous[1] + (car.y - previous[1]) * t
         heading = previous[2] + angle_diff(car.heading, previous[2]) * t
-        covered = _npc_body_on_road(x, y, heading, vehicle.length_m, vehicle.width_m,
-                                    nearby, None, layer, car.map_level)
+        if turning:  # a turn may cut over the kerb corner (roads are straight strips): only its centre must stay on
+            covered = is_point_on_road(x, y, ways=nearby, car_roads_only=True, layer=layer)
+        else:
+            covered = _npc_body_on_road(x, y, heading, vehicle.length_m, vehicle.width_m,
+                                        nearby, None, layer, car.map_level)
         if not covered and not _npc_parking_access(vehicle, driver, x, y, nearby, None, layer):
             return False
     return True
@@ -4874,12 +4899,18 @@ class NPCVehicleManager:
                     continue
                 vehicle.car.x, vehicle.car.y, vehicle.car.heading = start.x, start.y, heading
                 speed = _transit_initial_speed(vehicle, plan)
+                freeway = getattr(start.way, "highway", None) in ("motorway", "motorway_link", "trunk", "trunk_link")
+                if speed and not freeway:  # near the player: slower, so its stopping distance fits the gap
+                    gap = math.hypot(vehicle.x - player_x, vehicle.y - player_y) - vehicle.length_m - 1.0
+                    speed = min(speed, math.sqrt(2.0 * ARRIVAL_DECEL_MPS2 * max(0.0, gap)) * 0.5)
                 clearance = _transit_clearance(vehicle, speed or 0.0)
                 if speed is None or (speed > 0 and (
-                    math.hypot(vehicle.x - player_x, vehicle.y - player_y) < clearance
+                    math.hypot(vehicle.x - player_x, vehicle.y - player_y) < (
+                        clearance if freeway else speed * speed / (2 * ARRIVAL_DECEL_MPS2) + vehicle.length_m)
                     or any(True for _ in self.nearby_vehicles_at(vehicle.x, vehicle.y, clearance))
-                    or traffic_world._nearby_traffic_lights(vehicle.x, vehicle.y, radius_m=clearance)
-                    or traffic_world.nearby_signs(vehicle.x, vehicle.y)
+                    # town streets: lights and signs everywhere - a car already driving brakes for them as usual
+                    or freeway and traffic_world._nearby_traffic_lights(vehicle.x, vehicle.y, radius_m=clearance)
+                    or freeway and traffic_world.nearby_signs(vehicle.x, vehicle.y)
                 )):
                     release_npc_parking_reservation(vehicle)
                     if tries >= NPC_TRANSIT_SPAWN_NODE_TRIES:
