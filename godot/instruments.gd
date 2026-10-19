@@ -235,14 +235,16 @@ func _draw_speedometer(at: Vector2, kmh: float, odometer: Array) -> Rect2:
 	draw_circle(center, 6.0, Color8(240, 220, 170))
 	_centered("%d" % roundi(kmh), Vector2(center.x, at.y + 132), 16, Color8(240, 240, 240))
 	_centered("km/h", center + Vector2(0, -24), 11, Color8(190, 200, 205))
-	var lcd := Rect2(at.x + 22, at.y + 160, CLUSTER_WIDTH - 44, 34)  # odometer, trip and the econometer
-	draw_rect(lcd, Color8(18, 14, 8))
-	draw_rect(lcd, Color8(90, 80, 60), false, 1.0)
+	var lcd := Rect2(center.x - 56, at.y + 160, 112, 34)  # odometer and trip under the speedometer
+	var econ := Rect2(at.x + CLUSTER_WIDTH - 72 - 56, at.y + 160, 112, 34)  # the econometer under the fuel gauge
+	for box in [lcd, econ]:
+		draw_rect(box, Color8(18, 14, 8))
+		draw_rect(box, Color8(90, 80, 60), false, 1.0)
 	var amber := Color8(255, 190, 80)
 	for i in 2:  # right-aligned, like LCD digits
 		draw_string(_font, Vector2(lcd.position.x + 6, lcd.position.y + 13 + i * 16), odometer[i], HORIZONTAL_ALIGNMENT_RIGHT, lcd.size.x - 12, 12 - i, amber)
 	# The trip's reset button (T), left of the trip line: a circular arrow.
-	draw_string(_font, Vector2(lcd.position.x + 8, lcd.position.y + 13), odometer[2], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, amber)
+	draw_string(_font, Vector2(econ.position.x + 6, econ.position.y + 21), odometer[2], HORIZONTAL_ALIGNMENT_RIGHT, econ.size.x - 12, 12, amber)
 	var trip_width := _font.get_string_size(odometer[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
 	trip_reset_rect = Rect2(lcd.end.x - 6 - trip_width - 18, lcd.position.y + 18, 14, 14)
 	var c := trip_reset_rect.get_center()
