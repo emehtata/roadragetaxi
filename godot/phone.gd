@@ -161,6 +161,9 @@ func update_layout() -> void:
 
 
 func show_navigation(route: Dictionary, task := "") -> void:
+	# Seed the new default in the old offset coordinates, preserving saved placements.
+	if not layout.offsets.has("navigation_phone"):
+		layout.offsets["navigation_phone"] = Vector2(maxf(16.0, get_viewport_rect().size.x - physical_size.x - 206.0) - 16.0, 0.0)
 	navigation.language = language
 	navigation.show_navigation(route, task)
 
