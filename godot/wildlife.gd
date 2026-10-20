@@ -206,9 +206,11 @@ func _draw_animal(animal: Dictionary) -> void:
 
 
 func _draw_body(at: Vector2, direction: Vector2, scale_m: float, color: Color, flying: bool) -> void:
+	if direction.length_squared() < 1e-6:
+		direction = Vector2.RIGHT  # standing still: any facing, never a collapsed body
 	var side := direction.orthogonal()
 	var body := PackedVector2Array([at + direction * scale_m, at + side * scale_m * 0.55,
 		at - direction * scale_m, at - side * scale_m * 0.55])
-	draw_colored_polygon(body, color)
+	draw_primitive(body, PackedColorArray([color]), PackedVector2Array())  # a quad, drawn as is: no triangulation to fail
 	draw_circle(at + direction * scale_m * 0.85, scale_m * 0.38, color.lightened(0.08))
 	if flying: draw_line(at, at + side * scale_m * 1.8, color.lightened(0.2), 0.12)

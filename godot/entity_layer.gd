@@ -990,12 +990,10 @@ func _dog(owner: Vector2, at: Vector2, heading: float, dog: Dictionary) -> void:
 	_ellipse(at, radius * 0.72, radius, body)
 	var head := at + h * radius * (0.78 if dog.get("sniffing", false) else 1.02)
 	_canvas.draw_circle(head, radius * 0.58, _person_lit(body.lightened(0.06)))
-	_canvas.draw_colored_polygon(PackedVector2Array([
-		head + side * radius * 0.42, head - h * radius * 0.48 + side * radius * 0.62, head - h * radius * 0.22 + side * radius * 0.18,
-	]), _person_lit(body.darkened(0.25)))
-	_canvas.draw_colored_polygon(PackedVector2Array([
-		head - side * radius * 0.42, head - h * radius * 0.48 - side * radius * 0.62, head - h * radius * 0.22 - side * radius * 0.18,
-	]), _person_lit(body.darkened(0.25)))
+	var ear := PackedColorArray([_person_lit(body.darkened(0.25))])
+	for s: float in [1.0, -1.0]:  # draw_primitive: a few-cm triangle needs no triangulation (which rejected it)
+		_canvas.draw_primitive(PackedVector2Array([head + side * radius * 0.42 * s,
+			head - h * radius * 0.48 + side * radius * 0.62 * s, head - h * radius * 0.22 + side * radius * 0.18 * s]), ear, PackedVector2Array())
 	_canvas.draw_line(at - h * radius * 0.75, at - h * radius * 1.35 + side * radius * 0.35,
 		_person_lit(body.darkened(0.12)), maxf(_px(1.5), radius * 0.24))
 
