@@ -74,6 +74,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_road_snow_invalidation()
 	test_commands_carry_the_player_id()
 	test_phone()
+	test_wildlife()
 	test_rendering()
 	test_drive_input()
 	test_mouse_inspection()
@@ -1212,6 +1213,28 @@ func test_phone() -> void:
 	check(phone.get_children().size() == 1 and _orphan_timers(phone) == 0, "no leftover timers or nodes")
 	phone.free()
 
+
+
+func test_wildlife() -> void:
+	var WildlifeLayer := preload("res://wildlife.gd")
+	var layer: Node = WildlifeLayer.new()
+	root.add_child(layer)
+	check(layer.config_valid(layer.species_weights) and WildlifeLayer.SPECIES.size() == 7, "wildlife: species configuration is valid")
+	check(not layer.habitat_weights("urban").has("moose") and layer.habitat_weights("rural").has("moose"), "wildlife: large deer stay out of dense urban habitat")
+	check(layer.activity("small_bird", 43200) > layer.activity("small_bird", 0) and layer.activity("fox", 0) > layer.activity("fox", 43200), "wildlife: the simulation hour changes species activity")
+	var chunk := {"chunk_id": "1_2", "bounds": [0.0, 0.0, 500.0, 500.0], "buildings": [], "trees": [[250.0, 250.0, "birch", 0.5]]}
+	layer.density = 2.0
+	layer.max_active = 3
+	layer.replace_chunk(chunk, Vector2.ZERO)
+	var ids: Array = layer.animals.map(func(animal): return animal.id)
+	check(layer.animals.filter(func(animal): return animal.species != "pigeon").all(func(animal): return animal.position.distance_to(Vector2(250, -250)) <= 14.1), "wildlife: woodland species spawn beside streamed tree positions")
+	layer.replace_chunk(chunk, Vector2.ZERO)
+	check(layer.animals.size() == 2 and layer.animals.map(func(animal): return animal.id) == ids, "wildlife: a refreshed chunk neither duplicates nor teleports animals")
+	layer.replace_chunk(chunk.merged({"chunk_id": "2_2"}, true), Vector2.ZERO)
+	check(layer.animals.size() == 3, "wildlife: its own population cap is enforced")
+	layer.remove_chunk("1_2")
+	check(layer.animals.size() == 1, "wildlife: unloading a chunk removes its animals")
+	layer.free()
 
 
 func _orphan_timers(node: Node) -> int:

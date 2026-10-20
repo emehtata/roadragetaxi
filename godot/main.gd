@@ -116,6 +116,7 @@ var graphics: Dictionary = {}  # empty for direct scenes/tests; the launcher sup
 
 var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
 var holidays: Node = preload("res://holiday_layer.gd").new()
+var wildlife: Wildlife = preload("res://wildlife.gd").new()
 var _tram_states := {}  # tram id -> its state last frame: the bell when one sets off
 var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, multiplied over the world canvas
 
@@ -129,6 +130,7 @@ func _ready() -> void:
 	_build_help()
 	_build_inspector()
 	add_child(weather)
+	add_child(wildlife)
 	add_child(world_light)
 	weather.setup($Sky, map_layer)
 	add_child(holidays)
@@ -267,6 +269,7 @@ func _on_connection(up: bool) -> void:
 		_clear_focus()
 		entities.buffer.clear()
 		map_layer.clear()
+		wildlife.clear()
 		audio.stop_loops()
 		audio.stop_voices()
 
@@ -281,7 +284,9 @@ func _process_chunk_queues(started_usec: int) -> void:
 		var draw := int(_chunk_queue[0].get("prepared", {}).get("points", 0) * DRAW_USEC_PER_POINT)
 		if spent > 0 and spent + last + draw > CHUNK_BUDGET_USEC:
 			break
-		map_layer.replace_chunk(_chunk_queue.pop_front())
+		var message: Dictionary = _chunk_queue.pop_front()
+		wildlife.replace_chunk(message, map_layer.origin)
+		map_layer.replace_chunk(message)
 		var now := Time.get_ticks_usec()
 		last = now - at
 		Perf.add("chunk_add", last)
@@ -290,7 +295,9 @@ func _process_chunk_queues(started_usec: int) -> void:
 	if not _chunk_queue.is_empty():
 		return  # unloads wait: drawing what the player needs comes first
 	while not _chunk_unload_queue.is_empty() and (spent == 0 or spent + last <= CHUNK_BUDGET_USEC):
-		map_layer.remove_chunk(_chunk_unload_queue.pop_front())
+		var chunk_id: String = _chunk_unload_queue.pop_front()
+		wildlife.remove_chunk(chunk_id)
+		map_layer.remove_chunk(chunk_id)
 		var now := Time.get_ticks_usec()
 		last = now - at
 		Perf.add("chunk_unload", last)
@@ -338,6 +345,7 @@ func _on_world(world: Dictionary) -> void:
 	_chunk_unload_queue.clear()
 	var origin := Vector2(world["center"][0], world["center"][1])
 	map_layer.set_origin(origin)
+	wildlife.clear()
 	entities.origin = origin
 	audio.origin = origin
 	sim.player_id = world.get("player_id", sim.player_id)
@@ -515,6 +523,10 @@ func _process(delta: float) -> void:
 	_process_chunk_queues(now_usec)
 	entities.update_frame(delta)  # first: the camera below and the drawing use this one sample
 	var state: Dictionary = entities.shown_state()
+	var vehicles: Array = entities.npc_cars().map(func(row): return row[1])
+	vehicles.append(entities.player_position())
+	wildlife.update(delta, float(state.get("game_time_seconds", 12.0 * 3600.0)), camera.position, vehicles)
+	Perf.counters["wildlife"] = wildlife.animals.size()
 	_time_relocation(state, now_usec)
 	_interp_usec = lerpf(_interp_usec, float(entities.interp_usec), 0.1)
 	if _selftest:
@@ -693,6 +705,7 @@ func _present(state: Dictionary) -> void:
 	var level := int(state.get("player", {}).get("map_level", 0))
 	map_layer.set_map_level(level)
 	entities.underground = level != 0
+	wildlife.visible = level == 0
 	weather.update(get_process_delta_time(), state, entities.player_position(), level != 0)
 	holidays.update(get_process_delta_time(), state, view, level != 0)
 	map_layer.set_flash(state.get("speed_camera_flash"))
