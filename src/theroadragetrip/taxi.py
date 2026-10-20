@@ -45,6 +45,7 @@ POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stop
 # at first (its map isn't loaded); the edge arrow points the way, and near
 # the town the street address is picked from the map streamed in by then.
 LONG_FARE_CHANCE = 0.10
+AIRPORT_FARE_CHANCE = 0.10
 LONG_FARE_MIN_M = 20_000.0
 LONG_FARE_MAX_M = 100_000.0
 LONG_FARE_RESOLVE_M = 1500.0  # this close to the town centre its map is loaded
@@ -1770,11 +1771,11 @@ class TaxiManager:
         return self.pick_random_road_point(ref_x=pickup_x, ref_y=pickup_y, min_dist=self.min_distance_m, max_dist=float("inf"))
 
     def pick_long_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
-        """Another municipality, airport or railway station LONG_FARE_MIN_M..
+        """Another municipality LONG_FARE_MIN_M..
         MAX_M away, bigger ones likelier; only its spot is known until the
         taxi gets near."""
         towns = [town for town in municipality_points()
-                 if LONG_FARE_MIN_M <= math.hypot(town[1] - pickup_x, town[2] - pickup_y) <= LONG_FARE_MAX_M]
+                 if town[4] is None and LONG_FARE_MIN_M <= math.hypot(town[1] - pickup_x, town[2] - pickup_y) <= LONG_FARE_MAX_M]
         from .intercity_places import place_id
         if self.intercity_places is not None:
             towns = [town for town in towns if place_id(town[0],town[1],town[2],town[4]) in self.intercity_places]
@@ -1783,6 +1784,27 @@ class TaxiManager:
         name, x, y, _, landmark = random.choices(towns, weights=[town[3] for town in towns])[0]
         return TaxiTarget(x=x, y=y, address=name, radius_m=self.pickup_radius_m, municipality=name, venue_type=landmark,
                           intercity_place_id=place_id(name,x,y,landmark))
+
+    def pick_airport_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
+        """Nearest airport, or its nearest town when collecting at the airport."""
+        from .intercity_places import place_id
+        places = municipality_points()
+        airports = [p for p in places if p[4] == "airport"]
+        if not airports:
+            return None
+        airport = min(airports,key=lambda p:math.hypot(p[1]-pickup_x,p[2]-pickup_y))
+        target = airport
+        if math.hypot(airport[1]-pickup_x,airport[2]-pickup_y) <= LANDMARK_STAND_M:
+            towns = [p for p in places if p[4] is None]
+            if not towns:
+                return None
+            target = min(towns,key=lambda p:math.hypot(p[1]-airport[1],p[2]-airport[2]))
+        name,x,y,_,kind = target
+        identity = place_id(name,x,y,kind)
+        if self.intercity_places is not None and identity not in self.intercity_places:
+            return None
+        return TaxiTarget(x,y,name,radius_m=self.pickup_radius_m,municipality=name,
+                          venue_type=kind,intercity_place_id=identity)
 
     def _resolve_long_dropoff(self, passenger: TaxiPassenger, dt: float) -> None:
         """Near a long fare's town: its address, once the map has a road there."""
@@ -1825,8 +1847,12 @@ class TaxiManager:
             if not pickup:
                 continue
             dropoff = None
-            if self.intercity_fares_enabled and random.random() < LONG_FARE_CHANCE:
-                dropoff = self.pick_long_dropoff(pickup.x, pickup.y)
+            if self.intercity_fares_enabled:
+                roll = random.random()
+                if roll < LONG_FARE_CHANCE:
+                    dropoff = self.pick_long_dropoff(pickup.x, pickup.y)
+                elif roll < LONG_FARE_CHANCE + AIRPORT_FARE_CHANCE:
+                    dropoff = self.pick_airport_dropoff(pickup.x, pickup.y)
             dropoff = dropoff or self.pick_phone_dropoff(pickup.x, pickup.y)
             if not dropoff:
                 continue

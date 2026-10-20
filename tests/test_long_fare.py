@@ -4,8 +4,38 @@ from theroadragetrip import taxi as taxi_module
 from theroadragetrip.taxi import TaxiManager, TaxiPassenger, TaxiState, TaxiTarget
 
 
+def test_phone_fare_mix(monkeypatch):
+    taxi = TaxiManager(ways=[])
+    taxi.intercity_fares_enabled = True
+    monkeypatch.setattr(taxi,'passenger_waiting_position',lambda pickup:(0,0,0))
+    monkeypatch.setattr(taxi,'pick_phone_pickup',lambda *args:TaxiTarget(0,0,'Pickup'))
+    monkeypatch.setattr(taxi,'pick_long_dropoff',lambda *args:TaxiTarget(30000,0,'Town'))
+    monkeypatch.setattr(taxi,'pick_airport_dropoff',lambda *args:TaxiTarget(12000,0,'Airport'))
+    monkeypatch.setattr(taxi,'pick_phone_dropoff',lambda *args:TaxiTarget(1000,0,'Local'))
+    destinations = []
+    for i in range(100):
+        monkeypatch.setattr(taxi_module.random,'random',lambda i=i:(i+.5)/100)
+        offers = taxi.generate_offers(0,0,count=1)
+        destinations.append(offers[0].passenger.dropoff.address)
+    assert destinations.count('Airport') == 10
+    assert destinations.count('Town') == 10
+    assert destinations.count('Local') == 80
+
+
+def test_nearest_airport_and_return_to_town(monkeypatch):
+    monkeypatch.setattr(taxi_module,'_municipality_points',[
+        ('City',0,0,100,None),('Airport',12000,0,100,'airport'),
+        ('Far airport',40000,0,100,'airport')])
+    taxi = TaxiManager(ways=[])
+    assert taxi.pick_airport_dropoff(0,0).address == 'Airport'
+    assert taxi.pick_airport_dropoff(12000,0).address == 'City'
+    taxi.intercity_places = set()
+    assert taxi.pick_airport_dropoff(0,0) is None
+
+
 def test_intercity_offers_are_opt_in(monkeypatch):
     taxi = TaxiManager(ways=[])
+    monkeypatch.setattr(taxi,'passenger_waiting_position',lambda pickup:(0,0,0))
     assert not taxi.intercity_fares_enabled
     monkeypatch.setattr(taxi,"pick_phone_pickup",lambda *args: TaxiTarget(0,0,"Pickup"))
     monkeypatch.setattr(taxi,"pick_phone_dropoff",lambda *args: TaxiTarget(1000,0,"Local"))
@@ -46,7 +76,7 @@ def test_long_fare_to_an_airport_keeps_its_name(monkeypatch):
     airport = (430_000.0, 7_250_000.0)
     monkeypatch.setattr(taxi_module, "_municipality_points", [("Kemi-Tornion lentoasema", *airport, 100_000, "airport")])
     taxi = TaxiManager(ways=[])
-    target = taxi.pick_long_dropoff(430_000.0, 7_210_000.0)
+    target = taxi.pick_airport_dropoff(430_000.0, 7_210_000.0)
     taxi.current_passenger = TaxiPassenger(name="Aino", pickup=TaxiTarget(0, 0, "x"), dropoff=target, boarded=True)
     taxi.state = TaxiState.DRIVING_TO_DROPOFF
     taxi.sync_map_data([Way(points_m=[(airport[0] - 300, airport[1] + 100), (airport[0] + 300, airport[1] + 100)],
@@ -63,7 +93,7 @@ def test_long_fare_to_an_airport_prefers_its_taxi_stand(monkeypatch):
     monkeypatch.setattr(taxi_module, "_municipality_points", [("Oulun lentoasema", *airport, 100_000, "airport")])
     stand = TaxiStop(x=airport[0] + 500, y=airport[1])
     taxi = TaxiManager(ways=[], taxi_stops=[stand])
-    target = taxi.pick_long_dropoff(430_000.0, 7_210_000.0)
+    target = taxi.pick_airport_dropoff(430_000.0, 7_210_000.0)
     taxi.current_passenger = TaxiPassenger(name="Aino", pickup=TaxiTarget(0, 0, "x"), dropoff=target, boarded=True)
     taxi.state = TaxiState.DRIVING_TO_DROPOFF
     taxi.sync_map_data([Way(points_m=[(airport[0] - 50, airport[1]), (airport[0] + 50, airport[1])],
