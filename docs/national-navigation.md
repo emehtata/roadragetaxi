@@ -368,9 +368,13 @@ routing always uses stable IDs, never the first name match.
 | Graph open / compatible startup reuse | 0.275 / 0.344 s |
 | Peak query-process resident memory | 121,296 KiB |
 | Full preparation run before spatial town prefiltering, including temporary town extraction | 6 min 33 s; 2,336,968 KiB peak process memory |
+| Full preparation with spatial town prefiltering | 5 min 00 s; 2,328,152 KiB peak process memory |
 | Final gateway-policy validation, reusing that temporary extract and rebuilding the backbone | 39.5 s; 2,264,256 KiB peak process memory |
 
-The full preparation timing preceded the spatial town prefilter and final anchor prefilter improvements;
+The spatial prefilter saved 1 min 33 s (about 24%) on the same machine, but did
+not materially reduce peak memory: building the 3.5-million-element temporary
+town graph remains the dominant cost. The earlier full preparation timing
+preceded the spatial town prefilter and final anchor prefilter improvements;
 the final validation reused its extracted town graph, not a second national
 street cache. Temporary extracts are not part of the final artifact. Offline
 preparation is memory-intensive and may take several minutes; it is not done
