@@ -374,6 +374,7 @@ def test_taxi_mission_lifecycle():
     assert taxi_mgr.balance_cents == taxi_mgr.last_fare_cents + taxi_mgr.last_tip_cents
     assert taxi_mgr.fare_distance_m == 1000.0
     assert "€" in taxi_mgr.notification_msg
+    assert "★" in taxi_mgr.notification_msg and "/5" in taxi_mgr.notification_msg
     assert taxi_mgr.current_passenger is None
     assert taxi_mgr.offers
 

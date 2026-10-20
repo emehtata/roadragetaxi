@@ -174,7 +174,7 @@ TRANSLATIONS = {
         "long_fare_address": "{name}: tarkka osoite on {address}",
         "roadside": "Tienvarsi",
         "competitor_took_fare": "Kilpaileva taksi ehti ensin: {name}",
-        "fare_complete_points": "Kyyti valmis! Hinta {amount}, tippi {tip}, +{earned} pistettä ({avg:.0f} km/h keskiarvo, {seconds:.1f} s)",
+        "fare_complete_points": "Kyyti valmis! Hinta {amount}, tippi {tip}, +{earned} pistettä ({avg:.0f} km/h keskiarvo, {seconds:.1f} s). Asiakkaan arvio: {stars} ({rating}/5)",
     },
     "en": {
         "garage_closed": "Parking garages are not available yet.",
@@ -346,7 +346,7 @@ TRANSLATIONS = {
         "long_fare_address": "{name}: the exact address is {address}",
         "roadside": "Roadside",
         "competitor_took_fare": "A rival taxi got there first: {name}",
-        "fare_complete_points": "Fare complete! Fare {amount}, tip {tip}, +{earned} pts ({avg:.0f} km/h average in {seconds:.1f}s)",
+        "fare_complete_points": "Fare complete! Fare {amount}, tip {tip}, +{earned} pts ({avg:.0f} km/h average in {seconds:.1f}s). Customer rating: {stars} ({rating}/5)",
     },
 }
 
@@ -574,7 +574,7 @@ TRANSLATIONS["de"] = {
     "long_fare_address": "{name}: Die genaue Adresse ist {address}",
     "roadside": "Straßenrand",
     "competitor_took_fare": "Ein anderes Taxi war schneller: {name}",
-    "fare_complete_points": "Fahrt abgeschlossen! Fahrpreis {amount}, Trinkgeld {tip}, +{earned} Punkte (durchschnittlich {avg:.0f} km/h in {seconds:.1f}s)",
+    "fare_complete_points": "Fahrt abgeschlossen! Fahrpreis {amount}, Trinkgeld {tip}, +{earned} Punkte (durchschnittlich {avg:.0f} km/h in {seconds:.1f}s). Kundenbewertung: {stars} ({rating}/5)",
 }
 
 

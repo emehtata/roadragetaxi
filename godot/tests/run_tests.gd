@@ -1846,7 +1846,7 @@ func test_taxi_information() -> void:
 	check(Hud.task_text(fare.merged({"state": "PICKUP"}, true)) == "Pick up Aino at Kirkkokatu 4", "pickup task")
 	check(Hud.task_text(fare.merged({"state": "WALKING"}, true)) == "Aino is walking to the taxi", "walking task")
 	check(Hud.task_text({"completed_fares": 3}) == "", "no passenger: no task")
-	check(Hud.meter_info(fare) == "2.35 km  ☺ 50%", "the meter's distance and happiness")
+	check(Hud.meter_info(fare) == "2.35 km", "the meter shows distance without customer satisfaction")
 	check(Hud.meter_info(fare.merged({"fare_distance_m": null, "passenger_happiness": [1]}, true)) == "", "missing or malformed: left out")
 	check(preload("res://taxi_meter.gd").readout(5) == "   0.05" and preload("res://taxi_meter.gd").readout(123456) == "1234.56", "a cent-level taximeter")
 

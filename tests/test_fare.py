@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from theroadragetrip.fare import calculate_fare_cents, format_euros, starting_fee_cents, tip_cents_from_happiness
+from theroadragetrip.fare import calculate_fare_cents, format_euros, star_rating_from_happiness, starting_fee_cents, tip_cents_from_happiness
 
 
 def test_starting_fee_weekday_daytime_is_eight_euros():
@@ -40,3 +40,7 @@ def test_tip_ranges_from_zero_to_ten_euros_with_happiness():
     assert tip_cents_from_happiness(50.0) == 500
     assert tip_cents_from_happiness(100.0) == 1000
     assert tip_cents_from_happiness(150.0) == 1000
+
+
+def test_happiness_becomes_a_five_star_customer_rating():
+    assert [star_rating_from_happiness(value) for value in (-10, 0, 9, 10, 49, 50, 90, 100, 120)] == [0, 0, 0, 1, 2, 3, 5, 5, 5]

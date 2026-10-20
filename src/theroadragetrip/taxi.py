@@ -14,7 +14,7 @@ from .physics import (
     is_violating_oneway,
 )
 from .localization import tr
-from .fare import calculate_fare_cents, format_euros, tip_cents_from_happiness
+from .fare import calculate_fare_cents, format_euros, star_rating_from_happiness, tip_cents_from_happiness
 from .police import SpeedCamera, camera_sees_car
 from .rail_bookings import ACCEPTED, IN_TAXI, MISSED, PASSENGER_MET, PASSENGER_WAITING, TRAIN_ARRIVING, waiting_booking
 from .residents import CITY_DATA, Resident, ResidentManager
@@ -2386,10 +2386,12 @@ class TaxiManager:
                     self.last_fare_cents = fare_cents
                     self.last_tip_cents = tip_cents
                     avg_kmh = (self.trip_distance_m / max(1.0, self.elapsed_time)) * 3.6
+                    rating = star_rating_from_happiness(self.passenger_happiness)
                     self.notification_msg = tr(
                         self.language, "fare_complete_points", earned=earned, avg=avg_kmh,
                         seconds=self.elapsed_time, amount=format_euros(fare_cents, self.language),
-                        tip=format_euros(tip_cents, self.language),
+                        tip=format_euros(tip_cents, self.language), rating=rating,
+                        stars="★" * rating + "☆" * (5 - rating),
                     )
                     self.notification_timer = 6.0
                     logger.info(

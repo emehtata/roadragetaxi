@@ -379,12 +379,8 @@ static func task_text(taxi: Dictionary, language := "en") -> String:
 	return who
 
 
-## The small line on the taximeter: the fare's distance and the
-## passenger's happiness; missing or malformed values are left out.
+## The small line on the taximeter: the fare's distance, when available.
 static func meter_info(taxi: Dictionary) -> String:
-	var parts := []
 	if typeof(taxi.get("fare_distance_m")) in [TYPE_INT, TYPE_FLOAT]:
-		parts.append("%.2f km" % (taxi["fare_distance_m"] / 1000.0))
-	if typeof(taxi.get("passenger_happiness")) in [TYPE_INT, TYPE_FLOAT]:
-		parts.append("☺ %d%%" % roundi(taxi["passenger_happiness"]))
-	return "  ".join(parts)
+		return "%.2f km" % (taxi["fare_distance_m"] / 1000.0)
+	return ""
