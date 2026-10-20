@@ -133,6 +133,40 @@ def test_a_line_bus_keeps_its_riders_aboard_at_a_stop():
     assert manager.pedestrians == [] and group.disembarked_resident_ids == set()
 
 
+def test_a_line_bus_exchanges_visible_passengers_at_a_stop():
+    from theroadragetrip.activities import ActivityInstance, ActivityLocation
+    from theroadragetrip.npc import NPCState, TripGroup
+    from theroadragetrip.osm import Way
+    from theroadragetrip.pedestrian import PedestrianManager
+    from theroadragetrip.residents import ResidentManager
+
+    residents = ResidentManager()
+    driver = residents.create("driving")
+    rider = residents.create("riding")
+    waiter = residents.create("walking")
+    group = TripGroup(1, 1, [driver.resident_id, rider.resident_id],
+                      boarded_resident_ids={driver.resident_id, rider.resident_id})
+    bus = SimpleNamespace(
+        state=NPCState.PARKED, vehicle_kind="bus_line", trip_group=group,
+        owner_id=driver.resident_id, vehicle_id=1, available_seats=3,
+        x=0.0, y=0.0, heading=0.0, width_m=2.5,
+    )
+    sidewalk = Way(points_m=[(-30.0, -3.0), (30.0, -3.0)], highway="footway", half_width_m=1.2)
+    manager = PedestrianManager([sidewalk], target_count=0, traffic_vehicles=[bus], residents=residents)
+    pedestrian = manager.spawn_pedestrian_at(0.0, -3.0, resident_id=waiter.resident_id)
+    manager.add_pedestrian(pedestrian)
+    pedestrian.activity = ActivityInstance("bus_stop_waiting", ActivityLocation(0.0, 3.0), 0.0)
+    pedestrian.state = "performing_activity"
+
+    manager.exchange_bus_passengers(bus, _stop(0.0, -3.0))
+
+    assert rider.resident_id not in group.member_resident_ids
+    leaving = next(p for p in manager.pedestrians if p.resident_id == rider.resident_id)
+    assert leaving.y < bus.y  # eastbound: the right/passenger side is south, away from traffic
+    assert waiter.resident_id in group.member_resident_ids
+    assert pedestrian.linked_vehicle_id == id(bus) and pedestrian.state == "returning_to_vehicle"
+
+
 def test_a_stop_is_never_served_from_the_far_side():
     """South of an eastbound street, a stop serves eastbound buses. A bus
     coming from the east would cross the oncoming lane into the bay

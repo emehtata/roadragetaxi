@@ -4294,7 +4294,8 @@ class NPCVehicleManager:
                 )
                 pedestrian.state = "walking_to_activity"
 
-    def _handle_parked_vehicle(self, vehicle: NPCVehicle, resident_manager: ResidentManager, sim_time: float = 0.0) -> None:
+    def _handle_parked_vehicle(self, vehicle: NPCVehicle, resident_manager: ResidentManager,
+                               sim_time: float = 0.0, pedestrian_mgr=None) -> None:
         """Per-frame, cheap only: retirement checks that need to happen
         the instant a vehicle parks. Deciding and routing to the *next*
         destination is deliberately NOT done here - continue_npc_trip's
@@ -4324,8 +4325,12 @@ class NPCVehicleManager:
                 return  # a cruising group stays aboard for its next budgeted trip
             vehicle.vehicle_kind = "traffic"
         if is_line_bus(vehicle):
-            if vehicle.bus_job is not None and vehicle.bus_job.at_stop(sim_time, vehicle.x, vehicle.y):
+            job = vehicle.bus_job
+            previous_state = job.state if job is not None else None
+            if job is not None and job.at_stop(sim_time, vehicle.x, vehicle.y):
                 vehicle.bus_job = None  # the terminus: it waits there until retired out of sight
+            if job is not None and previous_state != "stopped" and job.state == "stopped" and pedestrian_mgr is not None:
+                pedestrian_mgr.exchange_bus_passengers(vehicle, job.stopped_at)
             return
         if vehicle.vehicle_kind == "household" and vehicle.returning_home:
             # Arrived home (section 12) - the trip is simply over, no
@@ -5491,7 +5496,7 @@ class NPCVehicleManager:
                 spatial_grid=spatial_grid,
             )
             if vehicle.state == NPCState.PARKED:
-                self._handle_parked_vehicle(vehicle, resident_manager, traffic_world.sim_time)
+                self._handle_parked_vehicle(vehicle, resident_manager, traffic_world.sim_time, pedestrian_mgr)
 
         # Collision is a post-physics phase. Reindex moved vehicles, query a
         # swept local area, then test current and interpolated poses. This

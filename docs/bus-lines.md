@@ -9,8 +9,9 @@ Phase 1 (below) is implemented. A line is one OSM `route=bus` (or
 `trolleybus`) relation: its stops in order. A few of the NPC
 population's moving-traffic spawns are line buses; each drives its line
 from the stop nearest where it spawned to the end of the line, pulling
-into every stop's bay. Its riders stay aboard. Buses show their line
-number on a roof box that turns with the bus.
+into every stop's bay. At a stop, onboard riders can leave and nearby
+waiting pedestrians can board. Buses show their line number on a roof box
+that turns with the bus.
 
 ## Design
 
@@ -67,9 +68,7 @@ versioned so existing maps refetch with their routes. Tests:
 `tests/test_bus_lines.py` (parsing, the job, and a bus driving its
 line through the NPC system).
 
-Not yet: passengers boarding (pedestrians already wait at stops), a
-timetable, buses using the bay itself, heading-aware turning at a
-terminus.
+Not yet: a timetable or heading-aware turning at a terminus.
 
 ## Phase 2 (2026-10-19): into the bay, riders aboard
 
@@ -118,3 +117,11 @@ Tried and reverted: turning long vehicles about their rear axle in
 physics. It is right for the body, but NPC paths are laid out for cars,
 so at a tight corner the bus's rear cut inside and the road-boundary
 check halted it. Needs wide-swinging turns for long vehicles first.
+
+## Phase 5 (2026-10-20): visible passenger exchange
+
+When a bus first enters its dwell state, up to three onboard passengers
+step out at the passenger-side door and walk away. Nearby pedestrians actively
+waiting at that stop walk to the same door and board; the bus does not depart
+until they are aboard. Passenger identities and vehicle occupancy move with
+them instead of creating decorative copies.

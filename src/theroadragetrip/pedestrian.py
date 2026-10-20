@@ -616,7 +616,7 @@ class PedestrianManager:
             if getattr(vehicle, "vehicle_kind", None) == "night_cruise":
                 continue  # cruising groups stay aboard between trips
             if getattr(vehicle, "vehicle_kind", None) == "bus_line":
-                continue  # a line bus at a stop: its riders stay aboard (bus_lines.py)
+                continue  # bus-stop exchange owns its riders; this path unloads only building visitors
             trip_group = getattr(vehicle, "trip_group", None)
             if trip_group is None or not self.entrance_locations:
                 continue
@@ -667,6 +667,48 @@ class PedestrianManager:
                     trip_group.disembarked_resident_ids.add(resident_id)
                     trip_group.boarded_resident_ids.discard(resident_id)
                     linked_residents.add(resident_id)
+
+    def exchange_bus_passengers(self, vehicle, stop) -> None:
+        """Show a few riders leaving and let people waiting at this stop board."""
+        group = getattr(vehicle, "trip_group", None)
+        if group is None:
+            return
+
+        door = self._vehicle_entry_position(vehicle)
+        leaving = [resident_id for resident_id in group.member_resident_ids if resident_id != vehicle.owner_id][:3]
+        for resident_id in leaving:
+            pedestrian = self.spawn_pedestrian_at(*door, heading=vehicle.heading, resident_id=resident_id)
+            if pedestrian is None or not self.add_pedestrian(pedestrian):
+                continue
+            group.member_resident_ids.remove(resident_id)
+            group.boarded_resident_ids.discard(resident_id)
+            group.disembarked_resident_ids.discard(resident_id)
+            resident = self.residents.get(resident_id) if self.residents is not None else None
+            if resident is not None:
+                resident.mode = "walking"
+                resident.active_vehicle_id = None
+                resident.trip_group_id = None
+
+        seats = vehicle.available_seats
+        waiting = [
+            pedestrian for pedestrian in self.pedestrians
+            if pedestrian.activity is not None
+            and pedestrian.activity.plugin_id == "bus_stop_waiting"
+            and pedestrian.state == "performing_activity"
+            and math.hypot(pedestrian.x - stop.x, pedestrian.y - stop.y) <= 15.0
+        ][:seats]
+        for pedestrian in waiting:
+            self._end_activity(pedestrian, pedestrian.activity)
+            group.member_resident_ids.append(pedestrian.resident_id)
+            pedestrian.linked_vehicle_id = id(vehicle)
+            pedestrian.destination = door
+            pedestrian.route = None
+            pedestrian.state = "returning_to_vehicle"
+            pedestrian.animation_state = "walking"
+            resident = self.residents.get(pedestrian.resident_id) if self.residents is not None else None
+            if resident is not None:
+                resident.trip_group_id = group.group_id
+                resident.vehicle_ids.add(vehicle.vehicle_id)
 
     def track_vomit(self, puddles) -> None:
         """A pedestrian walking into a vomit puddle curses (the bubble and
@@ -949,6 +991,10 @@ class PedestrianManager:
             pedestrian.vehicle_entry_timer = max(0.0, pedestrian.vehicle_entry_timer - update_dt)
             if pedestrian.vehicle_entry_timer <= 0.0:
                 trip_group.boarded_resident_ids.add(pedestrian.resident_id)
+                resident = self.residents.get(pedestrian.resident_id) if self.residents is not None else None
+                if resident is not None:
+                    resident.mode = "riding"
+                    resident.active_vehicle_id = vehicle.vehicle_id
                 pedestrian.state = PedestrianState.DESPAWNING.value
                 pedestrian.linked_vehicle_id = None
             return True
@@ -1275,8 +1321,8 @@ class PedestrianManager:
         offset = getattr(vehicle, "width_m", 1.8) * 0.5 + 1.0
         heading = getattr(vehicle, "heading", 0.0)
         return (
-            vehicle.x - math.sin(heading) * offset,
-            vehicle.y + math.cos(heading) * offset,
+            vehicle.x + math.sin(heading) * offset,
+            vehicle.y - math.cos(heading) * offset,
         )
 
     def cancel_vehicle_reservation(self, pedestrian: Pedestrian) -> None:

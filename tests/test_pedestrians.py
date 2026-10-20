@@ -578,7 +578,7 @@ def test_pedestrian_can_exit_occupied_vehicle():
     assert manager.exit_vehicle(pedestrian, vehicle)
     assert pedestrian.state == "walking"
     assert pedestrian.current_vehicle_id is None
-    assert (pedestrian.x, pedestrian.y) == (20.0, 6.9)
+    assert (pedestrian.x, pedestrian.y) == (20.0, 3.1)  # right/passenger side of an eastbound vehicle
     assert vehicle.state == "driving"
     assert vehicle.current_driver_id is None
 
