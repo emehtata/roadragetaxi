@@ -35,6 +35,7 @@ class BenchSittingPlugin(ActivityPlugin):
     def start(self, context: ActivityContext, instance: ActivityInstance) -> None:
         instance.data["duration_s"] = random.uniform(self.definition.min_duration_s, self.definition.max_duration_s)
         instance.data["elapsed_s"] = 0.0
+        context.pedestrian.animation_state = "sitting"
         bench = instance.location.extra if instance.location is not None else None
         if bench is not None and bench.direction_angle is not None:
             context.pedestrian.heading = bench.direction_angle
