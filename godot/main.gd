@@ -19,6 +19,7 @@ const WeatherLayer := preload("res://weather_layer.gd")
 const T := preload("res://i18n.gd")
 const NightclubAudio := preload("res://nightclub_audio.gd")
 const CarAudio := preload("res://car_audio.gd")
+const WildlifeLayer := preload("res://wildlife.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
@@ -116,7 +117,7 @@ var graphics: Dictionary = {}  # empty for direct scenes/tests; the launcher sup
 
 var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
 var holidays: Node = preload("res://holiday_layer.gd").new()
-var wildlife: Wildlife = preload("res://wildlife.gd").new()
+var wildlife := WildlifeLayer.new()
 var _tram_states := {}  # tram id -> its state last frame: the bell when one sets off
 var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, multiplied over the world canvas
 
