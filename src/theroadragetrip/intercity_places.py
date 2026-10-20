@@ -16,8 +16,9 @@ from shapely.ops import transform, unary_union
 from .intercity import IntercityGraph, ROAD_CLASSES, _elements, _step, build_xml
 from .utils.pbf_index import osmium_command
 
-GATEWAY_VERSION = 1
+GATEWAY_VERSION = 2
 CONNECTOR_CLASSES = ("tertiary", "tertiary_link", "unclassified", "residential", "living_street", "service")
+LEAN_CONNECTOR_CLASSES = ("tertiary", "tertiary_link", "unclassified")
 EXTENT_M = 6000
 MAX_CONNECTOR_M = 8000
 
@@ -61,7 +62,8 @@ def _extract_town_regions(command, source, output, polygon, places, unproject):
                    check=True,capture_output=True,timeout=1800)
 
 
-def attach_gateways(path, local_path, places, *, extent_m=EXTENT_M, max_connector_m=MAX_CONNECTOR_M, town_policies=None):
+def attach_gateways(path, local_path, places, *, extent_m=EXTENT_M, max_connector_m=MAX_CONNECTOR_M,
+                    town_policies=None, append=False):
     """Retain only verified directed connector paths, sharing original OSM IDs."""
     if not 0 < extent_m <= EXTENT_M or not 0 < max_connector_m <= 20000:
         raise ValueError("Town connector extent must be 1..6000 m and length 1..20000 m")
@@ -140,19 +142,27 @@ def attach_gateways(path, local_path, places, *, extent_m=EXTENT_M, max_connecto
             else:
                 report["supported"].append(identity)
                 records.append((identity,name,x,y,weight,kind,anchor,json.dumps(associations)))
-        if not records:
+        if not records and not append:
             raise ValueError("No towns have usable intercity gateways")
         backbone.close()
         backbone = None
         with sqlite3.connect(path) as db:
+            previous = {"supported":[],"missing":[],"connectors":[]}
+            if append:
+                row = db.execute("SELECT value FROM gateway_report").fetchone()
+                if row:
+                    previous = json.loads(row[0])
             db.executescript("""CREATE TABLE IF NOT EXISTS places(id TEXT PRIMARY KEY,name TEXT,x REAL,y REAL,
                 weight INTEGER,kind TEXT,anchor INTEGER,gateways TEXT);
                 CREATE TABLE IF NOT EXISTS gateway_report(value TEXT);
                 CREATE TABLE IF NOT EXISTS place_aliases(place_id TEXT,alias TEXT,source_id TEXT,source_osm TEXT);""")
-            db.execute("DELETE FROM places")
-            db.executemany("INSERT INTO places VALUES(?,?,?,?,?,?,?,?)",records)
-            db.execute("DELETE FROM place_aliases")
+            if not append:
+                db.execute("DELETE FROM places")
+                db.execute("DELETE FROM place_aliases")
+            db.executemany("INSERT OR REPLACE INTO places VALUES(?,?,?,?,?,?,?,?)",records)
             identities = {row[0] for row in records}
+            if append:
+                db.executemany("DELETE FROM place_aliases WHERE place_id=?",[(identity,) for identity in identities])
             db.executemany("INSERT INTO place_aliases VALUES(?,?,?,?)",[row for row in landmark_provenance() if row[0] in identities])
             # Imported connector geometry keeps its OSM way/node identity and restrictions.
             existing = {(a,b,way) for a,b,way in db.execute("SELECT a,b,way FROM segments")}
@@ -167,9 +177,15 @@ def attach_gateways(path, local_path, places, *, extent_m=EXTENT_M, max_connecto
             rules = set(db.execute("SELECT * FROM restrictions"))
             db.executemany("INSERT INTO restrictions VALUES(?,?,?,?,?)",[r for r in local.db.execute("SELECT * FROM restrictions") if r not in rules])
             metadata = json.loads(db.execute("SELECT value FROM metadata").fetchone()[0])
+            if append:
+                report = {"supported":[*previous["supported"],*report["supported"]],
+                          "missing":report["missing"],
+                          "connectors":[*previous["connectors"],*report["connectors"]]}
             metadata.update(gateway_version=GATEWAY_VERSION,connector_policy={"extent_m":extent_m,"max_length_m":max_connector_m,"classes":CONNECTOR_CLASSES},
-                            gateway_places=len(records),missing_gateway_places=len(report["missing"]))
-            metadata["catalogue_digest"] = catalogue_digest(places)
+                            gateway_places=db.execute("SELECT COUNT(*) FROM places").fetchone()[0],
+                            missing_gateway_places=len(report["missing"]))
+            if not append:
+                metadata["catalogue_digest"] = catalogue_digest(places)
             metadata["town_connector_policies"] = town_policies or {}
             metadata["no_uturn_ways"] = sorted(set(metadata.get("no_uturn_ways",()))|set(local.metadata.get("no_uturn_ways",())))
             metadata["junction_nodes"] = db.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
@@ -185,22 +201,23 @@ def attach_gateways(path, local_path, places, *, extent_m=EXTENT_M, max_connecto
     return report
 
 
-def prepare_gateways(source, path, *, town_policies=None):
-    """Filter local streets only inside catalogue regions, then discard the extract."""
+def _prepare_gateway_pass(source, path, places, connector_classes, *, town_policies=None, append=False,
+                          region_places=None):
+    """Build and discard one bounded local graph tier."""
     from pyproj import Transformer
-    places = catalogue()
     project = Transformer.from_crs("EPSG:4326","EPSG:3067",always_xy=True).transform
     unproject = Transformer.from_crs("EPSG:3067","EPSG:4326",always_xy=True).transform
+    region_places = places if region_places is None else region_places
     regions = defaultdict(list)
-    for _,_,x,y,*_ in places:
+    for _,_,x,y,*_ in region_places:
         regions[(int(x//EXTENT_M),int(y//EXTENT_M))].append((x,y))
-    classes = (*ROAD_CLASSES,*CONNECTOR_CLASSES)
+    classes = (*ROAD_CLASSES,*connector_classes)
     command = osmium_command()
     with tempfile.TemporaryDirectory(prefix="intercity-towns-") as temp:
         polygon,regional,filtered,xml,local = [Path(temp)/name for name in
             ("town-regions.geojson","regions.pbf","roads.pbf","towns.osm","local.sqlite")]
         _step(3)
-        _extract_town_regions(command,source,regional,polygon,places,unproject)
+        _extract_town_regions(command,source,regional,polygon,region_places,unproject)
         subprocess.run([command,"tags-filter",str(regional),"w/highway="+",".join(classes),"r/type=restriction","-o",str(filtered)],check=True,capture_output=True,timeout=1800)
         retained = set()
         with xml.open("wb") as output, subprocess.Popen([command,"cat",str(filtered),"-f","osm"],stdout=subprocess.PIPE) as process:
@@ -239,4 +256,20 @@ def prepare_gateways(source, path, *, town_policies=None):
             output.write(b'</osm>')
         with xml.open("rb") as stream:
             build_xml(stream,local,project,classes,connector_extract=True)
-        return attach_gateways(path,local,places,town_policies=town_policies)
+        return attach_gateways(path,local,places,town_policies=town_policies,append=append)
+
+
+def prepare_gateways(source, path, *, town_policies=None):
+    """Use small public roads first; inspect little streets only for unresolved places."""
+    places = catalogue()
+    report = _prepare_gateway_pass(source,path,places,LEAN_CONNECTOR_CLASSES,town_policies=town_policies)
+    missing = {item["id"] for item in report["missing"]}
+    if missing:
+        unresolved = [place for place in places if place[0] in missing]
+        # Keep overlapping destination regions: their streets can carry a valid
+        # approach through the edge of an unresolved place's own 6 km area.
+        context = [place for place in places if any(abs(place[2]-target[2]) <= 2*EXTENT_M
+                   and abs(place[3]-target[3]) <= 2*EXTENT_M for target in unresolved)]
+        report = _prepare_gateway_pass(source,path,unresolved,CONNECTOR_CLASSES,town_policies=town_policies,
+                                       append=True,region_places=context)
+    return report

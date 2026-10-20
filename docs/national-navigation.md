@@ -270,7 +270,9 @@ inside 6-km town regions, using the same OSM-ID topology, access rules and turn
 restrictions as the backbone. Only actual directed connector paths, at most
 8 km each, survive in the final database; the temporary local graph is deleted.
 The town regions are merged into one spatial extract before local road classes
-are filtered, so unrelated residential and service streets elsewhere in Finland
+are filtered. A lean first pass uses tertiary and unclassified approaches; only
+destinations unresolved by that graph get a second bounded pass containing
+residential, living and service streets. Unrelated little streets therefore
 never enter the XML parser or temporary routing graph.
 Anchor candidates must connect in both directions to the mainland backbone.
 Public streets take priority over service/parking roads. Town anchors are within
@@ -360,21 +362,24 @@ routing always uses stable IDs, never the first name match.
 
 | Measurement | Result |
 | --- | --- |
-| Final junctions / stored segments / directed edges | 73,179 / 84,638 / 120,653 |
-| Final artifact, including 351 landmark aliases/source cross-references | 20,365,312 bytes (19.4 MiB) |
-| Supported catalogue destinations | 397 of 412 |
-| Directed approach pairs retained | 1,180 |
-| Weak / strong components; largest strong component | 50 / 1,437; 70,761 nodes |
+| Final junctions / stored segments / directed edges | 69,573 / 80,717 / 113,275 |
+| Final artifact, including 349 landmark aliases/source cross-references | 19,931,136 bytes (19.0 MiB) |
+| Supported catalogue destinations | 396 of 412 |
+| Directed approach pairs retained | 1,179 |
+| Weak / strong components; largest strong component | 50 / 1,442; 67,147 nodes |
 | Graph open / compatible startup reuse | 0.275 / 0.344 s |
 | Peak query-process resident memory | 121,296 KiB |
 | Full preparation run before spatial town prefiltering, including temporary town extraction | 6 min 33 s; 2,336,968 KiB peak process memory |
 | Full preparation with spatial town prefiltering | 5 min 00 s; 2,328,152 KiB peak process memory |
+| Full preparation with tiered town roads and bounded fallback | 3 min 58 s; 2,315,588 KiB peak process memory |
 | Final gateway-policy validation, reusing that temporary extract and rebuilding the backbone | 39.5 s; 2,264,256 KiB peak process memory |
 
-The spatial prefilter saved 1 min 33 s (about 24%) on the same machine, but did
-not materially reduce peak memory: building the 3.5-million-element temporary
-town graph remains the dominant cost. The earlier full preparation timing
-preceded the spatial town prefilter and final anchor prefilter improvements;
+The spatial prefilter saved 1 min 33 s (about 24%) on the same machine. Trying
+tertiary and unclassified roads first, then building a little-street graph only
+for unresolved destinations and their overlapping neighbours, saved another
+1 min 02 s while preserving the full builder's destination coverage. Peak
+memory remains dominated by osmium's country-scale node tracking. The earlier
+full preparation timing preceded the spatial and tiered prefilters;
 the final validation reused its extracted town graph, not a second national
 street cache. Temporary extracts are not part of the final artifact. Offline
 preparation is memory-intensive and may take several minutes; it is not done
@@ -385,9 +390,9 @@ geometry continuity checks:
 
 | Town route | First / repeated A* | Distance | Segments / geometry points |
 | --- | --- | --- | --- |
-| Oulu–Helsinki | 0.248 / 0.257 s | 670.8 km | 1,481 / 7,706 |
-| Oulu–Tampere | 0.116 / 0.127 s | 483.2 km | 581 / 5,394 |
-| Helsinki–Rovaniemi | 0.569 / 0.547 s | 889.2 km | 1,801 / 10,946 |
+| Oulu–Helsinki | 0.349 / 0.335 s | 671.1 km | 1,483 / 7,721 |
+| Oulu–Tampere | 0.146 / 0.151 s | 483.4 km | 583 / 5,409 |
+| Helsinki–Rovaniemi | 0.609 / 0.915 s | 888.8 km | 1,785 / 10,933 |
 
 The actual background coordinator was also exercised with departure roads
 reconstructed from the source OSM geometry and real local `TrafficWorld`

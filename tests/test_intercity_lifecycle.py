@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from theroadragetrip.intercity import IntercityGraph, ROAD_CLASSES, build_xml
-from theroadragetrip.intercity_places import EXTENT_M, _extract_town_regions, attach_gateways, place_id
+from theroadragetrip.intercity_places import GATEWAY_VERSION, EXTENT_M, _extract_town_regions, attach_gateways, place_id, prepare_gateways
 from theroadragetrip.intercity_navigation import IntercityPlanner
 from theroadragetrip.navigation_route import NavigationRoute
 from theroadragetrip.osm import AutoFetchManager, Way
@@ -45,6 +45,34 @@ def test_town_source_is_spatially_reduced_before_street_filtering(tmp_path, monk
                       '-o',str(tmp_path/'regions.pbf')]]
 
 
+def test_gateway_preparation_falls_back_only_for_missing_places(monkeypatch):
+    places = [('a','A',0,0,1,None),('b','B',1,0,1,None)]
+    calls = []
+    monkeypatch.setattr('theroadragetrip.intercity_places.catalogue',lambda:places)
+    def prepare(source,path,selected,classes,**kwargs):
+        calls.append(([place[0] for place in selected],classes,kwargs.get('append',False),kwargs))
+        if len(calls) == 1:
+            return {'supported':['a'],'missing':[{'id':'b'}],'connectors':[]}
+        return {'supported':['a','b'],'missing':[],'connectors':[]}
+    monkeypatch.setattr('theroadragetrip.intercity_places._prepare_gateway_pass',prepare)
+    assert prepare_gateways('source','output')['supported'] == ['a','b']
+    assert calls[0][0] == ['a','b'] and calls[0][2] is False
+    assert calls[1][0] == ['b'] and calls[1][2] is True
+    assert [place[0] for place in calls[1][3]['region_places']] == ['a','b']
+
+
+def test_gateway_fallback_merges_places_and_reports(tmp_path):
+    path = build(tmp_path/'national.sqlite')
+    local = build(tmp_path/'local.sqlite',local=True)
+    first = place_id('First',20200,0)
+    second = place_id('Second',20200,0)
+    attach_gateways(path,local,[(first,'First',20200,0,1,None)])
+    report = attach_gateways(path,local,[(second,'Second',20200,0,1,None)],append=True)
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT COUNT(*) FROM places').fetchone()[0] == 2
+    assert report['supported'] == [first,second] and not report['missing']
+
+
 def prepared(tmp_path):
     path = build(tmp_path/'national.sqlite')
     local = build(tmp_path/'local.sqlite',local=True)
@@ -67,7 +95,7 @@ def test_gateway_uses_connected_osm_roads_not_nearest_carriageway(tmp_path):
     try:
         anchor = graph.db.execute('SELECT anchor FROM places WHERE id=?',(good,)).fetchone()[0]
         assert graph.route(1,anchor).points[-1] == (20200,0)
-        assert graph.metadata['gateway_version'] == 1
+        assert graph.metadata['gateway_version'] == GATEWAY_VERSION
         assert graph.metadata['junction_nodes'] == len(graph.nodes)
         assert graph.db.execute("SELECT COUNT(*) FROM segments WHERE way=40").fetchone()[0] == 0
     finally:

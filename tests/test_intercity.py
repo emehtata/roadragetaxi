@@ -177,7 +177,8 @@ def test_user_initialization_reuses_matching_database_and_rebuilds_changed_sourc
     with sqlite3.connect(path) as db:
         metadata = json.loads(db.execute("SELECT value FROM metadata").fetchone()[0])
         metadata["source"] = {"path":str(source.resolve()),"size":stat.st_size,"mtime_ns":stat.st_mtime_ns}
-        metadata.update(gateway_version=1,gateway_places=1)
+        from theroadragetrip.intercity_places import GATEWAY_VERSION
+        metadata.update(gateway_version=GATEWAY_VERSION,gateway_places=1)
         from theroadragetrip.intercity_places import catalogue_digest
         metadata["catalogue_digest"] = catalogue_digest()
         from theroadragetrip.intercity_places import CONNECTOR_CLASSES
