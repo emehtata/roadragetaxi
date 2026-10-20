@@ -150,6 +150,10 @@ func test_startup_progress() -> void:
 	var Startup := preload("res://startup.gd")
 	check(Startup.startup_status("{}").is_empty() and Startup.startup_status("[]").is_empty(), "startup: invalid or absent status ignored")
 	check(Startup.startup_status('{"stage":3,"detail":"x","history":[]}').is_empty(), "startup: malformed stage ignored")
+	var intercity := "Initializing intercity navigation database...|"
+	check(Startup.intercity_progress(intercity + "2/4 · 1.25 M") == {"step": 2, "value": 1.0}, "startup: known intercity stages drive the meter without fake percentages")
+	check(Startup.intercity_progress(intercity + "4/4 · 50/100").value == 3.5, "startup: town connection counts advance the final step")
+	check(Startup.intercity_progress(intercity + "5/4").is_empty() and Startup.intercity_progress(intercity + "x/4").is_empty(), "startup: invalid preparation counters ignored")
 	var shell := Startup.new()  # no _ready/menu process launch
 	shell._language = "fi"
 	var temporary := OS.get_environment("TEMP") if OS.get_name() == "Windows" else "/tmp"
@@ -161,7 +165,10 @@ func test_startup_progress() -> void:
 	shell._startup_elapsed = Label.new()
 	shell._startup_history = Label.new()
 	shell._startup_bar = ProgressBar.new()
-	for node in [shell._startup_stage, shell._startup_detail, shell._startup_elapsed, shell._startup_history, shell._startup_bar]:
+	shell._startup_activity = Label.new()
+	shell._startup_busy_bar = ProgressBar.new()
+	shell._startup_busy_bar.indeterminate = true
+	for node in [shell._startup_stage, shell._startup_detail, shell._startup_elapsed, shell._startup_history, shell._startup_bar, shell._startup_activity, shell._startup_busy_bar]:
 		shell.add_child(node)
 	var file := FileAccess.open(shell._startup_path, FileAccess.WRITE)
 	check(file != null, "startup: status fixture is writable")
@@ -177,6 +184,23 @@ func test_startup_progress() -> void:
 	check(shell._startup_detail.text == "Valmistellaan muuta liikennettä…", "startup: Finnish substage reaches the visible label")
 	check(shell._startup_elapsed.text.begins_with("Kulunut 5 s"), "startup: elapsed time keeps updating")
 	check(shell._startup_history.text.contains("Käynnistetään palvelinta"), "startup: recent stages shown")
+	file = FileAccess.open(shell._startup_path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"stage": "world", "detail": intercity + "2/4", "history": ["starting", "world"]}))
+	file.close()
+	shell._process(0.5)
+	check(not shell._startup_bar.indeterminate and shell._startup_bar.value == 1 and shell._startup_bar.max_value == 4, "startup: intercity has a four-step progress meter")
+	check(shell._startup_busy_bar.visible and shell._startup_busy_bar.indeterminate, "startup: a separate activity bar keeps moving without changing actual progress")
+	check(shell._startup_detail.text.contains("Vaihe 2 / 4") and shell._startup_activity.visible, "startup: localized intercity stage and activity are visible")
+	shell._startup_started = Time.get_ticks_msec() - 61000
+	shell._startup_changed_at = Time.get_ticks_msec() - 45000
+	shell._startup_poll = 100.0  # deliberately no server/file updates
+	shell._process(0.01)
+	check(shell._startup_elapsed.text.begins_with("Kulunut 61 s") and shell._startup_elapsed.text.contains("45 s"), "startup: elapsed and silence time update even between polls")
+	shell._startup_feedback(shell._startup_started + 61600)
+	var activity: String = shell._startup_activity.text
+	shell._startup_feedback(shell._startup_started + 62000)
+	check(activity != shell._startup_activity.text and shell._startup_bar.value == 1, "startup: local activity animates while actual progress stays honest during server silence")
+	shell._startup_poll = 0
 	file = FileAccess.open(shell._startup_path, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"stage": "error", "detail": "ValueError: broken map", "history": ["world", "error"]}))
 	file.close()

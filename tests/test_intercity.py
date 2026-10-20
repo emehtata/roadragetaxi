@@ -21,6 +21,14 @@ def restriction(incoming,outgoing,via,kind,via_type="node"):
     return f'<relation id="900"><member type="way" role="from" ref="{incoming}"/><member type="{via_type}" role="via" ref="{via}"/><member type="way" role="to" ref="{outgoing}"/><tag k="type" v="restriction"/><tag k="restriction" v="{kind}"/></relation>'
 
 
+def test_build_stage_is_reported_even_before_the_first_large_parse_batch(tmp_path, monkeypatch):
+    from theroadragetrip import intercity
+    messages = []
+    monkeypatch.setattr(intercity, "_report", messages.append)
+    fixture(tmp_path, [(1, 0, 0), (2, 100, 0)], [(10, [1, 2], {})])
+    assert messages == ["2/4"]
+
+
 def test_geometry_is_compacted_once_and_reconstructed_in_both_directions(tmp_path):
     path,stats = fixture(tmp_path,[(1,0,0),(2,50,10),(3,100,0)],[(10,[1,2,3],{})])
     assert stats["source_geometry_nodes"] == 3 and stats["junction_nodes"] == 2

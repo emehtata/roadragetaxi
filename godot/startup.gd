@@ -33,6 +33,8 @@ var _startup_detail: Label
 var _startup_elapsed: Label
 var _startup_history: Label
 var _startup_bar: ProgressBar
+var _startup_activity: Label
+var _startup_busy_bar: ProgressBar
 var _startup_last: Dictionary = {}
 var _startup_changed_at := 0
 var _focusables: Array[Control] = []
@@ -841,6 +843,17 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_startup_bar.show_percentage = false  # stages have no reliable total duration
 	_startup_bar.custom_minimum_size = Vector2(520, 20)
 	_body.add_child(_startup_bar)
+	_startup_busy_bar = ProgressBar.new()
+	_startup_busy_bar.indeterminate = true
+	_startup_busy_bar.show_percentage = false
+	_startup_busy_bar.custom_minimum_size = Vector2(520, 8)
+	_startup_busy_bar.visible = false
+	_body.add_child(_startup_busy_bar)
+	_startup_activity = Label.new()
+	_startup_activity.visible = false
+	_startup_activity.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_startup_activity.custom_minimum_size.x = 520
+	_body.add_child(_startup_activity)
 	_startup_stage = Label.new()
 	_startup_stage.text = _t("startup_starting")
 	_body.add_child(_startup_stage)
@@ -898,14 +911,56 @@ static func startup_status(text: String) -> Dictionary:
 	return parsed if parsed is Dictionary and parsed.get("stage") is String and parsed.get("detail") is String and parsed.get("history") is Array else {}
 
 
+static func intercity_progress(detail: String) -> Dictionary:
+	if not detail.begins_with("Initializing intercity navigation database...|"):
+		return {}
+	var counter := detail.split("|", true, 1)[1].split(" · ", true, 1)
+	var phase := counter[0].split("/")
+	if phase.size() != 2 or phase[1] != "4" or not phase[0].is_valid_int():
+		return {}
+	var step := int(phase[0])
+	if step < 1 or step > 4:
+		return {}
+	var value := float(step - 1)
+	if step == 4 and counter.size() == 2:
+		var towns := counter[1].split("/")
+		if towns.size() == 2 and towns[0].is_valid_int() and towns[1].is_valid_int() and int(towns[1]) > 0:
+			value += clampf(float(towns[0]) / float(towns[1]), 0.0, 1.0)
+	return {"step": step, "value": value}
+
+
+func _startup_feedback(now: int) -> void:
+	_startup_elapsed.text = _t("startup_elapsed") % [(now - _startup_started) / 1000, (now - _startup_changed_at) / 1000]
+	var detail: String = _startup_last.get("detail", "")
+	var preparing := detail.begins_with("Initializing intercity navigation database...")
+	var progress := intercity_progress(detail)
+	if _startup_busy_bar != null:
+		_startup_busy_bar.visible = preparing and not progress.is_empty()
+	_startup_bar.indeterminate = progress.is_empty()
+	_startup_bar.show_percentage = false  # stage counts are not an estimate of remaining time
+	if not progress.is_empty():
+		_startup_bar.max_value = 4
+		_startup_bar.value = progress.value
+		_startup_detail.text = _t("startup_intercity_step") % [progress.step, _t("startup_intercity_" + str(progress.step))]
+		var parts := detail.split(" · ", true, 1)
+		if parts.size() == 2:
+			_startup_detail.text += " · " + parts[1]
+	if _startup_activity != null:
+		_startup_activity.visible = preparing
+		if preparing:
+			var dots := ".".repeat(int((now - _startup_started) / 400) % 4)
+			_startup_activity.text = _t("startup_intercity_wait") % dots
+
+
 func _process(delta: float) -> void:
 	if not _loading:
 		return
+	var now := Time.get_ticks_msec()
+	_startup_feedback(now)  # local animation/timers must not depend on server/file updates
 	_startup_poll -= delta
 	if _startup_poll > 0.0:
 		return
 	_startup_poll = 0.5
-	var now := Time.get_ticks_msec()
 	if FileAccess.file_exists(_startup_path):
 		var file := FileAccess.open(_startup_path, FileAccess.READ)
 		if file != null:
@@ -920,10 +975,14 @@ func _process(delta: float) -> void:
 				for stage in status.history.slice(0, -1):
 					previous.append("· " + _t("startup_" + str(stage)))
 				_startup_history.text = "\n".join(previous)
-	_startup_elapsed.text = _t("startup_elapsed") % [(now - _startup_started) / 1000, (now - _startup_changed_at) / 1000]
+	_startup_feedback(now)
 	if _startup_last.get("stage", "") == "error" or not OS.is_process_running(_server_pid):
 		_loading = false
 		_startup_bar.indeterminate = false
+		if _startup_busy_bar != null:
+			_startup_busy_bar.visible = false
+		if _startup_activity != null:
+			_startup_activity.visible = false
 		_startup_stage.text = _t("start_failed")
 		if _startup_last.get("stage", "") != "error":
 			_startup_detail.text = _t("startup_exited") + "\n" + _startup_detail.text

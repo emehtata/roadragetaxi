@@ -139,6 +139,7 @@ def _directions(tags):
 
 def build_xml(stream, output, project, road_classes=ROAD_CLASSES, source=None, *, connector_extract=False):
     """Compact selected OSM ways while retaining junctions and restrictions."""
+    _step(4 if connector_extract else 2)
     road_classes = tuple(road_classes)
     permitted = set(ROAD_CLASSES)
     if connector_extract:
