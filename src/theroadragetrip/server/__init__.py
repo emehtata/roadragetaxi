@@ -232,9 +232,8 @@ class SimulationServer:
         # attached onto `world` here so protocol.py's state builder (which
         # reads world.weather, matching how it reads every other manager)
         # doesn't need a separate parameter for it.
-        # The game's one calendar (godot-14): game time,
-        # date and the weather's season follow from it. The server starts
-        # today at 18:00 unless --start-time says otherwise.
+        # The launcher supplies the user's selected start time. Direct server
+        # launches without --start-time retain the legacy 18:00 fallback.
         start = getattr(args, "start_time", None)  # the gig start picker's, a year back at most
         if start is not None:
             start = clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
