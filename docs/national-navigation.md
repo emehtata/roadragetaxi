@@ -269,6 +269,9 @@ coordinate-disambiguated IDs. It temporarily extracts eligible local roads
 inside 6-km town regions, using the same OSM-ID topology, access rules and turn
 restrictions as the backbone. Only actual directed connector paths, at most
 8 km each, survive in the final database; the temporary local graph is deleted.
+The town regions are merged into one spatial extract before local road classes
+are filtered, so unrelated residential and service streets elsewhere in Finland
+never enter the XML parser or temporary routing graph.
 Anchor candidates must connect in both directions to the mainland backbone.
 Public streets take priority over service/parking roads. Town anchors are within
 1 km of the existing destination centre; landmark anchors are within 800 m.
@@ -364,10 +367,10 @@ routing always uses stable IDs, never the first name match.
 | Weak / strong components; largest strong component | 50 / 1,437; 70,761 nodes |
 | Graph open / compatible startup reuse | 0.275 / 0.344 s |
 | Peak query-process resident memory | 121,296 KiB |
-| Full preparation run, including temporary town extraction | 6 min 33 s; 2,336,968 KiB peak process memory |
+| Full preparation run before spatial town prefiltering, including temporary town extraction | 6 min 33 s; 2,336,968 KiB peak process memory |
 | Final gateway-policy validation, reusing that temporary extract and rebuilding the backbone | 39.5 s; 2,264,256 KiB peak process memory |
 
-The full preparation timing preceded the final anchor prefilter improvement;
+The full preparation timing preceded the spatial town prefilter and final anchor prefilter improvements;
 the final validation reused its extracted town graph, not a second national
 street cache. Temporary extracts are not part of the final artifact. Offline
 preparation is memory-intensive and may take several minutes; it is not done

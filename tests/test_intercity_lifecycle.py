@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from theroadragetrip.intercity import IntercityGraph, ROAD_CLASSES, build_xml
-from theroadragetrip.intercity_places import attach_gateways, place_id
+from theroadragetrip.intercity_places import EXTENT_M, _extract_town_regions, attach_gateways, place_id
 from theroadragetrip.intercity_navigation import IntercityPlanner
 from theroadragetrip.navigation_route import NavigationRoute
 from theroadragetrip.osm import AutoFetchManager, Way
@@ -29,6 +29,20 @@ def build(path, *, local=False, disconnected=False):
     build_xml(BytesIO((xml+'</osm>').encode()),path,lambda x,y:(x,y),
               (*ROAD_CLASSES,'residential') if local else ROAD_CLASSES,connector_extract=local)
     return path
+
+
+def test_town_source_is_spatially_reduced_before_street_filtering(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr('theroadragetrip.intercity_places.subprocess.run',lambda args,**kwargs:calls.append(args))
+    polygon = tmp_path/'regions.geojson'
+    _extract_town_regions('osmium',tmp_path/'finland.pbf',tmp_path/'regions.pbf',polygon,
+                          [('a','A',0,0,1,None),('b','B',EXTENT_M,0,1,None)],lambda x,y:(x,y))
+    geometry = json.loads(polygon.read_text())['geometry']
+    assert geometry['type'] == 'Polygon'  # overlapping areas are merged for one cheap spatial test
+    xs = [point[0] for point in geometry['coordinates'][0]]
+    assert min(xs) == -EXTENT_M and max(xs) == 2*EXTENT_M
+    assert calls == [['osmium','extract','-s','simple','-p',str(polygon),str(tmp_path/'finland.pbf'),
+                      '-o',str(tmp_path/'regions.pbf')]]
 
 
 def prepared(tmp_path):

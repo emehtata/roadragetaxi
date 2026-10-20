@@ -10,6 +10,9 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 
+from shapely.geometry import box, mapping
+from shapely.ops import transform, unary_union
+
 from .intercity import IntercityGraph, ROAD_CLASSES, _elements, _step, build_xml
 from .utils.pbf_index import osmium_command
 
@@ -46,6 +49,16 @@ def landmark_provenance():
         for alias in {place.name,*place.names.values()}:
             result.append((identity,alias,place.id,json.dumps(place.osm)))
     return result
+
+
+def _extract_town_regions(command, source, output, polygon, places, unproject):
+    """Discard roads outside every bounded town area before the costly XML pass."""
+    region = unary_union([box(x-EXTENT_M,y-EXTENT_M,x+EXTENT_M,y+EXTENT_M)
+                          for _,_,x,y,*_ in places])
+    polygon.write_text(json.dumps({"type":"Feature","properties":{},
+                                   "geometry":mapping(transform(unproject,region))}))
+    subprocess.run([command,"extract","-s","simple","-p",str(polygon),str(source),"-o",str(output)],
+                   check=True,capture_output=True,timeout=1800)
 
 
 def attach_gateways(path, local_path, places, *, extent_m=EXTENT_M, max_connector_m=MAX_CONNECTOR_M, town_policies=None):
@@ -177,15 +190,18 @@ def prepare_gateways(source, path, *, town_policies=None):
     from pyproj import Transformer
     places = catalogue()
     project = Transformer.from_crs("EPSG:4326","EPSG:3067",always_xy=True).transform
+    unproject = Transformer.from_crs("EPSG:3067","EPSG:4326",always_xy=True).transform
     regions = defaultdict(list)
     for _,_,x,y,*_ in places:
         regions[(int(x//EXTENT_M),int(y//EXTENT_M))].append((x,y))
     classes = (*ROAD_CLASSES,*CONNECTOR_CLASSES)
     command = osmium_command()
     with tempfile.TemporaryDirectory(prefix="intercity-towns-") as temp:
-        filtered,xml,local = [Path(temp)/name for name in ("roads.pbf","towns.osm","local.sqlite")]
+        polygon,regional,filtered,xml,local = [Path(temp)/name for name in
+            ("town-regions.geojson","regions.pbf","roads.pbf","towns.osm","local.sqlite")]
         _step(3)
-        subprocess.run([command,"tags-filter",str(source),"w/highway="+",".join(classes),"r/type=restriction","-o",str(filtered)],check=True,capture_output=True,timeout=1800)
+        _extract_town_regions(command,source,regional,polygon,places,unproject)
+        subprocess.run([command,"tags-filter",str(regional),"w/highway="+",".join(classes),"r/type=restriction","-o",str(filtered)],check=True,capture_output=True,timeout=1800)
         retained = set()
         with xml.open("wb") as output, subprocess.Popen([command,"cat",str(filtered),"-f","osm"],stdout=subprocess.PIPE) as process:
             output.write(b'<osm version="0.6">')
