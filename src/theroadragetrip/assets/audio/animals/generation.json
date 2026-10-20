@@ -89,13 +89,13 @@
   },
   "crow": {
     "file": "crow.ogg",
-    "prompt": "A hooded crow cawing three times, rough raspy harsh caw caw bird calls, isolated outdoor field recording",
-    "seed": 62408,
+    "prompt": "Close field recording of a crow calling twice. Two loud drawn-out coarse guttural crow caws: krrraaaak, pause, krrraaaak. Each call starts with a hard rattling consonant and sustains a low raspy nasal abrasive croak with a rough vibrating throat. Recognizable crow cawing, dry isolated bird calls",
+    "seed": 82408,
     "steps": 100,
     "model": "stabilityai/stable-audio-open-1.0",
     "sample_rate": 44100,
     "channels": 1,
-    "duration_s": 3.763809523809524,
+    "duration_s": 3.137052154195011,
     "review": "listening pending"
   }
 }

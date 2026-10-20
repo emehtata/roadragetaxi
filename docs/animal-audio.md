@@ -7,6 +7,9 @@ as `tools/generate_animal_audio.py`); `assets/audio/animals/generation.json`
 records prompts, seeds, model and durations. Listening review is recorded separately
 from successful generation and decoding.
 
+Regenerate one rejected call with the studio virtualenv and
+`tools/generate_animal_audio.py src/theroadragetrip/assets/audio/animals --only crow --force --seed-base 82400`.
+
 Eight wildlife species have distinct clips: squirrel, small bird, pigeon, crow,
 hare, fox, moose and roe deer. Pedestrians' owned dogs use a dog bark. Calls follow
 interpolated source positions and pan in stereo like car stereos. Species-specific

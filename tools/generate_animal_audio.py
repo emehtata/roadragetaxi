@@ -3,9 +3,9 @@
 Run with ai-audio-studio/.venv/bin/python tools/generate_animal_audio.py GAME_AUDIO_DIRECTORY.
 Existing clips are reused; metadata records prompts, seeds and signal measurements.
 """
+import argparse
 import json
 from pathlib import Path
-import sys
 
 import numpy as np
 import soundfile as sf
@@ -21,12 +21,18 @@ CALLS = {
     'moose': 'A moose giving a short deep nasal grunt and snort, isolated animal call, close field recording',
     'roe_deer': 'A roe deer giving two short rough barking alarm calls, isolated animal call, close field recording',
     'dog': 'A medium sized domestic dog barking twice outdoors, isolated natural dog bark, close field recording',
-    'crow': 'A hooded crow cawing three times, rough raspy harsh caw caw bird calls, isolated outdoor field recording',
+    'crow': 'Close field recording of a crow calling twice. Two loud drawn-out coarse guttural crow caws: krrraaaak, pause, krrraaaak. Each call starts with a hard rattling consonant and sustains a low raspy nasal abrasive croak with a rough vibrating throat. Recognizable crow cawing, dry isolated bird calls',
 }
 
 
 def main():
-    output = Path(sys.argv[1])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('output', type=Path)
+    parser.add_argument('--only', choices=CALLS)
+    parser.add_argument('--force', action='store_true')
+    parser.add_argument('--seed-base', type=int, default=62400)
+    args = parser.parse_args()
+    output = args.output
     output.mkdir(parents=True, exist_ok=True)
     manifest = output/'generation.json'
     records = json.loads(manifest.read_text()) if manifest.exists() else {}
@@ -35,10 +41,12 @@ def main():
     pipe.enable_attention_slicing()
     rate = pipe.vae.sampling_rate
     for index, (species, prompt) in enumerate(CALLS.items()):
-        path = output/f'{species}.ogg'
-        if path.exists() and species in records:
+        if args.only and species != args.only:
             continue
-        seed = 62400 + index
+        path = output/f'{species}.ogg'
+        if not args.force and path.exists() and species in records:
+            continue
+        seed = args.seed_base + index
         print(f'Generating {species}', flush=True)
         with torch.inference_mode():
             audio = pipe(prompt=prompt + '. No music, no speech, no background noise.',
