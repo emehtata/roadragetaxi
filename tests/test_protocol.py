@@ -65,6 +65,22 @@ def test_character_details_reach_godot_state():
     assert walker["blood_alcohol_promille"] == 0.5
 
 
+def test_owned_dog_travels_with_its_one_pedestrian_owner():
+    from types import SimpleNamespace as Row
+
+    dog = Row(x=8.5, y=2.4, heading=0.2, size="large", color=(86, 57, 37), sniffing=True)
+    ped = Row(resident_id=7, x=10.0, y=2.0, heading=0.0, radius_m=0.45, color=(1, 2, 3),
+              state="performing_activity", animation_state="idle", animation_time=0.0,
+              curse_timer=0.0, curse_text="", mood="normal", is_cyclist=False,
+              blood_alcohol_promille=0.0, activity=Row(plugin_id="dog_walking"), dog=dog)
+
+    walker = protocol._pedestrian_to_dict(ped)
+
+    assert walker["activity"] == "dog_walking"
+    assert walker["dog"] == {"x": 8.5, "y": 2.4, "heading": 0.2, "size": "large",
+                             "color": [86, 57, 37], "sniffing": True}
+
+
 def test_the_waiting_customer_crosses_the_wire():
     """godot-07: a client draws the customer waiting at (or walking to) the
     taxi from these fields."""

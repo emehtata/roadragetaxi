@@ -198,7 +198,7 @@ def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
 
 
 def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
-    return {
+    row = {
         "id": ped.resident_id,
         "x": ped.x,
         "y": ped.y,
@@ -219,6 +219,13 @@ def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
         "stick_swing": getattr(ped, "stick_swing", 0.0),
         "hockey_goalie": getattr(ped, "hockey_goalie", False),
     }
+    dog = getattr(ped, "dog", None)
+    if dog is not None:
+        row["dog"] = {
+            "x": dog.x, "y": dog.y, "heading": dog.heading, "size": dog.size,
+            "color": list(dog.color), "sniffing": dog.sniffing,
+        }
+    return row
 
 
 def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:

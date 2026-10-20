@@ -44,6 +44,7 @@ var _route_node: Node2D  # the navigation route, unshaded (_draw_route)
 var _people: Node2D
 var _overlay: Node2D
 var _people_rows: Array = []  # [position, heading, ped, animation time]
+var _dog_rows: Array = []  # [owner position, dog position, heading, dog]
 var _puck_frame: Array = []  # [a, b, t] for _pucks
 var _overlays: Array[Callable] = []
 var _canvas: CanvasItem = self
@@ -977,6 +978,28 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 			1.0 if timer >= 0.5 else timer / 0.5)
 
 
+## A non-colliding owned dog and its leash, batched with its pedestrian.
+func _dog(owner: Vector2, at: Vector2, heading: float, dog: Dictionary) -> void:
+	var sizes := {"small": 0.28, "medium": 0.38, "large": 0.50}
+	var radius: float = sizes.get(str(dog.get("size", "medium")), 0.38)
+	var h := Vector2(cos(heading), -sin(heading))
+	var side := Vector2(-h.y, h.x)
+	var body := _rgb(dog.get("color", [120, 90, 60]))
+	_canvas.draw_line(owner + side * 0.22, at - h * radius * 0.15, _person_lit(Color8(48, 38, 32)), maxf(_px(1.2), 0.06))
+	_ellipse(at + Vector2(0, radius * 0.35), radius * 0.85, radius * 0.38, RS.PED_SHADOW)
+	_ellipse(at, radius * 0.72, radius, body)
+	var head := at + h * radius * (0.78 if dog.get("sniffing", false) else 1.02)
+	_canvas.draw_circle(head, radius * 0.58, _person_lit(body.lightened(0.06)))
+	_canvas.draw_colored_polygon(PackedVector2Array([
+		head + side * radius * 0.42, head - h * radius * 0.48 + side * radius * 0.62, head - h * radius * 0.22 + side * radius * 0.18,
+	]), _person_lit(body.darkened(0.25)))
+	_canvas.draw_colored_polygon(PackedVector2Array([
+		head - side * radius * 0.42, head - h * radius * 0.48 - side * radius * 0.62, head - h * radius * 0.22 - side * radius * 0.18,
+	]), _person_lit(body.darkened(0.25)))
+	_canvas.draw_line(at - h * radius * 0.75, at - h * radius * 1.35 + side * radius * 0.35,
+		_person_lit(body.darkened(0.12)), maxf(_px(1.5), radius * 0.24))
+
+
 ## An ice hockey player's stick: from the right hand forward to the blade on
 ## the ice; a hit (state stick_swing, seconds left) sweeps it through.
 const STICK_SWING_S := 0.3  # ice_hockey.py STICK_SWING_S
@@ -1075,6 +1098,9 @@ func _person_lit(color: Color) -> Color:
 
 func _draw_people() -> void:
 	_canvas = _people
+	for row in _dog_rows:
+		_lit_tint = vehicle_light(light_level * float(light_at.call(row[1])), ambient)
+		_dog(row[0], row[1], row[2], row[3])
 	for row in _people_rows:
 		_lit_tint = vehicle_light(light_level * float(light_at.call(row[0])), ambient)
 		_pedestrian(row[0], row[1], row[2], row[3])
@@ -1188,6 +1214,7 @@ func _draw() -> void:
 	var count := 0
 	_lamp_polys.clear()
 	_people_rows.clear()
+	_dog_rows.clear()
 	_puck_frame = []
 	_overlays.clear()
 	_car_shapes.clear()
@@ -1241,6 +1268,13 @@ func _draw() -> void:
 		var c := Vector2(p.x, p.y)
 		if not view_rect.has_point(c):
 			continue
+		var dog: Dictionary = ped.get("dog", {})
+		if not dog.is_empty():
+			var next_dog: Dictionary = next.get("dog", dog)
+			var dog_at := MapMath.point(origin, lerpf(float(dog["x"]), float(next_dog.get("x", dog["x"])), t), lerpf(float(dog["y"]), float(next_dog.get("y", dog["y"])), t))
+			var dog_heading := lerp_angle(float(dog.get("heading", 0.0)), float(next_dog.get("heading", dog.get("heading", 0.0))), t)
+			_dog_rows.append([c, dog_at, dog_heading, dog])
+			count += 1
 		_pedestrian(c, p.z, ped, lerpf(ped.get("animation_time", 0.0), next.get("animation_time", 0.0), t))
 		count += 1
 	if not underground:

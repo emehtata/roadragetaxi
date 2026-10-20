@@ -382,6 +382,18 @@ class PedestrianAppearance:
 
 
 @dataclass
+class Dog:
+    """One non-colliding dog owned by a walking pedestrian."""
+
+    x: float
+    y: float
+    heading: float
+    size: str
+    color: Tuple[int, int, int]
+    sniffing: bool = False
+
+
+@dataclass
 class Pedestrian:
     """Pedestrian walking on footpaths/sidewalks and crossing roads."""
     x: float
@@ -453,6 +465,7 @@ class Pedestrian:
     # spec property, see activities/base.py's ActivityInstance.
     activity: Optional[ActivityInstance] = None
     activity_flags: Dict[str, Any] = field(default_factory=dict)
+    dog: Optional[Dog] = None
     # collision-avoidance section 17: a departed accident driver's visible mood -
     # separate from animation_state, which the activity system already
     # overwrites to "idle" while performing an activity (would otherwise

@@ -906,6 +906,13 @@ func test_rendering() -> void:
 			amber_count += 1
 	check(amber_count == 4, "crashed car has four hazard lamps")
 	signal_car.free()
+	var dog_layer := Entities.new()
+	dog_layer._dog_rows.append([Vector2.ZERO, Vector2(1.5, 0.5), 0.0, {"size": "small", "color": [86, 57, 37]}])
+	dog_layer._dog_rows.append([Vector2.ZERO, Vector2(1.5, 0.5), 0.0, {"size": "medium", "color": [86, 57, 37]}])
+	dog_layer._dog_rows.append([Vector2.ZERO, Vector2(1.5, 0.5), 0.0, {"size": "large", "color": [86, 57, 37]}])
+	check(dog_layer._dog_rows.size() == 3 and dog_layer.find_children("*", "CollisionObject2D", true, false).is_empty(),
+		"three owned-dog sizes share the pedestrian canvas and have no collision bodies")
+	dog_layer.free()
 	check(Entities.taxi_sign_lit({"current_passenger": null}) and not Entities.taxi_sign_lit({"current_passenger": passenger}),
 		"the roof sign: lit when free, off with a fare on")
 	var free_taxi := Entities.new()

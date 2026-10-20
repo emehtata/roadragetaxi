@@ -14,6 +14,7 @@ from theroadragetrip.activities.plugins import discover
 from theroadragetrip.activities.plugins.ball_game import BallGamePlugin
 from theroadragetrip.activities.plugins.bench_sitting import BenchSittingPlugin
 from theroadragetrip.activities.plugins.bus_stop_waiting import LOOK_AROUND_INTERVAL_S, BusStopWaitingPlugin
+from theroadragetrip.activities.plugins.dog_walking import DOG_WALKER_MAX, LEASH_MAX_M, DogWalkingPlugin, time_activity
 from theroadragetrip.activities.plugins.eating_drinking import EatingDrinkingPlugin
 from theroadragetrip.activities.plugins.exercise_jogging import ExerciseJoggingPlugin
 from theroadragetrip.activities.plugins.garbage_disposal import CARRYING_DISPOSABLE_PROBABILITY, GarbageDisposalPlugin
@@ -25,7 +26,7 @@ from theroadragetrip.activities.plugins.small_group_conversation import SmallGro
 from theroadragetrip.activities.plugins.traffic_watching import TrafficWatchingPlugin
 from theroadragetrip.activities.plugins.two_person_conversation import TwoPersonConversationPlugin
 from theroadragetrip.osm import BusStop, Crossing, Scenery, SceneryObject, Way
-from theroadragetrip.pedestrian import Pedestrian, PedestrianManager
+from theroadragetrip.pedestrian import Dog, Pedestrian, PedestrianManager
 from theroadragetrip.residents import ResidentManager
 
 
@@ -74,6 +75,7 @@ def test_discover_registers_all_built_in_plugins():
         "bus_stop_waiting", "photography", "exercise_jogging",
         "two_person_conversation", "small_group_conversation", "ball_game", "playground",
         "ice_skating", "ice_hockey", "soccer",
+        "dog_walking",
     }
 
 
@@ -322,6 +324,60 @@ def test_exercise_jogging_moves_the_pedestrian_and_eventually_finishes():
     assert (pedestrian.x, pedestrian.y) != (start_x, start_y)
 
 
+def test_dog_walking_uses_simulation_time_and_prefers_morning_and_evening():
+    assert time_activity(8 * 3600) > time_activity(2 * 3600)
+    assert time_activity(18 * 3600) > time_activity(12 * 3600)
+    assert time_activity(2 * 3600) > 0.0
+
+
+def test_dog_walking_owns_one_bounded_dog_and_cleans_it_up():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    plugin = DogWalkingPlugin()
+    context = _context(manager, pedestrian)
+    from theroadragetrip.activities import ActivityInstance
+    instance = ActivityInstance(plugin_id="dog_walking", location=None, started_sim_time=0.0)
+
+    plugin.start(context, instance)
+    assert pedestrian.dog is not None and pedestrian.dog.size in {"small", "medium", "large"}
+    assert plugin.can_start(context) is False
+    for _ in range(300):
+        plugin.update(context, instance, 0.05)
+        assert math.hypot(pedestrian.dog.x - pedestrian.x, pedestrian.dog.y - pedestrian.y) <= LEASH_MAX_M
+    plugin.finish(context, instance)
+    assert pedestrian.dog is None
+
+
+def test_dog_following_is_stable_across_frame_rates():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    plugin = DogWalkingPlugin()
+    context = _context(manager, pedestrian)
+    from theroadragetrip.activities import ActivityInstance
+
+    def after(step):
+        pedestrian.dog = Dog(5.0, 2.0, 0.0, "medium", (80, 60, 40))
+        instance = ActivityInstance(plugin_id="dog_walking", location=None, started_sim_time=0.0, data={
+            "duration_s": 100.0, "elapsed_s": 0.0, "waypoint": None,
+            "next_sniff_s": 200.0, "sniff_s": 100.0, "side": 1.0, "phase": 0.0,
+        })
+        for _ in range(round(1.0 / step)):
+            plugin.update(context, instance, step)
+        return pedestrian.dog.x, pedestrian.dog.y
+
+    fast = after(1.0 / 60.0)
+    slow = after(0.1)
+    assert fast == pytest.approx(slow, abs=0.02)
+
+
+def test_dog_walker_population_cap_is_specific_to_owned_dogs():
+    manager, pedestrian = _make_manager_and_pedestrian()
+    plugin = DogWalkingPlugin()
+    for index in range(DOG_WALKER_MAX):
+        candidate = pedestrian if index == 0 else _add_pedestrian(manager, 10.0 + index, 0.0)
+        candidate.dog = Dog(candidate.x - 1.0, candidate.y, 0.0, "medium", (80, 60, 40))
+    free = _add_pedestrian(manager, 30.0, 0.0)
+    assert plugin.can_start(_context(manager, free)) is False
+
+
 def _add_pedestrian(manager, x, y, age=None):
     way = manager.pedestrians[0].way
     pedestrian = Pedestrian(x, y, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
@@ -506,15 +562,18 @@ def test_full_bench_sitting_lifecycle_walk_sit_standup_resume():
     pedestrian.state = "walking_to_activity"
 
     seen_states = set()
+    seen_animation_states = set()
     for _ in range(2000):
         manager.sim_time += 0.1
         manager._update_activity(pedestrian, 0.1)
         seen_states.add(pedestrian.state)
+        seen_animation_states.add(pedestrian.animation_state)
         if pedestrian.activity is None:
             break
 
     assert "walking_to_activity" in seen_states
     assert "performing_activity" in seen_states
+    assert "sitting" in seen_animation_states
     assert pedestrian.activity is None
     assert pedestrian.state == "walking"
     assert manager.activity_manager._reservations == {}
