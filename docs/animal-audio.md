@@ -1,5 +1,12 @@
 # Animal calls
 
+For any sound effect, run `./ai-audio.sh "A crow cawing twice"` from the
+repository root. The wrapper uses the sibling ai-audio-studio virtualenv and
+saves a uniquely named Ogg file plus prompt/seed metadata in its `outputs/`
+directory. It prints the output path when finished. Optional arguments:
+`--seconds 4`, `--seed 123`, `--output-dir /tmp/sounds`. Set `AUDIO_STUDIO` if
+the studio lives elsewhere. The installed model and a CUDA GPU are required.
+
 Wildlife and owned dogs play short mono Ogg Vorbis calls through the Environment
 volume channel. The existing ai-audio-studio Stable Audio Open installation
 generates the clips with `generate_game_animals.py` (preserved in this repository
