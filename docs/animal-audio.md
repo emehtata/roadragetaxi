@@ -7,8 +7,8 @@ as `tools/generate_animal_audio.py`); `assets/audio/animals/generation.json`
 records prompts, seeds, model and durations. Listening review is recorded separately
 from successful generation and decoding.
 
-Seven wildlife species have distinct clips: squirrel, small bird, pigeon, hare,
-fox, moose and roe deer. Pedestrians' owned dogs use a dog bark. Calls follow
+Eight wildlife species have distinct clips: squirrel, small bird, pigeon, crow,
+hare, fox, moose and roe deer. Pedestrians' owned dogs use a dog bark. Calls follow
 interpolated source positions and pan in stereo like car stereos. Species-specific
 audible ranges run from 30 to 120 metres, with quadratic distance falloff.
 Four reusable players bound simultaneous playback. Calls repeat occasionally,

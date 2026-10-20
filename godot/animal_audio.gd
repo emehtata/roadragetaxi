@@ -4,9 +4,9 @@ extends Node
 const Paths := preload("res://paths.gd")
 const PLAYERS := 4
 const RANGES := {"squirrel": 30.0, "small_bird": 65.0, "pigeon": 40.0,
-    "hare": 45.0, "fox": 120.0, "moose": 100.0, "roe_deer": 100.0, "dog": 100.0}
+    "hare": 45.0, "fox": 120.0, "moose": 100.0, "roe_deer": 100.0, "dog": 100.0, "crow": 100.0}
 const INTERVALS := {"squirrel": 35.0, "small_bird": 12.0, "pigeon": 25.0,
-    "hare": 60.0, "fox": 65.0, "moose": 90.0, "roe_deer": 75.0, "dog": 30.0}
+    "hare": 60.0, "fox": 65.0, "moose": 90.0, "roe_deer": 75.0, "dog": 30.0, "crow": 22.0}
 
 var _streams := {}
 var _players: Array = []

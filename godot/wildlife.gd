@@ -3,7 +3,7 @@
 class_name Wildlife
 extends Node2D
 
-const SPECIES := [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer"]
+const SPECIES := [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow"]
 const VALID_STATES := [&"IDLE", &"WANDER", &"FEED", &"FLEE", &"FLY", &"CROSSING"]
 const STEP_S := 0.1
 const REACTION_M := 18.0
@@ -14,7 +14,7 @@ var max_active := 128
 var activity_distance_m := 900.0
 var vehicle_reactions := true
 var species_weights := {"squirrel": 1.0, "small_bird": 1.0, "pigeon": 1.0, "hare": 1.0,
-	"fox": 1.0, "moose": 1.0, "roe_deer": 1.0}
+	"fox": 1.0, "moose": 1.0, "roe_deer": 1.0, "crow": 1.0}
 
 var animals: Array = []
 var drawn_members := 0  # rendering regression check and F3/debug inspection
@@ -39,9 +39,9 @@ static func habitat(building_count: int, tree_count: int) -> String:
 
 static func habitat_weights(kind: String) -> Dictionary:
 	match kind:
-		"urban": return {"squirrel": 3.0, "small_bird": 4.0, "pigeon": 4.0}
-		"suburban": return {"squirrel": 3.0, "small_bird": 4.0, "pigeon": 1.0, "hare": 1.5, "fox": 0.35}
-		_: return {"squirrel": 0.7, "small_bird": 3.0, "hare": 2.0, "fox": 0.8, "moose": 0.6, "roe_deer": 1.0}
+		"urban": return {"squirrel": 3.0, "small_bird": 4.0, "pigeon": 4.0, "crow": 1.5}
+		"suburban": return {"squirrel": 3.0, "small_bird": 4.0, "pigeon": 1.0, "crow": 1.5, "hare": 1.5, "fox": 0.35}
+		_: return {"squirrel": 0.7, "small_bird": 3.0, "crow": 1.0, "hare": 2.0, "fox": 0.8, "moose": 0.6, "roe_deer": 1.0}
 
 
 static func activity(species: String, game_time_seconds: float) -> float:
@@ -49,7 +49,7 @@ static func activity(species: String, game_time_seconds: float) -> float:
 	var dawn_dusk := maxf(exp(-pow((hour - 6.0) / 1.8, 2.0)), exp(-pow((hour - 19.0) / 1.8, 2.0)))
 	var daylight := clampf(sin((hour - 6.0) * PI / 12.0), 0.0, 1.0)
 	match species:
-		"small_bird", "pigeon", "squirrel": return 0.15 + 0.75 * daylight + 0.1 * dawn_dusk
+		"small_bird", "pigeon", "crow", "squirrel": return 0.15 + 0.75 * daylight + 0.1 * dawn_dusk
 		"fox": return 0.25 + 0.55 * (1.0 - daylight) + 0.2 * dawn_dusk
 		"moose", "roe_deer": return 0.45 + 0.55 * dawn_dusk
 		_: return 0.45 + 0.35 * dawn_dusk
@@ -140,7 +140,7 @@ func _step(dt: float, game_time_seconds: float, view_centre: Vector2, vehicles: 
 		animal["timer"] -= dt
 		var threat := _nearest_vehicle(animal["position"], vehicles) if vehicle_reactions else Vector2.INF
 		if threat != Vector2.INF and threat.distance_to(animal["position"]) < REACTION_M:
-			animal["state"] = "FLY" if animal["species"] in ["small_bird", "pigeon"] else "FLEE"
+			animal["state"] = "FLY" if animal["species"] in ["small_bird", "pigeon", "crow"] else "FLEE"
 			animal["heading"] = (animal["position"] - threat).angle()
 			animal["timer"] = 1.5
 		elif animal["timer"] <= 0.0:
@@ -171,8 +171,8 @@ static func _transition(animal: Dictionary, active: float) -> void:
 		animal["timer"] = 1.0 + phase * 3.0
 		return
 	var species: String = animal["species"]
-	if species in ["small_bird", "pigeon"] and phase < 0.18: animal["state"] = "FLY"
-	elif species in ["small_bird", "pigeon", "squirrel"] and phase < 0.45: animal["state"] = "FEED"
+	if species in ["small_bird", "pigeon", "crow"] and phase < 0.18: animal["state"] = "FLY"
+	elif species in ["small_bird", "pigeon", "crow", "squirrel"] and phase < 0.45: animal["state"] = "FEED"
 	else: animal["state"] = "WANDER"
 	animal["heading"] = fmod(float(animal["id"] * 2 + animal["cycle"] * 3), TAU) - PI
 	animal["timer"] = 0.8 + phase * 2.0
@@ -180,9 +180,9 @@ static func _transition(animal: Dictionary, active: float) -> void:
 
 static func _speed(species: String, state: String) -> float:
 	if state in ["IDLE", "FEED"]: return 0.0
-	if state in ["FLEE", "FLY"]: return 7.0 if species in ["small_bird", "pigeon"] else 5.0
+	if state in ["FLEE", "FLY"]: return 7.0 if species in ["small_bird", "pigeon", "crow"] else 5.0
 	return {"squirrel": 1.6, "small_bird": 0.5, "pigeon": 0.55, "hare": 1.8,
-		"fox": 1.5, "moose": 1.0, "roe_deer": 1.2}.get(species, 1.0)
+		"fox": 1.5, "moose": 1.0, "roe_deer": 1.2, "crow": 0.65}.get(species, 1.0)
 
 
 func _draw() -> void:
@@ -194,9 +194,9 @@ func _draw_animal(animal: Dictionary) -> void:
 	var at: Vector2 = animal["position"]
 	var direction := Vector2.from_angle(animal["heading"])
 	var species: String = animal["species"]
-	var scale_m: float = {"small_bird": 0.65, "pigeon": 0.72, "squirrel": 0.3, "hare": 0.42,
+	var scale_m: float = {"small_bird": 0.65, "pigeon": 0.72, "crow": 0.8, "squirrel": 0.3, "hare": 0.42,
 		"fox": 0.65, "roe_deer": 0.85, "moose": 1.15}.get(species, 0.4)
-	var color: Color = {"small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "squirrel": Color8(144, 79, 38),
+	var color: Color = {"small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "crow": Color8(42, 43, 45), "squirrel": Color8(144, 79, 38),
 		"hare": Color8(142, 126, 101), "fox": Color8(194, 91, 38), "roe_deer": Color8(151, 104, 62), "moose": Color8(91, 67, 48)}.get(species, Color.GRAY)
 	var members := 5 if species == "small_bird" else (3 if species == "pigeon" else 1)
 	drawn_members += members

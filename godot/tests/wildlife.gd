@@ -3,7 +3,8 @@ extends SceneTree
 
 func _initialize() -> void:
 	var WildlifeLayer := preload("res://wildlife.gd")
-	assert(WildlifeLayer.SPECIES == [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer"])
+	assert(WildlifeLayer.SPECIES == [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow"])
+	assert(WildlifeLayer._speed("crow", "FLY") == 7.0)
 	var layer: Node = WildlifeLayer.new()
 	root.add_child(layer)
 	assert(layer.config_valid(layer.species_weights))

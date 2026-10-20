@@ -13,9 +13,9 @@ func _render() -> void:
     var layer := preload("res://wildlife.gd").new()
     root.add_child(layer)
     layer.scale = Vector2(12,12)
-    var species := ["squirrel","small_bird","pigeon","hare","fox","moose","roe_deer"]
+    var species := ["squirrel","small_bird","pigeon","hare","fox","moose","roe_deer","crow"]
     for i in species.size():
-        layer.animals.append({"id":i,"species":species[i],"position":Vector2(5+i*7,14),
+        layer.animals.append({"id":i,"species":species[i],"position":Vector2(5+i*6,14),
             "heading":0.0,"state":"IDLE"})
     layer.queue_redraw()
     var entities := preload("res://entity_layer.gd").new()

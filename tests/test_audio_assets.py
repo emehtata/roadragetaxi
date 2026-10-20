@@ -34,7 +34,7 @@ def test_every_sound_asset_and_reference_is_valid():
 def test_animal_calls_are_decodable_mono_audio():
     root = validator.AUDIO_ROOT / 'animals'
     records = json.loads((root / 'generation.json').read_text())
-    assert set(records) == {'squirrel','small_bird','pigeon','hare','fox','moose','roe_deer','dog'}
+    assert set(records) == {'squirrel','small_bird','pigeon','hare','fox','moose','roe_deer','dog','crow'}
     for species, entry in records.items():
         path = root / entry['file']
         assert path.name == f'{species}.ogg' and validator._channels(path) == 1

@@ -8,11 +8,11 @@ func _initialize() -> void:
 func _test() -> void:
     var sounds := preload("res://animal_audio.gd").new()
     root.add_child(sounds)
-    assert(sounds._streams.size() == 8, "all eight generated calls must load")
+    assert(sounds._streams.size() == 9, "all nine generated calls must load")
     assert(sounds._players.size() == 4, "playback pool must stay bounded")
     assert(sounds.gain("dog", 0) == 1.0 and sounds.gain("dog", 100) == 0.0)
     assert(sounds.gain("small_bird", 20) > sounds.gain("small_bird", 50))
-    var animal := {"id":1,"species":"fox","position":Vector2(10,0),"state":"IDLE"}
+    var animal := {"id":1,"species":"crow","position":Vector2(10,0),"state":"IDLE"}
     var dog := [2,Vector2(-10,0)]
     sounds.update([animal],[dog],Vector2.ZERO,0.1,true)
     sounds._due["wildlife:1"] = 0.0
@@ -44,7 +44,7 @@ func _test() -> void:
         "b":{"pedestrians":[{"id":12,"dog":{"x":114,"y":224}}]},"t":0.5}
     assert(entities.dogs() == [[12,Vector2(12,-22)]], "dog audio follows world-to-layer interpolation")
     entities.free()
-    print("Animal audio tests passed: eight assets, spatial playback, cooldowns, source cleanup and underground silence")
+    print("Animal audio tests passed: nine assets, spatial playback, cooldowns, source cleanup and underground silence")
     sounds.queue_free()
     await process_frame
     quit()

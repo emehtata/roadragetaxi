@@ -21,6 +21,7 @@ CALLS = {
     'moose': 'A moose giving a short deep nasal grunt and snort, isolated animal call, close field recording',
     'roe_deer': 'A roe deer giving two short rough barking alarm calls, isolated animal call, close field recording',
     'dog': 'A medium sized domestic dog barking twice outdoors, isolated natural dog bark, close field recording',
+    'crow': 'A hooded crow cawing three times, rough raspy harsh caw caw bird calls, isolated outdoor field recording',
 }
 
 

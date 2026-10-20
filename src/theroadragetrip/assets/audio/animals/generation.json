@@ -86,5 +86,16 @@
     "channels": 1,
     "duration_s": 2.7656009070294783,
     "review": "listening pending"
+  },
+  "crow": {
+    "file": "crow.ogg",
+    "prompt": "A hooded crow cawing three times, rough raspy harsh caw caw bird calls, isolated outdoor field recording",
+    "seed": 62408,
+    "steps": 100,
+    "model": "stabilityai/stable-audio-open-1.0",
+    "sample_rate": 44100,
+    "channels": 1,
+    "duration_s": 3.763809523809524,
+    "review": "listening pending"
   }
 }
