@@ -350,8 +350,11 @@ def load_world(
         source = Path(getattr(args, "osm_pbf_path", None) or DEFAULT_FINLAND_PBF_PATH)
         if not local_pbf_available(source):
             raise RuntimeError("Intercity fares require a downloaded Finland PBF and osmium-tool. Download it in Settings or disable intercity fares.")
-        on_load_progress(0.81, "Initializing intercity navigation database...")
-        intercity_database = prepare_database(source,Path(default_cache_root())/"finland.intercity.sqlite")
+        message = "Initializing intercity navigation database..."
+        on_load_progress(0.81, message)
+        # The client translates the text before "|" and shows the step counter after it.
+        intercity_database = prepare_database(source,Path(default_cache_root())/"finland.intercity.sqlite",
+                                              progress=lambda step: on_load_progress(0.81, f"{message}|{step}"))
         import sqlite3
         with sqlite3.connect(intercity_database) as database:
             taxi_mgr.intercity_places = {row[0] for row in database.execute("SELECT id FROM places")}

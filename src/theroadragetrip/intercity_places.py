@@ -10,7 +10,7 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 
-from .intercity import IntercityGraph, ROAD_CLASSES, _elements, build_xml
+from .intercity import IntercityGraph, ROAD_CLASSES, _elements, _step, build_xml
 from .utils.pbf_index import osmium_command
 
 GATEWAY_VERSION = 1
@@ -88,7 +88,8 @@ def attach_gateways(path, local_path, places, *, extent_m=EXTENT_M, max_connecto
         if highway != "service":
             public_street_nodes.update((a,b))
     try:
-        for identity,name,x,y,weight,kind in places:
+        for index,(identity,name,x,y,weight,kind) in enumerate(places):
+            _step(4, f"{index}/{len(places)}")
             policy = (town_policies or {}).get(identity,{})
             town_extent = float(policy.get("extent_m",extent_m))
             town_maximum = float(policy.get("max_length_m",max_connector_m))
@@ -183,12 +184,13 @@ def prepare_gateways(source, path, *, town_policies=None):
     command = osmium_command()
     with tempfile.TemporaryDirectory(prefix="intercity-towns-") as temp:
         filtered,xml,local = [Path(temp)/name for name in ("roads.pbf","towns.osm","local.sqlite")]
+        _step(3)
         subprocess.run([command,"tags-filter",str(source),"w/highway="+",".join(classes),"r/type=restriction","-o",str(filtered)],check=True,capture_output=True,timeout=1800)
         retained = set()
         with xml.open("wb") as output, subprocess.Popen([command,"cat",str(filtered),"-f","osm"],stdout=subprocess.PIPE) as process:
             output.write(b'<osm version="0.6">')
             try:
-                for element in _elements(process.stdout):
+                for element in _elements(process.stdout, 3):
                     if element.tag == "node":
                         x,y = project(float(element.get("lon")),float(element.get("lat")))
                         if not any(math.dist((x,y),centre) <= EXTENT_M for gx in range(int(x//EXTENT_M)-1,int(x//EXTENT_M)+2)

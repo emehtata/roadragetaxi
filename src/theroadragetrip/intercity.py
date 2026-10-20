@@ -30,8 +30,27 @@ DEFAULT_SPEED_KMH = {"motorway": 100, "trunk": 80, "primary": 80, "secondary": 7
                      "tertiary":60,"tertiary_link":40,"unclassified":50,"residential":30,"living_street":20,"service":20}
 
 
-def prepare_database(source, output):
+# ponytail: module-level reporter set only while prepare_database runs (one build at a time).
+_report = None
+
+
+def _step(step, count=""):
+    """Tell the loading screen which of the four preparation steps runs."""
+    if _report is not None:
+        _report(f"{step}/4" + (f" · {count}" if count != "" else ""))
+
+
+def prepare_database(source, output, progress=None):
     """Explicit user opt-in initialization; reuse a matching prepared graph."""
+    global _report
+    _report = progress
+    try:
+        return _prepare_database(source, output)
+    finally:
+        _report = None
+
+
+def _prepare_database(source, output):
     from .intercity_places import (GATEWAY_VERSION, EXTENT_M, MAX_CONNECTOR_M,
                                   CONNECTOR_CLASSES, catalogue_digest, prepare_gateways)
     source,output = Path(source),Path(output)
@@ -55,6 +74,7 @@ def prepare_database(source, output):
     output.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="intercity-ready-",dir=output.parent) as temp:
         staged = Path(temp)/"ready.sqlite"
+        _step(1)
         build_pbf(source,staged)
         prepare_gateways(source,staged)
         current = source.stat()
@@ -64,12 +84,16 @@ def prepare_database(source, output):
     return output
 
 
-def _elements(stream):
+def _elements(stream, step=None):
     root = None
+    count = 0
     for event, element in ET.iterparse(stream, events=("start", "end")):
         if root is None:
             root = element
         if event == "end" and element.tag in {"node", "way", "relation"}:
+            count += 1
+            if step and count % 250_000 == 0:
+                _step(step, f"{count / 1e6:.2f} M")
             yield element
             root.remove(element)
 
@@ -123,7 +147,7 @@ def build_xml(stream, output, project, road_classes=ROAD_CLASSES, source=None, *
         raise ValueError("Backbone classes must be a nonempty subset of ROAD_CLASSES")
     nodes, ways, rules, blocked_nodes, blocked_ways = {}, [], [], set(), set()
     references = Counter()
-    for element in _elements(stream):
+    for element in _elements(stream, 4 if connector_extract else 2):
         tags = {tag.get("k"): tag.get("v") for tag in element.findall("tag")}
         identifier = int(element.get("id"))
         if element.tag == "node":

@@ -624,6 +624,10 @@ static func value_label(value, language: String) -> String:
 
 
 static func startup_detail(value: String, language: String) -> String:
+	# "Message|counter": translate the message, keep the language-neutral counter.
+	if "|" in value:
+		var parts := value.split("|", true, 1)
+		return startup_detail(parts[0], language) + "  " + parts[1]
 	const DETAILS := {
 		"Initializing scenery engine...": "Alustetaan karttamoottoria…",
 		"Preparing road index...": "Rakennetaan tiehakemistoa…",
