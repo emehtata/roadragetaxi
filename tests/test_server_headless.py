@@ -600,7 +600,10 @@ def test_tyre_marks_flash_and_level_in_the_state(tmp_path, monkeypatch):
     server._on_foot = False
     server.world.weather.wetness = 0.0  # a dry road (an autumn start may begin in rain, the road wet)
     server.car.skid_amount = 1.0  # hard slip on asphalt or whatever is under the taxi
-    assert server._tyre_mark(previous=(server.car.x - 1.0, server.car.y)) is not None
+    assert server._tyre_mark(previous=(server.car.x - 1.0, server.car.y)) is None  # no gray cornering/acceleration trail
+    server.car.braking = True
+    mark = server._tyre_mark(previous=(server.car.x - 1.0, server.car.y))
+    assert mark is not None and mark["kind"] == "rubber" and mark["intensity"] == 1.0
     assert server._tyre_mark(previous=(server.car.x, server.car.y)) is None  # not moving: nothing laid
 
 

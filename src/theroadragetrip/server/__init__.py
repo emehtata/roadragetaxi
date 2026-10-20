@@ -385,11 +385,12 @@ class SimulationServer:
         return observed
 
     def _tyre_mark(self, previous) -> Optional[dict]:
-        """Whether the taxi lays a tyre mark this tick, and which, decided as
-        SKIDMARK.md says: rubber on a hard surface
-        when the tyres slip enough, a dirt (sand, snow) trail off-road on
-        soft ground whenever moving. None when nothing is laid. The client
-        keeps the trail."""
+        """Return this tick's transient tyre mark, or None.
+
+        Hard surfaces retain only full-black braking skids. Soft ground and
+        snowy roads retain their material-specific tracks while moving. The
+        client keeps recent points in memory; render-cache files do not.
+        """
         from ..calendar import Season
         from ..map_level import SURFACE_LEVEL
         from ..physics import (get_current_road_at_car, is_point_in_parking_lot, is_point_on_parking_space,
@@ -414,11 +415,14 @@ class SimulationServer:
         )
         soft = ground in ("soft", "sand")
         skidding = skidmark_should_mark(car.skid_amount, wetness=world.weather.wetness, hard_surface=not soft)
+        if not soft and not car.braking:
+            skidding = False  # hard surfaces keep only black braking marks, not gray slip trails
         if not (skidding or (soft and abs(car.speed) > 1.0)):
             return None
         # Skidding on a frozen field scratches the ice pale, never black.
         kind = ("snow" if self.calendar.season == Season.WINTER else "sand" if ground == "sand" else "dirt") if soft else "snow" if ground == "ice" else "rubber"
-        return {"kind": kind, "intensity": round(skidmark_intensity(car.skid_amount) if skidding else 1.0, 2),
+        intensity = skidmark_intensity(car.skid_amount) if soft and skidding else 1.0
+        return {"kind": kind, "intensity": round(intensity, 2),
                 "front": bool(tire_tracks_include_front_wheels(soft, skidding, getattr(car, "front_lockup", False)))}
 
     @property
