@@ -209,6 +209,7 @@ func _ready() -> void:
 	sim.connection_changed.connect(_on_connection)
 	phone.sound.connect(func(group: String, variation: int): audio.handle_event({"type": "sound", "group": group, "variation": variation}))
 	phone.request.connect(func(action: String, item_id: String, request_id: int): sim.send_phone(action, item_id, request_id))
+	phone.open()
 	if _audiotest:
 		var tester: Node = preload("res://audio_test.gd").new()
 		tester.main = self

@@ -343,6 +343,8 @@ func test_vomit_puddle() -> void:
 func test_camera_view_command() -> void:
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
+	check(main.phone.is_open and main.phone.visible, "the game starts with the phone open")
+	main.phone.close()
 	main.entities.origin = Vector2(1000, 2000)
 	var old_transform := root.canvas_transform
 	root.canvas_transform = Transform2D(Vector2(2, 0), Vector2(0, 2), Vector2(10, 20))
@@ -418,6 +420,7 @@ func test_graphics_settings() -> void:
 	var main: Node = load("res://main.tscn").instantiate()
 	main.set_graphics(Graphics.read(reloaded))
 	root.add_child(main)
+	main.phone.close()
 	check(not MapChunk.buildings_3d, "graphics: new session selects the existing 2D fallback")
 	check(not main.entities.smoke_enabled and not main.map_layer.shadows_enabled, "graphics: live render flags applied")
 	var weather = main.weather
@@ -1026,6 +1029,7 @@ func test_mouse_inspection() -> void:
 	layer.free()
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
+	main.phone.close()
 	check(main._character_text("pedestrian", {"id": 7, "resident": {"name": "Aino Korhonen", "birth_date": "1990-04-05"}}).contains("Aino Korhonen"), "inspector shows the resident name")
 	check(main._character_text("npc", {"id": 8, "owner": {"name": "Aino Korhonen"}, "occupants": [{"name": "Aino Korhonen"}]}).contains("Aino Korhonen"), "vehicle inspector shows its people")
 	main.set_language("fi")
@@ -1118,7 +1122,7 @@ func test_phone() -> void:
 	phone.sound.connect(func(group, variation): sounds.append([group, variation]))
 	phone.request.connect(func(action, item_id, request_id): requests.append([action, item_id, request_id]))
 
-	check(not phone.is_open and not phone.visible, "the phone starts closed")
+	check(not phone.is_open and not phone.visible, "the reusable phone starts closed")
 	phone._unhandled_input(_key(KEY_ENTER))
 	phone._unhandled_input(_key(KEY_X))
 	check(requests.is_empty(), "closed, its keys do nothing")
@@ -1194,7 +1198,7 @@ func test_phone() -> void:
 	phone.accept_selected()
 	requests.clear()
 	phone.set_connected(false)
-	check(phone.items.is_empty() and phone.pending.is_empty() and phone._accept.disabled and phone._status.text.begins_with("No connection"), "connection loss: stale rows and pending answers cleared, actions off")
+	check(phone.items.is_empty() and phone.pending.is_empty() and phone._accept.disabled and phone._status.text == "No network connection.", "connection loss: stale rows and pending answers cleared, actions off")
 	check(not phone.accept_selected() and requests.is_empty(), "no requests without a connection")
 	phone.set_connected(true)
 	check(phone._status.text == "No ride requests right now.", "reconnected: a fresh, empty phone until the simulation says otherwise")
@@ -1452,6 +1456,7 @@ func test_speech_and_stations() -> void:
 
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
+	main.phone.close()
 	var sim: Node = main.get_node("SimClient")
 	main._unhandled_input(_key_event(KEY_J))
 	main.send({})
@@ -1610,6 +1615,7 @@ func test_weather_presentation() -> void:
 func test_road_rage() -> void:
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
+	main.phone.close()
 	var sim: Node = main.get_node("SimClient")
 	main.send({})
 	check(sim._last_command["road_rage"] == false, "no press: road_rage false")
@@ -1880,6 +1886,7 @@ func test_controls_and_economy() -> void:
 	check(defaults["lane_assist_enabled"] == false and not defaults["respawn"] and not defaults["cancel_ride"] and not defaults["reset_trip"], "the remaining gameplay controls have safe defaults")
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
+	main.phone.close()
 	var sim: Node = main.get_node("SimClient")
 	main._unhandled_input(_key_event(KEY_V))
 	main.send({})
