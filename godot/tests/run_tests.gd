@@ -191,6 +191,7 @@ func test_startup_progress() -> void:
 	check(not shell._startup_bar.indeterminate and shell._startup_bar.value == 1 and shell._startup_bar.max_value == 4, "startup: intercity has a four-step progress meter")
 	check(shell._startup_busy_bar.visible and shell._startup_busy_bar.indeterminate, "startup: a separate activity bar keeps moving without changing actual progress")
 	check(shell._startup_detail.text.contains("Vaihe 2 / 4") and shell._startup_activity.visible, "startup: localized intercity stage and activity are visible")
+	check(shell._startup_activity.text.contains("Varoitus:") and shell._startup_activity.text.contains("useita minuutteja"), "startup: intercity initialization shows an explicit duration warning")
 	shell._startup_started = Time.get_ticks_msec() - 61000
 	shell._startup_changed_at = Time.get_ticks_msec() - 45000
 	shell._startup_poll = 100.0  # deliberately no server/file updates
