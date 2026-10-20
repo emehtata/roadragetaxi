@@ -5,11 +5,14 @@ for the obstruction; ordinary movement never pushes people out of the way.
 """
 from dataclasses import dataclass
 import hashlib
+import logging
 import math
 import random
 
 from .geo import dist_point_to_segment, point_in_polygon
 from .nightlife import parse_opening_hours
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -23,7 +26,7 @@ class ProtestSettings:
     return_delay_s: float = 30.0
     lifetime_s: float = 1200.0
     spawn_interval_s: float = 30.0
-    spawn_probability: float = 0.4
+    spawn_probability: float = 1.0
     seed: int = 19
 
     @classmethod
@@ -88,6 +91,11 @@ class ProtestManager:
         self._next_id = 1
         self._cleanup_at = 0.0
         self._schedule = parse_opening_hours(self.settings.schedule) or []
+        logger.info(
+            "Protests in %s: enabled=%s, schedule=%s, probability=%.0f%% every %.0fs, maximum %d groups",
+            self.city or "unknown city", self.settings.enabled, self.settings.schedule,
+            self.settings.spawn_probability * 100.0, self.settings.spawn_interval_s, self.settings.max_groups,
+        )
 
     def scheduled(self, now):
         if now is None:
@@ -95,12 +103,22 @@ class ProtestManager:
         minute = now.weekday() * 1440 + now.hour * 60 + now.minute
         return any(start <= minute + shift < end for start, end in self._schedule for shift in (0, 10080))
 
+    @staticmethod
+    def _road_can_host(way):
+        return (
+            way.is_drivable
+            and way.highway in {"primary", "secondary", "tertiary", "residential", "unclassified"}
+            and getattr(way, "layer", 0) == 0
+            and getattr(way, "map_level", None) in (None, 0)
+            and not getattr(way, "is_bridge", False)
+            and not getattr(way, "is_tunnel", False)
+            and not getattr(way, "is_roundabout", False)
+            and way.speed_limit_kmh <= 60
+            and 2.5 <= way.half_width_m <= 8.0
+        )
+
     def can_spawn(self, world, way, x, y, heading, car):
-        if (not way.is_drivable or way.highway not in {"primary", "secondary", "tertiary", "residential", "unclassified"}
-                or getattr(way, "layer", 0) != 0 or getattr(way, "map_level", None) not in (None, 0)
-                or getattr(way, "is_bridge", False) or getattr(way, "is_tunnel", False)
-                or getattr(way, "is_roundabout", False)
-                or way.speed_limit_kmh > 60 or not 2.5 <= way.half_width_m <= 8.0):
+        if not self._road_can_host(way):
             return False
         if not 120 <= math.hypot(x - car.x, y - car.y) <= 650 or any(math.hypot(x-g.x, y-g.y) < 300 for g in self.groups):
             return False
@@ -140,21 +158,31 @@ class ProtestManager:
         from .roadworks import _point_at, _way_length
         grid = getattr(world, "spatial_grid", None)
         ways = list(grid.ways_in_rect(car.x-650, car.y-650, car.x+650, car.y+650)) if grid else list(world.ways)
-        ways.sort(key=lambda w: (getattr(w, "osm_id", 0) or 0, w.points_m[0]))
-        self.rng.shuffle(ways)
-        for way in ways[:40]:
-            length = _way_length(way)
-            if length < 100:
-                continue
+        candidates = [(way, _way_length(way)) for way in ways if self._road_can_host(way)]
+        candidates = [(way, length) for way, length in candidates if length >= 20.0]
+        candidates.sort(key=lambda item: (getattr(item[0], "osm_id", 0) or 0, item[0].points_m[0]))
+        self.rng.shuffle(candidates)
+        for way, length in candidates[:40]:
             a, b = _point_at(way, length/2-10), _point_at(way, length/2+10)
             if math.dist(a, b) < 19.5:  # no sharp bends through the crowd
                 continue
             x, y = _point_at(way, length/2)
             heading = math.atan2(b[1]-a[1], b[0]-a[0])
             if self.can_spawn(world, way, x, y, heading, car):
-                self.groups.append(ProtestGroup(self._next_id, way, x, y, heading, self.settings.group_size, sim_time))
+                group = ProtestGroup(self._next_id, way, x, y, heading, self.settings.group_size, sim_time)
+                self.groups.append(group)
+                logger.info(
+                    "Protest group %d created in %s on %s (OSM way %s) at world coordinates (%.1f, %.1f), %.0f m from taxi",
+                    group.id, self.city or "unknown city", getattr(way, "name", None) or "unnamed road",
+                    getattr(way, "osm_id", None) or "unknown", x, y, math.hypot(x-car.x, y-car.y),
+                )
                 self._next_id += 1
-                return
+                return group
+        logger.info(
+            "Protest spawn found no safe site in %s: checked %d of %d eligible roads (%d nearby ways); taxi at world coordinates (%.1f, %.1f)",
+            self.city or "unknown city", min(40, len(candidates)), len(candidates), len(ways), car.x, car.y,
+        )
+        return None
 
     def intimidate(self, car):
         for group in self.groups:
@@ -199,6 +227,11 @@ class ProtestManager:
             self._next_spawn = sim_time + self.settings.spawn_interval_s
             probability = self.settings.spawn_probability * (1.25 if now.weekday() >= 5 else 1.0)
             if len(self.groups) < self.settings.max_groups and self.rng.random() < probability:
+                logger.info(
+                    "Protest spawn attempt in %s at %s (probability %.0f%%, %d/%d groups active)",
+                    self.city or "unknown city", now.isoformat(timespec="minutes"),
+                    min(1.0, probability) * 100.0, len(self.groups), self.settings.max_groups,
+                )
                 self.spawn(world, car, sim_time)
 
     def blocks_movement(self, car, previous):

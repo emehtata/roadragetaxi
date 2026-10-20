@@ -16,7 +16,7 @@ def fixture():
                             npc_manager=SimpleNamespace(vehicles=[]), pedestrian_mgr=SimpleNamespace(pedestrians=[]))
     world.spatial_grid = SpatialWayGrid(world.ways)
     car = Car(x=0, y=0, heading=0, speed=0)
-    manager = ProtestManager(ProtestSettings(spawn_probability=1.0), "Oulu")
+    manager = ProtestManager(ProtestSettings(), "Oulu")
     return manager, world, way, car
 
 
@@ -37,6 +37,28 @@ def test_deterministic_daytime_spawn_and_no_night_spawn():
     assert len(a.snapshot(300, 0)[0]["members"]) == 24
     assert a.groups[0].state == "SITTING"
     assert not a.can_spawn(world, way, 300, 0, 0, car)  # no overlapping events
+
+
+def test_spawn_logs_attempt_and_created_location(caplog):
+    m, world, _, car = fixture()
+
+    with caplog.at_level("INFO", logger="theroadragetrip.protests"):
+        m.update(0.1, world, car, datetime(2026, 10, 19, 12), 0)
+
+    assert "Protest spawn attempt in Oulu" in caplog.text
+    assert "Protest group 1 created in Oulu" in caplog.text
+    assert "OSM way 1" in caplog.text and "world coordinates (300.0, 0.0)" in caplog.text
+
+
+def test_spawn_budget_is_spent_on_eligible_roads_not_short_segments():
+    m, world, way, car = fixture()
+    short_roads = [Way([(0, i * 2), (10, i * 2)], "residential", 4.5, osm_id=i) for i in range(1, 41)]
+    way.osm_id = 100
+    world.ways = short_roads + [way]
+    world.spatial_grid = SpatialWayGrid(world.ways)
+    m.rng.shuffle = lambda items: None
+
+    assert m.spawn(world, car, 0) is not None
 
 
 def test_config_limits_disable_and_overnight_schedule():
