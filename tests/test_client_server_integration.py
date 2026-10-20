@@ -339,7 +339,9 @@ def test_a_refuel_press_buys_fuel_once(monkeypatch):
     car.speed = 0.0
     car.fuel_l = 10.0
     taxi_mgr.balance_cents = 100_000
-    expected = calculate_fuel_purchase(10.0, car.fuel_capacity_l, 100_000, fuel_station_price_cents(station))
+    server._on_foot = True
+    car.engine_on = False
+    server.world.player_pedestrian.x, server.world.player_pedestrian.y = car.x, car.y
 
     # The press, then (within the same tick) the next ordinary command.
     connection.send(protocol.build_command_message(PlayerCommand(refuel=True), interact=False, seq=2))
@@ -351,8 +353,9 @@ def test_a_refuel_press_buys_fuel_once(monkeypatch):
     for _ in range(4):
         server.tick(1.0 / 30.0)
     time.sleep(0.05)
-    assert car.fuel_l == pytest.approx(min(car.fuel_capacity_l, 10.0 + expected.liters))
-    assert taxi_mgr.balance_cents == 100_000 - expected.cost_cents  # charged once
+    assert car.fuel_l == pytest.approx(10.0 + 0.5 * 5 / 30)
+    import math
+    assert taxi_mgr.balance_cents == 100_000 - math.ceil((0.5 * 5 / 30) * fuel_station_price_cents(station) - 1e-9)
     assert "fuel_tank_full" not in taxi_mgr.notification_msg and taxi_mgr.notification_msg  # the purchase notice stays
     state = _all_messages(connection)[-1]["state"]
     assert state["player"]["fuel_l"] == pytest.approx(car.fuel_l)  # what the client's gauge shows
@@ -361,6 +364,7 @@ def test_a_refuel_press_buys_fuel_once(monkeypatch):
     # A full tank - even after idling a sliver away since the fill-up (the
     # receipt said "0.0 l" yet cost a cent) - then an empty purse: nothing is bought.
     balance = taxi_mgr.balance_cents
+    taxi_mgr.refueling = None
     car.fuel_l = car.fuel_capacity_l - 0.004
     connection.send(protocol.build_command_message(PlayerCommand(refuel=True), interact=False, seq=4))
     time.sleep(0.05)
@@ -468,18 +472,33 @@ def test_one_refuel_press_buys_fuel_once_and_refused_presses_cost_nothing(monkey
         for _ in range(5):  # the press, then ticks with the key released
             server.tick(1.0 / 30.0)
 
-    server._on_foot = False  # the sample world starts on foot; refuelling is from the driver's seat
+    server._on_foot = True
+    car.engine_on = False
+    server.world.player_pedestrian.x, server.world.player_pedestrian.y = car.x, car.y
     car.speed, car.fuel_l, taxi.balance_cents = 0.0, 10.0, 5_000
     expected = calculate_fuel_purchase(10.0, car.fuel_capacity_l, 5_000, fuel_station_price_cents(pump))
     assert 0 < expected.cost_cents <= 5_000
     press(refuel=True)
-    assert taxi.balance_cents == 5_000 - expected.cost_cents
+    assert taxi.balance_cents < 5_000
     fuel_after = car.fuel_l
-    assert fuel_after == pytest.approx(min(car.fuel_capacity_l, 10.0 + expected.liters), abs=0.05)
+    assert fuel_after == pytest.approx(10.0 + 0.5 * 5 / 30)
 
     balance = taxi.balance_cents
-    press()  # no new press: nothing more bought
-    assert taxi.balance_cents == balance
+    press()  # one press keeps the pump running
+    assert taxi.balance_cents < balance
+    before, balance = car.fuel_l, taxi.balance_cents
+    press(refuel=True)
+    assert taxi.refueling is None and car.fuel_l == before and taxi.balance_cents == balance
+    press()
+    assert taxi.refueling is None and car.fuel_l == before
+    press(refuel=True)
+    assert taxi.refueling is not None and car.fuel_l > before
+    server.world.player_pedestrian.x = car.x + 20.0
+    before = car.fuel_l
+    press()
+    assert taxi.refueling is None and car.fuel_l == before
+    server.world.player_pedestrian.x, server.world.player_pedestrian.y = car.x, car.y
+    balance = taxi.balance_cents
 
     car.fuel_l, car.speed = 20.0, 5.0
     server._latest_command = PlayerCommand()
@@ -491,7 +510,11 @@ def test_one_refuel_press_buys_fuel_once_and_refused_presses_cost_nothing(monkey
     assert taxi.balance_cents == balance
 
     car.fuel_l = 10.0
+    server._on_foot = False
+    press(refuel=True)  # seated: refused
+    assert taxi.balance_cents == balance and car.fuel_l == 10.0
     server._on_foot = True
-    press(refuel=True)  # on foot: refused
-    assert taxi.balance_cents == balance and "taxi" in taxi.notification_msg.lower()
+    car.engine_on = True
+    press(refuel=True)  # running engine: refused
+    assert taxi.balance_cents == balance
     connection.close()

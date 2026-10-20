@@ -17,7 +17,7 @@ from typing import Optional, Tuple
 from .career import CAREER_SCORE_LIMIT, save_career, save_gig_odometer
 from .fuel import (
     FULL_TANK_TOLERANCE_L,
-    calculate_fuel_purchase,
+    Refueling,
     fuel_station_price_cents,
     nearest_fuel_station,
     update_car_fuel,
@@ -320,37 +320,42 @@ def advance_simulation(
         if protests is not None:
             protests.intimidate(car)
 
-    if command.refuel:
+    stopped_refueling = command.refuel and getattr(taxi_mgr, "refueling", None) is not None
+    if stopped_refueling:
+        taxi_mgr.refueling = None
+    if command.refuel and not stopped_refueling:
         station = nearest_fuel_station(scenery_objects, car.x, car.y)
         if station is None:
             taxi_mgr.notification_msg = tr(language, "fuel_no_station")
-        elif on_foot:
+        elif not on_foot or car.engine_on:
             taxi_mgr.notification_msg = tr(language, "fuel_enter_car")
         elif abs(car.speed) > 0.5:
             taxi_mgr.notification_msg = tr(language, "fuel_stop_car")
+        elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) > 8.0:
+            taxi_mgr.notification_msg = tr(language, "fuel_no_station")
         elif car.fuel_l >= car.fuel_capacity_l - FULL_TANK_TOLERANCE_L:  # idling since the last fill-up still reads as full
             taxi_mgr.notification_msg = tr(language, "fuel_tank_full")
         else:
             price_cents = fuel_station_price_cents(station)
-            purchase = calculate_fuel_purchase(
-                car.fuel_l,
-                car.fuel_capacity_l,
-                taxi_mgr.balance_cents,
-                price_cents,
-            )
-            if purchase.liters <= 0.0:
+            if taxi_mgr.balance_cents <= 0:
                 taxi_mgr.notification_msg = tr(language, "fuel_no_money")
             else:
-                car.fuel_l = min(car.fuel_capacity_l, car.fuel_l + purchase.liters)
-                taxi_mgr.balance_cents -= purchase.cost_cents
+                if getattr(taxi_mgr, "refueling", None) is None:
+                    taxi_mgr.refueling = Refueling(price_cents)
                 audio.play_group("taxi.refuel")
-                taxi_mgr.notification_msg = tr(
-                    language,
-                    "fuel_purchased",
-                    liters=purchase.liters,
-                    cost=purchase.cost_cents / 100.0,
-                )
         taxi_mgr.notification_timer = 4.0
+    fueling = getattr(taxi_mgr, "refueling", None)
+    if fueling is not None:
+        station = nearest_fuel_station(scenery_objects, car.x, car.y)
+        if (not on_foot or car.engine_on or abs(car.speed) > 0.5 or station is None
+                or math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) > 8.0):
+            taxi_mgr.refueling = None
+        else:
+            fueling.advance(car, taxi_mgr, dt)
+            taxi_mgr.notification_msg = tr(language, "fuel_purchased", liters=fueling.liters, cost=fueling.paid_cents / 100.0)
+            taxi_mgr.notification_timer = 4.0
+            if car.fuel_l >= car.fuel_capacity_l - 1e-9 or taxi_mgr.balance_cents <= 0:
+                taxi_mgr.refueling = None
     throttle = 0.0 if on_foot or immobilized or out_of_fuel or not car.engine_on else command.throttle
     brake = 0.0 if on_foot or immobilized else command.brake
     steer_left = 0.0 if on_foot else command.steer_left

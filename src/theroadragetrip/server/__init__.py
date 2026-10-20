@@ -186,6 +186,8 @@ class SimulationServer:
         roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
         # Loading never streams; the map grows while playing (map_sync.py).
         self._auto_fetch = bool(getattr(args, "auto_fetch", True)) and not getattr(args, "use_sample", False)
+        if getattr(args,"intercity_fares",False) and not self._auto_fetch:
+            raise ValueError("Intercity fares require automatic map streaming and cannot use the sample map.")
         args.auto_fetch = False
 
         if city_choice is None:
@@ -493,6 +495,7 @@ class SimulationServer:
         """Stop listening and drop every client (tests; an embedding host).
         The process exit does this for the standalone server."""
         self._running = False
+        self.navigation.close()
         if self._listener is not None:
             self._listener.close()
         with self._clients_lock:
@@ -646,6 +649,7 @@ class SimulationServer:
         phone_results = [self._apply_phone_request(request) for request in phone_requests]
 
         if interact:
+            command = replace(command, engine_on=None)
             self._on_foot = apply_enter_exit_vehicle(
                 self.car, self.world.player_pedestrian, self._on_foot, self.audio, self.world.taxi_mgr,
                 self.world.pedestrian_mgr.pedestrians,

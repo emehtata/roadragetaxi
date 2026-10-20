@@ -674,13 +674,16 @@ def test_the_pump_in_refuelling_range_sends_its_price(tmp_path, monkeypatch):
     assert price == fuel_station_price_cents(nearer)
 
     # Refuelling charges exactly that price.
-    server._on_foot = False
+    server._on_foot = True
     car.speed, car.fuel_l = 0.0, car.fuel_capacity_l - 10.0
+    car.engine_on = False
+    server.world.player_pedestrian.x, server.world.player_pedestrian.y = car.x, car.y
     server.world.taxi_mgr.balance_cents = 100_000
     server._latest_command = PlayerCommand()
     server._pending_refuels = 1
     server.tick(1.0 / 30.0)
-    assert 100_000 - server.world.taxi_mgr.balance_cents == pytest.approx(10.0 * price, abs=2)
+    assert car.fuel_l == pytest.approx(car.fuel_capacity_l - 10.0 + 0.5 / 30.0)
+    assert 100_000 - server.world.taxi_mgr.balance_cents == pytest.approx(0.5 / 30.0 * price, abs=1)
 
 
 def test_the_navigation_route_crosses_the_wire(tmp_path, monkeypatch):

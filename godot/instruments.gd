@@ -15,6 +15,8 @@ const TEXT_OUTLINE_PX := 4
 
 var _faces: Array[Texture2D] = []
 var _font: Font
+var _pump_liters: Control
+var _pump_total: Control
 var _shown := []  # the values last drawn
 var _state: Dictionary = {}
 var language := "en"
@@ -29,6 +31,19 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_font = ThemeDB.fallback_font
 	_faces = load_rage_faces(Paths.package_path(RAGE_ATLAS))
+	for label in ["L", "€"]:
+		var display := preload("res://taxi_meter.gd").new()
+		display.on_color = Color8(12, 14, 12)
+		display.off_color = Color8(160, 164, 158)
+		display.background = Color8(184, 188, 180)
+		display.title = label
+		display.scale = Vector2(1.7, 1.7)
+		display.hide()
+		add_child(display)
+		if label == "L":
+			_pump_liters = display
+		else:
+			_pump_total = display
 
 
 ## The 11 face frames, cropped from the atlas.
@@ -53,10 +68,19 @@ static func load_rage_faces(path: String) -> Array[Texture2D]:
 
 func show_state(state: Dictionary) -> void:
 	var player: Dictionary = state.get("player", {})
+	var filling = state.get("taxi", {}).get("refueling")
+	if _pump_liters != null:
+		_pump_liters.visible = filling is Dictionary
+		_pump_total.visible = filling is Dictionary
+		if filling is Dictionary:
+			_pump_liters.cents = roundi(float(filling.get("liters", 0.0)) * 100.0)
+			_pump_total.cents = int(filling.get("cost_cents", 0))
+			_pump_liters.position = Vector2((size.x - _pump_liters.size.x * 1.7) / 2.0, 130)
+			_pump_total.position = _pump_liters.position + Vector2(0, _pump_liters.size.y * 1.7)
 	var values := [snappedf(player.get("fuel_l", 0.0), 0.1), roundi(state.get("rage_power", 0.0) * 100.0),
 		snappedf(state.get("water_elapsed", 0.0), 0.1), roundi(player.get("trip_m", 0.0)), roundi(player.get("odometer_m", 0.0) / 100.0),
 		snappedf(player.get("fuel_consumption_l_per_100km", 0.0), 0.1), absf(player.get("speed", 0.0)) > 0.5, size,
-		speed_limit(state), price_text(state), roundi(speed_kmh(player.get("speed", 0.0))), chips.duplicate()]
+		speed_limit(state), price_text(state), roundi(speed_kmh(player.get("speed", 0.0))), chips.duplicate(), player.get("engine_on", false)]
 	_state = state
 	if values != _shown:
 		_shown = values
@@ -288,7 +312,7 @@ func _centered(text: String, at: Vector2, font_size: int, color: Color) -> void:
 ## the red reserve, consumption and the pump price under it.
 func _draw_fuel(center: Vector2, player: Dictionary) -> void:
 	var capacity := maxf(0.001, player.get("fuel_capacity_l", 50.0))
-	var fraction := clampf(player.get("fuel_l", 0.0) / capacity, 0.0, 1.0)
+	var fraction := clampf(player.get("fuel_l", 0.0) / capacity, 0.0, 1.0) if player.get("engine_on", false) else 0.0
 	var radius := 44.0
 	var face := PackedVector2Array([center])
 	for step in 25:
@@ -310,7 +334,12 @@ func _draw_fuel(center: Vector2, player: Dictionary) -> void:
 		draw_string(_font, Vector2(x - 4, center.y - 2), label[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color8(220, 225, 215))
 	draw_line(center, dial_point(center, fraction, radius - 6), Color8(230, 65, 45), 3.0)
 	draw_circle(center, 4.0, Color8(240, 220, 170))
-	_centered(T.text("fuel", language), center + Vector2(0, -radius * 0.45), 10, Color8(160, 170, 175))
+	var icon := center + Vector2(-5, -25)
+	var ink := Color8(180, 190, 195)
+	draw_rect(Rect2(icon, Vector2(9, 13)), ink)
+	draw_rect(Rect2(icon + Vector2(2, 2), Vector2(5, 4)), Color8(12, 16, 20))
+	draw_line(icon + Vector2(-2, 14), icon + Vector2(11, 14), ink, 2)
+	draw_polyline(PackedVector2Array([icon + Vector2(9, 6), icon + Vector2(13, 6), icon + Vector2(13, 12), icon + Vector2(16, 12), icon + Vector2(16, 2), icon + Vector2(13, -1)]), ink, 1.5)
 	var price := price_text(_state, language)
 	if price != "":
 		_centered(price, center + Vector2(0, 18), 12, Color8(255, 215, 90))

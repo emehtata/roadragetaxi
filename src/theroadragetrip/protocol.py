@@ -557,6 +557,8 @@ def build_state_message(
             "passenger_happiness": taxi_mgr.passenger_happiness if taxi_mgr.fare_started_at is not None else None,
             # The pump in refuelling range of the taxi (the gauge's "G: REFUEL" price), else null.
             "fuel_station_price_cents": _station_price_cents(world, car),
+            "refueling": {"liters": taxi_mgr.refueling.liters, "cost_cents": taxi_mgr.refueling.paid_cents}
+            if getattr(taxi_mgr, "refueling", None) is not None else None,
         },
         "phone": _phone_to_dict(taxi_mgr, car),
         # Career-mode session end (score threshold reached -> next city or

@@ -563,10 +563,7 @@ static func card_text(item: Dictionary, language := "en") -> String:
 	var lines: Array = []
 	lines.append(T.text("phone_pickup_short", language) % item.get("pickup", "?"))
 	lines.append(T.text("phone_to_short", language) % item.get("dropoff", "?"))
-	if int(item.get("passenger_count", 1)) > 1:
-		lines.append(T.text("phone_group", language) % [int(item["passenger_count"]), distance_text(item.get("trip_distance_m"), language)])
-	else:
-		lines.append(T.text("phone_trip_meter", language) % distance_text(item.get("trip_distance_m"), language))
+	lines.append(T.text("phone_trip_meter", language) % distance_text(item.get("trip_distance_m"), language))
 	return "\n".join(lines)
 
 

@@ -261,6 +261,17 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 		text["start_hint"] = T.text("hint_enter_taxi", language)
 	elif not on_foot and not player.get("engine_on", true) and player.get("fuel_l", 0.0) > 0.0:
 		text["start_hint"] = T.text("hint_start_engine", language)
+	if taxi.get("fuel_station_price_cents") != null:
+		var fuel_hint := "fuel_hint_ready"
+		if taxi.get("refueling") is Dictionary:
+			fuel_hint = "fuel_hint_active"
+		elif absf(float(player.get("speed", 0.0))) > 0.5:
+			fuel_hint = "fuel_hint_stop"
+		elif player.get("engine_on", false):
+			fuel_hint = "fuel_hint_engine"
+		elif not on_foot:
+			fuel_hint = "fuel_hint_exit"
+		text["start_hint"] = T.text(fuel_hint, language)
 	var meet = state.get("meet")
 	text["meet"] = "\n".join(meet.get("lines", [])) if typeof(meet) == TYPE_DICTIONARY else ""
 	# The road line, in the F3 readout.

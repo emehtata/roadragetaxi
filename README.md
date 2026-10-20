@@ -280,6 +280,14 @@ old index. World caches (`.rwc`) and the experimental road-binary scripts are
 separate from this optional index; experimental road binaries are not the
 default gameplay path.
 
+Enable **Enable intercity fares** in Settings to use major-road navigation
+between towns. Download the Finland PBF when prompted; the game initializes
+the navigation database before starting and reuses it in later sessions.
+Destination streets stream while driving, and the final address is selected
+only once nearby map data is available. Unsupported destinations are excluded.
+See [national navigation](docs/national-navigation.md) for preparation, coverage
+and measurements. The old full-street index is not used by the game.
+
 ## Development and testing
 
 ```bash

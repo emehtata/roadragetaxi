@@ -14,6 +14,7 @@ var _server_pid := -1
 var _game: Node
 var _panel: PanelContainer
 var _body: VBoxContainer
+var _menu_scroll: ScrollContainer
 var _cities: Array = []
 var _city_locations: Array = []  # the menu's cities
 var _municipalities: Array = []  # every municipality: the map picker's nearest settings
@@ -127,15 +128,23 @@ func _build_shell() -> void:
 	front.add_child(_panel)
 	_body = VBoxContainer.new()
 	_body.add_theme_constant_override("separation", 12)
-	_panel.add_child(_body)
+	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_menu_scroll = ScrollContainer.new()
+	_menu_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_panel.add_child(_menu_scroll)
+	_menu_scroll.add_child(_body)
 
 
 func _center_panel() -> void:
+	if _menu_scroll == null:
+		return
+	_menu_scroll.custom_minimum_size.y = minf(_body.get_combined_minimum_size().y, maxf(180, get_viewport().get_visible_rect().size.y - 100))
 	_panel.reset_size()  # shrink back to the new content's size first
 	_panel.position = ((get_viewport().get_visible_rect().size - _panel.size) / 2.0).floor()
 
 
 func _clear() -> void:
+	_menu_scroll.scroll_vertical = 0
 	for child in _body.get_children():
 		_body.remove_child(child)
 		child.queue_free()
@@ -716,6 +725,19 @@ func _settings_menu() -> void:
 		_settings.save("user://settings.cfg"))
 	_with_help(timetable, "help_train_timetable")
 	_focusables.append(timetable)
+	var intercity := CheckButton.new()
+	intercity.text = _t("enable_intercity_fares")
+	intercity.button_pressed = _settings.get_value("game", "intercity_fares", false)
+	intercity.toggled.connect(func(on: bool):
+		_settings.set_value("game", "intercity_fares", on)
+		_settings.save("user://settings.cfg"))
+	_with_help(intercity, "help_intercity_fares")
+	_focusables.append(intercity)
+	var intercity_note := Label.new()
+	intercity_note.text = _t("intercity_requirements")
+	intercity_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	intercity_note.custom_minimum_size.x = 500
+	_body.add_child(intercity_note)
 	var source := OptionButton.new()  # --osm-source: the map from Overpass, or a local .osm.pbf via osmium
 	source.add_item(_t("map_overpass"))
 	source.add_item(_t("map_pbf"))
@@ -796,7 +818,7 @@ func _set_volume(bus: String, value: float) -> void:
 
 
 func _start(mode: String, skip_pbf_offer := false) -> void:
-	if _settings.get_value("map", "osm_source", "") == "pbf" and not skip_pbf_offer:
+	if (_settings.get_value("map", "osm_source", "") == "pbf" or _settings.get_value("game", "intercity_fares", false)) and not skip_pbf_offer:
 		var pbf := _pbf_path()
 		if pbf == "":
 			_offer_pbf_download(mode)
@@ -840,6 +862,9 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 			if _start_place != "":
 				args.append_array(["--place-name", _start_place])
 	args.append_array(map_source_args(_settings.get_value("map", "osm_source", ""), _pbf_path()))
+	args.append("--intercity-fares" if _settings.get_value("game", "intercity_fares", false) else "--no-intercity-fares")
+	if _settings.get_value("game", "intercity_fares", false) and _pbf_path() != "":
+		args.append_array(["--osm-pbf-path", _pbf_path()])
 	if _settings.has_section_key("game", "historical_weather"):  # else the server's config decides
 		args.append("--historical-weather" if _settings.get_value("game", "historical_weather") else "--no-historical-weather")
 	if _settings.has_section_key("game", "train_timetable"):
@@ -917,6 +942,7 @@ func _offer_pbf_download(mode: String) -> void:
 		_t("pbf_download_offer"))
 	_button(_t("download"), func(): _download_pbf(mode))
 	_button(_t("use_overpass"), func():
+		_settings.set_value("game", "intercity_fares", false)
 		_settings.set_value("map", "osm_source", "overpass")
 		_settings.save("user://settings.cfg")
 		_start(mode))

@@ -281,6 +281,8 @@ def graph_route_steps(
     layer: Optional[int] = None,
     on_road: bool = False,
     start_layer: Optional[int] = None,
+    strict: bool = False,
+    target_layer: Optional[int] = None,
 ) -> RouteSteps:
     """A shortest route on one route graph (anything with nodes, edges,
     node_grid and component_parent: a RouteGraphBuild, or TrafficWorld's
@@ -382,7 +384,9 @@ def graph_route_steps(
         if start_layer is not None:
             start_edges = [edge for edge in start_edges if nodes[edge[0]][2] == start_layer and nodes[edge[1]][2] == start_layer]
         yield  # one lookup per step: each scans the 3x3 cells around its point
-        target_edges = _edges_at(graph, target, allowed)
+        target_edges = _edges_at(graph, target, allowed, within_m=.25 if strict else ROUTE_SNAP_M)
+        if target_layer is not None:
+            target_edges = [edge for edge in target_edges if nodes[edge[0]][2] == target_layer and nodes[edge[1]][2] == target_layer]
         if start_edges and target_edges:
             ahead = {(u, v): t for u, v, t, _length, _off in start_edges}
             if any((u, v) in ahead and t >= ahead[(u, v)] for u, v, t, _length, _off in target_edges):
@@ -397,6 +401,8 @@ def graph_route_steps(
             path = yield from search_from(start_cost, target_cost)
             if path is not None:
                 return [start] + [(nodes[index][0], nodes[index][1]) for index in path] + [target]
+    if strict:
+        return None  # intercity joins must not fall back to a cross-country connector
     for candidate_count in (8, 16, 32, 64):
         yield
         path = yield from search(min(candidate_count, node_count))

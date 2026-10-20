@@ -8,6 +8,7 @@ import math
 FUEL_TANK_CAPACITY_L = 60.0
 INITIAL_FUEL_L = 30.0
 FUEL_STATION_RANGE_M = 8.0
+REFUEL_L_PER_SECOND = 30.0 / 60.0
 FULL_TANK_TOLERANCE_L = 0.05  # a smaller top-up shows as "0.0 l" yet cost a cent: the tank counts as full
 MIN_FUEL_PRICE_CENTS = 150
 MAX_FUEL_PRICE_CENTS = 300
@@ -19,6 +20,24 @@ MAX_IDLE_CONSUMPTION_L_PER_HOUR = 3.0
 class FuelPurchase:
     liters: float
     cost_cents: int
+
+
+@dataclass
+class Refueling:
+    price_cents: int
+    liters: float = 0.0
+    paid_cents: int = 0
+
+    def advance(self, car, taxi, dt: float) -> FuelPurchase:
+        liters = min(max(0.0, dt) * REFUEL_L_PER_SECOND,
+                     max(0.0, car.fuel_capacity_l - car.fuel_l),
+                     max(0.0, (taxi.balance_cents + self.paid_cents) / self.price_cents - self.liters))
+        self.liters += liters
+        cost = min(taxi.balance_cents, max(0, math.ceil(self.liters * self.price_cents - 1e-9) - self.paid_cents))
+        self.paid_cents += cost
+        taxi.balance_cents -= cost
+        car.fuel_l = min(car.fuel_capacity_l, car.fuel_l + liters)
+        return FuelPurchase(liters, cost)
 
 
 def fuel_station_price_cents(station) -> int:

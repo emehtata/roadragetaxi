@@ -384,7 +384,7 @@ static func screenshot_directory(os_name: String, user_profile: String) -> Strin
 func _input(event: InputEvent) -> void:
 	drive.handle(event)
 	if event is InputEventMouseButton:
-		if event.pressed and _start_sign == null and not phone.is_open and (event.button_index == MOUSE_BUTTON_MIDDLE or (event.button_index == MOUSE_BUTTON_LEFT and event.ctrl_pressed)):
+		if event.pressed and _start_sign == null and not (phone.visible and phone.get_global_rect().has_point(event.position)) and (event.button_index == MOUSE_BUTTON_MIDDLE or (event.button_index == MOUSE_BUTTON_LEFT and event.ctrl_pressed)):
 			_pan_button = event.button_index
 			_focus = {"kind": "pan", "position": camera.position}
 			_inspect_panel.visible = true
@@ -420,7 +420,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_zoom(1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.9)
 			get_viewport().set_input_as_handled()
 			return
-		if event.button_index == MOUSE_BUTTON_LEFT and not phone.is_open:
+		if event.button_index == MOUSE_BUTTON_LEFT:
 			_focus = entities.entity_at(event.position, get_viewport().get_canvas_transform())
 			_inspect_panel.visible = not _focus.is_empty()
 			get_viewport().set_input_as_handled()
@@ -468,7 +468,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_T:
 				_reset_trip_pending = true
 			KEY_E:  # toggles what the simulation shows (it may have stopped the engine: no fuel)
-				_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
+				if not entities.shown_state().get("on_foot", true) and not _interact_pending:
+					_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
 			KEY_F1:
 				_help.visible = not _help.visible
 			KEY_ESCAPE:
@@ -936,8 +937,13 @@ static func wind_arrow(wind_from_deg: float) -> String:
 ## One command to the simulation (it validates and applies it). The
 ## presses (F, G) go out once, in the next command only.
 func send(controls: Dictionary) -> void:
+	var outside: bool = entities.shown_state().get("on_foot", true)
+	if outside:
+		_engine_on = bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
 	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist,
 		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending, _home_pending)
+	if outside or _interact_pending:
+		command["engine_on"] = null
 	command["language"] = language
 	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()
 	command["view_bounds"] = [view.position.x + entities.origin.x, entities.origin.y - view.end.y,
@@ -1015,10 +1021,13 @@ func _refresh_inspector(state: Dictionary) -> void:
 	if _focus.get("kind") == "pan":
 		_inspect_label.text = T.text("pan_view", language)
 		return
-	var key := "pedestrians" if _focus["kind"] == "pedestrian" else "npcs"
+	var key := "trains" if _focus["kind"] == "train" else "pedestrians" if _focus["kind"] == "pedestrian" else "npcs"
 	for row in state.get(key, []):
 		if row.get("id") == _focus["id"]:
-			_inspect_label.text = _character_text(_focus["kind"], row)
+			if _focus["kind"] == "train":
+				_inspect_label.text = "%s\n%s\n%.0f km/h" % [str(row.get("label", row.get("id", ""))), T.value_label(row.get("state", ""), language), float(row.get("speed", 0.0)) * 3.6]
+			else:
+				_inspect_label.text = _character_text(_focus["kind"], row)
 			return
 	if _focus["kind"] == "pedestrian":
 		for npc in state.get("npcs", []):

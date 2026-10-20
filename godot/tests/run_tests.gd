@@ -305,7 +305,7 @@ func test_i18n() -> void:
 	check(I18n.LANGUAGES.has("de") and I18n.LANGUAGE_NAMES.de == "Deutsch", "German is selectable")
 	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "de") == "[ZUM TAXI] Aino", "German walking passenger tag")
 	check(Phone.status_text(true, false, [], "", "de") == "Zurzeit keine Fahrtanfragen.", "German phone status")
-	check(Phone.card_text({"passenger_count": 3}, "de").contains("3 Fahrgäste"), "German group fare")
+	check(Phone.card_text({"passenger_count": 3}, "de") == Phone.card_text({}, "de"), "German fare hides passenger count")
 	check(I18n.startup_detail("Preparing NPC traffic...", "de") == "Verkehr wird vorbereitet…", "German startup details")
 	check(I18n.text("settings", "de") == "EINSTELLUNGEN" and I18n.text("nav_left", "de") == "Links abbiegen", "German settings and navigation")
 	check(Hud.subtitle_text({"speaker": "driver", "text": "Hallo!"}, "de") == "Fahrer: Hallo!", "German subtitle speaker")
@@ -960,6 +960,21 @@ func test_rendering() -> void:
 	check(Nav.distance_text(350.0) == "350m" and Nav.distance_text(2340.0) == "2.3km", "arrow distance text")
 
 	# Instruments.
+	var fuel_state := {"player": {"engine_on": true, "fuel_l": 20.0}, "taxi": {"fuel_station_price_cents": 199}, "on_foot": false}
+	check(Hud.values(fuel_state)["start_hint"].contains("engine (E)"), "near a pump: explain engine shutdown before refueling")
+	fuel_state["player"]["engine_on"] = false
+	check(Hud.values(fuel_state)["start_hint"].contains("(F)"), "engine off: explain getting out instead of restarting")
+	fuel_state["on_foot"] = true
+	check(Hud.values(fuel_state)["start_hint"].contains("Press G"), "outside: explain how to start filling")
+	fuel_state["taxi"]["refueling"] = {"liters": 1.0}
+	check(Hud.values(fuel_state)["start_hint"].contains("Stay beside"), "filling: explain staying by the taxi")
+	var pump_gauge := Instruments.new()
+	root.add_child(pump_gauge)
+	pump_gauge.show_state({"player": {}, "taxi": {"refueling": {"liters": 12.34, "cost_cents": 2456}}})
+	check(pump_gauge._pump_liters.visible and pump_gauge._pump_liters.cents == 1234 and pump_gauge._pump_total.cents == 2456, "pump displays delivered litres above total price")
+	pump_gauge.show_state({"player": {}, "taxi": {"refueling": null}})
+	check(not pump_gauge._pump_liters.visible and not pump_gauge._pump_total.visible, "pump display closes when refueling ends")
+	pump_gauge.free()
 	check(Instruments.odometer_lines(940.0, 12345.0) == ["12 km", "0.9 km"] and Instruments.odometer_lines(1500.0, 0.0) == ["0 km", "1.5 km"], "odometer and trip lines, no leading zeros")
 	var center := Vector2(100, 100)
 	check(Instruments.dial_point(center, 0.0, 10.0).x < 100.0 and Instruments.dial_point(center, 1.0, 10.0).x > 100.0
@@ -1020,6 +1035,23 @@ func test_drive_input() -> void:
 
 
 func test_mouse_inspection() -> void:
+	var ignition_main: Node = load("res://main.tscn").instantiate()
+	root.add_child(ignition_main)
+	if ignition_main._start_sign != null:
+		ignition_main._start_sign.queue_free()
+		ignition_main._start_sign = null
+	var ignition_state := {"on_foot": true, "player": {"engine_on": false}}
+	ignition_main.entities._frame = {"a": ignition_state, "b": ignition_state, "t": 0.0}
+	ignition_main._unhandled_input(_key_event(KEY_E))
+	check(not ignition_main._engine_on, "E outside does not queue an engine start")
+	ignition_state["on_foot"] = false
+	ignition_main._interact_pending = true
+	ignition_main._unhandled_input(_key_event(KEY_E))
+	check(not ignition_main._engine_on, "entry and ignition require separate commands")
+	ignition_main._interact_pending = false
+	ignition_main._unhandled_input(_key_event(KEY_E))
+	check(ignition_main._engine_on, "E works after the driver is inside")
+	ignition_main.free()
 	var layer: Node2D = EntityLayer.new()
 	layer.px_per_m = 10.0
 	var pedestrian := {"id": 7, "x": 10.0, "y": 0.0, "heading": 0.0}
@@ -1031,6 +1063,9 @@ func test_mouse_inspection() -> void:
 	check(layer.entity_at(Vector2(840.0, 360.0), canvas) == {"kind": "npc", "id": 8}, "clicking an NPC vehicle selects it")
 	check(layer.entity_at(Vector2(900.0, 360.0), canvas).is_empty(), "clicking empty map selects nothing")
 	check(layer.entity_position("npc", 8) == Vector2(20.0, 0.0), "camera can follow a selected NPC")
+	state["trains"] = [{"id": "tram-1", "state": "RUNNING", "speed": 5.0, "cars": [[40.0, 0.0, 0.0, 20.0, "locomotive"]]}]
+	check(layer.entity_at(Vector2(1040, 360), canvas) == {"kind": "train", "id": "tram-1"}, "clicking a train carriage selects its train")
+	check(layer.entity_position("train", "tram-1") == Vector2(40, 0), "camera follows a selected train")
 	state["pedestrians"] = []
 	npc["occupants"] = [{"id": 7}]
 	check(layer.entity_position("pedestrian", 7) == Vector2(20.0, 0.0), "camera follows a resident into a vehicle")
@@ -1120,9 +1155,9 @@ func test_phone() -> void:
 	protest_phone.show_phone({})
 	check(not protest_phone._protest_note.visible, "inactive protest notice clears from phone")
 	protest_phone.free()
-	check(Phone.card_text({"passenger_count": 3}, "fi").contains("3 matkustajaa")
-		and Phone.card_text({"passenger_count": 2}, "en").contains("2 passengers"), "fare cards show group size in both languages")
-	check(Phone.card_text({"passenger_count": 3}).split("\n").size() == 3, "group count fits the existing three-line fare card")
+	for lang in ["fi", "en", "de"]:
+		check(Phone.card_text({"passenger_count": 3}, lang) == Phone.card_text({}, lang), "fare cards hide passenger count in %s" % lang)
+	check(Phone.card_text({"passenger_count": 3}).split("\n").size() == 3, "fare retains pickup, destination and trip details")
 	var phone: Phone = preload("res://phone.gd").new()
 	root.add_child(phone)
 	var sounds: Array = []

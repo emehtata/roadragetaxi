@@ -5,6 +5,14 @@ const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := { "phone_protest": "Ilokapina osoittaa mieltä kaupungissa. Varaudu tiesulkuihin!", "choose_start": "Valitse pelitapa", "career": "Ura",
 	"nav_left": "Käänny vasemmalle", "nav_right": "Käänny oikealle", "nav_uturn": "Tee U-käännös",
+	"enable_intercity_fares": "Ota kaupunkien väliset kyydit käyttöön",
+	"intercity_requirements": "Vaatii Suomen kartan lataamisen ja navigointitietokannan alustuksen. Peli valmistelee tietokannan ennen aloitusta. Muutokset tulevat voimaan seuraavassa pelissä.",
+	"help_intercity_fares": "Lataa Suomen PBF-kartta kartan hallinnasta. Seuraavalla käynnistyksellä peli alustaa tietokannan ja käyttää sitä myöhemmin uudelleen. Kaukokyydit pysyvät pois käytöstä, kunnes alustus onnistuu.",
+	"fuel_hint_stop": "Polttoainepumppu lähellä: pysäytä taksi, sammuta moottori (E), nouse ulos (F) ja paina G.",
+	"fuel_hint_engine": "Tankkaus: sammuta moottori (E), nouse ulos (F) ja paina G.",
+	"fuel_hint_exit": "Tankkaus: nouse taksista (F) ja paina G taksin vieressä.",
+	"fuel_hint_ready": "Paina G taksin vieressä aloittaaksesi tankkauksen.",
+	"fuel_hint_active": "Tankataan · Pysy taksin vieressä. Lopeta painamalla G.",
 	"nav_straight": "Jatka suoraan", "nav_arrive": "Määränpää", "nav_no_target": "Ei määränpäätä",
 	"nav_routing": "Lasketaan reittiä…", "nav_total": "Yhteensä %s", "nav_unreachable": "VIRHE: GPS-signaalia ei löydy",
 	"startup_starting": "Käynnistetään palvelinta…", "startup_world": "Ladataan karttaa ja valmistellaan liikennettä…",
@@ -152,6 +160,14 @@ const FI := { "phone_protest": "Ilokapina osoittaa mieltä kaupungissa. Varaudu 
 }
 
 const EN := {
+	"enable_intercity_fares": "Enable intercity fares",
+	"intercity_requirements": "Requires the Finland map download and navigation database initialization. The game prepares the database before starting. Changes apply next session.",
+	"help_intercity_fares": "Download the Finland PBF using Manage Finland map. On the next start, the game initializes the intercity database; subsequent sessions reuse it. Intercity fares stay off until initialization succeeds.",
+	"fuel_hint_stop": "Fuel pump nearby: stop the taxi, switch off the engine (E), get out (F), then press G.",
+	"fuel_hint_engine": "To refuel: switch off the engine (E), get out (F), then press G.",
+	"fuel_hint_exit": "To refuel: get out of the taxi (F), then press G beside it.",
+	"fuel_hint_ready": "Press G beside the taxi to refuel.",
+	"fuel_hint_active": "Refueling · Stay beside the taxi. Press G to stop.",
 	"phone_protest": "Ilokapina protests are active in the city. Expect blocked roads!",
 	"nav_left": "Turn left", "nav_right": "Turn right", "nav_uturn": "Make a U-turn",
 	"nav_straight": "Continue straight", "nav_arrive": "Destination", "nav_no_target": "No destination",
@@ -302,6 +318,14 @@ const EN := {
 }
 
 const DE := {
+	"enable_intercity_fares": "Überlandfahrten aktivieren",
+	"intercity_requirements": "Erfordert den Download der Finnlandkarte und die Initialisierung der Navigationsdatenbank vor Spielbeginn. Änderungen gelten ab der nächsten Sitzung.",
+	"help_intercity_fares": "Lade die Finnland-PBF über die Kartenverwaltung herunter. Beim nächsten Start erstellt das Spiel die Datenbank und verwendet sie danach erneut. Überlandfahrten bleiben bis zur erfolgreichen Initialisierung deaktiviert.",
+	"fuel_hint_stop": "Zapfsäule in der Nähe: anhalten, Motor ausschalten (E), aussteigen (F), dann G drücken.",
+	"fuel_hint_engine": "Tanken: Motor ausschalten (E), aussteigen (F), dann G drücken.",
+	"fuel_hint_exit": "Tanken: aussteigen (F), dann neben dem Taxi G drücken.",
+	"fuel_hint_ready": "Neben dem Taxi G zum Tanken drücken.",
+	"fuel_hint_active": "Tanken · Neben dem Taxi bleiben. G zum Beenden drücken.",
 	"phone_protest": "Ilokapina demonstriert in der Stadt. Rechne mit Straßensperren!",
 	"nav_left": "Links abbiegen",
 	"nav_right": "Rechts abbiegen",
@@ -607,6 +631,7 @@ static func startup_detail(value: String, language: String) -> String:
 		"Preparing building and scenery indexes...": "Rakennetaan rakennusten ja maaston hakemistoja…",
 		"Preparing railways and timetables...": "Valmistellaan rautateitä ja aikatauluja…",
 		"Preparing taxi missions...": "Valmistellaan taksitehtäviä…",
+		"Initializing intercity navigation database...": "Alustetaan kaupunkien välisen navigoinnin tietokantaa…",
 		"Preparing taxi world...": "Valmistellaan taksin ympäristöä…",
 		"Preparing NPC traffic...": "Valmistellaan muuta liikennettä…",
 		"Preparing pedestrians...": "Valmistellaan jalankulkijoita…",
@@ -623,6 +648,7 @@ static func startup_detail(value: String, language: String) -> String:
 		"Preparing building and scenery indexes...": "Gebäude und Landschaft werden vorbereitet…",
 		"Preparing railways and timetables...": "Bahnstrecken und Fahrpläne werden vorbereitet…",
 		"Preparing taxi missions...": "Taxifahrten werden vorbereitet…",
+		"Initializing intercity navigation database...": "Überland-Navigationsdatenbank wird initialisiert…",
 		"Preparing taxi world...": "Taxi-Umgebung wird vorbereitet…",
 		"Preparing NPC traffic...": "Verkehr wird vorbereitet…",
 		"Preparing pedestrians...": "Fußgänger werden vorbereitet…",

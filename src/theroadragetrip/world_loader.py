@@ -341,6 +341,21 @@ def load_world(
         language=language,
         resident_manager=residents,
     )
+    intercity_database = None
+    if getattr(args, "intercity_fares", False):
+        from pathlib import Path
+        from .intercity import prepare_database
+        from .osm.cache import default_cache_root
+        from .osm.pbf_source import DEFAULT_FINLAND_PBF_PATH
+        source = Path(getattr(args, "osm_pbf_path", None) or DEFAULT_FINLAND_PBF_PATH)
+        if not local_pbf_available(source):
+            raise RuntimeError("Intercity fares require a downloaded Finland PBF and osmium-tool. Download it in Settings or disable intercity fares.")
+        on_load_progress(0.81, "Initializing intercity navigation database...")
+        intercity_database = prepare_database(source,Path(default_cache_root())/"finland.intercity.sqlite")
+        import sqlite3
+        with sqlite3.connect(intercity_database) as database:
+            taxi_mgr.intercity_places = {row[0] for row in database.execute("SELECT id FROM places")}
+        taxi_mgr.intercity_fares_enabled = True
     if career is None:
         saved_balance_cents = load_gig_balance(gig_odometer_file)
         if saved_balance_cents is not None:
@@ -490,6 +505,7 @@ def load_world(
     logger.info("World preparation complete")
 
     return SimpleNamespace(
+        intercity_database=intercity_database,
         arena_crowds=arena_crowds,
         railway_mgr=railway_mgr,
         tram_mgr=TramManager(railways, chosen_city),  # trams on their rails where the city has them (trams.py)

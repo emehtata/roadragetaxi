@@ -11,6 +11,10 @@ const GAP := 6.0
 const PAD := 8.0
 const ON := Color8(255, 60, 40)
 const OFF := Color8(70, 18, 14)
+var on_color := ON
+var off_color := OFF
+var background := Color8(12, 12, 14, 235)
+var title := "TAXI  €"
 # Segments a..g as bits 0..6.
 const MASKS := [0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F]
 
@@ -32,16 +36,16 @@ func _init() -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color8(12, 12, 14, 235))
+	draw_rect(Rect2(Vector2.ZERO, size), background)
 	draw_rect(Rect2(Vector2.ZERO, size), Color8(190, 200, 205), false, 1.0)
-	draw_string(get_theme_default_font(), Vector2(PAD, PAD + 8.0), "TAXI  €", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color8(190, 200, 205))
+	draw_string(get_theme_default_font(), Vector2(PAD, PAD + 8.0), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, on_color)
 	draw_string(get_theme_default_font(), Vector2(PAD, PAD + 8.0), info, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 2.0 * PAD, 10, ON)
 	var text := readout(cents)
 	var x := PAD
 	var y := PAD + 12.0
 	for ch in text:
 		if ch == ".":  # the decimal point sits between digits
-			draw_rect(Rect2(x - GAP / 2.0 - T / 2.0, y + H - T, T, T), ON)
+			draw_rect(Rect2(x - GAP / 2.0 - T / 2.0, y + H - T, T, T), on_color)
 			continue
 		_digit(Vector2(x, y), MASKS[int(ch)] if ch != " " else 0)
 		x += W + GAP
@@ -64,4 +68,4 @@ func _digit(o: Vector2, mask: int) -> void:
 		Rect2(o.x + T, o.y + half, W - 2.0 * T, T),  # g
 	]
 	for i in 7:
-		draw_rect(rects[i], ON if mask & (1 << i) else OFF)
+		draw_rect(rects[i], on_color if mask & (1 << i) else off_color)

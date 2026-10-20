@@ -191,8 +191,13 @@ func player_position() -> Vector2:
 	return Vector2(p.x, p.y)
 
 
-func entity_position(kind: String, id: int) -> Vector2:
+func entity_position(kind: String, id) -> Vector2:
 	if _frame.is_empty():
+		return Vector2.INF
+	if kind == "train":
+		for train in _frame["a"].get("trains", []):
+			if train.get("id") == id and not train.get("cars", []).is_empty():
+				return MapMath.point(origin, train["cars"][0][0], train["cars"][0][1])
 		return Vector2.INF
 	var key := "pedestrians" if kind == "pedestrian" else "npcs"
 	var later := _by_id(_frame["b"].get(key, []))
@@ -230,6 +235,17 @@ func entity_at(screen: Vector2, canvas: Transform2D) -> Dictionary:
 				distance = pixels
 		if not best.is_empty():
 			return best
+	var point := canvas.affine_inverse() * screen
+	var later_trains := _by_id(b.get("trains", []))
+	for train in a.get("trains", []):
+		var next: Dictionary = later_trains.get(train["id"], train)
+		for i in train.get("cars", []).size():
+			var car: Array = train["cars"][i]
+			var to: Array = next["cars"][i] if next.get("cars", []).size() == train["cars"].size() else car
+			var centre := MapMath.point(origin, lerpf(car[0], to[0], _frame["t"]), lerpf(car[1], to[1], _frame["t"]))
+			var local := (point - centre).rotated(lerp_angle(car[2], to[2], _frame["t"]))
+			if absf(local.x) <= float(car[3]) * 0.5 and absf(local.y) <= maxf(1.6, 12.0 / px_per_m):
+				return {"kind": "train", "id": train["id"]}
 	return {}
 
 

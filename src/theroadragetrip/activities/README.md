@@ -24,6 +24,7 @@ Solo (one participant):
 | `bus_stop_waiting` | point (bus stop), periodic "look around" | shared | `PedestrianManager.bus_stops` |
 | `photography` | point (statue/fountain), falls back to a park interior point | shared | `SceneryObject` kind in `{"statue","fountain"}`, or `Scenery` kind in `PARK_KINDS` |
 | `exercise_jogging` | self-directed, no fixed destination | - | wanders the footway network directly |
+| `dog_walking` | self-directed, no fixed destination | - | ordinary footway routing, with one owned visual dog |
 | `playground` | area, interior-sampled, children only | shared | `Scenery` kind=`playground` |
 
 Group (multiple participants - see "Group activities" below):

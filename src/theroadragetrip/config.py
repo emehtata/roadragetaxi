@@ -96,6 +96,7 @@ DEFAULT_CONFIG = {
         # (Settings -> historical weather); generated weather otherwise.
         "historical_weather": "false",
         "train_timetable": "true",  # trains on the real Digitraffic timetable; false: a fixed interval
+        "intercity_fares": "false",
     },
     "map": {
         "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),

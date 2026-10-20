@@ -77,6 +77,7 @@ class TaxiTarget:
     radius_m: float = 20.0  # Pickup/dropoff stop radius
     venue_type: Optional[str] = None
     municipality: Optional[str] = None  # a long fare's town/landmark, until its address is picked
+    intercity_place_id: Optional[str] = None
 
 
 @dataclass
@@ -255,6 +256,8 @@ class TaxiManager:
         self.next_offer_timer: float = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
         self.stand_wait_timer: float = 0.0
         self.long_fare_retry_timer: float = 0.0
+        self.intercity_fares_enabled = False
+        self.intercity_places = None
 
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
@@ -1772,10 +1775,14 @@ class TaxiManager:
         taxi gets near."""
         towns = [town for town in municipality_points()
                  if LONG_FARE_MIN_M <= math.hypot(town[1] - pickup_x, town[2] - pickup_y) <= LONG_FARE_MAX_M]
+        from .intercity_places import place_id
+        if self.intercity_places is not None:
+            towns = [town for town in towns if place_id(town[0],town[1],town[2],town[4]) in self.intercity_places]
         if not towns:
             return None
         name, x, y, _, landmark = random.choices(towns, weights=[town[3] for town in towns])[0]
-        return TaxiTarget(x=x, y=y, address=name, radius_m=self.pickup_radius_m, municipality=name, venue_type=landmark)
+        return TaxiTarget(x=x, y=y, address=name, radius_m=self.pickup_radius_m, municipality=name, venue_type=landmark,
+                          intercity_place_id=place_id(name,x,y,landmark))
 
     def _resolve_long_dropoff(self, passenger: TaxiPassenger, dt: float) -> None:
         """Near a long fare's town: its address, once the map has a road there."""
@@ -1790,7 +1797,7 @@ class TaxiManager:
         else:
             final = (self.pick_random_building_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M)
                      or self.pick_random_road_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M))
-        if final is None:
+        if final is None or math.hypot(final.x-town.x,final.y-town.y) > (LANDMARK_STAND_M if town.venue_type in LANDMARK_WEIGHTS else LONG_FARE_RESOLVE_M):
             return
         if town.venue_type in LANDMARK_WEIGHTS:
             final.address, final.venue_type = town.address, town.venue_type
@@ -1818,7 +1825,7 @@ class TaxiManager:
             if not pickup:
                 continue
             dropoff = None
-            if random.random() < LONG_FARE_CHANCE:
+            if self.intercity_fares_enabled and random.random() < LONG_FARE_CHANCE:
                 dropoff = self.pick_long_dropoff(pickup.x, pickup.y)
             dropoff = dropoff or self.pick_phone_dropoff(pickup.x, pickup.y)
             if not dropoff:

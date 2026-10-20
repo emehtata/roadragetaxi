@@ -4,6 +4,21 @@ from theroadragetrip import taxi as taxi_module
 from theroadragetrip.taxi import TaxiManager, TaxiPassenger, TaxiState, TaxiTarget
 
 
+def test_intercity_offers_are_opt_in(monkeypatch):
+    taxi = TaxiManager(ways=[])
+    assert not taxi.intercity_fares_enabled
+    monkeypatch.setattr(taxi,"pick_phone_pickup",lambda *args: TaxiTarget(0,0,"Pickup"))
+    monkeypatch.setattr(taxi,"pick_phone_dropoff",lambda *args: TaxiTarget(1000,0,"Local"))
+    calls = []
+    monkeypatch.setattr(taxi,"pick_long_dropoff",lambda *args: calls.append(True))
+    monkeypatch.setattr(taxi_module,"LONG_FARE_CHANCE",1.0)
+    taxi.generate_offers(0,0,count=1)
+    assert not calls
+    taxi.intercity_fares_enabled = True
+    taxi.generate_offers(0,0,count=1)
+    assert calls
+
+
 def test_long_fare_goes_to_a_town_then_its_address(monkeypatch):
     oulu = (430_000.0, 7_210_000.0)
     monkeypatch.setattr(taxi_module, "_municipality_points", [
