@@ -1,6 +1,7 @@
 """Best-effort startup status before the simulation socket is available."""
 import json
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -14,6 +15,7 @@ class StartupProgress:
         self.last_write = float("-inf")
         self.stage = None
         self.history = []
+        self.pending = None
 
     def __call__(self, stage, detail=""):
         now = time.monotonic()
@@ -22,10 +24,28 @@ class StartupProgress:
             self.stage = stage
             self.history = (self.history + [stage])[-6:]
             logger.info("Startup: %s %s", stage, detail)
-        if self.path is None or (not changed and now - self.last_write < 0.2):
+        if self.path is None:
             return
+        if not changed and now - self.last_write < 0.2:
+            # Flush the throttled detail later: the next call may be minutes away.
+            if self.pending is None:
+                self.pending = threading.Timer(0.25, self._flush)
+                self.pending.daemon = True
+                self.pending.start()
+            self.detail = detail
+            return
+        self.detail = detail
         self.last_write = now
-        payload = {"stage": stage, "detail": detail, "elapsed_s": round(now - self.started, 1),
+        self._write(now)
+
+    def _flush(self):
+        self.pending = None
+        if time.monotonic() - self.last_write >= 0.2:
+            self.last_write = time.monotonic()
+            self._write(self.last_write)
+
+    def _write(self, now):
+        payload = {"stage": self.stage, "detail": self.detail, "elapsed_s": round(now - self.started, 1),
                    "history": self.history}
         temporary = self.path.with_name(self.path.name + ".tmp")
         try:
