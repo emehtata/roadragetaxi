@@ -8,3 +8,6 @@ Follow its legal references, exceptions, game policies and acceptance scenarios.
 The guide specifies requirements; it does not certify current behavior.
 Keep traffic decisions on the Python simulation server and preserve map-layer
 separation and bounded per-frame work.
+
+Whenever changing UI or Godot code, render the affected view, capture a
+screenshot and inspect it visually before considering the change complete.
