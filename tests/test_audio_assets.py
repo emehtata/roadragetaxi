@@ -31,6 +31,17 @@ def test_every_sound_asset_and_reference_is_valid():
     assert validator.validate() == []
 
 
+def test_animal_calls_are_decodable_mono_audio():
+    root = validator.AUDIO_ROOT / 'animals'
+    records = json.loads((root / 'generation.json').read_text())
+    assert set(records) == {'squirrel','small_bird','pigeon','hare','fox','moose','roe_deer','dog'}
+    for species, entry in records.items():
+        path = root / entry['file']
+        assert path.name == f'{species}.ogg' and validator._channels(path) == 1
+        duration, level = validator._levels(path)
+        assert 0.2 <= duration <= 5.0 and level > -60.0
+
+
 def test_the_validator_catches_a_broken_catalog(tmp_path, monkeypatch):
     catalog = json.loads(validator.CATALOG.read_text(encoding="utf-8"))
     door = catalog["groups"]["vehicle.door_open"]["files"]

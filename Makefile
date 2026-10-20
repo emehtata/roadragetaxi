@@ -83,6 +83,7 @@ godot-selftest-sample: godot/.godot
 godot-test:
 	$(GODOT) --headless --path godot --import
 	$(GODOT) --headless --path godot --script res://tests/run_tests.gd
+	$(GODOT) --headless --path godot --script res://tests/animal_audio.gd
 
 audio-check:
 	PYTHONPATH=src $(PYTHON) tools/validate_audio_assets.py

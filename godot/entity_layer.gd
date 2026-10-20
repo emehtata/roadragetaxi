@@ -407,9 +407,24 @@ func _draw_reflectors() -> void:
 			_reflectors.draw_circle(at, maxf(_px(1.0), 0.35), Color8(255, 255, 245))
 
 
-## rrt-019: the NPC cars being driven, at this frame's interpolated
-## positions (layer coordinates): [[id, Vector2, npc row], ...] - what the
-## car stereos (car_audio.gd) play from.
+## Owned dogs at the same interpolated positions used by the renderer.
+func dogs() -> Array:
+	var result: Array = []
+	if _frame.is_empty():
+		return result
+	var later := _by_id(_frame["b"].get("pedestrians", []))
+	for ped in _frame["a"].get("pedestrians", []):
+		var dog: Dictionary = ped.get("dog", {})
+		if dog.is_empty():
+			continue
+		var next: Dictionary = later.get(ped["id"], ped).get("dog", dog)
+		var at := MapMath.point(origin, lerpf(float(dog["x"]), float(next.get("x", dog["x"])), _frame["t"]),
+			lerpf(float(dog["y"]), float(next.get("y", dog["y"])), _frame["t"]))
+		result.append([ped["id"], at])
+	return result
+
+
+## Driving NPCs: [[id, interpolated layer position, npc row], ...].
 func npc_cars() -> Array:
 	var cars: Array = []
 	if _frame.is_empty():

@@ -118,6 +118,7 @@ var graphics: Dictionary = {}  # empty for direct scenes/tests; the launcher sup
 var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
 var holidays: Node = preload("res://holiday_layer.gd").new()
 var wildlife := WildlifeLayer.new()
+var animal_audio := preload("res://animal_audio.gd").new()
 var _tram_states := {}  # tram id -> its state last frame: the bell when one sets off
 var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, multiplied over the world canvas
 
@@ -132,6 +133,7 @@ func _ready() -> void:
 	_build_inspector()
 	add_child(weather)
 	add_child(wildlife)
+	add_child(animal_audio)
 	add_child(world_light)
 	weather.setup($Sky, map_layer)
 	add_child(holidays)
@@ -528,6 +530,8 @@ func _process(delta: float) -> void:
 	var vehicles: Array = entities.npc_cars().map(func(row): return row[1])
 	vehicles.append(entities.player_position())
 	wildlife.update(delta, float(state.get("game_time_seconds", 12.0 * 3600.0)), camera.position, vehicles)
+	animal_audio.update(wildlife.animals, entities.dogs(), camera.position, delta,
+		not state.is_empty() and int(state.get("player", {}).get("map_level", 0)) == 0)
 	Perf.counters["wildlife"] = wildlife.animals.size()
 	_time_relocation(state, now_usec)
 	_interp_usec = lerpf(_interp_usec, float(entities.interp_usec), 0.1)
