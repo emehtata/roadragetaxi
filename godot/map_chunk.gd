@@ -928,11 +928,13 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 			var size := maxf(_px(2.0), 0.6)
 			node.draw_rect(Rect2(at - Vector2(size, size) / 2.0, Vector2(size, size)), Color8(58, 66, 56))
 		"bicycle_parking":
-			var size := maxf(_px(2.0), 0.8)
-			var color := Color8(75, 95, 115)
-			node.draw_rect(Rect2(at - Vector2(size / 2.0, size / 4.0), Vector2(size, maxf(_px(1.0), size / 2.0))), color)
-			for dx: float in [-size / 3.0, 0.0, size / 3.0]:
-				node.draw_line(at + Vector2(dx, -maxf(_px(2.0), 0.5)), at + Vector2(dx, 0), color, maxf(_px(1.0), 0.08))
+			node.draw_set_transform(at, -angle)
+			for stroke: Array in [[Color8(35, 45, 50), maxf(_px(3.0), 0.24)], [Color8(220, 230, 234), maxf(_px(1.0), 0.10)]]:
+				for x: float in [-0.6, 0.0, 0.6]:
+					node.draw_arc(Vector2(x, -0.25), 0.25, PI, TAU, 8, stroke[0], stroke[1])
+					node.draw_line(Vector2(x - 0.25, -0.25), Vector2(x - 0.25, 0.4), stroke[0], stroke[1])
+					node.draw_line(Vector2(x + 0.25, -0.25), Vector2(x + 0.25, 0.4), stroke[0], stroke[1])
+			node.draw_set_transform(Vector2.ZERO)
 		"statue":
 			var pedestal := Vector2(maxf(_px(2.0), 0.9), maxf(_px(2.0), 0.6))
 			node.draw_rect(Rect2(at - Vector2(pedestal.x / 2.0, 0), pedestal), Color8(110, 110, 105))
