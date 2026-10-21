@@ -19,6 +19,7 @@ var port := 8765
 var player_id := "local_player"  # the world message says which player this client is
 var connected := false
 var parse_usec := 0  # time spent decoding the last message (performance readout)
+var save_count := -1  # the server's saves written (state "save_count"): a save request's acknowledgement
 
 var _peer := StreamPeerTCP.new()
 var _buffer := PackedByteArray()
@@ -111,6 +112,7 @@ func _drain_lines() -> void:
 				_origin = Vector2(message["center"][0], message["center"][1])
 				world_received.emit(message)
 			"state":
+				save_count = int(message.get("state", {}).get("save_count", save_count))
 				state_received.emit(message)
 			"chunk":
 				chunk_received.emit(message)
@@ -148,6 +150,15 @@ func send_phone(action: String, item_id: String, request_id: int) -> bool:
 	return true
 
 
+## Pause menu: the server writes the gig save slot; save_count then grows.
+func send_save() -> bool:
+	if not connected:
+		return false
+	_seq += 1
+	_peer.put_data(command_line(_last_command, _seq, player_id, {}, "", true).to_utf8_buffer())
+	return true
+
+
 ## F12: the server writes the debug JSON (its world) at `path`.
 func send_debug_snapshot(path: String) -> bool:
 	if not connected:
@@ -157,10 +168,12 @@ func send_debug_snapshot(path: String) -> bool:
 	return true
 
 
-static func command_line(command: Dictionary, seq: int, player: String, phone: Dictionary = {}, debug_snapshot := "") -> String:
+static func command_line(command: Dictionary, seq: int, player: String, phone: Dictionary = {}, debug_snapshot := "", save := false) -> String:
 	var message := {"type": "command", "version": PROTOCOL_VERSION, "seq": seq, "player_id": player, "command": command}
 	if not phone.is_empty():
 		message["phone"] = phone
 	if debug_snapshot != "":
 		message["debug_snapshot"] = debug_snapshot
+	if save:
+		message["save_game"] = true
 	return JSON.stringify(message) + "\n"

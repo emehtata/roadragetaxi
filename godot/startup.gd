@@ -41,6 +41,9 @@ var _focusables: Array[Control] = []
 var _back_action := Callable()
 var _logo: TextureRect
 var _start_time := {}  # the gig start (year, month, day, hour, minute): now, each time the picker opens
+var _pause_status: Label  # the pause menu's line under its title: "Saving…", "Saved"
+const MAX_GIG_SLOTS := 5  # gig saves; a new game beyond them replaces one (career keeps its single save)
+var _save_slot := ""  # the gig's save slot (server saves/NAME.json): loaded if it exists, saved by the pause menu
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
 var _menu_music: AudioStreamPlayer
 
@@ -375,7 +378,7 @@ func _main_menu() -> void:
 	_clear()
 	_title("ROAD RAGE TRIP", _t("choose_start"))
 	var career := _button(_t("career"), func(): _start("career"))
-	var gig := _button(_t("gig_driver"), _city_menu)
+	var gig := _button(_t("gig_driver"), _slot_menu)
 	_button(_t("settings"), _settings_menu)
 	_button(_t("credits"), _credits_menu)
 	_button(_t("clear_cache"), _confirm_clear_cache)
@@ -418,6 +421,54 @@ func _confirm_reset_home() -> void:
 	_back_action = _settings_menu
 	_focus_menu()
 	no.call_deferred("grab_focus")  # Enter does not delete anything
+
+
+## Gig driving: continue a saved game, or start a new one in a new slot.
+func _slot_menu() -> void:
+	_clear()
+	_title(_t("save_slots"), _t("gig_driver"))
+	var slots := _server_query("--list-saves").filter(func(slot): return slot is Dictionary)
+	_button(_t("new_game"), func():
+		if slots.size() >= MAX_GIG_SLOTS:
+			_replace_slot_menu(slots)
+		else:
+			_save_slot = "gig-%d" % int(Time.get_unix_time_from_system())
+			_city_menu())
+	for slot in slots:
+		var name := str(slot.get("name", ""))
+		_button(slot_label(slot, _t("fare_in_progress")), func():
+			_save_slot = name
+			_start_point = Vector2.INF
+			_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
+			_start("gig_driver"))  # the server takes the slot's city, place and time
+	_button(_t("back"), _main_menu)
+	_back_action = _main_menu
+	_focus_menu()
+
+
+## All gig slots are in use: the new game replaces the chosen one.
+func _replace_slot_menu(slots: Array) -> void:
+	_clear()
+	_title(_t("save_slots"), _t("replace_slot") % MAX_GIG_SLOTS)
+	for slot in slots:
+		var name := str(slot.get("name", ""))
+		var path := str(slot.get("path", ""))
+		_button(slot_label(slot, _t("fare_in_progress")), func():
+			if path.ends_with(name + ".json"):
+				DirAccess.remove_absolute(path)
+			_save_slot = name
+			_city_menu())
+	_button(_t("back"), _slot_menu)
+	_back_action = _slot_menu
+	_focus_menu()
+
+
+## One saved game in the slot menu: where, the game time, the money.
+static func slot_label(slot: Dictionary, fare_text: String) -> String:
+	var place := str(slot.get("place_name", "")) if str(slot.get("place_name", "")) != "" else str(slot.get("city", ""))
+	var when := str(slot.get("game_time", "")).replace("T", " ").left(16)
+	var label := "%s · %s · %.2f €" % [place, when, float(slot.get("balance_cents", 0)) / 100.0]
+	return label + (" · " + fare_text if slot.get("fare", false) else "")
 
 
 func _city_menu() -> void:
@@ -870,6 +921,8 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	args.append_array(["--startup-progress", _startup_path])
 	if mode == "gig_driver":
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
+		if _save_slot != "":
+			args.append_array(["--save-slot", _save_slot])
 		if _start_point != Vector2.INF:
 			args.append_array(["--bbox", point_bbox(_start_point.x, _start_point.y)])
 			if _start_place != "":
@@ -1134,12 +1187,41 @@ func _pause_menu() -> void:
 	_back.visible = false
 	_clear()
 	_title(_t("paused"))
+	_pause_status = Label.new()
+	_pause_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_body.add_child(_pause_status)
 	_button(_t("resume"), _resume)
+	if _can_save():
+		_button(_t("save_game"), func(): _save_game(func(ok: bool): _pause_status.text = _t("saved") if ok else _t("save_failed")))
 	_button(_t("settings"), _settings_menu)
 	_button(_t("main_menu"), _stop_game)
-	_button(_t("quit"), get_tree().quit)
+	_button(_t("quit"), func(): _save_game(func(_ok: bool): get_tree().quit()) if _can_save() else get_tree().quit())
 	_back_action = _resume
 	_focus_menu()
+
+
+func _can_save() -> bool:
+	return _save_slot != "" and is_instance_valid(_game) and _settings.get_value("menu", "mode", "") == "gig_driver"
+
+
+## Ask the server to write the save slot and wait (paused, so the client
+## polls meanwhile) until its state acknowledges it, at most 3 s.
+func _save_game(done: Callable) -> void:
+	var sim: SimClient = _game.sim
+	var before := sim.save_count
+	if not sim.send_save():
+		done.call(false)
+		return
+	if is_instance_valid(_pause_status):
+		_pause_status.text = _t("saving")
+	var mode := sim.process_mode
+	sim.process_mode = Node.PROCESS_MODE_ALWAYS
+	var waited := 0.0
+	while sim.save_count <= before and waited < 3.0:
+		await get_tree().create_timer(0.1, true).timeout
+		waited += 0.1
+	sim.process_mode = mode
+	done.call(sim.save_count > before)
 
 
 func _resume() -> void:

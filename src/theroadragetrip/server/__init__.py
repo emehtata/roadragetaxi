@@ -181,6 +181,19 @@ class SimulationServer:
         self.physics_mode = config.get("game", "physics_realism", fallback="arcade")
         self.career_file = career_path(CONFIG_PATH)
         self.gig_odometer_file = gig_odometer_path(CONFIG_PATH)
+        # A gig save slot: the slot file is the gig car file, and a saved
+        # game continues in its city, around the car, at its game time.
+        self.save_slot_file = None
+        saved = {}
+        if getattr(args, "save_slot", None) and getattr(args, "game_mode", "gig_driver") != "career":
+            from ..save_slots import read_slot, slot_path
+            self.save_slot_file = self.gig_odometer_file = slot_path(CONFIG_PATH, args.save_slot)
+            saved = read_slot(self.save_slot_file)
+            if saved.get("city") and saved.get("bbox"):
+                args.preset, args.bbox = saved["city"], saved["bbox"]
+                args.place_name = saved.get("place_name") or None
+        self.save_count = 0  # saves written: the client's "saved" acknowledgement
+        self._pending_save = False
 
         overpass_endpoints = get_overpass_endpoints(config)
         bus_stops_enabled = True  # always: an old ini's bus_stops = false (the former default) is ignored
@@ -240,8 +253,22 @@ class SimulationServer:
         start = getattr(args, "start_time", None)  # the gig start picker's, a year back at most
         if start is not None:
             start = clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
+        if saved.get("game_time"):  # a continued game resumes at its own time, unclamped
+            start = datetime.fromisoformat(saved["game_time"])
         self.calendar = GameCalendar(start or datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),
                                      latitude=getattr(self.world, "sun_latitude", 65.01))
+        if saved:  # odometer, fuel and money came with the gig car file
+            from ..save_slots import restore_fare
+            pose = saved.get("car") or {}
+            if all(isinstance(pose.get(key), (int, float)) for key in ("x", "y", "heading")):
+                self.car.x, self.car.y, self.car.heading = pose["x"], pose["y"], pose["heading"]
+                self.car.speed = 0.0
+            taxi_mgr = self.world.taxi_mgr
+            taxi_mgr.total_score = int(saved.get("total_score", 0))
+            taxi_mgr.completed_fares = int(saved.get("completed_fares", 0))
+            if restore_fare(taxi_mgr, saved.get("fare")):
+                logger.info("Save slot %s: fare to %s continues", self.save_slot_file.stem,
+                            taxi_mgr.current_passenger.dropoff.address)
         moon_latitude = getattr(self.world, "sun_latitude", 65.01)
         moon_longitude = getattr(self.world, "sun_longitude", 25.47)
         self.moon_info = moon_info_on(self.calendar.date, moon_latitude, moon_longitude)
@@ -594,6 +621,8 @@ class SimulationServer:
                         self._pending_trip_resets += 1
                     if phone is not None:
                         self._phone_requests.append(phone)
+                    if message.get("save_game") is True:  # the pause menu's Save / Quit
+                        self._pending_save = True
                     snapshot = message.get("debug_snapshot")  # F12 in the client: the screenshot's JSON
                     if isinstance(snapshot, str) and snapshot.endswith(".json"):
                         self._debug_snapshots.append(snapshot)
@@ -638,9 +667,29 @@ class SimulationServer:
         except Exception:  # a debugging aid: never take the game down
             logger.exception("Debug snapshot %s failed", path)
 
+    def save_game(self) -> bool:
+        """Write the gig save slot (False without one, e.g. career)."""
+        if self.save_slot_file is None:
+            return False
+        from ..geo import meters_to_latlon
+        from ..save_slots import write_slot
+        latitude, longitude = meters_to_latlon(self.car.x, self.car.y)
+        if latitude is None:
+            logger.warning("Save slot not written: no coordinate conversion")
+            return False
+        write_slot(self.save_slot_file, car=self.car, taxi_mgr=self.world.taxi_mgr, calendar=self.calendar,
+                   city=self.chosen_city, place_name=getattr(self.args, "place_name", None) or "",
+                   latlon=(latitude, longitude))
+        logger.info("Saved to slot %s", self.save_slot_file.stem)
+        return True
+
     def tick(self, dt: float) -> None:
         while self._debug_snapshots:
             self.write_debug_snapshot(self._debug_snapshots.pop(0))
+        if self._pending_save:
+            self._pending_save = False
+            if self.save_game():
+                self.save_count += 1
         self._apply_incoming_messages()
         self.audio.advance(dt)
 
@@ -1002,6 +1051,7 @@ class SimulationServer:
             map_loading_detail=self._map_streamer.manager.get_progress_message() if self._map_streamer is not None else "",
             railway=protocol.railway_state(getattr(self.world, "railway_mgr", None), self.car.x, self.car.y, self.calendar.current),
         )
+        message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
         with self._clients_lock:
             clients = list(self._clients)
         for connection in clients:

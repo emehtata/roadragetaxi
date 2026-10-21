@@ -19,6 +19,11 @@ def main() -> None:
     if args.list_cities:
         print(json.dumps(list(cities_from_config(config)[0]), ensure_ascii=False))
         return
+    if getattr(args, "list_saves", False):
+        from ..config import CONFIG_PATH
+        from ..save_slots import list_slots
+        print(json.dumps(list_slots(CONFIG_PATH), ensure_ascii=False))
+        return
     if args.list_city_locations:
         # The menu's cities, then every other municipality (menu: false)
         # for the map picker's nearest-municipality settings.
