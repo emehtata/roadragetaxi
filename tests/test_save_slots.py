@@ -92,3 +92,29 @@ def test_a_legacy_code_page_pipe_still_gets_utf8(tmp_path, monkeypatch):
     server_main.main()
     sys.stdout.flush()
     assert json.loads(pipe.getvalue().decode("utf-8"))[0]["place_name"] == "Čeavetjávri"
+
+
+def test_an_accepted_fare_still_on_its_way_to_pickup_survives_a_save(tmp_path, monkeypatch):
+    server = _server(tmp_path, monkeypatch)
+    taxi, car = server.world.taxi_mgr, server.car
+    pickup = TaxiTarget(car.x + 6.0, car.y, "Asema")
+    friend = TaxiPassenger(name="Ville", pickup=pickup, dropoff=TaxiTarget(car.x + 900.0, car.y, "Kotikatu 1"),
+                           ped_x=car.x + 7.0, ped_y=car.y + 3.0)
+    rider = TaxiPassenger(name="Aino", pickup=pickup, dropoff=TaxiTarget(car.x + 900.0, car.y, "Kotikatu 1"),
+                          ped_x=car.x + 6.0, ped_y=car.y + 3.0, companions=[friend])
+    taxi.current_passenger, taxi.state = rider, TaxiState.WAITING_FOR_PICKUP
+    server._pending_save = True
+    server.tick(1 / 30)
+
+    again = _server(tmp_path, monkeypatch)
+    restored = again.world.taxi_mgr
+    waiting = restored.current_passenger
+    assert restored.state == TaxiState.WAITING_FOR_PICKUP and waiting.name == "Aino"
+    assert (waiting.ped_x, waiting.ped_y) == (car.x + 6.0, car.y + 3.0)
+    assert not waiting.boarded and not waiting.companions[0].boarded
+    again.car.x, again.car.y, again.car.speed = car.x, car.y, 0.0  # at the pickup
+    for _ in range(30 * 20):
+        again.tick(1 / 30)
+        if restored.state == TaxiState.DRIVING_TO_DROPOFF:
+            break
+    assert restored.state == TaxiState.DRIVING_TO_DROPOFF and all(member.boarded for member in waiting.members)

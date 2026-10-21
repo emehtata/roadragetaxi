@@ -70,29 +70,41 @@ def _passenger_data(passenger: TaxiPassenger) -> dict:
         "nausea_delay": passenger.nausea_delay, "nausea_resolved": passenger.nausea_resolved,
         "nausea_vomited": passenger.nausea_vomited,
         "pickup": asdict(passenger.pickup), "dropoff": asdict(passenger.dropoff),
+        "ped": [passenger.ped_x, passenger.ped_y, passenger.ped_heading, passenger.ped_speed],  # waiting at pickup
         "companions": [_passenger_data(member) for member in passenger.companions],
     }
 
 
-def _passenger(data: dict) -> TaxiPassenger:
+def _passenger(data: dict, boarded: bool = True) -> TaxiPassenger:
+    ped = data.get("ped") or [data["pickup"]["x"], data["pickup"]["y"], 0.0, 2.0]
     passenger = TaxiPassenger(
         name=data["name"], pickup=_target(data["pickup"]), dropoff=_target(data["dropoff"]),
         gender=data.get("gender", "woman"), weight_kg=data.get("weight_kg", 75.0),
-        boarded=True, is_drunk=data.get("is_drunk", False),
+        ped_x=ped[0], ped_y=ped[1], ped_heading=ped[2], ped_speed=ped[3],
+        boarded=boarded, is_drunk=data.get("is_drunk", False),
         motion_sickness=data.get("motion_sickness", 0.0), nausea_delay=data.get("nausea_delay", 0.0),
         nausea_resolved=data.get("nausea_resolved", False), nausea_vomited=data.get("nausea_vomited", False),
     )
-    passenger.companions = [_passenger(member) for member in data.get("companions", [])]
+    passenger.companions = [_passenger(member, boarded) for member in data.get("companions", [])]
     return passenger
 
 
 def fare_data(taxi_mgr) -> Optional[dict]:
-    """The fare in progress, only once its passengers are aboard: a pickup
-    still ahead is not kept (its waiting people belong to this session)."""
+    """The accepted fare: passengers aboard (with the running meter), or
+    still waiting at the pickup (or walking to the taxi: waiting again on
+    load). A rail booking's customer is a station pedestrian of this session
+    only: that fare is not kept."""
     passenger = taxi_mgr.current_passenger
-    if passenger is None or taxi_mgr.state != TaxiState.DRIVING_TO_DROPOFF:
+    if passenger is None:
+        return None
+    if taxi_mgr.state in (TaxiState.WAITING_FOR_PICKUP, TaxiState.CLIENT_WALKING_TO_CAR):
+        if passenger.rail_booking is not None:
+            return None
+        return {"state": TaxiState.WAITING_FOR_PICKUP, "passenger": _passenger_data(passenger)}
+    if taxi_mgr.state != TaxiState.DRIVING_TO_DROPOFF:
         return None
     return {
+        "state": TaxiState.DRIVING_TO_DROPOFF,
         "passenger": _passenger_data(passenger),
         "elapsed_time": taxi_mgr.elapsed_time,
         "fare_started_at": taxi_mgr.fare_started_at.isoformat() if taxi_mgr.fare_started_at else None,
@@ -107,12 +119,17 @@ def fare_data(taxi_mgr) -> Optional[dict]:
 def restore_fare(taxi_mgr, data: Optional[dict]) -> bool:
     if not data:
         return False
+    pickup_ahead = data.get("state") == TaxiState.WAITING_FOR_PICKUP
     try:
-        taxi_mgr.current_passenger = _passenger(data["passenger"])
-    except (KeyError, TypeError) as exc:
+        taxi_mgr.current_passenger = _passenger(data["passenger"], boarded=not pickup_ahead)
+    except (KeyError, TypeError, IndexError) as exc:
         logger.warning("Saved fare could not be restored: %s", exc)
         return False
     taxi_mgr.offers = []
+    if pickup_ahead:  # accepted, the customer waiting where they stood
+        taxi_mgr.state = TaxiState.WAITING_FOR_PICKUP
+        taxi_mgr.elapsed_time = 0.0
+        return True
     taxi_mgr.state = TaxiState.DRIVING_TO_DROPOFF
     taxi_mgr.elapsed_time = data.get("elapsed_time", 0.0)
     started = data.get("fare_started_at")
