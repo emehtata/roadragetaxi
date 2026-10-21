@@ -15,7 +15,7 @@ import random
 from enum import Enum
 from typing import Optional
 from .calendar import Season
-from .weather_history import precipitation_from_observation
+from .weather_history import gradual_weather, precipitation_from_observation
 
 
 class WeatherType(str, Enum):
@@ -136,7 +136,7 @@ def wetness_after(raining: list, step_s: float, start: float = 0.0) -> float:
     return wetness
 
 
-def raining_last_hour(history, now, typical_temperature) -> list:
+def raining_last_hour(history, now, typical_temperature, key="") -> list:
     """WeatherHistory's weather every 5 minutes over the hour before `now`
     (and the step before it), oldest first: True rain or slush, False dry,
     None unknown; [] when nothing is known. `typical_temperature(moment)`
@@ -146,7 +146,7 @@ def raining_last_hour(history, now, typical_temperature) -> list:
     steps = []
     for minutes in range(65, -1, -5):
         moment = now - timedelta(minutes=minutes)
-        seen = history.get(moment)
+        seen = gradual_weather(history, moment, key)
         kind = precipitation_from_observation(seen)[0] if seen is not None else None
         if kind is None:
             steps.append(None)

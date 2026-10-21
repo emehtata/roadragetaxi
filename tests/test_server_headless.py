@@ -916,6 +916,43 @@ def test_missing_current_weather_uses_previous_cache_until_exact_hour_arrives(tm
     assert server.world.weather.weather_type.value == "clear"
 
 
+def test_hourly_fmi_weather_changes_off_the_hour_and_temperature_interpolates(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from types import SimpleNamespace
+    from theroadragetrip.weather_history import HourlyWeather, gradual_weather
+
+    server = _build_server(tmp_path, monkeypatch)
+    hour = server.calendar.current.replace(hour=15, minute=0, second=0, microsecond=0)
+    records = {
+        hour - timedelta(hours=1): HourlyWeather(temperature_c=8, wawa=0, source="forecast"),
+        hour: HourlyWeather(temperature_c=10, wawa=61, source="forecast"),
+        hour + timedelta(hours=1): HourlyWeather(temperature_c=14, wawa=61, source="forecast"),
+        hour + timedelta(hours=2): HourlyWeather(temperature_c=12, wawa=0, source="forecast"),
+    }
+    server.weather_history = SimpleNamespace(
+        request=lambda *args: None,
+        get=lambda moment: records.get(moment),
+        previous=lambda moment: None,
+    )
+    changes = [hour + timedelta(minutes=minute) for minute in range(-30, 31)
+               if gradual_weather(server.weather_history, hour + timedelta(minutes=minute), server.chosen_city).wawa == 61]
+    transition = changes[0]
+    assert transition != hour
+
+    server.calendar.current = transition - timedelta(minutes=5)
+    assert server._update_outside().wawa == 0
+    server.calendar.current = transition
+    assert server._update_outside().wawa == 61
+    assert all(gradual_weather(server.weather_history, hour + timedelta(minutes=minute), server.chosen_city).wawa == 61
+               for minute in range(30, 90, 5))
+    server.calendar.current = hour + timedelta(minutes=30)
+    server._update_outside()
+    assert server.world.weather.outside_temperature_c == 12
+    server.calendar.current = hour + timedelta(minutes=34, seconds=59)
+    server._update_outside()
+    assert server.world.weather.outside_temperature_c == 12
+
+
 def test_npc_brake_lamps_when_slowing_or_standing_in_traffic():
     from types import SimpleNamespace
 

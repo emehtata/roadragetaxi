@@ -49,7 +49,7 @@ from ..localization import SUPPORTED_LANGUAGES, tr
 from ..moon import moon_info_on, moon_position_at
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
-from ..weather_history import WeatherHistory, precipitation_from_observation, game_time_to_utc_hour
+from ..weather_history import WeatherHistory, gradual_weather, precipitation_from_observation, game_time_to_utc_hour
 from ..calendar import clamp_start_datetime
 from ..osm import CACHE_DIR
 from ..climate import appearance_with_snow_depth, typical_temperature
@@ -336,7 +336,7 @@ class SimulationServer:
         if self.weather_history is None:
             return []
         return raining_last_hour(self.weather_history, self.calendar.current,
-                                 lambda moment: typical_temperature(moment, self.calendar.latitude))
+                                 lambda moment: typical_temperature(moment, self.calendar.latitude), self.chosen_city)
 
     def _forecast(self) -> list:
         """The start-screen forecast: now and every 6 h for 24 h - the
@@ -367,15 +367,15 @@ class SimulationServer:
         return lines
 
     def _update_outside(self):
-        """This game hour's FMI weather (None: generated) and the outside
-        temperature (observed, else the climate's typical), on the weather
-        for the state; queues the next 48 h in the background (cheap)."""
+        """Gradually sampled FMI weather (None: generated) and temperature."""
         moment, weather = self.calendar.current, self.world.weather
         fmi_moment = moment.replace(minute=0, second=0, microsecond=0)
         observed = None
         if self.weather_history is not None:
-            self.weather_history.request(fmi_moment, fmi_moment + timedelta(hours=48))
-            observed = self.weather_history.get(fmi_moment)
+            previous_moment = fmi_moment - timedelta(hours=1)
+            next_moment = fmi_moment + timedelta(hours=1)
+            self.weather_history.request(previous_moment, fmi_moment + timedelta(hours=48))
+            observed = gradual_weather(self.weather_history, moment, self.chosen_city)
             if observed is None or precipitation_from_observation(observed)[0] is None:
                 if getattr(self, "_fallback_weather_hour", None) != fmi_moment:
                     self._fallback_weather_hour = fmi_moment

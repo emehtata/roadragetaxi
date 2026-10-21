@@ -190,6 +190,36 @@ def test_present_weather_codes_map_to_game_weather():
     assert weather_type_for_observation("snow", 7.0) == WeatherType.SLUSH
 
 
+@pytest.mark.parametrize("code, temperature, expected", [
+    (61, 7, (WeatherType.RAIN, False)),
+    (71, -5, (WeatherType.SNOW, False)),
+    (67, 3, (WeatherType.SLUSH, False)),
+    (95, 7, (WeatherType.RAIN, True)),
+    (0, 7, (WeatherType.CLEAR, False)),
+])
+def test_all_fmi_phenomena_use_five_minute_transitions_and_continue_across_hours(code, temperature, expected):
+    from types import SimpleNamespace
+    from theroadragetrip.weather_history import gradual_weather
+
+    hour = datetime(2026, 1, 15, 15)
+    records = {
+        hour - timedelta(hours=1): HourlyWeather(temperature_c=temperature, wawa=0),
+        hour: HourlyWeather(temperature_c=temperature, wawa=code),
+        hour + timedelta(hours=1): HourlyWeather(temperature_c=temperature, wawa=code),
+        hour + timedelta(hours=2): HourlyWeather(temperature_c=temperature, wawa=0),
+    }
+    history = SimpleNamespace(get=lambda moment: records.get(moment))
+    samples = [gradual_weather(history, hour + timedelta(minutes=minute), "Oulu")
+               for minute in range(30, 90, 5)]
+
+    for seen in samples:
+        kind, thunder = precipitation_from_observation(seen)
+        assert (weather_type_for_observation(kind, seen.temperature_c), thunder) == expected
+    at_30 = gradual_weather(history, hour + timedelta(minutes=31), "Oulu")
+    at_34 = gradual_weather(history, hour + timedelta(minutes=34, seconds=59), "Oulu")
+    assert at_30 == at_34
+
+
 def test_weather_follows_observations_then_generator_continues_from_them():
     weather = WeatherSystem()
     weather.update(60.0, 0.0, outside_temperature_c=-5.0, observed=HourlyWeather(temperature_c=-5.0, wawa=71))
