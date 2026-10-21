@@ -63,3 +63,4 @@ src/theroadragetrip/assets/roads/*.bin
 # graphify knowledge-graph output and cache
 graphify-out/
 tools/godot/Godot_v*-stable_linux.*
+*.code-workspace
