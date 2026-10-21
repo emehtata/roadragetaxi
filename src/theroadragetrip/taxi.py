@@ -791,12 +791,12 @@ class TaxiManager:
             self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
             building_id = id(building)
             if building_id not in self._crashed_building_cooldowns:
-                self._crashed_building_cooldowns[building_id] = sim_time
                 self.total_score -= penalty
                 self.adjust_passenger_happiness(-35.0)
                 self.notification_msg = tr(self.language, "building_crash", penalty=penalty)
                 self.notification_timer = 3.5
                 logger.info("Player crashed into building: -%d pts", penalty)
+            self._crashed_building_cooldowns[building_id] = sim_time  # every contact frame: pressing on stays one impact
             return True
 
         return False
@@ -885,11 +885,11 @@ class TaxiManager:
                     self.tree_wait_timer = 5.0
                 self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
                 if key not in self._crashed_tree_cooldowns:
-                    self._crashed_tree_cooldowns[key] = sim_time
                     self.total_score -= penalty
                     self.adjust_passenger_happiness(-30.0)
                     self.notification_msg = tr(self.language, "tree_crash", penalty=penalty)
                     self.notification_timer = 3.5
+                self._crashed_tree_cooldowns[key] = sim_time  # every contact frame: pressing on stays one impact
                 return True
         return False
 
@@ -941,12 +941,12 @@ class TaxiManager:
             self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
             fence_id = id(scenery)
             if fence_id not in self._crashed_fence_cooldowns:
-                self._crashed_fence_cooldowns[fence_id] = sim_time
                 self.total_score -= penalty
                 self.adjust_passenger_happiness(-25.0)
                 self.notification_msg = tr(self.language, "fence_crash", penalty=penalty)
                 self.notification_timer = 3.5
                 logger.info("Player crashed into construction fence: -%d pts", penalty)
+            self._crashed_fence_cooldowns[fence_id] = sim_time  # every contact frame: pressing on stays one impact
             return True
 
         return False
@@ -1012,12 +1012,12 @@ class TaxiManager:
             player_car.speed = 0.0
             barrier_id = id(railing)
             if barrier_id not in self._crashed_fence_cooldowns:
-                self._crashed_fence_cooldowns[barrier_id] = sim_time
                 self.total_score -= penalty
                 self.adjust_passenger_happiness(-25.0)
                 self.notification_msg = tr(self.language, "fence_crash", penalty=penalty)
                 self.notification_timer = 3.5
                 logger.info("Player crashed into a %s: -%d pts", railing.kind, penalty)
+            self._crashed_fence_cooldowns[barrier_id] = sim_time  # every contact frame: pressing on stays one impact
             return True
         return False
 
@@ -1102,11 +1102,11 @@ class TaxiManager:
                     player_car.x, player_car.y = previous_position
                 player_car.speed = 0.0
             if id(post) not in self._crashed_post_cooldowns:
-                self._crashed_post_cooldowns[id(post)] = sim_time
                 self.total_score -= penalty
                 self.adjust_passenger_happiness(-20.0)
                 self.notification_msg = tr(self.language, "post_crash", penalty=penalty)
                 self.notification_timer = 3.5
+            self._crashed_post_cooldowns[id(post)] = sim_time  # every contact frame: pressing on stays one impact
             return True
         return False
 

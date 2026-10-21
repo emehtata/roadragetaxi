@@ -84,3 +84,16 @@ def test_unrelated_bridge_cannot_exempt_a_building_collision(road_layer, road_le
     assert TaxiManager(ways=[]).check_building_collision(
         car, [Building(SQUARE)], 1, current_way=road,
     ) is True
+
+
+def test_pressing_against_a_wall_is_one_crash_until_the_taxi_leaves():
+    """Held contact refreshes the cooldown: a taxi pushing on a wall for 10 s
+    pays once, not every 3 s; a new impact after leaving pays again."""
+    manager, building = TaxiManager(ways=[]), Building(SQUARE)
+    for frame in range(300):
+        car = Car(x=5.0, y=0.0, heading=0.0, speed=1.0)
+        manager.check_building_collision(car, [building], sim_time=frame / 30.0, previous_position=(3.0, 0.0))
+    assert manager.total_score == -200
+    car = Car(x=5.0, y=0.0, heading=0.0, speed=4.0)
+    manager.check_building_collision(car, [building], sim_time=10.0 + 3.5, previous_position=(3.0, 0.0))
+    assert manager.total_score == -400
