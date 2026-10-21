@@ -136,3 +136,38 @@ def test_a_street_is_lit_from_one_side_and_a_divided_road_from_its_median():
     assert placed and all(-6.0 < y < 6.0 for _, y, *_ in placed)  # in the median only
     xs = sorted(x for x, *_ in placed)
     assert all(b - a >= placement.STREET_LIGHT_MERGE_M for a, b in zip(xs, xs[1:]))  # one row, not two
+
+
+def test_median_pools_are_round_and_reach_both_carriageways():
+    from theroadragetrip.geo import dist_point_to_segment
+
+    for angle in (0, math.pi / 2, math.pi, 3 * math.pi / 2):
+        def point(x, y):
+            return x * math.cos(angle) - y * math.sin(angle), x * math.sin(angle) + y * math.cos(angle)
+        ways = [Way([point(-100, -10), point(100, -10)], 'motorway', 4, lit='yes', oneway=1),
+                Way([point(100, 10), point(-100, 10)], 'motorway', 4, lit='yes', oneway=1)]
+        lamps = _place(ways, [], [])
+        assert lamps and all(len(lamp) == 5 and lamp[4] for lamp in lamps)
+        for x, y, _, radius, _ in lamps:
+            for road in ways:
+                assert radius * 0.9 > dist_point_to_segment(x, y, *road.points_m[0], *road.points_m[1]) + road.half_width_m
+        for level in (1, -1):
+            ways[1].layer = level
+            assert all(len(lamp) == 4 for lamp in _place(ways, [], []))
+        ways[1].layer = 0
+        ways[1].oneway = -1  # parallel traffic travelling in the same direction
+        assert all(len(lamp) == 4 for lamp in _place(ways, [], []))
+
+
+def test_explicit_median_lamp_is_round_but_outer_verge_lamp_is_directional():
+    ways = [Way([(-100, -10), (100, -10)], 'motorway', 4, lit='yes', oneway=1),
+            Way([(100, 10), (-100, 10)], 'motorway', 4, lit='yes', oneway=1, map_level=0)]
+    lamps = [SceneryObject(x=0, y=0, kind='street_lamp'),
+             SceneryObject(x=40, y=-16, kind='street_lamp')]
+    placed = _place(ways, [], lamps)
+    median = next(lamp for lamp in placed if lamp[:2] == (0, 0))
+    verge = next(lamp for lamp in placed if lamp[:2] == (40, -16))
+    assert median[4] is True
+    assert len(verge) == 4
+    ways[1].map_level = -1
+    assert all(len(lamp) == 4 for lamp in _place(ways, [], lamps))

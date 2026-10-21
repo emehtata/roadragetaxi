@@ -345,7 +345,7 @@ class ChunkIndex:
         # lit roads at fixed spacing): [x, y, the road's direction, pool radius].
         for lamp in getattr(world, "street_light_points", ()):
             x, y, direction, pool_radius = lamp[:4]
-            # A fifth 1: a parking pole lighting all round (street lamps lean toward their road).
+            # A fifth 1: a parking/median pole lighting all round.
             self._add("street_lights", ((x, y),), [round(x, 1), round(y, 1), round(direction, 3), pool_radius]
                       + ([1] if len(lamp) > 4 and lamp[4] else []))
         self._add_static_world(world, bridge_parts)
