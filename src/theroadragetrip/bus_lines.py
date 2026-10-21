@@ -18,6 +18,7 @@ LINE_BUSES = 3  # of the NPC population's moving-traffic spawns, while lines are
 STOP_DWELL_S = 12.0  # at a stop: passengers board and leave
 MAX_ROUTE_ATTEMPTS = 3  # a stop that cannot be routed to this often is skipped
 AT_STOP_M = 30.0  # stopped this near its next stop: it is at it (else stopped elsewhere, e.g. after a recovery)
+START_NEAR_STOP_M = 60.0  # a line bus appears only this near one of its stops: a line knows only its stops, not the streets between
 
 
 @dataclass
@@ -118,7 +119,9 @@ def nearest_stop_index(line: Line, x: float, y: float) -> int:
 
 def start_job(all_lines: Dict[str, Line], x: float, y: float) -> Optional[BusJob]:
     """A job on the line with a stop nearest (x, y), driving to that stop
-    (or the next one, when it is the last)."""
+    (or the next one, when it is the last) - or None when no line's stop is
+    within START_NEAR_STOP_M: a bus started anywhere else appeared on streets
+    its line never runs (line 4 on Tervakukkatie, Oulu)."""
     best = None
     for line in all_lines.values():
         index = nearest_stop_index(line, x, y)
@@ -126,7 +129,7 @@ def start_job(all_lines: Dict[str, Line], x: float, y: float) -> Optional[BusJob
         distance_sq = (stop.x - x) ** 2 + (stop.y - y) ** 2
         if best is None or distance_sq < best[0]:
             best = (distance_sq, line, index)
-    if best is None:
+    if best is None or best[0] > START_NEAR_STOP_M ** 2:
         return None
     return BusJob(best[1], best[2])
 

@@ -54,7 +54,11 @@ line is its own OSM relation, so new spawns serve both.
 
 **Population.** While lines are loaded, up to `LINE_BUSES` of the
 moving-traffic spawns are line buses (vehicle type `bus`), starting
-towards their line's stop nearest the spawn point.
+towards their line's stop nearest the spawn point. A line bus starts only
+within `START_NEAR_STOP_M` (60 m) of one of its line's stops: a line knows
+its stops, not the streets between them, and a bus started farther away
+appeared on streets its line never runs (line 4 on Tervakukkatie, Oulu).
+Elsewhere the spawn is an ordinary car.
 
 **Cost.** Lines are rebuilt only when the world's stops change; a line
 bus costs what any NPC vehicle does, plus one route job per stop.

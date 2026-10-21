@@ -187,3 +187,10 @@ def test_a_stop_is_never_served_from_the_far_side():
 
     assert leg(30.0, -2.0) is not None  # from the west, the stop on its right
     assert leg(330.0, 2.0) is None  # from the east: refused
+
+
+def test_a_line_bus_starts_only_beside_its_own_stops():
+    a, b = _stop(0, 0, ("4", 0, "4")), _stop(400, 0, ("4", 1, "4"))
+    found = bus_lines.lines([a, b])
+    assert bus_lines.start_job(found, 200, 300) is None  # a side street off the route: an ordinary car instead
+    assert bus_lines.start_job(found, 30, 20).target_stop is a
