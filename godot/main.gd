@@ -409,7 +409,8 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and _inspect_panel.visible and _inspect_panel.get_global_rect().has_point(event.position):
 		return  # the Back button gets the click, even if a HUD panel overlaps it
 	if event is InputEventMouseButton and event.pressed and phone.visible and phone.get_global_rect().has_point(event.position):
-		if not hud_layout.rects.get("navigation_phone", Rect2()).has_point(event.position):
+		if not hud_layout.rects.get("navigation_phone", Rect2()).has_point(event.position) \
+				and hud_layout.grip_at(event.position) != "navigation_phone":  # its resize corner
 			return  # phone app controls take priority over HUD panels beneath them
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and instruments.trip_reset_rect.grow(3).has_point(event.position):
 		_reset_trip_pending = true  # the trip LCD's reset button, same as T

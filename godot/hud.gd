@@ -190,11 +190,15 @@ func _layout() -> void:
 	var status := Rect2(_money.position, Vector2.ZERO).merge(Rect2(_clock.position, _clock.size)).merge(Rect2(_money.position, _money.size))
 	if _weather.text != "":
 		status = status.merge(Rect2(_weather.position, _weather.size))
-	var moved: Vector2 = layout.place("status", status, size).position - status.position
+	var placed: Rect2 = layout.place("status", status, size)
+	var factor: float = layout.scale_of("status")
 	for label: Label in [_clock, _money, _weather]:
-		label.position += moved
+		label.position = placed.position + (label.position - status.position) * factor
+		label.scale = Vector2(factor, factor)
 	if _meter.visible:  # top middle by default
-		_meter.position = layout.place("meter", Rect2(Vector2((size.x - _meter.size.x) / 2.0, 8.0), _meter.size), size).position
+		var meter_factor: float = layout.scale_of("meter")
+		_meter.scale = Vector2(meter_factor, meter_factor)
+		_meter.position = layout.place("meter", Rect2(Vector2((size.x - _meter.size.x * meter_factor) / 2.0, 8.0), _meter.size), size).position
 	else:
 		layout.rects.erase("meter")
 	_hint.visible = _hint.text != "" and not _notice.visible

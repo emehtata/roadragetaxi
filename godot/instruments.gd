@@ -206,9 +206,10 @@ func _draw() -> void:
 	if _state.is_empty():
 		return
 	var player: Dictionary = _state.get("player", {})
-	var cluster := _draw_speedometer(Vector2(10, size.y - 236), speed_kmh(player.get("speed", 0.0)),
+	_draw_speedometer(Vector2(10, size.y - 236), speed_kmh(player.get("speed", 0.0)),
 		odometer_lines(player.get("trip_m", 0.0), player.get("odometer_m", 0.0)) + [economy_text(player)])
-	_draw_fuel(cluster.position + Vector2(CLUSTER_WIDTH - 72, 92), player)
+	_draw_fuel(Vector2(CLUSTER_WIDTH - 72, 92), player)  # in the cluster's scaled, local drawing
+	draw_set_transform(Vector2.ZERO)
 	_draw_rage(Vector2(size.x - 190, size.y - 246), _state.get("rage_power", 0.0))
 	var water: float = _state.get("water_elapsed", 0.0)
 	if water > 0.0:
@@ -240,10 +241,14 @@ static func speed_angle(kmh: float) -> float:
 	return deg_to_rad(135.0 + kmh / MAX_SPEED_KMH * 270.0)
 
 
+## Draws in the cluster's local, resized coordinates and leaves that
+## transform set for the fuel gauge (_draw resets it).
 func _draw_speedometer(at: Vector2, kmh: float, odometer: Array) -> Rect2:
 	var cluster: Rect2 = layout.place("speedometer", Rect2(at, Vector2(CLUSTER_WIDTH, 226)), size)  # the whole dashboard
-	at = cluster.position
-	draw_style_box(_housing, cluster)
+	var factor: float = layout.scale_of("speedometer")
+	draw_set_transform(cluster.position, 0.0, Vector2(factor, factor))
+	at = Vector2.ZERO
+	draw_style_box(_housing, Rect2(at, Vector2(CLUSTER_WIDTH, 226)))
 	var center := at + Vector2(95, 88)
 	var radius := 68.0
 	draw_circle(center, radius, Color8(12, 16, 20))
@@ -270,8 +275,9 @@ func _draw_speedometer(at: Vector2, kmh: float, odometer: Array) -> Rect2:
 	# The trip's reset button (T), left of the trip line: a circular arrow.
 	draw_string(_font, Vector2(econ.position.x + 6, econ.position.y + 21), odometer[2], HORIZONTAL_ALIGNMENT_RIGHT, econ.size.x - 12, 12, amber)
 	var trip_width := _font.get_string_size(odometer[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
-	trip_reset_rect = Rect2(lcd.end.x - 6 - trip_width - 18, lcd.position.y + 18, 14, 14)
-	var c := trip_reset_rect.get_center()
+	var reset_button := Rect2(lcd.end.x - 6 - trip_width - 18, lcd.position.y + 18, 14, 14)
+	trip_reset_rect = Rect2(cluster.position + reset_button.position * factor, reset_button.size * factor)  # screen: main.gd clicks it
+	var c := reset_button.get_center()
 	draw_arc(c, 4.5, deg_to_rad(-60), deg_to_rad(240), 12, amber, 1.5)
 	var tip := c + Vector2.from_angle(deg_to_rad(-60)) * 4.5
 	draw_colored_polygon(PackedVector2Array([tip + Vector2(-3.5, -1), tip + Vector2(1.5, -3), tip + Vector2(1, 2.5)]), amber)
@@ -357,8 +363,11 @@ func _draw_rage(at: Vector2, rage: float) -> void:
 	var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
 	var face: Texture2D = _faces[mini(10, maxi(0, int(clampf(rage, 0.0, 1.0) * 10.0)))] if _faces.size() == 11 else null
 	var face_size := face.get_size() if face != null else Vector2.ZERO
-	var box: Rect2 = layout.place("rage", Rect2(at, Vector2(maxf(text_size.x, face_size.x) + 20.0, face_size.y + text_size.y + 24.0)), size)
-	at = box.position
+	var placed: Rect2 = layout.place("rage", Rect2(at, Vector2(maxf(text_size.x, face_size.x) + 20.0, face_size.y + text_size.y + 24.0)), size)
+	var factor: float = layout.scale_of("rage")
+	draw_set_transform(placed.position, 0.0, Vector2(factor, factor))
+	var box := Rect2(Vector2.ZERO, placed.size / factor)
+	at = Vector2.ZERO
 	draw_rect(box, Color8(20, 25, 30, 220))
 	draw_rect(box, Color8(130, 140, 150), false, 1.0)
 	if face != null:
@@ -368,3 +377,4 @@ func _draw_rage(at: Vector2, rage: float) -> void:
 	var bar := Rect2(at.x + 10, text_y + text_size.y + 2, box.size.x - 20, 6)
 	draw_rect(bar, Color8(45, 30, 30))
 	draw_rect(Rect2(bar.position, Vector2(bar.size.x * clampf(rage, 0.0, 1.0), bar.size.y)), Color8(220, 55, 35))
+	draw_set_transform(Vector2.ZERO)

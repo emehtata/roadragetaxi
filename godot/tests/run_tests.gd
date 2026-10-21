@@ -1475,6 +1475,19 @@ func test_speech_and_stations() -> void:
 	hl.offsets.clear()  # reset() without touching the saved file
 	check(hl.place("speedometer", dial, screen) == dial, "HUD layout: reset puts it back")
 	check(HudLayout.clamp_rect(Rect2(-50, -50, 100, 100), Vector2(1280, 720)).position == Vector2.ZERO, "HUD layout: clamped inside the screen")
+	press.pressed = true
+	press.position = dial.end - Vector2(4, 4)  # the bottom-right resize corner
+	drag.relative = Vector2(95, 0)
+	check(hl.handle(press) and hl.handle(drag), "HUD layout: the corner grip takes the drag")
+	var bigger: Rect2 = hl.place("speedometer", dial, screen)
+	check(is_equal_approx(hl.scale_of("speedometer"), 1.5) and bigger.size.is_equal_approx(dial.size * 1.5), "HUD layout: resized from the corner, aspect kept")
+	drag.relative = Vector2(-5000, 0)
+	hl.handle(drag)
+	check(hl.scale_of("speedometer") == HudLayout.MIN_SCALE, "HUD layout: never resized below the minimum")
+	press.pressed = false
+	hl.handle(press)
+	hl.scales.clear()
+	check(hl.place("speedometer", dial, screen) == dial, "HUD layout: reset restores the size")
 	check(FileAccess.get_file_as_string("res://main.gd").contains("KEY_U, KEY_F2:"), "HUD layout: U and F2 reset it")
 	var Instruments := load("res://instruments.gd")
 	check(is_equal_approx(Instruments.speed_kmh(-5.0), 18.0) and Instruments.speed_kmh(100.0) == 210.0, "speedometer: |speed| in km/h, up to 210")

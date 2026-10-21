@@ -159,13 +159,15 @@ func update_layout() -> void:
 	if not is_visible_in_tree():
 		layout.rects.erase("navigation_phone")
 		return
-	var physical_size := size * scale
+	scale = Vector2.ONE * DEVICE_SCALE * layout.scale_of("navigation_phone")
+	var physical_size := size * Vector2.ONE * DEVICE_SCALE  # unscaled: place() applies the player's size
 	# Seed the new default in the old offset coordinates, preserving saved placements.
 	if not layout.offsets.has("navigation_phone"):
 		layout.offsets["navigation_phone"] = Vector2(maxf(16.0, get_viewport_rect().size.x - physical_size.x - 206.0) - 16.0, 0.0)
 	position = layout.place("navigation_phone", Rect2(Vector2(16, 125), physical_size), get_viewport_rect().size).position
-	# Only the header drags; offer cards, scrolling and buttons remain clickable.
-	layout.rects["navigation_phone"] = Rect2(position, Vector2(physical_size.x, 100 * scale.y))
+	# Only the header drags (the whole phone's corner resizes); offer cards,
+	# scrolling and buttons remain clickable.
+	layout.rects["navigation_phone"] = Rect2(position, Vector2(size.x * scale.x, 100 * scale.y))
 
 
 func show_navigation(route: Dictionary, task := "") -> void:
