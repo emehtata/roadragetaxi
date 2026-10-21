@@ -124,3 +124,21 @@ def test_pending_pre_bookings_count_as_new_requests_in_the_hud():
     assert taxi.has_new_requests()
     taxi.rail_bookings.accept(booking)
     assert not taxi.has_new_requests()  # accepted: a job now, not a request
+
+
+def test_no_bookings_while_the_game_starts_up():
+    bookings = manager()
+    bookings.enabled = False  # the server opens it when the first client connects
+    assert bookings.consider(passenger(TAXI), train(), OCCURRENCE, Always()) is None
+    bookings.enabled = True
+    assert bookings.consider(passenger(TAXI), train(), OCCURRENCE, Always()) is not None
+
+
+def test_bookings_are_spaced_so_a_burst_of_trains_books_one():
+    bookings = manager()
+    now = [100.0]
+    bookings.clock, bookings.min_gap_s = (lambda: now[0]), 30.0
+    assert bookings.consider(passenger(TAXI), train(), OCCURRENCE, Always()) is not None
+    assert bookings.consider(passenger(TAXI), train(), OCCURRENCE, Always()) is None
+    now[0] += 30.0
+    assert bookings.consider(passenger(TAXI), train(), OCCURRENCE, Always()) is not None

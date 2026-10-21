@@ -193,6 +193,7 @@ class SimulationServer:
                 args.preset, args.bbox = saved["city"], saved["bbox"]
                 args.place_name = saved.get("place_name") or None
         self.save_count = 0  # saves written: the client's "saved" acknowledgement
+        self._fares_opened = False  # no fares or pre-bookings until the game has started (the first client)
         self._pending_save = False
 
         overpass_endpoints = get_overpass_endpoints(config)
@@ -243,6 +244,7 @@ class SimulationServer:
         self.world.npc_manager.protests = self.world.protests
         progress("weather")
         self.car = self.world.car
+        self._set_fares_open(False)  # opened when the first client connects
         # weather is per-session state constructed fresh alongside
         # `world` rather than something load_world itself returns -
         # attached onto `world` here so protocol.py's state builder (which
@@ -561,6 +563,16 @@ class SimulationServer:
                 return min(towns, key=lambda p: (p.x - self.car.x) ** 2 + (p.y - self.car.y) ** 2).name
         return str(self.chosen_city or "")
 
+    def _set_fares_open(self, open_: bool) -> None:
+        taxi_mgr = self.world.taxi_mgr
+        taxi_mgr.fares_open = open_
+        bookings = getattr(taxi_mgr, "rail_bookings", None)
+        if bookings is not None:
+            bookings.enabled = open_
+            bookings.min_gap_s = 30.0
+        if open_:  # the first request a little after the start, not in the same instant
+            taxi_mgr.next_offer_timer = min(taxi_mgr.next_offer_timer, 5.0)
+
     def _on_client_connect(self, connection) -> None:
         logger.info("Client connected")
         # Who it is and the map origin first; the map chunks around the
@@ -570,6 +582,9 @@ class SimulationServer:
         with self._clients_lock:
             self._client_chunks[connection] = (set(), None)
             self._clients.append(connection)
+        if not self._fares_opened:  # the game has started: fares and pre-bookings from now on
+            self._fares_opened = True
+            self._set_fares_open(True)
         if not self._game_day_notice_shown:
             games = [game for game in self.world.arena_crowds.schedule_on(self.calendar.date)
                      if self.calendar.current < game.start + GAME_DURATION]

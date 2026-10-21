@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass
+import time
 from datetime import datetime, timedelta
 from typing import Callable, List, Optional, Tuple
 
@@ -58,10 +59,18 @@ class RailBookingManager:
         self.on_created = on_created
         self.on_missed: Optional[Callable] = None  # called once for each accepted booking that is missed
         self.bookings: List[TaxiBooking] = []
+        self.enabled = True  # False while the game starts up: the trains already on the map book nobody
+        # Real seconds between new bookings (the server's 30 s): trains filled
+        # in a burst - every one on the map at the start - never flood the phone.
+        self.min_gap_s = 0.0
+        self.clock = time.monotonic
+        self._last_created = float("-inf")
 
     def consider(self, passenger, train, occurrence: datetime, rng) -> Optional[TaxiBooking]:
         if (
-            passenger.intent != TAXI
+            not self.enabled
+            or self.clock() - self._last_created < self.min_gap_s
+            or passenger.intent != TAXI
             or passenger.taxi_stand is None
             or self.destination_for is None
             or rng.random() >= PREBOOKING_SHARE
@@ -86,6 +95,7 @@ class RailBookingManager:
             created_at=occurrence,
         )
         passenger.booking = booking
+        self._last_created = self.clock()
         self.bookings.append(booking)
         if self.on_created is not None:
             self.on_created(booking)

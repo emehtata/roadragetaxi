@@ -236,6 +236,7 @@ class TaxiManager:
         self.driver_on_foot = False  # set every tick by simulation.advance_simulation
         self.offers: List[TaxiOffer] = []
         self._initial_offer_pending = True
+        self.fares_open = True  # False while the game starts up (the server opens it for the first client)
         self.state: str = TaxiState.WAITING_FOR_PICKUP
         self.total_score: int = 0
         self.completed_fares: int = 0
@@ -1836,6 +1837,8 @@ class TaxiManager:
         self, car_x: float, car_y: float, count: int = 3, append: bool = False
     ) -> List[TaxiOffer]:
         """Create realistic ride requests without activating one until accepted."""
+        if not self.fares_open:
+            return []
         if self.current_passenger:
             self.offers = []
             return []

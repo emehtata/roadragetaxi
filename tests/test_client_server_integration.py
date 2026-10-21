@@ -284,11 +284,13 @@ def test_the_phone_shows_offers_and_answers_by_id(monkeypatch):
 
     server = _start_server(monkeypatch)
     taxi_mgr = server.world.taxi_mgr
+    assert taxi_mgr.generate_offers(server.car.x, server.car.y, count=3) == [], "no fares before the game has started"
+    connection = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    server.tick(1.0 / 30.0)  # the client is in: fares open
     taxi_mgr.offers = []
     offers = taxi_mgr.generate_offers(server.car.x, server.car.y, count=3)
     assert len(offers) >= 2, "the sample map should offer rides"
-    connection = transport.connect(server.host, server.port)
-    time.sleep(0.05)
     server.tick(1.0 / 30.0)
     phone = [m for m in _all_messages(connection) if m["type"] == "state"][-1]["state"]["phone"]
     ids = [item["id"] for item in phone["items"]]
