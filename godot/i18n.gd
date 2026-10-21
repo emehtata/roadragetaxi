@@ -3,7 +3,18 @@ extends RefCounted
 const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
-const FI := { "phone_protest": "Ilokapina osoittaa mieltä kaupungissa. Varaudu tiesulkuihin!", "choose_start": "Valitse pelitapa", "career": "Ura",
+const FI := {
+	"calendar_months": "Tammikuu|Helmikuu|Maaliskuu|Huhtikuu|Toukokuu|Kesäkuu|Heinäkuu|Elokuu|Syyskuu|Lokakuu|Marraskuu|Joulukuu",
+	"calendar_weekdays": "Ma|Ti|Ke|To|Pe|La|Su",
+	"previous_month": "Edellinen kuukausi",
+	"next_month": "Seuraava kuukausi",
+	"calendar_keys": "Nuolinäppäimet: päivä / viikko · PgUp / PgDn: kuukausi · Tab: aika ja toiminnot",
+
+	"settings_general": "Yleiset",
+	"settings_gameplay": "Pelaaminen",
+	"settings_audio": "Äänet",
+	"settings_maps": "Kartat ja data",
+	"phone_protest": "Ilokapina osoittaa mieltä kaupungissa. Varaudu tiesulkuihin!", "choose_start": "Valitse pelitapa", "career": "Ura",
 	"nav_left": "Käänny vasemmalle", "nav_right": "Käänny oikealle", "nav_uturn": "Tee U-käännös",
 	"enable_intercity_fares": "Ota kaupunkien väliset kyydit käyttöön",
 	"intercity_requirements": "Vaatii Suomen kartan lataamisen ja navigointitietokannan alustuksen. Peli valmistelee tietokannan ennen aloitusta. Muutokset tulevat voimaan seuraavassa pelissä.",
@@ -166,6 +177,17 @@ const FI := { "phone_protest": "Ilokapina osoittaa mieltä kaupungissa. Varaudu 
 }
 
 const EN := {
+	"calendar_months": "January|February|March|April|May|June|July|August|September|October|November|December",
+	"calendar_weekdays": "Mon|Tue|Wed|Thu|Fri|Sat|Sun",
+	"previous_month": "Previous month",
+	"next_month": "Next month",
+	"calendar_keys": "Arrow keys: day / week · PgUp / PgDn: month · Tab: time and actions",
+
+	"settings_general": "General",
+	"settings_gameplay": "Gameplay",
+	"settings_audio": "Audio",
+	"settings_maps": "Maps & Data",
+
 	"enable_intercity_fares": "Enable intercity fares",
 	"intercity_requirements": "Requires the Finland map download and navigation database initialization. The game prepares the database before starting. Changes apply next session.",
 	"help_intercity_fares": "Download the Finland PBF using Manage Finland map. On the next start, the game initializes the intercity database; subsequent sessions reuse it. Intercity fares stay off until initialization succeeds.",
@@ -330,6 +352,17 @@ const EN := {
 }
 
 const DE := {
+	"calendar_months": "Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember",
+	"calendar_weekdays": "Mo|Di|Mi|Do|Fr|Sa|So",
+	"previous_month": "Vorheriger Monat",
+	"next_month": "Nächster Monat",
+	"calendar_keys": "Pfeiltasten: Tag / Woche · Bild ↑ / ↓: Monat · Tab: Uhrzeit und Aktionen",
+
+	"settings_general": "Allgemein",
+	"settings_gameplay": "Spiel",
+	"settings_audio": "Audio",
+	"settings_maps": "Karten und Daten",
+
 	"enable_intercity_fares": "Überlandfahrten aktivieren",
 	"intercity_requirements": "Erfordert den Download der Finnlandkarte und die Initialisierung der Navigationsdatenbank vor Spielbeginn. Änderungen gelten ab der nächsten Sitzung.",
 	"help_intercity_fares": "Lade die Finnland-PBF über die Kartenverwaltung herunter. Beim nächsten Start erstellt das Spiel die Datenbank und verwendet sie danach erneut. Überlandfahrten bleiben bis zur erfolgreichen Initialisierung deaktiviert.",

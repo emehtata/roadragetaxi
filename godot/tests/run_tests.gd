@@ -92,6 +92,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_performance_paths()
 	test_startup_progress()
 	test_holiday_events()
+	test_date_picker()
 	test_settings_help()
 	test_credits()
 	test_minimap_is_exported()
@@ -123,14 +124,51 @@ func test_credits() -> void:
 	scene.free()
 
 
+func test_date_picker() -> void:
+	var picker := preload("res://date_picker.gd").new()
+	root.add_child(picker)
+	var earliest := {"year": 2027, "month": 2, "day": 28}
+	var latest := {"year": 2028, "month": 2, "day": 29}
+	picker.configure(latest, earliest, latest, "en")
+	check(picker._heading.text == "February 2028", "calendar: localized month and year")
+	check(picker._days[1].text == "1" and picker._days[0].text == "", "calendar: Monday-first layout (1 Feb 2028 is Tuesday)")
+	check(picker._days.filter(func(day): return not day.disabled).size() == 29, "calendar: leap February has 29 selectable dates")
+	picker._move_month(-1)
+	check(picker.value.month == 1 and picker.value.day == 29, "calendar: previous month retains day")
+	picker._move_month(-1)
+	check(picker.value.year == 2027 and picker.value.month == 12, "calendar: previous month crosses year")
+	picker.set_value({"year": 2028, "month": 1, "day": 31})
+	picker._move_month(1)
+	check(picker.value.month == 2 and picker.value.day == 29, "calendar: month navigation clamps to leap-month end")
+	check(picker.next.disabled and not picker.previous.disabled, "calendar: latest month has no forward navigation")
+	picker.set_value(earliest)
+	check(picker.previous.disabled and picker._days.filter(func(day): return not day.disabled).size() == 1, "calendar: earliest month disables earlier dates")
+	picker._move_month(-1)
+	check(picker.value.year == 2027 and picker.value.month == 2 and picker.value.day == 28, "calendar: cannot move before earliest date")
+	picker.set_value({"year": 2028, "month": 4, "day": 1})
+	check(picker.value.month == 2 and picker.value.day == 29, "calendar: cannot select future date")
+	picker._move_month(-1)
+	var day = picker._days.filter(func(button): return button.text == "15")[0]
+	day.pressed.emit()
+	check(picker.value.month == 1 and picker.value.day == 15, "calendar: day buttons select dates")
+	picker.free()
+
+
 func test_settings_help() -> void:
 	var shell = preload("res://startup.gd").new()
 	root.add_child(shell)
 	shell._settings_menu()
+	check(shell._focusables.size() == 6, "settings: five categories and Back")
+	var help_count := 0
+	for category in ["general", "gameplay", "graphics", "audio", "maps"]:
+		shell.call("_" + category + "_menu")
+		check(shell._back_action == Callable(shell, "_settings_menu"), "settings: %s returns to categories" % category)
+		var category_help: Array = shell._body.find_children("*", "Button", true, false).filter(func(b): return b.text == "?")
+		help_count += category_help.size()
+		check(not category_help.is_empty() and category_help.all(func(q): return q.tooltip_text != "" and not q.tooltip_text.begins_with("help_")), "settings: %s controls have help" % category)
+		check(category_help.all(func(q): return Array(q.tooltip_text.split("\n")).all(func(l): return l.length() <= 60)), "settings: %s help wraps at 60 characters" % category)
+	check(help_count >= 10, "settings: help preserved across categories")
 	var questions: Array = shell._body.find_children("*", "Button", true, false).filter(func(b): return b.text == "?")
-	check(questions.all(func(q): return Array(q.tooltip_text.split("\n")).all(func(l): return l.length() <= 60)), "settings: help tooltips wrap at 60 characters")
-	check(questions.size() >= 10 and questions.all(func(q): return q.tooltip_text != "" and not q.tooltip_text.begins_with("help_")),
-		"settings: every setting has a ? with its explanation (%d)" % questions.size())
 	var tip: StyleBoxFlat = questions[0].theme.get_stylebox("panel", "TooltipPanel")
 	check(tip.bg_color.a == 1.0, "settings: help tooltips on an opaque panel")
 	var help: Label = questions[0].get_parent().get_parent().get_child(1)
@@ -140,8 +178,10 @@ func test_settings_help() -> void:
 	check(not help.visible, "settings: clicking it again closes it")
 	shell._language = "de"
 	shell._settings_menu()
+	shell._general_menu()
 	var language_picker: OptionButton = shell._focusables[0]
 	check(language_picker.item_count == 3 and language_picker.get_item_text(language_picker.selected) == "Deutsch", "settings: German selected from three languages")
+	shell._settings_menu()
 	check(shell._body.find_children("*", "Label", true, false).any(func(label): return label.text == "EINSTELLUNGEN"), "German settings title")
 	shell.free()
 

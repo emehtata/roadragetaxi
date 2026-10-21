@@ -274,7 +274,7 @@ func _with_help(control: Control, help_key: String) -> void:
 	help.visible = false
 	var question := Button.new()
 	question.text = "?"
-	question.focus_mode = Control.FOCUS_NONE
+	question.focus_mode = Control.FOCUS_ALL
 	question.custom_minimum_size = Vector2(32, 32)
 	question.tooltip_text = wrap_lines(help.text, 60)  # a tooltip doesn't wrap: one long line ran off screen
 	question.theme = help_tooltip_theme()
@@ -417,11 +417,11 @@ func _confirm_clear_cache() -> void:
 func _confirm_reset_home() -> void:
 	_clear()
 	_title(_t("reset_home").to_upper(), _t("confirm_reset_home"))
-	var no := _button(_t("cancel"), _settings_menu)
+	var no := _button(_t("cancel"), _gameplay_menu)
 	_button(_t("delete"), func():
 		_server_query("--reset-home")
-		_settings_menu())
-	_back_action = _settings_menu
+		_gameplay_menu())
+	_back_action = _gameplay_menu
 	_focus_menu()
 	no.call_deferred("grab_focus")  # Enter does not delete anything
 
@@ -665,50 +665,68 @@ static func city_map_position(latitude: float, longitude: float, size: Vector2) 
 	)
 
 
-## The gig start picker: year, month, day, hour and minute of the
-## gig's start, a calendar year back at most, no later than today.
+## The gig start picker: a calendar plus hour/minute, within the last year.
 func _time_menu() -> void:
-	var resume: Dictionary = _settings.get_value("gig", "left_at", {})  # where the last gig ended, unless Now was picked
+	var resume: Dictionary = _settings.get_value("gig", "left_at", {})
 	var from_now: bool = _settings.get_value("gig", "start_now", true) or resume.is_empty()
-	_start_time = clamp_start(Time.get_datetime_dict_from_system() if from_now else resume, Time.get_date_dict_from_system())
+	var today := Time.get_date_dict_from_system()
+	_start_time = clamp_start(Time.get_datetime_dict_from_system() if from_now else resume, today)
 	_clear()
 	_title(_t("start_time"), _city)
-	var fields := [["year", _t("year")], ["month", _t("month")], ["day", _t("day")],
-		["hour", _t("hour")], ["minute", _t("minute")]]
+	var calendar := preload("res://date_picker.gd").new()
+	var earliest := clamp_start({"year": 1900, "month": 1, "day": 1}, today)
+	calendar.configure(_start_time, earliest, today, _language)
+	calendar.date_changed.connect(func(date: Dictionary):
+		for part in ["year", "month", "day"]:
+			_start_time[part] = date[part]
+		_settings.set_value("gig", "start_now", false))
+	_body.add_child(calendar)
+	_focusables.append_array([calendar.previous, calendar, calendar.next])
+	var row := HBoxContainer.new()
+	_body.add_child(row)
 	var spins := {}
-	for field in fields:
-		var row := HBoxContainer.new()
+	for key in ["hour", "minute"]:
 		var label := Label.new()
-		label.text = field[1]
+		label.text = _t(key)
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(label)
 		var spin := SpinBox.new()
-		spin.min_value = {"year": 1900, "month": 1, "day": 1, "hour": 0, "minute": 0}[field[0]]
-		spin.max_value = {"year": 9999, "month": 12, "day": 31, "hour": 23, "minute": 59}[field[0]]
-		spin.custom_minimum_size.x = 160
-		spins[field[0]] = spin
-		row.add_child(spin)
-		_body.add_child(row)
-		_focusables.append(spin.get_line_edit())
-	var show := func():
-		for key in spins:
-			spins[key].set_value_no_signal(_start_time[key])
-	for key in spins:
-		spins[key].value_changed.connect(func(value: float):
+		spin.min_value = 0
+		spin.max_value = 23 if key == "hour" else 59
+		spin.custom_minimum_size.x = 110
+		spin.value = _start_time[key]
+		spin.value_changed.connect(func(value: float):
 			_start_time[key] = int(value)
-			_start_time = clamp_start(_start_time, Time.get_date_dict_from_system())
-			_settings.set_value("gig", "start_now", false)
-			show.call())
-	show.call()
-	_button(_t("now"), func():
+			_settings.set_value("gig", "start_now", false))
+		spins[key] = spin
+		row.add_child(spin)
+		_focusables.append(spin.get_line_edit())
+	var actions := HBoxContainer.new()
+	_body.add_child(actions)
+	var now := _button(_t("now"), func():
 		_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
 		_settings.set_value("gig", "start_now", true)
-		show.call())
-	var start := _button(_t("start"), func(): _start("gig_driver"))
-	_button(_t("back"), _city_menu)
+		calendar.set_value(_start_time)
+		for key in spins:
+			spins[key].set_value_no_signal(_start_time[key]))
+	var start := _button(_t("start"), func():
+		for key in spins:
+			spins[key].apply()
+		_start("gig_driver"))
+	var back := _button(_t("back"), _city_menu)
+	for button in [now, start, back]:
+		_body.remove_child(button)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_child(button)
+	# Keep Tab order aligned with the header, grid, time fields and action row.
+	var tab_order: Array[Control] = [calendar.previous, calendar.next, calendar,
+		spins["hour"].get_line_edit(), spins["minute"].get_line_edit(), now, start, back]
+	for i in tab_order.size():
+		tab_order[i].focus_next = tab_order[i].get_path_to(tab_order[(i + 1) % tab_order.size()])
+		tab_order[i].focus_previous = tab_order[i].get_path_to(tab_order[(i - 1 + tab_order.size()) % tab_order.size()])
 	_back_action = _city_menu
 	_focus_menu()
-	start.call_deferred("grab_focus")  # Enter plays from now
+	start.call_deferred("grab_focus")
 
 
 ## A start time inside [the same day a year ago, today] (calendar.py
@@ -789,6 +807,20 @@ static func _days_in(year: int, month: int) -> int:
 func _settings_menu() -> void:
 	_clear()
 	_title(_t("settings").to_upper())
+	_button(_t("settings_general") + " >", _general_menu)
+	_button(_t("settings_gameplay") + " >", _gameplay_menu)
+	_button(_t("graphics") + " >", _graphics_menu)
+	_button(_t("settings_audio") + " >", _audio_menu)
+	_button(_t("settings_maps") + " >", _maps_menu)
+	var back := _pause_menu if _game != null else _main_menu
+	_button(_t("back"), back)
+	_back_action = back
+	_focus_menu()
+
+
+func _general_menu() -> void:
+	_clear()
+	_title(_t("settings_general").to_upper())
 	var language := OptionButton.new()
 	for code in T.LANGUAGES:
 		language.add_item(T.LANGUAGE_NAMES[code])
@@ -799,10 +831,17 @@ func _settings_menu() -> void:
 		_settings.save("user://settings.cfg")
 		if _game != null:
 			_game.set_language(_language)
-		_settings_menu.call_deferred())
+		_general_menu.call_deferred())
 	_with_help(language, "help_language")
 	_focusables.append(language)
-	_button(_t("graphics") + " >", _graphics_menu)
+	_button(_t("back"), _settings_menu)
+	_back_action = _settings_menu
+	_focus_menu()
+
+
+func _gameplay_menu() -> void:
+	_clear()
+	_title(_t("settings_gameplay").to_upper())
 	var historical := CheckButton.new()  # FMI weather for the city and game time
 	historical.text = _t("historical_weather")
 	historical.button_pressed = _settings.get_value("game", "historical_weather", false)
@@ -832,6 +871,16 @@ func _settings_menu() -> void:
 	intercity_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intercity_note.custom_minimum_size.x = 500
 	_body.add_child(intercity_note)
+	if _game == null:  # a running server keeps its home in memory
+		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
+	_button(_t("back"), _settings_menu)
+	_back_action = _settings_menu
+	_focus_menu()
+
+
+func _maps_menu() -> void:
+	_clear()
+	_title(_t("settings_maps").to_upper())
 	var source := OptionButton.new()  # --osm-source: the map from Overpass, or a local .osm.pbf via osmium
 	source.add_item(_t("map_overpass"))
 	source.add_item(_t("map_pbf"))
@@ -852,8 +901,14 @@ func _settings_menu() -> void:
 	pbf_path.get_parent().get_parent().visible = source.selected == 1
 	_focusables.append(pbf_path)
 	_with_help(_button(_t("manage_pbf") + " >", _pbf_menu), "help_manage_pbf")
-	if _game == null:  # a running server keeps its home in memory
-		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
+	_button(_t("back"), _settings_menu)
+	_back_action = _settings_menu
+	_focus_menu()
+
+
+func _audio_menu() -> void:
+	_clear()
+	_title(_t("settings_audio").to_upper())
 	for item in [[_t("master_volume"), "Master", "help_master_volume"], [_t("game_volume"), "Game", "help_game_volume"],
 			[_t("environment_volume"), "Environment", "help_environment_volume"], [_t("ui_volume"), "UI", "help_ui_volume"],
 			[_t("music_volume"), "Music", "help_music_volume"]]:
@@ -872,9 +927,8 @@ func _settings_menu() -> void:
 		row.add_child(slider)
 		_with_help(row, item[2])
 		_focusables.append(slider)
-	var back := _pause_menu if _game != null else _main_menu
-	_button(_t("back"), back)
-	_back_action = back
+	_button(_t("back"), _settings_menu)
+	_back_action = _settings_menu
 	_focus_menu()
 
 
@@ -1162,7 +1216,7 @@ func _download_pbf(mode: String, allow_existing := false, settings_only := false
 		_settings.set_value("map", "osm_pbf_path", downloaded_pbf_path())
 		_settings.save("user://settings.cfg")
 		if settings_only:
-			_settings_menu()
+			_maps_menu()
 		else:
 			_start(mode)
 		return
@@ -1175,8 +1229,8 @@ func _pbf_download_failed(mode: String, allow_existing: bool, settings_only: boo
 	_title(_t("download_failed"), _t("pbf_download_failed"))
 	_button(_t("retry"), func(): _download_pbf(mode, allow_existing, settings_only))
 	if allow_existing:
-		_button(_t("use_existing"), _settings_menu if settings_only else func(): _start(mode, true))
-	var back := _settings_menu if settings_only else _main_menu
+		_button(_t("use_existing"), _maps_menu if settings_only else func(): _start(mode, true))
+	var back := _maps_menu if settings_only else _main_menu
 	_button(_t("cancel"), back)
 	_back_action = back
 	_focus_menu()
@@ -1186,16 +1240,16 @@ func _confirm_delete_pbf() -> void:
 	_clear()
 	if not FileAccess.file_exists(downloaded_pbf_path()):
 		_title(_t("delete_pbf").to_upper(), _t("pbf_not_found"))
-		_button(_t("back"), _settings_menu)
+		_button(_t("back"), _maps_menu)
 	else:
 		_title(_t("delete_pbf").to_upper(), _t("confirm_delete_pbf"))
 		_button(_t("delete"), func():
 			if DirAccess.remove_absolute(downloaded_pbf_path()) == OK:
 				_settings.set_value("map", "osm_pbf_path", "")
 				_settings.save("user://settings.cfg")
-			_settings_menu())
-		_button(_t("cancel"), _settings_menu)
-	_back_action = _settings_menu
+			_maps_menu())
+		_button(_t("cancel"), _maps_menu)
+	_back_action = _maps_menu
 	_focus_menu()
 
 
@@ -1204,8 +1258,8 @@ func _pbf_menu() -> void:
 	_title(_t("manage_pbf").to_upper())
 	_button(_t("force_pbf_update"), func(): _download_pbf("", FileAccess.file_exists(downloaded_pbf_path()), true))
 	_button(_t("delete_pbf"), _confirm_delete_pbf)
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_button(_t("back"), _maps_menu)
+	_back_action = _maps_menu
 	_focus_menu()
 
 
@@ -1313,6 +1367,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _loading:
 		_stop_game()
+	elif _panel.visible and _back_action.is_valid():
+		_back_action.call()
 	elif _game != null:  # the phone uses P/N, Enter, X and 1-3, never Esc
 		if get_tree().paused:
 			_resume()
