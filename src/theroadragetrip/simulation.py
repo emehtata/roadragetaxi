@@ -682,10 +682,12 @@ def advance_simulation(
     for x, y in npc_manager.accidents:
         audio.play_group("collision.vehicle", at=(x, y))
     npc_manager.accidents.clear()
-    if pedestrian_mgr.curses:
-        x, y = pedestrian_mgr.curses[-1]  # one curse per tick is plenty
+    curses = pedestrian_mgr.curses + npc_manager.curses  # bumped NPC drivers curse the same way
+    if curses:
+        x, y = curses[-1]  # one curse per tick is plenty
         audio.play_group("pedestrian.curse", 0.8, at=(x, y))
         pedestrian_mgr.curses.clear()
+        npc_manager.curses.clear()
     vomited_passenger = taxi_mgr.take_vomited_passenger(car)
     if vomited_passenger is not None:
         audio.play_group("passenger.vomit")

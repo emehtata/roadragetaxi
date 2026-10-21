@@ -1377,7 +1377,7 @@ def test_vehicle_collision_respects_bridge_and_floor_levels(npc_obstacle, layer,
     manager = NPCVehicleManager()
     residents = ResidentManager()
     pedestrian_mgr = SimpleNamespace()
-    vehicle = NPCVehicle(vehicle_id=1, car=Car(x=0.0, y=0.0, heading=0.0, speed=4.0, layer=1))
+    vehicle = NPCVehicle(vehicle_id=1, car=Car(x=0.0, y=0.0, heading=0.0, speed=10.0, layer=1))  # a real crash, not a minor bump
     other_car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, layer=layer, map_level=map_level)
     obstacle = NPCVehicle(vehicle_id=2, car=other_car) if npc_obstacle else other_car
     manager._check_vehicle_collision(vehicle, [obstacle], residents, pedestrian_mgr, sim_time=50.0)
@@ -1468,6 +1468,28 @@ def test_check_vehicle_collision_with_player_crashes_npc_and_stops_taxi():
     manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
 
     assert vehicle.state == NPCState.CRASHED
+    assert player_car.speed == 0.0
+
+
+def test_a_minor_bump_by_the_player_makes_the_npc_driver_curse_not_crash():
+    """Game policy: below MINOR_HIT_MPS closing speed the NPC is not wrecked;
+    its driver curses and drives on slowly (shaken_timer caps its speed)."""
+    from theroadragetrip.npc import SHAKEN_S
+    from theroadragetrip.physics import Car
+
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
+    vehicle.car.speed = 0.0
+    manager.vehicles.append(vehicle)
+    player_car = Car(x=1.0, y=0.0, heading=0.0, speed=2.5)  # 9 km/h
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+
+    assert manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
+
+    assert vehicle.state != NPCState.CRASHED and not vehicle.driver_departed
+    assert vehicle.curse_timer > 0.0 and vehicle.curse_text and vehicle.shaken_timer == SHAKEN_S
+    assert manager.curses and not manager.accidents
     assert player_car.speed == 0.0
 
 

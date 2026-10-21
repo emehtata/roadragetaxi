@@ -165,6 +165,8 @@ def _npc_to_dict(npc, residents=None) -> dict:
         "is_police": npc.is_police,
         "is_on_foot": npc.is_on_foot,
         "fallen": npc.fallen,
+        "curse_timer": getattr(npc, "curse_timer", 0.0),  # a bumped driver's curse bubble
+        "curse_text": getattr(npc, "curse_text", ""),
         "layer": npc.layer,
         "lod_level": npc.lod_level,
         "turn_signal": npc.turn_signal,

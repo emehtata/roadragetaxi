@@ -1365,6 +1365,10 @@ func _draw() -> void:
 		var crashed: float = npc.get("crashed_timer", 0.0)
 		if crashed > 0.0:
 			_smoke(c, p.z, npc["length_m"], crashed if is_finite(crashed) else _clock)
+		var cursing: float = npc.get("curse_timer", 0.0)
+		if cursing > 0.0:  # bumped by the taxi: the driver's curse, like a pedestrian's
+			_bubble(c - Vector2(0, float(npc["length_m"]) * 0.5 + _px(6.0)), str(npc.get("curse_text", "@#*!%")),
+				RS.CURSE_TEXT, RS.CURSE_BORDER, 1.0 if cursing >= 0.5 else cursing / 0.5)
 		count += 1
 
 	if a.get("taxi", {}).get("current_passenger") is Dictionary:

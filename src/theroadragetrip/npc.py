@@ -1139,6 +1139,14 @@ class TripGroup:
         return self.boarded_resident_ids >= set(self.member_resident_ids)
 
 
+# Game policy: a bump by the taxi below this closing speed is no crash - the
+# NPC's driver curses and drives on slowly instead of wrecking the car.
+MINOR_HIT_MPS = 15.0 / 3.6
+SHAKEN_S = 8.0
+SHAKEN_SPEED_MPS = 20.0 / 3.6
+CURSE_S = 2.5
+
+
 @dataclass
 class NPCVehicle:
     """Physical NPC vehicle (autonomous-driving section 3).
@@ -1208,6 +1216,9 @@ class NPCVehicle:
     # NPC_FOOTPRINT_CHECK_INTERVAL_S first.
     footprint_check_elapsed_s: float = NPC_FOOTPRINT_CHECK_INTERVAL_S
     footprint_check_cached: bool = True
+    curse_timer: float = 0.0  # > 0: the driver's curse bubble shows (a minor bump by the taxi)
+    curse_text: str = ""
+    shaken_timer: float = 0.0  # > 0: after a minor bump the driver goes on slowly
 
     @property
     def x(self) -> float:
@@ -2682,9 +2693,14 @@ def update_npc(
     # speed-limiter HUD toggle - so throttle just asks for "as fast as
     # currently allowed" rather than needing its own brake/throttle logic.
     previous_pose = (vehicle.car.x, vehicle.car.y, vehicle.car.heading)
+    speed_limit_mps = driver.target_speed_mps
+    vehicle.curse_timer = max(0.0, vehicle.curse_timer - dt)
+    if vehicle.shaken_timer > 0.0:  # shaken by a minor bump: slowly onward
+        vehicle.shaken_timer = max(0.0, vehicle.shaken_timer - dt)
+        speed_limit_mps = min(speed_limit_mps, SHAKEN_SPEED_MPS)
     update_car_physics(
         vehicle.car, throttle=1.0, brake=0.0, steer_left=steer_left, steer_right=steer_right, dt=dt,
-        block_offroad=False, speed_limit_mps=driver.target_speed_mps,
+        block_offroad=False, speed_limit_mps=speed_limit_mps,
     )
     _enforce_npc_road_motion(vehicle, driver, previous_pose, traffic_world, spatial_grid, manager)
     if protests is not None and protests.blocks_movement(vehicle.car, previous_pose):
@@ -3649,6 +3665,7 @@ class NPCVehicleManager:
         self.road_rage = RoadRageClearance()
         self.drivers: Dict[int, Driver] = {}
         self.accidents: List[Tuple[float, float]] = []  # crash positions for the sound, drained by the simulation
+        self.curses: List[Tuple[float, float]] = []  # where a bumped NPC driver cursed; drained by the simulation
         self.household_manager = HouseholdManager()
         self.target_count = target_count
         self.min_count = min_count if min_count is not None else max(1, int(target_count * 0.6))
@@ -4139,6 +4156,11 @@ class NPCVehicleManager:
                         break
             if not hit:
                 continue
+            other_speed = getattr(other_car, "speed", 0.0)
+            closing_speed = math.hypot(
+                math.cos(vehicle.car.heading) * vehicle.car.speed - math.cos(other_car.heading) * other_speed,
+                math.sin(vehicle.car.heading) * vehicle.car.speed - math.sin(other_car.heading) * other_speed,
+            )
 
             # Resolve at the last known non-penetrating frame pose. Detection
             # without response merely marks an NPC crashed while the taxi
@@ -4163,6 +4185,16 @@ class NPCVehicleManager:
             elif hasattr(obstacle, "speed"):
                 obstacle.speed = 0.0
 
+            if (not obstacle_is_npc and not vehicle_already_crashed
+                    and closing_speed < MINOR_HIT_MPS):
+                # A minor bump by the taxi: both stop apart, the NPC driver
+                # curses and goes on slowly - no wreck.
+                from .pedestrian import CURSE_SYMBOLS  # lazy: pedestrian imports npc
+                vehicle.curse_timer = CURSE_S
+                vehicle.curse_text = random.choice(CURSE_SYMBOLS)
+                vehicle.shaken_timer = SHAKEN_S
+                self.curses.append((vehicle.car.x, vehicle.car.y))
+                return True
             self.accidents.append((vehicle.car.x, vehicle.car.y))
             if not vehicle_already_crashed:
                 self._trigger_vehicle_accident(vehicle, resident_manager, pedestrian_mgr, sim_time)
