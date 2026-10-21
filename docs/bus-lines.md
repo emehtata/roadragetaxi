@@ -8,8 +8,8 @@ without a timetable.
 Phase 1 (below) is implemented. A line is one OSM `route=bus` (or
 `trolleybus`) relation: its stops in order. A few of the NPC
 population's moving-traffic spawns are line buses; each drives its line
-from the stop nearest where it spawned to the end of the line, pulling
-into every stop's bay. At a stop, onboard riders can leave and nearby
+from the stop nearest where it spawned to the end of the line, along the
+relation's own streets, pulling into every stop's bay. At a stop, onboard riders can leave and nearby
 waiting pedestrians can board. Buses show their line number on a roof box
 that turns with the bus.
 
@@ -129,3 +129,17 @@ step out at the passenger-side door and walk away. Nearby pedestrians actively
 waiting at that stop walk to the same door and board; the bus does not depart
 until they are aboard. Passenger identities and vehicle occupancy move with
 them instead of creating decorative copies.
+
+## Route streets (2026-10-21)
+
+A bus took the shortest road between two stops, so it drove streets its
+line never uses (line 4 on Tervakukkatie, Oulu). The relation also lists
+those streets: its way members with no role (or `forward`/`backward`).
+`osm/build.py` records them on each road as `Way.bus_routes` (world cache
+format 41). The route graph keeps each relation's edges, and a line bus's
+leg costs `OFF_BUS_ROUTE_COST_FACTOR` (4x) off them: it keeps to its route
+where that is loaded and connected, and still finds a way where it is not.
+Edges, not nodes: a shortcut between two junctions of the route has both
+ends on it. Measured on Oulu: line 4's 15 stops get 172 route edges, and
+Tervakukkatie belongs to no route. A bus also starts only within 60 m of
+one of its line's stops (`START_NEAR_STOP_M`).
