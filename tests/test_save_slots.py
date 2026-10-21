@@ -60,3 +60,17 @@ def test_slot_names_cannot_leave_the_saves_folder(tmp_path):
     import pytest
     with pytest.raises(ValueError):
         slot_path(tmp_path / "x.ini", "../evil")
+
+
+def test_the_slot_list_prints_ascii_for_a_windows_pipe(tmp_path, monkeypatch, capsys):
+    import json
+    from theroadragetrip.server import __main__ as server_main
+    config = tmp_path / "roadragetrip.ini"
+    path = slot_path(config, "a")
+    path.parent.mkdir(parents=True)
+    path.write_text('{"city": "Inari", "place_name": "Anár, Čeavetjávri", "saved_at": 1}', encoding="utf-8")
+    monkeypatch.setattr("theroadragetrip.config.CONFIG_PATH", config)
+    monkeypatch.setattr(sys, "argv", ["prog", "--list-saves"])
+    server_main.main()
+    out = capsys.readouterr().out.strip()
+    assert out.isascii() and json.loads(out)[0]["place_name"] == "Anár, Čeavetjávri"

@@ -22,7 +22,9 @@ def main() -> None:
     if getattr(args, "list_saves", False):
         from ..config import CONFIG_PATH
         from ..save_slots import list_slots
-        print(json.dumps(list_slots(CONFIG_PATH), ensure_ascii=False))
+        # ASCII (\u escapes): a Windows pipe's code page can't print every
+        # place name (e.g. Sami letters), and one failure would hide every slot.
+        print(json.dumps(list_slots(CONFIG_PATH)))
         return
     if args.list_city_locations:
         # The menu's cities, then every other municipality (menu: false)
