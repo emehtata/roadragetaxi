@@ -1289,10 +1289,14 @@ func _pause_menu() -> void:
 	_body.add_child(_pause_status)
 	_button(_t("resume"), _resume)
 	if _can_save():
-		_button(_t("save_game"), func(): _save_game(func(ok: bool): _pause_status.text = _t("saved") if ok else _t("save_failed")))
+		_button(_t("save_game"), func(): await _save_game(func(ok: bool): _pause_status.text = _t("saved") if ok else _t("save_failed")))
 	_button(_t("settings"), _settings_menu)
 	_button(_t("main_menu"), _stop_game)
-	_button(_t("quit"), func(): _save_game(func(_ok: bool): get_tree().quit()) if _can_save() else get_tree().quit())
+	_button(_t("quit"), func():
+		if _can_save():
+			await _save_game(func(_ok: bool): get_tree().quit())
+		else:
+			get_tree().quit())
 	_back_action = _resume
 	_focus_menu()
 

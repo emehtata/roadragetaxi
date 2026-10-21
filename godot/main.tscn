@@ -136,6 +136,7 @@ offset_bottom = -8.0
 horizontal_alignment = 1
 
 [node name="Phone" type="PanelContainer" parent="Ui"]
+process_mode = 1
 script = ExtResource("7")
 
 [node name="Debug" type="Label" parent="Ui"]
