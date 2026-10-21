@@ -118,3 +118,23 @@ def test_an_accepted_fare_still_on_its_way_to_pickup_survives_a_save(tmp_path, m
         if restored.state == TaxiState.DRIVING_TO_DROPOFF:
             break
     assert restored.state == TaxiState.DRIVING_TO_DROPOFF and all(member.boarded for member in waiting.members)
+
+
+def test_restored_oulu_save_near_raahe_has_local_weather_forecast(tmp_path, monkeypatch):
+    import json
+    from unittest.mock import Mock
+    from theroadragetrip.taxi import municipality_points
+
+    config = tmp_path / 'roadragetrip.ini'
+    path = slot_path(config, 'test-slot')
+    path.parent.mkdir(parents=True)
+    raahe = next(p for p in municipality_points() if p[0] == 'Raahe' and p[4] is None)
+    path.write_text(json.dumps({'city': 'Oulu', 'saved_at': 1,
+                               'car': {'x': raahe[1], 'y': raahe[2], 'heading': 0},
+                               'game_time': '2026-10-21T22:00:00'}))
+    server = _server(tmp_path, monkeypatch)
+    assert server.chosen_city.casefold() == 'oulu' and server.weather_city == 'Raahe'
+    connection = Mock()
+    server._on_client_connect(connection)
+    message = connection.send.call_args_list[0].args[0]
+    assert message['weather_city'] == 'Raahe'

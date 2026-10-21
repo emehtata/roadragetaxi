@@ -932,7 +932,7 @@ static func start_sign(world: Dictionary, language: String) -> PanelContainer:
 	var lines := VBoxContainer.new()
 	lines.add_theme_constant_override("separation", 6)
 	sign.add_child(lines)
-	var rows := [[str(world.get("city", "")).to_upper(), 46, Color.WHITE], [T.text("weather_forecast_24h", language), 20, Color8(180, 220, 255)]]
+	var rows := [[str(world.get("weather_city", world.get("city", ""))).to_upper(), 46, Color.WHITE], [T.text("weather_forecast_24h", language), 20, Color8(180, 220, 255)]]
 	for line in world.get("forecast", []):
 		if line is Dictionary:
 			var source := str(line.get("source", "generated"))

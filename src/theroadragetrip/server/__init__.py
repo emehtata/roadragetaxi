@@ -287,9 +287,13 @@ class SimulationServer:
         historical = getattr(args, "historical_weather", None)
         if historical is None:
             historical = config.getboolean("game", "historical_weather", fallback=False)
-        self.weather_history = WeatherHistory(
-            getattr(self.world, "sun_latitude", 65.01), getattr(self.world, "sun_longitude", 25.47),
-            cache_path=Path(CACHE_DIR) / "weather_history.db") if historical else None
+        self.weather_history = None
+        self._historical_weather = historical
+        self.weather_city = self.chosen_city
+        self._weather_latitude = self.calendar.latitude
+        self._weather_check_position = None
+        self._weather_centre = None
+        self._update_weather_location()
         if self.weather_history is not None:
             self.weather_history.request(self.calendar.current - timedelta(hours=6), self.calendar.current + timedelta(hours=48))
             self.weather_history.wait_idle(3.0)  # brief: the first hour can be the real weather
@@ -365,7 +369,7 @@ class SimulationServer:
         if self.weather_history is None:
             return []
         return raining_last_hour(self.weather_history, self.calendar.current,
-                                 lambda moment: typical_temperature(moment, self.calendar.latitude), self.chosen_city)
+                                 lambda moment: typical_temperature(moment, self._weather_latitude), self.chosen_city)
 
     def _forecast(self) -> list:
         """The start-screen forecast: now and every 6 h for 24 h - the
@@ -377,7 +381,7 @@ class SimulationServer:
         history = self.weather_history
         observed = [history.get(moment) if history is not None else None for moment in moments]
         temperatures = [o.temperature_c if o is not None and o.temperature_c is not None
-                        else typical_temperature(moment, self.calendar.latitude) for moment, o in zip(moments, observed)]
+                        else typical_temperature(moment, self._weather_latitude) for moment, o in zip(moments, observed)]
         conditions = self.world.weather.forecast(temperatures, 6.0 * 60.0 * 60.0)
         lines = []
         for moment, temperature, (condition, thunder), seen in zip(moments, temperatures, conditions, observed):
@@ -395,8 +399,38 @@ class SimulationServer:
                 logger.info("FMI weather %s: %s", f"{moment:%d.%m. %H:%M}", source)
         return lines
 
+    def _update_weather_location(self):
+        """Follow the taxi's nearest municipality, including a restored position."""
+        position = (self.car.x, self.car.y)
+        previous = self._weather_check_position
+        if previous is not None and math.hypot(position[0] - previous[0], position[1] - previous[1]) < 1000.0:
+            return
+        self._weather_check_position = position
+        from ..taxi import municipality_points
+        from ..geo import meters_to_latlon
+        nearest = min((point for point in municipality_points() if point[4] is None),
+                      key=lambda point: math.hypot(point[1] - position[0], point[2] - position[1]), default=None)
+        if nearest is None:
+            return
+        city, x, y = nearest[:3]
+        if self._weather_centre is not None:
+            old_distance = math.hypot(self._weather_centre[0] - position[0], self._weather_centre[1] - position[1])
+            new_distance = math.hypot(x - position[0], y - position[1])
+            if city == self.weather_city or old_distance - new_distance < 2000.0:
+                return  # avoid switching repeatedly along a nearest-centre boundary
+        lat, lon = meters_to_latlon(x, y)
+        if lat is None or lon is None:
+            return
+        self.weather_city, self._weather_centre = city, (x, y)
+        self._weather_latitude = lat
+        if self._historical_weather:
+            self.weather_history = WeatherHistory(lat, lon, cache_path=Path(CACHE_DIR) / "weather_history.db")
+        self._fallback_weather_hour = self._fallback_weather = None
+        logger.info("Weather location: %s (%.3f, %.3f)", city, lat, lon)
+
     def _update_outside(self):
         """Gradually sampled FMI weather (None: generated) and temperature."""
+        self._update_weather_location()
         moment, weather = self.calendar.current, self.world.weather
         fmi_moment = moment.replace(minute=0, second=0, microsecond=0)
         observed = None
@@ -422,7 +456,7 @@ class SimulationServer:
             logger.info("FMI weather now %s: %s", f"{fmi_moment:%d.%m. %H:%M}", source)
         weather.weather_source = source
         weather.outside_temperature_c = (observed.temperature_c if observed is not None and observed.temperature_c is not None
-                                         else typical_temperature(moment, self.calendar.latitude))
+                                         else typical_temperature(moment, self._weather_latitude))
         return observed
 
     def _tyre_mark(self, previous) -> Optional[dict]:
@@ -577,8 +611,10 @@ class SimulationServer:
         logger.info("Client connected")
         # Who it is and the map origin first; the map chunks around the
         # player and every tick's state follow from the tick loop.
-        connection.send(protocol.build_world_message((self.car.x, self.car.y), CHUNK_SIZE_M, LOCAL_PLAYER_ID,
-                                                     self._place_name(), self.start_forecast))
+        message = protocol.build_world_message((self.car.x, self.car.y), CHUNK_SIZE_M, LOCAL_PLAYER_ID,
+                                               self._place_name(), self._forecast())
+        message["weather_city"] = self.weather_city
+        connection.send(message)
         with self._clients_lock:
             self._client_chunks[connection] = (set(), None)
             self._clients.append(connection)
