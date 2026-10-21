@@ -42,6 +42,9 @@ var _back_action := Callable()
 var _logo: TextureRect
 var _start_time := {}  # the gig start (year, month, day, hour, minute): now, each time the picker opens
 var _pause_status: Label  # the pause menu's line under its title: "Saving…", "Saved"
+const THUMBS := "user://save_thumbs"  # NAME.png: the game as it was when the slot was saved
+const THUMB_SIZE := Vector2i(160, 90)
+var _pause_shot: Image  # the frame just before the pause menu opened: a save's thumbnail
 const MAX_GIG_SLOTS := 5  # gig saves; a new game beyond them replaces one (career keeps its single save)
 var _save_slot := ""  # the gig's save slot (server saves/NAME.json): loaded if it exists, saved by the pause menu
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
@@ -436,11 +439,13 @@ func _slot_menu() -> void:
 			_city_menu())
 	for slot in slots:
 		var name := str(slot.get("name", ""))
-		_button(slot_label(slot, _t("fare_in_progress")), func():
+		var button := _button(slot_label(slot, _t("fare_in_progress")), func():
 			_save_slot = name
 			_start_point = Vector2.INF
 			_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
 			_start("gig_driver"))  # the server takes the slot's city, place and time
+		button.icon = _thumb(name)
+		button.custom_minimum_size.y = THUMB_SIZE.y + 10 if button.icon != null else button.custom_minimum_size.y
 	if not slots.is_empty():
 		_button(_t("delete_slot"), _delete_slot_menu.bind(slots))
 	_button(_t("back"), _main_menu)
@@ -462,6 +467,7 @@ func _delete_slot_menu(slots: Array) -> void:
 			_button(_t("delete"), func():
 				if path.ends_with(str(slot.get("name", "")) + ".json"):  # only a slot file, nothing else
 					DirAccess.remove_absolute(path)
+					DirAccess.remove_absolute(THUMBS.path_join(str(slot.get("name", "")) + ".png"))
 				_slot_menu())
 			_back_action = _slot_menu
 			_focus_menu()
@@ -481,11 +487,21 @@ func _replace_slot_menu(slots: Array) -> void:
 		_button(slot_label(slot, _t("fare_in_progress")), func():
 			if path.ends_with(name + ".json"):
 				DirAccess.remove_absolute(path)
+				DirAccess.remove_absolute(THUMBS.path_join(name + ".png"))
 			_save_slot = name
 			_city_menu())
 	_button(_t("back"), _slot_menu)
 	_back_action = _slot_menu
 	_focus_menu()
+
+
+## A slot's thumbnail, or null if it was saved before thumbnails (or the file is gone).
+func _thumb(name: String) -> Texture2D:
+	var path := THUMBS.path_join(name + ".png")
+	if not FileAccess.file_exists(path):
+		return null
+	var image := Image.load_from_file(path)
+	return ImageTexture.create_from_image(image) if image != null else null
 
 
 ## One saved game in the slot menu: where, the game time, the money.
@@ -1204,6 +1220,8 @@ func _server_connected(up: bool) -> void:
 
 
 func _pause_menu() -> void:
+	if not get_tree().paused:  # the game itself, before the menu covers it
+		_pause_shot = get_viewport().get_texture().get_image()
 	get_tree().paused = true
 	_play_menu_music()
 	if _game != null and _game._help != null:
@@ -1246,7 +1264,13 @@ func _save_game(done: Callable) -> void:
 		await get_tree().create_timer(0.1, true).timeout
 		waited += 0.1
 	sim.process_mode = mode
-	done.call(sim.save_count > before)
+	var ok := sim.save_count > before
+	if ok and _pause_shot != null:
+		var thumb := _pause_shot.duplicate() as Image
+		thumb.resize(THUMB_SIZE.x, THUMB_SIZE.y, Image.INTERPOLATE_BILINEAR)
+		DirAccess.make_dir_recursive_absolute(THUMBS)
+		thumb.save_png(THUMBS.path_join(_save_slot + ".png"))
+	done.call(ok)
 
 
 func _resume() -> void:
