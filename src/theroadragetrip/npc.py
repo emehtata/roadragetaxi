@@ -4714,6 +4714,7 @@ class NPCVehicleManager:
                 if not in_bounds(self._active_bounds, vehicle.x, vehicle.y):
                     release_npc_parking_reservation(vehicle)
                     stats["discarded"] += 1
+                    self._count_discard("left_area")
                     return
             initial_speed = _transit_initial_speed(vehicle, _plan)
             clearance = _transit_clearance(vehicle, initial_speed or 0.0)
@@ -4723,28 +4724,27 @@ class NPCVehicleManager:
                 far = (victim.x - player_x) ** 2 + (victim.y - player_y) ** 2 > self.despawn_radius_m ** 2
                 if not far:
                     victim = None
-            if (
-                initial_speed is None
-                or (initial_speed > 0 and distance_sq < clearance ** 2)
-                or (len(self.vehicles) >= self.target_count and victim is None)
-                or (self._active_bounds is None and distance_sq > self.simulation_radius_m ** 2)
-                or (viewport_bounds is not None and _point_in_viewport(
-                    vehicle.x, vehicle.y, viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M,
-                ))
-                or not _point_is_clear_of_vehicles(
-                    (vehicle.x, vehicle.y), [(other.x, other.y) for other in self.vehicles],
-                    clearance,
-                )
-                or (initial_speed > 0 and job.get("world") is not None and (
+            reason = (
+                "no_speed" if initial_speed is None
+                else "near_taxi" if initial_speed > 0 and distance_sq < clearance ** 2
+                else "full" if len(self.vehicles) >= self.target_count and victim is None
+                else "far" if self._active_bounds is None and distance_sq > self.simulation_radius_m ** 2
+                else "in_view" if viewport_bounds is not None and _point_in_viewport(
+                    vehicle.x, vehicle.y, viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M)
+                else "crowded" if not _point_is_clear_of_vehicles(
+                    (vehicle.x, vehicle.y), [(other.x, other.y) for other in self.vehicles], clearance)
+                else "controls" if initial_speed > 0 and job.get("world") is not None and (
                     job["world"]._nearby_traffic_lights(vehicle.x, vehicle.y, radius_m=clearance)
-                    or job["world"].nearby_signs(vehicle.x, vehicle.y)
-                ))
-                or (result[1][2] is None and not _point_is_clear_of_vehicles(
-                    result[1][1], [pos for _, pos in claimed_points]
-                ))
-            ):
+                    or job["world"].nearby_signs(vehicle.x, vehicle.y))
+                # A line bus may share its stop: buses queue there like at any stop.
+                else "destination_taken" if result[1][2] is None and vehicle.vehicle_kind != "bus_line" and not _point_is_clear_of_vehicles(
+                    result[1][1], [pos for _, pos in claimed_points])
+                else ""
+            )
+            if reason:
                 release_npc_parking_reservation(vehicle)
                 stats["discarded"] += 1
+                self._count_discard(reason)
                 return
             if victim is not None:
                 release_npc_parking_reservation(victim)
@@ -4846,6 +4846,11 @@ class NPCVehicleManager:
         if vehicle.destination is not None:
             claimed_points.append((vehicle.vehicle_id, vehicle.destination))
         return driver
+
+    def _count_discard(self, reason: str) -> None:
+        """Why planned moving traffic was dropped (route_job_stats, F12 JSON)."""
+        reasons = self.route_job_stats.setdefault("discard_reasons", {})
+        reasons[reason] = reasons.get(reason, 0) + 1
 
     def _transit_spawn_steps(
         self,
