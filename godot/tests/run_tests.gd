@@ -428,7 +428,7 @@ func test_menu_music() -> void:
 	root.add_child(shell)
 	check(shell._menu_music != null and shell._menu_music.playing, "menu music starts on the shell's opening screen")
 	var player: AudioStreamPlayer = shell._menu_music
-	check(player.stream is AudioStreamOggVorbis and player.stream.loop and player.stream.get_length() > 120.0, "menu music uses the converted looping Ogg track")
+	check(player.stream is AudioStreamOggVorbis and player.stream.loop and player.stream.get_length() >= 20.0 and player.stream.get_length() <= 45.0, "menu music uses the short looping Ogg track")
 	check(player.bus == "Music" and AudioServer.get_bus_index("Music") >= 0, "menu music has an independent volume bus")
 	shell._settings_menu()
 	check(shell._menu_music == player and player.playing, "opening settings keeps the same music player")
@@ -654,6 +654,9 @@ func test_vehicle_body_triangles() -> void:
 ## rrt-019: nightclub music - opening hours, distance, muffling, the player pool.
 func test_nightclub_audio() -> void:
 	var NC := preload("res://nightclub_audio.gd")
+	check(NC.tracks_in(NC.TRACK_DIR).has("assets/music/nightclub/nightclub_industrial_5.ogg"), "nightclubs include the industrial breakbeat loop")
+	for file in ["nightclub_eurodance_female_6.ogg", "nightclub_eurodance_female_7.ogg"]:
+		check(NC.tracks_in(NC.TRACK_DIR).has(NC.TRACK_DIR.path_join(file)), "nightclubs include vocal Eurodance: " + file)
 	var fri := 4 * 1440.0
 	var schedule := [[fri + 1320.0, fri + 1440.0 + 240.0]]  # Friday 22:00 - Saturday 04:00
 	check(NC.open_level(schedule, fri + 1200.0) == 0.0 and NC.open_level(schedule, fri + 600.0) == 0.0, "closed in the evening and by day")
@@ -723,7 +726,7 @@ func test_car_audio() -> void:
 		and not CA.eligible({"vehicle_type": "car", "is_police": true}), "only ordinary cars")
 	check(CA.draw(1234) == CA.draw(1234), "the same car always draws the same")
 	var car_tracks: Array = preload("res://nightclub_audio.gd").tracks_in(CA.TRACK_DIR)
-	check(car_tracks == ["assets/music/cars/cars_bass_far_1.ogg", "assets/music/cars/cars_bass_far_2.ogg", "assets/music/cars/cars_music_1.ogg", "assets/music/cars/cars_music_2.ogg"],
+	check(car_tracks == ["assets/music/cars/cars_bass_far_1.ogg", "assets/music/cars/cars_bass_far_2.ogg", "assets/music/cars/cars_industrial_3.ogg", "assets/music/cars/cars_music_1.ogg", "assets/music/cars/cars_music_2.ogg"],
 		"every .ogg in the folder is a track, the MP3 originals aren't (%s)" % [car_tracks])
 	var chosen := 0
 	for id in 4000:

@@ -316,7 +316,7 @@ static func credits_text() -> String:
 		"",
 		"[b]Sounds[/b]",
 		"Sound effects generated with Stable Audio Open (Stability AI). Speech and station announcements generated with Chatterbox (Resemble AI) and Microsoft Azure Speech.",
-		"Menu music generated with ACE-Step (acestep-5Hz-lm-0.6B).",
+		"Menu music generated with Stable Audio Open 1.0 (Stability AI), using ai-audio-studio.",
 		"",
 		"[b]Software[/b]",
 		"Godot Engine (MIT, © Godot Engine contributors), its components below, Python and its libraries, and osmium-tool (GPL-3.0; its source is published with every release). Full notices: THIRD_PARTY_LICENSES.md in the game folder.",

@@ -1,0 +1,98 @@
+[
+  {
+    "title": "Stay Until Sunrise",
+    "asset": "src/theroadragetrip/assets/music/nightclub/nightclub_eurodance_female_6.ogg",
+    "bpm": 138,
+    "key": "A minor",
+    "seed": 106138,
+    "caption": "1990s Eurodance, euphoric piano-house club anthem, powerful melodic female lead vocal only, bright M1 house piano chords, uplifting synth-string pads, bouncy offbeat synth bass, punchy four-on-the-floor 909 kick, crisp claps and open hi-hats, catchy sung chorus with female harmony doubles, warm polished 1994 club production, short instrumental intro and outro, no male voice, no rap.",
+    "lyrics": "[Intro - Instrumental]\n\n[Verse]\nI left my coat beside the door\nYour footsteps found me on the floor\nThe last bus left an hour ago\nWe have nowhere else to go\n\n[Pre-Chorus]\nLet the room turn round and round\nKeep me here inside this sound\n\n[Chorus]\nStay until the morning comes\nHold me where the bass drum runs\nWhen the daylight finds our eyes\nWe will carry home the sunrise\nStay until the morning comes\nWe can dance till night is done\nTake my hand and count to four\nI am ready for one more\n\n[Instrumental - Piano]\n\n[Chorus]\nStay until the morning comes\nHold me where the bass drum runs\nWhen the daylight finds our eyes\nWe will carry home the sunrise\nStay until the morning comes\nWe can dance till night is done\nTake my hand and count to four\nI am ready for one more\n\n[Outro - Instrumental]",
+    "duration_s": 94.19183673469388,
+    "language": "en",
+    "model": "ACE-Step-1.5/acestep-v15-turbo",
+    "lm_model": "acestep-5Hz-lm-0.6B",
+    "steps": 8,
+    "job_id": "f31788ae-43a1-433f-86c9-c7919548906c",
+    "tool": "Local ACE-Step API via the official acestep skill CLI, run from ai-audio-studio",
+    "original_lyrics": true,
+    "voice_reference": null,
+    "raw_file": "f31788ae-43a1-433f-86c9-c7919548906c_1.wav",
+    "api_result_file": "f31788ae-43a1-433f-86c9-c7919548906c.json",
+    "actual_generation_result": {
+      "data": [
+        {
+          "task_id": "f31788ae-43a1-433f-86c9-c7919548906c",
+          "result": "[{\"file\": \"/v1/audio?path=%2Ftmp%2Frrt-acestep-audio%2Fapi_audio%2F9905f5fa-0117-54ce-2123-3237d357e959.wav\", \"wave\": \"\", \"status\": 1, \"create_time\": 1792605284, \"env\": \"development\", \"prompt\": \"1990s Eurodance, euphoric piano-house club anthem, powerful melodic female lead vocal only, bright M1 house piano chords, uplifting synth-string pads, bouncy offbeat synth bass, punchy four-on-the-floor 909 kick, crisp claps and open hi-hats, catchy sung chorus with female harmony doubles, warm polished 1994 club production, short instrumental intro and outro, no male voice, no rap.\", \"lyrics\": \"[Intro - Instrumental]\\n\\n[Verse]\\nI left my coat beside the door\\nYour footsteps found me on the floor\\nThe last bus left an hour ago\\nWe have nowhere else to go\\n\\n[Pre-Chorus]\\nLet the room turn round and round\\nKeep me here inside this sound\\n\\n[Chorus]\\nStay until the morning comes\\nHold me where the bass drum runs\\nWhen the daylight finds our eyes\\nWe will carry home the sunrise\\nStay until the morning comes\\nWe can dance till night is done\\nTake my hand and count to four\\nI am ready for one more\\n\\n[Instrumental - Piano]\\n\\n[Chorus]\\nStay until the morning comes\\nHold me where the bass drum runs\\nWhen the daylight finds our eyes\\nWe will carry home the sunrise\\nStay until the morning comes\\nWe can dance till night is done\\nTake my hand and count to four\\nI am ready for one more\\n\\n[Outro - Instrumental]\", \"metas\": {\"bpm\": 138, \"duration\": 96.0, \"genres\": \"N/A\", \"keyscale\": \"A minor\", \"timesignature\": \"4/4\", \"prompt\": \"1990s Eurodance, euphoric piano-house club anthem, powerful melodic female lead vocal only, bright M1 house piano chords, uplifting synth-string pads, bouncy offbeat synth bass, punchy four-on-the-floor 909 kick, crisp claps and open hi-hats, catchy sung chorus with female harmony doubles, warm polished 1994 club production, short instrumental intro and outro, no male voice, no rap.\", \"lyrics\": \"[Intro - Instrumental]\\n\\n[Verse]\\nI left my coat beside the door\\nYour footsteps found me on the floor\\nThe last bus left an hour ago\\nWe have nowhere else to go\\n\\n[Pre-Chorus]\\nLet the room turn round and round\\nKeep me here inside this sound\\n\\n[Chorus]\\nStay until the morning comes\\nHold me where the bass drum runs\\nWhen the daylight finds our eyes\\nWe will carry home the sunrise\\nStay until the morning comes\\nWe can dance till night is done\\nTake my hand and count to four\\nI am ready for one more\\n\\n[Instrumental - Piano]\\n\\n[Chorus]\\nStay until the morning comes\\nHold me where the bass drum runs\\nWhen the daylight finds our eyes\\nWe will carry home the sunrise\\nStay until the morning comes\\nWe can dance till night is done\\nTake my hand and count to four\\nI am ready for one more\\n\\n[Outro - Instrumental]\"}, \"generation_info\": \"**\ud83c\udfb5 Total generation time (2 songs): 96.03s**\\n- 48.02s per song\\n- LM phase (2 songs): 84.98s\\n- DiT phase (2 songs): 11.06s\", \"seed_value\": \"106138,2094917977\", \"lm_model\": \"acestep-5Hz-lm-0.6B\", \"dit_model\": \"acestep-v15-turbo\", \"progress\": 1.0, \"stage\": \"succeeded\"}, {\"file\": \"/v1/audio?path=%2Ftmp%2Frrt-acestep-audio%2Fapi_audio%2Fe04c70ba-df6c-5bf2-ed57-5d05ddf5d999.wav\", \"wave\": \"\", \"status\": 1, \"create_time\": 1792605284, \"env\": \"development\", \"prompt\": \"1990s Eurodance, euphoric piano-house club anthem, powerful melodic female lead vocal only, bright M1 house piano chords, uplifting synth-string pads, bouncy offbeat synth bass, punchy four-on-the-floor 909 kick, crisp claps and open hi-hats, catchy sung chorus with female harmony doubles, warm polished 1994 club production, short instrumental intro and outro, no male voice, no rap.\", \"lyrics\": \"[Intro - Instrumental]\\n\\n[Verse]\\nI left my coat beside the door\\nYour footsteps found me on the floor\\nThe last bus left an hour ago\\nWe have nowhere else to go\\n\\n[Pre-Chorus]\\nLet the room turn round and round\\nKeep me here inside this sound\\n\\n[Chorus]\\nStay until the morning comes\\nHold me where the bass drum runs\\nWhen the daylight finds our eyes\\nWe will carry home the sunrise\\nStay until the morning comes\\nWe can dance till night is done\\nTake my hand and count to four\\nI am ready for one more\\n\\n[Instrumental - Piano]\\n\\n[Chorus]\\nStay until the morning comes\\nHold me where the bass drum runs\\nWhen the daylight finds our eyes\\nWe will carry home the sunrise\\nStay until the morning comes\\nWe can dance till night is done\\nTake my hand and count to four\\nI am ready for one more\\n\\n[Outro - Instrumental]\", \"metas\": {\"bpm\": 138, \"duration\": 96.0, \"genres\": \"N/A\", \"keyscale\": \"A minor\", \"timesignature\": \"4/4\", \"prompt\": \"1990s Eurodance, euphoric piano-house club anthem, powerful melodic female lead vocal only, bright M1 house piano chords, uplifting synth-string pads, bouncy offbeat synth bass, punchy four-on-the-floor 909 kick, crisp claps and open hi-hats, catchy sung chorus with female harmony doubles, warm polished 1994 club production, short instrumental intro and outro, no male voice, no rap.\", \"lyrics\": \"[Intro - Instrumental]\\n\\n[Verse]\\nI left my coat beside the door\\nYour footsteps found me on the floor\\nThe last bus left an hour ago\\nWe have nowhere else to go\\n\\n[Pre-Chorus]\\nLet the room turn round and round\\nKeep me here inside this sound\\n\\n[Chorus]\\nStay until the morning comes\\nHold me where the bass drum runs\\nWhen the daylight finds our eyes\\nWe will carry home the sunrise\\nStay until the morning comes\\nWe can dance till night is done\\nTake my hand and count to four\\nI am ready for one more\\n\\n[Instrumental - Piano]\\n\\n[Chorus]\\nStay until the morning comes\\nHold me where the bass drum runs\\nWhen the daylight finds our eyes\\nWe will carry home the sunrise\\nStay until the morning comes\\nWe can dance till night is done\\nTake my hand and count to four\\nI am ready for one more\\n\\n[Outro - Instrumental]\"}, \"generation_info\": \"**\ud83c\udfb5 Total generation time (2 songs): 96.03s**\\n- 48.02s per song\\n- LM phase (2 songs): 84.98s\\n- DiT phase (2 songs): 11.06s\", \"seed_value\": \"106138,2094917977\", \"lm_model\": \"acestep-5Hz-lm-0.6B\", \"dit_model\": \"acestep-v15-turbo\", \"progress\": 1.0, \"stage\": \"succeeded\"}]",
+          "status": 1,
+          "progress_text": "20:57:15 | DEBUG | [AudioSaver] Saved audio to /tmp/rrt-acestep-audio/api_audio/e04c70ba-df6c-5bf2-ed57-5d05ddf5d999.wav (wav, 48000Hz)"
+        }
+      ],
+      "code": 200,
+      "error": null,
+      "timestamp": 1792605442679,
+      "extra": null
+    },
+    "post_processing": "Trim end silence, one-bar equal-power wrap crossfade, two-pass -14 LUFS / -2 dBTP loudness normalization, 44.1 kHz stereo Ogg Vorbis quality 5",
+    "loop_crossfade_s": 1.7391304347826086,
+    "sample_rate": 44100,
+    "channels": 2,
+    "peak_dbfs": -2.834669351577759,
+    "loop_seam_sample_jump": 0.000552348792552948,
+    "listening_review": "not performed",
+    "validation": {
+      "integrated_loudness_lufs": -13.9,
+      "true_peak_dbfs": -2.7,
+      "godot_playback": "Decoded and played across loop boundary; all seven nightclub tracks loaded",
+      "unit_tests": "3264 checks, 0 failed",
+      "listening_review": "not performed"
+    }
+  },
+  {
+    "title": "After the Last Tram",
+    "asset": "src/theroadragetrip/assets/music/nightclub/nightclub_eurodance_female_7.ogg",
+    "bpm": 146,
+    "key": "F# minor",
+    "seed": 107146,
+    "caption": "1990s Eurodance and melodic rave, urgent minor-key nightclub anthem, expressive powerful female alto singing only, soaring female chorus harmonies, driving four-on-the-floor 909 drums, rolling synth bass, sharp rave piano stabs, bright detuned sawtooth synth hook, rhythmic arpeggiator, dramatic gated synth strings, energetic 1995 European club production, short beat-driven instrumental intro and outro, no male vocals, no rap.",
+    "lyrics": "[Intro - Instrumental]\n\n[Verse]\nThe last tram rolled around the bend\nI thought our night was at an end\nBut through the door I heard that beat\nAnd turned away from empty streets\n\n[Pre-Chorus]\nPull me closer, let it play\nWe can find another way\n\n[Chorus]\nOne more song before we go\nOne more turn and take it slow\nAll the clocks can wait outside\nWe have got this little time\nOne more song before we go\nLet me feel that rhythm grow\nIf the night is running out\nTurn it up and drown it out\n\n[Instrumental - Synth Hook]\n\n[Chorus]\nOne more song before we go\nOne more turn and take it slow\nAll the clocks can wait outside\nWe have got this little time\nOne more song before we go\nLet me feel that rhythm grow\nIf the night is running out\nTurn it up and drown it out\n\n[Outro - Instrumental]",
+    "duration_s": 94.35616780045352,
+    "language": "en",
+    "model": "ACE-Step-1.5/acestep-v15-turbo",
+    "lm_model": "acestep-5Hz-lm-0.6B",
+    "steps": 8,
+    "job_id": "16d38477-8863-415a-80b2-eb2ebde373e2",
+    "tool": "Local ACE-Step API via the official acestep skill CLI, run from ai-audio-studio",
+    "original_lyrics": true,
+    "voice_reference": null,
+    "raw_file": "16d38477-8863-415a-80b2-eb2ebde373e2_1.wav",
+    "api_result_file": "16d38477-8863-415a-80b2-eb2ebde373e2.json",
+    "actual_generation_result": {
+      "data": [
+        {
+          "task_id": "16d38477-8863-415a-80b2-eb2ebde373e2",
+          "result": "[{\"file\": \"/v1/audio?path=%2Ftmp%2Frrt-acestep-audio%2Fapi_audio%2F7ca7455b-b337-acbc-c39a-03adacb8591d.wav\", \"wave\": \"\", \"status\": 1, \"create_time\": 1792605443, \"env\": \"development\", \"prompt\": \"1990s Eurodance and melodic rave, urgent minor-key nightclub anthem, expressive powerful female alto singing only, soaring female chorus harmonies, driving four-on-the-floor 909 drums, rolling synth bass, sharp rave piano stabs, bright detuned sawtooth synth hook, rhythmic arpeggiator, dramatic gated synth strings, energetic 1995 European club production, short beat-driven instrumental intro and outro, no male vocals, no rap.\", \"lyrics\": \"[Intro - Instrumental]\\n\\n[Verse]\\nThe last tram rolled around the bend\\nI thought our night was at an end\\nBut through the door I heard that beat\\nAnd turned away from empty streets\\n\\n[Pre-Chorus]\\nPull me closer, let it play\\nWe can find another way\\n\\n[Chorus]\\nOne more song before we go\\nOne more turn and take it slow\\nAll the clocks can wait outside\\nWe have got this little time\\nOne more song before we go\\nLet me feel that rhythm grow\\nIf the night is running out\\nTurn it up and drown it out\\n\\n[Instrumental - Synth Hook]\\n\\n[Chorus]\\nOne more song before we go\\nOne more turn and take it slow\\nAll the clocks can wait outside\\nWe have got this little time\\nOne more song before we go\\nLet me feel that rhythm grow\\nIf the night is running out\\nTurn it up and drown it out\\n\\n[Outro - Instrumental]\", \"metas\": {\"bpm\": 146, \"duration\": 96.0, \"genres\": \"N/A\", \"keyscale\": \"F# minor\", \"timesignature\": \"4/4\", \"prompt\": \"1990s Eurodance and melodic rave, urgent minor-key nightclub anthem, expressive powerful female alto singing only, soaring female chorus harmonies, driving four-on-the-floor 909 drums, rolling synth bass, sharp rave piano stabs, bright detuned sawtooth synth hook, rhythmic arpeggiator, dramatic gated synth strings, energetic 1995 European club production, short beat-driven instrumental intro and outro, no male vocals, no rap.\", \"lyrics\": \"[Intro - Instrumental]\\n\\n[Verse]\\nThe last tram rolled around the bend\\nI thought our night was at an end\\nBut through the door I heard that beat\\nAnd turned away from empty streets\\n\\n[Pre-Chorus]\\nPull me closer, let it play\\nWe can find another way\\n\\n[Chorus]\\nOne more song before we go\\nOne more turn and take it slow\\nAll the clocks can wait outside\\nWe have got this little time\\nOne more song before we go\\nLet me feel that rhythm grow\\nIf the night is running out\\nTurn it up and drown it out\\n\\n[Instrumental - Synth Hook]\\n\\n[Chorus]\\nOne more song before we go\\nOne more turn and take it slow\\nAll the clocks can wait outside\\nWe have got this little time\\nOne more song before we go\\nLet me feel that rhythm grow\\nIf the night is running out\\nTurn it up and drown it out\\n\\n[Outro - Instrumental]\"}, \"generation_info\": \"**\ud83c\udfb5 Total generation time (2 songs): 70.85s**\\n- 35.42s per song\\n- LM phase (2 songs): 62.37s\\n- DiT phase (2 songs): 8.48s\", \"seed_value\": \"107146,3467144776\", \"lm_model\": \"acestep-5Hz-lm-0.6B\", \"dit_model\": \"acestep-v15-turbo\", \"progress\": 1.0, \"stage\": \"succeeded\"}, {\"file\": \"/v1/audio?path=%2Ftmp%2Frrt-acestep-audio%2Fapi_audio%2Ff6ef1482-6803-3d69-8173-ddd709c2dcd1.wav\", \"wave\": \"\", \"status\": 1, \"create_time\": 1792605443, \"env\": \"development\", \"prompt\": \"1990s Eurodance and melodic rave, urgent minor-key nightclub anthem, expressive powerful female alto singing only, soaring female chorus harmonies, driving four-on-the-floor 909 drums, rolling synth bass, sharp rave piano stabs, bright detuned sawtooth synth hook, rhythmic arpeggiator, dramatic gated synth strings, energetic 1995 European club production, short beat-driven instrumental intro and outro, no male vocals, no rap.\", \"lyrics\": \"[Intro - Instrumental]\\n\\n[Verse]\\nThe last tram rolled around the bend\\nI thought our night was at an end\\nBut through the door I heard that beat\\nAnd turned away from empty streets\\n\\n[Pre-Chorus]\\nPull me closer, let it play\\nWe can find another way\\n\\n[Chorus]\\nOne more song before we go\\nOne more turn and take it slow\\nAll the clocks can wait outside\\nWe have got this little time\\nOne more song before we go\\nLet me feel that rhythm grow\\nIf the night is running out\\nTurn it up and drown it out\\n\\n[Instrumental - Synth Hook]\\n\\n[Chorus]\\nOne more song before we go\\nOne more turn and take it slow\\nAll the clocks can wait outside\\nWe have got this little time\\nOne more song before we go\\nLet me feel that rhythm grow\\nIf the night is running out\\nTurn it up and drown it out\\n\\n[Outro - Instrumental]\", \"metas\": {\"bpm\": 146, \"duration\": 96.0, \"genres\": \"N/A\", \"keyscale\": \"F# minor\", \"timesignature\": \"4/4\", \"prompt\": \"1990s Eurodance and melodic rave, urgent minor-key nightclub anthem, expressive powerful female alto singing only, soaring female chorus harmonies, driving four-on-the-floor 909 drums, rolling synth bass, sharp rave piano stabs, bright detuned sawtooth synth hook, rhythmic arpeggiator, dramatic gated synth strings, energetic 1995 European club production, short beat-driven instrumental intro and outro, no male vocals, no rap.\", \"lyrics\": \"[Intro - Instrumental]\\n\\n[Verse]\\nThe last tram rolled around the bend\\nI thought our night was at an end\\nBut through the door I heard that beat\\nAnd turned away from empty streets\\n\\n[Pre-Chorus]\\nPull me closer, let it play\\nWe can find another way\\n\\n[Chorus]\\nOne more song before we go\\nOne more turn and take it slow\\nAll the clocks can wait outside\\nWe have got this little time\\nOne more song before we go\\nLet me feel that rhythm grow\\nIf the night is running out\\nTurn it up and drown it out\\n\\n[Instrumental - Synth Hook]\\n\\n[Chorus]\\nOne more song before we go\\nOne more turn and take it slow\\nAll the clocks can wait outside\\nWe have got this little time\\nOne more song before we go\\nLet me feel that rhythm grow\\nIf the night is running out\\nTurn it up and drown it out\\n\\n[Outro - Instrumental]\"}, \"generation_info\": \"**\ud83c\udfb5 Total generation time (2 songs): 70.85s**\\n- 35.42s per song\\n- LM phase (2 songs): 62.37s\\n- DiT phase (2 songs): 8.48s\", \"seed_value\": \"107146,3467144776\", \"lm_model\": \"acestep-5Hz-lm-0.6B\", \"dit_model\": \"acestep-v15-turbo\", \"progress\": 1.0, \"stage\": \"succeeded\"}]",
+          "status": 1,
+          "progress_text": "20:59:21 | DEBUG | [AudioSaver] Saved audio to /tmp/rrt-acestep-audio/api_audio/f6ef1482-6803-3d69-8173-ddd709c2dcd1.wav (wav, 48000Hz)"
+        }
+      ],
+      "code": 200,
+      "error": null,
+      "timestamp": 1792605566199,
+      "extra": null
+    },
+    "post_processing": "Trim end silence, one-bar equal-power wrap crossfade, two-pass -14 LUFS / -2 dBTP loudness normalization, 44.1 kHz stereo Ogg Vorbis quality 5",
+    "loop_crossfade_s": 1.643835616438356,
+    "sample_rate": 44100,
+    "channels": 2,
+    "peak_dbfs": -2.5813746452331543,
+    "loop_seam_sample_jump": 0.0473356693983078,
+    "listening_review": "not performed",
+    "validation": {
+      "integrated_loudness_lufs": -13.9,
+      "true_peak_dbfs": -2.5,
+      "godot_playback": "Decoded and played across loop boundary; all seven nightclub tracks loaded",
+      "unit_tests": "3264 checks, 0 failed",
+      "listening_review": "not performed"
+    }
+  }
+]
