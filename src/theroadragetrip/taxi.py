@@ -755,11 +755,10 @@ class TaxiManager:
             intersects = point_in_polygon(player_car.x, player_car.y, points)
             if not intersects:
                 intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
-            if not intersects:
+            if not intersects:  # an edge or corner poking into the car's side: it crosses the box (not its half-diagonal circle)
                 intersects = any(
-                    dist_point_to_segment(player_car.x, player_car.y, points[i][0], points[i][1],
-                                         points[(i + 1) % len(points)][0], points[(i + 1) % len(points)][1])
-                    <= car_radius
+                    segments_intersect(a, b, points[i], points[(i + 1) % len(points)])
+                    for a, b in zip(car_corners, car_corners[1:] + car_corners[:1])
                     for i in range(len(points))
                 )
             if not intersects:
@@ -925,11 +924,10 @@ class TaxiManager:
             intersects = point_in_polygon(player_car.x, player_car.y, points)
             if not intersects:
                 intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
-            if not intersects:
+            if not intersects:  # an edge or corner poking into the car's side: it crosses the box (not its half-diagonal circle)
                 intersects = any(
-                    dist_point_to_segment(player_car.x, player_car.y, points[i][0], points[i][1],
-                                         points[(i + 1) % len(points)][0], points[(i + 1) % len(points)][1])
-                    <= car_radius
+                    segments_intersect(a, b, points[i], points[(i + 1) % len(points)])
+                    for a, b in zip(car_corners, car_corners[1:] + car_corners[:1])
                     for i in range(len(points))
                 )
             if not intersects:

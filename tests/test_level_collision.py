@@ -64,9 +64,9 @@ def test_level_switching_reuses_the_collision_index():
 def test_bridge_support_separates_ground_buildings_without_disabling_other_collisions(
     layer, on_bridge, car_y, car_level, building_level, crashes,
 ):
-    # A roadside building can touch the car's collision radius without its
-    # footprint crossing the road centreline/corridor (Joutsensilta screenshot).
-    building = Building([(4, car_y + 1.2), (8, car_y + 1.2), (8, car_y + 5), (4, car_y + 5)],
+    # A roadside building can overlap the car's side without its footprint
+    # crossing the road centreline/corridor (Joutsensilta screenshot).
+    building = Building([(4, car_y + 0.6), (8, car_y + 0.6), (8, car_y + 5), (4, car_y + 5)],
                         map_level=building_level)
     road = Way([(0, 0), (20, 0)], "secondary", 4.0, layer=layer, is_bridge=on_bridge)
     car = Car(x=5, y=car_y, heading=0, speed=4, layer=layer, map_level=car_level)
@@ -97,3 +97,14 @@ def test_pressing_against_a_wall_is_one_crash_until_the_taxi_leaves():
     car = Car(x=5.0, y=0.0, heading=0.0, speed=4.0)
     manager.check_building_collision(car, [building], sim_time=10.0 + 3.5, previous_position=(3.0, 0.0))
     assert manager.total_score == -400
+
+
+def test_a_wall_beside_the_car_is_no_crash_until_the_body_touches_it():
+    """The car's box, not its half-diagonal circle: driving 0.4 m past a wall
+    (Gaia, Hallituskatu play-test: 2.1 m from the centre) doesn't crash."""
+    car = Car(x=5.0, y=0.0, heading=0.0, speed=4.0)
+    side = car.width_m / 2
+    wall = Building([(0.0, side + 0.4), (10.0, side + 0.4), (10.0, 8.0), (0.0, 8.0)])
+    assert TaxiManager(ways=[]).check_building_collision(car, [wall], 1.0) is False
+    corner = Building([(5.0, side - 0.3), (7.0, side + 3.0), (3.0, side + 3.0)])  # only its tip inside the body
+    assert TaxiManager(ways=[]).check_building_collision(car, [corner], 1.0) is True
