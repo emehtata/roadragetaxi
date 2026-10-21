@@ -1932,7 +1932,9 @@ def test_ready_transit_atomically_replaces_a_distant_parked_car_below_target():
     residents = ResidentManager()
     distant = place_parked_npc(1, (1000.0, 0.0), None)
     transit = place_parked_npc(2, (-100.0, 0.0), None)
-    plan = ([PathPoint(-100.0, 0.0), PathPoint(100.0, 0.0)], (100.0, 0.0), None, True)
+    road = Way([(-100.0, 0.0), (100.0, 0.0)], "residential", 4.5)
+    plan = ([PathPoint(-100.0, 0.0, way=road), PathPoint(100.0, 0.0, way=road)],
+            (100.0, 0.0), None, True)
     manager.vehicles.append(distant)
     manager.rebuild_spatial_grid()
 
@@ -1949,7 +1951,9 @@ def test_ready_transit_atomically_replaces_a_distant_parked_car_below_target():
 def test_ready_transit_rechecks_live_spawn_positions_between_job_commits():
     manager = NPCVehicleManager(target_count=10)
     residents = ResidentManager()
-    plan = ([PathPoint(-100.0, 0.0), PathPoint(100.0, 0.0)], (100.0, 0.0), None, True)
+    road = Way([(-100.0, 0.0), (100.0, 0.0)], "residential", 4.5)
+    plan = ([PathPoint(-100.0, 0.0, way=road), PathPoint(100.0, 0.0, way=road)],
+            (100.0, 0.0), None, True)
     first = place_parked_npc(1, (-100.0, 0.0), None)
     duplicate = place_parked_npc(2, (-100.0, 0.0), None)
 

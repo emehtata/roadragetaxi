@@ -461,11 +461,52 @@ def _oncoming_lane_clear(x: float, y: float, heading: float, offset_m: float, wi
     for obstacle in obstacles:
         if obstacle is skip:
             continue
+        if (getattr(obstacle, "layer", 0) != getattr(skip, "layer", 0)
+                or getattr(getattr(obstacle, "car", obstacle), "map_level", 0)
+                != getattr(getattr(skip, "car", skip), "map_level", 0)):
+            continue
         dx, dy = obstacle.x - x, obstacle.y - y
         along, left = dx * hx + dy * hy, dy * hx - dx * hy
-        if -3.0 < along < NPC_PASS_ONCOMING_CHECK_M and offset_m * 0.5 < left < offset_m * 1.5 + 1.0:
+        angle = getattr(obstacle, "heading", heading) - heading
+        lateral_reach = (abs(math.sin(angle)) * getattr(obstacle, "length_m", NPC_VEHICLE_LENGTH_M)
+                         + abs(math.cos(angle)) * getattr(obstacle, "width_m", NPC_VEHICLE_WIDTH_M)) * 0.5
+        if (-3.0 < along < NPC_PASS_ONCOMING_CHECK_M
+                and left + lateral_reach > offset_m - width_m * 0.5 - 0.3
+                and left - lateral_reach < offset_m + width_m * 0.5 + 0.3):
             return False
     return True
+
+
+def _stalled_vehicle_on_route(vehicle, driver, obstacles, reach):
+    """See wrecks around a bend before they enter the straight steering cone."""
+    candidates = [o for o in obstacles if o is not vehicle and _is_stalled(o)]
+    nearest = None
+    distance = 0.0
+    segment = driver.route_segment_index
+    for index in range(segment, min(len(driver.path) - 1, segment + 32)):
+        if not candidates or distance > reach:
+            break
+        a, b = driver.path[index:index + 2]
+        t = driver.route_segment_t if index == segment else 0.0
+        ax, ay = a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t
+        length = math.hypot(b.x - ax, b.y - ay)
+        if length < 1e-6:
+            continue
+        hx, hy = (b.x - ax) / length, (b.y - ay) / length
+        heading = math.atan2(hy, hx)
+        for other in candidates:
+            dx, dy = other.x - ax, other.y - ay
+            along, lateral = dx * hx + dy * hy, abs(dy * hx - dx * hy)
+            angle = getattr(other, "heading", heading) - heading
+            width = (abs(math.sin(angle)) * getattr(other, "length_m", NPC_VEHICLE_LENGTH_M)
+                     + abs(math.cos(angle)) * getattr(other, "width_m", NPC_VEHICLE_WIDTH_M))
+            gap = distance + along
+            if (0.0 <= along <= length and 0.0 < gap <= reach
+                    and lateral < (vehicle.width_m + width) * 0.5 + 0.3
+                    and (nearest is None or gap < nearest[0])):
+                nearest = gap, other
+        distance += length
+    return nearest
 
 
 def _round_corner(
@@ -995,14 +1036,16 @@ def build_driving_path(
             corner_maneuver[i] = "left" if signed_turn > 0 else "right"
 
     def _upcoming_maneuver(start: int) -> Optional[str]:
-        if corner_maneuver[start] is not None:
+        # A bend on the same road keeps its travel lane, rather than
+        # moving to a turning position against the kerb or centre line.
+        if corner_maneuver[start] is not None and segment_way[start - 1] is not segment_way[start]:
             return corner_maneuver[start]
         remaining = 0.0
         for j in range(start, n - 1):
             remaining += segment_length[j]
             if remaining > LANE_BIAS_LOOKAHEAD_M:
                 return None
-            if corner_maneuver[j + 1] is not None:
+            if corner_maneuver[j + 1] is not None and segment_way[j] is not segment_way[j + 1]:
                 return corner_maneuver[j + 1]
         return None
 
@@ -1015,6 +1058,16 @@ def build_driving_path(
             lx, ly = x, y
         else:
             lx, ly = _lane_offset_point(segment_way[seg], x, y, segment_heading[seg], vehicle_width_m, maneuver=bias)
+            if (0 < i < n - 1 and corner_maneuver[i] is not None
+                    and segment_way[i - 1] is segment_way[i]):
+                incoming, outgoing = segment_heading[i - 1], segment_heading[i]
+                cross = math.sin(outgoing - incoming)
+                if abs(cross) > 0.1:
+                    # Round the intersection of the offset lanes, not a point
+                    # shifted only onto the exit lane (which cuts across oncoming cars).
+                    ax, ay = _lane_offset_point(segment_way[i - 1], x, y, incoming, vehicle_width_m, maneuver=bias)
+                    along = ((lx - ax) * math.sin(outgoing) - (ly - ay) * math.cos(outgoing)) / cross
+                    lx, ly = ax + along * math.cos(incoming), ay + along * math.sin(incoming)
         lane_points.append((lx, ly, segment_way[seg]))
         lane_bias.append(bias)
 
@@ -1026,7 +1079,7 @@ def build_driving_path(
             corner_xy = (lane_points[i][0], lane_points[i][1])
             next_xy = (lane_points[i + 1][0], lane_points[i + 1][1])
             for ax, ay in _round_corner(prev_xy, corner_xy, next_xy, corner_radius_m):
-                path.append(PathPoint(ax, ay, lane_points[i][2], is_turn=True, maneuver=maneuver, lane_bias=maneuver))
+                path.append(PathPoint(ax, ay, lane_points[i][2], is_turn=True, maneuver=maneuver, lane_bias=lane_bias[i]))
         else:
             path.append(PathPoint(*lane_points[i], lane_bias=lane_bias[i]))
     path.append(PathPoint(*lane_points[-1], lane_bias=lane_bias[-1]))
@@ -1729,7 +1782,7 @@ def _transit_initial_speed(vehicle, plan) -> Optional[float]:
     path = plan[0]
     way = path[0].way
     if way is None:
-        return 0.0
+        return None  # no identified starting road: do not seed a stationary obstacle
     if way.highway not in ("motorway", "motorway_link", "trunk", "trunk_link"):
         # Ordinary roads: already cruising too (a car standing in the road
         # ahead of a fast player read as broken traffic), at 80 % of the limit
@@ -2340,6 +2393,11 @@ def update_npc(
         _set_turn_signal(vehicle, "", dt)
         return
 
+    nearby_obstacles = [o for o in nearby_obstacles or ()
+                        if getattr(o, "layer", vehicle.layer) == vehicle.layer
+                        and getattr(getattr(o, "car", o), "map_level", vehicle.car.map_level)
+                        == vehicle.car.map_level]
+
     # shortcut: displacement can count a large wiggle; use route progress if observed.
     if driver.recovery_anchor is not None and math.hypot(
         vehicle.x - driver.recovery_anchor[0], vehicle.y - driver.recovery_anchor[1],
@@ -2535,18 +2593,26 @@ def update_npc(
         detection_distance_m=following_detection_distance(vehicle),
         lateral_limit_m=NPC_AVOIDANCE_LATERAL_LIMIT_M,
     )
+    route_lead = _stalled_vehicle_on_route(
+        vehicle, driver, [o for o in nearby_obstacles or () if o is not passing], following_detection_distance(vehicle))
+    if route_lead is not None and (lead is None or route_lead[0] < lead[0]):
+        lead = route_lead
     if lead is not None:
         gap, obstacle = lead
         lead_length_m = getattr(obstacle, "length_m", NPC_VEHICLE_LENGTH_M)
         lead_speed_mps = max(0.0, getattr(obstacle, "speed", 0.0))
-        following_gap = max(0.0, gap - lead_length_m * 0.5 - vehicle.length_m * 0.5 - NPC_AVOIDANCE_MIN_GAP_M)
+        stop_gap = NPC_PASS_START_GAP_M if _is_stalled(obstacle) else NPC_AVOIDANCE_MIN_GAP_M
+        following_gap = max(0.0, gap - lead_length_m * 0.5 - vehicle.length_m * 0.5 - stop_gap)
         avoidance_cap = math.sqrt(
             lead_speed_mps * lead_speed_mps + 2.0 * NPC_AVOIDANCE_DECEL_MPS2 * following_gap
         )
         driver.target_speed_mps = min(driver.target_speed_mps, avoidance_cap)
         avoidance_blocked = following_gap <= 0.1 and lead_speed_mps < 0.5
     if (passing is None and lead is not None and _is_stalled(lead[1]) and abs(vehicle.car.speed) < 0.5
-            and following_gap < NPC_PASS_START_GAP_M):
+            and following_gap < NPC_PASS_START_GAP_M
+            # Leave room for the nose to swing aside before ignoring the wreck.
+            and math.hypot(lead[1].x - vehicle.x, lead[1].y - vehicle.y)
+            >= lead_length_m * 0.5 + vehicle.length_m + NPC_AVOIDANCE_MIN_GAP_M):
         driver.pass_wait_s += dt
         if driver.pass_wait_s >= NPC_PASS_WAIT_S:
             oncoming = list(nearby_obstacles or ())
@@ -2590,7 +2656,8 @@ def update_npc(
     # kicked into REVERSING mid-parking).
     waiting_for_light = decision.light is not None and decision.action != TrafficAction.PROCEED
     finishing_approach = approaching_final_waypoint or vehicle.state in (NPCState.PARKING, NPCState.ARRIVING)
-    waiting_in_queue = avoidance_blocked and lead is not None and not _is_stalled(lead[1])
+    waiting_in_queue = (avoidance_blocked and lead is not None
+                        and gap >= (lead_length_m + vehicle.length_m) * 0.5)
     if protest_cap is not None or waiting_for_light or crossing_decision is not None or waiting_in_queue or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
         driver.stuck_timer_s = 0.0
         driver.stuck_check_position = None
@@ -4471,17 +4538,18 @@ class NPCVehicleManager:
                 continue
             if not _point_is_clear_of_vehicles(destination, other_positions):
                 continue
-            # This vehicle is seeded on a real route node and immediately
-            # drives as through traffic.  Running the normal parking-trip
-            # footprint scan here can take seconds when shared between many
-            # jobs; at motorway speed its result is stale before it finishes.
-            # The route graph and lane builder already keep this path on
-            # drivable roads.  Normal live footprint checks remain active
-            # while the vehicle drives.
             raw_route = yield from traffic_world.plan_route_steps(
                 (vehicle.car.x, vehicle.car.y), destination,
             )
             if raw_route is None:
+                continue
+            # A* endpoint connectors can cross open ground. Check their whole
+            # corridor before spawning, rather than stopping sideways in-lane.
+            if not (yield from _route_stays_on_road_steps(
+                _densify_path(raw_route), ways, spatial_grid,
+                MAX_ROUTE_OFFROAD_TOLERANCE_M, NPC_PARKING_ACCESS_TOLERANCE_M, 1,
+                None, 1,
+            )):
                 continue
             path = build_driving_path(
                 raw_route, ways, spatial_grid=spatial_grid, skip_final_lane_offset=True,
