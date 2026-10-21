@@ -538,6 +538,8 @@ def advance_simulation(
         if len(taxi_mgr.fallen_trees) > fallen_before:
             audio.play_group("collision.tree_fall")
         fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
+        fence_crash = fence_crash or on_surface and taxi_mgr.check_barrier_collision(
+            car, getattr(world, "railings", ()), traffic_mgr.sim_time, previous_position, current_way)
         tram_crash = on_surface and taxi_mgr.check_tram_collision(
             car, getattr(world, "tram_mgr", None), traffic_mgr.sim_time, previous_position)
         # Bollards and lamp posts are OSM nodes without a level: surface only.

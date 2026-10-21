@@ -390,6 +390,44 @@ def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     return None
 
 
+BARRIER_OPENINGS = ("gate", "lift_gate", "swing_gate", "sliding_gate", "entrance")
+BARRIER_OPENING_HALF_M = 1.5  # a gate leaves this much open on each side of its node
+
+
+def _split_at_openings(node_ids, opening_ids, nodes_m) -> list:
+    """A fence's point lists between its gates, each cut back
+    BARRIER_OPENING_HALF_M from a gate so a car fits through."""
+    parts, current = [], []
+    for nid in node_ids:
+        if nid not in nodes_m:  # outside the loaded area: no fence drawn across the gap
+            if current and current[0] is not None:
+                parts.append(current)
+            current = []
+            continue
+        point = nodes_m[nid]
+        if nid in opening_ids:
+            if current and current[0] is not None:  # (gate after gate: nothing between them to keep)
+                current.append(_toward(point, current[-1], BARRIER_OPENING_HALF_M))
+                parts.append(current)
+            current = [None, point]  # the next part starts cut back from this gate
+            continue
+        if current and current[0] is None:
+            current = [_toward(current[1], point, BARRIER_OPENING_HALF_M), point]
+        else:
+            current.append(point)
+    if current and current[0] is not None:
+        parts.append(current)
+    return parts
+
+
+def _toward(origin, target, distance):
+    length = math.hypot(target[0] - origin[0], target[1] - origin[1])
+    if length <= distance:
+        return target
+    ratio = distance / length
+    return (origin[0] + (target[0] - origin[0]) * ratio, origin[1] + (target[1] - origin[1]) * ratio)
+
+
 def _build_roads_grid(
     ways: List["Way"], r_grid_size: float, drivable_only: bool = True,
 ) -> Dict[Tuple[int, int], List["Way"]]:
@@ -703,6 +741,7 @@ def build_ways(
     curb_raw: List[Tuple[dict, List[int]]] = []
     railway_raw: List[Tuple[dict, List[int]]] = []
     railing_raw: List[Tuple[dict, List[int]]] = []
+    barrier_opening_ids: Set[int] = set()  # gate nodes: a fence is open there
     building_raw: List[Tuple[dict, List[int]]] = []
     fuel_area_raw: List[Tuple[dict, List[int], Optional[int]]] = []
     parking_space_raw: List[Tuple[dict, List[int], Optional[int]]] = []
@@ -749,6 +788,8 @@ def build_ways(
                 bus_stops_raw.append((tags, nid))
             if "entrance" in tags:
                 entrance_node_ids.add(nid)
+            if tags.get("barrier") in BARRIER_OPENINGS:
+                barrier_opening_ids.add(nid)
             if tags.get("amenity") == "parking_space":
                 parking_space_nodes_raw.append((tags, nid))
             if tags.get("highway") == "crossing" or tags.get("crossing") in ("zebra", "marked", "uncontrolled", "traffic_signals", "yes"):
@@ -1183,10 +1224,16 @@ def build_ways(
             best[1].stops.append((x, y, name))
 
     for tags, node_ids in railing_raw:
-        pts, ibbox = process_node_ids(node_ids)
-        if not pts or len(pts) < 2:
-            continue
-        railings.append(Railing(points_m=pts, bbox=ibbox, kind=tags.get("barrier", "fence")))
+        try:
+            layer = int(str(tags.get("layer", 0)).split(";")[0])
+        except ValueError:
+            layer = 0
+        for part in _split_at_openings(node_ids, barrier_opening_ids, nodes_m):
+            if len(part) < 2:
+                continue
+            xs, ys = [p[0] for p in part], [p[1] for p in part]
+            railings.append(Railing(points_m=part, bbox=(min(xs), min(ys), max(xs), max(ys)),
+                                    kind=tags.get("barrier", "fence"), layer=layer))
 
     # 3. Buildings
     if progress_callback:

@@ -286,6 +286,9 @@ class TaxiManager:
         self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._fence_collision_ref = None
         self._fence_collision_count = 0
+        self._barrier_grid: Dict[Tuple[int, int], List[Any]] = {}  # linear barriers (Railing), indexed as they stream in
+        self._barrier_ref = None
+        self._barrier_count = 0
         self.vomit_puddles: List[Tuple[float, float]] = []
         self.taxi_smoke_timer: float = 0.0
         self.speed_camera_flash_timer: float = 0.0
@@ -946,6 +949,76 @@ class TaxiManager:
                 logger.info("Player crashed into construction fence: -%d pts", penalty)
             return True
 
+        return False
+
+    def _nearby_barriers(self, railings: List[Any], x: float, y: float, radius: float):
+        """Railings near (x, y): a 50 m grid, only its new tail indexed as
+        the streamed map appends (like _nearby_collision_fences)."""
+        if railings is not self._barrier_ref or len(railings) < self._barrier_count:
+            self._barrier_grid.clear()
+            self._barrier_ref = railings
+            self._barrier_count = 0
+        for railing in railings[self._barrier_count:]:
+            box = railing.bbox
+            for cx in range(int(box[0] // 50), int(box[2] // 50) + 1):
+                for cy in range(int(box[1] // 50), int(box[3] // 50) + 1):
+                    self._barrier_grid.setdefault((cx, cy), []).append(railing)
+        self._barrier_count = len(railings)
+        seen = set()
+        for cx in range(int((x - radius) // 50), int((x + radius) // 50) + 1):
+            for cy in range(int((y - radius) // 50), int((y + radius) // 50) + 1):
+                for railing in self._barrier_grid.get((cx, cy), ()):
+                    if id(railing) not in seen:
+                        seen.add(id(railing))
+                        yield railing
+
+    def check_barrier_collision(
+        self,
+        player_car: Car,
+        railings: List[Any],
+        sim_time: float,
+        previous_position: Optional[Tuple[float, float]] = None,
+        current_way: Optional[Way] = None,
+        penalty: int = 150,
+    ) -> bool:
+        """Stop the car at a fence, hedge, wall or railing line (OSM barrier=*,
+        open at its gates) and apply one crash penalty per impact. On a car
+        road they never block: one mapped across a road is not a wall there."""
+        if current_way is not None and is_car_road(current_way):
+            return False
+        car_radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
+        corners = get_oriented_box_corners(
+            player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
+        )
+        edges = list(zip(corners, corners[1:] + corners[:1]))
+        layer = getattr(player_car, "layer", 0)
+        for railing in self._nearby_barriers(railings, player_car.x, player_car.y, car_radius):
+            if getattr(railing, "layer", 0) != layer:
+                continue
+            box = railing.bbox
+            if (player_car.x < box[0] - car_radius or player_car.x > box[2] + car_radius
+                    or player_car.y < box[1] - car_radius or player_car.y > box[3] + car_radius):
+                continue
+            points = railing.points_m
+            hit = any(
+                point_in_polygon(a[0], a[1], corners)
+                or any(segments_intersect(a, b, c, d) for c, d in edges)
+                for a, b in zip(points, points[1:])
+            )
+            if not hit:
+                continue
+            if previous_position is not None:
+                player_car.x, player_car.y = previous_position
+            player_car.speed = 0.0
+            barrier_id = id(railing)
+            if barrier_id not in self._crashed_fence_cooldowns:
+                self._crashed_fence_cooldowns[barrier_id] = sim_time
+                self.total_score -= penalty
+                self.adjust_passenger_happiness(-25.0)
+                self.notification_msg = tr(self.language, "fence_crash", penalty=penalty)
+                self.notification_timer = 3.5
+                logger.info("Player crashed into a %s: -%d pts", railing.kind, penalty)
+            return True
         return False
 
     def check_tram_collision(

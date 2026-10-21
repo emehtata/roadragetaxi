@@ -106,7 +106,8 @@ MAGIC = b"RWC\0"
 # 39: BusStop.routes (the bus routes calling at a stop).
 # 40: amenity=nightclub point scenery with its opening_hours.
 # 41: Way.bus_routes (the route=bus relations running on a road).
-FORMAT_VERSION = 41
+# 42: Railing.layer, barriers split open at their gates (solid for the taxi).
+FORMAT_VERSION = 42
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

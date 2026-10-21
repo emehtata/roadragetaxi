@@ -94,10 +94,12 @@ class Railway:
 
 @dataclass
 class Railing:
-    """A linear barrier (OSM barrier=fence/railing/hedge/wall). Visual only."""
+    """A linear barrier (OSM barrier=fence/railing/hedge/wall): solid for the
+    taxi (TaxiManager.check_barrier_collision), open at its gates (split there)."""
     points_m: List[Tuple[float, float]]
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     kind: str = "fence"
+    layer: int = 0  # OSM layer: a bridge's railing does not wall off the road beneath
 
 
 @dataclass
