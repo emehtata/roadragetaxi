@@ -7,11 +7,13 @@ and rage decisions. Godot only draws the event and its phone notice.
 ## Gameplay
 
 Normally up to two 24-person sit-ins appear during 10:00–20:00 game time.
-Every 30 seconds the server tries to place one until the cap is reached. Each
-attempt uses nearby loaded roads and a session-local seeded generator. Clear mid-block urban road
+Every 30 seconds the server has a 40% chance to try placing one (50% on
+weekends) until the cap is reached. Each attempt uses nearby loaded roads and a
+session-local seeded generator. Clear mid-block urban road
 locations are required, at least 120 m from the taxi and 300 m from another
 event. Motorways, fast roads, bridges, tunnels, other levels, sharp bends,
 junctions, roadworks, occupied approaches and blocked roadside slots are rejected.
+Rain immediately ends active protests and prevents new ones until it stops.
 
 An active sit-in blocks the full roadway. Swept movement checks stop the taxi
 even at high speed; NPCs brake and wait without triggering stuck recovery.
@@ -66,9 +68,10 @@ clearing_s = 3.0
 return_delay_s = 30.0
 lifetime_s = 1200.0
 spawn_interval_s = 30.0
-spawn_probability = 1.0
 seed = 19
 ```
+
+The spawn chance is game policy, not a user setting.
 
 Schedules use the existing simple weekly opening-hours parser. Unsupported
 schedule syntax disables spawning instead of silently choosing other hours.

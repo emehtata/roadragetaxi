@@ -289,6 +289,7 @@ def test_ilokapina_blocks_taxi_requires_paid_rage_and_syncs_phone_notice(tmp_pat
     from theroadragetrip.physics import SpatialWayGrid
     from theroadragetrip.protests import ProtestGroup
     from theroadragetrip.simulation import PlayerCommand
+    from theroadragetrip.weather import WeatherType
 
     server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
     road = Way([(1_000_000, 1_000_000), (1_002_000, 1_000_000)], "primary", 7)
@@ -302,6 +303,7 @@ def test_ilokapina_blocks_taxi_requires_paid_rage_and_syncs_phone_notice(tmp_pat
     manager = server.world.protests
     manager.settings.enabled = False
     manager.groups = [group]
+    server.world.weather.weather_type = WeatherType.CLEAR
     server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
     start = car.x
     server.tick(0.5)

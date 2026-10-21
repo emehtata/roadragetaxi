@@ -13,6 +13,7 @@ from .geo import dist_point_to_segment, point_in_polygon
 from .nightlife import parse_opening_hours
 
 logger = logging.getLogger(__name__)
+SPAWN_PROBABILITY = 0.4
 
 
 @dataclass
@@ -26,7 +27,6 @@ class ProtestSettings:
     return_delay_s: float = 30.0
     lifetime_s: float = 1200.0
     spawn_interval_s: float = 30.0
-    spawn_probability: float = 1.0
     seed: int = 19
 
     @classmethod
@@ -42,7 +42,6 @@ class ProtestSettings:
         for name in ("clearing_s", "return_delay_s", "lifetime_s", "spawn_interval_s"):
             values[name] = max(1.0, min(86400.0, values[name]))
         values["intimidation_radius_m"] = max(5.0, min(500.0, values["intimidation_radius_m"]))
-        values["spawn_probability"] = max(0.0, min(1.0, values["spawn_probability"]))
         return cls(**values)
 
 
@@ -94,7 +93,7 @@ class ProtestManager:
         logger.info(
             "Protests in %s: enabled=%s, schedule=%s, probability=%.0f%% every %.0fs, maximum %d groups",
             self.city or "unknown city", self.settings.enabled, self.settings.schedule,
-            self.settings.spawn_probability * 100.0, self.settings.spawn_interval_s, self.settings.max_groups,
+            SPAWN_PROBABILITY * 100.0, self.settings.spawn_interval_s, self.settings.max_groups,
         )
 
     def scheduled(self, now):
@@ -191,6 +190,12 @@ class ProtestManager:
                 group.state, group.elapsed = "ALARMED", 0.0
 
     def update(self, dt, world, car, now, sim_time):
+        weather_type = getattr(getattr(world, "weather", None), "weather_type", None)
+        if getattr(weather_type, "value", weather_type) == "rain":
+            if self.groups:
+                logger.info("Rain ended %d protest group(s) in %s", len(self.groups), self.city or "unknown city")
+                self.groups.clear()
+            return
         # Keep a protest when the player leaves; remove only expired/unloaded events.
         self.groups[:] = [g for g in self.groups if sim_time-g.created < self.settings.lifetime_s]
         if self.groups and sim_time >= self._cleanup_at:
@@ -225,7 +230,7 @@ class ProtestManager:
                             group.state, group.elapsed = "SITTING", 0.0
         if self.settings.enabled and self.scheduled(now) and sim_time >= self._next_spawn:
             self._next_spawn = sim_time + self.settings.spawn_interval_s
-            probability = self.settings.spawn_probability * (1.25 if now.weekday() >= 5 else 1.0)
+            probability = SPAWN_PROBABILITY * (1.25 if now.weekday() >= 5 else 1.0)
             if len(self.groups) < self.settings.max_groups and self.rng.random() < probability:
                 logger.info(
                     "Protest spawn attempt in %s at %s (probability %.0f%%, %d/%d groups active)",

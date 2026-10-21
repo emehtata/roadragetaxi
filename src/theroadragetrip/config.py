@@ -77,7 +77,7 @@ DEFAULT_CONFIG = {
         "enabled": "true", "max_groups": "2", "group_size": "24",
         "schedule": "Mo-Su 10:00-20:00", "intimidation_radius_m": "100.0",
         "clearing_s": "3.0", "return_delay_s": "30.0", "lifetime_s": "1200.0",
-        "spawn_interval_s": "30.0", "spawn_probability": "1.0", "seed": "19",
+        "spawn_interval_s": "30.0", "seed": "19",
     },
     "game": {
         "language": "",

@@ -7,7 +7,8 @@ import pytest
 
 from theroadragetrip.osm import Building, Way, Water
 from theroadragetrip.physics import Car, SpatialWayGrid
-from theroadragetrip.protests import ProtestGroup, ProtestManager, ProtestSettings
+from theroadragetrip.protests import SPAWN_PROBABILITY, ProtestGroup, ProtestManager, ProtestSettings
+from theroadragetrip.weather import WeatherType
 
 
 def fixture():
@@ -17,6 +18,7 @@ def fixture():
     world.spatial_grid = SpatialWayGrid(world.ways)
     car = Car(x=0, y=0, heading=0, speed=0)
     manager = ProtestManager(ProtestSettings(), "Oulu")
+    manager.rng.random = lambda: 0.0
     return manager, world, way, car
 
 
@@ -78,12 +80,33 @@ def test_config_limits_disable_and_overnight_schedule():
     assert not m.scheduled(datetime(2026, 10, 19, 12))
 
 
+def test_spawn_probability_is_game_policy_not_user_config():
+    import configparser
+
+    config = configparser.ConfigParser()
+    config.read_dict({"protests": {"spawn_probability": "1.0"}})
+    settings = ProtestSettings.from_config(config)
+
+    assert SPAWN_PROBABILITY == 0.4
+    assert not hasattr(settings, "spawn_probability")
+
+
 def test_multiple_spawn_attempts_respect_group_limit():
     m, world, way, car = fixture()
     m.settings.max_groups = 1
     for i in range(10):
         m.update(0.1, world, car, datetime(2026, 10, 19, 12), i*31)
     assert len(m.groups) == 1
+
+
+def test_rain_ends_active_protests_and_prevents_new_ones():
+    m, world, way, car = fixture()
+    m.groups = [ProtestGroup(1, way, 300, 0, 0, 24, 0)]
+    world.weather = SimpleNamespace(weather_type=WeatherType.RAIN)
+
+    m.update(0.1, world, car, datetime(2026, 10, 19, 12), 31)
+
+    assert not m.groups
 
 
 @pytest.mark.parametrize("change", [{"highway": "motorway"}, {"is_bridge": True}, {"is_tunnel": True},
