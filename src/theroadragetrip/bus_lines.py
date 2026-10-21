@@ -11,6 +11,7 @@ direction of a line is its own OSM route, joined by new buses.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Dict, List, Optional, Sequence
 
 LINE_BUSES = 3  # of the NPC population's moving-traffic spawns, while lines are loaded
@@ -48,27 +49,35 @@ class BusJob:
     stop_until: float = 0.0
     route_attempts: int = 0
     stopped_at: Optional[object] = field(default=None, repr=False)  # the stop it stands at
+    finished: bool = False
+    failure_reason: str = ""
 
     @property
     def target_stop(self):
         return self.line.stops[self.next_stop]
 
     def departing(self) -> None:
-        self.state = "driving"
+        if not self.finished and self.state == "await_departure":
+            self.state = "driving"
 
     def route_failed(self) -> bool:
         """No route to the next stop: try the one after. True: the line is over."""
+        if self.finished:
+            return True
         self.route_attempts += 1
         if self.route_attempts < MAX_ROUTE_ATTEMPTS:
             return False
         self.route_attempts = 0
         self.next_stop += 1
-        return self.next_stop >= len(self.line.stops)
+        self.finished = self.next_stop >= len(self.line.stops)
+        return self.finished
 
     def at_stop(self, now: float, x: float, y: float) -> bool:
         """The bus has stopped at (x, y): arrived, or still dwelling. True
         when it has served the line's last stop (its trip is over).
         Stopped away from its stop, it needs a route there again."""
+        if self.finished:
+            return True
         stop = self.target_stop
         if self.state == "driving" and (stop.x - x) ** 2 + (stop.y - y) ** 2 > AT_STOP_M ** 2:
             self.state = "await_departure"
@@ -77,8 +86,30 @@ class BusJob:
         elif self.state == "stopped" and now >= self.stop_until:
             self.next_stop += 1
             self.state, self.route_attempts = "await_departure", 0
-            return self.next_stop >= len(self.line.stops)
+            self.finished = self.next_stop >= len(self.line.stops)
+            return self.finished
         return False
+
+
+def return_job(job: BusJob, all_lines: Dict[str, Line], heading: float) -> Optional[BusJob]:
+    """Continue only from a shared terminal in the current travel direction.
+
+    Matching line numbers alone do not prove a safe return connection.
+    The normal leg planner still validates the departure before it moves.
+    """
+    left = job.stopped_at
+    if not job.finished or left is None:
+        return None
+    for line in all_lines.values():
+        if line.key == job.line.key or line.ref != job.line.ref or len(line.stops) < 2:
+            continue
+        first, second = line.stops[:2]
+        if math.hypot(first.x-left.x, first.y-left.y) > 1.0:
+            continue
+        if (second.x-first.x)*math.cos(heading) + (second.y-first.y)*math.sin(heading) <= 0:
+            continue
+        return BusJob(line, 1, state="await_departure", stopped_at=left)
+    return None
 
 
 def nearest_stop_index(line: Line, x: float, y: float) -> int:

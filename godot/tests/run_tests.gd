@@ -1203,7 +1203,8 @@ func test_phone() -> void:
 	check(not phone.is_open and sounds == [["ui.phone_open", 0], ["ui.phone_open", 1]], "P closes it (the close variation)")
 	phone.open()
 	phone._unhandled_input(_key(KEY_ESCAPE))
-	check(not phone.is_open, "Esc closes it")
+	check(phone.is_open and phone.visible, "Esc leaves the phone open")
+	phone.close()
 	sounds.clear()
 
 	# No phone key is a driving / taxi / camera key (main.gd, hud hints), so
@@ -1279,7 +1280,7 @@ func test_wildlife() -> void:
 	var WildlifeLayer := preload("res://wildlife.gd")
 	var layer: Node = WildlifeLayer.new()
 	root.add_child(layer)
-	check(layer.config_valid(layer.species_weights) and WildlifeLayer.SPECIES.size() == 7, "wildlife: species configuration is valid")
+	check(layer.config_valid(layer.species_weights) and WildlifeLayer.SPECIES.size() == 8, "wildlife: species configuration is valid")
 	check(not layer.habitat_weights("urban").has("moose") and layer.habitat_weights("rural").has("moose"), "wildlife: large deer stay out of dense urban habitat")
 	check(layer.activity("small_bird", 43200) > layer.activity("small_bird", 0) and layer.activity("fox", 0) > layer.activity("fox", 43200), "wildlife: the simulation hour changes species activity")
 	var chunk := {"chunk_id": "1_2", "bounds": [0.0, 0.0, 500.0, 500.0], "buildings": [], "trees": [[250.0, 250.0, "birch", 0.5]]}

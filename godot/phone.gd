@@ -3,7 +3,7 @@
 ## asks to accept or reject it; the simulation decides (a "phone_result"
 ## event answers) - this never decides whether an offer exists.
 ##
-## Keys (InputMap actions, added here): P open/close, Esc close, 1-3 pick a
+## Keys (InputMap actions, added here): P/N open/close, 1-3 pick a
 ## row, Enter accept, X reject. None of them drive the taxi, and driving
 ## keys keep working while the phone is open (the simulation doesn't pause).
 class_name Phone
@@ -18,7 +18,6 @@ signal sound(group: String, variation: int)  # main plays it (ui.phone_open: 0 o
 
 const ACTIONS := {
 	"phone_toggle": [KEY_P, KEY_N],
-	"phone_close": [KEY_ESCAPE],
 	"phone_accept": [KEY_ENTER, KEY_KP_ENTER],
 	"phone_reject": [KEY_X],
 	"phone_pick_1": [KEY_1, KEY_KP_1],
@@ -423,8 +422,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle()
 	elif not is_open:
 		return
-	elif event.is_action("phone_close"):
-		close()
 	elif busy:
 		return  # navigation must not consume fare-selection or driving keys
 	elif event.is_action("phone_accept"):
