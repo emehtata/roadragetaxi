@@ -121,6 +121,11 @@ def map_sync_steps(world):
     # gameplay graphs below are still being brought up to date.
     if getattr(w, "arena_crowds", None) is not None:
         w.arena_crowds.sync_buildings(w.buildings)
+    w.traffic_mgr.start_map_sync(
+        w.ways, traffic_lights=w.traffic_lights, stop_signs=w.stop_signs, yield_signs=w.yield_signs, crossings=w.crossings,
+        buildings=w.buildings, sceneries=w.sceneries, parking_spaces=w.parking_spaces,
+        logical_intersections=w.logical_intersections,
+    )
     yield CHUNK_INPUTS_READY
     if getattr(w, "railway_mgr", None) is not None:
         for _ in w.railway_mgr.rebuild_steps(w.railways):
@@ -141,11 +146,6 @@ def map_sync_steps(world):
         yield "taxi"
     w.taxi_mgr.sync_map_data(w.ways, places=w.places, buildings=w.buildings, connected=found.get("ways"))
     yield "taxi"
-    w.traffic_mgr.start_map_sync(
-        w.ways, traffic_lights=w.traffic_lights, stop_signs=w.stop_signs, yield_signs=w.yield_signs, crossings=w.crossings,
-        buildings=w.buildings, sceneries=w.sceneries, parking_spaces=w.parking_spaces,
-        logical_intersections=w.logical_intersections,
-    )
     while not w.traffic_mgr.advance_map_sync(MAP_SYNC_BUDGET_S):
         yield "traffic"
     w.pedestrian_mgr.start_incremental_sync(
