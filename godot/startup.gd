@@ -441,8 +441,33 @@ func _slot_menu() -> void:
 			_start_point = Vector2.INF
 			_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
 			_start("gig_driver"))  # the server takes the slot's city, place and time
+	if not slots.is_empty():
+		_button(_t("delete_slot"), _delete_slot_menu.bind(slots))
 	_button(_t("back"), _main_menu)
 	_back_action = _main_menu
+	_focus_menu()
+
+
+## Pick a saved game to delete; it is asked once more before it goes.
+func _delete_slot_menu(slots: Array) -> void:
+	_clear()
+	_title(_t("delete_slot").to_upper())
+	for slot in slots:
+		var label := slot_label(slot, _t("fare_in_progress"))
+		var path := str(slot.get("path", ""))
+		_button(label, func():
+			_clear()
+			_title(_t("delete_slot").to_upper(), _t("confirm_delete_slot") % label)
+			var no := _button(_t("cancel"), _slot_menu)
+			_button(_t("delete"), func():
+				if path.ends_with(str(slot.get("name", "")) + ".json"):  # only a slot file, nothing else
+					DirAccess.remove_absolute(path)
+				_slot_menu())
+			_back_action = _slot_menu
+			_focus_menu()
+			no.call_deferred("grab_focus"))  # Enter does not delete anything
+	_button(_t("back"), _slot_menu)
+	_back_action = _slot_menu
 	_focus_menu()
 
 
