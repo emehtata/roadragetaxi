@@ -602,7 +602,7 @@ def advance_simulation(
     if view_bounds is not None:
         from .viewport import simulation_bounds
         viewport_bounds = (view_bounds[0] - 30, view_bounds[1] - 30, view_bounds[2] + 30, view_bounds[3] + 30)
-        ambient_bounds = simulation_bounds(view_bounds, car.x, car.y, car.speed)
+        ambient_bounds = simulation_bounds(view_bounds, car.x, car.y, car.speed, car.heading)
 
     # Trains: timetable trains, their passengers and pre-bookings follow the
     # game clock (`now`, a datetime); presentation (drawing, train sounds,

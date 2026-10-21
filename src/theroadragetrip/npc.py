@@ -274,7 +274,9 @@ NPC_TRIP_RETRY_MAX_TICKS = 4
 # spawn/visible area so it drives into view instead of popping into it.
 NPC_TRANSIT_SPAWN_MIN_DISTANCE_M = 110.0
 NPC_TRANSIT_SPAWN_MAX_DISTANCE_M = 220.0
-NPC_TRANSIT_PLAYER_LOOKAHEAD_S = 3.0
+# Moving traffic is planned this far ahead of the taxi: route planning takes
+# up to ~2 s, and a spot the taxi reaches first is discarded (it would pop into view).
+NPC_TRANSIT_PLAYER_LOOKAHEAD_S = 6.0
 NPC_TRANSIT_SPAWN_NODE_TRIES = 6
 NPC_TRANSIT_TRIP_MIN_DISTANCE_M = 60.0
 NPC_TRANSIT_TRIP_MAX_DISTANCE_M = 220.0
@@ -306,7 +308,10 @@ def transit_spawn_focus(player_x: float, player_y: float, player_car, simulation
     """Lead fast players so newly planned traffic is not already behind them."""
     if player_car is None:
         return player_x, player_y
-    max_lead = max(0.0, simulation_radius_m - NPC_TRANSIT_SPAWN_MAX_DISTANCE_M - 10.0)
+    from .viewport import SIMULATION_LOOKAHEAD_S
+    # Within the simulated area, which reaches SIMULATION_LOOKAHEAD_S ahead (viewport.simulation_bounds).
+    max_lead = max(0.0, simulation_radius_m - NPC_TRANSIT_SPAWN_MAX_DISTANCE_M - 10.0,
+                   abs(player_car.speed) * SIMULATION_LOOKAHEAD_S - 60.0)
     lead = max(-max_lead, min(max_lead, player_car.speed * NPC_TRANSIT_PLAYER_LOOKAHEAD_S))
     return player_x + math.cos(player_car.heading) * lead, player_y + math.sin(player_car.heading) * lead
 

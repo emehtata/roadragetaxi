@@ -23,11 +23,24 @@ def client_view_bounds(message):
     return tuple(bounds)
 
 
-def simulation_bounds(view, x, y, speed):
-    """Visible area plus entry time and a local safety envelope around the taxi."""
-    margin = 60.0 + min(240.0, abs(speed) * 3.0)
-    return (min(view[0] - margin, x - 100), min(view[1] - margin, y - 100),
-            max(view[2] + margin, x + 100), max(view[3] + margin, y + 100))
+SIMULATION_LOOKAHEAD_S = 12.0  # traffic and people simulated this far ahead of a moving taxi
+
+
+def simulation_bounds(view, x, y, speed, heading=None):
+    """Visible area plus entry time and a local safety envelope around the taxi.
+    With the heading, the area reaches SIMULATION_LOOKAHEAD_S of travel ahead
+    (time, not a fixed distance): at speed, traffic is planned on the road
+    before the taxi gets there instead of in the last couple of seconds."""
+    if heading is None:
+        margin = 60.0 + min(240.0, abs(speed) * 3.0)
+        return (min(view[0] - margin, x - 100), min(view[1] - margin, y - 100),
+                max(view[2] + margin, x + 100), max(view[3] + margin, y + 100))
+    margin = 60.0
+    reach = abs(speed) * SIMULATION_LOOKAHEAD_S
+    direction = heading if speed >= 0.0 else heading + math.pi
+    ahead_x, ahead_y = x + math.cos(direction) * reach, y + math.sin(direction) * reach
+    return (min(view[0] - margin, x - 100, ahead_x - margin), min(view[1] - margin, y - 100, ahead_y - margin),
+            max(view[2] + margin, x + 100, ahead_x + margin), max(view[3] + margin, y + 100, ahead_y + margin))
 
 
 def in_bounds(bounds, x, y, radius=0.0):

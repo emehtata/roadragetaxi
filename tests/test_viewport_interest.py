@@ -25,3 +25,13 @@ def test_interest_keeps_panned_view_and_player_and_grows_with_speed():
     assert fast[2] > stationary[2] and fast[3] > stationary[3]
     assert simulation_bounds(view, 0, 0, -210 / 3.6) == fast
     assert in_bounds((0, 0, 10, 10), 11, 5, 2)  # body overlaps the edge
+
+
+def test_a_moving_taxi_simulates_twelve_seconds_ahead_not_behind():
+    from theroadragetrip.viewport import SIMULATION_LOOKAHEAD_S
+    view = (-70, -40, 70, 40)
+    ahead = simulation_bounds(view, 0, 0, 40.0, heading=0.0)  # east at 144 km/h
+    assert in_bounds(ahead, 40.0 * SIMULATION_LOOKAHEAD_S, 0)
+    assert not in_bounds(ahead, -200, 0)  # behind: only the view's margin
+    reversing = simulation_bounds(view, 0, 0, -5.0, heading=0.0)
+    assert in_bounds(reversing, -5.0 * SIMULATION_LOOKAHEAD_S, 0)
