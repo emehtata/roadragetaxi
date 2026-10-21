@@ -57,7 +57,7 @@ def _extract_town_regions(command, source, output, polygon, places, unproject):
     region = unary_union([box(x-EXTENT_M,y-EXTENT_M,x+EXTENT_M,y+EXTENT_M)
                           for _,_,x,y,*_ in places])
     polygon.write_text(json.dumps({"type":"Feature","properties":{},
-                                   "geometry":mapping(transform(unproject,region))}))
+                                   "geometry":mapping(transform(unproject,region))}), encoding="utf-8")
     subprocess.run([command,"extract","-s","simple","-p",str(polygon),str(source),"-o",str(output)],
                    check=True,capture_output=True,timeout=1800)
 

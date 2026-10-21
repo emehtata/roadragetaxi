@@ -62,7 +62,7 @@ def test_slot_names_cannot_leave_the_saves_folder(tmp_path):
         slot_path(tmp_path / "x.ini", "../evil")
 
 
-def test_the_slot_list_prints_ascii_for_a_windows_pipe(tmp_path, monkeypatch, capsys):
+def test_the_slot_list_prints_utf8(tmp_path, monkeypatch, capsys):
     import json
     from theroadragetrip.server import __main__ as server_main
     config = tmp_path / "roadragetrip.ini"
@@ -73,4 +73,22 @@ def test_the_slot_list_prints_ascii_for_a_windows_pipe(tmp_path, monkeypatch, ca
     monkeypatch.setattr(sys, "argv", ["prog", "--list-saves"])
     server_main.main()
     out = capsys.readouterr().out.strip()
-    assert out.isascii() and json.loads(out)[0]["place_name"] == "Anár, Čeavetjávri"
+    assert json.loads(out)[0]["place_name"] == "Anár, Čeavetjávri" and "Čeavetjávri" in out  # UTF-8, not escaped
+
+
+def test_a_legacy_code_page_pipe_still_gets_utf8(tmp_path, monkeypatch):
+    """A Windows pipe without UTF-8 mode is cp1252: the server switches it to UTF-8."""
+    import io
+    import json
+    from theroadragetrip.server import __main__ as server_main
+    config = tmp_path / "roadragetrip.ini"
+    path = slot_path(config, "a")
+    path.parent.mkdir(parents=True)
+    path.write_text('{"city": "Inari", "place_name": "Čeavetjávri", "saved_at": 1}', encoding="utf-8")
+    monkeypatch.setattr("theroadragetrip.config.CONFIG_PATH", config)
+    monkeypatch.setattr(sys, "argv", ["prog", "--list-saves"])
+    pipe = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(pipe, encoding="cp1252"))
+    server_main.main()
+    sys.stdout.flush()
+    assert json.loads(pipe.getvalue().decode("utf-8"))[0]["place_name"] == "Čeavetjávri"
