@@ -62,6 +62,8 @@ var layout = preload("res://hud_layout.gd").new(false)
 var navigation: VBoxContainer
 var _offers: ScrollContainer
 var _buttons: HBoxContainer
+var _boot: PanelContainer  # the start-up screen over the app until the first connection
+var _boot_text: Label
 
 
 func _ready() -> void:
@@ -147,6 +149,9 @@ func _ready() -> void:
 	_close.pressed.connect(close)
 	buttons.add_child(_close)
 	box.add_child(home_indicator())
+	_boot = make_boot_screen()
+	_boot_text = _boot.get_node("Rows/Text")
+	add_child(_boot)  # a PanelContainer stacks it over the app screen
 	set_language(language)
 	_refresh()
 	resized.connect(update_layout)
@@ -239,6 +244,47 @@ static func _label(font_size: int, color: Color, text := "") -> Label:
 	return label
 
 
+## While the game loads, the phone is still starting up: the app's logo,
+## a running bar and "starting up".
+static func make_boot_screen() -> PanelContainer:
+	var boot := PanelContainer.new()
+	var style := screen_style()
+	style.bg_color = Color8(14, 16, 20)
+	boot.add_theme_stylebox_override("panel", style)
+	var rows := VBoxContainer.new()
+	rows.name = "Rows"
+	rows.alignment = BoxContainer.ALIGNMENT_CENTER
+	rows.add_theme_constant_override("separation", 18)
+	boot.add_child(rows)
+	var logo := Label.new()
+	logo.text = "RageCab"
+	logo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	logo.add_theme_font_size_override("font_size", 40)
+	logo.add_theme_color_override("font_color", Color8(255, 199, 0))
+	rows.add_child(logo)
+	var bar_margin := MarginContainer.new()
+	for side in ["left", "right"]:
+		bar_margin.add_theme_constant_override("margin_" + side, 60)
+	var bar := ProgressBar.new()
+	bar.indeterminate = true
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(160, 6)
+	for part in ["background", "fill"]:  # the app's yellow on a dim track
+		var look := StyleBoxFlat.new()
+		look.bg_color = Color8(255, 199, 0) if part == "fill" else Color8(45, 50, 58)
+		look.set_corner_radius_all(3)
+		bar.add_theme_stylebox_override(part, look)
+	bar_margin.add_child(bar)
+	rows.add_child(bar_margin)
+	var text := Label.new()
+	text.name = "Text"
+	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	text.add_theme_font_size_override("font_size", 14)
+	text.add_theme_color_override("font_color", Color8(150, 160, 170))
+	rows.add_child(text)
+	return boot
+
+
 func _app_button(fill: Color, text_color: Color) -> Button:
 	var button := Button.new()
 	button.focus_mode = Control.FOCUS_NONE
@@ -261,6 +307,8 @@ func set_language(value: String) -> void:
 	_accept.text = T.text("phone_accept", language)
 	_reject.text = T.text("phone_decline", language)
 	_close.text = T.text("phone_close", language)
+	if _boot != null:
+		_boot_text.text = T.text("phone_booting", language)
 	_refresh()
 
 
@@ -350,6 +398,10 @@ func show_phone(phone: Dictionary) -> void:
 ## it nothing can be answered, and rows from the old session are stale.
 func set_connected(up: bool) -> void:
 	connected = up
+	if up and _boot != null:  # booted for good: later drops show "no connection" in the app
+		remove_child(_boot)
+		_boot.queue_free()
+		_boot = null
 	if not up:
 		protest_active = false
 		items = []

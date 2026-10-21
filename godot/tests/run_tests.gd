@@ -1170,6 +1170,10 @@ func test_phone() -> void:
 	var protest_phone := Phone.new()
 	root.add_child(protest_phone)
 	protest_phone.open()
+	protest_phone.set_language("fi")
+	check(protest_phone._boot != null and protest_phone._boot.visible and protest_phone._boot_text.text == "Käynnistetään…", "while the game loads, the phone is starting up")
+	protest_phone.set_connected(true)
+	check(protest_phone._boot == null, "connected: the start-up screen is gone for good")
 	for lang in ["fi", "en", "de"]:
 		protest_phone.language = lang
 		protest_phone.protest_active = true
