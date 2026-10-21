@@ -234,7 +234,11 @@ class RinkFrame:
 		node.draw_polyline(points, color, width)
 
 	func fill_quad(node: Node2D, u0: float, v0: float, u1: float, v1: float, color: Color) -> void:
-		node.draw_colored_polygon(PackedVector2Array([at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)]), color)
+		# A net is a rectangle; draw it locally to avoid distant-coordinate triangulation.
+		node.draw_set_transform(at(0.0, 0.0), -axis_u.angle())
+		node.draw_rect(Rect2(Vector2(u0 * scale_u, -v0 * scale_v),
+			Vector2((u1 - u0) * scale_u, -(v1 - v0) * scale_v)).abs(), color)
+		node.draw_set_transform(Vector2.ZERO)
 
 	func circle(node: Node2D, u: float, v: float, radius: float, color: Color, width: float) -> void:
 		var points := PackedVector2Array()
@@ -252,15 +256,21 @@ class RinkFrame:
 	func spot(node: Node2D, u: float, v: float, radius: float, color: Color) -> void:
 		var points := PackedVector2Array()
 		for i in 12:
-			points.append(around(u, v, radius, TAU * i / 12.0))
+			var angle := TAU * i / 12.0
+			points.append(Vector2(cos(angle), -sin(angle)) * radius)
+		node.draw_set_transform(at(u, v))
 		node.draw_colored_polygon(points, color)
+		node.draw_set_transform(Vector2.ZERO)
 
 	## A filled half circle centred on (u, v), bulging toward `facing` (rink angle: 0 is +u).
 	func fill_arc(node: Node2D, u: float, v: float, radius: float, facing: float, color: Color) -> void:
-		var points := PackedVector2Array([at(u, v)])
+		var points := PackedVector2Array([Vector2.ZERO])
 		for i in 17:
-			points.append(around(u, v, radius, facing - PI / 2.0 + PI * i / 16.0))
+			var angle := facing - PI / 2.0 + PI * i / 16.0
+			points.append(Vector2(cos(angle), -sin(angle)) * radius)
+		node.draw_set_transform(at(u, v), -axis_u.angle())
 		node.draw_colored_polygon(points, color)
+		node.draw_set_transform(Vector2.ZERO)
 
 
 ## Parking spaces: asphalt bays with a light edge.

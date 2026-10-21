@@ -906,8 +906,11 @@ func _draw_trees(node: Node2D) -> void:
 		var crown := PackedVector2Array()
 		for i in 8:
 			var angle := TAU * i / 8.0 + rng.randf_range(-0.2, 0.2)
-			crown.append(at + Vector2(cos(angle), sin(angle)) * radius * rng.randf_range(0.78, 1.15))
+			crown.append(Vector2(cos(angle), sin(angle)) * radius * rng.randf_range(0.78, 1.15))
+		# Triangulate near zero: distant map coordinates lose the crown's small edges.
+		node.draw_set_transform(at)
 		node.draw_colored_polygon(crown, style["crown"])
+		node.draw_set_transform(Vector2.ZERO)
 	for post in _data.get("bollards", []):
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			node.draw_circle(MapMath.point(_origin, post[0], post[1]), maxf(_px(1.0), 0.25), Color8(48, 48, 46))
