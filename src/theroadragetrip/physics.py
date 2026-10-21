@@ -530,6 +530,38 @@ RIVER_ICE_BREAK_PER_S = 0.3  # the chance per second on river ice that it gives 
 SINK_S = 5.0  # sinking, then a respawn
 
 
+WATER_ASSIST_DECEL = 4.0  # m/s^2, the same smooth automatic braking as a speed limit
+WATER_ASSIST_MARGIN_M = 1.5  # stop this far before the water, past the front bumper
+WATER_ASSIST_PROBES = 8  # bounded per-tick work: at most this many point tests ahead
+
+
+def water_ahead_speed_limit(car: Car, waters: List, month: Optional[int], spatial_grid=None) -> Optional[float]:
+    """Safety brake: the speed that still stops before open water straight
+    ahead (None: no water within braking distance). Points on a car road
+    (bridges, causeways) are not water; lake and sea ice carry a car in
+    January-February, so then only rivers count."""
+    if not waters or car.speed < 0.0:  # reversing away is always free
+        return None
+    if month in ICE_MONTHS:
+        waters = [w for w in waters if w.kind in RIVER_KINDS]
+        if not waters:
+            return None
+    front = getattr(car, "length_m", 4.0) * 0.5
+    reach = car.speed * car.speed / (2.0 * WATER_ASSIST_DECEL) + WATER_ASSIST_MARGIN_M + 2.0
+    step = max(1.0, reach / WATER_ASSIST_PROBES)
+    forward_x, forward_y = math.cos(car.heading), math.sin(car.heading)
+    layer = getattr(car, "layer", 0)
+    distance = step
+    while distance <= reach:
+        x = car.x + forward_x * (front + distance)
+        y = car.y + forward_y * (front + distance)
+        if is_point_in_water(x, y, waters, layer=layer) and not (
+                spatial_grid is not None and is_point_on_road(x, y, spatial_grid=spatial_grid, car_roads_only=True, layer=layer)):
+            return math.sqrt(2.0 * WATER_ASSIST_DECEL * max(0.0, distance - WATER_ASSIST_MARGIN_M))
+        distance += step
+    return None
+
+
 def water_sinks_car(car: Car, waters: List, current_way, month: Optional[int], dt: float, rng=random.random) -> bool:
     """Whether the car goes under this tick: fully in open water, or on river
     ice that breaks. Lake and sea ice hold in January-February."""

@@ -38,6 +38,7 @@ from .physics import (
     respawn_car,
     update_car_physics,
     water_sinks_car,
+    water_ahead_speed_limit,
 )
 from .station_passengers import StationPassengerView, track_checker
 from .taxi import TaxiState
@@ -399,6 +400,16 @@ def advance_simulation(
         )
         if streaming_cap_mps is not None:
             speed_limit_mps = streaming_cap_mps if speed_limit_mps is None else min(speed_limit_mps, streaming_cap_mps)
+
+    # Safety brake before open water straight ahead, off-road only: a shore road's
+    # bends point at the water without leaving the road (surface only: levels have none).
+    # Braking from a standstill reverses: that backs away from the shore, never capped.
+    if on_surface and not on_foot and waters and current_way is None and not (brake > 0.0 and car.speed <= 0.5):
+        water_limit_mps = water_ahead_speed_limit(car, waters, now.month if now is not None else None, drive_grid)
+        if water_limit_mps is not None:
+            speed_limit_mps = water_limit_mps if speed_limit_mps is None else min(speed_limit_mps, water_limit_mps)
+            if car.speed > water_limit_mps + 0.5:  # too close for the gentle limit: brake hard
+                throttle, brake = 0.0, 1.0
 
     previous_position = (car.x, car.y)
     approach_way = current_way  # the road the car drove along into this frame's movement
