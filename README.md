@@ -58,7 +58,8 @@ Ei sankaripuheita. Taksamittari käy.
 - **Weather and seasons:** optional real-world weather, rain and puddles,
   water ripples, snow on roads and roofs, snowy tyre tracks, ploughing and
   spring ice floes. Daylight, building shadows, streetlights and headlights
-  change the look of a shift.
+  change the look of a shift. Lunar rise, transit, set and phase are calculated
+  for the selected city and currently reported in the startup debug log.
 - **Railway activity:** trains and station announcements, real timetable support,
   and prebooked station pickups that may require meeting the passenger on foot.
 - **Fuel and consequences:** start/stop the engine, refuel at a pump, and watch

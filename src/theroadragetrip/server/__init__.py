@@ -46,6 +46,7 @@ from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulatio
 from ..physics import reset_trip, respawn_car
 from ..home import CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home
 from ..localization import SUPPORTED_LANGUAGES, tr
+from ..moon import moon_info_on, moon_position_at
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
 from ..weather_history import WeatherHistory, precipitation_from_observation, game_time_to_utc_hour
@@ -241,6 +242,16 @@ class SimulationServer:
             start = clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
         self.calendar = GameCalendar(start or datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),
                                      latitude=getattr(self.world, "sun_latitude", 65.01))
+        moon_latitude = getattr(self.world, "sun_latitude", 65.01)
+        moon_longitude = getattr(self.world, "sun_longitude", 25.47)
+        self.moon_info = moon_info_on(self.calendar.date, moon_latitude, moon_longitude)
+        moon_time = lambda value: value.strftime("%H:%M") if value is not None else "none"
+        logger.info(
+            "Moon %s: rise=%s transit=%s set=%s phase=%s illumination=%.1f%% age=%.1f days",
+            self.calendar.date, moon_time(self.moon_info.rise), moon_time(self.moon_info.transit),
+            moon_time(self.moon_info.set), self.moon_info.phase, self.moon_info.illumination * 100.0,
+            self.moon_info.age_days,
+        )
         self.world.weather = WeatherSystem(season=self.calendar.season)
         # Historical weather (opt-in): FMI observations/forecast for
         # this city and game time where known, generated weather otherwise.
@@ -457,6 +468,12 @@ class SimulationServer:
         )
         return altitude, grid_azimuth(azimuth, latitude, longitude)
 
+    def _moon_position(self) -> tuple:
+        latitude = getattr(self.world, "sun_latitude", self.calendar.latitude)
+        longitude = getattr(self.world, "sun_longitude", 25.47)
+        altitude, azimuth, illumination = moon_position_at(self.calendar.current, latitude, longitude)
+        return altitude, grid_azimuth(azimuth, latitude, longitude), illumination
+
     def _update_sports(self) -> None:
         """What may be played on the sports fields (the pedestrians' sports
         activities): ice when the fields are frozen, soccer when the pitches
@@ -470,15 +487,18 @@ class SimulationServer:
 
     def calendar_state(self) -> dict:
         """What a client needs of the calendar (state "calendar"): the date,
-        how fast game time runs, and the sun - computed here, never by the
-        client. The sun is at the city's latitude and longitude."""
+        how fast game time runs, and the Sun and Moon - computed here, never
+        by the client, at the city's latitude and longitude."""
         altitude, azimuth = self._sun_position()
+        moon_altitude, moon_azimuth, moon_illumination = self._moon_position()
         season = self.season_weights()
         arena_crowds = getattr(self.world, "arena_crowds", None)
         from ..holiday_events import holiday_events
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": season,
                 "sun_altitude_deg": round(altitude, 2), "sun_azimuth_deg": round(azimuth, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
+                "moon_altitude_deg": round(moon_altitude, 2), "moon_azimuth_deg": round(moon_azimuth, 2),
+                "moon_illumination": round(moon_illumination, 3),
                 "sports_lights": sports_lights_hours(self.calendar.current),
                 "holidays": holiday_events(self.calendar.current),
                 "arena_lights": bool(arena_crowds and arena_crowds.lights_on(self.calendar.current)),

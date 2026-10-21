@@ -472,8 +472,9 @@ def build_state_message(
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
         "game_time_seconds": game_time_seconds,
         # {"date": "YYYY-MM-DD", "time_scale": game s per real s, "sun_altitude_deg",
+        #  "moon_altitude_deg", "moon_azimuth_deg", "moon_illumination",
         #  "sun_azimuth_deg" (clockwise from the map's grid north), "darkness": 0 day
-        #  .. 1 night} - the server's calendar and sun (godot-14, rrt-018-shadows).
+        #  .. 1 night} - the server's calendar, sun and Moon (godot-14, rrt-018-shadows).
         "calendar": calendar,
         "sim_time": traffic_mgr.sim_time,
         "on_foot": on_foot,

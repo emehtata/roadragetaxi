@@ -135,16 +135,19 @@ func set_shadows_enabled(on: bool) -> void:
 	var previous := _sun_key
 	_sun_key = Vector3(INF, INF, INF)
 	if is_finite(previous.x):
-		set_sun(previous.x, previous.y, previous.z)
+		set_celestial_light(previous.x, previous.y, previous.z)
 
 
 ## Sun direction/strength from the server, cached until the weather or option changes.
 func set_sun(altitude_deg: float, azimuth_deg: float, cloud_cover: float) -> void:
-	var key := Vector3(altitude_deg, azimuth_deg, cloud_cover)
+	set_celestial_light(altitude_deg, azimuth_deg, Daylight.sunlight(altitude_deg, cloud_cover))
+
+
+func set_celestial_light(altitude_deg: float, azimuth_deg: float, strength: float) -> void:
+	var key := Vector3(altitude_deg, azimuth_deg, strength)
 	if key.is_equal_approx(_sun_key):
 		return
 	_sun_key = key
-	var strength := Daylight.sunlight(altitude_deg, cloud_cover)
 	var on := shadows_enabled and strength > 0.01
 	_sun.visible = on
 	_shadow_ground.visible = on

@@ -176,6 +176,11 @@ func set_sun(altitude_deg: float, azimuth_deg: float, cloud_cover: float) -> voi
 		_layer_3d().set_sun(altitude_deg, azimuth_deg, cloud_cover)
 
 
+func set_celestial_light(altitude_deg: float, azimuth_deg: float, strength: float) -> void:
+	if MapChunk.buildings_3d:
+		_layer_3d().set_celestial_light(altitude_deg, azimuth_deg, strength)
+
+
 func set_light(level: float, ambient: Color) -> void:
 	if not ambient.is_equal_approx(_ambient):
 		_ambient = Color(ambient, 1.0)

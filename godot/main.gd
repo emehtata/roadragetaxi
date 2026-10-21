@@ -656,13 +656,25 @@ func _present(state: Dictionary) -> void:
 	# godot-lights-01: the world's light from the sun's altitude, continuously - the
 	# ambient multiply (CanvasModulate: no fill) and how strongly the lights show.
 	var altitude := Daylight.altitude(state) if is_nan(override_altitude) else override_altitude
-	var ambient := Daylight.ambient_color(altitude)
+	var cloud := Daylight.cloud_cover(state) if is_nan(override_cloud) else override_cloud
+	var moon_altitude := Daylight.moon_value(state, "moon_altitude_deg", -90.0)
+	var moon_strength := Daylight.moonlight(altitude, moon_altitude,
+		Daylight.moon_value(state, "moon_illumination", 0.0), cloud)
+	var ambient := Daylight.moon_ambient(Daylight.ambient_color(altitude), moon_strength)
 	var lights := Daylight.artificial(altitude)
 	if not ambient.is_equal_approx(world_light.color):
 		world_light.color = ambient
 	map_layer.set_light(lights, ambient)
-	map_layer.set_sun(altitude, Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth,
-		Daylight.cloud_cover(state) if is_nan(override_cloud) else override_cloud)
+	var sun_strength := Daylight.sunlight(altitude, cloud)
+	if sun_strength > 0.01:
+		map_layer.set_celestial_light(altitude, Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth, sun_strength)
+	else:
+		var player_at := MapMath.point(entities.origin, player["x"], player["y"])
+		var local_light: float = map_layer.light_at(player_at)
+		if map_layer.lamp_near(player_at, 25.0):
+			local_light = maxf(local_light, 1.0)
+		map_layer.set_celestial_light(moon_altitude, Daylight.moon_value(state, "moon_azimuth_deg", 180.0),
+			Daylight.moon_shadow(moon_strength, local_light))
 	entities.ambient = ambient
 	night.ambient = ambient
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5

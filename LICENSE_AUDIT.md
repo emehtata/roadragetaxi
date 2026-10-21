@@ -66,7 +66,7 @@ available locally were not assumed.
 | Godot Engine 4.7.2 and its components | MIT plus component licences (`Engine.get_license_info`) | The executable | Conditional: notices now ship (`licenses/godot/LICENSES.txt`) and show in Credits |
 | Python 3.12 runtime | PSF-2.0 | `server/_internal` | Conditional: `LICENSE.txt` now ships; verify that the Windows build's copy lists its bundled libraries (OpenSSL, SQLite, ...) |
 | PyInstaller bootloader | GPL-2.0-or-later with the bootloader exception (`COPYING.txt`) | Inside `RoadRageServer.exe` | Conditional: the exception permits distributing the built program; the notice now ships |
-| requests, urllib3, idna, charset-normalizer, pyproj (with PROJ) | Apache-2.0, MIT, BSD-3-Clause, MIT, MIT (wheel licence files) | `_internal` | Verified, with notices |
+| requests, urllib3, idna, charset-normalizer, PyEphem, pyproj (with PROJ) | Apache-2.0, MIT, BSD-3-Clause, MIT, MIT, MIT (wheel licence files) | `_internal` | Verified, with notices |
 | shapely | BSD-3-Clause | `_internal` | Verified |
 | GEOS 3.13.1 (bundled by shapely) | LGPL-2.1 (`LICENSE_GEOS`) | A separate, replaceable DLL | Conditional: the LGPL text now ships and the GEOS source is attached to each release |
 | certifi | MPL-2.0 | `_internal` (unmodified CA bundle) | Conditional: notice and an upstream source pointer |

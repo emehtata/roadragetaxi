@@ -513,6 +513,9 @@ def test_the_calendar_is_the_one_clock_and_carries_the_sun(tmp_path, monkeypatch
     server.calendar.current = datetime(2026, 12, 21, 20, 0)  # midwinter evening
     night = server.calendar_state()
     assert night["darkness"] == 1.0 and night["sun_altitude_deg"] < -12.0
+    assert -90.0 <= night["moon_altitude_deg"] <= 90.0
+    assert 0.0 <= night["moon_azimuth_deg"] < 360.0
+    assert 0.0 <= night["moon_illumination"] <= 1.0
     altitude, _, _ = solar_altitude_and_events_on(server.calendar.date, server.calendar.time_seconds,
                                                   server.world.sun_latitude, server.world.sun_longitude)
     assert night["sun_altitude_deg"] == round(altitude, 2)  # the real model, not a copy
@@ -523,6 +526,15 @@ def test_the_calendar_is_the_one_clock_and_carries_the_sun(tmp_path, monkeypatch
     assert server.calendar.current == datetime(2026, 12, 1, 0, 0, 30) and server._game_time_seconds == 30.0
     assert server.calendar_state()["time_scale"] == 60.0 and server.world.weather.season == server.calendar.season
     assert _state(server)["game_time_seconds"] == 30.0
+
+
+def test_startup_logs_the_calculated_moon(tmp_path, monkeypatch, caplog):
+    with caplog.at_level("INFO", logger="theroadragetrip.server"):
+        server = _build_server(tmp_path, monkeypatch)
+
+    line = next(record.message for record in caplog.records if record.message.startswith("Moon "))
+    assert server.calendar.date.isoformat() in line
+    assert all(field in line for field in ("rise=", "transit=", "set=", "phase=", "illumination=", "age="))
 
 
 def test_darkness_boundaries():

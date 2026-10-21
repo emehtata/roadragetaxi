@@ -11,3 +11,6 @@ separation and bounded per-frame work.
 
 Whenever changing UI or Godot code, render the affected view, capture a
 screenshot and inspect it visually before considering the change complete.
+
+Python requirements may be added when a maintained dependency is the clearest
+and most reliable way to implement the requested behavior.

@@ -69,6 +69,8 @@ const SUN_FULL_DEG := 12.0  # ...and are at full strength from here up
 const SHADOW_MIN_ELEVATION_DEG := 8.0
 const CLOUD_CLEAR := 0.3  # cloud cover at or below: full sunlight
 const CLOUD_OVERCAST := 0.9  # at or above: no direct sun, no shadows
+const MOON_MIN_ILLUMINATION := 0.8
+const MOON_MAX_LIGHT := 0.30
 
 
 ## How strongly the sun shines directly, 0..1: rises smoothly with the
@@ -76,6 +78,28 @@ const CLOUD_OVERCAST := 0.9  # at or above: no direct sun, no shadows
 ## Its shadows' contrast follows it; 0 at night and under an overcast sky.
 static func sunlight(altitude_deg: float, cloud_cover: float) -> float:
 	return _smoother(SUN_LOW_DEG, SUN_FULL_DEG, altitude_deg) * (1.0 - _smoother(CLOUD_CLEAR, CLOUD_OVERCAST, cloud_cover))
+
+
+## A nearly full Moon lights only a dark sky, and remains much dimmer than the Sun.
+static func moonlight(sun_altitude_deg: float, moon_altitude_deg: float, illumination: float, cloud_cover: float) -> float:
+	return MOON_MAX_LIGHT * _smoother(-2.0, -8.0, sun_altitude_deg) \
+		* _smoother(SUN_LOW_DEG, SUN_FULL_DEG, moon_altitude_deg) \
+		* _smoother(MOON_MIN_ILLUMINATION, 1.0, illumination) \
+		* (1.0 - _smoother(CLOUD_CLEAR, CLOUD_OVERCAST, cloud_cover))
+
+
+static func moon_value(state: Dictionary, key: String, fallback: float) -> float:
+	var calendar = state.get("calendar")
+	var value = calendar.get(key) if calendar is Dictionary else null
+	return float(value) if typeof(value) in [TYPE_INT, TYPE_FLOAT] and is_finite(value) else fallback
+
+
+static func moon_ambient(color: Color, strength: float) -> Color:
+	return color.lerp(Color(0.68, 0.70, 0.74), clampf(strength / MOON_MAX_LIGHT, 0.0, 1.0) * 0.12)
+
+
+static func moon_shadow(strength: float, artificial_light: float) -> float:
+	return strength * (1.0 - _smoother(0.0, 0.15, artificial_light))
 
 
 ## A unit vector towards the sun in the 3D building view's axes.
