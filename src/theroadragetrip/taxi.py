@@ -2215,7 +2215,7 @@ class TaxiManager:
             return self.current_passenger.dropoff
         return None
 
-    def discard_mission(self, car_x: float, car_y: float, penalty: int = 150, reason: str = "Fare cancelled") -> int:
+    def discard_mission(self, car_x: float, car_y: float, penalty: int = 150, reason: str = "discard_cancelled") -> int:
         """Discard the active pickup or onboard passenger mission with a score penalty."""
         if not self.current_passenger:
             return 0
@@ -2224,10 +2224,10 @@ class TaxiManager:
             self.current_passenger.rail_booking.status = MISSED
         self.total_score -= penalty
         if self.state in (TaxiState.DRIVING_TO_DROPOFF, TaxiState.CLIENT_WALKING_TO_CAR):
-            msg = f"{reason}! Client {p_name} abandoned (-{penalty} pts)"
+            key = "discard_abandoned"
         else:
-            msg = f"{reason}! Pickup for {p_name} cancelled (-{penalty} pts)"
-        self.notification_msg = msg
+            key = "discard_pickup_cancelled"
+        self.notification_msg = tr(self.language, key, reason=tr(self.language, reason), name=p_name, penalty=penalty)
         self.notification_timer = 5.0
         logger.info("Taxi mission discarded: passenger=%s reason=%s penalty=%d", p_name, reason, penalty)
         self.released_parties.append(self.current_passenger)
@@ -2240,7 +2240,7 @@ class TaxiManager:
     def handle_respawn(self, car_x: float, car_y: float) -> None:
         """Handle car respawn: discard fare and apply penalty if a passenger is onboard."""
         if self.current_passenger and self.state in (TaxiState.DRIVING_TO_DROPOFF, TaxiState.CLIENT_WALKING_TO_CAR):
-            self.discard_mission(car_x, car_y, penalty=200, reason="Respawned while transporting passenger")
+            self.discard_mission(car_x, car_y, penalty=200, reason="discard_respawned")
 
     def _update_passenger_nausea(self, car: Car, dt: float) -> None:
         passenger = self.current_passenger
@@ -2363,7 +2363,7 @@ class TaxiManager:
             return
 
         if not self._party_valid(self.current_passenger):
-            self.discard_mission(car.x, car.y, penalty=0, reason="Invalid passenger group")
+            self.discard_mission(car.x, car.y, penalty=0, reason="discard_invalid_group")
             return
 
         self._update_passenger_nausea(car, dt)
@@ -2418,7 +2418,7 @@ class TaxiManager:
 
             # If player drives away too fast while passenger is boarding, passenger cancels/abandons
             if dist_to_target > target.radius_m * 1.8:
-                self.discard_mission(car.x, car.y, penalty=100, reason="Drove away during pickup")
+                self.discard_mission(car.x, car.y, penalty=100, reason="discard_drove_away")
                 return
 
             if dist_to_door <= 0.8 or (walker is not None and not walker.is_walking_to_taxi_stop):
