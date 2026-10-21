@@ -1968,3 +1968,22 @@ def test_a_rural_cabin_gets_a_walker_at_most_and_a_city_block_the_full_target(ku
     flats = [building(hx + 30 * (i % 6), hy + 30 * (i // 6), "apartments", 25, 5) for i in range(36)]
     city = PedestrianManager([footway(hx, hy)], target_count=20, venue_buildings=flats)
     assert city.local_population_target(hx + 80.0, hy + 80.0) == city.population_target
+
+
+def test_without_a_connected_footway_people_walk_around_a_house_not_through_it():
+    """A person walking from a car behind a house to the door in front, with
+    two unconnected footway pieces: the straight fallback crossed the house;
+    now they go along the street (the car-road route)."""
+    behind = Way(points_m=[(-10.0, 30.0), (30.0, 30.0)], highway="footway", half_width_m=1.5)
+    front = Way(points_m=[(-10.0, -10.0), (30.0, -10.0)], highway="footway", half_width_m=1.5)  # not connected
+    street = [(10.0, 30.0), (-20.0, 30.0), (-20.0, -10.0), (10.0, -10.0)]
+    traffic = SimpleNamespace(npcs=[], plan_route=lambda start, target, *a, **k: [start] + street + [target])
+    manager = PedestrianManager([behind, front], target_count=0, traffic_manager=traffic)
+    manager._point_inside_building = lambda x, y: 0.0 <= x <= 20.0 and 0.0 <= y <= 20.0
+    pedestrian = Pedestrian(10.0, 28.0, 0.0, 1.3, 1.3, behind, 0, 1, (1, 1, 1))
+
+    route = manager._footway_route_to(pedestrian, (10.0, -2.0))  # the door, in front
+
+    for (ax, ay), (bx, by) in zip(route, route[1:]):
+        for t in (0.1, 0.3, 0.5, 0.7, 0.9):
+            assert not manager._point_inside_building(ax + (bx - ax) * t, ay + (by - ay) * t), route

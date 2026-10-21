@@ -302,6 +302,13 @@ class PedestrianNetwork:
             lambda ring: (ring * PEDESTRIAN_NETWORK_GRID_CELL_M) ** 2,
         )[1]
 
+    def connected(self, start: Tuple[float, float], target: Tuple[float, float]) -> bool:
+        """Whether route() can find a network path (not its straight fallback)."""
+        if not self.nodes:
+            return False
+        return _component_root(self._component_parent, self._nearest_node(start)) == _component_root(
+            self._component_parent, self._nearest_node(target))
+
     def route(self, start: Tuple[float, float], target: Tuple[float, float]) -> List[Tuple[float, float]]:
         """Return shortest network route with direct connectors at both ends."""
         if not self.nodes:
@@ -1306,8 +1313,21 @@ class PedestrianManager:
         )
         self._record("pedestrians:route_nearest", stage_started)
         start = (pedestrian.x, pedestrian.y)
+        # The start side too: joined where the step onto the footway does not
+        # cut through a building (people walked across houses to their door).
+        start_on = self.network.nearest_point(
+            start, reject=lambda x, y: self._path_crosses_building(start[0], start[1], x, y),
+        )
         stage_started = (time.perf_counter(), time.thread_time())
-        route = self._plan_pedestrian_route(start, nearest) if nearest is not None else [start]
+        if nearest is not None and start_on is not None and self.network.connected(start_on, nearest):
+            route = [start] + self._plan_pedestrian_route(start_on, nearest)
+        else:
+            # No connected footway between them (patchy sidewalk mapping): along
+            # the streets, never the straight line through whatever is between.
+            road = self.traffic_manager.plan_route(start, entry_position) if self.traffic_manager is not None and hasattr(
+                self.traffic_manager, "plan_route") else None
+            route = [start] + [tuple(point[:2]) for point in road] if road else (
+                self._plan_pedestrian_route(start, nearest) if nearest is not None else [start])
         self._record("pedestrians:route_search", stage_started)
         self.sync_stats["routes"] += 1
         if math.hypot(entry_position[0] - route[-1][0], entry_position[1] - route[-1][1]) > 0.01:
