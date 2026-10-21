@@ -48,8 +48,8 @@ def list_slots(config_path: Path) -> list:
     rows = []
     for path in saves_dir(config_path).glob("*.json"):
         data = read_slot(path)
-        if not data:
-            continue
+        if not data.get("city"):
+            continue  # a new game never saved: only its car's odometer, nothing to continue
         rows.append({
             "name": path.stem, "path": str(path), "city": data.get("city", ""), "place_name": data.get("place_name", ""),
             "game_time": data.get("game_time", ""), "balance_cents": data.get("balance_cents", 0),

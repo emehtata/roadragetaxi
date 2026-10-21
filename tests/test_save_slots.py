@@ -52,6 +52,8 @@ def test_a_completed_fare_keeps_the_slot_and_the_menu_lists_it(tmp_path):
     data = read_slot(path)
     assert data["city"] == "Oulu" and data["balance_cents"] == 999
     assert [row["name"] for row in list_slots(config)] == ["a"]
+    save_gig_odometer(slot_path(config, "unsaved"), 5.0, 30.0)  # a new game's car, never saved
+    assert [row["name"] for row in list_slots(config)] == ["a"]
 
 
 def test_slot_names_cannot_leave_the_saves_folder(tmp_path):
