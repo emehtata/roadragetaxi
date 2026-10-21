@@ -121,6 +121,7 @@ var wildlife := WildlifeLayer.new()
 var animal_audio := preload("res://animal_audio.gd").new()
 var _tram_states := {}  # tram id -> its state last frame: the bell when one sets off
 var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, multiplied over the world canvas
+var moon_grey := WorldEnvironment.new()  # desaturates the world (canvas layers <= 0, not the HUD) under moonlight
 
 
 func _ready() -> void:
@@ -135,6 +136,10 @@ func _ready() -> void:
 	add_child(wildlife)
 	add_child(animal_audio)
 	add_child(world_light)
+	moon_grey.environment = Environment.new()
+	moon_grey.environment.background_mode = Environment.BG_CANVAS
+	moon_grey.environment.adjustment_enabled = false
+	add_child(moon_grey)
 	weather.setup($Sky, map_layer)
 	add_child(holidays)
 	holidays.setup(map_layer)
@@ -660,6 +665,14 @@ func _present(state: Dictionary) -> void:
 	var moon_altitude := Daylight.moon_value(state, "moon_altitude_deg", -90.0)
 	var moon_strength := Daylight.moonlight(altitude, moon_altitude,
 		Daylight.moon_value(state, "moon_illumination", 0.0), cloud)
+	# Moonlight shows only away from city lights (rural roads): there it whitens
+	# the ambient light, casts faint shadows and washes the colours out.
+	if moon_strength > 0.0:
+		var player_at := MapMath.point(entities.origin, player["x"], player["y"])
+		var local_light: float = map_layer.light_at(player_at)
+		if map_layer.lamp_near(player_at, 25.0):
+			local_light = maxf(local_light, 1.0)
+		moon_strength = Daylight.moon_shadow(moon_strength, local_light)
 	var ambient := Daylight.moon_ambient(Daylight.ambient_color(altitude), moon_strength)
 	var lights := Daylight.artificial(altitude)
 	if not ambient.is_equal_approx(world_light.color):
@@ -669,12 +682,10 @@ func _present(state: Dictionary) -> void:
 	if sun_strength > 0.01:
 		map_layer.set_celestial_light(altitude, Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth, sun_strength)
 	else:
-		var player_at := MapMath.point(entities.origin, player["x"], player["y"])
-		var local_light: float = map_layer.light_at(player_at)
-		if map_layer.lamp_near(player_at, 25.0):
-			local_light = maxf(local_light, 1.0)
-		map_layer.set_celestial_light(moon_altitude, Daylight.moon_value(state, "moon_azimuth_deg", 180.0),
-			Daylight.moon_shadow(moon_strength, local_light))
+		map_layer.set_celestial_light(moon_altitude, Daylight.moon_value(state, "moon_azimuth_deg", 180.0), moon_strength)
+	var grey := Daylight.moon_desaturation(moon_strength)
+	moon_grey.environment.adjustment_enabled = grey > 0.01
+	moon_grey.environment.adjustment_saturation = 1.0 - grey
 	entities.ambient = ambient
 	night.ambient = ambient
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5

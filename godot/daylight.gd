@@ -95,7 +95,14 @@ static func moon_value(state: Dictionary, key: String, fallback: float) -> float
 
 
 static func moon_ambient(color: Color, strength: float) -> Color:
-	return color.lerp(Color(0.68, 0.70, 0.74), clampf(strength / MOON_MAX_LIGHT, 0.0, 1.0) * 0.12)
+	# Moonlight is a neutral, nearly white light: no blue night tint.
+	return color.lerp(Color(0.6, 0.6, 0.6), clampf(strength / MOON_MAX_LIGHT, 0.0, 1.0))
+
+
+## How far moonlight washes the colours out (0..1, from moonlight()): the eye
+## sees a moonlit scene almost in grey.
+static func moon_desaturation(strength: float) -> float:
+	return clampf(strength / MOON_MAX_LIGHT, 0.0, 1.0) * 0.8
 
 
 static func moon_shadow(strength: float, artificial_light: float) -> float:
