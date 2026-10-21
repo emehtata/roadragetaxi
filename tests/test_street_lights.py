@@ -171,3 +171,19 @@ def test_explicit_median_lamp_is_round_but_outer_verge_lamp_is_directional():
     assert len(verge) == 4
     ways[1].map_level = -1
     assert all(len(lamp) == 4 for lamp in _place(ways, [], lamps))
+
+
+def test_a_wide_median_has_one_even_row_down_its_middle():
+    """Pohjantie, Oulu: carriageways 10-25 m apart each put their median lamp
+    at their own edge, and the 12 m merge then zig-zagged between the two
+    rows (12/24 m gaps) and left the far lane dark - the taxi's automatic
+    high beam flashed on and off there."""
+    south = Way(points_m=[(-200.0, -12.0), (200.0, -12.0)], highway="motorway", half_width_m=7.0, lit="yes", oneway=1)
+    north = Way(points_m=[(200.0, 12.0), (-200.0, 12.0)], highway="motorway", half_width_m=7.0, lit="yes", oneway=1)
+    placed = _place([south, north], [], [])
+    assert placed and all(abs(y) < 0.5 for _, y, *_ in placed)  # one row, mid-median
+    xs = sorted(x for x, *_ in placed if -150 < x < 150)
+    assert max(b - a for a, b in zip(xs, xs[1:])) <= placement.STREET_LIGHT_SPACING_M + 0.5
+    for x in range(-150, 151, 2):  # every point of both outer lanes within the high-beam dip radius (entity_layer.gd)
+        for y in (-17.5, 17.5):
+            assert min(math.hypot(lx - x, ly - y) for lx, ly, *_ in placed) <= 22.0

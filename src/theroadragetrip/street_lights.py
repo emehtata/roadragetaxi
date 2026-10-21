@@ -10,7 +10,7 @@ import math
 import time
 from typing import List, Optional, Tuple
 
-from .geo import dist_point_to_segment, point_in_polygon
+from .geo import closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon
 from .osm import Building, Way
 from .performance import advance_chunked
 from .viewport import _segment_viewport_t_range
@@ -594,6 +594,13 @@ def _advance_street_light_placement(work) -> bool:
                     for side, edge_distance in candidates:
                         world_x = lamp_x + normal_x * edge_distance * side
                         world_y = lamp_y + normal_y * edge_distance * side
+                        if oneway and not parking_aisle:
+                            # Halfway across the median: the twin's lamps land on the same
+                            # line, so the merge below keeps one even row, not a zig-zag.
+                            shift = _median_half_gap(road_segment_grid, world_x, world_y, dx / segment_length,
+                                                     dy / segment_length, normal_x * side, normal_y * side)
+                            world_x += normal_x * side * shift
+                            world_y += normal_y * side * shift
                         if _point_overlaps_indexed_road(
                             world_x, world_y, road_segment_grid
                         ) or _street_light_overlaps_footprint(work, world_x, world_y):
@@ -626,7 +633,31 @@ def _advance_street_light_placement(work) -> bool:
     return work["placement_cursor"] >= len(ways)
 
 
-STREET_LIGHT_MERGE_M = 12.0  # a synthetic lamp this close to another is the same pole
+STREET_LIGHT_MERGE_M = 10.0  # a synthetic lamp this close to another is the same pole (under the 12 m spacing: a row's next lamp is not)
+STREET_LIGHT_MEDIAN_MAX_M = 25.0  # a wider gap to a parallel carriageway isn't one median
+
+
+def _median_half_gap(segment_grid, x, y, tx, ty, nx, ny) -> float:
+    """Half the gap from a carriageway's median lamp spot (x, y; t along the
+    road, n into the median) to a parallel road's own spot across it, 0 if
+    none. Only roads in the job's region are indexed: at its edge, 0."""
+    cell = STREET_LIGHT_ROAD_INDEX_CELL_M
+    gaps = []
+    for k in (0.0, 12.0, 24.0):
+        cx, cy = math.floor((x + nx * k) / cell), math.floor((y + ny * k) / cell)
+        for gx in (cx - 1, cx, cx + 1):
+            for gy in (cy - 1, cy, cy + 1):
+                for a, b, half_width in segment_grid.get((gx, gy), ()):
+                    length = math.hypot(b[0] - a[0], b[1] - a[1])
+                    if length < 1e-6 or abs((b[0] - a[0]) * tx + (b[1] - a[1]) * ty) < 0.9 * length:
+                        continue  # not parallel
+                    qx, qy, _, _ = closest_point_and_dist_to_segment(x, y, *a, *b)
+                    if abs((qx - x) * tx + (qy - y) * ty) > 2.0:
+                        continue  # ends before or after this spot
+                    gap = (qx - x) * nx + (qy - y) * ny - half_width - 1.0  # to its own lamp spot
+                    if 0.0 < gap <= STREET_LIGHT_MEDIAN_MAX_M:
+                        gaps.append(gap)
+    return min(gaps) / 2.0 if gaps else 0.0
 
 
 def _lamp_stands_near(work, x, y) -> bool:
