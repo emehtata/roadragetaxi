@@ -714,6 +714,7 @@ def build_ways(
     connector_nodes: Dict[int, dict] = {}  # amenity=parking_entrance node id -> tags
     tram_stop_names: Dict[int, str] = {}  # tram stop node id -> its name (Railway.stops)
     tram_line_refs: Dict[int, Set[str]] = defaultdict(set)  # tram way id -> the lines over it (Railway.lines)
+    bus_route_refs: Dict[int, Set[str]] = defaultdict(set)  # road way id -> route=bus relations on it (Way.bus_routes)
     bus_route_members: List[Tuple[str, int, str, str, int]] = []  # (route key, member index, ref, member type, member id): BusStop.routes
     connector_ways: Dict[int, List[Tuple[int, dict]]] = defaultdict(list)  # node id -> ways through it
 
@@ -840,6 +841,9 @@ def build_ways(
                         tram_line_refs[member.get("ref")].add(line)
             if include_bus_stops and tags.get("type") == "route" and tags.get("route") in BUS_ROUTE_KINDS:
                 bus_route_members.extend(_bus_route_stops(tags, el.get("id"), el.get("members", [])))
+                for member in el.get("members", []):  # the streets it runs on (no role, or forward/backward)
+                    if member.get("type") == "way" and member.get("role", "") in ("", "forward", "backward"):
+                        bus_route_refs[member.get("ref")].add(str(el.get("id")))
             if tags.get("type") == "multipolygon":
                 members = el.get("members", [])
                 relations_raw.append((tags, members))
@@ -1432,6 +1436,7 @@ def build_ways(
                 turn_lanes=tags.get("turn:lanes") or tags.get("turn:lanes:forward"),
                 priority_road=is_priority_road,
                 service=tags.get("service"),
+                bus_routes=sorted(bus_route_refs.get(way_id, ())),
                 **_level_metadata(tags),
             )
         )

@@ -1385,11 +1385,12 @@ def _plan_and_validate_npc_route_steps(
     vehicle_width_m: float = NPC_VEHICLE_WIDTH_M,
     preserve_origin: bool = False,
     origin_heading: Optional[float] = None,
+    bus_route: Optional[str] = None,
 ) -> RouteSteps:
     """_plan_and_validate_npc_route as a resumable job: the route search
     and the curb/building sampling both yield per unit of work. Pure -
     reads the world, never mutates it (bin-loader-v12.md)."""
-    raw_route = yield from traffic_world.plan_route_steps(origin, destination)
+    raw_route = yield from traffic_world.plan_route_steps(origin, destination, bus_route=bus_route)
     if raw_route is None:
         return None
     if preserve_origin and len(raw_route) >= 3 and (
@@ -3510,6 +3511,7 @@ def _bus_leg_steps(vehicle, job, traffic_world, ways, spatial_grid, curbs, curb_
         origin_is_off_road=True,  # (as every continuation: it joins the road from where it stands)
         destination_is_off_road=True,  # the exact end point: no lane offset of the planner's own
         vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
+        bus_route=job.line.key,  # along its OSM route's own streets, not just the shortest way
     )
     if path is None:
         return None

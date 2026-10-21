@@ -34,6 +34,7 @@ ROUTE_MAX_EDGE_LENGTH_M = 100.0
 # heuristic stays admissible since graph edges are never shorter than the
 # straight line between their nodes.
 ROUTE_CONNECTOR_COST_FACTOR = 4.0
+OFF_BUS_ROUTE_COST_FACTOR = 4.0  # a line bus's route avoids streets its OSM route relation does not use
 
 # A resumable route search: a generator that yields after each unit of work
 # and returns its result (bin-loader-v12.md "route planning is a job").
@@ -82,6 +83,7 @@ class RouteGraphBuild:
         self.parking_grid = {} if parking_spaces is not None else None
         self.nodes: List[Tuple[float, float, int]] = []
         self.edges: dict[int, List[Tuple[int, float]]] = {}
+        self.bus_route_edges: dict[str, set] = {}  # route=bus relation key -> (node, node) edges of its ways (Way.bus_routes)
         self.node_grid: dict[Tuple[int, int], List[int]] = {}
         self.component_parent: List[int] = []
         self._buckets: dict[Tuple[int, int, int], List[int]] = {}
@@ -171,6 +173,10 @@ class RouteGraphBuild:
                         start[0] + (end[0] - start[0]) * ratio,
                         start[1] + (end[1] - start[1]) * ratio,
                     ), layer))
+        for route in getattr(way, "bus_routes", ()):  # edges, not nodes: a shortcut joins the route at its junctions
+            pairs = self.bus_route_edges.setdefault(route, set())
+            for first, second in zip(point_ids, point_ids[1:]):
+                pairs.update(((first, second), (second, first)))
         oneway = getattr(way, "oneway", 0)
         nodes, edges = self.nodes, self.edges
         for first, second in zip(point_ids, point_ids[1:]):
@@ -283,6 +289,7 @@ def graph_route_steps(
     start_layer: Optional[int] = None,
     strict: bool = False,
     target_layer: Optional[int] = None,
+    preferred: Optional[set] = None,
 ) -> RouteSteps:
     """A shortest route on one route graph (anything with nodes, edges,
     node_grid and component_parent: a RouteGraphBuild, or TrafficWorld's
@@ -296,7 +303,9 @@ def graph_route_steps(
     often the opposite carriageway or behind on a one-way street. Falls back
     to the nearest-node candidates off-road or when that finds no route.
     `start_layer` constrains the initial road segment, not connected bridges
-    encountered later on the surface route."""
+    encountered later on the surface route. `preferred` (a line bus: its
+    route relation's edges): an edge off them costs OFF_BUS_ROUTE_COST_FACTOR
+    times its length, so the route keeps to them where they connect."""
     # None = every node allowed (layer is None): no whole-graph set per call.
     allowed = None if layer is None else {
         index for index, node in enumerate(graph.nodes) if node[2] == layer
@@ -365,6 +374,8 @@ def graph_route_steps(
             for neighbor, edge_distance in graph.edges.get(current, ()):
                 if allowed is not None and neighbor not in allowed:
                     continue
+                if preferred is not None and (current, neighbor) not in preferred:
+                    edge_distance *= OFF_BUS_ROUTE_COST_FACTOR
                 candidate = distance + edge_distance
                 if candidate < distances.get(neighbor, math.inf):
                     distances[neighbor] = candidate
@@ -505,6 +516,7 @@ class TrafficWorld:
         self._route_edges = build.edges
         self._route_node_grid = build.node_grid
         self._route_component_parent = build.component_parent
+        self._bus_route_edges = build.bus_route_edges
         if build.parking_grid is not None:
             self._parking_grid = build.parking_grid
         self.route_graph_revision = getattr(self, "route_graph_revision", 0) + 1
@@ -585,10 +597,13 @@ class TrafficWorld:
         layer: Optional[int] = None,
         on_road: bool = False,
         start_layer: Optional[int] = None,
+        bus_route: Optional[str] = None,
     ) -> RouteSteps:
         """plan_route as a resumable job on the surface graph - see
-        graph_route_steps (on_road: the player's navigation)."""
-        return graph_route_steps(_SurfaceGraphView(self), start, target, layer, on_road, start_layer)
+        graph_route_steps (on_road: the player's navigation; bus_route: a
+        line bus keeps to its route relation's streets)."""
+        preferred = getattr(self, "_bus_route_edges", {}).get(bus_route) if bus_route is not None else None
+        return graph_route_steps(_SurfaceGraphView(self), start, target, layer, on_road, start_layer, preferred=preferred)
 
     def _nearby_traffic_lights(self, x: float, y: float, radius_m: float = 60.0) -> List[TrafficLight]:
         radius_sq = radius_m * radius_m

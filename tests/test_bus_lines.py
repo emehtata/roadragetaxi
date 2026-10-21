@@ -194,3 +194,32 @@ def test_a_line_bus_starts_only_beside_its_own_stops():
     found = bus_lines.lines([a, b])
     assert bus_lines.start_job(found, 200, 300) is None  # a side street off the route: an ordinary car instead
     assert bus_lines.start_job(found, 30, 20).target_stop is a
+
+
+def test_a_route_relation_marks_the_streets_it_runs_on():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.0},
+        {"type": "node", "id": 3, "lat": 60.002, "lon": 25.0},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "residential"}},
+        {"type": "way", "id": 11, "nodes": [2, 3], "tags": {"highway": "residential"}},
+        {"type": "relation", "id": 400, "tags": {"type": "route", "route": "bus", "ref": "4"}, "members": [
+            {"type": "way", "ref": 10, "role": ""},
+            {"type": "way", "ref": 11, "role": "platform"},  # a platform way, not the street driven
+        ]},
+    ]
+    ways = {way.osm_id: way for way in build_ways(elements).ways}
+    assert ways[10].bus_routes == ["400"] and ways[11].bus_routes == []
+
+
+def test_a_line_bus_keeps_to_its_route_streets_not_the_shortcut():
+    from theroadragetrip.osm import Way
+    from theroadragetrip.traffic_world import TrafficWorld, run_route_steps
+    shortcut = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=3.0)  # Tervakukkatie
+    route = Way(points_m=[(0.0, 0.0), (0.0, 50.0), (100.0, 50.0), (100.0, 0.0)], highway="residential",
+                half_width_m=3.0, bus_routes=["4"])
+    world = TrafficWorld([shortcut, route])
+    car = run_route_steps(world.plan_route_steps((0.0, 0.0), (100.0, 0.0)), float("inf"))
+    bus = run_route_steps(world.plan_route_steps((0.0, 0.0), (100.0, 0.0), bus_route="4"), float("inf"))
+    assert max(y for _, y in car) < 1.0  # an ordinary car takes the shortcut
+    assert max(y for _, y in bus) > 49.0  # line 4 drives its route

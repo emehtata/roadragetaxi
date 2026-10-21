@@ -41,6 +41,7 @@ class Way:
     map_level: Optional[int] = None
     level: Optional[str] = None
     indoor: Optional[str] = None  # raw indoor=* value, None when untagged
+    bus_routes: List[str] = field(default_factory=list)  # route=bus relations running on it (bus_lines.Line keys)
     segment_lengths: List[float] = field(default_factory=list, init=False, repr=False)
     segment_headings: List[float] = field(default_factory=list, init=False, repr=False)
     total_length_m: float = field(default=0.0, init=False, repr=False)

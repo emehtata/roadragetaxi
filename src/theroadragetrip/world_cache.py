@@ -105,7 +105,8 @@ MAGIC = b"RWC\0"
 # 38: BusStop.bench; no stop_position or rail-platform stops, one stop per 25 m.
 # 39: BusStop.routes (the bus routes calling at a stop).
 # 40: amenity=nightclub point scenery with its opening_hours.
-FORMAT_VERSION = 40
+# 41: Way.bus_routes (the route=bus relations running on a road).
+FORMAT_VERSION = 41
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
