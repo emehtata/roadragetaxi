@@ -1264,9 +1264,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _loading:
 		_stop_game()
-	elif _game != null:
-		if _game.phone.is_open:
-			return
+	elif _game != null:  # the phone uses P/N, Enter, X and 1-3, never Esc
 		if get_tree().paused:
 			_resume()
 		else:
