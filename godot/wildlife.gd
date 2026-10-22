@@ -200,9 +200,69 @@ func _draw_animal(animal: Dictionary) -> void:
 		"hare": Color8(142, 126, 101), "fox": Color8(194, 91, 38), "roe_deer": Color8(151, 104, 62), "moose": Color8(91, 67, 48)}.get(species, Color.GRAY)
 	var members := 5 if species == "small_bird" else (3 if species == "pigeon" else 1)
 	drawn_members += members
+	var flying: bool = animal["state"] == "FLY"
+	var seconds := Time.get_ticks_msec() / 1000.0
 	for member in members:
 		var offset := Vector2.ZERO if member == 0 else Vector2.from_angle(float(animal["id"] * 2 + member * 2)) * (1.5 + member * 0.8)
-		_draw_body(at + offset, direction, scale_m, color, animal["state"] == "FLY")
+		if flying:  # each member flaps on its own beat
+			_draw_flying(at + offset, direction, scale_m, color, species, seconds + float(animal["id"] * 7 + member * 3) * 0.13)
+		else:
+			_draw_body(at + offset, direction, scale_m, color, false)
+
+
+## A bird in flight from above: a ground shadow below it, then two swept
+## wings (arm and hand) that beat - wider when spread, narrower and swept
+## back on the upstroke - a slim body, head and fan tail. Quads and
+## triangles only, drawn as is: no polygon triangulation to fail.
+const FLIGHT := {  # span (x scale), flaps per second, wing chord (x scale), shadow offset (m)
+	"small_bird": [1.7, 4.5, 0.42, Vector2(2.2, 3.0)],
+	"pigeon": [2.0, 3.2, 0.40, Vector2(2.8, 3.6)],
+	"crow": [2.3, 2.2, 0.55, Vector2(3.2, 4.2)],
+}
+
+
+func _draw_flying(at: Vector2, direction: Vector2, scale_m: float, color: Color, species: String, seconds: float) -> void:
+	var shape: Array = FLIGHT.get(species, FLIGHT["pigeon"])
+	var beat := sin(seconds * TAU * float(shape[1]))  # +1 wings level and spread, -1 raised (seen shorter from above)
+	var spread := 0.62 + 0.38 * (beat * 0.5 + 0.5)
+	var sweep := (1.0 - spread) * 0.9  # tips swept back as the wing rises
+	var span: float = scale_m * float(shape[0]) * spread
+	var chord: float = scale_m * float(shape[2])
+	var side := direction.orthogonal()
+	var shadow_at: Vector2 = at + shape[3]
+	var shade := Color(0.0, 0.0, 0.0, 0.16)
+	_draw_wings(shadow_at, direction, side, span, chord, sweep * scale_m, shade, shade)
+	draw_circle(shadow_at, scale_m * 0.32, shade)
+	var feather := color.lightened(0.18)
+	_draw_wings(at, direction, side, span, chord, sweep * scale_m, color, feather)
+	var body := PackedVector2Array([at + direction * scale_m * 0.6, at + side * scale_m * 0.24,
+		at - direction * scale_m * 0.6, at - side * scale_m * 0.24])
+	draw_primitive(body, PackedColorArray([color.darkened(0.08)]), PackedVector2Array())
+	var tail := at - direction * scale_m * 0.5
+	draw_primitive(PackedVector2Array([tail, tail - direction * scale_m * 0.5 + side * scale_m * 0.26,
+		tail - direction * scale_m * 0.5 - side * scale_m * 0.26]), PackedColorArray([color]), PackedVector2Array())
+	draw_circle(at + direction * scale_m * 0.62, scale_m * 0.19, color.lightened(0.05))
+	if species == "crow" or species == "pigeon":  # the bill
+		var bill := at + direction * scale_m * 0.78
+		draw_line(bill, bill + direction * scale_m * 0.18, Color8(30, 30, 28) if species == "crow" else Color8(200, 170, 120), scale_m * 0.08)
+
+
+func _draw_wings(at: Vector2, direction: Vector2, side: Vector2, span: float, chord: float, sweep: float,
+		arm_color: Color, hand_color: Color) -> void:
+	for sign: float in [-1.0, 1.0]:
+		var out: Vector2 = side * sign
+		# From above a bird's wing is an M: the arm angles forward from the
+		# body, the hand sweeps back to its tip; broad at the root.
+		var root_front: Vector2 = at + direction * chord * 0.5
+		var root_back: Vector2 = at - direction * chord * 0.75
+		var elbow: Vector2 = at + out * span * 0.42 + direction * chord * (0.35 - sweep * 0.3)
+		var elbow_front: Vector2 = elbow + direction * chord * 0.3
+		var elbow_back: Vector2 = elbow - direction * chord * 0.75
+		var tip: Vector2 = at + out * span - direction * (chord * 0.55 + sweep)
+		draw_primitive(PackedVector2Array([root_front, elbow_front, elbow_back, root_back]),
+			PackedColorArray([arm_color]), PackedVector2Array())
+		draw_primitive(PackedVector2Array([elbow_front, tip, elbow_back]),
+			PackedColorArray([hand_color]), PackedVector2Array())
 
 
 func _draw_body(at: Vector2, direction: Vector2, scale_m: float, color: Color, flying: bool) -> void:
