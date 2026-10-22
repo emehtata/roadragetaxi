@@ -5145,8 +5145,8 @@
     "pedestrian.bottle_drink": {
       "category": "pedestrian",
       "event": "bottle_drink",
-      "description": "A close, quiet sip from a glass bottle.",
-      "trigger": "A visible bottle sip begins while hanging out; do not repeat every simulation frame.",
+      "description": "A glass bottle is opened, followed by audible drinking and a burp.",
+      "trigger": "A pedestrian opens a fresh bottle, drinks from it, then burps; play once for the sequence, never every frame.",
       "source": [
         "src/theroadragetrip/pedestrian.py"
       ],
@@ -5154,8 +5154,8 @@
       "priority": "strong_candidate",
       "loop": false,
       "duration_s": [
-        0.5,
-        1.8
+        2.0,
+        7.0
       ],
       "variations": 1,
       "selection": "random",
@@ -5164,29 +5164,85 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "User rejected the original quiet sip on 2026-10-22. Replacement is three AI-generated stages with 0.2 s gaps. Runtime playback hook is not implemented by this asset-only change.",
       "generation": {
-        "prompt": "A person taking one small sip from a glass bottle, a brief quiet liquid glug at the bottle neck and one subtle swallow, close dry recording, no speech, no exaggerated mouth sounds, isolated sound effect",
-        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+        "prompt": "Open a capped glass beer bottle with a cap pop and fizz, drink several audible gulps, then finish with a short burp. Three separately generated stages assembled in this order.",
+        "negative_prompt": "music, speech, words, talking, singing, background ambience, low quality, distortion, clipping"
       },
       "files": [
         {
           "id": "pedestrian.bottle_drink.01",
           "file": "pedestrian/pedestrian_bottle_drink_01.ogg",
           "variation": 1,
-          "variant": "a brief liquid glug and small swallow",
+          "variant": "bottle cap pop and fizz, drinking gulps, then a burp",
           "status": "generated",
           "review": "pending",
-          "prompt": "a brief liquid glug and small swallow. A person taking one small sip from a glass bottle, a brief quiet liquid glug at the bottle neck and one subtle swallow, close dry recording, no speech, no exaggerated mouth sounds, isolated sound effect",
-          "seed": 3088864290,
+          "prompt": "Open a capped glass beer bottle with a cap pop and fizz, drink several audible gulps, then finish with a short burp. Three separately generated stages assembled in this order.",
           "steps": 100,
           "sample_rate": 44100,
           "channels": 1,
           "generated": "2026-10-22",
-          "duration_s": 0.435,
-          "raw_clipped_samples": 0,
-          "raw_silent_fraction": 0.7,
-          "rms_dbfs": -24.1
+          "duration_s": 3.934,
+          "raw_clipped_samples": 73,
+          "raw_silent_fraction": 0.933,
+          "rms_dbfs": -23.1,
+          "components": [
+            {
+              "stage": "open",
+              "file": "20261022_bottle_open_f4b07c93.wav",
+              "model": "stabilityai/stable-audio-open-1.0",
+              "prompt": "A beer bottle crown cap being pried off with a bottle opener, one sharp metallic cap pop followed by a brief clear fizz of escaping carbonation from a glass bottle. Close dry isolated sound effect.",
+              "negative_prompt": "music, speech, words, talking, singing, background ambience, low quality, distortion, clipping",
+              "seed": 102220261,
+              "steps": 100,
+              "requested_duration_s": 2.0,
+              "sample_rate": 44100,
+              "channels": 1,
+              "gain": 0.85,
+              "review": "listening pending",
+              "duration_s": 0.475,
+              "raw_clipped_samples": 73,
+              "raw_silent_fraction": 0.96,
+              "rms_dbfs": -27.5
+            },
+            {
+              "stage": "drink",
+              "file": "20261022_bottle_drink_ab491764.wav",
+              "model": "stabilityai/stable-audio-open-1.0",
+              "prompt": "A person drinking several gulps from a glass bottle, clearly audible liquid glug glug glug, gulping and swallowing, then stopping. Close dry isolated foley recording. No words.",
+              "negative_prompt": "music, speech, words, talking, singing, background ambience, low quality, distortion, clipping",
+              "seed": 102220262,
+              "steps": 100,
+              "requested_duration_s": 3.0,
+              "sample_rate": 44100,
+              "channels": 1,
+              "gain": 1.0,
+              "review": "listening pending",
+              "duration_s": 2.812,
+              "raw_clipped_samples": 0,
+              "raw_silent_fraction": 0.346,
+              "rms_dbfs": -22.5
+            },
+            {
+              "stage": "burp",
+              "file": "20261022_bottle_burp_7755d593.wav",
+              "model": "stabilityai/stable-audio-open-1.0",
+              "prompt": "One unmistakable human burp after drinking beer, a short low throaty belch with a natural descending finish. Close dry isolated bodily sound effect. No words or talking.",
+              "negative_prompt": "music, speech, words, talking, singing, background ambience, low quality, distortion, clipping",
+              "seed": 102220263,
+              "steps": 100,
+              "requested_duration_s": 1.5,
+              "sample_rate": 44100,
+              "channels": 1,
+              "gain": 0.8,
+              "review": "listening pending",
+              "duration_s": 0.248,
+              "raw_clipped_samples": 0,
+              "raw_silent_fraction": 0.869,
+              "rms_dbfs": -17.5
+            }
+          ],
+          "post_processing": "Each AI stage: mono, trim silence, fades, peak normalization, duration cap. Assemble opening/drinking/burp with gains 0.85/1.0/0.8 and 0.2 s silence between stages; normalize final peak to -1 dBFS."
         }
       ]
     },
