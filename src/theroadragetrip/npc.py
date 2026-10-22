@@ -156,6 +156,11 @@ NPC_STUCK_MIN_PROGRESS_M = 2.0  # real displacement expected per check interval 
 NPC_SNOW_TRACTOR_FACTOR = 8.0  # while it snows, tractors (ploughs) are this much more likely to spawn
 NPC_SNOW_HOLIDAY_FACTOR = 0.15  # ... and camper vans and caravans this much less (summer holiday traffic)
 HOLIDAY_VEHICLES = ("camper_van", "car_caravan")
+# Near a camping area (OSM tourism=camp_site/caravan_site/camp_pitch) holiday
+# vehicles are this much more likely: about a quarter of new traffic there.
+CAMPING_KINDS = ("camp_site", "caravan_site", "camp_pitch")
+CAMPING_RADIUS_M = 1500.0
+CAMPING_HOLIDAY_FACTOR = 15.0
 NPC_CRASH_CLEAR_S = 60.0  # a wreck is towed away after this long, even in view: it blocks the road
 NPC_STUCK_TIMEOUT_S = 8.0  # accumulated stuck time before recovery triggers
 
@@ -3852,6 +3857,8 @@ class NPCVehicleManager:
         # distribution (e.g. motorcycle, off unless [experimental]
         # enable_two_wheelers is set - see _default_vehicle_distribution).
         self.snowy = False  # set by the simulation from the weather: more tractors out ploughing
+        self.camping_sites: List[Tuple[float, float]] = []  # camping area centres (update(): from the sceneries)
+        self._camping_from = (None, 0)
         self.vehicle_distribution = (
             vehicle_distribution if vehicle_distribution is not None else self._default_vehicle_distribution()
         )
@@ -3891,7 +3898,22 @@ class NPCVehicleManager:
     def _wants_line_bus(self) -> bool:
         return bool(self.bus_lines()) and sum(map(is_line_bus, self.vehicles)) < self.line_buses
 
-    def _pick_vehicle_type(self) -> str:
+    def _near_camping(self, at: Optional[Tuple[float, float]]) -> bool:
+        return at is not None and any(
+            (x - at[0]) ** 2 + (y - at[1]) ** 2 <= CAMPING_RADIUS_M ** 2 for x, y in self.camping_sites)
+
+    def _note_camping_sites(self, sceneries) -> None:
+        """The camping areas' centres, again only when the sceneries change
+        (the streamed map appends to the same list)."""
+        key = (id(sceneries), len(sceneries or ()))
+        if key == self._camping_from:
+            return
+        self._camping_from = key
+        self.camping_sites = [
+            ((s.bbox[0] + s.bbox[2]) / 2, (s.bbox[1] + s.bbox[3]) / 2) for s in (sceneries or ())
+            if getattr(s, "kind", None) in CAMPING_KINDS and getattr(s, "bbox", None)]
+
+    def _pick_vehicle_type(self, at: Optional[Tuple[float, float]] = None) -> str:
         """Weighted choice among road-vehicle plugins with a positive
         weight (vehicle-population v2 section 14) - falls back to "car" if every
         weight is zero (e.g. an all-zero override) so population fill
@@ -3900,9 +3922,10 @@ class NPCVehicleManager:
                 and not any(v.vehicle_type == "tractor" and v.state != NPCState.CRASHED for v in self.vehicles)):
             return "tractor"
         ids = [vehicle_id for vehicle_id, weight in self.vehicle_distribution.items() if weight > 0.0]
+        camping = CAMPING_HOLIDAY_FACTOR if self._near_camping(at) else 1.0  # spawning by a camping area
         weights = [self.vehicle_distribution[vehicle_id] * (
                        NPC_SNOW_TRACTOR_FACTOR if self.snowy and vehicle_id == "tractor"
-                       else NPC_SNOW_HOLIDAY_FACTOR if self.snowy and vehicle_id in HOLIDAY_VEHICLES else 1.0)
+                       else (NPC_SNOW_HOLIDAY_FACTOR if self.snowy else 1.0) * camping if vehicle_id in HOLIDAY_VEHICLES else 1.0)
                    for vehicle_id in ids]
         if not ids:
             return "car"
@@ -4047,7 +4070,7 @@ class NPCVehicleManager:
         claimed = [pos for _, pos in self._claimed_vehicle_points()]
         if not _point_is_clear_of_vehicles(point, claimed):
             return None
-        kind = vehicle_type or self._pick_vehicle_type()
+        kind = vehicle_type or self._pick_vehicle_type(point)
         if player_position is not None:
             definition = vehicle_definition(kind)
             # Bounding circles protect the taxi at any heading, including long NPC vehicles and door clearance.
@@ -4161,6 +4184,7 @@ class NPCVehicleManager:
         top-up during play still goes through the small per-tick budget in
         update() (section 23: never spawn a large number in one frame of
         actual gameplay)."""
+        self._note_camping_sites(sceneries)
         self.set_local_density(player_x, player_y, building_grid)
         attempts = 0
         max_attempts = self.target_count * 6
@@ -5609,6 +5633,7 @@ class NPCVehicleManager:
         active_bounds=None,
     ) -> None:
         self._active_bounds = active_bounds
+        self._note_camping_sites(sceneries)
         self._retire_finished_line_buses(resident_manager, viewport_bounds)
         # collision-avoidance: nearby_vehicles_at (avoidance/collision) reads
         # self.spatial_grid, which used to only get rebuilt at population-

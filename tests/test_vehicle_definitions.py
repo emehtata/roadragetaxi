@@ -47,3 +47,17 @@ def test_holiday_vehicles_are_a_summer_thing():
     winter = Counter(manager._pick_vehicle_type() for _ in range(20000))
     holiday = lambda counts: counts["camper_van"] + counts["car_caravan"]
     assert holiday(summer) > 150 and holiday(winter) < holiday(summer) * 0.3
+
+
+def test_holiday_vehicles_gather_by_camping_areas():
+    import random
+    from types import SimpleNamespace
+    from theroadragetrip.npc import NPCVehicleManager
+
+    manager = NPCVehicleManager(target_count=1)
+    manager._note_camping_sites([SimpleNamespace(kind="camp_site", bbox=(0.0, 0.0, 200.0, 100.0)),
+                                 SimpleNamespace(kind="park", bbox=(5000.0, 0.0, 5100.0, 100.0))])
+    random.seed(9)
+    share = lambda at: sum(manager._pick_vehicle_type(at) in ("camper_van", "car_caravan") for _ in range(4000)) / 4000
+    by_camping, in_town = share((300.0, 50.0)), share((5050.0, 50.0))
+    assert by_camping > 0.15 and in_town < 0.05  # about a quarter beside the campsite, 2 % elsewhere
