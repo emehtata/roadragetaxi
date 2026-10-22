@@ -796,8 +796,9 @@ static func _water_material() -> ShaderMaterial:
 func _draw_water(node: Node2D) -> void:
 	# water freezes with the winter weight.
 	var ice := clampf(_season[0], 0.0, 1.0)
-	var water_color := Color(0.25, 0.45, 0.65).lerp(Color8(232, 240, 244), ice)
-	var shallow_color := Color(0.34, 0.58, 0.74).lerp(Color8(232, 240, 244), ice)
+	# Finnish water is humic: tea-brown in the shallows, dark peaty brown-grey deeper.
+	var water_color := Color(0.15, 0.15, 0.12).lerp(Color8(232, 240, 244), ice)
+	var shallow_color := Color(0.33, 0.28, 0.19).lerp(Color8(232, 240, 244), ice)
 	for water in _data.get("waters", []):
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
