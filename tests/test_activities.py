@@ -683,3 +683,11 @@ def test_explain_candidates_reports_no_location_and_can_start_false():
     assert explanations["ball_game"] == "can_start() is False"
 
 
+
+
+def test_group_members_get_their_own_spots():
+    from theroadragetrip.activities.base import ActivityLocation
+    from theroadragetrip.activities.grouping import ring_spot
+    centre = ActivityLocation(x=10.0, y=5.0, reservation_key=None)
+    spots = {(round(ring_spot(centre, i).x, 2), round(ring_spot(centre, i).y, 2)) for i in range(5)}
+    assert len(spots) == 5  # nobody on top of anybody
