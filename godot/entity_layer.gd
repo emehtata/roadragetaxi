@@ -1118,14 +1118,36 @@ func _beach_person(c: Vector2, h: Vector2, side: Vector2, radius: float, clothin
 			_canvas.draw_line(c + h * radius * 0.4, c + side * radius * 0.85 * sign_side, skin, radius * 0.2)
 		_rotated_ellipse(c - h * radius * 0.35, h, radius * 0.35, radius * 0.4, clothing)
 	else:
-		_canvas.draw_arc(c - h * radius * 0.65, radius, 0, PI, 12, _person_lit(Color(0.85, 0.95, 1.0, 0.6)), _px(1))
-		_rotated_ellipse(c, h, radius * 0.65, radius * 0.4, RS.PED_HEAD)
-		for sign_side: float in [-1.0, 1.0]:
-			var stroke := sin(time * 5.0 + sign_side * PI * 0.5)
-			_canvas.draw_line(c, c + side * radius * sign_side * 1.2 + h * radius * stroke * 0.8, skin, radius * 0.22)
+		_swimmer(c, h, side, radius, clothing, time + _clock)
+		return
 	var head := c + h * radius * 0.95
 	_canvas.draw_circle(head, radius * 0.43, _person_lit(RS.PED_HAIR))
 	_canvas.draw_circle(head, radius * 0.32, skin)
+
+
+func _swimmer(c: Vector2, h: Vector2, side: Vector2, radius: float, clothing: Color, time: float) -> void:
+	var skin := _person_lit(RS.PED_HEAD)
+	var submerged := Color(skin, 0.4)
+	for sign_side: float in [-1.0, 1.0]:
+		var wake := PackedVector2Array()
+		for i in 7:
+			var t := float(i) / 6.0
+			wake.append(c - h * radius * (0.6 + t * 1.4) + side * radius * sign_side * (0.5 + t * 0.55))
+		_canvas.draw_polyline(wake, _person_lit(Color(0.85, 0.95, 1.0, 0.35)), _px(0.8))
+		var kick := sin(time * 7.0 + sign_side * PI * 0.5)
+		_canvas.draw_line(c - h * radius * .65 + side * radius * .18 * sign_side,
+			c - h * radius * (1.8 + kick * .15) + side * radius * .25 * sign_side, submerged, radius * .22)
+	_rotated_ellipse(c - h * radius * .1, h, radius * .8, radius * .38, RS.PED_HEAD)
+	_rotated_ellipse(c - h * radius * .65, h, radius * .35, radius * .4, clothing)
+	for sign_side: float in [-1.0, 1.0]:
+		var stroke := sin(time * 4.0 + sign_side * PI * 0.5)
+		var shoulder := c + h * radius * .35 + side * radius * .3 * sign_side
+		var elbow := shoulder + side * radius * .65 * sign_side + h * radius * stroke * .35
+		var hand := elbow + h * radius * stroke * .9 - side * radius * .25 * sign_side
+		_canvas.draw_polyline(PackedVector2Array([shoulder, elbow, hand]), skin, radius * .25)
+	var head := c + h * radius * .9
+	_canvas.draw_circle(head, radius * .4, _person_lit(RS.PED_HAIR))
+	_canvas.draw_circle(head + h * radius * .06, radius * .3, skin)
 
 
 ## Golf clubs follow the server's club choice and swing progress.
