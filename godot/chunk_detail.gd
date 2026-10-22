@@ -554,6 +554,31 @@ static func road_markings(chunk, road: Dictionary, points: PackedVector2Array, l
 		carry -= length
 
 
+static func draw_volleyball_courts(chunk, node: Node2D) -> void:
+	if chunk._season[0] >= PITCH_SNOW_WEIGHT:
+		return
+	for court in chunk._data.get("volleyball_courts", []):
+		var frame := RinkFrame.new(chunk, court, float(court[3]), float(court[4]))
+		frame.fill_quad(node, -.48, -.48, .48, .48, Color8(220, 203, 156))
+		frame.polyline(node, [[-.45,-.43],[.45,-.43],[.45,.43],[-.45,.43],[-.45,-.43]], Color8(55, 105, 195), .08)
+
+
+static func draw_volleyball_nets(chunk, node: Node2D) -> void:
+	for court in chunk._data.get("volleyball_courts", []):
+		var frame := RinkFrame.new(chunk, court, float(court[3]), float(court[4]))
+		var a := frame.at(0, -.47)
+		var b := frame.at(0, .47)
+		var lift := Vector2(.3, -2.43 * .7)
+		for base: Vector2 in [a, b]:
+			node.draw_line(base, base + lift, Color8(65, 85, 115), .14)
+		for height: float in [0.0, .25, .5]:
+			node.draw_line(a + lift + Vector2(0, height), b + lift + Vector2(0, height), Color8(55, 60, 65), .04)
+		for i in 17:
+			var top := a.lerp(b, float(i) / 16) + lift
+			node.draw_line(top, top + Vector2(0, .5), Color8(55, 60, 65), .035)
+		node.draw_line(a + lift, b + lift, PITCH_LINE, .09)
+
+
 static func draw_tennis_courts(chunk, node: Node2D) -> void:
 	if chunk._season[0] >= PITCH_SNOW_WEIGHT:
 		return

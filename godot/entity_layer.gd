@@ -46,7 +46,7 @@ var _people: Node2D
 var _overlay: Node2D
 var _people_rows: Array = []  # [position, heading, ped, animation time]
 var _tennis_balls: Array = []
-var _beach_balls: Array = []  # interpolated position and height
+var _beach_balls: Array = []  # interpolated position, height and drawing scale
 var _golf_rows: Array = []  # interpolated ball ground position, height, pin, holed
 var _dog_rows: Array = []  # [owner position, dog position, heading, dog]
 var _puck_frame: Array = []  # [a, b, t] for _pucks
@@ -1080,6 +1080,12 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 				for pad_side: float in [-1.0, 1.0]:
 					_ellipse(c + side * radius * 0.55 * pad_side + down * 0.2, radius * 0.22, radius * 0.5, GOALIE_PADS)
 			_hockey_stick(c, h, side, radius, float(ped.get("stick_swing", 0.0)), goalie)
+		if ped.get("activity", "") == "beach_volleyball":
+			var swing := float(ped.get("stick_swing", 0.0))
+			for arm_side: float in [-1.0, 1.0]:
+				var shoulder := c + side * radius * .55 * arm_side
+				var hand := c + h * radius * (1.0 + swing) + side * radius * .25 * arm_side - Vector2(0, swing * radius)
+				_canvas.draw_line(shoulder, hand, _person_lit(RS.PED_HEAD), radius * .28)
 		if ped.get("activity", "") == "tennis":
 			var swing := float(ped.get("stick_swing", 0.0))
 			var forward := h.rotated(sin(swing * PI) * 1.2)
@@ -1298,7 +1304,7 @@ func _draw_people() -> void:
 	for ball in _beach_balls:
 		var ground := Vector2(ball.x, ball.y)
 		_lit_tint = vehicle_light(light_level * float(light_at.call(ground)), ambient)
-		var at := ground - Vector2(0, ball.z * 0.35)
+		var at := ground - Vector2(0, ball.z * ball.w)
 		_canvas.draw_circle(ground, maxf(_px(2), 0.12), RS.PED_SHADOW)
 		_canvas.draw_circle(at, maxf(_px(3), 0.17), _person_lit(Color8(250, 215, 60)))
 		_canvas.draw_arc(at, maxf(_px(2), 0.12), 0, PI, 8, _person_lit(Color8(230, 80, 55)), maxf(_px(1.2), 0.05))
@@ -1476,7 +1482,8 @@ func _draw() -> void:
 			var later: Array = next.get("beach_ball", ball)
 			var at := MapMath.point(origin, lerpf(ball[0], later[0], t), lerpf(ball[1], later[1], t))
 			if view_rect.has_point(at):
-				_beach_balls.append(Vector3(at.x, at.y, lerpf(ball[2], later[2], t)))
+				var height_scale := 0.7 if ped.get("activity", "") == "beach_volleyball" else 0.35
+				_beach_balls.append(Vector4(at.x, at.y, lerpf(ball[2], later[2], t), height_scale))
 		var golf: Dictionary = ped.get("golf", {})
 		if not golf.is_empty():
 			var later_golf: Dictionary = next.get("golf", golf)

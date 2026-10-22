@@ -2021,7 +2021,7 @@ class PedestrianManager:
         kept = []
         for ped in self.pedestrians:
             instance = ped.activity
-            if instance is not None and instance.plugin_id in BEACH_ACTIVITIES + ("theme_park", "tennis") and not in_bounds((vminx, vminy, vmaxx, vmaxy), ped.x, ped.y):
+            if instance is not None and instance.plugin_id in BEACH_ACTIVITIES + ("theme_park", "tennis", "beach_volleyball") and not in_bounds((vminx, vminy, vmaxx, vmaxy), ped.x, ped.y):
                 plugin = self.activity_manager.registry.get(instance.plugin_id)
                 if plugin is not None:
                     plugin.finish(self._activity_context(ped), instance)
@@ -2049,6 +2049,12 @@ class PedestrianManager:
         reach = math.hypot(vmaxx - vminx, vmaxy - vminy) / 2.0
         spawns = 0
         for field in self.nearby_sceneries(centre_x, centre_y, reach):
+            if getattr(field, "volleyball_frame", None) and self.beach_open:
+                plugin = self.activity_manager.registry.get("beach_volleyball")
+                spawns += plugin.populate(self, field, (vminx, vminy, vmaxx, vmaxy), SPORTS_SPAWNS_PER_CHECK - spawns)
+                if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                    return
+                continue
             if getattr(field, "tennis_frame", None) and self.tennis_open:
                 plugin = self.activity_manager.registry.get("tennis")
                 spawns += plugin.populate(self, field, (vminx, vminy, vmaxx, vmaxy), SPORTS_SPAWNS_PER_CHECK - spawns)

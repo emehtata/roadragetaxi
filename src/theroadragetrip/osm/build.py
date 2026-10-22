@@ -750,6 +750,8 @@ def build_ways(
     surface_miniature_courses = set()
     surface_beaches = set()
     surface_tennis = set()
+    surface_volleyball = set()
+    from ..activities.plugins.beach_volleyball import is_beach_court
     scenery_raw: List[Tuple[dict, List[int]]] = []
     named_ways_raw: List[Tuple[dict, List[int]]] = []
     parking_space_nodes_raw: List[Tuple[dict, int]] = []
@@ -1055,6 +1057,8 @@ def build_ways(
             surface_miniature_courses.add(id(sceneries[-1]))
         if kind == "pitch" and "tennis" in tags.get("sport", "").split(";") and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
             surface_tennis.add(id(sceneries[-1]))
+        if kind == "pitch" and is_beach_court(tags):
+            surface_volleyball.add(id(sceneries[-1]))
         if kind == "beach" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
             surface_beaches.add(id(sceneries[-1]))
 
@@ -1619,6 +1623,8 @@ def build_ways(
                     surface_miniature_courses.add(id(scenery))
                 if kind == "pitch" and "tennis" in tags.get("sport", "").split(";") and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
                     surface_tennis.add(id(scenery))
+                if kind == "pitch" and is_beach_court(tags):
+                    surface_volleyball.add(id(scenery))
                 if kind == "beach" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
                     surface_beaches.add(id(scenery))
                 plant_trees([scenery], ways, real_trees=real_trees_m, real_tree_tags=real_tree_tags)
@@ -2045,10 +2051,12 @@ def build_ways(
     from .campsites import populate_camp_pitches
     scenery_objects.extend(populate_camp_pitches(elements, nodes_m, buildings, waters, ways, railings))
 
-    from ..activities.plugins.tennis import prepare_court
+    from ..activities.plugins.tennis import court_frame, prepare_court
     for court in sceneries:
         if id(court) in surface_tennis:
             prepare_court(court)
+        if id(court) in surface_volleyball:
+            court.volleyball_frame = court_frame(court.points_m)
 
     from .theme_parks import prepare_theme_parks
     prepare_theme_parks(sceneries, elements, nodes_m, buildings, waters, ways)

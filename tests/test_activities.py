@@ -75,7 +75,7 @@ def test_discover_registers_all_built_in_plugins():
         "bus_stop_waiting", "photography", "exercise_jogging",
         "two_person_conversation", "small_group_conversation", "ball_game", "playground",
         "ice_skating", "ice_hockey", "soccer",
-        "dog_walking", "golf", "miniature_golf", "sunbathing", "beach_games", "swimming", "theme_park", "tennis",
+        "dog_walking", "golf", "miniature_golf", "sunbathing", "beach_games", "swimming", "theme_park", "tennis", "beach_volleyball",
     }
 
 

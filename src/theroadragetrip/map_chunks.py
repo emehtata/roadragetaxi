@@ -29,7 +29,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
           "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards",
-          "nightclubs", "attractions", "tennis_courts")
+          "nightclubs", "attractions", "tennis_courts", "volleyball_courts")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
@@ -449,6 +449,8 @@ class ChunkIndex:
                     chunk = self._chunk(cell_of(centre.x, centre.y, self.size))
                     chunk["buildings"].append(_line(piece))
                     chunk["building_styles"].append(STADIUM_STAND_STYLE)
+            if kind == "pitch" and getattr(scenery, "volleyball_frame", None):
+                self._add("volleyball_courts", scenery.points_m[:1], scenery.volleyball_frame)
             if kind == "pitch" and getattr(scenery, "tennis_frame", None):
                 self._add("tennis_courts", scenery.points_m[:1], scenery.tennis_frame)
             if is_soccer_pitch(scenery):  # its FIFA lines, drawn while there is no snow

@@ -113,6 +113,9 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 			_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_site_details(self, node)))
 	if not message.get("attractions", []).is_empty():
 		_px_layers.append(_add_layer(6, _draw_attractions))
+	if not message.get("volleyball_courts", []).is_empty():
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_volleyball_courts(self, node)))
+		_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_volleyball_nets(self, node)))
 	if not message.get("tennis_courts", []).is_empty():
 		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_tennis_courts(self, node)))
 	# Field markings at z0, over every chunk's landuse (z-1): at -1 a neighbouring

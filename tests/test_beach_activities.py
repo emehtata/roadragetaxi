@@ -1,6 +1,7 @@
 """Sunny summer beaches populate land activities and near-shore swimming."""
 import random
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 from shapely.geometry import LineString, Point, Polygon
@@ -108,6 +109,8 @@ def test_beach_weather_gate_is_summer_sunny_and_strictly_above_15(tmp_path, monk
     monkeypatch.setattr(server, "_sun_altitude", lambda: altitude)
     server._update_sports()
     assert server.world.pedestrian_mgr.beach_open is expected
+    plugin = server.world.pedestrian_mgr.activity_manager.registry.get("beach_volleyball")
+    assert plugin.can_start(SimpleNamespace(pedestrian_manager=server.world.pedestrian_mgr)) is expected
 
 
 def test_osm_beach_water_metadata_survives_cache(tmp_path):

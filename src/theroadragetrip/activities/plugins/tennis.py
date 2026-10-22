@@ -10,17 +10,20 @@ from ...viewport import in_bounds
 
 
 def prepare_court(court):
+    court.tennis_frame = court_frame(court.points_m)
+
+
+def court_frame(points):
     from ...map_chunks import rink_frame
-    frame = rink_frame(court.points_m)
+    frame = rink_frame(points)
     if frame is None:
-        return
+        return []
     x, y, angle, length, width = frame
     # Keep the marked court and players inside irregular OSM outlines too.
     def at(u, v):
         return (x + math.cos(angle)*u - math.sin(angle)*v, y + math.sin(angle)*u + math.cos(angle)*v)
     rectangle = Polygon([at(u*length, v*width) for u, v in [(-.48,-.48),(.48,-.48),(.48,.48),(-.48,.48)]])
-    if Polygon(court.points_m).buffer(.05).covers(rectangle):
-        court.tennis_frame = frame
+    return frame if Polygon(points).buffer(.05).covers(rectangle) else []
 
 
 def point(frame, u, v):
