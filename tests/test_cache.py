@@ -270,7 +270,9 @@ def test_fetch_query_requests_the_newly_rendered_point_and_barrier_kinds(monkeyp
 
     query = captured["query"]
     assert "fountain" in query and "fuel" in query
-    assert 'node["leisure"~"picnic_table|firepit"]' in query
+    import re
+    leisure = re.search(r'node\["leisure"~"([^"]+)"\]', query)  # the list may grow (miniature_golf)
+    assert leisure and {"picnic_table", "firepit"} <= set(leisure.group(1).split("|"))
     assert 'node["barrier"~"gate|bollard"]' in query
     assert 'way["barrier"~"fence|railing|hedge|wall"]' in query
     # lights.md: explicit OSM lamp-pole positions are the primary source
