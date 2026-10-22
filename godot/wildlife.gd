@@ -207,7 +207,7 @@ func _draw_animal(animal: Dictionary) -> void:
 		if flying:  # each member flaps on its own beat
 			_draw_flying(at + offset, direction, scale_m, color, species, seconds + float(animal["id"] * 7 + member * 3) * 0.13)
 		else:
-			_draw_body(at + offset, direction, scale_m, color, false)
+			_draw_body(at + offset, direction, scale_m, color, species, int(animal["id"]))
 
 
 ## A bird in flight from above: a ground shadow below it, then two swept
@@ -265,12 +265,95 @@ func _draw_wings(at: Vector2, direction: Vector2, side: Vector2, span: float, ch
 			PackedColorArray([hand_color]), PackedVector2Array())
 
 
-func _draw_body(at: Vector2, direction: Vector2, scale_m: float, color: Color, flying: bool) -> void:
+## An animal on the ground, from above: its own silhouette per species
+## (scale_m: about half its body length) over a soft shadow. Circles,
+## quads and triangles only, drawn as is - no polygon triangulation to fail.
+func _draw_body(at: Vector2, direction: Vector2, scale_m: float, color: Color, species: String, id: int) -> void:
 	if direction.length_squared() < 1e-6:
 		direction = Vector2.RIGHT  # standing still: any facing, never a collapsed body
-	var side := direction.orthogonal()
-	var body := PackedVector2Array([at + direction * scale_m, at + side * scale_m * 0.55,
-		at - direction * scale_m, at - side * scale_m * 0.55])
-	draw_primitive(body, PackedColorArray([color]), PackedVector2Array())  # a quad, drawn as is: no triangulation to fail
-	draw_circle(at + direction * scale_m * 0.85, scale_m * 0.38, color.lightened(0.08))
-	if flying: draw_line(at, at + side * scale_m * 1.8, color.lightened(0.2), 0.12)
+	var d := direction.normalized() * scale_m  # along the body, one scale_m long
+	var s := direction.normalized().orthogonal() * scale_m
+	var shade := Color(0.0, 0.0, 0.0, 0.2)
+	var light := color.lightened(0.15)
+	var dark := color.darkened(0.25)
+	match species:
+		"fox":
+			_capsule(s * 0.06 - d * 0.05, at + d * 0.35, at - d * 0.45, scale_m * 0.24, shade)
+			_quad(at - d * 0.45 + s * 0.1, at - d * 0.45 - s * 0.1, at - d * 1.15 - s * 0.17, at - d * 1.15 + s * 0.17, color)
+			draw_circle(at - d * 1.2, scale_m * 0.15, Color8(240, 235, 225))  # the white tail tip
+			_capsule(Vector2.ZERO, at + d * 0.35, at - d * 0.45, scale_m * 0.22, color)
+			draw_circle(at + d * 0.6, scale_m * 0.2, light)
+			_tri(at + d * 0.98, at + d * 0.7 + s * 0.12, at + d * 0.7 - s * 0.12, light)  # snout
+			for side: float in [-1.0, 1.0]:  # pointed ears, black backs
+				_tri(at + d * 0.58 + s * 0.12 * side, at + d * 0.48 + s * 0.3 * side, at + d * 0.68 + s * 0.24 * side, dark)
+		"hare":
+			_capsule(s * 0.06 - d * 0.05, at + d * 0.2, at - d * 0.35, scale_m * 0.32, shade)
+			_capsule(Vector2.ZERO, at + d * 0.2, at - d * 0.35, scale_m * 0.3, color)
+			draw_circle(at - d * 0.62, scale_m * 0.13, Color8(235, 232, 225))  # the white scut
+			draw_circle(at + d * 0.48, scale_m * 0.2, light)
+			for side: float in [-1.0, 1.0]:  # long ears raised back in a V over the shoulders, dark tips
+				var tip := at - d * 0.12 + s * 0.46 * side  # past the body's outline: visible against the ground
+				_quad(at + d * 0.48 + s * 0.05 * side, at + d * 0.5 + s * 0.17 * side, tip + d * 0.07, tip - d * 0.05, Color8(122, 104, 84))
+				_tri(tip + d * 0.07, tip - d * 0.05, tip - d * 0.16 + s * 0.06 * side, Color8(30, 26, 22))
+		"squirrel":
+			_capsule(s * 0.06 - d * 0.05, at + d * 0.2, at - d * 0.3, scale_m * 0.24, shade)
+			for k in 5:  # the big bushy tail: up from the back and curling over to one side
+				var curl := float(k) / 4.0
+				draw_circle(at - d * (0.45 + 0.45 * sin(curl * 2.2)) + s * (0.55 * (1.0 - cos(curl * 2.4))),
+					scale_m * (0.2 + 0.08 * sin(curl * PI)), light if k % 2 else color.lightened(0.05))
+			_capsule(Vector2.ZERO, at + d * 0.2, at - d * 0.3, scale_m * 0.22, color)
+			draw_circle(at + d * 0.45, scale_m * 0.18, light)
+			for side: float in [-1.0, 1.0]:
+				_tri(at + d * 0.5 + s * 0.1 * side, at + d * 0.42 + s * 0.22 * side, at + d * 0.58 + s * 0.16 * side, dark)
+		"roe_deer":
+			_capsule(s * 0.08 - d * 0.05, at + d * 0.4, at - d * 0.45, scale_m * 0.28, shade)
+			_capsule(Vector2.ZERO, at + d * 0.4, at - d * 0.45, scale_m * 0.27, color)
+			draw_circle(at - d * 0.58, scale_m * 0.15, Color8(238, 228, 205))  # the pale rump patch
+			_capsule(Vector2.ZERO, at + d * 0.55, at + d * 0.78, scale_m * 0.13, color.lightened(0.05))  # neck and head
+			_tri(at + d * 1.0, at + d * 0.82 + s * 0.08, at + d * 0.82 - s * 0.08, dark)  # muzzle
+			for side: float in [-1.0, 1.0]:
+				_tri(at + d * 0.74 + s * 0.08 * side, at + d * 0.64 + s * 0.26 * side, at + d * 0.8 + s * 0.2 * side, color.darkened(0.1))
+		"moose":
+			_capsule(s * 0.1 - d * 0.05, at + d * 0.35, at - d * 0.5, scale_m * 0.34, shade)
+			_capsule(Vector2.ZERO, at + d * 0.35, at - d * 0.5, scale_m * 0.32, color)
+			draw_circle(at + d * 0.22, scale_m * 0.24, dark)  # the shoulder hump
+			_capsule(Vector2.ZERO, at + d * 0.62, at + d * 0.98, scale_m * 0.14, color.darkened(0.1))  # long head
+			draw_circle(at + d * 1.02, scale_m * 0.15, dark)  # the broad muzzle
+			if id % 2 == 0:  # a bull: pale palmate antlers
+				var antler := Color8(205, 190, 160)
+				for side: float in [-1.0, 1.0]:  # broad palms out to the sides and back from the head
+					var base := at + d * 0.62 + s * 0.1 * side
+					_quad(base, base + d * 0.12 + s * 0.42 * side, base - d * 0.12 + s * 0.62 * side, base - d * 0.2 + s * 0.2 * side, antler)
+					for tine in 3:  # the tines along the palm's front edge
+						var on := base + d * (0.1 - tine * 0.1) + s * (0.42 + tine * 0.09) * side
+						_tri(on, on + d * 0.04 + s * 0.12 * side, on - d * 0.05 + s * 0.06 * side, antler)
+		_:  # a bird on the ground: round body, folded wings, head and bill, tail
+			_capsule(s * 0.05 - d * 0.05, at + d * 0.15, at - d * 0.3, scale_m * 0.32, shade)
+			_tri(at - d * 0.4, at - d * 0.95 + s * 0.2, at - d * 0.95 - s * 0.2, dark)  # tail
+			_capsule(Vector2.ZERO, at + d * 0.15, at - d * 0.3, scale_m * 0.3, color)
+			for side: float in [-1.0, 1.0]:  # folded wings along the back
+				_quad(at + d * 0.15 + s * 0.12 * side, at + d * 0.2 + s * 0.27 * side,
+					at - d * 0.55 + s * 0.16 * side, at - d * 0.5 + s * 0.04 * side, light)
+			if species == "pigeon":
+				draw_circle(at + d * 0.35, scale_m * 0.2, Color8(96, 128, 116))  # the green-purple neck sheen
+			draw_circle(at + d * 0.5, scale_m * 0.2, color.lightened(0.05))
+			_tri(at + d * 0.85, at + d * 0.62 + s * 0.06, at + d * 0.62 - s * 0.06,
+				Color8(40, 40, 38) if species == "crow" else Color8(205, 175, 120))  # the bill
+
+
+## A rounded body from `back` to `front`, moved by `offset` (a shadow's offset; else ZERO).
+func _capsule(offset: Vector2, front: Vector2, back: Vector2, radius: float, color: Color) -> void:
+	front += offset
+	back += offset
+	var across := (front - back).normalized().orthogonal() * radius
+	draw_circle(front, radius, color)
+	draw_circle(back, radius, color)
+	_quad(front + across, front - across, back - across, back + across, color)
+
+
+func _quad(a: Vector2, b: Vector2, c: Vector2, e: Vector2, color: Color) -> void:
+	draw_primitive(PackedVector2Array([a, b, c, e]), PackedColorArray([color]), PackedVector2Array())
+
+
+func _tri(a: Vector2, b: Vector2, c: Vector2, color: Color) -> void:
+	draw_primitive(PackedVector2Array([a, b, c]), PackedColorArray([color]), PackedVector2Array())
