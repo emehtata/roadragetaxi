@@ -14,3 +14,6 @@ screenshot and inspect it visually before considering the change complete.
 
 Python requirements may be added when a maintained dependency is the clearest
 and most reliable way to implement the requested behavior.
+
+Commit and push completed changes as atomic commits. Keep each commit focused
+on one logical change, and run the relevant checks before committing.

@@ -52,6 +52,7 @@ def road_color_for_way(way: Way) -> Tuple[int, int, int]:
 
 
 SCENERY_COLORS = {
+    "theme_park": (188, 174, 139),
     "forest": (40, 78, 42), "wood": (40, 78, 42), "scrub": (108, 120, 78),
     "heath": (136, 124, 92), "park": (100, 145, 80), "garden": (104, 150, 86),
     "meadow": (152, 160, 92), "grass": (112, 150, 86), "greenfield": (150, 165, 110),
@@ -76,6 +77,9 @@ SCENERY_COLORS = {
     "firepit": (100, 90, 70), "outdoor_seating": (112, 102, 92), "sauna": (112, 92, 72),
     "parking": (98, 98, 98), "pedestrian_area": (125, 120, 112), "fuel": (92, 88, 84),
     "traffic_island": (112, 150, 86),
+    "miniature_golf": (168, 154, 116),
+    "golf_course": (88, 128, 64), "golf_fairway": (106, 156, 75),
+    "golf_tee": (126, 172, 88), "golf_green": (142, 188, 100),
 }
 
 SPECKLE_SCENERY_KINDS = frozenset({
@@ -90,6 +94,7 @@ SPECKLE_SCENERY_KINDS = frozenset({
 SEASONAL_GROUND_KINDS = frozenset({
     "residential", "recreation_ground", "flowerbed", "playground", "horse_riding",
     "sports_centre", "stadium", "grave_yard", "biergarten",
+    "golf_course", "golf_fairway", "golf_tee", "golf_green", "miniature_golf",
 })
 
 # Finnish winter: sports fields and rinks are flooded and frozen for

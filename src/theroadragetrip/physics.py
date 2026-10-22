@@ -392,6 +392,7 @@ SOFT_GROUND_SCENERY_KINDS = frozenset({
     "wetland", "farmland", "farmyard", "allotments", "flowerbed", "residential",
     "recreation_ground", "cemetery", "horse_riding", "fitness_station",
     "brownfield", "construction", "landfill",
+    "golf_course", "golf_tee", "golf_fairway", "golf_green",
 })
 
 

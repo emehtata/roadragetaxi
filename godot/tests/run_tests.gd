@@ -1751,6 +1751,25 @@ func test_weather_presentation() -> void:
 	check(live.splashes.size() == 40 and live.splashes[0][0] == Vector2(5, 0), "at most 40: the oldest go")
 	live.age_splashes(0.5)
 	check(live.splashes.is_empty(), "gone after 0.5 s")
+	var muddy := {"on_foot": false, "player": {"speed": 5.0, "heading": 0.0, "length_m": 4.0, "width_m": 1.8},
+		"tire_mark": {"kind": "dirt", "spray": 1.0}}
+	live.update_mud(0.1, muddy, Vector2.ZERO, false)
+	check(live.mud.size() == 6, "heavy throttle throws mud from both rear tyres")
+	check(live.mud[0][0].y < 0 and live.mud[1][0].y > 0 and live.mud[0][1].x < 0, "mud starts at opposite wheels and flies backward")
+	for i in 100:
+		live.update_mud(0.01, muddy, Vector2.ZERO, false)
+	check(live.mud.size() <= W.MUD_POOL_MAX, "mud emission and lifetime bound the pool")
+	live.update_mud(1.0, {"on_foot": false}, Vector2.ZERO, false)
+	check(live.mud.is_empty(), "mud fades after the throttle is released")
+	muddy.player.speed = -5.0
+	live.update_mud(0.1, muddy, Vector2.ZERO, false)
+	check(live.mud[0][1].x > 0, "reversing throws mud opposite travel")
+	live.update_mud(0.1, muddy, Vector2.ZERO, true)
+	check(live.mud.is_empty(), "underground clears surface mud")
+	live.splashes_enabled = false
+	live.update_mud(0.1, muddy, Vector2.ZERO, false)
+	check(live.mud.is_empty(), "disabled splashes also disable mud")
+
 	live.free()
 	map.free()
 	sky.free()

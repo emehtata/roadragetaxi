@@ -44,6 +44,9 @@ var _route_node: Node2D  # the navigation route, unshaded (_draw_route)
 var _people: Node2D
 var _overlay: Node2D
 var _people_rows: Array = []  # [position, heading, ped, animation time]
+var _tennis_balls: Array = []
+var _beach_balls: Array = []  # interpolated position and height
+var _golf_rows: Array = []  # interpolated ball ground position, height, pin, holed
 var _dog_rows: Array = []  # [owner position, dog position, heading, dog]
 var _puck_frame: Array = []  # [a, b, t] for _pucks
 var _overlays: Array[Callable] = []
@@ -966,7 +969,18 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 	var h := Vector2(cos(heading), -sin(heading))
 	var side := Vector2(-h.y, h.x)
 	var down := Vector2(0, radius)
+	if ped.get("animation_state", "") in ["sunbathing", "swimming"]:
+		_beach_person(c, h, side, radius, clothing, ped["animation_state"] == "swimming", animation_time)
+		return
 	_ellipse(c + down * 0.675, radius * 0.8, radius * 0.325, RS.PED_SHADOW)
+	if ped.get("animation_state", "") == "riding":
+		_canvas.draw_set_transform(c, -heading)
+		_canvas.draw_rect(Rect2(Vector2(-radius * 1.7, -radius * 1.1), Vector2(radius * 3.4, radius * 2.2)), _person_lit(Color8(224, 93, 46)))
+		_canvas.draw_set_transform(Vector2.ZERO)
+		_ellipse(c, radius * 0.65, radius * 0.55, clothing)
+		_ellipse(c - down * 0.4, radius * 0.4, radius * 0.4, RS.PED_HEAD)
+		_canvas.draw_line(c - side * radius, c + side * radius, _person_lit(Color8(223, 223, 211)), radius * 0.22)
+		return
 	if ped.get("animation_state", "walking") == "sitting":
 		for sign_side: float in [-1.0, 1.0]:
 			var knee := c + h * radius * 0.8 + side * radius * sign_side * 0.7
@@ -980,7 +994,7 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 		var gait := sin(animation_time * 10.0) if ped.get("animation_state", "walking") == "walking" else 0.0
 		var leg_start := c - h * radius * 0.15 + down * 0.45
 		for leg_side: float in [-1.0, 1.0]:
-			var leg_end: Vector2 = leg_start + side * radius * (0.42 * leg_side + gait * 0.10 * leg_side) + h * radius * 0.12 + down * 0.45
+			var leg_end: Vector2 = leg_start + side * radius * 0.42 * leg_side + h * radius * (0.12 + gait * 0.45 * leg_side) + down * 0.45
 			_canvas.draw_line(leg_start, leg_end, _person_lit(RS.PED_LEGS), maxf(_px(1.0), radius * 0.28))
 		_ellipse(c + down * 0.425, radius * 0.72, radius * 0.775, RS.PED_SHADOW)
 		_ellipse(c + down * 0.405, radius * 0.58, radius * 0.625, clothing)
@@ -1003,10 +1017,86 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 				for pad_side: float in [-1.0, 1.0]:
 					_ellipse(c + side * radius * 0.55 * pad_side + down * 0.2, radius * 0.22, radius * 0.5, GOALIE_PADS)
 			_hockey_stick(c, h, side, radius, float(ped.get("stick_swing", 0.0)), goalie)
+		if ped.get("activity", "") == "tennis":
+			var swing := float(ped.get("stick_swing", 0.0))
+			var forward := h.rotated(sin(swing * PI) * 1.2)
+			var hand := c + side * radius * .65
+			var grip := hand + forward * radius * 1.3
+			_canvas.draw_line(hand, grip, _person_lit(RS.PED_HEAD), radius * .3)
+			var head_at := grip + forward * radius * .65
+			_canvas.draw_line(grip, head_at, _person_lit(Color8(85, 85, 95)), radius * .15)
+			_canvas.draw_arc(head_at, radius * .6, 0, TAU, 16, _person_lit(Color8(225, 225, 215)), radius * .14)
+			_canvas.draw_line(head_at - side * radius * .45, head_at + side * radius * .45, _person_lit(Color8(170, 190, 180)), radius * .08)
+		if ped.has("golf"):
+			_golf_club(c, h, side, radius, ped["golf"])
 	if ped.get("curse_timer", 0.0) > 0.0:
 		var timer: float = ped["curse_timer"]
 		_bubble(c - Vector2(0, radius + _px(6.0)), str(ped.get("curse_text", "@#*!%")), RS.CURSE_TEXT, RS.CURSE_BORDER,
 			1.0 if timer >= 0.5 else timer / 0.5)
+
+
+## Relaxed beach poses and swimming strokes; the server decides land versus water.
+func _beach_person(c: Vector2, h: Vector2, side: Vector2, radius: float, clothing: Color, swimming: bool, time: float) -> void:
+	var skin := _person_lit(RS.PED_HEAD)
+	if not swimming:
+		_canvas.draw_set_transform(c, h.angle())
+		_canvas.draw_rect(Rect2(Vector2(-1.9, -0.9) * radius, Vector2(3.8, 1.8) * radius), _person_lit(clothing.lightened(0.3)))
+		_canvas.draw_rect(Rect2(Vector2(-1.9, -0.9) * radius, Vector2(3.8, 1.8) * radius), _person_lit(Color.WHITE), false, _px(1))
+		_canvas.draw_set_transform(Vector2.ZERO)
+		_canvas.draw_line(c - h * radius * 0.5, c + h * radius * 0.65, skin, radius * 0.7)
+		for sign_side: float in [-1.0, 1.0]:
+			_canvas.draw_line(c - h * radius * 0.45, c - h * radius * 1.5 + side * radius * 0.3 * sign_side, skin, radius * 0.22)
+			_canvas.draw_line(c + h * radius * 0.4, c + side * radius * 0.85 * sign_side, skin, radius * 0.2)
+		_rotated_ellipse(c - h * radius * 0.35, h, radius * 0.35, radius * 0.4, clothing)
+	else:
+		_canvas.draw_arc(c - h * radius * 0.65, radius, 0, PI, 12, _person_lit(Color(0.85, 0.95, 1.0, 0.6)), _px(1))
+		_rotated_ellipse(c, h, radius * 0.65, radius * 0.4, RS.PED_HEAD)
+		for sign_side: float in [-1.0, 1.0]:
+			var stroke := sin(time * 5.0 + sign_side * PI * 0.5)
+			_canvas.draw_line(c, c + side * radius * sign_side * 1.2 + h * radius * stroke * 0.8, skin, radius * 0.22)
+	var head := c + h * radius * 0.95
+	_canvas.draw_circle(head, radius * 0.43, _person_lit(RS.PED_HAIR))
+	_canvas.draw_circle(head, radius * 0.32, skin)
+
+
+## Golf clubs follow the server's club choice and swing progress.
+func _golf_club(c: Vector2, h: Vector2, side: Vector2, radius: float, golf: Dictionary) -> void:
+	var putting: bool = golf.get("club", "") == "putter"
+	var swing: float = float(golf.get("swing", 0.0))
+	var angle := (1.0 - swing) * (0.35 if putting else 1.5) if golf.get("phase", "") == "swing" else 0.0
+	var hand := c + side * radius * 0.45
+	var head := hand + h.rotated(angle) * (0.8 if putting else 1.05)
+	if golf.get("phase", "") == "walk":
+		hand = c + side * radius * 0.95
+		head = hand + Vector2(0, 0.85)
+	_canvas.draw_line(hand, head, _person_lit(Color8(195, 200, 205)), maxf(_px(1.2), 0.05))
+	_canvas.draw_circle(hand, maxf(_px(1.4), radius * 0.18), _person_lit(RS.PED_HEAD))
+	if putting:
+		_canvas.draw_line(head - side * 0.16, head + side * 0.16, _person_lit(STICK_BLADE), maxf(_px(2.0), 0.09))
+	else:
+		_canvas.draw_circle(head, maxf(_px(2.0), 0.13 if golf.get("club", "") == "driver" else 0.08), _person_lit(STICK_BLADE))
+
+
+## The ball and its ground shadow remain visible when the golfer is off screen.
+func _golf_ball(row: Array) -> void:
+	var ground: Vector2 = row[0]
+	var pin: Vector2 = row[2]
+	_lit_tint = vehicle_light(light_level * float(light_at.call(pin)), ambient)
+	if view_rect.has_point(pin):
+		_canvas.draw_circle(pin, maxf(_px(2.0), 0.11), _person_lit(STICK_BLADE))
+		var top := pin - Vector2(0, 1.6)
+		_canvas.draw_line(pin, top, _person_lit(Color.WHITE), maxf(_px(1.0), 0.04))
+		_canvas.draw_set_transform(top)
+		_canvas.draw_colored_polygon(PackedVector2Array([Vector2.ZERO, Vector2(0.65, 0.2), Vector2(0, 0.45)]), _person_lit(Color8(225, 45, 40)))
+		_canvas.draw_set_transform(Vector2.ZERO)
+	if row[3]:
+		return
+	var at := ground - Vector2(0, float(row[1]) * 0.35)
+	if view_rect.has_point(ground) or view_rect.has_point(at):
+		_lit_tint = vehicle_light(light_level * float(light_at.call(ground)), ambient)
+		_canvas.draw_circle(ground, maxf(_px(1.8), 0.07), RS.PED_SHADOW)
+		_canvas.draw_circle(at, maxf(_px(2.2), 0.045) + _px(0.6), _person_lit(STICK_BLADE))
+		_canvas.draw_circle(at, maxf(_px(2.2), 0.045), _person_lit(SOCCER_BALL))
 
 
 ## A non-colliding owned dog and its leash, batched with its pedestrian.
@@ -1135,6 +1225,20 @@ func _draw_people() -> void:
 		_pedestrian(row[0], row[1], row[2], row[3])
 	if not _puck_frame.is_empty():
 		_pucks(_puck_frame[0], _puck_frame[1], _puck_frame[2])
+	for row in _golf_rows:
+		_golf_ball(row)
+	for ball in _tennis_balls:
+		var ground := Vector2(ball.x, ball.y)
+		_lit_tint = vehicle_light(light_level * float(light_at.call(ground)), ambient)
+		_canvas.draw_circle(ground, maxf(_px(1.5), .08), RS.PED_SHADOW)
+		_canvas.draw_circle(ground - Vector2(0, ball.z * .7), maxf(_px(2), .09), _person_lit(Color8(220, 245, 65)))
+	for ball in _beach_balls:
+		var ground := Vector2(ball.x, ball.y)
+		_lit_tint = vehicle_light(light_level * float(light_at.call(ground)), ambient)
+		var at := ground - Vector2(0, ball.z * 0.35)
+		_canvas.draw_circle(ground, maxf(_px(2), 0.12), RS.PED_SHADOW)
+		_canvas.draw_circle(at, maxf(_px(3), 0.17), _person_lit(Color8(250, 215, 60)))
+		_canvas.draw_arc(at, maxf(_px(2), 0.12), 0, PI, 8, _person_lit(Color8(230, 80, 55)), maxf(_px(1.2), 0.05))
 	_lit_tint = Color.WHITE
 	_canvas = self
 
@@ -1244,6 +1348,9 @@ func _draw() -> void:
 	_lamp_polys.clear()
 	_people_rows.clear()
 	_dog_rows.clear()
+	_golf_rows.clear()
+	_tennis_balls.clear()
+	_beach_balls.clear()
 	_puck_frame = []
 	_overlays.clear()
 	_car_shapes.clear()
@@ -1295,6 +1402,26 @@ func _draw() -> void:
 		var next: Dictionary = later_peds.get(ped["id"], ped)
 		var p := StateBuffer.blend(ped, next, t, origin)
 		var c := Vector2(p.x, p.y)
+		if ped.has("tennis_ball"):
+			var ball: Array = ped["tennis_ball"]
+			var later: Array = next.get("tennis_ball", ball)
+			var at := MapMath.point(origin, lerpf(ball[0], later[0], t), lerpf(ball[1], later[1], t))
+			if view_rect.has_point(at):
+				_tennis_balls.append(Vector3(at.x, at.y, lerpf(ball[2], later[2], t)))
+		if ped.has("beach_ball"):
+			var ball: Array = ped["beach_ball"]
+			var later: Array = next.get("beach_ball", ball)
+			var at := MapMath.point(origin, lerpf(ball[0], later[0], t), lerpf(ball[1], later[1], t))
+			if view_rect.has_point(at):
+				_beach_balls.append(Vector3(at.x, at.y, lerpf(ball[2], later[2], t)))
+		var golf: Dictionary = ped.get("golf", {})
+		if not golf.is_empty():
+			var later_golf: Dictionary = next.get("golf", golf)
+			var ball: Array = golf["ball"]
+			var later_ball: Array = later_golf.get("ball", ball)
+			var pin: Array = golf["pin"]
+			_golf_rows.append([MapMath.point(origin, lerpf(ball[0], later_ball[0], t), lerpf(ball[1], later_ball[1], t)),
+				lerpf(ball[2], later_ball[2], t), MapMath.point(origin, pin[0], pin[1]), golf.get("holed", false)])
 		if not view_rect.has_point(c):
 			continue
 		var dog: Dictionary = ped.get("dog", {})

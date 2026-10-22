@@ -29,7 +29,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
           "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards",
-          "nightclubs")
+          "nightclubs", "attractions", "tennis_courts")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard")
@@ -394,7 +394,7 @@ class ChunkIndex:
 
     def _add_static_world(self, world, bridge_parts) -> None:
         """godot-16: the rest of what the client draws from the map (static_world.py)."""
-        from shapely.geometry import Polygon
+        from shapely.geometry import LineString, Polygon
 
         from .activities.plugins.soccer import is_soccer_pitch
         from .map_style import FLOODLIT_KINDS, FROZEN_IN_WINTER_KINDS, SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS
@@ -413,7 +413,7 @@ class ChunkIndex:
         for scenery in sorted((s for s in getattr(world, "sceneries", ()) if len(s.points_m) >= 3), key=bbox_area, reverse=True):
             kind = str(scenery.kind).lower()
             island = kind == "traffic_island" or getattr(scenery, "kerbed", False)  # redrawn above the roads
-            color = SCENERY_COLORS.get(kind, (38, 105, 38))
+            color = (174, 162, 142) if kind.startswith("attraction_") else SCENERY_COLORS.get(kind, (38, 105, 38))
             # 1: snow and seasonal palettes, 2: frozen to ice in winter, 0: as is
             seasonal = 2 if kind in FROZEN_IN_WINTER_KINDS else 1 if kind in SPECKLE_SCENERY_KINDS or kind in SEASONAL_GROUND_KINDS else 0
             for cell, ring in static_world.clipped_pieces(scenery.points_m, self.size):
@@ -425,6 +425,15 @@ class ChunkIndex:
                     self._chunk(cell)["floodlit"].append(ring)
                 if island:
                     self._chunk(cell)["traffic_islands"].append([static_world._rgb(color), seasonal, ring])
+            if kind.startswith("attraction_") and scenery.attraction_path:
+                self._add("attractions", scenery.points_m,
+                          [kind.removeprefix("attraction_"), scenery.attraction_path])
+            if kind == "miniature_golf":
+                for hole in scenery.golf_holes:
+                    for width, lane_color in ((0.8, (80, 74, 60)), (0.65, (94, 160, 80))):
+                        lane = LineString(hole).buffer(width, cap_style=2, join_style=2)
+                        for cell, ring in static_world.clipped_pieces(list(lane.exterior.coords), self.size):
+                            self._chunk(cell)["landuse"].append([static_world._rgb(lane_color), seasonal, ring])
             if kind in FLOODLIT_KINDS:
                 for pole in floodlight_poles(scenery.points_m, kind):
                     cell = (round(pole[0] / FLOODLIGHT_POLE_MERGE_M), round(pole[1] / FLOODLIGHT_POLE_MERGE_M))
@@ -440,6 +449,8 @@ class ChunkIndex:
                     chunk = self._chunk(cell_of(centre.x, centre.y, self.size))
                     chunk["buildings"].append(_line(piece))
                     chunk["building_styles"].append(STADIUM_STAND_STYLE)
+            if kind == "pitch" and getattr(scenery, "tennis_frame", None):
+                self._add("tennis_courts", scenery.points_m[:1], scenery.tennis_frame)
             if is_soccer_pitch(scenery):  # its FIFA lines, drawn while there is no snow
                 frame = rink_frame(scenery.points_m)
                 if frame is not None:

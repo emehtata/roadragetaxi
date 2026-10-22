@@ -459,7 +459,7 @@ class SimulationServer:
                                          else typical_temperature(moment, self._weather_latitude))
         return observed
 
-    def _tyre_mark(self, previous) -> Optional[dict]:
+    def _tyre_mark(self, previous, throttle: float = 0.0) -> Optional[dict]:
         """Return this tick's transient tyre mark, or None.
 
         Hard surfaces retain only full-black braking skids. Soft ground and
@@ -497,8 +497,11 @@ class SimulationServer:
         # Skidding on a frozen field scratches the ice pale, never black.
         kind = ("snow" if self.calendar.season == Season.WINTER else "sand" if ground == "sand" else "dirt") if soft else "snow" if ground == "ice" else "rubber"
         intensity = skidmark_intensity(car.skid_amount) if soft and skidding else 1.0
-        return {"kind": kind, "intensity": round(intensity, 2),
+        mark = {"kind": kind, "intensity": round(intensity, 2),
                 "front": bool(tire_tracks_include_front_wheels(soft, skidding, getattr(car, "front_lockup", False)))}
+        if ground == "soft" and kind == "dirt" and throttle >= 0.7 and car.engine_on and car.fuel_l > 0 and not car.braking:
+            mark["spray"] = round(min(1.0, throttle), 2)
+        return mark
 
     @property
     def _game_time_seconds(self) -> float:
@@ -547,6 +550,17 @@ class SimulationServer:
         self.world.pedestrian_mgr.sports_ice_open = self.world.fields_frozen and lit
         # Soccer: no snow on the pitch at all (godot chunk_detail.gd draws its lines by the same weight).
         self.world.pedestrian_mgr.soccer_open = season[0] < SOCCER_SNOW_WEIGHT and lit
+        weather = self.world.weather
+        temperature = weather.outside_temperature_c
+        self.world.pedestrian_mgr.tennis_open = (
+            temperature is not None and temperature > 10 and weather.weather_type == "clear"
+            and not weather.is_thunderstorm and weather.cloud_cover <= .6
+            and self._sun_altitude() > 5 and season[0] < SOCCER_SNOW_WEIGHT and not self.world.fields_frozen)
+        self.world.pedestrian_mgr.beach_open = (
+            self.calendar.current.month in (6, 7, 8) and temperature is not None and temperature > 15.0
+            and weather.weather_type == "clear" and not weather.is_thunderstorm
+            and weather.cloud_cover <= 0.25 and self._sun_altitude() > 5.0 and not self.world.fields_frozen)
+
 
     def calendar_state(self) -> dict:
         """What a client needs of the calendar (state "calendar"): the date,
@@ -795,9 +809,9 @@ class SimulationServer:
         if self.calendar.date != previous_date:
             self.world.weather.season = self.calendar.season  # the thermal season follows the calendar
         observed = self._update_outside()
-        self._update_sports()
         self.world.weather.update(dt * time_scale, dt, outside_temperature_c=self.world.weather.outside_temperature_c,
                                   observed=observed)
+        self._update_sports()
         if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once
             self.audio.play_group("weather.thunder", 0.8)
             self._lightning_event_id = self.world.weather.lightning_event_id
@@ -834,7 +848,7 @@ class SimulationServer:
             now=self.calendar.current,
             view_bounds=self._visible_bounds(),
         )
-        self._tire_mark = self._tyre_mark(previous=(car_x, car_y))
+        self._tire_mark = self._tyre_mark(previous=(car_x, car_y), throttle=command.throttle)
         for npc in self.world.npc_manager.vehicles:  # brake lamps
             npc.braking = npc_braking(npc, getattr(npc, "_last_speed", npc.speed), dt)
             npc._last_speed = npc.speed

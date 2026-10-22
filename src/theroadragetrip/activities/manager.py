@@ -47,7 +47,7 @@ class ActivityManager:
             candidates, weights=[candidate[2] for candidate in candidates], k=1
         )[0]
         if location is not None and location.reservation_key is not None:
-            self._reservations[location.reservation_key] = id(context.pedestrian)
+            self.reserve(context, location)
         return plugin, location
 
     def explain_candidates(self, context: ActivityContext) -> List[Tuple[str, str]]:
@@ -91,6 +91,15 @@ class ActivityManager:
                 continue
             explanations.append((definition.id, f"OK, weight={weight:.2f}"))
         return explanations
+
+    def reserve(self, context: ActivityContext, location: ActivityLocation) -> bool:
+        key = location.reservation_key
+        if key is not None:
+            holder = self._reservations.get(key)
+            if holder is not None and holder != id(context.pedestrian):
+                return False
+            self._reservations[key] = id(context.pedestrian)
+        return True
 
     def release(self, location: Optional[ActivityLocation]) -> None:
         if location is not None and location.reservation_key is not None:

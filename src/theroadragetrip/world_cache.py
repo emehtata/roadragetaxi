@@ -107,7 +107,14 @@ MAGIC = b"RWC\0"
 # 40: amenity=nightclub point scenery with its opening_hours.
 # 41: Way.bus_routes (the route=bus relations running on a road).
 # 42: Railing.layer, barriers split open at their gates (solid for the taxi).
-FORMAT_VERSION = 42
+# 43: Scenery.golf_holes (server-side tee-to-pin routes).
+# 44: mapped golf tees, fairways and greens.
+# 45: miniature-golf facility nodes and playable lanes.
+# 46: nine distributed miniature-golf tracks, clear of buildings, water and paths.
+# 47: dry beach locations and connected near-shore swim routes.
+# 48: Theme park attractions and ride loops.
+# 49: Validated outdoor tennis court geometry.
+FORMAT_VERSION = 49
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

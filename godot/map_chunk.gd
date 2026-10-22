@@ -109,6 +109,10 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
 		if message["landuse"].any(func(area): return area.size() > 3):
 			_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_site_details(self, node)))
+	if not message.get("attractions", []).is_empty():
+		_px_layers.append(_add_layer(6, _draw_attractions))
+	if not message.get("tennis_courts", []).is_empty():
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_tennis_courts(self, node)))
 	# Field markings at z0, over every chunk's landuse (z-1): at -1 a neighbouring
 	# chunk's piece of the same pitch painted over the part reaching into it.
 	if not message.get("soccer_pitches", []).is_empty():  # soccer lines on bare pitches
@@ -1287,3 +1291,11 @@ static func puddle_spots(roads: Array, bounds: Rect2, origin: Vector2) -> Array:
 				spots.append({"at": at, "radius": maxf(RS.PUDDLE_MIN_RADIUS_M, radius), "reveal": reveal, "shape": shape, "phase": phase,
 					"z": road_z(int(road.get("layer", 0)))})
 	return spots
+
+
+func _draw_attractions(node: Node2D) -> void:
+	for ride in _data.get("attractions", []):
+		var points := PackedVector2Array()
+		for point in ride[1]:
+			points.append(MapMath.point(_origin, point[0], point[1]))
+		preload("res://attraction_draw.gd").draw_ride(node, str(ride[0]), points)

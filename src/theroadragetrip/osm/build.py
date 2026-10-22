@@ -745,6 +745,11 @@ def build_ways(
     building_raw: List[Tuple[dict, List[int]]] = []
     fuel_area_raw: List[Tuple[dict, List[int], Optional[int]]] = []
     parking_space_raw: List[Tuple[dict, List[int], Optional[int]]] = []
+    golf_holes_raw = []
+    miniature_golf_nodes = []
+    surface_miniature_courses = set()
+    surface_beaches = set()
+    surface_tennis = set()
     scenery_raw: List[Tuple[dict, List[int]]] = []
     named_ways_raw: List[Tuple[dict, List[int]]] = []
     parking_space_nodes_raw: List[Tuple[dict, int]] = []
@@ -768,6 +773,8 @@ def build_ways(
             node_lons.append(el["lon"])
             node_lats.append(el["lat"])
             tags = el.get("tags", {})
+            if tags.get("leisure") == "miniature_golf" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+                miniature_golf_nodes.append((tags, nid))
             if "place" in tags and "name" in tags:
                 place_nodes_raw.append((tags, nid))
             elif "name" in tags:
@@ -830,6 +837,8 @@ def build_ways(
             # independently of those features; it is never an ordinary area.
             if tags.get("natural") == "coastline":
                 coast_raw.append(node_ids)
+            if tags.get("golf") == "hole" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0":
+                golf_holes_raw.append(node_ids)
             if _is_building(tags):
                 building_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking_space":
@@ -851,7 +860,7 @@ def build_ways(
                 scenery_raw.append((tags, node_ids))
             elif tags.get("amenity") in ("biergarten", "grave_yard"):
                 scenery_raw.append((tags, node_ids))
-            elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
+            elif tags.get("tourism") == "theme_park" or "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS or tags.get("golf") in ("tee", "fairway", "green"):
                 scenery_raw.append((tags, node_ids))
             elif tags.get("railway") == "platform" and node_ids[0] == node_ids[-1]:
                 # Station platform area: paved ground, not the grass under it.
@@ -992,6 +1001,9 @@ def build_ways(
         kind = (
             "parking" if is_parking else "fuel" if is_fuel else "pedestrian_area" if is_platform
             else tags.get("amenity") if tags.get("amenity") in ("biergarten", "grave_yard")
+            else "golf_" + tags["golf"] if tags.get("golf") in ("tee", "fairway", "green")
+            and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0"
+            else "theme_park" if tags.get("tourism") == "theme_park" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes"
             else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
         )
         name = tags.get("name")
@@ -1039,6 +1051,12 @@ def build_ways(
             points_m=pts, kind=kind, name=name, bbox=ibbox, surface=surface,
             kerbed=tags.get("barrier") == "kerb", sport=tags.get("sport"),
         ))
+        if kind == "miniature_golf" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+            surface_miniature_courses.add(id(sceneries[-1]))
+        if kind == "pitch" and "tennis" in tags.get("sport", "").split(";") and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+            surface_tennis.add(id(sceneries[-1]))
+        if kind == "beach" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+            surface_beaches.add(id(sceneries[-1]))
 
     for tags, node_ids, parking_id in parking_space_raw:
         pts, ibbox = process_node_ids(node_ids)
@@ -1590,10 +1608,19 @@ def build_ways(
                 ))
             elif tags.get("amenity") in ("biergarten", "grave_yard"):
                 sceneries.append(Scenery(points_m=pts, kind=tags["amenity"], name=name, bbox=ibbox))
-            elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
-                kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
+            elif tags.get("tourism") == "theme_park" or "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS or tags.get("golf") in ("tee", "fairway", "green"):
+                kind = ("golf_" + tags["golf"] if tags.get("golf") in ("tee", "fairway", "green")
+                        and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0"
+                        else "theme_park" if tags.get("tourism") == "theme_park" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes"
+                        else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park")
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, kerbed=relation_is_kerbed,
                                   sport=tags.get("sport"))
+                if kind == "miniature_golf" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+                    surface_miniature_courses.add(id(scenery))
+                if kind == "pitch" and "tennis" in tags.get("sport", "").split(";") and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+                    surface_tennis.add(id(scenery))
+                if kind == "beach" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+                    surface_beaches.add(id(scenery))
                 plant_trees([scenery], ways, real_trees=real_trees_m, real_tree_tags=real_tree_tags)
                 sceneries.append(scenery)
             elif "place" in tags and name and pts:
@@ -1974,6 +2001,59 @@ def build_ways(
             garage_osm_id=garage_ids[0] if garage_ids else None,
             road_osm_ids=tuple(way_id for way_id, way_tags in sharing if "highway" in way_tags),
         ))
+
+    # Hole ways are lines of play, never scenery polygons or road-network edges.
+    for tags, nid in miniature_golf_nodes:
+        x, y = nodes_m[nid]
+        if any(s.kind == "miniature_golf" and point_in_polygon(x, y, s.points_m) for s in sceneries):
+            continue
+        # shortcut: node-only facilities use a 14 x 12 m practice patch until an outline is mapped.
+        sceneries.append(Scenery([(x-7, y-6), (x+7, y-6), (x+7, y+6), (x-7, y+6)],
+                                 "miniature_golf", name=tags.get("name"), bbox=(x-7, y-6, x+7, y+6)))
+        surface_miniature_courses.add(id(sceneries[-1]))
+    courses = sorted((s for s in sceneries if s.kind == "golf_course" or id(s) in surface_miniature_courses),
+                     key=lambda s: (s.bbox[2] - s.bbox[0]) * (s.bbox[3] - s.bbox[1]))
+    for node_ids in golf_holes_raw:
+        if any(nid not in nodes_m for nid in node_ids):
+            continue  # streamed/incomplete holes must not become shortcuts
+        points, _ = process_node_ids(node_ids)
+        if len(points) < 2 or points[0] == points[-1]:
+            continue
+        for course in courses:
+            if all(point_in_polygon(x, y, course.points_m) for x, y in (points[0], points[-1])):
+                course.golf_holes.append(points)
+                break
+
+    # shortcut: unmapped hole layouts use generated tracks; replace them with mapped layouts when available.
+    from shapely.geometry import LineString, Polygon
+    from .miniature_golf import miniature_golf_holes
+    for course in courses:
+        if course.kind != "miniature_golf" or course.golf_holes:
+            continue
+        minx, miny, maxx, maxy = course.bbox
+        obstacles = []
+        for feature in itertools.chain(buildings, waters, ways):
+            bbox = feature.bbox
+            if bbox[0] > maxx or bbox[2] < minx or bbox[1] > maxy or bbox[3] < miny:
+                continue
+            if isinstance(feature, Way):
+                obstacles.append(LineString(feature.points_m).buffer(feature.half_width_m + 0.5))
+            elif len(feature.points_m) >= 3:
+                obstacles.append(Polygon(feature.points_m).buffer(0.5))
+        course.golf_holes = miniature_golf_holes(course.points_m, obstacles)
+
+    from ..activities.plugins.tennis import prepare_court
+    for court in sceneries:
+        if id(court) in surface_tennis:
+            prepare_court(court)
+
+    from .theme_parks import prepare_theme_parks
+    prepare_theme_parks(sceneries, elements, nodes_m, buildings, waters, ways)
+
+    from .beaches import prepare_beach
+    for beach in sceneries:
+        if id(beach) in surface_beaches:
+            prepare_beach(beach, waters, buildings, ways)
 
     curbs = open_kerbs_at_road_crossings(curbs, ways)
     return MapData(

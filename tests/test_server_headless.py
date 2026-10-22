@@ -1018,3 +1018,44 @@ def test_the_server_places_its_street_lights_with_the_placement_job(tmp_path, mo
     assert sorted(work["lamps"]) == sorted(lights)
     sent = [light for cid in server._chunks_index._chunks for light in server._chunks_index.message(cid)["street_lights"]]
     assert len(sent) == len(lights)  # every light in exactly one chunk
+
+
+def test_heavy_throttle_sprays_mud_only_on_soft_ground(tmp_path, monkeypatch):
+    from theroadragetrip.osm import Scenery
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch, ["--start-time", "2026-06-19T14:00"])
+    server._on_foot = False
+    car = server.car
+    car.x, car.y, car.speed = 1_000_000, 1_000_000, 5.0
+    car.engine_on, car.braking = True, False
+    field = Scenery([(999900, 999900), (1000100, 999900), (1000100, 1000100), (999900, 1000100)],
+                    "golf_green", bbox=(999900, 999900, 1000100, 1000100))
+    server.world.scenery_grid = SpatialWayGrid([field])
+    previous = car.x - 1, car.y
+    assert server._tyre_mark(previous, throttle=1)["spray"] == 1
+    assert "spray" not in server._tyre_mark(previous, throttle=.5)
+    for kind in ("golf_course", "golf_tee", "golf_fairway", "golf_green", "grass"):
+        field.kind = kind
+        assert server._tyre_mark(previous, throttle=.8)["spray"] == .8
+    for kind in ("sand", "parking"):
+        field.kind = kind
+        mark = server._tyre_mark(previous, throttle=1)
+        assert mark is None or "spray" not in mark
+    field.kind = "golf_green"
+    car.engine_on = False
+    assert "spray" not in server._tyre_mark(previous, throttle=1)
+    car.engine_on, car.fuel_l = True, 0
+    assert "spray" not in server._tyre_mark(previous, throttle=1)
+    car.fuel_l = 20
+    assert server._tyre_mark((car.x, car.y), throttle=1) is None
+    server._on_foot = True
+    assert server._tyre_mark(previous, throttle=1) is None
+    server._on_foot = False
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    server.tick(1/30)
+    assert server._tire_mark["spray"] == 1
+    server._latest_command = PlayerCommand()
+    server.tick(1/30)
+    assert "spray" not in server._tire_mark

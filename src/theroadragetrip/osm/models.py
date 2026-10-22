@@ -267,6 +267,11 @@ class Scenery:
     # fuller road list) never tops it up with fake trees alongside real
     # ones.
     trees_from_osm: bool = field(default=False, repr=False)
+    golf_holes: List[List[Tuple[float, float]]] = field(default_factory=list)  # tee-to-pin lines, server only
+    tennis_frame: List[float] = field(default_factory=list)  # validated outdoor court geometry
+    attraction_path: List[Tuple[float, float]] = field(default_factory=list)  # ride loop, server authoritative
+    beach_spots: List[Tuple[float, float]] = field(default_factory=list)
+    swim_routes: List[List[Tuple[float, float]]] = field(default_factory=list)
 
 
 def _building_height(tags: Dict[str, Any], points: List[Tuple[float, float]]) -> float:

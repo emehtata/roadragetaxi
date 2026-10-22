@@ -552,3 +552,25 @@ static func road_markings(chunk, road: Dictionary, points: PackedVector2Array, l
 				chevrons.append_array(PackedVector2Array([at - u.rotated(-0.6) * arm, at, at, at - u.rotated(0.6) * arm]))
 			carry += 40.0
 		carry -= length
+
+
+static func draw_tennis_courts(chunk, node: Node2D) -> void:
+	if chunk._season[0] >= PITCH_SNOW_WEIGHT:
+		return
+	for court in chunk._data.get("tennis_courts", []):
+		var frame := RinkFrame.new(chunk, court, float(court[3]), float(court[4]))
+		frame.fill_quad(node, -.49, -.49, .49, .49, Color8(65, 117, 88))
+		frame.fill_quad(node, -.42, -.4, .42, .4, Color8(65, 125, 166))
+		frame.polyline(node, [[-.42,-.4],[.42,-.4],[.42,.4],[-.42,.4],[-.42,-.4]], PITCH_LINE, .07)
+		for v: float in [-.3, .3]:
+			frame.line(node, -.42, v, .42, v, PITCH_LINE, .07)
+		for u: float in [-.226, .226]:
+			frame.line(node, u, -.3, u, .3, PITCH_LINE, .07)
+		frame.line(node, -.226, 0, .226, 0, PITCH_LINE, .07)
+		for u: float in [-.42, .42]:
+			frame.line(node, u, -.015, u - signf(u)*.015, -.015, PITCH_LINE, .07)
+		# A dark mesh net with a bright top tape and posts.
+		frame.line(node, 0, -.44, 0, .44, Color8(35, 45, 42), .30)
+		frame.line(node, 0, -.44, 0, .44, PITCH_LINE, .08)
+		for v: float in [-.44, .44]:
+			frame.spot(node, 0, v, .18, Color8(45, 55, 48))

@@ -16,6 +16,8 @@ from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import MIN_UNACCOMPANIED_AGE, ResidentManager
 from .population import municipality_at, walkers_within
 from .activities import ActivityContext, ActivityInstance, ActivityLocation, ActivityManager
+from .activities.beach import BEACH_ACTIVITIES, populate_beach
+from .activities.plugins.golf import GOLF_ACTIVITIES
 from .activities.plugins.ice_skating import FIELD_ACTIVITIES
 from .activities.plugins.ice_hockey import SKATERS_PER_TEAM
 from .activities.plugins.soccer import FIELD_PLAYERS_MAX, is_soccer_pitch
@@ -526,6 +528,8 @@ class PedestrianManager:
         self.sim_time: float = 0.0
         self._last_game_time_seconds: Optional[float] = None
         self.sports_ice_open = False  # server: fields frozen, and daylight or floodlit hours
+        self.tennis_open = False
+        self.beach_open = False
         self.soccer_open = False  # server: no snow on the pitches, and daylight or floodlit hours
         self._ice_checked_at = -1e9
         self._population_update_elapsed: float = 4.9
@@ -1916,13 +1920,14 @@ class PedestrianManager:
         """Sports where the camera looks: fields in the viewport (plus
         ICE_VIEW_MARGIN_M) keep people playing what the season allows
         (_field_game) - skaters on frozen pitches, hockey on rinks, soccer
-        on summer pitches - and players of a field that has left that area
+        on summer pitches, golfers on mapped holes - and players of a field that has left that area
         go (their game stops; nothing runs unseen). Bounded: one check every
         ICE_SKATER_CHECK_S, at most SPORTS_SPAWNS_PER_CHECK spawns a check."""
         if self.sim_time - self._ice_checked_at < ICE_SKATER_CHECK_S:
             return
         self._ice_checked_at = self.sim_time
         from .activities.plugins.park_leisure import sample_interior_point
+        from .viewport import in_bounds
 
         if viewport_bounds is None:  # headless: around the player
             viewport_bounds = (player_car.x - self.spawn_radius_m, player_car.y - self.spawn_radius_m,
@@ -1938,6 +1943,17 @@ class PedestrianManager:
         kept = []
         for ped in self.pedestrians:
             instance = ped.activity
+            if instance is not None and instance.plugin_id in BEACH_ACTIVITIES + ("theme_park", "tennis") and not in_bounds((vminx, vminy, vmaxx, vmaxy), ped.x, ped.y):
+                plugin = self.activity_manager.registry.get(instance.plugin_id)
+                if plugin is not None:
+                    plugin.finish(self._activity_context(ped), instance)
+                self._end_activity(ped, instance)
+                continue
+            if instance is not None and instance.plugin_id in GOLF_ACTIVITIES:
+                ball = instance.data.get("ball", (ped.x, ped.y))
+                if not in_bounds((vminx, vminy, vmaxx, vmaxy), ped.x, ped.y) and not in_bounds((vminx, vminy, vmaxx, vmaxy), *ball[:2]):
+                    self._end_activity(ped, instance)
+                    continue
             if instance is not None and instance.plugin_id in FIELD_ACTIVITIES and instance.location:
                 field = instance.location.extra
                 if not in_view(field):  # out of sight: the player leaves the ice and the game
@@ -1949,12 +1965,36 @@ class PedestrianManager:
                 on_ice[id(field)] = on_ice.get(id(field), 0) + 1
             kept.append(ped)
         self.pedestrians = kept
-        if not (self.sports_ice_open or self.soccer_open):
+        if not (self.sports_ice_open or self.soccer_open or self.beach_open or self.tennis_open):
             return
         centre_x, centre_y = (vminx + vmaxx) / 2.0, (vminy + vmaxy) / 2.0
         reach = math.hypot(vmaxx - vminx, vmaxy - vminy) / 2.0
         spawns = 0
         for field in self.nearby_sceneries(centre_x, centre_y, reach):
+            if getattr(field, "tennis_frame", None) and self.tennis_open:
+                plugin = self.activity_manager.registry.get("tennis")
+                spawns += plugin.populate(self, field, (vminx, vminy, vmaxx, vmaxy), SPORTS_SPAWNS_PER_CHECK - spawns)
+                if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                    return
+                continue
+            if field.kind.startswith("attraction_") and self.soccer_open:
+                plugin = self.activity_manager.registry.get("theme_park")
+                spawns += plugin.populate(self, field, (vminx, vminy, vmaxx, vmaxy), SPORTS_SPAWNS_PER_CHECK - spawns)
+                if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                    return
+                continue
+            if field.kind == "beach" and self.beach_open:
+                spawns += populate_beach(self, field, (vminx, vminy, vmaxx, vmaxy), SPORTS_SPAWNS_PER_CHECK - spawns)
+                if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                    return
+                continue
+            if field.kind in ("golf_course", "miniature_golf") and self.soccer_open:
+                plugin = self.activity_manager.registry.get("miniature_golf" if field.kind == "miniature_golf" else "golf")
+                if plugin is not None:
+                    spawns += plugin.populate(self, field, (vminx, vminy, vmaxx, vmaxy), SPORTS_SPAWNS_PER_CHECK - spawns)
+                if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                    return
+                continue
             game = self._field_game(field) if len(field.points_m) >= 3 and in_view(field) else None
             if game is None:
                 continue

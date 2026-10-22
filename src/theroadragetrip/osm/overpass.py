@@ -153,9 +153,11 @@ def fetch_osm_ways(
     node["amenity"~"bench|waste_basket|bicycle_parking|fountain|fuel"]({south},{west},{north},{east});
     node["amenity"~"biergarten|grave_yard|nightclub"]({south},{west},{north},{east});
     node["highway"="street_lamp"]({south},{west},{north},{east});
-    node["leisure"~"picnic_table|firepit"]({south},{west},{north},{east});
+    node["leisure"~"picnic_table|firepit|miniature_golf"]({south},{west},{north},{east});
     node["barrier"~"gate|bollard"]({south},{west},{north},{east});
     node["historic"="memorial"]({south},{west},{north},{east});
+    nwr["tourism"="theme_park"]({south},{west},{north},{east});
+    nwr["attraction"]({south},{west},{north},{east});
     node["tourism"="artwork"]({south},{west},{north},{east});
     node["name"]({south},{west},{north},{east});
       way["highway"]({south},{west},{north},{east});
@@ -178,6 +180,7 @@ def fetch_osm_ways(
     way["landuse"="parking"]({south},{west},{north},{east});
     way["amenity"="parking_space"]({south},{west},{north},{east});
       way["landuse"]({south},{west},{north},{east});
+      way["golf"~"^(hole|tee|fairway|green)$"]({south},{west},{north},{east});
       way["leisure"]({south},{west},{north},{east});
       way["natural"~"{natural_scenery_regex}"]({south},{west},{north},{east});
       way["place"~"suburb|neighbourhood|quarter|village"]({south},{west},{north},{east});
@@ -191,6 +194,7 @@ def fetch_osm_ways(
     relation["amenity"="parking"]({south},{west},{north},{east});
     relation["amenity"~"biergarten|grave_yard"]({south},{west},{north},{east});
     relation["landuse"="parking"]({south},{west},{north},{east});
+      relation["golf"~"^(tee|fairway|green)$"]({south},{west},{north},{east});
       relation["leisure"]({south},{west},{north},{east});
       relation["landuse"]({south},{west},{north},{east});
       relation["natural"~"{natural_scenery_regex}"]({south},{west},{north},{east});

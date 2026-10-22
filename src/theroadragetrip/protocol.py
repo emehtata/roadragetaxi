@@ -35,6 +35,8 @@ from datetime import date
 from typing import Optional
 
 from .activities.plugins.ice_hockey import puck_positions
+from .activities.beach import BEACH_ACTIVITIES
+from .activities.plugins.golf import GOLF_ACTIVITIES
 from .activities.plugins.soccer import ball_positions
 from .fuel import fuel_station_price_cents, nearest_fuel_station
 from .holiday_events import santa_costume
@@ -193,7 +195,8 @@ def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
     cap = pedestrian_mgr.population_target
     if len(people) <= cap:
         return people
-    kept = lambda p: getattr(p, "held_by", None) is not None or getattr(p, "is_taxi_stop_waiter", False)
+    kept = lambda p: (getattr(p, "held_by", None) is not None or getattr(p, "is_taxi_stop_waiter", False)
+                      or getattr(getattr(p, "activity", None), "plugin_id", "") in GOLF_ACTIVITIES + BEACH_ACTIVITIES + ("theme_park", "tennis"))
     always = [p for p in people if kept(p)]
     others = sorted((p for p in people if not kept(p)), key=lambda p: (p.x - camx) ** 2 + (p.y - camy) ** 2)
     return always + others[:max(0, cap - len(always))]
@@ -221,6 +224,15 @@ def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
         "stick_swing": getattr(ped, "stick_swing", 0.0),
         "hockey_goalie": getattr(ped, "hockey_goalie", False),
     }
+    activity = getattr(ped, "activity", None)
+    if activity is not None and activity.plugin_id in GOLF_ACTIVITIES and "ball" in activity.data:
+        row["golf"] = {key: activity.data[key] for key in ("ball", "pin", "club", "phase", "swing", "strokes", "holed")}
+    if activity is not None and activity.plugin_id == "beach_games" and activity.group is not None:
+        if ped.resident_id == min(activity.group.member_resident_ids, default=None) and "ball" in activity.group.data:
+            row["beach_ball"] = list(activity.group.data["ball"])
+    if activity is not None and activity.plugin_id == "tennis" and activity.group is not None:
+        if ped.resident_id == min(activity.group.member_resident_ids, default=None):
+            row["tennis_ball"] = list(activity.group.data["ball"])
     dog = getattr(ped, "dog", None)
     if dog is not None:
         row["dog"] = {
