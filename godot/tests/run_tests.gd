@@ -2345,6 +2345,17 @@ func test_static_world() -> void:
 		"street_lights": [[1200.0, 2200.0, 1.0, 14.0], [1212.0, 2200.0, 1.0, 14.0]]}))
 	check(map.add_chunk(message) and not map.add_chunk(message), "drawing-only objects arrive with their chunk, once")
 	var chunk = map._chunks["2_4"]
+	var hedge_points := [[1000.0, 2010.0], [1020.0, 2010.0]]
+	var hedge_parts := [[[1000.0, 2010.0], [1007.0, 2010.0]], [[1012.0, 2010.0], [1020.0, 2010.0]]]
+	map.set_broken_hedges([[0, hedge_points, hedge_parts]])
+	check(chunk._hedge_damage.get(MapChunk.hedge_key(["hedge", hedge_points])) == hedge_parts, "server hedge fragments replace only the damaged hedge")
+	map.set_broken_hedges([[1, hedge_points, []]])
+	check(chunk._hedge_damage.is_empty(), "damage on another layer does not cut the ground hedge")
+	map.set_broken_hedges([[0, hedge_points, hedge_parts]])
+	map.remove_chunk("2_4")
+	map.add_chunk(message.duplicate(true))
+	chunk = map._chunks["2_4"]
+	check(not chunk._hedge_damage.is_empty(), "hedge gaps survive unloading and reloading the map chunk")
 	check(chunk._trees != null and chunk._px_layers.size() == 2 + 4, "decorations with the trees; railings, light pools, lamp heads: one canvas item each")
 	check(chunk.street_lights.size() == 2 and chunk.street_lights[0] == Vector2(200, -200), "street lights at their map position")
 	check(chunk._pools.get_parent() == map._pool_group, "a chunk's pools join the one pool group (added once, not per pool)")

@@ -326,7 +326,7 @@ class ChunkIndex:
         # Drawing only (godot-15): nothing collides with these.
         for railing in getattr(world, "railings", ()):  # its first point's chunk
             if len(railing.points_m) >= 2:
-                self._add("railings", railing.points_m[:1], [getattr(railing, "kind", "fence"), _line(railing.points_m)])
+                self._add("railings", railing.points_m[:1], [getattr(railing, "kind", "fence"), _line(railing.points_m), getattr(railing, "layer", 0)])
         # rrt-019: nightclubs for the client's music - [x, y, weekly open
         # intervals (nightlife.py)]; an OSM point, or a building tagged one
         for obj in getattr(world, "scenery_objects", ()):

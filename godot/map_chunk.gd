@@ -67,6 +67,8 @@ var _phases: Dictionary = {}  # post id (String) -> phase as last drawn
 var _font: Font = ThemeDB.fallback_font
 var _trees: Node2D = null  # trees and bollards, if this chunk has any
 var _fallen: Dictionary = {}  # MapMath key -> angle, for this chunk's felled trees
+var _hedge_damage: Dictionary = {}
+var _railings: Node2D
 var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
 var drivable_roads: Array = []  # [Rect2, key] per drivable road: the night tint counts them (main.gd)
 var street_lights := PackedVector2Array()  # positions, for reflectors and long beams
@@ -155,7 +157,8 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	if not message.get("rail_bridges", []).is_empty() or not message.get("rail_decks", []).is_empty():
 		_px_layers.append(_add_layer(13, func(node: Node2D): Detail.draw_rail_bridges(self, node)))
 	if not message.get("railings", []).is_empty():
-		_px_layers.append(_add_layer(8, _draw_railings))
+		_railings = _add_layer(8, _draw_railings)
+		_px_layers.append(_railings)
 	if not message.get("street_lights", []).is_empty():
 		var add := CanvasItemMaterial.new()
 		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
@@ -261,6 +264,12 @@ static func _compact(data: Dictionary, origin: Vector2) -> int:
 		for i in lines.size():
 			lines[i] = _to_points(lines[i], origin)
 			count += lines[i].size()
+	for railing in data.get("railings", []):
+		if railing.size() < 4:
+			var key := hedge_key(railing)  # preserve world identity before converting points to chunk coordinates
+			if railing.size() < 3:
+				railing.append(0)
+			railing.append(key)
 	for key_index in [["railings", 1], ["landuse", 2], ["traffic_islands", 2], ["level_roads", 1]]:
 		for entry in data.get(key_index[0], []):
 			entry[key_index[1]] = _to_points(entry[key_index[1]], origin)
@@ -386,6 +395,27 @@ func set_phases(phases: Dictionary) -> bool:
 	if changed:
 		_lights.queue_redraw()
 	return changed
+
+
+static func hedge_key(railing: Array) -> String:
+	if railing.size() > 3:
+		return str(railing[3])
+	var key := str(int(railing[2]) if railing.size() > 2 else 0) + ":"
+	for point in railing[1]:
+		key += "%.1f,%.1f;" % [float(point[0]), float(point[1])]
+	return key
+
+
+func set_broken_hedges(damage: Dictionary) -> void:
+	var own := {}
+	for railing in _data.get("railings", []):
+		var key := hedge_key(railing)
+		if railing[0] == "hedge" and damage.has(key):
+			own[key] = damage[key]
+	if own != _hedge_damage:
+		_hedge_damage = own
+		if _railings != null:
+			_railings.queue_redraw()
 
 
 ## The simulation's felled trees ({key: angle}) and knocked posts ({key:
@@ -973,6 +1003,12 @@ func _draw_railings(node: Node2D) -> void:
 	for railing in _data["railings"]:
 		var points := _points(railing[1])
 		var kind := str(railing[0]) if railing[0] in ["hedge", "wall", "boards"] else "fence"
+		if kind == "hedge":
+			for fragment in _hedge_damage.get(hedge_key(railing), [railing[1]]):
+				var branch := _points(fragment)
+				for i in branch.size() - 1:
+					lines["hedge"].append_array(PackedVector2Array([branch[i], branch[i+1]]))
+			continue
 		if kind == "fence":
 			for i in points.size() - 1:
 				fence_rails.append_array(PackedVector2Array([points[i], points[i + 1]]))

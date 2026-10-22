@@ -347,6 +347,19 @@ def _traffic_light_phases(traffic_mgr, x: float, y: float) -> dict:
     }
 
 
+def _broken_hedges(world, x, y):
+    manager = world.taxi_mgr
+    damage = getattr(manager, "broken_hedges", {})
+    if not damage:
+        return []
+    rows = []
+    for railing in manager._nearby_barriers(getattr(world, "railings", ()), x, y, TRAFFIC_LIGHT_PHASE_RADIUS_M):
+        fragments = damage.get(manager.hedge_key(railing))
+        if fragments is not None:
+            rows.append([getattr(railing, "layer", 0), _line(railing.points_m), [_line(piece) for piece in fragments]])
+    return rows
+
+
 def _fallen_and_knocked(world, x: float, y: float) -> tuple:
     """Trees felled and posts knocked over this session near (x, y), as
     [x, y, angle(, kind)] - matched by position to the chunks' trees and
@@ -483,6 +496,7 @@ def build_state_message(
         "protests": getattr(world, "protests", None).snapshot(camx, camy) if getattr(world, "protests", None) else [],
         "protest_active": bool(getattr(getattr(world, "protests", None), "groups", ())),
         "fallen_trees": fallen_trees,  # [x, y, angle] (the way the taxi hit it)
+        "broken_hedges": _broken_hedges(world, *player_at),
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
         "game_time_seconds": game_time_seconds,
         # {"date": "YYYY-MM-DD", "time_scale": game s per real s, "sun_altitude_deg",

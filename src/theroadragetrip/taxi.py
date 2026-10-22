@@ -292,6 +292,7 @@ class TaxiManager:
         self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._fence_collision_ref = None
         self._fence_collision_count = 0
+        self.broken_hedges: Dict[Any, List[List[Tuple[float, float]]]] = {}  # session damage, keyed by original geometry and layer
         self._barrier_grid: Dict[Tuple[int, int], List[Any]] = {}  # linear barriers (Railing), indexed as they stream in
         self._barrier_ref = None
         self._barrier_count = 0
@@ -976,6 +977,10 @@ class TaxiManager:
                         seen.add(id(railing))
                         yield railing
 
+    @staticmethod
+    def hedge_key(railing):
+        return (getattr(railing, "layer", 0), tuple((x, y) for x, y in railing.points_m))
+
     def check_barrier_collision(
         self,
         player_car: Car,
@@ -985,8 +990,8 @@ class TaxiManager:
         current_way: Optional[Way] = None,
         penalty: int = 150,
     ) -> bool:
-        """Stop the car at a fence, hedge, wall or railing line (OSM barrier=*,
-        open at its gates) and apply one crash penalty per impact. On a car
+        """Break hedges locally; stop at other barriers (open at their gates).
+        Apply one crash penalty per impact. On a car
         road they never block: one mapped across a road is not a wall there."""
         if current_way is not None and is_car_road(current_way):
             return False
@@ -996,14 +1001,43 @@ class TaxiManager:
         )
         edges = list(zip(corners, corners[1:] + corners[:1]))
         layer = getattr(player_car, "layer", 0)
-        for railing in self._nearby_barriers(railings, player_car.x, player_car.y, car_radius):
+        travel = math.dist(previous_position, (player_car.x, player_car.y)) if previous_position else 0.0
+        radius = car_radius + travel
+        hedge_sweep = None
+        damaged = False
+        for railing in self._nearby_barriers(railings, player_car.x, player_car.y, radius):
             if getattr(railing, "layer", 0) != layer:
                 continue
             box = railing.bbox
-            if (player_car.x < box[0] - car_radius or player_car.x > box[2] + car_radius
-                    or player_car.y < box[1] - car_radius or player_car.y > box[3] + car_radius):
+            if (player_car.x < box[0] - radius or player_car.x > box[2] + radius
+                    or player_car.y < box[1] - radius or player_car.y > box[3] + radius):
                 continue
             points = railing.points_m
+            if railing.kind == "hedge":
+                from shapely.geometry import LineString, MultiLineString, Polygon
+                if hedge_sweep is None:
+                    hedge_sweep = Polygon(corners)
+                    if previous_position is not None:
+                        previous_corners = get_oriented_box_corners(*previous_position, player_car.heading, player_car.length_m, player_car.width_m)
+                        hedge_sweep = hedge_sweep.union(Polygon(previous_corners)).convex_hull
+                key = self.hedge_key(railing)
+                fragments = self.broken_hedges.get(key, [points])
+                geometry = MultiLineString(fragments) if fragments else LineString()
+                if not geometry.intersects(hedge_sweep):
+                    continue
+                remaining = geometry.difference(hedge_sweep.buffer(0.65))
+                pieces = [remaining] if remaining.geom_type == "LineString" else list(remaining.geoms)
+                self.broken_hedges[key] = [list(piece.coords) for piece in pieces if not piece.is_empty and piece.length > .05]
+                player_car.speed *= .85
+                damaged = True
+                barrier_id = id(railing)
+                if barrier_id not in self._crashed_fence_cooldowns:
+                    self.total_score -= penalty
+                    self.adjust_passenger_happiness(-10.0)
+                    self.notification_msg = tr(self.language, "fence_crash", penalty=penalty)
+                    self.notification_timer = 3.5
+                self._crashed_fence_cooldowns[barrier_id] = sim_time
+                continue
             hit = any(
                 point_in_polygon(a[0], a[1], corners)
                 or any(segments_intersect(a, b, c, d) for c, d in edges)
@@ -1023,7 +1057,7 @@ class TaxiManager:
                 logger.info("Player crashed into a %s: -%d pts", railing.kind, penalty)
             self._crashed_fence_cooldowns[barrier_id] = sim_time  # every contact frame: pressing on stays one impact
             return True
-        return False
+        return damaged
 
     def check_tram_collision(
         self,

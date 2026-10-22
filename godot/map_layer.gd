@@ -22,6 +22,8 @@ var phases: Dictionary = {}  # traffic-light phases as last applied (state "traf
 var fallen: Dictionary = {}  # felled trees: MapChunk.obstacle_key -> angle (state "fallen_trees")
 var knocked: Dictionary = {}  # knocked posts: key -> [x, y, angle, kind] (state "knocked_posts")
 var _knocked_posts: Node2D  # drawn here, from the state: a lamp has no static data (made in _ready)
+var broken_hedges: Dictionary = {}
+var _last_hedge_damage: Array = []
 var _last_obstacles := [[], []]
 var season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] as last applied
 var lights_on := false
@@ -267,6 +269,7 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.set_px_per_m(px_per_m)
 	chunk.set_phases(phases)
 	chunk.set_obstacles(fallen, knocked)
+	chunk.set_broken_hedges(broken_hedges)
 	chunk.set_season(season)
 	chunk.set_lights_on(lights_on)
 	chunk.set_arena_lights(arena_lights_on)
@@ -304,6 +307,17 @@ func set_traffic_lights(value: Dictionary) -> void:
 	phases = value
 	for chunk in _chunks.values():
 		chunk.set_phases(phases)
+
+
+func set_broken_hedges(rows: Array) -> void:
+	if rows == _last_hedge_damage:
+		return
+	_last_hedge_damage = rows.duplicate(true)
+	broken_hedges = {}
+	for row in rows:
+		broken_hedges[MapChunk.hedge_key(["hedge", row[1], row[0]])] = row[2]
+	for chunk in _chunks.values():
+		chunk.set_broken_hedges(broken_hedges)
 
 
 ## The simulation's felled trees and knocked posts this tick (lists that

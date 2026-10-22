@@ -156,7 +156,7 @@ def test_railings_decorations_and_street_lights_are_each_in_one_chunk():
     world.street_light_points = [(100.0, 100.0, 1.25, 14.0), (600.0, 100.0, 0.0, 14.0)]
     index = map_chunks.ChunkIndex(world, size=500.0)
     here, east = index.message("0_0"), index.message("1_0")
-    assert here["railings"] == [["hedge", [[480.0, 5.0], [530.0, 5.0]]]] and east["railings"] == []  # first point's chunk, whole
+    assert here["railings"] == [["hedge", [[480.0, 5.0], [530.0, 5.0]], 0]] and east["railings"] == []  # first point's chunk, whole
     assert here["scenery_objects"] == [[46.0, 0.0, "bench", 0.0], [12.0, 13.0, "bench", 0.5], [14.0, 15.0, "gate", 0.0]]
     assert here["street_lights"] == [[100.0, 100.0, 1.25, 14.0]] and east["street_lights"] == [[600.0, 100.0, 0.0, 14.0]]
 
