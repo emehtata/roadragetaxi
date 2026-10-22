@@ -17,6 +17,7 @@ var species_weights := {"squirrel": 1.0, "small_bird": 1.0, "pigeon": 1.0, "hare
 	"fox": 1.0, "moose": 1.0, "roe_deer": 1.0, "crow": 1.0}
 
 var animals: Array = []
+var winter := 0.0  # the season's winter weight (main.gd, from the calendar): hares turn white, squirrels grey
 var drawn_members := 0  # rendering regression check and F3/debug inspection
 var _chunks: Dictionary = {}
 var _next_id := 1
@@ -198,6 +199,7 @@ func _draw_animal(animal: Dictionary) -> void:
 		"fox": 0.65, "roe_deer": 0.85, "moose": 1.15}.get(species, 0.4)
 	var color: Color = {"small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "crow": Color8(42, 43, 45), "squirrel": Color8(144, 79, 38),
 		"hare": Color8(142, 126, 101), "fox": Color8(194, 91, 38), "roe_deer": Color8(151, 104, 62), "moose": Color8(91, 67, 48)}.get(species, Color.GRAY)
+	color = winter_coat(species, color, winter)
 	var members := 5 if species == "small_bird" else (3 if species == "pigeon" else 1)
 	drawn_members += members
 	var flying: bool = animal["state"] == "FLY"
@@ -265,6 +267,15 @@ func _draw_wings(at: Vector2, direction: Vector2, side: Vector2, span: float, ch
 			PackedColorArray([hand_color]), PackedVector2Array())
 
 
+## A Finnish winter coat, blended in with the season (moulting through
+## autumn and spring): the mountain hare turns white, the red squirrel grey.
+static func winter_coat(species: String, color: Color, winter_weight: float) -> Color:
+	match species:
+		"hare": return color.lerp(Color8(238, 238, 234), clampf(winter_weight, 0.0, 1.0))
+		"squirrel": return color.lerp(Color8(120, 118, 116), clampf(winter_weight, 0.0, 1.0))
+	return color
+
+
 ## An animal on the ground, from above: its own silhouette per species
 ## (scale_m: about half its body length) over a soft shadow. Circles,
 ## quads and triangles only, drawn as is - no polygon triangulation to fail.
@@ -293,7 +304,8 @@ func _draw_body(at: Vector2, direction: Vector2, scale_m: float, color: Color, s
 			draw_circle(at + d * 0.48, scale_m * 0.2, light)
 			for side: float in [-1.0, 1.0]:  # long ears raised back in a V over the shoulders, dark tips
 				var tip := at - d * 0.12 + s * 0.46 * side  # past the body's outline: visible against the ground
-				_quad(at + d * 0.48 + s * 0.05 * side, at + d * 0.5 + s * 0.17 * side, tip + d * 0.07, tip - d * 0.05, Color8(122, 104, 84))
+				_quad(at + d * 0.48 + s * 0.05 * side, at + d * 0.5 + s * 0.17 * side, tip + d * 0.07, tip - d * 0.05,
+					color.darkened(0.3) if color.v < 0.8 else color.darkened(0.08))  # (white in winter; the tips stay black)
 				_tri(tip + d * 0.07, tip - d * 0.05, tip - d * 0.16 + s * 0.06 * side, Color8(30, 26, 22))
 		"squirrel":
 			_capsule(s * 0.06 - d * 0.05, at + d * 0.2, at - d * 0.3, scale_m * 0.24, shade)

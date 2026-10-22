@@ -657,6 +657,8 @@ func _present(state: Dictionary) -> void:
 	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()
 	if typeof(calendar) == TYPE_DICTIONARY:
 		map_layer.set_season(calendar.get("season", []))
+		var season = calendar.get("season", [])
+		wildlife.winter = float(season[0]) if season is Array and season.size() == 4 else 0.0  # winter coats
 		map_layer.set_sports_hours(bool(calendar.get("sports_lights", false)))
 		map_layer.set_arena_lights(bool(calendar.get("arena_lights", false)))
 	# godot-lights-01: the world's light from the sun's altitude, continuously - the

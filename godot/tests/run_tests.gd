@@ -1332,6 +1332,11 @@ func test_wildlife() -> void:
 	var layer: Node = WildlifeLayer.new()
 	root.add_child(layer)
 	check(layer.config_valid(layer.species_weights) and WildlifeLayer.SPECIES.size() == 8, "wildlife: species configuration is valid")
+	var brown := Color8(142, 126, 101)
+	check(WildlifeLayer.winter_coat("hare", brown, 1.0).get_luminance() > 0.9 and WildlifeLayer.winter_coat("hare", brown, 0.0) == brown, "wildlife: a hare is white in winter, brown in summer")
+	var squirrel_grey := WildlifeLayer.winter_coat("squirrel", Color8(144, 79, 38), 1.0)
+	check(absf(squirrel_grey.r - squirrel_grey.b) < 0.03, "wildlife: a red squirrel is grey in winter")
+	check(WildlifeLayer.winter_coat("fox", Color8(194, 91, 38), 1.0) == Color8(194, 91, 38), "wildlife: other coats keep their colour")
 	check(not layer.habitat_weights("urban").has("moose") and layer.habitat_weights("rural").has("moose"), "wildlife: large deer stay out of dense urban habitat")
 	check(layer.activity("small_bird", 43200) > layer.activity("small_bird", 0) and layer.activity("fox", 0) > layer.activity("fox", 43200), "wildlife: the simulation hour changes species activity")
 	var chunk := {"chunk_id": "1_2", "bounds": [0.0, 0.0, 500.0, 500.0], "buildings": [], "trees": [[250.0, 250.0, "birch", 0.5]]}
