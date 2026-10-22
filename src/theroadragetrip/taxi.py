@@ -134,6 +134,12 @@ class TaxiState:
     COMPLETED = "COMPLETED"
 
 
+# Phone pickups from buildings: this share from homes (a street address),
+# the rest from named places - real taxi orders mostly start at home.
+HOME_PICKUP_SHARE = 0.6
+HOME_BUILDING_TYPES = frozenset({"residential", "house", "detached", "semidetached_house", "terrace",
+                                 "apartments", "bungalow", "cabin", "farm", "yes"})
+
 _municipality_points: Optional[List[Tuple[str, float, float, int, Optional[str]]]] = None
 
 
@@ -1485,20 +1491,30 @@ class TaxiManager:
         max_dist: float = float("inf"),
         max_road_distance: float = 250.0,
         venue_types: Optional[set] = None,
+        homes: bool = False,
     ) -> Optional[TaxiTarget]:
-        """Pick a named building and place its target at the nearest reachable road point."""
-        candidates = [
-            building for building in self.buildings
-            if building.name
-            and len(building.points_m) >= 3
-            and (venue_types is None or getattr(building, "venue_type", None) in venue_types)
-        ]
-        candidates.extend(
-            place for place in self.places
-            if place.name
-            and getattr(place, "kind", None) in NIGHTLIFE_VENUE_TYPES
-            and (venue_types is None or place.kind in venue_types)
-        )
+        """Pick a named building (or, `homes`, a home with a street address)
+        and place its target at the nearest reachable road point."""
+        if homes:  # most taxis are ordered home: a house on its own street, not just a venue on a main road
+            candidates = [
+                building for building in self.buildings
+                if getattr(building, "street", None) and getattr(building, "housenumber", None)
+                and getattr(building, "building_type", None) in HOME_BUILDING_TYPES
+                and len(building.points_m) >= 3
+            ]
+        else:
+            candidates = [
+                building for building in self.buildings
+                if building.name
+                and len(building.points_m) >= 3
+                and (venue_types is None or getattr(building, "venue_type", None) in venue_types)
+            ]
+            candidates.extend(
+                place for place in self.places
+                if place.name
+                and getattr(place, "kind", None) in NIGHTLIFE_VENUE_TYPES
+                and (venue_types is None or place.kind in venue_types)
+            )
         random.shuffle(candidates)
 
         for building in candidates:
@@ -1556,7 +1572,7 @@ class TaxiManager:
             return TaxiTarget(
                 x=road_x,
                 y=road_y,
-                address=building.name,
+                address=building.name if not homes else f"{building.street} {building.housenumber}",
                 way_name=way_name,
                 district_name=self.get_nearest_district(road_x, road_y),
                 radius_m=self.pickup_radius_m,
@@ -1776,21 +1792,16 @@ class TaxiManager:
                 venue_types=None,
             )
         elif 5.0 <= hour < 8.0 or 20.0 <= hour < 24.0 or 8.0 <= hour < 12.0:
-            pickup = self.pick_random_building_point(
-                ref_x=car_x,
-                ref_y=car_y,
-                min_dist=150.0,
-                max_dist=1200.0,
-                venue_types=None,
-            )
+            pickup = self._pick_home_or_building(car_x, car_y)
         else:
             roll = random.random()
+            building = lambda x, y, min_dist, max_dist: self._pick_home_or_building(x, y)
             if roll < 0.70:
-                sources = (self.pick_random_building_point, self.pick_random_road_point, self.pick_random_taxi_stop)
+                sources = (building, self.pick_random_road_point, self.pick_random_taxi_stop)
             elif roll < 0.95:
-                sources = (self.pick_random_road_point, self.pick_random_building_point, self.pick_random_taxi_stop)
+                sources = (self.pick_random_road_point, building, self.pick_random_taxi_stop)
             else:
-                sources = (self.pick_random_taxi_stop, self.pick_random_building_point, self.pick_random_road_point)
+                sources = (self.pick_random_taxi_stop, building, self.pick_random_road_point)
             for source in sources:
                 pickup = source(car_x, car_y, min_dist=150.0, max_dist=1200.0)
                 if pickup:
@@ -1798,6 +1809,18 @@ class TaxiManager:
         if pickup:
             return pickup
         return self.pick_random_road_point(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
+
+    def _pick_home_or_building(self, car_x: float, car_y: float) -> Optional[TaxiTarget]:
+        """A building pickup: a home (HOME_PICKUP_SHARE) or a named place,
+        each falling back to the other."""
+        homes_first = random.random() < HOME_PICKUP_SHARE
+        for homes in (homes_first, not homes_first):
+            pickup = self.pick_random_building_point(
+                ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0, homes=homes,
+            )
+            if pickup:
+                return pickup
+        return None
 
     def pick_phone_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
         """Pick a phone-order dropoff using places and addresses only.

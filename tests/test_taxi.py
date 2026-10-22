@@ -947,3 +947,25 @@ def test_unnamed_road_is_a_valid_stop():
     taxi_mgr = TaxiManager(ways=[way], places=[Place(x=200.0, y=50.0, name="Kaukovainio", kind="suburb")], language="en")
     target = taxi_mgr.pick_random_road_point(0.0, 0.0, 50.0, 400.0)
     assert target is not None and target.address == "Roadside, Kaukovainio"
+
+
+def test_phone_pickups_come_from_homes_on_small_streets_too():
+    """Only named buildings (shops, offices: mostly on main roads) could be a
+    pickup; a house with just an address never was. Now homes take the
+    HOME_PICKUP_SHARE of building pickups, at their own street."""
+    import random
+    from theroadragetrip import taxi as taxi_module
+
+    main_road = Way(points_m=[(0.0, 0.0), (1000.0, 0.0)], highway="primary", half_width_m=6.0, name="Kauppakatu")
+    side_street = Way(points_m=[(500.0, 300.0), (500.0, 700.0)], highway="residential", half_width_m=3.0, name="Majakkatie")
+    office = Building(points_m=[(390.0, 10.0), (420.0, 10.0), (420.0, 30.0), (390.0, 30.0)], name="Toimistotalo",
+                      building_type="office")
+    house = Building(points_m=[(506.0, 490.0), (520.0, 490.0), (520.0, 505.0), (506.0, 505.0)],
+                     street="Majakkatie", housenumber="5C", building_type="detached")
+    manager = TaxiManager([main_road, side_street], buildings=[office, house])
+    manager.game_time_seconds = 9 * 3600.0  # a morning: building pickups
+    random.seed(4)
+    picks = [manager.pick_phone_pickup(0.0, 400.0) for _ in range(400)]
+    homes = [pick for pick in picks if pick.address == "Majakkatie 5C"]
+    assert all(pick.way_name == "Majakkatie" for pick in homes)
+    assert abs(len(homes) / len(picks) - taxi_module.HOME_PICKUP_SHARE) < 0.1
