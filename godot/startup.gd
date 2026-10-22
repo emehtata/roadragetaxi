@@ -615,7 +615,7 @@ func _map_point_menu() -> void:
 			place.text = "%.5f, %.5f  (%s)" % [pin.x, pin.y, settings]
 			_start_place = ""
 			_reverse_geocode(pin, func(name: String):
-				if browser.pin == pin and is_instance_valid(place):  # not a stale answer
+				if is_instance_valid(browser) and is_instance_valid(place) and browser.pin == pin:  # not a stale answer (or a closed menu)
 					_start_place = name
 					place.text = "%s  (%s)" % [name, settings])
 	show_pin.call()
