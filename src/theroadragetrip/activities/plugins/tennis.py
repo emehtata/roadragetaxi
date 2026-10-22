@@ -31,6 +31,14 @@ def point(frame, u, v):
     return x + math.cos(angle)*u*length - math.sin(angle)*v*width, y + math.sin(angle)*u*length + math.cos(angle)*v*width
 
 
+def rally_spot(side, turn):
+    """Where a player takes the `turn`th shot, in court-frame units: inside the
+    singles court (baselines at u=+-.42, sidelines at v=+-.3, as
+    chunk_detail.gd draws them), from the baseline up to mid-court."""
+    depth = .36 + .05 * math.sin(turn * 1.3 + side * 2.1)
+    return -depth if side == 0 else depth, .24 * math.sin(turn * .8 + side)
+
+
 class TennisPlugin(ActivityPlugin):
     definition = ActivityDefinition(id="tennis", name="Playing tennis", min_participants=2, max_participants=2)
 
@@ -55,10 +63,10 @@ class TennisPlugin(ActivityPlugin):
         turn, t = int(elapsed / 1.6), (elapsed % 1.6) / 1.6
         side = instance.data["side"]
         frame = instance.location.extra.tennis_frame
-        target = point(frame, -.46 if side == 0 else .46, .20 * math.sin(turn*.8 + side))
+        target = point(frame, *rally_spot(side, turn))
         p = context.pedestrian
         p.speed = 0
-        glide(p, target, dt, 2.0)
+        glide(p, target, dt, 4.0)  # a court-wide run takes one shot's flight
         other = other_group_members(context, group)[0]
         p.heading = math.atan2(other.y-p.y, other.x-p.x)
         p.animation_state = "tennis"
@@ -85,7 +93,7 @@ class TennisPlugin(ActivityPlugin):
             return 0
         if any(p.activity and p.activity.plugin_id == "tennis" and p.activity.location.extra is court for p in manager.pedestrians):
             return 0
-        positions = [point(court.tennis_frame, u, 0) for u in [-.46, .46]]
+        positions = [point(court.tennis_frame, *rally_spot(side, 0)) for side in (0, 1)]
         if not all(in_bounds(bounds, *position) for position in positions):
             return 0
         players = []
