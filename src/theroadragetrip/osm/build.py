@@ -856,6 +856,8 @@ def build_ways(
                 railway_raw.append((tags, node_ids, way_id))
             elif tags.get("natural") == "coastline":
                 pass  # already collected, including coastline + waterway tags
+            elif "waterway" in tags and (tags.get("tunnel") or tags.get("location") == "underground"):
+                pass  # a culverted or piped waterway runs under the parks and streets, not on them
             elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
                 water_raw.append((tags, node_ids, way_id))
             elif tags.get("amenity") in ("parking", "fuel") or tags.get("landuse") == "parking":

@@ -117,7 +117,8 @@ MAGIC = b"RWC\0"
 # 50: Camping equipment on mapped camp pitches.
 # 51: Standalone caravans and caravans hitched to cars.
 # 52: Validated outdoor beach-volleyball court geometry.
-FORMAT_VERSION = 52
+# 53: culverted and underground waterways are not surface water.
+FORMAT_VERSION = 53
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

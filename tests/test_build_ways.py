@@ -242,6 +242,20 @@ def test_build_ways_preserves_water_layer():
     assert waters[0].layer == -1
 
 
+def test_build_ways_skips_culverted_waterways():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.01},
+        {"type": "way", "id": 14, "nodes": [1, 2], "tags": {"waterway": "stream", "tunnel": "culvert"}},
+        {"type": "way", "id": 15, "nodes": [1, 2], "tags": {"waterway": "drain", "location": "underground"}},
+        {"type": "way", "id": 16, "nodes": [1, 2], "tags": {"waterway": "stream"}},
+    ]
+
+    ways, waters, buildings, sceneries, places, bounds = build_ways(elements)
+
+    assert len(waters) == 1
+
+
 def test_a_pitch_keeps_its_sport():
     from theroadragetrip.osm.build import build_ways
 
