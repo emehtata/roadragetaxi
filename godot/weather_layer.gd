@@ -125,7 +125,7 @@ func update(delta: float, state: Dictionary, taxi: Vector2, underground: bool) -
 		splashes.clear()
 	age_splashes(delta)
 	if splash_node != null:
-		splash_node.visible = splashes_enabled and (not splashes.is_empty() or not mud.is_empty())
+		splash_node.visible = not splashes.is_empty() or not mud.is_empty()
 		if splash_node.visible:
 			splash_node.queue_redraw()
 	Perf.add("weather", Time.get_ticks_usec() - started)
@@ -137,7 +137,8 @@ const Perf := preload("res://perf.gd")
 ## weather.py update: fall and drift in real time, by the type's factors;
 ## off the bottom -> back at the top at a new x; off the right -> wrap.
 func update_mud(delta: float, state: Dictionary, taxi: Vector2, underground: bool) -> void:
-	if not splashes_enabled or underground:
+	# The graphics switch controls puddle water, not offroad dirt.
+	if underground:
 		mud.clear()
 		_mud_clock = 0.0
 		return

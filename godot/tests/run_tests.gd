@@ -1818,7 +1818,9 @@ func test_weather_presentation() -> void:
 	check(live.mud.is_empty(), "underground clears surface mud")
 	live.splashes_enabled = false
 	live.update_mud(0.1, muddy, Vector2.ZERO, false)
-	check(live.mud.is_empty(), "disabled splashes also disable mud")
+	check(not live.mud.is_empty(), "disabled puddle splashes still allow offroad mud")
+	live.update(0.1, muddy, Vector2.ZERO, false)
+	check(live.splash_node.visible and live.splashes.is_empty(), "mud stays visible with puddle splashes disabled")
 
 	live.free()
 	map.free()
