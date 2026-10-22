@@ -225,6 +225,8 @@ def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
         "costume": "santa" if santa_costume(ped, (residents or {}).get(ped.resident_id), santa_day) else "",
         "resident": _resident_to_dict((residents or {}).get(ped.resident_id)),
         "blood_alcohol_promille": getattr(ped, "blood_alcohol_promille", 0.0),
+        "bottle": getattr(ped, "bottles", 0) > 0,  # a bottle in hand
+        "drinking": getattr(ped, "drinking", False),  # hanging out with it: sips now and then
         "activity": getattr(getattr(ped, "activity", None), "plugin_id", ""),
         "stick_swing": getattr(ped, "stick_swing", 0.0),
         "hockey_goalie": getattr(ped, "hockey_goalie", False),

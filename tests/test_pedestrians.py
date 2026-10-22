@@ -2012,3 +2012,18 @@ def test_adults_at_a_camping_area_are_often_drunk_children_never():
     assert all(CAMPING_PROMILLE[0] <= ped.blood_alcohol_promille <= CAMPING_PROMILLE[1] for ped in drunk)
     assert not any(visitor(40.0, 12).is_drunk for _ in range(100))  # a child at the same campsite
     assert not any(visitor(390.0, 35).is_drunk for _ in range(100))  # an adult far from it
+
+
+def test_hanging_out_with_bottles_ends_drunk():
+    import random
+    from theroadragetrip.osm import Way
+    from theroadragetrip.pedestrian import Pedestrian, PedestrianManager
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    ped = Pedestrian(0.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    ped.bottles, ped.animation_state = 3, "walking"
+    PedestrianManager.drink(ped, 600.0, random.Random(1))
+    assert not ped.drinking and ped.blood_alcohol_promille == 0.0  # only while hanging out
+    ped.animation_state = "sitting"
+    for _ in range(8):  # 40 game minutes: well into the third bottle
+        PedestrianManager.drink(ped, 300.0, random.Random(1))
+    assert ped.drinking and ped.is_drunk and ped.bottles < 3

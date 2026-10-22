@@ -51,6 +51,16 @@ CAMPING_KINDS = ("camp_site", "caravan_site", "camp_pitch")
 CAMPING_NEAR_M = 200.0
 CAMPING_DRUNK_CHANCE = 0.5
 CAMPING_PROMILLE = (0.5, 2.0)
+# Bottles (gameplay estimates, not a medical model): some adults carry beer
+# and drink it while hanging out (idle or sitting), in game time - a bottle
+# lasts BOTTLE_DRINK_S and adds BOTTLE_PROMILLE, so a few make them drunk.
+BOTTLE_CHANCE = 0.06  # anywhere, by day
+BOTTLE_EVENING_CHANCE = 0.18  # 18-03
+BOTTLE_CAMPING_CHANCE = 0.45
+BOTTLES = (1, 6)  # one, or up to a six-pack
+BOTTLE_DRINK_S = 15 * 60.0
+BOTTLE_PROMILLE = 0.25
+HANGING_OUT = ("idle", "sitting")
 
 PEDESTRIAN_COLORS = [
     (230, 80, 80),    # Red
@@ -447,6 +457,9 @@ class Pedestrian:
     is_cyclist: bool = False
     is_drunk: bool = False
     blood_alcohol_promille: float = 0.0
+    bottles: int = 0  # bottles carried, the open one included (0: none in hand)
+    bottle_left: float = 1.0  # of the open bottle
+    drinking: bool = False  # hanging out with a bottle: sipping it (drawn raised now and then)
     drunk_phase: float = 0.0
     drunk_vomit_cooldown: float = 0.0
     fall_timer: float = 0.0
@@ -611,6 +624,43 @@ class PedestrianManager:
             logical_intersections=logical_intersections,
         )
 
+    def _near_camping(self, x: float, y: float) -> bool:
+        return any(getattr(scenery, "kind", None) in CAMPING_KINDS for scenery in self.nearby_sceneries(x, y, CAMPING_NEAR_M))
+
+    def _hand_bottles(self, pedestrian: Pedestrian, rng=random) -> None:
+        """Some adults carry bottles: more in the evening, many at a camping area."""
+        if (pedestrian.bottles or getattr(pedestrian, "linked_vehicle_id", None) is not None
+                or getattr(pedestrian, "held_by", None) is not None or self.residents is None):
+            return
+        hour = ((self._last_game_time_seconds or 12 * 3600.0) / 3600.0) % 24.0
+        chance = BOTTLE_CAMPING_CHANCE if self._near_camping(pedestrian.x, pedestrian.y) else (
+            BOTTLE_EVENING_CHANCE if hour >= 18.0 or hour < 3.0 else BOTTLE_CHANCE)
+        if rng.random() >= chance:
+            return
+        self._register_resident(pedestrian)
+        resident = self.residents.get(pedestrian.resident_id)
+        if resident is not None and self.residents.age_of(resident) >= 18:
+            pedestrian.bottles = rng.randint(*BOTTLES)
+            pedestrian.bottle_left = 1.0
+
+    @staticmethod
+    def drink(pedestrian: Pedestrian, game_dt: float, rng=random) -> None:
+        """Sip while hanging out with a bottle: alcohol in, the bottle down,
+        the next one opened; drunk past DRUNK_FROM_PROMILLE."""
+        pedestrian.drinking = pedestrian.bottles > 0 and pedestrian.animation_state in HANGING_OUT
+        if not pedestrian.drinking or game_dt <= 0.0:
+            return
+        sip = min(pedestrian.bottle_left, game_dt / BOTTLE_DRINK_S)
+        pedestrian.bottle_left -= sip
+        pedestrian.blood_alcohol_promille += sip * BOTTLE_PROMILLE
+        if pedestrian.bottle_left <= 1e-9:
+            pedestrian.bottles -= 1
+            pedestrian.bottle_left = 1.0
+        if not pedestrian.is_drunk and pedestrian.blood_alcohol_promille >= DRUNK_FROM_PROMILLE:
+            pedestrian.is_drunk = True
+            pedestrian.drunk_phase = rng.uniform(0.0, 2.0 * math.pi)
+            pedestrian.drunk_vomit_cooldown = rng.uniform(8.0, 25.0)
+
     def _camping_drink(self, pedestrian: Pedestrian, rng=random) -> None:
         """An adult at a camping area: CAMPING_DRUNK_CHANCE to be drunk. Not
         someone on their way back to a car (they would drive it) or owned by
@@ -645,6 +695,7 @@ class PedestrianManager:
             return False
         self.pedestrians.append(pedestrian)
         self._camping_drink(pedestrian)
+        self._hand_bottles(pedestrian)
         return True
 
     def _materialize_parked_drivers(self) -> None:
@@ -2752,6 +2803,8 @@ class PedestrianManager:
 
         # Update walking movement
         for ped in self.pedestrians:
+            if ped.bottles:
+                self.drink(ped, alcohol_dt)
             if ped.blood_alcohol_promille > 0.0 or ped.is_drunk:
                 ped.blood_alcohol_promille = max(
                     0.0, ped.blood_alcohol_promille - ALCOHOL_DECAY_PER_GAME_HOUR * alcohol_dt / 3600.0,

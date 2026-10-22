@@ -991,6 +991,26 @@ const SANTA_HAT := [Vector2(0, -0.4), Vector2(0, 0.4), Vector2(-0.65, 0.3)]
 ## A pedestrian: shadow, legs
 ## stepping with animation_time, body, head facing the heading; fallen ones
 ## lie down, people going indoors are an outline; then any cursing bubble.
+## A bottle in the right hand (server "bottle"); while drinking (hanging
+## out) it goes up to the mouth for a sip now and then, on each person's
+## own beat.
+func _bottle(c: Vector2, h: Vector2, side: Vector2, radius: float, ped: Dictionary, head: Vector2) -> void:
+	if not ped.get("bottle", false):
+		return
+	var hand := c + side * radius * 0.62 + h * radius * 0.25
+	var sipping := false
+	if ped.get("drinking", false):
+		var beat := fmod(_clock + float(absi(hash(ped.get("id", 0))) % 97) * 0.37, 9.0)
+		sipping = beat < 1.5
+	var neck_dir := (h * 0.8 + side * 0.25).normalized()
+	if sipping:  # at the mouth, tipped up
+		hand = head + side * radius * 0.2 + h * radius * 0.15
+		neck_dir = (h + side * 0.1).normalized()
+	var glass := _person_lit(Color8(52, 104, 58))
+	_canvas.draw_line(hand - neck_dir * radius * 0.25, hand + neck_dir * radius * 0.2, glass, maxf(_px(1.5), radius * 0.2))
+	_canvas.draw_line(hand + neck_dir * radius * 0.2, hand + neck_dir * radius * 0.38, _person_lit(Color8(40, 80, 44)), maxf(_px(1.0), radius * 0.1))
+
+
 func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: float) -> void:
 	if _canvas == self:  # drawn lit on _people (_draw_people)
 		_people_rows.append([c, heading, ped, animation_time])
@@ -1025,6 +1045,7 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 			_canvas.draw_line(knee, knee - h * radius * 0.6, _person_lit(RS.PED_LEGS), radius * 0.3)
 		_ellipse(c, radius * 0.7, radius * 0.55, clothing)
 		_canvas.draw_circle(c - h * radius * 0.25, radius * 0.4, _person_lit(RS.PED_HEAD))
+		_bottle(c, h, side, radius, ped, c - h * radius * 0.25)
 	elif ped.get("animation_state", "walking") == "fallen":
 		_fallen(c, h, side, radius, clothing, ped.get("activity", "") == "ice_hockey")
 	else:
@@ -1038,6 +1059,7 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 		var head := c + h * radius * 0.6
 		_canvas.draw_circle(head, maxf(_px(2.0), radius * 0.48), _person_lit(RS.PED_HAIR))
 		_canvas.draw_circle(head, maxf(_px(1.0), radius * 0.35), _person_lit(RS.PED_HEAD))
+		_bottle(c, h, side, radius, ped, head)
 		if santa:
 			_canvas.draw_line(c - side * radius * 0.5, c + side * radius * 0.5, _person_lit(Color.WHITE), radius * 0.20)
 			_canvas.draw_line(head - side * radius * 0.38, head + side * radius * 0.38, _person_lit(Color.WHITE), radius * 0.22)
