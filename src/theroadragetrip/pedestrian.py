@@ -45,6 +45,12 @@ FOOTPRINT_SPACING_M = 0.7
 MAX_FOOTPRINTS = 300
 ALCOHOL_DECAY_PER_GAME_HOUR = 0.15  # gameplay estimate, not a medical model
 DRUNK_FROM_PROMILLE = 0.5
+# Adults spending time at a camping area (tourism=camp_site/caravan_site/
+# camp_pitch, within CAMPING_NEAR_M) are often drinking: this share spawn drunk.
+CAMPING_KINDS = ("camp_site", "caravan_site", "camp_pitch")
+CAMPING_NEAR_M = 200.0
+CAMPING_DRUNK_CHANCE = 0.5
+CAMPING_PROMILLE = (0.5, 2.0)
 
 PEDESTRIAN_COLORS = [
     (230, 80, 80),    # Red
@@ -605,6 +611,26 @@ class PedestrianManager:
             logical_intersections=logical_intersections,
         )
 
+    def _camping_drink(self, pedestrian: Pedestrian, rng=random) -> None:
+        """An adult at a camping area: CAMPING_DRUNK_CHANCE to be drunk. Not
+        someone on their way back to a car (they would drive it) or owned by
+        another system (a rail passenger)."""
+        if (pedestrian.is_drunk or getattr(pedestrian, "linked_vehicle_id", None) is not None
+                or getattr(pedestrian, "held_by", None) is not None or self.residents is None):
+            return
+        if not any(
+                getattr(scenery, "kind", None) in CAMPING_KINDS
+                for scenery in self.nearby_sceneries(pedestrian.x, pedestrian.y, CAMPING_NEAR_M)):
+            return
+        self._register_resident(pedestrian)  # an age to go by
+        resident = self.residents.get(pedestrian.resident_id)
+        if resident is None or self.residents.age_of(resident) < 18 or rng.random() >= CAMPING_DRUNK_CHANCE:
+            return
+        pedestrian.is_drunk = True
+        pedestrian.blood_alcohol_promille = rng.uniform(*CAMPING_PROMILLE)
+        pedestrian.drunk_phase = rng.uniform(0.0, 2.0 * math.pi)
+        pedestrian.drunk_vomit_cooldown = rng.uniform(8.0, 25.0)
+
     def _register_resident(self, pedestrian: Pedestrian) -> Pedestrian:
         if pedestrian.resident_id is None:
             pedestrian.resident_id = self.residents.create("walking", min_age=MIN_UNACCOMPANIED_AGE).resident_id
@@ -618,6 +644,7 @@ class PedestrianManager:
         ):
             return False
         self.pedestrians.append(pedestrian)
+        self._camping_drink(pedestrian)
         return True
 
     def _materialize_parked_drivers(self) -> None:

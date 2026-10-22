@@ -1987,3 +1987,28 @@ def test_without_a_connected_footway_people_walk_around_a_house_not_through_it()
     for (ax, ay), (bx, by) in zip(route, route[1:]):
         for t in (0.1, 0.3, 0.5, 0.7, 0.9):
             assert not manager._point_inside_building(ax + (bx - ax) * t, ay + (by - ay) * t), route
+
+
+def test_adults_at_a_camping_area_are_often_drunk_children_never():
+    import random
+    from theroadragetrip.osm import Scenery
+    from theroadragetrip.pedestrian import CAMPING_PROMILLE
+
+    path = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="footway", half_width_m=1.0)
+    camp = Scenery(points_m=[(0, 0), (80, 0), (80, 60), (0, 60), (0, 0)], kind="camp_site", bbox=(0.0, 0.0, 80.0, 60.0))
+    manager = PedestrianManager([path], target_count=0)
+    manager.set_scenery_features([], [camp], [])
+    rng = random.Random(1)
+
+    def visitor(x, age):
+        ped = Pedestrian(x, 10.0, 0.0, 1.3, 1.3, path, 0, 1, (1, 1, 1))
+        ped.resident_id = manager.residents.create("walking", age=age).resident_id
+        manager._camping_drink(ped, rng)
+        return ped
+
+    adults = [visitor(40.0, 35) for _ in range(400)]
+    drunk = [ped for ped in adults if ped.is_drunk]
+    assert 0.35 < len(drunk) / len(adults) < 0.65
+    assert all(CAMPING_PROMILLE[0] <= ped.blood_alcohol_promille <= CAMPING_PROMILLE[1] for ped in drunk)
+    assert not any(visitor(40.0, 12).is_drunk for _ in range(100))  # a child at the same campsite
+    assert not any(visitor(390.0, 35).is_drunk for _ in range(100))  # an adult far from it
