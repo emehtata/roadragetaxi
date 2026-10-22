@@ -448,7 +448,8 @@ static func draw_signs(chunk, node: Node2D, flash_index) -> void:
 		else:
 			var f := Vector2(cos(sign[3]), -sin(sign[3]))
 			var s := Vector2(-f.y, f.x)
-			var triangle := PackedVector2Array([f * r, -f * r - s * r, -f * r + s * r])
+			# The tip faces approaching drivers, with the triangle aligned to the road.
+			var triangle := PackedVector2Array([-f * r, f * r - s * r, f * r + s * r])
 			node.draw_colored_polygon(triangle, Color8(245, 245, 240))
 			triangle.append(triangle[0])
 			node.draw_polyline(triangle, Color8(220, 30, 30), maxf(2.0, 2.0 * scale))
