@@ -1,7 +1,7 @@
 {
   "catalog_version": 1,
   "generated": "2026-09-25",
-  "status": "generated and reviewed",
+  "status": "generated; listening review status is recorded per file",
   "generator": {
     "model": "stabilityai/stable-audio-open-1.0",
     "tool": "diffusers StableAudioPipeline (ai-audio-studio .venv)"
@@ -4574,6 +4574,667 @@
           "raw_clipped_samples": 388,
           "raw_silent_fraction": 0.586,
           "rms_dbfs": -27.7
+        }
+      ]
+    },
+    "collision.hedge_break": {
+      "category": "collision",
+      "event": "hedge_break",
+      "description": "A car breaks through a hedge: branches snap and leaves brush the bodywork.",
+      "trigger": "check_barrier_collision removes a newly struck hedge segment; cue only for newly broken foliage.",
+      "source": [
+        "src/theroadragetrip/taxi.py"
+      ],
+      "introduced_commit": "526f4c0",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        1.0,
+        2.5
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "A vehicle bursting through a leafy garden hedge, rapid brittle twig snaps and heavy foliage rustling across metal, one brief impact, close dry isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "collision.hedge_break.01",
+          "file": "collision/collision_hedge_break_01.ogg",
+          "variation": 1,
+          "variant": "thin branches snapping with a quick leafy swish",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "thin branches snapping with a quick leafy swish. A vehicle bursting through a leafy garden hedge, rapid brittle twig snaps and heavy foliage rustling across metal, one brief impact, close dry isolated sound effect",
+          "seed": 1525284140,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.681,
+          "raw_clipped_samples": 217,
+          "raw_silent_fraction": 0.935,
+          "rms_dbfs": -26.0
+        },
+        {
+          "id": "collision.hedge_break.02",
+          "file": "collision/collision_hedge_break_02.ogg",
+          "variation": 2,
+          "variant": "a denser woody crunch and leaves scraping past",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a denser woody crunch and leaves scraping past. A vehicle bursting through a leafy garden hedge, rapid brittle twig snaps and heavy foliage rustling across metal, one brief impact, close dry isolated sound effect",
+          "seed": 3286281366,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 1.745,
+          "raw_clipped_samples": 170,
+          "raw_silent_fraction": 0.786,
+          "rms_dbfs": -24.8
+        }
+      ]
+    },
+    "vehicle.mud_spray": {
+      "category": "vehicle",
+      "event": "mud_spray",
+      "description": "Tyres churn wet mud and throw it against the wheel arches.",
+      "trigger": "Mud spray while the moving taxi is on wet unpaved ground.",
+      "source": [
+        "godot/weather_layer.gd"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        5.0,
+        7.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "Car tyres spinning through thick wet mud, sticky squelching and small wet clods hitting wheel arches, steady exterior recording, isolated sound effect, seamless loop",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.mud_spray.01",
+          "file": "vehicle/vehicle_mud_spray_01.ogg",
+          "variation": 1,
+          "variant": "wet muddy tyre churn and irregular splatters",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "wet muddy tyre churn and irregular splatters. Car tyres spinning through thick wet mud, sticky squelching and small wet clods hitting wheel arches, steady exterior recording, isolated sound effect, seamless loop",
+          "seed": 1866675130,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-22",
+          "duration_s": 7.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.567,
+          "rms_dbfs": -29.1
+        }
+      ]
+    },
+    "sport.tennis_hit": {
+      "category": "sport",
+      "event": "tennis_hit",
+      "description": "A tennis racket strikes the ball.",
+      "trigger": "The rally advances to a new turn; play once at the striking player.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/tennis.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.0
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "One tennis ball struck once with a tightly strung tennis racket, sharp hollow thwack with a brief string resonance, close dry outdoor recording, single isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.tennis_hit.01",
+          "file": "sport/sport_tennis_hit_01.ogg",
+          "variation": 1,
+          "variant": "a firm forehand racket impact",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a firm forehand racket impact. One tennis ball struck once with a tightly strung tennis racket, sharp hollow thwack with a brief string resonance, close dry outdoor recording, single isolated sound effect",
+          "seed": 2275890248,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.223,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.91,
+          "rms_dbfs": -20.2
+        },
+        {
+          "id": "sport.tennis_hit.02",
+          "file": "sport/sport_tennis_hit_02.ogg",
+          "variation": 2,
+          "variant": "a lighter backhand racket impact",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a lighter backhand racket impact. One tennis ball struck once with a tightly strung tennis racket, sharp hollow thwack with a brief string resonance, close dry outdoor recording, single isolated sound effect",
+          "seed": 514721266,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.294,
+          "raw_clipped_samples": 80,
+          "raw_silent_fraction": 0.888,
+          "rms_dbfs": -21.8
+        }
+      ]
+    },
+    "sport.tennis_bounce": {
+      "category": "sport",
+      "event": "tennis_bounce",
+      "description": "A tennis ball bounces on the court.",
+      "trigger": "The tennis ball reaches the court in its rally arc.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/tennis.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.0
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "A single tennis ball bouncing once on a hard outdoor tennis court, short hollow rubber pop and tiny surface scuff, close dry recording, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.tennis_bounce.01",
+          "file": "sport/sport_tennis_bounce_01.ogg",
+          "variation": 1,
+          "variant": "one hollow rubber ball bounce",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one hollow rubber ball bounce. A single tennis ball bouncing once on a hard outdoor tennis court, short hollow rubber pop and tiny surface scuff, close dry recording, isolated sound effect",
+          "seed": 1783912954,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.146,
+          "raw_clipped_samples": 16,
+          "raw_silent_fraction": 0.973,
+          "rms_dbfs": -28.5
+        }
+      ]
+    },
+    "sport.golf_hit": {
+      "category": "sport",
+      "event": "golf_hit",
+      "description": "A golf club drives or chips a ball.",
+      "trigger": "GolfPlugin._hit starts a non-putting shot.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/golf.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.5,
+        1.5
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "A single golf club swing, quick air swish followed by the crisp metallic crack of a driver striking a golf ball, brief natural decay, close dry outdoor recording, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.golf_hit.01",
+          "file": "sport/sport_golf_hit_01.ogg",
+          "variation": 1,
+          "variant": "a driver swing followed by one crisp golf ball impact",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a driver swing followed by one crisp golf ball impact. A single golf club swing, quick air swish followed by the crisp metallic crack of a driver striking a golf ball, brief natural decay, close dry outdoor recording, isolated sound effect",
+          "seed": 3213055046,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.568,
+          "raw_clipped_samples": 55,
+          "raw_silent_fraction": 0.845,
+          "rms_dbfs": -22.3
+        }
+      ]
+    },
+    "sport.golf_putt": {
+      "category": "sport",
+      "event": "golf_putt",
+      "description": "A putter taps a golf or miniature-golf ball.",
+      "trigger": "GolfPlugin._hit starts a putting shot, including miniature golf.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/golf.py",
+        "src/theroadragetrip/activities/plugins/miniature_golf.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.0
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "A putter tapping a golf ball once, small crisp woody metallic tick followed by a very short soft rolling sound on putting grass, close dry recording, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.golf_putt.01",
+          "file": "sport/sport_golf_putt_01.ogg",
+          "variation": 1,
+          "variant": "one quiet putter tap",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one quiet putter tap. A putter tapping a golf ball once, small crisp woody metallic tick followed by a very short soft rolling sound on putting grass, close dry recording, isolated sound effect",
+          "seed": 2548746482,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.22,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.959,
+          "rms_dbfs": -25.5
+        }
+      ]
+    },
+    "sport.golf_cup": {
+      "category": "sport",
+      "event": "golf_cup",
+      "description": "A golf ball drops into the cup.",
+      "trigger": "The ball finishes rolling and holed becomes true; cue once per completed hole.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/golf.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.2
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "A single golf ball falling into a plastic lined golf hole, brief hollow clunk and two tiny rattling clicks, close dry outdoor recording, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.golf_cup.01",
+          "file": "sport/sport_golf_cup_01.ogg",
+          "variation": 1,
+          "variant": "one ball rattling briefly into a golf cup",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one ball rattling briefly into a golf cup. A single golf ball falling into a plastic lined golf hole, brief hollow clunk and two tiny rattling clicks, close dry outdoor recording, isolated sound effect",
+          "seed": 4281747793,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.803,
+          "raw_clipped_samples": 59,
+          "raw_silent_fraction": 0.64,
+          "rms_dbfs": -29.7
+        }
+      ]
+    },
+    "sport.swimming": {
+      "category": "sport",
+      "event": "swimming",
+      "description": "Gentle swimming strokes and splashes close to shore.",
+      "trigger": "SwimmingPlugin has set animation_state to swimming; stop on shore.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/swimming.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        5.0,
+        7.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "One person swimming slowly in a calm freshwater lake, rhythmic small hand splashes and water sloshing, gentle surface ripples, close outdoor recording, no talking or breathing, isolated sound effect, seamless loop",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.swimming.01",
+          "file": "sport/sport_swimming_01.ogg",
+          "variation": 1,
+          "variant": "steady gentle swimming strokes",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "steady gentle swimming strokes. One person swimming slowly in a calm freshwater lake, rhythmic small hand splashes and water sloshing, gentle surface ripples, close outdoor recording, no talking or breathing, isolated sound effect, seamless loop",
+          "seed": 2248423605,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-22",
+          "duration_s": 7.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.396,
+          "rms_dbfs": -28.0
+        }
+      ]
+    },
+    "sport.beach_ball": {
+      "category": "sport",
+      "event": "beach_ball",
+      "description": "A hand catches or bats a light inflatable beach ball.",
+      "trigger": "The beach-ball turn advances; play once at the receiving or throwing player.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/beach_games.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.0
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "An open hand lightly slapping a large inflatable beach ball once, soft hollow rubbery pop with a slight plastic squeak, close dry outdoor recording, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.beach_ball.01",
+          "file": "sport/sport_beach_ball_01.ogg",
+          "variation": 1,
+          "variant": "one soft hollow inflatable ball slap",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one soft hollow inflatable ball slap. An open hand lightly slapping a large inflatable beach ball once, soft hollow rubbery pop with a slight plastic squeak, close dry outdoor recording, isolated sound effect",
+          "seed": 4279718969,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.455,
+          "raw_clipped_samples": 643,
+          "raw_silent_fraction": 0.877,
+          "rms_dbfs": -18.1
+        }
+      ]
+    },
+    "ambient.ride_machinery": {
+      "category": "ambient",
+      "event": "ride_machinery",
+      "description": "Small amusement-ride motor and mechanism.",
+      "trigger": "An occupied theme-park ride is moving after its queue wait; stop when the lap ends.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/theme_park.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        6.0,
+        8.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "A small mechanical amusement park ride operating, low electric motor hum with rhythmic wheel and gear clacks and a light metal creak, close exterior recording, no fairground music or people, isolated sound effect, seamless loop",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ambient.ride_machinery.01",
+          "file": "ambient/ambient_ride_machinery_01.ogg",
+          "variation": 1,
+          "variant": "a small outdoor amusement ride running steadily",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a small outdoor amusement ride running steadily. A small mechanical amusement park ride operating, low electric motor hum with rhythmic wheel and gear clacks and a light metal creak, close exterior recording, no fairground music or people, isolated sound effect, seamless loop",
+          "seed": 2342107860,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-22",
+          "duration_s": 8.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.002,
+          "rms_dbfs": -13.3
+        }
+      ]
+    },
+    "vehicle.trailer_rattle": {
+      "category": "vehicle",
+      "event": "trailer_rattle",
+      "description": "A moving caravan rattles lightly on its tow hitch.",
+      "trigger": "A nearby hitched trailer is moving; scale by motion, never play for parked caravans.",
+      "source": [
+        "src/theroadragetrip/trailers.py"
+      ],
+      "introduced_commit": "8d4ec91",
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        5.0,
+        7.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "A caravan being towed over an uneven road, soft irregular metal hitch rattles and suspension creaks, short muted clunks, close exterior perspective, no engine or wind, isolated sound effect, seamless loop",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.trailer_rattle.01",
+          "file": "vehicle/vehicle_trailer_rattle_01.ogg",
+          "variation": 1,
+          "variant": "light metal tow hitch and caravan chassis rattles",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "light metal tow hitch and caravan chassis rattles. A caravan being towed over an uneven road, soft irregular metal hitch rattles and suspension creaks, short muted clunks, close exterior perspective, no engine or wind, isolated sound effect, seamless loop",
+          "seed": 88194997,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-22",
+          "duration_s": 7.5,
+          "raw_clipped_samples": 488,
+          "raw_silent_fraction": 0.16,
+          "rms_dbfs": -23.9
+        }
+      ]
+    },
+    "pedestrian.bottle_drink": {
+      "category": "pedestrian",
+      "event": "bottle_drink",
+      "description": "A close, quiet sip from a glass bottle.",
+      "trigger": "A visible bottle sip begins while hanging out; do not repeat every simulation frame.",
+      "source": [
+        "src/theroadragetrip/pedestrian.py"
+      ],
+      "introduced_commit": "b4738ea",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.5,
+        1.8
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "A person taking one small sip from a glass bottle, a brief quiet liquid glug at the bottle neck and one subtle swallow, close dry recording, no speech, no exaggerated mouth sounds, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "pedestrian.bottle_drink.01",
+          "file": "pedestrian/pedestrian_bottle_drink_01.ogg",
+          "variation": 1,
+          "variant": "a brief liquid glug and small swallow",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a brief liquid glug and small swallow. A person taking one small sip from a glass bottle, a brief quiet liquid glug at the bottle neck and one subtle swallow, close dry recording, no speech, no exaggerated mouth sounds, isolated sound effect",
+          "seed": 3088864290,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.435,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.7,
+          "rms_dbfs": -24.1
+        }
+      ]
+    },
+    "vehicle.bus_air_brake": {
+      "category": "vehicle",
+      "event": "bus_air_brake",
+      "description": "A city bus releases its pneumatic brakes at a stop.",
+      "trigger": "A line bus reaches a route stop or releases its brakes to depart; one cue per transition.",
+      "source": [
+        "src/theroadragetrip/npc.py"
+      ],
+      "introduced_commit": "15756ea",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.6,
+        2.0
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "generation": {
+        "prompt": "A city bus releasing its pneumatic air brake, one short strong compressed air hiss with a small valve click and quick pressure decay, close exterior street perspective, no engine or traffic, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.bus_air_brake.01",
+          "file": "vehicle/vehicle_bus_air_brake_01.ogg",
+          "variation": 1,
+          "variant": "one short compressed air brake release",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one short compressed air brake release. A city bus releasing its pneumatic air brake, one short strong compressed air hiss with a small valve click and quick pressure decay, close exterior street perspective, no engine or traffic, isolated sound effect",
+          "seed": 3983003979,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 1.93,
+          "raw_clipped_samples": 30,
+          "raw_silent_fraction": 0.448,
+          "rms_dbfs": -24.9
         }
       ]
     }
