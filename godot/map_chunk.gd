@@ -965,28 +965,41 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 
 ## Railings: hedges and walls solid, fences and
 ## railings dashed (0.8 m on, 0.4 m off).
-## One draw call per style (a city has thousands of fences: a call per
-## dash cost megabytes of draw commands).
+## Batch each stroke style: a city has thousands of fences.
 func _draw_railings(node: Node2D) -> void:
 	var lines := {"hedge": PackedVector2Array(), "wall": PackedVector2Array(), "fence": PackedVector2Array(), "boards": PackedVector2Array()}
+	var fence_rails := PackedVector2Array()
+	var fence_posts := PackedVector2Array()
 	for railing in _data["railings"]:
 		var points := _points(railing[1])
 		var kind := str(railing[0]) if railing[0] in ["hedge", "wall", "boards"] else "fence"
 		if kind == "fence":
-			for dash in dashes(points, 0.8, 0.4):
+			for i in points.size() - 1:
+				fence_rails.append_array(PackedVector2Array([points[i], points[i + 1]]))
+			var pieces := dashes(points, 0.8, 0.4)
+			for i in pieces.size():
+				var dash: Array = pieces[i]
 				lines["fence"].append_array(PackedVector2Array([dash[0], dash[1]]))
+				if i % 2 == 0:
+					var side: Vector2 = (dash[1] - dash[0]).normalized().orthogonal() * 0.25
+					fence_posts.append_array(PackedVector2Array([dash[0] - side, dash[0] + side]))
 		else:
 			for i in points.size() - 1:
 				lines[kind].append_array(PackedVector2Array([points[i], points[i + 1]]))
 	if not lines["hedge"].is_empty():
-		node.draw_multiline(lines["hedge"], Color8(58, 92, 48), maxf(_px(2.0), 0.25))
+		node.draw_multiline(lines["hedge"], Color8(26, 44, 28), maxf(_px(5.0), 0.65))
+		node.draw_multiline(lines["hedge"], Color8(99, 139, 66), maxf(_px(3.0), 0.40))
+		node.draw_multiline(lines["hedge"], Color8(145, 168, 95), maxf(_px(1.0), 0.10))
 	if not lines["wall"].is_empty():
-		node.draw_multiline(lines["wall"], Color8(128, 122, 112), maxf(_px(2.0), 0.25))
+		node.draw_multiline(lines["wall"], Color8(49, 47, 42), maxf(_px(4.0), 0.50))
+		node.draw_multiline(lines["wall"], Color8(175, 164, 144), maxf(_px(2.0), 0.28))
 	if not lines["boards"].is_empty():  # an ice rink's boards: white, solid
 		node.draw_multiline(lines["boards"], Color8(240, 242, 244), maxf(_px(2.0), 0.3))
 	if not lines["fence"].is_empty():
-		# 0.12 m is a pixel or so at normal zoom: a hairline then (no triangles per dash).
-		node.draw_multiline(lines["fence"], Color8(150, 145, 130), -1.0 if 0.12 * _px_per_m < 1.5 else 0.12)
+		# A continuous dark rail exposes the collision boundary between the lighter slats.
+		node.draw_multiline(fence_rails, Color8(45, 43, 37), maxf(_px(3.0), 0.28))
+		node.draw_multiline(lines["fence"], Color8(205, 193, 157), maxf(_px(2.0), 0.16))
+		node.draw_multiline(fence_posts, Color8(223, 211, 177), maxf(_px(2.0), 0.18))
 
 
 ## Street lights: each light's pool, a 270-degree fan
