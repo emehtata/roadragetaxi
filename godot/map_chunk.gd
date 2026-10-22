@@ -987,9 +987,9 @@ func _draw_railings(node: Node2D) -> void:
 			for i in points.size() - 1:
 				lines[kind].append_array(PackedVector2Array([points[i], points[i + 1]]))
 	if not lines["hedge"].is_empty():
-		node.draw_multiline(lines["hedge"], Color8(26, 44, 28), maxf(_px(5.0), 0.65))
-		node.draw_multiline(lines["hedge"], Color8(99, 139, 66), maxf(_px(3.0), 0.40))
-		node.draw_multiline(lines["hedge"], Color8(145, 168, 95), maxf(_px(1.0), 0.10))
+		node.draw_multiline(lines["hedge"], Color8(25, 45, 26), maxf(_px(5.0), 1.05))
+		var foliage := hedge_foliage(lines["hedge"])
+		_triangles_colored(node, foliage[0], foliage[1], foliage[2])
 	if not lines["wall"].is_empty():
 		node.draw_multiline(lines["wall"], Color8(49, 47, 42), maxf(_px(4.0), 0.50))
 		node.draw_multiline(lines["wall"], Color8(175, 164, 144), maxf(_px(2.0), 0.28))
@@ -1000,6 +1000,31 @@ func _draw_railings(node: Node2D) -> void:
 		node.draw_multiline(fence_rails, Color8(45, 43, 37), maxf(_px(3.0), 0.28))
 		node.draw_multiline(lines["fence"], Color8(205, 193, 157), maxf(_px(2.0), 0.16))
 		node.draw_multiline(fence_posts, Color8(223, 211, 177), maxf(_px(2.0), 0.18))
+
+
+## Overlapping leafy crowns, shaded at their edges, batched once per chunk.
+static func hedge_foliage(segments: PackedVector2Array) -> Array:
+	var points := PackedVector2Array()
+	var indices := PackedInt32Array()
+	var colors := PackedColorArray()
+	for i in range(0, segments.size() - 1, 2):
+		var a := segments[i]
+		var b := segments[i + 1]
+		var steps := maxi(1, ceili(a.distance_to(b) / 0.45))
+		for j in steps + 1:
+			var seed_value := float(i * 19 + j)
+			var at := a.lerp(b, float(j) / steps)
+			var radius := 0.43 + 0.08 * sin(seed_value * 2.4)
+			var base := points.size()
+			points.append(at + Vector2(-0.08, -0.10))
+			colors.append(Color8(115, 155, 68).lerp(Color8(89, 132, 53), (sin(seed_value * 1.7) + 1.0) * 0.5))
+			for k in 8:
+				var angle := TAU * k / 8.0
+				var reach := radius * (1.0 + 0.13 * sin(seed_value + k * 2.7))
+				points.append(at + Vector2(cos(angle), sin(angle)) * reach)
+				colors.append(Color8(48, 85, 35).lerp(Color8(73, 112, 42), (sin(angle - 2.0) + 1.0) * 0.5))
+				indices.append_array(PackedInt32Array([base, base + 1 + k, base + 1 + (k + 1) % 8]))
+	return [points, indices, colors]
 
 
 ## Street lights: each light's pool, a 270-degree fan

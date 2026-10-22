@@ -2331,6 +2331,9 @@ func test_day_night() -> void:
 ## godot-15: railings, decorations, street lights (on at night, dark when
 ## knocked), headlight beams, reflectors, seasons - all drawing, no collision.
 func test_static_world() -> void:
+	var hedge := MapChunk.hedge_foliage(PackedVector2Array([Vector2.ZERO, Vector2(4, 0)]))
+	check(hedge[0].size() == hedge[2].size() and hedge[1].size() == 240, "hedge crowns have shaded vertices and batched triangles along the whole segment")
+	check(hedge[0] == MapChunk.hedge_foliage(PackedVector2Array([Vector2.ZERO, Vector2(4, 0)]))[0], "hedge foliage stays stable across redraws")
 	var map := MapLayer.new()
 	root.add_child(map)
 	map.set_origin(Vector2(1000, 2000))
