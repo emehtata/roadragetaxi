@@ -758,6 +758,32 @@ func _lit(color: Color) -> Color:
 	return Color(minf(color.r * _tint.r, 1.0), minf(color.g * _tint.g, 1.0), minf(color.b * _tint.b, 1.0), color.a)
 
 
+## A trailer's body between two states: [x, y, heading, length, width, kind].
+func _trailer(a: Array, b: Array, t: float) -> void:
+	var c := Vector2(lerpf(a[0], b[0], t) - origin.x, -(lerpf(a[1], b[1], t) - origin.y))
+	_tint = vehicle_light(light_level * float(light_at.call(c)), ambient)  # lit like a vehicle (_vehicle)
+	_trailer_body(c, lerp_angle(a[2], b[2], t), float(a[3]), float(a[4]), str(a[5]))
+	_tint = null
+
+
+## A caravan from above: the white body, its window and stripes, the
+## drawbar reaching forward to the hitch, and its own tail lights.
+func _trailer_body(c: Vector2, heading: float, length: float, width: float, _kind: String) -> void:
+	var f := _forward(heading)
+	var r := _right(heading)
+	var hl := length * 0.5
+	var hw := width * 0.5
+	var box := Color8(238, 234, 220)
+	_car_shapes.append(["line", c + f * hl, c + f * (hl + 0.9), _lit(Color8(165, 168, 162)), maxf(_px(1.5), hw * 0.14)])  # the drawbar
+	_poly(_rect(c, f, r, hl, -hl, hw), box, RS.OUTLINE)
+	_poly(_rect(c, f, r, hl * 0.92, -hl * 0.92, hw * 0.84), box.lightened(0.05))
+	_poly(_rect(c, f, r, hl * 0.55, hl * 0.2, hw * 0.34), Color8(120, 150, 160))  # the roof window
+	for side: float in [1.0, -1.0]:
+		_car_shapes.append(["line", c + f * hl * 0.9 + r * hw * 0.8 * side, c - f * hl * 0.9 + r * hw * 0.8 * side,
+			_lit(Color8(156, 108, 66)), maxf(_px(1.0), hw * 0.07)])
+		_poly(_rect(c - f * hl * 0.97 + r * hw * 0.7 * side, f, r, hl * 0.03, -hl * 0.03, hw * 0.16), Color8(183, 45, 39))  # tail lights
+
+
 func _vehicle_body(c: Vector2, heading: float, length: float, width: float, color: Color, kind: String,
 		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
 	length = maxf(length, _px(5.0))
@@ -811,22 +837,6 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			for side: float in [1.0, -1.0]:  # the stripe along its side
 				_car_shapes.append(["line", c + f * hl * 0.42 + r * hw * 0.93 * side, c - f * hl * 0.95 + r * hw * 0.93 * side,
 					_lit(color.darkened(0.1)), maxf(_px(1.0), hw * 0.08)])
-		"car_caravan":  # a car (front 4.3 m, in its own colour) towing a white caravan on a drawbar
-			var car_len := minf(0.46, 4.3 / maxf(length, 0.1)) * length
-			var front := c + f * (hl - car_len * 0.5)
-			var chl := car_len * 0.5
-			_poly(_rect(front, f, r, chl, -chl, hw * 0.8), color, RS.OUTLINE)
-			_poly(_trapezoid(front, f, r, chl * 0.4, chl * 0.05, hw * 0.7, hw * 0.62), RS.WINDSHIELD)
-			_poly(_rect(front, f, r, chl * 0.05, -chl * 0.55, hw * 0.62), color.darkened(0.12))
-			var van_front := hl - car_len - length * 0.06
-			_car_shapes.append(["line", c + f * (hl - car_len), c + f * van_front, _lit(Color8(165, 168, 162)), maxf(_px(1.5), hw * 0.14)])  # the drawbar, light against the asphalt
-			var box := Color8(238, 234, 220)
-			_poly(_rect(c, f, r, van_front, -hl, hw), box, RS.OUTLINE)
-			_poly(_rect(c, f, r, van_front - length * 0.03, -hl + length * 0.03, hw * 0.84), box.lightened(0.05))
-			_poly(_rect(c, f, r, van_front - length * 0.12, van_front - length * 0.2, hw * 0.34), Color8(120, 150, 160))
-			for side: float in [1.0, -1.0]:
-				_car_shapes.append(["line", c + f * (van_front - length * 0.02) + r * hw * 0.8 * side, c - f * (hl - length * 0.02) + r * hw * 0.8 * side,
-					_lit(Color8(156, 108, 66)), maxf(_px(1.0), hw * 0.07)])
 		"truck":
 			_poly(_rect(c, f, r, hl * 0.18, -hl, hw), color, RS.OUTLINE)
 			_poly(_rect(c, f, r, hl * 0.08, -hl * 0.86, hw * 0.78), color.lightened(28.0 / 255.0))
@@ -1514,6 +1524,8 @@ func _draw() -> void:
 			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
 			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false),
 			int(npc.get("layer", 0)) <= 0 and covered.call(c, int(npc.get("layer", 0))))
+		if npc.has("trailer"):  # a towed trailer: its own body, swinging on the hitch (server trailers.py)
+			_trailer(npc["trailer"], later_npcs.get(npc["id"], npc).get("trailer", npc["trailer"]), t)
 		if npc.get("bus_line") != null:  # a line bus: its number, like the destination display
 			_bus_number(c, p.z, str(npc["bus_line"]))
 		var crashed: float = npc.get("crashed_timer", 0.0)

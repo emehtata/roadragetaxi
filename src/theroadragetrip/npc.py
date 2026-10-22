@@ -1208,6 +1208,24 @@ CURSE_S = 2.5
 
 
 @dataclass
+class TrailerBody:
+    """A trailer's current body in the same duck type as a Car (x, y,
+    heading, length_m, width_m, speed, layer, map_level), so collision and
+    following treat it as one more obstacle; `tow` is its vehicle - a hit on
+    the trailer is a hit on the combination."""
+    x: float
+    y: float
+    heading: float
+    length_m: float
+    width_m: float
+    speed: float
+    layer: int
+    map_level: int
+    kind: str
+    tow: object
+
+
+@dataclass
 class NPCVehicle:
     """Physical NPC vehicle (autonomous-driving section 3).
 
@@ -1279,6 +1297,7 @@ class NPCVehicle:
     curse_timer: float = 0.0  # > 0: the driver's curse bubble shows (a minor bump by the taxi)
     curse_text: str = ""
     shaken_timer: float = 0.0  # > 0: after a minor bump the driver goes on slowly
+    trailer_axle: Optional[Tuple[float, float]] = None  # a towed trailer's axle (trailers.py), None: straight behind
 
     @property
     def x(self) -> float:
@@ -1309,6 +1328,30 @@ class NPCVehicle:
         return self.car.layer
 
     @property
+    def trailer_spec(self):
+        return vehicle_definition(self.vehicle_type).trailer
+
+    def update_trailer(self) -> None:
+        """Pull the trailer after the hitch where the vehicle now stands."""
+        spec = self.trailer_spec
+        if spec is not None:
+            from .trailers import follow, hitch_point
+            hitch = hitch_point(self.x, self.y, self.heading, self.length_m)
+            self.trailer_axle = follow(hitch, self.trailer_axle, self.heading, spec)
+
+    def trailer_body(self) -> Optional["TrailerBody"]:
+        """The trailer as a body of its own (collision, avoidance, drawing), or None."""
+        spec = self.trailer_spec
+        if spec is None:
+            return None
+        from .trailers import follow, hitch_point, pose
+        hitch = hitch_point(self.x, self.y, self.heading, self.length_m)
+        axle = follow(hitch, self.trailer_axle, self.heading, spec)
+        x, y, heading = pose(hitch, axle, spec)
+        return TrailerBody(x, y, heading, spec.length_m, spec.width_m, self.car.speed, self.car.layer,
+                           self.car.map_level, spec.kind, self)
+
+    @property
     def passenger_ids(self) -> Tuple[int, ...]:
         """Trip-group members other than the driver (multi-passenger-car.md:
         "who's riding along", alongside the owner)."""
@@ -1324,6 +1367,14 @@ class NPCVehicle:
         board this vehicle right now"."""
         occupied = len(self.trip_group.boarded_resident_ids) if self.trip_group is not None else 0
         return max(0, self.capacity - occupied)
+
+
+def with_trailers(vehicles) -> list:
+    """Nearby vehicles plus their trailers' bodies (TrailerBody): followed,
+    avoided and collided with like any vehicle."""
+    found = list(vehicles)
+    found.extend(body for body in (getattr(vehicle, "trailer_body", lambda: None)() for vehicle in list(found)) if body is not None)
+    return found
 
 
 def has_active_driver(vehicle: NPCVehicle, resident_manager: ResidentManager) -> bool:
@@ -4193,9 +4244,16 @@ class NPCVehicleManager:
         both vehicles are already crashed is skipped, preventing repeated
         accident/occupant processing without turning wrecks into ghosts."""
         vehicle_already_crashed = vehicle.state == NPCState.CRASHED
+        own_trailer = vehicle.trailer_body()  # a towed trailer is a body of its own, hit like the vehicle
         for obstacle in nearby_obstacles:
             if obstacle is vehicle:
                 continue
+            body = obstacle  # what was hit; `obstacle` below: who responds (a trailer's vehicle)
+            tow = getattr(obstacle, "tow", None)
+            if tow is not None:
+                if tow is vehicle:
+                    continue  # its own trailer
+                obstacle = tow
             other_car = getattr(obstacle, "car", obstacle)
             if (vehicle.layer != getattr(other_car, "layer", 0)
                     or vehicle.car.map_level != getattr(other_car, "map_level", 0)):
@@ -4204,12 +4262,16 @@ class NPCVehicleManager:
             obstacle_already_crashed = obstacle_is_npc and obstacle.state == NPCState.CRASHED
             if vehicle_already_crashed and obstacle_already_crashed:
                 continue  # the already-resolved wreck pair needs no response
-            other_previous = (previous_obstacle_poses or {}).get(id(obstacle))
+            other_previous = (previous_obstacle_poses or {}).get(id(obstacle)) if body is obstacle else None
+            body_length = getattr(body, "length_m", NPC_VEHICLE_LENGTH_M)
+            body_width = getattr(body, "width_m", NPC_VEHICLE_WIDTH_M)
             hit = boxes_intersect(
                 vehicle.x, vehicle.y, vehicle.heading, vehicle.length_m, vehicle.width_m,
-                obstacle.x, obstacle.y, obstacle.heading,
-                getattr(obstacle, "length_m", NPC_VEHICLE_LENGTH_M), getattr(obstacle, "width_m", NPC_VEHICLE_WIDTH_M),
-            )
+                body.x, body.y, body.heading, body_length, body_width,
+            ) or (own_trailer is not None and boxes_intersect(
+                own_trailer.x, own_trailer.y, own_trailer.heading, own_trailer.length_m, own_trailer.width_m,
+                body.x, body.y, body.heading, body_length, body_width,
+            ))
             if not hit and previous_vehicle_pose is not None and other_previous is not None:
                 # Cheap swept narrow phase: interpolate both oriented boxes
                 # together. Candidate selection is still spatially bounded;
@@ -5601,7 +5663,7 @@ class NPCVehicleManager:
             # avoidance inside update_npc); a generator can only be
             # iterated once, so the second consumer would otherwise
             # silently see nothing at all whenever player_car is None.
-            nearby_obstacles = list(self.nearby_vehicles_at(
+            nearby_obstacles = with_trailers(self.nearby_vehicles_at(
                 vehicle.x, vehicle.y, max(65.0, following_detection_distance(vehicle))))
             if player_car is not None:
                 nearby_obstacles.append(player_car)
@@ -5613,6 +5675,10 @@ class NPCVehicleManager:
             )
             if vehicle.state == NPCState.PARKED:
                 self._handle_parked_vehicle(vehicle, resident_manager, traffic_world.sim_time, pedestrian_mgr)
+
+        for vehicle in active:  # trailers swing after where their vehicles drove (trailers.py)
+            if vehicle.trailer_spec is not None:
+                vehicle.update_trailer()
 
         # Collision is a post-physics phase. Reindex moved vehicles, query a
         # swept local area, then test current and interpolated poses. This
@@ -5633,7 +5699,7 @@ class NPCVehicleManager:
             travel = math.hypot(vehicle.x - previous[0], vehicle.y - previous[1])
             mid_x, mid_y = (vehicle.x + previous[0]) * 0.5, (vehicle.y + previous[1]) * 0.5
             radius = travel * 0.5 + max_frame_travel + max(vehicle.length_m, vehicle.width_m) + 3.0
-            collision_candidates = list(self.nearby_vehicles_at(mid_x, mid_y, radius))
+            collision_candidates = with_trailers(self.nearby_vehicles_at(mid_x, mid_y, radius))
             if player_car is not None:
                 collision_candidates.append(player_car)
             self._check_vehicle_collision(

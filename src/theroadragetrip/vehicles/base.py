@@ -4,6 +4,18 @@ from typing import Optional
 
 
 @dataclass(frozen=True)
+class TrailerSpec:
+    """A towed trailer: its own body behind the hitch at the towing
+    vehicle's rear, swinging on it (trailers.py) - a caravan now, a truck's
+    trailer next."""
+    kind: str  # how it is drawn ("caravan")
+    length_m: float  # the body
+    width_m: float
+    drawbar_m: float  # from the hitch to the body's front
+    axle_m: float  # from the body's front to its axle
+
+
+@dataclass(frozen=True)
 class VehicleDefinition:
     id: str
     name: str
@@ -19,6 +31,7 @@ class VehicleDefinition:
     errand_eligible: bool = True
     traffic_weight: float = 0.0
     experimental: bool = False
+    trailer: Optional[TrailerSpec] = None  # towed behind (length_m/width_m are the towing vehicle's)
 
 
 VEHICLE_DEFINITIONS = {
@@ -36,7 +49,8 @@ VEHICLE_DEFINITIONS = {
         # 100 km/h trailer approval modelled); over 70 km/h it may use
         # motorways (§ 58). Not shop-errand traffic: it does not fit a bay.
         VehicleDefinition("camper_van", "Camper van", "car", 6.2, 2.3, 4, traffic_weight=0.012),
-        VehicleDefinition("car_caravan", "Car with caravan", "car", 9.4, 2.3, 4, 80.0, errand_eligible=False, traffic_weight=0.008),
+        VehicleDefinition("car_caravan", "Car with caravan", "car", 4.3, 1.8, 4, 80.0, errand_eligible=False, traffic_weight=0.008,
+                          trailer=TrailerSpec("caravan", 4.8, 2.3, 0.9, 2.8)),
         VehicleDefinition("motorcycle", "Motorcycle", "motorcycle", 2.0, 0.7, 1, household_eligible=True, traffic_weight=0.10, experimental=True),
         VehicleDefinition("bicycle", "Bicycle", "bicycle", 1.8, 0.5, 1, requires_parking=False, is_road_vehicle=False),
     )

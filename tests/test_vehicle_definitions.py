@@ -11,7 +11,8 @@ def test_builtin_vehicle_definitions_cover_traffic_capabilities():
     assert not vehicle_definition("bus").errand_eligible
     assert vehicle_definition("tractor").max_speed_kmh == 60.0 and vehicle_definition("tractor").traffic_weight > 0.0
     caravan = vehicle_definition("car_caravan")  # 80 km/h: slower than cars, but still motorway traffic (> 70, § 58)
-    assert caravan.max_speed_kmh == 80.0 and caravan.length_m > 9 and not caravan.errand_eligible
+    assert caravan.max_speed_kmh == 80.0 and not caravan.errand_eligible
+    assert caravan.length_m == 4.3 and caravan.trailer.kind == "caravan"  # a car, and the caravan a body of its own
     assert vehicle_definition("camper_van").max_speed_kmh is None and vehicle_definition("camper_van").traffic_weight > 0.0
     assert vehicle_definition("motorcycle").experimental
     assert not vehicle_definition("bicycle").is_road_vehicle

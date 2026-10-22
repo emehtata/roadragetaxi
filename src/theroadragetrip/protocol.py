@@ -153,7 +153,7 @@ def _npc_to_dict(npc, residents=None) -> dict:
     occupant_ids = set(getattr(npc, "occupant_ids", ()) or ()) | set(getattr(npc, "passenger_ids", ()) or ())
     if getattr(npc, "current_driver_id", None) is not None:
         occupant_ids.add(npc.current_driver_id)
-    return {
+    row = {
         "id": npc.vehicle_id,
         "x": npc.x,
         "y": npc.y,
@@ -183,6 +183,11 @@ def _npc_to_dict(npc, residents=None) -> dict:
         "owner": _resident_to_dict(residents.get(npc.owner_id)),
         "occupants": [_resident_to_dict(residents[resident_id]) for resident_id in sorted(occupant_ids) if resident_id in residents],
     }
+    trailer = npc.trailer_body() if hasattr(npc, "trailer_body") else None
+    if trailer is not None:  # a towed trailer, swinging on its hitch: [x, y, heading, length, width, kind]
+        row["trailer"] = [round(trailer.x, 2), round(trailer.y, 2), round(trailer.heading, 3),
+                          trailer.length_m, trailer.width_m, trailer.kind]
+    return row
 
 
 def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
