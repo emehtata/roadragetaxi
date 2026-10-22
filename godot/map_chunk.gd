@@ -108,7 +108,10 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_snow_cells = prepared["snow_cells"]
 	street_lights = prepared["street_lights"]
 	if not message.get("waters", []).is_empty() or not message.get("water_lines", []).is_empty():
-		material = WATER_MATERIAL
+		# Water alone carries the wave shader: nothing else drawn here can pick it up.
+		var water := _add_layer(0, _draw_water)
+		water.material = WATER_MATERIAL
+		_season_layers.append(water)
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
@@ -683,7 +686,6 @@ func set_season(weights: Array) -> bool:
 	_season = weights
 	if building_node != null:
 		building_node.queue_redraw()
-	queue_redraw()
 	if _trees != null:
 		_trees.queue_redraw()
 	for node in _season_layers:
@@ -758,14 +760,14 @@ static func water_ripple_spots(waters: Array, origin: Vector2) -> Array:
 	return spots
 
 
-func _draw_ice_floe(floe: Dictionary) -> void:
+func _draw_ice_floe(node: Node2D, floe: Dictionary) -> void:
 	var polygon := PackedVector2Array()
 	for i in 10:
 		var angle := TAU * i / 10.0
 		polygon.append(floe["at"] + Vector2(cos(angle) * floe["rx"], sin(angle) * floe["ry"]).rotated(floe["angle"]))
-	draw_colored_polygon(polygon, floe["color"])
+	node.draw_colored_polygon(polygon, floe["color"])
 	polygon.append(polygon[0])
-	draw_polyline(polygon, SPRING_ICE_EDGE, 0.18)
+	node.draw_polyline(polygon, SPRING_ICE_EDGE, 0.18)
 
 
 static func _water_material() -> ShaderMaterial:
@@ -774,23 +776,23 @@ static func _water_material() -> ShaderMaterial:
 	return water
 
 
-func _draw() -> void:
+func _draw_water(node: Node2D) -> void:
 	# water freezes with the winter weight.
 	var water_color := Color(0.25, 0.45, 0.65).lerp(Color8(232, 240, 244), clampf(_season[0], 0.0, 1.0))
 	for water in _data.get("waters", []):
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
-			draw_colored_polygon(polygon, water_color)
+			node.draw_colored_polygon(polygon, water_color)
 			# Ice breaks up only while spring follows winter: once summer
 			# weight appears (Oulu: mid-May) the spring weight is just
 			# young greenery, and floes in June looked wrong.
 			if _season[1] > 0.05 and _season[2] < 0.05:
 				for floe in spring_ice_floes(polygon, _origin):
-					_draw_ice_floe(floe)
+					_draw_ice_floe(node, floe)
 	for line in _data.get("water_lines", []):  # a stream or river line, 3 m wide
 		var points := _points(line)
 		if points.size() >= 2:
-			draw_polyline(points, water_color, 3.0)
+			node.draw_polyline(points, water_color, 3.0)
 
 
 ## Chunk preparation runs on the parsing worker; snowfall never resamples roads.
