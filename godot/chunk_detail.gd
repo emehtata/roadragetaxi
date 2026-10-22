@@ -355,12 +355,18 @@ static func draw_guardrails(chunk, node: Node2D) -> void:
 static func draw_canopy_supports(chunk, node: Node2D) -> void:
 	for canopy in chunk._data.get("canopies", []):
 		var polygon: PackedVector2Array = chunk._points(canopy)
-		if not _valid(polygon):
+		if polygon.size() < 3:
 			continue
+		var anchor := polygon[0]
 		var shadow := polygon.duplicate()
 		for i in shadow.size():
-			shadow[i] += Vector2(0.35, 0.35)
+			shadow[i] -= anchor
+		if not _valid(shadow):
+			continue
+		# Keep small shadow edges precise even far from the initial map origin.
+		node.draw_set_transform(anchor + Vector2(0.35, 0.35))
 		node.draw_colored_polygon(shadow, Color8(30, 32, 33, 75))
+		node.draw_set_transform(Vector2.ZERO)
 		var height := canopy_height(chunk, canopy)
 		for point in polygon:
 			node.draw_line(point, _lift(chunk, point, height), OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
