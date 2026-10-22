@@ -116,3 +116,15 @@ def test_entire_short_hedge_can_be_destroyed():
     assert manager.check_barrier_collision(car,[hedge],1,(9,0))
     assert manager.broken_hedges[manager.hedge_key(hedge)] == []
     assert not manager.check_barrier_collision(car,[hedge],2,(9,0))
+
+
+def test_a_car_touching_a_fence_can_drive_away():
+    manager = TaxiManager([])
+    car = Car(x=8.5, y=0.0, heading=0.0, speed=0.0)  # nose already over the fence at x = 10
+    previous = (car.x, car.y)
+    car.x -= 0.3  # reversing away
+    assert not manager.check_barrier_collision(car, [FENCE], 1.0, previous)
+    assert car.x == 8.2
+    previous = (car.x, car.y)
+    car.x += 0.3  # back into it: still a wall
+    assert manager.check_barrier_collision(car, [FENCE], 2.0, previous) and car.x == 8.2

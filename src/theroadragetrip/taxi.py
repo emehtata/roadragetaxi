@@ -1046,6 +1046,10 @@ class TaxiManager:
             if not hit:
                 continue
             if previous_position is not None:
+                from shapely.geometry import LineString, Point
+                line = LineString(points)
+                if line.distance(Point(player_car.x, player_car.y)) >= line.distance(Point(previous_position)):
+                    continue  # already touching, backing away from it: let the car go
                 player_car.x, player_car.y = previous_position
             player_car.speed = 0.0
             barrier_id = id(railing)
