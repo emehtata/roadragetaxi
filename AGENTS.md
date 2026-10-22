@@ -28,3 +28,7 @@ and most reliable way to implement the requested behavior.
 
 Commit and push completed changes as atomic commits. Keep each commit focused
 on one logical change, and run the relevant checks before committing.
+
+Project skills are registered in `.agents/skills/`: the Godot skill pack from
+`../godot-skills/skills/`, plus the local `godot-shot` and `repro-at` workflows.
+Read the relevant skill before applying its workflow.
