@@ -1532,8 +1532,10 @@ def _plan_and_validate_npc_route_steps(
     final_segment_count = 1
     roadside_orientation = None
     if parking_space is None and destination_is_off_road:
-        shoulder = _roadside_parking_point(*destination, ways, spatial_grid)
-        if shoulder is not None and math.hypot(shoulder[0] - destination[0], shoulder[1] - destination[1]) < 0.1:
+        spots = _roadside_spots(*destination, ways, spatial_grid)
+        if spots is not None and min(math.hypot(spot[0] - destination[0], spot[1] - destination[1]) for spot in spots[:2]) < 0.1:
+            # (Either kerb: picked on the arrival's right where it can be;
+            # § 36 also allows safe left-side parking in built-up areas.)
             roadside_orientation = _resting_heading(*destination, None, ways, spatial_grid)
     aligned_route = _align_approach_to_parking_orientation(
         deduped_route, parking_space, orientation=roadside_orientation,
@@ -2959,7 +2961,58 @@ ROADSIDE_JUNCTION_CLEARANCE_M = 10.0
 
 def _roadside_parking_point(
     x: float, y: float, ways: Optional[List[Way]], spatial_grid: Optional[SpatialWayGrid],
+    arrive_from: Optional[Tuple[float, float]] = None,
 ) -> Optional[Tuple[float, float]]:
+    """The kerb on the right for a vehicle arriving from `arrive_from` (§ 36:
+    right-side parking, the game's policy) - without it, the right of the
+    map way's own direction. See _roadside_spots."""
+    spots = _roadside_spots(x, y, ways, spatial_grid)
+    if spots is None:
+        return None
+    right, left, heading, oneway, _half_width = spots
+    if oneway < 0:
+        return left  # one-way against the way's direction: travel's right is the way's left
+    if oneway == 0 and arrive_from is not None and (
+            math.cos(heading) * (right[0] - arrive_from[0]) + math.sin(heading) * (right[1] - arrive_from[1])) < 0.0:
+        return left  # arriving against the way's direction
+    return right
+
+
+def _roadside_pull_in(route: list, destination: Tuple[float, float], ways, spatial_grid) -> list:
+    """A roadside destination's route ending in a pull-in: along the
+    right-hand lane until NPC_PARKING_APPROACH_DISTANCE_M before the spot,
+    then over to the kerb - not one long diagonal to it, which crossed the
+    oncoming lane or ran off the road edge long before the spot."""
+    spots = _roadside_spots(*destination, ways, spatial_grid)
+    if spots is None or len(route) < 2:
+        return route
+    right, left, heading, _, _half_width = spots
+    lane = ((right[0] + left[0]) / 2.0, (right[1] + left[1]) / 2.0)  # on the centre line: the path builder offsets it into the lane
+    travel = (math.cos(heading), math.sin(heading))  # the way's direction ... or against it, as the vehicle comes
+    prev = route[-2]
+    if travel[0] * (destination[0] - prev[0]) + travel[1] * (destination[1] - prev[1]) < 0.0:
+        travel = (-travel[0], -travel[1])
+    pull_in = (lane[0] - travel[0] * NPC_PARKING_APPROACH_DISTANCE_M, lane[1] - travel[1] * NPC_PARKING_APPROACH_DISTANCE_M)
+    return list(route[:-1]) + [pull_in, tuple(destination)]
+
+
+def _arrives_on_right(route: list, destination: Tuple[float, float]) -> bool:
+    """Whether a roadside destination lies on the right of the route's last
+    road leg (never parking against traffic, across the oncoming lane)."""
+    points = [(p.x, p.y) if hasattr(p, "x") else (p[0], p[1]) for p in route]  # path points or (x, y)
+    points = [p for p in points if math.hypot(p[0] - destination[0], p[1] - destination[1]) > 0.5]
+    if len(points) < 2:
+        return True
+    (ax, ay), (bx, by) = points[-2], points[-1]
+    dx, dy = bx - ax, by - ay
+    if math.hypot(dx, dy) < 1e-6:
+        return True
+    return dy * (destination[0] - bx) - dx * (destination[1] - by) >= 0.0  # right of the travel direction
+
+
+def _roadside_spots(
+    x: float, y: float, ways: Optional[List[Way]], spatial_grid: Optional[SpatialWayGrid],
+) -> Optional[Tuple[Tuple[float, float], Tuple[float, float], float, int]]:
     """NPC-more.md section 2 tier 5, the last resort: legal roadside
     parking on a quiet street - never a busy/arterial road or roundabout.
     Return a point beyond the carriageway edge, not the route node itself:
@@ -2996,7 +3049,9 @@ def _roadside_parking_point(
     cx, cy = ax + (bx - ax) * t, ay + (by - ay) * t
     heading = math.atan2(by - ay, bx - ax)
     offset = way.half_width_m + NPC_VEHICLE_WIDTH_M * 0.5 + ROADSIDE_SHOULDER_MARGIN_M
-    return cx + math.sin(heading) * offset, cy - math.cos(heading) * offset
+    right = (cx + math.sin(heading) * offset, cy - math.cos(heading) * offset)
+    left = (cx - math.sin(heading) * offset, cy + math.cos(heading) * offset)
+    return right, left, heading, int(getattr(way, "oneway", 0) or 0), way.half_width_m
 
 
 NPC_PARKING_CANDIDATE_LIMIT = 8  # try at most this many destination candidates per road point
@@ -3226,7 +3281,7 @@ def _pick_npc_destination_candidates_steps(
 
     ordered.sort(key=lambda c: c[0])
     if not ordered:
-        roadside = _roadside_parking_point(x, y, ways, spatial_grid)
+        roadside = _roadside_parking_point(x, y, ways, spatial_grid, arrive_from=own_position)
         if roadside is not None and _point_is_clear_of_vehicles(roadside, other_vehicle_positions):
             ordered = [(0.0, roadside, None)]
 
@@ -4623,7 +4678,8 @@ class NPCVehicleManager:
                 continue
             other = nodes[random.choice(neighbors)]
             road_point = ((nodes[index][0] + other[0]) / 2.0, (nodes[index][1] + other[1]) / 2.0)
-            destination = _roadside_parking_point(road_point[0], road_point[1], ways, spatial_grid)
+            destination = _roadside_parking_point(road_point[0], road_point[1], ways, spatial_grid,
+                                                  arrive_from=(vehicle.car.x, vehicle.car.y))
             if destination is None:
                 continue
             if not _point_is_clear_of_vehicles(destination, other_positions):
@@ -4631,8 +4687,9 @@ class NPCVehicleManager:
             raw_route = yield from traffic_world.plan_route_steps(
                 (vehicle.car.x, vehicle.car.y), destination,
             )
-            if raw_route is None:
+            if raw_route is None or not _arrives_on_right(raw_route, destination):  # never park against traffic
                 continue
+            raw_route = _roadside_pull_in(raw_route, destination, ways, spatial_grid)
             # A* endpoint connectors can cross open ground. Check their whole
             # corridor before spawning, rather than stopping sideways in-lane.
             if not (yield from _route_stays_on_road_steps(

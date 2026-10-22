@@ -2369,3 +2369,35 @@ def test_a_trip_home_to_a_spot_beside_the_road_may_leave_the_road():
     assert home[1] < -4.5  # beside the road: its edge is at y = -4.5
     assert continue_npc_trip(vehicle, driver, traffic, ways, destination_query_point=home)
     assert driver.destination == home and driver.destination_is_off_road
+
+
+def test_through_traffic_parks_at_its_own_kerb_never_across_the_oncoming_lane():
+    """§ 36 / game policy: a roadside stop is on the right of the travel
+    direction. The kerb used to be the right of the map way's direction, so
+    traffic driving against it crossed the oncoming lane to park facing
+    traffic (a car with a caravan on Toppilansaarentie, Oulu)."""
+    from theroadragetrip.traffic_world import run_route_steps
+
+    random.seed(4)
+    ways = [Way(points_m=[(0, 0), (100, 0), (200, 0), (300, 0), (400, 0)], highway="residential", half_width_m=4.5)]
+    traffic, residents = TrafficWorld(ways), ResidentManager()
+    manager = NPCVehicleManager(target_count=1, vehicle_distribution={"car": 1.0})
+    bounds, view = (-105, -100, 105, 100), (-70, -40, 70, 40)
+    manager._active_bounds = bounds
+    manager._population_elapsed = -100
+    focus = transit_spawn_focus(0, 0, Car(x=0, y=0, heading=0, speed=0), manager.simulation_radius_m)
+    result = run_route_steps(manager._transit_spawn_steps(
+        *focus, residents, traffic, ways, None, None, None, None, None, None, None, view, [],
+        preferred_heading=0, player_position=(0, 0)))
+    vehicle, (path, destination, _, _) = result
+    assert math.cos(vehicle.heading) < 0 and destination[1] > 4.5  # westbound: its right is the north kerb
+    assert all(point.y > 0.0 for point in path)  # in its own lane all the way, then over to the kerb
+    manager._apply_transit_spawn(result, residents, [])
+    pedestrians = SimpleNamespace(pedestrians=[])
+    for _ in range(30 * 20):
+        traffic.advance_time(1 / 30)
+        manager.update(1 / 30, 0, 0, residents, traffic, ways, viewport_bounds=view, active_bounds=bounds)
+        assert vehicle.y > 0.0
+        if vehicle.state == NPCState.PARKED:
+            break
+    assert vehicle.state == NPCState.PARKED and vehicle.y > 4.0
