@@ -1379,6 +1379,19 @@ func _stop_game() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# F12 in a menu (start menus, loading, pause): the running game handles
+	# its own F12 first; paused or absent, it never sees the key.
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F12:
+		if is_instance_valid(_game):
+			_game.save_screenshot()  # with the server's debug JSON beside it
+		else:
+			var path := preload("res://main.gd").screenshot_directory(OS.get_name(), OS.get_environment("USERPROFILE")).path_join(
+				"screenshot_%d.png" % int(Time.get_unix_time_from_system() * 1e9))
+			DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+			var error := get_viewport().get_texture().get_image().save_png(path)
+			print("Screenshot " + (path if error == OK else "failed: %s" % error_string(error)))
+		get_viewport().set_input_as_handled()
+		return
 	if not event.is_action_pressed("ui_cancel"):
 		return
 	if _loading:
