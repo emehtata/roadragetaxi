@@ -524,7 +524,7 @@ def build_state_message(
             "x": car.x, "y": car.y, "heading": car.heading, "speed": car.speed,
             "map_level": getattr(car, "map_level", 0),  # 0 surface, < 0 underground (godot-16)
             "braking": car.braking, "trip_m": car.trip_m, "odometer_m": car.odometer_m,
-            "engine_on": car.engine_on, "fuel_l": car.fuel_l,
+            "engine_on": car.engine_on, "throttle": round(getattr(car, "throttle", 0.0), 2), "fuel_l": car.fuel_l,
             "fuel_capacity_l": car.fuel_capacity_l,
             "fuel_consumption_l_per_100km": car.fuel_consumption_l_per_100km,
             "idle_fuel_consumption_l_per_hour": car.idle_fuel_consumption_l_per_hour,

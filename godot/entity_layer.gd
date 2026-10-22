@@ -28,6 +28,7 @@ var view_rect := Rect2()  # visible area in this layer's coordinates, with margi
 
 var _frame: Dictionary = {}  # this frame's sample: {"a", "b", "t"}
 var _clock := 0.0  # local seconds, for purely presentational loops (exhaust puffs)
+var _exhaust := 0.0  # the taxi's eased throttle, how hard its exhaust puffs
 var _font: Font
 var reflectors_on := false  # the sun below -7.5 degrees (main.gd, from state calendar)
 var lamp_near := func(_at: Vector2, _radius: float) -> bool: return false  # MapLayer.lamp_near
@@ -906,23 +907,26 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 
 
 ## Four rising, fading puffs (crash smoke and exhaust; sizes in screen
-## pixels). `behind` trails them out of the back.
-func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false) -> void:
+## pixels). `behind` trails them out of the back; `strength` (exhaust: the
+## throttle) makes them thicker, darker, bigger and faster - an idling
+## engine only breathes faintly.
+func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false, strength := 1.0) -> void:
 	if not smoke_enabled:
 		return
 	var f := _forward(heading)
 	var r := _right(heading)
 	var base := c + f * (length * 0.4) * (-1.0 if behind else 1.0)
 	for i in 4:
-		var offset_t := fmod(t * 2.5 + i * 0.7, 2.0)
+		var offset_t := fmod(t * lerpf(1.5, 3.5, strength) + i * 0.7, 2.0)
 		var puff := base
 		if behind:
-			puff += -f * _px(offset_t * 14.0) + Vector2(0, -_px(offset_t * 3.0)) + r * _px(sin(t * 3.0 + i) * 2.0 * offset_t)
+			puff += -f * _px(offset_t * lerpf(8.0, 18.0, strength)) + Vector2(0, -_px(offset_t * 3.0)) + r * _px(sin(t * 3.0 + i) * 2.0 * offset_t)
 		else:
 			puff += r * _px(sin(t * 3.0 + i) * 4.0 * offset_t) + Vector2(0, -_px(offset_t * 14.0))
-		var smoke := RS.SMOKE
-		smoke.a = clampf((1.0 - offset_t / 2.0) * RS.SMOKE_MAX_ALPHA, 0.0, RS.SMOKE_MAX_ALPHA)
-		draw_circle(puff, _px(3.0 + offset_t * 5.0), smoke)
+		var smoke: Color = RS.SMOKE.darkened(0.35 * strength) if behind else RS.SMOKE
+		var max_alpha: float = RS.SMOKE_MAX_ALPHA * (lerpf(0.35, 1.3, strength) if behind else 1.0)
+		smoke.a = clampf((1.0 - offset_t / 2.0) * max_alpha, 0.0, max_alpha)
+		draw_circle(puff, _px((3.0 + offset_t * 5.0) * (lerpf(0.7, 1.4, strength) if behind else 1.0)), smoke)
 
 
 ## Someone lying flat along `h` (their heading, head first): spread out -
@@ -1518,7 +1522,8 @@ func _draw() -> void:
 	var road: Dictionary = a.get("road", {}) if typeof(a.get("road")) == TYPE_DICTIONARY else {}
 	var taxi_under: bool = not road.get("bridge", false) and covered.call(taxi_at, int(road.get("layer", 0)))
 	if player.get("engine_on", false) and not taxi_under:
-		_smoke(taxi_at, taxi.z, taxi_length, _clock, true)  # exhaust
+		_exhaust = lerpf(_exhaust, float(player.get("throttle", 0.0)), 0.15)  # eased: no flicker per snapshot
+		_smoke(taxi_at, taxi.z, taxi_length, _clock, true, _exhaust)
 	taxi_sign_on = taxi_sign_lit(a.get("taxi", {}))
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
 		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under)

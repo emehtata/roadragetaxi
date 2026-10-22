@@ -237,6 +237,7 @@ class Car:
     length_m: float = 4.0  # length in meters
     width_m: float = 1.8  # width in meters
     engine_on: bool = True  # engine runs only while the player is in the car
+    throttle: float = 0.0  # the last frame's throttle (0..1), for the exhaust
     time_since_last_steer: float = 0.0  # seconds elapsed without manual steer input
     lane_assist_enabled: bool = False  # user toggle for lane assist feature (default False)
     lane_assist_active: bool = False  # whether lane assist is currently steering
@@ -1716,6 +1717,7 @@ def update_car_physics(
     entry_speed = car.speed
     if not car.engine_on:
         throttle = 0.0
+    car.throttle = throttle
     # The gear change: having come to a stop against the travel direction,
     # the car waits GEAR_CHANGE_S at zero before it moves the other way
     # (car.gear_hold_dir: +1 forward is held, -1 reverse is held).
