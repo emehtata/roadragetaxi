@@ -139,8 +139,14 @@ func _build_shell() -> void:
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_menu_scroll = ScrollContainer.new()
 	_menu_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# Never a scroll bar: the container takes all of its content's height
+	# (at every relayout); _center_panel scales a too-tall menu to fit instead.
+	_menu_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_panel.add_child(_menu_scroll)
 	_menu_scroll.add_child(_body)
+	# Text that wraps after the menu is built (the calendar's key help) grows
+	# the content later: fit again then, or it ends up scrolling after all.
+	_body.minimum_size_changed.connect(_center_panel)
 
 
 func _center_panel() -> void:
