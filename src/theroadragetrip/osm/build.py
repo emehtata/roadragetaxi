@@ -860,7 +860,7 @@ def build_ways(
                 scenery_raw.append((tags, node_ids))
             elif tags.get("amenity") in ("biergarten", "grave_yard"):
                 scenery_raw.append((tags, node_ids))
-            elif tags.get("tourism") == "theme_park" or "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS or tags.get("golf") in ("tee", "fairway", "green"):
+            elif tags.get("tourism") in ("theme_park", "camp_site", "caravan_site", "camp_pitch") or "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS or tags.get("golf") in ("tee", "fairway", "green"):
                 scenery_raw.append((tags, node_ids))
             elif tags.get("railway") == "platform" and node_ids[0] == node_ids[-1]:
                 # Station platform area: paved ground, not the grass under it.
@@ -1003,7 +1003,7 @@ def build_ways(
             else tags.get("amenity") if tags.get("amenity") in ("biergarten", "grave_yard")
             else "golf_" + tags["golf"] if tags.get("golf") in ("tee", "fairway", "green")
             and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0"
-            else "theme_park" if tags.get("tourism") == "theme_park" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes"
+            else tags["tourism"] if tags.get("tourism") in ("theme_park", "camp_site", "caravan_site", "camp_pitch") and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes"
             else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
         )
         name = tags.get("name")
@@ -1608,10 +1608,10 @@ def build_ways(
                 ))
             elif tags.get("amenity") in ("biergarten", "grave_yard"):
                 sceneries.append(Scenery(points_m=pts, kind=tags["amenity"], name=name, bbox=ibbox))
-            elif tags.get("tourism") == "theme_park" or "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS or tags.get("golf") in ("tee", "fairway", "green"):
+            elif tags.get("tourism") in ("theme_park", "camp_site", "caravan_site", "camp_pitch") or "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS or tags.get("golf") in ("tee", "fairway", "green"):
                 kind = ("golf_" + tags["golf"] if tags.get("golf") in ("tee", "fairway", "green")
                         and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0"
-                        else "theme_park" if tags.get("tourism") == "theme_park" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes"
+                        else tags["tourism"] if tags.get("tourism") in ("theme_park", "camp_site", "caravan_site", "camp_pitch") and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes"
                         else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park")
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, kerbed=relation_is_kerbed,
                                   sport=tags.get("sport"))
@@ -2041,6 +2041,9 @@ def build_ways(
             elif len(feature.points_m) >= 3:
                 obstacles.append(Polygon(feature.points_m).buffer(0.5))
         course.golf_holes = miniature_golf_holes(course.points_m, obstacles)
+
+    from .campsites import populate_camp_pitches
+    scenery_objects.extend(populate_camp_pitches(elements, nodes_m, buildings, waters, ways, railings))
 
     from ..activities.plugins.tennis import prepare_court
     for court in sceneries:

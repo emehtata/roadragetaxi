@@ -156,7 +156,7 @@ def fetch_osm_ways(
     node["leisure"~"picnic_table|firepit|miniature_golf"]({south},{west},{north},{east});
     node["barrier"~"gate|bollard"]({south},{west},{north},{east});
     node["historic"="memorial"]({south},{west},{north},{east});
-    nwr["tourism"="theme_park"]({south},{west},{north},{east});
+    nwr["tourism"~"^(theme_park|camp_site|caravan_site|camp_pitch)$"]({south},{west},{north},{east});
     nwr["attraction"]({south},{west},{north},{east});
     node["tourism"="artwork"]({south},{west},{north},{east});
     node["name"]({south},{west},{north},{east});

@@ -52,6 +52,7 @@ def road_color_for_way(way: Way) -> Tuple[int, int, int]:
 
 
 SCENERY_COLORS = {
+    "camp_site": (106, 140, 79), "caravan_site": (120, 143, 94), "camp_pitch": (117, 148, 88),
     "theme_park": (188, 174, 139),
     "forest": (40, 78, 42), "wood": (40, 78, 42), "scrub": (108, 120, 78),
     "heath": (136, 124, 92), "park": (100, 145, 80), "garden": (104, 150, 86),

@@ -32,7 +32,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "nightclubs", "attractions", "tennis_courts")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
-DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard")
+DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van")
 
 CHUNK_SIZE_M = 500.0
 LOAD_RADIUS = 3    # chunks around the player's chunk that must be loaded (7 x 7, >= 1.5 km each way)

@@ -955,6 +955,35 @@ func _draw_trees(node: Node2D) -> void:
 ## The decorative scenery objects, in metres with minimum pixel sizes.
 func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float) -> void:
 	match kind:
+		"tent":
+			node.draw_set_transform(at, -angle)
+			var warm := posmod(hash(at), 3) == 0
+			var fabric := Color8(199, 119, 48) if warm else Color8(63, 128, 139)
+			node.draw_rect(Rect2(-1.4, -.9, 3.0, 2.1), Color8(25, 35, 27, 100))
+			node.draw_colored_polygon(PackedVector2Array([Vector2(-1.4,-1), Vector2(1.4,-1), Vector2(1.1,0), Vector2(-1.1,0)]), fabric.lightened(.2))
+			node.draw_colored_polygon(PackedVector2Array([Vector2(-1.1,0), Vector2(1.1,0), Vector2(1.4,1), Vector2(-1.4,1)]), fabric.darkened(.2))
+			node.draw_colored_polygon(PackedVector2Array([Vector2(1.1,0), Vector2(1.4,-.6), Vector2(1.4,.6)]), Color8(28, 49, 51))
+			node.draw_line(Vector2(-1.1,0), Vector2(1.1,0), fabric.lightened(.4), .08)
+			for side: float in [-1,1]:
+				node.draw_line(Vector2(-1.4,side), Vector2(-1.55,side*1.15), Color8(199, 195, 162), .04)
+				node.draw_line(Vector2(1.4,side), Vector2(1.55,side*1.15), Color8(199, 195, 162), .04)
+			node.draw_set_transform(Vector2.ZERO)
+		"camper_van":
+			node.draw_set_transform(at, -angle)
+			node.draw_rect(Rect2(-2.9,-1.05,6.2,2.55), Color8(25, 30, 28, 110))
+			for x: float in [-1.9, 1.9]:
+				for side: float in [-1,1]:
+					node.draw_rect(Rect2(x-.4,side*1.15-.12,.8,.24), Color8(30, 32, 34))
+			node.draw_rect(Rect2(-3,-1.15,6,2.3), Color8(222, 220, 202))
+			node.draw_rect(Rect2(-2.7,-.95,4.2,1.9), Color8(247, 245, 231))
+			node.draw_rect(Rect2(1.9,-.95,.55,1.9), Color8(51, 83, 98))
+			node.draw_rect(Rect2(-1.8,-.5,.85,1), Color8(97, 142, 154))
+			node.draw_rect(Rect2(.25,-.35,.65,.7), Color8(183, 185, 173))
+			for y: float in [-.9,.9]:
+				node.draw_line(Vector2(-2.8,y),Vector2(1.4,y),Color8(112, 149, 138),.12)
+				node.draw_rect(Rect2(2.8,y-.12,.15,.24),Color8(245, 229, 156))
+				node.draw_rect(Rect2(-3,y-.12,.12,.24),Color8(167, 52, 42))
+			node.draw_set_transform(Vector2.ZERO)
 		"biergarten", "grave_yard":
 			Detail.draw_site_detail(node, at, kind, float(_season[0]))
 		"bench":  # 1.4 x 0.4 m, along the path it's beside

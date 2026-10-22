@@ -114,7 +114,8 @@ MAGIC = b"RWC\0"
 # 47: dry beach locations and connected near-shore swim routes.
 # 48: Theme park attractions and ride loops.
 # 49: Validated outdoor tennis court geometry.
-FORMAT_VERSION = 49
+# 50: Camping equipment on mapped camp pitches.
+FORMAT_VERSION = 50
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
