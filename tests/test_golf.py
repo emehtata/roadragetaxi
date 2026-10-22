@@ -124,6 +124,10 @@ def test_golfer_drives_approaches_putts_and_releases_hole(dt):
     assert data["ball"][:2] == list(course.golf_holes[0][-1])
     assert math.dist((pedestrian.x, pedestrian.y), course.golf_holes[0][-1]) < .2
     assert data["strokes"] >= 4
+    cues = [group for group, _ in manager.sound_events]
+    assert {"sport.golf_hit", "sport.golf_putt", "sport.golf_cup"} == set(cues)
+    assert len(cues) == data["strokes"] + 1 and cues.count("sport.golf_cup") == 1
+    assert manager.sound_events[-1] == ("sport.golf_cup", tuple(course.golf_holes[0][-1]))
     assert instance.location.reservation_key not in manager.activity_manager._reservations
     assert "golf" not in protocol._pedestrian_to_dict(pedestrian)
 

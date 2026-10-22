@@ -38,12 +38,15 @@ class BeachGamesPlugin(BeachPlugin):
         data = instance.group.data
         if data["updated"] != context.sim_time:
             data["updated"] = context.sim_time
+            previous = data["elapsed"]
             data["elapsed"] += dt
             players = sorted([p, other], key=lambda player: player.resident_id)
             turn = int(data["elapsed"] / 2)
             a, b = players[turn % 2], players[(turn+1) % 2]
             t = min(1.0, data["elapsed"] % 2 / 1.2)
             data["ball"] = [a.x+(b.x-a.x)*t, a.y+(b.y-a.y)*t, 4*t*(1-t)]
+            if previous == 0.0 or int(previous / 2) != turn:
+                context.pedestrian_manager.play_sound("sport.beach_ball", (a.x, a.y))
         return False
 
     def finish(self, context, instance):

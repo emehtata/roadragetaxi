@@ -3853,6 +3853,7 @@ class NPCVehicleManager:
         self.drivers: Dict[int, Driver] = {}
         self.accidents: List[Tuple[float, float]] = []  # crash positions for the sound, drained by the simulation
         self.curses: List[Tuple[float, float]] = []  # where a bumped NPC driver cursed; drained by the simulation
+        self.bus_brakes: List[Tuple[float, float]] = []
         self.household_manager = HouseholdManager()
         self.target_count = target_count
         self.min_count = min_count if min_count is not None else max(1, int(target_count * 0.6))
@@ -4580,8 +4581,10 @@ class NPCVehicleManager:
             previous_state = job.state if job is not None else None
             if job is not None and job.at_stop(sim_time, vehicle.x, vehicle.y):
                 vehicle.bus_job = None  # the terminus: it waits there until retired out of sight
-            if job is not None and previous_state != "stopped" and job.state == "stopped" and pedestrian_mgr is not None:
-                pedestrian_mgr.exchange_bus_passengers(vehicle, job.stopped_at)
+            if job is not None and previous_state != "stopped" and job.state == "stopped":
+                self.bus_brakes.append((vehicle.x, vehicle.y))
+                if pedestrian_mgr is not None:
+                    pedestrian_mgr.exchange_bus_passengers(vehicle, job.stopped_at)
             return
         if vehicle.vehicle_kind == "household" and vehicle.returning_home:
             # Arrived home (section 12) - the trip is simply over, no

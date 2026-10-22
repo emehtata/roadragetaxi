@@ -55,3 +55,8 @@ def test_the_validator_catches_a_broken_catalog(tmp_path, monkeypatch):
     assert "no_such_door.ogg is missing" in problems
     assert "is also vehicle.door_open.02" in problems
     assert "ambient.city_day (played at" in problems and "has no files" in problems
+
+
+def test_activity_sound_calls_are_checked_against_the_catalog():
+    refs = validator.referenced_groups()
+    assert any('beach_volleyball.py' in place for place in refs['sport.beach_ball'])

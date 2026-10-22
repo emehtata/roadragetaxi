@@ -51,6 +51,7 @@ class BeachVolleyballPlugin(BeachPlugin):
             if turn != data["turn"]:
                 a, b = players[HITTERS[turn % 4]], players[HITTERS[(turn + 1) % 4]]
                 data.update(turn=turn, start=(a.x, a.y), end=(b.x, b.y))
+                context.pedestrian_manager.play_sound("sport.beach_ball", (a.x, a.y))
             t = (data["elapsed"] % RALLY_S) / RALLY_S
             a, b = data["start"], data["end"]
             # shortcut: continuous rallies without scores; add serves and points when match results are needed.

@@ -538,6 +538,7 @@ class PedestrianManager:
         self.despawn_radius_m = despawn_radius_m
         self.pedestrians: List[Pedestrian] = []
         self.curses: List[Tuple[float, float]] = []  # where a startled pedestrian cursed; drained by the simulation
+        self.sound_events: List[Tuple[str, Tuple[float, float]]] = []
         self.traffic_lights: List[TrafficLight] = traffic_lights or []
         self.crossings: List[Crossing] = crossings or []
         self.logical_intersections = logical_intersections or []
@@ -643,13 +644,19 @@ class PedestrianManager:
             pedestrian.bottles = rng.randint(*BOTTLES)
             pedestrian.bottle_left = 1.0
 
+    def play_sound(self, group_id: str, at: Tuple[float, float]) -> None:
+        # Bound transient cues even when several groups hit a transition in the same tick.
+        if len(self.sound_events) < 64:
+            self.sound_events.append((group_id, at))
+
     @staticmethod
-    def drink(pedestrian: Pedestrian, game_dt: float, rng=random) -> None:
+    def drink(pedestrian: Pedestrian, game_dt: float, rng=random) -> bool:
         """Sip while hanging out with a bottle: alcohol in, the bottle down,
         the next one opened; drunk past DRUNK_FROM_PROMILLE."""
         pedestrian.drinking = pedestrian.bottles > 0 and pedestrian.animation_state in HANGING_OUT
         if not pedestrian.drinking or game_dt <= 0.0:
-            return
+            return False
+        opened = pedestrian.bottle_left == 1.0
         sip = min(pedestrian.bottle_left, game_dt / BOTTLE_DRINK_S)
         pedestrian.bottle_left -= sip
         pedestrian.blood_alcohol_promille += sip * BOTTLE_PROMILLE
@@ -660,6 +667,7 @@ class PedestrianManager:
             pedestrian.is_drunk = True
             pedestrian.drunk_phase = rng.uniform(0.0, 2.0 * math.pi)
             pedestrian.drunk_vomit_cooldown = rng.uniform(8.0, 25.0)
+        return opened
 
     def _camping_drink(self, pedestrian: Pedestrian, rng=random) -> None:
         """An adult at a camping area: CAMPING_DRUNK_CHANCE to be drunk. Not
@@ -2810,7 +2818,8 @@ class PedestrianManager:
         # Update walking movement
         for ped in self.pedestrians:
             if ped.bottles:
-                self.drink(ped, alcohol_dt)
+                if self.drink(ped, alcohol_dt):
+                    self.play_sound("pedestrian.bottle_drink", (ped.x, ped.y))
             if ped.blood_alcohol_promille > 0.0 or ped.is_drunk:
                 ped.blood_alcohol_promille = max(
                     0.0, ped.blood_alcohol_promille - ALCOHOL_DECAY_PER_GAME_HOUR * alcohol_dt / 3600.0,

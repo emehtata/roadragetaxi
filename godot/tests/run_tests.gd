@@ -67,6 +67,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_interpolation()
 	test_vehicle_body_triangles()
 	test_audio()
+	test_new_sound_triggers()
 	test_nightclub_audio()
 	test_car_audio()
 	test_hud()
@@ -830,6 +831,55 @@ func test_audio() -> void:
 	audio.set_bus_volume("Game", 0.5)
 	check(is_equal_approx(AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Game")), linear_to_db(0.5)), "bus volume")
 	audio.free()
+
+
+func test_new_sound_triggers() -> void:
+	var main: Node = load("res://main.tscn").instantiate()
+	root.add_child(main)
+	var audio: AudioManager = main.audio
+	var state := {"on_foot": false, "player": {"x": 0.0, "y": 0.0, "speed": 6.0},
+		"tire_mark": {"kind": "dirt", "spray": 0.8},
+		"npcs": [{"x": 20.0, "y": 0.0, "speed": 5.0, "state": "DRIVING", "trailer": [17.0, 0.0]},
+			{"x": 100.0, "y": 0.0, "speed": 8.0, "state": "DRIVING", "trailer": [97.0, 0.0]},
+			{"x": 4.0, "y": 0.0, "speed": 8.0, "layer": -1, "state": "DRIVING", "trailer": [1.0, 0.0]}],
+		"pedestrians": [{"x": 2.0, "y": 3.0, "animation_state": "swimming"},
+			{"x": 40.0, "y": 0.0, "animation_state": "swimming"},
+			{"x": 8.0, "y": 0.0, "activity": "theme_park", "animation_state": "riding"}]}
+	main._feature_loops(state)
+	for key in ["mud", "trailer", "swimming", "ride"]:
+		check(audio.loop_playing(key) and audio._loops[key] is AudioStreamPlayer2D, "%s starts at a positional source" % key)
+	check(audio._loops["swimming"].position == Vector2(2, -3), "the closest swimmer is the sound source")
+	check(audio._loops["trailer"].position == Vector2(17, 0), "the nearest moving trailer rattles from its own body")
+	for i in 10:
+		main._feature_loops(state)
+	for key in ["mud", "trailer", "swimming", "ride"]:
+		check(audio.loop_starts[key] == 1, "%s adjusts without restarting every state" % key)
+	state["on_foot"] = true
+	main._feature_loops(state)
+	check(not audio.loop_playing("mud") and audio.loop_playing("swimming"), "walking stops tyres while nearby swimmers remain audible")
+	state["on_foot"] = false
+	state["player"]["map_level"] = -1
+	main._feature_loops(state)
+	for key in ["mud", "trailer", "swimming", "ride"]:
+		check(not audio.loop_playing(key), "%s surface loop is silent underground" % key)
+	state["player"]["map_level"] = 0
+	state["player"]["speed"] = 0
+	state["npcs"][0]["state"] = "PARKED"
+	state["npcs"][1]["speed"] = 0
+	state["pedestrians"][0]["animation_state"] = "idle"
+	state["pedestrians"][1]["animation_state"] = "idle"
+	state["pedestrians"][2]["animation_state"] = "idle"
+	main._feature_loops(state)
+	for key in ["mud", "trailer", "swimming", "ride"]:
+		check(not audio.loop_playing(key), "%s stops when its source stops" % key)
+	for group in ["collision.hedge_break", "sport.tennis_hit", "sport.tennis_bounce", "sport.golf_hit",
+			"sport.golf_putt", "sport.golf_cup", "sport.beach_ball", "pedestrian.bottle_drink", "vehicle.bus_air_brake"]:
+		var actions := audio.resolve({"type": "sound", "group": group, "at": [3.0, 4.0]})
+		check(actions.size() == 1 and actions[0]["at"] == Vector2(3, 4), "%s resolves to one positioned clip" % group)
+		check(actions[0]["range"][1] <= 120.0 and actions[0]["volume"] < 1.0, "%s has a bounded audible range and mix level" % group)
+	main._on_connection(false)
+	check(audio.loops_playing() == 0, "disconnect stops the new audio loops too")
+	main.free()
 
 
 func test_hud() -> void:

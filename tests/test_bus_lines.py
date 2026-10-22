@@ -107,6 +107,7 @@ def test_a_line_bus_drives_its_stops_on_real_roads_then_retires_out_of_sight():
             break
     assert bus.state != NPCState.CRASHED
     assert [stops.index(stop) for stop, _ in served] == [0, 1, 2], served  # the line in order
+    assert manager.bus_brakes == [position for _, position in served]  # once per arrival, never every dwelling tick
     assert bus not in manager.vehicles and bus.vehicle_id not in manager.drivers  # retired at the terminus (no viewport: unseen)
     for stop, (x, y) in served:
         (px, py), (nx, ny), way = bus_stop_point(stop, ways)

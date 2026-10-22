@@ -6,7 +6,7 @@ Problems found (exit 1 if any):
 - a catalog file that is missing, not OGG, used by two entries, too quiet to
   be heard at all, or far shorter/longer than its group's duration_s
 - a loop group whose files aren't stereo (catalog format) or a one-shot that isn't mono
-- a group the game plays (play_group / set_loop / on_rise in src/, or the
+- a group the game plays (play_group / play_sound / set_loop / on_rise in src/, or the
   Godot client's audio_events.json) that doesn't exist or has no files
 - a Godot loop naming a variation the group doesn't have (or not 'alternate')
 
@@ -31,7 +31,7 @@ SILENT_DBFS = -70.0
 DURATION_SLACK = (0.4, 2.0)  # a clip may be this fraction of the shortest / this multiple of the longest wanted length
 # Groups that are played by the game but are speech libraries kept outside the catalog's SFX files.
 SPEECH_GROUPS = {"passenger.chatter", "driver.chatter"}
-_GROUP_CALL = re.compile(r"""(?:play_group|set_loop|on_rise)\(\s*(?:"[^"]*"\s*,\s*)?(?:[^,()"]*,\s*)?"([a-z_]+\.[a-z_]+)\"""")
+_GROUP_CALL = re.compile(r"""(?:play_group|play_sound|set_loop|on_rise)\(\s*(?:"[^"]*"\s*,\s*)?(?:[^,()"]*,\s*)?"([a-z_]+\.[a-z_]+)\"""")
 
 
 def _levels(path: Path):

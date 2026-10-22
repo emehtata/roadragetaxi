@@ -186,6 +186,8 @@ class GolfPlugin(ActivityPlugin):
                     data.update(phase="swing", timer=SWING_S)
                 else:
                     self._hit(instance)
+                    context.pedestrian_manager.play_sound(
+                        "sport.golf_putt" if data["club"] == "putter" else "sport.golf_hit", tuple(data["ball"][:2]))
         elif data["phase"] in {"flight", "roll"}:
             data["elapsed"] = min(data["duration"], data["elapsed"] + dt)
             t = data["elapsed"] / data["duration"]
@@ -203,6 +205,8 @@ class GolfPlugin(ActivityPlugin):
                 else:
                     data.update(phase="walk", progress=data["target_progress"],
                                 holed=data["target_progress"] >= data["distances"][-1])
+                    if data["holed"]:
+                        context.pedestrian_manager.play_sound("sport.golf_cup", tuple(data["ball"][:2]))
         elif data["phase"] == "walk":
             # shortcut: walking follows the hole line; use course footpaths when hazard detours are needed.
             stop = data["progress"] if data["holed"] else max(0.0, data["progress"] - STANCE_M)

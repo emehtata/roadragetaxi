@@ -59,6 +59,8 @@ def test_two_teams_rally_inside_court_and_stop_with_beach_weather():
         if abs(x) < .5:
             assert height > 2.43
     assert len(swings) == 4 and len(balls) > 100 and len(positions) > 40
+    assert 6 <= len(manager.sound_events) <= 7  # one hit per rally turn, shared by all four players
+    assert {group for group, _ in manager.sound_events} == {"sport.beach_ball"}
     manager.beach_open = False
     for p in manager.pedestrians:
         manager._update_activity(p,.1)

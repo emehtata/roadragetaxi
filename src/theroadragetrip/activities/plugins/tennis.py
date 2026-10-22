@@ -46,7 +46,9 @@ class TennisPlugin(ActivityPlugin):
         if not self.can_start(context) or group is None or not other_group_members(context, group):
             return True
         data = group.data
-        if data["updated"] != context.sim_time:
+        previous = data["elapsed"]
+        advanced = data["updated"] != context.sim_time
+        if advanced:
             data["updated"] = context.sim_time
             data["elapsed"] += dt
         elapsed = data["elapsed"]
@@ -66,6 +68,11 @@ class TennisPlugin(ActivityPlugin):
         a, b = players[turn % 2], players[(turn+1) % 2]
         height = max(0, 1 + 2.5*t - (46/9)*t*t) if t <= .75 else 3.2*(t-.75)
         data["ball"] = [a.x+(b.x-a.x)*t, a.y+(b.y-a.y)*t, height]
+        if advanced:
+            if previous == 0.0 or int(previous / 1.6) != turn:
+                context.pedestrian_manager.play_sound("sport.tennis_hit", (a.x, a.y))
+            if int((previous + .4) / 1.6) != int((elapsed + .4) / 1.6):
+                context.pedestrian_manager.play_sound("sport.tennis_bounce", (data["ball"][0], data["ball"][1]))
         return elapsed >= 180
 
     def finish(self, context, instance):

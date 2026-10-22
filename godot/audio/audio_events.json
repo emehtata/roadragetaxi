@@ -55,6 +55,60 @@
         "group": "pedestrian.footsteps",
         "volume": 0.5
       }
+    ],
+    "collision.hedge_break": [
+      {
+        "group": "collision.hedge_break",
+        "volume": 0.8
+      }
+    ],
+    "sport.tennis_hit": [
+      {
+        "group": "sport.tennis_hit",
+        "volume": 0.65
+      }
+    ],
+    "sport.tennis_bounce": [
+      {
+        "group": "sport.tennis_bounce",
+        "volume": 0.5
+      }
+    ],
+    "sport.golf_hit": [
+      {
+        "group": "sport.golf_hit",
+        "volume": 0.65
+      }
+    ],
+    "sport.golf_putt": [
+      {
+        "group": "sport.golf_putt",
+        "volume": 0.5
+      }
+    ],
+    "sport.golf_cup": [
+      {
+        "group": "sport.golf_cup",
+        "volume": 0.5
+      }
+    ],
+    "sport.beach_ball": [
+      {
+        "group": "sport.beach_ball",
+        "volume": 0.6
+      }
+    ],
+    "pedestrian.bottle_drink": [
+      {
+        "group": "pedestrian.bottle_drink",
+        "volume": 0.6
+      }
+    ],
+    "vehicle.bus_air_brake": [
+      {
+        "group": "vehicle.bus_air_brake",
+        "volume": 0.65
+      }
     ]
   },
   "ranges_m": {
@@ -129,6 +183,58 @@
     "holiday.firework_burst": [
       60.0,
       1200.0
+    ],
+    "collision.hedge_break": [
+      5,
+      90
+    ],
+    "sport.tennis_hit": [
+      3,
+      65
+    ],
+    "sport.tennis_bounce": [
+      2,
+      30
+    ],
+    "sport.golf_hit": [
+      4,
+      100
+    ],
+    "sport.golf_putt": [
+      1.5,
+      18
+    ],
+    "sport.golf_cup": [
+      1.5,
+      15
+    ],
+    "sport.beach_ball": [
+      3,
+      45
+    ],
+    "pedestrian.bottle_drink": [
+      1.5,
+      15
+    ],
+    "vehicle.bus_air_brake": [
+      6,
+      100
+    ],
+    "vehicle.mud_spray": [
+      3,
+      65
+    ],
+    "vehicle.trailer_rattle": [
+      3,
+      75
+    ],
+    "sport.swimming": [
+      3,
+      45
+    ],
+    "ambient.ride_machinery": [
+      8,
+      120
     ]
   },
   "player_categories": [
@@ -227,6 +333,22 @@
     "arena_crowd": {
       "group": "sport.arena_crowd",
       "variation": "alternate",
+      "positional": true
+    },
+    "mud": {
+      "group": "vehicle.mud_spray",
+      "positional": true
+    },
+    "trailer": {
+      "group": "vehicle.trailer_rattle",
+      "positional": true
+    },
+    "swimming": {
+      "group": "sport.swimming",
+      "positional": true
+    },
+    "ride": {
+      "group": "ambient.ride_machinery",
       "positional": true
     }
   }

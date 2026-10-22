@@ -801,6 +801,7 @@ static func nearest_point(points: Array, from: Vector2):
 ## when it sets off from a stop near the listener.
 func _feature_loops(state: Dictionary) -> void:
 	var from: Vector2 = audio.player_at
+	var surface := int(state.get("player", {}).get("map_level", 0)) == 0
 	var tram = null
 	var tram_speed := 0.0
 	var states := {}
@@ -818,7 +819,15 @@ func _feature_loops(state: Dictionary) -> void:
 	audio.set_loop("tram_running", minf(1.0, tram_speed / 10.0) if tram != null else 0.0, 1.0, tram)
 	var tractor = null
 	var tractor_speed := 0.0
+	var trailer = null
+	var trailer_speed := 0.0
 	for npc in state.get("npcs", []):
+		if surface and npc.has("trailer") and int(npc.get("layer", 0)) >= 0 \
+				and npc.get("state", "") not in ["PARKED", "CRASHED"] and absf(npc.get("speed", 0.0)) > 0.5:
+			var at := Vector2(npc["trailer"][0], npc["trailer"][1])
+			if trailer == null or at.distance_to(from) < trailer.distance_to(from):
+				trailer = at
+				trailer_speed = absf(npc.get("speed", 0.0))
 		if npc.get("vehicle_type", "") != "tractor" or npc.get("state", "") in ["PARKED", "CRASHED"]:
 			continue
 		var at := Vector2(npc["x"], npc["y"])
@@ -827,10 +836,27 @@ func _feature_loops(state: Dictionary) -> void:
 			tractor_speed = absf(npc.get("speed", 0.0))
 	audio.set_loop("tractor", 0.7 if tractor != null else 0.0, 0.85 + minf(tractor_speed / 15.0, 0.4), tractor)
 	audio.set_loop("plough", minf(1.0, tractor_speed / 6.0) if tractor != null and entities.ploughing else 0.0, 1.0, tractor)
+	audio.set_loop("trailer", minf(0.5, trailer_speed / 12.0) if trailer != null else 0.0, 1.0, trailer)
 	var skaters: Array = []
+	var swimmers: Array = []
+	var riders: Array = []
 	for ped in state.get("pedestrians", []):
 		if ped.get("activity", "") == "ice_skating":
 			skaters.append([ped["x"], ped["y"]])
+		if surface and ped.get("animation_state", "") == "swimming":
+			swimmers.append([ped["x"], ped["y"]])
+		if surface and ped.get("activity", "") == "theme_park" and ped.get("animation_state", "") == "riding":
+			riders.append([ped["x"], ped["y"]])
+	var swimmer = nearest_point(swimmers, from)
+	audio.set_loop("swimming", 0.55 if swimmer != null else 0.0, 1.0, swimmer)
+	var ride = nearest_point(riders, from)
+	audio.set_loop("ride", 0.45 if ride != null else 0.0, 1.0, ride)
+	var mark = state.get("tire_mark")
+	var spray := float(mark.get("spray", 0.0)) if mark is Dictionary and mark.get("kind") == "dirt" else 0.0
+	var moving := absf(state.get("player", {}).get("speed", 0.0)) > 0.5
+	var driving: bool = surface and moving and not state.get("on_foot", true)
+	audio.set_loop("mud", 0.45 * clampf(spray, 0.0, 1.0) if driving else 0.0, 1.0,
+		Vector2(state.get("player", {}).get("x", 0.0), state.get("player", {}).get("y", 0.0)))
 	var skater = nearest_point(skaters, from)
 	audio.set_loop("ice_skating", 0.6 if skater != null else 0.0, 1.0, skater)
 	var puck = nearest_point(state.get("pucks", []), from)

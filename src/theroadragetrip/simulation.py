@@ -538,8 +538,11 @@ def advance_simulation(
         if len(taxi_mgr.fallen_trees) > fallen_before:
             audio.play_group("collision.tree_fall")
         fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
-        fence_crash = fence_crash or on_surface and taxi_mgr.check_barrier_collision(
-            car, getattr(world, "railings", ()), traffic_mgr.sim_time, previous_position, current_way)
+        fence_group = "collision.fence"
+        if not fence_crash and on_surface:
+            fence_crash = taxi_mgr.check_barrier_collision(
+                car, getattr(world, "railings", ()), traffic_mgr.sim_time, previous_position, current_way)
+            fence_group = taxi_mgr.barrier_sound
         tram_crash = on_surface and taxi_mgr.check_tram_collision(
             car, getattr(world, "tram_mgr", None), traffic_mgr.sim_time, previous_position)
         # Bollards and lamp posts are OSM nodes without a level: surface only.
@@ -567,7 +570,7 @@ def advance_simulation(
     crashed = any([
         audio.on_rise("crash_building", building_crash, "collision.building", 0.8),
         audio.on_rise("crash_tree", tree_crash, "collision.tree", 0.8),
-        audio.on_rise("crash_fence", fence_crash, "collision.fence", 0.8),
+        audio.on_rise("crash_fence", fence_crash, fence_group, 0.8),
         audio.on_rise("crash_tram", tram_crash, "collision.building", 0.9),  # a heavy steel body
         audio.on_rise("crash_post", post_crash, "collision.guardrail", 0.8),  # a metal pole
         audio.on_rise("crash_guardrail", bridge_edge_crash, "collision.guardrail", 0.8),
@@ -684,6 +687,9 @@ def advance_simulation(
     for x, y in npc_manager.accidents:
         audio.play_group("collision.vehicle", at=(x, y))
     npc_manager.accidents.clear()
+    for at in npc_manager.bus_brakes:
+        audio.play_group("vehicle.bus_air_brake", at=at)
+    npc_manager.bus_brakes.clear()
     curses = pedestrian_mgr.curses + npc_manager.curses  # bumped NPC drivers curse the same way
     if curses:
         x, y = curses[-1]  # one curse per tick is plenty
@@ -802,6 +808,9 @@ def advance_simulation(
         if pedestrian_previous:
             protests.block_walkers(pedestrian_mgr.pedestrians, pedestrian_previous)
         pedestrian_mgr.track_vomit(taxi_mgr.vomit_puddles + pedestrian_mgr.vomit_puddles)
+    for group_id, at in pedestrian_mgr.sound_events:
+        audio.play_group(group_id, at=at)
+    pedestrian_mgr.sound_events.clear()
     if on_foot:
         audio.update_footsteps(player_pedestrian.speed, dt, running=command.sprint)
     world.competitor_dispatcher.update(taxi_mgr, npc_manager, dt)  # competitors take phone fares

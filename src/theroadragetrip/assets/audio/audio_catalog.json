@@ -4599,7 +4599,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "A vehicle bursting through a leafy garden hedge, rapid brittle twig snaps and heavy foliage rustling across metal, one brief impact, close dry isolated sound effect",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
@@ -4665,7 +4665,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "Car tyres spinning through thick wet mud, sticky squelching and small wet clods hitting wheel arches, steady exterior recording, isolated sound effect, seamless loop",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
@@ -4713,7 +4713,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "One tennis ball struck once with a tightly strung tennis racket, sharp hollow thwack with a brief string resonance, close dry outdoor recording, single isolated sound effect",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
@@ -4779,7 +4779,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "A single tennis ball bouncing once on a hard outdoor tennis court, short hollow rubber pop and tiny surface scuff, close dry recording, isolated sound effect",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
@@ -4827,7 +4827,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "A single golf club swing, quick air swish followed by the crisp metallic crack of a driver striking a golf ball, brief natural decay, close dry outdoor recording, isolated sound effect",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
@@ -4876,7 +4876,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "A putter tapping a golf ball once, small crisp woody metallic tick followed by a very short soft rolling sound on putting grass, close dry recording, isolated sound effect",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
@@ -4924,7 +4924,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "A single golf ball falling into a plastic lined golf hole, brief hollow clunk and two tiny rattling clicks, close dry outdoor recording, isolated sound effect",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
@@ -4972,7 +4972,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "One person swimming slowly in a calm freshwater lake, rhythmic small hand splashes and water sloshing, gentle surface ripples, close outdoor recording, no talking or breathing, isolated sound effect, seamless loop",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
@@ -5004,7 +5004,8 @@
       "description": "A hand catches or bats a light inflatable beach ball.",
       "trigger": "The beach-ball turn advances; play once at the receiving or throwing player.",
       "source": [
-        "src/theroadragetrip/activities/plugins/beach_games.py"
+        "src/theroadragetrip/activities/plugins/beach_games.py",
+        "src/theroadragetrip/activities/plugins/beach_volleyball.py"
       ],
       "introduced_commit": "5c51554",
       "priority": "strong_candidate",
@@ -5020,7 +5021,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "An open hand lightly slapping a large inflatable beach ball once, soft hollow rubbery pop with a slight plastic squeak, close dry outdoor recording, isolated sound effect",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
@@ -5068,7 +5069,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "A small mechanical amusement park ride operating, low electric motor hum with rhythmic wheel and gear clacks and a light metal creak, close exterior recording, no fairground music or people, isolated sound effect, seamless loop",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
@@ -5116,7 +5117,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "A caravan being towed over an uneven road, soft irregular metal hitch rattles and suspension creaks, short muted clunks, close exterior perspective, no engine or wind, isolated sound effect, seamless loop",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
@@ -5164,7 +5165,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "User rejected the original quiet sip on 2026-10-22. Replacement is three AI-generated stages with 0.2 s gaps. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds. Opening, drinking and burp are one assembled sequence, played once when a fresh bottle is first consumed.",
       "generation": {
         "prompt": "Open a capped glass beer bottle with a cap pop and fizz, drink several audible gulps, then finish with a short burp. Three separately generated stages assembled in this order.",
         "negative_prompt": "music, speech, words, talking, singing, background ambience, low quality, distortion, clipping"
@@ -5268,7 +5269,7 @@
       "intensity_levels": false,
       "contextual_variants": [],
       "existing_asset": null,
-      "notes": "Asset created from the 2026-10-21 onward commit review. Runtime playback hook is not implemented by this asset-only change.",
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
       "generation": {
         "prompt": "A city bus releasing its pneumatic air brake, one short strong compressed air hiss with a small valve click and quick pressure decay, close exterior street perspective, no engine or traffic, isolated sound effect",
         "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"

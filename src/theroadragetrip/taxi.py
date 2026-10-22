@@ -293,6 +293,7 @@ class TaxiManager:
         self._fence_collision_ref = None
         self._fence_collision_count = 0
         self.broken_hedges: Dict[Any, List[List[Tuple[float, float]]]] = {}  # session damage, keyed by original geometry and layer
+        self.barrier_sound = "collision.fence"
         self._barrier_grid: Dict[Tuple[int, int], List[Any]] = {}  # linear barriers (Railing), indexed as they stream in
         self._barrier_ref = None
         self._barrier_count = 0
@@ -993,6 +994,7 @@ class TaxiManager:
         """Break hedges locally; stop at other barriers (open at their gates).
         Apply one crash penalty per impact. On a car
         road they never block: one mapped across a road is not a wall there."""
+        self.barrier_sound = "collision.fence"
         if current_way is not None and is_car_road(current_way):
             return False
         car_radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
@@ -1029,6 +1031,7 @@ class TaxiManager:
                 pieces = [remaining] if remaining.geom_type == "LineString" else list(remaining.geoms)
                 self.broken_hedges[key] = [list(piece.coords) for piece in pieces if not piece.is_empty and piece.length > .05]
                 player_car.speed *= .85
+                self.barrier_sound = "collision.hedge_break"
                 damaged = True
                 barrier_id = id(railing)
                 if barrier_id not in self._crashed_fence_cooldowns:
