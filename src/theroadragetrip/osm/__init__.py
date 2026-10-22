@@ -41,13 +41,6 @@ from .pbf_source import (
     local_pbf_available,
 )
 
-from .bin_source import (
-    CityBinUnavailableError,
-    city_bin_available,
-    city_bin_path,
-    load_city_ways,
-)
-
 from .cache import (
     CACHE_DIR,
     CACHE_VERSION,

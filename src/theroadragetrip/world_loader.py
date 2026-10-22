@@ -24,8 +24,8 @@ from .map_level import SURFACE_LEVEL, LevelRoadNetworks
 from .trams import TramManager
 from .competitor_taxis import Dispatcher
 from .npc import NPCVehicleManager, npc_target_count_for_population
-from .osm import (AutoFetchManager, build_ways, city_bin_available, city_bin_path, fetch_osm_ways,
-                  fetch_osm_ways_from_pbf, load_city_ways, load_local_sample, local_pbf_available,
+from .osm import (AutoFetchManager, build_ways, fetch_osm_ways,
+                  fetch_osm_ways_from_pbf, load_local_sample, local_pbf_available,
                   remove_trees_under_roads)
 from .osm.cache import OSM_CACHE_TTL_S
 from .parking import generate_detached_house_parking
@@ -206,42 +206,6 @@ def load_world(
     except Exception as e:
         logger.error("Failed to load OSM data: %s", e)
         sys.exit(1)
-
-    # Predefined cities may ship a prebuilt V2 road binary (tools/osm/
-    # build_finland_roads.py, benchmark_oulu.py, benchmark_cities.py):
-    # fast, deterministic road ways in place of the ones just parsed out
-    # of the OSM/PBF/Overpass fetch above. Buildings/water/scenery/etc.
-    # from that fetch are kept unchanged - only `ways` is replaced, and
-    # only on success. A missing or broken binary is not an error: it
-    # just means this city keeps using the road ways already fetched.
-    if args.use_prebuilt_roads and city_bin_available(chosen_city):
-        try:
-            bin_ways, bin_nodes, bin_geometry_points, bin_load_seconds = load_city_ways(chosen_city)
-        except Exception as exc:  # noqa: BLE001 - a broken BIN must never block city loading, see osm/bin_source.py
-            logger.warning(
-                "Failed to load prebuilt road network for %s; "
-                "falling back to existing OSM/PBF road loading: %s",
-                chosen_city, exc,
-            )
-        else:
-            # The binary holds drivable roads only: keep the fetch's own
-            # footways/cycleways/paths/pedestrian streets (sidewalks,
-            # pedestrian routing, street-verge paving) instead of losing
-            # every one of them.
-            ways = bin_ways + [way for way in ways if not way.is_drivable]
-            logger.info(
-                "Road network source: prebuilt binary | City: %s | File: %s | "
-                "Load time: %.1f ms | Ways: %d | Nodes: %d | Geometry points: %d",
-                chosen_city, city_bin_path(chosen_city), bin_load_seconds * 1000.0,
-                len(bin_ways), bin_nodes, bin_geometry_points,
-            )
-    else:
-        logger.info(
-            "Road network source: existing OSM/PBF fallback | City: %s | "
-            "Reason: %s", chosen_city,
-            "no prebuilt binary" if not city_bin_available(chosen_city)
-            else "prebuilt binary disabled (map.use_prebuilt_roads)",
-        )
 
     if not ways and not waters and not buildings and not sceneries and not places:
         logger.error("No map features found in bbox. Try a different bbox.")

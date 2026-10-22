@@ -111,11 +111,6 @@ DEFAULT_CONFIG = {
         # with a warning otherwise.
         "osm_source": "overpass",
         "osm_pbf_path": "",
-        # Use a predefined city's prebuilt road binary (assets/roads/<city>.bin,
-        # drivable roads for the whole city) instead of the fetched roads.
-        # Off: it is loaded on top of the normal fetch (no time saved) and
-        # only enlarges the road/route graphs for now - kept for future use.
-        "use_prebuilt_roads": "false",
     },
     "traffic": {
         # vehicle-population: target/min/max NPC vehicle population. traffic_count
