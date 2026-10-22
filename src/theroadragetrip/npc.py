@@ -154,6 +154,8 @@ NPC_PASS_SPEED_MPS = 6.0
 NPC_STUCK_CHECK_INTERVAL_S = 1.0
 NPC_STUCK_MIN_PROGRESS_M = 2.0  # real displacement expected per check interval when actually driving
 NPC_SNOW_TRACTOR_FACTOR = 8.0  # while it snows, tractors (ploughs) are this much more likely to spawn
+NPC_SNOW_HOLIDAY_FACTOR = 0.15  # ... and camper vans and caravans this much less (summer holiday traffic)
+HOLIDAY_VEHICLES = ("camper_van", "car_caravan")
 NPC_CRASH_CLEAR_S = 60.0  # a wreck is towed away after this long, even in view: it blocks the road
 NPC_STUCK_TIMEOUT_S = 8.0  # accumulated stuck time before recovery triggers
 
@@ -3847,7 +3849,9 @@ class NPCVehicleManager:
                 and not any(v.vehicle_type == "tractor" and v.state != NPCState.CRASHED for v in self.vehicles)):
             return "tractor"
         ids = [vehicle_id for vehicle_id, weight in self.vehicle_distribution.items() if weight > 0.0]
-        weights = [self.vehicle_distribution[vehicle_id] * (NPC_SNOW_TRACTOR_FACTOR if self.snowy and vehicle_id == "tractor" else 1.0)
+        weights = [self.vehicle_distribution[vehicle_id] * (
+                       NPC_SNOW_TRACTOR_FACTOR if self.snowy and vehicle_id == "tractor"
+                       else NPC_SNOW_HOLIDAY_FACTOR if self.snowy and vehicle_id in HOLIDAY_VEHICLES else 1.0)
                    for vehicle_id in ids]
         if not ids:
             return "car"

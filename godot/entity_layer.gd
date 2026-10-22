@@ -800,6 +800,33 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 					_lamp_polys.append([beacon, RS.TURN_SIGNAL])  # unshaded: it shines at night
 				else:
 					_poly(beacon, RS.TURN_SIGNAL.darkened(0.5))
+		"camper_van":  # a motorhome: a van cab in its own colour, the long white living box over it
+			var box := Color8(238, 234, 220)
+			_poly(_rect(c, f, r, hl, -hl, hw), box, RS.OUTLINE)
+			_poly(_rect(c, f, r, hl, hl * 0.62, hw * 0.92), color, RS.OUTLINE)  # the cab's bonnet
+			_poly(_trapezoid(c, f, r, hl * 0.62, hl * 0.46, hw * 0.84, hw * 0.88), RS.WINDSHIELD)
+			_poly(_rect(c, f, r, hl * 0.4, -hl * 0.92, hw * 0.86), box.lightened(0.05))
+			_poly(_rect(c, f, r, hl * 0.05, -hl * 0.25, hw * 0.34), Color8(120, 150, 160))  # the roof window
+			_poly(_rect(c, f, r, -hl * 0.45, -hl * 0.6, hw * 0.3), Color8(186, 185, 170))  # a roof vent
+			for side: float in [1.0, -1.0]:  # the stripe along its side
+				_car_shapes.append(["line", c + f * hl * 0.42 + r * hw * 0.93 * side, c - f * hl * 0.95 + r * hw * 0.93 * side,
+					_lit(color.darkened(0.1)), maxf(_px(1.0), hw * 0.08)])
+		"car_caravan":  # a car (front 4.3 m, in its own colour) towing a white caravan on a drawbar
+			var car_len := minf(0.46, 4.3 / maxf(length, 0.1)) * length
+			var front := c + f * (hl - car_len * 0.5)
+			var chl := car_len * 0.5
+			_poly(_rect(front, f, r, chl, -chl, hw * 0.8), color, RS.OUTLINE)
+			_poly(_trapezoid(front, f, r, chl * 0.4, chl * 0.05, hw * 0.7, hw * 0.62), RS.WINDSHIELD)
+			_poly(_rect(front, f, r, chl * 0.05, -chl * 0.55, hw * 0.62), color.darkened(0.12))
+			var van_front := hl - car_len - length * 0.06
+			_car_shapes.append(["line", c + f * (hl - car_len), c + f * van_front, _lit(Color8(165, 168, 162)), maxf(_px(1.5), hw * 0.14)])  # the drawbar, light against the asphalt
+			var box := Color8(238, 234, 220)
+			_poly(_rect(c, f, r, van_front, -hl, hw), box, RS.OUTLINE)
+			_poly(_rect(c, f, r, van_front - length * 0.03, -hl + length * 0.03, hw * 0.84), box.lightened(0.05))
+			_poly(_rect(c, f, r, van_front - length * 0.12, van_front - length * 0.2, hw * 0.34), Color8(120, 150, 160))
+			for side: float in [1.0, -1.0]:
+				_car_shapes.append(["line", c + f * (van_front - length * 0.02) + r * hw * 0.8 * side, c - f * (hl - length * 0.02) + r * hw * 0.8 * side,
+					_lit(Color8(156, 108, 66)), maxf(_px(1.0), hw * 0.07)])
 		"truck":
 			_poly(_rect(c, f, r, hl * 0.18, -hl, hw), color, RS.OUTLINE)
 			_poly(_rect(c, f, r, hl * 0.08, -hl * 0.86, hw * 0.78), color.lightened(28.0 / 255.0))

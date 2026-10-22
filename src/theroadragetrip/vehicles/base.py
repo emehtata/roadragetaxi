@@ -30,6 +30,13 @@ VEHICLE_DEFINITIONS = {
         VehicleDefinition("bus", "Bus", "car", 11.0, 2.5, 40, 70.0, errand_eligible=False, traffic_weight=0.02),
         # Snow ploughing and other work later; for now ordinary slow traffic.
         VehicleDefinition("tractor", "Tractor", "car", 4.0, 2.2, 1, 60.0, passenger_eligible=False, errand_eligible=False, traffic_weight=0.02),
+        # Holiday traffic, as on the camp pitches (osm/campsites.py): a camper
+        # van (car rules up to 3.5 t), and a car towing a caravan at most
+        # 80 km/h - game policy for the general car-and-trailer limit (no
+        # 100 km/h trailer approval modelled); over 70 km/h it may use
+        # motorways (§ 58). Not shop-errand traffic: it does not fit a bay.
+        VehicleDefinition("camper_van", "Camper van", "car", 6.2, 2.3, 4, traffic_weight=0.012),
+        VehicleDefinition("car_caravan", "Car with caravan", "car", 9.4, 2.3, 4, 80.0, errand_eligible=False, traffic_weight=0.008),
         VehicleDefinition("motorcycle", "Motorcycle", "motorcycle", 2.0, 0.7, 1, household_eligible=True, traffic_weight=0.10, experimental=True),
         VehicleDefinition("bicycle", "Bicycle", "bicycle", 1.8, 0.5, 1, requires_parking=False, is_road_vehicle=False),
     )
