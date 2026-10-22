@@ -146,9 +146,21 @@ func _build_shell() -> void:
 func _center_panel() -> void:
 	if _menu_scroll == null:
 		return
-	_menu_scroll.custom_minimum_size.y = minf(_body.get_combined_minimum_size().y, maxf(180, get_viewport().get_visible_rect().size.y - 100))
+	# The whole menu, never a scroll: a menu taller than the window (the
+	# calendar in a small window, the city map) is scaled down to fit instead.
+	_menu_scroll.custom_minimum_size.y = _body.get_combined_minimum_size().y
 	_panel.reset_size()  # shrink back to the new content's size first
-	_panel.position = ((get_viewport().get_visible_rect().size - _panel.size) / 2.0).floor()
+	var screen := get_viewport().get_visible_rect().size
+	var fit := panel_fit(_panel.size, screen)
+	_panel.scale = Vector2(fit, fit)
+	_panel.position = ((screen - _panel.size * fit) / 2.0).floor()
+
+
+## The menu panel's scale: 1, or smaller so all of it fits the window with a margin.
+static func panel_fit(panel: Vector2, screen: Vector2) -> float:
+	if panel.x <= 0.0 or panel.y <= 0.0:
+		return 1.0
+	return minf(1.0, minf((screen.x - 24.0) / panel.x, (screen.y - 24.0) / panel.y))
 
 
 func _clear() -> void:

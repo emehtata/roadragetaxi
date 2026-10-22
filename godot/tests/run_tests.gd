@@ -147,6 +147,10 @@ func test_date_picker() -> void:
 	check(picker.value.year == 2027 and picker.value.month == 2 and picker.value.day == 28, "calendar: cannot move before earliest date")
 	picker.set_value({"year": 2028, "month": 4, "day": 1})
 	check(picker.value.month == 2 and picker.value.day == 29, "calendar: cannot select future date")
+	var Shell := preload("res://startup.gd")
+	check(Shell.panel_fit(Vector2(520, 500), Vector2(1280, 720)) == 1.0, "a menu that fits is shown at full size")
+	var fit: float = Shell.panel_fit(Vector2(520, 700), Vector2(1280, 600))
+	check(is_equal_approx(fit, 576.0 / 700.0) and 700 * fit <= 600 - 24, "a menu taller than the window is scaled to fit, never scrolled")
 	picker._move_month(-1)
 	var day = picker._days.filter(func(button): return button.text == "15")[0]
 	day.pressed.emit()
