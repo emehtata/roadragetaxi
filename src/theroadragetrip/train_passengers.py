@@ -85,6 +85,19 @@ def train_key(service) -> Tuple[str, str]:
     return service.train_type, service.number
 
 
+_NAME_WEIGHTS: dict = {}  # id(list) -> its cumulative people counts
+
+
+def _weighted(rng: random.Random, names: list) -> dict:
+    """One entry, as common as its people count (as residents are drawn): a
+    name six women have no longer comes up as often as Juha. One random
+    number a draw, whatever the list's length."""
+    cumulative = _NAME_WEIGHTS.get(id(names))
+    if cumulative is None:
+        cumulative = _NAME_WEIGHTS[id(names)] = list(itertools.accumulate(max(1, int(entry.get("people", 1))) for entry in names))
+    return rng.choices(names, cum_weights=cumulative, k=1)[0]
+
+
 def _name(rng: random.Random) -> Tuple[str, str]:
     """A random full name and its first name's gender ("female"/"male", ""
     unknown) - kept together, so a pre-booked Irmeli speaks as a woman."""
@@ -92,8 +105,8 @@ def _name(rng: random.Random) -> Tuple[str, str]:
 
     if not FIRST_NAMES or not SURNAMES:
         return "", ""
-    first = rng.choice(FIRST_NAMES)
-    return f"{first['name']} {rng.choice(SURNAMES)['name']}", first.get("group", "") or ""
+    first = _weighted(rng, FIRST_NAMES)
+    return f"{first['name']} {_weighted(rng, SURNAMES)['name']}", first.get("group", "") or ""
 
 
 def _named(rng: random.Random) -> dict:
