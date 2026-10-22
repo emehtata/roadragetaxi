@@ -955,6 +955,10 @@ func _draw_trees(node: Node2D) -> void:
 ## The decorative scenery objects, in metres with minimum pixel sizes.
 func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float) -> void:
 	match kind:
+		"caravan", "caravan_with_car":
+			node.draw_set_transform(at, -angle)
+			_draw_caravan(node, kind == "caravan_with_car", posmod(hash(at), 2) == 0)
+			node.draw_set_transform(Vector2.ZERO)
 		"tent":
 			node.draw_set_transform(at, -angle)
 			var warm := posmod(hash(at), 3) == 0
@@ -1020,6 +1024,37 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 		"gate":
 			var half := maxf(_px(2.0), 1.0)
 			node.draw_line(at - Vector2(half, 0), at + Vector2(half, 0), Color8(100, 92, 80), maxf(_px(1.0), 0.15))
+
+
+func _draw_caravan(node: Node2D, hitched: bool, blue_car: bool) -> void:
+	var rear := -4.6 if hitched else -2.8
+	var front := rear + 4.8
+	node.draw_rect(Rect2(rear+.15, -1.0, 5.0, 2.45), Color8(25, 30, 28, 110))
+	for side: float in [-1,1]:
+		node.draw_rect(Rect2(rear+2.0,side*1.15-.12,.8,.24),Color8(30, 32, 34))
+	node.draw_rect(Rect2(rear,-1.15,4.8,2.3),Color8(222, 216, 196))
+	node.draw_rect(Rect2(rear+.18,-.95,4.44,1.9),Color8(249, 246, 230))
+	node.draw_rect(Rect2(rear+1.0,-.4,.8,.8),Color8(110, 153, 164))
+	node.draw_rect(Rect2(rear+2.9,-.3,.6,.6),Color8(186, 185, 170))
+	for side: float in [-1,1]:
+		node.draw_line(Vector2(rear+.2,side*.9),Vector2(front-.2,side*.9),Color8(156, 108, 66),.12)
+		node.draw_line(Vector2(front,side*.75),Vector2(front+.8,0),Color8(119, 122, 115),.10)
+		node.draw_rect(Rect2(rear,side*.9-.1,.12,.2),Color8(170, 53, 43))
+	node.draw_circle(Vector2(front+.8,0),.12,Color8(80, 83, 78))
+	if not hitched:
+		return
+	var car_rear := front + .8
+	var paint := Color8(76, 117, 155) if blue_car else Color8(169, 66, 54)
+	node.draw_rect(Rect2(car_rear+.15,-.7,3.7,1.85),Color8(25, 30, 28, 110))
+	for x: float in [car_rear+.6,car_rear+2.9]:
+		for side: float in [-1,1]:
+			node.draw_rect(Rect2(x-.3,side*.85-.12,.6,.24),Color8(30,32,34))
+	node.draw_rect(Rect2(car_rear,-.85,3.6,1.7),paint)
+	node.draw_rect(Rect2(car_rear+.7,-.7,1.9,1.4),Color8(44, 67, 78))
+	node.draw_rect(Rect2(car_rear+1.1,-.65,1.0,1.3),paint.lightened(.15))
+	for side: float in [-1,1]:
+		node.draw_rect(Rect2(car_rear+3.45,side*.65-.12,.15,.24),Color8(247,233,173))
+		node.draw_rect(Rect2(car_rear,side*.65-.10,.12,.2),Color8(183,45,39))
 
 
 ## Railings: hedges and walls solid, fences and

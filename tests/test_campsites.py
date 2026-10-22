@@ -17,7 +17,7 @@ def pitches():
 
 
 def footprint(obj):
-    length,width = (3.2,2.4) if obj.kind == "tent" else (6.2,2.5)
+    length,width = {"tent":(3.2,2.4),"camper_van":(6.2,2.5),"caravan":(6.2,2.5),"caravan_with_car":(9.4,2.5)}[obj.kind]
     return translate(rotate(box(-length/2,-width/2,length/2,width/2),obj.direction_angle,use_radians=True),obj.x,obj.y)
 
 
@@ -25,7 +25,7 @@ def test_mapped_pitches_have_repeatable_mixed_occupancy_and_empty_spaces():
     elements,nodes = pitches()
     objects = populate_camp_pitches(elements,nodes,[],[],[],[])
     assert 2 < len(objects) < len(nodes)
-    assert {o.kind for o in objects} == {"tent","camper_van"}
+    assert {o.kind for o in objects} == {"tent","camper_van","caravan","caravan_with_car"}
     assert objects == populate_camp_pitches(elements,nodes,[],[],[],[])
     subset = populate_camp_pitches(elements[2:],nodes,[],[],[],[])
     assert [(o.id,o.kind) for o in subset] == [(o.id,o.kind) for o in objects if o.id not in {-1,-2}]
@@ -69,11 +69,11 @@ def test_osm_campsite_area_and_pitch_objects_survive_cache(tmp_path):
     elements += [dict(type="way",id=20,nodes=[1,2,3,4,1],tags={"tourism":"camp_site","name":"Camping"})]
     world = build_ways(elements)
     assert any(s.kind == "camp_site" for s in world.sceneries)
-    props = [o for o in world.scenery_objects if o.kind in {"tent","camper_van"}]
+    props = [o for o in world.scenery_objects if o.kind in {"tent","camper_van","caravan","caravan_with_car"}]
     assert len(props) == 1  # pitch 5 is deliberately left empty
     path = tmp_path / "camp.rwc"
     BinaryWorldCacheWriter().write(path,world,area_id="camp")
-    assert [o for o in BinaryWorldCacheLoader().load(path).scenery_objects if o.kind in {"tent","camper_van"}] == props
+    assert [o for o in BinaryWorldCacheLoader().load(path).scenery_objects if o.kind in {"tent","camper_van","caravan","caravan_with_car"}] == props
 
 
 def test_small_polygon_pitch_fits_a_tent_instead_of_a_camper():
@@ -82,3 +82,25 @@ def test_small_polygon_pitch_fits_a_tent_instead_of_a_camper():
     obj, = populate_camp_pitches(elements,nodes,[],[],[],[])
     assert obj.kind == "tent"
     assert Polygon(list(nodes.values())).covers(footprint(obj))
+
+
+def test_trailer_with_car_falls_back_to_unhitched_trailer_on_small_pitch():
+    nodes = {1:(0,0),2:(8,0),3:(8,4),4:(0,4)}
+    elements = [dict(type="way",id=4,nodes=[1,2,3,4,1],tags={"tourism":"camp_pitch"})]
+    obj, = populate_camp_pitches(elements,nodes,[],[],[],[])
+    assert obj.kind == "caravan"
+    assert Polygon(list(nodes.values())).covers(footprint(obj))
+
+
+def test_no_trailers_on_pitches_prohibiting_caravans():
+    elements,nodes = pitches()
+    for e in elements:
+        e["tags"]["caravans"] = "no"
+    objects = populate_camp_pitches(elements,nodes,[],[],[],[])
+    assert objects and all(o.kind == "tent" for o in objects)
+
+
+def test_caravan_only_pitch_gets_a_trailer_when_camper_vans_are_prohibited():
+    elements = [dict(type="node",id=2,tags={"tourism":"camp_pitch","motorhome":"no","tents":"no","caravans":"yes"})]
+    obj, = populate_camp_pitches(elements,{2:(0,0)},[],[],[],[])
+    assert obj.kind == "caravan"

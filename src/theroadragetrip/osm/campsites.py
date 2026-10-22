@@ -7,6 +7,8 @@ from shapely.strtree import STRtree
 
 from .models import SceneryObject
 
+CAMPING_SIZES = {"tent": (3.2, 2.4), "camper_van": (6.2, 2.5), "caravan": (6.2, 2.5), "caravan_with_car": (9.4, 2.5)}
+
 
 def populate_camp_pitches(elements, nodes_m, buildings, waters, ways, railings):
     pitches = sorted((e for e in elements if e.get("tags", {}).get("tourism") == "camp_pitch"), key=lambda e: (e["id"], e["type"]))
@@ -45,13 +47,16 @@ def populate_camp_pitches(elements, nodes_m, buildings, waters, ways, railings):
             along = line.project(centre)
             a, b = line.interpolate(max(0, along-1)), line.interpolate(min(line.length, along+1))
             angle = math.atan2(b.y-a.y, b.x-a.x)
-        kinds = ["tent", "camper_van"] if variation % 3 == 0 else ["camper_van", "tent"]
+        preferred = ("tent", "camper_van", "caravan", "caravan_with_car")[variation % 4]
+        kinds = list(dict.fromkeys([preferred, "caravan" if preferred == "caravan_with_car" else "camper_van", "caravan", "tent"]))
         for kind in kinds:
             if kind == "tent" and tags.get("tents") == "no":
                 continue
             if kind == "camper_van" and any(tags.get(tag) == "no" for tag in ("motorhome", "motorhomes", "caravans")):
                 continue
-            length, width = (3.2, 2.4) if kind == "tent" else (6.2, 2.5)
+            if kind in ("caravan", "caravan_with_car") and tags.get("caravans") == "no":
+                continue
+            length, width = CAMPING_SIZES[kind]
             placed = False
             for heading in (angle + math.pi/2, angle):
                 footprint = translate(rotate(box(-length/2, -width/2, length/2, width/2), heading, use_radians=True), centre.x, centre.y)
