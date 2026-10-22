@@ -36,6 +36,7 @@ const B25 := preload("res://buildings_25d.gd")
 const B3 := preload("res://buildings_3d.gd")
 const Perf := preload("res://perf.gd")
 const BRIDGE_Z_MAX := 3
+static var WATER_MATERIAL := _water_material()  # shared: one shader animates every lake
 const SPRING_ICE_COLORS := [Color8(225, 236, 241), Color8(205, 224, 232), Color8(238, 243, 244)]
 const SPRING_ICE_EDGE := Color8(185, 207, 218)
 const SPRING_ICE_SPACING_M := 24.0
@@ -106,6 +107,8 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_roads_by_z = prepared["roads_by_z"]
 	_snow_cells = prepared["snow_cells"]
 	street_lights = prepared["street_lights"]
+	if not message.get("waters", []).is_empty() or not message.get("water_lines", []).is_empty():
+		material = WATER_MATERIAL
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
@@ -763,6 +766,12 @@ func _draw_ice_floe(floe: Dictionary) -> void:
 	draw_colored_polygon(polygon, floe["color"])
 	polygon.append(polygon[0])
 	draw_polyline(polygon, SPRING_ICE_EDGE, 0.18)
+
+
+static func _water_material() -> ShaderMaterial:
+	var water := ShaderMaterial.new()
+	water.shader = preload("res://water.gdshader")
+	return water
 
 
 func _draw() -> void:
