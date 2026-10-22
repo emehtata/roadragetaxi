@@ -6,7 +6,7 @@ import pytest
 from shapely.geometry import Point, Polygon
 
 from theroadragetrip import protocol
-from theroadragetrip.activities.plugins.tennis import prepare_court, rally_spot
+from theroadragetrip.activities.plugins.tennis import add_point, landing, point_plan, point_winner, prepare_court, rally_spot
 from theroadragetrip.map_chunks import ChunkIndex
 from theroadragetrip.osm import Scenery, Way, build_ways
 from theroadragetrip.pedestrian import PedestrianManager
@@ -121,3 +121,26 @@ def test_rally_spots_stay_inside_the_court_and_vary_in_depth():
         assert all((u < 0) == (side == 0) for u, _ in spots)  # each keeps their own half
         depths = [abs(u) for u, _ in spots]
         assert max(depths) - min(depths) > .08
+
+
+def test_points_end_in_the_net_out_or_as_winners_and_are_scored():
+    plans = [point_plan(i) for i in range(300)]
+    assert {outcome for _, outcome in plans} == {"net", "out", "winner"}
+    assert all(1 <= shots <= 8 for shots, _ in plans)
+    assert point_winner(0, 3, "winner") == 0 and point_winner(0, 3, "net") == 1  # server hit shots 0 and 2
+    score, games = [0, 0], [0, 0]
+    for won in (0, 0, 0, 1, 1, 1, 0):  # 40-40, then advantage
+        add_point(score, games, won)
+    assert games == [0, 0] and score == [4, 3]
+    add_point(score, games, 0)
+    assert games == [1, 0] and score == [0, 0]
+
+
+def test_a_last_shot_lands_at_the_net_past_a_line_or_inside_away_from_the_receiver():
+    assert landing("net", 1, .2, 0)[0] == 0
+    u, v = landing("out", 1, .2, .2)
+    assert u > .42 or abs(v) > .3
+    u, v = landing("out", 0, .2, .9)
+    assert u < 0 and abs(v) > .3
+    u, v = landing("winner", 1, .1, 0)
+    assert 0 < u < .42 and abs(v) < .3

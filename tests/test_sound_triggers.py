@@ -15,11 +15,11 @@ def test_tennis_hits_and_bounces_are_once_per_turn_not_per_player():
     manager.tennis_open = True
     manager.sim_time = 2
     manager.ensure_sports_players(car,view)
-    for _ in range(72):  # 3.6 s: hits at 0/1.6/3.2, bounces at 1.2/2.8
+    for _ in range(72):  # 3.6 s of point 0, two shots into the net: hits at 0/1.6, a bounce at 1.2, then the pause
         manager.sim_time += .05
         for player in manager.pedestrians:
             manager._update_activity(player,.05)
-    assert Counter(group for group,_ in manager.sound_events) == {'sport.tennis_hit':3,'sport.tennis_bounce':2}
+    assert Counter(group for group,_ in manager.sound_events) == {'sport.tennis_hit':2,'sport.tennis_bounce':1}
     before = list(manager.sound_events)
     manager.tennis_open = False
     for player in manager.pedestrians:
