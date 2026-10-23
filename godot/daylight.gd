@@ -42,6 +42,16 @@ static func ambient_color(altitude_deg: float) -> Color:
 	return NIGHT.lerp(TWILIGHT, a * 2.0)
 
 
+## An unlit sky palette; CanvasModulate supplies the world's night brightness.
+static func sky_color(altitude_deg: float, cloud_cover: float) -> Color:
+	var day := _smoother(-6.0, 12.0, altitude_deg)
+	var twilight := exp(-pow((altitude_deg - 1.0) / 7.0, 2.0))
+	var clear := Color(0.25, 0.32, 0.48).lerp(Color(0.40, 0.62, 0.83), day)
+	clear = clear.lerp(Color(0.80, 0.48, 0.35), twilight * 0.7)
+	var overcast := Color(0.30, 0.34, 0.43).lerp(Color(0.62, 0.66, 0.70), day)
+	return clear.lerp(overcast, clampf(cloud_cover, 0.0, 1.0))
+
+
 ## The sun's altitude from a state: the server's value, else (an older
 ## server) back from its darkness, which is linear in altitude between -12
 ## and +6 degrees; no calendar at all: daylight.

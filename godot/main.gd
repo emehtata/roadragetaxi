@@ -667,6 +667,7 @@ func _present(state: Dictionary) -> void:
 	# ambient multiply (CanvasModulate: no fill) and how strongly the lights show.
 	var altitude := Daylight.altitude(state) if is_nan(override_altitude) else override_altitude
 	var cloud := Daylight.cloud_cover(state) if is_nan(override_cloud) else override_cloud
+	MapChunk.WATER_MATERIAL.set_shader_parameter("sky_color", Daylight.sky_color(altitude, cloud))
 	var moon_altitude := Daylight.moon_value(state, "moon_altitude_deg", -90.0)
 	var moon_strength := Daylight.moonlight(altitude, moon_altitude,
 		Daylight.moon_value(state, "moon_illumination", 0.0), cloud)

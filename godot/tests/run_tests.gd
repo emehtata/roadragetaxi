@@ -2341,6 +2341,12 @@ func test_obstacles() -> void:
 ## client keeps no clock of its own.
 func test_day_night() -> void:
 	# godot-lights-01: the light is a continuous function of the sun's altitude.
+	var clear_sky := Daylight.sky_color(30.0, 0.0)
+	var grey_sky := Daylight.sky_color(30.0, 1.0)
+	var dusk_sky := Daylight.sky_color(0.0, 0.0)
+	check(clear_sky.b > clear_sky.r and clear_sky.b - clear_sky.r > grey_sky.b - grey_sky.r, "clear water reflects a bluer sky than overcast water")
+	check(dusk_sky.r > clear_sky.r and dusk_sky.b < clear_sky.b, "water sky reflection warms near sunset")
+	check(Daylight.sky_color(-30.0, 0.0).get_luminance() < clear_sky.get_luminance(), "night water reflects a darker sky")
 	check(Daylight.ambient(30.0) == 1.0 and Daylight.artificial(30.0) == 0.0 and Daylight.ambient_color(30.0) == Color.WHITE, "full daylight: no darkening, no artificial light")
 	check(Daylight.ambient(-30.0) == 0.0 and Daylight.artificial(-30.0) == 1.0, "deep night: ambient at its floor, the lights full")
 	var night_blue := Daylight.ambient_color(-30.0)

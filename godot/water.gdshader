@@ -4,6 +4,8 @@
 // Coordinates are world space, so the pattern continues across chunks.
 shader_type canvas_item;
 
+uniform vec4 sky_color : source_color = vec4(0.40, 0.62, 0.83, 1.0);
+
 varying vec2 world;
 
 float hash(vec2 p) {
@@ -33,7 +35,8 @@ void fragment() {
 		vec2 cell = world * 0.8;
 		float dot_ = smoothstep(0.3, 0.0, length(fract(cell) - 0.5));
 		float sparkle = step(0.99, hash(floor(cell) + floor(t * 2.0))) * dot_ * a;
-		vec3 c = COLOR.rgb * (0.86 + 0.22 * swell + 0.1 * (a - 0.5));
+		vec3 reflected = mix(COLOR.rgb, sky_color.rgb, 0.48 + 0.12 * swell);
+		vec3 c = reflected * (0.86 + 0.22 * swell + 0.1 * (a - 0.5));
 		c += vec3(0.62, 0.72, 0.82) * (glint * 0.16 + sparkle * 0.5);
 		COLOR.rgb = mix(COLOR.rgb, c, water);
 	}
