@@ -37,6 +37,7 @@ const B3 := preload("res://buildings_3d.gd")
 const Perf := preload("res://perf.gd")
 const BRIDGE_Z_MAX := 3
 const SHALLOW_WATER_M := 6.0  # the lighter band along a shore
+static var SHORE_MATERIAL := _shore_material()
 static var WATER_MATERIAL := _water_material()  # shared: one shader animates every lake
 const SPRING_ICE_COLORS := [Color8(225, 236, 241), Color8(205, 224, 232), Color8(238, 243, 244)]
 const SPRING_ICE_EDGE := Color8(185, 207, 218)
@@ -113,6 +114,9 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		var water := _add_layer(0, _draw_water)
 		water.material = WATER_MATERIAL
 		_season_layers.append(water)
+		var shore := _add_layer(0, _draw_shore_waves)
+		shore.material = SHORE_MATERIAL
+		_season_layers.append(shore)
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
@@ -324,6 +328,7 @@ static func _clip_to_bounds(data: Dictionary, bounds: PackedVector2Array, bounds
 		data[key] = pieces
 	var waters: Array = []
 	var deep_waters: Array = []
+	var shore_waves: Array = []
 	var margin := _rect_polygon(bounds_rect.grow(SHALLOW_WATER_M * 2.0))
 	for water in data.get("waters", []):
 		# Clip first: a big lake (Sysmä) has thousands of points and is in
@@ -337,12 +342,22 @@ static func _clip_to_bounds(data: Dictionary, bounds: PackedVector2Array, bounds
 			for share in Geometry2D.intersect_polygons(water, margin):
 				if Geometry2D.is_polygon_clockwise(share):
 					continue  # a hole
+				# Inset before clipping: chunk borders must never become shorelines.
+				for band in range(1, 17):
+					var distance := band * SHALLOW_WATER_M / 16.0
+					for contour in Geometry2D.offset_polygon(share, -distance):
+						if Geometry2D.is_polygon_clockwise(contour):
+							continue
+						contour.append(contour[0])
+						for line in Geometry2D.intersect_polyline_with_polygon(contour, bounds):
+							shore_waves.append({"points": line, "distance": distance})
 				for deep in Geometry2D.offset_polygon(share, -SHALLOW_WATER_M):
 					for piece in Geometry2D.intersect_polygons(deep, bounds):
 						if not Geometry2D.triangulate_polygon(piece).is_empty():
 							deep_waters.append(piece)
 	data["waters"] = waters
 	data["deep_waters"] = deep_waters
+	data["shore_waves"] = shore_waves
 
 
 static func _rect_polygon(rect: Rect2) -> PackedVector2Array:
@@ -791,6 +806,21 @@ static func _water_material() -> ShaderMaterial:
 	var water := ShaderMaterial.new()
 	water.shader = preload("res://water.gdshader")
 	return water
+
+
+static func _shore_material() -> ShaderMaterial:
+	var shore := ShaderMaterial.new()
+	shore.shader = preload("res://shore_waves.gdshader")
+	return shore
+
+
+func _draw_shore_waves(node: Node2D) -> void:
+	var liquid := 1.0 - clampf(_season[0], 0.0, 1.0)
+	if liquid <= 0.0:
+		return
+	for band in _data.get("shore_waves", []):
+		# Red carries shore distance; alpha keeps the winter fade independent.
+		node.draw_polyline(band["points"], Color(band["distance"] / SHALLOW_WATER_M, 0.0, 0.0, liquid), 0.55, true)
 
 
 func _draw_water(node: Node2D) -> void:

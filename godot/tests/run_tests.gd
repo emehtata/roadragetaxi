@@ -2930,6 +2930,16 @@ func test_performance_paths() -> void:
 		{"points": [[700, 130], [700, 100]], "half_width_m": 3.5, "drivable": true, "layer": 0}]})))  # a driveway ending on its centre
 	check(map._chunks["1_0"]._roads_by_z[1].map(func(r): return r["half_width_m"]) == [3.5, 4.5], "narrower roads first: a driveway ends at the street's edge")
 	check(is_equal_approx(_area(chunk._data["waters"]), 100.0 * 100.0), "water: only the part inside")
+	var bands: Array = chunk._data["shore_waves"]
+	check(not bands.is_empty(), "shore wave contours are prepared with water")
+	for band in bands:
+		for point in band["points"]:
+			check(point.x >= 400.0 and point.x <= 500.0 and point.y <= -400.0 and point.y >= -500.0, "shore waves stay inside the chunk water")
+		var line: PackedVector2Array = band["points"]
+		for i in range(1, line.size()):
+			check(not (is_equal_approx(line[i - 1].x, 500.0) and is_equal_approx(line[i].x, 500.0)), "east chunk edge is not a shoreline")
+			check(not (is_equal_approx(line[i - 1].y, -500.0) and is_equal_approx(line[i].y, -500.0)), "south chunk edge is not a shoreline")
+
 
 	# Dry: no wet overlays drawn; no lightning: no full-screen flash.
 	chunk.set_wetness(0.0)
