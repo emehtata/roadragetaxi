@@ -2027,3 +2027,25 @@ def test_hanging_out_with_bottles_ends_drunk():
     for _ in range(8):  # 40 game minutes: well into the third bottle
         PedestrianManager.drink(ped, 300.0, random.Random(1))
     assert ped.drinking and ped.is_drunk and ped.bottles < 3
+
+
+def test_viewport_spawning_stops_at_its_budget_and_resumes_next_tick(monkeypatch):
+    """A slow spawn pass stops after PEDESTRIAN_SPAWN_BUDGET_S and the next tick carries on (rrt-019 audit)."""
+    import time
+    import theroadragetrip.pedestrian as pedestrian
+    ways = [Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="footway", half_width_m=1.5)]
+    ped_mgr = PedestrianManager(ways, target_count=5, spawn_radius_m=150.0, despawn_radius_m=250.0)
+    player = Car(x=200.0, y=10.0, heading=0.0, speed=0.0)
+    real_spawn = ped_mgr.spawn_pedestrian
+
+    def slow_spawn(*args, **kwargs):
+        time.sleep(pedestrian.PEDESTRIAN_SPAWN_BUDGET_S)  # one attempt eats the whole budget
+        return real_spawn(*args, **kwargs)
+
+    monkeypatch.setattr(ped_mgr, "spawn_pedestrian", slow_spawn)
+    view = (190.0, 0.0, 210.0, 20.0)
+    ped_mgr.update(player, dt=pedestrian.POPULATION_CHECK_S, viewport_bounds=view)
+    first = len(ped_mgr.pedestrians)
+    assert first <= 1
+    ped_mgr.update(player, dt=1 / 30, viewport_bounds=view)  # not 2 s later: the very next tick
+    assert len(ped_mgr.pedestrians) > first

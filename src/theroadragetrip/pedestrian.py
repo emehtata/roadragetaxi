@@ -375,6 +375,10 @@ PEDESTRIAN_DESPAWN_RADIUS_M = 170.0
 POPULATION_PER_SHOWN = 4.0
 PEDESTRIAN_SPAWNS_PER_CHECK = 10  # per population check (was 2 per 5 s: the road ahead stayed empty)
 POPULATION_CHECK_S = 2.0  # was 5 s
+# Wall-clock cap on one population check's spawn attempts (at least one runs):
+# unbounded, a dense centre took up to 191 ms in one tick (rrt-019 audit).
+# A check cut short runs again the next tick, so the population still fills.
+PEDESTRIAN_SPAWN_BUDGET_S = 0.004
 
 
 class PedestrianState(str, Enum):
@@ -2773,10 +2777,13 @@ class PedestrianManager:
                 entrance for entrance in self.entrance_locations
                 if math.hypot(entrance[0] - player_car.x, entrance[1] - player_car.y) <= self.spawn_radius_m
             ]
+            # No viewport (headless/legacy): the one-shot full fill stays unbudgeted.
+            spawn_deadline = time.perf_counter() + (PEDESTRIAN_SPAWN_BUDGET_S if viewport_bounds is not None else math.inf)
             while (
                 nearby_count + spawned_this_update < population_target
                 and attempts < max_attempts
                 and spawned_this_update < spawn_limit
+                and (attempts == 0 or time.perf_counter() < spawn_deadline)
             ):
                 attempts += 1
                 spawn_at_door = bool(amenity_spawn_ready and nearby_entrances and random.random() < 0.45)
@@ -2803,6 +2810,9 @@ class PedestrianManager:
                     new_ped.drunk_phase = random.uniform(0.0, 2.0 * math.pi)
                     new_ped.drunk_vomit_cooldown = random.uniform(8.0, 25.0)
                 self.add_pedestrian(new_ped)
+            if (time.perf_counter() >= spawn_deadline and attempts < max_attempts and spawned_this_update < spawn_limit
+                    and nearby_count + spawned_this_update < population_target):
+                self._population_update_elapsed = POPULATION_CHECK_S  # out of time, not out of tries
             self._record("pedestrians:spawn", stage_started)
 
             stage_started = (time.perf_counter(), time.thread_time())
