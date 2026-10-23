@@ -95,6 +95,18 @@ static func falling(state: Dictionary) -> String:
 	return type if type in ["rain", "slush", "snow"] else ""
 
 
+## The server's wind in world metres per second (east, north).
+static func wind_vector(state: Dictionary) -> Vector2:
+	var weather = state.get("weather")
+	var wind = weather.get("wind_vector_mps") if weather is Dictionary else null
+	if not wind is Array or wind.size() != 2:
+		return Vector2.ZERO
+	if not typeof(wind[0]) in [TYPE_INT, TYPE_FLOAT] or not typeof(wind[1]) in [TYPE_INT, TYPE_FLOAT]:
+		return Vector2.ZERO
+	var vector := Vector2(wind[0], wind[1])
+	return vector if is_finite(vector.x) and is_finite(vector.y) else Vector2.ZERO
+
+
 ## Each frame, after the camera is placed: `taxi` is the drawn (interpolated)
 ## taxi in layer coordinates.
 func update(delta: float, state: Dictionary, taxi: Vector2, underground: bool) -> void:

@@ -668,6 +668,10 @@ func _present(state: Dictionary) -> void:
 	var altitude := Daylight.altitude(state) if is_nan(override_altitude) else override_altitude
 	var cloud := Daylight.cloud_cover(state) if is_nan(override_cloud) else override_cloud
 	MapChunk.WATER_MATERIAL.set_shader_parameter("sky_color", Daylight.sky_color(altitude, cloud))
+	var water_wind := WeatherLayer.wind_vector(state)
+	water_wind.y = -water_wind.y
+	MapChunk.WATER_MATERIAL.set_shader_parameter("wind", water_wind)
+	MapChunk.SHORE_MATERIAL.set_shader_parameter("wind", water_wind)
 	var moon_altitude := Daylight.moon_value(state, "moon_altitude_deg", -90.0)
 	var moon_strength := Daylight.moonlight(altitude, moon_altitude,
 		Daylight.moon_value(state, "moon_illumination", 0.0), cloud)
@@ -934,12 +938,7 @@ static func weather_loops(state: Dictionary) -> Dictionary:
 	var weather: Dictionary = state.get("weather", {}) if state.get("weather") is Dictionary else {}
 	var type = weather.get("weather_type", "")
 	var raining: bool = type in ["rain", "slush"]
-	var wind_speed := 0.0
-	var wind = weather.get("wind_vector_mps")
-	if wind is Array and wind.size() == 2 and typeof(wind[0]) in [TYPE_INT, TYPE_FLOAT] and typeof(wind[1]) in [TYPE_INT, TYPE_FLOAT]:
-		wind_speed = Vector2(wind[0], wind[1]).length()
-		if not is_finite(wind_speed):
-			wind_speed = 0.0
+	var wind_speed := WeatherLayer.wind_vector(state).length()
 	var wetness := float(weather.get("wetness", 0.0)) if typeof(weather.get("wetness")) in [TYPE_INT, TYPE_FLOAT] else 0.0
 	var player: Dictionary = state.get("player", {}) if state.get("player") is Dictionary else {}
 	var speed := absf(float(player.get("speed", 0.0))) if typeof(player.get("speed")) in [TYPE_INT, TYPE_FLOAT] else 0.0

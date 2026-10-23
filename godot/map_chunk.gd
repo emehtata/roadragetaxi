@@ -273,11 +273,14 @@ static func _compact(data: Dictionary, origin: Vector2) -> int:
 	for road in data.get("roads", []):
 		road["points"] = _to_points(road["points"], origin)
 		count += road["points"].size()
-	for key in ["waters", "deep_waters", "water_lines", "buildings", "parking", "curbs", "construction_fences", "railways", "rail_bridges", "rail_decks", "canopies", "floodlit"]:
+	for key in ["waters", "water_lines", "buildings", "parking", "curbs", "construction_fences", "railways", "rail_bridges", "rail_decks", "canopies", "floodlit"]:
 		var lines: Array = data.get(key, [])
 		for i in lines.size():
 			lines[i] = _to_points(lines[i], origin)
 			count += lines[i].size()
+	for band in data.get("shore_waves", []):
+		band["points"] = _to_points(band["points"], origin)
+		count += band["points"].size()
 	for railing in data.get("railings", []):
 		if railing.size() < 4:
 			var key := hedge_key(railing)  # preserve world identity before converting points to chunk coordinates
@@ -326,37 +329,18 @@ static func _clip_to_bounds(data: Dictionary, bounds: PackedVector2Array, bounds
 				if piece.size() >= 2:
 					pieces.append(piece)
 		data[key] = pieces
+	# Clip before triangulation: lake rings can contain thousands of vertices.
 	var waters: Array = []
-	var deep_waters: Array = []
-	var shore_waves: Array = []
-	var margin := _rect_polygon(bounds_rect.grow(SHALLOW_WATER_M * 2.0))
 	for water in data.get("waters", []):
-		# Clip first: a big lake (Sysmä) has thousands of points and is in
-		# every chunk it touches - triangulating it whole took seconds a chunk.
 		if water.size() >= 3 and _rect(water).intersects(bounds_rect, true):
 			for piece in Geometry2D.intersect_polygons(water, bounds):
 				if not Geometry2D.triangulate_polygon(piece).is_empty():
 					waters.append(piece)
-			# Deep water lies SHALLOW_WATER_M in from the shore. Inset with a
-			# margin past the chunk, so its cut edge never shows at the border.
-			for share in Geometry2D.intersect_polygons(water, margin):
-				if Geometry2D.is_polygon_clockwise(share):
-					continue  # a hole
-				# Inset before clipping: chunk borders must never become shorelines.
-				for band in range(1, 17):
-					var distance := band * SHALLOW_WATER_M / 16.0
-					for contour in Geometry2D.offset_polygon(share, -distance):
-						if Geometry2D.is_polygon_clockwise(contour):
-							continue
-						contour.append(contour[0])
-						for line in Geometry2D.intersect_polyline_with_polygon(contour, bounds):
-							shore_waves.append({"points": line, "distance": distance})
-				for deep in Geometry2D.offset_polygon(share, -SHALLOW_WATER_M):
-					for piece in Geometry2D.intersect_polygons(deep, bounds):
-						if not Geometry2D.triangulate_polygon(piece).is_empty():
-							deep_waters.append(piece)
 	data["waters"] = waters
-	data["deep_waters"] = deep_waters
+	var shore_waves: Array = []
+	for band in data.get("shore_waves", []):
+		for line in Geometry2D.intersect_polyline_with_polygon(band["points"], bounds):
+			shore_waves.append({"distance": band["distance"], "points": line})
 	data["shore_waves"] = shore_waves
 
 
@@ -820,21 +804,18 @@ func _draw_shore_waves(node: Node2D) -> void:
 		return
 	for band in _data.get("shore_waves", []):
 		# Red carries shore distance; alpha keeps the winter fade independent.
-		node.draw_polyline(band["points"], Color(band["distance"] / SHALLOW_WATER_M, 0.0, 0.0, liquid), 0.55, true)
+		node.draw_polyline(band["points"], Color(band["distance"] / SHALLOW_WATER_M, 0.0, 0.0, liquid), 0.65, true)
 
 
 func _draw_water(node: Node2D) -> void:
 	# water freezes with the winter weight.
 	var ice := clampf(_season[0], 0.0, 1.0)
-	# Finnish water is humic: tea-brown in the shallows, dark peaty brown-grey deeper.
+	# A humic base under the sky reflection; true-shore bands add the shallows.
 	var water_color := Color(0.15, 0.15, 0.12).lerp(Color8(232, 240, 244), ice)
-	var shallow_color := Color(0.33, 0.28, 0.19).lerp(Color8(232, 240, 244), ice)
 	for water in _data.get("waters", []):
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
-			node.draw_colored_polygon(polygon, shallow_color)
-	for water in _data.get("deep_waters", []):
-		node.draw_colored_polygon(_points(water), water_color)
+			node.draw_colored_polygon(polygon, water_color)
 	for water in _data.get("waters", []):
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():

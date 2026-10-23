@@ -29,7 +29,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
           "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards",
-          "nightclubs", "attractions", "tennis_courts", "volleyball_courts")
+          "nightclubs", "attractions", "tennis_courts", "volleyball_courts", "shore_waves")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
@@ -278,6 +278,7 @@ class ChunkIndex:
                 self._add("waters", points, _line(points))
             elif len(points) >= 2:
                 self._add("water_lines", points, _line(points))
+        self._add_water_shores(world.waters)
         static_world.inherit_part_colours(world.buildings)
         for building in world.buildings:
             if len(building.points_m) < 3:
@@ -391,6 +392,36 @@ class ChunkIndex:
     def _add(self, kind: str, points, feature) -> None:
         for cell in cells_touched_by_line(points, self.size):
             self._chunk(cell)[kind].append(feature)
+
+    def _add_water_shores(self, waters) -> None:
+        from shapely.geometry import Polygon, box
+        from shapely.ops import unary_union
+
+        polygons = {}
+        for water in waters:
+            points = water.points_m
+            if water.is_polygon and len(points) >= 4 and points[0] == points[-1]:
+                polygon = Polygon(points)
+                if polygon.is_valid and not polygon.is_empty:
+                    polygons.setdefault(getattr(water, "layer", 0), []).append(polygon)
+        # Water rings are split around islands for filling. Their internal cuts are not shores.
+        for same_layer in polygons.values():
+            area = unary_union(same_layer)
+            for band in range(12):
+                distance = (band + 0.5) * 0.5
+                boundary = area.buffer(-distance).boundary
+                for contour in getattr(boundary, "geoms", (boundary,)):
+                    if contour.is_empty:
+                        continue
+                    for cell in sorted(cells_touched_by_line(contour.coords, self.size)):
+                        if self._cells is not None and cell not in self._cells:
+                            continue
+                        x, y = cell
+                        clipped = contour.intersection(box(x * self.size, y * self.size,
+                                                           (x + 1) * self.size, (y + 1) * self.size))
+                        for line in getattr(clipped, "geoms", (clipped,)):
+                            if line.geom_type == "LineString" and line.length > 0.01:
+                                self._chunk(cell)["shore_waves"].append({"distance": distance, "points": _line(line.coords)})
 
     def _add_static_world(self, world, bridge_parts) -> None:
         """godot-16: the rest of what the client draws from the map (static_world.py)."""

@@ -2348,6 +2348,10 @@ func test_obstacles() -> void:
 ## client keeps no clock of its own.
 func test_day_night() -> void:
 	# godot-lights-01: the light is a continuous function of the sun's altitude.
+	var W := preload("res://weather_layer.gd")
+	check(W.wind_vector({"weather": {"wind_vector_mps": [3.0, -4.0]}}) == Vector2(3, -4), "water wind uses the server's vector and speed")
+	for bad in [null, [], [3], ["3", 4], [NAN, 1], [1, INF]]:
+		check(W.wind_vector({"weather": {"wind_vector_mps": bad}}) == Vector2.ZERO, "invalid or unknown wind leaves water calm")
 	var clear_sky := Daylight.sky_color(30.0, 0.0)
 	var grey_sky := Daylight.sky_color(30.0, 1.0)
 	var dusk_sky := Daylight.sky_color(0.0, 0.0)
@@ -2941,7 +2945,8 @@ func test_performance_paths() -> void:
 	root.add_child(map)
 	map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "0_0", "bounds": [0, 0, 500, 500],
 		"roads": [{"points": [[100, 100], [900, 100]], "half_width_m": 4.0, "drivable": true, "layer": 0}],
-		"railways": [[[100, 200], [100, 900]]], "waters": [[[400, 400], [700, 400], [700, 700], [400, 700]]]})))
+		"railways": [[[100, 200], [100, 900]]], "waters": [[[400, 400], [700, 400], [700, 700], [400, 700]]],
+		"shore_waves": [{"distance": 0.25, "points": [[400.25, 700], [400.25, 400.25], [700, 400.25]]}]})))
 	var chunk = map._chunks["0_0"]
 	var road: PackedVector2Array = chunk._data["roads"][0]["points"]
 	check(road.size() == 2 and is_equal_approx(road[1].x, 500.0) and chunk._roads_by_z[1].size() == 1, "a road leaving the chunk is cut at its border")
@@ -2952,7 +2957,7 @@ func test_performance_paths() -> void:
 	check(map._chunks["1_0"]._roads_by_z[1].map(func(r): return r["half_width_m"]) == [3.5, 4.5], "narrower roads first: a driveway ends at the street's edge")
 	check(is_equal_approx(_area(chunk._data["waters"]), 100.0 * 100.0), "water: only the part inside")
 	var bands: Array = chunk._data["shore_waves"]
-	check(not bands.is_empty(), "shore wave contours are prepared with water")
+	check(not bands.is_empty(), "server shore wave contours are converted and clipped")
 	for band in bands:
 		for point in band["points"]:
 			check(point.x >= 400.0 and point.x <= 500.0 and point.y <= -400.0 and point.y >= -500.0, "shore waves stay inside the chunk water")

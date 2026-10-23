@@ -510,3 +510,49 @@ def test_beach_volleyball_has_sand_over_the_entire_clipped_pitch():
         area = index.message(cid)["landuse"][0]
         assert area[0] == list(SCENERY_COLORS["sand"])
         assert area[1] == 1  # seasonal snow, never flooded pitch ice
+
+
+def test_water_shores_ignore_island_fill_splits_and_chunk_edges():
+    from shapely.geometry import Polygon, LineString, box
+    from shapely.ops import unary_union
+    from theroadragetrip.osm import Water
+    from theroadragetrip.osm.build import _water_rings
+
+    lake = Polygon([(0, 0), (1000, 0), (1000, 200), (0, 200)],
+                   holes=[[(450, 60), (550, 60), (550, 140), (450, 140)]])
+    waters = [Water(ring, "water", True) for ring in _water_rings(lake)]
+    assert len(waters) > 1  # the same island-preserving split that produced the screenshot seam
+    world = SimpleNamespace(ways=[], railways=[], waters=waters, buildings=[])
+    index = map_chunks.ChunkIndex(world)
+    bands = [band for chunk in index._chunks.values() for band in chunk["shore_waves"]]
+    assert bands
+    lines = [LineString(band["points"]) for band in bands]
+    shores = unary_union(lines)
+    assert shores.intersection(box(499, 10, 501, 50)).is_empty  # open water along the internal split
+    assert not shores.intersection(box(449, 75, 450, 125)).is_empty  # the island keeps its real shore
+    assert all(lake.buffer(0.02).covers(line) for line in lines)
+    assert all(not (a[0] == b[0] == 500) for line in lines for a, b in zip(line.coords, list(line.coords)[1:]))
+    old = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=waters[:1], buildings=[]))
+    updated, changed = map_chunks.ChunkIndex.updated(old, world, (400, -10, 600, 210))
+    assert {"0_0", "1_0"} <= changed
+    for cid in ("0_0", "1_0"):
+        assert updated.message(cid)["shore_waves"] == index.message(cid)["shore_waves"]
+    for cid, chunk in index._chunks.items():
+        x, y = map(int, cid.split("_"))
+        for band in chunk["shore_waves"]:
+            assert 0 < band["distance"] < 6
+            assert box(x * 500, y * 500, (x + 1) * 500, (y + 1) * 500).buffer(0.01).covers(LineString(band["points"]))
+
+
+@pytest.mark.parametrize("other_layer", [0, 1])
+def test_water_shore_union_keeps_map_layers_separate(other_layer):
+    from shapely.geometry import LineString, box
+    from theroadragetrip.osm import Water
+
+    waters = [Water([(0, 0), (100, 0), (100, 100), (0, 100), (0, 0)], "water", True),
+              Water([(100, 0), (200, 0), (200, 100), (100, 100), (100, 0)], "water", True, layer=other_layer)]
+    index = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=waters, buildings=[]))
+    seam = box(99, 30, 101, 70)
+    has_shore = any(LineString(band["points"]).intersects(seam)
+                    for chunk in index._chunks.values() for band in chunk["shore_waves"])
+    assert has_shore == (other_layer != 0)
