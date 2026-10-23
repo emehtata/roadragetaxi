@@ -1482,6 +1482,17 @@ def build_ways(
         priority_tag = str(tags.get("priority_road", "")).strip().lower()
         is_priority_road = priority_tag in {"yes", "designated", "true", "1"} or junction_tag == "priority"
 
+        bicycle_tag = str(tags.get("bicycle", "")).strip().lower() or None
+        cycleway_tag = None
+        for key in ("cycleway", "cycleway:both", "cycleway:right", "cycleway:left"):
+            value = str(tags.get(key, "")).strip().lower()
+            if value in ("lane", "track", "shared_lane", "opposite_lane", "opposite_track", "opposite"):
+                cycleway_tag = value
+                break
+        oneway_bicycle_tag = str(tags.get("oneway:bicycle", "")).strip().lower()
+        oneway_bicycle = 0 if oneway_bicycle_tag == "no" or (cycleway_tag or "").startswith("opposite") else (
+            oneway_dir if oneway_bicycle_tag in ("yes", "1", "true", "-1") else None)
+
         (level_ways if level_only else ways).append(
             Way(
                 points_m=pts,
@@ -1508,6 +1519,10 @@ def build_ways(
                 priority_road=is_priority_road,
                 service=tags.get("service"),
                 bus_routes=sorted(bus_route_refs.get(way_id, ())),
+                bicycle=bicycle_tag,
+                cycleway=cycleway_tag,
+                oneway_bicycle=oneway_bicycle,
+                motorroad=str(tags.get("motorroad", "")).lower() == "yes",
                 **_level_metadata(tags),
             )
         )

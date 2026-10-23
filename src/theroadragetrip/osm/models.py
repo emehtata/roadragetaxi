@@ -42,6 +42,14 @@ class Way:
     level: Optional[str] = None
     indoor: Optional[str] = None  # raw indoor=* value, None when untagged
     bus_routes: List[str] = field(default_factory=list)  # route=bus relations running on it (bus_lines.Line keys)
+    # Cycling (cycling.py): raw bicycle=* access, the road's own cycle lane or
+    # track (cycleway[:right|:left|:both]=lane/track/shared_lane), oneway:bicycle
+    # (None: cyclists follow `oneway`; 0: two-way for bicycles) and motorroad=yes
+    # (moottoriliikennetie: no cycling).
+    bicycle: Optional[str] = None
+    cycleway: Optional[str] = None
+    oneway_bicycle: Optional[int] = None
+    motorroad: bool = False
     segment_lengths: List[float] = field(default_factory=list, init=False, repr=False)
     segment_headings: List[float] = field(default_factory=list, init=False, repr=False)
     total_length_m: float = field(default=0.0, init=False, repr=False)

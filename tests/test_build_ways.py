@@ -298,3 +298,21 @@ def test_an_indoor_arena_stays_a_roofed_building():
     hall = {"type": "way", "id": 9, "nodes": [1, 2, 3, 4, 1],
             "tags": {"building": "yes", "leisure": "stadium", "sport": "ice_hockey", "name": "Helsingin jäähalli"}}
     assert [b.name for b in build_ways(nodes + [hall]).buildings] == ["Helsingin jäähalli"]
+
+
+def test_build_ways_keeps_cycling_metadata():
+    """cycling.py's network needs bicycle access, cycle lanes, contraflow and motorroad (rrt-019 cyclists)."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {
+            "highway": "residential", "oneway": "yes", "oneway:bicycle": "no", "cycleway:right": "lane"}},
+        {"type": "way", "id": 11, "nodes": [1, 2], "tags": {"highway": "footway", "bicycle": "designated"}},
+        {"type": "way", "id": 12, "nodes": [1, 2], "tags": {"highway": "trunk", "motorroad": "yes"}},
+        {"type": "way", "id": 13, "nodes": [1, 2], "tags": {"highway": "secondary", "oneway": "yes"}},
+    ]
+    ways = {way.osm_id: way for way in build_ways(elements)[0]}
+    assert (ways[10].oneway, ways[10].oneway_bicycle, ways[10].cycleway) == (1, 0, "lane")
+    assert ways[11].bicycle == "designated"
+    assert ways[12].motorroad is True
+    assert (ways[13].oneway_bicycle, ways[13].bicycle, ways[13].cycleway, ways[13].motorroad) == (None, None, None, False)
