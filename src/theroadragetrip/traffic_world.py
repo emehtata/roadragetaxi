@@ -72,12 +72,21 @@ class RouteGraphBuild:
     agnostic: `include` selects which ways form the graph (car roads by
     default), so other networks (bus, tram, rail) can reuse it."""
 
-    def __init__(self, ways, parking_spaces=None, parking_cell_size: float = 100.0, include=None) -> None:
+    def __init__(self, ways, parking_spaces=None, parking_cell_size: float = 100.0, include=None,
+                 oneway=None, weight=None, track_ways: bool = False) -> None:
         self.ways = list(ways)  # snapshot: later merges into the live list never leak in
         # Default: the surface car network only - a road on another map
         # level (e.g. a level=-1 parking aisle kept in world.ways) never
         # joins it (garage-05.md).
         self.include = include or _surface_car_road
+        # Another network's rules (the cycle network: cycling.py): its own
+        # direction (oneway(way) -> -1/0/1) and a cost per metre >= 1 (so the
+        # A* straight-line heuristic stays admissible). A weighted graph's
+        # edge lengths are costs: don't use it for on_road snapping.
+        self.oneway = oneway or (lambda way: getattr(way, "oneway", 0))
+        self.weight = weight
+        # (x1, y1, x2, y2) of a directed edge's nodes -> the way it runs on
+        self.edge_ways: Optional[dict] = {} if track_ways else None
         self.parking_spaces = list(parking_spaces) if parking_spaces is not None else None
         self.parking_cell_size = parking_cell_size
         self.parking_grid = {} if parking_spaces is not None else None
@@ -177,14 +186,20 @@ class RouteGraphBuild:
             pairs = self.bus_route_edges.setdefault(route, set())
             for first, second in zip(point_ids, point_ids[1:]):
                 pairs.update(((first, second), (second, first)))
-        oneway = getattr(way, "oneway", 0)
-        nodes, edges = self.nodes, self.edges
+        oneway = self.oneway(way)
+        factor = self.weight(way) if self.weight is not None else 1.0
+        nodes, edges, edge_ways = self.nodes, self.edges, self.edge_ways
         for first, second in zip(point_ids, point_ids[1:]):
-            distance = math.hypot(nodes[second][0] - nodes[first][0], nodes[second][1] - nodes[first][1])
+            distance = math.hypot(nodes[second][0] - nodes[first][0], nodes[second][1] - nodes[first][1]) * factor
+            a, b = nodes[first], nodes[second]
             if oneway >= 0:
                 edges[first].append((second, distance))
+                if edge_ways is not None:
+                    edge_ways[(a[0], a[1], b[0], b[1])] = way
             if oneway <= 0:
                 edges[second].append((first, distance))
+                if edge_ways is not None:
+                    edge_ways[(b[0], b[1], a[0], a[1])] = way
             self._union(first, second)
 
 
@@ -435,6 +450,11 @@ class _SurfaceGraphView:
         self.component_parent = world._route_component_parent
 
 
+def _cycle_graph_build(ways) -> RouteGraphBuild:
+    from .cycling import cycle_cost_factor, cycle_oneway, is_cyclable_way
+    return RouteGraphBuild(ways, include=is_cyclable_way, oneway=cycle_oneway, weight=cycle_cost_factor, track_ways=True)
+
+
 class TrafficWorld:
     """Own shared world traffic services while vehicles remain player-controlled."""
 
@@ -465,6 +485,10 @@ class TrafficWorld:
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
         self._route_node_grid: dict[Tuple[int, int], List[int]] = {}
         self._pending_route_graph: Optional[RouteGraphBuild] = None
+        # The cycle network (cycling.py): built and committed with the car
+        # graph, under the same route_graph_revision.
+        self.cycle_graph: RouteGraphBuild = RouteGraphBuild([], include=lambda way: False, track_ways=True)
+        self._pending_cycle_graph: Optional[RouteGraphBuild] = None
         # Set by main.py once npc.py's NPC vehicle list exists (a plain
         # list, kept as the same object reference so later appends to it
         # stay visible here) - lets PedestrianManager's linked-driver/
@@ -503,9 +527,11 @@ class TrafficWorld:
         vehicle.state = "driving"
 
     def _build_route_graph(self) -> None:
-        """Synchronous full rebuild of the route graph from self.ways."""
+        """Synchronous full rebuild of the route graphs from self.ways."""
         build = RouteGraphBuild(self.ways)
         build.advance(math.inf)
+        self.cycle_graph = _cycle_graph_build(self.ways)
+        self.cycle_graph.advance(math.inf)
         self._commit_route_graph(build)
 
     def _commit_route_graph(self, build: "RouteGraphBuild") -> None:
@@ -557,6 +583,7 @@ class TrafficWorld:
         if logical_intersections is not None:
             self.logical_intersections = logical_intersections
         self._pending_route_graph = RouteGraphBuild(ways, parking_spaces, self._parking_grid_cell_size)
+        self._pending_cycle_graph = _cycle_graph_build(ways)
 
     def advance_map_sync(self, budget_s: float) -> bool:
         """Advance a start_map_sync() build by about budget_s; True once the
@@ -564,11 +591,17 @@ class TrafficWorld:
         build = getattr(self, "_pending_route_graph", None)
         if build is None:
             return True
+        deadline = time.perf_counter() + budget_s
         if not build.advance(budget_s):
             return False
+        cycle_build = self._pending_cycle_graph
+        if cycle_build is not None and not cycle_build.advance(max(0.0, deadline - time.perf_counter())):
+            return False
         self.ways = build.ways
+        if cycle_build is not None:
+            self.cycle_graph = cycle_build
         self._commit_route_graph(build)
-        self._pending_route_graph = None
+        self._pending_route_graph = self._pending_cycle_graph = None
         return True
 
     def _nearest_node_indices(self, point: Tuple[float, float], count: int, allowed) -> List[int]:
@@ -604,6 +637,11 @@ class TrafficWorld:
         line bus keeps to its route relation's streets)."""
         preferred = getattr(self, "_bus_route_edges", {}).get(bus_route) if bus_route is not None else None
         return graph_route_steps(_SurfaceGraphView(self), start, target, layer, on_road, start_layer, preferred=preferred)
+
+    def plan_cycle_route_steps(self, start: Tuple[float, float], target: Tuple[float, float]) -> RouteSteps:
+        """A cyclist's route on the cycle network (cycling.py) as a resumable
+        job: [(x, y)] including start and target, or None."""
+        return graph_route_steps(self.cycle_graph, start, target)
 
     def _nearby_traffic_lights(self, x: float, y: float, radius_m: float = 60.0) -> List[TrafficLight]:
         radius_sq = radius_m * radius_m
