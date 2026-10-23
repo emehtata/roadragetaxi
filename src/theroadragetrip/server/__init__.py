@@ -44,7 +44,7 @@ from ..world_loader import load_world, resolve_city
 from ..viewport import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..physics import reset_trip, respawn_car
-from ..home import CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home
+from ..home import clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home
 from ..localization import SUPPORTED_LANGUAGES, tr
 from ..moon import moon_info_on, moon_position_at
 from ..transport import Listener
@@ -330,8 +330,10 @@ class SimulationServer:
         self._pending_road_rages = 0  # SPACE presses, likewise
         self._pending_respawns = 0
         self._pending_homes = 0
-        self.homes_file = homes_path(CONFIG_PATH)
-        self._home = load_home(self.homes_file, str(self.chosen_city or ""))  # kept between gigs, per city
+        self._homes_in_save = self.save_slot_file is not None
+        self.homes_file = self.save_slot_file if self._homes_in_save else (
+            homes_path(CONFIG_PATH) if getattr(args, "game_mode", "gig_driver") == "career" else None)
+        self._home = load_home(self.homes_file, str(self.chosen_city or ""), in_save=self._homes_in_save) if self.homes_file else None
         self._home_confirm_s = 0.0  # a second H within this: the new yard becomes home
         self._prepared_home = None  # the home whose map was last handed to the background preparation
         self._home_preparation = None  # its future (cancelled if home moves before it starts)
@@ -688,6 +690,8 @@ class SimulationServer:
                         self._pending_trip_resets += 1
                     if phone is not None:
                         self._phone_requests.append(phone)
+                    if message.get("clear_home") is True:
+                        self._clear_home()
                     if message.get("save_game") is True:  # the pause menu's Save / Quit
                         self._pending_save = True
                     snapshot = message.get("debug_snapshot")  # F12 in the client: the screenshot's JSON
@@ -931,6 +935,16 @@ class SimulationServer:
         chunk = self._chunks_index._chunks.get(chunk_id(*cell_of(player.x, player.y)))
         return bool(chunk and chunk.get("roads"))
 
+    def _clear_home(self) -> None:
+        if self.homes_file is not None:
+            clear_homes(self.homes_file, in_save=self._homes_in_save)
+        self._home = None
+        self._home_confirm_s = 0.0
+        self._prepared_home = None
+        if self._home_preparation is not None:
+            self._home_preparation.cancel()
+            self._home_preparation = None
+
     def _home_pressed(self) -> None:
         """H: in a house yard, make it home (a new one asks first: H
         again); anywhere else, the taxi respawns at home."""
@@ -948,7 +962,8 @@ class SimulationServer:
                 self._home_confirm_s = CONFIRM_S
                 return self._notify(tr(language, "home_confirm"), CONFIRM_S)
             self._home, self._home_confirm_s = (car.x, car.y, car.heading), 0.0
-            save_home(self.homes_file, str(self.chosen_city or ""), self._home)
+            if self.homes_file is not None:
+                save_home(self.homes_file, str(self.chosen_city or ""), self._home, in_save=self._homes_in_save)
             return self._notify(tr(language, "home_saved"))
         if self._home is None:
             return self._notify(tr(language, "home_not_yard"))

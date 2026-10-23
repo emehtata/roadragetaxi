@@ -138,3 +138,21 @@ def test_restored_oulu_save_near_raahe_has_local_weather_forecast(tmp_path, monk
     server._on_client_connect(connection)
     message = connection.send.call_args_list[0].args[0]
     assert message['weather_city'] == 'Raahe'
+
+
+def test_home_belongs_to_slot_and_survives_save_reload_and_clear(tmp_path, monkeypatch):
+    from theroadragetrip.home import load_home, save_home
+    server = _server(tmp_path, monkeypatch, slot="one")
+    city = str(server.chosen_city or "")
+    home = (server.car.x, server.car.y, server.car.heading)
+    save_home(server.homes_file, city, home, in_save=server._homes_in_save)
+    server._home = home
+    assert server.save_game()
+    assert _server(tmp_path, monkeypatch, slot="one")._home == home
+    other = _server(tmp_path, monkeypatch, slot="two")
+    assert other._home is None
+    server._clear_home()
+    assert server.save_game()
+    assert _server(tmp_path, monkeypatch, slot="one")._home is None
+    assert load_home(server.homes_file, city, in_save=True) is None
+    assert read_slot(server.homes_file)["city"] == server.chosen_city

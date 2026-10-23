@@ -159,6 +159,14 @@ func send_save() -> bool:
 	return true
 
 
+func send_clear_home() -> bool:
+	if not connected:
+		return false
+	_seq += 1
+	_peer.put_data(command_line(_last_command, _seq, player_id, {}, "", false, true).to_utf8_buffer())
+	return true
+
+
 ## F12: the server writes the debug JSON (its world) at `path`.
 func send_debug_snapshot(path: String) -> bool:
 	if not connected:
@@ -168,12 +176,14 @@ func send_debug_snapshot(path: String) -> bool:
 	return true
 
 
-static func command_line(command: Dictionary, seq: int, player: String, phone: Dictionary = {}, debug_snapshot := "", save := false) -> String:
+static func command_line(command: Dictionary, seq: int, player: String, phone: Dictionary = {}, debug_snapshot := "", save := false, clear_home := false) -> String:
 	var message := {"type": "command", "version": PROTOCOL_VERSION, "seq": seq, "player_id": player, "command": command}
 	if not phone.is_empty():
 		message["phone"] = phone
 	if debug_snapshot != "":
 		message["debug_snapshot"] = debug_snapshot
+	if clear_home:
+		message["clear_home"] = true
 	if save:
 		message["save_game"] = true
 	return JSON.stringify(message) + "\n"

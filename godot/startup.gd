@@ -431,14 +431,15 @@ func _confirm_clear_cache() -> void:
 	no.call_deferred("grab_focus")  # Enter does not delete anything
 
 
-## "Reset taxi home": asked first; then every city's home is forgotten.
+## Clear only the running game's homes.
 func _confirm_reset_home() -> void:
 	_clear()
 	_title(_t("reset_home").to_upper(), _t("confirm_reset_home"))
 	var no := _button(_t("cancel"), _gameplay_menu)
 	_button(_t("delete"), func():
-		_server_query("--reset-home")
-		_gameplay_menu())
+		var sim: SimClient = _game.sim
+		if sim.send_clear_home():
+			_gameplay_menu())
 	_back_action = _gameplay_menu
 	_focus_menu()
 	no.call_deferred("grab_focus")  # Enter does not delete anything
@@ -889,7 +890,7 @@ func _gameplay_menu() -> void:
 	intercity_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intercity_note.custom_minimum_size.x = 500
 	_body.add_child(intercity_note)
-	if _game == null:  # a running server keeps its home in memory
+	if is_instance_valid(_game):
 		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
 	_button(_t("back"), _settings_menu)
 	_back_action = _settings_menu

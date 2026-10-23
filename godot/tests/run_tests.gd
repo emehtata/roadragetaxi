@@ -1425,6 +1425,8 @@ func test_commands_carry_the_player_id() -> void:
 	check(answer["phone"] == {"action": "accept", "item_id": "offer-2", "request_id": 1.0} and answer["command"]["throttle"] == 0.0, "a phone answer rides on a command with the current controls")
 	var save_line: Dictionary = JSON.parse_string(SimClient.command_line({}, 9, "local_player", {}, "", true))
 	check(save_line.get("save_game") == true and not message.has("save_game"), "a save request rides on a command; others never save")
+	var clear_line: Dictionary = JSON.parse_string(SimClient.command_line({}, 3, "local", {}, "", false, true))
+	check(clear_line.get("clear_home") == true and not message.has("clear_home"), "clear home is an explicit request for the current server game")
 	var slot_text: String = preload("res://startup.gd").slot_label({"city": "Oulu", "place_name": "Muurame", "game_time": "2026-09-27T00:46:13", "balance_cents": 7777, "fare": true}, "kyyti kesken")
 	check(slot_text == "Muurame · 2026-09-27 00:46 · 77.77 € · kyyti kesken", "a saved game's menu line: place, game time, money, a fare in progress")
 	# godot-final-01: G asks the simulation to refuel (it checks the station, speed, tank and money).

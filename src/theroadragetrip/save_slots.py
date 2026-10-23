@@ -3,7 +3,8 @@
 A slot is the gig car file (odometer, fuel, money: career.save_gig_odometer
 keeps writing those after every fare) plus what a continued game needs:
 the city, a map box around the car, the game time, the car's pose, the score
-and a fare in progress (passengers aboard). Nothing else is kept: the city's
+a fare in progress (passengers aboard), and the homes chosen in each city.
+Other simulation state is not kept: the city's
 traffic, residents and weather are generated again.
 """
 from __future__ import annotations

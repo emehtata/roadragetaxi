@@ -103,6 +103,11 @@ Ei sankaripuheita. Taksamittari käy.
 | `F12` | Save a screenshot and matching simulation JSON |
 | `Esc` | Close the phone/help or open the pause menu |
 
+Gig saves keep their own homes, one per city. While playing, use
+**Settings → Gameplay → Clear current game home** to forget homes only in that
+save. Older gig saves start without a home; choose one again with **H** in a
+house yard.
+
 The speed limiter starts enabled; press **V** to disable it if you want to drive
 above the road's speed limit. Opening navigation also shows the suggested route
 on the map; **N** is not a separate route-only toggle.
