@@ -6,7 +6,6 @@ from theroadragetrip.geo import point_in_polygon
 from theroadragetrip.osm import Building, TrafficLight, Way
 from theroadragetrip.osm import TaxiStop
 from theroadragetrip.pedestrian import (
-    CyclistManager,
     Pedestrian,
     PedestrianAppearance,
     PedestrianManager,
@@ -869,54 +868,6 @@ def test_sobering_continues_through_waits_falls_and_lod(monkeypatch, waiting, fa
     assert not ped.is_drunk
 
 
-def test_cyclist_spawn_assigns_body_color():
-    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="cycleway", half_width_m=1.5)
-    manager = CyclistManager([way], target_count=0, spawn_radius_m=120.0)
-
-    cyclist = manager.spawn_pedestrian(50.0, 0.0)
-
-    assert cyclist is not None
-    assert cyclist.is_cyclist is True
-    assert cyclist.color != (230, 80, 80)
-
-
-def test_cyclist_spawn_uses_synced_ways_outside_local_grid():
-    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="cycleway", half_width_m=1.5)
-    manager = CyclistManager([way], target_count=0, spawn_radius_m=10.0)
-
-    cyclist = manager.spawn_pedestrian(500.0, 500.0)
-
-    assert cyclist is not None
-
-
-def test_cyclists_use_right_edge_for_both_directions(monkeypatch):
-    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
-    manager = CyclistManager([way], target_count=0, spawn_radius_m=120.0)
-
-    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
-    forward = manager.spawn_pedestrian(50.0, 0.0)
-    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 1.0)
-    reverse = manager.spawn_pedestrian(50.0, 0.0)
-
-    assert forward is not None and reverse is not None
-    assert forward.direction == 1
-    assert reverse.direction == -1
-    assert forward.lateral_offset_m == pytest.approx(3.0)
-    assert reverse.lateral_offset_m == pytest.approx(3.0)
-
-
-def test_all_cyclists_continue_moving():
-    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="cycleway", half_width_m=1.5)
-    manager = CyclistManager([way], target_count=0, spawn_radius_m=120.0)
-    cyclists = [manager.spawn_pedestrian(50.0, 0.0) for _ in range(2)]
-    manager.pedestrians = [cyclist for cyclist in cyclists if cyclist is not None]
-    initial_positions = [(cyclist.x, cyclist.y) for cyclist in manager.pedestrians]
-
-    manager.update(Car(x=-100.0, y=50.0, heading=0.0, speed=0.0), dt=0.1)
-
-    assert all((cyclist.x, cyclist.y) != initial for cyclist, initial in zip(manager.pedestrians, initial_positions))
-
-
 def test_spawn_pedestrian_at_creates_walking_passenger():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=0)
@@ -1025,26 +976,6 @@ def test_pedestrian_does_not_dodge_until_car_is_close():
     assert ped.dodge_timer == 0.0
 
 
-def test_cyclist_avoidance_is_reported_but_parallel_traffic_is_not():
-    cycleway = Way(
-        points_m=[(0.0, 0.0), (100.0, 0.0)],
-        highway="cycleway",
-        half_width_m=1.5,
-    )
-    manager = CyclistManager([cycleway], target_count=0)
-    cyclist = Pedestrian(20.0, 0.0, 0.0, 4.0, 4.0, cycleway, 0, 1, (50, 120, 220))
-    cyclist.is_cyclist = True
-    manager.pedestrians = [cyclist]
-
-    assert manager.check_player_avoidance(Car(x=17.0, y=0.0, heading=0.0, speed=10.0), 0.05) is True
-    assert manager.check_player_avoidance(Car(x=17.0, y=0.0, heading=0.0, speed=10.0), 0.05) is False
-
-    cyclist.x = 20.0
-    cyclist.y = 2.0
-    cyclist.dodge_timer = 0.0
-    assert manager.check_player_avoidance(Car(x=17.0, y=0.0, heading=0.0, speed=10.0), 0.05) is False
-
-
 def test_pedestrian_traffic_light_crossing_stop():
     crossing = Way(
         points_m=[(0.0, 0.0), (20.0, 0.0)],
@@ -1090,9 +1021,8 @@ def _grid_of_ways(count: int) -> list:
 def test_sync_map_data_keeps_ped_way_ids_cache_in_sync():
     """Regression: spawn_pedestrian() reads self._ped_way_ids (see its
     docstring) instead of rebuilding {id(way) for way in self.ped_ways}
-    itself - sync_map_data() (both PedestrianManager's and
-    CyclistManager's, which overrides it) must keep that cache exactly
-    in sync with ped_ways, on every call, not just the first."""
+    itself - sync_map_data() must keep that cache exactly in sync with
+    ped_ways, on every call, not just the first."""
     way_a = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.5)
     way_b = Way(points_m=[(20.0, 0.0), (30.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way_a], target_count=0)
@@ -1101,11 +1031,6 @@ def test_sync_map_data_keeps_ped_way_ids_cache_in_sync():
     manager.sync_map_data([way_a, way_b])
     assert manager._ped_way_ids == {id(w) for w in manager.ped_ways}
     assert manager._ped_way_ids  # non-empty: actually exercised, not just equal-by-emptiness
-
-    cyclists = CyclistManager([way_a], target_count=0)
-    assert cyclists._ped_way_ids == {id(w) for w in cyclists.ped_ways}
-    cyclists.sync_map_data([way_a, way_b])
-    assert cyclists._ped_way_ids == {id(w) for w in cyclists.ped_ways}
 
 
 @pytest.mark.timing

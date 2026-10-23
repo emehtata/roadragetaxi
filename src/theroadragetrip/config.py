@@ -120,7 +120,6 @@ DEFAULT_CONFIG = {
         "traffic_count_min": "",
         "traffic_count_max": "",
         "pedestrian_count": "20",
-        "cyclist_count": "8",
         "parking_density": "0.5",
         # vehicle-population v2: overrides the registered vehicle plugins' own
         # traffic_weight (vehicles/plugins/*.py) for the general NPC
