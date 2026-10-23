@@ -1,5 +1,5 @@
-// Lakes and rivers (map_chunk.gd _draw): slow wave shading, crossing glints
-// and drifting sparkles over the season colour. Only dark pixels move, so
+// Lakes and rivers (map_chunk.gd _draw): slow wave shading and sky reflection.
+// Only dark pixels move, so
 // ice and spring floes in the same draw list stay still.
 // Coordinates are world space, so the pattern continues across chunks.
 shader_type canvas_item;
@@ -29,15 +29,9 @@ void fragment() {
 	if (water > 0.0) {
 		float t = mod(TIME, 1000.0);
 		float a = noise(world * 0.18 + vec2(t * 0.25, t * 0.08));
-		float b = noise(world * 0.23 - vec2(t * 0.06, t * 0.21));
 		float swell = noise(world * 0.035 + vec2(t * 0.03, 0.0));
-		float glint = smoothstep(0.07, 0.0, abs(a - b));
-		vec2 cell = world * 0.8;
-		float dot_ = smoothstep(0.3, 0.0, length(fract(cell) - 0.5));
-		float sparkle = step(0.99, hash(floor(cell) + floor(t * 2.0))) * dot_ * a;
 		vec3 reflected = mix(COLOR.rgb, sky_color.rgb, 0.48 + 0.12 * swell);
 		vec3 c = reflected * (0.86 + 0.22 * swell + 0.1 * (a - 0.5));
-		c += vec3(0.62, 0.72, 0.82) * (glint * 0.16 + sparkle * 0.5);
 		COLOR.rgb = mix(COLOR.rgb, c, water);
 	}
 }
