@@ -1020,7 +1020,7 @@ def test_the_server_places_its_street_lights_with_the_placement_job(tmp_path, mo
     assert len(sent) == len(lights)  # every light in exactly one chunk
 
 
-def test_heavy_throttle_sprays_mud_only_on_soft_ground(tmp_path, monkeypatch):
+def test_heavy_throttle_mud_and_moving_sand_spray(tmp_path, monkeypatch):
     from theroadragetrip.osm import Scenery
     from theroadragetrip.physics import SpatialWayGrid
     from theroadragetrip.simulation import PlayerCommand
@@ -1039,10 +1039,13 @@ def test_heavy_throttle_sprays_mud_only_on_soft_ground(tmp_path, monkeypatch):
     for kind in ("golf_course", "golf_tee", "golf_fairway", "golf_green", "grass"):
         field.kind = kind
         assert server._tyre_mark(previous, throttle=.8)["spray"] == .8
-    for kind in ("sand", "parking"):
+    for kind in ("sand", "beach"):
         field.kind = kind
-        mark = server._tyre_mark(previous, throttle=1)
-        assert mark is None or "spray" not in mark
+        mark = server._tyre_mark(previous, throttle=0)
+        assert mark["kind"] == "sand" and mark["spray"] == .83
+    field.kind = "parking"
+    mark = server._tyre_mark(previous, throttle=1)
+    assert mark is None or "spray" not in mark
     field.kind = "golf_green"
     car.engine_on = False
     assert "spray" not in server._tyre_mark(previous, throttle=1)
@@ -1059,3 +1062,11 @@ def test_heavy_throttle_sprays_mud_only_on_soft_ground(tmp_path, monkeypatch):
     server._latest_command = PlayerCommand()
     server.tick(1/30)
     assert "spray" not in server._tire_mark
+    field.kind = "beach"
+    server._latest_command = PlayerCommand(throttle=.4, speed_limiter_enabled=False)
+    server.tick(1/30)
+    assert server._tire_mark["kind"] == "sand" and server._tire_mark["spray"] > 0
+    server.car.speed = 0
+    server._latest_command = PlayerCommand()
+    server.tick(1/30)
+    assert server._tire_mark is None

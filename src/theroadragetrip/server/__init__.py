@@ -499,6 +499,8 @@ class SimulationServer:
         intensity = skidmark_intensity(car.skid_amount) if soft and skidding else 1.0
         mark = {"kind": kind, "intensity": round(intensity, 2),
                 "front": bool(tire_tracks_include_front_wheels(soft, skidding, getattr(car, "front_lockup", False)))}
+        if ground == "sand" and kind == "sand":
+            mark["spray"] = round(min(1.0, abs(car.speed) / 6.0), 2)
         if ground == "soft" and kind == "dirt" and throttle >= 0.7 and car.engine_on and car.fuel_l > 0 and not car.braking:
             mark["spray"] = round(min(1.0, throttle), 2)
         return mark

@@ -1824,6 +1824,13 @@ func test_weather_presentation() -> void:
 	check(live.mud[0][1].x > 0, "reversing throws mud opposite travel")
 	live.update_mud(0.1, muddy, Vector2.ZERO, true)
 	check(live.mud.is_empty(), "underground clears surface mud")
+	muddy.tire_mark.kind = "sand"
+	live.update_mud(0.1, muddy, Vector2.ZERO, false)
+	check(not live.mud.is_empty() and live.mud.all(func(p): return p[4]), "sand uses airborne sandy particles")
+	muddy.tire_mark.kind = "dirt"
+	live.update_mud(0.1, muddy, Vector2.ZERO, false)
+	check(live.mud.any(func(p): return p[4]) and live.mud.any(func(p): return not p[4]), "sand and mud keep their own appearance after changing ground")
+	live.update_mud(0.1, muddy, Vector2.ZERO, true)
 	live.splashes_enabled = false
 	live.update_mud(0.1, muddy, Vector2.ZERO, false)
 	check(not live.mud.is_empty(), "disabled puddle splashes still allow offroad mud")

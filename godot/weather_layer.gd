@@ -43,7 +43,7 @@ var particles := PackedFloat32Array()  # x, y (screen fractions), speed factor -
 var kind := ""  # "rain", "slush", "snow", or "" (nothing falling here)
 var clock := 0.0  # real seconds, for the ripples
 var splashes: Array = []  # [layer position, age s, strength]
-var mud: Array = []  # [ground position, velocity, age, size]
+var mud: Array = []  # dirt/sand: [ground position, velocity, age, size, is_sand]
 var _mud_clock := 0.0
 var was_in_puddle := false
 var draw_calls := 0  # submissions in the last drawn frame (precipitation + ripples + splashes)
@@ -147,10 +147,11 @@ func update_mud(delta: float, state: Dictionary, taxi: Vector2, underground: boo
 		clump[2] += delta
 	mud = mud.filter(func(clump): return clump[2] < MUD_LIFETIME_S)
 	var mark = state.get("tire_mark")
-	var strength := float(mark.get("spray", 0.0)) if mark is Dictionary and mark.get("kind") == "dirt" else 0.0
+	var strength := float(mark.get("spray", 0.0)) if mark is Dictionary and mark.get("kind") in ["dirt", "sand"] else 0.0
 	if state.get("on_foot", true) or strength <= 0.0:
 		_mud_clock = 0.0
 		return
+	var is_sand: bool = mark.get("kind") == "sand"
 	var player: Dictionary = state.get("player", {})
 	var h := Vector2(cos(float(player.get("heading", 0.0))), -sin(float(player.get("heading", 0.0))))
 	var side := Vector2(-h.y, h.x)
@@ -162,7 +163,7 @@ func update_mud(delta: float, state: Dictionary, taxi: Vector2, underground: boo
 		for wheel_side: float in [-1.0, 1.0]:
 			var at := taxi - h * float(player.get("length_m", 4.4)) * 0.32 + side * wheel_side * float(player.get("width_m", 1.8)) * 0.45
 			var velocity := -travel * _rng.randf_range(2.0, 5.0) + side * wheel_side * _rng.randf_range(1.0, 3.0)
-			mud.append([at, velocity, 0.0, _rng.randf_range(0.05, 0.12)])
+			mud.append([at, velocity, 0.0, _rng.randf_range(0.08, 0.16) if is_sand else _rng.randf_range(0.05, 0.12), is_sand])
 	if mud.size() > MUD_POOL_MAX:
 		mud = mud.slice(mud.size() - MUD_POOL_MAX)
 
@@ -293,7 +294,10 @@ func _draw_splashes() -> void:
 	for clump in mud:
 		var progress: float = clump[2] / MUD_LIFETIME_S
 		var at: Vector2 = clump[0] - Vector2(0, 2.6 * progress * (1.0 - progress))
-		splash_node.draw_circle(at, maxf(1.5 / map_layer.px_per_m, clump[3]), Color(0.32, 0.19, 0.08, 1.0 - progress))
+		var sand: bool = clump[4]
+		var size: float = clump[3] * (1.0 + 2.0 * progress if sand else 1.0)
+		var color := Color(0.78, 0.67, 0.43, 0.75 * (1.0 - progress)) if sand else Color(0.32, 0.19, 0.08, 1.0 - progress)
+		splash_node.draw_circle(at, maxf(1.5 / map_layer.px_per_m, size), color)
 		draw_calls += 1
 
 
