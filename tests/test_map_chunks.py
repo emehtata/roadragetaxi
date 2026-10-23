@@ -496,3 +496,17 @@ def test_a_stadium_mapped_twice_gets_one_ring_of_stands():
     outline = [(100.0, 100.0), (240.0, 100.0), (240.0, 200.0), (100.0, 200.0)]
     world.sceneries = [Scenery(points_m=outline, kind="stadium", name="Bolt Arena"), Scenery(points_m=outline[::-1], kind="stadium")]
     assert len(map_chunks.ChunkIndex(world, size=500.0).message("0_0")["buildings"]) == 4
+
+
+def test_beach_volleyball_has_sand_over_the_entire_clipped_pitch():
+    from theroadragetrip.osm import Scenery
+    from theroadragetrip.map_style import SCENERY_COLORS
+
+    court = Scenery(points_m=[(480, 100), (520, 100), (520, 120), (480, 120)],
+                    kind="pitch", sport="beachvolleyball", volleyball_frame=[500, 110, 0, 40, 20])
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[court])
+    index = map_chunks.ChunkIndex(world)
+    for cid in ("0_0", "1_0"):
+        area = index.message(cid)["landuse"][0]
+        assert area[0] == list(SCENERY_COLORS["sand"])
+        assert area[1] == 1  # seasonal snow, never flooded pitch ice

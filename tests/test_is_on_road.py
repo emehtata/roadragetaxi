@@ -277,3 +277,18 @@ def test_a_map_pin_reaches_a_side_street_joining_a_road_midway():
     car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
     respawn_car(car, [main, main2, side], near_center=True, bounds=(0.0, 0.0, 300.0, 60.0), start_point=(104.0, 50.0))
     assert abs(car.y - 50.0) < 0.01 and abs(car.x - 100.0) < 3.0
+
+
+def test_beach_volleyball_pitch_is_sand_instead_of_grass_or_flooded_ice():
+    from theroadragetrip.osm import Scenery
+
+    court = Scenery(points_m=[(0, 0), (20, 0), (20, 12), (0, 12)], kind="pitch",
+                    sport="beachvolleyball", volleyball_frame=[10, 6, 0, 20, 12])
+    grid = physics.SpatialWayGrid([court])
+    for frozen in (False, True):
+        assert physics.off_road_ground_kind(10, 6, sceneries=[court], frozen=frozen) == "sand"
+        assert physics.off_road_ground_kind(10, 6, scenery_grid=grid, frozen=frozen) == "sand"
+    assert physics.off_road_ground_kind(30, 6, sceneries=[court]) == "soft"
+    court.volleyball_frame = []
+    assert physics.off_road_ground_kind(10, 6, sceneries=[court]) == "soft"
+    assert physics.off_road_ground_kind(10, 6, sceneries=[court], frozen=True) == "ice"

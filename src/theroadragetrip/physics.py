@@ -423,8 +423,9 @@ def off_road_ground_kind(
     found_hard = False
     for scenery in candidates:
         kind = getattr(scenery, "kind", None)
-        freezes = frozen and kind in FROZEN_IN_WINTER_KINDS
-        if kind in SOFT_GROUND_SCENERY_KINDS and not freezes:  # (a grass pitch is soft, unless frozen)
+        sand_court = bool(getattr(scenery, "volleyball_frame", None))
+        freezes = frozen and kind in FROZEN_IN_WINTER_KINDS and not sand_court
+        if kind in SOFT_GROUND_SCENERY_KINDS and not freezes and not sand_court:  # (a grass pitch is soft, unless frozen)
             continue
         bbox = getattr(scenery, "bbox", None)
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0) and not (bbox[0] <= px <= bbox[2] and bbox[1] <= py <= bbox[3]):
@@ -433,7 +434,7 @@ def off_road_ground_kind(
         if len(points) >= 3 and point_in_polygon(px, py, points):
             if freezes:
                 return "ice"
-            if kind in SAND_SCENERY_KINDS:
+            if kind in SAND_SCENERY_KINDS or sand_court:
                 found_sand = True
             elif not frozen:
                 return "hard"  # nothing can be ice: the first hard polygon decides

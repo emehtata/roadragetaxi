@@ -416,6 +416,8 @@ class ChunkIndex:
             color = (174, 162, 142) if kind.startswith("attraction_") else SCENERY_COLORS.get(kind, (38, 105, 38))
             # 1: snow and seasonal palettes, 2: frozen to ice in winter, 0: as is
             seasonal = 2 if kind in FROZEN_IN_WINTER_KINDS else 1 if kind in SPECKLE_SCENERY_KINDS or kind in SEASONAL_GROUND_KINDS else 0
+            if getattr(scenery, "volleyball_frame", None):
+                color, seasonal = SCENERY_COLORS["sand"], 1  # sand under the whole court, snow rather than flooded ice
             for cell, ring in static_world.clipped_pieces(scenery.points_m, self.size):
                 area = [static_world._rgb(color), seasonal, ring]
                 if kind in ("biergarten", "grave_yard", "cemetery", "beach", "forest", "wood",
