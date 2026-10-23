@@ -3096,8 +3096,14 @@ func test_forest_canopy() -> void:
 		"landuse": [[[40, 78, 42], 1, [[0, 0], [500, 0], [500, 500], [0, 500]], "forest"]]})
 	var chunk = map._chunks["0_0"]
 	check(chunk._data["trees"].is_empty() and chunk._trees == null, "a dense canopy creates no individual tree records or tree nodes")
-	check(chunk.get_child_count() < 10 and chunk._season_layers.size() == 1, "a quarter square kilometre of forest uses a fixed number of nodes")
-	check(chunk._season_layers[0].material == MapChunk.FOREST_MATERIAL, "forest fills use the shared canopy material")
+	check(chunk.get_child_count() < 10 and chunk._season_layers.size() == 2, "a quarter square kilometre of forest uses a fixed number of nodes")
+	check(chunk._season_layers[0].z_index == 13 and chunk._season_layers[0].material.shader == MapChunk.FOREST_MATERIAL.shader, "forest crowns render over cars and tracks using the canopy shader")
+	chunk._data["landuse"].append([[100, 140, 70], 1, PackedVector2Array([Vector2(100, -100), Vector2(150, -100), Vector2(150, -150), Vector2(100, -150)]), "grass"])
+	chunk._data["roads"] = [{"points": PackedVector2Array([Vector2(0, -250), Vector2(500, -250)]), "half_width_m": 4.0}]
+	var mask: Image = chunk._forest_mask().get_image()
+	check(mask.get_pixel(50, 450).r > 0.9, "forest interiors retain overhead crowns")
+	check(mask.get_pixel(125, 375).r < 0.1, "smaller landuse clearings cut holes in overhead crowns")
+	check(mask.get_pixel(200, 250).r < 0.1 and mask.get_pixel(200, 240).r > 0.9, "roads remove crowns only along their corridor")
 	var wildlife := preload("res://wildlife.gd")
 	check(wildlife.habitat(0, 0, true) == "rural", "unmapped forest trees still provide rural wildlife habitat")
 	check(wildlife.habitat(30, 0, false) == "urban", "urban wildlife habitat is unchanged")

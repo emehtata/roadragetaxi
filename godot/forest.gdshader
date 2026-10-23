@@ -1,6 +1,8 @@
 // Dense visual canopy: no per-tree nodes, network records or collision objects.
 shader_type canvas_item;
 
+uniform sampler2D canopy_mask : filter_linear, repeat_disable;
+uniform vec4 mask_rect;
 varying vec2 world;
 
 vec2 hash2(vec2 p) {
@@ -20,6 +22,7 @@ void fragment() {
 		vec2 cell = floor(grid);
 		vec3 color = COLOR.rgb * 0.65;
 		float highest = -1.0;
+		float coverage = 0.0;
 		vec2 neighbour = mix(vec2(-1.0), vec2(1.0), step(vec2(0.5), fract(grid)));
 		float pixel_size = max(length(dFdx(world)), length(dFdy(world)));
 		// Fade crowns below a few pixels instead of aliasing at map zoom.
@@ -49,11 +52,15 @@ void fragment() {
 						crown *= light * (0.88 + seed.x * 0.24);
 						float snow = winter * (0.5 + 0.4 * max(0.0, 1.0 - distance / edge));
 						crown = mix(crown, vec3(0.82, 0.88, 0.88), snow);
-						color = mix(COLOR.rgb * 0.65, crown, 1.0 - smoothstep(edge - aa, edge + aa, distance));
+						coverage = 1.0 - smoothstep(edge - aa, edge + aa, distance);
+						color = crown;
 					}
 				}
 			}
 		}
 		COLOR.rgb = mix(COLOR.rgb * 0.85, color, detail);
+		COLOR.a *= texture(canopy_mask, (world - mask_rect.xy) / mask_rect.zw).r * mix(1.0, coverage, detail);
+	} else {
+		COLOR.a = 0.0;
 	}
 }

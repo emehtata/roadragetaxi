@@ -121,7 +121,13 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
-		landuse.material = FOREST_MATERIAL
+		if message["landuse"].any(func(area): return area.size() > 3 and str(area[3]) in ["forest", "wood"]):
+			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
+			var material := FOREST_MATERIAL.duplicate() as ShaderMaterial
+			material.set_shader_parameter("canopy_mask", _forest_mask())
+			material.set_shader_parameter("mask_rect", Vector4(_bounds_rect.position.x, _bounds_rect.position.y, _bounds_rect.size.x, _bounds_rect.size.y))
+			canopy.material = material
+			_season_layers.append(canopy)
 		_season_layers.append(landuse)
 		if message["landuse"].any(func(area): return area.size() > 3 and str(area[3]) in ["biergarten", "grave_yard", "cemetery"]):
 			_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_site_details(self, node)))
@@ -793,6 +799,49 @@ static func _water_material() -> ShaderMaterial:
 	var water := ShaderMaterial.new()
 	water.shader = preload("res://water.gdshader")
 	return water
+
+
+# Bake visibility once per chunk; crowns cover vehicles, with roads and clearings cut out.
+func _forest_mask() -> ImageTexture:
+	var image := Image.create(maxi(1, ceili(_bounds_rect.size.x)), maxi(1, ceili(_bounds_rect.size.y)), false, Image.FORMAT_R8)
+	image.fill(Color.BLACK)
+	for area in _data.get("landuse", []):
+		var forest: bool = area.size() > 3 and str(area[3]) in ["forest", "wood"]
+		_mask_polygon(image, _points(area[2]), Color.WHITE if forest else Color.BLACK)
+	for key in ["waters", "buildings", "parking"]:
+		for polygon in _data.get(key, []):
+			_mask_polygon(image, _points(polygon), Color.BLACK)
+	for road in _data.get("roads", []):
+		for polygon in Geometry2D.offset_polyline(_points(road["points"]), float(road.get("half_width_m", 1.5)) + 2.0, Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND):
+			_mask_polygon(image, polygon, Color.BLACK)
+	for railway in _data.get("railways", []):
+		for polygon in Geometry2D.offset_polyline(_points(railway), 4.0):
+			_mask_polygon(image, polygon, Color.BLACK)
+	return ImageTexture.create_from_image(image)
+
+
+func _mask_polygon(image: Image, polygon: PackedVector2Array, color: Color) -> void:
+	if polygon.size() < 3:
+		return
+	var low := image.get_height()
+	var high := 0
+	for point in polygon:
+		low = mini(low, floori(point.y - _bounds_rect.position.y))
+		high = maxi(high, ceili(point.y - _bounds_rect.position.y))
+	for row in range(maxi(0, low), mini(image.get_height(), high)):
+		var y := _bounds_rect.position.y + row + 0.5
+		var crossings: Array[float] = []
+		var previous := polygon[-1]
+		for point in polygon:
+			if (point.y > y) != (previous.y > y):
+				crossings.append(point.x + (y - point.y) * (previous.x - point.x) / (previous.y - point.y) - _bounds_rect.position.x)
+			previous = point
+		crossings.sort()
+		for i in range(0, crossings.size() - 1, 2):
+			var start := clampi(ceili(crossings[i] - 0.5), 0, image.get_width())
+			var end := clampi(ceili(crossings[i + 1] - 0.5), 0, image.get_width())
+			if end > start:
+				image.fill_rect(Rect2i(start, row, end - start, 1), color)
 
 
 static func _forest_material() -> ShaderMaterial:
