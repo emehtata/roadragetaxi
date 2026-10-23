@@ -99,7 +99,7 @@ audio-check:
 	PYTHONPATH=src $(PYTHON) tools/validate_audio_assets.py
 
 test:
-	PYTHONPATH=src $(PYTHON) -m pytest -q
+	PYTHONPATH=src $(PYTHON) -m pytest -q -n auto
 
 compile:
 	$(PYTHON) -m compileall -q src/theroadragetrip
