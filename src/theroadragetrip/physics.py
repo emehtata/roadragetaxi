@@ -696,7 +696,10 @@ def compute_largest_connected_road_component(ways: List, min_share: Optional[flo
         return int(round(pt[0] / grid_res)), int(round(pt[1] / grid_res))
 
     for idx, w in enumerate(drivable):
-        for pt in (w.points_m[0], w.points_m[-1]):
+        # Every vertex, not only the ends: a side street usually meets the
+        # other road at one of its middle nodes (a T-junction). A bridge
+        # crossing over a road shares no node with it.
+        for pt in w.points_m:
             key = quantize(pt)
             if key not in pt_to_ways:
                 pt_to_ways[key] = []
