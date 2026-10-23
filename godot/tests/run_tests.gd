@@ -1061,6 +1061,14 @@ func test_rendering() -> void:
 	check(van_taxi._lamp_polys.any(func(lamp): return lamp[1] == RS.TAXI_SIGN), "a van taxi retains its illuminated roof sign")
 	check(van_taxi._car_shapes.any(func(shape): return shape[0] == "poly" and shape[2] == van_paint), "a van taxi keeps its own paint instead of becoming yellow")
 	van_taxi.free()
+	# rrt-019 cyclists: tyres and frame always; the rider only while riding (not PARKED, not fallen).
+	for case in [[true, false, true], [false, false, false], [true, true, false]]:
+		var bike := Entities.new()
+		bike._vehicle(Vector2.ZERO, 0.0, 1.8, 0.6, Color8(200, 40, 40), "bicycle", false, case[0], false, false, "", 0.0, case[1])
+		var lines := bike._car_shapes.filter(func(shape): return shape[0] == "line").size()
+		var rider := bike._car_shapes.any(func(shape): return shape[0] == "circle")
+		check(lines == 4 and rider == case[2], "bicycle: two tyres, frame and bars; rider %s" % ("shown" if case[2] else "hidden"))
+		bike.free()
 
 	# Wet roads: darken 90/255 at full wetness, no sheen below 0.15.
 	var dry := RS.wet_alphas(0.0)

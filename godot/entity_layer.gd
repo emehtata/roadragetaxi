@@ -793,6 +793,21 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 	var r := _right(heading)
 	var hl := length * 0.5
 	var hw := width * 0.5
+	if kind == "bicycle":  # tyres, frame, bars; the rider (in `color`) only while riding (engine_on: not PARKED)
+		var tyre := _lit(Color8(28, 28, 28))
+		var thin := maxf(_px(1.0), hl * 0.12)
+		var flat := fallen
+		if flat:  # lying on its side, the rider gone (a pedestrian beside it)
+			f = _forward(heading - PI / 2.0)
+			r = _right(heading - PI / 2.0)
+		for end: float in [0.62, -0.62]:
+			_car_shapes.append(["line", c + f * hl * (end + 0.33), c + f * hl * (end - 0.33), tyre, maxf(_px(1.5), hw * 0.55)])
+		_car_shapes.append(["line", c + f * hl * 0.62, c - f * hl * 0.62, _lit(color.darkened(0.25)), thin])  # frame
+		_car_shapes.append(["line", c + f * hl * 0.5 + r * hw * 0.9, c + f * hl * 0.5 - r * hw * 0.9, tyre, thin])  # handlebar
+		if engine_on and not flat:
+			_poly(_rect(c - f * hl * 0.05, f, r, hl * 0.28, -hl * 0.32, hw * 0.95), color, RS.OUTLINE)  # back and shoulders
+			_car_shapes.append(["circle", c + f * hl * 0.18, hw * 0.55, _lit(Color8(236, 196, 160))])  # head
+		return
 	if kind in TWO_WHEELERS:
 		if fallen:  # lying on its side
 			f = _forward(heading - PI / 2.0)
