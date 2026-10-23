@@ -259,7 +259,7 @@ def test_enclosed_sites_preserve_both_ground_and_boundary(tags, kind, barrier):
     assert world.railings
 
 
-def test_build_ways_generates_trees_in_offroad_scenery():
+def test_build_ways_leaves_unmapped_forest_trees_to_the_client():
     elements = [
         {"type": "node", "id": 1, "lat": 60.1, "lon": 25.1},
         {"type": "node", "id": 2, "lat": 60.1, "lon": 25.14},
@@ -271,8 +271,7 @@ def test_build_ways_generates_trees_in_offroad_scenery():
 
     ways, _, _, sceneries, _, _ = build_ways(elements)
 
-    assert sceneries[0].trees
-    assert all(tree_y > ways[0].half_width_m + 3.0 + 60100.0 for _, tree_y in sceneries[0].trees)
+    assert sceneries[0].kind == "wood" and sceneries[0].trees == []
 
 
 def test_build_ways_classifies_every_natural_scenery_kind_as_a_relation_too():
@@ -308,7 +307,7 @@ def test_build_ways_classifies_every_natural_scenery_kind_as_a_relation_too():
         assert sceneries[0].kind == kind
 
 
-def test_tree_density_follows_osm_scenery_type():
+def test_neither_forests_nor_parks_create_server_trees():
     forest = Scenery(
         [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)],
         "forest",
@@ -322,8 +321,7 @@ def test_tree_density_follows_osm_scenery_type():
 
     plant_trees([forest, park], [])
 
-    assert len(forest.trees) > len(park.trees)
-    assert len(park.trees) <= 6
+    assert forest.trees == [] and park.trees == []
 
 
 def test_plant_trees_uses_real_osm_positions_instead_of_procedural():

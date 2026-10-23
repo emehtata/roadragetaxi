@@ -1,7 +1,6 @@
 from collections import defaultdict
 import logging
 import math
-import random
 from typing import Callable, Iterator, List, Optional, Tuple
 
 
@@ -70,32 +69,19 @@ def plant_trees(
     progress_start: float = 0.0,
     progress_end: float = 1.0,
 ) -> None:
-    """Add deterministic tree centers to green areas while keeping them off roads.
+    """Attach only surveyed natural=tree positions; never synthesize server trees.
 
-    `real_trees` is the (x, y) meter positions of any real natural=tree OSM
-    nodes covering this batch, `real_tree_tags` their OSM tags in the same
-    order (genus/species/leaf_type, if surveyed - see classify_tree_kind).
-    A scenery area that actually contains some of them uses those exact
-    positions instead of procedural placement - some OSM areas (mapped
-    parks, tree-lined squares) have every real tree surveyed, and made-up
-    trees on top of (or instead of) real ones would just be wrong there.
-    Areas with no real tree data fall back to the existing density-based
-    procedural placement, unchanged.
+    Areas own their mapped trees where possible. Standalone mapped trees get
+    point sceneries so streaming and collision queries retain them too.
     """
-    tree_density = {
-        "forest": 100.0,
-        "wood": 100.0,
-        "scrub": 250.0,
-        "park": 1800.0,
-        "garden": 1800.0,
-    }
+    assigned = {point for scenery in sceneries if scenery.trees_from_osm for point in scenery.trees}
     total = len(sceneries)
     for scenery_index, scenery in enumerate(sceneries):
         if progress_callback and total:
             progress_callback(
                 progress_start
                 + (progress_end - progress_start) * scenery_index / total,
-                f"Planting trees ({scenery_index}/{total} scenery areas)...",
+                f"Loading OSM trees ({scenery_index}/{total} scenery areas)...",
             )
         if scenery.trees_from_osm:
             continue  # already has real tree positions - never top up with fake ones
@@ -103,16 +89,13 @@ def plant_trees(
             continue
         minx, miny, maxx, maxy = scenery.bbox
 
-        # Real OSM tree data wins regardless of scenery kind - a "grass"
-        # strip or a "residential"-landuse courtyard can have individually
-        # surveyed trees too, not just forest/park/wood/scrub/garden (the
-        # only kinds that get *procedural* filling below). Gating this on
-        # `kind in tree_density` would silently drop real trees in every
-        # other kind of area even though the data says they're there.
+        scenery.trees = []
+        scenery.tree_variations = []
+        scenery.tree_kinds = []
         if real_trees:
             matched = [
                 (index, x, y) for index, (x, y) in enumerate(real_trees)
-                if minx <= x <= maxx and miny <= y <= maxy and point_in_polygon(x, y, scenery.points_m)
+                if (x, y) not in assigned and minx <= x <= maxx and miny <= y <= maxy and point_in_polygon(x, y, scenery.points_m)
             ]
             if matched:
                 scenery.trees = [(x, y) for _, x, y in matched]
@@ -122,41 +105,19 @@ def plant_trees(
                     for index, x, y in matched
                 ]
                 scenery.trees_from_osm = True
+                assigned.update(scenery.trees)
                 continue
 
-        kind = scenery.kind.lower()
-        density = tree_density.get(kind)
-        if density is None:
+    for index, (x, y) in enumerate(real_trees or ()):
+        if (x, y) in assigned:
             continue
-        area = max(0.0, (maxx - minx) * (maxy - miny))
-        target = min(80, max(1, int(area / density)))
-        rng = random.Random(f"{round(minx)}:{round(miny)}:{kind}")
-        road_candidates = [
-            way for way in ways
-            if getattr(way, "is_drivable", True)
-            and way.bbox[2] >= minx - way.half_width_m - 3.0
-            and way.bbox[0] <= maxx + way.half_width_m + 3.0
-            and way.bbox[3] >= miny - way.half_width_m - 3.0
-            and way.bbox[1] <= maxy + way.half_width_m + 3.0
-        ]
-        for _ in range(target * 5):
-            if len(scenery.trees) >= target:
-                break
-            x = rng.uniform(minx, maxx)
-            y = rng.uniform(miny, maxy)
-            if not point_in_polygon(x, y, scenery.points_m):
-                continue
-            if any(
-                dist_point_to_segment(x, y, p1[0], p1[1], p2[0], p2[1]) < way.half_width_m + 3.0
-                for way in road_candidates
-                for p1, p2 in zip(way.points_m, way.points_m[1:])
-            ):
-                continue
-            scenery.trees.append((x, y))
-            scenery.tree_variations.append(abs(math.sin(x * 12.9898 + y * 78.233)))
-            scenery.tree_kinds.append(classify_tree_kind({}, x, y))
+        tags = (real_tree_tags[index] if real_tree_tags else {}) or {}
+        sceneries.append(Scenery(points_m=[(x, y)], kind="tree", bbox=(x, y, x, y),
+                                 trees=[(x, y)], tree_variations=[abs(math.sin(x * 12.9898 + y * 78.233))],
+                                 tree_kinds=[classify_tree_kind(tags, x, y)], trees_from_osm=True))
+        assigned.add((x, y))
     if progress_callback:
-        progress_callback(progress_end, f"Planted trees in {total} scenery areas")
+        progress_callback(progress_end, f"Loaded {len(assigned)} OSM trees")
 
 
 def remove_trees_under_roads(sceneries: List[Scenery], ways: List[Way]) -> None:

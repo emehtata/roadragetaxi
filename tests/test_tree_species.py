@@ -56,7 +56,7 @@ def test_plant_trees_uses_real_species_tags_over_the_position_mix():
     assert forest.tree_kinds[2] in ("spruce", "pine", "birch")  # untagged - still a concrete, mixed-in kind
 
 
-def test_plant_trees_procedural_forest_trees_are_mixed_species():
+def test_forests_do_not_create_server_tree_positions():
     forest = Scenery(
         points_m=[(0.0, 0.0), (500.0, 0.0), (500.0, 500.0), (0.0, 500.0)],
         kind="forest", bbox=(0.0, 0.0, 500.0, 500.0),
@@ -64,9 +64,9 @@ def test_plant_trees_procedural_forest_trees_are_mixed_species():
 
     plant_trees([forest], [])
 
-    assert len(forest.trees) > 10
-    assert len(forest.tree_kinds) == len(forest.trees)
-    assert len(set(forest.tree_kinds)) > 1  # not all the same species
+    assert forest.trees == []
+    assert forest.tree_kinds == []
+    assert forest.tree_variations == []
 
 
 def test_build_ways_real_tree_genus_tag_picks_its_species():
@@ -84,11 +84,34 @@ def test_build_ways_real_tree_genus_tag_picks_its_species():
     assert sceneries[0].tree_kinds == ["spruce"]
 
 
+def test_standalone_osm_trees_are_retained_without_a_green_area():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.1, "lon": 25.1,
+         "tags": {"natural": "tree", "genus": "Pinus"}},
+        {"type": "node", "id": 2, "lat": 60.11, "lon": 25.11,
+         "tags": {"natural": "tree", "genus": "Betula"}},
+    ]
+    world = build_ways(elements)
+    assert sum(len(s.trees) for s in world.sceneries) == 2
+    assert {kind for s in world.sceneries for kind in s.tree_kinds} == {"pine", "birch"}
+    assert all(s.trees_from_osm and len(s.points_m) == 1 for s in world.sceneries)
+    from theroadragetrip.map_chunks import ChunkIndex
+    index = ChunkIndex(world)
+    assert sum(len(chunk["trees"]) for chunk in index._chunks.values()) == 2
+    from theroadragetrip.taxi import TaxiManager
+    manager = TaxiManager(ways=[], language="en")
+    point = world.sceneries[0].trees[0]
+    nearby = manager._nearby_collision_trees(world.sceneries, *point, 5.0)
+    assert point in {(x, y) for _, _, x, y in nearby}
 
 
-
-
-
-
-
-
+def test_osm_trees_are_owned_once_and_unmapped_old_trees_are_removed():
+    square = [(0, 0), (100, 0), (100, 100), (0, 100)]
+    forest = Scenery(square, "forest", bbox=(0, 0, 100, 100), trees=[(50, 50)])
+    park = Scenery(square, "park", bbox=(0, 0, 100, 100))
+    sceneries = [forest, park]
+    plant_trees(sceneries, [], real_trees=[(10, 10), (200, 200)],
+                real_tree_tags=[{"genus": "Picea"}, {"genus": "Betula"}])
+    assert [tree for s in sceneries for tree in s.trees] == [(10, 10), (200, 200)]
+    plant_trees(sceneries, [])
+    assert [tree for s in sceneries for tree in s.trees] == [(10, 10), (200, 200)]

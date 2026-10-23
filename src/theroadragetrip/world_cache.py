@@ -118,7 +118,8 @@ MAGIC = b"RWC\0"
 # 51: Standalone caravans and caravans hitched to cars.
 # 52: Validated outdoor beach-volleyball court geometry.
 # 53: culverted and underground waterways are not surface water.
-FORMAT_VERSION = 53
+# 54: only surveyed OSM trees are server objects; forests use client canopy rendering.
+FORMAT_VERSION = 54
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

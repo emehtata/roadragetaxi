@@ -1512,18 +1512,6 @@ def build_ways(
             )
         )
 
-    if progress_callback:
-        progress_callback(0.965, f"Planting trees ({len(sceneries)} scenery areas)...")
-    plant_trees(
-        sceneries,
-        ways,
-        real_trees=real_trees_m,
-        real_tree_tags=real_tree_tags,
-        progress_callback=progress_callback,
-        progress_start=0.965,
-        progress_end=0.97,
-    )
-
     water_region = None
     if fetch_bbox is not None:
         from shapely.geometry import Polygon
@@ -1629,7 +1617,6 @@ def build_ways(
                     surface_volleyball.add(id(scenery))
                 if kind == "beach" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
                     surface_beaches.add(id(scenery))
-                plant_trees([scenery], ways, real_trees=real_trees_m, real_tree_tags=real_tree_tags)
                 sceneries.append(scenery)
             elif "place" in tags and name and pts:
                 cx = sum(xs) / len(xs)
@@ -1930,6 +1917,9 @@ def build_ways(
                 x=post_x, y=post_y, layer=layer_val, id=nid,
                 direction_angle=road_angle, road_half_width_m=road_half_w,
             ))
+
+    plant_trees(sceneries, ways, real_trees=real_trees_m, real_tree_tags=real_tree_tags,
+                progress_callback=progress_callback, progress_start=0.99, progress_end=0.995)
 
     t_total = time.time() - t_start
     logger.info(

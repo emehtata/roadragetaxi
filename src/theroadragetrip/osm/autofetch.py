@@ -48,9 +48,6 @@ from .build import (
     build_ways,
 )
 
-from .trees import (
-    plant_trees,
-)
 
 
 def _tile_intersects_bounds(tile: TileCoord, bounds: Tuple[float, float, float, float]) -> bool:
@@ -1413,7 +1410,6 @@ class AutoFetchManager:
                     way for way in new_ways
                     if way.osm_id is None or way.osm_id not in known_way_ids
                 ]
-                plant_trees(new_sceneries, self.ways + unique_new_ways)
                 self.ways.extend(unique_new_ways)
                 added_waters = _extend_unique(self.waters, new_waters)
                 added_buildings = _extend_unique(self.buildings, new_buildings)

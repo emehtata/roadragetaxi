@@ -41,7 +41,13 @@ static func draw_areas(chunk, node: Node2D, key: String) -> void:
 			match int(area[1]):
 				1: color = chunk.seasonal_color(color, chunk._season)
 				2: color = RINK_ICE if chunk._season[0] >= FIELDS_FROZEN_WINTER_WEIGHT else chunk.seasonal_color(color, chunk._season)
-			node.draw_colored_polygon(polygon, color)
+			if key == "landuse" and area.size() > 3 and str(area[3]) in ["forest", "wood"]:
+				var uv := PackedVector2Array()
+				uv.resize(polygon.size())
+				uv.fill(Vector2(1.0 + float(chunk._season[0]), float(chunk._season[3])))
+				node.draw_polygon(polygon, PackedColorArray([color]), uv)
+			else:
+				node.draw_colored_polygon(polygon, color)
 
 
 ## Above all ground fills: smaller grass plots must not paint over headstones.

@@ -57,6 +57,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
+	test_forest_canopy()
 	test_decorated_sites()
 	test_menu_music()
 	test_camera_view_command()
@@ -3085,4 +3086,19 @@ func test_environment_ambience() -> void:
 	check(fading.rural_day > 0.0 and fading.rural_day < day.rural_day, "location changes fade gently")
 	var muted := ambience.mix(map._chunks, Vector2.ZERO, Vector2(250, -250), 0.0, 0.0, 0.0, false, 0.1)
 	check(muted.values().all(func(g): return g == 0.0), "underground immediately stops outdoor beds")
+	map.free()
+
+
+func test_forest_canopy() -> void:
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[40, 78, 42], 1, [[0, 0], [500, 0], [500, 500], [0, 500]], "forest"]]})
+	var chunk = map._chunks["0_0"]
+	check(chunk._data["trees"].is_empty() and chunk._trees == null, "a dense canopy creates no individual tree records or tree nodes")
+	check(chunk.get_child_count() < 10 and chunk._season_layers.size() == 1, "a quarter square kilometre of forest uses a fixed number of nodes")
+	check(chunk._season_layers[0].material == MapChunk.FOREST_MATERIAL, "forest fills use the shared canopy material")
+	var wildlife := preload("res://wildlife.gd")
+	check(wildlife.habitat(0, 0, true) == "rural", "unmapped forest trees still provide rural wildlife habitat")
+	check(wildlife.habitat(30, 0, false) == "urban", "urban wildlife habitat is unchanged")
 	map.free()

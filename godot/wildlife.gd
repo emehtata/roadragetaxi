@@ -28,9 +28,10 @@ func _ready() -> void:
 	z_index = 11
 
 
-static func habitat(building_count: int, tree_count: int) -> String:
-	# The stream has buildings and trees but not semantic land-use names.
-	# This deliberately uses that evidence, never distance from a city centre.
+static func habitat(building_count: int, tree_count: int, forested: bool = false) -> String:
+	# Canopy forests no longer need individual server trees to be rural habitat.
+	if forested and building_count < 5:
+		return "rural"
 	if building_count >= 18 and tree_count < 24:
 		return "urban"
 	if building_count >= 5 or tree_count < 18:
@@ -88,7 +89,9 @@ func replace_chunk(message: Dictionary, origin: Vector2) -> void:
 	var a := MapMath.point(origin, float(bounds[0]), float(bounds[1]))
 	var b := MapMath.point(origin, float(bounds[2]), float(bounds[3]))
 	var rect := Rect2(Vector2(minf(a.x, b.x), minf(a.y, b.y)), (b - a).abs())
-	var weights := habitat_weights(habitat(message.get("buildings", []).size(), message.get("trees", []).size()))
+	var forested: bool = message.get("landuse", []).any(func(area): return area.size() > 3 and str(area[3]) in ["forest", "wood"])
+	var kind := habitat(message.get("buildings", []).size(), message.get("trees", []).size(), forested)
+	var weights := habitat_weights(kind)
 	for species in weights.keys():
 		weights[species] *= float(species_weights.get(species, 1.0))
 	var wanted := mini(max_active - animals.size(), maxi(0, roundi(density * rect.get_area() / 250000.0)))

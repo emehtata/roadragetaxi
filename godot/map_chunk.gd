@@ -37,6 +37,7 @@ const B3 := preload("res://buildings_3d.gd")
 const Perf := preload("res://perf.gd")
 const BRIDGE_Z_MAX := 3
 const SHALLOW_WATER_M := 6.0  # the lighter band along a shore
+static var FOREST_MATERIAL := _forest_material()
 static var SHORE_MATERIAL := _shore_material()
 static var WATER_MATERIAL := _water_material()  # shared: one shader animates every lake
 const SPRING_ICE_COLORS := [Color8(225, 236, 241), Color8(205, 224, 232), Color8(238, 243, 244)]
@@ -119,7 +120,9 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_season_layers.append(shore)
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
-		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
+		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
+		landuse.material = FOREST_MATERIAL
+		_season_layers.append(landuse)
 		if message["landuse"].any(func(area): return area.size() > 3 and str(area[3]) in ["biergarten", "grave_yard", "cemetery"]):
 			_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_site_details(self, node)))
 	if not message.get("attractions", []).is_empty():
@@ -790,6 +793,12 @@ static func _water_material() -> ShaderMaterial:
 	var water := ShaderMaterial.new()
 	water.shader = preload("res://water.gdshader")
 	return water
+
+
+static func _forest_material() -> ShaderMaterial:
+	var forest := ShaderMaterial.new()
+	forest.shader = preload("res://forest.gdshader")
+	return forest
 
 
 static func _shore_material() -> ShaderMaterial:

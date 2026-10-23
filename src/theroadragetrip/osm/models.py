@@ -261,11 +261,7 @@ class Scenery:
     # merging in) doesn't re-scan every scenery ever loaded - just the
     # newly-added ones.
     trees_checked_against_roads: bool = field(default=False, repr=False)
-    # Set by plant_trees() when .trees came from real OSM natural=tree
-    # nodes rather than procedural placement - marks this scenery as done
-    # so a later plant_trees() call (e.g. autofetch's re-merge with a
-    # fuller road list) never tops it up with fake trees alongside real
-    # ones.
+    # Provenance for surveyed natural=tree nodes; client canopy trees never enter this list.
     trees_from_osm: bool = field(default=False, repr=False)
     golf_holes: List[List[Tuple[float, float]]] = field(default_factory=list)  # tee-to-pin lines, server only
     tennis_frame: List[float] = field(default_factory=list)  # validated outdoor court geometry

@@ -42,4 +42,4 @@ def test_background_auto_fetch_updates_ways_and_bounds():
     assert len(ways) == 2
     nb = m.get_bounds()
     assert nb[2] >= 1200.0
-    assert m.sceneries[0].trees
+    assert m.sceneries[0].kind == "wood" and m.sceneries[0].trees == []
