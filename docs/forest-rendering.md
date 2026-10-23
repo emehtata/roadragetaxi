@@ -7,7 +7,7 @@ tree is kept as a point scenery so it is streamed and remains a collision
 and felling target. Forests, parks and gardens never receive invented server
 tree positions. Tile merges do not plant additional trees.
 
-Mapped `forest` and `wood` polygons carry a dense canopy in the Godot client.
+Mapped `forest`, `wood` and `scrub` polygons carry a dense canopy in the Godot client.
 The canopy shader draws overlapping, position-seeded pine, spruce and
 birch crowns without creating individual tree nodes, collision shapes or
 network records. Crowns render at z13 above cars and tyre tracks. A one-metre visibility mask

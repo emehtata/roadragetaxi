@@ -3104,6 +3104,11 @@ func test_forest_canopy() -> void:
 	check(mask.get_pixel(50, 450).r > 0.9, "forest interiors retain overhead crowns")
 	check(mask.get_pixel(125, 375).r < 0.1, "smaller landuse clearings cut holes in overhead crowns")
 	check(mask.get_pixel(200, 250).r < 0.1 and mask.get_pixel(200, 240).r > 0.9, "roads remove crowns only along their corridor")
+	map.add_chunk({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[108, 120, 78], 1, [[500, 0], [1000, 0], [1000, 500], [500, 500]], "scrub"]]})
+	var scrub = map._chunks["1_0"]
+	check(scrub._season_layers.size() == 2 and scrub._season_layers[0].z_index == 13, "scrub creates the same overhead canopy as forests")
+	check(scrub._forest_mask().get_image().get_pixel(250, 250).r > 0.9, "scrub interiors retain canopy coverage")
 	var wildlife := preload("res://wildlife.gd")
 	check(wildlife.habitat(0, 0, true) == "rural", "unmapped forest trees still provide rural wildlife habitat")
 	check(wildlife.habitat(30, 0, false) == "urban", "urban wildlife habitat is unchanged")

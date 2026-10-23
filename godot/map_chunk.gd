@@ -121,7 +121,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
-		if message["landuse"].any(func(area): return area.size() > 3 and str(area[3]) in ["forest", "wood"]):
+		if message["landuse"].any(func(area): return area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]):
 			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
 			var material := FOREST_MATERIAL.duplicate() as ShaderMaterial
 			material.set_shader_parameter("canopy_mask", _forest_mask())
@@ -806,7 +806,7 @@ func _forest_mask() -> ImageTexture:
 	var image := Image.create(maxi(1, ceili(_bounds_rect.size.x)), maxi(1, ceili(_bounds_rect.size.y)), false, Image.FORMAT_R8)
 	image.fill(Color.BLACK)
 	for area in _data.get("landuse", []):
-		var forest: bool = area.size() > 3 and str(area[3]) in ["forest", "wood"]
+		var forest: bool = area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]
 		_mask_polygon(image, _points(area[2]), Color.WHITE if forest else Color.BLACK)
 	for key in ["waters", "buildings", "parking"]:
 		for polygon in _data.get(key, []):

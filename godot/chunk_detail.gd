@@ -41,7 +41,7 @@ static func draw_areas(chunk, node: Node2D, key: String) -> void:
 			match int(area[1]):
 				1: color = chunk.seasonal_color(color, chunk._season)
 				2: color = RINK_ICE if chunk._season[0] >= FIELDS_FROZEN_WINTER_WEIGHT else chunk.seasonal_color(color, chunk._season)
-			if key == "landuse" and area.size() > 3 and str(area[3]) in ["forest", "wood"]:
+			if key == "landuse" and area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]:
 				var uv := PackedVector2Array()
 				uv.resize(polygon.size())
 				uv.fill(Vector2(1.0 + float(chunk._season[0]), float(chunk._season[3])))
