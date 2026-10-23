@@ -1578,6 +1578,10 @@ class TaxiManager:
                 if centre_distance + reach < min_dist or centre_distance - reach > max_dist:
                     continue
             nearest: Optional[Tuple[float, float, str, float]] = None
+            # The address's own street wins when it is within reach: a house
+            # on a side street is picked up there, not on a closer main road.
+            street = getattr(building, "street", None)
+            on_street: Optional[Tuple[float, float, str, float]] = None
             nearby = self._ways_near(center_x, center_y, reach)
 
             for anchor_x, anchor_y in anchors:
@@ -1600,7 +1604,11 @@ class TaxiManager:
                         road_distance = math.hypot(anchor_x - road_x, anchor_y - road_y)
                         if nearest is None or road_distance < nearest[3]:
                             nearest = (road_x, road_y, way.name or "", road_distance)
+                        if street and way.name == street and (on_street is None or road_distance < on_street[3]):
+                            on_street = (road_x, road_y, way.name, road_distance)
 
+            if on_street is not None and on_street[3] <= max_road_distance:
+                nearest = on_street
             if nearest is None or nearest[3] > max_road_distance:
                 continue
             road_x, road_y, way_name, _ = nearest
