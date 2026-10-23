@@ -7,6 +7,8 @@ import time
 
 import pytest
 
+pytestmark = pytest.mark.timing  # wall-clock assertions: serial in make test (pytest.ini)
+
 
 def _start_server(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["prog", "--use-sample", "--no-menu"])
@@ -177,9 +179,9 @@ def test_a_client_can_reconnect_and_gets_the_map_again(monkeypatch):
     first.close()
     assert _tick_until(server, lambda: not server._clients)
     second = transport.connect(server.host, server.port)
-    time.sleep(0.05)
+    assert _tick_until(server, lambda: server._clients)  # accepted on the server's thread: no fixed sleep
     server.tick(1.0 / 30.0)
-    types = [m["type"] for m in _all_messages(second)]
+    types = [m["type"] for m in _until_state(second)]
     assert types[0] == "world" and "state" in types
     second.close()
 

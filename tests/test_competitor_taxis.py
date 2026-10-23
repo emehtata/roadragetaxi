@@ -15,6 +15,8 @@ from theroadragetrip.osm import Way
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
 
+pytestmark = pytest.mark.timing  # wall-clock assertions: serial in make test (pytest.ini)
+
 
 @pytest.mark.parametrize("day,hour,expected", [(16, 21, 0), (16, 22, 10), (17, 3, 10),
                                               (17, 23, 10), (18, 3, 10), (18, 6, 0), (19, 3, 0)])

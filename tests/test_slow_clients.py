@@ -15,6 +15,8 @@ import time
 
 import pytest
 
+pytestmark = pytest.mark.timing  # wall-clock assertions: serial in make test (pytest.ini)
+
 TICK = 1.0 / 30.0
 
 

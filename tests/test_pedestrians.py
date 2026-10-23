@@ -1066,6 +1066,7 @@ def test_pedestrian_traffic_light_crossing_stop():
         color=(255, 0, 0),
     )
     ped_mgr.pedestrians = [ped]
+    ped_mgr._consider_activities = lambda: None  # a random bench visit is not what this tests (flaked ~1 in 10)
     player = Car(x=100.0, y=100.0, heading=0.0, speed=0.0)
 
     ped_mgr.update(player, dt=0.1)
