@@ -32,6 +32,7 @@ class VehicleDefinition:
     traffic_weight: float = 0.0
     experimental: bool = False
     trailer: Optional[TrailerSpec] = None  # towed behind (length_m/width_m are the towing vehicle's)
+    movement: str = "road"  # "road": npc.update_npc on the car network; "cycle": cycling.py on the cycle network
 
 
 VEHICLE_DEFINITIONS = {
@@ -52,7 +53,10 @@ VEHICLE_DEFINITIONS = {
         VehicleDefinition("car_caravan", "Car with caravan", "car", 4.3, 1.8, 4, 80.0, errand_eligible=False, traffic_weight=0.008,
                           trailer=TrailerSpec("caravan", 4.8, 2.3, 0.9, 2.8)),
         VehicleDefinition("motorcycle", "Motorcycle", "motorcycle", 2.0, 0.7, 1, household_eligible=True, traffic_weight=0.10, experimental=True),
-        VehicleDefinition("bicycle", "Bicycle", "bicycle", 1.8, 0.5, 1, requires_parking=False, is_road_vehicle=False),
+        # Cyclists: their own network and movement (cycling.py) and their own
+        # demand share (npc.CYCLING_SHARE), not the car traffic_weight draw.
+        VehicleDefinition("bicycle", "Bicycle", "bicycle", 1.8, 0.6, 1, 25.0, requires_parking=False, is_road_vehicle=False,
+                          household_eligible=False, passenger_eligible=False, errand_eligible=False, movement="cycle"),
     )
 }
 

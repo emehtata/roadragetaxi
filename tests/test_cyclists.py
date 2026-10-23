@@ -50,3 +50,232 @@ def test_cycle_route_prefers_cycle_path_and_never_cuts_across_open_ground():
     footway = _way([(200, 0), (300, 0)], "footway")
     world = TrafficWorld([road, footway, far])
     assert _route(world, (0, 0), (400, 0)) is None
+
+
+# --- lifecycle and behaviour through the real NPC update loop -------------
+
+import pytest
+from types import SimpleNamespace
+
+from theroadragetrip import cycling
+from theroadragetrip.npc import NPCState, NPCVehicleManager
+from theroadragetrip.osm import TrafficLight
+from theroadragetrip.physics import Car, SpatialWayGrid
+from theroadragetrip.residents import ResidentManager
+
+DT = 1 / 30
+
+
+class _World:
+    def __init__(self, ways, lights=()):
+        self.ways = ways
+        self.traffic = TrafficWorld(ways, traffic_lights=list(lights))
+        self.grid = SpatialWayGrid(ways)
+        self.residents = ResidentManager()
+        self.manager = NPCVehicleManager(target_count=0, min_count=0, max_count=0)
+        self.manager._population_elapsed = -1e9  # no population ticks: the test places traffic itself
+        self.traffic.npcs = self.manager.vehicles
+
+    def cyclist(self, start, destination, cruise=5.0):
+        route = run_route_steps(cycling.cycle_trip_steps(
+            self.traffic.cycle_graph, start, self.grid, 0.6, destination=destination))
+        assert route is not None
+        route.cruise_mps = cruise
+        job = {"kind": "cycle", "vehicle": None}
+        self.manager._finish_cycle_job(job, route, 1e6, 1e6, None, self.residents)
+        vehicle = self.manager.vehicles[-1]
+        vehicle.car.speed = 0.0
+        return vehicle
+
+    def tick(self, seconds, player=None, pedestrians=(), until=None):
+        peds = None if not pedestrians else SimpleNamespace(pedestrians=list(pedestrians))
+        for _ in range(int(seconds / DT)):
+            self.manager.update(DT, 50.0, 0.0, self.residents, self.traffic, self.ways, spatial_grid=self.grid,
+                                player_car=player, pedestrian_mgr=peds)
+            self.traffic.advance_time(DT)
+            if until is not None and until():
+                return True
+        return False
+
+
+def _distance_to_ways(x, y, ways):
+    from theroadragetrip.geo import dist_point_to_segment
+    return min(dist_point_to_segment(x, y, *a, *b) for way in ways for a, b in zip(way.points_m, way.points_m[1:]))
+
+
+def test_cyclist_lifecycle_ride_arrive_and_retire_keeps_the_resident():
+    path = _way([(0, 0), (150, 0)], "cycleway")
+    world = _World([path])
+    bike = world.cyclist((0, 0), (150, 0))
+    driver = world.manager.drivers[bike.vehicle_id]
+    rider = world.residents.get(driver.resident_id)
+    assert bike.vehicle_type == "bicycle" and bike.owner_id == rider.resident_id
+    assert world.tick(60, until=lambda: bike.state == NPCState.PARKED)
+    assert abs(bike.x - 150) < 2.5 and bike.speed == 0.0
+    world.manager._top_up_cyclists(1e6, 1e6, world.traffic, world.residents, world.grid, None, lambda v: True)
+    assert bike not in world.manager.vehicles and bike.vehicle_id not in world.manager.drivers
+    assert world.residents.get(rider.resident_id) is not None and rider.active_vehicle_id is None
+
+
+def test_cyclist_follows_infrastructure_across_a_transition_without_shortcuts():
+    # Cycle path, then a residential street (the transition), then a cycle path again.
+    ways = [_way([(0, 0), (60, 0)], "cycleway"),
+            _way([(60, 0), (60, 80)], "residential", half_width_m=4.0),
+            _way([(60, 80), (140, 80)], "cycleway")]
+    world = _World(ways)
+    bike = world.cyclist((0, 0), (140, 80))
+    worst = 0.0
+    for _ in range(int(60 / DT)):
+        world.tick(DT)
+        worst = max(worst, _distance_to_ways(bike.x, bike.y, ways))
+        if bike.state == NPCState.PARKED:
+            break
+    assert bike.state == NPCState.PARKED
+    assert worst < 4.5  # on the mapped ways (a carriageway's right edge included), never cutting the corner
+
+
+def test_cyclist_stops_at_red_and_goes_on_green():
+    """§ 74 / annex 2: red keeps a cyclist on the carriageway behind the signal."""
+    road = _way([(40, 0), (200, 0)], "residential")
+    light = TrafficLight(x=60.0, y=-2.0, cycle_time=16.0, offset=-7.0, direction_angle=0.0)  # red at t=0..7.5
+    world = _World([road], [light])
+    bike = world.cyclist((40, 0), (200, 0), cruise=6.0)
+    light.offset = -9.0  # red now, green at about t = 9 s: the cyclist arrives during red
+    stopped = False
+    while light.get_state(world.traffic.sim_time) in ("red", "red+yellow"):
+        world.tick(DT)
+        assert bike.x < 60.0 - 1.0  # red+yellow prepares for green; it is no permission to go
+        stopped = stopped or bike.speed < 0.05
+    assert stopped
+    assert world.tick(10.0, until=lambda: bike.x > 70.0)
+
+
+def _crossing_world():
+    # A cycle path crossing a two-way street at x = 50.
+    path = _way([(50, -20), (50, 40)], "cycleway")
+    road = _way([(0, 0), (200, 0)], "secondary", half_width_m=4.0)
+    return _World([path, road]), road
+
+
+def test_cyclist_from_a_cycle_path_yields_to_carriageway_traffic():
+    """§ 24(3): entry from a path - the cyclist yields to traffic on the road, from either side."""
+    world, road = _crossing_world()
+    bike = world.cyclist((50, -20), (50, 40))
+    car = Car(x=-20.0, y=-1.8, heading=0.0, speed=10.0)  # reaches the crossing as the cyclist does
+    waited = False
+    for _ in range(int(18 / DT)):
+        car.x += car.speed * DT
+        world.tick(DT, player=car)
+        if abs(bike.y) < 6.0 and bike.speed < 0.3 and car.x < 50:
+            waited = True
+        assert not (abs(bike.y) < 4.0 and abs(car.x - 50) < 3.0), "cyclist rode into the car's path"
+    assert waited and bike.y > 10.0
+
+
+def test_cyclist_crosses_without_stopping_when_the_road_is_clear():
+    world, _ = _crossing_world()
+    bike = world.cyclist((50, -20), (50, 40))
+    min_speed = 99.0
+    world.tick(2.0)
+    for _ in range(int(15 / DT)):
+        world.tick(DT)
+        if -3 < bike.y < 3:
+            min_speed = min(min_speed, bike.speed)
+    assert bike.y > 10.0 and min_speed > 1.0
+
+
+def test_car_right_hand_rule_ignores_a_cyclist_still_on_a_cycle_path():
+    from theroadragetrip.traffic_rules import crossing_yield_decision
+    road = _way([(0, 0), (100, 0)], "residential")
+    car = SimpleNamespace(x=30.0, y=0.0, heading=0.0, speed=8.0, length_m=4.3, way=road)
+    on_path = SimpleNamespace(x=50.0, y=-15.0, heading=math.pi / 2, speed=5.0, length_m=1.8,
+                              way=_way([(50, -40), (50, 40)], "cycleway"), state="CRUISING")
+    on_road = SimpleNamespace(**{**vars(on_path), "way": _way([(50, -40), (50, 40)], "residential")})
+    assert crossing_yield_decision(car, [on_path]) is None  # § 24(3): the path user yields
+    assert crossing_yield_decision(car, [on_road]) is not None  # § 24(1): a vehicle from the right
+
+
+def test_turning_car_yields_to_a_cyclist_crossing_its_exit():
+    """§ 24(2): turning into a street, give way to the cyclist crossing it."""
+    car = SimpleNamespace(x=0.0, y=0.0, heading=0.0, speed=6.0, length_m=4.3)
+    crossing = SimpleNamespace(x=5.0, y=-6.0, heading=0.0, speed=5.0, vehicle_type="bicycle", state="CRUISING")
+    # Car turns right at (15, 0) into a street heading south (-pi/2); the cyclist rides east across it.
+    assert cycling.turning_yield_to_cyclists(car, (15.0, -3.0), -math.pi / 2, 15.0, [crossing]) is not None
+    along_exit = SimpleNamespace(**{**vars(crossing), "x": 15.0, "y": -12.0, "heading": -math.pi / 2})
+    assert cycling.turning_yield_to_cyclists(car, (15.0, -3.0), -math.pi / 2, 15.0, [along_exit]) is None
+    committed = cycling.turning_yield_to_cyclists(car, (15.0, -3.0), -math.pi / 2, 1.0, [crossing])
+    assert committed is None  # already in the turn: clear the junction
+
+
+def test_cyclist_slows_for_and_never_rides_into_a_pedestrian_on_a_shared_path():
+    """§§ 3-5: care for pedestrians - priority never authorizes a collision."""
+    path = _way([(0, 0), (120, 0)], "footway", bicycle="designated", half_width_m=1.5)
+    world = _World([path])
+    bike = world.cyclist((0, 0), (120, 0))
+    walker = SimpleNamespace(x=40.0, y=-0.4, radius_m=0.3, state="walking")  # in the bike's line
+    closest = 99.0
+    for _ in range(int(20 / DT)):
+        world.tick(DT, pedestrians=[walker])
+        closest = min(closest, math.hypot(bike.x - walker.x, bike.y - walker.y))
+    assert closest > 1.2 and bike.x < walker.x
+    walker.y = 1.4  # steps aside: the cyclist passes slowly
+    assert world.tick(30, pedestrians=[walker], until=lambda: bike.x > walker.x + 3)
+
+
+def test_two_cyclists_keep_their_distance_and_meet_oncoming_on_the_right():
+    path = _way([(0, 0), (200, 0)], "cycleway", half_width_m=1.5)
+    world = _World([path])
+    lead = world.cyclist((0, 0), (200, 0), cruise=4.0)
+    world.tick(8.0)
+    rear = world.cyclist((0, 0), (200, 0), cruise=6.5)
+    oncoming = world.cyclist((200, 0), (0, 0), cruise=5.0)
+    for _ in range(int(30 / DT)):
+        world.tick(DT)
+        if lead.state != NPCState.CRASHED:
+            assert lead.x - rear.x > 1.8 or lead.state == NPCState.PARKED
+    for bike in (lead, rear, oncoming):
+        assert bike.state != NPCState.CRASHED
+    assert rear.y < 0 < oncoming.y or oncoming.state == NPCState.PARKED  # each keeps to its right half
+
+
+def test_blocked_cyclist_neither_spins_nor_waits_forever():
+    path = _way([(0, 0), (100, 0)], "cycleway")
+    world = _World([path])
+    bike = world.cyclist((0, 0), (100, 0))
+    wreck = Car(x=40.0, y=-0.4, heading=0.0, speed=0.0)
+    wreck.state = "CRASHED"
+    gone = world.tick(60, player=wreck, until=lambda: bike not in world.manager.vehicles)
+    assert gone  # out of view: jam cleanup after the stuck timeout
+    assert bike.x < 40.0
+
+
+def test_cyclists_do_not_take_car_population_targets():
+    path = _way([(0, 0), (150, 0)], "cycleway")
+    world = _World([path])
+    world.cyclist((0, 0), (150, 0))
+    manager = world.manager
+    assert manager._pedestrian_lookup(None, manager.vehicles)(0, 0) == ()
+    from theroadragetrip.vehicles.base import vehicle_definition
+    assert vehicle_definition("bicycle").movement == "cycle"
+    assert "bicycle" not in [vehicle_id for vehicle_id in manager.vehicle_distribution
+                             if vehicle_definition(vehicle_id).movement == "road" and manager.vehicle_distribution[vehicle_id] > 0]
+
+
+def test_car_behind_a_cyclist_follows_without_hitting_it():
+    """§ 20 following distance: a car meeting a slower cyclist on its street keeps behind it."""
+    from theroadragetrip.npc import spawn_npc
+    road = [_way([(i * 50.0, 0.0), ((i + 1) * 50.0, 0.0)], "residential", half_width_m=4.5) for i in range(8)]
+    world = _World(road)
+    bike = world.cyclist((100.0, 0.0), (400.0, 0.0), cruise=4.0)
+    world.tick(2.0)
+    _resident, driver, car = spawn_npc(99, world.residents, world.traffic, road, (0.0, 0.0), (400.0, 0.0))
+    world.manager.vehicles.append(car)
+    world.manager.drivers[car.vehicle_id] = driver
+    closest = 99.0
+    for _ in range(int(40 / DT)):
+        world.tick(DT)
+        if bike.state == NPCState.PARKED:
+            break
+        closest = min(closest, bike.x - car.x)
+    assert car.state != NPCState.CRASHED and bike.state != NPCState.CRASHED
+    assert (car.length_m + bike.length_m) / 2 < closest < 15.0  # it did catch up, and stayed behind
