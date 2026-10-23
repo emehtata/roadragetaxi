@@ -67,6 +67,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_interpolation()
 	test_vehicle_body_triangles()
 	test_audio()
+	test_environment_ambience()
 	test_new_sound_triggers()
 	test_nightclub_audio()
 	test_car_audio()
@@ -783,6 +784,13 @@ func test_audio() -> void:
 	check(arrived[0]["range"][1] == 150.0, "with the game's hearing range")
 	check(audio.bus_for("ui.accept") == "UI" and audio.bus_for("weather.rain") == "Environment", "categories map to buses")
 	check(audio.bus_for("ambient.city_day") == "Environment", "the day bed is environment")
+	for key in ["rural_day", "rural_night", "beach"]:
+		audio.set_loop(key, 0.3)
+		audio.set_loop(key, 0.2)
+		check(audio.loop_playing(key) and audio.loop_starts[key] == 1, "new ambience loads and keeps playing across mix changes")
+		check(audio._loops[key].stream.loop and audio._loops[key].bus == "Environment", "new ambience loops on the Environment bus")
+		audio.set_loop(key, 0.0)
+
 	var opened := audio.resolve({"type": "sound", "group": "vehicle.door_open"})
 	check(opened.size() == 1 and opened[0]["file"].ends_with(".ogg") and FileAccess.file_exists(opened[0]["file"]), "getting in: the door-open sound exists as OGG")
 	check(audio.resolve({"type": "something_new"}).is_empty() and audio.unhandled.get("something_new") == 1, "an unknown event is noted, not played")
@@ -3014,3 +3022,49 @@ func test_performance_paths() -> void:
 	var report := Perf.summary(times)
 	check(is_equal_approx(report["worst_ms"], 100.0) and is_equal_approx(report["p95_ms"], 10.0) and report["over_66ms"] == 1, "worst, p95 and frames over 66 ms")
 	check(is_equal_approx(report["low_1pct_fps"], 10.0) and is_equal_approx(report["avg_ms"], 10.9), "1 % low is the slowest 1 % of frames, as FPS")
+
+
+func test_environment_ambience() -> void:
+	var ambience := preload("res://environment_ambience.gd").new()
+	var map := MapLayer.new()
+	root.add_child(map)
+	var urban_buildings: Array = []
+	for i in 20:
+		urban_buildings.append([[600 + i, 10], [601 + i, 10], [601 + i, 11]])
+	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "buildings": [], "roads": [], "railways": [],
+		"landuse": [[[206, 192, 150], 1, [[450, 100], [500, 100], [500, 200], [450, 200]], "beach"]]})
+	map.add_chunk({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500], "buildings": urban_buildings, "roads": [], "railways": []})
+	var rural := ambience.sample(map._chunks, Vector2.ZERO, Vector2(250, -250))
+	var urban := ambience.sample(map._chunks, Vector2.ZERO, Vector2(750, -250))
+	check(rural.rural == 1.0 and urban.rural == 0.0, "ambience uses local building density")
+	var edge := ambience.sample(map._chunks, Vector2.ZERO, Vector2(500, -250))
+	check(is_equal_approx(edge.rural, 0.5), "rural and city blend across chunk boundaries")
+	var beach := ambience.sample(map._chunks, Vector2.ZERO, Vector2(520, -150))
+	check(beach.beach > 0.5, "a beach is heard from the adjacent chunk")
+	check(urban.beach == 0.0, "a distant beach is silent")
+	map._chunks["1_0"]._data["landuse"] = [[[40, 78, 42], 1, PackedVector2Array([Vector2(700, -200), Vector2(800, -200), Vector2(800, -300), Vector2(700, -300)]), "forest"]]
+	check(ambience.sample(map._chunks, Vector2.ZERO, Vector2(750, -250)).rural == 1.0, "mapped woodland overrides nearby urban density")
+	map._chunks["1_0"]._data["landuse"] = []
+	check(ambience.sample({}, Vector2.ZERO, Vector2.ZERO).known == 0.0, "unloaded map areas have no invented city bed")
+
+	check(ambience.polygon_distance(Vector2(475, -150), map._chunks["0_0"]._data.landuse[0][2]) == 0.0, "inside a beach has full ambience")
+	var shifted := ambience.sample(map._chunks, Vector2(1000, 2000), Vector2(-480, 1850))
+	check(shifted.known > 0.0, "ambience cell lookup handles a nonzero map origin")
+	var day := ambience.mix(map._chunks, Vector2.ZERO, Vector2(250, -250), 0.0, 0.0, 0.0, true, 30.0).duplicate()
+	check(day.rural_day > 0.3 and day.city_day == 0.0 and day.rural_night == 0.0, "rural daylight replaces city traffic")
+	var rainy := ambience.mix(map._chunks, Vector2.ZERO, Vector2(250, -250), 0.0, 0.0, 1.0, true, 30.0)
+	check(rainy.rural_day < day.rural_day * 0.3, "rain quiets the bird bed")
+	var night := ambience.mix(map._chunks, Vector2.ZERO, Vector2(250, -250), 1.0, 0.0, 0.0, true, 30.0)
+	check(night.rural_day < 0.001 and night.rural_night > 0.2, "rural nights replace birds with quiet air")
+	var shore := ambience.mix(map._chunks, Vector2.ZERO, Vector2(475, -150), 0.0, 0.0, 0.0, true, 30.0)
+	check(shore.beach > 0.4, "mapped beach starts the shore wave loop")
+	var cold := ambience.mix(map._chunks, Vector2.ZERO, Vector2(475, -150), 0.0, 1.0, 0.0, true, 30.0)
+	check(cold.rural_day < 0.001 and cold.beach < 0.001, "winter suppresses birds and beach waves")
+	var city := ambience.mix(map._chunks, Vector2.ZERO, Vector2(750, -250), 0.0, 0.0, 0.0, true, 30.0)
+	check(city.city_day > 0.49 and city.rural_day < 0.001, "urban areas retain the city day bed")
+	ambience.clear()
+	var fading := ambience.mix(map._chunks, Vector2.ZERO, Vector2(250, -250), 0.0, 0.0, 0.0, true, 0.1)
+	check(fading.rural_day > 0.0 and fading.rural_day < day.rural_day, "location changes fade gently")
+	var muted := ambience.mix(map._chunks, Vector2.ZERO, Vector2(250, -250), 0.0, 0.0, 0.0, false, 0.1)
+	check(muted.values().all(func(g): return g == 0.0), "underground immediately stops outdoor beds")
+	map.free()

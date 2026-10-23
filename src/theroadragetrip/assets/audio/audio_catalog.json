@@ -5294,6 +5294,144 @@
           "rms_dbfs": -24.9
         }
       ]
+    },
+    "ambient.rural_day": {
+      "category": "ambient",
+      "event": "rural_day",
+      "description": "soft countryside breeze and sparse distant birds",
+      "trigger": "Client environment mix from streamed landuse and building density.",
+      "source": [
+        "godot/environment_ambience.gd"
+      ],
+      "priority": "optional",
+      "loop": true,
+      "duration_s": [
+        24.0
+      ],
+      "variations": 1,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loop crossfaded at generation; listening review remains separate.",
+      "generation": {
+        "prompt": "Finnish countryside in daylight, soft breeze rustling birch leaves and meadow grass, a few distant small songbird chirps, spacious quiet natural field recording, no traffic or people, seamless continuous ambience loop",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping, cars, engines, horns, sudden loud sounds"
+      },
+      "files": [
+        {
+          "id": "ambient.rural_day.01",
+          "file": "ambient/ambient_rural_day_01.ogg",
+          "variation": 1,
+          "variant": "soft countryside breeze and sparse distant birds",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "soft countryside breeze and sparse distant birds. Finnish countryside in daylight, soft breeze rustling birch leaves and meadow grass, a few distant small songbird chirps, spacious quiet natural field recording, no traffic or people, seamless continuous ambience loop",
+          "seed": 2388783231,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-23",
+          "duration_s": 24.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.013,
+          "rms_dbfs": -24.7
+        }
+      ]
+    },
+    "ambient.rural_night": {
+      "category": "ambient",
+      "event": "rural_night",
+      "description": "quiet woodland air and faint leaf rustle",
+      "trigger": "Client environment mix from streamed landuse and building density.",
+      "source": [
+        "godot/environment_ambience.gd"
+      ],
+      "priority": "optional",
+      "loop": true,
+      "duration_s": [
+        24.0
+      ],
+      "variations": 1,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loop crossfaded at generation; listening review remains separate.",
+      "generation": {
+        "prompt": "Quiet Finnish countryside at night, very gentle breeze in tree leaves and grass, soft distant woodland air, spacious natural field recording, no bird chorus, no insects, no traffic or people, seamless continuous ambience loop",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping, cars, engines, horns, sudden loud sounds"
+      },
+      "files": [
+        {
+          "id": "ambient.rural_night.01",
+          "file": "ambient/ambient_rural_night_01.ogg",
+          "variation": 1,
+          "variant": "quiet woodland air and faint leaf rustle",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "quiet woodland air and faint leaf rustle. Quiet Finnish countryside at night, very gentle breeze in tree leaves and grass, soft distant woodland air, spacious natural field recording, no bird chorus, no insects, no traffic or people, seamless continuous ambience loop",
+          "seed": 2501348088,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-23",
+          "duration_s": 24.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.008,
+          "rms_dbfs": -26.3
+        }
+      ]
+    },
+    "ambient.beach": {
+      "category": "ambient",
+      "event": "beach",
+      "description": "gentle lake shore waves on sand",
+      "trigger": "Client environment mix from streamed landuse and building density.",
+      "source": [
+        "godot/environment_ambience.gd"
+      ],
+      "priority": "optional",
+      "loop": true,
+      "duration_s": [
+        24.0
+      ],
+      "variations": 1,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loop crossfaded at generation; listening review remains separate.",
+      "generation": {
+        "prompt": "Small gentle lake waves washing onto a sandy Finnish beach, rhythmic soft lapping water with delicate receding fizz, calm light breeze, close natural stereo field recording, no large ocean surf, no birds or people, seamless continuous ambience loop",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping, cars, engines, horns, sudden loud sounds"
+      },
+      "files": [
+        {
+          "id": "ambient.beach.01",
+          "file": "ambient/ambient_beach_01.ogg",
+          "variation": 1,
+          "variant": "gentle lake shore waves on sand",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "gentle lake shore waves on sand. Small gentle lake waves washing onto a sandy Finnish beach, rhythmic soft lapping water with delicate receding fizz, calm light breeze, close natural stereo field recording, no large ocean surf, no birds or people, seamless continuous ambience loop",
+          "seed": 840349250,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-23",
+          "duration_s": 24.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.022,
+          "rms_dbfs": -23.9
+        }
+      ]
     }
   },
   "excluded": [

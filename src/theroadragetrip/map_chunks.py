@@ -418,7 +418,8 @@ class ChunkIndex:
             seasonal = 2 if kind in FROZEN_IN_WINTER_KINDS else 1 if kind in SPECKLE_SCENERY_KINDS or kind in SEASONAL_GROUND_KINDS else 0
             for cell, ring in static_world.clipped_pieces(scenery.points_m, self.size):
                 area = [static_world._rgb(color), seasonal, ring]
-                if kind in ("biergarten", "grave_yard", "cemetery"):
+                if kind in ("biergarten", "grave_yard", "cemetery", "beach", "forest", "wood",
+                            "farmland", "meadow", "grassland", "wetland", "scrub"):
                     area.append(kind)
                 self._chunk(cell)["landuse"].append(area)
                 if kind in FLOODLIT_KINDS:

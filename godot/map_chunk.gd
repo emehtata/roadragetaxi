@@ -120,7 +120,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
-		if message["landuse"].any(func(area): return area.size() > 3):
+		if message["landuse"].any(func(area): return area.size() > 3 and str(area[3]) in ["biergarten", "grave_yard", "cemetery"]):
 			_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_site_details(self, node)))
 	if not message.get("attractions", []).is_empty():
 		_px_layers.append(_add_layer(6, _draw_attractions))

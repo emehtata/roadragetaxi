@@ -350,6 +350,15 @@
     "ride": {
       "group": "ambient.ride_machinery",
       "positional": true
+    },
+    "rural_day": {
+      "group": "ambient.rural_day"
+    },
+    "rural_night": {
+      "group": "ambient.rural_night"
+    },
+    "beach": {
+      "group": "ambient.beach"
     }
   }
 }

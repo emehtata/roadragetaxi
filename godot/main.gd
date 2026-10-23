@@ -118,6 +118,7 @@ var graphics: Dictionary = {}  # empty for direct scenes/tests; the launcher sup
 var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
 var holidays: Node = preload("res://holiday_layer.gd").new()
 var wildlife := WildlifeLayer.new()
+var environment_ambience := preload("res://environment_ambience.gd").new()
 var animal_audio := preload("res://animal_audio.gd").new()
 var _tram_states := {}  # tram id -> its state last frame: the bell when one sets off
 var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, multiplied over the world canvas
@@ -278,6 +279,7 @@ func _on_connection(up: bool) -> void:
 		entities.buffer.clear()
 		map_layer.clear()
 		wildlife.clear()
+		environment_ambience.clear()
 		audio.stop_loops()
 		audio.stop_voices()
 
@@ -702,12 +704,16 @@ func _present(state: Dictionary) -> void:
 	flash.visible = lightning > 0.0  # godot-18: an invisible full-screen rect is still blended every frame
 	# The server's darkness; an older server without a calendar: the hour.
 	var night := (darkness if darkness >= 0.0 else _night(state.get("game_time_seconds", 12.0 * 3600.0))) if override_night < 0.0 else override_night
-	var city_gain := 0.5 * minf(nightclubs.city_ambience_gain(), car_stereos.city_ambience_gain())
-	audio.set_loop("city_day", city_gain * (1.0 - night))
-	audio.set_loop("city_night", city_gain * night)
 	var loops := weather_loops(state)
 	if override_rain >= 0.0:
 		loops["rain"] = override_rain
+	var music_gain := minf(nightclubs.city_ambience_gain(), car_stereos.city_ambience_gain())
+	var season: Array = calendar.get("season", [0.0, 0.0, 1.0, 0.0]) if typeof(calendar) == TYPE_DICTIONARY else [0.0, 0.0, 1.0, 0.0]
+	var rain := clampf(float(loops.get("rain", 0.0)) / 0.6, 0.0, 1.0)
+	var beds := environment_ambience.mix(map_layer._chunks, entities.origin, camera.position, clampf(night, 0.0, 1.0),
+		clampf(float(season[0]), 0.0, 1.0), rain, int(state.get("player", {}).get("map_level", 0)) == 0, get_process_delta_time())
+	for key in beds:
+		audio.set_loop(key, beds[key] * music_gain)
 	for key in loops:
 		audio.set_loop(key, loops[key])
 	_train_loop(state)
