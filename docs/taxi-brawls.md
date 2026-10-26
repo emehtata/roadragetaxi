@@ -28,7 +28,8 @@ It never decides a hit or a winner. No client message touches brawls.
 ```
 
 `TRANSITIONS` lists the legal moves; `_enter` refuses any other. A conflict
-resolves once (`_resolve` ignores a second call). Every conflict is removed
+resolves once (`_resolve` ignores a second call). Relocation can also resolve
+TRIGGERED directly, before the drivers step out. Every conflict is removed
 after `MAX_LIFETIME_S` (40 s) at the latest. If a participant despawns,
 crashes or loses its driver, the conflict is removed at once as "aborted".
 
@@ -141,7 +142,7 @@ typed fields.
 
 | Key | Out of the taxi in a brawl | Otherwise (unchanged) |
 | --- | --- | --- |
-| SPACE | strike: in CONFRONTATION or ESCALATION it starts the fight at once with the player's blow | road rage shout |
+| SPACE | strike: in CONFRONTATION or ESCALATION it starts the fight; the blow requires melee range | road rage shout |
 | Shift (held) | dodge: the rival's next blow loses `PLAYER_DODGE_BONUS` (0.3) hit chance, never below 0.1 | sprint |
 | F | run: outcome `fled`, and the rival wins | get in or out of the taxi |
 
@@ -162,7 +163,10 @@ How a player brawl goes:
   then.
 - **Who strikes.** The player strikes only when they press SPACE. Otherwise
   the rival swings, one blow per `ACTION_INTERVAL_S`. The staggered rule
-  still applies to both.
+  still applies to both: a staggered rival loses their turn without forcing
+  an idle player to attack. Blows require the fighters to be within
+  `MELEE_REACH_M` (1.8 m); they keep approaching otherwise. An out-of-range
+  SPACE press is consumed, not saved for a later automatic punch.
 - **Odds.** Every roll uses the same `hit_chance` and `rage_modifiers` as NPC
   fights. The player's skill is `PLAYER_SKILL` (0.55), and their rage is the
   meter.

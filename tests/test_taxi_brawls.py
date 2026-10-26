@@ -546,6 +546,57 @@ def test_driving_away_ends_it_and_frees_the_rival():
     assert not brawls.conflicts and rival.brawl_id is None and rival.turn_signal == "none"
 
 
+@pytest.mark.parametrize("state", [TRIGGERED, tb.CONFRONTATION, tb.ESCALATION, FIGHTING])
+@pytest.mark.parametrize("on_foot", [False, True])
+def test_relocation_cancels_from_every_active_phase(state, on_foot):
+    brawls, npcs, rival = _player_scene(on_foot=on_foot)
+    (conflict,) = brawls.conflicts.values()
+    conflict.state = state
+    view = _view(on_foot=on_foot, x=100.0, car=(100.0, 0.0))
+    t = _step(brawls, npcs, 0.0, view)
+    assert conflict.state == RESOLUTION
+    assert conflict.outcome == ("fled" if on_foot else "player_left")
+    _step(brawls, npcs, t, view, tb.RESOLUTION_S + tb.COOLDOWN_S + 1.0)
+    assert len(brawls.history) == 1 and not brawls.conflicts and rival.brawl_id is None
+
+
+@pytest.mark.parametrize("intent", ["", "dodge", "strike"])
+def test_a_staggered_rival_never_forces_a_player_strike(intent):
+    brawls, npcs, rival = _player_scene(on_foot=True, rival_x=0.0)
+    t = _step(brawls, npcs, 0.0, _view(on_foot=True), 1.5)
+    (conflict,) = brawls.conflicts.values()
+    conflict.state, conflict.deadline, conflict.next_action_at = FIGHTING, 10.0, 0.0
+    conflict.participants[1].staggered = True
+    brawls.rng = _Even()
+    _step(brawls, npcs, t, _view(on_foot=True, strike=intent == "strike", dodge=intent == "dodge"))
+    assert bool(conflict.action) == (intent == "strike")
+    if conflict.action:
+        assert conflict.action["actor"] == 0
+    if intent != "strike":
+        assert not conflict.participants[1].staggered
+
+
+def test_blows_wait_for_melee_range_and_out_of_range_input_is_not_queued():
+    brawls, npcs, rival = _player_scene(on_foot=True)
+    brawls.rng = _Even()
+    (conflict,) = brawls.conflicts.values()
+    _fighters(conflict)
+    t = _step(brawls, npcs, 0.0, _view(on_foot=True), tb.TRIGGERED_S + 0.2)
+    t = _step(brawls, npcs, t, _view(on_foot=True, strike=True))
+    assert conflict.state == FIGHTING and conflict.action is None
+    assert all(p.hits_taken == 0 for p in conflict.participants)
+    assert conflict.intent == ""
+    for _ in range(80):
+        t = _step(brawls, npcs, t, _view(on_foot=True))
+        if conflict.action:
+            a, b = conflict.participants
+            assert math.hypot(a.x - b.x, a.y - b.y) <= tb.MELEE_REACH_M
+            assert conflict.action["actor"] == 1
+            break
+    else:
+        pytest.fail("the rival never reached the player to attack")
+
+
 def test_ignored_at_the_wheel_the_driver_gives_up():
     brawls, npcs, rival = _player_scene()
     _step(brawls, npcs, 0.0, _view(), tb.TRIGGERED_S + tb.PLAYER_WAIT_S + 1.0)
@@ -554,7 +605,7 @@ def test_ignored_at_the_wheel_the_driver_gives_up():
 
 
 def test_out_of_the_taxi_space_throws_the_first_punch_and_holds_the_player():
-    brawls, npcs, rival = _player_scene(on_foot=True)
+    brawls, npcs, rival = _player_scene(on_foot=True, rival_x=0.0)
     (conflict,) = brawls.conflicts.values()
     assert brawls.player_notice == "brawl_provoked"
     t = _step(brawls, npcs, 0.0, _view(on_foot=True), tb.TRIGGERED_S + 0.5)
@@ -583,7 +634,8 @@ class _Even(random.Random):
 def test_holding_dodge_makes_the_rivals_blow_likelier_to_miss(monkeypatch):
     monkeypatch.setattr(tb, "hit_chance", lambda *a: 0.6)  # 0.5 < 0.6 hits; minus the dodge it misses
     for dodge, expect_hit in ((False, True), (True, False)):
-        brawls, npcs, rival = _player_scene(on_foot=True)
+        brawls, npcs, rival = _player_scene(on_foot=True, rival_x=0.0)
+        _step(brawls, npcs, 0.0, _view(on_foot=True), 1.5)
         brawls.rng = _Even()
         (conflict,) = brawls.conflicts.values()
         conflict.state, conflict.next_action_at = FIGHTING, 0.0
@@ -601,7 +653,7 @@ def test_f_runs_from_the_fight_and_frees_the_player():
 
 
 def test_a_knocked_out_player_lies_down_a_moment_then_can_move():
-    brawls, npcs, rival = _player_scene(on_foot=True)
+    brawls, npcs, rival = _player_scene(on_foot=True, rival_x=0.0)
     (conflict,) = brawls.conflicts.values()
     t = _step(brawls, npcs, 0.0, _view(on_foot=True), tb.TRIGGERED_S + 0.5)
     conflict.participants[0].hits_taken = tb.KNOCKDOWN_HITS - 1

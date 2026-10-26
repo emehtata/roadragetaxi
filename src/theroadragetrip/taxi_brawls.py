@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 IDLE, TRIGGERED, CONFRONTATION, ESCALATION, FIGHTING, RESOLUTION, COOLDOWN = (
     "IDLE", "TRIGGERED", "CONFRONTATION", "ESCALATION", "FIGHTING", "RESOLUTION", "COOLDOWN")
 TRANSITIONS = {
-    TRIGGERED: (CONFRONTATION,),
+    TRIGGERED: (CONFRONTATION, RESOLUTION),  # relocation can cancel before either driver gets out
     CONFRONTATION: (ESCALATION, RESOLUTION),
     ESCALATION: (FIGHTING, RESOLUTION),
     FIGHTING: (RESOLUTION,),
@@ -66,6 +66,7 @@ COOLDOWN_S = 1.0  # back in the cars before the lock is released
 MAX_LIFETIME_S = 40.0  # hard bound: any conflict still alive is aborted
 WALK_MPS = 1.4
 STANCE_M = 0.7  # each stands this far from the meeting point
+MELEE_REACH_M = 1.8  # no blows until the approaching fighters can actually reach one another
 KNOCKDOWN_HITS = 3
 KNOCKDOWN_GET_UP_S = 2.0
 BASE_HIT_CHANCE = 0.45
@@ -404,8 +405,8 @@ class BrawlManager:
     def _resolve(self, conflict: Conflict, outcome: str, winner: Optional[int], sim_time: float) -> None:
         if conflict.outcome is not None:
             return  # resolves once
-        conflict.outcome, conflict.winner = outcome, winner
         self._enter(conflict, RESOLUTION, sim_time, RESOLUTION_S)
+        conflict.outcome, conflict.winner = outcome, winner
         self.history.append({"id": conflict.id, "trigger": conflict.trigger, "outcome": outcome,
                              "winner": None if winner is None else conflict.participants[winner].ref,
                              "participants": [p.ref for p in conflict.participants]})
@@ -434,10 +435,12 @@ class BrawlManager:
     def _act(self, conflict: Conflict, sim_time: float) -> None:
         """One combat action: the server's roll, never the client's."""
         people = conflict.participants
+        intent, conflict.intent = conflict.intent, ""
+        if math.hypot(people[0].x - people[1].x, people[0].y - people[1].y) > MELEE_REACH_M:
+            return  # keep approaching; an out-of-reach SPACE press is not a queued punch
         rages = [self.rage(p, sim_time) for p in people]
         staggered = [p.staggered for p in people]
         player = next((i for i, p in enumerate(people) if p.kind == PLAYER), None)
-        intent, conflict.intent = conflict.intent, ""
         if staggered[0] != staggered[1]:  # the one staggered by the last blow cannot strike now
             actor = 1 if staggered[0] else 0
         elif player is not None:  # the player strikes when they choose to; otherwise the rival does
@@ -447,6 +450,8 @@ class BrawlManager:
             actor = 0 if self.rng.random() * sum(weights) < weights[0] else 1
         for p in people:
             p.staggered = False
+        if actor == player and intent != "strike":
+            return  # the rival loses their turn; the player still has to choose to strike
         target = 1 - actor
         attacker, defender = people[actor], people[target]
         chance = hit_chance(attacker, defender, rages[actor], rages[target])
