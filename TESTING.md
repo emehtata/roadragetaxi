@@ -24,6 +24,22 @@ installs `requirements.txt` into `.venv`.
 `make godot-selftest-sample` fails unless the selftest report says
 `"ok":true`. `make godot-selftest` prints the report; read `"ok"` yourself.
 
+CI also measures `taxi_brawls` and `digitraffic_road` with `coverage` (a
+CI-only test tool, not a game dependency). Each module must have at least
+90% **line coverage and branch coverage independently**; a high line score
+cannot hide untested branches. To reproduce the report locally, install
+`coverage` in the virtual environment and run:
+
+```sh
+.venv/bin/python -m coverage run --branch --source=theroadragetrip.taxi_brawls,theroadragetrip.digitraffic_road -m pytest -q tests/test_taxi_brawls.py tests/test_digitraffic_road.py
+.venv/bin/python -m coverage report
+.venv/bin/python -m coverage json -o /tmp/rrt-feature-coverage.json
+```
+
+This is a gate for the new modules, not a claim that all Python or Godot
+code meets 90% branch coverage. Wall-clock performance checks should also
+be run without instrumentation before diagnosing a timing regression.
+
 ## Test levels
 
 | Level | Where | Examples |
