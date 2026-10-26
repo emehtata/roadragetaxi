@@ -10,7 +10,8 @@
       "gameplay",
       "pedestrian",
       "railway",
-      "station"
+      "station",
+      "brawl"
     ],
     "Environment": [
       "ambient",
@@ -235,6 +236,26 @@
     "ambient.ride_machinery": [
       8,
       120
+    ],
+    "brawl.punch_hit": [
+      3.0,
+      45.0
+    ],
+    "brawl.pain_grunt": [
+      3.0,
+      40.0
+    ],
+    "brawl.punch_miss": [
+      3.0,
+      30.0
+    ],
+    "brawl.knockdown": [
+      3.0,
+      45.0
+    ],
+    "brawl.shove": [
+      3.0,
+      35.0
     ]
   },
   "player_categories": [
