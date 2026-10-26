@@ -320,6 +320,9 @@ static func credits_text() -> String:
 		"[b]Trains[/b]",
 		"Source: Fintraffic / digitraffic.fi, license CC 4.0 BY ([url=https://creativecommons.org/licenses/by/4.0/]creativecommons.org/licenses/by/4.0[/url]). Modified: the passenger timetable and train compositions are condensed for the game.",
 		"",
+		"[b]Roadworks[/b]",
+		"Source: Fintraffic / digitraffic.fi, license CC 4.0 BY ([url=https://creativecommons.org/licenses/by/4.0/]creativecommons.org/licenses/by/4.0[/url]). Modified: matched onto the OpenStreetMap roads.",
+		"",
 		"[b]Weather[/b]",
 		"Finnish Meteorological Institute (FMI) open data, CC BY 4.0. Modified: resampled and combined from the nearest stations.",
 		"",
@@ -877,6 +880,14 @@ func _gameplay_menu() -> void:
 		_settings.save("user://settings.cfg"))
 	_with_help(timetable, "help_train_timetable")
 	_focusables.append(timetable)
+	var road := CheckButton.new()  # live Digitraffic roadworks, else made-up ones (off unless chosen)
+	road.text = _t("realtime_road")
+	road.button_pressed = _settings.get_value("game", "road_digitraffic", false)
+	road.toggled.connect(func(on: bool):
+		_settings.set_value("game", "road_digitraffic", on)
+		_settings.save("user://settings.cfg"))
+	_with_help(road, "help_realtime_road")
+	_focusables.append(road)
 	var intercity := CheckButton.new()
 	intercity.text = _t("enable_intercity_fares")
 	intercity.button_pressed = _settings.get_value("game", "intercity_fares", false)
@@ -1049,6 +1060,8 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		args.append("--historical-weather" if _settings.get_value("game", "historical_weather") else "--no-historical-weather")
 	if _settings.has_section_key("game", "train_timetable"):
 		args.append("--train-timetable" if _settings.get_value("game", "train_timetable") else "--no-train-timetable")
+	if _settings.has_section_key("game", "road_digitraffic"):
+		args.append("--road-digitraffic" if _settings.get_value("game", "road_digitraffic") else "--no-road-digitraffic")
 	args.append_array(_server_extra)
 	var command := Paths.server_command(args)  # the repo's .venv, or the release's bundled server
 	_server_pid = OS.create_process(command[0], command[1])

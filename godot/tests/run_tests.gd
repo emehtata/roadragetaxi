@@ -2668,6 +2668,12 @@ func test_rest_of_static_world() -> void:
 	check(entities._track_points == 0 and entities._trails.is_empty(), "snowed over: they're gone")
 	entities.free()
 
+	# Live Digitraffic roadworks: 50 m pieces; barriers and signs only at a run's open ends.
+	var EL := load("res://entity_layer.gd")
+	var run := [{"start": [0.0, 0.0], "end": [50.0, 0.0]}, {"start": [50.0, 0.0], "end": [100.0, 0.2]},
+		{"start": [500.0, 0.0], "end": [540.0, 0.0]}]
+	check(EL.open_ends(run) == [[true, false], [false, true], [true, true]], "a run's shared ends are not barriers (%s)" % [EL.open_ends(run)])
+
 	# Taxi brawls: drawn from the server's current state; a punch per action seq.
 	var brawler = load("res://entity_layer.gd").new()
 	root.add_child(brawler)

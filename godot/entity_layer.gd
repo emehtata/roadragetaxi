@@ -12,6 +12,7 @@ extends Node2D
 
 const RS := preload("res://render_style.gd")
 const T := preload("res://i18n.gd")
+const MapChunk := preload("res://map_chunk.gd")  # its static roadwork drawing, shared with live roadworks
 const CULL_MARGIN_M := 30.0
 const TWO_WHEELERS := ["motorcycle", "moped", "bicycle"]
 const INDOORS := ["entering_building", "in_building"]
@@ -1137,6 +1138,59 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 			1.0 if timer >= 0.5 else timer / 0.5)
 
 
+## Live Digitraffic roadworks (the server's zones near the camera, 50 m
+## pieces): cones and barriers where a lane or the road is closed, with
+## barriers only at a run's open ends, and the speed-limit sign where a run
+## begins - drawn from the state, nothing decided here.
+func _live_roadworks(rows: Array) -> void:
+	var open := open_ends(rows)
+	for index in rows.size():
+		var row: Dictionary = rows[index]
+		var start := MapMath.point(origin, row["start"][0], row["start"][1])
+		var end := MapMath.point(origin, row["end"][0], row["end"][1])
+		var open_start: bool = open[index][0]
+		var open_end: bool = open[index][1]
+		if not (view_rect.has_point(start) or view_rect.has_point(end)):
+			continue
+		if row.get("closed", false) or row.get("lane_closed", false):
+			MapChunk.draw_roadwork(_canvas, start, end, float(row.get("half_width_m", 4.0)),
+				row.get("lane_closed", false), px_per_m, [open_start, open_end])
+		var limit = row.get("speed_limit_kmh")
+		if limit != null:
+			for i in 2:
+				if [open_start, open_end][i]:
+					var side := (end - start).normalized().orthogonal() * float(row.get("half_width_m", 4.0))
+					_speed_sign((start if i == 0 else end) - side * 1.3, int(limit))
+
+
+## [start open, end open] per piece: an end no other piece shares is where a
+## run of pieces begins or ends (barriers and signs go there only).
+static func open_ends(rows: Array) -> Array:
+	var ends := {}
+	for row in rows:
+		for key in ["start", "end"]:
+			var at := Vector2(row[key][0], row[key][1]).snapped(Vector2(0.5, 0.5))
+			ends[at] = ends.get(at, 0) + 1
+	var result := []
+	for row in rows:
+		result.append([ends[Vector2(row["start"][0], row["start"][1]).snapped(Vector2(0.5, 0.5))] < 2,
+			ends[Vector2(row["end"][0], row["end"][1]).snapped(Vector2(0.5, 0.5))] < 2])
+	return result
+
+
+## A roadside speed-limit sign: white disc, red ring, the number.
+func _speed_sign(at: Vector2, limit: int) -> void:
+	var r := maxf(_px(7.0), 0.45)
+	_canvas.draw_circle(at, r, Color8(250, 250, 250))
+	_canvas.draw_arc(at, r * 0.85, 0.0, TAU, 20, Color8(205, 30, 30), r * 0.3)
+	var text := str(limit)
+	var size := maxi(6, int(r * px_per_m * 0.9))
+	_canvas.draw_set_transform(at, 0.0, Vector2.ONE / px_per_m)
+	var width := ThemeDB.fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	_canvas.draw_string(ThemeDB.fallback_font, Vector2(-width / 2.0, size * 0.35), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color8(20, 20, 20))
+	_canvas.draw_set_transform(Vector2.ZERO)
+
+
 ## The player is out of the taxi in a brawl: its figure stands in for theirs.
 static func player_fighting(state: Dictionary) -> bool:
 	for brawl in state.get("brawls", []):
@@ -1551,6 +1605,7 @@ func _draw() -> void:
 	glow_colors.clear()
 	glow_triangles.clear()
 	if not underground:
+		_live_roadworks(a.get("live_roadworks", []))
 		for point in a.get("vomit_puddles", []):
 			if point.size() >= 2:
 				var at := MapMath.point(origin, point[0], point[1])

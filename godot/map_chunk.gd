@@ -1443,20 +1443,8 @@ static func fuel_board_text(station: Dictionary) -> String:
 ## (a yellow TAXI sign on a pole).
 func _draw_points(node: Node2D) -> void:
 	for work in _data.get("roadworks", []):
-		var start := MapMath.point(_origin, work["start"][0], work["start"][1])
-		var end := MapMath.point(_origin, work["end"][0], work["end"][1])
-		var length := maxf(start.distance_to(end), 0.001)
-		var normal := Vector2(-(end.y - start.y), end.x - start.x) / length
-		var barrier := maxf(_px(2.0), float(work["half_width_m"]))
-		var closed: bool = work["lane_closed"]
-		for point in [start, end]:
-			node.draw_line(point if closed else point - normal * barrier, point + normal * barrier, Color8(235, 190, 35), maxf(_px(2.0), 2.0))
-		var steps := maxi(2, int(length * _px_per_m / maxf(18.0, 25.0 * _px_per_m)))
-		var cone_r := maxf(_px(2.0), 0.35)
-		for i in steps + 1:
-			var c := start.lerp(end, float(i) / steps) + (normal * barrier * 0.5 if closed else Vector2.ZERO)
-			node.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -cone_r * 2.0), c + Vector2(-cone_r, cone_r), c + Vector2(cone_r, cone_r)]), Color8(245, 105, 25))
-			node.draw_line(c - Vector2(cone_r / 2.0, 0), c + Vector2(cone_r / 2.0, 0), Color8(255, 220, 120), maxf(_px(1.0), cone_r / 2.0))
+		draw_roadwork(node, MapMath.point(_origin, work["start"][0], work["start"][1]),
+			MapMath.point(_origin, work["end"][0], work["end"][1]), float(work["half_width_m"]), work["lane_closed"], _px_per_m)
 	for stand in _data.get("taxi_stands", []):
 		node.draw_set_transform(MapMath.point(_origin, stand[0], stand[1]), 0.0, Vector2.ONE / _px_per_m)
 		node.draw_line(Vector2(0, -1), Vector2(0, 11), Color8(55, 55, 55), 2.0)
@@ -1465,6 +1453,27 @@ func _draw_points(node: Node2D) -> void:
 		var label_size := _font.get_string_size("TAXI", HORIZONTAL_ALIGNMENT_LEFT, -1, 10)
 		node.draw_string(_font, Vector2(-label_size.x / 2.0, -2), "TAXI", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color8(20, 20, 20))
 	node.draw_set_transform(Vector2.ZERO)
+
+
+## One roadwork zone in screen metres: yellow barriers at the ends asked for
+## (across the closed half, or the whole road), cones between - on the
+## right-hand half when a lane is closed (the server's closed lane).
+static func draw_roadwork(node: CanvasItem, start: Vector2, end: Vector2, half_width_m: float, closed: bool,
+		px_per_m: float, barriers := [true, true]) -> void:
+	var px := func(pixels: float) -> float: return pixels / px_per_m
+	var length := maxf(start.distance_to(end), 0.001)
+	var normal := Vector2(-(end.y - start.y), end.x - start.x) / length
+	var barrier := maxf(px.call(2.0), half_width_m)
+	for i in 2:
+		if barriers[i]:
+			var point := start if i == 0 else end
+			node.draw_line(point if closed else point - normal * barrier, point + normal * barrier, Color8(235, 190, 35), maxf(px.call(2.0), 2.0))
+	var steps := maxi(2, int(length * px_per_m / maxf(18.0, 25.0 * px_per_m)))
+	var cone_r := maxf(px.call(2.0), 0.35)
+	for i in steps + 1:
+		var c := start.lerp(end, float(i) / steps) + (normal * barrier * 0.5 if closed else Vector2.ZERO)
+		node.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -cone_r * 2.0), c + Vector2(-cone_r, cone_r), c + Vector2(cone_r, cone_r)]), Color8(245, 105, 25))
+		node.draw_line(c - Vector2(cone_r / 2.0, 0), c + Vector2(cone_r / 2.0, 0), Color8(255, 220, 120), maxf(px.call(1.0), cone_r / 2.0))
 
 
 ## Which lamps a phase lights: [red, yellow, green]. Unknown (no phase
