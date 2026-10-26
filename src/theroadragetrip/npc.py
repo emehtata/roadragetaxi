@@ -1252,6 +1252,8 @@ class NPCVehicle:
     taxi_job: object = None  # a competitor taxi's fare (competitor_taxis.TaxiJob), None when free
     taxi_idle_until: float = 0.0
     brawl_id: Optional[int] = None  # its driver is out quarrelling (taxi_brawls.py): the car stays put
+    rage: float = 0.0  # its driver's temporary rage, 0..1, as last provoked (taxi_brawls.npc_rage)
+    rage_at: float = 0.0  # sim time of that provocation; it calms from there
     bus_job: object = None  # a line bus's route and next stop (bus_lines.BusJob)
     is_police: bool = False
     is_on_foot: bool = False
@@ -4466,6 +4468,8 @@ class NPCVehicleManager:
                 vehicle.curse_text = random.choice(CURSE_SYMBOLS)
                 vehicle.shaken_timer = SHAKEN_S
                 self.curses.append((vehicle.car.x, vehicle.car.y))
+                from .taxi_brawls import PROVOKE_BUMP, provoke
+                provoke(vehicle, PROVOKE_BUMP, sim_time)
                 if is_competitor(vehicle) and len(self.taxi_bumps) < 8:
                     self.taxi_bumps.append(vehicle.vehicle_id)
                 return True

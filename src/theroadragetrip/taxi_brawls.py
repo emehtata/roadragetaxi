@@ -61,6 +61,26 @@ STANCE_M = 0.7  # each stands this far from the meeting point
 KNOCKDOWN_HITS = 3
 KNOCKDOWN_GET_UP_S = 2.0
 BASE_HIT_CHANCE = 0.45
+HIT_CHANCE_BOUNDS = (0.1, 0.9)  # nobody always hits or always misses, whatever the rage
+SURRENDER_PER_HIT = 0.2  # x retreat x hits taken: giving up after a blow
+
+# Road rage in combat (rrt-019-brawl-02). Rage is 0..1: the player's meter
+# (simulation rage_power) or an NPC driver's temporary rage (npc_rage).
+# Every modifier grows smoothly with it; extreme rage costs defence.
+RAGE_ATTACK_BONUS = 0.12  # + hit chance at full rage
+RAGE_INITIATIVE = 0.6  # + strike-first weight at full rage (aggression + 0.1 without)
+RAGE_INTIMIDATION = 0.8  # the opponent's back-down chance x (1 + this x rage)
+RAGE_STAGGER_RESIST = 0.6  # chance a blow does not cost the next initiative; also damps surrender
+RAGE_EXTREME = 0.7  # above this the guard drops...
+RAGE_DEFENSE_PENALTY = 0.15  # ...up to this much easier to hit at full rage
+BACK_DOWN_MAX = 0.95
+# NPC drivers' temporary rage: raised by provocations, calming linearly.
+# Computed when read (npc_rage), so a calm or idle NPC costs nothing per tick.
+NPC_RAGE_CALM_S = 180.0  # full rage to calm in three minutes
+PROVOKE_BUMP = 0.5  # the player's taxi bumped it
+PROVOKE_CLEARANCE = 0.3  # shoved aside by the player's rage clearance
+PROVOKE_LOST_FARE = 0.3  # a rival took the fare it was waiting for
+PROVOKE_HIT = 0.15  # each blow taken in a fight
 CURSES = ["@#*!%", "#$@&!", "!%#&*", "%$!#@", "@!*#$"]
 
 
@@ -80,6 +100,7 @@ class Participant:
     moving: bool = False
     curse_until: float = 0.0
     curse_text: str = ""
+    staggered: bool = False  # the last blow cost its next initiative
 
     @property
     def key(self) -> Tuple[str, object]:
@@ -102,6 +123,55 @@ class Conflict:
     action_seq: int = 0
     outcome: Optional[str] = None  # "backed_down", "surrender", "knockout", "separated", "aborted"
     winner: Optional[int] = None  # participant index
+
+
+def _unit(value) -> float:
+    """0..1; anything else (NaN, None, out of range) made safe."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return 0.0 if value != value else max(0.0, min(1.0, value))
+
+
+@dataclass(frozen=True)
+class RageModifiers:
+    attack: float  # + hit chance
+    initiative: float  # + strike-first weight
+    intimidation: float  # opponent's back-down chance x (1 + this)
+    stagger_resist: float  # chance a blow does not stagger
+    defense: float  # <= 0: + to the chance of being hit is -defense
+
+
+def rage_modifiers(rage) -> RageModifiers:
+    """The one place rage turns into combat modifiers, for players and NPCs
+    alike. Linear in rage, but defence: smoothstep above RAGE_EXTREME."""
+    r = _unit(rage)
+    over = max(0.0, (r - RAGE_EXTREME) / (1.0 - RAGE_EXTREME))
+    return RageModifiers(RAGE_ATTACK_BONUS * r, RAGE_INITIATIVE * r, RAGE_INTIMIDATION * r,
+                         RAGE_STAGGER_RESIST * r, -RAGE_DEFENSE_PENALTY * over * over * (3.0 - 2.0 * over))
+
+
+def hit_chance(attacker: "Participant", defender: "Participant", attacker_rage, defender_rage) -> float:
+    chance = (BASE_HIT_CHANCE + 0.5 * (attacker.skill - defender.skill)
+              + rage_modifiers(attacker_rage).attack - rage_modifiers(defender_rage).defense)
+    return max(HIT_CHANCE_BOUNDS[0], min(HIT_CHANCE_BOUNDS[1], chance))
+
+
+def back_down_chance(person: "Participant", opponent: "Participant", opponent_rage, scale: float = 1.0) -> float:
+    chance = person.retreat * scale * (1.0 - opponent.aggression) * (1.0 + rage_modifiers(opponent_rage).intimidation)
+    return max(0.0, min(BACK_DOWN_MAX, chance))
+
+
+def npc_rage(vehicle, sim_time: float) -> float:
+    """An NPC driver's rage now: what it was last provoked to, calmed since."""
+    rage = _unit(getattr(vehicle, "rage", 0.0))
+    return max(0.0, rage - max(0.0, sim_time - getattr(vehicle, "rage_at", sim_time)) / NPC_RAGE_CALM_S)
+
+
+def provoke(vehicle, amount: float, sim_time: float) -> None:
+    vehicle.rage = _unit(npc_rage(vehicle, sim_time) + amount)
+    vehicle.rage_at = sim_time
 
 
 def driver_traits(vehicle_id) -> Tuple[float, float, float]:
@@ -129,6 +199,8 @@ class BrawlManager:
         self.history: Deque[dict] = deque(maxlen=20)  # resolved outcomes (debug snapshot)
         self.sound_events: List[Tuple[str, Tuple[float, float]]] = []  # drained by the simulation
         self.rejected = 0
+        self.player_rage = 0.0  # the player's meter, from the simulation (never from a client)
+        self._vehicles: dict = {}  # this tick's locked NPC taxis, by id
         self._next_id = 1
         self._rank_timer = 0.0
 
@@ -234,25 +306,44 @@ class BrawlManager:
         participant.curse_until = sim_time + 1.5
         participant.curse_text = self.rng.choice(CURSES)
 
+    def rage(self, participant: Participant, sim_time: float) -> float:
+        """A participant's current rage, read at each decision (so a change
+        mid-fight counts from the next action on)."""
+        if participant.kind == PLAYER:
+            return _unit(self.player_rage)
+        vehicle = self._vehicles.get(participant.ref)
+        return npc_rage(vehicle, sim_time) if vehicle is not None else 0.0
+
     def _act(self, conflict: Conflict, sim_time: float) -> None:
         """One combat action: the server's roll, never the client's."""
         people = conflict.participants
-        weights = [p.aggression + 0.1 for p in people]
-        actor = 0 if self.rng.random() * sum(weights) < weights[0] else 1
+        rages = [self.rage(p, sim_time) for p in people]
+        staggered = [p.staggered for p in people]
+        if staggered[0] != staggered[1]:  # the one staggered by the last blow cannot strike now
+            actor = 1 if staggered[0] else 0
+        else:
+            weights = [p.aggression + 0.1 + rage_modifiers(r).initiative for p, r in zip(people, rages)]
+            actor = 0 if self.rng.random() * sum(weights) < weights[0] else 1
+        for p in people:
+            p.staggered = False
         target = 1 - actor
         attacker, defender = people[actor], people[target]
-        hit = self.rng.random() < max(0.1, min(0.9, BASE_HIT_CHANCE + 0.5 * (attacker.skill - defender.skill)))
+        hit = self.rng.random() < hit_chance(attacker, defender, rages[actor], rages[target])
         conflict.action_seq += 1
         conflict.action = {"seq": conflict.action_seq, "kind": "strike" if hit else "dodge",
                            "actor": actor, "target": target, "hit": hit}
         if not hit:
             return
         defender.hits_taken += 1
+        defender.staggered = self.rng.random() >= rage_modifiers(rages[target]).stagger_resist
+        if defender.kind == NPC and defender.ref in self._vehicles:  # pain feeds an NPC's rage (the player's meter is its own)
+            provoke(self._vehicles[defender.ref], PROVOKE_HIT, sim_time)
         self.sound_events.append(("collision.fence", (defender.x, defender.y)))  # ponytail: no punch sound in the catalog yet
         if defender.hits_taken >= KNOCKDOWN_HITS:
             defender.down = True
             self._resolve(conflict, "knockout", actor, sim_time)
-        elif self.rng.random() < defender.retreat * defender.hits_taken * 0.2:
+        elif self.rng.random() < (defender.retreat * defender.hits_taken * SURRENDER_PER_HIT
+                                  * (1.0 - rage_modifiers(rages[target]).stagger_resist)):
             self._resolve(conflict, "surrender", actor, sim_time)
 
     def _advance(self, conflict: Conflict, sim_time: float) -> None:
@@ -264,7 +355,8 @@ class BrawlManager:
             self.sound_events.append(("pedestrian.curse", (conflict.x, conflict.y)))
         elif conflict.state == CONFRONTATION and sim_time >= conflict.deadline:
             softer = max(range(2), key=lambda i: people[i].retreat - people[i].aggression)
-            if self.rng.random() < people[softer].retreat * (1.0 - people[1 - softer].aggression):
+            if self.rng.random() < back_down_chance(people[softer], people[1 - softer],
+                                                    self.rage(people[1 - softer], sim_time)):
                 self._resolve(conflict, "backed_down", 1 - softer, sim_time)
             else:
                 self._enter(conflict, ESCALATION, sim_time, ESCALATION_S)
@@ -273,7 +365,8 @@ class BrawlManager:
                                    "actor": 1 - softer, "target": softer, "hit": False}
         elif conflict.state == ESCALATION and sim_time >= conflict.deadline:
             threatened = conflict.action["target"]
-            if self.rng.random() < people[threatened].retreat * 0.5:
+            if self.rng.random() < back_down_chance(people[threatened], people[1 - threatened],
+                                                    self.rage(people[1 - threatened], sim_time), scale=0.5):
                 self._resolve(conflict, "backed_down", 1 - threatened, sim_time)
             else:
                 self._enter(conflict, FIGHTING, sim_time, FIGHT_MAX_S)
@@ -324,7 +417,9 @@ class BrawlManager:
             self.cooldown_until[participant.key] = sim_time + DRIVER_COOLDOWN_S
         self.conflicts.pop(conflict.id, None)
 
-    def update(self, npc_manager, dt: float, sim_time: float, taxi_stops=(), moment=None) -> None:
+    def update(self, npc_manager, dt: float, sim_time: float, taxi_stops=(), moment=None,
+               player_rage: float = 0.0) -> None:
+        self.player_rage = _unit(player_rage)
         self._rank_timer += dt
         if self._rank_timer >= RANK_CHECK_INTERVAL_S:
             self._rank_timer = 0.0
@@ -341,6 +436,7 @@ class BrawlManager:
         if not self.conflicts:
             return
         vehicles = {v.vehicle_id: v for v in npc_manager.vehicles if getattr(v, "brawl_id", None) is not None}
+        self._vehicles = vehicles
         for conflict in list(self.conflicts.values()):
             gone = any(p.kind == NPC and (vehicles.get(p.ref) is None or vehicles[p.ref].driver_departed
                                           or npc_manager.drivers.get(p.ref) is None)
@@ -368,6 +464,7 @@ class BrawlManager:
                 fighters.append({
                     "kind": p.kind, "id": p.ref, "x": round(p.x, 2), "y": round(p.y, 2), "heading": round(p.heading, 3),
                     "down": p.down, "moving": p.moving,
+                    "rage": round(self.rage(p, sim_time) * 20.0) / 20.0,  # looks only: an enraged face
                     "curse_timer": round(max(0.0, p.curse_until - sim_time), 2), "curse_text": p.curse_text,
                 })
             rows.append({"id": conflict.id, "state": conflict.state, "action": conflict.action,

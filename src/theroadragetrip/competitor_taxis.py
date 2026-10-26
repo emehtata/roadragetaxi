@@ -92,7 +92,7 @@ class Dispatcher:
         self.elapsed = 0.0
         self.taken = 0  # offers competitors have taken
 
-    def update(self, taxi_mgr, npc_manager, dt: float, brawls=None) -> None:
+    def update(self, taxi_mgr, npc_manager, dt: float, brawls=None, sim_time: float = 0.0) -> None:
         from .localization import tr
         from .npc import NPCState
 
@@ -117,8 +117,10 @@ class Dispatcher:
             nearest.taxi_job = TaxiJob(offer.passenger.name, (pickup.x, pickup.y), (dropoff.x, dropoff.y))
             idle.remove(nearest)
             if brawls is not None and idle:  # a rival waiting beside it saw the fare go: a dispute
-                from .taxi_brawls import DISPUTE_CHANCE, ENGAGE_RADIUS_M, NPC
+                from .taxi_brawls import DISPUTE_CHANCE, ENGAGE_RADIUS_M, NPC, PROVOKE_LOST_FARE, provoke
                 rival = min(idle, key=lambda v: math.hypot(v.x - nearest.x, v.y - nearest.y))
+                if math.hypot(rival.x - nearest.x, rival.y - nearest.y) <= ENGAGE_RADIUS_M:
+                    provoke(rival, PROVOKE_LOST_FARE, sim_time)
                 if (math.hypot(rival.x - nearest.x, rival.y - nearest.y) <= ENGAGE_RADIUS_M
                         and self.rng.random() < DISPUTE_CHANCE):
                     brawls.report("passenger", (NPC, rival.vehicle_id), (NPC, nearest.vehicle_id),

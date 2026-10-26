@@ -814,13 +814,13 @@ def advance_simulation(
     if on_foot:
         audio.update_footsteps(player_pedestrian.speed, dt, running=command.sprint)
     brawls = getattr(world, "taxi_brawls", None)
-    world.competitor_dispatcher.update(taxi_mgr, npc_manager, dt, brawls)  # competitors take phone fares
+    world.competitor_dispatcher.update(taxi_mgr, npc_manager, dt, brawls, traffic_mgr.sim_time)  # competitors take phone fares
     if brawls is not None:
         from .protocol import LOCAL_PLAYER_ID
         from .taxi_brawls import NPC, PLAYER
         for vehicle_id in npc_manager.taxi_bumps:  # the player bumped a rival: a future player quarrel
             brawls.report("traffic", (PLAYER, LOCAL_PLAYER_ID), (NPC, vehicle_id), ("traffic", vehicle_id, int(traffic_mgr.sim_time)))
-        brawls.update(npc_manager, dt, traffic_mgr.sim_time, taxi_stops, now)
+        brawls.update(npc_manager, dt, traffic_mgr.sim_time, taxi_stops, now, player_rage=rage_power)
         for group_id, at in brawls.sound_events:
             audio.play_group(group_id, at=at)
         brawls.sound_events.clear()

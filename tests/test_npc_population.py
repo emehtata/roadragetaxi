@@ -1491,6 +1491,8 @@ def test_a_minor_bump_by_the_player_makes_the_npc_driver_curse_not_crash():
     assert vehicle.curse_timer > 0.0 and vehicle.curse_text and vehicle.shaken_timer == SHAKEN_S
     assert manager.curses and not manager.accidents
     assert player_car.speed == 0.0
+    from theroadragetrip.taxi_brawls import PROVOKE_BUMP, npc_rage
+    assert npc_rage(vehicle, 50.0) == PROVOKE_BUMP  # its driver is angry now (brawl rage), calming later
 
 
 def test_crashed_npc_remains_a_physical_obstacle_for_player():

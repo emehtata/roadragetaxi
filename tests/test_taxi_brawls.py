@@ -239,7 +239,7 @@ def test_the_client_sees_the_current_state_only_and_nothing_once_they_are_back_i
     (row,) = brawls.to_dicts(t)
     assert row["state"] == FIGHTING and len(row["fighters"]) == 2 and "history" not in row
     fighter = row["fighters"][0]
-    assert set(fighter) == {"kind", "id", "x", "y", "heading", "down", "moving", "curse_timer", "curse_text"}
+    assert set(fighter) == {"kind", "id", "x", "y", "heading", "down", "moving", "curse_timer", "curse_text", "rage"}
     assert math.hypot(fighter["x"] - row["fighters"][1]["x"], fighter["y"] - row["fighters"][1]["y"]) < 10.0  # walked over
     while conflict.state != COOLDOWN:
         t += DT
@@ -323,3 +323,175 @@ def test_npc_taxis_stay_put_while_their_drivers_fight_then_drive_on(monkeypatch)
     assert a.brawl_id is None and b.brawl_id is None and brawls.history[-1]["outcome"] != "aborted"
     assert all(math.dist((v.x, v.y), starts[v.vehicle_id]) > 15 for v in (a, b)), "they cruise again afterwards"
     assert all(manager.drivers.get(v.vehicle_id) is not None and v.state != NPCState.CRASHED for v in (a, b))
+
+
+# -- road rage in combat (rrt-019-brawl-02) ---------------------------------
+
+def _person(kind=NPC, skill=0.5, aggression=0.5, retreat=0.5):
+    return tb.Participant(kind, 1, aggression=aggression, skill=skill, retreat=retreat)
+
+
+def test_no_rage_is_the_baseline():
+    calm = tb.rage_modifiers(0.0)
+    assert calm == tb.RageModifiers(0.0, 0.0, 0.0, 0.0, 0.0)
+    assert tb.hit_chance(_person(), _person(), 0.0, 0.0) == pytest.approx(tb.BASE_HIT_CHANCE)
+
+
+def test_rage_raises_offence_smoothly():
+    steps = [tb.rage_modifiers(r / 10) for r in range(11)]
+    for earlier, later in zip(steps, steps[1:]):
+        assert later.attack > earlier.attack and later.initiative > earlier.initiative
+        assert later.intimidation > earlier.intimidation and later.stagger_resist > earlier.stagger_resist
+        assert later.attack - earlier.attack < 0.02  # no jumps at thresholds
+    assert steps[-1].attack == pytest.approx(tb.RAGE_ATTACK_BONUS)
+
+
+def test_only_extreme_rage_drops_the_guard_and_smoothly():
+    assert tb.rage_modifiers(tb.RAGE_EXTREME).defense == 0.0
+    assert tb.rage_modifiers(0.5).defense == 0.0
+    curve = [tb.rage_modifiers(tb.RAGE_EXTREME + i * 0.03).defense for i in range(11)]
+    assert all(later < earlier or earlier == later == 0.0 for earlier, later in zip(curve, curve[1:]))
+    assert tb.rage_modifiers(1.0).defense == pytest.approx(-tb.RAGE_DEFENSE_PENALTY)
+    # An enraged defender is easier to hit than a calm one.
+    assert tb.hit_chance(_person(), _person(), 0.0, 1.0) > tb.hit_chance(_person(), _person(), 0.0, 0.0)
+
+
+@pytest.mark.parametrize("rage", [-5.0, -0.1, 0.0, 0.3, 1.0, 1.5, 99.0, float("nan"), float("inf"), None, "x"])
+def test_modifiers_stay_in_bounds_whatever_the_rage(rage):
+    m = tb.rage_modifiers(rage)
+    assert 0.0 <= m.attack <= tb.RAGE_ATTACK_BONUS and 0.0 <= m.initiative <= tb.RAGE_INITIATIVE
+    assert 0.0 <= m.intimidation <= tb.RAGE_INTIMIDATION and 0.0 <= m.stagger_resist <= tb.RAGE_STAGGER_RESIST
+    assert -tb.RAGE_DEFENSE_PENALTY <= m.defense <= 0.0
+    for a_skill, d_skill in ((1.0, 0.0), (0.0, 1.0)):
+        chance = tb.hit_chance(_person(skill=a_skill), _person(skill=d_skill), rage, rage)
+        assert tb.HIT_CHANCE_BOUNDS[0] <= chance <= tb.HIT_CHANCE_BOUNDS[1]
+    assert 0.0 <= tb.back_down_chance(_person(retreat=1.0), _person(aggression=0.0), rage) <= tb.BACK_DOWN_MAX
+
+
+def test_full_rage_never_guarantees_a_hit_and_skill_still_counts():
+    raging_novice = tb.hit_chance(_person(skill=0.0), _person(skill=1.0), 1.0, 0.0)
+    calm_expert = tb.hit_chance(_person(skill=1.0), _person(skill=0.0), 0.0, 0.0)
+    assert raging_novice < calm_expert  # rage does not buy skill
+    assert tb.hit_chance(_person(skill=1.0), _person(skill=0.0), 1.0, 1.0) <= tb.HIT_CHANCE_BOUNDS[1] < 1.0
+    # ...and the opponent's temperament still decides intimidation.
+    assert (tb.back_down_chance(_person(retreat=0.1), _person(aggression=0.9), 1.0)
+            < tb.back_down_chance(_person(retreat=0.9), _person(aggression=0.1), 0.0))
+
+
+def test_players_and_npcs_share_the_same_formulas():
+    npc, player = _person(NPC, skill=0.6), _person(PLAYER, skill=0.6)
+    opponent = _person(skill=0.4)
+    assert tb.hit_chance(npc, opponent, 0.8, 0.2) == tb.hit_chance(player, opponent, 0.8, 0.2)
+    taxi = _taxi(1, 0.0)
+    tb.provoke(taxi, 0.8, 0.0)
+    brawls = BrawlManager(random.Random(1))
+    brawls._vehicles = {1: taxi}
+    brawls.player_rage = 0.8
+    assert brawls.rage(tb.Participant(NPC, 1), 0.0) == brawls.rage(tb.Participant(PLAYER, "local_player"), 0.0)
+
+
+def test_npc_rage_is_provoked_calms_lazily_and_stays_bounded():
+    taxi = _taxi(1, 0.0)
+    assert tb.npc_rage(taxi, 100.0) == 0.0  # never provoked
+    tb.provoke(taxi, tb.PROVOKE_BUMP, 10.0)
+    assert tb.npc_rage(taxi, 10.0) == pytest.approx(tb.PROVOKE_BUMP)
+    assert tb.npc_rage(taxi, 10.0 + tb.NPC_RAGE_CALM_S / 4) == pytest.approx(tb.PROVOKE_BUMP - 0.25)
+    for _ in range(10):
+        tb.provoke(taxi, 0.5, 20.0)
+    assert tb.npc_rage(taxi, 20.0) == 1.0
+    assert tb.npc_rage(taxi, 20.0 + tb.NPC_RAGE_CALM_S * 2) == 0.0
+    taxi.rage = float("nan")
+    assert tb.npc_rage(taxi, 20.0) == 0.0
+
+
+def _fight_scene(seed, rage_a=0.0, rage_b=0.0):
+    a, b = _taxi(1, 0.0), _taxi(2, 10.0)
+    brawls, npcs = BrawlManager(random.Random(seed)), _npcs(a, b)
+    _quarrel(brawls, a, b)
+    brawls.update(npcs, DT, 0.0)
+    conflict = next(iter(brawls.conflicts.values()))
+    _fighters(conflict)
+    for p in conflict.participants:
+        p.skill = 0.5
+    t = 0.0
+    while conflict.state != FIGHTING:
+        t += DT
+        brawls.update(npcs, DT, t)
+    for taxi, rage in ((a, rage_a), (b, rage_b)):
+        taxi.rage, taxi.rage_at = rage, t
+    return brawls, npcs, conflict, (a, b), t
+
+
+def test_the_same_situation_and_seed_give_the_same_actions():
+    runs = []
+    for _ in range(2):
+        brawls, npcs, conflict, _, t = _fight_scene(7, 0.9, 0.1)
+        actions = []
+        while conflict.state == FIGHTING:
+            t += DT
+            brawls.update(npcs, DT, t)
+            if conflict.action and (not actions or actions[-1]["seq"] != conflict.action["seq"]):
+                actions.append(dict(conflict.action))
+        runs.append((actions, conflict.outcome, conflict.winner))
+    assert runs[0] == runs[1]
+
+
+def test_enraged_fighters_strike_first_and_land_more_over_many_fights():
+    def tally(rage):
+        first = landed = swings = 0
+        for seed in range(150):
+            brawls, npcs, conflict, _, t = _fight_scene(seed, rage, 0.0)
+            brawls._act(conflict, t)
+            action = conflict.action
+            first += action["actor"] == 0
+            if action["actor"] == 0:
+                swings += 1
+                landed += action["hit"]
+        return first, landed / max(1, swings)
+    calm, angry = tally(0.0), tally(1.0)
+    assert angry[0] > calm[0] and angry[1] > calm[1]
+    assert angry[1] < 1.0  # not a sure thing
+
+
+def test_a_rage_change_mid_fight_counts_from_the_next_action():
+    brawls, npcs, conflict, (a, b), t = _fight_scene(5)
+    first = brawls.rage(conflict.participants[0], t)
+    a.rage, a.rage_at = 1.0, t  # provoked mid-fight
+    assert first == 0.0 and brawls.rage(conflict.participants[0], t) == 1.0
+    expected = tb.hit_chance(conflict.participants[0], conflict.participants[1], 1.0, 0.0)
+    assert expected == pytest.approx(tb.BASE_HIT_CHANCE + tb.RAGE_ATTACK_BONUS)
+
+
+def test_blows_taken_anger_an_npc_but_never_touch_the_players_meter():
+    brawls, npcs, conflict, (a, b), t = _fight_scene(3)
+    brawls.player_rage = 0.4
+    hits_before = sum(p.hits_taken for p in conflict.participants)
+    while conflict.state == FIGHTING and sum(p.hits_taken for p in conflict.participants) == hits_before:
+        t += DT
+        brawls.update(npcs, DT, t, player_rage=0.4)
+    struck = [p for p in conflict.participants if p.hits_taken][0]
+    taxi = a if struck.ref == 1 else b
+    assert tb.npc_rage(taxi, t) >= tb.PROVOKE_HIT - 1e-9
+    assert brawls.player_rage == 0.4
+
+
+def test_a_staggered_fighter_loses_the_next_initiative():
+    brawls, npcs, conflict, _, t = _fight_scene(1)
+    conflict.participants[0].staggered = True
+    brawls._act(conflict, t)
+    assert conflict.action["actor"] == 1 and not conflict.participants[0].staggered
+
+
+def test_a_rival_that_lost_the_fare_is_angry_and_fights_angrier(monkeypatch):
+    monkeypatch.setattr(tb, "DISPUTE_CHANCE", 0.0)
+    a, b = _taxi(1, 0.0), _taxi(2, 12.0)
+    target = SimpleNamespace(x=0.0, y=0.0)
+    phone = SimpleNamespace(offers=[SimpleNamespace(passenger=SimpleNamespace(name="Aino", pickup=target,
+                                                                              dropoff=SimpleNamespace(x=900, y=0)))],
+                            language="en", notification_msg="", notification_timer=0.0)
+    dispatcher = Dispatcher(rng=random.Random(1))
+    for _ in range(600):
+        dispatcher.update(phone, _npcs(a, b), 1.0, BrawlManager(), sim_time=30.0)
+        if not phone.offers:
+            break
+    assert a.taxi_job is not None and tb.npc_rage(b, 30.0) == tb.PROVOKE_LOST_FARE and tb.npc_rage(a, 30.0) == 0.0
