@@ -2,12 +2,9 @@
 
 Kept separate from rendering (render/*.py reads this, doesn't own it) -
 same relationship render/ already has with TaxiManager/PedestrianManager -
-so rain particles, wet-road tint, puddles and splashes all read one shared
-WeatherSystem instead of each tracking their own notion of "is it raining".
-
-Rain particle positions are stored as screen-fraction coordinates (0..1
-on each axis) rather than pixels: the renderer converts to pixels at draw time
-using whatever screen size it has.
+so wet-road tint and puddles read one shared WeatherSystem instead of each
+tracking their own notion of "is it raining". Rain, snowflakes and splashes
+are drawn by the client alone; nothing visual-only is simulated here.
 """
 import copy
 import math
@@ -59,24 +56,6 @@ LIGHTNING_FLASH_DURATION_S = 0.22
 # to fully dry once it stops.
 RAIN_WETTING_DURATION_S = 10.0 * 60.0  # 0 -> 1 wetness over 10 game-minutes of rain
 DRY_DURATION_S = 60.0 * 60.0  # 1 -> 0 wetness over 1 game-hour (WEATHER_RAIN.md #7)
-
-# Rain particles animate in real time (wall-clock dt), not game time - at
-# time_scale=60 (no passenger), game-time-driven rain would streak down the
-# screen 60x too fast. A fixed-size pool, recycled in place (never
-# resized/reallocated) rather than spawned/destroyed per frame.
-RAIN_PARTICLE_COUNT = 220
-RAIN_FALL_FRACTION_PER_S = 0.9  # base screen-heights/second fall speed
-RAIN_DRIFT_FRACTION_PER_S = 0.05  # constant screen-widths/second wind drift
-RAIN_SPEED_VARIATION = (0.75, 1.3)  # per-particle multiplier, assigned once at spawn
-
-# Splashes: visual only (WEATHER_RAIN.md #5 - vehicle physics are never
-# touched here), real-time lifetime like rain particles. Edge-triggered by
-# the caller (it only spawns one when the car *enters* a puddle, not
-# every frame it spends inside one) so continuously driving through a
-# puddle doesn't flood the pool.
-SPLASH_LIFETIME_S = 0.5
-SPLASH_MIN_SPEED_MPS = 1.0  # below this, "driving through" doesn't splash
-SPLASH_POOL_MAX = 40  # defensive cap; splashes expire well before this matters
 
 # Wind: mean speed/direction follow an observation (historical weather) or
 # a generated random walk in game time; gusts ride on top in real time so
@@ -159,7 +138,7 @@ def raining_last_hour(history, now, typical_temperature, key="") -> list:
 class WeatherSystem:
     """Owns the current weather type and road wetness.
 
-    Everything else (rain particles, wet-road tint, puddles, splashes)
+    Everything else (wet-road tint, puddles)
     reads .weather_type / .wetness from this rather than tracking their
     own state or reacting directly to keyboard input.
     """
@@ -179,20 +158,12 @@ class WeatherSystem:
         self.lightning_intensity = 0.0
         self.lightning_event_id = 0
         self._lightning_timer = self._rng.uniform(*LIGHTNING_INTERVAL_RANGE_S)
-        # Each entry: [x_fraction, y_fraction, speed_factor]. Recycled in
-        # place (wrap to a fresh random x/y when a streak falls off the
-        # bottom) rather than reallocated.
-        self.rain_particles = [self._spawn_rain_particle() for _ in range(RAIN_PARTICLE_COUNT)]
         if not self._automatic:
             self._weather_timer = float("inf")
         elif season in (Season.AUTUMN, Season.WINTER):
             self._start_autumn_or_winter_period()
         else:
             self._weather_timer = self._next_weather_duration()
-        # Each entry: [x, y, age_s, strength]. Short-lived (SPLASH_LIFETIME_S)
-        # and pruned in update() - never grows large enough to need the
-        # rain-particle pool's recycle-in-place treatment.
-        self.splashes: list = []
         self.wind_speed_mps = self._rng.weibullvariate(WIND_WEIBULL_SCALE_MPS, WIND_WEIBULL_SHAPE)
         self.wind_from_deg = self._rng.uniform(0.0, 360.0)
         self._wind_target = (self.wind_speed_mps, self.wind_from_deg)
@@ -312,20 +283,6 @@ class WeatherSystem:
         if self._outside_temperature_c is None or self._outside_temperature_c >= 0.0:
             return 0.0
         return self.wetness
-
-    def spawn_splash(self, x: float, y: float, strength: float) -> None:
-        """Trigger a splash effect (world position, 0..1 strength - see
-        WEATHER_RAIN.md #5: stronger/larger at higher vehicle speed)."""
-        self.splashes.append([x, y, 0.0, max(0.0, min(1.0, strength))])
-        if len(self.splashes) > SPLASH_POOL_MAX:
-            del self.splashes[: len(self.splashes) - SPLASH_POOL_MAX]
-
-    def _spawn_rain_particle(self) -> list:
-        return [
-            self._rng.random(),
-            self._rng.random(),
-            self._rng.uniform(*RAIN_SPEED_VARIATION),
-        ]
 
     @property
     def is_precipitating(self) -> bool:
@@ -455,7 +412,7 @@ class WeatherSystem:
         outside_temperature_c: Optional[float] = None,
         observed=None,
     ) -> None:
-        """Advance wetness (game time) and rain particles (real time).
+        """Advance wetness (game time) and lightning (real time).
 
         `observed` (weather_history.HourlyWeather, historical-weather mode):
         when it tells whether it is precipitating, that replaces the
@@ -465,8 +422,8 @@ class WeatherSystem:
         `game_dt` is dt * time_scale - the same delta the server uses to
         advance game_time_seconds - so drying/wetting tracks the game
         clock, not wall-clock time. `real_dt` is the plain per-frame dt:
-        rain must fall at a consistent visual speed regardless of how
-        fast game time is currently running (time_scale up to 60x).
+        lightning flashes at a consistent speed regardless of how fast
+        game time is currently running (time_scale up to 60x).
         """
         if outside_temperature_c is not None:
             self._outside_temperature_c = float(outside_temperature_c)
@@ -507,27 +464,6 @@ class WeatherSystem:
             else:
                 self.wetness = max(0.0, self.wetness - game_dt / DRY_DURATION_S)
 
-        if self.is_precipitating and real_dt > 0.0:
-            for particle in self.rain_particles:
-                x, y, factor = particle
-                if self.weather_type == WeatherType.SNOW:
-                    fall_factor, drift_factor = 0.22, 1.8
-                elif self.weather_type == WeatherType.SLUSH:
-                    fall_factor, drift_factor = 0.55, 1.35
-                else:
-                    fall_factor, drift_factor = 1.0, 1.0
-                fall_rate = RAIN_FALL_FRACTION_PER_S * fall_factor
-                drift_rate = RAIN_DRIFT_FRACTION_PER_S * drift_factor
-                y += fall_rate * factor * real_dt
-                x += drift_rate * factor * real_dt
-                if y > 1.0:
-                    y -= 1.0
-                    x = self._rng.random()
-                elif x > 1.0:
-                    x -= 1.0
-                particle[0] = x
-                particle[1] = y
-
         if self.is_thunderstorm and self.weather_type == WeatherType.RAIN and real_dt > 0.0:
             self._lightning_timer -= real_dt
             if self._lightning_timer <= 0.0:
@@ -541,8 +477,3 @@ class WeatherSystem:
                 )
         else:
             self.lightning_intensity = 0.0
-
-        if self.splashes and real_dt > 0.0:
-            for splash in self.splashes:
-                splash[2] += real_dt
-            self.splashes = [s for s in self.splashes if s[2] < SPLASH_LIFETIME_S]
