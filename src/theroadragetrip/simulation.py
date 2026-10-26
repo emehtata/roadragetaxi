@@ -116,9 +116,11 @@ def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, bloc
     return x, y
 
 
-def _roadwork_bars(work, x: float, y: float) -> bool:
+def _roadwork_bars(work, x: float, y: float, *, layer: int = 0, map_level: int = 0) -> bool:
     """Where a roadwork stops the taxi: all of a generated or closed one,
     only the closed lane of a live one with a lane closed."""
+    if not work.applies_to(layer, map_level):
+        return False
     return work.contains(x, y, margin_m=2.0) if work.blocks else work.in_closed_lane(x, y, margin_m=2.0)
 
 
@@ -474,9 +476,10 @@ def advance_simulation(
             (previous_position[1] + car.y) * 0.5,
         )
         live = getattr(world, "live_roadworks", None)
+        roadwork_level = {"layer": car.layer, "map_level": car.map_level}
         entered_roadwork = on_surface and any(  # roadworks sit on surface roads
-            not _roadwork_bars(work, *previous_position)
-            and (_roadwork_bars(work, *midpoint) or _roadwork_bars(work, car.x, car.y))
+            not _roadwork_bars(work, *previous_position, **roadwork_level)
+            and (_roadwork_bars(work, *midpoint, **roadwork_level) or _roadwork_bars(work, car.x, car.y, **roadwork_level))
             for work in (list(roadworks) + (live.zones if live is not None else []))
         )
         audio.on_rise("roadwork", entered_roadwork, "gameplay.roadwork_blocked")
@@ -540,7 +543,8 @@ def advance_simulation(
         taxi_mgr.notification_msg = tr(language, "fuel_empty")
         taxi_mgr.notification_timer = 4.0
     road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
-    live_limit = world.live_roadworks.speed_limit_at(car.x, car.y) if getattr(world, "live_roadworks", None) else None
+    live_limit = (world.live_roadworks.speed_limit_at(car.x, car.y, layer=car.layer, map_level=car.map_level)
+                  if getattr(world, "live_roadworks", None) else None)
     if live_limit is not None and road_limit_mps is not None:  # a live roadwork's limit (digitraffic_road)
         road_limit_mps = min(road_limit_mps, live_limit / 3.6)
     rage_power = _rage_from_speeding(rage_power, car.speed, road_limit_mps, driven_distance)

@@ -404,7 +404,8 @@ def _road_to_dict(current_way, limit_override: Optional[int] = None) -> dict:
 
 def _live_limit(world, car) -> Optional[int]:
     live = getattr(world, "live_roadworks", None)
-    return live.speed_limit_at(car.x, car.y) if live is not None else None
+    return (live.speed_limit_at(car.x, car.y, layer=getattr(car, "layer", 0), map_level=getattr(car, "map_level", 0))
+            if live is not None else None)
 
 
 LIVE_ROADWORK_SEND_M = 700.0

@@ -27,6 +27,41 @@ def test_startup_progress_reaches_the_render_chunk_stage(tmp_path, monkeypatch):
     assert "buildings" in report["detail"]
 
 
+@pytest.mark.parametrize("work_layer,blocked", [(0, True), (1, False)])
+def test_live_bridge_roadworks_do_not_stop_traffic_below(tmp_path, monkeypatch, work_layer, blocked):
+    from types import SimpleNamespace
+    from theroadragetrip.digitraffic_road import LiveRoadworks
+    from theroadragetrip.osm import Way
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.protocol import _live_limit
+    from theroadragetrip.roadworks import Roadwork
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    road = Way([(1_000_000, 1_000_000), (1_002_000, 1_000_000)], "primary", 7)
+    works_road = Way(road.points_m, "primary", 7, layer=work_layer, is_bridge=work_layer != 0)
+    server.world.ways, server.world.roadworks = [road, works_road], []
+    server.world.spatial_grid = SpatialWayGrid(server.world.ways)
+    live = LiveRoadworks(SimpleNamespace(), lambda x, y: (x, y))
+    live.zones = [Roadwork(works_road, 106, 140, False, (1_000_106, 1_000_000), (1_000_140, 1_000_000),
+                           speed_limit_kmh=30, source="digitraffic")]
+    monkeypatch.setattr(live, "update", lambda *a: None)  # recorded placement, no network
+    server.world.live_roadworks = live
+    car = server.car
+    car.x, car.y, car.heading, car.speed, car.layer = 1_000_100, 999_998, 0.0, 30.0, 0
+    car.engine_on = True
+    server._current_way, server._on_foot = road, False
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    start = car.x
+    server.tick(0.5)
+    assert (car.x == start and car.speed == 0) is blocked
+    if not blocked:
+        assert car.x > start and car.layer == 0
+        assert _live_limit(server.world, car) is None
+    car.x = 1_000_120
+    assert _live_limit(server.world, car) == (30 if blocked else None)
+
+
 @pytest.mark.parametrize("hour,minute,second,expected", [(17, 0, 0, True), (18, 0, 0, True),
                                                        (20, 29, 59, True), (20, 30, 0, False), (23, 0, 0, False)])
 def test_match_day_notice_excludes_finished_games(tmp_path, monkeypatch, hour, minute, second, expected):

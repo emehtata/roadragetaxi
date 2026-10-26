@@ -26,6 +26,10 @@ class Roadwork:
     situation_id: str = ""
     title: str = ""
 
+    def applies_to(self, layer: int, map_level: int) -> bool:
+        """A closure or limit never controls a road above or below its own."""
+        return self.way.layer == layer and (self.way.map_level or 0) == map_level
+
     def in_closed_lane(self, x: float, y: float, margin_m: float = 0.0) -> bool:
         """Inside the zone, on the closed (right-hand) half of the road."""
         if not self.lane_closed or not self.contains(x, y, margin_m):

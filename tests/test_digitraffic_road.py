@@ -44,6 +44,32 @@ class FakeOpener:
         return self.body
 
 
+@pytest.mark.parametrize("compressed,deprecated", [(True, True), (False, False)])
+def test_http_opener_handles_compression_timeout_and_deprecation(monkeypatch, caplog, compressed, deprecated):
+    import io
+    import logging
+    body = b'{"features": []}'
+    response = io.BytesIO(gzip.compress(body) if compressed else body)
+    response.headers = {}
+    if compressed:
+        response.headers["Content-Encoding"] = "gzip"
+    if deprecated:
+        response.headers.update({"Deprecation": "true", "Sunset": "2027-01-01"})
+    calls = []
+
+    def urlopen(request, timeout):
+        calls.append((request.full_url, dict(request.header_items()), timeout))
+        return response
+
+    monkeypatch.setattr(dr.urllib.request, "urlopen", urlopen)
+    with caplog.at_level(logging.WARNING, logger=dr.__name__):
+        assert dr._default_opener("https://example.invalid/works", {"Accept-Encoding": "gzip"}) == body
+    assert calls == [("https://example.invalid/works", {"Accept-encoding": "gzip"}, dr.TIMEOUT_S)]
+    assert ("deprecated" in caplog.text) is deprecated
+    if deprecated:
+        assert "2027-01-01" in caplog.text
+
+
 # -- parsing and timing ---------------------------------------------------------
 
 def test_a_recorded_roadwork_parses_with_its_real_restrictions():
@@ -140,6 +166,25 @@ def test_the_service_fetches_the_tiles_around_the_player_off_the_simulation_thre
         service.close()
 
 
+@pytest.mark.parametrize("versions", [(2, 1), (1, 2)])
+def test_newest_version_wins_across_neighboring_tiles(monkeypatch, versions):
+    monkeypatch.setattr(dr, "tiles_near", lambda *a: [(0, 0), (1, 0)])
+    responses = []
+    for version in versions:
+        feature = _collection()["features"][0]
+        feature["properties"]["version"] = version
+        responses.append(json.dumps({"features": [feature]}).encode())
+    client = dr.DigitrafficClient(None, lambda *a: responses.pop(0))
+    service = dr.RoadDataService(client, lambda x, y: (x, y))
+    try:
+        service.request(0, 0, datetime(2026, 10, 26, tzinfo=timezone.utc))
+        service.wait_idle(2)
+        assert client.fetched == 2
+        assert [w.version for w in service.roadworks] == [2]
+    finally:
+        service.close()
+
+
 # -- matching onto the game's roads ----------------------------------------------
 
 def _road_along(lines, ref="20", offset_m=0.0, highway="trunk"):
@@ -232,6 +277,55 @@ def test_cached_bodies_are_stored_compressed(tmp_path):
 
 # -- in the game ----------------------------------------------------------------
 
+def _synthetic_work(lines, **restrictions):
+    phase = dr.RoadworkPhase(datetime(2026, 1, 1, tzinfo=timezone.utc), None, restrictions=restrictions)
+    return dr.LiveRoadwork("test", 1, "works", None, lines, [phase])
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_disjoint_sections_do_not_close_the_clear_road_between_them(reverse):
+    lines = [[(0, 0), (50, 0)], [(950, 0), (1000, 0)]]
+    if reverse:
+        lines = [list(reversed(line)) for line in reversed(lines)]
+    work = _synthetic_work(lines, **{"road closed": None})
+    road = Way([(0, 0), (1000, 0)], "primary", 4)
+    zones = dr.match_roadwork(work, work.phases[0], lambda x, y: (x, y), SpatialWayGrid([road]))
+    assert sum(z.end_m - z.start_m for z in zones) == pytest.approx(100)
+    assert any(z.contains(25, 0) and z.blocks for z in zones)
+    assert any(z.contains(975, 0) and z.blocks for z in zones)
+    assert not any(z.contains(500, 0) for z in zones)
+
+
+def test_overlapping_and_touching_work_lines_merge_without_duplicate_zones():
+    work = _synthetic_work([[(0, 0), (70, 0)], [(50, 0), (100, 0)], [(100, 0), (150, 0)]],
+                           **{"road closed": None})
+    road = Way([(0, 0), (200, 0)], "primary", 4)
+    zones = dr.match_roadwork(work, work.phases[0], lambda x, y: (x, y), SpatialWayGrid([road]))
+    assert sum(z.end_m - z.start_m for z in zones) == pytest.approx(150)
+    assert len(zones) == 3
+
+
+def test_point_roadworks_get_an_extent_but_do_not_match_non_drivable_roads():
+    work = _synthetic_work([[(100, 0)]], **{"road closed": None})
+    road = Way([(0, 0), (200, 0)], "primary", 4)
+    grid = SpatialWayGrid([road])
+    (zone,) = dr.match_roadwork(work, work.phases[0], lambda x, y: (x, y), grid)
+    assert (zone.start_m, zone.end_m) == (80, 120)
+    road.is_drivable = False
+    assert dr.match_roadwork(work, work.phases[0], lambda x, y: (x, y), grid) == []
+
+
+def test_a_speed_limit_can_cover_gaps_without_closing_them_or_duplicating_its_length():
+    work = _synthetic_work([[(100, 0), (150, 0)], [(200, 0), (250, 0)]],
+                           **{"road closed": None, "speed limit": 30, "speed limit length": 300})
+    road = Way([(0, 0), (400, 0)], "primary", 4)
+    zones = dr.match_roadwork(work, work.phases[0], lambda x, y: (x, y), SpatialWayGrid([road]))
+    assert sum(z.end_m - z.start_m for z in zones) == pytest.approx(300)
+    assert sum(z.end_m - z.start_m for z in zones if z.blocks) == pytest.approx(100)
+    assert any(z.contains(175, 0) and z.speed_limit_kmh == 30 for z in zones)
+    assert not any(z.contains(175, 0) and z.blocks for z in zones)
+
+
 def _straight_zone(**kwargs):
     from theroadragetrip.roadworks import Roadwork
     road = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="trunk", half_width_m=4.0, speed_limit_kmh=80)
@@ -250,11 +344,30 @@ def test_the_taxi_is_stopped_only_by_a_live_zones_closed_lane_but_wholly_by_a_ge
     assert _roadwork_bars(closed, 75.0, 2.0)
 
 
+@pytest.mark.parametrize("work_layer,car_layer,work_level,car_level,applies", [
+    (1, 0, None, 0, False), (0, 1, None, 0, False),
+    (1, 1, None, 0, True), (0, 0, None, 0, True),
+    (0, 0, None, -1, False), (0, 0, -1, -1, True),
+])
+def test_roadwork_blocks_and_speed_limits_stay_on_their_layer(work_layer, car_layer, work_level, car_level, applies):
+    from types import SimpleNamespace
+    from theroadragetrip.protocol import _live_limit
+    from theroadragetrip.simulation import _roadwork_bars
+    zone = _straight_zone(blocks=True, speed_limit_kmh=30, source="digitraffic")
+    zone.way.layer, zone.way.map_level = work_layer, work_level
+    live = dr.LiveRoadworks(SimpleNamespace(), lambda x, y: (x, y))
+    live.zones = [zone]
+    car = SimpleNamespace(x=75.0, y=1.0, layer=car_layer, map_level=car_level)
+    assert _roadwork_bars(zone, car.x, car.y, layer=car.layer, map_level=car.map_level) is applies
+    assert _live_limit(SimpleNamespace(live_roadworks=live), car) == (30 if applies else None)
+
+
 def test_the_hud_limit_and_state_carry_the_live_roadwork():
     from types import SimpleNamespace
     from theroadragetrip import protocol
     zone = _straight_zone(blocks=False, speed_limit_kmh=30, source="digitraffic", situation_id="GUID1")
-    live = SimpleNamespace(zones=[zone], speed_limit_at=lambda x, y: 30 if zone.contains(x, y) else None)
+    live = dr.LiveRoadworks(SimpleNamespace(), lambda x, y: (x, y))
+    live.zones = [zone]
     world = SimpleNamespace(live_roadworks=live)
     assert protocol._road_to_dict(zone.way, protocol._live_limit(world, SimpleNamespace(x=75.0, y=1.0)))["speed_limit_kmh"] == 30
     assert protocol._road_to_dict(zone.way, protocol._live_limit(world, SimpleNamespace(x=150.0, y=1.0)))["speed_limit_kmh"] == 80

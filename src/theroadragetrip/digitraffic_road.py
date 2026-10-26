@@ -286,7 +286,11 @@ class RoadDataService:
                 data = self.client.get_json("/api/traffic-message/v2/roadworks", roadworks_params(tile, start))
                 complete &= data is not None
                 works.extend(parse_roadworks(data))
-            unique = {w.situation_id: w for w in works}  # a roadwork can cross a tile edge
+            unique = {}
+            for work in works:  # neighbouring tiles (including cached ones) may have different versions
+                previous = unique.get(work.situation_id)
+                if previous is None or work.version > previous.version:
+                    unique[work.situation_id] = work
             self.roadworks = list(unique.values())
             self.revision += 1
             if complete:
@@ -358,10 +362,10 @@ def _match_sample(x, y, heading, road, grid):
     return best and best[1:]
 
 
-def work_samples(work: LiveRoadwork, project) -> List[Tuple[float, float, Optional[float]]]:
+def work_samples(work: LiveRoadwork, project) -> List[List[Tuple[float, float, Optional[float]]]]:
     """A roadwork's lines in world metres, sampled every SAMPLE_M (projection
     is the costly part: LiveRoadworks keeps these per situation version)."""
-    return [sample for line in work.lines_ll for sample in _samples([project(lon, lat) for lon, lat in line])]
+    return [_samples([project(lon, lat) for lon, lat in line]) for line in work.lines_ll]
 
 
 def match_roadwork(work: LiveRoadwork, phase: RoadworkPhase, project, grid, samples=None) -> list:
@@ -371,15 +375,23 @@ def match_roadwork(work: LiveRoadwork, phase: RoadworkPhase, project, grid, samp
     from .roadworks import Roadwork, _point_at, _way_length
     spans: Dict[int, list] = {}
     total = matched = 0
-    for x, y, heading in (samples if samples is not None else work_samples(work, project)):
-        total += 1
-        hit = _match_sample(x, y, heading, work.road, grid)
-        if hit is not None:
+    for line in (samples if samples is not None else work_samples(work, project)):
+        previous = None
+        for x, y, heading in line:
+            total += 1
+            hit = _match_sample(x, y, heading, work.road, grid)
+            if hit is None:
+                previous = None  # an unmatched stretch is not a road closure
+                continue
             matched += 1
             way, along = hit
-            spans.setdefault(id(way), [way, along, along])
-            span = spans[id(way)]
-            span[1], span[2] = min(span[1], along), max(span[2], along)
+            _, runs = spans.setdefault(id(way), [way, []])
+            if previous is not None and previous[0] is way and abs(along - previous[1]) <= 2 * SAMPLE_M + 1e-6:
+                run = runs[-1]
+                run[0], run[1] = min(run[0], along), max(run[1], along)
+            else:
+                runs.append([along, along])
+            previous = (way, along)
     if total == 0 or matched / total < MIN_MATCHED_SHARE:
         return []
     restrictions = phase.restrictions
@@ -397,19 +409,34 @@ def match_roadwork(work: LiveRoadwork, phase: RoadworkPhase, project, grid, samp
                                   blocks=closed and works, speed_limit_kmh=int(speed) if speed else None,
                                   source="digitraffic", situation_id=work.situation_id, title=work.title))
 
-    for way, start_m, end_m in spans.values():
+    for way, runs in spans.values():
         length = _way_length(way)
-        if end_m - start_m < POINT_ZONE_M:  # a point, or a sliver of a road: at least POINT_ZONE_M of works
-            middle = (start_m + end_m) / 2.0
-            start_m, end_m = max(0.0, middle - POINT_ZONE_M / 2), min(length, middle + POINT_ZONE_M / 2)
-        pieces(way, start_m, end_m, True)
+        expanded = []
+        for start_m, end_m in runs:
+            if end_m - start_m < 1e-6:  # a point needs an extent; short lines keep their actual bounds
+                middle = (start_m + end_m) / 2.0
+                start_m, end_m = max(0.0, middle - POINT_ZONE_M / 2), min(length, middle + POINT_ZONE_M / 2)
+            expanded.append((start_m, end_m))
+        merged = []
+        for start_m, end_m in sorted(expanded):
+            if merged and start_m <= merged[-1][1] + 1e-6:
+                merged[-1][1] = max(merged[-1][1], end_m)
+            else:
+                merged.append([start_m, end_m])
+        for start_m, end_m in merged:
+            pieces(way, start_m, end_m, True)
+        start_m, end_m = merged[0][0], merged[-1][1]
         if speed and stated and float(stated) > end_m - start_m:  # the speed limit reaches beyond the works
             extra = (float(stated) - (end_m - start_m)) / 2.0
             before, after = max(0.0, start_m - extra), min(length, end_m + extra)
-            if start_m - before > 1.0:
-                pieces(way, before, start_m, False)
-            if after - end_m > 1.0:
-                pieces(way, end_m, after, False)
+            # One speed-limit interval per way, without duplicating zones or closing the gaps.
+            cursor = before
+            for a, b in merged:
+                if a - cursor > 1.0:
+                    pieces(way, cursor, a, False)
+                cursor = b
+            if after - cursor > 1.0:
+                pieces(way, cursor, after, False)
     return zones
 
 
@@ -463,6 +490,7 @@ class LiveRoadworks:
             self._summary = summary
             logger.info("Digitraffic roadworks: %d live, %d active, %d zones placed", *summary)
 
-    def speed_limit_at(self, x: float, y: float) -> Optional[int]:
-        limits = [z.speed_limit_kmh for z in self.zones if z.speed_limit_kmh and z.contains(x, y)]
+    def speed_limit_at(self, x: float, y: float, *, layer: int = 0, map_level: int = 0) -> Optional[int]:
+        limits = [z.speed_limit_kmh for z in self.zones
+                  if z.speed_limit_kmh and z.applies_to(layer, map_level) and z.contains(x, y)]
         return min(limits) if limits else None
