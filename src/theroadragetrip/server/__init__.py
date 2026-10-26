@@ -302,8 +302,6 @@ class SimulationServer:
             self.world.weather.update(0.001, 0.0, outside_temperature_c=self.world.weather.outside_temperature_c,
                                       observed=observed)
         self.world.weather.settle_initial_wetness(self._raining_last_hour())
-        self.start_forecast = self._forecast()
-
         self._on_foot = True
         self._camx, self._camy = self.car.x, self.car.y
         self._px_per_m = _DEFAULT_PX_PER_M

@@ -977,7 +977,7 @@ def test_the_world_message_carries_the_start_sign(tmp_path, monkeypatch):
     from theroadragetrip import protocol
 
     server = _build_server(tmp_path, monkeypatch)
-    forecast = server.start_forecast
+    forecast = server._forecast()
     assert len(forecast) == 5 and forecast[0]["source"] == "generated"
     assert all(set(line) == {"time", "temperature_c", "weather", "source", "wind_speed_mps", "wind_from_deg", "snow_depth_cm"}
                for line in forecast)
