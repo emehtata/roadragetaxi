@@ -731,6 +731,7 @@ class SimulationServer:
                 getattr(self, "camera_city_name", self.chosen_city), getattr(self.args, "game_mode", "gig_driver"),
                 self._on_foot, scenery_objects=w.scenery_objects, speed_bumps=w.speed_bumps, railways=w.railways,
                 railings=w.railings, npcs=w.npcs, npc_drivers=w.npc_drivers, npc_manager=w.npc_manager,
+                taxi_brawls=getattr(w, "taxi_brawls", None),
             )
             logger.info("Debug snapshot %s", path)
         except Exception:  # a debugging aid: never take the game down

@@ -272,6 +272,7 @@ def _write_debug_snapshot(
     npc_drivers=None,
     npc_manager=None,
     frame_profiler=None,
+    taxi_brawls=None,
 ) -> None:
     minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
     now = time.time()
@@ -292,6 +293,12 @@ def _write_debug_snapshot(
             "tree_effect_count": len(taxi_mgr.tree_effects),
             "fallen_tree_count": len(taxi_mgr.fallen_trees),
             "vomit_puddle_count": len(taxi_mgr.vomit_puddles),
+        },
+        # Taxi drivers' quarrels (taxi_brawls.py): the active ones and the last outcomes.
+        "brawls": {
+            "active": taxi_brawls.to_dicts(traffic_mgr.sim_time) if taxi_brawls is not None else [],
+            "recent": list(taxi_brawls.history) if taxi_brawls is not None else [],
+            "rejected_triggers": taxi_brawls.rejected if taxi_brawls is not None else 0,
         },
         "world": {
             "city": chosen_city,

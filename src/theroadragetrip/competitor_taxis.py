@@ -20,11 +20,17 @@ STOP_DWELL_S = 6.0  # at a stop: the passenger boards or leaves
 MAX_ROUTE_ATTEMPTS = 5  # a leg that cannot be routed this often: the job is dropped
 
 
+def nightlife_peak(moment) -> bool:
+    """Friday and Saturday night, 22-06."""
+    return moment is not None and (
+        (moment.hour >= 22 and moment.weekday() in (4, 5)) or (moment.hour < 6 and moment.weekday() in (5, 6)))
+
+
 def night_taxi_target(moment, local_fraction: float, city_target: int) -> int:
     """Gameplay demand estimate, scaled to local density and the existing population budget."""
     if moment is None:
         return 0
-    late = (moment.hour >= 22 and moment.weekday() in (4, 5)) or (moment.hour < 6 and moment.weekday() in (5, 6))
+    late = nightlife_peak(moment)
     return min(NIGHT_COMPETITOR_TAXIS, math.ceil(max(0, city_target) * 0.25 * max(0.0, min(1.0, local_fraction)))) if late else 0
 
 
@@ -86,7 +92,7 @@ class Dispatcher:
         self.elapsed = 0.0
         self.taken = 0  # offers competitors have taken
 
-    def update(self, taxi_mgr, npc_manager, dt: float) -> None:
+    def update(self, taxi_mgr, npc_manager, dt: float, brawls=None) -> None:
         from .localization import tr
         from .npc import NPCState
 
@@ -96,6 +102,7 @@ class Dispatcher:
         interval, self.elapsed = self.elapsed, 0.0
         idle = [v for v in npc_manager.vehicles
                 if is_competitor(v) and v.taxi_job is None and v.state == NPCState.PARKED
+                and getattr(v, "brawl_id", None) is None
                 and npc_manager.drivers.get(v.vehicle_id) is not None
                 and not getattr(npc_manager.drivers[v.vehicle_id], "route_job_pending", False)]
         chance = 1.0 - math.exp(-CLAIM_RATE_PER_S * interval)
@@ -109,6 +116,13 @@ class Dispatcher:
             dropoff = offer.passenger.dropoff
             nearest.taxi_job = TaxiJob(offer.passenger.name, (pickup.x, pickup.y), (dropoff.x, dropoff.y))
             idle.remove(nearest)
+            if brawls is not None and idle:  # a rival waiting beside it saw the fare go: a dispute
+                from .taxi_brawls import DISPUTE_CHANCE, ENGAGE_RADIUS_M, NPC
+                rival = min(idle, key=lambda v: math.hypot(v.x - nearest.x, v.y - nearest.y))
+                if (math.hypot(rival.x - nearest.x, rival.y - nearest.y) <= ENGAGE_RADIUS_M
+                        and self.rng.random() < DISPUTE_CHANCE):
+                    brawls.report("passenger", (NPC, rival.vehicle_id), (NPC, nearest.vehicle_id),
+                                  ("passenger", offer.passenger.name, round(pickup.x), round(pickup.y)))
             taxi_mgr.offers.remove(offer)
             taxi_mgr.notification_msg = tr(taxi_mgr.language, "competitor_took_fare", name=offer.passenger.name)
             taxi_mgr.notification_timer = 4.0

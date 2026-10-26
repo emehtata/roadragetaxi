@@ -813,7 +813,18 @@ def advance_simulation(
     pedestrian_mgr.sound_events.clear()
     if on_foot:
         audio.update_footsteps(player_pedestrian.speed, dt, running=command.sprint)
-    world.competitor_dispatcher.update(taxi_mgr, npc_manager, dt)  # competitors take phone fares
+    brawls = getattr(world, "taxi_brawls", None)
+    world.competitor_dispatcher.update(taxi_mgr, npc_manager, dt, brawls)  # competitors take phone fares
+    if brawls is not None:
+        from .protocol import LOCAL_PLAYER_ID
+        from .taxi_brawls import NPC, PLAYER
+        for vehicle_id in npc_manager.taxi_bumps:  # the player bumped a rival: a future player quarrel
+            brawls.report("traffic", (PLAYER, LOCAL_PLAYER_ID), (NPC, vehicle_id), ("traffic", vehicle_id, int(traffic_mgr.sim_time)))
+        brawls.update(npc_manager, dt, traffic_mgr.sim_time, taxi_stops, now)
+        for group_id, at in brawls.sound_events:
+            audio.play_group(group_id, at=at)
+        brawls.sound_events.clear()
+    npc_manager.taxi_bumps.clear()
     waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
     if waiting_pedestrian is not None:
         pedestrian_mgr.pedestrians.remove(waiting_pedestrian)

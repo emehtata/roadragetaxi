@@ -1251,6 +1251,7 @@ class NPCVehicle:
     is_taxi: bool = False
     taxi_job: object = None  # a competitor taxi's fare (competitor_taxis.TaxiJob), None when free
     taxi_idle_until: float = 0.0
+    brawl_id: Optional[int] = None  # its driver is out quarrelling (taxi_brawls.py): the car stays put
     bus_job: object = None  # a line bus's route and next stop (bus_lines.BusJob)
     is_police: bool = False
     is_on_foot: bool = False
@@ -3896,6 +3897,7 @@ class NPCVehicleManager:
         self.drivers: Dict[int, Driver] = {}
         self.accidents: List[Tuple[float, float]] = []  # crash positions for the sound, drained by the simulation
         self.curses: List[Tuple[float, float]] = []  # where a bumped NPC driver cursed; drained by the simulation
+        self.taxi_bumps: List[int] = []  # competitor taxis the player bumped (taxi_brawls trigger); drained by the simulation
         self.bus_brakes: List[Tuple[float, float]] = []
         self.household_manager = HouseholdManager()
         self.target_count = target_count
@@ -4464,6 +4466,8 @@ class NPCVehicleManager:
                 vehicle.curse_text = random.choice(CURSE_SYMBOLS)
                 vehicle.shaken_timer = SHAKEN_S
                 self.curses.append((vehicle.car.x, vehicle.car.y))
+                if is_competitor(vehicle) and len(self.taxi_bumps) < 8:
+                    self.taxi_bumps.append(vehicle.vehicle_id)
                 return True
             self.accidents.append((vehicle.car.x, vehicle.car.y))
             if not vehicle_already_crashed:
@@ -5601,6 +5605,7 @@ class NPCVehicleManager:
             vehicle for vehicle in self.vehicles
             if vehicle.state == NPCState.PARKED
             and vehicle.vehicle_id not in self.road_rage.held
+            and vehicle.brawl_id is None
             and vehicle.trip_group is not None and vehicle.trip_group.all_aboard
             and self.drivers.get(vehicle.vehicle_id) is not None
             and not (vehicle.vehicle_kind == "household" and vehicle.returning_home)

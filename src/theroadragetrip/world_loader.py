@@ -23,6 +23,7 @@ from .level_transitions import LevelTransitions, resolve_connectors, close_garag
 from .map_level import SURFACE_LEVEL, LevelRoadNetworks
 from .trams import TramManager
 from .competitor_taxis import Dispatcher
+from .taxi_brawls import BrawlManager
 from .npc import NPCVehicleManager, npc_target_count_for_population
 from .osm import (AutoFetchManager, build_ways, fetch_osm_ways,
                   fetch_osm_ways_from_pbf, load_local_sample, local_pbf_available,
@@ -498,6 +499,7 @@ def load_world(
         npcs=npcs,
         npc_manager=npc_manager,
         competitor_dispatcher=Dispatcher(),  # competitor taxis take phone fares (competitor_taxis.py)
+        taxi_brawls=BrawlManager(),  # competitor drivers' quarrels and fights (taxi_brawls.py)
         parking_garages=parking_garages,
         level_ways=level_ways,
         level_connectors=level_connectors,

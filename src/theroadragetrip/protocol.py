@@ -537,6 +537,8 @@ def build_state_message(
             "x": player_pedestrian.x, "y": player_pedestrian.y, "heading": player_pedestrian.heading,
         },
         "npcs": [_npc_to_dict(npc, residents) for npc in world.npc_manager.vehicles],
+        # Taxi drivers' quarrels, current state only (taxi_brawls.BrawlManager.to_dicts).
+        "brawls": world.taxi_brawls.to_dicts(traffic_mgr.sim_time) if getattr(world, "taxi_brawls", None) else [],
         "pedestrians": [_pedestrian_to_dict(p, residents, santa_day) for p in shown_pedestrians(world.pedestrian_mgr, camx, camy)],
         "pucks": puck_positions(),  # ice hockey: [[x, y], ...]
         "balls": ball_positions(),  # soccer: [[x, y], ...]
