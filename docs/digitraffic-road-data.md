@@ -18,7 +18,7 @@ Traffic decisions stay on the Python server; Godot only draws them.
 
 | Part | Where | Notes |
 | --- | --- | --- |
-| Client and cache | `digitraffic_road.DigitrafficClient` | gzip, `Digitraffic-User: RoadRageTrip/road-data`, backoff (30 s → 5 min), Deprecation/Sunset logging. **Every successful answer is cached with no expiration** in `<CACHE_DIR>/digitraffic_road.sqlite` (gzip bodies, keyed by the exact URL); failures and invalid JSON are never cached. |
+| Client and cache | `digitraffic_road.DigitrafficClient` | gzip, `Digitraffic-User: RoadRageTrip/road-data`, backoff (30 s → 5 min), Deprecation/Sunset logging. **Every successful answer is cached with no expiration** in `~/.cache/RoadRageTrip/digitraffic_road.sqlite` (gzip bodies, keyed by the exact URL), outside `osm_cache/` so "clear map cache" leaves it; failures and invalid JSON are never cached. |
 | Queries | `roadworks_params`, `RoadDataService` | One query is one snapped 0.4° × 0.2° tile (about 19 × 22 km) and one 15-minute **game-time** window, so it repeats exactly. Replays and restarts read the cache; live play gets a new window every 15 game minutes. Tiles within 5 km of the taxi are fetched on a background thread. |
 | Roadworks | `parse_roadworks`, `RoadworkPhase.active` | The newest version per `situationId`. A phase follows its dates, and with `restrictionsLiftable` also its weekday working hours (local time). |
 | Matching | `match_roadwork` | Samples every 10 m, nearest drivable surface way within 15 m and 30°, and a 10 m bonus for the matching `Way.ref` road number. At least 60 % of samples must match. Placed as 50 m `Roadwork` pieces; the speed limit covers `speed limit length` centred on the works. |
