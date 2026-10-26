@@ -120,7 +120,8 @@ MAGIC = b"RWC\0"
 # 53: culverted and underground waterways are not surface water.
 # 54: only surveyed OSM trees are server objects; forests use client canopy rendering.
 # 55: Way cycling metadata (bicycle, cycleway, oneway:bicycle, motorroad).
-FORMAT_VERSION = 55
+# 56: Way.ref, the OSM road number(s) (Digitraffic road data matching).
+FORMAT_VERSION = 56
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

@@ -1523,6 +1523,7 @@ def build_ways(
                 cycleway=cycleway_tag,
                 oneway_bicycle=oneway_bicycle,
                 motorroad=str(tags.get("motorroad", "")).lower() == "yes",
+                ref=ref_num or None,
                 **_level_metadata(tags),
             )
         )

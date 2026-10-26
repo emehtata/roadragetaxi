@@ -50,6 +50,7 @@ class Way:
     cycleway: Optional[str] = None
     oneway_bicycle: Optional[int] = None
     motorroad: bool = False
+    ref: Optional[str] = None  # OSM ref=*: the road number(s), e.g. "4" or "E8;21" (Digitraffic matching)
     segment_lengths: List[float] = field(default_factory=list, init=False, repr=False)
     segment_headings: List[float] = field(default_factory=list, init=False, repr=False)
     total_length_m: float = field(default=0.0, init=False, repr=False)
