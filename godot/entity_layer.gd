@@ -1129,6 +1129,8 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 			_canvas.draw_line(head_at - side * radius * .45, head_at + side * radius * .45, _person_lit(Color8(170, 190, 180)), radius * .08)
 		if ped.has("golf"):
 			_golf_club(c, h, side, radius, ped["golf"])
+	if ped.has("rage"):  # a brawler's face, after (over) the figure
+		_rage_face(c, heading, float(ped["rage"]), ped.get("animation_state", "") == "fallen")
 	if ped.get("curse_timer", 0.0) > 0.0:
 		var timer: float = ped["curse_timer"]
 		_bubble(c - Vector2(0, radius + _px(6.0)), str(ped.get("curse_text", "@#*!%")), RS.CURSE_TEXT, RS.CURSE_BORDER,
@@ -1178,8 +1180,8 @@ func _brawls(a: Dictionary, b: Dictionary, t: float, view_rect: Rect2) -> int:
 				"activity": "" if f.get("down", false) else "brawl",
 				"stick_swing": swing if striking else 0.0,
 				"curse_timer": f.get("curse_timer", 0.0), "curse_text": f.get("curse_text", ""),
+				"rage": f.get("rage", 0.0),  # drawn over the figure by _pedestrian (on the people layer)
 			}, now)
-			_rage_face(c, p.z, float(f.get("rage", 0.0)), f.get("down", false))
 			drawn += 1
 	for id in _brawl_punches.keys():  # over: forget it
 		if not live.has(id):
