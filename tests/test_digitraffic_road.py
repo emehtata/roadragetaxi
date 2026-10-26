@@ -280,6 +280,42 @@ def test_realtime_road_data_is_opt_in(monkeypatch):
     assert not parse_args(config).road_digitraffic
 
 
+def test_a_streaming_map_does_not_rematch_every_tick(caplog):
+    """The loaded roads change almost every tick while the map streams in:
+    matching reruns for them at most every REMATCH_ON_MAP_GROWTH_S, the
+    geometry is projected once per version, and the log line only changes
+    with the placement (a user's log once had it 30 times a second)."""
+    import logging
+    work = _kuusamontie()
+    road = _road_along(work.lines_ll)
+    projections = []
+
+    def project(lon, lat):
+        projections.append((lon, lat))
+        return PROJECT(lon, lat)
+
+    class Service:
+        roadworks, revision = [work], 1
+
+        def request(self, *a):
+            pass
+
+    now = [0.0]
+    live = dr.LiveRoadworks(Service(), project, clock=lambda: now[0])
+    grid = SpatialWayGrid([road])
+    moment = _local(2026, 10, 28, 11)
+    with caplog.at_level(logging.INFO, logger="theroadragetrip.digitraffic_road"):
+        for tick in range(300):  # 10 s at 30 Hz, a new road loaded every tick
+            now[0] = tick / 30
+            live.update(0, 0, *moment, 1000 + tick, grid)
+    assert live.matches == 2  # the first tick, then once after REMATCH_ON_MAP_GROWTH_S (not 300 times)
+    assert len(projections) == sum(len(line) for line in work.lines_ll)  # projected once
+    assert len([r for r in caplog.records if "zones placed" in r.message]) == 1
+    Service.revision = 2  # new data is matched at once, map growth or not
+    live.update(0, 0, *moment, 1300, grid)
+    assert live.matches == 3
+
+
 def test_the_permanent_cache_is_outside_the_map_cache_that_clear_cache_empties(tmp_path, monkeypatch):
     from pathlib import Path
     from theroadragetrip import osm

@@ -358,23 +358,28 @@ def _match_sample(x, y, heading, road, grid):
     return best and best[1:]
 
 
-def match_roadwork(work: LiveRoadwork, phase: RoadworkPhase, project, grid) -> list:
+def work_samples(work: LiveRoadwork, project) -> List[Tuple[float, float, Optional[float]]]:
+    """A roadwork's lines in world metres, sampled every SAMPLE_M (projection
+    is the costly part: LiveRoadworks keeps these per situation version)."""
+    return [sample for line in work.lines_ll for sample in _samples([project(lon, lat) for lon, lat in line])]
+
+
+def match_roadwork(work: LiveRoadwork, phase: RoadworkPhase, project, grid, samples=None) -> list:
     """The game Roadwork zones for one live roadwork's active phase, cut into
     PIECE_M pieces along the matched ways. [] when it doesn't fit the loaded
     roads well enough (MIN_MATCHED_SHARE)."""
     from .roadworks import Roadwork, _point_at, _way_length
     spans: Dict[int, list] = {}
     total = matched = 0
-    for line in work.lines_ll:
-        for x, y, heading in _samples([project(lon, lat) for lon, lat in line]):
-            total += 1
-            hit = _match_sample(x, y, heading, work.road, grid)
-            if hit is not None:
-                matched += 1
-                way, along = hit
-                spans.setdefault(id(way), [way, along, along])
-                span = spans[id(way)]
-                span[1], span[2] = min(span[1], along), max(span[2], along)
+    for x, y, heading in (samples if samples is not None else work_samples(work, project)):
+        total += 1
+        hit = _match_sample(x, y, heading, work.road, grid)
+        if hit is not None:
+            matched += 1
+            way, along = hit
+            spans.setdefault(id(way), [way, along, along])
+            span = spans[id(way)]
+            span[1], span[2] = min(span[1], along), max(span[2], along)
     if total == 0 or matched / total < MIN_MATCHED_SHARE:
         return []
     restrictions = phase.restrictions
@@ -408,33 +413,55 @@ def match_roadwork(work: LiveRoadwork, phase: RoadworkPhase, project, grid) -> l
     return zones
 
 
+REMATCH_ON_MAP_GROWTH_S = 5.0  # the loaded roads change almost every tick while the map streams in
+
+
 class LiveRoadworks:
     """The live roadworks placed on the loaded map at the game time. The
-    simulation calls update() every tick; the real work (matching) runs
-    only when the fetched data, the loaded roads or the active phases
-    change - a few times a game-minute at most."""
+    simulation calls update() every tick; matching runs only when the
+    fetched data or the active phases change, and for newly loaded roads
+    at most once per REMATCH_ON_MAP_GROWTH_S."""
 
-    def __init__(self, service: RoadDataService, project: Callable[[float, float], Tuple[float, float]]) -> None:
-        self.service, self.project = service, project
+    def __init__(self, service: RoadDataService, project: Callable[[float, float], Tuple[float, float]],
+                 clock: Callable[[], float] = time.monotonic) -> None:
+        self.service, self.project, self.clock = service, project, clock
         self.zones: list = []
+        self.matches = 0  # matching runs (diagnostics, tests)
         self._key = None
+        self._ways_revision = None
+        self._matched_at = float("-inf")
+        self._samples: Dict[Tuple[str, int], list] = {}  # (situation, version) -> projected samples
+        self._summary = None
 
     def update(self, x: float, y: float, moment_utc: datetime, local: datetime, ways_revision, grid) -> None:
         self.service.request(x, y, moment_utc)
+        if grid is None:
+            return
         works = self.service.roadworks
         phases = tuple((w.situation_id, w.phases.index(p)) for w in works if (p := w.phase_at(moment_utc, local)))
-        key = (self.service.revision, ways_revision, phases)
-        if key == self._key or grid is None:
+        key = (self.service.revision, phases)
+        now = self.clock()
+        roads_grew = ways_revision != self._ways_revision and now - self._matched_at >= REMATCH_ON_MAP_GROWTH_S
+        if key == self._key and not roads_grew:
             return
-        self._key = key
+        self._key, self._ways_revision, self._matched_at = key, ways_revision, now
+        self.matches += 1
+        live = {(w.situation_id, w.version) for w in works}
+        self._samples = {k: v for k, v in self._samples.items() if k in live}
         zones = []
         for work in works:
             phase = work.phase_at(moment_utc, local)
             if phase is not None:
-                zones.extend(match_roadwork(work, phase, self.project, grid))
+                version = (work.situation_id, work.version)
+                if version not in self._samples:  # (not setdefault: that would project every time)
+                    self._samples[version] = work_samples(work, self.project)
+                samples = self._samples[version]
+                zones.extend(match_roadwork(work, phase, self.project, grid, samples))
         self.zones = zones
-        logger.info("Digitraffic roadworks: %d live, %d active, %d zones placed",
-                    len(works), len(phases), len(zones))
+        summary = (len(works), len(phases), len(zones))
+        if summary != self._summary:  # logged when the placement changes, not every re-match
+            self._summary = summary
+            logger.info("Digitraffic roadworks: %d live, %d active, %d zones placed", *summary)
 
     def speed_limit_at(self, x: float, y: float) -> Optional[int]:
         limits = [z.speed_limit_kmh for z in self.zones if z.speed_limit_kmh and z.contains(x, y)]
