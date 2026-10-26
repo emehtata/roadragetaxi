@@ -39,13 +39,14 @@ winner. Participants are existing NPC taxis, referenced by `vehicle_id`
 
 ## Triggers
 
-All three come from existing events. None of them scans every pair of NPCs.
+All of them come from existing events. None of them scans every pair of NPCs.
 
 | Trigger | Source | Notes |
 | --- | --- | --- |
 | `passenger` | `competitor_taxis.Dispatcher`: a fare goes to one idle taxi while another idle taxi waits within `ENGAGE_RADIUS_M` | `DISPUTE_CHANCE` (0.15) |
 | `rank` | every `RANK_CHECK_INTERVAL_S` (30 s): pairs of idle, parked rival taxis within `ENGAGE_RADIUS_M` | `RANK_CHANCE` 0.002 per pair, or `NIGHT_RANK_CHANCE` 0.02 at the Friday/Saturday 22–06 nightlife peak (`nightlife_peak`). Away from a taxi stand (`TAXI_STAND_RADIUS_M`), times `RANK_FALLBACK_FACTOR` |
-| `traffic` | the player's minor bump of a rival taxi (`npc_manager.taxi_bumps`) | the participant is the player; rejected while `PLAYER_BRAWLS_ENABLED` is False |
+| `traffic` | the player's minor bump of a rival taxi (`npc_manager.taxi_bumps`) | player against NPC (see "Player brawls") |
+| `provoke` | on foot, a SPACE shout (it needs the rage a shout costs) within `PROVOKE_REACH_M` (6 m) of a rival taxi with its driver aboard (`simulation._provoke_rival`) | player against NPC; the driver also gets `PROVOKE_TAUNT` rage |
 
 These values are game estimates, not incident statistics, and are kept rare
 on purpose. All tunables are module constants at the top of `taxi_brawls.py`,
@@ -54,14 +55,18 @@ like the other simulation tunables.
 **Eligibility** (`_eligible_npc`) requires all of these:
 
 - the vehicle exists and is a competitor taxi;
-- it is `PARKED` and has its driver;
+- it is `PARKED` and has its driver (against the player: any state but
+  `CRASHED`, as long as it has stopped, below 0.5 m/s);
 - it is not in another brawl, not held by rage clearance, and has no
-  queued route job;
+  queued route job (against the player, a queued job may wait);
 - it is not cooling down from an earlier brawl;
 - it has no fare aboard, and is not stopped to board or drop one off.
 
 The two taxis must be within `ENGAGE_RADIUS_M` of each other and on the same
-layer and map level. A participant cannot fight themselves. Each trigger
+layer and map level. Against the player, the rival must be within
+`PLAYER_ENGAGE_M` (15 m) of the player or the player's taxi, on the player's
+map level. The player must have no fare in or for the taxi, and must not be
+in `PLAYER_COOLDOWN_S` (60 s) after an earlier brawl. A participant cannot fight themselves. Each trigger
 event has a key; a key that was already processed is ignored
 (`PROCESSED_TRIGGER_MEMORY`), and so are duplicates queued in the same tick.
 
@@ -127,6 +132,48 @@ Rage is read at every decision (`BrawlManager.rage`), so a change during a
 fight counts from the next action. Rage does not change how often brawls
 start; it only affects the fighting.
 
+## Player brawls
+
+The player fights with the keys they already have. These are the existing,
+validated command fields: a client cannot send an action result, a winner
+or a rage value, because `protocol.command_from_message` keeps only known,
+typed fields.
+
+| Key | Out of the taxi in a brawl | Otherwise (unchanged) |
+| --- | --- | --- |
+| SPACE | strike: in CONFRONTATION or ESCALATION it starts the fight at once with the player's blow | road rage shout |
+| Shift (held) | dodge: the rival's next blow loses `PLAYER_DODGE_BONUS` (0.3) hit chance, never below 0.1 | sprint |
+| F | run: outcome `fled`, and the rival wins | get in or out of the taxi |
+
+How a player brawl goes:
+
+- **Bumped rival.** The rival's driver gets out and walks to the player's
+  driver door. The player is told "a rival driver is coming to have it out".
+  - Getting out (F) starts the fight.
+  - Driving more than `PLAYER_LEAVE_M` (8 m) away gives `player_left`.
+  - Staying at the wheel for `PLAYER_WAIT_S` (8 s) gives `ignored`.
+
+  The rival's car stops where it is, with hazard lights, and the NPC update
+  skips it while `brawl_id` is set.
+- **Provoked rival.** The driver gets out and comes to the player.
+- **On foot in a brawl.** `BrawlManager.player_locked` holds the player in
+  place, facing the rival, from confrontation to the end of the fight, and
+  for `KNOCKDOWN_GET_UP_S` after a knockout. The walking input is ignored
+  then.
+- **Who strikes.** The player strikes only when they press SPACE. Otherwise
+  the rival swings, one blow per `ACTION_INTERVAL_S`. The staggered rule
+  still applies to both.
+- **Odds.** Every roll uses the same `hit_chance` and `rage_modifiers` as NPC
+  fights. The player's skill is `PLAYER_SKILL` (0.55), and their rage is the
+  meter.
+- **Backing down.** The dice never make the player back down or surrender;
+  only the rival rolls to back down, with the player's rage intimidating it.
+  The player gives up only by running.
+- **Outcome notices**, through the existing notification line (fi/en/de):
+  `brawl_won`, `brawl_lost`, `brawl_backed_down`, `brawl_fled`, `brawl_left`,
+  `brawl_ignored`, `brawl_separated`. The on-foot hint line shows the fight
+  keys during the brawl.
+
 ## Vehicles and drivers
 
 `NPCVehicle.brawl_id` locks a taxi. A locked taxi is skipped by the
@@ -144,7 +191,9 @@ quarrel again.
 The state message has `"brawls"`: one row per conflict that is not in
 COOLDOWN, holding `id`, `state`, `action`, `outcome`, `winner` and two
 `fighters` (`kind`, `id`, `x`, `y`, `heading`, `down`, `moving`,
-`curse_timer`, `curse_text`, `rage` rounded to 0.05, for display only). It holds the current state only, never a
+`curse_timer`, `curse_text`, `rage` rounded to 0.05 for display only, and
+`in_car`, true for a player still at the wheel, who is not drawn). It holds
+the current state only, never a
 history, so a client that connects late cannot replay a fight. The F12
 debug snapshot has `brawls.active`, `brawls.recent` (the last 20 outcomes)
 and `brawls.rejected_triggers`.
@@ -152,7 +201,8 @@ and `brawls.rejected_triggers`.
 ## Presentation
 
 Each fighter is drawn with the pedestrian figure: standing or walking, fists
-up, `fallen` when down, with a curse bubble. The face flushes red with the
+up, `fallen` when down, with a curse bubble. The player's fighter wears the
+player's yellow and replaces their walking figure. The face flushes red with the
 fighter's rage, and anger marks appear above 0.7. A punch plays once per new
 action `seq`, so a duplicated or late update never swings twice. Sounds:
 `vehicle.door_open` and `vehicle.door_close`, `pedestrian.curse`, and
@@ -174,18 +224,10 @@ queue, processed keys, history and cooldowns are all bounded.
 
 ## Limitations and future work
 
-- **Player brawls** are modelled (`Participant.kind == PLAYER`, the
-  `traffic` trigger) but disabled. Enabling them needs:
-  1. the player's pose and on-foot state as the participant's position;
-  2. a validated client intent (strike, dodge or retreat) that the server
-     turns into an action through the same `_act` rolls, at the same action
-     interval, never a client-sent result;
-  3. HUD prompts.
-
-  Road rage is already wired for the player: `BrawlManager.rage` reads the
-  meter for a `PLAYER` participant through the same `rage_modifiers`.
-- Fights happen only between idle, parked rival taxis. A taxi on its way to
-  a fare is never stopped for one.
+- NPC-against-NPC fights happen only between idle, parked rival taxis. Only
+  the player can stop a rival on the road.
+- A brawl has no effect on score, money or the rage meter. The notices are
+  its only consequence for the player.
 - There is no punch sound or fight animation asset; figures use the
   pedestrian drawing.
 - There are no police, injuries, reputation or damage consequences. These
