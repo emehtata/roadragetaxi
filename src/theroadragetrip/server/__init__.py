@@ -607,8 +607,11 @@ class SimulationServer:
         from ..digitraffic_road import DigitrafficClient, LiveRoadworks, RoadDataService
         project = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True).transform
         unproject = Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True).transform
-        client = DigitrafficClient(Path(CACHE_DIR) / "digitraffic_road.sqlite")
-        logger.info("Digitraffic road data on (live roadworks, cache %s)", Path(CACHE_DIR) / "digitraffic_road.sqlite")
+        from ..osm.cache import default_cache_root
+        # Beside, not inside, the map cache: "clear map cache" empties osm_cache, and these queries never expire.
+        cache_path = Path(default_cache_root()) / "digitraffic_road.sqlite"
+        client = DigitrafficClient(cache_path)
+        logger.info("Digitraffic road data on (live roadworks, cache %s)", cache_path)
         return LiveRoadworks(RoadDataService(client, unproject), project)
 
     def close(self) -> None:

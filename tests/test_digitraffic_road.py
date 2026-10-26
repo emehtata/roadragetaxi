@@ -278,3 +278,19 @@ def test_realtime_road_data_is_opt_in(monkeypatch):
     config.set("game", "road_digitraffic", "true")
     monkeypatch.setattr(sys, "argv", ["server", "--no-road-digitraffic"])
     assert not parse_args(config).road_digitraffic
+
+
+def test_the_permanent_cache_is_outside_the_map_cache_that_clear_cache_empties(tmp_path, monkeypatch):
+    from pathlib import Path
+    from theroadragetrip import osm
+    from theroadragetrip.osm.cache import clear_osm_cache, default_cache_root
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    root = Path(default_cache_root())
+    map_cache = root / "osm_cache"
+    map_cache.mkdir(parents=True)
+    (map_cache / "tile.osm").write_text("x")
+    road_cache = root / "digitraffic_road.sqlite"  # where the server keeps it
+    dr.DigitrafficClient(road_cache, FakeOpener()).get_json("/x")
+    monkeypatch.setattr(osm, "CACHE_DIR", str(map_cache))
+    assert clear_osm_cache() == 1 and road_cache.exists()
+    assert dr.DigitrafficClient(road_cache, FakeOpener(fail=True)).get_json("/x") is not None
