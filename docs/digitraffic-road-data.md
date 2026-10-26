@@ -1,6 +1,9 @@
 # Digitraffic road data: roadworks, traffic messages, variable signs and TMS
 
-Status: **design only, nothing implemented.** This document records what the
+Status: **phases 0 and 1 implemented (2026-10-26)**: live roadworks for the
+player behind Settings → gameplay → "Real roadworks (Digitraffic)"
+(`--road-digitraffic`, off by default). See "Implemented so far" below; the
+rest is design. This document records what the
 Digitraffic Road API offers, as inspected on 2026-10-26 (API build
 `2026.10.14-1`, <https://tie.digitraffic.fi/swagger/>). It also shows how
 each dataset maps onto the game's existing systems, and proposes an
@@ -10,6 +13,26 @@ Work that changes NPC behaviour from this data (roadworks, speed limits,
 closures, temporary lights) must follow
 [the Finnish NPC traffic-law guide](finnish-npc-traffic-law.md) (AGENTS.md).
 Traffic decisions stay on the Python server; Godot only draws them.
+
+## Implemented so far
+
+| Part | Where | Notes |
+| --- | --- | --- |
+| Client and cache | `digitraffic_road.DigitrafficClient` | gzip, `Digitraffic-User: RoadRageTrip/road-data`, backoff (30 s → 5 min), Deprecation/Sunset logging. **Every successful answer is cached with no expiration** in `<CACHE_DIR>/digitraffic_road.sqlite` (gzip bodies, keyed by the exact URL); failures and invalid JSON are never cached. |
+| Queries | `roadworks_params`, `RoadDataService` | One query is one snapped 0.4° × 0.2° tile (about 19 × 22 km) and one 15-minute **game-time** window, so it repeats exactly. Replays and restarts read the cache; live play gets a new window every 15 game minutes. Tiles within 5 km of the taxi are fetched on a background thread. |
+| Roadworks | `parse_roadworks`, `RoadworkPhase.active` | The newest version per `situationId`. A phase follows its dates, and with `restrictionsLiftable` also its weekday working hours (local time). |
+| Matching | `match_roadwork` | Samples every 10 m, nearest drivable surface way within 15 m and 30°, and a 10 m bonus for the matching `Way.ref` road number. At least 60 % of samples must match. Placed as 50 m `Roadwork` pieces; the speed limit covers `speed limit length` centred on the works. |
+| In the game | `simulation.py`, `protocol.py` | The speed limit drives the rage meter, passenger comfort and the HUD sign. A closed lane stops the taxi only in the right-hand half (in the way's direction); `road closed` blocks the whole road. Generated roadworks are unchanged. |
+| Client | `entity_layer._live_roadworks`, `map_chunk.draw_roadwork` | Cones and barriers for closed lanes and roads, with barriers and speed signs only at a run's open ends. |
+| Map | `Way.ref` | The OSM road number is kept on `Way` (world cache format 56). |
+| Diagnostics | F12 snapshot `live_roadworks` | Situations fetched, network requests made, and every placed piece. |
+
+Verified on the real map on 2026-10-26 at 13:00: on Kainuuntie in Oulu (road 22,
+OSM limit 60), two live roadworks matched to `ref 22` and the HUD showed 50.
+
+Not yet done from phase 1: temporary traffic lights and alternating one-lane
+traffic. Which lane is closed is not in the data, so the right-hand one is
+assumed. Phases 2–6 are not started: NPC handling, signs, messages and TMS.
 
 ## 1. API facts that every client needs
 
