@@ -2688,6 +2688,16 @@ func test_rest_of_static_world() -> void:
 	enraged["brawls"][0]["fighters"][0]["rage"] = 1.0
 	enraged["brawls"][0]["fighters"][1]["rage"] = "bogus"
 	check(brawler._brawls(enraged, enraged, 0.0, view) == 2, "rage on a fighter's face draws; a bad value is safe")
+	var with_me := fight.duplicate(true)
+	with_me["brawls"][0]["fighters"][0]["kind"] = "player"
+	with_me["brawls"][0]["fighters"][0]["in_car"] = true
+	check(brawler._brawls(with_me, with_me, 0.0, view) == 1 and not brawler.player_fighting(with_me),
+		"the player at the wheel: only the rival is drawn")
+	with_me["brawls"][0]["fighters"][0]["in_car"] = false
+	check(brawler._brawls(with_me, with_me, 0.0, view) == 2 and brawler.player_fighting(with_me), "out of the taxi: the player fights")
+	var hint: String = Hud.values({"on_foot": true, "brawls": with_me["brawls"]})["hint"]
+	check(hint == Hud.T.text("hint_brawl", "en") and hint.contains("Space"), "in a fight on foot the hint lists the fight keys")
+	check(Hud.values({"on_foot": true})["hint"] == Hud.T.text("hint_foot", "en"), "otherwise the walking hint")
 	brawler._brawls({"brawls": []}, {}, 0.0, view)
 	check(brawler._brawl_punches.is_empty(), "a finished brawl is forgotten")
 	brawler.free()

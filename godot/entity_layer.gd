@@ -65,6 +65,7 @@ var _trains: Node2D  # trains, z 14: above the canopies and rail bridges (z 13),
 var _trains_drawn := 0
 var _brawl_punches := {}  # brawl id -> [last action seq seen, when its punch began]
 const BRAWL_JACKETS := [[40, 40, 48], [120, 30, 30]]
+const PLAYER_JACKET := [255, 217, 64]  # the player's own on-foot colour
 var _tracks: Node2D  # tyre tracks, z 8 (before roadworks and signs)
 var _trails: Array = []  # [kind, [[position, heading, intensity, front, snowfall when laid], ...], its Node2D]
 const TRACK_SEGMENT := 200  # points per trail segment: a new point redraws only its own segment
@@ -1134,6 +1135,15 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 			1.0 if timer >= 0.5 else timer / 0.5)
 
 
+## The player is out of the taxi in a brawl: its figure stands in for theirs.
+static func player_fighting(state: Dictionary) -> bool:
+	for brawl in state.get("brawls", []):
+		for f in brawl.get("fighters", []):
+			if f.get("kind", "") == "player" and not f.get("in_car", false):
+				return true
+	return false
+
+
 ## Taxi drivers' quarrels (server "brawls": current state only). Each fighter
 ## is a pedestrian figure; a punch plays once per server action seq, so a
 ## duplicated or late update never swings twice and a fresh snapshot shows
@@ -1155,13 +1165,15 @@ func _brawls(a: Dictionary, b: Dictionary, t: float, view_rect: Rect2) -> int:
 		var next_fighters: Array = later.get(brawl["id"], brawl).get("fighters", brawl["fighters"])
 		for i in brawl["fighters"].size():
 			var f: Dictionary = brawl["fighters"][i]
+			if f.get("in_car", false):
+				continue  # the player still at the wheel: the taxi is drawn, not a figure
 			var p := StateBuffer.blend(f, next_fighters[i] if i < next_fighters.size() else f, t, origin)
 			var c := Vector2(p.x, p.y)
 			if not view_rect.has_point(c):
 				continue
 			var striking: bool = typeof(action) == TYPE_DICTIONARY and int(action.get("actor", -1)) == i
 			_pedestrian(c, p.z, {
-				"color": BRAWL_JACKETS[i % BRAWL_JACKETS.size()],
+				"color": PLAYER_JACKET if f.get("kind", "") == "player" else BRAWL_JACKETS[i % BRAWL_JACKETS.size()],
 				"animation_state": "fallen" if f.get("down", false) else "walking" if f.get("moving", false) else "standing",
 				"activity": "" if f.get("down", false) else "brawl",
 				"stick_swing": swing if striking else 0.0,
@@ -1624,7 +1636,7 @@ func _draw() -> void:
 			count += 1
 	if not underground:
 		count += _brawls(a, b, t, view_rect)
-	if a.get("on_foot", false):
+	if a.get("on_foot", false) and not player_fighting(a):  # in a brawl the fighter figure is the player
 		var walker := StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), t, origin)
 		_pedestrian(Vector2(walker.x, walker.y), walker.z, {"color": [255, 217, 64], "animation_state": "standing"}, 0.0)
 		count += 1
