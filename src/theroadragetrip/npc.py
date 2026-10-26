@@ -5630,7 +5630,7 @@ class NPCVehicleManager:
         stuck = [
             vehicle for vehicle in self.vehicles
             if getattr(self.drivers.get(vehicle.vehicle_id), "recovery_stage", None) == "STUCK"
-            and vehicle.vehicle_id not in self.road_rage.held
+            and vehicle.vehicle_id not in self.road_rage.held and vehicle.brawl_id is None
             and abs(vehicle.car.speed) < 0.05
             and not any(job["vehicle"] is vehicle for job in self._route_jobs)
         ]
@@ -5638,7 +5638,7 @@ class NPCVehicleManager:
         held = [
             vehicle for vehicle in self.vehicles
             if getattr(driver := self.drivers.get(vehicle.vehicle_id), "recovery_stage", None) == "HOLD"
-            and vehicle.vehicle_id not in self.road_rage.held
+            and vehicle.vehicle_id not in self.road_rage.held and vehicle.brawl_id is None
             and driver.hold_failures < NPC_HOLD_GIVE_UP_ATTEMPTS
             and driver.hold_retry_tick <= self._population_tick_number
             and not any(job["vehicle"] is vehicle for job in self._route_jobs)
@@ -5933,8 +5933,8 @@ class NPCVehicleManager:
             self._previous_player_pose = (player_car.x, player_car.y, player_car.heading)
         pedestrians_near = self._pedestrian_lookup(pedestrian_mgr, active)
         for vehicle in list(self.vehicles):  # a copy: a stuck cyclist may retire mid-loop
-            if vehicle.vehicle_id in self.road_rage.held:
-                continue
+            if vehicle.vehicle_id in self.road_rage.held or vehicle.brawl_id is not None:
+                continue  # held aside by rage clearance, or its driver is out brawling: it stays put
             driver = self.drivers.get(vehicle.vehicle_id)
             if driver is None:
                 continue  # idle, parked - nothing to simulate until it starts a trip

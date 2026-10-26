@@ -787,6 +787,10 @@ class SimulationServer:
             phone_requests, self._phone_requests = self._phone_requests, []
         phone_results = [self._apply_phone_request(request) for request in phone_requests]
 
+        brawls = getattr(self.world, "taxi_brawls", None)
+        brawl_flee = bool(interact and self._on_foot and brawls is not None and brawls.player_engaged())
+        if brawl_flee:
+            interact = False  # F in a fight on foot: run for it (taxi_brawls), not get in
         if interact:
             command = replace(command, engine_on=None)
             self._on_foot = apply_enter_exit_vehicle(
@@ -823,7 +827,7 @@ class SimulationServer:
 
         car_x, car_y = self.car.x, self.car.y
         result = advance_simulation(
-            dt, command, self.car, self.world,
+            dt, command, self.car, self.world, brawl_flee=brawl_flee,
             on_foot=self._on_foot,
             player_pedestrian=self.world.player_pedestrian,
             camx=self._camx, camy=self._camy, px_per_m=self._px_per_m,

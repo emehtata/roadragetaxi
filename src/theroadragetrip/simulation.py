@@ -116,6 +116,20 @@ def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, bloc
     return x, y
 
 
+def _provoke_rival(brawls, npc_manager, player_pedestrian, sim_time: float) -> None:
+    """On foot, a shout at a stopped rival taxi's driver: they get out to fight."""
+    from .competitor_taxis import is_competitor
+    from .protocol import LOCAL_PLAYER_ID
+    from .taxi_brawls import NPC, PLAYER, PROVOKE_REACH_M, PROVOKE_TAUNT, provoke
+    near = [v for v in npc_manager.nearby_vehicles_at(player_pedestrian.x, player_pedestrian.y, PROVOKE_REACH_M)
+            if is_competitor(v) and npc_manager.drivers.get(v.vehicle_id) is not None]
+    if not near:
+        return
+    rival = min(near, key=lambda v: math.hypot(v.x - player_pedestrian.x, v.y - player_pedestrian.y))
+    provoke(rival, PROVOKE_TAUNT, sim_time)
+    brawls.report("provoke", (PLAYER, LOCAL_PLAYER_ID), (NPC, rival.vehicle_id), ("provoke", rival.vehicle_id, int(sim_time)))
+
+
 def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None, pedestrians=()) -> bool:
     """The 'F' key's get-in/get-out-of-the-car action - authoritative
     gameplay logic (a distance check gates re-entry), so it belongs on
@@ -235,6 +249,7 @@ def advance_simulation(
     outside_temperature_c: float = 15.0,
     now=None,
     view_bounds=None,
+    brawl_flee: bool = False,
 ) -> SimulationFrameResult:
     """Run one gameplay tick: physics, collisions, camera follow, and the
     taxi/NPC/traffic/pedestrian manager updates."""
@@ -261,8 +276,14 @@ def advance_simulation(
     building_grid = world.building_grid
     speed_cameras = world.speed_cameras
     places = world.places
+    brawls = getattr(world, "taxi_brawls", None)
+    brawl_heading = brawls.player_locked() if brawls is not None and on_foot else None
+    fighting = brawls is not None and on_foot and brawls.player_engaged()
 
-    if on_foot:
+    if brawl_heading is not None:  # squaring up or knocked down: the brawl holds the player in place
+        player_pedestrian.speed = 0.0
+        player_pedestrian.heading = brawl_heading
+    elif on_foot:
         forward_input = command.forward
         steer_input = command.turn
         sprinting = command.sprint
@@ -312,7 +333,9 @@ def advance_simulation(
     protests = getattr(world, "protests", None)
     if protests is not None:
         protests.update(dt, world, car, now, traffic_mgr.sim_time)
-    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # SPACE: horn, shout, arcade clearance
+    if command.road_rage and fighting:
+        pass  # SPACE in a fight is a punch (taxi_brawls), not a shout
+    elif command.road_rage and rage_power >= RAGE_SHOUT_COST:  # SPACE: horn, shout, arcade clearance
         audio.play_driver_line("rage", language)
         audio.play_group("vehicle.horn", 0.45)
         rage_power = max(0.0, rage_power - RAGE_SHOUT_COST)
@@ -320,6 +343,8 @@ def advance_simulation(
         world.npc_manager.trigger_road_rage(sim_time=world.traffic_mgr.sim_time)
         if protests is not None:
             protests.intimidate(car)
+        if on_foot and brawls is not None:  # shouting at a rival taxi's driver picks a fight
+            _provoke_rival(brawls, world.npc_manager, player_pedestrian, traffic_mgr.sim_time)
 
     stopped_refueling = command.refuel and getattr(taxi_mgr, "refueling", None) is not None
     if stopped_refueling:
@@ -813,14 +838,25 @@ def advance_simulation(
     pedestrian_mgr.sound_events.clear()
     if on_foot:
         audio.update_footsteps(player_pedestrian.speed, dt, running=command.sprint)
-    brawls = getattr(world, "taxi_brawls", None)
     world.competitor_dispatcher.update(taxi_mgr, npc_manager, dt, brawls, traffic_mgr.sim_time)  # competitors take phone fares
     if brawls is not None:
         from .protocol import LOCAL_PLAYER_ID
         from .taxi_brawls import NPC, PLAYER
         for vehicle_id in npc_manager.taxi_bumps:  # the player bumped a rival: a future player quarrel
             brawls.report("traffic", (PLAYER, LOCAL_PLAYER_ID), (NPC, vehicle_id), ("traffic", vehicle_id, int(traffic_mgr.sim_time)))
-        brawls.update(npc_manager, dt, traffic_mgr.sim_time, taxi_stops, now, player_rage=rage_power)
+        from .taxi_brawls import PlayerView
+        passenger = taxi_mgr.current_passenger
+        brawls.update(npc_manager, dt, traffic_mgr.sim_time, taxi_stops, now, player_rage=rage_power,
+                      player=PlayerView(
+                          player_pedestrian.x, player_pedestrian.y, on_foot, car.x, car.y, car.heading,
+                          getattr(car, "width_m", 1.8), getattr(car, "map_level", 0),
+                          carrying=passenger is not None,
+                          strike=bool(command.road_rage and fighting), dodge=bool(command.sprint and fighting),
+                          flee=bool(brawl_flee and fighting)))
+        if brawls.player_notice:
+            taxi_mgr.notification_msg = tr(language, brawls.player_notice)
+            taxi_mgr.notification_timer = 4.0
+            brawls.player_notice = None
         for group_id, at in brawls.sound_events:
             audio.play_group(group_id, at=at)
         brawls.sound_events.clear()

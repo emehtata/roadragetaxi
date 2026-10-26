@@ -77,11 +77,11 @@ def test_ineligible_participants_are_rejected(spoil):
     assert not brawls.conflicts and brawls.rejected == 1 and a.brawl_id is None and b.brawl_id is None
 
 
-def test_nobody_quarrels_with_themselves_and_the_player_is_not_yet_playable():
+def test_nobody_quarrels_with_themselves_or_with_an_absent_player():
     a, b = _taxi(1, 0.0), _taxi(2, 10.0)
     brawls, npcs = BrawlManager(random.Random(1)), _npcs(a, b)
     brawls.report("rank", (NPC, 1), (NPC, 1), ("self",))
-    brawls.report("traffic", (PLAYER, "local_player"), (NPC, 1), ("traffic", 1, 0))
+    brawls.report("traffic", (PLAYER, "local_player"), (NPC, 1), ("traffic", 1, 0))  # no player view this tick
     brawls.report("rank", (NPC, 1), (NPC, 99), ("missing",))
     brawls.update(npcs, DT, 0.0)
     assert not brawls.conflicts and brawls.rejected == 3
@@ -239,7 +239,7 @@ def test_the_client_sees_the_current_state_only_and_nothing_once_they_are_back_i
     (row,) = brawls.to_dicts(t)
     assert row["state"] == FIGHTING and len(row["fighters"]) == 2 and "history" not in row
     fighter = row["fighters"][0]
-    assert set(fighter) == {"kind", "id", "x", "y", "heading", "down", "moving", "curse_timer", "curse_text", "rage"}
+    assert set(fighter) == {"kind", "id", "x", "y", "heading", "down", "moving", "curse_timer", "curse_text", "rage", "in_car"}
     assert math.hypot(fighter["x"] - row["fighters"][1]["x"], fighter["y"] - row["fighters"][1]["y"]) < 10.0  # walked over
     while conflict.state != COOLDOWN:
         t += DT
@@ -495,3 +495,211 @@ def test_a_rival_that_lost_the_fare_is_angry_and_fights_angrier(monkeypatch):
         if not phone.offers:
             break
     assert a.taxi_job is not None and tb.npc_rage(b, 30.0) == tb.PROVOKE_LOST_FARE and tb.npc_rage(a, 30.0) == 0.0
+
+
+# -- the player in a brawl -----------------------------------------------------
+
+ME = (PLAYER, "local_player")
+
+
+def _view(on_foot=False, x=0.0, y=0.0, car=(0.0, 0.0), **inputs):
+    return tb.PlayerView(x, y, on_foot, car[0], car[1], 0.0, **inputs)
+
+
+def _player_scene(seed=1, on_foot=False, rival_x=8.0, state=NPCState.CRUISING):
+    rival = _taxi(1, rival_x)
+    rival.state, rival.turn_signal = state, "none"
+    brawls, npcs = BrawlManager(random.Random(seed)), _npcs(rival)
+    brawls.report("traffic", ME, (NPC, 1), ("traffic", 1, 0))
+    brawls.update(npcs, DT, 0.0, player=_view(on_foot))
+    return brawls, npcs, rival
+
+
+def _step(brawls, npcs, t, view, seconds=DT):
+    end = t + seconds
+    while t < end - 1e-9:
+        t += DT
+        brawls.update(npcs, DT, t, player=view)
+    return t
+
+
+def test_bumping_a_rival_brings_its_angry_driver_to_the_taxi_door():
+    brawls, npcs, rival = _player_scene()
+    (conflict,) = brawls.conflicts.values()
+    player = conflict.participants[0]
+    assert player.kind == PLAYER and player.in_car and rival.brawl_id == conflict.id
+    assert rival.turn_signal == "hazard"  # stopped in traffic: hazard lights
+    assert brawls.player_notice == "brawl_challenge"
+    t = _step(brawls, npcs, 0.0, _view(), 7.0)
+    driver = conflict.participants[1]
+    assert math.dist((driver.x, driver.y), (player.x, player.y)) < 2.0  # at the window
+    assert brawls.player_locked() is None  # at the wheel the player can still drive off
+    assert not any(row["fighters"][0]["in_car"] is False for row in brawls.to_dicts(t))
+
+
+def test_driving_away_ends_it_and_frees_the_rival():
+    brawls, npcs, rival = _player_scene()
+    t = _step(brawls, npcs, 0.0, _view(), 2.0)
+    t = _step(brawls, npcs, t, _view(car=(tb.PLAYER_LEAVE_M + 1.0, 0.0)))
+    assert brawls.history[-1]["outcome"] == "player_left" and brawls.player_notice == "brawl_left"
+    _step(brawls, npcs, t, _view(car=(50.0, 0.0)), tb.RESOLUTION_S + tb.COOLDOWN_S + 4.0)
+    assert not brawls.conflicts and rival.brawl_id is None and rival.turn_signal == "none"
+
+
+def test_ignored_at_the_wheel_the_driver_gives_up():
+    brawls, npcs, rival = _player_scene()
+    _step(brawls, npcs, 0.0, _view(), tb.TRIGGERED_S + tb.PLAYER_WAIT_S + 1.0)
+    assert brawls.history[-1]["outcome"] == "ignored"
+    assert not any(h["outcome"] == "knockout" for h in brawls.history)
+
+
+def test_out_of_the_taxi_space_throws_the_first_punch_and_holds_the_player():
+    brawls, npcs, rival = _player_scene(on_foot=True)
+    (conflict,) = brawls.conflicts.values()
+    assert brawls.player_notice == "brawl_provoked"
+    t = _step(brawls, npcs, 0.0, _view(on_foot=True), tb.TRIGGERED_S + 0.5)
+    assert conflict.state == tb.CONFRONTATION and brawls.player_engaged()
+    assert brawls.player_locked() is not None  # squaring up: held in place
+    t = _step(brawls, npcs, t, _view(on_foot=True, strike=True))
+    assert conflict.state in (FIGHTING, RESOLUTION) and conflict.action["actor"] == 0  # the player struck first
+
+
+def test_without_input_the_rival_swings_and_the_player_is_never_rolled_to_back_down():
+    for seed in range(20):
+        brawls, npcs, rival = _player_scene(seed, on_foot=True)
+        (conflict,) = brawls.conflicts.values()
+        _step(brawls, npcs, 0.0, _view(on_foot=True), tb.MAX_LIFETIME_S)
+        actions = brawls.history[-1]
+        assert not (actions["outcome"] == "backed_down" and actions["winner"] == 1)  # the rival backed down, never the player
+        if conflict.action and conflict.action["kind"] in ("strike", "dodge"):
+            assert conflict.action["actor"] == 1  # the idle player never strikes
+
+
+class _Even(random.Random):
+    def random(self):
+        return 0.5
+
+
+def test_holding_dodge_makes_the_rivals_blow_likelier_to_miss(monkeypatch):
+    monkeypatch.setattr(tb, "hit_chance", lambda *a: 0.6)  # 0.5 < 0.6 hits; minus the dodge it misses
+    for dodge, expect_hit in ((False, True), (True, False)):
+        brawls, npcs, rival = _player_scene(on_foot=True)
+        brawls.rng = _Even()
+        (conflict,) = brawls.conflicts.values()
+        conflict.state, conflict.next_action_at = FIGHTING, 0.0
+        conflict.intent = "dodge" if dodge else ""
+        brawls._act(conflict, 0.0)
+        assert conflict.action["actor"] == 1 and conflict.action["hit"] is expect_hit
+
+
+def test_f_runs_from_the_fight_and_frees_the_player():
+    brawls, npcs, rival = _player_scene(on_foot=True)
+    t = _step(brawls, npcs, 0.0, _view(on_foot=True), tb.TRIGGERED_S + 0.5)
+    t = _step(brawls, npcs, t, _view(on_foot=True, flee=True))
+    assert brawls.history[-1]["outcome"] == "fled" and brawls.player_notice == "brawl_fled"
+    assert brawls.player_locked() is None and not brawls.player_engaged()
+
+
+def test_a_knocked_out_player_lies_down_a_moment_then_can_move():
+    brawls, npcs, rival = _player_scene(on_foot=True)
+    (conflict,) = brawls.conflicts.values()
+    t = _step(brawls, npcs, 0.0, _view(on_foot=True), tb.TRIGGERED_S + 0.5)
+    conflict.participants[0].hits_taken = tb.KNOCKDOWN_HITS - 1
+    monkeypatched = tb.hit_chance
+    try:
+        tb.hit_chance = lambda *a: 0.9
+        brawls.rng = _Even()
+        conflict.state, conflict.next_action_at = FIGHTING, t
+        conflict.deadline = t + tb.FIGHT_MAX_S
+        t = _step(brawls, npcs, t, _view(on_foot=True))
+    finally:
+        tb.hit_chance = monkeypatched
+    assert conflict.outcome == "knockout" and conflict.winner == 1 and brawls.player_notice == "brawl_lost"
+    assert conflict.participants[0].down and brawls.player_locked() is not None
+    _step(brawls, npcs, t, _view(on_foot=True), tb.KNOCKDOWN_GET_UP_S + 0.2)
+    assert brawls.player_locked() is None
+
+
+def test_no_brawl_with_a_fare_aboard_or_from_far_away():
+    rival = _taxi(1, 8.0)
+    for view in (_view(carrying=True), _view(car=(100.0, 0.0), x=100.0)):
+        brawls, npcs = BrawlManager(random.Random(1)), _npcs(rival)
+        brawls.report("traffic", ME, (NPC, 1), ("traffic", 1, 0))
+        brawls.update(npcs, DT, 0.0, player=view)
+        assert not brawls.conflicts and rival.brawl_id is None
+
+
+def test_a_moving_rival_is_not_stopped_for_a_quarrel():
+    rival = _taxi(1, 8.0)
+    rival.state, rival.car.speed = NPCState.CRUISING, 8.0
+    brawls, npcs = BrawlManager(random.Random(1)), _npcs(rival)
+    brawls.report("traffic", ME, (NPC, 1), ("traffic", 1, 0))
+    brawls.update(npcs, DT, 0.0, player=_view())
+    assert not brawls.conflicts
+
+
+def test_the_players_quarrel_ends_if_the_player_vanishes():
+    brawls, npcs, rival = _player_scene(on_foot=True)
+    brawls.update(npcs, DT, 0.1, player=None)  # e.g. a session ends mid-fight
+    assert not brawls.conflicts and rival.brawl_id is None and brawls.history[-1]["outcome"] == "aborted"
+
+
+def test_a_client_command_cannot_carry_a_brawl_result():
+    from theroadragetrip.protocol import command_from_message
+    command, _ = command_from_message({"command": {"road_rage": True, "winner": 0, "hit": True,
+                                                   "outcome": "knockout", "rage_power": 1.0}})
+    assert command.road_rage is True
+    assert not any(hasattr(command, name) for name in ("winner", "hit", "outcome", "rage_power"))
+
+
+def test_an_on_foot_shout_at_a_rival_taxi_picks_the_fight():
+    from theroadragetrip.simulation import _provoke_rival
+    rival = _taxi(1, 3.0)
+    npcs = _npcs(rival)
+    npcs.nearby_vehicles_at = lambda x, y, r: [v for v in npcs.vehicles if math.hypot(v.x - x, v.y - y) <= r]
+    brawls = BrawlManager(random.Random(1))
+    _provoke_rival(brawls, npcs, SimpleNamespace(x=0.0, y=0.0), 5.0)
+    assert tb.npc_rage(rival, 5.0) == tb.PROVOKE_TAUNT
+    brawls.update(npcs, DT, 5.0, player=_view(on_foot=True))
+    (conflict,) = brawls.conflicts.values()
+    assert conflict.trigger == "provoke" and conflict.participants[0].kind == PLAYER
+
+
+@pytest.mark.timing
+def test_a_rival_stopped_on_the_road_stays_put_for_the_quarrel_then_drives_on():
+    """Real NPC manager: the brawl lock freezes a driving rival in place."""
+    from theroadragetrip.competitor_taxis import make_competitor
+    from theroadragetrip.npc import NPCVehicleManager, spawn_npc
+    from theroadragetrip.residents import ResidentManager
+    from theroadragetrip.traffic_world import TrafficWorld
+    from test_competitor_taxis import _city_block_grid
+
+    random.seed(4)
+    ways = _city_block_grid()
+    traffic = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, taxi = spawn_npc(1, residents, traffic, ways, (30.0, 0.0), (300.0, 240.0))
+    make_competitor(taxi)
+    manager = NPCVehicleManager(target_count=1, max_count=1, spawn_radius_m=300, vehicle_distribution={"car": 1.0})
+    manager.competitor_taxis = 0
+    manager.vehicles.append(taxi)
+    manager.drivers[taxi.vehicle_id] = driver
+    for _ in range(30 * 3):  # get it moving
+        traffic.advance_time(1 / 30)
+        manager.update(1 / 30, 210, 210, residents, traffic, ways)
+    taxi.car.speed = 0.0  # just bumped to a stop
+    brawls = BrawlManager(random.Random(2))
+    brawls.report("traffic", ME, (NPC, 1), ("traffic", 1, 0))
+    view = _view(car=(taxi.x - 6.0, taxi.y))
+    brawls.update(manager, 1 / 30, traffic.sim_time, player=view)
+    assert taxi.brawl_id is not None
+    at = (taxi.x, taxi.y)
+    while brawls.conflicts:
+        traffic.advance_time(1 / 30)
+        manager.update(1 / 30, 210, 210, residents, traffic, ways)
+        brawls.update(manager, 1 / 30, traffic.sim_time, player=view)
+        assert (taxi.x, taxi.y) == at
+    for _ in range(30 * 10):
+        traffic.advance_time(1 / 30)
+        manager.update(1 / 30, 210, 210, residents, traffic, ways)
+    assert math.dist((taxi.x, taxi.y), at) > 5.0 and taxi.state != NPCState.CRASHED
