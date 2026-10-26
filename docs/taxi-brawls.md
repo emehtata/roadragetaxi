@@ -204,10 +204,24 @@ Each fighter is drawn with the pedestrian figure: standing or walking, fists
 up, `fallen` when down, with a curse bubble. The player's fighter wears the
 player's yellow and replaces their walking figure. The face flushes red with the
 fighter's rage, and anger marks appear above 0.7. A punch plays once per new
-action `seq`, so a duplicated or late update never swings twice. Sounds:
-`vehicle.door_open` and `vehicle.door_close`, `pedestrian.curse`, and
-`collision.fence` as a stand-in for a hit, because the audio catalog has no
-punch sound yet.
+action `seq`, so a duplicated or late update never swings twice.
+
+Sounds (`taxi_brawls.SOUNDS`) are played at the fighters through
+`sound_events`. The `brawl` groups were generated with Stable Audio Open
+through ai-audio-studio (`tools/generate_audio.sh --group brawl.…`); their
+prompts and seeds are in `audio_catalog.json`, and their review is pending.
+
+| Event | Group | Where |
+| --- | --- | --- |
+| drivers get out / back in | `vehicle.door_open` / `vehicle.door_close` | between them |
+| arguing (confrontation) | `pedestrian.curse` | between them |
+| squaring up (threaten) | `brawl.shove` | the meeting point |
+| a blow lands | `brawl.punch_hit` + `brawl.pain_grunt` | the fighter who was hit |
+| a blow misses or is dodged | `brawl.punch_miss` | the attacker |
+| knockout | `brawl.knockdown` | the fallen fighter |
+
+The `brawl` category plays on the Game bus. Each group's audible range is in
+`godot/audio/audio_events.json` (`ranges_m`, 30–45 m).
 
 ## Performance
 
@@ -228,7 +242,6 @@ queue, processed keys, history and cooldowns are all bounded.
   the player can stop a rival on the road.
 - A brawl has no effect on score, money or the rage meter. The notices are
   its only consequence for the player.
-- There is no punch sound or fight animation asset; figures use the
-  pedestrian drawing.
+- There is no fight animation asset; figures use the pedestrian drawing.
 - There are no police, injuries, reputation or damage consequences. These
   are outside this feature's scope.

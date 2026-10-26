@@ -90,6 +90,13 @@ PROVOKE_CLEARANCE = 0.3  # shoved aside by the player's rage clearance
 PROVOKE_LOST_FARE = 0.3  # a rival took the fare it was waiting for
 PROVOKE_HIT = 0.15  # each blow taken in a fight
 CURSES = ["@#*!%", "#$@&!", "!%#&*", "%$!#@", "@!*#$"]
+# Sound groups (audio_catalog.json "brawl"; generated with tools/generate_audio.sh),
+# played through sound_events at the fighters. Doors and curses reuse existing groups.
+SOUNDS = {
+    "hit": "brawl.punch_hit", "pain": "brawl.pain_grunt", "miss": "brawl.punch_miss",
+    "knockdown": "brawl.knockdown", "shove": "brawl.shove",
+    "doors_open": "vehicle.door_open", "doors_close": "vehicle.door_close", "argue": "pedestrian.curse",
+}
 
 
 @dataclass
@@ -359,7 +366,7 @@ class BrawlManager:
             participant.heading = math.atan2(other.y - participant.y, other.x - participant.x)
         self._meet(conflict)
         self.conflicts[conflict.id] = conflict
-        self.sound_events.append(("vehicle.door_open", (conflict.x, conflict.y)))
+        self.sound_events.append((SOUNDS["doors_open"], (conflict.x, conflict.y)))
         logger.info("Brawl %d (%s) between %s and %s", conflict.id, trigger, people[0].key, people[1].key)
         return conflict
 
@@ -450,14 +457,17 @@ class BrawlManager:
         conflict.action = {"seq": conflict.action_seq, "kind": "strike" if hit else "dodge",
                            "actor": actor, "target": target, "hit": hit}
         if not hit:
+            self.sound_events.append((SOUNDS["miss"], (attacker.x, attacker.y)))
             return
         defender.hits_taken += 1
         defender.staggered = self.rng.random() >= rage_modifiers(rages[target]).stagger_resist
         if defender.kind == NPC and defender.ref in self._vehicles:  # pain feeds an NPC's rage (the player's meter is its own)
             provoke(self._vehicles[defender.ref], PROVOKE_HIT, sim_time)
-        self.sound_events.append(("collision.fence", (defender.x, defender.y)))  # ponytail: no punch sound in the catalog yet
+        self.sound_events.append((SOUNDS["hit"], (defender.x, defender.y)))
+        self.sound_events.append((SOUNDS["pain"], (defender.x, defender.y)))
         if defender.hits_taken >= KNOCKDOWN_HITS:
             defender.down = True
+            self.sound_events.append((SOUNDS["knockdown"], (defender.x, defender.y)))
             self._resolve(conflict, "knockout", actor, sim_time)
         elif defender.kind == NPC and self.rng.random() < (defender.retreat * defender.hits_taken * SURRENDER_PER_HIT
                                   * (1.0 - rage_modifiers(rages[target]).stagger_resist)):
@@ -513,7 +523,7 @@ class BrawlManager:
             for participant in people:
                 if participant.kind == NPC:  # the player's words are their own
                     self._curse(participant, sim_time)
-            self.sound_events.append(("pedestrian.curse", (conflict.x, conflict.y)))
+            self.sound_events.append((SOUNDS["argue"], (conflict.x, conflict.y)))
         elif conflict.state == CONFRONTATION and sim_time >= conflict.deadline:
             # The player is never made to back down by the dice: only the rival rolls.
             softer = (1 - player if player is not None
@@ -526,6 +536,7 @@ class BrawlManager:
                 conflict.action_seq += 1
                 conflict.action = {"seq": conflict.action_seq, "kind": "threaten",
                                    "actor": 1 - softer, "target": softer, "hit": False}
+                self.sound_events.append((SOUNDS["shove"], conflict.meet))
         elif conflict.state == ESCALATION and sim_time >= conflict.deadline:
             threatened = conflict.action["target"] if player is None else 1 - player
             if self.rng.random() < back_down_chance(people[threatened], people[1 - threatened],
@@ -542,7 +553,7 @@ class BrawlManager:
                 self._act(conflict, sim_time)
         elif conflict.state == RESOLUTION and sim_time >= conflict.deadline:
             self._enter(conflict, COOLDOWN, sim_time, COOLDOWN_S)
-            self.sound_events.append(("vehicle.door_close", (conflict.x, conflict.y)))
+            self.sound_events.append((SOUNDS["doors_close"], (conflict.x, conflict.y)))
         if conflict.state == CONFRONTATION and sim_time >= people[0].curse_until:
             for participant in people:
                 if participant.kind == NPC:

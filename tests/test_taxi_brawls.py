@@ -703,3 +703,54 @@ def test_a_rival_stopped_on_the_road_stays_put_for_the_quarrel_then_drives_on():
         traffic.advance_time(1 / 30)
         manager.update(1 / 30, 210, 210, residents, traffic, ways)
     assert math.dist((taxi.x, taxi.y), at) > 5.0 and taxi.state != NPCState.CRASHED
+
+
+# -- sounds -------------------------------------------------------------------
+
+def test_every_brawl_sound_is_a_generated_catalog_group_with_a_godot_range():
+    import json
+    from pathlib import Path
+    root = Path(tb.__file__).parent / "assets" / "audio"
+    catalog = json.loads((root / "audio_catalog.json").read_text(encoding="utf-8"))["groups"]
+    events = json.loads((Path(tb.__file__).parents[2] / "godot" / "audio" / "audio_events.json").read_text(encoding="utf-8"))
+    for group_id in tb.SOUNDS.values():
+        files = [e for e in catalog[group_id]["files"] if e.get("status") == "generated"]
+        assert files and all((root / e["file"]).exists() for e in files), group_id
+        if group_id.startswith("brawl."):
+            assert catalog[group_id]["category"] == "brawl" and group_id in events["ranges_m"]
+    assert "brawl" in events["buses"]["Game"]
+
+
+def test_blows_misses_knockdowns_and_shoves_make_their_sounds_at_the_fighters(monkeypatch):
+    brawls, npcs, conflict, (a, b), t = _fight_scene(1)
+    brawls.rng = _Even()
+    brawls.sound_events.clear()
+    monkeypatch.setattr(tb, "hit_chance", lambda *args: 0.0)  # a miss
+    conflict.participants[0].staggered = True  # so the second one swings
+    brawls._act(conflict, t)
+    attacker = conflict.participants[1]
+    assert brawls.sound_events == [(tb.SOUNDS["miss"], (attacker.x, attacker.y))]
+    brawls.sound_events.clear()
+    monkeypatch.setattr(tb, "hit_chance", lambda *args: 1.0)  # a hit, the knockout one
+    defender = conflict.participants[0]
+    defender.hits_taken = tb.KNOCKDOWN_HITS - 1
+    conflict.participants[0].staggered = True
+    brawls._act(conflict, t)
+    at = (defender.x, defender.y)
+    assert brawls.sound_events == [(tb.SOUNDS["hit"], at), (tb.SOUNDS["pain"], at), (tb.SOUNDS["knockdown"], at)]
+
+
+def test_squaring_up_shoves():
+    a, b = _taxi(1, 0.0), _taxi(2, 10.0)
+    brawls, npcs = BrawlManager(random.Random(1)), _npcs(a, b)
+    _quarrel(brawls, a, b)
+    brawls.update(npcs, DT, 0.0)
+    _fighters(next(iter(brawls.conflicts.values())))  # nobody backs down: it escalates
+    heard = []
+    t = 0.0
+    while brawls.conflicts and t < 20.0:
+        t += DT
+        brawls.update(npcs, DT, t)
+        heard += [group for group, _ in brawls.sound_events]
+        brawls.sound_events.clear()
+    assert tb.SOUNDS["shove"] in heard and tb.SOUNDS["argue"] in heard and tb.SOUNDS["doors_close"] in heard
