@@ -72,7 +72,7 @@ class RouteGraphBuild:
     agnostic: `include` selects which ways form the graph (car roads by
     default), so other networks (bus, tram, rail) can reuse it."""
 
-    def __init__(self, ways, parking_spaces=None, parking_cell_size: float = 100.0, include=None,
+    def __init__(self, ways, include=None,
                  oneway=None, weight=None, track_ways: bool = False) -> None:
         self.ways = list(ways)  # snapshot: later merges into the live list never leak in
         # Default: the surface car network only - a road on another map
@@ -87,9 +87,6 @@ class RouteGraphBuild:
         self.weight = weight
         # (x1, y1, x2, y2) of a directed edge's nodes -> the way it runs on
         self.edge_ways: Optional[dict] = {} if track_ways else None
-        self.parking_spaces = list(parking_spaces) if parking_spaces is not None else None
-        self.parking_cell_size = parking_cell_size
-        self.parking_grid = {} if parking_spaces is not None else None
         self.nodes: List[Tuple[float, float, int]] = []
         self.edges: dict[int, List[Tuple[int, float]]] = {}
         self.bus_route_edges: dict[str, set] = {}  # route=bus relation key -> (node, node) edges of its ways (Way.bus_routes)
@@ -97,31 +94,16 @@ class RouteGraphBuild:
         self.component_parent: List[int] = []
         self._buckets: dict[Tuple[int, int, int], List[int]] = {}
         self._at: dict[Tuple[float, float], List[int]] = {}  # exact point -> nodes of any layer there
-        self._parking_index = 0
         self._way_index = 0
 
     def advance(self, budget_s: float) -> bool:
-        """Process parking spaces, then ways, for about budget_s (always
-        at least one item); True once everything is in."""
-        deadline = time.perf_counter() + budget_s
-        if self.parking_spaces is not None and self._parking_index < len(self.parking_spaces):
-            self._parking_index = advance_chunked(
-                self.parking_spaces, self._parking_index, budget_s, self._add_parking_space,
-            )
-            if self._parking_index < len(self.parking_spaces) or time.perf_counter() >= deadline:
-                return False
+        """Process the ways for about budget_s (always at least one item);
+        True once everything is in."""
         if self._way_index < len(self.ways):
             self._way_index = advance_chunked(
-                self.ways, self._way_index, deadline - time.perf_counter(), self._add_way,
+                self.ways, self._way_index, budget_s, self._add_way,
             )
         return self._way_index >= len(self.ways)
-
-    def _add_parking_space(self, space) -> None:
-        min_x, min_y, max_x, max_y = space.bbox
-        cell = self.parking_cell_size
-        for cell_x in range(math.floor(min_x / cell), math.floor(max_x / cell) + 1):
-            for cell_y in range(math.floor(min_y / cell), math.floor(max_y / cell) + 1):
-                self.parking_grid.setdefault((cell_x, cell_y), []).append(space)
 
     def _node_id(self, point: Tuple[float, float], layer: int) -> int:
         index = self._layer_node_id(point, layer)
@@ -479,8 +461,6 @@ class TrafficWorld:
         self.sim_time = 0.0
         self.logical_intersections: List = logical_intersections if logical_intersections is not None else []
         self.intersection_manager = None
-        self._parking_grid = {}
-        self._parking_grid_cell_size = 100.0
         self._route_nodes: List[Tuple[float, float, int]] = []
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
         self._route_node_grid: dict[Tuple[int, int], List[int]] = {}
@@ -543,8 +523,6 @@ class TrafficWorld:
         self._route_node_grid = build.node_grid
         self._route_component_parent = build.component_parent
         self._bus_route_edges = build.bus_route_edges
-        if build.parking_grid is not None:
-            self._parking_grid = build.parking_grid
         self.route_graph_revision = getattr(self, "route_graph_revision", 0) + 1
 
     def _finish_route_graph(self) -> None:
@@ -566,7 +544,7 @@ class TrafficWorld:
         logical_intersections=None, stop_signs=None, yield_signs=None, **_kwargs,
     ) -> None:
         """Begin a budgeted rebuild (bin-loader-v13.md) of the route graph
-        and parking grid from a snapshot of `ways`/`parking_spaces`. The
+        from a snapshot of `ways`. The
         previous graph stays authoritative for every query and route job
         until advance_map_sync() commits the new one atomically. Signal
         lists are cheap and applied immediately, as before."""
@@ -582,7 +560,7 @@ class TrafficWorld:
             self.crossings = crossings
         if logical_intersections is not None:
             self.logical_intersections = logical_intersections
-        self._pending_route_graph = RouteGraphBuild(ways, parking_spaces, self._parking_grid_cell_size)
+        self._pending_route_graph = RouteGraphBuild(ways)
         self._pending_cycle_graph = _cycle_graph_build(ways)
 
     def advance_map_sync(self, budget_s: float) -> bool:
