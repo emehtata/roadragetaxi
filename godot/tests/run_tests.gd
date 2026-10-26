@@ -2668,6 +2668,26 @@ func test_rest_of_static_world() -> void:
 	check(entities._track_points == 0 and entities._trails.is_empty(), "snowed over: they're gone")
 	entities.free()
 
+	# Taxi brawls: drawn from the server's current state; a punch per action seq.
+	var brawler = load("res://entity_layer.gd").new()
+	root.add_child(brawler)
+	var view := Rect2(-1000, -1000, 2000, 2000)
+	var fighter := func(x): return {"kind": "npc", "id": x, "x": x, "y": 0.0, "heading": 0.0, "down": false, "moving": false, "curse_timer": 0.0, "curse_text": ""}
+	var fight := {"brawls": [{"id": 7, "state": "FIGHTING", "action": {"seq": 3, "kind": "strike", "actor": 0, "target": 1, "hit": true},
+		"outcome": null, "winner": null, "fighters": [fighter.call(0.0), fighter.call(1.4)]}]}
+	check(brawler._brawls(fight, fight, 0.0, view) == 2, "both fighters drawn")
+	var first_punch: float = brawler._brawl_punches[7][1]
+	brawler._brawl_punches[7][1] = first_punch - 5.0  # long ago
+	brawler._brawls(fight, fight, 0.0, view)  # the same action again (a duplicated update)
+	check(is_equal_approx(brawler._brawl_punches[7][1], first_punch - 5.0), "a duplicated action does not punch again")
+	var down := fight.duplicate(true)
+	down["brawls"][0]["state"] = "RESOLUTION"
+	down["brawls"][0]["fighters"][1]["down"] = true
+	check(brawler._brawls(down, {}, 0.0, view) == 2, "a resolved brawl (one down) draws from its snapshot, no history needed")
+	brawler._brawls({"brawls": []}, {}, 0.0, view)
+	check(brawler._brawl_punches.is_empty(), "a finished brawl is forgotten")
+	brawler.free()
+
 	# Snow: the trip text is outlined (readable on white).
 	check(Instruments.TEXT_OUTLINE.v < 0.2 and Instruments.TEXT_OUTLINE_PX >= 3, "a dark outline under the light HUD text")
 

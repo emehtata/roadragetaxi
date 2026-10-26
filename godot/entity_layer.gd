@@ -63,6 +63,8 @@ var underground := false  # the taxi below ground (state player.map_level): only
 var covered := func(_at: Vector2, _layer: int) -> bool: return false  # MapLayer.covered (headlights under a bridge)
 var _trains: Node2D  # trains, z 14: above the canopies and rail bridges (z 13), drawn last
 var _trains_drawn := 0
+var _brawl_punches := {}  # brawl id -> [last action seq seen, when its punch began]
+const BRAWL_JACKETS := [[40, 40, 48], [120, 30, 30]]
 var _tracks: Node2D  # tyre tracks, z 8 (before roadworks and signs)
 var _trails: Array = []  # [kind, [[position, heading, intensity, front, snowfall when laid], ...], its Node2D]
 const TRACK_SEGMENT := 200  # points per trail segment: a new point redraws only its own segment
@@ -1108,6 +1110,12 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 				var shoulder := c + side * radius * .55 * arm_side
 				var hand := c + h * radius * (1.0 + swing) + side * radius * .25 * arm_side - Vector2(0, swing * radius)
 				_canvas.draw_line(shoulder, hand, _person_lit(RS.PED_HEAD), radius * .28)
+		if ped.get("activity", "") == "brawl":  # fists up; the striking one thrown forward
+			var punch := float(ped.get("stick_swing", 0.0))
+			for arm_side: float in [-1.0, 1.0]:
+				var reach := 0.8 + (punch * 0.9 if arm_side > 0.0 else 0.0)
+				_canvas.draw_line(c + side * radius * .55 * arm_side, c + h * radius * reach + side * radius * .3 * arm_side,
+					_person_lit(RS.PED_HEAD), radius * .26)
 		if ped.get("activity", "") == "tennis":
 			var swing := float(ped.get("stick_swing", 0.0))
 			var forward := h.rotated(sin(swing * PI) * 1.2)
@@ -1124,6 +1132,46 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 		var timer: float = ped["curse_timer"]
 		_bubble(c - Vector2(0, radius + _px(6.0)), str(ped.get("curse_text", "@#*!%")), RS.CURSE_TEXT, RS.CURSE_BORDER,
 			1.0 if timer >= 0.5 else timer / 0.5)
+
+
+## Taxi drivers' quarrels (server "brawls": current state only). Each fighter
+## is a pedestrian figure; a punch plays once per server action seq, so a
+## duplicated or late update never swings twice and a fresh snapshot shows
+## no more than the current blow.
+func _brawls(a: Dictionary, b: Dictionary, t: float, view_rect: Rect2) -> int:
+	var drawn := 0
+	var later := _by_id(b.get("brawls", []))
+	var now := Time.get_ticks_msec() / 1000.0
+	var live := {}
+	for brawl in a.get("brawls", []):
+		live[brawl["id"]] = true
+		var action = brawl.get("action")
+		if typeof(action) == TYPE_DICTIONARY and action.get("kind", "") in ["strike", "dodge"]:
+			var seen: Array = _brawl_punches.get(brawl["id"], [-1, 0.0])
+			if int(action["seq"]) > int(seen[0]):
+				_brawl_punches[brawl["id"]] = [int(action["seq"]), now]
+		var punch: Array = _brawl_punches.get(brawl["id"], [-1, -10.0])
+		var swing := clampf(1.0 - (now - float(punch[1])) / 0.35, 0.0, 1.0)
+		var next_fighters: Array = later.get(brawl["id"], brawl).get("fighters", brawl["fighters"])
+		for i in brawl["fighters"].size():
+			var f: Dictionary = brawl["fighters"][i]
+			var p := StateBuffer.blend(f, next_fighters[i] if i < next_fighters.size() else f, t, origin)
+			var c := Vector2(p.x, p.y)
+			if not view_rect.has_point(c):
+				continue
+			var striking: bool = typeof(action) == TYPE_DICTIONARY and int(action.get("actor", -1)) == i
+			_pedestrian(c, p.z, {
+				"color": BRAWL_JACKETS[i % BRAWL_JACKETS.size()],
+				"animation_state": "fallen" if f.get("down", false) else "walking" if f.get("moving", false) else "standing",
+				"activity": "" if f.get("down", false) else "brawl",
+				"stick_swing": swing if striking else 0.0,
+				"curse_timer": f.get("curse_timer", 0.0), "curse_text": f.get("curse_text", ""),
+			}, now)
+			drawn += 1
+	for id in _brawl_punches.keys():  # over: forget it
+		if not live.has(id):
+			_brawl_punches.erase(id)
+	return drawn
 
 
 ## Relaxed beach poses and swimming strokes; the server decides land versus water.
@@ -1558,6 +1606,8 @@ func _draw() -> void:
 		if view_rect.has_point(c):
 			_pedestrian(c, p.z, {"color": npc.get("color", [200, 200, 200])}, 0.0)
 			count += 1
+	if not underground:
+		count += _brawls(a, b, t, view_rect)
 	if a.get("on_foot", false):
 		var walker := StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), t, origin)
 		_pedestrian(Vector2(walker.x, walker.y), walker.z, {"color": [255, 217, 64], "animation_state": "standing"}, 0.0)
