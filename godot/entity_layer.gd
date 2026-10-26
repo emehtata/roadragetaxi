@@ -287,7 +287,8 @@ func update_frame(delta: float) -> void:
 ## The server says each tick whether the taxi marks the ground (state
 ## tire_mark: kind, intensity, front); the trail follows the drawn taxi,
 ## a point every 0.5 m or 4 degrees, at most 4000
-## points (the oldest trails go, down to 3500).
+## points (the oldest trails go, down to 3500); the oldest go once a
+## viewport diagonal away.
 func _lay_track() -> void:
 	if not is_equal_approx(_last_track_px, px_per_m):
 		_last_track_px = px_per_m
@@ -320,6 +321,12 @@ func _lay_track() -> void:
 	_trails[-1][1].append([at, taxi.z, float(mark.get("intensity", 1.0)), bool(mark.get("front", false)), _snowfall])
 	_last_track = [at, taxi.z]
 	_track_points += 1
+	# Out of view is gone for good: tracks are looks only, never played back.
+	var view_m := get_viewport_rect().size.length() / maxf(px_per_m, 0.001)
+	while _trails.size() > 1 and _trails[0][1][-1][0].distance_to(at) > view_m:
+		var gone: Array = _trails.pop_front()
+		_track_points -= gone[1].size()
+		gone[2].queue_free()
 	if _track_points > 4000:
 		while not _trails.is_empty() and _track_points > 3500:
 			var oldest: Array = _trails.pop_front()

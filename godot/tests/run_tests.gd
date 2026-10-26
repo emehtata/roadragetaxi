@@ -2630,6 +2630,7 @@ func test_rest_of_static_world() -> void:
 	# Tyre tracks: laid from the server's mark along the drawn taxi; bounded.
 	var entities = load("res://entity_layer.gd").new()
 	root.add_child(entities)
+	entities.px_per_m = 0.01  # zoomed far out: all 2.5 km in view, so only the cap prunes
 	for i in 4100:  # trails of 100 points (marking stops in between), as driving lays them
 		var mark = null if i % 101 == 100 else {"kind": "dirt", "intensity": 1.0, "front": true}
 		var state := {"player": {"x": i * 0.6, "y": 0.0, "heading": 0.0}, "on_foot": false, "tire_mark": mark}
@@ -2642,12 +2643,18 @@ func test_rest_of_static_world() -> void:
 	check(entities._last_track == null, "no mark: the trail breaks")
 	var long_trail = load("res://entity_layer.gd").new()
 	root.add_child(long_trail)
+	long_trail.px_per_m = 0.01
 	for i in 500:  # one unbroken mark: split in segments, each its own canvas item
 		var marked := {"player": {"x": i * 0.6, "y": 0.0, "heading": 0.0}, "on_foot": false, "tire_mark": {"kind": "rubber"}}
 		long_trail._frame = {"a": marked, "b": marked, "t": 0.0}
 		long_trail._lay_track()
 	check(long_trail._trails.size() == 3 and long_trail._trails.all(func(s): return s[1].size() <= long_trail.TRACK_SEGMENT)
 		and long_trail._trails[1][1][0] == long_trail._trails[0][1][-1], "a long trail: 200-point segments, joined end to start")
+	long_trail.px_per_m = 9.0  # back in close: the trail behind, out of view, goes
+	var far := {"player": {"x": 5000.0, "y": 0.0, "heading": 0.0}, "on_foot": false, "tire_mark": {"kind": "rubber"}}
+	long_trail._frame = {"a": far, "b": far, "t": 0.0}
+	long_trail._lay_track()
+	check(long_trail._trails.size() == 1, "tracks out of view are discarded (%d trails)" % long_trail._trails.size())
 	long_trail.free()
 	var before: int = entities._track_points
 	var snowing := {"player": {"x": 0.0, "y": 0.0, "heading": 0.0}, "on_foot": true, "weather": {"weather_type": "snow"}}
