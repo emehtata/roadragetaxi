@@ -1167,11 +1167,27 @@ func _brawls(a: Dictionary, b: Dictionary, t: float, view_rect: Rect2) -> int:
 				"stick_swing": swing if striking else 0.0,
 				"curse_timer": f.get("curse_timer", 0.0), "curse_text": f.get("curse_text", ""),
 			}, now)
+			_rage_face(c, p.z, float(f.get("rage", 0.0)), f.get("down", false))
 			drawn += 1
 	for id in _brawl_punches.keys():  # over: forget it
 		if not live.has(id):
 			_brawl_punches.erase(id)
 	return drawn
+
+
+## The server's rage on a fighter's face: a red flush that deepens with it,
+## and anger marks once it is extreme (taxi_brawls.RAGE_EXTREME). Looks only.
+func _rage_face(c: Vector2, heading: float, rage: float, down: bool) -> void:
+	if rage < 0.1 or down:
+		return
+	var radius := maxf(_px(4.0), 0.45)
+	var head := c + Vector2(cos(heading), -sin(heading)) * radius * 0.6
+	_canvas.draw_circle(head, maxf(_px(1.0), radius * 0.35), _person_lit(Color(0.85, 0.1, 0.05, 0.6 * rage)))
+	if rage >= 0.7:
+		var mark := head + Vector2(radius * 0.55, -radius * 0.75)
+		for i in 4:
+			var d := Vector2.from_angle(PI * 0.25 + i * PI * 0.5) * radius * 0.22
+			_canvas.draw_line(mark + d * 0.4, mark + d * 1.6, _person_lit(Color8(220, 20, 20)), maxf(_px(1.0), radius * 0.1))
 
 
 ## Relaxed beach poses and swimming strokes; the server decides land versus water.

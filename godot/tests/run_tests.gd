@@ -2684,6 +2684,10 @@ func test_rest_of_static_world() -> void:
 	down["brawls"][0]["state"] = "RESOLUTION"
 	down["brawls"][0]["fighters"][1]["down"] = true
 	check(brawler._brawls(down, {}, 0.0, view) == 2, "a resolved brawl (one down) draws from its snapshot, no history needed")
+	var enraged := fight.duplicate(true)
+	enraged["brawls"][0]["fighters"][0]["rage"] = 1.0
+	enraged["brawls"][0]["fighters"][1]["rage"] = "bogus"
+	check(brawler._brawls(enraged, enraged, 0.0, view) == 2, "rage on a fighter's face draws; a bad value is safe")
 	brawler._brawls({"brawls": []}, {}, 0.0, view)
 	check(brawler._brawl_punches.is_empty(), "a finished brawl is forgotten")
 	brawler.free()
