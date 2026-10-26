@@ -44,6 +44,7 @@ OSMIUM_TIMEOUT_S = 1800.0
 SUPPORTED_SUFFIXES = (".pbf", ".osm")
 NAME_TAGS = ("name", "name:fi", "name:sv", "name:en")
 M_PER_DEG_LAT = 111_320.0
+AIRPORT_TERMINAL_M = 3000.0  # a terminal this close to the aerodrome centroid is its own
 
 
 class ExtractError(RuntimeError):
@@ -132,6 +133,13 @@ class _Geometry:
             return _representative(points, rings, [])
         closed = [ring for ring in rings if len(ring) >= 4 and ring[0] == ring[-1]]
         return _representative(points, closed, [ring for ring in rings if ring not in closed])
+
+
+def _terminal_near(point: Tuple[float, float], terminals: List[Tuple[float, float]]) -> Optional[Tuple[float, float]]:
+    """An airport's passenger terminal: where a fare is dropped, not the
+    aerodrome centroid out on the airfield."""
+    near = [t for t in terminals if _distance_m(point, t) <= AIRPORT_TERMINAL_M]
+    return min(near, key=lambda t: _distance_m(point, t)) if near else None
 
 
 # -- matching & dedupe ------------------------------------------------------
@@ -236,6 +244,12 @@ def extract_places(elements: Sequence[dict], categories: Sequence[PlaceCategory]
     (sorted place records, stats). Unnamed or geometry-less matches are
     counted, never silently lost."""
     geometry = _Geometry(elements)
+    terminals = [
+        point for element in elements
+        if (element.get("tags") or {}).get("aeroway") == "terminal"
+        and element["tags"].get("terminal") != "cargo"
+        and (point := geometry.point_for(element)) is not None
+    ]
     records: List[dict] = []
     stats = {"categories": {}, "unnamed_skipped": [], "no_geometry_skipped": [], "duplicates_merged": 0}
     for category in categories:
@@ -253,6 +267,8 @@ def extract_places(elements: Sequence[dict], categories: Sequence[PlaceCategory]
             if point is None:
                 stats["no_geometry_skipped"].append({"category": category.type, **osm})
                 continue
+            if category.type == "airport":
+                point = _terminal_near(point, terminals) or point
             candidates.append({"osm": osm, "tags": tags, "names": names, "point": point})
         groups = _dedupe(category, candidates)
         category_records = [_place_record(category, group) for group in groups]

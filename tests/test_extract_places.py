@@ -57,6 +57,17 @@ def test_area_airport_gets_its_centroid_and_optional_codes():
     assert place["lat"] == pytest.approx(64.925, abs=1e-4) and place["lon"] == pytest.approx(25.345, abs=1e-4)
 
 
+def test_airport_point_is_its_passenger_terminal_not_the_airfield():
+    corners, ring = square(10, 64.92, 25.34)
+    elements = corners + [
+        way(100, ring, aeroway="aerodrome", name="Oulun lentoasema", iata="OUL"),
+        node(200, 64.93, 25.37, aeroway="terminal", name="Terminaali"),
+        node(201, 64.925, 25.346, aeroway="terminal", terminal="cargo"),
+    ]
+    (place,), _ = ep.extract_places(elements)
+    assert (place["lat"], place["lon"]) == (64.93, 25.37)
+
+
 def test_international_airport_without_codes_keeps_a_generic_record():
     (place,), _ = ep.extract_places([node(5, 60.0, 25.0, aeroway="aerodrome", aerodrome="international", name="X")])
     assert place["id"] == "airport_n5" and "iata" not in place and "icao" not in place
