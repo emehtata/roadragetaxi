@@ -386,16 +386,46 @@ def _fallen_and_knocked(world, x: float, y: float) -> tuple:
     return fallen, knocked
 
 
-def _road_to_dict(current_way) -> dict:
+def _road_to_dict(current_way, limit_override: Optional[int] = None) -> dict:
     """The road under the taxi as the HUD names it: the OSM name, else
     the highway type title-cased; None off-road. The limit is the
-    simulation's own (None when unknown)."""
+    simulation's own (None when unknown); a live roadwork's limit
+    (digitraffic_road) overrides the road's where the taxi is in one."""
     if current_way is None:
         return {"name": None, "speed_limit_kmh": None, "layer": 0, "bridge": False}
     name = getattr(current_way, "name", None) or (getattr(current_way, "highway", None) or "Road").replace("_", " ").title()
-    return {"name": name, "speed_limit_kmh": getattr(current_way, "speed_limit_kmh", None),
+    limit = getattr(current_way, "speed_limit_kmh", None)
+    if limit_override is not None:
+        limit = min(limit, limit_override) if limit is not None else limit_override
+    return {"name": name, "speed_limit_kmh": limit,
             # godot-16: the layer the taxi drives on (headlights under a higher road)
             "layer": getattr(current_way, "layer", 0), "bridge": bool(getattr(current_way, "is_bridge", False))}
+
+
+def _live_limit(world, car) -> Optional[int]:
+    live = getattr(world, "live_roadworks", None)
+    return live.speed_limit_at(car.x, car.y) if live is not None else None
+
+
+LIVE_ROADWORK_SEND_M = 700.0
+
+
+def _live_roadworks(world, camx: float, camy: float) -> list:
+    live = getattr(world, "live_roadworks", None)
+    if live is None:
+        return []
+    rows = []
+    for zone in live.zones:
+        mx, my = (zone.start[0] + zone.end[0]) / 2.0, (zone.start[1] + zone.end[1]) / 2.0
+        if abs(mx - camx) > LIVE_ROADWORK_SEND_M or abs(my - camy) > LIVE_ROADWORK_SEND_M:
+            continue
+        rows.append({
+            "start": [round(zone.start[0], 2), round(zone.start[1], 2)], "end": [round(zone.end[0], 2), round(zone.end[1], 2)],
+            "lane_closed": bool(zone.lane_closed), "closed": bool(zone.blocks),
+            "half_width_m": getattr(zone.way, "half_width_m", 4.0), "speed_limit_kmh": zone.speed_limit_kmh,
+            "id": zone.situation_id,
+        })
+    return rows
 
 
 NEXT_TRAINS = 5  # the rows of the J board
@@ -559,7 +589,9 @@ def build_state_message(
                     # Historical weather: FMI "observed"/"forecast", else "generated"; the HUD's temperature.
                     "source": getattr(weather, "weather_source", "generated"),
                     "temperature_c": _finite(getattr(weather, "outside_temperature_c", None))},
-        "road": _road_to_dict(current_way),
+        "road": _road_to_dict(current_way, _live_limit(world, car)),
+        # Live Digitraffic roadworks near the camera (the generated ones travel in map chunks).
+        "live_roadworks": _live_roadworks(world, camx, camy),
         # The map growing as the taxi nears its edge: "" or fetching / merging / syncing / building.
         "map_loading": map_loading,
         # While fetching: the fetcher's own line, e.g. "Fetching from https://overpass-api.de/api/interpreter (attempt 1/3)...".

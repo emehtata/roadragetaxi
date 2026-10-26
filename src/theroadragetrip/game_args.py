@@ -58,6 +58,13 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
         help="Trains run on the real Digitraffic timetable; off: at a fixed interval (default: config game.train_timetable)",
     )
 
+    p.add_argument(
+        "--road-digitraffic",
+        action=argparse.BooleanOptionalAction,
+        default=config.getboolean("game", "road_digitraffic", fallback=False) if config else False,
+        help="Live roadworks from Fintraffic's Digitraffic Road API, cached forever (default: config game.road_digitraffic)",
+    )
+
     p.add_argument("--intercity-fares", action=argparse.BooleanOptionalAction,
                    default=config.getboolean("game", "intercity_fares", fallback=False) if config else False,
                    help="Enable intercity fares after preparing the navigation database from a local Finland PBF")

@@ -116,6 +116,12 @@ def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, bloc
     return x, y
 
 
+def _roadwork_bars(work, x: float, y: float) -> bool:
+    """Where a roadwork stops the taxi: all of a generated or closed one,
+    only the closed lane of a live one with a lane closed."""
+    return work.contains(x, y, margin_m=2.0) if work.blocks else work.in_closed_lane(x, y, margin_m=2.0)
+
+
 def _provoke_rival(brawls, npc_manager, player_pedestrian, sim_time: float) -> None:
     """On foot, a shout at a stopped rival taxi's driver: they get out to fight."""
     from .competitor_taxis import is_competitor
@@ -467,13 +473,11 @@ def advance_simulation(
             (previous_position[0] + car.x) * 0.5,
             (previous_position[1] + car.y) * 0.5,
         )
+        live = getattr(world, "live_roadworks", None)
         entered_roadwork = on_surface and any(  # roadworks sit on surface roads
-            not work.contains(*previous_position, margin_m=2.0)
-            and (
-                work.contains(*midpoint, margin_m=2.0)
-                or work.contains(car.x, car.y, margin_m=2.0)
-            )
-            for work in roadworks
+            not _roadwork_bars(work, *previous_position)
+            and (_roadwork_bars(work, *midpoint) or _roadwork_bars(work, car.x, car.y))
+            for work in (list(roadworks) + (live.zones if live is not None else []))
         )
         audio.on_rise("roadwork", entered_roadwork, "gameplay.roadwork_blocked")
         if entered_roadwork:
@@ -536,6 +540,9 @@ def advance_simulation(
         taxi_mgr.notification_msg = tr(language, "fuel_empty")
         taxi_mgr.notification_timer = 4.0
     road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
+    live_limit = world.live_roadworks.speed_limit_at(car.x, car.y) if getattr(world, "live_roadworks", None) else None
+    if live_limit is not None and road_limit_mps is not None:  # a live roadwork's limit (digitraffic_road)
+        road_limit_mps = min(road_limit_mps, live_limit / 3.6)
     rage_power = _rage_from_speeding(rage_power, car.speed, road_limit_mps, driven_distance)
     if abs(car.speed) * 3.6 < 10.0 and taxi_mgr.sees_red_light(car, nearby_traffic_lights, traffic_mgr.sim_time):
         rage_power = min(1.0, rage_power + 0.05 * RAGE_GAIN_SCALE * dt)

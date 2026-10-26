@@ -273,6 +273,7 @@ def _write_debug_snapshot(
     npc_manager=None,
     frame_profiler=None,
     taxi_brawls=None,
+    live_roadworks=None,
 ) -> None:
     minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
     now = time.time()
@@ -293,6 +294,15 @@ def _write_debug_snapshot(
             "tree_effect_count": len(taxi_mgr.tree_effects),
             "fallen_tree_count": len(taxi_mgr.fallen_trees),
             "vomit_puddle_count": len(taxi_mgr.vomit_puddles),
+        },
+        # Live Digitraffic roadworks (digitraffic_road.py): what was fetched and where it was placed.
+        "live_roadworks": None if live_roadworks is None else {
+            "fetched_situations": len(live_roadworks.service.roadworks),
+            "network_requests": live_roadworks.service.client.fetched,
+            "placed": [{"situation": z.situation_id, "title": z.title, "way": getattr(z.way, "osm_id", None),
+                        "ref": getattr(z.way, "ref", None), "start_m": round(z.start_m, 1), "end_m": round(z.end_m, 1),
+                        "speed_limit_kmh": z.speed_limit_kmh, "lane_closed": z.lane_closed, "closed": z.blocks}
+                       for z in live_roadworks.zones],
         },
         # Taxi drivers' quarrels (taxi_brawls.py): the active ones and the last outcomes.
         "brawls": {

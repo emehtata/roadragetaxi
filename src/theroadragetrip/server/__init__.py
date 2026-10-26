@@ -297,6 +297,7 @@ class SimulationServer:
         if self.weather_history is not None:
             self.weather_history.request(self.calendar.current - timedelta(hours=6), self.calendar.current + timedelta(hours=48))
             self.weather_history.wait_idle(3.0)  # brief: the first hour can be the real weather
+        self.world.live_roadworks = self._live_roadworks(args, config)
         observed = self._update_outside()
         if observed is not None:  # the first tick follows it; the start's weather is it already
             self.world.weather.update(0.001, 0.0, outside_temperature_c=self.world.weather.outside_temperature_c,
@@ -590,11 +591,33 @@ class SimulationServer:
         logger.info("Simulation server listening on %s:%d", self.host, self.port)
         self._running = True
 
+    def _live_roadworks(self, args, config):
+        """Settings -> realtime road data (--road-digitraffic): live roadworks
+        from Digitraffic, every query cached forever; None when off."""
+        enabled = getattr(args, "road_digitraffic", None)
+        if enabled is None:
+            enabled = config.getboolean("game", "road_digitraffic", fallback=False)
+        if not enabled:
+            return None
+        try:
+            from pyproj import Transformer
+        except ImportError:
+            logger.warning("Digitraffic road data needs pyproj; staying with generated roadworks")
+            return None
+        from ..digitraffic_road import DigitrafficClient, LiveRoadworks, RoadDataService
+        project = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True).transform
+        unproject = Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True).transform
+        client = DigitrafficClient(Path(CACHE_DIR) / "digitraffic_road.sqlite")
+        logger.info("Digitraffic road data on (live roadworks, cache %s)", Path(CACHE_DIR) / "digitraffic_road.sqlite")
+        return LiveRoadworks(RoadDataService(client, unproject), project)
+
     def close(self) -> None:
         """Stop listening and drop every client (tests; an embedding host).
         The process exit does this for the standalone server."""
         self._running = False
         self.navigation.close()
+        if getattr(self.world, "live_roadworks", None) is not None:
+            self.world.live_roadworks.service.close()
         if self._listener is not None:
             self._listener.close()
         with self._clients_lock:
@@ -731,7 +754,7 @@ class SimulationServer:
                 getattr(self, "camera_city_name", self.chosen_city), getattr(self.args, "game_mode", "gig_driver"),
                 self._on_foot, scenery_objects=w.scenery_objects, speed_bumps=w.speed_bumps, railways=w.railways,
                 railings=w.railings, npcs=w.npcs, npc_drivers=w.npc_drivers, npc_manager=w.npc_manager,
-                taxi_brawls=getattr(w, "taxi_brawls", None),
+                taxi_brawls=getattr(w, "taxi_brawls", None), live_roadworks=getattr(w, "live_roadworks", None),
             )
             logger.info("Debug snapshot %s", path)
         except Exception:  # a debugging aid: never take the game down
@@ -826,6 +849,12 @@ class SimulationServer:
             self._lightning_event_id = self.world.weather.lightning_event_id
 
         car_x, car_y = self.car.x, self.car.y
+        live = self.world.live_roadworks
+        if live is not None:  # Digitraffic roadworks around the taxi at the game time (matched off the network thread)
+            from ..calendar import finnish_utc
+            moment = self.calendar.current
+            live.update(self.car.x, self.car.y, finnish_utc(moment).replace(tzinfo=timezone.utc), moment,
+                        len(self.world.ways), self.world.spatial_grid)
         result = advance_simulation(
             dt, command, self.car, self.world, brawl_flee=brawl_flee,
             on_foot=self._on_foot,
