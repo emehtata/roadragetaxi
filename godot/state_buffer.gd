@@ -26,6 +26,9 @@ const MAX_EXTRAPOLATE_S := 0.2  # a crash or a stop overshoots at most speed x t
 # again (godot-08 "vehicle jitter"). Rate stays within 1 +- MAX_SLEW.
 const SLEW_GAIN := 5.0  # per second of error
 const MAX_SLEW := 0.25  # a jump bigger than this (server restart, long stall) resets the clock
+# States read after a client frame this long were late only because nobody read them:
+# following them slowed every vehicle for ~1 s after each hitch, then sped it up.
+const CLIENT_STALL_S := 0.05
 
 var delay := 0.1
 var underruns := 0  # frames the render time was past the newest state
@@ -47,6 +50,8 @@ var _offset := 0.0  # server time minus local time, smoothed
 var _has_clock := false
 var _clock_time := 0.0  # the render clock (server seconds)
 var _clock_local := -1.0  # local time it was last advanced at
+var _last_sample := -1.0  # local time of the last sample() (one per frame)
+var _sample_gap := 0.0  # the frame time before it
 
 
 ## Zero the diagnostics (measure a steady stretch, not the connect burst).
@@ -63,6 +68,7 @@ func reset_diagnostics() -> void:
 func clear() -> void:
 	_last_arrival = -1.0
 	_clock_local = -1.0
+	_last_sample = -1.0
 	_states.clear()
 	_events.clear()
 	_has_clock = false
@@ -94,10 +100,11 @@ func push(tick: int, server_time: float, state: Dictionary, local_now: float) ->
 	# the render time overtake the newest state for a frame or two
 	# (godot-05 underrun investigation).
 	var sample := server_time - local_now
+	var client_stalled := _last_sample >= 0.0 and maxf(_sample_gap, local_now - _last_sample) > CLIENT_STALL_S
 	if not _has_clock or absf(sample - _offset) > CLOCK_SNAP_S:
 		_offset = sample
 		_has_clock = true
-	else:
+	elif not client_stalled:
 		_offset += (sample - _offset) * (LATE_FOLLOW if sample < _offset else EARLY_FOLLOW)
 	return true
 
@@ -128,6 +135,8 @@ func render_time(local_now: float) -> float:
 func sample(local_now: float) -> Dictionary:
 	if _states.is_empty():
 		return {}
+	_sample_gap = local_now - _last_sample if _last_sample >= 0.0 else 0.0
+	_last_sample = local_now
 	var at := render_time(local_now)
 	if at < _last_render_time:
 		render_backsteps += 1

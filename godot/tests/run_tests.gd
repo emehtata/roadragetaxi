@@ -635,6 +635,23 @@ func test_interpolation() -> void:
 	check(backwards == 0, "the render clock is monotonic (%d backward steps)" % backwards)
 	check(absf(steady.render_time(frame_at) - steady.target_time(frame_at)) < 0.02, "and converges on its target")
 
+	# A client hitch (a 120 ms frame) delays reading the states, not making them:
+	# the backlog read afterwards must not pull the clock back (slow motion, then catch-up).
+	var hitch := StateBuffer.new()
+	hitch.delay = 0.1
+	var at := 0.0
+	for tick in range(1, 61):
+		hitch.push(tick, tick / 30.0, _state(0.0), tick / 30.0)
+		while at < (tick + 1) / 30.0:
+			hitch.sample(at)
+			at += 1.0 / 60.0
+	var offset_before: float = hitch._offset
+	at += 0.12
+	for tick in range(61, 66):
+		hitch.push(tick, tick / 30.0, _state(0.0), at)
+	hitch.sample(at)
+	check(absf(hitch._offset - offset_before) < 0.005, "a client hitch's backlog leaves the clock offset alone (moved %.3f s)" % (hitch._offset - offset_before))
+
 	# Events: handed out once, when the render time reaches their state.
 	var events := StateBuffer.new()
 	events.delay = 0.1
