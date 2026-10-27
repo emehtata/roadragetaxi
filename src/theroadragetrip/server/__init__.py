@@ -345,6 +345,7 @@ class SimulationServer:
         self._clients_lock = threading.Lock()
         self._clients: list = []
         self._client_views = {}  # connection -> (last simulation time, world camera bounds)
+        self._inspect = None  # {"kind", "id"}: what the client's inspect panel shows (its residents are sent)
         # Per connection: the map chunks it has, and the player cell they were planned for.
         progress("lights", f"{len(self.world.ways)} roads")
         self.world.street_light_points = place_street_lights(self.world)  # before the chunks carry them
@@ -690,6 +691,10 @@ class SimulationServer:
                 if view is not None and max(abs((view[0] + view[2]) / 2 - self.car.x),
                                             abs((view[1] + view[3]) / 2 - self.car.y)) <= 2000:
                     self._client_views[connection] = (self._server_time, view)
+                held = message.get("command") if isinstance(message.get("command"), dict) else {}
+                if "inspect" in held:
+                    inspect = held["inspect"]
+                    self._inspect = inspect if isinstance(inspect, dict) and inspect.get("kind") in ("npc", "pedestrian") else None
                 phone = protocol.phone_request_from_message(message)
                 requested_language = message.get("command", {}).get("language") if isinstance(message.get("command"), dict) else None
                 if isinstance(requested_language, str) and requested_language in SUPPORTED_LANGUAGES and requested_language != self.language:
@@ -1167,6 +1172,7 @@ class SimulationServer:
             map_loading=self._map_streamer.status() if self._map_streamer is not None else "",
             map_loading_detail=self._map_streamer.manager.get_progress_message() if self._map_streamer is not None else "",
             railway=protocol.railway_state(getattr(self.world, "railway_mgr", None), self.car.x, self.car.y, self.calendar.current),
+            inspect=self._inspect,
         )
         message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
         with self._clients_lock:

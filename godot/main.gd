@@ -1014,6 +1014,8 @@ func send(controls: Dictionary) -> void:
 	if outside or _interact_pending:
 		command["engine_on"] = null
 	command["language"] = language
+	# The inspect panel's subject: the simulation sends residents for it alone (protocol.py compact rows).
+	command["inspect"] = {"kind": _focus["kind"], "id": _focus["id"]} if _focus.get("kind") in ["npc", "pedestrian"] and _focus.has("id") else null
 	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()
 	command["view_bounds"] = [view.position.x + entities.origin.x, entities.origin.y - view.end.y,
 		view.end.x + entities.origin.x, entities.origin.y - view.position.y]
