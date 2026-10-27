@@ -34,6 +34,11 @@ void fragment() {
 					vec2 key = cell + vec2(float(x), float(y)) * neighbour;
 					vec2 seed = hash2(key);
 					vec2 center = key + vec2(0.2) + seed * 0.6;
+					// Whole crowns or none: the mask is read at the crown's centre, so a road,
+					// building or clearing edge never slices one (it overhangs instead).
+					if (texture(canopy_mask, (center * 4.2 - mask_rect.xy) / mask_rect.zw).r < 0.5) {
+						continue;
+					}
 					vec2 offset = (grid - center) * 4.2;
 					float species = fract(seed.x * 17.0 + seed.y * 7.0);
 					float radius = 2.5 + seed.y * 0.8;
@@ -59,7 +64,9 @@ void fragment() {
 			}
 		}
 		COLOR.rgb = mix(COLOR.rgb * 0.85, color, detail);
-		COLOR.a *= texture(canopy_mask, (world - mask_rect.xy) / mask_rect.zw).r * mix(1.0, coverage, detail);
+		// The flat fill of distant zooms keeps the per-pixel mask; crowns carry their own.
+		float flat_fill = texture(canopy_mask, (world - mask_rect.xy) / mask_rect.zw).r;
+		COLOR.a *= mix(flat_fill, coverage, detail);
 	} else {
 		COLOR.a = 0.0;
 	}

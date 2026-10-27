@@ -33,9 +33,15 @@ const FIELDS_FROZEN_WINTER_WEIGHT := 0.5  # map_style.py: the same, for the ice 
 
 ## Landuse fills: each piece in its kind's colour, green kinds through the
 ## season (area[1] 1), sports fields frozen to ice in winter (2).
-static func draw_areas(chunk, node: Node2D, key: String) -> void:
+## `canopy_margin`: the forest canopy layer's polygons drawn this much larger,
+## so edge crowns are whole (its shader's mask, read at each crown's centre,
+## still keeps the crowns to the forest).
+static func draw_areas(chunk, node: Node2D, key: String, canopy_margin := 0.0) -> void:
 	for area in chunk._data.get(key, []):
 		var polygon: PackedVector2Array = chunk._points(area[2])
+		if canopy_margin > 0.0 and _valid(polygon) and area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]:
+			var grown := Geometry2D.offset_polygon(polygon, canopy_margin, Geometry2D.JOIN_ROUND)
+			polygon = grown[0] if grown.size() == 1 else polygon  # an outline that splits: as mapped
 		if _valid(polygon):
 			var color := _rgb(area[0])
 			match int(area[1]):

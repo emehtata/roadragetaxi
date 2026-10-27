@@ -30,6 +30,7 @@
 ## only by the chunk containing them.
 extends Node2D
 
+const CANOPY_MARGIN_M := 3.5  # the canopy drawn past the forest outline: room for its edge crowns
 const TRUNK_RADIUS_M := 0.4  # a tree the taxi touches within this of its trunk falls
 const TREE_CELL_M := 10.0  # knock_trees' lookup grid
 const RS := preload("res://render_style.gd")
@@ -125,7 +126,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	if not message.get("landuse", []).is_empty():
 		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
 		if prepared["forest_mask"] != null:
-			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
+			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse", CANOPY_MARGIN_M))
 			var material := FOREST_MATERIAL.duplicate() as ShaderMaterial
 			material.set_shader_parameter("canopy_mask", ImageTexture.create_from_image(prepared["forest_mask"]))
 			material.set_shader_parameter("mask_rect", Vector4(_bounds_rect.position.x, _bounds_rect.position.y, _bounds_rect.size.x, _bounds_rect.size.y))
