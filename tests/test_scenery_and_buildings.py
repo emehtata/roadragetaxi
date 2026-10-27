@@ -735,22 +735,6 @@ def test_build_ways_creates_fuel_pumps_for_named_roof_station_area():
     assert station.is_area is True
 
 
-def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
-    manager = TaxiManager([Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)])
-    scenery = Scenery([(0.0, -20.0), (20.0, -20.0), (20.0, 20.0)], "park", trees=[(0.0, 0.0)])
-    car = Car(x=0.0, y=0.0, heading=0.0, speed=25.0)
-
-    assert manager.check_tree_collision(car, [scenery], 1.0, previous_position=(-10.0, 0.0))
-    assert (id(scenery), 0) in manager.fallen_trees
-    assert manager.tree_effects[(id(scenery), 0)]["angle"] == car.heading
-    assert manager.tree_wait_timer == 5.0
-    assert manager.taxi_smoke_timer == 5.0
-    # The client finds the shaking tree by this position: it must match
-    # the actual tree, not the car.
-    assert manager.tree_effects[(id(scenery), 0)]["x"] == 0.0
-    assert manager.tree_effects[(id(scenery), 0)]["y"] == 0.0
-
-
 def test_driving_into_construction_fence_stops_the_car_and_penalizes():
     """A construction-site scenery is fenced off - a car driving into it
     must crash the same way a building does, not pass straight through."""

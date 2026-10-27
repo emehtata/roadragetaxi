@@ -372,23 +372,16 @@ def _broken_hedges(world, x, y):
     return rows
 
 
-def _fallen_and_knocked(world, x: float, y: float) -> tuple:
-    """Trees felled and posts knocked over this session near (x, y), as
-    [x, y, angle(, kind)] - matched by position to the chunks' trees and
-    bollards. Only ever grows (taxi.py), so it stays small."""
+def _knocked(world, x: float, y: float) -> list:
+    """Posts knocked over this session near (x, y), as [x, y, angle, kind] -
+    matched by position to the chunks' bollards. Only ever grows (taxi.py),
+    so it stays small. (Felled trees are the client's own: map_chunk.gd.)"""
     radius_sq = TRAFFIC_LIGHT_PHASE_RADIUS_M * TRAFFIC_LIGHT_PHASE_RADIUS_M
-    taxi_mgr = world.taxi_mgr
-    fallen = []
-    for key in getattr(taxi_mgr, "fallen_trees", ()):
-        effect = taxi_mgr.tree_effects.get(key, {})
-        if "x" in effect and (effect["x"] - x) ** 2 + (effect["y"] - y) ** 2 <= radius_sq:
-            fallen.append([round(effect["x"], 1), round(effect["y"], 1), round(effect.get("angle", 0.0), 3)])
-    knocked = [
+    return [
         [round(post.x, 1), round(post.y, 1), round(post.knocked_angle, 3), post.kind]
         for post in getattr(world, "scenery_objects", ())
         if getattr(post, "knocked_angle", None) is not None and (post.x - x) ** 2 + (post.y - y) ** 2 <= radius_sq
     ]
-    return fallen, knocked
 
 
 def _road_to_dict(current_way, limit_override: Optional[int] = None) -> dict:
@@ -532,13 +525,12 @@ def build_state_message(
     taxi_mgr = world.taxi_mgr
     traffic_mgr = world.traffic_mgr
     player_at = (player_pedestrian.x, player_pedestrian.y) if on_foot else (car.x, car.y)
-    fallen_trees, knocked_posts = _fallen_and_knocked(world, *player_at)
+    knocked_posts = _knocked(world, *player_at)
     residents = getattr(getattr(world, "residents", None), "residents", {})
     santa_day = date.fromisoformat(calendar["date"]) if calendar and calendar.get("holidays", {}).get("santas") else None
     state = {
         "protests": getattr(world, "protests", None).snapshot(camx, camy) if getattr(world, "protests", None) else [],
         "protest_active": bool(getattr(getattr(world, "protests", None), "groups", ())),
-        "fallen_trees": fallen_trees,  # [x, y, angle] (the way the taxi hit it)
         "broken_hedges": _broken_hedges(world, *player_at),
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
         "game_time_seconds": game_time_seconds,

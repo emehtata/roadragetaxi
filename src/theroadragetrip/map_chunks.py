@@ -310,9 +310,9 @@ class ChunkIndex:
                 self._add("traffic_lights", ((light.x, light.y),), {
                     "id": index, "x": round(x, 2), "y": round(y, 2), "angle": round(light.direction_angle or 0.0, 4),
                 })
-        # Obstacles the simulation collides with (taxi.py check_tree_collision,
-        # check_fence_collision, check_post_collision); the collisions stay on
-        # the server, these are for drawing them. Each in one chunk.
+        # Obstacles: fences and posts the simulation collides with (taxi.py
+        # check_fence_collision, check_post_collision) and trees the client
+        # knocks over by itself (map_chunk.gd knock_trees). Each in one chunk.
         for scenery in getattr(world, "sceneries", ()):
             kinds = getattr(scenery, "tree_kinds", ())
             variations = getattr(scenery, "tree_variations", ())

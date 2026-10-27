@@ -19,12 +19,11 @@ var _snow_redraws: Dictionary = {}
 var wetness := 0.0  # road wetness as last applied (bucketed, see set_wetness)
 var px_per_m := 9.0  # the camera zoom, for the chunks' pixel-sized points
 var phases: Dictionary = {}  # traffic-light phases as last applied (state "traffic_lights")
-var fallen: Dictionary = {}  # felled trees: MapChunk.obstacle_key -> angle (state "fallen_trees")
 var knocked: Dictionary = {}  # knocked posts: key -> [x, y, angle, kind] (state "knocked_posts")
 var _knocked_posts: Node2D  # drawn here, from the state: a lamp has no static data (made in _ready)
 var broken_hedges: Dictionary = {}
 var _last_hedge_damage: Array = []
-var _last_obstacles := [[], []]
+var _last_obstacles := []
 var season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] as last applied
 var lights_on := false
 var _pool_group: Node2D  # every loaded chunk's street-light pools (each chunk's: their union, added once)
@@ -268,7 +267,7 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.set_road_snow(road_snow, plowed_cells)
 	chunk.set_px_per_m(px_per_m)
 	chunk.set_phases(phases)
-	chunk.set_obstacles(fallen, knocked)
+	chunk.set_obstacles(knocked)
 	chunk.set_broken_hedges(broken_hedges)
 	chunk.set_season(season)
 	chunk.set_lights_on(lights_on)
@@ -320,22 +319,28 @@ func set_broken_hedges(rows: Array) -> void:
 		chunk.set_broken_hedges(broken_hedges)
 
 
-## The simulation's felled trees and knocked posts this tick (lists that
-## only grow, so usually unchanged): chunks redraw only their own.
-func set_obstacles(fallen_trees: Array, knocked_posts: Array) -> void:
-	if fallen_trees == _last_obstacles[0] and knocked_posts == _last_obstacles[1]:
+## The simulation's knocked posts this tick (a list that only grows, so
+## usually unchanged): chunks redraw only their own.
+func set_obstacles(knocked_posts: Array) -> void:
+	if knocked_posts == _last_obstacles:
 		return
-	_last_obstacles = [fallen_trees, knocked_posts]
-	fallen = {}
-	for tree in fallen_trees:
-		fallen[MapChunk.obstacle_key(tree[0], tree[1])] = float(tree[2])
+	_last_obstacles = knocked_posts
 	knocked = {}
 	for post in knocked_posts:
 		knocked[MapChunk.obstacle_key(post[0], post[1])] = post
 	for chunk in _chunks.values():
-		chunk.set_obstacles(fallen, knocked)
+		chunk.set_obstacles(knocked)
 	if _knocked_posts != null:
 		_knocked_posts.queue_redraw()
+
+
+## The taxi knocks over the trees it touches (MapChunk.knock_trees, which
+## skips chunks far from it): the client's alone. Returns how many fell.
+func knock_trees(body: Dictionary) -> int:
+	var felled := 0
+	for chunk in _chunks.values():
+		felled += chunk.knock_trees(body["position"], body["heading"], body["length"], body["width"])
+	return felled
 
 
 ## A post hit hard lies bent over the way the taxi went

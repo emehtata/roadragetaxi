@@ -317,7 +317,7 @@ def advance_simulation(
         )
 
     audio.player_position = (car.x, car.y)  # where the taxi's own sounds come from
-    immobilized = taxi_mgr.tree_wait_timer > 0.0 or water_elapsed > 0.0  # sinking: no driving out
+    immobilized = water_elapsed > 0.0  # sinking: no driving out
     score_at_start = taxi_mgr.total_score
     loud_event = False  # a crash/camera/vomit sound already tells of this tick's lost points
     car.driver_mass_kg = 0.0 if on_foot else 90.0
@@ -567,12 +567,8 @@ def advance_simulation(
             car, buildings, traffic_mgr.sim_time, previous_position, ways=drive_ways,
             current_way=current_way,
         )
-        fallen_before = len(taxi_mgr.fallen_trees)
-        tree_crash = on_surface and taxi_mgr.check_tree_collision(
-            car, sceneries, traffic_mgr.sim_time, previous_position, ways=drive_ways
-        )
-        if len(taxi_mgr.fallen_trees) > fallen_before:
-            audio.play_group("collision.tree_fall")
+        # Trees: the client's alone (godot/map_chunk.gd knock_trees) - the taxi knocks them
+        # over without stopping, and a fallen tree stands again when its chunk reloads.
         fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
         fence_group = "collision.fence"
         if not fence_crash and on_surface:
@@ -605,7 +601,6 @@ def advance_simulation(
     # Once per impact (the checks stay true every frame the car touches).
     crashed = any([
         audio.on_rise("crash_building", building_crash, "collision.building", 0.8),
-        audio.on_rise("crash_tree", tree_crash, "collision.tree", 0.8),
         audio.on_rise("crash_fence", fence_crash, fence_group, 0.8),
         audio.on_rise("crash_tram", tram_crash, "collision.building", 0.9),  # a heavy steel body
         audio.on_rise("crash_post", post_crash, "collision.guardrail", 0.8),  # a metal pole

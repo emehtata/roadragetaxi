@@ -879,69 +879,6 @@ def _grid_sceneries_with_trees(count, trees_per=8, spacing=50.0, cols=100):
 
 
 @pytest.mark.timing
-def test_nearby_collision_trees_indexes_incrementally_not_the_whole_map(gc_paused):
-    """Regression: same bug family as buildings/fences, but trickier -
-    an individual scenery's own .trees list can change after that
-    scenery is already indexed (osm/trees.py both appends to it as
-    tiles stream in and reassigns it outright when
-    remove_trees_under_roads() prunes some), so _nearby_collision_trees()
-    tracks how many of each scenery's trees are already indexed rather
-    than assuming the whole sceneries list is append-only. Confirmed via
-    profiling: unfixed, growing to 1500 sceneries (8 trees each, in
-    batches of 75) cost ~68ms total; fixed, ~11ms."""
-    mgr = TaxiManager(ways=[], language="en")
-    all_sceneries = _grid_sceneries_with_trees(1500)
-    live_sceneries: list = []
-    batch = 75
-
-    total_ms = 0.0
-    for start in range(0, len(all_sceneries), batch):
-        live_sceneries.extend(all_sceneries[start:start + batch])
-        t0 = time.perf_counter()
-        mgr._nearby_collision_trees(live_sceneries, 0.0, 0.0, 5.0)
-        total_ms += (time.perf_counter() - t0) * 1000.0
-
-    assert total_ms < 35.0, (
-        f"20 growth calls against 1500 tree-bearing sceneries took {total_ms:.1f}ms "
-        f"total - looks like the whole tree map is being re-indexed on every growth"
-    )
-
-
-def test_nearby_collision_trees_stays_correct_across_incremental_growth():
-    mgr = TaxiManager(ways=[], language="en")
-    all_sceneries = _grid_sceneries_with_trees(60)
-    live_sceneries: list = []
-    for start in range(0, len(all_sceneries), 10):
-        live_sceneries.extend(all_sceneries[start:start + 10])
-        mgr._nearby_collision_trees(live_sceneries, 0.0, 0.0, 5.0)
-
-    found = mgr._nearby_collision_trees(live_sceneries, 0.0, 0.0, 5.0)
-    found_positions = {(fx, fy) for _, _, fx, fy in found}
-    assert all_sceneries[0].trees[0] in found_positions
-    assert all_sceneries[-1].trees[0] not in found_positions
-
-
-def test_nearby_collision_trees_reflects_removal_from_an_already_indexed_scenery():
-    """remove_trees_under_roads() (osm/trees.py) reassigns an existing,
-    already-indexed scenery's .trees to a shorter list - a pruned tree
-    must actually disappear from collision queries, not linger as a
-    stale grid entry pointing at a tree that no longer exists."""
-    mgr = TaxiManager(ways=[], language="en")
-    scenery = Scenery(
-        points_m=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)],
-        kind="forest", trees=[(1.0, 1.0), (2.0, 2.0)],
-    )
-    sceneries = [scenery]
-    mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
-    found = mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
-    assert {(fx, fy) for _, _, fx, fy in found} == {(1.0, 1.0), (2.0, 2.0)}
-
-    scenery.trees = [(1.0, 1.0)]  # (2.0, 2.0) pruned
-    mgr.invalidate_tree_collision_index()
-    found_after = mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
-    assert {(fx, fy) for _, _, fx, fy in found_after} == {(1.0, 1.0)}
-
-
 def test_unnamed_road_is_a_valid_stop():
     way = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="service", half_width_m=3.0)
     taxi_mgr = TaxiManager(ways=[way], places=[Place(x=200.0, y=50.0, name="Kaukovainio", kind="suburb")], language="en")

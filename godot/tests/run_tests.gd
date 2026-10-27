@@ -2375,19 +2375,26 @@ func test_obstacles() -> void:
 	var pieces := MapChunk.dashes(PackedVector2Array([Vector2(0, 0), Vector2(2, 0), Vector2(2, 3)]), 1.5, 1.0)
 	check(pieces.size() == 2 and pieces[0] == [Vector2(0, 0), Vector2(1.5, 0)] and pieces[1][0].is_equal_approx(Vector2(2, 0.5)) and pieces[1][1].is_equal_approx(Vector2(2, 2)), "dash pattern carries over the corner")
 
-	# The server's state: a felled tree, a knocked bollard and a knocked lamp (no static lamp data).
-	var fallen: Array = JSON.parse_string("[[1010.0, 2020.0, 1.5]]")
+	# The server's state: a knocked bollard and a knocked lamp (no static lamp data).
 	var knocked: Array = JSON.parse_string("[[1040.0, 2000.0, 3.14, \"bollard\"], [1200.0, 2200.0, 0.0, \"street_lamp\"]]")
-	map.set_obstacles(fallen, knocked)
-	check(chunk._fallen == {"1010.0,2020.0": 1.5} and chunk._knocked.has("1040.0,2000.0"), "the chunk takes its own felled tree and knocked bollard")
+	map.set_obstacles(knocked)
+	check(chunk._knocked.has("1040.0,2000.0"), "the chunk takes its own knocked bollard")
 	check(map.knocked.size() == 2, "the knocked lamp is drawn from the state alone")
-	check(not chunk.set_obstacles(map.fallen, map.knocked), "unchanged state: no redraw")
-	map.set_obstacles(fallen.duplicate(true), knocked.duplicate(true))
-	check(chunk._fallen.size() == 1, "the same lists again change nothing")
+	check(not chunk.set_obstacles(map.knocked), "unchanged state: no redraw")
 
-	# Unload and reload: gone, back once, still felled.
+	# Trees are the client's: the drawn taxi knocks one over, the way it drives; it stays down.
+	var tree_at := MapMath.point(chunk._origin, 1010.0, 2020.0)
+	var taxi := {"position": tree_at + Vector2(-3.0, 0.0), "heading": 0.0, "length": 4.3, "width": 1.8}
+	check(map.knock_trees(taxi) == 0 and chunk._fallen.is_empty(), "a taxi 3 m short of the trunk knocks nothing over")
+	taxi["position"] = tree_at + Vector2(-2.3, 0.0)  # its nose at the trunk
+	check(map.knock_trees(taxi) == 1 and chunk._fallen == {"1010.0,2020.0": 0.0}, "touching it, the tree falls the way the taxi was going")
+	check(map.knock_trees(taxi) == 0, "a fallen tree falls once")
+	map.set_obstacles(knocked.duplicate(true))
+	check(chunk._fallen.size() == 1, "the server's state leaves a fallen tree down")
+
+	# Unload and reload: gone, back once, the tree standing again.
 	check(map.remove_chunk("2_4") and map.chunk_count() == 0, "obstacles go with their chunk")
-	check(map.add_chunk(message.duplicate(true)) and map._chunks["2_4"]._fallen.has("1010.0,2020.0"), "reloaded, the felled tree is still down")
+	check(map.add_chunk(message.duplicate(true)) and map._chunks["2_4"]._fallen.is_empty(), "reloaded, the knocked-over tree stands again")
 	check(map.chunk_count() == 1 and not map.add_chunk(message), "no duplicate after a revisit")
 	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._trees == null, "a chunk without obstacles adds no layer (older servers too)")
 	map.free()
@@ -2493,7 +2500,7 @@ func test_static_world() -> void:
 	map.set_light(1.0, Color(0.15, 0.2, 0.34))
 	check(is_equal_approx(map._pool_group.modulate.a, 1.0), "at night, full")
 	check(map.lamp_near(Vector2(203, -200), 5.0) and not map.lamp_near(Vector2(203, -250), 5.0), "a working light is near")
-	map.set_obstacles([], JSON.parse_string("[[1200.0, 2200.0, 0.5, \"street_lamp\"]]"))
+	map.set_obstacles(JSON.parse_string("[[1200.0, 2200.0, 0.5, \"street_lamp\"]]"))
 	check(chunk._broken == PackedInt32Array([0]), "the knocked lamp's light goes dark")
 	check(not map.lamp_near(Vector2(200, -200), 3.0) and map.lamp_near(Vector2(212, -200), 3.0), "a broken light lights nothing; its neighbour still does")
 	check(map.find_children("*", "CollisionObject2D", true, false).is_empty() and map.find_children("*", "CollisionShape2D", true, false).is_empty(),

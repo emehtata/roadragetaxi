@@ -30,6 +30,7 @@
 ## only by the chunk containing them.
 extends Node2D
 
+const TRUNK_RADIUS_M := 0.4  # a tree the taxi touches within this of its trunk falls
 const RS := preload("res://render_style.gd")
 const Detail := preload("res://chunk_detail.gd")  # godot-16: the rest of the static world's drawing
 const B25 := preload("res://buildings_25d.gd")
@@ -70,7 +71,7 @@ var _lights: Node2D = null  # traffic-light posts, if this chunk has any
 var _phases: Dictionary = {}  # post id (String) -> phase as last drawn
 var _font: Font = ThemeDB.fallback_font
 var _trees: Node2D = null  # trees and bollards, if this chunk has any
-var _fallen: Dictionary = {}  # MapMath key -> angle, for this chunk's felled trees
+var _fallen: Dictionary = {}  # obstacle_key -> angle: trees the taxi knocked over (the client's alone: gone when the chunk reloads)
 var _hedge_damage: Dictionary = {}
 var _railings: Node2D
 var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
@@ -458,10 +459,9 @@ func set_broken_hedges(damage: Dictionary) -> void:
 			_railings.queue_redraw()
 
 
-## The simulation's felled trees ({key: angle}) and knocked posts ({key:
-## ...}), keyed by position (obstacle_key): redraws this chunk's trees only
-## if one of its own changed. Returns whether it did.
-func set_obstacles(fallen: Dictionary, knocked: Dictionary) -> bool:
+## The simulation's knocked posts ({obstacle_key: ...}): redraws this
+## chunk's trees and posts only if one of its own changed. Returns whether it did.
+func set_obstacles(knocked: Dictionary) -> bool:
 	var broken := PackedInt32Array()  # a knocked street lamp is the light at its spot
 	for post in knocked.values():
 		if post[3] == "street_lamp" and not street_lights.is_empty():
@@ -476,22 +476,40 @@ func set_obstacles(fallen: Dictionary, knocked: Dictionary) -> bool:
 		_heads.queue_redraw()
 	if _trees == null:
 		return lamps_changed
-	var own_fallen := {}
-	for tree in _data.get("trees", []):
-		var key := obstacle_key(tree[0], tree[1])
-		if fallen.has(key):
-			own_fallen[key] = fallen[key]
 	var own_knocked := {}
 	for post in _data.get("bollards", []):
 		var key := obstacle_key(post[0], post[1])
 		if knocked.has(key):
 			own_knocked[key] = true
-	if own_fallen == _fallen and own_knocked == _knocked:
+	if own_knocked == _knocked:
 		return false
-	_fallen = own_fallen
 	_knocked = own_knocked
 	_trees.queue_redraw()
 	return true
+
+
+## Knock over the standing trees the taxi's body (centre, world heading,
+## length, width) touches: each falls the way the taxi was going. The client's
+## alone - the simulation never stops the taxi at a tree - and forgotten when
+## this chunk is unloaded. Returns how many fell.
+func knock_trees(at: Vector2, heading: float, length: float, width: float) -> int:
+	if _trees == null or not _bounds_rect.grow(length).has_point(at):
+		return 0
+	var forward := Vector2(cos(heading), -sin(heading))
+	var reach := length * 0.5 + width + TRUNK_RADIUS_M
+	var felled := 0
+	for tree in _data.get("trees", []):
+		var d := MapMath.point(_origin, tree[0], tree[1]) - at
+		if d.length_squared() > reach * reach:
+			continue
+		var outside := Vector2(maxf(0.0, absf(d.dot(forward)) - length * 0.5), maxf(0.0, absf(d.dot(forward.orthogonal())) - width * 0.5))
+		var key := obstacle_key(tree[0], tree[1])
+		if outside.length() <= TRUNK_RADIUS_M and not _fallen.has(key):
+			_fallen[key] = heading
+			felled += 1
+	if felled > 0:
+		_trees.queue_redraw()
+	return felled
 
 
 var _elevated = null

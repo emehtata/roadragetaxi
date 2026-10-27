@@ -291,8 +291,6 @@ def _write_debug_snapshot(
             "scalar_properties": taxi_scalars,
             "current_passenger": asdict(passenger) if passenger is not None else None,
             "offer_count": len(taxi_mgr.offers),
-            "tree_effect_count": len(taxi_mgr.tree_effects),
-            "fallen_tree_count": len(taxi_mgr.fallen_trees),
             "vomit_puddle_count": len(taxi_mgr.vomit_puddles),
         },
         # Live Digitraffic roadworks (digitraffic_road.py): what was fetched and where it was placed.

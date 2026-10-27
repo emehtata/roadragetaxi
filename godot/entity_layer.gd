@@ -199,6 +199,17 @@ func player_position() -> Vector2:
 	return Vector2(p.x, p.y)
 
 
+## The taxi as drawn this frame - centre, heading, length, width, speed - for
+## what the client decides alone (trees it knocks over); {} on foot or underground.
+func player_body() -> Dictionary:
+	if _frame.is_empty() or _frame["a"].get("on_foot", false) or int(_frame["a"]["player"].get("map_level", 0)) != 0:
+		return {}
+	var a: Dictionary = _frame["a"]["player"]
+	var p := StateBuffer.blend(a, _frame["b"].get("player", a), _frame["t"], origin)
+	return {"position": Vector2(p.x, p.y), "heading": p.z, "length": float(a.get("length_m", 4.0)),
+		"width": float(a.get("width_m", 1.8)), "speed": absf(float(a.get("speed", 0.0)))}
+
+
 func entity_position(kind: String, id) -> Vector2:
 	if _frame.is_empty():
 		return Vector2.INF

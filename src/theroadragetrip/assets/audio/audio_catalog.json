@@ -1358,9 +1358,9 @@
       "category": "collision",
       "event": "tree_crash",
       "description": "Car hitting a tree: dull wooden impact and leaves.",
-      "trigger": "TaxiManager.check_tree_collision returns True.",
+      "trigger": "The client: the drawn taxi knocks a tree over (MapChunk.knock_trees).",
       "source": [
-        "src/theroadragetrip/taxi.py:check_tree_collision"
+        "godot/main.gd:map_layer.knock_trees"
       ],
       "priority": "required",
       "loop": false,
@@ -1443,10 +1443,10 @@
     "collision.tree_fall": {
       "category": "collision",
       "event": "tree_falls",
-      "description": "Tree cracking and falling after a hit above 80 km/h.",
-      "trigger": "Impact > 80 km/h adds the tree to fallen_trees.",
+      "description": "Tree cracking and falling when the taxi knocks it over.",
+      "trigger": "The client: the drawn taxi knocks a tree over (MapChunk.knock_trees).",
       "source": [
-        "src/theroadragetrip/taxi.py:704"
+        "godot/main.gd:map_layer.knock_trees"
       ],
       "priority": "strong_candidate",
       "loop": false,

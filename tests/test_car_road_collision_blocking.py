@@ -9,7 +9,7 @@ from theroadragetrip.physics import (
     is_point_on_road,
     update_car_physics,
 )
-from theroadragetrip.taxi import TaxiManager, car_hits_tree_trunk
+from theroadragetrip.taxi import TaxiManager
 
 
 def test_is_car_road_filtering():
@@ -302,32 +302,11 @@ def test_building_collision_still_triggers_off_road():
     assert car.speed == 0.0
 
 
-def test_tree_collision_stops_and_penalizes_once():
-    scenery = Scenery(points_m=[(-5.0, -5.0), (5.0, -5.0), (5.0, 5.0)], kind="park", trees=[(0.0, 0.0)])
-    car = Car(x=0.0, y=0.0, heading=0.0, speed=4.0)
+def test_the_taxi_drives_through_a_tree_the_client_knocks_over():
+    """Trees are the client's alone (godot/map_chunk.gd knock_trees): the
+    simulation neither stops nor fines the taxi at one."""
     taxi_manager = TaxiManager(ways=[])
-
-    crashed = taxi_manager.check_tree_collision(car, [scenery], sim_time=1.0, previous_position=(-3.0, 0.0))
-    score_after_crash = taxi_manager.total_score
-    crashed_again = taxi_manager.check_tree_collision(car, [scenery], sim_time=2.0, previous_position=(-3.0, 0.0))
-
-    assert crashed is True
-    assert crashed_again is False
-    assert (car.x, car.y) == (-3.0, 0.0)
-    assert not car_hits_tree_trunk(car, 0.0, 0.0)
-    assert car.speed == 0.0
-    assert score_after_crash == -100
-    assert taxi_manager.total_score == score_after_crash
-
-
-def test_tree_collision_uses_trunk_not_crown_edge():
-    scenery = Scenery(points_m=[(-5.0, -5.0), (5.0, -5.0), (5.0, 5.0)], kind="park", trees=[(0.0, 0.0)])
-    manager = TaxiManager(ways=[])
-    beside_crown = Car(x=0.0, y=2.0, heading=0.0, speed=4.0)
-    touching_trunk = Car(x=0.0, y=1.25, heading=0.0, speed=4.0)
-
-    assert not manager.check_tree_collision(beside_crown, [scenery], sim_time=1.0)
-    assert manager.check_tree_collision(touching_trunk, [scenery], sim_time=2.0, previous_position=(0.0, 2.0))
+    assert not hasattr(taxi_manager, "check_tree_collision") and not hasattr(taxi_manager, "fallen_trees")
 
 
 def test_a_car_pressed_against_a_building_can_drive_away_from_it():

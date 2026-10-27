@@ -39,7 +39,6 @@ NIGHTLIFE_VENUE_TYPES = {
 MOTION_SICKNESS_THRESHOLD = 8.0
 POST_KINDS = ("bollard", "street_lamp")  # solid poles the taxi can hit
 POST_RADIUS_M = 0.15
-TREE_TRUNK_RADIUS_M = 0.4
 POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stopping the taxi
 # Long fares: a phone offer to another municipality. Only the town is known
 # at first (its map isn't loaded); the edge arrow points the way, and near
@@ -58,14 +57,6 @@ LANDMARK_WEIGHTS = {"airport": 100_000, "railway_station": 10_000}
 GREET_RADIUS_M = 2.0
 SOLID_AREA_KINDS = ("construction", "ice_rink", "stadium")  # fenced or walled all round: a crash, never a drive-in  # how close the driver on foot must be to greet a booked rail customer
 
-
-def car_hits_tree_trunk(car: Car, tree_x: float, tree_y: float) -> bool:
-    """Whether the circular trunk touches the car's oriented body."""
-    dx, dy = tree_x - car.x, tree_y - car.y
-    cos_h, sin_h = math.cos(car.heading), math.sin(car.heading)
-    outside_x = max(0.0, abs(dx * cos_h + dy * sin_h) - car.length_m * 0.5)
-    outside_y = max(0.0, abs(-dx * sin_h + dy * cos_h) - car.width_m * 0.5)
-    return math.hypot(outside_x, outside_y) <= TREE_TRUNK_RADIUS_M
 
 @dataclass
 class TaxiTarget:
@@ -268,7 +259,6 @@ class TaxiManager:
         self.intercity_places = None
 
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
-        self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
         self._crashed_fence_cooldowns: Dict[int, float] = {}  # scenery id -> timestamp cooldown
         self._tram_crash_at = -1e9  # sim time of the last tram crash (one penalty an impact)
         self._crashed_post_cooldowns: Dict[int, float] = {}  # bollard/lamp id -> timestamp cooldown
@@ -280,15 +270,9 @@ class TaxiManager:
         self._curb_bump_cooldowns: Dict[int, float] = {}  # curb id -> timestamp cooldown
         self._speed_bump_cooldowns: Dict[int, float] = {}  # speed bump id -> timestamp cooldown
         self._speed_camera_hits: set[int] = set()
-        self.tree_effects: Dict[Tuple[int, int], Dict[str, float]] = {}
-        self.fallen_trees: set[Tuple[int, int]] = set()
-        self.tree_wait_timer: float = 0.0
         self._building_collision_grid: Dict[Tuple[int, int], List[Building]] = {}
         self._building_collision_ref = None
         self._building_collision_count = 0
-        self._tree_collision_grid: Dict[Tuple[int, int], List[Tuple[int, int, float, float]]] = {}
-        self._tree_collision_ref = None
-        self._tree_collision_count = 0
         self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._fence_collision_ref = None
         self._fence_collision_count = 0
@@ -610,31 +594,6 @@ class TaxiManager:
                     nearby.append(building)
         return nearby
 
-    def _nearby_collision_trees(self, sceneries: List[Any], x: float, y: float, radius: float):
-        if sceneries is not self._tree_collision_ref:
-            self._tree_collision_grid.clear()
-            self._tree_collision_ref = sceneries
-            self._tree_collision_count = 0
-        if len(sceneries) < self._tree_collision_count:
-            self.invalidate_tree_collision_index()
-            self._tree_collision_ref = sceneries
-        for scenery_index in range(self._tree_collision_count, len(sceneries)):
-            for tree_index, (tree_x, tree_y) in enumerate(getattr(sceneries[scenery_index], "trees", ())):
-                cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
-                self._tree_collision_grid.setdefault(cell, []).append(
-                    (scenery_index, tree_index, tree_x, tree_y)
-                )
-        self._tree_collision_count = len(sceneries)
-        nearby = []
-        for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
-            nearby.extend(self._tree_collision_grid.get(cell, ()))
-        return nearby
-
-    def invalidate_tree_collision_index(self) -> None:
-        self._tree_collision_grid.clear()
-        self._tree_collision_ref = None
-        self._tree_collision_count = 0
-
     def _nearby_collision_fences(self, sceneries: List[Any], x: float, y: float, radius: float):
         # Same fix, same reason, as _nearby_collision_buildings above -
         # autofetch only ever appends to this list, so index just the new
@@ -863,58 +822,6 @@ class TaxiManager:
                     ) <= half_width
                 ):
                     return True
-        return False
-
-    def check_tree_collision(
-        self,
-        player_car: Car,
-        sceneries: List[Any],
-        sim_time: float,
-        previous_position: Optional[Tuple[float, float]] = None,
-        penalty: int = 100,
-        ways: Optional[List[Way]] = None,
-    ) -> bool:
-        """Stop the car at a tree and apply one penalty per impact."""
-        expired = [key for key, t in self._crashed_tree_cooldowns.items() if sim_time - t > 3.0]
-        for key in expired:
-            del self._crashed_tree_cooldowns[key]
-
-        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5 + TREE_TRUNK_RADIUS_M
-        for scenery_index, tree_index, tree_x, tree_y in self._nearby_collision_trees(
-            sceneries, player_car.x, player_car.y, radius
-        ):
-                if not car_hits_tree_trunk(player_car, tree_x, tree_y):
-                    continue
-                if ways and is_point_on_road(tree_x, tree_y, ways=ways, car_roads_only=True):
-                    continue
-                scenery = sceneries[scenery_index]
-                if previous_position is not None:
-                    restore_x, restore_y = previous_position
-                else:
-                    restore_x, restore_y = player_car.x, player_car.y
-                player_car.x, player_car.y = restore_x, restore_y
-                impact_speed_kmh = abs(player_car.speed) * 3.6
-                player_car.speed = 0.0
-                key = (id(scenery), tree_index)
-                self.tree_effects[key] = {
-                    "shake": 0.55,
-                    "leaves": 1.2,
-                    "angle": player_car.heading,
-                    # World position: the client finds the tree to shake.
-                    "x": tree_x,
-                    "y": tree_y,
-                }
-                if impact_speed_kmh > 80.0:
-                    self.fallen_trees.add(key)
-                    self.tree_wait_timer = 5.0
-                self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
-                if key not in self._crashed_tree_cooldowns:
-                    self.total_score -= penalty
-                    self.adjust_passenger_happiness(-30.0)
-                    self.notification_msg = tr(self.language, "tree_crash", penalty=penalty)
-                    self.notification_timer = 3.5
-                self._crashed_tree_cooldowns[key] = sim_time  # every contact frame: pressing on stays one impact
-                return True
         return False
 
     def check_fence_collision(
@@ -2424,13 +2331,7 @@ class TaxiManager:
         self.speed_camera_notice_timer = max(0.0, self.speed_camera_notice_timer - dt)
         if self.speed_camera_notice_timer <= 0.0:
             self.speed_camera_notice_msg = ""
-        self.tree_wait_timer = max(0.0, self.tree_wait_timer - dt)
         self.taxi_smoke_timer = max(0.0, self.taxi_smoke_timer - dt)
-        for key, effect in list(self.tree_effects.items()):
-            effect["shake"] = max(0.0, effect["shake"] - dt)
-            effect["leaves"] = max(0.0, effect["leaves"] - dt)
-            if effect["shake"] <= 0.0 and effect["leaves"] <= 0.0 and key not in self.fallen_trees:
-                del self.tree_effects[key]
         if self.notification_timer > 0.0:
             self.notification_timer -= dt
 

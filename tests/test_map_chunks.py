@@ -139,22 +139,18 @@ def test_obstacles_are_each_in_exactly_one_chunk():
     assert here["bollards"] == [[40.0, 0.0]]  # a street lamp is not a bollard; a bench collides with nothing
 
 
-def test_felled_trees_and_knocked_posts_reach_the_state_from_the_real_collisions():
+def test_knocked_posts_reach_the_state_from_the_real_collisions():
     from theroadragetrip import protocol
     from theroadragetrip.physics import Car
     from theroadragetrip.taxi import TaxiManager
 
     world = _obstacle_world()
     world.taxi_mgr = TaxiManager(ways=[])
-    assert protocol._fallen_and_knocked(world, 0.0, 0.0) == ([], [])
-    car = Car(x=10.0, y=19.0, heading=0.0, speed=25.0)  # 90 km/h into the pine
-    assert world.taxi_mgr.check_tree_collision(car, world.sceneries, 0.0, previous_position=(5.0, 19.0))
+    assert protocol._knocked(world, 0.0, 0.0) == []
     car = Car(x=40.0, y=0.0, heading=math.pi, speed=17.0)  # 61 km/h through the bollard
     assert world.taxi_mgr.check_post_collision(car, world.scenery_objects, 0.0)
-    fallen, knocked = protocol._fallen_and_knocked(world, 0.0, 0.0)
-    assert fallen == [[10.0, 20.0, 0.0]]  # felled the way the taxi was heading
-    assert knocked == [[40.0, 0.0, round(math.pi, 3), "bollard"]]
-    assert protocol._fallen_and_knocked(world, 5000.0, 0.0) == ([], [])  # far away: not sent
+    assert protocol._knocked(world, 0.0, 0.0) == [[40.0, 0.0, round(math.pi, 3), "bollard"]]
+    assert protocol._knocked(world, 5000.0, 0.0) == []  # far away: not sent
 
 
 def test_railings_decorations_and_street_lights_are_each_in_one_chunk():
