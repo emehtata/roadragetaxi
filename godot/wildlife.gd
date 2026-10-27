@@ -250,7 +250,9 @@ static func _speed(species: String, state: String) -> float:
 
 func _draw() -> void:
 	drawn_members = 0
-	for animal in animals: _draw_animal(animal)
+	var view := (get_canvas_transform().affine_inverse() * get_viewport_rect()).grow(5.0)  # on screen only: animals live 900 m out, the view is ~150 m
+	for animal in animals:
+		if view.has_point(animal["position"]): _draw_animal(animal)
 
 
 func _draw_animal(animal: Dictionary) -> void:
