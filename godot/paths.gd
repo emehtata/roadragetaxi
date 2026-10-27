@@ -36,6 +36,8 @@ static func server_command(args: Array) -> Array:
 		return [server, args]
 	var root := ProjectSettings.globalize_path("res://..").simplify_path()
 	var python := root.path_join(".venv/Scripts/python.exe" if OS.get_name() == "Windows" else ".venv/bin/python")
-	if OS.get_name() == "Windows":  # no /usr/bin/env: the environment goes in through the command line instead
-		return ["cmd.exe", ["/c", "set", "PYTHONPATH=" + root.path_join("src"), "&&", python, "-X", "utf8", "-m", "theroadragetrip.server"] + args]
+	if OS.get_name() == "Windows" and not FileAccess.file_exists(python):
+		python = root.path_join(".venv-windows/Scripts/python.exe")
+	if OS.get_name() == "Windows":
+		return [python, ["-X", "utf8", root.path_join("road_rage_server.py")] + args]
 	return ["/usr/bin/env", ["PYTHONPATH=" + root.path_join("src"), python, "-X", "utf8", "-m", "theroadragetrip.server"] + args]

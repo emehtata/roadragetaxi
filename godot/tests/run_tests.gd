@@ -1695,7 +1695,8 @@ func test_speech_and_stations() -> void:
 	var Paths := preload("res://paths.gd")
 	check(not Paths.exported() and Paths.package_path("assets/ragefaceatlas.png").ends_with("src/theroadragetrip/assets/ragefaceatlas.png") and FileAccess.file_exists(Paths.package_path("assets/ragefaceatlas.png")), "paths: the repo's Python package, files found")
 	var server_cmd: Array = Paths.server_command(["--list-cities"])
-	check(server_cmd[1].has("theroadragetrip.server") and server_cmd[1][-1] == "--list-cities", "paths: the repo's server runs from .venv with the arguments last")
+	var server_entry := ProjectSettings.globalize_path("res://../road_rage_server.py").simplify_path()
+	check((server_cmd[1].has(server_entry) if OS.get_name() == "Windows" else server_cmd[1].has("theroadragetrip.server")) and server_cmd[1][-1] == "--list-cities", "paths: the repo server uses its platform entry point with arguments last")
 	var Startup := load("res://startup.gd")
 	var map_nw: Vector2 = Startup.city_map_position(70.5, 19.0, Vector2(420, 360))
 	var map_se: Vector2 = Startup.city_map_position(59.5, 32.0, Vector2(420, 360))
@@ -1715,7 +1716,7 @@ func test_speech_and_stations() -> void:
 	var pbf_modified := int(FileAccess.get_modified_time("res://finland_minimap.svg"))
 	check(not Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified) and Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified + Startup.PBF_MAX_AGE_S + 1), "map source: files over 30 days old are offered an update")
 	check(Startup.download_percent(25, 100) == 25.0 and Startup.download_percent(120, 100) == 100.0 and Startup.download_percent(1, 0) == 0.0, "map source: download progress is bounded and handles an unknown size")
-	var replace_target := "/tmp/rrt-pbf-replace-test"
+	var replace_target := OS.get_temp_dir().path_join("rrt-pbf-replace-test-%d" % OS.get_process_id())
 	var replace_partial := replace_target + ".part"
 	var old_file := FileAccess.open(replace_target, FileAccess.WRITE)
 	old_file.store_string("old")

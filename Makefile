@@ -1,5 +1,6 @@
 PYTHON := .venv/bin/python
 PIP := .venv/bin/pip
+WINDOWS_GODOT ?= C:\Godot\Godot_v$(GODOT_VERSION)-stable_win64_console.exe
 GODOT_VERSION ?= 4.7.2
 GODOT ?= $(HOME)/tools/godot/Godot_v$(GODOT_VERSION)-stable_linux.x86_64
 PORT ?= 8765
@@ -7,12 +8,13 @@ PRESET ?= Oulu
 BOT_MINUTES ?= 10
 BOT_OUT ?= /tmp/rrt-play-bot
 
-.PHONY: help venv install run run-debug run-pbf index-pbf run-server fetch-godot run-godot run-godot-all play-bot godot-selftest godot-selftest-sample godot-test audio-check test compile check clean stop
+.PHONY: help venv install run run-windows run-debug run-pbf index-pbf run-server fetch-godot run-godot run-godot-all play-bot godot-selftest godot-selftest-sample godot-test audio-check test compile check clean stop
 
 help:
 	@printf '%s\n' \
 		'install                Create .venv and install project dependencies' \
-		'run                    Start the game' \
+		'run                    Start the game (native Windows Godot under WSL)' \
+		'run-windows            Start native Windows Godot with its Windows Python server' \
 		'run-debug              Start the game with DEBUG logging' \
 		'run-pbf                Start the game with the map from the local .osm.pbf extract' \
 		'index-pbf              Build the grid index for the local .osm.pbf extract (faster run-pbf)' \
@@ -37,6 +39,15 @@ venv:
 install: venv
 	$(PIP) install -r requirements.txt
 
+ifneq ($(wildcard /proc/sys/fs/binfmt_misc/WSLInterop),)
+run: run-windows
+
+run-debug:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_GODOT)" -DebugLogging
+
+run-pbf:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_GODOT)" -LocalPbf
+else
 run: godot/.godot
 	$(GODOT) --path godot
 
@@ -45,6 +56,10 @@ run-debug: godot/.godot
 
 run-pbf: godot/.godot
 	$(GODOT) --path godot -- --osm-source pbf
+endif
+
+run-windows:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_GODOT)"
 
 index-pbf:
 	$(PYTHON) src/theroadragetrip/utils/pbf_index.py src/theroadragetrip/assets/osm/finland-latest.osm.pbf

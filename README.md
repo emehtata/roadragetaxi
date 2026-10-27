@@ -206,7 +206,26 @@ make install
 make run
 ```
 
-`make install` creates `.venv` and installs `requirements.txt`. On a fresh
+Under WSL, `make run`, `make run-debug` and `make run-pbf` launch **native
+Windows Godot** and its Windows Python server. Linux Godot remains available
+for the headless test targets. Install Windows Godot 4.7.2 under `C:\Godot`
+(or set `WINDOWS_GODOT`), then prepare a separate Windows environment from
+PowerShell in the repository:
+
+```powershell
+& C:\Godot\Python312\python.exe -m venv .venv-windows
+& .\.venv-windows\Scripts\python.exe -m pip install -r requirements.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run-windows.ps1
+```
+
+Use Windows Python 3.12 (the CI version); `C:\Godot\Python312` is the local
+installation used here. A standard Windows-only checkout can keep using
+`.venv\Scripts\python.exe`. The Windows and WSL environments stay separate.
+When running from WSL, open this repository in PowerShell through its
+`\\wsl.localhost\<distribution>\home\...` path. Native Godot's startup output
+should identify the NVIDIA/AMD/Intel driver, rather than llvmpipe or Mesa D3D12.
+
+On Linux, `make install` creates `.venv` and installs `requirements.txt`. On a fresh
 checkout, `make run` downloads Godot if the configured binary is missing and
 imports the Godot project before opening the launcher. Use
 `make run GODOT=/absolute/path/to/godot` to supply your own binary.
