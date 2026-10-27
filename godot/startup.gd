@@ -1064,7 +1064,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		args.append("--road-digitraffic" if _settings.get_value("game", "road_digitraffic") else "--no-road-digitraffic")
 	args.append_array(_server_extra)
 	var command := Paths.server_command(args)  # the repo's .venv, or the release's bundled server
-	_server_pid = OS.create_process(command[0], command[1])
+	_server_pid = OS.create_process(command[0], command[1], OS.get_name() == "Windows")
 	if _server_pid <= 0:
 		_clear()
 		_title(_t("start_failed"), _t("start_failed_detail"))

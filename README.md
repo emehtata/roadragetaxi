@@ -207,7 +207,8 @@ make run
 ```
 
 Under WSL, `make run`, `make run-debug` and `make run-pbf` launch **native
-Windows Godot** and its Windows Python server. Linux Godot remains available
+Windows Godot** and its Windows Python server. The server opens its own
+visible console; `make run-debug` enables DEBUG logging there. Linux Godot remains available
 for the headless test targets. Install Windows Godot 4.7.2 under `C:\Godot`
 (or set `WINDOWS_GODOT`), then prepare a separate Windows environment from
 PowerShell in the repository:
