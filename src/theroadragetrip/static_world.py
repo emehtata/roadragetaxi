@@ -221,13 +221,35 @@ def is_open_roof(building) -> bool:
 BUS_BAY_DEPTH_M = 3.0  # beside the carriageway; a bus is 2.55 m wide
 
 
+# Not where a bus stops: a stop beside a driveway into a block, a track or a
+# pedestrian street is the bus road's stop (Oulu's Elokuvakeskus took a service
+# entrance's line and its bay lay across Torikatu's junction).
+NOT_BUS_ROADS = frozenset({"service", "track", "living_street", "pedestrian", "path", "footway", "cycleway"})
+
+
+def _bus_road_rank(way) -> int:
+    """0 a road on a mapped bus route, 1 an ordinary road, 2 any other drivable way."""
+    if getattr(way, "bus_routes", None):
+        return 0
+    return 2 if way.highway in NOT_BUS_ROADS else 1
+
+
 def _bus_stop_road(stop, ways):
-    """The nearest same-layer drivable road within 45 m of a bus stop:
-    (nearest point, unit direction t, unit normal n towards the stop, the
-    stop's side of t (+1 left), the way), or None."""
+    """The road a bus stop belongs to: the nearest same-layer drivable road
+    within 45 m, preferring a bus route's, then any but service roads and
+    tracks: (nearest point, unit direction t, unit normal n towards the stop,
+    the stop's side of t (+1 left), the way), or None."""
+    for rank in (0, 1, 2):
+        found = _nearest_stop_road(stop, [way for way in ways if way.is_drivable and _bus_road_rank(way) <= rank])
+        if found is not None:
+            return found
+    return None
+
+
+def _nearest_stop_road(stop, ways):
     nearest = None
     for way in ways:
-        if not way.is_drivable or len(way.points_m) < 2 or getattr(way, "layer", 0) != getattr(stop, "layer", 0):
+        if len(way.points_m) < 2 or getattr(way, "layer", 0) != getattr(stop, "layer", 0):
             continue
         for start, end in zip(way.points_m, way.points_m[1:]):
             dx, dy = end[0] - start[0], end[1] - start[1]
@@ -246,6 +268,24 @@ def _bus_stop_road(stop, ways):
     n = (-t[1], t[0])  # left of t
     side = 1.0 if (stop.x - p[0]) * n[0] + (stop.y - p[1]) * n[1] >= 0.0 else -1.0
     return p, t, (n[0] * side, n[1] * side), side, way
+
+
+def _clear_bay_length(p, t, n, out, direction, own, ways, longest=16.0) -> float:
+    """How far (up to `longest`) the bay's middle line, `out` from the road's
+    centre, runs along t in `direction` before entering another drivable road."""
+    reach = longest + out + 12.0
+    others = [way for way in ways if way is not own and way.is_drivable and len(way.points_m) >= 2
+              and any(abs(x - p[0]) < reach + 40.0 and abs(y - p[1]) < reach + 40.0 for x, y in way.points_m)]
+    along = 0.0
+    while along < longest:
+        nxt = min(longest, along + 1.0)
+        x, y = p[0] + t[0] * direction * nxt + n[0] * out, p[1] + t[1] * direction * nxt + n[1] * out
+        for way in others:
+            if any(dist_point_to_segment(x, y, a[0], a[1], b[0], b[1]) < way.half_width_m + 0.5
+                   for a, b in zip(way.points_m, way.points_m[1:])):
+                return along
+        along = nxt
+    return along
 
 
 def bus_stop_point(stop, ways):
@@ -270,7 +310,12 @@ def bus_stop_shapes(stop, ways):
     front = -side  # right-hand traffic: on t's left side buses drive against t
     hw = way.half_width_m
     depth = BUS_BAY_DEPTH_M
-    bay = [at(-16.0, hw), at(16.0, hw), at(11.0, hw + depth), at(-11.0, hw + depth)]
+    # 16 m each way, shortened where the bay would reach into another road (a junction ahead).
+    back, ahead = (_clear_bay_length(p, t, n, hw + depth / 2.0, -1.0, way, ways),
+                   _clear_bay_length(p, t, n, hw + depth / 2.0, 1.0, way, ways))
+    if back + ahead < 8.0:
+        return None  # no room for a bay at all: a stop squeezed into a junction
+    bay = [at(-back, hw), at(ahead, hw), at(ahead - min(5.0, ahead / 2.0), hw + depth), at(-back + min(5.0, back / 2.0), hw + depth)]
     kerb = hw + depth + 1.2  # the waiting area behind the bay's kerb
     rect = lambda along, out, half_along, half_out: [at(along - half_along, out - half_out), at(along + half_along, out - half_out),
                                                     at(along + half_along, out + half_out), at(along - half_along, out + half_out)]

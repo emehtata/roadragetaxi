@@ -577,3 +577,20 @@ def test_roads_rank_by_class_then_paved_for_their_draw_order():
     assert road_draw_rank(street) > road_draw_rank(gravel)
     assert road_draw_rank(unknown) == road_draw_rank(street) > road_draw_rank(track)
     assert road_draw_rank(main) > road_draw_rank(street)  # the class first: a gravel main road over a street
+
+
+def test_a_bus_stop_by_a_driveway_belongs_to_the_bus_road_and_its_bay_stops_at_junctions():
+    """Oulu's Elokuvakeskus: the stop was nearer a service entrance than
+    Torikatu, and its bay was laid along the entrance, across the junction."""
+    from types import SimpleNamespace
+    from theroadragetrip import static_world
+    from theroadragetrip.osm import Way
+    street = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=4.5, highway="residential", name="Torikatu")
+    entrance = Way(points_m=[(40.0, 13.0), (60.0, 35.0)], half_width_m=3.5, highway="service")
+    cross = Way(points_m=[(56.0, -40.0), (56.0, 40.0)], half_width_m=4.0, highway="residential")
+    stop = SimpleNamespace(x=44.0, y=12.0, layer=0, shelter=False, bench=False)
+    *_, way = static_world._bus_stop_road(stop, [street, entrance])
+    assert way is street  # though the entrance is nearer
+    bay = static_world.bus_stop_shapes(stop, [street, entrance, cross])["bay"]
+    assert max(x for x, _ in bay) < 56.0 - 4.0  # stops short of the cross street's carriageway
+    assert min(x for x, _ in bay) == pytest.approx(44.0 - 16.0, abs=0.1)  # the other way: its full 16 m
