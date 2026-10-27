@@ -52,6 +52,11 @@ kunnat.json.gz
   density computed) and converted to the game's JSON format. This file is
   likewise licensed under CC BY-SA 4.0.
 
+Roadworks shown in the game (not stored here) come from Fintraffic /
+digitraffic.fi road traffic data, license CC 4.0 BY
+(https://creativecommons.org/licenses/by/4.0/), fetched at runtime when
+realtime road data is enabled. Modified: matched onto the OpenStreetMap roads.
+
 Weather shown in the game (not stored here) is Finnish Meteorological
 Institute (FMI) open data, CC BY 4.0, fetched at runtime when historical
 weather is enabled.

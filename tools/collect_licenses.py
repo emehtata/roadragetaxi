@@ -18,7 +18,7 @@ import shutil
 import sys
 from pathlib import Path
 
-RUNTIME = ["requests", "pyproj", "shapely"]  # requirements.txt without the test tools
+RUNTIME = ["requests", "ephem", "pyproj", "shapely"]  # pyproject.toml dependencies (tests/test_license_inventory.py keeps them in step)
 BUNDLED_TOOLS = ["pyinstaller"]  # its bootloader is part of RoadRageServer.exe
 LICENCE_FILE = re.compile(r"(LICEN[CS]E|COPYING|NOTICE|AUTHORS)", re.IGNORECASE)
 

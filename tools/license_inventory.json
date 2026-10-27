@@ -171,6 +171,7 @@
     "urllib3": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "idna": {"licence": "BSD-3-Clause", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "charset-normalizer": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
+    "ephem": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "certifi": {"licence": "MPL-2.0", "status": "conditional", "obligations": "licence; source of the covered file available (upstream, unmodified)"},
     "pyproj": {"licence": "MIT (with PROJ, MIT)", "status": "verified", "obligations": "licences incl. LICENSE_proj (collect_licenses.py)"},
     "shapely": {"licence": "BSD-3-Clause, bundles GEOS (LGPL-2.1) as a separate DLL", "status": "conditional", "obligations": "LGPL text (LICENSE_GEOS) and GEOS source with each release (windows-release.yml); the DLL stays replaceable"},
@@ -188,6 +189,7 @@
     "Overpass API (overpass-api.de, overpass.openstreetmap.fr)": {"use": "map data while driving", "status": "conditional", "obligations": "ODbL attribution (shown); each server's usage policy"},
     "Geofabrik downloads": {"use": "the Finland .osm.pbf the player downloads", "status": "conditional", "obligations": "ODbL attribution (shown)"},
     "Digitraffic (rata.digitraffic.fi)": {"use": "weekly timetable and composition refresh", "status": "conditional", "obligations": "CC BY 4.0 attribution (shown)"},
+    "Digitraffic (tie.digitraffic.fi)": {"use": "live roadworks, when the realtime road data setting is on", "status": "conditional", "obligations": "CC BY 4.0 attribution (shown under Roadworks in Credits); the service's usage terms"},
     "FMI open data (opendata.fmi.fi)": {"use": "historical weather (opt-in)", "status": "conditional", "obligations": "CC BY 4.0 attribution (shown)"}
   }
 }
