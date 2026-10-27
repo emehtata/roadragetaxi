@@ -121,10 +121,10 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
-		if message["landuse"].any(func(area): return area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]):
+		if prepared["forest_mask"] != null:
 			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
 			var material := FOREST_MATERIAL.duplicate() as ShaderMaterial
-			material.set_shader_parameter("canopy_mask", _forest_mask())
+			material.set_shader_parameter("canopy_mask", ImageTexture.create_from_image(prepared["forest_mask"]))
 			material.set_shader_parameter("mask_rect", Vector4(_bounds_rect.position.x, _bounds_rect.position.y, _bounds_rect.size.x, _bounds_rect.size.y))
 			canopy.material = material
 			_season_layers.append(canopy)
@@ -270,7 +270,13 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 		lights.append(MapMath.point(origin, light[0], light[1]))
 	message["prepared"] = {"origin": origin, "bounds_rect": bounds_rect, "bounds": bounds, "drivable_roads": drivable,
 		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "puddle_spots": puddles,
-		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points}
+		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points,
+		# Rasterised here, on the parse worker: on the main thread it was a 60-115 ms hitch per forest chunk.
+		"forest_mask": forest_mask(message, bounds_rect, origin) if message.get("landuse", []).any(_is_forest) else null}
+
+
+static func _is_forest(area) -> bool:
+	return area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]
 
 
 ## Every polyline and polygon kept as a PackedVector2Array in layer
@@ -803,38 +809,41 @@ static func _water_material() -> ShaderMaterial:
 
 # Bake visibility once per chunk; crowns cover vehicles, with roads and clearings cut out.
 func _forest_mask() -> ImageTexture:
-	var image := Image.create(maxi(1, ceili(_bounds_rect.size.x)), maxi(1, ceili(_bounds_rect.size.y)), false, Image.FORMAT_R8)
+	return ImageTexture.create_from_image(forest_mask(_data, _bounds_rect, _origin))
+
+
+static func forest_mask(data: Dictionary, bounds_rect: Rect2, origin: Vector2) -> Image:
+	var image := Image.create(maxi(1, ceili(bounds_rect.size.x)), maxi(1, ceili(bounds_rect.size.y)), false, Image.FORMAT_R8)
 	image.fill(Color.BLACK)
-	for area in _data.get("landuse", []):
-		var forest: bool = area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]
-		_mask_polygon(image, _points(area[2]), Color.WHITE if forest else Color.BLACK)
+	for area in data.get("landuse", []):
+		_mask_polygon(image, bounds_rect, _to_points(area[2], origin), Color.WHITE if _is_forest(area) else Color.BLACK)
 	for key in ["waters", "buildings", "parking"]:
-		for polygon in _data.get(key, []):
-			_mask_polygon(image, _points(polygon), Color.BLACK)
-	for road in _data.get("roads", []):
-		for polygon in Geometry2D.offset_polyline(_points(road["points"]), float(road.get("half_width_m", 1.5)) + 2.0, Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND):
-			_mask_polygon(image, polygon, Color.BLACK)
-	for railway in _data.get("railways", []):
-		for polygon in Geometry2D.offset_polyline(_points(railway), 4.0):
-			_mask_polygon(image, polygon, Color.BLACK)
-	return ImageTexture.create_from_image(image)
+		for polygon in data.get(key, []):
+			_mask_polygon(image, bounds_rect, _to_points(polygon, origin), Color.BLACK)
+	for road in data.get("roads", []):
+		for polygon in Geometry2D.offset_polyline(_to_points(road["points"], origin), float(road.get("half_width_m", 1.5)) + 2.0, Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND):
+			_mask_polygon(image, bounds_rect, polygon, Color.BLACK)
+	for railway in data.get("railways", []):
+		for polygon in Geometry2D.offset_polyline(_to_points(railway, origin), 4.0):
+			_mask_polygon(image, bounds_rect, polygon, Color.BLACK)
+	return image
 
 
-func _mask_polygon(image: Image, polygon: PackedVector2Array, color: Color) -> void:
+static func _mask_polygon(image: Image, bounds_rect: Rect2, polygon: PackedVector2Array, color: Color) -> void:
 	if polygon.size() < 3:
 		return
 	var low := image.get_height()
 	var high := 0
 	for point in polygon:
-		low = mini(low, floori(point.y - _bounds_rect.position.y))
-		high = maxi(high, ceili(point.y - _bounds_rect.position.y))
+		low = mini(low, floori(point.y - bounds_rect.position.y))
+		high = maxi(high, ceili(point.y - bounds_rect.position.y))
 	for row in range(maxi(0, low), mini(image.get_height(), high)):
-		var y := _bounds_rect.position.y + row + 0.5
+		var y := bounds_rect.position.y + row + 0.5
 		var crossings: Array[float] = []
 		var previous := polygon[-1]
 		for point in polygon:
 			if (point.y > y) != (previous.y > y):
-				crossings.append(point.x + (y - point.y) * (previous.x - point.x) / (previous.y - point.y) - _bounds_rect.position.x)
+				crossings.append(point.x + (y - point.y) * (previous.x - point.x) / (previous.y - point.y) - bounds_rect.position.x)
 			previous = point
 		crossings.sort()
 		for i in range(0, crossings.size() - 1, 2):
