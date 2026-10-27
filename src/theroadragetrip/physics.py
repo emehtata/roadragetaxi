@@ -1687,8 +1687,12 @@ def rear_axle_behind(car: Car) -> float:
     return car.length_m * (LONG_REAR_AXLE_SHARE if car.length_m >= LONG_VEHICLE_M else REAR_AXLE_SHARE)
 
 
-MIN_TURN_RADIUS_M = 5.0  # a car's tightest turn at full lock (rear axle)
-LONG_MIN_TURN_RADIUS_M = 11.0  # a bus's or truck's
+# The tightest turn at full lock, of the rear axle's path (the point the car
+# turns about): wheelbase / tan(lock). A car's ~2.6 m at 35 degrees; a bus's
+# ~6 m at 45. (A quoted kerb-to-kerb turning circle, ~11 m and ~24 m across,
+# is the outer front corner's.)
+MIN_TURN_RADIUS_M = 3.7
+LONG_MIN_TURN_RADIUS_M = 6.0
 
 
 def min_turn_radius(car: Car) -> float:
