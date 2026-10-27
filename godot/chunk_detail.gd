@@ -37,9 +37,12 @@ const FIELDS_FROZEN_WINTER_WEIGHT := 0.5  # map_style.py: the same, for the ice 
 ## so edge crowns are whole (its shader's mask, read at each crown's centre,
 ## still keeps the crowns to the forest).
 static func draw_areas(chunk, node: Node2D, key: String, canopy_margin := 0.0) -> void:
-	for area in chunk._data.get(key, []):
+	var areas: Array = chunk._data.get(key, [])
+	for index in areas.size():
+		var area = areas[index]
 		var polygon: PackedVector2Array = chunk._points(area[2])
-		if canopy_margin > 0.0 and _valid(polygon) and area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]:
+		var canopy: int = chunk.canopy_kind(area) if key == "landuse" else -1
+		if canopy_margin > 0.0 and _valid(polygon) and canopy >= 0:
 			var grown := Geometry2D.offset_polygon(polygon, canopy_margin, Geometry2D.JOIN_ROUND)
 			polygon = grown[0] if grown.size() == 1 else polygon  # an outline that splits: as mapped
 		if _valid(polygon):
@@ -47,13 +50,56 @@ static func draw_areas(chunk, node: Node2D, key: String, canopy_margin := 0.0) -
 			match int(area[1]):
 				1: color = chunk.seasonal_color(color, chunk._season)
 				2: color = RINK_ICE if chunk._season[0] >= FIELDS_FROZEN_WINTER_WEIGHT else chunk.seasonal_color(color, chunk._season)
-			if key == "landuse" and area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]:
+			if canopy >= 0:  # forest.gdshader: UV.x 1 + kind * 2 + winter, UV.y autumn
 				var uv := PackedVector2Array()
 				uv.resize(polygon.size())
-				uv.fill(Vector2(1.0 + float(chunk._season[0]), float(chunk._season[3])))
+				uv.fill(Vector2(1.0 + canopy * 2.0 + float(chunk._season[0]), float(chunk._season[3])))
 				node.draw_polygon(polygon, PackedColorArray([color]), uv)
+				if canopy == 2 and canopy_margin == 0.0 and chunk.forest_canopy:  # the ground layer of a bog
+					if not chunk._wetland_spots.has(index):
+						chunk._wetland_spots[index] = wetland_spots(polygon)
+					draw_wetland_ground(node, chunk._wetland_spots[index], float(chunk._season[0]))
 			else:
 				node.draw_colored_polygon(polygon, color)
+
+
+const BOG_CELL_M := 16.0  # one chance of a pool per cell, on a world-anchored grid (chunks agree)
+const BOG_POOL := Color8(74, 86, 82)  # peaty water, reflecting the sky a little
+const BOG_ICE := Color8(214, 222, 226)
+const BOG_MOSS := [Color8(138, 140, 88), Color8(124, 116, 80), Color8(108, 124, 78)]  # sphagnum and sedge tussocks, near the bog's own colour
+
+
+## A bog's pools and tussocks: [centre, radius, kind (0 pool, 1+ tussock colour)],
+## seeded by grid cell inside the outline. Computed once per chunk.
+static func wetland_spots(polygon: PackedVector2Array) -> Array:
+	var box := Rect2(polygon[0], Vector2.ZERO)
+	for point in polygon:
+		box = box.expand(point)
+	var spots := []
+	var rng := RandomNumberGenerator.new()
+	for cx in range(floori(box.position.x / BOG_CELL_M), floori(box.end.x / BOG_CELL_M) + 1):
+		for cy in range(floori(box.position.y / BOG_CELL_M), floori(box.end.y / BOG_CELL_M) + 1):
+			rng.seed = hash(Vector2i(cx, cy))
+			var at := Vector2(cx + rng.randf_range(0.2, 0.8), cy + rng.randf_range(0.2, 0.8)) * BOG_CELL_M
+			if rng.randf() < 0.35 and Geometry2D.is_point_in_polygon(at, polygon):
+				spots.append([at, rng.randf_range(1.2, 3.0), 0])
+			for i in 3:  # tussocks, pool or not
+				var tuft := Vector2(cx + rng.randf(), cy + rng.randf()) * BOG_CELL_M
+				if Geometry2D.is_point_in_polygon(tuft, polygon):
+					spots.append([tuft, rng.randf_range(0.5, 1.1), 1 + rng.randi_range(0, 2)])
+	return spots
+
+
+static func draw_wetland_ground(node: Node2D, spots: Array, winter: float) -> void:
+	for spot in spots:
+		if spot[2] == 0:  # an irregular pool of three overlapping rounds, frozen and snowy in winter
+			var water := BOG_POOL.lerp(BOG_ICE, clampf(winter, 0.0, 1.0))
+			var r: float = spot[1]
+			node.draw_circle(spot[0], r, water)
+			node.draw_circle(spot[0] + Vector2(r * 0.7, r * 0.25).rotated(r * 2.3), r * 0.7, water)
+			node.draw_circle(spot[0] + Vector2(-r * 0.6, r * 0.35).rotated(r * 1.7), r * 0.55, water)
+		else:
+			node.draw_circle(spot[0], spot[1], BOG_MOSS[spot[2] - 1].lerp(Color8(236, 240, 242), clampf(winter, 0.0, 1.0) * 0.85))
 
 
 ## Above all ground fills: smaller grass plots must not paint over headstones.

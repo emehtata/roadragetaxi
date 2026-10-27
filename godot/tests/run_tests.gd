@@ -3240,7 +3240,23 @@ func test_forest_canopy() -> void:
 		"landuse": [[[108, 120, 78], 1, [[500, 0], [1000, 0], [1000, 500], [500, 500]], "scrub"]]})
 	var scrub = map._chunks["1_0"]
 	check(scrub._season_layers.size() == 2 and scrub._season_layers[0].z_index == 13, "scrub creates the same overhead canopy as forests")
-	check(scrub._forest_mask().get_image().get_pixel(250, 250).r > 0.9, "scrub interiors retain canopy coverage")
+	check(scrub._forest_mask().get_image().get_pixel(250, 250).g > 0.9, "scrub interiors retain canopy coverage, in scrub's own mask channel")
+	check(scrub._season_layers[0].material.shader == MapChunk.FOREST_MATERIAL.shader, "scrub draws through the canopy shader, as its own kind")
+	map.add_chunk({"chunk_id": "2_0", "bounds": [1000, 0, 1500, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[118, 130, 96], 1, [[1000, 0], [1500, 0], [1500, 500], [1000, 500]], "wetland"]]})
+	var bog = map._chunks["2_0"]
+	var bog_mask: Image = bog._forest_mask().get_image()
+	check(bog_mask.get_pixel(250, 250).b > 0.9 and bog_mask.get_pixel(250, 250).r < 0.1, "a wetland has its own mask channel: its pines are not forest crowns")
+	check(bog._season_layers.size() == 2 and bog._season_layers[0].z_index == 13, "a wetland gets the canopy layer for its scattered pines")
+	var bog_spots: Array = MapChunk.Detail.wetland_spots(PackedVector2Array([Vector2(0, 0), Vector2(200, 0), Vector2(200, -200), Vector2(0, -200)]))
+	check(bog_spots.any(func(spot): return spot[2] == 0) and bog_spots.any(func(spot): return spot[2] > 0), "a bog's ground has pools and tussocks")
+	check(bog_spots.all(func(spot): return Rect2(0, -200, 200, 200).has_point(spot[0])), "all inside the bog")
+	MapChunk.forest_canopy = false
+	map.add_chunk({"chunk_id": "3_0", "bounds": [1500, 0, 2000, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[118, 130, 96], 1, [[1500, 0], [2000, 0], [2000, 500], [1500, 500]], "wetland"]]})
+	var plain_bog = map._chunks["3_0"]
+	check(plain_bog._season_layers.size() == 1 and plain_bog._wetland_spots.is_empty(), "with the forest switch off a wetland is its flat fill: no pines, pools or tussocks")
+	MapChunk.forest_canopy = true
 	var wildlife := preload("res://wildlife.gd")
 	check(wildlife.habitat(0, 0, true) == "rural", "unmapped forest trees still provide rural wildlife habitat")
 	check(wildlife.habitat(30, 0, false) == "urban", "urban wildlife habitat is unchanged")

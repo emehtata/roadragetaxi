@@ -30,6 +30,7 @@
 ## only by the chunk containing them.
 extends Node2D
 
+const CANOPY_KINDS := {"forest": 0, "wood": 0, "scrub": 1, "wetland": 2}  # forest.gdshader's kinds
 const CANOPY_MARGIN_M := 3.5  # the canopy drawn past the forest outline: room for its edge crowns
 const TRUNK_RADIUS_M := 0.4  # a tree the taxi touches within this of its trunk falls
 const TREE_CELL_M := 10.0  # knock_trees' lookup grid
@@ -74,6 +75,7 @@ var _phases: Dictionary = {}  # post id (String) -> phase as last drawn
 var _font: Font = ThemeDB.fallback_font
 var _trees: Node2D = null  # trees and bollards, if this chunk has any
 var _fallen: Dictionary = {}  # obstacle_key -> angle: trees the taxi knocked over (the client's alone: gone when the chunk reloads)
+var _wetland_spots: Dictionary = {}  # landuse index -> a bog's pools and tussocks (chunk_detail.wetland_spots)
 var _tree_grid: Dictionary = {}  # Vector2i cell -> [[point, tree index]]: built on the taxi's first visit (knock_trees)
 var _hedge_damage: Dictionary = {}
 var _railings: Node2D
@@ -282,7 +284,12 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 
 
 static func _is_forest(area) -> bool:
-	return area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]
+	return area.size() > 3 and CANOPY_KINDS.has(str(area[3]))
+
+
+## A canopy kind's channel in the mask (and the shader's kind): red forest, green scrub, blue wetland.
+static func canopy_kind(area) -> int:
+	return int(CANOPY_KINDS.get(str(area[3]), -1)) if area.size() > 3 else -1
 
 
 ## Every polyline and polygon kept as a PackedVector2Array in layer
@@ -848,10 +855,11 @@ func _forest_mask() -> ImageTexture:
 
 
 static func forest_mask(data: Dictionary, bounds_rect: Rect2, origin: Vector2) -> Image:
-	var image := Image.create(maxi(1, ceili(bounds_rect.size.x)), maxi(1, ceili(bounds_rect.size.y)), false, Image.FORMAT_R8)
+	var image := Image.create(maxi(1, ceili(bounds_rect.size.x)), maxi(1, ceili(bounds_rect.size.y)), false, Image.FORMAT_RGB8)
 	image.fill(Color.BLACK)
 	for area in data.get("landuse", []):
-		_mask_polygon(image, bounds_rect, _to_points(area[2], origin), Color.WHITE if _is_forest(area) else Color.BLACK)
+		var kind := canopy_kind(area)
+		_mask_polygon(image, bounds_rect, _to_points(area[2], origin), [Color.RED, Color.GREEN, Color.BLUE][kind] if kind >= 0 else Color.BLACK)
 	for key in ["waters", "buildings", "parking"]:
 		for polygon in data.get(key, []):
 			_mask_polygon(image, bounds_rect, _to_points(polygon, origin), Color.BLACK)

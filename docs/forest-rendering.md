@@ -22,6 +22,19 @@ per-pixel mask. Transparent gaps between crowns reveal the ground. Adjacent chun
 Autumn colours affect birches, winter adds snow, and tiny crowns fade into a
 simple forest fill at distant map zooms.
 
+Scrub and wetland share the canopy shader as kinds of their own (the
+UV's x carries the kind, its fraction the winter weight; each kind has its
+own mask channel, so a crown is drawn only where its centre is its own kind):
+
+| Kind | Crowns | Ground |
+| --- | --- | --- |
+| forest, wood | dense pine, spruce and birch crowns, 4.2 m grid | flat forest fill under the crowns |
+| scrub | smaller, lumpier, lighter bushes (willow, juniper, young birch), 3 m grid, about 60 % present | the scrub fill shows between them |
+| wetland | scattered dark stunted pines and the odd dwarf birch, 5.5 m grid, about 30 % present | the ground layer adds peat pools (ice in winter) and moss tussocks, seeded on a 16 m world grid |
+
+The Graphics menu's forest canopy switch covers all three: off, each is its
+flat fill, without crowns, pools, tussocks or the mask.
+
 These extra canopy trees are visual coverage. Only individually mapped OSM
 trees can be knocked over by the taxi. Existing
 road-overlap cleanup still applies to mapped tree positions. Wildlife habitat
