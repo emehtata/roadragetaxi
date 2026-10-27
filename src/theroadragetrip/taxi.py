@@ -792,6 +792,8 @@ class TaxiManager:
             ):
                 continue
 
+            if previous_position is not None and self._backing_off(player_car, previous_position, points):
+                continue  # already against it and moving away: let the car get clear (undoing that move pinned it there)
             if previous_position is not None:
                 player_car.x, player_car.y = previous_position
             player_car.speed = 0.0
@@ -807,6 +809,21 @@ class TaxiManager:
             return True
 
         return False
+
+    @staticmethod
+    def _backing_off(car: Car, previous_position: Tuple[float, float], points) -> bool:
+        """Whether the car touched the building already at its previous position
+        and this move takes its centre further from the wall (out, not in)."""
+        def clearance(x: float, y: float) -> float:  # from the outline; negative inside it
+            edge = min(dist_point_to_segment(x, y, *points[i], *points[(i + 1) % len(points)]) for i in range(len(points)))
+            return -edge if point_in_polygon(x, y, points) else edge
+
+        px, py = previous_position
+        before = get_oriented_box_corners(px, py, car.heading, car.length_m, car.width_m)
+        touching = point_in_polygon(px, py, points) or any(point_in_polygon(x, y, points) for x, y in before) or any(
+            segments_intersect(a, b, points[i], points[(i + 1) % len(points)])
+            for a, b in zip(before, before[1:] + before[:1]) for i in range(len(points)))
+        return touching and clearance(car.x, car.y) > clearance(px, py) + 1e-6
 
     @staticmethod
     def _road_overlaps_building(

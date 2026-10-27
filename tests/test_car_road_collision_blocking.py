@@ -328,3 +328,20 @@ def test_tree_collision_uses_trunk_not_crown_edge():
 
     assert not manager.check_tree_collision(beside_crown, [scenery], sim_time=1.0)
     assert manager.check_tree_collision(touching_trunk, [scenery], sim_time=2.0, previous_position=(0.0, 2.0))
+
+
+def test_a_car_pressed_against_a_building_can_drive_away_from_it():
+    """Reported: the taxi stuck at a wall - every move, away too, was undone
+    because the body still touched the building at the new position."""
+    from theroadragetrip.osm import Building
+
+    building = Building(points_m=[(4.0, -3.0), (8.0, -3.0), (8.0, 3.0), (4.0, 3.0)])
+    taxi_manager = TaxiManager(ways=[])
+    car = Car(x=2.4, y=0.0, heading=0.0, speed=-1.0)  # its nose 0.4 m in the wall, reversing out
+    assert taxi_manager.check_building_collision(car, [building], sim_time=1.0, previous_position=(2.5, 0.0)) is False
+    assert (car.x, car.speed) == (2.4, -1.0)  # the move away stands
+    assert taxi_manager.total_score == 0  # and is no new crash
+
+    car = Car(x=2.6, y=0.0, heading=0.0, speed=1.0)  # but pressing on into it is still stopped
+    assert taxi_manager.check_building_collision(car, [building], sim_time=2.0, previous_position=(2.5, 0.0)) is True
+    assert (car.x, car.speed) == (2.5, 0.0)
