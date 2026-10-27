@@ -130,6 +130,7 @@ func _ready() -> void:
 	add_child(car_stereos)
 	if graphics.has("buildings_3d"):
 		MapChunk.buildings_3d = graphics["buildings_3d"]
+	MapChunk.forest_canopy = graphics.get("forest_canopy", true)  # like the buildings: for the whole session
 	_apply_language()
 	_build_help()
 	_build_inspector()

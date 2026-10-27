@@ -278,7 +278,7 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "puddle_spots": puddles,
 		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points,
 		# Rasterised here, on the parse worker: on the main thread it was a 60-115 ms hitch per forest chunk.
-		"forest_mask": forest_mask(message, bounds_rect, origin) if message.get("landuse", []).any(_is_forest) else null}
+		"forest_mask": forest_mask(message, bounds_rect, origin) if forest_canopy and message.get("landuse", []).any(_is_forest) else null}
 
 
 static func _is_forest(area) -> bool:
@@ -615,6 +615,7 @@ func drop_stale_buildings() -> void:
 static var build_async := true  # tests build in place
 static var language := "en"  # unnamed fuel stations' board (main._apply_language)
 static var buildings_3d := true  # --buildings 2d uses flat footprints
+static var forest_canopy := true  # off (graphics setting): forests keep their flat fill, no crowns - for software rendering
 var meshes_3d: Array = []  # buildings_3d.meshes, added to MapLayer's 3D building layer
 
 

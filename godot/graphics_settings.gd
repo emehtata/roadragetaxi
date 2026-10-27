@@ -3,6 +3,7 @@ extends RefCounted
 const DEFAULTS := {
 	"shadows": true,
 	"buildings_3d": true,
+	"forest_canopy": true,
 	"water_ripples": true,
 	"precipitation": true,
 	"splashes": true,

@@ -490,11 +490,20 @@ func test_graphics_settings() -> void:
 	check(reloaded.load("user://graphics-test.cfg") == OK and Graphics.read(reloaded).values().all(func(on): return on == false), "graphics: all disabled choices survive reload")
 	DirAccess.remove_absolute("user://graphics-test.cfg")
 	var previous_3d: bool = MapChunk.buildings_3d
+	var previous_canopy: bool = MapChunk.forest_canopy
 	var main: Node = load("res://main.tscn").instantiate()
 	main.set_graphics(Graphics.read(reloaded))
 	root.add_child(main)
 	main.phone.close()
 	check(not MapChunk.buildings_3d, "graphics: new session selects the existing 2D fallback")
+	check(not MapChunk.forest_canopy, "graphics: the session without the forest canopy")
+	var flat_forest := MapLayer.new()
+	root.add_child(flat_forest)
+	flat_forest.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[40, 78, 42], 1, [[0, 0], [500, 0], [500, 500], [0, 500]], "forest"]]})
+	var forest_chunk = flat_forest._chunks["0_0"]
+	check(forest_chunk._season_layers.size() == 1 and forest_chunk._season_layers[0].z_index == -1, "graphics: without the canopy a forest is its flat fill alone (no crown layer, no mask)")
+	flat_forest.free()
 	check(not main.entities.smoke_enabled and not main.map_layer.shadows_enabled, "graphics: live render flags applied")
 	var weather = main.weather
 	var state := {"weather": {"weather_type": "rain", "wetness": 1.0}, "player": {"speed": 20.0}, "on_foot": false}
@@ -515,9 +524,11 @@ func test_graphics_settings() -> void:
 	main.set_graphics(Graphics.DEFAULTS)
 	root.add_child(main)
 	check(MapChunk.buildings_3d, "graphics: next session uses saved 3D selection")
+	check(MapChunk.forest_canopy, "graphics: the next session's forests have crowns again")
 	check(main.map_layer.shadows_enabled, "graphics: 3D session restores the saved shadow preference")
 	main.free()
 	MapChunk.buildings_3d = previous_3d
+	MapChunk.forest_canopy = previous_canopy
 	var B3 := preload("res://buildings_3d.gd")
 	var layer := B3.new()
 	root.add_child(layer)
