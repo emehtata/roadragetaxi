@@ -335,3 +335,67 @@ def test_a_full_rack_leaves_the_bike_where_the_ride_ended():
     bike = world.manager.vehicles[-1]
     assert world.tick(120, until=lambda: bike.state == NPCState.PARKED)
     assert abs(bike.y - route.points[-1][1]) < 0.5  # on its riding line, not in a hoop
+
+
+class _Thieves:
+    """The pedestrian manager surface a bike theft uses: spawned walkers stand where asked."""
+    def __init__(self):
+        self.pedestrians = []
+
+    def spawn_pedestrian_at(self, x, y, heading=0.0, resident_id=None):
+        return SimpleNamespace(x=x, y=y, speed=1.3, base_speed=1.3, route=None, thief_target=None, state="walking")
+
+    def add_pedestrian(self, pedestrian):
+        self.pedestrians.append(pedestrian)
+        return True
+
+
+class _Always(_Lowest):
+    def random(self):
+        return 0.0
+
+    def choice(self, items):
+        return items[0]
+
+
+def test_a_bike_thief_runs_to_a_racked_bike_and_rides_it_away_fast():
+    from theroadragetrip.osm.models import SceneryObject
+    rack = SceneryObject(x=170.0, y=3.0, kind="bicycle_parking", direction_angle=0.0, id=7)
+    world, route = _rack_trip([_way([(-600, 0), (600, 0)], "cycleway")], rack)
+    world.manager._finish_cycle_job({"kind": "cycle", "vehicle": None}, route, 1e6, 1e6, None, world.residents)
+    bike = world.manager.vehicles[-1]
+    assert world.tick(120, until=lambda: bike.state == NPCState.PARKED)
+    view = (100.0, -50.0, 250.0, 50.0)
+    peds = _Thieves()
+    manager = world.manager
+    manager._update_bike_thefts(DT, peds, view, world.traffic, world.grid, rng=_Always())
+    thief = peds.pedestrians[0]
+    assert thief.thief_target == (bike.x, bike.y) and thief.base_speed == cycling.THIEF_RUN_MPS  # running for it
+    assert 20.0 <= math.hypot(thief.x - bike.x, thief.y - bike.y) <= 35.0
+    thief.x, thief.y = bike.x, bike.y + 1.0  # (the pedestrian manager runs it there)
+    manager._update_bike_thefts(DT, peds, view, world.traffic, world.grid, rng=__import__("random").Random(1))
+    assert thief.state == "despawning" and bike.state == NPCState.CRUISING
+    driver = manager.drivers[bike.vehicle_id]
+    assert driver.stolen and driver.rack_claim is None  # the hoop is free again
+    world.tick(10)
+    assert driver.cycle.cruise_mps >= cycling.CYCLIST_SPEED_MPS[0] * cycling.THIEF_CRUISE_FACTOR - 1e-6
+    assert math.hypot(bike.x - 170.0, bike.y - 3.0) > 20.0  # gone
+
+
+def test_thieves_and_stolen_bikes_stay_anonymous_in_the_protocol():
+    from theroadragetrip import protocol
+    from theroadragetrip.pedestrian import Pedestrian
+    thief = Pedestrian(x=0.0, y=0.0, heading=0.0, speed=4.5, base_speed=4.5, way=None, segment_idx=0, direction=1,
+                       color=(1, 2, 3), resident_id=5)
+    residents = {5: SimpleNamespace()}
+    thief.thief_target = (10.0, 0.0)
+    row = protocol._pedestrian_to_dict(thief, residents)
+    assert row["thief"] and row["resident"] is None  # no personality to reveal, and the client skips it
+    thief.thief_target = None
+    assert not protocol._pedestrian_to_dict(thief, {})["thief"]
+
+    world = _World([_way([(0, 0), (150, 0)], "cycleway")])
+    bike = world.cyclist((0, 0), (150, 0))
+    bike.stolen = True
+    row = protocol._npc_to_dict(bike, world.residents.residents if hasattr(world.residents, "residents") else {})
+    assert row["thief"] and row["owner"] is None and row["occupants"] == []

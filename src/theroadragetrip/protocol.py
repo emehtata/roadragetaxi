@@ -182,7 +182,10 @@ def _npc_to_dict(npc, residents=None) -> dict:
         "width_m": npc.car.width_m,
         "owner": _resident_to_dict(residents.get(npc.owner_id)),
         "occupants": [_resident_to_dict(residents[resident_id]) for resident_id in sorted(occupant_ids) if resident_id in residents],
+        "thief": getattr(npc, "stolen", False),
     }
+    if row["thief"]:  # a stolen bike: its rider stays anonymous, not shown as the owner
+        row["owner"], row["occupants"] = None, []
     trailer = npc.trailer_body() if hasattr(npc, "trailer_body") else None
     if trailer is not None:  # a towed trailer, swinging on its hitch: [x, y, heading, length, width, kind]
         row["trailer"] = [round(trailer.x, 2), round(trailer.y, 2), round(trailer.heading, 3),
@@ -223,7 +226,9 @@ def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
         "mood": ped.mood,
         "is_cyclist": ped.is_cyclist,
         "costume": "santa" if santa_costume(ped, (residents or {}).get(ped.resident_id), santa_day) else "",
-        "resident": _resident_to_dict((residents or {}).get(ped.resident_id)),
+        # A thief stays anonymous: no resident (personality) is sent, and the client can't pick one.
+        "resident": None if getattr(ped, "thief_target", None) is not None else _resident_to_dict((residents or {}).get(ped.resident_id)),
+        "thief": getattr(ped, "thief_target", None) is not None,
         "blood_alcohol_promille": getattr(ped, "blood_alcohol_promille", 0.0),
         "bottle": getattr(ped, "bottles", 0) > 0,  # a bottle in hand
         "drinking": getattr(ped, "drinking", False),  # hanging out with it: sips now and then

@@ -1146,6 +1146,7 @@ class Driver:
     replans: int = 0  # a cyclist's new destinations after getting stuck
     rack_slot: Optional[Tuple[float, float, float]] = None  # a cyclist's claimed hoop (cycling.rack_slots)
     rack_claim: Optional[tuple] = None  # (rack OSM id, hoop index): survives the rack being rebuilt by a map merge
+    stolen: bool = False  # a thief rides this bike: its next trip is a fast getaway
 
     @property
     def next_maneuver(self) -> str:
@@ -1254,6 +1255,7 @@ class NPCVehicle:
     taxi_job: object = None  # a competitor taxi's fare (competitor_taxis.TaxiJob), None when free
     taxi_idle_until: float = 0.0
     brawl_id: Optional[int] = None  # its driver is out quarrelling (taxi_brawls.py): the car stays put
+    stolen: bool = False  # a thief rides it: nobody can be inspected on it (protocol "thief")
     rage: float = 0.0  # its driver's temporary rage, 0..1, as last provoked (taxi_brawls.npc_rage)
     rage_at: float = 0.0  # sim time of that provocation; it calms from there
     bus_job: object = None  # a line bus's route and next stop (bus_lines.BusJob)
@@ -3915,6 +3917,7 @@ class NPCVehicleManager:
         self._bus_lines = {}
         self.scenery_objects = ()  # the world's SceneryObjects, set by the simulation each frame
         self._racks_for = None  # (id, len) of the scenery_objects the cached racks came from
+        self._thefts = {}  # vehicle_id -> [thief Pedestrian, seconds running]
         self._racks = []
         self.max_count = max_count if max_count is not None else max(self.min_count, int(target_count * 1.5))
         self.household_fraction = household_fraction
@@ -5706,10 +5709,19 @@ class NPCVehicleManager:
                 or len(self._route_jobs) >= NPC_MAX_ROUTE_JOBS // 2 or not traffic_world.cycle_graph.nodes):
             return
         definition = vehicle_definition("bicycle")
+        to_rack = None
+        if viewport_bounds is not None and random.random() < cycling.RACK_TRIP_SHARE:
+            taken = {}
+            for d in self.drivers.values():
+                if d.rack_claim is not None:
+                    taken[d.rack_claim[0]] = taken.get(d.rack_claim[0], 0) + 1
+            seen = [r for r in self.bicycle_racks() if in_bounds(viewport_bounds, r.x, r.y, cycling.RACK_VIEW_MARGIN_M)
+                    and taken.get(cycling.rack_key(r), 0) < len(cycling.RACK_HOOPS_M)]
+            to_rack = random.choice(seen) if seen else None
         self._enqueue_route_job("cycle", None, cycling.cycle_spawn_steps(
             traffic_world.cycle_graph, (player_x, player_y), self._active_bounds, viewport_bounds,
             lambda point: any(True for _ in self.nearby_vehicles_at(point[0], point[1], cycling.CYCLIST_SPAWN_CLEARANCE_M)),
-            spatial_grid, definition.width_m, racks=self.bicycle_racks(),
+            spatial_grid, definition.width_m, racks=self.bicycle_racks(), to_rack=to_rack,
         ), traffic_world)
 
     def bicycle_racks(self) -> list:
@@ -5723,11 +5735,64 @@ class NPCVehicleManager:
     def _claim_rack_slot(self, driver, rack) -> None:
         """Claim a free hoop of `rack` for `driver`; none when every hoop has a bike."""
         taken = {d.rack_claim for d in self.drivers.values() if d.rack_claim is not None}
-        key = rack.id if rack.id is not None else (round(rack.x, 1), round(rack.y, 1))
+        key = cycling.rack_key(rack)
         for index, slot in enumerate(cycling.rack_slots(rack)):
             if (key, index) not in taken:
                 driver.rack_slot, driver.rack_claim = slot, (key, index)
                 return
+
+    def _update_bike_thefts(self, dt, pedestrian_mgr, viewport_bounds, traffic_world, spatial_grid, rng=random) -> None:
+        """Now and then a thief runs to a bike parked in a rack in view and rides it away."""
+        if pedestrian_mgr is None or viewport_bounds is None or not hasattr(pedestrian_mgr, "spawn_pedestrian_at"):
+            return
+        from .viewport import in_bounds
+        for vehicle_id, theft in list(self._thefts.items()):
+            thief = theft[0]
+            theft[1] += dt
+            vehicle = next((v for v in self.vehicles if v.vehicle_id == vehicle_id), None)
+            driver = self.drivers.get(vehicle_id)
+            if (vehicle is None or driver is None or vehicle.state != NPCState.PARKED or theft[1] > cycling.THIEF_GIVE_UP_S
+                    or thief not in pedestrian_mgr.pedestrians):
+                thief.thief_target = None  # the bike is gone, or the run took too long: an ordinary walker again
+                del self._thefts[vehicle_id]
+            elif math.hypot(thief.x - vehicle.x, thief.y - vehicle.y) <= cycling.THIEF_REACH_M:
+                thief.state = "despawning"  # on the bike now
+                del self._thefts[vehicle_id]
+                self._ride_stolen_bike(vehicle, driver, traffic_world, spatial_grid)
+        if self._thefts or rng.random() >= cycling.BIKE_THEFT_PER_S * dt:
+            return
+        racked = [v for v in self.vehicles if v.state == NPCState.PARKED and in_bounds(viewport_bounds, v.x, v.y)
+                  and getattr(self.drivers.get(v.vehicle_id), "rack_claim", None) is not None]
+        if not racked:
+            return
+        bike = rng.choice(racked)
+        for _ in range(4):  # a walkable spot a little way off
+            angle, distance = rng.uniform(0.0, 2.0 * math.pi), rng.uniform(*cycling.THIEF_START_M)
+            thief = pedestrian_mgr.spawn_pedestrian_at(bike.x + math.cos(angle) * distance, bike.y + math.sin(angle) * distance)
+            if thief is not None and pedestrian_mgr.add_pedestrian(thief):
+                thief.speed = thief.base_speed = cycling.THIEF_RUN_MPS
+                thief.route = None
+                thief.thief_target = (bike.x, bike.y)
+                self._thefts[bike.vehicle_id] = [thief, 0.0]
+                return
+
+    def _ride_stolen_bike(self, vehicle, driver, traffic_world, spatial_grid) -> None:
+        """The thief rides off: out of the hoop onto a new trip, fast."""
+        driver.rack_slot = driver.rack_claim = None
+        driver.stolen = vehicle.stolen = True
+        vehicle.state = NPCState.CRUISING
+        nearest = self._nearest_cycle_node(traffic_world, (vehicle.x, vehicle.y))
+        if nearest is None:
+            vehicle.state = NPCState.PARKED
+            return
+        graph = traffic_world.cycle_graph
+        low, high = cycling.THIEF_GETAWAY_M
+        far = [graph.nodes[i][:2] for cell in cycling._graph_nodes_in(
+            graph, (vehicle.x - high, vehicle.y - high, vehicle.x + high, vehicle.y + high)) for i in cell
+            if low <= math.hypot(graph.nodes[i][0] - vehicle.x, graph.nodes[i][1] - vehicle.y) <= high]
+        driver.route_job_pending = True
+        self._enqueue_route_job("cycle", vehicle, cycling.cycle_trip_steps(
+            graph, nearest, spatial_grid, vehicle.width_m, destination=random.choice(far) if far else None), traffic_world)
 
     @staticmethod
     def _walk_bike_to_rack(vehicle, driver, dt) -> None:
@@ -5773,6 +5838,9 @@ class NPCVehicleManager:
                 stats["discarded"] += 1
                 return
             driver.route_job_pending = False
+            if driver.stolen:  # a getaway
+                route.cruise_mps = min(route.cruise_mps * cycling.THIEF_CRUISE_FACTOR, cycling.THIEF_MAX_CRUISE_MPS)
+                driver.target_speed_mps = route.cruise_mps
             driver.cycle, driver.path_index, driver.destination = route, 1, route.points[-1]
             vehicle.destination = route.points[-1]
             stats["recovered"] += 1
@@ -5814,6 +5882,10 @@ class NPCVehicleManager:
             vehicle.car.speed = 0.0
             return
         event = cycling.update_cyclist(vehicle, driver, dt, traffic_world, nearby_obstacles, pedestrians)
+        end = driver.cycle.points[-1]
+        if (event is None and driver.cycle.rack is not None and abs(vehicle.car.speed) < 0.3
+                and math.hypot(end[0] - vehicle.x, end[1] - vehicle.y) <= cycling.RACK_DISMOUNT_M):
+            event = "arrived"  # held up by whoever stands at the end: off the bike, the rest on foot
         if event == "arrived":
             vehicle.debug_waiting_for = ""
             if driver.cycle.rack is not None:
@@ -5971,6 +6043,7 @@ class NPCVehicleManager:
         # dict clear + re-insert per vehicle, trivial next to the per-
         # vehicle decision/physics work below.
         self.rebuild_spatial_grid()
+        self._update_bike_thefts(dt, pedestrian_mgr, viewport_bounds, traffic_world, spatial_grid)
         if player_car is not None:
             self.road_rage.update(self, player_car, traffic_world.sim_time, ways, spatial_grid, current_way)
         from .viewport import in_bounds

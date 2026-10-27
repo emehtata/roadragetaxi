@@ -479,9 +479,12 @@ def update_cyclist(vehicle, driver, dt: float, traffic_world, obstacles, pedestr
 # nearby ends at it, and the rider walks the bike into a free hoop - a person
 # walking a bicycle is a pedestrian (§ 2), and a rack is the designated place.
 RACK_SEARCH_M = 80.0  # from the trip's random end point
-RACK_PATH_M = 6.0  # the ride passes the rack at most this far: a short walk beside the path (osm/build.py snaps racks there)
+RACK_PATH_M = 12.0  # the ride passes the rack at most this far: a walk from the road to the rack by the sidewalk
 RACK_HOOPS_M = (-1.2, -0.4, 0.4, 1.2)  # along the rack; godot/map_chunk.gd draws the same hoops
 RACK_WALK_MPS = 1.3
+RACK_TRIP_SHARE = 0.5  # of new cyclists ride to a rack in or near the view (else trips end mostly unseen)
+RACK_VIEW_MARGIN_M = 10.0  # a bike parked out of view is retired at once
+RACK_DISMOUNT_M = 8.0  # held up this close to the end of a rack trip: get off and walk the rest
 
 
 def nearest_rack(racks, x: float, y: float, radius: float):
@@ -494,12 +497,29 @@ def nearest_rack(racks, x: float, y: float, radius: float):
     return best
 
 
+def rack_key(rack):
+    """A rack's identity for hoop claims: its OSM id, which survives a map merge rebuilding the object."""
+    return rack.id if rack.id is not None else (round(rack.x, 1), round(rack.y, 1))
+
+
 def rack_slots(rack):
     """Where a parked bike stands at each hoop: (x, y, heading) - across the
     row, the hoop through its middle."""
     angle = rack.direction_angle or 0.0
     ux, uy = math.cos(angle), math.sin(angle)
     return [(rack.x + ux * offset, rack.y + uy * offset, angle + math.pi / 2) for offset in RACK_HOOPS_M]
+
+
+# Bike thieves: now and then someone runs to a bike parked in a rack in view
+# and rides it away fast.
+BIKE_THEFT_PER_S = 1.0 / 240.0  # chance per second while a racked bike is in view and no theft runs
+THIEF_START_M = (20.0, 35.0)  # from the bike
+THIEF_RUN_MPS = 4.5
+THIEF_REACH_M = 1.5
+THIEF_GIVE_UP_S = 30.0
+THIEF_GETAWAY_M = (100.0, 800.0)  # to a cycle-network node this far off
+THIEF_CRUISE_FACTOR = 1.7  # of a drawn cruise speed: getting away
+THIEF_MAX_CRUISE_MPS = 9.5
 
 
 CYCLIST_SPAWN_NODE_TRIES = 4
@@ -515,12 +535,13 @@ def _graph_nodes_in(graph, bounds):
             yield graph.node_grid.get((cx, cy), ())
 
 
-def cycle_trip_steps(graph, start, spatial_grid, width_m: float, rng=random, destination=None, racks=()):
+def cycle_trip_steps(graph, start, spatial_grid, width_m: float, rng=random, destination=None, racks=(), to_rack=None):
     """Plan a cyclist's trip from `start` (a cycle-graph node point) to
     `destination` or a random reachable node CYCLIST_TRIP_DISTANCE_M away,
     as a resumable job: returns a CycleRoute or None. Rides only network
     edges (route_legs), each leg on its riding line (offset_route). A
-    random end with a rack near it moves to that rack (route.rack)."""
+    random end with a rack near it moves to that rack (route.rack); `to_rack`
+    is a rack to ride to instead of a random end."""
     from .traffic_world import _component_root, graph_route_steps
     nodes = graph.nodes
     start_index = next((i for cell in _graph_nodes_in(graph, (start[0], start[1], start[0], start[1])) for i in cell
@@ -535,7 +556,7 @@ def cycle_trip_steps(graph, start, spatial_grid, width_m: float, rng=random, des
             angle, distance = rng.uniform(0, 2 * math.pi), rng.uniform(low, high)
             px, py = start[0] + math.cos(angle) * distance, start[1] + math.sin(angle) * distance
             reach = 60.0
-            rack = nearest_rack(racks, px, py, RACK_SEARCH_M)
+            rack = to_rack or nearest_rack(racks, px, py, RACK_SEARCH_M)
             if rack is not None:  # its nearest node; the ride is cut where it passes the rack
                 px, py, reach = rack.x, rack.y, RACK_SEARCH_M
             candidates = [i for cell in _graph_nodes_in(graph, (px - reach, py - reach, px + reach, py + reach)) for i in cell
@@ -601,7 +622,8 @@ def _cut_at_closest_approach(points, at):
     return (points[:i + 1] + [p],) if math.hypot(p[0] - points[i][0], p[1] - points[i][1]) > 1e-6 else (points[:i + 1],)
 
 
-def cycle_spawn_steps(graph, focus, active_bounds, viewport_bounds, occupied, spatial_grid, width_m: float, rng=random, racks=()):
+def cycle_spawn_steps(graph, focus, active_bounds, viewport_bounds, occupied, spatial_grid, width_m: float, rng=random, racks=(),
+                      to_rack=None):
     """Where a new cyclist enters: a cycle-graph node in the active area but
     out of view and clear of other traffic, with a planned trip. Resumable;
     returns CycleRoute or None (nothing created yet)."""
@@ -634,7 +656,7 @@ def cycle_spawn_steps(graph, focus, active_bounds, viewport_bounds, occupied, sp
         if occupied((x, y)):
             continue
         tries += 1
-        route = yield from cycle_trip_steps(graph, (x, y), spatial_grid, width_m, rng, racks=racks)
+        route = yield from cycle_trip_steps(graph, (x, y), spatial_grid, width_m, rng, racks=racks, to_rack=to_rack)
         if route is not None:
             return route
         if tries >= CYCLIST_SPAWN_NODE_TRIES:

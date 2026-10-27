@@ -494,6 +494,7 @@ class Pedestrian:
     # overwrites to "idle" while performing an activity (would otherwise
     # clobber "annoyed" the moment the phone-checking activity starts).
     mood: str = "normal"
+    thief_target: Optional[Tuple[float, float]] = None  # a bike thief runs here (npc.py _update_bike_thefts)
 
 
 @dataclass
@@ -978,6 +979,7 @@ class PedestrianManager:
                 or pedestrian.linked_vehicle_id is not None
                 or pedestrian.reserved_vehicle_id is not None
                 or pedestrian.current_vehicle_id is not None
+                or pedestrian.thief_target is not None
                 or pedestrian.is_cyclist
                 or pedestrian.is_drunk
                 or pedestrian.wants_taxi
@@ -2829,6 +2831,9 @@ class PedestrianManager:
             if not ped.lod_update_due:
                 continue
             update_dt = max(dt, ped.lod_update_dt)
+            if ped.thief_target is not None:
+                self._walk_route_to(ped, update_dt, ped.thief_target)  # the NPC manager takes it from there
+                continue
             if self._update_linked_driver(ped, update_dt):
                 continue
             if self._update_activity(ped, update_dt):

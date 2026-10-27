@@ -233,6 +233,8 @@ func entity_at(screen: Vector2, canvas: Transform2D) -> Dictionary:
 		var best := {}
 		var distance := INF
 		for row in a.get(key, []):
+			if row.get("thief", false):  # thieves stay anonymous: not inspectable
+				continue
 			if key == "npcs" and not row.get("is_on_foot", false) and not drawn_as_vehicle(row):
 				continue
 			var p := StateBuffer.blend(row, later.get(row["id"], row), _frame["t"], origin)
