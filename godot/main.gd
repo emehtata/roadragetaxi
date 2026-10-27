@@ -206,7 +206,7 @@ func _ready() -> void:
 				_screenshot_drive = float(args[i + 1])
 	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args:
 		_engine_on = true  # automated runs drive straight away: no sign, no hints
-		_entered_taxi = true
+		_entered_taxi = not "--start-sign" in args  # --start-sign: a screenshot of the city's start sign and forecast
 	instruments.layout = hud_layout
 	_apply_graphics()
 	hud.layout = hud_layout
