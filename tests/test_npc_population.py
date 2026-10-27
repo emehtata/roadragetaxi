@@ -195,6 +195,9 @@ def test_populate_initial_produces_a_vehicle_type_mix_from_the_distribution():
     manager = NPCVehicleManager(
         target_count=15, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 0.5, "motorcycle": 0.5},
     )
+    from datetime import datetime
+    manager.clock = datetime(2026, 7, 1, 12)  # in the riding season (motorcycle_season.py)
+    manager._update_motorcycle_season(ResidentManager())
     manager.populate_initial(*_CENTER, ResidentManager(), ways)
     types = {vehicle.vehicle_type for vehicle in manager.vehicles}
     assert types <= {"car", "motorcycle"}
@@ -1143,12 +1146,11 @@ def test_retiring_stale_group_does_not_unlink_a_residents_newer_trip():
     assert old_member.mode == "riding"
 
 
-def test_experimental_vehicles_excluded_from_default_distribution():
-    """Motorcycle is marked experimental (vehicles/plugins/motorcycle.py) -
-    off by default, matching config's [experimental] enable_two_wheelers
-    default of false."""
+def test_motorcycles_are_in_the_default_distribution():
+    """Motorcycles are regular traffic now; the riding season scales their
+    weight when a vehicle is picked (motorcycle_season.py), not this table."""
     manager = NPCVehicleManager(target_count=1)
-    assert "motorcycle" not in manager.vehicle_distribution
+    assert manager.vehicle_distribution.get("motorcycle", 0.0) > 0.0
     assert "car" in manager.vehicle_distribution
 
 

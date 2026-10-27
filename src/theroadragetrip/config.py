@@ -140,6 +140,17 @@ DEFAULT_CONFIG = {
         "min_interval": "45.0",
         "max_interval": "120.0",
     },
+    "motorcycles": {
+        # The Finnish riding season (motorcycle_season.py, docs/motorcycles.md):
+        # month-day dates, and the traffic multipliers of the motorcycle weight.
+        "season_start": "04-01",
+        "summer_start": "06-01",
+        "autumn_start": "09-01",
+        "winter_start": "11-01",
+        "spring_multiplier": "0.1",
+        "summer_multiplier": "1.0",
+        "autumn_multiplier": "0.1",
+    },
     "experimental": {
         "enable_two_wheelers": "false",
     },

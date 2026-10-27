@@ -14,7 +14,8 @@ def test_builtin_vehicle_definitions_cover_traffic_capabilities():
     assert caravan.max_speed_kmh == 80.0 and not caravan.errand_eligible
     assert caravan.length_m == 4.3 and caravan.trailer.kind == "caravan"  # a car, and the caravan a body of its own
     assert vehicle_definition("camper_van").max_speed_kmh is None and vehicle_definition("camper_van").traffic_weight > 0.0
-    assert vehicle_definition("motorcycle").experimental
+    motorcycle = vehicle_definition("motorcycle")  # regular road traffic, in season (motorcycle_season.py)
+    assert not motorcycle.experimental and motorcycle.traffic_weight > 0.0 and motorcycle.movement == "road"
     assert not vehicle_definition("bicycle").is_road_vehicle
     assert not vehicle_definition("bicycle").requires_parking
 

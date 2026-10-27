@@ -52,7 +52,9 @@ VEHICLE_DEFINITIONS = {
         VehicleDefinition("camper_van", "Camper van", "car", 6.2, 2.3, 4, traffic_weight=0.012),
         VehicleDefinition("car_caravan", "Car with caravan", "car", 4.3, 1.8, 4, 80.0, errand_eligible=False, traffic_weight=0.008,
                           trailer=TrailerSpec("caravan", 4.8, 2.3, 0.9, 2.8)),
-        VehicleDefinition("motorcycle", "Motorcycle", "motorcycle", 2.0, 0.7, 1, household_eligible=True, traffic_weight=0.10, experimental=True),
+        # A motorcycle with its rider: road traffic under car rules, in season only (motorcycle_season.py).
+        # Its weight is the summer peak; the season factor scales it down to none in winter.
+        VehicleDefinition("motorcycle", "Motorcycle", "motorcycle", 2.2, 0.8, 1, household_eligible=True, traffic_weight=0.03),
         # Cyclists: their own network and movement (cycling.py) and their own
         # demand share (npc.CYCLING_SHARE), not the car traffic_weight draw.
         VehicleDefinition("bicycle", "Bicycle", "bicycle", 1.8, 0.6, 1, 25.0, requires_parking=False, is_road_vehicle=False,

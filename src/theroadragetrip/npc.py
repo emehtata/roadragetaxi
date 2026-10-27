@@ -37,6 +37,7 @@ from .residents import Household, HouseholdManager, ResidentManager
 from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision, stop_sign_decision
 from .traffic_world import _ROUTE_NODE_GRID_CELL_M, RouteSteps, TrafficWorld, run_route_steps
 from .vehicles.base import VEHICLE_DEFINITIONS, vehicle_definition
+from .motorcycle_season import MotorcycleSeason
 from . import cycling
 
 
@@ -3897,6 +3898,7 @@ class NPCVehicleManager:
         vehicle_distribution: Optional[Dict[str, float]] = None,
         include_experimental: bool = False,
         target_moving_fraction: float = NPC_TARGET_MOVING_FRACTION,
+        motorcycle_season: Optional[MotorcycleSeason] = None,
     ) -> bool:
         self.vehicles: List[NPCVehicle] = []
         self.road_rage = RoadRageClearance()
@@ -3932,6 +3934,9 @@ class NPCVehicleManager:
         self._local_density_cell = None
         self._local_people = 0.0
         self.clock = None  # the game clock (a datetime), set by the simulation; None: demand ignores time
+        self.motorcycle_season = motorcycle_season or MotorcycleSeason()
+        self.motorcycle_factor = 0.0  # this game day's (motorcycle_season); 0 until the date is known
+        self._motorcycle_day = None
         self.demand_rng = random.Random()  # seeded by tests
         self._demand_draw: Optional[float] = None
         self._demand_draw_tick = 0
@@ -3956,6 +3961,7 @@ class NPCVehicleManager:
             "trip_start_attempts": 0, "successful_trip_starts": 0,
             "route_generation_failures": 0, "route_validation_failures": 0,
             "vehicles_waiting_for_trips": 0, "population_update_duration_s": 0.0,
+            "motorcycle_season_factor": 0.0, "motorcycles_spawned": 0, "motorcycles_retired_for_winter": 0,
         }
         self._previous_player_pose: Optional[Tuple[float, float, float]] = None
         self.include_experimental = include_experimental
@@ -4038,11 +4044,29 @@ class NPCVehicleManager:
         camping = CAMPING_HOLIDAY_FACTOR if self._near_camping(at) else 1.0  # spawning by a camping area
         weights = [self.vehicle_distribution[vehicle_id] * (
                        NPC_SNOW_TRACTOR_FACTOR if self.snowy and vehicle_id == "tractor"
-                       else (NPC_SNOW_HOLIDAY_FACTOR if self.snowy else 1.0) * camping if vehicle_id in HOLIDAY_VEHICLES else 1.0)
+                       else (NPC_SNOW_HOLIDAY_FACTOR if self.snowy else 1.0) * camping if vehicle_id in HOLIDAY_VEHICLES
+                       else self.motorcycle_factor if vehicle_id == "motorcycle" else 1.0)  # the riding season
                    for vehicle_id in ids]
-        if not ids:
+        if not ids or not any(weights):
             return "car"
-        return random.choices(ids, weights=weights, k=1)[0]
+        picked = random.choices(ids, weights=weights, k=1)[0]
+        if picked == "motorcycle":
+            self.population_diagnostics["motorcycles_spawned"] += 1
+        return picked
+
+    def _update_motorcycle_season(self, resident_manager) -> None:
+        """Once per game day: the riding season's factor; in the winter exclusion
+        every motorcycle leaves the world (the ordinary retirement)."""
+        day = self.clock.date() if self.clock is not None else None
+        if day == self._motorcycle_day:
+            return
+        self._motorcycle_day = day
+        self.motorcycle_factor = self.motorcycle_season.factor(day) if day is not None else 0.0
+        self.population_diagnostics["motorcycle_season_factor"] = self.motorcycle_factor
+        if day is not None and self.motorcycle_factor == 0.0:
+            for vehicle in [v for v in self.vehicles if v.vehicle_type == "motorcycle"]:
+                self.retire_vehicle(vehicle, resident_manager)
+                self.population_diagnostics["motorcycles_retired_for_winter"] += 1
 
     def _next_id(self) -> int:
         vehicle_id = self._next_vehicle_id
@@ -6029,6 +6053,7 @@ class NPCVehicleManager:
         active_bounds=None,
     ) -> None:
         self._active_bounds = active_bounds
+        self._update_motorcycle_season(resident_manager)
         self._note_camping_sites(sceneries)
         self._retire_finished_line_buses(resident_manager, viewport_bounds)
         # collision-avoidance: nearby_vehicles_at (avoidance/collision) reads

@@ -17,7 +17,7 @@ def roads(width=4.5):
             for x in range(0, 400, 40)]
 
 
-@pytest.mark.parametrize("kind", ["car", "van", "truck", "bus", "tractor"])
+@pytest.mark.parametrize("kind", ["car", "van", "truck", "bus", "tractor", "motorcycle"])
 def test_direct_spawn_uses_plugin_dimensions_and_capacity(kind):
     ways, residents = roads(), ResidentManager()
     spawned = spawn_npc(1, residents, TrafficWorld(ways), ways, (40, 0), (200, 0), vehicle_type=kind)

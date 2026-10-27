@@ -5,6 +5,7 @@ from typing import Optional
 
 
 from .config import get_vehicle_distribution
+from . import motorcycle_season
 from .osm import (
     BBOX_PRESETS,
 )
@@ -108,13 +109,14 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
     p.add_argument(
         "--enable-two-wheelers", action="store_true",
         default=experimental_config.getboolean("enable_two_wheelers", fallback=False),
-        help="Include motorcycles in the NPC vehicle population (vehicle-population, experimental)",
+        help="Include experimental vehicle types in the NPC vehicle population (motorcycles are regular traffic now, in season)",
     )
     # No CLI flag - [traffic] vehicle_distribution is a config-file-only
     # knob (a comma-separated "id:weight" list has no clean single-flag
     # CLI shape); attached here so the server's NPCVehicleManager
     # construction doesn't need config threaded through separately.
-    p.set_defaults(vehicle_distribution=get_vehicle_distribution(config) if config else None)
+    p.set_defaults(vehicle_distribution=get_vehicle_distribution(config) if config else None,
+                   motorcycle_season=motorcycle_season.from_config(config))  # [motorcycles]: config file only
 
     return p.parse_args()
 

@@ -357,6 +357,7 @@ def load_world(
         max_count=args.npc_vehicle_max,
         vehicle_distribution=args.vehicle_distribution,
         include_experimental=args.enable_two_wheelers,
+        motorcycle_season=getattr(args, "motorcycle_season", None),
     )
     npc_manager.populate_initial(
         car.x, car.y, residents, ways, spatial_grid=spatial_grid,
