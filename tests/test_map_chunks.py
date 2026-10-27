@@ -231,9 +231,9 @@ def test_road_style_follows_the_map_style():
     two_way = SimpleNamespace(is_drivable=True, highway="primary", lanes=4, oneway=0, is_ice_road=False, surface="")
     oneway = SimpleNamespace(is_drivable=True, highway="residential", lanes=1, oneway=-1, is_ice_road=False, surface="", is_bridge=True)
     path = SimpleNamespace(is_drivable=False, highway="footway", surface="")
-    assert static_world.road_style(two_way) == {"color": list(road_color_for_way(two_way)), "center": [110, 110, 110, 2]}
-    assert static_world.road_style(oneway) == {"color": list(road_color_for_way(oneway)), "center": [110, 110, 110, 1], "oneway": -1, "bridge": True}
-    assert static_world.road_style(path) == {"color": list(road_color_for_way(path))}
+    assert static_world.road_style(two_way) == {"color": list(road_color_for_way(two_way)), "rank": 15, "center": [110, 110, 110, 2]}
+    assert static_world.road_style(oneway) == {"color": list(road_color_for_way(oneway)), "rank": 9, "center": [110, 110, 110, 1], "oneway": -1, "bridge": True}
+    assert static_world.road_style(path) == {"color": list(road_color_for_way(path)), "rank": 1}
 
 
 def test_bridge_guardrails_run_along_the_outside_only():
@@ -563,3 +563,17 @@ def test_water_shore_union_keeps_map_layers_separate(other_layer):
     has_shore = any(LineString(band["points"]).intersects(seam)
                     for chunk in index._chunks.values() for band in chunk["shore_waves"])
     assert has_shore == (other_layer != 0)
+
+
+def test_roads_rank_by_class_then_paved_for_their_draw_order():
+    from theroadragetrip.map_style import road_draw_rank
+    from theroadragetrip.osm import Way
+    street = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="residential", surface="asphalt")
+    gravel = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="residential", surface="compacted")
+    unknown = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="residential")
+    track = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="track")
+    main = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="primary", surface="gravel")
+    # Kiviniementie (asphalt) under an unnamed compacted residential street: reported drawn the wrong way round.
+    assert road_draw_rank(street) > road_draw_rank(gravel)
+    assert road_draw_rank(unknown) == road_draw_rank(street) > road_draw_rank(track)
+    assert road_draw_rank(main) > road_draw_rank(street)  # the class first: a gravel main road over a street

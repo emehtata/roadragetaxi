@@ -35,6 +35,24 @@ LEGACY_HIGHWAY_COLORS = {
 }
 
 
+# Draw order among roads on the same level: the more important road on top
+# where two meet, then paved over unpaved, then (godot/map_chunk.gd) the wider.
+ROAD_CLASS_RANK = {
+    "motorway": 9, "motorway_link": 9, "trunk": 8, "trunk_link": 8, "primary": 7, "primary_link": 7,
+    "secondary": 6, "secondary_link": 6, "tertiary": 5, "tertiary_link": 5, "unclassified": 4,
+    "residential": 4, "busway": 4, "living_street": 3, "service": 2, "track": 1,
+}
+UNPAVED_SURFACES = frozenset({"unpaved", "compacted", "gravel", "fine_gravel", "dirt", "earth", "ground", "grass",
+                              "sand", "mud", "pebblestone", "woodchips", "rock"})
+
+
+def road_draw_rank(way: Way) -> int:
+    """Class, then paved: twice the class rank, plus one if paved (unknown counts as paved, a track as not)."""
+    surface = str(getattr(way, "surface", "") or "").lower().split(";")[0].strip()
+    paved = surface not in UNPAVED_SURFACES and (surface or way.highway != "track")
+    return ROAD_CLASS_RANK.get(way.highway, 0) * 2 + int(bool(paved))
+
+
 def road_color_for_way(way: Way) -> Tuple[int, int, int]:
     """Return a road color from OSM surface, then highway-class fallback."""
     surface = str(getattr(way, "surface", "") or "").lower().split(";")[0].strip()

@@ -63,9 +63,9 @@ def road_style(way) -> dict:
     """The parts of a road's look that aren't geometry:
     colour (road_color_for_way), centre line (dashed, or solid on a two-way
     road of 3+ lanes), one-way chevrons, bridge."""
-    from .map_style import road_color_for_way
+    from .map_style import road_color_for_way, road_draw_rank
 
-    style = {"color": _rgb(road_color_for_way(way))}
+    style = {"color": _rgb(road_color_for_way(way)), "rank": road_draw_rank(way)}
     if way.is_drivable:
         lanes = max(1, int(getattr(way, "lanes", 1) or 1))
         forward, backward = getattr(way, "lanes_forward", None), getattr(way, "lanes_backward", None)

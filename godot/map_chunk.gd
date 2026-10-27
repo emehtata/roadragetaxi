@@ -332,7 +332,14 @@ static func _compact(data: Dictionary, origin: Vector2) -> int:
 static func _drawn_before(p: Dictionary, q: Dictionary) -> bool:
 	var lp := int(p.get("layer", 0))
 	var lq := int(q.get("layer", 0))
-	return lp < lq or (lp == lq and float(p.get("half_width_m", 1.5)) < float(q.get("half_width_m", 1.5)))
+	if lp != lq:
+		return lp < lq
+	# The more important road on top (the server's rank: class, then paved), then the wider.
+	var rp := int(p.get("rank", 0))
+	var rq := int(q.get("rank", 0))
+	if rp != rq:
+		return rp < rq
+	return float(p.get("half_width_m", 1.5)) < float(q.get("half_width_m", 1.5))
 
 
 static func _clip_to_bounds(data: Dictionary, bounds: PackedVector2Array, bounds_rect: Rect2, roads_by_z: Dictionary) -> void:

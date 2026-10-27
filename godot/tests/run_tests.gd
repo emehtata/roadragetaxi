@@ -2395,6 +2395,11 @@ func test_obstacles() -> void:
 	var chunk = map._chunks["2_4"]
 	check(chunk._trees != null and chunk._px_layers.size() == 2 + 2, "trees and bollards share one canvas item, fences another")
 	check(MapChunk.obstacle_key(1010.0, 2020.0) == "1010.0,2020.0", "obstacles are named by position at 0.1 m, as the server rounds")
+	var street := {"layer": 0, "rank": 9, "half_width_m": 3.0}  # an asphalt residential street
+	var gravel := {"layer": 0, "rank": 8, "half_width_m": 3.0}  # an unpaved one, as wide
+	check(MapChunk._drawn_before(gravel, street) and not MapChunk._drawn_before(street, gravel), "the paved street is drawn over the gravel one")
+	check(MapChunk._drawn_before({"layer": 0, "rank": 9, "half_width_m": 6.0}, {"layer": 0, "rank": 11, "half_width_m": 3.0}), "the more important road is on top, however wide the other")
+	check(MapChunk._drawn_before({"layer": 0, "rank": 9, "half_width_m": 2.0}, street), "same rank: the wider on top, as before")
 
 	# Look: palette by variation, pine crowns smaller.
 	var pine := MapChunk.tree_style("pine", 0.25)
