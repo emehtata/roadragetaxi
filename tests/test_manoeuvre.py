@@ -49,3 +49,16 @@ def test_a_manoeuvre_never_reverses_by_a_crossing_nor_turns_in_a_tunnel():
     assert lawful(1) and not lawful(-1)  # past the zebra forwards, never backing over it
     tunnel = [Way(points_m=[(-200.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5, is_tunnel=True)]
     assert not lawful(1, TrafficWorld(tunnel), tunnel)
+
+
+def test_a_manoeuvre_keeps_a_one_way_streets_direction_and_its_own_layer():
+    from theroadragetrip.npc import _manoeuvre_pose_lawful
+    oneway = [Way(points_m=[(-200.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5, oneway=1)]
+    world, residents = TrafficWorld(oneway), ResidentManager()
+    _, _, vehicle = spawn_npc(1, residents, world, oneway, (0.0, -2.0), (150.0, 0.0))
+    lawful = lambda yaw, direction, ways: _manoeuvre_pose_lawful(vehicle, 0.0, -2.0, yaw, direction, False, ways, None, TrafficWorld(ways), None, None)
+    assert lawful(0.0, 1, oneway) and lawful(math.pi, -1, oneway)  # eastwards, nose first or tail first
+    assert not lawful(math.pi, 1, oneway) and not lawful(0.0, -1, oneway)  # never westwards: §§ 18-22
+    street = Way(points_m=[(-200.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
+    tunnel_below = Way(points_m=[(0.0, -200.0), (0.0, 200.0)], highway="residential", half_width_m=4.5, is_tunnel=True, layer=-1)
+    assert lawful(math.pi, 1, [street, tunnel_below])  # a tunnel under the street is not the street
