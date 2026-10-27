@@ -172,6 +172,7 @@
     "idna": {"licence": "BSD-3-Clause", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "charset-normalizer": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "ephem": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
+    "rsplan": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "certifi": {"licence": "MPL-2.0", "status": "conditional", "obligations": "licence; source of the covered file available (upstream, unmodified)"},
     "pyproj": {"licence": "MIT (with PROJ, MIT)", "status": "verified", "obligations": "licences incl. LICENSE_proj (collect_licenses.py)"},
     "shapely": {"licence": "BSD-3-Clause, bundles GEOS (LGPL-2.1) as a separate DLL", "status": "conditional", "obligations": "LGPL text (LICENSE_GEOS) and GEOS source with each release (windows-release.yml); the DLL stays replaceable"},

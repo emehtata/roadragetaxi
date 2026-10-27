@@ -23,6 +23,9 @@ Godot is installed at
 Use this executable directly if `godot` is not on `PATH`; verify it with
 `--version` before concluding that Godot is unavailable.
 
+Search the web for tips, references and known solutions at any time; no
+need to ask first.
+
 Python requirements may be added when a maintained dependency is the clearest
 and most reliable way to implement the requested behavior.
 
