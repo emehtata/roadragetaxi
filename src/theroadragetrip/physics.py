@@ -1563,8 +1563,11 @@ def _update_g_force(
     """
     if dt <= 0.0:
         return
-    velocity_x = (car.x - entry_x) / dt
-    velocity_y = (car.y - entry_y) / dt
+    # Measured at the rear axle, the point the car turns about (rear_axle_shift):
+    # the centre's own swing into a turn is the body rotating, not a sideways force.
+    behind = rear_axle_behind(car)
+    velocity_x = (car.x - math.cos(car.heading) * behind - (entry_x - math.cos(entry_heading) * behind)) / dt
+    velocity_y = (car.y - math.sin(car.heading) * behind - (entry_y - math.sin(entry_heading) * behind)) / dt
 
     # Slip angle (GRIP.md section 5) needs no velocity history - just this
     # frame's actual travel direction vs. where the car points - so it's
@@ -1669,6 +1672,37 @@ def _update_g_force(
     )
 
 
+# A car turns about its rear axle, not the middle of its body: the rear
+# wheels follow the path, the front swings into the turn (the steered front
+# axle). The rear axle sits this share of the body length behind the centre
+# (wheelbase ~0.6, rear overhang ~0.2 of the length): 1.2 m on the 4 m taxi,
+# where godot/entity_layer.gd draws its tyre tracks.
+REAR_AXLE_SHARE = 0.3
+LONG_VEHICLE_M = 7.0  # a bus or truck: its rear axle nearer the middle (a 12 m bus's ~2.3 m behind)
+LONG_REAR_AXLE_SHARE = 0.2
+
+
+def rear_axle_behind(car: Car) -> float:
+    """How far behind the body's centre the rear axle sits."""
+    return car.length_m * (LONG_REAR_AXLE_SHARE if car.length_m >= LONG_VEHICLE_M else REAR_AXLE_SHARE)
+
+
+MIN_TURN_RADIUS_M = 5.0  # a car's tightest turn at full lock (rear axle)
+LONG_MIN_TURN_RADIUS_M = 11.0  # a bus's or truck's
+
+
+def min_turn_radius(car: Car) -> float:
+    return LONG_MIN_TURN_RADIUS_M if car.length_m >= LONG_VEHICLE_M else MIN_TURN_RADIUS_M
+
+
+def rear_axle_shift(car: Car, heading_before: float) -> Tuple[float, float]:
+    """How far the body's centre moves, beyond driving along its heading, when
+    it turned from `heading_before` to its heading about the rear axle."""
+    behind = rear_axle_behind(car)
+    return (behind * (math.cos(car.heading) - math.cos(heading_before)),
+            behind * (math.sin(car.heading) - math.sin(heading_before)))
+
+
 def update_car_physics(
     car: Car,
     throttle: float,
@@ -1690,8 +1724,13 @@ def update_car_physics(
     black_ice: float = 0.0,
     wind: Tuple[float, float] = (0.0, 0.0),
     fields_frozen: bool = False,
+    turning_circle: bool = True,
 ) -> bool:
     """Update car speed, heading, and position.
+
+    `turning_circle`: the steering lock (min_turn_radius). NPCs pass False for
+    now: their routes and parking manoeuvres are planned tighter than a real
+    turning circle (a follow-up: plan them for it).
 
     `wind` is the air velocity (east, north) in m/s - see wind_acceleration.
 
@@ -1832,12 +1871,18 @@ def update_car_physics(
     drift_before_decay = car.drift_angle
     car.drift_angle = _decay_toward_zero(car.drift_angle, DRIFT_RECOVERY_RATE, dt)
 
+    heading_before_steering = car.heading  # the turn pivots on the rear axle (rear_axle_shift)
     # steer: positive -> turn left (counter-clockwise), negative -> turn right
     # Cars cannot steer in-place while stationary; turning requires moving forward or backward
     if abs(car.speed) > 0.05:
         if abs(steer_input) > 0.01:
             steer_effective = STEER_RATE / (1.0 + abs(car.speed) * STEER_SPEED_FACTOR)
             desired_heading_rate = steer_input * steer_effective * (1.0 if car.speed >= 0 else -1.0)
+            # The steering lock: no tighter than the vehicle's turning circle, however slow -
+            # a crawling car no longer spins in place about its rear axle (rear_axle_shift).
+            if turning_circle:
+                lock_rate = abs(car.speed) / min_turn_radius(car)
+                desired_heading_rate = clamp(desired_heading_rate, -lock_rate, lock_rate)
 
             # Friction circle (GRIP.md section 2): driven/braking tire force
             # eats into lateral grip. Passive coasting drag does not: FRICTION
@@ -2025,8 +2070,9 @@ def update_car_physics(
     if car.drift_angle:
         car.speed -= car.speed * abs(math.sin(car.drift_angle)) * DRIFT_SPEED_SCRUB * dt
     movement_heading = car.heading + car.drift_angle
-    dx = math.cos(movement_heading) * car.speed * dt
-    dy = math.sin(movement_heading) * car.speed * dt
+    pivot_x, pivot_y = rear_axle_shift(car, heading_before_steering)
+    dx = math.cos(movement_heading) * car.speed * dt + pivot_x
+    dy = math.sin(movement_heading) * car.speed * dt + pivot_y
     target_x = car.x + dx
     target_y = car.y + dy
 
@@ -2061,8 +2107,8 @@ def update_car_physics(
                 car.speed = max(speed_cap, car.speed - OFFROAD_DECEL * dt)
             elif car.speed < -speed_cap:
                 car.speed = min(-speed_cap, car.speed + OFFROAD_DECEL * dt)
-            dx = math.cos(car.heading) * car.speed * dt
-            dy = math.sin(car.heading) * car.speed * dt
+            dx = math.cos(car.heading) * car.speed * dt + pivot_x
+            dy = math.sin(car.heading) * car.speed * dt + pivot_y
             target_x = car.x + dx
             target_y = car.y + dy
 

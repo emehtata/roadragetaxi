@@ -30,7 +30,7 @@ from .bus_lines import is_line_bus
 from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
 from .osm import Curb, ParkingSpace, StopSign, Way
-from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, get_road_layer_at_point, is_point_on_road, update_car_physics
+from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, rear_axle_behind, get_road_layer_at_point, is_point_on_road, update_car_physics
 from .population import people_within, traffic_demand
 from .road_rage import RoadRageClearance
 from .residents import Household, HouseholdManager, ResidentManager
@@ -2556,7 +2556,11 @@ def update_npc(
         return
 
     path = driver.path
-    target, _lookahead = _path_follow_target(driver, vehicle.car.x, vehicle.car.y, vehicle.car.speed)
+    # Pure pursuit tracks the route with the rear axle (physics.rear_axle_shift): the point the car turns about.
+    axle_behind = rear_axle_behind(vehicle.car)
+    target, _lookahead = _path_follow_target(
+        driver, vehicle.car.x - math.cos(vehicle.car.heading) * axle_behind,
+        vehicle.car.y - math.sin(vehicle.car.heading) * axle_behind, vehicle.car.speed)
     route_target = path[driver.path_index]
     if route_target.way is not None:
         driver.current_way = route_target.way
@@ -2861,7 +2865,11 @@ def update_npc(
         steer_left = steer_right = 0.0
     else:
         target_x, target_y = target.x, target.y
-        desired_heading = math.atan2(target_y - vehicle.car.y, target_x - vehicle.car.x)
+        # Pure pursuit from the rear axle, the point the car turns about (physics.rear_axle_shift).
+        behind = rear_axle_behind(vehicle.car)
+        rear_x = vehicle.car.x - math.cos(vehicle.car.heading) * behind
+        rear_y = vehicle.car.y - math.sin(vehicle.car.heading) * behind
+        desired_heading = math.atan2(target_y - rear_y, target_x - rear_x)
         heading_error = angle_diff(desired_heading, vehicle.car.heading)
         requested_steer = clamp(heading_error / math.radians(STEER_FULL_ANGLE_DEG), -1.0, 1.0)
         # A first-order steering actuator avoids alternating full-lock input
@@ -2885,6 +2893,7 @@ def update_npc(
     update_car_physics(
         vehicle.car, throttle=1.0, brake=0.0, steer_left=steer_left, steer_right=steer_right, dt=dt,
         block_offroad=False, speed_limit_mps=speed_limit_mps,
+        turning_circle=False,  # their yard and parking manoeuvres are planned tighter (physics.update_car_physics)
     )
     _enforce_npc_road_motion(vehicle, driver, previous_pose, traffic_world, spatial_grid, manager)
     if protests is not None and protests.blocks_movement(vehicle.car, previous_pose):
@@ -3711,7 +3720,9 @@ def _continue_npc_trip_steps(
 
 BUS_STOP_ROAD_SEARCH_M = 50.0  # the roads near a stop searched for the one it stands beside
 BUS_BAY_PULL_IN_M = 20.0  # from its lane into the bay over this distance
-BUS_BAY_STRAIGHT_M = 8.0  # ...then straight along the bay to its middle
+BUS_BAY_STRAIGHT_M = 4.0  # ...then straight along the bay to its middle
+BUS_BAY_KERB_SHARE = 0.65  # at this share of the pull-in it is beside the kerb: the step into the bay spread over the rest
+# (turning about its rear axle, physics.rear_axle_shift, an 11 m bus cannot jog sideways in a couple of metres)
 BUS_STOP_REACHED_M = 6.0  # a path segment this near the stop's lane point passes it (either lane of the road)
 BUS_AT_BAY_M = 15.0  # this near the stop it last served, a bus leaves from its bay (_pull_out_of_bay)
 BUS_STOP_OVERSHOOT_M = 30.0  # a path point this near a stop, past it, is a detour beyond it (_end_at_stop)
@@ -3761,7 +3772,7 @@ def _bus_leg_steps(vehicle, job, traffic_world, ways, spatial_grid, curbs, curb_
     at = lambda along_m, out_m: dataclasses.replace(
         path[-1], x=px + direction[0] * along_m + nx * out_m, y=py + direction[1] * along_m + ny * out_m)
     lane_out = (lane[0] - px) * nx + (lane[1] - py) * ny
-    path = keep + [at(-BUS_BAY_PULL_IN_M, lane_out), at(-BUS_BAY_PULL_IN_M * 0.5, kerb_side),
+    path = keep + [at(-BUS_BAY_PULL_IN_M, lane_out), at(-BUS_BAY_PULL_IN_M * BUS_BAY_KERB_SHARE, kerb_side),
                    at(-BUS_BAY_STRAIGHT_M, out), at(0.0, out)]
     left = job.stopped_at
     if left is not None and math.hypot(vehicle.car.x - left.x, vehicle.car.y - left.y) < BUS_AT_BAY_M:
@@ -3789,7 +3800,7 @@ def _pull_out_of_bay(path, stop, ways, vehicle_width_m) -> list:
         path[1], x=px + direction[0] * along_m + nx * out_m, y=py + direction[1] * along_m + ny * out_m)
     along = lambda q: (q.x - px) * direction[0] + (q.y - py) * direction[1]
     rest = [q for q in path[1:] if along(q) > BUS_BAY_PULL_IN_M or math.hypot(q.x - px, q.y - py) > BUS_STOP_OVERSHOOT_M]
-    return [path[0], at(BUS_BAY_STRAIGHT_M, out), at(BUS_BAY_PULL_IN_M * 0.5, kerb_side), at(BUS_BAY_PULL_IN_M, lane_out)] + rest
+    return [path[0], at(BUS_BAY_STRAIGHT_M, out), at(BUS_BAY_PULL_IN_M * BUS_BAY_KERB_SHARE, kerb_side), at(BUS_BAY_PULL_IN_M, lane_out)] + rest
 
 
 def _arrives_along(path, point, direction) -> bool:
