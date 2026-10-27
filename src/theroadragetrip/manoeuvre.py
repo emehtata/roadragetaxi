@@ -22,11 +22,12 @@ MAX_DETOUR = 4.0  # a plan longer than this many times the straight distance, pl
 SLACK_M = 20.0
 
 
-def plan(start: Pose, goal: Pose, radius: float, valid: Callable[[float, float, float], bool]) -> Optional[List[List[Tuple[float, float, float, int]]]]:
+def plan(start: Pose, goal: Pose, radius: float, valid: Callable[[float, float, float, int], bool]) -> Optional[List[List[Tuple[float, float, float, int]]]]:
     """The manoeuvre from `start` to `goal` (rear-axle poses) at `radius`: its
     runs, each a list of (x, y, heading, direction +1 forward / -1 reverse) in
     one direction - or None when there is none `valid` (the body's pose
-    check) holds along, or it is a long way round rather than a manoeuvre."""
+    check, given each point's direction) holds along, or it is a long way
+    round rather than a manoeuvre."""
     try:
         path = planner.path(start, goal, radius, 0.0, STEP_M)
     except (ValueError, ZeroDivisionError, RuntimeError):
@@ -35,7 +36,7 @@ def plan(start: Pose, goal: Pose, radius: float, valid: Callable[[float, float, 
     if sum(abs(float(segment.length)) for segment in path.segments) > straight * MAX_DETOUR + SLACK_M:
         return None
     points = [(float(w.x), float(w.y), float(w.yaw), int(w.driving_direction)) for w in path.waypoints()]
-    if not points or not all(valid(x, y, yaw) for x, y, yaw, _ in points[::CHECK_EVERY] + points[-1:]):
+    if not points or not all(valid(x, y, yaw, direction) for x, y, yaw, direction in points[::CHECK_EVERY] + points[-1:]):
         return None
     runs: List[List[Tuple[float, float, float, int]]] = []
     for point in points:
@@ -63,7 +64,7 @@ def follow(run, rear_x: float, rear_y: float, heading: float, lookahead_m: float
 
 
 if __name__ == "__main__":  # a three-point turn: about face on the spot
-    runs = plan((0.0, 0.0, 0.0), (0.0, 0.0, math.pi), 3.7, lambda x, y, yaw: abs(y) < 10.0)
+    runs = plan((0.0, 0.0, 0.0), (0.0, 0.0, math.pi), 3.7, lambda x, y, yaw, direction: abs(y) < 10.0)
     assert runs is not None and [run[0][3] for run in runs] == [1, -1, 1], runs and [run[0][3] for run in runs]
-    assert plan((0.0, 0.0, 0.0), (0.0, 0.0, math.pi), 3.7, lambda x, y, yaw: abs(y) < 1.0) is None  # no room
+    assert plan((0.0, 0.0, 0.0), (0.0, 0.0, math.pi), 3.7, lambda x, y, yaw, direction: abs(y) < 1.0) is None  # no room
     print("ok")
