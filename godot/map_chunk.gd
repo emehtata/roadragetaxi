@@ -128,7 +128,9 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		if prepared["forest_mask"] != null:
 			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse", CANOPY_MARGIN_M))
 			var material := FOREST_MATERIAL.duplicate() as ShaderMaterial
-			material.set_shader_parameter("canopy_mask", ImageTexture.create_from_image(prepared["forest_mask"]))
+			var mask := ImageTexture.create_from_image(prepared["forest_mask"])
+			material.set_shader_parameter("canopy_mask", mask)
+			material.set_shader_parameter("crown_mask", mask)  # the same, read unfiltered at crown centres
 			material.set_shader_parameter("mask_rect", Vector4(_bounds_rect.position.x, _bounds_rect.position.y, _bounds_rect.size.x, _bounds_rect.size.y))
 			canopy.material = material
 			_season_layers.append(canopy)

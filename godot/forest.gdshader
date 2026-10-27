@@ -2,6 +2,7 @@
 shader_type canvas_item;
 
 uniform sampler2D canopy_mask : filter_linear, repeat_disable;
+uniform sampler2D crown_mask : filter_nearest, repeat_disable;  // the same mask, read once per crown at its centre
 uniform vec4 mask_rect;
 varying vec2 world;
 
@@ -34,11 +35,6 @@ void fragment() {
 					vec2 key = cell + vec2(float(x), float(y)) * neighbour;
 					vec2 seed = hash2(key);
 					vec2 center = key + vec2(0.2) + seed * 0.6;
-					// Whole crowns or none: the mask is read at the crown's centre, so a road,
-					// building or clearing edge never slices one (it overhangs instead).
-					if (texture(canopy_mask, (center * 4.2 - mask_rect.xy) / mask_rect.zw).r < 0.5) {
-						continue;
-					}
 					vec2 offset = (grid - center) * 4.2;
 					float species = fract(seed.x * 17.0 + seed.y * 7.0);
 					float radius = 2.5 + seed.y * 0.8;
@@ -47,7 +43,11 @@ void fragment() {
 					float edge = radius * (0.92 + 0.08 * sin(angle * lobes + seed.x * 6.28));
 					float distance = length(offset);
 					float height = (1.0 - distance / edge) * (2.0 + seed.x);
-					if (height > highest && distance < edge + aa) {
+					// Whole crowns or none: the mask is read at the crown's centre, so a road,
+					// building or clearing edge never slices one (it overhangs instead) - and only
+					// for a crown covering this pixel on top (one or two reads, not four).
+					if (height > highest && distance < edge + aa
+							&& texture(crown_mask, (center * 4.2 - mask_rect.xy) / mask_rect.zw).r >= 0.5) {
 						highest = height;
 						vec3 crown = species < 0.45 ? vec3(0.25, 0.34, 0.13) : (species < 0.8 ? vec3(0.08, 0.24, 0.12) : vec3(0.24, 0.42, 0.17));
 						if (species >= 0.8) {
@@ -65,7 +65,7 @@ void fragment() {
 		}
 		COLOR.rgb = mix(COLOR.rgb * 0.85, color, detail);
 		// The flat fill of distant zooms keeps the per-pixel mask; crowns carry their own.
-		float flat_fill = texture(canopy_mask, (world - mask_rect.xy) / mask_rect.zw).r;
+		float flat_fill = detail < 1.0 ? texture(canopy_mask, (world - mask_rect.xy) / mask_rect.zw).r : 0.0;
 		COLOR.a *= mix(flat_fill, coverage, detail);
 	} else {
 		COLOR.a = 0.0;
