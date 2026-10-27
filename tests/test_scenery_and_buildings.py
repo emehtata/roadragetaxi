@@ -1,3 +1,4 @@
+import math
 import sys
 import types
 
@@ -442,6 +443,27 @@ def test_build_ways_aligns_a_bench_beside_its_nearby_footway():
     # Pushed out past the footway's half-width, not sitting on its
     # centerline or left floating at its raw (off-center) node position.
     assert abs(bench.y - footway_y) > 0.0
+
+
+def test_build_ways_aligns_bicycle_parking_and_gates_with_their_path():
+    """Bicycle parking rendered axis-aligned across a diagonal street: it
+    follows the nearby way like a bench. A gate stands on its path, so it
+    takes the path's direction without being pushed off it."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.000, "lon": 25.000},
+        {"type": "node", "id": 2, "lat": 60.010, "lon": 25.010},
+        {"type": "node", "id": 3, "lat": 60.0051, "lon": 25.005, "tags": {"amenity": "bicycle_parking"}},
+        {"type": "node", "id": 4, "lat": 60.002, "lon": 25.002, "tags": {"barrier": "gate"}},
+        {"type": "way", "id": 10, "nodes": [1, 4, 2], "tags": {"highway": "footway"}},
+    ]
+
+    result = build_ways(elements)
+
+    by_kind = {o.kind: o for o in result.scenery_objects}
+    assert abs(by_kind["bicycle_parking"].direction_angle - math.pi / 4) < 1e-6
+    gate = by_kind["gate"]
+    assert abs(gate.direction_angle - math.pi / 4) < 1e-6
+    assert (gate.x, gate.y) == (25.002 * 1000.0, 60.002 * 1000.0)
 
 
 def test_build_ways_leaves_a_bench_unaligned_with_no_nearby_way():

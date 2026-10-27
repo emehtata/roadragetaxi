@@ -64,7 +64,9 @@ _STATUE_ARTWORK_TYPES = {"statue", "sculpture"}
 
 # Scenery-object kinds placed beside a path rather than free-standing -
 # see the scenery_object_nodes_raw loop below.
-_ALIGN_TO_PATH_SCENERY_KINDS = {"bench", "waste_basket"}
+_ALIGN_TO_PATH_SCENERY_KINDS = {"bench", "waste_basket", "bicycle_parking", "picnic_table"}
+# Mapped on the path itself: they take its direction but stay where they are.
+_ON_PATH_SCENERY_KINDS = {"gate"}
 
 # A real traffic/pedestrian-refuge island's kerb outline is compact (real
 # Oulu examples measured 3-12m across) and has genuine extent in both
@@ -1685,7 +1687,7 @@ def build_ways(
         if not pt or kind is None:
             continue
         obj_x, obj_y, angle = pt[0], pt[1], None
-        if kind in _ALIGN_TO_PATH_SCENERY_KINDS:
+        if kind in _ALIGN_TO_PATH_SCENERY_KINDS or kind in _ON_PATH_SCENERY_KINDS:
             try:
                 layer_val = int(tags.get("layer", 0))
             except (TypeError, ValueError):
@@ -1693,7 +1695,9 @@ def build_ways(
             snap_x, snap_y, way_angle, way_half_w, found = _snap_to_nearest_road(
                 pt, layer_val, path_ways_grid, path_grid_size
             )
-            if found:
+            if found and kind in _ON_PATH_SCENERY_KINDS:
+                angle = way_angle
+            elif found:
                 normal_x, normal_y = -math.sin(way_angle), math.cos(way_angle)
                 side = 1.0 if (pt[0] - snap_x) * normal_x + (pt[1] - snap_y) * normal_y >= 0.0 else -1.0
                 clearance = way_half_w + 0.5

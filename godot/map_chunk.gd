@@ -1129,7 +1129,9 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 			node.draw_circle(at - Vector2(0, radius / 2.0), radius, Color8(150, 130, 85))
 		"picnic_table":
 			var size := Vector2(maxf(_px(2.0), 1.6), maxf(_px(2.0), 0.9))
-			node.draw_rect(Rect2(at - size / 2.0, size), Color8(135, 95, 55))
+			node.draw_set_transform(at, -angle)
+			node.draw_rect(Rect2(-size / 2.0, size), Color8(135, 95, 55))
+			node.draw_set_transform(Vector2.ZERO)
 		"firepit":
 			var radius := maxf(_px(2.0), 0.5)
 			node.draw_arc(at, radius, 0.0, TAU, 16, Color8(60, 58, 55), maxf(_px(1.0), radius / 3.0))
@@ -1138,9 +1140,11 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 			var radius := maxf(_px(2.0), 0.7)
 			node.draw_circle(at, radius, Color8(90, 165, 185))
 			node.draw_circle(at, maxf(_px(1.0), radius / 3.0), Color8(220, 240, 245))
-		"gate":
+		"gate":  # across the path it stands on
 			var half := maxf(_px(2.0), 1.0)
-			node.draw_line(at - Vector2(half, 0), at + Vector2(half, 0), Color8(100, 92, 80), maxf(_px(1.0), 0.15))
+			node.draw_set_transform(at, -angle)
+			node.draw_line(Vector2(0, -half), Vector2(0, half), Color8(100, 92, 80), maxf(_px(1.0), 0.15))
+			node.draw_set_transform(Vector2.ZERO)
 
 
 func _draw_caravan(node: Node2D, hitched: bool, blue_car: bool) -> void:
