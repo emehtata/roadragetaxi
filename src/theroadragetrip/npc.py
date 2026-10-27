@@ -1144,6 +1144,8 @@ class Driver:
     pass_wait_s: float = 0.0
     cycle: Optional[object] = None  # a cyclist's cycling.CycleRoute (path above unused but for debug)
     replans: int = 0  # a cyclist's new destinations after getting stuck
+    rack_slot: Optional[Tuple[float, float, float]] = None  # a cyclist's claimed hoop (cycling.rack_slots)
+    rack_claim: Optional[tuple] = None  # (rack OSM id, hoop index): survives the rack being rebuilt by a map merge
 
     @property
     def next_maneuver(self) -> str:
@@ -3911,6 +3913,9 @@ class NPCVehicleManager:
         self.bus_stops = ()  # the world's BusStops, set by the simulation each frame
         self._bus_lines_for = None  # (id, len) of the bus_stops the cached lines came from
         self._bus_lines = {}
+        self.scenery_objects = ()  # the world's SceneryObjects, set by the simulation each frame
+        self._racks_for = None  # (id, len) of the scenery_objects the cached racks came from
+        self._racks = []
         self.max_count = max_count if max_count is not None else max(self.min_count, int(target_count * 1.5))
         self.household_fraction = household_fraction
         # living-traffic: a *stable* target (target_count's own steady-state
@@ -5704,8 +5709,51 @@ class NPCVehicleManager:
         self._enqueue_route_job("cycle", None, cycling.cycle_spawn_steps(
             traffic_world.cycle_graph, (player_x, player_y), self._active_bounds, viewport_bounds,
             lambda point: any(True for _ in self.nearby_vehicles_at(point[0], point[1], cycling.CYCLIST_SPAWN_CLEARANCE_M)),
-            spatial_grid, definition.width_m,
+            spatial_grid, definition.width_m, racks=self.bicycle_racks(),
         ), traffic_world)
+
+    def bicycle_racks(self) -> list:
+        """The world's bicycle_parking objects, refiltered only when the scenery list changes."""
+        key = (id(self.scenery_objects), len(self.scenery_objects))
+        if key != self._racks_for:
+            self._racks_for = key
+            self._racks = [obj for obj in self.scenery_objects if getattr(obj, "kind", None) == "bicycle_parking"]
+        return self._racks
+
+    def _claim_rack_slot(self, driver, rack) -> None:
+        """Claim a free hoop of `rack` for `driver`; none when every hoop has a bike."""
+        taken = {d.rack_claim for d in self.drivers.values() if d.rack_claim is not None}
+        key = rack.id if rack.id is not None else (round(rack.x, 1), round(rack.y, 1))
+        for index, slot in enumerate(cycling.rack_slots(rack)):
+            if (key, index) not in taken:
+                driver.rack_slot, driver.rack_claim = slot, (key, index)
+                return
+
+    @staticmethod
+    def _walk_bike_to_rack(vehicle, driver, dt) -> None:
+        """The rider, off the bike, walks it in front of its hoop, then straight
+        in (never across the bikes already in the next hoops); parked there."""
+        x, y, heading = driver.rack_slot
+        car = vehicle.car
+        nx, ny = math.cos(heading), math.sin(heading)
+        along = (car.x - x) * nx + (car.y - y) * ny
+        if along > 0.0:  # in from whichever end the rider is at
+            nx, ny, along = -nx, -ny, -along
+        if math.hypot(car.x - x - along * nx, car.y - y - along * ny) > 0.05:  # not yet lined up
+            x, y = x - nx * vehicle.car.length_m, y - ny * vehicle.car.length_m
+        dx, dy = x - car.x, y - car.y
+        distance = math.hypot(dx, dy)
+        step = cycling.RACK_WALK_MPS * dt
+        if distance <= step:
+            car.x, car.y = x, y
+            if (x, y) == driver.rack_slot[:2]:
+                car.heading, car.speed = heading, 0.0
+                vehicle.state = NPCState.PARKED
+            return
+        car.x += dx / distance * step
+        car.y += dy / distance * step
+        car.heading = math.atan2(dy, dx)
+        car.speed = cycling.RACK_WALK_MPS
 
     def _finish_cycle_job(self, job, route, player_x, player_y, viewport_bounds, resident_manager) -> None:
         """A cycle job's plan: a new cyclist, or a stuck one's new trip."""
@@ -5759,13 +5807,19 @@ class NPCVehicleManager:
                         pedestrians, spatial_grid, viewport_bounds) -> None:
         if vehicle.state == NPCState.PARKED:
             return  # arrived, the rider off it: retired once out of view (_top_up_cyclists)
+        if driver.rack_slot is not None:
+            self._walk_bike_to_rack(vehicle, driver, dt)
+            return
         if driver.route_job_pending:
             vehicle.car.speed = 0.0
             return
         event = cycling.update_cyclist(vehicle, driver, dt, traffic_world, nearby_obstacles, pedestrians)
         if event == "arrived":
-            vehicle.state = NPCState.PARKED
             vehicle.debug_waiting_for = ""
+            if driver.cycle.rack is not None:
+                self._claim_rack_slot(driver, driver.cycle.rack)
+            if driver.rack_slot is None:
+                vehicle.state = NPCState.PARKED  # no rack, or a full one: where the ride ended
         elif event == "stuck":
             from .viewport import in_bounds
             # Game cleanup (guide: jam cleanup after failed recovery): a new
@@ -5783,7 +5837,7 @@ class NPCVehicleManager:
             driver.replans += 1
             driver.route_job_pending = True
             self._enqueue_route_job("cycle", vehicle, cycling.cycle_trip_steps(
-                traffic_world.cycle_graph, nearest, spatial_grid, vehicle.width_m), traffic_world)
+                traffic_world.cycle_graph, nearest, spatial_grid, vehicle.width_m, racks=self.bicycle_racks()), traffic_world)
 
     @staticmethod
     def _pedestrian_lookup(pedestrian_mgr, active):

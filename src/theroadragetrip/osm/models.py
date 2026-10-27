@@ -549,7 +549,7 @@ class SceneryObject:
     godot/chunk_detail.gd for how each kind is drawn.
 
     direction_angle is set only for kinds placed beside a path/way (bench,
-    waste_basket) - the position is snapped just past that way's edge, on
+    waste_basket, bicycle_parking, picnic_table) or on it (gate) - the position is snapped just past that way's edge, on
     whichever side the raw OSM node already leaned towards, and the angle
     is that way's heading (used to rotate an elongated icon like a bench
     so it sits parallel to the path, not always axis-aligned).

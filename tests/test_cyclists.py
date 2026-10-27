@@ -279,3 +279,59 @@ def test_car_behind_a_cyclist_follows_without_hitting_it():
         closest = min(closest, bike.x - car.x)
     assert car.state != NPCState.CRASHED and bike.state != NPCState.CRASHED
     assert (car.length_m + bike.length_m) / 2 < closest < 15.0  # it did catch up, and stayed behind
+
+
+class _Lowest:
+    """An rng whose every draw is the low end of its range: a trip from the
+    west end of the path below ends 180 m east of it, near the player."""
+    def uniform(self, low, high):
+        return low
+
+
+def test_cyclists_park_in_a_free_rack_hoop_near_their_destination():
+    from theroadragetrip.osm.models import SceneryObject
+    world = _World([_way([(0, 0), (250, 0)], "cycleway")])
+    rack = SceneryObject(x=170.0, y=3.0, kind="bicycle_parking", direction_angle=0.0)
+    world.manager.scenery_objects = [rack]
+    bikes = []
+    for _ in range(2):
+        route = run_route_steps(cycling.cycle_trip_steps(
+            world.traffic.cycle_graph, (0, 0), world.grid, 0.6, rng=_Lowest(), racks=world.manager.bicycle_racks()))
+        assert route is not None and route.rack is rack
+        world.manager._finish_cycle_job({"kind": "cycle", "vehicle": None}, route, 1e6, 1e6, None, world.residents)
+        bikes.append(world.manager.vehicles[-1])
+        assert world.tick(120, until=lambda: bikes[-1].state == NPCState.PARKED)  # then the next one sets off
+    slots = cycling.rack_slots(rack)
+    parked = [next(s for s in slots if math.hypot(b.x - s[0], b.y - s[1]) < 1e-6) for b in bikes]
+    assert parked[0] != parked[1]  # one bike per hoop
+    assert all(abs(math.sin(b.car.heading)) > 0.99 for b in bikes)  # across the row
+
+
+def _rack_trip(ways, rack, manager_racks=None):
+    world = _World(ways)
+    world.manager.scenery_objects = [rack]
+    route = run_route_steps(cycling.cycle_trip_steps(
+        world.traffic.cycle_graph, (0, 0), world.grid, 0.6, rng=_Lowest(), racks=world.manager.bicycle_racks()))
+    return world, route
+
+
+def test_a_rack_across_a_road_or_under_a_bridge_is_not_used():
+    from theroadragetrip.osm.models import SceneryObject
+    rack = SceneryObject(x=170.0, y=5.0, kind="bicycle_parking", direction_angle=0.0, id=7)
+    road = _way([(100, 2.5), (250, 2.5)], "residential")  # between the cycleway and the rack
+    _, route = _rack_trip([_way([(0, 0), (250, 0)], "cycleway"), road], rack)
+    assert route is not None and route.rack is None  # walking the bike across the carriageway: no
+    _, route = _rack_trip([_way([(0, 0), (250, 0)], "cycleway", layer=1)], rack)
+    assert route is not None and route.rack is None  # from a bridge down to a rack under it: no
+
+
+def test_a_full_rack_leaves_the_bike_where_the_ride_ended():
+    from theroadragetrip.osm.models import SceneryObject
+    rack = SceneryObject(x=170.0, y=3.0, kind="bicycle_parking", direction_angle=0.0, id=7)
+    world, route = _rack_trip([_way([(0, 0), (250, 0)], "cycleway")], rack)
+    for index in range(len(cycling.RACK_HOOPS_M)):  # every hoop already has a bike
+        world.manager.drivers[-1 - index] = SimpleNamespace(rack_claim=(7, index), rack_slot=None)
+    world.manager._finish_cycle_job({"kind": "cycle", "vehicle": None}, route, 1e6, 1e6, None, world.residents)
+    bike = world.manager.vehicles[-1]
+    assert world.tick(120, until=lambda: bike.state == NPCState.PARKED)
+    assert abs(bike.y - route.points[-1][1]) < 0.5  # on its riding line, not in a hoop
