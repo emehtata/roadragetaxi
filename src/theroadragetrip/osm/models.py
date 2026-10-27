@@ -563,6 +563,8 @@ class SceneryObject:
     direction_angle: Optional[float] = None
     is_area: bool = False
     opening_hours: Optional[str] = None  # OSM opening_hours (nightclubs: nightlife.py)
+    capacity: Optional[int] = None  # OSM capacity: vehicles at once (charging stations; EVs to come)
+    level: Optional[int] = None  # OSM level: a charging station in a garage (-1) or on a roof deck (5), not on the street
 
 
 class MapData(tuple):

@@ -32,7 +32,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "nightclubs", "attractions", "tennis_courts", "volleyball_courts", "shore_waves")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
-DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
+DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "charging_station", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
 
 CHUNK_SIZE_M = 500.0
 LOAD_RADIUS = 3    # chunks around the player's chunk that must be loaded (7 x 7, >= 1.5 km each way)
@@ -339,9 +339,11 @@ class ChunkIndex:
                 x, y = static_world.building_owner(building)
                 self._add("nightclubs", ((x, y),), [round(x, 1), round(y, 1), nightclub_schedule(None)])
         for obj in getattr(world, "scenery_objects", ()):
-            if obj.kind in DECORATIVE_KINDS:
-                self._add("scenery_objects", ((obj.x, obj.y),),
-                          [round(obj.x, 1), round(obj.y, 1), obj.kind, round(obj.direction_angle or 0.0, 3)])
+            if obj.kind in DECORATIVE_KINDS and not getattr(obj, "level", None):  # a garage's or roof deck's: not on the street
+                row = [round(obj.x, 1), round(obj.y, 1), obj.kind, round(obj.direction_angle or 0.0, 3)]
+                if obj.kind == "charging_station":  # how many cars it charges at once: its posts
+                    row.append(obj.capacity or 2)
+                self._add("scenery_objects", ((obj.x, obj.y),), row)
         # Street lights as street_lights.py places them (explicit OSM lamps, then
         # lit roads at fixed spacing): [x, y, the road's direction, pool radius].
         for lamp in getattr(world, "street_light_points", ()):

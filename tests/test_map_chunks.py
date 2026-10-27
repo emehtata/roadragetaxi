@@ -15,6 +15,17 @@ def test_point_sites_are_streamed_to_the_renderer(kind):
     assert map_chunks.ChunkIndex(world).message("0_0")["scenery_objects"] == [[10, 20, kind, 0.0]]
 
 
+def test_charging_stations_are_streamed_with_their_capacity():
+    from theroadragetrip.osm import SceneryObject
+
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], scenery_objects=[
+        SceneryObject(10, 20, "charging_station", direction_angle=0.5, capacity=6),
+        SceneryObject(30, 20, "charging_station"),
+        SceneryObject(50, 20, "charging_station", level=-1)])  # underground: not drawn on the street
+    rows = map_chunks.ChunkIndex(world).message("0_0")["scenery_objects"]
+    assert rows == [[10, 20, "charging_station", 0.5, 6], [30, 20, "charging_station", 0.0, 2]]  # unmapped: a two-bay post
+
+
 def test_runtime_camera_updates_only_its_chunk_and_invalidates_wire_cache():
     from theroadragetrip.police import SpeedCamera
 

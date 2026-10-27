@@ -1066,11 +1066,11 @@ func _draw_trees(node: Node2D) -> void:
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			node.draw_circle(MapMath.point(_origin, post[0], post[1]), maxf(_px(1.0), 0.25), Color8(48, 48, 46))
 	for obj in _data.get("scenery_objects", []):
-		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]))
+		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]), int(obj[4]) if obj.size() > 4 else 0)
 
 
 ## The decorative scenery objects, in metres with minimum pixel sizes.
-func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float) -> void:
+func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float, capacity := 0) -> void:
 	match kind:
 		"caravan", "caravan_with_car":
 			node.draw_set_transform(at, -angle)
@@ -1119,6 +1119,19 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 			for stroke: Array in [[Color8(35, 45, 50), maxf(_px(3.0), 0.16)], [Color8(200, 208, 212), maxf(_px(1.0), 0.06)]]:
 				for x: float in [-1.2, -0.4, 0.4, 1.2]:
 					node.draw_line(Vector2(x, -0.4), Vector2(x, 0.4), stroke[0], stroke[1])
+			node.draw_set_transform(Vector2.ZERO)
+		"charging_station":  # from above: a pedestal between each two bays, its lit screen and a bolt
+			var posts := clampi(ceili(maxi(capacity, 1) / 2.0), 1, 6)
+			node.draw_set_transform(at, -angle)
+			for i in posts:
+				var x := (i - (posts - 1) / 2.0) * 2.6  # a bay's width apart
+				var body := Vector2(maxf(_px(4.0), 0.55), maxf(_px(3.0), 0.4))
+				node.draw_rect(Rect2(Vector2(x, 0.0) - body / 2.0, body), Color8(52, 58, 62))
+				node.draw_rect(Rect2(Vector2(x, 0.0) - body / 2.0, body), Color8(20, 24, 26), false, maxf(_px(1.0), 0.04))
+				node.draw_rect(Rect2(Vector2(x, 0.0) - body * 0.38, body * 0.76), Color8(60, 200, 120))  # the lit screen
+				var s := body.y * 0.34  # the bolt across it
+				node.draw_colored_polygon(PackedVector2Array([Vector2(x + s * 0.3, -s * 1.1), Vector2(x - s * 0.6, s * 0.15), Vector2(x, s * 0.15),
+					Vector2(x - s * 0.3, s * 1.1), Vector2(x + s * 0.6, -s * 0.15), Vector2(x, -s * 0.15)]), Color8(250, 250, 240))
 			node.draw_set_transform(Vector2.ZERO)
 		"statue":
 			var pedestal := Vector2(maxf(_px(2.0), 0.9), maxf(_px(2.0), 0.6))

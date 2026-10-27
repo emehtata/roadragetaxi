@@ -122,7 +122,8 @@ MAGIC = b"RWC\0"
 # 55: Way cycling metadata (bicycle, cycleway, oneway:bicycle, motorroad).
 # 56: Way.ref, the OSM road number(s) (Digitraffic road data matching).
 # 57: bicycle parking, picnic tables and gates follow their path's direction.
-FORMAT_VERSION = 57
+# 58: amenity=charging_station scenery with its capacity and level.
+FORMAT_VERSION = 58
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

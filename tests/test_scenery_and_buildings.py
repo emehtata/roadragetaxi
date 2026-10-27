@@ -931,3 +931,21 @@ def _window_block(count: int, x0: float = 0.0):
 
 
 
+
+
+def test_build_ways_reads_a_charging_station_with_its_capacity_and_road_direction():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.000, "lon": 25.000},
+        {"type": "node", "id": 2, "lat": 60.010, "lon": 25.010},
+        {"type": "node", "id": 3, "lat": 60.0051, "lon": 25.005, "tags": {"amenity": "charging_station", "capacity": "4"}},
+        {"type": "node", "id": 4, "lat": 60.0022, "lon": 25.002, "tags": {"amenity": "charging_station", "capacity": "lots", "level": "-1"}},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "service"}},
+    ]
+
+    result = build_ways(elements)
+
+    stations = {o.id: o for o in result.scenery_objects if o.kind == "charging_station"}
+    assert stations[3].capacity == 4 and stations[4].capacity is None  # a bad tag: unknown, not a crash
+    assert stations[3].level is None and stations[4].level == -1  # in a garage
+    assert abs(stations[3].direction_angle - math.pi / 4) < 1e-6  # faces the road it stands by...
+    assert (stations[3].x, stations[3].y) == (25.005 * 1000.0, 60.0051 * 1000.0)  # ...where it was mapped

@@ -65,8 +65,9 @@ _STATUE_ARTWORK_TYPES = {"statue", "sculpture"}
 # Scenery-object kinds placed beside a path rather than free-standing -
 # see the scenery_object_nodes_raw loop below.
 _ALIGN_TO_PATH_SCENERY_KINDS = {"bench", "waste_basket", "bicycle_parking", "picnic_table"}
-# Mapped on the path itself: they take its direction but stay where they are.
-_ON_PATH_SCENERY_KINDS = {"gate"}
+# Mapped on the path itself, or beside the bays they serve: they take the
+# nearest way's direction but stay where they are.
+_ON_PATH_SCENERY_KINDS = {"gate", "charging_station"}
 
 # A real traffic/pedestrian-refuge island's kerb outline is compact (real
 # Oulu examples measured 3-12m across) and has genuine extent in both
@@ -371,9 +372,26 @@ def _polyline_without_ranges(pts, lengths, gaps) -> List[List[Tuple[float, float
     return pieces
 
 
+def _capacity(tags: Dict[str, str]) -> Optional[int]:
+    """OSM capacity: how many vehicles at once (a charging station's cars), None when unmapped or bad."""
+    try:
+        value = int(str(tags.get("capacity", "")).strip())
+    except ValueError:
+        return None
+    return value if 0 < value <= 100 else None
+
+
+def _level(tags: Dict[str, str]) -> Optional[int]:
+    """OSM level as a whole floor ("-1", "5"; "0;1" -> 0), None when unmapped or not a number."""
+    try:
+        return int(float(str(tags.get("level", "")).split(";")[0].strip()))
+    except ValueError:
+        return None
+
+
 def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     amenity = tags.get("amenity")
-    if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel", "biergarten", "grave_yard", "nightclub"):
+    if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel", "biergarten", "grave_yard", "nightclub", "charging_station"):
         return amenity
     if tags.get("highway") == "street_lamp":
         # lights.md: explicit physical lamp-pole data, when mapped, is the
@@ -1705,7 +1723,9 @@ def build_ways(
                 obj_y = snap_y + normal_y * side * clearance
                 angle = way_angle
         scenery_objects.append(SceneryObject(x=obj_x, y=obj_y, kind=kind, name=tags.get("name"), id=nid, direction_angle=angle,
-                                             opening_hours=tags.get("opening_hours") if kind == "nightclub" else None))
+                                             opening_hours=tags.get("opening_hours") if kind == "nightclub" else None,
+                                             capacity=_capacity(tags) if kind == "charging_station" else None,
+                                             level=_level(tags) if kind == "charging_station" else None))
 
     # Fuel stations are frequently mapped only as an amenity=fuel area,
     # especially when the same way is also the building=roof pump canopy.
