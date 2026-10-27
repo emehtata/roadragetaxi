@@ -28,7 +28,8 @@ const SLEW_GAIN := 5.0  # per second of error
 const MAX_SLEW := 0.25  # a jump bigger than this (server restart, long stall) resets the clock
 # States read after a client frame this long were late only because nobody read them:
 # following them slowed every vehicle for ~1 s after each hitch, then sped it up.
-const CLIENT_STALL_S := 0.05
+const CLIENT_STALL_S := 0.05  # at least: a hitch is a frame this long...
+const CLIENT_STALL_FRAMES := 3.0  # ...and this many of the client's usual frames (a 15 fps machine's every frame is over 50 ms)
 
 var delay := 0.1
 var underruns := 0  # frames the render time was past the newest state
@@ -52,6 +53,7 @@ var _clock_time := 0.0  # the render clock (server seconds)
 var _clock_local := -1.0  # local time it was last advanced at
 var _last_sample := -1.0  # local time of the last sample() (one per frame)
 var _sample_gap := 0.0  # the frame time before it
+var _usual_frame := 0.0  # the client's usual frame time, smoothed: what a hitch is measured against
 
 
 ## Zero the diagnostics (measure a steady stretch, not the connect burst).
@@ -69,6 +71,7 @@ func clear() -> void:
 	_last_arrival = -1.0
 	_clock_local = -1.0
 	_last_sample = -1.0
+	_usual_frame = 0.0
 	_states.clear()
 	_events.clear()
 	_has_clock = false
@@ -100,7 +103,8 @@ func push(tick: int, server_time: float, state: Dictionary, local_now: float) ->
 	# the render time overtake the newest state for a frame or two
 	# (godot-05 underrun investigation).
 	var sample := server_time - local_now
-	var client_stalled := _last_sample >= 0.0 and maxf(_sample_gap, local_now - _last_sample) > CLIENT_STALL_S
+	var stall := maxf(CLIENT_STALL_S, _usual_frame * CLIENT_STALL_FRAMES)
+	var client_stalled := _last_sample >= 0.0 and maxf(_sample_gap, local_now - _last_sample) > stall
 	if not _has_clock or absf(sample - _offset) > CLOCK_SNAP_S:
 		_offset = sample
 		_has_clock = true
@@ -136,6 +140,8 @@ func sample(local_now: float) -> Dictionary:
 	if _states.is_empty():
 		return {}
 	_sample_gap = local_now - _last_sample if _last_sample >= 0.0 else 0.0
+	if _sample_gap > 0.0:
+		_usual_frame = _sample_gap if _usual_frame <= 0.0 else lerpf(_usual_frame, minf(_sample_gap, _usual_frame * CLIENT_STALL_FRAMES), 0.05)
 	_last_sample = local_now
 	var at := render_time(local_now)
 	if at < _last_render_time:

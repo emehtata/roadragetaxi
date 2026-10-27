@@ -652,6 +652,21 @@ func test_interpolation() -> void:
 	hitch.sample(at)
 	check(absf(hitch._offset - offset_before) < 0.005, "a client hitch's backlog leaves the clock offset alone (moved %.3f s)" % (hitch._offset - offset_before))
 
+	# A slow client (15 fps: every frame over 50 ms) is not stalling: it must still
+	# follow a server clock that slips, not run past the newest state for a second at a time.
+	var slow := StateBuffer.new()
+	slow.delay = 0.1
+	var slipped := 0.0
+	var slow_frame := 0.0
+	for tick in range(1, 30 * 30):
+		if tick > 30 and tick % 4 == 0:
+			slipped += 0.03
+		while slow_frame < tick / 30.0 + slipped:
+			slow.sample(slow_frame)
+			slow_frame += 1.0 / 15.0
+		slow.push(tick, tick / 30.0, _state(0.0), slow_frame)
+	check(slow.longest_underrun_s < 0.1, "at 15 fps the render clock follows the slipping server (longest underrun %.0f ms)" % (slow.longest_underrun_s * 1000.0))
+
 	# Events: handed out once, when the render time reaches their state.
 	var events := StateBuffer.new()
 	events.delay = 0.1
