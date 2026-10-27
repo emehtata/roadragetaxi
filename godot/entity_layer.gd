@@ -821,12 +821,28 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			_poly(_rect(c - f * hl * 0.05, f, r, hl * 0.28, -hl * 0.32, hw * 0.95), color, RS.OUTLINE)  # back and shoulders
 			_car_shapes.append(["circle", c + f * hl * 0.18, hw * 0.55, _lit(Color8(236, 196, 160))])  # head
 		return
-	if kind in TWO_WHEELERS:
-		if fallen:  # lying on its side
+	if kind in TWO_WHEELERS:  # a motorbike from above: tyres, tank in its paint, seat, bars; the rider while ridden
+		if fallen:  # lying on its side, the rider gone
 			f = _forward(heading - PI / 2.0)
 			r = _right(heading - PI / 2.0)
-		_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
-		_car_shapes.append(["circle", c - f * hl * 0.1, hw * 0.9, _lit(RS.CABIN)])  # rider
+		var tyre := _lit(Color8(26, 26, 26))
+		var dark := _lit(Color8(40, 40, 42))
+		var thin := maxf(_px(1.0), hw * 0.12)
+		_car_shapes.append(["line", c - f * hl * 0.98, c - f * hl * 0.42, tyre, maxf(_px(2.0), hw * 0.55)])  # the fat rear tyre
+		_car_shapes.append(["line", c + f * hl * 0.98, c + f * hl * 0.52, tyre, maxf(_px(1.5), hw * 0.42)])
+		_poly(PackedVector2Array([c + f * hl * 0.52 + r * hw * 0.30, c + f * hl * 0.52 - r * hw * 0.30, c - f * hl * 0.10 - r * hw * 0.62,
+			c - f * hl * 0.55 - r * hw * 0.45, c - f * hl * 0.55 + r * hw * 0.45, c - f * hl * 0.10 + r * hw * 0.62]), color, RS.OUTLINE)  # tank and tail
+		_poly(_rect(c, f, r, -hl * 0.08, -hl * 0.50, hw * 0.34), dark)  # the seat
+		_car_shapes.append(["line", c + f * hl * 0.48 + r * hw, c + f * hl * 0.48 - r * hw, dark, thin])  # handlebar
+		_poly(_rect(c, f, r, hl * 0.99, hl * 0.86, hw * 0.22), _lit(Color8(250, 240, 200)) if engine_on else _lit(Color8(170, 170, 160)))  # headlight
+		_poly(_rect(c, f, r, -hl * 0.86, -hl * 0.96, hw * 0.22), Color8(255, 60, 50) if braking else Color8(150, 35, 30))  # tail light
+		if engine_on and not fallen:  # the rider: arms to the bars, back and shoulders, a helmet in the bike's paint
+			var jacket := _lit(Color8(34, 34, 38))
+			for side: float in [1.0, -1.0]:
+				_car_shapes.append(["line", c + f * hl * 0.05 + r * hw * 0.62 * side, c + f * hl * 0.46 + r * hw * 0.85 * side, jacket, maxf(_px(1.0), hw * 0.2)])
+			_poly(_rect(c, f, r, hl * 0.12, -hl * 0.30, hw * 0.78), jacket, RS.OUTLINE)
+			_car_shapes.append(["circle", c + f * hl * 0.16, hw * 0.48, _lit(color.lightened(0.15))])
+			_car_shapes.append(["line", c + f * hl * 0.30 + r * hw * 0.28, c + f * hl * 0.30 - r * hw * 0.28, _lit(Color8(20, 24, 30)), maxf(_px(1.0), hw * 0.14)])  # visor
 		return
 	match kind:
 		"bus":
