@@ -1,5 +1,6 @@
 requests
 ephem
+rsplan
 pyproj
 pytest
 shapely

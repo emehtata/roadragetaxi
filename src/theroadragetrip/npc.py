@@ -1145,12 +1145,11 @@ class Driver:
     pass_wait_s: float = 0.0
     cycle: Optional[object] = None  # a cyclist's cycling.CycleRoute (path above unused but for debug)
     replans: int = 0  # a cyclist's new destinations after getting stuck
-    manoeuvre_phase: Optional[str] = None  # "reverse" / "forward": a multi-point turn onto the final point (_final_manoeuvre)
-    manoeuvre_cycles: int = 0
-    manoeuvre_from: Optional[Tuple[float, float]] = None
-    manoeuvre_side: float = 0.0  # +1 the final point lies to the left
-    manoeuvre_min_m: float = 0.0  # the least this reverse goes (backing off a kerb it stopped at)
-    manoeuvre_aim: Optional[Tuple[float, float]] = None  # what it manoeuvres onto, while arriving or departing (else None)
+    manoeuvre: Optional[list] = None  # a multi-point manoeuvre being driven: its runs (manoeuvre.plan)
+    manoeuvre_run: int = 0
+    manoeuvre_wait_s: float = 0.0  # waiting for the space behind to clear
+    manoeuvres_tried: int = 0  # this trip's planned manoeuvres (arriving and departing)
+    manoeuvre_zone: Optional[str] = None  # "arriving" / "departing" while one may be needed (else None)
     rack_slot: Optional[Tuple[float, float, float]] = None  # a cyclist's claimed hoop (cycling.rack_slots)
     rack_claim: Optional[tuple] = None  # (rack OSM id, hoop index): survives the rack being rebuilt by a map merge
     stolen: bool = False  # a thief rides this bike: its next trip is a fast getaway
@@ -2343,17 +2342,17 @@ def _clear_behind(vehicle, manager, pedestrian_mgr) -> bool:
     return True
 
 
-# Multi-point manoeuvres: a final point the car cannot drive onto forward - it
-# lies inside one of its turning circles, or behind it - is reached by
-# reversing with the wheels turned away from it (which swings the nose
-# towards it), then driving on. At most NPC_MANOEUVRE_CYCLES; then it stays
-# where it is if close enough. Reversing waits for clear space behind (§§ 34-35).
-NPC_MANOEUVRE_START_M = 12.0  # from the final point
-NPC_MANOEUVRE_REVERSE_M = 4.0  # the most one reverse goes
-NPC_MANOEUVRE_CYCLES = 3
-NPC_MANOEUVRE_CLOSE_ENOUGH_M = 3.0
-NPC_MANOEUVRE_DEPART_AIM_M = 10.0  # setting off: aim for the route this far on (the steering lookahead lies inside any turning circle)
-NPC_MANOEUVRE_KERB_BACK_OFF_M = 1.5  # stopped at the road's edge: back off at least this before turning again
+# Multi-point manoeuvres (manoeuvre.py): a pose the vehicle cannot drive onto
+# forwards - arriving, its final point; setting off, the route a little way on -
+# is reached by a planned Reeds-Shepp path of forward and reverse runs (a
+# three-point turn, a reverse-and-correct). Reversing waits for clear space
+# behind (§§ 34-35); a plan the body cannot follow on the road is not used.
+NPC_MANOEUVRE_START_M = 12.0  # from the final point, or from where the trip began
+NPC_MANOEUVRE_DEPART_AIM_M = 10.0  # setting off: onto the route this far on
+NPC_MANOEUVRE_TRIES = 3  # plans a trip may make
+NPC_MANOEUVRE_SPEED_MPS = 1.5
+NPC_MANOEUVRE_WAIT_S = 10.0  # for the space behind to clear, then the manoeuvre is given up
+NPC_MANOEUVRE_CLOSE_ENOUGH_M = 3.0  # arriving: stopped this near, where a manoeuvre ran out, is there
 
 
 def _unreachable_forward(car, x: float, y: float, margin: float) -> bool:
@@ -2382,33 +2381,74 @@ def _skip_route_behind(driver, car) -> None:
         driver.route_segment_index = max(driver.route_segment_index, index - 1)
 
 
-def _route_point_beyond(path, index: int, x: float, y: float, distance_m: float):
-    """The first route point from `index` at least `distance_m` from (x, y), else the last."""
-    for point in path[index:]:
-        if math.hypot(point.x - x, point.y - y) >= distance_m:
-            return point
-    return path[-1]
+def _route_point_beyond(path, index: int, x: float, y: float, distance_m: float) -> int:
+    """The index of the first route point from `index` at least `distance_m` from (x, y), else the last."""
+    for k in range(index, len(path)):
+        if math.hypot(path[k].x - x, path[k].y - y) >= distance_m:
+            return k
+    return len(path) - 1
 
 
-def _manoeuvre_reverse(vehicle, driver, final_point, dt, manager, pedestrian_mgr, arriving: bool = True) -> None:
-    """One reverse of a multi-point turn: back up with the wheels turned away
-    from the final point until it is comfortably reachable forward, the most
-    allowed is reversed, or someone is behind; then drive on."""
+def _route_heading(path, k: int) -> float:
+    a, b = (path[k - 1], path[k]) if k > 0 else (path[0], path[1])
+    return math.atan2(b.y - a.y, b.x - a.x)
+
+
+def _plan_manoeuvre(vehicle, driver, goal_x, goal_y, goal_heading, ways, spatial_grid) -> bool:
+    """Plan a manoeuvre onto the centre pose (goal_x, goal_y, goal_heading);
+    True when the driver now has one. The body must stay on the road, or near
+    the trip's own start or end (its yard or bay access)."""
+    from . import manoeuvre
     car = vehicle.car
-    reversed_m = math.hypot(car.x - driver.manoeuvre_from[0], car.y - driver.manoeuvre_from[1])
-    if (not _clear_behind(vehicle, manager, pedestrian_mgr) or reversed_m >= NPC_MANOEUVRE_REVERSE_M
-            or (reversed_m >= driver.manoeuvre_min_m and not _unreachable_forward(car, final_point.x, final_point.y, -1.0))):
-        car.speed = 0.0
-        driver.manoeuvre_phase = "forward"
-        driver.manoeuvre_cycles += 1
-        return
-    vehicle.state = NPCState.PARKING if arriving else NPCState.TURNING
+    behind = rear_axle_behind(car)
+    ends = [driver.trip_origin, (goal_x, goal_y)] if driver.trip_origin is not None else [(goal_x, goal_y)]
+    layer, level = getattr(car, "layer", 0), getattr(car, "map_level", 0) or 0
+
+    def valid(rx, ry, yaw):
+        cx, cy = rx + math.cos(yaw) * behind, ry + math.sin(yaw) * behind
+        if any(math.hypot(cx - ex, cy - ey) <= NPC_PARKING_ACCESS_TOLERANCE_M for ex, ey in ends):
+            return True
+        return _npc_body_on_road(cx, cy, yaw, vehicle.length_m, vehicle.width_m, ways, spatial_grid, layer, level)
+
+    start = (car.x - math.cos(car.heading) * behind, car.y - math.sin(car.heading) * behind, car.heading)
+    goal = (goal_x - math.cos(goal_heading) * behind, goal_y - math.sin(goal_heading) * behind, goal_heading)
+    driver.manoeuvres_tried += 1
+    runs = manoeuvre.plan(start, goal, min_turn_radius(car), valid)
+    driver.manoeuvre, driver.manoeuvre_run, driver.manoeuvre_wait_s = runs, 0, 0.0
+    return runs is not None
+
+
+def _drive_manoeuvre(vehicle, driver, dt, manager, pedestrian_mgr) -> bool:
+    """One tick of the planned manoeuvre; False when it is over (done, or given up)."""
+    from . import manoeuvre
+    car = vehicle.car
+    behind = rear_axle_behind(car)
+    run = driver.manoeuvre[driver.manoeuvre_run]
+    steer, run_done = manoeuvre.follow(run, car.x - math.cos(car.heading) * behind, car.y - math.sin(car.heading) * behind, car.heading)
+    if run_done:
+        car.speed = 0.0  # a stop at each change of direction
+        driver.manoeuvre_run += 1
+        if driver.manoeuvre_run >= len(driver.manoeuvre):
+            driver.manoeuvre = None
+            return False
+        return True
+    reverse = run[0][3] < 0
+    vehicle.state = NPCState.PARKING if driver.manoeuvre_zone == "arriving" else NPCState.TURNING
     vehicle.debug_waiting_for = ""
-    turn_away = driver.manoeuvre_side > 0.0  # point on the left: reverse steering right swings the nose left
+    if reverse and not _clear_behind(vehicle, manager, pedestrian_mgr):
+        car.speed = 0.0
+        driver.manoeuvre_wait_s += dt
+        vehicle.debug_waiting_for = "reversing - waiting for clear space behind"
+        if driver.manoeuvre_wait_s > NPC_MANOEUVRE_WAIT_S:
+            driver.manoeuvre = None
+            return False
+        return True
     update_car_physics(
-        car, throttle=0.0, brake=1.0, steer_left=0.0 if turn_away else 1.0, steer_right=1.0 if turn_away else 0.0,
-        dt=dt, block_offroad=False, speed_limit_mps=NPC_REVERSE_SPEED_MPS,
+        car, throttle=0.0 if reverse else 1.0, brake=1.0 if reverse else 0.0,
+        steer_left=max(0.0, steer), steer_right=max(0.0, -steer), dt=dt, block_offroad=False,
+        speed_limit_mps=NPC_REVERSE_SPEED_MPS if reverse else NPC_MANOEUVRE_SPEED_MPS,
     )
+    return True
 
 
 def _npc_body_on_road(x, y, heading, length_m, width_m, ways, spatial_grid, layer, map_level=0):
@@ -2521,14 +2561,16 @@ def _enforce_npc_road_motion(vehicle, driver, previous, traffic_world, spatial_g
         return
     vehicle.car.x, vehicle.car.y, vehicle.car.heading = previous
     vehicle.car.speed = 0.0
-    if driver.manoeuvre_aim is not None and driver.manoeuvre_cycles < NPC_MANOEUVRE_CYCLES:
-        # Arriving or departing: the kerb is where to back up and turn again, not a dead end.
-        ax, ay = driver.manoeuvre_aim
-        fx, fy = math.cos(vehicle.car.heading), math.sin(vehicle.car.heading)
-        driver.manoeuvre_phase, driver.manoeuvre_from = "reverse", (vehicle.car.x, vehicle.car.y)
-        driver.manoeuvre_min_m = NPC_MANOEUVRE_KERB_BACK_OFF_M
-        driver.manoeuvre_side = 1.0 if fx * (ay - vehicle.car.y) - fy * (ax - vehicle.car.x) > 0.0 else -1.0
-        return
+    if driver.manoeuvre_zone is not None and driver.manoeuvre is None and driver.manoeuvres_tried < NPC_MANOEUVRE_TRIES:
+        # Arriving or setting off: the kerb is where to turn round, not a dead end.
+        path = driver.path
+        if driver.manoeuvre_zone == "arriving":
+            goal = (path[-1].x, path[-1].y, _route_heading(path, len(path) - 1))
+        else:
+            k = _route_point_beyond(path, driver.path_index, vehicle.car.x, vehicle.car.y, NPC_MANOEUVRE_DEPART_AIM_M)
+            goal = (path[k].x, path[k].y, _route_heading(path, k))
+        if _plan_manoeuvre(vehicle, driver, *goal, traffic_world.ways, spatial_grid):
+            return
     vehicle.state = NPCState.WAITING
     vehicle.debug_waiting_for = "road boundary - awaiting validated route"
     driver.target_speed_mps = 0.0
@@ -2656,33 +2698,27 @@ def update_npc(
     final_point = path[-1]
     distance_to_target = math.hypot(final_point.x - vehicle.car.x, final_point.y - vehicle.car.y)
     at_destination = approaching_final_waypoint and distance_to_target < NPC_ARRIVAL_RADIUS_M
-    # Multi-point manoeuvres (_manoeuvre_reverse): arriving, onto the final point;
-    # departing (still near where the trip began), onto the route's first stretch.
+    # Multi-point manoeuvres (_plan_manoeuvre): arriving, onto the final point;
+    # setting off (still near where the trip began), onto the route a little way on.
     arriving = approaching_final_waypoint and distance_to_target < NPC_MANOEUVRE_START_M
     departing = (not approaching_final_waypoint and driver.trip_origin is not None
                  and math.hypot(vehicle.x - driver.trip_origin[0], vehicle.y - driver.trip_origin[1]) < NPC_MANOEUVRE_START_M)
-    aim = final_point if arriving else _route_point_beyond(path, driver.path_index, vehicle.car.x, vehicle.car.y, NPC_MANOEUVRE_DEPART_AIM_M)
-    driver.manoeuvre_aim = (aim.x, aim.y) if (arriving or departing) and not at_destination else None
-    if at_destination or not (arriving or departing):
-        driver.manoeuvre_phase = None
-        if at_destination or not departing:
-            driver.manoeuvre_cycles = 0
-    else:
-        if arriving and driver.manoeuvre_cycles >= NPC_MANOEUVRE_CYCLES:
-            # Turned all it may: where it stands is the end if close enough (not exactly the planned point).
+    driver.manoeuvre_zone = None if at_destination else "arriving" if arriving else "departing" if departing else None
+    if driver.manoeuvre is not None:
+        if _drive_manoeuvre(vehicle, driver, dt, manager, pedestrian_mgr):
+            return
+        if arriving:  # the manoeuvre ran its course: this near is there
+            distance_to_target = math.hypot(final_point.x - vehicle.car.x, final_point.y - vehicle.car.y)
             at_destination = distance_to_target < NPC_MANOEUVRE_CLOSE_ENOUGH_M
-        elif (driver.manoeuvre_cycles < NPC_MANOEUVRE_CYCLES and driver.manoeuvre_phase != "reverse"
-                and abs(vehicle.car.speed) < 1.0 and _unreachable_forward(vehicle.car, aim.x, aim.y, 0.3)):
-            fx, fy = math.cos(vehicle.car.heading), math.sin(vehicle.car.heading)
-            driver.manoeuvre_phase, driver.manoeuvre_from = "reverse", (vehicle.car.x, vehicle.car.y)
-            driver.manoeuvre_min_m = 0.0
-            driver.manoeuvre_side = 1.0 if fx * (aim.y - vehicle.car.y) - fy * (aim.x - vehicle.car.x) > 0.0 else -1.0
-        if driver.manoeuvre_phase == "reverse":
-            _manoeuvre_reverse(vehicle, driver, aim, dt, manager, pedestrian_mgr, arriving)
-            if driver.manoeuvre_phase == "reverse":
-                return
-        if driver.manoeuvre_phase == "forward" and arriving:
-            target = final_point  # straight for it: the path's own last arc is what could not be driven
+    elif driver.manoeuvre_zone is not None and abs(vehicle.car.speed) < 1.0 and driver.manoeuvres_tried < NPC_MANOEUVRE_TRIES:
+        if arriving:
+            goal = (final_point.x, final_point.y, _route_heading(path, len(path) - 1))
+        else:
+            k = _route_point_beyond(path, driver.path_index, vehicle.car.x, vehicle.car.y, NPC_MANOEUVRE_DEPART_AIM_M)
+            goal = (path[k].x, path[k].y, _route_heading(path, k))
+        if _unreachable_forward(vehicle.car, goal[0], goal[1], 0.3) and _plan_manoeuvre(
+                vehicle, driver, *goal, traffic_world.ways, spatial_grid):
+            return
     # A physics-drifted car must clear a curb/building before arrival can stop it.
     vehicle.footprint_check_elapsed_s += dt
     if vehicle.footprint_check_elapsed_s >= NPC_FOOTPRINT_CHECK_INTERVAL_S:

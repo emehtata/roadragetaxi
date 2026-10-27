@@ -31,8 +31,8 @@ def test_bad_initial_heading_stops_before_body_leaves_road(indexed):
                 assert is_point_on_road(vehicle.x + c * along - s * across,
                                         vehicle.y + s * along + c * across, ways=ways)
     # It stops at the kerb (never leaving the road, checked every step above), then -
-    # setting off - backs up and turns (npc._manoeuvre_reverse) rather than waiting stuck.
-    assert driver.manoeuvre_phase is not None or (vehicle.state == NPCState.WAITING and driver.recovery_stage == "STUCK")
+    # setting off - plans a manoeuvre (npc._plan_manoeuvre) rather than waiting stuck.
+    assert driver.manoeuvre is not None or (vehicle.state == NPCState.WAITING and driver.recovery_stage == "STUCK")
 
 
 def test_swept_guard_rejects_hop_between_disconnected_roads():
