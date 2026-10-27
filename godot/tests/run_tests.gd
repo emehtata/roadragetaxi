@@ -1361,6 +1361,10 @@ func test_phone() -> void:
 	check(phone._details.text.contains("Fare: unavailable"), "no invented fare")
 	phone._unhandled_input(_key(KEY_DOWN))
 	check(phone.selected_id == "offer-1" and requests.is_empty(), "driving arrows do not change the selected offer")
+	var keypad_down := _key(KEY_KP_2)  # NumLock off: the keypad's 2 is the Down arrow
+	keypad_down.keycode = KEY_DOWN
+	phone._unhandled_input(keypad_down)
+	check(phone.selected_id == "offer-1" and requests.is_empty(), "the keypad's Down arrow (NumLock off) accepts nothing")
 	phone.select(1)
 	check(phone.selected_id == "offer-2" and phone._details.text.contains("To the customer: 1.50 km") and requests.is_empty(), "selecting the second card does not accept it")
 	check(phone._rows.get_child(1).find_child("Badge", true, false).text == "1.50 km", "a card's badge: the distance to the customer")
