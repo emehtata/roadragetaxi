@@ -7,6 +7,8 @@ const SPECIES := [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moos
 const VALID_STATES := [&"IDLE", &"WANDER", &"FEED", &"FLEE", &"FLY", &"CROSSING"]
 const STEP_S := 0.1
 const REACTION_M := 18.0
+const BUILDING_CELL_M := 10.0  # the per-chunk building lookup grid
+const SPAWN_TRIES := 6
 
 # Public layer properties follow the existing client-side configuration style.
 var density := 48.0
@@ -20,6 +22,7 @@ var animals: Array = []
 var winter := 0.0  # the season's winter weight (main.gd, from the calendar): hares turn white, squirrels grey
 var drawn_members := 0  # rendering regression check and F3/debug inspection
 var _chunks: Dictionary = {}
+var _buildings: Dictionary = {}  # chunk id -> {Vector2i cell: [building outline]}: where ground animals cannot go
 var _next_id := 1
 var _accumulator := 0.0
 
@@ -64,6 +67,7 @@ static func config_valid(weights: Dictionary) -> bool:
 func clear() -> void:
 	animals.clear()
 	_chunks.clear()
+	_buildings.clear()
 	queue_redraw()
 
 
@@ -73,6 +77,7 @@ func remove_chunk(chunk_id: String) -> void:
 	var ids: Array = _chunks[chunk_id]
 	animals = animals.filter(func(animal): return not ids.has(animal["id"]))
 	_chunks.erase(chunk_id)
+	_buildings.erase(chunk_id)
 	queue_redraw()
 
 
@@ -98,20 +103,56 @@ func replace_chunk(message: Dictionary, origin: Vector2) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(chunk_id)
 	var trees: Array = message.get("trees", [])
+	var grid := building_grid(message.get("buildings", []))
+	_buildings[chunk_id] = grid
 	var ids: Array = []
 	for index in wanted:
 		var species := _weighted_species(weights, rng.randf())
 		var animal := _animal(_next_id, species, rect, rng)
-		if species != "pigeon" and not trees.is_empty():
-			var tree: Array = trees[index % trees.size()]
-			var tree_at := MapMath.point(origin, float(tree[0]), float(tree[1]))
-			var near_tree := tree_at + Vector2.from_angle(rng.randf_range(-PI, PI)) * rng.randf_range(2.0, 14.0)
-			animal["position"] = Vector2(clampf(near_tree.x, rect.position.x, rect.end.x), clampf(near_tree.y, rect.position.y, rect.end.y))
+		animal["chunk"] = chunk_id
+		for attempt in SPAWN_TRIES:  # on the ground: never inside a building
+			if species != "pigeon" and not trees.is_empty():
+				var tree: Array = trees[(index + attempt) % trees.size()]
+				var tree_at := MapMath.point(origin, float(tree[0]), float(tree[1]))
+				var near_tree := tree_at + Vector2.from_angle(rng.randf_range(-PI, PI)) * rng.randf_range(2.0, 14.0)
+				animal["position"] = Vector2(clampf(near_tree.x, rect.position.x, rect.end.x), clampf(near_tree.y, rect.position.y, rect.end.y))
+			elif attempt > 0:
+				animal["position"] = Vector2(rng.randf_range(rect.position.x, rect.end.x), rng.randf_range(rect.position.y, rect.end.y))
+			if not in_building(grid, animal["position"]):
+				break
+		if in_building(grid, animal["position"]):
+			continue
 		animals.append(animal)
 		ids.append(_next_id)
 		_next_id += 1
 	_chunks[chunk_id] = ids
 	queue_redraw()
+
+
+## Building outlines by the BUILDING_CELL_M cells their boxes touch: a point
+## then tests only the few outlines around it. Built once per chunk load.
+static func building_grid(buildings: Array) -> Dictionary:
+	var grid := {}
+	for outline in buildings:
+		if typeof(outline) != TYPE_PACKED_VECTOR2_ARRAY or outline.size() < 3:
+			continue
+		var box := Rect2(outline[0], Vector2.ZERO)
+		for point in outline:
+			box = box.expand(point)
+		for cx in range(floori(box.position.x / BUILDING_CELL_M), floori(box.end.x / BUILDING_CELL_M) + 1):
+			for cy in range(floori(box.position.y / BUILDING_CELL_M), floori(box.end.y / BUILDING_CELL_M) + 1):
+				var cell := Vector2i(cx, cy)
+				if not grid.has(cell):
+					grid[cell] = []
+				grid[cell].append(outline)
+	return grid
+
+
+static func in_building(grid: Dictionary, at: Vector2) -> bool:
+	for outline in grid.get(Vector2i(floori(at.x / BUILDING_CELL_M), floori(at.y / BUILDING_CELL_M)), []):
+		if Geometry2D.is_point_in_polygon(at, outline):
+			return true
+	return false
 
 
 static func _weighted_species(weights: Dictionary, roll: float) -> String:
@@ -152,7 +193,10 @@ func _step(dt: float, game_time_seconds: float, view_centre: Vector2, vehicles: 
 		var speed := _speed(animal["species"], animal["state"])
 		if speed > 0.0:
 			var next: Vector2 = animal["position"] + Vector2.from_angle(animal["heading"]) * speed * dt
-			if animal["bounds"].has_point(next): animal["position"] = next
+			# On foot, a building is a wall - unless it stands on one already (a bird landed on a roof walks off it).
+			var grid: Dictionary = _buildings.get(animal.get("chunk", ""), {})
+			var walled: bool = animal["state"] != "FLY" and in_building(grid, next) and not in_building(grid, animal["position"])
+			if animal["bounds"].has_point(next) and not walled: animal["position"] = next
 			else: animal["heading"] += PI
 
 

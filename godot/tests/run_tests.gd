@@ -1436,6 +1436,23 @@ func test_wildlife() -> void:
 	layer.remove_chunk("1_2")
 	check(layer.animals.size() == 1, "wildlife: unloading a chunk removes its animals")
 	layer.free()
+	# A fox ran across a roof: ground animals never spawn in, or walk into, a building.
+	var town: Node = WildlifeLayer.new()
+	var block := PackedVector2Array([Vector2(100, -400), Vector2(400, -400), Vector2(400, -100), Vector2(100, -100)])
+	town.density = 40.0
+	town.max_active = 40
+	town.species_weights = {"squirrel": 0.0, "small_bird": 0.0, "pigeon": 0.0, "hare": 0.0, "fox": 1.0, "moose": 0.0, "roe_deer": 0.0, "crow": 0.0}
+	town.replace_chunk({"chunk_id": "0_0", "bounds": [0.0, 0.0, 500.0, 500.0], "buildings": [block], "trees": [], "landuse": []}, Vector2.ZERO)
+	var grid: Dictionary = town._buildings["0_0"]
+	check(town.animals.size() > 10 and town.animals.all(func(animal): return not WildlifeLayer.in_building(grid, animal.position)), "wildlife: no animal spawns inside a building")
+	for animal in town.animals:
+		animal.state = "FLEE"
+		animal.timer = 99.0
+		animal.heading = (Vector2(250, -250) - animal.position).angle()  # straight at the building
+	for step in 200:
+		town._step(0.1, 0.0, Vector2(250, -250), [])
+	check(town.animals.all(func(animal): return not WildlifeLayer.in_building(grid, animal.position)), "wildlife: a fleeing fox turns at a building's wall")
+	town.free()
 
 
 func _orphan_timers(node: Node) -> int:
