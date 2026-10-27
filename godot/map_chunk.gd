@@ -395,7 +395,11 @@ func _add_layer(z: int, draw: Callable, node: Node2D = null) -> Node2D:
 	if node == null:
 		node = Node2D.new()
 	node.z_index = z
-	node.draw.connect(draw.bind(node))
+	if Perf.keep_all:  # --bench: each layer's redraws, by z and draw function
+		var section := "draw_z%d_%s" % [z, draw.get_method()]
+		node.draw.connect(func(): var t := Time.get_ticks_usec(); draw.call(node); Perf.add(section, Time.get_ticks_usec() - t))
+	else:
+		node.draw.connect(draw.bind(node))
 	add_child(node)
 	return node
 

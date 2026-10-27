@@ -104,6 +104,7 @@ var _last_frame_usec := 0  # frame-time accounting (godot-18): real time between
 var _bench := 0.0  # --bench SECONDS: drive-through measurement, then the report as JSON
 var _bench_left := 0.0
 var _bench_hide: PackedStringArray = []
+var _bench_pre_draw := 0  # --bench: when the renderer started this frame (usec)
 var override_altitude := NAN  # --sun-altitude
 var override_azimuth := NAN  # --sun-azimuth (degrees from grid north), for the shadow checks
 var override_cloud := NAN  # --cloud-cover (0 clear .. 1 overcast)
@@ -208,6 +209,11 @@ func _ready() -> void:
 	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args:
 		_engine_on = true  # automated runs drive straight away: no sign, no hints
 		_entered_taxi = not "--start-sign" in args  # --start-sign: a screenshot of the city's start sign and forecast
+	if _bench > 0.0:  # rrt-019.1: the frame in phases - scripts, redraws and layout up to the render, then the render
+		RenderingServer.frame_pre_draw.connect(func():
+			_bench_pre_draw = Time.get_ticks_usec()
+			Perf.add("phase_process_to_render", _bench_pre_draw - _last_frame_usec))
+		RenderingServer.frame_post_draw.connect(func(): Perf.add("phase_render", Time.get_ticks_usec() - _bench_pre_draw))
 	instruments.layout = hud_layout
 	_apply_graphics()
 	hud.layout = hud_layout
@@ -596,6 +602,7 @@ func _process(delta: float) -> void:
 		Perf.add("render_cpu", int(RenderingServer.viewport_get_measured_render_time_cpu(rid) * 1000.0))
 		Perf.add("render_gpu", int(RenderingServer.viewport_get_measured_render_time_gpu(rid) * 1000.0))
 		Perf.add("frame_setup_cpu", int(RenderingServer.get_frame_setup_time_cpu() * 1000.0))
+		Perf.add("time_physics", int(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1e6))
 		if map_layer.buildings_3d != null:  # godot-22: the 3D building pass alone
 			var view_3d: RID = map_layer.buildings_3d._view.get_viewport_rid()
 			RenderingServer.viewport_set_measure_render_time(view_3d, true)
@@ -603,6 +610,8 @@ func _process(delta: float) -> void:
 			Perf.add("render_3d_gpu", int(RenderingServer.viewport_get_measured_render_time_gpu(view_3d) * 1000.0))
 	if _bench > 0.0 and not state.is_empty():
 		_bench_left -= delta
+		if _bench - _bench_left > 5.0 and _bench - _bench_left - delta <= 5.0:
+			Perf.sections.clear()  # the sections as the frames: steady state, not the first chunks' loading
 		if _bench_left <= 0.0:
 			_perf_counters()
 			print("BENCH ", JSON.stringify(Perf.report()))
@@ -1157,6 +1166,8 @@ func _apply_bench_hide() -> void:
 			"pools": map_layer._pool_group.visible = false
 			"entities": entities.visible = false
 			"ground": map_layer._ground.visible = false
+			"ui": $Ui.visible = false
+			"wildlife": wildlife.visible = false
 			_:
 				if name.begins_with("z"):
 					for chunk in map_layer._chunks.values():
@@ -1178,6 +1189,10 @@ func _perf_counters() -> void:
 	Perf.counters["chunks"] = map_layer.chunk_count()
 	Perf.counters["chunks_queued"] = _chunk_queue.size()
 	Perf.counters["draw_calls"] = Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+	Perf.counters["nodes"] = Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	Perf.counters["objects"] = Performance.get_monitor(Performance.OBJECT_COUNT)
+	Perf.counters["canvas_items"] = Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)
+	Perf.counters["primitives"] = Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
 	Perf.counters["static_memory_mib"] = Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0
 
 
