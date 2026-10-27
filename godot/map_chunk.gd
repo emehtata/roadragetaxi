@@ -31,6 +31,7 @@
 extends Node2D
 
 const TRUNK_RADIUS_M := 0.4  # a tree the taxi touches within this of its trunk falls
+const TREE_CELL_M := 10.0  # knock_trees' lookup grid
 const RS := preload("res://render_style.gd")
 const Detail := preload("res://chunk_detail.gd")  # godot-16: the rest of the static world's drawing
 const B25 := preload("res://buildings_25d.gd")
@@ -72,6 +73,7 @@ var _phases: Dictionary = {}  # post id (String) -> phase as last drawn
 var _font: Font = ThemeDB.fallback_font
 var _trees: Node2D = null  # trees and bollards, if this chunk has any
 var _fallen: Dictionary = {}  # obstacle_key -> angle: trees the taxi knocked over (the client's alone: gone when the chunk reloads)
+var _tree_grid: Dictionary = {}  # Vector2i cell -> [[point, tree index]]: built on the taxi's first visit (knock_trees)
 var _hedge_damage: Dictionary = {}
 var _railings: Node2D
 var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
@@ -495,18 +497,29 @@ func set_obstacles(knocked: Dictionary) -> bool:
 func knock_trees(at: Vector2, heading: float, length: float, width: float) -> int:
 	if _trees == null or not _bounds_rect.grow(length).has_point(at):
 		return 0
+	if _tree_grid.is_empty():  # once: the trees by TREE_CELL_M cell, so a frame tests only those around the taxi
+		var trees: Array = _data.get("trees", [])
+		for i in trees.size():
+			var p := MapMath.point(_origin, trees[i][0], trees[i][1])
+			var cell := Vector2i(floori(p.x / TREE_CELL_M), floori(p.y / TREE_CELL_M))
+			if not _tree_grid.has(cell):
+				_tree_grid[cell] = []
+			_tree_grid[cell].append([p, i])
 	var forward := Vector2(cos(heading), -sin(heading))
 	var reach := length * 0.5 + width + TRUNK_RADIUS_M
 	var felled := 0
-	for tree in _data.get("trees", []):
-		var d := MapMath.point(_origin, tree[0], tree[1]) - at
-		if d.length_squared() > reach * reach:
-			continue
-		var outside := Vector2(maxf(0.0, absf(d.dot(forward)) - length * 0.5), maxf(0.0, absf(d.dot(forward.orthogonal())) - width * 0.5))
-		var key := obstacle_key(tree[0], tree[1])
-		if outside.length() <= TRUNK_RADIUS_M and not _fallen.has(key):
-			_fallen[key] = heading
-			felled += 1
+	for cx in range(floori((at.x - reach) / TREE_CELL_M), floori((at.x + reach) / TREE_CELL_M) + 1):
+		for cy in range(floori((at.y - reach) / TREE_CELL_M), floori((at.y + reach) / TREE_CELL_M) + 1):
+			for entry in _tree_grid.get(Vector2i(cx, cy), []):
+				var d: Vector2 = entry[0] - at
+				var outside := Vector2(maxf(0.0, absf(d.dot(forward)) - length * 0.5), maxf(0.0, absf(d.dot(forward.orthogonal())) - width * 0.5))
+				if outside.length() > TRUNK_RADIUS_M:
+					continue
+				var tree: Array = _data["trees"][entry[1]]
+				var key := obstacle_key(tree[0], tree[1])
+				if not _fallen.has(key):
+					_fallen[key] = heading
+					felled += 1
 	if felled > 0:
 		_trees.queue_redraw()
 	return felled
