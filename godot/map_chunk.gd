@@ -1114,8 +1114,8 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 		"waste_basket":
 			var size := maxf(_px(2.0), 0.6)
 			node.draw_rect(Rect2(at - Vector2(size, size) / 2.0, Vector2(size, size)), Color8(58, 66, 56))
-		"bicycle_parking":
-			node.draw_set_transform(at, -angle)
+		"bicycle_parking":  # along the street, hoops always up on screen (the way's direction is arbitrary)
+			node.draw_set_transform(at, -angle + (PI if cos(angle) < 0.0 else 0.0))
 			for stroke: Array in [[Color8(35, 45, 50), maxf(_px(3.0), 0.24)], [Color8(220, 230, 234), maxf(_px(1.0), 0.10)]]:
 				for x: float in [-0.6, 0.0, 0.6]:
 					node.draw_arc(Vector2(x, -0.25), 0.25, PI, TAU, 8, stroke[0], stroke[1])
