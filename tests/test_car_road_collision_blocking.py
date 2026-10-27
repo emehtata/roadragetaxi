@@ -324,3 +324,18 @@ def test_a_car_pressed_against_a_building_can_drive_away_from_it():
     car = Car(x=2.6, y=0.0, heading=0.0, speed=1.0)  # but pressing on into it is still stopped
     assert taxi_manager.check_building_collision(car, [building], sim_time=2.0, previous_position=(2.5, 0.0)) is True
     assert (car.x, car.speed) == (2.5, 0.0)
+
+
+def test_a_road_merged_in_through_a_building_exempts_it_after_the_first_contact():
+    """Which roads cross a building is cached per building; a map merge's new
+    road list must be seen, not the first contact's answer kept."""
+    from theroadragetrip.osm import Building
+
+    building = Building(points_m=[(4.0, -3.0), (8.0, -3.0), (8.0, 3.0), (4.0, 3.0)])
+    taxi_manager = TaxiManager(ways=[])
+    ways = [Way(points_m=[(0.0, 50.0), (20.0, 50.0)], highway="residential", half_width_m=4.0)]
+    car = Car(x=5.0, y=0.0, heading=0.0, speed=4.0)
+    assert taxi_manager.check_building_collision(car, [building], 1.0, previous_position=(3.0, 0.0), ways=ways)
+    ways = ways + [Way(points_m=[(0.0, 0.0), (20.0, 0.0)], highway="residential", half_width_m=4.0)]  # merged in
+    car = Car(x=5.0, y=0.0, heading=0.0, speed=4.0)
+    assert not taxi_manager.check_building_collision(car, [building], 2.0, previous_position=(3.0, 0.0), ways=ways)

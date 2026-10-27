@@ -273,6 +273,8 @@ class TaxiManager:
         self._building_collision_grid: Dict[Tuple[int, int], List[Building]] = {}
         self._building_collision_ref = None
         self._building_collision_count = 0
+        self._roads_through_key = None  # (id, len) of the road list _roads_through_cache was made from
+        self._roads_through_cache: Dict[int, list] = {}  # building id -> the car roads crossing it
         self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._fence_collision_ref = None
         self._fence_collision_count = 0
@@ -687,6 +689,8 @@ class TaxiManager:
         car_corners = get_oriented_box_corners(
             player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
         )
+        car_min_x, car_max_x = min(x for x, _ in car_corners), max(x for x, _ in car_corners)
+        car_min_y, car_max_y = min(y for _, y in car_corners), max(y for _, y in car_corners)
 
         car_level = getattr(player_car, "map_level", SURFACE_LEVEL)
         # OSM bridge layers and logical garage floors are separate coordinates.
@@ -723,19 +727,22 @@ class TaxiManager:
             if not intersects:
                 intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
             if not intersects:  # an edge or corner poking into the car's side: it crosses the box (not its half-diagonal circle)
+                # Only the building edges reaching the car's own bounding box can cross it.
                 intersects = any(
-                    segments_intersect(a, b, points[i], points[(i + 1) % len(points)])
+                    segments_intersect(a, b, p, q)
+                    for p, q in zip(points, points[1:] + points[:1])
+                    if max(p[0], q[0]) >= car_min_x and min(p[0], q[0]) <= car_max_x
+                    and max(p[1], q[1]) >= car_min_y and min(p[1], q[1]) <= car_max_y
                     for a, b in zip(car_corners, car_corners[1:] + car_corners[:1])
-                    for i in range(len(points))
                 )
             if not intersects:
                 continue
 
             # OSM occasionally contains building footprints crossed by mapped roads.
-            # Check this expensive exception only after a real building collision.
+            # Check this exception only after a real building collision; which car
+            # roads cross the building is worked out once per building (_roads_through).
             if ways and any(
-                self._road_overlaps_building(way, points, bbox)
-                and (
+                (
                     getattr(way, "is_tunnel", False)
                     or getattr(way, "layer", 0) == getattr(player_car, "layer", 0)
                 )
@@ -746,8 +753,7 @@ class TaxiManager:
                     ) <= getattr(way, "half_width_m", 3.0)
                     for road_start, road_end in zip(way.points_m, way.points_m[1:])
                 )
-                for way in ways
-                if is_car_road(way)
+                for way in self._roads_through(building, points, bbox, ways)
             ):
                 continue
 
@@ -768,6 +774,19 @@ class TaxiManager:
             return True
 
         return False
+
+    def _roads_through(self, building, points, bbox, ways) -> list:
+        """The car roads crossing `building`'s outline, cached per building until
+        the road list changes (a map merge): checked in full every contact
+        frame, this was most of a contact's cost."""
+        key = (id(ways), len(ways))
+        if key != self._roads_through_key:
+            self._roads_through_key, self._roads_through_cache = key, {}
+        roads = self._roads_through_cache.get(id(building))
+        if roads is None:
+            roads = [way for way in ways if is_car_road(way) and self._road_overlaps_building(way, points, bbox)]
+            self._roads_through_cache[id(building)] = roads
+        return roads
 
     @staticmethod
     def _backing_off(car: Car, previous_position: Tuple[float, float], points) -> bool:
