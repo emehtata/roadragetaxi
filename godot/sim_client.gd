@@ -39,6 +39,7 @@ func _process(delta: float) -> void:
 	if status == StreamPeerTCP.STATUS_CONNECTED:
 		if not connected:
 			connected = true
+			_peer.set_no_delay(true)  # commands are small: sent at once, not held for Nagle (the server does the same)
 			connection_changed.emit(true)
 		var available := _peer.get_available_bytes()
 		if available > 0:
