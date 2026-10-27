@@ -9,6 +9,7 @@ const STEP_S := 0.1
 const REACTION_M := 18.0
 const BUILDING_CELL_M := 10.0  # the per-chunk building lookup grid
 const SPAWN_TRIES := 6
+const URBAN_COVERAGE := 0.2  # buildings cover this much of the ground: a city centre (Oulu's: 0.3-0.4), whatever its street trees
 
 # Public layer properties follow the existing client-side configuration style.
 var density := 48.0
@@ -31,7 +32,9 @@ func _ready() -> void:
 	z_index = 11
 
 
-static func habitat(building_count: int, tree_count: int, forested: bool = false) -> String:
+static func habitat(building_count: int, tree_count: int, forested: bool = false, coverage := 0.0) -> String:
+	if coverage >= URBAN_COVERAGE:  # foxes, hares and deer live in the suburbs and beyond, not among city blocks
+		return "urban"
 	# Canopy forests no longer need individual server trees to be rural habitat.
 	if forested and building_count < 5:
 		return "rural"
@@ -95,7 +98,8 @@ func replace_chunk(message: Dictionary, origin: Vector2) -> void:
 	var b := MapMath.point(origin, float(bounds[2]), float(bounds[3]))
 	var rect := Rect2(Vector2(minf(a.x, b.x), minf(a.y, b.y)), (b - a).abs())
 	var forested: bool = message.get("landuse", []).any(func(area): return area.size() > 3 and str(area[3]) in ["forest", "wood"])
-	var kind := habitat(message.get("buildings", []).size(), message.get("trees", []).size(), forested)
+	var kind := habitat(message.get("buildings", []).size(), message.get("trees", []).size(), forested,
+		building_coverage(message.get("buildings", []), rect.get_area()))
 	var weights := habitat_weights(kind)
 	for species in weights.keys():
 		weights[species] *= float(species_weights.get(species, 1.0))
@@ -146,6 +150,17 @@ static func building_grid(buildings: Array) -> Dictionary:
 					grid[cell] = []
 				grid[cell].append(outline)
 	return grid
+
+
+static func building_coverage(buildings: Array, area: float) -> float:
+	var covered := 0.0
+	for outline in buildings:
+		if typeof(outline) == TYPE_PACKED_VECTOR2_ARRAY and outline.size() >= 3:
+			var twice := 0.0  # the shoelace formula
+			for i in outline.size():
+				twice += outline[i - 1].cross(outline[i])
+			covered += absf(twice) * 0.5
+	return covered / area if area > 0.0 else 0.0
 
 
 static func in_building(grid: Dictionary, at: Vector2) -> bool:

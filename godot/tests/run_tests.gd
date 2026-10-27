@@ -1422,6 +1422,10 @@ func test_wildlife() -> void:
 	check(absf(squirrel_grey.r - squirrel_grey.b) < 0.03, "wildlife: a red squirrel is grey in winter")
 	check(WildlifeLayer.winter_coat("fox", Color8(194, 91, 38), 1.0) == Color8(194, 91, 38), "wildlife: other coats keep their colour")
 	check(not layer.habitat_weights("urban").has("moose") and layer.habitat_weights("rural").has("moose"), "wildlife: large deer stay out of dense urban habitat")
+	var blocks := [PackedVector2Array([Vector2(0, 0), Vector2(300, 0), Vector2(300, 300), Vector2(0, 300)])]  # 36 % of a 500 m chunk
+	check(is_equal_approx(WildlifeLayer.building_coverage(blocks, 250000.0), 0.36), "wildlife: building coverage of a chunk")
+	check(layer.habitat(30, 200, false, 0.36) == "urban" and layer.habitat(30, 200, false, 0.1) == "suburban", "wildlife: city blocks are urban however many street trees they have")
+	check(not layer.habitat_weights("urban").has("fox") and layer.habitat_weights("suburban").has("fox"), "wildlife: foxes live in the suburbs, not the city centre")
 	check(layer.activity("small_bird", 43200) > layer.activity("small_bird", 0) and layer.activity("fox", 0) > layer.activity("fox", 43200), "wildlife: the simulation hour changes species activity")
 	var chunk := {"chunk_id": "1_2", "bounds": [0.0, 0.0, 500.0, 500.0], "buildings": [], "trees": [[250.0, 250.0, "birch", 0.5]]}
 	layer.density = 2.0
