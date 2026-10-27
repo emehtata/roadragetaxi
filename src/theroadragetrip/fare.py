@@ -35,3 +35,8 @@ def format_euros(cents: int, language: str = "fi") -> str:
 def tip_cents_from_happiness(happiness: float) -> int:
     """Map clamped 0-100 passenger happiness to a €0-€10 tip."""
     return round(max(0.0, min(100.0, happiness))) * 10
+
+
+def star_rating_from_happiness(happiness: float) -> int:
+    """Map clamped 0-100 passenger happiness to a 0-5 star rating."""
+    return int(max(0.0, min(100.0, happiness)) / 20.0 + 0.5)

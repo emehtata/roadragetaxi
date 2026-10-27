@@ -1,7 +1,7 @@
 {
   "catalog_version": 1,
   "generated": "2026-09-25",
-  "status": "generated and reviewed",
+  "status": "generated; listening review status is recorded per file",
   "generator": {
     "model": "stabilityai/stable-audio-open-1.0",
     "tool": "diffusers StableAudioPipeline (ai-audio-studio .venv)"
@@ -25,6 +25,7 @@
   ],
   "categories": [
     "ambient",
+    "brawl",
     "collision",
     "gameplay",
     "holiday",
@@ -4574,6 +4575,1223 @@
           "raw_clipped_samples": 388,
           "raw_silent_fraction": 0.586,
           "rms_dbfs": -27.7
+        }
+      ]
+    },
+    "collision.hedge_break": {
+      "category": "collision",
+      "event": "hedge_break",
+      "description": "A car breaks through a hedge: branches snap and leaves brush the bodywork.",
+      "trigger": "check_barrier_collision removes a newly struck hedge segment; cue only for newly broken foliage.",
+      "source": [
+        "src/theroadragetrip/taxi.py"
+      ],
+      "introduced_commit": "526f4c0",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        1.0,
+        2.5
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "A vehicle bursting through a leafy garden hedge, rapid brittle twig snaps and heavy foliage rustling across metal, one brief impact, close dry isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "collision.hedge_break.01",
+          "file": "collision/collision_hedge_break_01.ogg",
+          "variation": 1,
+          "variant": "thin branches snapping with a quick leafy swish",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "thin branches snapping with a quick leafy swish. A vehicle bursting through a leafy garden hedge, rapid brittle twig snaps and heavy foliage rustling across metal, one brief impact, close dry isolated sound effect",
+          "seed": 1525284140,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.681,
+          "raw_clipped_samples": 217,
+          "raw_silent_fraction": 0.935,
+          "rms_dbfs": -26.0
+        },
+        {
+          "id": "collision.hedge_break.02",
+          "file": "collision/collision_hedge_break_02.ogg",
+          "variation": 2,
+          "variant": "a denser woody crunch and leaves scraping past",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a denser woody crunch and leaves scraping past. A vehicle bursting through a leafy garden hedge, rapid brittle twig snaps and heavy foliage rustling across metal, one brief impact, close dry isolated sound effect",
+          "seed": 3286281366,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 1.745,
+          "raw_clipped_samples": 170,
+          "raw_silent_fraction": 0.786,
+          "rms_dbfs": -24.8
+        }
+      ]
+    },
+    "vehicle.mud_spray": {
+      "category": "vehicle",
+      "event": "mud_spray",
+      "description": "Tyres churn wet mud and throw it against the wheel arches.",
+      "trigger": "Mud spray while the moving taxi is on wet unpaved ground.",
+      "source": [
+        "godot/weather_layer.gd"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        5.0,
+        7.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "Car tyres spinning through thick wet mud, sticky squelching and small wet clods hitting wheel arches, steady exterior recording, isolated sound effect, seamless loop",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.mud_spray.01",
+          "file": "vehicle/vehicle_mud_spray_01.ogg",
+          "variation": 1,
+          "variant": "wet muddy tyre churn and irregular splatters",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "wet muddy tyre churn and irregular splatters. Car tyres spinning through thick wet mud, sticky squelching and small wet clods hitting wheel arches, steady exterior recording, isolated sound effect, seamless loop",
+          "seed": 1866675130,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-22",
+          "duration_s": 7.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.567,
+          "rms_dbfs": -29.1
+        }
+      ]
+    },
+    "sport.tennis_hit": {
+      "category": "sport",
+      "event": "tennis_hit",
+      "description": "A tennis racket strikes the ball.",
+      "trigger": "The rally advances to a new turn; play once at the striking player.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/tennis.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.0
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "One tennis ball struck once with a tightly strung tennis racket, sharp hollow thwack with a brief string resonance, close dry outdoor recording, single isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.tennis_hit.01",
+          "file": "sport/sport_tennis_hit_01.ogg",
+          "variation": 1,
+          "variant": "a firm forehand racket impact",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a firm forehand racket impact. One tennis ball struck once with a tightly strung tennis racket, sharp hollow thwack with a brief string resonance, close dry outdoor recording, single isolated sound effect",
+          "seed": 2275890248,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.223,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.91,
+          "rms_dbfs": -20.2
+        },
+        {
+          "id": "sport.tennis_hit.02",
+          "file": "sport/sport_tennis_hit_02.ogg",
+          "variation": 2,
+          "variant": "a lighter backhand racket impact",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a lighter backhand racket impact. One tennis ball struck once with a tightly strung tennis racket, sharp hollow thwack with a brief string resonance, close dry outdoor recording, single isolated sound effect",
+          "seed": 514721266,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.294,
+          "raw_clipped_samples": 80,
+          "raw_silent_fraction": 0.888,
+          "rms_dbfs": -21.8
+        }
+      ]
+    },
+    "sport.tennis_bounce": {
+      "category": "sport",
+      "event": "tennis_bounce",
+      "description": "A tennis ball bounces on the court.",
+      "trigger": "The tennis ball reaches the court in its rally arc.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/tennis.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.0
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "A single tennis ball bouncing once on a hard outdoor tennis court, short hollow rubber pop and tiny surface scuff, close dry recording, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.tennis_bounce.01",
+          "file": "sport/sport_tennis_bounce_01.ogg",
+          "variation": 1,
+          "variant": "one hollow rubber ball bounce",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one hollow rubber ball bounce. A single tennis ball bouncing once on a hard outdoor tennis court, short hollow rubber pop and tiny surface scuff, close dry recording, isolated sound effect",
+          "seed": 1783912954,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.146,
+          "raw_clipped_samples": 16,
+          "raw_silent_fraction": 0.973,
+          "rms_dbfs": -28.5
+        }
+      ]
+    },
+    "sport.golf_hit": {
+      "category": "sport",
+      "event": "golf_hit",
+      "description": "A golf club drives or chips a ball.",
+      "trigger": "GolfPlugin._hit starts a non-putting shot.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/golf.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.5,
+        1.5
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "A single golf club swing, quick air swish followed by the crisp metallic crack of a driver striking a golf ball, brief natural decay, close dry outdoor recording, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.golf_hit.01",
+          "file": "sport/sport_golf_hit_01.ogg",
+          "variation": 1,
+          "variant": "a driver swing followed by one crisp golf ball impact",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a driver swing followed by one crisp golf ball impact. A single golf club swing, quick air swish followed by the crisp metallic crack of a driver striking a golf ball, brief natural decay, close dry outdoor recording, isolated sound effect",
+          "seed": 3213055046,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.568,
+          "raw_clipped_samples": 55,
+          "raw_silent_fraction": 0.845,
+          "rms_dbfs": -22.3
+        }
+      ]
+    },
+    "sport.golf_putt": {
+      "category": "sport",
+      "event": "golf_putt",
+      "description": "A putter taps a golf or miniature-golf ball.",
+      "trigger": "GolfPlugin._hit starts a putting shot, including miniature golf.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/golf.py",
+        "src/theroadragetrip/activities/plugins/miniature_golf.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.0
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "A putter tapping a golf ball once, small crisp woody metallic tick followed by a very short soft rolling sound on putting grass, close dry recording, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.golf_putt.01",
+          "file": "sport/sport_golf_putt_01.ogg",
+          "variation": 1,
+          "variant": "one quiet putter tap",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one quiet putter tap. A putter tapping a golf ball once, small crisp woody metallic tick followed by a very short soft rolling sound on putting grass, close dry recording, isolated sound effect",
+          "seed": 2548746482,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.22,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.959,
+          "rms_dbfs": -25.5
+        }
+      ]
+    },
+    "sport.golf_cup": {
+      "category": "sport",
+      "event": "golf_cup",
+      "description": "A golf ball drops into the cup.",
+      "trigger": "The ball finishes rolling and holed becomes true; cue once per completed hole.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/golf.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.2
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "A single golf ball falling into a plastic lined golf hole, brief hollow clunk and two tiny rattling clicks, close dry outdoor recording, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.golf_cup.01",
+          "file": "sport/sport_golf_cup_01.ogg",
+          "variation": 1,
+          "variant": "one ball rattling briefly into a golf cup",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one ball rattling briefly into a golf cup. A single golf ball falling into a plastic lined golf hole, brief hollow clunk and two tiny rattling clicks, close dry outdoor recording, isolated sound effect",
+          "seed": 4281747793,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.803,
+          "raw_clipped_samples": 59,
+          "raw_silent_fraction": 0.64,
+          "rms_dbfs": -29.7
+        }
+      ]
+    },
+    "sport.swimming": {
+      "category": "sport",
+      "event": "swimming",
+      "description": "Gentle swimming strokes and splashes close to shore.",
+      "trigger": "SwimmingPlugin has set animation_state to swimming; stop on shore.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/swimming.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        5.0,
+        7.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "One person swimming slowly in a calm freshwater lake, rhythmic small hand splashes and water sloshing, gentle surface ripples, close outdoor recording, no talking or breathing, isolated sound effect, seamless loop",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.swimming.01",
+          "file": "sport/sport_swimming_01.ogg",
+          "variation": 1,
+          "variant": "steady gentle swimming strokes",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "steady gentle swimming strokes. One person swimming slowly in a calm freshwater lake, rhythmic small hand splashes and water sloshing, gentle surface ripples, close outdoor recording, no talking or breathing, isolated sound effect, seamless loop",
+          "seed": 2248423605,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-22",
+          "duration_s": 7.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.396,
+          "rms_dbfs": -28.0
+        }
+      ]
+    },
+    "sport.beach_ball": {
+      "category": "sport",
+      "event": "beach_ball",
+      "description": "A hand catches or bats a light inflatable beach ball.",
+      "trigger": "The beach-ball turn advances; play once at the receiving or throwing player.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/beach_games.py",
+        "src/theroadragetrip/activities/plugins/beach_volleyball.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.0
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "An open hand lightly slapping a large inflatable beach ball once, soft hollow rubbery pop with a slight plastic squeak, close dry outdoor recording, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "sport.beach_ball.01",
+          "file": "sport/sport_beach_ball_01.ogg",
+          "variation": 1,
+          "variant": "one soft hollow inflatable ball slap",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one soft hollow inflatable ball slap. An open hand lightly slapping a large inflatable beach ball once, soft hollow rubbery pop with a slight plastic squeak, close dry outdoor recording, isolated sound effect",
+          "seed": 4279718969,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 0.455,
+          "raw_clipped_samples": 643,
+          "raw_silent_fraction": 0.877,
+          "rms_dbfs": -18.1
+        }
+      ]
+    },
+    "ambient.ride_machinery": {
+      "category": "ambient",
+      "event": "ride_machinery",
+      "description": "Small amusement-ride motor and mechanism.",
+      "trigger": "An occupied theme-park ride is moving after its queue wait; stop when the lap ends.",
+      "source": [
+        "src/theroadragetrip/activities/plugins/theme_park.py"
+      ],
+      "introduced_commit": "5c51554",
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        6.0,
+        8.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "A small mechanical amusement park ride operating, low electric motor hum with rhythmic wheel and gear clacks and a light metal creak, close exterior recording, no fairground music or people, isolated sound effect, seamless loop",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ambient.ride_machinery.01",
+          "file": "ambient/ambient_ride_machinery_01.ogg",
+          "variation": 1,
+          "variant": "a small outdoor amusement ride running steadily",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a small outdoor amusement ride running steadily. A small mechanical amusement park ride operating, low electric motor hum with rhythmic wheel and gear clacks and a light metal creak, close exterior recording, no fairground music or people, isolated sound effect, seamless loop",
+          "seed": 2342107860,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-22",
+          "duration_s": 8.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.002,
+          "rms_dbfs": -13.3
+        }
+      ]
+    },
+    "vehicle.trailer_rattle": {
+      "category": "vehicle",
+      "event": "trailer_rattle",
+      "description": "A moving caravan rattles lightly on its tow hitch.",
+      "trigger": "A nearby hitched trailer is moving; scale by motion, never play for parked caravans.",
+      "source": [
+        "src/theroadragetrip/trailers.py"
+      ],
+      "introduced_commit": "8d4ec91",
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        5.0,
+        7.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "A caravan being towed over an uneven road, soft irregular metal hitch rattles and suspension creaks, short muted clunks, close exterior perspective, no engine or wind, isolated sound effect, seamless loop",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.trailer_rattle.01",
+          "file": "vehicle/vehicle_trailer_rattle_01.ogg",
+          "variation": 1,
+          "variant": "light metal tow hitch and caravan chassis rattles",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "light metal tow hitch and caravan chassis rattles. A caravan being towed over an uneven road, soft irregular metal hitch rattles and suspension creaks, short muted clunks, close exterior perspective, no engine or wind, isolated sound effect, seamless loop",
+          "seed": 88194997,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-22",
+          "duration_s": 7.5,
+          "raw_clipped_samples": 488,
+          "raw_silent_fraction": 0.16,
+          "rms_dbfs": -23.9
+        }
+      ]
+    },
+    "pedestrian.bottle_drink": {
+      "category": "pedestrian",
+      "event": "bottle_drink",
+      "description": "A glass bottle is opened, followed by audible drinking and a burp.",
+      "trigger": "A pedestrian opens a fresh bottle, drinks from it, then burps; play once for the sequence, never every frame.",
+      "source": [
+        "src/theroadragetrip/pedestrian.py"
+      ],
+      "introduced_commit": "b4738ea",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        2.0,
+        7.0
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds. Opening, drinking and burp are one assembled sequence, played once when a fresh bottle is first consumed.",
+      "generation": {
+        "prompt": "Open a capped glass beer bottle with a cap pop and fizz, drink several audible gulps, then finish with a short burp. Three separately generated stages assembled in this order.",
+        "negative_prompt": "music, speech, words, talking, singing, background ambience, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "pedestrian.bottle_drink.01",
+          "file": "pedestrian/pedestrian_bottle_drink_01.ogg",
+          "variation": 1,
+          "variant": "bottle cap pop and fizz, drinking gulps, then a burp",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "Open a capped glass beer bottle with a cap pop and fizz, drink several audible gulps, then finish with a short burp. Three separately generated stages assembled in this order.",
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 3.934,
+          "raw_clipped_samples": 73,
+          "raw_silent_fraction": 0.933,
+          "rms_dbfs": -23.1,
+          "components": [
+            {
+              "stage": "open",
+              "file": "20261022_bottle_open_f4b07c93.wav",
+              "model": "stabilityai/stable-audio-open-1.0",
+              "prompt": "A beer bottle crown cap being pried off with a bottle opener, one sharp metallic cap pop followed by a brief clear fizz of escaping carbonation from a glass bottle. Close dry isolated sound effect.",
+              "negative_prompt": "music, speech, words, talking, singing, background ambience, low quality, distortion, clipping",
+              "seed": 102220261,
+              "steps": 100,
+              "requested_duration_s": 2.0,
+              "sample_rate": 44100,
+              "channels": 1,
+              "gain": 0.85,
+              "review": "listening pending",
+              "duration_s": 0.475,
+              "raw_clipped_samples": 73,
+              "raw_silent_fraction": 0.96,
+              "rms_dbfs": -27.5
+            },
+            {
+              "stage": "drink",
+              "file": "20261022_bottle_drink_ab491764.wav",
+              "model": "stabilityai/stable-audio-open-1.0",
+              "prompt": "A person drinking several gulps from a glass bottle, clearly audible liquid glug glug glug, gulping and swallowing, then stopping. Close dry isolated foley recording. No words.",
+              "negative_prompt": "music, speech, words, talking, singing, background ambience, low quality, distortion, clipping",
+              "seed": 102220262,
+              "steps": 100,
+              "requested_duration_s": 3.0,
+              "sample_rate": 44100,
+              "channels": 1,
+              "gain": 1.0,
+              "review": "listening pending",
+              "duration_s": 2.812,
+              "raw_clipped_samples": 0,
+              "raw_silent_fraction": 0.346,
+              "rms_dbfs": -22.5
+            },
+            {
+              "stage": "burp",
+              "file": "20261022_bottle_burp_7755d593.wav",
+              "model": "stabilityai/stable-audio-open-1.0",
+              "prompt": "One unmistakable human burp after drinking beer, a short low throaty belch with a natural descending finish. Close dry isolated bodily sound effect. No words or talking.",
+              "negative_prompt": "music, speech, words, talking, singing, background ambience, low quality, distortion, clipping",
+              "seed": 102220263,
+              "steps": 100,
+              "requested_duration_s": 1.5,
+              "sample_rate": 44100,
+              "channels": 1,
+              "gain": 0.8,
+              "review": "listening pending",
+              "duration_s": 0.248,
+              "raw_clipped_samples": 0,
+              "raw_silent_fraction": 0.869,
+              "rms_dbfs": -17.5
+            }
+          ],
+          "post_processing": "Each AI stage: mono, trim silence, fades, peak normalization, duration cap. Assemble opening/drinking/burp with gains 0.85/1.0/0.8 and 0.2 s silence between stages; normalize final peak to -1 dBFS."
+        }
+      ]
+    },
+    "vehicle.bus_air_brake": {
+      "category": "vehicle",
+      "event": "bus_air_brake",
+      "description": "A city bus releases its pneumatic brakes at a stop.",
+      "trigger": "A line bus reaches a route stop or releases its brakes to depart; one cue per transition.",
+      "source": [
+        "src/theroadragetrip/npc.py"
+      ],
+      "introduced_commit": "15756ea",
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.6,
+        2.0
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Runtime playback connected: server transition events for one-shots; positional client loops from server state for continuous sounds.",
+      "generation": {
+        "prompt": "A city bus releasing its pneumatic air brake, one short strong compressed air hiss with a small valve click and quick pressure decay, close exterior street perspective, no engine or traffic, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, crowd, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.bus_air_brake.01",
+          "file": "vehicle/vehicle_bus_air_brake_01.ogg",
+          "variation": 1,
+          "variant": "one short compressed air brake release",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one short compressed air brake release. A city bus releasing its pneumatic air brake, one short strong compressed air hiss with a small valve click and quick pressure decay, close exterior street perspective, no engine or traffic, isolated sound effect",
+          "seed": 3983003979,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-22",
+          "duration_s": 1.93,
+          "raw_clipped_samples": 30,
+          "raw_silent_fraction": 0.448,
+          "rms_dbfs": -24.9
+        }
+      ]
+    },
+    "ambient.rural_day": {
+      "category": "ambient",
+      "event": "rural_day",
+      "description": "soft countryside breeze and sparse distant birds",
+      "trigger": "Client environment mix from streamed landuse and building density.",
+      "source": [
+        "godot/environment_ambience.gd"
+      ],
+      "priority": "optional",
+      "loop": true,
+      "duration_s": [
+        24.0
+      ],
+      "variations": 1,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loop crossfaded at generation; listening review remains separate.",
+      "generation": {
+        "prompt": "Finnish countryside in daylight, soft breeze rustling birch leaves and meadow grass, a few distant small songbird chirps, spacious quiet natural field recording, no traffic or people, seamless continuous ambience loop",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping, cars, engines, horns, sudden loud sounds"
+      },
+      "files": [
+        {
+          "id": "ambient.rural_day.01",
+          "file": "ambient/ambient_rural_day_01.ogg",
+          "variation": 1,
+          "variant": "soft countryside breeze and sparse distant birds",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "soft countryside breeze and sparse distant birds. Finnish countryside in daylight, soft breeze rustling birch leaves and meadow grass, a few distant small songbird chirps, spacious quiet natural field recording, no traffic or people, seamless continuous ambience loop",
+          "seed": 2388783231,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-23",
+          "duration_s": 24.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.013,
+          "rms_dbfs": -24.7
+        }
+      ]
+    },
+    "ambient.rural_night": {
+      "category": "ambient",
+      "event": "rural_night",
+      "description": "quiet woodland air and faint leaf rustle",
+      "trigger": "Client environment mix from streamed landuse and building density.",
+      "source": [
+        "godot/environment_ambience.gd"
+      ],
+      "priority": "optional",
+      "loop": true,
+      "duration_s": [
+        24.0
+      ],
+      "variations": 1,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loop crossfaded at generation; listening review remains separate.",
+      "generation": {
+        "prompt": "Quiet Finnish countryside at night, very gentle breeze in tree leaves and grass, soft distant woodland air, spacious natural field recording, no bird chorus, no insects, no traffic or people, seamless continuous ambience loop",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping, cars, engines, horns, sudden loud sounds"
+      },
+      "files": [
+        {
+          "id": "ambient.rural_night.01",
+          "file": "ambient/ambient_rural_night_01.ogg",
+          "variation": 1,
+          "variant": "quiet woodland air and faint leaf rustle",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "quiet woodland air and faint leaf rustle. Quiet Finnish countryside at night, very gentle breeze in tree leaves and grass, soft distant woodland air, spacious natural field recording, no bird chorus, no insects, no traffic or people, seamless continuous ambience loop",
+          "seed": 2501348088,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-23",
+          "duration_s": 24.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.008,
+          "rms_dbfs": -26.3
+        }
+      ]
+    },
+    "ambient.beach": {
+      "category": "ambient",
+      "event": "beach",
+      "description": "gentle lake shore waves on sand",
+      "trigger": "Client environment mix from streamed landuse and building density.",
+      "source": [
+        "godot/environment_ambience.gd"
+      ],
+      "priority": "optional",
+      "loop": true,
+      "duration_s": [
+        24.0
+      ],
+      "variations": 1,
+      "selection": "single",
+      "randomize": false,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "Loop crossfaded at generation; listening review remains separate.",
+      "generation": {
+        "prompt": "Small gentle lake waves washing onto a sandy Finnish beach, rhythmic soft lapping water with delicate receding fizz, calm light breeze, close natural stereo field recording, no large ocean surf, no birds or people, seamless continuous ambience loop",
+        "negative_prompt": "music, melody, speech, voice, singing, low quality, distortion, clipping, cars, engines, horns, sudden loud sounds"
+      },
+      "files": [
+        {
+          "id": "ambient.beach.01",
+          "file": "ambient/ambient_beach_01.ogg",
+          "variation": 1,
+          "variant": "gentle lake shore waves on sand",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "gentle lake shore waves on sand. Small gentle lake waves washing onto a sandy Finnish beach, rhythmic soft lapping water with delicate receding fizz, calm light breeze, close natural stereo field recording, no large ocean surf, no birds or people, seamless continuous ambience loop",
+          "seed": 840349250,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-23",
+          "duration_s": 24.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.022,
+          "rms_dbfs": -23.9
+        }
+      ]
+    },
+    "brawl.punch_hit": {
+      "category": "brawl",
+      "event": "punch_hit",
+      "description": "A fist punch lands on a taxi driver in a street brawl.",
+      "trigger": "taxi_brawls._act: a blow lands (played at the struck fighter).",
+      "source": [
+        "src/theroadragetrip/taxi_brawls.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.2,
+        0.8
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019-brawl: generated with ai-audio-studio's Stable Audio Open (tools/generate_audio.sh).",
+      "generation": {
+        "prompt": "A single hard fist punch landing on a person, dull meaty thud with a slap of clothing, close dry foley recording, single isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, crowd, traffic, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "brawl.punch_hit.01",
+          "file": "brawl/brawl_punch_hit_01.ogg",
+          "variation": 1,
+          "variant": "a punch to the jaw",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a punch to the jaw. A single hard fist punch landing on a person, dull meaty thud with a slap of clothing, close dry foley recording, single isolated sound effect",
+          "seed": 800556191,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 0.255,
+          "raw_clipped_samples": 180,
+          "raw_silent_fraction": 0.894,
+          "rms_dbfs": -21.6
+        },
+        {
+          "id": "brawl.punch_hit.02",
+          "file": "brawl/brawl_punch_hit_02.ogg",
+          "variation": 2,
+          "variant": "a heavy body blow to the stomach",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a heavy body blow to the stomach. A single hard fist punch landing on a person, dull meaty thud with a slap of clothing, close dry foley recording, single isolated sound effect",
+          "seed": 3065959717,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 0.28,
+          "raw_clipped_samples": 134,
+          "raw_silent_fraction": 0.839,
+          "rms_dbfs": -17.1
+        },
+        {
+          "id": "brawl.punch_hit.03",
+          "file": "brawl/brawl_punch_hit_03.ogg",
+          "variation": 3,
+          "variant": "a glancing punch to the shoulder",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a glancing punch to the shoulder. A single hard fist punch landing on a person, dull meaty thud with a slap of clothing, close dry foley recording, single isolated sound effect",
+          "seed": 3250185651,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 0.339,
+          "raw_clipped_samples": 24,
+          "raw_silent_fraction": 0.802,
+          "rms_dbfs": -18.8
+        }
+      ]
+    },
+    "brawl.punch_miss": {
+      "category": "brawl",
+      "event": "punch_miss",
+      "description": "A swing that misses or is dodged.",
+      "trigger": "taxi_brawls._act: a blow misses (played at the attacker).",
+      "source": [
+        "src/theroadragetrip/taxi_brawls.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.2,
+        0.6
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019-brawl: generated with ai-audio-studio's Stable Audio Open (tools/generate_audio.sh).",
+      "generation": {
+        "prompt": "A fast fist swing cutting through the air and missing, short sharp whoosh of a jacket sleeve, close dry foley recording, single isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, crowd, traffic, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "brawl.punch_miss.01",
+          "file": "brawl/brawl_punch_miss_01.ogg",
+          "variation": 1,
+          "variant": "a quick jab whoosh",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a quick jab whoosh. A fast fist swing cutting through the air and missing, short sharp whoosh of a jacket sleeve, close dry foley recording, single isolated sound effect",
+          "seed": 899632405,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 0.209,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.872,
+          "rms_dbfs": -18.2
+        },
+        {
+          "id": "brawl.punch_miss.02",
+          "file": "brawl/brawl_punch_miss_02.ogg",
+          "variation": 2,
+          "variant": "a wide haymaker swish",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a wide haymaker swish. A fast fist swing cutting through the air and missing, short sharp whoosh of a jacket sleeve, close dry foley recording, single isolated sound effect",
+          "seed": 2895518895,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 0.232,
+          "raw_clipped_samples": 82,
+          "raw_silent_fraction": 0.866,
+          "rms_dbfs": -17.6
+        }
+      ]
+    },
+    "brawl.pain_grunt": {
+      "category": "brawl",
+      "event": "pain_grunt",
+      "description": "The struck driver grunts in pain (nonverbal).",
+      "trigger": "taxi_brawls._act: a blow lands (with brawl.punch_hit, at the struck fighter).",
+      "source": [
+        "src/theroadragetrip/taxi_brawls.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.3,
+        1.0
+      ],
+      "variations": 3,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019-brawl: generated with ai-audio-studio's Stable Audio Open (tools/generate_audio.sh).",
+      "generation": {
+        "prompt": "A grown man grunting in pain after being punched, short nonverbal breathy grunt, close dry recording, single isolated vocal sound effect, no words",
+        "negative_prompt": "music, melody, speech, words, singing, crowd, traffic, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "brawl.pain_grunt.01",
+          "file": "brawl/brawl_pain_grunt_01.ogg",
+          "variation": 1,
+          "variant": "a sharp winded oof",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a sharp winded oof. A grown man grunting in pain after being punched, short nonverbal breathy grunt, close dry recording, single isolated vocal sound effect, no words",
+          "seed": 437888315,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 0.844,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.576,
+          "rms_dbfs": -19.3
+        },
+        {
+          "id": "brawl.pain_grunt.02",
+          "file": "brawl/brawl_pain_grunt_02.ogg",
+          "variation": 2,
+          "variant": "a low pained groan",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a low pained groan. A grown man grunting in pain after being punched, short nonverbal breathy grunt, close dry recording, single isolated vocal sound effect, no words",
+          "seed": 2198926465,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 0.396,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.831,
+          "rms_dbfs": -15.9
+        },
+        {
+          "id": "brawl.pain_grunt.03",
+          "file": "brawl/brawl_pain_grunt_03.ogg",
+          "variation": 3,
+          "variant": "a short hurt exhale through clenched teeth",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a short hurt exhale through clenched teeth. A grown man grunting in pain after being punched, short nonverbal breathy grunt, close dry recording, single isolated vocal sound effect, no words",
+          "seed": 4095198231,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 0.224,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.907,
+          "rms_dbfs": -15.1
+        }
+      ]
+    },
+    "brawl.knockdown": {
+      "category": "brawl",
+      "event": "knockdown",
+      "description": "A knocked-out driver falls onto the street.",
+      "trigger": "taxi_brawls._act: the third blow knocks a fighter down (at the fallen fighter).",
+      "source": [
+        "src/theroadragetrip/taxi_brawls.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.6,
+        1.5
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019-brawl: generated with ai-audio-studio's Stable Audio Open (tools/generate_audio.sh).",
+      "generation": {
+        "prompt": "A man falling down onto an asphalt street, heavy body thud with a jacket rustle and a shoe scrape, close dry foley recording, single isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, crowd, traffic, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "brawl.knockdown.01",
+          "file": "brawl/brawl_knockdown_01.ogg",
+          "variation": 1,
+          "variant": "a heavy fall flat onto the pavement",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a heavy fall flat onto the pavement. A man falling down onto an asphalt street, heavy body thud with a jacket rustle and a shoe scrape, close dry foley recording, single isolated sound effect",
+          "seed": 3920805175,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 0.479,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.849,
+          "rms_dbfs": -17.9
+        },
+        {
+          "id": "brawl.knockdown.02",
+          "file": "brawl/brawl_knockdown_02.ogg",
+          "variation": 2,
+          "variant": "a stumble and collapse to the ground",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a stumble and collapse to the ground. A man falling down onto an asphalt street, heavy body thud with a jacket rustle and a shoe scrape, close dry foley recording, single isolated sound effect",
+          "seed": 1891363981,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 0.546,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.803,
+          "rms_dbfs": -20.7
+        }
+      ]
+    },
+    "brawl.shove": {
+      "category": "brawl",
+      "event": "shove",
+      "description": "Squaring up: one driver shoves the other.",
+      "trigger": "taxi_brawls: CONFRONTATION -> ESCALATION, the threaten action (between the fighters).",
+      "source": [
+        "src/theroadragetrip/taxi_brawls.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.4,
+        1.2
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019-brawl: generated with ai-audio-studio's Stable Audio Open (tools/generate_audio.sh).",
+      "generation": {
+        "prompt": "Two men shoving each other in the street, scuffle of leather jackets and shoes scraping on asphalt, close dry foley recording, single isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, crowd, traffic, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "brawl.shove.01",
+          "file": "brawl/brawl_shove_01.ogg",
+          "variation": 1,
+          "variant": "a hard two-handed shove",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a hard two-handed shove. Two men shoving each other in the street, scuffle of leather jackets and shoes scraping on asphalt, close dry foley recording, single isolated sound effect",
+          "seed": 648234839,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 0.704,
+          "raw_clipped_samples": 1,
+          "raw_silent_fraction": 0.852,
+          "rms_dbfs": -25.8
+        },
+        {
+          "id": "brawl.shove.02",
+          "file": "brawl/brawl_shove_02.ogg",
+          "variation": 2,
+          "variant": "a brief grabbing scuffle",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "a brief grabbing scuffle. Two men shoving each other in the street, scuffle of leather jackets and shoes scraping on asphalt, close dry foley recording, single isolated sound effect",
+          "seed": 3215595245,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-26",
+          "duration_s": 1.023,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.929,
+          "rms_dbfs": -29.8
         }
       ]
     }

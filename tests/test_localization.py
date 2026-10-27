@@ -53,3 +53,19 @@ def test_german_server_language_argument(monkeypatch):
     monkeypatch.setattr("sys.argv", ["server", "--language", "de", "--use-sample"])
     args, _ = parse_server_args()
     assert args.language == "de"
+
+
+@pytest.mark.parametrize("state,expected", [
+    ("PICKUP", "Kyyti peruttu! Asiakkaan Aino nouto peruttu (-150 pistettä)"),
+    ("DROPOFF", "Kyyti peruttu! Asiakas Aino jäi kyydistä (-150 pistettä)"),
+])
+def test_a_discarded_fare_is_announced_in_the_game_language(state, expected):
+    """The cancel notice was English whatever the language (2026-10-22 screenshot)."""
+    from theroadragetrip.taxi import TaxiManager, TaxiPassenger, TaxiTarget
+
+    manager = TaxiManager(ways=[])
+    manager.set_language("fi")
+    manager.current_passenger = TaxiPassenger("Aino", TaxiTarget(0, 0, "A"), TaxiTarget(50, 0, "B"))
+    manager.state = state
+    manager.discard_mission(0.0, 0.0)
+    assert manager.notification_msg == expected

@@ -237,6 +237,7 @@ class Car:
     length_m: float = 4.0  # length in meters
     width_m: float = 1.8  # width in meters
     engine_on: bool = True  # engine runs only while the player is in the car
+    throttle: float = 0.0  # the last frame's throttle (0..1), for the exhaust
     time_since_last_steer: float = 0.0  # seconds elapsed without manual steer input
     lane_assist_enabled: bool = False  # user toggle for lane assist feature (default False)
     lane_assist_active: bool = False  # whether lane assist is currently steering
@@ -392,6 +393,7 @@ SOFT_GROUND_SCENERY_KINDS = frozenset({
     "wetland", "farmland", "farmyard", "allotments", "flowerbed", "residential",
     "recreation_ground", "cemetery", "horse_riding", "fitness_station",
     "brownfield", "construction", "landfill",
+    "golf_course", "golf_tee", "golf_fairway", "golf_green",
 })
 
 
@@ -421,8 +423,9 @@ def off_road_ground_kind(
     found_hard = False
     for scenery in candidates:
         kind = getattr(scenery, "kind", None)
-        freezes = frozen and kind in FROZEN_IN_WINTER_KINDS
-        if kind in SOFT_GROUND_SCENERY_KINDS and not freezes:  # (a grass pitch is soft, unless frozen)
+        sand_court = bool(getattr(scenery, "volleyball_frame", None))
+        freezes = frozen and kind in FROZEN_IN_WINTER_KINDS and not sand_court
+        if kind in SOFT_GROUND_SCENERY_KINDS and not freezes and not sand_court:  # (a grass pitch is soft, unless frozen)
             continue
         bbox = getattr(scenery, "bbox", None)
         if bbox and bbox != (0.0, 0.0, 0.0, 0.0) and not (bbox[0] <= px <= bbox[2] and bbox[1] <= py <= bbox[3]):
@@ -431,7 +434,7 @@ def off_road_ground_kind(
         if len(points) >= 3 and point_in_polygon(px, py, points):
             if freezes:
                 return "ice"
-            if kind in SAND_SCENERY_KINDS:
+            if kind in SAND_SCENERY_KINDS or sand_court:
                 found_sand = True
             elif not frozen:
                 return "hard"  # nothing can be ice: the first hard polygon decides
@@ -528,6 +531,38 @@ ICE_MONTHS = (1, 2)  # lakes and sea carry a car; rivers (current) stay treacher
 RIVER_KINDS = frozenset({"river", "stream", "canal", "drain", "ditch", "brook", "rapids"})
 RIVER_ICE_BREAK_PER_S = 0.3  # the chance per second on river ice that it gives way
 SINK_S = 5.0  # sinking, then a respawn
+
+
+WATER_ASSIST_DECEL = 4.0  # m/s^2, the same smooth automatic braking as a speed limit
+WATER_ASSIST_MARGIN_M = 1.5  # stop this far before the water, past the front bumper
+WATER_ASSIST_PROBES = 8  # bounded per-tick work: at most this many point tests ahead
+
+
+def water_ahead_speed_limit(car: Car, waters: List, month: Optional[int], spatial_grid=None) -> Optional[float]:
+    """Safety brake: the speed that still stops before open water straight
+    ahead (None: no water within braking distance). Points on a car road
+    (bridges, causeways) are not water; lake and sea ice carry a car in
+    January-February, so then only rivers count."""
+    if not waters or car.speed < 0.0:  # reversing away is always free
+        return None
+    if month in ICE_MONTHS:
+        waters = [w for w in waters if w.kind in RIVER_KINDS]
+        if not waters:
+            return None
+    front = getattr(car, "length_m", 4.0) * 0.5
+    reach = car.speed * car.speed / (2.0 * WATER_ASSIST_DECEL) + WATER_ASSIST_MARGIN_M + 2.0
+    step = max(1.0, reach / WATER_ASSIST_PROBES)
+    forward_x, forward_y = math.cos(car.heading), math.sin(car.heading)
+    layer = getattr(car, "layer", 0)
+    distance = step
+    while distance <= reach:
+        x = car.x + forward_x * (front + distance)
+        y = car.y + forward_y * (front + distance)
+        if is_point_in_water(x, y, waters, layer=layer) and not (
+                spatial_grid is not None and is_point_on_road(x, y, spatial_grid=spatial_grid, car_roads_only=True, layer=layer)):
+            return math.sqrt(2.0 * WATER_ASSIST_DECEL * max(0.0, distance - WATER_ASSIST_MARGIN_M))
+        distance += step
+    return None
 
 
 def water_sinks_car(car: Car, waters: List, current_way, month: Optional[int], dt: float, rng=random.random) -> bool:
@@ -661,7 +696,10 @@ def compute_largest_connected_road_component(ways: List, min_share: Optional[flo
         return int(round(pt[0] / grid_res)), int(round(pt[1] / grid_res))
 
     for idx, w in enumerate(drivable):
-        for pt in (w.points_m[0], w.points_m[-1]):
+        # Every vertex, not only the ends: a side street usually meets the
+        # other road at one of its middle nodes (a T-junction). A bridge
+        # crossing over a road shares no node with it.
+        for pt in w.points_m:
             key = quantize(pt)
             if key not in pt_to_ways:
                 pt_to_ways[key] = []
@@ -1683,6 +1721,7 @@ def update_car_physics(
     entry_speed = car.speed
     if not car.engine_on:
         throttle = 0.0
+    car.throttle = throttle
     # The gear change: having come to a stop against the travel direction,
     # the car waits GEAR_CHANGE_S at zero before it moves the other way
     # (car.gear_hold_dir: +1 forward is held, -1 reverse is held).

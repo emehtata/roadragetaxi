@@ -5,6 +5,7 @@ from typing import Optional
 
 
 from .config import get_vehicle_distribution
+from . import motorcycle_season
 from .osm import (
     BBOX_PRESETS,
 )
@@ -58,6 +59,17 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
         help="Trains run on the real Digitraffic timetable; off: at a fixed interval (default: config game.train_timetable)",
     )
 
+    p.add_argument(
+        "--road-digitraffic",
+        action=argparse.BooleanOptionalAction,
+        default=config.getboolean("game", "road_digitraffic", fallback=False) if config else False,
+        help="Live roadworks from Fintraffic's Digitraffic Road API, cached forever (default: config game.road_digitraffic)",
+    )
+
+    p.add_argument("--intercity-fares", action=argparse.BooleanOptionalAction,
+                   default=config.getboolean("game", "intercity_fares", fallback=False) if config else False,
+                   help="Enable intercity fares after preparing the navigation database from a local Finland PBF")
+
     # Auto-fetching nearby map tiles when the car approaches the bbox edge
     p.add_argument("--no-auto-fetch", dest="auto_fetch", action="store_false", default=map_config.getboolean("auto_fetch", fallback=True), help="Disable on-demand map expansion")
     p.add_argument(
@@ -67,12 +79,6 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
         help="Distance in meters from bbox edge that triggers auto-fetch",
     )
     p.add_argument("--fetch-tile-size", type=float, default=map_config.getfloat("fetch_tile_size", fallback=500.0), help="Base auto-fetch bbox size in meters")
-    p.add_argument(
-        "--use-prebuilt-roads",
-        action="store_true",
-        default=map_config.getboolean("use_prebuilt_roads", fallback=False),
-        help="Use a predefined city's prebuilt road binary (assets/roads/<city>.bin) for drivable roads",
-    )
     p.add_argument(
         "--build-in-process",
         action="store_true",
@@ -103,13 +109,14 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
     p.add_argument(
         "--enable-two-wheelers", action="store_true",
         default=experimental_config.getboolean("enable_two_wheelers", fallback=False),
-        help="Include motorcycles in the NPC vehicle population (vehicle-population, experimental)",
+        help="Include experimental vehicle types in the NPC vehicle population (motorcycles are regular traffic now, in season)",
     )
     # No CLI flag - [traffic] vehicle_distribution is a config-file-only
     # knob (a comma-separated "id:weight" list has no clean single-flag
     # CLI shape); attached here so the server's NPCVehicleManager
     # construction doesn't need config threaded through separately.
-    p.set_defaults(vehicle_distribution=get_vehicle_distribution(config) if config else None)
+    p.set_defaults(vehicle_distribution=get_vehicle_distribution(config) if config else None,
+                   motorcycle_season=motorcycle_season.from_config(config))  # [motorcycles]: config file only
 
     return p.parse_args()
 

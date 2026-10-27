@@ -21,6 +21,7 @@ from ..osm import TILE_MERGE_BUDGET_S, remove_trees_under_roads_steps
 from ..performance import MAP_SYNC_BUDGET_S, MAP_SYNC_URGENT_BUDGET_S
 from ..parking import generate_detached_house_parking_chunk
 from ..physics import connected_drivable_ways
+from ..level_transitions import close_garage_roads
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ def map_sync_steps(world):
     up the time per stage). The old structures keep serving until each
     stage's new one is complete."""
     w = world
+    close_garage_roads((*w.ways, *getattr(w, "level_ways", ())))
     for _ in remove_trees_under_roads_steps(w.sceneries, w.ways):
         yield "trees_under_roads"
     w.taxi_mgr.invalidate_tree_collision_index()
@@ -119,6 +121,11 @@ def map_sync_steps(world):
     # gameplay graphs below are still being brought up to date.
     if getattr(w, "arena_crowds", None) is not None:
         w.arena_crowds.sync_buildings(w.buildings)
+    w.traffic_mgr.start_map_sync(
+        w.ways, traffic_lights=w.traffic_lights, stop_signs=w.stop_signs, yield_signs=w.yield_signs, crossings=w.crossings,
+        buildings=w.buildings, sceneries=w.sceneries, parking_spaces=w.parking_spaces,
+        logical_intersections=w.logical_intersections,
+    )
     yield CHUNK_INPUTS_READY
     if getattr(w, "railway_mgr", None) is not None:
         for _ in w.railway_mgr.rebuild_steps(w.railways):
@@ -139,11 +146,6 @@ def map_sync_steps(world):
         yield "taxi"
     w.taxi_mgr.sync_map_data(w.ways, places=w.places, buildings=w.buildings, connected=found.get("ways"))
     yield "taxi"
-    w.traffic_mgr.start_map_sync(
-        w.ways, traffic_lights=w.traffic_lights, stop_signs=w.stop_signs, yield_signs=w.yield_signs, crossings=w.crossings,
-        buildings=w.buildings, sceneries=w.sceneries, parking_spaces=w.parking_spaces,
-        logical_intersections=w.logical_intersections,
-    )
     while not w.traffic_mgr.advance_map_sync(MAP_SYNC_BUDGET_S):
         yield "traffic"
     w.pedestrian_mgr.start_incremental_sync(
@@ -155,6 +157,7 @@ def map_sync_steps(world):
     rebuilt = _level_structures(w.ways, w.level_ways, w.level_connectors)
     w.level_roads = rebuilt["level_roads"]
     w.level_transitions.topologies = rebuilt["level_transitions"].topologies
+    w.level_transitions.entrances = rebuilt["level_transitions"].entrances
     w.level_routes = rebuilt["level_routes"]
     yield "level_structures"
 

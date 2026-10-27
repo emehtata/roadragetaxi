@@ -52,6 +52,8 @@ def road_color_for_way(way: Way) -> Tuple[int, int, int]:
 
 
 SCENERY_COLORS = {
+    "camp_site": (106, 140, 79), "caravan_site": (120, 143, 94), "camp_pitch": (117, 148, 88),
+    "theme_park": (188, 174, 139),
     "forest": (40, 78, 42), "wood": (40, 78, 42), "scrub": (108, 120, 78),
     "heath": (136, 124, 92), "park": (100, 145, 80), "garden": (104, 150, 86),
     "meadow": (152, 160, 92), "grass": (112, 150, 86), "greenfield": (150, 165, 110),
@@ -66,7 +68,8 @@ SCENERY_COLORS = {
     "religious": (98, 94, 86), "military": (98, 102, 82), "railway": (108, 100, 92),
     "recreation_ground": (98, 142, 78), "brownfield": (142, 122, 96),
     "construction": (170, 142, 96), "quarry": (130, 124, 116), "landfill": (112, 102, 82),
-    "cemetery": (88, 112, 82), "marina": (132, 130, 122), "slipway": (132, 130, 122),
+    "cemetery": (88, 112, 82), "grave_yard": (88, 112, 82), "biergarten": (146, 136, 110),
+    "marina": (132, 130, 122), "slipway": (132, 130, 122),
     "bathing_place": (152, 168, 128), "swimming_pool": (68, 165, 185),
     "sports_centre": (122, 110, 94), "sports_hall": (122, 110, 94),
     "fitness_centre": (122, 110, 94), "fitness_station": (98, 142, 78),
@@ -75,6 +78,9 @@ SCENERY_COLORS = {
     "firepit": (100, 90, 70), "outdoor_seating": (112, 102, 92), "sauna": (112, 92, 72),
     "parking": (98, 98, 98), "pedestrian_area": (125, 120, 112), "fuel": (92, 88, 84),
     "traffic_island": (112, 150, 86),
+    "miniature_golf": (168, 154, 116),
+    "golf_course": (88, 128, 64), "golf_fairway": (106, 156, 75),
+    "golf_tee": (126, 172, 88), "golf_green": (142, 188, 100),
 }
 
 SPECKLE_SCENERY_KINDS = frozenset({
@@ -88,7 +94,8 @@ SPECKLE_SCENERY_KINDS = frozenset({
 # winter): flowerbeds stayed pink under snow before.
 SEASONAL_GROUND_KINDS = frozenset({
     "residential", "recreation_ground", "flowerbed", "playground", "horse_riding",
-    "sports_centre", "stadium",
+    "sports_centre", "stadium", "grave_yard", "biergarten",
+    "golf_course", "golf_fairway", "golf_tee", "golf_green", "miniature_golf",
 })
 
 # Finnish winter: sports fields and rinks are flooded and frozen for

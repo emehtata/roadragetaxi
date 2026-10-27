@@ -57,17 +57,27 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
+	test_forest_canopy()
+	test_decorated_sites()
+	test_menu_music()
+	test_camera_view_command()
+	test_vomit_puddle()
 	test_i18n()
 	test_graphics_settings()
 	test_chunk_queue()
 	test_interpolation()
 	test_vehicle_body_triangles()
 	test_audio()
+	test_environment_ambience()
+	test_new_sound_triggers()
+	test_nightclub_audio()
+	test_car_audio()
 	test_hud()
 	test_map_chunks()
 	test_road_snow_invalidation()
 	test_commands_carry_the_player_id()
 	test_phone()
+	test_wildlife()
 	test_rendering()
 	test_drive_input()
 	test_mouse_inspection()
@@ -85,6 +95,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_performance_paths()
 	test_startup_progress()
 	test_holiday_events()
+	test_date_picker()
 	test_settings_help()
 	test_credits()
 	test_minimap_is_exported()
@@ -116,14 +127,55 @@ func test_credits() -> void:
 	scene.free()
 
 
+func test_date_picker() -> void:
+	var picker := preload("res://date_picker.gd").new()
+	root.add_child(picker)
+	var earliest := {"year": 2027, "month": 2, "day": 28}
+	var latest := {"year": 2028, "month": 2, "day": 29}
+	picker.configure(latest, earliest, latest, "en")
+	check(picker._heading.text == "February 2028", "calendar: localized month and year")
+	check(picker._days[1].text == "1" and picker._days[0].text == "", "calendar: Monday-first layout (1 Feb 2028 is Tuesday)")
+	check(picker._days.filter(func(day): return not day.disabled).size() == 29, "calendar: leap February has 29 selectable dates")
+	picker._move_month(-1)
+	check(picker.value.month == 1 and picker.value.day == 29, "calendar: previous month retains day")
+	picker._move_month(-1)
+	check(picker.value.year == 2027 and picker.value.month == 12, "calendar: previous month crosses year")
+	picker.set_value({"year": 2028, "month": 1, "day": 31})
+	picker._move_month(1)
+	check(picker.value.month == 2 and picker.value.day == 29, "calendar: month navigation clamps to leap-month end")
+	check(picker.next.disabled and not picker.previous.disabled, "calendar: latest month has no forward navigation")
+	picker.set_value(earliest)
+	check(picker.previous.disabled and picker._days.filter(func(day): return not day.disabled).size() == 1, "calendar: earliest month disables earlier dates")
+	picker._move_month(-1)
+	check(picker.value.year == 2027 and picker.value.month == 2 and picker.value.day == 28, "calendar: cannot move before earliest date")
+	picker.set_value({"year": 2028, "month": 4, "day": 1})
+	check(picker.value.month == 2 and picker.value.day == 29, "calendar: cannot select future date")
+	var Shell := preload("res://startup.gd")
+	check(Shell.panel_fit(Vector2(520, 500), Vector2(1280, 720)) == 1.0, "a menu that fits is shown at full size")
+	var fit: float = Shell.panel_fit(Vector2(520, 700), Vector2(1280, 600))
+	check(is_equal_approx(fit, 576.0 / 700.0) and 700 * fit <= 600 - 24, "a menu taller than the window is scaled to fit, never scrolled")
+	picker._move_month(-1)
+	var day = picker._days.filter(func(button): return button.text == "15")[0]
+	day.pressed.emit()
+	check(picker.value.month == 1 and picker.value.day == 15, "calendar: day buttons select dates")
+	picker.free()
+
+
 func test_settings_help() -> void:
 	var shell = preload("res://startup.gd").new()
 	root.add_child(shell)
 	shell._settings_menu()
+	check(shell._focusables.size() == 6, "settings: five categories and Back")
+	var help_count := 0
+	for category in ["general", "gameplay", "graphics", "audio", "maps"]:
+		shell.call("_" + category + "_menu")
+		check(shell._back_action == Callable(shell, "_settings_menu"), "settings: %s returns to categories" % category)
+		var category_help: Array = shell._body.find_children("*", "Button", true, false).filter(func(b): return b.text == "?")
+		help_count += category_help.size()
+		check(not category_help.is_empty() and category_help.all(func(q): return q.tooltip_text != "" and not q.tooltip_text.begins_with("help_")), "settings: %s controls have help" % category)
+		check(category_help.all(func(q): return Array(q.tooltip_text.split("\n")).all(func(l): return l.length() <= 60)), "settings: %s help wraps at 60 characters" % category)
+	check(help_count >= 10, "settings: help preserved across categories")
 	var questions: Array = shell._body.find_children("*", "Button", true, false).filter(func(b): return b.text == "?")
-	check(questions.all(func(q): return Array(q.tooltip_text.split("\n")).all(func(l): return l.length() <= 60)), "settings: help tooltips wrap at 60 characters")
-	check(questions.size() >= 10 and questions.all(func(q): return q.tooltip_text != "" and not q.tooltip_text.begins_with("help_")),
-		"settings: every setting has a ? with its explanation (%d)" % questions.size())
 	var tip: StyleBoxFlat = questions[0].theme.get_stylebox("panel", "TooltipPanel")
 	check(tip.bg_color.a == 1.0, "settings: help tooltips on an opaque panel")
 	var help: Label = questions[0].get_parent().get_parent().get_child(1)
@@ -133,8 +185,10 @@ func test_settings_help() -> void:
 	check(not help.visible, "settings: clicking it again closes it")
 	shell._language = "de"
 	shell._settings_menu()
+	shell._general_menu()
 	var language_picker: OptionButton = shell._focusables[0]
 	check(language_picker.item_count == 3 and language_picker.get_item_text(language_picker.selected) == "Deutsch", "settings: German selected from three languages")
+	shell._settings_menu()
 	check(shell._body.find_children("*", "Label", true, false).any(func(label): return label.text == "EINSTELLUNGEN"), "German settings title")
 	shell.free()
 
@@ -143,6 +197,10 @@ func test_startup_progress() -> void:
 	var Startup := preload("res://startup.gd")
 	check(Startup.startup_status("{}").is_empty() and Startup.startup_status("[]").is_empty(), "startup: invalid or absent status ignored")
 	check(Startup.startup_status('{"stage":3,"detail":"x","history":[]}').is_empty(), "startup: malformed stage ignored")
+	var intercity := "Initializing intercity navigation database...|"
+	check(Startup.intercity_progress(intercity + "2/4 · 1.25 M") == {"step": 2, "value": 1.0}, "startup: known intercity stages drive the meter without fake percentages")
+	check(Startup.intercity_progress(intercity + "4/4 · 50/100").value == 3.5, "startup: town connection counts advance the final step")
+	check(Startup.intercity_progress(intercity + "5/4").is_empty() and Startup.intercity_progress(intercity + "x/4").is_empty(), "startup: invalid preparation counters ignored")
 	var shell := Startup.new()  # no _ready/menu process launch
 	shell._language = "fi"
 	var temporary := OS.get_environment("TEMP") if OS.get_name() == "Windows" else "/tmp"
@@ -154,7 +212,10 @@ func test_startup_progress() -> void:
 	shell._startup_elapsed = Label.new()
 	shell._startup_history = Label.new()
 	shell._startup_bar = ProgressBar.new()
-	for node in [shell._startup_stage, shell._startup_detail, shell._startup_elapsed, shell._startup_history, shell._startup_bar]:
+	shell._startup_activity = Label.new()
+	shell._startup_busy_bar = ProgressBar.new()
+	shell._startup_busy_bar.indeterminate = true
+	for node in [shell._startup_stage, shell._startup_detail, shell._startup_elapsed, shell._startup_history, shell._startup_bar, shell._startup_activity, shell._startup_busy_bar]:
 		shell.add_child(node)
 	var file := FileAccess.open(shell._startup_path, FileAccess.WRITE)
 	check(file != null, "startup: status fixture is writable")
@@ -170,6 +231,24 @@ func test_startup_progress() -> void:
 	check(shell._startup_detail.text == "Valmistellaan muuta liikennettä…", "startup: Finnish substage reaches the visible label")
 	check(shell._startup_elapsed.text.begins_with("Kulunut 5 s"), "startup: elapsed time keeps updating")
 	check(shell._startup_history.text.contains("Käynnistetään palvelinta"), "startup: recent stages shown")
+	file = FileAccess.open(shell._startup_path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"stage": "world", "detail": intercity + "2/4", "history": ["starting", "world"]}))
+	file.close()
+	shell._process(0.5)
+	check(not shell._startup_bar.indeterminate and shell._startup_bar.value == 1 and shell._startup_bar.max_value == 4, "startup: intercity has a four-step progress meter")
+	check(shell._startup_busy_bar.visible and shell._startup_busy_bar.indeterminate, "startup: a separate activity bar keeps moving without changing actual progress")
+	check(shell._startup_detail.text.contains("Vaihe 2 / 4") and shell._startup_activity.visible, "startup: localized intercity stage and activity are visible")
+	check(shell._startup_activity.text.contains("Varoitus:") and shell._startup_activity.text.contains("useita minuutteja"), "startup: intercity initialization shows an explicit duration warning")
+	shell._startup_started = Time.get_ticks_msec() - 61000
+	shell._startup_changed_at = Time.get_ticks_msec() - 45000
+	shell._startup_poll = 100.0  # deliberately no server/file updates
+	shell._process(0.01)
+	check(shell._startup_elapsed.text.begins_with("Kulunut 61 s") and shell._startup_elapsed.text.contains("45 s"), "startup: elapsed and silence time update even between polls")
+	shell._startup_feedback(shell._startup_started + 61600)
+	var activity: String = shell._startup_activity.text
+	shell._startup_feedback(shell._startup_started + 62000)
+	check(activity != shell._startup_activity.text and shell._startup_bar.value == 1, "startup: local activity animates while actual progress stays honest during server silence")
+	shell._startup_poll = 0
 	file = FileAccess.open(shell._startup_path, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"stage": "error", "detail": "ValueError: broken map", "history": ["world", "error"]}))
 	file.close()
@@ -298,7 +377,7 @@ func test_i18n() -> void:
 	check(I18n.LANGUAGES.has("de") and I18n.LANGUAGE_NAMES.de == "Deutsch", "German is selectable")
 	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "de") == "[ZUM TAXI] Aino", "German walking passenger tag")
 	check(Phone.status_text(true, false, [], "", "de") == "Zurzeit keine Fahrtanfragen.", "German phone status")
-	check(Phone.card_text({"passenger_count": 3}, "de").contains("3 Fahrgäste"), "German group fare")
+	check(Phone.card_text({"passenger_count": 3}, "de") == Phone.card_text({}, "de"), "German fare hides passenger count")
 	check(I18n.startup_detail("Preparing NPC traffic...", "de") == "Verkehr wird vorbereitet…", "German startup details")
 	check(I18n.text("settings", "de") == "EINSTELLUNGEN" and I18n.text("nav_left", "de") == "Links abbiegen", "German settings and navigation")
 	check(Hud.subtitle_text({"speaker": "driver", "text": "Hallo!"}, "de") == "Fahrer: Hallo!", "German subtitle speaker")
@@ -325,6 +404,77 @@ func test_i18n() -> void:
 		check(fi_args == de_args, "German format arguments match: " + key)
 
 
+func test_vomit_puddle() -> void:
+	var entities := EntityLayer.new()
+	check(entities._vomit_triangles.size() == (EntityLayer.VOMIT_EDGE.size() - 2) * 3, "irregular vomit puddle triangulates completely")
+	check(EntityLayer.VOMIT_SPLASHES.size() >= 8 and EntityLayer.VOMIT_BITS.size() >= 5, "vomit includes detached splashes and contrasting texture")
+	for splash in EntityLayer.VOMIT_SPLASHES:
+		check(not Geometry2D.is_point_in_polygon(Vector2(splash.x, splash.y), entities._vomit_edge), "vomit splash is detached from the main puddle")
+	entities.free()
+
+
+func test_camera_view_command() -> void:
+	var main: Node = load("res://main.tscn").instantiate()
+	root.add_child(main)
+	check(main.phone.is_open and main.phone.visible, "the game starts with the phone open")
+	main.phone.close()
+	main.entities.origin = Vector2(1000, 2000)
+	var old_transform := root.canvas_transform
+	root.canvas_transform = Transform2D(Vector2(2, 0), Vector2(0, 2), Vector2(10, 20))
+	main.send({})
+	var bounds: Array = main.sim._last_command["view_bounds"]
+	var size := root.get_visible_rect().size
+	check(is_equal_approx(bounds[0], 995.0) and is_equal_approx(bounds[3], 2010.0), "camera report reverses the canvas transform and world y axis")
+	check(is_equal_approx(bounds[2] - bounds[0], size.x / 2.0) and is_equal_approx(bounds[3] - bounds[1], size.y / 2.0), "camera report includes zoom and viewport dimensions")
+	root.canvas_transform = old_transform
+	main.free()
+
+
+func test_menu_music() -> void:
+	var shell := preload("res://startup.gd").new()
+	root.add_child(shell)
+	check(shell._menu_music != null and shell._menu_music.playing, "menu music starts on the shell's opening screen")
+	var player: AudioStreamPlayer = shell._menu_music
+	check(player.stream is AudioStreamOggVorbis and player.stream.loop and player.stream.get_length() >= 20.0 and player.stream.get_length() <= 45.0, "menu music uses the short looping Ogg track")
+	check(player.bus == "Music" and AudioServer.get_bus_index("Music") >= 0, "menu music has an independent volume bus")
+	shell._settings_menu()
+	check(shell._menu_music == player and player.playing, "opening settings keeps the same music player")
+	shell._set_volume("Music", 0.25)
+	check(is_equal_approx(db_to_linear(AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Music"))), 0.25), "music slider controls the music bus")
+	shell._loading = true
+	shell._server_connected(true)
+	check(not player.playing, "gameplay connection stops menu music")
+	shell._pause_menu()
+	check(player.playing and player.process_mode == Node.PROCESS_MODE_ALWAYS, "pause menus play music even while the game tree is paused")
+	shell._resume()
+	check(not player.playing and not paused, "resuming gameplay stops menu music")
+	shell._main_menu()
+	check(player.playing and shell._menu_music == player, "returning to the main menu restarts the same music player")
+	shell._set_volume("Music", 1.0)
+	shell.free()
+
+
+func test_decorated_sites() -> void:
+	var polygon := PackedVector2Array([Vector2.ZERO, Vector2(500, 0), Vector2(500, 500), Vector2(0, 500)])
+	var concave := PackedVector2Array([Vector2.ZERO, Vector2(60, 0), Vector2(60, 15), Vector2(15, 15), Vector2(15, 60), Vector2(0, 60)])
+	for kind in ["biergarten", "grave_yard", "cemetery"]:
+		var spots := Detail.site_detail_positions(polygon, kind, Vector2.ZERO)
+		check(not spots.is_empty() and spots.size() <= 256, "site decorations are populated and bounded per chunk")
+		check(spots == Detail.site_detail_positions(polygon, kind, Vector2.ZERO), "site decoration placement is deterministic")
+		for at in Detail.site_detail_positions(concave, kind, Vector2.ZERO):
+			check(Geometry2D.is_point_in_polygon(at, concave), "site details stay inside concave area boundaries")
+	check(Detail.site_detail_positions(polygon, "park", Vector2.ZERO).is_empty(), "ordinary parks do not receive cemetery or biergarten decorations")
+	check(Detail.site_detail_positions(PackedVector2Array(), "cemetery", Vector2.ZERO).is_empty(), "invalid areas have no site decorations")
+	var chunk := MapChunk.new()
+	chunk.setup({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "landuse": [
+		[[88, 112, 82], 1, [[0, 0], [100, 0], [100, 100], [0, 100]], "cemetery"],
+		[[80, 120, 80], 1, [[5, 5], [95, 5], [95, 95], [5, 95]]]]}, Vector2.ZERO)
+	check(chunk._season_layers.size() == 2, "decorated sites have a separate seasonal detail layer")
+	check(chunk._season_layers[0].z_index < chunk._season_layers[1].z_index and chunk._season_layers[1].z_index < MapChunk.road_z(0),
+		"headstones draw above all grass fills but below surface roads")
+	chunk.free()
+
+
 func test_graphics_settings() -> void:
 	var Graphics := preload("res://graphics_settings.gd")
 	var config := ConfigFile.new()
@@ -343,6 +493,7 @@ func test_graphics_settings() -> void:
 	var main: Node = load("res://main.tscn").instantiate()
 	main.set_graphics(Graphics.read(reloaded))
 	root.add_child(main)
+	main.phone.close()
 	check(not MapChunk.buildings_3d, "graphics: new session selects the existing 2D fallback")
 	check(not main.entities.smoke_enabled and not main.map_layer.shadows_enabled, "graphics: live render flags applied")
 	var weather = main.weather
@@ -358,12 +509,13 @@ func test_graphics_settings() -> void:
 	check(not MapChunk.buildings_3d, "graphics: changing building mode waits until next session")
 	weather.update(0.1, state, Vector2.ZERO, false)
 	check(weather.precipitation.visible and weather.ripples.visible and weather.particles != positions, "graphics: weather effects resume live")
-	check(main.entities.smoke_enabled and main.map_layer.shadows_enabled, "graphics: live flags restored")
+	check(main.entities.smoke_enabled and not main.map_layer.shadows_enabled, "graphics: independent effects resume but 2D cannot enable 3D shadows")
 	main.free()
 	main = load("res://main.tscn").instantiate()
 	main.set_graphics(Graphics.DEFAULTS)
 	root.add_child(main)
 	check(MapChunk.buildings_3d, "graphics: next session uses saved 3D selection")
+	check(main.map_layer.shadows_enabled, "graphics: 3D session restores the saved shadow preference")
 	main.free()
 	MapChunk.buildings_3d = previous_3d
 	var B3 := preload("res://buildings_3d.gd")
@@ -388,6 +540,15 @@ func test_graphics_settings() -> void:
 	var first = toggles[0]
 	first.button_pressed = not first.button_pressed
 	check(shell._settings.get_value("graphics", "shadows") == first.button_pressed, "graphics: toggling saves the matching setting")
+	var shadow_preference: bool = first.button_pressed
+	var buildings = toggles[1]
+	buildings.button_pressed = false
+	check(first.disabled, "graphics: flat buildings disable the shadow control immediately")
+	check(first.button_pressed == shadow_preference, "graphics: disabling shadows preserves the saved preference")
+	for toggle in toggles.slice(2):
+		check(not toggle.disabled, "graphics: other effects do not depend on 3D buildings")
+	buildings.button_pressed = true
+	check(not first.disabled and first.button_pressed == shadow_preference, "graphics: enabling 3D restores the shadow control and preference")
 	shell.free()
 
 
@@ -474,6 +635,23 @@ func test_interpolation() -> void:
 	check(backwards == 0, "the render clock is monotonic (%d backward steps)" % backwards)
 	check(absf(steady.render_time(frame_at) - steady.target_time(frame_at)) < 0.02, "and converges on its target")
 
+	# A client hitch (a 120 ms frame) delays reading the states, not making them:
+	# the backlog read afterwards must not pull the clock back (slow motion, then catch-up).
+	var hitch := StateBuffer.new()
+	hitch.delay = 0.1
+	var at := 0.0
+	for tick in range(1, 61):
+		hitch.push(tick, tick / 30.0, _state(0.0), tick / 30.0)
+		while at < (tick + 1) / 30.0:
+			hitch.sample(at)
+			at += 1.0 / 60.0
+	var offset_before: float = hitch._offset
+	at += 0.12
+	for tick in range(61, 66):
+		hitch.push(tick, tick / 30.0, _state(0.0), at)
+	hitch.sample(at)
+	check(absf(hitch._offset - offset_before) < 0.005, "a client hitch's backlog leaves the clock offset alone (moved %.3f s)" % (hitch._offset - offset_before))
+
 	# Events: handed out once, when the render time reaches their state.
 	var events := StateBuffer.new()
 	events.delay = 0.1
@@ -497,6 +675,122 @@ func test_vehicle_body_triangles() -> void:
 	check(EntityLayer2.body_triangles(PackedVector2Array([Vector2.ZERO, Vector2(2, 2), Vector2(0, 2), Vector2(2, 0)])).is_empty(), "crossed vehicle body is skipped")
 
 
+## rrt-019: nightclub music - opening hours, distance, muffling, the player pool.
+func test_nightclub_audio() -> void:
+	var NC := preload("res://nightclub_audio.gd")
+	check(NC.tracks_in(NC.TRACK_DIR).has("assets/music/nightclub/nightclub_industrial_5.ogg"), "nightclubs include the industrial breakbeat loop")
+	for file in ["nightclub_eurodance_female_6.ogg", "nightclub_eurodance_female_7.ogg"]:
+		check(NC.tracks_in(NC.TRACK_DIR).has(NC.TRACK_DIR.path_join(file)), "nightclubs include vocal Eurodance: " + file)
+	var fri := 4 * 1440.0
+	var schedule := [[fri + 1320.0, fri + 1440.0 + 240.0]]  # Friday 22:00 - Saturday 04:00
+	check(NC.open_level(schedule, fri + 1200.0) == 0.0 and NC.open_level(schedule, fri + 600.0) == 0.0, "closed in the evening and by day")
+	check(NC.open_level(schedule, fri + 1330.0) > 0.4 and NC.open_level(schedule, fri + 1330.0) < 0.6, "opening: fading in (10 of 20 minutes)")
+	check(NC.open_level(schedule, fri + 1440.0 + 60.0) == 1.0, "after midnight: open")
+	check(NC.open_level(schedule, fri + 1440.0 + 235.0) < 0.3 and NC.open_level(schedule, fri + 1440.0 + 241.0) == 0.0, "closing at 04:00: faded out")
+	var sunday := [[6 * 1440.0 + 1320.0, 7 * 1440.0 + 240.0]]
+	check(NC.open_level(sunday, 120.0) == 1.0, "Sunday night runs into Monday 02:00 (the week wraps)")
+	var worst := 0.0
+	for i in 200:
+		worst = maxf(worst, absf(NC.gain(i) - NC.gain(i + 1)))
+		check(NC.gain(i + 1) <= NC.gain(i) and NC.cutoff_hz(i + 1) <= NC.cutoff_hz(i), "quieter and more muffled further away (%d m)" % i)
+	check(worst < 0.05, "no audible step per metre (%.3f)" % worst)
+	check(NC.gain(5.0) == 1.0 and NC.gain(25.0) > 0.7, "loud at the door, still clearly there just outside")
+	check(NC.gain(NC.RANGE_M) == 0.0 and NC.gain(NC.RANGE_M + 50.0) == 0.0, "inaudible beyond the range")
+	check(NC.cutoff_hz(5.0) <= 3000.0 and NC.cutoff_hz(NC.RANGE_M) < 400.0, "through the walls: highs cut, far off only the bass")
+	check(NC.week_minute("2026-10-19", 3600.0) == 60.0 and NC.week_minute("2026-10-25", 0.0) == 6 * 1440.0, "the game date's weekday (Mon 2026-10-19)")
+	var audio = NC.new()
+	root.add_child(audio)
+	check(is_equal_approx(audio.city_ambience_gain(), 1.0), "no nightclub playback leaves city ambience unchanged")
+	var open := [[0.0, 7 * 1440.0]]
+	var clubs := [[0.0, 0.0, open], [0.0, 0.0, open], [400.0, 0.0, open], [10.0, 5.0, open], [-10.0, 5.0, open], [5.0, -10.0, open]]
+	if audio._streams.is_empty():
+		check(true, "nightclub tracks missing: silent, no crash")
+	else:
+		audio.update(clubs, Vector2.ZERO, 600.0, Vector2.ZERO, 0.1)
+		var first: Array = audio._club_of.duplicate()
+		check(audio.playing_count() == NC.PLAYERS and not first.has("400,0"), "the nearest venues play (a duplicate is one venue), the far one doesn't")
+		var opening_gain: float = audio.city_ambience_gain()
+		for i in 60:
+			audio.update(clubs, Vector2.ZERO, 600.0, Vector2.ZERO, 0.1)
+		check(absf(audio.city_ambience_gain() - NC.CITY_AMBIENCE_MIN) < 0.001, "near a full-volume club city ambience drops to 20 percent")
+		check(opening_gain > audio.city_ambience_gain() and opening_gain < 1.0, "ambience ducks progressively with the music fade-in")
+		check(audio._players[0].volume_db > 1.9, "door-level music reaches the boosted 2 dB mix")
+		for i in 20:
+			audio.update(clubs, Vector2(float(i), 0.0), 600.0, Vector2.ZERO, 0.1)
+		check(audio._club_of == first, "moving a little: same players, no restart")
+		var nearby_gain: float = audio.city_ambience_gain()
+		audio.update(clubs, Vector2(2000.0, 0.0), 600.0, Vector2.ZERO, 0.1)
+		check(audio.city_ambience_gain() > nearby_gain and audio.city_ambience_gain() < 1.0, "ambience returns gradually while departing music fades")
+		for i in 100:
+			audio.update(clubs, Vector2(2000.0, 0.0), 600.0, Vector2.ZERO, 0.1)
+		check(audio.playing_count() == 0, "far away: every player stopped")
+		check(is_equal_approx(audio.city_ambience_gain(), 1.0), "leaving the clubs restores city ambience")
+	var missing = NC.new()
+	missing.set("_streams", [])
+	root.add_child(missing)
+	missing._streams = []
+	missing.update(clubs, Vector2.ZERO, 600.0, Vector2.ZERO, 0.1)
+	check(missing.playing_count() == 0, "no tracks: nothing plays, no crash")
+	check(is_equal_approx(missing.city_ambience_gain(), 1.0), "missing music must not suppress city ambience")
+	audio.queue_free()
+	missing.queue_free()
+
+
+## rrt-019-amikset: NPC car stereos - who has one, when, and the player pool.
+func test_car_audio() -> void:
+	var CA := preload("res://car_audio.gd")
+	var day := 1440.0
+	check(CA.SHARE_WEEKEND_NIGHT == 0.20 and CA.SHARE_EVENING == 0.10 and CA.SHARE_DAY == 0.05, "car stereo shares: 20%, 10%, 5%")
+	check(CA.share(4 * day + 23 * 60) == CA.SHARE_WEEKEND_NIGHT and CA.share(5 * day + 2 * 60) == CA.SHARE_WEEKEND_NIGHT, "Friday night, also after midnight")
+	check(CA.share(6 * day + 1 * 60) == CA.SHARE_WEEKEND_NIGHT and CA.share(0 * day + 2 * 60) == CA.SHARE_EVENING, "Saturday night into Sunday; Sunday night isn't a weekend one")
+	check(CA.share(2 * day + 14 * 60) == CA.SHARE_DAY and CA.share(1 * day + 20 * 60) == CA.SHARE_EVENING, "weekday day: few; a weekday evening: some")
+	check(CA.SHARE_DAY < CA.SHARE_EVENING and CA.SHARE_EVENING < CA.SHARE_WEEKEND_NIGHT, "more on weekend nights")
+	var car := {"vehicle_type": "car"}
+	check(CA.eligible(car) and not CA.eligible({"vehicle_type": "bus"}) and not CA.eligible({"vehicle_type": "car", "is_taxi": true})
+		and not CA.eligible({"vehicle_type": "car", "is_police": true}), "only ordinary cars")
+	check(CA.draw(1234) == CA.draw(1234), "the same car always draws the same")
+	var car_tracks: Array = preload("res://nightclub_audio.gd").tracks_in(CA.TRACK_DIR)
+	check(car_tracks == ["assets/music/cars/cars_bass_far_1.ogg", "assets/music/cars/cars_bass_far_2.ogg", "assets/music/cars/cars_industrial_3.ogg", "assets/music/cars/cars_music_1.ogg", "assets/music/cars/cars_music_2.ogg"],
+		"every .ogg in the folder is a track, the MP3 originals aren't (%s)" % [car_tracks])
+	var chosen := 0
+	for id in 4000:
+		chosen += int(CA.draw(id) < CA.SHARE_WEEKEND_NIGHT)
+	check(chosen > 4000 * 0.17 and chosen < 4000 * 0.23, "about the share of cars (%d of 4000 at 20 %%)" % chosen)
+	for i in 120:
+		check(CA.gain(i + 1) <= CA.gain(i) and CA.cutoff_hz(i + 1) <= CA.cutoff_hz(i), "quieter and duller further (%d m)" % i)
+	check(CA.gain(3.0) == 1.0 and CA.cutoff_hz(3.0) >= 8000.0 and CA.cutoff_hz(60.0) < 2000.0 and CA.gain(CA.RANGE_M) == 0.0, "bright up close, bass at medium range, silent beyond")
+	var audio = CA.new()
+	root.add_child(audio)
+	var stereo_id := -1
+	for id in 4000:
+		if CA.draw(id) < CA.SHARE_DAY:
+			stereo_id = id
+			break
+	var plain_id := 0 if CA.draw(0) >= CA.SHARE_WEEKEND_NIGHT else 1
+	var friday := 4 * day + 23 * 60
+	if audio._streams.is_empty():
+		check(true, "car tracks missing: silent, no crash")
+	else:
+		var cars := [[stereo_id, Vector2(10, 0), car], [stereo_id, Vector2(10, 0), car], [plain_id, Vector2(5, 0), car], [9999, Vector2(5, 0), {"vehicle_type": "bus"}]]
+		audio.update(cars, Vector2.ZERO, friday, 0.1)
+		check(audio.playing_count() == 1 and audio._car_of.has(stereo_id), "one stereo car plays, once; plain cars and buses don't")
+		for i in 30:  # the clock moves to a weekday day: the car keeps its stereo
+			audio.update([[stereo_id, Vector2(10 + i, 0), car]], Vector2.ZERO, 2 * day + 14 * 60, 0.1)
+		var at: Vector2 = audio._players[audio._car_of.find(stereo_id)].position
+		check(audio.playing_count() == 1 and at == Vector2(39, 0), "music follows the moving car and survives the clock")
+		check(audio.city_ambience_gain() < 1.0, "a booming car ducks the city ambience")
+		for i in 80:
+			audio.update([], Vector2.ZERO, friday, 0.2)
+		check(audio.playing_count() == 0 and not audio._car_of.has(stereo_id) and audio._stereo.is_empty(), "a despawned car releases its player and is forgotten")
+	var missing = CA.new()
+	root.add_child(missing)
+	missing._streams = []
+	missing.update([[stereo_id, Vector2(10, 0), car]], Vector2.ZERO, friday, 0.1)
+	check(missing.playing_count() == 0 and is_equal_approx(missing.city_ambience_gain(), 1.0), "no tracks: nothing plays, no crash")
+	audio.queue_free()
+	missing.queue_free()
+
+
 func test_audio() -> void:
 	var audio := AudioManager.new()
 	root.add_child(audio)  # _ready loads the config and the game's catalog
@@ -508,6 +802,13 @@ func test_audio() -> void:
 	check(arrived[0]["range"][1] == 150.0, "with the game's hearing range")
 	check(audio.bus_for("ui.accept") == "UI" and audio.bus_for("weather.rain") == "Environment", "categories map to buses")
 	check(audio.bus_for("ambient.city_day") == "Environment", "the day bed is environment")
+	for key in ["rural_day", "rural_night", "beach"]:
+		audio.set_loop(key, 0.3)
+		audio.set_loop(key, 0.2)
+		check(audio.loop_playing(key) and audio.loop_starts[key] == 1, "new ambience loads and keeps playing across mix changes")
+		check(audio._loops[key].stream.loop and audio._loops[key].bus == "Environment", "new ambience loops on the Environment bus")
+		audio.set_loop(key, 0.0)
+
 	var opened := audio.resolve({"type": "sound", "group": "vehicle.door_open"})
 	check(opened.size() == 1 and opened[0]["file"].ends_with(".ogg") and FileAccess.file_exists(opened[0]["file"]), "getting in: the door-open sound exists as OGG")
 	check(audio.resolve({"type": "something_new"}).is_empty() and audio.unhandled.get("something_new") == 1, "an unknown event is noted, not played")
@@ -558,6 +859,55 @@ func test_audio() -> void:
 	audio.free()
 
 
+func test_new_sound_triggers() -> void:
+	var main: Node = load("res://main.tscn").instantiate()
+	root.add_child(main)
+	var audio: AudioManager = main.audio
+	var state := {"on_foot": false, "player": {"x": 0.0, "y": 0.0, "speed": 6.0},
+		"tire_mark": {"kind": "dirt", "spray": 0.8},
+		"npcs": [{"x": 20.0, "y": 0.0, "speed": 5.0, "state": "DRIVING", "trailer": [17.0, 0.0]},
+			{"x": 100.0, "y": 0.0, "speed": 8.0, "state": "DRIVING", "trailer": [97.0, 0.0]},
+			{"x": 4.0, "y": 0.0, "speed": 8.0, "layer": -1, "state": "DRIVING", "trailer": [1.0, 0.0]}],
+		"pedestrians": [{"x": 2.0, "y": 3.0, "animation_state": "swimming"},
+			{"x": 40.0, "y": 0.0, "animation_state": "swimming"},
+			{"x": 8.0, "y": 0.0, "activity": "theme_park", "animation_state": "riding"}]}
+	main._feature_loops(state)
+	for key in ["mud", "trailer", "swimming", "ride"]:
+		check(audio.loop_playing(key) and audio._loops[key] is AudioStreamPlayer2D, "%s starts at a positional source" % key)
+	check(audio._loops["swimming"].position == Vector2(2, -3), "the closest swimmer is the sound source")
+	check(audio._loops["trailer"].position == Vector2(17, 0), "the nearest moving trailer rattles from its own body")
+	for i in 10:
+		main._feature_loops(state)
+	for key in ["mud", "trailer", "swimming", "ride"]:
+		check(audio.loop_starts[key] == 1, "%s adjusts without restarting every state" % key)
+	state["on_foot"] = true
+	main._feature_loops(state)
+	check(not audio.loop_playing("mud") and audio.loop_playing("swimming"), "walking stops tyres while nearby swimmers remain audible")
+	state["on_foot"] = false
+	state["player"]["map_level"] = -1
+	main._feature_loops(state)
+	for key in ["mud", "trailer", "swimming", "ride"]:
+		check(not audio.loop_playing(key), "%s surface loop is silent underground" % key)
+	state["player"]["map_level"] = 0
+	state["player"]["speed"] = 0
+	state["npcs"][0]["state"] = "PARKED"
+	state["npcs"][1]["speed"] = 0
+	state["pedestrians"][0]["animation_state"] = "idle"
+	state["pedestrians"][1]["animation_state"] = "idle"
+	state["pedestrians"][2]["animation_state"] = "idle"
+	main._feature_loops(state)
+	for key in ["mud", "trailer", "swimming", "ride"]:
+		check(not audio.loop_playing(key), "%s stops when its source stops" % key)
+	for group in ["collision.hedge_break", "sport.tennis_hit", "sport.tennis_bounce", "sport.golf_hit",
+			"sport.golf_putt", "sport.golf_cup", "sport.beach_ball", "pedestrian.bottle_drink", "vehicle.bus_air_brake"]:
+		var actions := audio.resolve({"type": "sound", "group": group, "at": [3.0, 4.0]})
+		check(actions.size() == 1 and actions[0]["at"] == Vector2(3, 4), "%s resolves to one positioned clip" % group)
+		check(actions[0]["range"][1] <= 120.0 and actions[0]["volume"] < 1.0, "%s has a bounded audible range and mix level" % group)
+	main._on_connection(false)
+	check(audio.loops_playing() == 0, "disconnect stops the new audio loops too")
+	main.free()
+
+
 func test_hud() -> void:
 	var text := Hud.values({
 		"on_foot": false, "game_time_seconds": 18.0 * 3600.0 + 5.0 * 60.0,
@@ -570,13 +920,11 @@ func test_hud() -> void:
 	check(text["speed"] == "50 km/h", "speed (%s)" % text["speed"])
 	check(text["clock"] == "18:05", "clock (%s)" % text["clock"])
 	check(text["weather"] == "Rain, road 40% wet", "weather (%s)" % text["weather"])
-	check(text["fare"] == "Drive Aino to Rautatientori", "fare (%s)" % text["fare"])
 	var finnish := Hud.values({"on_foot": true, "taxi": {"completed_fares": 2}, "weather": {"weather_type": "rain", "wetness": 0.4}}, {}, "fi")
-	check(finnish["speed"] == "jalan" and finnish["fare"] == "Ei kyytiä – 2 ajettu" and finnish["weather"].begins_with("Sadetta"), "Finnish selection localizes the HUD")
+	check(finnish["speed"] == "jalan" and finnish["weather"].begins_with("Sadetta"), "Finnish selection localizes the HUD")
 	check(text["notice"] == "Fare paid", "notice")
 	var empty := Hud.values({})
 	check(empty["money"] == "– €" and empty["clock"] == "--:--" and empty["speed"] == "on foot", "missing fields show placeholders")
-	check(Hud.values({"taxi": {"current_passenger": null}})["fare"].begins_with("No fare"), "no passenger")
 
 
 func test_map_chunks() -> void:
@@ -707,6 +1055,13 @@ func test_rendering() -> void:
 			amber_count += 1
 	check(amber_count == 4, "crashed car has four hazard lamps")
 	signal_car.free()
+	var dog_layer := Entities.new()
+	dog_layer._dog_rows.append([Vector2.ZERO, Vector2(1.5, 0.5), 0.0, {"size": "small", "color": [86, 57, 37]}])
+	dog_layer._dog_rows.append([Vector2.ZERO, Vector2(1.5, 0.5), 0.0, {"size": "medium", "color": [86, 57, 37]}])
+	dog_layer._dog_rows.append([Vector2.ZERO, Vector2(1.5, 0.5), 0.0, {"size": "large", "color": [86, 57, 37]}])
+	check(dog_layer._dog_rows.size() == 3 and dog_layer.find_children("*", "CollisionObject2D", true, false).is_empty(),
+		"three owned-dog sizes share the pedestrian canvas and have no collision bodies")
+	dog_layer.free()
 	check(Entities.taxi_sign_lit({"current_passenger": null}) and not Entities.taxi_sign_lit({"current_passenger": passenger}),
 		"the roof sign: lit when free, off with a fare on")
 	var free_taxi := Entities.new()
@@ -715,6 +1070,22 @@ func test_rendering() -> void:
 	free_taxi._vehicle(Vector2.ZERO, 0.0, 4.5, 1.8, RS.TAXI_BODY, "car", true, true, false, false, "", 0.0)
 	check(free_taxi._lamp_polys.any(func(lamp): return lamp[1] == RS.TAXI_SIGN), "a free taxi's roof sign shines")
 	free_taxi.free()
+	var van_taxi := Entities.new()
+	van_taxi._tint = Color.WHITE
+	van_taxi.taxi_sign_on = true
+	var van_paint := Color8(245, 245, 245)
+	van_taxi._vehicle(Vector2.ZERO, 0.0, 5.2, 2.0, van_paint, "van", true, true, false, false, "", 0.0)
+	check(van_taxi._lamp_polys.any(func(lamp): return lamp[1] == RS.TAXI_SIGN), "a van taxi retains its illuminated roof sign")
+	check(van_taxi._car_shapes.any(func(shape): return shape[0] == "poly" and shape[2] == van_paint), "a van taxi keeps its own paint instead of becoming yellow")
+	van_taxi.free()
+	# rrt-019 cyclists: tyres and frame always; the rider only while riding (not PARKED, not fallen).
+	for case in [[true, false, true], [false, false, false], [true, true, false]]:
+		var bike := Entities.new()
+		bike._vehicle(Vector2.ZERO, 0.0, 1.8, 0.6, Color8(200, 40, 40), "bicycle", false, case[0], false, false, "", 0.0, case[1])
+		var lines := bike._car_shapes.filter(func(shape): return shape[0] == "line").size()
+		var rider := bike._car_shapes.any(func(shape): return shape[0] == "circle")
+		check(lines == 4 and rider == case[2], "bicycle: two tyres, frame and bars; rider %s" % ("shown" if case[2] else "hidden"))
+		bike.free()
 
 	# Wet roads: darken 90/255 at full wetness, no sheen below 0.15.
 	var dry := RS.wet_alphas(0.0)
@@ -745,8 +1116,22 @@ func test_rendering() -> void:
 	check(Nav.distance_text(350.0) == "350m" and Nav.distance_text(2340.0) == "2.3km", "arrow distance text")
 
 	# Instruments.
-	check(Instruments.trip_text(950.0, 12345.0) == "Trip: 950 m · Odometer: 12.3 km" and Instruments.trip_text(1500.0, 0.0).begins_with("Trip: 1.50 km"), "trip and odometer text")
-	check(Instruments.trip_text(950.0, 12345.0, "fi") == "Matka: 950 m · Mittari: 12.3 km", "instruments follow the selected language")
+	var fuel_state := {"player": {"engine_on": true, "fuel_l": 20.0}, "taxi": {"fuel_station_price_cents": 199}, "on_foot": false}
+	check(Hud.values(fuel_state)["start_hint"].contains("engine (E)"), "near a pump: explain engine shutdown before refueling")
+	fuel_state["player"]["engine_on"] = false
+	check(Hud.values(fuel_state)["start_hint"].contains("(F)"), "engine off: explain getting out instead of restarting")
+	fuel_state["on_foot"] = true
+	check(Hud.values(fuel_state)["start_hint"].contains("Press G"), "outside: explain how to start filling")
+	fuel_state["taxi"]["refueling"] = {"liters": 1.0}
+	check(Hud.values(fuel_state)["start_hint"].contains("Stay beside"), "filling: explain staying by the taxi")
+	var pump_gauge := Instruments.new()
+	root.add_child(pump_gauge)
+	pump_gauge.show_state({"player": {}, "taxi": {"refueling": {"liters": 12.34, "cost_cents": 2456}}})
+	check(pump_gauge._pump_liters.visible and pump_gauge._pump_liters.cents == 1234 and pump_gauge._pump_total.cents == 2456, "pump displays delivered litres above total price")
+	pump_gauge.show_state({"player": {}, "taxi": {"refueling": null}})
+	check(not pump_gauge._pump_liters.visible and not pump_gauge._pump_total.visible, "pump display closes when refueling ends")
+	pump_gauge.free()
+	check(Instruments.odometer_lines(940.0, 12345.0) == ["12 km", "0.9 km"] and Instruments.odometer_lines(1500.0, 0.0) == ["0 km", "1.5 km"], "odometer and trip lines, no leading zeros")
 	var center := Vector2(100, 100)
 	check(Instruments.dial_point(center, 0.0, 10.0).x < 100.0 and Instruments.dial_point(center, 1.0, 10.0).x > 100.0
 		and is_equal_approx(Instruments.dial_point(center, 0.5, 10.0).y, 90.0), "fuel needle: E left, F right, half up")
@@ -806,6 +1191,23 @@ func test_drive_input() -> void:
 
 
 func test_mouse_inspection() -> void:
+	var ignition_main: Node = load("res://main.tscn").instantiate()
+	root.add_child(ignition_main)
+	if ignition_main._start_sign != null:
+		ignition_main._start_sign.queue_free()
+		ignition_main._start_sign = null
+	var ignition_state := {"on_foot": true, "player": {"engine_on": false}}
+	ignition_main.entities._frame = {"a": ignition_state, "b": ignition_state, "t": 0.0}
+	ignition_main._unhandled_input(_key_event(KEY_E))
+	check(not ignition_main._engine_on, "E outside does not queue an engine start")
+	ignition_state["on_foot"] = false
+	ignition_main._interact_pending = true
+	ignition_main._unhandled_input(_key_event(KEY_E))
+	check(not ignition_main._engine_on, "entry and ignition require separate commands")
+	ignition_main._interact_pending = false
+	ignition_main._unhandled_input(_key_event(KEY_E))
+	check(ignition_main._engine_on, "E works after the driver is inside")
+	ignition_main.free()
 	var layer: Node2D = EntityLayer.new()
 	layer.px_per_m = 10.0
 	var pedestrian := {"id": 7, "x": 10.0, "y": 0.0, "heading": 0.0}
@@ -817,12 +1219,16 @@ func test_mouse_inspection() -> void:
 	check(layer.entity_at(Vector2(840.0, 360.0), canvas) == {"kind": "npc", "id": 8}, "clicking an NPC vehicle selects it")
 	check(layer.entity_at(Vector2(900.0, 360.0), canvas).is_empty(), "clicking empty map selects nothing")
 	check(layer.entity_position("npc", 8) == Vector2(20.0, 0.0), "camera can follow a selected NPC")
+	state["trains"] = [{"id": "tram-1", "state": "RUNNING", "speed": 5.0, "cars": [[40.0, 0.0, 0.0, 20.0, "locomotive"]]}]
+	check(layer.entity_at(Vector2(1040, 360), canvas) == {"kind": "train", "id": "tram-1"}, "clicking a train carriage selects its train")
+	check(layer.entity_position("train", "tram-1") == Vector2(40, 0), "camera follows a selected train")
 	state["pedestrians"] = []
 	npc["occupants"] = [{"id": 7}]
 	check(layer.entity_position("pedestrian", 7) == Vector2(20.0, 0.0), "camera follows a resident into a vehicle")
 	layer.free()
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
+	main.phone.close()
 	check(main._character_text("pedestrian", {"id": 7, "resident": {"name": "Aino Korhonen", "birth_date": "1990-04-05"}}).contains("Aino Korhonen"), "inspector shows the resident name")
 	check(main._character_text("npc", {"id": 8, "owner": {"name": "Aino Korhonen"}, "occupants": [{"name": "Aino Korhonen"}]}).contains("Aino Korhonen"), "vehicle inspector shows its people")
 	main.set_language("fi")
@@ -892,9 +1298,26 @@ func _offer(id: String, name: String, metres: int = 800, seconds: float = 40.0) 
 
 
 func test_phone() -> void:
-	check(Phone.card_text({"passenger_count": 3}, "fi").contains("3 matkustajaa")
-		and Phone.card_text({"passenger_count": 2}, "en").contains("2 passengers"), "fare cards show group size in both languages")
-	check(Phone.card_text({"passenger_count": 3}).split("\n").size() == 3, "group count fits the existing three-line fare card")
+	var protest_phone := Phone.new()
+	root.add_child(protest_phone)
+	protest_phone.open()
+	protest_phone.set_language("fi")
+	check(protest_phone._boot != null and protest_phone._boot.visible and protest_phone._boot_text.text == "Käynnistetään…", "while the game loads, the phone is starting up")
+	protest_phone.set_connected(true)
+	check(protest_phone._boot == null, "connected: the start-up screen is gone for good")
+	for lang in ["fi", "en", "de"]:
+		protest_phone.language = lang
+		protest_phone.protest_active = true
+		for busy in [false, true]:
+			protest_phone.show_phone({"busy": busy})
+			check(protest_phone._protest_note.visible and "Ilokapina" in protest_phone._protest_note.text, "active protest note appears in both phone apps and every language")
+	protest_phone.protest_active = false
+	protest_phone.show_phone({})
+	check(not protest_phone._protest_note.visible, "inactive protest notice clears from phone")
+	protest_phone.free()
+	for lang in ["fi", "en", "de"]:
+		check(Phone.card_text({"passenger_count": 3}, lang) == Phone.card_text({}, lang), "fare cards hide passenger count in %s" % lang)
+	check(Phone.card_text({"passenger_count": 3}).split("\n").size() == 3, "fare retains pickup, destination and trip details")
 	var phone: Phone = preload("res://phone.gd").new()
 	root.add_child(phone)
 	var sounds: Array = []
@@ -902,7 +1325,7 @@ func test_phone() -> void:
 	phone.sound.connect(func(group, variation): sounds.append([group, variation]))
 	phone.request.connect(func(action, item_id, request_id): requests.append([action, item_id, request_id]))
 
-	check(not phone.is_open and not phone.visible, "the phone starts closed")
+	check(not phone.is_open and not phone.visible, "the reusable phone starts closed")
 	phone._unhandled_input(_key(KEY_ENTER))
 	phone._unhandled_input(_key(KEY_X))
 	check(requests.is_empty(), "closed, its keys do nothing")
@@ -915,7 +1338,8 @@ func test_phone() -> void:
 	check(not phone.is_open and sounds == [["ui.phone_open", 0], ["ui.phone_open", 1]], "P closes it (the close variation)")
 	phone.open()
 	phone._unhandled_input(_key(KEY_ESCAPE))
-	check(not phone.is_open, "Esc closes it")
+	check(phone.is_open and phone.visible, "Esc leaves the phone open")
+	phone.close()
 	sounds.clear()
 
 	# No phone key is a driving / taxi / camera key (main.gd, hud hints), so
@@ -978,13 +1402,61 @@ func test_phone() -> void:
 	phone.accept_selected()
 	requests.clear()
 	phone.set_connected(false)
-	check(phone.items.is_empty() and phone.pending.is_empty() and phone._accept.disabled and phone._status.text.begins_with("No connection"), "connection loss: stale rows and pending answers cleared, actions off")
+	check(phone.items.is_empty() and phone.pending.is_empty() and phone._accept.disabled and phone._status.text == "No network connection.", "connection loss: stale rows and pending answers cleared, actions off")
 	check(not phone.accept_selected() and requests.is_empty(), "no requests without a connection")
 	phone.set_connected(true)
 	check(phone._status.text == "No ride requests right now.", "reconnected: a fresh, empty phone until the simulation says otherwise")
 	check(phone.get_children().size() == 1 and _orphan_timers(phone) == 0, "no leftover timers or nodes")
 	phone.free()
 
+
+
+func test_wildlife() -> void:
+	var WildlifeLayer := preload("res://wildlife.gd")
+	var layer: Node = WildlifeLayer.new()
+	root.add_child(layer)
+	check(layer.config_valid(layer.species_weights) and WildlifeLayer.SPECIES.size() == 8, "wildlife: species configuration is valid")
+	var brown := Color8(142, 126, 101)
+	check(WildlifeLayer.winter_coat("hare", brown, 1.0).get_luminance() > 0.9 and WildlifeLayer.winter_coat("hare", brown, 0.0) == brown, "wildlife: a hare is white in winter, brown in summer")
+	var squirrel_grey := WildlifeLayer.winter_coat("squirrel", Color8(144, 79, 38), 1.0)
+	check(absf(squirrel_grey.r - squirrel_grey.b) < 0.03, "wildlife: a red squirrel is grey in winter")
+	check(WildlifeLayer.winter_coat("fox", Color8(194, 91, 38), 1.0) == Color8(194, 91, 38), "wildlife: other coats keep their colour")
+	check(not layer.habitat_weights("urban").has("moose") and layer.habitat_weights("rural").has("moose"), "wildlife: large deer stay out of dense urban habitat")
+	var blocks := [PackedVector2Array([Vector2(0, 0), Vector2(300, 0), Vector2(300, 300), Vector2(0, 300)])]  # 36 % of a 500 m chunk
+	check(is_equal_approx(WildlifeLayer.building_coverage(blocks, 250000.0), 0.36), "wildlife: building coverage of a chunk")
+	check(layer.habitat(30, 200, false, 0.36) == "urban" and layer.habitat(30, 200, false, 0.1) == "suburban", "wildlife: city blocks are urban however many street trees they have")
+	check(not layer.habitat_weights("urban").has("fox") and layer.habitat_weights("suburban").has("fox"), "wildlife: foxes live in the suburbs, not the city centre")
+	check(layer.activity("small_bird", 43200) > layer.activity("small_bird", 0) and layer.activity("fox", 0) > layer.activity("fox", 43200), "wildlife: the simulation hour changes species activity")
+	var chunk := {"chunk_id": "1_2", "bounds": [0.0, 0.0, 500.0, 500.0], "buildings": [], "trees": [[250.0, 250.0, "birch", 0.5]]}
+	layer.density = 2.0
+	layer.max_active = 3
+	layer.replace_chunk(chunk, Vector2.ZERO)
+	var ids: Array = layer.animals.map(func(animal): return animal.id)
+	check(layer.animals.filter(func(animal): return animal.species != "pigeon").all(func(animal): return animal.position.distance_to(Vector2(250, -250)) <= 14.1), "wildlife: woodland species spawn beside streamed tree positions")
+	layer.replace_chunk(chunk, Vector2.ZERO)
+	check(layer.animals.size() == 2 and layer.animals.map(func(animal): return animal.id) == ids, "wildlife: a refreshed chunk neither duplicates nor teleports animals")
+	layer.replace_chunk(chunk.merged({"chunk_id": "2_2"}, true), Vector2.ZERO)
+	check(layer.animals.size() == 3, "wildlife: its own population cap is enforced")
+	layer.remove_chunk("1_2")
+	check(layer.animals.size() == 1, "wildlife: unloading a chunk removes its animals")
+	layer.free()
+	# A fox ran across a roof: ground animals never spawn in, or walk into, a building.
+	var town: Node = WildlifeLayer.new()
+	var block := PackedVector2Array([Vector2(100, -400), Vector2(400, -400), Vector2(400, -100), Vector2(100, -100)])
+	town.density = 40.0
+	town.max_active = 40
+	town.species_weights = {"squirrel": 0.0, "small_bird": 0.0, "pigeon": 0.0, "hare": 0.0, "fox": 1.0, "moose": 0.0, "roe_deer": 0.0, "crow": 0.0}
+	town.replace_chunk({"chunk_id": "0_0", "bounds": [0.0, 0.0, 500.0, 500.0], "buildings": [block], "trees": [], "landuse": []}, Vector2.ZERO)
+	var grid: Dictionary = town._buildings["0_0"]
+	check(town.animals.size() > 10 and town.animals.all(func(animal): return not WildlifeLayer.in_building(grid, animal.position)), "wildlife: no animal spawns inside a building")
+	for animal in town.animals:
+		animal.state = "FLEE"
+		animal.timer = 99.0
+		animal.heading = (Vector2(250, -250) - animal.position).angle()  # straight at the building
+	for step in 200:
+		town._step(0.1, 0.0, Vector2(250, -250), [])
+	check(town.animals.all(func(animal): return not WildlifeLayer.in_building(grid, animal.position)), "wildlife: a fleeing fox turns at a building's wall")
+	town.free()
 
 
 func _orphan_timers(node: Node) -> int:
@@ -997,6 +1469,12 @@ func test_commands_carry_the_player_id() -> void:
 	check(line.ends_with("\n") and message["type"] == "command" and message["player_id"] == "local_player" and message["seq"] == 7, "commands carry the player id")
 	var answer: Dictionary = JSON.parse_string(SimClient.command_line({"throttle": 0.0}, 8, "local_player", {"action": "accept", "item_id": "offer-2", "request_id": 1}))
 	check(answer["phone"] == {"action": "accept", "item_id": "offer-2", "request_id": 1.0} and answer["command"]["throttle"] == 0.0, "a phone answer rides on a command with the current controls")
+	var save_line: Dictionary = JSON.parse_string(SimClient.command_line({}, 9, "local_player", {}, "", true))
+	check(save_line.get("save_game") == true and not message.has("save_game"), "a save request rides on a command; others never save")
+	var clear_line: Dictionary = JSON.parse_string(SimClient.command_line({}, 3, "local", {}, "", false, true))
+	check(clear_line.get("clear_home") == true and not message.has("clear_home"), "clear home is an explicit request for the current server game")
+	var slot_text: String = preload("res://startup.gd").slot_label({"city": "Oulu", "place_name": "Muurame", "game_time": "2026-09-27T00:46:13", "balance_cents": 7777, "fare": true}, "kyyti kesken")
+	check(slot_text == "Muurame · 2026-09-27 00:46 · 77.77 € · kyyti kesken", "a saved game's menu line: place, game time, money, a fare in progress")
 	# godot-final-01: G asks the simulation to refuel (it checks the station, speed, tank and money).
 	var refuel := Main.command_for({"throttle": 0.0}, true, false, true)
 	check(refuel["refuel"] == true and refuel["interact"] == false and refuel["throttle"] == 0.0, "a G press sends refuel")
@@ -1070,7 +1548,7 @@ func test_speech_and_stations() -> void:
 		"taxi": {"balance_cents": 123456, "total_score": -1200, "completed_fares": 12, "state": "PICKUP",
 			"current_passenger": {"name": "Matti Vesterinen", "pickup": {"address": "Aaltovaarantie 12, Kaakkuri, a very long address indeed that goes on"}}}})
 	var boxes := []
-	for name in ["_clock", "_money", "_weather", "_fare"]:
+	for name in ["_clock", "_money", "_weather"]:
 		var label: Label = hud.get(name)
 		boxes.append(Rect2(label.position, label.size))
 	var apart := true
@@ -1078,13 +1556,10 @@ func test_speech_and_stations() -> void:
 		apart = apart and boxes[i].position.x >= 0.0 and boxes[i].end.x <= 1280.0
 		for j in range(i + 1, boxes.size()):
 			apart = apart and not boxes[i].intersects(boxes[j])
-	check(apart and not boxes[3].intersects(Rect2(1280 - 79, 45, 62, 62)), "HUD: clock, score, weather and fare banner on screen, none overlapping, clear of the limit sign")
-	check(hud._fare_style.border_color == Color8(255, 215, 60), "HUD: the fare banner yellow while picking up")
+	check(apart and not boxes[2].intersects(Rect2(1280 - 79, 45, 62, 62)), "HUD: clock, score and weather on screen, none overlapping, clear of the limit sign")
 	check(Hud.subtitle_text({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei"}) == "Aino: Hei" and Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}) == "Driver: Mennään", "the passenger's name, else the speaker")
 	check(Hud.subtitle_text({"speaker": "passenger", "text": ""}) == "" and Hud.subtitle_text({}) == "", "no text: no subtitle")
 	check(Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}, "fi") == "Kuljettaja: Mennään", "the speaker in Finnish")
-	var fare_fi := Hud.fare_details({"elapsed_time": 30.0, "live_fare_cents": 1250, "fare_distance_m": 2300.0, "passenger_happiness": 80.0}, "fi")
-	check(fare_fi.contains("mittari 12.50 €") and fare_fi.contains("tyytyväisyys 80%") and not fare_fi.contains("happiness"), "the fare's details in Finnish")
 	hud.show_subtitle({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei", "duration_s": 4.0})
 	check(hud._subtitle.visible and hud._subtitle.text == "Aino: Hei", "one subtitle shows")
 	var glow_p := PackedVector2Array()
@@ -1112,6 +1587,9 @@ func test_speech_and_stations() -> void:
 	for label in sign.get_child(0).get_children():
 		sign_text += label.text + "\n"
 	check(sign_text == "SYSMÄ\nWeather forecast for the next 24 hours\n08.10. 18:00   +8 °C   Clear   6.5 m/s ↗ 225°   snow 2 cm   (observed)\nPress any key to start\n", "start sign: city, forecast with wind, snow depth and its source, the prompt")
+	var local_forecast := Main.start_sign({"city": "Oulu", "weather_city": "Raahe"}, "en")
+	check(local_forecast.get_child(0).get_child(0).text == "RAAHE", "restored intercity forecast names the weather location, not the starting city")
+	local_forecast.free()
 	var snowless := Main.start_sign({"city": "Sysmä", "forecast": [{"time": "08.10. 18:00", "temperature_c": 8.4, "weather": "clear", "source": "observed", "snow_depth_cm": 0.0}]}, "en")
 	check(not (snowless.get_child(0).get_child(2) as Label).text.contains("snow"), "start sign: no snow depth shown when there is no snow")
 	snowless.free()
@@ -1167,6 +1645,19 @@ func test_speech_and_stations() -> void:
 	hl.offsets.clear()  # reset() without touching the saved file
 	check(hl.place("speedometer", dial, screen) == dial, "HUD layout: reset puts it back")
 	check(HudLayout.clamp_rect(Rect2(-50, -50, 100, 100), Vector2(1280, 720)).position == Vector2.ZERO, "HUD layout: clamped inside the screen")
+	press.pressed = true
+	press.position = dial.end - Vector2(4, 4)  # the bottom-right resize corner
+	drag.relative = Vector2(95, 0)
+	check(hl.handle(press) and hl.handle(drag), "HUD layout: the corner grip takes the drag")
+	var bigger: Rect2 = hl.place("speedometer", dial, screen)
+	check(is_equal_approx(hl.scale_of("speedometer"), 1.5) and bigger.size.is_equal_approx(dial.size * 1.5), "HUD layout: resized from the corner, aspect kept")
+	drag.relative = Vector2(-5000, 0)
+	hl.handle(drag)
+	check(hl.scale_of("speedometer") == HudLayout.MIN_SCALE, "HUD layout: never resized below the minimum")
+	press.pressed = false
+	hl.handle(press)
+	hl.scales.clear()
+	check(hl.place("speedometer", dial, screen) == dial, "HUD layout: reset restores the size")
 	check(FileAccess.get_file_as_string("res://main.gd").contains("KEY_U, KEY_F2:"), "HUD layout: U and F2 reset it")
 	var Instruments := load("res://instruments.gd")
 	check(is_equal_approx(Instruments.speed_kmh(-5.0), 18.0) and Instruments.speed_kmh(100.0) == 210.0, "speedometer: |speed| in km/h, up to 210")
@@ -1239,6 +1730,7 @@ func test_speech_and_stations() -> void:
 
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
+	main.phone.close()
 	var sim: Node = main.get_node("SimClient")
 	main._unhandled_input(_key_event(KEY_J))
 	main.send({})
@@ -1366,6 +1858,34 @@ func test_weather_presentation() -> void:
 	check(live.splashes.size() == 40 and live.splashes[0][0] == Vector2(5, 0), "at most 40: the oldest go")
 	live.age_splashes(0.5)
 	check(live.splashes.is_empty(), "gone after 0.5 s")
+	var muddy := {"on_foot": false, "player": {"speed": 5.0, "heading": 0.0, "length_m": 4.0, "width_m": 1.8},
+		"tire_mark": {"kind": "dirt", "spray": 1.0}}
+	live.update_mud(0.1, muddy, Vector2.ZERO, false)
+	check(live.mud.size() == 6, "heavy throttle throws mud from both rear tyres")
+	check(live.mud[0][0].y < 0 and live.mud[1][0].y > 0 and live.mud[0][1].x < 0, "mud starts at opposite wheels and flies backward")
+	for i in 100:
+		live.update_mud(0.01, muddy, Vector2.ZERO, false)
+	check(live.mud.size() <= W.MUD_POOL_MAX, "mud emission and lifetime bound the pool")
+	live.update_mud(1.0, {"on_foot": false}, Vector2.ZERO, false)
+	check(live.mud.is_empty(), "mud fades after the throttle is released")
+	muddy.player.speed = -5.0
+	live.update_mud(0.1, muddy, Vector2.ZERO, false)
+	check(live.mud[0][1].x > 0, "reversing throws mud opposite travel")
+	live.update_mud(0.1, muddy, Vector2.ZERO, true)
+	check(live.mud.is_empty(), "underground clears surface mud")
+	muddy.tire_mark.kind = "sand"
+	live.update_mud(0.1, muddy, Vector2.ZERO, false)
+	check(not live.mud.is_empty() and live.mud.all(func(p): return p[4]), "sand uses airborne sandy particles")
+	muddy.tire_mark.kind = "dirt"
+	live.update_mud(0.1, muddy, Vector2.ZERO, false)
+	check(live.mud.any(func(p): return p[4]) and live.mud.any(func(p): return not p[4]), "sand and mud keep their own appearance after changing ground")
+	live.update_mud(0.1, muddy, Vector2.ZERO, true)
+	live.splashes_enabled = false
+	live.update_mud(0.1, muddy, Vector2.ZERO, false)
+	check(not live.mud.is_empty(), "disabled puddle splashes still allow offroad mud")
+	live.update(0.1, muddy, Vector2.ZERO, false)
+	check(live.splash_node.visible and live.splashes.is_empty(), "mud stays visible with puddle splashes disabled")
+
 	live.free()
 	map.free()
 	sky.free()
@@ -1397,6 +1917,7 @@ func test_weather_presentation() -> void:
 func test_road_rage() -> void:
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
+	main.phone.close()
 	var sim: Node = main.get_node("SimClient")
 	main.send({})
 	check(sim._last_command["road_rage"] == false, "no press: road_rage false")
@@ -1503,6 +2024,14 @@ func test_navigation_route() -> void:
 	check(device.visible and app.visible and app._distance.text == "130 m" and app._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
 	device.update_layout()
 	var default_position: Vector2 = device.position
+	var phone_rect := Rect2(device.position, device.size * device.scale)
+	check(not phone_rect.intersects(Rect2(10, 720 - 236, Instruments.CLUSTER_WIDTH, 226)), "default phone clears the dashboard")
+	check(phone_rect.end.x <= 1280 - 190, "default phone clears the rage panel")
+	device.layout.offsets["navigation_phone"] = Vector2(16, -50)
+	device.update_layout()
+	check(device.position == Vector2(32, 75), "existing custom phone placement is preserved")
+	device.layout.reset()
+	device.update_layout()
 	var press := InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true
@@ -1621,18 +2150,13 @@ func test_taxi_information() -> void:
 	var passenger := {"name": "Aino", "pickup": {"address": "Kirkkokatu 4"}, "dropoff": {"address": "Rautatientori"}}
 	var fare := {"state": "DROPOFF", "current_passenger": passenger, "elapsed_time": 61.6, "live_fare_cents": 1234,
 		"fare_distance_m": 2345.6, "passenger_happiness": 49.6}
-	check(Hud.values({"taxi": fare})["fare"] == "Drive Aino to Rautatientori · 62 s · meter 12.34 € · 2.35 km · happiness 50%", "a running fare: time, meter, distance, happiness")
-	var started := fare.merged({"elapsed_time": 0.0, "live_fare_cents": 0, "fare_distance_m": 0.0, "passenger_happiness": 100.0}, true)
-	check(Hud.values({"taxi": started})["fare"].ends_with("· 0 s · meter 0.00 € · 0.00 km · happiness 100%"), "zeroes and the boundaries show as they are")
-	check(Hud.values({"taxi": fare.merged({"live_fare_cents": 5}, true)})["fare"].contains("meter 0.05 €"), "a cent-level meter")
-	var before := fare.merged({"live_fare_cents": null, "fare_distance_m": null, "passenger_happiness": null}, true)
-	check(Hud.values({"taxi": before})["fare"] == "Drive Aino to Rautatientori · 62 s", "before the meter starts: no made-up meter values")
-	var old := {"state": "DROPOFF", "current_passenger": passenger}
-	check(Hud.values({"taxi": old})["fare"] == "Drive Aino to Rautatientori", "an older server: the plain mission line")
-	check(Hud.values({"taxi": fare.merged({"live_fare_cents": "12", "passenger_happiness": [1]}, true)})["fare"] == "Drive Aino to Rautatientori · 62 s · 2.35 km", "malformed values are left out")
-	check(Hud.values({"taxi": fare.merged({"state": "PICKUP"}, true)})["fare"] == "Pick up Aino at Kirkkokatu 4", "pickup text unchanged")
-	check(Hud.values({"taxi": fare.merged({"state": "WALKING"}, true)})["fare"] == "Aino is walking to the taxi", "walking text unchanged")
-	check(Hud.values({"taxi": {"completed_fares": 3, "elapsed_time": 9.0}})["fare"] == "No fare - 3 done", "no passenger: unchanged")
+	check(Hud.task_text(fare) == "Drive Aino to Rautatientori", "the task: who and where to")
+	check(Hud.task_text(fare.merged({"state": "PICKUP"}, true)) == "Pick up Aino at Kirkkokatu 4", "pickup task")
+	check(Hud.task_text(fare.merged({"state": "WALKING"}, true)) == "Aino is walking to the taxi", "walking task")
+	check(Hud.task_text({"completed_fares": 3}) == "", "no passenger: no task")
+	check(Hud.meter_info(fare) == "2.35 km", "the meter shows distance without customer satisfaction")
+	check(Hud.meter_info(fare.merged({"fare_distance_m": null, "passenger_happiness": [1]}, true)) == "", "missing or malformed: left out")
+	check(preload("res://taxi_meter.gd").readout(5) == "   0.05" and preload("res://taxi_meter.gd").readout(123456) == "1234.56", "a cent-level taximeter")
 
 	check(Instruments.price_text({"taxi": {"fuel_station_price_cents": 189}}) == "G: REFUEL  1.89 €/L", "a pump in range: its price from cents")
 	check(Instruments.price_text({"taxi": {"fuel_station_price_cents": 300.0}}) == "G: REFUEL  3.00 €/L", "a whole-euro price")
@@ -1664,6 +2188,7 @@ func test_controls_and_economy() -> void:
 	check(defaults["lane_assist_enabled"] == false and not defaults["respawn"] and not defaults["cancel_ride"] and not defaults["reset_trip"], "the remaining gameplay controls have safe defaults")
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
+	main.phone.close()
 	var sim: Node = main.get_node("SimClient")
 	main._unhandled_input(_key_event(KEY_V))
 	main.send({})
@@ -1872,6 +2397,16 @@ func test_obstacles() -> void:
 ## client keeps no clock of its own.
 func test_day_night() -> void:
 	# godot-lights-01: the light is a continuous function of the sun's altitude.
+	var W := preload("res://weather_layer.gd")
+	check(W.wind_vector({"weather": {"wind_vector_mps": [3.0, -4.0]}}) == Vector2(3, -4), "water wind uses the server's vector and speed")
+	for bad in [null, [], [3], ["3", 4], [NAN, 1], [1, INF]]:
+		check(W.wind_vector({"weather": {"wind_vector_mps": bad}}) == Vector2.ZERO, "invalid or unknown wind leaves water calm")
+	var clear_sky := Daylight.sky_color(30.0, 0.0)
+	var grey_sky := Daylight.sky_color(30.0, 1.0)
+	var dusk_sky := Daylight.sky_color(0.0, 0.0)
+	check(clear_sky.b > clear_sky.r and clear_sky.b - clear_sky.r > grey_sky.b - grey_sky.r, "clear water reflects a bluer sky than overcast water")
+	check(dusk_sky.r > clear_sky.r and dusk_sky.b < clear_sky.b, "water sky reflection warms near sunset")
+	check(Daylight.sky_color(-30.0, 0.0).get_luminance() < clear_sky.get_luminance(), "night water reflects a darker sky")
 	check(Daylight.ambient(30.0) == 1.0 and Daylight.artificial(30.0) == 0.0 and Daylight.ambient_color(30.0) == Color.WHITE, "full daylight: no darkening, no artificial light")
 	check(Daylight.ambient(-30.0) == 0.0 and Daylight.artificial(-30.0) == 1.0, "deep night: ambient at its floor, the lights full")
 	var night_blue := Daylight.ambient_color(-30.0)
@@ -1922,6 +2457,9 @@ func test_day_night() -> void:
 ## godot-15: railings, decorations, street lights (on at night, dark when
 ## knocked), headlight beams, reflectors, seasons - all drawing, no collision.
 func test_static_world() -> void:
+	var hedge := MapChunk.hedge_foliage(PackedVector2Array([Vector2.ZERO, Vector2(4, 0)]))
+	check(hedge[0].size() == hedge[2].size() and hedge[1].size() == 240, "hedge crowns have shaded vertices and batched triangles along the whole segment")
+	check(hedge[0] == MapChunk.hedge_foliage(PackedVector2Array([Vector2.ZERO, Vector2(4, 0)]))[0], "hedge foliage stays stable across redraws")
 	var map := MapLayer.new()
 	root.add_child(map)
 	map.set_origin(Vector2(1000, 2000))
@@ -1933,6 +2471,17 @@ func test_static_world() -> void:
 		"street_lights": [[1200.0, 2200.0, 1.0, 14.0], [1212.0, 2200.0, 1.0, 14.0]]}))
 	check(map.add_chunk(message) and not map.add_chunk(message), "drawing-only objects arrive with their chunk, once")
 	var chunk = map._chunks["2_4"]
+	var hedge_points := [[1000.0, 2010.0], [1020.0, 2010.0]]
+	var hedge_parts := [[[1000.0, 2010.0], [1007.0, 2010.0]], [[1012.0, 2010.0], [1020.0, 2010.0]]]
+	map.set_broken_hedges([[0, hedge_points, hedge_parts]])
+	check(chunk._hedge_damage.get(MapChunk.hedge_key(["hedge", hedge_points])) == hedge_parts, "server hedge fragments replace only the damaged hedge")
+	map.set_broken_hedges([[1, hedge_points, []]])
+	check(chunk._hedge_damage.is_empty(), "damage on another layer does not cut the ground hedge")
+	map.set_broken_hedges([[0, hedge_points, hedge_parts]])
+	map.remove_chunk("2_4")
+	map.add_chunk(message.duplicate(true))
+	chunk = map._chunks["2_4"]
+	check(not chunk._hedge_damage.is_empty(), "hedge gaps survive unloading and reloading the map chunk")
 	check(chunk._trees != null and chunk._px_layers.size() == 2 + 4, "decorations with the trees; railings, light pools, lamp heads: one canvas item each")
 	check(chunk.street_lights.size() == 2 and chunk.street_lights[0] == Vector2(200, -200), "street lights at their map position")
 	check(chunk._pools.get_parent() == map._pool_group, "a chunk's pools join the one pool group (added once, not per pool)")
@@ -1972,13 +2521,26 @@ func test_static_world() -> void:
 
 	# Headlight beams: dipped 15 m; high beams 150 m, covering both lanes.
 	var beams := EntityLayer2.beam_polygons(Vector2.ZERO, 0.0, 1.8, 15.0)
-	check(beams.size() == 5 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 3.0), "a beam reaches 15 m ahead, its tip shifted right")
+	check(beams.size() == 5 and is_equal_approx(beams[0][3].x, 15.0) and is_equal_approx(beams[0][3].y, 2.25), "a beam reaches 15 m ahead, its tip shifted right without crossing the other beam")
 	check(beams[4] == PackedVector2Array([beams[0][0], beams[2][0], beams[2][3], beams[0][3]]), "the road between the two beams is lit too (no dark wedge ahead)")
-	for heading in [0.0, PI / 2.0, PI, -PI / 2.0]:
+	for heading in [0.0, PI / 2.0, PI, -PI / 2.0, PI / 4.0, 4.213215031555581]:
 		var high := EntityLayer2.beam_polygons(Vector2.ZERO, heading, 1.8, EntityLayer2.HIGH_BEAM_M)
 		var forward := Vector2.RIGHT.rotated(-heading)
 		var right := Vector2.DOWN.rotated(-heading)
 		check(is_equal_approx(high[0][3].dot(forward), 150.0), "high beams reach 150 m at every heading")
+		var low := EntityLayer2.beam_polygons(Vector2.ZERO, heading, 1.8, 15.0)
+		check(low[0][3].dot(right) < low[2][3].dot(right), "dipped beam tips retain left/right ordering")
+		check(is_equal_approx(low[0][3].dot(forward), 15.0) and low[0][3].dot(right) > 0.0, "dipped beams retain short range and kerb bias")
+		for index in [0, 2, 4]:
+			check(Geometry2D.triangulate_polygon(low[index]).size() == 6, "dipped beam quads are simple and triangulate fully")
+		for ahead in [3.0, 7.0, 12.0]:
+			for lateral in range(-25, 35):
+				var sample: Vector2 = forward * ahead + right * (lateral * 0.37 + 0.013)
+				var hits := 0
+				for index in [0, 2, 4]:
+					if Geometry2D.is_point_in_polygon(sample, low[index]):
+						hits += 1
+				check(hits <= 1, "dipped beam interiors do not overlap into bright additive streaks")
 		for lane in [-3.5, 0.0, 3.5]:
 			var at: Vector2 = forward * 30.0 + right * lane
 			check(high.any(func(poly): return Geometry2D.is_point_in_polygon(at, poly)), "high beams cover the opposing lane, centre and own lane 30 m ahead")
@@ -2106,6 +2668,7 @@ func test_rest_of_static_world() -> void:
 	# Tyre tracks: laid from the server's mark along the drawn taxi; bounded.
 	var entities = load("res://entity_layer.gd").new()
 	root.add_child(entities)
+	entities.px_per_m = 0.01  # zoomed far out: all 2.5 km in view, so only the cap prunes
 	for i in 4100:  # trails of 100 points (marking stops in between), as driving lays them
 		var mark = null if i % 101 == 100 else {"kind": "dirt", "intensity": 1.0, "front": true}
 		var state := {"player": {"x": i * 0.6, "y": 0.0, "heading": 0.0}, "on_foot": false, "tire_mark": mark}
@@ -2118,12 +2681,18 @@ func test_rest_of_static_world() -> void:
 	check(entities._last_track == null, "no mark: the trail breaks")
 	var long_trail = load("res://entity_layer.gd").new()
 	root.add_child(long_trail)
+	long_trail.px_per_m = 0.01
 	for i in 500:  # one unbroken mark: split in segments, each its own canvas item
 		var marked := {"player": {"x": i * 0.6, "y": 0.0, "heading": 0.0}, "on_foot": false, "tire_mark": {"kind": "rubber"}}
 		long_trail._frame = {"a": marked, "b": marked, "t": 0.0}
 		long_trail._lay_track()
 	check(long_trail._trails.size() == 3 and long_trail._trails.all(func(s): return s[1].size() <= long_trail.TRACK_SEGMENT)
 		and long_trail._trails[1][1][0] == long_trail._trails[0][1][-1], "a long trail: 200-point segments, joined end to start")
+	long_trail.px_per_m = 9.0  # back in close: the trail behind, out of view, goes
+	var far := {"player": {"x": 5000.0, "y": 0.0, "heading": 0.0}, "on_foot": false, "tire_mark": {"kind": "rubber"}}
+	long_trail._frame = {"a": far, "b": far, "t": 0.0}
+	long_trail._lay_track()
+	check(long_trail._trails.size() == 1, "tracks out of view are discarded (%d trails)" % long_trail._trails.size())
 	long_trail.free()
 	var before: int = entities._track_points
 	var snowing := {"player": {"x": 0.0, "y": 0.0, "heading": 0.0}, "on_foot": true, "weather": {"weather_type": "snow"}}
@@ -2137,91 +2706,64 @@ func test_rest_of_static_world() -> void:
 	check(entities._track_points == 0 and entities._trails.is_empty(), "snowed over: they're gone")
 	entities.free()
 
+	# Live Digitraffic roadworks: 50 m pieces; barriers and signs only at a run's open ends.
+	var EL := load("res://entity_layer.gd")
+	var run := [{"start": [0.0, 0.0], "end": [50.0, 0.0]}, {"start": [50.0, 0.0], "end": [100.0, 0.2]},
+		{"start": [500.0, 0.0], "end": [540.0, 0.0]}]
+	check(EL.open_ends(run) == [[true, false], [false, true], [true, true]], "a run's shared ends are not barriers (%s)" % [EL.open_ends(run)])
+
+	# Taxi brawls: drawn from the server's current state; a punch per action seq.
+	var brawler = load("res://entity_layer.gd").new()
+	root.add_child(brawler)
+	var view := Rect2(-1000, -1000, 2000, 2000)
+	var fighter := func(x): return {"kind": "npc", "id": x, "x": x, "y": 0.0, "heading": 0.0, "down": false, "moving": false, "curse_timer": 0.0, "curse_text": ""}
+	var fight := {"brawls": [{"id": 7, "state": "FIGHTING", "action": {"seq": 3, "kind": "strike", "actor": 0, "target": 1, "hit": true},
+		"outcome": null, "winner": null, "fighters": [fighter.call(0.0), fighter.call(1.4)]}]}
+	check(brawler._brawls(fight, fight, 0.0, view) == 2, "both fighters drawn")
+	var first_punch: float = brawler._brawl_punches[7][1]
+	brawler._brawl_punches[7][1] = first_punch - 5.0  # long ago
+	brawler._brawls(fight, fight, 0.0, view)  # the same action again (a duplicated update)
+	check(is_equal_approx(brawler._brawl_punches[7][1], first_punch - 5.0), "a duplicated action does not punch again")
+	var down := fight.duplicate(true)
+	down["brawls"][0]["state"] = "RESOLUTION"
+	down["brawls"][0]["fighters"][1]["down"] = true
+	check(brawler._brawls(down, {}, 0.0, view) == 2, "a resolved brawl (one down) draws from its snapshot, no history needed")
+	var enraged := fight.duplicate(true)
+	enraged["brawls"][0]["fighters"][0]["rage"] = 1.0
+	enraged["brawls"][0]["fighters"][1]["rage"] = "bogus"
+	check(brawler._brawls(enraged, enraged, 0.0, view) == 2, "rage on a fighter's face draws; a bad value is safe")
+	var with_me := fight.duplicate(true)
+	with_me["brawls"][0]["fighters"][0]["kind"] = "player"
+	with_me["brawls"][0]["fighters"][0]["in_car"] = true
+	check(brawler._brawls(with_me, with_me, 0.0, view) == 1 and not brawler.player_fighting(with_me),
+		"the player at the wheel: only the rival is drawn")
+	with_me["brawls"][0]["fighters"][0]["in_car"] = false
+	check(brawler._brawls(with_me, with_me, 0.0, view) == 2 and brawler.player_fighting(with_me), "out of the taxi: the player fights")
+	var hint: String = Hud.values({"on_foot": true, "brawls": with_me["brawls"]})["hint"]
+	check(hint == Hud.T.text("hint_brawl", "en") and hint.contains("Space"), "in a fight on foot the hint lists the fight keys")
+	check(Hud.values({"on_foot": true})["hint"] == Hud.T.text("hint_foot", "en"), "otherwise the walking hint")
+	brawler._brawls({"brawls": []}, {}, 0.0, view)
+	check(brawler._brawl_punches.is_empty(), "a finished brawl is forgotten")
+	brawler.free()
+
 	# Snow: the trip text is outlined (readable on white).
 	check(Instruments.TEXT_OUTLINE.v < 0.2 and Instruments.TEXT_OUTLINE_PX >= 3, "a dark outline under the light HUD text")
 
 
-## godot-20: buildings project radially away from the view centre, leaving
-## the ground map untouched and exposing facades toward the visible play area.
+## Disabling 3D uses exact flat footprints, never projected facades.
 func test_buildings_2_5d() -> void:
-	# The extrusion is screen-relative: roofs move away from the camera, so
-	# their walls run back toward the centre on every side of the screen.
-	check(B25.lift(10.0, Vector2(0, -20), Vector2.ZERO) == Vector2(0.0, -3.5), "top-screen roof projects upward")
-	check(B25.lift(10.0, Vector2(0, 20), Vector2.ZERO) == Vector2(0.0, 3.5), "bottom-screen roof projects downward")
-	check(B25.lift(10.0, Vector2(-20, 0), Vector2.ZERO) == Vector2(-3.5, 0.0), "left-screen roof projects left")
-	check(B25.lift(10.0, Vector2(20, 0), Vector2.ZERO) == Vector2(3.5, 0.0), "right-screen roof projects right")
-	check(B25.lift(100.0).y < B25.lift(40.0).y * 2.0, "no height cap: 100 m projects 2.5 x as far as 40 m")
-	check(B25.lift(3.0).length() < B25.lift(9.0).length() and B25.lift(9.0).length() < B25.lift(30.0).length(), "taller lifts further")
-
-	# Visible walls: those whose outward side faces down the screen, either winding.
-	var box := PackedVector2Array([Vector2(0, 0), Vector2(20, 0), Vector2(20, 10), Vector2(0, 10)])
-	check(B25.visible_walls(box) == PackedInt32Array([2]), "an axis-aligned box shows its south wall (2); east and west are edge-on")
+	var box := PackedVector2Array([Vector2.ZERO, Vector2(20, 0), Vector2(20, 10), Vector2(0, 10)])
+	var style := [[92, 57, 48], 1, 100.0, [], [158, 105, 82], 30, 0]
+	var out := B25.build([box], [style], Vector2.ZERO)
+	check(out["points"] == box and out["hulls"][0] == box, "flat buildings keep exact footprints despite height and roof pitch")
+	check(out["indices"].size() == 6 and out["stats"]["walls"] == 0 and out["lit_indices"].is_empty(), "flat buildings have no extruded walls or windows")
+	check(B25.build([box], [style], Vector2.ONE, Vector2(900, -500))["points"] == out["points"], "flat geometry is camera independent")
+	var concave := PackedVector2Array([Vector2.ZERO, Vector2(20, 0), Vector2(20, 10), Vector2(10, 10), Vector2(10, 20), Vector2(0, 20)])
+	check(B25.build([concave], [], Vector2.ZERO)["indices"].size() == 12, "concave flat roofs triangulate")
 	var reversed := box.duplicate()
 	reversed.reverse()
-	check(B25.visible_walls(reversed) == PackedInt32Array([0]), "the same wall whichever way the footprint winds")
-	var diamond := PackedVector2Array([Vector2(10, 0), Vector2(20, 10), Vector2(10, 20), Vector2(0, 10)])
-	check(B25.visible_walls(diamond) == PackedInt32Array([1, 2]), "a turned box shows its two lower walls")
-	var l_shape := PackedVector2Array([Vector2(0, 0), Vector2(20, 0), Vector2(20, 10), Vector2(10, 10), Vector2(10, 20), Vector2(0, 20)])
-	check(B25.visible_walls(l_shape) == PackedInt32Array([2, 4]), "an L shows the notch's south wall and the bottom wall")
-	var view := Vector2(10, 100)
-	var l_up := B25.lift(10.0, Vector2(10, 10), view)
-	var l_out: Dictionary = B25.build([l_shape], [[[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
-	var l_points: PackedVector2Array = l_out["points"]
-	check(l_points.has(Vector2(20, 10) + l_up) and l_points.has(Vector2(0, 20) + l_up), "L walls use the same radial projection")
-
-	# Footprint and alignment: height never moves a building sideways.
-	for h: float in [5.0, 20.0, 100.0]:
-		var radial := B25.lift(h, Vector2(10, 5), view)
-		var o: Dictionary = B25.build([box], [[[92, 57, 48], 0, h, [], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
-		check(o["points"].has(Vector2(20, 10)) and o["points"].has(Vector2(0, 10)) and o["points"].has(Vector2(0, 10) + radial),
-			"%d m: ground edge stays fixed and roof edge gets the radial offset" % h)
-	var flip: Dictionary = B25.build([reversed], [[[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
-	var fwd: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
-	var fp := Array(fwd["points"])
-	var rp := Array(flip["points"])
-	fp.sort()
-	rp.sort()
-	check(fp == rp and flip["colors"].count(B25.WINDOW) == fwd["colors"].count(B25.WINDOW), "either winding: the same vertices and windows")
-
-	# The built geometry: walls from the ground edge to the lifted edge; the roof is the footprint lifted.
-	var style := [[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]
-	var out: Dictionary = B25.build([box], [style], Vector2.ZERO, view)
-	var up := B25.lift(10.0, Vector2(10, 5), view)
-	var points: PackedVector2Array = out["points"]
-	var has := func(p: Vector2) -> bool: return points.has(p)
-	check(has.call(Vector2(20, 10)) and has.call(Vector2(20, 10) + up) and has.call(Vector2(0, 10) + up), "the south wall spans its fixed ground edge to the radial roof edge")
-	check(has.call(Vector2(0, 0) + up) and has.call(Vector2(20, 0) + up), "the roof is the footprint plus the radial height projection")
-	for i in out["colors"].size():
-		if out["colors"][i] == B25.WINDOW:
-			var p: Vector2 = points[i]
-			check(p.x > 0.0 and p.x < 20.0 and p.y < 10.0 and p.y > 10.0 + up.y, "windows lie on the south wall")
-			break
-	check(out["colors"].has(Color8(92, 57, 48)) and out["colors"].has(Color8(58, 80, 94)), "roof colour and facade windows from the style")
-	check(out["indices"].size() % 3 == 0 and out["hulls"].size() == 1, "triangles; one hull (headlights) per building")
-	var again: Dictionary = B25.build([box], [style], Vector2.ZERO, view)
-	check(again["points"] == out["points"] and again["colors"] == out["colors"] and again["lit_points"] == out["lit_points"],
-		"deterministic: a reloaded chunk builds the same building, lit windows included")
-	var tall: Dictionary = B25.build([box], [[[92, 57, 48], 0, 30.0, [], [158, 105, 82], 10, 0]], Vector2.ZERO, view)
-	check(tall["points"].size() > out["points"].size(), "a taller building has more floors of windows")
-
-	# Gabled roof: two facets and the ridge, on the raised roof.
-	var gabled: Dictionary = B25.build([box], [[[92, 57, 48], 1, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
-	check(gabled["colors"].has(Color8(92, 57, 48).lightened(14.0 / 255.0)) and gabled["colors"].has(B25.RIDGE), "pitched roof: lit facet and ridge")
-	check(gabled["points"].has(Vector2(0, 0) + up) and gabled["points"].has(Vector2(20, 10) + up), "the pitched roof is over the footprint, not shifted")
-
-	# Doors: on a visible wall at the entrance, one storey high; not on a hidden wall.
-	var south_door: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [[10.0, -10.0]], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
-	var north_door: Dictionary = B25.build([box], [[[92, 57, 48], 0, 10.0, [[10.0, 0.0]], [158, 105, 82], 3, 0]], Vector2.ZERO, view)
-	check(south_door["colors"].has(B25.DOOR) and not north_door["colors"].has(B25.DOOR), "a door on the south wall shows; one on the hidden north wall doesn't")
-
-	# Lit windows: the probabilities, by category; the glow is a separate list.
-	var lit := 0
-	var total := 0
-	for i in 60:
-		var many: Dictionary = B25.build([box], [[[92, 57, 48], 0, 20.0, [], [158, 105, 82], 6, 0]], Vector2(i * 37.0, i * 11.0))
-		lit += many["lit_indices"].size() / 6
-		total += many["colors"].count(B25.WINDOW) / 4
-	check(total > 0 and lit > 0 and float(lit) / total < 0.25, "a scattering of windows lit at night (%d of %d)" % [lit, total])
+	check(B25.build([reversed], [], Vector2.ZERO)["indices"].size() == 6, "either winding and missing styles supported")
+	check(B25.build([PackedVector2Array([Vector2.ZERO, Vector2.ONE])], [], Vector2.ZERO)["points"].is_empty(), "invalid flat footprints are skipped")
 
 	# In the map: one building group, ordered far to near; freed with the chunk; no collision.
 	var map := MapLayer.new()
@@ -2233,10 +2775,11 @@ func test_buildings_2_5d() -> void:
 	map.add_chunk(north)
 	check(map._buildings.get_child_count() == 2 and map._buildings.get_child(0) == map._chunks["0_1"].building_node, "the farther chunk's buildings draw first")
 	map.set_building_view(Vector2(0, 100))
-	check(map._chunks["0_0"]._built_view == Vector2(0, 100), "camera movement recalculates radial building geometry")
+	check(map._chunks["0_0"]._building_task == -1, "camera movement does not rebuild flat geometry")
 	map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500], "buildings": [[[510, 10], [530, 10], [530, 30], [510, 30]]], "building_styles": [style]})))
 	check(map._buildings.get_child(2) == map._chunks["0_0"].building_node, "radial order: the chunk nearest the view centre draws last")
 	map.remove_chunk("1_0")
+	check(Detail._lift(map._chunks["0_0"], Vector2(10, 20), 50.0) == Vector2(10, 20), "2D canopies remain flat regardless of height")
 	check(is_equal_approx(Detail.canopy_height(map._chunks["0_0"], map._chunks["0_0"]._data["canopies"][0]), 6.0), "a canopy is raised by its own height")
 	map.set_map_level(-3)
 	check(map._underground.z_index > map._buildings.z_index, "below ground the dark view covers the buildings")
@@ -2283,14 +2826,31 @@ func test_sun_and_shadows() -> void:
 	check((-B3.sun_basis(south).z).is_equal_approx(-south), "the light shines away from the sun (Godot's -z)")
 	check(Daylight.azimuth({"calendar": {"sun_azimuth_deg": 123.5}}) == 123.5 and Daylight.azimuth({}) == 180.0, "the server's azimuth; an older server: south")
 	check(Daylight.cloud_cover({"weather": {"cloud_cover": 0.7}}) == 0.7 and Daylight.cloud_cover({}) == 0.0, "the server's cloud cover; none: clear")
+	check(Daylight.moonlight(-20.0, 40.0, 0.79, 0.0) == 0.0, "a Moon below 80 percent does not light the scene")
+	var full_moon := Daylight.moonlight(-20.0, 40.0, 1.0, 0.0)
+	check(full_moon == Daylight.MOON_MAX_LIGHT and Daylight.moonlight(-20.0, -2.0, 1.0, 0.0) == 0.0, "a high full Moon lights a dark clear night")
+	check(Daylight.moonlight(5.0, 40.0, 1.0, 0.0) == 0.0 and Daylight.moonlight(-20.0, 40.0, 1.0, 1.0) == 0.0, "daylight and overcast hide moonlight")
+	check(Daylight.moon_ambient(Daylight.NIGHT, full_moon).get_luminance() > Daylight.NIGHT.get_luminance(), "a full Moon brightens night ambient light")
+	var moon_lit := Daylight.moon_ambient(Daylight.NIGHT, full_moon)
+	check(absf(moon_lit.r - moon_lit.b) < absf(Daylight.NIGHT.r - Daylight.NIGHT.b) + 0.001, "moonlight is neutral white, not tinted")
+	check(Daylight.moon_desaturation(full_moon) >= 0.75 and Daylight.moon_desaturation(0.0) == 0.0, "full moonlight washes colours out; none without it")
+	check(Daylight.moon_shadow(full_moon, 0.0) == full_moon and Daylight.moon_shadow(full_moon, 0.15) == 0.0, "city lights wash out Moon shadows")
 	var layer = B3.new()
 	root.add_child(layer)
 	layer.set_sun(40.0, 180.0, 0.0)
 	check(layer._sun.visible and layer._shadow_sprite.visible and layer._shadow_view.render_target_update_mode == SubViewport.UPDATE_ALWAYS, "daylight: the sun casts")
 	layer.set_sun(-10.0, 0.0, 0.0)
 	check(not layer._sun.visible and not layer._shadow_sprite.visible and layer._shadow_view.render_target_update_mode == SubViewport.UPDATE_DISABLED, "night: no sun, the shadow view isn't rendered")
+	layer.set_celestial_light(40.0, 90.0, full_moon)
+	check(layer._sun.visible and layer._shadow_sprite.visible, "a nearly full Moon casts faint shadows")
 	layer.set_sun(40.0, 180.0, 1.0)
 	check(not layer._sun.visible, "overcast: no shadows")
+	var site := PackedVector2Array([Vector2(0, 0), Vector2(40, 0), Vector2(40, 30), Vector2(0, 30)])
+	var crane: Dictionary = B3.build([], [], Vector2.ZERO, [site, PackedVector2Array([Vector2(0, 0), Vector2(5, 0), Vector2(5, 5)])])
+	var top := 0.0
+	for v in crane["verts"]:
+		top = maxf(top, v.y)
+	check(crane["stats"].get("cranes", 0) == 1 and top >= 28.0 and not crane["shadow"].is_empty(), "a big construction site gets a tall, shadow-casting crane; a tiny one none")
 	var arrays: Dictionary = B3.build([PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10), Vector2(0, 10)])], [], Vector2.ZERO)
 	var instances: Array = B3.meshes(arrays)
 	var casters := instances.filter(func(node): return node.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
@@ -2481,7 +3041,8 @@ func test_performance_paths() -> void:
 	root.add_child(map)
 	map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "0_0", "bounds": [0, 0, 500, 500],
 		"roads": [{"points": [[100, 100], [900, 100]], "half_width_m": 4.0, "drivable": true, "layer": 0}],
-		"railways": [[[100, 200], [100, 900]]], "waters": [[[400, 400], [700, 400], [700, 700], [400, 700]]]})))
+		"railways": [[[100, 200], [100, 900]]], "waters": [[[400, 400], [700, 400], [700, 700], [400, 700]]],
+		"shore_waves": [{"distance": 0.25, "points": [[400.25, 700], [400.25, 400.25], [700, 400.25]]}]})))
 	var chunk = map._chunks["0_0"]
 	var road: PackedVector2Array = chunk._data["roads"][0]["points"]
 	check(road.size() == 2 and is_equal_approx(road[1].x, 500.0) and chunk._roads_by_z[1].size() == 1, "a road leaving the chunk is cut at its border")
@@ -2491,6 +3052,16 @@ func test_performance_paths() -> void:
 		{"points": [[700, 130], [700, 100]], "half_width_m": 3.5, "drivable": true, "layer": 0}]})))  # a driveway ending on its centre
 	check(map._chunks["1_0"]._roads_by_z[1].map(func(r): return r["half_width_m"]) == [3.5, 4.5], "narrower roads first: a driveway ends at the street's edge")
 	check(is_equal_approx(_area(chunk._data["waters"]), 100.0 * 100.0), "water: only the part inside")
+	var bands: Array = chunk._data["shore_waves"]
+	check(not bands.is_empty(), "server shore wave contours are converted and clipped")
+	for band in bands:
+		for point in band["points"]:
+			check(point.x >= 400.0 and point.x <= 500.0 and point.y <= -400.0 and point.y >= -500.0, "shore waves stay inside the chunk water")
+		var line: PackedVector2Array = band["points"]
+		for i in range(1, line.size()):
+			check(not (is_equal_approx(line[i - 1].x, 500.0) and is_equal_approx(line[i].x, 500.0)), "east chunk edge is not a shoreline")
+			check(not (is_equal_approx(line[i - 1].y, -500.0) and is_equal_approx(line[i].y, -500.0)), "south chunk edge is not a shoreline")
+
 
 	# Dry: no wet overlays drawn; no lightning: no full-screen flash.
 	chunk.set_wetness(0.0)
@@ -2565,3 +3136,75 @@ func test_performance_paths() -> void:
 	var report := Perf.summary(times)
 	check(is_equal_approx(report["worst_ms"], 100.0) and is_equal_approx(report["p95_ms"], 10.0) and report["over_66ms"] == 1, "worst, p95 and frames over 66 ms")
 	check(is_equal_approx(report["low_1pct_fps"], 10.0) and is_equal_approx(report["avg_ms"], 10.9), "1 % low is the slowest 1 % of frames, as FPS")
+
+
+func test_environment_ambience() -> void:
+	var ambience := preload("res://environment_ambience.gd").new()
+	var map := MapLayer.new()
+	root.add_child(map)
+	var urban_buildings: Array = []
+	for i in 20:
+		urban_buildings.append([[600 + i, 10], [601 + i, 10], [601 + i, 11]])
+	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "buildings": [], "roads": [], "railways": [],
+		"landuse": [[[206, 192, 150], 1, [[450, 100], [500, 100], [500, 200], [450, 200]], "beach"]]})
+	map.add_chunk({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500], "buildings": urban_buildings, "roads": [], "railways": []})
+	var rural := ambience.sample(map._chunks, Vector2.ZERO, Vector2(250, -250))
+	var urban := ambience.sample(map._chunks, Vector2.ZERO, Vector2(750, -250))
+	check(rural.rural == 1.0 and urban.rural == 0.0, "ambience uses local building density")
+	var edge := ambience.sample(map._chunks, Vector2.ZERO, Vector2(500, -250))
+	check(is_equal_approx(edge.rural, 0.5), "rural and city blend across chunk boundaries")
+	var beach := ambience.sample(map._chunks, Vector2.ZERO, Vector2(520, -150))
+	check(beach.beach > 0.5, "a beach is heard from the adjacent chunk")
+	check(urban.beach == 0.0, "a distant beach is silent")
+	map._chunks["1_0"]._data["landuse"] = [[[40, 78, 42], 1, PackedVector2Array([Vector2(700, -200), Vector2(800, -200), Vector2(800, -300), Vector2(700, -300)]), "forest"]]
+	check(ambience.sample(map._chunks, Vector2.ZERO, Vector2(750, -250)).rural == 1.0, "mapped woodland overrides nearby urban density")
+	map._chunks["1_0"]._data["landuse"] = []
+	check(ambience.sample({}, Vector2.ZERO, Vector2.ZERO).known == 0.0, "unloaded map areas have no invented city bed")
+
+	check(ambience.polygon_distance(Vector2(475, -150), map._chunks["0_0"]._data.landuse[0][2]) == 0.0, "inside a beach has full ambience")
+	var shifted := ambience.sample(map._chunks, Vector2(1000, 2000), Vector2(-480, 1850))
+	check(shifted.known > 0.0, "ambience cell lookup handles a nonzero map origin")
+	var day := ambience.mix(map._chunks, Vector2.ZERO, Vector2(250, -250), 0.0, 0.0, 0.0, true, 30.0).duplicate()
+	check(day.rural_day > 0.3 and day.city_day == 0.0 and day.rural_night == 0.0, "rural daylight replaces city traffic")
+	var rainy := ambience.mix(map._chunks, Vector2.ZERO, Vector2(250, -250), 0.0, 0.0, 1.0, true, 30.0)
+	check(rainy.rural_day < day.rural_day * 0.3, "rain quiets the bird bed")
+	var night := ambience.mix(map._chunks, Vector2.ZERO, Vector2(250, -250), 1.0, 0.0, 0.0, true, 30.0)
+	check(night.rural_day < 0.001 and night.rural_night > 0.2, "rural nights replace birds with quiet air")
+	var shore := ambience.mix(map._chunks, Vector2.ZERO, Vector2(475, -150), 0.0, 0.0, 0.0, true, 30.0)
+	check(shore.beach > 0.4, "mapped beach starts the shore wave loop")
+	var cold := ambience.mix(map._chunks, Vector2.ZERO, Vector2(475, -150), 0.0, 1.0, 0.0, true, 30.0)
+	check(cold.rural_day < 0.001 and cold.beach < 0.001, "winter suppresses birds and beach waves")
+	var city := ambience.mix(map._chunks, Vector2.ZERO, Vector2(750, -250), 0.0, 0.0, 0.0, true, 30.0)
+	check(city.city_day > 0.49 and city.rural_day < 0.001, "urban areas retain the city day bed")
+	ambience.clear()
+	var fading := ambience.mix(map._chunks, Vector2.ZERO, Vector2(250, -250), 0.0, 0.0, 0.0, true, 0.1)
+	check(fading.rural_day > 0.0 and fading.rural_day < day.rural_day, "location changes fade gently")
+	var muted := ambience.mix(map._chunks, Vector2.ZERO, Vector2(250, -250), 0.0, 0.0, 0.0, false, 0.1)
+	check(muted.values().all(func(g): return g == 0.0), "underground immediately stops outdoor beds")
+	map.free()
+
+
+func test_forest_canopy() -> void:
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[40, 78, 42], 1, [[0, 0], [500, 0], [500, 500], [0, 500]], "forest"]]})
+	var chunk = map._chunks["0_0"]
+	check(chunk._data["trees"].is_empty() and chunk._trees == null, "a dense canopy creates no individual tree records or tree nodes")
+	check(chunk.get_child_count() < 10 and chunk._season_layers.size() == 2, "a quarter square kilometre of forest uses a fixed number of nodes")
+	check(chunk._season_layers[0].z_index == 13 and chunk._season_layers[0].material.shader == MapChunk.FOREST_MATERIAL.shader, "forest crowns render over cars and tracks using the canopy shader")
+	chunk._data["landuse"].append([[100, 140, 70], 1, PackedVector2Array([Vector2(100, -100), Vector2(150, -100), Vector2(150, -150), Vector2(100, -150)]), "grass"])
+	chunk._data["roads"] = [{"points": PackedVector2Array([Vector2(0, -250), Vector2(500, -250)]), "half_width_m": 4.0}]
+	var mask: Image = chunk._forest_mask().get_image()
+	check(mask.get_pixel(50, 450).r > 0.9, "forest interiors retain overhead crowns")
+	check(mask.get_pixel(125, 375).r < 0.1, "smaller landuse clearings cut holes in overhead crowns")
+	check(mask.get_pixel(200, 250).r < 0.1 and mask.get_pixel(200, 240).r > 0.9, "roads remove crowns only along their corridor")
+	map.add_chunk({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[108, 120, 78], 1, [[500, 0], [1000, 0], [1000, 500], [500, 500]], "scrub"]]})
+	var scrub = map._chunks["1_0"]
+	check(scrub._season_layers.size() == 2 and scrub._season_layers[0].z_index == 13, "scrub creates the same overhead canopy as forests")
+	check(scrub._forest_mask().get_image().get_pixel(250, 250).r > 0.9, "scrub interiors retain canopy coverage")
+	var wildlife := preload("res://wildlife.gd")
+	check(wildlife.habitat(0, 0, true) == "rural", "unmapped forest trees still provide rural wildlife habitat")
+	check(wildlife.habitat(30, 0, false) == "urban", "urban wildlife habitat is unchanged")
+	map.free()

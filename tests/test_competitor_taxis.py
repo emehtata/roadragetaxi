@@ -2,15 +2,59 @@
 fares and drive them through the NPC system."""
 import math
 import random
+from datetime import datetime
 from types import SimpleNamespace
+
+import pytest
 
 from theroadragetrip.competitor_taxis import (
     CLAIM_RADIUS_M, MAX_ROUTE_ATTEMPTS, STOP_DWELL_S, Dispatcher, TaxiJob, is_competitor, make_competitor,
 )
-from theroadragetrip.npc import NPCState, NPCVehicleManager, spawn_npc
+from theroadragetrip.npc import NPCState, NPCVehicleManager, PathPoint, place_parked_npc, spawn_npc
 from theroadragetrip.osm import Way
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
+
+pytestmark = pytest.mark.timing  # wall-clock assertions: serial in make test (pytest.ini)
+
+
+@pytest.mark.parametrize("day,hour,expected", [(16, 21, 0), (16, 22, 10), (17, 3, 10),
+                                              (17, 23, 10), (18, 3, 10), (18, 6, 0), (19, 3, 0)])
+def test_weekend_night_taxi_demand_crosses_midnight(day, hour, expected):
+    from theroadragetrip.competitor_taxis import night_taxi_target
+    assert night_taxi_target(datetime(2026, 10, day, hour), 1.0, 40) == expected
+
+
+def test_night_taxies_scale_to_density_and_existing_vehicle_budget():
+    from theroadragetrip.competitor_taxis import night_taxi_target
+    now = datetime(2026, 10, 17, 3)
+    assert night_taxi_target(now, 0.0, 40) == 0
+    assert night_taxi_target(now, 0.5, 40) == 5
+    assert night_taxi_target(now, 1.0, 8) == 2
+    assert night_taxi_target(now, 1.0, 0) == 0
+
+
+def test_night_demand_adds_moving_taxis_without_raising_population_cap(monkeypatch):
+    from theroadragetrip.physics import SpatialWayGrid
+    import theroadragetrip.npc as npc
+
+    monkeypatch.setattr(npc, "people_within", lambda *args: 1500)
+    manager = NPCVehicleManager(target_count=40, max_count=40)
+    manager.clock = datetime(2026, 10, 17, 3)
+    manager.set_local_density(0, 0, SpatialWayGrid([]))
+    assert manager._night_taxi_target == 10 and manager.target_moving_count >= 10
+    assert manager.target_count == 40 and manager.max_count == 40
+    manager.clock = datetime(2026, 10, 19, 3)
+    manager.set_local_density(0, 0, SpatialWayGrid([]))
+    assert manager._night_taxi_target == 0 and manager.target_moving_count < 10
+
+
+def test_queued_cruise_cannot_be_mistaken_for_a_new_fare():
+    taxi = _taxi(1, 0, 0)
+    phone = SimpleNamespace(offers=[_offer("Aino", 0, 0)])
+    manager = SimpleNamespace(vehicles=[taxi], drivers={1: SimpleNamespace(route_job_pending=True)})
+    Dispatcher().update(phone, manager, 10000)
+    assert taxi.taxi_job is None and len(phone.offers) == 1
 
 
 def test_a_job_drives_to_the_pickup_waits_then_to_the_dropoff_and_ends():
@@ -79,12 +123,13 @@ def _city_block_grid(blocks=8, step=60.0):
     return ways
 
 
-def test_a_competitor_drives_a_fare_from_pickup_to_dropoff_on_real_roads():
+@pytest.mark.parametrize("kind", ["car", "van"])
+def test_a_competitor_drives_a_fare_from_pickup_to_dropoff_on_real_roads(kind):
     random.seed(4)
     ways = _city_block_grid()
     traffic_world = TrafficWorld(ways)
     residents = ResidentManager()
-    _, driver, taxi = spawn_npc(1, residents, traffic_world, ways, (30.0, 0.0), (90.0, 0.0))
+    _, driver, taxi = spawn_npc(1, residents, traffic_world, ways, (30.0, 0.0), (90.0, 0.0), vehicle_type=kind)
     taxi.state = NPCState.PARKED  # waiting for a fare at the roadside
     make_competitor(taxi)
     manager = NPCVehicleManager(target_count=1, spawn_radius_m=300.0, vehicle_distribution={"car": 1.0})
@@ -109,3 +154,96 @@ def test_a_competitor_drives_a_fare_from_pickup_to_dropoff_on_real_roads():
         target = pickup if leg == "pickup" else dropoff
         assert math.hypot(x - target[0], y - target[1]) < 80.0, (leg, x, y)
     assert aboard_the_whole_time and is_competitor(taxi) and taxi.is_taxi
+
+
+def test_free_rival_cruises_after_a_dispatch_stop_at_saturday_three_am(monkeypatch):
+    from theroadragetrip.physics import SpatialWayGrid
+    import theroadragetrip.npc as npc
+
+    random.seed(4)
+    monkeypatch.setattr(npc, "people_within", lambda *args: 1500)
+    ways = _city_block_grid()
+    traffic = TrafficWorld(ways)
+    residents = ResidentManager()
+    _, driver, taxi = spawn_npc(1, residents, traffic, ways, (30, 0), (90, 0))
+    make_competitor(taxi)
+    taxi.state = NPCState.PARKED
+    manager = NPCVehicleManager(target_count=1, max_count=1, spawn_radius_m=300, vehicle_distribution={"car": 1.0})
+    manager.clock = datetime(2026, 10, 17, 3)
+    manager.vehicles = [taxi]
+    manager.drivers[taxi.vehicle_id] = driver
+    start = (taxi.x, taxi.y)
+    buildings = SpatialWayGrid([])
+    for i in range(30*90):
+        traffic.advance_time(1/30)
+        manager.update(1/30, 210, 210, residents, traffic, ways, building_grid=buildings)
+        if i < 30*9:
+            assert taxi.state == NPCState.PARKED  # available for dispatch before cruising
+        if math.hypot(taxi.x-start[0], taxi.y-start[1]) > 15:
+            break
+    assert taxi.state != NPCState.CRASHED and taxi.taxi_job is None
+    assert math.hypot(taxi.x-start[0], taxi.y-start[1]) > 15
+    assert manager.drivers.get(taxi.vehicle_id) is driver and taxi.trip_group.all_aboard
+
+
+def test_night_transit_spawns_fill_ten_rival_places_not_only_three():
+    road = Way(points_m=[(-100, 0), (200, 0)], highway="residential", half_width_m=5)
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=40)
+    manager._night_taxi_target = 10
+    for i in range(12):
+        vehicle = place_parked_npc(i, (0, -2.5), None, ways=[road], vehicle_type="car")
+        path = [PathPoint(0, -2.5, road), PathPoint(80, -2.5, road)]
+        assert manager._apply_transit_spawn((vehicle, (path, (80, -2.5), None, False)), residents, []) is not None
+    assert sum(is_competitor(v) for v in manager.vehicles) == 10
+
+
+@pytest.mark.parametrize("kind", ["car", "van", "truck", "bus"])
+def test_transit_taxi_selection_preserves_paint_dimensions_and_seats(kind):
+    from theroadragetrip.protocol import _npc_to_dict
+    from theroadragetrip.vehicles import vehicle_definition
+
+    road = Way(points_m=[(-100, 0), (200, 0)], highway="residential", half_width_m=5)
+    paint = (35, 70, 45)
+    vehicle = place_parked_npc(1, (0, -2.5), None, ways=[road], vehicle_type=kind, color=paint)
+    assert vehicle is not None
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    path = [PathPoint(0, -2.5, road), PathPoint(80, -2.5, road)]
+    assert manager._apply_transit_spawn((vehicle, (path, (80, -2.5), None, False)), residents, []) is not None
+    assert is_competitor(vehicle) == (kind in ("car", "van"))
+    definition = vehicle_definition(kind)
+    assert vehicle.color == paint
+    seats = 9 if kind == "van" else definition.capacity
+    assert (vehicle.length_m, vehicle.width_m, vehicle.capacity) == (definition.length_m, definition.width_m, seats)
+    assert len(vehicle.trip_group.member_resident_ids) <= vehicle.capacity
+    published = _npc_to_dict(vehicle, residents.residents)
+    assert published["color"] == list(paint) and published["vehicle_type"] == kind
+    assert published["is_taxi"] == (kind in ("car", "van"))
+
+
+def test_taxi_van_seats_eight_passengers_plus_driver_and_rejects_extra_occupants():
+    from theroadragetrip.npc import _begin_trip_on_vehicle
+    from theroadragetrip.vehicles import vehicle_definition
+
+    road = Way(points_m=[(-100, 0), (200, 0)], highway="residential", half_width_m=5)
+    vehicle = place_parked_npc(1, (0, -2.5), None, ways=[road], vehicle_type="van")
+    ordinary_capacity = vehicle.capacity
+    make_competitor(vehicle)
+    assert vehicle.capacity - 1 == 8
+    assert vehicle_definition("van").capacity == ordinary_capacity  # ordinary vans are unchanged
+    residents = ResidentManager()
+    members = [residents.create().resident_id for _ in range(10)]
+    path = [PathPoint(0, -2.5, road), PathPoint(80, -2.5, road)]
+    _begin_trip_on_vehicle(vehicle, path, residents, (80, -2.5), member_resident_ids=members)
+    assert len(vehicle.trip_group.member_resident_ids) == 9
+    assert members[-1] not in vehicle.trip_group.member_resident_ids
+
+
+def test_competitor_taxis_keep_the_existing_colour_variation():
+    from theroadragetrip.npc import NPC_VEHICLE_COLORS
+
+    for paint in NPC_VEHICLE_COLORS:
+        vehicle = SimpleNamespace(color=paint)
+        make_competitor(vehicle)
+        assert vehicle.color == paint and vehicle.is_taxi

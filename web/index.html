@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A Finnish taxi antihero with a rage superpower. Build rage, shout traffic aside and floor it on real streets. The latest version gives rage the power to clear the road.">
+  <meta name="description" content="A Finnish taxi antihero with a rage superpower. Build rage, shout traffic aside and floor it on real streets. The latest version lets you settle it with your fists.">
   <title>The Road Rage Trip | Real roads, bad decisions</title>
   <link rel="stylesheet" href="styles.css">
   <script defer src="script.js"></script>
@@ -31,7 +31,7 @@
       <div class="hero-content">
         <p class="eyebrow"><span class="signal-dot"></span> Suomalainen taksi. Yliluonnollinen raivo.</p>
         <h1>Asiakas kyytiin.<br><em>Raivo irti.</em></h1>
-        <p class="hero-copy">Ruuhka ei väistä kohteliaisuudella. Kerää raivoa, huuda muut kuskit sivuun ja paina kaasu pohjaan. Uusimmassa versiossa taksin antisankarin raivo on todellinen supervoima.</p>
+        <p class="hero-copy">Ruuhka ei väistä kohteliaisuudella. Kerää raivoa, huuda muut kuskit sivuun ja paina kaasu pohjaan. Uusimmassa versiossa riidan voi ratkaista myös nyrkein.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="https://github.com/emehtata/roadragetaxi/releases/download/v0.18.0alpha/RoadRageTrip-Setup.exe" target="_blank" rel="noreferrer">Lataa Windows-asennus <span>↗</span></a>
           <a class="button button-ghost" href="#features">Tutustu peliin <span>↓</span></a>
@@ -43,12 +43,12 @@
 
     <section class="screenshots section-shell" aria-labelledby="screenshots-title">
       <div class="section-kicker" id="screenshots-title">PELIKUVIA</div>
-      <p class="screenshot-note">Kuvat ovat aiemmista peliversioista. Henkilöiden nimet arvotaan satunnaisesti, eivätkä ne tarkoita oikeita ihmisiä.</p>
+      <p class="screenshot-note">Henkilöiden nimet arvotaan satunnaisesti, eivätkä ne tarkoita oikeita ihmisiä.</p>
       <div class="screenshot-grid">
-        <figure><a href="assets/godot-city.png" target="_blank"><img src="assets/godot-city.png" alt="Helsinki päivällä: vesistöt, sillat ja junien saapumistaulu" loading="lazy"></a><figcaption>Kaupunki ja junat</figcaption></figure>
+        <figure><a href="assets/godot-city.png" target="_blank"><img src="assets/godot-city.png" alt="Helsinki päivällä: raitiotiet ja junien saapumistaulu" loading="lazy"></a><figcaption>Kaupunki ja junat</figcaption></figure>
         <figure><a href="assets/godot-night.png" target="_blank"><img src="assets/godot-night.png" alt="Iltaruuhka Helsingin valaistuilla kaduilla" loading="lazy"></a><figcaption>Yöruuhka</figcaption></figure>
-        <figure><a href="assets/godot-winter.png" target="_blank"><img src="assets/godot-winter.png" alt="Lumisade Oulun asemalla, juna raiteilla" loading="lazy"></a><figcaption>Talvi ja junat</figcaption></figure>
-        <figure><a href="assets/godot-phone.png" target="_blank"><img src="assets/godot-phone.png" alt="RageCab-puhelin sateisessa Helsingissä: junamatkustajan ennakkotilaus ja kyytipyyntö rinnakkain" loading="lazy"></a><figcaption>RageCab-puhelin</figcaption></figure>
+        <figure><a href="assets/godot-winter.png" target="_blank"><img src="assets/godot-winter.png" alt="Luminen talvipäivä Oulun asemalla, juna raiteilla" loading="lazy"></a><figcaption>Talvi ja junat</figcaption></figure>
+        <figure><a href="assets/godot-phone.png" target="_blank"><img src="assets/godot-phone.png" alt="RageCab-puhelin sateisessa Helsingissä: junamatkustajien ennakkotilaukset ja kyytipyyntö rinnakkain" loading="lazy"></a><figcaption>RageCab-puhelin</figcaption></figure>
         <figure><a href="assets/godot-finland-map.png" target="_blank"><img src="assets/godot-finland-map.png" alt="Aloituspaikan valinta Suomen kartalta" loading="lazy"></a><figcaption>Suomen kartta</figcaption></figure>
         <figure><a href="assets/godot-forecast.png" target="_blank"><img src="assets/godot-forecast.png" alt="Aloitusnäyttö ja oikea sääennuste" loading="lazy"></a><figcaption>Sääennuste</figcaption></figure>
       </div>
@@ -60,7 +60,7 @@
         <h2>Lyhyt pinna.<br><span>Yliluonnollinen raivo.</span></h2>
         <div>
           <p class="lead">The Road Rage Trip on ylhäältä kuvattu taksipeli Suomen oikeilla kaduilla. Sinä olet sen antisankari: taksikuski, jonka raivo siirtää autot tieltä.</p>
-          <p>Asiakas odottaa. Koko katu seisoo. Sinä et. Kun raivoa on tarpeeksi, paina SPACE ja huuda ruuhka helvettiin. Uusimmassa versiossa muut autot siirtyvät suoraan tien sivuun ja edessäsi pidetään ajoväylä auki vähintään kymmenen sekunnin ajan. Vaikka mittarissa olisi 210 km/h. Ei sankaripuheita. Taksamittari käy.</p>
+          <p>Asiakas odottaa. Koko katu seisoo. Sinä et. Kun raivoa on tarpeeksi, paina SPACE ja huuda ruuhka helvettiin. Muut autot siirtyvät suoraan tien sivuun ja edessäsi pidetään ajoväylä auki vähintään kymmenen sekunnin ajan. Vaikka mittarissa olisi 210 km/h. Ei sankaripuheita. Taksamittari käy.</p>
         </div>
       </div>
     </section>
@@ -72,7 +72,7 @@
         <div class="feature-grid">
           <article class="feature-card"><span class="feature-number">01</span><div class="feature-icon road-icon">╱╲</div><h3>Oikeita teitä, oikeita paikkoja</h3><p>Tunnista tuttu risteys, oikaise puiston ohi ja etsi asiakkaan osoite. Oikeat suomalaiset kadut ovat sinun pelikenttäsi.</p></article>
           <article class="feature-card accent-card"><span class="feature-number">02</span><div class="feature-icon">✦</div><h3>Huuda ruuhka helvettiin</h3><p>Raivo ei ole pelkkä ilme mittarissa. Se on supervoimasi. Ylinopeus kasvattaa raivoa; kun sitä riittää, SPACE raivaa muut autot sivuun. Raivohuuto pitää tien auki vähintään kymmeneksi sekunniksi ja raivaa sitä pidemmältä, mitä kovempaa ajat. Sinä painat kaasua. Muut väistävät.</p></article>
-          <article class="feature-card"><span class="feature-number">03</span><div class="feature-icon">⇄</div><h3>Kadut ovat täynnä muita kuskeja</h3><p>Henkilöautot, pakettiautot, kuorma-autot ja bussit jakavat kadut kanssasi. Kolarista voi seurata tienvarren sanaharkka. Pidä pää kylmänä – tai kerää tarpeeksi raivoa ja huuda tie auki.</p></article>
+          <article class="feature-card"><span class="feature-number">03</span><div class="feature-icon">⇄</div><h3>Kadut ovat täynnä muita kuskeja</h3><p>Henkilöautot, bussit, kuorma-autot, matkailuautot, pyöräilijät ja kesäisin moottoripyörät jakavat kadut kanssasi. Kolarista voi seurata tienvarren sanaharkka. Pidä pää kylmänä – tai kerää tarpeeksi raivoa ja huuda tie auki.</p></article>
           <article class="feature-card"><span class="feature-number">04</span><div class="feature-icon camera-icon">▣</div><h3>Pidä silmät tiellä</h3><p>Peltikamera voi yllättää juuri kun vauhti alkaa maistua. Puut huojuvat, lehdet lentävät, ja kova kolari jättää taksin savuamaan ja pysähtyneeksi viideksi sekunniksi.</p></article>
           <article class="feature-card"><span class="feature-number">05</span><div class="feature-icon">⌁</div><h3>Reitti elää</h3><p>Paina N tai P ja avaa puhelin. Aktiivisella kyydillä se näyttää seuraavan käännöksen, etäisyyden ja kadunnimen. Vapaana sama puhelin näyttää kyytipyynnöt.</p></article>
           <article class="feature-card"><span class="feature-number">06</span><div class="feature-icon">◌</div><h3>Kaupunki kasvaa ympärillä</h3><p>Jatka tutuilta kaduilta kohti uusia maisemia. Keskusta vaihtuu lähiöihin, metsiin ja rantateihin, ja seuraava asiakas odottaa jo jossain edessä.</p></article>
@@ -90,6 +90,9 @@
           <article class="feature-card"><span class="feature-number">18</span><div class="feature-icon">▤</div><h3>Maan alle ja kerroksiin</h3><p>Kaikki asiakkaat eivät odota kadunkulmassa. Aja rampista pysäköintihalliin ja nouda kyyti myös maan alta – navigaattori näyttää tietä.</p></article>
           <article class="feature-card"><span class="feature-number">19</span><div class="feature-icon">☏</div><h3>RageCab soittaa</h3><p>Sama siirrettävä puhelin näyttää vapaan taksin kyydit ja junamatkustajien ennakkotilaukset. Hyväksytyllä kyydillä se vaihtuu navigaattoriksi.</p></article>
           <article class="feature-card"><span class="feature-number">20</span><div class="feature-icon">✺</div><h3>Juhlat näkyvät kaupungissa</h3><p>Uudenvuodenyön ilotulitukset, halloweenin kurpitsat ja lyhdyt sekä jouluaattona kaduilla kulkevat joulupukit seuraavat pelin kalenteria.</p></article>
+          <article class="feature-card"><span class="feature-number">21</span><div class="feature-icon">⚔</div><h3>Nyrkit puhuvat</h3><p>Kilpaileva taksikuski ei väistä? Astu ulos ja huuda päin naamaa. SPACE lyö, Shift väistää ja F pakenee. Raivo tekee iskuista kovempia – ja vastustajallakin on raivomittari.</p></article>
+          <article class="feature-card"><span class="feature-number">22</span><div class="feature-icon">⚲</div><h3>Kaksi pyörää, monta murhetta</h3><p>Pyöräilijät polkevat omia reittejään ja jättävät pyöränsä telineisiin. Pidä silmällä: joku saattaa juosta paikalle ja kaasuttaa pyörällä tiehensä. Kesällä moottoripyörät palaavat teille.</p></article>
+          <article class="feature-card"><span class="feature-number">23</span><div class="feature-icon">≈</div><h3>Kesä järven rannalla</h3><p>Järvet aaltoilevat tuulessa ja metsät humisevat. Rannalla pelataan lentopalloa ja tennistä, leirintäalueilla on telttoja ja asuntovaunuja – ja kettu vilahtaa lähiön pihalla.</p></article>
         </div>
       </div>
     </section>
@@ -99,9 +102,8 @@
         <div class="section-kicker light">03 / SEURAAVAKSI</div>
         <div class="feature-heading"><h2>Tie jatkuu.<br><em>Kaaos kasvaa.</em></h2><p>Kaupunki ei aio tehdä työvuorostasi helpompaa. Seuraavaksi kaduille on luvassa vielä lisää hankaluuksia.</p></div>
         <div class="feature-grid roadmap-grid">
-          <article class="feature-card"><span class="feature-number">TULOSSA</span><div class="feature-icon">⚬</div><h3>Idiootit pyörällä</h3><p>Pyöräilijät liittyvät joukkoon: väistelevät, ajavat päin punaisia ja tekevät juuri sitä, mitä pyöräilijät parhaiten osaavat.</p></article>
           <article class="feature-card"><span class="feature-number">TULOSSA</span><div class="feature-icon">✹</div><h3>Poliisin takaa-ajot</h3><p>Piilokamerat eivät riitä ikuisesti. Oikeat poliisiautot lähtevät perään sireenit päällä, ja pakoon pääseminen vaatii muutakin kuin huudon.</p></article>
-          <article class="feature-card"><span class="feature-number">TULOSSA</span><div class="feature-icon">⚔</div><h3>Taksikuskien tappelut</h3><p>Kun raivo ei enää mahdu sanoihin, astu ulos autosta ja selvitä asia vanhalla tavalla.</p></article>
+          <article class="feature-card"><span class="feature-number">TULOSSA</span><div class="feature-icon">⚡</div><h3>Sähköautot</h3><p>Latausasemat ovat jo kartalla. Seuraavaksi kaduille tulevat sähköautot – ja latausjonot.</p></article>
         </div>
       </div>
     </section>
@@ -124,6 +126,7 @@
           <div class="control-row"><kbd>E</kbd><span>Käynnistä tai sammuta moottori</span></div>
           <div class="control-row"><kbd>G</kbd><span>Tankkaa huoltoasemalla</span></div>
           <div class="control-row"><kbd>J</kbd><span>Junien saapumistaulu</span></div>
+          <div class="control-row"><kbd>SPACE</kbd><kbd>SHIFT</kbd><kbd>F</kbd><span>Tappelussa: lyö, väistä, pakene</span></div>
         </div>
       </div>
     </section>
@@ -131,14 +134,14 @@
     <section class="release-notes section-shell" id="release-notes">
       <div class="section-kicker">05 / UUSIN VERSIO</div>
       <div class="how-grid">
-        <div><h2>Uusin<br><em>versio.</em></h2><p class="lead">Uusimmassa versiossa raivo raivaa tien. Mukana myös seuruekyydit sekä parannuksia karttaan, säähän ja liikenteeseen.</p></div>
+        <div><h2>Uusin<br><em>versio.</em></h2><p class="lead">Uusimmassa versiossa riidat ratkaistaan nyrkein. Mukana myös pyöräilijät, kesän moottoripyörät, elävämmät järvet ja tallennettavat keikat.</p></div>
         <ul class="notes-list">
-          <li><strong>Raivo on supervoima</strong>Uusi raivohuuto siirtää muut autot suoraan tien sivuun ja pitää ajoväylän auki vähintään kymmenen sekuntia. Raivaus ulottuu kymmenen ajosekunnin päähän myös 210 km/h nopeudessa.</li>
-          <li><strong>Yksi kyyti, monta matkustajaa</strong>Seuruekyydit kuljettavat enintään neljä matkustajaa. Lapset matkustavat vanhempansa seurassa.</li>
-          <li><strong>Sillat, rannat ja järvet</strong>Selkeämmät sillat, rannat ja saaret tekevät reitin löytämisestä helpompaa. Myös järviseudulla pääset nopeammin ratin taakse.</li>
-          <li><strong>Valoa ja varjoa</strong>Auringon suunnan mukaan piirtyvät rakennusten varjot ja pidemmät, vastaantulevallekin kaistalle yltävät kaukovalot.</li>
-          <li><strong>Keli jatkuu, vuoro vaihtuu</strong>Palaa samaan paikkaan ja aikaan ilman yllättävää kelinvaihdosta. Sää pysyy aiempaa johdonmukaisempana pelikertojen välillä.</li>
-          <li><strong>Sujuvammin matkaan</strong>Muut autot ilmestyvät turvallisemman välimatkan päähän, ja eksyneet kuskit löytävät paremmin takaisin reitille. Vähemmän turhia esteitä, enemmän ajamista.</li>
+          <li><strong>Taksikuskien tappelut</strong>Kilpailevat taksikuskit riitelevät keskenään – ja sinä voit haastaa riidan itse. Lyö, väistä tai pakene.</li>
+          <li><strong>Pyöräilijät ja pyörävarkaat</strong>Pyöräilijät liittyvät liikenteeseen, pysäköivät pyöränsä telineisiin – ja varkaat käyvät hakemassa niitä.</li>
+          <li><strong>Uusia kulkijoita</strong>Moottoripyörät ajavat kesäkaudella, matkailuautot ja asuntovaunut suuntaavat leirintäalueille.</li>
+          <li><strong>Elävät järvet ja metsät</strong>Aaltoileva, ruskea järvivesi, tuuheat metsät, rantaelämä ja villieläimet, jotka pysyvät omilla seuduillaan.</li>
+          <li><strong>Keikka talteen</strong>Tallenna peli ja jatka myöhemmin samasta paikasta – vaikka kyyti olisi kesken.</li>
+          <li><strong>Oikeat tietyöt</strong>Tietyöt näkyvät kaduilla oikeasta liikennetiedosta. Myös ruudunpäivitys on tasaisempaa.</li>
         </ul>
       </div>
     </section>

@@ -2,7 +2,7 @@ import math
 import random
 import logging
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from .osm import TrafficLight, Way
 
@@ -17,6 +17,25 @@ class Roadwork:
     lane_closed: bool
     start: Tuple[float, float]
     end: Tuple[float, float]
+    # Generated roadworks block the taxi outright; a live one (digitraffic_road)
+    # only where the road is closed, and otherwise sets its speed limit and
+    # closes the right-hand lane (in the way's direction) when lane_closed.
+    blocks: bool = True
+    speed_limit_kmh: Optional[int] = None
+    source: str = "generated"
+    situation_id: str = ""
+    title: str = ""
+
+    def applies_to(self, layer: int, map_level: int) -> bool:
+        """A closure or limit never controls a road above or below its own."""
+        return self.way.layer == layer and (self.way.map_level or 0) == map_level
+
+    def in_closed_lane(self, x: float, y: float, margin_m: float = 0.0) -> bool:
+        """Inside the zone, on the closed (right-hand) half of the road."""
+        if not self.lane_closed or not self.contains(x, y, margin_m):
+            return False
+        dx, dy = self.end[0] - self.start[0], self.end[1] - self.start[1]
+        return (x - self.start[0]) * dy - (y - self.start[1]) * dx > 0.0  # right of the direction start -> end
 
     def contains(self, x: float, y: float, margin_m: float = 0.0) -> bool:
         """Return whether a point lies inside this work zone along the road."""

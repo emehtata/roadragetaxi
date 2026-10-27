@@ -90,7 +90,7 @@ def _source_bbox(pbf_path: Path) -> Tuple[float, float, float, float]:
     """
     result = subprocess.run(
         [osmium_command() or "osmium", "fileinfo", "--json", str(pbf_path)],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", check=True,
     )
     boxes = json.loads(result.stdout)["header"]["boxes"]
     if boxes:
@@ -99,7 +99,7 @@ def _source_bbox(pbf_path: Path) -> Tuple[float, float, float, float]:
 
     result = subprocess.run(
         [osmium_command() or "osmium", "fileinfo", "-e", "--json", str(pbf_path)],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", check=True,
     )
     bbox = json.loads(result.stdout)["data"]["bbox"]
     west, south, east, north = bbox
@@ -186,7 +186,7 @@ def build_index(
             str(pbf_path),
         ]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
             if result.returncode != 0:
                 raise RuntimeError(f"osmium extract failed for cell {cell['file']} (exit {result.returncode}): {result.stderr.strip()}")
             temp_path.replace(out_path)
@@ -201,7 +201,7 @@ def build_index(
         "cell_padding_deg": cell_padding_deg,
         "cells": cells,
     }
-    (index_dir / MANIFEST_NAME).write_text(json.dumps(manifest))
+    (index_dir / MANIFEST_NAME).write_text(json.dumps(manifest), encoding="utf-8")
 
     if progress_callback:
         progress_callback(1.0, f"Index built: {len(cells)} cells")
@@ -214,7 +214,7 @@ def load_manifest(index_dir: Path) -> Optional[dict]:
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -297,7 +297,7 @@ def _selftest() -> None:
                 {"gx": 1, "gy": 0, "bbox": [25.25, 64.0, 25.5, 64.25], "file": "b.pbf"},
             ],
         }
-        (index_dir / MANIFEST_NAME).write_text(json.dumps(manifest))
+        (index_dir / MANIFEST_NAME).write_text(json.dumps(manifest), encoding="utf-8")
         (index_dir / "a.pbf").write_bytes(b"")
         (index_dir / "b.pbf").write_bytes(b"")
 

@@ -15,6 +15,7 @@ cached in SQLite, including hours that had no data, so nothing is re-asked.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import sqlite3
@@ -220,6 +221,26 @@ def game_time_to_utc_hour(moment: datetime) -> float:
     """Naive local game datetime (Finnish time) -> fractional UTC epoch hour."""
     aware = moment.replace(tzinfo=GAME_TIMEZONE) if moment.tzinfo is None else moment
     return aware.timestamp() / 3600.0
+
+
+def gradual_weather(history, moment: datetime, key: str = "") -> Optional[HourlyWeather]:
+    """Sample interpolated hourly weather in stable five-minute steps."""
+    sample = moment.replace(minute=moment.minute - moment.minute % 5, second=0, microsecond=0)
+    hour = sample.replace(minute=0)
+    previous, current, following = (history.get(hour + timedelta(hours=offset)) for offset in (-1, 0, 1))
+
+    def boundary(at: datetime) -> datetime:
+        digest = hashlib.sha256(f"{key}:{at.isoformat()}".encode()).digest()
+        slot = int.from_bytes(digest[:8], "little") % 12 - 6
+        return at + timedelta(minutes=(slot if slot < 0 else slot + 1) * 5)
+
+    selected = previous if sample < boundary(hour) else following if sample >= boundary(hour + timedelta(hours=1)) else current
+    if current is not None and following is not None and current.temperature_c is not None and following.temperature_c is not None:
+        fraction = (sample - hour).total_seconds() / 3600.0
+        temperature = current.temperature_c + (following.temperature_c - current.temperature_c) * fraction
+        if selected is not None:
+            selected = replace(selected, temperature_c=temperature)
+    return selected
 
 
 class WeatherHistory:

@@ -14,3 +14,10 @@ def test_the_server_process_tunes_the_interpreter_before_the_world_loads(monkeyp
         chosen_city="Oulu", tick_rate=30.0, run_forever=lambda: None))
     server_main.main()
     assert calls == ["tune", "load"]
+
+
+def test_preset_accepts_any_catalog_municipality(monkeypatch):
+    """The map picker passes the pin's nearest municipality, not only menu cities."""
+    from theroadragetrip.server.cli import parse_server_args
+    monkeypatch.setattr("sys.argv", ["server", "--preset", "Muurame"])
+    assert parse_server_args()[0].preset == "Muurame"

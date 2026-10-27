@@ -34,6 +34,8 @@ const SPLASH_POOL_MAX := 40
 const SPLASH_COLOR := Color8(215, 225, 238)
 const SPLASH_MAX_RADIUS_M := 1.4
 const SPLASH_MAX_ALPHA := 200.0 / 255.0
+const MUD_POOL_MAX := 96
+const MUD_LIFETIME_S := 0.65
 const RING_SEGMENTS := 16
 const RS := preload("res://render_style.gd")
 
@@ -41,6 +43,8 @@ var particles := PackedFloat32Array()  # x, y (screen fractions), speed factor -
 var kind := ""  # "rain", "slush", "snow", or "" (nothing falling here)
 var clock := 0.0  # real seconds, for the ripples
 var splashes: Array = []  # [layer position, age s, strength]
+var mud: Array = []  # dirt/sand: [ground position, velocity, age, size, is_sand]
+var _mud_clock := 0.0
 var was_in_puddle := false
 var draw_calls := 0  # submissions in the last drawn frame (precipitation + ripples + splashes)
 var map_layer: Node2D
@@ -91,6 +95,18 @@ static func falling(state: Dictionary) -> String:
 	return type if type in ["rain", "slush", "snow"] else ""
 
 
+## The server's wind in world metres per second (east, north).
+static func wind_vector(state: Dictionary) -> Vector2:
+	var weather = state.get("weather")
+	var wind = weather.get("wind_vector_mps") if weather is Dictionary else null
+	if not wind is Array or wind.size() != 2:
+		return Vector2.ZERO
+	if not typeof(wind[0]) in [TYPE_INT, TYPE_FLOAT] or not typeof(wind[1]) in [TYPE_INT, TYPE_FLOAT]:
+		return Vector2.ZERO
+	var vector := Vector2(wind[0], wind[1])
+	return vector if is_finite(vector.x) and is_finite(vector.y) else Vector2.ZERO
+
+
 ## Each frame, after the camera is placed: `taxi` is the drawn (interpolated)
 ## taxi in layer coordinates.
 func update(delta: float, state: Dictionary, taxi: Vector2, underground: bool) -> void:
@@ -116,11 +132,12 @@ func update(delta: float, state: Dictionary, taxi: Vector2, underground: bool) -
 	if in_puddle and not was_in_puddle:
 		spawn_splash(taxi, minf(1.0, speed * 3.6 / 60.0))
 	was_in_puddle = in_puddle
+	update_mud(delta, state, taxi, underground)
 	if not splashes_enabled:
 		splashes.clear()
 	age_splashes(delta)
 	if splash_node != null:
-		splash_node.visible = splashes_enabled and not splashes.is_empty()
+		splash_node.visible = not splashes.is_empty() or not mud.is_empty()
 		if splash_node.visible:
 			splash_node.queue_redraw()
 	Perf.add("weather", Time.get_ticks_usec() - started)
@@ -131,6 +148,38 @@ const Perf := preload("res://perf.gd")
 
 ## weather.py update: fall and drift in real time, by the type's factors;
 ## off the bottom -> back at the top at a new x; off the right -> wrap.
+func update_mud(delta: float, state: Dictionary, taxi: Vector2, underground: bool) -> void:
+	# The graphics switch controls puddle water, not offroad dirt.
+	if underground:
+		mud.clear()
+		_mud_clock = 0.0
+		return
+	for clump in mud:
+		clump[0] += clump[1] * delta
+		clump[2] += delta
+	mud = mud.filter(func(clump): return clump[2] < MUD_LIFETIME_S)
+	var mark = state.get("tire_mark")
+	var strength := float(mark.get("spray", 0.0)) if mark is Dictionary and mark.get("kind") in ["dirt", "sand"] else 0.0
+	if state.get("on_foot", true) or strength <= 0.0:
+		_mud_clock = 0.0
+		return
+	var is_sand: bool = mark.get("kind") == "sand"
+	var player: Dictionary = state.get("player", {})
+	var h := Vector2(cos(float(player.get("heading", 0.0))), -sin(float(player.get("heading", 0.0))))
+	var side := Vector2(-h.y, h.x)
+	var travel := h if float(player.get("speed", 0.0)) >= 0.0 else -h
+	_mud_clock += minf(delta, 0.1) * 30.0 * clampf(strength, 0.0, 1.0)
+	var bursts := mini(int(_mud_clock), 3)
+	_mud_clock -= bursts
+	for i in bursts:
+		for wheel_side: float in [-1.0, 1.0]:
+			var at := taxi - h * float(player.get("length_m", 4.4)) * 0.32 + side * wheel_side * float(player.get("width_m", 1.8)) * 0.45
+			var velocity := -travel * _rng.randf_range(2.0, 5.0) + side * wheel_side * _rng.randf_range(1.0, 3.0)
+			mud.append([at, velocity, 0.0, _rng.randf_range(0.08, 0.16) if is_sand else _rng.randf_range(0.05, 0.12), is_sand])
+	if mud.size() > MUD_POOL_MAX:
+		mud = mud.slice(mud.size() - MUD_POOL_MAX)
+
+
 func advance_particles(delta: float) -> void:
 	if kind == "" or delta <= 0.0:
 		return
@@ -252,6 +301,15 @@ func _draw_splashes() -> void:
 			_ring(splash[0], ring[0], Color(SPLASH_COLOR, ring[1]))
 	if not _ripple_points.is_empty():
 		splash_node.draw_multiline_colors(_ripple_points, _ripple_colors, RING_WIDTH_PX / map_layer.px_per_m)
+		draw_calls += 1
+
+	for clump in mud:
+		var progress: float = clump[2] / MUD_LIFETIME_S
+		var at: Vector2 = clump[0] - Vector2(0, 2.6 * progress * (1.0 - progress))
+		var sand: bool = clump[4]
+		var size: float = clump[3] * (1.0 + 2.0 * progress if sand else 1.0)
+		var color := Color(0.78, 0.67, 0.43, 0.75 * (1.0 - progress)) if sand else Color(0.32, 0.19, 0.08, 1.0 - progress)
+		splash_node.draw_circle(at, maxf(1.5 / map_layer.px_per_m, size), color)
 		draw_calls += 1
 
 

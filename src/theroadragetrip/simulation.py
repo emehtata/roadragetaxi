@@ -17,7 +17,7 @@ from typing import Optional, Tuple
 from .career import CAREER_SCORE_LIMIT, save_career, save_gig_odometer
 from .fuel import (
     FULL_TANK_TOLERANCE_L,
-    calculate_fuel_purchase,
+    Refueling,
     fuel_station_price_cents,
     nearest_fuel_station,
     update_car_fuel,
@@ -38,6 +38,7 @@ from .physics import (
     respawn_car,
     update_car_physics,
     water_sinks_car,
+    water_ahead_speed_limit,
 )
 from .station_passengers import StationPassengerView, track_checker
 from .taxi import TaxiState
@@ -113,6 +114,28 @@ def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, bloc
     if not blocked(x, y + step_y):
         return x, y + step_y
     return x, y
+
+
+def _roadwork_bars(work, x: float, y: float, *, layer: int = 0, map_level: int = 0) -> bool:
+    """Where a roadwork stops the taxi: all of a generated or closed one,
+    only the closed lane of a live one with a lane closed."""
+    if not work.applies_to(layer, map_level):
+        return False
+    return work.contains(x, y, margin_m=2.0) if work.blocks else work.in_closed_lane(x, y, margin_m=2.0)
+
+
+def _provoke_rival(brawls, npc_manager, player_pedestrian, sim_time: float) -> None:
+    """On foot, a shout at a stopped rival taxi's driver: they get out to fight."""
+    from .competitor_taxis import is_competitor
+    from .protocol import LOCAL_PLAYER_ID
+    from .taxi_brawls import NPC, PLAYER, PROVOKE_REACH_M, PROVOKE_TAUNT, provoke
+    near = [v for v in npc_manager.nearby_vehicles_at(player_pedestrian.x, player_pedestrian.y, PROVOKE_REACH_M)
+            if is_competitor(v) and npc_manager.drivers.get(v.vehicle_id) is not None]
+    if not near:
+        return
+    rival = min(near, key=lambda v: math.hypot(v.x - player_pedestrian.x, v.y - player_pedestrian.y))
+    provoke(rival, PROVOKE_TAUNT, sim_time)
+    brawls.report("provoke", (PLAYER, LOCAL_PLAYER_ID), (NPC, rival.vehicle_id), ("provoke", rival.vehicle_id, int(sim_time)))
 
 
 def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None, pedestrians=()) -> bool:
@@ -233,6 +256,8 @@ def advance_simulation(
     cities_list,
     outside_temperature_c: float = 15.0,
     now=None,
+    view_bounds=None,
+    brawl_flee: bool = False,
 ) -> SimulationFrameResult:
     """Run one gameplay tick: physics, collisions, camera follow, and the
     taxi/NPC/traffic/pedestrian manager updates."""
@@ -259,8 +284,14 @@ def advance_simulation(
     building_grid = world.building_grid
     speed_cameras = world.speed_cameras
     places = world.places
+    brawls = getattr(world, "taxi_brawls", None)
+    brawl_heading = brawls.player_locked() if brawls is not None and on_foot else None
+    fighting = brawls is not None and on_foot and brawls.player_engaged()
 
-    if on_foot:
+    if brawl_heading is not None:  # squaring up or knocked down: the brawl holds the player in place
+        player_pedestrian.speed = 0.0
+        player_pedestrian.heading = brawl_heading
+    elif on_foot:
         forward_input = command.forward
         steer_input = command.turn
         sprinting = command.sprint
@@ -307,44 +338,58 @@ def advance_simulation(
             audio.play_group("vehicle.engine_start" if car.engine_on else "vehicle.engine_stop")
 
     rage_shout = None
-    if command.road_rage and rage_power >= RAGE_SHOUT_COST:  # SPACE: horn, shout, arcade clearance
+    protests = getattr(world, "protests", None)
+    if protests is not None:
+        protests.update(dt, world, car, now, traffic_mgr.sim_time)
+    if command.road_rage and fighting:
+        pass  # SPACE in a fight is a punch (taxi_brawls), not a shout
+    elif command.road_rage and rage_power >= RAGE_SHOUT_COST:  # SPACE: horn, shout, arcade clearance
         audio.play_driver_line("rage", language)
         audio.play_group("vehicle.horn", 0.45)
         rage_power = max(0.0, rage_power - RAGE_SHOUT_COST)
         rage_shout = random.choice(RAGE_SHOUTS)
         world.npc_manager.trigger_road_rage(sim_time=world.traffic_mgr.sim_time)
+        if protests is not None:
+            protests.intimidate(car)
+        if on_foot and brawls is not None:  # shouting at a rival taxi's driver picks a fight
+            _provoke_rival(brawls, world.npc_manager, player_pedestrian, traffic_mgr.sim_time)
 
-    if command.refuel:
+    stopped_refueling = command.refuel and getattr(taxi_mgr, "refueling", None) is not None
+    if stopped_refueling:
+        taxi_mgr.refueling = None
+    if command.refuel and not stopped_refueling:
         station = nearest_fuel_station(scenery_objects, car.x, car.y)
         if station is None:
             taxi_mgr.notification_msg = tr(language, "fuel_no_station")
-        elif on_foot:
+        elif not on_foot or car.engine_on:
             taxi_mgr.notification_msg = tr(language, "fuel_enter_car")
         elif abs(car.speed) > 0.5:
             taxi_mgr.notification_msg = tr(language, "fuel_stop_car")
+        elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) > 8.0:
+            taxi_mgr.notification_msg = tr(language, "fuel_no_station")
         elif car.fuel_l >= car.fuel_capacity_l - FULL_TANK_TOLERANCE_L:  # idling since the last fill-up still reads as full
             taxi_mgr.notification_msg = tr(language, "fuel_tank_full")
         else:
             price_cents = fuel_station_price_cents(station)
-            purchase = calculate_fuel_purchase(
-                car.fuel_l,
-                car.fuel_capacity_l,
-                taxi_mgr.balance_cents,
-                price_cents,
-            )
-            if purchase.liters <= 0.0:
+            if taxi_mgr.balance_cents <= 0:
                 taxi_mgr.notification_msg = tr(language, "fuel_no_money")
             else:
-                car.fuel_l = min(car.fuel_capacity_l, car.fuel_l + purchase.liters)
-                taxi_mgr.balance_cents -= purchase.cost_cents
+                if getattr(taxi_mgr, "refueling", None) is None:
+                    taxi_mgr.refueling = Refueling(price_cents)
                 audio.play_group("taxi.refuel")
-                taxi_mgr.notification_msg = tr(
-                    language,
-                    "fuel_purchased",
-                    liters=purchase.liters,
-                    cost=purchase.cost_cents / 100.0,
-                )
         taxi_mgr.notification_timer = 4.0
+    fueling = getattr(taxi_mgr, "refueling", None)
+    if fueling is not None:
+        station = nearest_fuel_station(scenery_objects, car.x, car.y)
+        if (not on_foot or car.engine_on or abs(car.speed) > 0.5 or station is None
+                or math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) > 8.0):
+            taxi_mgr.refueling = None
+        else:
+            fueling.advance(car, taxi_mgr, dt)
+            taxi_mgr.notification_msg = tr(language, "fuel_purchased", liters=fueling.liters, cost=fueling.paid_cents / 100.0)
+            taxi_mgr.notification_timer = 4.0
+            if car.fuel_l >= car.fuel_capacity_l - 1e-9 or taxi_mgr.balance_cents <= 0:
+                taxi_mgr.refueling = None
     throttle = 0.0 if on_foot or immobilized or out_of_fuel or not car.engine_on else command.throttle
     brake = 0.0 if on_foot or immobilized else command.brake
     steer_left = 0.0 if on_foot else command.steer_left
@@ -353,6 +398,8 @@ def advance_simulation(
     # The player drives on its own map level's road network (garage-05.md):
     # the surface one, or the level's - never the surface as a fallback.
     # NPCs below keep the surface network.
+    if not getattr(world.level_transitions, "enabled", True):
+        car.map_level = SURFACE_LEVEL
     on_surface = car.map_level == SURFACE_LEVEL
     if on_surface:
         drive_ways, drive_grid = ways, spatial_grid
@@ -387,6 +434,16 @@ def advance_simulation(
         if streaming_cap_mps is not None:
             speed_limit_mps = streaming_cap_mps if speed_limit_mps is None else min(speed_limit_mps, streaming_cap_mps)
 
+    # Safety brake before open water straight ahead, off-road only: a shore road's
+    # bends point at the water without leaving the road (surface only: levels have none).
+    # Braking from a standstill reverses: that backs away from the shore, never capped.
+    if on_surface and not on_foot and waters and current_way is None and not (brake > 0.0 and car.speed <= 0.5):
+        water_limit_mps = water_ahead_speed_limit(car, waters, now.month if now is not None else None, drive_grid)
+        if water_limit_mps is not None:
+            speed_limit_mps = water_limit_mps if speed_limit_mps is None else min(speed_limit_mps, water_limit_mps)
+            if car.speed > water_limit_mps + 0.5:  # too close for the gentle limit: brake hard
+                throttle, brake = 0.0, 1.0
+
     previous_position = (car.x, car.y)
     approach_way = current_way  # the road the car drove along into this frame's movement
     # Off-road driving is allowed at a reduced speed.
@@ -406,17 +463,24 @@ def advance_simulation(
                 fields_frozen=getattr(world, "fields_frozen", False),
             )
         car.braking = brake > 0.0 and car.speed > 0.05
+        if world.level_transitions.blocks_entry(car, previous_position, approach_way):
+            car.x, car.y = previous_position
+            car.speed = 0.0
+            taxi_mgr.notification_msg = tr(language, "garage_closed")
+            taxi_mgr.notification_timer = 2.5
+        if protests is not None and protests.blocks_movement(car, previous_position):
+            car.x, car.y = previous_position
+            car.speed = 0.0
         midpoint = (
             (previous_position[0] + car.x) * 0.5,
             (previous_position[1] + car.y) * 0.5,
         )
+        live = getattr(world, "live_roadworks", None)
+        roadwork_level = {"layer": car.layer, "map_level": car.map_level}
         entered_roadwork = on_surface and any(  # roadworks sit on surface roads
-            not work.contains(*previous_position, margin_m=2.0)
-            and (
-                work.contains(*midpoint, margin_m=2.0)
-                or work.contains(car.x, car.y, margin_m=2.0)
-            )
-            for work in roadworks
+            not _roadwork_bars(work, *previous_position, **roadwork_level)
+            and (_roadwork_bars(work, *midpoint, **roadwork_level) or _roadwork_bars(work, car.x, car.y, **roadwork_level))
+            for work in (list(roadworks) + (live.zones if live is not None else []))
         )
         audio.on_rise("roadwork", entered_roadwork, "gameplay.roadwork_blocked")
         if entered_roadwork:
@@ -479,6 +543,10 @@ def advance_simulation(
         taxi_mgr.notification_msg = tr(language, "fuel_empty")
         taxi_mgr.notification_timer = 4.0
     road_limit_mps = current_way.speed_limit_kmh / 3.6 if current_way else None
+    live_limit = (world.live_roadworks.speed_limit_at(car.x, car.y, layer=car.layer, map_level=car.map_level)
+                  if getattr(world, "live_roadworks", None) else None)
+    if live_limit is not None and road_limit_mps is not None:  # a live roadwork's limit (digitraffic_road)
+        road_limit_mps = min(road_limit_mps, live_limit / 3.6)
     rage_power = _rage_from_speeding(rage_power, car.speed, road_limit_mps, driven_distance)
     if abs(car.speed) * 3.6 < 10.0 and taxi_mgr.sees_red_light(car, nearby_traffic_lights, traffic_mgr.sim_time):
         rage_power = min(1.0, rage_power + 0.05 * RAGE_GAIN_SCALE * dt)
@@ -506,6 +574,11 @@ def advance_simulation(
         if len(taxi_mgr.fallen_trees) > fallen_before:
             audio.play_group("collision.tree_fall")
         fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
+        fence_group = "collision.fence"
+        if not fence_crash and on_surface:
+            fence_crash = taxi_mgr.check_barrier_collision(
+                car, getattr(world, "railings", ()), traffic_mgr.sim_time, previous_position, current_way)
+            fence_group = taxi_mgr.barrier_sound
         tram_crash = on_surface and taxi_mgr.check_tram_collision(
             car, getattr(world, "tram_mgr", None), traffic_mgr.sim_time, previous_position)
         # Bollards and lamp posts are OSM nodes without a level: surface only.
@@ -533,7 +606,7 @@ def advance_simulation(
     crashed = any([
         audio.on_rise("crash_building", building_crash, "collision.building", 0.8),
         audio.on_rise("crash_tree", tree_crash, "collision.tree", 0.8),
-        audio.on_rise("crash_fence", fence_crash, "collision.fence", 0.8),
+        audio.on_rise("crash_fence", fence_crash, fence_group, 0.8),
         audio.on_rise("crash_tram", tram_crash, "collision.building", 0.9),  # a heavy steel body
         audio.on_rise("crash_post", post_crash, "collision.guardrail", 0.8),  # a metal pole
         audio.on_rise("crash_guardrail", bridge_edge_crash, "collision.guardrail", 0.8),
@@ -566,6 +639,11 @@ def advance_simulation(
     camy += (target_camy - camy) * cam_lerp_factor
 
     viewport_bounds = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, margin_m=30.0)
+    ambient_bounds = None
+    if view_bounds is not None:
+        from .viewport import simulation_bounds
+        viewport_bounds = (view_bounds[0] - 30, view_bounds[1] - 30, view_bounds[2] + 30, view_bounds[3] + 30)
+        ambient_bounds = simulation_bounds(view_bounds, car.x, car.y, car.speed, car.heading)
 
     # Trains: timetable trains, their passengers and pre-bookings follow the
     # game clock (`now`, a datetime); presentation (drawing, train sounds,
@@ -612,9 +690,18 @@ def advance_simulation(
         audio.play_group("passenger.vomit")
         loud_event = True
     with frame_profiler.section("npc"):
+        if ambient_bounds is not None:
+            from .viewport import in_bounds
+            party = taxi_mgr.current_passenger
+            protected = [member.resident_id for member in party.members] if party is not None else []
+            npc_manager.discard_outside(ambient_bounds, residents, pedestrian_mgr, protected)
+            pedestrian_mgr.discard_outside(ambient_bounds, protected)
+            taxi_mgr.vomit_puddles[:] = [p for p in taxi_mgr.vomit_puddles if in_bounds(ambient_bounds, p[0], p[1], 2.0)]
         traffic_mgr.stop_signs = getattr(world, "stop_signs", ())
         traffic_mgr.yield_signs = getattr(world, "yield_signs", ())
         npc_manager.clock = now
+        npc_manager.bus_stops = getattr(world, "bus_stops", ())  # the bus lines' stops (bus_lines.py)
+        npc_manager.scenery_objects = getattr(world, "scenery_objects", ())  # bicycle racks (cycling.py)
         npc_manager.snowy = weather.weather_type.value == "snow" or weather.road_snow > 0.1
         plough_positions = {v.vehicle_id: (v.x, v.y) for v in npc_manager.vehicles
                             if v.vehicle_type == "tractor" and v.vehicle_id in npc_manager.drivers}
@@ -626,6 +713,7 @@ def advance_simulation(
             viewport_bounds=viewport_bounds,
             player_car=car, pedestrian_mgr=pedestrian_mgr,
             current_way=current_way,
+            active_bounds=ambient_bounds,
         )
         if npc_manager.snowy:
             for vehicle in npc_manager.vehicles:
@@ -636,10 +724,15 @@ def advance_simulation(
     for x, y in npc_manager.accidents:
         audio.play_group("collision.vehicle", at=(x, y))
     npc_manager.accidents.clear()
-    if pedestrian_mgr.curses:
-        x, y = pedestrian_mgr.curses[-1]  # one curse per tick is plenty
+    for at in npc_manager.bus_brakes:
+        audio.play_group("vehicle.bus_air_brake", at=at)
+    npc_manager.bus_brakes.clear()
+    curses = pedestrian_mgr.curses + npc_manager.curses  # bumped NPC drivers curse the same way
+    if curses:
+        x, y = curses[-1]  # one curse per tick is plenty
         audio.play_group("pedestrian.curse", 0.8, at=(x, y))
         pedestrian_mgr.curses.clear()
+        npc_manager.curses.clear()
     vomited_passenger = taxi_mgr.take_vomited_passenger(car)
     if vomited_passenger is not None:
         audio.play_group("passenger.vomit")
@@ -746,11 +839,40 @@ def advance_simulation(
         arena_crowds.update(now, (car.x, car.y))
     pedestrian_mgr.ensure_sports_players(car, viewport_bounds)
     with frame_profiler.section("pedestrians"):
-        pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds, game_time_seconds=game_time_seconds)
+        pedestrian_previous = {id(p): (p.x, p.y) for p in pedestrian_mgr.pedestrians} if protests is not None and protests.groups else {}
+        pedestrian_mgr.update(car, dt, viewport_bounds=viewport_bounds, game_time_seconds=game_time_seconds,
+                              active_bounds=ambient_bounds)
+        if pedestrian_previous:
+            protests.block_walkers(pedestrian_mgr.pedestrians, pedestrian_previous)
         pedestrian_mgr.track_vomit(taxi_mgr.vomit_puddles + pedestrian_mgr.vomit_puddles)
+    for group_id, at in pedestrian_mgr.sound_events:
+        audio.play_group(group_id, at=at)
+    pedestrian_mgr.sound_events.clear()
     if on_foot:
         audio.update_footsteps(player_pedestrian.speed, dt, running=command.sprint)
-    world.competitor_dispatcher.update(taxi_mgr, npc_manager, dt)  # competitors take phone fares
+    world.competitor_dispatcher.update(taxi_mgr, npc_manager, dt, brawls, traffic_mgr.sim_time)  # competitors take phone fares
+    if brawls is not None:
+        from .protocol import LOCAL_PLAYER_ID
+        from .taxi_brawls import NPC, PLAYER
+        for vehicle_id in npc_manager.taxi_bumps:  # the player bumped a rival: a future player quarrel
+            brawls.report("traffic", (PLAYER, LOCAL_PLAYER_ID), (NPC, vehicle_id), ("traffic", vehicle_id, int(traffic_mgr.sim_time)))
+        from .taxi_brawls import PlayerView
+        passenger = taxi_mgr.current_passenger
+        brawls.update(npc_manager, dt, traffic_mgr.sim_time, taxi_stops, now, player_rage=rage_power,
+                      player=PlayerView(
+                          player_pedestrian.x, player_pedestrian.y, on_foot, car.x, car.y, car.heading,
+                          getattr(car, "width_m", 1.8), getattr(car, "map_level", 0),
+                          carrying=passenger is not None,
+                          strike=bool(command.road_rage and fighting), dodge=bool(command.sprint and fighting),
+                          flee=bool(brawl_flee and fighting)))
+        if brawls.player_notice:
+            taxi_mgr.notification_msg = tr(language, brawls.player_notice)
+            taxi_mgr.notification_timer = 4.0
+            brawls.player_notice = None
+        for group_id, at in brawls.sound_events:
+            audio.play_group(group_id, at=at)
+        brawls.sound_events.clear()
+    npc_manager.taxi_bumps.clear()
     waiting_pedestrian = taxi_mgr.check_waiting_pickup(car, pedestrian_mgr.pedestrians, dt)
     if waiting_pedestrian is not None:
         pedestrian_mgr.pedestrians.remove(waiting_pedestrian)

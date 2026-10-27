@@ -10,7 +10,7 @@ import math
 import random
 
 from ..base import ActivityContext, ActivityDefinition, ActivityGroup, ActivityInstance, ActivityLocation, ActivityPlugin
-from ..grouping import nearby_free_pedestrians, next_group_id, other_group_members, recruit
+from ..grouping import nearby_free_pedestrians, next_group_id, other_group_members, recruit, ring_spot
 
 SEARCH_RADIUS_M = 20.0
 
@@ -61,9 +61,12 @@ class SmallGroupConversationPlugin(ActivityPlugin):
             instance.group = group
             instance.data["duration_s"] = random.uniform(self.definition.min_duration_s, self.definition.max_duration_s)
             instance.data["elapsed_s"] = 0.0
+            centre = instance.location
+            instance.location = ring_spot(centre, 0)  # the initiator steps into the ring too;
+            context.pedestrian.state = "walking_to_activity"  # start() again on arrival: group already set
             for partner in available:
                 recruit(
-                    context, self.definition.id, group, partner, instance.location,
+                    context, self.definition.id, group, partner, centre,
                     (self.definition.min_duration_s, self.definition.max_duration_s),
                 )
 

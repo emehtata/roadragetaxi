@@ -35,7 +35,8 @@ Ei sankaripuheita. Taksamittari käy.
 ## What is in the game?
 
 - **Real Finnish streets:** cities, roads, buildings, waterways, bridges and
-  parking garages based on map data. New areas load as you travel.
+  parking garages based on map data. Garage entrances are currently closed while
+  driving support is under development. New areas load as you travel.
 - **Fares and a shared phone:** accept requests, wait at taxi stands or pick up
   someone hailing a cab. The same movable phone shows turn instructions,
   distance and street names during an accepted fare. A missing route is shown
@@ -57,7 +58,8 @@ Ei sankaripuheita. Taksamittari käy.
 - **Weather and seasons:** optional real-world weather, rain and puddles,
   water ripples, snow on roads and roofs, snowy tyre tracks, ploughing and
   spring ice floes. Daylight, building shadows, streetlights and headlights
-  change the look of a shift.
+  change the look of a shift. Lunar rise, transit, set and phase are calculated
+  for the selected city and currently reported in the startup debug log.
 - **Railway activity:** trains and station announcements, real timetable support,
   and prebooked station pickups that may require meeting the passenger on foot.
 - **Fuel and consequences:** start/stop the engine, refuel at a pump, and watch
@@ -101,6 +103,11 @@ Ei sankaripuheita. Taksamittari käy.
 | `F12` | Save a screenshot and matching simulation JSON |
 | `Esc` | Close the phone/help or open the pause menu |
 
+Gig saves keep their own homes, one per city. While playing, use
+**Settings → Gameplay → Clear current game home** to forget homes only in that
+save. Older gig saves start without a home; choose one again with **H** in a
+house yard.
+
 The speed limiter starts enabled; press **V** to disable it if you want to drive
 above the road's speed limit. Opening navigation also shows the suggested route
 on the map; **N** is not a separate route-only toggle.
@@ -109,10 +116,11 @@ on the map; **N** is not a separate route-only toggle.
 
 ### Graphics options
 
-**Settings → Graphics** has independent on/off switches, all enabled by default:
+**Settings → Graphics** has on/off switches, all enabled by default:
 
-- Building shadows (with 3D buildings).
-- 3D buildings: off uses the existing 2D building renderer. Start a new
+- Building shadows: disabled when 3D buildings are off; the saved preference
+  is retained for re-enabling 3D. All other effects are independent.
+- 3D buildings: off uses flat footprints without extruded walls. Start a new
   session to apply this option; it never removes building collision geometry.
 - Water and puddle ripples.
 - Rain and snow particles.
@@ -154,7 +162,9 @@ optional weather/timetable updates offline.
   city definitions, traffic counts, map streaming, speech intervals and logging.
   Godot's selected launch options override the matching server defaults.
 
-The current volume controls are **Master**, **Game**, **Environment** and **UI**.
+The volume controls are **Master**, **Game**, **Environment**, **UI** and
+**Music**. Menu music loops across menu screens and pauses during gameplay;
+the pause menu plays it again until you resume.
 Do not expect the old city-list editor, endpoint editor, or independent comment
 audio/subtitle toggles in the Godot settings screen.
 
@@ -276,6 +286,14 @@ old index. World caches (`.rwc`) and the experimental road-binary scripts are
 separate from this optional index; experimental road binaries are not the
 default gameplay path.
 
+Enable **Enable intercity fares** in Settings to use major-road navigation
+between towns. Download the Finland PBF when prompted; the game initializes
+the navigation database before starting and reuses it in later sessions.
+Destination streets stream while driving, and the final address is selected
+only once nearby map data is available. Unsupported destinations are excluded.
+See [national navigation](docs/national-navigation.md) for preparation, coverage
+and measurements. The old full-street index is not used by the game.
+
 ## Development and testing
 
 ```bash
@@ -349,6 +367,6 @@ Map, timetable and weather data:
 - `src/theroadragetrip/assets/train_compositions.json.gz` (learned train compositions): Source: Fintraffic / [digitraffic.fi](https://www.digitraffic.fi/), license [CC 4.0 BY](https://creativecommons.org/licenses/by/4.0/). Modified: condensed to vehicle type, length and service flags by `theroadragetrip/composition_import.py`, refreshed weekly.
 - `src/theroadragetrip/assets/finnish_first_names.json.gz` and `finnish_surnames.json.gz` (resident names): Digital and Population Data Services Agency (DVV) name data, [nimipalvelu.dvv.fi](https://nimipalvelu.dvv.fi/), license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Modified: the most common names selected and converted to the game's JSON format.
 - `src/theroadragetrip/assets/kunnat.json.gz` (municipality population, age structure and area): compiled from Wikipedia, © Wikipedia contributors, license [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Modified: tables combined and converted to the game's JSON format; the file is likewise CC BY-SA 4.0.
-- Historical weather, forecasts and snow depth (opt-in, fetched from FMI at runtime and cached locally under the runtime cache root in `osm_cache/weather_history.db`, not bundled): Finnish Meteorological Institute (FMI) open data, license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Hourly values are resampled and combined from the nearest stations.
+- Historical weather, forecasts and snow depth (opt-in, fetched from FMI at runtime and cached locally under the runtime cache root in `osm_cache/weather_history.db`, not bundled): Finnish Meteorological Institute (FMI) open data, license [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Hourly values are combined from the nearest stations and sampled in five-minute steps; temperature is interpolated and all condition transitions (including rain, snow, slush, thunder and clearing) are stably offset within half an hour so they do not change mechanically on the hour. Consecutive hours of the same condition remain continuous.
 
 These credits are shown in the game under **Credits** in the main menu; the map views also show © OpenStreetMap contributors. The licensing audit, with open items, is in `LICENSE_AUDIT.md`; third-party software is listed in `THIRD_PARTY_LICENSES.md`.

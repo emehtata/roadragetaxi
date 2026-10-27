@@ -37,5 +37,5 @@ static func server_command(args: Array) -> Array:
 	var root := ProjectSettings.globalize_path("res://..").simplify_path()
 	var python := root.path_join(".venv/Scripts/python.exe" if OS.get_name() == "Windows" else ".venv/bin/python")
 	if OS.get_name() == "Windows":  # no /usr/bin/env: the environment goes in through the command line instead
-		return ["cmd.exe", ["/c", "set", "PYTHONPATH=" + root.path_join("src"), "&&", python, "-m", "theroadragetrip.server"] + args]
-	return ["/usr/bin/env", ["PYTHONPATH=" + root.path_join("src"), python, "-m", "theroadragetrip.server"] + args]
+		return ["cmd.exe", ["/c", "set", "PYTHONPATH=" + root.path_join("src"), "&&", python, "-X", "utf8", "-m", "theroadragetrip.server"] + args]
+	return ["/usr/bin/env", ["PYTHONPATH=" + root.path_join("src"), python, "-X", "utf8", "-m", "theroadragetrip.server"] + args]

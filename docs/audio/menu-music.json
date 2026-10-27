@@ -1,0 +1,35 @@
+{
+  "model": "stabilityai/stable-audio-open-1.0",
+  "tool": "ai-audio-studio .venv / diffusers StableAudioPipeline",
+  "seed": 10212026,
+  "steps": 100,
+  "prompt": "Aggressive instrumental industrial breakbeat rock music, 140 BPM, heavy punchy kick and snare drums, tight energetic breakbeat groove, gritty distorted electric bass riff, chugging muted electric guitar, dark underground street racing arcade game soundtrack, raw rebellious attitude, driving rhythmic loop, steady repeated groove throughout, full energy from the first beat, dry punchy production, instrumental, no vocals, no intro, no outro",
+  "negative_prompt": "speech, vocals, singing, choir, soft piano, ambient, relaxing, slow, long intro, fade out, silence, clipping",
+  "requested_duration_s": 40,
+  "sample_rate": 44100,
+  "generated_utc": "2026-10-21T17:46:02.434328+00:00",
+  "raw_file": "menu_aggressive_20261021_174601.wav",
+  "listening_review": "not performed",
+  "asset": "src/theroadragetrip/assets/music/menu/menu_music_1.ogg",
+  "detected_bpm": 139.67,
+  "bars": 16,
+  "source_start_s": 4.31891156462585,
+  "source_end_s": 31.753287981859412,
+  "loop_duration_s": 27.434376417233562,
+  "channels": 2,
+  "post_processing": "Beat-aligned whole-bar crop; 40 ms equal-power wrap crossfade; stereo; peak normalized to -2 dBFS; Ogg Vorbis quality 5; attenuated 7 dB to match the previous menu track at approximately -14 LUFS",
+  "loop_wav": "menu_aggressive_20261021_174601_loop.wav",
+  "review": "Beat alignment, continuity, decoded signal and in-game loading checked; subjective listening not performed",
+  "validation": {
+    "integrated_loudness_lufs": -14.1,
+    "true_peak_dbfs": -7.6,
+    "loop_playback": "Godot AudioStreamPlayer completed a wrap and kept playing",
+    "unit_tests": "3261 checks, 0 failed",
+    "listening_review": "not performed"
+  },
+  "reused_assets": [
+    "src/theroadragetrip/assets/music/nightclub/nightclub_industrial_5.ogg",
+    "src/theroadragetrip/assets/music/cars/cars_industrial_3.ogg"
+  ],
+  "reuse_notes": "Identical copies added to the existing directory-discovered nightclub and car music pools."
+}

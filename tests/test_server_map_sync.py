@@ -39,6 +39,41 @@ class FakeManager:
         return False
 
 
+def test_new_traffic_lights_are_available_when_chunk_rebuild_starts(monkeypatch):
+    class Grid:
+        def start_rebuild(self, items):
+            pass
+
+        def advance_rebuild(self, budget):
+            return True
+
+    class TrafficManager:
+        traffic_lights = []
+
+        def start_map_sync(self, ways, traffic_lights=None, **kwargs):
+            self.traffic_lights = traffic_lights
+
+    manager = FakeManager()
+    manager._attempted_endpoints = set()
+    traffic = TrafficManager()
+    world = SimpleNamespace(
+        auto_fetch_manager=manager, ways=[], level_ways=[], level_connectors=[], sceneries=[], buildings=[],
+        parking_spaces=[], waters=[], crossings=[], curbs=[], railways=[], railings=[], traffic_lights=[object()],
+        logical_intersections=[], stop_signs=[], yield_signs=[], scenery_objects=[], street_lamps=[],
+        taxi_mgr=SimpleNamespace(invalidate_tree_collision_index=lambda: None), traffic_mgr=traffic,
+        building_grid=Grid(), scenery_grid=Grid(), street_lamp_grid=Grid(), water_grid=Grid(), crossing_grid=Grid(),
+        curb_grid=Grid(), railway_grid=Grid(), railing_grid=Grid(), traffic_light_grid=Grid(), spatial_grid=Grid(),
+        arena_crowds=None,
+    )
+    monkeypatch.setattr(map_sync, "remove_trees_under_roads_steps", lambda sceneries, ways: ())
+
+    stages = map_sync.map_sync_steps(world)
+    while next(stages) != map_sync.CHUNK_INPUTS_READY:
+        pass
+
+    assert traffic.traffic_lights is world.traffic_lights
+
+
 def test_cold_start_finishes_initial_merge_and_sync_before_gameplay(monkeypatch):
     stages = []
 

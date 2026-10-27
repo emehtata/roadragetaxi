@@ -10,7 +10,7 @@ import math
 import time
 from typing import List, Optional, Tuple
 
-from .geo import dist_point_to_segment, point_in_polygon
+from .geo import closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon
 from .osm import Building, Way
 from .performance import advance_chunked
 from .viewport import _segment_viewport_t_range
@@ -258,6 +258,7 @@ def _snapshot_street_light_job(
         "junction_grid": {},
         "way_lit_cache": {},
         "road_grid": {},
+        "median_grid": {},
         "lamp_grid": {},
         "lamp_order": {},
         "placement_cursor": 0,
@@ -339,7 +340,14 @@ def _street_light_prep_step(work, phase):
                 ]
         return work["ways"], classify
     if phase == "segments":
-        return work["ways"], lambda way: _index_street_light_road(work["road_grid"], way, work["region"])
+        def add_segments(way):
+            _index_street_light_road(work["road_grid"], way, work["region"])
+            if way.highway in ("motorway", "trunk") and way.oneway:
+                grid = {}
+                _index_street_light_road(grid, way, work["region"])
+                for cell, segments in grid.items():
+                    work["median_grid"].setdefault(cell, []).extend((*segment, way) for segment in segments)
+        return work["ways"], add_segments
     lamp_grid, lamp_order = work["lamp_grid"], work["lamp_order"]
     cell_size = STREET_LIGHT_LAMP_INDEX_CELL_M
 
@@ -438,6 +446,37 @@ def _index_street_light_road(segment_grid, way, bounds=None):
                 segment_grid.setdefault((cell_x, cell_y), []).append(segment)
 
 
+def _street_lamp_pool(work, way, x, y, direction, radius):
+    """Median poles illuminate both opposing carriageways, at the same level."""
+    if way.highway not in ("motorway", "trunk") or not way.oneway:
+        return x, y, direction, radius
+    cell = STREET_LIGHT_ROAD_INDEX_CELL_M
+    cx, cy = math.floor(x / cell), math.floor(y / cell)
+    nearby = {}
+    for gx in range(cx - 2, cx + 3):
+        for gy in range(cy - 2, cy + 3):
+            for a, b, width, road in work["median_grid"].get((gx, gy), ()):
+                nearby[(a, b, id(road))] = (a, b, width, road)
+    sides = []
+    for a, b, width, road in nearby.values():
+        if road.layer != way.layer or (road.map_level or 0) != (way.map_level or 0):
+            continue
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            continue
+        ux, uy = dx / length * road.oneway, dy / length * road.oneway
+        left = ux * (y - a[1]) - uy * (x - a[0])
+        distance = dist_point_to_segment(x, y, *a, *b)
+        if left > width and distance <= width + 20.0:
+            sides.append((ux, uy, distance + width))
+    if any(ax * bx + ay * by < -0.85 for ax, ay, _ in sides for bx, by, _ in sides):
+        # Keep the far road edge inside the useful light, not the faded rim.
+        radius = max(radius, (max(reach for _, _, reach in sides) + 2.0) / 0.65)
+        return x, y, direction, radius, True
+    return x, y, direction, radius
+
+
 def _advance_street_light_placement(work) -> bool:
     """Place lamps way by way for up to STREET_LIGHT_CACHE_BUDGET_S, always
     finishing the current way. Returns True once every way is placed."""
@@ -494,13 +533,18 @@ def _advance_street_light_placement(work) -> bool:
                 seg_len = math.hypot(seg_dx, seg_dy) or 1.0
                 road_direction = math.atan2(seg_dy / seg_len, seg_dx / seg_len)
                 pool_radius_m = half_width + STREET_LIGHT_EXPLICIT_LAMP_MAX_DISTANCE_M * 0.5
-                cached_lamps.append((lamp.x, lamp.y, road_direction, pool_radius_m))
+                cached_lamps.append(_street_lamp_pool(work, way, lamp.x, lamp.y, road_direction, pool_radius_m))
             if time.perf_counter() >= deadline:
                 break
             continue
         parking_aisle = getattr(way, "service", None) == "parking_aisle"
         lamp_spacing = PARKING_LIGHT_SPACING_M if parking_aisle else STREET_LIGHT_SPACING_M
-        sides = (1.0,) if parking_aisle else (-1.0, 1.0)
+        # A street is lit from one side (Finnish practice): the left of its
+        # drawing direction, the other side if that spot is taken. A one-way
+        # carriageway (a divided road's half) from its left, the median - its
+        # twin carriageway's lamps there are the same row (see the merge below).
+        oneway = getattr(way, "oneway", 0)
+        sides = (1.0,) if parking_aisle else ((1.0, -1.0) if oneway >= 0 else (-1.0, 1.0))
         distance_to_lamp = lamp_spacing / 2.0 if parking_aisle else 0.0
         segment_lengths = getattr(way, "segment_lengths", ())
         segment_lighting = way_lit_cache.get(id(way), ())
@@ -550,6 +594,13 @@ def _advance_street_light_placement(work) -> bool:
                     for side, edge_distance in candidates:
                         world_x = lamp_x + normal_x * edge_distance * side
                         world_y = lamp_y + normal_y * edge_distance * side
+                        if oneway and not parking_aisle:
+                            # Halfway across the median: the twin's lamps land on the same
+                            # line, so the merge below keeps one even row, not a zig-zag.
+                            shift = _median_half_gap(road_segment_grid, world_x, world_y, dx / segment_length,
+                                                     dy / segment_length, normal_x * side, normal_y * side)
+                            world_x += normal_x * side * shift
+                            world_y += normal_y * side * shift
                         if _point_overlaps_indexed_road(
                             world_x, world_y, road_segment_grid
                         ) or _street_light_overlaps_footprint(work, world_x, world_y):
@@ -564,11 +615,15 @@ def _advance_street_light_placement(work) -> bool:
                             for junction_x, junction_y in junction_grid.get((cell_x, cell_y), ())
                         ):
                             continue
+                        if not parking_aisle and _lamp_stands_near(work, world_x, world_y):
+                            break  # a median's lamp, placed from the twin carriageway
                         road_direction = math.atan2(-normal_y * side, -normal_x * side)
                         pool_radius_m = edge_distance + half_width + 1.0
-                        cached_lamps.append((world_x, world_y, road_direction, pool_radius_m))
-                        if parking_aisle:
-                            break  # one lamp per aisle spot
+                        cached_lamps.append(_street_lamp_pool(work, way, world_x, world_y, road_direction, pool_radius_m))
+                        cell = STREET_LIGHT_MERGE_M
+                        work.setdefault("placed_grid", {}).setdefault(
+                            (math.floor(world_x / cell), math.floor(world_y / cell)), []).append((world_x, world_y))
+                        break  # one lamp per spot: one side of the street
                 distance_to_lamp += lamp_spacing
             distance_to_lamp = (segment_phase - segment_length) % lamp_spacing
             if distance_to_lamp < 1e-9:
@@ -576,6 +631,44 @@ def _advance_street_light_placement(work) -> bool:
         if time.perf_counter() >= deadline:
             break
     return work["placement_cursor"] >= len(ways)
+
+
+STREET_LIGHT_MERGE_M = 10.0  # a synthetic lamp this close to another is the same pole (under the 12 m spacing: a row's next lamp is not)
+STREET_LIGHT_MEDIAN_MAX_M = 25.0  # a wider gap to a parallel carriageway isn't one median
+
+
+def _median_half_gap(segment_grid, x, y, tx, ty, nx, ny) -> float:
+    """Half the gap from a carriageway's median lamp spot (x, y; t along the
+    road, n into the median) to a parallel road's own spot across it, 0 if
+    none. Only roads in the job's region are indexed: at its edge, 0."""
+    cell = STREET_LIGHT_ROAD_INDEX_CELL_M
+    gaps = []
+    for k in (0.0, 12.0, 24.0):
+        cx, cy = math.floor((x + nx * k) / cell), math.floor((y + ny * k) / cell)
+        for gx in (cx - 1, cx, cx + 1):
+            for gy in (cy - 1, cy, cy + 1):
+                for a, b, half_width in segment_grid.get((gx, gy), ()):
+                    length = math.hypot(b[0] - a[0], b[1] - a[1])
+                    if length < 1e-6 or abs((b[0] - a[0]) * tx + (b[1] - a[1]) * ty) < 0.9 * length:
+                        continue  # not parallel
+                    qx, qy, _, _ = closest_point_and_dist_to_segment(x, y, *a, *b)
+                    if abs((qx - x) * tx + (qy - y) * ty) > 2.0:
+                        continue  # ends before or after this spot
+                    gap = (qx - x) * nx + (qy - y) * ny - half_width - 1.0  # to its own lamp spot
+                    if 0.0 < gap <= STREET_LIGHT_MEDIAN_MAX_M:
+                        gaps.append(gap)
+    return min(gaps) / 2.0 if gaps else 0.0
+
+
+def _lamp_stands_near(work, x, y) -> bool:
+    cell = STREET_LIGHT_MERGE_M
+    grid = work.get("placed_grid", {})
+    cx, cy = math.floor(x / cell), math.floor(y / cell)
+    return any(
+        (x - px) ** 2 + (y - py) ** 2 < cell * cell
+        for gx in (cx - 1, cx, cx + 1) for gy in (cy - 1, cy, cy + 1)
+        for px, py in grid.get((gx, gy), ())
+    )
 
 
 def _point_overlaps_indexed_road(point_x, point_y, segment_grid) -> bool:

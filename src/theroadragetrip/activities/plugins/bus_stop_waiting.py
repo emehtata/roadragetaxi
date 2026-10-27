@@ -2,9 +2,8 @@
 
 Reuses PedestrianManager.bus_stops (a plain list, same linear-filter idiom
 as crossings/venue_locations elsewhere in this file - bus stop counts per
-city are small). The game has no bus arrival/schedule simulation, so this
-is cosmetic waiting only, per the spec's own "don't make every Resident
-wait indefinitely" - a random duration, then they give up and move on.
+city are small). A line bus can collect a waiting pedestrian; otherwise
+they give up after a random duration and move on.
 """
 from __future__ import annotations
 

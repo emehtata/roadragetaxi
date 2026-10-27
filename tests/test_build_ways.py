@@ -156,6 +156,20 @@ def test_build_ways_parses_public_transport_platform_as_bus_stop():
     assert len(result.bus_stops) == 1
 
 
+def test_build_ways_bus_stops_skip_rail_platforms_stop_positions_and_duplicates():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"highway": "bus_stop", "bench": "yes"}},
+        {"type": "node", "id": 2, "lat": 60.0001, "lon": 25.0, "tags": {"public_transport": "platform", "bus": "yes"}},  # the same stop, 11 m
+        {"type": "node", "id": 3, "lat": 60.01, "lon": 25.0, "tags": {"public_transport": "stop_position", "bus": "yes"}},
+        {"type": "node", "id": 4, "lat": 60.02, "lon": 25.0, "tags": {"public_transport": "platform", "railway": "platform", "train": "yes"}},
+        {"type": "node", "id": 5, "lat": 60.03, "lon": 25.0, "tags": {"public_transport": "platform", "tram": "yes"}},
+    ]
+
+    result = build_ways(elements)
+
+    assert [(stop.id, stop.bench) for stop in result.bus_stops] == [(1, True)]
+
+
 def test_build_ways_can_exclude_bus_stops_from_world():
     elements = [
         {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"highway": "bus_stop"}},
@@ -228,6 +242,20 @@ def test_build_ways_preserves_water_layer():
     assert waters[0].layer == -1
 
 
+def test_build_ways_skips_culverted_waterways():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.01},
+        {"type": "way", "id": 14, "nodes": [1, 2], "tags": {"waterway": "stream", "tunnel": "culvert"}},
+        {"type": "way", "id": 15, "nodes": [1, 2], "tags": {"waterway": "drain", "location": "underground"}},
+        {"type": "way", "id": 16, "nodes": [1, 2], "tags": {"waterway": "stream"}},
+    ]
+
+    ways, waters, buildings, sceneries, places, bounds = build_ways(elements)
+
+    assert len(waters) == 1
+
+
 def test_a_pitch_keeps_its_sport():
     from theroadragetrip.osm.build import build_ways
 
@@ -270,3 +298,21 @@ def test_an_indoor_arena_stays_a_roofed_building():
     hall = {"type": "way", "id": 9, "nodes": [1, 2, 3, 4, 1],
             "tags": {"building": "yes", "leisure": "stadium", "sport": "ice_hockey", "name": "Helsingin jäähalli"}}
     assert [b.name for b in build_ways(nodes + [hall]).buildings] == ["Helsingin jäähalli"]
+
+
+def test_build_ways_keeps_cycling_metadata():
+    """cycling.py's network needs bicycle access, cycle lanes, contraflow and motorroad (rrt-019 cyclists)."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.001, "lon": 25.001},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {
+            "highway": "residential", "oneway": "yes", "oneway:bicycle": "no", "cycleway:right": "lane"}},
+        {"type": "way", "id": 11, "nodes": [1, 2], "tags": {"highway": "footway", "bicycle": "designated"}},
+        {"type": "way", "id": 12, "nodes": [1, 2], "tags": {"highway": "trunk", "motorroad": "yes"}},
+        {"type": "way", "id": 13, "nodes": [1, 2], "tags": {"highway": "secondary", "oneway": "yes"}},
+    ]
+    ways = {way.osm_id: way for way in build_ways(elements)[0]}
+    assert (ways[10].oneway, ways[10].oneway_bicycle, ways[10].cycleway) == (1, 0, "lane")
+    assert ways[11].bicycle == "designated"
+    assert ways[12].motorroad is True
+    assert (ways[13].oneway_bicycle, ways[13].bicycle, ways[13].cycleway, ways[13].motorroad) == (None, None, None, False)

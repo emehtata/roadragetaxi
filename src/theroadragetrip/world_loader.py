@@ -19,13 +19,14 @@ from .arena_crowds import ArenaCrowds
 from .career import (load_career_balance, load_career_distance, load_gig_balance, load_gig_fuel,
                      load_gig_odometer, save_gig_odometer)
 from .level_routing import LevelRouteGraphs
-from .level_transitions import LevelTransitions, resolve_connectors
+from .level_transitions import LevelTransitions, resolve_connectors, close_garage_roads
 from .map_level import SURFACE_LEVEL, LevelRoadNetworks
 from .trams import TramManager
 from .competitor_taxis import Dispatcher
+from .taxi_brawls import BrawlManager
 from .npc import NPCVehicleManager, npc_target_count_for_population
-from .osm import (AutoFetchManager, build_ways, city_bin_available, city_bin_path, fetch_osm_ways,
-                  fetch_osm_ways_from_pbf, load_city_ways, load_local_sample, local_pbf_available,
+from .osm import (AutoFetchManager, build_ways, fetch_osm_ways,
+                  fetch_osm_ways_from_pbf, load_local_sample, local_pbf_available,
                   remove_trees_under_roads)
 from .osm.cache import OSM_CACHE_TTL_S
 from .parking import generate_detached_house_parking
@@ -207,42 +208,6 @@ def load_world(
         logger.error("Failed to load OSM data: %s", e)
         sys.exit(1)
 
-    # Predefined cities may ship a prebuilt V2 road binary (tools/osm/
-    # build_finland_roads.py, benchmark_oulu.py, benchmark_cities.py):
-    # fast, deterministic road ways in place of the ones just parsed out
-    # of the OSM/PBF/Overpass fetch above. Buildings/water/scenery/etc.
-    # from that fetch are kept unchanged - only `ways` is replaced, and
-    # only on success. A missing or broken binary is not an error: it
-    # just means this city keeps using the road ways already fetched.
-    if args.use_prebuilt_roads and city_bin_available(chosen_city):
-        try:
-            bin_ways, bin_nodes, bin_geometry_points, bin_load_seconds = load_city_ways(chosen_city)
-        except Exception as exc:  # noqa: BLE001 - a broken BIN must never block city loading, see osm/bin_source.py
-            logger.warning(
-                "Failed to load prebuilt road network for %s; "
-                "falling back to existing OSM/PBF road loading: %s",
-                chosen_city, exc,
-            )
-        else:
-            # The binary holds drivable roads only: keep the fetch's own
-            # footways/cycleways/paths/pedestrian streets (sidewalks,
-            # pedestrian routing, street-verge paving) instead of losing
-            # every one of them.
-            ways = bin_ways + [way for way in ways if not way.is_drivable]
-            logger.info(
-                "Road network source: prebuilt binary | City: %s | File: %s | "
-                "Load time: %.1f ms | Ways: %d | Nodes: %d | Geometry points: %d",
-                chosen_city, city_bin_path(chosen_city), bin_load_seconds * 1000.0,
-                len(bin_ways), bin_nodes, bin_geometry_points,
-            )
-    else:
-        logger.info(
-            "Road network source: existing OSM/PBF fallback | City: %s | "
-            "Reason: %s", chosen_city,
-            "no prebuilt binary" if not city_bin_available(chosen_city)
-            else "prebuilt binary disabled (map.use_prebuilt_roads)",
-        )
-
     if not ways and not waters and not buildings and not sceneries and not places:
         logger.error("No map features found in bbox. Try a different bbox.")
         sys.exit(1)
@@ -263,6 +228,7 @@ def load_world(
     parking_garages = getattr(res, "parking_garages", [])  # data only for now (garage-00.md)
     level_ways = getattr(res, "level_ways", [])  # underground roads for the level render gate (garage-03.md)
     level_connectors = getattr(res, "level_connectors", [])  # data only: parking entrances (garage-07.md)
+    close_garage_roads((*ways, *level_ways))
     roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
     traffic_lights.extend(roadwork_lights)
     logger.info(
@@ -340,6 +306,24 @@ def load_world(
         language=language,
         resident_manager=residents,
     )
+    intercity_database = None
+    if getattr(args, "intercity_fares", False):
+        from pathlib import Path
+        from .intercity import prepare_database
+        from .osm.cache import default_cache_root
+        from .osm.pbf_source import DEFAULT_FINLAND_PBF_PATH
+        source = Path(getattr(args, "osm_pbf_path", None) or DEFAULT_FINLAND_PBF_PATH)
+        if not local_pbf_available(source):
+            raise RuntimeError("Intercity fares require a downloaded Finland PBF and osmium-tool. Download it in Settings or disable intercity fares.")
+        message = "Initializing intercity navigation database..."
+        on_load_progress(0.81, message)
+        # The client translates the text before "|" and shows the step counter after it.
+        intercity_database = prepare_database(source,Path(default_cache_root())/"finland.intercity.sqlite",
+                                              progress=lambda step: on_load_progress(0.81, f"{message}|{step}"))
+        import sqlite3
+        with sqlite3.connect(intercity_database) as database:
+            taxi_mgr.intercity_places = {row[0] for row in database.execute("SELECT id FROM places")}
+        taxi_mgr.intercity_fares_enabled = True
     if career is None:
         saved_balance_cents = load_gig_balance(gig_odometer_file)
         if saved_balance_cents is not None:
@@ -373,6 +357,7 @@ def load_world(
         max_count=args.npc_vehicle_max,
         vehicle_distribution=args.vehicle_distribution,
         include_experimental=args.enable_two_wheelers,
+        motorcycle_season=getattr(args, "motorcycle_season", None),
     )
     npc_manager.populate_initial(
         car.x, car.y, residents, ways, spatial_grid=spatial_grid,
@@ -489,6 +474,7 @@ def load_world(
     logger.info("World preparation complete")
 
     return SimpleNamespace(
+        intercity_database=intercity_database,
         arena_crowds=arena_crowds,
         railway_mgr=railway_mgr,
         tram_mgr=TramManager(railways, chosen_city),  # trams on their rails where the city has them (trams.py)
@@ -514,6 +500,7 @@ def load_world(
         npcs=npcs,
         npc_manager=npc_manager,
         competitor_dispatcher=Dispatcher(),  # competitor taxis take phone fares (competitor_taxis.py)
+        taxi_brawls=BrawlManager(),  # competitor drivers' quarrels and fights (taxi_brawls.py)
         parking_garages=parking_garages,
         level_ways=level_ways,
         level_connectors=level_connectors,
@@ -560,8 +547,8 @@ def level_structures(ways, level_ways, level_connectors) -> dict:
     topologies = resolve_connectors(level_connectors, ways, level_ways)[0]
     return {
         "level_roads": level_roads,
-        "level_transitions": LevelTransitions(topologies),
-        "level_routes": LevelRouteGraphs(level_roads, topologies),
+        "level_transitions": LevelTransitions(topologies, enabled=False, entrances=level_connectors),
+        "level_routes": LevelRouteGraphs(level_roads, ()),
     }
 
 

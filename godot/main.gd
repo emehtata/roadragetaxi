@@ -17,11 +17,16 @@ const MapChunk := preload("res://map_chunk.gd")
 const Hud := preload("res://hud.gd")
 const WeatherLayer := preload("res://weather_layer.gd")
 const T := preload("res://i18n.gd")
+const NightclubAudio := preload("res://nightclub_audio.gd")
+const CarAudio := preload("res://car_audio.gd")
+const WildlifeLayer := preload("res://wildlife.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
 @onready var camera: Camera2D = $Camera
 @onready var audio: AudioManager = $Audio
+var nightclubs := NightclubAudio.new()  # rrt-019: the music leaking out of the venues nearby
+var car_stereos := CarAudio.new()  # rrt-019: NPC cars booming electro pop
 @onready var hud: Control = $Ui/Hud
 @onready var debug_label: Label = $Ui/Debug
 @onready var phone: Phone = $Ui/Phone
@@ -112,18 +117,30 @@ var graphics: Dictionary = {}  # empty for direct scenes/tests; the launcher sup
 
 var weather: Node = WeatherLayer.new()  # godot-final-06: precipitation, ripples, splashes
 var holidays: Node = preload("res://holiday_layer.gd").new()
+var wildlife := WildlifeLayer.new()
+var environment_ambience := preload("res://environment_ambience.gd").new()
+var animal_audio := preload("res://animal_audio.gd").new()
 var _tram_states := {}  # tram id -> its state last frame: the bell when one sets off
 var world_light := CanvasModulate.new()  # godot-lights-01: the ambient light, multiplied over the world canvas
+var moon_grey := WorldEnvironment.new()  # desaturates the world (canvas layers <= 0, not the HUD) under moonlight
 
 
 func _ready() -> void:
+	add_child(nightclubs)
+	add_child(car_stereos)
 	if graphics.has("buildings_3d"):
 		MapChunk.buildings_3d = graphics["buildings_3d"]
 	_apply_language()
 	_build_help()
 	_build_inspector()
 	add_child(weather)
+	add_child(wildlife)
+	add_child(animal_audio)
 	add_child(world_light)
+	moon_grey.environment = Environment.new()
+	moon_grey.environment.background_mode = Environment.BG_CANVAS
+	moon_grey.environment.adjustment_enabled = false
+	add_child(moon_grey)
 	weather.setup($Sky, map_layer)
 	add_child(holidays)
 	holidays.setup(map_layer)
@@ -189,7 +206,7 @@ func _ready() -> void:
 				_screenshot_drive = float(args[i + 1])
 	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args:
 		_engine_on = true  # automated runs drive straight away: no sign, no hints
-		_entered_taxi = true
+		_entered_taxi = not "--start-sign" in args  # --start-sign: a screenshot of the city's start sign and forecast
 	instruments.layout = hud_layout
 	_apply_graphics()
 	hud.layout = hud_layout
@@ -203,6 +220,7 @@ func _ready() -> void:
 	sim.connection_changed.connect(_on_connection)
 	phone.sound.connect(func(group: String, variation: int): audio.handle_event({"type": "sound", "group": group, "variation": variation}))
 	phone.request.connect(func(action: String, item_id: String, request_id: int): sim.send_phone(action, item_id, request_id))
+	phone.open()
 	if _audiotest:
 		var tester: Node = preload("res://audio_test.gd").new()
 		tester.main = self
@@ -219,7 +237,7 @@ func set_graphics(options: Dictionary) -> void:
 
 
 func _apply_graphics() -> void:
-	map_layer.set_shadows_enabled(graphics.get("shadows", true))
+	map_layer.set_shadows_enabled(MapChunk.buildings_3d and graphics.get("buildings_3d", true) and graphics.get("shadows", true))
 	weather.precipitation_enabled = graphics.get("precipitation", true)
 	weather.ripples_enabled = graphics.get("water_ripples", true)
 	weather.splashes_enabled = graphics.get("splashes", true)
@@ -260,6 +278,8 @@ func _on_connection(up: bool) -> void:
 		_clear_focus()
 		entities.buffer.clear()
 		map_layer.clear()
+		wildlife.clear()
+		environment_ambience.clear()
 		audio.stop_loops()
 		audio.stop_voices()
 
@@ -274,7 +294,9 @@ func _process_chunk_queues(started_usec: int) -> void:
 		var draw := int(_chunk_queue[0].get("prepared", {}).get("points", 0) * DRAW_USEC_PER_POINT)
 		if spent > 0 and spent + last + draw > CHUNK_BUDGET_USEC:
 			break
-		map_layer.replace_chunk(_chunk_queue.pop_front())
+		var message: Dictionary = _chunk_queue.pop_front()
+		wildlife.replace_chunk(message, map_layer.origin)
+		map_layer.replace_chunk(message)
 		var now := Time.get_ticks_usec()
 		last = now - at
 		Perf.add("chunk_add", last)
@@ -283,7 +305,9 @@ func _process_chunk_queues(started_usec: int) -> void:
 	if not _chunk_queue.is_empty():
 		return  # unloads wait: drawing what the player needs comes first
 	while not _chunk_unload_queue.is_empty() and (spent == 0 or spent + last <= CHUNK_BUDGET_USEC):
-		map_layer.remove_chunk(_chunk_unload_queue.pop_front())
+		var chunk_id: String = _chunk_unload_queue.pop_front()
+		wildlife.remove_chunk(chunk_id)
+		map_layer.remove_chunk(chunk_id)
 		var now := Time.get_ticks_usec()
 		last = now - at
 		Perf.add("chunk_unload", last)
@@ -331,6 +355,7 @@ func _on_world(world: Dictionary) -> void:
 	_chunk_unload_queue.clear()
 	var origin := Vector2(world["center"][0], world["center"][1])
 	map_layer.set_origin(origin)
+	wildlife.clear()
 	entities.origin = origin
 	audio.origin = origin
 	sim.player_id = world.get("player_id", sim.player_id)
@@ -369,7 +394,7 @@ static func screenshot_directory(os_name: String, user_profile: String) -> Strin
 func _input(event: InputEvent) -> void:
 	drive.handle(event)
 	if event is InputEventMouseButton:
-		if event.pressed and _start_sign == null and not phone.is_open and (event.button_index == MOUSE_BUTTON_MIDDLE or (event.button_index == MOUSE_BUTTON_LEFT and event.ctrl_pressed)):
+		if event.pressed and _start_sign == null and not (phone.visible and phone.get_global_rect().has_point(event.position)) and (event.button_index == MOUSE_BUTTON_MIDDLE or (event.button_index == MOUSE_BUTTON_LEFT and event.ctrl_pressed)):
 			_pan_button = event.button_index
 			_focus = {"kind": "pan", "position": camera.position}
 			_inspect_panel.visible = true
@@ -386,8 +411,13 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and _inspect_panel.visible and _inspect_panel.get_global_rect().has_point(event.position):
 		return  # the Back button gets the click, even if a HUD panel overlaps it
 	if event is InputEventMouseButton and event.pressed and phone.visible and phone.get_global_rect().has_point(event.position):
-		if not hud_layout.rects.get("navigation_phone", Rect2()).has_point(event.position):
+		if not hud_layout.rects.get("navigation_phone", Rect2()).has_point(event.position) \
+				and hud_layout.grip_at(event.position) != "navigation_phone":  # its resize corner
 			return  # phone app controls take priority over HUD panels beneath them
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and instruments.trip_reset_rect.grow(3).has_point(event.position):
+		_reset_trip_pending = true  # the trip LCD's reset button, same as T
+		get_viewport().set_input_as_handled()
+		return
 	if _start_sign == null and hud.visible and hud_layout.handle(event):
 		instruments.queue_redraw()
 		hud._layout()
@@ -401,7 +431,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_zoom(1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.9)
 			get_viewport().set_input_as_handled()
 			return
-		if event.button_index == MOUSE_BUTTON_LEFT and not phone.is_open:
+		if event.button_index == MOUSE_BUTTON_LEFT:
 			_focus = entities.entity_at(event.position, get_viewport().get_canvas_transform())
 			_inspect_panel.visible = not _focus.is_empty()
 			get_viewport().set_input_as_handled()
@@ -449,7 +479,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_T:
 				_reset_trip_pending = true
 			KEY_E:  # toggles what the simulation shows (it may have stopped the engine: no fuel)
-				_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
+				if not entities.shown_state().get("on_foot", true) and not _interact_pending:
+					_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
 			KEY_F1:
 				_help.visible = not _help.visible
 			KEY_ESCAPE:
@@ -504,6 +535,12 @@ func _process(delta: float) -> void:
 	_process_chunk_queues(now_usec)
 	entities.update_frame(delta)  # first: the camera below and the drawing use this one sample
 	var state: Dictionary = entities.shown_state()
+	var vehicles: Array = entities.npc_cars().map(func(row): return row[1])
+	vehicles.append(entities.player_position())
+	wildlife.update(delta, float(state.get("game_time_seconds", 12.0 * 3600.0)), camera.position, vehicles)
+	animal_audio.update(wildlife.animals, entities.dogs(), camera.position, delta,
+		not state.is_empty() and int(state.get("player", {}).get("map_level", 0)) == 0)
+	Perf.counters["wildlife"] = wildlife.animals.size()
 	_time_relocation(state, now_usec)
 	_interp_usec = lerpf(_interp_usec, float(entities.interp_usec), 0.1)
 	if _selftest:
@@ -576,6 +613,14 @@ func _process(delta: float) -> void:
 
 
 ## Sound and HUD for the state on screen; events as the picture reaches them.
+func _nearest_nightclub_m() -> float:
+	var listener := Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y)
+	var nearest := INF
+	for club in map_layer.nightclubs():
+		nearest = minf(nearest, listener.distance_to(Vector2(club[0], club[1])))
+	return snappedf(nearest, 1.0) if is_finite(nearest) else -1.0
+
+
 func _present(state: Dictionary) -> void:
 	if state.is_empty():
 		if summary_shown:
@@ -614,18 +659,43 @@ func _present(state: Dictionary) -> void:
 	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()
 	if typeof(calendar) == TYPE_DICTIONARY:
 		map_layer.set_season(calendar.get("season", []))
+		var season = calendar.get("season", [])
+		wildlife.winter = float(season[0]) if season is Array and season.size() == 4 else 0.0  # winter coats
 		map_layer.set_sports_hours(bool(calendar.get("sports_lights", false)))
 		map_layer.set_arena_lights(bool(calendar.get("arena_lights", false)))
 	# godot-lights-01: the world's light from the sun's altitude, continuously - the
 	# ambient multiply (CanvasModulate: no fill) and how strongly the lights show.
 	var altitude := Daylight.altitude(state) if is_nan(override_altitude) else override_altitude
-	var ambient := Daylight.ambient_color(altitude)
+	var cloud := Daylight.cloud_cover(state) if is_nan(override_cloud) else override_cloud
+	MapChunk.WATER_MATERIAL.set_shader_parameter("sky_color", Daylight.sky_color(altitude, cloud))
+	var water_wind := WeatherLayer.wind_vector(state)
+	water_wind.y = -water_wind.y
+	MapChunk.WATER_MATERIAL.set_shader_parameter("wind", water_wind)
+	MapChunk.SHORE_MATERIAL.set_shader_parameter("wind", water_wind)
+	var moon_altitude := Daylight.moon_value(state, "moon_altitude_deg", -90.0)
+	var moon_strength := Daylight.moonlight(altitude, moon_altitude,
+		Daylight.moon_value(state, "moon_illumination", 0.0), cloud)
+	# Moonlight shows only away from city lights (rural roads): there it whitens
+	# the ambient light, casts faint shadows and washes the colours out.
+	if moon_strength > 0.0:
+		var player_at := MapMath.point(entities.origin, player["x"], player["y"])
+		var local_light: float = map_layer.light_at(player_at)
+		if map_layer.lamp_near(player_at, 25.0):
+			local_light = maxf(local_light, 1.0)
+		moon_strength = Daylight.moon_shadow(moon_strength, local_light)
+	var ambient := Daylight.moon_ambient(Daylight.ambient_color(altitude), moon_strength)
 	var lights := Daylight.artificial(altitude)
 	if not ambient.is_equal_approx(world_light.color):
 		world_light.color = ambient
 	map_layer.set_light(lights, ambient)
-	map_layer.set_sun(altitude, Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth,
-		Daylight.cloud_cover(state) if is_nan(override_cloud) else override_cloud)
+	var sun_strength := Daylight.sunlight(altitude, cloud)
+	if sun_strength > 0.01:
+		map_layer.set_celestial_light(altitude, Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth, sun_strength)
+	else:
+		map_layer.set_celestial_light(moon_altitude, Daylight.moon_value(state, "moon_azimuth_deg", 180.0), moon_strength)
+	var grey := Daylight.moon_desaturation(moon_strength)
+	moon_grey.environment.adjustment_enabled = grey > 0.01
+	moon_grey.environment.adjustment_saturation = 1.0 - grey
 	entities.ambient = ambient
 	night.ambient = ambient
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5
@@ -639,11 +709,16 @@ func _present(state: Dictionary) -> void:
 	flash.visible = lightning > 0.0  # godot-18: an invisible full-screen rect is still blended every frame
 	# The server's darkness; an older server without a calendar: the hour.
 	var night := (darkness if darkness >= 0.0 else _night(state.get("game_time_seconds", 12.0 * 3600.0))) if override_night < 0.0 else override_night
-	audio.set_loop("city_day", 0.5 * (1.0 - night))
-	audio.set_loop("city_night", 0.5 * night)
 	var loops := weather_loops(state)
 	if override_rain >= 0.0:
 		loops["rain"] = override_rain
+	var music_gain := minf(nightclubs.city_ambience_gain(), car_stereos.city_ambience_gain())
+	var season: Array = calendar.get("season", [0.0, 0.0, 1.0, 0.0]) if typeof(calendar) == TYPE_DICTIONARY else [0.0, 0.0, 1.0, 0.0]
+	var rain := clampf(float(loops.get("rain", 0.0)) / 0.6, 0.0, 1.0)
+	var beds := environment_ambience.mix(map_layer._chunks, entities.origin, camera.position, clampf(night, 0.0, 1.0),
+		clampf(float(season[0]), 0.0, 1.0), rain, int(state.get("player", {}).get("map_level", 0)) == 0, get_process_delta_time())
+	for key in beds:
+		audio.set_loop(key, beds[key] * music_gain)
 	for key in loops:
 		audio.set_loop(key, loops[key])
 	_train_loop(state)
@@ -651,6 +726,11 @@ func _present(state: Dictionary) -> void:
 	var crowd := station_ambience(state.get("railway"), Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y),
 		audio._config.get("ranges_m", {}).get("station.ambience", [15.0, 150.0]))
 	audio.set_loop("station_crowd", crowd[0] * 0.6, 1.0, crowd[1])
+	if typeof(calendar) == TYPE_DICTIONARY and calendar.has("date"):  # rrt-019: the game clock's night, not the computer's
+		nightclubs.update(map_layer.nightclubs(), Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y),
+			NightclubAudio.week_minute(calendar["date"], state.get("game_time_seconds", 0.0)), entities.origin, get_process_delta_time())
+		car_stereos.update(entities.npc_cars(), camera.position,
+			NightclubAudio.week_minute(calendar["date"], state.get("game_time_seconds", 0.0)), get_process_delta_time())
 	audio.set_loop("station_luggage", crowd[0] * 0.4, 1.0, crowd[1])
 	if state.get("should_stop", false) and not summary_shown:
 		show_summary(state)
@@ -668,16 +748,19 @@ func _present(state: Dictionary) -> void:
 	var level := int(state.get("player", {}).get("map_level", 0))
 	map_layer.set_map_level(level)
 	entities.underground = level != 0
+	wildlife.visible = level == 0
 	weather.update(get_process_delta_time(), state, entities.player_position(), level != 0)
 	holidays.update(get_process_delta_time(), state, view, level != 0)
 	map_layer.set_flash(state.get("speed_camera_flash"))
 	labels.update_view(get_viewport().get_canvas_transform(), map_layer.chunk_count(), level != 0)
 	map_layer.set_obstacles(state.get("fallen_trees", []), state.get("knocked_posts", []))
+	map_layer.set_broken_hedges(state.get("broken_hedges", []))
 	phone.clock_text = hud._clock.text.get_slice(" ", 1) if hud._clock.text.contains(" ") else hud._clock.text
 	if state.has("game_time_seconds"):
 		phone.set_game_seconds(float(state["game_time_seconds"]))
+	phone.protest_active = state.get("protest_active", false)
 	phone.show_phone(state.get("phone", {}))
-	phone.show_navigation(state.get("navigation", {}))
+	phone.show_navigation(state.get("navigation", {}), hud.task_text(state.get("taxi", {}), hud.language))
 	_refresh_inspector(state)
 	var target: Dictionary = entities.current_target(state)
 	var target_screen := Vector2.ZERO
@@ -729,6 +812,7 @@ static func nearest_point(points: Array, from: Vector2):
 ## when it sets off from a stop near the listener.
 func _feature_loops(state: Dictionary) -> void:
 	var from: Vector2 = audio.player_at
+	var surface := int(state.get("player", {}).get("map_level", 0)) == 0
 	var tram = null
 	var tram_speed := 0.0
 	var states := {}
@@ -746,7 +830,15 @@ func _feature_loops(state: Dictionary) -> void:
 	audio.set_loop("tram_running", minf(1.0, tram_speed / 10.0) if tram != null else 0.0, 1.0, tram)
 	var tractor = null
 	var tractor_speed := 0.0
+	var trailer = null
+	var trailer_speed := 0.0
 	for npc in state.get("npcs", []):
+		if surface and npc.has("trailer") and int(npc.get("layer", 0)) >= 0 \
+				and npc.get("state", "") not in ["PARKED", "CRASHED"] and absf(npc.get("speed", 0.0)) > 0.5:
+			var at := Vector2(npc["trailer"][0], npc["trailer"][1])
+			if trailer == null or at.distance_to(from) < trailer.distance_to(from):
+				trailer = at
+				trailer_speed = absf(npc.get("speed", 0.0))
 		if npc.get("vehicle_type", "") != "tractor" or npc.get("state", "") in ["PARKED", "CRASHED"]:
 			continue
 		var at := Vector2(npc["x"], npc["y"])
@@ -755,10 +847,27 @@ func _feature_loops(state: Dictionary) -> void:
 			tractor_speed = absf(npc.get("speed", 0.0))
 	audio.set_loop("tractor", 0.7 if tractor != null else 0.0, 0.85 + minf(tractor_speed / 15.0, 0.4), tractor)
 	audio.set_loop("plough", minf(1.0, tractor_speed / 6.0) if tractor != null and entities.ploughing else 0.0, 1.0, tractor)
+	audio.set_loop("trailer", minf(0.5, trailer_speed / 12.0) if trailer != null else 0.0, 1.0, trailer)
 	var skaters: Array = []
+	var swimmers: Array = []
+	var riders: Array = []
 	for ped in state.get("pedestrians", []):
 		if ped.get("activity", "") == "ice_skating":
 			skaters.append([ped["x"], ped["y"]])
+		if surface and ped.get("animation_state", "") == "swimming":
+			swimmers.append([ped["x"], ped["y"]])
+		if surface and ped.get("activity", "") == "theme_park" and ped.get("animation_state", "") == "riding":
+			riders.append([ped["x"], ped["y"]])
+	var swimmer = nearest_point(swimmers, from)
+	audio.set_loop("swimming", 0.55 if swimmer != null else 0.0, 1.0, swimmer)
+	var ride = nearest_point(riders, from)
+	audio.set_loop("ride", 0.45 if ride != null else 0.0, 1.0, ride)
+	var mark = state.get("tire_mark")
+	var spray := float(mark.get("spray", 0.0)) if mark is Dictionary and mark.get("kind") == "dirt" else 0.0
+	var moving := absf(state.get("player", {}).get("speed", 0.0)) > 0.5
+	var driving: bool = surface and moving and not state.get("on_foot", true)
+	audio.set_loop("mud", 0.45 * clampf(spray, 0.0, 1.0) if driving else 0.0, 1.0,
+		Vector2(state.get("player", {}).get("x", 0.0), state.get("player", {}).get("y", 0.0)))
 	var skater = nearest_point(skaters, from)
 	audio.set_loop("ice_skating", 0.6 if skater != null else 0.0, 1.0, skater)
 	var puck = nearest_point(state.get("pucks", []), from)
@@ -829,12 +938,7 @@ static func weather_loops(state: Dictionary) -> Dictionary:
 	var weather: Dictionary = state.get("weather", {}) if state.get("weather") is Dictionary else {}
 	var type = weather.get("weather_type", "")
 	var raining: bool = type in ["rain", "slush"]
-	var wind_speed := 0.0
-	var wind = weather.get("wind_vector_mps")
-	if wind is Array and wind.size() == 2 and typeof(wind[0]) in [TYPE_INT, TYPE_FLOAT] and typeof(wind[1]) in [TYPE_INT, TYPE_FLOAT]:
-		wind_speed = Vector2(wind[0], wind[1]).length()
-		if not is_finite(wind_speed):
-			wind_speed = 0.0
+	var wind_speed := WeatherLayer.wind_vector(state).length()
 	var wetness := float(weather.get("wetness", 0.0)) if typeof(weather.get("wetness")) in [TYPE_INT, TYPE_FLOAT] else 0.0
 	var player: Dictionary = state.get("player", {}) if state.get("player") is Dictionary else {}
 	var speed := absf(float(player.get("speed", 0.0))) if typeof(player.get("speed")) in [TYPE_INT, TYPE_FLOAT] else 0.0
@@ -863,7 +967,7 @@ static func start_sign(world: Dictionary, language: String) -> PanelContainer:
 	var lines := VBoxContainer.new()
 	lines.add_theme_constant_override("separation", 6)
 	sign.add_child(lines)
-	var rows := [[str(world.get("city", "")).to_upper(), 46, Color.WHITE], [T.text("weather_forecast_24h", language), 20, Color8(180, 220, 255)]]
+	var rows := [[str(world.get("weather_city", world.get("city", ""))).to_upper(), 46, Color.WHITE], [T.text("weather_forecast_24h", language), 20, Color8(180, 220, 255)]]
 	for line in world.get("forecast", []):
 		if line is Dictionary:
 			var source := str(line.get("source", "generated"))
@@ -897,9 +1001,17 @@ static func wind_arrow(wind_from_deg: float) -> String:
 ## One command to the simulation (it validates and applies it). The
 ## presses (F, G) go out once, in the next command only.
 func send(controls: Dictionary) -> void:
+	var outside: bool = entities.shown_state().get("on_foot", true)
+	if outside:
+		_engine_on = bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
 	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist,
 		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending, _home_pending)
+	if outside or _interact_pending:
+		command["engine_on"] = null
 	command["language"] = language
+	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()
+	command["view_bounds"] = [view.position.x + entities.origin.x, entities.origin.y - view.end.y,
+		view.end.x + entities.origin.x, entities.origin.y - view.position.y]
 	_interact_pending = false
 	_refuel_pending = false
 	_road_rage_pending = false
@@ -973,10 +1085,13 @@ func _refresh_inspector(state: Dictionary) -> void:
 	if _focus.get("kind") == "pan":
 		_inspect_label.text = T.text("pan_view", language)
 		return
-	var key := "pedestrians" if _focus["kind"] == "pedestrian" else "npcs"
+	var key := "trains" if _focus["kind"] == "train" else "pedestrians" if _focus["kind"] == "pedestrian" else "npcs"
 	for row in state.get(key, []):
 		if row.get("id") == _focus["id"]:
-			_inspect_label.text = _character_text(_focus["kind"], row)
+			if _focus["kind"] == "train":
+				_inspect_label.text = "%s\n%s\n%.0f km/h" % [str(row.get("label", row.get("id", ""))), T.value_label(row.get("state", ""), language), float(row.get("speed", 0.0)) * 3.6]
+			else:
+				_inspect_label.text = _character_text(_focus["kind"], row)
 			return
 	if _focus["kind"] == "pedestrian":
 		for npc in state.get("npcs", []):
@@ -1134,6 +1249,7 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 			"max_state_gap_ms": entities.buffer.max_arrival_gap_s * 1000.0,
 			"render_backsteps": entities.buffer.render_backsteps, "max_backstep_ms": entities.buffer.max_backstep_s * 1000.0,
 			"taxi_off_centre_px": _max_camera_lag_px, "motion": _motion_stats(), "interp_delay_ms": entities.buffer.delay * 1000.0,
+			"nightclubs_playing": nightclubs.playing_count(), "car_stereos_playing": car_stereos.playing_count(), "nightclubs_loaded": map_layer.nightclubs().size(), "nightclub_nearest_m": _nearest_nightclub_m(),
 			"fps_mean": _fps_samples.reduce(func(a, b): return a + b, 0.0) / _fps_samples.size(),
 			"sounds_played": audio.played, "engine_loop": audio.loop_playing("engine"), "unhandled_events": audio.unhandled,
 			"static_memory_mib": Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,

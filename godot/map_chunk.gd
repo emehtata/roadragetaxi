@@ -36,6 +36,10 @@ const B25 := preload("res://buildings_25d.gd")
 const B3 := preload("res://buildings_3d.gd")
 const Perf := preload("res://perf.gd")
 const BRIDGE_Z_MAX := 3
+const SHALLOW_WATER_M := 6.0  # the lighter band along a shore
+static var FOREST_MATERIAL := _forest_material()
+static var SHORE_MATERIAL := _shore_material()
+static var WATER_MATERIAL := _water_material()  # shared: one shader animates every lake
 const SPRING_ICE_COLORS := [Color8(225, 236, 241), Color8(205, 224, 232), Color8(238, 243, 244)]
 const SPRING_ICE_EDGE := Color8(185, 207, 218)
 const SPRING_ICE_SPACING_M := 24.0
@@ -67,6 +71,8 @@ var _phases: Dictionary = {}  # post id (String) -> phase as last drawn
 var _font: Font = ThemeDB.fallback_font
 var _trees: Node2D = null  # trees and bollards, if this chunk has any
 var _fallen: Dictionary = {}  # MapMath key -> angle, for this chunk's felled trees
+var _hedge_damage: Dictionary = {}
+var _railings: Node2D
 var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
 var drivable_roads: Array = []  # [Rect2, key] per drivable road: the night tint counts them (main.gd)
 var street_lights := PackedVector2Array()  # positions, for reflectors and long beams
@@ -76,6 +82,7 @@ var _heads := Node2D.new()
 var _broken := PackedInt32Array()  # indices of this chunk's street lights that are knocked down
 var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state calendar.season)
 var _season_layers: Array[Node2D] = []  # landuse and islands: their green kinds follow the season
+var _site_details := {}  # area index -> cached decorative positions; snow redraws only change colours
 var _signs: Node2D = null  # signs and speed cameras, if any
 var _flash = null  # the flashing speed camera's id (state speed_camera_flash)
 var stale_buildings: Array = []  # the replaced chunk's building nodes, shown until ours are built (keep_until_built)
@@ -103,9 +110,34 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_roads_by_z = prepared["roads_by_z"]
 	_snow_cells = prepared["snow_cells"]
 	street_lights = prepared["street_lights"]
+	if not message.get("waters", []).is_empty() or not message.get("water_lines", []).is_empty():
+		# Water alone carries the wave shader: nothing else drawn here can pick it up.
+		var water := _add_layer(0, _draw_water)
+		water.material = WATER_MATERIAL
+		_season_layers.append(water)
+		var shore := _add_layer(0, _draw_shore_waves)
+		shore.material = SHORE_MATERIAL
+		_season_layers.append(shore)
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
-		_season_layers.append(_add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse")))
+		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
+		if prepared["forest_mask"] != null:
+			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
+			var material := FOREST_MATERIAL.duplicate() as ShaderMaterial
+			material.set_shader_parameter("canopy_mask", ImageTexture.create_from_image(prepared["forest_mask"]))
+			material.set_shader_parameter("mask_rect", Vector4(_bounds_rect.position.x, _bounds_rect.position.y, _bounds_rect.size.x, _bounds_rect.size.y))
+			canopy.material = material
+			_season_layers.append(canopy)
+		_season_layers.append(landuse)
+		if message["landuse"].any(func(area): return area.size() > 3 and str(area[3]) in ["biergarten", "grave_yard", "cemetery"]):
+			_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_site_details(self, node)))
+	if not message.get("attractions", []).is_empty():
+		_px_layers.append(_add_layer(6, _draw_attractions))
+	if not message.get("volleyball_courts", []).is_empty():
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_volleyball_courts(self, node)))
+		_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_volleyball_nets(self, node)))
+	if not message.get("tennis_courts", []).is_empty():
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_tennis_courts(self, node)))
 	# Field markings at z0, over every chunk's landuse (z-1): at -1 a neighbouring
 	# chunk's piece of the same pitch painted over the part reaching into it.
 	if not message.get("soccer_pitches", []).is_empty():  # soccer lines on bare pitches
@@ -148,7 +180,8 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	if not message.get("rail_bridges", []).is_empty() or not message.get("rail_decks", []).is_empty():
 		_px_layers.append(_add_layer(13, func(node: Node2D): Detail.draw_rail_bridges(self, node)))
 	if not message.get("railings", []).is_empty():
-		_px_layers.append(_add_layer(8, _draw_railings))
+		_railings = _add_layer(8, _draw_railings)
+		_px_layers.append(_railings)
 	if not message.get("street_lights", []).is_empty():
 		var add := CanvasItemMaterial.new()
 		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
@@ -237,7 +270,13 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 		lights.append(MapMath.point(origin, light[0], light[1]))
 	message["prepared"] = {"origin": origin, "bounds_rect": bounds_rect, "bounds": bounds, "drivable_roads": drivable,
 		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "puddle_spots": puddles,
-		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points}
+		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points,
+		# Rasterised here, on the parse worker: on the main thread it was a 60-115 ms hitch per forest chunk.
+		"forest_mask": forest_mask(message, bounds_rect, origin) if message.get("landuse", []).any(_is_forest) else null}
+
+
+static func _is_forest(area) -> bool:
+	return area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]
 
 
 ## Every polyline and polygon kept as a PackedVector2Array in layer
@@ -254,6 +293,15 @@ static func _compact(data: Dictionary, origin: Vector2) -> int:
 		for i in lines.size():
 			lines[i] = _to_points(lines[i], origin)
 			count += lines[i].size()
+	for band in data.get("shore_waves", []):
+		band["points"] = _to_points(band["points"], origin)
+		count += band["points"].size()
+	for railing in data.get("railings", []):
+		if railing.size() < 4:
+			var key := hedge_key(railing)  # preserve world identity before converting points to chunk coordinates
+			if railing.size() < 3:
+				railing.append(0)
+			railing.append(key)
 	for key_index in [["railings", 1], ["landuse", 2], ["traffic_islands", 2], ["level_roads", 1]]:
 		for entry in data.get(key_index[0], []):
 			entry[key_index[1]] = _to_points(entry[key_index[1]], origin)
@@ -296,15 +344,23 @@ static func _clip_to_bounds(data: Dictionary, bounds: PackedVector2Array, bounds
 				if piece.size() >= 2:
 					pieces.append(piece)
 		data[key] = pieces
+	# Clip before triangulation: lake rings can contain thousands of vertices.
 	var waters: Array = []
 	for water in data.get("waters", []):
-		# Clip first: a big lake (Sysmä) has thousands of points and is in
-		# every chunk it touches - triangulating it whole took seconds a chunk.
 		if water.size() >= 3 and _rect(water).intersects(bounds_rect, true):
 			for piece in Geometry2D.intersect_polygons(water, bounds):
 				if not Geometry2D.triangulate_polygon(piece).is_empty():
 					waters.append(piece)
 	data["waters"] = waters
+	var shore_waves: Array = []
+	for band in data.get("shore_waves", []):
+		for line in Geometry2D.intersect_polyline_with_polygon(band["points"], bounds):
+			shore_waves.append({"distance": band["distance"], "points": line})
+	data["shore_waves"] = shore_waves
+
+
+static func _rect_polygon(rect: Rect2) -> PackedVector2Array:
+	return PackedVector2Array([rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)])
 
 
 static func _rect(points: PackedVector2Array) -> Rect2:
@@ -379,6 +435,27 @@ func set_phases(phases: Dictionary) -> bool:
 	if changed:
 		_lights.queue_redraw()
 	return changed
+
+
+static func hedge_key(railing: Array) -> String:
+	if railing.size() > 3:
+		return str(railing[3])
+	var key := str(int(railing[2]) if railing.size() > 2 else 0) + ":"
+	for point in railing[1]:
+		key += "%.1f,%.1f;" % [float(point[0]), float(point[1])]
+	return key
+
+
+func set_broken_hedges(damage: Dictionary) -> void:
+	var own := {}
+	for railing in _data.get("railings", []):
+		var key := hedge_key(railing)
+		if railing[0] == "hedge" and damage.has(key):
+			own[key] = damage[key]
+	if own != _hedge_damage:
+		_hedge_damage = own
+		if _railings != null:
+			_railings.queue_redraw()
 
 
 ## The simulation's felled trees ({key: angle}) and knocked posts ({key:
@@ -459,19 +536,19 @@ var _building_view := Vector2.ZERO
 var _built_view := Vector2.INF
 
 
-## The chunk's radial building volumes, rebuilt only when its camera angle
-## crosses a small bucket.
+## Build either 3D meshes or flat footprints, independently of camera movement.
 func _build_2_5d() -> void:
 	var buildings: Array = _data.get("buildings", [])
-	if buildings.is_empty():
-		return
+	var sites: Array = _data.get("construction_fences", [])  # each gets a tower crane in 3D
 	var styles: Array = _data.get("building_styles", [])
 	var origin := _origin
-	if buildings_3d:  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
+	if buildings_3d and not (buildings.is_empty() and sites.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
 		if not build_async:
-			_meshes_ready(_build_3d_timed(buildings, styles, origin))
+			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites))
 		else:
-			_building_task = WorkerThreadPool.add_task(func(): _meshes_ready.call_deferred(_build_3d_timed(buildings, styles, origin)))
+			_building_task = WorkerThreadPool.add_task(func(): _meshes_ready.call_deferred(_build_3d_timed(buildings, styles, origin, sites)))
+		return
+	if buildings.is_empty() or buildings_3d:
 		return
 	building_node = Node2D.new()
 	building_node.draw.connect(_draw_volumes)
@@ -503,13 +580,13 @@ func drop_stale_buildings() -> void:
 
 static var build_async := true  # tests build in place
 static var language := "en"  # unnamed fuel stations' board (main._apply_language)
-static var buildings_3d := true  # godot-21 prototype; --buildings 2d: the godot-20 radial renderer
+static var buildings_3d := true  # --buildings 2d uses flat footprints
 var meshes_3d: Array = []  # buildings_3d.meshes, added to MapLayer's 3D building layer
 
 
-static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2) -> Dictionary:
+static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2, sites: Array = []) -> Dictionary:
 	var started := Time.get_ticks_usec()
-	var arrays := B3.build(buildings, styles, origin)
+	var arrays := B3.build(buildings, styles, origin, sites)
 	arrays["build_usec"] = Time.get_ticks_usec() - started
 	return arrays
 
@@ -566,33 +643,10 @@ func _buildings_ready(volumes: Dictionary) -> void:
 
 
 func set_building_view(view_centre: Vector2) -> void:
-	var has_buildings: bool = not _data.get("buildings", []).is_empty()
-	var has_canopies: bool = not _data.get("canopies", []).is_empty()
-	if not has_buildings and not has_canopies:
-		return
-	var from := _bounds_rect.get_center() - _built_view
-	var to := _bounds_rect.get_center() - view_centre
-	# ponytail: one angular bucket per chunk avoids rebuilding the whole city
-	# every frame; lower this threshold if close-up direction changes look stepped.
-	if _built_view != Vector2.INF and not from.is_zero_approx() and not to.is_zero_approx() and absf(from.angle_to(to)) < 0.06:
-		return
 	_building_view = view_centre
-	for node in _canopy_layers:
-		node.queue_redraw()
-	if not has_buildings or buildings_3d:
-		_built_view = view_centre
-		return
-	if _building_task >= 0:
-		return
-	var buildings: Array = _data.get("buildings", [])
-	var styles: Array = _data.get("building_styles", [])
-	var origin := _origin
-	var view := _building_view
-	var snow := float(_season[0])
-	if build_async:
-		_building_task = WorkerThreadPool.add_task(func(): _buildings_ready.call_deferred(_build_timed(buildings, styles, origin, view, snow)))
-	else:
-		_buildings_ready(_build_timed(buildings, styles, origin, view, snow))
+	if buildings_3d:
+		for node in _canopy_layers:
+			node.queue_redraw()
 
 
 ## The buildings' triangles go to the renderer, which keeps its own copy:
@@ -663,7 +717,6 @@ func set_season(weights: Array) -> bool:
 	_season = weights
 	if building_node != null:
 		building_node.queue_redraw()
-	queue_redraw()
 	if _trees != null:
 		_trees.queue_redraw()
 	for node in _season_layers:
@@ -738,33 +791,111 @@ static func water_ripple_spots(waters: Array, origin: Vector2) -> Array:
 	return spots
 
 
-func _draw_ice_floe(floe: Dictionary) -> void:
+func _draw_ice_floe(node: Node2D, floe: Dictionary) -> void:
 	var polygon := PackedVector2Array()
 	for i in 10:
 		var angle := TAU * i / 10.0
 		polygon.append(floe["at"] + Vector2(cos(angle) * floe["rx"], sin(angle) * floe["ry"]).rotated(floe["angle"]))
-	draw_colored_polygon(polygon, floe["color"])
+	node.draw_colored_polygon(polygon, floe["color"])
 	polygon.append(polygon[0])
-	draw_polyline(polygon, SPRING_ICE_EDGE, 0.18)
+	node.draw_polyline(polygon, SPRING_ICE_EDGE, 0.18)
 
 
-func _draw() -> void:
+static func _water_material() -> ShaderMaterial:
+	var water := ShaderMaterial.new()
+	water.shader = preload("res://water.gdshader")
+	return water
+
+
+# Bake visibility once per chunk; crowns cover vehicles, with roads and clearings cut out.
+func _forest_mask() -> ImageTexture:
+	return ImageTexture.create_from_image(forest_mask(_data, _bounds_rect, _origin))
+
+
+static func forest_mask(data: Dictionary, bounds_rect: Rect2, origin: Vector2) -> Image:
+	var image := Image.create(maxi(1, ceili(bounds_rect.size.x)), maxi(1, ceili(bounds_rect.size.y)), false, Image.FORMAT_R8)
+	image.fill(Color.BLACK)
+	for area in data.get("landuse", []):
+		_mask_polygon(image, bounds_rect, _to_points(area[2], origin), Color.WHITE if _is_forest(area) else Color.BLACK)
+	for key in ["waters", "buildings", "parking"]:
+		for polygon in data.get(key, []):
+			_mask_polygon(image, bounds_rect, _to_points(polygon, origin), Color.BLACK)
+	for road in data.get("roads", []):
+		for polygon in Geometry2D.offset_polyline(_to_points(road["points"], origin), float(road.get("half_width_m", 1.5)) + 2.0, Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND):
+			_mask_polygon(image, bounds_rect, polygon, Color.BLACK)
+	for railway in data.get("railways", []):
+		for polygon in Geometry2D.offset_polyline(_to_points(railway, origin), 4.0):
+			_mask_polygon(image, bounds_rect, polygon, Color.BLACK)
+	return image
+
+
+static func _mask_polygon(image: Image, bounds_rect: Rect2, polygon: PackedVector2Array, color: Color) -> void:
+	if polygon.size() < 3:
+		return
+	var low := image.get_height()
+	var high := 0
+	for point in polygon:
+		low = mini(low, floori(point.y - bounds_rect.position.y))
+		high = maxi(high, ceili(point.y - bounds_rect.position.y))
+	for row in range(maxi(0, low), mini(image.get_height(), high)):
+		var y := bounds_rect.position.y + row + 0.5
+		var crossings: Array[float] = []
+		var previous := polygon[-1]
+		for point in polygon:
+			if (point.y > y) != (previous.y > y):
+				crossings.append(point.x + (y - point.y) * (previous.x - point.x) / (previous.y - point.y) - bounds_rect.position.x)
+			previous = point
+		crossings.sort()
+		for i in range(0, crossings.size() - 1, 2):
+			var start := clampi(ceili(crossings[i] - 0.5), 0, image.get_width())
+			var end := clampi(ceili(crossings[i + 1] - 0.5), 0, image.get_width())
+			if end > start:
+				image.fill_rect(Rect2i(start, row, end - start, 1), color)
+
+
+static func _forest_material() -> ShaderMaterial:
+	var forest := ShaderMaterial.new()
+	forest.shader = preload("res://forest.gdshader")
+	return forest
+
+
+static func _shore_material() -> ShaderMaterial:
+	var shore := ShaderMaterial.new()
+	shore.shader = preload("res://shore_waves.gdshader")
+	return shore
+
+
+func _draw_shore_waves(node: Node2D) -> void:
+	var liquid := 1.0 - clampf(_season[0], 0.0, 1.0)
+	if liquid <= 0.0:
+		return
+	for band in _data.get("shore_waves", []):
+		# Red carries shore distance; alpha keeps the winter fade independent.
+		node.draw_polyline(band["points"], Color(band["distance"] / SHALLOW_WATER_M, 0.0, 0.0, liquid), 0.65, true)
+
+
+func _draw_water(node: Node2D) -> void:
 	# water freezes with the winter weight.
-	var water_color := Color(0.25, 0.45, 0.65).lerp(Color8(232, 240, 244), clampf(_season[0], 0.0, 1.0))
+	var ice := clampf(_season[0], 0.0, 1.0)
+	# A humic base under the sky reflection; true-shore bands add the shallows.
+	var water_color := Color(0.15, 0.15, 0.12).lerp(Color8(232, 240, 244), ice)
 	for water in _data.get("waters", []):
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
-			draw_colored_polygon(polygon, water_color)
+			node.draw_colored_polygon(polygon, water_color)
+	for water in _data.get("waters", []):
+		var polygon := _points(water)
+		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
 			# Ice breaks up only while spring follows winter: once summer
 			# weight appears (Oulu: mid-May) the spring weight is just
 			# young greenery, and floes in June looked wrong.
 			if _season[1] > 0.05 and _season[2] < 0.05:
 				for floe in spring_ice_floes(polygon, _origin):
-					_draw_ice_floe(floe)
+					_draw_ice_floe(node, floe)
 	for line in _data.get("water_lines", []):  # a stream or river line, 3 m wide
 		var points := _points(line)
 		if points.size() >= 2:
-			draw_polyline(points, water_color, 3.0)
+			node.draw_polyline(points, water_color, 3.0)
 
 
 ## Chunk preparation runs on the parsing worker; snowfall never resamples roads.
@@ -926,18 +1057,56 @@ func _draw_trees(node: Node2D) -> void:
 		var crown := PackedVector2Array()
 		for i in 8:
 			var angle := TAU * i / 8.0 + rng.randf_range(-0.2, 0.2)
-			crown.append(at + Vector2(cos(angle), sin(angle)) * radius * rng.randf_range(0.78, 1.15))
+			crown.append(Vector2(cos(angle), sin(angle)) * radius * rng.randf_range(0.78, 1.15))
+		# Triangulate near zero: distant map coordinates lose the crown's small edges.
+		node.draw_set_transform(at)
 		node.draw_colored_polygon(crown, style["crown"])
+		node.draw_set_transform(Vector2.ZERO)
 	for post in _data.get("bollards", []):
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			node.draw_circle(MapMath.point(_origin, post[0], post[1]), maxf(_px(1.0), 0.25), Color8(48, 48, 46))
 	for obj in _data.get("scenery_objects", []):
-		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]))
+		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]), int(obj[4]) if obj.size() > 4 else 0)
 
 
 ## The decorative scenery objects, in metres with minimum pixel sizes.
-func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float) -> void:
+func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float, capacity := 0) -> void:
 	match kind:
+		"caravan", "caravan_with_car":
+			node.draw_set_transform(at, -angle)
+			_draw_caravan(node, kind == "caravan_with_car", posmod(hash(at), 2) == 0)
+			node.draw_set_transform(Vector2.ZERO)
+		"tent":
+			node.draw_set_transform(at, -angle)
+			var warm := posmod(hash(at), 3) == 0
+			var fabric := Color8(199, 119, 48) if warm else Color8(63, 128, 139)
+			node.draw_rect(Rect2(-1.4, -.9, 3.0, 2.1), Color8(25, 35, 27, 100))
+			node.draw_colored_polygon(PackedVector2Array([Vector2(-1.4,-1), Vector2(1.4,-1), Vector2(1.1,0), Vector2(-1.1,0)]), fabric.lightened(.2))
+			node.draw_colored_polygon(PackedVector2Array([Vector2(-1.1,0), Vector2(1.1,0), Vector2(1.4,1), Vector2(-1.4,1)]), fabric.darkened(.2))
+			node.draw_colored_polygon(PackedVector2Array([Vector2(1.1,0), Vector2(1.4,-.6), Vector2(1.4,.6)]), Color8(28, 49, 51))
+			node.draw_line(Vector2(-1.1,0), Vector2(1.1,0), fabric.lightened(.4), .08)
+			for side: float in [-1,1]:
+				node.draw_line(Vector2(-1.4,side), Vector2(-1.55,side*1.15), Color8(199, 195, 162), .04)
+				node.draw_line(Vector2(1.4,side), Vector2(1.55,side*1.15), Color8(199, 195, 162), .04)
+			node.draw_set_transform(Vector2.ZERO)
+		"camper_van":
+			node.draw_set_transform(at, -angle)
+			node.draw_rect(Rect2(-2.9,-1.05,6.2,2.55), Color8(25, 30, 28, 110))
+			for x: float in [-1.9, 1.9]:
+				for side: float in [-1,1]:
+					node.draw_rect(Rect2(x-.4,side*1.15-.12,.8,.24), Color8(30, 32, 34))
+			node.draw_rect(Rect2(-3,-1.15,6,2.3), Color8(222, 220, 202))
+			node.draw_rect(Rect2(-2.7,-.95,4.2,1.9), Color8(247, 245, 231))
+			node.draw_rect(Rect2(1.9,-.95,.55,1.9), Color8(51, 83, 98))
+			node.draw_rect(Rect2(-1.8,-.5,.85,1), Color8(97, 142, 154))
+			node.draw_rect(Rect2(.25,-.35,.65,.7), Color8(183, 185, 173))
+			for y: float in [-.9,.9]:
+				node.draw_line(Vector2(-2.8,y),Vector2(1.4,y),Color8(112, 149, 138),.12)
+				node.draw_rect(Rect2(2.8,y-.12,.15,.24),Color8(245, 229, 156))
+				node.draw_rect(Rect2(-3,y-.12,.12,.24),Color8(167, 52, 42))
+			node.draw_set_transform(Vector2.ZERO)
+		"biergarten", "grave_yard":
+			Detail.draw_site_detail(node, at, kind, float(_season[0]))
 		"bench":  # 1.4 x 0.4 m, along the path it's beside
 			node.draw_set_transform(at, -angle)
 			node.draw_rect(Rect2(-0.7, -0.2, 1.4, 0.4), Color8(120, 82, 45))
@@ -945,12 +1114,25 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 		"waste_basket":
 			var size := maxf(_px(2.0), 0.6)
 			node.draw_rect(Rect2(at - Vector2(size, size) / 2.0, Vector2(size, size)), Color8(58, 66, 56))
-		"bicycle_parking":
-			var size := maxf(_px(2.0), 0.8)
-			var color := Color8(75, 95, 115)
-			node.draw_rect(Rect2(at - Vector2(size / 2.0, size / 4.0), Vector2(size, maxf(_px(1.0), size / 2.0))), color)
-			for dx: float in [-size / 3.0, 0.0, size / 3.0]:
-				node.draw_line(at + Vector2(dx, -maxf(_px(2.0), 0.5)), at + Vector2(dx, 0), color, maxf(_px(1.0), 0.08))
+		"bicycle_parking":  # seen from above: a row of hoops along the street, each 0.8 m across the row
+			node.draw_set_transform(at, -angle)
+			for stroke: Array in [[Color8(35, 45, 50), maxf(_px(3.0), 0.16)], [Color8(200, 208, 212), maxf(_px(1.0), 0.06)]]:
+				for x: float in [-1.2, -0.4, 0.4, 1.2]:
+					node.draw_line(Vector2(x, -0.4), Vector2(x, 0.4), stroke[0], stroke[1])
+			node.draw_set_transform(Vector2.ZERO)
+		"charging_station":  # from above: a pedestal between each two bays, its lit screen and a bolt
+			var posts := clampi(ceili(maxi(capacity, 1) / 2.0), 1, 6)
+			node.draw_set_transform(at, -angle)
+			for i in posts:
+				var x := (i - (posts - 1) / 2.0) * 2.6  # a bay's width apart
+				var body := Vector2(maxf(_px(4.0), 0.55), maxf(_px(3.0), 0.4))
+				node.draw_rect(Rect2(Vector2(x, 0.0) - body / 2.0, body), Color8(52, 58, 62))
+				node.draw_rect(Rect2(Vector2(x, 0.0) - body / 2.0, body), Color8(20, 24, 26), false, maxf(_px(1.0), 0.04))
+				node.draw_rect(Rect2(Vector2(x, 0.0) - body * 0.38, body * 0.76), Color8(60, 200, 120))  # the lit screen
+				var s := body.y * 0.34  # the bolt across it
+				node.draw_colored_polygon(PackedVector2Array([Vector2(x + s * 0.3, -s * 1.1), Vector2(x - s * 0.6, s * 0.15), Vector2(x, s * 0.15),
+					Vector2(x - s * 0.3, s * 1.1), Vector2(x + s * 0.6, -s * 0.15), Vector2(x, -s * 0.15)]), Color8(250, 250, 240))
+			node.draw_set_transform(Vector2.ZERO)
 		"statue":
 			var pedestal := Vector2(maxf(_px(2.0), 0.9), maxf(_px(2.0), 0.6))
 			node.draw_rect(Rect2(at - Vector2(pedestal.x / 2.0, 0), pedestal), Color8(110, 110, 105))
@@ -958,7 +1140,9 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 			node.draw_circle(at - Vector2(0, radius / 2.0), radius, Color8(150, 130, 85))
 		"picnic_table":
 			var size := Vector2(maxf(_px(2.0), 1.6), maxf(_px(2.0), 0.9))
-			node.draw_rect(Rect2(at - size / 2.0, size), Color8(135, 95, 55))
+			node.draw_set_transform(at, -angle)
+			node.draw_rect(Rect2(-size / 2.0, size), Color8(135, 95, 55))
+			node.draw_set_transform(Vector2.ZERO)
 		"firepit":
 			var radius := maxf(_px(2.0), 0.5)
 			node.draw_arc(at, radius, 0.0, TAU, 16, Color8(60, 58, 55), maxf(_px(1.0), radius / 3.0))
@@ -967,35 +1151,112 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float)
 			var radius := maxf(_px(2.0), 0.7)
 			node.draw_circle(at, radius, Color8(90, 165, 185))
 			node.draw_circle(at, maxf(_px(1.0), radius / 3.0), Color8(220, 240, 245))
-		"gate":
+		"gate":  # across the path it stands on
 			var half := maxf(_px(2.0), 1.0)
-			node.draw_line(at - Vector2(half, 0), at + Vector2(half, 0), Color8(100, 92, 80), maxf(_px(1.0), 0.15))
+			node.draw_set_transform(at, -angle)
+			node.draw_line(Vector2(0, -half), Vector2(0, half), Color8(100, 92, 80), maxf(_px(1.0), 0.15))
+			node.draw_set_transform(Vector2.ZERO)
+
+
+func _draw_caravan(node: Node2D, hitched: bool, blue_car: bool) -> void:
+	var rear := -4.6 if hitched else -2.8
+	var front := rear + 4.8
+	node.draw_rect(Rect2(rear+.15, -1.0, 5.0, 2.45), Color8(25, 30, 28, 110))
+	for side: float in [-1,1]:
+		node.draw_rect(Rect2(rear+2.0,side*1.15-.12,.8,.24),Color8(30, 32, 34))
+	node.draw_rect(Rect2(rear,-1.15,4.8,2.3),Color8(222, 216, 196))
+	node.draw_rect(Rect2(rear+.18,-.95,4.44,1.9),Color8(249, 246, 230))
+	node.draw_rect(Rect2(rear+1.0,-.4,.8,.8),Color8(110, 153, 164))
+	node.draw_rect(Rect2(rear+2.9,-.3,.6,.6),Color8(186, 185, 170))
+	for side: float in [-1,1]:
+		node.draw_line(Vector2(rear+.2,side*.9),Vector2(front-.2,side*.9),Color8(156, 108, 66),.12)
+		node.draw_line(Vector2(front,side*.75),Vector2(front+.8,0),Color8(119, 122, 115),.10)
+		node.draw_rect(Rect2(rear,side*.9-.1,.12,.2),Color8(170, 53, 43))
+	node.draw_circle(Vector2(front+.8,0),.12,Color8(80, 83, 78))
+	if not hitched:
+		return
+	var car_rear := front + .8
+	var paint := Color8(76, 117, 155) if blue_car else Color8(169, 66, 54)
+	node.draw_rect(Rect2(car_rear+.15,-.7,3.7,1.85),Color8(25, 30, 28, 110))
+	for x: float in [car_rear+.6,car_rear+2.9]:
+		for side: float in [-1,1]:
+			node.draw_rect(Rect2(x-.3,side*.85-.12,.6,.24),Color8(30,32,34))
+	node.draw_rect(Rect2(car_rear,-.85,3.6,1.7),paint)
+	node.draw_rect(Rect2(car_rear+.7,-.7,1.9,1.4),Color8(44, 67, 78))
+	node.draw_rect(Rect2(car_rear+1.1,-.65,1.0,1.3),paint.lightened(.15))
+	for side: float in [-1,1]:
+		node.draw_rect(Rect2(car_rear+3.45,side*.65-.12,.15,.24),Color8(247,233,173))
+		node.draw_rect(Rect2(car_rear,side*.65-.10,.12,.2),Color8(183,45,39))
 
 
 ## Railings: hedges and walls solid, fences and
 ## railings dashed (0.8 m on, 0.4 m off).
-## One draw call per style (a city has thousands of fences: a call per
-## dash cost megabytes of draw commands).
+## Batch each stroke style: a city has thousands of fences.
 func _draw_railings(node: Node2D) -> void:
 	var lines := {"hedge": PackedVector2Array(), "wall": PackedVector2Array(), "fence": PackedVector2Array(), "boards": PackedVector2Array()}
+	var fence_rails := PackedVector2Array()
+	var fence_posts := PackedVector2Array()
 	for railing in _data["railings"]:
 		var points := _points(railing[1])
 		var kind := str(railing[0]) if railing[0] in ["hedge", "wall", "boards"] else "fence"
+		if kind == "hedge":
+			for fragment in _hedge_damage.get(hedge_key(railing), [railing[1]]):
+				var branch := _points(fragment)
+				for i in branch.size() - 1:
+					lines["hedge"].append_array(PackedVector2Array([branch[i], branch[i+1]]))
+			continue
 		if kind == "fence":
-			for dash in dashes(points, 0.8, 0.4):
+			for i in points.size() - 1:
+				fence_rails.append_array(PackedVector2Array([points[i], points[i + 1]]))
+			var pieces := dashes(points, 0.8, 0.4)
+			for i in pieces.size():
+				var dash: Array = pieces[i]
 				lines["fence"].append_array(PackedVector2Array([dash[0], dash[1]]))
+				if i % 2 == 0:
+					var side: Vector2 = (dash[1] - dash[0]).normalized().orthogonal() * 0.25
+					fence_posts.append_array(PackedVector2Array([dash[0] - side, dash[0] + side]))
 		else:
 			for i in points.size() - 1:
 				lines[kind].append_array(PackedVector2Array([points[i], points[i + 1]]))
 	if not lines["hedge"].is_empty():
-		node.draw_multiline(lines["hedge"], Color8(58, 92, 48), maxf(_px(2.0), 0.25))
+		node.draw_multiline(lines["hedge"], Color8(25, 45, 26), maxf(_px(5.0), 1.05))
+		var foliage := hedge_foliage(lines["hedge"])
+		_triangles_colored(node, foliage[0], foliage[1], foliage[2])
 	if not lines["wall"].is_empty():
-		node.draw_multiline(lines["wall"], Color8(128, 122, 112), maxf(_px(2.0), 0.25))
+		node.draw_multiline(lines["wall"], Color8(49, 47, 42), maxf(_px(4.0), 0.50))
+		node.draw_multiline(lines["wall"], Color8(175, 164, 144), maxf(_px(2.0), 0.28))
 	if not lines["boards"].is_empty():  # an ice rink's boards: white, solid
 		node.draw_multiline(lines["boards"], Color8(240, 242, 244), maxf(_px(2.0), 0.3))
 	if not lines["fence"].is_empty():
-		# 0.12 m is a pixel or so at normal zoom: a hairline then (no triangles per dash).
-		node.draw_multiline(lines["fence"], Color8(150, 145, 130), -1.0 if 0.12 * _px_per_m < 1.5 else 0.12)
+		# A continuous dark rail exposes the collision boundary between the lighter slats.
+		node.draw_multiline(fence_rails, Color8(45, 43, 37), maxf(_px(3.0), 0.28))
+		node.draw_multiline(lines["fence"], Color8(205, 193, 157), maxf(_px(2.0), 0.16))
+		node.draw_multiline(fence_posts, Color8(223, 211, 177), maxf(_px(2.0), 0.18))
+
+
+## Overlapping leafy crowns, shaded at their edges, batched once per chunk.
+static func hedge_foliage(segments: PackedVector2Array) -> Array:
+	var points := PackedVector2Array()
+	var indices := PackedInt32Array()
+	var colors := PackedColorArray()
+	for i in range(0, segments.size() - 1, 2):
+		var a := segments[i]
+		var b := segments[i + 1]
+		var steps := maxi(1, ceili(a.distance_to(b) / 0.45))
+		for j in steps + 1:
+			var seed_value := float(i * 19 + j)
+			var at := a.lerp(b, float(j) / steps)
+			var radius := 0.43 + 0.08 * sin(seed_value * 2.4)
+			var base := points.size()
+			points.append(at + Vector2(-0.08, -0.10))
+			colors.append(Color8(115, 155, 68).lerp(Color8(89, 132, 53), (sin(seed_value * 1.7) + 1.0) * 0.5))
+			for k in 8:
+				var angle := TAU * k / 8.0
+				var reach := radius * (1.0 + 0.13 * sin(seed_value + k * 2.7))
+				points.append(at + Vector2(cos(angle), sin(angle)) * reach)
+				colors.append(Color8(48, 85, 35).lerp(Color8(73, 112, 42), (sin(angle - 2.0) + 1.0) * 0.5))
+				indices.append_array(PackedInt32Array([base, base + 1 + k, base + 1 + (k + 1) % 8]))
+	return [points, indices, colors]
 
 
 ## Street lights: each light's pool, a 270-degree fan
@@ -1206,20 +1467,8 @@ static func fuel_board_text(station: Dictionary) -> String:
 ## (a yellow TAXI sign on a pole).
 func _draw_points(node: Node2D) -> void:
 	for work in _data.get("roadworks", []):
-		var start := MapMath.point(_origin, work["start"][0], work["start"][1])
-		var end := MapMath.point(_origin, work["end"][0], work["end"][1])
-		var length := maxf(start.distance_to(end), 0.001)
-		var normal := Vector2(-(end.y - start.y), end.x - start.x) / length
-		var barrier := maxf(_px(2.0), float(work["half_width_m"]))
-		var closed: bool = work["lane_closed"]
-		for point in [start, end]:
-			node.draw_line(point if closed else point - normal * barrier, point + normal * barrier, Color8(235, 190, 35), maxf(_px(2.0), 2.0))
-		var steps := maxi(2, int(length * _px_per_m / maxf(18.0, 25.0 * _px_per_m)))
-		var cone_r := maxf(_px(2.0), 0.35)
-		for i in steps + 1:
-			var c := start.lerp(end, float(i) / steps) + (normal * barrier * 0.5 if closed else Vector2.ZERO)
-			node.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -cone_r * 2.0), c + Vector2(-cone_r, cone_r), c + Vector2(cone_r, cone_r)]), Color8(245, 105, 25))
-			node.draw_line(c - Vector2(cone_r / 2.0, 0), c + Vector2(cone_r / 2.0, 0), Color8(255, 220, 120), maxf(_px(1.0), cone_r / 2.0))
+		draw_roadwork(node, MapMath.point(_origin, work["start"][0], work["start"][1]),
+			MapMath.point(_origin, work["end"][0], work["end"][1]), float(work["half_width_m"]), work["lane_closed"], _px_per_m)
 	for stand in _data.get("taxi_stands", []):
 		node.draw_set_transform(MapMath.point(_origin, stand[0], stand[1]), 0.0, Vector2.ONE / _px_per_m)
 		node.draw_line(Vector2(0, -1), Vector2(0, 11), Color8(55, 55, 55), 2.0)
@@ -1228,6 +1477,27 @@ func _draw_points(node: Node2D) -> void:
 		var label_size := _font.get_string_size("TAXI", HORIZONTAL_ALIGNMENT_LEFT, -1, 10)
 		node.draw_string(_font, Vector2(-label_size.x / 2.0, -2), "TAXI", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color8(20, 20, 20))
 	node.draw_set_transform(Vector2.ZERO)
+
+
+## One roadwork zone in screen metres: yellow barriers at the ends asked for
+## (across the closed half, or the whole road), cones between - on the
+## right-hand half when a lane is closed (the server's closed lane).
+static func draw_roadwork(node: CanvasItem, start: Vector2, end: Vector2, half_width_m: float, closed: bool,
+		px_per_m: float, barriers := [true, true]) -> void:
+	var px := func(pixels: float) -> float: return pixels / px_per_m
+	var length := maxf(start.distance_to(end), 0.001)
+	var normal := Vector2(-(end.y - start.y), end.x - start.x) / length
+	var barrier := maxf(px.call(2.0), half_width_m)
+	for i in 2:
+		if barriers[i]:
+			var point := start if i == 0 else end
+			node.draw_line(point if closed else point - normal * barrier, point + normal * barrier, Color8(235, 190, 35), maxf(px.call(2.0), 2.0))
+	var steps := maxi(2, int(length * px_per_m / maxf(18.0, 25.0 * px_per_m)))
+	var cone_r := maxf(px.call(2.0), 0.35)
+	for i in steps + 1:
+		var c := start.lerp(end, float(i) / steps) + (normal * barrier * 0.5 if closed else Vector2.ZERO)
+		node.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -cone_r * 2.0), c + Vector2(-cone_r, cone_r), c + Vector2(cone_r, cone_r)]), Color8(245, 105, 25))
+		node.draw_line(c - Vector2(cone_r / 2.0, 0), c + Vector2(cone_r / 2.0, 0), Color8(255, 220, 120), maxf(px.call(1.0), cone_r / 2.0))
 
 
 ## Which lamps a phase lights: [red, yellow, green]. Unknown (no phase
@@ -1300,3 +1570,11 @@ static func puddle_spots(roads: Array, bounds: Rect2, origin: Vector2) -> Array:
 				spots.append({"at": at, "radius": maxf(RS.PUDDLE_MIN_RADIUS_M, radius), "reveal": reveal, "shape": shape, "phase": phase,
 					"z": road_z(int(road.get("layer", 0)))})
 	return spots
+
+
+func _draw_attractions(node: Node2D) -> void:
+	for ride in _data.get("attractions", []):
+		var points := PackedVector2Array()
+		for point in ride[1]:
+			points.append(MapMath.point(_origin, point[0], point[1]))
+		preload("res://attraction_draw.gd").draw_ride(node, str(ride[0]), points)

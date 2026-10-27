@@ -178,5 +178,7 @@ def test_clearance_indexes_a_late_spawn_before_choosing_a_slot():
     manager.vehicles.append(late)  # deliberately not indexed yet
     manager.trigger_road_rage(0)
     manager.road_rage.update(manager, car, 0, ways, grid, ways[0])
+    from theroadragetrip.taxi_brawls import PROVOKE_CLEARANCE, npc_rage
+    assert npc_rage(vehicle, 0) == PROVOKE_CLEARANCE  # shoved aside: its driver is angry
     assert not boxes_intersect(vehicle.x, vehicle.y, vehicle.heading, vehicle.length_m, vehicle.width_m,
                                late.x, late.y, late.heading, late.length_m, late.width_m)

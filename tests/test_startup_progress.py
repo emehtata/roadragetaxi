@@ -45,3 +45,15 @@ def test_run_server_reports_constructor_failure_before_socket_exists(tmp_path, m
         server.run_server(SimpleNamespace(startup_progress=path), None)
     assert json.loads(path.read_text())["detail"] == "ValueError: broken map"
     assert json.loads(path.read_text())["stage"] == "error"
+
+
+def test_new_detail_is_written_immediately(tmp_path):
+    import json
+    from theroadragetrip.server.startup_progress import StartupProgress
+    path = tmp_path / "status.json"
+    progress = StartupProgress(path)
+    progress("world", "Preparing building and scenery indexes...")
+    progress("world", "Initializing intercity navigation database...")
+    import time
+    time.sleep(0.5)
+    assert json.loads(path.read_text())["detail"] == "Initializing intercity navigation database..."

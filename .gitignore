@@ -55,7 +55,11 @@ output/
 game-mechanics-optimizations
 *.pbf
 *.pbf.index/
-src/theroadragetrip/assets/roads/*.bin
+*.pbf.roads.sqlite
+*.intercity.sqlite
+src/theroadragetrip/assets/osm/roads-*/
 
 # graphify knowledge-graph output and cache
 graphify-out/
+tools/godot/Godot_v*-stable_linux.*
+*.code-workspace

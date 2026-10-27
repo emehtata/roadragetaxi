@@ -37,6 +37,7 @@ runtime and these packages, versions as in `PACKAGES.txt`:
 | idna | BSD-3-Clause | |
 | charset-normalizer | MIT | |
 | certifi | MPL-2.0 | Its CA bundle (`cacert.pem`) is unmodified; source: https://github.com/certifi/python-certifi |
+| PyEphem (`ephem`) | MIT | Self-contained astronomical calculations; no ephemeris download at runtime |
 | pyproj, with PROJ | MIT | PROJ's licence ships as `LICENSE_proj` |
 | shapely | BSD-3-Clause | |
 | GEOS (bundled by shapely as its own DLL) | LGPL-2.1 | The licence ships as `shapely/licenses/LICENSE_GEOS`. The DLL can be replaced. Its source is attached to every release (`geos-<version>-source.tar.bz2`) and is at https://libgeos.org/ |

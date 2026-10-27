@@ -3,7 +3,7 @@
 ## asks to accept or reject it; the simulation decides (a "phone_result"
 ## event answers) - this never decides whether an offer exists.
 ##
-## Keys (InputMap actions, added here): P open/close, Esc close, 1-3 pick a
+## Keys (InputMap actions, added here): P/N open/close, 1-3 pick a
 ## row, Enter accept, X reject. None of them drive the taxi, and driving
 ## keys keep working while the phone is open (the simulation doesn't pause).
 class_name Phone
@@ -18,7 +18,6 @@ signal sound(group: String, variation: int)  # main plays it (ui.phone_open: 0 o
 
 const ACTIONS := {
 	"phone_toggle": [KEY_P, KEY_N],
-	"phone_close": [KEY_ESCAPE],
 	"phone_accept": [KEY_ENTER, KEY_KP_ENTER],
 	"phone_reject": [KEY_X],
 	"phone_pick_1": [KEY_1, KEY_KP_1],
@@ -41,6 +40,8 @@ var _next_request := 1
 var _structure := ""  # what the row buttons were built for
 var _rows: VBoxContainer
 var _status: Label
+var _protest_note: Label
+var protest_active := false
 var _details: Label
 var _accept: Button
 var _reject: Button
@@ -61,6 +62,8 @@ var layout = preload("res://hud_layout.gd").new(false)
 var navigation: VBoxContainer
 var _offers: ScrollContainer
 var _buttons: HBoxContainer
+var _boot: PanelContainer  # the start-up screen over the app until the first connection
+var _boot_text: Label
 
 
 func _ready() -> void:
@@ -105,6 +108,10 @@ func _ready() -> void:
 	_status = _label(14, Color8(45, 40, 20))
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	header_rows.add_child(_status)
+	_protest_note = _label(16, Color8(100, 30, 15))
+	_protest_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_protest_note.visible = false
+	header_rows.add_child(_protest_note)
 	box.add_child(header)
 	var list_margin := MarginContainer.new()
 	for side in ["left", "right"]:
@@ -142,6 +149,9 @@ func _ready() -> void:
 	_close.pressed.connect(close)
 	buttons.add_child(_close)
 	box.add_child(home_indicator())
+	_boot = make_boot_screen()
+	_boot_text = _boot.get_node("Rows/Text")
+	add_child(_boot)  # a PanelContainer stacks it over the app screen
 	set_language(language)
 	_refresh()
 	resized.connect(update_layout)
@@ -154,15 +164,20 @@ func update_layout() -> void:
 	if not is_visible_in_tree():
 		layout.rects.erase("navigation_phone")
 		return
-	var physical_size := size * scale
+	scale = Vector2.ONE * DEVICE_SCALE * layout.scale_of("navigation_phone")
+	var physical_size := size * Vector2.ONE * DEVICE_SCALE  # unscaled: place() applies the player's size
+	# Seed the new default in the old offset coordinates, preserving saved placements.
+	if not layout.offsets.has("navigation_phone"):
+		layout.offsets["navigation_phone"] = Vector2(maxf(16.0, get_viewport_rect().size.x - physical_size.x - 206.0) - 16.0, 0.0)
 	position = layout.place("navigation_phone", Rect2(Vector2(16, 125), physical_size), get_viewport_rect().size).position
-	# Only the header drags; offer cards, scrolling and buttons remain clickable.
-	layout.rects["navigation_phone"] = Rect2(position, Vector2(physical_size.x, 100 * scale.y))
+	# Only the header drags (the whole phone's corner resizes); offer cards,
+	# scrolling and buttons remain clickable.
+	layout.rects["navigation_phone"] = Rect2(position, Vector2(size.x * scale.x, 100 * scale.y))
 
 
-func show_navigation(route: Dictionary) -> void:
+func show_navigation(route: Dictionary, task := "") -> void:
 	navigation.language = language
-	navigation.show_navigation(route)
+	navigation.show_navigation(route, task)
 
 
 static func device_style() -> StyleBoxFlat:
@@ -229,6 +244,47 @@ static func _label(font_size: int, color: Color, text := "") -> Label:
 	return label
 
 
+## While the game loads, the phone is still starting up: the app's logo,
+## a running bar and "starting up".
+static func make_boot_screen() -> PanelContainer:
+	var boot := PanelContainer.new()
+	var style := screen_style()
+	style.bg_color = Color8(14, 16, 20)
+	boot.add_theme_stylebox_override("panel", style)
+	var rows := VBoxContainer.new()
+	rows.name = "Rows"
+	rows.alignment = BoxContainer.ALIGNMENT_CENTER
+	rows.add_theme_constant_override("separation", 18)
+	boot.add_child(rows)
+	var logo := Label.new()
+	logo.text = "RageCab"
+	logo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	logo.add_theme_font_size_override("font_size", 40)
+	logo.add_theme_color_override("font_color", Color8(255, 199, 0))
+	rows.add_child(logo)
+	var bar_margin := MarginContainer.new()
+	for side in ["left", "right"]:
+		bar_margin.add_theme_constant_override("margin_" + side, 60)
+	var bar := ProgressBar.new()
+	bar.indeterminate = true
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(160, 6)
+	for part in ["background", "fill"]:  # the app's yellow on a dim track
+		var look := StyleBoxFlat.new()
+		look.bg_color = Color8(255, 199, 0) if part == "fill" else Color8(45, 50, 58)
+		look.set_corner_radius_all(3)
+		bar.add_theme_stylebox_override(part, look)
+	bar_margin.add_child(bar)
+	rows.add_child(bar_margin)
+	var text := Label.new()
+	text.name = "Text"
+	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	text.add_theme_font_size_override("font_size", 14)
+	text.add_theme_color_override("font_color", Color8(150, 160, 170))
+	rows.add_child(text)
+	return boot
+
+
 func _app_button(fill: Color, text_color: Color) -> Button:
 	var button := Button.new()
 	button.focus_mode = Control.FOCUS_NONE
@@ -251,6 +307,8 @@ func set_language(value: String) -> void:
 	_accept.text = T.text("phone_accept", language)
 	_reject.text = T.text("phone_decline", language)
 	_close.text = T.text("phone_close", language)
+	if _boot != null:
+		_boot_text.text = T.text("phone_booting", language)
 	_refresh()
 
 
@@ -340,7 +398,12 @@ func show_phone(phone: Dictionary) -> void:
 ## it nothing can be answered, and rows from the old session are stale.
 func set_connected(up: bool) -> void:
 	connected = up
+	if up and _boot != null:  # booted for good: later drops show "no connection" in the app
+		remove_child(_boot)
+		_boot.queue_free()
+		_boot = null
 	if not up:
+		protest_active = false
 		items = []
 		busy = false
 		pending.clear()
@@ -413,8 +476,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle()
 	elif not is_open:
 		return
-	elif event.is_action("phone_close"):
-		close()
 	elif busy:
 		return  # navigation must not consume fare-selection or driving keys
 	elif event.is_action("phone_accept"):
@@ -448,6 +509,8 @@ func _refresh() -> void:
 		_fill_card(_rows.get_child(i), i)
 	_status.text = status_text(connected, busy, items, notice, language)
 	_status.visible = not busy
+	_protest_note.text = T.text("phone_protest", language)
+	_protest_note.visible = protest_active
 	_offers.visible = not busy
 	navigation.visible = busy
 	_buttons.visible = not busy
@@ -551,10 +614,7 @@ static func card_text(item: Dictionary, language := "en") -> String:
 	var lines: Array = []
 	lines.append(T.text("phone_pickup_short", language) % item.get("pickup", "?"))
 	lines.append(T.text("phone_to_short", language) % item.get("dropoff", "?"))
-	if int(item.get("passenger_count", 1)) > 1:
-		lines.append(T.text("phone_group", language) % [int(item["passenger_count"]), distance_text(item.get("trip_distance_m"), language)])
-	else:
-		lines.append(T.text("phone_trip_meter", language) % distance_text(item.get("trip_distance_m"), language))
+	lines.append(T.text("phone_trip_meter", language) % distance_text(item.get("trip_distance_m"), language))
 	return "\n".join(lines)
 
 

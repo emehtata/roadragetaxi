@@ -16,6 +16,8 @@ from .physics import Car, is_car_road, is_pedestrian_way
 from .residents import MIN_UNACCOMPANIED_AGE, ResidentManager
 from .population import municipality_at, walkers_within
 from .activities import ActivityContext, ActivityInstance, ActivityLocation, ActivityManager
+from .activities.beach import BEACH_ACTIVITIES, populate_beach
+from .activities.plugins.golf import GOLF_ACTIVITIES
 from .activities.plugins.ice_skating import FIELD_ACTIVITIES
 from .activities.plugins.ice_hockey import SKATERS_PER_TEAM
 from .activities.plugins.soccer import FIELD_PLAYERS_MAX, is_soccer_pitch
@@ -41,6 +43,24 @@ VOMIT_STEP_RADIUS_M = 0.9  # a pedestrian this close to a vomit puddle has stepp
 DIRTY_FOOTPRINTS = 6  # footprints left by shoes that went through vomit
 FOOTPRINT_SPACING_M = 0.7
 MAX_FOOTPRINTS = 300
+ALCOHOL_DECAY_PER_GAME_HOUR = 0.15  # gameplay estimate, not a medical model
+DRUNK_FROM_PROMILLE = 0.5
+# Adults spending time at a camping area (tourism=camp_site/caravan_site/
+# camp_pitch, within CAMPING_NEAR_M) are often drinking: this share spawn drunk.
+CAMPING_KINDS = ("camp_site", "caravan_site", "camp_pitch")
+CAMPING_NEAR_M = 200.0
+CAMPING_DRUNK_CHANCE = 0.5
+CAMPING_PROMILLE = (0.5, 2.0)
+# Bottles (gameplay estimates, not a medical model): some adults carry beer
+# and drink it while hanging out (idle or sitting), in game time - a bottle
+# lasts BOTTLE_DRINK_S and adds BOTTLE_PROMILLE, so a few make them drunk.
+BOTTLE_CHANCE = 0.06  # anywhere, by day
+BOTTLE_EVENING_CHANCE = 0.18  # 18-03
+BOTTLE_CAMPING_CHANCE = 0.45
+BOTTLES = (1, 6)  # one, or up to a six-pack
+BOTTLE_DRINK_S = 15 * 60.0
+BOTTLE_PROMILLE = 0.25
+HANGING_OUT = ("idle", "sitting")
 
 PEDESTRIAN_COLORS = [
     (230, 80, 80),    # Red
@@ -64,15 +84,6 @@ VENUE_TYPES = {
     "pub",
     "restaurant",
 }
-
-CYCLIST_COLORS = [
-    (50, 120, 220),
-    (220, 60, 60),
-    (50, 170, 90),
-    (220, 150, 40),
-    (150, 70, 190),
-    (230, 230, 230),
-]
 
 PEDESTRIAN_LOD_UPDATE_INTERVALS = (1.0 / 30.0, 1.0 / 12.0, 0.2)
 MAX_VEHICLE_RESERVATION_DISTANCE_M = 100.0
@@ -300,6 +311,13 @@ class PedestrianNetwork:
             lambda ring: (ring * PEDESTRIAN_NETWORK_GRID_CELL_M) ** 2,
         )[1]
 
+    def connected(self, start: Tuple[float, float], target: Tuple[float, float]) -> bool:
+        """Whether route() can find a network path (not its straight fallback)."""
+        if not self.nodes:
+            return False
+        return _component_root(self._component_parent, self._nearest_node(start)) == _component_root(
+            self._component_parent, self._nearest_node(target))
+
     def route(self, start: Tuple[float, float], target: Tuple[float, float]) -> List[Tuple[float, float]]:
         """Return shortest network route with direct connectors at both ends."""
         if not self.nodes:
@@ -348,6 +366,10 @@ PEDESTRIAN_DESPAWN_RADIUS_M = 170.0
 POPULATION_PER_SHOWN = 4.0
 PEDESTRIAN_SPAWNS_PER_CHECK = 10  # per population check (was 2 per 5 s: the road ahead stayed empty)
 POPULATION_CHECK_S = 2.0  # was 5 s
+# Wall-clock cap on one population check's spawn attempts (at least one runs):
+# unbounded, a dense centre took up to 191 ms in one tick (rrt-019 audit).
+# A check cut short runs again the next tick, so the population still fills.
+PEDESTRIAN_SPAWN_BUDGET_S = 0.004
 
 
 class PedestrianState(str, Enum):
@@ -377,6 +399,18 @@ class PedestrianAppearance:
     clothing: Optional[Tuple[int, int, int]] = None
     arms: Optional[Tuple[int, int, int]] = None
     legs: Tuple[int, int, int] = (35, 35, 45)
+
+
+@dataclass
+class Dog:
+    """One non-colliding dog owned by a walking pedestrian."""
+
+    x: float
+    y: float
+    heading: float
+    size: str
+    color: Tuple[int, int, int]
+    sniffing: bool = False
 
 
 @dataclass
@@ -418,6 +452,9 @@ class Pedestrian:
     is_cyclist: bool = False
     is_drunk: bool = False
     blood_alcohol_promille: float = 0.0
+    bottles: int = 0  # bottles carried, the open one included (0: none in hand)
+    bottle_left: float = 1.0  # of the open bottle
+    drinking: bool = False  # hanging out with a bottle: sipping it (drawn raised now and then)
     drunk_phase: float = 0.0
     drunk_vomit_cooldown: float = 0.0
     fall_timer: float = 0.0
@@ -451,11 +488,13 @@ class Pedestrian:
     # spec property, see activities/base.py's ActivityInstance.
     activity: Optional[ActivityInstance] = None
     activity_flags: Dict[str, Any] = field(default_factory=dict)
+    dog: Optional[Dog] = None
     # collision-avoidance section 17: a departed accident driver's visible mood -
     # separate from animation_state, which the activity system already
     # overwrites to "idle" while performing an activity (would otherwise
     # clobber "annoyed" the moment the phone-checking activity starts).
     mood: str = "normal"
+    thief_target: Optional[Tuple[float, float]] = None  # a bike thief runs here (npc.py _update_bike_thefts)
 
 
 @dataclass
@@ -495,6 +534,7 @@ class PedestrianManager:
         self.despawn_radius_m = despawn_radius_m
         self.pedestrians: List[Pedestrian] = []
         self.curses: List[Tuple[float, float]] = []  # where a startled pedestrian cursed; drained by the simulation
+        self.sound_events: List[Tuple[str, Tuple[float, float]]] = []
         self.traffic_lights: List[TrafficLight] = traffic_lights or []
         self.crossings: List[Crossing] = crossings or []
         self.logical_intersections = logical_intersections or []
@@ -502,7 +542,10 @@ class PedestrianManager:
         self.traffic_manager = traffic_manager
         self.residents = residents if residents is not None else ResidentManager()
         self.sim_time: float = 0.0
+        self._last_game_time_seconds: Optional[float] = None
         self.sports_ice_open = False  # server: fields frozen, and daylight or floodlit hours
+        self.tennis_open = False
+        self.beach_open = False
         self.soccer_open = False  # server: no snow on the pitches, and daylight or floodlit hours
         self._ice_checked_at = -1e9
         self._population_update_elapsed: float = 4.9
@@ -578,6 +621,70 @@ class PedestrianManager:
             logical_intersections=logical_intersections,
         )
 
+    def _near_camping(self, x: float, y: float) -> bool:
+        return any(getattr(scenery, "kind", None) in CAMPING_KINDS for scenery in self.nearby_sceneries(x, y, CAMPING_NEAR_M))
+
+    def _hand_bottles(self, pedestrian: Pedestrian, rng=random) -> None:
+        """Some adults carry bottles: more in the evening, many at a camping area."""
+        if (pedestrian.bottles or getattr(pedestrian, "linked_vehicle_id", None) is not None
+                or getattr(pedestrian, "held_by", None) is not None or self.residents is None):
+            return
+        hour = ((self._last_game_time_seconds or 12 * 3600.0) / 3600.0) % 24.0
+        chance = BOTTLE_CAMPING_CHANCE if self._near_camping(pedestrian.x, pedestrian.y) else (
+            BOTTLE_EVENING_CHANCE if hour >= 18.0 or hour < 3.0 else BOTTLE_CHANCE)
+        if rng.random() >= chance:
+            return
+        self._register_resident(pedestrian)
+        resident = self.residents.get(pedestrian.resident_id)
+        if resident is not None and self.residents.age_of(resident) >= 18:
+            pedestrian.bottles = rng.randint(*BOTTLES)
+            pedestrian.bottle_left = 1.0
+
+    def play_sound(self, group_id: str, at: Tuple[float, float]) -> None:
+        # Bound transient cues even when several groups hit a transition in the same tick.
+        if len(self.sound_events) < 64:
+            self.sound_events.append((group_id, at))
+
+    @staticmethod
+    def drink(pedestrian: Pedestrian, game_dt: float, rng=random) -> bool:
+        """Sip while hanging out with a bottle: alcohol in, the bottle down,
+        the next one opened; drunk past DRUNK_FROM_PROMILLE."""
+        pedestrian.drinking = pedestrian.bottles > 0 and pedestrian.animation_state in HANGING_OUT
+        if not pedestrian.drinking or game_dt <= 0.0:
+            return False
+        opened = pedestrian.bottle_left == 1.0
+        sip = min(pedestrian.bottle_left, game_dt / BOTTLE_DRINK_S)
+        pedestrian.bottle_left -= sip
+        pedestrian.blood_alcohol_promille += sip * BOTTLE_PROMILLE
+        if pedestrian.bottle_left <= 1e-9:
+            pedestrian.bottles -= 1
+            pedestrian.bottle_left = 1.0
+        if not pedestrian.is_drunk and pedestrian.blood_alcohol_promille >= DRUNK_FROM_PROMILLE:
+            pedestrian.is_drunk = True
+            pedestrian.drunk_phase = rng.uniform(0.0, 2.0 * math.pi)
+            pedestrian.drunk_vomit_cooldown = rng.uniform(8.0, 25.0)
+        return opened
+
+    def _camping_drink(self, pedestrian: Pedestrian, rng=random) -> None:
+        """An adult at a camping area: CAMPING_DRUNK_CHANCE to be drunk. Not
+        someone on their way back to a car (they would drive it) or owned by
+        another system (a rail passenger)."""
+        if (pedestrian.is_drunk or getattr(pedestrian, "linked_vehicle_id", None) is not None
+                or getattr(pedestrian, "held_by", None) is not None or self.residents is None):
+            return
+        if not any(
+                getattr(scenery, "kind", None) in CAMPING_KINDS
+                for scenery in self.nearby_sceneries(pedestrian.x, pedestrian.y, CAMPING_NEAR_M)):
+            return
+        self._register_resident(pedestrian)  # an age to go by
+        resident = self.residents.get(pedestrian.resident_id)
+        if resident is None or self.residents.age_of(resident) < 18 or rng.random() >= CAMPING_DRUNK_CHANCE:
+            return
+        pedestrian.is_drunk = True
+        pedestrian.blood_alcohol_promille = rng.uniform(*CAMPING_PROMILLE)
+        pedestrian.drunk_phase = rng.uniform(0.0, 2.0 * math.pi)
+        pedestrian.drunk_vomit_cooldown = rng.uniform(8.0, 25.0)
+
     def _register_resident(self, pedestrian: Pedestrian) -> Pedestrian:
         if pedestrian.resident_id is None:
             pedestrian.resident_id = self.residents.create("walking", min_age=MIN_UNACCOMPANIED_AGE).resident_id
@@ -591,6 +698,8 @@ class PedestrianManager:
         ):
             return False
         self.pedestrians.append(pedestrian)
+        self._camping_drink(pedestrian)
+        self._hand_bottles(pedestrian)
         return True
 
     def _materialize_parked_drivers(self) -> None:
@@ -610,6 +719,10 @@ class PedestrianManager:
                 continue
             if getattr(vehicle, "is_taxi", False):
                 continue  # a taxi's driver stays at the wheel (competitor_taxis.py)
+            if getattr(vehicle, "vehicle_kind", None) == "night_cruise":
+                continue  # cruising groups stay aboard between trips
+            if getattr(vehicle, "vehicle_kind", None) == "bus_line":
+                continue  # bus-stop exchange owns its riders; this path unloads only building visitors
             trip_group = getattr(vehicle, "trip_group", None)
             if trip_group is None or not self.entrance_locations:
                 continue
@@ -660,6 +773,48 @@ class PedestrianManager:
                     trip_group.disembarked_resident_ids.add(resident_id)
                     trip_group.boarded_resident_ids.discard(resident_id)
                     linked_residents.add(resident_id)
+
+    def exchange_bus_passengers(self, vehicle, stop) -> None:
+        """Show a few riders leaving and let people waiting at this stop board."""
+        group = getattr(vehicle, "trip_group", None)
+        if group is None:
+            return
+
+        door = self._vehicle_entry_position(vehicle)
+        leaving = [resident_id for resident_id in group.member_resident_ids if resident_id != vehicle.owner_id][:3]
+        for resident_id in leaving:
+            pedestrian = self.spawn_pedestrian_at(*door, heading=vehicle.heading, resident_id=resident_id)
+            if pedestrian is None or not self.add_pedestrian(pedestrian):
+                continue
+            group.member_resident_ids.remove(resident_id)
+            group.boarded_resident_ids.discard(resident_id)
+            group.disembarked_resident_ids.discard(resident_id)
+            resident = self.residents.get(resident_id) if self.residents is not None else None
+            if resident is not None:
+                resident.mode = "walking"
+                resident.active_vehicle_id = None
+                resident.trip_group_id = None
+
+        seats = vehicle.available_seats
+        waiting = [
+            pedestrian for pedestrian in self.pedestrians
+            if pedestrian.activity is not None
+            and pedestrian.activity.plugin_id == "bus_stop_waiting"
+            and pedestrian.state == "performing_activity"
+            and math.hypot(pedestrian.x - stop.x, pedestrian.y - stop.y) <= 15.0
+        ][:seats]
+        for pedestrian in waiting:
+            self._end_activity(pedestrian, pedestrian.activity)
+            group.member_resident_ids.append(pedestrian.resident_id)
+            pedestrian.linked_vehicle_id = id(vehicle)
+            pedestrian.destination = door
+            pedestrian.route = None
+            pedestrian.state = "returning_to_vehicle"
+            pedestrian.animation_state = "walking"
+            resident = self.residents.get(pedestrian.resident_id) if self.residents is not None else None
+            if resident is not None:
+                resident.trip_group_id = group.group_id
+                resident.vehicle_ids.add(vehicle.vehicle_id)
 
     def track_vomit(self, puddles) -> None:
         """A pedestrian walking into a vomit puddle curses (the bubble and
@@ -824,6 +979,7 @@ class PedestrianManager:
                 or pedestrian.linked_vehicle_id is not None
                 or pedestrian.reserved_vehicle_id is not None
                 or pedestrian.current_vehicle_id is not None
+                or pedestrian.thief_target is not None
                 or pedestrian.is_cyclist
                 or pedestrian.is_drunk
                 or pedestrian.wants_taxi
@@ -942,6 +1098,10 @@ class PedestrianManager:
             pedestrian.vehicle_entry_timer = max(0.0, pedestrian.vehicle_entry_timer - update_dt)
             if pedestrian.vehicle_entry_timer <= 0.0:
                 trip_group.boarded_resident_ids.add(pedestrian.resident_id)
+                resident = self.residents.get(pedestrian.resident_id) if self.residents is not None else None
+                if resident is not None:
+                    resident.mode = "riding"
+                    resident.active_vehicle_id = vehicle.vehicle_id
                 pedestrian.state = PedestrianState.DESPAWNING.value
                 pedestrian.linked_vehicle_id = None
             return True
@@ -1240,8 +1400,21 @@ class PedestrianManager:
         )
         self._record("pedestrians:route_nearest", stage_started)
         start = (pedestrian.x, pedestrian.y)
+        # The start side too: joined where the step onto the footway does not
+        # cut through a building (people walked across houses to their door).
+        start_on = self.network.nearest_point(
+            start, reject=lambda x, y: self._path_crosses_building(start[0], start[1], x, y),
+        )
         stage_started = (time.perf_counter(), time.thread_time())
-        route = self._plan_pedestrian_route(start, nearest) if nearest is not None else [start]
+        if nearest is not None and start_on is not None and self.network.connected(start_on, nearest):
+            route = [start] + self._plan_pedestrian_route(start_on, nearest)
+        else:
+            # No connected footway between them (patchy sidewalk mapping): along
+            # the streets, never the straight line through whatever is between.
+            road = self.traffic_manager.plan_route(start, entry_position) if self.traffic_manager is not None and hasattr(
+                self.traffic_manager, "plan_route") else None
+            route = [start] + [tuple(point[:2]) for point in road] if road else (
+                self._plan_pedestrian_route(start, nearest) if nearest is not None else [start])
         self._record("pedestrians:route_search", stage_started)
         self.sync_stats["routes"] += 1
         if math.hypot(entry_position[0] - route[-1][0], entry_position[1] - route[-1][1]) > 0.01:
@@ -1268,8 +1441,8 @@ class PedestrianManager:
         offset = getattr(vehicle, "width_m", 1.8) * 0.5 + 1.0
         heading = getattr(vehicle, "heading", 0.0)
         return (
-            vehicle.x - math.sin(heading) * offset,
-            vehicle.y + math.cos(heading) * offset,
+            vehicle.x + math.sin(heading) * offset,
+            vehicle.y - math.cos(heading) * offset,
         )
 
     def cancel_vehicle_reservation(self, pedestrian: Pedestrian) -> None:
@@ -1674,14 +1847,43 @@ class PedestrianManager:
                     self.activity_manager.release(dropped.activity.location)
             self.pedestrians = held + free[:keep]
 
-    def update_lod(self, player_car: Car, dt: float) -> None:
+    def discard_outside(self, bounds, protected_resident_ids=()):
+        """Unseen ambient walkers and activities have no continuing journey."""
+        from .viewport import in_bounds
+
+        protected = set(protected_resident_ids)
+        vehicles = self.traffic_manager.npcs if self.traffic_manager is not None else self.traffic_vehicles
+        live_vehicles = {id(v) for v in vehicles}
+        kept = []
+        for ped in self.pedestrians:
+            links = {ped.linked_vehicle_id, ped.current_vehicle_id, ped.reserved_vehicle_id} - {None}
+            if (in_bounds(bounds, ped.x, ped.y, ped.radius_m) or ped.resident_id in protected
+                    or getattr(ped, "held_by", None) is not None or links & live_vehicles):
+                kept.append(ped)
+                continue
+            if ped.activity is not None:
+                instance = ped.activity
+                plugin = self.activity_manager.registry.get(instance.plugin_id)
+                if plugin is not None and ped.state == "performing_activity":
+                    plugin.finish(self._activity_context(ped), instance)
+                self._end_activity(ped, instance)
+        self.pedestrians[:] = kept
+        self.vomit_puddles[:] = [p for p in self.vomit_puddles if in_bounds(bounds, p[0], p[1], 2.0)]
+        footprints = [p for p in self.vomit_footprints if in_bounds(bounds, p[0], p[1], 0.5)]
+        self.vomit_footprints.clear()
+        self.vomit_footprints.extend(footprints)
+
+    def update_lod(self, player_car: Car, dt: float, view_bounds=None) -> None:
         """Schedule pedestrian simulation using distance bands."""
         for pedestrian in self.pedestrians:
             distance = math.hypot(pedestrian.x - player_car.x, pedestrian.y - player_car.y)
             pedestrian.lod_level = 0 if distance < 500.0 else 1 if distance < 1500.0 else 2
+            if view_bounds is not None:
+                from .viewport import in_bounds
+                pedestrian.lod_level = 0 if distance < 60 or in_bounds(view_bounds, pedestrian.x, pedestrian.y, pedestrian.radius_m) else 1
             pedestrian.lod_time_accumulator += dt
             interval = PEDESTRIAN_LOD_UPDATE_INTERVALS[pedestrian.lod_level]
-            if pedestrian.lod_update_due or pedestrian.lod_time_accumulator >= interval:
+            if (view_bounds is None and pedestrian.lod_update_due) or pedestrian.lod_time_accumulator >= interval:
                 pedestrian.lod_update_dt = pedestrian.lod_time_accumulator
                 pedestrian.lod_update_due = True
                 pedestrian.lod_time_accumulator = 0.0
@@ -1801,13 +2003,14 @@ class PedestrianManager:
         """Sports where the camera looks: fields in the viewport (plus
         ICE_VIEW_MARGIN_M) keep people playing what the season allows
         (_field_game) - skaters on frozen pitches, hockey on rinks, soccer
-        on summer pitches - and players of a field that has left that area
+        on summer pitches, golfers on mapped holes - and players of a field that has left that area
         go (their game stops; nothing runs unseen). Bounded: one check every
         ICE_SKATER_CHECK_S, at most SPORTS_SPAWNS_PER_CHECK spawns a check."""
         if self.sim_time - self._ice_checked_at < ICE_SKATER_CHECK_S:
             return
         self._ice_checked_at = self.sim_time
         from .activities.plugins.park_leisure import sample_interior_point
+        from .viewport import in_bounds
 
         if viewport_bounds is None:  # headless: around the player
             viewport_bounds = (player_car.x - self.spawn_radius_m, player_car.y - self.spawn_radius_m,
@@ -1823,6 +2026,17 @@ class PedestrianManager:
         kept = []
         for ped in self.pedestrians:
             instance = ped.activity
+            if instance is not None and instance.plugin_id in BEACH_ACTIVITIES + ("theme_park", "tennis", "beach_volleyball") and not in_bounds((vminx, vminy, vmaxx, vmaxy), ped.x, ped.y):
+                plugin = self.activity_manager.registry.get(instance.plugin_id)
+                if plugin is not None:
+                    plugin.finish(self._activity_context(ped), instance)
+                self._end_activity(ped, instance)
+                continue
+            if instance is not None and instance.plugin_id in GOLF_ACTIVITIES:
+                ball = instance.data.get("ball", (ped.x, ped.y))
+                if not in_bounds((vminx, vminy, vmaxx, vmaxy), ped.x, ped.y) and not in_bounds((vminx, vminy, vmaxx, vmaxy), *ball[:2]):
+                    self._end_activity(ped, instance)
+                    continue
             if instance is not None and instance.plugin_id in FIELD_ACTIVITIES and instance.location:
                 field = instance.location.extra
                 if not in_view(field):  # out of sight: the player leaves the ice and the game
@@ -1834,12 +2048,42 @@ class PedestrianManager:
                 on_ice[id(field)] = on_ice.get(id(field), 0) + 1
             kept.append(ped)
         self.pedestrians = kept
-        if not (self.sports_ice_open or self.soccer_open):
+        if not (self.sports_ice_open or self.soccer_open or self.beach_open or self.tennis_open):
             return
         centre_x, centre_y = (vminx + vmaxx) / 2.0, (vminy + vmaxy) / 2.0
         reach = math.hypot(vmaxx - vminx, vmaxy - vminy) / 2.0
         spawns = 0
         for field in self.nearby_sceneries(centre_x, centre_y, reach):
+            if getattr(field, "volleyball_frame", None) and self.beach_open:
+                plugin = self.activity_manager.registry.get("beach_volleyball")
+                spawns += plugin.populate(self, field, (vminx, vminy, vmaxx, vmaxy), SPORTS_SPAWNS_PER_CHECK - spawns)
+                if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                    return
+                continue
+            if getattr(field, "tennis_frame", None) and self.tennis_open:
+                plugin = self.activity_manager.registry.get("tennis")
+                spawns += plugin.populate(self, field, (vminx, vminy, vmaxx, vmaxy), SPORTS_SPAWNS_PER_CHECK - spawns)
+                if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                    return
+                continue
+            if field.kind.startswith("attraction_") and self.soccer_open:
+                plugin = self.activity_manager.registry.get("theme_park")
+                spawns += plugin.populate(self, field, (vminx, vminy, vmaxx, vmaxy), SPORTS_SPAWNS_PER_CHECK - spawns)
+                if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                    return
+                continue
+            if field.kind == "beach" and self.beach_open:
+                spawns += populate_beach(self, field, (vminx, vminy, vmaxx, vmaxy), SPORTS_SPAWNS_PER_CHECK - spawns)
+                if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                    return
+                continue
+            if field.kind in ("golf_course", "miniature_golf") and self.soccer_open:
+                plugin = self.activity_manager.registry.get("miniature_golf" if field.kind == "miniature_golf" else "golf")
+                if plugin is not None:
+                    spawns += plugin.populate(self, field, (vminx, vminy, vmaxx, vmaxy), SPORTS_SPAWNS_PER_CHECK - spawns)
+                if spawns >= SPORTS_SPAWNS_PER_CHECK:
+                    return
+                continue
             game = self._field_game(field) if len(field.points_m) >= 3 and in_view(field) else None
             if game is None:
                 continue
@@ -2400,12 +2644,21 @@ class PedestrianManager:
         dt: float,
         viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
         game_time_seconds: Optional[float] = None,
+        active_bounds=None,
     ) -> bool:
         """Update pedestrian simulation: despawning, spawning, waypoint traversal, traffic lights, and evasion."""
+        from .viewport import in_bounds
         self.sim_time += dt
+        alcohol_dt = dt
+        if game_time_seconds is not None and self._last_game_time_seconds is not None:
+            alcohol_dt = game_time_seconds - self._last_game_time_seconds
+            if alcohol_dt < -43200.0:  # the game clock wraps at midnight
+                alcohol_dt += 86400.0
+            alcohol_dt = max(0.0, alcohol_dt)
+        self._last_game_time_seconds = game_time_seconds
         self.pedestrians = [ped for ped in self.pedestrians if ped.state != PedestrianState.DESPAWNING.value]
         stage_started = (time.perf_counter(), time.thread_time())
-        self.update_lod(player_car, dt)
+        self.update_lod(player_car, dt, viewport_bounds if active_bounds is not None else None)
         self._record("pedestrians:lod", stage_started)
         stage_started = (time.perf_counter(), time.thread_time())
         self._materialize_parked_drivers()
@@ -2455,7 +2708,8 @@ class PedestrianManager:
                 # activity (walking to a bench, sitting, ...) must not be
                 # culled and immediately re-spawned elsewhere.
                 if ped.activity is not None:
-                    if (ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2 <= forget_sq:
+                    if ((ped.x - player_car.x) ** 2 + (ped.y - player_car.y) ** 2 <= forget_sq
+                            or (active_bounds is not None and in_bounds(active_bounds, ped.x, ped.y, ped.radius_m))):
                         kept_peds.append(ped)
                     else:  # far behind a driving player: they piled up (hundreds)
                         self.activity_manager.release(ped.activity.location)
@@ -2473,7 +2727,7 @@ class PedestrianManager:
                 # Out of view is no reason to go: spawns land outside it to
                 # walk in (removed after 5 s off-screen, most never did).
                 if (
-                    dist_sq <= d_sq
+                    (dist_sq <= d_sq or (active_bounds is not None and in_bounds(active_bounds, ped.x, ped.y, ped.radius_m)))
                     and (not at_door or ped.spawned_at_door or ped.door_grace_timer > 0.0)
                 ):
                     kept_peds.append(ped)
@@ -2516,10 +2770,13 @@ class PedestrianManager:
                 entrance for entrance in self.entrance_locations
                 if math.hypot(entrance[0] - player_car.x, entrance[1] - player_car.y) <= self.spawn_radius_m
             ]
+            # No viewport (headless/legacy): the one-shot full fill stays unbudgeted.
+            spawn_deadline = time.perf_counter() + (PEDESTRIAN_SPAWN_BUDGET_S if viewport_bounds is not None else math.inf)
             while (
                 nearby_count + spawned_this_update < population_target
                 and attempts < max_attempts
                 and spawned_this_update < spawn_limit
+                and (attempts == 0 or time.perf_counter() < spawn_deadline)
             ):
                 attempts += 1
                 spawn_at_door = bool(amenity_spawn_ready and nearby_entrances and random.random() < 0.45)
@@ -2546,6 +2803,9 @@ class PedestrianManager:
                     new_ped.drunk_phase = random.uniform(0.0, 2.0 * math.pi)
                     new_ped.drunk_vomit_cooldown = random.uniform(8.0, 25.0)
                 self.add_pedestrian(new_ped)
+            if (time.perf_counter() >= spawn_deadline and attempts < max_attempts and spawned_this_update < spawn_limit
+                    and nearby_count + spawned_this_update < population_target):
+                self._population_update_elapsed = POPULATION_CHECK_S  # out of time, not out of tries
             self._record("pedestrians:spawn", stage_started)
 
             stage_started = (time.perf_counter(), time.thread_time())
@@ -2560,9 +2820,20 @@ class PedestrianManager:
 
         # Update walking movement
         for ped in self.pedestrians:
+            if ped.bottles:
+                if self.drink(ped, alcohol_dt):
+                    self.play_sound("pedestrian.bottle_drink", (ped.x, ped.y))
+            if ped.blood_alcohol_promille > 0.0 or ped.is_drunk:
+                ped.blood_alcohol_promille = max(
+                    0.0, ped.blood_alcohol_promille - ALCOHOL_DECAY_PER_GAME_HOUR * alcohol_dt / 3600.0,
+                )
+                ped.is_drunk = ped.blood_alcohol_promille >= DRUNK_FROM_PROMILLE
             if not ped.lod_update_due:
                 continue
             update_dt = max(dt, ped.lod_update_dt)
+            if ped.thief_target is not None:
+                self._walk_route_to(ped, update_dt, ped.thief_target)  # the NPC manager takes it from there
+                continue
             if self._update_linked_driver(ped, update_dt):
                 continue
             if self._update_activity(ped, update_dt):
@@ -2845,94 +3116,3 @@ class PedestrianManager:
         self._record("pedestrians:movement", stage_started)
 
         return cyclist_collision
-
-
-class CyclistManager(PedestrianManager):
-    """Manage cyclists on light-traffic paths and ordinary city roads."""
-
-    def sync_map_data(
-        self,
-        ways: List[Way],
-        traffic_lights: Optional[List[TrafficLight]] = None,
-        crossings: Optional[List[Crossing]] = None,
-        logical_intersections: Optional[List[LogicalIntersection]] = None,
-    ) -> None:
-        if traffic_lights is not None:
-            self.traffic_lights = traffic_lights
-        if crossings is not None:
-            self.crossings = crossings
-        if logical_intersections is not None:
-            self.logical_intersections = logical_intersections
-        self.ped_ways = [
-            way for way in ways
-            if len(way.points_m) >= 2
-            and (
-                is_pedestrian_way(way)
-                or (
-                    is_car_road(way)
-                    and getattr(way, "highway", "") not in {"motorway", "motorway_link", "trunk", "trunk_link"}
-                )
-            )
-        ]
-        self._spawn_ways = list(self.ped_ways)
-        self._ped_way_ids = {id(way) for way in self.ped_ways}
-        self._way_grid.clear()
-        cs = self._way_grid_cell_size
-        for way in self.ped_ways:
-            minx = min(point[0] for point in way.points_m)
-            maxx = max(point[0] for point in way.points_m)
-            miny = min(point[1] for point in way.points_m)
-            maxy = max(point[1] for point in way.points_m)
-            for cx in range(int(math.floor(minx / cs)), int(math.floor(maxx / cs)) + 1):
-                for cy in range(int(math.floor(miny / cs)), int(math.floor(maxy / cs)) + 1):
-                    self._way_grid.setdefault((cx, cy), []).append(way)
-        self._build_junction_grid()
-
-    @property
-    def cyclists(self) -> List[Pedestrian]:
-        return self.pedestrians
-
-    def spawn_pedestrian(
-        self,
-        near_x: float,
-        near_y: float,
-        viewport_bounds: Optional[Tuple[float, float, float, float]] = None,
-    ) -> Optional[Pedestrian]:
-        cyclist = super().spawn_pedestrian(near_x, near_y, viewport_bounds)
-        if cyclist is None:
-            return None
-        cyclist.is_cyclist = True
-        cyclist.color = random.choice(CYCLIST_COLORS)
-        cyclist.base_speed = random.uniform(3.5, 6.5)
-        cyclist.speed = cyclist.base_speed
-        cyclist.radius_m = 0.6
-        cyclist.lateral_offset_m = max(
-            0.3,
-            min(
-                max(0.2, getattr(cyclist.way, "half_width_m", 1.2) * 0.85),
-                getattr(cyclist.way, "half_width_m", 1.2) * 0.75,
-            ),
-        )
-        cyclist.target_lateral_offset_m = cyclist.lateral_offset_m
-        start = cyclist.way.points_m[cyclist.segment_idx]
-        end = cyclist.way.points_m[cyclist.segment_idx + 1]
-        segment_dx = end[0] - start[0]
-        segment_dy = end[1] - start[1]
-        segment_length_sq = segment_dx * segment_dx + segment_dy * segment_dy
-        if segment_length_sq > 0.0:
-            position_dx = cyclist.x - start[0]
-            position_dy = cyclist.y - start[1]
-            progress = max(
-                0.05,
-                min(
-                    0.95,
-                    (position_dx * segment_dx + position_dy * segment_dy) / segment_length_sq,
-                ),
-            )
-            base_x = start[0] + segment_dx * progress
-            base_y = start[1] + segment_dy * progress
-            right_x = math.sin(cyclist.heading)
-            right_y = -math.cos(cyclist.heading)
-            cyclist.x = base_x + right_x * cyclist.lateral_offset_m
-            cyclist.y = base_y + right_y * cyclist.lateral_offset_m
-        return cyclist

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from .geo import angle_diff
+from .physics import is_car_road
 
 
 class TrafficAction:
@@ -176,6 +177,8 @@ def crossing_yield_decision(vehicle, obstacles, *, signs=(), speed_limit_mps=Non
         other_way = getattr(other, "way", None)
         if getattr(own_way, "layer", 0) != getattr(other_way, "layer", 0):
             continue
+        if other_way is not None and not is_car_road(other_way):
+            continue  # on a cycle path/footway: entering from it is § 24(3), its user yields
         dx, dy = other.x - vehicle.x, other.y - vehicle.y
         gx, gy = math.cos(other.heading), math.sin(other.heading)
         cross = fx * gy - fy * gx

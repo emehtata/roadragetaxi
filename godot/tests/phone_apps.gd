@@ -66,6 +66,11 @@ func run() -> void:
 
 
 func check_driving_keys(viewport: SubViewport, phone: Phone) -> void:
+	var escape := InputEventKey.new()
+	escape.keycode = KEY_ESCAPE
+	escape.pressed = true
+	viewport.push_input(escape)
+	assert(phone.is_open and not viewport.is_input_handled(), "Escape must leave either phone app open and remain unhandled")
 	var selected := phone.selected_id
 	var drive := DriveInput.new()
 	for code in [KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:

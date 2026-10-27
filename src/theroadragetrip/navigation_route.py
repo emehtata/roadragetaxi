@@ -92,10 +92,121 @@ class NavigationRoute:
         self._job_started = 0.0
         self.instruction = {"maneuver": "no_target"}
         self._street_names = {}
+        self._intercity = None
+        self._future = None
+        self._intercity_key = None
+        self._national = None
+        self._national_index = 0
+        self._failed_revision = None
+        self._failed_start = None
+
+    def close(self):
+        if self._intercity:
+            self._intercity.close()
+
+    def _clear_intercity(self, world):
+        if self._intercity_key is None:
+            return
+        self._intercity.cancel()
+        if self._future:
+            self._future.cancel()
+        self._future = self._national = self._intercity_key = None
+        self._key = None
+        self.points = []
+        manager = getattr(world,"auto_fetch_manager",None)
+        if manager:
+            manager.set_route_tiles([])
+
+    def _update_intercity(self, world, car, target, current_way):
+        from .intercity_navigation import IntercityPlanner
+        from .geo import closest_point_and_dist_to_segment
+        from .tile_streaming import world_to_tile, active_tiles
+        if self._intercity is None:
+            self._intercity = IntercityPlanner(world.intercity_database)
+        key = (target.intercity_place_id,getattr(car,"map_level",0))
+        revision = world.traffic_mgr.route_graph_revision
+        if self._failed_start and math.dist(self._failed_start,(car.x,car.y)) > 100:
+            self._failed_revision = None
+        if key != self._intercity_key:
+            self._clear_intercity(world)
+            self._intercity_key = key
+            self._failed_revision = None
+            self._job = None
+        if self._future and self._future.done():
+            try:
+                self._national = self._future.result()
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("Intercity planning failed")
+                self._national = None
+            self._future = None
+            self._national_index = 0
+            self._failed_revision = revision
+            self._failed_start = (car.x,car.y)
+            self._street_names = {}
+        if self._national:
+            points = self._national["points"]
+            first = self._national_index
+            # A bounded forward window, not a national-polyline scan each tick.
+            last = min(len(points)-1,first+128)
+            nearest = min((closest_point_and_dist_to_segment(car.x,car.y,*points[i],*points[i+1])[3],-i)
+                          for i in range(first,last)) if last > first else (math.inf,-first)
+            if nearest[0] > ROUTE_DEVIATION_M:
+                self._national = None
+                self.points = []
+                self._failed_revision = None
+            else:
+                if self._national_index != -nearest[1]:
+                    self._street_names = {}
+                self._national_index = -nearest[1]
+                self.points = [list(p) for p in points[self._national_index:self._national_index+257]]
+        if self._national is None and self._future is None and self._failed_revision != revision:
+            self.plans_started += 1
+            self._future = self._intercity.request((car.x,car.y),target.intercity_place_id,
+                world.traffic_mgr.route_graph(),getattr(current_way,"layer",None),tuple(world.traffic_mgr.ways))
+        self._update_instruction(world,car,current_way)
+        if self._future:
+            self.instruction = {"maneuver":"routing"}
+        if self._national and "total_m" in self.instruction:
+            index = self._national_index+len(self.points)-1
+            self.instruction["total_m"] = round(self.instruction["total_m"]+self._national["remaining"][index],1)
+        if self._national and self.instruction.get("maneuver") in {"arrive","straight"} and self._national_index+len(self.points) < len(self._national["points"]):
+            self.instruction["maneuver"] = "straight"
+        manager = getattr(world,"auto_fetch_manager",None)
+        if manager:
+            core = set(active_tiles(world_to_tile(car.x,car.y)))
+            tiles = []
+            travelled = 0.0
+            for segment_index,(a,b) in enumerate(zip(self.points,self.points[1:])):
+                if segment_index == 0:
+                    px,py,_,_ = closest_point_and_dist_to_segment(car.x,car.y,*a,*b)
+                    a = (px,py)
+                length = math.dist(a,b)
+                # Sample long straight segments too; vertices may be kilometres apart.
+                for step in range(1,min(10,math.ceil(length/500))+1):
+                    distance = min(length,step*500)
+                    if travelled+distance > 5000:
+                        break
+                    ratio = distance/max(length,.001)
+                    tile = world_to_tile(a[0]+(b[0]-a[0])*ratio,a[1]+(b[1]-a[1])*ratio)
+                    if tile not in core and tile not in tiles:
+                        tiles.append(tile)
+                travelled += length
+                if travelled >= 5000 or len(tiles) >= 3:
+                    break
+            if math.dist((car.x,car.y),(target.x,target.y)) <= 6000:
+                tiles.insert(0,world_to_tile(target.x,target.y))
+            manager.set_route_tiles(tiles[:3])
 
     def update(self, world, car, current_way=None) -> None:
         """Once per server tick, after the simulation step."""
         target = world.taxi_mgr.get_current_target()
+        if (target is not None and getattr(target,"municipality",None)
+                and getattr(target,"intercity_place_id",None) and getattr(world,"intercity_database",None)
+                and getattr(car,"map_level",SURFACE_LEVEL) == SURFACE_LEVEL):
+            self._update_intercity(world,car,target,current_way)
+            return
+        self._clear_intercity(world)
         if target is None:
             self._job, self._key, self.points = None, None, []
             self.instruction = {"maneuver": "no_target"}

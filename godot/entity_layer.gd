@@ -12,6 +12,7 @@ extends Node2D
 
 const RS := preload("res://render_style.gd")
 const T := preload("res://i18n.gd")
+const MapChunk := preload("res://map_chunk.gd")  # its static roadwork drawing, shared with live roadworks
 const CULL_MARGIN_M := 30.0
 const TWO_WHEELERS := ["motorcycle", "moped", "bicycle"]
 const INDOORS := ["entering_building", "in_building"]
@@ -28,6 +29,7 @@ var view_rect := Rect2()  # visible area in this layer's coordinates, with margi
 
 var _frame: Dictionary = {}  # this frame's sample: {"a", "b", "t"}
 var _clock := 0.0  # local seconds, for purely presentational loops (exhaust puffs)
+var _exhaust := 0.0  # the taxi's eased throttle, how hard its exhaust puffs
 var _font: Font
 var reflectors_on := false  # the sun below -7.5 degrees (main.gd, from state calendar)
 var lamp_near := func(_at: Vector2, _radius: float) -> bool: return false  # MapLayer.lamp_near
@@ -44,6 +46,10 @@ var _route_node: Node2D  # the navigation route, unshaded (_draw_route)
 var _people: Node2D
 var _overlay: Node2D
 var _people_rows: Array = []  # [position, heading, ped, animation time]
+var _tennis_balls: Array = []
+var _beach_balls: Array = []  # interpolated position, height and drawing scale
+var _golf_rows: Array = []  # interpolated ball ground position, height, pin, holed
+var _dog_rows: Array = []  # [owner position, dog position, heading, dog]
 var _puck_frame: Array = []  # [a, b, t] for _pucks
 var _overlays: Array[Callable] = []
 var _canvas: CanvasItem = self
@@ -58,6 +64,9 @@ var underground := false  # the taxi below ground (state player.map_level): only
 var covered := func(_at: Vector2, _layer: int) -> bool: return false  # MapLayer.covered (headlights under a bridge)
 var _trains: Node2D  # trains, z 14: above the canopies and rail bridges (z 13), drawn last
 var _trains_drawn := 0
+var _brawl_punches := {}  # brawl id -> [last action seq seen, when its punch began]
+const BRAWL_JACKETS := [[40, 40, 48], [120, 30, 30]]
+const PLAYER_JACKET := [255, 217, 64]  # the player's own on-foot colour
 var _tracks: Node2D  # tyre tracks, z 8 (before roadworks and signs)
 var _trails: Array = []  # [kind, [[position, heading, intensity, front, snowfall when laid], ...], its Node2D]
 const TRACK_SEGMENT := 200  # points per trail segment: a new point redraws only its own segment
@@ -190,8 +199,13 @@ func player_position() -> Vector2:
 	return Vector2(p.x, p.y)
 
 
-func entity_position(kind: String, id: int) -> Vector2:
+func entity_position(kind: String, id) -> Vector2:
 	if _frame.is_empty():
+		return Vector2.INF
+	if kind == "train":
+		for train in _frame["a"].get("trains", []):
+			if train.get("id") == id and not train.get("cars", []).is_empty():
+				return MapMath.point(origin, train["cars"][0][0], train["cars"][0][1])
 		return Vector2.INF
 	var key := "pedestrians" if kind == "pedestrian" else "npcs"
 	var later := _by_id(_frame["b"].get(key, []))
@@ -219,6 +233,8 @@ func entity_at(screen: Vector2, canvas: Transform2D) -> Dictionary:
 		var best := {}
 		var distance := INF
 		for row in a.get(key, []):
+			if row.get("thief", false):  # thieves stay anonymous: not inspectable
+				continue
 			if key == "npcs" and not row.get("is_on_foot", false) and not drawn_as_vehicle(row):
 				continue
 			var p := StateBuffer.blend(row, later.get(row["id"], row), _frame["t"], origin)
@@ -229,6 +245,17 @@ func entity_at(screen: Vector2, canvas: Transform2D) -> Dictionary:
 				distance = pixels
 		if not best.is_empty():
 			return best
+	var point := canvas.affine_inverse() * screen
+	var later_trains := _by_id(b.get("trains", []))
+	for train in a.get("trains", []):
+		var next: Dictionary = later_trains.get(train["id"], train)
+		for i in train.get("cars", []).size():
+			var car: Array = train["cars"][i]
+			var to: Array = next["cars"][i] if next.get("cars", []).size() == train["cars"].size() else car
+			var centre := MapMath.point(origin, lerpf(car[0], to[0], _frame["t"]), lerpf(car[1], to[1], _frame["t"]))
+			var local := (point - centre).rotated(lerp_angle(car[2], to[2], _frame["t"]))
+			if absf(local.x) <= float(car[3]) * 0.5 and absf(local.y) <= maxf(1.6, 12.0 / px_per_m):
+				return {"kind": "train", "id": train["id"]}
 	return {}
 
 
@@ -266,7 +293,8 @@ func update_frame(delta: float) -> void:
 ## The server says each tick whether the taxi marks the ground (state
 ## tire_mark: kind, intensity, front); the trail follows the drawn taxi,
 ## a point every 0.5 m or 4 degrees, at most 4000
-## points (the oldest trails go, down to 3500).
+## points (the oldest trails go, down to 3500); the oldest go once a
+## viewport diagonal away.
 func _lay_track() -> void:
 	if not is_equal_approx(_last_track_px, px_per_m):
 		_last_track_px = px_per_m
@@ -299,6 +327,12 @@ func _lay_track() -> void:
 	_trails[-1][1].append([at, taxi.z, float(mark.get("intensity", 1.0)), bool(mark.get("front", false)), _snowfall])
 	_last_track = [at, taxi.z]
 	_track_points += 1
+	# Out of view is gone for good: tracks are looks only, never played back.
+	var view_m := get_viewport_rect().size.length() / maxf(px_per_m, 0.001)
+	while _trails.size() > 1 and _trails[0][1][-1][0].distance_to(at) > view_m:
+		var gone: Array = _trails.pop_front()
+		_track_points -= gone[1].size()
+		gone[2].queue_free()
 	if _track_points > 4000:
 		while not _trails.is_empty() and _track_points > 3500:
 			var oldest: Array = _trails.pop_front()
@@ -390,6 +424,38 @@ func _draw_reflectors() -> void:
 			_reflectors.draw_circle(at, maxf(_px(1.0), 0.35), Color8(255, 255, 245))
 
 
+## Owned dogs at the same interpolated positions used by the renderer.
+func dogs() -> Array:
+	var result: Array = []
+	if _frame.is_empty():
+		return result
+	var later := _by_id(_frame["b"].get("pedestrians", []))
+	for ped in _frame["a"].get("pedestrians", []):
+		var dog: Dictionary = ped.get("dog", {})
+		if dog.is_empty():
+			continue
+		var next: Dictionary = later.get(ped["id"], ped).get("dog", dog)
+		var at := MapMath.point(origin, lerpf(float(dog["x"]), float(next.get("x", dog["x"])), _frame["t"]),
+			lerpf(float(dog["y"]), float(next.get("y", dog["y"])), _frame["t"]))
+		result.append([ped["id"], at])
+	return result
+
+
+## Driving NPCs: [[id, interpolated layer position, npc row], ...].
+func npc_cars() -> Array:
+	var cars: Array = []
+	if _frame.is_empty():
+		return cars
+	var a: Dictionary = _frame["a"]
+	var later := _by_id(_frame["b"].get("npcs", []))
+	for npc in a.get("npcs", []):
+		if npc.get("is_on_foot", false) or npc.get("state", "") in ["PARKED", "CRASHED"]:
+			continue
+		var p := StateBuffer.blend(npc, later.get(npc["id"], npc), _frame["t"], origin)
+		cars.append([npc["id"], Vector2(p.x, p.y), npc])
+	return cars
+
+
 ## In the taxi's headlight cone: ahead within
 ## 15 m, sideways within 1.5 m + 0.35 per metre ahead.
 static func reflector_lit(at: Vector2, taxi: Vector2, heading: float) -> bool:
@@ -409,14 +475,14 @@ func headlight_beams() -> Array:
 	var a: Dictionary = _frame["a"]
 	var b: Dictionary = _frame["b"]
 	var t: float = _frame["t"]
-	var vehicles: Array = []  # [position, heading, width, is_npc]
+	var vehicles: Array = []  # [position, heading, width, is_npc, length]
 	var player: Dictionary = a["player"]
 	var road: Dictionary = a.get("road", {}) if typeof(a.get("road")) == TYPE_DICTIONARY else {}
 	if player.get("engine_on", false):
 		var p := StateBuffer.blend(player, b.get("player", player), t, origin)
 		# Under a higher road: no beams - unless on a bridge itself.
 		if road.get("bridge", false) or not covered.call(Vector2(p.x, p.y), int(road.get("layer", 0))):
-			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false])
+			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false, player.get("length_m", 4.0)])
 	var later := _by_id(b.get("npcs", []))
 	var area := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	for npc in a.get("npcs", []):
@@ -425,7 +491,7 @@ func headlight_beams() -> Array:
 		var p := StateBuffer.blend(npc, later.get(npc["id"], npc), t, origin)
 		var layer := int(npc.get("layer", 0))  # an NPC on a raised layer counts as on its bridge
 		if area.has_point(Vector2(p.x, p.y)) and not underground and (layer > 0 or not covered.call(Vector2(p.x, p.y), layer)):
-			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true])
+			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true, npc.get("length_m", 4.0)])
 	var shown := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	var drawn := 0
 	for vehicle in vehicles:
@@ -435,7 +501,7 @@ func headlight_beams() -> Array:
 		if not shown.has_point(c):
 			continue
 		var length := beam_length(lamp_near.call(c, 22.0), oncoming(vehicle, vehicles))
-		polygons.append_array(beam_polygons(c, vehicle[1], maxf(_px(3.0), vehicle[2]), length))
+		polygons.append_array(beam_polygons(c, vehicle[1], maxf(_px(3.0), vehicle[2]), length, false, vehicle[4] * 0.5))
 		drawn += 1
 	if not underground:
 		var later_trains := _by_id(b.get("trains", []))
@@ -485,10 +551,11 @@ static func oncoming(vehicle: Array, vehicles: Array) -> bool:
 
 
 ## One vehicle's two beams and caps (a quad and a circle per side).
-static func beam_polygons(c: Vector2, heading: float, width: float, length: float, straight := false) -> Array:
+## half_length: centre to the front bumper (a bus's lamps are 5.5 m ahead, not a car's 2).
+static func beam_polygons(c: Vector2, heading: float, width: float, length: float, straight := false, half_length := 0.0) -> Array:
 	var f := _forward(heading)
 	var r := _right(heading)
-	var front := c + f * (1.0 + width * 0.55)
+	var front := c + f * maxf(1.0 + width * 0.55, half_length)
 	var high := not straight and length > 15.0
 	var polygons: Array = []
 	var lamps := []
@@ -496,7 +563,8 @@ static func beam_polygons(c: Vector2, heading: float, width: float, length: floa
 	for side: float in [-1.0, 1.0]:
 		var side_v := r * side
 		var lamp := front + side_v * width * 0.35
-		var tip := c + f * length + r * (3.0 if side < 0.0 else 2.25)  # a car's beams lean right (the kerb side)
+		# Keep left/right endpoints ordered: crossed tips overlap the additive beams.
+		var tip := c + f * length + r * (2.25 if side < 0.0 else 3.0)  # kerb bias
 		if high:
 			tip = c + f * length  # High beams illuminate both lanes, without the dipped beam's kerb bias.
 		var near := lamp + side_v * minf(4.5 * 0.08, width * 0.10)
@@ -704,6 +772,32 @@ func _lit(color: Color) -> Color:
 	return Color(minf(color.r * _tint.r, 1.0), minf(color.g * _tint.g, 1.0), minf(color.b * _tint.b, 1.0), color.a)
 
 
+## A trailer's body between two states: [x, y, heading, length, width, kind].
+func _trailer(a: Array, b: Array, t: float) -> void:
+	var c := Vector2(lerpf(a[0], b[0], t) - origin.x, -(lerpf(a[1], b[1], t) - origin.y))
+	_tint = vehicle_light(light_level * float(light_at.call(c)), ambient)  # lit like a vehicle (_vehicle)
+	_trailer_body(c, lerp_angle(a[2], b[2], t), float(a[3]), float(a[4]), str(a[5]))
+	_tint = null
+
+
+## A caravan from above: the white body, its window and stripes, the
+## drawbar reaching forward to the hitch, and its own tail lights.
+func _trailer_body(c: Vector2, heading: float, length: float, width: float, _kind: String) -> void:
+	var f := _forward(heading)
+	var r := _right(heading)
+	var hl := length * 0.5
+	var hw := width * 0.5
+	var box := Color8(238, 234, 220)
+	_car_shapes.append(["line", c + f * hl, c + f * (hl + 0.9), _lit(Color8(165, 168, 162)), maxf(_px(1.5), hw * 0.14)])  # the drawbar
+	_poly(_rect(c, f, r, hl, -hl, hw), box, RS.OUTLINE)
+	_poly(_rect(c, f, r, hl * 0.92, -hl * 0.92, hw * 0.84), box.lightened(0.05))
+	_poly(_rect(c, f, r, hl * 0.55, hl * 0.2, hw * 0.34), Color8(120, 150, 160))  # the roof window
+	for side: float in [1.0, -1.0]:
+		_car_shapes.append(["line", c + f * hl * 0.9 + r * hw * 0.8 * side, c - f * hl * 0.9 + r * hw * 0.8 * side,
+			_lit(Color8(156, 108, 66)), maxf(_px(1.0), hw * 0.07)])
+		_poly(_rect(c - f * hl * 0.97 + r * hw * 0.7 * side, f, r, hl * 0.03, -hl * 0.03, hw * 0.16), Color8(183, 45, 39))  # tail lights
+
+
 func _vehicle_body(c: Vector2, heading: float, length: float, width: float, color: Color, kind: String,
 		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
 	length = maxf(length, _px(5.0))
@@ -712,12 +806,43 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 	var r := _right(heading)
 	var hl := length * 0.5
 	var hw := width * 0.5
-	if kind in TWO_WHEELERS:
-		if fallen:  # lying on its side
+	if kind == "bicycle":  # tyres, frame, bars; the rider (in `color`) only while riding (engine_on: not PARKED)
+		var tyre := _lit(Color8(28, 28, 28))
+		var thin := maxf(_px(1.0), hl * 0.12)
+		var flat := fallen
+		if flat:  # lying on its side, the rider gone (a pedestrian beside it)
 			f = _forward(heading - PI / 2.0)
 			r = _right(heading - PI / 2.0)
-		_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
-		_car_shapes.append(["circle", c - f * hl * 0.1, hw * 0.9, _lit(RS.CABIN)])  # rider
+		for end: float in [0.62, -0.62]:
+			_car_shapes.append(["line", c + f * hl * (end + 0.33), c + f * hl * (end - 0.33), tyre, maxf(_px(1.5), hw * 0.55)])
+		_car_shapes.append(["line", c + f * hl * 0.62, c - f * hl * 0.62, _lit(color.darkened(0.25)), thin])  # frame
+		_car_shapes.append(["line", c + f * hl * 0.5 + r * hw * 0.9, c + f * hl * 0.5 - r * hw * 0.9, tyre, thin])  # handlebar
+		if engine_on and not flat:
+			_poly(_rect(c - f * hl * 0.05, f, r, hl * 0.28, -hl * 0.32, hw * 0.95), color, RS.OUTLINE)  # back and shoulders
+			_car_shapes.append(["circle", c + f * hl * 0.18, hw * 0.55, _lit(Color8(236, 196, 160))])  # head
+		return
+	if kind in TWO_WHEELERS:  # a motorbike from above: tyres, tank in its paint, seat, bars; the rider while ridden
+		if fallen:  # lying on its side, the rider gone
+			f = _forward(heading - PI / 2.0)
+			r = _right(heading - PI / 2.0)
+		var tyre := _lit(Color8(26, 26, 26))
+		var dark := _lit(Color8(40, 40, 42))
+		var thin := maxf(_px(1.0), hw * 0.12)
+		_car_shapes.append(["line", c - f * hl * 0.98, c - f * hl * 0.42, tyre, maxf(_px(2.0), hw * 0.55)])  # the fat rear tyre
+		_car_shapes.append(["line", c + f * hl * 0.98, c + f * hl * 0.52, tyre, maxf(_px(1.5), hw * 0.42)])
+		_poly(PackedVector2Array([c + f * hl * 0.52 + r * hw * 0.30, c + f * hl * 0.52 - r * hw * 0.30, c - f * hl * 0.10 - r * hw * 0.62,
+			c - f * hl * 0.55 - r * hw * 0.45, c - f * hl * 0.55 + r * hw * 0.45, c - f * hl * 0.10 + r * hw * 0.62]), color, RS.OUTLINE)  # tank and tail
+		_poly(_rect(c, f, r, -hl * 0.08, -hl * 0.50, hw * 0.34), dark)  # the seat
+		_car_shapes.append(["line", c + f * hl * 0.48 + r * hw, c + f * hl * 0.48 - r * hw, dark, thin])  # handlebar
+		_poly(_rect(c, f, r, hl * 0.99, hl * 0.86, hw * 0.22), _lit(Color8(250, 240, 200)) if engine_on else _lit(Color8(170, 170, 160)))  # headlight
+		_poly(_rect(c, f, r, -hl * 0.86, -hl * 0.96, hw * 0.22), Color8(255, 60, 50) if braking else Color8(150, 35, 30))  # tail light
+		if engine_on and not fallen:  # the rider: arms to the bars, back and shoulders, a helmet in the bike's paint
+			var jacket := _lit(Color8(34, 34, 38))
+			for side: float in [1.0, -1.0]:
+				_car_shapes.append(["line", c + f * hl * 0.05 + r * hw * 0.62 * side, c + f * hl * 0.46 + r * hw * 0.85 * side, jacket, maxf(_px(1.0), hw * 0.2)])
+			_poly(_rect(c, f, r, hl * 0.12, -hl * 0.30, hw * 0.78), jacket, RS.OUTLINE)
+			_car_shapes.append(["circle", c + f * hl * 0.16, hw * 0.48, _lit(color.lightened(0.15))])
+			_car_shapes.append(["line", c + f * hl * 0.30 + r * hw * 0.28, c + f * hl * 0.30 - r * hw * 0.28, _lit(Color8(20, 24, 30)), maxf(_px(1.0), hw * 0.14)])  # visor
 		return
 	match kind:
 		"bus":
@@ -746,6 +871,17 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 					_lamp_polys.append([beacon, RS.TURN_SIGNAL])  # unshaded: it shines at night
 				else:
 					_poly(beacon, RS.TURN_SIGNAL.darkened(0.5))
+		"camper_van":  # a motorhome: a van cab in its own colour, the long white living box over it
+			var box := Color8(238, 234, 220)
+			_poly(_rect(c, f, r, hl, -hl, hw), box, RS.OUTLINE)
+			_poly(_rect(c, f, r, hl, hl * 0.62, hw * 0.92), color, RS.OUTLINE)  # the cab's bonnet
+			_poly(_trapezoid(c, f, r, hl * 0.62, hl * 0.46, hw * 0.84, hw * 0.88), RS.WINDSHIELD)
+			_poly(_rect(c, f, r, hl * 0.4, -hl * 0.92, hw * 0.86), box.lightened(0.05))
+			_poly(_rect(c, f, r, hl * 0.05, -hl * 0.25, hw * 0.34), Color8(120, 150, 160))  # the roof window
+			_poly(_rect(c, f, r, -hl * 0.45, -hl * 0.6, hw * 0.3), Color8(186, 185, 170))  # a roof vent
+			for side: float in [1.0, -1.0]:  # the stripe along its side
+				_car_shapes.append(["line", c + f * hl * 0.42 + r * hw * 0.93 * side, c - f * hl * 0.95 + r * hw * 0.93 * side,
+					_lit(color.darkened(0.1)), maxf(_px(1.0), hw * 0.08)])
 		"truck":
 			_poly(_rect(c, f, r, hl * 0.18, -hl, hw), color, RS.OUTLINE)
 			_poly(_rect(c, f, r, hl * 0.08, -hl * 0.86, hw * 0.78), color.lightened(28.0 / 255.0))
@@ -815,23 +951,26 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 
 
 ## Four rising, fading puffs (crash smoke and exhaust; sizes in screen
-## pixels). `behind` trails them out of the back.
-func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false) -> void:
+## pixels). `behind` trails them out of the back; `strength` (exhaust: the
+## throttle) makes them thicker, darker, bigger and faster - an idling
+## engine only breathes faintly.
+func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false, strength := 1.0) -> void:
 	if not smoke_enabled:
 		return
 	var f := _forward(heading)
 	var r := _right(heading)
 	var base := c + f * (length * 0.4) * (-1.0 if behind else 1.0)
 	for i in 4:
-		var offset_t := fmod(t * 2.5 + i * 0.7, 2.0)
+		var offset_t := fmod(t * lerpf(1.5, 3.5, strength) + i * 0.7, 2.0)
 		var puff := base
 		if behind:
-			puff += -f * _px(offset_t * 14.0) + Vector2(0, -_px(offset_t * 3.0)) + r * _px(sin(t * 3.0 + i) * 2.0 * offset_t)
+			puff += -f * _px(offset_t * lerpf(8.0, 18.0, strength)) + Vector2(0, -_px(offset_t * 3.0)) + r * _px(sin(t * 3.0 + i) * 2.0 * offset_t)
 		else:
 			puff += r * _px(sin(t * 3.0 + i) * 4.0 * offset_t) + Vector2(0, -_px(offset_t * 14.0))
-		var smoke := RS.SMOKE
-		smoke.a = clampf((1.0 - offset_t / 2.0) * RS.SMOKE_MAX_ALPHA, 0.0, RS.SMOKE_MAX_ALPHA)
-		draw_circle(puff, _px(3.0 + offset_t * 5.0), smoke)
+		var smoke: Color = RS.SMOKE.darkened(0.35 * strength) if behind else RS.SMOKE
+		var max_alpha: float = RS.SMOKE_MAX_ALPHA * (lerpf(0.35, 1.3, strength) if behind else 1.0)
+		smoke.a = clampf((1.0 - offset_t / 2.0) * max_alpha, 0.0, max_alpha)
+		draw_circle(puff, _px((3.0 + offset_t * 5.0) * (lerpf(0.7, 1.4, strength) if behind else 1.0)), smoke)
 
 
 ## Someone lying flat along `h` (their heading, head first): spread out -
@@ -860,6 +999,35 @@ func _rotated_ellipse(c: Vector2, along: Vector2, rx: float, ry: float, color: C
 	_canvas.draw_set_transform(Vector2.ZERO)
 
 
+const VOMIT_EDGE := [Vector2(-1.15, -0.12), Vector2(-0.77, -0.34), Vector2(-0.89, -0.59),
+	Vector2(-0.3, -0.5), Vector2(0.05, -0.72), Vector2(0.33, -0.48), Vector2(0.88, -0.55),
+	Vector2(0.8, -0.24), Vector2(1.24, 0.02), Vector2(0.91, 0.19), Vector2(1.04, 0.43),
+	Vector2(0.47, 0.4), Vector2(0.13, 0.67), Vector2(-0.18, 0.46), Vector2(-0.69, 0.57),
+	Vector2(-0.6, 0.3), Vector2(-1.06, 0.28), Vector2(-0.93, 0.06)]
+const VOMIT_SPLASHES := [Vector3(-1.46, -0.3, 0.11), Vector3(-1.24, -0.75, 0.07),
+	Vector3(-0.44, -0.91, 0.12), Vector3(0.32, -1.02, 0.06), Vector3(1.09, -0.78, 0.09),
+	Vector3(1.52, -0.2, 0.14), Vector3(1.73, 0.12, 0.05), Vector3(1.34, 0.58, 0.08),
+	Vector3(0.56, 0.85, 0.13), Vector3(-0.16, 0.94, 0.06), Vector3(-0.99, 0.79, 0.09)]
+const VOMIT_BITS := [Vector3(-0.66, -0.15, 0.12), Vector3(-0.3, 0.26, 0.09),
+	Vector3(0.07, -0.32, 0.1), Vector3(0.39, 0.08, 0.15), Vector3(0.75, -0.23, 0.07),
+	Vector3(0.14, 0.39, 0.06), Vector3(-0.38, -0.37, 0.05)]
+var _vomit_edge := PackedVector2Array(VOMIT_EDGE)
+var _vomit_triangles := Geometry2D.triangulate_polygon(_vomit_edge)
+
+
+func _vomit_puddle(at: Vector2, world_position: Vector2) -> void:
+	# Stable world-space variation, never animated or affected by the camera origin.
+	var angle := fposmod(world_position.dot(Vector2(0.73, 0.37)), TAU)
+	draw_set_transform(at, angle)
+	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), _vomit_triangles, _vomit_edge, PackedColorArray([Color8(105, 115, 62)]))
+	for splash in VOMIT_SPLASHES:
+		draw_circle(Vector2(splash.x, splash.y), splash.z, Color8(112, 120, 64, 220))
+	for i in VOMIT_BITS.size():
+		var bit: Vector3 = VOMIT_BITS[i]
+		draw_circle(Vector2(bit.x, bit.y), bit.z, Color8(151, 143, 79) if i % 2 == 0 else Color8(78, 88, 43))
+	draw_set_transform(Vector2.ZERO)
+
+
 func _ellipse(c: Vector2, rx: float, ry: float, color: Color) -> void:
 	_canvas.draw_set_transform(c, 0.0, Vector2(rx, ry))
 	_canvas.draw_circle(Vector2.ZERO, 1.0, _person_lit(color))
@@ -871,6 +1039,26 @@ const SANTA_HAT := [Vector2(0, -0.4), Vector2(0, 0.4), Vector2(-0.65, 0.3)]
 ## A pedestrian: shadow, legs
 ## stepping with animation_time, body, head facing the heading; fallen ones
 ## lie down, people going indoors are an outline; then any cursing bubble.
+## A bottle in the right hand (server "bottle"); while drinking (hanging
+## out) it goes up to the mouth for a sip now and then, on each person's
+## own beat.
+func _bottle(c: Vector2, h: Vector2, side: Vector2, radius: float, ped: Dictionary, head: Vector2) -> void:
+	if not ped.get("bottle", false):
+		return
+	var hand := c + side * radius * 0.62 + h * radius * 0.25
+	var sipping := false
+	if ped.get("drinking", false):
+		var beat := fmod(_clock + float(absi(hash(ped.get("id", 0))) % 97) * 0.37, 9.0)
+		sipping = beat < 1.5
+	var neck_dir := (h * 0.8 + side * 0.25).normalized()
+	if sipping:  # at the mouth, tipped up
+		hand = head + side * radius * 0.2 + h * radius * 0.15
+		neck_dir = (h + side * 0.1).normalized()
+	var glass := _person_lit(Color8(52, 104, 58))
+	_canvas.draw_line(hand - neck_dir * radius * 0.25, hand + neck_dir * radius * 0.2, glass, maxf(_px(1.5), radius * 0.2))
+	_canvas.draw_line(hand + neck_dir * radius * 0.2, hand + neck_dir * radius * 0.38, _person_lit(Color8(40, 80, 44)), maxf(_px(1.0), radius * 0.1))
+
+
 func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: float) -> void:
 	if _canvas == self:  # drawn lit on _people (_draw_people)
 		_people_rows.append([c, heading, ped, animation_time])
@@ -886,20 +1074,40 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 	var h := Vector2(cos(heading), -sin(heading))
 	var side := Vector2(-h.y, h.x)
 	var down := Vector2(0, radius)
+	if ped.get("animation_state", "") in ["sunbathing", "swimming"]:
+		_beach_person(c, h, side, radius, clothing, ped["animation_state"] == "swimming", animation_time)
+		return
 	_ellipse(c + down * 0.675, radius * 0.8, radius * 0.325, RS.PED_SHADOW)
-	if ped.get("animation_state", "walking") == "fallen":
+	if ped.get("animation_state", "") == "riding":
+		_canvas.draw_set_transform(c, -heading)
+		_canvas.draw_rect(Rect2(Vector2(-radius * 1.7, -radius * 1.1), Vector2(radius * 3.4, radius * 2.2)), _person_lit(Color8(224, 93, 46)))
+		_canvas.draw_set_transform(Vector2.ZERO)
+		_ellipse(c, radius * 0.65, radius * 0.55, clothing)
+		_ellipse(c - down * 0.4, radius * 0.4, radius * 0.4, RS.PED_HEAD)
+		_canvas.draw_line(c - side * radius, c + side * radius, _person_lit(Color8(223, 223, 211)), radius * 0.22)
+		return
+	if ped.get("animation_state", "walking") == "sitting":
+		for sign_side: float in [-1.0, 1.0]:
+			var knee := c + h * radius * 0.8 + side * radius * sign_side * 0.7
+			_canvas.draw_line(c, knee, _person_lit(RS.PED_LEGS), radius * 0.4)
+			_canvas.draw_line(knee, knee - h * radius * 0.6, _person_lit(RS.PED_LEGS), radius * 0.3)
+		_ellipse(c, radius * 0.7, radius * 0.55, clothing)
+		_canvas.draw_circle(c - h * radius * 0.25, radius * 0.4, _person_lit(RS.PED_HEAD))
+		_bottle(c, h, side, radius, ped, c - h * radius * 0.25)
+	elif ped.get("animation_state", "walking") == "fallen":
 		_fallen(c, h, side, radius, clothing, ped.get("activity", "") == "ice_hockey")
 	else:
 		var gait := sin(animation_time * 10.0) if ped.get("animation_state", "walking") == "walking" else 0.0
 		var leg_start := c - h * radius * 0.15 + down * 0.45
 		for leg_side: float in [-1.0, 1.0]:
-			var leg_end: Vector2 = leg_start + side * radius * (0.42 * leg_side + gait * 0.10 * leg_side) + h * radius * 0.12 + down * 0.45
+			var leg_end: Vector2 = leg_start + side * radius * 0.42 * leg_side + h * radius * (0.12 + gait * 0.45 * leg_side) + down * 0.45
 			_canvas.draw_line(leg_start, leg_end, _person_lit(RS.PED_LEGS), maxf(_px(1.0), radius * 0.28))
 		_ellipse(c + down * 0.425, radius * 0.72, radius * 0.775, RS.PED_SHADOW)
 		_ellipse(c + down * 0.405, radius * 0.58, radius * 0.625, clothing)
 		var head := c + h * radius * 0.6
 		_canvas.draw_circle(head, maxf(_px(2.0), radius * 0.48), _person_lit(RS.PED_HAIR))
 		_canvas.draw_circle(head, maxf(_px(1.0), radius * 0.35), _person_lit(RS.PED_HEAD))
+		_bottle(c, h, side, radius, ped, head)
 		if santa:
 			_canvas.draw_line(c - side * radius * 0.5, c + side * radius * 0.5, _person_lit(Color.WHITE), radius * 0.20)
 			_canvas.draw_line(head - side * radius * 0.38, head + side * radius * 0.38, _person_lit(Color.WHITE), radius * 0.22)
@@ -916,10 +1124,262 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 				for pad_side: float in [-1.0, 1.0]:
 					_ellipse(c + side * radius * 0.55 * pad_side + down * 0.2, radius * 0.22, radius * 0.5, GOALIE_PADS)
 			_hockey_stick(c, h, side, radius, float(ped.get("stick_swing", 0.0)), goalie)
+		if ped.get("activity", "") == "beach_volleyball":
+			var swing := float(ped.get("stick_swing", 0.0))
+			for arm_side: float in [-1.0, 1.0]:
+				var shoulder := c + side * radius * .55 * arm_side
+				var hand := c + h * radius * (1.0 + swing) + side * radius * .25 * arm_side - Vector2(0, swing * radius)
+				_canvas.draw_line(shoulder, hand, _person_lit(RS.PED_HEAD), radius * .28)
+		if ped.get("activity", "") == "brawl":  # fists up; the striking one thrown forward
+			var punch := float(ped.get("stick_swing", 0.0))
+			for arm_side: float in [-1.0, 1.0]:
+				var reach := 0.8 + (punch * 0.9 if arm_side > 0.0 else 0.0)
+				_canvas.draw_line(c + side * radius * .55 * arm_side, c + h * radius * reach + side * radius * .3 * arm_side,
+					_person_lit(RS.PED_HEAD), radius * .26)
+		if ped.get("activity", "") == "tennis":
+			var swing := float(ped.get("stick_swing", 0.0))
+			var forward := h.rotated(sin(swing * PI) * 1.2)
+			var hand := c + side * radius * .65
+			var grip := hand + forward * radius * 1.3
+			_canvas.draw_line(hand, grip, _person_lit(RS.PED_HEAD), radius * .3)
+			var head_at := grip + forward * radius * .65
+			_canvas.draw_line(grip, head_at, _person_lit(Color8(85, 85, 95)), radius * .15)
+			_canvas.draw_arc(head_at, radius * .6, 0, TAU, 16, _person_lit(Color8(225, 225, 215)), radius * .14)
+			_canvas.draw_line(head_at - side * radius * .45, head_at + side * radius * .45, _person_lit(Color8(170, 190, 180)), radius * .08)
+		if ped.has("golf"):
+			_golf_club(c, h, side, radius, ped["golf"])
+	if ped.has("rage"):  # a brawler's face, after (over) the figure
+		_rage_face(c, heading, float(ped["rage"]), ped.get("animation_state", "") == "fallen")
 	if ped.get("curse_timer", 0.0) > 0.0:
 		var timer: float = ped["curse_timer"]
 		_bubble(c - Vector2(0, radius + _px(6.0)), str(ped.get("curse_text", "@#*!%")), RS.CURSE_TEXT, RS.CURSE_BORDER,
 			1.0 if timer >= 0.5 else timer / 0.5)
+
+
+## Live Digitraffic roadworks (the server's zones near the camera, 50 m
+## pieces): cones and barriers where a lane or the road is closed, with
+## barriers only at a run's open ends, and the speed-limit sign where a run
+## begins - drawn from the state, nothing decided here.
+func _live_roadworks(rows: Array) -> void:
+	var open := open_ends(rows)
+	for index in rows.size():
+		var row: Dictionary = rows[index]
+		var start := MapMath.point(origin, row["start"][0], row["start"][1])
+		var end := MapMath.point(origin, row["end"][0], row["end"][1])
+		var open_start: bool = open[index][0]
+		var open_end: bool = open[index][1]
+		if not (view_rect.has_point(start) or view_rect.has_point(end)):
+			continue
+		if row.get("closed", false) or row.get("lane_closed", false):
+			MapChunk.draw_roadwork(_canvas, start, end, float(row.get("half_width_m", 4.0)),
+				row.get("lane_closed", false), px_per_m, [open_start, open_end])
+		var limit = row.get("speed_limit_kmh")
+		if limit != null:
+			for i in 2:
+				if [open_start, open_end][i]:
+					var side := (end - start).normalized().orthogonal() * float(row.get("half_width_m", 4.0))
+					_speed_sign((start if i == 0 else end) - side * 1.3, int(limit))
+
+
+## [start open, end open] per piece: an end no other piece shares is where a
+## run of pieces begins or ends (barriers and signs go there only).
+static func open_ends(rows: Array) -> Array:
+	var ends := {}
+	for row in rows:
+		for key in ["start", "end"]:
+			var at := Vector2(row[key][0], row[key][1]).snapped(Vector2(0.5, 0.5))
+			ends[at] = ends.get(at, 0) + 1
+	var result := []
+	for row in rows:
+		result.append([ends[Vector2(row["start"][0], row["start"][1]).snapped(Vector2(0.5, 0.5))] < 2,
+			ends[Vector2(row["end"][0], row["end"][1]).snapped(Vector2(0.5, 0.5))] < 2])
+	return result
+
+
+## A roadside speed-limit sign: white disc, red ring, the number.
+func _speed_sign(at: Vector2, limit: int) -> void:
+	var r := maxf(_px(7.0), 0.45)
+	_canvas.draw_circle(at, r, Color8(250, 250, 250))
+	_canvas.draw_arc(at, r * 0.85, 0.0, TAU, 20, Color8(205, 30, 30), r * 0.3)
+	var text := str(limit)
+	var size := maxi(6, int(r * px_per_m * 0.9))
+	_canvas.draw_set_transform(at, 0.0, Vector2.ONE / px_per_m)
+	var width := ThemeDB.fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	_canvas.draw_string(ThemeDB.fallback_font, Vector2(-width / 2.0, size * 0.35), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color8(20, 20, 20))
+	_canvas.draw_set_transform(Vector2.ZERO)
+
+
+## The player is out of the taxi in a brawl: its figure stands in for theirs.
+static func player_fighting(state: Dictionary) -> bool:
+	for brawl in state.get("brawls", []):
+		for f in brawl.get("fighters", []):
+			if f.get("kind", "") == "player" and not f.get("in_car", false):
+				return true
+	return false
+
+
+## Taxi drivers' quarrels (server "brawls": current state only). Each fighter
+## is a pedestrian figure; a punch plays once per server action seq, so a
+## duplicated or late update never swings twice and a fresh snapshot shows
+## no more than the current blow.
+func _brawls(a: Dictionary, b: Dictionary, t: float, view_rect: Rect2) -> int:
+	var drawn := 0
+	var later := _by_id(b.get("brawls", []))
+	var now := Time.get_ticks_msec() / 1000.0
+	var live := {}
+	for brawl in a.get("brawls", []):
+		live[brawl["id"]] = true
+		var action = brawl.get("action")
+		if typeof(action) == TYPE_DICTIONARY and action.get("kind", "") in ["strike", "dodge"]:
+			var seen: Array = _brawl_punches.get(brawl["id"], [-1, 0.0])
+			if int(action["seq"]) > int(seen[0]):
+				_brawl_punches[brawl["id"]] = [int(action["seq"]), now]
+		var punch: Array = _brawl_punches.get(brawl["id"], [-1, -10.0])
+		var swing := clampf(1.0 - (now - float(punch[1])) / 0.35, 0.0, 1.0)
+		var next_fighters: Array = later.get(brawl["id"], brawl).get("fighters", brawl["fighters"])
+		for i in brawl["fighters"].size():
+			var f: Dictionary = brawl["fighters"][i]
+			if f.get("in_car", false):
+				continue  # the player still at the wheel: the taxi is drawn, not a figure
+			var p := StateBuffer.blend(f, next_fighters[i] if i < next_fighters.size() else f, t, origin)
+			var c := Vector2(p.x, p.y)
+			if not view_rect.has_point(c):
+				continue
+			var striking: bool = typeof(action) == TYPE_DICTIONARY and int(action.get("actor", -1)) == i
+			_pedestrian(c, p.z, {
+				"color": PLAYER_JACKET if f.get("kind", "") == "player" else BRAWL_JACKETS[i % BRAWL_JACKETS.size()],
+				"animation_state": "fallen" if f.get("down", false) else "walking" if f.get("moving", false) else "standing",
+				"activity": "" if f.get("down", false) else "brawl",
+				"stick_swing": swing if striking else 0.0,
+				"curse_timer": f.get("curse_timer", 0.0), "curse_text": f.get("curse_text", ""),
+				"rage": f.get("rage", 0.0),  # drawn over the figure by _pedestrian (on the people layer)
+			}, now)
+			drawn += 1
+	for id in _brawl_punches.keys():  # over: forget it
+		if not live.has(id):
+			_brawl_punches.erase(id)
+	return drawn
+
+
+## The server's rage on a fighter's face: a red flush that deepens with it,
+## and anger marks once it is extreme (taxi_brawls.RAGE_EXTREME). Looks only.
+func _rage_face(c: Vector2, heading: float, rage: float, down: bool) -> void:
+	if rage < 0.1 or down:
+		return
+	var radius := maxf(_px(4.0), 0.45)
+	var head := c + Vector2(cos(heading), -sin(heading)) * radius * 0.6
+	_canvas.draw_circle(head, maxf(_px(1.0), radius * 0.35), _person_lit(Color(0.85, 0.1, 0.05, 0.6 * rage)))
+	if rage >= 0.7:
+		var mark := head + Vector2(radius * 0.55, -radius * 0.75)
+		for i in 4:
+			var d := Vector2.from_angle(PI * 0.25 + i * PI * 0.5) * radius * 0.22
+			_canvas.draw_line(mark + d * 0.4, mark + d * 1.6, _person_lit(Color8(220, 20, 20)), maxf(_px(1.0), radius * 0.1))
+
+
+## Relaxed beach poses and swimming strokes; the server decides land versus water.
+func _beach_person(c: Vector2, h: Vector2, side: Vector2, radius: float, clothing: Color, swimming: bool, time: float) -> void:
+	var skin := _person_lit(RS.PED_HEAD)
+	if not swimming:
+		_canvas.draw_set_transform(c, h.angle())
+		_canvas.draw_rect(Rect2(Vector2(-1.9, -0.9) * radius, Vector2(3.8, 1.8) * radius), _person_lit(clothing.lightened(0.3)))
+		_canvas.draw_rect(Rect2(Vector2(-1.9, -0.9) * radius, Vector2(3.8, 1.8) * radius), _person_lit(Color.WHITE), false, _px(1))
+		_canvas.draw_set_transform(Vector2.ZERO)
+		_canvas.draw_line(c - h * radius * 0.5, c + h * radius * 0.65, skin, radius * 0.7)
+		for sign_side: float in [-1.0, 1.0]:
+			_canvas.draw_line(c - h * radius * 0.45, c - h * radius * 1.5 + side * radius * 0.3 * sign_side, skin, radius * 0.22)
+			_canvas.draw_line(c + h * radius * 0.4, c + side * radius * 0.85 * sign_side, skin, radius * 0.2)
+		_rotated_ellipse(c - h * radius * 0.35, h, radius * 0.35, radius * 0.4, clothing)
+	else:
+		_swimmer(c, h, side, radius, clothing, time + _clock)
+		return
+	var head := c + h * radius * 0.95
+	_canvas.draw_circle(head, radius * 0.43, _person_lit(RS.PED_HAIR))
+	_canvas.draw_circle(head, radius * 0.32, skin)
+
+
+func _swimmer(c: Vector2, h: Vector2, side: Vector2, radius: float, clothing: Color, time: float) -> void:
+	var skin := _person_lit(RS.PED_HEAD)
+	var submerged := Color(skin, 0.4)
+	for sign_side: float in [-1.0, 1.0]:
+		var wake := PackedVector2Array()
+		for i in 7:
+			var t := float(i) / 6.0
+			wake.append(c - h * radius * (0.6 + t * 1.4) + side * radius * sign_side * (0.5 + t * 0.55))
+		_canvas.draw_polyline(wake, _person_lit(Color(0.85, 0.95, 1.0, 0.35)), _px(0.8))
+		var kick := sin(time * 7.0 + sign_side * PI * 0.5)
+		_canvas.draw_line(c - h * radius * .65 + side * radius * .18 * sign_side,
+			c - h * radius * (1.8 + kick * .15) + side * radius * .25 * sign_side, submerged, radius * .22)
+	_rotated_ellipse(c - h * radius * .1, h, radius * .8, radius * .38, RS.PED_HEAD)
+	_rotated_ellipse(c - h * radius * .65, h, radius * .35, radius * .4, clothing)
+	for sign_side: float in [-1.0, 1.0]:
+		var stroke := sin(time * 4.0 + sign_side * PI * 0.5)
+		var shoulder := c + h * radius * .35 + side * radius * .3 * sign_side
+		var elbow := shoulder + side * radius * .65 * sign_side + h * radius * stroke * .35
+		var hand := elbow + h * radius * stroke * .9 - side * radius * .25 * sign_side
+		_canvas.draw_polyline(PackedVector2Array([shoulder, elbow, hand]), skin, radius * .25)
+	var head := c + h * radius * .9
+	_canvas.draw_circle(head, radius * .4, _person_lit(RS.PED_HAIR))
+	_canvas.draw_circle(head + h * radius * .06, radius * .3, skin)
+
+
+## Golf clubs follow the server's club choice and swing progress.
+func _golf_club(c: Vector2, h: Vector2, side: Vector2, radius: float, golf: Dictionary) -> void:
+	var putting: bool = golf.get("club", "") == "putter"
+	var swing: float = float(golf.get("swing", 0.0))
+	var angle := (1.0 - swing) * (0.35 if putting else 1.5) if golf.get("phase", "") == "swing" else 0.0
+	var hand := c + side * radius * 0.45
+	var head := hand + h.rotated(angle) * (0.8 if putting else 1.05)
+	if golf.get("phase", "") == "walk":
+		hand = c + side * radius * 0.95
+		head = hand + Vector2(0, 0.85)
+	_canvas.draw_line(hand, head, _person_lit(Color8(195, 200, 205)), maxf(_px(1.2), 0.05))
+	_canvas.draw_circle(hand, maxf(_px(1.4), radius * 0.18), _person_lit(RS.PED_HEAD))
+	if putting:
+		_canvas.draw_line(head - side * 0.16, head + side * 0.16, _person_lit(STICK_BLADE), maxf(_px(2.0), 0.09))
+	else:
+		_canvas.draw_circle(head, maxf(_px(2.0), 0.13 if golf.get("club", "") == "driver" else 0.08), _person_lit(STICK_BLADE))
+
+
+## The ball and its ground shadow remain visible when the golfer is off screen.
+func _golf_ball(row: Array) -> void:
+	var ground: Vector2 = row[0]
+	var pin: Vector2 = row[2]
+	_lit_tint = vehicle_light(light_level * float(light_at.call(pin)), ambient)
+	if view_rect.has_point(pin):
+		_canvas.draw_circle(pin, maxf(_px(2.0), 0.11), _person_lit(STICK_BLADE))
+		var top := pin - Vector2(0, 1.6)
+		_canvas.draw_line(pin, top, _person_lit(Color.WHITE), maxf(_px(1.0), 0.04))
+		_canvas.draw_set_transform(top)
+		_canvas.draw_colored_polygon(PackedVector2Array([Vector2.ZERO, Vector2(0.65, 0.2), Vector2(0, 0.45)]), _person_lit(Color8(225, 45, 40)))
+		_canvas.draw_set_transform(Vector2.ZERO)
+	if row[3]:
+		return
+	var at := ground - Vector2(0, float(row[1]) * 0.35)
+	if view_rect.has_point(ground) or view_rect.has_point(at):
+		_lit_tint = vehicle_light(light_level * float(light_at.call(ground)), ambient)
+		_canvas.draw_circle(ground, maxf(_px(1.8), 0.07), RS.PED_SHADOW)
+		_canvas.draw_circle(at, maxf(_px(2.2), 0.045) + _px(0.6), _person_lit(STICK_BLADE))
+		_canvas.draw_circle(at, maxf(_px(2.2), 0.045), _person_lit(SOCCER_BALL))
+
+
+## A non-colliding owned dog and its leash, batched with its pedestrian.
+func _dog(owner: Vector2, at: Vector2, heading: float, dog: Dictionary) -> void:
+	var sizes := {"small": 0.28, "medium": 0.38, "large": 0.50}
+	var radius: float = sizes.get(str(dog.get("size", "medium")), 0.38)
+	var h := Vector2(cos(heading), -sin(heading))
+	var side := Vector2(-h.y, h.x)
+	var body := _rgb(dog.get("color", [120, 90, 60]))
+	_canvas.draw_line(owner + side * 0.22, at - h * radius * 0.15, _person_lit(Color8(48, 38, 32)), maxf(_px(1.2), 0.06))
+	_ellipse(at + Vector2(0, radius * 0.35), radius * 0.85, radius * 0.38, RS.PED_SHADOW)
+	_ellipse(at, radius * 0.72, radius, body)
+	var head := at + h * radius * (0.78 if dog.get("sniffing", false) else 1.02)
+	_canvas.draw_circle(head, radius * 0.58, _person_lit(body.lightened(0.06)))
+	var ear := PackedColorArray([_person_lit(body.darkened(0.25))])
+	for s: float in [1.0, -1.0]:  # draw_primitive: a few-cm triangle needs no triangulation (which rejected it)
+		_canvas.draw_primitive(PackedVector2Array([head + side * radius * 0.42 * s,
+			head - h * radius * 0.48 + side * radius * 0.62 * s, head - h * radius * 0.22 + side * radius * 0.18 * s]), ear, PackedVector2Array())
+	_canvas.draw_line(at - h * radius * 0.75, at - h * radius * 1.35 + side * radius * 0.35,
+		_person_lit(body.darkened(0.12)), maxf(_px(1.5), radius * 0.24))
 
 
 ## An ice hockey player's stick: from the right hand forward to the blade on
@@ -981,6 +1441,23 @@ func _bubble(anchor: Vector2, text: String, text_color: Color, border: Color, al
 	_canvas.draw_set_transform(Vector2.ZERO)
 
 
+## A line bus's number on its roof: a dark box along the bus, turning
+## with it (never upside down), about as tall as the bus is wide.
+func _bus_number(c: Vector2, heading: float, text: String) -> void:
+	if _canvas == self:  # text never dims: on _overlay
+		_overlays.append(_bus_number.bind(c, heading, text))
+		return
+	var font_size := clampi(roundi(1.5 * px_per_m), 6, 48)
+	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var box := Rect2(Vector2(-size.x / 2.0 - 3.0, -size.y / 2.0), size + Vector2(6.0, 0.0))
+	var angle := -heading if cos(heading) >= 0.0 else PI - heading
+	_canvas.draw_set_transform(c, angle, Vector2.ONE / px_per_m)
+	_canvas.draw_rect(box, Color8(20, 20, 20, 230))
+	_canvas.draw_string(_font, Vector2(box.position.x + 3.0, _font.get_ascent(font_size) - size.y / 2.0), text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color8(255, 190, 60))
+	_canvas.draw_set_transform(Vector2.ZERO)
+
+
 ## A label with a dark background (the target and customer tags).
 func _tag(anchor: Vector2, text: String, text_color: Color, border = null, font_size := 14) -> void:
 	if _canvas == self:  # text never dims: on _overlay
@@ -1003,11 +1480,28 @@ func _person_lit(color: Color) -> Color:
 
 func _draw_people() -> void:
 	_canvas = _people
+	for row in _dog_rows:
+		_lit_tint = vehicle_light(light_level * float(light_at.call(row[1])), ambient)
+		_dog(row[0], row[1], row[2], row[3])
 	for row in _people_rows:
 		_lit_tint = vehicle_light(light_level * float(light_at.call(row[0])), ambient)
 		_pedestrian(row[0], row[1], row[2], row[3])
 	if not _puck_frame.is_empty():
 		_pucks(_puck_frame[0], _puck_frame[1], _puck_frame[2])
+	for row in _golf_rows:
+		_golf_ball(row)
+	for ball in _tennis_balls:
+		var ground := Vector2(ball.x, ball.y)
+		_lit_tint = vehicle_light(light_level * float(light_at.call(ground)), ambient)
+		_canvas.draw_circle(ground, maxf(_px(1.5), .08), RS.PED_SHADOW)
+		_canvas.draw_circle(ground - Vector2(0, ball.z * .7), maxf(_px(2), .09), _person_lit(Color8(220, 245, 65)))
+	for ball in _beach_balls:
+		var ground := Vector2(ball.x, ball.y)
+		_lit_tint = vehicle_light(light_level * float(light_at.call(ground)), ambient)
+		var at := ground - Vector2(0, ball.z * ball.w)
+		_canvas.draw_circle(ground, maxf(_px(2), 0.12), RS.PED_SHADOW)
+		_canvas.draw_circle(at, maxf(_px(3), 0.17), _person_lit(Color8(250, 215, 60)))
+		_canvas.draw_arc(at, maxf(_px(2), 0.12), 0, PI, 8, _person_lit(Color8(230, 80, 55)), maxf(_px(1.2), 0.05))
 	_lit_tint = Color.WHITE
 	_canvas = self
 
@@ -1116,6 +1610,10 @@ func _draw() -> void:
 	var count := 0
 	_lamp_polys.clear()
 	_people_rows.clear()
+	_dog_rows.clear()
+	_golf_rows.clear()
+	_tennis_balls.clear()
+	_beach_balls.clear()
 	_puck_frame = []
 	_overlays.clear()
 	_car_shapes.clear()
@@ -1125,11 +1623,12 @@ func _draw() -> void:
 	glow_colors.clear()
 	glow_triangles.clear()
 	if not underground:
+		_live_roadworks(a.get("live_roadworks", []))
 		for point in a.get("vomit_puddles", []):
 			if point.size() >= 2:
 				var at := MapMath.point(origin, point[0], point[1])
 				if view_rect.has_point(at):
-					_ellipse(at, 1.2, 0.7, Color8(105, 115, 62))
+					_vomit_puddle(at, Vector2(point[0], point[1]))
 		for print_point in a.get("vomit_footprints", []):
 			if print_point.size() >= 3:
 				var at := MapMath.point(origin, print_point[0], print_point[1])
@@ -1138,13 +1637,65 @@ func _draw() -> void:
 					draw_circle(Vector2.ZERO, 1.0, Color8(95, 104, 55, 210))
 					draw_set_transform(Vector2.ZERO)
 
+	if not underground:
+		var later_protests := _by_id(b.get("protests", []))
+		for group in a.get("protests", []):
+			var next_group: Dictionary = later_protests.get(group["id"], group)
+			var seated: bool = group.get("state", "SITTING") in ["SITTING", "ALARMED"]
+			for i in group.get("members", []).size():
+				var at: Array = group["members"][i]
+				var c := MapMath.point(origin, at[0], at[1])
+				if next_group.get("members", []).size() == group["members"].size():
+					var next_at: Array = next_group["members"][i]
+					c = c.lerp(MapMath.point(origin, next_at[0], next_at[1]), t)
+				if view_rect.has_point(c):
+					_pedestrian(c, float(group["heading"]) + sin(i * 7.3) * 0.35, {
+						"radius_m": 0.45, "color": [210, 100 + (i * 29) % 110, 50 + (i * 17) % 100],
+						"animation_state": "sitting" if seated else "walking" if group["state"] in ["CLEARING", "RETURNING"] else "standing"
+					}, float(a.get("sim_time", 0.0)))
+					count += 1
+			var banner_at: Array = group["members"][0]
+			var banner := MapMath.point(origin, banner_at[0], banner_at[1])
+			if view_rect.has_point(banner):
+				_canvas.draw_rect(Rect2(banner + Vector2(-3.5, -3.0), Vector2(7, 1.3)), Color8(245, 213, 70))
+				_canvas.draw_set_transform(banner + Vector2(-3.3, -2.0), 0.0, Vector2.ONE * 0.08)
+				_canvas.draw_string(ThemeDB.fallback_font, Vector2.ZERO, "ILOKAPINA", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color8(30, 30, 30))
+				_canvas.draw_set_transform(Vector2.ZERO)
 	var later_peds := _by_id(b.get("pedestrians", []))
 	for ped in ([] if underground else a.get("pedestrians", [])):  # below ground: the surface world isn't shown
 		var next: Dictionary = later_peds.get(ped["id"], ped)
 		var p := StateBuffer.blend(ped, next, t, origin)
 		var c := Vector2(p.x, p.y)
+		if ped.has("tennis_ball"):
+			var ball: Array = ped["tennis_ball"]
+			var later: Array = next.get("tennis_ball", ball)
+			var at := MapMath.point(origin, lerpf(ball[0], later[0], t), lerpf(ball[1], later[1], t))
+			if view_rect.has_point(at):
+				_tennis_balls.append(Vector3(at.x, at.y, lerpf(ball[2], later[2], t)))
+		if ped.has("beach_ball"):
+			var ball: Array = ped["beach_ball"]
+			var later: Array = next.get("beach_ball", ball)
+			var at := MapMath.point(origin, lerpf(ball[0], later[0], t), lerpf(ball[1], later[1], t))
+			if view_rect.has_point(at):
+				var height_scale := 0.7 if ped.get("activity", "") == "beach_volleyball" else 0.35
+				_beach_balls.append(Vector4(at.x, at.y, lerpf(ball[2], later[2], t), height_scale))
+		var golf: Dictionary = ped.get("golf", {})
+		if not golf.is_empty():
+			var later_golf: Dictionary = next.get("golf", golf)
+			var ball: Array = golf["ball"]
+			var later_ball: Array = later_golf.get("ball", ball)
+			var pin: Array = golf["pin"]
+			_golf_rows.append([MapMath.point(origin, lerpf(ball[0], later_ball[0], t), lerpf(ball[1], later_ball[1], t)),
+				lerpf(ball[2], later_ball[2], t), MapMath.point(origin, pin[0], pin[1]), golf.get("holed", false)])
 		if not view_rect.has_point(c):
 			continue
+		var dog: Dictionary = ped.get("dog", {})
+		if not dog.is_empty():
+			var next_dog: Dictionary = next.get("dog", dog)
+			var dog_at := MapMath.point(origin, lerpf(float(dog["x"]), float(next_dog.get("x", dog["x"])), t), lerpf(float(dog["y"]), float(next_dog.get("y", dog["y"])), t))
+			var dog_heading := lerp_angle(float(dog.get("heading", 0.0)), float(next_dog.get("heading", dog.get("heading", 0.0))), t)
+			_dog_rows.append([c, dog_at, dog_heading, dog])
+			count += 1
 		_pedestrian(c, p.z, ped, lerpf(ped.get("animation_time", 0.0), next.get("animation_time", 0.0), t))
 		count += 1
 	if not underground:
@@ -1158,7 +1709,9 @@ func _draw() -> void:
 		if view_rect.has_point(c):
 			_pedestrian(c, p.z, {"color": npc.get("color", [200, 200, 200])}, 0.0)
 			count += 1
-	if a.get("on_foot", false):
+	if not underground:
+		count += _brawls(a, b, t, view_rect)
+	if a.get("on_foot", false) and not player_fighting(a):  # in a brawl the fighter figure is the player
 		var walker := StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), t, origin)
 		_pedestrian(Vector2(walker.x, walker.y), walker.z, {"color": [255, 217, 64], "animation_state": "standing"}, 0.0)
 		count += 1
@@ -1173,7 +1726,8 @@ func _draw() -> void:
 	var road: Dictionary = a.get("road", {}) if typeof(a.get("road")) == TYPE_DICTIONARY else {}
 	var taxi_under: bool = not road.get("bridge", false) and covered.call(taxi_at, int(road.get("layer", 0)))
 	if player.get("engine_on", false) and not taxi_under:
-		_smoke(taxi_at, taxi.z, taxi_length, _clock, true)  # exhaust
+		_exhaust = lerpf(_exhaust, float(player.get("throttle", 0.0)), 0.15)  # eased: no flicker per snapshot
+		_smoke(taxi_at, taxi.z, taxi_length, _clock, true, _exhaust)
 	taxi_sign_on = taxi_sign_lit(a.get("taxi", {}))
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
 		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under)
@@ -1201,9 +1755,17 @@ func _draw() -> void:
 			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
 			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false),
 			int(npc.get("layer", 0)) <= 0 and covered.call(c, int(npc.get("layer", 0))))
+		if npc.has("trailer"):  # a towed trailer: its own body, swinging on the hitch (server trailers.py)
+			_trailer(npc["trailer"], later_npcs.get(npc["id"], npc).get("trailer", npc["trailer"]), t)
+		if npc.get("bus_line") != null:  # a line bus: its number, like the destination display
+			_bus_number(c, p.z, str(npc["bus_line"]))
 		var crashed: float = npc.get("crashed_timer", 0.0)
 		if crashed > 0.0:
 			_smoke(c, p.z, npc["length_m"], crashed if is_finite(crashed) else _clock)
+		var cursing: float = npc.get("curse_timer", 0.0)
+		if cursing > 0.0:  # bumped by the taxi: the driver's curse, like a pedestrian's
+			_bubble(c - Vector2(0, float(npc["length_m"]) * 0.5 + _px(6.0)), str(npc.get("curse_text", "@#*!%")),
+				RS.CURSE_TEXT, RS.CURSE_BORDER, 1.0 if cursing >= 0.5 else cursing / 0.5)
 		count += 1
 
 	if a.get("taxi", {}).get("current_passenger") is Dictionary:

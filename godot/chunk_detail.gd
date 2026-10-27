@@ -13,7 +13,6 @@ const HALF_GAUGE := 1.435 / 2.0
 const HALF_TIE := 2.6 / 2.0
 const TIE_SPACING := 2.0
 const BUMP_LENGTHS := {"table": 2.2, "bump": 0.6, "cushion": 0.4, "hump": 0.6}
-const B25 := preload("res://buildings_25d.gd")
 const B3 := preload("res://buildings_3d.gd")
 const OPEN_ROOF := Color8(138, 145, 148, 185)
 const OPEN_ROOF_EDGE := Color8(65, 69, 71, 235)
@@ -42,7 +41,73 @@ static func draw_areas(chunk, node: Node2D, key: String) -> void:
 			match int(area[1]):
 				1: color = chunk.seasonal_color(color, chunk._season)
 				2: color = RINK_ICE if chunk._season[0] >= FIELDS_FROZEN_WINTER_WEIGHT else chunk.seasonal_color(color, chunk._season)
-			node.draw_colored_polygon(polygon, color)
+			if key == "landuse" and area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]:
+				var uv := PackedVector2Array()
+				uv.resize(polygon.size())
+				uv.fill(Vector2(1.0 + float(chunk._season[0]), float(chunk._season[3])))
+				node.draw_polygon(polygon, PackedColorArray([color]), uv)
+			else:
+				node.draw_colored_polygon(polygon, color)
+
+
+## Above all ground fills: smaller grass plots must not paint over headstones.
+static func draw_site_details(chunk, node: Node2D) -> void:
+	var areas: Array = chunk._data.get("landuse", [])
+	for index in areas.size():
+		var area = areas[index]
+		if area.size() <= 3:
+			continue
+		if not chunk._site_details.has(index):
+			chunk._site_details[index] = site_detail_positions(chunk._points(area[2]), str(area[3]), chunk._origin)
+		for at in chunk._site_details[index]:
+			draw_site_detail(node, at, str(area[3]), float(chunk._season[0]))
+
+
+## World-aligned decorative rows, bounded per clipped chunk and kept inside its polygon.
+static func site_detail_positions(polygon: PackedVector2Array, kind: String, origin: Vector2) -> PackedVector2Array:
+	var positions := PackedVector2Array()
+	if kind not in ["biergarten", "grave_yard", "cemetery"] or not _valid(polygon):
+		return positions
+	var bounds := Rect2(polygon[0], Vector2.ZERO)
+	for point in polygon:
+		bounds = bounds.expand(point)
+	var spacing := 6.0 if kind == "biergarten" else 4.0
+	spacing *= maxf(1.0, ceilf(sqrt(bounds.get_area() / (spacing * spacing * 192.0))))
+	var half := 1.8 if kind == "biergarten" else 1.1
+	var x0 := ceili((bounds.position.x + origin.x) / spacing)
+	var x1 := floori((bounds.end.x + origin.x) / spacing)
+	var y0 := ceili((origin.y - bounds.end.y) / spacing)
+	var y1 := floori((origin.y - bounds.position.y) / spacing)
+	for row in range(y0, y1 + 1):
+		for column in range(x0, x1 + 1):
+			var at := MapMath.point(origin, column * spacing, row * spacing)
+			var inside := Geometry2D.is_point_in_polygon(at, polygon)
+			for offset in [Vector2(-half, -half), Vector2(half, -half), Vector2(half, half), Vector2(-half, half)]:
+				inside = inside and Geometry2D.is_point_in_polygon(at + offset, polygon)
+			if inside:
+				positions.append(at)
+				if positions.size() >= 256:
+					return positions
+	return positions
+
+
+static func draw_site_detail(node: Node2D, at: Vector2, kind: String, snow: float) -> void:
+	var snowy := Color8(215, 224, 232)
+	if kind == "biergarten":
+		var wood := Color8(140, 94, 52).lerp(snowy, snow * 0.7)
+		node.draw_rect(Rect2(at - Vector2(1.1, 0.45), Vector2(2.2, 0.9)), wood)
+		for side in [-1.0, 1.0]:
+			node.draw_rect(Rect2(at + Vector2(-1.1, side * 0.95 - 0.16), Vector2(2.2, 0.32)), wood.darkened(0.15))
+		if fposmod(sin(at.dot(Vector2(0.73, 0.37))) * 43758.0, 1.0) < 0.4:
+			node.draw_circle(at + Vector2(0.15, -0.15), 1.4, Color8(84, 78, 62, 80))
+			node.draw_circle(at, 1.25, Color8(185, 67, 45).lerp(snowy, snow * 0.8))
+			node.draw_line(at - Vector2(1.1, 0), at + Vector2(1.1, 0), Color8(236, 209, 161), 0.08)
+			node.draw_line(at - Vector2(0, 1.1), at + Vector2(0, 1.1), Color8(236, 209, 161), 0.08)
+	else:
+		node.draw_rect(Rect2(at - Vector2(0.65, 0.9), Vector2(1.3, 1.8)), Color8(68, 80, 57).lerp(snowy, snow * 0.85))
+		node.draw_rect(Rect2(at - Vector2(0.75, 1.0), Vector2(1.5, 0.4)), Color8(57, 59, 60))
+		node.draw_rect(Rect2(at - Vector2(0.65, 1.0), Vector2(1.3, 0.25)), Color8(155, 157, 150).lerp(snowy, snow * 0.5))
+		node.draw_circle(at + Vector2(0.1, 0.45), 0.18, Color8(173, 76, 79).lerp(snowy, snow))
 
 
 ## Ice hockey markings (IIHF, laid out on a 60 x 30 m rink and scaled to
@@ -175,7 +240,11 @@ class RinkFrame:
 		node.draw_polyline(points, color, width)
 
 	func fill_quad(node: Node2D, u0: float, v0: float, u1: float, v1: float, color: Color) -> void:
-		node.draw_colored_polygon(PackedVector2Array([at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)]), color)
+		# A net is a rectangle; draw it locally to avoid distant-coordinate triangulation.
+		node.draw_set_transform(at(0.0, 0.0), -axis_u.angle())
+		node.draw_rect(Rect2(Vector2(u0 * scale_u, -v0 * scale_v),
+			Vector2((u1 - u0) * scale_u, -(v1 - v0) * scale_v)).abs(), color)
+		node.draw_set_transform(Vector2.ZERO)
 
 	func circle(node: Node2D, u: float, v: float, radius: float, color: Color, width: float) -> void:
 		var points := PackedVector2Array()
@@ -193,15 +262,21 @@ class RinkFrame:
 	func spot(node: Node2D, u: float, v: float, radius: float, color: Color) -> void:
 		var points := PackedVector2Array()
 		for i in 12:
-			points.append(around(u, v, radius, TAU * i / 12.0))
+			var angle := TAU * i / 12.0
+			points.append(Vector2(cos(angle), -sin(angle)) * radius)
+		node.draw_set_transform(at(u, v))
 		node.draw_colored_polygon(points, color)
+		node.draw_set_transform(Vector2.ZERO)
 
 	## A filled half circle centred on (u, v), bulging toward `facing` (rink angle: 0 is +u).
 	func fill_arc(node: Node2D, u: float, v: float, radius: float, facing: float, color: Color) -> void:
-		var points := PackedVector2Array([at(u, v)])
+		var points := PackedVector2Array([Vector2.ZERO])
 		for i in 17:
-			points.append(around(u, v, radius, facing - PI / 2.0 + PI * i / 16.0))
+			var angle := facing - PI / 2.0 + PI * i / 16.0
+			points.append(Vector2(cos(angle), -sin(angle)) * radius)
+		node.draw_set_transform(at(u, v), -axis_u.angle())
 		node.draw_colored_polygon(points, color)
+		node.draw_set_transform(Vector2.ZERO)
 
 
 ## Parking spaces: asphalt bays with a light edge.
@@ -286,28 +361,29 @@ static func draw_guardrails(chunk, node: Node2D) -> void:
 static func draw_canopy_supports(chunk, node: Node2D) -> void:
 	for canopy in chunk._data.get("canopies", []):
 		var polygon: PackedVector2Array = chunk._points(canopy)
-		if not _valid(polygon):
+		if polygon.size() < 3:
 			continue
+		var anchor := polygon[0]
 		var shadow := polygon.duplicate()
 		for i in shadow.size():
-			shadow[i] += Vector2(0.35, 0.35)
+			shadow[i] -= anchor
+		if not _valid(shadow):
+			continue
+		# Keep small shadow edges precise even far from the initial map origin.
+		node.draw_set_transform(anchor + Vector2(0.35, 0.35))
 		node.draw_colored_polygon(shadow, Color8(30, 32, 33, 75))
-		var centre := Vector2.ZERO
-		for p in polygon:
-			centre += p
-		centre /= polygon.size()
+		node.draw_set_transform(Vector2.ZERO)
 		var height := canopy_height(chunk, canopy)
-		var up := B25.lift(height, centre, chunk._building_view)
 		for point in polygon:
-			node.draw_line(point, _lift(chunk, point, height, up), OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
+			node.draw_line(point, _lift(chunk, point, height), OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18) + chunk._px(1.0), OPEN_ROOF_EDGE)
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18), OPEN_ROOF_POLE)
 
 
 ## A canopy point raised to `height`: with the 3D buildings, exactly where
-## their camera shows that height (godot-23); otherwise the 2D radial lift.
-static func _lift(chunk, point: Vector2, height: float, radial: Vector2) -> Vector2:
-	return B3.lift_point(point, height) if chunk.buildings_3d else point + radial
+## their camera shows that height (godot-23); otherwise the unchanged flat footprint.
+static func _lift(chunk, point: Vector2, height: float) -> Vector2:
+	return B3.lift_point(point, height) if chunk.buildings_3d else point
 
 
 ## A canopy's height (chunk canopy_heights, in step with canopies; 6 m without).
@@ -322,14 +398,9 @@ static func canopy_height(chunk, canopy) -> float:
 static func draw_canopies(chunk, node: Node2D) -> void:
 	for canopy in chunk._data.get("canopies", []):
 		var polygon: PackedVector2Array = chunk._points(canopy).duplicate()
-		var centre := Vector2.ZERO
-		for p in polygon:
-			centre += p
-		centre /= polygon.size()
 		var height := canopy_height(chunk, canopy)
-		var up := B25.lift(height, centre, chunk._building_view)
 		for i in polygon.size():
-			polygon[i] = _lift(chunk, polygon[i], height, up)
+			polygon[i] = _lift(chunk, polygon[i], height)
 		if _valid(polygon):
 			node.draw_colored_polygon(polygon, OPEN_ROOF)
 			var ring := polygon.duplicate()
@@ -389,7 +460,8 @@ static func draw_signs(chunk, node: Node2D, flash_index) -> void:
 		else:
 			var f := Vector2(cos(sign[3]), -sin(sign[3]))
 			var s := Vector2(-f.y, f.x)
-			var triangle := PackedVector2Array([f * r, -f * r - s * r, -f * r + s * r])
+			# The tip faces approaching drivers, with the triangle aligned to the road.
+			var triangle := PackedVector2Array([-f * r, f * r - s * r, f * r + s * r])
 			node.draw_colored_polygon(triangle, Color8(245, 245, 240))
 			triangle.append(triangle[0])
 			node.draw_polyline(triangle, Color8(220, 30, 30), maxf(2.0, 2.0 * scale))
@@ -420,18 +492,40 @@ static func draw_bus_stops(chunk, node: Node2D) -> void:
 	var font := ThemeDB.fallback_font
 	for stop in chunk._data.get("bus_stops", []):
 		var bay: PackedVector2Array = chunk._points(stop["bay"])
-		if _valid(bay):
-			node.draw_colored_polygon(bay, Color8(82, 82, 78))
-		if stop["shelter"] != null and _valid(chunk._points(stop["shelter"])):
-			var shelter: PackedVector2Array = chunk._points(stop["shelter"])
-			node.draw_colored_polygon(shelter, Color8(190, 190, 180))
-			shelter.append(shelter[0])
-			node.draw_polyline(shelter, Color8(45, 45, 42), maxf(chunk._px(1.0), 0.25))
-		var size := clampi(roundi(2.0 * chunk._px_per_m), 8, 32)
+		if not _valid(bay):
+			continue
+		node.draw_colored_polygon(bay, _rgb(stop["color"]) if stop.has("color") else Color8(82, 82, 78))
+		node.draw_polyline(PackedVector2Array([bay[1], bay[2], bay[3], bay[0]]), Color8(175, 175, 168), 0.25)  # the kerb
+		for key in ["shelter", "bench"]:
+			if stop.get(key) == null:
+				continue
+			var box: PackedVector2Array = chunk._points(stop[key])
+			if not _valid(box):
+				continue
+			node.draw_colored_polygon(box, Color(0.62, 0.78, 0.88, 0.6) if key == "shelter" else Color8(120, 82, 50))
+			box.append(box[0])
+			node.draw_polyline(box, Color8(45, 50, 55), 0.15 if key == "shelter" else 0.08)
+		# "BUS" painted in the bay, about 1.6 m tall, read on approach.
+		var size := clampi(roundi(1.6 * chunk._px_per_m), 8, 48)
 		var text_size := font.get_string_size("BUS", HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 		node.draw_set_transform(MapMath.point(chunk._origin, stop["label"][0], stop["label"][1]), -float(stop["angle"]), Vector2.ONE / chunk._px_per_m)
-		node.draw_string(font, Vector2(-text_size.x / 2.0, text_size.y / 3.0), "BUS", HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color8(25, 25, 25))
-	node.draw_set_transform(Vector2.ZERO)
+		node.draw_string(font, Vector2(-text_size.x / 2.0, text_size.y / 3.0), "BUS", HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color8(235, 235, 225))
+		node.draw_set_transform(Vector2.ZERO)
+		if stop.has("sign"):
+			_draw_stop_sign(node, MapMath.point(chunk._origin, stop["sign"][0], stop["sign"][1]))
+
+
+## The E6 bus stop sign seen from above, kept upright: a blue plate with a
+## white bus, on its pole.
+static func _draw_stop_sign(node: Node2D, at: Vector2) -> void:
+	var plate := Rect2(at - Vector2(1.0, 1.0), Vector2(2.0, 2.0))  # larger than life: readable from above
+	node.draw_rect(plate, Color8(20, 80, 170))
+	node.draw_rect(plate, Color.WHITE, false, 0.12)
+	node.draw_rect(Rect2(at + Vector2(-0.7, -0.45), Vector2(1.4, 0.75)), Color.WHITE)  # the bus
+	for x in [-0.55, -0.15, 0.25]:
+		node.draw_rect(Rect2(at + Vector2(x, -0.33), Vector2(0.3, 0.25)), Color8(20, 80, 170))  # its windows
+	for x in [-0.4, 0.4]:
+		node.draw_circle(at + Vector2(x, 0.35), 0.14, Color.WHITE)  # its wheels
 
 
 ## Road markings over one road: the centre line on a
@@ -471,3 +565,50 @@ static func road_markings(chunk, road: Dictionary, points: PackedVector2Array, l
 				chevrons.append_array(PackedVector2Array([at - u.rotated(-0.6) * arm, at, at, at - u.rotated(0.6) * arm]))
 			carry += 40.0
 		carry -= length
+
+
+static func draw_volleyball_courts(chunk, node: Node2D) -> void:
+	if chunk._season[0] >= PITCH_SNOW_WEIGHT:
+		return
+	for court in chunk._data.get("volleyball_courts", []):
+		var frame := RinkFrame.new(chunk, court, float(court[3]), float(court[4]))
+		frame.fill_quad(node, -.48, -.48, .48, .48, Color8(220, 203, 156))
+		frame.polyline(node, [[-.45,-.43],[.45,-.43],[.45,.43],[-.45,.43],[-.45,-.43]], Color8(55, 105, 195), .08)
+
+
+static func draw_volleyball_nets(chunk, node: Node2D) -> void:
+	for court in chunk._data.get("volleyball_courts", []):
+		var frame := RinkFrame.new(chunk, court, float(court[3]), float(court[4]))
+		var a := frame.at(0, -.47)
+		var b := frame.at(0, .47)
+		var lift := Vector2(.3, -2.43 * .7)
+		for base: Vector2 in [a, b]:
+			node.draw_line(base, base + lift, Color8(65, 85, 115), .14)
+		for height: float in [0.0, .25, .5]:
+			node.draw_line(a + lift + Vector2(0, height), b + lift + Vector2(0, height), Color8(55, 60, 65), .04)
+		for i in 17:
+			var top := a.lerp(b, float(i) / 16) + lift
+			node.draw_line(top, top + Vector2(0, .5), Color8(55, 60, 65), .035)
+		node.draw_line(a + lift, b + lift, PITCH_LINE, .09)
+
+
+static func draw_tennis_courts(chunk, node: Node2D) -> void:
+	if chunk._season[0] >= PITCH_SNOW_WEIGHT:
+		return
+	for court in chunk._data.get("tennis_courts", []):
+		var frame := RinkFrame.new(chunk, court, float(court[3]), float(court[4]))
+		frame.fill_quad(node, -.49, -.49, .49, .49, Color8(65, 117, 88))
+		frame.fill_quad(node, -.42, -.4, .42, .4, Color8(65, 125, 166))
+		frame.polyline(node, [[-.42,-.4],[.42,-.4],[.42,.4],[-.42,.4],[-.42,-.4]], PITCH_LINE, .07)
+		for v: float in [-.3, .3]:
+			frame.line(node, -.42, v, .42, v, PITCH_LINE, .07)
+		for u: float in [-.226, .226]:
+			frame.line(node, u, -.3, u, .3, PITCH_LINE, .07)
+		frame.line(node, -.226, 0, .226, 0, PITCH_LINE, .07)
+		for u: float in [-.42, .42]:
+			frame.line(node, u, -.015, u - signf(u)*.015, -.015, PITCH_LINE, .07)
+		# A dark mesh net with a bright top tape and posts.
+		frame.line(node, 0, -.44, 0, .44, Color8(35, 45, 42), .30)
+		frame.line(node, 0, -.44, 0, .44, PITCH_LINE, .08)
+		for v: float in [-.44, .44]:
+			frame.spot(node, 0, v, .18, Color8(45, 55, 48))

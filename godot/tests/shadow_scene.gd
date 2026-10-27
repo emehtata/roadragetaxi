@@ -25,6 +25,7 @@ const CASES := [  # name, altitude, azimuth (from grid north), cloud cover
 	["partly", 50.0, 180.0, 0.6],
 	["overcast", 50.0, 180.0, 1.0],
 	["night", -10.0, 0.0, 0.0],
+	["full_moon", 35.0, 120.0, -1.0],
 ]
 
 
@@ -69,7 +70,10 @@ func _initialize() -> void:
 	map.set_building_view(camera.position)
 	map.set_px_per_m(5.0)
 	for case in CASES:
-		map.set_sun(case[1], case[2], case[3])
+		if case[3] < 0.0:
+			map.set_celestial_light(case[1], case[2], Daylight.MOON_MAX_LIGHT)
+		else:
+			map.set_sun(case[1], case[2], case[3])
 		for i in 4:
 			await process_frame
 		await RenderingServer.frame_post_draw

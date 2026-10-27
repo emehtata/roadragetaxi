@@ -4,6 +4,7 @@ import math
 from .geo import closest_point_and_dist_to_segment
 from .map_level import on_map_level
 from .physics import is_car_road
+from .taxi_brawls import PROVOKE_CLEARANCE, provoke
 
 RAGE_SECONDS = 10.0
 
@@ -137,6 +138,7 @@ class RoadRageClearance:
                     offset += 2 * (radius + max_radius) + 2
                     continue
                 self.held[vehicle.vehicle_id] = vehicle, vehicle.x, vehicle.y, vehicle.state
+                provoke(vehicle, PROVOKE_CLEARANCE, now)  # shoved aside: its driver is angry
                 vehicle.car.x, vehicle.car.y, vehicle.car.speed = x, y, 0.0
                 vehicle.debug_waiting_for = "road rage: arcade clearance"
                 manager.rebuild_spatial_grid()

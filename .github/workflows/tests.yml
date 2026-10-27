@@ -31,9 +31,33 @@ jobs:
         # game's build and tools use; their tests check them for real
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q ffmpeg osmium-tool
-          python -m pip install -r requirements.txt pyinstaller
+          python -m pip install -r requirements.txt pyinstaller coverage
       - name: Tests (random order)
         run: python -m pytest -q -rs -p randomly
+      - name: Brawl and live-roadwork coverage (90% lines and branches)
+        run: |
+          python -m coverage run --branch --source=theroadragetrip.taxi_brawls,theroadragetrip.digitraffic_road -m pytest -q tests/test_taxi_brawls.py tests/test_digitraffic_road.py
+          python -m coverage report
+          python -m coverage json -o coverage.json
+          python - <<'PY'
+          import json
+
+          with open("coverage.json") as report:
+              files = json.load(report)["files"]
+          failures = []
+          for path, data in files.items():
+              summary = data["summary"]
+              for label, covered, total in (
+                  ("lines", summary["covered_lines"], summary["num_statements"]),
+                  ("branches", summary["covered_branches"], summary["num_branches"]),
+              ):
+                  percent = 100 * covered / total if total else 100
+                  print(f"{path}: {label} {percent:.2f}%")
+                  if percent < 90:
+                      failures.append(f"{path}: {label} below 90%")
+          if failures:
+              raise SystemExit("\n".join(failures))
+          PY
       - name: Compile check
         run: python -m compileall -q src/theroadragetrip
       - name: Audio assets
@@ -57,7 +81,9 @@ jobs:
       - name: Import the project
         run: ./godot-bin --headless --path godot --import
       - name: Client tests
-        run: ./godot-bin --headless --path godot --script res://tests/run_tests.gd
+        run: |
+          ./godot-bin --headless --path godot --script res://tests/run_tests.gd
+          ./godot-bin --headless --path godot --script res://tests/animal_audio.gd
       - name: Server + client selftest (sample map, offline)
         run: |
           PYTHONPATH=src python -m theroadragetrip.server --use-sample --no-historical-weather --port 8765 --tick-rate 30 > server.log 2>&1 &

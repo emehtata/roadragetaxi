@@ -1,6 +1,6 @@
 ## Dashboard instruments from the shown state: the needle fuel gauge with its reserve
 ## zone and econometer, the rage face and bar, the water countdown, and the
-## trip / odometer readout. Presentation only - every value comes from the
+## odometer / trip LCD in the speedometer. Presentation only - every value comes from the
 ## simulation. Redrawn only when a displayed value changes.
 extends Control
 
@@ -15,11 +15,15 @@ const TEXT_OUTLINE_PX := 4
 
 var _faces: Array[Texture2D] = []
 var _font: Font
+var _pump_liters: Control
+var _pump_total: Control
 var _shown := []  # the values last drawn
 var _state: Dictionary = {}
 var language := "en"
 var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
-var chips := [false, false, false]  # lane assist (K), speed limiter (V), navigation (N): main.gd
+var trip_reset_rect := Rect2()  # where the trip reset button was drawn: main.gd clicks it
+var chips := [false, false, false]
+var _housing := _make_housing()  # the dashboard cluster behind the dials  # lane assist (K), speed limiter (V), navigation (N): main.gd
 const MAX_SPEED_KMH := 210.0  # physics.MAX_SPEED: the dial's end
 
 
@@ -27,6 +31,19 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_font = ThemeDB.fallback_font
 	_faces = load_rage_faces(Paths.package_path(RAGE_ATLAS))
+	for label in ["L", "€"]:
+		var display := preload("res://taxi_meter.gd").new()
+		display.on_color = Color8(12, 14, 12)
+		display.off_color = Color8(160, 164, 158)
+		display.background = Color8(184, 188, 180)
+		display.title = label
+		display.scale = Vector2(1.7, 1.7)
+		display.hide()
+		add_child(display)
+		if label == "L":
+			_pump_liters = display
+		else:
+			_pump_total = display
 
 
 ## The 11 face frames, cropped from the atlas.
@@ -51,10 +68,19 @@ static func load_rage_faces(path: String) -> Array[Texture2D]:
 
 func show_state(state: Dictionary) -> void:
 	var player: Dictionary = state.get("player", {})
+	var filling = state.get("taxi", {}).get("refueling")
+	if _pump_liters != null:
+		_pump_liters.visible = filling is Dictionary
+		_pump_total.visible = filling is Dictionary
+		if filling is Dictionary:
+			_pump_liters.cents = roundi(float(filling.get("liters", 0.0)) * 100.0)
+			_pump_total.cents = int(filling.get("cost_cents", 0))
+			_pump_liters.position = Vector2((size.x - _pump_liters.size.x * 1.7) / 2.0, 130)
+			_pump_total.position = _pump_liters.position + Vector2(0, _pump_liters.size.y * 1.7)
 	var values := [snappedf(player.get("fuel_l", 0.0), 0.1), roundi(state.get("rage_power", 0.0) * 100.0),
 		snappedf(state.get("water_elapsed", 0.0), 0.1), roundi(player.get("trip_m", 0.0)), roundi(player.get("odometer_m", 0.0) / 100.0),
 		snappedf(player.get("fuel_consumption_l_per_100km", 0.0), 0.1), absf(player.get("speed", 0.0)) > 0.5, size,
-		speed_limit(state), price_text(state), roundi(speed_kmh(player.get("speed", 0.0))), chips.duplicate()]
+		speed_limit(state), price_text(state), roundi(speed_kmh(player.get("speed", 0.0))), chips.duplicate(), player.get("engine_on", false)]
 	_state = state
 	if values != _shown:
 		_shown = values
@@ -164,9 +190,10 @@ static func speed_limit(state: Dictionary) -> int:
 	return int(road["speed_limit_kmh"])
 
 
-static func trip_text(trip_m: float, odometer_m: float, language := "en") -> String:
-	var trip := "%d m" % roundi(trip_m) if trip_m < 1000.0 else "%.2f km" % (trip_m / 1000.0)
-	return "%s: %s · %s: %.1f km" % [T.text("trip", language), trip, T.text("odometer", language), odometer_m / 1000.0]
+## The dashboard's odometer and trip lines, as a real cluster shows them:
+## whole kilometres; the trip to 0.1 km.
+static func odometer_lines(trip_m: float, odometer_m: float) -> Array:
+	return ["%d km" % floori(odometer_m / 1000.0), "%.1f km" % (trip_m / 1000.0)]
 
 
 ## Needle angle (radians, screen y down) for a fuel fraction: E at the left, F at the right.
@@ -179,8 +206,10 @@ func _draw() -> void:
 	if _state.is_empty():
 		return
 	var player: Dictionary = _state.get("player", {})
-	_draw_fuel(Vector2(210, size.y - 100), player)
-	_draw_speedometer(Vector2(10, size.y - 214), speed_kmh(player.get("speed", 0.0)))
+	_draw_speedometer(Vector2(10, size.y - 236), speed_kmh(player.get("speed", 0.0)),
+		odometer_lines(player.get("trip_m", 0.0), player.get("odometer_m", 0.0)) + [economy_text(player)])
+	_draw_fuel(Vector2(CLUSTER_WIDTH - 72, 92), player)  # in the cluster's scaled, local drawing
+	draw_set_transform(Vector2.ZERO)
 	_draw_rage(Vector2(size.x - 190, size.y - 246), _state.get("rage_power", 0.0))
 	var water: float = _state.get("water_elapsed", 0.0)
 	if water > 0.0:
@@ -193,13 +222,6 @@ func _draw() -> void:
 	var limit := speed_limit(_state)
 	if limit > 0:  # the round limit sign under the clock
 		_draw_limit_sign(Vector2(size.x - 48.0, 76.0), 31.0, limit)
-	# A dark outline keeps the light text readable on snow and on grass alike (godot-16).
-	var trip := trip_text(player.get("trip_m", 0.0), player.get("odometer_m", 0.0), language)
-	# The meters box, top left.
-	var trip_size := _font.get_string_size(trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
-	var meters: Rect2 = layout.place("meters", Rect2(4, 4, trip_size.x + 16, 28), size)
-	draw_rect(meters, Color8(15, 20, 25, 210))
-	draw_string(_font, meters.position + Vector2(8, 14 + _font.get_ascent(15) / 2.0 - 2), trip, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color8(255, 245, 190))
 
 
 ## The dial's reading: |speed| in km/h up to the car's top speed
@@ -210,13 +232,23 @@ static func speed_kmh(speed_mps: float) -> float:
 
 ## The analog speedometer: 0..210 km/h over 270 degrees from
 ## lower left, ticks every 10 (labels every 20), the red needle, the
-## number and "km/h" below; then the indicator chips.
+## number below, "km/h" above the hub, the odometer/trip LCD under the
+## dial; the fuel gauge beside it in the same cluster housing; the
+## indicator chips along the bottom.
+const CLUSTER_WIDTH := 330.0
+
 static func speed_angle(kmh: float) -> float:
 	return deg_to_rad(135.0 + kmh / MAX_SPEED_KMH * 270.0)
 
 
-func _draw_speedometer(at: Vector2, kmh: float) -> void:
-	at = layout.place("speedometer", Rect2(at, Vector2(190, 200)), size).position  # the dial and its chips
+## Draws in the cluster's local, resized coordinates and leaves that
+## transform set for the fuel gauge (_draw resets it).
+func _draw_speedometer(at: Vector2, kmh: float, odometer: Array) -> Rect2:
+	var cluster: Rect2 = layout.place("speedometer", Rect2(at, Vector2(CLUSTER_WIDTH, 226)), size)  # the whole dashboard
+	var factor: float = layout.scale_of("speedometer")
+	draw_set_transform(cluster.position, 0.0, Vector2(factor, factor))
+	at = Vector2.ZERO
+	draw_style_box(_housing, Rect2(at, Vector2(CLUSTER_WIDTH, 226)))
 	var center := at + Vector2(95, 88)
 	var radius := 68.0
 	draw_circle(center, radius, Color8(12, 16, 20))
@@ -231,21 +263,49 @@ func _draw_speedometer(at: Vector2, kmh: float) -> void:
 	draw_line(center, center + Vector2.from_angle(speed_angle(kmh)) * (radius - 20.0), Color8(230, 65, 45), 4.0)
 	draw_circle(center, 6.0, Color8(240, 220, 170))
 	_centered("%d" % roundi(kmh), Vector2(center.x, at.y + 132), 16, Color8(240, 240, 240))
-	_centered("km/h", Vector2(center.x, at.y + 153), 14, Color8(190, 200, 205))
+	_centered("km/h", center + Vector2(0, -24), 11, Color8(190, 200, 205))
+	var lcd := Rect2(center.x - 56, at.y + 160, 112, 34)  # odometer and trip under the speedometer
+	var econ := Rect2(at.x + CLUSTER_WIDTH - 72 - 56, at.y + 160, 112, 34)  # the econometer under the fuel gauge
+	for box in [lcd, econ]:
+		draw_rect(box, Color8(18, 14, 8))
+		draw_rect(box, Color8(90, 80, 60), false, 1.0)
+	var amber := Color8(255, 190, 80)
+	for i in 2:  # right-aligned, like LCD digits
+		draw_string(_font, Vector2(lcd.position.x + 6, lcd.position.y + 13 + i * 16), odometer[i], HORIZONTAL_ALIGNMENT_RIGHT, lcd.size.x - 12, 12 - i, amber)
+	# The trip's reset button (T), left of the trip line: a circular arrow.
+	draw_string(_font, Vector2(econ.position.x + 6, econ.position.y + 21), odometer[2], HORIZONTAL_ALIGNMENT_RIGHT, econ.size.x - 12, 12, amber)
+	var trip_width := _font.get_string_size(odometer[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	var reset_button := Rect2(lcd.end.x - 6 - trip_width - 18, lcd.position.y + 18, 14, 14)
+	trip_reset_rect = Rect2(cluster.position + reset_button.position * factor, reset_button.size * factor)  # screen: main.gd clicks it
+	var c := reset_button.get_center()
+	draw_arc(c, 4.5, deg_to_rad(-60), deg_to_rad(240), 12, amber, 1.5)
+	var tip := c + Vector2.from_angle(deg_to_rad(-60)) * 4.5
+	draw_colored_polygon(PackedVector2Array([tip + Vector2(-3.5, -1), tip + Vector2(1.5, -3), tip + Vector2(1, 2.5)]), amber)
 	var labels := ["LANE (K)", "LIMIT (V)", "NAVI (N)"]
 	var widths := []
 	var total := 12.0
 	for label in labels:
 		widths.append(_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 20.0)
 		total += widths[-1]
-	var x := at.x + (190.0 - total) / 2.0
+	var x := at.x + (CLUSTER_WIDTH - total) / 2.0
 	for i in labels.size():
-		var chip := Rect2(x, at.y + 176, widths[i], 22)
+		var chip := Rect2(x, at.y + 198, widths[i], 22)
 		var on: bool = chips[i]
 		draw_rect(chip, Color8(30, 90, 45) if on else Color8(28, 32, 36))
 		draw_rect(chip, Color8(80, 220, 110) if on else Color8(70, 78, 86), false, 1.0)
 		_centered(labels[i], chip.get_center(), 11, Color8(230, 255, 235) if on else Color8(120, 128, 135))
 		x += widths[i] + 6.0
+	return cluster
+
+
+static func _make_housing() -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color8(22, 26, 31, 230)
+	box.border_color = Color8(95, 105, 115)
+	box.set_border_width_all(2)
+	box.set_corner_radius_all(18)
+	box.corner_radius_top_left = 60  # the speedometer's round top
+	return box
 
 
 func _centered(text: String, at: Vector2, font_size: int, color: Color) -> void:
@@ -254,14 +314,12 @@ func _centered(text: String, at: Vector2, font_size: int, color: Color) -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
 
 
-func _draw_fuel(at: Vector2, player: Dictionary) -> void:
+## The fuel gauge, a half dial centred at `center` in the cluster: E to F,
+## the red reserve, consumption and the pump price under it.
+func _draw_fuel(center: Vector2, player: Dictionary) -> void:
 	var capacity := maxf(0.001, player.get("fuel_capacity_l", 50.0))
-	var fraction := clampf(player.get("fuel_l", 0.0) / capacity, 0.0, 1.0)
-	at = layout.place("fuel", Rect2(at, Vector2(230, 92 if price_text(_state, language) != "" else 78)), size).position
-	draw_rect(Rect2(at, Vector2(230, 78)), Color8(20, 25, 30, 220))
-	draw_rect(Rect2(at, Vector2(230, 78)), Color8(130, 140, 150), false, 1.0)
-	var center := at + Vector2(36, 50)
-	var radius := 30.0
+	var fraction := clampf(player.get("fuel_l", 0.0) / capacity, 0.0, 1.0) if player.get("engine_on", false) else 0.0
+	var radius := 44.0
 	var face := PackedVector2Array([center])
 	for step in 25:
 		face.append(dial_point(center, step / 24.0, radius, PI))
@@ -282,13 +340,22 @@ func _draw_fuel(at: Vector2, player: Dictionary) -> void:
 		draw_string(_font, Vector2(x - 4, center.y - 2), label[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color8(220, 225, 215))
 	draw_line(center, dial_point(center, fraction, radius - 6), Color8(230, 65, 45), 3.0)
 	draw_circle(center, 4.0, Color8(240, 220, 170))
-	var economy := "%.1f l/100 km" % player.get("fuel_consumption_l_per_100km", 0.0) if absf(player.get("speed", 0.0)) > 0.5 \
-		else "%.1f l/h" % player.get("idle_fuel_consumption_l_per_hour", 0.0)
-	draw_string(_font, at + Vector2(74, 22), economy, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
-	draw_string(_font, at + Vector2(74, 40), T.text("fuel", language), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color8(205, 215, 220))
+	var icon := center + Vector2(-5, -25)
+	var ink := Color8(180, 190, 195)
+	draw_rect(Rect2(icon, Vector2(9, 13)), ink)
+	draw_rect(Rect2(icon + Vector2(2, 2), Vector2(5, 4)), Color8(12, 16, 20))
+	draw_line(icon + Vector2(-2, 14), icon + Vector2(11, 14), ink, 2)
+	draw_polyline(PackedVector2Array([icon + Vector2(9, 6), icon + Vector2(13, 6), icon + Vector2(13, 12), icon + Vector2(16, 12), icon + Vector2(16, 2), icon + Vector2(13, -1)]), ink, 1.5)
 	var price := price_text(_state, language)
 	if price != "":
-		draw_string(_font, at + Vector2(74, 62), price, HORIZONTAL_ALIGNMENT_LEFT, 150, 14, Color8(255, 215, 90))
+		_centered(price, center + Vector2(0, 18), 12, Color8(255, 215, 90))
+
+
+## The econometer on the dashboard LCD: per 100 km while moving, per hour idle.
+static func economy_text(player: Dictionary) -> String:
+	if absf(player.get("speed", 0.0)) > 0.5:
+		return "%.1f l/100 km" % player.get("fuel_consumption_l_per_100km", 0.0)
+	return "%.1f l/h" % player.get("idle_fuel_consumption_l_per_hour", 0.0)
 
 
 func _draw_rage(at: Vector2, rage: float) -> void:
@@ -296,8 +363,11 @@ func _draw_rage(at: Vector2, rage: float) -> void:
 	var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
 	var face: Texture2D = _faces[mini(10, maxi(0, int(clampf(rage, 0.0, 1.0) * 10.0)))] if _faces.size() == 11 else null
 	var face_size := face.get_size() if face != null else Vector2.ZERO
-	var box: Rect2 = layout.place("rage", Rect2(at, Vector2(maxf(text_size.x, face_size.x) + 20.0, face_size.y + text_size.y + 24.0)), size)
-	at = box.position
+	var placed: Rect2 = layout.place("rage", Rect2(at, Vector2(maxf(text_size.x, face_size.x) + 20.0, face_size.y + text_size.y + 24.0)), size)
+	var factor: float = layout.scale_of("rage")
+	draw_set_transform(placed.position, 0.0, Vector2(factor, factor))
+	var box := Rect2(Vector2.ZERO, placed.size / factor)
+	at = Vector2.ZERO
 	draw_rect(box, Color8(20, 25, 30, 220))
 	draw_rect(box, Color8(130, 140, 150), false, 1.0)
 	if face != null:
@@ -307,3 +377,4 @@ func _draw_rage(at: Vector2, rage: float) -> void:
 	var bar := Rect2(at.x + 10, text_y + text_size.y + 2, box.size.x - 20, 6)
 	draw_rect(bar, Color8(45, 30, 30))
 	draw_rect(Rect2(bar.position, Vector2(bar.size.x * clampf(rage, 0.0, 1.0), bar.size.y)), Color8(220, 55, 35))
+	draw_set_transform(Vector2.ZERO)

@@ -47,7 +47,9 @@ func _initialize() -> void:
 		"roads": [{"points": [[-40, 22], [190, 22]], "half_width_m": 4.0, "drivable": true, "layer": 0},
 			{"points": [[-40, 62], [190, 62]], "half_width_m": 3.0, "drivable": true, "layer": 0},
 			{"points": [[50, -40], [50, 140]], "half_width_m": 3.0, "drivable": true, "layer": 0}],
-		"canopies": [_box(130, 30, 20, 14)], "canopy_heights": [5.5]}
+		"canopies": [_box(130, 30, 20, 14)], "canopy_heights": [5.5],
+		"construction_fences": [_box(70, 90, 40, 30)],  # a site with its tower crane
+		"bus_stops": [{"bay": [[74.0, 18.0], [106.0, 18.0], [101.0, 15.0], [79.0, 15.0]], "color": [66, 64, 60], "label": [90.0, 16.5], "angle": 0.0, "sign": [99.0, 13.4], "shelter": [[87.5, 14.0], [92.5, 14.0], [92.5, 12.4], [87.5, 12.4]], "bench": null}, {"bay": [[134.0, 18.0], [166.0, 18.0], [161.0, 15.0], [139.0, 15.0]], "color": [66, 64, 60], "label": [150.0, 16.5], "angle": 0.0, "sign": [159.0, 13.4], "shelter": null, "bench": [[149.1, 13.65], [150.9, 13.65], [150.9, 13.15], [149.1, 13.15]]}]}  # static_world.bus_stop_shapes: a sheltered stop and one with a bench
 	var map := MapLayer.new()
 	root.add_child(map)
 	await process_frame  # the map's groups exist after its _ready

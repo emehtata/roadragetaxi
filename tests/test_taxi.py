@@ -374,6 +374,7 @@ def test_taxi_mission_lifecycle():
     assert taxi_mgr.balance_cents == taxi_mgr.last_fare_cents + taxi_mgr.last_tip_cents
     assert taxi_mgr.fare_distance_m == 1000.0
     assert "€" in taxi_mgr.notification_msg
+    assert "★" in taxi_mgr.notification_msg and "/5" in taxi_mgr.notification_msg
     assert taxi_mgr.current_passenger is None
     assert taxi_mgr.offers
 
@@ -946,3 +947,39 @@ def test_unnamed_road_is_a_valid_stop():
     taxi_mgr = TaxiManager(ways=[way], places=[Place(x=200.0, y=50.0, name="Kaukovainio", kind="suburb")], language="en")
     target = taxi_mgr.pick_random_road_point(0.0, 0.0, 50.0, 400.0)
     assert target is not None and target.address == "Roadside, Kaukovainio"
+
+
+def test_phone_pickups_come_from_homes_on_small_streets_too():
+    """Only named buildings (shops, offices: mostly on main roads) could be a
+    pickup; a house with just an address never was. Now homes take the
+    HOME_PICKUP_SHARE of building pickups, at their own street."""
+    import random
+    from theroadragetrip import taxi as taxi_module
+
+    main_road = Way(points_m=[(0.0, 0.0), (1000.0, 0.0)], highway="primary", half_width_m=6.0, name="Kauppakatu")
+    side_street = Way(points_m=[(500.0, 300.0), (500.0, 700.0)], highway="residential", half_width_m=3.0, name="Majakkatie")
+    office = Building(points_m=[(390.0, 10.0), (420.0, 10.0), (420.0, 30.0), (390.0, 30.0)], name="Toimistotalo",
+                      building_type="office")
+    house = Building(points_m=[(506.0, 490.0), (520.0, 490.0), (520.0, 505.0), (506.0, 505.0)],
+                     street="Majakkatie", housenumber="5C", building_type="detached")
+    manager = TaxiManager([main_road, side_street], buildings=[office, house])
+    manager.game_time_seconds = 9 * 3600.0  # a morning: building pickups
+    random.seed(4)
+    picks = [manager.pick_phone_pickup(0.0, 400.0) for _ in range(400)]
+    homes = [pick for pick in picks if pick.address == "Majakkatie 5C"]
+    assert all(pick.way_name == "Majakkatie" for pick in homes)
+    assert abs(len(homes) / len(picks) - taxi_module.HOME_PICKUP_SHARE) < 0.1
+
+
+def test_home_pickup_is_on_the_address_street_not_a_closer_main_road():
+    """Reported: Helmikkäkuja 2's pickup was placed on Haukiputaantie, the nearer main road."""
+    from theroadragetrip.osm import Building
+    main = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="secondary", half_width_m=5.0, name="Haukiputaantie")
+    side = Way(points_m=[(100.0, 0.0), (100.0, 60.0), (160.0, 60.0)], highway="residential", half_width_m=3.0,
+               name="Helmikkäkuja")
+    house = Building(points_m=[(110.0, 15.0), (120.0, 15.0), (120.0, 25.0), (110.0, 25.0)], housenumber="2",
+                     street="Helmikkäkuja", building_type="detached")
+    taxi_mgr = TaxiManager(ways=[main, side], buildings=[house])
+    target = taxi_mgr.pick_random_building_point(homes=True)
+    assert target.address == "Helmikkäkuja 2" and target.way_name == "Helmikkäkuja"
+    assert abs(target.x - 100.0) < 0.01  # on the side street, beside the house

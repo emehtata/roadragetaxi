@@ -1,6 +1,8 @@
 requests
+ephem
 pyproj
 pytest
 shapely
 pytest-randomly
+pytest-xdist
 

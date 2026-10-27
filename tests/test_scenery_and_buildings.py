@@ -1,3 +1,4 @@
+import math
 import sys
 import types
 
@@ -219,7 +220,47 @@ def test_associate_places_with_buildings_uses_building_geometry():
     assert buildings[1].associated_places == []
 
 
-def test_build_ways_generates_trees_in_offroad_scenery():
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard"])
+@pytest.mark.parametrize("as_relation", [False, True])
+def test_biergarten_and_graveyard_amenity_areas_are_preserved(kind, as_relation):
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.02},
+        {"type": "node", "id": 3, "lat": 60.02, "lon": 25.02},
+        {"type": "node", "id": 4, "lat": 60.02, "lon": 25.0},
+        {"type": "way", "id": 10, "nodes": [1, 2, 3, 4, 1],
+         "tags": {} if as_relation else {"amenity": kind, "name": "Example"}},
+    ]
+    if as_relation:
+        elements.append({"type": "relation", "id": 20, "members": [{"type": "way", "ref": 10, "role": "outer"}],
+                         "tags": {"type": "multipolygon", "amenity": kind, "name": "Example"}})
+    world = build_ways(elements)
+    assert any(area.kind == kind and area.name == "Example" for area in world.sceneries)
+
+
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard"])
+def test_biergarten_and_graveyard_nodes_get_visual_markers(kind):
+    world = build_ways([{"type": "node", "id": 1, "lat": 60.0, "lon": 25.0, "tags": {"amenity": kind}}])
+    assert any(obj.kind == kind for obj in world.scenery_objects)
+
+
+@pytest.mark.parametrize("barrier", ["wall", "fence", "hedge", "railing"])
+@pytest.mark.parametrize("tags, kind", [({"landuse": "cemetery"}, "cemetery"),
+                                       ({"amenity": "grave_yard"}, "grave_yard"),
+                                       ({"amenity": "biergarten"}, "biergarten")])
+def test_enclosed_sites_preserve_both_ground_and_boundary(tags, kind, barrier):
+    elements = [
+        {"type": "node", "id": i + 1, "lat": lat, "lon": lon}
+        for i, (lon, lat) in enumerate([(25, 60), (25.02, 60), (25.02, 60.02), (25, 60.02)])
+    ]
+    elements.append({"type": "way", "id": 24971057, "nodes": [1, 2, 3, 4, 1],
+                     "tags": {**tags, "barrier": barrier, "name": "Enclosed site"}})
+    world = build_ways(elements)
+    assert any(area.kind == kind and area.name == "Enclosed site" for area in world.sceneries)
+    assert world.railings
+
+
+def test_build_ways_leaves_unmapped_forest_trees_to_the_client():
     elements = [
         {"type": "node", "id": 1, "lat": 60.1, "lon": 25.1},
         {"type": "node", "id": 2, "lat": 60.1, "lon": 25.14},
@@ -231,8 +272,7 @@ def test_build_ways_generates_trees_in_offroad_scenery():
 
     ways, _, _, sceneries, _, _ = build_ways(elements)
 
-    assert sceneries[0].trees
-    assert all(tree_y > ways[0].half_width_m + 3.0 + 60100.0 for _, tree_y in sceneries[0].trees)
+    assert sceneries[0].kind == "wood" and sceneries[0].trees == []
 
 
 def test_build_ways_classifies_every_natural_scenery_kind_as_a_relation_too():
@@ -268,7 +308,7 @@ def test_build_ways_classifies_every_natural_scenery_kind_as_a_relation_too():
         assert sceneries[0].kind == kind
 
 
-def test_tree_density_follows_osm_scenery_type():
+def test_neither_forests_nor_parks_create_server_trees():
     forest = Scenery(
         [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)],
         "forest",
@@ -282,8 +322,7 @@ def test_tree_density_follows_osm_scenery_type():
 
     plant_trees([forest, park], [])
 
-    assert len(forest.trees) > len(park.trees)
-    assert len(park.trees) <= 6
+    assert forest.trees == [] and park.trees == []
 
 
 def test_plant_trees_uses_real_osm_positions_instead_of_procedural():
@@ -404,6 +443,27 @@ def test_build_ways_aligns_a_bench_beside_its_nearby_footway():
     # Pushed out past the footway's half-width, not sitting on its
     # centerline or left floating at its raw (off-center) node position.
     assert abs(bench.y - footway_y) > 0.0
+
+
+def test_build_ways_aligns_bicycle_parking_and_gates_with_their_path():
+    """Bicycle parking rendered axis-aligned across a diagonal street: it
+    follows the nearby way like a bench. A gate stands on its path, so it
+    takes the path's direction without being pushed off it."""
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.000, "lon": 25.000},
+        {"type": "node", "id": 2, "lat": 60.010, "lon": 25.010},
+        {"type": "node", "id": 3, "lat": 60.0051, "lon": 25.005, "tags": {"amenity": "bicycle_parking"}},
+        {"type": "node", "id": 4, "lat": 60.002, "lon": 25.002, "tags": {"barrier": "gate"}},
+        {"type": "way", "id": 10, "nodes": [1, 4, 2], "tags": {"highway": "footway"}},
+    ]
+
+    result = build_ways(elements)
+
+    by_kind = {o.kind: o for o in result.scenery_objects}
+    assert abs(by_kind["bicycle_parking"].direction_angle - math.pi / 4) < 1e-6
+    gate = by_kind["gate"]
+    assert abs(gate.direction_angle - math.pi / 4) < 1e-6
+    assert (gate.x, gate.y) == (25.002 * 1000.0, 60.002 * 1000.0)
 
 
 def test_build_ways_leaves_a_bench_unaligned_with_no_nearby_way():
@@ -871,3 +931,21 @@ def _window_block(count: int, x0: float = 0.0):
 
 
 
+
+
+def test_build_ways_reads_a_charging_station_with_its_capacity_and_road_direction():
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.000, "lon": 25.000},
+        {"type": "node", "id": 2, "lat": 60.010, "lon": 25.010},
+        {"type": "node", "id": 3, "lat": 60.0051, "lon": 25.005, "tags": {"amenity": "charging_station", "capacity": "4"}},
+        {"type": "node", "id": 4, "lat": 60.0022, "lon": 25.002, "tags": {"amenity": "charging_station", "capacity": "lots", "level": "-1"}},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"highway": "service"}},
+    ]
+
+    result = build_ways(elements)
+
+    stations = {o.id: o for o in result.scenery_objects if o.kind == "charging_station"}
+    assert stations[3].capacity == 4 and stations[4].capacity is None  # a bad tag: unknown, not a crash
+    assert stations[3].level is None and stations[4].level == -1  # in a garage
+    assert abs(stations[3].direction_angle - math.pi / 4) < 1e-6  # faces the road it stands by...
+    assert (stations[3].x, stations[3].y) == (25.005 * 1000.0, 60.0051 * 1000.0)  # ...where it was mapped

@@ -1,5 +1,9 @@
 """Driving through a parking entrance between map levels (garage-08.md).
 
+Garage driving is disabled in production while under development. World loading
+closes its ramps and constructs disabled transitions with physical entrance gates;
+the opt-in transition implementation below remains available for development tests.
+
 A connector (osm.LevelConnector, an amenity=parking_entrance node) changes
 the player's Car.map_level only when all of these hold:
 
@@ -24,9 +28,17 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional, Tuple
 
 from .map_level import explicit_levels
+from .geo import dist_point_to_segment
 
 TRANSITION_RADIUS_M = 4.0  # how close the movement must pass the entrance node
 REARM_DISTANCE_M = 10.0  # leave the entrance this far before it can fire again
+
+
+def close_garage_roads(ways) -> None:
+    """Runtime closure until garage driving is finished; keep OSM data intact in caches."""
+    for way in ways:
+        if explicit_levels(way) - {0}:
+            way.is_drivable = False
 
 
 @dataclass(frozen=True)
@@ -76,8 +88,10 @@ class LevelTransitions:
     """Per-world connector state: the resolved topology (replaced on map
     sync) and which connectors are disarmed after firing."""
 
-    def __init__(self, topologies: List[ConnectorTopology] = ()) -> None:
+    def __init__(self, topologies: List[ConnectorTopology] = (), *, enabled=True, entrances=()) -> None:
         self.topologies = list(topologies)
+        self.enabled = enabled  # production disables the unfinished garage feature
+        self.entrances = list(entrances)
         self._disarmed: set = set()
         self.last_transition: Optional[Tuple[int, int, int]] = None  # (connector osm id, from, to)
 
@@ -85,6 +99,8 @@ class LevelTransitions:
         """Change car.map_level if this frame's movement drove through a
         resolved connector on one of its roads. Returns (connector osm id,
         from level, to level) when it did."""
+        if not self.enabled:
+            return None
         px, py = previous_position
         dx, dy = car.x - px, car.y - py
         travel_sq = dx * dx + dy * dy
@@ -113,3 +129,21 @@ class LevelTransitions:
         if fired:
             self.last_transition = fired
         return fired
+
+    def blocks_entry(self, car, previous_position, current_way) -> bool:
+        """Close mapped entrance mouths, not neighbouring streets or ordinary tunnels."""
+        if self.enabled or getattr(car, "layer", 0) != 0:
+            return False
+        way_id = getattr(current_way, "osm_id", None)
+        radius = TRANSITION_RADIUS_M + getattr(car, "width_m", 1.8) / 2
+        px, py = previous_position
+        for entrance in self.entrances:
+            if way_id not in entrance.road_osm_ids:
+                continue
+            before = math.hypot(px-entrance.x, py-entrance.y)
+            after = math.hypot(car.x-entrance.x, car.y-entrance.y)
+            if before <= radius and after >= before:
+                continue  # a car already at the gate must be able to back away
+            if dist_point_to_segment(entrance.x, entrance.y, px, py, car.x, car.y) <= radius:
+                return True
+        return False

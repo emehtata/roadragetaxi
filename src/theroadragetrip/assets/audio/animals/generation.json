@@ -1,0 +1,101 @@
+{
+  "squirrel": {
+    "file": "squirrel.ogg",
+    "prompt": "A red squirrel giving several short dry chattering squeaks, isolated animal call, close field recording",
+    "seed": 62400,
+    "steps": 100,
+    "model": "stabilityai/stable-audio-open-1.0",
+    "sample_rate": 44100,
+    "channels": 1,
+    "duration_s": 4.0,
+    "review": "listening pending"
+  },
+  "small_bird": {
+    "file": "small_bird.ogg",
+    "prompt": "A Finnish woodland songbird chirping and twittering a short bright phrase, isolated bird call, close field recording",
+    "seed": 62401,
+    "steps": 100,
+    "model": "stabilityai/stable-audio-open-1.0",
+    "sample_rate": 44100,
+    "channels": 1,
+    "duration_s": 2.7520861678004533,
+    "review": "listening pending"
+  },
+  "pigeon": {
+    "file": "pigeon.ogg",
+    "prompt": "A wood pigeon softly cooing twice, isolated bird call, close field recording",
+    "seed": 62402,
+    "steps": 100,
+    "model": "stabilityai/stable-audio-open-1.0",
+    "sample_rate": 44100,
+    "channels": 1,
+    "duration_s": 3.2512471655328796,
+    "review": "listening pending"
+  },
+  "hare": {
+    "file": "hare.ogg",
+    "prompt": "A hare giving a brief high pitched distressed squeal, isolated animal call, close field recording",
+    "seed": 62403,
+    "steps": 100,
+    "model": "stabilityai/stable-audio-open-1.0",
+    "sample_rate": 44100,
+    "channels": 1,
+    "duration_s": 2.9918367346938775,
+    "review": "listening pending"
+  },
+  "fox": {
+    "file": "fox.ogg",
+    "prompt": "A red fox giving two short hoarse barking calls, isolated animal call, close field recording",
+    "seed": 62404,
+    "steps": 100,
+    "model": "stabilityai/stable-audio-open-1.0",
+    "sample_rate": 44100,
+    "channels": 1,
+    "duration_s": 1.0436734693877552,
+    "review": "listening pending"
+  },
+  "moose": {
+    "file": "moose.ogg",
+    "prompt": "A moose giving a short deep nasal grunt and snort, isolated animal call, close field recording",
+    "seed": 62405,
+    "steps": 100,
+    "model": "stabilityai/stable-audio-open-1.0",
+    "sample_rate": 44100,
+    "channels": 1,
+    "duration_s": 2.2362131519274375,
+    "review": "listening pending"
+  },
+  "roe_deer": {
+    "file": "roe_deer.ogg",
+    "prompt": "A roe deer giving two short rough barking alarm calls, isolated animal call, close field recording",
+    "seed": 62406,
+    "steps": 100,
+    "model": "stabilityai/stable-audio-open-1.0",
+    "sample_rate": 44100,
+    "channels": 1,
+    "duration_s": 3.81453514739229,
+    "review": "listening pending"
+  },
+  "dog": {
+    "file": "dog.ogg",
+    "prompt": "A medium sized domestic dog barking twice outdoors, isolated natural dog bark, close field recording",
+    "seed": 62407,
+    "steps": 100,
+    "model": "stabilityai/stable-audio-open-1.0",
+    "sample_rate": 44100,
+    "channels": 1,
+    "duration_s": 2.7656009070294783,
+    "review": "listening pending"
+  },
+  "crow": {
+    "file": "crow.ogg",
+    "prompt": "Close field recording of a crow calling twice. Two loud drawn-out coarse guttural crow caws: krrraaaak, pause, krrraaaak. Each call starts with a hard rattling consonant and sustains a low raspy nasal abrasive croak with a rough vibrating throat. Recognizable crow cawing, dry isolated bird calls",
+    "seed": 82408,
+    "steps": 100,
+    "model": "stabilityai/stable-audio-open-1.0",
+    "sample_rate": 44100,
+    "channels": 1,
+    "duration_s": 3.137052154195011,
+    "review": "listening pending"
+  }
+}

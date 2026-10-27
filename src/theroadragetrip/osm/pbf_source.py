@@ -170,7 +170,7 @@ def _extract_elements(source_pbf: Path, bbox: Tuple[float, float, float, float])
         ]
         logger.info("Extracting local OSM data: %s", " ".join(cmd))
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT_S)
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=EXTRACT_TIMEOUT_S)
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(f"osmium extract timed out after {EXTRACT_TIMEOUT_S:.0f}s: {' '.join(cmd)}") from exc
         if result.returncode != 0:

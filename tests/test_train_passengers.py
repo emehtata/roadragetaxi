@@ -214,8 +214,25 @@ def test_a_rail_passengers_name_keeps_its_gender():
     from theroadragetrip import train_passengers
     from theroadragetrip.residents import FIRST_NAMES
 
-    genders = {entry["name"]: entry["group"] for entry in FIRST_NAMES}
+    entries = {(entry["name"], entry["group"]) for entry in FIRST_NAMES}  # (Sebastian is also 6 women's name)
     rng = random.Random(3)
     for _ in range(50):
         name, gender = train_passengers._name(rng)
-        assert gender == genders[name.split(" ")[0]]
+        assert (name.split(" ")[0], gender) in entries
+
+
+def test_rail_passenger_names_are_as_common_as_in_finland():
+    """Drawn by people count, like residents: not uniformly over 17 000
+    entries, where names a handful of people have came up as often as Juha."""
+    import random
+
+    from theroadragetrip import train_passengers
+    from theroadragetrip.residents import FIRST_NAMES
+
+    people = {(entry["name"], entry["group"]): entry["people"] for entry in FIRST_NAMES}
+    rng = random.Random(7)
+    rare = 0
+    for _ in range(2000):
+        name, gender = train_passengers._name(rng)
+        rare += people[(name.split(" ")[0], gender)] < 10
+    assert rare < 20  # uniform drawing gave hundreds

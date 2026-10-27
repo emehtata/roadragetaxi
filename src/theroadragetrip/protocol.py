@@ -35,6 +35,8 @@ from datetime import date
 from typing import Optional
 
 from .activities.plugins.ice_hockey import puck_positions
+from .activities.beach import BEACH_ACTIVITIES
+from .activities.plugins.golf import GOLF_ACTIVITIES
 from .activities.plugins.soccer import ball_positions
 from .fuel import fuel_station_price_cents, nearest_fuel_station
 from .holiday_events import santa_costume
@@ -151,7 +153,7 @@ def _npc_to_dict(npc, residents=None) -> dict:
     occupant_ids = set(getattr(npc, "occupant_ids", ()) or ()) | set(getattr(npc, "passenger_ids", ()) or ())
     if getattr(npc, "current_driver_id", None) is not None:
         occupant_ids.add(npc.current_driver_id)
-    return {
+    row = {
         "id": npc.vehicle_id,
         "x": npc.x,
         "y": npc.y,
@@ -161,9 +163,12 @@ def _npc_to_dict(npc, residents=None) -> dict:
         "vehicle_type": npc.vehicle_type,
         "is_taxi": npc.is_taxi,
         "taxi_fare": getattr(getattr(npc, "taxi_job", None), "passenger_aboard", False),  # its roof light
+        "bus_line": getattr(getattr(getattr(npc, "bus_job", None), "line", None), "ref", None),  # a line bus's number
         "is_police": npc.is_police,
         "is_on_foot": npc.is_on_foot,
         "fallen": npc.fallen,
+        "curse_timer": getattr(npc, "curse_timer", 0.0),  # a bumped driver's curse bubble
+        "curse_text": getattr(npc, "curse_text", ""),
         "layer": npc.layer,
         "lod_level": npc.lod_level,
         "turn_signal": npc.turn_signal,
@@ -177,7 +182,15 @@ def _npc_to_dict(npc, residents=None) -> dict:
         "width_m": npc.car.width_m,
         "owner": _resident_to_dict(residents.get(npc.owner_id)),
         "occupants": [_resident_to_dict(residents[resident_id]) for resident_id in sorted(occupant_ids) if resident_id in residents],
+        "thief": getattr(npc, "stolen", False),
     }
+    if row["thief"]:  # a stolen bike: its rider stays anonymous, not shown as the owner
+        row["owner"], row["occupants"] = None, []
+    trailer = npc.trailer_body() if hasattr(npc, "trailer_body") else None
+    if trailer is not None:  # a towed trailer, swinging on its hitch: [x, y, heading, length, width, kind]
+        row["trailer"] = [round(trailer.x, 2), round(trailer.y, 2), round(trailer.heading, 3),
+                          trailer.length_m, trailer.width_m, trailer.kind]
+    return row
 
 
 def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
@@ -190,14 +203,15 @@ def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
     cap = pedestrian_mgr.population_target
     if len(people) <= cap:
         return people
-    kept = lambda p: getattr(p, "held_by", None) is not None or getattr(p, "is_taxi_stop_waiter", False)
+    kept = lambda p: (getattr(p, "held_by", None) is not None or getattr(p, "is_taxi_stop_waiter", False)
+                      or getattr(getattr(p, "activity", None), "plugin_id", "") in GOLF_ACTIVITIES + BEACH_ACTIVITIES + ("theme_park", "tennis", "beach_volleyball"))
     always = [p for p in people if kept(p)]
     others = sorted((p for p in people if not kept(p)), key=lambda p: (p.x - camx) ** 2 + (p.y - camy) ** 2)
     return always + others[:max(0, cap - len(always))]
 
 
 def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
-    return {
+    row = {
         "id": ped.resident_id,
         "x": ped.x,
         "y": ped.y,
@@ -212,12 +226,32 @@ def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
         "mood": ped.mood,
         "is_cyclist": ped.is_cyclist,
         "costume": "santa" if santa_costume(ped, (residents or {}).get(ped.resident_id), santa_day) else "",
-        "resident": _resident_to_dict((residents or {}).get(ped.resident_id)),
+        # A thief stays anonymous: no resident (personality) is sent, and the client can't pick one.
+        "resident": None if getattr(ped, "thief_target", None) is not None else _resident_to_dict((residents or {}).get(ped.resident_id)),
+        "thief": getattr(ped, "thief_target", None) is not None,
         "blood_alcohol_promille": getattr(ped, "blood_alcohol_promille", 0.0),
+        "bottle": getattr(ped, "bottles", 0) > 0,  # a bottle in hand
+        "drinking": getattr(ped, "drinking", False),  # hanging out with it: sips now and then
         "activity": getattr(getattr(ped, "activity", None), "plugin_id", ""),
         "stick_swing": getattr(ped, "stick_swing", 0.0),
         "hockey_goalie": getattr(ped, "hockey_goalie", False),
     }
+    activity = getattr(ped, "activity", None)
+    if activity is not None and activity.plugin_id in GOLF_ACTIVITIES and "ball" in activity.data:
+        row["golf"] = {key: activity.data[key] for key in ("ball", "pin", "club", "phase", "swing", "strokes", "holed")}
+    if activity is not None and activity.plugin_id in ("beach_games", "beach_volleyball") and activity.group is not None:
+        if ped.resident_id == min(activity.group.member_resident_ids, default=None) and "ball" in activity.group.data:
+            row["beach_ball"] = list(activity.group.data["ball"])
+    if activity is not None and activity.plugin_id == "tennis" and activity.group is not None:
+        if ped.resident_id == min(activity.group.member_resident_ids, default=None):
+            row["tennis_ball"] = list(activity.group.data["ball"])
+    dog = getattr(ped, "dog", None)
+    if dog is not None:
+        row["dog"] = {
+            "x": dog.x, "y": dog.y, "heading": dog.heading, "size": dog.size,
+            "color": list(dog.color), "sniffing": dog.sniffing,
+        }
+    return row
 
 
 def _passenger_to_dict(passenger: Optional[TaxiPassenger]) -> Optional[dict]:
@@ -325,6 +359,19 @@ def _traffic_light_phases(traffic_mgr, x: float, y: float) -> dict:
     }
 
 
+def _broken_hedges(world, x, y):
+    manager = world.taxi_mgr
+    damage = getattr(manager, "broken_hedges", {})
+    if not damage:
+        return []
+    rows = []
+    for railing in manager._nearby_barriers(getattr(world, "railings", ()), x, y, TRAFFIC_LIGHT_PHASE_RADIUS_M):
+        fragments = damage.get(manager.hedge_key(railing))
+        if fragments is not None:
+            rows.append([getattr(railing, "layer", 0), _line(railing.points_m), [_line(piece) for piece in fragments]])
+    return rows
+
+
 def _fallen_and_knocked(world, x: float, y: float) -> tuple:
     """Trees felled and posts knocked over this session near (x, y), as
     [x, y, angle(, kind)] - matched by position to the chunks' trees and
@@ -344,16 +391,47 @@ def _fallen_and_knocked(world, x: float, y: float) -> tuple:
     return fallen, knocked
 
 
-def _road_to_dict(current_way) -> dict:
+def _road_to_dict(current_way, limit_override: Optional[int] = None) -> dict:
     """The road under the taxi as the HUD names it: the OSM name, else
     the highway type title-cased; None off-road. The limit is the
-    simulation's own (None when unknown)."""
+    simulation's own (None when unknown); a live roadwork's limit
+    (digitraffic_road) overrides the road's where the taxi is in one."""
     if current_way is None:
         return {"name": None, "speed_limit_kmh": None, "layer": 0, "bridge": False}
     name = getattr(current_way, "name", None) or (getattr(current_way, "highway", None) or "Road").replace("_", " ").title()
-    return {"name": name, "speed_limit_kmh": getattr(current_way, "speed_limit_kmh", None),
+    limit = getattr(current_way, "speed_limit_kmh", None)
+    if limit_override is not None:
+        limit = min(limit, limit_override) if limit is not None else limit_override
+    return {"name": name, "speed_limit_kmh": limit,
             # godot-16: the layer the taxi drives on (headlights under a higher road)
             "layer": getattr(current_way, "layer", 0), "bridge": bool(getattr(current_way, "is_bridge", False))}
+
+
+def _live_limit(world, car) -> Optional[int]:
+    live = getattr(world, "live_roadworks", None)
+    return (live.speed_limit_at(car.x, car.y, layer=getattr(car, "layer", 0), map_level=getattr(car, "map_level", 0))
+            if live is not None else None)
+
+
+LIVE_ROADWORK_SEND_M = 700.0
+
+
+def _live_roadworks(world, camx: float, camy: float) -> list:
+    live = getattr(world, "live_roadworks", None)
+    if live is None:
+        return []
+    rows = []
+    for zone in live.zones:
+        mx, my = (zone.start[0] + zone.end[0]) / 2.0, (zone.start[1] + zone.end[1]) / 2.0
+        if abs(mx - camx) > LIVE_ROADWORK_SEND_M or abs(my - camy) > LIVE_ROADWORK_SEND_M:
+            continue
+        rows.append({
+            "start": [round(zone.start[0], 2), round(zone.start[1], 2)], "end": [round(zone.end[0], 2), round(zone.end[1], 2)],
+            "lane_closed": bool(zone.lane_closed), "closed": bool(zone.blocks),
+            "half_width_m": getattr(zone.way, "half_width_m", 4.0), "speed_limit_kmh": zone.speed_limit_kmh,
+            "id": zone.situation_id,
+        })
+    return rows
 
 
 NEXT_TRAINS = 5  # the rows of the J board
@@ -458,12 +536,16 @@ def build_state_message(
     residents = getattr(getattr(world, "residents", None), "residents", {})
     santa_day = date.fromisoformat(calendar["date"]) if calendar and calendar.get("holidays", {}).get("santas") else None
     state = {
+        "protests": getattr(world, "protests", None).snapshot(camx, camy) if getattr(world, "protests", None) else [],
+        "protest_active": bool(getattr(getattr(world, "protests", None), "groups", ())),
         "fallen_trees": fallen_trees,  # [x, y, angle] (the way the taxi hit it)
+        "broken_hedges": _broken_hedges(world, *player_at),
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
         "game_time_seconds": game_time_seconds,
         # {"date": "YYYY-MM-DD", "time_scale": game s per real s, "sun_altitude_deg",
+        #  "moon_altitude_deg", "moon_azimuth_deg", "moon_illumination",
         #  "sun_azimuth_deg" (clockwise from the map's grid north), "darkness": 0 day
-        #  .. 1 night} - the server's calendar and sun (godot-14, rrt-018-shadows).
+        #  .. 1 night} - the server's calendar, sun and Moon (godot-14, rrt-018-shadows).
         "calendar": calendar,
         "sim_time": traffic_mgr.sim_time,
         "on_foot": on_foot,
@@ -478,7 +560,7 @@ def build_state_message(
             "x": car.x, "y": car.y, "heading": car.heading, "speed": car.speed,
             "map_level": getattr(car, "map_level", 0),  # 0 surface, < 0 underground (godot-16)
             "braking": car.braking, "trip_m": car.trip_m, "odometer_m": car.odometer_m,
-            "engine_on": car.engine_on, "fuel_l": car.fuel_l,
+            "engine_on": car.engine_on, "throttle": round(getattr(car, "throttle", 0.0), 2), "fuel_l": car.fuel_l,
             "fuel_capacity_l": car.fuel_capacity_l,
             "fuel_consumption_l_per_100km": car.fuel_consumption_l_per_100km,
             "idle_fuel_consumption_l_per_hour": car.idle_fuel_consumption_l_per_hour,
@@ -491,6 +573,8 @@ def build_state_message(
             "x": player_pedestrian.x, "y": player_pedestrian.y, "heading": player_pedestrian.heading,
         },
         "npcs": [_npc_to_dict(npc, residents) for npc in world.npc_manager.vehicles],
+        # Taxi drivers' quarrels, current state only (taxi_brawls.BrawlManager.to_dicts).
+        "brawls": world.taxi_brawls.to_dicts(traffic_mgr.sim_time) if getattr(world, "taxi_brawls", None) else [],
         "pedestrians": [_pedestrian_to_dict(p, residents, santa_day) for p in shown_pedestrians(world.pedestrian_mgr, camx, camy)],
         "pucks": puck_positions(),  # ice hockey: [[x, y], ...]
         "balls": ball_positions(),  # soccer: [[x, y], ...]
@@ -511,7 +595,9 @@ def build_state_message(
                     # Historical weather: FMI "observed"/"forecast", else "generated"; the HUD's temperature.
                     "source": getattr(weather, "weather_source", "generated"),
                     "temperature_c": _finite(getattr(weather, "outside_temperature_c", None))},
-        "road": _road_to_dict(current_way),
+        "road": _road_to_dict(current_way, _live_limit(world, car)),
+        # Live Digitraffic roadworks near the camera (the generated ones travel in map chunks).
+        "live_roadworks": _live_roadworks(world, camx, camy),
         # The map growing as the taxi nears its edge: "" or fetching / merging / syncing / building.
         "map_loading": map_loading,
         # While fetching: the fetcher's own line, e.g. "Fetching from https://overpass-api.de/api/interpreter (attempt 1/3)...".
@@ -547,6 +633,8 @@ def build_state_message(
             "passenger_happiness": taxi_mgr.passenger_happiness if taxi_mgr.fare_started_at is not None else None,
             # The pump in refuelling range of the taxi (the gauge's "G: REFUEL" price), else null.
             "fuel_station_price_cents": _station_price_cents(world, car),
+            "refueling": {"liters": taxi_mgr.refueling.liters, "cost_cents": taxi_mgr.refueling.paid_cents}
+            if getattr(taxi_mgr, "refueling", None) is not None else None,
         },
         "phone": _phone_to_dict(taxi_mgr, car),
         # Career-mode session end (score threshold reached -> next city or

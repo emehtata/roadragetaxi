@@ -21,6 +21,13 @@ How many people and cars are around the player. Code:
 
 ## Model
 
+Passing traffic uses unseen route nodes inside the client's active simulation
+band. The older 110–220 m spawn ring applies only without client bounds: at
+close zoom it can exclude every usable entry road. The viewport exclusion,
+vehicle spacing, road footprint and final asynchronous commit checks still
+apply. Fast-player look-ahead chooses entry nodes, but trip destinations and
+player clearance use the actual taxi position, not that offset search centre.
+
 1. **People per building**, from its OSM `building=*` type
    (`building_people`):
    - houses: 2.5;
@@ -105,7 +112,10 @@ Task: `.github/prompts/rrt-018-traffic.md`. Code: `population.py`
     and Ascension are not covered.
 - **Season:** in June–August a cabin counts 2 people instead of 0.3, so
   cottage areas get summer traffic only where cabins are mapped.
-- **Demand:** max(local, passing) × clock.
+- **Demand:** max(local, passing) × clock, with an additional local cruising
+  floor on Friday/Saturday nights (18:00–05:00, including the next morning).
+  The floor is half the local peak demand, scaled by mapped population; empty
+  rural roads do not become city nightlife. These are gameplay estimates.
 - **Expected moving cars:** city target × `NPC_TARGET_MOVING_FRACTION` × demand.
   - The moving target is the whole part of that, plus 1 when a draw falls
     under the fraction.
@@ -117,13 +127,41 @@ Task: `.github/prompts/rrt-018-traffic.md`. Code: `population.py`
   clock: households' cars stay parked at night.
 - **Trip starts:** parked cars start trips at
   `NPC_TRIP_START_PROBABILITY_PER_TICK` × the clock.
+- **Weekend cruising:** with the default 40-vehicle city budget, a dense centre
+  targets ten ordinary cruising cars in addition to ten late-night rival taxis.
+  Spawns alternate between the two groups rather than converting the first ten
+  cars into taxis. Cruising cars carry young adults aged 18–29, stay aboard
+  between legal stops and continue via the existing budgeted route jobs. When
+  nightlife ends they finish their trip and return to ordinary traffic behavior.
+  The overall vehicle cap, collision/route checks and off-screen cleanup remain.
+  Ordinary cars use the existing client-side music share (20% on these nights);
+  taxis are not music cars, and no new sound-player pool is added.
+  Cruisers choose a local query point 150 m away for their next fully validated
+  trip, rather than the ordinary long-distance errand search.
 - **Diagnostics:** `population_diagnostics["traffic_demand"]` holds the parts:
-  local, through, hour, demand, people, highway, expected and target moving
-  cars.
+  local, through, hour, nightlife, demand, people, highway, expected and target
+  moving cars, and separate night taxi/cruiser targets.
 
 All curve values are **estimates**, shaped after Finnish automatic traffic
 counts (Fintraffic LAM): weekday peaks at 7–8 and 15–17, nights at 2–4 % of the
 peak. They are not calibrated against counted volumes.
+
+### Nightlife verification (2026-10-19)
+
+`tests/test_nightlife_traffic.py` covers the midnight/week boundary, mixed
+taxi/cruiser spawns, adult crews, budget limits, retained occupants, driving a
+second trip and ending the cruising role. The prior close-view entry tests
+remain in `tests/test_npc_population.py`.
+
+An isolated headless replay used cached Oulu roads at screenshot
+`1792440460743352064` (Torikatu, Saturday 00:16), with both a moving viewpoint
+and a three-minute stationary viewpoint. Both produced ordinary visible cars
+and nearby cars selected by the client music hash; the stationary test also
+completed repeat trips. No player saves were used. This was not an audible or
+visual Godot test. Legal route availability, clearance and cleanup still limit
+actual counts: some routes held on curb/building checks in the longer replay.
+The population targets are not a guarantee of twenty simultaneous moving cars
+or proof that all traffic-stall cases have been solved.
 
 ## Results
 

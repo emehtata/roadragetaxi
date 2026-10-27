@@ -1,6 +1,7 @@
 import logging
 import json
 import multiprocessing
+import sys
 
 from ..config import cities_from_config, load_city_catalog
 from ..game_args import configure_logging
@@ -14,10 +15,20 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     multiprocessing.freeze_support()
+    # UTF-8 everywhere: the release runs in Python's UTF-8 mode (-X utf8);
+    # this covers any other launch, whose pipes would use a legacy code page.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     tune_interpreter()
     args, config = parse_server_args()
     if args.list_cities:
         print(json.dumps(list(cities_from_config(config)[0]), ensure_ascii=False))
+        return
+    if getattr(args, "list_saves", False):
+        from ..config import CONFIG_PATH
+        from ..save_slots import list_slots
+        print(json.dumps(list_slots(CONFIG_PATH), ensure_ascii=False))
         return
     if args.list_city_locations:
         # The menu's cities, then every other municipality (menu: false)

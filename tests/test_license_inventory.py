@@ -18,6 +18,17 @@ def test_every_shipped_file_and_package_has_a_licensing_entry():
     assert check.main() == 0
 
 
+def test_the_bundled_runtime_packages_are_the_project_dependencies():
+    """PyEphem joined pyproject.toml but not this list: the release would have
+    shipped it without its licence notice, and the inventory check, reading the
+    same list, never asked for an entry."""
+    import re
+    text = (ROOT / "pyproject.toml").read_text()
+    block = re.search(r"^dependencies = \[(.*?)\]", text, re.S | re.M)[1]
+    dependencies = sorted(re.findall(r'"([A-Za-z0-9_.-]+)', block))
+    assert sorted(collect_licenses.RUNTIME) == dependencies
+
+
 def test_external_json_datasets_are_gzipped_without_plain_duplicates():
     paths = [ROOT / name for name in ("sample_osm.json.gz", "sample_osm_large.json.gz",
                                       "tests/fixtures/oulu_waters.json.gz")]

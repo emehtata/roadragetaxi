@@ -27,6 +27,41 @@ def test_startup_progress_reaches_the_render_chunk_stage(tmp_path, monkeypatch):
     assert "buildings" in report["detail"]
 
 
+@pytest.mark.parametrize("work_layer,blocked", [(0, True), (1, False)])
+def test_live_bridge_roadworks_do_not_stop_traffic_below(tmp_path, monkeypatch, work_layer, blocked):
+    from types import SimpleNamespace
+    from theroadragetrip.digitraffic_road import LiveRoadworks
+    from theroadragetrip.osm import Way
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.protocol import _live_limit
+    from theroadragetrip.roadworks import Roadwork
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    road = Way([(1_000_000, 1_000_000), (1_002_000, 1_000_000)], "primary", 7)
+    works_road = Way(road.points_m, "primary", 7, layer=work_layer, is_bridge=work_layer != 0)
+    server.world.ways, server.world.roadworks = [road, works_road], []
+    server.world.spatial_grid = SpatialWayGrid(server.world.ways)
+    live = LiveRoadworks(SimpleNamespace(), lambda x, y: (x, y))
+    live.zones = [Roadwork(works_road, 106, 140, False, (1_000_106, 1_000_000), (1_000_140, 1_000_000),
+                           speed_limit_kmh=30, source="digitraffic")]
+    monkeypatch.setattr(live, "update", lambda *a: None)  # recorded placement, no network
+    server.world.live_roadworks = live
+    car = server.car
+    car.x, car.y, car.heading, car.speed, car.layer = 1_000_100, 999_998, 0.0, 30.0, 0
+    car.engine_on = True
+    server._current_way, server._on_foot = road, False
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    start = car.x
+    server.tick(0.5)
+    assert (car.x == start and car.speed == 0) is blocked
+    if not blocked:
+        assert car.x > start and car.layer == 0
+        assert _live_limit(server.world, car) is None
+    car.x = 1_000_120
+    assert _live_limit(server.world, car) == (30 if blocked else None)
+
+
 @pytest.mark.parametrize("hour,minute,second,expected", [(17, 0, 0, True), (18, 0, 0, True),
                                                        (20, 29, 59, True), (20, 30, 0, False), (23, 0, 0, False)])
 def test_match_day_notice_excludes_finished_games(tmp_path, monkeypatch, hour, minute, second, expected):
@@ -284,6 +319,112 @@ def _state(server):
     )["state"]
 
 
+def test_ilokapina_blocks_taxi_requires_paid_rage_and_syncs_phone_notice(tmp_path, monkeypatch):
+    from theroadragetrip.osm import Way
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.protests import ProtestGroup
+    from theroadragetrip.simulation import PlayerCommand
+    from theroadragetrip.weather import WeatherType
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    road = Way([(1_000_000, 1_000_000), (1_002_000, 1_000_000)], "primary", 7)
+    server.world.ways = [road]
+    server.world.spatial_grid = SpatialWayGrid([road])
+    car = server.car
+    car.x, car.y, car.heading, car.speed = 1_000_100, 999_998, 0, 210/3.6
+    car.engine_on = True
+    server._current_way, server._on_foot = road, False
+    group = ProtestGroup(1, road, car.x+6, 1_000_000, 0, 24, 0)
+    manager = server.world.protests
+    manager.settings.enabled = False
+    manager.groups = [group]
+    server.world.weather.weather_type = WeatherType.CLEAR
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    start = car.x
+    server.tick(0.5)
+    assert car.x == start and car.speed == 0  # swept movement, not endpoint-only collision
+    assert group.state == "SITTING"
+    server._rage_power, server._pending_road_rages = 0.1, 1
+    server.tick(1/30)
+    assert group.state == "SITTING"
+    server._rage_power, server._pending_road_rages = 1, 1
+    server.tick(1/30)
+    assert group.state == "ALARMED" and server._rage_power < 0.8
+    server._latest_command = PlayerCommand(throttle=0, speed_limiter_enabled=False)
+    for _ in range(150):
+        server.tick(1/30)
+    assert group.state == "CLEARED"
+    state = _state(server)
+    assert state["protest_active"] and state["protests"][0]["state"] == "CLEARED"
+    assert len(state["protests"][0]["members"]) == 24
+    assert _state(server)["protests"] == state["protests"]  # late join gets full current state
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    for _ in range(90):
+        server.tick(1/30)
+    assert car.x > group.x + 8
+    manager.groups.clear()
+    assert not _state(server)["protest_active"]
+
+
+def test_unfinished_garage_cannot_swallow_taxi_at_speed(tmp_path, monkeypatch):
+    from theroadragetrip.level_transitions import close_garage_roads
+    from theroadragetrip.osm import LevelConnector, Way
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.simulation import PlayerCommand
+    from theroadragetrip.world_loader import level_structures
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    road = Way([(1_000_000, 1_000_000), (1_000_200, 1_000_000)], "service", 4, osm_id=1)
+    ramp = Way([(1_000_200, 1_000_000), (1_000_230, 1_000_000)], "service", 4, osm_id=2, level="0;-2")
+    entrance = LevelConnector("node", 10, "parking_entrance", 1_000_200, 1_000_000, road_osm_ids=(1, 2))
+    server.world.ways = [road, ramp]
+    close_garage_roads(server.world.ways)
+    server.world.spatial_grid = SpatialWayGrid(server.world.ways)
+    for key, value in level_structures(server.world.ways, [], [entrance]).items():
+        setattr(server.world, key, value)
+    car = server.car
+    car.x, car.y, car.heading, car.speed = 1_000_190, 1_000_000, 0, 210/3.6
+    car.engine_on = True
+    server._on_foot, server._current_way = False, road
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    server.tick(0.5)
+    assert car.x == 1_000_190 and car.speed == 0 and car.map_level == 0
+    assert "not available" in server.world.taxi_mgr.notification_msg
+    car.map_level = -2
+    server.tick(1/30)
+    assert car.map_level == 0  # discard stale underground mode while support is disabled
+
+
+def test_client_view_reaches_tick_and_discards_only_unseen_ambient_state(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+    from theroadragetrip.protocol import LOCAL_PLAYER_ID
+
+    server = _build_server(tmp_path, monkeypatch)
+    x, y = server.car.x, server.car.y
+    view = [x - 100, y - 70, x + 100, y + 70]
+    connection = Mock()
+    connection.is_closed = False
+    connection.try_recv_all.return_value = [{"type": "command", "player_id": LOCAL_PLAYER_ID,
+                                            "command": {"view_bounds": view}}]
+    server._clients.append(connection)
+    server._apply_incoming_messages()
+    assert server._visible_bounds() == tuple(view)
+    connection.try_recv_all.return_value = []
+    pedestrians = server.world.pedestrian_mgr
+    near = pedestrians.spawn_pedestrian_at(x, y, 0)
+    far = pedestrians.spawn_pedestrian_at(x, y, 0)
+    assert near is not None and far is not None
+    far.x, far.y = x + 2000, y + 2000
+    pedestrians.add_pedestrian(near)
+    pedestrians.add_pedestrian(far)
+    server.world.taxi_mgr.vomit_puddles[:] = [(x, y), (x + 2000, y + 2000)]
+    server.tick(1 / 30)
+    assert near in pedestrians.pedestrians and far not in pedestrians.pedestrians
+    assert server.world.taxi_mgr.vomit_puddles == [(x, y)]
+    server._server_time += 3
+    assert server._visible_bounds() is None  # stale view cannot constrain a legacy/headless tick
+
+
 def test_vomit_puddles_reach_godot(tmp_path, monkeypatch):
     server = _build_server(tmp_path, monkeypatch)
     server.world.taxi_mgr.vomit_puddles.append((server.car.x + 1.0, server.car.y))
@@ -409,6 +550,9 @@ def test_the_calendar_is_the_one_clock_and_carries_the_sun(tmp_path, monkeypatch
     server.calendar.current = datetime(2026, 12, 21, 20, 0)  # midwinter evening
     night = server.calendar_state()
     assert night["darkness"] == 1.0 and night["sun_altitude_deg"] < -12.0
+    assert -90.0 <= night["moon_altitude_deg"] <= 90.0
+    assert 0.0 <= night["moon_azimuth_deg"] < 360.0
+    assert 0.0 <= night["moon_illumination"] <= 1.0
     altitude, _, _ = solar_altitude_and_events_on(server.calendar.date, server.calendar.time_seconds,
                                                   server.world.sun_latitude, server.world.sun_longitude)
     assert night["sun_altitude_deg"] == round(altitude, 2)  # the real model, not a copy
@@ -419,6 +563,15 @@ def test_the_calendar_is_the_one_clock_and_carries_the_sun(tmp_path, monkeypatch
     assert server.calendar.current == datetime(2026, 12, 1, 0, 0, 30) and server._game_time_seconds == 30.0
     assert server.calendar_state()["time_scale"] == 60.0 and server.world.weather.season == server.calendar.season
     assert _state(server)["game_time_seconds"] == 30.0
+
+
+def test_startup_logs_the_calculated_moon(tmp_path, monkeypatch, caplog):
+    with caplog.at_level("INFO", logger="theroadragetrip.server"):
+        server = _build_server(tmp_path, monkeypatch)
+
+    line = next(record.message for record in caplog.records if record.message.startswith("Moon "))
+    assert server.calendar.date.isoformat() in line
+    assert all(field in line for field in ("rise=", "transit=", "set=", "phase=", "illumination=", "age="))
 
 
 def test_darkness_boundaries():
@@ -496,7 +649,10 @@ def test_tyre_marks_flash_and_level_in_the_state(tmp_path, monkeypatch):
     server._on_foot = False
     server.world.weather.wetness = 0.0  # a dry road (an autumn start may begin in rain, the road wet)
     server.car.skid_amount = 1.0  # hard slip on asphalt or whatever is under the taxi
-    assert server._tyre_mark(previous=(server.car.x - 1.0, server.car.y)) is not None
+    assert server._tyre_mark(previous=(server.car.x - 1.0, server.car.y)) is None  # no gray cornering/acceleration trail
+    server.car.braking = True
+    mark = server._tyre_mark(previous=(server.car.x - 1.0, server.car.y))
+    assert mark is not None and mark["kind"] == "rubber" and mark["intensity"] == 1.0
     assert server._tyre_mark(previous=(server.car.x, server.car.y)) is None  # not moving: nothing laid
 
 
@@ -567,13 +723,16 @@ def test_the_pump_in_refuelling_range_sends_its_price(tmp_path, monkeypatch):
     assert price == fuel_station_price_cents(nearer)
 
     # Refuelling charges exactly that price.
-    server._on_foot = False
+    server._on_foot = True
     car.speed, car.fuel_l = 0.0, car.fuel_capacity_l - 10.0
+    car.engine_on = False
+    server.world.player_pedestrian.x, server.world.player_pedestrian.y = car.x, car.y
     server.world.taxi_mgr.balance_cents = 100_000
     server._latest_command = PlayerCommand()
     server._pending_refuels = 1
     server.tick(1.0 / 30.0)
-    assert 100_000 - server.world.taxi_mgr.balance_cents == pytest.approx(10.0 * price, abs=2)
+    assert car.fuel_l == pytest.approx(car.fuel_capacity_l - 10.0 + 0.5 / 30.0)
+    assert 100_000 - server.world.taxi_mgr.balance_cents == pytest.approx(0.5 / 30.0 * price, abs=1)
 
 
 def test_the_navigation_route_crosses_the_wire(tmp_path, monkeypatch):
@@ -792,6 +951,43 @@ def test_missing_current_weather_uses_previous_cache_until_exact_hour_arrives(tm
     assert server.world.weather.weather_type.value == "clear"
 
 
+def test_hourly_fmi_weather_changes_off_the_hour_and_temperature_interpolates(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from types import SimpleNamespace
+    from theroadragetrip.weather_history import HourlyWeather, gradual_weather
+
+    server = _build_server(tmp_path, monkeypatch)
+    hour = server.calendar.current.replace(hour=15, minute=0, second=0, microsecond=0)
+    records = {
+        hour - timedelta(hours=1): HourlyWeather(temperature_c=8, wawa=0, source="forecast"),
+        hour: HourlyWeather(temperature_c=10, wawa=61, source="forecast"),
+        hour + timedelta(hours=1): HourlyWeather(temperature_c=14, wawa=61, source="forecast"),
+        hour + timedelta(hours=2): HourlyWeather(temperature_c=12, wawa=0, source="forecast"),
+    }
+    server.weather_history = SimpleNamespace(
+        request=lambda *args: None,
+        get=lambda moment: records.get(moment),
+        previous=lambda moment: None,
+    )
+    changes = [hour + timedelta(minutes=minute) for minute in range(-30, 31)
+               if gradual_weather(server.weather_history, hour + timedelta(minutes=minute), server.chosen_city).wawa == 61]
+    transition = changes[0]
+    assert transition != hour
+
+    server.calendar.current = transition - timedelta(minutes=5)
+    assert server._update_outside().wawa == 0
+    server.calendar.current = transition
+    assert server._update_outside().wawa == 61
+    assert all(gradual_weather(server.weather_history, hour + timedelta(minutes=minute), server.chosen_city).wawa == 61
+               for minute in range(30, 90, 5))
+    server.calendar.current = hour + timedelta(minutes=30)
+    server._update_outside()
+    assert server.world.weather.outside_temperature_c == 12
+    server.calendar.current = hour + timedelta(minutes=34, seconds=59)
+    server._update_outside()
+    assert server.world.weather.outside_temperature_c == 12
+
+
 def test_npc_brake_lamps_when_slowing_or_standing_in_traffic():
     from types import SimpleNamespace
 
@@ -816,7 +1012,7 @@ def test_the_world_message_carries_the_start_sign(tmp_path, monkeypatch):
     from theroadragetrip import protocol
 
     server = _build_server(tmp_path, monkeypatch)
-    forecast = server.start_forecast
+    forecast = server._forecast()
     assert len(forecast) == 5 and forecast[0]["source"] == "generated"
     assert all(set(line) == {"time", "temperature_c", "weather", "source", "wind_speed_mps", "wind_from_deg", "snow_depth_cm"}
                for line in forecast)
@@ -857,3 +1053,55 @@ def test_the_server_places_its_street_lights_with_the_placement_job(tmp_path, mo
     assert sorted(work["lamps"]) == sorted(lights)
     sent = [light for cid in server._chunks_index._chunks for light in server._chunks_index.message(cid)["street_lights"]]
     assert len(sent) == len(lights)  # every light in exactly one chunk
+
+
+def test_heavy_throttle_mud_and_moving_sand_spray(tmp_path, monkeypatch):
+    from theroadragetrip.osm import Scenery
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch, ["--start-time", "2026-06-19T14:00"])
+    server._on_foot = False
+    car = server.car
+    car.x, car.y, car.speed = 1_000_000, 1_000_000, 5.0
+    car.engine_on, car.braking = True, False
+    field = Scenery([(999900, 999900), (1000100, 999900), (1000100, 1000100), (999900, 1000100)],
+                    "golf_green", bbox=(999900, 999900, 1000100, 1000100))
+    server.world.scenery_grid = SpatialWayGrid([field])
+    previous = car.x - 1, car.y
+    assert server._tyre_mark(previous, throttle=1)["spray"] == 1
+    assert "spray" not in server._tyre_mark(previous, throttle=.5)
+    for kind in ("golf_course", "golf_tee", "golf_fairway", "golf_green", "grass"):
+        field.kind = kind
+        assert server._tyre_mark(previous, throttle=.8)["spray"] == .8
+    for kind in ("sand", "beach"):
+        field.kind = kind
+        mark = server._tyre_mark(previous, throttle=0)
+        assert mark["kind"] == "sand" and mark["spray"] == .83
+    field.kind = "parking"
+    mark = server._tyre_mark(previous, throttle=1)
+    assert mark is None or "spray" not in mark
+    field.kind = "golf_green"
+    car.engine_on = False
+    assert "spray" not in server._tyre_mark(previous, throttle=1)
+    car.engine_on, car.fuel_l = True, 0
+    assert "spray" not in server._tyre_mark(previous, throttle=1)
+    car.fuel_l = 20
+    assert server._tyre_mark((car.x, car.y), throttle=1) is None
+    server._on_foot = True
+    assert server._tyre_mark(previous, throttle=1) is None
+    server._on_foot = False
+    server._latest_command = PlayerCommand(throttle=1, speed_limiter_enabled=False)
+    server.tick(1/30)
+    assert server._tire_mark["spray"] == 1
+    server._latest_command = PlayerCommand()
+    server.tick(1/30)
+    assert "spray" not in server._tire_mark
+    field.kind = "beach"
+    server._latest_command = PlayerCommand(throttle=.4, speed_limiter_enabled=False)
+    server.tick(1/30)
+    assert server._tire_mark["kind"] == "sand" and server._tire_mark["spray"] > 0
+    server.car.speed = 0
+    server._latest_command = PlayerCommand()
+    server.tick(1/30)
+    assert server._tire_mark is None

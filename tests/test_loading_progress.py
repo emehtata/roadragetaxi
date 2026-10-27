@@ -70,7 +70,7 @@ def test_build_ways_reports_expensive_post_processing():
     build_ways(elements, progress_callback=lambda fraction, message: progress_records.append((fraction, message)))
 
     messages = [message for _, message in progress_records]
-    assert any("Planting trees" in message for message in messages)
+    assert any("OSM trees" in message for message in messages)
     assert any("multipolygon" in message for message in messages)
     assert all(
         current >= previous

@@ -48,9 +48,6 @@ from .build import (
     build_ways,
 )
 
-from .trees import (
-    plant_trees,
-)
 
 
 def _tile_intersects_bounds(tile: TileCoord, bounds: Tuple[float, float, float, float]) -> bool:
@@ -328,6 +325,8 @@ class AutoFetchManager:
         self.player_tile: Optional[TileCoord] = None
         self.start_tile: Optional[TileCoord] = None
         self.active_tiles: set[TileCoord] = set()
+        self.route_tiles: set[TileCoord] = set()
+        self._previous_route_tiles: set[TileCoord] = set()
         self.loaded_tiles: set[TileCoord] = set()
         self.pending_tiles: set[TileCoord] = set()
         self._completed_tile_batches: list[list[tuple[TileCoord, object]]] = []
@@ -423,6 +422,11 @@ class AutoFetchManager:
                 return max(SOFT_BOUNDARY_MIN_SPEED_MPS, distance * SOFT_BOUNDARY_MPS_PER_M)
         return None
 
+    def set_route_tiles(self, tiles) -> None:
+        """At most three navigation priorities, through the ordinary loader."""
+        with self.lock:
+            self.route_tiles = set(list(dict.fromkeys(tiles))[:MAX_LOOKAHEAD_TILES])
+
     def update_player_tile(
         self, x: float, y: float, vx: float = 0.0, vy: float = 0.0,
     ) -> Optional[tuple[TileCoord, set[TileCoord], set[TileCoord]]]:
@@ -433,19 +437,24 @@ class AutoFetchManager:
         current_tile = world_to_tile(x, y)
         ahead = lookahead_tiles(x, y, vx, vy, LOOKAHEAD_HORIZON_S, MAX_LOOKAHEAD_TILES)
         with self.lock:
+            ahead |= self.route_tiles
             if self.start_tile is None:
                 self.start_tile = current_tile
             if current_tile == self.player_tile:
-                added = ahead - self.active_tiles
-                if not added:
+                current_tiles = ((self.active_tiles - self._previous_route_tiles)
+                                 | set(active_tiles(current_tile)) | ahead)
+                added,removed = tile_changes(self.active_tiles,current_tiles)
+                self._previous_route_tiles = set(self.route_tiles)
+                if not added and not removed:
                     return None
-                self.active_tiles = self.active_tiles | added
-                return current_tile, set(added), set()
+                self.active_tiles = current_tiles
+                return current_tile, added, removed
             previous_tiles = self.active_tiles
             current_tiles = set(active_tiles(current_tile)) | ahead
             added, removed = tile_changes(previous_tiles, current_tiles)
             self.player_tile = current_tile
             self.active_tiles = current_tiles
+            self._previous_route_tiles = set(self.route_tiles)
             return current_tile, added, removed
 
     def start_tile_streaming(self, x: float, y: float, vx: float = 0.0, vy: float = 0.0) -> bool:
@@ -1401,7 +1410,6 @@ class AutoFetchManager:
                     way for way in new_ways
                     if way.osm_id is None or way.osm_id not in known_way_ids
                 ]
-                plant_trees(new_sceneries, self.ways + unique_new_ways)
                 self.ways.extend(unique_new_ways)
                 added_waters = _extend_unique(self.waters, new_waters)
                 added_buildings = _extend_unique(self.buildings, new_buildings)

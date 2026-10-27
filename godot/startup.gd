@@ -14,6 +14,7 @@ var _server_pid := -1
 var _game: Node
 var _panel: PanelContainer
 var _body: VBoxContainer
+var _menu_scroll: ScrollContainer
 var _cities: Array = []
 var _city_locations: Array = []  # the menu's cities
 var _municipalities: Array = []  # every municipality: the map picker's nearest settings
@@ -32,13 +33,22 @@ var _startup_detail: Label
 var _startup_elapsed: Label
 var _startup_history: Label
 var _startup_bar: ProgressBar
+var _startup_activity: Label
+var _startup_busy_bar: ProgressBar
 var _startup_last: Dictionary = {}
 var _startup_changed_at := 0
 var _focusables: Array[Control] = []
 var _back_action := Callable()
 var _logo: TextureRect
 var _start_time := {}  # the gig start (year, month, day, hour, minute): now, each time the picker opens
+var _pause_status: Label  # the pause menu's line under its title: "Saving…", "Saved"
+const THUMBS := "user://save_thumbs"  # NAME.png: the game as it was when the slot was saved
+const THUMB_SIZE := Vector2i(160, 90)
+var _pause_shot: Image  # the frame just before the pause menu opened: a save's thumbnail
+const MAX_GIG_SLOTS := 5  # gig saves; a new game beyond them replaces one (career keeps its single save)
+var _save_slot := ""  # the gig's save slot (server saves/NAME.json): loaded if it exists, saved by the pause menu
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
+var _menu_music: AudioStreamPlayer
 
 
 func _t(key: String) -> String:
@@ -48,6 +58,9 @@ func _t(key: String) -> String:
 func _ready() -> void:
 	var first_run := _settings.load("user://settings.cfg") != OK or not _settings.has_section_key("game", "language")
 	_language = _settings.get_value("game", "language", "en")
+	AudioManager.ensure_buses()
+	for bus in ["Master"] + AudioManager.BUSES:
+		AudioServer.set_bus_volume_db(AudioServer.get_bus_index(bus), linear_to_db(maxf(float(_settings.get_value("audio", bus, 1.0)), 0.0001)))
 	var command_line := OS.get_cmdline_user_args()
 	var log_level := command_line.find("--log-level")
 	if log_level >= 0 and log_level + 1 < command_line.size():
@@ -78,6 +91,7 @@ func _ready() -> void:
 			_panel.visible = false
 			_back.visible = false
 			return
+	_play_menu_music()
 	if first_run:
 		_language_menu()
 	else:
@@ -122,15 +136,41 @@ func _build_shell() -> void:
 	front.add_child(_panel)
 	_body = VBoxContainer.new()
 	_body.add_theme_constant_override("separation", 12)
-	_panel.add_child(_body)
+	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_menu_scroll = ScrollContainer.new()
+	_menu_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# Never a scroll bar: the container takes all of its content's height
+	# (at every relayout); _center_panel scales a too-tall menu to fit instead.
+	_menu_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_panel.add_child(_menu_scroll)
+	_menu_scroll.add_child(_body)
+	# Text that wraps after the menu is built (the calendar's key help) grows
+	# the content later: fit again then, or it ends up scrolling after all.
+	_body.minimum_size_changed.connect(_center_panel)
 
 
 func _center_panel() -> void:
+	if _menu_scroll == null:
+		return
+	# The whole menu, never a scroll: a menu taller than the window (the
+	# calendar in a small window, the city map) is scaled down to fit instead.
+	_menu_scroll.custom_minimum_size.y = _body.get_combined_minimum_size().y
 	_panel.reset_size()  # shrink back to the new content's size first
-	_panel.position = ((get_viewport().get_visible_rect().size - _panel.size) / 2.0).floor()
+	var screen := get_viewport().get_visible_rect().size
+	var fit := panel_fit(_panel.size, screen)
+	_panel.scale = Vector2(fit, fit)
+	_panel.position = ((screen - _panel.size * fit) / 2.0).floor()
+
+
+## The menu panel's scale: 1, or smaller so all of it fits the window with a margin.
+static func panel_fit(panel: Vector2, screen: Vector2) -> float:
+	if panel.x <= 0.0 or panel.y <= 0.0:
+		return 1.0
+	return minf(1.0, minf((screen.x - 24.0) / panel.x, (screen.y - 24.0) / panel.y))
 
 
 func _clear() -> void:
+	_menu_scroll.scroll_vertical = 0
 	for child in _body.get_children():
 		_body.remove_child(child)
 		child.queue_free()
@@ -252,7 +292,7 @@ func _with_help(control: Control, help_key: String) -> void:
 	help.visible = false
 	var question := Button.new()
 	question.text = "?"
-	question.focus_mode = Control.FOCUS_NONE
+	question.focus_mode = Control.FOCUS_ALL
 	question.custom_minimum_size = Vector2(32, 32)
 	question.tooltip_text = wrap_lines(help.text, 60)  # a tooltip doesn't wrap: one long line ran off screen
 	question.theme = help_tooltip_theme()
@@ -280,6 +320,9 @@ static func credits_text() -> String:
 		"[b]Trains[/b]",
 		"Source: Fintraffic / digitraffic.fi, license CC 4.0 BY ([url=https://creativecommons.org/licenses/by/4.0/]creativecommons.org/licenses/by/4.0[/url]). Modified: the passenger timetable and train compositions are condensed for the game.",
 		"",
+		"[b]Roadworks[/b]",
+		"Source: Fintraffic / digitraffic.fi, license CC 4.0 BY ([url=https://creativecommons.org/licenses/by/4.0/]creativecommons.org/licenses/by/4.0[/url]). Modified: matched onto the OpenStreetMap roads.",
+		"",
 		"[b]Weather[/b]",
 		"Finnish Meteorological Institute (FMI) open data, CC BY 4.0. Modified: resampled and combined from the nearest stations.",
 		"",
@@ -294,6 +337,7 @@ static func credits_text() -> String:
 		"",
 		"[b]Sounds[/b]",
 		"Sound effects generated with Stable Audio Open (Stability AI). Speech and station announcements generated with Chatterbox (Resemble AI) and Microsoft Azure Speech.",
+		"Menu music generated with Stable Audio Open 1.0 (Stability AI), using ai-audio-studio.",
 		"",
 		"[b]Software[/b]",
 		"Godot Engine (MIT, © Godot Engine contributors), its components below, Python and its libraries, and osmium-tool (GPL-3.0; its source is published with every release). Full notices: THIRD_PARTY_LICENSES.md in the game folder.",
@@ -330,12 +374,35 @@ static func _godot_components() -> String:
 	return "\n".join(lines)
 
 
+func _play_menu_music() -> void:
+	if _menu_music == null:
+		var stream := AudioStreamOggVorbis.load_from_file(Paths.package_path("assets/music/menu/menu_music_1.ogg"))
+		if stream == null:
+			push_warning("Menu music could not be loaded")
+			return
+		stream.loop = true
+		_menu_music = AudioStreamPlayer.new()
+		_menu_music.process_mode = Node.PROCESS_MODE_ALWAYS
+		_menu_music.stream = stream
+		_menu_music.bus = "Music"
+		_menu_music.volume_db = -12.0
+		add_child(_menu_music)
+	if not _menu_music.playing:
+		_menu_music.play()
+
+
+func _stop_menu_music() -> void:
+	if is_instance_valid(_menu_music):
+		_menu_music.stop()
+
+
 func _main_menu() -> void:
 	get_tree().paused = false
+	_play_menu_music()
 	_clear()
 	_title("ROAD RAGE TRIP", _t("choose_start"))
 	var career := _button(_t("career"), func(): _start("career"))
-	var gig := _button(_t("gig_driver"), _city_menu)
+	var gig := _button(_t("gig_driver"), _slot_menu)
 	_button(_t("settings"), _settings_menu)
 	_button(_t("credits"), _credits_menu)
 	_button(_t("clear_cache"), _confirm_clear_cache)
@@ -367,17 +434,104 @@ func _confirm_clear_cache() -> void:
 	no.call_deferred("grab_focus")  # Enter does not delete anything
 
 
-## "Reset taxi home": asked first; then every city's home is forgotten.
+## Clear only the running game's homes.
 func _confirm_reset_home() -> void:
 	_clear()
 	_title(_t("reset_home").to_upper(), _t("confirm_reset_home"))
-	var no := _button(_t("cancel"), _settings_menu)
+	var no := _button(_t("cancel"), _gameplay_menu)
 	_button(_t("delete"), func():
-		_server_query("--reset-home")
-		_settings_menu())
-	_back_action = _settings_menu
+		var sim: SimClient = _game.sim
+		if sim.send_clear_home():
+			_gameplay_menu())
+	_back_action = _gameplay_menu
 	_focus_menu()
 	no.call_deferred("grab_focus")  # Enter does not delete anything
+
+
+## Gig driving: continue a saved game, or start a new one in a new slot.
+func _slot_menu() -> void:
+	_clear()
+	_title(_t("save_slots"), _t("gig_driver"))
+	var slots := _server_query("--list-saves").filter(func(slot): return slot is Dictionary)
+	_button(_t("new_game"), func():
+		if slots.size() >= MAX_GIG_SLOTS:
+			_replace_slot_menu(slots)
+		else:
+			_save_slot = "gig-%d" % int(Time.get_unix_time_from_system())
+			_city_menu())
+	for slot in slots:
+		var name := str(slot.get("name", ""))
+		var button := _button(slot_label(slot, _t("fare_in_progress")), func():
+			_save_slot = name
+			_start_point = Vector2.INF
+			_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
+			_start("gig_driver"))  # the server takes the slot's city, place and time
+		button.icon = _thumb(name)
+		button.custom_minimum_size.y = THUMB_SIZE.y + 10 if button.icon != null else button.custom_minimum_size.y
+	if not slots.is_empty():
+		_button(_t("delete_slot"), _delete_slot_menu.bind(slots))
+	_button(_t("back"), _main_menu)
+	_back_action = _main_menu
+	_focus_menu()
+
+
+## Pick a saved game to delete; it is asked once more before it goes.
+func _delete_slot_menu(slots: Array) -> void:
+	_clear()
+	_title(_t("delete_slot").to_upper())
+	for slot in slots:
+		var label := slot_label(slot, _t("fare_in_progress"))
+		var path := str(slot.get("path", ""))
+		_button(label, func():
+			_clear()
+			_title(_t("delete_slot").to_upper(), _t("confirm_delete_slot") % label)
+			var no := _button(_t("cancel"), _slot_menu)
+			_button(_t("delete"), func():
+				if path.ends_with(str(slot.get("name", "")) + ".json"):  # only a slot file, nothing else
+					DirAccess.remove_absolute(path)
+					DirAccess.remove_absolute(THUMBS.path_join(str(slot.get("name", "")) + ".png"))
+				_slot_menu())
+			_back_action = _slot_menu
+			_focus_menu()
+			no.call_deferred("grab_focus"))  # Enter does not delete anything
+	_button(_t("back"), _slot_menu)
+	_back_action = _slot_menu
+	_focus_menu()
+
+
+## All gig slots are in use: the new game replaces the chosen one.
+func _replace_slot_menu(slots: Array) -> void:
+	_clear()
+	_title(_t("save_slots"), _t("replace_slot") % MAX_GIG_SLOTS)
+	for slot in slots:
+		var name := str(slot.get("name", ""))
+		var path := str(slot.get("path", ""))
+		_button(slot_label(slot, _t("fare_in_progress")), func():
+			if path.ends_with(name + ".json"):
+				DirAccess.remove_absolute(path)
+				DirAccess.remove_absolute(THUMBS.path_join(name + ".png"))
+			_save_slot = name
+			_city_menu())
+	_button(_t("back"), _slot_menu)
+	_back_action = _slot_menu
+	_focus_menu()
+
+
+## A slot's thumbnail, or null if it was saved before thumbnails (or the file is gone).
+func _thumb(name: String) -> Texture2D:
+	var path := THUMBS.path_join(name + ".png")
+	if not FileAccess.file_exists(path):
+		return null
+	var image := Image.load_from_file(path)
+	return ImageTexture.create_from_image(image) if image != null else null
+
+
+## One saved game in the slot menu: where, the game time, the money.
+static func slot_label(slot: Dictionary, fare_text: String) -> String:
+	var place := str(slot.get("place_name", "")) if str(slot.get("place_name", "")) != "" else str(slot.get("city", ""))
+	var when := str(slot.get("game_time", "")).replace("T", " ").left(16)
+	var label := "%s · %s · %.2f €" % [place, when, float(slot.get("balance_cents", 0)) / 100.0]
+	return label + (" · " + fare_text if slot.get("fare", false) else "")
 
 
 func _city_menu() -> void:
@@ -471,7 +625,7 @@ func _map_point_menu() -> void:
 			place.text = "%.5f, %.5f  (%s)" % [pin.x, pin.y, settings]
 			_start_place = ""
 			_reverse_geocode(pin, func(name: String):
-				if browser.pin == pin and is_instance_valid(place):  # not a stale answer
+				if is_instance_valid(browser) and is_instance_valid(place) and browser.pin == pin:  # not a stale answer (or a closed menu)
 					_start_place = name
 					place.text = "%s  (%s)" % [name, settings])
 	show_pin.call()
@@ -533,50 +687,68 @@ static func city_map_position(latitude: float, longitude: float, size: Vector2) 
 	)
 
 
-## The gig start picker: year, month, day, hour and minute of the
-## gig's start, a calendar year back at most, no later than today.
+## The gig start picker: a calendar plus hour/minute, within the last year.
 func _time_menu() -> void:
-	var resume: Dictionary = _settings.get_value("gig", "left_at", {})  # where the last gig ended, unless Now was picked
+	var resume: Dictionary = _settings.get_value("gig", "left_at", {})
 	var from_now: bool = _settings.get_value("gig", "start_now", true) or resume.is_empty()
-	_start_time = clamp_start(Time.get_datetime_dict_from_system() if from_now else resume, Time.get_date_dict_from_system())
+	var today := Time.get_date_dict_from_system()
+	_start_time = clamp_start(Time.get_datetime_dict_from_system() if from_now else resume, today)
 	_clear()
 	_title(_t("start_time"), _city)
-	var fields := [["year", _t("year")], ["month", _t("month")], ["day", _t("day")],
-		["hour", _t("hour")], ["minute", _t("minute")]]
+	var calendar := preload("res://date_picker.gd").new()
+	var earliest := clamp_start({"year": 1900, "month": 1, "day": 1}, today)
+	calendar.configure(_start_time, earliest, today, _language)
+	calendar.date_changed.connect(func(date: Dictionary):
+		for part in ["year", "month", "day"]:
+			_start_time[part] = date[part]
+		_settings.set_value("gig", "start_now", false))
+	_body.add_child(calendar)
+	_focusables.append_array([calendar.previous, calendar, calendar.next])
+	var row := HBoxContainer.new()
+	_body.add_child(row)
 	var spins := {}
-	for field in fields:
-		var row := HBoxContainer.new()
+	for key in ["hour", "minute"]:
 		var label := Label.new()
-		label.text = field[1]
+		label.text = _t(key)
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(label)
 		var spin := SpinBox.new()
-		spin.min_value = {"year": 1900, "month": 1, "day": 1, "hour": 0, "minute": 0}[field[0]]
-		spin.max_value = {"year": 9999, "month": 12, "day": 31, "hour": 23, "minute": 59}[field[0]]
-		spin.custom_minimum_size.x = 160
-		spins[field[0]] = spin
-		row.add_child(spin)
-		_body.add_child(row)
-		_focusables.append(spin.get_line_edit())
-	var show := func():
-		for key in spins:
-			spins[key].set_value_no_signal(_start_time[key])
-	for key in spins:
-		spins[key].value_changed.connect(func(value: float):
+		spin.min_value = 0
+		spin.max_value = 23 if key == "hour" else 59
+		spin.custom_minimum_size.x = 110
+		spin.value = _start_time[key]
+		spin.value_changed.connect(func(value: float):
 			_start_time[key] = int(value)
-			_start_time = clamp_start(_start_time, Time.get_date_dict_from_system())
-			_settings.set_value("gig", "start_now", false)
-			show.call())
-	show.call()
-	_button(_t("now"), func():
+			_settings.set_value("gig", "start_now", false))
+		spins[key] = spin
+		row.add_child(spin)
+		_focusables.append(spin.get_line_edit())
+	var actions := HBoxContainer.new()
+	_body.add_child(actions)
+	var now := _button(_t("now"), func():
 		_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
 		_settings.set_value("gig", "start_now", true)
-		show.call())
-	var start := _button(_t("start"), func(): _start("gig_driver"))
-	_button(_t("back"), _city_menu)
+		calendar.set_value(_start_time)
+		for key in spins:
+			spins[key].set_value_no_signal(_start_time[key]))
+	var start := _button(_t("start"), func():
+		for key in spins:
+			spins[key].apply()
+		_start("gig_driver"))
+	var back := _button(_t("back"), _city_menu)
+	for button in [now, start, back]:
+		_body.remove_child(button)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_child(button)
+	# Keep Tab order aligned with the header, grid, time fields and action row.
+	var tab_order: Array[Control] = [calendar.previous, calendar.next, calendar,
+		spins["hour"].get_line_edit(), spins["minute"].get_line_edit(), now, start, back]
+	for i in tab_order.size():
+		tab_order[i].focus_next = tab_order[i].get_path_to(tab_order[(i + 1) % tab_order.size()])
+		tab_order[i].focus_previous = tab_order[i].get_path_to(tab_order[(i - 1 + tab_order.size()) % tab_order.size()])
 	_back_action = _city_menu
 	_focus_menu()
-	start.call_deferred("grab_focus")  # Enter plays from now
+	start.call_deferred("grab_focus")
 
 
 ## A start time inside [the same day a year ago, today] (calendar.py
@@ -657,6 +829,20 @@ static func _days_in(year: int, month: int) -> int:
 func _settings_menu() -> void:
 	_clear()
 	_title(_t("settings").to_upper())
+	_button(_t("settings_general") + " >", _general_menu)
+	_button(_t("settings_gameplay") + " >", _gameplay_menu)
+	_button(_t("graphics") + " >", _graphics_menu)
+	_button(_t("settings_audio") + " >", _audio_menu)
+	_button(_t("settings_maps") + " >", _maps_menu)
+	var back := _pause_menu if _game != null else _main_menu
+	_button(_t("back"), back)
+	_back_action = back
+	_focus_menu()
+
+
+func _general_menu() -> void:
+	_clear()
+	_title(_t("settings_general").to_upper())
 	var language := OptionButton.new()
 	for code in T.LANGUAGES:
 		language.add_item(T.LANGUAGE_NAMES[code])
@@ -667,10 +853,17 @@ func _settings_menu() -> void:
 		_settings.save("user://settings.cfg")
 		if _game != null:
 			_game.set_language(_language)
-		_settings_menu.call_deferred())
+		_general_menu.call_deferred())
 	_with_help(language, "help_language")
 	_focusables.append(language)
-	_button(_t("graphics"), _graphics_menu)
+	_button(_t("back"), _settings_menu)
+	_back_action = _settings_menu
+	_focus_menu()
+
+
+func _gameplay_menu() -> void:
+	_clear()
+	_title(_t("settings_gameplay").to_upper())
 	var historical := CheckButton.new()  # FMI weather for the city and game time
 	historical.text = _t("historical_weather")
 	historical.button_pressed = _settings.get_value("game", "historical_weather", false)
@@ -687,6 +880,37 @@ func _settings_menu() -> void:
 		_settings.save("user://settings.cfg"))
 	_with_help(timetable, "help_train_timetable")
 	_focusables.append(timetable)
+	var road := CheckButton.new()  # live Digitraffic roadworks, else made-up ones (off unless chosen)
+	road.text = _t("realtime_road")
+	road.button_pressed = _settings.get_value("game", "road_digitraffic", false)
+	road.toggled.connect(func(on: bool):
+		_settings.set_value("game", "road_digitraffic", on)
+		_settings.save("user://settings.cfg"))
+	_with_help(road, "help_realtime_road")
+	_focusables.append(road)
+	var intercity := CheckButton.new()
+	intercity.text = _t("enable_intercity_fares")
+	intercity.button_pressed = _settings.get_value("game", "intercity_fares", false)
+	intercity.toggled.connect(func(on: bool):
+		_settings.set_value("game", "intercity_fares", on)
+		_settings.save("user://settings.cfg"))
+	_with_help(intercity, "help_intercity_fares")
+	_focusables.append(intercity)
+	var intercity_note := Label.new()
+	intercity_note.text = _t("intercity_requirements")
+	intercity_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	intercity_note.custom_minimum_size.x = 500
+	_body.add_child(intercity_note)
+	if is_instance_valid(_game):
+		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
+	_button(_t("back"), _settings_menu)
+	_back_action = _settings_menu
+	_focus_menu()
+
+
+func _maps_menu() -> void:
+	_clear()
+	_title(_t("settings_maps").to_upper())
 	var source := OptionButton.new()  # --osm-source: the map from Overpass, or a local .osm.pbf via osmium
 	source.add_item(_t("map_overpass"))
 	source.add_item(_t("map_pbf"))
@@ -706,11 +930,18 @@ func _settings_menu() -> void:
 	_with_help(pbf_path, "help_pbf_path")
 	pbf_path.get_parent().get_parent().visible = source.selected == 1
 	_focusables.append(pbf_path)
-	_with_help(_button(_t("manage_pbf"), _pbf_menu), "help_manage_pbf")
-	if _game == null:  # a running server keeps its home in memory
-		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
+	_with_help(_button(_t("manage_pbf") + " >", _pbf_menu), "help_manage_pbf")
+	_button(_t("back"), _settings_menu)
+	_back_action = _settings_menu
+	_focus_menu()
+
+
+func _audio_menu() -> void:
+	_clear()
+	_title(_t("settings_audio").to_upper())
 	for item in [[_t("master_volume"), "Master", "help_master_volume"], [_t("game_volume"), "Game", "help_game_volume"],
-			[_t("environment_volume"), "Environment", "help_environment_volume"], [_t("ui_volume"), "UI", "help_ui_volume"]]:
+			[_t("environment_volume"), "Environment", "help_environment_volume"], [_t("ui_volume"), "UI", "help_ui_volume"],
+			[_t("music_volume"), "Music", "help_music_volume"]]:
 		var row := HBoxContainer.new()
 		var label := Label.new()
 		label.text = item[0]
@@ -726,9 +957,8 @@ func _settings_menu() -> void:
 		row.add_child(slider)
 		_with_help(row, item[2])
 		_focusables.append(slider)
-	var back := _pause_menu if _game != null else _main_menu
-	_button(_t("back"), back)
-	_back_action = back
+	_button(_t("back"), _settings_menu)
+	_back_action = _settings_menu
 	_focus_menu()
 
 
@@ -736,17 +966,22 @@ func _graphics_menu() -> void:
 	_clear()
 	_title(_t("graphics").to_upper())
 	var options := Graphics.read(_settings)
+	var toggles := {}
 	for key in Graphics.DEFAULTS:
 		var toggle := CheckButton.new()
+		toggles[key] = toggle
 		toggle.text = _t("graphics_" + key)
 		toggle.button_pressed = options[key]
 		toggle.toggled.connect(func(on: bool):
 			_settings.set_value("graphics", key, on)
 			_settings.save("user://settings.cfg")
+			if key == "buildings_3d":
+				toggles["shadows"].disabled = not on
 			if _game != null:
 				_game.set_graphics(Graphics.read(_settings)))
 		_with_help(toggle, "help_graphics_" + key)
 		_focusables.append(toggle)
+	toggles["shadows"].disabled = not options["buildings_3d"]
 	_button(_t("back"), _settings_menu)
 	_back_action = _settings_menu
 	_focus_menu()
@@ -761,7 +996,7 @@ func _set_volume(bus: String, value: float) -> void:
 
 
 func _start(mode: String, skip_pbf_offer := false) -> void:
-	if _settings.get_value("map", "osm_source", "") == "pbf" and not skip_pbf_offer:
+	if (_settings.get_value("map", "osm_source", "") == "pbf" or _settings.get_value("game", "intercity_fares", false)) and not skip_pbf_offer:
 		var pbf := _pbf_path()
 		if pbf == "":
 			_offer_pbf_download(mode)
@@ -784,6 +1019,17 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_startup_bar.show_percentage = false  # stages have no reliable total duration
 	_startup_bar.custom_minimum_size = Vector2(520, 20)
 	_body.add_child(_startup_bar)
+	_startup_busy_bar = ProgressBar.new()
+	_startup_busy_bar.indeterminate = true
+	_startup_busy_bar.show_percentage = false
+	_startup_busy_bar.custom_minimum_size = Vector2(520, 8)
+	_startup_busy_bar.visible = false
+	_body.add_child(_startup_busy_bar)
+	_startup_activity = Label.new()
+	_startup_activity.visible = false
+	_startup_activity.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_startup_activity.custom_minimum_size.x = 520
+	_body.add_child(_startup_activity)
 	_startup_stage = Label.new()
 	_startup_stage.text = _t("startup_starting")
 	_body.add_child(_startup_stage)
@@ -800,15 +1046,22 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	args.append_array(["--startup-progress", _startup_path])
 	if mode == "gig_driver":
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
+		if _save_slot != "":
+			args.append_array(["--save-slot", _save_slot])
 		if _start_point != Vector2.INF:
 			args.append_array(["--bbox", point_bbox(_start_point.x, _start_point.y)])
 			if _start_place != "":
 				args.append_array(["--place-name", _start_place])
 	args.append_array(map_source_args(_settings.get_value("map", "osm_source", ""), _pbf_path()))
+	args.append("--intercity-fares" if _settings.get_value("game", "intercity_fares", false) else "--no-intercity-fares")
+	if _settings.get_value("game", "intercity_fares", false) and _pbf_path() != "":
+		args.append_array(["--osm-pbf-path", _pbf_path()])
 	if _settings.has_section_key("game", "historical_weather"):  # else the server's config decides
 		args.append("--historical-weather" if _settings.get_value("game", "historical_weather") else "--no-historical-weather")
 	if _settings.has_section_key("game", "train_timetable"):
 		args.append("--train-timetable" if _settings.get_value("game", "train_timetable") else "--no-train-timetable")
+	if _settings.has_section_key("game", "road_digitraffic"):
+		args.append("--road-digitraffic" if _settings.get_value("game", "road_digitraffic") else "--no-road-digitraffic")
 	args.append_array(_server_extra)
 	var command := Paths.server_command(args)  # the repo's .venv, or the release's bundled server
 	_server_pid = OS.create_process(command[0], command[1])
@@ -829,7 +1082,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_button(_t("cancel"), _stop_game)
 	_back_action = _stop_game
 	_focus_menu()
-	for bus in ["Master", "Game", "Environment", "UI"]:
+	for bus in ["Master"] + AudioManager.BUSES:
 		_set_volume(bus, _settings.get_value("audio", bus, 1.0))
 
 
@@ -838,14 +1091,56 @@ static func startup_status(text: String) -> Dictionary:
 	return parsed if parsed is Dictionary and parsed.get("stage") is String and parsed.get("detail") is String and parsed.get("history") is Array else {}
 
 
+static func intercity_progress(detail: String) -> Dictionary:
+	if not detail.begins_with("Initializing intercity navigation database...|"):
+		return {}
+	var counter := detail.split("|", true, 1)[1].split(" · ", true, 1)
+	var phase := counter[0].split("/")
+	if phase.size() != 2 or phase[1] != "4" or not phase[0].is_valid_int():
+		return {}
+	var step := int(phase[0])
+	if step < 1 or step > 4:
+		return {}
+	var value := float(step - 1)
+	if step == 4 and counter.size() == 2:
+		var towns := counter[1].split("/")
+		if towns.size() == 2 and towns[0].is_valid_int() and towns[1].is_valid_int() and int(towns[1]) > 0:
+			value += clampf(float(towns[0]) / float(towns[1]), 0.0, 1.0)
+	return {"step": step, "value": value}
+
+
+func _startup_feedback(now: int) -> void:
+	_startup_elapsed.text = _t("startup_elapsed") % [(now - _startup_started) / 1000, (now - _startup_changed_at) / 1000]
+	var detail: String = _startup_last.get("detail", "")
+	var preparing := detail.begins_with("Initializing intercity navigation database...")
+	var progress := intercity_progress(detail)
+	if _startup_busy_bar != null:
+		_startup_busy_bar.visible = preparing and not progress.is_empty()
+	_startup_bar.indeterminate = progress.is_empty()
+	_startup_bar.show_percentage = false  # stage counts are not an estimate of remaining time
+	if not progress.is_empty():
+		_startup_bar.max_value = 4
+		_startup_bar.value = progress.value
+		_startup_detail.text = _t("startup_intercity_step") % [progress.step, _t("startup_intercity_" + str(progress.step))]
+		var parts := detail.split(" · ", true, 1)
+		if parts.size() == 2:
+			_startup_detail.text += " · " + parts[1]
+	if _startup_activity != null:
+		_startup_activity.visible = preparing
+		if preparing:
+			var dots := ".".repeat(int((now - _startup_started) / 400) % 4)
+			_startup_activity.text = _t("startup_intercity_wait") % dots
+
+
 func _process(delta: float) -> void:
 	if not _loading:
 		return
+	var now := Time.get_ticks_msec()
+	_startup_feedback(now)  # local animation/timers must not depend on server/file updates
 	_startup_poll -= delta
 	if _startup_poll > 0.0:
 		return
 	_startup_poll = 0.5
-	var now := Time.get_ticks_msec()
 	if FileAccess.file_exists(_startup_path):
 		var file := FileAccess.open(_startup_path, FileAccess.READ)
 		if file != null:
@@ -860,10 +1155,14 @@ func _process(delta: float) -> void:
 				for stage in status.history.slice(0, -1):
 					previous.append("· " + _t("startup_" + str(stage)))
 				_startup_history.text = "\n".join(previous)
-	_startup_elapsed.text = _t("startup_elapsed") % [(now - _startup_started) / 1000, (now - _startup_changed_at) / 1000]
+	_startup_feedback(now)
 	if _startup_last.get("stage", "") == "error" or not OS.is_process_running(_server_pid):
 		_loading = false
 		_startup_bar.indeterminate = false
+		if _startup_busy_bar != null:
+			_startup_busy_bar.visible = false
+		if _startup_activity != null:
+			_startup_activity.visible = false
 		_startup_stage.text = _t("start_failed")
 		if _startup_last.get("stage", "") != "error":
 			_startup_detail.text = _t("startup_exited") + "\n" + _startup_detail.text
@@ -882,6 +1181,7 @@ func _offer_pbf_download(mode: String) -> void:
 		_t("pbf_download_offer"))
 	_button(_t("download"), func(): _download_pbf(mode))
 	_button(_t("use_overpass"), func():
+		_settings.set_value("game", "intercity_fares", false)
 		_settings.set_value("map", "osm_source", "overpass")
 		_settings.save("user://settings.cfg")
 		_start(mode))
@@ -948,7 +1248,7 @@ func _download_pbf(mode: String, allow_existing := false, settings_only := false
 		_settings.set_value("map", "osm_pbf_path", downloaded_pbf_path())
 		_settings.save("user://settings.cfg")
 		if settings_only:
-			_settings_menu()
+			_maps_menu()
 		else:
 			_start(mode)
 		return
@@ -961,8 +1261,8 @@ func _pbf_download_failed(mode: String, allow_existing: bool, settings_only: boo
 	_title(_t("download_failed"), _t("pbf_download_failed"))
 	_button(_t("retry"), func(): _download_pbf(mode, allow_existing, settings_only))
 	if allow_existing:
-		_button(_t("use_existing"), _settings_menu if settings_only else func(): _start(mode, true))
-	var back := _settings_menu if settings_only else _main_menu
+		_button(_t("use_existing"), _maps_menu if settings_only else func(): _start(mode, true))
+	var back := _maps_menu if settings_only else _main_menu
 	_button(_t("cancel"), back)
 	_back_action = back
 	_focus_menu()
@@ -972,16 +1272,16 @@ func _confirm_delete_pbf() -> void:
 	_clear()
 	if not FileAccess.file_exists(downloaded_pbf_path()):
 		_title(_t("delete_pbf").to_upper(), _t("pbf_not_found"))
-		_button(_t("back"), _settings_menu)
+		_button(_t("back"), _maps_menu)
 	else:
 		_title(_t("delete_pbf").to_upper(), _t("confirm_delete_pbf"))
 		_button(_t("delete"), func():
 			if DirAccess.remove_absolute(downloaded_pbf_path()) == OK:
 				_settings.set_value("map", "osm_pbf_path", "")
 				_settings.save("user://settings.cfg")
-			_settings_menu())
-		_button(_t("cancel"), _settings_menu)
-	_back_action = _settings_menu
+			_maps_menu())
+		_button(_t("cancel"), _maps_menu)
+	_back_action = _maps_menu
 	_focus_menu()
 
 
@@ -990,8 +1290,8 @@ func _pbf_menu() -> void:
 	_title(_t("manage_pbf").to_upper())
 	_button(_t("force_pbf_update"), func(): _download_pbf("", FileAccess.file_exists(downloaded_pbf_path()), true))
 	_button(_t("delete_pbf"), _confirm_delete_pbf)
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_button(_t("back"), _maps_menu)
+	_back_action = _maps_menu
 	_focus_menu()
 
 
@@ -999,28 +1299,72 @@ func _server_connected(up: bool) -> void:
 	if not up or not _loading:
 		return
 	_loading = false
+	_stop_menu_music()
 	_remove_startup_status()
 	_panel.visible = false
 	_back.visible = false
 
 
 func _pause_menu() -> void:
+	if not get_tree().paused:  # the game itself, before the menu covers it
+		_pause_shot = get_viewport().get_texture().get_image()
 	get_tree().paused = true
+	_play_menu_music()
 	if _game != null and _game._help != null:
 		_game._help.visible = false
 	_panel.visible = true
 	_back.visible = false
 	_clear()
 	_title(_t("paused"))
+	_pause_status = Label.new()
+	_pause_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_body.add_child(_pause_status)
 	_button(_t("resume"), _resume)
+	if _can_save():
+		_button(_t("save_game"), func(): await _save_game(func(ok: bool): _pause_status.text = _t("saved") if ok else _t("save_failed")))
 	_button(_t("settings"), _settings_menu)
 	_button(_t("main_menu"), _stop_game)
-	_button(_t("quit"), get_tree().quit)
+	_button(_t("quit"), func():
+		if _can_save():
+			await _save_game(func(_ok: bool): get_tree().quit())
+		else:
+			get_tree().quit())
 	_back_action = _resume
 	_focus_menu()
 
 
+func _can_save() -> bool:
+	return _save_slot != "" and is_instance_valid(_game) and _settings.get_value("menu", "mode", "") == "gig_driver"
+
+
+## Ask the server to write the save slot and wait (paused, so the client
+## polls meanwhile) until its state acknowledges it, at most 3 s.
+func _save_game(done: Callable) -> void:
+	var sim: SimClient = _game.sim
+	var before := sim.save_count
+	if not sim.send_save():
+		done.call(false)
+		return
+	if is_instance_valid(_pause_status):
+		_pause_status.text = _t("saving")
+	var mode := sim.process_mode
+	sim.process_mode = Node.PROCESS_MODE_ALWAYS
+	var waited := 0.0
+	while sim.save_count <= before and waited < 3.0:
+		await get_tree().create_timer(0.1, true).timeout
+		waited += 0.1
+	sim.process_mode = mode
+	var ok := sim.save_count > before
+	if ok and _pause_shot != null:
+		var thumb := _pause_shot.duplicate() as Image
+		thumb.resize(THUMB_SIZE.x, THUMB_SIZE.y, Image.INTERPOLATE_BILINEAR)
+		DirAccess.make_dir_recursive_absolute(THUMBS)
+		thumb.save_png(THUMBS.path_join(_save_slot + ".png"))
+	done.call(ok)
+
+
 func _resume() -> void:
+	_stop_menu_music()
 	_panel.visible = false
 	get_tree().paused = false
 
@@ -1055,13 +1399,26 @@ func _stop_game() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# F12 in a menu (start menus, loading, pause): the running game handles
+	# its own F12 first; paused or absent, it never sees the key.
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F12:
+		if is_instance_valid(_game):
+			_game.save_screenshot()  # with the server's debug JSON beside it
+		else:
+			var path := preload("res://main.gd").screenshot_directory(OS.get_name(), OS.get_environment("USERPROFILE")).path_join(
+				"screenshot_%d.png" % int(Time.get_unix_time_from_system() * 1e9))
+			DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+			var error := get_viewport().get_texture().get_image().save_png(path)
+			print("Screenshot " + (path if error == OK else "failed: %s" % error_string(error)))
+		get_viewport().set_input_as_handled()
+		return
 	if not event.is_action_pressed("ui_cancel"):
 		return
 	if _loading:
 		_stop_game()
-	elif _game != null:
-		if _game.phone.is_open:
-			return
+	elif _panel.visible and _back_action.is_valid():
+		_back_action.call()
+	elif _game != null:  # the phone uses P/N, Enter, X and 1-3, never Esc
 		if get_tree().paused:
 			_resume()
 		else:
@@ -1090,5 +1447,6 @@ func _stop_server() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+		_stop_menu_music()
 		_remember_game_time()
 		_stop_server()

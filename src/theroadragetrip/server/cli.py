@@ -1,7 +1,7 @@
 import argparse
 from datetime import datetime
 
-from ..config import load_config, cities_from_config
+from ..config import load_config, cities_from_config, load_city_catalog
 from ..localization import SUPPORTED_LANGUAGES
 from ..game_args import parse_args
 
@@ -24,6 +24,9 @@ def parse_server_args():
     parser.add_argument("--language", choices=SUPPORTED_LANGUAGES, default=None)
     parser.add_argument("--list-cities", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--list-city-locations", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--list-saves", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--save-slot", default=None,
+                        help="Gig save slot name: continue it if it exists, else start it (saves/NAME.json)")
     parser.add_argument("--clear-cache", action="store_true",
                         help="Delete all cached map data (OSM downloads and built worlds) and exit")
     parser.add_argument("--parent-pid", type=int, default=None, help="Exit when this process (the client) exits")
@@ -34,6 +37,6 @@ def parse_server_args():
                         help="FMI observed/forecast weather for the city and game time (default: config game.historical_weather)")
 
     # Any municipality: a map-picker start takes its nearest one's settings.
-    args = parse_args(config, city_names=list(city_centers), parser=parser)
+    args = parse_args(config, city_names=list(city_centers) + [n for n in load_city_catalog() if n not in city_centers], parser=parser)
     args.no_menu = True  # a server can never show an interactive menu
     return args, config

@@ -73,6 +73,12 @@ def _default_city_names() -> list[str]:
     return [place["taajama"] for place in selected_places]
 
 DEFAULT_CONFIG = {
+    "protests": {
+        "enabled": "true", "max_groups": "2", "group_size": "24",
+        "schedule": "Mo-Su 10:00-20:00", "intimidation_radius_m": "100.0",
+        "clearing_s": "3.0", "return_delay_s": "30.0", "lifetime_s": "1200.0",
+        "spawn_interval_s": "30.0", "seed": "19",
+    },
     "game": {
         "language": "",
         "preset": "",
@@ -85,12 +91,13 @@ DEFAULT_CONFIG = {
         "log_level": "INFO",
         "file_logging": "false",
         "roadworks_enabled": "false",
-        "bus_stops": "false",
         "physics_realism": "arcade",
         # Real FMI weather observations for the game's city and date
         # (Settings -> historical weather); generated weather otherwise.
         "historical_weather": "false",
         "train_timetable": "true",  # trains on the real Digitraffic timetable; false: a fixed interval
+        "road_digitraffic": "false",  # live roadworks from Digitraffic Road (digitraffic_road.py)
+        "intercity_fares": "false",
     },
     "map": {
         "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),
@@ -105,11 +112,6 @@ DEFAULT_CONFIG = {
         # with a warning otherwise.
         "osm_source": "overpass",
         "osm_pbf_path": "",
-        # Use a predefined city's prebuilt road binary (assets/roads/<city>.bin,
-        # drivable roads for the whole city) instead of the fetched roads.
-        # Off: it is loaded on top of the normal fetch (no time saved) and
-        # only enlarges the road/route graphs for now - kept for future use.
-        "use_prebuilt_roads": "false",
     },
     "traffic": {
         # vehicle-population: target/min/max NPC vehicle population. traffic_count
@@ -119,7 +121,6 @@ DEFAULT_CONFIG = {
         "traffic_count_min": "",
         "traffic_count_max": "",
         "pedestrian_count": "20",
-        "cyclist_count": "8",
         "parking_density": "0.5",
         # vehicle-population v2: overrides the registered vehicle plugins' own
         # traffic_weight (vehicles/plugins/*.py) for the general NPC
@@ -138,6 +139,17 @@ DEFAULT_CONFIG = {
     "speech": {
         "min_interval": "45.0",
         "max_interval": "120.0",
+    },
+    "motorcycles": {
+        # The Finnish riding season (motorcycle_season.py, docs/motorcycles.md):
+        # month-day dates, and the traffic multipliers of the motorcycle weight.
+        "season_start": "04-01",
+        "summer_start": "06-01",
+        "autumn_start": "09-01",
+        "winter_start": "11-01",
+        "spring_multiplier": "0.1",
+        "summer_multiplier": "1.0",
+        "autumn_multiplier": "0.1",
     },
     "experimental": {
         "enable_two_wheelers": "false",

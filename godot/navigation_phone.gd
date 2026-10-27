@@ -3,6 +3,7 @@ extends VBoxContainer
 
 const T := preload("res://i18n.gd")
 var language := "en"
+var _task: Label  # who and where to (Hud.task_text)
 var _arrow: Control
 var _distance: Label
 var _street: Label
@@ -13,6 +14,13 @@ var _maneuver := "no_target"
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_theme_constant_override("separation", 8)
+	_task = Label.new()
+	_task.add_theme_font_size_override("font_size", 20)
+	_task.add_theme_color_override("font_color", Color8(255, 215, 60))
+	_task.custom_minimum_size.x = 170
+	_task.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_task.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(_task)
 	_arrow = Control.new()
 	_arrow.custom_minimum_size = Vector2(170, 90)
 	_arrow.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -36,7 +44,9 @@ func _ready() -> void:
 	hide()
 
 
-func show_navigation(navigation: Dictionary) -> void:
+func show_navigation(navigation: Dictionary, task := "") -> void:
+	_task.text = task
+	_task.visible = task != ""
 	var instruction: Dictionary = navigation.get("instruction", {})
 	var maneuver := str(instruction.get("maneuver", "no_target"))
 	if maneuver != _maneuver:

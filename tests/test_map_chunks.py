@@ -6,6 +6,26 @@ import pytest
 from theroadragetrip import map_chunks
 
 
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard"])
+def test_point_sites_are_streamed_to_the_renderer(kind):
+    from theroadragetrip.osm import SceneryObject
+
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[],
+                            scenery_objects=[SceneryObject(10, 20, kind)])
+    assert map_chunks.ChunkIndex(world).message("0_0")["scenery_objects"] == [[10, 20, kind, 0.0]]
+
+
+def test_charging_stations_are_streamed_with_their_capacity():
+    from theroadragetrip.osm import SceneryObject
+
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], scenery_objects=[
+        SceneryObject(10, 20, "charging_station", direction_angle=0.5, capacity=6),
+        SceneryObject(30, 20, "charging_station"),
+        SceneryObject(50, 20, "charging_station", level=-1)])  # underground: not drawn on the street
+    rows = map_chunks.ChunkIndex(world).message("0_0")["scenery_objects"]
+    assert rows == [[10, 20, "charging_station", 0.5, 6], [30, 20, "charging_station", 0.0, 2]]  # unmapped: a two-bay post
+
+
 def test_runtime_camera_updates_only_its_chunk_and_invalidates_wire_cache():
     from theroadragetrip.police import SpeedCamera
 
@@ -147,9 +167,23 @@ def test_railings_decorations_and_street_lights_are_each_in_one_chunk():
     world.street_light_points = [(100.0, 100.0, 1.25, 14.0), (600.0, 100.0, 0.0, 14.0)]
     index = map_chunks.ChunkIndex(world, size=500.0)
     here, east = index.message("0_0"), index.message("1_0")
-    assert here["railings"] == [["hedge", [[480.0, 5.0], [530.0, 5.0]]]] and east["railings"] == []  # first point's chunk, whole
+    assert here["railings"] == [["hedge", [[480.0, 5.0], [530.0, 5.0]], 0]] and east["railings"] == []  # first point's chunk, whole
     assert here["scenery_objects"] == [[46.0, 0.0, "bench", 0.0], [12.0, 13.0, "bench", 0.5], [14.0, 15.0, "gate", 0.0]]
     assert here["street_lights"] == [[100.0, 100.0, 1.25, 14.0]] and east["street_lights"] == [[600.0, 100.0, 0.0, 14.0]]
+
+
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard", "cemetery", "beach", "forest", "wood", "farmland", "meadow", "grassland", "wetland", "scrub"])
+def test_decorated_site_kind_survives_chunk_clipping(kind):
+    from theroadragetrip.osm import Scenery
+
+    points = [(100, 100), (600, 100), (600, 200), (100, 200)]
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[],
+                            sceneries=[Scenery(points, kind, bbox=(100, 100, 600, 200))])
+    index = map_chunks.ChunkIndex(world)
+    for cid in ("0_0", "1_0"):
+        area = index.message(cid)["landuse"][0]
+        assert area[3] == kind and area[1] == 1
+        assert all(int(cid[0]) * 500 <= p[0] <= (int(cid[0]) + 1) * 500 for p in area[2])
 
 
 def test_landuse_is_clipped_to_the_chunks_it_covers_without_overlap():
@@ -240,13 +274,18 @@ def test_parallel_tracks_form_one_bridge_over_a_below_grade_road():
 
 def test_bus_stop_shapes_follow_the_nearest_road():
     """godot-16: a bus stop's bay and shelter, computed once."""
-    from theroadragetrip import static_world
+    from theroadragetrip import map_style, static_world
 
-    road = SimpleNamespace(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=3.0, is_drivable=True, layer=0)
-    stop = SimpleNamespace(x=50.0, y=6.0, layer=0, shelter=True)
+    road = SimpleNamespace(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=3.0, is_drivable=True, layer=0, highway="residential")
+    stop = SimpleNamespace(x=50.0, y=6.0, layer=0, shelter=True, bench=True)
     shapes = static_world.bus_stop_shapes(stop, [road])
-    assert shapes["bay"] == [[36.0, 3.0], [64.0, 3.0], [60.0, 5.2], [40.0, 5.2]]  # on the stop's side of the road
-    assert shapes["shelter"] is not None and shapes["label"] == [50.0, 6.2] and shapes["angle"] == 0.0
+    assert shapes["bay"] == [[34.0, 3.0], [66.0, 3.0], [61.0, 6.0], [39.0, 6.0]]  # on the stop's side of the road
+    assert shapes["color"] == list(map_style.road_color_for_way(road))  # the road's own asphalt
+    # North of an eastbound road buses drive west: the sign at the bay's west (front) end; "BUS" upright.
+    assert shapes["sign"] == [41.0, 7.6] and shapes["label"] == [50.0, 4.5] and shapes["angle"] == 0.0
+    west = static_world.bus_stop_shapes(stop, [SimpleNamespace(**{**vars(road), "points_m": [(100.0, 0.0), (0.0, 0.0)]})])
+    assert west["angle"] == 0.0 and west["sign"] == [41.0, 7.6]  # the way's direction changes neither
+    assert shapes["shelter"] is not None and shapes["bench"] is None  # a shelter has its own seat
     assert static_world.bus_stop_shapes(SimpleNamespace(x=50.0, y=80.0, layer=0, shelter=False), [road]) is None  # beyond 45 m
 
 
@@ -468,3 +507,63 @@ def test_a_stadium_mapped_twice_gets_one_ring_of_stands():
     outline = [(100.0, 100.0), (240.0, 100.0), (240.0, 200.0), (100.0, 200.0)]
     world.sceneries = [Scenery(points_m=outline, kind="stadium", name="Bolt Arena"), Scenery(points_m=outline[::-1], kind="stadium")]
     assert len(map_chunks.ChunkIndex(world, size=500.0).message("0_0")["buildings"]) == 4
+
+
+def test_beach_volleyball_has_sand_over_the_entire_clipped_pitch():
+    from theroadragetrip.osm import Scenery
+    from theroadragetrip.map_style import SCENERY_COLORS
+
+    court = Scenery(points_m=[(480, 100), (520, 100), (520, 120), (480, 120)],
+                    kind="pitch", sport="beachvolleyball", volleyball_frame=[500, 110, 0, 40, 20])
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[court])
+    index = map_chunks.ChunkIndex(world)
+    for cid in ("0_0", "1_0"):
+        area = index.message(cid)["landuse"][0]
+        assert area[0] == list(SCENERY_COLORS["sand"])
+        assert area[1] == 1  # seasonal snow, never flooded pitch ice
+
+
+def test_water_shores_ignore_island_fill_splits_and_chunk_edges():
+    from shapely.geometry import Polygon, LineString, box
+    from shapely.ops import unary_union
+    from theroadragetrip.osm import Water
+    from theroadragetrip.osm.build import _water_rings
+
+    lake = Polygon([(0, 0), (1000, 0), (1000, 200), (0, 200)],
+                   holes=[[(450, 60), (550, 60), (550, 140), (450, 140)]])
+    waters = [Water(ring, "water", True) for ring in _water_rings(lake)]
+    assert len(waters) > 1  # the same island-preserving split that produced the screenshot seam
+    world = SimpleNamespace(ways=[], railways=[], waters=waters, buildings=[])
+    index = map_chunks.ChunkIndex(world)
+    bands = [band for chunk in index._chunks.values() for band in chunk["shore_waves"]]
+    assert bands
+    lines = [LineString(band["points"]) for band in bands]
+    shores = unary_union(lines)
+    assert shores.intersection(box(499, 10, 501, 50)).is_empty  # open water along the internal split
+    assert not shores.intersection(box(449, 75, 450, 125)).is_empty  # the island keeps its real shore
+    assert all(lake.buffer(0.02).covers(line) for line in lines)
+    assert all(not (a[0] == b[0] == 500) for line in lines for a, b in zip(line.coords, list(line.coords)[1:]))
+    old = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=waters[:1], buildings=[]))
+    updated, changed = map_chunks.ChunkIndex.updated(old, world, (400, -10, 600, 210))
+    assert {"0_0", "1_0"} <= changed
+    for cid in ("0_0", "1_0"):
+        assert updated.message(cid)["shore_waves"] == index.message(cid)["shore_waves"]
+    for cid, chunk in index._chunks.items():
+        x, y = map(int, cid.split("_"))
+        for band in chunk["shore_waves"]:
+            assert 0 < band["distance"] < 6
+            assert box(x * 500, y * 500, (x + 1) * 500, (y + 1) * 500).buffer(0.01).covers(LineString(band["points"]))
+
+
+@pytest.mark.parametrize("other_layer", [0, 1])
+def test_water_shore_union_keeps_map_layers_separate(other_layer):
+    from shapely.geometry import LineString, box
+    from theroadragetrip.osm import Water
+
+    waters = [Water([(0, 0), (100, 0), (100, 100), (0, 100), (0, 0)], "water", True),
+              Water([(100, 0), (200, 0), (200, 100), (100, 100), (100, 0)], "water", True, layer=other_layer)]
+    index = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=waters, buildings=[]))
+    seam = box(99, 30, 101, 70)
+    has_shore = any(LineString(band["points"]).intersects(seam)
+                    for chunk in index._chunks.values() for band in chunk["shore_waves"])
+    assert has_shore == (other_layer != 0)

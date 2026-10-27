@@ -99,7 +99,31 @@ MAGIC = b"RWC\0"
 # 32: light rail stops and lines are tram ones (Tampere).
 # 33: directed sea-face classification, complete coastline collection and water island holes.
 # 34: water relation geometry is clipped to its fetched region before island splitting.
-FORMAT_VERSION = 34
+# 35: retain amenity=biergarten/grave_yard areas and point scenery.
+# 36: preserve cemetery/biergarten ground when its boundary is also a barrier.
+# 37: bus stops on by default (areas cached without them rebuild).
+# 38: BusStop.bench; no stop_position or rail-platform stops, one stop per 25 m.
+# 39: BusStop.routes (the bus routes calling at a stop).
+# 40: amenity=nightclub point scenery with its opening_hours.
+# 41: Way.bus_routes (the route=bus relations running on a road).
+# 42: Railing.layer, barriers split open at their gates (solid for the taxi).
+# 43: Scenery.golf_holes (server-side tee-to-pin routes).
+# 44: mapped golf tees, fairways and greens.
+# 45: miniature-golf facility nodes and playable lanes.
+# 46: nine distributed miniature-golf tracks, clear of buildings, water and paths.
+# 47: dry beach locations and connected near-shore swim routes.
+# 48: Theme park attractions and ride loops.
+# 49: Validated outdoor tennis court geometry.
+# 50: Camping equipment on mapped camp pitches.
+# 51: Standalone caravans and caravans hitched to cars.
+# 52: Validated outdoor beach-volleyball court geometry.
+# 53: culverted and underground waterways are not surface water.
+# 54: only surveyed OSM trees are server objects; forests use client canopy rendering.
+# 55: Way cycling metadata (bicycle, cycleway, oneway:bicycle, motorroad).
+# 56: Way.ref, the OSM road number(s) (Digitraffic road data matching).
+# 57: bicycle parking, picnic tables and gates follow their path's direction.
+# 58: amenity=charging_station scenery with its capacity and level.
+FORMAT_VERSION = 58
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

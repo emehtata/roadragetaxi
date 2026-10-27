@@ -11,6 +11,13 @@ Phase 1 (below) is implemented. Competitors are ordinary NPC cars of
 `vehicle_kind == "taxi"`, driven by the NPC system with all its traffic
 rules, and dispatched by `competitor_taxis.py`.
 
+NPC taxis can be cars or vans and retain the normal NPC paint variation
+(white, black, grey, silver and other colours). Van dimensions, appearance,
+collision body come from the existing van definition. Taxi vans seat eight
+passengers plus the driver (nine occupants total); ordinary vans keep their
+existing capacity. Conversion also adds the taxi role and roof sign.
+The player's own taxi stays yellow with its existing passenger capacity.
+
 ## Earlier implementation (analysed, replaced)
 
 An August 2026 version (commits 58a3afc, 4913567) spawned "rival taxis"
@@ -60,10 +67,15 @@ taken by the nearest idle competitor within `CLAIM_RADIUS_M` of its
 pickup, at `CLAIM_RATE_PER_S` - so most offers stay on the phone for a
 while and the player can still win them.
 
-**Population.** The NPC population keeps up to `COMPETITOR_TAXIS` of its
-moving-traffic spawns as taxis. A taxi ends its first trip parked and
-waits there for a fare; a far idle one can be recycled like any parked
-car, a taxi on a job never.
+**Population.** Normally up to `COMPETITOR_TAXIS` moving-traffic spawns
+become taxis. On Friday and Saturday nights, 22:00–06:00 (including
+Saturday and Sunday early mornings), populated areas target up to ten
+rivals, scaled to local population and the configured vehicle budget.
+This adds night-time moving demand without increasing the population cap.
+Free rivals pause ten seconds for dispatch, then cruise using the existing
+budgeted, traffic-rule-aware routes. Outside those hours they wait for a
+fare. A taxi with a pending cruise route cannot simultaneously claim a
+fare. Distant ambient taxis remain subject to the normal viewport cleanup.
 
 ## Phase 1 (2026-10-15)
 

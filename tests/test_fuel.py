@@ -1,5 +1,33 @@
 import pytest
 
+
+@pytest.mark.parametrize("step", [1.0 / 30.0, 0.1, 1.0])
+def test_refueling_delivers_thirty_liters_per_minute_without_rounding_overcharge(step):
+    from types import SimpleNamespace
+    from theroadragetrip.fuel import Refueling
+
+    car = SimpleNamespace(fuel_l=10.0, fuel_capacity_l=60.0)
+    taxi = SimpleNamespace(balance_cents=10000)
+    fill = Refueling(199)
+    for _ in range(round(60.0 / step)):
+        fill.advance(car, taxi, step)
+    assert car.fuel_l == pytest.approx(40.0)
+    assert taxi.balance_cents == 4030
+
+
+def test_timed_refueling_stops_at_tank_capacity_and_available_money():
+    from types import SimpleNamespace
+    from theroadragetrip.fuel import Refueling
+
+    car = SimpleNamespace(fuel_l=59.9, fuel_capacity_l=60.0)
+    taxi = SimpleNamespace(balance_cents=100)
+    Refueling(200).advance(car, taxi, 60.0)
+    assert car.fuel_l == 60.0 and taxi.balance_cents == 80
+    car.fuel_l = 10.0
+    fill = Refueling(200)
+    fill.advance(car, taxi, 60.0)
+    assert car.fuel_l == pytest.approx(10.4) and taxi.balance_cents == 0
+
 from theroadragetrip.fuel import (
     FUEL_TANK_CAPACITY_L,
     INITIAL_FUEL_L,

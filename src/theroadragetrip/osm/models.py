@@ -41,6 +41,16 @@ class Way:
     map_level: Optional[int] = None
     level: Optional[str] = None
     indoor: Optional[str] = None  # raw indoor=* value, None when untagged
+    bus_routes: List[str] = field(default_factory=list)  # route=bus relations running on it (bus_lines.Line keys)
+    # Cycling (cycling.py): raw bicycle=* access, the road's own cycle lane or
+    # track (cycleway[:right|:left|:both]=lane/track/shared_lane), oneway:bicycle
+    # (None: cyclists follow `oneway`; 0: two-way for bicycles) and motorroad=yes
+    # (moottoriliikennetie: no cycling).
+    bicycle: Optional[str] = None
+    cycleway: Optional[str] = None
+    oneway_bicycle: Optional[int] = None
+    motorroad: bool = False
+    ref: Optional[str] = None  # OSM ref=*: the road number(s), e.g. "4" or "E8;21" (Digitraffic matching)
     segment_lengths: List[float] = field(default_factory=list, init=False, repr=False)
     segment_headings: List[float] = field(default_factory=list, init=False, repr=False)
     total_length_m: float = field(default=0.0, init=False, repr=False)
@@ -93,10 +103,12 @@ class Railway:
 
 @dataclass
 class Railing:
-    """A linear barrier (OSM barrier=fence/railing/hedge/wall). Visual only."""
+    """A linear barrier, open at mapped gates. Hedges break locally when hit;
+    other barriers stop the taxi (TaxiManager.check_barrier_collision)."""
     points_m: List[Tuple[float, float]]
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     kind: str = "fence"
+    layer: int = 0  # OSM layer: a bridge's railing does not wall off the road beneath
 
 
 @dataclass
@@ -258,12 +270,14 @@ class Scenery:
     # merging in) doesn't re-scan every scenery ever loaded - just the
     # newly-added ones.
     trees_checked_against_roads: bool = field(default=False, repr=False)
-    # Set by plant_trees() when .trees came from real OSM natural=tree
-    # nodes rather than procedural placement - marks this scenery as done
-    # so a later plant_trees() call (e.g. autofetch's re-merge with a
-    # fuller road list) never tops it up with fake trees alongside real
-    # ones.
+    # Provenance for surveyed natural=tree nodes; client canopy trees never enter this list.
     trees_from_osm: bool = field(default=False, repr=False)
+    golf_holes: List[List[Tuple[float, float]]] = field(default_factory=list)  # tee-to-pin lines, server only
+    tennis_frame: List[float] = field(default_factory=list)  # validated outdoor court geometry
+    volleyball_frame: List[float] = field(default_factory=list)  # validated outdoor sand court geometry
+    attraction_path: List[Tuple[float, float]] = field(default_factory=list)  # ride loop, server authoritative
+    beach_spots: List[Tuple[float, float]] = field(default_factory=list)
+    swim_routes: List[List[Tuple[float, float]]] = field(default_factory=list)
 
 
 def _building_height(tags: Dict[str, Any], points: List[Tuple[float, float]]) -> float:
@@ -519,6 +533,8 @@ class BusStop:
     id: Optional[int] = None
     layer: int = 0
     shelter: bool = False
+    bench: bool = False
+    routes: list = field(default_factory=list)  # [route key, stop index, line ref] per bus route calling here (bus_lines.py)
 
 
 @dataclass
@@ -533,7 +549,7 @@ class SceneryObject:
     godot/chunk_detail.gd for how each kind is drawn.
 
     direction_angle is set only for kinds placed beside a path/way (bench,
-    waste_basket) - the position is snapped just past that way's edge, on
+    waste_basket, bicycle_parking, picnic_table) or on it (gate) - the position is snapped just past that way's edge, on
     whichever side the raw OSM node already leaned towards, and the angle
     is that way's heading (used to rotate an elongated icon like a bench
     so it sits parallel to the path, not always axis-aligned).
@@ -546,6 +562,9 @@ class SceneryObject:
     id: Optional[int] = None
     direction_angle: Optional[float] = None
     is_area: bool = False
+    opening_hours: Optional[str] = None  # OSM opening_hours (nightclubs: nightlife.py)
+    capacity: Optional[int] = None  # OSM capacity: vehicles at once (charging stations; EVs to come)
+    level: Optional[int] = None  # OSM level: a charging station in a garage (-1) or on a roof deck (5), not on the street
 
 
 class MapData(tuple):

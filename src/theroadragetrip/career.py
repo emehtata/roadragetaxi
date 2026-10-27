@@ -83,8 +83,15 @@ def load_gig_balance(path: Path) -> Optional[int]:
 def save_gig_odometer(
     path: Path, distance_m: float, fuel_l: Optional[float] = None, balance_cents: Optional[int] = None,
 ) -> None:
-    """Persist the gig car between sessions: odometer, and fuel/money if given."""
-    data = {"odometer_m": max(0.0, distance_m)}
+    """Persist the gig car between sessions: odometer, and fuel/money if given.
+    Other keys in the file (a save slot's city, position, fare) are kept."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data["odometer_m"] = max(0.0, distance_m)
     if fuel_l is not None:
         data["fuel_l"] = max(0.0, fuel_l)
     if balance_cents is not None:

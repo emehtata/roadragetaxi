@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "theroadragetrip"
-# 0.18.0alpha (Godot client + Python server), in PEP 440 form.
-version = "0.18.0a0"
+# 0.19.0alpha (Godot client + Python server), in PEP 440 form.
+version = "0.19.0a0"
 description = "PoC top-down driving game using OSM data"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "requests",
+    "ephem",
     "pyproj",
     "shapely",
 ]

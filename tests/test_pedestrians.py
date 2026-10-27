@@ -6,7 +6,6 @@ from theroadragetrip.geo import point_in_polygon
 from theroadragetrip.osm import Building, TrafficLight, Way
 from theroadragetrip.osm import TaxiStop
 from theroadragetrip.pedestrian import (
-    CyclistManager,
     Pedestrian,
     PedestrianAppearance,
     PedestrianManager,
@@ -578,7 +577,7 @@ def test_pedestrian_can_exit_occupied_vehicle():
     assert manager.exit_vehicle(pedestrian, vehicle)
     assert pedestrian.state == "walking"
     assert pedestrian.current_vehicle_id is None
-    assert (pedestrian.x, pedestrian.y) == (20.0, 6.9)
+    assert (pedestrian.x, pedestrian.y) == (20.0, 3.1)  # right/passenger side of an eastbound vehicle
     assert vehicle.state == "driving"
     assert vehicle.current_driver_id is None
 
@@ -816,7 +815,8 @@ def test_pedestrian_spawn_area_is_limited_to_building_radius():
 def test_drunk_pedestrian_walks_unevenly_and_may_vomit(monkeypatch):
     way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way], target_count=0)
-    drunk = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (230, 80, 80), is_drunk=True)
+    drunk = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (230, 80, 80),
+                       is_drunk=True, blood_alcohol_promille=1.0)
     drunk.drunk_vomit_cooldown = 0.0
     manager.pedestrians = [drunk]
     monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
@@ -827,52 +827,45 @@ def test_drunk_pedestrian_walks_unevenly_and_may_vomit(monkeypatch):
     assert manager.vomit_puddles == [(20.0, 0.0)]
 
 
-def test_cyclist_spawn_assigns_body_color():
-    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="cycleway", half_width_m=1.5)
-    manager = CyclistManager([way], target_count=0, spawn_radius_m=120.0)
-
-    cyclist = manager.spawn_pedestrian(50.0, 0.0)
-
-    assert cyclist is not None
-    assert cyclist.is_cyclist is True
-    assert cyclist.color != (230, 80, 80)
-
-
-def test_cyclist_spawn_uses_synced_ways_outside_local_grid():
-    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="cycleway", half_width_m=1.5)
-    manager = CyclistManager([way], target_count=0, spawn_radius_m=10.0)
-
-    cyclist = manager.spawn_pedestrian(500.0, 500.0)
-
-    assert cyclist is not None
-
-
-def test_cyclists_use_right_edge_for_both_directions(monkeypatch):
-    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.0)
-    manager = CyclistManager([way], target_count=0, spawn_radius_m=120.0)
-
-    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
-    forward = manager.spawn_pedestrian(50.0, 0.0)
+def test_pedestrian_sobers_with_game_hours_and_stops_drunk_behavior(monkeypatch):
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    ped = Pedestrian(20, 0, 0, 1.3, 1.3, way, 0, 1, (230, 80, 80),
+                     is_drunk=True, blood_alcohol_promille=2.0)
+    manager.pedestrians = [ped]
+    car = Car(0, 0, 0, 0)
     monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 1.0)
-    reverse = manager.spawn_pedestrian(50.0, 0.0)
+    manager.update(car, 0.1, game_time_seconds=10 * 3600)
+    for hour in range(1, 12):
+        manager.update(car, 0.1, game_time_seconds=((10 + hour) % 24) * 3600)
+        assert ped.is_drunk == (ped.blood_alcohol_promille >= 0.5)
+    assert ped.blood_alcohol_promille == pytest.approx(0.35, abs=0.001)
+    assert not ped.is_drunk
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
+    ped.drunk_vomit_cooldown = ped.fall_cooldown = 0.0
+    manager.update(car, 0.1, game_time_seconds=21 * 3600)
+    assert not manager.vomit_puddles and ped.fall_timer == 0.0
+    for hour in (22, 23, 0):
+        manager.update(car, 0.1, game_time_seconds=hour * 3600)
+    assert ped.blood_alcohol_promille == 0.0 and not ped.is_drunk
 
-    assert forward is not None and reverse is not None
-    assert forward.direction == 1
-    assert reverse.direction == -1
-    assert forward.lateral_offset_m == pytest.approx(3.0)
-    assert reverse.lateral_offset_m == pytest.approx(3.0)
 
-
-def test_all_cyclists_continue_moving():
-    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="cycleway", half_width_m=1.5)
-    manager = CyclistManager([way], target_count=0, spawn_radius_m=120.0)
-    cyclists = [manager.spawn_pedestrian(50.0, 0.0) for _ in range(2)]
-    manager.pedestrians = [cyclist for cyclist in cyclists if cyclist is not None]
-    initial_positions = [(cyclist.x, cyclist.y) for cyclist in manager.pedestrians]
-
-    manager.update(Car(x=-100.0, y=50.0, heading=0.0, speed=0.0), dt=0.1)
-
-    assert all((cyclist.x, cyclist.y) != initial for cyclist, initial in zip(manager.pedestrians, initial_positions))
+@pytest.mark.parametrize("waiting,fallen,skip_lod", [(True, False, False), (False, True, False), (False, False, True)])
+def test_sobering_continues_through_waits_falls_and_lod(monkeypatch, waiting, fallen, skip_lod):
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    ped = Pedestrian(20, 0, 0, 1.3, 1.3, way, 0, 1, (230, 80, 80),
+                     is_drunk=True, blood_alcohol_promille=0.6,
+                     is_taxi_stop_waiter=waiting, fall_timer=10 if fallen else 0)
+    manager.pedestrians = [ped]
+    if skip_lod:
+        ped.lod_update_due = False
+        monkeypatch.setattr(manager, "update_lod", lambda *args: None)
+    car = Car(0, 0, 0, 0)
+    manager.update(car, 0.1, game_time_seconds=23 * 3600)
+    manager.update(car, 0.1, game_time_seconds=0)
+    assert ped.blood_alcohol_promille == pytest.approx(0.45, abs=0.001)
+    assert not ped.is_drunk
 
 
 def test_spawn_pedestrian_at_creates_walking_passenger():
@@ -983,26 +976,6 @@ def test_pedestrian_does_not_dodge_until_car_is_close():
     assert ped.dodge_timer == 0.0
 
 
-def test_cyclist_avoidance_is_reported_but_parallel_traffic_is_not():
-    cycleway = Way(
-        points_m=[(0.0, 0.0), (100.0, 0.0)],
-        highway="cycleway",
-        half_width_m=1.5,
-    )
-    manager = CyclistManager([cycleway], target_count=0)
-    cyclist = Pedestrian(20.0, 0.0, 0.0, 4.0, 4.0, cycleway, 0, 1, (50, 120, 220))
-    cyclist.is_cyclist = True
-    manager.pedestrians = [cyclist]
-
-    assert manager.check_player_avoidance(Car(x=17.0, y=0.0, heading=0.0, speed=10.0), 0.05) is True
-    assert manager.check_player_avoidance(Car(x=17.0, y=0.0, heading=0.0, speed=10.0), 0.05) is False
-
-    cyclist.x = 20.0
-    cyclist.y = 2.0
-    cyclist.dodge_timer = 0.0
-    assert manager.check_player_avoidance(Car(x=17.0, y=0.0, heading=0.0, speed=10.0), 0.05) is False
-
-
 def test_pedestrian_traffic_light_crossing_stop():
     crossing = Way(
         points_m=[(0.0, 0.0), (20.0, 0.0)],
@@ -1024,6 +997,7 @@ def test_pedestrian_traffic_light_crossing_stop():
         color=(255, 0, 0),
     )
     ped_mgr.pedestrians = [ped]
+    ped_mgr._consider_activities = lambda: None  # a random bench visit is not what this tests (flaked ~1 in 10)
     player = Car(x=100.0, y=100.0, heading=0.0, speed=0.0)
 
     ped_mgr.update(player, dt=0.1)
@@ -1047,9 +1021,8 @@ def _grid_of_ways(count: int) -> list:
 def test_sync_map_data_keeps_ped_way_ids_cache_in_sync():
     """Regression: spawn_pedestrian() reads self._ped_way_ids (see its
     docstring) instead of rebuilding {id(way) for way in self.ped_ways}
-    itself - sync_map_data() (both PedestrianManager's and
-    CyclistManager's, which overrides it) must keep that cache exactly
-    in sync with ped_ways, on every call, not just the first."""
+    itself - sync_map_data() must keep that cache exactly in sync with
+    ped_ways, on every call, not just the first."""
     way_a = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.5)
     way_b = Way(points_m=[(20.0, 0.0), (30.0, 0.0)], highway="footway", half_width_m=1.5)
     manager = PedestrianManager([way_a], target_count=0)
@@ -1058,11 +1031,6 @@ def test_sync_map_data_keeps_ped_way_ids_cache_in_sync():
     manager.sync_map_data([way_a, way_b])
     assert manager._ped_way_ids == {id(w) for w in manager.ped_ways}
     assert manager._ped_way_ids  # non-empty: actually exercised, not just equal-by-emptiness
-
-    cyclists = CyclistManager([way_a], target_count=0)
-    assert cyclists._ped_way_ids == {id(w) for w in cyclists.ped_ways}
-    cyclists.sync_map_data([way_a, way_b])
-    assert cyclists._ped_way_ids == {id(w) for w in cyclists.ped_ways}
 
 
 @pytest.mark.timing
@@ -1835,6 +1803,44 @@ def test_a_pedestrian_curses_only_at_a_taxi_coming_at_them(car, curses):
     assert (ped.curse_timer > 0.0) == curses and bool(ped_mgr.curses) == curses
 
 
+def test_view_cleanup_releases_unseen_activity_but_keeps_owned_people():
+    from theroadragetrip.activities import ActivityInstance
+    from unittest.mock import Mock
+
+    way = Way(points_m=[(0, 0), (1000, 0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    actor = Pedestrian(800, 0, 0, 1, 1, way, 0, 1, (1, 1, 1))
+    actor.activity = ActivityInstance(plugin_id="bench_sitting", location=None, started_sim_time=0)
+    owner = Pedestrian(900, 0, 0, 1, 1, way, 0, 1, (1, 1, 1))
+    owner.held_by = "accepted-booking"
+    manager.pedestrians = [actor, owner]
+    release = Mock(wraps=manager.activity_manager.release)
+    manager.activity_manager.release = release
+    manager.discard_outside((-100, -100, 100, 100))
+    assert manager.pedestrians == [owner] and actor.activity is None
+    release.assert_called_once_with(None)
+
+
+def test_camera_lod_keeps_distant_visible_people_full_rate():
+    way = Way(points_m=[(0, 0), (1000, 0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    visible = Pedestrian(800, 0, 0, 1, 1, way, 0, 1, (1, 1, 1))
+    buffered = Pedestrian(150, 0, 0, 1, 1, way, 0, 1, (1, 1, 1))
+    manager.pedestrians = [visible, buffered]
+    car = Car(x=0, y=0, heading=0, speed=0)
+    manager.update_lod(car, 1 / 30, (700, -50, 900, 50))
+    assert visible.lod_level == 0 and buffered.lod_level == 1
+    assert not buffered.lod_update_due
+    manager.update_lod(car, 1 / 30, (700, -50, 900, 50))
+    manager.update_lod(car, 1 / 30, (700, -50, 900, 50))
+    assert buffered.lod_update_due
+    manager.update_lod(car, 1 / 30, (700, -50, 900, 50))
+    assert not buffered.lod_update_due  # an activity branch need not clear the previous due flag
+    manager._population_update_elapsed = 2
+    manager.update(car, 1 / 30, viewport_bounds=(700, -50, 900, 50), active_bounds=(-100, -100, 1000, 100))
+    assert visible in manager.pedestrians  # old 170 m culling must not erase the zoomed-out view
+
+
 def test_people_kept_far_behind_dont_block_spawning_around_the_player():
     """Bug (Oulu, a few minutes of driving): people mid-activity and car
     passengers are kept wherever they are, and counted against the target
@@ -1888,3 +1894,84 @@ def test_a_rural_cabin_gets_a_walker_at_most_and_a_city_block_the_full_target(ku
     flats = [building(hx + 30 * (i % 6), hy + 30 * (i // 6), "apartments", 25, 5) for i in range(36)]
     city = PedestrianManager([footway(hx, hy)], target_count=20, venue_buildings=flats)
     assert city.local_population_target(hx + 80.0, hy + 80.0) == city.population_target
+
+
+def test_without_a_connected_footway_people_walk_around_a_house_not_through_it():
+    """A person walking from a car behind a house to the door in front, with
+    two unconnected footway pieces: the straight fallback crossed the house;
+    now they go along the street (the car-road route)."""
+    behind = Way(points_m=[(-10.0, 30.0), (30.0, 30.0)], highway="footway", half_width_m=1.5)
+    front = Way(points_m=[(-10.0, -10.0), (30.0, -10.0)], highway="footway", half_width_m=1.5)  # not connected
+    street = [(10.0, 30.0), (-20.0, 30.0), (-20.0, -10.0), (10.0, -10.0)]
+    traffic = SimpleNamespace(npcs=[], plan_route=lambda start, target, *a, **k: [start] + street + [target])
+    manager = PedestrianManager([behind, front], target_count=0, traffic_manager=traffic)
+    manager._point_inside_building = lambda x, y: 0.0 <= x <= 20.0 and 0.0 <= y <= 20.0
+    pedestrian = Pedestrian(10.0, 28.0, 0.0, 1.3, 1.3, behind, 0, 1, (1, 1, 1))
+
+    route = manager._footway_route_to(pedestrian, (10.0, -2.0))  # the door, in front
+
+    for (ax, ay), (bx, by) in zip(route, route[1:]):
+        for t in (0.1, 0.3, 0.5, 0.7, 0.9):
+            assert not manager._point_inside_building(ax + (bx - ax) * t, ay + (by - ay) * t), route
+
+
+def test_adults_at_a_camping_area_are_often_drunk_children_never():
+    import random
+    from theroadragetrip.osm import Scenery
+    from theroadragetrip.pedestrian import CAMPING_PROMILLE
+
+    path = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="footway", half_width_m=1.0)
+    camp = Scenery(points_m=[(0, 0), (80, 0), (80, 60), (0, 60), (0, 0)], kind="camp_site", bbox=(0.0, 0.0, 80.0, 60.0))
+    manager = PedestrianManager([path], target_count=0)
+    manager.set_scenery_features([], [camp], [])
+    rng = random.Random(1)
+
+    def visitor(x, age):
+        ped = Pedestrian(x, 10.0, 0.0, 1.3, 1.3, path, 0, 1, (1, 1, 1))
+        ped.resident_id = manager.residents.create("walking", age=age).resident_id
+        manager._camping_drink(ped, rng)
+        return ped
+
+    adults = [visitor(40.0, 35) for _ in range(400)]
+    drunk = [ped for ped in adults if ped.is_drunk]
+    assert 0.35 < len(drunk) / len(adults) < 0.65
+    assert all(CAMPING_PROMILLE[0] <= ped.blood_alcohol_promille <= CAMPING_PROMILLE[1] for ped in drunk)
+    assert not any(visitor(40.0, 12).is_drunk for _ in range(100))  # a child at the same campsite
+    assert not any(visitor(390.0, 35).is_drunk for _ in range(100))  # an adult far from it
+
+
+def test_hanging_out_with_bottles_ends_drunk():
+    import random
+    from theroadragetrip.osm import Way
+    from theroadragetrip.pedestrian import Pedestrian, PedestrianManager
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    ped = Pedestrian(0.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    ped.bottles, ped.animation_state = 3, "walking"
+    PedestrianManager.drink(ped, 600.0, random.Random(1))
+    assert not ped.drinking and ped.blood_alcohol_promille == 0.0  # only while hanging out
+    ped.animation_state = "sitting"
+    for _ in range(8):  # 40 game minutes: well into the third bottle
+        PedestrianManager.drink(ped, 300.0, random.Random(1))
+    assert ped.drinking and ped.is_drunk and ped.bottles < 3
+
+
+def test_viewport_spawning_stops_at_its_budget_and_resumes_next_tick(monkeypatch):
+    """A slow spawn pass stops after PEDESTRIAN_SPAWN_BUDGET_S and the next tick carries on (rrt-019 audit)."""
+    import time
+    import theroadragetrip.pedestrian as pedestrian
+    ways = [Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="footway", half_width_m=1.5)]
+    ped_mgr = PedestrianManager(ways, target_count=5, spawn_radius_m=150.0, despawn_radius_m=250.0)
+    player = Car(x=200.0, y=10.0, heading=0.0, speed=0.0)
+    real_spawn = ped_mgr.spawn_pedestrian
+
+    def slow_spawn(*args, **kwargs):
+        time.sleep(pedestrian.PEDESTRIAN_SPAWN_BUDGET_S)  # one attempt eats the whole budget
+        return real_spawn(*args, **kwargs)
+
+    monkeypatch.setattr(ped_mgr, "spawn_pedestrian", slow_spawn)
+    view = (190.0, 0.0, 210.0, 20.0)
+    ped_mgr.update(player, dt=pedestrian.POPULATION_CHECK_S, viewport_bounds=view)
+    first = len(ped_mgr.pedestrians)
+    assert first <= 1
+    ped_mgr.update(player, dt=1 / 30, viewport_bounds=view)  # not 2 s later: the very next tick
+    assert len(ped_mgr.pedestrians) > first

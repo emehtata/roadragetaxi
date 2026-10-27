@@ -14,7 +14,7 @@ from .physics import (
     is_violating_oneway,
 )
 from .localization import tr
-from .fare import calculate_fare_cents, format_euros, tip_cents_from_happiness
+from .fare import calculate_fare_cents, format_euros, star_rating_from_happiness, tip_cents_from_happiness
 from .police import SpeedCamera, camera_sees_car
 from .rail_bookings import ACCEPTED, IN_TAXI, MISSED, PASSENGER_MET, PASSENGER_WAITING, TRAIN_ARRIVING, waiting_booking
 from .residents import CITY_DATA, Resident, ResidentManager
@@ -45,6 +45,7 @@ POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stop
 # at first (its map isn't loaded); the edge arrow points the way, and near
 # the town the street address is picked from the map streamed in by then.
 LONG_FARE_CHANCE = 0.10
+AIRPORT_FARE_CHANCE = 0.10
 LONG_FARE_MIN_M = 20_000.0
 LONG_FARE_MAX_M = 100_000.0
 LONG_FARE_RESOLVE_M = 1500.0  # this close to the town centre its map is loaded
@@ -77,6 +78,7 @@ class TaxiTarget:
     radius_m: float = 20.0  # Pickup/dropoff stop radius
     venue_type: Optional[str] = None
     municipality: Optional[str] = None  # a long fare's town/landmark, until its address is picked
+    intercity_place_id: Optional[str] = None
 
 
 @dataclass
@@ -131,6 +133,12 @@ class TaxiState:
     DRIVING_TO_DROPOFF = "DROPOFF"
     COMPLETED = "COMPLETED"
 
+
+# Phone pickups from buildings: this share from homes (a street address),
+# the rest from named places - real taxi orders mostly start at home.
+HOME_PICKUP_SHARE = 0.6
+HOME_BUILDING_TYPES = frozenset({"residential", "house", "detached", "semidetached_house", "terrace",
+                                 "apartments", "bungalow", "cabin", "farm", "yes"})
 
 _municipality_points: Optional[List[Tuple[str, float, float, int, Optional[str]]]] = None
 
@@ -234,6 +242,7 @@ class TaxiManager:
         self.driver_on_foot = False  # set every tick by simulation.advance_simulation
         self.offers: List[TaxiOffer] = []
         self._initial_offer_pending = True
+        self.fares_open = True  # False while the game starts up (the server opens it for the first client)
         self.state: str = TaxiState.WAITING_FOR_PICKUP
         self.total_score: int = 0
         self.completed_fares: int = 0
@@ -255,6 +264,8 @@ class TaxiManager:
         self.next_offer_timer: float = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
         self.stand_wait_timer: float = 0.0
         self.long_fare_retry_timer: float = 0.0
+        self.intercity_fares_enabled = False
+        self.intercity_places = None
 
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
@@ -281,6 +292,11 @@ class TaxiManager:
         self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._fence_collision_ref = None
         self._fence_collision_count = 0
+        self.broken_hedges: Dict[Any, List[List[Tuple[float, float]]]] = {}  # session damage, keyed by original geometry and layer
+        self.barrier_sound = "collision.fence"
+        self._barrier_grid: Dict[Tuple[int, int], List[Any]] = {}  # linear barriers (Railing), indexed as they stream in
+        self._barrier_ref = None
+        self._barrier_count = 0
         self.vomit_puddles: List[Tuple[float, float]] = []
         self.taxi_smoke_timer: float = 0.0
         self.speed_camera_flash_timer: float = 0.0
@@ -747,11 +763,10 @@ class TaxiManager:
             intersects = point_in_polygon(player_car.x, player_car.y, points)
             if not intersects:
                 intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
-            if not intersects:
+            if not intersects:  # an edge or corner poking into the car's side: it crosses the box (not its half-diagonal circle)
                 intersects = any(
-                    dist_point_to_segment(player_car.x, player_car.y, points[i][0], points[i][1],
-                                         points[(i + 1) % len(points)][0], points[(i + 1) % len(points)][1])
-                    <= car_radius
+                    segments_intersect(a, b, points[i], points[(i + 1) % len(points)])
+                    for a, b in zip(car_corners, car_corners[1:] + car_corners[:1])
                     for i in range(len(points))
                 )
             if not intersects:
@@ -777,21 +792,38 @@ class TaxiManager:
             ):
                 continue
 
+            if previous_position is not None and self._backing_off(player_car, previous_position, points):
+                continue  # already against it and moving away: let the car get clear (undoing that move pinned it there)
             if previous_position is not None:
                 player_car.x, player_car.y = previous_position
             player_car.speed = 0.0
             self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
             building_id = id(building)
             if building_id not in self._crashed_building_cooldowns:
-                self._crashed_building_cooldowns[building_id] = sim_time
                 self.total_score -= penalty
                 self.adjust_passenger_happiness(-35.0)
                 self.notification_msg = tr(self.language, "building_crash", penalty=penalty)
                 self.notification_timer = 3.5
                 logger.info("Player crashed into building: -%d pts", penalty)
+            self._crashed_building_cooldowns[building_id] = sim_time  # every contact frame: pressing on stays one impact
             return True
 
         return False
+
+    @staticmethod
+    def _backing_off(car: Car, previous_position: Tuple[float, float], points) -> bool:
+        """Whether the car touched the building already at its previous position
+        and this move takes its centre further from the wall (out, not in)."""
+        def clearance(x: float, y: float) -> float:  # from the outline; negative inside it
+            edge = min(dist_point_to_segment(x, y, *points[i], *points[(i + 1) % len(points)]) for i in range(len(points)))
+            return -edge if point_in_polygon(x, y, points) else edge
+
+        px, py = previous_position
+        before = get_oriented_box_corners(px, py, car.heading, car.length_m, car.width_m)
+        touching = point_in_polygon(px, py, points) or any(point_in_polygon(x, y, points) for x, y in before) or any(
+            segments_intersect(a, b, points[i], points[(i + 1) % len(points)])
+            for a, b in zip(before, before[1:] + before[:1]) for i in range(len(points)))
+        return touching and clearance(car.x, car.y) > clearance(px, py) + 1e-6
 
     @staticmethod
     def _road_overlaps_building(
@@ -877,11 +909,11 @@ class TaxiManager:
                     self.tree_wait_timer = 5.0
                 self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
                 if key not in self._crashed_tree_cooldowns:
-                    self._crashed_tree_cooldowns[key] = sim_time
                     self.total_score -= penalty
                     self.adjust_passenger_happiness(-30.0)
                     self.notification_msg = tr(self.language, "tree_crash", penalty=penalty)
                     self.notification_timer = 3.5
+                self._crashed_tree_cooldowns[key] = sim_time  # every contact frame: pressing on stays one impact
                 return True
         return False
 
@@ -917,11 +949,10 @@ class TaxiManager:
             intersects = point_in_polygon(player_car.x, player_car.y, points)
             if not intersects:
                 intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
-            if not intersects:
+            if not intersects:  # an edge or corner poking into the car's side: it crosses the box (not its half-diagonal circle)
                 intersects = any(
-                    dist_point_to_segment(player_car.x, player_car.y, points[i][0], points[i][1],
-                                         points[(i + 1) % len(points)][0], points[(i + 1) % len(points)][1])
-                    <= car_radius
+                    segments_intersect(a, b, points[i], points[(i + 1) % len(points)])
+                    for a, b in zip(car_corners, car_corners[1:] + car_corners[:1])
                     for i in range(len(points))
                 )
             if not intersects:
@@ -933,15 +964,124 @@ class TaxiManager:
             self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
             fence_id = id(scenery)
             if fence_id not in self._crashed_fence_cooldowns:
-                self._crashed_fence_cooldowns[fence_id] = sim_time
                 self.total_score -= penalty
                 self.adjust_passenger_happiness(-25.0)
                 self.notification_msg = tr(self.language, "fence_crash", penalty=penalty)
                 self.notification_timer = 3.5
                 logger.info("Player crashed into construction fence: -%d pts", penalty)
+            self._crashed_fence_cooldowns[fence_id] = sim_time  # every contact frame: pressing on stays one impact
             return True
 
         return False
+
+    def _nearby_barriers(self, railings: List[Any], x: float, y: float, radius: float):
+        """Railings near (x, y): a 50 m grid, only its new tail indexed as
+        the streamed map appends (like _nearby_collision_fences)."""
+        if railings is not self._barrier_ref or len(railings) < self._barrier_count:
+            self._barrier_grid.clear()
+            self._barrier_ref = railings
+            self._barrier_count = 0
+        for railing in railings[self._barrier_count:]:
+            box = railing.bbox
+            for cx in range(int(box[0] // 50), int(box[2] // 50) + 1):
+                for cy in range(int(box[1] // 50), int(box[3] // 50) + 1):
+                    self._barrier_grid.setdefault((cx, cy), []).append(railing)
+        self._barrier_count = len(railings)
+        seen = set()
+        for cx in range(int((x - radius) // 50), int((x + radius) // 50) + 1):
+            for cy in range(int((y - radius) // 50), int((y + radius) // 50) + 1):
+                for railing in self._barrier_grid.get((cx, cy), ()):
+                    if id(railing) not in seen:
+                        seen.add(id(railing))
+                        yield railing
+
+    @staticmethod
+    def hedge_key(railing):
+        return (getattr(railing, "layer", 0), tuple((x, y) for x, y in railing.points_m))
+
+    def check_barrier_collision(
+        self,
+        player_car: Car,
+        railings: List[Any],
+        sim_time: float,
+        previous_position: Optional[Tuple[float, float]] = None,
+        current_way: Optional[Way] = None,
+        penalty: int = 150,
+    ) -> bool:
+        """Break hedges locally; stop at other barriers (open at their gates).
+        Apply one crash penalty per impact. On a car
+        road they never block: one mapped across a road is not a wall there."""
+        self.barrier_sound = "collision.fence"
+        if current_way is not None and is_car_road(current_way):
+            return False
+        car_radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
+        corners = get_oriented_box_corners(
+            player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
+        )
+        edges = list(zip(corners, corners[1:] + corners[:1]))
+        layer = getattr(player_car, "layer", 0)
+        travel = math.dist(previous_position, (player_car.x, player_car.y)) if previous_position else 0.0
+        radius = car_radius + travel
+        hedge_sweep = None
+        damaged = False
+        for railing in self._nearby_barriers(railings, player_car.x, player_car.y, radius):
+            if getattr(railing, "layer", 0) != layer:
+                continue
+            box = railing.bbox
+            if (player_car.x < box[0] - radius or player_car.x > box[2] + radius
+                    or player_car.y < box[1] - radius or player_car.y > box[3] + radius):
+                continue
+            points = railing.points_m
+            if railing.kind == "hedge":
+                from shapely.geometry import LineString, MultiLineString, Polygon
+                if hedge_sweep is None:
+                    hedge_sweep = Polygon(corners)
+                    if previous_position is not None:
+                        previous_corners = get_oriented_box_corners(*previous_position, player_car.heading, player_car.length_m, player_car.width_m)
+                        hedge_sweep = hedge_sweep.union(Polygon(previous_corners)).convex_hull
+                key = self.hedge_key(railing)
+                fragments = self.broken_hedges.get(key, [points])
+                geometry = MultiLineString(fragments) if fragments else LineString()
+                if not geometry.intersects(hedge_sweep):
+                    continue
+                remaining = geometry.difference(hedge_sweep.buffer(0.65))
+                pieces = [remaining] if remaining.geom_type == "LineString" else list(remaining.geoms)
+                self.broken_hedges[key] = [list(piece.coords) for piece in pieces if not piece.is_empty and piece.length > .05]
+                player_car.speed *= .85
+                self.barrier_sound = "collision.hedge_break"
+                damaged = True
+                barrier_id = id(railing)
+                if barrier_id not in self._crashed_fence_cooldowns:
+                    self.total_score -= penalty
+                    self.adjust_passenger_happiness(-10.0)
+                    self.notification_msg = tr(self.language, "fence_crash", penalty=penalty)
+                    self.notification_timer = 3.5
+                self._crashed_fence_cooldowns[barrier_id] = sim_time
+                continue
+            hit = any(
+                point_in_polygon(a[0], a[1], corners)
+                or any(segments_intersect(a, b, c, d) for c, d in edges)
+                for a, b in zip(points, points[1:])
+            )
+            if not hit:
+                continue
+            if previous_position is not None:
+                from shapely.geometry import LineString, Point
+                line = LineString(points)
+                if line.distance(Point(player_car.x, player_car.y)) >= line.distance(Point(previous_position)):
+                    continue  # already touching, backing away from it: let the car go
+                player_car.x, player_car.y = previous_position
+            player_car.speed = 0.0
+            barrier_id = id(railing)
+            if barrier_id not in self._crashed_fence_cooldowns:
+                self.total_score -= penalty
+                self.adjust_passenger_happiness(-25.0)
+                self.notification_msg = tr(self.language, "fence_crash", penalty=penalty)
+                self.notification_timer = 3.5
+                logger.info("Player crashed into a %s: -%d pts", railing.kind, penalty)
+            self._crashed_fence_cooldowns[barrier_id] = sim_time  # every contact frame: pressing on stays one impact
+            return True
+        return damaged
 
     def check_tram_collision(
         self,
@@ -1024,11 +1164,11 @@ class TaxiManager:
                     player_car.x, player_car.y = previous_position
                 player_car.speed = 0.0
             if id(post) not in self._crashed_post_cooldowns:
-                self._crashed_post_cooldowns[id(post)] = sim_time
                 self.total_score -= penalty
                 self.adjust_passenger_happiness(-20.0)
                 self.notification_msg = tr(self.language, "post_crash", penalty=penalty)
                 self.notification_timer = 3.5
+            self._crashed_post_cooldowns[id(post)] = sim_time  # every contact frame: pressing on stays one impact
             return True
         return False
 
@@ -1409,20 +1549,30 @@ class TaxiManager:
         max_dist: float = float("inf"),
         max_road_distance: float = 250.0,
         venue_types: Optional[set] = None,
+        homes: bool = False,
     ) -> Optional[TaxiTarget]:
-        """Pick a named building and place its target at the nearest reachable road point."""
-        candidates = [
-            building for building in self.buildings
-            if building.name
-            and len(building.points_m) >= 3
-            and (venue_types is None or getattr(building, "venue_type", None) in venue_types)
-        ]
-        candidates.extend(
-            place for place in self.places
-            if place.name
-            and getattr(place, "kind", None) in NIGHTLIFE_VENUE_TYPES
-            and (venue_types is None or place.kind in venue_types)
-        )
+        """Pick a named building (or, `homes`, a home with a street address)
+        and place its target at the nearest reachable road point."""
+        if homes:  # most taxis are ordered home: a house on its own street, not just a venue on a main road
+            candidates = [
+                building for building in self.buildings
+                if getattr(building, "street", None) and getattr(building, "housenumber", None)
+                and getattr(building, "building_type", None) in HOME_BUILDING_TYPES
+                and len(building.points_m) >= 3
+            ]
+        else:
+            candidates = [
+                building for building in self.buildings
+                if building.name
+                and len(building.points_m) >= 3
+                and (venue_types is None or getattr(building, "venue_type", None) in venue_types)
+            ]
+            candidates.extend(
+                place for place in self.places
+                if place.name
+                and getattr(place, "kind", None) in NIGHTLIFE_VENUE_TYPES
+                and (venue_types is None or place.kind in venue_types)
+            )
         random.shuffle(candidates)
 
         for building in candidates:
@@ -1445,6 +1595,10 @@ class TaxiManager:
                 if centre_distance + reach < min_dist or centre_distance - reach > max_dist:
                     continue
             nearest: Optional[Tuple[float, float, str, float]] = None
+            # The address's own street wins when it is within reach: a house
+            # on a side street is picked up there, not on a closer main road.
+            street = getattr(building, "street", None)
+            on_street: Optional[Tuple[float, float, str, float]] = None
             nearby = self._ways_near(center_x, center_y, reach)
 
             for anchor_x, anchor_y in anchors:
@@ -1467,7 +1621,11 @@ class TaxiManager:
                         road_distance = math.hypot(anchor_x - road_x, anchor_y - road_y)
                         if nearest is None or road_distance < nearest[3]:
                             nearest = (road_x, road_y, way.name or "", road_distance)
+                        if street and way.name == street and (on_street is None or road_distance < on_street[3]):
+                            on_street = (road_x, road_y, way.name, road_distance)
 
+            if on_street is not None and on_street[3] <= max_road_distance:
+                nearest = on_street
             if nearest is None or nearest[3] > max_road_distance:
                 continue
             road_x, road_y, way_name, _ = nearest
@@ -1480,7 +1638,7 @@ class TaxiManager:
             return TaxiTarget(
                 x=road_x,
                 y=road_y,
-                address=building.name,
+                address=building.name if not homes else f"{building.street} {building.housenumber}",
                 way_name=way_name,
                 district_name=self.get_nearest_district(road_x, road_y),
                 radius_m=self.pickup_radius_m,
@@ -1700,21 +1858,16 @@ class TaxiManager:
                 venue_types=None,
             )
         elif 5.0 <= hour < 8.0 or 20.0 <= hour < 24.0 or 8.0 <= hour < 12.0:
-            pickup = self.pick_random_building_point(
-                ref_x=car_x,
-                ref_y=car_y,
-                min_dist=150.0,
-                max_dist=1200.0,
-                venue_types=None,
-            )
+            pickup = self._pick_home_or_building(car_x, car_y)
         else:
             roll = random.random()
+            building = lambda x, y, min_dist, max_dist: self._pick_home_or_building(x, y)
             if roll < 0.70:
-                sources = (self.pick_random_building_point, self.pick_random_road_point, self.pick_random_taxi_stop)
+                sources = (building, self.pick_random_road_point, self.pick_random_taxi_stop)
             elif roll < 0.95:
-                sources = (self.pick_random_road_point, self.pick_random_building_point, self.pick_random_taxi_stop)
+                sources = (self.pick_random_road_point, building, self.pick_random_taxi_stop)
             else:
-                sources = (self.pick_random_taxi_stop, self.pick_random_building_point, self.pick_random_road_point)
+                sources = (self.pick_random_taxi_stop, building, self.pick_random_road_point)
             for source in sources:
                 pickup = source(car_x, car_y, min_dist=150.0, max_dist=1200.0)
                 if pickup:
@@ -1722,6 +1875,18 @@ class TaxiManager:
         if pickup:
             return pickup
         return self.pick_random_road_point(ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0)
+
+    def _pick_home_or_building(self, car_x: float, car_y: float) -> Optional[TaxiTarget]:
+        """A building pickup: a home (HOME_PICKUP_SHARE) or a named place,
+        each falling back to the other."""
+        homes_first = random.random() < HOME_PICKUP_SHARE
+        for homes in (homes_first, not homes_first):
+            pickup = self.pick_random_building_point(
+                ref_x=car_x, ref_y=car_y, min_dist=150.0, max_dist=1200.0, homes=homes,
+            )
+            if pickup:
+                return pickup
+        return None
 
     def pick_phone_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
         """Pick a phone-order dropoff using places and addresses only.
@@ -1767,15 +1932,40 @@ class TaxiManager:
         return self.pick_random_road_point(ref_x=pickup_x, ref_y=pickup_y, min_dist=self.min_distance_m, max_dist=float("inf"))
 
     def pick_long_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
-        """Another municipality, airport or railway station LONG_FARE_MIN_M..
+        """Another municipality LONG_FARE_MIN_M..
         MAX_M away, bigger ones likelier; only its spot is known until the
         taxi gets near."""
         towns = [town for town in municipality_points()
-                 if LONG_FARE_MIN_M <= math.hypot(town[1] - pickup_x, town[2] - pickup_y) <= LONG_FARE_MAX_M]
+                 if town[4] is None and LONG_FARE_MIN_M <= math.hypot(town[1] - pickup_x, town[2] - pickup_y) <= LONG_FARE_MAX_M]
+        from .intercity_places import place_id
+        if self.intercity_places is not None:
+            towns = [town for town in towns if place_id(town[0],town[1],town[2],town[4]) in self.intercity_places]
         if not towns:
             return None
         name, x, y, _, landmark = random.choices(towns, weights=[town[3] for town in towns])[0]
-        return TaxiTarget(x=x, y=y, address=name, radius_m=self.pickup_radius_m, municipality=name, venue_type=landmark)
+        return TaxiTarget(x=x, y=y, address=name, radius_m=self.pickup_radius_m, municipality=name, venue_type=landmark,
+                          intercity_place_id=place_id(name,x,y,landmark))
+
+    def pick_airport_dropoff(self, pickup_x: float, pickup_y: float) -> Optional[TaxiTarget]:
+        """Nearest airport, or its nearest town when collecting at the airport."""
+        from .intercity_places import place_id
+        places = municipality_points()
+        airports = [p for p in places if p[4] == "airport"]
+        if not airports:
+            return None
+        airport = min(airports,key=lambda p:math.hypot(p[1]-pickup_x,p[2]-pickup_y))
+        target = airport
+        if math.hypot(airport[1]-pickup_x,airport[2]-pickup_y) <= LANDMARK_STAND_M:
+            towns = [p for p in places if p[4] is None]
+            if not towns:
+                return None
+            target = min(towns,key=lambda p:math.hypot(p[1]-airport[1],p[2]-airport[2]))
+        name,x,y,_,kind = target
+        identity = place_id(name,x,y,kind)
+        if self.intercity_places is not None and identity not in self.intercity_places:
+            return None
+        return TaxiTarget(x,y,name,radius_m=self.pickup_radius_m,municipality=name,
+                          venue_type=kind,intercity_place_id=identity)
 
     def _resolve_long_dropoff(self, passenger: TaxiPassenger, dt: float) -> None:
         """Near a long fare's town: its address, once the map has a road there."""
@@ -1790,7 +1980,7 @@ class TaxiManager:
         else:
             final = (self.pick_random_building_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M)
                      or self.pick_random_road_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M))
-        if final is None:
+        if final is None or math.hypot(final.x-town.x,final.y-town.y) > (LANDMARK_STAND_M if town.venue_type in LANDMARK_WEIGHTS else LONG_FARE_RESOLVE_M):
             return
         if town.venue_type in LANDMARK_WEIGHTS:
             final.address, final.venue_type = town.address, town.venue_type
@@ -1807,6 +1997,8 @@ class TaxiManager:
         self, car_x: float, car_y: float, count: int = 3, append: bool = False
     ) -> List[TaxiOffer]:
         """Create realistic ride requests without activating one until accepted."""
+        if not self.fares_open:
+            return []
         if self.current_passenger:
             self.offers = []
             return []
@@ -1818,8 +2010,12 @@ class TaxiManager:
             if not pickup:
                 continue
             dropoff = None
-            if random.random() < LONG_FARE_CHANCE:
-                dropoff = self.pick_long_dropoff(pickup.x, pickup.y)
+            if self.intercity_fares_enabled:
+                roll = random.random()
+                if roll < LONG_FARE_CHANCE:
+                    dropoff = self.pick_long_dropoff(pickup.x, pickup.y)
+                elif roll < LONG_FARE_CHANCE + AIRPORT_FARE_CHANCE:
+                    dropoff = self.pick_airport_dropoff(pickup.x, pickup.y)
             dropoff = dropoff or self.pick_phone_dropoff(pickup.x, pickup.y)
             if not dropoff:
                 continue
@@ -2108,7 +2304,7 @@ class TaxiManager:
             return self.current_passenger.dropoff
         return None
 
-    def discard_mission(self, car_x: float, car_y: float, penalty: int = 150, reason: str = "Fare cancelled") -> int:
+    def discard_mission(self, car_x: float, car_y: float, penalty: int = 150, reason: str = "discard_cancelled") -> int:
         """Discard the active pickup or onboard passenger mission with a score penalty."""
         if not self.current_passenger:
             return 0
@@ -2117,10 +2313,10 @@ class TaxiManager:
             self.current_passenger.rail_booking.status = MISSED
         self.total_score -= penalty
         if self.state in (TaxiState.DRIVING_TO_DROPOFF, TaxiState.CLIENT_WALKING_TO_CAR):
-            msg = f"{reason}! Client {p_name} abandoned (-{penalty} pts)"
+            key = "discard_abandoned"
         else:
-            msg = f"{reason}! Pickup for {p_name} cancelled (-{penalty} pts)"
-        self.notification_msg = msg
+            key = "discard_pickup_cancelled"
+        self.notification_msg = tr(self.language, key, reason=tr(self.language, reason), name=p_name, penalty=penalty)
         self.notification_timer = 5.0
         logger.info("Taxi mission discarded: passenger=%s reason=%s penalty=%d", p_name, reason, penalty)
         self.released_parties.append(self.current_passenger)
@@ -2133,7 +2329,7 @@ class TaxiManager:
     def handle_respawn(self, car_x: float, car_y: float) -> None:
         """Handle car respawn: discard fare and apply penalty if a passenger is onboard."""
         if self.current_passenger and self.state in (TaxiState.DRIVING_TO_DROPOFF, TaxiState.CLIENT_WALKING_TO_CAR):
-            self.discard_mission(car_x, car_y, penalty=200, reason="Respawned while transporting passenger")
+            self.discard_mission(car_x, car_y, penalty=200, reason="discard_respawned")
 
     def _update_passenger_nausea(self, car: Car, dt: float) -> None:
         passenger = self.current_passenger
@@ -2256,7 +2452,7 @@ class TaxiManager:
             return
 
         if not self._party_valid(self.current_passenger):
-            self.discard_mission(car.x, car.y, penalty=0, reason="Invalid passenger group")
+            self.discard_mission(car.x, car.y, penalty=0, reason="discard_invalid_group")
             return
 
         self._update_passenger_nausea(car, dt)
@@ -2311,7 +2507,7 @@ class TaxiManager:
 
             # If player drives away too fast while passenger is boarding, passenger cancels/abandons
             if dist_to_target > target.radius_m * 1.8:
-                self.discard_mission(car.x, car.y, penalty=100, reason="Drove away during pickup")
+                self.discard_mission(car.x, car.y, penalty=100, reason="discard_drove_away")
                 return
 
             if dist_to_door <= 0.8 or (walker is not None and not walker.is_walking_to_taxi_stop):
@@ -2386,10 +2582,12 @@ class TaxiManager:
                     self.last_fare_cents = fare_cents
                     self.last_tip_cents = tip_cents
                     avg_kmh = (self.trip_distance_m / max(1.0, self.elapsed_time)) * 3.6
+                    rating = star_rating_from_happiness(self.passenger_happiness)
                     self.notification_msg = tr(
                         self.language, "fare_complete_points", earned=earned, avg=avg_kmh,
                         seconds=self.elapsed_time, amount=format_euros(fare_cents, self.language),
-                        tip=format_euros(tip_cents, self.language),
+                        tip=format_euros(tip_cents, self.language), rating=rating,
+                        stars="★" * rating + "☆" * (5 - rating),
                     )
                     self.notification_timer = 6.0
                     logger.info(

@@ -64,7 +64,10 @@ _STATUE_ARTWORK_TYPES = {"statue", "sculpture"}
 
 # Scenery-object kinds placed beside a path rather than free-standing -
 # see the scenery_object_nodes_raw loop below.
-_ALIGN_TO_PATH_SCENERY_KINDS = {"bench", "waste_basket"}
+_ALIGN_TO_PATH_SCENERY_KINDS = {"bench", "waste_basket", "bicycle_parking", "picnic_table"}
+# Mapped on the path itself, or beside the bays they serve: they take the
+# nearest way's direction but stay where they are.
+_ON_PATH_SCENERY_KINDS = {"gate", "charging_station"}
 
 # A real traffic/pedestrian-refuge island's kerb outline is compact (real
 # Oulu examples measured 3-12m across) and has genuine extent in both
@@ -369,9 +372,26 @@ def _polyline_without_ranges(pts, lengths, gaps) -> List[List[Tuple[float, float
     return pieces
 
 
+def _capacity(tags: Dict[str, str]) -> Optional[int]:
+    """OSM capacity: how many vehicles at once (a charging station's cars), None when unmapped or bad."""
+    try:
+        value = int(str(tags.get("capacity", "")).strip())
+    except ValueError:
+        return None
+    return value if 0 < value <= 100 else None
+
+
+def _level(tags: Dict[str, str]) -> Optional[int]:
+    """OSM level as a whole floor ("-1", "5"; "0;1" -> 0), None when unmapped or not a number."""
+    try:
+        return int(float(str(tags.get("level", "")).split(";")[0].strip()))
+    except ValueError:
+        return None
+
+
 def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     amenity = tags.get("amenity")
-    if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel"):
+    if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel", "biergarten", "grave_yard", "nightclub", "charging_station"):
         return amenity
     if tags.get("highway") == "street_lamp":
         # lights.md: explicit physical lamp-pole data, when mapped, is the
@@ -388,6 +408,44 @@ def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
     if tags.get("barrier") in ("gate", "bollard"):
         return tags["barrier"]
     return None
+
+
+BARRIER_OPENINGS = ("gate", "lift_gate", "swing_gate", "sliding_gate", "entrance")
+BARRIER_OPENING_HALF_M = 1.5  # a gate leaves this much open on each side of its node
+
+
+def _split_at_openings(node_ids, opening_ids, nodes_m) -> list:
+    """A fence's point lists between its gates, each cut back
+    BARRIER_OPENING_HALF_M from a gate so a car fits through."""
+    parts, current = [], []
+    for nid in node_ids:
+        if nid not in nodes_m:  # outside the loaded area: no fence drawn across the gap
+            if current and current[0] is not None:
+                parts.append(current)
+            current = []
+            continue
+        point = nodes_m[nid]
+        if nid in opening_ids:
+            if current and current[0] is not None:  # (gate after gate: nothing between them to keep)
+                current.append(_toward(point, current[-1], BARRIER_OPENING_HALF_M))
+                parts.append(current)
+            current = [None, point]  # the next part starts cut back from this gate
+            continue
+        if current and current[0] is None:
+            current = [_toward(current[1], point, BARRIER_OPENING_HALF_M), point]
+        else:
+            current.append(point)
+    if current and current[0] is not None:
+        parts.append(current)
+    return parts
+
+
+def _toward(origin, target, distance):
+    length = math.hypot(target[0] - origin[0], target[1] - origin[1])
+    if length <= distance:
+        return target
+    ratio = distance / length
+    return (origin[0] + (target[0] - origin[0]) * ratio, origin[1] + (target[1] - origin[1]) * ratio)
 
 
 def _build_roads_grid(
@@ -613,6 +671,51 @@ def _platform_centreline(pts: List[Tuple[float, float]]) -> Tuple[Tuple[float, f
     return (cx + ux * lo, cy + uy * lo), (cx + ux * hi, cy + uy * hi)
 
 
+BUS_ROUTE_KINDS = ("bus", "trolleybus")
+BUS_ROUTE_STOP_SNAP_M = 30.0  # a route's stop member (often its stop_position on the road) to the BusStop it belongs to
+
+
+def _bus_route_stops(tags: dict, relation_id, members: list) -> list:
+    """A route=bus relation's stops in order: (key, index, ref, type, id).
+    Its platform members when it has any (PTv2), else its stops."""
+    key = str(relation_id)
+    ref = str(tags.get("ref") or tags.get("name") or key)
+    for roles in (("platform", "platform_entry_only", "platform_exit_only"), ("stop", "stop_entry_only", "stop_exit_only")):
+        stops = [(key, index, ref, m.get("type"), m.get("ref")) for index, m in enumerate(members) if m.get("role") in roles]
+        if stops:
+            return stops
+    return []
+
+
+def _attach_bus_routes(bus_stops: list, route_members: list, nodes_m: dict) -> None:
+    """BusStop.routes: each stop the routes calling at it, as [key, index, ref]
+    (sorted by index they give the route's stop order, bus_lines.py). A
+    member is its own stop (the same OSM id) or, a node, the nearest stop
+    within BUS_ROUTE_STOP_SNAP_M."""
+    by_id = {stop.id: stop for stop in bus_stops}
+    for key, index, ref, member_type, member_id in route_members:
+        stop = by_id.get(member_id)
+        if stop is None and member_type == "node" and member_id in nodes_m:
+            x, y = nodes_m[member_id]
+            # ponytail: a scan of every stop per member; a grid if routes x stops grow large
+            nearest = min(bus_stops, key=lambda b: (b.x - x) ** 2 + (b.y - y) ** 2, default=None)
+            if nearest is not None and (nearest.x - x) ** 2 + (nearest.y - y) ** 2 <= BUS_ROUTE_STOP_SNAP_M ** 2:
+                stop = nearest
+        if stop is not None and not any(route[0] == key for route in stop.routes):
+            stop.routes.append([key, index, ref])
+
+
+def _is_bus_stop(tags: dict) -> bool:
+    """A bus stop where passengers wait: highway=bus_stop, or a platform
+    that is not a railway/tram one. A stop_position (the vehicle's spot on
+    the road) is not one: it would put a second bay on the same stop."""
+    if tags.get("highway") == "bus_stop":
+        return True
+    if tags.get("public_transport") != "platform" or tags.get("railway") or tags.get("highway") not in (None, "platform"):
+        return False
+    return not any(tags.get(mode) == "yes" for mode in ("train", "tram", "subway", "light_rail", "monorail", "ferry"))
+
+
 def build_ways(
     elements: List[dict],
     progress_callback: Optional[Callable[[float, str], None]] = None,
@@ -658,9 +761,17 @@ def build_ways(
     curb_raw: List[Tuple[dict, List[int]]] = []
     railway_raw: List[Tuple[dict, List[int]]] = []
     railing_raw: List[Tuple[dict, List[int]]] = []
+    barrier_opening_ids: Set[int] = set()  # gate nodes: a fence is open there
     building_raw: List[Tuple[dict, List[int]]] = []
     fuel_area_raw: List[Tuple[dict, List[int], Optional[int]]] = []
     parking_space_raw: List[Tuple[dict, List[int], Optional[int]]] = []
+    golf_holes_raw = []
+    miniature_golf_nodes = []
+    surface_miniature_courses = set()
+    surface_beaches = set()
+    surface_tennis = set()
+    surface_volleyball = set()
+    from ..activities.plugins.beach_volleyball import is_beach_court
     scenery_raw: List[Tuple[dict, List[int]]] = []
     named_ways_raw: List[Tuple[dict, List[int]]] = []
     parking_space_nodes_raw: List[Tuple[dict, int]] = []
@@ -669,6 +780,8 @@ def build_ways(
     connector_nodes: Dict[int, dict] = {}  # amenity=parking_entrance node id -> tags
     tram_stop_names: Dict[int, str] = {}  # tram stop node id -> its name (Railway.stops)
     tram_line_refs: Dict[int, Set[str]] = defaultdict(set)  # tram way id -> the lines over it (Railway.lines)
+    bus_route_refs: Dict[int, Set[str]] = defaultdict(set)  # road way id -> route=bus relations on it (Way.bus_routes)
+    bus_route_members: List[Tuple[str, int, str, str, int]] = []  # (route key, member index, ref, member type, member id): BusStop.routes
     connector_ways: Dict[int, List[Tuple[int, dict]]] = defaultdict(list)  # node id -> ways through it
 
     for el in elements:
@@ -682,6 +795,8 @@ def build_ways(
             node_lons.append(el["lon"])
             node_lats.append(el["lat"])
             tags = el.get("tags", {})
+            if tags.get("leisure") == "miniature_golf" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+                miniature_golf_nodes.append((tags, nid))
             if "place" in tags and "name" in tags:
                 place_nodes_raw.append((tags, nid))
             elif "name" in tags:
@@ -698,10 +813,12 @@ def build_ways(
                 tags.get("railway") in ("stop", "station", "halt") or tags.get("public_transport") == "stop_position"
             ) and (tags.get("tram") == "yes" or tags.get("light_rail") == "yes"):
                 tram_stop_names[nid] = tags.get("name", "")  # (Tampere maps its tram as light rail)
-            if include_bus_stops and (tags.get("highway") == "bus_stop" or tags.get("public_transport") in ("platform", "stop_position")):
+            if include_bus_stops and _is_bus_stop(tags):
                 bus_stops_raw.append((tags, nid))
             if "entrance" in tags:
                 entrance_node_ids.add(nid)
+            if tags.get("barrier") in BARRIER_OPENINGS:
+                barrier_opening_ids.add(nid)
             if tags.get("amenity") == "parking_space":
                 parking_space_nodes_raw.append((tags, nid))
             if tags.get("highway") == "crossing" or tags.get("crossing") in ("zebra", "marked", "uncontrolled", "traffic_signals", "yes"):
@@ -736,27 +853,38 @@ def build_ways(
             if connector_nodes and not connector_nodes.keys().isdisjoint(node_ids):
                 for nid in set(node_ids).intersection(connector_nodes):
                     connector_ways[nid].append((way_id, tags))
-            if include_bus_stops and tags.get("public_transport") == "platform":
+            if include_bus_stops and _is_bus_stop(tags):
                 bus_platforms_raw.append((tags, node_ids, way_id))
             # Coastline can also be a fence, wall or weir. Keep its topology
             # independently of those features; it is never an ordinary area.
             if tags.get("natural") == "coastline":
                 coast_raw.append(node_ids)
+            if tags.get("golf") == "hole" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0":
+                golf_holes_raw.append(node_ids)
             if _is_building(tags):
                 building_raw.append((tags, node_ids))
             elif tags.get("amenity") == "parking_space":
                 parking_space_raw.append((tags, node_ids, way_id))
             elif tags.get("barrier") in ("fence", "railing", "hedge", "wall"):
                 railing_raw.append((tags, node_ids))
+                # A cemetery/biergarten boundary can also be its enclosing wall.
+                if node_ids[0] == node_ids[-1] and (
+                    tags.get("landuse") == "cemetery" or tags.get("amenity") in ("grave_yard", "biergarten")
+                ):
+                    scenery_raw.append((tags, node_ids))
             elif tags.get("railway") in ("rail", "light_rail", "tram", "narrow_gauge", "funicular"):
                 railway_raw.append((tags, node_ids, way_id))
             elif tags.get("natural") == "coastline":
                 pass  # already collected, including coastline + waterway tags
+            elif "waterway" in tags and (tags.get("tunnel") or tags.get("location") == "underground"):
+                pass  # a culverted or piped waterway runs under the parks and streets, not on them
             elif tags.get("natural") in ("water", "bay", "strait") or ("waterway" in tags) or tags.get("landuse") == "reservoir":
                 water_raw.append((tags, node_ids, way_id))
             elif tags.get("amenity") in ("parking", "fuel") or tags.get("landuse") == "parking":
                 scenery_raw.append((tags, node_ids))
-            elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
+            elif tags.get("amenity") in ("biergarten", "grave_yard"):
+                scenery_raw.append((tags, node_ids))
+            elif tags.get("tourism") in ("theme_park", "camp_site", "caravan_site", "camp_pitch") or "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS or tags.get("golf") in ("tee", "fairway", "green"):
                 scenery_raw.append((tags, node_ids))
             elif tags.get("railway") == "platform" and node_ids[0] == node_ids[-1]:
                 # Station platform area: paved ground, not the grass under it.
@@ -785,6 +913,11 @@ def build_ways(
                 for member in el.get("members", []):
                     if member.get("type") == "way":
                         tram_line_refs[member.get("ref")].add(line)
+            if include_bus_stops and tags.get("type") == "route" and tags.get("route") in BUS_ROUTE_KINDS:
+                bus_route_members.extend(_bus_route_stops(tags, el.get("id"), el.get("members", [])))
+                for member in el.get("members", []):  # the streets it runs on (no role, or forward/backward)
+                    if member.get("type") == "way" and member.get("role", "") in ("", "forward", "backward"):
+                        bus_route_refs[member.get("ref")].add(str(el.get("id")))
             if tags.get("type") == "multipolygon":
                 members = el.get("members", [])
                 relations_raw.append((tags, members))
@@ -891,6 +1024,10 @@ def build_ways(
         is_platform = tags.get("railway") == "platform"
         kind = (
             "parking" if is_parking else "fuel" if is_fuel else "pedestrian_area" if is_platform
+            else tags.get("amenity") if tags.get("amenity") in ("biergarten", "grave_yard")
+            else "golf_" + tags["golf"] if tags.get("golf") in ("tee", "fairway", "green")
+            and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0"
+            else tags["tourism"] if tags.get("tourism") in ("theme_park", "camp_site", "caravan_site", "camp_pitch") and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes"
             else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
         )
         name = tags.get("name")
@@ -938,6 +1075,14 @@ def build_ways(
             points_m=pts, kind=kind, name=name, bbox=ibbox, surface=surface,
             kerbed=tags.get("barrier") == "kerb", sport=tags.get("sport"),
         ))
+        if kind == "miniature_golf" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+            surface_miniature_courses.add(id(sceneries[-1]))
+        if kind == "pitch" and "tennis" in tags.get("sport", "").split(";") and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+            surface_tennis.add(id(sceneries[-1]))
+        if kind == "pitch" and is_beach_court(tags):
+            surface_volleyball.add(id(sceneries[-1]))
+        if kind == "beach" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+            surface_beaches.add(id(sceneries[-1]))
 
     for tags, node_ids, parking_id in parking_space_raw:
         pts, ibbox = process_node_ids(node_ids)
@@ -1123,10 +1268,16 @@ def build_ways(
             best[1].stops.append((x, y, name))
 
     for tags, node_ids in railing_raw:
-        pts, ibbox = process_node_ids(node_ids)
-        if not pts or len(pts) < 2:
-            continue
-        railings.append(Railing(points_m=pts, bbox=ibbox, kind=tags.get("barrier", "fence")))
+        try:
+            layer = int(str(tags.get("layer", 0)).split(";")[0])
+        except ValueError:
+            layer = 0
+        for part in _split_at_openings(node_ids, barrier_opening_ids, nodes_m):
+            if len(part) < 2:
+                continue
+            xs, ys = [p[0] for p in part], [p[1] for p in part]
+            railings.append(Railing(points_m=part, bbox=(min(xs), min(ys), max(xs), max(ys)),
+                                    kind=tags.get("barrier", "fence"), layer=layer))
 
     # 3. Buildings
     if progress_callback:
@@ -1351,6 +1502,17 @@ def build_ways(
         priority_tag = str(tags.get("priority_road", "")).strip().lower()
         is_priority_road = priority_tag in {"yes", "designated", "true", "1"} or junction_tag == "priority"
 
+        bicycle_tag = str(tags.get("bicycle", "")).strip().lower() or None
+        cycleway_tag = None
+        for key in ("cycleway", "cycleway:both", "cycleway:right", "cycleway:left"):
+            value = str(tags.get(key, "")).strip().lower()
+            if value in ("lane", "track", "shared_lane", "opposite_lane", "opposite_track", "opposite"):
+                cycleway_tag = value
+                break
+        oneway_bicycle_tag = str(tags.get("oneway:bicycle", "")).strip().lower()
+        oneway_bicycle = 0 if oneway_bicycle_tag == "no" or (cycleway_tag or "").startswith("opposite") else (
+            oneway_dir if oneway_bicycle_tag in ("yes", "1", "true", "-1") else None)
+
         (level_ways if level_only else ways).append(
             Way(
                 points_m=pts,
@@ -1376,21 +1538,15 @@ def build_ways(
                 turn_lanes=tags.get("turn:lanes") or tags.get("turn:lanes:forward"),
                 priority_road=is_priority_road,
                 service=tags.get("service"),
+                bus_routes=sorted(bus_route_refs.get(way_id, ())),
+                bicycle=bicycle_tag,
+                cycleway=cycleway_tag,
+                oneway_bicycle=oneway_bicycle,
+                motorroad=str(tags.get("motorroad", "")).lower() == "yes",
+                ref=ref_num or None,
                 **_level_metadata(tags),
             )
         )
-
-    if progress_callback:
-        progress_callback(0.965, f"Planting trees ({len(sceneries)} scenery areas)...")
-    plant_trees(
-        sceneries,
-        ways,
-        real_trees=real_trees_m,
-        real_tree_tags=real_tree_tags,
-        progress_callback=progress_callback,
-        progress_start=0.965,
-        progress_end=0.97,
-    )
 
     water_region = None
     if fetch_bbox is not None:
@@ -1480,11 +1636,23 @@ def build_ways(
                     points_m=pts, kind="pedestrian_area", name=name, bbox=ibbox,
                     surface=tags.get("surface") or "paving_stones",
                 ))
-            elif "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS:
-                kind = tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park"
+            elif tags.get("amenity") in ("biergarten", "grave_yard"):
+                sceneries.append(Scenery(points_m=pts, kind=tags["amenity"], name=name, bbox=ibbox))
+            elif tags.get("tourism") in ("theme_park", "camp_site", "caravan_site", "camp_pitch") or "leisure" in tags or "landuse" in tags or tags.get("natural") in NATURAL_SCENERY_KINDS or tags.get("golf") in ("tee", "fairway", "green"):
+                kind = ("golf_" + tags["golf"] if tags.get("golf") in ("tee", "fairway", "green")
+                        and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0"
+                        else tags["tourism"] if tags.get("tourism") in ("theme_park", "camp_site", "caravan_site", "camp_pitch") and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes"
+                        else tags.get("leisure") or tags.get("landuse") or tags.get("natural") or "park")
                 scenery = Scenery(points_m=pts, kind=kind, name=name, bbox=ibbox, kerbed=relation_is_kerbed,
                                   sport=tags.get("sport"))
-                plant_trees([scenery], ways, real_trees=real_trees_m, real_tree_tags=real_tree_tags)
+                if kind == "miniature_golf" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+                    surface_miniature_courses.add(id(scenery))
+                if kind == "pitch" and "tennis" in tags.get("sport", "").split(";") and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+                    surface_tennis.add(id(scenery))
+                if kind == "pitch" and is_beach_court(tags):
+                    surface_volleyball.add(id(scenery))
+                if kind == "beach" and tags.get("layer", "0") == "0" and tags.get("level", "0") == "0" and tags.get("indoor") != "yes":
+                    surface_beaches.add(id(scenery))
                 sceneries.append(scenery)
             elif "place" in tags and name and pts:
                 cx = sum(xs) / len(xs)
@@ -1537,7 +1705,7 @@ def build_ways(
         if not pt or kind is None:
             continue
         obj_x, obj_y, angle = pt[0], pt[1], None
-        if kind in _ALIGN_TO_PATH_SCENERY_KINDS:
+        if kind in _ALIGN_TO_PATH_SCENERY_KINDS or kind in _ON_PATH_SCENERY_KINDS:
             try:
                 layer_val = int(tags.get("layer", 0))
             except (TypeError, ValueError):
@@ -1545,14 +1713,19 @@ def build_ways(
             snap_x, snap_y, way_angle, way_half_w, found = _snap_to_nearest_road(
                 pt, layer_val, path_ways_grid, path_grid_size
             )
-            if found:
+            if found and kind in _ON_PATH_SCENERY_KINDS:
+                angle = way_angle
+            elif found:
                 normal_x, normal_y = -math.sin(way_angle), math.cos(way_angle)
                 side = 1.0 if (pt[0] - snap_x) * normal_x + (pt[1] - snap_y) * normal_y >= 0.0 else -1.0
                 clearance = way_half_w + 0.5
                 obj_x = snap_x + normal_x * side * clearance
                 obj_y = snap_y + normal_y * side * clearance
                 angle = way_angle
-        scenery_objects.append(SceneryObject(x=obj_x, y=obj_y, kind=kind, name=tags.get("name"), id=nid, direction_angle=angle))
+        scenery_objects.append(SceneryObject(x=obj_x, y=obj_y, kind=kind, name=tags.get("name"), id=nid, direction_angle=angle,
+                                             opening_hours=tags.get("opening_hours") if kind == "nightclub" else None,
+                                             capacity=_capacity(tags) if kind == "charging_station" else None,
+                                             level=_level(tags) if kind == "charging_station" else None))
 
     # Fuel stations are frequently mapped only as an amenity=fuel area,
     # especially when the same way is also the building=roof pump canopy.
@@ -1587,30 +1760,22 @@ def build_ways(
         scenery_objects.append(station)
         mapped_fuel_objects.append(station)
 
+    def add_bus_stop(tags, x, y, osm_id):
+        # One stop mapped twice (a bus_stop node and its platform): keep the first.
+        if any((x - b.x) ** 2 + (y - b.y) ** 2 < 25.0 ** 2 for b in bus_stops):
+            return
+        yes = lambda key: str(tags.get(key, "")).lower() in {"yes", "true", "1"}
+        bus_stops.append(BusStop(x=x, y=y, name=tags.get("name"), id=osm_id, shelter=yes("shelter"), bench=yes("bench")))
+
     for tags, nid in bus_stops_raw:
         pt = nodes_m.get(nid)
         if pt:
-            bus_stops.append(
-                BusStop(
-                    x=pt[0],
-                    y=pt[1],
-                    name=tags.get("name"),
-                    id=nid,
-                    shelter=str(tags.get("shelter", "")).lower() in {"yes", "true", "1"},
-                )
-            )
+            add_bus_stop(tags, pt[0], pt[1], nid)
     for tags, node_ids, way_id in bus_platforms_raw:
         pts, _ = process_node_ids(node_ids)
         if pts:
-            bus_stops.append(
-                BusStop(
-                    x=sum(point[0] for point in pts) / len(pts),
-                    y=sum(point[1] for point in pts) / len(pts),
-                    name=tags.get("name"),
-                    id=way_id,
-                    shelter=str(tags.get("shelter", "")).lower() in {"yes", "true", "1"},
-                )
-            )
+            add_bus_stop(tags, sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts), way_id)
+    _attach_bus_routes(bus_stops, bus_route_members, nodes_m)
 
     # 7. Traffic signals from OSM nodes.
     #
@@ -1793,6 +1958,9 @@ def build_ways(
                 direction_angle=road_angle, road_half_width_m=road_half_w,
             ))
 
+    plant_trees(sceneries, ways, real_trees=real_trees_m, real_tree_tags=real_tree_tags,
+                progress_callback=progress_callback, progress_start=0.99, progress_end=0.995)
+
     t_total = time.time() - t_start
     logger.info(
         "Map generation complete in %.3fs: %d roads, %d waters, %d buildings, %d scenery polygons, %d places, %d traffic signals, %d crossings",
@@ -1871,6 +2039,64 @@ def build_ways(
             garage_osm_id=garage_ids[0] if garage_ids else None,
             road_osm_ids=tuple(way_id for way_id, way_tags in sharing if "highway" in way_tags),
         ))
+
+    # Hole ways are lines of play, never scenery polygons or road-network edges.
+    for tags, nid in miniature_golf_nodes:
+        x, y = nodes_m[nid]
+        if any(s.kind == "miniature_golf" and point_in_polygon(x, y, s.points_m) for s in sceneries):
+            continue
+        # shortcut: node-only facilities use a 14 x 12 m practice patch until an outline is mapped.
+        sceneries.append(Scenery([(x-7, y-6), (x+7, y-6), (x+7, y+6), (x-7, y+6)],
+                                 "miniature_golf", name=tags.get("name"), bbox=(x-7, y-6, x+7, y+6)))
+        surface_miniature_courses.add(id(sceneries[-1]))
+    courses = sorted((s for s in sceneries if s.kind == "golf_course" or id(s) in surface_miniature_courses),
+                     key=lambda s: (s.bbox[2] - s.bbox[0]) * (s.bbox[3] - s.bbox[1]))
+    for node_ids in golf_holes_raw:
+        if any(nid not in nodes_m for nid in node_ids):
+            continue  # streamed/incomplete holes must not become shortcuts
+        points, _ = process_node_ids(node_ids)
+        if len(points) < 2 or points[0] == points[-1]:
+            continue
+        for course in courses:
+            if all(point_in_polygon(x, y, course.points_m) for x, y in (points[0], points[-1])):
+                course.golf_holes.append(points)
+                break
+
+    # shortcut: unmapped hole layouts use generated tracks; replace them with mapped layouts when available.
+    from shapely.geometry import LineString, Polygon
+    from .miniature_golf import miniature_golf_holes
+    for course in courses:
+        if course.kind != "miniature_golf" or course.golf_holes:
+            continue
+        minx, miny, maxx, maxy = course.bbox
+        obstacles = []
+        for feature in itertools.chain(buildings, waters, ways):
+            bbox = feature.bbox
+            if bbox[0] > maxx or bbox[2] < minx or bbox[1] > maxy or bbox[3] < miny:
+                continue
+            if isinstance(feature, Way):
+                obstacles.append(LineString(feature.points_m).buffer(feature.half_width_m + 0.5))
+            elif len(feature.points_m) >= 3:
+                obstacles.append(Polygon(feature.points_m).buffer(0.5))
+        course.golf_holes = miniature_golf_holes(course.points_m, obstacles)
+
+    from .campsites import populate_camp_pitches
+    scenery_objects.extend(populate_camp_pitches(elements, nodes_m, buildings, waters, ways, railings))
+
+    from ..activities.plugins.tennis import court_frame, prepare_court
+    for court in sceneries:
+        if id(court) in surface_tennis:
+            prepare_court(court)
+        if id(court) in surface_volleyball:
+            court.volleyball_frame = court_frame(court.points_m)
+
+    from .theme_parks import prepare_theme_parks
+    prepare_theme_parks(sceneries, elements, nodes_m, buildings, waters, ways)
+
+    from .beaches import prepare_beach
+    for beach in sceneries:
+        if id(beach) in surface_beaches:
+            prepare_beach(beach, waters, buildings, ways)
 
     curbs = open_kerbs_at_road_crossings(curbs, ways)
     return MapData(

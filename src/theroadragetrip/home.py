@@ -1,5 +1,5 @@
 """The driver's home (H): a house yard chosen once per city, kept between
-gigs; afterwards H takes the taxi there (R still goes to a taxi stand).
+gigs within a save; afterwards H takes the taxi there (R still goes to a taxi stand).
 
 A yard is a detached house's generated parking bay (parking.py) or a mapped
 driveway with a house beside it - off the street, at someone's house.
@@ -34,18 +34,34 @@ def _load_all(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def load_home(path: Path, city: str) -> Optional[Home]:
-    home = _load_all(path).get(city)
+def load_home(path: Path, city: str, *, in_save: bool = False) -> Optional[Home]:
+    data = _load_all(path)
+    homes = data.get("homes", {}) if in_save else data
+    home = homes.get(city) if isinstance(homes, dict) else None
     try:
         return float(home["x"]), float(home["y"]), float(home["heading"])
     except (TypeError, KeyError, ValueError):
         return None
 
 
-def save_home(path: Path, city: str, home: Home) -> None:
+def save_home(path: Path, city: str, home: Home, *, in_save: bool = False) -> None:
     """This city's home; the other cities' homes are kept."""
     data = _load_all(path)
-    data[city] = {"x": home[0], "y": home[1], "heading": home[2]}
+    homes = data.setdefault("homes", {}) if in_save else data
+    if not isinstance(homes, dict):
+        homes = data["homes"] = {}
+    homes[city] = {"x": home[0], "y": home[1], "heading": home[2]}
+    _write_homes(path, data)
+
+
+def clear_homes(path: Path, *, in_save: bool = False) -> None:
+    data = _load_all(path) if in_save else {}
+    if in_save:
+        data["homes"] = {}
+    _write_homes(path, data)
+
+
+def _write_homes(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")

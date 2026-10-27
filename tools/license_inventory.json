@@ -121,6 +121,36 @@
       "obligations": "none if original", "commercial": "yes if original", "status": "conditional", "remediation": "confirm the lines were written for the game, not copied"
     },
     {
+      "name": "Menu music",
+      "paths": ["src/theroadragetrip/assets/music/menu/*.ogg"],
+      "purpose": "looping menu background music", "shipped": true,
+      "origin": "generated locally with Stable Audio Open 1.0 through ai-audio-studio; seed 10212026, 100 inference steps; beat-aligned 16-bar Ogg Vorbis loop",
+      "copyright": "not established", "licence": "not established",
+      "evidence": "docs/audio/menu-music.json records the prompt, seed, model and loop processing",
+      "obligations": "unknown", "commercial": "unknown", "status": "unresolved",
+      "remediation": "verify the applicable Stable Audio Open model terms for generated-output redistribution (same model as the generated sound effects)"
+    },
+    {
+      "name": "Nightclub music",
+      "paths": ["src/theroadragetrip/assets/music/nightclub/*.ogg"],
+      "purpose": "dance music heard outside nightclubs (godot/nightclub_audio.gd)", "shipped": true,
+      "origin": "nightclub_dance_1/2: provided by the project owner on 2026-10-19 as MP3s, converted to Ogg Vorbis (q1, 44.1 kHz), generator not recorded; nightclub_house_3.ogg / nightclub_techno_4.ogg: generated 2026-10-19 with Stable Audio Open 1.0 (ai-audio-studio, seeds 7710042 / 3301977, 100 steps); industrial breakbeat loop reused from the generated menu track (Stable Audio Open 1.0, seed 10212026; docs/audio/menu-music.json); nightclub_eurodance_female_6/7: generated with ACE-Step 1.5 (acestep-v15-turbo, 5Hz LM 0.6B), original lyrics and synthetic female singing, seeds 106138 / 107146; see docs/audio/eurodance-nightclub.json",
+      "copyright": "not established", "licence": "not established",
+      "evidence": "none recorded",
+      "obligations": "unknown", "commercial": "unknown", "status": "unresolved",
+      "remediation": "record how the tracks were made (tool, model) and verify its terms for generated-output redistribution"
+    },
+    {
+      "name": "Car stereo music",
+      "paths": ["src/theroadragetrip/assets/music/cars/*.ogg"],
+      "purpose": "electro pop from NPC car stereos (godot/car_audio.gd)", "shipped": true,
+      "origin": "cars_music_1/2: provided by the project owner on 2026-10-19 as MP3s, converted to Ogg Vorbis (q1, 44.1 kHz), generator not recorded; cars_bass_far_1/2.ogg: generated 2026-10-19 with Stable Audio Open 1.0 (ai-audio-studio, seeds 1928374 / 5550123, 100 steps), like the sound effects; industrial breakbeat loop reused from the generated menu track (Stable Audio Open 1.0, seed 10212026; docs/audio/menu-music.json)",
+      "copyright": "not established", "licence": "not established",
+      "evidence": "none recorded",
+      "obligations": "unknown", "commercial": "unknown", "status": "unresolved",
+      "remediation": "record how the tracks were made (tool, model) and verify its terms for generated-output redistribution"
+    },
+    {
       "name": "Images and icons",
       "paths": ["src/theroadragetrip/img/**", "src/theroadragetrip/assets/*.png", "src/theroadragetrip/assets/*.ico", "src/theroadragetrip/assets/*.xpm", "godot/icon.ico"],
       "purpose": "loading image, rage faces, people atlas, taxi icon, two-wheeler sprites", "shipped": true,
@@ -141,6 +171,7 @@
     "urllib3": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "idna": {"licence": "BSD-3-Clause", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "charset-normalizer": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
+    "ephem": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "certifi": {"licence": "MPL-2.0", "status": "conditional", "obligations": "licence; source of the covered file available (upstream, unmodified)"},
     "pyproj": {"licence": "MIT (with PROJ, MIT)", "status": "verified", "obligations": "licences incl. LICENSE_proj (collect_licenses.py)"},
     "shapely": {"licence": "BSD-3-Clause, bundles GEOS (LGPL-2.1) as a separate DLL", "status": "conditional", "obligations": "LGPL text (LICENSE_GEOS) and GEOS source with each release (windows-release.yml); the DLL stays replaceable"},
@@ -158,6 +189,7 @@
     "Overpass API (overpass-api.de, overpass.openstreetmap.fr)": {"use": "map data while driving", "status": "conditional", "obligations": "ODbL attribution (shown); each server's usage policy"},
     "Geofabrik downloads": {"use": "the Finland .osm.pbf the player downloads", "status": "conditional", "obligations": "ODbL attribution (shown)"},
     "Digitraffic (rata.digitraffic.fi)": {"use": "weekly timetable and composition refresh", "status": "conditional", "obligations": "CC BY 4.0 attribution (shown)"},
+    "Digitraffic (tie.digitraffic.fi)": {"use": "live roadworks, when the realtime road data setting is on", "status": "conditional", "obligations": "CC BY 4.0 attribution (shown under Roadworks in Credits); the service's usage terms"},
     "FMI open data (opendata.fmi.fi)": {"use": "historical weather (opt-in)", "status": "conditional", "obligations": "CC BY 4.0 attribution (shown)"}
   }
 }

@@ -108,13 +108,6 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 
-[node name="Fare" type="Label" parent="Ui/Hud/Top/Row"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-horizontal_alignment = 2
-theme_override_font_sizes/font_size = 20
-
 [node name="Notice" type="Label" parent="Ui/Hud"]
 unique_name_in_owner = true
 layout_mode = 1
@@ -143,6 +136,7 @@ offset_bottom = -8.0
 horizontal_alignment = 1
 
 [node name="Phone" type="PanelContainer" parent="Ui"]
+process_mode = 1
 script = ExtResource("7")
 
 [node name="Debug" type="Label" parent="Ui"]

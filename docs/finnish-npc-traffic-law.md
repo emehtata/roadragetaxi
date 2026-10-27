@@ -296,16 +296,33 @@ driving updates are suspended while held; after the active window they return
 only outside the taxi's forward corridor and nearby safety envelope, with no
 other NPC vehicle occupying the original slot.
 
+Ilokapina sit-ins add a separate fictional arcade exception: an accepted rage
+shout alarms a nearby protest group and moves it to the roadside after a short
+hesitation. Its server-side obstruction remains until the group finishes clearing;
+ordinary vehicles must brake/wait, and protest return requires a clear safety
+envelope. This is not ordinary pedestrian behavior or permission to drive through
+people. See [Ilokapina events](ilokapina.md) for timing and limitations.
+
 This is **not Finnish traffic-law compliance**, emergency-vehicle priority,
 ordinary shoulder parking or permission for routine NPC off-road recovery.
 Roadside positions are artificial clearance slots; buildings, water and legal
 parking evidence are not validated there. Separate bridge/map levels remain
-separate, and this does not move pedestrians, trains or scenery. Only loaded,
+separate, and vehicle rage clearance does not move ordinary pedestrians, trains or scenery. Only loaded,
 connected road geometry can be followed; at ambiguous junctions, clearance
 follows the straightest continuation and is recalculated as the taxi turns.
 There is no promise to predict an unchosen turn or clear unloaded map data.
 
 ## Existing code and known compliance gaps
+
+**Visibility cleanup policy (2026-10-18):** ambient vehicles and their linked
+walking groups may be retired outside the actual client view plus a bounded,
+speed-dependent safety band, even below the population minimum. Release routes,
+parking reservations and resident trip links together; never remove a group
+with a visible linked member or an active player-fare identity. Ordinary ambient
+walkers/activities and cosmetic traces may be discarded there too. This is game
+resource management, not a legal maneuver or permission to simplify visible
+yielding, pedestrian protection, collisions or bridge/map-layer separation.
+Timetabled trains and owned booking records retain their existing lifecycle.
 
 Inspection baseline: 2026-10-14. This is not an exhaustive audit.
 

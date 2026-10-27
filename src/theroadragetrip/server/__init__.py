@@ -44,11 +44,12 @@ from ..world_loader import load_world, resolve_city
 from ..viewport import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..physics import reset_trip, respawn_car
-from ..home import CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home
+from ..home import clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home
 from ..localization import SUPPORTED_LANGUAGES, tr
+from ..moon import moon_info_on, moon_position_at
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
-from ..weather_history import WeatherHistory, precipitation_from_observation, game_time_to_utc_hour
+from ..weather_history import WeatherHistory, gradual_weather, precipitation_from_observation, game_time_to_utc_hour
 from ..calendar import clamp_start_datetime
 from ..osm import CACHE_DIR
 from ..climate import appearance_with_snow_depth, typical_temperature
@@ -58,10 +59,8 @@ logger = logging.getLogger(__name__)
 SPORTS_ICE_DARKNESS = 0.5  # darker than this (sun ~3 degrees down) and unlit: nobody skates or plays
 SOCCER_SNOW_WEIGHT = 0.05  # a winter (snow) weight under this: the pitches are bare
 
-# Nominal viewport used only for NPC/pedestrian spawn-despawn culling
-# (advance_simulation's viewport_bounds) - the server has no real screen
-# or zoom level, so it assumes the client's default zoom rather than
-# tracking each connected client's actual one. See architecture doc.
+# Nominal camera fallback for headless runs and clients without view reports.
+# Godot supplies its actual world-space bounds for dynamic interest/culling.
 _DEFAULT_PX_PER_M = 9.0
 
 
@@ -182,12 +181,28 @@ class SimulationServer:
         self.physics_mode = config.get("game", "physics_realism", fallback="arcade")
         self.career_file = career_path(CONFIG_PATH)
         self.gig_odometer_file = gig_odometer_path(CONFIG_PATH)
+        # A gig save slot: the slot file is the gig car file, and a saved
+        # game continues in its city, around the car, at its game time.
+        self.save_slot_file = None
+        saved = {}
+        if getattr(args, "save_slot", None) and getattr(args, "game_mode", "gig_driver") != "career":
+            from ..save_slots import read_slot, slot_path
+            self.save_slot_file = self.gig_odometer_file = slot_path(CONFIG_PATH, args.save_slot)
+            saved = read_slot(self.save_slot_file)
+            if saved.get("city") and saved.get("bbox"):
+                args.preset, args.bbox = saved["city"], saved["bbox"]
+                args.place_name = saved.get("place_name") or None
+        self.save_count = 0  # saves written: the client's "saved" acknowledgement
+        self._fares_opened = False  # no fares or pre-bookings until the game has started (the first client)
+        self._pending_save = False
 
         overpass_endpoints = get_overpass_endpoints(config)
-        bus_stops_enabled = config.getboolean("game", "bus_stops", fallback=False)
+        bus_stops_enabled = True  # always: an old ini's bus_stops = false (the former default) is ignored
         roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
         # Loading never streams; the map grows while playing (map_sync.py).
         self._auto_fetch = bool(getattr(args, "auto_fetch", True)) and not getattr(args, "use_sample", False)
+        if getattr(args,"intercity_fares",False) and not self._auto_fetch:
+            raise ValueError("Intercity fares require automatic map streaming and cannot use the sample map.")
         args.auto_fetch = False
 
         if city_choice is None:
@@ -224,40 +239,70 @@ class SimulationServer:
             prepare_initial_window(self.world, progress=progress) if self._auto_fetch
             else {"started": False, "integrated_tiles": 0, "elapsed_s": 0.0}
         )
+        from ..protests import ProtestManager, ProtestSettings
+        self.world.protests = ProtestManager(ProtestSettings.from_config(config), self.chosen_city)
+        self.world.npc_manager.protests = self.world.protests
         progress("weather")
         self.car = self.world.car
+        self._set_fares_open(False)  # opened when the first client connects
         # weather is per-session state constructed fresh alongside
         # `world` rather than something load_world itself returns -
         # attached onto `world` here so protocol.py's state builder (which
         # reads world.weather, matching how it reads every other manager)
         # doesn't need a separate parameter for it.
-        # The game's one calendar (godot-14): game time,
-        # date and the weather's season follow from it. The server starts
-        # today at 18:00 unless --start-time says otherwise.
+        # The launcher supplies the user's selected start time. Direct server
+        # launches without --start-time retain the legacy 18:00 fallback.
         start = getattr(args, "start_time", None)  # the gig start picker's, a year back at most
         if start is not None:
             start = clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
+        if saved.get("game_time"):  # a continued game resumes at its own time, unclamped
+            start = datetime.fromisoformat(saved["game_time"])
         self.calendar = GameCalendar(start or datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),
                                      latitude=getattr(self.world, "sun_latitude", 65.01))
+        if saved:  # odometer, fuel and money came with the gig car file
+            from ..save_slots import restore_fare
+            pose = saved.get("car") or {}
+            if all(isinstance(pose.get(key), (int, float)) for key in ("x", "y", "heading")):
+                self.car.x, self.car.y, self.car.heading = pose["x"], pose["y"], pose["heading"]
+                self.car.speed = 0.0
+            taxi_mgr = self.world.taxi_mgr
+            taxi_mgr.total_score = int(saved.get("total_score", 0))
+            taxi_mgr.completed_fares = int(saved.get("completed_fares", 0))
+            if restore_fare(taxi_mgr, saved.get("fare")):
+                logger.info("Save slot %s: fare to %s continues", self.save_slot_file.stem,
+                            taxi_mgr.current_passenger.dropoff.address)
+        moon_latitude = getattr(self.world, "sun_latitude", 65.01)
+        moon_longitude = getattr(self.world, "sun_longitude", 25.47)
+        self.moon_info = moon_info_on(self.calendar.date, moon_latitude, moon_longitude)
+        moon_time = lambda value: value.strftime("%H:%M") if value is not None else "none"
+        logger.info(
+            "Moon %s: rise=%s transit=%s set=%s phase=%s illumination=%.1f%% age=%.1f days",
+            self.calendar.date, moon_time(self.moon_info.rise), moon_time(self.moon_info.transit),
+            moon_time(self.moon_info.set), self.moon_info.phase, self.moon_info.illumination * 100.0,
+            self.moon_info.age_days,
+        )
         self.world.weather = WeatherSystem(season=self.calendar.season)
         # Historical weather (opt-in): FMI observations/forecast for
         # this city and game time where known, generated weather otherwise.
         historical = getattr(args, "historical_weather", None)
         if historical is None:
             historical = config.getboolean("game", "historical_weather", fallback=False)
-        self.weather_history = WeatherHistory(
-            getattr(self.world, "sun_latitude", 65.01), getattr(self.world, "sun_longitude", 25.47),
-            cache_path=Path(CACHE_DIR) / "weather_history.db") if historical else None
+        self.weather_history = None
+        self._historical_weather = historical
+        self.weather_city = self.chosen_city
+        self._weather_latitude = self.calendar.latitude
+        self._weather_check_position = None
+        self._weather_centre = None
+        self._update_weather_location()
         if self.weather_history is not None:
             self.weather_history.request(self.calendar.current - timedelta(hours=6), self.calendar.current + timedelta(hours=48))
             self.weather_history.wait_idle(3.0)  # brief: the first hour can be the real weather
+        self.world.live_roadworks = self._live_roadworks(args, config)
         observed = self._update_outside()
         if observed is not None:  # the first tick follows it; the start's weather is it already
             self.world.weather.update(0.001, 0.0, outside_temperature_c=self.world.weather.outside_temperature_c,
                                       observed=observed)
         self.world.weather.settle_initial_wetness(self._raining_last_hour())
-        self.start_forecast = self._forecast()
-
         self._on_foot = True
         self._camx, self._camy = self.car.x, self.car.y
         self._px_per_m = _DEFAULT_PX_PER_M
@@ -284,8 +329,10 @@ class SimulationServer:
         self._pending_road_rages = 0  # SPACE presses, likewise
         self._pending_respawns = 0
         self._pending_homes = 0
-        self.homes_file = homes_path(CONFIG_PATH)
-        self._home = load_home(self.homes_file, str(self.chosen_city or ""))  # kept between gigs, per city
+        self._homes_in_save = self.save_slot_file is not None
+        self.homes_file = self.save_slot_file if self._homes_in_save else (
+            homes_path(CONFIG_PATH) if getattr(args, "game_mode", "gig_driver") == "career" else None)
+        self._home = load_home(self.homes_file, str(self.chosen_city or ""), in_save=self._homes_in_save) if self.homes_file else None
         self._home_confirm_s = 0.0  # a second H within this: the new yard becomes home
         self._prepared_home = None  # the home whose map was last handed to the background preparation
         self._home_preparation = None  # its future (cancelled if home moves before it starts)
@@ -297,6 +344,7 @@ class SimulationServer:
 
         self._clients_lock = threading.Lock()
         self._clients: list = []
+        self._client_views = {}  # connection -> (last simulation time, world camera bounds)
         # Per connection: the map chunks it has, and the player cell they were planned for.
         progress("lights", f"{len(self.world.ways)} roads")
         self.world.street_light_points = place_street_lights(self.world)  # before the chunks carry them
@@ -322,7 +370,7 @@ class SimulationServer:
         if self.weather_history is None:
             return []
         return raining_last_hour(self.weather_history, self.calendar.current,
-                                 lambda moment: typical_temperature(moment, self.calendar.latitude))
+                                 lambda moment: typical_temperature(moment, self._weather_latitude), self.chosen_city)
 
     def _forecast(self) -> list:
         """The start-screen forecast: now and every 6 h for 24 h - the
@@ -334,7 +382,7 @@ class SimulationServer:
         history = self.weather_history
         observed = [history.get(moment) if history is not None else None for moment in moments]
         temperatures = [o.temperature_c if o is not None and o.temperature_c is not None
-                        else typical_temperature(moment, self.calendar.latitude) for moment, o in zip(moments, observed)]
+                        else typical_temperature(moment, self._weather_latitude) for moment, o in zip(moments, observed)]
         conditions = self.world.weather.forecast(temperatures, 6.0 * 60.0 * 60.0)
         lines = []
         for moment, temperature, (condition, thunder), seen in zip(moments, temperatures, conditions, observed):
@@ -352,16 +400,46 @@ class SimulationServer:
                 logger.info("FMI weather %s: %s", f"{moment:%d.%m. %H:%M}", source)
         return lines
 
+    def _update_weather_location(self):
+        """Follow the taxi's nearest municipality, including a restored position."""
+        position = (self.car.x, self.car.y)
+        previous = self._weather_check_position
+        if previous is not None and math.hypot(position[0] - previous[0], position[1] - previous[1]) < 1000.0:
+            return
+        self._weather_check_position = position
+        from ..taxi import municipality_points
+        from ..geo import meters_to_latlon
+        nearest = min((point for point in municipality_points() if point[4] is None),
+                      key=lambda point: math.hypot(point[1] - position[0], point[2] - position[1]), default=None)
+        if nearest is None:
+            return
+        city, x, y = nearest[:3]
+        if self._weather_centre is not None:
+            old_distance = math.hypot(self._weather_centre[0] - position[0], self._weather_centre[1] - position[1])
+            new_distance = math.hypot(x - position[0], y - position[1])
+            if city == self.weather_city or old_distance - new_distance < 2000.0:
+                return  # avoid switching repeatedly along a nearest-centre boundary
+        lat, lon = meters_to_latlon(x, y)
+        if lat is None or lon is None:
+            return
+        self.weather_city, self._weather_centre = city, (x, y)
+        self._weather_latitude = lat
+        if self._historical_weather:
+            self.weather_history = WeatherHistory(lat, lon, cache_path=Path(CACHE_DIR) / "weather_history.db")
+        self._fallback_weather_hour = self._fallback_weather = None
+        logger.info("Weather location: %s (%.3f, %.3f)", city, lat, lon)
+
     def _update_outside(self):
-        """This game hour's FMI weather (None: generated) and the outside
-        temperature (observed, else the climate's typical), on the weather
-        for the state; queues the next 48 h in the background (cheap)."""
+        """Gradually sampled FMI weather (None: generated) and temperature."""
+        self._update_weather_location()
         moment, weather = self.calendar.current, self.world.weather
         fmi_moment = moment.replace(minute=0, second=0, microsecond=0)
         observed = None
         if self.weather_history is not None:
-            self.weather_history.request(fmi_moment, fmi_moment + timedelta(hours=48))
-            observed = self.weather_history.get(fmi_moment)
+            previous_moment = fmi_moment - timedelta(hours=1)
+            next_moment = fmi_moment + timedelta(hours=1)
+            self.weather_history.request(previous_moment, fmi_moment + timedelta(hours=48))
+            observed = gradual_weather(self.weather_history, moment, self.chosen_city)
             if observed is None or precipitation_from_observation(observed)[0] is None:
                 if getattr(self, "_fallback_weather_hour", None) != fmi_moment:
                     self._fallback_weather_hour = fmi_moment
@@ -379,15 +457,16 @@ class SimulationServer:
             logger.info("FMI weather now %s: %s", f"{fmi_moment:%d.%m. %H:%M}", source)
         weather.weather_source = source
         weather.outside_temperature_c = (observed.temperature_c if observed is not None and observed.temperature_c is not None
-                                         else typical_temperature(moment, self.calendar.latitude))
+                                         else typical_temperature(moment, self._weather_latitude))
         return observed
 
-    def _tyre_mark(self, previous) -> Optional[dict]:
-        """Whether the taxi lays a tyre mark this tick, and which, decided as
-        SKIDMARK.md says: rubber on a hard surface
-        when the tyres slip enough, a dirt (sand, snow) trail off-road on
-        soft ground whenever moving. None when nothing is laid. The client
-        keeps the trail."""
+    def _tyre_mark(self, previous, throttle: float = 0.0) -> Optional[dict]:
+        """Return this tick's transient tyre mark, or None.
+
+        Hard surfaces retain only full-black braking skids. Soft ground and
+        snowy roads retain their material-specific tracks while moving. The
+        client keeps recent points in memory; render-cache files do not.
+        """
         from ..calendar import Season
         from ..map_level import SURFACE_LEVEL
         from ..physics import (get_current_road_at_car, is_point_in_parking_lot, is_point_on_parking_space,
@@ -412,12 +491,20 @@ class SimulationServer:
         )
         soft = ground in ("soft", "sand")
         skidding = skidmark_should_mark(car.skid_amount, wetness=world.weather.wetness, hard_surface=not soft)
+        if not soft and not car.braking:
+            skidding = False  # hard surfaces keep only black braking marks, not gray slip trails
         if not (skidding or (soft and abs(car.speed) > 1.0)):
             return None
         # Skidding on a frozen field scratches the ice pale, never black.
         kind = ("snow" if self.calendar.season == Season.WINTER else "sand" if ground == "sand" else "dirt") if soft else "snow" if ground == "ice" else "rubber"
-        return {"kind": kind, "intensity": round(skidmark_intensity(car.skid_amount) if skidding else 1.0, 2),
+        intensity = skidmark_intensity(car.skid_amount) if soft and skidding else 1.0
+        mark = {"kind": kind, "intensity": round(intensity, 2),
                 "front": bool(tire_tracks_include_front_wheels(soft, skidding, getattr(car, "front_lockup", False)))}
+        if ground == "sand" and kind == "sand":
+            mark["spray"] = round(min(1.0, abs(car.speed) / 6.0), 2)
+        if ground == "soft" and kind == "dirt" and throttle >= 0.7 and car.engine_on and car.fuel_l > 0 and not car.braking:
+            mark["spray"] = round(min(1.0, throttle), 2)
+        return mark
 
     @property
     def _game_time_seconds(self) -> float:
@@ -450,6 +537,12 @@ class SimulationServer:
         )
         return altitude, grid_azimuth(azimuth, latitude, longitude)
 
+    def _moon_position(self) -> tuple:
+        latitude = getattr(self.world, "sun_latitude", self.calendar.latitude)
+        longitude = getattr(self.world, "sun_longitude", 25.47)
+        altitude, azimuth, illumination = moon_position_at(self.calendar.current, latitude, longitude)
+        return altitude, grid_azimuth(azimuth, latitude, longitude), illumination
+
     def _update_sports(self) -> None:
         """What may be played on the sports fields (the pedestrians' sports
         activities): ice when the fields are frozen, soccer when the pitches
@@ -460,18 +553,32 @@ class SimulationServer:
         self.world.pedestrian_mgr.sports_ice_open = self.world.fields_frozen and lit
         # Soccer: no snow on the pitch at all (godot chunk_detail.gd draws its lines by the same weight).
         self.world.pedestrian_mgr.soccer_open = season[0] < SOCCER_SNOW_WEIGHT and lit
+        weather = self.world.weather
+        temperature = weather.outside_temperature_c
+        self.world.pedestrian_mgr.tennis_open = (
+            temperature is not None and temperature > 10 and weather.weather_type == "clear"
+            and not weather.is_thunderstorm and weather.cloud_cover <= .6
+            and self._sun_altitude() > 5 and season[0] < SOCCER_SNOW_WEIGHT and not self.world.fields_frozen)
+        self.world.pedestrian_mgr.beach_open = (
+            self.calendar.current.month in (6, 7, 8) and temperature is not None and temperature > 15.0
+            and weather.weather_type == "clear" and not weather.is_thunderstorm
+            and weather.cloud_cover <= 0.25 and self._sun_altitude() > 5.0 and not self.world.fields_frozen)
+
 
     def calendar_state(self) -> dict:
         """What a client needs of the calendar (state "calendar"): the date,
-        how fast game time runs, and the sun - computed here, never by the
-        client. The sun is at the city's latitude and longitude."""
+        how fast game time runs, and the Sun and Moon - computed here, never
+        by the client, at the city's latitude and longitude."""
         altitude, azimuth = self._sun_position()
+        moon_altitude, moon_azimuth, moon_illumination = self._moon_position()
         season = self.season_weights()
         arena_crowds = getattr(self.world, "arena_crowds", None)
         from ..holiday_events import holiday_events
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": season,
                 "sun_altitude_deg": round(altitude, 2), "sun_azimuth_deg": round(azimuth, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
+                "moon_altitude_deg": round(moon_altitude, 2), "moon_azimuth_deg": round(moon_azimuth, 2),
+                "moon_illumination": round(moon_illumination, 3),
                 "sports_lights": sports_lights_hours(self.calendar.current),
                 "holidays": holiday_events(self.calendar.current),
                 "arena_lights": bool(arena_crowds and arena_crowds.lights_on(self.calendar.current)),
@@ -484,10 +591,36 @@ class SimulationServer:
         logger.info("Simulation server listening on %s:%d", self.host, self.port)
         self._running = True
 
+    def _live_roadworks(self, args, config):
+        """Settings -> realtime road data (--road-digitraffic): live roadworks
+        from Digitraffic, every query cached forever; None when off."""
+        enabled = getattr(args, "road_digitraffic", None)
+        if enabled is None:
+            enabled = config.getboolean("game", "road_digitraffic", fallback=False)
+        if not enabled:
+            return None
+        try:
+            from pyproj import Transformer
+        except ImportError:
+            logger.warning("Digitraffic road data needs pyproj; staying with generated roadworks")
+            return None
+        from ..digitraffic_road import DigitrafficClient, LiveRoadworks, RoadDataService
+        project = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True).transform
+        unproject = Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True).transform
+        from ..osm.cache import default_cache_root
+        # Beside, not inside, the map cache: "clear map cache" empties osm_cache, and these queries never expire.
+        cache_path = Path(default_cache_root()) / "digitraffic_road.sqlite"
+        client = DigitrafficClient(cache_path)
+        logger.info("Digitraffic road data on (live roadworks, cache %s)", cache_path)
+        return LiveRoadworks(RoadDataService(client, unproject), project)
+
     def close(self) -> None:
         """Stop listening and drop every client (tests; an embedding host).
         The process exit does this for the standalone server."""
         self._running = False
+        self.navigation.close()
+        if getattr(self.world, "live_roadworks", None) is not None:
+            self.world.live_roadworks.service.close()
         if self._listener is not None:
             self._listener.close()
         with self._clients_lock:
@@ -506,15 +639,30 @@ class SimulationServer:
                 return min(towns, key=lambda p: (p.x - self.car.x) ** 2 + (p.y - self.car.y) ** 2).name
         return str(self.chosen_city or "")
 
+    def _set_fares_open(self, open_: bool) -> None:
+        taxi_mgr = self.world.taxi_mgr
+        taxi_mgr.fares_open = open_
+        bookings = getattr(taxi_mgr, "rail_bookings", None)
+        if bookings is not None:
+            bookings.enabled = open_
+            bookings.min_gap_s = 30.0
+        if open_:  # the first request a little after the start, not in the same instant
+            taxi_mgr.next_offer_timer = min(taxi_mgr.next_offer_timer, 5.0)
+
     def _on_client_connect(self, connection) -> None:
         logger.info("Client connected")
         # Who it is and the map origin first; the map chunks around the
         # player and every tick's state follow from the tick loop.
-        connection.send(protocol.build_world_message((self.car.x, self.car.y), CHUNK_SIZE_M, LOCAL_PLAYER_ID,
-                                                     self._place_name(), self.start_forecast))
+        message = protocol.build_world_message((self.car.x, self.car.y), CHUNK_SIZE_M, LOCAL_PLAYER_ID,
+                                               self._place_name(), self._forecast())
+        message["weather_city"] = self.weather_city
+        connection.send(message)
         with self._clients_lock:
             self._client_chunks[connection] = (set(), None)
             self._clients.append(connection)
+        if not self._fares_opened:  # the game has started: fares and pre-bookings from now on
+            self._fares_opened = True
+            self._set_fares_open(True)
         if not self._game_day_notice_shown:
             games = [game for game in self.world.arena_crowds.schedule_on(self.calendar.date)
                      if self.calendar.current < game.start + GAME_DURATION]
@@ -537,6 +685,11 @@ class SimulationServer:
                     logger.warning("Ignoring a command for unknown player %r", message.get("player_id"))
                     continue
                 command, interact = protocol.command_from_message(message)
+                from ..viewport import client_view_bounds
+                view = client_view_bounds(message)
+                if view is not None and max(abs((view[0] + view[2]) / 2 - self.car.x),
+                                            abs((view[1] + view[3]) / 2 - self.car.y)) <= 2000:
+                    self._client_views[connection] = (self._server_time, view)
                 phone = protocol.phone_request_from_message(message)
                 requested_language = message.get("command", {}).get("language") if isinstance(message.get("command"), dict) else None
                 if isinstance(requested_language, str) and requested_language in SUPPORTED_LANGUAGES and requested_language != self.language:
@@ -561,6 +714,10 @@ class SimulationServer:
                         self._pending_trip_resets += 1
                     if phone is not None:
                         self._phone_requests.append(phone)
+                    if message.get("clear_home") is True:
+                        self._clear_home()
+                    if message.get("save_game") is True:  # the pause menu's Save / Quit
+                        self._pending_save = True
                     snapshot = message.get("debug_snapshot")  # F12 in the client: the screenshot's JSON
                     if isinstance(snapshot, str) and snapshot.endswith(".json"):
                         self._debug_snapshots.append(snapshot)
@@ -571,6 +728,7 @@ class SimulationServer:
                 if connection.error is not None:
                     logger.info("Client dropped: %s", connection.error)
                 del self._client_chunks[connection]
+                self._client_views.pop(connection, None)
             gone = len(self._clients) != before
             if gone:
                 logger.info("Client disconnected (%d remaining)", len(self._clients))
@@ -592,21 +750,42 @@ class SimulationServer:
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
             _write_debug_snapshot(
                 path, self.car, w.taxi_mgr, w.auto_fetch_manager, self.args, self.bbox or w.auto_fetch_manager.get_bounds(),
-                get_viewport_bounds(self._camx, self._camy, px_per_m=self._px_per_m, margin_m=30.0),
+                self._visible_bounds() or get_viewport_bounds(self._camx, self._camy, px_per_m=self._px_per_m, margin_m=30.0),
                 self._camx, self._camy, self._px_per_m, self._current_way, w.ways, w.waters, w.buildings,
                 w.sceneries, w.places, w.taxi_stops, w.traffic_lights, w.crossings, w.elements_count,
                 w.traffic_mgr, w.pedestrian_mgr, w.spatial_grid, 0, self.chosen_city,
                 getattr(self, "camera_city_name", self.chosen_city), getattr(self.args, "game_mode", "gig_driver"),
                 self._on_foot, scenery_objects=w.scenery_objects, speed_bumps=w.speed_bumps, railways=w.railways,
                 railings=w.railings, npcs=w.npcs, npc_drivers=w.npc_drivers, npc_manager=w.npc_manager,
+                taxi_brawls=getattr(w, "taxi_brawls", None), live_roadworks=getattr(w, "live_roadworks", None),
             )
             logger.info("Debug snapshot %s", path)
         except Exception:  # a debugging aid: never take the game down
             logger.exception("Debug snapshot %s failed", path)
 
+    def save_game(self) -> bool:
+        """Write the gig save slot (False without one, e.g. career)."""
+        if self.save_slot_file is None:
+            return False
+        from ..geo import meters_to_latlon
+        from ..save_slots import write_slot
+        latitude, longitude = meters_to_latlon(self.car.x, self.car.y)
+        if latitude is None:
+            logger.warning("Save slot not written: no coordinate conversion")
+            return False
+        write_slot(self.save_slot_file, car=self.car, taxi_mgr=self.world.taxi_mgr, calendar=self.calendar,
+                   city=self.chosen_city, place_name=getattr(self.args, "place_name", None) or "",
+                   latlon=(latitude, longitude))
+        logger.info("Saved to slot %s", self.save_slot_file.stem)
+        return True
+
     def tick(self, dt: float) -> None:
         while self._debug_snapshots:
             self.write_debug_snapshot(self._debug_snapshots.pop(0))
+        if self._pending_save:
+            self._pending_save = False
+            if self.save_game():
+                self.save_count += 1
         self._apply_incoming_messages()
         self.audio.advance(dt)
 
@@ -634,7 +813,12 @@ class SimulationServer:
             phone_requests, self._phone_requests = self._phone_requests, []
         phone_results = [self._apply_phone_request(request) for request in phone_requests]
 
+        brawls = getattr(self.world, "taxi_brawls", None)
+        brawl_flee = bool(interact and self._on_foot and brawls is not None and brawls.player_engaged())
+        if brawl_flee:
+            interact = False  # F in a fight on foot: run for it (taxi_brawls), not get in
         if interact:
+            command = replace(command, engine_on=None)
             self._on_foot = apply_enter_exit_vehicle(
                 self.car, self.world.player_pedestrian, self._on_foot, self.audio, self.world.taxi_mgr,
                 self.world.pedestrian_mgr.pedestrians,
@@ -660,16 +844,22 @@ class SimulationServer:
         if self.calendar.date != previous_date:
             self.world.weather.season = self.calendar.season  # the thermal season follows the calendar
         observed = self._update_outside()
-        self._update_sports()
         self.world.weather.update(dt * time_scale, dt, outside_temperature_c=self.world.weather.outside_temperature_c,
                                   observed=observed)
+        self._update_sports()
         if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once
             self.audio.play_group("weather.thunder", 0.8)
             self._lightning_event_id = self.world.weather.lightning_event_id
 
         car_x, car_y = self.car.x, self.car.y
+        live = self.world.live_roadworks
+        if live is not None:  # Digitraffic roadworks around the taxi at the game time (matched off the network thread)
+            from ..calendar import finnish_utc
+            moment = self.calendar.current
+            live.update(self.car.x, self.car.y, finnish_utc(moment).replace(tzinfo=timezone.utc), moment,
+                        len(self.world.ways), self.world.spatial_grid)
         result = advance_simulation(
-            dt, command, self.car, self.world,
+            dt, command, self.car, self.world, brawl_flee=brawl_flee,
             on_foot=self._on_foot,
             player_pedestrian=self.world.player_pedestrian,
             camx=self._camx, camy=self._camy, px_per_m=self._px_per_m,
@@ -697,8 +887,9 @@ class SimulationServer:
             cities_list=self.cities_list,
             outside_temperature_c=self.world.weather.outside_temperature_c,
             now=self.calendar.current,
+            view_bounds=self._visible_bounds(),
         )
-        self._tire_mark = self._tyre_mark(previous=(car_x, car_y))
+        self._tire_mark = self._tyre_mark(previous=(car_x, car_y), throttle=command.throttle)
         for npc in self.world.npc_manager.vehicles:  # brake lamps
             npc.braking = npc_braking(npc, getattr(npc, "_last_speed", npc.speed), dt)
             npc._last_speed = npc.speed
@@ -779,6 +970,16 @@ class SimulationServer:
         chunk = self._chunks_index._chunks.get(chunk_id(*cell_of(player.x, player.y)))
         return bool(chunk and chunk.get("roads"))
 
+    def _clear_home(self) -> None:
+        if self.homes_file is not None:
+            clear_homes(self.homes_file, in_save=self._homes_in_save)
+        self._home = None
+        self._home_confirm_s = 0.0
+        self._prepared_home = None
+        if self._home_preparation is not None:
+            self._home_preparation.cancel()
+            self._home_preparation = None
+
     def _home_pressed(self) -> None:
         """H: in a house yard, make it home (a new one asks first: H
         again); anywhere else, the taxi respawns at home."""
@@ -796,7 +997,8 @@ class SimulationServer:
                 self._home_confirm_s = CONFIRM_S
                 return self._notify(tr(language, "home_confirm"), CONFIRM_S)
             self._home, self._home_confirm_s = (car.x, car.y, car.heading), 0.0
-            save_home(self.homes_file, str(self.chosen_city or ""), self._home)
+            if self.homes_file is not None:
+                save_home(self.homes_file, str(self.chosen_city or ""), self._home, in_save=self._homes_in_save)
             return self._notify(tr(language, "home_saved"))
         if self._home is None:
             return self._notify(tr(language, "home_not_yard"))
@@ -867,10 +1069,11 @@ class SimulationServer:
                 self._map_growth.append((previous, index, changed, old_bounds, new_bounds,
                                          time.perf_counter() - started, False, covered))
             lights_started = time.perf_counter()
-            known = {(round(x, 1), round(y, 1)) for x, y, *_ in previous}
-            lights = list(previous) + [
-                lamp for lamp in place_street_lights(self.world, outside=old_bounds)
-                if (round(lamp[0], 1), round(lamp[1], 1)) not in known]
+            # A merged tile can fill a hole inside old_bounds, not just extend it.
+            # Rebuild its dirty area, retaining lamps elsewhere unchanged.
+            lights = [lamp for lamp in previous
+                      if not (area[0] <= lamp[0] <= area[2] and area[1] <= lamp[1] <= area[3])]
+            lights.extend(place_street_lights(self.world, region=area))
             lights_s = time.perf_counter() - lights_started
             self.world.street_light_points = lights
             try:
@@ -943,6 +1146,14 @@ class SimulationServer:
                 loaded.add(cid)
             self._client_chunks[connection] = (loaded, cell)
 
+    def _visible_bounds(self):
+        views = [bounds for connection, (at, bounds) in self._client_views.items()
+                 if not connection.is_closed and self._server_time - at <= 2.0]
+        if not views:
+            return None  # legacy clients and headless tests retain the nominal viewport
+        return (min(v[0] for v in views), min(v[1] for v in views),
+                max(v[2] for v in views), max(v[3] for v in views))
+
     def _broadcast_state(self, *, should_stop: bool = False, city_summary=None, events=None) -> None:
         message = protocol.build_state_message(
             tick=self._tick, world=self.world, car=self.car, on_foot=self._on_foot,
@@ -957,6 +1168,7 @@ class SimulationServer:
             map_loading_detail=self._map_streamer.manager.get_progress_message() if self._map_streamer is not None else "",
             railway=protocol.railway_state(getattr(self.world, "railway_mgr", None), self.car.x, self.car.y, self.calendar.current),
         )
+        message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
         with self._clients_lock:
             clients = list(self._clients)
         for connection in clients:
@@ -976,23 +1188,27 @@ class SimulationServer:
                 next_tick = time.monotonic()  # fell behind; don't try to catch up in a burst
 
 
-def place_street_lights(world, outside=None) -> list:
-    """Every street light of the map, placed once (street_lights.py:
+def place_street_lights(world, region=None) -> list:
+    """Street lights for the whole map or a changed world-metre rectangle.
+
+    Keep surrounding roads/buildings as placement context, including when
+    a streamed tile fills a previously unloaded hole inside the map bounds.
+    Uses street_lights.py:
     explicit OSM lamps first, then lit roads at fixed spacing, clear of
-    junctions and buildings), run to the end over the whole map (Oulu: ~21,500 lights, ~1.7 s at startup).
+    junctions and buildings (Oulu: ~21,500 lights, ~1.7 s at startup).
     [(x, y, road direction, pool radius m)]."""
     from .. import street_lights as roads
 
+    bounded = region is not None
     ways = world.ways
-    if outside is not None:  # a map that grew: only ways reaching out of the old bounds
-        minx, miny, maxx, maxy = outside
-        ways = [way for way in ways if any(not (minx <= x <= maxx and miny <= y <= maxy) for x, y in way.points_m)]
-    points = [p for way in ways for p in way.points_m]
-    if not points:
-        return []
-    region = (min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points))
+    if region is None:
+        points = [p for way in ways for p in way.points_m]
+        if not points:
+            return []
+        region = (min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points))
     work = roads._snapshot_street_light_job(
-        "server", region, ways, None, world.buildings, None,
+        "server", region, ways, getattr(world, "spatial_grid", None) if bounded else None,
+        world.buildings, getattr(world, "building_grid", None) if bounded else None,
         getattr(world, "street_lamps", None), getattr(world, "street_lamp_grid", None),
         getattr(world, "parking_spaces", None),
     )
@@ -1004,10 +1220,7 @@ def place_street_lights(world, outside=None) -> list:
     # Parking lots with mapped spots: the poles stand where two back-to-back
     # rows meet, at the spots' shared corners; the aisle-guessed lamps around
     # them go. Lots without mapped spots keep the aisle placement.
-    spaces = getattr(world, "parking_spaces", None) or []
-    if outside is not None:
-        minx, miny, maxx, maxy = outside
-        spaces = [p for p in spaces if not (minx <= p.bbox[0] and p.bbox[2] <= maxx and miny <= p.bbox[1] and p.bbox[3] <= maxy)]
+    spaces = work["parking_spaces"] if bounded else (getattr(world, "parking_spaces", None) or [])
     poles = roads.parking_row_lamps(spaces)
     if poles:
         near_pole = roads.PARKING_POLE_CLEARANCE_M ** 2
@@ -1021,6 +1234,8 @@ def place_street_lights(world, outside=None) -> list:
             return any((x - p[0]) ** 2 + (y - p[1]) ** 2 < near_pole
                        for gx in (cx - 1, cx, cx + 1) for gy in (cy - 1, cy, cy + 1) for p in grid.get((gx, gy), ()))
         lamps = [lamp for lamp in lamps if not by_a_pole(lamp[0], lamp[1])] + poles
+    if bounded:
+        lamps = [lamp for lamp in lamps if region[0] <= lamp[0] <= region[2] and region[1] <= lamp[1] <= region[3]]
     return lamps
 
 

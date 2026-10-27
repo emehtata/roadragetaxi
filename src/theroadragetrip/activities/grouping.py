@@ -20,6 +20,7 @@ group-aware code path needed anywhere in pedestrian.py.
 """
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import math
 import random
@@ -71,6 +72,17 @@ def nearby_free_pedestrians(
     return candidates
 
 
+RING_M = 0.9  # members stand this far from the group's centre, not on top of each other
+RING_SEATS = 5
+
+
+def ring_spot(location: ActivityLocation, seat: int) -> ActivityLocation:
+    """Member `seat`'s own spot around the group's centre."""
+    angle = seat * 2.0 * math.pi / RING_SEATS
+    return dataclasses.replace(location, x=location.x + RING_M * math.cos(angle),
+                               y=location.y + RING_M * math.sin(angle))
+
+
 def recruit(
     context: ActivityContext,
     plugin_id: str,
@@ -82,7 +94,7 @@ def recruit(
     """Directly claim `partner` for `group` - only ever called from
     start(), see the module docstring for why."""
     partner_instance = ActivityInstance(
-        plugin_id=plugin_id, location=location, started_sim_time=context.sim_time, group=group
+        plugin_id=plugin_id, location=ring_spot(location, len(group.member_resident_ids)), started_sim_time=context.sim_time, group=group
     )
     partner_instance.data["duration_s"] = random.uniform(*duration_range)
     partner_instance.data["elapsed_s"] = 0.0

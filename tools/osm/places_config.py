@@ -66,7 +66,7 @@ def _railway_station(tags: Tags) -> bool:
 CATEGORIES: Tuple[PlaceCategory, ...] = (
     PlaceCategory(
         type="airport",
-        osmium_filters=("nwr/aeroway=aerodrome",),
+        osmium_filters=("nwr/aeroway=aerodrome", "nwr/aeroway=terminal"),
         matches=_airport,
         metadata={"iata": "iata", "icao": "icao"},
         identity_tags=("icao", "iata"),

@@ -195,6 +195,9 @@ def test_populate_initial_produces_a_vehicle_type_mix_from_the_distribution():
     manager = NPCVehicleManager(
         target_count=15, spawn_radius_m=_SPAWN_RADIUS_M, vehicle_distribution={"car": 0.5, "motorcycle": 0.5},
     )
+    from datetime import datetime
+    manager.clock = datetime(2026, 7, 1, 12)  # in the riding season (motorcycle_season.py)
+    manager._update_motorcycle_season(ResidentManager())
     manager.populate_initial(*_CENTER, ResidentManager(), ways)
     types = {vehicle.vehicle_type for vehicle in manager.vehicles}
     assert types <= {"car", "motorcycle"}
@@ -379,6 +382,120 @@ def test_population_tick_despawns_a_far_moving_vehicle_and_releases_its_occupant
     for resident_id in member_ids:
         assert residents.get(resident_id).trip_group_id is None
         assert residents.get(resident_id).active_vehicle_id is None
+
+
+def test_view_cleanup_retires_group_below_minimum_and_cancels_work():
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=1, min_count=10)
+    residents = ResidentManager()
+    world = TrafficWorld(ways)
+    _, driver, vehicle = spawn_npc(1, residents, world, ways, (0, 0), (200, 0))
+    manager.vehicles.append(vehicle)
+    manager.drivers[1] = driver
+    members = list(vehicle.trip_group.member_resident_ids)
+    pedestrians = PedestrianManager(ways, residents=residents)
+    closed = []
+
+    def pending():
+        try:
+            yield
+        finally:
+            closed.append(True)
+
+    steps = pending()
+    next(steps)
+    manager._enqueue_route_job("trip", vehicle, steps, world)
+    space = SimpleNamespace(vehicle_id=1, reserved=True, occupied=True)
+    vehicle.reserved_parking_space = space
+    manager.discard_outside((1000, 1000, 1100, 1100), residents, pedestrians)
+    assert not manager.vehicles and not manager.drivers and not manager._route_jobs
+    assert closed and not space.reserved and not space.occupied and space.vehicle_id is None
+    assert all(residents.get(r).active_vehicle_id is None and residents.get(r).trip_group_id is None for r in members)
+    assert all(vehicle.vehicle_id not in residents.get(r).vehicle_ids for r in members)
+
+
+def test_view_cleanup_preserves_visible_linked_member_and_active_fare():
+    ways = _city_block_grid()
+    manager = NPCVehicleManager(target_count=1)
+    residents = ResidentManager()
+    world = TrafficWorld(ways)
+    _, driver, vehicle = spawn_npc(1, residents, world, ways, (0, 0), (200, 0))
+    manager.vehicles.append(vehicle)
+    manager.drivers[1] = driver
+    pedestrians = SimpleNamespace(pedestrians=[])
+    member = vehicle.trip_group.member_resident_ids[0]
+    manager.discard_outside((1000, 1000, 1100, 1100), residents, pedestrians, [member])
+    assert manager.vehicles == [vehicle]
+    pedestrians.pedestrians.append(SimpleNamespace(linked_vehicle_id=id(vehicle), current_vehicle_id=None,
+                                                   reserved_vehicle_id=None, x=1050, y=1050, radius_m=0.5,
+                                                   resident_id=member))
+    manager.discard_outside((1000, 1000, 1100, 1100), residents, pedestrians)
+    assert manager.vehicles == [vehicle]
+
+
+def test_interest_skips_collision_sweeps_for_distant_retained_cars(monkeypatch):
+    manager = NPCVehicleManager(target_count=0)
+    manager._population_elapsed = 0
+    residents = ResidentManager()
+    world = TrafficWorld([])
+    for i in range(20):
+        vehicle = place_parked_npc(i + 1, (i * 100.0, 0), None)
+        assert vehicle is not None
+        manager.vehicles.append(vehicle)
+    swept = []
+    monkeypatch.setattr(manager, "_check_vehicle_collision", lambda vehicle, *a, **kw: swept.append(vehicle.vehicle_id))
+    manager.update(1 / 30, 0, 0, residents, world, [], active_bounds=(-20, -20, 20, 20))
+    assert swept == [1]
+    swept.clear()
+    manager.update(1 / 30, 0, 0, residents, world, [])
+    assert len(swept) == 20  # the old path swept every retained vehicle
+
+
+@pytest.mark.parametrize("speed", [0.0, 19.45])
+def test_zoomed_in_view_spawns_traffic_that_drives_into_view(speed):
+    from theroadragetrip.traffic_world import run_route_steps
+    from theroadragetrip.viewport import in_bounds
+
+    random.seed(4)
+    ways = [Way(points_m=[(0, 0), (100, 0), (200, 0), (300, 0), (400, 0)],
+                highway="residential", half_width_m=4.5)]
+    traffic, residents = TrafficWorld(ways), ResidentManager()
+    manager = NPCVehicleManager(target_count=1, vehicle_distribution={"car": 1.0})
+    bounds, view = (-105, -100, 105, 100), (-70, -40, 70, 40)
+    manager._active_bounds = bounds
+    manager._population_elapsed = -100  # exercise this spawn, not unrelated top-ups
+    player = Car(x=0, y=0, heading=0, speed=speed)
+    focus = transit_spawn_focus(0, 0, player, manager.simulation_radius_m)
+    result = run_route_steps(manager._transit_spawn_steps(
+        *focus, residents, traffic, ways, None, None, None, None, None, None, None, view, [],
+        preferred_heading=0, player_position=(0, 0),
+    ))
+    assert result is not None  # the old 110m exclusion rejected the only unseen node
+    vehicle, _ = result
+    assert in_bounds(bounds, vehicle.x, vehicle.y) and not in_bounds(view, vehicle.x, vehicle.y)
+    assert manager._apply_transit_spawn(result, residents, []) is not None
+    pedestrians = SimpleNamespace(pedestrians=[])
+    for _ in range(30 * 30):
+        traffic.advance_time(1 / 30)
+        manager.discard_outside(bounds, residents, pedestrians)
+        manager.update(1 / 30, 0, 0, residents, traffic, ways, viewport_bounds=view, active_bounds=bounds)
+        assert vehicle in manager.vehicles and vehicle.state != NPCState.CRASHED
+        if in_bounds(view, vehicle.x, vehicle.y):
+            break
+    assert in_bounds(view, vehicle.x, vehicle.y)
+
+
+def test_zoomed_out_view_can_prepare_transit_beyond_the_old_spawn_ring(monkeypatch):
+    ways = [Way(points_m=[(0, 0), (600, 0), (700, 0)], highway="residential", half_width_m=4.5)]
+    world = TrafficWorld(ways)
+    manager = NPCVehicleManager(target_count=1)
+    manager._active_bounds = (-800, -100, 800, 100)
+    considered = []
+    monkeypatch.setattr(manager, "_place_one", lambda point, *a, **kw: considered.append(point))
+    steps = manager._transit_spawn_steps(0, 0, ResidentManager(), world, ways, None, None, None, None,
+                                        None, None, None, (-500, -50, 500, 50), [])
+    list(steps)
+    assert considered and any(point[0] >= 600 for point in considered)
 
 
 def test_no_duplicate_vehicle_ids_after_several_population_ticks():
@@ -1029,12 +1146,11 @@ def test_retiring_stale_group_does_not_unlink_a_residents_newer_trip():
     assert old_member.mode == "riding"
 
 
-def test_experimental_vehicles_excluded_from_default_distribution():
-    """Motorcycle is marked experimental (vehicles/plugins/motorcycle.py) -
-    off by default, matching config's [experimental] enable_two_wheelers
-    default of false."""
+def test_motorcycles_are_in_the_default_distribution():
+    """Motorcycles are regular traffic now; the riding season scales their
+    weight when a vehicle is picked (motorcycle_season.py), not this table."""
     manager = NPCVehicleManager(target_count=1)
-    assert "motorcycle" not in manager.vehicle_distribution
+    assert manager.vehicle_distribution.get("motorcycle", 0.0) > 0.0
     assert "car" in manager.vehicle_distribution
 
 
@@ -1263,7 +1379,7 @@ def test_vehicle_collision_respects_bridge_and_floor_levels(npc_obstacle, layer,
     manager = NPCVehicleManager()
     residents = ResidentManager()
     pedestrian_mgr = SimpleNamespace()
-    vehicle = NPCVehicle(vehicle_id=1, car=Car(x=0.0, y=0.0, heading=0.0, speed=4.0, layer=1))
+    vehicle = NPCVehicle(vehicle_id=1, car=Car(x=0.0, y=0.0, heading=0.0, speed=10.0, layer=1))  # a real crash, not a minor bump
     other_car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, layer=layer, map_level=map_level)
     obstacle = NPCVehicle(vehicle_id=2, car=other_car) if npc_obstacle else other_car
     manager._check_vehicle_collision(vehicle, [obstacle], residents, pedestrian_mgr, sim_time=50.0)
@@ -1355,6 +1471,30 @@ def test_check_vehicle_collision_with_player_crashes_npc_and_stops_taxi():
 
     assert vehicle.state == NPCState.CRASHED
     assert player_car.speed == 0.0
+
+
+def test_a_minor_bump_by_the_player_makes_the_npc_driver_curse_not_crash():
+    """Game policy: below MINOR_HIT_MPS closing speed the NPC is not wrecked;
+    its driver curses and drives on slowly (shaken_timer caps its speed)."""
+    from theroadragetrip.npc import SHAKEN_S
+    from theroadragetrip.physics import Car
+
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=1)
+    vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
+    vehicle.car.speed = 0.0
+    manager.vehicles.append(vehicle)
+    player_car = Car(x=1.0, y=0.0, heading=0.0, speed=2.5)  # 9 km/h
+    pedestrian_mgr = PedestrianManager([], target_count=0)
+
+    assert manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
+
+    assert vehicle.state != NPCState.CRASHED and not vehicle.driver_departed
+    assert vehicle.curse_timer > 0.0 and vehicle.curse_text and vehicle.shaken_timer == SHAKEN_S
+    assert manager.curses and not manager.accidents
+    assert player_car.speed == 0.0
+    from theroadragetrip.taxi_brawls import PROVOKE_BUMP, npc_rage
+    assert npc_rage(vehicle, 50.0) == PROVOKE_BUMP  # its driver is angry now (brawl rage), calming later
 
 
 def test_crashed_npc_remains_a_physical_obstacle_for_player():
@@ -1796,7 +1936,9 @@ def test_ready_transit_atomically_replaces_a_distant_parked_car_below_target():
     residents = ResidentManager()
     distant = place_parked_npc(1, (1000.0, 0.0), None)
     transit = place_parked_npc(2, (-100.0, 0.0), None)
-    plan = ([PathPoint(-100.0, 0.0), PathPoint(100.0, 0.0)], (100.0, 0.0), None, True)
+    road = Way([(-100.0, 0.0), (100.0, 0.0)], "residential", 4.5)
+    plan = ([PathPoint(-100.0, 0.0, way=road), PathPoint(100.0, 0.0, way=road)],
+            (100.0, 0.0), None, True)
     manager.vehicles.append(distant)
     manager.rebuild_spatial_grid()
 
@@ -1813,7 +1955,9 @@ def test_ready_transit_atomically_replaces_a_distant_parked_car_below_target():
 def test_ready_transit_rechecks_live_spawn_positions_between_job_commits():
     manager = NPCVehicleManager(target_count=10)
     residents = ResidentManager()
-    plan = ([PathPoint(-100.0, 0.0), PathPoint(100.0, 0.0)], (100.0, 0.0), None, True)
+    road = Way([(-100.0, 0.0), (100.0, 0.0)], "residential", 4.5)
+    plan = ([PathPoint(-100.0, 0.0, way=road), PathPoint(100.0, 0.0, way=road)],
+            (100.0, 0.0), None, True)
     first = place_parked_npc(1, (-100.0, 0.0), None)
     duplicate = place_parked_npc(2, (-100.0, 0.0), None)
 
@@ -2229,3 +2373,35 @@ def test_a_trip_home_to_a_spot_beside_the_road_may_leave_the_road():
     assert home[1] < -4.5  # beside the road: its edge is at y = -4.5
     assert continue_npc_trip(vehicle, driver, traffic, ways, destination_query_point=home)
     assert driver.destination == home and driver.destination_is_off_road
+
+
+def test_through_traffic_parks_at_its_own_kerb_never_across_the_oncoming_lane():
+    """§ 36 / game policy: a roadside stop is on the right of the travel
+    direction. The kerb used to be the right of the map way's direction, so
+    traffic driving against it crossed the oncoming lane to park facing
+    traffic (a car with a caravan on Toppilansaarentie, Oulu)."""
+    from theroadragetrip.traffic_world import run_route_steps
+
+    random.seed(4)
+    ways = [Way(points_m=[(0, 0), (100, 0), (200, 0), (300, 0), (400, 0)], highway="residential", half_width_m=4.5)]
+    traffic, residents = TrafficWorld(ways), ResidentManager()
+    manager = NPCVehicleManager(target_count=1, vehicle_distribution={"car": 1.0})
+    bounds, view = (-105, -100, 105, 100), (-70, -40, 70, 40)
+    manager._active_bounds = bounds
+    manager._population_elapsed = -100
+    focus = transit_spawn_focus(0, 0, Car(x=0, y=0, heading=0, speed=0), manager.simulation_radius_m)
+    result = run_route_steps(manager._transit_spawn_steps(
+        *focus, residents, traffic, ways, None, None, None, None, None, None, None, view, [],
+        preferred_heading=0, player_position=(0, 0)))
+    vehicle, (path, destination, _, _) = result
+    assert math.cos(vehicle.heading) < 0 and destination[1] > 4.5  # westbound: its right is the north kerb
+    assert all(point.y > 0.0 for point in path)  # in its own lane all the way, then over to the kerb
+    manager._apply_transit_spawn(result, residents, [])
+    pedestrians = SimpleNamespace(pedestrians=[])
+    for _ in range(30 * 20):
+        traffic.advance_time(1 / 30)
+        manager.update(1 / 30, 0, 0, residents, traffic, ways, viewport_bounds=view, active_bounds=bounds)
+        assert vehicle.y > 0.0
+        if vehicle.state == NPCState.PARKED:
+            break
+    assert vehicle.state == NPCState.PARKED and vehicle.y > 4.0
