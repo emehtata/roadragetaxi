@@ -793,6 +793,10 @@ def is_vehicle_pose_valid(
         return True
     corners = _vehicle_footprint_corners(x, y, heading, length_m, width_m)
     corner_edges = list(zip(corners, corners[1:] + corners[:1]))
+    min_x = min(px for px, py in corners) - clearance_m
+    max_x = max(px for px, py in corners) + clearance_m
+    min_y = min(py for px, py in corners) - clearance_m
+    max_y = max(py for px, py in corners) + clearance_m
     half_diag = math.hypot(length_m, width_m) * 0.5 + clearance_m
     for obstacles, grid, closed in ((curbs, curb_grid, False), (buildings, building_grid, True)):
         if not obstacles:
@@ -806,6 +810,10 @@ def is_vehicle_pose_valid(
             points = obstacle.points_m
             obstacle_edges = zip(points, points[1:] + points[:1]) if closed else zip(points, points[1:])
             for oa, ob in obstacle_edges:
+                # The grid returns whole polylines; only nearby edges can touch the footprint.
+                if (max(oa[0], ob[0]) < min_x or min(oa[0], ob[0]) > max_x
+                        or max(oa[1], ob[1]) < min_y or min(oa[1], ob[1]) > max_y):
+                    continue
                 for ca, cb in corner_edges:
                     if segment_distance(ca, cb, oa, ob) < clearance_m:
                         return False

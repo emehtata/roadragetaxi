@@ -1949,3 +1949,35 @@ def test_update_npc_does_not_try_to_pass_a_wreck_lying_across_the_road():
     for _ in range(60 * 10):
         update_npc(vehicle, driver, 1.0 / 60.0, tw, residents, nearby_obstacles=[wreck])
     assert driver.passing is None and vehicle.car.x < wreck.x
+
+
+def test_footprint_edge_culling_matches_exhaustive_clearance_checks(monkeypatch):
+    import random
+    import theroadragetrip.npc as npc
+    from theroadragetrip.geo import segment_distance
+
+    rng = random.Random(17)
+    calls = []
+
+    def measured(*args):
+        calls.append(1)
+        return segment_distance(*args)
+
+    monkeypatch.setattr(npc, "segment_distance", measured)
+    distant = Curb(points_m=[(50.0, float(y)) for y in range(-100, 101)])
+    assert npc.is_vehicle_pose_valid(0, 0, 0, curbs=[distant])
+    assert not calls
+
+    for _ in range(200):
+        x, y, yaw = rng.uniform(-5, 5), rng.uniform(-5, 5), rng.uniform(-math.pi, math.pi)
+        length, width, clearance = rng.uniform(2, 18), rng.uniform(1, 3), rng.uniform(0.01, 1)
+        points = [(rng.uniform(-20, 20), rng.uniform(-20, 20)) for _ in range(5)]
+        corners = npc._vehicle_footprint_corners(x, y, yaw, length, width)
+        edges = list(zip(corners, corners[1:] + corners[:1]))
+        for closed in (False, True):
+            obstacle_edges = list(zip(points, points[1:] + points[:1])) if closed else list(zip(points, points[1:]))
+            expected = all(segment_distance(ca, cb, oa, ob) >= clearance
+                           for oa, ob in obstacle_edges for ca, cb in edges)
+            kwargs = {"buildings" if closed else "curbs": [SimpleNamespace(points_m=points)]}
+            assert npc.is_vehicle_pose_valid(x, y, yaw, length_m=length, width_m=width,
+                                             clearance_m=clearance, **kwargs) == expected
