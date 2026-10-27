@@ -1216,6 +1216,7 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 		return
 	var at := Vector2(state["player"]["x"], state["player"]["y"])
 	if _selftest_start == Vector2.INF:
+		_engine_on = true  # send() follows the stopped engine while the test driver is still outside
 		_selftest_start = at
 		_selftest_time = 0.0
 		entities.buffer.reset_diagnostics()  # count from here: steady state, not the connect burst
