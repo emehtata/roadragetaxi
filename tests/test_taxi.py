@@ -920,3 +920,46 @@ def test_home_pickup_is_on_the_address_street_not_a_closer_main_road():
     target = taxi_mgr.pick_random_building_point(homes=True)
     assert target.address == "Helmikkäkuja 2" and target.way_name == "Helmikkäkuja"
     assert abs(target.x - 100.0) < 0.01  # on the side street, beside the house
+
+
+@pytest.mark.parametrize("language", ["fi", "en", "de"])
+def test_new_request_notice_does_not_tell_player_to_toggle_open_phone(language):
+    from theroadragetrip.localization import tr
+
+    way = Way(points_m=[(0.0, 0.0), (3000.0, 0.0)], highway="residential", half_width_m=4.5)
+    taxi = TaxiManager(ways=[way], min_distance_m=100.0, max_distance_m=1200.0, language=language)
+    taxi.next_offer_timer = 0.0
+    taxi.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), 0.1)
+
+    assert taxi.offers
+    assert taxi.notification_msg == tr(language, "new_request")
+    assert " P" not in taxi.notification_msg
+
+
+def test_failed_offer_generation_does_not_announce_an_existing_offer(monkeypatch):
+    taxi = TaxiManager(ways=[])
+    existing = TaxiOffer(SimpleNamespace(), 100.0)
+    taxi.offers = [existing]
+    taxi.next_offer_timer = 0.0
+    taxi.notification_msg, taxi.notification_timer = "Fare paid", 4.0
+    monkeypatch.setattr(taxi, "pick_phone_pickup", lambda *args: None)
+
+    taxi.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), 0.1)
+
+    assert taxi.offers == [existing]
+    assert taxi.notification_msg == "Fare paid"
+    assert taxi.notification_timer == pytest.approx(3.9)
+
+
+def test_rejecting_one_of_several_offers_does_not_claim_phone_is_empty():
+    from theroadragetrip.localization import tr
+
+    taxi = TaxiManager(ways=[], language="en")
+    taxi.offers = [TaxiOffer(SimpleNamespace(), 100.0) for _ in range(2)]
+
+    assert taxi.reject_offer(0)
+    assert len(taxi.offers) == 1
+    assert taxi.notification_msg == tr("en", "select_ride")
+    assert taxi.reject_offer(0)
+    assert not taxi.offers
+    assert taxi.notification_msg == tr("en", "no_requests")

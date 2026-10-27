@@ -1925,7 +1925,7 @@ class TaxiManager:
         """Create realistic ride requests without activating one until accepted."""
         if not self.fares_open:
             return []
-        if self.current_passenger:
+        if self.has_job():
             self.offers = []
             return []
         self._initial_offer_pending = False
@@ -2040,7 +2040,7 @@ class TaxiManager:
             return self.rail_bookings.decline(item)
         self.offers.remove(item)
         self.next_offer_timer = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
-        self.notification_msg = tr(self.language, "no_requests")
+        self.notification_msg = tr(self.language, "select_ride" if self.has_new_requests() else "no_requests")
         self.notification_timer = 2.0
         logger.info("Taxi phone offer rejected: index=%d remaining=%d", index, len(self.offers))
         return True
@@ -2342,7 +2342,7 @@ class TaxiManager:
         """Update mission timers, pickup/dropoff collision, and fare progression."""
         if game_time_seconds is not None:
             self.game_time_seconds = game_time_seconds
-        if self.current_passenger:
+        if self.has_job():
             self.offers.clear()
         self.speed_camera_flash_timer = max(0.0, self.speed_camera_flash_timer - dt)
         if self.speed_camera_flash_timer <= 0.0:
@@ -2359,12 +2359,12 @@ class TaxiManager:
                 offer.time_remaining_s -= dt
             self.offers = [offer for offer in self.offers if offer.time_remaining_s > 0.0]
 
-        if not self.current_passenger and len(self.offers) < MAX_PHONE_OFFERS:
+        if not self.has_job() and len(self.offers) < MAX_PHONE_OFFERS:
             self.next_offer_timer -= dt
             if self.next_offer_timer <= 0.0:
-                self.generate_offers(car.x, car.y, count=1, append=True)
+                new_offers = self.generate_offers(car.x, car.y, count=1, append=True)
                 self.next_offer_timer = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
-                if self.offers:
+                if new_offers:
                     self.notification_msg = tr(self.language, "new_request")
                     self.notification_timer = 5.0
 
