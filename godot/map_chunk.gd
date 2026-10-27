@@ -1039,6 +1039,7 @@ func _draw_road_markings(z: int, node: Node2D) -> void:
 
 ## White strokes over drivable roads, tinted by the node's modulate.
 func _draw_wet(node: Node2D, z: int = 1) -> void:
+	var straight := {}  # same-width two-point strokes share one draw command
 	for road in _data.get("roads", []):
 		if not road.get("drivable", false) or road_z(int(road.get("layer", 0))) != z:
 			continue
@@ -1046,8 +1047,15 @@ func _draw_wet(node: Node2D, z: int = 1) -> void:
 		# godot-18: the part inside the chunk (clip_polyline_with_polygon, used before, returns the part outside)
 		var parts: Array = [line] if _bounds.is_empty() else Geometry2D.intersect_polyline_with_polygon(line, _bounds)
 		for part in parts:
-			if part.size() >= 2:
-				node.draw_polyline(part, Color.WHITE, 2.0 * float(road.get("half_width_m", 1.5)))
+			var width := 2.0 * float(road.get("half_width_m", 1.5))
+			if part.size() == 2:
+				if not straight.has(width):
+					straight[width] = PackedVector2Array()
+				straight[width].append_array(part)
+			elif part.size() > 2:
+				node.draw_polyline(part, Color.WHITE, width)
+	for width in straight:
+		node.draw_multiline(straight[width], Color.WHITE, width)
 
 
 func _draw_puddles(node: Node2D, z: int = 1) -> void:
