@@ -13,7 +13,7 @@ const SPEED_M_S := 2.5  # indoor walk; Shift twice that (the street's walk is 4 
 const TURN_RAD_S := 2.6  # physics.py STEER_RATE: the same tank steering as outside
 const EXIT_REACH_M := 0.9  # this close to the front door's middle: E goes out
 const FIGURE_M := 0.32  # the drawn person (the street's 0.45 m figure, a little slimmer than its shadow reach)
-const SPAWN_IN_M := 0.6  # entering, the walker stands this far inside the front door
+const SPAWN_IN_M := 0.45  # entering, the walker stands this far inside the front door (interior.py STEP_IN_M: clear floor)
 
 var language := "en"
 var is_home := false  # state home_door.is_home: no "H: make this home" hint

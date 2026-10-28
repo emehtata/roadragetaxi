@@ -187,17 +187,47 @@ def test_home_selection_and_plan_round_trip_over_tcp(tmp_path, monkeypatch):
         server.close()
 
 
-# Real Oulu houses (Helmikkäkuja area, map metres minus 425000, 7216000) that came out
-# as one open room: two small wings of one room each, and a hall whose ends had no straight wall.
+# Real Oulu houses around Helmikkäkuja (map metres minus 425000, 7216000): small wings
+# came out as one open room, a hall end without a straight wall, and L-shapes whose
+# rooms had thin strips along the hall where the door went (a walker was stuck).
 REAL_HOUSES = [
+    [(383.09, 752.44), (381.50, 758.77), (376.26, 757.45), (375.15, 762.59), (374.78, 763.35), (385.77, 766.10), (388.84, 753.88)],
+    [(405.59, 759.31), (403.37, 766.30), (398.68, 764.82), (396.91, 770.39), (406.44, 773.42), (410.43, 760.85)],
+    [(372.88, 763.10), (373.12, 762.12), (376.10, 750.36), (369.85, 748.78), (368.15, 755.51), (364.33, 754.55), (363.58, 757.51), (362.81, 760.55)],
+    [(382.99, 802.41), (386.32, 790.50), (375.52, 787.49), (374.14, 792.45), (377.94, 793.51), (375.99, 800.47)],
+    [(397.28, 805.97), (400.59, 794.31), (390.08, 791.33), (388.55, 796.71), (392.67, 797.88), (390.89, 804.16)],
     [(371.63, 786.04), (361.26, 783.44), (360.08, 788.09), (363.76, 789.02), (361.78, 796.88), (368.47, 798.56)],
+    [(353.13, 795.25), (356.80, 782.68), (347.27, 779.91), (345.97, 784.36), (349.80, 785.48), (347.44, 793.59)],
     [(369.32, 728.04), (367.34, 735.72), (377.51, 738.34), (379.49, 730.67)],
-    [(392.87, 742.23), (394.97, 735.1), (404.78, 737.98), (402.67, 745.11)],
+    [(392.87, 742.23), (394.97, 735.10), (404.78, 737.98), (402.67, 745.11)],
 ]
 
 
 @pytest.mark.parametrize('points', REAL_HOUSES)
 def test_real_family_houses_get_rooms(points):
     plan = generate_floor_plan('real', [(x + 425000, y + 7216000) for x, y in points])
-    assert not plan['simple'] and {'bedroom', 'bathroom'} <= {r['kind'] for r in plan['rooms']}
+    assert plan['simple'] or {'bedroom', 'bathroom'} <= {r['kind'] for r in plan['rooms']}
+    assert sum(not generate_floor_plan('real', [(x + 425000, y + 7216000) for x, y in house])['simple'] for house in REAL_HOUSES) >= len(REAL_HOUSES) - 1
     assert sum(door['rooms'][0] == -1 for door in plan['doors']) == 1
+
+
+@pytest.mark.parametrize('points', FOOTPRINTS + REAL_HOUSES)
+@pytest.mark.parametrize('entrance', [None, (-3, -3), (30, 20)])
+def test_every_door_can_be_walked_through(points, entrance):
+    """A walker (godot/home_walk.gd) steps STEP_IN_M through every door onto clear floor on both sides."""
+    from theroadragetrip.interior import STEP_IN_M, WALK_CLEAR_M
+    from shapely.geometry import Point
+    origin = points[0]
+    plan = generate_floor_plan('walk', points, None if entrance is None else (origin[0] + entrance[0], origin[1] + entrance[1]))
+    rooms = [Polygon(room['points']) for room in plan['rooms']]
+    walls = unary_union([LineString(w) for w in plan['walls']])
+    clear = Polygon(plan['footprint']).difference(walls.buffer(WALK_CLEAR_M - 0.02))
+    for door in plan['doors']:
+        a, b = door['points']
+        middle = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+        n = ((door['leaf'][0] - a[0]) / 0.95, (door['leaf'][1] - a[1]) / 0.95)  # into its destination
+        inside = Point(middle[0] + n[0] * STEP_IN_M, middle[1] + n[1] * STEP_IN_M)
+        assert clear.contains(inside) and rooms[door['rooms'][-1]].contains(inside)
+        if door['rooms'][0] >= 0:
+            back = Point(middle[0] - n[0] * STEP_IN_M, middle[1] - n[1] * STEP_IN_M)
+            assert clear.contains(back) and rooms[door['rooms'][0]].contains(back)

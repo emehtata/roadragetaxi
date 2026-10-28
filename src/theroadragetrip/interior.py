@@ -11,8 +11,10 @@ from shapely.affinity import rotate, translate
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import unary_union
 
-GENERATOR_VERSION = 2  # 2: small wings split in two; a front door into a wing room when the hall ends cannot hold one
+GENERATOR_VERSION = 3  # 3: doors only where a person fits through (WALK_CLEAR_M); 2: small wings split in two; a front door into a wing room when the hall ends cannot hold one
 DOOR_WIDTH = 0.95
+WALK_CLEAR_M = 0.35  # a walker's reach from a wall's line: godot/home_walk.gd RADIUS_M + WALL_HALF_M, with a margin
+STEP_IN_M = 0.45  # a door is usable if this far through it, on each side, is clear floor (home_walk.gd SPAWN_IN_M)
 
 
 def footprint(points) -> Polygon | None:
@@ -39,19 +41,44 @@ def _lines(geometry):
     return [line for part in getattr(geometry, "geoms", ()) for line in _lines(part)]
 
 
-def _door(boundary, rooms, target=None):
-    # Only a straight wall segment can hold a door and its two jambs.
+def _door(boundary, rooms, target=None, sides=()):
+    """A door on a straight stretch of `boundary` (its two jambs fit), toward
+    `target` or on the longest stretch; with `sides` (the room polygons it
+    joins, the inside first), only where a walker can step STEP_IN_M through
+    on every given side - a room's thin strip along the hall holds no door."""
     segments = [LineString([a, b]) for line in _lines(boundary)
                 for a, b in zip(line.coords, list(line.coords)[1:])
                 if math.dist(a, b) >= DOOR_WIDTH + 0.4]
-    if not segments:
-        return None
-    line = min(segments, key=lambda s: s.distance(target)) if target is not None else max(segments, key=lambda s: s.length)
-    middle = line.length / 2
     if target is not None:
-        middle = min(line.length - DOOR_WIDTH / 2 - 0.2, max(DOOR_WIDTH / 2 + 0.2, line.project(target)))
-    a, b = line.interpolate(middle - DOOR_WIDTH / 2), line.interpolate(middle + DOOR_WIDTH / 2)
-    return {"points": [list(a.coords[0]), list(b.coords[0])], "rooms": rooms}
+        segments.sort(key=lambda s: s.distance(target))
+    else:
+        segments.sort(key=lambda s: -s.length)
+    clear = [side.buffer(-WALK_CLEAR_M) for side in sides]
+    low, high = DOOR_WIDTH / 2 + 0.2, None
+    for line in segments:
+        high = line.length - DOOR_WIDTH / 2 - 0.2
+        best = min(high, max(low, line.project(target))) if target is not None else line.length / 2
+        # The preferred spot first, then outward from it in 0.1 m steps.
+        spots = sorted({round(min(high, max(low, best + k * 0.1)), 3) for k in range(-200, 201)}, key=lambda m: abs(m - best))
+        for middle in spots:
+            a, b = line.interpolate(middle - DOOR_WIDTH / 2), line.interpolate(middle + DOOR_WIDTH / 2)
+            if _passable(a, b, clear):
+                return {"points": [list(a.coords[0]), list(b.coords[0])], "rooms": rooms}
+    return None
+
+
+def _passable(a, b, clear) -> bool:
+    """Whether a step STEP_IN_M through door a-b lands in clear floor on each side:
+    the first area on one side, the second (if any) on the other."""
+    if not clear:
+        return True
+    mx, my = (a.x + b.x) / 2, (a.y + b.y) / 2
+    nx, ny = -(b.y - a.y) / DOOR_WIDTH, (b.x - a.x) / DOOR_WIDTH
+    probes = [Point(mx + nx * STEP_IN_M, my + ny * STEP_IN_M), Point(mx - nx * STEP_IN_M, my - ny * STEP_IN_M)]
+    for one, other in (probes, probes[::-1]):
+        if clear[0].contains(one) and (len(clear) < 2 or clear[1].contains(other)):
+            return True
+    return False
 
 
 def _rooms(polygon, rng):
@@ -74,7 +101,7 @@ def _rooms(polygon, rng):
         if any(p.area < 6 or p.buffer(-0.65).is_empty for p in parts):
             parts = _polygons(side)
         for part in parts:
-            door = _door(part.boundary.intersection(hall.boundary), [0, len(rooms)])
+            door = _door(part.boundary.intersection(hall.boundary), [0, len(rooms)], sides=(part, hall))
             if part.area < 6 or part.interiors or part.buffer(-0.65).is_empty or door is None:
                 return [("studio", polygon)], []
             doors.append(door)
@@ -167,14 +194,14 @@ def _generate_cached(building_id, points, entrance, version):
     rooms, doors = _rooms(polygon, rng)
     target = rotate(translate(Point(entrance or origin), -origin[0], -origin[1]), -angle, origin=(0, 0))
     exterior = rooms[0][1].boundary.intersection(polygon.boundary)
-    door = _door(exterior, [-1, 0], target)
+    door = _door(exterior, [-1, 0], target, sides=(rooms[0][1],))
     if door is None and len(rooms) > 1:  # slanted or short hall ends: into the outer room nearest the entrance
-        options = [_door(room.boundary.intersection(polygon.boundary), [-1, i], target) for i, (_, room) in enumerate(rooms) if i > 0]
+        options = [_door(room.boundary.intersection(polygon.boundary), [-1, i], target, sides=(room,)) for i, (_, room) in enumerate(rooms) if i > 0]
         options = [d for d in options if d is not None]
         door = min(options, key=lambda d: LineString(d["points"]).distance(target)) if options else None
     if door is None and len(rooms) > 1:
         rooms, doors = [("studio", polygon)], []
-        door = _door(polygon.boundary, [-1, 0], target)
+        door = _door(polygon.boundary, [-1, 0], target, sides=(polygon,))
     if door is not None:
         doors.insert(0, door)
     walls = unary_union([p.boundary for _, p in rooms])
