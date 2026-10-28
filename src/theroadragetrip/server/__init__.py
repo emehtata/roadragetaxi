@@ -63,6 +63,7 @@ SOCCER_SNOW_WEIGHT = 0.05  # a winter (snow) weight under this: the pitches are 
 # Nominal camera fallback for headless runs and clients without view reports.
 # Godot supplies its actual world-space bounds for dynamic interest/culling.
 _DEFAULT_PX_PER_M = 9.0
+LIVE_FEED_PER_TICK = 200  # MQTT messages taken per tick; a few stations send well under this
 
 
 def _utc_now() -> datetime:
@@ -464,6 +465,10 @@ class SimulationServer:
                                        game_time_to_utc_hour(fmi_moment) - hour)
                 if self._fallback_weather is not None:
                     observed = self._fallback_weather[1]
+        road_weather = getattr(self, "road_weather", None)
+        live = road_weather.observation() if road_weather is not None else None
+        if live is not None:  # the nearest road weather station, now: fresher than FMI's hour
+            observed = live
         source = observed.source if observed is not None else "generated"
         if source in ("observed", "forecast") and source != getattr(weather, "weather_source", None):
             logger.info("FMI weather now %s: %s", f"{fmi_moment:%d.%m. %H:%M}", source)
@@ -609,13 +614,21 @@ class SimulationServer:
         if not (self._live_clock and self.world.live_roadworks is not None):
             return None
         try:
-            from ..digitraffic_mqtt import LiveFeed
-            feed = LiveFeed(["weather-v2/status", "maintenance-v2/status"])  # phase 3 adds the data topics
+            from ..digitraffic_mqtt import STATUS_TOPICS, LiveFeed, RoadWeather
+            feed = LiveFeed(STATUS_TOPICS)  # road weather adds its nearest stations
         except ImportError:
             logger.warning("Live Digitraffic data needs paho-mqtt; staying with the REST data")
             return None
+        service = self.world.live_roadworks.service
+        self.road_weather = RoadWeather(feed, service.client, service.to_lonlat)
         feed.start()
         return feed
+
+    def _live_feed_diagnostics(self) -> Optional[dict]:
+        feed = getattr(self, "live_feed", None)
+        if feed is None:
+            return None
+        return {**feed.diagnostics(), "road_weather": self.road_weather.diagnostics()}
 
     def _live_roadworks(self, args, config):
         """Settings -> realtime road data (--road-digitraffic): live roadworks
@@ -793,7 +806,7 @@ class SimulationServer:
                 self._on_foot, scenery_objects=w.scenery_objects, speed_bumps=w.speed_bumps, railways=w.railways,
                 railings=w.railings, npcs=w.npcs, npc_drivers=w.npc_drivers, npc_manager=w.npc_manager,
                 taxi_brawls=getattr(w, "taxi_brawls", None), live_roadworks=getattr(w, "live_roadworks", None),
-                live_feed=getattr(self, "live_feed", None),
+                live_feed=self._live_feed_diagnostics(),
             )
             logger.info("Debug snapshot %s", path)
         except Exception:  # a debugging aid: never take the game down
@@ -883,9 +896,15 @@ class SimulationServer:
             self.calendar.advance(dt * time_scale)
         if self.calendar.date != previous_date:
             self.world.weather.season = self.calendar.season  # the thermal season follows the calendar
+        road_weather = getattr(self, "road_weather", None)
+        if road_weather is not None:  # live MQTT readings, a bounded batch per tick
+            road_weather.update(self.car.x, self.car.y, self.live_feed.drain(LIVE_FEED_PER_TICK))
         observed = self._update_outside()
         self.world.weather.update(dt * time_scale, dt, outside_temperature_c=self.world.weather.outside_temperature_c,
                                   observed=observed)
+        wet_road = road_weather.road_wetness() if road_weather is not None else None
+        if wet_road is not None:  # the station sees the road itself: dry or wet, that is the road
+            self.world.weather.wetness = wet_road
         self._update_sports()
         if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once
             self.audio.play_group("weather.thunder", 0.8)

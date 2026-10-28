@@ -304,7 +304,7 @@ def _write_debug_snapshot(
                        for z in live_roadworks.zones],
         },
         # Digitraffic MQTT (digitraffic_mqtt.py): connection, message counts and the feeds' own ages.
-        "live_feed": None if live_feed is None else live_feed.diagnostics(),
+        "live_feed": live_feed,
         # Taxi drivers' quarrels (taxi_brawls.py): the active ones and the last outcomes.
         "brawls": {
             "active": taxi_brawls.to_dicts(traffic_mgr.sim_time) if taxi_brawls is not None else [],

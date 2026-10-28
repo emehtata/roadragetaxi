@@ -1,7 +1,8 @@
 # Live clock and Digitraffic MQTT
 
-Status: **phases 1 (live clock) and 2 (MQTT client) implemented
-(2026-10-28)**. Phase 3 (the first consumers) is not started.
+Status: **phases 1 (live clock), 2 (MQTT client) and 3a (live road weather)
+implemented (2026-10-28)**. Phase 3b (ploughs from `maintenance-v2`) is not
+started.
 
 Digitraffic's MQTT feed (`wss://tie.digitraffic.fi:443/mqtt`) is live "now"
 data. It only matches the game when game time is the computer's clock, so it
@@ -57,3 +58,40 @@ Checked on the live broker on 2026-10-28: connected, both status feeds
 arrived (ages 11 s and 43 s), and the calendar matched the system clock at
 1x. In a 40 s probe, `maintenance-v2/routes/state-roads` and one weather
 station sent nothing, so consumers must not expect steady traffic.
+
+## Phase 3a: live road weather
+
+`digitraffic_mqtt.RoadWeather`, fed by the server's tick
+(`LIVE_FEED_PER_TICK` = 200 messages at most).
+
+Why phase 2 saw no weather data: it subscribed to status topics only, and
+station 1001 (the first probe's choice) is silent; its `dataUpdatedTime`
+(2025-10) is metadata, not data, so the catalogue cannot tell live stations
+from dead ones. The whole `weather-v2/#` stream is about 120 messages/s.
+
+- The station catalogue (`/api/weather/v1/stations`, REST, cached a day) is
+  read on a thread. The 6 nearest `GATHERING` stations to the taxi are
+  subscribed (`weather-v2/<id>/#`), picked again after 2 km.
+- A station sends its sensors only every few minutes, staggered, and the
+  broker retains nothing: in a 150 s probe 3 of 6 stations sent nothing.
+  So newly picked stations are seeded from `/api/weather/v1/stations/<id>/data`
+  (REST, on a thread). Readings merge by time: an older value never replaces
+  a newer one.
+- Each sensor is taken from the nearest station with a reading under 30 min
+  old, so silent stations are skipped.
+- `observation()` is a `weather_history.HourlyWeather` (source `observed`)
+  with air temperature (sensor 1), wind (16, 18) and precipitation as a WMO
+  wawa code: the PWD form (25), else the rain class (22). It replaces FMI's
+  hourly observation in `_update_outside` while fresh.
+- Road state (27) sets the road wetness: dry 0, moist 0.4, wet, salty or
+  slush 1. Frost, snow, ice and a sensor fault leave the game's own wetness.
+- F12 snapshot `live_feed.road_weather`: stations, nearest, readings, the
+  observation and the road wetness.
+
+Checked live on 2026-10-28 (sample map, Oulu): within 30 s, 287 readings
+from the nearest stations; the game took 12.2 °C, dry, wind 2.4 m/s from
+197°, and the road went from the start's generated 0.99 wetness to the
+station's dry 0.0.
+
+Not yet used: road surface temperature, freezing point and frost/ice
+states (the game derives ice from air temperature and wetness).
