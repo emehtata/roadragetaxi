@@ -389,7 +389,7 @@ func light_at(at: Vector2) -> float:
 		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.intersects(around):
 			continue
 		var lights: Array = chunk._data.get("street_lights", [])
-		for i in chunk.street_lights.size():
+		for i in chunk.light_cells.get(Vector2i((at / chunk.LIGHT_CELL_M).floor()), []):
 			if chunk._broken.has(i):
 				continue
 			var reach := float(lights[i][3]) if i < lights.size() and lights[i].size() > 3 else 10.0

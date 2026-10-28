@@ -82,6 +82,8 @@ var _railings: Node2D
 var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
 var drivable_roads: Array = []  # [Rect2, key] per drivable road: the night tint counts them (main.gd)
 var street_lights := PackedVector2Array()  # positions, for reflectors and long beams
+var light_cells := {}  # Vector2i LIGHT_CELL_M cell -> [indices of the street lights reaching into it] (MapLayer.light_at)
+const LIGHT_CELL_M := 20.0
 var _pools := Node2D.new()
 var _floods := Node2D.new()  # floodlit sports places (MapLayer's flood group)
 var _heads := Node2D.new()
@@ -116,6 +118,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_roads_by_z = prepared["roads_by_z"]
 	_snow_cells = prepared["snow_cells"]
 	street_lights = prepared["street_lights"]
+	light_cells = prepared["light_cells"]
 	if not message.get("waters", []).is_empty() or not message.get("water_lines", []).is_empty():
 		# Water alone carries the wave shader: nothing else drawn here can pick it up.
 		var water := _add_layer(0, _draw_water)
@@ -276,8 +279,9 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 	var lights := PackedVector2Array()
 	for light in message.get("street_lights", []):
 		lights.append(MapMath.point(origin, light[0], light[1]))
+	var cells := light_cells_for(lights, message.get("street_lights", []))
 	message["prepared"] = {"origin": origin, "bounds_rect": bounds_rect, "bounds": bounds, "drivable_roads": drivable,
-		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "puddle_spots": puddles,
+		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "light_cells": cells, "puddle_spots": puddles,
 		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points,
 		# Rasterised here, on the parse worker: on the main thread it was a 60-115 ms hitch per forest chunk.
 		"forest_mask": forest_mask(message, bounds_rect, origin) if forest_canopy and message.get("landuse", []).any(_is_forest) else null}
@@ -402,6 +406,23 @@ func _add_layer(z: int, draw: Callable, node: Node2D = null) -> Node2D:
 		node.draw.connect(draw.bind(node))
 	add_child(node)
 	return node
+
+
+## Each light in every cell its pool reaches (a square around its reach,
+## street light [x, y, direction, reach m]; 10 m without one): a point's
+## lights are its own cell's, not the whole chunk's.
+static func light_cells_for(lights: PackedVector2Array, data: Array) -> Dictionary:
+	var cells := {}
+	for i in lights.size():
+		var reach := float(data[i][3]) if i < data.size() and data[i].size() > 3 else 10.0
+		var low := Vector2i(((lights[i] - Vector2(reach, reach)) / LIGHT_CELL_M).floor())
+		var high := Vector2i(((lights[i] + Vector2(reach, reach)) / LIGHT_CELL_M).floor())
+		for x in range(low.x, high.x + 1):
+			for y in range(low.y, high.y + 1):
+				if not cells.has(Vector2i(x, y)):
+					cells[Vector2i(x, y)] = []
+				cells[Vector2i(x, y)].append(i)
+	return cells
 
 
 ## Weather: overlays and puddles follow wetness 0..1.

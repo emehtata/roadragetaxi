@@ -95,6 +95,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_performance_paths()
 	test_startup_progress()
 	test_holiday_events()
+	test_light_at_cells()
 	test_date_picker()
 	test_settings_help()
 	test_credits()
@@ -293,6 +294,36 @@ func test_roof_snow() -> void:
 	check(B3._shared.material.get_shader_parameter("snow_cover") == 0.0, "roof snow: summer restores original roofs")
 	map.free()
 	MapChunk.buildings_3d = false
+
+
+## MapLayer.light_at reads each point's light cell, not the whole chunk:
+## the same light as summing every street light, at random points.
+func test_light_at_cells() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var lights: Array = []
+	for i in 300:
+		lights.append([rng.randf_range(0, 500), rng.randf_range(0, 500), 0.0, rng.randf_range(4.0, 35.0)])
+	lights.append([250.0, 250.0, 0.0])  # no reach given: 10 m
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.add_chunk({"chunk_id": "lit", "bounds": [0, 0, 500, 500], "street_lights": lights})
+	var chunk = map._chunks["lit"]
+	chunk._broken = PackedInt32Array([3])
+	var same := true
+	var lit := 0
+	for k in 2000:
+		var at: Vector2 = Vector2(rng.randf_range(-20, 520), rng.randf_range(-520, 20))  # within 20 m of the chunk: it is searched if k > 0 else chunk.street_lights[lights.size() - 1]
+		var total := 0.0
+		for i in chunk.street_lights.size():
+			var reach := float(lights[i][3]) if lights[i].size() > 3 else 10.0
+			var d: float = chunk.street_lights[i].distance_to(at)
+			if i != 3 and d < reach:
+				total += (1.0 - d / reach) * (1.0 - d / reach)
+		same = same and map.light_at(at) == minf(total, 1.5)
+		lit += int(total > 0.0)
+	check(same and lit > 500, "light_at by light cells: the same light as every street light summed (%d of 2000 points lit)" % lit)
+	map.free()
 
 
 func test_holiday_events() -> void:
