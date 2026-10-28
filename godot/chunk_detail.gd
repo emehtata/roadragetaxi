@@ -50,7 +50,12 @@ static func draw_areas(chunk, node: Node2D, key: String, canopy_margin := 0.0) -
 			match int(area[1]):
 				1: color = chunk.seasonal_color(color, chunk._season)
 				2: color = RINK_ICE if chunk._season[0] >= FIELDS_FROZEN_WINTER_WEIGHT else chunk.seasonal_color(color, chunk._season)
-			if canopy >= 0:  # forest.gdshader: UV.x 1 + kind * 2 + winter, UV.y autumn
+			if area.size() > 4 and int(area[4]) > 0 and canopy_margin == 0.0:
+				var uv := PackedVector2Array()
+				uv.resize(polygon.size())
+				uv.fill(Vector2(-float(area[4]), 0.0))
+				node.draw_polygon(polygon, PackedColorArray([color]), uv)
+			elif canopy >= 0:  # forest.gdshader: UV.x 1 + kind * 2 + winter, UV.y autumn
 				var uv := PackedVector2Array()
 				uv.resize(polygon.size())
 				uv.fill(Vector2(1.0 + canopy * 2.0 + float(chunk._season[0]), float(chunk._season[3])))

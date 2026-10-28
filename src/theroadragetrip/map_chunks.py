@@ -430,7 +430,7 @@ class ChunkIndex:
         from shapely.geometry import LineString, Polygon
 
         from .activities.plugins.soccer import is_soccer_pitch
-        from .map_style import FLOODLIT_KINDS, FROZEN_IN_WINTER_KINDS, SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS, surface_color
+        from .map_style import FLOODLIT_KINDS, FROZEN_IN_WINTER_KINDS, SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS, surface_color, surface_texture
 
         # Biggest first, so nested areas draw on top (a pitch inside its
         # sports centre, a park inside a residential area). A container's
@@ -458,11 +458,15 @@ class ChunkIndex:
                 if kind in ("biergarten", "grave_yard", "cemetery", "beach", "forest", "wood",
                             "farmland", "meadow", "grassland", "wetland", "scrub"):
                     area.append(kind)
+                elif kind in ("parking", "pedestrian_area", "fuel"):
+                    texture = surface_texture(getattr(scenery, "surface", None))
+                    if texture:
+                        area.extend(["", texture])
                 self._chunk(cell)["landuse"].append(area)
                 if kind in FLOODLIT_KINDS:
                     self._chunk(cell)["floodlit"].append(ring)
                 if island:
-                    self._chunk(cell)["traffic_islands"].append([static_world._rgb(color), seasonal, ring])
+                    self._chunk(cell)["traffic_islands"].append(list(area))
             if kind.startswith("attraction_") and scenery.attraction_path:
                 self._add("attractions", scenery.points_m,
                           [kind.removeprefix("attraction_"), scenery.attraction_path])

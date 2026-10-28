@@ -614,3 +614,14 @@ def test_surface_tag_does_not_override_vegetation_colours():
     park = Scenery([(10, 10), (90, 10), (90, 90), (10, 90)], 'park', surface='asphalt')
     world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[park])
     assert map_chunks.ChunkIndex(world).message('0_0')['landuse'][0][0] == list(SCENERY_COLORS['park'])
+
+
+def test_surface_detail_survives_area_clipping_and_kerbed_redraws():
+    from theroadragetrip.osm import Scenery
+    area = Scenery([(480,10),(520,10),(520,30),(480,30)], 'pedestrian_area', surface='sett', kerbed=True)
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[area])
+    index = map_chunks.ChunkIndex(world)
+    for cid in ('0_0','1_0'):
+        chunk = index.message(cid)
+        assert chunk['landuse'][0][3:] == ['',3]
+        assert chunk['traffic_islands'][0][3:] == ['',3]

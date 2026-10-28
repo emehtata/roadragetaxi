@@ -9,20 +9,20 @@ SURFACE_COLORS = {
     "asphalt": (70, 70, 70),
     "paved": (70, 70, 70),
     "chipseal": (90, 88, 82),
-    "concrete": (142, 142, 138),
-    "concrete:lanes": (142, 142, 138),
-    "concrete:plates": (142, 142, 138),
-    "paving_stones": (150, 137, 117),
-    "paving_stones:lanes": (150, 137, 117),
-    "sett": (145, 139, 129),
-    "cobblestone": (125, 120, 112),
-    "unhewn_cobblestone": (125, 120, 112),
+    "concrete": (166, 163, 154),
+    "concrete:lanes": (166, 163, 154),
+    "concrete:plates": (166, 163, 154),
+    "paving_stones": (157, 149, 136),
+    "paving_stones:lanes": (157, 149, 136),
+    "sett": (126, 129, 126),
+    "cobblestone": (112, 117, 111),
+    "unhewn_cobblestone": (112, 117, 111),
     "grass_paver": (105, 128, 90),
     "grass_paver:lanes": (105, 128, 90),
     "metal": (115, 126, 132),
-    "compacted": (125, 112, 92),
-    "fine_gravel": (145, 132, 108),
-    "gravel": (150, 135, 105),
+    "compacted": (132, 121, 101),
+    "fine_gravel": (153, 146, 129),
+    "gravel": (137, 129, 112),
     "pebblestone": (155, 145, 125),
     "rock": (135, 131, 122),
     "unpaved": (155, 140, 108),
@@ -38,6 +38,24 @@ SURFACE_COLORS = {
     "snow": (220, 229, 232),
     "ice": (160, 200, 225),
 }
+
+# Visual pattern families used by Godot's surface.gdshader (0: flat/unknown).
+SURFACE_TEXTURES = {
+    **dict.fromkeys(('asphalt', 'chipseal'), 1),
+    **dict.fromkeys(('paving_stones', 'paving_stones:lanes'), 2),
+    'sett': 3,
+    **dict.fromkeys(('cobblestone', 'unhewn_cobblestone'), 4),
+    **dict.fromkeys(('gravel', 'fine_gravel', 'compacted', 'unpaved', 'pebblestone', 'dirt', 'earth',
+                     'ground', 'clay', 'mud', 'sand', 'woodchips', 'rock'), 5),
+    **dict.fromkeys(('concrete', 'concrete:plates', 'concrete:lanes'), 6),
+    'wood': 7,
+    **dict.fromkeys(('grass_paver', 'grass_paver:lanes'), 8),
+    'metal': 9,
+}
+
+
+def surface_texture(surface: Optional[str]) -> int:
+    return SURFACE_TEXTURES.get(str(surface or '').lower().split(';')[0].strip(), 0)
 
 
 def surface_color(surface: Optional[str]) -> Optional[Tuple[int, int, int]]:

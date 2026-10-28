@@ -17,15 +17,17 @@ def test_road_style_keeps_surface_and_highway_fallbacks():
     'metal', 'gravel', 'fine_gravel', 'compacted', 'pebblestone', 'rock', 'dirt', 'ground',
     'earth', 'clay', 'mud', 'sand', 'grass', 'wood', 'woodchips', 'snow', 'ice',
 ])
-def test_material_colours_survive_road_chunk_encoding(surface):
+@pytest.mark.parametrize('highway', ['residential', 'footway'])
+def test_material_colours_survive_road_chunk_encoding(surface, highway):
     from types import SimpleNamespace
     from theroadragetrip.map_chunks import ChunkIndex
     from theroadragetrip.protocol import decode
-    road = Way([(10, 10), (90, 10)], 'residential', 3, surface=surface)
+    road = Way([(10, 10), (90, 10)], highway, 3, surface=surface, is_drivable=highway != 'footway')
     world = SimpleNamespace(ways=[road], railways=[], waters=[], buildings=[])
     row = decode(ChunkIndex(world).encoded('0_0'))['roads'][0]
     assert row['color'] == list(map_style.SURFACE_COLORS[surface])
     assert tuple(row['color']) != map_style.SURFACE_COLORS['asphalt']
+    assert row.get('surface_texture', 0) == map_style.surface_texture(surface)
 
 
 def test_surface_variants_and_unknown_materials_keep_their_fallbacks():
@@ -38,3 +40,5 @@ def test_surface_variants_and_unknown_materials_keep_their_fallbacks():
     assert map_style.surface_color('concrete:plates') == map_style.surface_color('concrete')
     assert map_style.surface_color('paving_stones:lanes') == map_style.surface_color('paving_stones')
     assert map_style.surface_color('sett') != map_style.surface_color('paving_stones')
+    assert map_style.surface_texture(' Sett ; asphalt ') == 3
+    assert map_style.surface_texture('unknown_material') == map_style.surface_texture(None) == 0

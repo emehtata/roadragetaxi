@@ -175,7 +175,7 @@ def test_road_color_prefers_osm_surface_over_highway():
     sidewalk = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.2, is_drivable=False, surface="asphalt")
     cycleway = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="cycleway", half_width_m=1.5, is_drivable=False)
 
-    assert road_color_for_way(asphalt) == (142, 142, 138)
+    assert road_color_for_way(asphalt) == (166, 163, 154)
     # No recognized surface - falls back to the legacy per-highway-class
     # color (residential), not a flat generic grey.
     assert road_color_for_way(unknown) == LEGACY_HIGHWAY_COLORS["residential"]

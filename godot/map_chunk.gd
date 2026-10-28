@@ -44,6 +44,7 @@ const SHALLOW_WATER_M := 6.0  # the lighter band along a shore
 static var FOREST_MATERIAL := _forest_material()
 static var SHORE_MATERIAL := _shore_material()
 static var WATER_MATERIAL := _water_material()  # shared: one shader animates every lake
+static var SURFACE_MATERIAL := _surface_material()
 const SPRING_ICE_COLORS := [Color8(225, 236, 241), Color8(205, 224, 232), Color8(238, 243, 244)]
 const SPRING_ICE_EDGE := Color8(185, 207, 218)
 const SPRING_ICE_SPACING_M := 24.0
@@ -129,6 +130,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
+		landuse.material = SURFACE_MATERIAL
 		if prepared["forest_mask"] != null:
 			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse", CANOPY_MARGIN_M))
 			var material := FOREST_MATERIAL.duplicate() as ShaderMaterial
@@ -156,7 +158,9 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_rink_markings(self, node)))
 	for z in _roads_by_z:
 		var layer_z: int = z
-		_road_layers.append(_add_layer(z, func(node: Node2D): _draw_roads(layer_z, node)))
+		var roads := _add_layer(z, func(node: Node2D): _draw_roads(layer_z, node))
+		roads.material = SURFACE_MATERIAL
+		_road_layers.append(roads)
 		if z > 1:
 			var wet := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
 			var puddles := _add_layer(z, func(node: Node2D): _draw_puddles(node, layer_z))
@@ -174,7 +178,9 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	ground_tracks.name = "GroundTracks"
 	_px_layers.append(ground_tracks)
 	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails
-		_season_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands")))
+		var islands := _add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands"))
+		islands.material = SURFACE_MATERIAL
+		_season_layers.append(islands)
 	if not message.get("canopies", []).is_empty():
 		_add_layer(7, func(node: Node2D): Detail.draw_canopy_shadows(self, node))
 		var canopy_supports := _add_layer(7, _draw_canopy_supports)
@@ -872,6 +878,12 @@ func _draw_ice_floe(node: Node2D, floe: Dictionary) -> void:
 	node.draw_polyline(polygon, SPRING_ICE_EDGE, 0.18)
 
 
+static func _surface_material() -> ShaderMaterial:
+	var surface := ShaderMaterial.new()
+	surface.shader = preload("res://surface.gdshader")
+	return surface
+
+
 static func _water_material() -> ShaderMaterial:
 	var water := ShaderMaterial.new()
 	water.shader = preload("res://water.gdshader")
@@ -1033,7 +1045,8 @@ func _draw_roads(z: int, node: Node2D) -> void:
 		if z > 1:
 			strokes.polyline(points, Color(0.12, 0.12, 0.13), width + 0.6)  # bridge edge
 		var snowy: bool = _snow_cover > 0.0 and road.get("drivable", false) and int(road.get("layer", 0)) >= 0
-		strokes.polyline(points, color.lerp(Color8(230, 236, 240), _snow_cover) if snowy else color, width)
+		var family := float(road.get("surface_texture", 0))
+		strokes.polyline(points, color.lerp(Color8(230, 236, 240), _snow_cover) if snowy else color, width, Vector2(-family, _snow_cover if snowy else 0.0))
 		if snowy and not _plowed_cover.is_empty():
 			var snow_lines := {}
 			var segments: Dictionary = road["snow_segments"]
@@ -1045,7 +1058,7 @@ func _draw_roads(z: int, node: Node2D) -> void:
 					snow_lines[cover] = PackedVector2Array()
 				snow_lines[cover].append_array(segments[cell])
 			for cover in snow_lines:
-				strokes.multiline(snow_lines[cover], color.lerp(Color8(230, 236, 240), cover), width)
+				strokes.multiline(snow_lines[cover], color.lerp(Color8(230, 236, 240), cover), width, Vector2(-family, cover))
 	strokes.draw(node)
 
 
@@ -1685,8 +1698,9 @@ class Strokes:
 	var points := PackedVector2Array()
 	var colors := PackedColorArray()
 	var indices := PackedInt32Array()
+	var uvs := PackedVector2Array()
 
-	func polyline(line: PackedVector2Array, color: Color, width: float) -> void:
+	func polyline(line: PackedVector2Array, color: Color, width: float, uv := Vector2.ZERO) -> void:
 		var count := line.size()
 		if count < 2:
 			return
@@ -1729,6 +1743,7 @@ class Strokes:
 		for i in range(count - 1):  # the strip's triangles
 			var k := base + i * 2
 			indices.append_array([k, k + 1, k + 2, k + 1, k + 2, k + 3])
+		_append_uv(base, uv)
 
 	## Godot's compute_polyline_edge_offset_clamped: the joint's bisector, its miter at most 3x.
 	static func edge_offset(direction: Vector2, previous: Vector2) -> Vector2:
@@ -1744,13 +1759,14 @@ class Strokes:
 		return bisector * length
 
 	## draw_multiline: a quad per segment.
-	func multiline(segments: PackedVector2Array, color: Color, width: float) -> void:
+	func multiline(segments: PackedVector2Array, color: Color, width: float, uv := Vector2.ZERO) -> void:
 		for i in range(0, segments.size() - 1, 2):
 			var t := (segments[i] - segments[i + 1]).orthogonal().normalized() * width * 0.5
 			var k := points.size()
 			points.append_array([segments[i] + t, segments[i] - t, segments[i + 1] - t, segments[i + 1] + t])
 			colors.append_array([color, color, color, color])
 			indices.append_array([k, k + 1, k + 2, k, k + 2, k + 3])
+			_append_uv(k, uv)
 
 	## draw_colored_polygon: the same triangulation; nothing if it fails.
 	## `at` moves the outline after triangulating it (small shapes keep their edges near zero).
@@ -1761,7 +1777,15 @@ class Strokes:
 		for point in outline:
 			points.append(point + at)
 			colors.append(color)
+		_append_uv(k, Vector2.ZERO)
+
+	func _append_uv(start: int, value: Vector2) -> void:
+		if uvs.is_empty() and value == Vector2.ZERO:
+			return
+		uvs.resize(points.size())
+		for i in range(start, points.size()):
+			uvs[i] = value
 
 	func draw(node: CanvasItem) -> void:
 		if not indices.is_empty():
-			RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), indices, points, colors)
+			RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), indices, points, colors, uvs)
