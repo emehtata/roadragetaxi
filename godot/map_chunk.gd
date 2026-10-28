@@ -1022,14 +1022,15 @@ func redraw_road_snow() -> void:
 
 
 func _draw_roads(z: int, node: Node2D) -> void:
+	var strokes := Strokes.new()  # rrt-019.1: the layer's roads in one draw call, in order
 	for road in _roads_by_z[z]:
 		var width: float = max(0.6, 2.0 * float(road.get("half_width_m", 1.5)))
 		var color: Color = Detail._rgb(road["color"]) if road.has("color") else (Color(0.33, 0.33, 0.35) if road.get("drivable", false) else Color(0.55, 0.52, 0.45))
 		var points := _points(road["points"])
 		if z > 1:
-			node.draw_polyline(points, Color(0.12, 0.12, 0.13), width + 0.6)  # bridge edge
+			strokes.polyline(points, Color(0.12, 0.12, 0.13), width + 0.6)  # bridge edge
 		var snowy: bool = _snow_cover > 0.0 and road.get("drivable", false) and int(road.get("layer", 0)) >= 0
-		node.draw_polyline(points, color.lerp(Color8(230, 236, 240), _snow_cover) if snowy else color, width)
+		strokes.polyline(points, color.lerp(Color8(230, 236, 240), _snow_cover) if snowy else color, width)
 		if snowy and not _plowed_cover.is_empty():
 			var snow_lines := {}
 			var segments: Dictionary = road["snow_segments"]
@@ -1041,7 +1042,8 @@ func _draw_roads(z: int, node: Node2D) -> void:
 					snow_lines[cover] = PackedVector2Array()
 				snow_lines[cover].append_array(segments[cell])
 			for cover in snow_lines:
-				node.draw_multiline(snow_lines[cover], color.lerp(Color8(230, 236, 240), cover), width)
+				strokes.multiline(snow_lines[cover], color.lerp(Color8(230, 236, 240), cover), width)
+	strokes.draw(node)
 
 
 func _draw_road_markings(z: int, node: Node2D) -> void:
@@ -1059,6 +1061,7 @@ func _draw_road_markings(z: int, node: Node2D) -> void:
 ## White strokes over drivable roads, tinted by the node's modulate.
 func _draw_wet(node: Node2D, z: int = 1) -> void:
 	var straight := {}  # same-width two-point strokes share one draw command
+	var curved := Strokes.new()
 	for road in _data.get("roads", []):
 		if not road.get("drivable", false) or road_z(int(road.get("layer", 0))) != z:
 			continue
@@ -1072,7 +1075,8 @@ func _draw_wet(node: Node2D, z: int = 1) -> void:
 					straight[width] = PackedVector2Array()
 				straight[width].append_array(part)
 			elif part.size() > 2:
-				node.draw_polyline(part, Color.WHITE, width)
+				curved.polyline(part, Color.WHITE, width)
+	curved.draw(node)  # one draw call for every curved road (rrt-019.1); all strokes are white, so order doesn't matter
 	for width in straight:
 		node.draw_multiline(straight[width], Color.WHITE, width)
 
@@ -1655,3 +1659,84 @@ func _draw_attractions(node: Node2D) -> void:
 		for point in ride[1]:
 			points.append(MapMath.point(_origin, point[0], point[1]))
 		preload("res://attraction_draw.gd").draw_ride(node, str(ride[0]), points)
+
+
+## Wide lines gathered into one triangle array: CanvasItem.draw_polyline is
+## a draw call per line, which the Compatibility renderer doesn't batch
+## (rrt-019.1: ~700 calls for one chunk's roads). The same triangles as
+## Godot 4.7's canvas_item_add_polyline / add_line without antialiasing,
+## drawn in the order added.
+class Strokes:
+	var points := PackedVector2Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+
+	func polyline(line: PackedVector2Array, color: Color, width: float) -> void:
+		var count := line.size()
+		if count < 2:
+			return
+		var loop := line[0].is_equal_approx(line[count - 1])
+		var first := Vector2.ZERO
+		for i in range(1, count):
+			first = (line[i] - line[i - 1]).normalized()
+			if not first.is_zero_approx():
+				break
+		var last := Vector2.ZERO
+		for i in range(count - 1, 0, -1):
+			last = (line[i] - line[i - 1]).normalized()
+			if not last.is_zero_approx():
+				break
+		var base := points.size()
+		var previous := Vector2.ZERO
+		for i in count:
+			var direction := previous
+			if i < count - 1:
+				direction = (line[i + 1] - line[i]).normalized()
+				if direction.is_zero_approx():
+					direction = previous
+			if i == 0 and loop:
+				previous = last
+			elif i == count - 1 and loop:
+				previous = first
+			var offset: Vector2
+			if i == 0 and not loop:
+				offset = first.orthogonal()
+			elif i == count - 1 and not loop:
+				offset = last.orthogonal()
+			else:
+				offset = Strokes.edge_offset(direction, previous)
+			offset *= width * 0.5
+			points.append(line[i] + offset)
+			points.append(line[i] - offset)
+			colors.append(color)
+			colors.append(color)
+			previous = direction
+		for i in range(count - 1):  # the strip's triangles
+			var k := base + i * 2
+			indices.append_array([k, k + 1, k + 2, k + 1, k + 2, k + 3])
+
+	## Godot's compute_polyline_edge_offset_clamped: the joint's bisector, its miter at most 3x.
+	static func edge_offset(direction: Vector2, previous: Vector2) -> Vector2:
+		var bisector := (previous * direction.length() - direction * previous.length()).normalized()
+		var length := 1.0
+		var sine := sin(atan2(bisector.cross(previous), bisector.dot(previous)))
+		if not is_zero_approx(sine) and not direction.is_equal_approx(previous):
+			length = clampf(1.0 / sine, -3.0, 3.0)
+		else:
+			bisector = direction.orthogonal()
+		if bisector.is_zero_approx():
+			bisector = direction.orthogonal()
+		return bisector * length
+
+	## draw_multiline: a quad per segment.
+	func multiline(segments: PackedVector2Array, color: Color, width: float) -> void:
+		for i in range(0, segments.size() - 1, 2):
+			var t := (segments[i] - segments[i + 1]).orthogonal().normalized() * width * 0.5
+			var k := points.size()
+			points.append_array([segments[i] + t, segments[i] - t, segments[i + 1] - t, segments[i + 1] + t])
+			colors.append_array([color, color, color, color])
+			indices.append_array([k, k + 1, k + 2, k, k + 2, k + 3])
+
+	func draw(node: CanvasItem) -> void:
+		if not indices.is_empty():
+			RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), indices, points, colors)
