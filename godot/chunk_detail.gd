@@ -334,13 +334,15 @@ class RinkFrame:
 ## Parking spaces: asphalt bays with a light edge.
 static func draw_parking(chunk, node: Node2D) -> void:
 	var edges := PackedVector2Array()
+	var fills = chunk.get_script().Strokes.new()  # every space one draw call (rrt-019.1), then the edges another
 	for space in chunk._data.get("parking", []):
 		var polygon: PackedVector2Array = chunk._points(space)
 		if not _valid(polygon):
 			continue
-		node.draw_colored_polygon(polygon, Color8(72, 75, 74))
+		fills.polygon(polygon, Color8(72, 75, 74))
 		for i in polygon.size():
 			edges.append_array(PackedVector2Array([polygon[i], polygon[(i + 1) % polygon.size()]]))
+	fills.draw(node)
 	if not edges.is_empty():
 		node.draw_multiline(edges, Color8(125, 128, 124), _width(chunk, 0.12, 1.0))
 

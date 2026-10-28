@@ -1751,6 +1751,15 @@ class Strokes:
 			colors.append_array([color, color, color, color])
 			indices.append_array([k, k + 1, k + 2, k, k + 2, k + 3])
 
+	## draw_colored_polygon: the same triangulation; nothing if it fails.
+	func polygon(outline: PackedVector2Array, color: Color) -> void:
+		var k := points.size()
+		for i in Geometry2D.triangulate_polygon(outline):
+			indices.append(k + i)
+		points.append_array(outline)
+		for i in outline.size():
+			colors.append(color)
+
 	func draw(node: CanvasItem) -> void:
 		if not indices.is_empty():
 			RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), indices, points, colors)

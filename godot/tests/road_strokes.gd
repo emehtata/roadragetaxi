@@ -1,5 +1,5 @@
 ## Rendered regression: MapChunk.Strokes (one triangle array) against
-## draw_polyline / draw_multiline, line by line: the same pixels, give or take
+## draw_colored_polygon / draw_polyline / draw_multiline, line by line: the same pixels, give or take
 ## 1/255 of colour rounding. Needs a rendering display:
 ##   godot --path godot --display-driver x11 --rendering-driver opengl3 --script res://tests/road_strokes.gd
 extends SceneTree
@@ -12,6 +12,10 @@ const LINES := [  # points, colour, width: bends, a sharp turn (clamped miter), 
 	[[Vector2(170, 120), Vector2(220, 120), Vector2(220, 170), Vector2(170, 170), Vector2(170, 120)], Color(0.1, 0.3, 0.7), 4.0],
 	[[Vector2(0, 90), Vector2(320, 140)], Color(1, 1, 1, 0.4), 14.0],
 	[[Vector2(60, 0), Vector2(90, 240), Vector2(95, 100)], Color(1, 1, 1, 0.4), 7.0],
+]
+const POLYGONS := [  # draw_colored_polygon: a concave one and a translucent overlap
+	[[Vector2(200, 20), Vector2(300, 30), Vector2(260, 70), Vector2(300, 110), Vector2(210, 100)], Color(0.28, 0.29, 0.29)],
+	[[Vector2(230, 50), Vector2(290, 60), Vector2(250, 130)], Color(0.6, 0.62, 0.6, 0.5)],
 ]
 const SEGMENTS := [Vector2(10, 230), Vector2(150, 180), Vector2(160, 10), Vector2(300, 220)]
 
