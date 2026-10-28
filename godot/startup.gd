@@ -651,9 +651,11 @@ func _map_point_menu() -> void:
 
 ## The pin's municipality/village name from OSM Nominatim (one request per
 ## click, within its 1 request/s policy); offline, callback never fires.
+## The request lives in the menu: leaving it frees the request, so a late
+## answer never calls back into the freed labels.
 func _reverse_geocode(pin: Vector2, callback: Callable) -> void:
 	var request := HTTPRequest.new()
-	add_child(request)
+	_body.add_child(request)
 	request.request_completed.connect(func(result: int, code: int, _headers, body: PackedByteArray):
 		request.queue_free()
 		if result != HTTPRequest.RESULT_SUCCESS or code != 200:
