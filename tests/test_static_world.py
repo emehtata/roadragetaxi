@@ -24,3 +24,19 @@ def test_a_building_part_takes_its_colour_named_buildings_colour():
     valko = list(FINNISH_BUILDING_COLOR_NAMES["valko"])
     assert static_world.building_style(part)[4] == valko and static_world.building_style(white)[4] == valko
     assert static_world.building_style(elsewhere)[4] != valko
+
+
+def test_greenhouses_are_flagged_as_glass():
+    from types import SimpleNamespace
+
+    from theroadragetrip import static_world
+
+    def building(building_type):
+        return SimpleNamespace(points_m=[(0.0, 0.0), (30.0, 0.0), (30.0, 10.0), (0.0, 10.0)], name=None,
+                               building_type=building_type, height_m=4.0, bbox=(0.0, 0.0, 30.0, 10.0),
+                               center_m=(15.0, 5.0), texture_seed=0.5, entrances=(), levels=None, roof_shape=None,
+                               venue_type=None)
+
+    assert static_world.building_style(building("greenhouse"))[7:] == [2]
+    assert static_world.building_style(building("Glasshouse"))[7:] == [2]
+    assert static_world.building_style(building("barn"))[7:] == []

@@ -186,7 +186,13 @@ func _make_sprite(view: SubViewport, z: int) -> Sprite2D:
 	var sprite := Sprite2D.new()
 	sprite.texture = view.get_texture()
 	sprite.z_index = z
-	sprite.material = preload("res://emissive.tres")  # unshaded: the 3D view is lit already (set_light), not again
+	# Unshaded: the 3D view is lit already (set_light), not again. Premultiplied:
+	# see-through glass was blended over the view's clear background once
+	# already; a plain alpha blend did it twice and darkened the ground under it.
+	var material := CanvasItemMaterial.new()
+	material.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	material.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+	sprite.material = material
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST  # one texel per screen pixel
 	add_child(sprite)
 	return sprite
@@ -262,6 +268,7 @@ func _process(_delta: float) -> void:
 ## light as `level` (Daylight.artificial) rises - no geometry is rebuilt.
 func set_light(level: float, ambient: Color) -> void:
 	_shared["material"].set_shader_parameter("ambient", ambient)
+	_shared["glass"].albedo_color = Color(ambient.r, ambient.g, ambient.b)
 	_shared["lit"].albedo_color = lit_color(level, ambient)
 	if (level > 0.01) != _lit_on:  # the lit meshes in or out (by day they'd only cost)
 		_lit_on = level > 0.01
@@ -312,7 +319,7 @@ func instance_count() -> int:
 ## lit windows' verts), "stats"}.
 static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array = []) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "lit": PackedVector3Array(),
-		"arena": PackedVector3Array(), "shadow": PackedVector3Array(),
+		"arena": PackedVector3Array(), "shadow": PackedVector3Array(), "glass": PackedVector3Array(), "glass_colors": PackedColorArray(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
 	for i in buildings.size():
 		var footprint: PackedVector2Array = buildings[i]
@@ -320,7 +327,7 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 			_building(out, footprint, styles[i] if i < styles.size() else [], origin)
 	for site in sites:
 		_crane(out, site, origin)
-	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size()) / 3
+	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size() + out["glass"].size()) / 3
 	return out
 
 
@@ -328,6 +335,8 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 ## windows, both in the one building view.
 static func meshes(arrays: Dictionary) -> Array:
 	var instances: Array = []
+	if not arrays.get("glass", PackedVector3Array()).is_empty():
+		instances.append(_instance(_mesh(arrays["glass"], arrays["glass_colors"]), _shared["glass"], LAYER_BUILDINGS))
 	if arrays["verts"].is_empty():
 		return instances
 	var mesh := _mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"])
@@ -355,7 +364,19 @@ static func meshes(arrays: Dictionary) -> Array:
 
 
 static var _shared := {"material": _make_material(), "lit": _make_material(true), "arena": _make_material(true),
-	"caster": _caster_material()}  # the shadows-only prisms: any opaque material casts (the unshaded shader didn't)
+	"caster": _caster_material(),  # the shadows-only prisms: any opaque material casts (the unshaded shader didn't)
+	"glass": _glass_material()}
+
+
+## Greenhouse glass: alpha-blended vertex colours, both faces (the far
+## panes show through the near ones), times the ambient light (set_light).
+static func _glass_material() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.vertex_color_use_as_albedo = true
+	return m
 
 
 static func _caster_material() -> StandardMaterial3D:
@@ -426,6 +447,9 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	var arena := style.size() > 7 and int(style[7]) == 1
 	var gabled := style.size() > 1 and int(style[1]) == 1
 	var outward_sign := -1.0 if B25.signed_area(footprint) > 0.0 else 1.0
+	if style.size() > 7 and int(style[7]) == 2:
+		_glasshouse(out, footprint, height, gabled, outward_sign)
+		return
 	var centre := Vector2.ZERO
 	for p in footprint:
 		centre += p
@@ -453,6 +477,38 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		heights.resize(footprint.size())
 		heights.fill(height)
 		_polygon(out, footprint, heights, roof_color)
+
+
+## A greenhouse (static_world.is_glasshouse): walls and roof of see-through
+## glass in their own mesh (_shared["glass"]), the ground and cars showing
+## through. No windows or doors, and no shadow prism: glass casts none.
+const GLASS := Color(0.86, 0.95, 0.90, 0.3)
+
+static func _glasshouse(out: Dictionary, footprint: PackedVector2Array, height: float, gabled: bool, outward_sign: float) -> void:
+	var glass := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array()}
+	for i in footprint.size():
+		var a := footprint[i]
+		var b := footprint[(i + 1) % footprint.size()]
+		var edge := b - a
+		if edge.length_squared() < 1e-6:
+			continue
+		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
+		var shade := 0.85 + 0.15 * clampf(normal.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+		_quad(glass, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), Color(GLASS.r * shade, GLASS.g * shade, GLASS.b * shade), to_3d(normal))
+	if gabled:
+		_gabled(glass, footprint, height, GLASS, GLASS)
+	else:
+		var heights := PackedFloat32Array()
+		heights.resize(footprint.size())
+		heights.fill(height)
+		_polygon(glass, footprint, heights, GLASS)
+	for i in glass["colors"].size():  # the shading above drops alpha: every pane the same glass
+		var color: Color = glass["colors"][i]
+		color.a = GLASS.a
+		glass["colors"][i] = color
+	out["glass"].append_array(glass["verts"])
+	out["glass_colors"].append_array(glass["colors"])
+	out["stats"]["buildings"] += 1
 
 
 ## A tower crane on a construction site (its fence ring) big enough for

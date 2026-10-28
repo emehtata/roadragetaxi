@@ -63,9 +63,12 @@ def road_style(way) -> dict:
     """The parts of a road's look that aren't geometry:
     colour (road_color_for_way), centre line (dashed, or solid on a two-way
     road of 3+ lanes), one-way chevrons, bridge."""
-    from .map_style import road_color_for_way, road_draw_rank
+    from .map_style import road_color_for_way, road_draw_rank, surface_texture
 
     style = {"color": _rgb(road_color_for_way(way)), "rank": road_draw_rank(way)}
+    texture = surface_texture(getattr(way, "surface", None))
+    if texture:
+        style["surface_texture"] = texture
     if way.is_drivable:
         lanes = max(1, int(getattr(way, "lanes", 1) or 1))
         forward, backward = getattr(way, "lanes_forward", None), getattr(way, "lanes_backward", None)
@@ -159,7 +162,8 @@ def building_style(building) -> list:
     category] as building_style.py picks them: colours named in the
     building's (Finnish) name, else the per-building texture pick; the OSM
     entrances ([x, y] each); its floor count (OSM levels, else height / 3);
-    category 1 house, 2 commercial, 0 other (the window rules)."""
+    category 1 house, 2 commercial, 0 other (the window rules); then
+    optionally 1 arena windows or 2 glasshouse."""
     from . import building_style as rb
 
     named = rb._building_colors_from_name(getattr(building, "colour_name", None) or getattr(building, "name", None))
@@ -176,7 +180,15 @@ def building_style(building) -> list:
             [[round(x, 1), round(y, 1)] for x, y in getattr(building, "entrances", ())],
             _rgb(wall), rb._building_window_story_count(building),
             1 if rb._building_is_house(building) else 2 if rb._building_is_commercial(building) else 0] + \
-        ([1] if getattr(building, "arena_windows", False) else [])
+        ([1] if getattr(building, "arena_windows", False) else [2] if is_glasshouse(building) else [])
+
+
+GLASSHOUSE_TYPES = {"greenhouse", "glasshouse"}
+
+
+def is_glasshouse(building) -> bool:
+    """building=greenhouse/glasshouse: drawn as see-through glass (buildings_3d.gd)."""
+    return str(getattr(building, "building_type", "") or "").casefold() in GLASSHOUSE_TYPES
 
 
 def inherit_part_colours(buildings) -> int:

@@ -2934,6 +2934,13 @@ func test_sun_and_shadows() -> void:
 	for v in crane["verts"]:
 		top = maxf(top, v.y)
 	check(crane["stats"].get("cranes", 0) == 1 and top >= 28.0 and not crane["shadow"].is_empty(), "a big construction site gets a tall, shadow-casting crane; a tiny one none")
+	var greenhouse: Dictionary = B3.build([PackedVector2Array([Vector2(0, 0), Vector2(30, 0), Vector2(30, 10), Vector2(0, 10)])],
+		[[[200, 200, 200], 1, 4.0, [], [200, 200, 200], 1, 0, 2]], Vector2.ZERO)
+	var glass_nodes: Array = B3.meshes(greenhouse)
+	check(greenhouse["verts"].is_empty() and greenhouse["shadow"].is_empty() and not greenhouse["glass"].is_empty()
+		and greenhouse["glass_colors"][0].a < 0.5 and glass_nodes.size() == 1
+		and glass_nodes[0].material_override.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA,
+		"a greenhouse is one see-through glass mesh: no opaque walls, windows or shadow")
 	var arrays: Dictionary = B3.build([PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10), Vector2(0, 10)])], [], Vector2.ZERO)
 	var instances: Array = B3.meshes(arrays)
 	var casters := instances.filter(func(node): return node.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
