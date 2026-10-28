@@ -373,9 +373,14 @@ func lamp_near(at: Vector2, radius: float) -> bool:
 	for chunk in _chunks.values():
 		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.intersects(around):
 			continue
-		for i in chunk.street_lights.size():
-			if chunk.street_lights[i].distance_squared_to(at) <= radius * radius and not chunk._broken.has(i):
-				return true
+		# Every light sits in its own cell's list (light_cells), so the cells under the circle's box cover it.
+		var low := Vector2i((around.position / chunk.LIGHT_CELL_M).floor())
+		var high := Vector2i((around.end / chunk.LIGHT_CELL_M).floor())
+		for x in range(low.x, high.x + 1):
+			for y in range(low.y, high.y + 1):
+				for i in chunk.light_cells.get(Vector2i(x, y), []):
+					if chunk.street_lights[i].distance_squared_to(at) <= radius * radius and not chunk._broken.has(i):
+						return true
 	return false
 
 

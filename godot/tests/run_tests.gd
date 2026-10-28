@@ -312,6 +312,8 @@ func test_light_at_cells() -> void:
 	chunk._broken = PackedInt32Array([3])
 	var same := true
 	var lit := 0
+	var same_near := true
+	var lamps := 0
 	for k in 2000:
 		var at: Vector2 = Vector2(rng.randf_range(-20, 520), rng.randf_range(-520, 20))  # within 20 m of the chunk: it is searched if k > 0 else chunk.street_lights[lights.size() - 1]
 		var total := 0.0
@@ -322,7 +324,14 @@ func test_light_at_cells() -> void:
 				total += (1.0 - d / reach) * (1.0 - d / reach)
 		same = same and map.light_at(at) == minf(total, 1.5)
 		lit += int(total > 0.0)
+		for radius in [22.0, 25.0]:
+			var near := false
+			for i in chunk.street_lights.size():
+				near = near or (i != 3 and chunk.street_lights[i].distance_to(at) <= radius)
+			same_near = same_near and map.lamp_near(at, radius) == near
+			lamps += int(near)
 	check(same and lit > 500, "light_at by light cells: the same light as every street light summed (%d of 2000 points lit)" % lit)
+	check(same_near and lamps > 500 and lamps < 4000, "lamp_near by light cells: the same as every street light searched (%d of 4000)" % lamps)
 	map.free()
 
 
