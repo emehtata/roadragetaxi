@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
+import urllib.parse
+import urllib.request
 import time
 import urllib.error
 from datetime import date, timedelta
@@ -100,7 +103,117 @@ def station_meta(station_id: int) -> dict:
             "carriageway": address.get("carriageway"), "side": address.get("side"),
             "direction1_municipality": properties.get("direction1Municipality"),
             "direction2_municipality": properties.get("direction2Municipality"),
-            "free_flow_speed_kmh": [properties.get("freeFlowSpeed1"), properties.get("freeFlowSpeed2")]}
+            "free_flow_speed_kmh": [properties.get("freeFlowSpeed1"), properties.get("freeFlowSpeed2")],
+            "bearing": properties.get("bearing")}  # direction 1's heading, degrees from north
+
+
+# -- phase 2: the OSM road each station measures ------------------------------
+
+MATCH_MAX_M = 40.0  # the station's road must pass this close
+HEADING_TOLERANCE_DEG = 50.0  # ... along the bearing (either way): API bearings were seen 45 deg off (vt22 Muhos)
+COMPETITOR_MARGIN_M = 10.0  # another parallel road this much farther than the match: ambiguous
+MAIN_ROADS = {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified"}  # no ramps (*_link)
+
+
+def osm_ways_near(lat: float, lon: float, cache: Path) -> list:
+    """Overpass highway ways within 150 m, with geometry; cached per position."""
+    from theroadragetrip.config import DEFAULT_OVERPASS_ENDPOINTS
+    from theroadragetrip.osm.overpass import OVERPASS_HEADERS
+
+    path = cache / f"osm_{lat:.5f}_{lon:.5f}.json"
+    if path.exists():
+        return json.loads(path.read_text())
+    query = f'[out:json][timeout:25];way(around:150,{lat},{lon})["highway"];out tags geom;'
+    for attempt in range(6):  # Overpass answers 429/502/504 when busy: the other endpoint, then later
+        endpoint = DEFAULT_OVERPASS_ENDPOINTS[attempt % len(DEFAULT_OVERPASS_ENDPOINTS)]
+        request = urllib.request.Request(endpoint, data=urllib.parse.urlencode({"data": query}).encode(), headers=OVERPASS_HEADERS)
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                ways = [e for e in json.loads(response.read())["elements"] if e["type"] == "way"]
+            break
+        except (urllib.error.URLError, TimeoutError, ValueError) as error:
+            print(f"Overpass {endpoint}: {error}; retrying", file=sys.stderr)
+            time.sleep(5.0 * (attempt + 1))
+    else:
+        raise RuntimeError(f"Overpass unavailable for {lat}, {lon}")
+    cache.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(ways))
+    time.sleep(2.0)  # Overpass is shared
+    return ways
+
+
+def _heading(dx: float, dy: float) -> float:
+    return math.degrees(math.atan2(dx, dy)) % 360.0  # from north, clockwise (x east, y north)
+
+
+def _angle(a: float, b: float) -> float:
+    return abs((a - b + 180.0) % 360.0 - 180.0)
+
+
+CHORD_M = 75.0  # the road's direction: its line within this distance of the station, end to end
+
+
+def _nearest(points: list, x: float, y: float):
+    """(distance m, the way's heading in point order near the station): the
+    chord of its points within CHORD_M (a single segment can be a kink on a
+    curve), else the nearest segment's."""
+    best = (math.inf, 0.0)
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        length2 = (bx - ax) ** 2 + (by - ay) ** 2
+        t = 0.0 if length2 == 0 else max(0.0, min(1.0, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / length2))
+        distance = math.hypot(ax + t * (bx - ax) - x, ay + t * (by - ay) - y)
+        if distance < best[0]:
+            best = (distance, _heading(bx - ax, by - ay))
+    near = [(px, py) for px, py in points if math.hypot(px - x, py - y) <= CHORD_M]
+    if len(near) >= 2 and math.dist(near[0], near[-1]) > 10.0:
+        best = (best[0], _heading(near[-1][0] - near[0][0], near[-1][1] - near[0][1]))
+    return best
+
+
+def _refs(tags: dict) -> set:
+    return {token.strip() for token in str(tags.get("ref", "")).replace(";", " ").split() if token.strip()}
+
+
+def match_station(meta: dict, ways: list, project) -> dict:
+    """The OSM way(s) of the station's road and which LAM direction each way's
+    forward and backward travel is; or a rejection with its reason. Divided
+    roads keep both carriageways."""
+    if meta.get("bearing") is None or meta.get("road_number") is None:
+        return {"status": "rejected", "reason": "no bearing or road number"}
+    x, y = project(meta["lon"], meta["lat"])
+    measured = []
+    for way in ways:
+        points = [project(node["lon"], node["lat"]) for node in way.get("geometry", [])]
+        tags = way.get("tags", {})
+        if len(points) >= 2 and tags.get("highway") in MAIN_ROADS:
+            distance, heading = _nearest(points, x, y)
+            measured.append((distance, heading, way, tags))
+    road = [m for m in measured if str(meta["road_number"]) in _refs(m[3]) and m[0] <= MATCH_MAX_M]
+    if not road:
+        return {"status": "rejected", "reason": f"no ref {meta['road_number']} road within {MATCH_MAX_M:.0f} m"}
+    road.sort(key=lambda m: (m[0], m[2]["id"]))
+    nearest = road[0]
+    if min(_angle(nearest[1], meta["bearing"]), _angle(nearest[1], meta["bearing"] + 180.0)) > HEADING_TOLERANCE_DEG:
+        return {"status": "rejected", "reason": f"road heading {nearest[1]:.0f} vs bearing {meta['bearing']}"}
+
+    def parallel(m):
+        return min(_angle(m[1], nearest[1]), _angle(m[1], nearest[1] + 180.0)) <= HEADING_TOLERANCE_DEG
+
+    competitors = [m for m in measured if m not in road and parallel(m) and m[0] <= nearest[0] + COMPETITOR_MARGIN_M]
+    if competitors:
+        other = competitors[0]
+        return {"status": "rejected", "reason": f"parallel {other[3].get('highway')} way {other[2]['id']} "
+                                                f"({other[3].get('name') or other[3].get('ref') or 'unnamed'}) at {other[0]:.0f} m"}
+    matched = []
+    for distance, heading, way, tags in (m for m in road if parallel(m)):
+        forward = "1" if _angle(heading, meta["bearing"]) < 90.0 else "2"
+        backward = "2" if forward == "1" else "1"
+        oneway = tags.get("oneway") in ("yes", "true", "1") or tags.get("highway") == "motorway"
+        if tags.get("oneway") == "-1":
+            forward, backward, oneway = None, backward, True
+        matched.append({"osm_id": way["id"], "highway": tags.get("highway"), "name": tags.get("name"), "ref": tags.get("ref"),
+                        "distance_m": round(distance, 1), "forward": forward, "backward": None if oneway else backward})
+    return {"status": "matched", "ways": matched}
 
 
 def mean_curve(days: list) -> list:
@@ -146,6 +259,9 @@ def mae(a: list, b: list) -> float:
 
 
 def build(cache: Path) -> dict:
+    from pyproj import Transformer
+
+    project = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True).transform  # the game's metres
     stations = []
     for station_id, setting in STATIONS:
         meta = station_meta(station_id)
@@ -159,7 +275,8 @@ def build(cache: Path) -> dict:
                 else:
                     days[day] = counts
         print(f"{meta['name']}: {len(days)} days, {len(missing)} missing", file=sys.stderr)
-        stations.append({**meta, "setting": setting, "missing_days": missing, "profile": profile(days)})
+        osm_match = match_station(meta, osm_ways_near(meta["lat"], meta["lon"], cache), project)
+        stations.append({**meta, "setting": setting, "missing_days": missing, "profile": profile(days), "osm_match": osm_match})
     complete = [s for s in stations if sum(s["profile"]["days_used"].values()) >= GROUP_MIN_DAYS]
     groups = {setting: {key: group_curve([s for s in complete if s["setting"] == setting], key)
                         for key in ("weekday_hourly", "weekend_hourly")} for setting in ("urban", "rural")}
@@ -183,6 +300,15 @@ def report(data: dict) -> None:
     for setting, curves in data["groups"].items():
         print(f"MAE vs estimate, {setting}: weekday {mae(curves['weekday_hourly'], WEEKDAY_HOURLY)}, "
               f"weekend {mae(curves['weekend_hourly'], WEEKEND_HOURLY)}")
+    print("\nOSM matches (review each on https://www.openstreetmap.org/way/<id>):")
+    for station in data["stations"]:
+        match = station["osm_match"]
+        if match["status"] == "matched":
+            ways = "; ".join(f"{w['osm_id']} {w['highway']} {w['name'] or ''} {w['distance_m']} m fwd={w['forward']} bwd={w['backward']}"
+                             for w in match["ways"])
+            print(f"  {station['name']:<30} bearing {station['bearing']}: {ways}")
+        else:
+            print(f"  {station['name']:<30} REJECTED: {match['reason']}")
     for station in data["stations"]:
         factors = station["profile"]["month_factor"]
         print(f"{station['name']:<34} month factors {factors}  (estimate {[MONTH_FACTOR[int(m)] for m in factors]})")

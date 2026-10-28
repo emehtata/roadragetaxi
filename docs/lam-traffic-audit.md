@@ -271,3 +271,46 @@ higher than the estimate was.
 
 Not done yet: phase 2's per-station road matching, direction-specific
 curves, and the validation runs with a virtual detector on matched roads.
+
+## Phase 2: station to OSM road matching (2026-10-28)
+
+`tools/lam_profiles.py` now stores each station's `osm_match` in
+`lam_profiles.json`: the matched OSM ways and, per way, which LAM direction
+its forward and backward travel is (`null` where one-way). Overpass answers
+are cached beside the counts, so rebuilds stay offline and identical.
+
+Rules (`match_station`):
+
+- Candidates: drivable main-road ways (motorway to unclassified, no `*_link`
+  ramps) within 40 m whose `ref` includes the station's road number.
+- Heading: the road's chord within 75 m of the station must run within 50
+  degrees of the station's `bearing` either way. The API's bearings are
+  coarse: vt22 Muhos 45 degrees and st816 Hailuoto 31 degrees off the road,
+  so 30 rejected them wrongly; the `ref` match already fixes the road, the
+  tolerance only rules out crossing ones.
+- Ambiguous, rejected: another parallel road without that ref within 10 m
+  farther than the match (a frontage or service road).
+- Divided roads keep every parallel carriageway piece within 40 m.
+- Direction 1 is toward `direction1Municipality`, along `bearing`. The
+  carriageway field is not used: vt1 Espoo, a motorway, says `ONE_CARRIAGEWAY`.
+
+Review of the 11 stations:
+
+| Station | Result | Review |
+| --- | --- | --- |
+| vt4 Oulu Välivainio | rejected: no bearing in the API | left unmatched rather than guessed |
+| vt22 Oulu Kaukovainio | 2 one-way carriageways | both exist as game `Way.osm_id`; inbound (→ Oulu) 0.54 at 07, outbound 0.59 at 16 |
+| st847 Oulunlahti | two-way road | → Oulu 0.34 at 07 against → Kempele 0.17 |
+| vt1 Espoo Hirvisuo | eastbound + westbound in 2 pieces | → Helsinki 0.38 at 07, → Turku 0.72 at 16 |
+| st101 Vartiokylä (Ring I) | 2 one-way carriageways | a ring road: no inbound direction to confirm |
+| kt45 Oulunkylä | northbound in 2 pieces (3 → 4 lanes), southbound | → Helsinki 0.47 at 07, → Tuusula 0.56 at 16 |
+| vt4 Ii Myllykangas | two-way road | **not confirmed**: more traffic toward Kemi in the morning (perhaps the Kemi–Tornio industry); check before relying on its directions |
+| vt22 Muhos Riihikylä | two-way road | matched after the tolerance change |
+| kt86 Liminka | two-way road | |
+| st816 Hailuoto | two-way road in 2 pieces | matched after the tolerance change; only one sampled week |
+| vt5 Kuusamo | two-way road | |
+
+The direction convention is confirmed by the urban radial roads' commuter
+peaks (inbound in the morning, outbound in the afternoon). Still no
+simulation change: phase 3 can attach a station's per-direction curves to
+these ways.

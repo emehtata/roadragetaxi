@@ -37,3 +37,38 @@ def test_curves_are_shares_of_the_average_weekday_peak_and_months_of_their_mean(
     assert profile["weekday_hourly_direction"]["1"][16] == 0.5
     assert profile["month_factor"] == {"1": round(200 / 150, 3), "7": round(100 / 150, 3)}
     assert profile["days_used"] == {"weekday": 3, "weekend": 1}
+
+
+def _way(way_id, points, **tags):
+    # points in metres; the test projection maps lon/lat 1:1 to metres / 1e5
+    return {"id": way_id, "tags": {"highway": "trunk", **tags}, "geometry": [{"lon": x / 1e5, "lat": y / 1e5} for x, y in points]}
+
+
+def _match(ways, bearing=0, road_number=4):
+    meta = {"lon": 0.0, "lat": 0.0, "bearing": bearing, "road_number": road_number}
+    return lam.match_station(meta, ways, lambda lon, lat: (lon * 1e5, lat * 1e5))
+
+
+def test_a_two_way_road_maps_its_forward_travel_to_the_direction_its_bearing_names():
+    northward = _way(1, [(0, -100), (0, 100)], ref="4;E8")
+    assert _match([northward])["ways"][0] == {"osm_id": 1, "highway": "trunk", "name": None, "ref": "4;E8",
+                                               "distance_m": 0.0, "forward": "1", "backward": "2"}
+    assert _match([northward], bearing=180)["ways"][0]["forward"] == "2"
+
+
+def test_a_divided_road_keeps_both_carriageways_each_one_way():
+    north = _way(1, [(-8, -100), (-8, 100)], ref="4", oneway="yes")
+    south = _way(2, [(8, 100), (8, -100)], ref="4", oneway="yes")
+    ways = {w["osm_id"]: w for w in _match([north, south], bearing=5)["ways"]}
+    assert ways[1]["forward"] == "1" and ways[2]["forward"] == "2" and ways[1]["backward"] is ways[2]["backward"] is None
+
+
+def test_uncertain_stations_are_rejected_with_their_reason():
+    road = _way(1, [(0, -100), (0, 100)], ref="4")
+    assert "no ref 4" in _match([_way(1, [(0, -100), (0, 100)], ref="20")])["reason"]
+    assert "no ref 4" in _match([_way(1, [(60, -100), (60, 100)], ref="4")])["reason"]  # too far
+    assert "heading" in _match([road], bearing=90)["reason"]  # the station measures a crossing road
+    frontage = _way(2, [(6, -100), (6, 100)], highway="tertiary", name="Service road")
+    assert "parallel tertiary way 2" in _match([road, frontage])["reason"]
+    assert _match([road, _way(3, [(-100, 30), (100, 30)], highway="tertiary")])["status"] == "matched"  # crossing: fine
+    assert _match([road], bearing=None)["status"] == "rejected"

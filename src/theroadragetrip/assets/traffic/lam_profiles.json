@@ -132,6 +132,7 @@
  "source": "Fintraffic / digitraffic.fi, license CC 4.0 BY: TMS raw detections (lamraw), valid records only",
  "stations": [
   {
+   "bearing": null,
    "carriageway": "ONE_CARRIAGEWAY",
    "direction1_municipality": "Kemi",
    "direction2_municipality": "Jyväskylä",
@@ -145,6 +146,10 @@
    "lon": 25.488916,
    "missing_days": [],
    "name": "vt4_Oulu_Välivainio",
+   "osm_match": {
+    "reason": "no bearing or road number",
+    "status": "rejected"
+   },
    "profile": {
     "days_used": {
      "weekday": 20,
@@ -325,6 +330,7 @@
    "tms_number": 21205
   },
   {
+   "bearing": 135,
    "carriageway": "DUAL_CARRIAGEWAY_LEFT_IN_INCREASING_DIRECTION",
    "direction1_municipality": "Kajaani",
    "direction2_municipality": "Oulu",
@@ -338,6 +344,29 @@
    "lon": 25.529079,
    "missing_days": [],
    "name": "vt22_Oulu_Kaukovainio",
+   "osm_match": {
+    "status": "matched",
+    "ways": [
+     {
+      "backward": null,
+      "distance_m": 4.8,
+      "forward": "2",
+      "highway": "trunk",
+      "name": "Kainuuntie",
+      "osm_id": 580071943,
+      "ref": "22"
+     },
+     {
+      "backward": null,
+      "distance_m": 6.0,
+      "forward": "1",
+      "highway": "trunk",
+      "name": "Kainuuntie",
+      "osm_id": 52597865,
+      "ref": "22"
+     }
+    ]
+   },
    "profile": {
     "days_used": {
      "weekday": 20,
@@ -518,6 +547,7 @@
    "tms_number": 1256
   },
   {
+   "bearing": 350,
    "carriageway": "ONE_CARRIAGEWAY",
    "direction1_municipality": "Oulu",
    "direction2_municipality": "Kempele",
@@ -536,6 +566,20 @@
     "2026-01-22"
    ],
    "name": "st847_Oulunlahti",
+   "osm_match": {
+    "status": "matched",
+    "ways": [
+     {
+      "backward": "1",
+      "distance_m": 4.9,
+      "forward": "2",
+      "highway": "secondary",
+      "name": "Limingantie",
+      "osm_id": 826245006,
+      "ref": "847"
+     }
+    ]
+   },
    "profile": {
     "days_used": {
      "weekday": 16,
@@ -716,6 +760,7 @@
    "tms_number": 1247
   },
   {
+   "bearing": 298,
    "carriageway": "ONE_CARRIAGEWAY",
    "direction1_municipality": "Turku",
    "direction2_municipality": "Helsinki",
@@ -729,6 +774,38 @@
    "lon": 24.637997,
    "missing_days": [],
    "name": "vt1_Espoo_Hirvisuo",
+   "osm_match": {
+    "status": "matched",
+    "ways": [
+     {
+      "backward": null,
+      "distance_m": 2.1,
+      "forward": "2",
+      "highway": "motorway",
+      "name": "Turunväylä",
+      "osm_id": 4218023,
+      "ref": "1"
+     },
+     {
+      "backward": null,
+      "distance_m": 17.1,
+      "forward": "1",
+      "highway": "motorway",
+      "name": "Turunväylä",
+      "osm_id": 25562214,
+      "ref": "1"
+     },
+     {
+      "backward": null,
+      "distance_m": 20.6,
+      "forward": "1",
+      "highway": "motorway",
+      "name": "Turunväylä",
+      "osm_id": 45371638,
+      "ref": "1"
+     }
+    ]
+   },
    "profile": {
     "days_used": {
      "weekday": 20,
@@ -909,6 +986,7 @@
    "tms_number": 20002
   },
   {
+   "bearing": 160,
    "carriageway": "DUAL_CARRIAGEWAY_RIGHT_IN_INCREASING_DIRECTION",
    "direction1_municipality": "Itäkeskus",
    "direction2_municipality": "Tapiola",
@@ -922,6 +1000,29 @@
    "lon": 25.082548,
    "missing_days": [],
    "name": "st101_Helsinki_Vartiokylä",
+   "osm_match": {
+    "status": "matched",
+    "ways": [
+     {
+      "backward": null,
+      "distance_m": 0.9,
+      "forward": "1",
+      "highway": "trunk",
+      "name": "Kehä I",
+      "osm_id": 1084653364,
+      "ref": "101"
+     },
+     {
+      "backward": null,
+      "distance_m": 11.0,
+      "forward": "2",
+      "highway": "trunk",
+      "name": "Kehä I",
+      "osm_id": 26344393,
+      "ref": "101"
+     }
+    ]
+   },
    "profile": {
     "days_used": {
      "weekday": 20,
@@ -1102,6 +1203,7 @@
    "tms_number": 11
   },
   {
+   "bearing": 10,
    "carriageway": "DUAL_CARRIAGEWAY_RIGHT_IN_INCREASING_DIRECTION",
    "direction1_municipality": "Tuusula",
    "direction2_municipality": "Helsinki",
@@ -1115,6 +1217,38 @@
    "lon": 24.945214,
    "missing_days": [],
    "name": "kt45_Oulunkylä",
+   "osm_match": {
+    "status": "matched",
+    "ways": [
+     {
+      "backward": null,
+      "distance_m": 0.4,
+      "forward": "1",
+      "highway": "motorway",
+      "name": "Tuusulanväylä",
+      "osm_id": 131271487,
+      "ref": "45"
+     },
+     {
+      "backward": null,
+      "distance_m": 16.7,
+      "forward": "1",
+      "highway": "motorway",
+      "name": "Tuusulanväylä",
+      "osm_id": 117654833,
+      "ref": "45"
+     },
+     {
+      "backward": null,
+      "distance_m": 16.8,
+      "forward": "2",
+      "highway": "motorway",
+      "name": "Tuusulanväylä",
+      "osm_id": 117654832,
+      "ref": "45"
+     }
+    ]
+   },
    "profile": {
     "days_used": {
      "weekday": 20,
@@ -1295,6 +1429,7 @@
    "tms_number": 153
   },
   {
+   "bearing": 320,
    "carriageway": "ONE_CARRIAGEWAY",
    "direction1_municipality": "Kemi",
    "direction2_municipality": "Oulu",
@@ -1308,6 +1443,20 @@
    "lon": 25.251153,
    "missing_days": [],
    "name": "vt4_Ii_Myllykangas",
+   "osm_match": {
+    "status": "matched",
+    "ways": [
+     {
+      "backward": "1",
+      "distance_m": 8.3,
+      "forward": "2",
+      "highway": "trunk",
+      "name": "Kemintie",
+      "osm_id": 819103260,
+      "ref": "4"
+     }
+    ]
+   },
    "profile": {
     "days_used": {
      "weekday": 20,
@@ -1488,6 +1637,7 @@
    "tms_number": 1229
   },
   {
+   "bearing": 120,
    "carriageway": "ONE_CARRIAGEWAY",
    "direction1_municipality": "Kajaani",
    "direction2_municipality": "Oulu",
@@ -1501,6 +1651,20 @@
    "lon": 25.894297,
    "missing_days": [],
    "name": "vt22_Muhos_Riihikylä",
+   "osm_match": {
+    "status": "matched",
+    "ways": [
+     {
+      "backward": "2",
+      "distance_m": 0.8,
+      "forward": "1",
+      "highway": "trunk",
+      "name": "Ouluntie",
+      "osm_id": 396462620,
+      "ref": "22"
+     }
+    ]
+   },
    "profile": {
     "days_used": {
      "weekday": 20,
@@ -1681,6 +1845,7 @@
    "tms_number": 1227
   },
   {
+   "bearing": 45,
    "carriageway": "ONE_CARRIAGEWAY",
    "direction1_municipality": "Oulu",
    "direction2_municipality": "Ylivieska",
@@ -1694,6 +1859,20 @@
    "lon": 25.386099,
    "missing_days": [],
    "name": "kt86_Liminka_Heinijärvi",
+   "osm_match": {
+    "status": "matched",
+    "ways": [
+     {
+      "backward": "2",
+      "distance_m": 0.2,
+      "forward": "1",
+      "highway": "primary",
+      "name": "Paavolantie",
+      "osm_id": 76987226,
+      "ref": "86"
+     }
+    ]
+   },
    "profile": {
     "days_used": {
      "weekday": 20,
@@ -1874,6 +2053,7 @@
    "tms_number": 1205
   },
   {
+   "bearing": 250,
    "carriageway": "ONE_CARRIAGEWAY",
    "direction1_municipality": "Hailuoto",
    "direction2_municipality": "Kempele",
@@ -1909,6 +2089,29 @@
     "2026-07-19"
    ],
    "name": "st816_Hailuoto",
+   "osm_match": {
+    "status": "matched",
+    "ways": [
+     {
+      "backward": "2",
+      "distance_m": 1.0,
+      "forward": "1",
+      "highway": "secondary",
+      "name": "Luovontie",
+      "osm_id": 964390877,
+      "ref": "816"
+     },
+     {
+      "backward": "2",
+      "distance_m": 9.9,
+      "forward": "1",
+      "highway": "secondary",
+      "name": "Luovontie",
+      "osm_id": 120838407,
+      "ref": "816"
+     }
+    ]
+   },
    "profile": {
     "days_used": {
      "weekday": 5,
@@ -2086,6 +2289,7 @@
    "tms_number": 1253
   },
   {
+   "bearing": 350,
    "carriageway": "ONE_CARRIAGEWAY",
    "direction1_municipality": "Kemijärvi",
    "direction2_municipality": "Kajaani",
@@ -2099,6 +2303,20 @@
    "lon": 29.146153,
    "missing_days": [],
    "name": "vt5_Kuusamo_Nissinvaara",
+   "osm_match": {
+    "status": "matched",
+    "ways": [
+     {
+      "backward": "2",
+      "distance_m": 0.4,
+      "forward": "1",
+      "highway": "trunk",
+      "name": "Kemijärventie",
+      "osm_id": 568546110,
+      "ref": "5"
+     }
+    ]
+   },
    "profile": {
     "days_used": {
      "weekday": 20,
