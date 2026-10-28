@@ -3139,9 +3139,18 @@ func test_performance_paths() -> void:
 
 	# Dry: no wet overlays drawn; no lightning: no full-screen flash.
 	chunk.set_wetness(0.0)
-	check(not chunk._wet_darken.visible and not chunk._wet_sheen.visible, "dry roads: the wet overlays are not drawn at all")
+	check(not chunk._wet.visible, "dry roads: the wet overlay is not drawn at all")
 	chunk.set_wetness(0.6)
-	check(chunk._wet_darken.visible and chunk._wet_sheen.visible, "wet: they are")
+	check(chunk._wet.visible, "wet: it is")
+	const RS := preload("res://render_style.gd")
+	var same_blend := true
+	for wetness in [0.1, 0.15, 0.4, 1.0]:
+		var alphas: Array = RS.wet_alphas(wetness)
+		for surface in [Color8(60, 62, 66), Color8(200, 190, 170)]:
+			var two_passes: Color = surface.blend(Color(RS.WET_DARKEN, alphas[0])).blend(Color(RS.WET_SHEEN, alphas[1]))
+			var one: Color = surface.blend(RS.wet_overlay(wetness))
+			same_blend = same_blend and absf(one.r - two_passes.r) < 1e-5 and absf(one.g - two_passes.g) < 1e-5 and absf(one.b - two_passes.b) < 1e-5
+	check(same_blend, "the one-pass wet overlay blends a road as the darkening and then the sheen did")
 	map.free()
 
 	# Buildings built on a worker: nothing drawn until ready, then exactly what in-place building gives.

@@ -42,7 +42,7 @@ func run():
 		await RenderingServer.frame_post_draw
 		await RenderingServer.frame_post_draw
 		images.append(view.get_texture().get_image())
-		for node in [chunk._wet_darken, chunk._wet_sheen, chunk._puddles]:
+		for node in [chunk._wet, chunk._puddles]:
 			node.free()
 		chunk.free()
 		view.queue_free()

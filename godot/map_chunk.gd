@@ -53,10 +53,9 @@ var _origin := Vector2.ZERO
 var _bounds := PackedVector2Array()  # chunk rectangle in layer coordinates (clipping)
 var _bounds_rect := Rect2()
 var _roads_by_z: Dictionary = {}  # z -> [road]
-var _wet_darken := Node2D.new()
-var _wet_sheen := Node2D.new()
+var _wet := Node2D.new()  # wet-road darkening and sheen in one pass (RS.wet_overlay)
 var _puddles := Node2D.new()
-var _bridge_weather: Array = []  # [darkening, sheen, puddles], at each deck's z
+var _bridge_weather: Array = []  # [wet roads, puddles], at each deck's z
 var _puddle_spots: Array = []  # [{"at", "radius", "reveal", "shape"}]
 var _water_ripple_spots: Array = []  # cached once; weather_layer animates their rings
 var _wetness := 0.0
@@ -159,13 +158,11 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		var layer_z: int = z
 		_road_layers.append(_add_layer(z, func(node: Node2D): _draw_roads(layer_z, node)))
 		if z > 1:
-			var dark := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
-			var sheen := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
+			var wet := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
 			var puddles := _add_layer(z, func(node: Node2D): _draw_puddles(node, layer_z))
-			_bridge_weather.append([dark, sheen, puddles])
+			_bridge_weather.append([wet, puddles])
 		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_road_markings(layer_z, node)))
-	_add_layer(5, _draw_wet, _wet_darken)
-	_add_layer(5, _draw_wet, _wet_sheen)
+	_add_layer(5, _draw_wet, _wet)
 	_add_layer(5, _draw_puddles, _puddles)
 	if not message.get("parking", []).is_empty():
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_parking(self, node)))
@@ -429,16 +426,13 @@ static func light_cells_for(lights: PackedVector2Array, data: Array) -> Dictiona
 func set_wetness(wetness: float) -> void:
 	var previous := _wetness
 	_wetness = wetness
-	var alphas := RS.wet_alphas(wetness)
-	_wet_darken.modulate = Color(RS.WET_DARKEN, alphas[0])
-	_wet_sheen.modulate = Color(RS.WET_SHEEN, alphas[1])
-	var wet_nodes: Array = [_wet_darken, _wet_sheen]
+	_wet.modulate = RS.wet_overlay(wetness)
+	var wet_nodes: Array = [_wet]
 	var puddle_nodes: Array = [_puddles]
 	for layers in _bridge_weather:
-		layers[0].modulate = _wet_darken.modulate
-		layers[1].modulate = _wet_sheen.modulate
-		wet_nodes.append_array([layers[0], layers[1]])
-		puddle_nodes.append(layers[2])
+		layers[0].modulate = _wet.modulate
+		wet_nodes.append(layers[0])
+		puddle_nodes.append(layers[1])
 	# godot-18: hidden when dry - at alpha 0 they still blended every road twice
 	# each frame. A canvas item hidden when it entered the tree didn't draw
 	# its strokes when shown later (found in a windowed run), so becoming
