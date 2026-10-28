@@ -16,6 +16,7 @@ Source: Fintraffic / digitraffic.fi, license CC 4.0 BY.
 """
 from __future__ import annotations
 
+import collections
 import gzip
 import json
 import logging
@@ -489,6 +490,18 @@ class LiveRoadworks:
         if summary != self._summary:  # logged when the placement changes, not every re-match
             self._summary = summary
             logger.info("Digitraffic roadworks: %d live, %d active, %d zones placed", *summary)
+        if logger.isEnabledFor(logging.DEBUG):
+            placed = collections.Counter(z.situation_id for z in zones)
+            for work in works:
+                logger.debug("Digitraffic roadwork %s: road=%s title=%r active=%s placed_zones=%d lines_lon_lat=%s",
+                             work.situation_id, work.road, work.title,
+                             work.phase_at(moment_utc, local) is not None, placed[work.situation_id], work.lines_ll)
+            for zone in zones:
+                logger.debug("Digitraffic roadwork %s placed: way=%s name=%r ref=%s layer=%s level=%s "
+                             "start_xy_m=(%.2f, %.2f) end_xy_m=(%.2f, %.2f)",
+                             zone.situation_id, getattr(zone.way, "osm_id", None), getattr(zone.way, "name", None),
+                             getattr(zone.way, "ref", None), zone.way.layer, zone.way.map_level or 0,
+                             *zone.start, *zone.end)
 
     def speed_limit_at(self, x: float, y: float, *, layer: int = 0, map_level: int = 0) -> Optional[int]:
         limits = [z.speed_limit_kmh for z in self.zones

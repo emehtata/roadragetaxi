@@ -26,6 +26,7 @@ Traffic decisions stay on the Python server; Godot only draws them.
 | Client | `entity_layer._live_roadworks`, `map_chunk.draw_roadwork` | Cones and barriers for closed lanes and roads, with barriers and speed signs only at a run's open ends. |
 | Map | `Way.ref` | The OSM road number is kept on `Way` (world cache format 56). |
 | Diagnostics | F12 snapshot `live_roadworks` | Situations fetched, network requests made, and every placed piece. |
+| Console debug | `make run-debug` / `--log-level DEBUG` | Each loaded situation's ID, title, road number, active flag, placed-zone count and source geometry as `[longitude, latitude]`. Matched zones also report world-metre endpoints, OSM way, road name, layer and level. Logged on matching updates, including unmatched/inactive situations, never on unchanged ticks. |
 
 Verified on the real map on 2026-10-26 at 13:00: on Kainuuntie in Oulu (road 22,
 OSM limit 60), two live roadworks matched to `ref 22` and the HUD showed 50.
