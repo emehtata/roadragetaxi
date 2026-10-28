@@ -199,3 +199,15 @@ def test_real_plough_routes_clear_road_snow_once_and_are_fetched_again_later():
     now[0] += dm.PLOUGH_POLL_S
     ploughs.update(0.0, 0.0, weather)
     assert len(calls) == 2 and ploughs.applied == 1  # the same route is not applied twice
+
+
+def test_subscriptions_are_logged(caplog):
+    import logging
+
+    feed, client, _ = _feed(["weather-v2/status"])
+    client.unsubscribe = lambda topics: None
+    with caplog.at_level(logging.INFO, logger="theroadragetrip.digitraffic_mqtt"):
+        feed._on_connect(client, None, None, SimpleNamespace(is_failure=False))
+        feed.set_topics(["weather-v2/1/#"])
+    assert "subscribed: weather-v2/status" in caplog.text
+    assert "unsubscribed: weather-v2/status" in caplog.text and "subscribed: weather-v2/1/#" in caplog.text

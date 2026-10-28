@@ -74,6 +74,7 @@ class LiveFeed:
         logger.info("Digitraffic MQTT connected, %d topics", len(self.topics))
         if self.topics:  # again after every reconnect: the session is clean
             client.subscribe([(topic, 0) for topic in self.topics])
+            logger.info("Digitraffic MQTT subscribed: %s", ", ".join(self.topics))
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties=None) -> None:
         if self.connected:
@@ -106,8 +107,10 @@ class LiveFeed:
         if self.connected:
             if gone:
                 self.client.unsubscribe(gone)
+                logger.info("Digitraffic MQTT unsubscribed: %s", ", ".join(gone))
             if new:
                 self.client.subscribe([(topic, 0) for topic in new])
+                logger.info("Digitraffic MQTT subscribed: %s", ", ".join(new))
 
     def drain(self, limit: int) -> List[Tuple[str, object, float]]:
         """At most `limit` queued messages, oldest first (the tick's budget)."""
