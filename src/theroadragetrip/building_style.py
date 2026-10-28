@@ -67,6 +67,8 @@ def _building_window_story_count(building: Building) -> int:
             return max(1, min(40, int(levels)))
         except (TypeError, ValueError):
             pass
+    if _building_type(building) in HALL_TYPES:
+        return 1
     height = _building_render_height(building)
     return max(1, min(40, int(round(height / 3.0))))
 
@@ -105,7 +107,13 @@ def _building_is_commercial(building: Building) -> bool:
 # windows.md section 3: detached/small-residential building=* values - these
 # get fewer, smaller windows than an apartment block or office of the same
 # height. Not exhaustive of every OSM house-ish tag, just the common ones.
-HOUSE_BUILDING_TYPES = {"house", "detached", "bungalow", "cabin", "semidetached_house", "farm"}
+# terrace: a Finnish rivitalo, one storey under a pitched roof like a house.
+HOUSE_BUILDING_TYPES = {"house", "detached", "bungalow", "cabin", "semidetached_house", "farm", "terrace"}
+# Typical Finnish buildings of a type, used when OSM gives no height or levels
+# (the footprint fallback made a garage ~6 m and a warehouse ~20 m tall).
+OUTBUILDING_TYPES = {"garage", "garages", "shed", "garbage_shed", "allotment_house", "service", "kiosk"}  # no windows
+HALL_TYPES = {"industrial", "warehouse"}  # one storey, one window row
+TYPE_HEIGHT_M = {**{t: 3.0 for t in OUTBUILDING_TYPES}, **{t: 8.0 for t in HALL_TYPES}, "carport": 2.5}
 
 
 def _building_is_house(building: Building) -> bool:
@@ -122,14 +130,23 @@ def _building_is_house(building: Building) -> bool:
 
 
 def _building_render_height(building: Building) -> float:
-    """Use a Finnish 1.5-storey fallback for untagged detached houses."""
-    if (
-        _building_is_house_by_tag(building)
-        and getattr(building, "levels", None) is None
-        and not getattr(building, "height_is_explicit", False)
-    ):
-        return 4.5
+    """Without an OSM height or levels: a Finnish 1.5-storey house, else the
+    type's typical height (TYPE_HEIGHT_M), else the footprint fallback."""
+    if getattr(building, "levels", None) is None and not getattr(building, "height_is_explicit", False):
+        if _building_is_house_by_tag(building):
+            return 4.5
+        if _building_type(building) in TYPE_HEIGHT_M:
+            return TYPE_HEIGHT_M[_building_type(building)]
     return max(3.0, float(getattr(building, "height_m", 8.0)))
+
+
+def _building_type(building: Building) -> str:
+    return str(getattr(building, "building_type", "") or "").casefold()
+
+
+def _building_is_windowless(building: Building) -> bool:
+    """Garages, sheds and other outbuildings: plain walls, no window rows."""
+    return _building_type(building) in OUTBUILDING_TYPES
 
 
 def _building_is_house_by_tag(building: Building) -> bool:

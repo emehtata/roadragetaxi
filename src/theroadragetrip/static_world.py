@@ -162,7 +162,8 @@ def building_style(building) -> list:
     category] as building_style.py picks them: colours named in the
     building's (Finnish) name, else the per-building texture pick; the OSM
     entrances ([x, y] each); its floor count (OSM levels, else height / 3);
-    category 1 house, 2 commercial, 0 other (the window rules); then
+    category 1 house, 2 commercial, 3 plain walls (outbuildings), 0 other
+    (the window rules); then
     optionally 1 arena windows or 2 glasshouse."""
     from . import building_style as rb
 
@@ -179,7 +180,8 @@ def building_style(building) -> list:
     return [_rgb(roof), 1 if rb._uses_gabled_roof(building) else 0, round(rb._building_render_height(building), 1),
             [[round(x, 1), round(y, 1)] for x, y in getattr(building, "entrances", ())],
             _rgb(wall), rb._building_window_story_count(building),
-            1 if rb._building_is_house(building) else 2 if rb._building_is_commercial(building) else 0] + \
+            3 if rb._building_is_windowless(building) else 1 if rb._building_is_house(building)
+            else 2 if rb._building_is_commercial(building) else 0] + \
         ([1] if getattr(building, "arena_windows", False) else [2] if is_glasshouse(building) else [])
 
 

@@ -64,7 +64,7 @@ DEFAULT_BBOX = BBOX_PRESETS["oulu"]
 # building=* values that are a raised roof with open sides (fuel-pump
 # roofs, station platform canopies): drawn as an overlay you can see
 # under, never a solid walled block, and nothing collides with them.
-OPEN_ROOF_BUILDING_TYPES = frozenset({"roof", "canopy"})
+OPEN_ROOF_BUILDING_TYPES = frozenset({"roof", "canopy", "carport"})  # posts and a roof: driven and walked under
 
 NATURAL_SCENERY_KINDS: Tuple[str, ...] = (
     "wood", "scrub", "grass", "sand", "heath",
