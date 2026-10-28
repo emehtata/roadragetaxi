@@ -356,7 +356,23 @@ traffic: hourly counts are small, compare shapes. A game day takes about
 6.5 minutes on this machine (one game hour, 1 800 ticks, in 16 s at
 Kaukovainio with 27 NPC vehicles).
 
-**Not yet run to completion.** Next, on another machine:
+**First runs (2026-10-28, 14, 15 and 17 October): inconclusive.** All three
+finished; none gives a usable shape yet.
+
+| Station | Crossings a day (weekday / Sat) | MAE weekday / weekend | Tick p50 / p95 | Note |
+| --- | --- | --- | --- | --- |
+| vt22 Kaukovainio | 0 / 0 | 0.465 / 0.331 (all-zero curve) | 2.2 / 4.5 ms | no vehicle crossed: the detector line or the traffic on the one-way carriageways needs checking before any comparison |
+| vt5 Kuusamo | 8 / 0 | 0.264 / 0.333 | 1.1 / 3.4 ms | Overpass answered 502 during tile streaming: the map was partly missing |
+| kt86 Liminka | 3.5 / 5 | 0.429 / 0.349 | 0.6 / 2.4 ms | far too few crossings for an hourly shape |
+
+The tick times are well inside the 33 ms budget. The MAE values only measure
+the distance from (nearly) empty curves, not the model. Next: find why
+Kaukovainio counts nothing (where the detector line falls against the matched
+carriageways, and whether passing traffic spawns on them with the player parked);
+rerun Kuusamo with the map complete; for counts large enough to compare,
+aggregate several days or count a longer stretch of road.
+
+The original command, for reference:
 
     PYTHONPATH=src .venv/bin/python tools/lam_validate.py --station Kaukovainio \
         --days 2026-10-14 2026-10-15 2026-10-17 --out /tmp/validate_kaukovainio.json
