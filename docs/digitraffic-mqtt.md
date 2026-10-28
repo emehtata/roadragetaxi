@@ -1,8 +1,8 @@
 # Live clock and Digitraffic MQTT
 
-Status: **phases 1 (live clock), 2 (MQTT client), 3a (live road weather) and
-3c (live road ice) implemented (2026-10-28)**. Phase 3b (ploughs from
-`maintenance-v2`) is not started.
+Status: **phases 1 (live clock), 2 (MQTT client), 3a (live road weather),
+3b (real ploughs' cleared roads) and 3c (live road ice) implemented
+(2026-10-28)**.
 
 Digitraffic's MQTT feed (`wss://tie.digitraffic.fi:443/mqtt`) is live "now"
 data. It only matches the game when game time is the computer's clock, so it
@@ -116,3 +116,29 @@ dry); near Oulu the road was dry at 10.9 C and road ice 0.0. Two stations
 sent road state 13, which the sensor catalogue does not describe.
 
 The HUD still shows only wetness; ice changes the taxi's grip.
+
+## Phase 3b: real ploughs' cleared roads
+
+`digitraffic_mqtt.LivePloughing`: the roads real ploughs cleared lately
+near the taxi lose their road snow in the game (`WeatherSystem.plow_road`,
+as the game's own tractors do). No NPC vehicle is spawned or steered, so no
+NPC traffic decision changes.
+
+- Not MQTT: `maintenance-v2/routes/<domain>` sends single points
+  (`{source, tasks, time, x, y}`) without a vehicle id, about 1.4 a second
+  nationwide (169 in 2 min, all `state-roads`, in October), so points cannot
+  be joined into routes. The REST tracking API returns them as lines.
+- `GET /api/maintenance/v1/tracking/routes` with `taskId=PLOUGHING_AND_SLUSH_REMOVAL`
+  (the filter is honoured: 48 routes against 18 721 unfiltered), `endFrom`
+  2 h back (rounded to 5 min, so the URL repeats and the cache answers), a
+  box 2 km around the taxi. Fetched on a thread every 5 min or after 2 km.
+- LineStrings only; a Point is a vehicle that stood still. Each route id is
+  applied once.
+- F12 snapshot `live_feed.ploughing`: routes and segments applied.
+
+Checked on 2026-10-28: near Oulu no ploughing (0 routes). At a live plough
+route in Lapland (67.84 N, 24.70 E): 46 routes, 81 segments, 353 road cells
+cleared, the plough's spot from 3.0 to 0.0 road snow.
+
+Plough positions as NPC vehicles are not done: they would need driving
+decisions of their own and the traffic-law review (§ 184).

@@ -614,13 +614,14 @@ class SimulationServer:
         if not (self._live_clock and self.world.live_roadworks is not None):
             return None
         try:
-            from ..digitraffic_mqtt import STATUS_TOPICS, LiveFeed, RoadWeather
+            from ..digitraffic_mqtt import STATUS_TOPICS, LiveFeed, LivePloughing, RoadWeather
             feed = LiveFeed(STATUS_TOPICS)  # road weather adds its nearest stations
         except ImportError:
             logger.warning("Live Digitraffic data needs paho-mqtt; staying with the REST data")
             return None
         service = self.world.live_roadworks.service
         self.road_weather = RoadWeather(feed, service.client, service.to_lonlat)
+        self.live_ploughing = LivePloughing(service.client, service.to_lonlat, self.world.live_roadworks.project)
         feed.start()
         return feed
 
@@ -628,7 +629,8 @@ class SimulationServer:
         feed = getattr(self, "live_feed", None)
         if feed is None:
             return None
-        return {**feed.diagnostics(), "road_weather": self.road_weather.diagnostics()}
+        return {**feed.diagnostics(), "road_weather": self.road_weather.diagnostics(),
+                "ploughing": {"routes": len(self.live_ploughing.seen), "segments_applied": self.live_ploughing.applied}}
 
     def _live_roadworks(self, args, config):
         """Settings -> realtime road data (--road-digitraffic): live roadworks
@@ -899,6 +901,7 @@ class SimulationServer:
         road_weather = getattr(self, "road_weather", None)
         if road_weather is not None:  # live MQTT readings, a bounded batch per tick
             road_weather.update(self.car.x, self.car.y, self.live_feed.drain(LIVE_FEED_PER_TICK))
+            self.live_ploughing.update(self.car.x, self.car.y, self.world.weather)  # real ploughs' cleared roads
         observed = self._update_outside()
         self.world.weather.update(dt * time_scale, dt, outside_temperature_c=self.world.weather.outside_temperature_c,
                                   observed=observed)

@@ -172,3 +172,30 @@ def test_the_weather_takes_the_stations_road_ice():
     assert weather.road_ice_fraction == 1.0
     weather.road_ice_override = 0.0  # salted
     assert weather.road_ice_fraction == 0.0
+
+
+def test_real_plough_routes_clear_road_snow_once_and_are_fetched_again_later():
+    from theroadragetrip.weather import WeatherSystem
+
+    calls = []
+
+    class Routes:
+        def get_json(self, path, params=None, *, max_age_s=None):
+            calls.append(params)
+            assert path == "/api/maintenance/v1/tracking/routes" and params["taskId"] == "PLOUGHING_AND_SLUSH_REMOVAL"
+            return {"features": [{"properties": {"id": 7}, "geometry": {"type": "LineString", "coordinates": [[0.0, 0.0, 0.0], [0.0003, 0.0, 0.0]]}},
+                                 {"properties": {"id": 8}, "geometry": {"type": "Point", "coordinates": [0.0001, 0.0005, 0.0]}}]}
+
+    now = [10_000.0]
+    ploughs = dm.LivePloughing(Routes(), lambda x, y: (x / 1e5, y / 1e5), lambda lon, lat: (lon * 1e5, lat * 1e5),
+                               clock=lambda: now[0], load_async=False)
+    weather = WeatherSystem()
+    weather.road_snow = 2.0
+    ploughs.update(0.0, 0.0, weather)
+    assert weather.road_snow_at(15.0, 1.0) == 0.0 and weather.road_snow_at(15.0, 50.0) == 2.0  # along the 30 m route only
+    assert ploughs.applied == 1 and calls[0]["xMin"] < 0.0 < calls[0]["xMax"]
+    ploughs.update(0.0, 0.0, weather)
+    assert len(calls) == 1  # within the poll interval
+    now[0] += dm.PLOUGH_POLL_S
+    ploughs.update(0.0, 0.0, weather)
+    assert len(calls) == 2 and ploughs.applied == 1  # the same route is not applied twice

@@ -16,7 +16,7 @@ import math
 import threading
 import time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -254,3 +254,62 @@ class RoadWeather:
         return {"stations": len(self.stations), "nearest": self.nearest, "readings": len(self.values),
                 "observation": None if observation is None else vars(observation), "road_wetness": self.road_wetness(),
                 "road_ice": self.road_ice(), "road_c": self._fresh(ROAD_C), "freezing_point_c": self._fresh(FREEZING_POINT_C)}
+
+
+PLOUGH_TASKS = ("PLOUGHING_AND_SLUSH_REMOVAL",)
+PLOUGH_POLL_S = 300.0  # real seconds between route fetches (the REST answer is cached as long)
+PLOUGH_WINDOW_S = 7200.0  # routes driven within this long
+PLOUGH_RADIUS_M = 2000.0  # around the taxi
+
+
+class LivePloughing:
+    """Roads real ploughs cleared lately near the taxi (Digitraffic
+    maintenance tracking, REST: MQTT sends single points without a vehicle,
+    the routes come as lines). The tick clears their road snow
+    (WeatherSystem.plow_road): no NPC vehicle is spawned or steered."""
+
+    def __init__(self, client, to_lonlat: Callable[[float, float], Tuple[float, float]],
+                 project: Callable[[float, float], Tuple[float, float]], clock: Callable[[], float] = time.time,
+                 load_async: bool = True) -> None:
+        self.client, self.to_lonlat, self.project, self.clock = client, to_lonlat, project, clock
+        self.load_async = load_async
+        self.segments: list = []  # fetched, not yet applied: ((x0, y0), (x1, y1)) world metres
+        self.seen: set = set()  # route ids applied already
+        self.applied = 0
+        self._fetched_at: Optional[Tuple[float, Tuple[float, float]]] = None
+        self._busy = False
+
+    def update(self, x: float, y: float, weather) -> None:
+        now = self.clock()
+        if not self._busy and (self._fetched_at is None or now - self._fetched_at[0] >= PLOUGH_POLL_S
+                               or math.dist(self._fetched_at[1], (x, y)) > RESELECT_M):
+            self._fetched_at, self._busy = (now, (x, y)), True
+            if self.load_async:
+                threading.Thread(target=self.fetch, args=(x, y, now), name="digitraffic-ploughs", daemon=True).start()
+            else:
+                self.fetch(x, y, now)
+        while self.segments:
+            start, end = self.segments.pop(0)
+            weather.plow_road(start, end)
+            self.applied += 1
+
+    def fetch(self, x: float, y: float, now: float) -> None:
+        try:
+            (west, south), (east, north) = (self.to_lonlat(x - PLOUGH_RADIUS_M, y - PLOUGH_RADIUS_M),
+                                            self.to_lonlat(x + PLOUGH_RADIUS_M, y + PLOUGH_RADIUS_M))
+            since = datetime.fromtimestamp((now - PLOUGH_WINDOW_S) // PLOUGH_POLL_S * PLOUGH_POLL_S, timezone.utc)  # a stable URL
+            for task in PLOUGH_TASKS:
+                body = self.client.get_json("/api/maintenance/v1/tracking/routes", {
+                    "endFrom": since.strftime("%Y-%m-%dT%H:%M:%SZ"), "taskId": task, "xMin": round(west, 4),
+                    "yMin": round(south, 4), "xMax": round(east, 4), "yMax": round(north, 4)}, max_age_s=PLOUGH_POLL_S)
+                for feature in (body or {}).get("features", []):
+                    route = (feature.get("properties") or {}).get("id")
+                    geometry = feature.get("geometry") or {}
+                    line = geometry.get("coordinates") or []
+                    if route in self.seen or geometry.get("type") != "LineString" or len(line) < 2:  # a Point: it stood still
+                        continue
+                    self.seen.add(route)
+                    points = [self.project(point[0], point[1]) for point in line]
+                    self.segments += list(zip(points, points[1:]))
+        finally:
+            self._busy = False
