@@ -97,6 +97,7 @@ DEFAULT_CONFIG = {
         "historical_weather": "false",
         "train_timetable": "true",  # trains on the real Digitraffic timetable; false: a fixed interval
         "road_digitraffic": "false",  # live roadworks from Digitraffic Road (digitraffic_road.py)
+        "live_clock": "false",  # game time is the computer's clock at 1x, never 60x (for live data)
         "intercity_fares": "false",
     },
     "map": {

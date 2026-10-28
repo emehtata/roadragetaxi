@@ -565,6 +565,26 @@ def test_the_calendar_is_the_one_clock_and_carries_the_sun(tmp_path, monkeypatch
     assert _state(server)["game_time_seconds"] == 30.0
 
 
+def test_the_live_clock_is_the_computers_clock(tmp_path, monkeypatch):
+    """Live clock: a picked start jumps to now, time never runs 60x, and the
+    calendar reads the computer's clock (Finnish time, DST included)."""
+    from datetime import datetime
+
+    import theroadragetrip.server as server_module
+
+    now = [datetime(2026, 10, 25, 0, 30)]  # UTC: 03:30 summer time, the first of the repeated hour
+    monkeypatch.setattr(server_module, "_utc_now", lambda: now[0])
+    server = _build_server(tmp_path, monkeypatch, ["--live-clock", "--start-time", "2026-01-05T12:00"])
+    assert server.calendar.current == datetime(2026, 10, 25, 3, 30)
+    now[0] = datetime(2026, 10, 25, 1, 30)  # an hour on: 03:30 winter time, the repeat
+    server.tick(1.0)  # one real second: no 60x
+    assert server.calendar_state()["time_scale"] == 1.0
+    assert server.calendar.current == datetime(2026, 10, 25, 3, 30) and server.calendar.current.fold == 1
+    now[0] = datetime(2026, 10, 25, 2, 0)
+    server.tick(1.0)
+    assert server.calendar.current == datetime(2026, 10, 25, 4, 0)
+
+
 def test_startup_logs_the_calculated_moon(tmp_path, monkeypatch, caplog):
     with caplog.at_level("INFO", logger="theroadragetrip.server"):
         server = _build_server(tmp_path, monkeypatch)

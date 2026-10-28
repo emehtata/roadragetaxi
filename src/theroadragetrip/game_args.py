@@ -66,7 +66,14 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
         help="Live roadworks and nearby electronic signs from Fintraffic's Digitraffic Road API (default: config game.road_digitraffic)",
     )
 
-    p.add_argument("--intercity-fares", action=argparse.BooleanOptionalAction,
+    p.add_argument(
+        "--live-clock",
+        action=argparse.BooleanOptionalAction,
+        default=config.getboolean("game", "live_clock", fallback=False) if config else False,
+        help="Game time follows the computer's clock in real time: starts now, never runs 60x (default: config game.live_clock)",
+    )
+
+    p.add_argument("--intercity-fares",action=argparse.BooleanOptionalAction,
                    default=config.getboolean("game", "intercity_fares", fallback=False) if config else False,
                    help="Enable intercity fares after preparing the navigation database from a local Finland PBF")
 

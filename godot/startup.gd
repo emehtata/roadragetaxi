@@ -694,6 +694,9 @@ func _time_menu() -> void:
 	var from_now: bool = _settings.get_value("gig", "start_now", true) or resume.is_empty()
 	var today := Time.get_date_dict_from_system()
 	_start_time = clamp_start(Time.get_datetime_dict_from_system() if from_now else resume, today)
+	if _settings.get_value("game", "live_clock", false):  # the live clock always starts now: nothing to pick
+		_start("gig_driver")
+		return
 	_clear()
 	_title(_t("start_time"), _city)
 	var calendar := preload("res://date_picker.gd").new()
@@ -889,6 +892,14 @@ func _gameplay_menu() -> void:
 		_settings.save("user://settings.cfg"))
 	_with_help(road, "help_realtime_road")
 	_focusables.append(road)
+	var live_clock := CheckButton.new()  # game time = the computer's clock, never 60x (off unless chosen)
+	live_clock.text = _t("live_clock")
+	live_clock.button_pressed = _settings.get_value("game", "live_clock", false)
+	live_clock.toggled.connect(func(on: bool):
+		_settings.set_value("game", "live_clock", on)
+		_settings.save("user://settings.cfg"))
+	_with_help(live_clock, "help_live_clock")
+	_focusables.append(live_clock)
 	var intercity := CheckButton.new()
 	intercity.text = _t("enable_intercity_fares")
 	intercity.button_pressed = _settings.get_value("game", "intercity_fares", false)
@@ -1063,6 +1074,8 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		args.append("--train-timetable" if _settings.get_value("game", "train_timetable") else "--no-train-timetable")
 	if _settings.has_section_key("game", "road_digitraffic"):
 		args.append("--road-digitraffic" if _settings.get_value("game", "road_digitraffic") else "--no-road-digitraffic")
+	if _settings.has_section_key("game", "live_clock"):
+		args.append("--live-clock" if _settings.get_value("game", "live_clock") else "--no-live-clock")
 	args.append_array(_server_extra)
 	var command := Paths.server_command(args)  # the repo's .venv, or the release's bundled server
 	_server_pid = OS.create_process(command[0], command[1], OS.get_name() == "Windows")

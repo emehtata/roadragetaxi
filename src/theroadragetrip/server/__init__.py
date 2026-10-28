@@ -51,7 +51,7 @@ from ..moon import moon_info_on, moon_position_at
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
 from ..weather_history import WeatherHistory, gradual_weather, precipitation_from_observation, game_time_to_utc_hour
-from ..calendar import clamp_start_datetime
+from ..calendar import clamp_start_datetime, finnish_local_time
 from ..osm import CACHE_DIR
 from ..climate import appearance_with_snow_depth, typical_temperature
 
@@ -63,6 +63,11 @@ SOCCER_SNOW_WEIGHT = 0.05  # a winter (snow) weight under this: the pitches are 
 # Nominal camera fallback for headless runs and clients without view reports.
 # Godot supplies its actual world-space bounds for dynamic interest/culling.
 _DEFAULT_PX_PER_M = 9.0
+
+
+def _utc_now() -> datetime:
+    """The computer's clock, naive UTC, for the live clock (tests replace it)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class NullAudio:
@@ -258,6 +263,9 @@ class SimulationServer:
             start = clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
         if saved.get("game_time"):  # a continued game resumes at its own time, unclamped
             start = datetime.fromisoformat(saved["game_time"])
+        self._live_clock = bool(getattr(args, "live_clock", False))
+        if self._live_clock:  # live data is "now": a picked or saved time jumps to the computer's clock
+            start = finnish_local_time(_utc_now())
         self.calendar = GameCalendar(start or datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),
                                      latitude=getattr(self.world, "sun_latitude", 65.01))
         if saved:  # odometer, fuel and money came with the gig car file
@@ -847,10 +855,14 @@ class SimulationServer:
         if reset_trip_meter:
             reset_trip(self.car)
 
-        # Game time runs 60x while there is no fare, 1:1 during one.
-        time_scale = self._time_scale = 1.0 if self.world.taxi_mgr.has_active_job() else 60.0
+        # Game time runs 60x while there is no fare, 1:1 during one; the live
+        # clock is the computer's clock itself (read, not integrated: no drift).
+        time_scale = self._time_scale = 1.0 if self._live_clock or self.world.taxi_mgr.has_active_job() else 60.0
         previous_date = self.calendar.date
-        self.calendar.advance(dt * time_scale)
+        if self._live_clock:
+            self.calendar.current = finnish_local_time(_utc_now())
+        else:
+            self.calendar.advance(dt * time_scale)
         if self.calendar.date != previous_date:
             self.world.weather.season = self.calendar.season  # the thermal season follows the calendar
         observed = self._update_outside()
