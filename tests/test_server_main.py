@@ -21,3 +21,13 @@ def test_preset_accepts_any_catalog_municipality(monkeypatch):
     from theroadragetrip.server.cli import parse_server_args
     monkeypatch.setattr("sys.argv", ["server", "--preset", "Muurame"])
     assert parse_server_args()[0].preset == "Muurame"
+
+
+def test_launcher_queries_print_ascii_json(monkeypatch, capsys):
+    """Godot reads these lines in the Windows code page: Sysmä came out as SysmÃ¤."""
+    import json
+    args = SimpleNamespace(list_cities=False, list_city_locations=True, list_saves=False)
+    monkeypatch.setattr(server_main, "parse_server_args", lambda: (args, configparser.ConfigParser()))
+    server_main.main()
+    line = capsys.readouterr().out.strip()
+    assert line.isascii() and "Sysmä" in [row["name"] for row in json.loads(line)]

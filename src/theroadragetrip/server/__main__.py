@@ -23,12 +23,12 @@ def main() -> None:
     tune_interpreter()
     args, config = parse_server_args()
     if args.list_cities:
-        print(json.dumps(list(cities_from_config(config)[0]), ensure_ascii=False))
+        print(json.dumps(list(cities_from_config(config)[0])))  # ASCII (\u00e4): Godot reads it in the Windows code page
         return
     if getattr(args, "list_saves", False):
         from ..config import CONFIG_PATH
         from ..save_slots import list_slots
-        print(json.dumps(list_slots(CONFIG_PATH), ensure_ascii=False))
+        print(json.dumps(list_slots(CONFIG_PATH)))  # ASCII (\u00e4): Godot reads it in the Windows code page
         return
     if args.list_city_locations:
         # The menu's cities, then every other municipality (menu: false)
@@ -38,7 +38,7 @@ def main() -> None:
         print(json.dumps([
             {"name": name, "latitude": latitude, "longitude": longitude, "menu": name in centers}
             for name, (latitude, longitude) in {**centers, **others}.items()
-        ], ensure_ascii=False))
+        ]))  # ASCII (\u00e4): Godot reads it in the Windows code page
         return
     if args.clear_cache:  # [OSM files, world caches] removed
         from ..osm.cache import clear_osm_cache
