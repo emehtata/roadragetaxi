@@ -1,5 +1,5 @@
 ## Walking in the home (home_walk.gd) on plans from the Python generator
-## (tests/data/home_plans.json: tests/test_home_interior.py's footprints, at 0
+## (tests/data/home_plans.json: tests/test_home_interior.py's footprints and real houses, at 0
 ## and 31 degrees). Headless: godot --headless --path godot --script res://tests/home_walk.gd
 extends SceneTree
 

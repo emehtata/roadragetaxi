@@ -185,3 +185,19 @@ def test_home_selection_and_plan_round_trip_over_tcp(tmp_path, monkeypatch):
     finally:
         connection.close()
         server.close()
+
+
+# Real Oulu houses (Helmikkäkuja area, map metres minus 425000, 7216000) that came out
+# as one open room: two small wings of one room each, and a hall whose ends had no straight wall.
+REAL_HOUSES = [
+    [(371.63, 786.04), (361.26, 783.44), (360.08, 788.09), (363.76, 789.02), (361.78, 796.88), (368.47, 798.56)],
+    [(369.32, 728.04), (367.34, 735.72), (377.51, 738.34), (379.49, 730.67)],
+    [(392.87, 742.23), (394.97, 735.1), (404.78, 737.98), (402.67, 745.11)],
+]
+
+
+@pytest.mark.parametrize('points', REAL_HOUSES)
+def test_real_family_houses_get_rooms(points):
+    plan = generate_floor_plan('real', [(x + 425000, y + 7216000) for x, y in points])
+    assert not plan['simple'] and {'bedroom', 'bathroom'} <= {r['kind'] for r in plan['rooms']}
+    assert sum(door['rooms'][0] == -1 for door in plan['doors']) == 1

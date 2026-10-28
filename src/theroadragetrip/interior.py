@@ -11,7 +11,7 @@ from shapely.affinity import rotate, translate
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import unary_union
 
-GENERATOR_VERSION = 1
+GENERATOR_VERSION = 2  # 2: small wings split in two; a front door into a wing room when the hall ends cannot hold one
 DOOR_WIDTH = 0.95
 
 
@@ -68,7 +68,7 @@ def _rooms(polygon, rng):
     for low, high in [(y0 - 1, cy - 0.75), (cy + 0.75, y1 + 1)]:
         side = polygon.intersection(box(x0 - 1, low, x1 + 1, high))
         # Two wings, each with at most three rooms: work depends on one house only.
-        count = min(3, max(1, int(side.area / 18)))
+        count = min(3, max(2 if side.area >= 24 else 1, int(side.area / 18)))  # 2 at 24 m²: a small house still gets rooms
         cuts = [x0 - 1] + [x0 + (x1 - x0) * i / count for i in range(1, count)] + [x1 + 1]
         parts = [p for a, b in zip(cuts, cuts[1:]) for p in _polygons(side.intersection(box(a, low, b, high)))]
         if any(p.area < 6 or p.buffer(-0.65).is_empty for p in parts):
@@ -168,6 +168,10 @@ def _generate_cached(building_id, points, entrance, version):
     target = rotate(translate(Point(entrance or origin), -origin[0], -origin[1]), -angle, origin=(0, 0))
     exterior = rooms[0][1].boundary.intersection(polygon.boundary)
     door = _door(exterior, [-1, 0], target)
+    if door is None and len(rooms) > 1:  # slanted or short hall ends: into the outer room nearest the entrance
+        options = [_door(room.boundary.intersection(polygon.boundary), [-1, i], target) for i, (_, room) in enumerate(rooms) if i > 0]
+        options = [d for d in options if d is not None]
+        door = min(options, key=lambda d: LineString(d["points"]).distance(target)) if options else None
     if door is None and len(rooms) > 1:
         rooms, doors = [("studio", polygon)], []
         door = _door(polygon.boundary, [-1, 0], target)
