@@ -314,3 +314,30 @@ The direction convention is confirmed by the urban radial roads' commuter
 peaks (inbound in the morning, outbound in the afternoon). Still no
 simulation change: phase 3 can attach a station's per-direction curves to
 these ways.
+
+## Phase 3, second step: a station's own curves on its road (2026-10-28)
+
+`population.station_for_way(way)`: a road whose `ref` names a station's road
+number and that passes within `STATION_REACH_M` (5 km) of the station takes
+that station's own weekday/weekend curves and month factors; every other
+road keeps the urban/rural group curves (first step). `npc.set_local_density`
+passes the player's current road, as it already did for the road class.
+
+- Stations: matched in phase 2, or rejected there only for a missing bearing
+  (vt4 Välivainio, Oulu's motorway: the curves are both directions' totals,
+  so the road number and position suffice), with at least 21 sampled days.
+  9 of 11 qualify; st816 Hailuoto (one week) does not.
+- The builder stores each station's game coordinates (`x_m`, `y_m`,
+  EPSG:3067), so the server projects nothing.
+- Cost: the lookup is cached per OSM way id; a road is checked once against
+  the stations on its road number.
+- Diagnostics: `population_diagnostics["traffic_demand"]["lam_station"]`.
+
+Checked on the real Oulu map around Kaukovainio: 42 vt22 pieces take the
+Kaukovainio curves, 18 of 25 vt4 pieces Välivainio's (the rest are farther
+than 5 km). With the taxi on vt22 on a Wednesday in October, the server's
+demand clock was 0.83 at 07:00 (its inbound morning peak), 1.07 at 15:00 and
+0.026 at 03:00.
+
+Not done: direction-specific demand (a road's two directions spawn alike),
+fitting the 5 km reach, and the validation runs with a virtual detector.

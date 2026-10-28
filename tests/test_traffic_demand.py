@@ -138,3 +138,25 @@ def test_without_the_measured_file_the_estimates_stay(tmp_path, monkeypatch, cap
     monkeypatch.setattr(population, "MEASURED_CURVES", None)
     moment = datetime(2026, 10, 14, 16)
     assert hour_demand(moment) == population.WEEKDAY_HOURLY[16] * population.MONTH_FACTOR[10]
+
+
+def test_a_road_near_its_lam_station_takes_the_stations_own_curves():
+    from types import SimpleNamespace
+
+    from theroadragetrip import population
+
+    kaukovainio = next(s for s in population.MEASURED_STATIONS if "Kaukovainio" in s["name"])
+    x, y = kaukovainio["x"], kaukovainio["y"]
+
+    def road(ref, dx, osm_id):
+        return SimpleNamespace(ref=ref, osm_id=osm_id, points_m=[(x + dx, y - 50.0), (x + dx, y + 50.0)])
+
+    on_it = road("22", 10.0, 9_000_001)
+    assert population.station_for_way(on_it) is kaukovainio
+    assert population.station_for_way(road("22", population.STATION_REACH_M + 100.0, 9_000_002)) is None  # too far
+    assert population.station_for_way(road("20", 10.0, 9_000_003)) is None  # another road
+    moment = datetime(2026, 10, 14, 7)
+    demand = population.traffic_demand(1.0, "trunk", moment, on_it)
+    assert demand["lam_station"] == kaukovainio["name"]
+    assert demand["hour"] == pytest.approx(kaukovainio["weekday_hourly"][7] * kaukovainio["month_factor"][10])
+    assert population.traffic_demand(1.0, "trunk", moment)["lam_station"] is None

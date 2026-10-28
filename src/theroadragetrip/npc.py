@@ -4606,7 +4606,7 @@ class NPCVehicleManager:
                 player_x, player_y, r, month,
             )
         fraction = min(1.0, self._local_people / NPC_FULL_TRAFFIC_PEOPLE)
-        demand = traffic_demand(fraction, highway, self.clock)
+        demand = traffic_demand(fraction, highway, self.clock, current_way)  # a LAM station's own curves on its road
         if self._demand_draw is None or self._population_tick_number >= self._demand_draw_tick + NPC_DEMAND_ROLL_TICKS:
             self._demand_draw = self.demand_rng.random()
             self._demand_draw_tick = self._population_tick_number

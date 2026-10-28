@@ -172,6 +172,48 @@ def load_measured_curves(path: Path = LAM_PROFILES) -> Optional[dict]:
 
 
 MEASURED_CURVES = load_measured_curves()
+# A road takes a LAM station's own curves when its ref names the station's road
+# and it passes this close: the shape along one numbered road changes slowly.
+STATION_REACH_M = 5000.0
+STATION_MIN_DAYS = 21
+
+
+def load_station_curves(path: Path = LAM_PROFILES) -> list:
+    """The reviewed stations with enough sampled days: road number, game
+    coordinates and their own curves; [] without the file. Matched to OSM, or
+    rejected only for a missing bearing: the curves are both directions'
+    totals, so the road number and position are enough."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [{"name": s["name"], "road": str(s["road_number"]), "x": s["x_m"], "y": s["y_m"],
+                 "weekday_hourly": s["profile"]["weekday_hourly"], "weekend_hourly": s["profile"]["weekend_hourly"],
+                 "month_factor": _interpolated_months({int(m): f for m, f in s["profile"]["month_factor"].items()})}
+                for s in data["stations"]
+                if s.get("road_number") is not None and sum(s["profile"]["days_used"].values()) >= STATION_MIN_DAYS
+                and (s.get("osm_match", {}).get("status") == "matched" or s.get("osm_match", {}).get("reason") == "no bearing or road number")]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+
+
+MEASURED_STATIONS = load_station_curves()
+_station_by_way: dict = {}  # OSM way id -> its station (or None), found once per road
+
+
+def station_for_way(way) -> Optional[dict]:
+    """The nearest station measuring this road (same ref, within STATION_REACH_M), or None."""
+    if way is None or not MEASURED_STATIONS:
+        return None
+    key = getattr(way, "osm_id", None) or id(way)
+    if key not in _station_by_way:
+        refs = {token for token in str(getattr(way, "ref", "") or "").replace(";", " ").split()}
+        best = None
+        for station in MEASURED_STATIONS:
+            if station["road"] in refs:
+                distance = min(math.hypot(x - station["x"], y - station["y"]) for x, y in way.points_m)
+                if distance <= STATION_REACH_M and (best is None or distance < best[0]):
+                    best = (distance, station)
+        _station_by_way[key] = best[1] if best else None
+    return _station_by_way[key]
 FIXED_PUBLIC_HOLIDAYS = {(1, 1), (1, 6), (5, 1), (12, 6), (12, 24), (12, 25), (12, 26)}
 
 
@@ -183,26 +225,30 @@ def is_public_holiday(day) -> bool:
     return day.month == 6 and (19 <= day.day <= 25 and day.weekday() == 4 or 20 <= day.day <= 26 and day.weekday() == 5)
 
 
-def hour_demand(moment, urban: float = 1.0) -> float:
+def hour_demand(moment, urban: float = 1.0, station: Optional[dict] = None) -> float:
     """Traffic at `moment` as a share of a weekday peak hour; 1.0 without a
-    clock. Measured LAM curves when loaded, `urban` 1 the urban ones and 0 the
-    rural ones (blended between); else the estimates."""
+    clock. A measuring station's own curves (station_for_way); else measured
+    LAM curves when loaded, `urban` 1 the urban ones and 0 the rural ones
+    (blended between); else the estimates."""
     if moment is None:
         return 1.0
     free_day = moment.weekday() >= 5 or is_public_holiday(moment)
     key = "weekend_hourly" if free_day else "weekday_hourly"
+    if station is not None:
+        return station[key][moment.hour] * station["month_factor"][moment.month]
     if MEASURED_CURVES is None:
         return (WEEKEND_HOURLY if free_day else WEEKDAY_HOURLY)[moment.hour] * MONTH_FACTOR[moment.month]
     return sum(weight * MEASURED_CURVES[setting][key][moment.hour] * MEASURED_CURVES[setting]["month_factor"][moment.month]
                for setting, weight in (("urban", urban), ("rural", 1.0 - urban)))
 
 
-def traffic_demand(local_fraction: float, highway: Optional[str], moment) -> dict:
+def traffic_demand(local_fraction: float, highway: Optional[str], moment, way=None) -> dict:
     """Moving-traffic demand around the player as a share of the city's
     town-centre peak: the local people's trips plus the road's passing
     traffic, both following the clock. Returns the parts, for diagnostics."""
     local = min(1.0, local_fraction)
-    hour = hour_demand(moment, urban=min(1.0, local / URBAN_PEOPLE_FRACTION))
+    station = station_for_way(way)
+    hour = hour_demand(moment, urban=min(1.0, local / URBAN_PEOPLE_FRACTION), station=station)
     through = THROUGH_TRAFFIC.get(highway or "", 0.0)
     # Gameplay nightlife, not commuter traffic counts: Friday/Saturday 18–05.
     nightlife = local * 0.5 if moment is not None and (
@@ -211,5 +257,6 @@ def traffic_demand(local_fraction: float, highway: Optional[str], moment) -> dic
     ) else 0.0
     return {
         "local": local, "through": through, "hour": hour, "nightlife": nightlife,
+        "lam_station": station["name"] if station else None,
         "demand": max(min(1.0, max(local, through)) * hour, nightlife),
     }

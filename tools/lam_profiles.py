@@ -276,7 +276,8 @@ def build(cache: Path) -> dict:
                     days[day] = counts
         print(f"{meta['name']}: {len(days)} days, {len(missing)} missing", file=sys.stderr)
         osm_match = match_station(meta, osm_ways_near(meta["lat"], meta["lon"], cache), project)
-        stations.append({**meta, "setting": setting, "missing_days": missing, "profile": profile(days), "osm_match": osm_match})
+        x_m, y_m = project(meta["lon"], meta["lat"])  # the game's coordinates: no projection at runtime
+        stations.append({**meta, "x_m": round(x_m, 1), "y_m": round(y_m, 1), "setting": setting, "missing_days": missing, "profile": profile(days), "osm_match": osm_match})
     complete = [s for s in stations if sum(s["profile"]["days_used"].values()) >= GROUP_MIN_DAYS]
     groups = {setting: {key: group_curve([s for s in complete if s["setting"] == setting], key)
                         for key in ("weekday_hourly", "weekend_hourly")} for setting in ("urban", "rural")}

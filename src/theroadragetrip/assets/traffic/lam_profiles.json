@@ -327,7 +327,9 @@
    "road_section": 402,
    "setting": "urban",
    "side": "UNKNOWN",
-   "tms_number": 21205
+   "tms_number": 21205,
+   "x_m": 428840.0,
+   "y_m": 7213169.0
   },
   {
    "bearing": 135,
@@ -544,7 +546,9 @@
    "road_section": 1,
    "setting": "urban",
    "side": "LEFT",
-   "tms_number": 1256
+   "tms_number": 1256,
+   "x_m": 430628.0,
+   "y_m": 7208695.0
   },
   {
    "bearing": 350,
@@ -757,7 +761,9 @@
    "road_section": 3,
    "setting": "urban",
    "side": "LEFT",
-   "tms_number": 1247
+   "tms_number": 1247,
+   "x_m": 428823.0,
+   "y_m": 7206006.0
   },
   {
    "bearing": 298,
@@ -983,7 +989,9 @@
    "road_section": 6,
    "setting": "urban",
    "side": "RIGHT",
-   "tms_number": 20002
+   "tms_number": 20002,
+   "x_m": 369151.0,
+   "y_m": 6678354.0
   },
   {
    "bearing": 160,
@@ -1200,7 +1208,9 @@
    "road_section": 8,
    "setting": "urban",
    "side": "RIGHT",
-   "tms_number": 11
+   "tms_number": 11,
+   "x_m": 393767.0,
+   "y_m": 6677355.0
   },
   {
    "bearing": 10,
@@ -1426,7 +1436,9 @@
    "road_section": 1,
    "setting": "urban",
    "side": "RIGHT",
-   "tms_number": 153
+   "tms_number": 153,
+   "x_m": 386177.0,
+   "y_m": 6678136.0
   },
   {
    "bearing": 320,
@@ -1634,7 +1646,9 @@
    "road_section": 414,
    "setting": "rural",
    "side": "RIGHT",
-   "tms_number": 1229
+   "tms_number": 1229,
+   "x_m": 419186.0,
+   "y_m": 7269006.0
   },
   {
    "bearing": 120,
@@ -1842,7 +1856,9 @@
    "road_section": 5,
    "setting": "rural",
    "side": "LEFT",
-   "tms_number": 1227
+   "tms_number": 1227,
+   "x_m": 447581.0,
+   "y_m": 7192904.0
   },
   {
    "bearing": 45,
@@ -2050,7 +2066,9 @@
    "road_section": 25,
    "setting": "rural",
    "side": "LEFT",
-   "tms_number": 1205
+   "tms_number": 1205,
+   "x_m": 423073.0,
+   "y_m": 7176990.0
   },
   {
    "bearing": 250,
@@ -2286,7 +2304,9 @@
    "road_section": 5,
    "setting": "rural",
    "side": "LEFT",
-   "tms_number": 1253
+   "tms_number": 1253,
+   "x_m": 408398.0,
+   "y_m": 7214455.0
   },
   {
    "bearing": 350,
@@ -2494,7 +2514,9 @@
    "road_section": 359,
    "setting": "rural",
    "side": "RIGHT",
-   "tms_number": 1203
+   "tms_number": 1203,
+   "x_m": 597161.0,
+   "y_m": 7328302.1
   }
  ]
 }
