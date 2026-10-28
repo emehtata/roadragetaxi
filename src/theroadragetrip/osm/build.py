@@ -391,6 +391,8 @@ def _level(tags: Dict[str, str]) -> Optional[int]:
 
 
 def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
+    if tags.get("natural") == "shrub":
+        return "shrub"
     amenity = tags.get("amenity")
     if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel", "biergarten", "grave_yard", "nightclub", "charging_station"):
         return amenity

@@ -933,3 +933,11 @@ def test_build_ways_reads_a_charging_station_with_its_capacity_and_road_directio
     assert stations[3].level is None and stations[4].level == -1  # in a garage
     assert abs(stations[3].direction_angle - math.pi / 4) < 1e-6  # faces the road it stands by...
     assert (stations[3].x, stations[3].y) == (25.005 * 1000.0, 60.0051 * 1000.0)  # ...where it was mapped
+
+
+def test_mapped_shrubs_keep_their_position_beside_houses():
+    result = build_ways([
+        {"type": "node", "id": 1, "lat": 65.066, "lon": 25.413, "tags": {"natural": "shrub"}},
+    ])
+    shrub, = result.scenery_objects
+    assert (shrub.kind, shrub.id, shrub.x, shrub.y) == ("shrub", 1, 25413.0, 65066.0)

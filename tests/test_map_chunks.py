@@ -6,7 +6,7 @@ import pytest
 from theroadragetrip import map_chunks
 
 
-@pytest.mark.parametrize("kind", ["biergarten", "grave_yard"])
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard", "shrub"])
 def test_point_sites_are_streamed_to_the_renderer(kind):
     from theroadragetrip.osm import SceneryObject
 

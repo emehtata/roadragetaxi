@@ -1174,8 +1174,17 @@ func _draw_trees(node: Node2D) -> void:
 	for post in _data.get("bollards", []):
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			node.draw_circle(MapMath.point(_origin, post[0], post[1]), maxf(_px(1.0), 0.25), Color8(48, 48, 46))
+	var shrubs := PackedVector2Array()
 	for obj in _data.get("scenery_objects", []):
+		if obj[2] == "shrub":
+			var at := MapMath.point(_origin, obj[0], obj[1])
+			shrubs.append_array(PackedVector2Array([at - Vector2(0.3, 0), at + Vector2(0.3, 0)]))
+			continue
 		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]), int(obj[4]) if obj.size() > 4 else 0)
+
+	if not shrubs.is_empty():
+		var foliage := hedge_foliage(shrubs)
+		_triangles_colored(node, foliage[0], foliage[1], foliage[2])
 
 
 ## The decorative scenery objects, in metres with minimum pixel sizes.

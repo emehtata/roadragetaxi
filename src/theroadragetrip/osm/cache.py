@@ -14,7 +14,7 @@ from typing import List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
-CACHE_VERSION = "v0.19.0alpha.7"  # Include camp sites and mapped pitches.
+CACHE_VERSION = "v0.19.1alpha.1"  # Include individual natural=shrub nodes.
 # How long downloaded map data is reused before refetching; OSM_CACHE_TTL (seconds) overrides.
 OSM_CACHE_TTL_S = 14 * 24 * 3600
 

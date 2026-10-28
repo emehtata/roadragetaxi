@@ -269,6 +269,7 @@ def test_fetch_query_requests_the_newly_rendered_point_and_barrier_kinds(monkeyp
     osm.fetch_osm_ways((60.0, 25.0, 60.1, 25.1), endpoints=["https://example.test/api"], force_refresh=True)
 
     query = captured["query"]
+    assert 'node["natural"~"^(tree|shrub)$"]' in query
     assert "fountain" in query and "fuel" in query
     import re
     leisure = re.search(r'node\["leisure"~"([^"]+)"\]', query)  # the list may grow (miniature_golf)
