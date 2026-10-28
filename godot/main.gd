@@ -210,6 +210,7 @@ func _ready() -> void:
 		_engine_on = true  # automated runs drive straight away: no sign, no hints
 		_entered_taxi = not "--start-sign" in args  # --start-sign: a screenshot of the city's start sign and forecast
 	if _bench > 0.0:  # rrt-019.1: the frame in phases - scripts, redraws and layout up to the render, then the render
+		Perf.time_draws(entities, "draw_entities")  # and the vehicles, people, lamps... each
 		RenderingServer.frame_pre_draw.connect(func():
 			_bench_pre_draw = Time.get_ticks_usec()
 			Perf.add("phase_process_to_render", _bench_pre_draw - _last_frame_usec))

@@ -59,3 +59,17 @@ static func report() -> Dictionary:
 		var s: Array = sections[name]
 		out["sections"][name] = {"count": s[0], "avg_ms": s[1] / 1000.0 / maxi(1, s[0]), "max_ms": s[2] / 1000.0, "total_ms": s[1] / 1000.0}
 	return out
+
+
+## --bench: time every draw callback of `parent`'s child canvas items, as
+## "<prefix>_<child index>_<callback>" (lambdas show as their index only).
+static func time_draws(parent: Node, prefix: String) -> void:
+	for i in parent.get_child_count():
+		var child := parent.get_child(i)
+		if not child is CanvasItem:
+			continue
+		for connection in child.draw.get_connections():
+			var callback: Callable = connection["callable"]
+			var section := "%s_%d_%s" % [prefix, i, callback.get_method()]
+			child.draw.disconnect(callback)
+			child.draw.connect(func(): var t := Time.get_ticks_usec(); callback.call(); add(section, Time.get_ticks_usec() - t))
