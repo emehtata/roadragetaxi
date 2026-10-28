@@ -1161,3 +1161,27 @@ def test_knocking_a_post_over_clangs_where_the_taxi_is(tmp_path, monkeypatch):
         server.tick(1 / 30)
     knocks = [at for group, at in played if group == "collision.post_knock"]
     assert len(knocks) == 1 and math.dist(knocks[0], (car.x, car.y)) < 5.0
+
+
+def test_the_taxi_backs_out_of_a_wreck_it_is_stuck_in(tmp_path, monkeypatch):
+    """Reported: crashed into a rival taxi on a bridge and stuck inside it for good -
+    the pose was restored every frame, moving away from it too."""
+    import math
+    from theroadragetrip.npc import NPCState, place_parked_npc
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch)
+    car = server.car
+    server._on_foot, car.engine_on = False, True
+    van = place_parked_npc(9999, (car.x - 0.65, car.y + 0.62), None, vehicle_type="van")  # the screenshot's overlap
+    van.car.heading, van.state = car.heading + 0.01, NPCState.CRASHED
+    server.world.npc_manager.vehicles.append(van)
+    start = (car.x, car.y)
+    server._latest_command = PlayerCommand(throttle=1.0)
+    for _ in range(30):
+        server.tick(1 / 30)
+    assert math.dist(start, (car.x, car.y)) < 0.5  # pressing on into it: still stopped
+    server._latest_command = PlayerCommand(brake=1.0)
+    for _ in range(90):
+        server.tick(1 / 30)
+    assert math.dist(start, (car.x, car.y)) > 5.0  # reversing: out

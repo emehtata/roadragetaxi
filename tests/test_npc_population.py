@@ -1173,6 +1173,7 @@ def _driving_vehicle(residents, x, y, heading=0.0, vehicle_id=1):
     (which reads has_active_driver) needs this extra wiring in tests."""
     vehicle = place_parked_npc(vehicle_id, (x, y), None, vehicle_type="car")
     vehicle.car.heading = heading
+    vehicle.car.speed = 8.0  # driving: a contact is a crash, not a walking-pace scrape (NPC_SCRAPE_MPS)
     resident = residents.create(mode="driving")
     vehicle.owner_id = resident.resident_id
     resident.active_vehicle_id = vehicle.vehicle_id
@@ -1393,6 +1394,7 @@ def test_check_vehicle_collision_crashes_both_overlapping_npc_vehicles():
     manager = NPCVehicleManager(target_count=1)
     vehicle_a, resident_a = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
     vehicle_b, resident_b = _driving_vehicle(residents, 1.0, 0.0, vehicle_id=2)  # well within each other's footprint
+    vehicle_b.car.speed = 0.0  # standing: closing at vehicle_a's 8 m/s
     manager.vehicles.extend([vehicle_a, vehicle_b])
     pedestrian_mgr = PedestrianManager([], target_count=0)
 
@@ -1442,6 +1444,7 @@ def test_swept_collision_catches_npcs_that_cross_between_frames():
     manager = NPCVehicleManager(target_count=2)
     vehicle_a, _ = _driving_vehicle(residents, 10.0, 0.0, vehicle_id=1)
     vehicle_b, _ = _driving_vehicle(residents, -10.0, 0.0, vehicle_id=2)
+    vehicle_b.car.heading = math.pi  # head-on, as their poses say
     manager.vehicles.extend([vehicle_a, vehicle_b])
     pedestrian_mgr = PedestrianManager([], target_count=0)
 
@@ -2405,3 +2408,16 @@ def test_through_traffic_parks_at_its_own_kerb_never_across_the_oncoming_lane():
         if vehicle.state == NPCState.PARKED:
             break
     assert vehicle.state == NPCState.PARKED and vehicle.y > 4.0
+
+
+def test_npcs_touching_at_walking_pace_scrape_and_go_on():
+    """A crawl past a car that is parking: both stop apart, neither is a wreck blocking the road."""
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    crawling, _ = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
+    crawling.car.speed = 0.6
+    parking, _ = _driving_vehicle(residents, 1.0, 0.0, vehicle_id=2)
+    parking.car.speed = 0.0
+    manager.vehicles.extend([crawling, parking])
+    assert manager._check_vehicle_collision(crawling, [parking], residents, PedestrianManager([], target_count=0), sim_time=5.0)
+    assert NPCState.CRASHED not in (crawling.state, parking.state) and not manager.accidents

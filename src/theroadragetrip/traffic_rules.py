@@ -156,6 +156,20 @@ def stop_sign_decision(vehicle, driver, signs, speed_limit_mps=None):
                            (vehicle.x + fx * gap, vehicle.y + fy * gap), "STOP sign: mandatory stop")
 
 
+GRIDLOCK_WAIT_S = 3.0  # standing this long yielding to the right before a gridlock tie-break
+
+
+def _waited_longer(vehicle, other) -> bool:
+    """`vehicle` goes before `other`, itself stopped yielding to its right: both
+    have waited GRIDLOCK_WAIT_S, and `vehicle` longer (by 0.5 s; else the lower id)."""
+    mine, theirs = getattr(vehicle, "yield_wait_s", 0.0), getattr(other, "yield_wait_s", 0.0)
+    if mine < GRIDLOCK_WAIT_S or theirs < GRIDLOCK_WAIT_S:
+        return False
+    if abs(mine - theirs) > 0.5:
+        return mine > theirs
+    return getattr(vehicle, "vehicle_id", 0) < getattr(other, "vehicle_id", 0)
+
+
 def crossing_yield_decision(vehicle, obstacles, *, signs=(), speed_limit_mps=None):
     """Brake before conflicting traffic from the right at an unsignalled crossing."""
     def signed(car):
@@ -195,6 +209,13 @@ def crossing_yield_decision(vehicle, obstacles, *, signs=(), speed_limit_mps=Non
         if (own_priority and not other_priority) or (other_signed and not own_signed):
             continue
         if not ((own_signed and not other_signed) or (other_priority and not own_priority) or right):
+            continue
+        # Gridlock (game policy, guide "Junctions and yielding"): every car at an
+        # unsigned crossing standing for the one on its right waits for ever. The
+        # one that has waited longest goes first (then id); the rest keep
+        # yielding to it, so two conflicting cars never enter together.
+        if (right and not own_signed and not other_signed and abs(getattr(other, "speed", 0.0)) < 0.3
+                and _waited_longer(vehicle, other)):
             continue
         # A distant vehicle won't enter the intersection while we cross it.
         if other_distance / max(1.0, abs(getattr(other, "speed", 0.0))) > distance / max(2.0, abs(vehicle.speed)) + 4.0:

@@ -149,7 +149,7 @@ def offset_route(points: List[Tuple[float, float]], ways: List, width_m: float):
         heading = heading_out if heading_in is None else heading_in if heading_out is None else (
             heading_in + angle_diff(heading_out, heading_in) * 0.5)
         way = next_way or prev_way
-        offset = lateral_offset_m(way, width_m) if way is not None else 0.0
+        offset = lateral_offset_m(way, width_m)  # a connector leg (no way) keeps right like a path: head-on riders met on one line
         out.append((x + math.sin(heading) * offset, y - math.cos(heading) * offset, next_way or prev_way))
     return out
 
@@ -323,6 +323,91 @@ BELL_REASONS = ("pedestrian in the way", "blocked")  # held up by a walker or a 
 BELL_COOLDOWN_S = 6.0  # one rider rings at most this often
 
 
+CYCLIST_PASS_MPS = 3.0  # riding around a parked car or a wreck
+CYCLIST_PASS_MARGIN_M = 0.5  # beside its body
+CYCLIST_PASS_ONCOMING_M = 30.0  # the passing line must be free of oncoming traffic this far
+CYCLIST_PASS_START_M = 20.0  # begin swinging out this far behind it: room to steer out at riding speed
+
+
+def _swing_past(driver, car, aim, lead, width_m, obstacles):
+    """The heading that takes a rider around a parked car or wreck (on its
+    left, § 18, clear of its oriented body), or None. A pass, once begun, is
+    held until the rider is past the far end: first beside the near end, then
+    beside the far end - steering back at its middle cut into its corner.
+    Not begun with oncoming traffic on the passing line: then wait behind."""
+    passing = getattr(driver, "cycle_passing", None)
+    if passing is None and lead is not None:
+        gap, other = lead
+        if getattr(other, "state", None) in ("PARKED", "CRASHED") and gap <= CYCLIST_PASS_START_M \
+                and not _oncoming_on(car, aim, other, obstacles):
+            passing = driver.cycle_passing = other
+            driver.cycle_pass_heading = aim  # the pass is laid out along the riding line at its start
+    if passing is None:
+        return None
+    heading = driver.cycle_pass_heading
+    hx, hy = math.cos(heading), math.sin(heading)
+    angle = getattr(passing, "heading", heading) - heading
+    length, width = getattr(passing, "length_m", 4.3), getattr(passing, "width_m", 1.8)
+    across = abs(math.sin(angle)) * length + abs(math.cos(angle)) * width
+    along_extent = abs(math.cos(angle)) * length + abs(math.sin(angle)) * width
+    clear = (width_m + across) * 0.5 + CYCLIST_PASS_MARGIN_M
+    along = (passing.x - car.x) * hx + (passing.y - car.y) * hy
+    if along < -(along_extent * 0.5 + 1.5) or getattr(passing, "state", None) not in ("PARKED", "CRASHED"):
+        driver.cycle_passing = None  # past it (or it drove off): back to the riding line
+        return None
+    beside = along_extent * 0.5 + 1.0
+    end = -beside if along > beside - 0.5 else beside + 3.0  # its near end until there, then beyond its far end
+    px, py = passing.x - hy * clear + hx * end, passing.y + hx * clear + hy * end
+    return math.atan2(py - car.y, px - car.x)
+
+
+CYCLIST_MEET_SHIFT_M = 0.55  # further right while meeting oncoming traffic on the riding line
+CYCLIST_MEET_AHEAD_M = 15.0
+
+
+def _oncoming_near(car, aim, obstacles, self_id) -> bool:
+    """Something coming the other way on (about) this rider's line, close ahead."""
+    hx, hy = math.cos(aim), math.sin(aim)
+    for other in obstacles:
+        if id(other) == self_id or abs(getattr(other, "speed", 0.0)) < 0.3 or math.cos(getattr(other, "heading", 0.0) - aim) > -0.5:
+            continue
+        dx, dy = other.x - car.x, other.y - car.y
+        if 0.0 < dx * hx + dy * hy < CYCLIST_MEET_AHEAD_M and abs(dy * hx - dx * hy) < 1.5:
+            return True
+    return False
+
+
+def _oncoming_on(car, aim, other, obstacles) -> bool:
+    hx, hy = math.cos(aim), math.sin(aim)
+    for oncoming in obstacles:
+        speed = getattr(oncoming, "speed", 0.0)
+        if oncoming is other or abs(speed) < 1.0 or math.cos(getattr(oncoming, "heading", 0.0) - aim) > -0.5:
+            continue
+        ox, oy = oncoming.x - car.x, oncoming.y - car.y
+        if 0.0 < ox * hx + oy * hy < CYCLIST_PASS_ONCOMING_M and abs(oy * hx - ox * hy) < 4.0:
+            return True
+    return False
+
+
+def vehicle_on_line(x, y, heading, obstacles, self_id, reach_m, width_m):
+    """(distance ahead, vehicle) for the nearest vehicle whose body reaches
+    across this rider's line within `reach_m`: its oriented extent, not its
+    centre - a parked car angled to the road has its centre 2 m off the line
+    while its rear corner is in the way (riders hit them)."""
+    hx, hy = math.cos(heading), math.sin(heading)
+    nearest = None
+    for other in obstacles:
+        if id(other) == self_id:
+            continue
+        dx, dy = other.x - x, other.y - y
+        along, lateral = dx * hx + dy * hy, abs(dy * hx - dx * hy)
+        angle = getattr(other, "heading", heading) - heading
+        across = abs(math.sin(angle)) * getattr(other, "length_m", 4.3) + abs(math.cos(angle)) * getattr(other, "width_m", 1.8)
+        if 0.0 < along <= reach_m and lateral < (width_m + across) * 0.5 + 0.3 and (nearest is None or along < nearest[0]):
+            nearest = (along, other)
+    return nearest
+
+
 def pedestrian_cap(x, y, heading, pedestrians):
     """§§ 3-5 care: pass a walker ahead slowly with room, or stop short of one in the way."""
     fx, fy = math.cos(heading), math.sin(heading)
@@ -382,7 +467,7 @@ def update_cyclist(vehicle, driver, dt: float, traffic_world, obstacles, pedestr
     braking, a minimum turning radius - no instant stops, no pivoting."""
     from .npc import NPCState
     from .traffic_rules import TrafficAction, TrafficDecision, crossing_yield_decision, decide_traffic_action
-    from .traffic_rules import nearest_vehicle_ahead, stop_sign_decision
+    from .traffic_rules import stop_sign_decision
     from .osm import StopSign
 
     route: CycleRoute = driver.cycle
@@ -402,6 +487,9 @@ def update_cyclist(vehicle, driver, dt: float, traffic_world, obstacles, pedestr
 
     look = point_at(route, s_now + max(2.0, abs(car.speed) * 0.9))
     aim = math.atan2(look[1] - car.y, look[0] - car.x)
+    if _oncoming_near(car, aim, obstacles, id(vehicle)):  # meeting on a narrow path: both keep further right
+        look = (look[0] + math.sin(aim) * CYCLIST_MEET_SHIFT_M, look[1] - math.cos(aim) * CYCLIST_MEET_SHIFT_M)
+        aim = math.atan2(look[1] - car.y, look[0] - car.x)
     target, reason, lawful_wait = route.cruise_mps, "", False
     if way is not None and way.highway == "living_street":
         target = min(target, 20.0 / 3.6)  # § 43
@@ -443,8 +531,15 @@ def update_cyclist(vehicle, driver, dt: float, traffic_world, obstacles, pedestr
     ped = pedestrian_cap(car.x, car.y, aim, pedestrians)
     if ped is not None:
         apply(ped[0], ped[1])
-    lead = nearest_vehicle_ahead(car.x, car.y, aim, obstacles, self_id=id(vehicle),
-                                 detection_distance_m=25.0, lateral_limit_m=max(0.9, vehicle.width_m + 0.3))
+    lead = vehicle_on_line(car.x, car.y, aim, obstacles, id(vehicle), 25.0, vehicle.width_m)
+    # On a carriageway only: a cycle path has no room beside a wreck (wait, then the stuck cleanup).
+    swing = _swing_past(driver, car, aim, lead, vehicle.width_m, obstacles) if on_carriageway(way) else None
+    if swing is not None:  # a parked car or a wreck on the line: ride around it, slowly
+        aim = swing
+        apply(CYCLIST_PASS_MPS, "passing a parked vehicle")
+        # ...still following whatever else is on the passing line (a queue beside it).
+        lead = vehicle_on_line(car.x, car.y, aim, [o for o in obstacles if o is not driver.cycle_passing],
+                               id(vehicle), 25.0, vehicle.width_m)
     if lead is not None:
         gap, other = lead
         room = gap - getattr(other, "length_m", 4.3) * 0.5 - vehicle.length_m * 0.5 - CYCLIST_FOLLOW_GAP_M

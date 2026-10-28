@@ -413,3 +413,30 @@ def test_a_held_up_cyclist_rings_the_bell_now_and_then():
     clear.cyclist((0, 0), (120, 0))
     clear.tick(10)
     assert clear.manager.bicycle_bells == []  # nobody in the way: no bell
+
+
+def test_a_cyclist_rides_around_a_car_parked_at_the_kerb():
+    """A car parked on the right edge of a residential street, angled a little: the rider swings out past it."""
+    road = _way([(0, 0), (120, 0)], "residential", half_width_m=4.0)
+    world = _World([road])
+    bike = world.cyclist((0, 0), (120, 0))
+    parked = Car(x=40.0, y=-2.6, heading=0.4, speed=0.0)
+    parked.state = "PARKED"
+    closest = 99.0
+    for _ in range(int(40 / DT)):
+        world.tick(DT, player=parked)
+        closest = min(closest, abs(bike.x - parked.x) + abs(bike.y - parked.y))
+        if bike.x > 50.0:
+            break
+        assert bike.shaken_timer == 0.0  # never touched it (a touch shakes the rider)
+    assert bike.x > 50.0 and NPCState.CRASHED != bike.state  # past it, not into it
+
+
+def test_cyclists_meeting_on_a_narrow_path_pass_each_other():
+    """A 1.5 m path: each keeps further right while they meet - they used to collide head-on."""
+    path = _way([(0, 0), (120, 0)], "path", bicycle="designated", half_width_m=0.75)
+    world = _World([path])
+    east = world.cyclist((0, 0), (120, 0))
+    west = world.cyclist((120, 0), (0, 0))
+    assert world.tick(40, until=lambda: east.x > 80 and west.x < 40)
+    assert NPCState.CRASHED not in (east.state, west.state)

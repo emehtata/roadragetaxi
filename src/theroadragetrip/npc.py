@@ -486,9 +486,34 @@ def _oncoming_lane_clear(x: float, y: float, heading: float, offset_m: float, wi
     return True
 
 
+NPC_PULL_OUT_MAX_SPEED_MPS = 1.5  # still setting off: below this a departing vehicle may wait for a gap
+NPC_PULL_OUT_GAP_S = 5.0  # traffic arriving within this long has the way
+NPC_PULL_OUT_LANE_M = 3.5  # ...when its line passes this close to the departing vehicle
+
+
+def _traffic_approaching(vehicle, obstacles) -> bool:
+    """A moving vehicle heading at `vehicle` that would reach it within NPC_PULL_OUT_GAP_S."""
+    for other in obstacles:
+        if other is vehicle or _is_stalled(other):
+            continue
+        speed = getattr(other, "speed", 0.0)
+        if abs(speed) < 1.0:
+            continue
+        heading = getattr(other, "heading", 0.0)
+        hx, hy = math.cos(heading) * (1 if speed > 0 else -1), math.sin(heading) * (1 if speed > 0 else -1)
+        dx, dy = vehicle.x - other.x, vehicle.y - other.y
+        along, across = dx * hx + dy * hy, abs(dy * hx - dx * hy)
+        if 0.0 < along <= abs(speed) * NPC_PULL_OUT_GAP_S + vehicle.length_m and across < NPC_PULL_OUT_LANE_M:
+            return True
+    return False
+
+
 def _stalled_vehicle_on_route(vehicle, driver, obstacles, reach):
-    """See wrecks around a bend before they enter the straight steering cone."""
-    candidates = [o for o in obstacles if o is not vehicle and _is_stalled(o)]
+    """See what is on the route around a bend before it enters the straight
+    steering cone: wrecks and parked cars, a queue standing still, and
+    traffic going the same way (a queue around a bend was only seen a few
+    metres short, too late to stop: rear-end pile-ups behind a wreck)."""
+    candidates = [o for o in obstacles if o is not vehicle]
     nearest = None
     distance = 0.0
     segment = driver.route_segment_index
@@ -507,6 +532,8 @@ def _stalled_vehicle_on_route(vehicle, driver, obstacles, reach):
             dx, dy = other.x - ax, other.y - ay
             along, lateral = dx * hx + dy * hy, abs(dy * hx - dx * hy)
             angle = getattr(other, "heading", heading) - heading
+            if not (_is_stalled(other) or abs(getattr(other, "speed", 0.0)) < 0.5 or math.cos(angle) > 0.5):
+                continue  # oncoming traffic is not in our lane's queue
             width = (abs(math.sin(angle)) * getattr(other, "length_m", NPC_VEHICLE_LENGTH_M)
                      + abs(math.cos(angle)) * getattr(other, "width_m", NPC_VEHICLE_WIDTH_M))
             gap = distance + along
@@ -1227,6 +1254,7 @@ class TripGroup:
 # Game policy: a bump by the taxi below this closing speed is no crash - the
 # NPC's driver curses and drives on slowly instead of wrecking the car.
 MINOR_HIT_MPS = 15.0 / 3.6
+NPC_SCRAPE_MPS = 5.0 / 3.6  # two NPCs touching slower than this: a scrape, both go on (no wreck)
 SHAKEN_S = 8.0
 SHAKEN_SPEED_MPS = 20.0 / 3.6
 CURSE_S = 2.5
@@ -2931,6 +2959,10 @@ def update_npc(
         )
         if crossing_decision is not None and crossing_decision.target_speed_mps <= decision.target_speed_mps:
             decision = crossing_decision
+        # How long it has stood yielding to its right: crossing_yield_decision's gridlock tie-break.
+        vehicle.yield_wait_s = (getattr(vehicle, "yield_wait_s", 0.0) + dt
+                                if crossing_decision is not None and crossing_decision.reason == "yielding to traffic from right"
+                                and abs(vehicle.car.speed) < 0.3 else 0.0)
         stop_decision = stop_sign_decision(vehicle, driver, [sign for sign in signs if isinstance(sign, StopSign)], speed_limit_mps)
         if stop_decision is not None:
             crossing_decision = stop_decision if crossing_decision is None else crossing_decision
@@ -3035,7 +3067,10 @@ def update_npc(
         gap, obstacle = lead
         lead_length_m = getattr(obstacle, "length_m", NPC_VEHICLE_LENGTH_M)
         lead_speed_mps = max(0.0, getattr(obstacle, "speed", 0.0))
-        stop_gap = NPC_PASS_START_GAP_M if _is_stalled(obstacle) else NPC_AVOIDANCE_MIN_GAP_M
+        # Behind a vehicle that will not move: room for this one's nose to swing out
+        # past it (a bus stopped car-length close never could, and waited for good).
+        stop_gap = (max(NPC_PASS_START_GAP_M, vehicle.length_m * 0.5 + NPC_AVOIDANCE_MIN_GAP_M + 0.5)
+                    if _is_stalled(obstacle) else NPC_AVOIDANCE_MIN_GAP_M)
         following_gap = max(0.0, gap - lead_length_m * 0.5 - vehicle.length_m * 0.5 - stop_gap)
         avoidance_cap = math.sqrt(
             lead_speed_mps * lead_speed_mps + 2.0 * NPC_AVOIDANCE_DECEL_MPS2 * following_gap
@@ -3043,7 +3078,7 @@ def update_npc(
         driver.target_speed_mps = min(driver.target_speed_mps, avoidance_cap)
         avoidance_blocked = following_gap <= 0.1 and lead_speed_mps < 0.5
     if (passing is None and lead is not None and _is_stalled(lead[1]) and abs(vehicle.car.speed) < 0.5
-            and following_gap < NPC_PASS_START_GAP_M
+            and following_gap < stop_gap
             # Leave room for the nose to swing aside before ignoring the wreck.
             and math.hypot(lead[1].x - vehicle.x, lead[1].y - vehicle.y)
             >= lead_length_m * 0.5 + vehicle.length_m + NPC_AVOIDANCE_MIN_GAP_M):
@@ -3056,6 +3091,13 @@ def update_npc(
                 driver.passing, driver.pass_wait_s = lead[1], 0.0
     else:
         driver.pass_wait_s = 0.0
+
+    # § 25 / §§ 3-5: setting off from a parking spot or a stop, yield to traffic
+    # coming from either direction (a taxi pulled out in front of a truck at 36 km/h).
+    pull_out_wait = departing and abs(vehicle.car.speed) < NPC_PULL_OUT_MAX_SPEED_MPS and _traffic_approaching(
+        vehicle, nearby_obstacles or ())
+    if pull_out_wait:
+        driver.target_speed_mps = 0.0
 
     if at_destination and footprint_clear:
         driver.target_speed_mps = 0.0
@@ -3092,7 +3134,7 @@ def update_npc(
     finishing_approach = approaching_final_waypoint or vehicle.state in (NPCState.PARKING, NPCState.ARRIVING)
     waiting_in_queue = (avoidance_blocked and lead is not None
                         and gap >= (lead_length_m + vehicle.length_m) * 0.5)
-    if protest_cap is not None or waiting_for_light or crossing_decision is not None or waiting_in_queue or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
+    if protest_cap is not None or pull_out_wait or waiting_for_light or crossing_decision is not None or waiting_in_queue or ((at_destination or finishing_approach) and footprint_clear) or driver.recovery_stage != "NORMAL":
         driver.stuck_timer_s = 0.0
         driver.stuck_check_position = None
         driver.stuck_check_elapsed_s = 0.0
@@ -3357,6 +3399,9 @@ def _roadside_parking_point(
     return right
 
 
+ROADSIDE_KERB_RUN_M = 3.5  # a roadside spot's last straight run along the kerb
+
+
 def _roadside_pull_in(route: list, destination: Tuple[float, float], ways, spatial_grid) -> list:
     """A roadside destination's route ending in a pull-in: along the
     right-hand lane until NPC_PARKING_APPROACH_DISTANCE_M before the spot,
@@ -3372,7 +3417,10 @@ def _roadside_pull_in(route: list, destination: Tuple[float, float], ways, spati
     if travel[0] * (destination[0] - prev[0]) + travel[1] * (destination[1] - prev[1]) < 0.0:
         travel = (-travel[0], -travel[1])
     pull_in = (lane[0] - travel[0] * NPC_PARKING_APPROACH_DISTANCE_M, lane[1] - travel[1] * NPC_PARKING_APPROACH_DISTANCE_M)
-    return list(route[:-1]) + [pull_in, tuple(destination)]
+    # Then along the kerb for the last metres: parked parallel to the edge (§ 36). Arriving
+    # on the diagonal left it 20-30 degrees across, its rear in the lane (riders and cars hit it).
+    kerb = (destination[0] - travel[0] * ROADSIDE_KERB_RUN_M, destination[1] - travel[1] * ROADSIDE_KERB_RUN_M)
+    return list(route[:-1]) + [pull_in, kerb, tuple(destination)]
 
 
 def _arrives_on_right(route: list, destination: Tuple[float, float]) -> bool:
@@ -4793,6 +4841,15 @@ class NPCVehicleManager:
                         break
             if not hit:
                 continue
+            if (not obstacle_is_npc and other_previous is not None and boxes_intersect(
+                    vehicle.x, vehicle.y, vehicle.heading, vehicle.length_m, vehicle.width_m,
+                    other_previous[0], other_previous[1], other_previous[2], body_length, body_width)
+                    and math.hypot(obstacle.x - vehicle.x, obstacle.y - vehicle.y)
+                    >= math.hypot(other_previous[0] - vehicle.x, other_previous[1] - vehicle.y) - 1e-6):
+                # The taxi was already in it and is not going deeper (as at buildings and
+                # posts): let it. Restoring the pose every frame kept it stuck inside
+                # a wreck for good (reported: stuck in a rival taxi on a bridge).
+                continue
             other_speed = getattr(other_car, "speed", 0.0)
             closing_speed = math.hypot(
                 math.cos(vehicle.car.heading) * vehicle.car.speed - math.cos(other_car.heading) * other_speed,
@@ -4835,6 +4892,11 @@ class NPCVehicleManager:
                 provoke(vehicle, PROVOKE_BUMP, sim_time)
                 if is_competitor(vehicle) and len(self.taxi_bumps) < 8:
                     self.taxi_bumps.append(vehicle.vehicle_id)
+                return True
+            if obstacle_is_npc and not vehicle_already_crashed and obstacle.state != NPCState.CRASHED \
+                    and closing_speed < NPC_SCRAPE_MPS:
+                # Two NPCs touching at walking pace (a crawl past a parking car): both stop
+                # apart and go on - a scrape, not a wreck blocking the road for minutes.
                 return True
             self.accidents.append((vehicle.car.x, vehicle.car.y))
             if not vehicle_already_crashed:
