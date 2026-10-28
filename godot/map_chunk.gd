@@ -1085,6 +1085,9 @@ func _draw_wet(node: Node2D, z: int = 1) -> void:
 
 
 func _draw_puddles(node: Node2D, z: int = 1) -> void:
+	var points := PackedVector2Array()  # every puddle in one draw call (rrt-019.1: one each was ~700 in rain)
+	var indices := PackedInt32Array()
+	var colors := PackedColorArray()
 	for spot in _puddle_spots:
 		if int(spot.get("z", 1)) != z:
 			continue
@@ -1097,8 +1100,16 @@ func _draw_puddles(node: Node2D, z: int = 1) -> void:
 		for i in shape.size():
 			var angle := TAU * i / shape.size()
 			polygon.append(spot["at"] + Vector2(cos(angle), sin(angle)) * radius * shape[i])
-		if Detail._valid(polygon):  # a jittered outline can cross itself
-			node.draw_colored_polygon(polygon, Color(RS.PUDDLE_COLOR, RS.PUDDLE_MAX_ALPHA * strength))
+		var triangles := Geometry2D.triangulate_polygon(polygon)
+		if triangles.is_empty():  # a jittered outline can cross itself
+			continue
+		for i in triangles:
+			indices.append(points.size() + i)
+		points.append_array(polygon)
+		var color := Color(RS.PUDDLE_COLOR, RS.PUDDLE_MAX_ALPHA * strength)
+		for i in polygon.size():
+			colors.append(color)
+	_triangles_colored(node, points, indices, colors)
 
 
 const TREE_CROWNS := {
