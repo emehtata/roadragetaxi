@@ -49,6 +49,9 @@ var red_light_assist := false  # B: likewise
 var lane_assist := false  # K: likewise
 var _respawn_pending := false
 var _home_pending := false  # H: choose this yard as home / back home
+var _home_door_pending := false  # E on foot: into the home at its front door / out again
+var home_walk := preload("res://home_walk.gd").new()  # inside the home (state home_door.indoors)
+var _home_plan_asked := false  # indoors without the plan: asked for once
 var _cancel_ride_pending := false
 var _reset_trip_pending := false
 var _help: PanelContainer
@@ -135,6 +138,7 @@ func _ready() -> void:
 	_apply_language()
 	_build_help()
 	_build_inspector()
+	add_child(home_walk)
 	add_child(weather)
 	add_child(wildlife)
 	add_child(animal_audio)
@@ -487,7 +491,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_T:
 				_reset_trip_pending = true
 			KEY_E:  # toggles what the simulation shows (it may have stopped the engine: no fuel)
-				if not entities.shown_state().get("on_foot", true) and not _interact_pending:
+				var door: Dictionary = entities.shown_state().get("home_door", {})
+				if door.get("available", false) or (door.get("indoors", false) and home_walk.visible and home_walk.at_exit()):
+					_home_door_pending = true  # on foot at home's door (only then: E means nothing else on foot)
+				elif not entities.shown_state().get("on_foot", true) and not _interact_pending:
 					_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
 			KEY_F1:
 				_help.visible = not _help.visible
@@ -774,6 +781,7 @@ func _present(state: Dictionary) -> void:
 	if state.has("game_time_seconds"):
 		phone.set_game_seconds(float(state["game_time_seconds"]))
 	phone.protest_active = state.get("protest_active", false)
+	_home_view(state)
 	phone.show_phone(state.get("phone", {}))
 	phone.show_navigation(state.get("navigation", {}), hud.task_text(state.get("taxi", {}), hud.language))
 	_refresh_inspector(state)
@@ -785,6 +793,24 @@ func _present(state: Dictionary) -> void:
 	nav_overlay.update_view(target, target_screen, camera_world, state["player"].get("heading", 0.0))
 	if debug_label.visible:
 		_update_debug(state)
+
+
+## Indoors (the server's home_door.indoors): the floor plan to walk in, asked for once.
+func _home_view(state: Dictionary) -> void:
+	var indoors: bool = state.get("home_door", {}).get("indoors", false)
+	if not indoors:
+		home_walk.leave()
+		_home_plan_asked = false
+		return
+	if home_walk.visible:
+		return
+	home_walk.language = language
+	if sim.home_plan.has("footprint") and home_walk.enter(sim.home_plan):
+		return
+	if home_walk.plan.has("footprint") and home_walk.enter(home_walk.plan):  # back in: the cached plan
+		return
+	if not _home_plan_asked:
+		_home_plan_asked = sim.send_home_interior()
 
 
 ## The nearest moving train rumbles from where it is (one train is enough).
@@ -1024,6 +1050,7 @@ func send(controls: Dictionary) -> void:
 	if outside or _interact_pending:
 		command["engine_on"] = null
 	command["language"] = language
+	command["home_door"] = _home_door_pending
 	# The inspect panel's subject: the simulation sends residents for it alone (protocol.py compact rows).
 	command["inspect"] = {"kind": _focus["kind"], "id": _focus["id"]} if _focus.get("kind") in ["npc", "pedestrian"] and _focus.has("id") else null
 	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()
@@ -1034,6 +1061,7 @@ func send(controls: Dictionary) -> void:
 	_road_rage_pending = false
 	_respawn_pending = false
 	_home_pending = false
+	_home_door_pending = false
 	_cancel_ride_pending = false
 	_reset_trip_pending = false
 	sim.send_command(command)

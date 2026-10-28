@@ -293,6 +293,8 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 			text["road"] += " [%s: %d km/h]" % [T.text("limit", language), int(road["speed_limit_kmh"])]
 	if on_foot and preload("res://entity_layer.gd").player_fighting(state):
 		text["hint"] = T.text("hint_brawl", language)
+	elif on_foot and state.get("home_door", {}).get("available", false):
+		text["hint"] = T.text("home_enter_prompt", language) + " · " + T.text("hint_foot", language)
 	elif on_foot:
 		text["hint"] = T.text("hint_foot", language)
 	elif not player.get("engine_on", true):
