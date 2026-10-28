@@ -1077,8 +1077,14 @@ class TaxiManager:
             if getattr(post, "knocked_angle", None) is not None:
                 continue  # already lying flat
             dx, dy = post.x - player_car.x, post.y - player_car.y
-            if abs(dx * cos_h + dy * sin_h) > half_l or abs(-dx * sin_h + dy * cos_h) > half_w:
+            along, across = abs(dx * cos_h + dy * sin_h), abs(-dx * sin_h + dy * cos_h)
+            if along > half_l or across > half_w:
                 continue
+            if previous_position is not None:
+                px, py = post.x - previous_position[0], post.y - previous_position[1]
+                before = min(half_l - abs(px * cos_h + py * sin_h), half_w - abs(-px * sin_h + py * cos_h))
+                if min(half_l - along, half_w - across) < before:
+                    continue  # already touching: allow movement that reduces overlap
             if abs(player_car.speed) * 3.6 >= POST_KNOCK_DOWN_KMH:
                 post.knocked_angle = player_car.heading if player_car.speed >= 0.0 else player_car.heading + math.pi
                 self.knocked_posts += 1
