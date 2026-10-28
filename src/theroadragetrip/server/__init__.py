@@ -905,6 +905,7 @@ class SimulationServer:
         wet_road = road_weather.road_wetness() if road_weather is not None else None
         if wet_road is not None:  # the station sees the road itself: dry or wet, that is the road
             self.world.weather.wetness = wet_road
+        self.world.weather.road_ice_override = road_weather.road_ice() if road_weather is not None else None
         self._update_sports()
         if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once
             self.audio.play_group("weather.thunder", 0.8)

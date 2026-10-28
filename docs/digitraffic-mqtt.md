@@ -1,8 +1,8 @@
 # Live clock and Digitraffic MQTT
 
-Status: **phases 1 (live clock), 2 (MQTT client) and 3a (live road weather)
-implemented (2026-10-28)**. Phase 3b (ploughs from `maintenance-v2`) is not
-started.
+Status: **phases 1 (live clock), 2 (MQTT client), 3a (live road weather) and
+3c (live road ice) implemented (2026-10-28)**. Phase 3b (ploughs from
+`maintenance-v2`) is not started.
 
 Digitraffic's MQTT feed (`wss://tie.digitraffic.fi:443/mqtt`) is live "now"
 data. It only matches the game when game time is the computer's clock, so it
@@ -95,3 +95,24 @@ station's dry 0.0.
 
 Not yet used: road surface temperature, freezing point and frost/ice
 states (the game derives ice from air temperature and wetness).
+
+## Phase 3c: live road ice
+
+`RoadWeather.road_ice()` sets `WeatherSystem.road_ice_override`, which
+`road_ice_fraction` (the taxi's grip, `simulation.py` `black_ice`) returns in
+place of its own rule (the wetness, whenever the air is below 0 C).
+
+| Road state (sensor 27) | Road ice |
+| --- | --- |
+| ice (7) | 1.0 |
+| frost (5) | 0.5, thin and patchy |
+| wet and salty (4), moist and salty (8) | 0: salt keeps it from freezing |
+| dry (1) | 0 |
+| moist (2), wet (3), slush (9) | its wetness (0.4 or 1.0) when the road surface (sensor 3, TIE_1) is at or below the water's freezing point (sensor 10), else 0; 0 C without a freezing point |
+| fault (0), unknown (13 and others), no fresh reading | the game's own rule |
+
+Checked on 2026-10-28: no Finnish station had a frozen road (coldest 0.0 C,
+dry); near Oulu the road was dry at 10.9 C and road ice 0.0. Two stations
+sent road state 13, which the sensor catalogue does not describe.
+
+The HUD still shows only wetness; ice changes the taxi's grip.

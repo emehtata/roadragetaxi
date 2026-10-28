@@ -143,3 +143,32 @@ def test_rest_seeds_the_startup_gap_and_never_overwrites_newer_mqtt():
     weather.update(0.0, 0.0, [_reading(1, dm.AIR_C, 2.0)])  # MQTT at 1000 s: newer than the seed
     observed = weather.observation()
     assert observed.wind_speed_mps == 4.0 and observed.temperature_c == 2.0
+
+
+def test_road_ice_follows_the_road_surface_state_and_temperatures():
+    weather, _, _, now = _road_weather()
+    weather.update(0.0, 0.0, [])
+    assert weather.road_ice() is None  # nothing fresh: the game's own rule
+
+    def state(*readings):
+        now[0] += 1.0
+        weather.update(0.0, 0.0, [_reading(1, sensor, value, at=now[0]) for sensor, value in readings])
+        return weather.road_ice()
+
+    assert state((dm.ROAD_STATE, 7)) == 1.0 and state((dm.ROAD_STATE, 5)) == 0.5  # ice, frost
+    assert state((dm.ROAD_STATE, 4), (dm.ROAD_C, -6.0)) == 0.0  # wet and salty: no ice even at -6
+    assert state((dm.ROAD_STATE, 3), (dm.ROAD_C, -1.0), (dm.FREEZING_POINT_C, -3.0)) == 0.0  # above the brine's freezing point
+    assert state((dm.ROAD_STATE, 3), (dm.ROAD_C, -4.0)) == 1.0  # wet, below it: black ice
+    assert state((dm.ROAD_STATE, 2), (dm.ROAD_C, -4.0)) == 0.4  # moist: patchy
+    assert state((dm.ROAD_STATE, 0)) is None  # a sensor fault
+
+
+def test_the_weather_takes_the_stations_road_ice():
+    from theroadragetrip.weather import WeatherSystem
+
+    weather = WeatherSystem()
+    weather.wetness = 1.0
+    weather.update(1.0, 1.0, outside_temperature_c=-5.0)
+    assert weather.road_ice_fraction == 1.0
+    weather.road_ice_override = 0.0  # salted
+    assert weather.road_ice_fraction == 0.0

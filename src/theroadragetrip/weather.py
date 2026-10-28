@@ -149,6 +149,7 @@ class WeatherSystem:
         self._outside_temperature_c: Optional[float] = None
         self.weather_type = weather_type or WeatherType.CLEAR
         self._following_observation = False
+        self.road_ice_override: Optional[float] = None  # live station road ice; None: from the air temperature
         self.wetness = 0.0  # 0.0 dry .. 1.0 fully wet; independent of weather_type -
         self.road_snow = 0.0  # centimetres; fully white at three centimetres
         self.plowed_cells = {}  # 10 m road cells -> snow level when last cleared
@@ -279,7 +280,10 @@ class WeatherSystem:
 
     @property
     def road_ice_fraction(self) -> float:
-        """Fraction of wet road frozen into black ice below 0 C."""
+        """Fraction of wet road frozen into black ice below 0 C, or what a
+        live road weather station reports (road_ice_override, digitraffic_mqtt.py)."""
+        if self.road_ice_override is not None:
+            return self.road_ice_override
         if self._outside_temperature_c is None or self._outside_temperature_c >= 0.0:
             return 0.0
         return self.wetness

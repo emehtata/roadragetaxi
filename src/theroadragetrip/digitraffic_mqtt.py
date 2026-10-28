@@ -130,6 +130,9 @@ RESELECT_M = 2000.0  # the taxi moves this far: pick the nearest stations again
 FRESH_S = 1800.0  # older readings are ignored
 # Road weather sensors (GET /api/weather/v1/sensors).
 AIR_C, WIND_MPS, WIND_FROM_DEG, RAIN_CLASS, PRECIPITATION_FORM, ROAD_STATE = 1, 16, 18, 22, 25, 27
+ROAD_C, FREEZING_POINT_C = 3, 10  # road surface temperature (TIE_1), the freezing point of the water on it
+# Road state -> road ice: ice, frost (thin, patchy); salted roads (4, 8) and dry ones do not freeze.
+ROAD_STATE_ICE = {7: 1.0, 5: 0.5, 4: 0.0, 8: 0.0, 1: 0.0}
 # Precipitation form (PWD, sensor 25) -> WMO 4680 wawa, as precipitation_from_observation reads it.
 PWD_WAWA = {7: 0, 8: 51, 9: 51, 10: 61, 11: 71, 12: 67, 13: 68, 14: 89, 15: 77, 16: 77, 17: 87, 18: 56, 19: 66}
 # Rain class (sensor 22), where a station has no PWD: dry, rain 1-3, snow or sleet 4-6.
@@ -231,7 +234,23 @@ class RoadWeather:
         state = self._fresh(ROAD_STATE)
         return None if state is None else ROAD_STATE_WETNESS.get(int(state))
 
+    def road_ice(self) -> Optional[float]:
+        """Road ice 0..1 from the station, or None (no fresh road state).
+        Moist, wet or slushy roads freeze when the surface is at or below the
+        water's freezing point (salt lowers it), 0 C without that sensor."""
+        state = self._fresh(ROAD_STATE)
+        if state is None or int(state) == 0:  # unknown, or the sensor's fault
+            return None
+        if int(state) in ROAD_STATE_ICE:
+            return ROAD_STATE_ICE[int(state)]
+        road = self._fresh(ROAD_C)
+        if road is None:
+            return None
+        freezing = self._fresh(FREEZING_POINT_C)
+        return ROAD_STATE_WETNESS.get(int(state), 0.0) if road <= (0.0 if freezing is None else freezing) else 0.0
+
     def diagnostics(self) -> dict:
         observation = self.observation()
         return {"stations": len(self.stations), "nearest": self.nearest, "readings": len(self.values),
-                "observation": None if observation is None else vars(observation), "road_wetness": self.road_wetness()}
+                "observation": None if observation is None else vars(observation), "road_wetness": self.road_wetness(),
+                "road_ice": self.road_ice(), "road_c": self._fresh(ROAD_C), "freezing_point_c": self._fresh(FREEZING_POINT_C)}
