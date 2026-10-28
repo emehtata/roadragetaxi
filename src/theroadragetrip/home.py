@@ -44,13 +44,23 @@ def load_home(path: Path, city: str, *, in_save: bool = False) -> Optional[Home]
         return None
 
 
-def save_home(path: Path, city: str, home: Home, *, in_save: bool = False) -> None:
+def load_home_building_key(path: Path, city: str, *, in_save: bool = False) -> Optional[str]:
+    data = _load_all(path)
+    homes = data.get("homes", {}) if in_save else data
+    home = homes.get(city) if isinstance(homes, dict) else None
+    key = home.get("building_key") if isinstance(home, dict) else None
+    return key if isinstance(key, str) else None
+
+
+def save_home(path: Path, city: str, home: Home, *, in_save: bool = False, building_key: Optional[str] = None) -> None:
     """This city's home; the other cities' homes are kept."""
     data = _load_all(path)
     homes = data.setdefault("homes", {}) if in_save else data
     if not isinstance(homes, dict):
         homes = data["homes"] = {}
     homes[city] = {"x": home[0], "y": home[1], "heading": home[2]}
+    if building_key is not None:
+        homes[city]["building_key"] = building_key
     _write_homes(path, data)
 
 
@@ -84,3 +94,36 @@ def at_house_yard(x: float, y: float, current_way, parking_spaces, building_grid
 
 def is_same_home(home: Optional[Home], x: float, y: float) -> bool:
     return home is not None and math.dist(home[:2], (x, y)) <= SAME_HOME_M
+
+
+def home_building_key(building) -> str:
+    """Reuse the generated house parking identity; importers do not retain OSM IDs."""
+    from .parking import _house_parking_key
+
+    return "footprint:" + ",".join(f"{value:.2f}" for value in _house_parking_key(building))
+
+
+def find_home_building(x: float, y: float, building_grid, parking_spaces=(), key=None):
+    """Resolve only the loaded map near the saved yard, never fetch another area."""
+    from shapely.geometry import Point
+    from .interior import footprint
+    from .parking import _house_parking_key
+
+    if building_grid is None:
+        return None
+    r = DRIVEWAY_HOUSE_M
+    bay_keys = {space.source_building_key for space in parking_spaces or ()
+                if getattr(space, "source_building_key", None) is not None
+                and is_point_on_parking_space(x, y, [space])}
+    candidates = []
+    for building in building_grid.ways_in_rect(x - r, y - r, x + r, y + r):
+        if not _building_is_house_by_tag(building) or getattr(building, "map_level", None) not in (None, 0):
+            continue
+        if key is not None and home_building_key(building) != key:
+            continue
+        if key is None and bay_keys and _house_parking_key(building) not in bay_keys:
+            continue
+        shape = footprint(building.points_m)
+        if shape is not None and shape.distance(Point(x, y)) <= r:
+            candidates.append((shape.distance(Point(x, y)), home_building_key(building), building))
+    return min(candidates, key=lambda row: row[:2])[2] if candidates else None

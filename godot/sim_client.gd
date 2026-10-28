@@ -20,6 +20,7 @@ var player_id := "local_player"  # the world message says which player this clie
 var connected := false
 var parse_usec := 0  # time spent decoding the last message (performance readout)
 var save_count := -1  # the server's saves written (state "save_count"): a save request's acknowledgement
+var home_plan: Dictionary = {}
 
 var _peer := StreamPeerTCP.new()
 var _buffer := PackedByteArray()
@@ -115,6 +116,8 @@ func _drain_lines() -> void:
 			"state":
 				save_count = int(message.get("state", {}).get("save_count", save_count))
 				state_received.emit(message)
+			"home_interior":
+				home_plan = message.get("plan", {})
 			"chunk":
 				chunk_received.emit(message)
 			"chunk_unload":
@@ -165,6 +168,17 @@ func send_clear_home() -> bool:
 		return false
 	_seq += 1
 	_peer.put_data(command_line(_last_command, _seq, player_id, {}, "", false, true).to_utf8_buffer())
+	return true
+
+
+func send_home_interior() -> bool:
+	home_plan = {}
+	if not connected:
+		return false
+	_seq += 1
+	var message := {"type": "command", "version": PROTOCOL_VERSION, "seq": _seq,
+		"player_id": player_id, "command": {}, "home_interior": true}
+	_peer.put_data((JSON.stringify(message) + "\n").to_utf8_buffer())
 	return true
 
 

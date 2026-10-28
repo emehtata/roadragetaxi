@@ -5,6 +5,7 @@ LANGUAGE_NAMES = {"fi": "Suomi", "en": "English", "de": "Deutsch"}
 
 TRANSLATIONS = {
     "fi": {
+        "home_invalid_building": "Täältä ei löydy kelvollista talon pohjaa. Valitse toinen piha.",
         "garage_closed": "Pysäköintihallit eivät ole vielä käytössä.",
         "home_saved": "Koti tallennettu! H vie taksin aina kotiin.",
         "home_confirm": "Tehdäänkö tästä pihasta uusi koti? Paina H uudelleen.",
@@ -191,6 +192,7 @@ TRANSLATIONS = {
         "fare_complete_points": "Kyyti valmis! Hinta {amount}, tippi {tip}, +{earned} pistettä ({avg:.0f} km/h keskiarvo, {seconds:.1f} s). Asiakkaan arvio: {stars} ({rating}/5)",
     },
     "en": {
+        "home_invalid_building": "No usable house footprint here. Choose another house yard.",
         "garage_closed": "Parking garages are not available yet.",
         "home_saved": "Home saved! H always takes the taxi home.",
         "home_confirm": "Make this yard your new home? Press H again.",
@@ -380,6 +382,7 @@ TRANSLATIONS = {
 
 
 TRANSLATIONS["de"] = {
+    "home_invalid_building": "Kein geeigneter Hausumriss vorhanden. Einen anderen Hof wählen.",
     "garage_closed": "Parkhäuser sind noch nicht verfügbar.",
     "home_saved": "Zuhause gespeichert! H bringt das Taxi immer nach Hause.",
     "home_confirm": "Diesen Hof als neues Zuhause festlegen? Drücke H erneut.",

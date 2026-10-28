@@ -12,6 +12,7 @@ const Graphics := preload("res://graphics_settings.gd")
 
 var _server_pid := -1
 var _game: Node
+var _home_viewer: Control
 var _panel: PanelContainer
 var _body: VBoxContainer
 var _menu_scroll: ScrollContainer
@@ -1320,6 +1321,8 @@ func _pause_menu() -> void:
 	_pause_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_body.add_child(_pause_status)
 	_button(_t("resume"), _resume)
+	if is_instance_valid(_game):
+		_button(_t("home_floor_plan"), _open_home_interior)
 	if _can_save():
 		_button(_t("save_game"), func(): await _save_game(func(ok: bool): _pause_status.text = _t("saved") if ok else _t("save_failed")))
 	_button(_t("settings"), _settings_menu)
@@ -1331,6 +1334,37 @@ func _pause_menu() -> void:
 			get_tree().quit())
 	_back_action = _resume
 	_focus_menu()
+
+
+func _close_home_interior() -> void:
+	if is_instance_valid(_home_viewer):
+		_home_viewer.queue_free()
+	_home_viewer = null
+	_panel.visible = true
+	_back_action = _resume
+	_focus_menu()
+
+
+func _open_home_interior() -> void:
+	if is_instance_valid(_home_viewer):
+		return
+	var viewer := preload("res://home_interior.gd").new()
+	viewer.language = _language
+	viewer.closed.connect(_close_home_interior)
+	_home_viewer = viewer
+	_panel.get_parent().add_child(viewer)
+	_panel.visible = false
+	_back_action = _close_home_interior
+	_game.drive.clear()
+	var sim: SimClient = _game.sim
+	var requested := sim.send_home_interior()
+	var waited := 0.0
+	while requested and sim.home_plan.is_empty() and sim.connected and waited < 3.0 and is_instance_valid(viewer):
+		sim._process(0.05)  # the game client is paused; poll only while awaiting this reply
+		await get_tree().create_timer(0.05, true).timeout
+		waited += 0.05
+	if is_instance_valid(viewer):
+		viewer.show_plan(sim.home_plan if not sim.home_plan.is_empty() else {"error": "disconnected"})
 
 
 func _can_save() -> bool:
@@ -1416,6 +1450,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _loading:
 		_stop_game()
+	elif is_instance_valid(_home_viewer):
+		_close_home_interior()
 	elif _panel.visible and _back_action.is_valid():
 		_back_action.call()
 	elif _game != null:  # the phone uses P/N, Enter, X and 1-3, never Esc

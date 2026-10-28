@@ -44,7 +44,8 @@ from ..world_loader import load_world, resolve_city
 from ..viewport import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..physics import reset_trip, respawn_car
-from ..home import clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home
+from ..home import (clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home,
+                    find_home_building, home_building_key, load_home_building_key)
 from ..localization import SUPPORTED_LANGUAGES, tr
 from ..moon import moon_info_on, moon_position_at
 from ..transport import Listener
@@ -333,6 +334,7 @@ class SimulationServer:
         self.homes_file = self.save_slot_file if self._homes_in_save else (
             homes_path(CONFIG_PATH) if getattr(args, "game_mode", "gig_driver") == "career" else None)
         self._home = load_home(self.homes_file, str(self.chosen_city or ""), in_save=self._homes_in_save) if self.homes_file else None
+        self._home_building_key = load_home_building_key(self.homes_file, str(self.chosen_city or ""), in_save=self._homes_in_save) if self.homes_file else None
         self._home_confirm_s = 0.0  # a second H within this: the new yard becomes home
         self._prepared_home = None  # the home whose map was last handed to the background preparation
         self._home_preparation = None  # its future (cancelled if home moves before it starts)
@@ -696,6 +698,9 @@ class SimulationServer:
                     inspect = held["inspect"]
                     self._inspect = inspect if isinstance(inspect, dict) and inspect.get("kind") in ("npc", "pedestrian") else None
                 phone = protocol.phone_request_from_message(message)
+                if message.get("home_interior") is True:
+                    connection.send({"type": "home_interior", "version": protocol.PROTOCOL_VERSION,
+                                     "plan": self._home_floor_plan()})
                 requested_language = message.get("command", {}).get("language") if isinstance(message.get("command"), dict) else None
                 if isinstance(requested_language, str) and requested_language in SUPPORTED_LANGUAGES and requested_language != self.language:
                     self.language = requested_language
@@ -979,6 +984,7 @@ class SimulationServer:
         if self.homes_file is not None:
             clear_homes(self.homes_file, in_save=self._homes_in_save)
         self._home = None
+        self._home_building_key = None
         self._home_confirm_s = 0.0
         self._prepared_home = None
         if self._home_preparation is not None:
@@ -998,12 +1004,17 @@ class SimulationServer:
         if in_yard and not is_same_home(self._home, car.x, car.y):
             if abs(car.speed) > 0.5:
                 return self._notify(tr(language, "home_stop"))
+            building = find_home_building(car.x, car.y, getattr(w, "building_grid", None), w.parking_spaces)
+            if building is None:
+                return self._notify(tr(language, "home_invalid_building"))
             if self._home is not None and self._home_confirm_s <= 0.0:
                 self._home_confirm_s = CONFIRM_S
                 return self._notify(tr(language, "home_confirm"), CONFIRM_S)
             self._home, self._home_confirm_s = (car.x, car.y, car.heading), 0.0
+            self._home_building_key = home_building_key(building)
             if self.homes_file is not None:
-                save_home(self.homes_file, str(self.chosen_city or ""), self._home, in_save=self._homes_in_save)
+                save_home(self.homes_file, str(self.chosen_city or ""), self._home, in_save=self._homes_in_save,
+                          building_key=self._home_building_key)
             return self._notify(tr(language, "home_saved"))
         if self._home is None:
             return self._notify(tr(language, "home_not_yard"))
@@ -1013,6 +1024,26 @@ class SimulationServer:
         self._notify(tr(language, "home_arrived"))  # a lost fare's notice (handle_respawn) wins
         w.taxi_mgr.handle_respawn(car.x, car.y)
         self._camx, self._camy = car.x, car.y
+
+    def _home_floor_plan(self) -> dict:
+        from ..interior import generate_floor_plan
+
+        if self._home is None:
+            return {"error": "no_home"}
+        building = find_home_building(*self._home[:2], getattr(self.world, "building_grid", None),
+                                     self.world.parking_spaces, key=self._home_building_key)
+        if building is None:
+            return {"error": "home_unavailable"}
+        if self._home_building_key is None:  # upgrade a position-only save once its house is loaded
+            self._home_building_key = home_building_key(building)
+            if self.homes_file is not None:
+                save_home(self.homes_file, str(self.chosen_city or ""), self._home, in_save=self._homes_in_save,
+                          building_key=self._home_building_key)
+        entrances = getattr(building, "entrances", ())
+        entry = min(entrances, key=lambda p: math.dist(p, self._home[:2])) if entrances else self._home[:2]
+        plan = generate_floor_plan(self._home_building_key, building.points_m, entry)
+        address = " ".join(str(v) for v in (building.street, building.housenumber) if v)
+        return dict(plan, name=building.name or address or self._home_building_key)
 
     def _notify(self, message: str, seconds: float = 3.0) -> None:
         self.world.taxi_mgr.notification_msg, self.world.taxi_mgr.notification_timer = message, seconds

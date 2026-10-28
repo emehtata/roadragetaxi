@@ -1,0 +1,201 @@
+"""On-demand, metre-scale home plans. Geometry stays independent of the viewer."""
+from __future__ import annotations
+
+import hashlib
+import math
+import random
+from functools import lru_cache
+
+from shapely import normalize
+from shapely.affinity import rotate, translate
+from shapely.geometry import LineString, Point, Polygon, box
+from shapely.ops import unary_union
+
+GENERATOR_VERSION = 1
+DOOR_WIDTH = 0.95
+
+
+def footprint(points) -> Polygon | None:
+    try:
+        if not all(len(p) == 2 and all(math.isfinite(v) for v in p) for p in points):
+            return None
+        polygon = Polygon(points)
+        if polygon.is_valid and polygon.area >= 2.0 and polygon.exterior.is_simple:
+            return normalize(polygon)
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def _polygons(geometry):
+    if geometry.geom_type == "Polygon":
+        return [geometry] if geometry.area > 1e-7 else []
+    return [p for part in getattr(geometry, "geoms", ()) for p in _polygons(part)]
+
+
+def _lines(geometry):
+    if geometry.geom_type == "LineString":
+        return [geometry] if geometry.length > 1e-7 else []
+    return [line for part in getattr(geometry, "geoms", ()) for line in _lines(part)]
+
+
+def _door(boundary, rooms, target=None):
+    # Only a straight wall segment can hold a door and its two jambs.
+    segments = [LineString([a, b]) for line in _lines(boundary)
+                for a, b in zip(line.coords, list(line.coords)[1:])
+                if math.dist(a, b) >= DOOR_WIDTH + 0.4]
+    if not segments:
+        return None
+    line = min(segments, key=lambda s: s.distance(target)) if target is not None else max(segments, key=lambda s: s.length)
+    middle = line.length / 2
+    if target is not None:
+        middle = min(line.length - DOOR_WIDTH / 2 - 0.2, max(DOOR_WIDTH / 2 + 0.2, line.project(target)))
+    a, b = line.interpolate(middle - DOOR_WIDTH / 2), line.interpolate(middle + DOOR_WIDTH / 2)
+    return {"points": [list(a.coords[0]), list(b.coords[0])], "rooms": rooms}
+
+
+def _rooms(polygon, rng):
+    x0, y0, x1, y1 = polygon.bounds
+    # shortcut: a single straight hall; use a studio when a bent hall would be required.
+    if polygon.area < 42 or y1 - y0 < 6 or x1 - x0 < 5:
+        return [("studio", polygon)], []
+    cy = (y0 + y1) / 2 + rng.uniform(-0.25, 0.25)
+    hall = polygon.intersection(box(x0 - 1, cy - 0.75, x1 + 1, cy + 0.75))
+    if hall.geom_type != "Polygon" or hall.interiors:
+        return [("studio", polygon)], []
+    rooms = [("hall", hall)]
+    doors = []
+    for low, high in [(y0 - 1, cy - 0.75), (cy + 0.75, y1 + 1)]:
+        side = polygon.intersection(box(x0 - 1, low, x1 + 1, high))
+        # Two wings, each with at most three rooms: work depends on one house only.
+        count = min(3, max(1, int(side.area / 18)))
+        cuts = [x0 - 1] + [x0 + (x1 - x0) * i / count for i in range(1, count)] + [x1 + 1]
+        parts = [p for a, b in zip(cuts, cuts[1:]) for p in _polygons(side.intersection(box(a, low, b, high)))]
+        if any(p.area < 6 or p.buffer(-0.65).is_empty for p in parts):
+            parts = _polygons(side)
+        for part in parts:
+            door = _door(part.boundary.intersection(hall.boundary), [0, len(rooms)])
+            if part.area < 6 or part.interiors or part.buffer(-0.65).is_empty or door is None:
+                return [("studio", polygon)], []
+            doors.append(door)
+            rooms.append(("", part))
+    if len(rooms) < 4:
+        return [("studio", polygon)], []
+    # Give the largest wing room to living; bathroom is the smallest remaining room.
+    available = list(range(1, len(rooms)))
+    living = max(available, key=lambda i: rooms[i][1].area)
+    rooms[living] = ("living_kitchen", rooms[living][1])
+    available.remove(living)
+    bathroom = min(available, key=lambda i: rooms[i][1].area)
+    rooms[bathroom] = ("bathroom", rooms[bathroom][1])
+    available.remove(bathroom)
+    rng.shuffle(available)
+    for i in available:
+        rooms[i] = ("bedroom", rooms[i][1])
+    if len(available) > 1:
+        i = available[-1]
+        rooms[i] = ("kitchen", rooms[i][1])
+        rooms[living] = ("living", rooms[living][1])
+    return rooms, doors
+
+
+FURNITURE = {
+    "hall": [("shelf", 1.0, 0.35)],
+    "living": [("sofa", 2.1, 0.85), ("table", 1.2, 0.8), ("chair", 0.45, 0.45), ("shelf", 1.0, 0.35)],
+    "kitchen": [("counter", 2.0, 0.6), ("table", 1.2, 0.8), ("chair", 0.45, 0.45)],
+    "bedroom": [("bed", 2.0, 1.4), ("wardrobe", 1.2, 0.6)],
+    "bathroom": [("shower", 0.9, 0.9), ("toilet", 0.65, 0.45), ("sink", 0.55, 0.4)],
+}
+FURNITURE["living_kitchen"] = FURNITURE["living"] + [("counter", 2.0, 0.6)]
+FURNITURE["studio"] = [("bed", 2.0, 1.4), ("counter", 1.5, 0.6), ("table", 0.8, 0.6)]
+
+
+def _furnish(rooms, doors, rng):
+    furniture = []
+    occupied = []
+    clearances = [LineString(d["points"]).buffer(1.0, cap_style=3) for d in doors]
+    for i, (kind, room) in enumerate(rooms):
+        safe = room.buffer(-0.22)
+        if safe.is_empty:
+            continue
+        centre = room.representative_point()
+        routes = [LineString([LineString(d["points"]).centroid, centre]).buffer(0.55)
+                  for d in doors if i in d["rooms"]]
+        forbidden = unary_union(clearances + routes)
+        x0, y0, x1, y1 = room.bounds
+        # Bounded candidates favour the walls, leaving the room centre for circulation.
+        for name, width, depth in FURNITURE[kind]:
+            placed = False
+            for w, h in [(width, depth), (depth, width)]:
+                xs = [x0 + 0.24 + w / 2, x1 - 0.24 - w / 2] + [x0 + (x1 - x0) * x / 8 for x in range(1, 8)]
+                ys = [y0 + 0.24 + h / 2, y1 - 0.24 - h / 2] + [y0 + (y1 - y0) * y / 8 for y in range(1, 8)]
+                candidates = [(x, y) for x in xs for y in ys]
+                rng.shuffle(candidates)
+                candidates.sort(key=lambda p: room.boundary.distance(Point(p)))
+                for x, y in candidates:
+                    shape = box(x - w / 2, y - h / 2, x + w / 2, y + h / 2)
+                    if safe.covers(shape) and not shape.intersects(forbidden) and not any(shape.intersects(p) for p in occupied):
+                        furniture.append({"kind": name, "room": i, "points": list(shape.exterior.coords)[:-1]})
+                        occupied.append(shape.buffer(0.12))
+                        placed = True
+                        break
+                if placed:
+                    break
+    return furniture
+
+
+def generate_floor_plan(building_id: str, points, entrance=None) -> dict:
+    """Return a JSON-ready plan in local metres, or an explicit geometry error."""
+    polygon = footprint(points)
+    if polygon is None:
+        return {"error": "invalid_geometry"}
+    entry = tuple(entrance) if entrance is not None else None
+    return _generate_cached(str(building_id), tuple(polygon.exterior.coords), entry, GENERATOR_VERSION)
+
+
+@lru_cache(maxsize=8)
+def _generate_cached(building_id, points, entrance, version):
+    source = Polygon(points)
+    origin = source.centroid.coords[0]
+    polygon = translate(source, -origin[0], -origin[1])
+    rectangle = list(polygon.minimum_rotated_rectangle.exterior.coords)
+    a, b = max(zip(rectangle, rectangle[1:]), key=lambda pair: math.dist(*pair))
+    angle = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0])) % 180
+    polygon = normalize(rotate(polygon, -angle, origin=(0, 0)))
+    seed = hashlib.sha256(f"{building_id}:{version}".encode()).digest()
+    rng = random.Random(seed)
+    rooms, doors = _rooms(polygon, rng)
+    target = rotate(translate(Point(entrance or origin), -origin[0], -origin[1]), -angle, origin=(0, 0))
+    exterior = rooms[0][1].boundary.intersection(polygon.boundary)
+    door = _door(exterior, [-1, 0], target)
+    if door is None and len(rooms) > 1:
+        rooms, doors = [("studio", polygon)], []
+        door = _door(polygon.boundary, [-1, 0], target)
+    if door is not None:
+        doors.insert(0, door)
+    walls = unary_union([p.boundary for _, p in rooms])
+    openings = unary_union([LineString(d["points"]).buffer(0.015, cap_style=2) for d in doors])
+    walls = walls.difference(openings)
+    furniture = _furnish(rooms, doors, rng)
+
+    # Restore the map's orientation, with north up in the client (which flips Y).
+    def coords(shape):
+        restored = rotate(shape, angle, origin=(0, 0))
+        values = restored.exterior.coords if restored.geom_type == "Polygon" else restored.coords
+        return [[round(x, 6), round(y, 6)] for x, y in values]
+
+    for d in doors:
+        a, b = d["points"]
+        nx, ny = -(b[1] - a[1]) / DOOR_WIDTH, (b[0] - a[0]) / DOOR_WIDTH
+        destination = rooms[d["rooms"][-1]][1]
+        if not destination.covers(Point((a[0] + b[0]) / 2 + nx * 0.1, (a[1] + b[1]) / 2 + ny * 0.1)):
+            nx, ny = -nx, -ny
+        d["leaf"] = coords(Point(a[0] + nx * DOOR_WIDTH, a[1] + ny * DOOR_WIDTH))[0]
+        d["points"] = coords(LineString(d["points"]))
+    for item in furniture:
+        item["points"] = coords(Polygon(item["points"]))[:-1]
+    return {"building_id": building_id, "version": version, "area_m2": round(source.area, 1),
+            "footprint": coords(polygon)[:-1], "simple": len(rooms) == 1,
+            "rooms": [{"kind": kind, "points": coords(p)[:-1], "label_at": coords(p.representative_point())[0]}
+                      for kind, p in rooms],
+            "walls": [coords(line) for line in _lines(walls)], "doors": doors, "furniture": furniture}
