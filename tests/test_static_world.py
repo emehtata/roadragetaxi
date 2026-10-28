@@ -42,6 +42,19 @@ def test_greenhouses_are_flagged_as_glass():
     assert static_world.building_style(building("barn"))[7:] == []
 
 
+def test_greenhouses_default_to_gabled_roofs_and_respect_mapped_shapes():
+    from theroadragetrip.osm import Building
+    from theroadragetrip.static_world import building_style
+
+    for kind in ("greenhouse", "Glasshouse"):
+        for shape, expected in ((None, 1), ("gabled", 1), ("flat", 0)):
+            greenhouse = Building(points_m=[(0, 0), (6, 0), (6, 3), (0, 3)],
+                                  building_type=kind, roof_shape=shape)
+            style = building_style(greenhouse)
+            assert style[1] == expected
+            assert style[7] == 2
+
+
 def test_untagged_building_types_take_their_typical_shape():
     """Without OSM height or levels: outbuildings 3 m with plain walls, a
     terrace (rivitalo) a pitched 4.5 m house, an industrial hall 8 m with one

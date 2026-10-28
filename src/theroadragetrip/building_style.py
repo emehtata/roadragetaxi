@@ -164,7 +164,7 @@ def _uses_gabled_roof(building: Building) -> bool:
     roof_shape = str(getattr(building, "roof_shape", "") or "").casefold()
     if roof_shape:
         return roof_shape in {"gabled", "gable", "pitched"}
-    return _building_is_house_by_tag(building) or _building_type(building) in CHURCH_TYPES
+    return _building_is_house_by_tag(building) or _building_type(building) in CHURCH_TYPES | {"greenhouse", "glasshouse"}
 
 
 SIGN_CATEGORY_BY_VENUE_TYPE = {
