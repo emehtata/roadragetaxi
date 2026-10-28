@@ -668,7 +668,7 @@ func _reverse_geocode(pin: Vector2, callback: Callable) -> void:
 					callback.call(str(address[key]))
 					return)
 	var agent := "RoadRageTrip/%s (Godot)" % ProjectSettings.get_setting("application/config/version")
-	request.request("https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&lat=%.5f&lon=%.5f&accept-language=%s"
+	preload("res://map_browser.gd").ipv4_request(request, "https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&lat=%.5f&lon=%.5f&accept-language=%s"
 		% [pin.x, pin.y, _language], ["User-Agent: " + agent])
 
 
@@ -1248,7 +1248,7 @@ func _download_pbf(mode: String, allow_existing := false, settings_only := false
 	var response: Array = []
 	request.request_completed.connect(func(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray):
 		response.assign([result, response_code, headers, body]))
-	var error := request.request(FINLAND_PBF_URL)
+	var error := preload("res://map_browser.gd").ipv4_request(request, FINLAND_PBF_URL, PackedStringArray(), 0.0)
 	if error != OK:
 		request.queue_free()
 		_pbf_download_failed(mode, allow_existing, settings_only)

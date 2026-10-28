@@ -24,6 +24,27 @@ var _warned := 0
 var _dragged := false
 
 
+static var _ipv4 := {}  # host -> its IPv4 address ("" if it has none)
+
+
+## An HTTPS GET over IPv4: Godot tries a host's IPv6 address first, and where
+## IPv6 does not route (the reporter's Windows PC) every request hung to its
+## timeout - no tiles, no place names - while other programs fell back to
+## IPv4. The certificate is still checked against the host's own name.
+static func ipv4_request(request: HTTPRequest, url: String, headers: PackedStringArray, timeout_s := 15.0) -> Error:
+	request.timeout = timeout_s  # 0: none (a large download)
+	var host := url.get_slice("/", 2)
+	if not _ipv4.has(host):
+		_ipv4[host] = IP.resolve_hostname(host, IP.TYPE_IPV4)  # once per host, ~50 ms
+	var address: String = _ipv4[host]
+	if address == "" or not url.begins_with("https://"):
+		return request.request(url, headers)
+	request.set_tls_options(TLSOptions.client(null, host))
+	var with_host := PackedStringArray(headers)
+	with_host.append("Host: " + host)
+	return request.request(url.replace("https://" + host + "/", "https://" + address + "/"), with_host)
+
+
 static func to_pixels(latitude: float, longitude: float, z: int) -> Vector2:
 	var n := float(TILE << z)
 	var lat := deg_to_rad(clampf(latitude, -85.0, 85.0))
@@ -168,7 +189,7 @@ func _fetch() -> void:
 			_requests -= 1
 			_tile_loaded(key, path, result, code, body))
 		var agent := "RoadRageTrip/%s (Godot)" % ProjectSettings.get_setting("application/config/version")
-		if request.request(TILE_URL % [int(parts[0]), int(parts[1]), int(parts[2])], ["User-Agent: " + agent]) != OK:
+		if ipv4_request(request, TILE_URL % [int(parts[0]), int(parts[1]), int(parts[2])], ["User-Agent: " + agent]) != OK:
 			request.queue_free()  # refused at once: no completion signal will come to free the slot
 			_requests -= 1
 			_tile_loaded(key, path, HTTPRequest.RESULT_CANT_CONNECT, 0, PackedByteArray())
