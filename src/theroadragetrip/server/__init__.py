@@ -266,7 +266,8 @@ class SimulationServer:
             start = clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
         if saved.get("game_time"):  # a continued game resumes at its own time, unclamped
             start = datetime.fromisoformat(saved["game_time"])
-        self._live_clock = bool(getattr(args, "live_clock", False))
+        # Simulation mode: the real clock always, whatever the setting (no 60x, no picked or saved time).
+        self._live_clock = bool(getattr(args, "live_clock", False)) or getattr(args, "game_mode", "") == "simulation"
         if self._live_clock:  # live data is "now": a picked or saved time jumps to the computer's clock
             start = finnish_local_time(_utc_now())
         self.calendar = GameCalendar(start or datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),

@@ -585,6 +585,24 @@ def test_the_live_clock_is_the_computers_clock(tmp_path, monkeypatch):
     assert server.calendar.current == datetime(2026, 10, 25, 4, 0)
 
 
+def test_simulation_mode_always_runs_on_the_real_clock(tmp_path, monkeypatch):
+    """Simulation: the real clock even with the live clock turned off and a time picked; no fare runs 60x."""
+    from datetime import datetime
+
+    import theroadragetrip.server as server_module
+
+    now = [datetime(2026, 10, 28, 10, 0)]  # UTC: 12:00 in Finland
+    monkeypatch.setattr(server_module, "_utc_now", lambda: now[0])
+    server = _build_server(tmp_path, monkeypatch, ["--game-mode", "simulation", "--no-live-clock",
+                                                   "--start-time", "2026-01-05T03:00"])
+    assert server.calendar.current == datetime(2026, 10, 28, 12, 0)
+    now[0] = datetime(2026, 10, 28, 10, 0, 1)
+    server.tick(1.0)
+    assert server.calendar_state()["time_scale"] == 1.0 and server.calendar.current == datetime(2026, 10, 28, 12, 0, 1)
+    gig = _build_server(tmp_path, monkeypatch, ["--no-live-clock", "--start-time", "2026-01-05T03:00"])
+    assert gig.calendar.current.hour == 3  # the other modes keep their picked time
+
+
 def test_startup_logs_the_calculated_moon(tmp_path, monkeypatch, caplog):
     with caplog.at_level("INFO", logger="theroadragetrip.server"):
         server = _build_server(tmp_path, monkeypatch)

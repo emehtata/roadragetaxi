@@ -1543,6 +1543,10 @@ func test_commands_carry_the_player_id() -> void:
 	check(save_line.get("save_game") == true and not message.has("save_game"), "a save request rides on a command; others never save")
 	var clear_line: Dictionary = JSON.parse_string(SimClient.command_line({}, 3, "local", {}, "", false, true))
 	check(clear_line.get("clear_home") == true and not message.has("clear_home"), "clear home is an explicit request for the current server game")
+	var Startup := preload("res://startup.gd")
+	check(Startup.is_mode_slot("sim-1793212191", "simulation") and not Startup.is_mode_slot("gig-1793212191", "simulation")
+		and Startup.is_mode_slot("gig-1793212191", "gig_driver") and Startup.is_mode_slot("old-name", "gig_driver")
+		and not Startup.is_mode_slot("sim-1", "gig_driver"), "simulation and gig saves keep to their own slot lists")
 	var slot_text: String = preload("res://startup.gd").slot_label({"city": "Oulu", "place_name": "Muurame", "game_time": "2026-09-27T00:46:13", "balance_cents": 7777, "fare": true}, "kyyti kesken")
 	check(slot_text == "Muurame · 2026-09-27 00:46 · 77.77 € · kyyti kesken", "a saved game's menu line: place, game time, money, a fare in progress")
 	# godot-final-01: G asks the simulation to refuel (it checks the station, speed, tank and money).

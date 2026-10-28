@@ -47,6 +47,7 @@ const THUMBS := "user://save_thumbs"  # NAME.png: the game as it was when the sl
 const THUMB_SIZE := Vector2i(160, 90)
 var _pause_shot: Image  # the frame just before the pause menu opened: a save's thumbnail
 const MAX_GIG_SLOTS := 5  # gig saves; a new game beyond them replaces one (career keeps its single save)
+var _gig_mode := "gig_driver"  # the slot-and-city flow's mode: gig driving, or simulation (always the real clock)
 var _save_slot := ""  # the gig's save slot (server saves/NAME.json): loaded if it exists, saved by the pause menu
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
 var _menu_music: AudioStreamPlayer
@@ -403,14 +404,17 @@ func _main_menu() -> void:
 	_clear()
 	_title("ROAD RAGE TRIP", _t("choose_start"))
 	var career := _button(_t("career"), func(): _start("career"))
-	var gig := _button(_t("gig_driver"), _slot_menu)
+	var gig := _button(_t("gig_driver"), func(): _gig_mode = "gig_driver"; _slot_menu())
+	var simulation := _button(_t("simulation"), func(): _gig_mode = "simulation"; _slot_menu())
+	_with_help(simulation, "help_simulation")
 	_button(_t("settings"), _settings_menu)
 	_button(_t("credits"), _credits_menu)
 	_button(_t("clear_cache"), _confirm_clear_cache)
 	_button(_t("quit"), get_tree().quit)
 	_focus_menu()
 	# Enter: the mode played last time (gig driving the first time).
-	(career if _settings.get_value("menu", "mode", "gig_driver") == "career" else gig).call_deferred("grab_focus")
+	var last: String = _settings.get_value("menu", "mode", "gig_driver")
+	(career if last == "career" else simulation if last == "simulation" else gig).call_deferred("grab_focus")
 
 
 ## "Clear all map cache": asked first; then the server deletes
@@ -452,13 +456,13 @@ func _confirm_reset_home() -> void:
 ## Gig driving: continue a saved game, or start a new one in a new slot.
 func _slot_menu() -> void:
 	_clear()
-	_title(_t("save_slots"), _t("gig_driver"))
-	var slots := _server_query("--list-saves").filter(func(slot): return slot is Dictionary)
+	_title(_t("save_slots"), _t(_gig_mode))
+	var slots := _server_query("--list-saves").filter(func(slot): return slot is Dictionary and is_mode_slot(str(slot.get("name", "")), _gig_mode))
 	_button(_t("new_game"), func():
 		if slots.size() >= MAX_GIG_SLOTS:
 			_replace_slot_menu(slots)
 		else:
-			_save_slot = "gig-%d" % int(Time.get_unix_time_from_system())
+			_save_slot = ("sim-%d" if _gig_mode == "simulation" else "gig-%d") % int(Time.get_unix_time_from_system())
 			_city_menu())
 	for slot in slots:
 		var name := str(slot.get("name", ""))
@@ -466,7 +470,7 @@ func _slot_menu() -> void:
 			_save_slot = name
 			_start_point = Vector2.INF
 			_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
-			_start("gig_driver"))  # the server takes the slot's city, place and time
+			_start(_gig_mode))  # the server takes the slot's city and place, and a gig's time
 		button.icon = _thumb(name)
 		button.custom_minimum_size.y = THUMB_SIZE.y + 10 if button.icon != null else button.custom_minimum_size.y
 	if not slots.is_empty():
@@ -527,6 +531,11 @@ func _thumb(name: String) -> Texture2D:
 	return ImageTexture.create_from_image(image) if image != null else null
 
 
+## Whether a save slot belongs to `mode`: simulation slots are "sim-…", every other is a gig's.
+static func is_mode_slot(name: String, mode: String) -> bool:
+	return name.begins_with("sim-") == (mode == "simulation")
+
+
 ## One saved game in the slot menu: where, the game time, the money.
 static func slot_label(slot: Dictionary, fare_text: String) -> String:
 	var place := str(slot.get("place_name", "")) if str(slot.get("place_name", "")) != "" else str(slot.get("city", ""))
@@ -537,7 +546,7 @@ static func slot_label(slot: Dictionary, fare_text: String) -> String:
 
 func _city_menu() -> void:
 	_clear()
-	_title(_t("choose_city"), _t("gig_driver"))
+	_title(_t("choose_city"), _t(_gig_mode))
 	var choices := OptionButton.new()
 	for city in _cities:
 		choices.add_item(str(city))
@@ -694,8 +703,8 @@ func _time_menu() -> void:
 	var from_now: bool = _settings.get_value("gig", "start_now", true) or resume.is_empty()
 	var today := Time.get_date_dict_from_system()
 	_start_time = clamp_start(Time.get_datetime_dict_from_system() if from_now else resume, today)
-	if _settings.get_value("game", "live_clock", false):  # the live clock always starts now: nothing to pick
-		_start("gig_driver")
+	if _gig_mode == "simulation" or _settings.get_value("game", "live_clock", false):  # the real clock starts now: nothing to pick
+		_start(_gig_mode)
 		return
 	_clear()
 	_title(_t("start_time"), _city)
@@ -738,7 +747,7 @@ func _time_menu() -> void:
 	var start := _button(_t("start"), func():
 		for key in spins:
 			spins[key].apply()
-		_start("gig_driver"))
+		_start(_gig_mode))
 	var back := _button(_t("back"), _city_menu)
 	for button in [now, start, back]:
 		_body.remove_child(button)
@@ -1056,7 +1065,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_body.add_child(_startup_history)
 	var args := ["--port", str(PORT), "--game-mode", mode, "--language", _language, "--parent-pid", str(OS.get_process_id())]
 	args.append_array(["--startup-progress", _startup_path])
-	if mode == "gig_driver":
+	if mode in ["gig_driver", "simulation"]:
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
 		if _save_slot != "":
 			args.append_array(["--save-slot", _save_slot])
@@ -1381,7 +1390,7 @@ func _open_home_interior() -> void:
 
 
 func _can_save() -> bool:
-	return _save_slot != "" and is_instance_valid(_game) and _settings.get_value("menu", "mode", "") == "gig_driver"
+	return _save_slot != "" and is_instance_valid(_game) and _settings.get_value("menu", "mode", "") in ["gig_driver", "simulation"]
 
 
 ## Ask the server to write the save slot and wait (paused, so the client
@@ -1418,7 +1427,7 @@ func _resume() -> void:
 
 ## The gig's game date and time, so the next gig starts where this one left off.
 func _remember_game_time() -> void:
-	if not is_instance_valid(_game) or _settings.get_value("menu", "mode", "") != "gig_driver":
+	if not is_instance_valid(_game) or _settings.get_value("menu", "mode", "") != "gig_driver":  # simulation: always now
 		return
 	var state: Dictionary = _game.entities.shown_state()
 	var calendar = state.get("calendar")
