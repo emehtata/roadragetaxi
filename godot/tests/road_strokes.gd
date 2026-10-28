@@ -16,6 +16,7 @@ const LINES := [  # points, colour, width: bends, a sharp turn (clamped miter), 
 const POLYGONS := [  # draw_colored_polygon: a concave one and a translucent overlap
 	[[Vector2(200, 20), Vector2(300, 30), Vector2(260, 70), Vector2(300, 110), Vector2(210, 100)], Color(0.28, 0.29, 0.29)],
 	[[Vector2(230, 50), Vector2(290, 60), Vector2(250, 130)], Color(0.6, 0.62, 0.6, 0.5)],
+	[[Vector2(-9, -2), Vector2(-1, -10), Vector2(8, -7), Vector2(10, 3), Vector2(1, 9), Vector2(-7, 6)], Color(0.1, 0.4, 0.15), Vector2(40, 60)],  # a tree crown, moved after triangulating
 ]
 const SEGMENTS := [Vector2(10, 230), Vector2(150, 180), Vector2(160, 10), Vector2(300, 220)]
 

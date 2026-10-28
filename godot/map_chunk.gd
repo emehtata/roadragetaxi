@@ -1137,6 +1137,7 @@ static func tree_style(kind: String, variation: float) -> Dictionary:
 ## along the way it was hit, trunk showing. Then the standing bollards.
 func _draw_trees(node: Node2D) -> void:
 	var rng := RandomNumberGenerator.new()
+	var crowns := Strokes.new()  # one draw call for the crowns (rrt-019.1)
 	for tree in _data.get("trees", []):
 		var at := MapMath.point(_origin, tree[0], tree[1])
 		var style := tree_style(str(tree[2]), float(tree[3]))
@@ -1144,6 +1145,8 @@ func _draw_trees(node: Node2D) -> void:
 		var radius := maxf(_px(2.0), style["radius"])
 		var key := obstacle_key(tree[0], tree[1])
 		if _fallen.has(key):
+			crowns.draw(node)  # the crowns so far under it, as before
+			crowns = Strokes.new()
 			var tip := at + Vector2(cos(_fallen[key]), -sin(_fallen[key])) * 3.2
 			node.draw_line(at, tip, style["trunk"], maxf(_px(2.0), style["trunk_width"]))
 			node.draw_circle(tip, radius, style["crown"])
@@ -1153,10 +1156,8 @@ func _draw_trees(node: Node2D) -> void:
 		for i in 8:
 			var angle := TAU * i / 8.0 + rng.randf_range(-0.2, 0.2)
 			crown.append(Vector2(cos(angle), sin(angle)) * radius * rng.randf_range(0.78, 1.15))
-		# Triangulate near zero: distant map coordinates lose the crown's small edges.
-		node.draw_set_transform(at)
-		node.draw_colored_polygon(crown, style["crown"])
-		node.draw_set_transform(Vector2.ZERO)
+		crowns.polygon(crown, style["crown"], at)  # triangulated near zero: distant map coordinates lose the crown's small edges
+	crowns.draw(node)
 	for post in _data.get("bollards", []):
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			node.draw_circle(MapMath.point(_origin, post[0], post[1]), maxf(_px(1.0), 0.25), Color8(48, 48, 46))
@@ -1752,12 +1753,13 @@ class Strokes:
 			indices.append_array([k, k + 1, k + 2, k, k + 2, k + 3])
 
 	## draw_colored_polygon: the same triangulation; nothing if it fails.
-	func polygon(outline: PackedVector2Array, color: Color) -> void:
+	## `at` moves the outline after triangulating it (small shapes keep their edges near zero).
+	func polygon(outline: PackedVector2Array, color: Color, at := Vector2.ZERO) -> void:
 		var k := points.size()
 		for i in Geometry2D.triangulate_polygon(outline):
 			indices.append(k + i)
-		points.append_array(outline)
-		for i in outline.size():
+		for point in outline:
+			points.append(point + at)
 			colors.append(color)
 
 	func draw(node: CanvasItem) -> void:
