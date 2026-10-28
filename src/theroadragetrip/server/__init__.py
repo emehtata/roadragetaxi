@@ -1146,6 +1146,7 @@ class SimulationServer:
         player = self.world.player_pedestrian
         if self._inside is not None:
             door = self._inside[1]
+            self.audio.play_group("pedestrian.front_door", at=door[0])
             player.x, player.y = door[1]
             player.heading = math.atan2(door[1][1] - door[0][1], door[1][0] - door[0][0])
             player.speed = 0.0
@@ -1158,6 +1159,7 @@ class SimulationServer:
             return self._notify(tr(self.language, "home_door_far"))
         player.speed = 0.0
         self._inside = at
+        self.audio.play_group("pedestrian.front_door", at=at[1][0])
 
     def _choose_inside_house(self) -> None:
         """H indoors: this house becomes home (a different home asks first: H again).

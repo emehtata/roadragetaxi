@@ -579,9 +579,12 @@ def advance_simulation(
         tram_crash = on_surface and taxi_mgr.check_tram_collision(
             car, getattr(world, "tram_mgr", None), traffic_mgr.sim_time, previous_position)
         # Bollards and lamp posts are OSM nodes without a level: surface only.
+        knocked_before = taxi_mgr.knocked_posts
         post_crash = on_surface and taxi_mgr.check_post_collision(
             car, scenery_objects, traffic_mgr.sim_time, previous_position
         )
+        if taxi_mgr.knocked_posts > knocked_before:  # bent over, not just touched: the post goes down
+            audio.play_group("collision.post_knock", at=(car.x, car.y))
         if on_surface and taxi_mgr.check_curb_bump(car, curbs, previous_position, traffic_mgr.sim_time, curb_grid=curb_grid):
             audio.play_group("vehicle.curb_bump", min(1.0, 0.3 + abs(car.speed) / 10.0))
         if on_surface and taxi_mgr.check_speed_bump(car, speed_bumps, previous_position, traffic_mgr.sim_time):
@@ -722,7 +725,11 @@ def advance_simulation(
     npc_manager.accidents.clear()
     for at in npc_manager.bus_brakes:
         audio.play_group("vehicle.bus_air_brake", at=at)
+        audio.play_group("vehicle.bus_doors", at=at)  # the doors open at the stop
     npc_manager.bus_brakes.clear()
+    for at in npc_manager.bicycle_bells:
+        audio.play_group("vehicle.bicycle_bell", at=at)
+    npc_manager.bicycle_bells.clear()
     curses = pedestrian_mgr.curses + npc_manager.curses  # bumped NPC drivers curse the same way
     if curses:
         x, y = curses[-1]  # one curse per tick is plenty

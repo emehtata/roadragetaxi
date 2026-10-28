@@ -94,6 +94,7 @@ def test_leaving_returns_to_the_doorstep_every_time(tmp_path):
     door, doorstep = _door(server)
     _at(server, door[0], door[1] - 1.5)
     _key(server, "_home_door_pressed")
+    assert server.audio.sounds[-1] == ("pedestrian.front_door", door)  # the door sounds where it is
     for _ in range(3):  # repeated visits: one state, the same doorstep
         _key(server, "_home_door_pressed")
         assert server._inside is None and server._on_foot

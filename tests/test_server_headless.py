@@ -1143,3 +1143,21 @@ def test_heavy_throttle_mud_and_moving_sand_spray(tmp_path, monkeypatch):
     server._latest_command = PlayerCommand()
     server.tick(1/30)
     assert server._tire_mark is None
+
+
+def test_knocking_a_post_over_clangs_where_the_taxi_is(tmp_path, monkeypatch):
+    import math
+    from theroadragetrip.osm.models import SceneryObject
+
+    server = _build_server(tmp_path, monkeypatch)
+    played = []
+    real = server.audio.play_group
+    server.audio.play_group = lambda group, volume=1.0, variation=None, at=None: (played.append((group, at)), real(group, volume, variation, at))
+    car = server.car
+    server._on_foot = False
+    car.speed, car.engine_on = 17.0, True  # 61 km/h
+    server.world.scenery_objects.append(SceneryObject(car.x + math.cos(car.heading) * 2.5, car.y + math.sin(car.heading) * 2.5, "bollard"))
+    for _ in range(6):
+        server.tick(1 / 30)
+    knocks = [at for group, at in played if group == "collision.post_knock"]
+    assert len(knocks) == 1 and math.dist(knocks[0], (car.x, car.y)) < 5.0

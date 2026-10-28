@@ -399,3 +399,17 @@ def test_thieves_and_stolen_bikes_stay_anonymous_in_the_protocol():
     bike.stolen = True
     row = protocol._npc_to_dict(bike, world.residents.residents if hasattr(world.residents, "residents") else {})
     assert row["thief"] and row["owner"] is None and row["occupants"] == []
+
+
+def test_a_held_up_cyclist_rings_the_bell_now_and_then():
+    """A walker in the way: the rider rings (sound only), at most every BELL_COOLDOWN_S."""
+    path = _way([(0, 0), (120, 0)], "footway", bicycle="designated", half_width_m=1.5)
+    world = _World([path])
+    world.cyclist((0, 0), (120, 0))
+    walker = SimpleNamespace(x=40.0, y=-0.4, radius_m=0.3, state="walking")
+    world.tick(20, pedestrians=[walker])
+    assert 1 <= len(world.manager.bicycle_bells) <= 20 / cycling.BELL_COOLDOWN_S + 1
+    clear = _World([path])
+    clear.cyclist((0, 0), (120, 0))
+    clear.tick(10)
+    assert clear.manager.bicycle_bells == []  # nobody in the way: no bell

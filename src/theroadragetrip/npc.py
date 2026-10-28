@@ -4237,6 +4237,7 @@ class NPCVehicleManager:
         self.curses: List[Tuple[float, float]] = []  # where a bumped NPC driver cursed; drained by the simulation
         self.taxi_bumps: List[int] = []  # competitor taxis the player bumped (taxi_brawls trigger); drained by the simulation
         self.bus_brakes: List[Tuple[float, float]] = []
+        self.bicycle_bells: List[Tuple[float, float]] = []  # riders ringing at someone in their way (simulation.py plays them)
         self.household_manager = HouseholdManager()
         self.target_count = target_count
         self.min_count = min_count if min_count is not None else max(1, int(target_count * 0.6))
@@ -6236,6 +6237,10 @@ class NPCVehicleManager:
             vehicle.car.speed = 0.0
             return
         event = cycling.update_cyclist(vehicle, driver, dt, traffic_world, nearby_obstacles, pedestrians)
+        driver.bell_cooldown_s = max(0.0, getattr(driver, "bell_cooldown_s", 0.0) - dt)
+        if driver.bell_cooldown_s <= 0.0 and getattr(driver.decision, "reason", "") in cycling.BELL_REASONS:
+            self.bicycle_bells.append((vehicle.x, vehicle.y))  # sound only: the ride's decision is unchanged
+            driver.bell_cooldown_s = cycling.BELL_COOLDOWN_S
         end = driver.cycle.points[-1]
         if (event is None and driver.cycle.rack is not None and abs(vehicle.car.speed) < 0.3
                 and math.hypot(end[0] - vehicle.x, end[1] - vehicle.y) <= cycling.RACK_DISMOUNT_M):

@@ -319,6 +319,10 @@ def path_entry_cap(x, y, s_now, route: CycleRoute, obstacles, speed: float):
     return None
 
 
+BELL_REASONS = ("pedestrian in the way", "blocked")  # held up by a walker or a stalled vehicle: ring
+BELL_COOLDOWN_S = 6.0  # one rider rings at most this often
+
+
 def pedestrian_cap(x, y, heading, pedestrians):
     """§§ 3-5 care: pass a walker ahead slowly with room, or stop short of one in the way."""
     fx, fy = math.cos(heading), math.sin(heading)
