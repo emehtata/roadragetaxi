@@ -123,7 +123,8 @@ MAGIC = b"RWC\0"
 # 56: Way.ref, the OSM road number(s) (Digitraffic road data matching).
 # 57: bicycle parking, picnic tables and gates follow their path's direction.
 # 58: amenity=charging_station scenery with its capacity and level.
-FORMAT_VERSION = 58
+# 60: OSM playground=* equipment (nodes and areas) as scenery objects.
+FORMAT_VERSION = 60
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

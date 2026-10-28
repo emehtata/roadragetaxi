@@ -20,6 +20,7 @@ from .constants import (
 )
 
 from ..map_level import parse_level_list, parse_map_level
+from ..playground_equipment import OSM_EQUIPMENT_KINDS, longest_edge_angle
 from .parking import GARAGE_TYPES, make_parking_garage, parking_facility_type
 from .models import (
     Way,
@@ -405,6 +406,8 @@ def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
         return "statue"
     if tags.get("leisure") in ("picnic_table", "firepit"):
         return tags["leisure"]
+    if tags.get("playground") in OSM_EQUIPMENT_KINDS:  # swings, slides, ... (playground_equipment.py)
+        return OSM_EQUIPMENT_KINDS[tags["playground"]]
     if tags.get("barrier") in ("gate", "bollard"):
         return tags["barrier"]
     return None
@@ -752,6 +755,7 @@ def build_ways(
     tree_node_ids: List[int] = []
     tree_node_tags: Dict[int, dict] = {}
     scenery_object_nodes_raw: List[Tuple[dict, int]] = []
+    equipment_ways_raw: List[Tuple[dict, int, list]] = []  # playground=* mapped as an area (a sandpit, ...)
     entrance_node_ids: set[int] = set()
     ways_by_id: Dict[int, dict] = {}
     ways_raw: List[Tuple[dict, str, List[int]]] = []
@@ -838,6 +842,8 @@ def build_ways(
         elif el_type == "way":
             tags = _stadium_as_ground(el.get("tags", {}))
             node_ids = el.get("nodes", [])
+            if tags.get("playground") in OSM_EQUIPMENT_KINDS:
+                equipment_ways_raw.append((tags, el["id"], node_ids))
             way_id = el.get("id")
             if way_id is not None:
                 ways_by_id[way_id] = el
@@ -1726,6 +1732,14 @@ def build_ways(
                                              opening_hours=tags.get("opening_hours") if kind == "nightclub" else None,
                                              capacity=_capacity(tags) if kind == "charging_station" else None,
                                              level=_level(tags) if kind == "charging_station" else None))
+    for tags, way_id, node_ids in equipment_ways_raw:  # at its centre, square to its longest edge
+        pts = [nodes_m[n] for n in node_ids if n in nodes_m]
+        if len(pts) >= 3:
+            pts = pts[:-1] if pts[0] == pts[-1] else pts
+            scenery_objects.append(SceneryObject(
+                x=sum(x for x, _ in pts) / len(pts), y=sum(y for _, y in pts) / len(pts),
+                kind=OSM_EQUIPMENT_KINDS[tags["playground"]], name=tags.get("name"), id=-way_id,  # apart from node ids
+                direction_angle=longest_edge_angle(pts)))
 
     # Fuel stations are frequently mapped only as an amenity=fuel area,
     # especially when the same way is also the building=roof pump canopy.
