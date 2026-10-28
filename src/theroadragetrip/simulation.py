@@ -76,6 +76,7 @@ class PlayerCommand:
     road_rage: bool = False  # SPACE: one press (the server counts presses like refuel)
     respawn: bool = False
     home: bool = False  # H: choose this yard as home / respawn at home (one press)
+    home_door: bool = False  # E on foot: into the home at its door / out again (one press)
     cancel_ride: bool = False
     reset_trip: bool = False
 

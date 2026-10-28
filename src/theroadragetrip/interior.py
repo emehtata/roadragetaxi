@@ -195,6 +195,7 @@ def _generate_cached(building_id, points, entrance, version):
     for item in furniture:
         item["points"] = coords(Polygon(item["points"]))[:-1]
     return {"building_id": building_id, "version": version, "area_m2": round(source.area, 1),
+            "origin": [round(origin[0], 6), round(origin[1], 6)],  # the plan's (0, 0) in map metres
             "footprint": coords(polygon)[:-1], "simple": len(rooms) == 1,
             "rooms": [{"kind": kind, "points": coords(p)[:-1], "label_at": coords(p.representative_point())[0]}
                       for kind, p in rooms],

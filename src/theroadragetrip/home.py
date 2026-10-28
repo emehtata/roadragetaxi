@@ -18,6 +18,8 @@ from .physics import is_point_on_parking_space
 DRIVEWAY_HOUSE_M = 25.0  # a driveway point this close to a house is its yard
 SAME_HOME_M = 10.0  # H this close to the saved home: already home, nothing to confirm
 CONFIRM_S = 6.0  # a second H within this long makes a new yard the home
+DOOR_REACH_M = 2.5  # on foot this close to the home's front door: E goes in
+DOORSTEP_M = 1.0  # leaving, the player stands this far outside the door
 
 Home = Tuple[float, float, float]  # x, y, heading
 
@@ -127,3 +129,17 @@ def find_home_building(x: float, y: float, building_grid, parking_spaces=(), key
         if shape is not None and shape.distance(Point(x, y)) <= r:
             candidates.append((shape.distance(Point(x, y)), home_building_key(building), building))
     return min(candidates, key=lambda row: row[:2])[2] if candidates else None
+
+
+def plan_entrance(plan: dict):
+    """The plan's front door in map metres: (door middle, doorstep outside), or None."""
+    door = next((d for d in plan.get("doors", ()) if d.get("rooms", [None])[0] == -1), None)
+    origin = plan.get("origin")
+    if door is None or origin is None:
+        return None
+    (ax, ay), (bx, by) = door["points"]
+    lx, ly = door["leaf"]
+    length = math.dist((ax, ay), (lx, ly)) or 1.0
+    nx, ny = (lx - ax) / length, (ly - ay) / length  # into the house
+    mx, my = origin[0] + (ax + bx) / 2, origin[1] + (ay + by) / 2
+    return (mx, my), (mx - nx * DOORSTEP_M, my - ny * DOORSTEP_M)
