@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 import sqlite3
+from contextlib import closing
 import subprocess
 import tempfile
 import time
@@ -146,7 +147,7 @@ def attach_gateways(path, local_path, places, *, extent_m=EXTENT_M, max_connecto
             raise ValueError("No towns have usable intercity gateways")
         backbone.close()
         backbone = None
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db, db:  # commit, then close: Windows cannot move or delete an open file
             previous = {"supported":[],"missing":[],"connectors":[]}
             if append:
                 row = db.execute("SELECT value FROM gateway_report").fetchone()

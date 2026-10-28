@@ -210,3 +210,25 @@ def test_intercity_initialization_is_explicitly_opt_in(monkeypatch):
     assert parse_args(config).intercity_fares
     monkeypatch.setattr(sys,"argv",["server","--no-intercity-fares"])
     assert not parse_args(config).intercity_fares
+
+
+def test_build_closes_its_database_before_moving_it(tmp_path, monkeypatch):
+    """Windows can't move an open file: the graph build failed with WinError 32 on graph.sqlite."""
+    import theroadragetrip.intercity as intercity
+    opened = []
+    real = sqlite3.connect
+
+    class Tracked(sqlite3.Connection):
+        closed = False
+
+        def close(self):
+            self.closed = True
+            super().close()
+
+    def connect(*args, **kwargs):
+        opened.append(real(*args, factory=Tracked, **kwargs))
+        return opened[-1]
+
+    monkeypatch.setattr(intercity.sqlite3, "connect", connect)
+    fixture(tmp_path, [(1, 0, 0), (2, 1, 0)], [(10, [1, 2], {})])
+    assert opened and all(db.closed for db in opened)

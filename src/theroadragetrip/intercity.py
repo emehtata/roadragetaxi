@@ -13,6 +13,7 @@ import json
 import math
 from pathlib import Path
 import sqlite3
+from contextlib import closing
 import struct
 import subprocess
 import tempfile
@@ -202,7 +203,7 @@ def build_xml(stream, output, project, road_classes=ROAD_CLASSES, source=None, *
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="intercity-", dir=output.parent) as temp:
         built = Path(temp) / "graph.sqlite"
-        with sqlite3.connect(built) as db:
+        with closing(sqlite3.connect(built)) as db, db:  # commit, then close: Windows cannot move or delete an open file
             db.executescript("""CREATE TABLE nodes(id INTEGER PRIMARY KEY,x REAL,y REAL);
                 CREATE TABLE segments(id INTEGER PRIMARY KEY,a INTEGER,b INTEGER,way INTEGER,
                     highway TEXT,name TEXT,length REAL,forward_s REAL,reverse_s REAL,geometry BLOB);
