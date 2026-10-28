@@ -1260,11 +1260,64 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float,
 			var radius := maxf(_px(2.0), 0.7)
 			node.draw_circle(at, radius, Color8(90, 165, 185))
 			node.draw_circle(at, maxf(_px(1.0), radius / 3.0), Color8(220, 240, 245))
+		"sandpit", "swing", "slide", "spring_rider", "climbing_frame", "seesaw":  # playground_equipment.py
+			node.draw_set_transform(at, -angle)
+			_draw_playground_item(node, kind, PLAY_COLOURS[posmod(hash(at), PLAY_COLOURS.size())])
+			node.draw_set_transform(Vector2.ZERO)
 		"gate":  # across the path it stands on
 			var half := maxf(_px(2.0), 1.0)
 			node.draw_set_transform(at, -angle)
 			node.draw_line(Vector2(0, -half), Vector2(0, half), Color8(100, 92, 80), maxf(_px(1.0), 0.15))
 			node.draw_set_transform(Vector2.ZERO)
+
+
+const PLAY_COLOURS := [Color8(214, 58, 46), Color8(245, 190, 40), Color8(46, 112, 196), Color8(62, 158, 76)]
+const PLAY_STEEL := Color8(70, 76, 82)
+const PLAY_WOOD := Color8(150, 104, 60)
+const PLAY_SHADOW := Color8(25, 30, 28, 90)
+
+
+## One piece of playground equipment seen from above, about real size in
+## metres, along +x (the playground's long edge).
+func _draw_playground_item(node: Node2D, kind: String, paint: Color) -> void:
+	match kind:
+		"sandpit":  # a 2.6 m wooden frame of sand
+			node.draw_rect(Rect2(-1.3, -1.3, 2.6, 2.6), PLAY_WOOD)
+			node.draw_rect(Rect2(-1.1, -1.1, 2.2, 2.2), Color8(222, 200, 150))
+			node.draw_circle(Vector2(0.35, -0.2), 0.18, paint)  # a bucket left behind
+		"swing":  # an A-frame: a 3.4 m top beam, splayed legs, two seats and their worn patches
+			for x: float in [-0.75, 0.75]:
+				node.draw_rect(Rect2(x - 0.55, -1.1, 1.1, 2.2), Color8(176, 160, 120, 150))
+			node.draw_line(Vector2(-1.7, 0.15), Vector2(1.7, 0.15), PLAY_SHADOW, 0.25)
+			for x: float in [-1.7, 1.7]:
+				node.draw_line(Vector2(x, -0.8), Vector2(x, 0.8), PLAY_STEEL, 0.12)
+			node.draw_line(Vector2(-1.7, 0), Vector2(1.7, 0), paint, 0.16)
+			for x: float in [-0.75, 0.75]:  # the seats hang under the beam: drawn over it
+				node.draw_rect(Rect2(x - 0.25, -0.12, 0.5, 0.24), Color8(30, 32, 34))
+		"slide":  # a ladder tower and the chute running down from it
+			node.draw_rect(Rect2(-1.7, -0.55, 1.1, 1.1), PLAY_SHADOW)
+			node.draw_rect(Rect2(-1.8, -0.6, 1.1, 1.1), PLAY_WOOD)
+			node.draw_rect(Rect2(-1.65, -0.45, 0.8, 0.8), PLAY_WOOD.lightened(0.2))
+			node.draw_colored_polygon(PackedVector2Array([Vector2(-0.7, -0.3), Vector2(1.9, -0.35), Vector2(1.9, 0.35), Vector2(-0.7, 0.3)]), paint)
+			node.draw_line(Vector2(-0.7, 0), Vector2(1.9, 0), paint.lightened(0.35), 0.12)
+		"spring_rider":  # a little animal on a spring
+			node.draw_circle(Vector2(0.08, 0.08), 0.38, PLAY_SHADOW)
+			node.draw_circle(Vector2.ZERO, 0.36, paint)
+			node.draw_circle(Vector2(0.28, 0), 0.16, paint.lightened(0.25))  # the head
+			node.draw_line(Vector2(-0.1, -0.22), Vector2(-0.1, 0.22), Color8(30, 32, 34), 0.07)  # the handles
+		"climbing_frame":  # a 2.4 m grid of bars around a platform
+			node.draw_rect(Rect2(-1.1, -1.1, 2.4, 2.4), PLAY_SHADOW)
+			node.draw_rect(Rect2(-0.5, -0.5, 1.0, 1.0), paint)
+			for i in 5:
+				var p := -1.2 + i * 0.6
+				node.draw_line(Vector2(p, -1.2), Vector2(p, 1.2), PLAY_STEEL, 0.07)
+				node.draw_line(Vector2(-1.2, p), Vector2(1.2, p), PLAY_STEEL, 0.07)
+		"seesaw":  # a 3 m plank on a pivot, a seat and handle at each end
+			node.draw_rect(Rect2(-1.5, -0.14, 3.0, 0.28), paint)
+			node.draw_rect(Rect2(-0.2, -0.3, 0.4, 0.6), PLAY_STEEL)
+			for x: float in [-1.3, 1.3]:
+				node.draw_rect(Rect2(x - 0.18, -0.2, 0.36, 0.4), Color8(30, 32, 34))
+				node.draw_line(Vector2(x * 0.85, -0.28), Vector2(x * 0.85, 0.28), PLAY_STEEL, 0.07)
 
 
 func _draw_caravan(node: Node2D, hitched: bool, blue_car: bool) -> void:

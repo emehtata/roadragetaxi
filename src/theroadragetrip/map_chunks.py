@@ -21,6 +21,7 @@ from .geo import dist_point_to_segment
 from .holiday_events import house_yard_spot
 from .map_level import SURFACE_MAP_LEVELS
 from .nightlife import nightclub_schedule
+from .playground_equipment import playground_equipment
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
 
 _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks",
@@ -344,6 +345,10 @@ class ChunkIndex:
                 if obj.kind == "charging_station":  # how many cars it charges at once: its posts
                     row.append(obj.capacity or 2)
                 self._add("scenery_objects", ((obj.x, obj.y),), row)
+        for scenery in getattr(world, "sceneries", ()):  # swings, slides, ... (playground_equipment.py), each in its own chunk
+            if scenery.kind == "playground":
+                for x, y, kind, angle in playground_equipment(scenery.points_m):
+                    self._add("scenery_objects", ((x, y),), [x, y, kind, angle])
         # Street lights as street_lights.py places them (explicit OSM lamps, then
         # lit roads at fixed spacing): [x, y, the road's direction, pool radius].
         for lamp in getattr(world, "street_light_points", ()):
