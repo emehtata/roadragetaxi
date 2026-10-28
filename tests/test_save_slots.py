@@ -62,7 +62,7 @@ def test_slot_names_cannot_leave_the_saves_folder(tmp_path):
         slot_path(tmp_path / "x.ini", "../evil")
 
 
-def test_the_slot_list_prints_utf8(tmp_path, monkeypatch, capsys):
+def test_the_slot_list_prints_ascii_escapes(tmp_path, monkeypatch, capsys):
     import json
     from theroadragetrip.server import __main__ as server_main
     config = tmp_path / "roadragetrip.ini"
@@ -73,7 +73,8 @@ def test_the_slot_list_prints_utf8(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["prog", "--list-saves"])
     server_main.main()
     out = capsys.readouterr().out.strip()
-    assert json.loads(out)[0]["place_name"] == "Anár, Čeavetjávri" and "Čeavetjávri" in out  # UTF-8, not escaped
+    # \u escapes: Godot reads the pipe in the Windows code page (Sysmä came out as SysmÃ¤); JSON restores them.
+    assert json.loads(out)[0]["place_name"] == "Anár, Čeavetjávri" and out.isascii()
 
 
 def test_a_legacy_code_page_pipe_still_gets_utf8(tmp_path, monkeypatch):
