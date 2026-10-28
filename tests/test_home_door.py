@@ -1,100 +1,145 @@
-"""Entering and leaving the home (E on foot): the server decides, the client draws the interior."""
+"""Going into houses (E on foot) and choosing one as home from inside (H): the
+server decides, the client draws the interior."""
 import math
 from types import SimpleNamespace
 
 from shapely.geometry import Point, Polygon
 
-from theroadragetrip.home import DOOR_REACH_M, plan_entrance
+from theroadragetrip.home import DOOR_REACH_M, home_building_key, plan_entrance
 from theroadragetrip.interior import generate_floor_plan
 from theroadragetrip.server import SimulationServer
 from test_home import _server, press
 
 
-def _home_server(tmp_path):
-    """Home chosen at the yard at (0, 0): the house is (-7..7, 5..15), its neighbour at x 100."""
+def _street(tmp_path, home=True):
+    """Two identical houses (-7..7 and 93..107, 5..15), each with its yard bay at y 0;
+    the first is home unless `home` is False."""
     server = _server(tmp_path)
-    server.car.x, server.car.y = 0, 0
-    press(server)
-    server.world.player_pedestrian = SimpleNamespace(x=0.0, y=0.0, heading=0.0, speed=0.0)
-    server._on_foot, server._indoors, server._home_entrance_cache = True, False, None
+    if home:
+        server.car.x, server.car.y = 0, 0
+        press(server)
+    server.world.player_pedestrian = SimpleNamespace(x=0.0, y=-20.0, heading=0.0, speed=0.0)
+    server._on_foot, server._inside = True, None
     return server
 
 
-def _door(server):
-    return SimulationServer._home_entrance(server)
+def _house(server, x):
+    return next(b for b in server.world.building_grid.ways_in_rect(x - 1, 9, x + 1, 11))
+
+
+def _door(server, x=0):
+    return SimulationServer._house_door(server, _house(server, x))
 
 
 def _at(server, x, y):
     server.world.player_pedestrian.x, server.world.player_pedestrian.y = x, y
 
 
-def _e(server):
+def _key(server, name):
     server.world.taxi_mgr.notification_msg = ""
-    SimulationServer._home_door_pressed(server)
+    getattr(SimulationServer, name)(server)
     return server.world.taxi_mgr.notification_msg
 
 
-def test_entrance_is_on_the_home_wall_nearest_the_yard(tmp_path):
-    server = _home_server(tmp_path)
+def test_front_door_is_on_the_house_wall_toward_its_yard(tmp_path):
+    server = _street(tmp_path)
     (mx, my), (ox, oy) = _door(server)
     house = Polygon([(-7, 5), (7, 5), (7, 15), (-7, 15)])
     assert house.exterior.distance(Point(mx, my)) < 1e-6
-    # The front door opens into the hall, whose ends are the short walls: the lower half, toward the yard.
+    # The front door opens into the hall, whose ends are the short walls: the half toward the yard.
     assert abs(mx) == 7 and my < 10.5
     assert not house.contains(Point(ox, oy)) and math.dist((mx, my), (ox, oy)) == 1.0
+    neighbour = _door(server, 100)
+    assert neighbour[0][0] - 100 == mx  # the same end wall (each house has its own seed for the rest)
+    assert _door(server) is _door(server)  # cached
 
 
-def test_no_home_in_car_far_or_at_the_neighbours_cannot_enter(tmp_path):
-    server = _home_server(tmp_path)
+def test_in_the_taxi_or_out_of_reach_nobody_goes_in(tmp_path):
+    server = _street(tmp_path)
     door, _ = _door(server)
     _at(server, *door)
     server._on_foot = False
-    assert _e(server) and not server._indoors  # in the taxi
+    assert _key(server, "_home_door_pressed") and server._inside is None
     server._on_foot = True
     _at(server, door[0], door[1] - DOOR_REACH_M - 0.5)
-    assert _e(server) and not server._indoors  # out of reach
-    _at(server, door[0] + 100, door[1])  # the same spot at the neighbour's identical house
-    assert not SimulationServer._home_door_available(server) and _e(server) and not server._indoors
-    homeless = _home_server(tmp_path)
-    homeless._home, homeless._home_entrance_cache = None, None
-    _at(homeless, *door)
-    assert _e(homeless) and not homeless._indoors
+    assert _key(server, "_home_door_pressed") and server._inside is None
+    assert SimulationServer._home_door_state(server) == {"indoors": False, "available": False, "is_home": False}
 
 
-def test_enter_freezes_the_map_player_and_leaving_returns_to_the_doorstep(tmp_path):
-    server = _home_server(tmp_path)
+def test_any_house_opens_and_the_state_tells_home_from_the_others(tmp_path):
+    server = _street(tmp_path)
+    for x, is_home in [(0, True), (100, False)]:
+        door, _ = _door(server, x)
+        _at(server, door[0], door[1] - 1.5)
+        assert SimulationServer._home_door_state(server) == {"indoors": False, "available": True, "is_home": is_home}
+        assert _key(server, "_home_door_pressed") == "" and server._inside[0] is _house(server, x)
+        assert SimulationServer._home_door_state(server) == {"indoors": True, "available": False, "is_home": is_home}
+        assert SimulationServer._home_floor_plan(server)["building_id"] == home_building_key(_house(server, x))
+        _key(server, "_home_door_pressed")
+    homeless = _street(tmp_path, home=False)
+    _at(homeless, *_door(homeless)[0])
+    _key(homeless, "_home_door_pressed")
+    assert homeless._inside is not None  # no home needed to look inside
+
+
+def test_leaving_returns_to_the_doorstep_every_time(tmp_path):
+    server = _street(tmp_path)
     door, doorstep = _door(server)
     _at(server, door[0], door[1] - 1.5)
-    assert SimulationServer._home_door_available(server)
-    assert _e(server) == "" and server._indoors
-    assert not SimulationServer._home_door_available(server)  # no second entry from inside
-    for _ in range(3):  # repeated cycles keep one state and the same doorstep
-        _e(server)
-        assert not server._indoors and server._on_foot
+    _key(server, "_home_door_pressed")
+    for _ in range(3):  # repeated visits: one state, the same doorstep
+        _key(server, "_home_door_pressed")
+        assert server._inside is None and server._on_foot
         assert (server.world.player_pedestrian.x, server.world.player_pedestrian.y) == doorstep
-        assert SimulationServer._home_door_available(server)
-        _e(server)
-        assert server._indoors
+        _key(server, "_home_door_pressed")
+        assert server._inside is not None
+
+
+def test_h_inside_makes_this_house_home_asking_before_replacing_one(tmp_path):
+    from theroadragetrip.home import load_home, load_home_building_key
+    server = _street(tmp_path, home=False)
+    _at(server, *_door(server, 100)[0])
+    _key(server, "_home_door_pressed")
+    assert _key(server, "_home_pressed") and server._home_building_key == home_building_key(_house(server, 100))
+    assert server._home[:2] == (100, 0)  # the taxi comes home to the yard bay
+    assert load_home_building_key(server.homes_file, "Oulu") == server._home_building_key
+    _key(server, "_home_door_pressed")
+    _at(server, *_door(server, 0)[0])
+    _key(server, "_home_door_pressed")
+    _key(server, "_home_pressed")  # a home already: H again to move
+    assert server._home_building_key == home_building_key(_house(server, 100))
+    _key(server, "_home_pressed")
+    assert server._home_building_key == home_building_key(_house(server, 0))
+    assert load_home(server.homes_file, "Oulu")[:2] == (0, 0)
+
+
+def test_h_inside_a_house_without_a_bay_uses_the_doorstep(tmp_path):
+    server = _street(tmp_path, home=False)
+    server.world.parking_spaces = []
+    door, doorstep = _door(server)
+    _at(server, *door)
+    _key(server, "_home_door_pressed")
+    _key(server, "_home_pressed")
+    assert server._home[:2] == doorstep
 
 
 def test_command_flag_is_one_press_and_movement_waits_indoors(tmp_path, monkeypatch):
     from test_server_headless import _build_server
+    from theroadragetrip.simulation import PlayerCommand
     server = _build_server(tmp_path, monkeypatch)
-    server._indoors = True
-    server._home_entrance_cache = None
     player = server.world.player_pedestrian
     server._on_foot = True
+    outside = (player.x + 1.0, player.y)
+    server._inside = (None, ((player.x, player.y), outside))
     before = (player.x, player.y)
-    from theroadragetrip.simulation import PlayerCommand
     server._latest_command = PlayerCommand(forward=1.0)
     for _ in range(10):
         server.tick(1 / 30)
-    assert (player.x, player.y) == before and server._indoors  # no home here: nothing moves the player
+    assert (player.x, player.y) == before and server._inside is not None
     server._pending_home_doors = 1
     server.tick(1 / 30)
-    assert not server._indoors and server._pending_home_doors == 0
-    server.tick(1 / 30)
-    assert (player.x, player.y) != before  # walking again outside
+    assert server._inside is None and server._pending_home_doors == 0
+    assert (player.x, player.y) != before  # on the doorstep, walking again
 
 
 def test_plan_origin_maps_the_front_door_to_the_map():

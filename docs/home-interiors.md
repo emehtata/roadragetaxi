@@ -2,9 +2,9 @@
 
 Choose a home with the existing **H** action while stopped in a detached house's
 yard. Open **Esc → Home floor plan** to inspect it. **Back / Esc** returns to the
-pause menu; Resume returns to driving. On foot at the home's front door, **E**
-enters and walks the same plan; **E** at the front door inside goes out again
-(see "Entering the home" below).
+pause menu; Resume returns to driving. On foot at any house's front door, **E**
+goes in and walks its plan; **H** inside makes that house home; **E** at the
+front door inside goes out again (see "Entering the home" below).
 The UI and errors support English, Finnish and German.
 
 ## Architecture audit and implementation
@@ -106,44 +106,53 @@ installation was available; references and callers were traced directly with
 repository searches instead. Shared Godot skill symlinks were broken; the local
 `godot-shot` workflow was available and used.
 
-## Entering the home (rrt-019-in-house-02)
+## Entering houses (rrt-019-in-house-02)
 
 **Decision: the server owns the door, the client owns the walk.** Being indoors
 changes what the simulation may do with the player, so it is server state
-(`SimulationServer._indoors`, sent as `state.home_door = {indoors, available}`).
-The walk itself only moves a dot over a static plan; nothing in the simulation
-reads it, so it stays in Godot (`home_walk.gd`) instead of adding interior
-coordinates to the server's player.
+(`SimulationServer._inside` = (house, front door), sent as
+`state.home_door = {indoors, available, is_home}`). The walk itself only moves
+the player figure over a static plan; nothing in the simulation reads it, so it
+stays in Godot (`home_walk.gd`) instead of adding interior coordinates to the
+server's player.
 
-- **In:** command flag `home_door` (E, one press, counted like `home`). The
-  server allows it on foot, outside, with a home, within `DOOR_REACH_M` (2.5 m)
-  of that home's own front door: the plan's exterior door (`plan["doors"]` with
-  room -1), mapped to the map by the plan's new `origin` field. The door comes
-  from the generator's existing entrance choice (an OSM entrance node, else the
-  yard), so it is the selected building's door, never a neighbour's. The door's
-  position is cached per home.
-- **Indoors:** the map player waits at the door: walking, F (taxi), H and R are
+- **Any house:** `home.house_plan` gives every house (`_building_is_house_by_tag`)
+  its plan, with the front door toward the mapped entrance nearest its yard bay,
+  else the bay, else the generator's own choice: the same door whether or not it
+  is home. The plan's `origin` maps the door to the map; doors are cached per house.
+- **In:** command flag `home_door` (E, one press). The server allows it on foot,
+  outside, within `DOOR_REACH_M` (2.5 m) of a house's front door (the nearest one).
+- **Indoors:** the map player waits at the door: walking, F (taxi) and R are
   ignored; the world runs on as usual. The client shows the plan full-screen and
-  walks it with the street's tank steering (W/S, A/D, Shift). Collision: inside the
-  footprint, the walker's 0.25 m radius clear of walls (drawn 0.16 m) and
-  furniture. A 0.95 m door leaves 0.15 m either side.
+  walks the street's player figure on the street's tank steering (W/S, A/D, Shift).
+  Collision: inside the footprint, a 0.25 m radius clear of walls (drawn 0.16 m)
+  and furniture. A 0.95 m door leaves 0.15 m either side.
+- **H indoors:** this house becomes home (replacing a home asks first: H again).
+  The taxi's home spot is its yard bay, or the doorstep without one; the building
+  key is saved as before.
 - **Out:** E within 0.9 m of the front door inside; the server puts the player on
   the doorstep 1 m outside, facing away, still on foot. There is no other way out.
 - **Keys:** keys are matched by keycode in `main.gd` (no InputMap actions), so E
   follows that convention. On foot E had no use; it is sent only when the server
-  says the door is in reach, or from inside at the door.
-- **Prompt:** "Press E to enter home" leads the on-foot hint line while in reach;
-  inside, "Press E to leave home" replaces the walking hint at the door.
-- **Cost:** the plan is requested once per visit (the server's plan is cached),
-  and the client keeps its wall and furniture segments between visits. Per frame:
-  one short-step collision check against those segments.
+  says a door is in reach, or from inside at the door.
+- **Prompts:** "Press E to go in" ("to enter home" at home) leads the on-foot hint
+  while in reach; inside, the hint names E at the door and, if not home, H.
+- **Cost:** one bounded building query around the player per broadcast while on
+  foot, cached doors; the plan is requested once per visit and the client keeps
+  its wall and furniture segments. Per frame: short-step collision checks.
 
-Checks: `tests/test_home_door.py` (no home, in the taxi, out of reach, the
-neighbour's identical house, entering, the doorstep after leaving, repeated visits,
-frozen movement indoors through the real tick, plan origin) and
-`godot/tests/home_walk.gd` on twelve generated plans (start at the door and on the
+Generator version 2: real Oulu family houses of 76-83 m² came out as one open
+room (a 30 m² wing got one room, three in all), and one whose hall ends had no
+straight wall too. Wings of 24 m² or more now split in two, and the front door
+may open into the outer room nearest the entrance.
+
+Checks: `tests/test_home_door.py` (in the taxi, out of reach, any house opens and
+`is_home` tells home apart, the doorstep after leaving, repeated visits, H inside
+with and without a bay and its confirmation, frozen movement through the real
+tick, plan origin), `tests/test_home_interior.py`'s real footprints, and
+`godot/tests/home_walk.gd` on 18 generated plans (start at the door and on the
 floor, every room reachable by a 0.1 m flood fill, nothing outside the footprint,
 walls stop the walker, repeat visits keep one view; a 0.45 m walker fails it).
 Rendered and inspected at 1280×720.
 
-Not exercised: a human walking a real save to a real OSM house end to end.
+Not exercised: a human walking a real save into a real OSM house end to end.

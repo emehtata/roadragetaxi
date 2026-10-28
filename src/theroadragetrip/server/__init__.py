@@ -46,7 +46,8 @@ from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulatio
 from ..physics import reset_trip, respawn_car
 from ..home import (clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home,
                     find_home_building, home_building_key, load_home_building_key,
-                    DOOR_REACH_M, plan_entrance)
+                    DOOR_REACH_M, plan_entrance, house_bay, house_plan)
+from ..building_style import _building_is_house_by_tag
 from ..localization import SUPPORTED_LANGUAGES, tr
 from ..moon import moon_info_on, moon_position_at
 from ..transport import Listener
@@ -342,8 +343,7 @@ class SimulationServer:
         self._pending_respawns = 0
         self._pending_homes = 0
         self._pending_home_doors = 0  # E on foot: in at the home's door, or out again
-        self._indoors = False  # in the home: the exterior player waits at the door, the client draws the plan
-        self._home_entrance_cache = None  # (home, building key, entrance) - the plan's front door
+        self._inside = None  # (house, front door) the player is in: the map player waits at its door, the client draws the plan
         self._homes_in_save = self.save_slot_file is not None
         self.homes_file = self.save_slot_file if self._homes_in_save else (
             homes_path(CONFIG_PATH) if getattr(args, "game_mode", "gig_driver") == "career" else None)
@@ -874,9 +874,9 @@ class SimulationServer:
 
         if home_door:
             self._home_door_pressed()
-        if self._indoors:  # the exterior player stays at the door: no walking, taxi, home jump or respawn
+        if self._inside is not None:  # the map player stays at the door: no walking, taxi or respawn; H picks this house
             command = replace(command, forward=0.0, turn=0.0, sprint=False)
-            interact = respawn = home = False
+            interact = respawn = False
 
         brawls = getattr(self.world, "taxi_brawls", None)
         brawl_flee = bool(interact and self._on_foot and brawls is not None and brawls.player_engaged())
@@ -1048,8 +1048,6 @@ class SimulationServer:
         return bool(chunk and chunk.get("roads"))
 
     def _clear_home(self) -> None:
-        if getattr(self, "_indoors", False):
-            self._home_door_pressed()  # out first: the door is about to go
         if self.homes_file is not None:
             clear_homes(self.homes_file, in_save=self._homes_in_save)
         self._home = None
@@ -1062,9 +1060,11 @@ class SimulationServer:
 
     def _home_pressed(self) -> None:
         """H: in a house yard, make it home (a new one asks first: H
-        again); anywhere else, the taxi respawns at home."""
+        again); inside a house, that house; anywhere else, the taxi respawns at home."""
         from ..physics import get_current_road_at_car
 
+        if getattr(self, "_inside", None) is not None:
+            return SimulationServer._choose_inside_house(self)
         car, w, language = self.car, self.world, self.language
         if self._on_foot:
             return self._notify(tr(language, "home_on_foot"))
@@ -1094,52 +1094,90 @@ class SimulationServer:
         w.taxi_mgr.handle_respawn(car.x, car.y)
         self._camx, self._camy = car.x, car.y
 
-    def _home_entrance(self):
-        """The home's front door ((middle), (doorstep)) in map metres, or None; cached per home."""
-        if self._home is None:
-            return None
-        key = (self._home, self._home_building_key)
-        cache = getattr(self, "_home_entrance_cache", None)
-        if cache is None or cache[0] != key:
-            plan = SimulationServer._home_floor_plan(self)
-            entrance = plan_entrance(plan) if "error" not in plan else None
-            if entrance is None and "error" in plan:
-                return None  # the house isn't loaded yet: ask again later
-            cache = self._home_entrance_cache = ((self._home, self._home_building_key), entrance)
-        return cache[1]
+    def _house_door(self, building):
+        """A house's front door ((middle), (doorstep)) in map metres, or None; cached per house."""
+        doors = self.__dict__.setdefault("_house_doors", {})
+        key = home_building_key(building)
+        if key not in doors:
+            if len(doors) > 512:
+                doors.clear()
+            plan = house_plan(building, self.world.parking_spaces)
+            doors[key] = plan_entrance(plan) if "error" not in plan else None
+        return doors[key]
 
-    def _home_door_available(self) -> bool:
-        """On foot and outside, within DOOR_REACH_M of this home's own front door."""
-        if not self._on_foot or self._indoors:
-            return False
-        entrance = SimulationServer._home_entrance(self)
+    def _house_at_door(self):
+        """The house whose front door the player stands at (on foot, outside): (building, door) or None."""
+        if not self._on_foot or self._inside is not None:
+            return None
+        grid = getattr(self.world, "building_grid", None)
+        if grid is None:
+            return None
         player = self.world.player_pedestrian
-        return entrance is not None and math.dist(entrance[0], (player.x, player.y)) <= DOOR_REACH_M
+        r = DOOR_REACH_M
+        best = None
+        for building in grid.ways_in_rect(player.x - r, player.y - r, player.x + r, player.y + r):
+            if not _building_is_house_by_tag(building) or getattr(building, "map_level", None) not in (None, 0):
+                continue
+            door = SimulationServer._house_door(self, building)
+            if door is not None and math.dist(door[0], (player.x, player.y)) <= r:
+                distance = math.dist(door[0], (player.x, player.y))
+                if best is None or distance < best[0]:
+                    best = (distance, building, door)
+        return best[1:] if best else None
+
+    def _home_door_state(self) -> dict:
+        """state.home_door: indoors, whether E goes in here, whether this house is the home."""
+        at = self._inside or SimulationServer._house_at_door(self)
+        return {"indoors": self._inside is not None, "available": self._inside is None and at is not None,
+                "is_home": at is not None and home_building_key(at[0]) == self._home_building_key}
 
     def _home_door_pressed(self) -> None:
-        """E: inside, out to the doorstep; at the front door, in. The interior is
+        """E: inside, out to the doorstep; at a house's front door, in. The interior is
         the client's view; the player's map position stays at the door."""
         player = self.world.player_pedestrian
-        if self._indoors:
-            entrance = SimulationServer._home_entrance(self)
-            if entrance is not None:
-                player.x, player.y = entrance[1]
-                player.heading = math.atan2(entrance[1][1] - entrance[0][1], entrance[1][0] - entrance[0][0])
+        if self._inside is not None:
+            door = self._inside[1]
+            player.x, player.y = door[1]
+            player.heading = math.atan2(door[1][1] - door[0][1], door[1][0] - door[0][0])
             player.speed = 0.0
-            self._indoors = False
+            self._inside = None
             return
-        if self._home is None:
-            return self._notify(tr(self.language, "home_not_yard"))
         if not self._on_foot:
             return self._notify(tr(self.language, "home_door_in_car"))
-        if not SimulationServer._home_door_available(self):
+        at = SimulationServer._house_at_door(self)
+        if at is None:
             return self._notify(tr(self.language, "home_door_far"))
         player.speed = 0.0
-        self._indoors = True
+        self._inside = at
+
+    def _choose_inside_house(self) -> None:
+        """H indoors: this house becomes home (a different home asks first: H again).
+        The taxi will come home to its yard bay, or else to the doorstep."""
+        building, door = self._inside
+        key = home_building_key(building)
+        if key == self._home_building_key:
+            return self._notify(tr(self.language, "home_saved"))
+        if self._home is not None and self._home_confirm_s <= 0.0:
+            self._home_confirm_s = CONFIRM_S
+            return self._notify(tr(self.language, "home_confirm"), CONFIRM_S)
+        bay = house_bay(building, self.world.parking_spaces)
+        if bay is not None:
+            (ax, ay), (bx, by) = max(zip(bay.points_m, bay.points_m[1:] + bay.points_m[:1]), key=lambda e: math.dist(*e))
+            x = sum(p[0] for p in bay.points_m) / len(bay.points_m)
+            y = sum(p[1] for p in bay.points_m) / len(bay.points_m)
+            self._home = (x, y, math.atan2(by - ay, bx - ax))
+        else:
+            self._home = (door[1][0], door[1][1], math.atan2(door[1][1] - door[0][1], door[1][0] - door[0][0]))
+        self._home_building_key, self._home_confirm_s = key, 0.0
+        if self.homes_file is not None:
+            save_home(self.homes_file, str(self.chosen_city or ""), self._home, in_save=self._homes_in_save,
+                      building_key=key)
+        self._notify(tr(self.language, "home_saved"))
 
     def _home_floor_plan(self) -> dict:
-        from ..interior import generate_floor_plan
-
+        """The plan of the house the player is in; otherwise the home's (the pause menu's viewer)."""
+        if self._inside is not None:
+            return house_plan(self._inside[0], self.world.parking_spaces)
         if self._home is None:
             return {"error": "no_home"}
         building = find_home_building(*self._home[:2], getattr(self.world, "building_grid", None),
@@ -1151,11 +1189,7 @@ class SimulationServer:
             if self.homes_file is not None:
                 save_home(self.homes_file, str(self.chosen_city or ""), self._home, in_save=self._homes_in_save,
                           building_key=self._home_building_key)
-        entrances = getattr(building, "entrances", ())
-        entry = min(entrances, key=lambda p: math.dist(p, self._home[:2])) if entrances else self._home[:2]
-        plan = generate_floor_plan(self._home_building_key, building.points_m, entry)
-        address = " ".join(str(v) for v in (building.street, building.housenumber) if v)
-        return dict(plan, name=building.name or address or self._home_building_key)
+        return house_plan(building, self.world.parking_spaces)
 
     def _notify(self, message: str, seconds: float = 3.0) -> None:
         self.world.taxi_mgr.notification_msg, self.world.taxi_mgr.notification_timer = message, seconds
@@ -1318,7 +1352,7 @@ class SimulationServer:
             inspect=self._inspect,
         )
         message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
-        message["state"]["home_door"] = {"indoors": self._indoors, "available": self._home_door_available()}
+        message["state"]["home_door"] = self._home_door_state()
         live = self.world.live_roadworks
         message["state"]["electronic_signs"] = live.electronic_signs_near(self.car, self._current_way) if live is not None else []
         with self._clients_lock:

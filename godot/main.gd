@@ -798,6 +798,7 @@ func _present(state: Dictionary) -> void:
 ## Indoors (the server's home_door.indoors): the floor plan to walk in, asked for once.
 func _home_view(state: Dictionary) -> void:
 	var indoors: bool = state.get("home_door", {}).get("indoors", false)
+	home_walk.is_home = state.get("home_door", {}).get("is_home", false)
 	if not indoors:
 		home_walk.leave()
 		_home_plan_asked = false

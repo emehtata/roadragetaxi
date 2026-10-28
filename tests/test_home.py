@@ -20,7 +20,7 @@ def _server(tmp_path: Path):
                             waters=[], taxi_stops=[], taxi_mgr=taxi_mgr)
     return SimpleNamespace(car=Car(x=50.0, y=50.0, heading=0.0, speed=0.0), world=world, language="en", _on_foot=False, _home=None, _home_building_key=None,
                            _home_confirm_s=0.0, _homes_in_save=False, _prepared_home=None, _home_preparation=None, homes_file=tmp_path / "homes.json", chosen_city="Oulu",
-                           _camx=0.0, _camy=0.0, _notify=lambda message, seconds=3.0: setattr(taxi_mgr, "notification_msg", message))
+                           _camx=0.0, _camy=0.0, _inside=None, _notify=lambda message, seconds=3.0: setattr(taxi_mgr, "notification_msg", message))
 
 
 def press(server):

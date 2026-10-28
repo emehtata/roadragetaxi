@@ -1,8 +1,8 @@
-## Inside the player's home (rrt-019-in-house-02): the server's floor plan,
-## walked on by the client. The simulation only knows the player is indoors
-## (state home_door.indoors) - its map player waits at the front door; the
-## walk here is presentation and never reaches the map, roads or traffic.
-## E at the front door asks the server to go out (main.gd sends home_door).
+## Inside a house (rrt-019-in-house-02): the server's floor plan, walked on
+## by the client. The simulation only knows the player is indoors (state
+## home_door.indoors) - its map player waits at the front door; the walk here
+## is presentation and never reaches the map, roads or traffic. E at the front
+## door asks the server to go out (main.gd sends home_door); H makes it home.
 extends CanvasLayer
 
 const HomeInterior := preload("res://home_interior.gd")
@@ -12,9 +12,14 @@ const WALL_HALF_M := 0.08  # half the drawn wall
 const SPEED_M_S := 2.5  # indoor walk; Shift twice that (the street's walk is 4 m/s)
 const TURN_RAD_S := 2.6  # physics.py STEER_RATE: the same tank steering as outside
 const EXIT_REACH_M := 0.9  # this close to the front door's middle: E goes out
+const FIGURE_M := 0.32  # the drawn person (the street's 0.45 m figure, a little slimmer than its shadow reach)
 const SPAWN_IN_M := 0.6  # entering, the walker stands this far inside the front door
 
 var language := "en"
+var is_home := false  # state home_door.is_home: no "H: make this home" hint
+var walk_time := 0.0  # seconds walked: the figure's gait
+var moving := false
+var _figure := preload("res://entity_layer.gd").new()  # draws the player as on the street, never in the tree
 var plan: Dictionary = {}
 var at := Vector2.ZERO  # plan metres, y up
 var heading := 0.0  # radians, as on the map: 0 east, counter-clockwise
@@ -59,6 +64,11 @@ func enter(value: Dictionary) -> bool:
 
 func leave() -> void:
 	visible = false
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(_figure):
+		_figure.free()
 
 
 ## The plan's front door: {"middle", "inward"} in plan metres, or {} without one.
@@ -113,8 +123,12 @@ func _process(delta: float) -> void:
 	# Short steps: a fast frame can't jump a wall.
 	var motion := Vector2(cos(heading), sin(heading)) * forward * speed * minf(delta, 0.1)
 	var steps := maxi(1, ceili(motion.length() / 0.05))
+	var start := at
 	for i in steps:
 		move(motion / steps)
+	moving = at != start
+	if moving:
+		walk_time += delta
 	_canvas.queue_redraw()
 
 
@@ -134,14 +148,19 @@ class WalkCanvas extends HomeInterior.PlanCanvas:
 		super._draw()
 		if not plan.has("footprint"):
 			return
-		var p := point([walk.at.x, walk.at.y])
-		var r := maxf(4.0, walk.RADIUS_M * _scale)
-		draw_circle(p, r, Color("ffcd1a"))
-		draw_line(p, p + Vector2(cos(walk.heading), -sin(walk.heading)) * r * 1.6, Color("273645"), 3, true)
+		# The street's player figure, in screen pixels (px_per_m 1), the player's yellow.
+		var figure = walk._figure
+		figure.px_per_m = 1.0
+		figure._canvas = self
+		figure._pedestrian(point([walk.at.x, walk.at.y]), walk.heading, {"color": [255, 217, 64], "radius_m": walk.FIGURE_M * _scale,
+			"animation_state": "walking" if walk.moving else "standing"}, walk.walk_time)
+		figure._canvas = figure
 		var font := ThemeDB.fallback_font
 		var name := str(plan.get("name", ""))
 		draw_string(font, Vector2(24, 40), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color("ffcd1a"))
-		var hint: String = walk.T.text("home_leave_prompt" if walk.at_exit() else "home_walk_hint", walk.language)
+		var hint: String = walk.T.text("house_leave_prompt" if walk.at_exit() else "home_walk_hint", walk.language)
+		if not walk.is_home:
+			hint += " · " + walk.T.text("home_choose_hint", walk.language)
 		var width := font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
 		draw_rect(Rect2((size.x - width) / 2.0 - 14, size.y - 54, width + 28, 36), Color(0.08, 0.1, 0.13, 0.85))
 		draw_string(font, Vector2((size.x - width) / 2.0, size.y - 28), hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
