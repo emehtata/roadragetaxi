@@ -25,6 +25,20 @@ def parse(*features):
     return es.parse_signs({'features': list(features)})
 
 
+def displayed(signs, car, road, moment):
+    from theroadragetrip.electronic_sign_direction import bind_sign
+    if not isinstance(road, Way):
+        road = Way([(0,0),(1100,0)], 'primary', 4, ref=road.ref)
+    grid = SpatialWayGrid([road])
+    prepared = []
+    for sign in signs:
+        x,y = sign['x'],sign['y']
+        sign = dict(sign, _direction_line=((x-10,y),(x+10,y)))
+        sign['_binding'] = bind_sign(sign,grid)
+        prepared.append(sign)
+    return es.nearby_signs(prepared,car,road,moment,grid)
+
+
 def test_recorded_speed_warning_and_information_signs():
     signs = es.parse_signs(json.loads(FIXTURE.read_text()))
     assert len(signs) == 3
@@ -57,14 +71,14 @@ def test_nearby_signs_follow_time_same_road_surface_level_and_distance():
     signs = [dict(s, x=10 if s['id'] != 'far' else 1000, y=0) for s in signs]
     road = Way([(0, 0), (100, 0)], 'primary', 4, ref='E18;1')
     car = Car(0, 0, 0, 0)
-    assert len(es.nearby_signs(signs, car, road, NOW)) == 1
-    assert es.nearby_signs(signs, car, road, NOW)[0]['distance_m'] == 10
+    assert len(displayed(signs, car, road, NOW)) == 1
+    assert displayed(signs, car, road, NOW)[0]['distance_m'] == 10
     for attr, value in [('layer', 1), ('map_level', -1)]:
         setattr(car, attr, value)
-        assert es.nearby_signs(signs, car, road, NOW) == []
+        assert displayed(signs, car, road, NOW) == []
         setattr(car, attr, 0)
     blank = dict(signs[0], effect_date='2026-10-28T08:00:00Z', _effect_time=NOW.replace(hour=8).timestamp(), speed_limit_kmh=None)
-    assert es.nearby_signs(signs + [blank], car, road, NOW) == []
+    assert displayed(signs + [blank], car, road, NOW) == []
 
 
 def test_history_uses_game_day_and_does_not_leak_future_values():
@@ -77,14 +91,14 @@ def test_history_uses_game_day_and_does_not_leak_future_values():
                 {'effectDate':'2026-10-28T08:00:00Z','displayValue':'60','rows':[]},
                 {'effectDate':'2026-10-28T10:00:00Z','displayValue':'80','rows':[]}]
     signs, complete = es.fetch_signs(Client(), [tile_of(23.129905, 60.417834)], NOW)
-    assert complete and calls[-1][1]['effectiveDate'] == '2026-10-28'
+    assert complete and any(params.get('effectiveDate') == '2026-10-28' for path,params in calls if params)
     signs = [dict(s, x=0, y=0) for s in signs]
     road = SimpleNamespace(ref='1')
-    assert es.nearby_signs(signs, Car(0,0,0,0), road, NOW)[0]['speed_limit_kmh'] == 60
+    assert displayed(signs, Car(0,0,0,0), road, NOW)[0]['speed_limit_kmh'] == 60
     later = NOW.replace(hour=11)
     updated, _ = es.fetch_signs(Client(), [tile_of(23.129905, 60.417834)], later)
     updated = [dict(s, x=0, y=0) for s in updated]
-    assert es.nearby_signs(updated, Car(0,0,0,0), road, later)[0]['speed_limit_kmh'] == 80
+    assert displayed(updated, Car(0,0,0,0), road, later)[0]['speed_limit_kmh'] == 80
 
 
 @pytest.mark.parametrize('database', [False, True])
@@ -110,7 +124,10 @@ def test_sign_cache_refreshes_while_roadwork_cache_stays_permanent(tmp_path, dat
 
 def test_background_service_loads_signs_and_publishes_projected_nearby_readings():
     data = json.dumps({'features': [feature()]}).encode()
-    client = DigitrafficClient(None, lambda url, headers: data if 'variable-sign' in url else b'{"features":[]}')
+    reference = json.dumps({'features':[{'properties':{'tie':1,'osa':24,'ajorata':2,
+        'osa_loppu':24,'etaisyys':1990,'etaisyys_loppu':2010,'x':20,'y':0,'x_loppu':0,'y_loppu':0}}]}).encode()
+    client = DigitrafficClient(None, lambda url, headers: reference if 'vaylapilvi' in url else
+                              data if 'variable-sign' in url else b'{"features":[]}')
     service = RoadDataService(client, lambda x,y:(23.13,60.42))
     try:
         service.request(0,0,NOW)
@@ -135,15 +152,15 @@ def test_changes_and_blank_readings_apply_inside_a_query_window():
     signs, _ = es.fetch_signs(Client(), [tile_of(23.129905,60.417834)], NOW)
     signs = [dict(s,x=0,y=0) for s in signs]
     car, road = Car(0,0,0,0), SimpleNamespace(ref='1')
-    assert es.nearby_signs(signs,car,road,NOW)[0]['speed_limit_kmh'] == 60
-    assert es.nearby_signs(signs,car,road,NOW.replace(minute=6))[0]['speed_limit_kmh'] == 80
-    assert es.nearby_signs(signs,car,road,NOW.replace(minute=8)) == []
+    assert displayed(signs,car,road,NOW)[0]['speed_limit_kmh'] == 60
+    assert displayed(signs,car,road,NOW.replace(minute=6))[0]['speed_limit_kmh'] == 80
+    assert displayed(signs,car,road,NOW.replace(minute=8)) == []
 
 
 def test_only_nearest_of_each_sign_type_is_displayed():
     signs = es.parse_signs(json.loads(FIXTURE.read_text()))
     signs = [dict(s,road='1',x=10,y=0) for s in signs]
     farther = dict(signs[0],id='farther-speed',x=50)
-    rows = es.nearby_signs(signs+[farther],Car(0,0,0,0),SimpleNamespace(ref='1'),NOW)
+    rows = displayed(signs+[farther],Car(0,0,0,0),SimpleNamespace(ref='1'),NOW)
     assert len(rows) == 3 and {r['type'] for r in rows} == {'SPEEDLIMIT','WARNING','INFORMATION'}
     assert all(r['id'] != 'farther-speed' for r in rows)

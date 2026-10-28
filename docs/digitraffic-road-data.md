@@ -508,8 +508,9 @@ today's behaviour when the data is missing.
 
 Enable **Settings → gameplay → Digitraffic: roadworks and signs** (the existing
 `--road-digitraffic` / `game.road_digitraffic` option). The panel beside the
-round limit sign shows the nearest available speed reading, warning and text
-message, with distance and a “nearby” label. English, Finnish and German UI
+round limit sign shows the next speed reading, warning and text message facing
+the taxi on its connected road approach, with distance along the road and an
+“ahead” label. English, Finnish and German UI
 labels are provided; the original sign's message text is retained. Long text
 uses ellipsis with its full reading in the tooltip. Fintraffic attribution is
 in the panel tooltip. The panel stays visible above the movable phone and the
@@ -533,20 +534,54 @@ checks for new data on the existing game-time query windows. Failures retain
 the existing backoff and retry behavior. A failed sign fetch hides its readings
 until a successful retry.
 
-The server sends `state.electronic_signs`: at most one reading per type, within
-700 m on the taxi's current numbered road, on the surface map level and layer.
-This is **nearby information**, including signs for either carriageway: road
-address direction is preserved but is not inferred from OSM node ordering.
-This implements the requested adjacent display; legal downstream applicability,
-replacement of the authoritative limit, speed-camera/limiter/NPC changes, and
-physical roadside electronic-sign models remain outside this change.
+The server sends `state.electronic_signs`: at most one reading per type, up to
+700 m **ahead along the connected road**, on the surface map level and layer.
+The taxi's heading and reverse motion determine its travel direction. Sign
+bindings use Digitraffic's direction, full road-register address and carriageway,
+with an increasing-address baseline from Väylä's public reference converter.
+`DECREASING` reverses that baseline; OSM node order never establishes the road
+register direction. Unknown direction/carriageway, missing or stale reference
+geometry, ambiguous road matches and ambiguous forks hide the sign.
 
-Validation: 142 relevant Python checks (including loopback client/server tests),
+`electronic_sign_direction.py` binds each sign to a directed OSM segment after
+checking its numbered road, location, one-way direction and level. A bounded
+walk from the taxi follows only a unique same-numbered continuation, including
+curved roads and OSM ways whose point order reverses at a join. Opposite
+carriageways, disconnected same-numbered roads, signs behind the taxi and signs
+beyond an unselected fork are excluded. Passing a sign or reversing updates the
+display from current physics state. Sign bindings refresh with map matching;
+node lookup caches clear when the spatial-grid revision changes. The walk has a
+128-segment work budget and hides anything beyond it.
+
+Reference geometry is fetched on the existing background road-data thread and
+cached by road address, carriageway and game date in the existing SQLite cache.
+Roadwork changes are published before sign-reference lookups finish. There is no
+reference-API call during simulation ticks or HUD updates. A failed
+lookup hides affected signs; a later query window retries through the existing
+client backoff. Signs close to a road-section boundary may be hidden when the
+short reference interval cannot be resolved. The existing administrative
+surface-only limitation remains: bridge/tunnel layers are not inferred from
+point sign metadata.
+
+This implements directional **approaching-sign display**, not downstream legal
+speed-limit validity or changes to the limiter, NPC speeds or speed cameras.
+Those remain separate work.
+
+Direction references: [Väylä's reference-converter API](https://avoinapi.vaylapilvi.fi/viitekehysmuunnin/rajapintakuvaus)
+and [road-register carriageway conventions](https://ohje.velho.vaylapilvi.fi/tievelho/tietorakenne/sijaintitiedon-hallinta/).
+
+Validation: 160 relevant Python checks (including loopback client/server tests),
 3,552 Godot checks, and a dedicated panel test passed. Recorded public API
 fixtures cover speed, warning and message signs. A live API smoke test parsed
 32 readings of all three types in one query tile. Rendered and inspected the
 real HUD with a server-produced state at 1280×720 and 800×600, including an open
 phone. The existing broader Godot suite reports shutdown resource leaks; its
-assertions pass. No traffic-rule changes or native GPU benchmarks are claimed.
+assertions pass. Direction regression tests additionally cover rotated approaches, reversed OSM
+point order, parallel carriageways, curved connected ways, disconnected roads,
+forks, physics-loop passing and reversing, missing/malformed reference data and
+streamed-map rematching. A live lookup resolved the recorded `KRM021323` sign's
+`DECREASING`/`LEFT` direction through Väylä. Guide review checked approach,
+direction, layer separation and bounded work; this display change does not
+certify traffic-law compliance. No native GPU benchmark is claimed.
 
 API reference: [Digitraffic variable signs](https://www.digitraffic.fi/en/road-traffic/#variable-signs).

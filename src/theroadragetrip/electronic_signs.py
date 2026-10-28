@@ -35,9 +35,10 @@ def parse_signs(collection):
             kind, ident = props['type'], props['id']
             if kind not in ('SPEEDLIMIT', 'WARNING', 'INFORMATION') or not isinstance(ident, str):
                 continue
-            road = str(props['roadAddress']).split()[0]
-            if not road.isdigit():
+            address = tuple(int(part) for part in str(props['roadAddress']).split())
+            if len(address) != 3 or any(part < 0 for part in address):
                 continue
+            road = str(address[0])
             effect = props['effectDate']
             _time(effect)
             value = props.get('displayValue', '')
@@ -58,9 +59,16 @@ def parse_signs(collection):
             speed = int(value) if kind == 'SPEEDLIMIT' and value.isdigit() else None
             if kind == 'SPEEDLIMIT' and value and (speed is None or not 10 <= speed <= 130):
                 continue
+            direction = props.get('direction')
+            if direction not in ('INCREASING', 'DECREASING'):
+                direction = ''
+            carriageway = props.get('carriageway')
+            if carriageway not in ('SINGLE', 'LEFT', 'RIGHT'):
+                carriageway = None
             signs.append({'id': ident, 'type': kind, 'road': road, 'lon': lon, 'lat': lat,
                           'effect_date': effect, 'speed_limit_kmh': speed, 'code': value if kind != 'SPEEDLIMIT' else '',
-                          'text': text, 'direction': props.get('direction', ''), '_effect_time': _time(effect).timestamp()})
+                          'text': text, 'direction': direction, 'road_address': address,
+                          'carriageway': carriageway, '_effect_time': _time(effect).timestamp()})
         except (KeyError, TypeError, ValueError, AttributeError, IndexError):
             continue
     return signs
@@ -104,29 +112,40 @@ def fetch_signs(client, tiles, start):
                 previous[sign['id']] = sign
         elif when <= end:
             changes.append(sign)
-    return list(previous.values()) + changes, complete
+    from .electronic_sign_direction import reference_direction
+    directions = {}
+    retained = list(previous.values()) + changes
+    for sign in retained:
+        if sign['id'] not in directions:
+            directions[sign['id']] = reference_direction(client, sign, start.date())
+        sign['_direction_line'] = directions[sign['id']]
+    return retained, complete
 
 
-def nearby_signs(signs, car, way, moment):
-    """Nearby same-road readings, explicitly informational: direction is not inferred."""
+def nearby_signs(signs, car, way, moment, grid=None, node_cache=None):
+    """Time-valid signs facing the taxi on its connected, unambiguous approach."""
     if way is None or getattr(car, 'layer', 0) != 0 or getattr(car, 'map_level', 0) != 0:
         return []
     roads = {r.strip() for r in str(getattr(way, 'ref', '') or '').replace(',', ';').split(';')}
     now = moment.timestamp()
+    from .electronic_sign_direction import approach, distance_on_approach
     newest = {}
     for sign in signs:
         if sign['road'] not in roads or sign['_effect_time'] > now:
             continue
         if sign['id'] not in newest or sign['_effect_time'] > newest[sign['id']]['_effect_time']:
             newest[sign['id']] = sign
+    eligible = [s for s in newest.values() if s.get('_binding') is not None
+                and (s['speed_limit_kmh'] is not None or s['code'] or s['text'])]
+    if not eligible:
+        return []
+    path = approach(car, way, grid, SIGN_DISTANCE_M, node_cache)
     rows = []
-    for sign in newest.values():
-        if sign['speed_limit_kmh'] is None and not sign['code'] and not sign['text']:
-            continue
-        distance = math.hypot(sign['x'] - car.x, sign['y'] - car.y)
-        if distance <= SIGN_DISTANCE_M:
+    for sign in eligible:
+        distance = distance_on_approach(sign.get('_binding'), path)
+        if distance is not None and distance <= SIGN_DISTANCE_M:
             rows.append({k: v for k, v in dict(sign, distance_m=round(distance / 10) * 10).items()
-                         if k not in ('x', 'y', 'lon', 'lat', '_effect_time')})
+                         if k not in ('x', 'y', 'lon', 'lat') and not k.startswith('_')})
     rows.sort(key=lambda s: (s['distance_m'], s['id']))
     selected = {}
     for row in rows:

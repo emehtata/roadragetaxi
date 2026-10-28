@@ -4,7 +4,7 @@ const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := {
-	"electronic_nearby": "Lähellä olevat sähköiset opasteet",
+	"electronic_nearby": "Sähköiset opasteet edessä",
 	"electronic_warning": "Varoitus",
 	"electronic_congestion": "Ruuhka",
 	"electronic_uneven": "Epätasainen tie",
@@ -180,7 +180,7 @@ const FI := {
 	"help_language": "Valikoiden, puhelimen ja tekstitysten kieli. Puuttuvan puheäänitteen tilalla käytetään suomenkielistä äänitettä.",
 	"help_historical_weather": "Ilmatieteen laitoksen sää valitulle kaupungille ja ajalle: havainnot menneisyydessä, ennuste tulevassa. Pois: sää arvotaan vuodenajan mukaan. Tarvitsee verkkoyhteyden.",
 	"help_train_timetable": "Fintrafficin todelliset junien aikataulut asemille. Pelin mukana on viikon aikataulu; verkon ollessa käytössä se päivitetään kerran viikossa. Pois: junat kulkevat tasaisin välein.",
-	"realtime_road": "Digitraffic: tietyöt ja opasteet", "help_realtime_road": "Fintrafficin tieliikennekeskuksen todelliset tietyöt pelin ajankohtana: nopeusrajoitukset, suljetut kaistat ja suljetut tiet valta- ja kantateillä. Tietyöhaut tallennetaan pysyvästi. Lähellä olevien sähköisten opasteiden lukemat näkyvät nopeusrajoituksen vieressä. Pois: tietyöt arvotaan.",
+	"realtime_road": "Digitraffic: tietyöt ja opasteet", "help_realtime_road": "Fintrafficin tieliikennekeskuksen todelliset tietyöt pelin ajankohtana: nopeusrajoitukset, suljetut kaistat ja suljetut tiet valta- ja kantateillä. Tietyöhaut tallennetaan pysyvästi. Edessä ajosuuntaan vaikuttavat sähköiset opasteet näkyvät nopeusrajoituksen vieressä. Pois: tietyöt arvotaan.",
 	"help_map_source": "Mistä kartta tulee. Overpass hakee kartan verkosta ajaessasi. Paikallinen .osm.pbf-tiedosto (koko Suomi, noin 0,8 Gt) toimii ilman verkkoa. Windows-versiossa tarvittava osmium-ohjelma on mukana; muualla se asennetaan erikseen (osmium-tool).",
 	"help_pbf_path": "Oman .osm.pbf-tiedoston polku. Tyhjä: ladattu Suomen kartta.",
 	"help_manage_pbf": "Lataa uusin Suomen karttatiedosto tai poista ladattu.",
@@ -209,7 +209,7 @@ const FI := {
 }
 
 const EN := {
-	"electronic_nearby": "Nearby electronic signs",
+	"electronic_nearby": "Electronic signs ahead",
 	"electronic_warning": "Warning",
 	"electronic_congestion": "Congestion",
 	"electronic_uneven": "Uneven road",
@@ -387,7 +387,7 @@ const EN := {
 	"help_language": "The language of menus, the phone and subtitles. Missing voice recordings use the Finnish recording instead.",
 	"help_historical_weather": "The Finnish Meteorological Institute's weather for the chosen city and time: observations in the past, the forecast ahead. Off: weather is generated for the season. Needs a network connection.",
 	"help_train_timetable": "Fintraffic's real train timetables for the stations. A week's timetable comes with the game; online, it is refreshed once a week. Off: trains run at a fixed interval.",
-	"realtime_road": "Digitraffic: roadworks and signs", "help_realtime_road": "Fintraffic's real roadworks at the game time: speed limits, closed lanes and closed roads on the main and regional roads. Roadwork queries are saved. Nearby electronic sign readings appear beside the speed limit. Off: roadworks are made up.",
+	"realtime_road": "Digitraffic: roadworks and signs", "help_realtime_road": "Fintraffic's real roadworks at the game time: speed limits, closed lanes and closed roads on the main and regional roads. Roadwork queries are saved. Electronic signs facing your direction ahead appear beside the speed limit. Off: roadworks are made up.",
 	"help_map_source": "Where the map comes from. Overpass downloads it as you drive. A local .osm.pbf file (all of Finland, about 0.8 GB) works offline. The Windows release includes the osmium program it needs; elsewhere, install osmium-tool.",
 	"help_pbf_path": "Path to your own .osm.pbf file. Empty: the downloaded Finland map.",
 	"help_manage_pbf": "Download the latest Finland map file, or delete the downloaded one.",
@@ -416,7 +416,7 @@ const EN := {
 }
 
 const DE := {
-	"electronic_nearby": "Elektronische Anzeigen in der Nähe",
+	"electronic_nearby": "Elektronische Anzeigen voraus",
 	"electronic_warning": "Warnung",
 	"electronic_congestion": "Stau",
 	"electronic_uneven": "Unebene Fahrbahn",
@@ -724,7 +724,7 @@ const DE := {
 	"help_language": "Sprache der Menüs, des Telefons und der Untertitel. Fehlt eine Sprachaufnahme, wird die finnische Aufnahme verwendet.",
 	"help_historical_weather": "Wetter des finnischen Wetterdienstes für den gewählten Ort und Zeitpunkt: Beobachtungen für die Vergangenheit, Vorhersagen für die Zukunft. Aus: zur Jahreszeit passendes Zufallswetter. Benötigt eine Netzwerkverbindung.",
 	"help_train_timetable": "Echte Zugfahrpläne von Fintraffic für die Bahnhöfe. Ein Wochenfahrplan liegt dem Spiel bei; online wird er wöchentlich aktualisiert. Aus: Züge fahren in festen Abständen.",
-	"realtime_road": "Digitraffic: Baustellen und Anzeigen", "help_realtime_road": "Echte Baustellen von Fintraffic zur Spielzeit: Tempolimits, gesperrte Fahrstreifen und gesperrte Straßen auf den Haupt- und Regionalstraßen. Baustellenabfragen werden gespeichert. Elektronische Anzeigen in der Nähe erscheinen neben dem Tempolimit. Aus: Baustellen werden erfunden.",
+	"realtime_road": "Digitraffic: Baustellen und Anzeigen", "help_realtime_road": "Echte Baustellen von Fintraffic zur Spielzeit: Tempolimits, gesperrte Fahrstreifen und gesperrte Straßen auf den Haupt- und Regionalstraßen. Baustellenabfragen werden gespeichert. Elektronische Anzeigen voraus erscheinen neben dem Tempolimit. Aus: Baustellen werden erfunden.",
 	"help_map_source": "Herkunft der Karte. Overpass lädt sie während der Fahrt. Eine lokale .osm.pbf-Datei (ganz Finnland, etwa 0,8 GB) funktioniert offline. Unter Windows ist osmium enthalten; andernfalls osmium-tool installieren.",
 	"help_pbf_path": "Pfad zu deiner eigenen .osm.pbf-Datei. Leer: heruntergeladene Finnland-Karte.",
 	"help_manage_pbf": "Neueste Finnland-Kartendatei herunterladen oder die vorhandene löschen.",

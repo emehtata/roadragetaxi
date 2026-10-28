@@ -96,7 +96,8 @@ class DigitrafficClient:
     @staticmethod
     def url(path: str, params: Optional[dict] = None) -> str:
         query = urllib.parse.urlencode(sorted((params or {}).items()))
-        return f"{BASE_URL}{path}" + (f"?{query}" if query else "")
+        base = path if path.startswith('https://') else f"{BASE_URL}{path}"
+        return base + (f"?{query}" if query else "")
 
     def cached(self, url: str, max_age_s: Optional[float] = None) -> Optional[bytes]:
         with self._lock:
@@ -302,6 +303,7 @@ class RoadDataService:
                 if previous is None or work.version > previous.version:
                     unique[work.situation_id] = work
             self.roadworks = list(unique.values())
+            self.revision += 1  # publish closures before potentially slow sign-reference lookups
             from .electronic_signs import fetch_signs
             self.variable_signs, signs_complete = fetch_signs(self.client, tiles, start)
             complete &= signs_complete
@@ -475,9 +477,16 @@ class LiveRoadworks:
         self._signs: list = []
         self._sign_revision = None
         self._sign_time = None
+        self._sign_grid = None
+        self._sign_grid_revision = None
+        self._sign_nodes = {}
 
     def update(self, x: float, y: float, moment_utc: datetime, local: datetime, ways_revision, grid) -> None:
         self.service.request(x, y, moment_utc)
+        revision = getattr(grid, 'revision', None)
+        if grid is not self._sign_grid or revision != self._sign_grid_revision:
+            self._sign_nodes.clear()
+        self._sign_grid, self._sign_grid_revision = grid, revision
         self._sign_time = moment_utc
         if self._sign_revision != self.service.revision:
             self._signs = []
@@ -495,6 +504,9 @@ class LiveRoadworks:
         if key == self._key and not roads_grew:
             return
         self._key, self._ways_revision, self._matched_at = key, ways_revision, now
+        from .electronic_sign_direction import bind_sign
+        for sign in self._signs:
+            sign['_binding'] = bind_sign(sign, grid)
         self.matches += 1
         live = {(w.situation_id, w.version) for w in works}
         self._samples = {k: v for k, v in self._samples.items() if k in live}
@@ -527,7 +539,7 @@ class LiveRoadworks:
 
     def electronic_signs_near(self, car, way) -> list:
         from .electronic_signs import nearby_signs
-        return nearby_signs(self._signs, car, way, self._sign_time) if self._sign_time is not None else []
+        return nearby_signs(self._signs, car, way, self._sign_time, self._sign_grid, self._sign_nodes) if self._sign_time is not None else []
 
     def speed_limit_at(self, x: float, y: float, *, layer: int = 0, map_level: int = 0) -> Optional[int]:
         limits = [z.speed_limit_kmh for z in self.zones
