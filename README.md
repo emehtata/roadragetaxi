@@ -149,7 +149,8 @@ Choose the map source in **Settings**:
 A map file over 30 days old prompts an update offer. **Settings → Finland map**
 can force a download or delete the downloaded file. You can also select your
 own PBF file. On a source install, local PBF reading needs `osmium-tool` on
-`PATH`; the Windows release bundles it. Choosing a local map does not make
+`PATH`; the Windows release bundles it, and `make run` (`tools/run-windows.ps1`)
+installs the same conda-forge build once into `.osmium-windows/`. Choosing a local map does not make
 optional weather/timetable updates offline.
 
 ### Two settings files

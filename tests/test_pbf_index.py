@@ -280,3 +280,20 @@ def test_the_windows_release_runs_its_bundled_osmium(tmp_path, monkeypatch):
     assert pbf_index.osmium_command() is None  # a source checkout: PATH only
     monkeypatch.setattr(pbf_index.shutil, "which", lambda _name: "/usr/bin/osmium")
     assert pbf_index.osmium_command() == "osmium"
+
+
+def test_a_windows_source_run_uses_the_repo_osmium(tmp_path, monkeypatch):
+    """tools/run-windows.ps1 installs osmium-tool into the repo's .osmium-windows."""
+    import sys
+    from theroadragetrip.utils import pbf_index
+
+    installed = tmp_path / ".osmium-windows" / "Library" / "bin" / "osmium.exe"
+    installed.parent.mkdir(parents=True)
+    installed.touch()
+    monkeypatch.setattr(pbf_index, "__file__", str(tmp_path / "src" / "theroadragetrip" / "utils" / "pbf_index.py"))
+    monkeypatch.setattr(pbf_index.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert pbf_index.osmium_command() == str(installed)
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert pbf_index.osmium_command() is None  # elsewhere PATH only

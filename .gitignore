@@ -29,6 +29,7 @@ share/python-wheels/
 # Virtual environments
 .venv/
 .venv-windows/
+.osmium-windows/
 venv/
 ENV/
 env/
