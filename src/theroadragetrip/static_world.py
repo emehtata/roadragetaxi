@@ -158,7 +158,7 @@ def rail_bridge_decks(railways, ways=(), bridge_parts=None):
 
 
 def building_style(building) -> list:
-    """[roof colour, gabled, height m, entrances, wall colour, floors,
+    """[roof colour, gabled (1, or 2 steep), height m, entrances, wall colour, floors,
     category] as building_style.py picks them: colours named in the
     building's (Finnish) name, else the per-building texture pick; the OSM
     entrances ([x, y] each); its floor count (OSM levels, else height / 3);
@@ -170,6 +170,8 @@ def building_style(building) -> list:
     named = rb._building_colors_from_name(getattr(building, "colour_name", None) or getattr(building, "name", None))
     if named is not None:
         wall, roof = named
+    elif rb._building_type(building) in rb.TANK_TYPES:
+        wall = roof = rb.TANK_COLOR
     else:
         seed = getattr(building, "texture_seed", None)
         if seed is None:
@@ -177,7 +179,8 @@ def building_style(building) -> list:
             seed = abs(math.sin(cx * 0.013 + cy * 0.017))
         index = min(len(rb.BUILDING_ROOF_COLORS) - 1, int(seed * len(rb.BUILDING_ROOF_COLORS)))
         roof, wall = rb.BUILDING_ROOF_COLORS[index], rb.BUILDING_WALL_COLORS[index]
-    return [_rgb(roof), 1 if rb._uses_gabled_roof(building) else 0, round(rb._building_render_height(building), 1),
+    gabled = (2 if rb._building_type(building) in rb.CHURCH_TYPES else 1) if rb._uses_gabled_roof(building) else 0
+    return [_rgb(roof), gabled, round(rb._building_render_height(building), 1),
             [[round(x, 1), round(y, 1)] for x, y in getattr(building, "entrances", ())],
             _rgb(wall), rb._building_window_story_count(building),
             3 if rb._building_is_windowless(building) else 1 if rb._building_is_house(building)

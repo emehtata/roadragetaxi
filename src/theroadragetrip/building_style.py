@@ -113,7 +113,11 @@ HOUSE_BUILDING_TYPES = {"house", "detached", "bungalow", "cabin", "semidetached_
 # (the footprint fallback made a garage ~6 m and a warehouse ~20 m tall).
 OUTBUILDING_TYPES = {"garage", "garages", "shed", "garbage_shed", "allotment_house", "service", "kiosk"}  # no windows
 HALL_TYPES = {"industrial", "warehouse"}  # one storey, one window row
-TYPE_HEIGHT_M = {**{t: 3.0 for t in OUTBUILDING_TYPES}, **{t: 8.0 for t in HALL_TYPES}, "carport": 2.5}
+CHURCH_TYPES = {"church", "chapel", "cathedral"}  # a steep pitched roof (gabled flag 2)
+TANK_TYPES = {"storage_tank", "tank", "silo"}  # round metal, as tall as 0.8 x its width, no windows
+TANK_COLOR = (196, 199, 197)
+TYPE_HEIGHT_M = {**{t: 3.0 for t in OUTBUILDING_TYPES}, **{t: 8.0 for t in HALL_TYPES}, "carport": 2.5,
+                 "kindergarten": 4.0, "school": 7.0, **{t: 8.0 for t in CHURCH_TYPES}}
 
 
 def _building_is_house(building: Building) -> bool:
@@ -137,6 +141,9 @@ def _building_render_height(building: Building) -> float:
             return 4.5
         if _building_type(building) in TYPE_HEIGHT_M:
             return TYPE_HEIGHT_M[_building_type(building)]
+        if _building_type(building) in TANK_TYPES and len(getattr(building, "points_m", ())) >= 3:
+            xs, ys = [x for x, _ in building.points_m], [y for _, y in building.points_m]
+            return max(3.0, min(25.0, 0.8 * min(max(xs) - min(xs), max(ys) - min(ys))))
     return max(3.0, float(getattr(building, "height_m", 8.0)))
 
 
@@ -145,8 +152,8 @@ def _building_type(building: Building) -> str:
 
 
 def _building_is_windowless(building: Building) -> bool:
-    """Garages, sheds and other outbuildings: plain walls, no window rows."""
-    return _building_type(building) in OUTBUILDING_TYPES
+    """Garages, sheds, tanks and other outbuildings: plain walls, no window rows."""
+    return _building_type(building) in OUTBUILDING_TYPES or _building_type(building) in TANK_TYPES
 
 
 def _building_is_house_by_tag(building: Building) -> bool:
@@ -157,7 +164,7 @@ def _uses_gabled_roof(building: Building) -> bool:
     roof_shape = str(getattr(building, "roof_shape", "") or "").casefold()
     if roof_shape:
         return roof_shape in {"gabled", "gable", "pitched"}
-    return _building_is_house_by_tag(building)
+    return _building_is_house_by_tag(building) or _building_type(building) in CHURCH_TYPES
 
 
 SIGN_CATEGORY_BY_VENUE_TYPE = {

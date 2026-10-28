@@ -2934,6 +2934,15 @@ func test_sun_and_shadows() -> void:
 	for v in crane["verts"]:
 		top = maxf(top, v.y)
 	check(crane["stats"].get("cranes", 0) == 1 and top >= 28.0 and not crane["shadow"].is_empty(), "a big construction site gets a tall, shadow-casting crane; a tiny one none")
+	var roof_top := func(gabled: int) -> float:
+		var arrays: Dictionary = B3.build([PackedVector2Array([Vector2(0, 0), Vector2(30, 0), Vector2(30, 12), Vector2(0, 12)])],
+			[[[90, 60, 50], gabled, 8.0, [], [200, 200, 200], 2, 0]], Vector2.ZERO)
+		var ridge := 0.0
+		for v in arrays["verts"]:
+			ridge = maxf(ridge, v.y)
+		return ridge
+	check(is_equal_approx(roof_top.call(1), 8.0 + 1.8) and is_equal_approx(roof_top.call(2), 8.0 + 6.0),
+		"a church's roof (gabled 2) rises about as far as it reaches, a house's (1) at a third of that")
 	var greenhouse: Dictionary = B3.build([PackedVector2Array([Vector2(0, 0), Vector2(30, 0), Vector2(30, 10), Vector2(0, 10)])],
 		[[[200, 200, 200], 1, 4.0, [], [200, 200, 200], 1, 0, 2]], Vector2.ZERO)
 	var glass_nodes: Array = B3.meshes(greenhouse)

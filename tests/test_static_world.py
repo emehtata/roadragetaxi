@@ -67,3 +67,28 @@ def test_untagged_building_types_take_their_typical_shape():
     assert static_world.is_open_roof(building("carport")) and static_world.building_style(building("carport"))[2] == 2.5
     tall = static_world.building_style(building("warehouse", height_m=15.0, height_is_explicit=True))
     assert tall[2] == 15.0 and tall[5] == 1  # still one hall storey; building:levels would set more
+
+
+def test_tanks_schools_and_churches_take_their_typical_shape():
+    from types import SimpleNamespace
+
+    from theroadragetrip import static_world
+    from theroadragetrip.building_style import TANK_COLOR
+
+    def building(building_type, size=(20.0, 20.0), **tags):
+        w, h = size
+        fields = dict(points_m=[(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)], name=None, building_type=building_type,
+                      height_m=20.0, bbox=(0.0, 0.0, w, h), center_m=(w / 2, h / 2), texture_seed=0.5, entrances=(),
+                      levels=None, roof_shape=None, venue_type=None, height_is_explicit=False)
+        fields.update(tags)
+        return SimpleNamespace(**fields)
+
+    tank = static_world.building_style(building("storage_tank", (15.0, 15.0)))
+    assert tank[2] == 12.0 and tank[6] == 3 and tank[0] == tank[4] == list(TANK_COLOR)  # 0.8 x 15 m, plain metal
+    assert static_world.building_style(building("silo", (60.0, 60.0)))[2] == 25.0  # capped
+    assert static_world.building_style(building("kindergarten"))[2] == 4.0
+    assert static_world.building_style(building("school"))[2] == 7.0
+    church = static_world.building_style(building("church"))
+    assert church[1] == 2 and church[2] == 8.0  # a steep roof
+    assert static_world.building_style(building("church", roof_shape="flat"))[1] == 0  # OSM says otherwise
+    assert static_world.building_style(building("house"))[1] == 1

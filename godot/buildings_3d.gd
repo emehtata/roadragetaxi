@@ -445,7 +445,8 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	var floors: int = maxi(1, int(style[5]) if style.size() > 5 else roundi(height / 3.0))
 	var category: int = int(style[6]) if style.size() > 6 else 0
 	var arena := style.size() > 7 and int(style[7]) == 1
-	var gabled := style.size() > 1 and int(style[1]) == 1
+	var gabled := style.size() > 1 and int(style[1]) >= 1
+	var steep := style.size() > 1 and int(style[1]) == 2  # a church
 	var outward_sign := -1.0 if B25.signed_area(footprint) > 0.0 else 1.0
 	if style.size() > 7 and int(style[7]) == 2:
 		_glasshouse(out, footprint, height, gabled, outward_sign)
@@ -471,7 +472,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	_doors(out, footprint, style[3] if style.size() > 3 else [], outward_sign, height, floors, origin)
 	_shadow_prism(out["shadow"], footprint, height)
 	if gabled:
-		_gabled(out, footprint, height, roof_color, wall_color)
+		_gabled(out, footprint, height, roof_color, wall_color, steep)
 	else:
 		var heights := PackedFloat32Array()
 		heights.resize(footprint.size())
@@ -639,7 +640,7 @@ static func _doors(out: Dictionary, footprint: PackedVector2Array, entrances: Ar
 ## cut at the ridge line and each half triangulated with its vertex heights.
 ## Every wall under a sloping edge gets its gable: the wall continued up to
 ## the roof (godot-23). Returns the ridge's rise.
-static func _gabled(out: Dictionary, footprint: PackedVector2Array, height: float, color: Color, wall_color: Color) -> float:
+static func _gabled(out: Dictionary, footprint: PackedVector2Array, height: float, color: Color, wall_color: Color, steep := false) -> float:
 	var longest := 0
 	for i in footprint.size():
 		if footprint[i].distance_squared_to(footprint[(i + 1) % footprint.size()]) > footprint[longest].distance_squared_to(footprint[(longest + 1) % footprint.size()]):
@@ -653,7 +654,7 @@ static func _gabled(out: Dictionary, footprint: PackedVector2Array, height: floa
 	var reach := 0.0
 	for p in footprint:
 		reach = maxf(reach, absf((p - centre).dot(normal)))
-	var rise := minf(4.0, reach * 0.3)
+	var rise := minf(12.0, reach) if steep else minf(4.0, reach * 0.3)  # steep: about 45 degrees (a church)
 	var far := 10000.0
 	for side: float in [1.0, -1.0]:
 		var half := PackedVector2Array([centre - axis * far, centre + axis * far, centre + axis * far + normal * side * far, centre - axis * far + normal * side * far])
