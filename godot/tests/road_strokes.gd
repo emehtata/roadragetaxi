@@ -1,8 +1,11 @@
 ## Rendered regression: MapChunk.Strokes (one triangle array) against
-## draw_colored_polygon / draw_polyline / draw_multiline, line by line: the same pixels, give or take
+## draw_colored_polygon / draw_polyline / draw_multiline, and EntityLayer._circle
+## against draw_circle, line by line: the same pixels, give or take
 ## 1/255 of colour rounding. Needs a rendering display:
 ##   godot --path godot --display-driver x11 --rendering-driver opengl3 --script res://tests/road_strokes.gd
 extends SceneTree
+
+const Entities := preload("res://entity_layer.gd")
 
 const LINES := [  # points, colour, width: bends, a sharp turn (clamped miter), a repeated point, a loop, translucent overlaps
 	[[Vector2(10, 20), Vector2(150, 20), Vector2(300, 60)], Color(0.33, 0.33, 0.35), 9.0],
@@ -18,6 +21,7 @@ const POLYGONS := [  # draw_colored_polygon: a concave one and a translucent ove
 	[[Vector2(230, 50), Vector2(290, 60), Vector2(250, 130)], Color(0.6, 0.62, 0.6, 0.5)],
 	[[Vector2(-9, -2), Vector2(-1, -10), Vector2(8, -7), Vector2(10, 3), Vector2(1, 9), Vector2(-7, 6)], Color(0.1, 0.4, 0.15), Vector2(40, 60)],  # a tree crown, moved after triangulating
 ]
+const CIRCLES := [[Vector2(40, 200), 12.0, Color(0.9, 0.8, 0.2)], [Vector2(48, 204), 6.0, Color(0.2, 0.2, 0.3, 0.5)], [Vector2(300, 200), 0.4, Color.WHITE]]
 const SEGMENTS := [Vector2(10, 230), Vector2(150, 180), Vector2(160, 10), Vector2(300, 220)]
 
 

@@ -432,7 +432,7 @@ func _draw_reflectors() -> void:
 	for walker in walkers:
 		var at := Vector2(walker.x, walker.y)
 		if area.has_point(at) and not reflector_lit(at, Vector2(taxi.x, taxi.y), taxi.z) and not lamp_near.call(at, 10.0):
-			_reflectors.draw_circle(at, maxf(_px(1.0), 0.35), Color8(255, 255, 245))
+			_circle(_reflectors, at, maxf(_px(1.0), 0.35), Color8(255, 255, 245))
 
 
 ## Owned dogs at the same interpolated positions used by the renderer.
@@ -714,7 +714,7 @@ static func _paint(node: Node2D, shapes: Array) -> void:
 					closed.append(shape[1][0])
 					node.draw_polyline(closed, shape[3], shape[4])
 			"circle":
-				node.draw_circle(shape[1], shape[2], shape[3])
+				_circle(node, shape[1], shape[2], shape[3])
 			"line":
 				node.draw_line(shape[1], shape[2], shape[3], shape[4])
 
@@ -981,7 +981,7 @@ func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false
 		var smoke: Color = RS.SMOKE.darkened(0.35 * strength) if behind else RS.SMOKE
 		var max_alpha: float = RS.SMOKE_MAX_ALPHA * (lerpf(0.35, 1.3, strength) if behind else 1.0)
 		smoke.a = clampf((1.0 - offset_t / 2.0) * max_alpha, 0.0, max_alpha)
-		draw_circle(puff, _px((3.0 + offset_t * 5.0) * (lerpf(0.7, 1.4, strength) if behind else 1.0)), smoke)
+		_circle(self, puff, _px((3.0 + offset_t * 5.0) * (lerpf(0.7, 1.4, strength) if behind else 1.0)), smoke)
 
 
 ## Someone lying flat along `h` (their heading, head first): spread out -
@@ -999,14 +999,14 @@ func _fallen(c: Vector2, h: Vector2, side: Vector2, radius: float, clothing: Col
 		_canvas.draw_line(shoulders, shoulders + h * radius * 0.2 + side * radius * 0.9 * limb_side, _person_lit(clothing), maxf(_px(1.0), radius * 0.22))
 	_rotated_ellipse(c, h, radius * 0.8, radius * 0.5, clothing)
 	var head := shoulders + h * radius * 0.5
-	_canvas.draw_circle(head, maxf(_px(2.0), radius * 0.42), _person_lit(RS.PED_HAIR))
-	_canvas.draw_circle(head + h * radius * 0.08, maxf(_px(1.0), radius * 0.3), _person_lit(RS.PED_HEAD))
+	_circle(_canvas, head, maxf(_px(2.0), radius * 0.42), _person_lit(RS.PED_HAIR))
+	_circle(_canvas, head + h * radius * 0.08, maxf(_px(1.0), radius * 0.3), _person_lit(RS.PED_HEAD))
 
 
 ## An ellipse with its `rx` axis along `along`.
 func _rotated_ellipse(c: Vector2, along: Vector2, rx: float, ry: float, color: Color) -> void:
 	_canvas.draw_set_transform(c, along.angle(), Vector2(rx, ry))
-	_canvas.draw_circle(Vector2.ZERO, 1.0, _person_lit(color))
+	_circle(_canvas, Vector2.ZERO, 1.0, _person_lit(color))
 	_canvas.draw_set_transform(Vector2.ZERO)
 
 
@@ -1032,16 +1032,39 @@ func _vomit_puddle(at: Vector2, world_position: Vector2) -> void:
 	draw_set_transform(at, angle)
 	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), _vomit_triangles, _vomit_edge, PackedColorArray([Color8(105, 115, 62)]))
 	for splash in VOMIT_SPLASHES:
-		draw_circle(Vector2(splash.x, splash.y), splash.z, Color8(112, 120, 64, 220))
+		_circle(self, Vector2(splash.x, splash.y), splash.z, Color8(112, 120, 64, 220))
 	for i in VOMIT_BITS.size():
 		var bit: Vector3 = VOMIT_BITS[i]
-		draw_circle(Vector2(bit.x, bit.y), bit.z, Color8(151, 143, 79) if i % 2 == 0 else Color8(78, 88, 43))
+		_circle(self, Vector2(bit.x, bit.y), bit.z, Color8(151, 143, 79) if i % 2 == 0 else Color8(78, 88, 43))
 	draw_set_transform(Vector2.ZERO)
+
+
+## draw_circle's 64-segment disc as one shared mesh: draw_circle rebuilds the
+## polygon and its vertex buffer every call (~8 us each in the Compatibility
+## renderer, rrt-019.1); a mesh command is moved and tinted instead.
+static var _disc: ArrayMesh = null
+
+
+static func _circle(canvas: CanvasItem, at: Vector2, radius: float, color: Color) -> void:
+	if _disc == null:
+		var points := PackedVector2Array([Vector2.ZERO])
+		var indices := PackedInt32Array()
+		for i in 65:
+			points.append(Vector2(cos(i * TAU / 64.0), sin(i * TAU / 64.0)))
+		for i in 64:
+			indices.append_array([0, i + 1, i + 2])
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = points
+		arrays[Mesh.ARRAY_INDEX] = indices
+		_disc = ArrayMesh.new()
+		_disc.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	canvas.draw_mesh(_disc, null, Transform2D(0.0, Vector2(radius, radius), 0.0, at), color)
 
 
 func _ellipse(c: Vector2, rx: float, ry: float, color: Color) -> void:
 	_canvas.draw_set_transform(c, 0.0, Vector2(rx, ry))
-	_canvas.draw_circle(Vector2.ZERO, 1.0, _person_lit(color))
+	_circle(_canvas, Vector2.ZERO, 1.0, _person_lit(color))
 	_canvas.draw_set_transform(Vector2.ZERO)
 
 
@@ -1103,7 +1126,7 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 			_canvas.draw_line(c, knee, _person_lit(RS.PED_LEGS), radius * 0.4)
 			_canvas.draw_line(knee, knee - h * radius * 0.6, _person_lit(RS.PED_LEGS), radius * 0.3)
 		_ellipse(c, radius * 0.7, radius * 0.55, clothing)
-		_canvas.draw_circle(c - h * radius * 0.25, radius * 0.4, _person_lit(RS.PED_HEAD))
+		_circle(_canvas, c - h * radius * 0.25, radius * 0.4, _person_lit(RS.PED_HEAD))
 		_bottle(c, h, side, radius, ped, c - h * radius * 0.25)
 	elif ped.get("animation_state", "walking") == "fallen":
 		_fallen(c, h, side, radius, clothing, ped.get("activity", "") == "ice_hockey")
@@ -1116,19 +1139,19 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 		_ellipse(c + down * 0.425, radius * 0.72, radius * 0.775, RS.PED_SHADOW)
 		_ellipse(c + down * 0.405, radius * 0.58, radius * 0.625, clothing)
 		var head := c + h * radius * 0.6
-		_canvas.draw_circle(head, maxf(_px(2.0), radius * 0.48), _person_lit(RS.PED_HAIR))
-		_canvas.draw_circle(head, maxf(_px(1.0), radius * 0.35), _person_lit(RS.PED_HEAD))
+		_circle(_canvas, head, maxf(_px(2.0), radius * 0.48), _person_lit(RS.PED_HAIR))
+		_circle(_canvas, head, maxf(_px(1.0), radius * 0.35), _person_lit(RS.PED_HEAD))
 		_bottle(c, h, side, radius, ped, head)
 		if santa:
 			_canvas.draw_line(c - side * radius * 0.5, c + side * radius * 0.5, _person_lit(Color.WHITE), radius * 0.20)
 			_canvas.draw_line(head - side * radius * 0.38, head + side * radius * 0.38, _person_lit(Color.WHITE), radius * 0.22)
-			_canvas.draw_circle(head + h * radius * 0.26, radius * 0.3, _person_lit(Color.WHITE))  # beard
+			_circle(_canvas, head + h * radius * 0.26, radius * 0.3, _person_lit(Color.WHITE))  # beard
 			var tip := head - h * radius * 0.65 + side * radius * 0.3
 			# Triangulate near zero: tiny world-coordinate hats lose precision far from the origin.
 			_canvas.draw_set_transform(head, -heading, Vector2.ONE * radius)
 			_canvas.draw_colored_polygon(PackedVector2Array(SANTA_HAT), _person_lit(clothing))
 			_canvas.draw_set_transform(Vector2.ZERO)
-			_canvas.draw_circle(tip, radius * 0.17, _person_lit(Color.WHITE))
+			_circle(_canvas, tip, radius * 0.17, _person_lit(Color.WHITE))
 		if ped.get("activity", "") == "ice_hockey":
 			var goalie: bool = ped.get("hockey_goalie", false)
 			if goalie:  # leg pads, either side
@@ -1210,7 +1233,7 @@ static func open_ends(rows: Array) -> Array:
 ## A roadside speed-limit sign: white disc, red ring, the number.
 func _speed_sign(at: Vector2, limit: int) -> void:
 	var r := maxf(_px(7.0), 0.45)
-	_canvas.draw_circle(at, r, Color8(250, 250, 250))
+	_circle(_canvas, at, r, Color8(250, 250, 250))
 	_canvas.draw_arc(at, r * 0.85, 0.0, TAU, 20, Color8(205, 30, 30), r * 0.3)
 	var text := str(limit)
 	var size := maxi(6, int(r * px_per_m * 0.9))
@@ -1279,7 +1302,7 @@ func _rage_face(c: Vector2, heading: float, rage: float, down: bool) -> void:
 		return
 	var radius := maxf(_px(4.0), 0.45)
 	var head := c + Vector2(cos(heading), -sin(heading)) * radius * 0.6
-	_canvas.draw_circle(head, maxf(_px(1.0), radius * 0.35), _person_lit(Color(0.85, 0.1, 0.05, 0.6 * rage)))
+	_circle(_canvas, head, maxf(_px(1.0), radius * 0.35), _person_lit(Color(0.85, 0.1, 0.05, 0.6 * rage)))
 	if rage >= 0.7:
 		var mark := head + Vector2(radius * 0.55, -radius * 0.75)
 		for i in 4:
@@ -1304,8 +1327,8 @@ func _beach_person(c: Vector2, h: Vector2, side: Vector2, radius: float, clothin
 		_swimmer(c, h, side, radius, clothing, time + _clock)
 		return
 	var head := c + h * radius * 0.95
-	_canvas.draw_circle(head, radius * 0.43, _person_lit(RS.PED_HAIR))
-	_canvas.draw_circle(head, radius * 0.32, skin)
+	_circle(_canvas, head, radius * 0.43, _person_lit(RS.PED_HAIR))
+	_circle(_canvas, head, radius * 0.32, skin)
 
 
 func _swimmer(c: Vector2, h: Vector2, side: Vector2, radius: float, clothing: Color, time: float) -> void:
@@ -1329,8 +1352,8 @@ func _swimmer(c: Vector2, h: Vector2, side: Vector2, radius: float, clothing: Co
 		var hand := elbow + h * radius * stroke * .9 - side * radius * .25 * sign_side
 		_canvas.draw_polyline(PackedVector2Array([shoulder, elbow, hand]), skin, radius * .25)
 	var head := c + h * radius * .9
-	_canvas.draw_circle(head, radius * .4, _person_lit(RS.PED_HAIR))
-	_canvas.draw_circle(head + h * radius * .06, radius * .3, skin)
+	_circle(_canvas, head, radius * .4, _person_lit(RS.PED_HAIR))
+	_circle(_canvas, head + h * radius * .06, radius * .3, skin)
 
 
 ## Golf clubs follow the server's club choice and swing progress.
@@ -1344,11 +1367,11 @@ func _golf_club(c: Vector2, h: Vector2, side: Vector2, radius: float, golf: Dict
 		hand = c + side * radius * 0.95
 		head = hand + Vector2(0, 0.85)
 	_canvas.draw_line(hand, head, _person_lit(Color8(195, 200, 205)), maxf(_px(1.2), 0.05))
-	_canvas.draw_circle(hand, maxf(_px(1.4), radius * 0.18), _person_lit(RS.PED_HEAD))
+	_circle(_canvas, hand, maxf(_px(1.4), radius * 0.18), _person_lit(RS.PED_HEAD))
 	if putting:
 		_canvas.draw_line(head - side * 0.16, head + side * 0.16, _person_lit(STICK_BLADE), maxf(_px(2.0), 0.09))
 	else:
-		_canvas.draw_circle(head, maxf(_px(2.0), 0.13 if golf.get("club", "") == "driver" else 0.08), _person_lit(STICK_BLADE))
+		_circle(_canvas, head, maxf(_px(2.0), 0.13 if golf.get("club", "") == "driver" else 0.08), _person_lit(STICK_BLADE))
 
 
 ## The ball and its ground shadow remain visible when the golfer is off screen.
@@ -1357,7 +1380,7 @@ func _golf_ball(row: Array) -> void:
 	var pin: Vector2 = row[2]
 	_lit_tint = vehicle_light(light_level * float(light_at.call(pin)), ambient)
 	if view_rect.has_point(pin):
-		_canvas.draw_circle(pin, maxf(_px(2.0), 0.11), _person_lit(STICK_BLADE))
+		_circle(_canvas, pin, maxf(_px(2.0), 0.11), _person_lit(STICK_BLADE))
 		var top := pin - Vector2(0, 1.6)
 		_canvas.draw_line(pin, top, _person_lit(Color.WHITE), maxf(_px(1.0), 0.04))
 		_canvas.draw_set_transform(top)
@@ -1368,9 +1391,9 @@ func _golf_ball(row: Array) -> void:
 	var at := ground - Vector2(0, float(row[1]) * 0.35)
 	if view_rect.has_point(ground) or view_rect.has_point(at):
 		_lit_tint = vehicle_light(light_level * float(light_at.call(ground)), ambient)
-		_canvas.draw_circle(ground, maxf(_px(1.8), 0.07), RS.PED_SHADOW)
-		_canvas.draw_circle(at, maxf(_px(2.2), 0.045) + _px(0.6), _person_lit(STICK_BLADE))
-		_canvas.draw_circle(at, maxf(_px(2.2), 0.045), _person_lit(SOCCER_BALL))
+		_circle(_canvas, ground, maxf(_px(1.8), 0.07), RS.PED_SHADOW)
+		_circle(_canvas, at, maxf(_px(2.2), 0.045) + _px(0.6), _person_lit(STICK_BLADE))
+		_circle(_canvas, at, maxf(_px(2.2), 0.045), _person_lit(SOCCER_BALL))
 
 
 ## A non-colliding owned dog and its leash, batched with its pedestrian.
@@ -1384,7 +1407,7 @@ func _dog(owner: Vector2, at: Vector2, heading: float, dog: Dictionary) -> void:
 	_ellipse(at + Vector2(0, radius * 0.35), radius * 0.85, radius * 0.38, RS.PED_SHADOW)
 	_ellipse(at, radius * 0.72, radius, body)
 	var head := at + h * radius * (0.78 if dog.get("sniffing", false) else 1.02)
-	_canvas.draw_circle(head, radius * 0.58, _person_lit(body.lightened(0.06)))
+	_circle(_canvas, head, radius * 0.58, _person_lit(body.lightened(0.06)))
 	var ear := PackedColorArray([_person_lit(body.darkened(0.25))])
 	for s: float in [1.0, -1.0]:  # draw_primitive: a few-cm triangle needs no triangulation (which rejected it)
 		_canvas.draw_primitive(PackedVector2Array([head + side * radius * 0.42 * s,
@@ -1428,11 +1451,11 @@ func _pucks(a: Dictionary, b: Dictionary, t: float) -> void:
 			var at := MapMath.point(origin, lerpf(p[0], q[0], t), lerpf(p[1], q[1], t))
 			_lit_tint = vehicle_light(light_level * float(light_at.call(at)), ambient)
 			if key == "pucks":
-				_canvas.draw_circle(at, maxf(_px(2.5), 0.12), _person_lit(STICK_BLADE))
+				_circle(_canvas, at, maxf(_px(2.5), 0.12), _person_lit(STICK_BLADE))
 			else:
 				var radius := maxf(_px(3.0), 0.11)
-				_canvas.draw_circle(at, radius + maxf(_px(0.7), 0.02), _person_lit(STICK_BLADE))
-				_canvas.draw_circle(at, radius, _person_lit(SOCCER_BALL))
+				_circle(_canvas, at, radius + maxf(_px(0.7), 0.02), _person_lit(STICK_BLADE))
+				_circle(_canvas, at, radius, _person_lit(SOCCER_BALL))
 
 
 ## A text bubble whose bottom centre is at `anchor`, drawn in screen
@@ -1504,14 +1527,14 @@ func _draw_people() -> void:
 	for ball in _tennis_balls:
 		var ground := Vector2(ball.x, ball.y)
 		_lit_tint = vehicle_light(light_level * float(light_at.call(ground)), ambient)
-		_canvas.draw_circle(ground, maxf(_px(1.5), .08), RS.PED_SHADOW)
-		_canvas.draw_circle(ground - Vector2(0, ball.z * .7), maxf(_px(2), .09), _person_lit(Color8(220, 245, 65)))
+		_circle(_canvas, ground, maxf(_px(1.5), .08), RS.PED_SHADOW)
+		_circle(_canvas, ground - Vector2(0, ball.z * .7), maxf(_px(2), .09), _person_lit(Color8(220, 245, 65)))
 	for ball in _beach_balls:
 		var ground := Vector2(ball.x, ball.y)
 		_lit_tint = vehicle_light(light_level * float(light_at.call(ground)), ambient)
 		var at := ground - Vector2(0, ball.z * ball.w)
-		_canvas.draw_circle(ground, maxf(_px(2), 0.12), RS.PED_SHADOW)
-		_canvas.draw_circle(at, maxf(_px(3), 0.17), _person_lit(Color8(250, 215, 60)))
+		_circle(_canvas, ground, maxf(_px(2), 0.12), RS.PED_SHADOW)
+		_circle(_canvas, at, maxf(_px(3), 0.17), _person_lit(Color8(250, 215, 60)))
 		_canvas.draw_arc(at, maxf(_px(2), 0.12), 0, PI, 8, _person_lit(Color8(230, 80, 55)), maxf(_px(1.2), 0.05))
 	_lit_tint = Color.WHITE
 	_canvas = self
@@ -1586,9 +1609,9 @@ func _target(state: Dictionary) -> void:
 	var at := MapMath.point(origin, target["x"], target["y"])
 	if view_rect.grow(-CULL_MARGIN_M).has_point(at):
 		var radius := maxf(_px(8.0), target.get("radius_m", 10.0))
-		draw_circle(at, radius, Color(main_color, 70.0 / 255.0))
+		_circle(self, at, radius, Color(main_color, 70.0 / 255.0))
 		draw_arc(at, radius, 0.0, TAU, 48, main_color, _px(2.0))
-		draw_circle(at, _px(7.0), main_color)
+		_circle(self, at, _px(7.0), main_color)
 		draw_arc(at, _px(7.0), 0.0, TAU, 24, RS.OUTLINE, _px(2.0))
 		_tag(at - Vector2(0, radius + _px(14.0)), "[%s] %s" % [T.text("pickup", language) if target["is_pickup"] else T.text("destination", language), target.get("address", "")],
 			Color.WHITE, main_color)
@@ -1600,9 +1623,9 @@ func _target(state: Dictionary) -> void:
 			var ped: Array = member["ped"]
 			var c := MapMath.point(origin, ped[0], ped[1])
 			var radius := maxf(_px(4.0), 0.5)
-			draw_circle(c, radius + _px(2.0), RS.OUTLINE)
-			draw_circle(c, radius, RS.CUSTOMER_COLOR)
-			draw_circle(c + _forward(ped[2]) * radius * 0.9, maxf(_px(1.0), radius * 0.45), Color.WHITE)
+			_circle(self, c, radius + _px(2.0), RS.OUTLINE)
+			_circle(self, c, radius, RS.CUSTOMER_COLOR)
+			_circle(self, c + _forward(ped[2]) * radius * 0.9, maxf(_px(1.0), radius * 0.45), Color.WHITE)
 			_tag(c - Vector2(0, radius + _px(12.0)), passenger_tag(member, language),
 				Color8(255, 230, 80))
 
@@ -1645,7 +1668,7 @@ func _draw() -> void:
 				var at := MapMath.point(origin, print_point[0], print_point[1])
 				if view_rect.has_point(at):
 					draw_set_transform(at, -float(print_point[2]), Vector2(maxf(_px(1.5), 0.14), maxf(_px(1.0), 0.06)))
-					draw_circle(Vector2.ZERO, 1.0, Color8(95, 104, 55, 210))
+					_circle(self, Vector2.ZERO, 1.0, Color8(95, 104, 55, 210))
 					draw_set_transform(Vector2.ZERO)
 
 	if not underground:
