@@ -1025,6 +1025,8 @@ def build_ways(
         pts, ibbox = process_node_ids(node_ids)
         if not pts or len(pts) < 3:
             continue
+        if parking_facility_type(tags) in GARAGE_TYPES:
+            continue  # a garage (its own record) is no paved lot on the surface
         is_parking = tags.get("amenity") == "parking" or tags.get("landuse") == "parking"
         is_fuel = tags.get("amenity") == "fuel"
         is_platform = tags.get("railway") == "platform"
@@ -1624,7 +1626,7 @@ def build_ways(
                     texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
                     **_level_metadata(tags),
                 ))
-            elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
+            elif (tags.get("amenity") == "parking" or tags.get("landuse") == "parking") and parking_facility_type(tags) not in GARAGE_TYPES:
                 sceneries.append(Scenery(
                     points_m=pts, kind="parking", name=name, bbox=ibbox,
                     surface=tags.get("surface") or "asphalt",

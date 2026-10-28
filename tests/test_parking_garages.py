@@ -91,6 +91,14 @@ def test_surface_parking_is_not_a_garage_and_still_draws_as_a_lot():
     assert [s.kind for s in world.sceneries] == ["parking"]
 
 
+@pytest.mark.parametrize("parking", ["multi-storey", "underground"])
+def test_a_garage_draws_no_surface_lot(parking):
+    """Oulu's Pekuri garage lies under a block and a walking street: its
+    amenity=parking area is no paved lot over them."""
+    world = build_ways(_square() + [_area(100, {"amenity": "parking", "parking": parking})])
+    assert len(world.parking_garages) == 1 and world.sceneries == []
+
+
 def test_garage_node_and_relation_and_malformed_geometry():
     elements = _square() + _square(first_id=11) + [
         {"type": "node", "id": 50, "lat": 65.0, "lon": 25.01,
