@@ -111,7 +111,7 @@ func _draw() -> void:
 			elif not _tiles.has(key) and (not _failed.has(key) or Time.get_ticks_msec() >= _failed[key][1]):
 				wanted.append(key)
 	_queue = wanted  # tiles scrolled out of view are no longer fetched
-	_fetch()
+	_fetch.call_deferred()  # after this draw: a redraw asked for during _draw is ignored (cached tiles stayed blank)
 	if pin != Vector2.INF:
 		var at := to_pixels(pin.x, pin.y, zoom) - origin
 		draw_circle(at, 9.0, Color.BLACK)
