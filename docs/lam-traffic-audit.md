@@ -341,3 +341,25 @@ demand clock was 0.83 at 07:00 (its inbound morning peak), 1.07 at 15:00 and
 
 Not done: direction-specific demand (a road's two directions spawn alike),
 fitting the 5 km reach, and the validation runs with a virtual detector.
+
+## Phase 3 validation: the virtual detector (in progress, 2026-10-28)
+
+`tools/lam_validate.py` runs a headless server on a station's map with the
+player parked at the station and counts NPC vehicles crossing a line across
+the road (30 m either side), by game hour and LAM direction (1 along the
+station bearing). It compares the simulated hourly shape with the station's
+measured curves (shares of the weekday peak hour, mean absolute error) and
+reports server tick p50/p95. `tests/test_lam_validate.py` covers the detector.
+
+Game time runs 60x without a fare, so a game hour is one real minute of
+traffic: hourly counts are small, compare shapes. A game day takes about
+6.5 minutes on this machine (one game hour, 1 800 ticks, in 16 s at
+Kaukovainio with 27 NPC vehicles).
+
+**Not yet run to completion.** Next, on another machine:
+
+    PYTHONPATH=src .venv/bin/python tools/lam_validate.py --station Kaukovainio \
+        --days 2026-10-14 2026-10-15 2026-10-17 --out /tmp/validate_kaukovainio.json
+
+then record the weekday/weekend MAE, crossings a day, direction split and
+tick times here, and repeat for a rural station (vt5 Kuusamo, kt86 Liminka).
