@@ -245,12 +245,9 @@ class Scenery:
     kind: str
     name: Optional[str] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
-    # Ground material, currently only populated for kind="parking" (OSM's
-    # surface=* tag, defaulting to "asphalt" when the lot doesn't specify
-    # one - a mapped parking lot is a paved area even when nobody bothered
-    # tagging it, unlike an untagged patch of open ground). None for every
-    # other kind: their color is already keyed by `kind` itself (forest,
-    # grass, ...), which already says what the ground is.
+    # OSM ground material for parking, fuel forecourts and pedestrian areas.
+    # Their imported defaults are asphalt or paving_stones; other kinds
+    # keep their kind-based ground colour (forest, grass, ...).
     surface: Optional[str] = None
     # True when this vegetation polygon is bounded by barrier=kerb and must
     # remain visible above overlapping road asphalt.

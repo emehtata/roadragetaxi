@@ -430,7 +430,7 @@ class ChunkIndex:
         from shapely.geometry import LineString, Polygon
 
         from .activities.plugins.soccer import is_soccer_pitch
-        from .map_style import FLOODLIT_KINDS, FROZEN_IN_WINTER_KINDS, SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS
+        from .map_style import FLOODLIT_KINDS, FROZEN_IN_WINTER_KINDS, SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS, surface_color
 
         # Biggest first, so nested areas draw on top (a pitch inside its
         # sports centre, a park inside a residential area). A container's
@@ -447,6 +447,8 @@ class ChunkIndex:
             kind = str(scenery.kind).lower()
             island = kind == "traffic_island" or getattr(scenery, "kerbed", False)  # redrawn above the roads
             color = (174, 162, 142) if kind.startswith("attraction_") else SCENERY_COLORS.get(kind, (38, 105, 38))
+            if kind in ("parking", "pedestrian_area", "fuel"):
+                color = surface_color(getattr(scenery, "surface", None)) or color
             # 1: snow and seasonal palettes, 2: frozen to ice in winter, 0: as is
             seasonal = 2 if kind in FROZEN_IN_WINTER_KINDS else 1 if kind in SPECKLE_SCENERY_KINDS or kind in SEASONAL_GROUND_KINDS else 0
             if getattr(scenery, "volleyball_frame", None):

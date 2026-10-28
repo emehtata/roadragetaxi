@@ -1,28 +1,50 @@
 """Map styling shared by the headless server and rendering clients."""
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 from .osm import Way
 
 
 SURFACE_COLORS = {
     "asphalt": (70, 70, 70),
+    "paved": (70, 70, 70),
+    "chipseal": (90, 88, 82),
     "concrete": (142, 142, 138),
     "concrete:lanes": (142, 142, 138),
-    "paving_stones": (125, 120, 112),
-    "sett": (105, 100, 94),
-    "cobblestone": (105, 100, 94),
+    "concrete:plates": (142, 142, 138),
+    "paving_stones": (150, 137, 117),
+    "paving_stones:lanes": (150, 137, 117),
+    "sett": (145, 139, 129),
+    "cobblestone": (125, 120, 112),
+    "unhewn_cobblestone": (125, 120, 112),
+    "grass_paver": (105, 128, 90),
+    "grass_paver:lanes": (105, 128, 90),
+    "metal": (115, 126, 132),
     "compacted": (125, 112, 92),
     "fine_gravel": (145, 132, 108),
     "gravel": (150, 135, 105),
+    "pebblestone": (155, 145, 125),
+    "rock": (135, 131, 122),
     "unpaved": (155, 140, 108),
     "dirt": (125, 98, 68),
     "ground": (130, 105, 75),
     "earth": (130, 105, 75),
+    "clay": (155, 112, 78),
+    "mud": (95, 76, 55),
     "sand": (190, 170, 120),
     "grass": (75, 125, 62),
     "wood": (112, 83, 55),
+    "woodchips": (146, 112, 72),
+    "snow": (220, 229, 232),
+    "ice": (160, 200, 225),
 }
+
+
+def surface_color(surface: Optional[str]) -> Optional[Tuple[int, int, int]]:
+    """Shared road/area material palette; unknown surfaces keep their existing fallback."""
+    key = str(surface or "").lower().split(";")[0].strip()
+    return SURFACE_COLORS.get(key)
+
 
 LEGACY_HIGHWAY_COLORS = {
     "motorway": (58, 58, 60), "motorway_link": (58, 58, 60),
@@ -55,9 +77,9 @@ def road_draw_rank(way: Way) -> int:
 
 def road_color_for_way(way: Way) -> Tuple[int, int, int]:
     """Return a road color from OSM surface, then highway-class fallback."""
-    surface = str(getattr(way, "surface", "") or "").lower().split(";")[0].strip()
-    if surface in SURFACE_COLORS:
-        return SURFACE_COLORS[surface]
+    color = surface_color(getattr(way, "surface", None))
+    if color is not None:
+        return color
     if not way.is_drivable:
         return (115, 145, 150) if way.highway == "cycleway" else (150, 150, 142)
     if getattr(way, "is_ice_road", False):

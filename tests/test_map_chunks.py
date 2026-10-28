@@ -594,3 +594,23 @@ def test_a_bus_stop_by_a_driveway_belongs_to_the_bus_road_and_its_bay_stops_at_j
     bay = static_world.bus_stop_shapes(stop, [street, entrance, cross])["bay"]
     assert max(x for x, _ in bay) < 56.0 - 4.0  # stops short of the cross street's carriageway
     assert min(x for x, _ in bay) == pytest.approx(44.0 - 16.0, abs=0.1)  # the other way: its full 16 m
+
+
+@pytest.mark.parametrize('kind', ['pedestrian_area', 'parking', 'fuel'])
+@pytest.mark.parametrize('surface', ['sett', 'concrete:plates', 'gravel', 'sand', None, 'unknown_material'])
+def test_paved_areas_share_road_material_colours_and_keep_unknown_fallbacks(kind, surface):
+    from theroadragetrip.map_style import SCENERY_COLORS, surface_color
+    from theroadragetrip.osm import Scenery
+    from theroadragetrip.protocol import decode
+    area = Scenery([(10, 10), (90, 10), (90, 90), (10, 90)], kind, surface=surface)
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[area])
+    chunk = decode(map_chunks.ChunkIndex(world).encoded('0_0'))
+    assert chunk['landuse'][0][0] == list(surface_color(surface) or SCENERY_COLORS[kind])
+
+
+def test_surface_tag_does_not_override_vegetation_colours():
+    from theroadragetrip.map_style import SCENERY_COLORS
+    from theroadragetrip.osm import Scenery
+    park = Scenery([(10, 10), (90, 10), (90, 90), (10, 90)], 'park', surface='asphalt')
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[park])
+    assert map_chunks.ChunkIndex(world).message('0_0')['landuse'][0][0] == list(SCENERY_COLORS['park'])
