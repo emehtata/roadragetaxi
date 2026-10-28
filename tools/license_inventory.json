@@ -176,6 +176,7 @@
     "certifi": {"licence": "MPL-2.0", "status": "conditional", "obligations": "licence; source of the covered file available (upstream, unmodified)"},
     "pyproj": {"licence": "MIT (with PROJ, MIT)", "status": "verified", "obligations": "licences incl. LICENSE_proj (collect_licenses.py)"},
     "shapely": {"licence": "BSD-3-Clause, bundles GEOS (LGPL-2.1) as a separate DLL", "status": "conditional", "obligations": "LGPL text (LICENSE_GEOS) and GEOS source with each release (windows-release.yml); the DLL stays replaceable"},
+    "paho-mqtt": {"licence": "EPL-2.0 OR EDL-1.0 (BSD-3-Clause); used under EDL-1.0", "status": "verified", "obligations": "Its licence files (collect_licenses.py)"},
     "numpy": {"licence": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0, bundles OpenBLAS/LAPACK and possibly the GCC runtime", "status": "conditional", "obligations": "numpy's licence files (collect_licenses.py); verify the Windows wheel's bundled-library notices"},
     "pyinstaller": {"licence": "GPL-2.0-or-later with the bootloader exception", "status": "conditional", "obligations": "COPYING.txt (collect_licenses.py); the exception permits the built program under its own terms"}
   },

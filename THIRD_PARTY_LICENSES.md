@@ -41,6 +41,7 @@ runtime and these packages, versions as in `PACKAGES.txt`:
 | rsplan | MIT | Reeds-Shepp paths for NPC vehicles' multi-point manoeuvres (manoeuvre.py) |
 | pyproj, with PROJ | MIT | PROJ's licence ships as `LICENSE_proj` |
 | shapely | BSD-3-Clause | |
+| paho-mqtt | EPL-2.0 or EDL-1.0 (BSD-3-Clause) | Live Digitraffic data over MQTT (digitraffic_mqtt.py); used under EDL-1.0 |
 | GEOS (bundled by shapely as its own DLL) | LGPL-2.1 | The licence ships as `shapely/licenses/LICENSE_GEOS`. The DLL can be replaced. Its source is attached to every release (`geos-<version>-source.tar.bz2`) and is at https://libgeos.org/ |
 | numpy | BSD-3-Clause, with bundled parts under 0BSD, MIT, Zlib and CC0-1.0 | Its wheel bundles libraries such as OpenBLAS and LAPACK (and, in builds that use them, the GCC runtime libraries, GPL-3.0 with the GCC Runtime Library Exception); numpy's own `LICENSE.txt` lists those its build bundles |
 

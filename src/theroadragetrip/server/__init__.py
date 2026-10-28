@@ -307,6 +307,7 @@ class SimulationServer:
             self.weather_history.request(self.calendar.current - timedelta(hours=6), self.calendar.current + timedelta(hours=48))
             self.weather_history.wait_idle(3.0)  # brief: the first hour can be the real weather
         self.world.live_roadworks = self._live_roadworks(args, config)
+        self.live_feed = self._live_feed()
         observed = self._update_outside()
         if observed is not None:  # the first tick follows it; the start's weather is it already
             self.world.weather.update(0.001, 0.0, outside_temperature_c=self.world.weather.outside_temperature_c,
@@ -602,6 +603,20 @@ class SimulationServer:
         logger.info("Simulation server listening on %s:%d", self.host, self.port)
         self._running = True
 
+    def _live_feed(self):
+        """Digitraffic MQTT (digitraffic_mqtt.py): live "now" data, so only
+        with the live clock and realtime road data both on; None otherwise."""
+        if not (self._live_clock and self.world.live_roadworks is not None):
+            return None
+        try:
+            from ..digitraffic_mqtt import LiveFeed
+            feed = LiveFeed(["weather-v2/status", "maintenance-v2/status"])  # phase 3 adds the data topics
+        except ImportError:
+            logger.warning("Live Digitraffic data needs paho-mqtt; staying with the REST data")
+            return None
+        feed.start()
+        return feed
+
     def _live_roadworks(self, args, config):
         """Settings -> realtime road data (--road-digitraffic): live roadworks
         from Digitraffic, every query cached forever; None when off."""
@@ -632,6 +647,8 @@ class SimulationServer:
         self.navigation.close()
         if getattr(self.world, "live_roadworks", None) is not None:
             self.world.live_roadworks.service.close()
+        if getattr(self, "live_feed", None) is not None:
+            self.live_feed.close()
         if self._listener is not None:
             self._listener.close()
         with self._clients_lock:
@@ -776,6 +793,7 @@ class SimulationServer:
                 self._on_foot, scenery_objects=w.scenery_objects, speed_bumps=w.speed_bumps, railways=w.railways,
                 railings=w.railings, npcs=w.npcs, npc_drivers=w.npc_drivers, npc_manager=w.npc_manager,
                 taxi_brawls=getattr(w, "taxi_brawls", None), live_roadworks=getattr(w, "live_roadworks", None),
+                live_feed=getattr(self, "live_feed", None),
             )
             logger.info("Debug snapshot %s", path)
         except Exception:  # a debugging aid: never take the game down

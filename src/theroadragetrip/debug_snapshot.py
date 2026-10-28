@@ -274,6 +274,7 @@ def _write_debug_snapshot(
     frame_profiler=None,
     taxi_brawls=None,
     live_roadworks=None,
+    live_feed=None,
 ) -> None:
     minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
     now = time.time()
@@ -302,6 +303,8 @@ def _write_debug_snapshot(
                         "speed_limit_kmh": z.speed_limit_kmh, "lane_closed": z.lane_closed, "closed": z.blocks}
                        for z in live_roadworks.zones],
         },
+        # Digitraffic MQTT (digitraffic_mqtt.py): connection, message counts and the feeds' own ages.
+        "live_feed": None if live_feed is None else live_feed.diagnostics(),
         # Taxi drivers' quarrels (taxi_brawls.py): the active ones and the last outcomes.
         "brawls": {
             "active": taxi_brawls.to_dicts(traffic_mgr.sim_time) if taxi_brawls is not None else [],

@@ -4,6 +4,7 @@ rsplan
 pyproj
 pytest
 shapely
+paho-mqtt>=2.1
 pytest-randomly
 pytest-xdist
 

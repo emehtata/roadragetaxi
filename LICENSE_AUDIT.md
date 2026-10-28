@@ -68,6 +68,7 @@ available locally were not assumed.
 | PyInstaller bootloader | GPL-2.0-or-later with the bootloader exception (`COPYING.txt`) | Inside `RoadRageServer.exe` | Conditional: the exception permits distributing the built program; the notice now ships |
 | requests, urllib3, idna, charset-normalizer, PyEphem, rsplan, pyproj (with PROJ) | Apache-2.0, MIT, BSD-3-Clause, MIT, MIT, MIT, MIT (wheel licence files) | `_internal` | Verified, with notices |
 | shapely | BSD-3-Clause | `_internal` | Verified |
+| paho-mqtt | EPL-2.0 or EDL-1.0 (chosen: EDL-1.0, BSD-3-Clause) | `_internal` | Verified |
 | GEOS 3.13.1 (bundled by shapely) | LGPL-2.1 (`LICENSE_GEOS`) | A separate, replaceable DLL | Conditional: the LGPL text now ships and the GEOS source is attached to each release |
 | certifi | MPL-2.0 | `_internal` (unmodified CA bundle) | Conditional: notice and an upstream source pointer |
 | numpy | BSD-3-Clause and others; bundles OpenBLAS, LAPACK and GCC runtime parts (wheel `LICENSE.txt`) | `_internal` | Conditional: verify the Windows wheel's bundled-library notices |

@@ -15,6 +15,7 @@ dependencies = [
     "rsplan",
     "pyproj",
     "shapely",
+    "paho-mqtt>=2.1",
 ]
 
 [project.optional-dependencies]
