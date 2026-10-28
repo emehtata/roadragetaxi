@@ -1759,6 +1759,14 @@ func test_speech_and_stations() -> void:
 	var MapBrowser := load("res://map_browser.gd")
 	var oulu_px: Vector2 = MapBrowser.to_pixels(65.012, 25.468, 13)
 	check(MapBrowser.to_latlon(oulu_px, 13).distance_to(Vector2(65.012, 25.468)) < 1e-5, "map browser: tile pixels round-trip to the same point")
+	var browser = MapBrowser.new()
+	browser._tile_loaded("13/1/2", "user://tiles/13/1/2.png", HTTPRequest.RESULT_CANT_CONNECT, 0, PackedByteArray())
+	check(not browser._tiles.has("13/1/2") and browser._failed["13/1/2"][0] == 1 and browser._failed["13/1/2"][1] > Time.get_ticks_msec(),
+		"map browser: a failed tile is asked again later, not left blank for the visit")
+	for i in 5:
+		browser._tile_loaded("13/1/2", "user://tiles/13/1/2.png", HTTPRequest.RESULT_SUCCESS, 429, PackedByteArray())
+	check(browser._failed["13/1/2"][1] > Time.get_ticks_msec() + 3600 * 1000, "map browser: after a few failures it stops asking")
+	browser.free()
 	check(Startup.nearest_city([{"name": "Oulu", "latitude": 65.012, "longitude": 25.468}, {"name": "Helsinki", "latitude": 60.17, "longitude": 24.94}], 64.9, 25.6) == "Oulu", "map point: the nearest city gives the gig its settings")
 	var bbox: PackedFloat64Array = Array(Startup.point_bbox(65.0, 25.0).split(",")).map(func(v): return float(v))
 	check(is_equal_approx((bbox[0] + bbox[2]) / 2.0, 65.0) and is_equal_approx((bbox[1] + bbox[3]) / 2.0, 25.0) and bbox[2] - bbox[0] > 0.02, "map point: the bbox is centred on the pin")
