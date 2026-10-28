@@ -2,6 +2,8 @@
 and the clock. Repeated, seeded trials of the moving-traffic target over
 one-minute draws (NPC_DEMAND_ROLL_TICKS)."""
 from datetime import datetime
+
+import pytest
 from types import SimpleNamespace
 
 from theroadragetrip.npc import NPC_DEMAND_ROLL_TICKS, NPCVehicleManager
@@ -70,7 +72,9 @@ def test_a_village_after_midnight_is_mostly_quiet():
 def test_a_remote_sysma_road_at_one_in_october_has_hardly_any_traffic():
     """Regression: cars kept appearing on a remote Sysmä road at 01:00."""
     night, manager = mean_moving(REMOTE, 10, 0, OCTOBER_NIGHT, "tertiary", city_target=15)
-    assert night < 0.02  # under one minute in fifty has a moving car wanted
+    # under about one minute in 35 has a moving car wanted: measured rural roads keep ~4 % of their
+    # peak at 01:00 (assets/traffic/lam_profiles.json), the old estimate 2.5 %
+    assert night < 0.03
     reasons = manager.population_diagnostics["traffic_demand"]
     assert reasons["hour"] < 0.05 and reasons["people"] < 10  # why: night, nobody around
     day, _ = mean_moving(REMOTE, 10, 0, OCTOBER_DAY, "tertiary", city_target=15)
@@ -108,3 +112,29 @@ def test_free_days_follow_the_finnish_calendar():
     assert is_public_holiday(datetime(2026, 12, 6)) and is_public_holiday(datetime(2026, 6, 19))  # Midsummer Eve (Fri)
     assert not is_public_holiday(datetime(2026, 6, 18))
     assert hour_demand(datetime(2026, 12, 7, 8)) > 2 * hour_demand(datetime(2026, 12, 6, 8))  # Monday vs Independence Day
+
+
+def test_demand_follows_the_measured_lam_curves_urban_and_rural():
+    """docs/lam-traffic-audit.md: weekday peak at 15 (not the estimate's 16), a
+    rural weekend busier than an urban one, rural July above urban July."""
+    from theroadragetrip import population
+
+    assert population.MEASURED_CURVES is not None
+    weekday, saturday = datetime(2026, 10, 14, 15), datetime(2026, 10, 17, 15)
+    assert hour_demand(weekday) > hour_demand(weekday.replace(hour=16)) > hour_demand(weekday.replace(hour=7))
+    assert hour_demand(saturday, urban=0.0) > hour_demand(saturday, urban=1.0)
+    july, january = datetime(2026, 7, 15, 15), datetime(2026, 1, 14, 15)
+    assert hour_demand(july, urban=0.0) > hour_demand(january, urban=0.0) and hour_demand(july) < hour_demand(january)
+    half = hour_demand(saturday, urban=0.5)
+    assert half == pytest.approx((hour_demand(saturday, urban=0.0) + hour_demand(saturday, urban=1.0)) / 2)
+
+
+def test_without_the_measured_file_the_estimates_stay(tmp_path, monkeypatch, caplog):
+    from theroadragetrip import population
+
+    (tmp_path / "broken.json").write_text("{not json")
+    assert population.load_measured_curves(tmp_path / "broken.json") is None
+    assert population.load_measured_curves(tmp_path / "missing.json") is None
+    monkeypatch.setattr(population, "MEASURED_CURVES", None)
+    moment = datetime(2026, 10, 14, 16)
+    assert hour_demand(moment) == population.WEEKDAY_HOURLY[16] * population.MONTH_FACTOR[10]

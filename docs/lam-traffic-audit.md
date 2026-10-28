@@ -244,3 +244,30 @@ The estimate's shape is close on urban weekdays; it overstates the morning
 peak, puts the afternoon peak an hour late, makes weekends peak too early
 and too low on rural roads, and its single month curve cannot fit both
 settings: urban July is the quietest sampled month, rural July the busiest.
+
+## Phase 3, first step: measured curves in the demand model (2026-10-28)
+
+Before any per-road matching (phase 2), the measured *group* curves replace
+`population.py`'s estimated clock, since every NPC trip start and moving
+target already goes through `hour_demand`:
+
+- `population.load_measured_curves` reads `lam_profiles.json` once at import:
+  the urban and rural weekday/weekend curves, and per setting the mean of the
+  group stations' month factors, interpolated linearly around the year
+  (urban: 1.06 April to 0.93 July; rural: 0.83 January to 1.26 July).
+- The local people fraction picks the mix (`URBAN_PEOPLE_FRACTION` 0.5: a
+  suburb counts as fully urban, a village mostly rural). A heuristic: the
+  stations are main roads, the blend weight is not fitted.
+- Missing or unreadable file: the estimates stay, with a warning.
+- Cost: the same 24-value lookups at the same 2 s population tick.
+
+Effects: the weekday afternoon peak moves from 16 to 15, the morning peak
+drops from 0.85 to about 0.6–0.7, nights rise from 2–3 % to 4–8 % of the
+peak, weekends peak in the afternoon, rural summer is busier and urban July
+quieter. One regression limit moved: a remote Sysmä tertiary road at 01:00
+in October now wants 0.022 moving cars on average (limit raised from 0.02 to
+0.03, about one car wanted in 45 minutes); the measured rural night share is
+higher than the estimate was.
+
+Not done yet: phase 2's per-station road matching, direction-specific
+curves, and the validation runs with a virtual detector on matched roads.

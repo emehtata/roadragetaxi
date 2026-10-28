@@ -10,7 +10,10 @@ player moves on (a population check, a new 100 m cell).
 """
 from __future__ import annotations
 
+import json
+import logging
 import math
+from pathlib import Path
 from typing import Iterable, Optional
 
 from .residents import CITY_DATA
@@ -118,6 +121,7 @@ def walkers_within(buildings: Iterable, x: float, y: float, radius: float, munic
 # Share of the day's peak hour, by hour. ESTIMATES shaped like Finnish
 # automatic traffic counts (Fintraffic LAM): weekday peaks 7-8 and 15-17, a
 # night trough near 2-3 % of the peak; weekends without a morning peak.
+# The fallback: measured curves (LAM_PROFILES, below) replace them when present.
 WEEKDAY_HOURLY = [0.04, 0.025, 0.02, 0.02, 0.04, 0.15, 0.45, 0.85, 0.8, 0.6, 0.6, 0.65,
                   0.7, 0.7, 0.75, 0.9, 1.0, 0.85, 0.65, 0.5, 0.4, 0.3, 0.18, 0.09]
 WEEKEND_HOURLY = [0.08, 0.06, 0.04, 0.03, 0.03, 0.05, 0.1, 0.2, 0.35, 0.5, 0.65, 0.75,
@@ -127,6 +131,47 @@ MONTH_FACTOR = {1: 0.88, 2: 0.9, 3: 0.95, 4: 0.97, 5: 1.0, 6: 1.05, 7: 1.0, 8: 1
 # Passing traffic a road carries whoever lives along it, as a share of a
 # town centre's moving traffic (estimate, by OSM highway class).
 THROUGH_TRAFFIC = {"motorway": 0.6, "trunk": 0.45, "primary": 0.3, "secondary": 0.15, "tertiary": 0.06}
+LAM_PROFILES = Path(__file__).parent / "assets" / "traffic" / "lam_profiles.json"
+# Local people as a share of a town centre's at which traffic follows the urban
+# curves fully; below, it blends toward the rural ones (a suburb counts as urban).
+URBAN_PEOPLE_FRACTION = 0.5
+
+
+def _interpolated_months(sampled: dict) -> dict:
+    """{month: factor} for all twelve from a few sampled months, linear around the year."""
+    out = {}
+    for month in range(1, 13):
+        back = next(d for d in range(12) if (month - 1 - d) % 12 + 1 in sampled)  # months since the last sample
+        ahead = next(d for d in range(12) if (month - 1 + d) % 12 + 1 in sampled)  # months to the next one
+        before, after = sampled[(month - 1 - back) % 12 + 1], sampled[(month - 1 + ahead) % 12 + 1]
+        out[month] = round(before + (after - before) * back / (back + ahead) if back + ahead else before, 3)
+    return out
+
+
+def load_measured_curves(path: Path = LAM_PROFILES) -> Optional[dict]:
+    """{"urban"|"rural": {"weekday_hourly", "weekend_hourly", "month_factor"}}
+    measured at Fintraffic LAM stations (tools/lam_profiles.py), or None (the
+    estimates stay) when the file is missing or unreadable."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        curves = {}
+        for setting in ("urban", "rural"):
+            group = data["groups"][setting]
+            stations = [s for s in data["stations"] if s["setting"] == setting and s["id"] in data["group_stations"]]
+            months = {}
+            for station in stations:
+                for month, factor in station["profile"]["month_factor"].items():
+                    months.setdefault(int(month), []).append(factor)
+            curves[setting] = {"weekday_hourly": group["weekday_hourly"], "weekend_hourly": group["weekend_hourly"],
+                               "month_factor": _interpolated_months({m: sum(v) / len(v) for m, v in months.items()})}
+            assert len(curves[setting]["weekday_hourly"]) == len(curves[setting]["weekend_hourly"]) == 24
+        return curves
+    except (OSError, ValueError, KeyError, TypeError, AssertionError, ZeroDivisionError):
+        logging.getLogger(__name__).warning("No measured traffic curves in %s: using the estimates", path)
+        return None
+
+
+MEASURED_CURVES = load_measured_curves()
 FIXED_PUBLIC_HOLIDAYS = {(1, 1), (1, 6), (5, 1), (12, 6), (12, 24), (12, 25), (12, 26)}
 
 
@@ -138,22 +183,27 @@ def is_public_holiday(day) -> bool:
     return day.month == 6 and (19 <= day.day <= 25 and day.weekday() == 4 or 20 <= day.day <= 26 and day.weekday() == 5)
 
 
-def hour_demand(moment) -> float:
-    """Traffic at `moment` as a share of a weekday peak hour; 1.0 without a clock."""
+def hour_demand(moment, urban: float = 1.0) -> float:
+    """Traffic at `moment` as a share of a weekday peak hour; 1.0 without a
+    clock. Measured LAM curves when loaded, `urban` 1 the urban ones and 0 the
+    rural ones (blended between); else the estimates."""
     if moment is None:
         return 1.0
     free_day = moment.weekday() >= 5 or is_public_holiday(moment)
-    curve = WEEKEND_HOURLY if free_day else WEEKDAY_HOURLY
-    return curve[moment.hour] * MONTH_FACTOR[moment.month]
+    key = "weekend_hourly" if free_day else "weekday_hourly"
+    if MEASURED_CURVES is None:
+        return (WEEKEND_HOURLY if free_day else WEEKDAY_HOURLY)[moment.hour] * MONTH_FACTOR[moment.month]
+    return sum(weight * MEASURED_CURVES[setting][key][moment.hour] * MEASURED_CURVES[setting]["month_factor"][moment.month]
+               for setting, weight in (("urban", urban), ("rural", 1.0 - urban)))
 
 
 def traffic_demand(local_fraction: float, highway: Optional[str], moment) -> dict:
     """Moving-traffic demand around the player as a share of the city's
     town-centre peak: the local people's trips plus the road's passing
     traffic, both following the clock. Returns the parts, for diagnostics."""
-    hour = hour_demand(moment)
-    through = THROUGH_TRAFFIC.get(highway or "", 0.0)
     local = min(1.0, local_fraction)
+    hour = hour_demand(moment, urban=min(1.0, local / URBAN_PEOPLE_FRACTION))
+    through = THROUGH_TRAFFIC.get(highway or "", 0.0)
     # Gameplay nightlife, not commuter traffic counts: Friday/Saturday 18–05.
     nightlife = local * 0.5 if moment is not None and (
         moment.hour >= 18 and moment.weekday() in (4, 5)
