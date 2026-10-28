@@ -1206,6 +1206,8 @@ class SimulationServer:
             inspect=self._inspect,
         )
         message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
+        live = self.world.live_roadworks
+        message["state"]["electronic_signs"] = live.electronic_signs_near(self.car, self._current_way) if live is not None else []
         with self._clients_lock:
             clients = list(self._clients)
         for connection in clients:

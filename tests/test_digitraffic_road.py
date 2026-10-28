@@ -174,12 +174,12 @@ def test_newest_version_wins_across_neighboring_tiles(monkeypatch, versions):
         feature = _collection()["features"][0]
         feature["properties"]["version"] = version
         responses.append(json.dumps({"features": [feature]}).encode())
-    client = dr.DigitrafficClient(None, lambda *a: responses.pop(0))
+    client = dr.DigitrafficClient(None, lambda url, headers: b'{"features":[]}' if 'variable-sign' in url else responses.pop(0))
     service = dr.RoadDataService(client, lambda x, y: (x, y))
     try:
         service.request(0, 0, datetime(2026, 10, 26, tzinfo=timezone.utc))
         service.wait_idle(2)
-        assert client.fetched == 2
+        assert client.fetched == 3  # two roadwork tiles and the electronic-sign catalogue
         assert [w.version for w in service.roadworks] == [2]
     finally:
         service.close()

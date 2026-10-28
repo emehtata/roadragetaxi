@@ -503,3 +503,50 @@ today's behaviour when the data is missing.
 4. Matching quality without `ref` in dense junction areas is unmeasured.
    Phase 0 should report match rates for Helsinki, Tampere and Oulu before
    committing to the thresholds above.
+
+## Electronic signs beside the HUD limit (2026-10-28)
+
+Enable **Settings → gameplay → Digitraffic: roadworks and signs** (the existing
+`--road-digitraffic` / `game.road_digitraffic` option). The panel beside the
+round limit sign shows the nearest available speed reading, warning and text
+message, with distance and a “nearby” label. English, Finnish and German UI
+labels are provided; the original sign's message text is retained. Long text
+uses ellipsis with its full reading in the tooltip. Fintraffic attribution is
+in the panel tooltip. The panel stays visible above the movable phone and the
+train board moves below it.
+
+`electronic_signs.py` validates the public GeoJSON and sign history. Blank and
+faulty signs are hidden. Malformed records are ignored. The existing background
+road-data service fetches the sign catalogue and only requests histories for
+signs in its query tiles when the latest reading is newer than the game-time
+window. History uses `deviceId` and **a date**, not a timestamp, for
+`effectiveDate`. It contains changes, not a guaranteed state at the start of the
+day; when no reading before the game time is available the sign is hidden.
+Future readings never appear before their timestamp, and blank changes clear
+older readings. Only the starting state and changes inside the 15-minute query
+window are retained for the simulation. Matching/projecting does not perform
+network requests.
+
+The sign catalogue and current-day history have a 60-second cache lifetime;
+past-day history and roadwork queries retain their permanent cache. The worker
+checks for new data on the existing game-time query windows. Failures retain
+the existing backoff and retry behavior. A failed sign fetch hides its readings
+until a successful retry.
+
+The server sends `state.electronic_signs`: at most one reading per type, within
+700 m on the taxi's current numbered road, on the surface map level and layer.
+This is **nearby information**, including signs for either carriageway: road
+address direction is preserved but is not inferred from OSM node ordering.
+This implements the requested adjacent display; legal downstream applicability,
+replacement of the authoritative limit, speed-camera/limiter/NPC changes, and
+physical roadside electronic-sign models remain outside this change.
+
+Validation: 142 relevant Python checks (including loopback client/server tests),
+3,552 Godot checks, and a dedicated panel test passed. Recorded public API
+fixtures cover speed, warning and message signs. A live API smoke test parsed
+32 readings of all three types in one query tile. Rendered and inspected the
+real HUD with a server-produced state at 1280×720 and 800×600, including an open
+phone. The existing broader Godot suite reports shutdown resource leaks; its
+assertions pass. No traffic-rule changes or native GPU benchmarks are claimed.
+
+API reference: [Digitraffic variable signs](https://www.digitraffic.fi/en/road-traffic/#variable-signs).

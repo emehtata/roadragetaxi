@@ -63,7 +63,7 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
         "--road-digitraffic",
         action=argparse.BooleanOptionalAction,
         default=config.getboolean("game", "road_digitraffic", fallback=False) if config else False,
-        help="Live roadworks from Fintraffic's Digitraffic Road API, cached forever (default: config game.road_digitraffic)",
+        help="Live roadworks and nearby electronic signs from Fintraffic's Digitraffic Road API (default: config game.road_digitraffic)",
     )
 
     p.add_argument("--intercity-fares", action=argparse.BooleanOptionalAction,

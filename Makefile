@@ -109,6 +109,7 @@ godot-test:
 	$(GODOT) --headless --path godot --import
 	$(GODOT) --headless --path godot --script res://tests/run_tests.gd
 	$(GODOT) --headless --path godot --script res://tests/home_interior.gd
+	$(GODOT) --headless --path godot --script res://tests/electronic_signs.gd
 	$(GODOT) --headless --path godot --script res://tests/animal_audio.gd
 
 audio-check:
