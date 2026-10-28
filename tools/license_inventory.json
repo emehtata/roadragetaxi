@@ -51,6 +51,16 @@
       "commercial": "yes", "status": "conditional", "remediation": "attribution in Credits (done)"
     },
     {
+      "name": "LAM traffic profiles",
+      "paths": ["src/theroadragetrip/assets/traffic/lam_profiles.json"],
+      "purpose": "measured hourly traffic curves for calibrating NPC traffic demand", "shipped": true,
+      "origin": "Fintraffic / digitraffic.fi TMS raw detections, aggregated to hourly shares by tools/lam_profiles.py",
+      "copyright": "Fintraffic", "licence": "CC-BY-4.0",
+      "evidence": "https://www.digitraffic.fi/en/terms-of-service/; the file's own source field",
+      "obligations": "attribution 'Source: Fintraffic / digitraffic.fi, license CC 4.0 BY', indicate changes",
+      "commercial": "yes", "status": "conditional", "remediation": "attribution in Credits (done: Fintraffic / digitraffic.fi)"
+    },
+    {
       "name": "Finnish resident names",
       "paths": ["src/theroadragetrip/assets/finnish_first_names.json.gz", "src/theroadragetrip/assets/finnish_surnames.json.gz"],
       "purpose": "generated residents' names", "shipped": true,

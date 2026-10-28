@@ -182,3 +182,65 @@ Use distinct station groups for divided highway, undivided rural road and urban/
 - [Fintraffic terms and CC BY 4.0 attribution](https://www.digitraffic.fi/en/terms-of-service/)
 - [Existing population and traffic-demand model](population-model.md)
 - [Finnish NPC traffic-law requirements](finnish-npc-traffic-law.md)
+
+## Phase 0: sample and export path (done 2026-10-28)
+
+Verified against real files rather than the documentation alone:
+
+- **Export path:** the per-day raw files work as a batch source:
+  `https://tie.digitraffic.fi/api/tms/v1/history/raw/lamraw_<tmsNumber>_<yy>_<ordinal day>.csv`,
+  about 2.5 MB and 40 000 vehicles a day for an Oulu main road. The
+  statistics form was not needed.
+- **Station id vs `tmsNumber`:** different for many stations (`24201` → `1201`,
+  `23153` → `153`). Raw files use `tmsNumber`, the detail endpoint the id.
+- **Missing days answer HTTP 403, not 404** (the file store's convention):
+  st847 Oulunlahti has no files for January 2026. Treat 403 as "no data".
+- **Field order** (no header line): station; yy; ordinal day; hour; minute;
+  second; 1/100 s; length m; lane; direction (1/2); vehicle class; speed km/h;
+  faulty (0/1); three technical fields. Times are Finnish local time.
+- **Open question 3 answered from the data:** classes 8 (motorcycles and
+  mopeds) and 9 (HCT) are marked valid (`faulty` 0) in the files; the
+  documented "class > 7 is faulty" rule is stale. The `faulty` flag itself
+  is applied correctly (e.g. 76 faulty of 40 852 records at vt4 Välivainio),
+  so the builder takes it as given and counts every class.
+- **DST:** sample weeks avoid the clock-change Sundays (a 23- or 25-hour
+  day), so local hours need no correction.
+
+## Phase 1: offline profile builder (done 2026-10-28)
+
+`tools/lam_profiles.py` writes `src/theroadragetrip/assets/traffic/lam_profiles.json`
+(about 31 KB; CC BY 4.0, in the licence inventory). Downloads are reduced to
+hourly counts per direction and cached in `~/.cache/RoadRageTrip/lam/`, so a
+rebuild is offline and byte-identical.
+
+- **Stations (11):** urban: vt4 Oulu Välivainio, vt22 Oulu Kaukovainio,
+  st847 Oulunlahti, vt1 Espoo Hirvisuo, st101 Helsinki Vartiokylä (Ring I),
+  kt45 Oulunkylä; rural: vt4 Ii, vt22 Muhos, kt86 Liminka, st816 Hailuoto,
+  vt5 Kuusamo.
+- **Sample:** one Monday–Sunday week per season in 2026, holiday-free and
+  clear of clock changes: 19 Jan, 20 Apr, 13 Jul (the holiday season, kept on
+  purpose), 12 Oct. 300 of 308 station-days exist: st847 lacks 4 January
+  days, st816 Hailuoto has only its October week.
+- **Per station:** weekday/weekend hourly curves, total and per direction,
+  as shares of the station's average weekday peak hour (population.py's
+  convention); each sampled month's weekday total against their mean; the
+  weekday peak in vehicles an hour; road address, direction municipalities
+  and free-flow speeds for the phase 2 match.
+- **Urban and rural curves:** the mean of the stations with at least 21
+  sampled days (Hailuoto stays in the file, out of the means).
+
+Measured against the current estimates (`population.py`):
+
+| | Estimate | Urban | Rural |
+| --- | --- | --- | --- |
+| Weekday 07–08 (morning peak) | 0.85 | 0.67 | 0.57 |
+| Weekday peak | 1.00 at 16 | 1.00 at 15 | 0.99 at 15 |
+| Weekday 02–03 (night) | 0.02 | 0.04 | 0.03–0.04 |
+| Weekend peak | 0.80 at 12–13 | 0.71 at 14–15 | 0.88 at 15–16 |
+| Mean absolute error, weekday / weekend | | 0.041 / 0.067 | 0.057 / 0.059 |
+| July weekday total against the year | 1.00 | 0.82–1.05 (holidays empty the cities) | 1.05–1.45 (summer travel) |
+
+The estimate's shape is close on urban weekdays; it overstates the morning
+peak, puts the afternoon peak an hour late, makes weekends peak too early
+and too low on rural roads, and its single month curve cannot fit both
+settings: urban July is the quietest sampled month, rural July the busiest.
