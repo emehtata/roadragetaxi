@@ -69,6 +69,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_vehicle_body_triangles()
 	test_audio()
 	test_environment_ambience()
+	test_new_sounds()
 	test_new_sound_triggers()
 	test_nightclub_audio()
 	test_car_audio()
@@ -3255,6 +3256,46 @@ func test_performance_paths() -> void:
 	var report := Perf.summary(times)
 	check(is_equal_approx(report["worst_ms"], 100.0) and is_equal_approx(report["p95_ms"], 10.0) and report["over_66ms"] == 1, "worst, p95 and frames over 66 ms")
 	check(is_equal_approx(report["low_1pct_fps"], 10.0) and is_equal_approx(report["avg_ms"], 10.9), "1 % low is the slowest 1 % of frames, as FPS")
+
+
+## rrt-019.1 sound pass: the new groups exist, their loops play, the site
+## loops follow the clock, the outdoors is muffled indoors.
+func test_new_sounds() -> void:
+	var audio := AudioManager.new()
+	root.add_child(audio)
+	for group in ["pedestrian.front_door", "pedestrian.footsteps_indoor", "vehicle.bicycle_bell", "collision.post_knock", "vehicle.bus_doors"]:
+		var played := audio.resolve({"type": "sound", "group": group, "at": [1.0, 2.0]})
+		check(played.size() == 1 and FileAccess.file_exists(played[0]["file"]), "%s resolves to a generated file" % group)
+	for key in ["bicycle", "motorcycle", "reverse_beep", "protest", "playground", "construction", "campfire", "biergarten"]:
+		audio.set_loop(key, 0.5, 1.0, Vector2(10, 20))
+		check(audio.loop_playing(key) and audio._loops[key] is AudioStreamPlayer2D, "the %s loop plays from its place" % key)
+		audio.set_loop(key, 0.0)
+	check(audio.bus_for("ambient.protest") == "Environment" and audio.bus_for("vehicle.motorcycle") == "Game", "site ambience on Environment, traffic on Game")
+	var noon := Main.site_gains(12.0, 3, 0.0)
+	var sunday_night := Main.site_gains(21.0, 0, 0.0)
+	var winter_evening := Main.site_gains(20.0, 2, 1.0)
+	check(noon["playground"] > 0.0 and noon["construction"] > 0.0 and noon["campfire"] == 0.0 and noon["biergarten"] == 0.0, "a weekday noon: children and the building site")
+	check(sunday_night["construction"] == 0.0 and sunday_night["playground"] == 0.0 and sunday_night["campfire"] > 0.0 and sunday_night["biergarten"] > 0.0, "a summer evening: campfires and beer gardens, sites quiet")
+	check(winter_evening["campfire"] == 0.0 and winter_evening["biergarten"] == 0.0, "no campfires or beer gardens in winter")
+	var Sites := preload("res://site_sounds.gd")
+	var chunk := {"_data": {"scenery_objects": [[110.0, 120.0, "swing", 0.0], [300.0, 100.0, "bench", 0.0], [130.0, 300.0, "biergarten", 0.0]],
+		"construction_fences": [PackedVector2Array([Vector2(0, -100), Vector2(20, -100), Vector2(20, -120), Vector2(0, -120)])]}}
+	var sites: Dictionary = Sites.nearest({"0_0": chunk}, Vector2.ZERO, Vector2(100, 100))
+	check(sites["playground"] == Vector2(110, 120) and sites["biergarten"] == Vector2(130, 300) and sites["campfire"] == null,
+		"site sounds come from the nearest equipment and beer garden")
+	check(sites["construction"] == Vector2(10, 110), "a building site sounds from its fence's middle, in world metres")
+	var bus := AudioServer.get_bus_index("Environment")
+	audio.set_indoors(true)
+	check(AudioServer.get_bus_effect_count(bus) == 2 and AudioServer.is_bus_effect_enabled(bus, 0), "indoors: the outdoors muffled")
+	audio.set_indoors(false)
+	audio.set_indoors(true)
+	audio.set_indoors(false)
+	check(AudioServer.get_bus_effect_count(bus) == 2 and not AudioServer.is_bus_effect_enabled(bus, 0), "outside again: clear, and no effects pile up")
+	var before: int = audio.played_groups.get("pedestrian.footsteps_indoor", 0)
+	for i in 20:
+		audio.update_footsteps(true, Vector2(i * 0.25, 0.0), "pedestrian.footsteps_indoor")
+	check(audio.played_groups.get("pedestrian.footsteps_indoor", 0) > before, "walking a floor plan plays indoor steps")
+	audio.free()
 
 
 func test_environment_ambience() -> void:

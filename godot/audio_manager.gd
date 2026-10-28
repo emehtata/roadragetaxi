@@ -172,8 +172,9 @@ func handle_event(event: Dictionary) -> void:
 		played_groups[action["group"]] = played_groups.get(action["group"], 0) + 1
 
 
-## Play local footsteps from actual interpolated movement, not key state.
-func update_footsteps(on_foot: bool, at: Vector2) -> void:
+## Play local footsteps from actual interpolated movement, not key state
+## (`group`: indoors, home_walk.gd's floor plan, its own floor).
+func update_footsteps(on_foot: bool, at: Vector2, group := "pedestrian.footsteps") -> void:
 	if not on_foot:
 		_foot_at = Vector2.INF
 		_foot_distance = 0.0
@@ -189,7 +190,28 @@ func update_footsteps(on_foot: bool, at: Vector2) -> void:
 	_foot_distance += moved
 	if _foot_distance >= FOOTSTEP_M:
 		_foot_distance = fmod(_foot_distance, FOOTSTEP_M)
-		handle_event({"type": "sound", "group": "pedestrian.footsteps"})
+		handle_event({"type": "sound", "group": group})
+
+
+const INDOOR_CUTOFF_HZ := 500.0  # the outdoors through walls: muffled
+const INDOOR_CUT_DB := -8.0
+
+
+## Inside a house: the Environment bus (ambience, weather, sport) muffled
+## behind a low-pass and turned down; out again, as it was.
+func set_indoors(inside: bool) -> void:
+	var bus := AudioServer.get_bus_index("Environment")
+	if bus == -1:
+		return
+	if AudioServer.get_bus_effect_count(bus) == 0:
+		var low_pass := AudioEffectLowPassFilter.new()
+		low_pass.cutoff_hz = INDOOR_CUTOFF_HZ
+		var quieter := AudioEffectAmplify.new()
+		quieter.volume_db = INDOOR_CUT_DB
+		AudioServer.add_bus_effect(bus, low_pass)
+		AudioServer.add_bus_effect(bus, quieter)
+	for i in AudioServer.get_bus_effect_count(bus):
+		AudioServer.set_bus_effect_enabled(bus, i, inside)
 
 
 ## A continuous sound named in the config's "loops": on at `volume` (0

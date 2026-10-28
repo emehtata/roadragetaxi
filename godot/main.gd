@@ -51,6 +51,9 @@ var _respawn_pending := false
 var _home_pending := false  # H: choose this yard as home / back home
 var _home_door_pending := false  # E on foot: into the home at its front door / out again
 var home_walk := preload("res://home_walk.gd").new()  # inside the home (state home_door.indoors)
+const SiteSounds := preload("res://site_sounds.gd")
+var _sites := {}  # site_sounds.gd: the nearest playground, campfire, beer garden and building site
+var _sites_left := 0.0  # seconds to the next sample
 var door_marks := preload("res://door_marks.gd").new()  # nearby houses' front doors, on foot
 var _home_plan_asked := false  # indoors without the plan: asked for once
 var _cancel_ride_pending := false
@@ -654,7 +657,11 @@ func _present(state: Dictionary) -> void:
 		debug_label.visible = false
 	var player: Dictionary = state["player_pedestrian"] if state.get("on_foot", false) else state["player"]
 	audio.player_at = Vector2(player["x"], player["y"])
-	audio.update_footsteps(state.get("on_foot", false), audio.player_at)
+	if home_walk.visible:  # walking a floor plan: its own steps, the outdoors muffled
+		audio.update_footsteps(true, home_walk.at, "pedestrian.footsteps_indoor")
+	else:
+		audio.update_footsteps(state.get("on_foot", false), audio.player_at)
+	audio.set_indoors(home_walk.visible)
 	for event in entities.buffer.take_due_events(entities.now()):
 		events_presented += 1
 		if event.get("type") == "phone_result":
@@ -922,6 +929,71 @@ func _feature_loops(state: Dictionary) -> void:
 	var calendar = state.get("calendar")
 	var arena = nearest_point(calendar.get("arena_games", []), from) if typeof(calendar) == TYPE_DICTIONARY else null
 	audio.set_loop("arena_crowd", 0.8 if arena != null else 0.0, 1.0, arena)
+	_traffic_loops(state, from, surface)
+	_site_loops(state, from, surface)
+
+
+## Bicycles, motorcycles and heavy vehicles backing up (state npcs), and protests.
+func _traffic_loops(state: Dictionary, from: Vector2, surface: bool) -> void:
+	var nearest := {"bicycle": null, "motorcycle": null, "reverse_beep": null}
+	var speed := {"bicycle": 0.0, "motorcycle": 0.0, "reverse_beep": 0.0}
+	for npc in state.get("npcs", []):
+		if not surface or npc.get("state", "") in ["PARKED", "CRASHED"]:
+			continue
+		var kind: String = npc.get("vehicle_type", "")
+		var moving := float(npc.get("speed", 0.0))
+		var key := ""
+		if kind == "bicycle" and moving > 1.5:
+			key = "bicycle"
+		elif kind == "motorcycle" and absf(moving) > 0.5:
+			key = "motorcycle"
+		elif kind in ["bus", "truck", "tractor"] and moving < -0.3:
+			key = "reverse_beep"
+		if key == "":
+			continue
+		var at := Vector2(npc["x"], npc["y"])
+		if nearest[key] == null or at.distance_to(from) < nearest[key].distance_to(from):
+			nearest[key] = at
+			speed[key] = absf(moving)
+	audio.set_loop("bicycle", 0.4 * minf(1.0, speed["bicycle"] / 6.0) if nearest["bicycle"] != null else 0.0, 1.0, nearest["bicycle"])
+	audio.set_loop("motorcycle", 0.75 if nearest["motorcycle"] != null else 0.0,
+		clampf(0.8 + speed["motorcycle"] / 30.0, 0.8, 1.6), nearest["motorcycle"])
+	audio.set_loop("reverse_beep", 0.6 if nearest["reverse_beep"] != null else 0.0, 1.0, nearest["reverse_beep"])
+	var protests: Array = []
+	for group in state.get("protests", []):
+		protests.append([group["x"], group["y"]])
+	var protest = nearest_point(protests, from) if surface else null
+	audio.set_loop("protest", 0.7 if protest != null else 0.0, 1.0, protest)
+
+
+## Playgrounds by day, building sites on weekday working hours, campfires and
+## beer gardens in the evening outside winter (site_sounds.gd finds them).
+func _site_loops(state: Dictionary, from: Vector2, surface: bool) -> void:
+	_sites_left -= get_process_delta_time()
+	if _sites_left <= 0.0:
+		_sites = SiteSounds.nearest(map_layer._chunks, entities.origin, from) if surface else {}
+		_sites_left = 0.5
+	var calendar = state.get("calendar")
+	var hour := fmod(float(state.get("game_time_seconds", 12.0 * 3600.0)) / 3600.0, 24.0)
+	var season: Array = calendar.get("season", [0.0, 0.0, 1.0, 0.0]) if typeof(calendar) == TYPE_DICTIONARY else [0.0, 0.0, 1.0, 0.0]
+	var winter := float(season[0]) if season.size() == 4 else 0.0
+	var weekday := 3
+	if typeof(calendar) == TYPE_DICTIONARY and calendar.has("date"):
+		weekday = int(Time.get_datetime_dict_from_datetime_string(str(calendar["date"]) + "T12:00:00", true)["weekday"])
+	var gains := site_gains(hour, weekday, winter)
+	for key in gains:
+		audio.set_loop(key, gains[key] if _sites.get(key) != null else 0.0, 1.0, _sites.get(key))
+
+
+## How loud each site loop is at this hour (0-24), weekday (0 Sunday) and winter weight.
+static func site_gains(hour: float, weekday: int, winter: float) -> Dictionary:
+	var summer := winter < 0.5
+	return {
+		"playground": 0.5 if hour >= 9.0 and hour < 20.0 and winter < 0.7 else 0.0,
+		"construction": 0.6 if weekday >= 1 and weekday <= 5 and hour >= 7.0 and hour < 16.0 else 0.0,
+		"campfire": 0.5 if summer and (hour >= 19.0 or hour < 1.0) else 0.0,
+		"biergarten": 0.55 if summer and hour >= 15.0 else 0.0,
+	}
 
 
 ## 0 by day, 1 at night, fading over an hour at dusk (21-22) and dawn (5-6).
