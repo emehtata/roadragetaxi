@@ -1191,6 +1191,10 @@ func _perf_counters() -> void:
 	Perf.counters["chunks_queued"] = _chunk_queue.size()
 	Perf.counters["draw_calls"] = Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
 	Perf.counters["nodes"] = Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	Perf.counters["drawn_entities"] = entities.drawn_entities
+	var shown: Dictionary = entities.shown_state()
+	Perf.counters["npcs"] = shown.get("npcs", []).size()
+	Perf.counters["pedestrians"] = shown.get("pedestrians", []).size()
 	Perf.counters["objects"] = Performance.get_monitor(Performance.OBJECT_COUNT)
 	Perf.counters["canvas_items"] = Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)
 	Perf.counters["primitives"] = Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
