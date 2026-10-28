@@ -30,7 +30,7 @@
 ## only by the chunk containing them.
 extends Node2D
 
-const CANOPY_KINDS := {"forest": 0, "wood": 0, "scrub": 1, "wetland": 2}  # forest.gdshader's kinds
+const CANOPY_KINDS := {"forest": 0, "wood": 0, "scrub": 1, "shrubbery": 1, "wetland": 2}  # forest.gdshader's kinds
 const CANOPY_MARGIN_M := 3.5  # the canopy drawn past the forest outline: room for its edge crowns
 const TRUNK_RADIUS_M := 0.4  # a tree the taxi touches within this of its trunk falls
 const TREE_CELL_M := 10.0  # knock_trees' lookup grid

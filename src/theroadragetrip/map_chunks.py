@@ -460,7 +460,7 @@ class ChunkIndex:
             for cell, ring in static_world.clipped_pieces(scenery.points_m, self.size):
                 area = [static_world._rgb(color), seasonal, ring]
                 if kind in ("biergarten", "grave_yard", "cemetery", "beach", "forest", "wood",
-                            "farmland", "meadow", "grassland", "wetland", "scrub"):
+                            "farmland", "meadow", "grassland", "wetland", "scrub", "shrubbery"):
                     area.append(kind)
                 elif kind in ("parking", "pedestrian_area", "fuel"):
                     texture = surface_texture(getattr(scenery, "surface", None))

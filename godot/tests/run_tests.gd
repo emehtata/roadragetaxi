@@ -3373,6 +3373,11 @@ func test_forest_canopy() -> void:
 	check(scrub._season_layers.size() == 2 and scrub._season_layers[0].z_index == 13, "scrub creates the same overhead canopy as forests")
 	check(scrub._forest_mask().get_image().get_pixel(250, 250).g > 0.9, "scrub interiors retain canopy coverage, in scrub's own mask channel")
 	check(scrub._season_layers[0].material.shader == MapChunk.FOREST_MATERIAL.shader, "scrub draws through the canopy shader, as its own kind")
+	map.add_chunk({"chunk_id": "4_0", "bounds": [2000, 0, 2500, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[100, 118, 76], 1, [[2000, 0], [2500, 0], [2500, 500], [2000, 500]], "shrubbery"]]})
+	var shrubs = map._chunks["4_0"]
+	check(shrubs._season_layers.size() == 2 and shrubs._season_layers[0].z_index == 13, "mapped shrubbery creates bush crowns instead of only a ground fill")
+	check(shrubs._forest_mask().get_image().get_pixel(250, 250).g > 0.9 and MapChunk.canopy_kind(shrubs._data.landuse[0]) == 1, "shrubbery uses the scrub mask channel and bush shader kind")
 	map.add_chunk({"chunk_id": "2_0", "bounds": [1000, 0, 1500, 500], "roads": [], "railways": [], "trees": [],
 		"landuse": [[[118, 130, 96], 1, [[1000, 0], [1500, 0], [1500, 500], [1000, 500]], "wetland"]]})
 	var bog = map._chunks["2_0"]

@@ -168,7 +168,7 @@ def test_railings_decorations_and_street_lights_are_each_in_one_chunk():
     assert here["street_lights"] == [[100.0, 100.0, 1.25, 14.0]] and east["street_lights"] == [[600.0, 100.0, 0.0, 14.0]]
 
 
-@pytest.mark.parametrize("kind", ["biergarten", "grave_yard", "cemetery", "beach", "forest", "wood", "farmland", "meadow", "grassland", "wetland", "scrub"])
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard", "cemetery", "beach", "forest", "wood", "farmland", "meadow", "grassland", "wetland", "scrub", "shrubbery"])
 def test_decorated_site_kind_survives_chunk_clipping(kind):
     from theroadragetrip.osm import Scenery
 
