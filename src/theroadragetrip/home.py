@@ -18,7 +18,9 @@ from .physics import is_point_on_parking_space
 DRIVEWAY_HOUSE_M = 25.0  # a driveway point this close to a house is its yard
 SAME_HOME_M = 10.0  # H this close to the saved home: already home, nothing to confirm
 CONFIRM_S = 6.0  # a second H within this long makes a new yard the home
-DOOR_REACH_M = 2.5  # on foot this close to the home's front door: E goes in
+DOOR_REACH_M = 2.5  # on foot this close to a house's front door: E goes in
+DOOR_HINT_M = 12.0  # front doors this close are marked on the map, on foot
+DOOR_HINTS = 6  # at most this many, nearest first
 DOORSTEP_M = 1.0  # leaving, the player stands this far outside the door
 
 Home = Tuple[float, float, float]  # x, y, heading

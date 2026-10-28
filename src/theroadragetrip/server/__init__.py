@@ -46,7 +46,7 @@ from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulatio
 from ..physics import reset_trip, respawn_car
 from ..home import (clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home,
                     find_home_building, home_building_key, load_home_building_key,
-                    DOOR_REACH_M, plan_entrance, house_bay, house_plan)
+                    DOOR_HINT_M, DOOR_HINTS, DOOR_REACH_M, plan_entrance, house_bay, house_plan)
 from ..building_style import _building_is_house_by_tag
 from ..localization import SUPPORTED_LANGUAGES, tr
 from ..moon import moon_info_on, moon_position_at
@@ -1106,31 +1106,39 @@ class SimulationServer:
             doors[key] = plan_entrance(plan) if "error" not in plan else None
         return doors[key]
 
-    def _house_at_door(self):
-        """The house whose front door the player stands at (on foot, outside): (building, door) or None."""
+    def _house_doors_near(self, radius: float) -> list:
+        """Houses whose front door is within `radius` of the player (on foot, outside),
+        nearest first: [(distance, building, door)]."""
         if not self._on_foot or self._inside is not None:
-            return None
+            return []
         grid = getattr(self.world, "building_grid", None)
         if grid is None:
-            return None
+            return []
         player = self.world.player_pedestrian
-        r = DOOR_REACH_M
-        best = None
-        for building in grid.ways_in_rect(player.x - r, player.y - r, player.x + r, player.y + r):
+        found = []
+        for building in grid.ways_in_rect(player.x - radius, player.y - radius, player.x + radius, player.y + radius):
             if not _building_is_house_by_tag(building) or getattr(building, "map_level", None) not in (None, 0):
                 continue
             door = SimulationServer._house_door(self, building)
-            if door is not None and math.dist(door[0], (player.x, player.y)) <= r:
-                distance = math.dist(door[0], (player.x, player.y))
-                if best is None or distance < best[0]:
-                    best = (distance, building, door)
-        return best[1:] if best else None
+            if door is not None and math.dist(door[0], (player.x, player.y)) <= radius:
+                found.append((math.dist(door[0], (player.x, player.y)), building, door))
+        return sorted(found, key=lambda row: row[0])
+
+    def _house_at_door(self):
+        """The house whose front door the player stands at (on foot, outside): (building, door) or None."""
+        near = SimulationServer._house_doors_near(self, DOOR_REACH_M)
+        return near[0][1:] if near else None
 
     def _home_door_state(self) -> dict:
-        """state.home_door: indoors, whether E goes in here, whether this house is the home."""
-        at = self._inside or SimulationServer._house_at_door(self)
+        """state.home_door: indoors, whether E goes in here, whether this house is the home, and
+        the front doors near the player to mark on the map ([x, y, outward heading, is home], nearest first)."""
+        near = SimulationServer._house_doors_near(self, DOOR_HINT_M)[:DOOR_HINTS]
+        at = self._inside or (near[0][1:] if near and near[0][0] <= DOOR_REACH_M else None)
+        doors = [[round(door[0][0], 2), round(door[0][1], 2),
+                  round(math.atan2(door[1][1] - door[0][1], door[1][0] - door[0][0]), 3),
+                  home_building_key(building) == self._home_building_key] for _, building, door in near]
         return {"indoors": self._inside is not None, "available": self._inside is None and at is not None,
-                "is_home": at is not None and home_building_key(at[0]) == self._home_building_key}
+                "is_home": at is not None and home_building_key(at[0]) == self._home_building_key, "doors": doors}
 
     def _home_door_pressed(self) -> None:
         """E: inside, out to the doorstep; at a house's front door, in. The interior is

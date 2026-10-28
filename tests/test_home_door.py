@@ -63,7 +63,11 @@ def test_in_the_taxi_or_out_of_reach_nobody_goes_in(tmp_path):
     server._on_foot = True
     _at(server, door[0], door[1] - DOOR_REACH_M - 0.5)
     assert _key(server, "_home_door_pressed") and server._inside is None
-    assert SimulationServer._home_door_state(server) == {"indoors": False, "available": False, "is_home": False}
+    state = SimulationServer._home_door_state(server)
+    assert (state["indoors"], state["available"], state["is_home"]) == (False, False, False)
+    assert [row[:2] for row in state["doors"]] == [[round(door[0], 2), round(door[1], 2)]]  # marked, not yet in reach
+    _at(server, 0, -40)
+    assert SimulationServer._home_door_state(server)["doors"] == []
 
 
 def test_any_house_opens_and_the_state_tells_home_from_the_others(tmp_path):
@@ -71,9 +75,12 @@ def test_any_house_opens_and_the_state_tells_home_from_the_others(tmp_path):
     for x, is_home in [(0, True), (100, False)]:
         door, _ = _door(server, x)
         _at(server, door[0], door[1] - 1.5)
-        assert SimulationServer._home_door_state(server) == {"indoors": False, "available": True, "is_home": is_home}
+        state = SimulationServer._home_door_state(server)
+        assert (state["indoors"], state["available"], state["is_home"]) == (False, True, is_home)
+        assert state["doors"][0][3] == is_home and len(state["doors"]) == 1
         assert _key(server, "_home_door_pressed") == "" and server._inside[0] is _house(server, x)
-        assert SimulationServer._home_door_state(server) == {"indoors": True, "available": False, "is_home": is_home}
+        state = SimulationServer._home_door_state(server)
+        assert (state["indoors"], state["available"], state["is_home"], state["doors"]) == (True, False, is_home, [])
         assert SimulationServer._home_floor_plan(server)["building_id"] == home_building_key(_house(server, x))
         _key(server, "_home_door_pressed")
     homeless = _street(tmp_path, home=False)

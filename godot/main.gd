@@ -51,6 +51,7 @@ var _respawn_pending := false
 var _home_pending := false  # H: choose this yard as home / back home
 var _home_door_pending := false  # E on foot: into the home at its front door / out again
 var home_walk := preload("res://home_walk.gd").new()  # inside the home (state home_door.indoors)
+var door_marks := preload("res://door_marks.gd").new()  # nearby houses' front doors, on foot
 var _home_plan_asked := false  # indoors without the plan: asked for once
 var _cancel_ride_pending := false
 var _reset_trip_pending := false
@@ -139,6 +140,7 @@ func _ready() -> void:
 	_build_help()
 	_build_inspector()
 	add_child(home_walk)
+	add_child(door_marks)
 	add_child(weather)
 	add_child(wildlife)
 	add_child(animal_audio)
@@ -782,6 +784,7 @@ func _present(state: Dictionary) -> void:
 		phone.set_game_seconds(float(state["game_time_seconds"]))
 	phone.protest_active = state.get("protest_active", false)
 	_home_view(state)
+	door_marks.show_doors(state.get("home_door", {}), entities.origin, camera.zoom.x)
 	phone.show_phone(state.get("phone", {}))
 	phone.show_navigation(state.get("navigation", {}), hud.task_text(state.get("taxi", {}), hud.language))
 	_refresh_inspector(state)

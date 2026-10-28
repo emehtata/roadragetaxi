@@ -195,6 +195,13 @@ func test_settings_help() -> void:
 
 
 func test_startup_progress() -> void:
+	var marks = preload("res://door_marks.gd").new()
+	marks.show_doors({"available": true, "doors": [[1010.0, 2005.0, 0.0, true], [990.0, 2000.0, PI / 2.0, false]]}, Vector2(1000, 2000), 9.0)
+	check(marks.visible and marks.available and marks.doors[0][0] == Vector2(10, -5) and marks.doors[1][1].is_equal_approx(Vector2(0, -1))
+		and marks.doors[0][2], "door hints: map positions, outward arrows on screen, the home's marked")
+	marks.show_doors({"indoors": true, "doors": []}, Vector2.ZERO, 9.0)
+	check(not marks.visible and not marks.available, "no nearby doors, no hints")
+	marks.free()
 	var Startup := preload("res://startup.gd")
 	check(Startup.startup_status("{}").is_empty() and Startup.startup_status("[]").is_empty(), "startup: invalid or absent status ignored")
 	check(Startup.startup_status('{"stage":3,"detail":"x","history":[]}').is_empty(), "startup: malformed stage ignored")
