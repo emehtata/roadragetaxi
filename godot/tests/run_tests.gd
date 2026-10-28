@@ -2381,9 +2381,9 @@ func test_gameplay_points() -> void:
 	message = JSON.parse_string(JSON.stringify(message))  # as the client gets it: every number a float
 	check(map.add_chunk(message) and not map.add_chunk(message), "points arrive with their chunk, once")
 	var chunk = map._chunks["2_4"]
-	check(chunk._px_layers.size() == 2 + 4 and chunk._lights != null, "pumps, boards, roadworks/stands and posts each get one canvas item (besides the tracks and buildings every chunk has)")
+	check(chunk._px_layers.size() == 1 + 4 and chunk._lights != null, "pumps, boards, roadworks/stands and posts each get one canvas item (besides the tracks every chunk has)")
 	check(MapMath.point(map.origin, 1020.0, 2040.0) == Vector2(20, -40), "a stand sits at its map position relative to the origin")
-	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._px_layers.size() == 2 and map._chunks["0_0"]._lights == null,
+	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._px_layers.size() == 1 and map._chunks["0_0"]._lights == null,
 		"a chunk without points adds no point layers (older servers too)")
 	check(MapChunk.fuel_board_text(message["fuel_stations"][0]) == "Neste  1.89 €/L", "the board shows the server's price")
 
@@ -2425,7 +2425,7 @@ func test_obstacles() -> void:
 		"bollards": [[1040.0, 2000.0]]}))
 	check(map.add_chunk(message) and not map.add_chunk(message), "obstacles arrive with their chunk, once")
 	var chunk = map._chunks["2_4"]
-	check(chunk._trees != null and chunk._px_layers.size() == 2 + 2, "trees and bollards share one canvas item, fences another")
+	check(chunk._trees != null and chunk._px_layers.size() == 1 + 2, "trees and bollards share one canvas item, fences another")
 	check(MapChunk.obstacle_key(1010.0, 2020.0) == "1010.0,2020.0", "obstacles are named by position at 0.1 m, as the server rounds")
 	var street := {"layer": 0, "rank": 9, "half_width_m": 3.0}  # an asphalt residential street
 	var gravel := {"layer": 0, "rank": 8, "half_width_m": 3.0}  # an unpaved one, as wide
@@ -2556,7 +2556,7 @@ func test_static_world() -> void:
 	map.add_chunk(message.duplicate(true))
 	chunk = map._chunks["2_4"]
 	check(not chunk._hedge_damage.is_empty(), "hedge gaps survive unloading and reloading the map chunk")
-	check(chunk._trees != null and chunk._px_layers.size() == 2 + 4, "decorations with the trees; railings, light pools, lamp heads: one canvas item each")
+	check(chunk._trees != null and chunk._px_layers.size() == 1 + 4, "decorations with the trees; railings, light pools, lamp heads: one canvas item each")
 	check(chunk.street_lights.size() == 2 and chunk.street_lights[0] == Vector2(200, -200), "street lights at their map position")
 	check(chunk._pools.get_parent() == map._pool_group, "a chunk's pools join the one pool group (added once, not per pool)")
 
@@ -2854,7 +2854,7 @@ func test_buildings_2_5d() -> void:
 	check(map._buildings.get_child(2) == map._chunks["0_0"].building_node, "radial order: the chunk nearest the view centre draws last")
 	map.remove_chunk("1_0")
 	check(Detail._lift(map._chunks["0_0"], Vector2(10, 20), 50.0) == Vector2(10, 20), "2D canopies remain flat regardless of height")
-	check(is_equal_approx(Detail.canopy_height(map._chunks["0_0"], map._chunks["0_0"]._data["canopies"][0]), 6.0), "a canopy is raised by its own height")
+	check(is_equal_approx(Detail.canopy_height(map._chunks["0_0"], 0), 6.0), "a canopy is raised by its own height")
 	map.set_map_level(-3)
 	check(map._underground.z_index > map._buildings.z_index, "below ground the dark view covers the buildings")
 	check(map._buildings.z_index < 13, "rail bridges (z 13) stay above the buildings")

@@ -409,8 +409,8 @@ static func draw_guardrails(chunk, node: Node2D) -> void:
 
 
 ## Open roofs, under the vehicles: the canopy's shadow
-## and its corner posts (the roof itself is drawn above them: draw_canopies).
-static func draw_canopy_supports(chunk, node: Node2D) -> void:
+## (the roof itself is drawn above it: draw_canopies).
+static func draw_canopy_shadows(chunk, node: Node2D) -> void:
 	for canopy in chunk._data.get("canopies", []):
 		var polygon: PackedVector2Array = chunk._points(canopy)
 		if polygon.size() < 3:
@@ -425,9 +425,32 @@ static func draw_canopy_supports(chunk, node: Node2D) -> void:
 		node.draw_set_transform(anchor + Vector2(0.35, 0.35))
 		node.draw_colored_polygon(shadow, Color8(30, 32, 33, 75))
 		node.draw_set_transform(Vector2.ZERO)
-		var height := canopy_height(chunk, canopy)
+
+
+## The open roofs' corner posts, above their shadows. They redraw whenever
+## the camera moves (the 3D lift), so this is all one draw call.
+static func draw_canopy_supports(chunk, node: Node2D) -> void:
+	var canopies: Array = chunk._data.get("canopies", [])
+	var poles := PackedVector2Array()  # base, top pairs
+	for index in canopies.size():
+		var polygon: PackedVector2Array = chunk._points(canopies[index])
+		if polygon.size() < 3:
+			continue
+		var height := canopy_height(chunk, index)
 		for point in polygon:
-			node.draw_line(point, _lift(chunk, point, height), OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
+			poles.append_array([point, _lift(chunk, point, height)])
+	if poles.is_empty():
+		return
+	node.draw_multiline(poles, OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
+
+
+## The posts' feet, over the posts: their own layer, which only redraws with the zoom.
+static func draw_canopy_feet(chunk, node: Node2D) -> void:
+	for canopy in chunk._data.get("canopies", []):
+		var polygon: PackedVector2Array = chunk._points(canopy)
+		if polygon.size() < 3:
+			continue
+		for point in polygon:
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18) + chunk._px(1.0), OPEN_ROOF_EDGE)
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18), OPEN_ROOF_POLE)
 
@@ -438,19 +461,19 @@ static func _lift(chunk, point: Vector2, height: float) -> Vector2:
 	return B3.lift_point(point, height) if chunk.buildings_3d else point
 
 
-## A canopy's height (chunk canopy_heights, in step with canopies; 6 m without).
-static func canopy_height(chunk, canopy) -> float:
-	var index: int = chunk._data.get("canopies", []).find(canopy)
+## The height of canopy `index` (chunk canopy_heights, in step with canopies; 6 m without).
+static func canopy_height(chunk, index: int) -> float:
 	var heights: Array = chunk._data.get("canopy_heights", [])
-	return float(heights[index]) if index >= 0 and index < heights.size() else 6.0
+	return float(heights[index]) if index < heights.size() else 6.0
 
 
 ## The see-through canopy above the vehicles:
 ## fuel pumps and the taxi stay visible under it.
 static func draw_canopies(chunk, node: Node2D) -> void:
-	for canopy in chunk._data.get("canopies", []):
-		var polygon: PackedVector2Array = chunk._points(canopy).duplicate()
-		var height := canopy_height(chunk, canopy)
+	var canopies: Array = chunk._data.get("canopies", [])
+	for index in canopies.size():
+		var polygon: PackedVector2Array = chunk._points(canopies[index]).duplicate()
+		var height := canopy_height(chunk, index)
 		for i in polygon.size():
 			polygon[i] = _lift(chunk, polygon[i], height)
 		if _valid(polygon):

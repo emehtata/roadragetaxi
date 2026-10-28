@@ -175,9 +175,12 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_px_layers.append(ground_tracks)
 	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails
 		_season_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands")))
-	var canopy_supports := _add_layer(7, _draw_canopy_supports)
-	_px_layers.append(canopy_supports)
-	_canopy_layers.append(canopy_supports)
+	if not message.get("canopies", []).is_empty():
+		_add_layer(7, func(node: Node2D): Detail.draw_canopy_shadows(self, node))
+		var canopy_supports := _add_layer(7, _draw_canopy_supports)
+		_px_layers.append(canopy_supports)
+		_canopy_layers.append(canopy_supports)
+		_px_layers.append(_add_layer(7, func(node: Node2D): Detail.draw_canopy_feet(self, node)))
 	if not message.get("curbs", []).is_empty() or not message.get("crossings", []).is_empty() or not message.get("speed_bumps", []).is_empty():
 		# Under the light pools (6): crossings and kerbs are lit like the road.
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_road_features(self, node)))
