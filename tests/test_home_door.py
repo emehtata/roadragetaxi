@@ -70,23 +70,46 @@ def test_in_the_taxi_or_out_of_reach_nobody_goes_in(tmp_path):
     assert SimulationServer._home_door_state(server)["doors"] == []
 
 
-def test_any_house_opens_and_the_state_tells_home_from_the_others(tmp_path):
+def test_only_selected_home_opens_and_other_houses_have_no_prompt(tmp_path):
     server = _street(tmp_path)
-    for x, is_home in [(0, True), (100, False)]:
+    for x, allowed in [(0, True), (100, False)]:
         door, _ = _door(server, x)
         _at(server, door[0], door[1] - 1.5)
         state = SimulationServer._home_door_state(server)
-        assert (state["indoors"], state["available"], state["is_home"]) == (False, True, is_home)
-        assert state["doors"][0][3] == is_home and len(state["doors"]) == 1
+        assert state["available"] == allowed and state["is_home"] == allowed
+        if not allowed:
+            assert state["doors"] == []
+            assert _key(server, "_home_door_pressed") and server._inside is None
+            continue
+        assert state["doors"][0][3] and len(state["doors"]) == 1
         assert _key(server, "_home_door_pressed") == "" and server._inside[0] is _house(server, x)
         state = SimulationServer._home_door_state(server)
-        assert (state["indoors"], state["available"], state["is_home"], state["doors"]) == (True, False, is_home, [])
+        assert (state["indoors"], state["available"], state["is_home"], state["doors"]) == (True, False, True, [])
         assert SimulationServer._home_floor_plan(server)["building_id"] == home_building_key(_house(server, x))
         _key(server, "_home_door_pressed")
-    homeless = _street(tmp_path, home=False)
-    _at(homeless, *_door(homeless)[0])
-    _key(homeless, "_home_door_pressed")
-    assert homeless._inside is not None  # no home needed to look inside
+
+
+def test_without_a_home_any_house_can_be_viewed(tmp_path):
+    server = _street(tmp_path, home=False)
+    for x in [0, 100]:
+        _at(server, *_door(server, x)[0])
+        assert SimulationServer._home_door_state(server)["available"]
+        _key(server, "_home_door_pressed")
+        assert server._inside[0] is _house(server, x)
+        _key(server, "_home_door_pressed")
+
+
+def test_position_only_saved_home_also_restricts_entry(tmp_path):
+    server = _street(tmp_path)
+    server._home_building_key = None
+    for x, allowed in [(0, True), (100, False)]:
+        _at(server, *_door(server, x)[0])
+        state = SimulationServer._home_door_state(server)
+        assert state["available"] == allowed and state["is_home"] == allowed
+        _key(server, "_home_door_pressed")
+        assert (server._inside is not None) == allowed
+        if allowed:
+            _key(server, "_home_door_pressed")
 
 
 def test_leaving_returns_to_the_doorstep_every_time(tmp_path):
@@ -103,7 +126,7 @@ def test_leaving_returns_to_the_doorstep_every_time(tmp_path):
         assert server._inside is not None
 
 
-def test_h_inside_makes_this_house_home_asking_before_replacing_one(tmp_path):
+def test_h_inside_selects_home_and_replacing_it_requires_confirmation_in_yard(tmp_path):
     from theroadragetrip.home import load_home, load_home_building_key
     server = _street(tmp_path, home=False)
     _at(server, *_door(server, 100)[0])
@@ -112,9 +135,9 @@ def test_h_inside_makes_this_house_home_asking_before_replacing_one(tmp_path):
     assert server._home[:2] == (100, 0)  # the taxi comes home to the yard bay
     assert load_home_building_key(server.homes_file, "Oulu") == server._home_building_key
     _key(server, "_home_door_pressed")
-    _at(server, *_door(server, 0)[0])
-    _key(server, "_home_door_pressed")
-    _key(server, "_home_pressed")  # a home already: H again to move
+    server._on_foot = False
+    server.car.x, server.car.y = 0, 0
+    _key(server, "_home_pressed")  # a home already: H again in the new yard to move
     assert server._home_building_key == home_building_key(_house(server, 100))
     _key(server, "_home_pressed")
     assert server._home_building_key == home_building_key(_house(server, 0))

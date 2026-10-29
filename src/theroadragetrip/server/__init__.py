@@ -1107,17 +1107,26 @@ class SimulationServer:
         return doors[key]
 
     def _house_doors_near(self, radius: float) -> list:
-        """Houses whose front door is within `radius` of the player (on foot, outside),
+        """Enterable houses whose front door is within `radius` of the player (on foot, outside),
         nearest first: [(distance, building, door)]."""
         if not self._on_foot or self._inside is not None:
             return []
         grid = getattr(self.world, "building_grid", None)
         if grid is None:
             return []
+        home_key = self._home_building_key
+        if self._home is not None and home_key is None:
+            # Resolve position-only saves before deciding which door is enterable.
+            SimulationServer._home_floor_plan(self)
+            home_key = self._home_building_key
+            if home_key is None:
+                return []
         player = self.world.player_pedestrian
         found = []
         for building in grid.ways_in_rect(player.x - radius, player.y - radius, player.x + radius, player.y + radius):
             if not _building_is_house_by_tag(building) or getattr(building, "map_level", None) not in (None, 0):
+                continue
+            if home_key is not None and home_building_key(building) != home_key:
                 continue
             door = SimulationServer._house_door(self, building)
             if door is not None and math.dist(door[0], (player.x, player.y)) <= radius:
