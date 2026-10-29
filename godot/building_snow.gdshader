@@ -15,6 +15,7 @@ uniform vec4 window_color : source_color = vec4(0.22745, 0.31373, 0.36863, 1.0);
 uniform vec4 storefront_color : source_color = vec4(0.32941, 0.41569, 0.47843, 1.0);  // .STOREFRONT
 uniform vec4 lit_color : source_color = vec4(1.0, 0.87059, 0.55686, 1.0);  // buildings_3d.WINDOW_LIT_NIGHT
 uniform float lit_level : hint_range(0.0, 1.0) = 0.0;  // Daylight.artificial: 0 by day, 1 at night
+uniform float decorations = 0.0;  // 1 from the first Advent to Epiphany (holiday_events.window_decorations)
 uniform vec3 lit_probability = vec3(0.12, 0.08, 0.03);  // other / house / storefront (buildings_25d.LIT_PROBABILITY)
 
 varying flat vec4 wall;  // flat: interpolation noise in the seed, amplified by the hash, speckled the lit windows
@@ -40,6 +41,42 @@ float window_hash(float key, float f, float w, uint salt) {
 vec3 fabric(float pick) {
 	return pick < 0.35 ? vec3(0.88, 0.87, 0.83) : pick < 0.6 ? vec3(0.80, 0.72, 0.58)
 		: pick < 0.75 ? vec3(0.62, 0.30, 0.22) : pick < 0.9 ? vec3(0.42, 0.50, 0.60) : vec3(0.40, 0.52, 0.38);
+}
+
+// A Finnish window's Christmas: an Advent candle bridge (kynttelikkö, seven
+// candles in a triangle on the sill) or a paper star lamp (joulutähti) in
+// the top of the window. `p`: metres from the window's bottom centre; `size`:
+// its half width and height. The glow's strength (0 none) and colour.
+vec4 decoration(vec2 p, vec2 size, float kind, float tint, float night) {
+	if (kind < 0.4) {  // a star, red or white
+		vec2 c = p - vec2(0.0, size.y * 0.68);
+		float r = min(size.x * 0.6, size.y * 0.24);
+		float a = atan(c.y, c.x) + 1.5708;
+		float edge = r * (0.55 + 0.45 * abs(cos(2.5 * a)));
+		if (length(c) <= edge) {
+			vec3 paper = tint < 0.6 ? vec3(0.85, 0.12, 0.08) : vec3(0.95, 0.93, 0.86);
+			return vec4(mix(paper * 0.8, paper * 1.25 + vec3(0.15, 0.1, 0.0), night), 1.0);
+		}
+		return vec4(0.0);
+	}
+	// The candle bridge: a stepped triangle of seven candles, a bulb on each.
+	float span = size.x * 0.85;
+	float tall = min(size.y * 0.5, span * 0.9);
+	float slot = span * 2.0 / 7.0;
+	float i = clamp(floor((p.x + span) / slot), 0.0, 6.0);
+	float step_up = 1.0 - abs(i - 3.0) / 3.0;  // the middle candle highest
+	float candle_top = tall * (0.45 + 0.4 * step_up);
+	float x = p.x + span - (i + 0.5) * slot;
+	if (abs(p.x) <= span && p.y >= 0.0 && p.y <= tall * 0.12) {
+		return vec4(vec3(0.92, 0.9, 0.85) * mix(0.8, 0.5, night), 1.0);  // the white wooden base
+	}
+	if (abs(x) <= slot * 0.18 && p.y > tall * 0.12 && p.y <= candle_top) {
+		return vec4(vec3(0.92, 0.9, 0.85) * mix(0.8, 0.45, night), 1.0);  // a candle
+	}
+	if (length(vec2(x, (p.y - candle_top - slot * 0.3) * 0.8)) <= slot * 0.32) {
+		return vec4(mix(vec3(0.75, 0.68, 0.45), vec3(1.25, 1.05, 0.6), night), 1.0);  // its bulb, glowing at night
+	}
+	return vec4(0.0);
 }
 
 // A lit room's light by a window's own value: mostly warm incandescent
@@ -88,6 +125,11 @@ void fragment() {
 				vec3 light = room_light(window_hash(wall.w, f, w, 4u)) * (0.78 + 0.27 * window_hash(wall.w, f, w, 5u));
 				vec3 shown = mix(light, light * cloth * 0.8, curtain);  // through the fabric: dimmer, its tint
 				glass = mix(glass, shown, lit_level);
+			}
+			if (decorations > 0.5 && window_hash(wall.w, f, w, 6u) < (storefront ? 0.4 : 0.25)) {
+				vec4 deco = decoration(vec2(across, up - bottom), vec2(half_width, top - bottom),
+					window_hash(wall.w, f, w, 7u), window_hash(wall.w, f, w, 8u), lit_level);
+				glass = mix(glass, deco.rgb * mix(ambient.rgb, vec3(1.0), lit_level), deco.a);  // its own light at night
 			}
 			color = glass;
 		}

@@ -17,7 +17,21 @@ def holiday_events(moment):
         "christmas": day[0] == 12 and 1 <= day[1] <= 24,
         "santas": day == (12, 24),
         "midsummer_bonfires": midsummer_bonfires(moment),
+        "window_decorations": window_decorations(moment),
     }
+
+
+def window_decorations(moment) -> bool:
+    """Advent candle bridges and Christmas stars in the windows: from the first
+    Sunday of Advent (27 November - 3 December) until Epiphany, 6 January."""
+    if moment.month == 1:
+        return moment.day <= 6
+    if moment.month == 12:
+        return True
+    if moment.month == 11 and moment.day >= 27:
+        first_advent = 27 + (6 - __import__("datetime").date(moment.year, 11, 27).weekday())
+        return moment.day >= first_advent
+    return False
 
 
 BONFIRE_SHORE_SPACING_M = 300.0

@@ -13,11 +13,16 @@ def on(*args):
     return {name for name, active in holiday_events(datetime(*args)).items() if active}
 
 
+def other(*args):
+    """The active events but the window decorations (their own test)."""
+    return on(*args) - {"window_decorations"}
+
+
 def test_fireworks_from_new_years_eve_18_until_2_at_night():
-    assert on(2026, 12, 31, 17, 59) == set()
-    assert on(2026, 12, 31, 18, 0) == {"fireworks"}
-    assert on(2027, 1, 1, 1, 59) == {"fireworks"}
-    assert on(2027, 1, 1, 2, 0) == set()
+    assert other(2026, 12, 31, 17, 59) == set()
+    assert other(2026, 12, 31, 18, 0) == {"fireworks"}
+    assert other(2027, 1, 1, 1, 59) == {"fireworks"}
+    assert other(2027, 1, 1, 2, 0) == set()
 
 
 def test_halloween_season_and_night_ghosts():
@@ -31,11 +36,11 @@ def test_halloween_season_and_night_ghosts():
 
 
 def test_christmas_season_and_santas_on_eve():
-    assert on(2026, 11, 30, 23, 59) == set()
-    assert on(2026, 12, 1, 0, 0) == {"christmas"}
-    assert on(2026, 12, 24, 0, 0) == {"christmas", "santas"}
-    assert on(2026, 12, 24, 23, 59) == {"christmas", "santas"}
-    assert on(2026, 12, 25, 0, 0) == set()
+    assert other(2026, 11, 30, 23, 59) == set()
+    assert other(2026, 12, 1, 0, 0) == {"christmas"}
+    assert other(2026, 12, 24, 0, 0) == {"christmas", "santas"}
+    assert other(2026, 12, 24, 23, 59) == {"christmas", "santas"}
+    assert other(2026, 12, 25, 0, 0) == set()
 
 
 def walker(resident_id, cyclist=False, activity=None):
@@ -78,3 +83,12 @@ def test_midsummer_bonfires_burn_from_eve_21_until_3():
     assert "midsummer_bonfires" not in on(2026, 6, 20, 3, 0)
     assert "midsummer_bonfires" not in on(2026, 6, 26, 22, 0)  # a Friday, but not the Eve
     assert "midsummer_bonfires" in on(2027, 6, 25, 22, 0)  # Saturday 26 June 2027
+
+
+def test_window_decorations_from_the_first_advent_until_epiphany():
+    assert "window_decorations" not in on(2026, 11, 28, 12, 0)  # Saturday; the first Advent is Sunday 29 November 2026
+    assert "window_decorations" in on(2026, 11, 29, 0, 0)
+    assert "window_decorations" in on(2026, 12, 15, 12, 0)
+    assert "window_decorations" in on(2027, 1, 6, 23, 59)
+    assert "window_decorations" not in on(2027, 1, 7, 0, 0)
+    assert "window_decorations" in on(2027, 11, 28, 12, 0)  # 2027: the first Advent is 28 November

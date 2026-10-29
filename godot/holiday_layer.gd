@@ -20,6 +20,8 @@ var _halloween := false
 var _fireworks := false
 var _ghosts := false
 var _christmas := false
+var _window_decorations := false
+const B3 := preload("res://buildings_3d.gd")
 var _bonfires := false
 var bonfire_layer: Node2D
 var bonfires := PackedVector2Array()  # Midsummer bonfires in the view (chunk "bonfires")
@@ -72,6 +74,10 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 	var halloween: bool = not underground and events.get("halloween", false)
 	var ghost_season: bool = not underground and events.get("halloween_ghosts", false)
 	var christmas: bool = not underground and events.get("christmas", false)
+	var decorated: bool = events.get("window_decorations", false)
+	if decorated != _window_decorations:  # candle bridges and stars in the windows (building_snow.gdshader)
+		_window_decorations = decorated
+		B3._shared["material"].set_shader_parameter("decorations", 1.0 if decorated else 0.0)
 	var fireworks: bool = not underground and events.get("fireworks", false)
 	var midsummer: bool = not underground and events.get("midsummer_bonfires", false)
 	var changed := halloween != _halloween or fireworks != _fireworks or ghost_season != _ghosts or christmas != _christmas or midsummer != _bonfires
