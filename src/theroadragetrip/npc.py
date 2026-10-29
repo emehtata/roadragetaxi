@@ -2115,6 +2115,28 @@ NPC_TARGET_COUNT_DEFAULT = 40  # when the city's population is unknown
 # remote road with a few houses a car or two, an empty forest road one
 # passing car at most.
 NPC_FULL_TRAFFIC_PEOPLE = 1500.0
+# Moving cars per km of road (both directions) at a weekday peak hour, by
+# class: the moving target is the roads within TRAFFIC_DENSITY_RADIUS_M of
+# the taxi times these, times the hour's share of the peak (LAM curves).
+# City-centre streets are often tagged residential in OSM (Oulu's Torikatu), busy or not.
+TRAFFIC_DENSITY_PER_KM = {"motorway": 35.0, "trunk": 30.0, "primary": 25.0, "secondary": 20.0, "tertiary": 15.0,
+                          "unclassified": 8.0, "residential": 10.0, "living_street": 2.0}
+TRAFFIC_DENSITY_RADIUS_M = 250.0
+
+
+def peak_cars_on_roads(road_grid, x: float, y: float, radius: float = TRAFFIC_DENSITY_RADIUS_M) -> float:
+    """Peak-hour moving cars on the car roads within `radius` (segment midpoints in it)."""
+    total = 0.0
+    seen = set()
+    for way in road_grid.ways_in_rect(x - radius, y - radius, x + radius, y + radius):
+        density = TRAFFIC_DENSITY_PER_KM.get(getattr(way, "highway", None), 0.0)
+        if not density or id(way) in seen or getattr(way, "map_level", 0):
+            continue
+        seen.add(id(way))
+        for (ax, ay), (bx, by) in zip(way.points_m, way.points_m[1:]):
+            if (((ax + bx) / 2 - x) ** 2 + ((ay + by) / 2 - y) ** 2) <= radius * radius:
+                total += math.hypot(bx - ax, by - ay) / 1000.0 * density
+    return total
 NPC_LOCAL_TARGET_CELL_M = 100.0  # recounted when the player moves into another cell this size
 NPC_DEMAND_ROLL_TICKS = 30  # population ticks (1 min): how long one draw of a fractional moving target holds
 NPC_TARGET_COUNT_MIN = 15
@@ -4490,6 +4512,7 @@ class NPCVehicleManager:
         self.target_moving_fraction = target_moving_fraction
         self._local_density_cell = None
         self._local_people = 0.0
+        self._local_road_cars = None  # peak_cars_on_roads around the taxi (set_local_density)
         self._spawn_memory = SpawnMemory()  # passing-traffic spawn points that worked, and ones that never do
         self._collision_buildings, self._collision_building_grid = None, None  # this update's, for collision pushes
         self._through_way, self._through_share = None, 0.0  # the player's road and its passing traffic's share of demand
@@ -4813,7 +4836,7 @@ class NPCVehicleManager:
         vehicle.home_position = (vehicle.x, vehicle.y)
         vehicle.home_parking_space = vehicle.reserved_parking_space
 
-    def set_local_density(self, player_x: float, player_y: float, building_grid, current_way=None) -> None:
+    def set_local_density(self, player_x: float, player_y: float, building_grid, current_way=None, road_grid=None) -> None:
         """Scale the population to the people the buildings within the spawn
         radius account for (NPC_FULL_TRAFFIC_PEOPLE: the city's whole
         target), and moving traffic to the traffic demand at the game clock
@@ -4835,6 +4858,7 @@ class NPCVehicleManager:
                 building_grid.ways_in_rect(player_x - r, player_y - r, player_x + r, player_y + r),
                 player_x, player_y, r, month,
             )
+            self._local_road_cars = peak_cars_on_roads(road_grid, player_x, player_y) if road_grid is not None else None
         fraction = min(1.0, self._local_people / NPC_FULL_TRAFFIC_PEOPLE)
         demand = traffic_demand(fraction, highway, self.clock, current_way)  # a LAM station's own curves on its road
         self._through_way = current_way
@@ -4842,7 +4866,13 @@ class NPCVehicleManager:
         if self._demand_draw is None or self._population_tick_number >= self._demand_draw_tick + NPC_DEMAND_ROLL_TICKS:
             self._demand_draw = self.demand_rng.random()
             self._demand_draw_tick = self._population_tick_number
-        expected_moving = self.city_target_count * self.target_moving_fraction * demand["demand"]
+        if self._local_road_cars is not None:
+            # The roads around the taxi, not the whole city: their peak-hour cars by class
+            # (TRAFFIC_DENSITY_PER_KM) at the hour's share, nightlife on top.
+            expected_moving = self._local_road_cars * demand["hour"] + (
+                self.city_target_count * self.target_moving_fraction * demand["nightlife"])
+        else:
+            expected_moving = self.city_target_count * self.target_moving_fraction * demand["demand"]
         self._night_taxi_target = night_taxi_target(self.clock, fraction, min(self.city_target_count, self.max_count)) if self.competitor_taxis > 0 else 0
         self._night_cruise_target = min(max(0, self.max_count - self._night_taxi_target), math.floor(
             self.city_target_count * self.target_moving_fraction * demand["nightlife"]))
@@ -4889,7 +4919,7 @@ class NPCVehicleManager:
         update() (section 23: never spawn a large number in one frame of
         actual gameplay)."""
         self._note_camping_sites(sceneries)
-        self.set_local_density(player_x, player_y, building_grid)
+        self.set_local_density(player_x, player_y, building_grid, road_grid=spatial_grid)
         attempts = 0
         max_attempts = self.target_count * 6
         while len(self.vehicles) < self.target_count and attempts < max_attempts:
@@ -5991,7 +6021,7 @@ class NPCVehicleManager:
     ) -> None:
         population_tick_started = time.perf_counter()
         population_deadline = population_tick_started + NPC_TRIP_START_TICK_BUDGET_S
-        self.set_local_density(player_x, player_y, building_grid, current_way=current_way)
+        self.set_local_density(player_x, player_y, building_grid, current_way=current_way, road_grid=spatial_grid)
         self._population_tick_number += 1
         # 1. Despawn only genuinely idle, currently-parked vehicles beyond
         # despawn_radius_m (section 19) - never mid-trip, never with a
@@ -6034,7 +6064,11 @@ class NPCVehicleManager:
             held_driver = self.drivers.get(vehicle.vehicle_id)
             given_up = (getattr(held_driver, "recovery_stage", None) == "HOLD"
                         and held_driver.hold_failures >= NPC_HOLD_GIVE_UP_ATTEMPTS)
-            if given_up or (far_moving and not visible and remaining > self.min_count):
+            # Out of sight with its recovery already failed (no route found): removed, a fresh car
+            # spawns instead; it only held a place in the moving target while the road stayed empty.
+            stuck_unseen = (viewport_bounds is not None and not visible and held_driver is not None
+                            and vehicle.state != NPCState.PARKED and held_driver.recovery_stage == "HOLD")
+            if given_up or stuck_unseen or (far_moving and not visible and remaining > self.min_count):
                 if vehicle.trip_group is not None:
                     for resident_id in vehicle.trip_group.member_resident_ids:
                         member = resident_manager.get(resident_id)

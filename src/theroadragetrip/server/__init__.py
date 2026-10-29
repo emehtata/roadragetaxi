@@ -288,7 +288,7 @@ class SimulationServer:
         from ..npc import NPCState
         w = self.world
         w.npc_manager.clock = self.calendar.current
-        w.npc_manager.set_local_density(self.car.x, self.car.y, w.building_grid)
+        w.npc_manager.set_local_density(self.car.x, self.car.y, w.building_grid, road_grid=w.spatial_grid)
         w.npc_manager.populate_moving_initial(
             self.car.x, self.car.y, w.residents, w.traffic_mgr, w.ways, spatial_grid=w.spatial_grid,
             parking_spaces=w.parking_spaces, sceneries=w.sceneries, buildings=w.buildings, curbs=w.curbs,

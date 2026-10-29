@@ -39,3 +39,14 @@ def test_one_way_edges_are_honoured():
 def test_the_walk_sets_off_the_way_it_is_pointed():
     nodes, edges = _graph()
     assert walk_road_graph(nodes, edges, 2, 100.0, rng=random.Random(0), heading=3.14159) == [(200, 0), (100, 0)]
+
+
+def test_peak_traffic_comes_from_the_roads_around_the_taxi_by_class():
+    from types import SimpleNamespace
+    from theroadragetrip.npc import TRAFFIC_DENSITY_PER_KM, peak_cars_on_roads
+
+    secondary = SimpleNamespace(highway="secondary", points_m=[(-100.0, 0.0), (100.0, 0.0)], map_level=0)
+    yard = SimpleNamespace(highway="service", points_m=[(0.0, -50.0), (0.0, 50.0)], map_level=0)
+    far = SimpleNamespace(highway="residential", points_m=[(900.0, 0.0), (1000.0, 0.0)], map_level=0)
+    grid = SimpleNamespace(ways_in_rect=lambda *_: [secondary, yard, far])
+    assert peak_cars_on_roads(grid, 0.0, 0.0) == TRAFFIC_DENSITY_PER_KM["secondary"] * 0.2  # no yards, nothing far
