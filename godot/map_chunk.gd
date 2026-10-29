@@ -89,6 +89,7 @@ var _floods := Node2D.new()  # floodlit sports places (MapLayer's flood group)
 var _heads := Node2D.new()
 var _broken := PackedInt32Array()  # indices of this chunk's street lights that are knocked down
 var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state calendar.season)
+var _fields_frozen = null  # explicit server ice state; old servers use the winter weight
 var _season_layers: Array[Node2D] = []  # landuse and islands: their green kinds follow the season
 var _site_details := {}  # area index -> cached decorative positions; snow redraws only change colours
 var _signs: Node2D = null  # signs and speed cameras, if any
@@ -809,6 +810,18 @@ func set_flash(index) -> bool:
 ## shown or hidden, never redrawn for it.
 func set_lights_on(on: bool) -> void:
 	_heads.visible = on  # the pools: MapLayer shows or hides its group
+
+
+func fields_frozen() -> bool:
+	return bool(_fields_frozen) if _fields_frozen != null else float(_season[0]) >= Detail.FIELDS_FROZEN_WINTER_WEIGHT
+
+
+func set_fields_frozen(frozen: bool) -> void:
+	if _fields_frozen == frozen:
+		return
+	_fields_frozen = frozen
+	for node in _season_layers:
+		node.queue_redraw()
 
 
 ## The season's weights (state calendar.season): water, trees and their

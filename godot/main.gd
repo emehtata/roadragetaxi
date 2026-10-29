@@ -720,6 +720,7 @@ func _present(state: Dictionary) -> void:
 	if typeof(calendar) == TYPE_DICTIONARY:
 		map_layer.set_season(calendar.get("season", []))
 		var season = calendar.get("season", [])
+		map_layer.set_fields_frozen(bool(calendar.get("fields_frozen", float(season[0]) >= 0.5 if season is Array and season.size() == 4 else false)))
 		wildlife.winter = float(season[0]) if season is Array and season.size() == 4 else 0.0  # winter coats
 		map_layer.set_sports_hours(bool(calendar.get("sports_lights", false)))
 		map_layer.set_arena_lights(bool(calendar.get("arena_lights", false)))

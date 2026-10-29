@@ -30,6 +30,7 @@ var lights_on := false
 var _pool_group: Node2D  # every loaded chunk's street-light pools (each chunk's: their union, added once)
 var _flood_group: Node2D  # every loaded chunk's floodlit sports places
 var sports_hours := false  # state calendar.sports_lights: 07-22, when floodlights may burn
+var _fields_frozen = null
 var arena_lights_on := false
 var building_view_centre := Vector2.ZERO
 var shadows_enabled := true
@@ -336,6 +337,8 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.set_obstacles(knocked)
 	chunk.set_broken_hedges(broken_hedges)
 	chunk.set_season(season)
+	if _fields_frozen != null:
+		chunk.set_fields_frozen(bool(_fields_frozen))
 	chunk.set_lights_on(lights_on)
 	chunk.set_arena_lights(arena_lights_on)
 	chunk.set_flash(flash)
@@ -416,6 +419,14 @@ func _draw_knocked_posts() -> void:
 		var at := MapMath.point(origin, post[0], post[1])
 		var length := 4.0 if post[3] == "street_lamp" else 0.9
 		_knocked_posts.draw_line(at, at + Vector2(cos(post[2]), -sin(post[2])) * length, Color8(88, 90, 92), maxf(2.0 / px_per_m, 0.25))
+
+
+func set_fields_frozen(frozen: bool) -> void:
+	if _fields_frozen == frozen:
+		return
+	_fields_frozen = frozen
+	for chunk in _chunks.values():
+		chunk.set_fields_frozen(frozen)
 
 
 ## The server's season weights (state calendar.season): ground, water and

@@ -547,14 +547,14 @@ class SimulationServer:
 
     def season_weights(self) -> list:
         """[winter, spring, summer, autumn] the client blends, at 0.05 steps;
-        also sets world.fields_frozen (physics) from the same winter weight
-        the client freezes the fields by, so look and grip agree."""
+        also sets world.fields_frozen from thermal winter, independently of
+        snow depth: a maintained ice field need not have snow on it."""
         look = self.calendar.seasonal_appearance  # continuous weights, for the client to blend
+        self.world.fields_frozen = look.winter >= FIELDS_FROZEN_WINTER_WEIGHT
         observed = self.weather_history.get(self.calendar.current) if self.weather_history is not None else None
         if observed is not None and observed.snow_depth_cm is not None:  # FMI's measured snow, over the date's guess
             look = appearance_with_snow_depth(look, observed.snow_depth_cm)
         season = [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]
-        self.world.fields_frozen = season[0] >= FIELDS_FROZEN_WINTER_WEIGHT
         return season
 
     def _sun_altitude(self) -> float:
@@ -597,7 +597,7 @@ class SimulationServer:
         lit = darkness_for_sun_altitude(self._sun_altitude()) < SPORTS_ICE_DARKNESS or sports_lights_hours(self.calendar.current)
         self.world.pedestrian_mgr.sports_ice_open = self.world.fields_frozen and lit
         # Soccer: no snow on the pitch at all (godot chunk_detail.gd draws its lines by the same weight).
-        self.world.pedestrian_mgr.soccer_open = season[0] < SOCCER_SNOW_WEIGHT and lit
+        self.world.pedestrian_mgr.soccer_open = season[0] < SOCCER_SNOW_WEIGHT and lit and not self.world.fields_frozen
         weather = self.world.weather
         temperature = weather.outside_temperature_c
         self.world.pedestrian_mgr.tennis_open = (
@@ -621,6 +621,7 @@ class SimulationServer:
         from ..holiday_events import holiday_events
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": season,
+                "fields_frozen": self.world.fields_frozen,
                 "sun_altitude_deg": round(altitude, 2), "sun_azimuth_deg": round(azimuth, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
                 "moon_altitude_deg": round(moon_altitude, 2), "moon_azimuth_deg": round(moon_azimuth, 2),
                 "moon_illumination": round(moon_illumination, 3),

@@ -28,7 +28,7 @@ static func _valid(polygon: PackedVector2Array) -> bool:
 
 
 const RINK_ICE := Color8(196, 222, 236)  # a flooded, frozen sports field
-const FIELDS_FROZEN_WINTER_WEIGHT := 0.5  # map_style.py: the same, for the ice grip
+const FIELDS_FROZEN_WINTER_WEIGHT := 0.5  # legacy-server fallback; current state sends fields_frozen
 
 
 ## Landuse fills: each piece in its kind's colour, green kinds through the
@@ -49,7 +49,7 @@ static func draw_areas(chunk, node: Node2D, key: String, canopy_margin := 0.0) -
 			var color := _rgb(area[0])
 			match int(area[1]):
 				1: color = chunk.seasonal_color(color, chunk._season)
-				2: color = RINK_ICE if chunk._season[0] >= FIELDS_FROZEN_WINTER_WEIGHT else chunk.seasonal_color(color, chunk._season)
+				2: color = RINK_ICE if chunk.fields_frozen() else chunk.seasonal_color(color, chunk._season)
 			if area.size() > 4 and int(area[4]) > 0 and canopy_margin == 0.0:
 				var uv := PackedVector2Array()
 				uv.resize(polygon.size())
@@ -185,7 +185,7 @@ const FACEOFF_RADIUS := 4.5
 
 
 static func draw_rink_markings(chunk, node: Node2D) -> void:
-	if chunk._season[0] < FIELDS_FROZEN_WINTER_WEIGHT:
+	if not chunk.fields_frozen():
 		return  # gravel in summer: no markings
 	for rink in chunk._data.get("rinks", []):
 		var frame := RinkFrame.new(chunk, rink, float(rink[3]) / IIHF_LENGTH, float(rink[4]) / IIHF_WIDTH)
@@ -225,8 +225,8 @@ const PITCH_LINE_WIDTH := 0.12
 
 
 static func draw_soccer_markings(chunk, node: Node2D) -> void:
-	if chunk._season[0] >= PITCH_SNOW_WEIGHT:
-		return  # under snow
+	if chunk.fields_frozen() or chunk._season[0] >= PITCH_SNOW_WEIGHT:
+		return  # under ice or snow
 	for pitch in chunk._data.get("soccer_pitches", []):
 		var frame := RinkFrame.new(chunk, pitch, float(pitch[3]) / FIFA_LENGTH, float(pitch[4]) / FIFA_WIDTH)
 		var r := frame.radius_scale
@@ -675,7 +675,7 @@ static func draw_volleyball_nets(chunk, node: Node2D) -> void:
 
 
 static func draw_tennis_courts(chunk, node: Node2D) -> void:
-	if chunk._season[0] >= PITCH_SNOW_WEIGHT:
+	if chunk.fields_frozen() or chunk._season[0] >= PITCH_SNOW_WEIGHT:
 		return
 	for court in chunk._data.get("tennis_courts", []):
 		var frame := RinkFrame.new(chunk, court, float(court[3]), float(court[4]))

@@ -1213,3 +1213,40 @@ def test_shop_window_lights_follow_game_clock_in_broadcast_state(tmp_path, monke
     server.calendar.current = datetime(2025, 12, 22, 22)
     server._broadcast_state()
     assert sent == [{"0_0": [[0, 1]]}, {"0_0": [[0, 0]]}]
+
+
+def test_snowless_christmas_field_stays_frozen_and_never_opens_for_soccer(tmp_path, monkeypatch):
+    from datetime import datetime
+    from types import SimpleNamespace
+    from theroadragetrip.osm import Scenery
+    from theroadragetrip.activities.plugins.ice_skating import FIELD_ACTIVITIES
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    server.calendar.latitude = 65.07126350936632  # Talvikkipuisto, the reported screenshot
+    server.calendar.current = datetime(2025, 12, 24, 20)
+    server.weather_history = SimpleNamespace(get=lambda moment: SimpleNamespace(snow_depth_cm=0.0))
+    server._update_sports()
+    state = server.calendar_state()
+    assert state["season"][0] == 0.0  # actual snowless ground stays snowless
+    assert server.world.fields_frozen and state["fields_frozen"]
+    assert server.world.pedestrian_mgr.sports_ice_open
+    assert not server.world.pedestrian_mgr.soccer_open
+    # Exercise the actual sports population, not only its opening flags.
+    server.car.x, server.car.y = 425498.42123242805, 7217330.898091426
+    field = Scenery([(425454.59197231045, 7217406.975601245), (425515.76507815876, 7217417.169970076),
+                     (425533.29692551604, 7217314.024273276), (425471.8271408641, 7217303.5247490015)],
+                    "pitch", name="Talvikkipuisto", sport="soccer",
+                    bbox=(425454.59, 7217303.52, 425533.30, 7217417.17))
+    manager = server.world.pedestrian_mgr
+    manager.set_scenery_features([], [field], [])
+    from theroadragetrip.physics import off_road_ground_kind
+    assert off_road_ground_kind(server.car.x, server.car.y, [field], frozen=server.world.fields_frozen) == "ice"
+    manager.ensure_sports_players(server.car)
+    players = [p for p in manager.pedestrians if p.activity and p.activity.plugin_id in FIELD_ACTIVITIES]
+    assert players and all(p.activity.plugin_id == "ice_skating" for p in players)
+    server.calendar.current = datetime(2025, 12, 24, 23, 15)
+    server._update_sports()
+    assert server.world.fields_frozen and not manager.sports_ice_open and not manager.soccer_open
+    server.calendar.current = datetime(2026, 7, 15, 20)
+    server._update_sports()
+    assert not server.world.fields_frozen and not manager.sports_ice_open and manager.soccer_open

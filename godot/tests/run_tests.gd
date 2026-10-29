@@ -87,6 +87,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_fields_frozen()
 	test_rest_of_static_world()
 	test_buildings_2_5d()
 	test_buildings_3d()
@@ -3149,6 +3150,26 @@ func test_buildings_3d() -> void:
 	check(map.buildings_3d.instance_count() == 0, "a chunk's meshes go with it")
 	map.free()
 	MapChunk.buildings_3d = false
+
+
+func test_fields_frozen() -> void:
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.set_season([0.0, 0.0, 0.0, 1.0])  # measured zero snow in December
+	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500]})
+	var chunk = map._chunks["0_0"]
+	check(not chunk.fields_frozen(), "old server fallback: snowless ground is not frozen")
+	map.set_fields_frozen(true)
+	check(chunk.fields_frozen() and chunk._season[0] == 0.0, "a maintained winter field can be ice without ground snow")
+	map.set_season([0.1, 0.0, 0.0, 0.9])
+	check(chunk.fields_frozen(), "snow depth changes do not thaw the field")
+	map.add_chunk({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500]})
+	check(map._chunks["1_0"].fields_frozen(), "newly streamed chunks inherit the field ice state")
+	map.set_fields_frozen(false)
+	check(not chunk.fields_frozen() and not map._chunks["1_0"].fields_frozen(), "thaw reaches every loaded field")
+	map.set_season([1.0, 0.0, 0.0, 0.0])
+	check(not chunk.fields_frozen(), "snow alone cannot override the server's thaw state")
+	map.free()
 
 
 func test_shop_lights() -> void:

@@ -157,8 +157,8 @@ SEASONAL_GROUND_KINDS = frozenset({
 })
 
 # Finnish winter: sports fields and rinks are flooded and frozen for
-# skating - ice, not snow, once the winter (snow) weight reaches
-# FIELDS_FROZEN_WINTER_WEIGHT: drawn as ice and driven on with ice grip.
+# skating - ice, not snow, once the thermal winter weight reaches
+# FIELDS_FROZEN_WINTER_WEIGHT, independently of observed snow depth.
 FROZEN_IN_WINTER_KINDS = frozenset({"pitch", "ice_rink"})
 FIELDS_FROZEN_WINTER_WEIGHT = 0.5  # godot chunk_detail.gd uses the same
 
