@@ -89,7 +89,12 @@ class DogWalkingPlugin(ActivityPlugin):
                 angle = pedestrian.heading + random.uniform(-1.0, 1.0)
                 distance = random.uniform(WALK_LEG_MIN_M, WALK_LEG_MAX_M)
                 raw = (pedestrian.x + math.cos(angle) * distance, pedestrian.y + math.sin(angle) * distance)
-                instance.data["waypoint"] = context.pedestrian_manager.network.nearest_point(raw) or (pedestrian.x, pedestrian.y)
+                network = context.pedestrian_manager.network
+                start = (pedestrian.x, pedestrian.y)
+                # A leisure walk must not fall back to car-road routing between sidewalk islands.
+                instance.data["waypoint"] = network.nearest_point(
+                    raw, reject=lambda x, y: not network.connected(start, (x, y)),
+                ) or start
             if elapsed >= instance.data["next_sniff_s"]:
                 instance.data["sniff_s"] = random.uniform(1.5, 4.0)
                 instance.data["next_sniff_s"] = elapsed + random.uniform(10.0, 24.0)

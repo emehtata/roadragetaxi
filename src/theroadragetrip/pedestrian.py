@@ -1040,6 +1040,20 @@ class PedestrianManager:
         pedestrian.activity = None
         pedestrian.state = "walking"
         pedestrian.animation_state = "walking"
+        pedestrian.route = None
+        # Activities can finish far from the way where they started.
+        nearest_distance = float("inf")
+        for way in self._nearby_ped_ways(pedestrian.x, pedestrian.y):
+            if (way.layer, way.level) != (pedestrian.way.layer, pedestrian.way.level):
+                continue
+            for index, (start, end) in enumerate(zip(way.points_m, way.points_m[1:])):
+                x, y, _, distance = closest_point_and_dist_to_segment(pedestrian.x, pedestrian.y, *start, *end)
+                if distance >= nearest_distance or self._path_crosses_building(pedestrian.x, pedestrian.y, x, y):
+                    continue
+                nearest_distance = distance
+                pedestrian.way, pedestrian.segment_idx = way, index
+                heading = math.atan2(end[1] - start[1], end[0] - start[0])
+                pedestrian.direction = 1 if math.cos(pedestrian.heading - heading) >= 0.0 else -1
 
     def _update_linked_driver(self, pedestrian: Pedestrian, update_dt: float) -> bool:
         """Move one trip-group member between the shared destination
@@ -3039,6 +3053,13 @@ class PedestrianManager:
             target_x = target_base[0] + perp_x * ped.lateral_offset_m
             target_y = target_base[1] + perp_y * ped.lateral_offset_m
 
+            path_x, path_y, _, path_distance = closest_point_and_dist_to_segment(ped.x, ped.y, *p_start, *p_end)
+            recovering_path = not ped.is_cyclist and path_distance > hw
+            if recovering_path:
+                # Leave the carriageway sideways, rather than diagonally toward a distant vertex.
+                target_x = path_x + perp_x * ped.lateral_offset_m
+                target_y = path_y + perp_y * ped.lateral_offset_m
+
             dx = target_x - ped.x
             dy = target_y - ped.y
             dist_to_target = math.hypot(dx, dy)
@@ -3051,6 +3072,8 @@ class PedestrianManager:
             sway_angle = math.sin(ped.sway_phase) * math.radians(3.5 + drunk_level * 38.0)
             if getattr(ped, "is_drunk", False):
                 sway_angle += math.sin(ped.drunk_phase) * math.radians(8.0 + drunk_level * 24.0)
+            if recovering_path:
+                sway_angle = 0.0
 
             target_heading = math.atan2(dy, dx)
             heading_delta = angle_diff(target_heading, ped.heading)
@@ -3068,6 +3091,8 @@ class PedestrianManager:
                 # Reached waypoint target
                 if not self._point_inside_building(target_x, target_y):
                     ped.x, ped.y = target_x, target_y
+                if recovering_path:
+                    continue
                 remaining_dist = move_dist - dist_to_target
 
                 reached_end = (ped.direction == 1 and ped.segment_idx >= n_pts - 2) or (
