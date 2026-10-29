@@ -80,13 +80,13 @@ vec4 decoration(vec2 p, vec2 size, float kind, float tint, float night) {
 	return vec4(0.0);
 }
 
-// Independence Day: two white candles on the sill, left and right, their
-// flames glowing. `p`: metres from the window's bottom centre; `size`: its
-// half width and height. Colour and coverage (0 none).
+// Independence Day: two white candles side by side in the middle of the
+// sill, their flames glowing. `p`: metres from the window's bottom centre;
+// `size`: its half width and height. Colour and coverage (0 none).
 vec4 independence_candle(vec2 p, vec2 size) {
-	float x = abs(p.x) - size.x * 0.55;  // from a candle's axis
-	float tall = min(size.y * 0.32, 0.3);
 	float thick = max(0.05, size.x * 0.07);
+	float x = abs(p.x) - thick * 1.7;  // from a candle's axis: the pair a hand's width apart
+	float tall = min(size.y * 0.32, 0.3);
 	if (abs(x) <= thick && p.y >= 0.0 && p.y <= tall) {
 		return vec4(0.93, 0.92, 0.88, 1.0);  // the candle
 	}
