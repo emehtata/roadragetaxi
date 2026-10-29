@@ -1355,7 +1355,7 @@ class TripGroup:
 # NPC's driver curses and drives on slowly instead of wrecking the car.
 MINOR_HIT_MPS = 15.0 / 3.6
 INITIAL_MOVING_FILL_S = 4.0  # loading time for the moving traffic (populate_moving_initial)
-FAR_TRAFFIC_STEP = 2
+FAR_TRAFFIC_STEP = 4
 FAR_ROAD_CHECK_EVERY = 3  # far traffic: the swept road check every this many of its updates  # traffic outside the view's area: driven every this many ticks (viewport.traffic_bounds)
 NPC_SCRAPE_MPS = 5.0 / 3.6  # two NPCs touching slower than this: a scrape, both go on (no wreck)
 # Collision response (rrt-019-crash-physics): an impulse along the contact
@@ -2045,6 +2045,10 @@ def start_npc_trip(
     )
 
 
+def _transit_freeway_start(plan) -> bool:
+    return getattr(plan[0][0].way, "highway", None) in ("motorway", "motorway_link", "trunk", "trunk_link")
+
+
 def _transit_initial_speed(vehicle, plan) -> Optional[float]:
     """Seed freeway through traffic already moving, or reject a short/turning start."""
     path = plan[0]
@@ -2125,8 +2129,8 @@ NPC_FULL_TRAFFIC_PEOPLE = 1500.0
 # class: the moving target is the roads within TRAFFIC_DENSITY_RADIUS_M of
 # the taxi times these, times the hour's share of the peak (LAM curves).
 # City-centre streets are often tagged residential in OSM (Oulu's Torikatu), busy or not.
-TRAFFIC_DENSITY_PER_KM = {"motorway": 35.0, "trunk": 30.0, "primary": 25.0, "secondary": 20.0, "tertiary": 15.0,
-                          "unclassified": 8.0, "residential": 10.0, "living_street": 2.0}
+TRAFFIC_DENSITY_PER_KM = {"motorway": 70.0, "trunk": 60.0, "primary": 50.0, "secondary": 40.0, "tertiary": 30.0,
+                          "unclassified": 16.0, "residential": 20.0, "living_street": 4.0}
 TRAFFIC_DENSITY_RADIUS_M = 250.0
 
 
@@ -5757,6 +5761,9 @@ class NPCVehicleManager:
                 far = (victim.x - player_x) ** 2 + (victim.y - player_y) ** 2 > self.despawn_radius_m ** 2
                 if not far:
                     victim = None
+            near_controls = initial_speed is not None and job.get("world") is not None and bool(
+                job["world"]._nearby_traffic_lights(vehicle.x, vehicle.y, radius_m=clearance)
+                or job["world"].nearby_signs(vehicle.x, vehicle.y))
             reason = (
                 "no_speed" if initial_speed is None
                 else "near_taxi" if initial_speed > 0 and distance_sq < clearance ** 2
@@ -5766,9 +5773,8 @@ class NPCVehicleManager:
                     vehicle.x, vehicle.y, viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M)
                 else "crowded" if not _point_is_clear_of_vehicles(
                     (vehicle.x, vehicle.y), [(other.x, other.y) for other in self.vehicles], clearance)
-                else "controls" if initial_speed > 0 and job.get("world") is not None and (
-                    job["world"]._nearby_traffic_lights(vehicle.x, vehicle.y, radius_m=clearance)
-                    or job["world"].nearby_signs(vehicle.x, vehicle.y))
+                # A fast road never gets a car standing in it (§ 37): near lights or a sign, no spawn.
+                else "controls" if near_controls and initial_speed > 0 and _transit_freeway_start(_plan)
                 # A line bus may share its stop: buses queue there like at any stop.
                 else "destination_taken" if result[1][2] is None and vehicle.vehicle_kind != "bus_line" and not _point_is_clear_of_vehicles(
                     result[1][1], [pos for _, pos in claimed_points])
@@ -5779,11 +5785,16 @@ class NPCVehicleManager:
                 stats["discarded"] += 1
                 self._count_discard(reason)
                 return
+            # Near lights or a sign it starts from standing (as from a red light), not already
+            # driving into them: in a town centre nearly every spawn spot is that near one.
+            standing = near_controls and initial_speed > 0
             if victim is not None:
                 release_npc_parking_reservation(victim)
                 self.vehicles.remove(victim)
                 self._trip_start_failures.pop(victim.vehicle_id, None)
             self._apply_transit_spawn(result, resident_manager, claimed_points)
+            if standing:
+                vehicle.car.speed = 0.0
             stats["ready"] += 1
             self.population_diagnostics["successful_trip_starts"] += 1
             return
@@ -6294,13 +6305,17 @@ class NPCVehicleManager:
         if below_moving_target or below_taxi_target or below_cruise_target:
             transit_x, transit_y = transit_focus or (player_x, player_y)
             transit_spawns = sum(1 for job in self._route_jobs if job["kind"] == "transit")
+            # Far below the moving target (a dense area, a fast taxi): more spawns a tick,
+            # or the target is never reached (2 a tick topped out at about 30 moving).
+            transit_cap = min(NPC_MAX_ROUTE_JOBS, max(NPC_TRANSIT_SPAWNS_PER_TICK,
+                                                      (self.target_moving_count - currently_moving) // 4))
             while (
-                trip_starts_this_tick < trip_start_attempt_cap
-                and transit_spawns < NPC_TRANSIT_SPAWNS_PER_TICK
+                trip_starts_this_tick < max(trip_start_attempt_cap, transit_cap)
+                and transit_spawns < transit_cap
                 and (currently_moving + transit_spawns < self.target_moving_count
                      or nearby_taxis + transit_spawns < self._night_taxi_target
                      or nearby_cruisers + transit_spawns < self._night_cruise_target)
-                and len(self._route_jobs) < NPC_MAX_ROUTE_JOBS // 2
+                and len(self._route_jobs) < NPC_MAX_ROUTE_JOBS
             ):
                 trip_starts_this_tick += 1
                 # At the population target, moving traffic replaces an idle
