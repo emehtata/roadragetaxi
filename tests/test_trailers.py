@@ -45,7 +45,7 @@ def test_the_caravan_is_a_body_others_follow_and_collide_with():
     assert trailer in with_trailers([towing])  # following traffic sees it as an obstacle
     # A car driving into the caravan (not the towing car) has hit that vehicle.
     manager = NPCVehicleManager(target_count=2)
-    other = NPCVehicle(vehicle_id=2, car=Car(x=trailer.x - 1.0, y=0.0, heading=0.0, speed=10.0), state=NPCState.CRUISING)
+    other = NPCVehicle(vehicle_id=2, car=Car(x=trailer.x - 1.0, y=0.0, heading=0.0, speed=20.0), state=NPCState.CRUISING)
     manager.vehicles.extend([towing, other])
     assert manager._check_vehicle_collision(other, with_trailers([towing]), ResidentManager(), None, sim_time=1.0)
     assert towing.state == NPCState.CRASHED and other.state == NPCState.CRASHED

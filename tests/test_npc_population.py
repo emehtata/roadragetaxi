@@ -1380,7 +1380,7 @@ def test_vehicle_collision_respects_bridge_and_floor_levels(npc_obstacle, layer,
     manager = NPCVehicleManager()
     residents = ResidentManager()
     pedestrian_mgr = SimpleNamespace()
-    vehicle = NPCVehicle(vehicle_id=1, car=Car(x=0.0, y=0.0, heading=0.0, speed=10.0, layer=1))  # a real crash, not a minor bump
+    vehicle = NPCVehicle(vehicle_id=1, car=Car(x=0.0, y=0.0, heading=0.0, speed=20.0, layer=1))  # a real crash, not a minor bump
     other_car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, layer=layer, map_level=map_level)
     obstacle = NPCVehicle(vehicle_id=2, car=other_car) if npc_obstacle else other_car
     manager._check_vehicle_collision(vehicle, [obstacle], residents, pedestrian_mgr, sim_time=50.0)
@@ -1394,7 +1394,7 @@ def test_check_vehicle_collision_crashes_both_overlapping_npc_vehicles():
     manager = NPCVehicleManager(target_count=1)
     vehicle_a, resident_a = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
     vehicle_b, resident_b = _driving_vehicle(residents, 1.0, 0.0, vehicle_id=2)  # well within each other's footprint
-    vehicle_a.car.speed, vehicle_b.car.speed = 12.0, 0.0  # a severe crash
+    vehicle_a.car.speed, vehicle_b.car.speed = 20.0, 0.0  # a severe crash
     manager.vehicles.extend([vehicle_a, vehicle_b])
     pedestrian_mgr = PedestrianManager([], target_count=0)
 
@@ -1408,7 +1408,7 @@ def test_check_vehicle_collision_does_not_ignore_parked_car_on_final_approach():
     residents = ResidentManager()
     manager = NPCVehicleManager(target_count=2)
     moving, resident = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
-    moving.car.speed = 12.0  # a severe crash
+    moving.car.speed = 20.0  # a severe crash
     parked = place_parked_npc(2, (1.0, 0.0), None, vehicle_type="car")
     manager.vehicles.extend([moving, parked])
     manager.drivers[moving.vehicle_id] = Driver(
@@ -1446,6 +1446,7 @@ def test_swept_collision_catches_npcs_that_cross_between_frames():
     vehicle_a, _ = _driving_vehicle(residents, 10.0, 0.0, vehicle_id=1)
     vehicle_b, _ = _driving_vehicle(residents, -10.0, 0.0, vehicle_id=2)
     vehicle_b.car.heading = math.pi  # head-on, as their poses say
+    vehicle_a.car.speed = vehicle_b.car.speed = 10.0  # 72 km/h closing: a severe crash
     manager.vehicles.extend([vehicle_a, vehicle_b])
     pedestrian_mgr = PedestrianManager([], target_count=0)
 
@@ -1469,14 +1470,14 @@ def test_check_vehicle_collision_with_player_crashes_npc_and_slows_taxi():
     manager = NPCVehicleManager(target_count=1)
     vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
     manager.vehicles.append(vehicle)
-    player_car = Car(x=-3.5, y=0.0, heading=0.0, speed=25.0)  # into its rear
+    player_car = Car(x=-3.5, y=0.0, heading=0.0, speed=30.0)  # into its rear
     pedestrian_mgr = PedestrianManager([], target_count=0)
     npc_speed = vehicle.car.speed
 
     manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
 
     assert vehicle.state == NPCState.CRASHED
-    assert 0.0 < player_car.speed < 25.0
+    assert 0.0 < player_car.speed < 30.0
     assert vehicle.knock_vx > npc_speed and abs(vehicle.knock_vy) < 1e-9
 
 
@@ -1525,6 +1526,18 @@ def test_a_moderate_crash_knocks_the_npc_but_nobody_gets_out():
     assert not pedestrian_mgr.pedestrians and manager.accidents
 
 
+def test_a_bicycle_is_knocked_down_where_the_car_is_only_stunned():
+    residents = ResidentManager()
+    manager = NPCVehicleManager(target_count=2)
+    car, _ = _driving_vehicle(residents, 0.0, 0.0, vehicle_id=1)
+    bike = place_parked_npc(2, (2.5, 0.0), None, vehicle_type="bicycle")
+    car.car.speed = 7.0  # 25 km/h into the standing bike
+    manager.vehicles.extend([car, bike])
+    manager._check_vehicle_collision(car, [bike], residents, PedestrianManager([], target_count=0), sim_time=50.0)
+    assert bike.state == NPCState.CRASHED and bike.fallen
+    assert car.state != NPCState.CRASHED and car.stunned_timer > 0.0
+
+
 def test_a_severe_crash_spins_the_wreck():
     from theroadragetrip.physics import Car
     from theroadragetrip.npc import update_knocked
@@ -1546,17 +1559,17 @@ def test_crashed_npc_remains_a_physical_obstacle_for_player():
     manager = NPCVehicleManager(target_count=1)
     vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
     manager.vehicles.append(vehicle)
-    player_car = Car(x=-3.5, y=0.0, heading=0.0, speed=25.0)
+    player_car = Car(x=-3.5, y=0.0, heading=0.0, speed=30.0)
     pedestrian_mgr = PedestrianManager([], target_count=0)
     manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
     assert vehicle.state == NPCState.CRASHED
 
     vehicle.knock_vx = vehicle.knock_vy = 0.0  # the wreck has come to rest
-    player_car.x, player_car.speed = -3.5, 25.0
+    player_car.x, player_car.speed = -3.5, 30.0
     assert manager._check_vehicle_collision(
         vehicle, [player_car], residents, pedestrian_mgr, sim_time=51.0,
     )
-    assert player_car.speed < 25.0 and vehicle.knock_vx > 0.0
+    assert player_car.speed < 30.0 and vehicle.knock_vx > 0.0
 
 
 def test_crashed_npc_remains_a_physical_obstacle_for_other_npcs():
@@ -1569,7 +1582,7 @@ def test_crashed_npc_remains_a_physical_obstacle_for_other_npcs():
     manager.vehicles.extend([wreck, moving])
     pedestrian_mgr = PedestrianManager([], target_count=0)
     manager._trigger_vehicle_accident(wreck, residents, pedestrian_mgr, sim_time=50.0)
-    moving.car.speed = 12.0
+    moving.car.speed = 20.0
 
     assert manager._check_vehicle_collision(
         moving, [wreck], residents, pedestrian_mgr, sim_time=51.0,

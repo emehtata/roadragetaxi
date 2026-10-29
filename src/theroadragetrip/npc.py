@@ -1368,7 +1368,12 @@ NPC_SCRAPE_MPS = 5.0 / 3.6  # two NPCs touching slower than this: a scrape, both
 # Game policy: below this closing speed a crash only knocks the cars about -
 # the drivers sit out STUNNED_S and drive on, nobody gets out. At or above it
 # the car spins off and is wrecked; its occupants leave it.
-SEVERE_HIT_MPS = 35.0 / 3.6
+SEVERE_HIT_MPS = 60.0 / 3.6
+CYCLE_SEVERE_HIT_MPS = 15.0 / 3.6  # a light bike is knocked down (fallen) much sooner
+
+
+def severe_hit_mps(vehicle) -> float:
+    return CYCLE_SEVERE_HIT_MPS if vehicle_definition(vehicle.vehicle_type).movement == "cycle" else SEVERE_HIT_MPS
 STUNNED_S = 4.0
 CRASH_SPIN_RAD_PER_M = 0.25  # a wreck's spin per m/s of its knock
 # Collision response (rrt-019-crash-physics): an impulse along the contact
@@ -5210,19 +5215,15 @@ class NPCVehicleManager:
                     if scraped.state == NPCState.PARKED:
                         scraped.knock_vx = scraped.knock_vy = 0.0  # stays in its bay
                 return True
-            if not vehicle_already_crashed and (not obstacle_is_npc or obstacle.state != NPCState.CRASHED) \
-                    and closing_speed < SEVERE_HIT_MPS:
-                # A moderate crash: knocked about, the drivers wait a moment and drive on.
-                self.accidents.append((vehicle.car.x, vehicle.car.y))
-                for hit in (vehicle, obstacle) if obstacle_is_npc else (vehicle,):
+            self.accidents.append((vehicle.car.x, vehicle.car.y))
+            for hit in (vehicle, obstacle) if obstacle_is_npc else (vehicle,):
+                if hit.state == NPCState.CRASHED:
+                    continue
+                if closing_speed >= severe_hit_mps(hit):
+                    self._trigger_vehicle_accident(hit, resident_manager, pedestrian_mgr, sim_time)
+                else:  # a moderate crash: knocked about, the driver waits a moment and drives on
                     hit.stunned_timer = STUNNED_S
                     hit.shaken_timer = SHAKEN_S
-                return True
-            self.accidents.append((vehicle.car.x, vehicle.car.y))
-            if not vehicle_already_crashed:
-                self._trigger_vehicle_accident(vehicle, resident_manager, pedestrian_mgr, sim_time)
-            if obstacle_is_npc and obstacle.state != NPCState.CRASHED:
-                self._trigger_vehicle_accident(obstacle, resident_manager, pedestrian_mgr, sim_time)
             return True
         return False
 
