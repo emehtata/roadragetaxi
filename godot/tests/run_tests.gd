@@ -362,6 +362,10 @@ func test_holiday_events() -> void:
 	events.update(0.016, state, town, false)
 	check(events.decorations.visible and events.ghost_layer.visible and not events.bursts.visible and events.yards.size() == 2 and not events.ghosts.is_empty(), "Halloween night: yards and fixed ghost scenery, no fireworks")
 	check(events.ghosts == events.ghost_sites(town.grow(20.0)), "Halloween ghosts: stable positions as the view updates")
+	for phase in [0.0, PI / 2, PI, PI * 1.5]:
+		var outline: PackedVector2Array = events.ghost_outline(phase)
+		check(not Geometry2D.triangulate_polygon(outline).is_empty(), "overhead ghost: cloth remains a drawable polygon throughout its animation")
+		check(Array(outline).all(func(p): return p.is_finite() and p.length() < 1.5), "overhead ghost: human-sized silhouette, not a roof-sized face")
 	events.ghosts = PackedVector2Array([Vector2.ZERO])
 	var haunting_walkers: Array[Vector2] = [Vector2(100.0, 0.0)]
 	events._update_ghosts(1.0, haunting_walkers)

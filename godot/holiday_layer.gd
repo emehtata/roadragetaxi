@@ -161,11 +161,25 @@ func _draw_bonfires() -> void:
 func _draw_ghosts() -> void:
 	for i in ghosts.size():
 		var at := ghosts[i] + Vector2(sin(clock * 1.3 + i) * 1.2, sin(clock * 2.0 + i * 0.7) * 0.8)
-		# Translucent ghosts drift toward nearby walkers; visual only, with no collision.
-		ghost_layer.draw_circle(at + Vector2(0, -3.5), 2.5, Color(0.8, 0.9, 1.0, 0.58))
-		ghost_layer.draw_rect(Rect2(at + Vector2(-2.5, -3.5), Vector2(5.0, 3.5)), Color(0.8, 0.9, 1.0, 0.58))
-		for side: float in [-0.35, 0.35]:
-			ghost_layer.draw_circle(at + Vector2(side * 2.0, -3.8), 0.3, Color(0.15, 0.2, 0.35, 0.9))
+		# Overhead shroud at pedestrian scale, with its crown above trailing cloth.
+		ghost_layer.draw_set_transform(at, clock * 0.35 + i * 2.4)
+		ghost_layer.draw_circle(Vector2(-0.1, 0), 0.85, Color(0.65, 0.85, 1.0, 0.07))
+		ghost_layer.draw_colored_polygon(ghost_outline(clock * 2.0 + i), Color(0.8, 0.9, 1.0, 0.5))
+		ghost_layer.draw_circle(Vector2(0.22, 0), 0.28, Color(0.9, 0.96, 1.0, 0.65))
+	ghost_layer.draw_set_transform(Vector2.ZERO)
+
+
+static func ghost_outline(phase: float) -> PackedVector2Array:
+	var flutter := sin(phase) * 0.12
+	return PackedVector2Array([
+		Vector2(0.7, 0), Vector2(0.64, -0.28), Vector2(0.43, -0.46),
+		Vector2(0.05, -0.55), Vector2(-0.35, -0.5), Vector2(-0.72, -0.42),
+		Vector2(-1.05, -0.6 + flutter), Vector2(-0.89, -0.22),
+		Vector2(-1.35, -0.12 + flutter), Vector2(-1.05, 0.08),
+		Vector2(-1.24, 0.35 + flutter), Vector2(-0.75, 0.25),
+		Vector2(-0.92, 0.6 + flutter), Vector2(-0.38, 0.47),
+		Vector2(0.07, 0.55), Vector2(0.43, 0.46), Vector2(0.64, 0.28),
+	])
 
 
 func _draw_elves() -> void:
