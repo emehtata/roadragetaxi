@@ -18,13 +18,15 @@ local maps; you do not need to install Python separately. Tagged builds appear
 there after the release workflow finishes.
 
 On first launch, choose **Suomi**, **English** or **Deutsch**, then review the
-settings. Choose a career or a freelance shift. Freelance mode lets you select
-a city or click a starting point on the Finland map, then choose a date and time
-from the past year through today. Loading shows the current stage and elapsed
-time; a cold map load can take longer than a cached one.
+settings. Choose a career, a freelance shift or a simulation. Freelance mode
+lets you select a city or click a starting point on the Finland map, then choose
+a date and time from the past year through today. Simulation mode always runs
+on the computer's real clock: no start-time picker and never 60× game time.
+Loading shows the current stage and elapsed time; a cold map load can take
+longer than a cached one.
 
-Use **F** to enter the taxi and **E** to start the engine. Open the phone with
-**P** or **N** to find your first fare.
+Use **F** to enter the taxi and **E** to start the engine. The phone is open
+from the start with your first fare offers; **P** or **N** closes and reopens it.
 
 ### Miksi rattiraivo?
 
@@ -44,30 +46,41 @@ Ei sankaripuheita. Taksamittari käy.
 - **Group fares:** carry up to four passengers. Children travel with their
   parent under the game's family policy.
 - **Rage as a superpower:** with enough rage, **Space** spends a quarter of the
-  meter and immediately shifts other cars to the roadside. Clearance stays
-  active for at least ten seconds and looks ten driving seconds ahead along
-  loaded roads, even at 210 km/h. This is an arcade power, not invulnerability:
-  buildings, pedestrians, trains and road edges can still be hazards.
-- **Traffic and residents:** moving cars, vans, trucks, buses and work vehicles,
-  parking, pedestrians, crossings, traffic lights and roadside arguments.
-  Residents have identities and activities. Traffic is enabled, but it is not
-  a flawless model of Finnish road behavior.
+  meter and immediately shifts other cars to the roadside, also while the phone
+  shows offers. Clearance stays active for at least ten seconds and looks ten
+  driving seconds ahead along loaded roads, even at 210 km/h. This is an arcade
+  power, not invulnerability: buildings, pedestrians, trains and road edges can
+  still be hazards.
+- **Traffic and residents:** moving cars, vans, trucks, buses, tractors, camper
+  vans and caravans, motorcycles in the riding season, cyclists, rival taxis
+  and trams; parking, pedestrians, crossings, traffic lights and roadside
+  arguments. How much traffic moves follows Fintraffic's measured LAM counts:
+  their hourly curves (weekday, weekend, Midsummer and Christmas) and their
+  densities by road class, near a counting station that station's own. Collisions
+  push vehicles by mass. Residents have identities and activities; dogs are
+  walked, Ilokapina protesters may sit in the street, rival taxi drivers come
+  to blows, and birds and animals add life to the scenery (visual only).
+  Traffic is enabled, but it is not a flawless model of Finnish road behavior.
 - **Taxi business:** a time-and-distance fare meter, tips, a game-money balance,
   career progression and a persistent odometer. Passenger satisfaction affects
   tips; rough cornering, speeding and braking can make passengers feel sick.
 - **Weather and seasons:** optional real-world weather, rain and puddles,
   water ripples, snow on roads and roofs, snowy tyre tracks, ploughing and
   spring ice floes. Daylight, building shadows, streetlights and headlights
-  change the look of a shift. Lunar rise, transit, set and phase are calculated
-  for the selected city and currently reported in the startup debug log.
+  change the look of a shift. The moon's position and phase, calculated for the
+  selected city, light the night.
 - **Railway activity:** trains and station announcements, real timetable support,
   and prebooked station pickups that may require meeting the passenger on foot.
 - **Fuel and consequences:** start/stop the engine, refuel at a pump, and watch
   your consumption. Collisions and traffic violations cost points. Speed cameras
   appear occasionally on main roads during play, not as a batch of twenty at
   startup.
-- **Calendar events:** New Year fireworks, Halloween pumpkins and lanterns, and
-  Santas on Christmas Eve.
+- **Calendar events:** New Year fireworks; Halloween pumpkins, lanterns and
+  night ghosts; from the first Advent to Epiphany candle bridges and Christmas
+  stars in the windows and lights on houses; peeking Christmas elves and Santas
+  on Christmas Eve; two candles in most windows on Independence Day evening;
+  shore bonfires on Midsummer Eve; and flagpoles whose Finnish flags fly on
+  Finland's official and customary flag days by the official hours.
 - **Three text languages:** Finnish, English and German menus, notifications and
   speech subtitles. Missing driver/passenger recordings fall back to Finnish
   audio while subtitles retain the selected language. Station announcements
@@ -80,11 +93,11 @@ Ei sankaripuheita. Taksamittari käy.
 | `WASD` / arrow keys | Drive, brake/reverse or walk |
 | `Shift` | Run while on foot |
 | `F` | Enter/exit the taxi; greet a booked passenger |
-| `E` | Start/stop the engine |
-| `P` / `N` | Open/close the shared phone: offers when free, navigation during a fare |
+| `E` | Start/stop the engine; on foot at your home's front door, go in or out |
+| `P` / `N` | Close/reopen the shared phone (open from the start): offers when free, navigation during a fare |
 | `1`–`3` / `Enter` | Accept an offer by number / accept the selected phone offer |
 | `X` | Decline a phone offer, or cancel the active fare when not choosing an offer |
-| `Space` | Rage shout when enough rage is available |
+| `Space` | Rage shout when enough rage is available; a punch in a brawl (`Shift` dodges) |
 | `G` | Refuel while stopped at a pump |
 | `K` / `V` / `B` | Toggle lane assist / speed limiter / traffic-light assist |
 | `C` | Toggle compass |
@@ -92,7 +105,7 @@ Ei sankaripuheita. Taksamittari käy.
 | `L` | Cycle labels: none, streets, all places |
 | `R` | Reset the taxi to a road; an onboard fare can incur a penalty |
 | `T` | Reset the trip meter |
-| `H` | Return home; stopped in a house yard, press again to confirm a new home |
+| `H` | Take the taxi home; stopped in a house yard, press again to make it your home |
 | `+` / `-` / mouse wheel | Zoom |
 | Drag a display / phone header | Move that interface element |
 | `U` / `F2` | Reset the interface layout |
@@ -103,10 +116,12 @@ Ei sankaripuheita. Taksamittari käy.
 | `F12` | Save a screenshot and matching simulation JSON |
 | `Esc` | Close the phone/help or open the pause menu |
 
-Gig saves keep their own homes, one per city. While playing, use
-**Settings → Gameplay → Clear current game home** to forget homes only in that
-save. Older gig saves start without a home; choose one again with **H** in a
-house yard.
+Gig saves keep their own homes, one per city. On foot, **E** at your home's
+front door takes you inside: its floor plan in 2D, or in first person with
+**Settings → Experimental → First-person house interiors (3D)**. Only your own
+home can be entered. While playing, use **Settings → Gameplay → Clear current
+game home** to forget homes only in that save. Older gig saves start without a
+home; choose one again with **H** in a house yard.
 
 The speed limiter starts enabled; press **V** to disable it if you want to drive
 above the road's speed limit. Opening navigation also shows the suggested route
@@ -122,13 +137,16 @@ on the map; **N** is not a separate route-only toggle.
   is retained for re-enabling 3D. All other effects are independent.
 - 3D buildings: off uses flat footprints without extruded walls. Start a new
   session to apply this option; it never removes building collision geometry.
+- Forest canopy: off draws forests as a plain green fill instead of individual
+  tree crowns, much faster without a graphics card. Start a new session to
+  apply it.
 - Water and puddle ripples.
 - Rain and snow particles.
 - Tyre splashes.
 - Vehicle smoke and exhaust.
 - Lightning flashes (thunder sounds remain).
 
-All except the building renderer apply to the current session. Choices are
+All except the building renderer and forest canopy apply to the current session. Choices are
 saved under `[graphics]` in Godot's `settings.cfg`. Turning effects off does not
 change the simulation: rain, wet-road grip, snow accumulation, damage, traffic
 and collisions continue normally. Road-condition markings, traffic signals and
