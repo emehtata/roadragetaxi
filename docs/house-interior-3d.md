@@ -65,7 +65,9 @@ validation and the 2D indoor tests remain applicable.
 
 ## First-person exploration (phase 2)
 
-Enable **Settings → Gameplay → First-person house interiors (3D)**. The setting
+Previous Gameplay opt-ins are ignored; enable it again under Experimental.
+
+Enable **Settings → Experimental → First-person house interiors (3D)**. The setting
 is saved with the existing client settings and defaults off, preserving 2D
 interiors. Indoor mouse sensitivity is adjustable in the same menu. Changing
 mode while indoors restarts at the entrance. Enter with E at the selected
@@ -118,7 +120,7 @@ requests, input isolation, and disconnect cleanup. Existing 2D tests still run.
 
 For a manual check:
 
-1. Enable 3D interiors in Gameplay settings, choose a home and approach its
+1. Enable 3D interiors in Experimental settings, choose a home and approach its
    front door on foot. E should show the interior facing inward.
 2. Walk and strafe with WASD, look up/down with the mouse, traverse room doors,
    and walk into walls. The capsule should stay grounded and stop at walls.

@@ -48,6 +48,7 @@ const FI := {
 
 	"settings_general": "Yleiset",
 	"settings_gameplay": "Pelaaminen",
+	"settings_experimental": "Kokeelliset",
 	"settings_audio": "Äänet",
 	"settings_maps": "Kartat ja data",
 	"phone_protest": "Ilokapina osoittaa mieltä kaupungissa. Varaudu tiesulkuihin!", "choose_start": "Valitse pelitapa", "career": "Ura", "simulation": "Simulaatio", "help_simulation": "Pelin kello on aina oikea kellonaika, eikä sitä voi muuttaa: ei 60-kertaista aikaa, ei aloitusajan valintaa.",
@@ -260,6 +261,7 @@ const EN := {
 
 	"settings_general": "General",
 	"settings_gameplay": "Gameplay",
+	"settings_experimental": "Experimental",
 	"settings_audio": "Audio",
 	"settings_maps": "Maps & Data",
 
@@ -474,6 +476,7 @@ const DE := {
 
 	"settings_general": "Allgemein",
 	"settings_gameplay": "Spiel",
+	"settings_experimental": "Experimentell",
 	"settings_audio": "Audio",
 	"settings_maps": "Karten und Daten",
 

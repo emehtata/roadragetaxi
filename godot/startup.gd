@@ -850,6 +850,7 @@ func _settings_menu() -> void:
 	_button(_t("graphics") + " >", _graphics_menu)
 	_button(_t("settings_audio") + " >", _audio_menu)
 	_button(_t("settings_maps") + " >", _maps_menu)
+	_button(_t("settings_experimental") + " >", _experimental_menu)
 	var back := _pause_menu if _game != null else _main_menu
 	_button(_t("back"), back)
 	_back_action = back
@@ -879,7 +880,7 @@ func _general_menu() -> void:
 
 func _apply_interior_settings() -> void:
 	if is_instance_valid(_game) and _game.has_method("set_interior_options"):
-		_game.set_interior_options(_settings.get_value("game", "interior_3d", false),
+		_game.set_interior_options(_settings.get_value("experimental", "interior_3d", false),
 			_settings.get_value("game", "interior_mouse_sensitivity", 0.002))
 
 
@@ -931,11 +932,21 @@ func _gameplay_menu() -> void:
 	intercity_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intercity_note.custom_minimum_size.x = 500
 	_body.add_child(intercity_note)
+	if is_instance_valid(_game):
+		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
+	_button(_t("back"), _settings_menu)
+	_back_action = _settings_menu
+	_focus_menu()
+
+
+func _experimental_menu() -> void:
+	_clear()
+	_title(_t("settings_experimental").to_upper())
 	var interiors := CheckButton.new()
 	interiors.text = _t("interior_3d")
-	interiors.button_pressed = _settings.get_value("game", "interior_3d", false)
+	interiors.button_pressed = _settings.get_value("experimental", "interior_3d", false)
 	interiors.toggled.connect(func(on: bool):
-		_settings.set_value("game", "interior_3d", on)
+		_settings.set_value("experimental", "interior_3d", on)
 		_settings.save("user://settings.cfg")
 		_apply_interior_settings())
 	_with_help(interiors, "help_interior_3d")
@@ -958,8 +969,6 @@ func _gameplay_menu() -> void:
 	mouse_row.add_child(sensitivity)
 	_with_help(mouse_row, "help_interior_mouse_sensitivity")
 	_focusables.append(sensitivity)
-	if is_instance_valid(_game):
-		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
 	_button(_t("back"), _settings_menu)
 	_back_action = _settings_menu
 	_focus_menu()
