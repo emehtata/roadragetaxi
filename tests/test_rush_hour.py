@@ -5,7 +5,8 @@ from datetime import datetime
 
 import pytest
 
-from theroadragetrip.npc import NPCState, NPCVehicleManager, TRAFFIC_DENSITY_PER_KM
+from theroadragetrip.npc import NPCState, NPCVehicleManager
+from theroadragetrip.population import CLASS_DENSITIES
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import SpatialWayGrid
 from theroadragetrip.residents import ResidentManager
@@ -25,9 +26,12 @@ def _city_grid(blocks: int = 6, block_m: float = 100.0):
     return ways
 
 
-def _manager(moment, ways):
+def _manager(moment, ways, people=1500.0):
+    """A town centre's people (urban densities and curves) unless `people` says otherwise."""
     manager = NPCVehicleManager(target_count=60, max_count=120, vehicle_distribution={"car": 1.0})
     manager.clock = moment
+    manager.set_local_density(0.0, 0.0, SpatialWayGrid([]), road_grid=SpatialWayGrid(ways))
+    manager._local_people = people  # no buildings in the synthetic grid; the cell is counted already
     manager.set_local_density(0.0, 0.0, SpatialWayGrid([]), road_grid=SpatialWayGrid(ways))
     return manager
 
@@ -46,7 +50,7 @@ def test_the_moving_target_is_the_roads_peak_cars_at_the_hours_share(moment, low
         (ax, ay), (bx, by) = way.points_m
         if ((ax + bx) / 2) ** 2 + ((ay + by) / 2) ** 2 <= 250.0 ** 2:
             roads_km[way.highway] += 0.1
-    peak = sum(km * TRAFFIC_DENSITY_PER_KM[h] for h, km in roads_km.items())
+    peak = sum(km * CLASS_DENSITIES["urban"][h] for h, km in roads_km.items())  # LAM-measured, side streets estimated
     assert low * peak <= manager.target_moving_count <= high * peak + 1
 
 
@@ -61,9 +65,6 @@ def test_friday_night_keeps_its_nightlife_on_top_of_the_roads():
     ways = _city_grid()
     friday = _manager(datetime(2026, 10, 16, 23, 0), ways)
     wednesday = _manager(datetime(2026, 10, 14, 23, 0), ways)
-    friday._local_people = wednesday._local_people = 1500.0  # a town centre's people
-    for manager in (friday, wednesday):
-        manager._local_density_cell = None
     assert friday.target_moving_count >= wednesday.target_moving_count
 
 
@@ -81,6 +82,13 @@ def test_afternoon_traffic_converges_on_a_dense_grid():
         manager.update(1 / 30, 0.0, 0.0, residents, world, ways, spatial_grid=SpatialWayGrid(ways),
                        building_grid=SpatialWayGrid([]), active_bounds=bounds)
     moving = sum(1 for v in manager.vehicles if v.state not in (NPCState.PARKED, NPCState.CRASHED))
-    assert target >= 10 and moving >= 0.6 * target
+    assert target >= 5 and moving >= 0.6 * target
     spawn = manager.population_diagnostics["spawn"]
     assert spawn["activated"] > 0 and spawn["moving_after_10s"] >= spawn["stopped_after_10s"]
+
+
+def test_a_rural_road_carries_far_less_than_the_same_road_in_town():
+    ways = _city_grid()
+    town = _manager(datetime(2026, 10, 14, 16, 0), ways).target_moving_count
+    country = _manager(datetime(2026, 10, 14, 16, 0), ways, people=0.0).target_moving_count
+    assert country * 3 <= town

@@ -43,11 +43,18 @@ def test_the_walk_sets_off_the_way_it_is_pointed():
 
 def test_peak_traffic_comes_from_the_roads_around_the_taxi_by_class():
     from types import SimpleNamespace
-    from theroadragetrip.npc import TRAFFIC_DENSITY_PER_KM, peak_cars_on_roads
+    from theroadragetrip.npc import peak_cars_on_roads
+    from theroadragetrip.population import CLASS_DENSITIES
 
-    secondary = SimpleNamespace(highway="secondary", points_m=[(-100.0, 0.0), (100.0, 0.0)], map_level=0)
-    yard = SimpleNamespace(highway="service", points_m=[(0.0, -50.0), (0.0, 50.0)], map_level=0)
-    far = SimpleNamespace(highway="residential", points_m=[(900.0, 0.0), (1000.0, 0.0)], map_level=0)
+    secondary = SimpleNamespace(highway="secondary", points_m=[(-100.0, 0.0), (100.0, 0.0)], map_level=0, ref=None)
+    yard = SimpleNamespace(highway="service", points_m=[(0.0, -50.0), (0.0, 50.0)], map_level=0, ref=None)
+    far = SimpleNamespace(highway="residential", points_m=[(900.0, 0.0), (1000.0, 0.0)], map_level=0, ref=None)
     grid = SimpleNamespace(ways_in_rect=lambda *_: [secondary, yard, far])
-    assert peak_cars_on_roads(grid, 0.0, 0.0) == TRAFFIC_DENSITY_PER_KM["secondary"] * 0.2  # no yards, nothing far
+    urban, rural = peak_cars_on_roads(grid, 0.0, 0.0)
+    assert urban == pytest_approx(CLASS_DENSITIES["urban"]["secondary"] * 0.2)  # LAM median; no yards, nothing far
+    assert rural == pytest_approx(CLASS_DENSITIES["rural"]["secondary"] * 0.2)
 
+
+def pytest_approx(value):
+    import pytest
+    return pytest.approx(value, rel=1e-6)

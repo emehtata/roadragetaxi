@@ -496,6 +496,12 @@
  ],
  "groups": {
   "rural": {
+   "peak_density_per_km": {
+    "motorway": 22.96,
+    "primary": 2.91,
+    "secondary": 2.94,
+    "trunk": 7.21
+   },
    "special_hourly": {
     "christmas_23": [
      0.064,
@@ -760,6 +766,12 @@
    ]
   },
   "urban": {
+   "peak_density_per_km": {
+    "motorway": 40.98,
+    "primary": 10.1,
+    "secondary": 17.15,
+    "trunk": 32.0
+   },
    "special_hourly": {
     "christmas_23": [
      0.062,

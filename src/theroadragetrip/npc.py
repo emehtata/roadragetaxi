@@ -31,7 +31,7 @@ from .geo import angle_diff, bbox_distance_sq, box_contact_normal, boxes_interse
 from .map_level import on_map_level
 from .osm import Curb, ParkingSpace, StopSign, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, min_turn_radius, rear_axle_behind, get_road_layer_at_point, is_point_on_road, update_car_physics
-from .population import people_within, traffic_demand
+from .population import CLASS_DENSITIES, URBAN_PEOPLE_FRACTION, people_within, station_for_way, traffic_demand
 from .road_rage import RoadRageClearance
 from .residents import Household, HouseholdManager, ResidentManager
 from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision, stop_sign_decision
@@ -2130,28 +2130,41 @@ NPC_TARGET_COUNT_DEFAULT = 40  # when the city's population is unknown
 # remote road with a few houses a car or two, an empty forest road one
 # passing car at most.
 NPC_FULL_TRAFFIC_PEOPLE = 1500.0
-# Moving cars per km of road (both directions) at a weekday peak hour, by
-# class: the moving target is the roads within TRAFFIC_DENSITY_RADIUS_M of
-# the taxi times these, times the hour's share of the peak (LAM curves).
-# City-centre streets are often tagged residential in OSM (Oulu's Torikatu), busy or not.
-TRAFFIC_DENSITY_PER_KM = {"motorway": 70.0, "trunk": 60.0, "primary": 50.0, "secondary": 40.0, "tertiary": 30.0,
-                          "unclassified": 16.0, "residential": 20.0, "living_street": 4.0}
+# Moving cars per km of road (both directions) at a weekday peak hour by class,
+# when no LAM densities are loaded (population.CLASS_DENSITIES): estimates.
+TRAFFIC_DENSITY_PER_KM = {"motorway": 40.0, "trunk": 30.0, "primary": 15.0, "secondary": 15.0, "tertiary": 10.0,
+                          "unclassified": 6.0, "residential": 6.0, "living_street": 1.5}
 TRAFFIC_DENSITY_RADIUS_M = 250.0
 
 
-def peak_cars_on_roads(road_grid, x: float, y: float, radius: float = TRAFFIC_DENSITY_RADIUS_M) -> float:
-    """Peak-hour moving cars on the car roads within `radius` (segment midpoints in it)."""
-    total = 0.0
+def peak_cars_on_roads(road_grid, x: float, y: float, radius: float = TRAFFIC_DENSITY_RADIUS_M) -> Tuple[float, float]:
+    """(urban, rural) peak-hour moving cars on the car roads within `radius` (segment
+    midpoints in it), from the LAM measurements: a road near a station its
+    measured peak flow over speed, any other its class's median in that setting
+    (side streets: estimates, population.SIDE_STREET_SHARE). The caller blends
+    the two by how urban the surroundings are."""
+    urban = rural = 0.0
     seen = set()
     for way in road_grid.ways_in_rect(x - radius, y - radius, x + radius, y + radius):
-        density = TRAFFIC_DENSITY_PER_KM.get(getattr(way, "highway", None), 0.0)
-        if not density or id(way) in seen or getattr(way, "map_level", 0):
+        highway = getattr(way, "highway", None)
+        if id(way) in seen or getattr(way, "map_level", 0) or highway not in TRAFFIC_DENSITY_PER_KM:
             continue
         seen.add(id(way))
-        for (ax, ay), (bx, by) in zip(way.points_m, way.points_m[1:]):
-            if (((ax + bx) / 2 - x) ** 2 + ((ay + by) / 2 - y) ** 2) <= radius * radius:
-                total += math.hypot(bx - ax, by - ay) / 1000.0 * density
-    return total
+        km = sum(math.hypot(bx - ax, by - ay) for (ax, ay), (bx, by) in zip(way.points_m, way.points_m[1:])
+                 if ((ax + bx) / 2 - x) ** 2 + ((ay + by) / 2 - y) ** 2 <= radius * radius) / 1000.0
+        if not km:
+            continue
+        station = station_for_way(way)
+        if station is not None and station.get("peak_density_per_km"):
+            urban += km * station["peak_density_per_km"]
+            rural += km * station["peak_density_per_km"]
+        elif CLASS_DENSITIES:
+            urban += km * CLASS_DENSITIES["urban"].get(highway, 0.0)
+            rural += km * CLASS_DENSITIES["rural"].get(highway, 0.0)
+        else:
+            urban += km * TRAFFIC_DENSITY_PER_KM[highway]
+            rural += km * TRAFFIC_DENSITY_PER_KM[highway]
+    return urban, rural
 NPC_LOCAL_TARGET_CELL_M = 100.0  # recounted when the player moves into another cell this size
 NPC_DEMAND_ROLL_TICKS = 30  # population ticks (1 min): how long one draw of a fractional moving target holds
 NPC_TARGET_COUNT_MIN = 15
@@ -4892,9 +4905,11 @@ class NPCVehicleManager:
             self._demand_draw = self.demand_rng.random()
             self._demand_draw_tick = self._population_tick_number
         if self._local_road_cars is not None:
-            # The roads around the taxi, not the whole city: their peak-hour cars by class
-            # (TRAFFIC_DENSITY_PER_KM) at the hour's share, nightlife on top.
-            expected_moving = self._local_road_cars * demand["hour"] + (
+            # The roads around the taxi, not the whole city: their measured peak-hour cars
+            # (peak_cars_on_roads, LAM) at the hour's share, nightlife on top.
+            urban_share = min(1.0, fraction / URBAN_PEOPLE_FRACTION)  # as the hourly curves blend
+            peak = urban_share * self._local_road_cars[0] + (1.0 - urban_share) * self._local_road_cars[1]
+            expected_moving = peak * demand["hour"] + (
                 self.city_target_count * self.target_moving_fraction * demand["nightlife"])
         else:
             expected_moving = self.city_target_count * self.target_moving_fraction * demand["demand"]

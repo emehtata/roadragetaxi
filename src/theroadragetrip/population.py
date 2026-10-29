@@ -182,6 +182,37 @@ STATION_REACH_M = 5000.0
 STATION_MIN_DAYS = 6  # one sampled week, a day may be missing
 
 
+def _station_peak_density(station: dict) -> Optional[float]:
+    """Its measured weekday peak flow over its free-flow speed: vehicles per km, both directions."""
+    flow = station["profile"].get("weekday_peak_vehicles_per_hour")
+    speeds = [v for v in station.get("free_flow_speed_kmh") or () if v]
+    return flow / (sum(speeds) / len(speeds)) if flow and speeds else None
+
+
+def load_class_densities(path: Path = LAM_PROFILES) -> dict:
+    """{"urban"|"rural": {highway: vehicles per km at the weekday peak hour}}: the
+    LAM stations' medians by matched road class (tools/lam_profiles.py), with the
+    streets no station measures (tertiary down to living streets) as estimates
+    scaled from the measured secondary roads (SIDE_STREET_SHARE). {} without the file."""
+    try:
+        groups = json.loads(path.read_text(encoding="utf-8"))["groups"]
+        out = {}
+        for setting in ("urban", "rural"):
+            measured = dict(groups[setting]["peak_density_per_km"])
+            base = measured.get("secondary", measured.get("primary", 0.0))
+            for highway, share in SIDE_STREET_SHARE.items():
+                measured.setdefault(highway, base * share)
+            out[setting] = measured
+        return out
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+# No LAM station stands on these: estimates, as a share of the measured
+# secondary-road density of the same setting.
+SIDE_STREET_SHARE = {"tertiary": 0.7, "unclassified": 0.4, "residential": 0.4, "living_street": 0.1}
+
+
 def load_station_curves(path: Path = LAM_PROFILES) -> list:
     """The reviewed stations with enough sampled days: road number, game
     coordinates and their own curves; [] without the file. Matched to OSM, or
@@ -192,7 +223,8 @@ def load_station_curves(path: Path = LAM_PROFILES) -> list:
         return [{"name": s["name"], "road": str(s["road_number"]), "x": s["x_m"], "y": s["y_m"],
                  "weekday_hourly": s["profile"]["weekday_hourly"], "weekend_hourly": s["profile"]["weekend_hourly"],
                  "special_hourly": s["profile"].get("special_hourly", {}),
-                 "month_factor": _interpolated_months({int(m): f for m, f in s["profile"]["month_factor"].items()})}
+                 "month_factor": _interpolated_months({int(m): f for m, f in s["profile"]["month_factor"].items()}),
+                 "peak_density_per_km": _station_peak_density(s)}
                 for s in data["stations"]
                 if s.get("road_number") is not None and sum(s["profile"]["days_used"].values()) >= STATION_MIN_DAYS
                 and (s.get("osm_match", {}).get("status") == "matched" or s.get("osm_match", {}).get("reason") == "no bearing or road number")]
@@ -201,6 +233,7 @@ def load_station_curves(path: Path = LAM_PROFILES) -> list:
 
 
 MEASURED_STATIONS = load_station_curves()
+CLASS_DENSITIES = load_class_densities()
 _stations_by_road: dict = {}  # road number -> its stations: hundreds Finland-wide
 for _station in MEASURED_STATIONS:
     _stations_by_road.setdefault(_station["road"], []).append(_station)

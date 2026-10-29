@@ -331,6 +331,26 @@ def profile(days_by_date: dict, special: dict = None) -> dict:
     }
 
 
+def peak_density(station: dict):
+    """Vehicles per km (both directions) at the station's average weekday peak
+    hour: the measured flow over its free-flow speed (slightly low in a
+    congested hour, when cars go slower and stand closer); None without both."""
+    flow = station["profile"].get("weekday_peak_vehicles_per_hour")
+    speeds = [v for v in station.get("free_flow_speed_kmh") or () if v]
+    return round(flow / (sum(speeds) / len(speeds)), 2) if flow and speeds else None
+
+
+def density_by_class(stations: list) -> dict:
+    """{setting: {highway: median peak_density}} of the OSM-matched stations."""
+    found: dict = {}
+    for station in stations:
+        match, density = station.get("osm_match", {}), peak_density(station)
+        if match.get("status") == "matched" and density is not None:
+            found.setdefault(station["setting"], {}).setdefault(match["ways"][0]["highway"], []).append(density)
+    return {setting: {highway: round(sorted(values)[len(values) // 2], 2) for highway, values in sorted(classes.items())}
+            for setting, classes in found.items()}
+
+
 def group_curve(stations: list, key: str) -> list:
     return [round(sum(s["profile"][key][h] for s in stations) / len(stations), 3) for h in range(24)]
 
@@ -374,6 +394,8 @@ def build(cache: Path) -> dict:
                       if s["setting"] == setting and key in s["profile"]["special_hourly"]]
             if curves:
                 group["special_hourly"][key] = [round(sum(c[h] for c in curves) / len(curves), 3) for h in range(24)]
+    for setting, densities in density_by_class(complete).items():
+        groups[setting]["peak_density_per_km"] = densities
     return {
         "schema_version": SCHEMA_VERSION,
         "source": "Fintraffic / digitraffic.fi, license CC 4.0 BY: TMS raw detections (lamraw), valid records only",
