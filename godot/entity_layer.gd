@@ -182,6 +182,33 @@ func shown_state() -> Dictionary:
 	return _frame.get("a", {})
 
 
+## Visible walkers at their interpolated positions, for presentation effects.
+func pedestrian_positions(limit := 64) -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	if _frame.is_empty():
+		return result
+	var a: Dictionary = _frame["a"]
+	var b: Dictionary = _frame["b"]
+	var scanned := 0
+	for key in ["pedestrians", "npcs"]:
+		var later := _by_id(b.get(key, []))
+		for person in a.get(key, []):
+			if scanned >= 256:  # shortcut: first 256 state walkers only; raise if dense scenes lack haunt targets.
+				return result
+			scanned += 1
+			if key == "npcs" and not person.get("is_on_foot", false):
+				continue
+			var p := StateBuffer.blend(person, later.get(person["id"], person), _frame["t"], origin)
+			if view_rect.has_point(Vector2(p.x, p.y)):
+				result.append(Vector2(p.x, p.y))
+				if result.size() >= limit:
+					return result
+	if a.get("on_foot", false):
+		var p := StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), _frame["t"], origin)
+		result.append(Vector2(p.x, p.y))
+	return result
+
+
 ## The player's interpolated position (the camera follows it).
 ## The taxi's velocity in canvas metres per second (y down); zero on foot.
 func player_velocity() -> Vector2:

@@ -777,7 +777,7 @@ func _present(state: Dictionary) -> void:
 	entities.underground = level != 0
 	wildlife.visible = level == 0
 	weather.update(get_process_delta_time(), state, entities.player_position(), level != 0)
-	holidays.update(get_process_delta_time(), state, view, level != 0)
+	holidays.update(get_process_delta_time(), state, view, level != 0, entities.pedestrian_positions())
 	map_layer.set_flash(state.get("speed_camera_flash"))
 	labels.update_view(get_viewport().get_canvas_transform(), map_layer.chunk_count(), level != 0)
 	map_layer.set_obstacles(state.get("knocked_posts", []))

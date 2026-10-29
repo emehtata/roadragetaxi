@@ -359,6 +359,10 @@ func test_holiday_events() -> void:
 	events.update(0.016, state, town, false)
 	check(events.decorations.visible and events.ghost_layer.visible and not events.bursts.visible and events.yards.size() == 2 and not events.ghosts.is_empty(), "Halloween night: yards and fixed ghost scenery, no fireworks")
 	check(events.ghosts == events.ghost_sites(town.grow(20.0)), "Halloween ghosts: stable positions as the view updates")
+	events.ghosts = PackedVector2Array([Vector2.ZERO])
+	var haunting_walkers: Array[Vector2] = [Vector2(100.0, 0.0)]
+	events._update_ghosts(1.0, haunting_walkers)
+	check(events.ghosts[0].distance_to(haunting_walkers[0]) < 100.0, "Halloween ghosts: drift toward a nearby walker")
 	state.calendar.holidays = {"fireworks": true}
 	events.update(0.016, state, view, false)
 	check(not events.decorations.visible and events.bursts.visible, "New Year: only fireworks")

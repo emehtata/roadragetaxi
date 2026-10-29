@@ -47,7 +47,7 @@ func setup(world: Node2D) -> void:
 	bursts.hide()
 
 
-func update(delta: float, state: Dictionary, view: Rect2, underground: bool) -> void:
+func update(delta: float, state: Dictionary, view: Rect2, underground: bool, walkers: Array[Vector2] = []) -> void:
 	var calendar: Dictionary = state.get("calendar", {}) if state.get("calendar") is Dictionary else {}
 	var events: Dictionary = calendar.get("holidays", {})
 	var halloween: bool = not underground and events.get("halloween", false)
@@ -71,8 +71,12 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool) -> 
 		_refresh = 0.5
 		yards = map_layer.holiday_yards(view.grow(50.0)) if halloween else PackedVector2Array()
 		sites = firework_sites(view.grow(40.0)) if fireworks else PackedVector2Array()
-		ghosts = ghost_sites(view.grow(20.0)) if ghost_season else PackedVector2Array()
+		if ghost_season and (ghosts.is_empty() or not view.has_point(ghosts[0])):
+			ghosts = ghost_sites(view.grow(20.0))
 		decorations.queue_redraw()
+		ghost_layer.queue_redraw()
+	if ghost_season:
+		_update_ghosts(delta, walkers)
 		ghost_layer.queue_redraw()
 	if fireworks:
 		bursts.queue_redraw()
@@ -99,12 +103,26 @@ func _draw_decorations() -> void:
 
 
 func _draw_ghosts() -> void:
-	for at in ghosts:
-		# Fixed hash-selected, translucent ghosts: scenery only, with no collision.
+	for i in ghosts.size():
+		var at := ghosts[i] + Vector2(sin(clock * 1.3 + i) * 1.2, sin(clock * 2.0 + i * 0.7) * 0.8)
+		# Translucent ghosts drift toward nearby walkers; visual only, with no collision.
 		ghost_layer.draw_circle(at + Vector2(0, -3.5), 2.5, Color(0.8, 0.9, 1.0, 0.58))
 		ghost_layer.draw_rect(Rect2(at + Vector2(-2.5, -3.5), Vector2(5.0, 3.5)), Color(0.8, 0.9, 1.0, 0.58))
 		for side: float in [-0.35, 0.35]:
 			ghost_layer.draw_circle(at + Vector2(side * 2.0, -3.8), 0.3, Color(0.15, 0.2, 0.35, 0.9))
+
+
+func _update_ghosts(delta: float, walkers: Array[Vector2]) -> void:
+	for i in ghosts.size():
+		if walkers.is_empty():
+			continue
+		var target := walkers[0]
+		for walker in walkers:
+			if ghosts[i].distance_squared_to(walker) < ghosts[i].distance_squared_to(target):
+				target = walker
+		var angle := clock * 0.7 + i * TAU / maxi(1, ghosts.size())
+		var haunt_spot := target + Vector2.from_angle(angle) * 5.0
+		ghosts[i] = ghosts[i].move_toward(haunt_spot, delta * 3.0)
 
 
 static func ghost_sites(view: Rect2) -> PackedVector2Array:
