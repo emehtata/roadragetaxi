@@ -43,6 +43,10 @@ SCHEMA_VERSION = 1
 # One Monday-Sunday week: no public holidays, no clock-change Sunday (a 23- or
 # 25-hour day would skew the hourly bins). Special days come later.
 WEEKS = [date(2026, 10, 12)]
+# Days with traffic of their own, each its own curve (population.special_day):
+# the Midsummer weekend (Saturday 20-26 June) and Christmas, 23-27 December.
+SPECIAL_DAYS = {"midsummer_eve": date(2026, 6, 19), "midsummer_day": date(2026, 6, 20), "midsummer_sunday": date(2026, 6, 21),
+                **{f"christmas_{d}": date(2025, 12, d) for d in range(23, 28)}}
 GROUP_MIN_DAYS = 6  # a station with fewer sampled days stays in the file, out of the urban/rural curves
 
 
@@ -295,7 +299,7 @@ def mean_curve(days: list) -> list:
     return [sum(day[h] for day in days) / len(days) for h in range(24)] if days else [0.0] * 24
 
 
-def profile(days_by_date: dict) -> dict:
+def profile(days_by_date: dict, special: dict = None) -> dict:
     """Weekday/weekend hourly curves (both directions and each one) as shares of
     the average weekday's peak hour - population.py's convention - and each
     sampled month's average weekday total against the sampled months' mean."""
@@ -320,6 +324,8 @@ def profile(days_by_date: dict) -> dict:
         "weekday_hourly_direction": {d: shares(weekdays, d) for d in ("1", "2")},
         "weekend_hourly_direction": {d: shares(weekends, d) for d in ("1", "2")},
         "month_factor": {str(m): round(v / mean_daily, 3) for m, v in sorted(month_daily.items())},
+        # each special day's own counts, against the same ordinary weekday peak: volume and shape
+        "special_hourly": {key: [round(v / peak, 3) for v in total(counts)] for key, counts in (special or {}).items()},
         "weekday_peak_vehicles_per_hour": round(peak),
         "days_used": {"weekday": len(weekdays), "weekend": len(weekends)},
     }
@@ -350,19 +356,29 @@ def build(cache: Path) -> dict:
                     missing.append(day.isoformat())
                 else:
                     days[day] = counts
-        print(f"{meta['name']}: {len(days)} days, {len(missing)} missing", file=sys.stderr)
+        special = {key: counts for key, day in SPECIAL_DAYS.items()
+                   if (counts := day_counts(meta["tms_number"], day, cache)) and sum(counts["1"]) + sum(counts["2"])}
+        print(f"{meta['name']}: {len(days)} days, {len(missing)} missing, {len(special)} special", file=sys.stderr)
         ways = osm_ways_near(meta["lat"], meta["lon"], cache)
         osm_match = match_station(meta, ways, project)
         setting = setting_of(buildings_near(meta["lat"], meta["lon"], cache))
         x_m, y_m = project(meta["lon"], meta["lat"])  # the game's coordinates: no projection at runtime
-        stations.append({**meta, "x_m": round(x_m, 1), "y_m": round(y_m, 1), "setting": setting, "missing_days": missing, "profile": profile(days), "osm_match": osm_match})
+        stations.append({**meta, "x_m": round(x_m, 1), "y_m": round(y_m, 1), "setting": setting, "missing_days": missing, "profile": profile(days, special), "osm_match": osm_match})
     complete = [s for s in stations if sum(s["profile"]["days_used"].values()) >= GROUP_MIN_DAYS]
     groups = {setting: {key: group_curve([s for s in complete if s["setting"] == setting], key)
                         for key in ("weekday_hourly", "weekend_hourly")} for setting in ("urban", "rural")}
+    for setting, group in groups.items():
+        group["special_hourly"] = {}
+        for key in SPECIAL_DAYS:
+            curves = [s["profile"]["special_hourly"][key] for s in complete
+                      if s["setting"] == setting and key in s["profile"]["special_hourly"]]
+            if curves:
+                group["special_hourly"][key] = [round(sum(c[h] for c in curves) / len(curves), 3) for h in range(24)]
     return {
         "schema_version": SCHEMA_VERSION,
         "source": "Fintraffic / digitraffic.fi, license CC 4.0 BY: TMS raw detections (lamraw), valid records only",
         "sample_weeks": [week.isoformat() for week in WEEKS],
+        "special_days": {key: day.isoformat() for key, day in SPECIAL_DAYS.items()},
         "convention": "hourly values are shares of the station's average weekday peak hour, local Finnish time",
         "groups": groups, "group_stations": [s["id"] for s in complete], "stations": stations,
     }

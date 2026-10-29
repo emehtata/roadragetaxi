@@ -166,6 +166,7 @@ def load_measured_curves(path: Path = LAM_PROFILES) -> Optional[dict]:
                 for month, factor in station["profile"]["month_factor"].items():
                     months.setdefault(int(month), []).append(factor)
             curves[setting] = {"weekday_hourly": group["weekday_hourly"], "weekend_hourly": group["weekend_hourly"],
+                               "special_hourly": group.get("special_hourly", {}),
                                "month_factor": _interpolated_months({m: sum(v) / len(v) for m, v in months.items()})}
             assert len(curves[setting]["weekday_hourly"]) == len(curves[setting]["weekend_hourly"]) == 24
         return curves
@@ -190,6 +191,7 @@ def load_station_curves(path: Path = LAM_PROFILES) -> list:
         data = json.loads(path.read_text(encoding="utf-8"))
         return [{"name": s["name"], "road": str(s["road_number"]), "x": s["x_m"], "y": s["y_m"],
                  "weekday_hourly": s["profile"]["weekday_hourly"], "weekend_hourly": s["profile"]["weekend_hourly"],
+                 "special_hourly": s["profile"].get("special_hourly", {}),
                  "month_factor": _interpolated_months({int(m): f for m, f in s["profile"]["month_factor"].items()})}
                 for s in data["stations"]
                 if s.get("road_number") is not None and sum(s["profile"]["days_used"].values()) >= STATION_MIN_DAYS
@@ -230,6 +232,19 @@ def is_public_holiday(day) -> bool:
     return day.month == 6 and (19 <= day.day <= 25 and day.weekday() == 4 or 20 <= day.day <= 26 and day.weekday() == 5)
 
 
+def special_day(day) -> Optional[str]:
+    """The key of a day with traffic of its own (tools/lam_profiles.py
+    SPECIAL_DAYS): the Midsummer weekend, its Saturday 20-26 June, and
+    Christmas, 23-27 December; else None."""
+    if day.month == 12 and 23 <= day.day <= 27:
+        return f"christmas_{day.day}"
+    if day.month == 6:
+        for key, saturday_offset in (("midsummer_eve", 1), ("midsummer_day", 0), ("midsummer_sunday", -1)):
+            if 20 <= day.day + saturday_offset <= 26 and day.weekday() == (5 - saturday_offset) % 7:
+                return key
+    return None
+
+
 def hour_demand(moment, urban: float = 1.0, station: Optional[dict] = None) -> float:
     """Traffic at `moment` as a share of a weekday peak hour; 1.0 without a
     clock. A measuring station's own curves (station_for_way); else measured
@@ -237,6 +252,12 @@ def hour_demand(moment, urban: float = 1.0, station: Optional[dict] = None) -> f
     (blended between); else the estimates."""
     if moment is None:
         return 1.0
+    special = special_day(moment)  # its own measured curve, volume included: no month factor on top
+    if special and station is not None and special in station["special_hourly"]:
+        return station["special_hourly"][special][moment.hour]
+    if special and MEASURED_CURVES is not None and all(special in MEASURED_CURVES[s]["special_hourly"] for s in ("urban", "rural")):
+        return sum(weight * MEASURED_CURVES[setting]["special_hourly"][special][moment.hour]
+                   for setting, weight in (("urban", urban), ("rural", 1.0 - urban)))
     free_day = moment.weekday() >= 5 or is_public_holiday(moment)
     key = "weekend_hourly" if free_day else "weekday_hourly"
     if station is not None:

@@ -166,3 +166,20 @@ def test_a_road_near_its_lam_station_takes_the_stations_own_curves():
 def test_one_sampled_month_keeps_the_estimated_month_factors():
     from theroadragetrip import population
     assert population._interpolated_months({10: 1.0}) == population.MONTH_FACTOR
+
+
+def test_the_midsummer_weekend_and_christmas_are_special_days():
+    from theroadragetrip.population import special_day
+
+    assert [special_day(datetime(2026, 6, d)) for d in (18, 19, 20, 21, 22)] == [
+        None, "midsummer_eve", "midsummer_day", "midsummer_sunday", None]
+    assert special_day(datetime(2027, 6, 25)) == "midsummer_eve"  # Saturday 26 June 2027
+    assert special_day(datetime(2026, 6, 26)) is None  # a Friday, but its Saturday is the 27th
+    assert [special_day(datetime(2025, 12, d)) for d in (22, 23, 27, 28)] == [None, "christmas_23", "christmas_27", None]
+
+
+def test_a_special_day_takes_its_own_curve_without_the_month_factor():
+    station = {"weekday_hourly": [0.5] * 24, "weekend_hourly": [0.4] * 24, "month_factor": {m: 2.0 for m in range(1, 13)},
+               "special_hourly": {"christmas_24": [0.1] * 24}}
+    assert hour_demand(datetime(2025, 12, 24, 12), station=station) == 0.1
+    assert hour_demand(datetime(2025, 12, 22, 12), station=station) == 1.0  # an ordinary Monday
