@@ -46,6 +46,7 @@ var _route_node: Node2D  # the navigation route, unshaded (_draw_route)
 var _people: Node2D
 var _overlay: Node2D
 var _people_rows: Array = []  # [position, heading, ped, animation time]
+var elves := PackedVector2Array()  # Christmas elves peeking right now (holiday_layer.gd): people in elf costume
 var _tennis_balls: Array = []
 var _beach_balls: Array = []  # interpolated position, height and drawing scale
 var _golf_rows: Array = []  # interpolated ball ground position, height, pin, holed
@@ -1096,6 +1097,8 @@ func _ellipse(c: Vector2, rx: float, ry: float, color: Color) -> void:
 
 
 const SANTA_HAT := [Vector2(0, -0.4), Vector2(0, 0.4), Vector2(-0.65, 0.3)]
+const ELF_HAT := [Vector2(0, -0.38), Vector2(0, 0.38), Vector2(-1.05, 0.42)]  # a tonttu's: longer, its tip drooping
+const ELF_RADIUS_M := 0.32  # a child's size: the people are 0.45
 
 ## A pedestrian: shadow, legs
 ## stepping with animation_time, body, head facing the heading; fallen ones
@@ -1127,7 +1130,8 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 	var radius := maxf(_px(4.0), ped.get("radius_m", 0.45))
 	var clothing: Color = _rgb(ped.get("color", [200, 200, 200]))
 	var santa: bool = ped.get("costume", "") == "santa"
-	if santa:
+	var elf: bool = ped.get("costume", "") == "elf"
+	if santa or elf:
 		clothing = Color8(190, 30, 35)
 	if ped.get("state", "") in INDOORS:
 		_canvas.draw_arc(c, radius, 0.0, TAU, 16, _person_lit(RS.PED_INDOORS), _px(1.0))
@@ -1179,6 +1183,12 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 			_canvas.draw_colored_polygon(PackedVector2Array(SANTA_HAT), _person_lit(clothing))
 			_canvas.draw_set_transform(Vector2.ZERO)
 			_circle(_canvas, tip, radius * 0.17, _person_lit(Color.WHITE))
+		elif elf:  # red clothes and a long red tonttu hat with a white brim and bobble, no beard
+			_canvas.draw_line(head - side * radius * 0.38, head + side * radius * 0.38, _person_lit(Color.WHITE), radius * 0.18)
+			_canvas.draw_set_transform(head, -heading, Vector2.ONE * radius)
+			_canvas.draw_colored_polygon(PackedVector2Array(ELF_HAT), _person_lit(clothing))
+			_canvas.draw_set_transform(Vector2.ZERO)
+			_circle(_canvas, head - h * radius * 1.05 + side * radius * 0.42, radius * 0.14, _person_lit(Color.WHITE))
 		if ped.get("activity", "") == "ice_hockey":
 			var goalie: bool = ped.get("hockey_goalie", false)
 			if goalie:  # leg pads, either side
@@ -1547,6 +1557,10 @@ func _draw_people() -> void:
 	for row in _people_rows:
 		_lit_tint = vehicle_light(light_level * float(light_at.call(row[0])), ambient)
 		_pedestrian(row[0], row[1], row[2], row[3])
+	for at in elves:  # standing, facing the camera (screen down)
+		_lit_tint = vehicle_light(light_level * float(light_at.call(at)), ambient)
+		_pedestrian(at, -PI / 2.0, {"costume": "elf", "radius_m": ELF_RADIUS_M, "animation_state": "standing", "color": [190, 30, 35]}, 0.0)
+	elves = PackedVector2Array()  # used once: the holiday layer hands the peeking ones over every frame
 	if not _puck_frame.is_empty():
 		_pucks(_puck_frame[0], _puck_frame[1], _puck_frame[2])
 	for row in _golf_rows:

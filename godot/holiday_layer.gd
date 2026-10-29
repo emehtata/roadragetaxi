@@ -5,6 +5,7 @@ extends Node
 const COLORS := [Color(1.0, 0.3, 0.2), Color(0.3, 0.8, 1.0), Color(1.0, 0.8, 0.2), Color(0.6, 1.0, 0.4)]
 var map_layer: Node2D
 var audio: Node  # AudioManager: the fireworks' whistles and bangs (main.gd sets it)
+var entities: Node  # entity_layer.gd: draws the peeking elves as people in elf costume (main.gd sets it)
 var yards := PackedVector2Array()
 var sites := PackedVector2Array()  # firework launch points in the view
 const SITE_CELL_M := 80.0
@@ -14,7 +15,6 @@ const CYCLE_S := 5.0  # rise, burst, then a short pause
 const MAX_SITES := 12
 const GHOST_CELL_M := 110.0
 const MAX_GHOSTS := 24
-const ELF_SCALE := 0.2  # the elf's shapes were laid out about 5 m tall: this makes it a ~1 m tonttu
 var clock := 0.0
 var _refresh := 0.0
 var _halloween := false
@@ -359,19 +359,17 @@ static func ghost_outline(phase: float) -> PackedVector2Array:
 
 
 func _draw_elves() -> void:
+	# The elves are people (entity_layer.gd, costume "elf"): this only says which are peeking now.
+	if entities == null:
+		return
+	var peeking := PackedVector2Array()
 	for at in elves:
 		var seed := hash(Vector2i(roundi(at.x), roundi(at.y)))
 		var period := 3.0 + posmod(seed, 7000) / 1000.0
 		var phase := fposmod(clock + posmod(seed / 7, 10000) / 1000.0, period)
-		if phase > 0.16:
-			continue
-		# A tonttu about a metre tall, smaller than the people (0.45 m radius): it was drawn five times that.
-		var s := ELF_SCALE
-		var peek := at + Vector2(0, -1.0) * s
-		elf_layer.draw_circle(peek, 1.0 * s, Color8(241, 190, 123))
-		elf_layer.draw_rect(Rect2(peek + Vector2(-0.85, 0.8) * s, Vector2(1.7, 2.0) * s), Color8(35, 132, 68))
-		elf_layer.draw_colored_polygon(PackedVector2Array([peek + Vector2(-1.1, -0.45) * s, peek + Vector2(0.7, -2.1) * s, peek + Vector2(1.2, -0.4) * s]), Color8(190, 40, 39))
-		elf_layer.draw_circle(peek + Vector2(0.3, 0) * s, 0.15 * s, Color8(35, 30, 28))
+		if phase <= 0.16:
+			peeking.append(at)
+	entities.elves = peeking
 
 
 func _update_ghosts(delta: float, walkers: Array[Vector2]) -> void:

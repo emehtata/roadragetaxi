@@ -160,6 +160,7 @@ func _ready() -> void:
 	add_child(holidays)
 	holidays.setup(map_layer)
 	holidays.audio = audio
+	holidays.entities = entities
 	entities.lamp_near = map_layer.lamp_near
 	entities.light_at = map_layer.light_at  # street light on the vehicles  # reflectors and long beams look up working street lights
 	entities.covered = map_layer.covered  # headlights under a higher road
