@@ -66,7 +66,7 @@ void fragment() {
 						highest = height;
 						vec3 crown;
 						if (forest) {
-							crown = species < 0.45 ? vec3(0.25, 0.34, 0.13) : (species < 0.8 ? vec3(0.08, 0.24, 0.12) : vec3(0.24, 0.42, 0.17));
+							crown = species < 0.45 ? vec3(0.12, 0.23, 0.08) : (species < 0.8 ? vec3(0.06, 0.17, 0.09) : vec3(0.24, 0.42, 0.17));
 							if (species >= 0.8) {
 								crown = mix(crown, vec3(0.67, 0.51, 0.13), autumn);
 							}

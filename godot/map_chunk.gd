@@ -1175,8 +1175,8 @@ func _draw_puddles(node: Node2D, z: int = 1) -> void:
 
 
 const TREE_CROWNS := {
-	"spruce": [Color8(14, 54, 20), Color8(18, 64, 24), Color8(24, 76, 30)],
-	"pine": [Color8(88, 108, 42), Color8(102, 122, 50), Color8(118, 136, 60)],
+	"spruce": [Color8(14, 45, 20), Color8(18, 52, 24), Color8(24, 61, 30)],
+	"pine": [Color8(38, 72, 27), Color8(45, 82, 30), Color8(53, 91, 35)],
 	"birch": [Color8(25, 78, 29), Color8(34, 101, 35), Color8(48, 119, 42), Color8(63, 112, 34)],
 }
 
@@ -1203,11 +1203,13 @@ func _draw_trees(node: Node2D) -> void:
 	for tree in _data.get("trees", []):
 		var at := MapMath.point(_origin, tree[0], tree[1])
 		var style := tree_style(str(tree[2]), float(tree[3]))
-		if _trees_leafless and str(tree[2]) == "birch":
+		var kind := str(tree[2])
+		if kind == "pine" or kind == "spruce":
+			style["crown"] = style["crown"].lerp(Color8(226, 234, 238), clampf(_season[0], 0.0, 1.0))
+		elif _trees_leafless and kind == "birch":
 			style["crown"] = Color8(91, 70, 48)
 		else:
 			style["crown"] = seasonal_color(style["crown"], _season)
-		style["crown"] = style["crown"].lerp(Color8(226, 234, 238), clampf(_season[0], 0.0, 1.0))
 		var radius := maxf(_px(2.0), style["radius"])
 		var key := obstacle_key(tree[0], tree[1])
 		if _fallen.has(key):
@@ -1217,7 +1219,7 @@ func _draw_trees(node: Node2D) -> void:
 			node.draw_line(at, tip, style["trunk"], maxf(_px(2.0), style["trunk_width"]))
 			node.draw_circle(tip, radius, style["crown"])
 			continue
-		if _trees_leafless and str(tree[2]) == "birch":
+		if _trees_leafless and kind == "birch":
 			var branch_color: Color = style["trunk"].darkened(0.12)
 			for branch in 4:
 				var angle := TAU * branch / 4.0 + 0.35

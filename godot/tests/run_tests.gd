@@ -2515,7 +2515,7 @@ func test_obstacles() -> void:
 
 	# Look: palette by variation, pine crowns smaller.
 	var pine := MapChunk.tree_style("pine", 0.25)
-	check(pine["crown"] == Color8(88, 108, 42) and is_equal_approx(pine["radius"], 1.9 * (0.72 + 0.25 * 0.62)), "a pine's crown")
+	check(pine["crown"] == Color8(38, 72, 27) and is_equal_approx(pine["radius"], 1.9 * (0.72 + 0.25 * 0.62)), "a dark-green pine crown")
 	check(MapChunk.tree_style("birch", 0.8)["trunk"] == Color8(222, 218, 206) and is_equal_approx(MapChunk.tree_style("birch", 0.8)["radius"], 2.2 * (0.72 + 0.8 * 0.62)), "a birch's crown and white trunk")
 
 	# Dashes: 1.5 m on, 1 m off, carried round a corner.
