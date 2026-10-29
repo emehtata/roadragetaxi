@@ -921,10 +921,13 @@ func _draw_ice_floe(node: Node2D, floe: Dictionary) -> void:
 	var polygon := PackedVector2Array()
 	for i in 10:
 		var angle := TAU * i / 10.0
-		polygon.append(floe["at"] + Vector2(cos(angle) * floe["rx"], sin(angle) * floe["ry"]).rotated(floe["angle"]))
+		polygon.append(Vector2(cos(angle) * floe["rx"], sin(angle) * floe["ry"]))
+	# Triangulate near zero: small plates lose precision at distant map coordinates.
+	node.draw_set_transform(floe["at"], floe["angle"])
 	node.draw_colored_polygon(polygon, floe["color"])
 	polygon.append(polygon[0])
 	node.draw_polyline(polygon, SPRING_ICE_EDGE, 0.18)
+	node.draw_set_transform(Vector2.ZERO)
 
 
 static func _surface_material() -> ShaderMaterial:
