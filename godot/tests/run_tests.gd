@@ -3159,6 +3159,10 @@ func test_fields_frozen() -> void:
 	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500]})
 	var chunk = map._chunks["0_0"]
 	check(not chunk.fields_frozen(), "old server fallback: snowless ground is not frozen")
+	chunk.set_trees_leafless(true)
+	check(chunk._trees_leafless, "winter state can bare deciduous trees independently of snow cover")
+	chunk.set_trees_leafless(false)
+	check(not chunk._trees_leafless, "deciduous trees regain leaves outside thermal winter")
 	map.set_fields_frozen(true)
 	check(chunk.fields_frozen() and chunk._season[0] == 0.0, "a maintained winter field can be ice without ground snow")
 	map.set_season([0.1, 0.0, 0.0, 0.9])

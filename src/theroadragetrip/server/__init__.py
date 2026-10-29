@@ -35,7 +35,6 @@ from ..police import SpeedCameraSpawner
 from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer, prepare_initial_window
 from ..protocol import LOCAL_PLAYER_ID
-from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
 from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_position_on, grid_azimuth
 from ..career import career_path, gig_odometer_path, load_career
 from ..arena_crowds import GAME_DURATION
@@ -55,6 +54,7 @@ from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observa
 from ..weather_history import WeatherHistory, gradual_weather, precipitation_from_observation, game_time_to_utc_hour
 from ..calendar import clamp_start_datetime, finnish_local_time
 from ..osm import CACHE_DIR
+from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
 from ..climate import appearance_with_snow_depth, typical_temperature
 
 logger = logging.getLogger(__name__)
@@ -622,6 +622,7 @@ class SimulationServer:
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": season,
                 "fields_frozen": self.world.fields_frozen,
+                "trees_leafless": self.calendar.season.value == "winter",
                 "sun_altitude_deg": round(altitude, 2), "sun_azimuth_deg": round(azimuth, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
                 "moon_altitude_deg": round(moon_altitude, 2), "moon_azimuth_deg": round(moon_azimuth, 2),
                 "moon_illumination": round(moon_illumination, 3),

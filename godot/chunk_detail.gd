@@ -55,10 +55,10 @@ static func draw_areas(chunk, node: Node2D, key: String, canopy_margin := 0.0) -
 				uv.resize(polygon.size())
 				uv.fill(Vector2(-float(area[4]), 0.0))
 				node.draw_polygon(polygon, PackedColorArray([color]), uv)
-			elif canopy >= 0:  # forest.gdshader: UV.x 1 + kind * 2 + winter, UV.y autumn
+			elif canopy >= 0:  # forest.gdshader: UV.x 1 + kind * 2 + snow, UV.y autumn + 2 in leafless winter
 				var uv := PackedVector2Array()
 				uv.resize(polygon.size())
-				uv.fill(Vector2(1.0 + canopy * 2.0 + float(chunk._season[0]), float(chunk._season[3])))
+				uv.fill(Vector2(1.0 + canopy * 2.0 + float(chunk._season[0]), float(chunk._season[3]) + (2.0 if chunk._trees_leafless else 0.0)))
 				node.draw_polygon(polygon, PackedColorArray([color]), uv)
 				if canopy == 2 and canopy_margin == 0.0 and chunk.forest_canopy:  # the ground layer of a bog
 					if not chunk._wetland_spots.has(index):

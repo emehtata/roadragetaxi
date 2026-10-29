@@ -90,6 +90,7 @@ var _heads := Node2D.new()
 var _broken := PackedInt32Array()  # indices of this chunk's street lights that are knocked down
 var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state calendar.season)
 var _fields_frozen = null  # explicit server ice state; old servers use the winter weight
+var _trees_leafless := false
 var _season_layers: Array[Node2D] = []  # landuse and islands: their green kinds follow the season
 var _site_details := {}  # area index -> cached decorative positions; snow redraws only change colours
 var _signs: Node2D = null  # signs and speed cameras, if any
@@ -824,6 +825,16 @@ func set_fields_frozen(frozen: bool) -> void:
 		node.queue_redraw()
 
 
+func set_trees_leafless(leafless: bool) -> void:
+	if _trees_leafless == leafless:
+		return
+	_trees_leafless = leafless
+	if _trees != null:
+		_trees.queue_redraw()
+	for node in _season_layers:
+		node.queue_redraw()
+
+
 ## The season's weights (state calendar.season): water, trees and their
 ## colours follow (water freezes to ice). They change about once a game day, not with the clock.
 func set_season(weights: Array) -> bool:
@@ -1192,7 +1203,11 @@ func _draw_trees(node: Node2D) -> void:
 	for tree in _data.get("trees", []):
 		var at := MapMath.point(_origin, tree[0], tree[1])
 		var style := tree_style(str(tree[2]), float(tree[3]))
-		style["crown"] = seasonal_color(style["crown"], _season)
+		if _trees_leafless and str(tree[2]) == "birch":
+			style["crown"] = Color8(91, 70, 48)
+		else:
+			style["crown"] = seasonal_color(style["crown"], _season)
+		style["crown"] = style["crown"].lerp(Color8(226, 234, 238), clampf(_season[0], 0.0, 1.0))
 		var radius := maxf(_px(2.0), style["radius"])
 		var key := obstacle_key(tree[0], tree[1])
 		if _fallen.has(key):
@@ -1201,6 +1216,19 @@ func _draw_trees(node: Node2D) -> void:
 			var tip := at + Vector2(cos(_fallen[key]), -sin(_fallen[key])) * 3.2
 			node.draw_line(at, tip, style["trunk"], maxf(_px(2.0), style["trunk_width"]))
 			node.draw_circle(tip, radius, style["crown"])
+			continue
+		if _trees_leafless and str(tree[2]) == "birch":
+			var branch_color: Color = style["trunk"].darkened(0.12)
+			for branch in 4:
+				var angle := TAU * branch / 4.0 + 0.35
+				var tip := at + Vector2(cos(angle), sin(angle)) * radius * 0.72
+				crowns.polyline(PackedVector2Array([at, tip]), branch_color, maxf(_px(0.25), 0.16))
+			if _season[0] > 0.0:
+				var snow_crown := PackedVector2Array()
+				for side in 8:
+					var angle := TAU * side / 8.0
+					snow_crown.append(Vector2(cos(angle), sin(angle)) * radius)
+				crowns.polygon(snow_crown, Color8(226, 234, 238).lerp(branch_color, 0.25 * (1.0 - _season[0])), at)
 			continue
 		rng.seed = hash(key)
 		var crown := PackedVector2Array()

@@ -20,7 +20,8 @@ void fragment() {
 	if (UV.x > 0.5) {
 		float kind = floor((UV.x - 1.0) * 0.5);
 		float winter = clamp(UV.x - 1.0 - 2.0 * kind, 0.0, 1.0);
-		float autumn = UV.y;
+		bool leafless_winter = UV.y >= 2.0;
+		float autumn = mod(UV.y, 2.0);
 		bool forest = kind < 0.5;
 		bool scrub = kind > 0.5 && kind < 1.5;
 		// Each kind its own mask channel: a crown is drawn only where its centre is its own kind.
@@ -84,8 +85,17 @@ void fragment() {
 						float light = 0.72 + relief * (1.0 - distance / edge) - dot(offset / radius, vec2(0.11, 0.14));
 						crown *= light * (0.88 + seed.x * 0.24);
 						float snow = winter * (0.5 + 0.4 * max(0.0, 1.0 - distance / edge));
-						crown = mix(crown, vec3(0.82, 0.88, 0.88), snow);
-						coverage = 1.0 - smoothstep(edge - aa, edge + aa, distance);
+						bool bare_birch = leafless_winter && forest && species >= 0.8;
+						if (bare_birch) {
+							float branches = abs(sin(angle * 4.0 + seed.x * 6.28)) * distance;
+							float branch_coverage = 1.0 - smoothstep(0.10 + pixel_size * 0.35, 0.16 + pixel_size * 0.35, branches);
+							float snow_crown = winter * (1.0 - smoothstep(edge - aa, edge + aa, distance));
+							coverage = max(branch_coverage, snow_crown);
+							crown = mix(vec3(0.22, 0.17, 0.13), vec3(0.82, 0.88, 0.88), winter);
+						} else {
+							crown = mix(crown, vec3(0.82, 0.88, 0.88), snow);
+							coverage = 1.0 - smoothstep(edge - aa, edge + aa, distance);
+						}
 						color = crown;
 					}
 				}

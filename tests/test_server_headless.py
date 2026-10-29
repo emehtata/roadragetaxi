@@ -662,6 +662,8 @@ def test_the_season_weights_come_from_the_calendar(tmp_path, monkeypatch):
     assert winter[0] > 0.9 and summer[2] > 0.9  # [winter, spring, summer, autumn]
     look = server.calendar.seasonal_appearance
     assert summer == [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]
+    server.calendar.current = datetime(2025, 12, 24, 14)
+    assert server.calendar_state()["trees_leafless"]
 
 
 def test_measured_snow_depth_decides_the_snow_cover(tmp_path, monkeypatch):
