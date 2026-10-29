@@ -1603,7 +1603,7 @@ def test_crashed_subject_still_stops_a_moving_npc_candidate():
     manager.vehicles.extend([wreck, moving])
     pedestrian_mgr = PedestrianManager([], target_count=0)
     manager._trigger_vehicle_accident(wreck, residents, pedestrian_mgr, sim_time=50.0)
-    moving.car.speed = 12.0
+    moving.car.speed = 20.0
 
     assert manager._check_vehicle_collision(
         wreck, [moving], residents, pedestrian_mgr, sim_time=51.0,
