@@ -500,7 +500,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		out["stats"]["windows"] += count * (ceili(floors / 2.0) if category == 1 else floors)
 		_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), wall_shade, to_3d(normal), "verts",
 			PackedVector2Array([Vector2(0.0, 0.0), Vector2(length, 0.0), Vector2(length, height), Vector2(0.0, height)]),
-			Vector4(length, height / floors, count + 16 * category, seed_base + i * 7.13))
+			Vector4(length, height / floors, count + 1000 * category, seed_base + i * 7.13))
 	_doors(out, footprint, style[3] if style.size() > 3 else [], outward_sign, height, floors, origin)
 	_shadow_prism(out["shadow"], footprint, height)
 	if gabled:
@@ -641,12 +641,16 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, h
 				_quad(out, to_3d(p0 + o, bottom), to_3d(p1 + o, bottom), to_3d(p1 + o, bottom + tall), to_3d(p0 + o, bottom + tall), color, to_3d(normal), "arena")
 
 
-## Windows per floor on a wall `length` long: none on a short wall or a plain one.
+## Windows per floor on a wall `length` long (the shader's bays): a ~3 m bay in
+## town (Oulu's Valkea talo), 4.5 m on a house; none on a short or plain wall.
+const WINDOW_BAY_M := 3.0
+const HOUSE_WINDOW_BAY_M := 4.5
+
+
 static func window_count(length: float, category: int) -> int:
-	if length < 12.0 / 9.0 or category == CATEGORY_WALL:
+	if length < 1.5 or category == CATEGORY_WALL:
 		return 0
-	var house := category == 1
-	return clampi(int(length / ((44.0 if house else 32.0) / 9.0)), 1, 2 if house else 3)
+	return maxi(1, roundi(length / (HOUSE_WINDOW_BAY_M if category == 1 else WINDOW_BAY_M)))
 
 
 static func unit_lit(seed: float, storefront: bool, category: int) -> bool:
