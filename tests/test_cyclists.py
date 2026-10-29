@@ -440,3 +440,27 @@ def test_cyclists_meeting_on_a_narrow_path_pass_each_other():
     west = world.cyclist((120, 0), (0, 0))
     assert world.tick(40, until=lambda: east.x > 80 and west.x < 40)
     assert NPCState.CRASHED not in (east.state, west.state)
+
+
+def test_a_cyclist_past_a_hairpin_rides_on_instead_of_circling():
+    """Reported: a cyclist circling on the spot, through a building. Recorded in
+    Oulu: a 2.2 m leg, then the route turning back ~160 degrees (a service road
+    onto a cycle path). Steering a few metres ahead it turned early, inside the
+    corner; its projection on the short leg never reached the leg's end, so the
+    leg never advanced and it circled the fixed aim point at riding speed."""
+    from theroadragetrip.cycling import CycleRoute
+    points = [(6.4, 8.1), (0.4, -1.1), (1.7, -2.9), (-15.4, 8.9), (-27.9, 17.6), (-38.0, 23.8)]
+    ways = [_way([points[0], points[1], points[2]], "service"), _way(points[2:], "cycleway")]
+    world = _World(ways + [_way([(0, 200), (150, 200)], "cycleway")])
+    bike = world.cyclist((0, 200), (150, 200))  # a ride to set it up; its route is replaced by the recorded one
+    driver = world.manager.drivers[bike.vehicle_id]
+    driver.cycle = CycleRoute(points, [ways[0], ways[0], ways[1], ways[1], ways[1]], [], 4.5)
+    driver.path_index = 1
+    bike.car.x, bike.car.y = points[0]
+    bike.car.heading = math.atan2(points[1][1] - points[0][1], points[1][0] - points[0][0])
+    bike.car.speed = 4.0
+    for _ in range(int(30 / DT)):
+        world.tick(DT)
+        if math.dist((bike.x, bike.y), points[4]) < 3.0:
+            break
+    assert math.dist((bike.x, bike.y), points[4]) < 3.0  # past the hairpin and on along the cycle path

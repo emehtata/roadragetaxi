@@ -26,7 +26,7 @@ import math
 import random
 from typing import List, Optional, Tuple
 
-from .geo import angle_diff
+from .geo import angle_diff, dist_point_to_segment
 from .map_level import SURFACE_LEVEL, on_map_level
 from .physics import is_car_road
 
@@ -265,6 +265,16 @@ def _progress(route: CycleRoute, index: int, x: float, y: float) -> float:
     return route.cum[index - 1] + max(0.0, min(1.0, t)) * length
 
 
+def _nearer_next_leg(route: CycleRoute, index: int, x: float, y: float) -> bool:
+    """The rider is nearer the next leg than this one: it has turned onto it.
+    Steering a few metres ahead it turns early at a sharp corner, inside it;
+    after a short leg its projection may never reach the leg's end (Oulu: a
+    2.2 m leg, then ~160 degrees back), and the leg never advanced - it
+    circled the aim point beyond the corner for good."""
+    a, b, c = route.points[index - 1], route.points[index], route.points[index + 1]
+    return dist_point_to_segment(x, y, *b, *c) < dist_point_to_segment(x, y, *a, *b)
+
+
 def point_at(route: CycleRoute, s: float) -> Tuple[float, float]:
     s = max(0.0, min(route.length_m, s))
     import bisect
@@ -474,7 +484,7 @@ def update_cyclist(vehicle, driver, dt: float, traffic_world, obstacles, pedestr
     car = vehicle.car
     index = max(1, min(len(route.points) - 1, driver.path_index))
     s_now = _progress(route, index, car.x, car.y)
-    while index < len(route.points) - 1 and s_now >= route.cum[index] - 0.3:
+    while index < len(route.points) - 1 and (s_now >= route.cum[index] - 0.3 or _nearer_next_leg(route, index, car.x, car.y)):
         index += 1
         s_now = _progress(route, index, car.x, car.y)
     driver.path_index = index
