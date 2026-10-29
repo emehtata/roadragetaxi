@@ -1142,7 +1142,7 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 	if ped.get("animation_state", "") in ["sunbathing", "swimming"]:
 		_beach_person(c, h, side, radius, clothing, ped["animation_state"] == "swimming", animation_time)
 		return
-	_ellipse(c + down * 0.675, radius * 0.8, radius * 0.325, RS.PED_SHADOW)
+	_ellipse(c + down * 0.675, radius * 0.66, radius * 0.325, RS.PED_SHADOW)  # inside the body's outline: wider read as unturning hands
 	if ped.get("animation_state", "") == "riding":
 		_canvas.draw_set_transform(c, -heading)
 		_canvas.draw_rect(Rect2(Vector2(-radius * 1.7, -radius * 1.1), Vector2(radius * 3.4, radius * 2.2)), _person_lit(Color8(224, 93, 46)))
