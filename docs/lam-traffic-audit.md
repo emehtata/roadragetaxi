@@ -379,3 +379,22 @@ The original command, for reference:
 
 then record the weekday/weekend MAE, crossings a day, direction split and
 tick times here, and repeat for a rural station (vt5 Kuusamo, kt86 Liminka).
+
+### Why Kaukovainio counts nothing (2026-10-29)
+
+Short probes (one game hour, player parked at the station): the station
+point and bearing are right - matched ways 52597865 and 580071943 (vt22,
+one-way carriageways) run NW-SE through it. The demand side works too:
+`traffic_demand` shows `lam_station: vt22_Oulu_Kaukovainio`, hour 0.83 at
+07:00, moving target 15.
+
+But no NPC drives on vt22. Every vehicle that starts moving is on a service,
+residential, cycleway or path way. Passing traffic (`_transit_spawn_steps`)
+picks a random route node 110-220 m from the player and drives a short
+60-220 m trip through the player's spot. Nothing favours the trunk road,
+and freeway spawns are also rejected near lights and signs. So the LAM curve
+scales how many cars move, not where they move: the detector cannot see it.
+
+Next: spawn passing traffic on the player's road class (or the
+station's matched ways) in proportion to the `through` share, then rerun
+the one-hour probe before any full-day run.
