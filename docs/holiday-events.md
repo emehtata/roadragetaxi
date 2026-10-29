@@ -34,3 +34,9 @@ the bulbs and their faint glow share two drawing batches. In the 3D building
 mode, eaves use the same camera projection and height as the buildings. The flat
 2D mode uses footprint edges. Light placement stays fixed as the camera moves.
 No additional map downloads or cache format changes are needed.
+
+Window stars use independent, stable per-window values for size and lamp
+warmth, ranging from amber through warm white to cool white. Their five-point
+silhouettes fit inside the glass and retain the existing red or white paper.
+Run `godot --path godot --script res://tests/christmas_star_render.gd` with a
+rendering display to check size, colour variation and frame stability.

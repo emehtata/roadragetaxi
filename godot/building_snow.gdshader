@@ -44,19 +44,29 @@ vec3 fabric(float pick) {
 		: pick < 0.75 ? vec3(0.62, 0.30, 0.22) : pick < 0.9 ? vec3(0.42, 0.50, 0.60) : vec3(0.40, 0.52, 0.38);
 }
 
+// A star lamp's own light: amber incandescent through warm white to cool LED.
+vec3 star_light(float pick) {
+	return pick < 0.7 ? mix(vec3(1.0, 0.58, 0.25), vec3(1.0, 0.88, 0.65), pick / 0.7)
+		: mix(vec3(1.0, 0.88, 0.65), vec3(0.78, 0.88, 1.0), (pick - 0.7) / 0.3);
+}
+
 // A Finnish window's Christmas: an Advent candle bridge (kynttelikkö, seven
 // candles in a triangle on the sill) or a paper star lamp (joulutähti) in
 // the top of the window. `p`: metres from the window's bottom centre; `size`:
 // its half width and height. The glow's strength (0 none) and colour.
-vec4 decoration(vec2 p, vec2 size, float kind, float tint, float night) {
+vec4 decoration(vec2 p, vec2 size, float kind, float tint, float size_pick, float temperature, float night) {
 	if (kind < 0.4) {  // a star, red or white
 		vec2 c = p - vec2(0.0, size.y * 0.68);
-		float r = min(size.x * 0.6, size.y * 0.24);
-		float a = atan(c.y, c.x) + 1.5708;
-		float edge = r * (0.55 + 0.45 * abs(cos(2.5 * a)));
+		float r = min(size.x * 0.75, size.y * 0.3) * mix(0.55, 1.0, size_pick);
+		float a = atan(c.y, c.x) - radians(90.0);
+		float half_sector = radians(36.0);
+		float sector = abs(mod(a + half_sector, half_sector * 2.0) - half_sector);
+		// Ray intersection with a straight edge between an outer tip and inner corner.
+		vec2 corner = vec2(cos(half_sector), sin(half_sector)) * 0.45;
+		float edge = r * corner.y / (corner.y * cos(sector) + (1.0 - corner.x) * sin(sector));
 		if (length(c) <= edge) {
 			vec3 paper = tint < 0.6 ? vec3(0.85, 0.12, 0.08) : vec3(0.95, 0.93, 0.86);
-			return vec4(mix(paper * 0.8, paper * 1.25 + vec3(0.15, 0.1, 0.0), night), 1.0);
+			return vec4(mix(paper * 0.8, paper * star_light(temperature) * 1.2, night), 1.0);
 		}
 		return vec4(0.0);
 	}
@@ -149,7 +159,8 @@ void fragment() {
 			}
 			if (decorations > 0.5 && window_hash(wall.w, f, w, 6u) < (storefront ? 0.4 : 0.25)) {
 				vec4 deco = decoration(vec2(across, up - bottom), vec2(half_width, top - bottom),
-					window_hash(wall.w, f, w, 7u), window_hash(wall.w, f, w, 8u), lit_level);
+					window_hash(wall.w, f, w, 7u), window_hash(wall.w, f, w, 8u),
+					window_hash(wall.w, f, w, 10u), window_hash(wall.w, f, w, 11u), lit_level);
 				glass = mix(glass, deco.rgb * mix(ambient.rgb, vec3(1.0), lit_level), deco.a);  // its own light at night
 			}
 			if (independence_candles > 0.5 && window_hash(wall.w, f, w, 9u) < (storefront ? 0.2 : 0.7)) {
