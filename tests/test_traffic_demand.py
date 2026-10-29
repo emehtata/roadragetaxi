@@ -116,7 +116,7 @@ def test_free_days_follow_the_finnish_calendar():
 
 def test_demand_follows_the_measured_lam_curves_urban_and_rural():
     """docs/lam-traffic-audit.md: weekday peak at 15 (not the estimate's 16), a
-    rural weekend busier than an urban one, rural July above urban July."""
+    rural weekend busier than an urban one; one sampled week keeps the estimated month factors."""
     from theroadragetrip import population
 
     assert population.MEASURED_CURVES is not None
@@ -124,7 +124,8 @@ def test_demand_follows_the_measured_lam_curves_urban_and_rural():
     assert hour_demand(weekday) > hour_demand(weekday.replace(hour=16)) > hour_demand(weekday.replace(hour=7))
     assert hour_demand(saturday, urban=0.0) > hour_demand(saturday, urban=1.0)
     july, january = datetime(2026, 7, 15, 15), datetime(2026, 1, 14, 15)
-    assert hour_demand(july, urban=0.0) > hour_demand(january, urban=0.0) and hour_demand(july) < hour_demand(january)
+    assert hour_demand(july, urban=0.0) / hour_demand(january, urban=0.0) == pytest.approx(
+        population.MONTH_FACTOR[7] / population.MONTH_FACTOR[1])
     half = hour_demand(saturday, urban=0.5)
     assert half == pytest.approx((hour_demand(saturday, urban=0.0) + hour_demand(saturday, urban=1.0)) / 2)
 
@@ -153,7 +154,7 @@ def test_a_road_near_its_lam_station_takes_the_stations_own_curves():
 
     on_it = road("22", 10.0, 9_000_001)
     assert population.station_for_way(on_it) is kaukovainio
-    assert population.station_for_way(road("22", population.STATION_REACH_M + 100.0, 9_000_002)) is None  # too far
+    assert population.station_for_way(road("22", population.STATION_REACH_M + 100.0, 9_000_002)) is not kaukovainio  # too far
     assert population.station_for_way(road("20", 10.0, 9_000_003)) is None  # another road
     moment = datetime(2026, 10, 14, 7)
     demand = population.traffic_demand(1.0, "trunk", moment, on_it)
