@@ -1169,6 +1169,12 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 			_canvas.draw_line(leg_start, leg_end, _person_lit(RS.PED_LEGS), maxf(_px(1.0), radius * 0.28))
 		_ellipse(c + down * 0.425, radius * 0.72, radius * 0.775, RS.PED_SHADOW)
 		_ellipse(c + down * 0.405, radius * 0.58, radius * 0.625, clothing)
+		if not ped.get("activity", "") in ["ice_hockey", "beach_volleyball", "brawl", "tennis"] and not ped.has("golf"):
+			for arm_side: float in [-1.0, 1.0]:  # swinging against the legs; those activities draw their own arms
+				var shoulder := c + side * radius * 0.5 * arm_side + down * 0.3
+				var hand := shoulder + side * radius * 0.12 * arm_side + h * radius * (-0.05 - gait * 0.4 * arm_side)
+				_canvas.draw_line(shoulder, hand, _person_lit(clothing.darkened(0.15)), maxf(_px(1.0), radius * 0.22))
+				_circle(_canvas, hand, maxf(_px(0.8), radius * 0.13), _person_lit(RS.PED_HEAD))
 		var head := c + h * radius * 0.6
 		_circle(_canvas, head, maxf(_px(2.0), radius * 0.48), _person_lit(RS.PED_HAIR))
 		_circle(_canvas, head, maxf(_px(1.0), radius * 0.35), _person_lit(RS.PED_HEAD))
