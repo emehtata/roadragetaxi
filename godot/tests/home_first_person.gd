@@ -115,6 +115,17 @@ func _run() -> void:
 	view.capture_mouse()
 	if DisplayServer.get_name() != "headless":
 		check(Input.mouse_mode == Input.MOUSE_MODE_CAPTURED, "entry captures cursor")
+		for scale in [1.0, 9.0, 24.0]:
+			var motion := InputEventMouseMotion.new()
+			motion.relative = Vector2(10, 4)
+			motion.screen_relative = Vector2(10, 4)
+			var transformed: InputEventMouseMotion = motion.xformed_by(Transform2D.IDENTITY.scaled(Vector2.ONE * scale))
+			p.head.rotation.x = 0
+			var yaw: float = p.rotation.y
+			for step in 5:
+				view.handle_input(transformed)
+			check(is_equal_approx(p.rotation.y, yaw - 50.0 * p.mouse_sensitivity), "repeated mouse yaw is independent of viewport scale")
+			check(is_equal_approx(p.head.rotation.x, -20.0 * p.mouse_sensitivity), "mouse pitch uses screen pixels once")
 	view.set_paused(true)
 	check(not p.controls_enabled and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "pause releases cursor and movement")
 	view.set_paused(false)

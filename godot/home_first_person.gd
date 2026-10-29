@@ -153,7 +153,7 @@ func handle_input(event: InputEvent) -> bool:
 		return false
 	if event is InputEventMouseMotion:
 		if player.controls_enabled and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-			player.look(event.relative)
+			player.look(event.screen_relative)  # captured look must ignore viewport/camera scaling
 		return true
 	if event is InputEventMouseButton:
 		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
