@@ -247,6 +247,46 @@ func holiday_yards(view: Rect2, limit := 64) -> PackedVector2Array:
 	return result
 
 
+func holiday_hiding_spots(view: Rect2, limit := 48) -> PackedVector2Array:
+	var result := PackedVector2Array()
+	var scanned := 0
+	for chunk in _chunks.values():
+		if not view.intersects(chunk._bounds_rect):
+			continue
+		for tree in chunk._data.get("trees", []):
+			scanned += 1
+			if scanned > 2048:  # shortcut: cap scenery search; index it if dense maps miss visible elves.
+				return result
+			var at := MapMath.point(origin, tree[0], tree[1])
+			if posmod(hash(Vector2i(roundi(tree[0]), roundi(tree[1]))), 5) == 0:
+				at += Vector2(2.0, -1.0)
+				if view.has_point(at):
+					result.append(at)
+					if result.size() >= limit:
+						return result
+		for building in chunk._data.get("buildings", []):
+			scanned += 1
+			if scanned > 2048:
+				return result
+			if building.is_empty():
+				continue
+			var centre := Vector2.ZERO
+			for point in building:
+				centre += point
+			centre /= building.size()
+			var key := Vector2i(roundi(centre.x), roundi(centre.y))
+			var h := hash(key)
+			if posmod(h, 8) != 0:
+				continue
+			var edge: Vector2 = building[posmod(h / 8, building.size())]
+			var at := edge + (edge - centre).normalized() * 2.0
+			if view.has_point(at):
+				result.append(at)
+				if result.size() >= limit:
+					return result
+	return result
+
+
 func has_chunk(chunk_id: String) -> bool:
 	return _chunks.has(chunk_id)
 

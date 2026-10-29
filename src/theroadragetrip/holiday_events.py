@@ -14,6 +14,7 @@ def holiday_events(moment):
         "fireworks": (day == (12, 31) and moment.hour >= 18) or (day == (1, 1) and moment.hour < 2),
         "halloween": halloween,
         "halloween_ghosts": halloween and (moment.hour >= 20 or moment.hour < 6),
+        "christmas": day[0] == 12 and 1 <= day[1] <= 24,
         "santas": day == (12, 24),
     }
 

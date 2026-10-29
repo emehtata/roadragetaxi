@@ -346,7 +346,10 @@ func test_light_at_cells() -> void:
 func test_holiday_events() -> void:
 	var map := MapLayer.new()
 	root.add_child(map)
-	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "holiday_yards": [[20, 20], [40, 40]]})
+	var trees := []
+	for i in 100:
+		trees.append([i * 3.0, 80.0, "pine", 0.5])
+	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "holiday_yards": [[20, 20], [40, 40]], "trees": trees})
 	var view := Rect2(0, -100, 100, 100)
 	check(map.holiday_yards(view).size() == 2, "holiday yards: server points in world coordinates")
 	check(map.holiday_yards(view, 1).size() == 1, "holiday yards: bounded count")
@@ -367,6 +370,10 @@ func test_holiday_events() -> void:
 	events.update(0.016, state, view, false)
 	check(not events.decorations.visible and events.bursts.visible, "New Year: only fireworks")
 	check(not events.sites.is_empty() and events.yards.is_empty(), "New Year: fireworks rise over the town, no yard query")
+	state.calendar.holidays = {"christmas": true}
+	events.update(0.016, state, town, false)
+	check(events.elf_layer.visible and not events.elves.is_empty(), "Christmas: elves hide around trees and flash")
+	check(map.holiday_hiding_spots(Rect2(1000, 1000, 10, 10)).is_empty(), "Christmas elves: cull sites outside the view")
 	var sites: PackedVector2Array = events.firework_sites(town)
 	check(sites.size() == 12 and sites == events.firework_sites(town), "fireworks: at most 12 sites, the same ones every refresh")
 	var all_in := true

@@ -19,10 +19,13 @@ var _refresh := 0.0
 var _halloween := false
 var _fireworks := false
 var _ghosts := false
+var _christmas := false
 var decorations: Node2D
 var ghost_layer: Node2D
+var elf_layer: Node2D
 var bursts: Node2D
 var ghosts := PackedVector2Array()
+var elves := PackedVector2Array()
 
 
 func setup(world: Node2D) -> void:
@@ -37,6 +40,11 @@ func setup(world: Node2D) -> void:
 	ghost_layer.material = preload("res://emissive.tres")
 	ghost_layer.draw.connect(_draw_ghosts)
 	world.add_child(ghost_layer)
+	elf_layer = Node2D.new()
+	elf_layer.z_index = 12  # brief peeks over the trees and roofs hiding them
+	elf_layer.material = preload("res://emissive.tres")
+	elf_layer.draw.connect(_draw_elves)
+	world.add_child(elf_layer)
 	bursts = Node2D.new()
 	bursts.z_index = 30  # sky above buildings, without illuminating roofs
 	bursts.material = preload("res://emissive.tres")
@@ -44,6 +52,7 @@ func setup(world: Node2D) -> void:
 	world.add_child(bursts)
 	decorations.hide()
 	ghost_layer.hide()
+	elf_layer.hide()
 	bursts.hide()
 
 
@@ -52,18 +61,22 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 	var events: Dictionary = calendar.get("holidays", {})
 	var halloween: bool = not underground and events.get("halloween", false)
 	var ghost_season: bool = not underground and events.get("halloween_ghosts", false)
+	var christmas: bool = not underground and events.get("christmas", false)
 	var fireworks: bool = not underground and events.get("fireworks", false)
-	var changed := halloween != _halloween or fireworks != _fireworks or ghost_season != _ghosts
+	var changed := halloween != _halloween or fireworks != _fireworks or ghost_season != _ghosts or christmas != _christmas
 	_halloween = halloween
 	_fireworks = fireworks
 	_ghosts = ghost_season
+	_christmas = christmas
 	decorations.visible = halloween
 	ghost_layer.visible = ghost_season
+	elf_layer.visible = christmas
 	bursts.visible = fireworks
-	if not halloween and not fireworks and not ghost_season:
+	if not halloween and not fireworks and not ghost_season and not christmas:
 		yards.clear()
 		sites.clear()
 		ghosts.clear()
+		elves.clear()
 		return
 	clock += delta
 	_refresh -= delta
@@ -73,11 +86,15 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 		sites = firework_sites(view.grow(40.0)) if fireworks else PackedVector2Array()
 		if ghost_season and (ghosts.is_empty() or not view.has_point(ghosts[0])):
 			ghosts = ghost_sites(view.grow(20.0))
+		elves = map_layer.holiday_hiding_spots(view.grow(50.0)) if christmas else PackedVector2Array()
 		decorations.queue_redraw()
 		ghost_layer.queue_redraw()
+		elf_layer.queue_redraw()
 	if ghost_season:
 		_update_ghosts(delta, walkers)
 		ghost_layer.queue_redraw()
+	if christmas:
+		elf_layer.queue_redraw()
 	if fireworks:
 		bursts.queue_redraw()
 		if audio != null:
@@ -110,6 +127,20 @@ func _draw_ghosts() -> void:
 		ghost_layer.draw_rect(Rect2(at + Vector2(-2.5, -3.5), Vector2(5.0, 3.5)), Color(0.8, 0.9, 1.0, 0.58))
 		for side: float in [-0.35, 0.35]:
 			ghost_layer.draw_circle(at + Vector2(side * 2.0, -3.8), 0.3, Color(0.15, 0.2, 0.35, 0.9))
+
+
+func _draw_elves() -> void:
+	for at in elves:
+		var seed := hash(Vector2i(roundi(at.x), roundi(at.y)))
+		var period := 3.0 + posmod(seed, 7000) / 1000.0
+		var phase := fposmod(clock + posmod(seed / 7, 10000) / 1000.0, period)
+		if phase > 0.16:
+			continue
+		var peek := at + Vector2(0, -1.0)
+		elf_layer.draw_circle(peek, 1.0, Color8(241, 190, 123))
+		elf_layer.draw_rect(Rect2(peek + Vector2(-0.85, 0.8), Vector2(1.7, 2.0)), Color8(35, 132, 68))
+		elf_layer.draw_colored_polygon(PackedVector2Array([peek + Vector2(-1.1, -0.45), peek + Vector2(0.7, -2.1), peek + Vector2(1.2, -0.4)]), Color8(190, 40, 39))
+		elf_layer.draw_circle(peek + Vector2(0.3, 0), 0.12, Color8(35, 30, 28))
 
 
 func _update_ghosts(delta: float, walkers: Array[Vector2]) -> void:

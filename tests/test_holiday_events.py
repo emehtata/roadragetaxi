@@ -30,9 +30,12 @@ def test_halloween_season_and_night_ghosts():
     assert on(2026, 11, 1, 6, 0) == set()
 
 
-def test_santas_walk_all_of_christmas_eve_only():
-    assert on(2026, 12, 24, 0, 0) == {"santas"} and on(2026, 12, 24, 23, 59) == {"santas"}
-    assert on(2026, 12, 23, 23, 59) == set() and on(2026, 12, 25, 0, 0) == set()
+def test_christmas_season_and_santas_on_eve():
+    assert on(2026, 11, 30, 23, 59) == set()
+    assert on(2026, 12, 1, 0, 0) == {"christmas"}
+    assert on(2026, 12, 24, 0, 0) == {"christmas", "santas"}
+    assert on(2026, 12, 24, 23, 59) == {"christmas", "santas"}
+    assert on(2026, 12, 25, 0, 0) == set()
 
 
 def walker(resident_id, cyclist=False, activity=None):
