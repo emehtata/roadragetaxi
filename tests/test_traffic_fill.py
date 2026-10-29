@@ -50,3 +50,4 @@ def test_peak_traffic_comes_from_the_roads_around_the_taxi_by_class():
     far = SimpleNamespace(highway="residential", points_m=[(900.0, 0.0), (1000.0, 0.0)], map_level=0)
     grid = SimpleNamespace(ways_in_rect=lambda *_: [secondary, yard, far])
     assert peak_cars_on_roads(grid, 0.0, 0.0) == TRAFFIC_DENSITY_PER_KM["secondary"] * 0.2  # no yards, nothing far
+

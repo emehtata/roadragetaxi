@@ -585,7 +585,9 @@ def _stalled_vehicle_on_route(vehicle, driver, obstacles, reach):
     steering cone: wrecks and parked cars, a queue standing still, and
     traffic going the same way (a queue around a bend was only seen a few
     metres short, too late to stop: rear-end pile-ups behind a wreck)."""
-    candidates = [o for o in obstacles if o is not vehicle]
+    near = reach + 15.0  # nothing farther than the reach (plus a long vehicle's half) can be on it
+    candidates = [o for o in obstacles if o is not vehicle
+                  and abs(o.x - vehicle.x) < near and abs(o.y - vehicle.y) < near]
     nearest = None
     distance = 0.0
     segment = driver.route_segment_index
@@ -1280,6 +1282,8 @@ class Driver:
     manoeuvre_run: int = 0
     manoeuvre_wait_s: float = 0.0  # waiting for the space behind to clear
     manoeuvres_tried: int = 0  # this trip's planned manoeuvres (arriving and departing)
+    road_check_pose: Optional[Tuple[float, float, float]] = None  # where the road check last passed (far traffic)
+    road_checks_skipped: int = 0
     manoeuvre_zone: Optional[str] = None  # "arriving" / "departing" while one may be needed (else None)
     rack_slot: Optional[Tuple[float, float, float]] = None  # a cyclist's claimed hoop (cycling.rack_slots)
     rack_claim: Optional[tuple] = None  # (rack OSM id, hoop index): survives the rack being rebuilt by a map merge
@@ -1351,7 +1355,8 @@ class TripGroup:
 # NPC's driver curses and drives on slowly instead of wrecking the car.
 MINOR_HIT_MPS = 15.0 / 3.6
 INITIAL_MOVING_FILL_S = 4.0  # loading time for the moving traffic (populate_moving_initial)
-FAR_TRAFFIC_STEP = 2  # traffic outside the view's area: driven every this many ticks (viewport.traffic_bounds)
+FAR_TRAFFIC_STEP = 2
+FAR_ROAD_CHECK_EVERY = 3  # far traffic: the swept road check every this many of its updates  # traffic outside the view's area: driven every this many ticks (viewport.traffic_bounds)
 NPC_SCRAPE_MPS = 5.0 / 3.6  # two NPCs touching slower than this: a scrape, both go on (no wreck)
 # Collision response (rrt-019-crash-physics): an impulse along the contact
 # normal, by mass. A little bounce; a knocked vehicle then slides, tyres
@@ -1501,6 +1506,7 @@ class NPCVehicle:
     footprint_check_cached: bool = True
     curse_timer: float = 0.0  # > 0: the driver's curse bubble shows (a minor bump by the taxi)
     curse_text: str = ""
+    far: bool = False  # this tick: beyond the view's area (driven less often, road checked less often)
     knock_vx: float = 0.0  # non-zero: knocked by a collision, sliding (update_knocked); its driver waits
     knock_vy: float = 0.0
     shaken_timer: float = 0.0  # > 0: after a minor bump the driver goes on slowly
@@ -3428,7 +3434,13 @@ def update_npc(
         block_offroad=False, speed_limit_mps=speed_limit_mps,
         turning_circle=True,
     )
-    _enforce_npc_road_motion(vehicle, driver, previous_pose, traffic_world, spatial_grid, manager, buildings, building_grid)
+    if vehicle.far and driver.road_checks_skipped < FAR_ROAD_CHECK_EVERY - 1 and driver.road_check_pose is not None:
+        driver.road_checks_skipped += 1  # unseen, on its validated path: the swept check covers these steps at once
+    else:
+        _enforce_npc_road_motion(vehicle, driver, driver.road_check_pose if vehicle.far and driver.road_check_pose
+                                 else previous_pose, traffic_world, spatial_grid, manager, buildings, building_grid)
+        driver.road_checks_skipped = 0
+        driver.road_check_pose = (vehicle.car.x, vehicle.car.y, vehicle.car.heading)
     if protests is not None and protests.blocks_movement(vehicle.car, previous_pose):
         vehicle.car.x, vehicle.car.y, vehicle.car.heading = previous_pose
         vehicle.car.speed = 0.0
@@ -6837,7 +6849,8 @@ class NPCVehicleManager:
                 # "outside camera = nonexistent".
                 continue
             step = dt
-            if near_bounds is not None and not in_bounds(near_bounds, vehicle.x, vehicle.y, 20.0):
+            vehicle.far = near_bounds is not None and not in_bounds(near_bounds, vehicle.x, vehicle.y, 20.0)
+            if vehicle.far:
                 if (self._lod_frame + vehicle.vehicle_id) % FAR_TRAFFIC_STEP:
                     continue  # unseen and away from the taxi: its driving is updated less often
                 step = dt * FAR_TRAFFIC_STEP

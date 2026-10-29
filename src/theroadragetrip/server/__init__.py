@@ -1381,7 +1381,7 @@ class SimulationServer:
             map_loading=self._map_streamer.status() if self._map_streamer is not None else "",
             map_loading_detail=self._map_streamer.manager.get_progress_message() if self._map_streamer is not None else "",
             railway=protocol.railway_state(getattr(self.world, "railway_mgr", None), self.car.x, self.car.y, self.calendar.current),
-            inspect=self._inspect,
+            inspect=self._inspect, npc_bounds=self._visible_bounds(),
         )
         message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
         message["state"]["home_door"] = self._home_door_state()

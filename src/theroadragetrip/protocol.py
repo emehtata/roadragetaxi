@@ -229,6 +229,9 @@ def _npc_to_dict(npc, residents=None, people: bool = True) -> dict:
     return row
 
 
+SHOWN_NPC_MARGIN_M = 60.0  # NPC vehicles sent this far beyond the view: entering it, heard (bikes, beeps)
+
+
 def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
     """The pedestrians a client draws: the nearest to the camera, at most the
     population the spawn disc holds (POPULATION_PER_SHOWN x the target) - a
@@ -553,7 +556,7 @@ def build_state_message(
     server_time: float = 0.0, current_way=None, language: str = "en",
     calendar: Optional[dict] = None, tire_mark: Optional[dict] = None, navigation: Optional[dict] = None,
     road_rage: Optional[dict] = None, railway: Optional[dict] = None, map_loading: str = "",
-    map_loading_detail: str = "", inspect: Optional[dict] = None,
+    map_loading_detail: str = "", inspect: Optional[dict] = None, npc_bounds=None,
 ) -> dict:
     """Everything the client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -604,7 +607,11 @@ def build_state_message(
         # {"kind": "npc" | "pedestrian", "id": ...} from its commands - a pedestrian inside a vehicle too.
         "npcs": [compact_row(_npc_to_dict(npc, residents, _inspected(inspect, "npc", npc.vehicle_id) or (
             inspect is not None and inspect.get("kind") == "pedestrian" and inspect.get("id") in _occupant_ids(npc))))
-                 for npc in world.npc_manager.vehicles],
+                 for npc in world.npc_manager.vehicles
+                 # `npc_bounds` (the clients' view): only what is drawn or heard there, plus the inspected one
+                 if npc_bounds is None or _inspected(inspect, "npc", npc.vehicle_id)
+                 or npc_bounds[0] - SHOWN_NPC_MARGIN_M <= npc.x <= npc_bounds[2] + SHOWN_NPC_MARGIN_M
+                 and npc_bounds[1] - SHOWN_NPC_MARGIN_M <= npc.y <= npc_bounds[3] + SHOWN_NPC_MARGIN_M],
         # Taxi drivers' quarrels, current state only (taxi_brawls.BrawlManager.to_dicts).
         "brawls": world.taxi_brawls.to_dicts(traffic_mgr.sim_time) if getattr(world, "taxi_brawls", None) else [],
         "pedestrians": [compact_row(_pedestrian_to_dict(p, residents, santa_day, _inspected(inspect, "pedestrian", p.resident_id)))
