@@ -398,3 +398,19 @@ scales how many cars move, not where they move: the detector cannot see it.
 Next: spawn passing traffic on the player's road class (or the
 station's matched ways) in proportion to the `through` share, then rerun
 the one-hour probe before any full-day run.
+
+### Passing traffic on the measured road (2026-10-29)
+
+`through_road_first` (npc.py): with the probability of the road's
+`through` share of demand, a passing-traffic spawn starts on the player's
+road (same ref, else same class; never a local street), out to the
+simulated radius, because vt22's vertices near Kaukovainio lie 250-640 m
+apart. `_short_transit_trip_steps(past=True)` lets that trip run beyond
+the player instead of parking before it (destinations still pass the
+low-traffic roadside check, so nobody stops on the trunk).
+
+One game hour at Kaukovainio, Wednesday 07:00: 0 -> 5 detector crossings,
+trunk vehicles moving; tick p50 6.3 / p95 10.4 / max 21 ms (probe harness,
+not comparable with the earlier 2.2 / 4.5 ms tool run). Next: a full-day
+`lam_validate.py` run for the shape; spawn safety of a stationary start
+on a fast road's junction node is unchecked.
