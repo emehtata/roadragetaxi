@@ -128,6 +128,7 @@ ROAD_EDGE_WALK_OFFSET_M = 3.5
 # along a street costs this many metres of footway, so a sidewalk running
 # beside it always wins (people walked down the carriageway past theirs).
 STREET_WALK_COST = 4.0
+FOOTWAY_SNAP_M = 20.0  # a route starts/ends on a footway this near rather than the street beside it
 WALKABLE_STREETS = {"residential", "living_street", "unclassified", "service", "tertiary", "tertiary_link",
                     "secondary", "secondary_link", "primary", "primary_link", "road"}
 
@@ -162,6 +163,7 @@ class _PedestrianNetworkBuild:
         self.segments: List[Tuple[Tuple[float, float], Tuple[float, float]]] = []
         self.segment_grid: Dict[Tuple[int, int], List[int]] = {}
         self.node_grid: Dict[Tuple[int, int], List[int]] = {}
+        self.street_node_grid: Dict[Tuple[int, int], List[int]] = {}
         # Union-find over node ids, merged as each way is added (so no
         # single-frame whole-graph pass is ever needed). Edges are always
         # added in both directions, so plain connectivity is exactly route
@@ -169,7 +171,7 @@ class _PedestrianNetworkBuild:
         # this build's own node ids - never mixed across graph rebuilds.
         self.component_parent: List[int] = []
 
-    def node_id(self, point: Tuple[float, float]) -> int:
+    def node_id(self, point: Tuple[float, float], street: bool = False) -> int:
         bucket = (round(point[0] / 3.0), round(point[1] / 3.0))
         for candidate in self.buckets.get(bucket, []):
             if math.hypot(self.nodes[candidate][0] - point[0], self.nodes[candidate][1] - point[1]) <= 3.0:
@@ -179,12 +181,13 @@ class _PedestrianNetworkBuild:
         self.edges[candidate] = []
         self.component_parent.append(candidate)
         self.buckets.setdefault(bucket, []).append(candidate)
-        self.node_grid.setdefault(_network_grid_cell(point), []).append(candidate)
+        # Routes start and end on a nearby footway; a street node only where none is near.
+        (self.street_node_grid if street else self.node_grid).setdefault(_network_grid_cell(point), []).append(candidate)
         return candidate
 
     def add_way(self, way: Way) -> None:
         street = id(way) in self.streets
-        point_ids = [self.node_id(point) for point in way.points_m]
+        point_ids = [self.node_id(point, street) for point in way.points_m]
         for first, second in zip(point_ids, point_ids[1:]):
             root_first = _component_root(self.component_parent, first)
             root_second = _component_root(self.component_parent, second)
@@ -289,6 +292,7 @@ class PedestrianNetwork:
         self._segments = build.segments
         self._segment_grid = build.segment_grid
         self._node_grid = build.node_grid
+        self._street_node_grid = build.street_node_grid
         self._component_parent = build.component_parent
         self._street_edges = build.street_edges
 
@@ -343,14 +347,22 @@ class PedestrianNetwork:
         return None if best is None else (best[2], best[3])
 
     def _nearest_node(self, point: Tuple[float, float]) -> int:
-        """Same node as min(self.edges, key=squared distance): smallest
-        squared distance, lowest node id on ties."""
+        """The nearest footway node within FOOTWAY_SNAP_M, else the nearest
+        node of any kind (smallest squared distance, lowest id on ties)."""
         nodes = self.nodes
-        return _ring_search(
-            self._node_grid, point,
-            lambda index: ((nodes[index][0] - point[0]) ** 2 + (nodes[index][1] - point[1]) ** 2, index),
-            lambda ring: (ring * PEDESTRIAN_NETWORK_GRID_CELL_M) ** 2,
-        )[1]
+
+        def nearest(grid):
+            return _ring_search(
+                grid, point,
+                lambda index: ((nodes[index][0] - point[0]) ** 2 + (nodes[index][1] - point[1]) ** 2, index),
+                lambda ring: (ring * PEDESTRIAN_NETWORK_GRID_CELL_M) ** 2,
+            ) if grid else None
+
+        footway = nearest(self._node_grid)
+        if footway is not None and footway[0] <= FOOTWAY_SNAP_M ** 2:
+            return footway[1]
+        street = nearest(self._street_node_grid)
+        return min(key for key in (footway, street) if key is not None)[1]
 
     def connected(self, start: Tuple[float, float], target: Tuple[float, float]) -> bool:
         """Whether route() can find a network path (not its straight fallback)."""
