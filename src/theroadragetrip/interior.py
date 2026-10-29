@@ -7,11 +7,11 @@ import random
 from functools import lru_cache
 
 from shapely import normalize, set_precision
-from shapely.affinity import rotate, translate
+from shapely.affinity import rotate, scale, translate
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import unary_union
 
-GENERATOR_VERSION = 4  # 4: reference-based L-shaped ground floor
+GENERATOR_VERSION = 5  # 5: fit compact, slightly irregular mapped L footprints
 DOOR_WIDTH = 0.95
 WALK_CLEAR_M = 0.35  # a walker's reach from a wall's line: godot/home_walk.gd RADIUS_M + WALL_HALF_M, with a margin
 STEP_IN_M = 0.45  # a door is usable if this far through it, on each side, is clear floor (home_walk.gd SPAWN_IN_M)
@@ -82,35 +82,56 @@ def _passable(a, b, clear) -> bool:
 
 
 def _l_shaped_rooms(polygon):
-    """Fit the reference ground floor to an orthogonal L; keep other shapes unchanged."""
-    for turn in (0, 90, 180, 270):
-        aligned = set_precision(rotate(polygon, turn, origin=(0, 0)), 1e-7)
+    """Partition a near-orthogonal L without changing its mapped outer walls."""
+    for orientation in range(8):
+        turn = (orientation % 4) * 90
+        reflection = -1 if orientation >= 4 else 1
+        oriented = scale(polygon, xfact=reflection, origin=(0, 0))
+        aligned = set_precision(rotate(oriented, turn, origin=(0, 0)), 1e-7)
         x0, y0, x1, y1 = aligned.bounds
-        missing = box(x0, y0, x1, y1).difference(aligned)
-        if missing.geom_type != "Polygon" or missing.is_empty:
+        # Ignore small mapping kinks when locating the notch, not when building rooms.
+        notches = [(x, y) for x, y in aligned.simplify(0.2).exterior.coords
+                   if x - x0 >= 3.5 and x1 - x >= 4.6 and y - y0 >= 5.2 and y1 - y >= 2.5]
+        if not notches:
             continue
-        nx, ny, mx, my = missing.bounds
-        if (abs(mx - x1) > 1e-6 or abs(my - y1) > 1e-6
-                or missing.symmetric_difference(box(nx, ny, x1, y1)).area > 1e-6):
+        nx, ny = min(notches, key=lambda p: aligned.symmetric_difference(
+            box(x0, y0, p[0], y1).union(box(p[0], y0, x1, p[1]))).area)
+        ideal = box(x0, y0, nx, y1).union(box(nx, y0, x1, ny))
+        if (aligned.symmetric_difference(ideal).area > aligned.area * 0.02
+                or aligned.hausdorff_distance(ideal) > 0.25):
             continue
-        # Leave a useful living wing, bedroom, service rooms and a short 1.5 m hall.
         bedroom_x = x1 - 3.5
         service_y = y0 + 2.5
         hall_y = service_y + 1.5
         stair_x = nx + 2.4
-        if (nx - x0 < 4 or y1 - ny < 3 or ny - hall_y < 2
-                or bedroom_x - stair_x < 2 or bedroom_x - nx < 4.8):
+        if (nx - x0 >= 4 and y1 - ny >= 3 and ny - hall_y >= 2
+                and bedroom_x - stair_x >= 2 and bedroom_x - nx >= 4.8):
+            middle = (nx + bedroom_x) / 2
+            cells = [
+                ("vestibule", box(stair_x, hall_y, bedroom_x, y1 + 1)),
+                ("hall", box(nx, service_y, bedroom_x, hall_y)),
+                ("living_kitchen", box(x0 - 1, y0 - 1, nx, y1 + 1)),
+                ("bedroom", box(bedroom_x, y0 - 1, x1 + 1, y1 + 1)),
+                ("bathroom", box(nx, y0 - 1, middle, service_y)),
+                ("closet", box(middle, y0 - 1, bedroom_x, service_y)),
+                ("stairs", box(nx, hall_y, stair_x, y1 + 1)),
+            ]
+        else:
+            # Compact homes omit the separate closet and stair reservation.
+            bedroom_x = x1 - 3.0
+            service_y = y0 + 2.6
+            hall_y = service_y + 1.5
+            cells = [
+                ("vestibule", box(nx, hall_y, bedroom_x, y1 + 1)),
+                ("hall", box(nx, service_y, bedroom_x, hall_y)),
+                ("living_kitchen", box(x0 - 1, y0 - 1, nx, y1 + 1)),
+                ("bedroom", box(bedroom_x, y0 - 1, x1 + 1, y1 + 1)),
+                ("bathroom", box(nx, y0 - 1, bedroom_x, service_y)),
+            ]
+        rooms = [(kind, unary_union(_polygons(aligned.intersection(cell)))) for kind, cell in cells]
+        if any(room.geom_type != "Polygon" or room.interiors or room.buffer(-0.65).is_empty
+               for _, room in rooms):
             continue
-        middle = (nx + bedroom_x) / 2
-        rooms = [
-            ("vestibule", box(stair_x, hall_y, bedroom_x, ny)),
-            ("hall", box(nx, service_y, bedroom_x, hall_y)),
-            ("living_kitchen", box(x0, y0, nx, y1)),
-            ("bedroom", box(bedroom_x, y0, x1, ny)),
-            ("bathroom", box(nx, y0, middle, service_y)),
-            ("closet", box(middle, y0, bedroom_x, service_y)),
-            ("stairs", box(nx, hall_y, stair_x, ny)),
-        ]
         if unary_union([room for _, room in rooms]).symmetric_difference(aligned).area > 1e-6:
             continue
         doors = []
@@ -124,8 +145,8 @@ def _l_shaped_rooms(polygon):
             doors.append(door)
         else:
             for door in doors:
-                door["points"] = list(rotate(LineString(door["points"]), -turn, origin=(0, 0)).coords)
-            return [(kind, set_precision(rotate(room, -turn, origin=(0, 0)), 1e-7)) for kind, room in rooms], doors
+                door["points"] = list(scale(rotate(LineString(door["points"]), -turn, origin=(0, 0)), xfact=reflection, origin=(0, 0)).coords)
+            return [(kind, set_precision(scale(rotate(room, -turn, origin=(0, 0)), xfact=reflection, origin=(0, 0)), 1e-7)) for kind, room in rooms], doors
     return None
 
 

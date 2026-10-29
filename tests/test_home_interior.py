@@ -1,8 +1,10 @@
 """Geometry contracts, yard binding and the actual interior request envelope."""
+import json
 from itertools import combinations
+from pathlib import Path
 
 import pytest
-from shapely.affinity import rotate, translate
+from shapely.affinity import rotate, scale, translate
 from shapely.geometry import LineString, Polygon
 from shapely.ops import unary_union
 
@@ -10,9 +12,12 @@ from theroadragetrip.interior import GENERATOR_VERSION, _generate_cached, genera
 
 REFERENCE_L = [(0, 0), (14, 0), (14, 6.5), (5.5, 6.5), (5.5, 13), (0, 13)]
 
+HELMIKKAKUJA_HOUSES = json.loads((Path(__file__).parent / "data/helmikkakuja_2.json").read_text())
+
 RECTANGLE = [(0, 0), (14, 0), (14, 10), (0, 10)]
 FOOTPRINTS = [
     RECTANGLE, REFERENCE_L,
+    *(case["points"] for case in HELMIKKAKUJA_HOUSES),
     [(0, 0), (14, 1), (12, 11), (2, 10), (-1, 5)],
     [(0, 0), (14, 0), (14, 7), (8, 7), (8, 12), (0, 12)],
     [(0, 0), (3, 0), (3, 2), (0, 2)],
@@ -256,3 +261,37 @@ def test_reference_l_has_short_hall_corner_entrance_and_long_living_wing(angle):
 def test_small_l_keeps_existing_layout_instead_of_cramped_reference():
     plan = generate_floor_plan("small-L", [(0, 0), (8, 0), (8, 4), (4, 4), (4, 8), (0, 8)])
     assert "vestibule" not in {room["kind"] for room in plan["rooms"]}
+
+
+@pytest.mark.parametrize("case", HELMIKKAKUJA_HOUSES, ids=lambda case: case["unit"])
+@pytest.mark.parametrize("angle,reflection", [(0, 1), (31, 1), (90, -1)])
+def test_helmikkakuja_2_uses_compact_reference_through_house_plan(case, angle, reflection, tmp_path):
+    from test_home import _server
+    from theroadragetrip.home import home_building_key, house_plan
+    from theroadragetrip.osm import Building
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.server import SimulationServer
+
+    source = rotate(scale(Polygon(case["points"]), xfact=reflection, origin=(0, 0)), angle, origin=(0, 0))
+    building = Building(points_m=list(source.exterior.coords), bbox=source.bounds, street="Helmikkäkuja", housenumber="2", building_type="detached")
+    plan = house_plan(building, [])
+    kinds = [room["kind"] for room in plan["rooms"]]
+    assert set(kinds) == {"vestibule", "hall", "living_kitchen", "bedroom", "bathroom"}
+    assert kinds[plan["doors"][0]["rooms"][-1]] == "vestibule"
+    rooms = {room["kind"]: Polygon(room["points"]) for room in plan["rooms"]}
+    assert rooms["bedroom"].area >= 10
+    assert rooms["bathroom"].area >= 3
+    assert rooms["hall"].area < 6
+    assert rooms["living_kitchen"].area > source.area / 2
+    assert {"bed", "toilet", "sink"} <= {item["kind"] for item in plan["furniture"]}
+    assert plan["name"] == "Helmikkäkuja 2"
+
+    server = _server(tmp_path)
+    server.world.building_grid = SpatialWayGrid([building])
+    server.world.parking_spaces = []
+    server._home = (*source.centroid.coords[0], 0)
+    server._home_building_key = home_building_key(building)
+    server._inside = None
+    assert SimulationServer._home_floor_plan(server) == plan
+    server._inside = (building, None)
+    assert SimulationServer._home_floor_plan(server) == plan
