@@ -1987,7 +1987,7 @@ class PedestrianManager:
                 )
                 if customer is None:
                     continue
-                    self.add_pedestrian(customer)
+                self.add_pedestrian(customer)
 
             customer.taxi_stop_target = self._taxi_stop_waiting_position(stop)
             customer.is_walking_to_taxi_stop = True

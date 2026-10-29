@@ -2060,3 +2060,14 @@ def test_activity_resume_keeps_current_map_layer():
     pedestrian = Pedestrian(40.0, 1.0, 0.0, 1.3, 1.3, ground, 0, 1, (1, 1, 1))
     manager._end_activity(pedestrian, ActivityInstance(plugin_id="dog_walking", location=None, started_sim_time=0.0))
     assert pedestrian.way is ground
+
+
+def test_a_spawned_taxi_stop_customer_joins_the_pedestrians(monkeypatch: pytest.MonkeyPatch):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0, spawn_radius_m=120.0)
+    player = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
+
+    manager.ensure_taxi_stop_waiter([TaxiStop(20.0, 0.0, id=1)], player, viewport_bounds=(-10.0, -10.0, 30.0, 10.0))
+
+    assert len(manager.pedestrians) == 1 and manager.pedestrians[0].is_walking_to_taxi_stop
