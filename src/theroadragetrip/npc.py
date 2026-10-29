@@ -1350,6 +1350,7 @@ class TripGroup:
 # Game policy: a bump by the taxi below this closing speed is no crash - the
 # NPC's driver curses and drives on slowly instead of wrecking the car.
 MINOR_HIT_MPS = 15.0 / 3.6
+FAR_TRAFFIC_STEP = 2  # traffic outside the view's area: driven every this many ticks (viewport.traffic_bounds)
 NPC_SCRAPE_MPS = 5.0 / 3.6  # two NPCs touching slower than this: a scrape, both go on (no wreck)
 # Collision response (rrt-019-crash-physics): an impulse along the contact
 # normal, by mass. A little bounce; a knocked vehicle then slides, tyres
@@ -6648,8 +6649,12 @@ class NPCVehicleManager:
         pedestrian_mgr: object = None,
         current_way=None,
         active_bounds=None,
+        near_bounds=None,
     ) -> None:
+        """`near_bounds`: around the view; traffic beyond it (in `active_bounds`)
+        drives on every other tick, with twice the step (FAR_TRAFFIC_STEP)."""
         self._active_bounds = active_bounds
+        self._lod_frame = getattr(self, "_lod_frame", 0) + 1
         self._update_motorcycle_season(resident_manager)
         self._note_camping_sites(sceneries)
         self._retire_finished_line_buses(resident_manager, viewport_bounds)
@@ -6704,6 +6709,11 @@ class NPCVehicleManager:
                 # doesn't tick physics/decisions while this far away - not
                 # "outside camera = nonexistent".
                 continue
+            step = dt
+            if near_bounds is not None and not in_bounds(near_bounds, vehicle.x, vehicle.y, 20.0):
+                if (self._lod_frame + vehicle.vehicle_id) % FAR_TRAFFIC_STEP:
+                    continue  # unseen and away from the taxi: its driving is updated less often
+                step = dt * FAR_TRAFFIC_STEP
             # collision-avoidance section 2: only vehicles actually near this one need
             # to be considered for avoidance (never all-to-all) - the same
             # spatial-grid-bounded query pattern every other proximity check
@@ -6723,11 +6733,11 @@ class NPCVehicleManager:
             if player_car is not None:
                 nearby_obstacles.append(player_car)
             if vehicle_definition(vehicle.vehicle_type).movement == "cycle":
-                self._update_cyclist(vehicle, driver, dt, traffic_world, resident_manager, nearby_obstacles,
+                self._update_cyclist(vehicle, driver, step, traffic_world, resident_manager, nearby_obstacles,
                                      pedestrians_near(vehicle.x, vehicle.y), spatial_grid, viewport_bounds)
                 continue
             update_npc(
-                vehicle, driver, dt, traffic_world, resident_manager,
+                vehicle, driver, step, traffic_world, resident_manager,
                 curbs=curbs, buildings=buildings, curb_grid=curb_grid, building_grid=building_grid,
                 nearby_obstacles=nearby_obstacles, manager=self, pedestrian_mgr=pedestrian_mgr,
                 spatial_grid=spatial_grid,

@@ -638,11 +638,12 @@ def advance_simulation(
     camy += (target_camy - camy) * cam_lerp_factor
 
     viewport_bounds = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, margin_m=30.0)
-    ambient_bounds = None
+    ambient_bounds = traffic_area = None
     if view_bounds is not None:
-        from .viewport import simulation_bounds
+        from .viewport import TRAFFIC_KEEP_MARGIN_M, simulation_bounds, traffic_bounds
         viewport_bounds = (view_bounds[0] - 30, view_bounds[1] - 30, view_bounds[2] + 30, view_bounds[3] + 30)
         ambient_bounds = simulation_bounds(view_bounds, car.x, car.y, car.speed, car.heading)
+        traffic_area = traffic_bounds(ambient_bounds, car.x, car.y)  # cars: a wider area than people
 
     # Trains: timetable trains, their passengers and pre-bookings follow the
     # game clock (`now`, a datetime); presentation (drawing, train sounds,
@@ -693,7 +694,8 @@ def advance_simulation(
             from .viewport import in_bounds
             party = taxi_mgr.current_passenger
             protected = [member.resident_id for member in party.members] if party is not None else []
-            npc_manager.discard_outside(ambient_bounds, residents, pedestrian_mgr, protected)
+            npc_manager.discard_outside(traffic_bounds(ambient_bounds, car.x, car.y, TRAFFIC_KEEP_MARGIN_M),
+                                        residents, pedestrian_mgr, protected)
             pedestrian_mgr.discard_outside(ambient_bounds, protected)
             taxi_mgr.vomit_puddles[:] = [p for p in taxi_mgr.vomit_puddles if in_bounds(ambient_bounds, p[0], p[1], 2.0)]
         traffic_mgr.stop_signs = getattr(world, "stop_signs", ())
@@ -712,7 +714,7 @@ def advance_simulation(
             viewport_bounds=viewport_bounds,
             player_car=car, pedestrian_mgr=pedestrian_mgr,
             current_way=current_way,
-            active_bounds=ambient_bounds,
+            active_bounds=traffic_area, near_bounds=ambient_bounds,
         )
         if npc_manager.snowy:
             for vehicle in npc_manager.vehicles:

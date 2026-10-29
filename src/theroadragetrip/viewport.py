@@ -43,6 +43,20 @@ def simulation_bounds(view, x, y, speed, heading=None):
             max(view[2] + margin, x + 100, ahead_x + margin), max(view[3] + margin, y + 100, ahead_y + margin))
 
 
+TRAFFIC_RADIUS_M = 300.0  # NPC traffic lives at least this far around the taxi, seen or not
+TRAFFIC_KEEP_MARGIN_M = 100.0  # ... and is retired only this far beyond that
+
+
+def traffic_bounds(simulated, x, y, grow=0.0):
+    """The NPC traffic area: the simulated area (view, entry margin, look-ahead)
+    and at least TRAFFIC_RADIUS_M around the taxi, so cars live long enough
+    to be met instead of being retired as they leave the screen's margin;
+    `grow` widens it (TRAFFIC_KEEP_MARGIN_M: where they are retired)."""
+    r = TRAFFIC_RADIUS_M + grow
+    return (min(simulated[0] - grow, x - r), min(simulated[1] - grow, y - r),
+            max(simulated[2] + grow, x + r), max(simulated[3] + grow, y + r))
+
+
 def in_bounds(bounds, x, y, radius=0.0):
     return bounds[0] - radius <= x <= bounds[2] + radius and bounds[1] - radius <= y <= bounds[3] + radius
 
