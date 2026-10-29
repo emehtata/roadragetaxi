@@ -2079,3 +2079,14 @@ def test_a_street_route_without_sidewalks_keeps_to_the_left_edge():
     from theroadragetrip.pedestrian import ROAD_EDGE_WALK_OFFSET_M, _left_edge
     route = _left_edge([(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)])
     assert route == [(0.0, 0.0), (10.0, ROAD_EDGE_WALK_OFFSET_M), (20.0, 0.0)]
+
+
+def test_a_sidewalk_beside_the_street_wins_and_a_street_gap_is_walked_at_its_edge():
+    from theroadragetrip.pedestrian import ROAD_EDGE_WALK_OFFSET_M, PedestrianNetwork
+    street = Way(points_m=[(0.0, 0.0), (100.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
+    sidewalk = Way(points_m=[(0.0, 2.0), (50.0, 6.0), (100.0, 6.0), (100.0, 0.0)], highway="footway", half_width_m=1.0)
+    network = PedestrianNetwork()
+    network.set_ways([sidewalk], [street])
+    route = network.route((0.0, 2.0), (200.0, 0.0))
+    assert (50.0, 6.0) in route  # along the sidewalk while there is one...
+    assert any(abs(y - ROAD_EDGE_WALK_OFFSET_M) < 0.01 and 100.0 < x <= 200.0 for x, y in route)  # ...then the street's edge

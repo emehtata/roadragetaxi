@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from collections import deque
-from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Set, Tuple
 
 from .osm import OPEN_ROOF_BUILDING_TYPES, BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
 from .geo import angle_diff, bbox_distance_sq, closest_point_and_dist_to_segment, compute_bbox, point_in_polygon
@@ -124,6 +124,17 @@ PEDESTRIAN_NETWORK_GRID_CELL_M = 50.0
 # ponytail: one offset for every street; a residential street's left edge (half width 4.5 m).
 # Use each way's half_width_m if wide unsidewalked roads show people mid-lane.
 ROAD_EDGE_WALK_OFFSET_M = 3.5
+# Streets join the walking network only to bridge sidewalk gaps: a metre
+# along a street costs this many metres of footway, so a sidewalk running
+# beside it always wins (people walked down the carriageway past theirs).
+STREET_WALK_COST = 4.0
+WALKABLE_STREETS = {"residential", "living_street", "unclassified", "service", "tertiary", "tertiary_link",
+                    "secondary", "secondary_link", "primary", "primary_link", "road"}
+
+
+def _walkable_street(way) -> bool:
+    return getattr(way, "highway", "") in WALKABLE_STREETS and not getattr(way, "motorroad", False) \
+        and not getattr(way, "is_tunnel", False) and len(getattr(way, "points_m", ())) >= 2
 
 
 def _network_grid_cell(point: Tuple[float, float]) -> Tuple[int, int]:
@@ -138,8 +149,12 @@ class _PedestrianNetworkBuild:
     indexes nearest_point()/route() use (bin-loader-v9.md: both were
     whole-city brute-force scans, up to ~100 ms each per route)."""
 
-    def __init__(self, ways: List[Way]) -> None:
+    def __init__(self, ways: List[Way], streets: Sequence[Way] = ()) -> None:
         self.ways = [way for way in ways if len(way.points_m) >= 2]
+        # Streets after the footways: their nodes join footway nodes within 3 m.
+        self.streets = {id(way) for way in streets if _walkable_street(way)} - {id(way) for way in self.ways}
+        self.ways += [way for way in streets if id(way) in self.streets]
+        self.street_edges: Set[Tuple[int, int]] = set()
         self.index = 0
         self.nodes: List[Tuple[float, float]] = []
         self.edges: Dict[int, List[Tuple[int, float]]] = {}
@@ -168,13 +183,7 @@ class _PedestrianNetworkBuild:
         return candidate
 
     def add_way(self, way: Way) -> None:
-        cell_size = PEDESTRIAN_NETWORK_GRID_CELL_M
-        for first, second in zip(way.points_m, way.points_m[1:]):
-            segment_index = len(self.segments)
-            self.segments.append((first, second))
-            for cell_x in range(math.floor(min(first[0], second[0]) / cell_size), math.floor(max(first[0], second[0]) / cell_size) + 1):
-                for cell_y in range(math.floor(min(first[1], second[1]) / cell_size), math.floor(max(first[1], second[1]) / cell_size) + 1):
-                    self.segment_grid.setdefault((cell_x, cell_y), []).append(segment_index)
+        street = id(way) in self.streets
         point_ids = [self.node_id(point) for point in way.points_m]
         for first, second in zip(point_ids, point_ids[1:]):
             root_first = _component_root(self.component_parent, first)
@@ -185,18 +194,36 @@ class _PedestrianNetworkBuild:
                 self.nodes[second][0] - self.nodes[first][0],
                 self.nodes[second][1] - self.nodes[first][1],
             )
+            if street:
+                if any(neighbor == second for neighbor, _ in self.edges[first]):
+                    continue  # already a footway here (a street the fallback walks as one)
+                distance *= STREET_WALK_COST
+                self.street_edges.update(((first, second), (second, first)))
             self.edges[first].append((second, distance))
             self.edges[second].append((first, distance))
+        if street:  # nearest_point() snaps onto footways only
+            return
+        cell_size = PEDESTRIAN_NETWORK_GRID_CELL_M
+        for first, second in zip(way.points_m, way.points_m[1:]):
+            segment_index = len(self.segments)
+            self.segments.append((first, second))
+            for cell_x in range(math.floor(min(first[0], second[0]) / cell_size), math.floor(max(first[0], second[0]) / cell_size) + 1):
+                for cell_y in range(math.floor(min(first[1], second[1]) / cell_size), math.floor(max(first[1], second[1]) / cell_size) + 1):
+                    self.segment_grid.setdefault((cell_x, cell_y), []).append(segment_index)
 
 
-def _left_edge(route: List[Tuple[float, float]], offset: float = ROAD_EDGE_WALK_OFFSET_M) -> List[Tuple[float, float]]:
-    """A street centreline route moved to its left edge (TLL § 13), ends kept."""
-    edge = list(route[:1])
-    for before, point, after in zip(route, route[1:], route[2:]):
+def _left_edge(route: List[Tuple[float, float]], offset: float = ROAD_EDGE_WALK_OFFSET_M,
+               keep_ends: bool = True) -> List[Tuple[float, float]]:
+    """A street centreline route moved to its left edge (TLL § 13); keep_ends
+    leaves the first and last point (where the walker stands, the door)."""
+    edge = []
+    for i, point in enumerate(route):
+        before, after = route[max(0, i - 1)], route[min(len(route) - 1, i + 1)]
         dx, dy = after[0] - before[0], after[1] - before[1]
         length = math.hypot(dx, dy)
-        edge.append(point if length == 0 else (point[0] - dy / length * offset, point[1] + dx / length * offset))
-    return edge + list(route[-1:]) if len(route) > 1 else edge
+        ends = keep_ends and i in (0, len(route) - 1)
+        edge.append(point if ends or length == 0 else (point[0] - dy / length * offset, point[1] + dx / length * offset))
+    return edge
 
 
 def _component_root(parent: List[int], node: int) -> int:
@@ -263,18 +290,19 @@ class PedestrianNetwork:
         self._segment_grid = build.segment_grid
         self._node_grid = build.node_grid
         self._component_parent = build.component_parent
+        self._street_edges = build.street_edges
 
-    def set_ways(self, ways: List[Way]) -> None:
-        build = _PedestrianNetworkBuild(ways)
+    def set_ways(self, ways: List[Way], streets: Sequence[Way] = ()) -> None:
+        build = _PedestrianNetworkBuild(ways, streets)
         for way in build.ways:
             build.add_way(way)
         self._commit(build)
 
-    def start_rebuild(self, ways: List[Way]) -> None:
+    def start_rebuild(self, ways: List[Way], streets: Sequence[Way] = ()) -> None:
         """Begin a budgeted rebuild (bin-loader-v3.md) - route()/
         nearest_point() keep using the OLD graph and indexes, unchanged,
         until advance_rebuild() reports finished."""
-        self._pending = _PedestrianNetworkBuild(ways)
+        self._pending = _PedestrianNetworkBuild(ways, streets)
 
     def advance_rebuild(self, budget_s: float) -> bool:
         """Advance an in-progress start_rebuild() job by up to budget_s.
@@ -366,7 +394,20 @@ class PedestrianNetwork:
         while path[-1] != start_id:
             path.append(previous[path[-1]])
         path.reverse()
-        return [start] + [self.nodes[index] for index in path] + [target]
+        points: List[Tuple[float, float]] = [start]
+        run: List[Tuple[float, float]] = []  # a street stretch, walked at its left edge
+        for before, index in zip([None] + path, path):
+            if before is not None and (before, index) in self._street_edges:
+                run = run or [self.nodes[before]]
+                run.append(self.nodes[index])
+                continue
+            if run:
+                points[-1:] = _left_edge(run, keep_ends=False)
+                run = []
+            points.append(self.nodes[index])
+        if run:
+            points[-1:] = _left_edge(run, keep_ends=False)
+        return points + [target]
 
 
 # target_count is how many pedestrians the player should see; about a quarter
@@ -1450,7 +1491,7 @@ class PedestrianManager:
 
     def _build_route_graph(self) -> None:
         """Build a small undirected graph from mapped pedestrian-way vertices."""
-        self.network.set_ways(self.ped_ways)
+        self.network.set_ways(self.ped_ways, self._source_ways)
         self._route_nodes = self.network.nodes
         self._route_edges = self.network.edges
 
@@ -1775,7 +1816,7 @@ class PedestrianManager:
             self._sync_candidate_ways = self._sync_dedicated_ways or self._sync_fallback_ways
             self._sync_dedicated_ways = self._sync_fallback_ways = None
         elif stage == "building_free":
-            self.network.start_rebuild(self._sync_safe_ways)
+            self.network.start_rebuild(self._sync_safe_ways, self._sync_source_ways)
         self._sync_index = 0
         self._sync_stage = self._next_sync_stage(stage)
 
