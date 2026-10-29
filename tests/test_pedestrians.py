@@ -2068,6 +2068,8 @@ def test_a_spawned_taxi_stop_customer_joins_the_pedestrians(monkeypatch: pytest.
     player = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
     monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
 
-    manager.ensure_taxi_stop_waiter([TaxiStop(20.0, 0.0, id=1)], player, viewport_bounds=(-10.0, -10.0, 30.0, 10.0))
+    stop = TaxiStop(20.0, 0.0, id=1)
+    manager.ensure_taxi_stop_waiter([stop], player, viewport_bounds=(40.0, -10.0, 80.0, 10.0))
+    manager.ensure_taxi_stop_waiter([stop], player, viewport_bounds=(-10.0, -10.0, 30.0, 10.0))  # the stop enters view
 
     assert len(manager.pedestrians) == 1 and manager.pedestrians[0].is_walking_to_taxi_stop
