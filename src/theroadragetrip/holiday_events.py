@@ -9,9 +9,11 @@ from .physics import is_point_in_water, is_point_on_road
 
 def holiday_events(moment):
     day = (moment.month, moment.day)
+    halloween = (day == (10, 31) and moment.hour >= 18) or (day == (11, 1) and moment.hour < 6) or day in {(10, d) for d in range(24, 31)}
     return {
         "fireworks": (day == (12, 31) and moment.hour >= 18) or (day == (1, 1) and moment.hour < 2),
-        "halloween": (day == (10, 31) and moment.hour >= 18) or (day == (11, 1) and moment.hour < 6),
+        "halloween": halloween,
+        "halloween_ghosts": halloween and (moment.hour >= 20 or moment.hour < 6),
         "santas": day == (12, 24),
     }
 

@@ -354,14 +354,15 @@ func test_holiday_events() -> void:
 	var events: Node = preload("res://holiday_layer.gd").new()
 	root.add_child(events)
 	events.setup(map)
-	var state := {"calendar": {"holidays": {"halloween": true}}}
-	events.update(0.016, state, view, false)
-	check(events.decorations.visible and not events.bursts.visible and events.yards.size() == 2, "Halloween: yards lit, no fireworks")
+	var town := Rect2(-2000, -2000, 4000, 4000)
+	var state := {"calendar": {"holidays": {"halloween": true, "halloween_ghosts": true}}}
+	events.update(0.016, state, town, false)
+	check(events.decorations.visible and events.ghost_layer.visible and not events.bursts.visible and events.yards.size() == 2 and not events.ghosts.is_empty(), "Halloween night: yards and fixed ghost scenery, no fireworks")
+	check(events.ghosts == events.ghost_sites(town.grow(20.0)), "Halloween ghosts: stable positions as the view updates")
 	state.calendar.holidays = {"fireworks": true}
 	events.update(0.016, state, view, false)
 	check(not events.decorations.visible and events.bursts.visible, "New Year: only fireworks")
 	check(not events.sites.is_empty() and events.yards.is_empty(), "New Year: fireworks rise over the town, no yard query")
-	var town := Rect2(-2000, -2000, 4000, 4000)
 	var sites: PackedVector2Array = events.firework_sites(town)
 	check(sites.size() == 12 and sites == events.firework_sites(town), "fireworks: at most 12 sites, the same ones every refresh")
 	var all_in := true

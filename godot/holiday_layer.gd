@@ -12,12 +12,17 @@ const RISE_S := 1.0
 const BURST_S := 3.0
 const CYCLE_S := 5.0  # rise, burst, then a short pause
 const MAX_SITES := 12
+const GHOST_CELL_M := 110.0
+const MAX_GHOSTS := 24
 var clock := 0.0
 var _refresh := 0.0
 var _halloween := false
 var _fireworks := false
+var _ghosts := false
 var decorations: Node2D
+var ghost_layer: Node2D
 var bursts: Node2D
+var ghosts := PackedVector2Array()
 
 
 func setup(world: Node2D) -> void:
@@ -27,12 +32,18 @@ func setup(world: Node2D) -> void:
 	decorations.material = preload("res://emissive.tres")
 	decorations.draw.connect(_draw_decorations)
 	world.add_child(decorations)
+	ghost_layer = Node2D.new()
+	ghost_layer.z_index = 11  # supernatural scenery stays visible above roofs
+	ghost_layer.material = preload("res://emissive.tres")
+	ghost_layer.draw.connect(_draw_ghosts)
+	world.add_child(ghost_layer)
 	bursts = Node2D.new()
 	bursts.z_index = 30  # sky above buildings, without illuminating roofs
 	bursts.material = preload("res://emissive.tres")
 	bursts.draw.connect(_draw_fireworks)
 	world.add_child(bursts)
 	decorations.hide()
+	ghost_layer.hide()
 	bursts.hide()
 
 
@@ -40,15 +51,19 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool) -> 
 	var calendar: Dictionary = state.get("calendar", {}) if state.get("calendar") is Dictionary else {}
 	var events: Dictionary = calendar.get("holidays", {})
 	var halloween: bool = not underground and events.get("halloween", false)
+	var ghost_season: bool = not underground and events.get("halloween_ghosts", false)
 	var fireworks: bool = not underground and events.get("fireworks", false)
-	var changed := halloween != _halloween or fireworks != _fireworks
+	var changed := halloween != _halloween or fireworks != _fireworks or ghost_season != _ghosts
 	_halloween = halloween
 	_fireworks = fireworks
+	_ghosts = ghost_season
 	decorations.visible = halloween
+	ghost_layer.visible = ghost_season
 	bursts.visible = fireworks
-	if not halloween and not fireworks:
+	if not halloween and not fireworks and not ghost_season:
 		yards.clear()
 		sites.clear()
+		ghosts.clear()
 		return
 	clock += delta
 	_refresh -= delta
@@ -56,7 +71,9 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool) -> 
 		_refresh = 0.5
 		yards = map_layer.holiday_yards(view.grow(50.0)) if halloween else PackedVector2Array()
 		sites = firework_sites(view.grow(40.0)) if fireworks else PackedVector2Array()
+		ghosts = ghost_sites(view.grow(20.0)) if ghost_season else PackedVector2Array()
 		decorations.queue_redraw()
+		ghost_layer.queue_redraw()
 	if fireworks:
 		bursts.queue_redraw()
 		if audio != null:
@@ -79,6 +96,30 @@ func _draw_decorations() -> void:
 		decorations.draw_rect(Rect2(lantern - Vector2(0.19, 0.26), Vector2(0.38, 0.52)), Color8(35, 32, 28))
 		decorations.draw_rect(Rect2(lantern - Vector2(0.12, 0.18), Vector2(0.24, 0.36)), Color(1, 0.8, 0.3))
 		decorations.draw_arc(lantern + Vector2(0, -0.26), 0.13, PI, TAU, 8, Color8(45, 40, 30), 0.05)
+
+
+func _draw_ghosts() -> void:
+	for at in ghosts:
+		# Fixed hash-selected, translucent ghosts: scenery only, with no collision.
+		ghost_layer.draw_circle(at + Vector2(0, -3.5), 2.5, Color(0.8, 0.9, 1.0, 0.58))
+		ghost_layer.draw_rect(Rect2(at + Vector2(-2.5, -3.5), Vector2(5.0, 3.5)), Color(0.8, 0.9, 1.0, 0.58))
+		for side: float in [-0.35, 0.35]:
+			ghost_layer.draw_circle(at + Vector2(side * 2.0, -3.8), 0.3, Color(0.15, 0.2, 0.35, 0.9))
+
+
+static func ghost_sites(view: Rect2) -> PackedVector2Array:
+	var result := PackedVector2Array()
+	for cx in range(floori(view.position.x / GHOST_CELL_M), floori(view.end.x / GHOST_CELL_M) + 1):
+		for cy in range(floori(view.position.y / GHOST_CELL_M), floori(view.end.y / GHOST_CELL_M) + 1):
+			var h := hash(Vector2i(cx, cy))
+			if posmod(h, 4) != 0:
+				continue
+			var at := Vector2(cx + (posmod(h / 1000, 1000)) / 1000.0, cy + posmod(h, 1000) / 1000.0) * GHOST_CELL_M
+			if view.has_point(at):
+				result.append(at)
+				if result.size() >= MAX_GHOSTS:
+					return result
+	return result
 
 
 ## Launch points over the whole town, not only house yards (the centre has

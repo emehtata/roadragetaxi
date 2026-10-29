@@ -20,10 +20,13 @@ def test_fireworks_from_new_years_eve_18_until_2_at_night():
     assert on(2027, 1, 1, 2, 0) == set()
 
 
-def test_halloween_yards_from_the_evening_of_31_october_until_morning():
-    assert on(2026, 10, 31, 17, 59) == set()
+def test_halloween_season_and_night_ghosts():
+    assert on(2026, 10, 23, 23, 59) == set()
+    assert on(2026, 10, 24, 12, 0) == {"halloween"}
+    assert on(2026, 10, 30, 19, 59) == {"halloween"}
+    assert on(2026, 10, 30, 20, 0) == {"halloween", "halloween_ghosts"}
     assert on(2026, 10, 31, 18, 0) == {"halloween"}
-    assert on(2026, 11, 1, 5, 59) == {"halloween"}
+    assert on(2026, 11, 1, 5, 59) == {"halloween", "halloween_ghosts"}
     assert on(2026, 11, 1, 6, 0) == set()
 
 
