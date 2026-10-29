@@ -18,6 +18,7 @@ var _previous_mouse_mode := Input.MOUSE_MODE_VISIBLE
 var _resume_capture := false
 var _look_motion := Vector2.ZERO
 var _discard_capture_motion := false
+var _recenter_mouse := DisplayServer.get_name() == "X11"
 
 
 func _ready() -> void:
@@ -125,7 +126,12 @@ func capture_mouse() -> void:
 	if visible and not get_tree().paused and not player.controls_enabled:
 		_look_motion = Vector2.ZERO
 		_discard_capture_motion = true
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		if _recenter_mouse:
+			# Bypass X11 raw deltas, which can be incorrect for absolute pointing devices.
+			Input.mouse_mode = Input.MOUSE_MODE_CONFINED_HIDDEN
+			DisplayServer.warp_mouse(Vector2(DisplayServer.window_get_size()) / 2.0)
+		else:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		player.controls_enabled = true
 
 
@@ -178,6 +184,10 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 	if player.controls_enabled:
+		if _recenter_mouse:
+			var center := Vector2(DisplayServer.window_get_size()) / 2.0
+			_look_motion = Vector2(DisplayServer.mouse_get_position() - DisplayServer.window_get_position()) - center
+			DisplayServer.warp_mouse(center)
 		# Bound capture/warp bursts per rendered frame; never retain excess motion as a backlog.
 		var limit: float = MAX_LOOK_SPEED * minf(delta, 0.05) / player.mouse_sensitivity
 		player.look(_look_motion.limit_length(limit))

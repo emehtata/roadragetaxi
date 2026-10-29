@@ -89,6 +89,9 @@ Captured look uses unscaled screen motion, discards the first nonzero sample
 after capture, and applies accumulated motion once per rendered frame. A
 two-turns-per-second limit drops excess motion without a backlog; very fast
 swipes are therefore limited too.
+On X11, a hidden confined cursor is sampled and recentered once per frame
+instead of using captured raw input. This bypasses incorrect raw deltas from
+pointing devices; desktop pointer acceleration can affect sensitivity there.
 
 Spawn candidates start just inside the existing front door, then try farther
 inward offsets and room labels. Each must lie inside a room floor and the

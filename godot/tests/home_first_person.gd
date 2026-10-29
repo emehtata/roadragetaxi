@@ -35,6 +35,7 @@ func _initialize() -> void:
 func _run() -> void:
 	var plans: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/data/home_plans.json"))
 	var view := View.new()
+	view._recenter_mouse = false
 	root.add_child(view)
 	var exterior := Camera2D.new()
 	root.add_child(exterior)
@@ -154,6 +155,19 @@ func _run() -> void:
 	click.button_index = MOUSE_BUTTON_LEFT
 	click.pressed = true
 	check(view.handle_input(click) and p.controls_enabled, "click recaptures after focus loss")
+	if DisplayServer.get_name() == "X11":
+		view.release_mouse()
+		view._recenter_mouse = true
+		view.capture_mouse()
+		check(Input.mouse_mode == Input.MOUSE_MODE_CONFINED_HIDDEN, "X11 bypasses captured raw input")
+		var center := Vector2(DisplayServer.window_get_size()) / 2.0
+		for offset in [Vector2(20, 10), Vector2(-20, -10), Vector2.ZERO]:
+			var yaw: float = p.rotation.y
+			var pitch: float = p.head.rotation.x
+			DisplayServer.warp_mouse(center + offset)
+			view._process(1.0 / 60)
+			check(is_equal_approx(p.rotation.y, yaw - offset.x * p.mouse_sensitivity), "X11 cursor motion preserves horizontal direction")
+			check(is_equal_approx(p.head.rotation.x, pitch - offset.y * p.mouse_sensitivity), "X11 cursor motion preserves vertical direction")
 	view.leave()
 	check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE and exterior.transform == original_camera, "exit restores cursor and preserves exterior camera")
 	var invalid: Dictionary = plans[0].duplicate(true)
@@ -191,6 +205,9 @@ func _run() -> void:
 	check(Input.is_action_pressed("interior_forward"), "W uses the indoor Input Map action")
 	game._input(key)
 	if DisplayServer.get_name() != "headless":
+		game.home_first_person.release_mouse()
+		game.home_first_person._recenter_mouse = false
+		game.home_first_person.capture_mouse()
 		var motion := InputEventMouseMotion.new()
 		motion.relative = Vector2(10, 4)
 		motion.screen_relative = Vector2(10, 4)
