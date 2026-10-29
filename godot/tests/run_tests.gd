@@ -2990,7 +2990,8 @@ func test_sun_and_shadows() -> void:
 	var instances: Array = B3.meshes(arrays)
 	var casters := instances.filter(func(node): return node.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
 	var prism_triangles: int = casters[0].mesh.surface_get_array_len(0) / 3 if casters.size() == 1 else -1
-	check(casters.size() == 1 and casters[0].layers == B3.LAYER_SHADOW_GROUND and prism_triangles == 4 * 2 + 2, "each chunk casts through shadows-only prisms: 4 walls and a roof, no windows")
+	check(casters.size() == 1 and casters[0].layers == B3.LAYER_SHADOW_GROUND and prism_triangles == 4 * 2 + 2 + 4 * 2,
+		"each chunk casts through shadows-only prisms: 4 walls and a roof, its parapet, no windows")
 	check(instances[0].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "the drawn buildings cast nothing themselves")
 	for node in instances:
 		node.free()
@@ -3022,12 +3023,15 @@ func test_buildings_3d() -> void:
 		var out: Dictionary = B3.build([footprint], [style], Vector2.ZERO)
 		var ground := 0
 		var top := -INF
+		var at_roof := 0
 		for v in out["verts"]:
 			if v.y == 0.0:
 				ground += 1
 				check(Geometry2D.is_point_in_polygon(Vector2(v.x, v.z), footprint.duplicate()) or _on_outline(Vector2(v.x, v.z), footprint) , "ground vertices on the footprint")
+			at_roof += int(is_equal_approx(v.y, 10.0))
 			top = maxf(top, v.y)
-		check(out["stats"]["walls"] == footprint.size() and ground > 0 and is_equal_approx(top, 10.0), "every wall extruded from the ground to the height (%d sides)" % footprint.size())
+		check(out["stats"]["walls"] == footprint.size() and ground > 0 and at_roof > 0 and top <= 10.0 + 2.8 + 1e-4,
+			"every wall extruded from the ground to the height, roof details at most a machine room above (%d sides)" % footprint.size())
 		check(out["verts"] == B3.build([footprint], [style], Vector2.ZERO)["verts"], "deterministic geometry")
 	# godot-22 back-face culling: every triangle's front (clockwise, so its cross
 	# product points away) faces out of the building, whichever way it winds.
@@ -3046,9 +3050,11 @@ func test_buildings_3d() -> void:
 		check(inward == 0, "every wall, roof, window and door triangle faces outward (%d did not)" % inward)
 	var tall: Dictionary = B3.build([box], [[[92, 57, 48], 0, 40.0, [], [158, 105, 82], 12, 0]], Vector2.ZERO)
 	var top_tall := -INF
+	var roof_tall := false
 	for v in tall["verts"]:
 		top_tall = maxf(top_tall, v.y)
-	check(is_equal_approx(top_tall, 40.0), "a 40 m building is 40 m tall")
+		roof_tall = roof_tall or is_equal_approx(v.y, 40.0)
+	check(roof_tall and top_tall <= 40.0 + 2.8 + 1e-4, "a 40 m building is 40 m tall (its roof; a machine room above)")
 	var gabled: Dictionary = B3.build([box], [[[92, 57, 48], 1, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO)
 	var ridge := -INF
 	for v in gabled["verts"]:
