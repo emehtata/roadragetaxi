@@ -20,6 +20,7 @@ def parse_server_args():
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port to listen on")
     parser.add_argument("--tick-rate", type=float, default=30.0, help="Simulation ticks per second")
     parser.add_argument("--startup-progress", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--log-file", default=None, help="Write server logs to this UTF-8 file")
     parser.add_argument("--game-mode", choices=["career", "gig_driver", "simulation"], default="gig_driver")
     parser.add_argument("--language", choices=SUPPORTED_LANGUAGES, default=None)
     parser.add_argument("--list-cities", action="store_true", help=argparse.SUPPRESS)

@@ -55,13 +55,18 @@ def main() -> None:
         return
     if args.parent_pid:
         exit_with_parent(args.parent_pid)
-    configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False))
-    server = run_server(args, config)
-    logger.info(
-        "Headless simulation server ready: city=%s tick_rate=%.1f",
-        server.chosen_city, server.tick_rate,
-    )
-    server.run_forever()
+    configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False),
+                      log_file=args.log_file)
+    try:
+        server = run_server(args, config)
+        logger.info(
+            "Headless simulation server ready: city=%s tick_rate=%.1f",
+            server.chosen_city, server.tick_rate,
+        )
+        server.run_forever()
+    except Exception:
+        logger.exception("Simulation server exited with an error")
+        raise
 
 
 if __name__ == "__main__":

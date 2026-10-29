@@ -128,14 +128,14 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
     return p.parse_args()
 
 
-def configure_logging(level: Optional[str] = None, file_logging: bool = False) -> None:
+def configure_logging(level: Optional[str] = None, file_logging: bool = False, log_file: Optional[str] = None) -> None:
     lvl = os.getenv("LOG_LEVEL", level or "INFO").upper()
     log_level = getattr(logging, lvl, logging.INFO)
     log_format = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     handlers = [logging.StreamHandler()]
     handlers[0].setFormatter(logging.Formatter(log_format))
-    if file_logging:
-        file_handler = logging.FileHandler("roadragetrip.log", encoding="utf-8")
+    if file_logging or log_file:
+        file_handler = logging.FileHandler(log_file or "roadragetrip.log", encoding="utf-8")
         file_handler.setFormatter(logging.Formatter(log_format))
         handlers.append(file_handler)
     logging.basicConfig(level=log_level, handlers=handlers, force=True)

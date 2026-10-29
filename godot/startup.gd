@@ -1132,6 +1132,8 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		args.append("--live-clock" if _settings.get_value("game", "live_clock") else "--no-live-clock")
 	args.append_array(_server_extra)
 	var command := Paths.server_command(args)  # the repo's .venv, or the release's bundled server
+	if OS.get_name() == "Windows":
+		command[1].append_array(["--log-file", ProjectSettings.globalize_path("res://../server.log")])
 	_server_pid = OS.create_process(command[0], command[1], OS.get_name() == "Windows")
 	if _server_pid <= 0:
 		_clear()
