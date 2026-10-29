@@ -18,7 +18,7 @@ import math
 from . import static_world
 from .fuel import fuel_station_price_cents
 from .geo import dist_point_to_segment
-from .holiday_events import house_yard_spot
+from .holiday_events import BONFIRE_SHORE_SPACING_M, bonfire_spot_is_clear, house_yard_spot
 from .map_level import SURFACE_MAP_LEVELS
 from .nightlife import nightclub_schedule
 from .playground_equipment import equipment_rows
@@ -30,7 +30,8 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
           "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards",
-          "nightclubs", "attractions", "tennis_courts", "volleyball_courts", "shore_waves")
+          "nightclubs", "attractions", "tennis_courts", "volleyball_courts", "shore_waves",
+          "bonfires")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("shrub", "bench", "waste_basket", "bicycle_parking", "charging_station", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
@@ -279,7 +280,10 @@ class ChunkIndex:
                 self._add("waters", points, _line(points))
             elif len(points) >= 2:
                 self._add("water_lines", points, _line(points))
-        self._add_water_shores(world.waters)
+        self._add_water_shores(world.waters, world)
+        for spot in getattr(world, "scenery_objects", ()):  # a mapped fire place is a Midsummer bonfire's too
+            if spot.kind == "firepit":
+                self._add("bonfires", ((spot.x, spot.y),), [round(spot.x, 1), round(spot.y, 1)])
         static_world.inherit_part_colours(world.buildings)
         for building in world.buildings:
             if len(building.points_m) < 3:
@@ -399,7 +403,7 @@ class ChunkIndex:
         for cell in cells_touched_by_line(points, self.size):
             self._chunk(cell)[kind].append(feature)
 
-    def _add_water_shores(self, waters) -> None:
+    def _add_water_shores(self, waters, world=None) -> None:
         from shapely.geometry import Polygon, box
         from shapely.ops import unary_union
 
@@ -413,6 +417,8 @@ class ChunkIndex:
         # Water rings are split around islands for filling. Their internal cuts are not shores.
         for same_layer in polygons.values():
             area = unary_union(same_layer)
+            if world is not None:
+                self._add_shore_bonfires(area, world)
             for band in range(12):
                 distance = (band + 0.5) * 0.5
                 boundary = area.buffer(-distance).boundary
@@ -428,6 +434,19 @@ class ChunkIndex:
                         for line in getattr(clipped, "geoms", (clipped,)):
                             if line.geom_type == "LineString" and line.length > 0.01:
                                 self._chunk(cell)["shore_waves"].append({"distance": distance, "points": _line(line.coords)})
+
+    def _add_shore_bonfires(self, water, world) -> None:
+        """Midsummer bonfire spots on the shore, a few metres inland, every
+        BONFIRE_SHORE_SPACING_M along it: the holiday layer lights them."""
+        shore = water.buffer(5.0).boundary
+        for contour in getattr(shore, "geoms", (shore,)):
+            distance = BONFIRE_SHORE_SPACING_M / 2.0
+            while distance < contour.length:
+                point = contour.interpolate(distance)
+                distance += BONFIRE_SHORE_SPACING_M
+                cell = (math.floor(point.x / self.size), math.floor(point.y / self.size))
+                if (self._cells is None or cell in self._cells) and bonfire_spot_is_clear(point.x, point.y, world):
+                    self._chunk(cell)["bonfires"].append([round(point.x, 1), round(point.y, 1)])
 
     def _add_static_world(self, world, bridge_parts) -> None:
         """godot-16: the rest of what the client draws from the map (static_world.py)."""

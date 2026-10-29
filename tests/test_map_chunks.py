@@ -625,3 +625,16 @@ def test_surface_detail_survives_area_clipping_and_kerbed_redraws():
         chunk = index.message(cid)
         assert chunk['landuse'][0][3:] == ['',3]
         assert chunk['traffic_islands'][0][3:] == ['',3]
+
+
+def test_midsummer_bonfires_stand_on_the_shore_and_at_firepits():
+    from theroadragetrip.osm import SceneryObject, Water
+
+    lake = Water(points_m=[(0, 0), (400, 0), (400, 400), (0, 400), (0, 0)], kind="water", is_polygon=True)
+    pit = SceneryObject(x=-200.0, y=50.0, kind="firepit", id=1)
+    index = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=[lake], buildings=[], scenery_objects=[pit]))
+    spots = [spot for chunk in index._chunks.values() for spot in chunk["bonfires"]]
+    shore = [s for s in spots if s != [-200.0, 50.0]]
+    assert [-200.0, 50.0] in spots
+    assert len(shore) == 5  # a 1.6 km shore, every 300 m
+    assert all(not (0 <= x <= 400 and 0 <= y <= 400) and min(abs(x), abs(x - 400), abs(y), abs(y - 400)) <= 6 for x, y in shore)

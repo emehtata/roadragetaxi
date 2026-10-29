@@ -229,13 +229,14 @@ func chunk_count() -> int:
 	return _chunks.size()
 
 
-func holiday_yards(view: Rect2, limit := 64) -> PackedVector2Array:
+## Static holiday spots of chunk list `key` in the view: house yards, or Midsummer bonfires.
+func holiday_yards(view: Rect2, limit := 64, key := "holiday_yards") -> PackedVector2Array:
 	var result := PackedVector2Array()
 	var scanned := 0
 	for chunk in _chunks.values():
 		if not view.intersects(chunk._bounds_rect):
 			continue
-		for row in chunk._data.get("holiday_yards", []):
+		for row in chunk._data.get(key, []):
 			scanned += 1
 			if scanned > 2048:  # shortcut: cap dense-yard queries; index them if this hides visible yards.
 				return result

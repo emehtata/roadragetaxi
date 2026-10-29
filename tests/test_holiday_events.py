@@ -69,3 +69,12 @@ def test_a_house_gets_one_yard_spot_outside_it_off_the_road():
     assert not point_in_polygon(x, y, house.points_m)
     assert not is_point_on_road(x, y, ways=[road])
     assert house_yard_spot(square(0.0, 0.0, 10.0, "apartments"), world) is None  # houses only
+
+
+def test_midsummer_bonfires_burn_from_eve_21_until_3():
+    assert "midsummer_bonfires" not in on(2026, 6, 19, 20, 59)  # Midsummer Eve 2026 is Friday 19 June
+    assert "midsummer_bonfires" in on(2026, 6, 19, 21, 0)
+    assert "midsummer_bonfires" in on(2026, 6, 20, 2, 59)
+    assert "midsummer_bonfires" not in on(2026, 6, 20, 3, 0)
+    assert "midsummer_bonfires" not in on(2026, 6, 26, 22, 0)  # a Friday, but not the Eve
+    assert "midsummer_bonfires" in on(2027, 6, 25, 22, 0)  # Saturday 26 June 2027

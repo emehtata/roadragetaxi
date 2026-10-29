@@ -16,7 +16,31 @@ def holiday_events(moment):
         "halloween_ghosts": halloween and (moment.hour >= 20 or moment.hour < 6),
         "christmas": day[0] == 12 and 1 <= day[1] <= 24,
         "santas": day == (12, 24),
+        "midsummer_bonfires": midsummer_bonfires(moment),
     }
+
+
+BONFIRE_SHORE_SPACING_M = 300.0
+
+
+def midsummer_bonfires(moment) -> bool:
+    """Juhannuskokko: lit on Midsummer Eve (the Friday before the Saturday
+    of 20-26 June) from 21 until 03 the next morning."""
+    eve = moment.month == 6 and moment.weekday() == 4 and 19 <= moment.day <= 25
+    morning = moment.month == 6 and moment.weekday() == 5 and 20 <= moment.day <= 26
+    return eve and moment.hour >= 21 or morning and moment.hour < 3
+
+
+def bonfire_spot_is_clear(x, y, world) -> bool:
+    """Open ground: no building, road or water within a bonfire's 4 m."""
+    def nearby(name, grid_name):
+        grid = getattr(world, grid_name, None)
+        return grid.ways_in_rect(x - 4, y - 4, x + 4, y + 4) if grid else getattr(world, name, ())
+    probes = [(x, y)] + [(x + 4 * math.cos(i * math.pi / 4), y + 4 * math.sin(i * math.pi / 4)) for i in range(8)]
+    buildings, waters = nearby("buildings", "building_grid"), nearby("waters", "water_grid")
+    return not any(any(point_in_polygon(px, py, b.points_m) for b in buildings)
+                   or is_point_on_road(px, py, ways=world.ways, spatial_grid=getattr(world, "spatial_grid", None))
+                   or is_point_in_water(px, py, waters) for px, py in probes)
 
 
 def santa_costume(ped, resident, day):

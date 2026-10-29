@@ -20,6 +20,10 @@ var _halloween := false
 var _fireworks := false
 var _ghosts := false
 var _christmas := false
+var _bonfires := false
+var bonfire_layer: Node2D
+var bonfires := PackedVector2Array()  # Midsummer bonfires in the view (chunk "bonfires")
+const MAX_BONFIRES := 24
 var decorations: Node2D
 var ghost_layer: Node2D
 var elf_layer: Node2D
@@ -45,6 +49,12 @@ func setup(world: Node2D) -> void:
 	elf_layer.material = preload("res://emissive.tres")
 	elf_layer.draw.connect(_draw_elves)
 	world.add_child(elf_layer)
+	bonfire_layer = Node2D.new()
+	bonfire_layer.z_index = 7  # ground level, above yard decorations, below roofs
+	bonfire_layer.material = preload("res://emissive.tres")
+	bonfire_layer.draw.connect(_draw_bonfires)
+	world.add_child(bonfire_layer)
+	bonfire_layer.hide()
 	bursts = Node2D.new()
 	bursts.z_index = 30  # sky above buildings, without illuminating roofs
 	bursts.material = preload("res://emissive.tres")
@@ -63,7 +73,10 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 	var ghost_season: bool = not underground and events.get("halloween_ghosts", false)
 	var christmas: bool = not underground and events.get("christmas", false)
 	var fireworks: bool = not underground and events.get("fireworks", false)
-	var changed := halloween != _halloween or fireworks != _fireworks or ghost_season != _ghosts or christmas != _christmas
+	var midsummer: bool = not underground and events.get("midsummer_bonfires", false)
+	var changed := halloween != _halloween or fireworks != _fireworks or ghost_season != _ghosts or christmas != _christmas or midsummer != _bonfires
+	_bonfires = midsummer
+	bonfire_layer.visible = midsummer
 	_halloween = halloween
 	_fireworks = fireworks
 	_ghosts = ghost_season
@@ -72,8 +85,9 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 	ghost_layer.visible = ghost_season
 	elf_layer.visible = christmas
 	bursts.visible = fireworks
-	if not halloween and not fireworks and not ghost_season and not christmas:
+	if not halloween and not fireworks and not ghost_season and not christmas and not midsummer:
 		yards.clear()
+		bonfires.clear()
 		sites.clear()
 		ghosts.clear()
 		elves.clear()
@@ -87,6 +101,7 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 		if ghost_season and (ghosts.is_empty() or not view.has_point(ghosts[0])):
 			ghosts = ghost_sites(view.grow(20.0))
 		elves = map_layer.holiday_hiding_spots(view.grow(50.0)) if christmas else PackedVector2Array()
+		bonfires = map_layer.holiday_yards(view.grow(20.0), MAX_BONFIRES, "bonfires") if midsummer else PackedVector2Array()
 		decorations.queue_redraw()
 		ghost_layer.queue_redraw()
 		elf_layer.queue_redraw()
@@ -95,6 +110,8 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 		ghost_layer.queue_redraw()
 	if christmas:
 		elf_layer.queue_redraw()
+	if midsummer:
+		bonfire_layer.queue_redraw()
 	if fireworks:
 		bursts.queue_redraw()
 		if audio != null:
@@ -117,6 +134,28 @@ func _draw_decorations() -> void:
 		decorations.draw_rect(Rect2(lantern - Vector2(0.19, 0.26), Vector2(0.38, 0.52)), Color8(35, 32, 28))
 		decorations.draw_rect(Rect2(lantern - Vector2(0.12, 0.18), Vector2(0.24, 0.36)), Color(1, 0.8, 0.3))
 		decorations.draw_arc(lantern + Vector2(0, -0.26), 0.13, PI, TAU, 8, Color8(45, 40, 30), 0.05)
+
+
+func _draw_bonfires() -> void:
+	# Juhannuskokko: a log stack about 5 m across under 4-6 m flames, lighting the shore around it.
+	for at in bonfires:
+		var seed := absf(at.x * 0.37 + at.y * 0.11)
+		var flicker := 0.85 + 0.15 * sin(clock * 9.0 + seed) * sin(clock * 5.3 + seed * 2.0)
+		for ring in 8:  # the glow fades outwards in steps too fine to show
+			bonfire_layer.draw_circle(at, (22.0 - ring * 2.4) * flicker, Color(1.0, 0.55 + ring * 0.015, 0.18, 0.045))
+		for stick in 7:
+			var direction := Vector2.from_angle(TAU * stick / 7.0 + seed)
+			bonfire_layer.draw_line(at + direction * 0.4, at + direction * 2.6, Color8(70, 45, 28), 0.6)
+		for tongue in 5:
+			var sway := sin(clock * 6.0 + tongue * 1.7 + seed) * 0.35
+			var base := at + Vector2((tongue - 2) * 0.7, 0.5)
+			var height := (4.0 + 1.2 * sin(clock * 7.0 + tongue + seed)) * flicker * (1.0 - absf(tongue - 2) * 0.18)
+			var tip := base + Vector2(sway, -height)
+			bonfire_layer.draw_colored_polygon(PackedVector2Array([base + Vector2(-0.8, 0), tip, base + Vector2(0.8, 0)]), Color(1.0, 0.45, 0.1, 0.9))
+			bonfire_layer.draw_colored_polygon(PackedVector2Array([base + Vector2(-0.35, 0), base.lerp(tip, 0.65), base + Vector2(0.35, 0)]), Color(1.0, 0.85, 0.35, 0.95))
+		for spark in 4:
+			var rise := fposmod(clock * 0.8 + spark * 0.25 + seed, 1.0)
+			bonfire_layer.draw_circle(at + Vector2(sin(seed + spark * 2.0 + clock) * 1.8, -5.0 - rise * 7.0), 0.18, Color(1.0, 0.7, 0.3, 1.0 - rise))
 
 
 func _draw_ghosts() -> void:
