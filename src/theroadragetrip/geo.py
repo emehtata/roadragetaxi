@@ -75,6 +75,26 @@ def get_oriented_box_corners(
     ]
 
 
+def box_contact_normal(
+    cx1: float, cy1: float, h1: float, l1: float, w1: float,
+    cx2: float, cy2: float, h2: float, l2: float, w2: float,
+):
+    """(unit normal from box 1 into box 2, depth) along their least overlap
+    (the separating-axis direction of a contact), or None when they don't overlap."""
+    best = None
+    for ax, ay in ((math.cos(h1), math.sin(h1)), (-math.sin(h1), math.cos(h1)),
+                   (math.cos(h2), math.sin(h2)), (-math.sin(h2), math.cos(h2))):
+        reach1 = l1 * 0.5 * abs(math.cos(h1) * ax + math.sin(h1) * ay) + w1 * 0.5 * abs(-math.sin(h1) * ax + math.cos(h1) * ay)
+        reach2 = l2 * 0.5 * abs(math.cos(h2) * ax + math.sin(h2) * ay) + w2 * 0.5 * abs(-math.sin(h2) * ax + math.cos(h2) * ay)
+        gap = (cx2 - cx1) * ax + (cy2 - cy1) * ay
+        overlap = reach1 + reach2 - abs(gap)
+        if overlap <= 0.0:
+            return None
+        if best is None or overlap < best[0]:
+            best = (overlap, (ax, ay) if gap >= 0.0 else (-ax, -ay))
+    return best[1], best[0]
+
+
 def boxes_intersect(
     cx1: float, cy1: float, h1: float, l1: float, w1: float,
     cx2: float, cy2: float, h2: float, l2: float, w2: float,

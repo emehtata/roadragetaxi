@@ -1458,22 +1458,25 @@ def test_swept_collision_catches_npcs_that_cross_between_frames():
     assert vehicle_b.state == NPCState.CRASHED
 
 
-def test_check_vehicle_collision_with_player_crashes_npc_and_stops_taxi():
+def test_check_vehicle_collision_with_player_crashes_npc_and_slows_taxi():
     """Detection must have a physical response; otherwise the taxi visibly
-    drives through the NPC even though the NPC's crash state was set."""
+    drives through the NPC even though the NPC's crash state was set. The
+    taxi rear-ending it passes momentum on: it slows, the NPC is shoved on."""
     from theroadragetrip.physics import Car
 
     residents = ResidentManager()
     manager = NPCVehicleManager(target_count=1)
     vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
     manager.vehicles.append(vehicle)
-    player_car = Car(x=1.0, y=0.0, heading=0.0, speed=15.0)
+    player_car = Car(x=-3.5, y=0.0, heading=0.0, speed=15.0)  # into its rear
     pedestrian_mgr = PedestrianManager([], target_count=0)
+    npc_speed = vehicle.car.speed
 
     manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
 
     assert vehicle.state == NPCState.CRASHED
-    assert player_car.speed == 0.0
+    assert 0.0 < player_car.speed < 15.0
+    assert vehicle.knock_vx > npc_speed and abs(vehicle.knock_vy) < 1e-9
 
 
 def test_a_minor_bump_by_the_player_makes_the_npc_driver_curse_not_crash():
@@ -1487,7 +1490,7 @@ def test_a_minor_bump_by_the_player_makes_the_npc_driver_curse_not_crash():
     vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
     vehicle.car.speed = 0.0
     manager.vehicles.append(vehicle)
-    player_car = Car(x=1.0, y=0.0, heading=0.0, speed=2.5)  # 9 km/h
+    player_car = Car(x=-3.5, y=0.0, heading=0.0, speed=2.5)  # 9 km/h into its rear
     pedestrian_mgr = PedestrianManager([], target_count=0)
 
     assert manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
@@ -1495,7 +1498,7 @@ def test_a_minor_bump_by_the_player_makes_the_npc_driver_curse_not_crash():
     assert vehicle.state != NPCState.CRASHED and not vehicle.driver_departed
     assert vehicle.curse_timer > 0.0 and vehicle.curse_text and vehicle.shaken_timer == SHAKEN_S
     assert manager.curses and not manager.accidents
-    assert player_car.speed == 0.0
+    assert 0.0 < player_car.speed < 2.5  # a nudge: the taxi slows, the parked NPC stays in its bay
     from theroadragetrip.taxi_brawls import PROVOKE_BUMP, npc_rage
     assert npc_rage(vehicle, 50.0) == PROVOKE_BUMP  # its driver is angry now (brawl rage), calming later
 
@@ -1505,15 +1508,17 @@ def test_crashed_npc_remains_a_physical_obstacle_for_player():
     manager = NPCVehicleManager(target_count=1)
     vehicle, _ = _driving_vehicle(residents, 0.0, 0.0)
     manager.vehicles.append(vehicle)
-    player_car = Car(x=1.0, y=0.0, heading=0.0, speed=15.0)
+    player_car = Car(x=-3.5, y=0.0, heading=0.0, speed=15.0)
     pedestrian_mgr = PedestrianManager([], target_count=0)
     manager._check_vehicle_collision(vehicle, [player_car], residents, pedestrian_mgr, sim_time=50.0)
+    assert vehicle.state == NPCState.CRASHED
 
-    player_car.speed = 15.0
+    vehicle.knock_vx = vehicle.knock_vy = 0.0  # the wreck has come to rest
+    player_car.x, player_car.speed = -3.5, 15.0
     assert manager._check_vehicle_collision(
         vehicle, [player_car], residents, pedestrian_mgr, sim_time=51.0,
     )
-    assert player_car.speed == 0.0
+    assert player_car.speed < 15.0 and vehicle.knock_vx > 0.0
 
 
 def test_crashed_npc_remains_a_physical_obstacle_for_other_npcs():
@@ -1571,8 +1576,8 @@ def test_swept_player_collision_rolls_taxi_back_before_npc():
     )
 
     assert hit
-    assert player_car.x == -10.0
-    assert player_car.speed == 0.0
+    assert player_car.x == -10.0  # back where it was clear, not through the NPC
+    assert 0.0 < player_car.speed < 30.0 and vehicle.knock_vx > 8.0
     assert vehicle.state == NPCState.CRASHED
 
 

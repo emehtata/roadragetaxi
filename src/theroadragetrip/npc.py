@@ -27,7 +27,7 @@ from .activities import ActivityInstance, ActivityLocation
 from .competitor_taxis import COMPETITOR_TAXIS, CRUISE_DWELL_S, is_competitor, make_competitor, night_taxi_target
 from . import bus_lines
 from .bus_lines import is_line_bus
-from .geo import angle_diff, bbox_distance_sq, boxes_intersect, clamp, closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon, segment_distance
+from .geo import angle_diff, bbox_distance_sq, box_contact_normal, boxes_intersect, clamp, closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
 from .osm import Curb, ParkingSpace, StopSign, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, min_turn_radius, rear_axle_behind, get_road_layer_at_point, is_point_on_road, update_car_physics
@@ -814,6 +814,30 @@ def _vehicle_footprint_corners(
     ]
 
 
+def update_knocked(vehicle, dt: float, buildings=None, building_grid=None, ways=None, spatial_grid=None) -> None:
+    """A collision-knocked vehicle slides on, slowing at KNOCK_DECEL_MPS2,
+    until it stops, would slide into a building (it stops at the wall) or
+    off its bridge or level (map layers stay apart)."""
+    speed = math.hypot(vehicle.knock_vx, vehicle.knock_vy)
+    slower = speed - KNOCK_DECEL_MPS2 * dt
+    if not math.isfinite(speed) or slower <= KNOCK_STOP_MPS:
+        vehicle.knock_vx = vehicle.knock_vy = 0.0
+        return
+    x, y = vehicle.car.x + vehicle.knock_vx * dt, vehicle.car.y + vehicle.knock_vy * dt
+    if buildings is not None and not is_vehicle_pose_valid(x, y, vehicle.car.heading, buildings=buildings,
+                                                           building_grid=building_grid, length_m=vehicle.length_m,
+                                                           width_m=vehicle.width_m, clearance_m=0.05):
+        vehicle.knock_vx = vehicle.knock_vy = 0.0
+        return
+    if vehicle.layer != 0 and (ways or spatial_grid) and get_road_layer_at_point(
+            x, y, current_layer=vehicle.layer, ways=ways, spatial_grid=spatial_grid) != vehicle.layer:
+        vehicle.knock_vx = vehicle.knock_vy = 0.0
+        return
+    vehicle.car.x, vehicle.car.y = x, y
+    vehicle.knock_vx *= slower / speed
+    vehicle.knock_vy *= slower / speed
+
+
 def is_vehicle_pose_valid(
     x: float,
     y: float,
@@ -1279,6 +1303,56 @@ class TripGroup:
 # NPC's driver curses and drives on slowly instead of wrecking the car.
 MINOR_HIT_MPS = 15.0 / 3.6
 NPC_SCRAPE_MPS = 5.0 / 3.6  # two NPCs touching slower than this: a scrape, both go on (no wreck)
+# Collision response (rrt-019-crash-physics): an impulse along the contact
+# normal, by mass. A little bounce; a knocked vehicle then slides, tyres
+# scrubbing or wheels locked, until friction stops it.
+COLLISION_RESTITUTION = 0.2
+KNOCK_DECEL_MPS2 = 7.0
+KNOCK_MAX_MPS = 40.0  # no impulse throws anything faster than this
+KNOCK_STOP_MPS = 0.2
+
+
+def collision_mass_kg(body) -> float:
+    """An NPC vehicle's laden mass by type (vehicles/base.py), the taxi's own."""
+    if isinstance(body, NPCVehicle):
+        return vehicle_definition(body.vehicle_type).mass_kg
+    return getattr(body, "total_mass_kg", 1500.0)
+
+
+def collision_velocity(body) -> Tuple[float, float]:
+    """World velocity: a knocked NPC's slide, else its speed along its heading."""
+    if isinstance(body, NPCVehicle) and (body.knock_vx or body.knock_vy):
+        return body.knock_vx, body.knock_vy
+    car = getattr(body, "car", body)
+    return math.cos(car.heading) * car.speed, math.sin(car.heading) * car.speed
+
+
+def collision_impulse(va, vb, normal, mass_a: float, mass_b: float):
+    """Velocities after a contact along `normal` (unit, from a into b): the
+    standard impulse with COLLISION_RESTITUTION, only while they close -
+    a pair already parting gets none, so one contact never pushes twice.
+    Results are capped at KNOCK_MAX_MPS."""
+    nx, ny = normal
+    closing = (va[0] - vb[0]) * nx + (va[1] - vb[1]) * ny
+    if not closing > 0.0:
+        return va, vb
+    j = (1.0 + COLLISION_RESTITUTION) * closing / (1.0 / mass_a + 1.0 / mass_b)
+
+    def capped(vx, vy):
+        speed = math.hypot(vx, vy)
+        return (vx, vy) if speed <= KNOCK_MAX_MPS else (vx * KNOCK_MAX_MPS / speed, vy * KNOCK_MAX_MPS / speed)
+    return (capped(va[0] - j * nx / mass_a, va[1] - j * ny / mass_a),
+            capped(vb[0] + j * nx / mass_b, vb[1] + j * ny / mass_b))
+
+
+def apply_collision_velocity(body, velocity) -> None:
+    """An NPC slides with `velocity` (its driver waits, update_knocked);
+    the taxi keeps the part along its heading."""
+    if isinstance(body, NPCVehicle):
+        body.knock_vx, body.knock_vy = velocity
+        body.car.speed = 0.0
+    else:
+        body.speed = velocity[0] * math.cos(body.heading) + velocity[1] * math.sin(body.heading)
 SHAKEN_S = 8.0
 SHAKEN_SPEED_MPS = 20.0 / 3.6
 CURSE_S = 2.5
@@ -1377,6 +1451,8 @@ class NPCVehicle:
     footprint_check_cached: bool = True
     curse_timer: float = 0.0  # > 0: the driver's curse bubble shows (a minor bump by the taxi)
     curse_text: str = ""
+    knock_vx: float = 0.0  # non-zero: knocked by a collision, sliding (update_knocked); its driver waits
+    knock_vy: float = 0.0
     shaken_timer: float = 0.0  # > 0: after a minor bump the driver goes on slowly
     trailer_axle: Optional[Tuple[float, float]] = None  # a towed trailer's axle (trailers.py), None: straight behind
 
@@ -4336,6 +4412,7 @@ class NPCVehicleManager:
         self.target_moving_fraction = target_moving_fraction
         self._local_density_cell = None
         self._local_people = 0.0
+        self._collision_buildings, self._collision_building_grid = None, None  # this update's, for collision pushes
         self._through_way, self._through_share = None, 0.0  # the player's road and its passing traffic's share of demand
         self.clock = None  # the game clock (a datetime), set by the simulation; None: demand ignores time
         self.motorcycle_season = motorcycle_season or MotorcycleSeason()
@@ -4877,11 +4954,16 @@ class NPCVehicleManager:
                 # posts): let it. Restoring the pose every frame kept it stuck inside
                 # a wreck for good (reported: stuck in a rival taxi on a bridge).
                 continue
-            other_speed = getattr(other_car, "speed", 0.0)
-            closing_speed = math.hypot(
-                math.cos(vehicle.car.heading) * vehicle.car.speed - math.cos(other_car.heading) * other_speed,
-                math.sin(vehicle.car.heading) * vehicle.car.speed - math.sin(other_car.heading) * other_speed,
-            )
+            velocity, other_velocity = collision_velocity(vehicle), collision_velocity(obstacle)
+            closing_speed = math.hypot(velocity[0] - other_velocity[0], velocity[1] - other_velocity[1])
+            # The contact's normal at the overlapping poses, before they are undone;
+            # a swept-only hit (passed through within the frame): along the closing motion.
+            contact = box_contact_normal(vehicle.x, vehicle.y, vehicle.heading, vehicle.length_m, vehicle.width_m,
+                                         body.x, body.y, body.heading, body_length, body_width)
+            normal = contact[0] if contact else None
+            if normal is None:
+                normal = ((velocity[0] - other_velocity[0]) / closing_speed, (velocity[1] - other_velocity[1]) / closing_speed) \
+                    if closing_speed > 1e-6 else (math.cos(vehicle.heading), math.sin(vehicle.heading))
 
             # Resolve at the last known non-penetrating frame pose. Detection
             # without response merely marks an NPC crashed while the taxi
@@ -4889,7 +4971,6 @@ class NPCVehicleManager:
             # the player also prevents passage on following frames.
             if previous_vehicle_pose is not None:
                 vehicle.car.x, vehicle.car.y, vehicle.car.heading = previous_vehicle_pose
-            vehicle.car.speed = 0.0
             if other_previous is not None:
                 if obstacle_is_npc:
                     obstacle.car.x, obstacle.car.y, obstacle.car.heading = other_previous
@@ -4901,16 +4982,37 @@ class NPCVehicleManager:
                     # on the next hit - colliding every tick, stuck until it
                     # reversed far enough away.
                     self._previous_player_pose = other_previous
-            if obstacle_is_npc:
-                obstacle.car.speed = 0.0
-            elif hasattr(obstacle, "speed"):
-                obstacle.speed = 0.0
+            # Still overlapping where they were (embedded, e.g. one spawned or shoved into the
+            # other): push them apart along the contact, the lighter one further.
+            embedded = box_contact_normal(vehicle.x, vehicle.y, vehicle.heading, vehicle.length_m, vehicle.width_m,
+                                          body.x, body.y, body.heading, body_length, body_width)
+            if embedded is not None and (obstacle_is_npc or hasattr(obstacle, "speed")):
+                (ex, ey), depth = embedded
+                mass, other_mass = collision_mass_kg(vehicle), collision_mass_kg(obstacle)
+                share = (depth + 0.05) / (mass + other_mass)
+                other_body = obstacle.car if obstacle_is_npc else obstacle
+                for moved, sign, weight in ((vehicle.car, -1.0, other_mass), (other_body, 1.0, mass)):
+                    x, y = moved.x + sign * ex * share * weight, moved.y + sign * ey * share * weight
+                    if is_vehicle_pose_valid(x, y, moved.heading, buildings=self._collision_buildings,
+                                             building_grid=self._collision_building_grid, length_m=moved.length_m,
+                                             width_m=moved.width_m, clearance_m=0.05):  # never into a wall
+                        moved.x, moved.y = x, y
+                if not obstacle_is_npc:
+                    self._previous_player_pose = (other_body.x, other_body.y, other_body.heading)
+            # Momentum by mass, along the contact: a bicycle flies off a car, a bus barely moves.
+            velocity, other_velocity = collision_impulse(velocity, other_velocity, normal, collision_mass_kg(vehicle),
+                                                         collision_mass_kg(obstacle))
+            apply_collision_velocity(vehicle, velocity)
+            if obstacle_is_npc or hasattr(obstacle, "speed"):
+                apply_collision_velocity(obstacle, other_velocity)
 
             if (not obstacle_is_npc and not vehicle_already_crashed
                     and closing_speed < MINOR_HIT_MPS):
                 # A minor bump by the taxi: both stop apart, the NPC driver
                 # curses and goes on slowly - no wreck.
                 from .pedestrian import CURSE_SYMBOLS  # lazy: pedestrian imports npc
+                if vehicle.state == NPCState.PARKED:
+                    vehicle.knock_vx = vehicle.knock_vy = 0.0  # a nudge leaves a parked car in its bay (and its claim)
                 vehicle.curse_timer = CURSE_S
                 vehicle.curse_text = random.choice(CURSE_SYMBOLS)
                 vehicle.shaken_timer = SHAKEN_S
@@ -4924,6 +5026,9 @@ class NPCVehicleManager:
                     and closing_speed < NPC_SCRAPE_MPS:
                 # Two NPCs touching at walking pace (a crawl past a parking car): both stop
                 # apart and go on - a scrape, not a wreck blocking the road for minutes.
+                for scraped in (vehicle, obstacle):
+                    if scraped.state == NPCState.PARKED:
+                        scraped.knock_vx = scraped.knock_vy = 0.0  # stays in its bay
                 return True
             self.accidents.append((vehicle.car.x, vehicle.car.y))
             if not vehicle_already_crashed:
@@ -6512,6 +6617,14 @@ class NPCVehicleManager:
         active = self.vehicles if active_bounds is None else [
             v for v in self.vehicles if in_bounds(active_bounds, v.x, v.y, math.hypot(v.length_m, v.width_m) * 0.5)]
         previous_poses = {id(v): (v.x, v.y, v.heading) for v in active}
+        self._collision_buildings, self._collision_building_grid = buildings, building_grid
+        active_ids = {id(v) for v in active}
+        for vehicle in self.vehicles:
+            if vehicle.knock_vx or vehicle.knock_vy:
+                if id(vehicle) in active_ids:
+                    update_knocked(vehicle, dt, buildings, building_grid, ways, spatial_grid)
+                else:  # left the simulated area mid-slide: it has come to rest, its driver goes on later
+                    vehicle.knock_vx = vehicle.knock_vy = 0.0
         for vehicle in self.vehicles:
             if vehicle.state == NPCState.CRASHED:
                 vehicle.car.speed = 0.0
@@ -6524,6 +6637,8 @@ class NPCVehicleManager:
         for vehicle in list(self.vehicles):  # a copy: a stuck cyclist may retire mid-loop
             if vehicle.vehicle_id in self.road_rage.held or vehicle.brawl_id is not None:
                 continue  # held aside by rage clearance, or its driver is out brawling: it stays put
+            if vehicle.knock_vx or vehicle.knock_vy:
+                continue  # knocked, sliding: the driver takes over again once it has stopped
             driver = self.drivers.get(vehicle.vehicle_id)
             if driver is None:
                 continue  # idle, parked - nothing to simulate until it starts a trip

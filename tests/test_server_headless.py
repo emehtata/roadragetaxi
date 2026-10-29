@@ -1163,7 +1163,7 @@ def test_knocking_a_post_over_clangs_where_the_taxi_is(tmp_path, monkeypatch):
     assert len(knocks) == 1 and math.dist(knocks[0], (car.x, car.y)) < 5.0
 
 
-def test_the_taxi_backs_out_of_a_wreck_it_is_stuck_in(tmp_path, monkeypatch):
+def test_the_taxi_gets_out_of_a_wreck_it_is_stuck_in(tmp_path, monkeypatch):
     """Reported: crashed into a rival taxi on a bridge and stuck inside it for good -
     the pose was restored every frame, moving away from it too."""
     import math
@@ -1176,12 +1176,14 @@ def test_the_taxi_backs_out_of_a_wreck_it_is_stuck_in(tmp_path, monkeypatch):
     van = place_parked_npc(9999, (car.x - 0.65, car.y + 0.62), None, vehicle_type="van")  # the screenshot's overlap
     van.car.heading, van.state = car.heading + 0.01, NPCState.CRASHED
     server.world.npc_manager.vehicles.append(van)
-    start = (car.x, car.y)
+    start, van_at = (car.x, car.y), (van.x, van.y)
     server._latest_command = PlayerCommand(throttle=1.0)
     for _ in range(30):
         server.tick(1 / 30)
-    assert math.dist(start, (car.x, car.y)) < 0.5  # pressing on into it: still stopped
-    server._latest_command = PlayerCommand(brake=1.0)
-    for _ in range(90):
-        server.tick(1 / 30)
-    assert math.dist(start, (car.x, car.y)) > 5.0  # reversing: out
+    # Embedded: pushed apart along their contact at once (the heavier van less), then
+    # the taxi drives off - not held inside the wreck.
+    from theroadragetrip.geo import boxes_intersect
+    assert 0.0 < math.dist(van_at, (van.x, van.y)) < 1.0
+    assert not boxes_intersect(car.x, car.y, car.heading, car.length_m, car.width_m,
+                               van.x, van.y, van.heading, van.length_m, van.width_m)
+    assert math.dist(start, (car.x, car.y)) > 0.5
