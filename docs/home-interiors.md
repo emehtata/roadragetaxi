@@ -85,6 +85,19 @@ The UI and errors support English, Finnish and German.
 
 ## Intentional limits
 
+Generator version 4 adds a ground-floor layout based on the supplied Finnish
+L-shaped house reference. Suitable orthogonal L footprints get an inner-corner
+vestibule, a short central hall, bedroom, bathroom and walk-in closet in the
+cross-wing, and an open kitchen/living area along the long wing. A separate
+stair area is reserved beside the vestibule; it has no stairs or upper-floor
+transition yet. Room labels support English, Finnish and German.
+
+The template rotates with the footprint and uses the existing door-clearance,
+furniture and wall generation. It requires enough space for a 1.5 m hall,
+3.5 m bedroom width and usable service rooms. Small or irregular L shapes keep
+the previous layout fallback. The new generator version regenerates requested
+plans, including furniture placement; saved home selections are preserved.
+
 These are generated ground-floor concepts, not surveyed interiors. A footprint
 that cannot support the straight hall receives an open-layout fallback; an
 extremely small house may have no furniture. There are no additional floors,

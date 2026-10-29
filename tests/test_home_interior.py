@@ -8,9 +8,11 @@ from shapely.ops import unary_union
 
 from theroadragetrip.interior import GENERATOR_VERSION, _generate_cached, generate_floor_plan
 
+REFERENCE_L = [(0, 0), (14, 0), (14, 6.5), (5.5, 6.5), (5.5, 13), (0, 13)]
+
 RECTANGLE = [(0, 0), (14, 0), (14, 10), (0, 10)]
 FOOTPRINTS = [
-    RECTANGLE,
+    RECTANGLE, REFERENCE_L,
     [(0, 0), (14, 1), (12, 11), (2, 10), (-1, 5)],
     [(0, 0), (14, 0), (14, 7), (8, 7), (8, 12), (0, 12)],
     [(0, 0), (3, 0), (3, 2), (0, 2)],
@@ -231,3 +233,26 @@ def test_every_door_can_be_walked_through(points, entrance):
         if door['rooms'][0] >= 0:
             back = Point(middle[0] - n[0] * STEP_IN_M, middle[1] - n[1] * STEP_IN_M)
             assert clear.contains(back) and rooms[door['rooms'][0]].contains(back)
+
+
+@pytest.mark.parametrize("angle", [0, 31, 90, 180, 270])
+def test_reference_l_has_short_hall_corner_entrance_and_long_living_wing(angle):
+    source = rotate(Polygon(REFERENCE_L), angle, origin=(0, 0))
+    plan = generate_floor_plan("reference-L", list(source.exterior.coords))
+    rooms = {room["kind"]: Polygon(room["points"]) for room in plan["rooms"]}
+    assert set(rooms) == {"vestibule", "hall", "living_kitchen", "bedroom", "bathroom", "closet", "stairs"}
+    assert rooms["living_kitchen"].area > source.area / 2
+    assert rooms["hall"].area < source.area / 10
+    assert rooms["bedroom"].area >= 12
+    assert plan["doors"][0]["rooms"] == [-1, 0]
+    assert plan["rooms"][0]["kind"] == "vestibule"
+    front = translate(LineString(plan["doors"][0]["points"]), *plan["origin"])
+    corner_wall = rotate(LineString([(5.5, 6.5), (14, 6.5)]), angle, origin=(0, 0))
+    assert corner_wall.buffer(2e-6).covers(front)
+    hall_index = next(i for i, room in enumerate(plan["rooms"]) if room["kind"] == "hall")
+    assert all(hall_index in door["rooms"] for door in plan["doors"][1:])
+
+
+def test_small_l_keeps_existing_layout_instead_of_cramped_reference():
+    plan = generate_floor_plan("small-L", [(0, 0), (8, 0), (8, 4), (4, 4), (4, 8), (0, 8)])
+    assert "vestibule" not in {room["kind"] for room in plan["rooms"]}

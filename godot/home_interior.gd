@@ -74,6 +74,7 @@ func show_plan(value: Dictionary) -> void:
 
 class PlanCanvas extends Control:
 	const COLORS := {"hall": Color("d6c9ac"), "living": Color("e4d3b5"), "living_kitchen": Color("e4d3b5"),
+		"vestibule": Color("d6c9ac"), "closet": Color("d4c9dc"), "stairs": Color("ccc7be"),
 		"kitchen": Color("c7d9cb"), "bedroom": Color("c7d3e0"), "bathroom": Color("aed2d8"), "studio": Color("e4d3b5")}
 	var plan: Dictionary = {}
 	var _scale := 1.0

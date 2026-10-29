@@ -6,12 +6,12 @@ import math
 import random
 from functools import lru_cache
 
-from shapely import normalize
+from shapely import normalize, set_precision
 from shapely.affinity import rotate, translate
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import unary_union
 
-GENERATOR_VERSION = 3  # 3: doors only where a person fits through (WALK_CLEAR_M); 2: small wings split in two; a front door into a wing room when the hall ends cannot hold one
+GENERATOR_VERSION = 4  # 4: reference-based L-shaped ground floor
 DOOR_WIDTH = 0.95
 WALK_CLEAR_M = 0.35  # a walker's reach from a wall's line: godot/home_walk.gd RADIUS_M + WALL_HALF_M, with a margin
 STEP_IN_M = 0.45  # a door is usable if this far through it, on each side, is clear floor (home_walk.gd SPAWN_IN_M)
@@ -81,7 +81,58 @@ def _passable(a, b, clear) -> bool:
     return False
 
 
+def _l_shaped_rooms(polygon):
+    """Fit the reference ground floor to an orthogonal L; keep other shapes unchanged."""
+    for turn in (0, 90, 180, 270):
+        aligned = set_precision(rotate(polygon, turn, origin=(0, 0)), 1e-7)
+        x0, y0, x1, y1 = aligned.bounds
+        missing = box(x0, y0, x1, y1).difference(aligned)
+        if missing.geom_type != "Polygon" or missing.is_empty:
+            continue
+        nx, ny, mx, my = missing.bounds
+        if (abs(mx - x1) > 1e-6 or abs(my - y1) > 1e-6
+                or missing.symmetric_difference(box(nx, ny, x1, y1)).area > 1e-6):
+            continue
+        # Leave a useful living wing, bedroom, service rooms and a short 1.5 m hall.
+        bedroom_x = x1 - 3.5
+        service_y = y0 + 2.5
+        hall_y = service_y + 1.5
+        stair_x = nx + 2.4
+        if (nx - x0 < 4 or y1 - ny < 3 or ny - hall_y < 2
+                or bedroom_x - stair_x < 2 or bedroom_x - nx < 4.8):
+            continue
+        middle = (nx + bedroom_x) / 2
+        rooms = [
+            ("vestibule", box(stair_x, hall_y, bedroom_x, ny)),
+            ("hall", box(nx, service_y, bedroom_x, hall_y)),
+            ("living_kitchen", box(x0, y0, nx, y1)),
+            ("bedroom", box(bedroom_x, y0, x1, ny)),
+            ("bathroom", box(nx, y0, middle, service_y)),
+            ("closet", box(middle, y0, bedroom_x, service_y)),
+            ("stairs", box(nx, hall_y, stair_x, ny)),
+        ]
+        if unary_union([room for _, room in rooms]).symmetric_difference(aligned).area > 1e-6:
+            continue
+        doors = []
+        hall = rooms[1][1]
+        for i, (_, room) in enumerate(rooms):
+            if i == 1:
+                continue
+            door = _door(hall.boundary.intersection(room.boundary), [1, i], sides=(hall, room))
+            if door is None:
+                break
+            doors.append(door)
+        else:
+            for door in doors:
+                door["points"] = list(rotate(LineString(door["points"]), -turn, origin=(0, 0)).coords)
+            return [(kind, set_precision(rotate(room, -turn, origin=(0, 0)), 1e-7)) for kind, room in rooms], doors
+    return None
+
+
 def _rooms(polygon, rng):
+    reference = _l_shaped_rooms(polygon)
+    if reference is not None:
+        return reference
     x0, y0, x1, y1 = polygon.bounds
     # shortcut: a single straight hall; use a studio when a bent hall would be required.
     if polygon.area < 42 or y1 - y0 < 6 or x1 - x0 < 5:
@@ -134,6 +185,9 @@ FURNITURE = {
     "bathroom": [("shower", 0.9, 0.9), ("toilet", 0.65, 0.45), ("sink", 0.55, 0.4)],
 }
 FURNITURE["living_kitchen"] = FURNITURE["living"] + [("counter", 2.0, 0.6)]
+FURNITURE["vestibule"] = [("wardrobe", 1.2, 0.6)]
+FURNITURE["closet"] = [("wardrobe", 1.2, 0.6)]
+FURNITURE["stairs"] = []  # Reserved floor area; no upper-floor transition yet.
 FURNITURE["studio"] = [("bed", 2.0, 1.4), ("counter", 1.5, 0.6), ("table", 0.8, 0.6)]
 
 
@@ -188,7 +242,8 @@ def _generate_cached(building_id, points, entrance, version):
     rectangle = list(polygon.minimum_rotated_rectangle.exterior.coords)
     a, b = max(zip(rectangle, rectangle[1:]), key=lambda pair: math.dist(*pair))
     angle = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0])) % 180
-    polygon = normalize(rotate(polygon, -angle, origin=(0, 0)))
+    # Remove rotation noise so adjoining template rooms share exact boundary lines.
+    polygon = normalize(set_precision(rotate(polygon, -angle, origin=(0, 0)), 1e-7))
     seed = hashlib.sha256(f"{building_id}:{version}".encode()).digest()
     rng = random.Random(seed)
     rooms, doors = _rooms(polygon, rng)
