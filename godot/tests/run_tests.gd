@@ -350,10 +350,24 @@ func test_holiday_events() -> void:
 	for i in 100:
 		trees.append([i * 3.0, 80.0, "pine", 0.5])
 	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "holiday_yards": [[20, 20], [40, 40]], "trees": trees})
+	var house := [[10, 20], [22, 20], [22, 30], [10, 30]]
+	var shop := [[40, 20], [52, 20], [52, 30], [40, 30]]
+	var distant := [[300, 20], [312, 20], [312, 30], [300, 30]]
+	var apartment := [[65, 20], [77, 20], [77, 30], [65, 30]]
+	var style := [[100, 80, 70], 1, 4.5, [], [160, 150, 130], 2, 1]
+	var commercial := style.duplicate(true)
+	commercial[6] = 2
+	var apartment_style := style.duplicate(true)
+	apartment_style[6] = 0
+	map.add_chunk({"chunk_id": "christmas-test", "bounds": [0, 0, 500, 500],
+		"buildings": [house, shop, distant, apartment], "building_styles": [style, commercial, style, apartment_style]})
 	var view := Rect2(0, -100, 100, 100)
 	check(map.holiday_yards(view).size() == 2, "holiday yards: server points in world coordinates")
 	check(map.holiday_yards(view, 1).size() == 1, "holiday yards: bounded count")
 	check(map.holiday_yards(Rect2(1000, 1000, 10, 10)).is_empty(), "holiday yards: culled outside view")
+	check(map.christmas_houses(view).size() == 1, "Christmas houses: houses in view, excluding apartments and commercial buildings")
+	check(map.christmas_houses(Rect2(1000, 1000, 10, 10)).is_empty(), "Christmas houses: distant chunks skipped")
+
 	var events: Node = preload("res://holiday_layer.gd").new()
 	root.add_child(events)
 	events.setup(map)
@@ -377,6 +391,13 @@ func test_holiday_events() -> void:
 	state.calendar.holidays = {"christmas": true}
 	events.update(0.016, state, town, false)
 	check(events.elf_layer.visible and not events.elves.is_empty(), "Christmas: elves hide around trees and flash")
+	check(events.decorations.visible and events.christmas_layer.visible and events.yards.size() == 2, "Christmas: decorated house yards and exterior light strings")
+	check(events.houses.size() == 2, "Christmas: nearby residential houses, no commercial building")
+	check(map.christmas_houses(town, 1).size() == 1, "Christmas houses: caller limit is respected")
+	var bulbs: PackedVector2Array = events.christmas_bulbs(PackedVector2Array([Vector2.ZERO, Vector2(12, 0), Vector2(12, 10), Vector2(0, 10)]))
+	check(bulbs.size() > 40 and bulbs.size() <= 256, "Christmas light strings: metre-scale bulb spacing and bounded count")
+	check(events.christmas_bulbs(PackedVector2Array([Vector2.ZERO, Vector2(1000, 0), Vector2(1000, 1000), Vector2(0, 1000)])).size() == 256, "Christmas light strings: huge footprints cannot produce unlimited lights")
+
 	check(map.holiday_hiding_spots(Rect2(1000, 1000, 10, 10)).is_empty(), "Christmas elves: cull sites outside the view")
 	var sites: PackedVector2Array = events.firework_sites(town)
 	check(sites.size() == 12 and sites == events.firework_sites(town), "fireworks: at most 12 sites, the same ones every refresh")
@@ -386,6 +407,7 @@ func test_holiday_events() -> void:
 	check(all_in, "fireworks: sites inside the view")
 	events.update(0.016, state, view, true)
 	check(not events.decorations.visible and not events.bursts.visible and events.yards.is_empty(), "underground: holiday effects hidden")
+	check(not events.christmas_layer.visible and events.houses.is_empty(), "underground and out of season: no Christmas exterior decorations")
 	events.update(0.016, {"calendar": null}, view, false)
 	check(events.yards.is_empty() and not events.bursts.visible, "old server: no events, no cached yards")
 	# Sounds: each site whistles at launch and bangs at its burst, once per cycle.

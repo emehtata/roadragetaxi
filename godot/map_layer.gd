@@ -248,6 +248,26 @@ func holiday_yards(view: Rect2, limit := 64, key := "holiday_yards") -> PackedVe
 	return result
 
 
+func christmas_houses(view: Rect2, limit := 48) -> Array:
+	var result: Array = []
+	var scanned := 0
+	for chunk in _chunks.values():
+		if not view.intersects(chunk._bounds_rect):
+			continue
+		var buildings: Array = chunk._data.get("buildings", [])
+		var styles: Array = chunk._data.get("building_styles", [])
+		for i in mini(buildings.size(), styles.size()):
+			scanned += 1
+			if scanned > 2048:  # shortcut: cap dense-house queries; index them if visible houses are missed.
+				return result
+			var style: Array = styles[i]
+			if style.size() > 6 and int(style[6]) == 1 and not buildings[i].is_empty() and MapChunk._rect(buildings[i]).intersects(view):
+				result.append([buildings[i], float(style[2])])
+				if result.size() >= limit:
+					return result
+	return result
+
+
 func holiday_hiding_spots(view: Rect2, limit := 48) -> PackedVector2Array:
 	var result := PackedVector2Array()
 	var scanned := 0
