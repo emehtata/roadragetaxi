@@ -35,6 +35,7 @@ BASE = "https://tie.digitraffic.fi"
 HEADERS = {"Accept-Encoding": "gzip", "Digitraffic-User": "RoadRageTrip/lam-profiles"}
 OUT = ROOT / "src/theroadragetrip/assets/traffic/lam_profiles.json"
 CACHE = Path.home() / ".cache/RoadRageTrip/lam"
+PBF = ROOT / "src/theroadragetrip/assets/osm/finland-latest.osm.pbf"
 SCHEMA_VERSION = 1
 
 # Every station Fintraffic is gathering data from (the API's list), urban or
@@ -149,6 +150,61 @@ def buildings_near(lat: float, lon: float, cache: Path) -> int:
     elements = overpass(f'[out:json][timeout:25];way(around:{URBAN_RADIUS_M:.0f},{lat},{lon})["building"];out count;',
                         cache / f"buildings_{lat:.5f}_{lon:.5f}.json")
     return int(elements[0]["tags"]["ways"])
+
+
+def _segment_m(lat: float, lon: float, a: list, b: list) -> float:
+    """Metres from (lat, lon) to the segment a-b ([lon, lat] each), flat locally."""
+    kx = 111320.0 * math.cos(math.radians(lat))
+    ax, ay, bx, by = (a[0] - lon) * kx, (a[1] - lat) * 110540.0, (b[0] - lon) * kx, (b[1] - lat) * 110540.0
+    length2 = (bx - ax) ** 2 + (by - ay) ** 2
+    t = 0.0 if length2 == 0 else max(0.0, min(1.0, -(ax * (bx - ax) + ay * (by - ay)) / length2))
+    return math.hypot(ax + t * (bx - ax), ay + t * (by - ay))
+
+
+def prefill_from_pbf(points: list, cache: Path, pbf: Path) -> None:
+    """The osm_/buildings_ cache files of the (lat, lon) points still missing
+    them, in one pass over the local Finland extract instead of two Overpass
+    queries a station. Overpass stays the fallback without osmium or the file."""
+    import subprocess
+
+    from theroadragetrip.utils.pbf_index import osmium_command
+
+    points = [(lat, lon) for lat, lon in points
+              if not (cache / f"osm_{lat:.5f}_{lon:.5f}.json").exists() or not (cache / f"buildings_{lat:.5f}_{lon:.5f}.json").exists()]
+    if not points or not pbf.is_file() or osmium_command() is None:
+        return
+    filtered, lines = cache / "highways_buildings.osm.pbf", cache / "highways_buildings.geojsonseq"
+    if not lines.exists() or lines.stat().st_mtime < pbf.stat().st_mtime:
+        print(f"Filtering {pbf.name} for {len(points)} stations (a few minutes)...", file=sys.stderr)
+        subprocess.run([osmium_command(), "tags-filter", str(pbf), "w/highway", "w/building", "-O", "-o", str(filtered)], check=True)
+        subprocess.run([osmium_command(), "export", str(filtered), "-f", "geojsonseq", "-a", "id", "--geometry-types=linestring,polygon", "-O", "-o", str(lines)], check=True)
+    cell = 0.02  # degrees; a station looks one cell around it (> 500 m everywhere in Finland)
+    grid: dict = {}
+    for index, (lat, lon) in enumerate(points):
+        grid.setdefault((math.floor(lat / cell), math.floor(lon / cell)), []).append(index)
+    ways, buildings = [[] for _ in points], [0] * len(points)
+    with lines.open(encoding="utf-8") as stream:
+        for line in stream:
+            feature = json.loads(line.lstrip("\x1e"))
+            geometry, tags = feature["geometry"], feature["properties"]
+            coords = geometry["coordinates"][0] if geometry["type"] == "Polygon" else geometry["coordinates"]
+            if geometry["type"] == "MultiPolygon":
+                coords = coords[0][0]
+            if not coords or not isinstance(coords[0], list):
+                continue
+            near = {i for lon, lat in coords for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+                    for i in grid.get((math.floor(lat / cell) + dy, math.floor(lon / cell) + dx), ())}
+            for i in near:
+                lat, lon = points[i]
+                if "building" in tags and geometry["type"] != "LineString":  # a closed way comes as both
+                    buildings[i] += any(_segment_m(lat, lon, c, c) <= URBAN_RADIUS_M for c in coords)
+                if "highway" in tags and geometry["type"] == "LineString" and any(_segment_m(lat, lon, a, b) <= 150.0 for a, b in zip(coords, coords[1:])):
+                    ways[i].append({"type": "way", "id": int(str(tags.pop("@id", 0)).lstrip("w") or 0),
+                                    "tags": {k: v for k, v in tags.items() if not k.startswith("@")},
+                                    "geometry": [{"lat": c[1], "lon": c[0]} for c in coords]})
+    for i, (lat, lon) in enumerate(points):  # Overpass's answer shapes: osm_ways_near / buildings_near read them
+        (cache / f"osm_{lat:.5f}_{lon:.5f}.json").write_text(json.dumps(ways[i]))
+        (cache / f"buildings_{lat:.5f}_{lon:.5f}.json").write_text(json.dumps([{"tags": {"ways": str(buildings[i])}}]))
 
 
 def _heading(dx: float, dy: float) -> float:
@@ -282,8 +338,9 @@ def build(cache: Path) -> dict:
 
     project = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True).transform  # the game's metres
     stations = []
-    for station_id in station_ids():
-        meta = station_meta(station_id, cache)
+    metas = [station_meta(station_id, cache) for station_id in station_ids()]
+    prefill_from_pbf([(m["lat"], m["lon"]) for m in metas], cache, PBF)
+    for meta in metas:
         days, missing = {}, []
         for week in WEEKS:
             for offset in range(7):
