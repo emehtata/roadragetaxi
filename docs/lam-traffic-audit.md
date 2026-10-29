@@ -440,3 +440,16 @@ sampled month the month factors are population.py's estimates.
 
 Next: review the 29 heading rejections (API bearings were seen 45 deg off
 before), then the special days.
+
+## Special days: Midsummer and Christmas (2026-10-29)
+
+`population.special_day` gives Midsummer Eve, Day and Sunday (the
+Saturday falls on 20-26 June) and each of 23-27 December its own curve:
+the station's, else the urban/rural group's, as shares of the ordinary
+weekday peak (volume included, no month factor). Sampled Midsummer 2026
+and Christmas 2025; 478 of 492 stations have all eight days.
+
+Daily totals against an ordinary weekday (10.3-10.4): urban Midsummer Eve
+6.7, Day 5.2, Christmas Eve 6.0, Christmas Day 5.4, 27 Dec 7.2; rural
+Midsummer Eve 9.6 with a midday peak of 1.03 (the drive to the cottages),
+Day 7.6, Christmas Eve 6.0, Day 6.4, 27 Dec 8.6.
