@@ -21,6 +21,7 @@ var _fireworks := false
 var _ghosts := false
 var _christmas := false
 var _window_decorations := false
+var _independence_candles := false
 const B3 := preload("res://buildings_3d.gd")
 const WeatherLayer := preload("res://weather_layer.gd")
 var _bonfires := false
@@ -94,6 +95,10 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 	var ghost_season: bool = not underground and events.get("halloween_ghosts", false)
 	var christmas: bool = not underground and events.get("christmas", false)
 	_update_flags(delta, calendar, state, view, underground)
+	var candles: bool = events.get("independence_candles", false)
+	if candles != _independence_candles:  # two candles in most windows on Independence Day evening
+		_independence_candles = candles
+		B3._shared["material"].set_shader_parameter("independence_candles", 1.0 if candles else 0.0)
 	var decorated: bool = events.get("window_decorations", false)
 	if decorated != _window_decorations:  # candle bridges and stars in the windows (building_snow.gdshader)
 		_window_decorations = decorated

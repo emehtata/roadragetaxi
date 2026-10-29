@@ -18,6 +18,8 @@ def holiday_events(moment):
         "santas": day == (12, 24),
         "midsummer_bonfires": midsummer_bonfires(moment),
         "window_decorations": window_decorations(moment),
+        # Independence Day: two candles in most windows from 18:00 until midnight.
+        "independence_candles": (moment.month, moment.day) == (12, 6) and moment.hour >= 18,
     }
 
 

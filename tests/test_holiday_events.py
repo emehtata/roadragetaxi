@@ -15,7 +15,7 @@ def on(*args):
 
 def other(*args):
     """The active events but the window decorations (their own test)."""
-    return on(*args) - {"window_decorations"}
+    return on(*args) - {"window_decorations", "independence_candles"}
 
 
 def test_fireworks_from_new_years_eve_18_until_2_at_night():
@@ -118,3 +118,10 @@ def test_flags_fly_on_flag_days_by_the_official_hours():
     assert flag_state(datetime(2026, 11, 8, 9, 0), sun, sun) == "full"  # Father's Day 2026
     assert flag_state(datetime(2026, 8, 29, 9, 0), sun, sun) == "full"  # Nature Day: last Saturday of August
     assert flag_state(datetime(2026, 8, 28, 9, 0), sun, sun) == ""
+
+
+def test_independence_day_candles_from_18_until_midnight():
+    assert "independence_candles" not in on(2026, 12, 6, 17, 59)
+    assert "independence_candles" in on(2026, 12, 6, 18, 0)
+    assert "independence_candles" in on(2026, 12, 6, 23, 59)
+    assert "independence_candles" not in on(2026, 12, 7, 0, 0)

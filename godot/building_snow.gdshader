@@ -15,6 +15,7 @@ uniform vec4 window_color : source_color = vec4(0.22745, 0.31373, 0.36863, 1.0);
 uniform vec4 storefront_color : source_color = vec4(0.32941, 0.41569, 0.47843, 1.0);  // .STOREFRONT
 uniform vec4 lit_color : source_color = vec4(1.0, 0.87059, 0.55686, 1.0);  // buildings_3d.WINDOW_LIT_NIGHT
 uniform float lit_level : hint_range(0.0, 1.0) = 0.0;  // Daylight.artificial: 0 by day, 1 at night
+uniform float independence_candles = 0.0;  // 1 on 6 December 18-24 (holiday_events.independence_candles)
 uniform float decorations = 0.0;  // 1 from the first Advent to Epiphany (holiday_events.window_decorations)
 uniform vec3 lit_probability = vec3(0.12, 0.08, 0.03);  // other / house / storefront (buildings_25d.LIT_PROBABILITY)
 
@@ -79,6 +80,26 @@ vec4 decoration(vec2 p, vec2 size, float kind, float tint, float night) {
 	return vec4(0.0);
 }
 
+// Independence Day: two white candles on the sill, left and right, their
+// flames glowing. `p`: metres from the window's bottom centre; `size`: its
+// half width and height. Colour and coverage (0 none).
+vec4 independence_candle(vec2 p, vec2 size) {
+	float x = abs(p.x) - size.x * 0.55;  // from a candle's axis
+	float tall = min(size.y * 0.32, 0.3);
+	float thick = max(0.05, size.x * 0.07);
+	if (abs(x) <= thick && p.y >= 0.0 && p.y <= tall) {
+		return vec4(0.93, 0.92, 0.88, 1.0);  // the candle
+	}
+	vec2 flame = vec2(x / (thick * 1.1), (p.y - tall - thick * 1.4) / (thick * 2.0));
+	if (length(flame) <= 1.0) {
+		return vec4(1.35, 1.0, 0.45, 1.0);  // its flame
+	}
+	if (length(flame) <= 2.6) {
+		return vec4(1.0, 0.75, 0.35, 0.35 * (2.6 - length(flame)) / 1.6);  // its glow on the glass
+	}
+	return vec4(0.0);
+}
+
 // A lit room's light by a window's own value: mostly warm incandescent
 // (~2700 K), some neutral (~4000 K), a few cool LED (~5500 K).
 vec3 room_light(float pick) {
@@ -130,6 +151,10 @@ void fragment() {
 				vec4 deco = decoration(vec2(across, up - bottom), vec2(half_width, top - bottom),
 					window_hash(wall.w, f, w, 7u), window_hash(wall.w, f, w, 8u), lit_level);
 				glass = mix(glass, deco.rgb * mix(ambient.rgb, vec3(1.0), lit_level), deco.a);  // its own light at night
+			}
+			if (independence_candles > 0.5 && window_hash(wall.w, f, w, 9u) < (storefront ? 0.2 : 0.7)) {
+				vec4 candle = independence_candle(vec2(across, up - bottom), vec2(half_width, top - bottom));
+				glass = mix(glass, candle.rgb, candle.a);  // their own light: no ambient dimming
 			}
 			color = glass;
 		}
