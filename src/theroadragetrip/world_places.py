@@ -34,9 +34,6 @@ class WorldPlace:
     names: Dict[str, str] = field(default_factory=dict)  # language -> name, when it differs
     metadata: Dict[str, object] = field(default_factory=dict)  # category-specific (iata, station_code, ...)
 
-    def name_in(self, language: str) -> str:
-        return self.names.get(language, self.name)
-
 
 class WorldPlaces:
     def __init__(self, places: Iterable[WorldPlace] = ()) -> None:

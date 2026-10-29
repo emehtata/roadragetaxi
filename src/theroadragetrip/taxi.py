@@ -414,9 +414,6 @@ class TaxiManager:
         pre-booking still pending (accepted ones are no longer requests)."""
         return bool(self.offers or (self.rail_bookings is not None and self.rail_bookings.pending()))
 
-    def visible_rail_bookings(self):
-        return self.rail_bookings.visible() if self.rail_bookings is not None else []
-
     def has_active_job(self) -> bool:
         """A fare under way, or a booked rail passenger waiting to be met:
         either way the game clock runs in real time, not 60x (a waiting

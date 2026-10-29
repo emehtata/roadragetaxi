@@ -1479,9 +1479,6 @@ class _NullFrameProfiler:
     def section(self, _name):
         return nullcontext()
 
-    def set_metric(self, *_args, **_kwargs):
-        pass
-
 
 _NullFrameProfiler.INSTANCE = _NullFrameProfiler()
 

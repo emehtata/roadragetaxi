@@ -228,13 +228,6 @@ def _npc_snapshot(vehicle, driver=None) -> dict:
     }
 
 
-def _screenshot_directory() -> str:
-    if sys.platform.startswith("win"):
-        home_dir = os.getenv("USERPROFILE") or os.path.expanduser("~")
-        return os.path.join(home_dir, "Pictures", "TheRoadRageTrip")
-    return os.path.abspath("screenshots")
-
-
 def _write_debug_snapshot(
     path: str,
     car: Car,

@@ -611,7 +611,3 @@ class ChunkIndex:
                   [index, round(camera.x, 2), round(camera.y, 2), round(camera.heading, 3)])
         self._encoded.pop(cid, None)
         return cid
-
-    def encode_all(self) -> None:
-        for cid in self._chunks:
-            self.encoded(cid)

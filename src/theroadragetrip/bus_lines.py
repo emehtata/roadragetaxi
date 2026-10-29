@@ -92,27 +92,6 @@ class BusJob:
         return False
 
 
-def return_job(job: BusJob, all_lines: Dict[str, Line], heading: float) -> Optional[BusJob]:
-    """Continue only from a shared terminal in the current travel direction.
-
-    Matching line numbers alone do not prove a safe return connection.
-    The normal leg planner still validates the departure before it moves.
-    """
-    left = job.stopped_at
-    if not job.finished or left is None:
-        return None
-    for line in all_lines.values():
-        if line.key == job.line.key or line.ref != job.line.ref or len(line.stops) < 2:
-            continue
-        first, second = line.stops[:2]
-        if math.hypot(first.x-left.x, first.y-left.y) > 1.0:
-            continue
-        if (second.x-first.x)*math.cos(heading) + (second.y-first.y)*math.sin(heading) <= 0:
-            continue
-        return BusJob(line, 1, state="await_departure", stopped_at=left)
-    return None
-
-
 def nearest_stop_index(line: Line, x: float, y: float) -> int:
     return min(range(len(line.stops)), key=lambda i: (line.stops[i].x - x) ** 2 + (line.stops[i].y - y) ** 2)
 

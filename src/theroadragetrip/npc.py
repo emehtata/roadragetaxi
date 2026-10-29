@@ -5573,32 +5573,6 @@ class NPCVehicleManager:
                 break
         return None
 
-    def _start_short_transit_trip(
-        self,
-        vehicle: NPCVehicle,
-        origin: Tuple[float, float],
-        resident_manager: ResidentManager,
-        traffic_world: TrafficWorld,
-        ways: List[Way],
-        spatial_grid: Optional[SpatialWayGrid],
-        parking_spaces: Optional[List],
-        sceneries: Optional[List],
-        buildings: Optional[List],
-        curbs: Optional[List[Curb]],
-        curb_grid: Optional[SpatialWayGrid],
-        building_grid: Optional[SpatialWayGrid],
-        claimed_points: List[Tuple[int, Tuple[float, float]]],
-        deadline: float,
-        through_point: Optional[Tuple[float, float]] = None,
-    ) -> Optional[Driver]:
-        """Synchronous form of _short_transit_trip_steps (plan, then apply)."""
-        plan = run_route_steps(self._short_transit_trip_steps(
-            vehicle, origin, resident_manager, traffic_world, ways, spatial_grid,
-            parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
-            claimed_points, through_point=through_point,
-        ), deadline)
-        return None if plan is None else _apply_npc_trip(vehicle, resident_manager, plan)
-
     def _enqueue_route_job(self, kind: str, vehicle, steps: RouteSteps, traffic_world: TrafficWorld,
                            member_resident_ids: Optional[List[int]] = None) -> None:
         """Queue a trip-start ("trip", an idle parked vehicle) or transit

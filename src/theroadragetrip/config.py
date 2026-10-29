@@ -248,11 +248,6 @@ def _is_valid_user_agent_id(value: str) -> bool:
     return checksum == expected
 
 
-def get_optional_int(config: configparser.ConfigParser, section: str, key: str) -> Any:
-    value = config.get(section, key, fallback="").strip()
-    return int(value) if value else None
-
-
 def save_config(config: configparser.ConfigParser, path: Path = CONFIG_PATH) -> None:
     """Persist user-editable settings while keeping the existing INI identity."""
     path.parent.mkdir(parents=True, exist_ok=True)

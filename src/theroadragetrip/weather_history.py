@@ -344,11 +344,6 @@ class WeatherHistory:
             usable = [(h, w) for h, w in candidates.items() if precipitation_from_observation(w)[0] is not None]
             return max(usable, key=lambda item: item[0]) if usable else None
 
-    def is_covered(self, moment: datetime) -> bool:
-        chunk = math.floor(game_time_to_utc_hour(moment)) // FETCH_CHUNK_HOURS
-        with self._lock:
-            return chunk in self._covered_chunks
-
     # -- fetching ------------------------------------------------------------
 
     def request(self, start: datetime, end: datetime) -> None:

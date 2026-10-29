@@ -219,47 +219,6 @@ def segment_distance(
     )
 
 
-def clip_polygon_to_rect(
-    points: list[Tuple[float, float]],
-    rminx: float,
-    rminy: float,
-    rmaxx: float,
-    rmaxy: float,
-) -> list[Tuple[float, float]]:
-    """Sutherland-Hodgman polygon clipping algorithm against an AABB rectangle."""
-    output = points
-    edges = ((0, rminx, True), (0, rmaxx, False), (1, rminy, True), (1, rmaxy, False))
-    for axis, boundary, keep_greater in edges:
-        input_list = output
-        output = []
-        if not input_list:
-            break
-
-        def inside(point: Tuple[float, float]) -> bool:
-            return point[axis] >= boundary if keep_greater else point[axis] <= boundary
-
-        def intersect(start: Tuple[float, float], end: Tuple[float, float]) -> Tuple[float, float]:
-            delta = end[axis] - start[axis]
-            t = (boundary - start[axis]) / delta if delta else 0.0
-            return (
-                start[0] + t * (end[0] - start[0]),
-                start[1] + t * (end[1] - start[1]),
-            )
-
-        s = input_list[-1]
-        for e in input_list:
-            e_in = inside(e)
-            s_in = inside(s)
-            if e_in and not s_in:
-                output.append(intersect(s, e))
-            if e_in:
-                output.append(e)
-            elif s_in:
-                output.append(intersect(s, e))
-            s = e
-    return output
-
-
 def meters_to_latlon(
     x: float, y: float, transformer: Optional[object] = None
 ) -> Tuple[Optional[float], Optional[float]]:
