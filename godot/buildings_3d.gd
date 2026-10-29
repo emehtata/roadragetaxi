@@ -268,6 +268,7 @@ func _process(_delta: float) -> void:
 ## light as `level` (Daylight.artificial) rises - no geometry is rebuilt.
 func set_light(level: float, ambient: Color) -> void:
 	_shared["material"].set_shader_parameter("ambient", ambient)
+	_shared["material"].set_shader_parameter("lit_level", clampf(level, 0.0, 1.0))  # the walls' own lit windows
 	_shared["glass"].albedo_color = Color(ambient.r, ambient.g, ambient.b)
 	_shared["lit"].albedo_color = lit_color(level, ambient)
 	if (level > 0.01) != _lit_on:  # the lit meshes in or out (by day they'd only cost)
@@ -319,6 +320,7 @@ func instance_count() -> int:
 ## lit windows' verts), "stats"}.
 static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array = []) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "lit": PackedVector3Array(),
+		"wall_uv": PackedVector2Array(), "window": PackedFloat32Array(),  # the shader's windows (building_snow.gdshader)
 		"arena": PackedVector3Array(), "shadow": PackedVector3Array(), "glass": PackedVector3Array(), "glass_colors": PackedColorArray(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
 	for i in buildings.size():
@@ -339,7 +341,8 @@ static func meshes(arrays: Dictionary) -> Array:
 		instances.append(_instance(_mesh(arrays["glass"], arrays["glass_colors"]), _shared["glass"], LAYER_BUILDINGS))
 	if arrays["verts"].is_empty():
 		return instances
-	var mesh := _mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"])
+	var mesh := _mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], arrays.get("wall_uv", PackedVector2Array()),
+		arrays.get("window", PackedFloat32Array()))
 	instances.append(_instance(mesh, _shared["material"], LAYER_BUILDINGS))
 	# rrt-018-shadows: each building as a plain prism (walls and a flat roof,
 	# no windows or doors: a fifth of the triangles), not drawn, only casting
@@ -385,7 +388,8 @@ static func _caster_material() -> StandardMaterial3D:
 	return m
 
 
-static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask := PackedVector2Array()) -> ArrayMesh:
+static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask := PackedVector2Array(),
+		wall_uv := PackedVector2Array(), window := PackedFloat32Array()) -> ArrayMesh:
 	var surface := []
 	surface.resize(Mesh.ARRAY_MAX)
 	surface[Mesh.ARRAY_VERTEX] = verts
@@ -393,8 +397,13 @@ static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask
 		surface[Mesh.ARRAY_COLOR] = colors
 	if not roof_mask.is_empty():
 		surface[Mesh.ARRAY_TEX_UV] = roof_mask
+	var flags := 0
+	if wall_uv.size() == verts.size() and window.size() == verts.size() * 4:
+		surface[Mesh.ARRAY_TEX_UV2] = wall_uv
+		surface[Mesh.ARRAY_CUSTOM0] = window
+		flags = Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface, [], {}, flags)
 	return mesh
 
 
@@ -410,23 +419,36 @@ static func _instance(mesh: ArrayMesh, material: Material, layer: int) -> MeshIn
 ## One triangle, wound so its front faces `facing` (the outward normal):
 ## Godot's front faces are clockwise, i.e. (b - a) x (c - a) points away.
 ## Footprints come either way round, so the winding is decided here, once.
-static func _tri(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, color: Color, facing: Vector3, key := "verts") -> void:
+static func _tri(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, color: Color, facing: Vector3, key := "verts",
+		uvs := PackedVector2Array(), window := Vector4.ZERO) -> void:
 	var normal := (b - a).cross(c - a)
+	if uvs.size() != 3:
+		uvs = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
 	if normal.dot(facing) > 0.0:
 		var t := b
 		b = c
 		c = t
+		uvs = PackedVector2Array([uvs[0], uvs[2], uvs[1]])
 		normal = -normal
 	out[key].append_array(PackedVector3Array([a, b, c]))
 	if key != "verts":
 		return
+	if out.has("wall_uv"):  # the building meshes (not glass): every vertex, windows or not
+		out["wall_uv"].append_array(uvs)
+		for i in 3:
+			out["window"].append_array(PackedFloat32Array([window.x, window.y, window.z, window.w]))
 	out["colors"].append_array(PackedColorArray([color, color, color]))
 	var shade := 0.90 if facing.y > 0.5 and Vector2(-normal.x, -normal.z).dot(LIGHT) < -0.001 else 1.0
 	var mask := Vector2(1.0 if facing.y > 0.5 else 0.0, shade)
 	out["roof_mask"].append_array(PackedVector2Array([mask, mask, mask]))
 
 
-static func _quad(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color, facing: Vector3, key := "verts") -> void:
+static func _quad(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color, facing: Vector3, key := "verts",
+		uvs := PackedVector2Array(), window := Vector4.ZERO) -> void:
+	if uvs.size() == 4:
+		_tri(out, a, b, c, color, facing, key, PackedVector2Array([uvs[0], uvs[1], uvs[2]]), window)
+		_tri(out, a, c, d, color, facing, key, PackedVector2Array([uvs[0], uvs[2], uvs[3]]), window)
+		return
 	_tri(out, a, b, c, color, facing, key)
 	_tri(out, a, c, d, color, facing, key)
 
@@ -466,9 +488,19 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 			continue
 		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
 		var shade := 0.72 + 0.28 * clampf(normal.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
-		_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), Color(wall_color.r * shade, wall_color.g * shade, wall_color.b * shade), to_3d(normal))
+		var wall_shade := Color(wall_color.r * shade, wall_color.g * shade, wall_color.b * shade)
 		out["stats"]["walls"] += 1
-		_windows(out, a, b, normal, height, floors, category, seed_base + i * 7.13, arena)
+		if arena:  # their windows light up with a match (set_arena_lights): geometry, as before
+			_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), wall_shade, to_3d(normal))
+			_windows(out, a, b, normal, height, floors, category, seed_base + i * 7.13, arena)
+			continue
+		# The windows are the wall shader's (building_snow.gdshader): metres on the wall, and its window grid.
+		var length := a.distance_to(b)
+		var count := window_count(length, category)
+		out["stats"]["windows"] += count * (ceili(floors / 2.0) if category == 1 else floors)
+		_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), wall_shade, to_3d(normal), "verts",
+			PackedVector2Array([Vector2(0.0, 0.0), Vector2(length, 0.0), Vector2(length, height), Vector2(0.0, height)]),
+			Vector4(length, height / floors, count + 16 * category, seed_base + i * 7.13))
 	_doors(out, footprint, style[3] if style.size() > 3 else [], outward_sign, height, floors, origin)
 	_shadow_prism(out["shadow"], footprint, height)
 	if gabled:
@@ -607,6 +639,14 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, h
 			if arena:
 				o = normal * (LIT_OUT + 0.01)
 				_quad(out, to_3d(p0 + o, bottom), to_3d(p1 + o, bottom), to_3d(p1 + o, bottom + tall), to_3d(p0 + o, bottom + tall), color, to_3d(normal), "arena")
+
+
+## Windows per floor on a wall `length` long: none on a short wall or a plain one.
+static func window_count(length: float, category: int) -> int:
+	if length < 12.0 / 9.0 or category == CATEGORY_WALL:
+		return 0
+	var house := category == 1
+	return clampi(int(length / ((44.0 if house else 32.0) / 9.0)), 1, 2 if house else 3)
 
 
 static func unit_lit(seed: float, storefront: bool, category: int) -> bool:
