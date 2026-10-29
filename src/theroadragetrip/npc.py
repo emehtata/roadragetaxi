@@ -325,6 +325,30 @@ def transit_spawn_focus(player_x: float, player_y: float, player_car, simulation
     return player_x + math.cos(player_car.heading) * lead, player_y + math.sin(player_car.heading) * lead
 
 
+def through_road_first(nodes, grid, indices, road, spatial_grid, x: float, y: float, reach: float):
+    """The player's road's route nodes (same ref, else same highway class)
+    within `reach`, then `indices`: a major road's passing traffic drives on
+    it, so a LAM station's curve shows up on the road it measures
+    (docs/lam-traffic-audit.md). The reach goes past the usual spawn ring:
+    a trunk road's vertices can lie hundreds of metres apart."""
+    ref, highway = getattr(road, "ref", None), getattr(road, "highway", None)
+    if road is None or spatial_grid is None or not ref and highway in _LOW_TRAFFIC_HIGHWAY_TYPES:
+        return indices  # a local street has no passing traffic of its own (and matching it would scan the town)
+    cells = {(round(px / 3.0), round(py / 3.0))
+             for way in spatial_grid.ways_in_rect(x - reach, y - reach, x + reach, y + reach)
+             if (getattr(way, "ref", None) == ref if ref else getattr(way, "highway", None) == highway)
+             for px, py in way.points_m}
+    size = _ROUTE_NODE_GRID_CELL_M
+    on_road = [i for cx in range(math.floor((x - reach) / size), math.floor((x + reach) / size) + 1)
+               for cy in range(math.floor((y - reach) / size), math.floor((y + reach) / size) + 1)
+               for i in grid.get((cx, cy), ())
+               if NPC_TRANSIT_SPAWN_MIN_DISTANCE_M <= math.hypot(nodes[i][0] - x, nodes[i][1] - y) <= reach
+               and (round(nodes[i][0] / 3.0), round(nodes[i][1] / 3.0)) in cells]
+    random.shuffle(on_road)
+    chosen = set(on_road)
+    return on_road + [i for i in indices if i not in chosen]
+
+
 def prioritize_transit_spawn_nodes(nodes, indices, x: float, y: float, heading: Optional[float]):
     """Try nodes in the player's forward road corridor before side streets."""
     if heading is None:
@@ -4312,6 +4336,7 @@ class NPCVehicleManager:
         self.target_moving_fraction = target_moving_fraction
         self._local_density_cell = None
         self._local_people = 0.0
+        self._through_way, self._through_share = None, 0.0  # the player's road and its passing traffic's share of demand
         self.clock = None  # the game clock (a datetime), set by the simulation; None: demand ignores time
         self.motorcycle_season = motorcycle_season or MotorcycleSeason()
         self.motorcycle_factor = 0.0  # this game day's (motorcycle_season); 0 until the date is known
@@ -4656,6 +4681,8 @@ class NPCVehicleManager:
             )
         fraction = min(1.0, self._local_people / NPC_FULL_TRAFFIC_PEOPLE)
         demand = traffic_demand(fraction, highway, self.clock, current_way)  # a LAM station's own curves on its road
+        self._through_way = current_way
+        self._through_share = demand["through"] / max(1e-9, demand["local"], demand["through"])
         if self._demand_draw is None or self._population_tick_number >= self._demand_draw_tick + NPC_DEMAND_ROLL_TICKS:
             self._demand_draw = self.demand_rng.random()
             self._demand_draw_tick = self._population_tick_number
@@ -5115,6 +5142,7 @@ class NPCVehicleManager:
         building_grid: Optional[SpatialWayGrid],
         claimed_points: List[Tuple[int, Tuple[float, float]]],
         through_point: Optional[Tuple[float, float]] = None,
+        past: bool = False,
     ) -> RouteSteps:
         """Start `vehicle` on a validated trip to a real parking spot 80-200m
         from `origin`. Route validation cost and failure rate both grow
@@ -5126,6 +5154,8 @@ class NPCVehicleManager:
         grid = traffic_world._route_node_grid
         cell_size = _ROUTE_NODE_GRID_CELL_M
         reach = NPC_TRANSIT_TRIP_MAX_DISTANCE_M
+        if past and through_point is not None:  # passing traffic: on beyond the player, not parked before it
+            reach += math.hypot(origin[0] - through_point[0], origin[1] - through_point[1])
         near = []
         for cell_x in range(math.floor((origin[0] - reach) / cell_size), math.floor((origin[0] + reach) / cell_size) + 1):
             for cell_y in range(math.floor((origin[1] - reach) / cell_size), math.floor((origin[1] + reach) / cell_size) + 1):
@@ -5153,6 +5183,12 @@ class NPCVehicleManager:
                 ))
                 approaching_ids = set(approaching)
                 near = approaching + [index for index in near if index not in approaching_ids]
+            if past:
+                ahead_x, ahead_y = through_point[0] - origin[0], through_point[1] - origin[1]
+                beyond = [index for index in near
+                          if (nodes[index][0] - through_point[0]) * ahead_x + (nodes[index][1] - through_point[1]) * ahead_y > 0.0]
+                beyond_ids = set(beyond)
+                near = beyond + [index for index in near if index not in beyond_ids]
         edges = traffic_world._route_edges
         other_positions = [pos for _, pos in claimed_points]
         for index in near:
@@ -5609,6 +5645,10 @@ class NPCVehicleManager:
                         ring.append(index)
         random.shuffle(ring)
         ring = prioritize_transit_spawn_nodes(nodes, ring, focus_x, focus_y, preferred_heading)
+        through_roll = self._through_share > 0.0 and random.random() < self._through_share
+        if through_roll:
+            ring = through_road_first(nodes, grid, ring, self._through_way, spatial_grid, player_x, player_y,
+                                      max(NPC_TRANSIT_SPAWN_MAX_DISTANCE_M, self.simulation_radius_m - 20.0))
         tries = 0
         for index in ring:
             yield
@@ -5634,7 +5674,7 @@ class NPCVehicleManager:
                 plan = yield from self._short_transit_trip_steps(
                     vehicle, point, resident_manager, traffic_world, ways, spatial_grid,
                     parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
-                    claimed_points, through_point=(player_x, player_y),
+                    claimed_points, through_point=(player_x, player_y), past=through_roll,
                 )
             if plan is not None:
                 start, aim = plan[0][:2]
