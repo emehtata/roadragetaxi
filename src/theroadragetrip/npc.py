@@ -325,6 +325,50 @@ def transit_spawn_focus(player_x: float, player_y: float, player_car, simulation
     return player_x + math.cos(player_car.heading) * lead, player_y + math.sin(player_car.heading) * lead
 
 
+class SpawnMemory:
+    """Passing-traffic spawn points by outcome, keyed by position (whole
+    metres: node ids change at every map sync): one that placed a car with
+    a trip is tried first next time, one that failed SPAWN_POINT_MAX_FAILURES
+    times and never worked is skipped. Only the spot's own failures count
+    (no footprint, no trip from it), not passing ones (traffic, the taxi near)."""
+
+    MAX_FAILURES = 2
+    MAX_POINTS = 50_000  # ponytail: a whole long drive's worth; cleared when full, rebuilt as spawns run
+
+    def __init__(self) -> None:
+        self.good: set = set()
+        self.bad: dict = {}
+
+    @staticmethod
+    def key(point) -> tuple:
+        return round(point[0]), round(point[1])
+
+    def succeeded(self, point) -> None:
+        if len(self.good) >= self.MAX_POINTS:
+            self.good.clear()
+        key = self.key(point)
+        self.good.add(key)
+        self.bad.pop(key, None)
+
+    def failed(self, point) -> None:
+        if len(self.bad) >= self.MAX_POINTS:
+            self.bad.clear()
+        key = self.key(point)
+        if key not in self.good:
+            self.bad[key] = self.bad.get(key, 0) + 1
+
+    def order(self, nodes, indices) -> list:
+        """Known good spawn nodes first (in their given order), then the untried; the hopeless left out."""
+        good, rest = [], []
+        for index in indices:
+            key = (round(nodes[index][0]), round(nodes[index][1]))
+            if key in self.good:
+                good.append(index)
+            elif self.bad.get(key, 0) < self.MAX_FAILURES:
+                rest.append(index)
+        return good + rest
+
+
 def through_road_first(nodes, grid, indices, road, spatial_grid, x: float, y: float, reach: float, bounds=None):
     """The player's road's route nodes (same ref, else same highway class)
     within `reach`, then `indices`: a major road's passing traffic drives on
@@ -4413,6 +4457,7 @@ class NPCVehicleManager:
         self.target_moving_fraction = target_moving_fraction
         self._local_density_cell = None
         self._local_people = 0.0
+        self._spawn_memory = SpawnMemory()  # passing-traffic spawn points that worked, and ones that never do
         self._collision_buildings, self._collision_building_grid = None, None  # this update's, for collision pushes
         self._through_way, self._through_share = None, 0.0  # the player's road and its passing traffic's share of demand
         self.clock = None  # the game clock (a datetime), set by the simulation; None: demand ignores time
@@ -5756,6 +5801,7 @@ class NPCVehicleManager:
             ring = through_road_first(nodes, grid, ring, self._through_way, spatial_grid, player_x, player_y,
                                       max(NPC_TRANSIT_SPAWN_MAX_DISTANCE_M, self.simulation_radius_m - 20.0),
                                       self._active_bounds)  # the simulated area: a spawn outside it is discarded
+        ring = self._spawn_memory.order(nodes, ring)
         tries = 0
         for index in ring:
             yield
@@ -5771,6 +5817,7 @@ class NPCVehicleManager:
                                       vehicle_type="bus" if line_job is not None else None,
                                       player_position=(player_x, player_y))
             if vehicle is None:
+                self._spawn_memory.failed(point)
                 continue
             tries += 1
             if line_job is not None:  # a line bus: straight to the line's nearest stop (bus_lines.py)
@@ -5794,6 +5841,7 @@ class NPCVehicleManager:
                     start.x, start.y, heading, length_m=vehicle.length_m, width_m=vehicle.width_m,
                     curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
                 ):
+                    self._spawn_memory.failed(point)
                     release_npc_parking_reservation(vehicle)
                     if tries >= NPC_TRANSIT_SPAWN_NODE_TRIES:
                         break
@@ -5817,7 +5865,9 @@ class NPCVehicleManager:
                     if tries >= NPC_TRANSIT_SPAWN_NODE_TRIES:
                         break
                     continue
+                self._spawn_memory.succeeded(point)
                 return vehicle, plan
+            self._spawn_memory.failed(point)  # no trip from here
             release_npc_parking_reservation(vehicle)
             if tries >= NPC_TRANSIT_SPAWN_NODE_TRIES:
                 break
