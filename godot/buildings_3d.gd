@@ -510,6 +510,8 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		heights.resize(footprint.size())
 		heights.fill(height)
 		_polygon(out, footprint, heights, roof_color)
+		if category != CATEGORY_WALL:
+			_roof_details(out, footprint, height, floors, roof_color, wall_color, seed_base)
 
 
 ## A greenhouse (static_world.is_glasshouse): walls and roof of see-through
@@ -593,6 +595,95 @@ static func _box(out: Dictionary, a: Vector2, b: Vector2, half_width: float, bot
 
 ## The building's shadow caster: its walls and a flat roof at the eaves
 ## (a gable's ridge is left out: a little shorter shadow, far fewer cases).
+## A flat roof as seen from above in a Finnish town (Oulu's Valkea talo):
+## a parapet round the edge, the lift and stair machine rooms on a block of
+## three floors or more, a few vent units - placed by the building's own seed,
+## so the same every time, and casting the sun's shadow.
+const PARAPET_M := 0.7
+const PARAPET_INSET_M := 0.35
+const MACHINE_ROOM_MIN_AREA := 250.0
+
+
+static func _roof_details(out: Dictionary, footprint: PackedVector2Array, height: float, floors: int,
+		roof_color: Color, wall_color: Color, seed: float) -> void:
+	var area := absf(B25.signed_area(footprint))
+	if area < 40.0:
+		return
+	var rim := roof_color.lerp(Color.WHITE, 0.18)
+	var inner_rings := Geometry2D.offset_polygon(footprint, -PARAPET_INSET_M)
+	if inner_rings.size() == 1 and inner_rings[0].size() == footprint.size():
+		var inner: PackedVector2Array = inner_rings[0]
+		var outward := -1.0 if B25.signed_area(footprint) > 0.0 else 1.0
+		var top := height + PARAPET_M
+		for i in footprint.size():
+			var a := footprint[i]
+			var b := footprint[(i + 1) % footprint.size()]
+			var ia := inner[i]
+			var ib := inner[(i + 1) % inner.size()]
+			if (b - a).length_squared() < 1e-4 or ia.distance_to(a) > 1.2 or ib.distance_to(b) > 1.2:
+				continue  # the inset ring's corners in another order (a concave footprint): no parapet there
+			var normal := Vector2(-(b - a).y, (b - a).x).normalized() * outward
+			_quad(out, to_3d(a, height), to_3d(b, height), to_3d(b, top), to_3d(a, top), wall_color, to_3d(normal))  # outside
+			_quad(out, to_3d(ia, height), to_3d(ib, height), to_3d(ib, top), to_3d(ia, top), wall_color.darkened(0.25), to_3d(-normal))  # inside
+			_quad(out, to_3d(a, top), to_3d(b, top), to_3d(ib, top), to_3d(ia, top), rim, Vector3.UP)  # its top
+		_shadow_ring(out["shadow"], footprint, height, top)
+	# Machine rooms (lift, stairs) along the roof's longest edge, a few vents.
+	var longest := 0
+	for i in footprint.size():
+		if footprint[i].distance_squared_to(footprint[(i + 1) % footprint.size()]) > footprint[longest].distance_squared_to(footprint[(longest + 1) % footprint.size()]):
+			longest = i
+	var along := (footprint[(longest + 1) % footprint.size()] - footprint[longest]).normalized()
+	var across := Vector2(-along.y, along.x)
+	var centre := Vector2.ZERO
+	for p in footprint:
+		centre += p
+	centre /= footprint.size()
+	var extent := 0.0
+	for p in footprint:
+		extent = maxf(extent, absf((p - centre).dot(along)))
+	var box_color := roof_color.lerp(Color.WHITE, 0.1)
+	if floors >= 3 and area >= MACHINE_ROOM_MIN_AREA:
+		var rooms := clampi(1 + int(area / 1500.0), 1, 3)
+		for k in rooms:
+			var offset := (float(k) - (rooms - 1) / 2.0) * extent * 0.9 / rooms + (B25.unit(seed + k * 2.3) - 0.5) * 3.0
+			var size := Vector2(4.0 + 2.0 * B25.unit(seed + k * 5.1), 3.0 + 1.5 * B25.unit(seed + k * 7.7))
+			_roof_box(out, footprint, centre + along * offset, along, across, size, height, height + 2.8, box_color, wall_color)
+	var vents := clampi(int(area / 200.0), 0, 6)
+	for k in vents:
+		var at := centre + along * (B25.unit(seed + k * 3.3) - 0.5) * extent * 1.6 \
+			+ across * (B25.unit(seed + k * 4.9) - 0.5) * 6.0
+		_roof_box(out, footprint, at, along, across, Vector2(1.1, 1.1), height, height + 1.0, box_color, wall_color)
+
+
+## A box standing on the roof (a machine room, a vent), if it fits inside the footprint.
+static func _roof_box(out: Dictionary, footprint: PackedVector2Array, at: Vector2, along: Vector2, across: Vector2,
+		size: Vector2, base: float, top: float, top_color: Color, side_color: Color) -> void:
+	var corners := PackedVector2Array([
+		at - along * size.x / 2 - across * size.y / 2, at + along * size.x / 2 - across * size.y / 2,
+		at + along * size.x / 2 + across * size.y / 2, at - along * size.x / 2 + across * size.y / 2])
+	for c in corners:
+		if not Geometry2D.is_point_in_polygon(c, footprint):
+			return
+	var centre := at
+	for i in 4:
+		var a := corners[i]
+		var b := corners[(i + 1) % 4]
+		var mid := (a + b) / 2.0
+		var shade := 0.72 + 0.28 * clampf((mid - centre).normalized().dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+		_quad(out, to_3d(a, base), to_3d(b, base), to_3d(b, top), to_3d(a, top),
+			Color(side_color.r * shade, side_color.g * shade, side_color.b * shade), to_3d(mid - centre))
+	_quad(out, to_3d(corners[0], top), to_3d(corners[1], top), to_3d(corners[2], top), to_3d(corners[3], top), top_color, Vector3.UP)
+	_shadow_prism(out["shadow"], corners, top)
+
+
+## The parapet's own shadow: its walls, from the roof up.
+static func _shadow_ring(verts: PackedVector3Array, footprint: PackedVector2Array, base: float, top: float) -> void:
+	for i in footprint.size():
+		var a := footprint[i]
+		var b := footprint[(i + 1) % footprint.size()]
+		verts.append_array(PackedVector3Array([to_3d(a, base), to_3d(b, base), to_3d(b, top), to_3d(a, base), to_3d(b, top), to_3d(a, top)]))
+
+
 static func _shadow_prism(verts: PackedVector3Array, footprint: PackedVector2Array, height: float) -> void:
 	for i in footprint.size():
 		var a := footprint[i]
