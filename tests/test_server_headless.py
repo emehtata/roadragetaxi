@@ -644,7 +644,9 @@ def test_holidays_follow_the_server_calendar(tmp_path, monkeypatch):
     server.calendar.advance(2)
     assert server.calendar_state()["holidays"]["fireworks"]
     server.calendar.current = datetime(2027, 1, 1, 2)
-    assert not any(server.calendar_state()["holidays"].values())
+    holidays = server.calendar_state()["holidays"]
+    assert not any(v for k, v in holidays.items() if k != "window_decorations")  # the fireworks are over
+    assert holidays["window_decorations"]  # candle bridges stay in the windows until Epiphany
 
 
 

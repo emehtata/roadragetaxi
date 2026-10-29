@@ -22,11 +22,25 @@ var _ghosts := false
 var _christmas := false
 var _window_decorations := false
 const B3 := preload("res://buildings_3d.gd")
+const WeatherLayer := preload("res://weather_layer.gd")
 var _bonfires := false
 var bonfire_layer: Node2D
 var bonfires := PackedVector2Array()  # Midsummer bonfires in the view (chunk "bonfires")
 const MAX_BONFIRES := 24
 var decorations: Node2D
+# Flagpoles in yards (chunk "flagpoles"), all year; the Finnish flag on them on
+# flag days by the server's timetable (calendar "flags": "full" / "half" / "").
+var flag_layer: Node2D
+var poles := PackedVector2Array()
+var _flags := ""
+var _wind := Vector2.ZERO  # metres a second, layer coordinates (y down)
+var _poles_refresh := 0.0
+const MAX_POLES := 40
+const POLE_M := 9.0
+const FLAG_LENGTH_M := 2.0  # 18 : 11, the official proportions
+const FLAG_HEIGHT_M := 2.0 * 11.0 / 18.0
+const FLAG_BLUE := Color8(0, 47, 108)  # PMS 294 C
+const FLAG_SEGMENTS := 9
 var ghost_layer: Node2D
 var elf_layer: Node2D
 var bursts: Node2D
@@ -51,6 +65,11 @@ func setup(world: Node2D) -> void:
 	elf_layer.material = preload("res://emissive.tres")
 	elf_layer.draw.connect(_draw_elves)
 	world.add_child(elf_layer)
+	flag_layer = Node2D.new()
+	flag_layer.z_index = 6  # under the buildings' composite (7): their walls lean away from the view's centre, so a
+	# building covers what stands behind it (seen from the camera) and leaves what stands in front of it
+	flag_layer.draw.connect(_draw_flags)
+	world.add_child(flag_layer)
 	bonfire_layer = Node2D.new()
 	bonfire_layer.z_index = 7  # ground level, above yard decorations, below roofs
 	bonfire_layer.material = preload("res://emissive.tres")
@@ -74,6 +93,7 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 	var halloween: bool = not underground and events.get("halloween", false)
 	var ghost_season: bool = not underground and events.get("halloween_ghosts", false)
 	var christmas: bool = not underground and events.get("christmas", false)
+	_update_flags(delta, calendar, state, view, underground)
 	var decorated: bool = events.get("window_decorations", false)
 	if decorated != _window_decorations:  # candle bridges and stars in the windows (building_snow.gdshader)
 		_window_decorations = decorated
@@ -140,6 +160,88 @@ func _draw_decorations() -> void:
 		decorations.draw_rect(Rect2(lantern - Vector2(0.19, 0.26), Vector2(0.38, 0.52)), Color8(35, 32, 28))
 		decorations.draw_rect(Rect2(lantern - Vector2(0.12, 0.18), Vector2(0.24, 0.36)), Color(1, 0.8, 0.3))
 		decorations.draw_arc(lantern + Vector2(0, -0.26), 0.13, PI, TAU, 8, Color8(45, 40, 30), 0.05)
+
+
+func _update_flags(delta: float, calendar: Dictionary, state: Dictionary, view: Rect2, underground: bool) -> void:
+	flag_layer.visible = not underground
+	if underground:
+		return
+	_flags = str(calendar.get("flags", ""))
+	var wind := WeatherLayer.wind_vector(state)
+	_wind = Vector2(wind.x, -wind.y)
+	_poles_refresh -= delta
+	if _poles_refresh <= 0.0:
+		_poles_refresh = 0.5
+		poles = map_layer.holiday_yards(view.grow(20.0), MAX_POLES, "flagpoles")
+	flag_layer.queue_redraw()
+
+
+## Where a point `h` metres up the pole shows: leaning out from the view's
+## centre as the buildings' walls do (B3.lift_point), but at least as far as
+## seen from about 60 degrees - straight from above a pole was a dot and its
+## flag a line.
+const MIN_LEAN := 0.35
+
+
+static func _lean(at: Vector2) -> Vector2:
+	var out := at - B3.view_centre
+	return out.normalized() if out.length() > 1.0 else Vector2.DOWN
+
+
+static func _up(at: Vector2, h: float) -> Vector2:
+	var lifted := B3.lift_point(at, h)
+	return lifted if lifted.distance_to(at) >= h * MIN_LEAN else at + _lean(at) * h * MIN_LEAN
+
+
+func _draw_flags() -> void:
+	for at in poles:
+		var top := _up(at, POLE_M)
+		flag_layer.draw_line(at, top, Color8(225, 228, 230), 0.22)
+		flag_layer.draw_circle(top, 0.16, Color8(200, 170, 60))  # the gilded knob
+		if _flags != "":
+			_draw_flag(at, POLE_M - 0.25 if _flags == "full" else POLE_M * 0.5 + FLAG_HEIGHT_M * 0.5)
+
+
+## The flag from the hoist at `top` metres: streaming downwind as far as the
+## wind holds it out (hanging down in a calm), waving in travelling waves.
+func _draw_flag(at: Vector2, top: float) -> void:
+	var speed := _wind.length()
+	var downwind := _wind / speed if speed > 0.05 else Vector2.RIGHT
+	var across := Vector2(-downwind.y, downwind.x)
+	var face := across if across.y >= 0.0 else -across
+	var held := clampf(speed / 6.0, 0.12, 1.0)  # 6 m/s and more: straight out
+	var seed := absf(at.x * 0.37 + at.y * 0.11)
+	var frequency := 1.2 + speed * 0.35
+	var corners: Array = []  # per segment edge: [upper, lower] on screen
+	for i in FLAG_SEGMENTS + 1:
+		var u := float(i) / FLAG_SEGMENTS
+		var wave := sin(u * 5.0 - clock * frequency * TAU * 0.5 + seed) * 0.18 * u * (0.4 + held)
+		var sag := u * FLAG_LENGTH_M * sqrt(1.0 - held * held)  # what the wind does not hold out hangs down
+		var hoist := _up(at, top - sag)
+		var fly := downwind * (u * FLAG_LENGTH_M * held) + across * wave
+		# Its face, not its edge: the height shown across the wind (on the screen's lower
+		# side), whichever way the camera looks - edge-on it was a line of a few pixels.
+		corners.append([hoist + fly, hoist + fly + face * FLAG_HEIGHT_M * 0.8])
+	for i in FLAG_SEGMENTS:
+		var u0 := float(i) / FLAG_SEGMENTS
+		var u1 := float(i + 1) / FLAG_SEGMENTS
+		var shade := 0.9 + 0.1 * sin(u0 * 5.0 - clock * frequency * TAU * 0.5 + seed + 0.8)  # the folds catch the light
+		_flag_quad(corners[i], corners[i + 1], 0.0, 1.0, Color(shade, shade, shade))
+		if u1 > 5.0 / 18.0 and u0 < 8.0 / 18.0:  # the cross's upright: 5/18 to 8/18 of the length
+			var a := clampf((5.0 / 18.0 - u0) / (u1 - u0), 0.0, 1.0)
+			var b := clampf((8.0 / 18.0 - u0) / (u1 - u0), 0.0, 1.0)
+			_flag_quad(_lerp_edge(corners[i], corners[i + 1], a), _lerp_edge(corners[i], corners[i + 1], b), 0.0, 1.0, FLAG_BLUE * shade)
+		_flag_quad(corners[i], corners[i + 1], 4.0 / 11.0, 7.0 / 11.0, FLAG_BLUE * shade)  # its arm: 4/11 to 7/11 down
+
+
+static func _lerp_edge(e0: Array, e1: Array, t: float) -> Array:
+	return [e0[0].lerp(e1[0], t), e0[1].lerp(e1[1], t)]
+
+
+## The band from `v0` to `v1` (0 the top edge, 1 the bottom) between two edges.
+func _flag_quad(e0: Array, e1: Array, v0: float, v1: float, color: Color) -> void:
+	var points := PackedVector2Array([e0[0].lerp(e0[1], v0), e1[0].lerp(e1[1], v0), e1[0].lerp(e1[1], v1), e0[0].lerp(e0[1], v1)])
+	flag_layer.draw_colored_polygon(points, color)
 
 
 func _draw_bonfires() -> void:

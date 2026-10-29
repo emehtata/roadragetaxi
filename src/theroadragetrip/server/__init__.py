@@ -571,6 +571,17 @@ class SimulationServer:
         )
         return altitude, grid_azimuth(azimuth, latitude, longitude)
 
+    def _flag_state(self, altitude: float) -> str:
+        """Flags up on Finland's flag days (holiday_events.flag_state), by today's sun."""
+        from ..holiday_events import flag_state, is_flag_day
+        now = self.calendar.current
+        if not is_flag_day(now) and not (now.month == 6 and now.weekday() == 4):
+            return ""
+        latitude = getattr(self.world, "sun_latitude", self.calendar.latitude)
+        noon, _ = solar_position_on(self.calendar.date, 12 * 3600.0, latitude, getattr(self.world, "sun_longitude", 25.47),
+                                    finnish_utc_offset_hours(now))
+        return flag_state(now, altitude, noon)
+
     def _moon_position(self) -> tuple:
         latitude = getattr(self.world, "sun_latitude", self.calendar.latitude)
         longitude = getattr(self.world, "sun_longitude", 25.47)
@@ -615,6 +626,7 @@ class SimulationServer:
                 "moon_illumination": round(moon_illumination, 3),
                 "sports_lights": sports_lights_hours(self.calendar.current),
                 "holidays": holiday_events(self.calendar.current),
+                "flags": self._flag_state(altitude),
                 "arena_lights": bool(arena_crowds and arena_crowds.lights_on(self.calendar.current)),
                 "arena_games": [[round(x, 1), round(y, 1)] for x, y in arena_crowds.games_in_progress(self.calendar.current)]
                 if arena_crowds else []}

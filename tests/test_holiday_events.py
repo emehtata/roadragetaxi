@@ -92,3 +92,29 @@ def test_window_decorations_from_the_first_advent_until_epiphany():
     assert "window_decorations" in on(2027, 1, 6, 23, 59)
     assert "window_decorations" not in on(2027, 1, 7, 0, 0)
     assert "window_decorations" in on(2027, 11, 28, 12, 0)  # 2027: the first Advent is 28 November
+
+
+def test_flags_fly_on_flag_days_by_the_official_hours():
+    from theroadragetrip.holiday_events import flag_state, is_flag_day
+    sun, night = 30.0, -10.0
+    assert is_flag_day(datetime(2026, 2, 28)) and not is_flag_day(datetime(2026, 3, 1))
+    assert flag_state(datetime(2026, 5, 1, 7, 59), sun, sun) == ""
+    assert flag_state(datetime(2026, 5, 1, 8, 0), sun, sun) == "full"
+    assert flag_state(datetime(2026, 5, 1, 20, 59), sun, sun) == "full"
+    assert flag_state(datetime(2026, 5, 1, 21, 0), sun, sun) == ""  # summer: 21:00 at the latest
+    assert flag_state(datetime(2026, 2, 28, 16, 30), night, 5.0) == ""  # winter: down at sunset
+    assert flag_state(datetime(2026, 2, 28, 8, 30), night, 5.0) == "full"  # up at 8 before sunrise
+    assert flag_state(datetime(2026, 12, 6, 19, 30), night, 1.0) == "full"  # Independence Day until 20
+    assert flag_state(datetime(2026, 12, 6, 20, 0), night, 1.0) == ""
+    assert flag_state(datetime(2026, 12, 8, 15, 0), night, -2.0) == "full"  # polar night: 8-16
+    assert flag_state(datetime(2026, 12, 8, 16, 0), night, -2.0) == ""
+    assert flag_state(datetime(2026, 6, 19, 17, 59), sun, sun) == ""  # Midsummer Eve from 18
+    assert flag_state(datetime(2026, 6, 19, 23, 30), night, sun) == "full"
+    assert flag_state(datetime(2026, 6, 20, 3, 0), night, sun) == "full"  # through the night
+    assert flag_state(datetime(2026, 6, 20, 21, 0), sun, sun) == ""
+    assert flag_state(datetime(2026, 5, 17, 10, 0), sun, sun) == "half"  # Fallen Soldiers: half-mast until noon
+    assert flag_state(datetime(2026, 5, 17, 12, 0), sun, sun) == "full"
+    assert flag_state(datetime(2026, 5, 10, 9, 0), sun, sun) == "full"  # Mother's Day 2026
+    assert flag_state(datetime(2026, 11, 8, 9, 0), sun, sun) == "full"  # Father's Day 2026
+    assert flag_state(datetime(2026, 8, 29, 9, 0), sun, sun) == "full"  # Nature Day: last Saturday of August
+    assert flag_state(datetime(2026, 8, 28, 9, 0), sun, sun) == ""

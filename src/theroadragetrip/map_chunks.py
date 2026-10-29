@@ -18,7 +18,7 @@ import math
 from . import static_world
 from .fuel import fuel_station_price_cents
 from .geo import dist_point_to_segment
-from .holiday_events import BONFIRE_SHORE_SPACING_M, bonfire_spot_is_clear, house_yard_spot
+from .holiday_events import BONFIRE_SHORE_SPACING_M, bonfire_spot_is_clear, flagpole_spot, house_yard_spot
 from .map_level import SURFACE_MAP_LEVELS
 from .nightlife import nightclub_schedule
 from .playground_equipment import equipment_rows
@@ -31,7 +31,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
           "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards",
           "nightclubs", "attractions", "tennis_courts", "volleyball_courts", "shore_waves",
-          "bonfires")
+          "bonfires", "flagpoles")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("shrub", "bench", "waste_basket", "bicycle_parking", "charging_station", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
@@ -294,8 +294,12 @@ class ChunkIndex:
                 chunk["canopies"].append(_line(building.points_m))
                 chunk["canopy_heights"].append(static_world.building_style(building)[2])
                 continue
+            style = static_world.building_style(building)
             chunk["buildings"].append(_line(building.points_m))  # buildings and their styles in step
-            chunk["building_styles"].append(static_world.building_style(building))
+            chunk["building_styles"].append(style)
+            pole = flagpole_spot(building, world, style[6] if len(style) > 6 else 0)
+            if pole is not None:
+                self._add("flagpoles", [pole], pole)
             yard = house_yard_spot(building, world)
             if yard is not None:
                 self._add("holiday_yards", [yard], yard)

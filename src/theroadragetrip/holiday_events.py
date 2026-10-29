@@ -71,7 +71,32 @@ def house_yard_spot(building, world):
     Built with the map, not queried per frame. Missing yard ownership in OSM
     means this is decorative scenery only, never evidence of driving access.
     """
-    if not _building_is_house_by_tag(building) or getattr(building, "map_level", None) not in SURFACE_MAP_LEVELS:
+    if not _building_is_house_by_tag(building):
+        return None
+    return yard_spot(building, world)
+
+
+# Flagpoles: a share of residential and commercial buildings has one in its yard.
+FLAGPOLE_SHARE = {1: 0.20, 2: 0.30, 0: 0.15}  # house, commercial, other (apartment blocks, offices)
+FLAGPOLE_OUT_M = 4.0
+
+
+def flagpole_spot(building, world, category: int):
+    """A flagpole's foot in the building's yard (yard_spot, 4 m out), for a
+    deterministic share of buildings by category; None for the rest and for
+    outbuildings and plain walls (category 3)."""
+    share = FLAGPOLE_SHARE.get(category)
+    if share is None or len(building.points_m) < 3:
+        return None
+    x, y = building.points_m[0]
+    if (math.sin(round(x) * 12.9898 + round(y) * 78.233) * 43758.5453) % 1.0 >= share:
+        return None
+    return yard_spot(building, world, FLAGPOLE_OUT_M)
+
+
+def yard_spot(building, world, out_m: float = 2.0):
+    """One spot `out_m` outside a wall of the building, never inside a building, road/path or water."""
+    if getattr(building, "map_level", None) not in SURFACE_MAP_LEVELS:
         return None
     points = building.points_m
     for a, b in zip(points, points[1:] + points[:1]):
@@ -80,8 +105,8 @@ def house_yard_spot(building, world):
         if length < 3:
             continue
         for side in (1, -1):
-            x = (a[0] + b[0]) / 2 + side * dy / length * 2
-            y = (a[1] + b[1]) / 2 - side * dx / length * 2
+            x = (a[0] + b[0]) / 2 + side * dy / length * out_m
+            y = (a[1] + b[1]) / 2 - side * dx / length * out_m
             def nearby(name, grid_name):
                 grid = getattr(world, grid_name, None)
                 return grid.ways_in_rect(x - 1, y - 1, x + 1, y + 1) if grid else getattr(world, name, ())
@@ -96,3 +121,60 @@ def house_yard_spot(building, world):
                 continue
             return [round(x, 2), round(y, 2)]
     return None
+
+
+# Finland's flag days (Ministry of the Interior, intermin.fi/liputus/liputuspaivat):
+# official (asetus 383/1978) and customary (Valtiokalenteri). Election days and a
+# president's inauguration have no date rule here.
+FIXED_FLAG_DAYS = {(2, 5), (2, 28), (3, 19), (4, 9), (4, 27), (5, 1), (5, 9), (5, 12), (6, 4), (7, 6),
+                   (10, 1), (10, 10), (10, 24), (11, 6), (11, 20), (12, 6), (12, 8)}
+
+
+def _nth_weekday(year: int, month: int, weekday: int, n: int):
+    import datetime
+    first = datetime.date(year, month, 1)
+    return first + datetime.timedelta(days=(weekday - first.weekday()) % 7 + 7 * (n - 1))
+
+
+def _last_weekday(year: int, month: int, weekday: int):
+    import datetime
+    last = datetime.date(year, month + 1, 1) - datetime.timedelta(days=1)
+    return last - datetime.timedelta(days=(last.weekday() - weekday) % 7)
+
+
+def is_flag_day(day) -> bool:
+    """The date (any datetime/date) is a Finnish flag day, Midsummer Day included."""
+    year = day.year
+    date = day.date() if hasattr(day, "date") else day
+    return ((date.month, date.day) in FIXED_FLAG_DAYS
+            or date == _nth_weekday(year, 5, 6, 2)  # Mother's Day: the second Sunday of May
+            or date == _nth_weekday(year, 5, 6, 3)  # Fallen Soldiers' Memorial Day: the third
+            or date == _nth_weekday(year, 11, 6, 2)  # Father's Day: the second Sunday of November
+            or date == _last_weekday(year, 8, 5)  # Finnish Nature Day: the last Saturday of August
+            or date.month == 6 and date.weekday() == 5 and 20 <= date.day <= 26)  # Midsummer Day
+
+
+def flag_state(moment, sun_altitude_deg: float, noon_altitude_deg: float) -> str:
+    """'full', 'half' (half-mast) or '' (no flags): from 08:00 until sunset, in
+    summer 21:00 at the latest; where the sun stays down (polar night) until
+    16:00; Independence Day until 20:00; Midsummer from 18:00 on its Eve
+    through the night until 21:00 on Midsummer Day. Fallen Soldiers' Memorial
+    Day: half-mast until noon (custom)."""
+    hour = moment.hour + moment.minute / 60.0
+    if moment.month == 6 and moment.weekday() == 4 and 19 <= moment.day <= 25:  # Midsummer Eve
+        return "full" if hour >= 18.0 else ""
+    if moment.month == 6 and moment.weekday() == 5 and 20 <= moment.day <= 26:  # Midsummer Day, up since its Eve
+        return "full" if hour < 21.0 else ""
+    if not is_flag_day(moment) or hour < 8.0:
+        return ""
+    if (moment.month, moment.day) == (12, 6):
+        return "full" if hour < 20.0 else ""
+    if noon_altitude_deg < -0.833:  # the sun does not rise: the winter recommendation
+        down = hour >= 16.0
+    else:
+        down = hour >= 21.0 or (hour >= 12.0 and sun_altitude_deg < -0.833)  # set (not yet risen before noon)
+    if down:
+        return ""
+    if moment.date() == _nth_weekday(moment.year, 5, 6, 3) and hour < 12.0:
+        return "half"
+    return "full"
