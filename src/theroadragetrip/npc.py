@@ -876,21 +876,23 @@ def update_knocked(vehicle, dt: float, buildings=None, building_grid=None, ways=
     speed = math.hypot(vehicle.knock_vx, vehicle.knock_vy)
     slower = speed - KNOCK_DECEL_MPS2 * dt
     if not math.isfinite(speed) or slower <= KNOCK_STOP_MPS:
-        vehicle.knock_vx = vehicle.knock_vy = 0.0
+        vehicle.knock_vx = vehicle.knock_vy = vehicle.knock_spin = 0.0
         return
     x, y = vehicle.car.x + vehicle.knock_vx * dt, vehicle.car.y + vehicle.knock_vy * dt
-    if buildings is not None and not is_vehicle_pose_valid(x, y, vehicle.car.heading, buildings=buildings,
+    heading = vehicle.car.heading + vehicle.knock_spin * dt
+    if buildings is not None and not is_vehicle_pose_valid(x, y, heading, buildings=buildings,
                                                            building_grid=building_grid, length_m=vehicle.length_m,
                                                            width_m=vehicle.width_m, clearance_m=0.05):
-        vehicle.knock_vx = vehicle.knock_vy = 0.0
+        vehicle.knock_vx = vehicle.knock_vy = vehicle.knock_spin = 0.0
         return
     if vehicle.layer != 0 and (ways or spatial_grid) and get_road_layer_at_point(
             x, y, current_layer=vehicle.layer, ways=ways, spatial_grid=spatial_grid) != vehicle.layer:
-        vehicle.knock_vx = vehicle.knock_vy = 0.0
+        vehicle.knock_vx = vehicle.knock_vy = vehicle.knock_spin = 0.0
         return
-    vehicle.car.x, vehicle.car.y = x, y
+    vehicle.car.x, vehicle.car.y, vehicle.car.heading = x, y, heading
     vehicle.knock_vx *= slower / speed
     vehicle.knock_vy *= slower / speed
+    vehicle.knock_spin *= slower / speed
 
 
 def is_vehicle_pose_valid(
@@ -1363,6 +1365,12 @@ INITIAL_MOVING_FILL_S = 4.0  # loading time for the moving traffic (populate_mov
 FAR_TRAFFIC_STEP = 4
 FAR_ROAD_CHECK_EVERY = 3  # far traffic: the swept road check every this many of its updates  # traffic outside the view's area: driven every this many ticks (viewport.traffic_bounds)
 NPC_SCRAPE_MPS = 5.0 / 3.6  # two NPCs touching slower than this: a scrape, both go on (no wreck)
+# Game policy: below this closing speed a crash only knocks the cars about -
+# the drivers sit out STUNNED_S and drive on, nobody gets out. At or above it
+# the car spins off and is wrecked; its occupants leave it.
+SEVERE_HIT_MPS = 35.0 / 3.6
+STUNNED_S = 4.0
+CRASH_SPIN_RAD_PER_M = 0.25  # a wreck's spin per m/s of its knock
 # Collision response (rrt-019-crash-physics): an impulse along the contact
 # normal, by mass. A little bounce; a knocked vehicle then slides, tyres
 # scrubbing or wheels locked, until friction stops it.
@@ -1515,6 +1523,8 @@ class NPCVehicle:
     knock_vx: float = 0.0  # non-zero: knocked by a collision, sliding (update_knocked); its driver waits
     knock_vy: float = 0.0
     shaken_timer: float = 0.0  # > 0: after a minor bump the driver goes on slowly
+    stunned_timer: float = 0.0  # > 0: after a moderate crash the driver waits, then drives on
+    knock_spin: float = 0.0  # rad/s while knocked: a severe crash spins the car
     trailer_axle: Optional[Tuple[float, float]] = None  # a towed trailer's axle (trailers.py), None: straight behind
 
     @property
@@ -5200,6 +5210,14 @@ class NPCVehicleManager:
                     if scraped.state == NPCState.PARKED:
                         scraped.knock_vx = scraped.knock_vy = 0.0  # stays in its bay
                 return True
+            if not vehicle_already_crashed and (not obstacle_is_npc or obstacle.state != NPCState.CRASHED) \
+                    and closing_speed < SEVERE_HIT_MPS:
+                # A moderate crash: knocked about, the drivers wait a moment and drive on.
+                self.accidents.append((vehicle.car.x, vehicle.car.y))
+                for hit in (vehicle, obstacle) if obstacle_is_npc else (vehicle,):
+                    hit.stunned_timer = STUNNED_S
+                    hit.shaken_timer = SHAKEN_S
+                return True
             self.accidents.append((vehicle.car.x, vehicle.car.y))
             if not vehicle_already_crashed:
                 self._trigger_vehicle_accident(vehicle, resident_manager, pedestrian_mgr, sim_time)
@@ -5263,6 +5281,8 @@ class NPCVehicleManager:
                 break
 
         vehicle.car.speed = 0.0
+        vehicle.knock_spin = random.choice((-1.0, 1.0)) * CRASH_SPIN_RAD_PER_M * math.hypot(
+            vehicle.knock_vx, vehicle.knock_vy)  # spins off towards the roadside
         vehicle.state = NPCState.CRASHED
         vehicle.fallen = vehicle_definition(vehicle.vehicle_type).movement == "cycle"  # the bike lies on its side
         vehicle.driver_departed = True
@@ -6895,7 +6915,7 @@ class NPCVehicleManager:
                 if id(vehicle) in active_ids:
                     update_knocked(vehicle, dt, buildings, building_grid, ways, spatial_grid)
                 else:  # left the simulated area mid-slide: it has come to rest, its driver goes on later
-                    vehicle.knock_vx = vehicle.knock_vy = 0.0
+                    vehicle.knock_vx = vehicle.knock_vy = vehicle.knock_spin = 0.0
         for vehicle in self.vehicles:
             if vehicle.state == NPCState.CRASHED:
                 vehicle.car.speed = 0.0
@@ -6910,6 +6930,9 @@ class NPCVehicleManager:
                 continue  # held aside by rage clearance, or its driver is out brawling: it stays put
             if vehicle.knock_vx or vehicle.knock_vy:
                 continue  # knocked, sliding: the driver takes over again once it has stopped
+            if vehicle.stunned_timer > 0.0:
+                vehicle.stunned_timer = max(0.0, vehicle.stunned_timer - dt)
+                continue  # shaken by a crash: the driver waits a moment, then goes on
             driver = self.drivers.get(vehicle.vehicle_id)
             if driver is None:
                 continue  # idle, parked - nothing to simulate until it starts a trip
