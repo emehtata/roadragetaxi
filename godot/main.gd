@@ -508,7 +508,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if not phone.is_open or phone.busy:
 					show_next_train = not show_next_train
 			KEY_SPACE:
-				if (not phone.is_open or phone.busy) and not summary_shown:
+				if not summary_shown:  # the phone has no use for SPACE: rage with offers on screen too
 					_road_rage_pending = true
 			KEY_V:
 				speed_limiter = not speed_limiter

@@ -2072,7 +2072,7 @@ func test_road_rage() -> void:
 	main.phone.is_open = true
 	main._unhandled_input(_key_event(KEY_SPACE))
 	main.send({})
-	check(sim._last_command["road_rage"] == false, "not while the phone is open")
+	check(sim._last_command["road_rage"] == true, "SPACE rages with the phone's offers open too (the phone has no use for it)")
 	main.phone.busy = true
 	main._unhandled_input(_key_event(KEY_SPACE))
 	main._unhandled_input(_key_event(KEY_X))
