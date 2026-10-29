@@ -16,6 +16,7 @@ var plowed_cells: Array = []
 var snowing := false
 var _snow_baselines: Dictionary = {}  # preserve a new area's clean start across chunk refreshes
 var _snow_redraws: Dictionary = {}
+var _shop_light_updates: Dictionary = {}
 var wetness := 0.0  # road wetness as last applied (bucketed, see set_wetness)
 var px_per_m := 9.0  # the camera zoom, for the chunks' pixel-sized points
 var phases: Dictionary = {}  # traffic-light phases as last applied (state "traffic_lights")
@@ -124,6 +125,7 @@ func clear() -> void:
 		_free_chunk(chunk)
 	_chunks.clear()
 	_snow_redraws.clear()
+	_shop_light_updates.clear()
 
 
 ## A chunk's buildings into the shared group, farthest from the current view
@@ -508,7 +510,18 @@ func set_road_snow(depth: float, cells: Array, falling := true) -> void:
 		chunk.snow_baseline = float(_snow_baselines[id])
 		if chunk.set_road_snow(depth, cells, false) and not chunk._road_layers.is_empty():
 			_snow_redraws[id] = true
-	set_process(not _snow_redraws.is_empty())
+	set_process(not _snow_redraws.is_empty() or not _shop_light_updates.is_empty())
+
+
+func set_shop_lights(states: Dictionary) -> void:
+	for id in states:
+		var chunk = _chunks.get(id)
+		if chunk != null and chunk._data.get("_shop_lights", []) != states[id]:
+			_shop_light_updates[id] = states[id]
+		else:
+			_shop_light_updates.erase(id)
+	if not _shop_light_updates.is_empty():
+		set_process(true)
 
 
 func _process(_delta: float) -> void:
@@ -521,7 +534,17 @@ func _process(_delta: float) -> void:
 			remaining -= 1
 			if remaining == 0:
 				break
-	set_process(not _snow_redraws.is_empty())
+	# Opening/closing changes rebuild only building batches, one chunk per frame.
+	for id in _shop_light_updates.keys():
+		var chunk = _chunks.get(id)
+		if chunk == null:
+			_shop_light_updates.erase(id)
+		elif chunk._building_task < 0:
+			var rows: Array = _shop_light_updates[id]
+			_shop_light_updates.erase(id)
+			chunk.set_shop_lights(rows)
+			break
+	set_process(not _snow_redraws.is_empty() or not _shop_light_updates.is_empty())
 
 
 ## A chunk the server resent (changed) swapped in for the drawn one in the

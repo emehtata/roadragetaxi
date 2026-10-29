@@ -177,6 +177,11 @@
     }
   ],
   "python_packages": {
+    "opening_hours_py": {
+      "licence": "MIT OR Apache-2.0; used under MIT",
+      "status": "verified",
+      "obligations": "Retain copyright and licence notices (collect_licenses.py); wheel includes LICENSE-MIT and LICENSE-APACHE"
+    },
     "requests": {"licence": "Apache-2.0", "status": "verified", "obligations": "licence and NOTICE (collect_licenses.py)"},
     "urllib3": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "idna": {"licence": "BSD-3-Clause", "status": "verified", "obligations": "licence (collect_licenses.py)"},

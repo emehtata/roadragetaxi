@@ -90,6 +90,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_rest_of_static_world()
 	test_buildings_2_5d()
 	test_buildings_3d()
+	test_shop_lights()
 	test_sun_and_shadows()
 	test_roof_snow()
 	test_resent_chunk_buildings()
@@ -3146,6 +3147,40 @@ func test_buildings_3d() -> void:
 	map.buildings_3d.set_light(0.0, Color.WHITE)
 	map.clear()
 	check(map.buildings_3d.instance_count() == 0, "a chunk's meshes go with it")
+	map.free()
+	MapChunk.buildings_3d = false
+
+
+func test_shop_lights() -> void:
+	MapChunk.buildings_3d = true
+	var map := MapLayer.new()
+	root.add_child(map)
+	var style := [[83, 86, 87], 0, 6.0, [], [139, 139, 137], 1, 4]
+	for i in 2:
+		var x := i * 500
+		map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "%d_0" % i, "bounds": [x, 0, x + 500, 500],
+			"buildings": [[[x + 10, 10], [x + 40, 10], [x + 40, 30], [x + 10, 30]]], "building_styles": [style]})))
+	var first = map._chunks["0_0"]
+	var old_mesh = first.meshes_3d[0]
+	map.set_shop_lights({"0_0": [[0, 1]], "1_0": [[0, 0]]})
+	map._process(0.0)
+	check(first._data["building_styles"][0][8] == 1 and map._chunks["1_0"]._data["building_styles"][0].size() == 7, "shop lighting updates at most one chunk per frame")
+	check(not is_instance_valid(old_mesh) and first.stale_buildings.is_empty(), "shop lighting swaps the old building batch without leaking meshes")
+	map._process(0.0)
+	check(map._chunks["1_0"]._data["building_styles"][0][8] == 0, "closed shop state reaches its building")
+	var open_mesh = first.meshes_3d[0]
+	map.set_shop_lights({"0_0": [[0, 1]], "1_0": [[0, 0]]})
+	check(map._shop_light_updates.is_empty() and first.meshes_3d[0] == open_mesh, "unchanged shop hours do not rebuild geometry")
+	map.set_shop_lights({"0_0": [[0, 0]]})
+	map._process(0.0)
+	check(first._data["building_styles"][0][8] == 0, "crossing closing time changes the lights")
+	map.set_shop_lights({"0_0": [[0, 1]]})
+	map.set_shop_lights({"0_0": [[0, 0]]})
+	check(map._shop_light_updates.is_empty(), "a newer clock state cancels a superseded pending light change")
+	for status in [-1, 0, 1]:
+		var arrays := B3.build([PackedVector2Array([Vector2(0, 0), Vector2(30, 0), Vector2(30, 20), Vector2(0, 20)])],
+			[[[83, 86, 87], 0, 6.0, [], [139, 139, 137], 1, 4, 0, status]], Vector2.ZERO)
+		check(int(arrays["window"][2] / 10000.0) - 1 == status, "per-building shop state is encoded in the shared wall shader")
 	map.free()
 	MapChunk.buildings_3d = false
 

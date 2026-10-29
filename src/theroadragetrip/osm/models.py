@@ -139,6 +139,8 @@ class Building:
     level: Optional[str] = None
     indoor: Optional[str] = None  # raw indoor=* value, None when untagged
     associated_places: List["Place"] = field(default_factory=list, repr=False)
+    opening_hours: Optional[str] = None
+    shop_type: Optional[str] = None
 
 
 @dataclass
@@ -437,6 +439,8 @@ class Place:
     y: float
     name: str
     kind: str
+    opening_hours: Optional[str] = None
+    shop_type: Optional[str] = None
 
 
 def associate_places_with_buildings_steps(buildings: List[Building], places: List[Place]):
@@ -456,7 +460,7 @@ def associate_places_with_buildings_steps(buildings: List[Building], places: Lis
         yield
     venue_places = [
         place for place in places
-        if place.name and place.kind not in {
+        if (place.name or place.opening_hours) and place.kind not in {
             "suburb", "neighbourhood", "quarter", "village", "town", "city",
         }
     ]

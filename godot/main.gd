@@ -748,6 +748,7 @@ func _present(state: Dictionary) -> void:
 	if not ambient.is_equal_approx(world_light.color):
 		world_light.color = ambient
 	map_layer.set_light(lights, ambient)
+	map_layer.set_shop_lights(state.get("shop_lights", {}))
 	var sun_strength := Daylight.sunlight(altitude, cloud)
 	if sun_strength > 0.01:
 		map_layer.set_celestial_light(altitude, Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth, sun_strength)

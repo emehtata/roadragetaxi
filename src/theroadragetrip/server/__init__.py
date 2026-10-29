@@ -1397,10 +1397,12 @@ class SimulationServer:
         )
         message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
         message["state"]["home_door"] = self._home_door_state()
-        live = self.world.live_roadworks
-        message["state"]["electronic_signs"] = live.electronic_signs_near(self.car, self._current_way) if live is not None else []
         with self._clients_lock:
             clients = list(self._clients)
+            loaded = set().union(*(chunks for chunks, _ in self._client_chunks.values()))
+        message["state"]["shop_lights"] = self._chunks_index.shop_lights(self.calendar.current, loaded)
+        live = self.world.live_roadworks
+        message["state"]["electronic_signs"] = live.electronic_signs_near(self.car, self._current_way) if live is not None else []
         for connection in clients:
             connection.send_state(message)  # never waits: a behind client gets the newest state
 

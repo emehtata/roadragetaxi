@@ -466,6 +466,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	var wall_color := Color8(int(style[4][0]), int(style[4][1]), int(style[4][2])) if style.size() > 4 else Color8(139, 139, 137)
 	var floors: int = maxi(1, int(style[5]) if style.size() > 5 else roundi(height / 3.0))
 	var category: int = int(style[6]) if style.size() > 6 else 0
+	var shop_state: int = int(style[8]) if style.size() > 8 else -1
 	var arena := style.size() > 7 and int(style[7]) == 1
 	var gabled := style.size() > 1 and int(style[1]) >= 1
 	var steep := style.size() > 1 and int(style[1]) == 2  # a church
@@ -501,7 +502,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), wall_shade, to_3d(normal), "verts",
 			PackedVector2Array([Vector2(0.0, 0.0), Vector2(length, 0.0), Vector2(length, height), Vector2(0.0, height)]),
 			Vector4(length, minf(3.2, height / floors) if category == CATEGORY_RETAIL_HALL else height / floors,
-				count + 1000 * category, seed_base + i * 7.13))
+				count + 1000 * category + 10000 * (shop_state + 1), seed_base + i * 7.13))
 	_doors(out, footprint, style[3] if style.size() > 3 else [], outward_sign, height, floors, origin)
 	_shadow_prism(out["shadow"], footprint, height)
 	if gabled:

@@ -17,12 +17,13 @@ import math
 
 from . import static_world
 from .fuel import fuel_station_price_cents
-from .geo import dist_point_to_segment
+from .geo import dist_point_to_segment, meters_to_latlon
 from .holiday_events import BONFIRE_SHORE_SPACING_M, bonfire_spot_is_clear, flagpole_spot, house_yard_spot
 from .map_level import SURFACE_MAP_LEVELS
 from .nightlife import nightclub_schedule
 from .playground_equipment import equipment_rows
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
+from .shop_lights import opening_state, retail_hours
 
 _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks",
           "trees", "construction_fences", "bollards", "railings", "scenery_objects", "street_lights",
@@ -31,7 +32,7 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
           "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards",
           "nightclubs", "attractions", "tennis_courts", "volleyball_courts", "shore_waves",
-          "bonfires", "flagpoles")
+          "bonfires", "flagpoles", "shop_hours")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 DECORATIVE_KINDS = ("shrub", "bench", "waste_basket", "bicycle_parking", "charging_station", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
@@ -297,6 +298,10 @@ class ChunkIndex:
             style = static_world.building_style(building)
             chunk["buildings"].append(_line(building.points_m))  # buildings and their styles in step
             chunk["building_styles"].append(style)
+            hours = retail_hours(building)
+            if hours and style[6] in (2, 4):
+                latitude, longitude = meters_to_latlon(*static_world.building_owner(building))
+                chunk["shop_hours"].append([len(chunk["buildings"]) - 1, hours, round(latitude, 5), round(longitude, 5)])
             pole = flagpole_spot(building, world, style[6] if len(style) > 6 else 0)
             if pole is not None:
                 self._add("flagpoles", [pole], pole)
@@ -572,6 +577,12 @@ class ChunkIndex:
                 levels = sorted({way.map_level, *explicit_levels(way)})
                 self._add("level_roads", way.points_m[:1], [levels, _line(way.points_m), way.half_width_m,
                                                              static_world._rgb(road_color_for_way(way))])
+
+    def shop_lights(self, moment, loaded: set) -> dict:
+        """Only loaded shop buildings; schedule parsing and minute states are cached."""
+        return {cid: [[index, opening_state(tuple(hours), moment, latitude, longitude)]
+                      for index, hours, latitude, longitude in self._chunks[cid]["shop_hours"]]
+                for cid in sorted(loaded) if cid in self._chunks and self._chunks[cid]["shop_hours"]}
 
     def message(self, cid: str) -> dict:
         """The "chunk" message for one chunk (an empty one outside the map,

@@ -126,7 +126,8 @@ MAGIC = b"RWC\0"
 # 59: a garage's amenity=parking area (parking=underground / multi-storey) is no surface lot.
 # 60: OSM playground=* equipment (nodes and areas) as scenery objects.
 # 61: individual natural=shrub nodes as scenery objects.
-FORMAT_VERSION = 61
+# 62: building and shop-place opening_hours and raw shop types.
+FORMAT_VERSION = 62
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

@@ -58,12 +58,14 @@ def test_rwc_round_trip_preserves_scenery_objects(tmp_path):
 
 
 def test_rwc_rehydrates_building_place_associations(tmp_path, sample_world):
-    place = Place(10.0, 10.0, "K-Market", "poi")
+    place = Place(10.0, 10.0, "K-Market", "supermarket", opening_hours="Mo-Sa 08:00-22:00", shop_type="supermarket")
     building = Building(
         [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
         name="Shop",
         bbox=(0.0, 0.0, 20.0, 20.0),
         associated_places=[place],
+        opening_hours="24/7",
+        shop_type="supermarket",
     )
     sample_world.buildings.append(building)
     sample_world.places.append(place)
@@ -74,6 +76,9 @@ def test_rwc_rehydrates_building_place_associations(tmp_path, sample_world):
 
     loaded_building = next(item for item in loaded.buildings if item.name == building.name)
     assert loaded_building.associated_places
+    assert loaded_building.opening_hours == "24/7"
+    assert loaded_building.shop_type == loaded_building.associated_places[0].shop_type == "supermarket"
+    assert loaded_building.associated_places[0].opening_hours == "Mo-Sa 08:00-22:00"
     assert loaded_building.associated_places[0] is next(
         item for item in loaded.places if item.name == place.name and item.kind == place.kind
     )

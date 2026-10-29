@@ -661,6 +661,31 @@ static var forest_canopy := true  # off (graphics setting): forests keep their f
 var meshes_3d: Array = []  # buildings_3d.meshes, added to MapLayer's 3D building layer
 
 
+func set_shop_lights(rows: Array) -> void:
+	_data["_shop_lights"] = rows
+	var styles: Array = _data.get("building_styles", []).duplicate(true)
+	var changed := false
+	for row in rows:
+		var index := int(row[0])
+		if index < 0 or index >= styles.size():
+			continue
+		var style: Array = styles[index]
+		var status := clampi(int(row[1]), -1, 1)
+		if (int(style[8]) if style.size() > 8 else -1) == status:
+			continue
+		while style.size() < 9:
+			style.append(0)  # index 7 is the existing arena/glasshouse flag
+		style[8] = status
+		changed = true
+	if not changed:
+		return
+	_data["building_styles"] = styles
+	if buildings_3d:
+		stale_buildings.append_array(meshes_3d)
+		meshes_3d = []
+		_build_2_5d()
+
+
 static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2, sites: Array = []) -> Dictionary:
 	var started := Time.get_ticks_usec()
 	var arrays := B3.build(buildings, styles, origin, sites)

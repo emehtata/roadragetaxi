@@ -7,7 +7,7 @@ uniform vec4 snow_color : source_color = vec4(0.84314, 0.87843, 0.90980, 1.0);
 // Windows are drawn here, not as geometry (a city centre had 118k window quads
 // and as many lit ones): each wall vertex carries UV2 = (metres along the wall,
 // metres up) and CUSTOM0 = (wall length, storey height, windows per floor +
-// 1000 x category, seed); roofs and gables carry no windows (0). Modelled on
+// 1000 x category + 10000 x (shop state + 1), seed); roofs and gables carry no windows (0). Modelled on
 // Oulu's Valkea talo: a window in every ~3 m bay of every floor, about half
 // the storey tall; a shop's ground floor glazed nearly bay to bay (category
 // 2); houses wider bays, every other floor. A share lit at night.
@@ -124,7 +124,8 @@ void fragment() {
 	vec3 color = mix(COLOR.rgb, snow_color.rgb * UV.y, UV.x * snow_cover) * ambient.rgb;
 	float count = mod(wall.z, 1000.0);
 	if (count >= 1.0 && wall.y > 0.0) {
-		float category = floor(wall.z / 1000.0 + 0.001);
+		float category = mod(floor(wall.z / 1000.0 + 0.001), 10.0);
+		float shop_state = floor(wall.z / 10000.0) - 1.0;  // unknown / closed / open, from the server
 		bool house = abs(category - 1.0) < 0.5;
 		bool retail_hall = abs(category - 4.0) < 0.5;
 		float storey = wall.y;
@@ -153,10 +154,14 @@ void fragment() {
 			vec3 cloth = fabric(window_hash(wall.w, f, w, 3u));
 			glass = mix(glass, cloth * 0.75 * ambient.rgb, curtain);
 			float chance = storefront ? lit_probability.z : house ? lit_probability.y : lit_probability.x;
+			if (storefront && shop_state >= 0.0) {
+				chance = shop_state;  // all shop windows open, none closed; upper apartments stay independent
+			}
 			if (window_hash(wall.w, f, w, 0u) < chance) {
-				vec3 light = room_light(window_hash(wall.w, f, w, 4u)) * (0.78 + 0.27 * window_hash(wall.w, f, w, 5u));
+				bool shop_open = storefront && shop_state > 0.5;
+				vec3 light = shop_open ? vec3(0.95, 0.95, 0.87) : room_light(window_hash(wall.w, f, w, 4u)) * (0.78 + 0.27 * window_hash(wall.w, f, w, 5u));
 				vec3 shown = mix(light, light * cloth * 0.8, curtain);  // through the fabric: dimmer, its tint
-				glass = mix(glass, shown, lit_level);
+				glass = mix(glass, shown, shop_open ? 1.0 : lit_level);
 			}
 			if (decorations > 0.5 && window_hash(wall.w, f, w, 6u) < (storefront ? 0.4 : 0.25)) {
 				vec4 deco = decoration(vec2(across, up - bottom), vec2(half_width, top - bottom),

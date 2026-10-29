@@ -805,7 +805,7 @@ def build_ways(
                 miniature_golf_nodes.append((tags, nid))
             if "place" in tags and "name" in tags:
                 place_nodes_raw.append((tags, nid))
-            elif "name" in tags:
+            elif "name" in tags or (tags.get("shop") and tags.get("opening_hours")):
                 named_nodes_raw.append((tags, nid))
             if tags.get("highway") == "traffic_signals":
                 traffic_signals_raw.append((tags, nid))
@@ -1316,6 +1316,8 @@ def build_ways(
                 else None
             ),
             building_type=tags.get("building"),
+            opening_hours=tags.get("opening_hours"),
+            shop_type=tags.get("shop"),
             roof_shape=tags.get("roof:shape"),
             height_is_explicit=bool(tags.get("height") or tags.get("building:levels") or tags.get("levels")),
             center_m=(center_x, center_y),
@@ -1622,6 +1624,8 @@ def build_ways(
                         else None
                     ),
                     building_type=tags.get("building"),
+                    opening_hours=tags.get("opening_hours"),
+                    shop_type=tags.get("shop"),
                     roof_shape=tags.get("roof:shape"),
                     height_is_explicit=bool(tags.get("height") or tags.get("building:levels") or tags.get("levels")),
                     center_m=(center_x, center_y),
@@ -1679,7 +1683,8 @@ def build_ways(
     for tags, nid in named_nodes_raw:
         pt = nodes_m.get(nid)
         if pt:
-            places.append(Place(x=pt[0], y=pt[1], name=tags["name"], kind=tags.get("amenity", "poi")))
+            places.append(Place(x=pt[0], y=pt[1], name=tags.get("name", ""), kind=tags.get("shop") or tags.get("amenity", "poi"),
+                                opening_hours=tags.get("opening_hours"), shop_type=tags.get("shop")))
     for tags, node_ids in named_ways_raw:
         pts, _ = process_node_ids(node_ids)
         if pts:
@@ -1688,7 +1693,9 @@ def build_ways(
                     x=sum(point[0] for point in pts) / len(pts),
                     y=sum(point[1] for point in pts) / len(pts),
                     name=tags["name"],
-                    kind=tags.get("amenity", "poi"),
+                    kind=tags.get("shop") or tags.get("amenity", "poi"),
+                    opening_hours=tags.get("opening_hours"),
+                    shop_type=tags.get("shop"),
                 )
             )
 

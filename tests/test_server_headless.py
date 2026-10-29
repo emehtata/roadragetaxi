@@ -1189,3 +1189,27 @@ def test_the_taxi_gets_out_of_a_wreck_it_is_stuck_in(tmp_path, monkeypatch):
     assert not boxes_intersect(car.x, car.y, car.heading, car.length_m, car.width_m,
                                van.x, van.y, van.heading, van.length_m, van.width_m)
     assert math.dist(start, (car.x, car.y)) > 0.5
+
+
+def test_shop_window_lights_follow_game_clock_in_broadcast_state(tmp_path, monkeypatch):
+    from datetime import datetime
+    from types import SimpleNamespace
+    from theroadragetrip.map_chunks import ChunkIndex
+    from theroadragetrip.osm import Building
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    store = Building([(0, 0), (30, 0), (30, 20), (0, 20)], building_type="retail",
+                     opening_hours="Mo-Su 08:00-22:00")
+    server._chunks_index = ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=[], buildings=[store], sceneries=[], scenery_objects=[]))
+    sent = []
+    class Connection:
+        def send_state(self, message):
+            sent.append(message["state"]["shop_lights"])
+    connection = Connection()
+    server._clients = [connection]
+    server._client_chunks = {connection: ({"0_0"}, None)}
+    server.calendar.current = datetime(2025, 12, 22, 21, 59, 59)
+    server._broadcast_state()
+    server.calendar.current = datetime(2025, 12, 22, 22)
+    server._broadcast_state()
+    assert sent == [{"0_0": [[0, 1]]}, {"0_0": [[0, 0]]}]

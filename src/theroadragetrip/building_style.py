@@ -95,9 +95,13 @@ def _building_is_commercial(building: Building) -> bool:
     building=* tag alone (a building=commercial with no actual venue still
     isn't necessarily a storefront)."""
     venue_type = str(getattr(building, "venue_type", "") or "").lower()
+    if getattr(building, "shop_type", None):
+        return True
     if venue_type in COMMERCIAL_VENUE_TYPES or venue_type in COMMERCIAL_BUILDING_TYPES:
         return True
     for place in getattr(building, "associated_places", ()):
+        if getattr(place, "shop_type", None):
+            return True
         place_type = str(getattr(place, "kind", "") or "").lower()
         if place_type in COMMERCIAL_VENUE_TYPES or place_type in COMMERCIAL_BUILDING_TYPES:
             return True
@@ -160,7 +164,8 @@ def _building_is_retail_hall(building: Building) -> bool:
         return True
     if kind not in {"", "yes", "commercial"}:
         return False
-    venues = {str(getattr(building, "venue_type", "") or "").casefold()}
+    venues = {str(getattr(building, "venue_type", "") or "").casefold(),
+              str(getattr(building, "shop_type", "") or "").casefold()}
     venues.update(str(place.kind).casefold() for place in getattr(building, "associated_places", ()))
     return bool(venues & {"supermarket", "department_store", "mall"})
 
