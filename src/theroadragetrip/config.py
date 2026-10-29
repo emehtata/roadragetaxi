@@ -255,15 +255,6 @@ def save_config(config: configparser.ConfigParser, path: Path = CONFIG_PATH) -> 
         config.write(config_file)
 
 
-def reset_config(config: configparser.ConfigParser) -> None:
-    """Restore built-in settings without changing the installation identity."""
-    user_agent_id = config.get("game", USER_AGENT_KEY, fallback="")
-    config.clear()
-    config.read_dict(DEFAULT_CONFIG)
-    if user_agent_id:
-        config.set("game", USER_AGENT_KEY, user_agent_id)
-
-
 def get_overpass_endpoints(config: configparser.ConfigParser) -> list[str]:
     """Return configured Overpass endpoints, falling back to built-in defaults."""
     raw = config.get("map", "overpass_endpoints", fallback="")
@@ -306,37 +297,6 @@ def load_city_catalog(path: Path = CITY_CATALOG_PATH) -> dict[str, tuple[float, 
         )
         for place in data.get("places", [])
     }
-
-
-def city_suggestions(query: str, limit: int = 8, catalog: Optional[dict[str, tuple[float, float]]] = None) -> list[str]:
-    """Return catalog cities matching the typed text, with prefix matches first."""
-    query_key = query.strip().casefold()
-    names = catalog if catalog is not None else load_city_catalog()
-    matches = [name for name in names if not query_key or query_key in name.casefold()]
-    return sorted(matches, key=lambda name: (not name.casefold().startswith(query_key), name.casefold()))[:limit]
-
-
-def replace_city_in_config(
-    config: configparser.ConfigParser,
-    index: int,
-    city_name: str,
-    latitude: float,
-    longitude: float,
-) -> None:
-    """Replace one configured city while preserving the list order."""
-    if not config.has_section("cities"):
-        config.add_section("cities")
-    items = list(config.items("cities"))
-    if not 0 <= index < len(items):
-        raise IndexError("city index out of range")
-    city_key = city_name.strip().casefold().replace(" ", "_")
-    if not city_key:
-        raise ValueError("city name cannot be empty")
-    items[index] = (city_key, "")
-    section = config["cities"]
-    section.clear()
-    for key, value in items:
-        section[key] = value
 
 
 def cities_from_config(config: configparser.ConfigParser) -> tuple[dict[str, tuple[float, float]], dict[str, tuple[float, float, float, float]]]:

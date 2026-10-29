@@ -875,18 +875,6 @@ class RailwayManager:
         if missing:
             logger.info("Railway stations without a taxi stand within %.0f m: %s", STATION_TAXI_STAND_MAX_M, ", ".join(missing))
 
-    def vehicle_at(self, x: float, y: float) -> Optional[Tuple[Train, int]]:
-        """The train vehicle under a world point (a click), as (train,
-        vehicle index)."""
-        for train in self.trains:
-            for index, (vx, vy, heading, length, _) in enumerate(train.vehicles()):
-                dx, dy = x - vx, y - vy
-                along = dx * math.cos(heading) + dy * math.sin(heading)
-                across = -dx * math.sin(heading) + dy * math.cos(heading)
-                if abs(along) <= length / 2 and abs(across) <= TRAIN_WIDTH_M / 2 + 0.5:
-                    return train, index
-        return None
-
     def next_arrival(self, x: float, y: float, now: datetime) -> Optional[Tuple[datetime, StationCall]]:
         """Next timetable train arriving at the station nearest (x, y)."""
         upcoming = self.next_arrivals(x, y, now, 1)

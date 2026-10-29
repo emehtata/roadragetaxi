@@ -1,33 +1,11 @@
 import configparser
 
 from theroadragetrip.config import (
-    city_suggestions,
     cities_from_config,
     default_city_configuration,
     load_config,
     load_city_catalog,
-    replace_city_in_config,
 )
-
-
-def test_city_suggestions_prioritize_prefix_matches():
-    catalog = {
-        "New York": (40.7, -74.0),
-        "York": (53.9, -1.1),
-        "Newcastle": (54.9, -1.6),
-    }
-
-    assert city_suggestions("new", catalog=catalog) == ["New York", "Newcastle"]
-
-
-def test_replace_city_preserves_position_and_uses_catalog_coordinates():
-    config = configparser.ConfigParser()
-    config.read_dict({"cities": {"first": "60.0, 24.0", "second": "61.0, 25.0"}})
-
-    replace_city_in_config(config, 0, "New York", 40.7, -74.0)
-
-    assert list(config["cities"]) == ["new_york", "second"]
-    assert config.get("cities", "new_york") == ""
 
 
 def test_catalog_matches_game_city_coordinates():

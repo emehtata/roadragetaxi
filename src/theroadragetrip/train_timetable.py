@@ -376,17 +376,6 @@ class TimetableClock:
         self._events = [p for _, p in events]
         self._day = day
 
-    def todays_count(self, now: datetime) -> int:
-        if self._day != now.date():
-            self._build(now.date())
-        start = datetime.combine(now.date(), time())
-        return bisect.bisect_left(self._times, start + timedelta(days=1)) - bisect.bisect_left(self._times, start)
-
-    def next_after(self, now: datetime) -> Optional[Tuple[datetime, ScheduledPass]]:
-        """The next scheduled pass after now (within the built window)."""
-        upcoming = self.upcoming(now, 1)
-        return upcoming[0] if upcoming else None
-
     def upcoming(self, now: datetime, count: int) -> List[Tuple[datetime, ScheduledPass]]:
         """The next `count` scheduled passes after now (within the built window)."""
         if self._day != now.date():

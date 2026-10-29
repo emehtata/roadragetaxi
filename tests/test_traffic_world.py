@@ -127,22 +127,6 @@ def test_plan_route_stays_fast_on_a_large_graph():
     assert elapsed < 0.01, f"plan_route took {elapsed * 1000:.1f}ms for a nearby route on a large graph"
 
 
-def test_nearest_node_indices_falls_back_when_point_is_off_the_mapped_area():
-    """A target far outside any mapped road (e.g. a genuinely unreachable
-    destination) can't be found by expanding outward from its own grid
-    cell - _nearest_node_indices must fall back to considering every
-    allowed node rather than silently returning nothing, or plan_route's
-    A* search gets an empty target set and crashes instead of just
-    failing to find a route."""
-    ways = _large_city_block_grid(block_count=10, step_m=40.0)
-    world = TrafficWorld(ways)
-    allowed = set(range(len(world._route_nodes)))
-
-    found = world._nearest_node_indices((1_000_000.0, 1_000_000.0), 8, allowed)
-
-    assert len(found) == 8
-
-
 def test_stop_and_yield_signs_survive_startup_and_stream_replacement():
     from theroadragetrip.osm import StopSign, YieldSign
     stop, give_way = StopSign(10, 0, id=1), YieldSign(20, 0, id=2)

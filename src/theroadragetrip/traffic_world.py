@@ -582,9 +582,6 @@ class TrafficWorld:
         self._pending_route_graph = self._pending_cycle_graph = None
         return True
 
-    def _nearest_node_indices(self, point: Tuple[float, float], count: int, allowed) -> List[int]:
-        return nearest_node_indices(self._route_nodes, self._route_node_grid, point, count, allowed)
-
     def plan_route(
         self,
         start: Tuple[float, float],

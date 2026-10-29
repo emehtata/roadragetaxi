@@ -1,14 +1,12 @@
 import csv
 import io
 import json
-import sys
 import zipfile
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 
 from theroadragetrip import railway_import as importer  # noqa: E402
 from theroadragetrip.osm.models import Railway  # noqa: E402
-from theroadragetrip.train_timetable import TimetableClock, load_timetable, match_timetable, service_time  # noqa: E402
+from theroadragetrip.train_timetable import load_timetable, match_timetable, service_time  # noqa: E402
 from theroadragetrip.trains import MAX_ACTIVE_TRAINS, RailwayManager  # noqa: E402
 
 MONDAY = date(2026, 9, 28)
@@ -155,15 +153,6 @@ def test_a_sliced_rebuild_matches_the_whole_timetable_and_commits_at_its_end():
     assert [station[:2] for station in sliced.stations] == [station[:2] for station in whole.stations]
 
 
-def test_clock_counts_todays_trains_and_ignores_a_first_call_backlog():
-    passes = match_timetable(timetable(train([("S", 36000), ("N", 37000)], days=0b0011111)), [
-        RailwayManager(NORTH_SOUTH_TRACK).routes[0]
-    ], metres)
-    clock = TimetableClock(passes)
-    assert clock.todays_count(datetime(2026, 9, 28, 1)) == 1 and clock.todays_count(datetime(2026, 10, 3, 1)) == 0
-    assert clock.due(datetime(2026, 9, 28, 23)) == []  # starting late: no burst of the day's trains
-
-
 # -- importer -----------------------------------------------------------------
 
 def _gtfs_zip() -> bytes:
@@ -235,19 +224,6 @@ def test_committed_timetable_loads():
     document = load_timetable()
     assert document is not None and len(document["trains"]) > 500
     json.dumps(document["trains"][0])
-
-
-def test_next_train_is_the_next_scheduled_pass_even_after_midnight():
-    route = RailwayManager(NORTH_SOUTH_TRACK).routes[0]
-    passes = match_timetable(timetable(
-        train([("S", 36000), ("N", 37000)], number="10"),  # 10:08:20 daily
-        train([("N", 25 * 3600), ("S", 25 * 3600 + 1000)], number="99"),  # 01:08:20 next day
-    ), [route], metres)
-    clock = TimetableClock(passes)
-    when, service = clock.next_after(datetime(2026, 9, 28, 9, 0))
-    assert (when, service.number) == (datetime(2026, 9, 28, 10, 8, 20), "10")
-    when, service = clock.next_after(datetime(2026, 9, 28, 23, 0))
-    assert (when, service.number) == (datetime(2026, 9, 29, 1, 8, 20), "99")
 
 
 def test_commuter_trains_are_not_followed():

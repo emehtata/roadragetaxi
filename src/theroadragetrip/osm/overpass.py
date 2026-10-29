@@ -24,11 +24,6 @@ _overpass_stats = {
 }
 
 
-def get_overpass_diagnostics() -> dict[str, object]:
-    with _overpass_stats_lock:
-        return dict(_overpass_stats)
-
-
 # Public Overpass instances hand out 429s with their own, much longer
 # cooldown than any one caller's retry backoff - immediately retrying the
 # same endpoint on the next fetch (e.g. the next tile crossing, seconds
