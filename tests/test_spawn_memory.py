@@ -23,3 +23,12 @@ def test_a_point_that_once_worked_is_never_dropped_and_matches_by_whole_metres()
     for _ in range(5):
         memory.failed((0.0, 0.0))
     assert memory.order(NODES, [1, 0], rng=random.Random(0)) in ([0, 1], [1, 0])  # kept, not skipped
+
+
+def test_a_new_road_graph_forgives_the_hopeless_points():
+    memory = SpawnMemory()
+    memory.order(NODES, [], revision=1)
+    memory.failed((10.0, 0.0))
+    memory.failed((10.0, 0.0))
+    assert 1 not in memory.order(NODES, [1], revision=1)
+    assert memory.order(NODES, [1], revision=2) == [1]  # the map grew: worth trying again

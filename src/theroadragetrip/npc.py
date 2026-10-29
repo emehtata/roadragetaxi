@@ -340,6 +340,7 @@ class SpawnMemory:
     def __init__(self) -> None:
         self.good: set = set()
         self.bad: dict = {}
+        self.revision = None  # the road graph the failures were met on
 
     @staticmethod
     def key(point) -> tuple:
@@ -359,9 +360,13 @@ class SpawnMemory:
         if key not in self.good:
             self.bad[key] = self.bad.get(key, 0) + 1
 
-    def order(self, nodes, indices, rng=random) -> list:
+    def order(self, nodes, indices, rng=random, revision=None) -> list:
         """Known good spawn nodes first, or (every other spawn on average) the
-        untried first; each in its given order, the hopeless left out."""
+        untried first; each in its given order, the hopeless left out. A new
+        road graph `revision` (the map grew or changed) forgives every failure."""
+        if revision != self.revision:
+            self.revision = revision
+            self.bad.clear()
         good, rest = [], []
         for index in indices:
             key = (round(nodes[index][0]), round(nodes[index][1]))
@@ -4556,6 +4561,10 @@ class NPCVehicleManager:
             "max_frame_ms": 0.0, "waits_frames": collections.deque(maxlen=2000),
             "continued": 0, "recovered": 0, "safe_holds": 0,
         }
+        # Passing-traffic spawn pipeline (rrt-019-rush-hour): cumulative counts, step by step.
+        self.spawn_stats = {"candidates": 0, "placed": 0, "routes_walked": 0, "routes_searched": 0,
+                            "activated": 0, "moving_after_10s": 0, "stopped_after_10s": 0, "search_ms": 0.0}
+        self._recent_spawns = collections.deque(maxlen=128)  # (vehicle, sim time): still moving 10 s on?
         self.population_diagnostics = {
             "trip_start_attempts": 0, "successful_trip_starts": 0,
             "route_generation_failures": 0, "route_validation_failures": 0,
@@ -5404,8 +5413,11 @@ class NPCVehicleManager:
         nodes = traffic_world._route_nodes
         grid = traffic_world._route_node_grid
         cell_size = _ROUTE_NODE_GRID_CELL_M
+        started = time.perf_counter()
         walked = self._walked_transit_trip(vehicle, origin, traffic_world, ways, spatial_grid, claimed_points, through_point)
+        self.spawn_stats["search_ms"] += (time.perf_counter() - started) * 1000.0
         if walked is not None:  # a long trip on through, without a route search
+            self.spawn_stats["routes_walked"] += 1
             return walked
         reach = NPC_TRANSIT_TRIP_MAX_DISTANCE_M
         if past and through_point is not None:  # passing traffic: on beyond the player, not parked before it
@@ -5481,6 +5493,7 @@ class NPCVehicleManager:
             )
             yield
             if len(path) >= 2:
+                self.spawn_stats["routes_searched"] += 1
                 return path, destination, None, True
         return None
 
@@ -5793,6 +5806,8 @@ class NPCVehicleManager:
                 self.vehicles.remove(victim)
                 self._trip_start_failures.pop(victim.vehicle_id, None)
             self._apply_transit_spawn(result, resident_manager, claimed_points)
+            self.spawn_stats["activated"] += 1
+            self._recent_spawns.append((vehicle, job["world"].sim_time if job.get("world") is not None else 0.0))
             if standing:
                 vehicle.car.speed = 0.0
             stats["ready"] += 1
@@ -5891,6 +5906,30 @@ class NPCVehicleManager:
             claimed_points.append((vehicle.vehicle_id, vehicle.destination))
         return driver
 
+    def _spawn_summary(self, now: float, moving: int) -> dict:
+        """The spawn pipeline at a glance (F12 JSON): target, moving, each step's
+        count, discards by reason, queue depth and latency, spawn memory. A
+        shortage of candidates shows as few `placed`; of route capacity as a
+        deep queue and long latency."""
+        stats = self.spawn_stats
+        while self._recent_spawns and now - self._recent_spawns[0][1] >= 10.0:
+            vehicle, _ = self._recent_spawns.popleft()
+            moved = vehicle in self.vehicles and vehicle.state not in (NPCState.PARKED, NPCState.CRASHED)
+            stats["moving_after_10s" if moved else "stopped_after_10s"] += 1
+        jobs = self.route_job_stats
+        waits = sorted(list(jobs["waits_frames"])[-200:])
+        return {
+            "moving_target": self.target_moving_count, "moving": moving,
+            **{k: round(v, 1) if isinstance(v, float) else v for k, v in stats.items()},
+            "jobs": {k: jobs[k] for k in ("queued", "ready", "failed", "discarded", "stale")},
+            "queue_depth": len(self._route_jobs),
+            "latency_frames_p50": waits[len(waits) // 2] if waits else 0,
+            "latency_frames_max": waits[-1] if waits else 0,
+            "discard_reasons": dict(jobs.get("discard_reasons", {})),
+            "memory_good": len(self._spawn_memory.good),
+            "memory_hopeless": sum(1 for n in self._spawn_memory.bad.values() if n >= SpawnMemory.MAX_FAILURES),
+        }
+
     def _count_discard(self, reason: str) -> None:
         """Why planned moving traffic was dropped (route_job_stats, F12 JSON)."""
         reasons = self.route_job_stats.setdefault("discard_reasons", {})
@@ -5951,7 +5990,7 @@ class NPCVehicleManager:
             ring = through_road_first(nodes, grid, ring, self._through_way, spatial_grid, player_x, player_y,
                                       max(NPC_TRANSIT_SPAWN_MAX_DISTANCE_M, self.simulation_radius_m - 20.0),
                                       self._active_bounds)  # the simulated area: a spawn outside it is discarded
-        ring = self._spawn_memory.order(nodes, ring)
+        ring = self._spawn_memory.order(nodes, ring, revision=traffic_world.route_graph_revision)
         tries = 0
         for index in ring:
             yield
@@ -5962,6 +6001,7 @@ class NPCVehicleManager:
                 continue
             if any(True for _ in self.nearby_vehicles_at(point[0], point[1], NPC_TRANSIT_SPAWN_CLEARANCE_M)):
                 continue
+            self.spawn_stats["candidates"] += 1
             line_job = bus_lines.start_job(self.bus_lines(), *point) if self._wants_line_bus() else None
             vehicle = self._place_one(point, None, ways, spatial_grid, curbs, curb_grid, buildings, building_grid,
                                       vehicle_type="bus" if line_job is not None else None,
@@ -5969,6 +6009,7 @@ class NPCVehicleManager:
             if vehicle is None:
                 self._spawn_memory.failed(point)
                 continue
+            self.spawn_stats["placed"] += 1
             tries += 1
             if line_job is not None:  # a line bus: straight to the line's nearest stop (bus_lines.py)
                 vehicle.vehicle_kind, vehicle.bus_job = "bus_line", line_job
@@ -6302,6 +6343,7 @@ class NPCVehicleManager:
             and self._trip_retry_after_tick.get(vehicle.vehicle_id, 0) <= self._population_tick_number
         ]
         self.population_diagnostics["vehicles_waiting_for_trips"] = len(idle_candidates)
+        self.population_diagnostics["spawn"] = self._spawn_summary(traffic_world.sim_time, currently_moving)
         if below_moving_target or below_taxi_target or below_cruise_target:
             transit_x, transit_y = transit_focus or (player_x, player_y)
             transit_spawns = sum(1 for job in self._route_jobs if job["kind"] == "transit")
