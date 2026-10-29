@@ -138,7 +138,10 @@ URBAN_PEOPLE_FRACTION = 0.5
 
 
 def _interpolated_months(sampled: dict) -> dict:
-    """{month: factor} for all twelve from a few sampled months, linear around the year."""
+    """{month: factor} for all twelve from a few sampled months, linear around
+    the year; the estimate (MONTH_FACTOR) from fewer than two."""
+    if len(sampled) < 2:
+        return dict(MONTH_FACTOR)
     out = {}
     for month in range(1, 13):
         back = next(d for d in range(12) if (month - 1 - d) % 12 + 1 in sampled)  # months since the last sample
@@ -175,7 +178,7 @@ MEASURED_CURVES = load_measured_curves()
 # A road takes a LAM station's own curves when its ref names the station's road
 # and it passes this close: the shape along one numbered road changes slowly.
 STATION_REACH_M = 5000.0
-STATION_MIN_DAYS = 21
+STATION_MIN_DAYS = 6  # one sampled week, a day may be missing
 
 
 def load_station_curves(path: Path = LAM_PROFILES) -> list:
@@ -196,6 +199,9 @@ def load_station_curves(path: Path = LAM_PROFILES) -> list:
 
 
 MEASURED_STATIONS = load_station_curves()
+_stations_by_road: dict = {}  # road number -> its stations: hundreds Finland-wide
+for _station in MEASURED_STATIONS:
+    _stations_by_road.setdefault(_station["road"], []).append(_station)
 _station_by_way: dict = {}  # OSM way id -> its station (or None), found once per road
 
 
@@ -207,11 +213,10 @@ def station_for_way(way) -> Optional[dict]:
     if key not in _station_by_way:
         refs = {token for token in str(getattr(way, "ref", "") or "").replace(";", " ").split()}
         best = None
-        for station in MEASURED_STATIONS:
-            if station["road"] in refs:
-                distance = min(math.hypot(x - station["x"], y - station["y"]) for x, y in way.points_m)
-                if distance <= STATION_REACH_M and (best is None or distance < best[0]):
-                    best = (distance, station)
+        for station in (s for ref in refs for s in _stations_by_road.get(ref, ())):
+            distance = min(math.hypot(x - station["x"], y - station["y"]) for x, y in way.points_m)
+            if distance <= STATION_REACH_M and (best is None or distance < best[0]):
+                best = (distance, station)
         _station_by_way[key] = best[1] if best else None
     return _station_by_way[key]
 FIXED_PUBLIC_HOLIDAYS = {(1, 1), (1, 6), (5, 1), (12, 6), (12, 24), (12, 25), (12, 26)}

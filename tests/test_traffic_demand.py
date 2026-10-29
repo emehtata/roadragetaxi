@@ -160,3 +160,8 @@ def test_a_road_near_its_lam_station_takes_the_stations_own_curves():
     assert demand["lam_station"] == kaukovainio["name"]
     assert demand["hour"] == pytest.approx(kaukovainio["weekday_hourly"][7] * kaukovainio["month_factor"][10])
     assert population.traffic_demand(1.0, "trunk", moment)["lam_station"] is None
+
+
+def test_one_sampled_month_keeps_the_estimated_month_factors():
+    from theroadragetrip import population
+    assert population._interpolated_months({10: 1.0}) == population.MONTH_FACTOR

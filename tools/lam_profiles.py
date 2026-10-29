@@ -37,25 +37,12 @@ OUT = ROOT / "src/theroadragetrip/assets/traffic/lam_profiles.json"
 CACHE = Path.home() / ".cache/RoadRageTrip/lam"
 SCHEMA_VERSION = 1
 
-# (station id, setting): urban Oulu and Helsinki region, rural Northern Ostrobothnia
-# and Kainuu. The id is the API's; raw files use the station's tmsNumber.
-STATIONS = [
-    (21205, "urban"),  # vt4 Oulu Välivainio: urban motorway
-    (24256, "urban"),  # vt22 Oulu Kaukovainio: urban main road
-    (24247, "urban"),  # st847 Oulunlahti: urban regional road
-    (20002, "urban"),  # vt1 Espoo Hirvisuo: capital motorway
-    (23011, "urban"),  # st101 Helsinki Vartiokylä: Ring I
-    (23153, "urban"),  # kt45 Oulunkylä: Helsinki arterial
-    (24229, "rural"),  # vt4 Ii Myllykangas
-    (24227, "rural"),  # vt22 Muhos Riihikylä
-    (24205, "rural"),  # kt86 Liminka Heinijärvi
-    (24253, "rural"),  # st816 Hailuoto
-    (24203, "rural"),  # vt5 Kuusamo Nissinvaara
-]
-# One Monday-Sunday week per season: no public holidays, no clock-change Sunday
-# (a 23- or 25-hour day would skew the hourly bins). July is the holiday season.
-WEEKS = [date(2026, 1, 19), date(2026, 4, 20), date(2026, 7, 13), date(2026, 10, 12)]
-GROUP_MIN_DAYS = 21  # a station with fewer sampled days stays in the file, out of the urban/rural curves
+# Every station Fintraffic is gathering data from (the API's list), urban or
+# rural from its surroundings (setting_of). Raw files use the tmsNumber.
+# One Monday-Sunday week: no public holidays, no clock-change Sunday (a 23- or
+# 25-hour day would skew the hourly bins). Special days come later.
+WEEKS = [date(2026, 10, 12)]
+GROUP_MIN_DAYS = 6  # a station with fewer sampled days stays in the file, out of the urban/rural curves
 
 
 def get(url: str) -> bytes:
@@ -92,8 +79,18 @@ def day_counts(tms: int, day: date, cache: Path):
     return counts
 
 
-def station_meta(station_id: int) -> dict:
-    feature = json.loads(get(f"{BASE}/api/tms/v1/stations/{station_id}"))
+def station_ids() -> list:
+    """The ids of the stations currently gathering data."""
+    features = json.loads(get(f"{BASE}/api/tms/v1/stations"))["features"]
+    return sorted(f["id"] for f in features if f["properties"].get("collectionStatus") == "GATHERING")
+
+
+def station_meta(station_id: int, cache: Path) -> dict:
+    path = cache / f"station_{station_id}.json"
+    if not path.exists():
+        cache.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(get(f"{BASE}/api/tms/v1/stations/{station_id}"))
+    feature = json.loads(path.read_text())
     properties = feature["properties"]
     lon, lat = feature["geometry"]["coordinates"][:2]
     address = properties.get("roadAddress") or {}
@@ -115,31 +112,43 @@ COMPETITOR_MARGIN_M = 10.0  # another parallel road this much farther than the m
 MAIN_ROADS = {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified"}  # no ramps (*_link)
 
 
-def osm_ways_near(lat: float, lon: float, cache: Path) -> list:
-    """Overpass highway ways within 150 m, with geometry; cached per position."""
+def overpass(query: str, path: Path):
+    """An Overpass answer's elements, cached at `path`."""
     from theroadragetrip.config import DEFAULT_OVERPASS_ENDPOINTS
     from theroadragetrip.osm.overpass import OVERPASS_HEADERS
 
-    path = cache / f"osm_{lat:.5f}_{lon:.5f}.json"
     if path.exists():
         return json.loads(path.read_text())
-    query = f'[out:json][timeout:25];way(around:150,{lat},{lon})["highway"];out tags geom;'
     for attempt in range(6):  # Overpass answers 429/502/504 when busy: the other endpoint, then later
         endpoint = DEFAULT_OVERPASS_ENDPOINTS[attempt % len(DEFAULT_OVERPASS_ENDPOINTS)]
         request = urllib.request.Request(endpoint, data=urllib.parse.urlencode({"data": query}).encode(), headers=OVERPASS_HEADERS)
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
-                ways = [e for e in json.loads(response.read())["elements"] if e["type"] == "way"]
+                elements = json.loads(response.read())["elements"]
             break
         except (urllib.error.URLError, TimeoutError, ValueError) as error:
             print(f"Overpass {endpoint}: {error}; retrying", file=sys.stderr)
             time.sleep(5.0 * (attempt + 1))
     else:
-        raise RuntimeError(f"Overpass unavailable for {lat}, {lon}")
-    cache.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(ways))
+        raise RuntimeError(f"Overpass unavailable: {query}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(elements))
     time.sleep(2.0)  # Overpass is shared
-    return ways
+    return elements
+
+
+def osm_ways_near(lat: float, lon: float, cache: Path) -> list:
+    """Overpass highway ways within 150 m, with geometry; cached per position."""
+    elements = overpass(f'[out:json][timeout:25];way(around:150,{lat},{lon})["highway"];out tags geom;',
+                        cache / f"osm_{lat:.5f}_{lon:.5f}.json")
+    return [e for e in elements if e["type"] == "way"]
+
+
+def buildings_near(lat: float, lon: float, cache: Path) -> int:
+    """OSM buildings within URBAN_RADIUS_M; cached per position."""
+    elements = overpass(f'[out:json][timeout:25];way(around:{URBAN_RADIUS_M:.0f},{lat},{lon})["building"];out count;',
+                        cache / f"buildings_{lat:.5f}_{lon:.5f}.json")
+    return int(elements[0]["tags"]["ways"])
 
 
 def _heading(dx: float, dy: float) -> float:
@@ -216,6 +225,16 @@ def match_station(meta: dict, ways: list, project) -> dict:
     return {"status": "matched", "ways": matched}
 
 
+URBAN_RADIUS_M = 500.0
+URBAN_MIN_BUILDINGS = 120  # the 11 hand-labelled stations: rural <= 75, urban >= 175
+
+
+def setting_of(buildings: int) -> str:
+    """"urban" among a town's buildings, else "rural". ponytail: a building
+    count around the detector; people_within (population.py) if it misjudges."""
+    return "urban" if buildings >= URBAN_MIN_BUILDINGS else "rural"
+
+
 def mean_curve(days: list) -> list:
     return [sum(day[h] for day in days) / len(days) for h in range(24)] if days else [0.0] * 24
 
@@ -263,8 +282,8 @@ def build(cache: Path) -> dict:
 
     project = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True).transform  # the game's metres
     stations = []
-    for station_id, setting in STATIONS:
-        meta = station_meta(station_id)
+    for station_id in station_ids():
+        meta = station_meta(station_id, cache)
         days, missing = {}, []
         for week in WEEKS:
             for offset in range(7):
@@ -275,7 +294,9 @@ def build(cache: Path) -> dict:
                 else:
                     days[day] = counts
         print(f"{meta['name']}: {len(days)} days, {len(missing)} missing", file=sys.stderr)
-        osm_match = match_station(meta, osm_ways_near(meta["lat"], meta["lon"], cache), project)
+        ways = osm_ways_near(meta["lat"], meta["lon"], cache)
+        osm_match = match_station(meta, ways, project)
+        setting = setting_of(buildings_near(meta["lat"], meta["lon"], cache))
         x_m, y_m = project(meta["lon"], meta["lat"])  # the game's coordinates: no projection at runtime
         stations.append({**meta, "x_m": round(x_m, 1), "y_m": round(y_m, 1), "setting": setting, "missing_days": missing, "profile": profile(days), "osm_match": osm_match})
     complete = [s for s in stations if sum(s["profile"]["days_used"].values()) >= GROUP_MIN_DAYS]

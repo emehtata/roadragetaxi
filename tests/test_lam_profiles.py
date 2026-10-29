@@ -72,3 +72,8 @@ def test_uncertain_stations_are_rejected_with_their_reason():
     assert "parallel tertiary way 2" in _match([road, frontage])["reason"]
     assert _match([road, _way(3, [(-100, 30), (100, 30)], highway="tertiary")])["status"] == "matched"  # crossing: fine
     assert _match([road], bearing=None)["status"] == "rejected"
+
+
+def test_a_station_among_a_towns_buildings_is_urban():
+    assert lam.setting_of(lam.URBAN_MIN_BUILDINGS) == "urban"
+    assert lam.setting_of(lam.URBAN_MIN_BUILDINGS - 1) == "rural"
