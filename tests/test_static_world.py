@@ -105,3 +105,28 @@ def test_tanks_schools_and_churches_take_their_typical_shape():
     assert church[1] == 2 and church[2] == 8.0  # a steep roof
     assert static_world.building_style(building("church", roof_shape="flat"))[1] == 0  # OSM says otherwise
     assert static_world.building_style(building("house"))[1] == 1
+
+
+def test_retail_halls_do_not_invent_apartment_floors():
+    from theroadragetrip.osm import Building, Place
+    from theroadragetrip.static_world import building_style
+
+    def store(**tags):
+        return Building([(0, 0), (60, 0), (60, 40), (0, 40)], height_m=13.2,
+                        building_type="retail", venue_type="supermarket", **tags)
+
+    # S-market, Tervakukkatie 2: no OSM height/levels; footprint fallback was 4 storeys.
+    assert building_style(store())[2:3] == [6.0]
+    assert building_style(store())[5:7] == [1, 4]
+    # Prisma Linnanmaa / Limingantulli / Raksila have explicit 1 / 2 / 2 levels.
+    for levels in (1, 2):
+        style = building_style(store(levels=levels, height_is_explicit=True))
+        assert style[2] == 13.2 and style[5:7] == [levels, 4]
+    tall = building_style(store(height_is_explicit=True))
+    assert tall[2] == 13.2 and tall[5:7] == [1, 4]
+    apartments = Building([(0, 0), (30, 0), (30, 20), (0, 20)], building_type="apartments",
+                          venue_type="supermarket", levels=5, height_m=15.0)
+    assert building_style(apartments)[5:7] == [5, 2]
+    untyped = Building(apartments.points_m, building_type="yes", height_m=13.2,
+                       associated_places=[Place(10, 10, "Supermarket", "supermarket")])
+    assert building_style(untyped)[2] == 6.0 and building_style(untyped)[5:7] == [1, 4]

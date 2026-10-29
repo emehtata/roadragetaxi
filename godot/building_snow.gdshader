@@ -126,10 +126,11 @@ void fragment() {
 	if (count >= 1.0 && wall.y > 0.0) {
 		float category = floor(wall.z / 1000.0 + 0.001);
 		bool house = abs(category - 1.0) < 0.5;
+		bool retail_hall = abs(category - 4.0) < 0.5;
 		float storey = wall.y;
 		float f = floor(UV2.y / storey);
-		bool storefront = abs(category - 2.0) < 0.5 && f < 0.5;
-		bool skipped = house && mod(f, 2.0) > 0.5;
+		bool storefront = (abs(category - 2.0) < 0.5 || retail_hall) && f < 0.5;
+		bool skipped = (house && mod(f, 2.0) > 0.5) || (retail_hall && f > 0.5);
 		float bay = wall.x / count;
 		float w = clamp(floor(UV2.x / bay), 0.0, count - 1.0);
 		float across = UV2.x - (w + 0.5) * bay;  // from the bay's centre

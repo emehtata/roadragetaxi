@@ -79,7 +79,7 @@ def house_yard_spot(building, world):
 
 
 # Flagpoles: a share of residential and commercial buildings has one in its yard.
-FLAGPOLE_SHARE = {1: 0.20, 2: 0.30, 0: 0.15}  # house, commercial, other (apartment blocks, offices)
+FLAGPOLE_SHARE = {1: 0.20, 2: 0.30, 4: 0.30, 0: 0.15}  # house, commercial, retail hall, other
 FLAGPOLE_OUT_M = 4.0
 
 

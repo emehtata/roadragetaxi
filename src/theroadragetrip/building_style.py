@@ -67,7 +67,7 @@ def _building_window_story_count(building: Building) -> int:
             return max(1, min(40, int(levels)))
         except (TypeError, ValueError):
             pass
-    if _building_type(building) in HALL_TYPES:
+    if _building_type(building) in HALL_TYPES or _building_is_retail_hall(building):
         return 1
     height = _building_render_height(building)
     return max(1, min(40, int(round(height / 3.0))))
@@ -139,6 +139,8 @@ def _building_render_height(building: Building) -> float:
     if getattr(building, "levels", None) is None and not getattr(building, "height_is_explicit", False):
         if _building_is_house_by_tag(building):
             return 4.5
+        if _building_is_retail_hall(building):
+            return 6.0
         if _building_type(building) in TYPE_HEIGHT_M:
             return TYPE_HEIGHT_M[_building_type(building)]
         if _building_type(building) in TANK_TYPES and len(getattr(building, "points_m", ())) >= 3:
@@ -149,6 +151,18 @@ def _building_render_height(building: Building) -> float:
 
 def _building_type(building: Building) -> str:
     return str(getattr(building, "building_type", "") or "").casefold()
+
+
+def _building_is_retail_hall(building: Building) -> bool:
+    """Dedicated shops have hall facades; a shop in an apartment block does not."""
+    kind = _building_type(building)
+    if kind in {"retail", "shop", "supermarket"}:
+        return True
+    if kind not in {"", "yes", "commercial"}:
+        return False
+    venues = {str(getattr(building, "venue_type", "") or "").casefold()}
+    venues.update(str(place.kind).casefold() for place in getattr(building, "associated_places", ()))
+    return bool(venues & {"supermarket", "department_store", "mall"})
 
 
 def _building_is_windowless(building: Building) -> bool:

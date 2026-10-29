@@ -3052,6 +3052,11 @@ func test_buildings_3d() -> void:
 	var l_shape := PackedVector2Array([Vector2(0, 0), Vector2(24, 0), Vector2(24, -10), Vector2(10, -10), Vector2(10, -22), Vector2(0, -22)])
 	var odd := PackedVector2Array([Vector2(0, 0), Vector2(9, -3), Vector2(14, 6), Vector2(4, 11), Vector2(-3, 5)])
 	var style := [[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]
+	var retail := B3.build([box], [[[83, 86, 87], 0, 10.0, [], [139, 139, 137], 3, 4]], Vector2.ZERO)
+	check(retail["stats"]["windows"] == 2 * (B3.window_count(20.0, 4) + B3.window_count(10.0, 4)), "retail halls: only one ground-level window row even with several mapped floors")
+	for i in range(0, retail["window"].size(), 4):
+		if retail["window"][i + 2] >= 4000.0:
+			check(is_equal_approx(retail["window"][i + 1], 3.2), "retail glazing is human height, not the full hall height")
 	for footprint in [box, reversed, l_shape, odd]:
 		var out: Dictionary = B3.build([footprint], [style], Vector2.ZERO)
 		var ground := 0

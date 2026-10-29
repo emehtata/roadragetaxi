@@ -497,10 +497,11 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		# The windows are the wall shader's (building_snow.gdshader): metres on the wall, and its window grid.
 		var length := a.distance_to(b)
 		var count := window_count(length, category)
-		out["stats"]["windows"] += count * (ceili(floors / 2.0) if category == 1 else floors)
+		out["stats"]["windows"] += count * (1 if category == CATEGORY_RETAIL_HALL else ceili(floors / 2.0) if category == 1 else floors)
 		_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), wall_shade, to_3d(normal), "verts",
 			PackedVector2Array([Vector2(0.0, 0.0), Vector2(length, 0.0), Vector2(length, height), Vector2(0.0, height)]),
-			Vector4(length, height / floors, count + 1000 * category, seed_base + i * 7.13))
+			Vector4(length, minf(3.2, height / floors) if category == CATEGORY_RETAIL_HALL else height / floors,
+				count + 1000 * category, seed_base + i * 7.13))
 	_doors(out, footprint, style[3] if style.size() > 3 else [], outward_sign, height, floors, origin)
 	_shadow_prism(out["shadow"], footprint, height)
 	if gabled:
@@ -698,6 +699,7 @@ static func _shadow_prism(verts: PackedVector3Array, footprint: PackedVector2Arr
 ## house, every other floor), a storefront row on a commercial ground floor,
 ## lit deterministically (LIT_PROBABILITY).
 const CATEGORY_WALL := 3  # a plain wall (a stadium's stands, map_chunks.stadium_stands): no window rows
+const CATEGORY_RETAIL_HALL := 4  # ground-level shop glazing, plain walls above
 
 
 static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, height: float, floors: int, category: int, seed: float, arena: bool) -> void:
@@ -707,11 +709,11 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, h
 	var house := category == 1
 	var along := (b - a) / length
 	var count := clampi(int(length / ((44.0 if house else 32.0) / 9.0)), 1, 2 if house else 3)
-	var storey := height / floors
-	for f in floors:
+	var storey := minf(3.2, height / floors) if category == CATEGORY_RETAIL_HALL else height / floors
+	for f in (1 if category == CATEGORY_RETAIL_HALL else floors):
 		if house and floors > 1 and f % 2 == 1:
 			continue
-		var storefront := category == 2 and f == 0
+		var storefront := (category == 2 or category == CATEGORY_RETAIL_HALL) and f == 0
 		var tall := storey * 0.55 * (1.45 if storefront else 0.75 if house else 1.0)
 		var half := length / (count + 2) * 0.45 / 2.0 * (1.35 if storefront else 0.75 if house else 1.0)
 		var bottom := storey * (f + 0.5) - tall / 2.0
