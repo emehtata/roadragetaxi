@@ -1411,15 +1411,15 @@ class SimulationServer:
     def run_forever(self) -> None:
         """Blocking tick loop - the body of `python -m theroadragetrip.server`."""
         interval = 1.0 / self.tick_rate
-        next_tick = time.monotonic()
+        next_tick = time.perf_counter()
         while True:
             self.tick(interval)
             next_tick += interval
-            sleep_for = next_tick - time.monotonic()
+            sleep_for = next_tick - time.perf_counter()
             if sleep_for > 0:
                 time.sleep(sleep_for)
             else:
-                next_tick = time.monotonic()  # fell behind; don't try to catch up in a burst
+                next_tick = time.perf_counter()  # fell behind; don't try to catch up in a burst
 
 
 def place_street_lights(world, region=None) -> list:
