@@ -14,12 +14,14 @@ const CYCLE_S := 5.0  # rise, burst, then a short pause
 const MAX_SITES := 12
 const GHOST_CELL_M := 110.0
 const MAX_GHOSTS := 24
+const ELF_SCALE := 0.2  # the elf's shapes were laid out about 5 m tall: this makes it a ~1 m tonttu
 var clock := 0.0
 var _refresh := 0.0
 var _halloween := false
 var _fireworks := false
 var _ghosts := false
 var _christmas := false
+var _exterior_christmas := false
 var _window_decorations := false
 var _independence_candles := false
 const B3 := preload("res://buildings_3d.gd")
@@ -108,24 +110,26 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 		_independence_candles = candles
 		B3._shared["material"].set_shader_parameter("independence_candles", 1.0 if candles else 0.0)
 	var decorated: bool = events.get("window_decorations", false)
+	var house_lights := not underground and decorated
 	if decorated != _window_decorations:  # candle bridges and stars in the windows (building_snow.gdshader)
 		_window_decorations = decorated
 		B3._shared["material"].set_shader_parameter("decorations", 1.0 if decorated else 0.0)
 	var fireworks: bool = not underground and events.get("fireworks", false)
 	var midsummer: bool = not underground and events.get("midsummer_bonfires", false)
-	var changed := halloween != _halloween or fireworks != _fireworks or ghost_season != _ghosts or christmas != _christmas or midsummer != _bonfires
+	var changed := halloween != _halloween or fireworks != _fireworks or ghost_season != _ghosts or christmas != _christmas or midsummer != _bonfires or house_lights != _exterior_christmas
 	_bonfires = midsummer
 	bonfire_layer.visible = midsummer
 	_halloween = halloween
 	_fireworks = fireworks
 	_ghosts = ghost_season
 	_christmas = christmas
-	decorations.visible = halloween or christmas
-	christmas_layer.visible = christmas
+	_exterior_christmas = house_lights
+	decorations.visible = halloween
+	christmas_layer.visible = house_lights
 	ghost_layer.visible = ghost_season
 	elf_layer.visible = christmas
 	bursts.visible = fireworks
-	if not halloween and not fireworks and not ghost_season and not christmas and not midsummer:
+	if not halloween and not fireworks and not ghost_season and not christmas and not midsummer and not house_lights:
 		yards.clear()
 		houses.clear()
 		bonfires.clear()
@@ -137,8 +141,8 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 	_refresh -= delta
 	if changed or _refresh <= 0.0:
 		_refresh = 0.5
-		yards = map_layer.holiday_yards(view.grow(5.0 if christmas else 50.0)) if halloween or christmas else PackedVector2Array()
-		houses = map_layer.christmas_houses(view.grow(10.0)) if christmas else []
+		yards = map_layer.holiday_yards(view.grow(50.0)) if halloween else PackedVector2Array()
+		houses = map_layer.christmas_houses(view.grow(10.0)) if house_lights else []
 		sites = firework_sites(view.grow(40.0)) if fireworks else PackedVector2Array()
 		if ghost_season and (ghosts.is_empty() or not view.has_point(ghosts[0])):
 			ghosts = ghost_sites(view.grow(20.0))
@@ -150,8 +154,9 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 	if ghost_season:
 		_update_ghosts(delta, walkers)
 		ghost_layer.queue_redraw()
-	if christmas:
+	if house_lights:
 		christmas_layer.queue_redraw()
+	if christmas:
 		elf_layer.queue_redraw()
 	if midsummer:
 		bonfire_layer.queue_redraw()
@@ -166,9 +171,6 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 
 func _draw_decorations() -> void:
 	for at in yards:
-		if _christmas:
-			_draw_christmas_tree(at)
-			continue
 		# Jack-o'-lantern, stem and glowing eyes/mouth; a candle lantern beside it.
 		decorations.draw_circle(at, 0.42, Color8(220, 98, 15))
 		decorations.draw_line(at + Vector2(0, -0.3), at + Vector2(0.04, -0.55), Color8(80, 100, 35), 0.12)
@@ -182,51 +184,49 @@ func _draw_decorations() -> void:
 		decorations.draw_arc(lantern + Vector2(0, -0.26), 0.13, PI, TAU, 8, Color8(45, 40, 30), 0.05)
 
 
-func _draw_christmas_tree(at: Vector2) -> void:
-	# Overhead evergreen branches and fairy lights, contained within the checked yard spot.
-	for i in 8:
-		decorations.draw_circle(at + Vector2.from_angle(i * TAU / 8) * 0.45, 0.4, Color8(28, 70, 43))
-	decorations.draw_circle(at, 0.55, Color8(40, 94, 55))
-	for i in 6:
-		decorations.draw_circle(at + Vector2.from_angle(i * TAU / 6) * 0.63, 0.075, Color(1.0, 0.8, 0.35))
-	var star := PackedVector2Array()
-	for i in 10:
-		star.append(at + Vector2.from_angle(i * PI / 5) * (0.2 if i % 2 == 0 else 0.08))
-	decorations.draw_colored_polygon(star, Color(1.0, 0.88, 0.4))
-
-
-static func christmas_bulbs(outline: PackedVector2Array) -> PackedVector2Array:
+static func christmas_eave(outline: PackedVector2Array, entrances: PackedVector2Array) -> PackedVector2Array:
 	var result := PackedVector2Array()
+	var nearest := INF
 	for i in outline.size():
 		var a := outline[i]
 		var b := outline[(i + 1) % outline.size()]
-		var count := mini(64, maxi(1, ceili(a.distance_to(b) / 0.9)))
-		for j in count:
-			result.append(a.lerp(b, float(j) / count))
-			if result.size() >= 256:
-				return result
+		if a.distance_to(b) < 3.0:
+			continue
+		var distance := -a.distance_squared_to(b)
+		if not entrances.is_empty():
+			distance = INF
+			for entrance in entrances:
+				distance = minf(distance, entrance.distance_squared_to(Geometry2D.get_closest_point_to_segment(entrance, a, b)))
+		if distance < nearest:
+			nearest = distance
+			result = PackedVector2Array([a, b])
+	return result
+
+
+static func christmas_bulbs(eave: PackedVector2Array) -> PackedVector2Array:
+	var result := PackedVector2Array()
+	if eave.size() != 2:
+		return result
+	var a := eave[0]
+	var b := eave[1]
+	var count := mini(48, maxi(2, ceili(a.distance_to(b) / 0.65)))
+	for i in count:
+		result.append(a.lerp(b, float(i + 1) / (count + 1)))
 	return result
 
 
 func _draw_christmas() -> void:
-	var strings := PackedVector2Array()
 	var bulbs := PackedVector2Array()
 	for house in houses:
-		var outline: PackedVector2Array = house[0]
 		var height: float = house[1] if preload("res://map_chunk.gd").buildings_3d else 0.0
-		for i in outline.size():
-			strings.append(B3.lift_point(outline[i], height))
-			strings.append(B3.lift_point(outline[(i + 1) % outline.size()], height))
-		for at in christmas_bulbs(outline):
+		var eave := christmas_eave(house[0], house[2])
+		for at in christmas_bulbs(eave):
 			var p := B3.lift_point(at, height)
-			bulbs.append(p - Vector2(0.03, 0))
-			bulbs.append(p + Vector2(0.03, 0))
-	# Batch all bulbs together instead of issuing a draw call for every light.
-	if not strings.is_empty():
-		christmas_layer.draw_multiline(strings, Color(0.12, 0.24, 0.14), 0.07)
+			bulbs.append(p - Vector2(0.035, 0))
+			bulbs.append(p + Vector2(0.035, 0))
 	if not bulbs.is_empty():
-		christmas_layer.draw_multiline(bulbs, Color(1.0, 0.75, 0.3, 0.15), 0.35)
-		christmas_layer.draw_multiline(bulbs, Color(1.0, 0.85, 0.5), 0.14)
+		christmas_layer.draw_multiline(bulbs, Color(1.0, 0.68, 0.25, 0.12), 0.42)
+		christmas_layer.draw_multiline(bulbs, Color(1.0, 0.82, 0.48), 0.18)
 
 
 func _update_flags(delta: float, calendar: Dictionary, state: Dictionary, view: Rect2, underground: bool) -> void:
@@ -364,11 +364,13 @@ func _draw_elves() -> void:
 		var phase := fposmod(clock + posmod(seed / 7, 10000) / 1000.0, period)
 		if phase > 0.16:
 			continue
-		var peek := at + Vector2(0, -1.0)
-		elf_layer.draw_circle(peek, 1.0, Color8(241, 190, 123))
-		elf_layer.draw_rect(Rect2(peek + Vector2(-0.85, 0.8), Vector2(1.7, 2.0)), Color8(35, 132, 68))
-		elf_layer.draw_colored_polygon(PackedVector2Array([peek + Vector2(-1.1, -0.45), peek + Vector2(0.7, -2.1), peek + Vector2(1.2, -0.4)]), Color8(190, 40, 39))
-		elf_layer.draw_circle(peek + Vector2(0.3, 0), 0.12, Color8(35, 30, 28))
+		# A tonttu about a metre tall, smaller than the people (0.45 m radius): it was drawn five times that.
+		var s := ELF_SCALE
+		var peek := at + Vector2(0, -1.0) * s
+		elf_layer.draw_circle(peek, 1.0 * s, Color8(241, 190, 123))
+		elf_layer.draw_rect(Rect2(peek + Vector2(-0.85, 0.8) * s, Vector2(1.7, 2.0) * s), Color8(35, 132, 68))
+		elf_layer.draw_colored_polygon(PackedVector2Array([peek + Vector2(-1.1, -0.45) * s, peek + Vector2(0.7, -2.1) * s, peek + Vector2(1.2, -0.4) * s]), Color8(190, 40, 39))
+		elf_layer.draw_circle(peek + Vector2(0.3, 0) * s, 0.15 * s, Color8(35, 30, 28))
 
 
 func _update_ghosts(delta: float, walkers: Array[Vector2]) -> void:
