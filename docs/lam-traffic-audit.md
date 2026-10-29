@@ -414,3 +414,29 @@ trunk vehicles moving; tick p50 6.3 / p95 10.4 / max 21 ms (probe harness,
 not comparable with the earlier 2.2 / 4.5 ms tool run). Next: a full-day
 `lam_validate.py` run for the shape; spawn safety of a stationary start
 on a fast road's junction node is unchecked.
+
+## Finland-wide stations (2026-10-29)
+
+`tools/lam_profiles.py` now takes every station Fintraffic is gathering
+from (506 of 521 listed) and one sample week, 12-18 Oct 2026. Special days
+(Christmas, Midsummer) are to be sampled separately later. With a single
+sampled month the month factors are population.py's estimates.
+
+- Surroundings from the local `finland-latest.osm.pbf` (one osmium
+  tags-filter/export pass, ~4 min) instead of two Overpass queries a
+  station. On the 11 earlier stations it finds the same roads and matches;
+  building counts are within 3 of Overpass.
+- Urban/rural: OSM buildings within 500 m, urban from 120 (the 11
+  hand-labelled stations split at 75/175). Result: 147 urban, 359 rural.
+- Days: 492 stations have at least 6 of 7 days; 14 have too few (mostly
+  none published that week).
+- OSM matches: 453 matched, 53 rejected - road heading against the API
+  bearing 29, no bearing 12 (still usable: curves are both directions'
+  totals), no ref'd road within 40 m 7, a parallel road as close 5.
+  452 stations give their own curves at runtime.
+- Group curves (492 stations): weekday peak at 15 in both settings,
+  urban morning peak 0.67 at 07, rural 0.54.
+- Asset: 1.56 MB.
+
+Next: review the 29 heading rejections (API bearings were seen 45 deg off
+before), then the special days.
