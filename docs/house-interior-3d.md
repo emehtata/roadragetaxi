@@ -85,6 +85,10 @@ so no equivalent actions existed). A/D strafe, diagonal movement is normalized,
 and mouse pitch is limited to ±85 degrees. Mouse input enters through one path
 in main.gd; movement uses CharacterBody3D.move_and_slide, not a separate physics
 simulation. Indoor input never reaches the exterior driving or phone controls.
+Captured look uses unscaled screen motion, discards the first nonzero sample
+after capture, and applies accumulated motion once per rendered frame. A
+two-turns-per-second limit drops excess motion without a backlog; very fast
+swipes are therefore limited too.
 
 Spawn candidates start just inside the existing front door, then try farther
 inward offsets and room labels. Each must lie inside a room floor and the

@@ -115,6 +115,12 @@ func _run() -> void:
 	view.capture_mouse()
 	if DisplayServer.get_name() != "headless":
 		check(Input.mouse_mode == Input.MOUSE_MODE_CAPTURED, "entry captures cursor")
+		var capture_warp := InputEventMouseMotion.new()
+		capture_warp.screen_relative = Vector2(10000, 10000)
+		var captured_yaw: float = p.rotation.y
+		view.handle_input(capture_warp)
+		view._process(1.0 / 60)
+		check(is_equal_approx(p.rotation.y, captured_yaw), "capture recenter motion does not turn the camera")
 		for scale in [1.0, 9.0, 24.0]:
 			var motion := InputEventMouseMotion.new()
 			motion.relative = Vector2(10, 4)
@@ -124,8 +130,20 @@ func _run() -> void:
 			var yaw: float = p.rotation.y
 			for step in 5:
 				view.handle_input(transformed)
+			view._process(1.0 / 60)
 			check(is_equal_approx(p.rotation.y, yaw - 50.0 * p.mouse_sensitivity), "repeated mouse yaw is independent of viewport scale")
 			check(is_equal_approx(p.head.rotation.x, -20.0 * p.mouse_sensitivity), "mouse pitch uses screen pixels once")
+	if DisplayServer.get_name() != "headless":
+		var burst := InputEventMouseMotion.new()
+		burst.screen_relative = Vector2(100000, 0)
+		var before_burst: float = p.rotation.y
+		for i in 20:
+			view.handle_input(burst)
+		view._process(1.0 / 60)
+		check(absf(p.rotation.y - before_burst) <= View.MAX_LOOK_SPEED / 60.0 + 0.0001, "large X11 motion bursts cannot spin multiple turns in a frame")
+		var after_burst: float = p.rotation.y
+		view._process(1.0 / 60)
+		check(is_equal_approx(p.rotation.y, after_burst), "excess mouse motion cannot keep spinning later frames")
 	view.set_paused(true)
 	check(not p.controls_enabled and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "pause releases cursor and movement")
 	view.set_paused(false)
@@ -172,6 +190,17 @@ func _run() -> void:
 	Input.flush_buffered_events()
 	check(Input.is_action_pressed("interior_forward"), "W uses the indoor Input Map action")
 	game._input(key)
+	if DisplayServer.get_name() != "headless":
+		var motion := InputEventMouseMotion.new()
+		motion.relative = Vector2(10, 4)
+		motion.screen_relative = Vector2(10, 4)
+		game.home_first_person.handle_input(motion)  # discard the first capture motion
+		var yaw: float = game.home_first_person.player.rotation.y
+		for i in 5:
+			Input.parse_input_event(motion.duplicate())
+			Input.flush_buffered_events()
+		game.home_first_person._process(1.0 / 60)
+		check(is_equal_approx(game.home_first_person.player.rotation.y, yaw - 0.15), "window mouse input reaches indoor look exactly once")
 	var release := key.duplicate()
 	release.pressed = false
 	Input.parse_input_event(release)

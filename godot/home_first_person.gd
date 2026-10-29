@@ -5,6 +5,7 @@ const Interior := preload("res://home_interior_3d.gd")
 const Player := preload("res://home_player_3d.gd")
 const Walk := preload("res://home_walk.gd")
 const T := preload("res://i18n.gd")
+const MAX_LOOK_SPEED := TAU * 2.0
 var language := "en"
 var is_home := false
 var mouse_sensitivity := 0.002
@@ -15,6 +16,8 @@ var _hint: Label
 var _door := Vector2.ZERO
 var _previous_mouse_mode := Input.MOUSE_MODE_VISIBLE
 var _resume_capture := false
+var _look_motion := Vector2.ZERO
+var _discard_capture_motion := false
 
 
 func _ready() -> void:
@@ -119,12 +122,15 @@ func at_exit() -> bool:
 
 
 func capture_mouse() -> void:
-	if visible and not get_tree().paused:
+	if visible and not get_tree().paused and not player.controls_enabled:
+		_look_motion = Vector2.ZERO
+		_discard_capture_motion = true
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		player.controls_enabled = true
 
 
 func release_mouse() -> void:
+	_look_motion = Vector2.ZERO
 	if is_instance_valid(player):
 		player.controls_enabled = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -152,8 +158,12 @@ func handle_input(event: InputEvent) -> bool:
 	if not visible:
 		return false
 	if event is InputEventMouseMotion:
-		if player.controls_enabled and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-			player.look(event.screen_relative)  # captured look must ignore viewport/camera scaling
+		var motion: Vector2 = event.screen_relative
+		if player.controls_enabled and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and motion.is_finite() and not motion.is_zero_approx():
+			if _discard_capture_motion:
+				_discard_capture_motion = false  # X11 capture can deliver a cursor-recentering delta.
+			else:
+				_look_motion += motion
 		return true
 	if event is InputEventMouseButton:
 		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -164,9 +174,14 @@ func handle_input(event: InputEvent) -> bool:
 	return false
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not visible:
 		return
+	if player.controls_enabled:
+		# Bound capture/warp bursts per rendered frame; never retain excess motion as a backlog.
+		var limit: float = MAX_LOOK_SPEED * minf(delta, 0.05) / player.mouse_sensitivity
+		player.look(_look_motion.limit_length(limit))
+	_look_motion = Vector2.ZERO
 	_hint.text = T.text("home_first_person_hint", language)
 	if at_exit():
 		_hint.text += " · " + T.text("house_leave_prompt", language)
