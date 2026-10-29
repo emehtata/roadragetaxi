@@ -121,6 +121,9 @@ def _fanned_out_position(
 
 
 PEDESTRIAN_NETWORK_GRID_CELL_M = 50.0
+# ponytail: one offset for every street; a residential street's left edge (half width 4.5 m).
+# Use each way's half_width_m if wide unsidewalked roads show people mid-lane.
+ROAD_EDGE_WALK_OFFSET_M = 3.5
 
 
 def _network_grid_cell(point: Tuple[float, float]) -> Tuple[int, int]:
@@ -184,6 +187,16 @@ class _PedestrianNetworkBuild:
             )
             self.edges[first].append((second, distance))
             self.edges[second].append((first, distance))
+
+
+def _left_edge(route: List[Tuple[float, float]], offset: float = ROAD_EDGE_WALK_OFFSET_M) -> List[Tuple[float, float]]:
+    """A street centreline route moved to its left edge (TLL § 13), ends kept."""
+    edge = list(route[:1])
+    for before, point, after in zip(route, route[1:], route[2:]):
+        dx, dy = after[0] - before[0], after[1] - before[1]
+        length = math.hypot(dx, dy)
+        edge.append(point if length == 0 else (point[0] - dy / length * offset, point[1] + dx / length * offset))
+    return edge + list(route[-1:]) if len(route) > 1 else edge
 
 
 def _component_root(parent: List[int], node: int) -> int:
@@ -1427,7 +1440,7 @@ class PedestrianManager:
             # the streets, never the straight line through whatever is between.
             road = self.traffic_manager.plan_route(start, entry_position) if self.traffic_manager is not None and hasattr(
                 self.traffic_manager, "plan_route") else None
-            route = [start] + [tuple(point[:2]) for point in road] if road else (
+            route = _left_edge([start] + [tuple(point[:2]) for point in road]) if road else (
                 self._plan_pedestrian_route(start, nearest) if nearest is not None else [start])
         self._record("pedestrians:route_search", stage_started)
         self.sync_stats["routes"] += 1

@@ -2073,3 +2073,9 @@ def test_a_spawned_taxi_stop_customer_joins_the_pedestrians(monkeypatch: pytest.
     manager.ensure_taxi_stop_waiter([stop], player, viewport_bounds=(-10.0, -10.0, 30.0, 10.0))  # the stop enters view
 
     assert len(manager.pedestrians) == 1 and manager.pedestrians[0].is_walking_to_taxi_stop
+
+
+def test_a_street_route_without_sidewalks_keeps_to_the_left_edge():
+    from theroadragetrip.pedestrian import ROAD_EDGE_WALK_OFFSET_M, _left_edge
+    route = _left_edge([(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)])
+    assert route == [(0.0, 0.0), (10.0, ROAD_EDGE_WALK_OFFSET_M), (20.0, 0.0)]
