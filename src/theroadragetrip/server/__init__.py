@@ -284,6 +284,18 @@ class SimulationServer:
             if restore_fare(taxi_mgr, saved.get("fare")):
                 logger.info("Save slot %s: fare to %s continues", self.save_slot_file.stem,
                             taxi_mgr.current_passenger.dropoff.address)
+        # Moving traffic from the start, at the start time's demand (populate_initial only parks cars).
+        from ..npc import NPCState
+        w = self.world
+        w.npc_manager.clock = self.calendar.current
+        w.npc_manager.set_local_density(self.car.x, self.car.y, w.building_grid)
+        w.npc_manager.populate_moving_initial(
+            self.car.x, self.car.y, w.residents, w.traffic_mgr, w.ways, spatial_grid=w.spatial_grid,
+            parking_spaces=w.parking_spaces, sceneries=w.sceneries, buildings=w.buildings, curbs=w.curbs,
+            curb_grid=w.curb_grid, building_grid=w.building_grid,
+            progress_callback=lambda fraction: progress("world", "Preparing NPC traffic..."))
+        logger.info("Moving traffic at start: %d of %d", sum(1 for v in w.npc_manager.vehicles if v.state != NPCState.PARKED),
+                    w.npc_manager.target_moving_count)
         moon_latitude = getattr(self.world, "sun_latitude", 65.01)
         moon_longitude = getattr(self.world, "sun_longitude", 25.47)
         self.moon_info = moon_info_on(self.calendar.date, moon_latitude, moon_longitude)

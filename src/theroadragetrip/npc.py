@@ -1350,6 +1350,7 @@ class TripGroup:
 # Game policy: a bump by the taxi below this closing speed is no crash - the
 # NPC's driver curses and drives on slowly instead of wrecking the car.
 MINOR_HIT_MPS = 15.0 / 3.6
+INITIAL_MOVING_FILL_S = 4.0  # loading time for the moving traffic (populate_moving_initial)
 FAR_TRAFFIC_STEP = 2  # traffic outside the view's area: driven every this many ticks (viewport.traffic_bounds)
 NPC_SCRAPE_MPS = 5.0 / 3.6  # two NPCs touching slower than this: a scrape, both go on (no wreck)
 # Collision response (rrt-019-crash-physics): an impulse along the contact
@@ -3551,6 +3552,34 @@ def _roadside_parking_point(
 ROADSIDE_KERB_RUN_M = 3.5  # a roadside spot's last straight run along the kerb
 
 
+TRANSIT_WALK_MAX_M = 900.0  # a walked passing trip ends at a roadside spot within this
+TRANSIT_WALK_TRIES = 4
+
+
+def walk_road_graph(nodes, edges, start: int, min_length_m: float, rng=random, heading: Optional[float] = None):
+    """[(x, y)] node points from `start` along the graph's directed edges (one-way
+    streets honoured), never straight back, the straightest way on with some
+    randomness at junctions, until at least `min_length_m` or a dead end: a
+    passing car's road without a route search. `heading`: the way to set off
+    (towards the player, so the car comes into view)."""
+    points, previous, current, length = [nodes[start][:2]], None, start, 0.0
+    while length < min_length_m:
+        options = [(n, d) for n, d in edges.get(current, ()) if n != previous and d > 0.5]
+        if not options:
+            break
+
+        def turn(option):
+            x, y = nodes[option[0]][:2]
+            return 0.0 if heading is None else abs(angle_diff(math.atan2(y - nodes[current][1], x - nodes[current][0]), heading))
+        options.sort(key=turn)
+        first = previous is None and heading is not None  # sets off the way it is pointed, no detour
+        nxt, distance = options[0] if first or len(options) == 1 or rng.random() < 0.7 else rng.choice(options[1:])
+        heading = math.atan2(nodes[nxt][1] - nodes[current][1], nodes[nxt][0] - nodes[current][0])
+        previous, current, length = current, nxt, length + distance
+        points.append(nodes[nxt][:2])
+    return points
+
+
 def _roadside_pull_in(route: list, destination: Tuple[float, float], ways, spatial_grid) -> list:
     """A roadside destination's route ending in a pull-in: along the
     right-hand lane until NPC_PARKING_APPROACH_DISTANCE_M before the spot,
@@ -4897,6 +4926,27 @@ class NPCVehicleManager:
                 progress_callback(len(self.vehicles) / self.target_count)
         self.rebuild_spatial_grid()
 
+    def populate_moving_initial(self, player_x: float, player_y: float, resident_manager: ResidentManager,
+                                traffic_world: TrafficWorld, ways: List[Way], spatial_grid=None, parking_spaces=None,
+                                sceneries=None, buildings=None, curbs=None, curb_grid=None, building_grid=None,
+                                budget_s: float = INITIAL_MOVING_FILL_S, progress_callback=None) -> None:
+        """Seed the moving traffic as well, at load time: populate_initial only
+        parks cars, and in play passing traffic comes about one a second, so
+        the first minute had empty streets. Up to the moving target, within
+        `budget_s` of loading time."""
+        claimed: list = []
+        started = time.perf_counter()
+        target = self.target_moving_count
+        while (sum(1 for v in self.vehicles if v.state != NPCState.PARKED) < target
+               and len(self.vehicles) < self.max_count and time.perf_counter() - started < budget_s):
+            self._spawn_transit_vehicle(player_x, player_y, resident_manager, traffic_world, ways, spatial_grid,
+                                        parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
+                                        None, claimed, time.perf_counter() + 0.5)
+            self.rebuild_spatial_grid()  # the next spawn's clearance check must see this car (else they crash at once)
+            if progress_callback is not None:
+                progress_callback(min(1.0, (time.perf_counter() - started) / budget_s))
+        self.rebuild_spatial_grid()
+
     def _retire_trip(self, vehicle: NPCVehicle, resident_manager: ResidentManager) -> None:
         """A trip is fully over (a household vehicle just arrived home, or
         - defensively - a vehicle with no group somehow still had a
@@ -5308,6 +5358,9 @@ class NPCVehicleManager:
         nodes = traffic_world._route_nodes
         grid = traffic_world._route_node_grid
         cell_size = _ROUTE_NODE_GRID_CELL_M
+        walked = self._walked_transit_trip(vehicle, origin, traffic_world, ways, spatial_grid, claimed_points, through_point)
+        if walked is not None:  # a long trip on through, without a route search
+            return walked
         reach = NPC_TRANSIT_TRIP_MAX_DISTANCE_M
         if past and through_point is not None:  # passing traffic: on beyond the player, not parked before it
             reach += math.hypot(origin[0] - through_point[0], origin[1] - through_point[1])
@@ -5383,6 +5436,46 @@ class NPCVehicleManager:
             yield
             if len(path) >= 2:
                 return path, destination, None, True
+        return None
+
+    def _walked_transit_trip(self, vehicle, origin, traffic_world, ways, spatial_grid, claimed_points, through_point):
+        """A passing trip by walking the road graph (walk_road_graph) from the
+        spawn node past the player to a roadside spot, up to TRANSIT_WALK_MAX_M:
+        the searched trips stay within 220 m and the cars parked again within
+        seconds. The plan tuple _short_transit_trip_steps returns, or None."""
+        nodes, edges = traffic_world._route_nodes, traffic_world._route_edges
+        cell = (math.floor(origin[0] / _ROUTE_NODE_GRID_CELL_M), math.floor(origin[1] / _ROUTE_NODE_GRID_CELL_M))
+        start = next((i for i in traffic_world._route_node_grid.get(cell, ())
+                      if abs(nodes[i][0] - origin[0]) < 0.01 and abs(nodes[i][1] - origin[1]) < 0.01), None)
+        if start is None:
+            return None
+        past_player = 60.0 + (math.dist(origin, through_point) if through_point else 0.0)
+        toward = math.atan2(through_point[1] - origin[1], through_point[0] - origin[0]) if through_point else None
+        others = [pos for _, pos in claimed_points]
+        for _attempt in range(TRANSIT_WALK_TRIES):  # random walks: one into a dead-end yard, the next on through
+            points = walk_road_graph(nodes, edges, start, TRANSIT_WALK_MAX_M, heading=toward)
+            walked = 0.0
+            for i in range(1, len(points)):
+                walked += math.dist(points[i - 1], points[i])
+                if walked < past_player or math.dist(points[i - 1], points[i]) < 20.0:
+                    continue
+                middle = ((points[i - 1][0] + points[i][0]) / 2.0, (points[i - 1][1] + points[i][1]) / 2.0)
+                destination = _roadside_parking_point(middle[0], middle[1], ways, spatial_grid, arrive_from=points[i - 1])
+                if destination is None or not _point_is_clear_of_vehicles(destination, others):
+                    continue
+                raw_route = [(vehicle.car.x, vehicle.car.y), *points[1:i], destination]
+                if not _arrives_on_right(raw_route, destination):
+                    continue
+                raw_route = _roadside_pull_in(raw_route, destination, ways, spatial_grid)
+                if not run_route_steps(_route_stays_on_road_steps(  # the searched trips' own check: no kerb corners cut
+                        _densify_path(raw_route), ways, spatial_grid, MAX_ROUTE_OFFROAD_TOLERANCE_M,
+                        NPC_PARKING_ACCESS_TOLERANCE_M, 1, None, 1)):
+                    break
+                path = build_driving_path(raw_route, ways, spatial_grid=spatial_grid, skip_final_lane_offset=True,
+                                          vehicle_width_m=vehicle.width_m)
+                if len(path) >= 2:
+                    return path, destination, None, True
+                break
         return None
 
     def _start_short_transit_trip(
