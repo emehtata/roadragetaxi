@@ -3,7 +3,7 @@ checked against an independent reference (NOAA's general solar position
 equations: Julian centuries, true longitude, obliquity - not the game's
 Spencer/Cooper formulas), and the map's grid azimuth against pyproj."""
 import math
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 

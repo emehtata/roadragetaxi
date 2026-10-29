@@ -54,7 +54,6 @@ def test_cycle_route_prefers_cycle_path_and_never_cuts_across_open_ground():
 
 # --- lifecycle and behaviour through the real NPC update loop -------------
 
-import pytest
 from types import SimpleNamespace
 
 from theroadragetrip import cycling

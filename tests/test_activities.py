@@ -5,7 +5,6 @@ import pytest
 from theroadragetrip.activities import (
     ActivityContext,
     ActivityDefinition,
-    ActivityLocation,
     ActivityManager,
     ActivityPlugin,
     ActivityRegistry,

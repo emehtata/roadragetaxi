@@ -20,7 +20,7 @@ import math
 import statistics
 import sys
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

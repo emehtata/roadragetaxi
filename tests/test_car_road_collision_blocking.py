@@ -1,12 +1,10 @@
 import math
 
-from theroadragetrip.osm import Building, Scenery, Way
+from theroadragetrip.osm import Building, Way
 from theroadragetrip.physics import (
     Car,
     SpatialWayGrid,
     is_car_road,
-    is_on_road,
-    is_point_on_road,
     update_car_physics,
 )
 from theroadragetrip.taxi import TaxiManager

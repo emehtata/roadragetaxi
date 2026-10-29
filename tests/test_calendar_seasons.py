@@ -3,7 +3,6 @@ from datetime import datetime
 import pytest
 
 from theroadragetrip.calendar import GameCalendar, Season
-from theroadragetrip.climate import SeasonalAppearance
 from theroadragetrip.weather import WeatherSystem
 
 

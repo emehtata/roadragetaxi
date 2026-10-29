@@ -5,8 +5,6 @@ from types import SimpleNamespace
 import pytest
 
 from theroadragetrip.npc import (
-    CORNER_RADIUS_M,
-    NPC_CAR_CAPACITY,
     Driver,
     NPCState,
     NPCVehicle,
@@ -17,7 +15,6 @@ from theroadragetrip.npc import (
     NPC_BUILDING_YARD_CLEARANCE_M,
     NPC_FOOTPRINT_VIOLATION_CRAWL_MPS,
     NPC_GROUP_RETURN_GRACE_S,
-    NPC_AVOIDANCE_MIN_GAP_M,
     NPC_REVERSE_DISTANCE_M,
     NPC_STUCK_CHECK_INTERVAL_S,
     NPC_STUCK_TIMEOUT_S,

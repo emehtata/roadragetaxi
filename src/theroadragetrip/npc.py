@@ -29,7 +29,7 @@ from . import bus_lines
 from .bus_lines import is_line_bus
 from .geo import angle_diff, bbox_distance_sq, box_contact_normal, boxes_intersect, clamp, closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
-from .osm import Curb, ParkingSpace, StopSign, Way
+from .osm import Curb, StopSign, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, min_turn_radius, rear_axle_behind, get_road_layer_at_point, is_point_on_road, update_car_physics
 from .population import CLASS_DENSITIES, URBAN_PEOPLE_FRACTION, people_within, station_for_way, traffic_demand
 from .road_rage import RoadRageClearance

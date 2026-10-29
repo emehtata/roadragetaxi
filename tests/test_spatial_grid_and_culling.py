@@ -3,8 +3,8 @@ from theroadragetrip.geo import compute_bbox
 from theroadragetrip.map_style import LEGACY_HIGHWAY_COLORS, road_color_for_way
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import Car, SpatialWayGrid, get_road_layer_at_point, is_on_road
-from theroadragetrip.osm import Building, Scenery, Water
-from theroadragetrip.viewport import SCREEN_H, SCREEN_W, get_viewport_bounds, minimum_px_per_m_for_viewport_width
+from theroadragetrip.osm import Scenery
+from theroadragetrip.viewport import get_viewport_bounds, minimum_px_per_m_for_viewport_width
 
 
 def test_compute_bbox():

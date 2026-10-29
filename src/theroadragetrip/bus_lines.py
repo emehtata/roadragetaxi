@@ -11,7 +11,6 @@ direction of a line is its own OSM route, joined by new buses.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import math
 from typing import Dict, List, Optional, Sequence
 
 LINE_BUSES = 3  # of the NPC population's moving-traffic spawns, while lines are loaded

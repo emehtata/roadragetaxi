@@ -28,8 +28,7 @@ def _fake_pyproj(monkeypatch):
 
 
 from theroadragetrip.osm import build_ways, plant_trees
-from theroadragetrip.osm import Building, Place, Scenery, SceneryObject, Way, associate_places_with_buildings
-from theroadragetrip.geo import point_in_polygon
+from theroadragetrip.osm import Building, Place, Scenery, Way, associate_places_with_buildings
 from theroadragetrip.map_style import DISTRICT_PLACE_KINDS, SCENERY_COLORS
 from theroadragetrip.physics import Car
 from theroadragetrip.building_style import BUILDING_WALL_COLORS, FINNISH_BUILDING_COLOR_NAMES, _building_colors_from_name, _building_is_commercial, _building_is_house, _building_window_story_count

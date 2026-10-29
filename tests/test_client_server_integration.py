@@ -77,7 +77,6 @@ def test_client_connects_receives_state_and_commands_reach_the_simulation(monkey
 
 
 def test_malformed_client_message_does_not_crash_the_server(monkeypatch):
-    from theroadragetrip import protocol
 
     server = _start_server(monkeypatch)
     import socket
@@ -327,7 +326,7 @@ def test_a_refuel_press_buys_fuel_once(monkeypatch):
     from types import SimpleNamespace
 
     from theroadragetrip import protocol, transport
-    from theroadragetrip.fuel import calculate_fuel_purchase, fuel_station_price_cents
+    from theroadragetrip.fuel import fuel_station_price_cents
     from theroadragetrip.simulation import PlayerCommand
 
     server = _start_server(monkeypatch)

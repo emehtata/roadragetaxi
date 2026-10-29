@@ -1873,7 +1873,6 @@ def test_npc_target_count_scales_with_city_population():
 
 def test_nearest_route_node_index_matches_brute_force():
     import random
-    from types import SimpleNamespace
     from theroadragetrip.npc import _nearest_route_node_index
 
     rnd = random.Random(5)

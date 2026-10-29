@@ -1,4 +1,3 @@
-from types import SimpleNamespace
 
 
 from theroadragetrip.simulation import RAGE_DISTANCE_TO_FULL_M, RAGE_GAIN_SCALE, _rage_from_speeding

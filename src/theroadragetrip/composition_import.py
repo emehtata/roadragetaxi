@@ -27,7 +27,7 @@ import json
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List
 
 API = "https://rata.digitraffic.fi/api/v1/compositions/{date}"
 DEFAULT_OUTPUT = Path(__file__).with_name("assets") / "train_compositions.json.gz"

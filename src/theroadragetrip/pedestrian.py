@@ -9,10 +9,10 @@ from collections import deque
 from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 from .osm import OPEN_ROOF_BUILDING_TYPES, BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
-from .geo import angle_diff, bbox_distance_sq, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
+from .geo import angle_diff, bbox_distance_sq, closest_point_and_dist_to_segment, compute_bbox, point_in_polygon
 from .npc import NPCState
 from .performance import advance_chunked
-from .physics import Car, is_car_road, is_pedestrian_way
+from .physics import Car, is_pedestrian_way
 from .residents import MIN_UNACCOMPANIED_AGE, ResidentManager
 from .population import municipality_at, walkers_within
 from .activities import ActivityContext, ActivityInstance, ActivityLocation, ActivityManager
