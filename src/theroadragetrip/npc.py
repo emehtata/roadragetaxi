@@ -325,7 +325,7 @@ def transit_spawn_focus(player_x: float, player_y: float, player_car, simulation
     return player_x + math.cos(player_car.heading) * lead, player_y + math.sin(player_car.heading) * lead
 
 
-def through_road_first(nodes, grid, indices, road, spatial_grid, x: float, y: float, reach: float):
+def through_road_first(nodes, grid, indices, road, spatial_grid, x: float, y: float, reach: float, bounds=None):
     """The player's road's route nodes (same ref, else same highway class)
     within `reach`, then `indices`: a major road's passing traffic drives on
     it, so a LAM station's curve shows up on the road it measures
@@ -343,7 +343,8 @@ def through_road_first(nodes, grid, indices, road, spatial_grid, x: float, y: fl
                for cy in range(math.floor((y - reach) / size), math.floor((y + reach) / size) + 1)
                for i in grid.get((cx, cy), ())
                if NPC_TRANSIT_SPAWN_MIN_DISTANCE_M <= math.hypot(nodes[i][0] - x, nodes[i][1] - y) <= reach
-               and (round(nodes[i][0] / 3.0), round(nodes[i][1] / 3.0)) in cells]
+               and (round(nodes[i][0] / 3.0), round(nodes[i][1] / 3.0)) in cells
+               and (bounds is None or bounds[0] <= nodes[i][0] <= bounds[2] and bounds[1] <= nodes[i][1] <= bounds[3])]
     random.shuffle(on_road)
     chosen = set(on_road)
     return on_road + [i for i in indices if i not in chosen]
@@ -5753,7 +5754,8 @@ class NPCVehicleManager:
         through_roll = self._through_share > 0.0 and random.random() < self._through_share
         if through_roll:
             ring = through_road_first(nodes, grid, ring, self._through_way, spatial_grid, player_x, player_y,
-                                      max(NPC_TRANSIT_SPAWN_MAX_DISTANCE_M, self.simulation_radius_m - 20.0))
+                                      max(NPC_TRANSIT_SPAWN_MAX_DISTANCE_M, self.simulation_radius_m - 20.0),
+                                      self._active_bounds)  # the simulated area: a spawn outside it is discarded
         tries = 0
         for index in ring:
             yield
