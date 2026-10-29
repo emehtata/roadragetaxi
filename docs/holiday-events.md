@@ -9,11 +9,12 @@ a historical date or crossing midnight. They repeat every year:
 - Christmas Eve: some adult male pedestrian residents wear Santa's red coat,
   white beard and hat throughout 24 December. Their normal walking, crossing,
   collision and activity rules are unchanged; no extra population is spawned.
-- Christmas season (1–24 December): house-style residential buildings get warm
-  exterior light strings along their eaves, with small decorated evergreens at
-  the existing safe house-yard spots. Apartment and commercial building styles
-  do not receive these exterior strings. Existing Advent window decorations
-  keep their own season, from the first Advent through Epiphany.
+- Christmas house lights follow `window_decorations`, the existing season from
+  the first Sunday of Advent through 6 January (Epiphany). A short warm light
+  string follows one fixed eave of each house: the mapped entrance facade,
+  or its longest edge when no entrance is mapped. There are no added yard trees
+  or whole-roof outlines. Apartment and commercial styles are excluded.
+
 
 The server sends `calendar.holidays` and pedestrian `costume`. Static map chunks
 carry `holiday_yards`, positions beside tagged houses, checked against building,
@@ -28,8 +29,8 @@ no explosions, damage, sounds, roof illumination or traffic changes. Surface
 events are hidden underground. An older server without holiday flags shows none.
 
 Exterior Christmas strings query only nearby house footprints, at most 48
-houses and 2048 candidates per refresh. Each house contributes at most 256 bulbs;
-all strings and bulbs share three drawing batches. In the 3D building mode,
-eaves use the same camera projection and height as the buildings. The flat 2D
-mode uses footprint edges. No additional map downloads or cache format changes
-are needed.
+houses and 2048 candidates per refresh. Each house contributes at most 48 bulbs;
+the bulbs and their faint glow share two drawing batches. In the 3D building
+mode, eaves use the same camera projection and height as the buildings. The flat
+2D mode uses footprint edges. Light placement stays fixed as the camera moves.
+No additional map downloads or cache format changes are needed.

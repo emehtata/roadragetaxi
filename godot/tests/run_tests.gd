@@ -388,15 +388,26 @@ func test_holiday_events() -> void:
 	events.update(0.016, state, view, false)
 	check(not events.decorations.visible and events.bursts.visible, "New Year: only fireworks")
 	check(not events.sites.is_empty() and events.yards.is_empty(), "New Year: fireworks rise over the town, no yard query")
-	state.calendar.holidays = {"christmas": true}
+	state.calendar.holidays = {"christmas": true, "window_decorations": true}
 	events.update(0.016, state, town, false)
 	check(events.elf_layer.visible and not events.elves.is_empty(), "Christmas: elves hide around trees and flash")
-	check(events.decorations.visible and events.christmas_layer.visible and events.yards.size() == 2, "Christmas: decorated house yards and exterior light strings")
+	check(not events.decorations.visible and events.christmas_layer.visible and events.yards.is_empty(), "Christmas: house lights only, no added yard trees")
 	check(events.houses.size() == 2, "Christmas: nearby residential houses, no commercial building")
 	check(map.christmas_houses(town, 1).size() == 1, "Christmas houses: caller limit is respected")
-	var bulbs: PackedVector2Array = events.christmas_bulbs(PackedVector2Array([Vector2.ZERO, Vector2(12, 0), Vector2(12, 10), Vector2(0, 10)]))
-	check(bulbs.size() > 40 and bulbs.size() <= 256, "Christmas light strings: metre-scale bulb spacing and bounded count")
-	check(events.christmas_bulbs(PackedVector2Array([Vector2.ZERO, Vector2(1000, 0), Vector2(1000, 1000), Vector2(0, 1000)])).size() == 256, "Christmas light strings: huge footprints cannot produce unlimited lights")
+	var outline := PackedVector2Array([Vector2.ZERO, Vector2(12, 0), Vector2(12, 10), Vector2(0, 10)])
+	var eave: PackedVector2Array = events.christmas_eave(outline, PackedVector2Array([Vector2(6, 0)]))
+	check(eave == PackedVector2Array([Vector2.ZERO, Vector2(12, 0)]), "Christmas lights: one fixed eave along the entrance facade")
+	var bulbs: PackedVector2Array = events.christmas_bulbs(eave)
+	check(bulbs.size() > 10 and bulbs.size() <= 48 and Array(bulbs).all(func(p): return is_zero_approx(p.y)), "Christmas lights: bulbs stay on one eave, not around the roof")
+	check(events.christmas_bulbs(PackedVector2Array([Vector2.ZERO, Vector2(1000, 0)])).size() == 48, "Christmas lights: bounded bulb count")
+	state.calendar.holidays = {"window_decorations": true}
+	events.update(0.016, state, town, false)
+	check(events.christmas_layer.visible and events.houses.size() == 2 and not events.elf_layer.visible, "Advent through Epiphany: exterior lights use the decoration flag independently of elves")
+	state.calendar.holidays = {"christmas": true}
+	events.update(0.016, state, town, false)
+	check(not events.christmas_layer.visible and events.houses.is_empty(), "Christmas lights require the Advent decoration flag")
+	state.calendar.holidays = {"window_decorations": true}
+	events.update(0.016, state, town, false)
 
 	check(map.holiday_hiding_spots(Rect2(1000, 1000, 10, 10)).is_empty(), "Christmas elves: cull sites outside the view")
 	var sites: PackedVector2Array = events.firework_sites(town)

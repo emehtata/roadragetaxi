@@ -262,7 +262,10 @@ func christmas_houses(view: Rect2, limit := 48) -> Array:
 				return result
 			var style: Array = styles[i]
 			if style.size() > 6 and int(style[6]) == 1 and not buildings[i].is_empty() and MapChunk._rect(buildings[i]).intersects(view):
-				result.append([buildings[i], float(style[2])])
+				var entrances := PackedVector2Array()
+				for entrance in style[3]:
+					entrances.append(MapMath.point(origin, entrance[0], entrance[1]))
+				result.append([buildings[i], float(style[2]), entrances])
 				if result.size() >= limit:
 					return result
 	return result

@@ -110,6 +110,7 @@ func update(delta: float, state: Dictionary, view: Rect2, underground: bool, wal
 		_independence_candles = candles
 		B3._shared["material"].set_shader_parameter("independence_candles", 1.0 if candles else 0.0)
 	var decorated: bool = events.get("window_decorations", false)
+	# Exterior lights share the Advent window season; elves have their own flag.
 	var house_lights := not underground and decorated
 	if decorated != _window_decorations:  # candle bridges and stars in the windows (building_snow.gdshader)
 		_window_decorations = decorated

@@ -89,6 +89,8 @@ def test_window_decorations_from_the_first_advent_until_epiphany():
     assert "window_decorations" not in on(2026, 11, 28, 12, 0)  # Saturday; the first Advent is Sunday 29 November 2026
     assert "window_decorations" in on(2026, 11, 29, 0, 0)
     assert "window_decorations" in on(2026, 12, 15, 12, 0)
+    assert "window_decorations" in on(2026, 12, 25, 12, 0)
+    assert "christmas" not in on(2026, 12, 25, 12, 0)
     assert "window_decorations" in on(2027, 1, 6, 23, 59)
     assert "window_decorations" not in on(2027, 1, 7, 0, 0)
     assert "window_decorations" in on(2027, 11, 28, 12, 0)  # 2027: the first Advent is 28 November
