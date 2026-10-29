@@ -452,6 +452,7 @@ def load_world(
         and local_pbf_available(getattr(args, "osm_pbf_path", None)) else 5.0,
     )
     auto_fetch_manager.initialize_player_tile(car.x, car.y, fetched_area_metres(bbox))
+    taxi_mgr.map_covers = auto_fetch_manager.covers
     auto_fetch_manager.soft_boundary_enabled = args.auto_fetch
 
     # Trains are simulation (advance_simulation updates them): built with the

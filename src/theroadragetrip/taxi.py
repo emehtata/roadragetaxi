@@ -257,6 +257,8 @@ class TaxiManager:
         self.long_fare_retry_timer: float = 0.0
         self.intercity_fares_enabled = False
         self.intercity_places = None
+        # (x, y) -> whether the map there is loaded (AutoFetchManager.covers); None: all of it is
+        self.map_covers = None
 
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
         self._crashed_fence_cooldowns: Dict[int, float] = {}  # scenery id -> timestamp cooldown
@@ -1904,8 +1906,11 @@ class TaxiManager:
         self.long_fare_retry_timer = LONG_FARE_RETRY_S
         town = passenger.dropoff
         if town.venue_type in LANDMARK_WEIGHTS:  # the place itself: its taxi stand, else its road; its name
-            final = (self.pick_random_taxi_stop(town.x, town.y, 0.0, LANDMARK_STAND_M)
-                     or self.pick_random_road_point(town.x, town.y, 0.0, LANDMARK_SNAP_M))
+            final = self.pick_random_taxi_stop(town.x, town.y, 0.0, LANDMARK_STAND_M)
+            # A road only once the place's own tile is in: a car park streamed in
+            # before the stand's tile took the fare there for good.
+            if final is None and (self.map_covers is None or self.map_covers(town.x, town.y)):
+                final = self.pick_random_road_point(town.x, town.y, 0.0, LANDMARK_SNAP_M)
         else:
             final = (self.pick_random_building_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M)
                      or self.pick_random_road_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M))

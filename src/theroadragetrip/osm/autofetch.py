@@ -408,6 +408,10 @@ class AutoFetchManager:
                 "tiles_fetching": self.is_fetching,
             }
 
+    def covers(self, x: float, y: float) -> bool:
+        """Whether the tile holding (x, y) has been streamed in."""
+        return world_to_tile(x, y) in self.loaded_tiles
+
     def streaming_speed_cap_mps(self, x: float, y: float, vx: float, vy: float) -> Optional[float]:
         """Speed cap while driving toward a tile that isn't loaded yet, or
         None when the probed path ahead is all loaded. A handful of set
