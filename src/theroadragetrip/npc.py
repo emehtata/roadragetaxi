@@ -328,11 +328,13 @@ def transit_spawn_focus(player_x: float, player_y: float, player_car, simulation
 class SpawnMemory:
     """Passing-traffic spawn points by outcome, keyed by position (whole
     metres: node ids change at every map sync): one that placed a car with
-    a trip is tried first next time, one that failed SPAWN_POINT_MAX_FAILURES
+    a trip is reused for half the spawns (the other half explore untried
+    points first, so the pool keeps growing), one that failed MAX_FAILURES
     times and never worked is skipped. Only the spot's own failures count
     (no footprint, no trip from it), not passing ones (traffic, the taxi near)."""
 
     MAX_FAILURES = 2
+    REUSE_SHARE = 0.5  # of spawns trying the known good points first
     MAX_POINTS = 50_000  # ponytail: a whole long drive's worth; cleared when full, rebuilt as spawns run
 
     def __init__(self) -> None:
@@ -357,8 +359,9 @@ class SpawnMemory:
         if key not in self.good:
             self.bad[key] = self.bad.get(key, 0) + 1
 
-    def order(self, nodes, indices) -> list:
-        """Known good spawn nodes first (in their given order), then the untried; the hopeless left out."""
+    def order(self, nodes, indices, rng=random) -> list:
+        """Known good spawn nodes first, or (every other spawn on average) the
+        untried first; each in its given order, the hopeless left out."""
         good, rest = [], []
         for index in indices:
             key = (round(nodes[index][0]), round(nodes[index][1]))
@@ -366,7 +369,7 @@ class SpawnMemory:
                 good.append(index)
             elif self.bad.get(key, 0) < self.MAX_FAILURES:
                 rest.append(index)
-        return good + rest
+        return good + rest if rng.random() < self.REUSE_SHARE else rest + good
 
 
 def through_road_first(nodes, grid, indices, road, spatial_grid, x: float, y: float, reach: float, bounds=None):
