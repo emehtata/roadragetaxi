@@ -192,7 +192,7 @@ def match_station(meta: dict, ways: list, project) -> dict:
     x, y = project(meta["lon"], meta["lat"])
     measured = []
     for way in ways:
-        points = [project(node["lon"], node["lat"]) for node in way.get("geometry", [])]
+        points = [project(node["lon"], node["lat"]) for node in way.get("geometry") or [] if node]  # Overpass nulls a missing node
         tags = way.get("tags", {})
         if len(points) >= 2 and tags.get("highway") in MAIN_ROADS:
             distance, heading = _nearest(points, x, y)
