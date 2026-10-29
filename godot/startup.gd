@@ -88,6 +88,7 @@ func _ready() -> void:
 			_game = preload("res://main.tscn").instantiate()
 			_game.language = _language
 			_game.set_graphics(Graphics.read(_settings))
+			_apply_interior_settings()
 			add_child(_game)
 			move_child(_game, 1)
 			_panel.visible = false
@@ -876,6 +877,12 @@ func _general_menu() -> void:
 	_focus_menu()
 
 
+func _apply_interior_settings() -> void:
+	if is_instance_valid(_game) and _game.has_method("set_interior_options"):
+		_game.set_interior_options(_settings.get_value("game", "interior_3d", false),
+			_settings.get_value("game", "interior_mouse_sensitivity", 0.002))
+
+
 func _gameplay_menu() -> void:
 	_clear()
 	_title(_t("settings_gameplay").to_upper())
@@ -924,6 +931,33 @@ func _gameplay_menu() -> void:
 	intercity_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	intercity_note.custom_minimum_size.x = 500
 	_body.add_child(intercity_note)
+	var interiors := CheckButton.new()
+	interiors.text = _t("interior_3d")
+	interiors.button_pressed = _settings.get_value("game", "interior_3d", false)
+	interiors.toggled.connect(func(on: bool):
+		_settings.set_value("game", "interior_3d", on)
+		_settings.save("user://settings.cfg")
+		_apply_interior_settings())
+	_with_help(interiors, "help_interior_3d")
+	_focusables.append(interiors)
+	var mouse_row := HBoxContainer.new()
+	var mouse_label := Label.new()
+	mouse_label.text = _t("interior_mouse_sensitivity")
+	mouse_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mouse_row.add_child(mouse_label)
+	var sensitivity := HSlider.new()
+	sensitivity.min_value = 0.5
+	sensitivity.max_value = 6.0
+	sensitivity.step = 0.1
+	sensitivity.custom_minimum_size.x = 240
+	sensitivity.value = _settings.get_value("game", "interior_mouse_sensitivity", 0.002) * 1000.0
+	sensitivity.value_changed.connect(func(value: float):
+		_settings.set_value("game", "interior_mouse_sensitivity", value / 1000.0)
+		_settings.save("user://settings.cfg")
+		_apply_interior_settings())
+	mouse_row.add_child(sensitivity)
+	_with_help(mouse_row, "help_interior_mouse_sensitivity")
+	_focusables.append(sensitivity)
 	if is_instance_valid(_game):
 		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
 	_button(_t("back"), _settings_menu)
@@ -1100,6 +1134,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_game = preload("res://main.tscn").instantiate()
 	_game.language = _language
 	_game.set_graphics(Graphics.read(_settings))
+	_apply_interior_settings()
 	_game.get_node("SimClient").connection_changed.connect(_server_connected)
 	add_child(_game)
 	move_child(_game, 1)
@@ -1332,6 +1367,8 @@ func _server_connected(up: bool) -> void:
 
 func _pause_menu() -> void:
 	if not get_tree().paused:  # the game itself, before the menu covers it
+		if is_instance_valid(_game) and _game.has_method("set_interior_paused"):
+			_game.set_interior_paused(true)
 		_pause_shot = get_viewport().get_texture().get_image()
 	get_tree().paused = true
 	_play_menu_music()
@@ -1425,6 +1462,8 @@ func _resume() -> void:
 	_stop_menu_music()
 	_panel.visible = false
 	get_tree().paused = false
+	if is_instance_valid(_game) and _game.has_method("set_interior_paused"):
+		_game.set_interior_paused(false)
 
 
 ## The gig's game date and time, so the next gig starts where this one left off.

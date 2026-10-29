@@ -50,6 +50,9 @@ var lane_assist := false  # K: likewise
 var _respawn_pending := false
 var _home_pending := false  # H: choose this yard as home / back home
 var _home_door_pending := false  # E on foot: into the home at its front door / out again
+var home_first_person := preload("res://home_first_person.gd").new()
+var interior_3d := false
+var _interior_3d_failed := false
 var home_walk := preload("res://home_walk.gd").new()  # inside the home (state home_door.indoors)
 const SiteSounds := preload("res://site_sounds.gd")
 var _sites := {}  # site_sounds.gd: the nearest playground, campfire, beer garden and building site
@@ -143,6 +146,7 @@ func _ready() -> void:
 	_build_help()
 	_build_inspector()
 	add_child(home_walk)
+	add_child(home_first_person)
 	add_child(door_marks)
 	add_child(weather)
 	add_child(wildlife)
@@ -289,6 +293,10 @@ func _apply_language() -> void:
 
 
 func _on_connection(up: bool) -> void:
+	if not up:
+		home_first_person.leave()
+		home_walk.leave()
+		_home_plan_asked = false
 	print("simulation ", "connected" if up else "disconnected")
 	phone.set_connected(up)
 	if not up:  # a new connection starts over: header, chunks, states
@@ -409,6 +417,12 @@ static func screenshot_directory(os_name: String, user_profile: String) -> Strin
 
 ## Mouse on a HUD panel: drag it, kept on screen.
 func _input(event: InputEvent) -> void:
+	if get_tree().paused:
+		return
+	if home_first_person.visible:
+		if home_first_person.handle_input(event):
+			get_viewport().set_input_as_handled()
+		return
 	drive.handle(event)
 	if event is InputEventMouseButton:
 		if event.pressed and _start_sign == null and not (phone.visible and phone.get_global_rect().has_point(event.position)) and (event.button_index == MOUSE_BUTTON_MIDDLE or (event.button_index == MOUSE_BUTTON_LEFT and event.ctrl_pressed)):
@@ -443,6 +457,21 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if get_tree().paused:
+		return
+	if home_first_person.visible:
+		if event is InputEventKey and event.pressed and not event.echo:
+			match event.keycode:
+				KEY_ESCAPE:
+					return  # startup opens the existing pause menu and releases the cursor
+				KEY_E:
+					_home_door_pending = home_first_person.at_exit()
+				KEY_H:
+					_home_pending = true
+				KEY_F12:
+					save_screenshot()
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventMouseButton and event.pressed and _start_sign == null:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_zoom(1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.9)
@@ -497,7 +526,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				_reset_trip_pending = true
 			KEY_E:  # toggles what the simulation shows (it may have stopped the engine: no fuel)
 				var door: Dictionary = entities.shown_state().get("home_door", {})
-				if door.get("available", false) or (door.get("indoors", false) and home_walk.visible and home_walk.at_exit()):
+				if door.get("available", false) or (door.get("indoors", false) and (not home_walk.visible or home_walk.at_exit())):
 					_home_door_pending = true  # on foot at home's door (only then: E means nothing else on foot)
 				elif not entities.shown_state().get("on_foot", true) and not _interact_pending:
 					_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
@@ -657,11 +686,14 @@ func _present(state: Dictionary) -> void:
 		debug_label.visible = false
 	var player: Dictionary = state["player_pedestrian"] if state.get("on_foot", false) else state["player"]
 	audio.player_at = Vector2(player["x"], player["y"])
-	if home_walk.visible:  # walking a floor plan: its own steps, the outdoors muffled
+	if home_first_person.visible:
+		var indoor_position := home_first_person.player.position
+		audio.update_footsteps(true, Vector2(indoor_position.x, -indoor_position.z), "pedestrian.footsteps_indoor")
+	elif home_walk.visible:  # walking a floor plan: its own steps, the outdoors muffled
 		audio.update_footsteps(true, home_walk.at, "pedestrian.footsteps_indoor")
 	else:
 		audio.update_footsteps(state.get("on_foot", false), audio.player_at)
-	audio.set_indoors(home_walk.visible)
+	audio.set_indoors(home_walk.visible or home_first_person.visible)
 	for event in entities.buffer.take_due_events(entities.now()):
 		events_presented += 1
 		if event.get("type") == "phone_result":
@@ -805,23 +837,56 @@ func _present(state: Dictionary) -> void:
 		_update_debug(state)
 
 
-## Indoors (the server's home_door.indoors): the floor plan to walk in, asked for once.
+func set_interior_options(first_person: bool, sensitivity: float) -> void:
+	if interior_3d != first_person:
+		home_first_person.leave()
+		home_walk.leave()
+		drive.clear()
+		_interior_3d_failed = false
+	interior_3d = first_person
+	home_first_person.mouse_sensitivity = clampf(sensitivity, 0.0005, 0.006)
+	if is_instance_valid(home_first_person.player):
+		home_first_person.player.mouse_sensitivity = home_first_person.mouse_sensitivity
+
+
+func set_interior_paused(paused: bool) -> void:
+	drive.clear()
+	home_first_person.set_paused(paused)
+
+
+## The server owns entry/exit; both indoor views consume the same freshly requested plan.
 func _home_view(state: Dictionary) -> void:
+	if get_tree().paused:
+		return
 	var indoors: bool = state.get("home_door", {}).get("indoors", false)
 	home_walk.is_home = state.get("home_door", {}).get("is_home", false)
+	home_first_person.is_home = home_walk.is_home
 	if not indoors:
+		if home_first_person.visible:
+			drive.clear()
+		home_first_person.leave()
 		home_walk.leave()
 		_home_plan_asked = false
+		_interior_3d_failed = false
 		return
-	if home_walk.visible:
-		return
-	home_walk.language = language
-	if sim.home_plan.has("footprint") and home_walk.enter(sim.home_plan):
-		return
-	if home_walk.plan.has("footprint") and home_walk.enter(home_walk.plan):  # back in: the cached plan
+	if home_first_person.visible or home_walk.visible:
 		return
 	if not _home_plan_asked:
+		sim.home_plan = {}  # a different house may have been selected since the last visit
 		_home_plan_asked = sim.send_home_interior()
+		return
+	if not sim.home_plan.has("footprint"):
+		return
+	home_walk.language = language
+	home_first_person.language = language
+	if interior_3d and not _interior_3d_failed:
+		if home_first_person.enter(sim.home_plan):
+			drive.clear()
+			return
+		_interior_3d_failed = true
+		push_warning("3D interior has no safe spawn; using the 2D interior")
+	home_walk.notice = T.text("home_3d_fallback", language) if _interior_3d_failed else ""
+	home_walk.enter(sim.home_plan)
 
 
 ## The nearest moving train rumbles from where it is (one train is enough).

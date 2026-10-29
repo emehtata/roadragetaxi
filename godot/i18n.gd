@@ -4,6 +4,13 @@ const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := {
+	"home_3d_fallback": "Turvallista 3D-sisäänkäyntiä ei löytynyt. Käytössä on 2D-sisätila.",
+	"interior_3d": "Talojen sisätilat ensimmäisestä persoonasta (3D)",
+	"help_interior_3d": "Kulje taloissa ensimmäisestä persoonasta. Pois päältä: 2D-pohjapiirros. Tilan vaihtaminen palauttaa sisäänkäynnille.",
+	"interior_mouse_sensitivity": "Hiiren herkkyys sisätiloissa",
+	"help_interior_mouse_sensitivity": "Hiirellä katselun nopeus talon sisällä.",
+	"home_first_person_hint": "WASD liiku · hiiri katsele · Esc tauko",
+	"home_mouse_resume": "Jatka katselua napsauttamalla",
 	"electronic_nearby": "Sähköiset opasteet edessä",
 	"electronic_warning": "Varoitus",
 	"electronic_congestion": "Ruuhka",
@@ -209,6 +216,13 @@ const FI := {
 }
 
 const EN := {
+	"home_3d_fallback": "No safe 3D entrance was found. Using the 2D interior.",
+	"interior_3d": "First-person house interiors (3D)",
+	"help_interior_3d": "Explore houses in first person. Off uses the 2D floor plan. Changing mode restarts at the entrance.",
+	"interior_mouse_sensitivity": "Indoor mouse sensitivity",
+	"help_interior_mouse_sensitivity": "How quickly the mouse turns your view inside houses.",
+	"home_first_person_hint": "WASD move · mouse look · Esc pause",
+	"home_mouse_resume": "Click to resume looking",
 	"electronic_nearby": "Electronic signs ahead",
 	"electronic_warning": "Warning",
 	"electronic_congestion": "Congestion",
@@ -416,6 +430,13 @@ const EN := {
 }
 
 const DE := {
+	"home_3d_fallback": "Kein sicherer 3D-Eingang gefunden. Der 2D-Innenraum wird verwendet.",
+	"interior_3d": "Hausinnenräume aus der Ich-Perspektive (3D)",
+	"help_interior_3d": "Häuser aus der Ich-Perspektive erkunden. Aus: 2D-Grundriss. Ein Wechsel setzt dich an den Eingang zurück.",
+	"interior_mouse_sensitivity": "Mausempfindlichkeit im Haus",
+	"help_interior_mouse_sensitivity": "Wie schnell die Maus den Blick im Haus dreht.",
+	"home_first_person_hint": "WASD bewegen · Maus umsehen · Esc Pause",
+	"home_mouse_resume": "Zum Fortsetzen klicken",
 	"electronic_nearby": "Elektronische Anzeigen voraus",
 	"electronic_warning": "Warnung",
 	"electronic_congestion": "Stau",

@@ -16,6 +16,7 @@ const FIGURE_M := 0.32  # the drawn person (the street's 0.45 m figure, a little
 const SPAWN_IN_M := 0.45  # entering, the walker stands this far inside the front door (interior.py STEP_IN_M: clear floor)
 
 var language := "en"
+var notice := ""
 var is_home := false  # state home_door.is_home: no "H: make this home" hint
 var walk_time := 0.0  # seconds walked: the figure's gait
 var moving := false
@@ -158,6 +159,8 @@ class WalkCanvas extends HomeInterior.PlanCanvas:
 		var font := ThemeDB.fallback_font
 		var name := str(plan.get("name", ""))
 		draw_string(font, Vector2(24, 40), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color("ffcd1a"))
+		if walk.notice != "":
+			draw_string(font, Vector2(24, 66), walk.notice, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("ffcd1a"))
 		var hint: String = walk.T.text("house_leave_prompt" if walk.at_exit() else "home_walk_hint", walk.language)
 		if not walk.is_home:
 			hint += " · " + walk.T.text("home_choose_hint", walk.language)
