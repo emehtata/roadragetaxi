@@ -44,7 +44,7 @@ def simulation_bounds(view, x, y, speed, heading=None):
 
 
 TRAFFIC_RADIUS_M = 250.0  # NPC traffic lives at least this far around the taxi, seen or not (npc.TRAFFIC_DENSITY_RADIUS_M)
-TRAFFIC_KEEP_MARGIN_M = 100.0  # ... and is retired only this far beyond that
+TRAFFIC_KEEP_MARGIN_M = 50.0  # ... and is retired only this far beyond that
 
 
 def traffic_bounds(simulated, x, y, grow=0.0):

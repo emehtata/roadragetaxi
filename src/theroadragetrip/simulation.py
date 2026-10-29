@@ -714,7 +714,7 @@ def advance_simulation(
             viewport_bounds=viewport_bounds,
             player_car=car, pedestrian_mgr=pedestrian_mgr,
             current_way=current_way,
-            active_bounds=traffic_area, near_bounds=ambient_bounds,
+            active_bounds=traffic_area, near_bounds=viewport_bounds if ambient_bounds is not None else None,  # full rate on screen only
         )
         if npc_manager.snowy:
             for vehicle in npc_manager.vehicles:

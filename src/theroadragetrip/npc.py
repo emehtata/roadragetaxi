@@ -305,7 +305,7 @@ NPC_TRIP_START_TICK_BUDGET_S = 0.008
 # Time, not a step count: a search step costs microseconds but one footprint
 # validation sample can cost milliseconds (a 64-step slice measured ~9 ms
 # per frame); a perf_counter() read per step is negligible next to either.
-NPC_ROUTE_JOB_BUDGET_S = 0.002
+NPC_ROUTE_JOB_BUDGET_S = 0.001  # rrt-019: 2 ms a tick doubled the tick with dense traffic (late states rubber-band the taxi)
 NPC_ROUTE_JOB_SLICE_S = 0.0005
 NPC_MAX_ROUTE_JOBS = 8
 # Open road required around a spawn point so a new car is never dropped onto
