@@ -850,7 +850,13 @@ class TaxiManager:
                 continue
             if point_in_polygon(road_start[0], road_start[1], building_points):
                 return True
+            sx0, sx1 = min(road_start[0], road_end[0]) - half_width, max(road_start[0], road_end[0]) + half_width
+            sy0, sy1 = min(road_start[1], road_end[1]) - half_width, max(road_start[1], road_end[1]) + half_width
             for building_start, building_end in zip(building_points, building_points[1:] + building_points[:1]):
+                # Walls away from this segment (a big building's hundreds): neither test can hit.
+                if (max(building_start[0], building_end[0]) < sx0 or min(building_start[0], building_end[0]) > sx1
+                        or max(building_start[1], building_end[1]) < sy0 or min(building_start[1], building_end[1]) > sy1):
+                    continue
                 if segments_intersect(road_start, road_end, building_start, building_end):
                     return True
                 if (
