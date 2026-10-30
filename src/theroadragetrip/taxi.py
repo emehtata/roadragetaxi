@@ -838,6 +838,16 @@ class TaxiManager:
             return False
 
         for road_start, road_end in zip(road_points, road_points[1:]):
+            # Only segments near the footprint: a long road's others can't
+            # touch it, and testing each against every wall made a contact
+            # with a big building take up to 400 ms.
+            if (
+                max(road_start[0], road_end[0]) + half_width < building_bbox[0]
+                or min(road_start[0], road_end[0]) - half_width > building_bbox[2]
+                or max(road_start[1], road_end[1]) + half_width < building_bbox[1]
+                or min(road_start[1], road_end[1]) - half_width > building_bbox[3]
+            ):
+                continue
             if point_in_polygon(road_start[0], road_start[1], building_points):
                 return True
             for building_start, building_end in zip(building_points, building_points[1:] + building_points[:1]):
