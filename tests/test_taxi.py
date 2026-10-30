@@ -963,3 +963,18 @@ def test_rejecting_one_of_several_offers_does_not_claim_phone_is_empty():
     assert taxi.reject_offer(0)
     assert not taxi.offers
     assert taxi.notification_msg == tr("en", "no_requests")
+
+
+def test_roads_through_a_building_from_the_grid_match_the_full_scan():
+    from theroadragetrip.physics import SpatialWayGrid
+
+    through = Way(points_m=[(0.0, 10.0), (100.0, 10.0)], highway="residential", half_width_m=4.5)
+    far = [Way(points_m=[(x, 500.0), (x + 50.0, 500.0)], highway="residential", half_width_m=4.5)
+           for x in range(0, 5000, 100)]
+    ways = [through] + far
+    points = [(40.0, 0.0), (60.0, 0.0), (60.0, 20.0), (40.0, 20.0)]
+    building = Building(points_m=points)
+    bbox = (40.0, 0.0, 60.0, 20.0)
+    full = TaxiManager(ways=ways)._roads_through(building, points, bbox, ways)
+    grid = TaxiManager(ways=ways)._roads_through(building, points, bbox, ways, SpatialWayGrid(ways))
+    assert full == grid == [through]

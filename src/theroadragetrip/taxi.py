@@ -678,8 +678,10 @@ class TaxiManager:
         penalty: int = 200,
         ways: Optional[List[Way]] = None,
         current_way: Optional[Way] = None,
+        spatial_grid=None,
     ) -> bool:
-        """Stop the car at a building footprint and apply one crash penalty per impact."""
+        """Stop the car at a building footprint and apply one crash penalty per impact.
+        `spatial_grid` indexes `ways` (the road-overlap exemption's candidates)."""
         expired = [bid for bid, t in self._crashed_building_cooldowns.items() if sim_time - t > 3.0]
         for bid in expired:
             del self._crashed_building_cooldowns[bid]
@@ -752,7 +754,7 @@ class TaxiManager:
                     ) <= getattr(way, "half_width_m", 3.0)
                     for road_start, road_end in zip(way.points_m, way.points_m[1:])
                 )
-                for way in self._roads_through(building, points, bbox, ways)
+                for way in self._roads_through(building, points, bbox, ways, spatial_grid)
             ):
                 continue
 
@@ -774,16 +776,24 @@ class TaxiManager:
 
         return False
 
-    def _roads_through(self, building, points, bbox, ways) -> list:
+    def _roads_through(self, building, points, bbox, ways, spatial_grid=None) -> list:
         """The car roads crossing `building`'s outline, cached per building until
         the road list changes (a map merge): checked in full every contact
-        frame, this was most of a contact's cost."""
-        key = (id(ways), len(ways))
+        frame, this was most of a contact's cost. With the road grid only the
+        roads near the building are tried: after a merge every new contact
+        scanned all the map's roads, 240-470 ms a tick at speed in a city."""
+        key = (id(ways), len(ways), id(spatial_grid))
         if key != self._roads_through_key:
             self._roads_through_key, self._roads_through_cache = key, {}
         roads = self._roads_through_cache.get(id(building))
         if roads is None:
-            roads = [way for way in ways if is_car_road(way) and self._road_overlaps_building(way, points, bbox)]
+            if spatial_grid is not None:
+                minx, miny, maxx, maxy = bbox if bbox and bbox != (0.0, 0.0, 0.0, 0.0) else compute_bbox(points)
+                reach = 30.0  # wider than any road's half width
+                candidates = spatial_grid.ways_in_rect(minx - reach, miny - reach, maxx + reach, maxy + reach)
+            else:
+                candidates = ways
+            roads = [way for way in candidates if is_car_road(way) and self._road_overlaps_building(way, points, bbox)]
             self._roads_through_cache[id(building)] = roads
         return roads
 

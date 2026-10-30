@@ -566,7 +566,7 @@ def advance_simulation(
         # Road-overlap exemptions use the player's own level's roads.
         building_crash = taxi_mgr.check_building_collision(
             car, buildings, traffic_mgr.sim_time, previous_position, ways=drive_ways,
-            current_way=current_way,
+            current_way=current_way, spatial_grid=drive_grid,
         )
         # Trees: the client's alone (godot/map_chunk.gd knock_trees) - the taxi knocks them
         # over without stopping, and a fallen tree stands again when its chunk reloads.
