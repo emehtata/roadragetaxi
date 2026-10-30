@@ -256,6 +256,54 @@
     "brawl.shove": [
       3.0,
       35.0
+    ],
+    "pedestrian.front_door": [
+      4,
+      40
+    ],
+    "vehicle.bicycle_bell": [
+      5,
+      60
+    ],
+    "collision.post_knock": [
+      5,
+      90
+    ],
+    "vehicle.bus_doors": [
+      5,
+      50
+    ],
+    "vehicle.bicycle_freewheel": [
+      2,
+      20
+    ],
+    "vehicle.motorcycle": [
+      10,
+      160
+    ],
+    "vehicle.reverse_beep": [
+      8,
+      90
+    ],
+    "ambient.protest": [
+      15,
+      180
+    ],
+    "ambient.playground": [
+      10,
+      90
+    ],
+    "ambient.construction": [
+      20,
+      200
+    ],
+    "ambient.campfire": [
+      5,
+      60
+    ],
+    "ambient.biergarten": [
+      10,
+      90
     ]
   },
   "player_categories": [
@@ -380,6 +428,38 @@
     },
     "beach": {
       "group": "ambient.beach"
+    },
+    "bicycle": {
+      "group": "vehicle.bicycle_freewheel",
+      "positional": true
+    },
+    "motorcycle": {
+      "group": "vehicle.motorcycle",
+      "positional": true
+    },
+    "reverse_beep": {
+      "group": "vehicle.reverse_beep",
+      "positional": true
+    },
+    "protest": {
+      "group": "ambient.protest",
+      "positional": true
+    },
+    "playground": {
+      "group": "ambient.playground",
+      "positional": true
+    },
+    "construction": {
+      "group": "ambient.construction",
+      "positional": true
+    },
+    "campfire": {
+      "group": "ambient.campfire",
+      "positional": true
+    },
+    "biergarten": {
+      "group": "ambient.biergarten",
+      "positional": true
     }
   }
 }

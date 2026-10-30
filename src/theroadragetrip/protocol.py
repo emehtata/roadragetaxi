@@ -148,11 +148,47 @@ def _resident_to_dict(resident) -> Optional[dict]:
     }
 
 
-def _npc_to_dict(npc, residents=None) -> dict:
-    residents = residents or {}
-    occupant_ids = set(getattr(npc, "occupant_ids", ()) or ()) | set(getattr(npc, "passenger_ids", ()) or ())
+# State rows: fields at these values are left out (godot/entity_layer.gd reads
+# each with the same default), floats rounded - most of a state's 35 KB was
+# repeated defaults and 17-digit numbers. Positions to 1 cm, angles 0.001 rad.
+ROW_DEFAULTS = {
+    "activity": "", "animation_time": 0.0, "blood_alcohol_promille": 0.0, "bottle": False, "braking": False,
+    "costume": "", "crashed_timer": 0.0, "curse_text": "", "curse_timer": 0.0, "debug_waiting_for": "",
+    "drinking": False, "driver_departed": False, "fallen": False, "hockey_goalie": False, "is_cyclist": False,
+    "is_on_foot": False, "is_police": False, "is_taxi": False, "layer": 0, "lod_level": 0, "mood": "normal",
+    "stick_swing": 0.0, "taxi_fare": False, "thief": False, "turn_signal": "", "turn_signal_elapsed": 0.0,
+    "bus_line": None, "owner": None, "occupants": [], "resident": None,
+}
+ROW_DECIMALS = {"x": 2, "y": 2, "heading": 3, "speed": 2, "animation_time": 2, "curse_timer": 2,
+                "crashed_timer": 2, "turn_signal_elapsed": 2, "stick_swing": 2, "blood_alcohol_promille": 2}
+
+
+def compact_row(row: dict) -> dict:
+    """A state row as sent: floats rounded, defaults left out."""
+    out = {}
+    for key, value in row.items():
+        if isinstance(value, float) and key in ROW_DECIMALS:
+            value = round(value, ROW_DECIMALS[key])
+        if key in ROW_DEFAULTS and value == ROW_DEFAULTS[key] and type(value) is type(ROW_DEFAULTS[key]):
+            continue
+        out[key] = value
+    return out
+
+
+def _inspected(inspect, kind: str, ident) -> bool:
+    return inspect is not None and inspect.get("kind") == kind and inspect.get("id") == ident
+
+
+def _occupant_ids(npc) -> set:
+    ids = set(getattr(npc, "occupant_ids", ()) or ()) | set(getattr(npc, "passenger_ids", ()) or ())
     if getattr(npc, "current_driver_id", None) is not None:
-        occupant_ids.add(npc.current_driver_id)
+        ids.add(npc.current_driver_id)
+    return ids
+
+
+def _npc_to_dict(npc, residents=None, people: bool = True) -> dict:
+    residents = residents or {}
+    occupant_ids = _occupant_ids(npc)
     row = {
         "id": npc.vehicle_id,
         "x": npc.x,
@@ -184,13 +220,16 @@ def _npc_to_dict(npc, residents=None) -> dict:
         "occupants": [_resident_to_dict(residents[resident_id]) for resident_id in sorted(occupant_ids) if resident_id in residents],
         "thief": getattr(npc, "stolen", False),
     }
-    if row["thief"]:  # a stolen bike: its rider stays anonymous, not shown as the owner
+    if row["thief"] or not people:  # a stolen bike: its rider stays anonymous; else only for the inspected
         row["owner"], row["occupants"] = None, []
     trailer = npc.trailer_body() if hasattr(npc, "trailer_body") else None
     if trailer is not None:  # a towed trailer, swinging on its hitch: [x, y, heading, length, width, kind]
         row["trailer"] = [round(trailer.x, 2), round(trailer.y, 2), round(trailer.heading, 3),
                           trailer.length_m, trailer.width_m, trailer.kind]
     return row
+
+
+SHOWN_NPC_MARGIN_M = 60.0  # NPC vehicles sent this far beyond the view: entering it, heard (bikes, beeps)
 
 
 def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
@@ -210,7 +249,7 @@ def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
     return always + others[:max(0, cap - len(always))]
 
 
-def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
+def _pedestrian_to_dict(ped, residents=None, santa_day=None, person: bool = True) -> dict:
     row = {
         "id": ped.resident_id,
         "x": ped.x,
@@ -227,7 +266,7 @@ def _pedestrian_to_dict(ped, residents=None, santa_day=None) -> dict:
         "is_cyclist": ped.is_cyclist,
         "costume": "santa" if santa_costume(ped, (residents or {}).get(ped.resident_id), santa_day) else "",
         # A thief stays anonymous: no resident (personality) is sent, and the client can't pick one.
-        "resident": None if getattr(ped, "thief_target", None) is not None else _resident_to_dict((residents or {}).get(ped.resident_id)),
+        "resident": None if getattr(ped, "thief_target", None) is not None or not person else _resident_to_dict((residents or {}).get(ped.resident_id)),
         "thief": getattr(ped, "thief_target", None) is not None,
         "blood_alcohol_promille": getattr(ped, "blood_alcohol_promille", 0.0),
         "bottle": getattr(ped, "bottles", 0) > 0,  # a bottle in hand
@@ -372,23 +411,16 @@ def _broken_hedges(world, x, y):
     return rows
 
 
-def _fallen_and_knocked(world, x: float, y: float) -> tuple:
-    """Trees felled and posts knocked over this session near (x, y), as
-    [x, y, angle(, kind)] - matched by position to the chunks' trees and
-    bollards. Only ever grows (taxi.py), so it stays small."""
+def _knocked(world, x: float, y: float) -> list:
+    """Posts knocked over this session near (x, y), as [x, y, angle, kind] -
+    matched by position to the chunks' bollards. Only ever grows (taxi.py),
+    so it stays small. (Felled trees are the client's own: map_chunk.gd.)"""
     radius_sq = TRAFFIC_LIGHT_PHASE_RADIUS_M * TRAFFIC_LIGHT_PHASE_RADIUS_M
-    taxi_mgr = world.taxi_mgr
-    fallen = []
-    for key in getattr(taxi_mgr, "fallen_trees", ()):
-        effect = taxi_mgr.tree_effects.get(key, {})
-        if "x" in effect and (effect["x"] - x) ** 2 + (effect["y"] - y) ** 2 <= radius_sq:
-            fallen.append([round(effect["x"], 1), round(effect["y"], 1), round(effect.get("angle", 0.0), 3)])
-    knocked = [
+    return [
         [round(post.x, 1), round(post.y, 1), round(post.knocked_angle, 3), post.kind]
         for post in getattr(world, "scenery_objects", ())
         if getattr(post, "knocked_angle", None) is not None and (post.x - x) ** 2 + (post.y - y) ** 2 <= radius_sq
     ]
-    return fallen, knocked
 
 
 def _road_to_dict(current_way, limit_override: Optional[int] = None) -> dict:
@@ -524,7 +556,7 @@ def build_state_message(
     server_time: float = 0.0, current_way=None, language: str = "en",
     calendar: Optional[dict] = None, tire_mark: Optional[dict] = None, navigation: Optional[dict] = None,
     road_rage: Optional[dict] = None, railway: Optional[dict] = None, map_loading: str = "",
-    map_loading_detail: str = "",
+    map_loading_detail: str = "", inspect: Optional[dict] = None, npc_bounds=None,
 ) -> dict:
     """Everything the client needs to render one frame, and nothing
     static (see module docstring). Called once per server tick."""
@@ -532,13 +564,12 @@ def build_state_message(
     taxi_mgr = world.taxi_mgr
     traffic_mgr = world.traffic_mgr
     player_at = (player_pedestrian.x, player_pedestrian.y) if on_foot else (car.x, car.y)
-    fallen_trees, knocked_posts = _fallen_and_knocked(world, *player_at)
+    knocked_posts = _knocked(world, *player_at)
     residents = getattr(getattr(world, "residents", None), "residents", {})
     santa_day = date.fromisoformat(calendar["date"]) if calendar and calendar.get("holidays", {}).get("santas") else None
     state = {
         "protests": getattr(world, "protests", None).snapshot(camx, camy) if getattr(world, "protests", None) else [],
         "protest_active": bool(getattr(getattr(world, "protests", None), "groups", ())),
-        "fallen_trees": fallen_trees,  # [x, y, angle] (the way the taxi hit it)
         "broken_hedges": _broken_hedges(world, *player_at),
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
         "game_time_seconds": game_time_seconds,
@@ -572,10 +603,19 @@ def build_state_message(
         "player_pedestrian": {
             "x": player_pedestrian.x, "y": player_pedestrian.y, "heading": player_pedestrian.heading,
         },
-        "npcs": [_npc_to_dict(npc, residents) for npc in world.npc_manager.vehicles],
+        # Residents (owner, occupants, a pedestrian's person) only for what the client inspects:
+        # {"kind": "npc" | "pedestrian", "id": ...} from its commands - a pedestrian inside a vehicle too.
+        "npcs": [compact_row(_npc_to_dict(npc, residents, _inspected(inspect, "npc", npc.vehicle_id) or (
+            inspect is not None and inspect.get("kind") == "pedestrian" and inspect.get("id") in _occupant_ids(npc))))
+                 for npc in world.npc_manager.vehicles
+                 # `npc_bounds` (the clients' view): only what is drawn or heard there, plus the inspected one
+                 if npc_bounds is None or _inspected(inspect, "npc", npc.vehicle_id)
+                 or npc_bounds[0] - SHOWN_NPC_MARGIN_M <= npc.x <= npc_bounds[2] + SHOWN_NPC_MARGIN_M
+                 and npc_bounds[1] - SHOWN_NPC_MARGIN_M <= npc.y <= npc_bounds[3] + SHOWN_NPC_MARGIN_M],
         # Taxi drivers' quarrels, current state only (taxi_brawls.BrawlManager.to_dicts).
         "brawls": world.taxi_brawls.to_dicts(traffic_mgr.sim_time) if getattr(world, "taxi_brawls", None) else [],
-        "pedestrians": [_pedestrian_to_dict(p, residents, santa_day) for p in shown_pedestrians(world.pedestrian_mgr, camx, camy)],
+        "pedestrians": [compact_row(_pedestrian_to_dict(p, residents, santa_day, _inspected(inspect, "pedestrian", p.resident_id)))
+                        for p in shown_pedestrians(world.pedestrian_mgr, camx, camy)],
         "pucks": puck_positions(),  # ice hockey: [[x, y], ...]
         "balls": ball_positions(),  # soccer: [[x, y], ...]
         "vomit_puddles": [list(point) for point in taxi_mgr.vomit_puddles + world.pedestrian_mgr.vomit_puddles],

@@ -123,7 +123,11 @@ MAGIC = b"RWC\0"
 # 56: Way.ref, the OSM road number(s) (Digitraffic road data matching).
 # 57: bicycle parking, picnic tables and gates follow their path's direction.
 # 58: amenity=charging_station scenery with its capacity and level.
-FORMAT_VERSION = 58
+# 59: a garage's amenity=parking area (parking=underground / multi-storey) is no surface lot.
+# 60: OSM playground=* equipment (nodes and areas) as scenery objects.
+# 61: individual natural=shrub nodes as scenery objects.
+# 62: building and shop-place opening_hours and raw shop types.
+FORMAT_VERSION = 62
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -495,13 +499,6 @@ class WorldCacheManager:
     def path_for_tile(self, tile: TileCoord) -> Path:
         return self.path_for(self.tile_id(tile))
 
-    def save_tile(self, tile: TileCoord, world: Any) -> Path:
-        path = self.path_for_tile(tile)
-        return self.writer.write(path, world, area_id=self.tile_id(tile))
-
-    def load_tile(self, tile: TileCoord, bbox=None, *, force_refresh: bool = False, **kwargs) -> Any:
-        return self.load_area(self.tile_id(tile), bbox, force_refresh=force_refresh, **kwargs)
-
     def preload_region(self, bbox, **kwargs) -> Future:
         """Load one combined streaming region instead of one request per tile."""
         return self.preload(self.area_id(bbox), bbox, allow_covering=False, **kwargs)
@@ -669,12 +666,6 @@ class WorldCacheManager:
                 future = (executor or self._executor).submit(self.load_area, area_id, bbox, **kwargs)
                 self._futures[area_id] = future
             return future
-
-    def pending_count(self) -> int:
-        """Background loads still running - under the lock, as preload()
-        adds to _futures from other threads."""
-        with self._lock:
-            return sum(not future.done() for future in self._futures.values())
 
     def close(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)

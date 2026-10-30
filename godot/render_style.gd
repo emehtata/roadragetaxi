@@ -88,6 +88,18 @@ static func wet_alphas(wetness: float) -> Array:
 	return [WET_DARKEN_MAX_ALPHA * clampf(wetness, 0.0, 1.0), WET_SHEEN_MAX_ALPHA * sheen_wetness]
 
 
+## The darkening and then the sheen (wet_alphas) as one overlay colour: the
+## same blend over a road in one pass instead of two (rrt-019.1: half the
+## wet roads' draw calls). Where roads overlap it compounds per stroke as before.
+static func wet_overlay(wetness: float) -> Color:
+	var alphas := wet_alphas(wetness)
+	var keep: float = (1.0 - alphas[0]) * (1.0 - alphas[1])  # of the road under it
+	if keep >= 1.0:
+		return Color(WET_DARKEN, 0.0)
+	var added: Color = WET_DARKEN * alphas[0] * (1.0 - alphas[1]) + WET_SHEEN * alphas[1]
+	return Color(added.r, added.g, added.b, 0.0) / (1.0 - keep) + Color(0, 0, 0, 1.0 - keep)
+
+
 ## A puddle's visible strength 0..1 at this wetness.
 static func puddle_strength(wetness: float, reveal: float) -> float:
 	return clampf((wetness - reveal) / (1.0 - reveal), 0.0, 1.0)

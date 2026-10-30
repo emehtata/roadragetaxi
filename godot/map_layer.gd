@@ -16,20 +16,22 @@ var plowed_cells: Array = []
 var snowing := false
 var _snow_baselines: Dictionary = {}  # preserve a new area's clean start across chunk refreshes
 var _snow_redraws: Dictionary = {}
+var _shop_light_updates: Dictionary = {}
 var wetness := 0.0  # road wetness as last applied (bucketed, see set_wetness)
 var px_per_m := 9.0  # the camera zoom, for the chunks' pixel-sized points
 var phases: Dictionary = {}  # traffic-light phases as last applied (state "traffic_lights")
-var fallen: Dictionary = {}  # felled trees: MapChunk.obstacle_key -> angle (state "fallen_trees")
 var knocked: Dictionary = {}  # knocked posts: key -> [x, y, angle, kind] (state "knocked_posts")
 var _knocked_posts: Node2D  # drawn here, from the state: a lamp has no static data (made in _ready)
 var broken_hedges: Dictionary = {}
 var _last_hedge_damage: Array = []
-var _last_obstacles := [[], []]
+var _last_obstacles := []
 var season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] as last applied
 var lights_on := false
 var _pool_group: Node2D  # every loaded chunk's street-light pools (each chunk's: their union, added once)
 var _flood_group: Node2D  # every loaded chunk's floodlit sports places
 var sports_hours := false  # state calendar.sports_lights: 07-22, when floodlights may burn
+var _fields_frozen = null
+var _trees_leafless := false
 var arena_lights_on := false
 var building_view_centre := Vector2.ZERO
 var shadows_enabled := true
@@ -125,6 +127,7 @@ func clear() -> void:
 		_free_chunk(chunk)
 	_chunks.clear()
 	_snow_redraws.clear()
+	_shop_light_updates.clear()
 
 
 ## A chunk's buildings into the shared group, farthest from the current view
@@ -230,17 +233,81 @@ func chunk_count() -> int:
 	return _chunks.size()
 
 
-func holiday_yards(view: Rect2, limit := 64) -> PackedVector2Array:
+## Static holiday spots of chunk list `key` in the view: house yards, or Midsummer bonfires.
+func holiday_yards(view: Rect2, limit := 64, key := "holiday_yards") -> PackedVector2Array:
 	var result := PackedVector2Array()
 	var scanned := 0
 	for chunk in _chunks.values():
 		if not view.intersects(chunk._bounds_rect):
 			continue
-		for row in chunk._data.get("holiday_yards", []):
+		for row in chunk._data.get(key, []):
 			scanned += 1
 			if scanned > 2048:  # shortcut: cap dense-yard queries; index them if this hides visible yards.
 				return result
 			var at := MapMath.point(origin, row[0], row[1])
+			if view.has_point(at):
+				result.append(at)
+				if result.size() >= limit:
+					return result
+	return result
+
+
+func christmas_houses(view: Rect2, limit := 48) -> Array:
+	var result: Array = []
+	var scanned := 0
+	for chunk in _chunks.values():
+		if not view.intersects(chunk._bounds_rect):
+			continue
+		var buildings: Array = chunk._data.get("buildings", [])
+		var styles: Array = chunk._data.get("building_styles", [])
+		for i in mini(buildings.size(), styles.size()):
+			scanned += 1
+			if scanned > 2048:  # shortcut: cap dense-house queries; index them if visible houses are missed.
+				return result
+			var style: Array = styles[i]
+			if style.size() > 6 and int(style[6]) == 1 and not buildings[i].is_empty() and MapChunk._rect(buildings[i]).intersects(view):
+				var entrances := PackedVector2Array()
+				for entrance in style[3]:
+					entrances.append(MapMath.point(origin, entrance[0], entrance[1]))
+				result.append([buildings[i], float(style[2]), entrances])
+				if result.size() >= limit:
+					return result
+	return result
+
+
+func holiday_hiding_spots(view: Rect2, limit := 48) -> PackedVector2Array:
+	var result := PackedVector2Array()
+	var scanned := 0
+	for chunk in _chunks.values():
+		if not view.intersects(chunk._bounds_rect):
+			continue
+		for tree in chunk._data.get("trees", []):
+			scanned += 1
+			if scanned > 2048:  # shortcut: cap scenery search; index it if dense maps miss visible elves.
+				return result
+			var at := MapMath.point(origin, tree[0], tree[1])
+			if posmod(hash(Vector2i(roundi(tree[0]), roundi(tree[1]))), 5) == 0:
+				at += Vector2(2.0, -1.0)
+				if view.has_point(at):
+					result.append(at)
+					if result.size() >= limit:
+						return result
+		for building in chunk._data.get("buildings", []):
+			scanned += 1
+			if scanned > 2048:
+				return result
+			if building.is_empty():
+				continue
+			var centre := Vector2.ZERO
+			for point in building:
+				centre += point
+			centre /= building.size()
+			var key := Vector2i(roundi(centre.x), roundi(centre.y))
+			var h := hash(key)
+			if posmod(h, 8) != 0:
+				continue
+			var edge: Vector2 = building[posmod(h / 8, building.size())]
+			var at := edge + (edge - centre).normalized() * 2.0
 			if view.has_point(at):
 				result.append(at)
 				if result.size() >= limit:
@@ -268,9 +335,12 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.set_road_snow(road_snow, plowed_cells)
 	chunk.set_px_per_m(px_per_m)
 	chunk.set_phases(phases)
-	chunk.set_obstacles(fallen, knocked)
+	chunk.set_obstacles(knocked)
 	chunk.set_broken_hedges(broken_hedges)
 	chunk.set_season(season)
+	chunk.set_trees_leafless(_trees_leafless)
+	if _fields_frozen != null:
+		chunk.set_fields_frozen(bool(_fields_frozen))
 	chunk.set_lights_on(lights_on)
 	chunk.set_arena_lights(arena_lights_on)
 	chunk.set_flash(flash)
@@ -320,22 +390,28 @@ func set_broken_hedges(rows: Array) -> void:
 		chunk.set_broken_hedges(broken_hedges)
 
 
-## The simulation's felled trees and knocked posts this tick (lists that
-## only grow, so usually unchanged): chunks redraw only their own.
-func set_obstacles(fallen_trees: Array, knocked_posts: Array) -> void:
-	if fallen_trees == _last_obstacles[0] and knocked_posts == _last_obstacles[1]:
+## The simulation's knocked posts this tick (a list that only grows, so
+## usually unchanged): chunks redraw only their own.
+func set_obstacles(knocked_posts: Array) -> void:
+	if knocked_posts == _last_obstacles:
 		return
-	_last_obstacles = [fallen_trees, knocked_posts]
-	fallen = {}
-	for tree in fallen_trees:
-		fallen[MapChunk.obstacle_key(tree[0], tree[1])] = float(tree[2])
+	_last_obstacles = knocked_posts
 	knocked = {}
 	for post in knocked_posts:
 		knocked[MapChunk.obstacle_key(post[0], post[1])] = post
 	for chunk in _chunks.values():
-		chunk.set_obstacles(fallen, knocked)
+		chunk.set_obstacles(knocked)
 	if _knocked_posts != null:
 		_knocked_posts.queue_redraw()
+
+
+## The taxi knocks over the trees it touches (MapChunk.knock_trees, which
+## skips chunks far from it): the client's alone. Returns how many fell.
+func knock_trees(body: Dictionary) -> int:
+	var felled := 0
+	for chunk in _chunks.values():
+		felled += chunk.knock_trees(body["position"], body["heading"], body["length"], body["width"])
+	return felled
 
 
 ## A post hit hard lies bent over the way the taxi went
@@ -345,6 +421,22 @@ func _draw_knocked_posts() -> void:
 		var at := MapMath.point(origin, post[0], post[1])
 		var length := 4.0 if post[3] == "street_lamp" else 0.9
 		_knocked_posts.draw_line(at, at + Vector2(cos(post[2]), -sin(post[2])) * length, Color8(88, 90, 92), maxf(2.0 / px_per_m, 0.25))
+
+
+func set_fields_frozen(frozen: bool) -> void:
+	if _fields_frozen == frozen:
+		return
+	_fields_frozen = frozen
+	for chunk in _chunks.values():
+		chunk.set_fields_frozen(frozen)
+
+
+func set_trees_leafless(leafless: bool) -> void:
+	if _trees_leafless == leafless:
+		return
+	_trees_leafless = leafless
+	for chunk in _chunks.values():
+		chunk.set_trees_leafless(leafless)
 
 
 ## The server's season weights (state calendar.season): ground, water and
@@ -368,9 +460,14 @@ func lamp_near(at: Vector2, radius: float) -> bool:
 	for chunk in _chunks.values():
 		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.intersects(around):
 			continue
-		for i in chunk.street_lights.size():
-			if chunk.street_lights[i].distance_squared_to(at) <= radius * radius and not chunk._broken.has(i):
-				return true
+		# Every light sits in its own cell's list (light_cells), so the cells under the circle's box cover it.
+		var low := Vector2i((around.position / chunk.LIGHT_CELL_M).floor())
+		var high := Vector2i((around.end / chunk.LIGHT_CELL_M).floor())
+		for x in range(low.x, high.x + 1):
+			for y in range(low.y, high.y + 1):
+				for i in chunk.light_cells.get(Vector2i(x, y), []):
+					if chunk.street_lights[i].distance_squared_to(at) <= radius * radius and not chunk._broken.has(i):
+						return true
 	return false
 
 
@@ -384,7 +481,7 @@ func light_at(at: Vector2) -> float:
 		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.intersects(around):
 			continue
 		var lights: Array = chunk._data.get("street_lights", [])
-		for i in chunk.street_lights.size():
+		for i in chunk.light_cells.get(Vector2i((at / chunk.LIGHT_CELL_M).floor()), []):
 			if chunk._broken.has(i):
 				continue
 			var reach := float(lights[i][3]) if i < lights.size() and lights[i].size() > 3 else 10.0
@@ -434,7 +531,18 @@ func set_road_snow(depth: float, cells: Array, falling := true) -> void:
 		chunk.snow_baseline = float(_snow_baselines[id])
 		if chunk.set_road_snow(depth, cells, false) and not chunk._road_layers.is_empty():
 			_snow_redraws[id] = true
-	set_process(not _snow_redraws.is_empty())
+	set_process(not _snow_redraws.is_empty() or not _shop_light_updates.is_empty())
+
+
+func set_shop_lights(states: Dictionary) -> void:
+	for id in states:
+		var chunk = _chunks.get(id)
+		if chunk != null and chunk._data.get("_shop_lights", []) != states[id]:
+			_shop_light_updates[id] = states[id]
+		else:
+			_shop_light_updates.erase(id)
+	if not _shop_light_updates.is_empty():
+		set_process(true)
 
 
 func _process(_delta: float) -> void:
@@ -447,7 +555,17 @@ func _process(_delta: float) -> void:
 			remaining -= 1
 			if remaining == 0:
 				break
-	set_process(not _snow_redraws.is_empty())
+	# Opening/closing changes rebuild only building batches, one chunk per frame.
+	for id in _shop_light_updates.keys():
+		var chunk = _chunks.get(id)
+		if chunk == null:
+			_shop_light_updates.erase(id)
+		elif chunk._building_task < 0:
+			var rows: Array = _shop_light_updates[id]
+			_shop_light_updates.erase(id)
+			chunk.set_shop_lights(rows)
+			break
+	set_process(not _snow_redraws.is_empty() or not _shop_light_updates.is_empty())
 
 
 ## A chunk the server resent (changed) swapped in for the drawn one in the

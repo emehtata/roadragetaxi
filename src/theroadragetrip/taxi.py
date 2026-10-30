@@ -39,7 +39,6 @@ NIGHTLIFE_VENUE_TYPES = {
 MOTION_SICKNESS_THRESHOLD = 8.0
 POST_KINDS = ("bollard", "street_lamp")  # solid poles the taxi can hit
 POST_RADIUS_M = 0.15
-TREE_TRUNK_RADIUS_M = 0.4
 POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stopping the taxi
 # Long fares: a phone offer to another municipality. Only the town is known
 # at first (its map isn't loaded); the edge arrow points the way, and near
@@ -58,14 +57,6 @@ LANDMARK_WEIGHTS = {"airport": 100_000, "railway_station": 10_000}
 GREET_RADIUS_M = 2.0
 SOLID_AREA_KINDS = ("construction", "ice_rink", "stadium")  # fenced or walled all round: a crash, never a drive-in  # how close the driver on foot must be to greet a booked rail customer
 
-
-def car_hits_tree_trunk(car: Car, tree_x: float, tree_y: float) -> bool:
-    """Whether the circular trunk touches the car's oriented body."""
-    dx, dy = tree_x - car.x, tree_y - car.y
-    cos_h, sin_h = math.cos(car.heading), math.sin(car.heading)
-    outside_x = max(0.0, abs(dx * cos_h + dy * sin_h) - car.length_m * 0.5)
-    outside_y = max(0.0, abs(-dx * sin_h + dy * cos_h) - car.width_m * 0.5)
-    return math.hypot(outside_x, outside_y) <= TREE_TRUNK_RADIUS_M
 
 @dataclass
 class TaxiTarget:
@@ -266,9 +257,10 @@ class TaxiManager:
         self.long_fare_retry_timer: float = 0.0
         self.intercity_fares_enabled = False
         self.intercity_places = None
+        # (x, y) -> whether the map there is loaded (AutoFetchManager.covers); None: all of it is
+        self.map_covers = None
 
         self._crashed_building_cooldowns: Dict[int, float] = {}  # building id -> timestamp cooldown
-        self._crashed_tree_cooldowns: Dict[Tuple[int, int], float] = {}
         self._crashed_fence_cooldowns: Dict[int, float] = {}  # scenery id -> timestamp cooldown
         self._tram_crash_at = -1e9  # sim time of the last tram crash (one penalty an impact)
         self._crashed_post_cooldowns: Dict[int, float] = {}  # bollard/lamp id -> timestamp cooldown
@@ -280,15 +272,11 @@ class TaxiManager:
         self._curb_bump_cooldowns: Dict[int, float] = {}  # curb id -> timestamp cooldown
         self._speed_bump_cooldowns: Dict[int, float] = {}  # speed bump id -> timestamp cooldown
         self._speed_camera_hits: set[int] = set()
-        self.tree_effects: Dict[Tuple[int, int], Dict[str, float]] = {}
-        self.fallen_trees: set[Tuple[int, int]] = set()
-        self.tree_wait_timer: float = 0.0
         self._building_collision_grid: Dict[Tuple[int, int], List[Building]] = {}
         self._building_collision_ref = None
         self._building_collision_count = 0
-        self._tree_collision_grid: Dict[Tuple[int, int], List[Tuple[int, int, float, float]]] = {}
-        self._tree_collision_ref = None
-        self._tree_collision_count = 0
+        self._roads_through_key = None  # (id, len) of the road list _roads_through_cache was made from
+        self._roads_through_cache: Dict[int, list] = {}  # building id -> the car roads crossing it
         self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._fence_collision_ref = None
         self._fence_collision_count = 0
@@ -427,9 +415,6 @@ class TaxiManager:
         """Something in the phone to answer: a ride offer or a rail
         pre-booking still pending (accepted ones are no longer requests)."""
         return bool(self.offers or (self.rail_bookings is not None and self.rail_bookings.pending()))
-
-    def visible_rail_bookings(self):
-        return self.rail_bookings.visible() if self.rail_bookings is not None else []
 
     def has_active_job(self) -> bool:
         """A fare under way, or a booked rail passenger waiting to be met:
@@ -610,31 +595,6 @@ class TaxiManager:
                     nearby.append(building)
         return nearby
 
-    def _nearby_collision_trees(self, sceneries: List[Any], x: float, y: float, radius: float):
-        if sceneries is not self._tree_collision_ref:
-            self._tree_collision_grid.clear()
-            self._tree_collision_ref = sceneries
-            self._tree_collision_count = 0
-        if len(sceneries) < self._tree_collision_count:
-            self.invalidate_tree_collision_index()
-            self._tree_collision_ref = sceneries
-        for scenery_index in range(self._tree_collision_count, len(sceneries)):
-            for tree_index, (tree_x, tree_y) in enumerate(getattr(sceneries[scenery_index], "trees", ())):
-                cell = (math.floor(tree_x / 100.0), math.floor(tree_y / 100.0))
-                self._tree_collision_grid.setdefault(cell, []).append(
-                    (scenery_index, tree_index, tree_x, tree_y)
-                )
-        self._tree_collision_count = len(sceneries)
-        nearby = []
-        for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
-            nearby.extend(self._tree_collision_grid.get(cell, ()))
-        return nearby
-
-    def invalidate_tree_collision_index(self) -> None:
-        self._tree_collision_grid.clear()
-        self._tree_collision_ref = None
-        self._tree_collision_count = 0
-
     def _nearby_collision_fences(self, sceneries: List[Any], x: float, y: float, radius: float):
         # Same fix, same reason, as _nearby_collision_buildings above -
         # autofetch only ever appends to this list, so index just the new
@@ -728,6 +688,8 @@ class TaxiManager:
         car_corners = get_oriented_box_corners(
             player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
         )
+        car_min_x, car_max_x = min(x for x, _ in car_corners), max(x for x, _ in car_corners)
+        car_min_y, car_max_y = min(y for _, y in car_corners), max(y for _, y in car_corners)
 
         car_level = getattr(player_car, "map_level", SURFACE_LEVEL)
         # OSM bridge layers and logical garage floors are separate coordinates.
@@ -764,19 +726,22 @@ class TaxiManager:
             if not intersects:
                 intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
             if not intersects:  # an edge or corner poking into the car's side: it crosses the box (not its half-diagonal circle)
+                # Only the building edges reaching the car's own bounding box can cross it.
                 intersects = any(
-                    segments_intersect(a, b, points[i], points[(i + 1) % len(points)])
+                    segments_intersect(a, b, p, q)
+                    for p, q in zip(points, points[1:] + points[:1])
+                    if max(p[0], q[0]) >= car_min_x and min(p[0], q[0]) <= car_max_x
+                    and max(p[1], q[1]) >= car_min_y and min(p[1], q[1]) <= car_max_y
                     for a, b in zip(car_corners, car_corners[1:] + car_corners[:1])
-                    for i in range(len(points))
                 )
             if not intersects:
                 continue
 
             # OSM occasionally contains building footprints crossed by mapped roads.
-            # Check this expensive exception only after a real building collision.
+            # Check this exception only after a real building collision; which car
+            # roads cross the building is worked out once per building (_roads_through).
             if ways and any(
-                self._road_overlaps_building(way, points, bbox)
-                and (
+                (
                     getattr(way, "is_tunnel", False)
                     or getattr(way, "layer", 0) == getattr(player_car, "layer", 0)
                 )
@@ -787,8 +752,7 @@ class TaxiManager:
                     ) <= getattr(way, "half_width_m", 3.0)
                     for road_start, road_end in zip(way.points_m, way.points_m[1:])
                 )
-                for way in ways
-                if is_car_road(way)
+                for way in self._roads_through(building, points, bbox, ways)
             ):
                 continue
 
@@ -809,6 +773,19 @@ class TaxiManager:
             return True
 
         return False
+
+    def _roads_through(self, building, points, bbox, ways) -> list:
+        """The car roads crossing `building`'s outline, cached per building until
+        the road list changes (a map merge): checked in full every contact
+        frame, this was most of a contact's cost."""
+        key = (id(ways), len(ways))
+        if key != self._roads_through_key:
+            self._roads_through_key, self._roads_through_cache = key, {}
+        roads = self._roads_through_cache.get(id(building))
+        if roads is None:
+            roads = [way for way in ways if is_car_road(way) and self._road_overlaps_building(way, points, bbox)]
+            self._roads_through_cache[id(building)] = roads
+        return roads
 
     @staticmethod
     def _backing_off(car: Car, previous_position: Tuple[float, float], points) -> bool:
@@ -863,58 +840,6 @@ class TaxiManager:
                     ) <= half_width
                 ):
                     return True
-        return False
-
-    def check_tree_collision(
-        self,
-        player_car: Car,
-        sceneries: List[Any],
-        sim_time: float,
-        previous_position: Optional[Tuple[float, float]] = None,
-        penalty: int = 100,
-        ways: Optional[List[Way]] = None,
-    ) -> bool:
-        """Stop the car at a tree and apply one penalty per impact."""
-        expired = [key for key, t in self._crashed_tree_cooldowns.items() if sim_time - t > 3.0]
-        for key in expired:
-            del self._crashed_tree_cooldowns[key]
-
-        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5 + TREE_TRUNK_RADIUS_M
-        for scenery_index, tree_index, tree_x, tree_y in self._nearby_collision_trees(
-            sceneries, player_car.x, player_car.y, radius
-        ):
-                if not car_hits_tree_trunk(player_car, tree_x, tree_y):
-                    continue
-                if ways and is_point_on_road(tree_x, tree_y, ways=ways, car_roads_only=True):
-                    continue
-                scenery = sceneries[scenery_index]
-                if previous_position is not None:
-                    restore_x, restore_y = previous_position
-                else:
-                    restore_x, restore_y = player_car.x, player_car.y
-                player_car.x, player_car.y = restore_x, restore_y
-                impact_speed_kmh = abs(player_car.speed) * 3.6
-                player_car.speed = 0.0
-                key = (id(scenery), tree_index)
-                self.tree_effects[key] = {
-                    "shake": 0.55,
-                    "leaves": 1.2,
-                    "angle": player_car.heading,
-                    # World position: the client finds the tree to shake.
-                    "x": tree_x,
-                    "y": tree_y,
-                }
-                if impact_speed_kmh > 80.0:
-                    self.fallen_trees.add(key)
-                    self.tree_wait_timer = 5.0
-                self.taxi_smoke_timer = max(self.taxi_smoke_timer, 5.0)
-                if key not in self._crashed_tree_cooldowns:
-                    self.total_score -= penalty
-                    self.adjust_passenger_happiness(-30.0)
-                    self.notification_msg = tr(self.language, "tree_crash", penalty=penalty)
-                    self.notification_timer = 3.5
-                self._crashed_tree_cooldowns[key] = sim_time  # every contact frame: pressing on stays one impact
-                return True
         return False
 
     def check_fence_collision(
@@ -1151,8 +1076,14 @@ class TaxiManager:
             if getattr(post, "knocked_angle", None) is not None:
                 continue  # already lying flat
             dx, dy = post.x - player_car.x, post.y - player_car.y
-            if abs(dx * cos_h + dy * sin_h) > half_l or abs(-dx * sin_h + dy * cos_h) > half_w:
+            along, across = abs(dx * cos_h + dy * sin_h), abs(-dx * sin_h + dy * cos_h)
+            if along > half_l or across > half_w:
                 continue
+            if previous_position is not None:
+                px, py = post.x - previous_position[0], post.y - previous_position[1]
+                before = min(half_l - abs(px * cos_h + py * sin_h), half_w - abs(-px * sin_h + py * cos_h))
+                if min(half_l - along, half_w - across) < before:
+                    continue  # already touching: allow movement that reduces overlap
             if abs(player_car.speed) * 3.6 >= POST_KNOCK_DOWN_KMH:
                 post.knocked_angle = player_car.heading if player_car.speed >= 0.0 else player_car.heading + math.pi
                 self.knocked_posts += 1
@@ -1975,8 +1906,11 @@ class TaxiManager:
         self.long_fare_retry_timer = LONG_FARE_RETRY_S
         town = passenger.dropoff
         if town.venue_type in LANDMARK_WEIGHTS:  # the place itself: its taxi stand, else its road; its name
-            final = (self.pick_random_taxi_stop(town.x, town.y, 0.0, LANDMARK_STAND_M)
-                     or self.pick_random_road_point(town.x, town.y, 0.0, LANDMARK_SNAP_M))
+            final = self.pick_random_taxi_stop(town.x, town.y, 0.0, LANDMARK_STAND_M)
+            # A road only once the place's own tile is in: a car park streamed in
+            # before the stand's tile took the fare there for good.
+            if final is None and (self.map_covers is None or self.map_covers(town.x, town.y)):
+                final = self.pick_random_road_point(town.x, town.y, 0.0, LANDMARK_SNAP_M)
         else:
             final = (self.pick_random_building_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M)
                      or self.pick_random_road_point(town.x, town.y, 0.0, LONG_FARE_RESOLVE_M))
@@ -1999,7 +1933,7 @@ class TaxiManager:
         """Create realistic ride requests without activating one until accepted."""
         if not self.fares_open:
             return []
-        if self.current_passenger:
+        if self.has_job():
             self.offers = []
             return []
         self._initial_offer_pending = False
@@ -2114,7 +2048,7 @@ class TaxiManager:
             return self.rail_bookings.decline(item)
         self.offers.remove(item)
         self.next_offer_timer = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
-        self.notification_msg = tr(self.language, "no_requests")
+        self.notification_msg = tr(self.language, "select_ride" if self.has_new_requests() else "no_requests")
         self.notification_timer = 2.0
         logger.info("Taxi phone offer rejected: index=%d remaining=%d", index, len(self.offers))
         return True
@@ -2416,7 +2350,7 @@ class TaxiManager:
         """Update mission timers, pickup/dropoff collision, and fare progression."""
         if game_time_seconds is not None:
             self.game_time_seconds = game_time_seconds
-        if self.current_passenger:
+        if self.has_job():
             self.offers.clear()
         self.speed_camera_flash_timer = max(0.0, self.speed_camera_flash_timer - dt)
         if self.speed_camera_flash_timer <= 0.0:
@@ -2424,13 +2358,7 @@ class TaxiManager:
         self.speed_camera_notice_timer = max(0.0, self.speed_camera_notice_timer - dt)
         if self.speed_camera_notice_timer <= 0.0:
             self.speed_camera_notice_msg = ""
-        self.tree_wait_timer = max(0.0, self.tree_wait_timer - dt)
         self.taxi_smoke_timer = max(0.0, self.taxi_smoke_timer - dt)
-        for key, effect in list(self.tree_effects.items()):
-            effect["shake"] = max(0.0, effect["shake"] - dt)
-            effect["leaves"] = max(0.0, effect["leaves"] - dt)
-            if effect["shake"] <= 0.0 and effect["leaves"] <= 0.0 and key not in self.fallen_trees:
-                del self.tree_effects[key]
         if self.notification_timer > 0.0:
             self.notification_timer -= dt
 
@@ -2439,12 +2367,12 @@ class TaxiManager:
                 offer.time_remaining_s -= dt
             self.offers = [offer for offer in self.offers if offer.time_remaining_s > 0.0]
 
-        if not self.current_passenger and len(self.offers) < MAX_PHONE_OFFERS:
+        if not self.has_job() and len(self.offers) < MAX_PHONE_OFFERS:
             self.next_offer_timer -= dt
             if self.next_offer_timer <= 0.0:
-                self.generate_offers(car.x, car.y, count=1, append=True)
+                new_offers = self.generate_offers(car.x, car.y, count=1, append=True)
                 self.next_offer_timer = random.uniform(PHONE_OFFER_MIN_INTERVAL_S, PHONE_OFFER_MAX_INTERVAL_S)
-                if self.offers:
+                if new_offers:
                     self.notification_msg = tr(self.language, "new_request")
                     self.notification_timer = 5.0
 

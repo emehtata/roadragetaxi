@@ -17,6 +17,7 @@ var _meet := Label.new()  # the meet & greet panel
 var _subtitle := Label.new()  # "Speaker: line" (godot-final-07)
 var _subtitle_until := 0  # real-time ms
 var _board := Label.new()  # the next trains board (J)
+var _electronic := preload("res://electronic_signs.gd").new()
 var _timetable_hint_shown := false  # once a session, when the map first has timetabled stations
 var _timetable_hint_until := 0
 var _meter := preload("res://taxi_meter.gd").new()  # the seven-segment taximeter
@@ -96,6 +97,7 @@ func _ready() -> void:
 	_map_sign.visible = false
 	add_child(_map_sign)
 	add_child(_meter)
+	add_child(_electronic)
 	add_child(_summary)  # last child: above the HUD rows
 	_notice_style = _box(Color8(20, 30, 40, 235), Color8(255, 200, 50))
 	_notice.add_theme_stylebox_override("normal", _notice_style)
@@ -136,6 +138,7 @@ static func _box(fill: Color, border: Color) -> StyleBoxFlat:
 
 
 func show_state(state: Dictionary, toggles := {}) -> void:
+	_electronic.show_state(state.get("electronic_signs", []), language)
 	var text := values(state, toggles, language)
 	_money.text = "%s: %s  |  %s: %d  |  %s" % [T.text("score", language), text["score"],
 		T.text("fares", language), int(state.get("taxi", {}).get("completed_fares", 0)), text["money"]]
@@ -163,7 +166,7 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	_board.visible = board != ""
 	if _board.visible:
 		_board.reset_size()
-		_board.position = Vector2(size.x - 10.0 - _board.size.x, 116.0)  # top right under the limit sign
+		_board.position = Vector2(size.x - 10.0 - _board.size.x, 180.0 if _electronic.visible else 116.0)
 	_layout_subtitle()
 	_subtitle.visible = Time.get_ticks_msec() < _subtitle_until
 	_map_sign.text = map_loading_text(str(state.get("map_loading", "")), Time.get_ticks_msec(), language, str(state.get("map_loading_detail", "")))
@@ -186,6 +189,8 @@ func _layout() -> void:
 	_clock.position = Vector2(size.x - 12.0 - _clock.size.x, 8.0)
 	_money.position = Vector2(_clock.position.x - 12.0 - _money.size.x, 6.0)
 	_weather.position = Vector2(size.x - 92.0 - _weather.size.x, 40.0)  # left of the limit sign
+	_electronic.size = Vector2(minf(330.0, maxf(160.0, size.x - 110.0)), 0)
+	_electronic.position = Vector2(size.x - 90.0 - _electronic.size.x, 68.0)
 	# The clock, the score box and the weather move as one panel.
 	var status := Rect2(_money.position, Vector2.ZERO).merge(Rect2(_clock.position, _clock.size)).merge(Rect2(_money.position, _money.size))
 	if _weather.text != "":
@@ -288,6 +293,9 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 			text["road"] += " [%s: %d km/h]" % [T.text("limit", language), int(road["speed_limit_kmh"])]
 	if on_foot and preload("res://entity_layer.gd").player_fighting(state):
 		text["hint"] = T.text("hint_brawl", language)
+	elif on_foot and state.get("home_door", {}).get("available", false):
+		var door: Dictionary = state["home_door"]
+		text["hint"] = T.text("home_enter_prompt" if door.get("is_home", false) else "house_enter_prompt", language) + " · " + T.text("hint_foot", language)
 	elif on_foot:
 		text["hint"] = T.text("hint_foot", language)
 	elif not player.get("engine_on", true):

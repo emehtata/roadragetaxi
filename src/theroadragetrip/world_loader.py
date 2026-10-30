@@ -321,7 +321,8 @@ def load_world(
         intercity_database = prepare_database(source,Path(default_cache_root())/"finland.intercity.sqlite",
                                               progress=lambda step: on_load_progress(0.81, f"{message}|{step}"))
         import sqlite3
-        with sqlite3.connect(intercity_database) as database:
+        from contextlib import closing
+        with closing(sqlite3.connect(intercity_database)) as database, database:  # commit, then close: Windows cannot move or delete an open file
             taxi_mgr.intercity_places = {row[0] for row in database.execute("SELECT id FROM places")}
         taxi_mgr.intercity_fares_enabled = True
     if career is None:
@@ -451,6 +452,7 @@ def load_world(
         and local_pbf_available(getattr(args, "osm_pbf_path", None)) else 5.0,
     )
     auto_fetch_manager.initialize_player_tile(car.x, car.y, fetched_area_metres(bbox))
+    taxi_mgr.map_covers = auto_fetch_manager.covers
     auto_fetch_manager.soft_boundary_enabled = args.auto_fetch
 
     # Trains are simulation (advance_simulation updates them): built with the

@@ -565,6 +565,44 @@ def test_the_calendar_is_the_one_clock_and_carries_the_sun(tmp_path, monkeypatch
     assert _state(server)["game_time_seconds"] == 30.0
 
 
+def test_the_live_clock_is_the_computers_clock(tmp_path, monkeypatch):
+    """Live clock: a picked start jumps to now, time never runs 60x, and the
+    calendar reads the computer's clock (Finnish time, DST included)."""
+    from datetime import datetime
+
+    import theroadragetrip.server as server_module
+
+    now = [datetime(2026, 10, 25, 0, 30)]  # UTC: 03:30 summer time, the first of the repeated hour
+    monkeypatch.setattr(server_module, "_utc_now", lambda: now[0])
+    server = _build_server(tmp_path, monkeypatch, ["--live-clock", "--start-time", "2026-01-05T12:00"])
+    assert server.calendar.current == datetime(2026, 10, 25, 3, 30)
+    now[0] = datetime(2026, 10, 25, 1, 30)  # an hour on: 03:30 winter time, the repeat
+    server.tick(1.0)  # one real second: no 60x
+    assert server.calendar_state()["time_scale"] == 1.0
+    assert server.calendar.current == datetime(2026, 10, 25, 3, 30) and server.calendar.current.fold == 1
+    now[0] = datetime(2026, 10, 25, 2, 0)
+    server.tick(1.0)
+    assert server.calendar.current == datetime(2026, 10, 25, 4, 0)
+
+
+def test_simulation_mode_always_runs_on_the_real_clock(tmp_path, monkeypatch):
+    """Simulation: the real clock even with the live clock turned off and a time picked; no fare runs 60x."""
+    from datetime import datetime
+
+    import theroadragetrip.server as server_module
+
+    now = [datetime(2026, 10, 28, 10, 0)]  # UTC: 12:00 in Finland
+    monkeypatch.setattr(server_module, "_utc_now", lambda: now[0])
+    server = _build_server(tmp_path, monkeypatch, ["--game-mode", "simulation", "--no-live-clock",
+                                                   "--start-time", "2026-01-05T03:00"])
+    assert server.calendar.current == datetime(2026, 10, 28, 12, 0)
+    now[0] = datetime(2026, 10, 28, 10, 0, 1)
+    server.tick(1.0)
+    assert server.calendar_state()["time_scale"] == 1.0 and server.calendar.current == datetime(2026, 10, 28, 12, 0, 1)
+    gig = _build_server(tmp_path, monkeypatch, ["--no-live-clock", "--start-time", "2026-01-05T03:00"])
+    assert gig.calendar.current.hour == 3  # the other modes keep their picked time
+
+
 def test_startup_logs_the_calculated_moon(tmp_path, monkeypatch, caplog):
     with caplog.at_level("INFO", logger="theroadragetrip.server"):
         server = _build_server(tmp_path, monkeypatch)
@@ -606,7 +644,9 @@ def test_holidays_follow_the_server_calendar(tmp_path, monkeypatch):
     server.calendar.advance(2)
     assert server.calendar_state()["holidays"]["fireworks"]
     server.calendar.current = datetime(2027, 1, 1, 2)
-    assert not any(server.calendar_state()["holidays"].values())
+    holidays = server.calendar_state()["holidays"]
+    assert not any(v for k, v in holidays.items() if k != "window_decorations")  # the fireworks are over
+    assert holidays["window_decorations"]  # candle bridges stay in the windows until Epiphany
 
 
 
@@ -622,6 +662,8 @@ def test_the_season_weights_come_from_the_calendar(tmp_path, monkeypatch):
     assert winter[0] > 0.9 and summer[2] > 0.9  # [winter, spring, summer, autumn]
     look = server.calendar.seasonal_appearance
     assert summer == [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]
+    server.calendar.current = datetime(2025, 12, 24, 14)
+    assert server.calendar_state()["trees_leafless"]
 
 
 def test_measured_snow_depth_decides_the_snow_cover(tmp_path, monkeypatch):
@@ -1105,3 +1147,108 @@ def test_heavy_throttle_mud_and_moving_sand_spray(tmp_path, monkeypatch):
     server._latest_command = PlayerCommand()
     server.tick(1/30)
     assert server._tire_mark is None
+
+
+def test_knocking_a_post_over_clangs_where_the_taxi_is(tmp_path, monkeypatch):
+    import math
+    from theroadragetrip.osm.models import SceneryObject
+
+    server = _build_server(tmp_path, monkeypatch)
+    played = []
+    real = server.audio.play_group
+    server.audio.play_group = lambda group, volume=1.0, variation=None, at=None: (played.append((group, at)), real(group, volume, variation, at))
+    car = server.car
+    server._on_foot = False
+    car.speed, car.engine_on = 17.0, True  # 61 km/h
+    server.world.scenery_objects.append(SceneryObject(car.x + math.cos(car.heading) * 2.5, car.y + math.sin(car.heading) * 2.5, "bollard"))
+    for _ in range(6):
+        server.tick(1 / 30)
+    knocks = [at for group, at in played if group == "collision.post_knock"]
+    assert len(knocks) == 1 and math.dist(knocks[0], (car.x, car.y)) < 5.0
+
+
+def test_the_taxi_gets_out_of_a_wreck_it_is_stuck_in(tmp_path, monkeypatch):
+    """Reported: crashed into a rival taxi on a bridge and stuck inside it for good -
+    the pose was restored every frame, moving away from it too."""
+    import math
+    from theroadragetrip.npc import NPCState, place_parked_npc
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch)
+    car = server.car
+    server._on_foot, car.engine_on = False, True
+    van = place_parked_npc(9999, (car.x - 0.65, car.y + 0.62), None, vehicle_type="van")  # the screenshot's overlap
+    van.car.heading, van.state = car.heading + 0.01, NPCState.CRASHED
+    server.world.npc_manager.vehicles.append(van)
+    start, van_at = (car.x, car.y), (van.x, van.y)
+    server._latest_command = PlayerCommand(throttle=1.0)
+    for _ in range(30):
+        server.tick(1 / 30)
+    # Embedded: pushed apart along their contact at once (the heavier van less), then
+    # the taxi drives off - not held inside the wreck.
+    from theroadragetrip.geo import boxes_intersect
+    assert 0.0 < math.dist(van_at, (van.x, van.y)) < 1.0
+    assert not boxes_intersect(car.x, car.y, car.heading, car.length_m, car.width_m,
+                               van.x, van.y, van.heading, van.length_m, van.width_m)
+    assert math.dist(start, (car.x, car.y)) > 0.5
+
+
+def test_shop_window_lights_follow_game_clock_in_broadcast_state(tmp_path, monkeypatch):
+    from datetime import datetime
+    from types import SimpleNamespace
+    from theroadragetrip.map_chunks import ChunkIndex
+    from theroadragetrip.osm import Building
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    store = Building([(0, 0), (30, 0), (30, 20), (0, 20)], building_type="retail",
+                     opening_hours="Mo-Su 08:00-22:00")
+    server._chunks_index = ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=[], buildings=[store], sceneries=[], scenery_objects=[]))
+    sent = []
+    class Connection:
+        def send_state(self, message):
+            sent.append(message["state"]["shop_lights"])
+    connection = Connection()
+    server._clients = [connection]
+    server._client_chunks = {connection: ({"0_0"}, None)}
+    server.calendar.current = datetime(2025, 12, 22, 21, 59, 59)
+    server._broadcast_state()
+    server.calendar.current = datetime(2025, 12, 22, 22)
+    server._broadcast_state()
+    assert sent == [{"0_0": [[0, 1]]}, {"0_0": [[0, 0]]}]
+
+
+def test_snowless_christmas_field_stays_frozen_and_never_opens_for_soccer(tmp_path, monkeypatch):
+    from datetime import datetime
+    from types import SimpleNamespace
+    from theroadragetrip.osm import Scenery
+    from theroadragetrip.activities.plugins.ice_skating import FIELD_ACTIVITIES
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    server.calendar.latitude = 65.07126350936632  # Talvikkipuisto, the reported screenshot
+    server.calendar.current = datetime(2025, 12, 24, 20)
+    server.weather_history = SimpleNamespace(get=lambda moment: SimpleNamespace(snow_depth_cm=0.0))
+    server._update_sports()
+    state = server.calendar_state()
+    assert state["season"][0] == 0.0  # actual snowless ground stays snowless
+    assert server.world.fields_frozen and state["fields_frozen"]
+    assert server.world.pedestrian_mgr.sports_ice_open
+    assert not server.world.pedestrian_mgr.soccer_open
+    # Exercise the actual sports population, not only its opening flags.
+    server.car.x, server.car.y = 425498.42123242805, 7217330.898091426
+    field = Scenery([(425454.59197231045, 7217406.975601245), (425515.76507815876, 7217417.169970076),
+                     (425533.29692551604, 7217314.024273276), (425471.8271408641, 7217303.5247490015)],
+                    "pitch", name="Talvikkipuisto", sport="soccer",
+                    bbox=(425454.59, 7217303.52, 425533.30, 7217417.17))
+    manager = server.world.pedestrian_mgr
+    manager.set_scenery_features([], [field], [])
+    from theroadragetrip.physics import off_road_ground_kind
+    assert off_road_ground_kind(server.car.x, server.car.y, [field], frozen=server.world.fields_frozen) == "ice"
+    manager.ensure_sports_players(server.car)
+    players = [p for p in manager.pedestrians if p.activity and p.activity.plugin_id in FIELD_ACTIVITIES]
+    assert players and all(p.activity.plugin_id == "ice_skating" for p in players)
+    server.calendar.current = datetime(2025, 12, 24, 23, 15)
+    server._update_sports()
+    assert server.world.fields_frozen and not manager.sports_ice_open and not manager.soccer_open
+    server.calendar.current = datetime(2026, 7, 15, 20)
+    server._update_sports()
+    assert not server.world.fields_frozen and not manager.sports_ice_open and manager.soccer_open

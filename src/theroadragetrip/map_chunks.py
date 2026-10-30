@@ -17,11 +17,13 @@ import math
 
 from . import static_world
 from .fuel import fuel_station_price_cents
-from .geo import dist_point_to_segment
-from .holiday_events import house_yard_spot
+from .geo import dist_point_to_segment, meters_to_latlon
+from .holiday_events import BONFIRE_SHORE_SPACING_M, bonfire_spot_is_clear, flagpole_spot, house_yard_spot
 from .map_level import SURFACE_MAP_LEVELS
 from .nightlife import nightclub_schedule
+from .playground_equipment import equipment_rows
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
+from .shop_lights import opening_state, retail_hours
 
 _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks",
           "trees", "construction_fences", "bollards", "railings", "scenery_objects", "street_lights",
@@ -29,10 +31,11 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
           "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards",
-          "nightclubs", "attractions", "tennis_courts", "volleyball_courts", "shore_waves")
+          "nightclubs", "attractions", "tennis_courts", "volleyball_courts", "shore_waves",
+          "bonfires", "flagpoles", "shop_hours")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
-DECORATIVE_KINDS = ("bench", "waste_basket", "bicycle_parking", "charging_station", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
+DECORATIVE_KINDS = ("shrub", "bench", "waste_basket", "bicycle_parking", "charging_station", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
 
 CHUNK_SIZE_M = 500.0
 LOAD_RADIUS = 3    # chunks around the player's chunk that must be loaded (7 x 7, >= 1.5 km each way)
@@ -278,7 +281,10 @@ class ChunkIndex:
                 self._add("waters", points, _line(points))
             elif len(points) >= 2:
                 self._add("water_lines", points, _line(points))
-        self._add_water_shores(world.waters)
+        self._add_water_shores(world.waters, world)
+        for spot in getattr(world, "scenery_objects", ()):  # a mapped fire place is a Midsummer bonfire's too
+            if spot.kind == "firepit":
+                self._add("bonfires", ((spot.x, spot.y),), [round(spot.x, 1), round(spot.y, 1)])
         static_world.inherit_part_colours(world.buildings)
         for building in world.buildings:
             if len(building.points_m) < 3:
@@ -289,8 +295,16 @@ class ChunkIndex:
                 chunk["canopies"].append(_line(building.points_m))
                 chunk["canopy_heights"].append(static_world.building_style(building)[2])
                 continue
+            style = static_world.building_style(building)
             chunk["buildings"].append(_line(building.points_m))  # buildings and their styles in step
-            chunk["building_styles"].append(static_world.building_style(building))
+            chunk["building_styles"].append(style)
+            hours = retail_hours(building)
+            if hours and style[6] in (2, 4):
+                latitude, longitude = meters_to_latlon(*static_world.building_owner(building))
+                chunk["shop_hours"].append([len(chunk["buildings"]) - 1, hours, round(latitude, 5), round(longitude, 5)])
+            pole = flagpole_spot(building, world, style[6] if len(style) > 6 else 0)
+            if pole is not None:
+                self._add("flagpoles", [pole], pole)
             yard = house_yard_spot(building, world)
             if yard is not None:
                 self._add("holiday_yards", [yard], yard)
@@ -310,9 +324,9 @@ class ChunkIndex:
                 self._add("traffic_lights", ((light.x, light.y),), {
                     "id": index, "x": round(x, 2), "y": round(y, 2), "angle": round(light.direction_angle or 0.0, 4),
                 })
-        # Obstacles the simulation collides with (taxi.py check_tree_collision,
-        # check_fence_collision, check_post_collision); the collisions stay on
-        # the server, these are for drawing them. Each in one chunk.
+        # Obstacles: fences and posts the simulation collides with (taxi.py
+        # check_fence_collision, check_post_collision) and trees the client
+        # knocks over by itself (map_chunk.gd knock_trees). Each in one chunk.
         for scenery in getattr(world, "sceneries", ()):
             kinds = getattr(scenery, "tree_kinds", ())
             variations = getattr(scenery, "tree_variations", ())
@@ -344,6 +358,9 @@ class ChunkIndex:
                 if obj.kind == "charging_station":  # how many cars it charges at once: its posts
                     row.append(obj.capacity or 2)
                 self._add("scenery_objects", ((obj.x, obj.y),), row)
+        # Swings, slides, ... (playground_equipment.py): mapped in OSM, else a typical set per playground.
+        for row in equipment_rows(getattr(world, "sceneries", ()), getattr(world, "scenery_objects", ())):
+            self._add("scenery_objects", (row[:2],), row)
         # Street lights as street_lights.py places them (explicit OSM lamps, then
         # lit roads at fixed spacing): [x, y, the road's direction, pool radius].
         for lamp in getattr(world, "street_light_points", ()):
@@ -395,7 +412,7 @@ class ChunkIndex:
         for cell in cells_touched_by_line(points, self.size):
             self._chunk(cell)[kind].append(feature)
 
-    def _add_water_shores(self, waters) -> None:
+    def _add_water_shores(self, waters, world=None) -> None:
         from shapely.geometry import Polygon, box
         from shapely.ops import unary_union
 
@@ -409,6 +426,8 @@ class ChunkIndex:
         # Water rings are split around islands for filling. Their internal cuts are not shores.
         for same_layer in polygons.values():
             area = unary_union(same_layer)
+            if world is not None:
+                self._add_shore_bonfires(area, world)
             for band in range(12):
                 distance = (band + 0.5) * 0.5
                 boundary = area.buffer(-distance).boundary
@@ -425,12 +444,25 @@ class ChunkIndex:
                             if line.geom_type == "LineString" and line.length > 0.01:
                                 self._chunk(cell)["shore_waves"].append({"distance": distance, "points": _line(line.coords)})
 
+    def _add_shore_bonfires(self, water, world) -> None:
+        """Midsummer bonfire spots on the shore, a few metres inland, every
+        BONFIRE_SHORE_SPACING_M along it: the holiday layer lights them."""
+        shore = water.buffer(5.0).boundary
+        for contour in getattr(shore, "geoms", (shore,)):
+            distance = BONFIRE_SHORE_SPACING_M / 2.0
+            while distance < contour.length:
+                point = contour.interpolate(distance)
+                distance += BONFIRE_SHORE_SPACING_M
+                cell = (math.floor(point.x / self.size), math.floor(point.y / self.size))
+                if (self._cells is None or cell in self._cells) and bonfire_spot_is_clear(point.x, point.y, world):
+                    self._chunk(cell)["bonfires"].append([round(point.x, 1), round(point.y, 1)])
+
     def _add_static_world(self, world, bridge_parts) -> None:
         """godot-16: the rest of what the client draws from the map (static_world.py)."""
         from shapely.geometry import LineString, Polygon
 
         from .activities.plugins.soccer import is_soccer_pitch
-        from .map_style import FLOODLIT_KINDS, FROZEN_IN_WINTER_KINDS, SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS
+        from .map_style import FLOODLIT_KINDS, FROZEN_IN_WINTER_KINDS, SCENERY_COLORS, SEASONAL_GROUND_KINDS, SPECKLE_SCENERY_KINDS, surface_color, surface_texture
 
         # Biggest first, so nested areas draw on top (a pitch inside its
         # sports centre, a park inside a residential area). A container's
@@ -447,6 +479,8 @@ class ChunkIndex:
             kind = str(scenery.kind).lower()
             island = kind == "traffic_island" or getattr(scenery, "kerbed", False)  # redrawn above the roads
             color = (174, 162, 142) if kind.startswith("attraction_") else SCENERY_COLORS.get(kind, (38, 105, 38))
+            if kind in ("parking", "pedestrian_area", "fuel"):
+                color = surface_color(getattr(scenery, "surface", None)) or color
             # 1: snow and seasonal palettes, 2: frozen to ice in winter, 0: as is
             seasonal = 2 if kind in FROZEN_IN_WINTER_KINDS else 1 if kind in SPECKLE_SCENERY_KINDS or kind in SEASONAL_GROUND_KINDS else 0
             if getattr(scenery, "volleyball_frame", None):
@@ -454,13 +488,17 @@ class ChunkIndex:
             for cell, ring in static_world.clipped_pieces(scenery.points_m, self.size):
                 area = [static_world._rgb(color), seasonal, ring]
                 if kind in ("biergarten", "grave_yard", "cemetery", "beach", "forest", "wood",
-                            "farmland", "meadow", "grassland", "wetland", "scrub"):
+                            "farmland", "meadow", "grassland", "wetland", "scrub", "shrubbery"):
                     area.append(kind)
+                elif kind in ("parking", "pedestrian_area", "fuel"):
+                    texture = surface_texture(getattr(scenery, "surface", None))
+                    if texture:
+                        area.extend(["", texture])
                 self._chunk(cell)["landuse"].append(area)
                 if kind in FLOODLIT_KINDS:
                     self._chunk(cell)["floodlit"].append(ring)
                 if island:
-                    self._chunk(cell)["traffic_islands"].append([static_world._rgb(color), seasonal, ring])
+                    self._chunk(cell)["traffic_islands"].append(list(area))
             if kind.startswith("attraction_") and scenery.attraction_path:
                 self._add("attractions", scenery.points_m,
                           [kind.removeprefix("attraction_"), scenery.attraction_path])
@@ -540,6 +578,12 @@ class ChunkIndex:
                 self._add("level_roads", way.points_m[:1], [levels, _line(way.points_m), way.half_width_m,
                                                              static_world._rgb(road_color_for_way(way))])
 
+    def shop_lights(self, moment, loaded: set) -> dict:
+        """Only loaded shop buildings; schedule parsing and minute states are cached."""
+        return {cid: [[index, opening_state(tuple(hours), moment, latitude, longitude)]
+                      for index, hours, latitude, longitude in self._chunks[cid]["shop_hours"]]
+                for cid in sorted(loaded) if cid in self._chunks and self._chunks[cid]["shop_hours"]}
+
     def message(self, cid: str) -> dict:
         """The "chunk" message for one chunk (an empty one outside the map,
         so the client knows it has it)."""
@@ -567,7 +611,3 @@ class ChunkIndex:
                   [index, round(camera.x, 2), round(camera.y, 2), round(camera.heading, 3)])
         self._encoded.pop(cid, None)
         return cid
-
-    def encode_all(self) -> None:
-        for cid in self._chunks:
-            self.encoded(cid)

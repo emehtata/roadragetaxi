@@ -13,11 +13,13 @@ func _render() -> void:
 	var wildlife := preload("res://wildlife.gd").new()
 	root.add_child(wildlife)
 	wildlife.animals = [{"id": 1, "species": "small_bird", "position": Vector2(160, 100),
-		"heading": 0.0, "state": "FLY", "timer": 1.0, "cycle": 0, "bounds": Rect2(0, 0, 320, 200)}]
+		"heading": 0.0, "state": "FLY", "timer": 1.0, "cycle": 0, "bounds": Rect2(0, 0, 320, 200)},
+		{"id": 2, "species": "pigeon", "position": Vector2(5000, 100),  # far off screen: not drawn
+		"heading": 0.0, "state": "IDLE", "timer": 1.0, "cycle": 0, "bounds": Rect2(0, 0, 320, 200)}]
 	wildlife.queue_redraw()
 	await process_frame
 	await process_frame
-	assert(wildlife.drawn_members == 5, "the canvas draw callback must render all five flock members")
+	assert(wildlife.drawn_members == 5, "the canvas draw callback must render all five flock members, and no off-screen animal")
 	assert(0.65 * 2.0 * 9.0 >= 10.0, "a bird body must be at least ten pixels long at normal zoom")
 	print("Wildlife render test passed: five members, %.1f px bird bodies" % (0.65 * 2.0 * 9.0))
 	quit()

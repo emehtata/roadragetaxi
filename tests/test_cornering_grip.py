@@ -3,7 +3,6 @@ import math
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import (
     Car,
-    GRAVITY_MPS2,
     PHYSICS_MODE_GRIP_MULTIPLIER,
     SURFACE_MAX_GRIP_G,
     update_car_physics,

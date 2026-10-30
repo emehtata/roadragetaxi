@@ -1,7 +1,7 @@
 """Cloud cover (rrt-018-shadows): observed and forecast from FMI (real
 responses in tests/data), cached with the rest, and the weather's own
 cloud state that dims the sunlight and the building shadows."""
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import pytest

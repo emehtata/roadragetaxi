@@ -1,5 +1,5 @@
 """Tests for railway (railway=rail/tram/...) and railing (barrier=fence/railing) extraction and rendering."""
-from theroadragetrip.osm import Railing, Railway, Way, build_ways
+from theroadragetrip.osm import build_ways
 from theroadragetrip.world_cache import BinaryWorldCacheLoader, BinaryWorldCacheWriter
 
 

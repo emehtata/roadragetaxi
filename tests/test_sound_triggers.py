@@ -75,11 +75,13 @@ def test_queued_sound_events_reach_the_wire_once_and_clear(tmp_path,monkeypatch)
     at = (server.car.x,server.car.y)
     server.world.pedestrian_mgr.play_sound('sport.beach_ball',at)
     server.world.npc_manager.bus_brakes.append(at)
+    server.world.npc_manager.bicycle_bells.append(at)
     server.tick(1/30)
     server.tick(1/30)
-    for group in ['sport.beach_ball','vehicle.bus_air_brake']:
+    for group in ['sport.beach_ball','vehicle.bus_air_brake','vehicle.bus_doors','vehicle.bicycle_bell']:
         assert [e for e in sent if e.get('group') == group] == [{'type':'sound','group':group,'at':list(at)}]
     assert not server.world.pedestrian_mgr.sound_events and not server.world.npc_manager.bus_brakes
+    assert not server.world.npc_manager.bicycle_bells
 
 
 @pytest.mark.parametrize('kind,expected',[('hedge','collision.hedge_break'),('fence','collision.fence')])

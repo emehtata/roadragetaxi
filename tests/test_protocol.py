@@ -141,3 +141,25 @@ def test_random_command_payloads_never_raise_and_stay_in_range():
         for name in PlayerCommand.__dataclass_fields__:
             if name not in protocol.COMMAND_RANGES:
                 assert isinstance(getattr(command, name), bool) or (name == "engine_on" and command.engine_on is None)
+
+
+def test_state_rows_leave_out_defaults_and_round_floats():
+    from theroadragetrip.protocol import compact_row
+    row = {"id": 4, "x": 427016.293847, "y": 7217324.812233, "heading": -1.70123456, "thief": False, "layer": 0,
+           "occupants": [], "owner": None, "curse_timer": 0.0, "mood": "normal", "color": [1, 2, 3], "is_taxi": True}
+    assert compact_row(row) == {"id": 4, "x": 427016.29, "y": 7217324.81, "heading": -1.701, "color": [1, 2, 3], "is_taxi": True}
+    assert compact_row({"layer": 1, "curse_timer": 0.4, "mood": "annoyed"}) == {"layer": 1, "curse_timer": 0.4, "mood": "annoyed"}
+
+
+def test_residents_are_sent_only_for_the_inspected_entity():
+    from types import SimpleNamespace
+    from theroadragetrip.protocol import _inspected
+    assert _inspected({"kind": "npc", "id": 7}, "npc", 7) and not _inspected({"kind": "npc", "id": 7}, "npc", 8)
+    assert not _inspected(None, "pedestrian", 7) and not _inspected({"kind": "npc", "id": 7}, "pedestrian", 7)
+    from theroadragetrip.protocol import _pedestrian_to_dict
+    from theroadragetrip.pedestrian import Pedestrian
+    ped = Pedestrian(x=0.0, y=0.0, heading=0.0, speed=1.0, base_speed=1.0, way=None, segment_idx=0, direction=1,
+                     color=(1, 2, 3), resident_id=5)
+    residents = {5: SimpleNamespace(resident_id=5, name="Aino", birth_date="2000-01-01", gender="female", age=26,
+                                    household_id=None, mode="walking", personality={})}
+    assert _pedestrian_to_dict(ped, residents, person=False)["resident"] is None

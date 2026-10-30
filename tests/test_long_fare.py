@@ -101,3 +101,24 @@ def test_long_fare_to_an_airport_prefers_its_taxi_stand(monkeypatch):
     taxi.update(Car(x=airport[0], y=airport[1], heading=0.0, speed=0.0), 3.0)
     dropoff = taxi.current_passenger.dropoff
     assert (dropoff.x, dropoff.y) == (stand.x, stand.y) and dropoff.address == "Oulun lentoasema"
+
+
+def test_an_airport_road_waits_for_the_airport_tile_where_its_stand_may_be(monkeypatch):
+    airport = (430_000.0, 7_250_000.0)
+    monkeypatch.setattr(taxi_module, "_municipality_points", [("Oulun lentoasema", *airport, 100_000, "airport")])
+    taxi = TaxiManager(ways=[])
+    loaded = []
+    taxi.map_covers = lambda x, y: bool(loaded)
+    target = taxi.pick_airport_dropoff(430_000.0, 7_210_000.0)
+    taxi.current_passenger = TaxiPassenger(name="Aino", pickup=TaxiTarget(0, 0, "x"), dropoff=target, boarded=True)
+    taxi.state = TaxiState.DRIVING_TO_DROPOFF
+    taxi.sync_map_data([Way(points_m=[(airport[0] - 300, airport[1] + 300), (airport[0] + 300, airport[1] + 300)],
+                            highway="service", half_width_m=3.0)])  # a car park, streamed in first
+    car = Car(x=airport[0], y=airport[1], heading=0.0, speed=0.0)
+    taxi.update(car, 3.0)
+    assert taxi.current_passenger.dropoff is target  # not the car park yet
+    from theroadragetrip.osm import TaxiStop
+    taxi.taxi_stops.append(TaxiStop(x=airport[0] + 40, y=airport[1]))
+    loaded.append(True)
+    taxi.update(car, 3.0)
+    assert taxi.current_passenger.dropoff.x == airport[0] + 40

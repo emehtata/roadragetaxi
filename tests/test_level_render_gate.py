@@ -1,10 +1,9 @@
 """Map-level render gate (garage-04.md): what each level draws."""
 import pytest
 
-from theroadragetrip.map_level import level_view_ways, visible_on_level
+from theroadragetrip.map_level import visible_on_level
 from theroadragetrip.map_style import road_color_for_way
 from theroadragetrip.osm import Way, build_ways
-from theroadragetrip.physics import SpatialWayGrid
 
 W, H, PX = 200, 200, 2.0
 ROAD = road_color_for_way(Way([(0.0, 0.0), (1.0, 0.0)], "service", 3.0))

@@ -1,5 +1,5 @@
 """Tests for kerb (curb) extraction, rendering, and the speed-bump on impact."""
-from theroadragetrip.osm import Curb, Way, build_ways
+from theroadragetrip.osm import Curb, build_ways
 from theroadragetrip.physics import Car
 from theroadragetrip.taxi import TaxiManager
 from theroadragetrip.world_cache import BinaryWorldCacheLoader, BinaryWorldCacheWriter

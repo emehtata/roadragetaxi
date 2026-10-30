@@ -3,6 +3,7 @@
 class_name Wildlife
 extends Node2D
 
+const Entities := preload("res://entity_layer.gd")  # its _circle: draw_circle without rebuilding the disc
 const SPECIES := [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow"]
 const VALID_STATES := [&"IDLE", &"WANDER", &"FEED", &"FLEE", &"FLY", &"CROSSING"]
 const STEP_S := 0.1
@@ -250,7 +251,9 @@ static func _speed(species: String, state: String) -> float:
 
 func _draw() -> void:
 	drawn_members = 0
-	for animal in animals: _draw_animal(animal)
+	var view := (get_canvas_transform().affine_inverse() * get_viewport_rect()).grow(5.0)  # on screen only: animals live 900 m out, the view is ~150 m
+	for animal in animals:
+		if view.has_point(animal["position"]): _draw_animal(animal)
 
 
 func _draw_animal(animal: Dictionary) -> void:
@@ -301,7 +304,7 @@ func _draw_flying(at: Vector2, direction: Vector2, scale_m: float, color: Color,
 	var tail := at - direction * scale_m * 0.5
 	draw_primitive(PackedVector2Array([tail, tail - direction * scale_m * 0.5 + side * scale_m * 0.26,
 		tail - direction * scale_m * 0.5 - side * scale_m * 0.26]), PackedColorArray([color]), PackedVector2Array())
-	draw_circle(at + direction * scale_m * 0.62, scale_m * 0.19, color.lightened(0.05))
+	Entities._circle(self, at + direction * scale_m * 0.62, scale_m * 0.19, color.lightened(0.05))
 	if species == "crow" or species == "pigeon":  # the bill
 		var bill := at + direction * scale_m * 0.78
 		draw_line(bill, bill + direction * scale_m * 0.18, Color8(30, 30, 28) if species == "crow" else Color8(200, 170, 120), scale_m * 0.08)
@@ -347,16 +350,16 @@ func _draw_body(at: Vector2, direction: Vector2, scale_m: float, color: Color, s
 	match species:
 		"fox":
 			_quad(at - d * 0.45 + s * 0.1, at - d * 0.45 - s * 0.1, at - d * 1.15 - s * 0.17, at - d * 1.15 + s * 0.17, color)
-			draw_circle(at - d * 1.2, scale_m * 0.15, Color8(240, 235, 225))  # the white tail tip
+			Entities._circle(self, at - d * 1.2, scale_m * 0.15, Color8(240, 235, 225))  # the white tail tip
 			_capsule(at + d * 0.35, at - d * 0.45, scale_m * 0.22, color)
-			draw_circle(at + d * 0.6, scale_m * 0.2, light)
+			Entities._circle(self, at + d * 0.6, scale_m * 0.2, light)
 			_tri(at + d * 0.98, at + d * 0.7 + s * 0.12, at + d * 0.7 - s * 0.12, light)  # snout
 			for side: float in [-1.0, 1.0]:  # pointed ears, black backs
 				_tri(at + d * 0.58 + s * 0.12 * side, at + d * 0.48 + s * 0.3 * side, at + d * 0.68 + s * 0.24 * side, dark)
 		"hare":
 			_capsule(at + d * 0.2, at - d * 0.35, scale_m * 0.3, color)
-			draw_circle(at - d * 0.62, scale_m * 0.13, Color8(235, 232, 225))  # the white scut
-			draw_circle(at + d * 0.48, scale_m * 0.2, light)
+			Entities._circle(self, at - d * 0.62, scale_m * 0.13, Color8(235, 232, 225))  # the white scut
+			Entities._circle(self, at + d * 0.48, scale_m * 0.2, light)
 			for side: float in [-1.0, 1.0]:  # long ears raised back in a V over the shoulders, dark tips
 				var tip := at - d * 0.12 + s * 0.46 * side  # past the body's outline: visible against the ground
 				_quad(at + d * 0.48 + s * 0.05 * side, at + d * 0.5 + s * 0.17 * side, tip + d * 0.07, tip - d * 0.05,
@@ -365,24 +368,24 @@ func _draw_body(at: Vector2, direction: Vector2, scale_m: float, color: Color, s
 		"squirrel":
 			for k in 5:  # the big bushy tail: up from the back and curling over to one side
 				var curl := float(k) / 4.0
-				draw_circle(at - d * (0.45 + 0.45 * sin(curl * 2.2)) + s * (0.55 * (1.0 - cos(curl * 2.4))),
+				Entities._circle(self, at - d * (0.45 + 0.45 * sin(curl * 2.2)) + s * (0.55 * (1.0 - cos(curl * 2.4))),
 					scale_m * (0.2 + 0.08 * sin(curl * PI)), light if k % 2 else color.lightened(0.05))
 			_capsule(at + d * 0.2, at - d * 0.3, scale_m * 0.22, color)
-			draw_circle(at + d * 0.45, scale_m * 0.18, light)
+			Entities._circle(self, at + d * 0.45, scale_m * 0.18, light)
 			for side: float in [-1.0, 1.0]:
 				_tri(at + d * 0.5 + s * 0.1 * side, at + d * 0.42 + s * 0.22 * side, at + d * 0.58 + s * 0.16 * side, dark)
 		"roe_deer":
 			_capsule(at + d * 0.4, at - d * 0.45, scale_m * 0.27, color)
-			draw_circle(at - d * 0.58, scale_m * 0.15, Color8(238, 228, 205))  # the pale rump patch
+			Entities._circle(self, at - d * 0.58, scale_m * 0.15, Color8(238, 228, 205))  # the pale rump patch
 			_capsule(at + d * 0.55, at + d * 0.78, scale_m * 0.13, color.lightened(0.05))  # neck and head
 			_tri(at + d * 1.0, at + d * 0.82 + s * 0.08, at + d * 0.82 - s * 0.08, dark)  # muzzle
 			for side: float in [-1.0, 1.0]:
 				_tri(at + d * 0.74 + s * 0.08 * side, at + d * 0.64 + s * 0.26 * side, at + d * 0.8 + s * 0.2 * side, color.darkened(0.1))
 		"moose":
 			_capsule(at + d * 0.35, at - d * 0.5, scale_m * 0.32, color)
-			draw_circle(at + d * 0.22, scale_m * 0.24, dark)  # the shoulder hump
+			Entities._circle(self, at + d * 0.22, scale_m * 0.24, dark)  # the shoulder hump
 			_capsule(at + d * 0.62, at + d * 0.98, scale_m * 0.14, color.darkened(0.1))  # long head
-			draw_circle(at + d * 1.02, scale_m * 0.15, dark)  # the broad muzzle
+			Entities._circle(self, at + d * 1.02, scale_m * 0.15, dark)  # the broad muzzle
 			if id % 2 == 0:  # a bull: pale palmate antlers
 				var antler := Color8(205, 190, 160)
 				for side: float in [-1.0, 1.0]:  # broad palms out to the sides and back from the head
@@ -398,8 +401,8 @@ func _draw_body(at: Vector2, direction: Vector2, scale_m: float, color: Color, s
 				_quad(at + d * 0.15 + s * 0.12 * side, at + d * 0.2 + s * 0.27 * side,
 					at - d * 0.55 + s * 0.16 * side, at - d * 0.5 + s * 0.04 * side, light)
 			if species == "pigeon":
-				draw_circle(at + d * 0.35, scale_m * 0.2, Color8(96, 128, 116))  # the green-purple neck sheen
-			draw_circle(at + d * 0.5, scale_m * 0.2, color.lightened(0.05))
+				Entities._circle(self, at + d * 0.35, scale_m * 0.2, Color8(96, 128, 116))  # the green-purple neck sheen
+			Entities._circle(self, at + d * 0.5, scale_m * 0.2, color.lightened(0.05))
 			_tri(at + d * 0.85, at + d * 0.62 + s * 0.06, at + d * 0.62 - s * 0.06,
 				Color8(40, 40, 38) if species == "crow" else Color8(205, 175, 120))  # the bill
 
@@ -407,8 +410,8 @@ func _draw_body(at: Vector2, direction: Vector2, scale_m: float, color: Color, s
 ## A rounded body from `back` to `front`.
 func _capsule(front: Vector2, back: Vector2, radius: float, color: Color) -> void:
 	var across := (front - back).normalized().orthogonal() * radius
-	draw_circle(front, radius, color)
-	draw_circle(back, radius, color)
+	Entities._circle(self, front, radius, color)
+	Entities._circle(self, back, radius, color)
 	_quad(front + across, front - across, back - across, back + across, color)
 
 

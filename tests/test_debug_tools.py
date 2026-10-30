@@ -42,8 +42,6 @@ def _fake_taxi_mgr():
     mgr = types.SimpleNamespace(
         state="PICKUP",
         offers=[],
-        tree_effects=[],
-        fallen_trees=[],
         vomit_puddles=[],
         current_passenger=None,
     )

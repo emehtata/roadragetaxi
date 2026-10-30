@@ -67,6 +67,8 @@ def _building_window_story_count(building: Building) -> int:
             return max(1, min(40, int(levels)))
         except (TypeError, ValueError):
             pass
+    if _building_type(building) in HALL_TYPES or _building_is_retail_hall(building):
+        return 1
     height = _building_render_height(building)
     return max(1, min(40, int(round(height / 3.0))))
 
@@ -93,9 +95,13 @@ def _building_is_commercial(building: Building) -> bool:
     building=* tag alone (a building=commercial with no actual venue still
     isn't necessarily a storefront)."""
     venue_type = str(getattr(building, "venue_type", "") or "").lower()
+    if getattr(building, "shop_type", None):
+        return True
     if venue_type in COMMERCIAL_VENUE_TYPES or venue_type in COMMERCIAL_BUILDING_TYPES:
         return True
     for place in getattr(building, "associated_places", ()):
+        if getattr(place, "shop_type", None):
+            return True
         place_type = str(getattr(place, "kind", "") or "").lower()
         if place_type in COMMERCIAL_VENUE_TYPES or place_type in COMMERCIAL_BUILDING_TYPES:
             return True
@@ -105,7 +111,17 @@ def _building_is_commercial(building: Building) -> bool:
 # windows.md section 3: detached/small-residential building=* values - these
 # get fewer, smaller windows than an apartment block or office of the same
 # height. Not exhaustive of every OSM house-ish tag, just the common ones.
-HOUSE_BUILDING_TYPES = {"house", "detached", "bungalow", "cabin", "semidetached_house", "farm"}
+# terrace: a Finnish rivitalo, one storey under a pitched roof like a house.
+HOUSE_BUILDING_TYPES = {"house", "detached", "bungalow", "cabin", "semidetached_house", "farm", "terrace"}
+# Typical Finnish buildings of a type, used when OSM gives no height or levels
+# (the footprint fallback made a garage ~6 m and a warehouse ~20 m tall).
+OUTBUILDING_TYPES = {"garage", "garages", "shed", "garbage_shed", "allotment_house", "service", "kiosk"}  # no windows
+HALL_TYPES = {"industrial", "warehouse"}  # one storey, one window row
+CHURCH_TYPES = {"church", "chapel", "cathedral"}  # a steep pitched roof (gabled flag 2)
+TANK_TYPES = {"storage_tank", "tank", "silo"}  # round metal, as tall as 0.8 x its width, no windows
+TANK_COLOR = (196, 199, 197)
+TYPE_HEIGHT_M = {**{t: 3.0 for t in OUTBUILDING_TYPES}, **{t: 8.0 for t in HALL_TYPES}, "carport": 2.5,
+                 "kindergarten": 4.0, "school": 7.0, **{t: 8.0 for t in CHURCH_TYPES}}
 
 
 def _building_is_house(building: Building) -> bool:
@@ -122,14 +138,41 @@ def _building_is_house(building: Building) -> bool:
 
 
 def _building_render_height(building: Building) -> float:
-    """Use a Finnish 1.5-storey fallback for untagged detached houses."""
-    if (
-        _building_is_house_by_tag(building)
-        and getattr(building, "levels", None) is None
-        and not getattr(building, "height_is_explicit", False)
-    ):
-        return 4.5
+    """Without an OSM height or levels: a Finnish 1.5-storey house, else the
+    type's typical height (TYPE_HEIGHT_M), else the footprint fallback."""
+    if getattr(building, "levels", None) is None and not getattr(building, "height_is_explicit", False):
+        if _building_is_house_by_tag(building):
+            return 4.5
+        if _building_is_retail_hall(building):
+            return 6.0
+        if _building_type(building) in TYPE_HEIGHT_M:
+            return TYPE_HEIGHT_M[_building_type(building)]
+        if _building_type(building) in TANK_TYPES and len(getattr(building, "points_m", ())) >= 3:
+            xs, ys = [x for x, _ in building.points_m], [y for _, y in building.points_m]
+            return max(3.0, min(25.0, 0.8 * min(max(xs) - min(xs), max(ys) - min(ys))))
     return max(3.0, float(getattr(building, "height_m", 8.0)))
+
+
+def _building_type(building: Building) -> str:
+    return str(getattr(building, "building_type", "") or "").casefold()
+
+
+def _building_is_retail_hall(building: Building) -> bool:
+    """Dedicated shops have hall facades; a shop in an apartment block does not."""
+    kind = _building_type(building)
+    if kind in {"retail", "shop", "supermarket"}:
+        return True
+    if kind not in {"", "yes", "commercial"}:
+        return False
+    venues = {str(getattr(building, "venue_type", "") or "").casefold(),
+              str(getattr(building, "shop_type", "") or "").casefold()}
+    venues.update(str(place.kind).casefold() for place in getattr(building, "associated_places", ()))
+    return bool(venues & {"supermarket", "department_store", "mall"})
+
+
+def _building_is_windowless(building: Building) -> bool:
+    """Garages, sheds, tanks and other outbuildings: plain walls, no window rows."""
+    return _building_type(building) in OUTBUILDING_TYPES or _building_type(building) in TANK_TYPES
 
 
 def _building_is_house_by_tag(building: Building) -> bool:
@@ -140,7 +183,7 @@ def _uses_gabled_roof(building: Building) -> bool:
     roof_shape = str(getattr(building, "roof_shape", "") or "").casefold()
     if roof_shape:
         return roof_shape in {"gabled", "gable", "pitched"}
-    return _building_is_house_by_tag(building)
+    return _building_is_house_by_tag(building) or _building_type(building) in CHURCH_TYPES | {"greenhouse", "glasshouse"}
 
 
 SIGN_CATEGORY_BY_VENUE_TYPE = {

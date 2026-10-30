@@ -20,8 +20,16 @@ it saves under `%USERPROFILE%/Pictures/TheRoadRageTrip/`.
 
 Godot is installed at
 `/home/ubuntu/tools/godot/Godot_v4.7.2-stable_linux.x86_64`.
-Use this executable directly if `godot` is not on `PATH`; verify it with
+For visible rendering under WSL, use native Windows Godot at
+`C:\Godot\Godot_v4.7.2-stable_win64_console.exe`: `make run` and `godot-shot`
+select it automatically. Keep Linux Godot for headless checks; do not benchmark
+WSL software/Mesa rendering as native GPU performance.
+
+Use the Linux executable directly for headless checks if `godot` is not on `PATH`; verify it with
 `--version` before concluding that Godot is unavailable.
+
+Search the web for tips, references and known solutions at any time; no
+need to ask first.
 
 Python requirements may be added when a maintained dependency is the clearest
 and most reliable way to implement the requested behavior.

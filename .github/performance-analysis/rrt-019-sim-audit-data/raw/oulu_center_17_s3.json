@@ -1,0 +1,306 @@
+{
+ "args": {
+  "at": [
+   427960.0,
+   7210718.0
+  ],
+  "city": "Oulu",
+  "start_time": "2026-10-23T17:00",
+  "heading": 0.0,
+  "speed": 0.0,
+  "warmup": 60.0,
+  "seconds": 120.0,
+  "box_km": 3.0,
+  "view": [
+   142.0,
+   80.0
+  ],
+  "seed": 3,
+  "fare": false,
+  "cprofile": null,
+  "sample_ms": 0.0,
+  "out": ".github/performance-analysis/rrt-019-sim-audit-data/raw/oulu_center_17_s3.json"
+ },
+ "fare_active_end": false,
+ "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+ "load_s": 7.628685638999968,
+ "ticks": 3600,
+ "wall_ms": {
+  "p50": 2.2945170001094084,
+  "p95": 5.009373999882882,
+  "p99": 28.852033000021038,
+  "max": 94.06950800007507
+ },
+ "wall_mean_ms": 3.48861292749973,
+ "cpu_mean_ms": 3.6280496469444614,
+ "over_budget_pct": 0.75,
+ "over_half_budget_pct": 2.111111111111111,
+ "encode_ms": {
+  "mean": 0.4365281927788879,
+  "max": 1.3668599999618891
+ },
+ "state_bytes": {
+  "mean": 46561.26361111111,
+  "max": 53949
+ },
+ "sections_mean_ms": {
+  "advance_simulation": 2.7,
+  "arena_crowds": 0.004,
+  "competitors": 0.004,
+  "npc.discard_outside": 0.024,
+  "ped.discard_outside": 0.033,
+  "ped.ensure_sports_players": 0.017,
+  "ped_stage.activities": 0.015,
+  "ped_stage.avoidance": 0.023,
+  "ped_stage.despawn": 0.005,
+  "ped_stage.lod": 0.117,
+  "ped_stage.materialize_drivers": 0.009,
+  "ped_stage.movement": 0.602,
+  "ped_stage.route_nearest": 0.005,
+  "ped_stage.route_search": 0.009,
+  "ped_stage.spawn": 0.261,
+  "sim.collisions": 0.035,
+  "sim.npc": 1.344,
+  "sim.pedestrians": 1.118,
+  "sim.taxi": 0.008,
+  "sim.traffic": 0.001,
+  "sim.trains": 0.031,
+  "srv.apply_incoming_messages": 0.003,
+  "srv.broadcast_state": 0.676,
+  "srv.map_streamer": 0.018,
+  "srv.navigation": 0.001,
+  "srv.prepare_home_map": 0.001,
+  "srv.stream_map_chunks": 0.001,
+  "srv.tyre_mark": 0.005,
+  "srv.update_outside": 0.01,
+  "srv.update_speed_cameras": 0.005,
+  "srv.update_sports": 0.025,
+  "srv.weather": 0.008
+ },
+ "sections_max_ms": {
+  "advance_simulation": 92.93,
+  "arena_crowds": 0.04,
+  "competitors": 0.32,
+  "npc.discard_outside": 0.08,
+  "ped.discard_outside": 0.21,
+  "ped.ensure_sports_players": 1.12,
+  "ped_stage.activities": 2.96,
+  "ped_stage.avoidance": 0.16,
+  "ped_stage.despawn": 0.7,
+  "ped_stage.lod": 0.33,
+  "ped_stage.materialize_drivers": 0.06,
+  "ped_stage.movement": 4.38,
+  "ped_stage.route_nearest": 2.14,
+  "ped_stage.route_search": 1.83,
+  "ped_stage.spawn": 82.26,
+  "sim.collisions": 0.36,
+  "sim.npc": 47.64,
+  "sim.pedestrians": 84.21,
+  "sim.taxi": 6.72,
+  "sim.traffic": 0.02,
+  "sim.trains": 3.65,
+  "srv.apply_incoming_messages": 0.04,
+  "srv.broadcast_state": 4.06,
+  "srv.map_streamer": 0.09,
+  "srv.navigation": 0.01,
+  "srv.prepare_home_map": 0.02,
+  "srv.stream_map_chunks": 0.01,
+  "srv.tyre_mark": 0.03,
+  "srv.update_outside": 0.1,
+  "srv.update_speed_cameras": 13.23,
+  "srv.update_sports": 0.06,
+  "srv.weather": 0.11
+ },
+ "gc": {
+  "0": {
+   "count": 3,
+   "total_ms": 7.326659000000291,
+   "max_ms": 3.158113999916168
+  },
+  "1": {
+   "count": 0,
+   "total_ms": 0,
+   "max_ms": 0
+  },
+  "2": {
+   "count": 0,
+   "total_ms": 0,
+   "max_ms": 0
+  }
+ },
+ "rss_mb": [
+  365.6328125,
+  379.2578125
+ ],
+ "gc_objects": [
+  731809,
+  746920
+ ],
+ "counts_first": {
+  "npcs": 1,
+  "npcs_moving": 0,
+  "pedestrians": 65,
+  "residents": 591,
+  "trains": 3,
+  "trams": 0,
+  "ways": 8688,
+  "buildings": 2586,
+  "parking_spaces": 1693
+ },
+ "counts_last": {
+  "npcs": 2,
+  "npcs_moving": 1,
+  "pedestrians": 70,
+  "residents": 1870,
+  "trains": 7,
+  "trams": 0,
+  "ways": 8688,
+  "buildings": 2586,
+  "parking_spaces": 1693
+ },
+ "counts_mean": {
+  "npcs": 1.5916666666666666,
+  "npcs_moving": 0.5916666666666667,
+  "pedestrians": 67.95,
+  "residents": 1189.6166666666666,
+  "trains": 5.75,
+  "trams": 0.0,
+  "ways": 8688.0,
+  "buildings": 2586.0,
+  "parking_spaces": 1693.0
+ },
+ "maxrss_mb": 379.3828125,
+ "worst": [
+  {
+   "i": 2220,
+   "wall_ms": 94.06950800007507,
+   "cpu_ms": 99.88020900000194,
+   "gc": [],
+   "sec_ms": {
+    "advance_simulation": 92.93,
+    "sim.pedestrians": 84.21,
+    "ped_stage.spawn": 82.26,
+    "sim.npc": 8.5,
+    "ped_stage.movement": 1.11,
+    "srv.broadcast_state": 1.0
+   }
+  },
+  {
+   "i": 1200,
+   "wall_ms": 72.52990500001033,
+   "cpu_ms": 77.01014600000278,
+   "gc": [],
+   "sec_ms": {
+    "advance_simulation": 71.59,
+    "sim.pedestrians": 63.27,
+    "ped_stage.spawn": 59.3,
+    "sim.npc": 8.12,
+    "ped_stage.movement": 2.22,
+    "ped_stage.activities": 1.09
+   }
+  },
+  {
+   "i": 1740,
+   "wall_ms": 69.22009400000206,
+   "cpu_ms": 73.49650899999816,
+   "gc": [],
+   "sec_ms": {
+    "advance_simulation": 67.83,
+    "sim.pedestrians": 59.21,
+    "ped_stage.spawn": 56.86,
+    "sim.npc": 8.38,
+    "srv.broadcast_state": 1.26,
+    "ped_stage.movement": 0.97
+   }
+  },
+  {
+   "i": 3060,
+   "wall_ms": 68.653637999887,
+   "cpu_ms": 74.48473300000202,
+   "gc": [],
+   "sec_ms": {
+    "advance_simulation": 67.62,
+    "sim.pedestrians": 59.22,
+    "ped_stage.spawn": 55.02,
+    "sim.npc": 8.15,
+    "ped_stage.movement": 2.18,
+    "ped_stage.activities": 1.15
+   }
+  },
+  {
+   "i": 2460,
+   "wall_ms": 66.0263219999706,
+   "cpu_ms": 66.02934600000054,
+   "gc": [],
+   "sec_ms": {
+    "advance_simulation": 64.91,
+    "sim.pedestrians": 55.45,
+    "ped_stage.spawn": 49.92,
+    "sim.npc": 8.22,
+    "ped_stage.activities": 2.76,
+    "ped_stage.movement": 1.91
+   }
+  },
+  {
+   "i": 2100,
+   "wall_ms": 57.36174499998015,
+   "cpu_ms": 60.90549500000009,
+   "gc": [],
+   "sec_ms": {
+    "advance_simulation": 56.31,
+    "sim.pedestrians": 47.8,
+    "ped_stage.spawn": 44.96,
+    "sim.npc": 8.27,
+    "ped_stage.movement": 1.46,
+    "srv.broadcast_state": 0.93
+   }
+  },
+  {
+   "i": 1860,
+   "wall_ms": 53.86626800009253,
+   "cpu_ms": 57.19489999999894,
+   "gc": [],
+   "sec_ms": {
+    "advance_simulation": 52.82,
+    "sim.pedestrians": 44.47,
+    "ped_stage.spawn": 41.11,
+    "sim.npc": 8.12,
+    "ped_stage.movement": 1.42,
+    "ped_stage.activities": 1.18
+   }
+  },
+  {
+   "i": 3180,
+   "wall_ms": 53.294496000035,
+   "cpu_ms": 57.81474700000189,
+   "gc": [],
+   "sec_ms": {
+    "advance_simulation": 52.28,
+    "sim.pedestrians": 43.66,
+    "ped_stage.spawn": 37.76,
+    "sim.npc": 8.38,
+    "ped_stage.movement": 3.2,
+    "ped_stage.activities": 1.85
+   }
+  }
+ ],
+ "npc_diag": {
+  "trip_start_attempts": 180,
+  "successful_trip_starts": 80,
+  "route_generation_failures": 100,
+  "route_validation_failures": 0,
+  "vehicles_waiting_for_trips": 0,
+  "population_update_duration_s": 0.008033178000005137
+ },
+ "route_job_stats": {
+  "queued": 180,
+  "ready": 80,
+  "failed": 100,
+  "stale": 0,
+  "discarded": 0,
+  "max_frame_ms": 47.53219200006242,
+  "continued": 0,
+  "recovered": 0,
+  "safe_holds": 0
+ }
+}

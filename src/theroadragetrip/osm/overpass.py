@@ -24,11 +24,6 @@ _overpass_stats = {
 }
 
 
-def get_overpass_diagnostics() -> dict[str, object]:
-    with _overpass_stats_lock:
-        return dict(_overpass_stats)
-
-
 # Public Overpass instances hand out 429s with their own, much longer
 # cooldown than any one caller's retry backoff - immediately retrying the
 # same endpoint on the next fetch (e.g. the next tile crossing, seconds
@@ -149,11 +144,13 @@ def fetch_osm_ways(
     node["amenity"="parking"]["parking"~"underground|multi-storey"]({south},{west},{north},{east});
     node["amenity"="parking_entrance"]({south},{west},{north},{east});
       node["place"~"suburb|neighbourhood|quarter|village|town|city|hamlet"]({south},{west},{north},{east});
-    node["natural"="tree"]({south},{west},{north},{east});
+    node["natural"~"^(tree|shrub)$"]({south},{west},{north},{east});
     node["amenity"~"bench|waste_basket|bicycle_parking|fountain|fuel|charging_station"]({south},{west},{north},{east});
     node["amenity"~"biergarten|grave_yard|nightclub"]({south},{west},{north},{east});
     node["highway"="street_lamp"]({south},{west},{north},{east});
     node["leisure"~"picnic_table|firepit|miniature_golf"]({south},{west},{north},{east});
+    node["playground"]({south},{west},{north},{east});
+    way["playground"]({south},{west},{north},{east});
     node["barrier"~"gate|bollard"]({south},{west},{north},{east});
     node["historic"="memorial"]({south},{west},{north},{east});
     nwr["tourism"~"^(theme_park|camp_site|caravan_site|camp_pitch)$"]({south},{west},{north},{east});

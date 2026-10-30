@@ -76,6 +76,7 @@ class PlayerCommand:
     road_rage: bool = False  # SPACE: one press (the server counts presses like refuel)
     respawn: bool = False
     home: bool = False  # H: choose this yard as home / respawn at home (one press)
+    home_door: bool = False  # E on foot: into the home at its door / out again (one press)
     cancel_ride: bool = False
     reset_trip: bool = False
 
@@ -317,7 +318,7 @@ def advance_simulation(
         )
 
     audio.player_position = (car.x, car.y)  # where the taxi's own sounds come from
-    immobilized = taxi_mgr.tree_wait_timer > 0.0 or water_elapsed > 0.0  # sinking: no driving out
+    immobilized = water_elapsed > 0.0  # sinking: no driving out
     score_at_start = taxi_mgr.total_score
     loud_event = False  # a crash/camera/vomit sound already tells of this tick's lost points
     car.driver_mass_kg = 0.0 if on_foot else 90.0
@@ -567,12 +568,8 @@ def advance_simulation(
             car, buildings, traffic_mgr.sim_time, previous_position, ways=drive_ways,
             current_way=current_way,
         )
-        fallen_before = len(taxi_mgr.fallen_trees)
-        tree_crash = on_surface and taxi_mgr.check_tree_collision(
-            car, sceneries, traffic_mgr.sim_time, previous_position, ways=drive_ways
-        )
-        if len(taxi_mgr.fallen_trees) > fallen_before:
-            audio.play_group("collision.tree_fall")
+        # Trees: the client's alone (godot/map_chunk.gd knock_trees) - the taxi knocks them
+        # over without stopping, and a fallen tree stands again when its chunk reloads.
         fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
         fence_group = "collision.fence"
         if not fence_crash and on_surface:
@@ -582,9 +579,12 @@ def advance_simulation(
         tram_crash = on_surface and taxi_mgr.check_tram_collision(
             car, getattr(world, "tram_mgr", None), traffic_mgr.sim_time, previous_position)
         # Bollards and lamp posts are OSM nodes without a level: surface only.
+        knocked_before = taxi_mgr.knocked_posts
         post_crash = on_surface and taxi_mgr.check_post_collision(
             car, scenery_objects, traffic_mgr.sim_time, previous_position
         )
+        if taxi_mgr.knocked_posts > knocked_before:  # bent over, not just touched: the post goes down
+            audio.play_group("collision.post_knock", at=(car.x, car.y))
         if on_surface and taxi_mgr.check_curb_bump(car, curbs, previous_position, traffic_mgr.sim_time, curb_grid=curb_grid):
             audio.play_group("vehicle.curb_bump", min(1.0, 0.3 + abs(car.speed) / 10.0))
         if on_surface and taxi_mgr.check_speed_bump(car, speed_bumps, previous_position, traffic_mgr.sim_time):
@@ -605,7 +605,6 @@ def advance_simulation(
     # Once per impact (the checks stay true every frame the car touches).
     crashed = any([
         audio.on_rise("crash_building", building_crash, "collision.building", 0.8),
-        audio.on_rise("crash_tree", tree_crash, "collision.tree", 0.8),
         audio.on_rise("crash_fence", fence_crash, fence_group, 0.8),
         audio.on_rise("crash_tram", tram_crash, "collision.building", 0.9),  # a heavy steel body
         audio.on_rise("crash_post", post_crash, "collision.guardrail", 0.8),  # a metal pole
@@ -639,11 +638,12 @@ def advance_simulation(
     camy += (target_camy - camy) * cam_lerp_factor
 
     viewport_bounds = get_viewport_bounds(camx, camy, px_per_m, screen_w, screen_h, margin_m=30.0)
-    ambient_bounds = None
+    ambient_bounds = traffic_area = None
     if view_bounds is not None:
-        from .viewport import simulation_bounds
+        from .viewport import TRAFFIC_KEEP_MARGIN_M, simulation_bounds, traffic_bounds
         viewport_bounds = (view_bounds[0] - 30, view_bounds[1] - 30, view_bounds[2] + 30, view_bounds[3] + 30)
         ambient_bounds = simulation_bounds(view_bounds, car.x, car.y, car.speed, car.heading)
+        traffic_area = traffic_bounds(ambient_bounds, car.x, car.y)  # cars: a wider area than people
 
     # Trains: timetable trains, their passengers and pre-bookings follow the
     # game clock (`now`, a datetime); presentation (drawing, train sounds,
@@ -694,7 +694,8 @@ def advance_simulation(
             from .viewport import in_bounds
             party = taxi_mgr.current_passenger
             protected = [member.resident_id for member in party.members] if party is not None else []
-            npc_manager.discard_outside(ambient_bounds, residents, pedestrian_mgr, protected)
+            npc_manager.discard_outside(traffic_bounds(ambient_bounds, car.x, car.y, TRAFFIC_KEEP_MARGIN_M),
+                                        residents, pedestrian_mgr, protected)
             pedestrian_mgr.discard_outside(ambient_bounds, protected)
             taxi_mgr.vomit_puddles[:] = [p for p in taxi_mgr.vomit_puddles if in_bounds(ambient_bounds, p[0], p[1], 2.0)]
         traffic_mgr.stop_signs = getattr(world, "stop_signs", ())
@@ -713,7 +714,7 @@ def advance_simulation(
             viewport_bounds=viewport_bounds,
             player_car=car, pedestrian_mgr=pedestrian_mgr,
             current_way=current_way,
-            active_bounds=ambient_bounds,
+            active_bounds=traffic_area, near_bounds=viewport_bounds if ambient_bounds is not None else None,  # full rate on screen only
         )
         if npc_manager.snowy:
             for vehicle in npc_manager.vehicles:
@@ -726,7 +727,11 @@ def advance_simulation(
     npc_manager.accidents.clear()
     for at in npc_manager.bus_brakes:
         audio.play_group("vehicle.bus_air_brake", at=at)
+        audio.play_group("vehicle.bus_doors", at=at)  # the doors open at the stop
     npc_manager.bus_brakes.clear()
+    for at in npc_manager.bicycle_bells:
+        audio.play_group("vehicle.bicycle_bell", at=at)
+    npc_manager.bicycle_bells.clear()
     curses = pedestrian_mgr.curses + npc_manager.curses  # bumped NPC drivers curse the same way
     if curses:
         x, y = curses[-1]  # one curse per tick is plenty

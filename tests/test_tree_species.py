@@ -98,11 +98,6 @@ def test_standalone_osm_trees_are_retained_without_a_green_area():
     from theroadragetrip.map_chunks import ChunkIndex
     index = ChunkIndex(world)
     assert sum(len(chunk["trees"]) for chunk in index._chunks.values()) == 2
-    from theroadragetrip.taxi import TaxiManager
-    manager = TaxiManager(ways=[], language="en")
-    point = world.sceneries[0].trees[0]
-    nearby = manager._nearby_collision_trees(world.sceneries, *point, 5.0)
-    assert point in {(x, y) for _, _, x, y in nearby}
 
 
 def test_osm_trees_are_owned_once_and_unmapped_old_trees_are_removed():

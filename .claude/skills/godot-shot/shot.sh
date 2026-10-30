@@ -16,7 +16,7 @@ if [ $# -lt 1 ]; then
   sed -n '2,13p' "$0"
   exit 2
 fi
-out=$1; shift
+out=$(realpath -m "$1"); shift
 wait_s=15
 godot_args=()
 server_args=()
@@ -29,7 +29,13 @@ while [ $# -gt 0 ]; do
 done
 
 repo=$(cd "$(dirname "$0")/../../.." && pwd)
-godot=${GODOT:-$(ls "$HOME"/tools/godot/Godot_v*-stable_linux.x86_64 2>/dev/null | sort | tail -1)}
+godot=${GODOT:-}
+if [ -z "$godot" ] && [ -f /proc/sys/fs/binfmt_misc/WSLInterop ]; then
+  godot=/mnt/c/Godot/Godot_v4.7.2-stable_win64_console.exe
+fi
+if [ -z "$godot" ]; then
+  godot=$(ls "$HOME"/tools/godot/Godot_v*-stable_linux.x86_64 2>/dev/null | sort | tail -1)
+fi
 if [ ! -x "$godot" ]; then
   echo "Godot binary not found (set GODOT=/path/to/godot)" >&2
   exit 1
@@ -49,9 +55,17 @@ if ! .venv/bin/python tools/wait_for_port.py 127.0.0.1 "$port" 300; then
   tail -20 "$out.log" >&2
   exit 1
 fi
-timeout $((wait_s + 120)) "$godot" --path godot --display-driver x11 --rendering-driver opengl3 \
-  -- --port "$port" --screenshot "$out" --screenshot-wait "$wait_s" "${godot_args[@]}" 2>&1 \
-  | grep -E "SCRIPT ERROR|Parse Error|screenshot saved" >&2
+project=godot
+shot_path=$out
+renderer_args=(--display-driver x11 --rendering-driver opengl3)
+if [[ "$godot" == *.exe ]]; then
+  project=$(wslpath -w "$repo/godot")
+  shot_path=$(wslpath -w "$out")
+  renderer_args=()
+fi
+timeout $((wait_s + 120)) "$godot" --path "$project" "${renderer_args[@]}" \
+  -- --port "$port" --screenshot "$shot_path" --screenshot-wait "$wait_s" "${godot_args[@]}" 2>&1 \
+  | grep -E "SCRIPT ERROR|Parse Error|screenshot saved|Using Device" >&2
 
 if [ -f "$out" ]; then
   echo "$out"

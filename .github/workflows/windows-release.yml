@@ -173,7 +173,7 @@ jobs:
         shell: pwsh
         run: |
           $install = Join-Path $env:RUNNER_TEMP "RoadRageTripSmoke"
-          $setup = (Resolve-Path dist/RoadRageTrip-Setup.exe).Path
+          $setup = (Resolve-Path dist/RoadRageTrip-*-Setup.exe).Path
           $result = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$install" -Wait -PassThru
           if ($result.ExitCode -ne 0) { throw "setup exited with $($result.ExitCode)" }
           foreach ($file in @("RoadRageTrip.exe", "RoadRageTrip.pck", "server/RoadRageServer.exe", "server/osmium/osmium.exe", "THIRD_PARTY_LICENSES.md", "licenses/godot/LICENSES.txt", "server/licenses/python/PACKAGES.txt", "server/licenses/python/python/LICENSE.txt", "server/licenses/python/shapely/licenses/LICENSE_GEOS", "server/_internal/theroadragetrip/img/theroadragetrip_1672_941.png", "server/_internal/theroadragetrip/assets/audio/audio_catalog.json")) {
@@ -195,7 +195,7 @@ jobs:
           name: RoadRageTrip-windows
           path: |
             dist/RoadRageTrip-windows-x64.zip
-            dist/RoadRageTrip-Setup.exe
+            dist/RoadRageTrip-*-Setup.exe
             dist/osmium-tool-*-source.tar.gz
             dist/osmium-tool-feedstock-recipe.tar.gz
             dist/geos-*-source.tar.bz2
@@ -206,7 +206,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "${{ github.ref_name }}"
-          dist/RoadRageTrip-windows-x64.zip dist/RoadRageTrip-Setup.exe
+          dist/RoadRageTrip-windows-x64.zip (Get-ChildItem dist/RoadRageTrip-*-Setup.exe).FullName
           dist/osmium-tool-${{ env.OSMIUM_VERSION }}-source.tar.gz dist/osmium-tool-feedstock-recipe.tar.gz
           (Get-ChildItem dist/geos-*-source.tar.bz2).FullName
           --generate-notes

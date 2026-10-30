@@ -142,3 +142,24 @@ def test_bookings_are_spaced_so_a_burst_of_trains_books_one():
     assert bookings.consider(passenger(TAXI), train(), OCCURRENCE, Always()) is None
     now[0] += 30.0
     assert bookings.consider(passenger(TAXI), train(), OCCURRENCE, Always()) is not None
+
+
+def test_accepted_booking_suppresses_ordinary_offers_and_new_request_notices():
+    from theroadragetrip.physics import Car
+    from theroadragetrip.taxi import TaxiManager, TaxiOffer
+
+    taxi = TaxiManager(ways=[])
+    taxi.rail_bookings = manager()
+    booking = taxi.rail_bookings.consider(passenger(), train(), OCCURRENCE, Always())
+    assert taxi.accept_offer(0, 0.0, 0.0)
+    assert booking.status == ACCEPTED
+    accepted_notice = taxi.notification_msg
+    taxi.offers = [TaxiOffer(SimpleNamespace(), 100.0)]
+    taxi.next_offer_timer = 0.0
+
+    taxi.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), 0.1)
+
+    assert taxi.offers == []
+    assert taxi.notification_msg == accepted_notice
+    assert taxi.next_offer_timer == 0.0
+    assert taxi.generate_offers(0.0, 0.0) == []

@@ -51,6 +51,16 @@
       "commercial": "yes", "status": "conditional", "remediation": "attribution in Credits (done)"
     },
     {
+      "name": "LAM traffic profiles",
+      "paths": ["src/theroadragetrip/assets/traffic/lam_profiles.json"],
+      "purpose": "measured hourly traffic curves for calibrating NPC traffic demand", "shipped": true,
+      "origin": "Fintraffic / digitraffic.fi TMS raw detections, aggregated to hourly shares by tools/lam_profiles.py",
+      "copyright": "Fintraffic", "licence": "CC-BY-4.0",
+      "evidence": "https://www.digitraffic.fi/en/terms-of-service/; the file's own source field",
+      "obligations": "attribution 'Source: Fintraffic / digitraffic.fi, license CC 4.0 BY', indicate changes",
+      "commercial": "yes", "status": "conditional", "remediation": "attribution in Credits (done: Fintraffic / digitraffic.fi)"
+    },
+    {
       "name": "Finnish resident names",
       "paths": ["src/theroadragetrip/assets/finnish_first_names.json.gz", "src/theroadragetrip/assets/finnish_surnames.json.gz"],
       "purpose": "generated residents' names", "shipped": true,
@@ -167,14 +177,21 @@
     }
   ],
   "python_packages": {
+    "opening_hours_py": {
+      "licence": "MIT OR Apache-2.0; used under MIT",
+      "status": "verified",
+      "obligations": "Retain copyright and licence notices (collect_licenses.py); wheel includes LICENSE-MIT and LICENSE-APACHE"
+    },
     "requests": {"licence": "Apache-2.0", "status": "verified", "obligations": "licence and NOTICE (collect_licenses.py)"},
     "urllib3": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "idna": {"licence": "BSD-3-Clause", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "charset-normalizer": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "ephem": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
+    "rsplan": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "certifi": {"licence": "MPL-2.0", "status": "conditional", "obligations": "licence; source of the covered file available (upstream, unmodified)"},
     "pyproj": {"licence": "MIT (with PROJ, MIT)", "status": "verified", "obligations": "licences incl. LICENSE_proj (collect_licenses.py)"},
     "shapely": {"licence": "BSD-3-Clause, bundles GEOS (LGPL-2.1) as a separate DLL", "status": "conditional", "obligations": "LGPL text (LICENSE_GEOS) and GEOS source with each release (windows-release.yml); the DLL stays replaceable"},
+    "paho-mqtt": {"licence": "EPL-2.0 OR EDL-1.0 (BSD-3-Clause); used under EDL-1.0", "status": "verified", "obligations": "Its licence files (collect_licenses.py)"},
     "numpy": {"licence": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0, bundles OpenBLAS/LAPACK and possibly the GCC runtime", "status": "conditional", "obligations": "numpy's licence files (collect_licenses.py); verify the Windows wheel's bundled-library notices"},
     "pyinstaller": {"licence": "GPL-2.0-or-later with the bootloader exception", "status": "conditional", "obligations": "COPYING.txt (collect_licenses.py); the exception permits the built program under its own terms"}
   },

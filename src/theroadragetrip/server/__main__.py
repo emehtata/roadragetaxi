@@ -23,12 +23,12 @@ def main() -> None:
     tune_interpreter()
     args, config = parse_server_args()
     if args.list_cities:
-        print(json.dumps(list(cities_from_config(config)[0]), ensure_ascii=False))
+        print(json.dumps(list(cities_from_config(config)[0])))  # ASCII (\u00e4): Godot reads it in the Windows code page
         return
     if getattr(args, "list_saves", False):
         from ..config import CONFIG_PATH
         from ..save_slots import list_slots
-        print(json.dumps(list_slots(CONFIG_PATH), ensure_ascii=False))
+        print(json.dumps(list_slots(CONFIG_PATH)))  # ASCII (\u00e4): Godot reads it in the Windows code page
         return
     if args.list_city_locations:
         # The menu's cities, then every other municipality (menu: false)
@@ -38,7 +38,7 @@ def main() -> None:
         print(json.dumps([
             {"name": name, "latitude": latitude, "longitude": longitude, "menu": name in centers}
             for name, (latitude, longitude) in {**centers, **others}.items()
-        ], ensure_ascii=False))
+        ]))  # ASCII (\u00e4): Godot reads it in the Windows code page
         return
     if args.clear_cache:  # [OSM files, world caches] removed
         from ..osm.cache import clear_osm_cache
@@ -55,13 +55,18 @@ def main() -> None:
         return
     if args.parent_pid:
         exit_with_parent(args.parent_pid)
-    configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False))
-    server = run_server(args, config)
-    logger.info(
-        "Headless simulation server ready: city=%s tick_rate=%.1f",
-        server.chosen_city, server.tick_rate,
-    )
-    server.run_forever()
+    configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False),
+                      log_file=args.log_file)
+    try:
+        server = run_server(args, config)
+        logger.info(
+            "Headless simulation server ready: city=%s tick_rate=%.1f",
+            server.chosen_city, server.tick_rate,
+        )
+        server.run_forever()
+    except Exception:
+        logger.exception("Simulation server exited with an error")
+        raise
 
 
 if __name__ == "__main__":

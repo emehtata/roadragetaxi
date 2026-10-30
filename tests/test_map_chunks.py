@@ -6,7 +6,7 @@ import pytest
 from theroadragetrip import map_chunks
 
 
-@pytest.mark.parametrize("kind", ["biergarten", "grave_yard"])
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard", "shrub"])
 def test_point_sites_are_streamed_to_the_renderer(kind):
     from theroadragetrip.osm import SceneryObject
 
@@ -139,22 +139,18 @@ def test_obstacles_are_each_in_exactly_one_chunk():
     assert here["bollards"] == [[40.0, 0.0]]  # a street lamp is not a bollard; a bench collides with nothing
 
 
-def test_felled_trees_and_knocked_posts_reach_the_state_from_the_real_collisions():
+def test_knocked_posts_reach_the_state_from_the_real_collisions():
     from theroadragetrip import protocol
     from theroadragetrip.physics import Car
     from theroadragetrip.taxi import TaxiManager
 
     world = _obstacle_world()
     world.taxi_mgr = TaxiManager(ways=[])
-    assert protocol._fallen_and_knocked(world, 0.0, 0.0) == ([], [])
-    car = Car(x=10.0, y=19.0, heading=0.0, speed=25.0)  # 90 km/h into the pine
-    assert world.taxi_mgr.check_tree_collision(car, world.sceneries, 0.0, previous_position=(5.0, 19.0))
+    assert protocol._knocked(world, 0.0, 0.0) == []
     car = Car(x=40.0, y=0.0, heading=math.pi, speed=17.0)  # 61 km/h through the bollard
     assert world.taxi_mgr.check_post_collision(car, world.scenery_objects, 0.0)
-    fallen, knocked = protocol._fallen_and_knocked(world, 0.0, 0.0)
-    assert fallen == [[10.0, 20.0, 0.0]]  # felled the way the taxi was heading
-    assert knocked == [[40.0, 0.0, round(math.pi, 3), "bollard"]]
-    assert protocol._fallen_and_knocked(world, 5000.0, 0.0) == ([], [])  # far away: not sent
+    assert protocol._knocked(world, 0.0, 0.0) == [[40.0, 0.0, round(math.pi, 3), "bollard"]]
+    assert protocol._knocked(world, 5000.0, 0.0) == []  # far away: not sent
 
 
 def test_railings_decorations_and_street_lights_are_each_in_one_chunk():
@@ -172,7 +168,7 @@ def test_railings_decorations_and_street_lights_are_each_in_one_chunk():
     assert here["street_lights"] == [[100.0, 100.0, 1.25, 14.0]] and east["street_lights"] == [[600.0, 100.0, 0.0, 14.0]]
 
 
-@pytest.mark.parametrize("kind", ["biergarten", "grave_yard", "cemetery", "beach", "forest", "wood", "farmland", "meadow", "grassland", "wetland", "scrub"])
+@pytest.mark.parametrize("kind", ["biergarten", "grave_yard", "cemetery", "beach", "forest", "wood", "farmland", "meadow", "grassland", "wetland", "scrub", "shrubbery"])
 def test_decorated_site_kind_survives_chunk_clipping(kind):
     from theroadragetrip.osm import Scenery
 
@@ -235,9 +231,9 @@ def test_road_style_follows_the_map_style():
     two_way = SimpleNamespace(is_drivable=True, highway="primary", lanes=4, oneway=0, is_ice_road=False, surface="")
     oneway = SimpleNamespace(is_drivable=True, highway="residential", lanes=1, oneway=-1, is_ice_road=False, surface="", is_bridge=True)
     path = SimpleNamespace(is_drivable=False, highway="footway", surface="")
-    assert static_world.road_style(two_way) == {"color": list(road_color_for_way(two_way)), "center": [110, 110, 110, 2]}
-    assert static_world.road_style(oneway) == {"color": list(road_color_for_way(oneway)), "center": [110, 110, 110, 1], "oneway": -1, "bridge": True}
-    assert static_world.road_style(path) == {"color": list(road_color_for_way(path))}
+    assert static_world.road_style(two_way) == {"color": list(road_color_for_way(two_way)), "rank": 15, "center": [110, 110, 110, 2]}
+    assert static_world.road_style(oneway) == {"color": list(road_color_for_way(oneway)), "rank": 9, "center": [110, 110, 110, 1], "oneway": -1, "bridge": True}
+    assert static_world.road_style(path) == {"color": list(road_color_for_way(path)), "rank": 1}
 
 
 def test_bridge_guardrails_run_along_the_outside_only():
@@ -567,3 +563,78 @@ def test_water_shore_union_keeps_map_layers_separate(other_layer):
     has_shore = any(LineString(band["points"]).intersects(seam)
                     for chunk in index._chunks.values() for band in chunk["shore_waves"])
     assert has_shore == (other_layer != 0)
+
+
+def test_roads_rank_by_class_then_paved_for_their_draw_order():
+    from theroadragetrip.map_style import road_draw_rank
+    from theroadragetrip.osm import Way
+    street = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="residential", surface="asphalt")
+    gravel = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="residential", surface="compacted")
+    unknown = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="residential")
+    track = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="track")
+    main = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="primary", surface="gravel")
+    # Kiviniementie (asphalt) under an unnamed compacted residential street: reported drawn the wrong way round.
+    assert road_draw_rank(street) > road_draw_rank(gravel)
+    assert road_draw_rank(unknown) == road_draw_rank(street) > road_draw_rank(track)
+    assert road_draw_rank(main) > road_draw_rank(street)  # the class first: a gravel main road over a street
+
+
+def test_a_bus_stop_by_a_driveway_belongs_to_the_bus_road_and_its_bay_stops_at_junctions():
+    """Oulu's Elokuvakeskus: the stop was nearer a service entrance than
+    Torikatu, and its bay was laid along the entrance, across the junction."""
+    from types import SimpleNamespace
+    from theroadragetrip import static_world
+    from theroadragetrip.osm import Way
+    street = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=4.5, highway="residential", name="Torikatu")
+    entrance = Way(points_m=[(40.0, 13.0), (60.0, 35.0)], half_width_m=3.5, highway="service")
+    cross = Way(points_m=[(56.0, -40.0), (56.0, 40.0)], half_width_m=4.0, highway="residential")
+    stop = SimpleNamespace(x=44.0, y=12.0, layer=0, shelter=False, bench=False)
+    *_, way = static_world._bus_stop_road(stop, [street, entrance])
+    assert way is street  # though the entrance is nearer
+    bay = static_world.bus_stop_shapes(stop, [street, entrance, cross])["bay"]
+    assert max(x for x, _ in bay) < 56.0 - 4.0  # stops short of the cross street's carriageway
+    assert min(x for x, _ in bay) == pytest.approx(44.0 - 16.0, abs=0.1)  # the other way: its full 16 m
+
+
+@pytest.mark.parametrize('kind', ['pedestrian_area', 'parking', 'fuel'])
+@pytest.mark.parametrize('surface', ['sett', 'concrete:plates', 'gravel', 'sand', None, 'unknown_material'])
+def test_paved_areas_share_road_material_colours_and_keep_unknown_fallbacks(kind, surface):
+    from theroadragetrip.map_style import SCENERY_COLORS, surface_color
+    from theroadragetrip.osm import Scenery
+    from theroadragetrip.protocol import decode
+    area = Scenery([(10, 10), (90, 10), (90, 90), (10, 90)], kind, surface=surface)
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[area])
+    chunk = decode(map_chunks.ChunkIndex(world).encoded('0_0'))
+    assert chunk['landuse'][0][0] == list(surface_color(surface) or SCENERY_COLORS[kind])
+
+
+def test_surface_tag_does_not_override_vegetation_colours():
+    from theroadragetrip.map_style import SCENERY_COLORS
+    from theroadragetrip.osm import Scenery
+    park = Scenery([(10, 10), (90, 10), (90, 90), (10, 90)], 'park', surface='asphalt')
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[park])
+    assert map_chunks.ChunkIndex(world).message('0_0')['landuse'][0][0] == list(SCENERY_COLORS['park'])
+
+
+def test_surface_detail_survives_area_clipping_and_kerbed_redraws():
+    from theroadragetrip.osm import Scenery
+    area = Scenery([(480,10),(520,10),(520,30),(480,30)], 'pedestrian_area', surface='sett', kerbed=True)
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[area])
+    index = map_chunks.ChunkIndex(world)
+    for cid in ('0_0','1_0'):
+        chunk = index.message(cid)
+        assert chunk['landuse'][0][3:] == ['',3]
+        assert chunk['traffic_islands'][0][3:] == ['',3]
+
+
+def test_midsummer_bonfires_stand_on_the_shore_and_at_firepits():
+    from theroadragetrip.osm import SceneryObject, Water
+
+    lake = Water(points_m=[(0, 0), (400, 0), (400, 400), (0, 400), (0, 0)], kind="water", is_polygon=True)
+    pit = SceneryObject(x=-200.0, y=50.0, kind="firepit", id=1)
+    index = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=[lake], buildings=[], scenery_objects=[pit]))
+    spots = [spot for chunk in index._chunks.values() for spot in chunk["bonfires"]]
+    shore = [s for s in spots if s != [-200.0, 50.0]]
+    assert [-200.0, 50.0] in spots
+    assert len(shore) == 5  # a 1.6 km shore, every 300 m
+    assert all(not (0 <= x <= 400 and 0 <= y <= 400) and min(abs(x), abs(x - 400), abs(y), abs(y - 400)) <= 6 for x, y in shore)

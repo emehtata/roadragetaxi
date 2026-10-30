@@ -139,6 +139,8 @@ class Building:
     level: Optional[str] = None
     indoor: Optional[str] = None  # raw indoor=* value, None when untagged
     associated_places: List["Place"] = field(default_factory=list, repr=False)
+    opening_hours: Optional[str] = None
+    shop_type: Optional[str] = None
 
 
 @dataclass
@@ -245,12 +247,9 @@ class Scenery:
     kind: str
     name: Optional[str] = None
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
-    # Ground material, currently only populated for kind="parking" (OSM's
-    # surface=* tag, defaulting to "asphalt" when the lot doesn't specify
-    # one - a mapped parking lot is a paved area even when nobody bothered
-    # tagging it, unlike an untagged patch of open ground). None for every
-    # other kind: their color is already keyed by `kind` itself (forest,
-    # grass, ...), which already says what the ground is.
+    # OSM ground material for parking, fuel forecourts and pedestrian areas.
+    # Their imported defaults are asphalt or paving_stones; other kinds
+    # keep their kind-based ground colour (forest, grass, ...).
     surface: Optional[str] = None
     # True when this vegetation polygon is bounded by barrier=kerb and must
     # remain visible above overlapping road asphalt.
@@ -440,6 +439,8 @@ class Place:
     y: float
     name: str
     kind: str
+    opening_hours: Optional[str] = None
+    shop_type: Optional[str] = None
 
 
 def associate_places_with_buildings_steps(buildings: List[Building], places: List[Place]):
@@ -459,7 +460,7 @@ def associate_places_with_buildings_steps(buildings: List[Building], places: Lis
         yield
     venue_places = [
         place for place in places
-        if place.name and place.kind not in {
+        if (place.name or place.opening_hours) and place.kind not in {
             "suburb", "neighbourhood", "quarter", "village", "town", "city",
         }
     ]

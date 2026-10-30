@@ -10,7 +10,6 @@ from theroadragetrip.tile_streaming import (
 )
 from theroadragetrip.osm import AutoFetchManager, Way
 from theroadragetrip.osm import MapData
-from theroadragetrip.world_cache import WorldCacheManager
 from theroadragetrip.physics import SpatialWayGrid
 from concurrent.futures import Future
 import time
@@ -139,22 +138,6 @@ def test_initial_tile_streaming_is_not_repeated_after_full_startup_region():
     manager.initialize_player_tile(500.0, 500.0)
     assert manager.start_initial_tile_streaming() is False
     assert cache.calls == []
-
-
-def test_world_cache_persists_tiles_by_coordinate(tmp_path):
-    tile = TileCoord(10, -4)
-    world = MapData(
-        [Way([(0.0, 0.0), (10.0, 0.0)], "residential", 4.0)],
-        [], [], [], [], (0.0, 0.0, 10.0, 10.0),
-    )
-    cache = WorldCacheManager(cache_dir=tmp_path)
-    cache.save_tile(tile, world)
-
-    assert cache.path_for_tile(tile) == tmp_path / "tiles" / "tile_10_-4.rwc"
-    loaded = cache.load_tile(tile, bbox=(0.0, 0.0, 1.0, 1.0))
-    assert len(loaded.ways) == 1
-    assert loaded.ways[0].highway == "residential"
-    cache.close()
 
 
 def test_tile_streaming_loads_missing_tiles_in_background():

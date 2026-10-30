@@ -28,8 +28,7 @@ def _fake_pyproj(monkeypatch):
 
 
 from theroadragetrip.osm import build_ways, plant_trees
-from theroadragetrip.osm import Building, Place, Scenery, SceneryObject, Way, associate_places_with_buildings
-from theroadragetrip.geo import point_in_polygon
+from theroadragetrip.osm import Building, Place, Scenery, Way, associate_places_with_buildings
 from theroadragetrip.map_style import DISTRICT_PLACE_KINDS, SCENERY_COLORS
 from theroadragetrip.physics import Car
 from theroadragetrip.building_style import BUILDING_WALL_COLORS, FINNISH_BUILDING_COLOR_NAMES, _building_colors_from_name, _building_is_commercial, _building_is_house, _building_window_story_count
@@ -735,22 +734,6 @@ def test_build_ways_creates_fuel_pumps_for_named_roof_station_area():
     assert station.is_area is True
 
 
-def test_hard_tree_impact_knocks_tree_down_and_smokes_taxi():
-    manager = TaxiManager([Way([(0.0, 0.0), (100.0, 0.0)], "residential", 4.0)])
-    scenery = Scenery([(0.0, -20.0), (20.0, -20.0), (20.0, 20.0)], "park", trees=[(0.0, 0.0)])
-    car = Car(x=0.0, y=0.0, heading=0.0, speed=25.0)
-
-    assert manager.check_tree_collision(car, [scenery], 1.0, previous_position=(-10.0, 0.0))
-    assert (id(scenery), 0) in manager.fallen_trees
-    assert manager.tree_effects[(id(scenery), 0)]["angle"] == car.heading
-    assert manager.tree_wait_timer == 5.0
-    assert manager.taxi_smoke_timer == 5.0
-    # The client finds the shaking tree by this position: it must match
-    # the actual tree, not the car.
-    assert manager.tree_effects[(id(scenery), 0)]["x"] == 0.0
-    assert manager.tree_effects[(id(scenery), 0)]["y"] == 0.0
-
-
 def test_driving_into_construction_fence_stops_the_car_and_penalizes():
     """A construction-site scenery is fenced off - a car driving into it
     must crash the same way a building does, not pass straight through."""
@@ -949,3 +932,11 @@ def test_build_ways_reads_a_charging_station_with_its_capacity_and_road_directio
     assert stations[3].level is None and stations[4].level == -1  # in a garage
     assert abs(stations[3].direction_angle - math.pi / 4) < 1e-6  # faces the road it stands by...
     assert (stations[3].x, stations[3].y) == (25.005 * 1000.0, 60.0051 * 1000.0)  # ...where it was mapped
+
+
+def test_mapped_shrubs_keep_their_position_beside_houses():
+    result = build_ways([
+        {"type": "node", "id": 1, "lat": 65.066, "lon": 25.413, "tags": {"natural": "shrub"}},
+    ])
+    shrub, = result.scenery_objects
+    assert (shrub.kind, shrub.id, shrub.x, shrub.y) == ("shrub", 1, 25413.0, 65066.0)

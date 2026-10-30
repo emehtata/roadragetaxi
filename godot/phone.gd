@@ -72,7 +72,12 @@ func _ready() -> void:
 			InputMap.add_action(action)
 			for key in ACTIONS[action]:
 				var event := InputEventKey.new()
-				event.physical_keycode = key
+				# The keypad by what it types: with NumLock off its 2 is the Down arrow (a
+				# physical match accepted offer 2 while braking); the rest by position.
+				if key in [KEY_KP_1, KEY_KP_2, KEY_KP_3]:
+					event.keycode = key
+				else:
+					event.physical_keycode = key
 				InputMap.action_add_event(action, event)
 	visible = false
 	custom_minimum_size = DEVICE_SIZE

@@ -174,12 +174,12 @@ def test_newest_version_wins_across_neighboring_tiles(monkeypatch, versions):
         feature = _collection()["features"][0]
         feature["properties"]["version"] = version
         responses.append(json.dumps({"features": [feature]}).encode())
-    client = dr.DigitrafficClient(None, lambda *a: responses.pop(0))
+    client = dr.DigitrafficClient(None, lambda url, headers: b'{"features":[]}' if 'variable-sign' in url else responses.pop(0))
     service = dr.RoadDataService(client, lambda x, y: (x, y))
     try:
         service.request(0, 0, datetime(2026, 10, 26, tzinfo=timezone.utc))
         service.wait_idle(2)
-        assert client.fetched == 2
+        assert client.fetched == 3  # two roadwork tiles and the electronic-sign catalogue
         assert [w.version for w in service.roadworks] == [2]
     finally:
         service.close()
@@ -443,3 +443,35 @@ def test_the_permanent_cache_is_outside_the_map_cache_that_clear_cache_empties(t
     monkeypatch.setattr(osm, "CACHE_DIR", str(map_cache))
     assert clear_osm_cache() == 1 and road_cache.exists()
     assert dr.DigitrafficClient(road_cache, FakeOpener(fail=True)).get_json("/x") is not None
+
+
+def test_console_debug_locates_loaded_and_placed_roadworks_without_logging_each_tick(caplog):
+    import logging
+    from types import SimpleNamespace
+
+    work = _kuusamontie()
+    service = SimpleNamespace(roadworks=[work], revision=1, request=lambda *a: None)
+    live = dr.LiveRoadworks(service, PROJECT)
+    moment = _local(2026, 10, 28, 11)
+    grid = SpatialWayGrid([_road_along(work.lines_ll)])
+    with caplog.at_level(logging.DEBUG, logger='theroadragetrip.digitraffic_road'):
+        live.update(0, 0, *moment, 1, grid)
+        messages = [r.getMessage() for r in caplog.records]
+        loaded = next(m for m in messages if 'lines_lon_lat=' in m)
+        assert work.situation_id in loaded and repr(work.title) in loaded and 'road=20' in loaded
+        assert str(work.lines_ll) in loaded and 'active=True' in loaded
+        assert f'placed_zones={len(live.zones)}' in loaded
+        zone = live.zones[0]
+        assert any(f'start_xy_m=({zone.start[0]:.2f}, {zone.start[1]:.2f})' in m
+                   and f'end_xy_m=({zone.end[0]:.2f}, {zone.end[1]:.2f})' in m for m in messages)
+        count = len(caplog.records)
+        for _ in range(30):
+            live.update(0, 0, *moment, 1, grid)
+        assert len(caplog.records) == count
+        # Source positions remain visible even when no loaded road matches them.
+        service.revision += 1
+        live.update(0, 0, *moment, 2, SpatialWayGrid([]))
+        assert 'active=True placed_zones=0' in caplog.records[-1].getMessage()
+        assert str(work.lines_ll) in caplog.records[-1].getMessage()
+        live.update(0, 0, *_local(2026, 10, 28, 15), 2, grid)
+        assert 'active=False placed_zones=0' in caplog.records[-1].getMessage()

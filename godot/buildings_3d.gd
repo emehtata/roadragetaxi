@@ -186,7 +186,13 @@ func _make_sprite(view: SubViewport, z: int) -> Sprite2D:
 	var sprite := Sprite2D.new()
 	sprite.texture = view.get_texture()
 	sprite.z_index = z
-	sprite.material = preload("res://emissive.tres")  # unshaded: the 3D view is lit already (set_light), not again
+	# Unshaded: the 3D view is lit already (set_light), not again. Premultiplied:
+	# see-through glass was blended over the view's clear background once
+	# already; a plain alpha blend did it twice and darkened the ground under it.
+	var material := CanvasItemMaterial.new()
+	material.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	material.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+	sprite.material = material
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST  # one texel per screen pixel
 	add_child(sprite)
 	return sprite
@@ -262,6 +268,8 @@ func _process(_delta: float) -> void:
 ## light as `level` (Daylight.artificial) rises - no geometry is rebuilt.
 func set_light(level: float, ambient: Color) -> void:
 	_shared["material"].set_shader_parameter("ambient", ambient)
+	_shared["material"].set_shader_parameter("lit_level", clampf(level, 0.0, 1.0))  # the walls' own lit windows
+	_shared["glass"].albedo_color = Color(ambient.r, ambient.g, ambient.b)
 	_shared["lit"].albedo_color = lit_color(level, ambient)
 	if (level > 0.01) != _lit_on:  # the lit meshes in or out (by day they'd only cost)
 		_lit_on = level > 0.01
@@ -312,7 +320,8 @@ func instance_count() -> int:
 ## lit windows' verts), "stats"}.
 static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array = []) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "lit": PackedVector3Array(),
-		"arena": PackedVector3Array(), "shadow": PackedVector3Array(),
+		"wall_uv": PackedVector2Array(), "window": PackedFloat32Array(),  # the shader's windows (building_snow.gdshader)
+		"arena": PackedVector3Array(), "shadow": PackedVector3Array(), "glass": PackedVector3Array(), "glass_colors": PackedColorArray(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
 	for i in buildings.size():
 		var footprint: PackedVector2Array = buildings[i]
@@ -320,7 +329,7 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 			_building(out, footprint, styles[i] if i < styles.size() else [], origin)
 	for site in sites:
 		_crane(out, site, origin)
-	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size()) / 3
+	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size() + out["glass"].size()) / 3
 	return out
 
 
@@ -328,9 +337,12 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 ## windows, both in the one building view.
 static func meshes(arrays: Dictionary) -> Array:
 	var instances: Array = []
+	if not arrays.get("glass", PackedVector3Array()).is_empty():
+		instances.append(_instance(_mesh(arrays["glass"], arrays["glass_colors"]), _shared["glass"], LAYER_BUILDINGS))
 	if arrays["verts"].is_empty():
 		return instances
-	var mesh := _mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"])
+	var mesh := _mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], arrays.get("wall_uv", PackedVector2Array()),
+		arrays.get("window", PackedFloat32Array()))
 	instances.append(_instance(mesh, _shared["material"], LAYER_BUILDINGS))
 	# rrt-018-shadows: each building as a plain prism (walls and a flat roof,
 	# no windows or doors: a fifth of the triangles), not drawn, only casting
@@ -355,7 +367,19 @@ static func meshes(arrays: Dictionary) -> Array:
 
 
 static var _shared := {"material": _make_material(), "lit": _make_material(true), "arena": _make_material(true),
-	"caster": _caster_material()}  # the shadows-only prisms: any opaque material casts (the unshaded shader didn't)
+	"caster": _caster_material(),  # the shadows-only prisms: any opaque material casts (the unshaded shader didn't)
+	"glass": _glass_material()}
+
+
+## Greenhouse glass: alpha-blended vertex colours, both faces (the far
+## panes show through the near ones), times the ambient light (set_light).
+static func _glass_material() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.vertex_color_use_as_albedo = true
+	return m
 
 
 static func _caster_material() -> StandardMaterial3D:
@@ -364,7 +388,8 @@ static func _caster_material() -> StandardMaterial3D:
 	return m
 
 
-static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask := PackedVector2Array()) -> ArrayMesh:
+static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask := PackedVector2Array(),
+		wall_uv := PackedVector2Array(), window := PackedFloat32Array()) -> ArrayMesh:
 	var surface := []
 	surface.resize(Mesh.ARRAY_MAX)
 	surface[Mesh.ARRAY_VERTEX] = verts
@@ -372,8 +397,13 @@ static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask
 		surface[Mesh.ARRAY_COLOR] = colors
 	if not roof_mask.is_empty():
 		surface[Mesh.ARRAY_TEX_UV] = roof_mask
+	var flags := 0
+	if wall_uv.size() == verts.size() and window.size() == verts.size() * 4:
+		surface[Mesh.ARRAY_TEX_UV2] = wall_uv
+		surface[Mesh.ARRAY_CUSTOM0] = window
+		flags = Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface, [], {}, flags)
 	return mesh
 
 
@@ -389,23 +419,36 @@ static func _instance(mesh: ArrayMesh, material: Material, layer: int) -> MeshIn
 ## One triangle, wound so its front faces `facing` (the outward normal):
 ## Godot's front faces are clockwise, i.e. (b - a) x (c - a) points away.
 ## Footprints come either way round, so the winding is decided here, once.
-static func _tri(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, color: Color, facing: Vector3, key := "verts") -> void:
+static func _tri(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, color: Color, facing: Vector3, key := "verts",
+		uvs := PackedVector2Array(), window := Vector4.ZERO) -> void:
 	var normal := (b - a).cross(c - a)
+	if uvs.size() != 3:
+		uvs = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
 	if normal.dot(facing) > 0.0:
 		var t := b
 		b = c
 		c = t
+		uvs = PackedVector2Array([uvs[0], uvs[2], uvs[1]])
 		normal = -normal
 	out[key].append_array(PackedVector3Array([a, b, c]))
 	if key != "verts":
 		return
+	if out.has("wall_uv"):  # the building meshes (not glass): every vertex, windows or not
+		out["wall_uv"].append_array(uvs)
+		for i in 3:
+			out["window"].append_array(PackedFloat32Array([window.x, window.y, window.z, window.w]))
 	out["colors"].append_array(PackedColorArray([color, color, color]))
 	var shade := 0.90 if facing.y > 0.5 and Vector2(-normal.x, -normal.z).dot(LIGHT) < -0.001 else 1.0
 	var mask := Vector2(1.0 if facing.y > 0.5 else 0.0, shade)
 	out["roof_mask"].append_array(PackedVector2Array([mask, mask, mask]))
 
 
-static func _quad(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color, facing: Vector3, key := "verts") -> void:
+static func _quad(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color, facing: Vector3, key := "verts",
+		uvs := PackedVector2Array(), window := Vector4.ZERO) -> void:
+	if uvs.size() == 4:
+		_tri(out, a, b, c, color, facing, key, PackedVector2Array([uvs[0], uvs[1], uvs[2]]), window)
+		_tri(out, a, c, d, color, facing, key, PackedVector2Array([uvs[0], uvs[2], uvs[3]]), window)
+		return
 	_tri(out, a, b, c, color, facing, key)
 	_tri(out, a, c, d, color, facing, key)
 
@@ -423,9 +466,14 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 	var wall_color := Color8(int(style[4][0]), int(style[4][1]), int(style[4][2])) if style.size() > 4 else Color8(139, 139, 137)
 	var floors: int = maxi(1, int(style[5]) if style.size() > 5 else roundi(height / 3.0))
 	var category: int = int(style[6]) if style.size() > 6 else 0
+	var shop_state: int = int(style[8]) if style.size() > 8 else -1
 	var arena := style.size() > 7 and int(style[7]) == 1
-	var gabled := style.size() > 1 and int(style[1]) == 1
+	var gabled := style.size() > 1 and int(style[1]) >= 1
+	var steep := style.size() > 1 and int(style[1]) == 2  # a church
 	var outward_sign := -1.0 if B25.signed_area(footprint) > 0.0 else 1.0
+	if style.size() > 7 and int(style[7]) == 2:
+		_glasshouse(out, footprint, height, gabled, outward_sign)
+		return
 	var centre := Vector2.ZERO
 	for p in footprint:
 		centre += p
@@ -441,18 +489,63 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 			continue
 		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
 		var shade := 0.72 + 0.28 * clampf(normal.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
-		_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), Color(wall_color.r * shade, wall_color.g * shade, wall_color.b * shade), to_3d(normal))
+		var wall_shade := Color(wall_color.r * shade, wall_color.g * shade, wall_color.b * shade)
 		out["stats"]["walls"] += 1
-		_windows(out, a, b, normal, height, floors, category, seed_base + i * 7.13, arena)
+		if arena:  # their windows light up with a match (set_arena_lights): geometry, as before
+			_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), wall_shade, to_3d(normal))
+			_windows(out, a, b, normal, height, floors, category, seed_base + i * 7.13, arena)
+			continue
+		# The windows are the wall shader's (building_snow.gdshader): metres on the wall, and its window grid.
+		var length := a.distance_to(b)
+		var count := window_count(length, category)
+		out["stats"]["windows"] += count * (1 if category == CATEGORY_RETAIL_HALL else ceili(floors / 2.0) if category == 1 else floors)
+		_quad(out, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), wall_shade, to_3d(normal), "verts",
+			PackedVector2Array([Vector2(0.0, 0.0), Vector2(length, 0.0), Vector2(length, height), Vector2(0.0, height)]),
+			Vector4(length, minf(3.2, height / floors) if category == CATEGORY_RETAIL_HALL else height / floors,
+				count + 1000 * category + 10000 * (shop_state + 1), seed_base + i * 7.13))
 	_doors(out, footprint, style[3] if style.size() > 3 else [], outward_sign, height, floors, origin)
 	_shadow_prism(out["shadow"], footprint, height)
 	if gabled:
-		_gabled(out, footprint, height, roof_color, wall_color)
+		_gabled(out, footprint, height, roof_color, wall_color, steep)
 	else:
 		var heights := PackedFloat32Array()
 		heights.resize(footprint.size())
 		heights.fill(height)
 		_polygon(out, footprint, heights, roof_color)
+		if category != CATEGORY_WALL:
+			_roof_details(out, footprint, height, floors, roof_color, wall_color, seed_base)
+
+
+## A greenhouse (static_world.is_glasshouse): walls and roof of see-through
+## glass in their own mesh (_shared["glass"]), the ground and cars showing
+## through. No windows or doors, and no shadow prism: glass casts none.
+const GLASS := Color(0.86, 0.95, 0.90, 0.3)
+
+static func _glasshouse(out: Dictionary, footprint: PackedVector2Array, height: float, gabled: bool, outward_sign: float) -> void:
+	var glass := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array()}
+	for i in footprint.size():
+		var a := footprint[i]
+		var b := footprint[(i + 1) % footprint.size()]
+		var edge := b - a
+		if edge.length_squared() < 1e-6:
+			continue
+		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
+		var shade := 0.85 + 0.15 * clampf(normal.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+		_quad(glass, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), Color(GLASS.r * shade, GLASS.g * shade, GLASS.b * shade), to_3d(normal))
+	if gabled:
+		_gabled(glass, footprint, height, GLASS, GLASS)
+	else:
+		var heights := PackedFloat32Array()
+		heights.resize(footprint.size())
+		heights.fill(height)
+		_polygon(glass, footprint, heights, GLASS)
+	for i in glass["colors"].size():  # the shading above drops alpha: every pane the same glass
+		var color: Color = glass["colors"][i]
+		color.a = GLASS.a
+		glass["colors"][i] = color
+	out["glass"].append_array(glass["verts"])
+	out["glass_colors"].append_array(glass["colors"])
+	out["stats"]["buildings"] += 1
 
 
 ## A tower crane on a construction site (its fence ring) big enough for
@@ -504,6 +597,95 @@ static func _box(out: Dictionary, a: Vector2, b: Vector2, half_width: float, bot
 
 ## The building's shadow caster: its walls and a flat roof at the eaves
 ## (a gable's ridge is left out: a little shorter shadow, far fewer cases).
+## A flat roof as seen from above in a Finnish town (Oulu's Valkea talo):
+## a parapet round the edge, the lift and stair machine rooms on a block of
+## three floors or more, a few vent units - placed by the building's own seed,
+## so the same every time, and casting the sun's shadow.
+const PARAPET_M := 0.7
+const PARAPET_INSET_M := 0.35
+const MACHINE_ROOM_MIN_AREA := 250.0
+
+
+static func _roof_details(out: Dictionary, footprint: PackedVector2Array, height: float, floors: int,
+		roof_color: Color, wall_color: Color, seed: float) -> void:
+	var area := absf(B25.signed_area(footprint))
+	if area < 40.0:
+		return
+	var rim := roof_color.lerp(Color.WHITE, 0.18)
+	var inner_rings := Geometry2D.offset_polygon(footprint, -PARAPET_INSET_M)
+	if inner_rings.size() == 1 and inner_rings[0].size() == footprint.size():
+		var inner: PackedVector2Array = inner_rings[0]
+		var outward := -1.0 if B25.signed_area(footprint) > 0.0 else 1.0
+		var top := height + PARAPET_M
+		for i in footprint.size():
+			var a := footprint[i]
+			var b := footprint[(i + 1) % footprint.size()]
+			var ia := inner[i]
+			var ib := inner[(i + 1) % inner.size()]
+			if (b - a).length_squared() < 1e-4 or ia.distance_to(a) > 1.2 or ib.distance_to(b) > 1.2:
+				continue  # the inset ring's corners in another order (a concave footprint): no parapet there
+			var normal := Vector2(-(b - a).y, (b - a).x).normalized() * outward
+			_quad(out, to_3d(a, height), to_3d(b, height), to_3d(b, top), to_3d(a, top), wall_color, to_3d(normal))  # outside
+			_quad(out, to_3d(ia, height), to_3d(ib, height), to_3d(ib, top), to_3d(ia, top), wall_color.darkened(0.25), to_3d(-normal))  # inside
+			_quad(out, to_3d(a, top), to_3d(b, top), to_3d(ib, top), to_3d(ia, top), rim, Vector3.UP)  # its top
+		_shadow_ring(out["shadow"], footprint, height, top)
+	# Machine rooms (lift, stairs) along the roof's longest edge, a few vents.
+	var longest := 0
+	for i in footprint.size():
+		if footprint[i].distance_squared_to(footprint[(i + 1) % footprint.size()]) > footprint[longest].distance_squared_to(footprint[(longest + 1) % footprint.size()]):
+			longest = i
+	var along := (footprint[(longest + 1) % footprint.size()] - footprint[longest]).normalized()
+	var across := Vector2(-along.y, along.x)
+	var centre := Vector2.ZERO
+	for p in footprint:
+		centre += p
+	centre /= footprint.size()
+	var extent := 0.0
+	for p in footprint:
+		extent = maxf(extent, absf((p - centre).dot(along)))
+	var box_color := roof_color.lerp(Color.WHITE, 0.1)
+	if floors >= 3 and area >= MACHINE_ROOM_MIN_AREA:
+		var rooms := clampi(1 + int(area / 1500.0), 1, 3)
+		for k in rooms:
+			var offset := (float(k) - (rooms - 1) / 2.0) * extent * 0.9 / rooms + (B25.unit(seed + k * 2.3) - 0.5) * 3.0
+			var size := Vector2(4.0 + 2.0 * B25.unit(seed + k * 5.1), 3.0 + 1.5 * B25.unit(seed + k * 7.7))
+			_roof_box(out, footprint, centre + along * offset, along, across, size, height, height + 2.8, box_color, wall_color)
+	var vents := clampi(int(area / 200.0), 0, 6)
+	for k in vents:
+		var at := centre + along * (B25.unit(seed + k * 3.3) - 0.5) * extent * 1.6 \
+			+ across * (B25.unit(seed + k * 4.9) - 0.5) * 6.0
+		_roof_box(out, footprint, at, along, across, Vector2(1.1, 1.1), height, height + 1.0, box_color, wall_color)
+
+
+## A box standing on the roof (a machine room, a vent), if it fits inside the footprint.
+static func _roof_box(out: Dictionary, footprint: PackedVector2Array, at: Vector2, along: Vector2, across: Vector2,
+		size: Vector2, base: float, top: float, top_color: Color, side_color: Color) -> void:
+	var corners := PackedVector2Array([
+		at - along * size.x / 2 - across * size.y / 2, at + along * size.x / 2 - across * size.y / 2,
+		at + along * size.x / 2 + across * size.y / 2, at - along * size.x / 2 + across * size.y / 2])
+	for c in corners:
+		if not Geometry2D.is_point_in_polygon(c, footprint):
+			return
+	var centre := at
+	for i in 4:
+		var a := corners[i]
+		var b := corners[(i + 1) % 4]
+		var mid := (a + b) / 2.0
+		var shade := 0.72 + 0.28 * clampf((mid - centre).normalized().dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+		_quad(out, to_3d(a, base), to_3d(b, base), to_3d(b, top), to_3d(a, top),
+			Color(side_color.r * shade, side_color.g * shade, side_color.b * shade), to_3d(mid - centre))
+	_quad(out, to_3d(corners[0], top), to_3d(corners[1], top), to_3d(corners[2], top), to_3d(corners[3], top), top_color, Vector3.UP)
+	_shadow_prism(out["shadow"], corners, top)
+
+
+## The parapet's own shadow: its walls, from the roof up.
+static func _shadow_ring(verts: PackedVector3Array, footprint: PackedVector2Array, base: float, top: float) -> void:
+	for i in footprint.size():
+		var a := footprint[i]
+		var b := footprint[(i + 1) % footprint.size()]
+		verts.append_array(PackedVector3Array([to_3d(a, base), to_3d(b, base), to_3d(b, top), to_3d(a, base), to_3d(b, top), to_3d(a, top)]))
+
+
 static func _shadow_prism(verts: PackedVector3Array, footprint: PackedVector2Array, height: float) -> void:
 	for i in footprint.size():
 		var a := footprint[i]
@@ -518,6 +700,7 @@ static func _shadow_prism(verts: PackedVector3Array, footprint: PackedVector2Arr
 ## house, every other floor), a storefront row on a commercial ground floor,
 ## lit deterministically (LIT_PROBABILITY).
 const CATEGORY_WALL := 3  # a plain wall (a stadium's stands, map_chunks.stadium_stands): no window rows
+const CATEGORY_RETAIL_HALL := 4  # ground-level shop glazing, plain walls above
 
 
 static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, height: float, floors: int, category: int, seed: float, arena: bool) -> void:
@@ -527,11 +710,11 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, h
 	var house := category == 1
 	var along := (b - a) / length
 	var count := clampi(int(length / ((44.0 if house else 32.0) / 9.0)), 1, 2 if house else 3)
-	var storey := height / floors
-	for f in floors:
+	var storey := minf(3.2, height / floors) if category == CATEGORY_RETAIL_HALL else height / floors
+	for f in (1 if category == CATEGORY_RETAIL_HALL else floors):
 		if house and floors > 1 and f % 2 == 1:
 			continue
-		var storefront := category == 2 and f == 0
+		var storefront := (category == 2 or category == CATEGORY_RETAIL_HALL) and f == 0
 		var tall := storey * 0.55 * (1.45 if storefront else 0.75 if house else 1.0)
 		var half := length / (count + 2) * 0.45 / 2.0 * (1.35 if storefront else 0.75 if house else 1.0)
 		var bottom := storey * (f + 0.5) - tall / 2.0
@@ -550,6 +733,18 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, h
 			if arena:
 				o = normal * (LIT_OUT + 0.01)
 				_quad(out, to_3d(p0 + o, bottom), to_3d(p1 + o, bottom), to_3d(p1 + o, bottom + tall), to_3d(p0 + o, bottom + tall), color, to_3d(normal), "arena")
+
+
+## Windows per floor on a wall `length` long (the shader's bays): a ~3 m bay in
+## town (Oulu's Valkea talo), 4.5 m on a house; none on a short or plain wall.
+const WINDOW_BAY_M := 3.0
+const HOUSE_WINDOW_BAY_M := 4.5
+
+
+static func window_count(length: float, category: int) -> int:
+	if length < 1.5 or category == CATEGORY_WALL:
+		return 0
+	return maxi(1, roundi(length / (HOUSE_WINDOW_BAY_M if category == 1 else WINDOW_BAY_M)))
 
 
 static func unit_lit(seed: float, storefront: bool, category: int) -> bool:
@@ -583,7 +778,7 @@ static func _doors(out: Dictionary, footprint: PackedVector2Array, entrances: Ar
 ## cut at the ridge line and each half triangulated with its vertex heights.
 ## Every wall under a sloping edge gets its gable: the wall continued up to
 ## the roof (godot-23). Returns the ridge's rise.
-static func _gabled(out: Dictionary, footprint: PackedVector2Array, height: float, color: Color, wall_color: Color) -> float:
+static func _gabled(out: Dictionary, footprint: PackedVector2Array, height: float, color: Color, wall_color: Color, steep := false) -> float:
 	var longest := 0
 	for i in footprint.size():
 		if footprint[i].distance_squared_to(footprint[(i + 1) % footprint.size()]) > footprint[longest].distance_squared_to(footprint[(longest + 1) % footprint.size()]):
@@ -597,7 +792,7 @@ static func _gabled(out: Dictionary, footprint: PackedVector2Array, height: floa
 	var reach := 0.0
 	for p in footprint:
 		reach = maxf(reach, absf((p - centre).dot(normal)))
-	var rise := minf(4.0, reach * 0.3)
+	var rise := minf(12.0, reach) if steep else minf(4.0, reach * 0.3)  # steep: about 45 degrees (a church)
 	var far := 10000.0
 	for side: float in [1.0, -1.0]:
 		var half := PackedVector2Array([centre - axis * far, centre + axis * far, centre + axis * far + normal * side * far, centre - axis * far + normal * side * far])

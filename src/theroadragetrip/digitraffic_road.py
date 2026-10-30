@@ -7,15 +7,18 @@ as game Roadwork zones with their real restrictions (speed limit, closed
 lane, closed road). Without the setting, offline or outside the state road
 network, the game keeps its generated roadworks.
 
-Every query is cached in SQLite forever (no expiration): the same area and
+Roadwork queries are cached in SQLite forever (no expiration): the same area and
 15-minute game-time window is never fetched twice, so a replay of a past
 day, or a restart, reads exactly what was fetched before. The time window is
-part of each query, so live play still sees new data every window.
+part of each query, so live play still sees new data every window. Electronic
+sign catalogues and today's sign history refresh after a minute; past-day
+history uses the permanent cache.
 
 Source: Fintraffic / digitraffic.fi, license CC 4.0 BY.
 """
 from __future__ import annotations
 
+import collections
 import gzip
 import json
 import logging
@@ -72,7 +75,7 @@ class DigitrafficClient:
     """GET JSON from Digitraffic, answering repeated queries from the cache.
 
     A query is its exact path and parameters. A successful answer (an empty
-    one too) is stored and served from then on without expiry; failures are
+    one too) is stored without expiry unless a caller requests max_age_s; failures are
     not stored, and the same query is retried only after a backoff."""
 
     def __init__(self, cache_path: Optional[Path], opener: Callable[[str, dict], bytes] = _default_opener,
@@ -88,31 +91,38 @@ class DigitrafficClient:
             self._db.execute("CREATE TABLE IF NOT EXISTS responses (url TEXT PRIMARY KEY, fetched_at TEXT, body BLOB)")
             self._db.commit()
         self._memory: Dict[str, bytes] = {}  # without a database file (tests)
+        self._stored_at: Dict[str, float] = {}
 
     @staticmethod
     def url(path: str, params: Optional[dict] = None) -> str:
         query = urllib.parse.urlencode(sorted((params or {}).items()))
-        return f"{BASE_URL}{path}" + (f"?{query}" if query else "")
+        base = path if path.startswith('https://') else f"{BASE_URL}{path}"
+        return base + (f"?{query}" if query else "")
 
-    def cached(self, url: str) -> Optional[bytes]:
+    def cached(self, url: str, max_age_s: Optional[float] = None) -> Optional[bytes]:
         with self._lock:
             if self._db is None:
+                if max_age_s is not None and self.clock() - self._stored_at.get(url, float('-inf')) >= max_age_s:
+                    return None
                 return self._memory.get(url)
-            row = self._db.execute("SELECT body FROM responses WHERE url = ?", (url,)).fetchone()
+            row = self._db.execute("SELECT body, fetched_at FROM responses WHERE url = ?", (url,)).fetchone()
+        if row and max_age_s is not None and (datetime.now(timezone.utc) - datetime.fromisoformat(row[1])).total_seconds() >= max_age_s:
+            return None
         return gzip.decompress(row[0]) if row else None
 
     def _store(self, url: str, body: bytes) -> None:
         with self._lock:
             if self._db is None:
                 self._memory[url] = body
+                self._stored_at[url] = self.clock()
                 return
             self._db.execute("INSERT OR REPLACE INTO responses VALUES (?, ?, ?)",
                              (url, datetime.now(timezone.utc).isoformat(timespec="seconds"), gzip.compress(body)))
             self._db.commit()
 
-    def get_json(self, path: str, params: Optional[dict] = None) -> Optional[dict]:
+    def get_json(self, path: str, params: Optional[dict] = None, *, max_age_s: Optional[float] = None) -> Optional[dict]:
         url = self.url(path, params)
-        body = self.cached(url)
+        body = self.cached(url, max_age_s)
         if body is None:
             failures, retry_at = self._failures.get(url, (0, 0.0))
             if self.clock() < retry_at:
@@ -249,7 +259,7 @@ def tiles_near(lon: float, lat: float, margin_deg: Tuple[float, float]) -> List[
 
 
 class RoadDataService:
-    """Fetches the roadworks around the player for the current game-time
+    """Fetches roadworks and electronic signs around the player for the current game-time
     window on its own thread. `request()` is cheap and called from the
     simulation; `roadworks` is the latest result (replaced whole, never
     mutated), and `revision` grows whenever it changes."""
@@ -257,6 +267,7 @@ class RoadDataService:
     def __init__(self, client: DigitrafficClient, to_lonlat: Callable[[float, float], Tuple[float, float]]) -> None:
         self.client, self.to_lonlat = client, to_lonlat
         self.roadworks: List[LiveRoadwork] = []
+        self.variable_signs: list = []
         self.revision = 0
         self._wanted: Optional[Tuple[tuple, datetime]] = None
         self._done: Optional[Tuple[tuple, datetime]] = None
@@ -292,6 +303,10 @@ class RoadDataService:
                 if previous is None or work.version > previous.version:
                     unique[work.situation_id] = work
             self.roadworks = list(unique.values())
+            self.revision += 1  # publish closures before potentially slow sign-reference lookups
+            from .electronic_signs import fetch_signs
+            self.variable_signs, signs_complete = fetch_signs(self.client, tiles, start)
+            complete &= signs_complete
             self.revision += 1
             if complete:
                 self._done = wanted
@@ -459,9 +474,26 @@ class LiveRoadworks:
         self._matched_at = float("-inf")
         self._samples: Dict[Tuple[str, int], list] = {}  # (situation, version) -> projected samples
         self._summary = None
+        self._signs: list = []
+        self._sign_revision = None
+        self._sign_time = None
+        self._sign_grid = None
+        self._sign_grid_revision = None
+        self._sign_nodes = {}
 
     def update(self, x: float, y: float, moment_utc: datetime, local: datetime, ways_revision, grid) -> None:
         self.service.request(x, y, moment_utc)
+        revision = getattr(grid, 'revision', None)
+        if grid is not self._sign_grid or revision != self._sign_grid_revision:
+            self._sign_nodes.clear()
+        self._sign_grid, self._sign_grid_revision = grid, revision
+        self._sign_time = moment_utc
+        if self._sign_revision != self.service.revision:
+            self._signs = []
+            for sign in getattr(self.service, 'variable_signs', ()):
+                sx, sy = self.project(sign['lon'], sign['lat'])
+                self._signs.append(dict(sign, x=sx, y=sy))
+            self._sign_revision = self.service.revision
         if grid is None:
             return
         works = self.service.roadworks
@@ -472,6 +504,9 @@ class LiveRoadworks:
         if key == self._key and not roads_grew:
             return
         self._key, self._ways_revision, self._matched_at = key, ways_revision, now
+        from .electronic_sign_direction import bind_sign
+        for sign in self._signs:
+            sign['_binding'] = bind_sign(sign, grid)
         self.matches += 1
         live = {(w.situation_id, w.version) for w in works}
         self._samples = {k: v for k, v in self._samples.items() if k in live}
@@ -489,6 +524,22 @@ class LiveRoadworks:
         if summary != self._summary:  # logged when the placement changes, not every re-match
             self._summary = summary
             logger.info("Digitraffic roadworks: %d live, %d active, %d zones placed", *summary)
+        if logger.isEnabledFor(logging.DEBUG):
+            placed = collections.Counter(z.situation_id for z in zones)
+            for work in works:
+                logger.debug("Digitraffic roadwork %s: road=%s title=%r active=%s placed_zones=%d lines_lon_lat=%s",
+                             work.situation_id, work.road, work.title,
+                             work.phase_at(moment_utc, local) is not None, placed[work.situation_id], work.lines_ll)
+            for zone in zones:
+                logger.debug("Digitraffic roadwork %s placed: way=%s name=%r ref=%s layer=%s level=%s "
+                             "start_xy_m=(%.2f, %.2f) end_xy_m=(%.2f, %.2f)",
+                             zone.situation_id, getattr(zone.way, "osm_id", None), getattr(zone.way, "name", None),
+                             getattr(zone.way, "ref", None), zone.way.layer, zone.way.map_level or 0,
+                             *zone.start, *zone.end)
+
+    def electronic_signs_near(self, car, way) -> list:
+        from .electronic_signs import nearby_signs
+        return nearby_signs(self._signs, car, way, self._sign_time, self._sign_grid, self._sign_nodes) if self._sign_time is not None else []
 
     def speed_limit_at(self, x: float, y: float, *, layer: int = 0, map_level: int = 0) -> Optional[int]:
         limits = [z.speed_limit_kmh for z in self.zones

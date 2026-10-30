@@ -17,7 +17,32 @@ var pin := Vector2.INF  # the picked point as (latitude, longitude); INF: none y
 var _tiles := {}  # "z/x/y" -> Texture2D, or null while it loads
 var _queue: Array[String] = []
 var _requests := 0
+var _failed := {}  # "z/x/y" -> [failures, retry at (msec)]: a failed tile is asked again later, not never
+const RETRY_LIMIT := 5
+const RETRY_FIRST_MS := 1000  # then doubling
+var _warned := 0
 var _dragged := false
+
+
+static var _ipv4 := {}  # host -> its IPv4 address ("" if it has none)
+
+
+## An HTTPS GET over IPv4: Godot tries a host's IPv6 address first, and where
+## IPv6 does not route (the reporter's Windows PC) every request hung to its
+## timeout - no tiles, no place names - while other programs fell back to
+## IPv4. The certificate is still checked against the host's own name.
+static func ipv4_request(request: HTTPRequest, url: String, headers: PackedStringArray, timeout_s := 15.0) -> Error:
+	request.timeout = timeout_s  # 0: none (a large download)
+	var host := url.get_slice("/", 2)
+	if not _ipv4.has(host):
+		_ipv4[host] = IP.resolve_hostname(host, IP.TYPE_IPV4)  # once per host, ~50 ms
+	var address: String = _ipv4[host]
+	if address == "" or not url.begins_with("https://"):
+		return request.request(url, headers)
+	request.set_tls_options(TLSOptions.client(null, host))
+	var with_host := PackedStringArray(headers)
+	with_host.append("Host: " + host)
+	return request.request(url.replace("https://" + host + "/", "https://" + address + "/"), with_host)
 
 
 static func to_pixels(latitude: float, longitude: float, z: int) -> Vector2:
@@ -104,10 +129,10 @@ func _draw() -> void:
 			var texture: Texture2D = _tiles.get(key)
 			if texture != null:
 				draw_texture(texture, Vector2(tx, ty) * TILE - origin)
-			elif not _tiles.has(key):
+			elif not _tiles.has(key) and (not _failed.has(key) or Time.get_ticks_msec() >= _failed[key][1]):
 				wanted.append(key)
 	_queue = wanted  # tiles scrolled out of view are no longer fetched
-	_fetch()
+	_fetch.call_deferred()  # after this draw: a redraw asked for during _draw is ignored (cached tiles stayed blank)
 	if pin != Vector2.INF:
 		var at := to_pixels(pin.x, pin.y, zoom) - origin
 		draw_circle(at, 9.0, Color.BLACK)
@@ -119,15 +144,42 @@ func _draw() -> void:
 	draw_string(font, size - Vector2(width + 4.0, 5.0), credit, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.BLACK)
 
 
+## A tile's answer: cached and shown, or asked again later (a few times,
+## further apart: offline, no hammering).
+func _tile_loaded(key: String, path: String, result: int, code: int, body: PackedByteArray) -> void:
+	var image := Image.new()
+	if result == HTTPRequest.RESULT_SUCCESS and code == 200 and image.load_png_from_buffer(body) == OK:
+		_tiles[key] = ImageTexture.create_from_image(image)
+		_failed.erase(key)
+		DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+		image.save_png(path)
+	else:
+		_tiles.erase(key)
+		var failures: int = _failed.get(key, [0, 0])[0] + 1
+		_failed[key] = [failures, Time.get_ticks_msec() + RETRY_FIRST_MS * (1 << (failures - 1)) if failures < RETRY_LIMIT else 1 << 62]
+		if _warned < 3:
+			_warned += 1
+			push_warning("Map tile %s failed: result %d, HTTP %d" % [key, result, code])
+	queue_redraw()
+
+
+func _process(_delta: float) -> void:
+	if not _failed.is_empty() and Engine.get_process_frames() % 30 == 0:
+		queue_redraw()  # a failed tile's retry time may have come
+
+
 func _fetch() -> void:
 	while _requests < MAX_REQUESTS and not _queue.is_empty():
 		var key: String = _queue.pop_back()
 		_tiles[key] = null
 		var path := "user://tiles/%s.png" % key
 		if FileAccess.file_exists(path):
-			_tiles[key] = ImageTexture.create_from_image(Image.load_from_file(path))
-			queue_redraw()
-			continue
+			var cached := Image.load_from_file(path)
+			if cached != null and not cached.is_empty():
+				_tiles[key] = ImageTexture.create_from_image(cached)
+				queue_redraw()
+				continue
+			DirAccess.remove_absolute(path)  # a damaged cache file: fetched again, not blank for good
 		var parts := key.split("/")
 		var request := HTTPRequest.new()
 		add_child(request)
@@ -135,12 +187,9 @@ func _fetch() -> void:
 		request.request_completed.connect(func(result: int, code: int, _headers, body: PackedByteArray):
 			request.queue_free()
 			_requests -= 1
-			var image := Image.new()
-			if result == HTTPRequest.RESULT_SUCCESS and code == 200 and image.load_png_from_buffer(body) == OK:
-				_tiles[key] = ImageTexture.create_from_image(image)
-				DirAccess.make_dir_recursive_absolute(path.get_base_dir())
-				image.save_png(path)
-			# else it stays null: not asked again this visit (offline, no hammering)
-			queue_redraw())
+			_tile_loaded(key, path, result, code, body))
 		var agent := "RoadRageTrip/%s (Godot)" % ProjectSettings.get_setting("application/config/version")
-		request.request(TILE_URL % [int(parts[0]), int(parts[1]), int(parts[2])], ["User-Agent: " + agent])
+		if ipv4_request(request, TILE_URL % [int(parts[0]), int(parts[1]), int(parts[2])], ["User-Agent: " + agent]) != OK:
+			request.queue_free()  # refused at once: no completion signal will come to free the slot
+			_requests -= 1
+			_tile_loaded(key, path, HTTPRequest.RESULT_CANT_CONNECT, 0, PackedByteArray())

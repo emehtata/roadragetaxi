@@ -58,12 +58,14 @@ def test_rwc_round_trip_preserves_scenery_objects(tmp_path):
 
 
 def test_rwc_rehydrates_building_place_associations(tmp_path, sample_world):
-    place = Place(10.0, 10.0, "K-Market", "poi")
+    place = Place(10.0, 10.0, "K-Market", "supermarket", opening_hours="Mo-Sa 08:00-22:00", shop_type="supermarket")
     building = Building(
         [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
         name="Shop",
         bbox=(0.0, 0.0, 20.0, 20.0),
         associated_places=[place],
+        opening_hours="24/7",
+        shop_type="supermarket",
     )
     sample_world.buildings.append(building)
     sample_world.places.append(place)
@@ -74,6 +76,9 @@ def test_rwc_rehydrates_building_place_associations(tmp_path, sample_world):
 
     loaded_building = next(item for item in loaded.buildings if item.name == building.name)
     assert loaded_building.associated_places
+    assert loaded_building.opening_hours == "24/7"
+    assert loaded_building.shop_type == loaded_building.associated_places[0].shop_type == "supermarket"
+    assert loaded_building.associated_places[0].opening_hours == "Mo-Sa 08:00-22:00"
     assert loaded_building.associated_places[0] is next(
         item for item in loaded.places if item.name == place.name and item.kind == place.kind
     )
@@ -356,21 +361,6 @@ def test_clear_world_cache_removes_entries(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-
-def test_pending_count_counts_unfinished_loads_under_the_lock():
-    """Regression: the debug metric iterated _futures without the lock
-    while a background preload added to it - "dictionary changed size
-    during iteration"."""
-    import threading
-    from concurrent.futures import Future
-
-    from theroadragetrip.world_cache import WorldCacheManager
-
-    manager = WorldCacheManager.__new__(WorldCacheManager)
-    finished = Future()
-    finished.set_result(None)
-    manager._futures, manager._lock = {"a": Future(), "b": finished}, threading.Lock()
-    assert manager.pending_count() == 1
 
 
 def test_the_start_is_looked_up_by_its_point_in_every_cached_area(tmp_path, sample_world, caplog):

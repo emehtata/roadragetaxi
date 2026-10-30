@@ -54,7 +54,6 @@ def test_cycle_route_prefers_cycle_path_and_never_cuts_across_open_ground():
 
 # --- lifecycle and behaviour through the real NPC update loop -------------
 
-import pytest
 from types import SimpleNamespace
 
 from theroadragetrip import cycling
@@ -399,3 +398,68 @@ def test_thieves_and_stolen_bikes_stay_anonymous_in_the_protocol():
     bike.stolen = True
     row = protocol._npc_to_dict(bike, world.residents.residents if hasattr(world.residents, "residents") else {})
     assert row["thief"] and row["owner"] is None and row["occupants"] == []
+
+
+def test_a_held_up_cyclist_rings_the_bell_now_and_then():
+    """A walker in the way: the rider rings (sound only), at most every BELL_COOLDOWN_S."""
+    path = _way([(0, 0), (120, 0)], "footway", bicycle="designated", half_width_m=1.5)
+    world = _World([path])
+    world.cyclist((0, 0), (120, 0))
+    walker = SimpleNamespace(x=40.0, y=-0.4, radius_m=0.3, state="walking")
+    world.tick(20, pedestrians=[walker])
+    assert 1 <= len(world.manager.bicycle_bells) <= 20 / cycling.BELL_COOLDOWN_S + 1
+    clear = _World([path])
+    clear.cyclist((0, 0), (120, 0))
+    clear.tick(10)
+    assert clear.manager.bicycle_bells == []  # nobody in the way: no bell
+
+
+def test_a_cyclist_rides_around_a_car_parked_at_the_kerb():
+    """A car parked on the right edge of a residential street, angled a little: the rider swings out past it."""
+    road = _way([(0, 0), (120, 0)], "residential", half_width_m=4.0)
+    world = _World([road])
+    bike = world.cyclist((0, 0), (120, 0))
+    parked = Car(x=40.0, y=-2.6, heading=0.4, speed=0.0)
+    parked.state = "PARKED"
+    closest = 99.0
+    for _ in range(int(40 / DT)):
+        world.tick(DT, player=parked)
+        closest = min(closest, abs(bike.x - parked.x) + abs(bike.y - parked.y))
+        if bike.x > 50.0:
+            break
+        assert bike.shaken_timer == 0.0  # never touched it (a touch shakes the rider)
+    assert bike.x > 50.0 and NPCState.CRASHED != bike.state  # past it, not into it
+
+
+def test_cyclists_meeting_on_a_narrow_path_pass_each_other():
+    """A 1.5 m path: each keeps further right while they meet - they used to collide head-on."""
+    path = _way([(0, 0), (120, 0)], "path", bicycle="designated", half_width_m=0.75)
+    world = _World([path])
+    east = world.cyclist((0, 0), (120, 0))
+    west = world.cyclist((120, 0), (0, 0))
+    assert world.tick(40, until=lambda: east.x > 80 and west.x < 40)
+    assert NPCState.CRASHED not in (east.state, west.state)
+
+
+def test_a_cyclist_past_a_hairpin_rides_on_instead_of_circling():
+    """Reported: a cyclist circling on the spot, through a building. Recorded in
+    Oulu: a 2.2 m leg, then the route turning back ~160 degrees (a service road
+    onto a cycle path). Steering a few metres ahead it turned early, inside the
+    corner; its projection on the short leg never reached the leg's end, so the
+    leg never advanced and it circled the fixed aim point at riding speed."""
+    from theroadragetrip.cycling import CycleRoute
+    points = [(6.4, 8.1), (0.4, -1.1), (1.7, -2.9), (-15.4, 8.9), (-27.9, 17.6), (-38.0, 23.8)]
+    ways = [_way([points[0], points[1], points[2]], "service"), _way(points[2:], "cycleway")]
+    world = _World(ways + [_way([(0, 200), (150, 200)], "cycleway")])
+    bike = world.cyclist((0, 200), (150, 200))  # a ride to set it up; its route is replaced by the recorded one
+    driver = world.manager.drivers[bike.vehicle_id]
+    driver.cycle = CycleRoute(points, [ways[0], ways[0], ways[1], ways[1], ways[1]], [], 4.5)
+    driver.path_index = 1
+    bike.car.x, bike.car.y = points[0]
+    bike.car.heading = math.atan2(points[1][1] - points[0][1], points[1][0] - points[0][0])
+    bike.car.speed = 4.0
+    for _ in range(int(30 / DT)):
+        world.tick(DT)
+        if math.dist((bike.x, bike.y), points[4]) < 3.0:
+            break
+    assert math.dist((bike.x, bike.y), points[4]) < 3.0  # past the hairpin and on along the cycle path

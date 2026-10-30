@@ -2,7 +2,7 @@
 section 21: these were parsed since day one but never had a renderer)."""
 
 import math
-from theroadragetrip.osm import StopSign, YieldSign, build_ways
+from theroadragetrip.osm import build_ways
 from theroadragetrip.world_cache import BinaryWorldCacheLoader, BinaryWorldCacheWriter
 
 

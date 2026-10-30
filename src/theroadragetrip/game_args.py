@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import sys
 from typing import Optional
 
 
@@ -63,10 +64,17 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
         "--road-digitraffic",
         action=argparse.BooleanOptionalAction,
         default=config.getboolean("game", "road_digitraffic", fallback=False) if config else False,
-        help="Live roadworks from Fintraffic's Digitraffic Road API, cached forever (default: config game.road_digitraffic)",
+        help="Live roadworks and nearby electronic signs from Fintraffic's Digitraffic Road API (default: config game.road_digitraffic)",
     )
 
-    p.add_argument("--intercity-fares", action=argparse.BooleanOptionalAction,
+    p.add_argument(
+        "--live-clock",
+        action=argparse.BooleanOptionalAction,
+        default=config.getboolean("game", "live_clock", fallback=False) if config else False,
+        help="Game time follows the computer's clock in real time: starts now, never runs 60x (default: config game.live_clock)",
+    )
+
+    p.add_argument("--intercity-fares",action=argparse.BooleanOptionalAction,
                    default=config.getboolean("game", "intercity_fares", fallback=False) if config else False,
                    help="Enable intercity fares after preparing the navigation database from a local Finland PBF")
 
@@ -121,14 +129,18 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
     return p.parse_args()
 
 
-def configure_logging(level: Optional[str] = None, file_logging: bool = False) -> None:
+def configure_logging(level: Optional[str] = None, file_logging: bool = False, log_file: Optional[str] = None) -> None:
     lvl = os.getenv("LOG_LEVEL", level or "INFO").upper()
     log_level = getattr(logging, lvl, logging.INFO)
     log_format = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     handlers = [logging.StreamHandler()]
     handlers[0].setFormatter(logging.Formatter(log_format))
-    if file_logging:
-        file_handler = logging.FileHandler("roadragetrip.log", encoding="utf-8")
-        file_handler.setFormatter(logging.Formatter(log_format))
-        handlers.append(file_handler)
+    if file_logging or log_file:
+        try:
+            file_handler = logging.FileHandler(log_file or "roadragetrip.log", encoding="utf-8")
+        except OSError as exc:  # an unwritable log must not stop the game
+            print(f"logging to console only: {exc}", file=sys.stderr)
+        else:
+            file_handler.setFormatter(logging.Formatter(log_format))
+            handlers.append(file_handler)
     logging.basicConfig(level=log_level, handlers=handlers, force=True)

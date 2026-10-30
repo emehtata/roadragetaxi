@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 from theroadragetrip.arena_crowds import ArenaCrowds

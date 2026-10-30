@@ -1,5 +1,5 @@
 #define AppName "Road Rage Trip"
-#define AppVersion "0.19.0alpha"
+#define AppVersion "0.19.1alpha"
 #define AppPublisher "The Road Rage Trip"
 #define AppExeName "RoadRageTrip.exe"
 
@@ -11,11 +11,13 @@ AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\RoadRageTrip
 DefaultGroupName={#AppName}
 OutputDir=..\dist
-OutputBaseFilename=RoadRageTrip-Setup
+OutputBaseFilename=RoadRageTrip-{#AppVersion}-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\{#AppExeName}
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 
 [Files]
 Source: "..\dist\RoadRageTrip\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

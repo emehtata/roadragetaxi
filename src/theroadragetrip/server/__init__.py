@@ -35,7 +35,6 @@ from ..police import SpeedCameraSpawner
 from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer, prepare_initial_window
 from ..protocol import LOCAL_PLAYER_ID
-from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
 from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_position_on, grid_azimuth
 from ..career import career_path, gig_odometer_path, load_career
 from ..arena_crowds import GAME_DURATION
@@ -44,14 +43,18 @@ from ..world_loader import load_world, resolve_city
 from ..viewport import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
 from ..physics import reset_trip, respawn_car
-from ..home import clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home
+from ..home import (clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home,
+                    find_home_building, home_building_key, load_home_building_key,
+                    DOOR_HINT_M, DOOR_HINTS, DOOR_REACH_M, plan_entrance, house_bay, house_plan)
+from ..building_style import _building_is_house_by_tag
 from ..localization import SUPPORTED_LANGUAGES, tr
 from ..moon import moon_info_on, moon_position_at
 from ..transport import Listener
 from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
 from ..weather_history import WeatherHistory, gradual_weather, precipitation_from_observation, game_time_to_utc_hour
-from ..calendar import clamp_start_datetime
+from ..calendar import clamp_start_datetime, finnish_local_time
 from ..osm import CACHE_DIR
+from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
 from ..climate import appearance_with_snow_depth, typical_temperature
 
 logger = logging.getLogger(__name__)
@@ -62,6 +65,12 @@ SOCCER_SNOW_WEIGHT = 0.05  # a winter (snow) weight under this: the pitches are 
 # Nominal camera fallback for headless runs and clients without view reports.
 # Godot supplies its actual world-space bounds for dynamic interest/culling.
 _DEFAULT_PX_PER_M = 9.0
+LIVE_FEED_PER_TICK = 200  # MQTT messages taken per tick; a few stations send well under this
+
+
+def _utc_now() -> datetime:
+    """The computer's clock, naive UTC, for the live clock (tests replace it)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class NullAudio:
@@ -257,6 +266,10 @@ class SimulationServer:
             start = clamp_start_datetime(start.replace(second=0, microsecond=0), date.today())
         if saved.get("game_time"):  # a continued game resumes at its own time, unclamped
             start = datetime.fromisoformat(saved["game_time"])
+        # Simulation mode: the real clock always, whatever the setting (no 60x, no picked or saved time).
+        self._live_clock = bool(getattr(args, "live_clock", False)) or getattr(args, "game_mode", "") == "simulation"
+        if self._live_clock:  # live data is "now": a picked or saved time jumps to the computer's clock
+            start = finnish_local_time(_utc_now())
         self.calendar = GameCalendar(start or datetime.combine(date.today(), datetime.min.time()) + timedelta(hours=18),
                                      latitude=getattr(self.world, "sun_latitude", 65.01))
         if saved:  # odometer, fuel and money came with the gig car file
@@ -271,6 +284,18 @@ class SimulationServer:
             if restore_fare(taxi_mgr, saved.get("fare")):
                 logger.info("Save slot %s: fare to %s continues", self.save_slot_file.stem,
                             taxi_mgr.current_passenger.dropoff.address)
+        # Moving traffic from the start, at the start time's demand (populate_initial only parks cars).
+        from ..npc import NPCState
+        w = self.world
+        w.npc_manager.clock = self.calendar.current
+        w.npc_manager.set_local_density(self.car.x, self.car.y, w.building_grid, road_grid=w.spatial_grid)
+        w.npc_manager.populate_moving_initial(
+            self.car.x, self.car.y, w.residents, w.traffic_mgr, w.ways, spatial_grid=w.spatial_grid,
+            parking_spaces=w.parking_spaces, sceneries=w.sceneries, buildings=w.buildings, curbs=w.curbs,
+            curb_grid=w.curb_grid, building_grid=w.building_grid,
+            progress_callback=lambda fraction: progress("world", "Preparing NPC traffic..."))
+        logger.info("Moving traffic at start: %d of %d", sum(1 for v in w.npc_manager.vehicles if v.state != NPCState.PARKED),
+                    w.npc_manager.target_moving_count)
         moon_latitude = getattr(self.world, "sun_latitude", 65.01)
         moon_longitude = getattr(self.world, "sun_longitude", 25.47)
         self.moon_info = moon_info_on(self.calendar.date, moon_latitude, moon_longitude)
@@ -298,6 +323,7 @@ class SimulationServer:
             self.weather_history.request(self.calendar.current - timedelta(hours=6), self.calendar.current + timedelta(hours=48))
             self.weather_history.wait_idle(3.0)  # brief: the first hour can be the real weather
         self.world.live_roadworks = self._live_roadworks(args, config)
+        self.live_feed = self._live_feed()
         observed = self._update_outside()
         if observed is not None:  # the first tick follows it; the start's weather is it already
             self.world.weather.update(0.001, 0.0, outside_temperature_c=self.world.weather.outside_temperature_c,
@@ -329,10 +355,13 @@ class SimulationServer:
         self._pending_road_rages = 0  # SPACE presses, likewise
         self._pending_respawns = 0
         self._pending_homes = 0
+        self._pending_home_doors = 0  # E on foot: in at the home's door, or out again
+        self._inside = None  # (house, front door) the player is in: the map player waits at its door, the client draws the plan
         self._homes_in_save = self.save_slot_file is not None
         self.homes_file = self.save_slot_file if self._homes_in_save else (
             homes_path(CONFIG_PATH) if getattr(args, "game_mode", "gig_driver") == "career" else None)
         self._home = load_home(self.homes_file, str(self.chosen_city or ""), in_save=self._homes_in_save) if self.homes_file else None
+        self._home_building_key = load_home_building_key(self.homes_file, str(self.chosen_city or ""), in_save=self._homes_in_save) if self.homes_file else None
         self._home_confirm_s = 0.0  # a second H within this: the new yard becomes home
         self._prepared_home = None  # the home whose map was last handed to the background preparation
         self._home_preparation = None  # its future (cancelled if home moves before it starts)
@@ -345,6 +374,7 @@ class SimulationServer:
         self._clients_lock = threading.Lock()
         self._clients: list = []
         self._client_views = {}  # connection -> (last simulation time, world camera bounds)
+        self._inspect = None  # {"kind", "id"}: what the client's inspect panel shows (its residents are sent)
         # Per connection: the map chunks it has, and the player cell they were planned for.
         progress("lights", f"{len(self.world.ways)} roads")
         self.world.street_light_points = place_street_lights(self.world)  # before the chunks carry them
@@ -452,6 +482,10 @@ class SimulationServer:
                                        game_time_to_utc_hour(fmi_moment) - hour)
                 if self._fallback_weather is not None:
                     observed = self._fallback_weather[1]
+        road_weather = getattr(self, "road_weather", None)
+        live = road_weather.observation() if road_weather is not None else None
+        if live is not None:  # the nearest road weather station, now: fresher than FMI's hour
+            observed = live
         source = observed.source if observed is not None else "generated"
         if source in ("observed", "forecast") and source != getattr(weather, "weather_source", None):
             logger.info("FMI weather now %s: %s", f"{fmi_moment:%d.%m. %H:%M}", source)
@@ -513,14 +547,14 @@ class SimulationServer:
 
     def season_weights(self) -> list:
         """[winter, spring, summer, autumn] the client blends, at 0.05 steps;
-        also sets world.fields_frozen (physics) from the same winter weight
-        the client freezes the fields by, so look and grip agree."""
+        also sets world.fields_frozen from thermal winter, independently of
+        snow depth: a maintained ice field need not have snow on it."""
         look = self.calendar.seasonal_appearance  # continuous weights, for the client to blend
+        self.world.fields_frozen = look.winter >= FIELDS_FROZEN_WINTER_WEIGHT
         observed = self.weather_history.get(self.calendar.current) if self.weather_history is not None else None
         if observed is not None and observed.snow_depth_cm is not None:  # FMI's measured snow, over the date's guess
             look = appearance_with_snow_depth(look, observed.snow_depth_cm)
         season = [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]
-        self.world.fields_frozen = season[0] >= FIELDS_FROZEN_WINTER_WEIGHT
         return season
 
     def _sun_altitude(self) -> float:
@@ -537,6 +571,17 @@ class SimulationServer:
         )
         return altitude, grid_azimuth(azimuth, latitude, longitude)
 
+    def _flag_state(self, altitude: float) -> str:
+        """Flags up on Finland's flag days (holiday_events.flag_state), by today's sun."""
+        from ..holiday_events import flag_state, is_flag_day
+        now = self.calendar.current
+        if not is_flag_day(now) and not (now.month == 6 and now.weekday() == 4):
+            return ""
+        latitude = getattr(self.world, "sun_latitude", self.calendar.latitude)
+        noon, _ = solar_position_on(self.calendar.date, 12 * 3600.0, latitude, getattr(self.world, "sun_longitude", 25.47),
+                                    finnish_utc_offset_hours(now))
+        return flag_state(now, altitude, noon)
+
     def _moon_position(self) -> tuple:
         latitude = getattr(self.world, "sun_latitude", self.calendar.latitude)
         longitude = getattr(self.world, "sun_longitude", 25.47)
@@ -552,7 +597,7 @@ class SimulationServer:
         lit = darkness_for_sun_altitude(self._sun_altitude()) < SPORTS_ICE_DARKNESS or sports_lights_hours(self.calendar.current)
         self.world.pedestrian_mgr.sports_ice_open = self.world.fields_frozen and lit
         # Soccer: no snow on the pitch at all (godot chunk_detail.gd draws its lines by the same weight).
-        self.world.pedestrian_mgr.soccer_open = season[0] < SOCCER_SNOW_WEIGHT and lit
+        self.world.pedestrian_mgr.soccer_open = season[0] < SOCCER_SNOW_WEIGHT and lit and not self.world.fields_frozen
         weather = self.world.weather
         temperature = weather.outside_temperature_c
         self.world.pedestrian_mgr.tennis_open = (
@@ -576,11 +621,14 @@ class SimulationServer:
         from ..holiday_events import holiday_events
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": season,
+                "fields_frozen": self.world.fields_frozen,
+                "trees_leafless": self.calendar.season.value == "winter",
                 "sun_altitude_deg": round(altitude, 2), "sun_azimuth_deg": round(azimuth, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
                 "moon_altitude_deg": round(moon_altitude, 2), "moon_azimuth_deg": round(moon_azimuth, 2),
                 "moon_illumination": round(moon_illumination, 3),
                 "sports_lights": sports_lights_hours(self.calendar.current),
                 "holidays": holiday_events(self.calendar.current),
+                "flags": self._flag_state(altitude),
                 "arena_lights": bool(arena_crowds and arena_crowds.lights_on(self.calendar.current)),
                 "arena_games": [[round(x, 1), round(y, 1)] for x, y in arena_crowds.games_in_progress(self.calendar.current)]
                 if arena_crowds else []}
@@ -590,6 +638,30 @@ class SimulationServer:
         self.host, self.port = self._listener.host, self._listener.port
         logger.info("Simulation server listening on %s:%d", self.host, self.port)
         self._running = True
+
+    def _live_feed(self):
+        """Digitraffic MQTT (digitraffic_mqtt.py): live "now" data, so only
+        with the live clock and realtime road data both on; None otherwise."""
+        if not (self._live_clock and self.world.live_roadworks is not None):
+            return None
+        try:
+            from ..digitraffic_mqtt import STATUS_TOPICS, LiveFeed, LivePloughing, RoadWeather
+            feed = LiveFeed(STATUS_TOPICS)  # road weather adds its nearest stations
+        except ImportError:
+            logger.warning("Live Digitraffic data needs paho-mqtt; staying with the REST data")
+            return None
+        service = self.world.live_roadworks.service
+        self.road_weather = RoadWeather(feed, service.client, service.to_lonlat)
+        self.live_ploughing = LivePloughing(service.client, service.to_lonlat, self.world.live_roadworks.project)
+        feed.start()
+        return feed
+
+    def _live_feed_diagnostics(self) -> Optional[dict]:
+        feed = getattr(self, "live_feed", None)
+        if feed is None:
+            return None
+        return {**feed.diagnostics(), "road_weather": self.road_weather.diagnostics(),
+                "ploughing": {"routes": len(self.live_ploughing.seen), "segments_applied": self.live_ploughing.applied}}
 
     def _live_roadworks(self, args, config):
         """Settings -> realtime road data (--road-digitraffic): live roadworks
@@ -621,6 +693,8 @@ class SimulationServer:
         self.navigation.close()
         if getattr(self.world, "live_roadworks", None) is not None:
             self.world.live_roadworks.service.close()
+        if getattr(self, "live_feed", None) is not None:
+            self.live_feed.close()
         if self._listener is not None:
             self._listener.close()
         with self._clients_lock:
@@ -690,14 +764,21 @@ class SimulationServer:
                 if view is not None and max(abs((view[0] + view[2]) / 2 - self.car.x),
                                             abs((view[1] + view[3]) / 2 - self.car.y)) <= 2000:
                     self._client_views[connection] = (self._server_time, view)
+                held = message.get("command") if isinstance(message.get("command"), dict) else {}
+                if "inspect" in held:
+                    inspect = held["inspect"]
+                    self._inspect = inspect if isinstance(inspect, dict) and inspect.get("kind") in ("npc", "pedestrian") else None
                 phone = protocol.phone_request_from_message(message)
+                if message.get("home_interior") is True:
+                    connection.send({"type": "home_interior", "version": protocol.PROTOCOL_VERSION,
+                                     "plan": self._home_floor_plan()})
                 requested_language = message.get("command", {}).get("language") if isinstance(message.get("command"), dict) else None
                 if isinstance(requested_language, str) and requested_language in SUPPORTED_LANGUAGES and requested_language != self.language:
                     self.language = requested_language
                     self.world.taxi_mgr.set_language(requested_language)
                 with self._command_lock:
                     self._latest_command = replace(command, refuel=False, road_rage=False, respawn=False, home=False,
-                                                   cancel_ride=False, reset_trip=False)  # the held part only
+                                                   home_door=False, cancel_ride=False, reset_trip=False)  # the held part only
                     if interact:
                         self._pending_interacts += 1
                     if command.refuel:
@@ -708,6 +789,8 @@ class SimulationServer:
                         self._pending_respawns += 1
                     if command.home:
                         self._pending_homes += 1
+                    if command.home_door:
+                        self._pending_home_doors += 1
                     if command.cancel_ride:
                         self._pending_cancels += 1
                     if command.reset_trip:
@@ -758,6 +841,7 @@ class SimulationServer:
                 self._on_foot, scenery_objects=w.scenery_objects, speed_bumps=w.speed_bumps, railways=w.railways,
                 railings=w.railings, npcs=w.npcs, npc_drivers=w.npc_drivers, npc_manager=w.npc_manager,
                 taxi_brawls=getattr(w, "taxi_brawls", None), live_roadworks=getattr(w, "live_roadworks", None),
+                live_feed=self._live_feed_diagnostics(),
             )
             logger.info("Debug snapshot %s", path)
         except Exception:  # a debugging aid: never take the game down
@@ -803,6 +887,8 @@ class SimulationServer:
             respawn = self._pending_respawns > 0
             home = self._pending_homes > 0
             self._pending_homes -= int(home)
+            home_door = self._pending_home_doors > 0
+            self._pending_home_doors -= int(home_door)
             cancel_ride = self._pending_cancels > 0
             reset_trip_meter = self._pending_trip_resets > 0
             self._pending_respawns -= int(respawn)
@@ -812,6 +898,12 @@ class SimulationServer:
         with self._command_lock:
             phone_requests, self._phone_requests = self._phone_requests, []
         phone_results = [self._apply_phone_request(request) for request in phone_requests]
+
+        if home_door:
+            self._home_door_pressed()
+        if self._inside is not None:  # the map player stays at the door: no walking, taxi or respawn; H picks this house
+            command = replace(command, forward=0.0, turn=0.0, sprint=False)
+            interact = respawn = False
 
         brawls = getattr(self.world, "taxi_brawls", None)
         brawl_flee = bool(interact and self._on_foot and brawls is not None and brawls.player_engaged())
@@ -837,15 +929,27 @@ class SimulationServer:
         if reset_trip_meter:
             reset_trip(self.car)
 
-        # Game time runs 60x while there is no fare, 1:1 during one.
-        time_scale = self._time_scale = 1.0 if self.world.taxi_mgr.has_active_job() else 60.0
+        # Game time runs 60x while there is no fare, 1:1 during one; the live
+        # clock is the computer's clock itself (read, not integrated: no drift).
+        time_scale = self._time_scale = 1.0 if self._live_clock or self.world.taxi_mgr.has_active_job() else 60.0
         previous_date = self.calendar.date
-        self.calendar.advance(dt * time_scale)
+        if self._live_clock:
+            self.calendar.current = finnish_local_time(_utc_now())
+        else:
+            self.calendar.advance(dt * time_scale)
         if self.calendar.date != previous_date:
             self.world.weather.season = self.calendar.season  # the thermal season follows the calendar
+        road_weather = getattr(self, "road_weather", None)
+        if road_weather is not None:  # live MQTT readings, a bounded batch per tick
+            road_weather.update(self.car.x, self.car.y, self.live_feed.drain(LIVE_FEED_PER_TICK))
+            self.live_ploughing.update(self.car.x, self.car.y, self.world.weather)  # real ploughs' cleared roads
         observed = self._update_outside()
         self.world.weather.update(dt * time_scale, dt, outside_temperature_c=self.world.weather.outside_temperature_c,
                                   observed=observed)
+        wet_road = road_weather.road_wetness() if road_weather is not None else None
+        if wet_road is not None:  # the station sees the road itself: dry or wet, that is the road
+            self.world.weather.wetness = wet_road
+        self.world.weather.road_ice_override = road_weather.road_ice() if road_weather is not None else None
         self._update_sports()
         if self.world.weather.lightning_event_id != self._lightning_event_id:  # a strike: thunder, once
             self.audio.play_group("weather.thunder", 0.8)
@@ -974,6 +1078,7 @@ class SimulationServer:
         if self.homes_file is not None:
             clear_homes(self.homes_file, in_save=self._homes_in_save)
         self._home = None
+        self._home_building_key = None
         self._home_confirm_s = 0.0
         self._prepared_home = None
         if self._home_preparation is not None:
@@ -982,9 +1087,11 @@ class SimulationServer:
 
     def _home_pressed(self) -> None:
         """H: in a house yard, make it home (a new one asks first: H
-        again); anywhere else, the taxi respawns at home."""
+        again); inside a house, that house; anywhere else, the taxi respawns at home."""
         from ..physics import get_current_road_at_car
 
+        if getattr(self, "_inside", None) is not None:
+            return SimulationServer._choose_inside_house(self)
         car, w, language = self.car, self.world, self.language
         if self._on_foot:
             return self._notify(tr(language, "home_on_foot"))
@@ -993,12 +1100,17 @@ class SimulationServer:
         if in_yard and not is_same_home(self._home, car.x, car.y):
             if abs(car.speed) > 0.5:
                 return self._notify(tr(language, "home_stop"))
+            building = find_home_building(car.x, car.y, getattr(w, "building_grid", None), w.parking_spaces)
+            if building is None:
+                return self._notify(tr(language, "home_invalid_building"))
             if self._home is not None and self._home_confirm_s <= 0.0:
                 self._home_confirm_s = CONFIRM_S
                 return self._notify(tr(language, "home_confirm"), CONFIRM_S)
             self._home, self._home_confirm_s = (car.x, car.y, car.heading), 0.0
+            self._home_building_key = home_building_key(building)
             if self.homes_file is not None:
-                save_home(self.homes_file, str(self.chosen_city or ""), self._home, in_save=self._homes_in_save)
+                save_home(self.homes_file, str(self.chosen_city or ""), self._home, in_save=self._homes_in_save,
+                          building_key=self._home_building_key)
             return self._notify(tr(language, "home_saved"))
         if self._home is None:
             return self._notify(tr(language, "home_not_yard"))
@@ -1008,6 +1120,122 @@ class SimulationServer:
         self._notify(tr(language, "home_arrived"))  # a lost fare's notice (handle_respawn) wins
         w.taxi_mgr.handle_respawn(car.x, car.y)
         self._camx, self._camy = car.x, car.y
+
+    def _house_door(self, building):
+        """A house's front door ((middle), (doorstep)) in map metres, or None; cached per house."""
+        doors = self.__dict__.setdefault("_house_doors", {})
+        key = home_building_key(building)
+        if key not in doors:
+            if len(doors) > 512:
+                doors.clear()
+            plan = house_plan(building, self.world.parking_spaces)
+            doors[key] = plan_entrance(plan) if "error" not in plan else None
+        return doors[key]
+
+    def _house_doors_near(self, radius: float) -> list:
+        """Enterable houses whose front door is within `radius` of the player (on foot, outside),
+        nearest first: [(distance, building, door)]."""
+        if not self._on_foot or self._inside is not None:
+            return []
+        grid = getattr(self.world, "building_grid", None)
+        if grid is None:
+            return []
+        home_key = self._home_building_key
+        if self._home is not None and home_key is None:
+            # Resolve position-only saves before deciding which door is enterable.
+            SimulationServer._home_floor_plan(self)
+            home_key = self._home_building_key
+            if home_key is None:
+                return []
+        player = self.world.player_pedestrian
+        found = []
+        for building in grid.ways_in_rect(player.x - radius, player.y - radius, player.x + radius, player.y + radius):
+            if not _building_is_house_by_tag(building) or getattr(building, "map_level", None) not in (None, 0):
+                continue
+            if home_key is not None and home_building_key(building) != home_key:
+                continue
+            door = SimulationServer._house_door(self, building)
+            if door is not None and math.dist(door[0], (player.x, player.y)) <= radius:
+                found.append((math.dist(door[0], (player.x, player.y)), building, door))
+        return sorted(found, key=lambda row: row[0])
+
+    def _house_at_door(self):
+        """The house whose front door the player stands at (on foot, outside): (building, door) or None."""
+        near = SimulationServer._house_doors_near(self, DOOR_REACH_M)
+        return near[0][1:] if near else None
+
+    def _home_door_state(self) -> dict:
+        """state.home_door: indoors, whether E goes in here, whether this house is the home, and
+        the front doors near the player to mark on the map ([x, y, outward heading, is home], nearest first)."""
+        near = SimulationServer._house_doors_near(self, DOOR_HINT_M)[:DOOR_HINTS]
+        at = self._inside or (near[0][1:] if near and near[0][0] <= DOOR_REACH_M else None)
+        doors = [[round(door[0][0], 2), round(door[0][1], 2),
+                  round(math.atan2(door[1][1] - door[0][1], door[1][0] - door[0][0]), 3),
+                  home_building_key(building) == self._home_building_key] for _, building, door in near]
+        return {"indoors": self._inside is not None, "available": self._inside is None and at is not None,
+                "is_home": at is not None and home_building_key(at[0]) == self._home_building_key, "doors": doors}
+
+    def _home_door_pressed(self) -> None:
+        """E: inside, out to the doorstep; at a house's front door, in. The interior is
+        the client's view; the player's map position stays at the door."""
+        player = self.world.player_pedestrian
+        if self._inside is not None:
+            door = self._inside[1]
+            self.audio.play_group("pedestrian.front_door", at=door[0])
+            player.x, player.y = door[1]
+            player.heading = math.atan2(door[1][1] - door[0][1], door[1][0] - door[0][0])
+            player.speed = 0.0
+            self._inside = None
+            return
+        if not self._on_foot:
+            return self._notify(tr(self.language, "home_door_in_car"))
+        at = SimulationServer._house_at_door(self)
+        if at is None:
+            return self._notify(tr(self.language, "home_door_far"))
+        player.speed = 0.0
+        self._inside = at
+        self.audio.play_group("pedestrian.front_door", at=at[1][0])
+
+    def _choose_inside_house(self) -> None:
+        """H indoors: this house becomes home (a different home asks first: H again).
+        The taxi will come home to its yard bay, or else to the doorstep."""
+        building, door = self._inside
+        key = home_building_key(building)
+        if key == self._home_building_key:
+            return self._notify(tr(self.language, "home_saved"))
+        if self._home is not None and self._home_confirm_s <= 0.0:
+            self._home_confirm_s = CONFIRM_S
+            return self._notify(tr(self.language, "home_confirm"), CONFIRM_S)
+        bay = house_bay(building, self.world.parking_spaces)
+        if bay is not None:
+            (ax, ay), (bx, by) = max(zip(bay.points_m, bay.points_m[1:] + bay.points_m[:1]), key=lambda e: math.dist(*e))
+            x = sum(p[0] for p in bay.points_m) / len(bay.points_m)
+            y = sum(p[1] for p in bay.points_m) / len(bay.points_m)
+            self._home = (x, y, math.atan2(by - ay, bx - ax))
+        else:
+            self._home = (door[1][0], door[1][1], math.atan2(door[1][1] - door[0][1], door[1][0] - door[0][0]))
+        self._home_building_key, self._home_confirm_s = key, 0.0
+        if self.homes_file is not None:
+            save_home(self.homes_file, str(self.chosen_city or ""), self._home, in_save=self._homes_in_save,
+                      building_key=key)
+        self._notify(tr(self.language, "home_saved"))
+
+    def _home_floor_plan(self) -> dict:
+        """The plan of the house the player is in; otherwise the home's (the pause menu's viewer)."""
+        if self._inside is not None:
+            return house_plan(self._inside[0], self.world.parking_spaces)
+        if self._home is None:
+            return {"error": "no_home"}
+        building = find_home_building(*self._home[:2], getattr(self.world, "building_grid", None),
+                                     self.world.parking_spaces, key=self._home_building_key)
+        if building is None:
+            return {"error": "home_unavailable"}
+        if self._home_building_key is None:  # upgrade a position-only save once its house is loaded
+            self._home_building_key = home_building_key(building)
+            if self.homes_file is not None:
+                save_home(self.homes_file, str(self.chosen_city or ""), self._home, in_save=self._homes_in_save,
+                          building_key=self._home_building_key)
+        return house_plan(building, self.world.parking_spaces)
 
     def _notify(self, message: str, seconds: float = 3.0) -> None:
         self.world.taxi_mgr.notification_msg, self.world.taxi_mgr.notification_timer = message, seconds
@@ -1167,25 +1395,41 @@ class SimulationServer:
             map_loading=self._map_streamer.status() if self._map_streamer is not None else "",
             map_loading_detail=self._map_streamer.manager.get_progress_message() if self._map_streamer is not None else "",
             railway=protocol.railway_state(getattr(self.world, "railway_mgr", None), self.car.x, self.car.y, self.calendar.current),
+            inspect=self._inspect, npc_bounds=self._visible_bounds(),
         )
         message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
+        message["state"]["home_door"] = self._home_door_state()
         with self._clients_lock:
             clients = list(self._clients)
+            loaded = set().union(*(chunks for chunks, _ in self._client_chunks.values()))
+        message["state"]["shop_lights"] = self._chunks_index.shop_lights(self.calendar.current, loaded)
+        live = self.world.live_roadworks
+        message["state"]["electronic_signs"] = live.electronic_signs_near(self.car, self._current_way) if live is not None else []
         for connection in clients:
             connection.send_state(message)  # never waits: a behind client gets the newest state
 
     def run_forever(self) -> None:
         """Blocking tick loop - the body of `python -m theroadragetrip.server`."""
         interval = 1.0 / self.tick_rate
-        next_tick = time.monotonic()
+        next_tick = time.perf_counter()
+        window_start, window_ticks, worst = next_tick, 0, 0.0
         while True:
+            started = time.perf_counter()
             self.tick(interval)
+            worst = max(worst, time.perf_counter() - started)
+            window_ticks += 1
+            if started - window_start >= 10.0:
+                rate = window_ticks / (started - window_start)
+                if rate < 0.9 * self.tick_rate:
+                    logger.warning("Server behind: %.1f of %.0f ticks/s, worst tick %.0f ms",
+                                   rate, self.tick_rate, worst * 1000)
+                window_start, window_ticks, worst = started, 0, 0.0
             next_tick += interval
-            sleep_for = next_tick - time.monotonic()
+            sleep_for = next_tick - time.perf_counter()
             if sleep_for > 0:
                 time.sleep(sleep_for)
             else:
-                next_tick = time.monotonic()  # fell behind; don't try to catch up in a burst
+                next_tick = time.perf_counter()  # fell behind; don't try to catch up in a burst
 
 
 def place_street_lights(world, region=None) -> list:
@@ -1244,9 +1488,6 @@ class _NullFrameProfiler:
 
     def section(self, _name):
         return nullcontext()
-
-    def set_metric(self, *_args, **_kwargs):
-        pass
 
 
 _NullFrameProfiler.INSTANCE = _NullFrameProfiler()

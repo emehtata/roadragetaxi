@@ -1358,9 +1358,9 @@
       "category": "collision",
       "event": "tree_crash",
       "description": "Car hitting a tree: dull wooden impact and leaves.",
-      "trigger": "TaxiManager.check_tree_collision returns True.",
+      "trigger": "The client: the drawn taxi knocks a tree over (MapChunk.knock_trees).",
       "source": [
-        "src/theroadragetrip/taxi.py:check_tree_collision"
+        "godot/main.gd:map_layer.knock_trees"
       ],
       "priority": "required",
       "loop": false,
@@ -1443,10 +1443,10 @@
     "collision.tree_fall": {
       "category": "collision",
       "event": "tree_falls",
-      "description": "Tree cracking and falling after a hit above 80 km/h.",
-      "trigger": "Impact > 80 km/h adds the tree to fallen_trees.",
+      "description": "Tree cracking and falling when the taxi knocks it over.",
+      "trigger": "The client: the drawn taxi knocks a tree over (MapChunk.knock_trees).",
       "source": [
-        "src/theroadragetrip/taxi.py:704"
+        "godot/main.gd:map_layer.knock_trees"
       ],
       "priority": "strong_candidate",
       "loop": false,
@@ -5792,6 +5792,690 @@
           "raw_clipped_samples": 0,
           "raw_silent_fraction": 0.929,
           "rms_dbfs": -29.8
+        }
+      ]
+    },
+    "pedestrian.front_door": {
+      "category": "pedestrian",
+      "event": "front_door",
+      "description": "A house's front door opened and shut as the player goes in or out.",
+      "trigger": "SimulationServer._home_door_pressed: entering or leaving a house.",
+      "source": [
+        "src/theroadragetrip/server/__init__.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        1.0,
+        2.5
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "A wooden house front door: handle turned, door swings open and shuts with a solid latch click, close perspective, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "pedestrian.front_door.01",
+          "file": "pedestrian/pedestrian_front_door_01.ogg",
+          "variation": 1,
+          "variant": "door unlatched, opened and closed firmly",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "door unlatched, opened and closed firmly. A wooden house front door: handle turned, door swings open and shuts with a solid latch click, close perspective, isolated sound effect",
+          "seed": 3523995492,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-28",
+          "duration_s": 1.818,
+          "raw_clipped_samples": 1,
+          "raw_silent_fraction": 0.537,
+          "rms_dbfs": -21.9
+        },
+        {
+          "id": "pedestrian.front_door.02",
+          "file": "pedestrian/pedestrian_front_door_02.ogg",
+          "variation": 2,
+          "variant": "door opened with a light creak and shut",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "door opened with a light creak and shut. A wooden house front door: handle turned, door swings open and shuts with a solid latch click, close perspective, isolated sound effect",
+          "seed": 1258469086,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-28",
+          "duration_s": 2.012,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.549,
+          "rms_dbfs": -21.7
+        }
+      ]
+    },
+    "pedestrian.footsteps_indoor": {
+      "category": "pedestrian",
+      "event": "footsteps_indoor",
+      "description": "One footstep on a wooden floor inside a house.",
+      "trigger": "audio_manager.update_footsteps indoors (home_walk.gd walker), every FOOTSTEP_M.",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "optional",
+      "loop": false,
+      "duration_s": [
+        0.2,
+        0.6
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": false,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "A single footstep of a shoe on a wooden floor indoors, soft heel and toe, quiet room, close, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "pedestrian.footsteps_indoor.01",
+          "file": "pedestrian/pedestrian_footsteps_indoor_01.ogg",
+          "variation": 1,
+          "variant": "one soft footstep on wooden floorboards",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one soft footstep on wooden floorboards. A single footstep of a shoe on a wooden floor indoors, soft heel and toe, quiet room, close, isolated sound effect",
+          "seed": 2663685752,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-28",
+          "duration_s": 0.346,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.747,
+          "rms_dbfs": -19.8
+        },
+        {
+          "id": "pedestrian.footsteps_indoor.02",
+          "file": "pedestrian/pedestrian_footsteps_indoor_02.ogg",
+          "variation": 2,
+          "variant": "one footstep on a laminate floor",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one footstep on a laminate floor. A single footstep of a shoe on a wooden floor indoors, soft heel and toe, quiet room, close, isolated sound effect",
+          "seed": 130928578,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-28",
+          "duration_s": 0.274,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.844,
+          "rms_dbfs": -21.4
+        }
+      ]
+    },
+    "vehicle.bicycle_bell": {
+      "category": "vehicle",
+      "event": "bicycle_bell",
+      "description": "A cyclist rings the bicycle bell at someone in the way.",
+      "trigger": "NPCManager._update_cyclist: a rider held up by a pedestrian or a stalled vehicle (cooldown per rider).",
+      "source": [
+        "src/theroadragetrip/npc.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        0.5,
+        1.5
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "A classic bicycle bell rung twice, bright metallic ring ding ding, outdoors, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.bicycle_bell.01",
+          "file": "vehicle/vehicle_bicycle_bell_01.ogg",
+          "variation": 1,
+          "variant": "two quick bright rings of a bicycle bell",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "two quick bright rings of a bicycle bell. A classic bicycle bell rung twice, bright metallic ring ding ding, outdoors, isolated sound effect",
+          "seed": 227381354,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-28",
+          "duration_s": 1.189,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.571,
+          "rms_dbfs": -19.3
+        },
+        {
+          "id": "vehicle.bicycle_bell.02",
+          "file": "vehicle/vehicle_bicycle_bell_02.ogg",
+          "variation": 2,
+          "variant": "one long thumb-flicked bicycle bell ring",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "one long thumb-flicked bicycle bell ring. A classic bicycle bell rung twice, bright metallic ring ding ding, outdoors, isolated sound effect",
+          "seed": 2491728336,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-28",
+          "duration_s": 1.018,
+          "raw_clipped_samples": 290,
+          "raw_silent_fraction": 0.648,
+          "rms_dbfs": -22.0
+        }
+      ]
+    },
+    "collision.post_knock": {
+      "category": "collision",
+      "event": "post_knock",
+      "description": "A car knocks over a bollard or a street lamp post: metal bends and the post clatters down.",
+      "trigger": "check_post_collision bends a post over (taxi_mgr.knocked_posts rises).",
+      "source": [
+        "src/theroadragetrip/simulation.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        1.0,
+        2.5
+      ],
+      "variations": 2,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "A car bumper hits a metal street post, hollow metal clang, the pole bends and falls clattering onto asphalt, close exterior, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "collision.post_knock.01",
+          "file": "collision/collision_post_knock_01.ogg",
+          "variation": 1,
+          "variant": "hollow steel pole struck, bent and falling with a clatter",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "hollow steel pole struck, bent and falling with a clatter. A car bumper hits a metal street post, hollow metal clang, the pole bends and falls clattering onto asphalt, close exterior, isolated sound effect",
+          "seed": 1538590912,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-28",
+          "duration_s": 2.952,
+          "raw_clipped_samples": 482,
+          "raw_silent_fraction": 0.117,
+          "rms_dbfs": -26.2
+        },
+        {
+          "id": "collision.post_knock.02",
+          "file": "collision/collision_post_knock_02.ogg",
+          "variation": 2,
+          "variant": "metal bollard knocked over with a clang and scrape",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "metal bollard knocked over with a clang and scrape. A car bumper hits a metal street post, hollow metal clang, the pole bends and falls clattering onto asphalt, close exterior, isolated sound effect",
+          "seed": 3267123578,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-28",
+          "duration_s": 2.787,
+          "raw_clipped_samples": 293,
+          "raw_silent_fraction": 0.172,
+          "rms_dbfs": -28.0
+        }
+      ]
+    },
+    "vehicle.bus_doors": {
+      "category": "vehicle",
+      "event": "bus_doors",
+      "description": "A city bus's pneumatic doors open at a stop.",
+      "trigger": "A line bus stops at a route stop (npc_manager.bus_brakes), with the air brake.",
+      "source": [
+        "src/theroadragetrip/npc.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": false,
+      "duration_s": [
+        1.0,
+        3.0
+      ],
+      "variations": 1,
+      "selection": "random",
+      "randomize": true,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "City bus pneumatic folding doors opening, short air hiss, rubber seals and a two-tone door chime, exterior street perspective, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.bus_doors.01",
+          "file": "vehicle/vehicle_bus_doors_01.ogg",
+          "variation": 1,
+          "variant": "bus doors hiss open with a soft chime",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "bus doors hiss open with a soft chime. City bus pneumatic folding doors opening, short air hiss, rubber seals and a two-tone door chime, exterior street perspective, isolated sound effect",
+          "seed": 3371761212,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 1,
+          "generated": "2026-10-28",
+          "duration_s": 3.121,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.368,
+          "rms_dbfs": -23.7
+        }
+      ]
+    },
+    "vehicle.bicycle_freewheel": {
+      "category": "vehicle",
+      "event": "bicycle_freewheel",
+      "description": "A bicycle rolling past: chain whirr and freewheel ticking.",
+      "trigger": "The nearest moving cyclist (state npcs vehicle_type bicycle).",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "optional",
+      "loop": true,
+      "duration_s": [
+        6.0,
+        8.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "A bicycle rolling past at moderate speed, chain whirr, tyre hum on asphalt and freewheel hub ticking, close, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.bicycle_freewheel.01",
+          "file": "vehicle/vehicle_bicycle_freewheel_01.ogg",
+          "variation": 1,
+          "variant": "bicycle chain and freewheel ticking while rolling",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "bicycle chain and freewheel ticking while rolling. A bicycle rolling past at moderate speed, chain whirr, tyre hum on asphalt and freewheel hub ticking, close, seamless loop, isolated sound effect",
+          "seed": 1912279060,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-28",
+          "duration_s": 8.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.102,
+          "rms_dbfs": -27.3
+        }
+      ]
+    },
+    "vehicle.motorcycle": {
+      "category": "vehicle",
+      "event": "motorcycle",
+      "description": "A motorcycle riding by, engine revving with the speed.",
+      "trigger": "The nearest moving motorcycle (state npcs vehicle_type motorcycle); pitch from speed.",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        6.0,
+        8.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "A motorcycle engine running steadily at medium revs, four-stroke rumble and exhaust, exterior, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.motorcycle.01",
+          "file": "vehicle/vehicle_motorcycle_01.ogg",
+          "variation": 1,
+          "variant": "steady motorcycle engine rumble at cruising revs",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "steady motorcycle engine rumble at cruising revs. A motorcycle engine running steadily at medium revs, four-stroke rumble and exhaust, exterior, seamless loop, isolated sound effect",
+          "seed": 3373996791,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-28",
+          "duration_s": 8.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.013,
+          "rms_dbfs": -12.1
+        }
+      ]
+    },
+    "vehicle.reverse_beep": {
+      "category": "vehicle",
+      "event": "reverse_beep",
+      "description": "A bus, lorry or plough reversing: the reversing alarm.",
+      "trigger": "The nearest heavy NPC vehicle moving backwards (state npcs speed < 0).",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        4.0,
+        6.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "A truck reversing alarm, regular beep beep beep warning tones, exterior, steady, seamless loop, isolated sound effect",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "vehicle.reverse_beep.01",
+          "file": "vehicle/vehicle_reverse_beep_01.ogg",
+          "variation": 1,
+          "variant": "regular reversing alarm beeps",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "regular reversing alarm beeps. A truck reversing alarm, regular beep beep beep warning tones, exterior, steady, seamless loop, isolated sound effect",
+          "seed": 1830969476,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-28",
+          "duration_s": 6.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.028,
+          "rms_dbfs": -15.0
+        }
+      ]
+    },
+    "ambient.protest": {
+      "category": "ambient",
+      "event": "protest",
+      "description": "Ilokapina sit-in: a crowd chanting with drums and whistles.",
+      "trigger": "The nearest protest group (state protests).",
+      "source": [
+        "godot/main.gd",
+        "src/theroadragetrip/protests.py"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "A peaceful street protest crowd outdoors, indistinct rhythmic chanting, hand drums and whistles, crowd murmur, distant city, seamless loop",
+        "negative_prompt": "music, melody, clear words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ambient.protest.01",
+          "file": "ambient/ambient_protest_01.ogg",
+          "variation": 1,
+          "variant": "rhythmic crowd chanting with drums and whistles",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "rhythmic crowd chanting with drums and whistles. A peaceful street protest crowd outdoors, indistinct rhythmic chanting, hand drums and whistles, crowd murmur, distant city, seamless loop",
+          "seed": 202690690,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-28",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.048,
+          "rms_dbfs": -14.6
+        }
+      ]
+    },
+    "ambient.playground": {
+      "category": "ambient",
+      "event": "playground",
+      "description": "Children playing at a playground: swings creak, distant laughter.",
+      "trigger": "The nearest playground equipment (chunk scenery_objects), by day.",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "An outdoor children's playground, squeaking swing chains, distant children's laughter and playful shouts, birds, seamless loop, ambience",
+        "negative_prompt": "music, melody, clear words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ambient.playground.01",
+          "file": "ambient/ambient_playground_01.ogg",
+          "variation": 1,
+          "variant": "creaking swings and distant children's laughter",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "creaking swings and distant children's laughter. An outdoor children's playground, squeaking swing chains, distant children's laughter and playful shouts, birds, seamless loop, ambience",
+          "seed": 3804517063,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-28",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.004,
+          "rms_dbfs": -19.6
+        }
+      ]
+    },
+    "ambient.construction": {
+      "category": "ambient",
+      "event": "construction",
+      "description": "A building site at work: machinery, a crane's hum, clanks and reversing beeps.",
+      "trigger": "The nearest construction site (chunk construction_fences), weekdays 7-16.",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "A construction site at work, distant diesel machinery, tower crane motor hum, occasional metal clanks and hammering, seamless loop, ambience",
+        "negative_prompt": "music, melody, speech, words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ambient.construction.01",
+          "file": "ambient/ambient_construction_01.ogg",
+          "variation": 1,
+          "variant": "building site machinery with clanks and hammering",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "building site machinery with clanks and hammering. A construction site at work, distant diesel machinery, tower crane motor hum, occasional metal clanks and hammering, seamless loop, ambience",
+          "seed": 3095606760,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-28",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 3,
+          "raw_silent_fraction": 0.001,
+          "rms_dbfs": -13.8
+        }
+      ]
+    },
+    "ambient.campfire": {
+      "category": "ambient",
+      "event": "campfire",
+      "description": "A campfire crackling at a camping area, quiet voices.",
+      "trigger": "The nearest fire pit, tent or caravan (chunk scenery_objects), evenings outside winter.",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "A crackling campfire outdoors at night, wood popping and hissing, quiet distant murmur of people, crickets, seamless loop, ambience",
+        "negative_prompt": "music, melody, clear words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ambient.campfire.01",
+          "file": "ambient/ambient_campfire_01.ogg",
+          "variation": 1,
+          "variant": "crackling campfire with soft distant murmur",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "crackling campfire with soft distant murmur. A crackling campfire outdoors at night, wood popping and hissing, quiet distant murmur of people, crickets, seamless loop, ambience",
+          "seed": 2382629361,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-28",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 33,
+          "raw_silent_fraction": 0.371,
+          "rms_dbfs": -39.1
+        }
+      ]
+    },
+    "ambient.biergarten": {
+      "category": "ambient",
+      "event": "biergarten",
+      "description": "A beer garden in the evening: chatter, laughter and clinking glasses.",
+      "trigger": "The nearest biergarten (chunk scenery_objects), afternoons and evenings outside winter.",
+      "source": [
+        "godot/main.gd"
+      ],
+      "priority": "strong_candidate",
+      "loop": true,
+      "duration_s": [
+        8.0,
+        10.0
+      ],
+      "variations": 1,
+      "selection": "layer",
+      "randomize": false,
+      "spatial": true,
+      "intensity_levels": false,
+      "contextual_variants": [],
+      "existing_asset": null,
+      "notes": "rrt-019.1 sound pass: new 0.19 elements.",
+      "generation": {
+        "prompt": "An outdoor beer garden terrace, relaxed crowd chatter and laughter, clinking glasses, chairs scraping, seamless loop, ambience",
+        "negative_prompt": "music, melody, clear words, singing, announcer, low quality, distortion, clipping"
+      },
+      "files": [
+        {
+          "id": "ambient.biergarten.01",
+          "file": "ambient/ambient_biergarten_01.ogg",
+          "variation": 1,
+          "variant": "relaxed terrace crowd chatter with clinking glasses",
+          "status": "generated",
+          "review": "pending",
+          "prompt": "relaxed terrace crowd chatter with clinking glasses. An outdoor beer garden terrace, relaxed crowd chatter and laughter, clinking glasses, chairs scraping, seamless loop, ambience",
+          "seed": 3238623013,
+          "steps": 100,
+          "sample_rate": 44100,
+          "channels": 2,
+          "generated": "2026-10-28",
+          "duration_s": 10.5,
+          "raw_clipped_samples": 0,
+          "raw_silent_fraction": 0.43,
+          "rms_dbfs": -34.9
         }
       ]
     }

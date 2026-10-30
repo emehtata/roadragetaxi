@@ -1,17 +1,12 @@
 import json
-import sys
 from datetime import date
-from pathlib import Path
-from types import SimpleNamespace
 
 
 
 from theroadragetrip import composition_import as importer  # noqa: E402
-from theroadragetrip.osm.models import Railway  # noqa: E402
 from theroadragetrip.train_compositions import (  # noqa: E402
-    GENERIC, LOCOMOTIVE_LENGTH_M, PROFILES, VEHICLE_GAP_M, TrainComposition, load_compositions, resolve, vehicle_profile,
+    GENERIC, LOCOMOTIVE_LENGTH_M, PROFILES, VEHICLE_GAP_M, load_compositions, resolve, vehicle_profile,
 )
-from theroadragetrip.trains import Train, TrainRoute  # noqa: E402
 
 
 def section(locomotives, wagons, total=None):

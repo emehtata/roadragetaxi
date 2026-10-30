@@ -28,26 +28,83 @@ static func _valid(polygon: PackedVector2Array) -> bool:
 
 
 const RINK_ICE := Color8(196, 222, 236)  # a flooded, frozen sports field
-const FIELDS_FROZEN_WINTER_WEIGHT := 0.5  # map_style.py: the same, for the ice grip
+const FIELDS_FROZEN_WINTER_WEIGHT := 0.5  # legacy-server fallback; current state sends fields_frozen
 
 
 ## Landuse fills: each piece in its kind's colour, green kinds through the
 ## season (area[1] 1), sports fields frozen to ice in winter (2).
-static func draw_areas(chunk, node: Node2D, key: String) -> void:
-	for area in chunk._data.get(key, []):
+## `canopy_margin`: the forest canopy layer's polygons drawn this much larger,
+## so edge crowns are whole (its shader's mask, read at each crown's centre,
+## still keeps the crowns to the forest).
+static func draw_areas(chunk, node: Node2D, key: String, canopy_margin := 0.0) -> void:
+	var areas: Array = chunk._data.get(key, [])
+	for index in areas.size():
+		var area = areas[index]
 		var polygon: PackedVector2Array = chunk._points(area[2])
+		var canopy: int = chunk.canopy_kind(area) if key == "landuse" else -1
+		if canopy_margin > 0.0 and _valid(polygon) and canopy >= 0:
+			var grown := Geometry2D.offset_polygon(polygon, canopy_margin, Geometry2D.JOIN_ROUND)
+			polygon = grown[0] if grown.size() == 1 else polygon  # an outline that splits: as mapped
 		if _valid(polygon):
 			var color := _rgb(area[0])
 			match int(area[1]):
 				1: color = chunk.seasonal_color(color, chunk._season)
-				2: color = RINK_ICE if chunk._season[0] >= FIELDS_FROZEN_WINTER_WEIGHT else chunk.seasonal_color(color, chunk._season)
-			if key == "landuse" and area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]:
+				2: color = RINK_ICE if chunk.fields_frozen() else chunk.seasonal_color(color, chunk._season)
+			if area.size() > 4 and int(area[4]) > 0 and canopy_margin == 0.0:
 				var uv := PackedVector2Array()
 				uv.resize(polygon.size())
-				uv.fill(Vector2(1.0 + float(chunk._season[0]), float(chunk._season[3])))
+				uv.fill(Vector2(-float(area[4]), 0.0))
 				node.draw_polygon(polygon, PackedColorArray([color]), uv)
+			elif canopy >= 0:  # forest.gdshader: UV.x 1 + kind * 2 + snow, UV.y autumn + 2 in leafless winter
+				var uv := PackedVector2Array()
+				uv.resize(polygon.size())
+				uv.fill(Vector2(1.0 + canopy * 2.0 + float(chunk._season[0]), float(chunk._season[3]) + (2.0 if chunk._trees_leafless else 0.0)))
+				node.draw_polygon(polygon, PackedColorArray([color]), uv)
+				if canopy == 2 and canopy_margin == 0.0 and chunk.forest_canopy:  # the ground layer of a bog
+					if not chunk._wetland_spots.has(index):
+						chunk._wetland_spots[index] = wetland_spots(polygon)
+					draw_wetland_ground(node, chunk._wetland_spots[index], float(chunk._season[0]))
 			else:
 				node.draw_colored_polygon(polygon, color)
+
+
+const BOG_CELL_M := 16.0  # one chance of a pool per cell, on a world-anchored grid (chunks agree)
+const BOG_POOL := Color8(74, 86, 82)  # peaty water, reflecting the sky a little
+const BOG_ICE := Color8(214, 222, 226)
+const BOG_MOSS := [Color8(138, 140, 88), Color8(124, 116, 80), Color8(108, 124, 78)]  # sphagnum and sedge tussocks, near the bog's own colour
+
+
+## A bog's pools and tussocks: [centre, radius, kind (0 pool, 1+ tussock colour)],
+## seeded by grid cell inside the outline. Computed once per chunk.
+static func wetland_spots(polygon: PackedVector2Array) -> Array:
+	var box := Rect2(polygon[0], Vector2.ZERO)
+	for point in polygon:
+		box = box.expand(point)
+	var spots := []
+	var rng := RandomNumberGenerator.new()
+	for cx in range(floori(box.position.x / BOG_CELL_M), floori(box.end.x / BOG_CELL_M) + 1):
+		for cy in range(floori(box.position.y / BOG_CELL_M), floori(box.end.y / BOG_CELL_M) + 1):
+			rng.seed = hash(Vector2i(cx, cy))
+			var at := Vector2(cx + rng.randf_range(0.2, 0.8), cy + rng.randf_range(0.2, 0.8)) * BOG_CELL_M
+			if rng.randf() < 0.35 and Geometry2D.is_point_in_polygon(at, polygon):
+				spots.append([at, rng.randf_range(1.2, 3.0), 0])
+			for i in 3:  # tussocks, pool or not
+				var tuft := Vector2(cx + rng.randf(), cy + rng.randf()) * BOG_CELL_M
+				if Geometry2D.is_point_in_polygon(tuft, polygon):
+					spots.append([tuft, rng.randf_range(0.5, 1.1), 1 + rng.randi_range(0, 2)])
+	return spots
+
+
+static func draw_wetland_ground(node: Node2D, spots: Array, winter: float) -> void:
+	for spot in spots:
+		if spot[2] == 0:  # an irregular pool of three overlapping rounds, frozen and snowy in winter
+			var water := BOG_POOL.lerp(BOG_ICE, clampf(winter, 0.0, 1.0))
+			var r: float = spot[1]
+			node.draw_circle(spot[0], r, water)
+			node.draw_circle(spot[0] + Vector2(r * 0.7, r * 0.25).rotated(r * 2.3), r * 0.7, water)
+			node.draw_circle(spot[0] + Vector2(-r * 0.6, r * 0.35).rotated(r * 1.7), r * 0.55, water)
+		else:
+			node.draw_circle(spot[0], spot[1], BOG_MOSS[spot[2] - 1].lerp(Color8(236, 240, 242), clampf(winter, 0.0, 1.0) * 0.85))
 
 
 ## Above all ground fills: smaller grass plots must not paint over headstones.
@@ -128,7 +185,7 @@ const FACEOFF_RADIUS := 4.5
 
 
 static func draw_rink_markings(chunk, node: Node2D) -> void:
-	if chunk._season[0] < FIELDS_FROZEN_WINTER_WEIGHT:
+	if not chunk.fields_frozen():
 		return  # gravel in summer: no markings
 	for rink in chunk._data.get("rinks", []):
 		var frame := RinkFrame.new(chunk, rink, float(rink[3]) / IIHF_LENGTH, float(rink[4]) / IIHF_WIDTH)
@@ -168,8 +225,8 @@ const PITCH_LINE_WIDTH := 0.12
 
 
 static func draw_soccer_markings(chunk, node: Node2D) -> void:
-	if chunk._season[0] >= PITCH_SNOW_WEIGHT:
-		return  # under snow
+	if chunk.fields_frozen() or chunk._season[0] >= PITCH_SNOW_WEIGHT:
+		return  # under ice or snow
 	for pitch in chunk._data.get("soccer_pitches", []):
 		var frame := RinkFrame.new(chunk, pitch, float(pitch[3]) / FIFA_LENGTH, float(pitch[4]) / FIFA_WIDTH)
 		var r := frame.radius_scale
@@ -282,13 +339,15 @@ class RinkFrame:
 ## Parking spaces: asphalt bays with a light edge.
 static func draw_parking(chunk, node: Node2D) -> void:
 	var edges := PackedVector2Array()
+	var fills = chunk.get_script().Strokes.new()  # every space one draw call (rrt-019.1), then the edges another
 	for space in chunk._data.get("parking", []):
 		var polygon: PackedVector2Array = chunk._points(space)
 		if not _valid(polygon):
 			continue
-		node.draw_colored_polygon(polygon, Color8(72, 75, 74))
+		fills.polygon(polygon, Color8(72, 75, 74))
 		for i in polygon.size():
 			edges.append_array(PackedVector2Array([polygon[i], polygon[(i + 1) % polygon.size()]]))
+	fills.draw(node)
 	if not edges.is_empty():
 		node.draw_multiline(edges, Color8(125, 128, 124), _width(chunk, 0.12, 1.0))
 
@@ -357,8 +416,8 @@ static func draw_guardrails(chunk, node: Node2D) -> void:
 
 
 ## Open roofs, under the vehicles: the canopy's shadow
-## and its corner posts (the roof itself is drawn above them: draw_canopies).
-static func draw_canopy_supports(chunk, node: Node2D) -> void:
+## (the roof itself is drawn above it: draw_canopies).
+static func draw_canopy_shadows(chunk, node: Node2D) -> void:
 	for canopy in chunk._data.get("canopies", []):
 		var polygon: PackedVector2Array = chunk._points(canopy)
 		if polygon.size() < 3:
@@ -373,9 +432,32 @@ static func draw_canopy_supports(chunk, node: Node2D) -> void:
 		node.draw_set_transform(anchor + Vector2(0.35, 0.35))
 		node.draw_colored_polygon(shadow, Color8(30, 32, 33, 75))
 		node.draw_set_transform(Vector2.ZERO)
-		var height := canopy_height(chunk, canopy)
+
+
+## The open roofs' corner posts, above their shadows. They redraw whenever
+## the camera moves (the 3D lift), so this is all one draw call.
+static func draw_canopy_supports(chunk, node: Node2D) -> void:
+	var canopies: Array = chunk._data.get("canopies", [])
+	var poles := PackedVector2Array()  # base, top pairs
+	for index in canopies.size():
+		var polygon: PackedVector2Array = chunk._points(canopies[index])
+		if polygon.size() < 3:
+			continue
+		var height := canopy_height(chunk, index)
 		for point in polygon:
-			node.draw_line(point, _lift(chunk, point, height), OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
+			poles.append_array([point, _lift(chunk, point, height)])
+	if poles.is_empty():
+		return
+	node.draw_multiline(poles, OPEN_ROOF_POLE, maxf(chunk._px(1.0), 0.24))
+
+
+## The posts' feet, over the posts: their own layer, which only redraws with the zoom.
+static func draw_canopy_feet(chunk, node: Node2D) -> void:
+	for canopy in chunk._data.get("canopies", []):
+		var polygon: PackedVector2Array = chunk._points(canopy)
+		if polygon.size() < 3:
+			continue
+		for point in polygon:
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18) + chunk._px(1.0), OPEN_ROOF_EDGE)
 			node.draw_circle(point, maxf(chunk._px(1.0), 0.18), OPEN_ROOF_POLE)
 
@@ -386,19 +468,19 @@ static func _lift(chunk, point: Vector2, height: float) -> Vector2:
 	return B3.lift_point(point, height) if chunk.buildings_3d else point
 
 
-## A canopy's height (chunk canopy_heights, in step with canopies; 6 m without).
-static func canopy_height(chunk, canopy) -> float:
-	var index: int = chunk._data.get("canopies", []).find(canopy)
+## The height of canopy `index` (chunk canopy_heights, in step with canopies; 6 m without).
+static func canopy_height(chunk, index: int) -> float:
 	var heights: Array = chunk._data.get("canopy_heights", [])
-	return float(heights[index]) if index >= 0 and index < heights.size() else 6.0
+	return float(heights[index]) if index < heights.size() else 6.0
 
 
 ## The see-through canopy above the vehicles:
 ## fuel pumps and the taxi stay visible under it.
 static func draw_canopies(chunk, node: Node2D) -> void:
-	for canopy in chunk._data.get("canopies", []):
-		var polygon: PackedVector2Array = chunk._points(canopy).duplicate()
-		var height := canopy_height(chunk, canopy)
+	var canopies: Array = chunk._data.get("canopies", [])
+	for index in canopies.size():
+		var polygon: PackedVector2Array = chunk._points(canopies[index]).duplicate()
+		var height := canopy_height(chunk, index)
 		for i in polygon.size():
 			polygon[i] = _lift(chunk, polygon[i], height)
 		if _valid(polygon):
@@ -593,7 +675,7 @@ static func draw_volleyball_nets(chunk, node: Node2D) -> void:
 
 
 static func draw_tennis_courts(chunk, node: Node2D) -> void:
-	if chunk._season[0] >= PITCH_SNOW_WEIGHT:
+	if chunk.fields_frozen() or chunk._season[0] >= PITCH_SNOW_WEIGHT:
 		return
 	for court in chunk._data.get("tennis_courts", []):
 		var frame := RinkFrame.new(chunk, court, float(court[3]), float(court[4]))

@@ -69,6 +69,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_vehicle_body_triangles()
 	test_audio()
 	test_environment_ambience()
+	test_new_sounds()
 	test_new_sound_triggers()
 	test_nightclub_audio()
 	test_car_audio()
@@ -86,15 +87,18 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_fields_frozen()
 	test_rest_of_static_world()
 	test_buildings_2_5d()
 	test_buildings_3d()
+	test_shop_lights()
 	test_sun_and_shadows()
 	test_roof_snow()
 	test_resent_chunk_buildings()
 	test_performance_paths()
 	test_startup_progress()
 	test_holiday_events()
+	test_light_at_cells()
 	test_date_picker()
 	test_settings_help()
 	test_credits()
@@ -165,9 +169,9 @@ func test_settings_help() -> void:
 	var shell = preload("res://startup.gd").new()
 	root.add_child(shell)
 	shell._settings_menu()
-	check(shell._focusables.size() == 6, "settings: five categories and Back")
+	check(shell._focusables.size() == 7, "settings: six categories and Back")
 	var help_count := 0
-	for category in ["general", "gameplay", "graphics", "audio", "maps"]:
+	for category in ["general", "gameplay", "graphics", "audio", "maps", "experimental"]:
 		shell.call("_" + category + "_menu")
 		check(shell._back_action == Callable(shell, "_settings_menu"), "settings: %s returns to categories" % category)
 		var category_help: Array = shell._body.find_children("*", "Button", true, false).filter(func(b): return b.text == "?")
@@ -194,6 +198,13 @@ func test_settings_help() -> void:
 
 
 func test_startup_progress() -> void:
+	var marks = preload("res://door_marks.gd").new()
+	marks.show_doors({"available": true, "doors": [[1010.0, 2005.0, 0.0, true], [990.0, 2000.0, PI / 2.0, false]]}, Vector2(1000, 2000), 9.0)
+	check(marks.visible and marks.available and marks.doors[0][0] == Vector2(10, -5) and marks.doors[1][1].is_equal_approx(Vector2(0, -1))
+		and marks.doors[0][2], "door hints: map positions, outward arrows on screen, the home's marked")
+	marks.show_doors({"indoors": true, "doors": []}, Vector2.ZERO, 9.0)
+	check(not marks.visible and not marks.available, "no nearby doors, no hints")
+	marks.free()
 	var Startup := preload("res://startup.gd")
 	check(Startup.startup_status("{}").is_empty() and Startup.startup_status("[]").is_empty(), "startup: invalid or absent status ignored")
 	check(Startup.startup_status('{"stage":3,"detail":"x","history":[]}').is_empty(), "startup: malformed stage ignored")
@@ -295,25 +306,112 @@ func test_roof_snow() -> void:
 	MapChunk.buildings_3d = false
 
 
+## MapLayer.light_at reads each point's light cell, not the whole chunk:
+## the same light as summing every street light, at random points.
+func test_light_at_cells() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var lights: Array = []
+	for i in 300:
+		lights.append([rng.randf_range(0, 500), rng.randf_range(0, 500), 0.0, rng.randf_range(4.0, 35.0)])
+	lights.append([250.0, 250.0, 0.0])  # no reach given: 10 m
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.add_chunk({"chunk_id": "lit", "bounds": [0, 0, 500, 500], "street_lights": lights})
+	var chunk = map._chunks["lit"]
+	chunk._broken = PackedInt32Array([3])
+	var same := true
+	var lit := 0
+	var same_near := true
+	var lamps := 0
+	for k in 2000:
+		var at: Vector2 = Vector2(rng.randf_range(-20, 520), rng.randf_range(-520, 20))  # within 20 m of the chunk: it is searched if k > 0 else chunk.street_lights[lights.size() - 1]
+		var total := 0.0
+		for i in chunk.street_lights.size():
+			var reach := float(lights[i][3]) if lights[i].size() > 3 else 10.0
+			var d: float = chunk.street_lights[i].distance_to(at)
+			if i != 3 and d < reach:
+				total += (1.0 - d / reach) * (1.0 - d / reach)
+		same = same and map.light_at(at) == minf(total, 1.5)
+		lit += int(total > 0.0)
+		for radius in [22.0, 25.0]:
+			var near := false
+			for i in chunk.street_lights.size():
+				near = near or (i != 3 and chunk.street_lights[i].distance_to(at) <= radius)
+			same_near = same_near and map.lamp_near(at, radius) == near
+			lamps += int(near)
+	check(same and lit > 500, "light_at by light cells: the same light as every street light summed (%d of 2000 points lit)" % lit)
+	check(same_near and lamps > 500 and lamps < 4000, "lamp_near by light cells: the same as every street light searched (%d of 4000)" % lamps)
+	map.free()
+
+
 func test_holiday_events() -> void:
 	var map := MapLayer.new()
 	root.add_child(map)
-	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "holiday_yards": [[20, 20], [40, 40]]})
+	var trees := []
+	for i in 100:
+		trees.append([i * 3.0, 80.0, "pine", 0.5])
+	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "holiday_yards": [[20, 20], [40, 40]], "trees": trees})
+	var house := [[10, 20], [22, 20], [22, 30], [10, 30]]
+	var shop := [[40, 20], [52, 20], [52, 30], [40, 30]]
+	var distant := [[300, 20], [312, 20], [312, 30], [300, 30]]
+	var apartment := [[65, 20], [77, 20], [77, 30], [65, 30]]
+	var style := [[100, 80, 70], 1, 4.5, [], [160, 150, 130], 2, 1]
+	var commercial := style.duplicate(true)
+	commercial[6] = 2
+	var apartment_style := style.duplicate(true)
+	apartment_style[6] = 0
+	map.add_chunk({"chunk_id": "christmas-test", "bounds": [0, 0, 500, 500],
+		"buildings": [house, shop, distant, apartment], "building_styles": [style, commercial, style, apartment_style]})
 	var view := Rect2(0, -100, 100, 100)
 	check(map.holiday_yards(view).size() == 2, "holiday yards: server points in world coordinates")
 	check(map.holiday_yards(view, 1).size() == 1, "holiday yards: bounded count")
 	check(map.holiday_yards(Rect2(1000, 1000, 10, 10)).is_empty(), "holiday yards: culled outside view")
+	check(map.christmas_houses(view).size() == 1, "Christmas houses: houses in view, excluding apartments and commercial buildings")
+	check(map.christmas_houses(Rect2(1000, 1000, 10, 10)).is_empty(), "Christmas houses: distant chunks skipped")
+
 	var events: Node = preload("res://holiday_layer.gd").new()
 	root.add_child(events)
 	events.setup(map)
-	var state := {"calendar": {"holidays": {"halloween": true}}}
-	events.update(0.016, state, view, false)
-	check(events.decorations.visible and not events.bursts.visible and events.yards.size() == 2, "Halloween: yards lit, no fireworks")
+	var town := Rect2(-2000, -2000, 4000, 4000)
+	var state := {"calendar": {"holidays": {"halloween": true, "halloween_ghosts": true}}}
+	events.update(0.016, state, town, false)
+	check(events.decorations.visible and events.ghost_layer.visible and not events.bursts.visible and events.yards.size() == 2 and not events.ghosts.is_empty(), "Halloween night: yards and fixed ghost scenery, no fireworks")
+	check(events.ghosts == events.ghost_sites(town.grow(20.0)), "Halloween ghosts: stable positions as the view updates")
+	for phase in [0.0, PI / 2, PI, PI * 1.5]:
+		var outline: PackedVector2Array = events.ghost_outline(phase)
+		check(not Geometry2D.triangulate_polygon(outline).is_empty(), "overhead ghost: cloth remains a drawable polygon throughout its animation")
+		check(Array(outline).all(func(p): return p.is_finite() and p.length() < 1.5), "overhead ghost: human-sized silhouette, not a roof-sized face")
+	events.ghosts = PackedVector2Array([Vector2.ZERO])
+	var haunting_walkers: Array[Vector2] = [Vector2(100.0, 0.0)]
+	events._update_ghosts(1.0, haunting_walkers)
+	check(events.ghosts[0].distance_to(haunting_walkers[0]) < 100.0, "Halloween ghosts: drift toward a nearby walker")
 	state.calendar.holidays = {"fireworks": true}
 	events.update(0.016, state, view, false)
 	check(not events.decorations.visible and events.bursts.visible, "New Year: only fireworks")
 	check(not events.sites.is_empty() and events.yards.is_empty(), "New Year: fireworks rise over the town, no yard query")
-	var town := Rect2(-2000, -2000, 4000, 4000)
+	state.calendar.holidays = {"christmas": true, "window_decorations": true}
+	events.update(0.016, state, town, false)
+	check(events.elf_layer.visible and not events.elves.is_empty(), "Christmas: elves hide around trees and flash")
+	check(not events.decorations.visible and events.christmas_layer.visible and events.yards.is_empty(), "Christmas: house lights only, no added yard trees")
+	check(events.houses.size() == 2, "Christmas: nearby residential houses, no commercial building")
+	check(map.christmas_houses(town, 1).size() == 1, "Christmas houses: caller limit is respected")
+	var outline := PackedVector2Array([Vector2.ZERO, Vector2(12, 0), Vector2(12, 10), Vector2(0, 10)])
+	var eave: PackedVector2Array = events.christmas_eave(outline, PackedVector2Array([Vector2(6, 0)]))
+	check(eave == PackedVector2Array([Vector2.ZERO, Vector2(12, 0)]), "Christmas lights: one fixed eave along the entrance facade")
+	var bulbs: PackedVector2Array = events.christmas_bulbs(eave)
+	check(bulbs.size() > 10 and bulbs.size() <= 48 and Array(bulbs).all(func(p): return is_zero_approx(p.y)), "Christmas lights: bulbs stay on one eave, not around the roof")
+	check(events.christmas_bulbs(PackedVector2Array([Vector2.ZERO, Vector2(1000, 0)])).size() == 48, "Christmas lights: bounded bulb count")
+	state.calendar.holidays = {"window_decorations": true}
+	events.update(0.016, state, town, false)
+	check(events.christmas_layer.visible and events.houses.size() == 2 and not events.elf_layer.visible, "Advent through Epiphany: exterior lights use the decoration flag independently of elves")
+	state.calendar.holidays = {"christmas": true}
+	events.update(0.016, state, town, false)
+	check(not events.christmas_layer.visible and events.houses.is_empty(), "Christmas lights require the Advent decoration flag")
+	state.calendar.holidays = {"window_decorations": true}
+	events.update(0.016, state, town, false)
+
+	check(map.holiday_hiding_spots(Rect2(1000, 1000, 10, 10)).is_empty(), "Christmas elves: cull sites outside the view")
 	var sites: PackedVector2Array = events.firework_sites(town)
 	check(sites.size() == 12 and sites == events.firework_sites(town), "fireworks: at most 12 sites, the same ones every refresh")
 	var all_in := true
@@ -322,6 +420,7 @@ func test_holiday_events() -> void:
 	check(all_in, "fireworks: sites inside the view")
 	events.update(0.016, state, view, true)
 	check(not events.decorations.visible and not events.bursts.visible and events.yards.is_empty(), "underground: holiday effects hidden")
+	check(not events.christmas_layer.visible and events.houses.is_empty(), "underground and out of season: no Christmas exterior decorations")
 	events.update(0.016, {"calendar": null}, view, false)
 	check(events.yards.is_empty() and not events.bursts.visible, "old server: no events, no cached yards")
 	# Sounds: each site whistles at launch and bangs at its burst, once per cycle.
@@ -490,11 +589,20 @@ func test_graphics_settings() -> void:
 	check(reloaded.load("user://graphics-test.cfg") == OK and Graphics.read(reloaded).values().all(func(on): return on == false), "graphics: all disabled choices survive reload")
 	DirAccess.remove_absolute("user://graphics-test.cfg")
 	var previous_3d: bool = MapChunk.buildings_3d
+	var previous_canopy: bool = MapChunk.forest_canopy
 	var main: Node = load("res://main.tscn").instantiate()
 	main.set_graphics(Graphics.read(reloaded))
 	root.add_child(main)
 	main.phone.close()
 	check(not MapChunk.buildings_3d, "graphics: new session selects the existing 2D fallback")
+	check(not MapChunk.forest_canopy, "graphics: the session without the forest canopy")
+	var flat_forest := MapLayer.new()
+	root.add_child(flat_forest)
+	flat_forest.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[40, 78, 42], 1, [[0, 0], [500, 0], [500, 500], [0, 500]], "forest"]]})
+	var forest_chunk = flat_forest._chunks["0_0"]
+	check(forest_chunk._season_layers.size() == 1 and forest_chunk._season_layers[0].z_index == -1, "graphics: without the canopy a forest is its flat fill alone (no crown layer, no mask)")
+	flat_forest.free()
 	check(not main.entities.smoke_enabled and not main.map_layer.shadows_enabled, "graphics: live render flags applied")
 	var weather = main.weather
 	var state := {"weather": {"weather_type": "rain", "wetness": 1.0}, "player": {"speed": 20.0}, "on_foot": false}
@@ -515,9 +623,11 @@ func test_graphics_settings() -> void:
 	main.set_graphics(Graphics.DEFAULTS)
 	root.add_child(main)
 	check(MapChunk.buildings_3d, "graphics: next session uses saved 3D selection")
+	check(MapChunk.forest_canopy, "graphics: the next session's forests have crowns again")
 	check(main.map_layer.shadows_enabled, "graphics: 3D session restores the saved shadow preference")
 	main.free()
 	MapChunk.buildings_3d = previous_3d
+	MapChunk.forest_canopy = previous_canopy
 	var B3 := preload("res://buildings_3d.gd")
 	var layer := B3.new()
 	root.add_child(layer)
@@ -651,6 +761,21 @@ func test_interpolation() -> void:
 		hitch.push(tick, tick / 30.0, _state(0.0), at)
 	hitch.sample(at)
 	check(absf(hitch._offset - offset_before) < 0.005, "a client hitch's backlog leaves the clock offset alone (moved %.3f s)" % (hitch._offset - offset_before))
+
+	# A slow client (15 fps: every frame over 50 ms) is not stalling: it must still
+	# follow a server clock that slips, not run past the newest state for a second at a time.
+	var slow := StateBuffer.new()
+	slow.delay = 0.1
+	var slipped := 0.0
+	var slow_frame := 0.0
+	for tick in range(1, 30 * 30):
+		if tick > 30 and tick % 4 == 0:
+			slipped += 0.03
+		while slow_frame < tick / 30.0 + slipped:
+			slow.sample(slow_frame)
+			slow_frame += 1.0 / 15.0
+		slow.push(tick, tick / 30.0, _state(0.0), slow_frame)
+	check(slow.longest_underrun_s < 0.1, "at 15 fps the render clock follows the slipping server (longest underrun %.0f ms)" % (slow.longest_underrun_s * 1000.0))
 
 	# Events: handed out once, when the render time reaches their state.
 	var events := StateBuffer.new()
@@ -1361,6 +1486,10 @@ func test_phone() -> void:
 	check(phone._details.text.contains("Fare: unavailable"), "no invented fare")
 	phone._unhandled_input(_key(KEY_DOWN))
 	check(phone.selected_id == "offer-1" and requests.is_empty(), "driving arrows do not change the selected offer")
+	var keypad_down := _key(KEY_KP_2)  # NumLock off: the keypad's 2 is the Down arrow
+	keypad_down.keycode = KEY_DOWN
+	phone._unhandled_input(keypad_down)
+	check(phone.selected_id == "offer-1" and requests.is_empty(), "the keypad's Down arrow (NumLock off) accepts nothing")
 	phone.select(1)
 	check(phone.selected_id == "offer-2" and phone._details.text.contains("To the customer: 1.50 km") and requests.is_empty(), "selecting the second card does not accept it")
 	check(phone._rows.get_child(1).find_child("Badge", true, false).text == "1.50 km", "a card's badge: the distance to the customer")
@@ -1473,6 +1602,10 @@ func test_commands_carry_the_player_id() -> void:
 	check(save_line.get("save_game") == true and not message.has("save_game"), "a save request rides on a command; others never save")
 	var clear_line: Dictionary = JSON.parse_string(SimClient.command_line({}, 3, "local", {}, "", false, true))
 	check(clear_line.get("clear_home") == true and not message.has("clear_home"), "clear home is an explicit request for the current server game")
+	var Startup := preload("res://startup.gd")
+	check(Startup.is_mode_slot("sim-1793212191", "simulation") and not Startup.is_mode_slot("gig-1793212191", "simulation")
+		and Startup.is_mode_slot("gig-1793212191", "gig_driver") and Startup.is_mode_slot("old-name", "gig_driver")
+		and not Startup.is_mode_slot("sim-1", "gig_driver"), "simulation and gig saves keep to their own slot lists")
 	var slot_text: String = preload("res://startup.gd").slot_label({"city": "Oulu", "place_name": "Muurame", "game_time": "2026-09-27T00:46:13", "balance_cents": 7777, "fare": true}, "kyyti kesken")
 	check(slot_text == "Muurame · 2026-09-27 00:46 · 77.77 € · kyyti kesken", "a saved game's menu line: place, game time, money, a fare in progress")
 	# godot-final-01: G asks the simulation to refuel (it checks the station, speed, tank and money).
@@ -1665,7 +1798,8 @@ func test_speech_and_stations() -> void:
 	var Paths := preload("res://paths.gd")
 	check(not Paths.exported() and Paths.package_path("assets/ragefaceatlas.png").ends_with("src/theroadragetrip/assets/ragefaceatlas.png") and FileAccess.file_exists(Paths.package_path("assets/ragefaceatlas.png")), "paths: the repo's Python package, files found")
 	var server_cmd: Array = Paths.server_command(["--list-cities"])
-	check(server_cmd[1].has("theroadragetrip.server") and server_cmd[1][-1] == "--list-cities", "paths: the repo's server runs from .venv with the arguments last")
+	var server_entry := ProjectSettings.globalize_path("res://../road_rage_server.py").simplify_path()
+	check((server_cmd[1].has(server_entry) if OS.get_name() == "Windows" else server_cmd[1].has("theroadragetrip.server")) and server_cmd[1][-1] == "--list-cities", "paths: the repo server uses its platform entry point with arguments last")
 	var Startup := load("res://startup.gd")
 	var map_nw: Vector2 = Startup.city_map_position(70.5, 19.0, Vector2(420, 360))
 	var map_se: Vector2 = Startup.city_map_position(59.5, 32.0, Vector2(420, 360))
@@ -1676,6 +1810,14 @@ func test_speech_and_stations() -> void:
 	var MapBrowser := load("res://map_browser.gd")
 	var oulu_px: Vector2 = MapBrowser.to_pixels(65.012, 25.468, 13)
 	check(MapBrowser.to_latlon(oulu_px, 13).distance_to(Vector2(65.012, 25.468)) < 1e-5, "map browser: tile pixels round-trip to the same point")
+	var browser = MapBrowser.new()
+	browser._tile_loaded("13/1/2", "user://tiles/13/1/2.png", HTTPRequest.RESULT_CANT_CONNECT, 0, PackedByteArray())
+	check(not browser._tiles.has("13/1/2") and browser._failed["13/1/2"][0] == 1 and browser._failed["13/1/2"][1] > Time.get_ticks_msec(),
+		"map browser: a failed tile is asked again later, not left blank for the visit")
+	for i in 5:
+		browser._tile_loaded("13/1/2", "user://tiles/13/1/2.png", HTTPRequest.RESULT_SUCCESS, 429, PackedByteArray())
+	check(browser._failed["13/1/2"][1] > Time.get_ticks_msec() + 3600 * 1000, "map browser: after a few failures it stops asking")
+	browser.free()
 	check(Startup.nearest_city([{"name": "Oulu", "latitude": 65.012, "longitude": 25.468}, {"name": "Helsinki", "latitude": 60.17, "longitude": 24.94}], 64.9, 25.6) == "Oulu", "map point: the nearest city gives the gig its settings")
 	var bbox: PackedFloat64Array = Array(Startup.point_bbox(65.0, 25.0).split(",")).map(func(v): return float(v))
 	check(is_equal_approx((bbox[0] + bbox[2]) / 2.0, 65.0) and is_equal_approx((bbox[1] + bbox[3]) / 2.0, 25.0) and bbox[2] - bbox[0] > 0.02, "map point: the bbox is centred on the pin")
@@ -1685,7 +1827,7 @@ func test_speech_and_stations() -> void:
 	var pbf_modified := int(FileAccess.get_modified_time("res://finland_minimap.svg"))
 	check(not Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified) and Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified + Startup.PBF_MAX_AGE_S + 1), "map source: files over 30 days old are offered an update")
 	check(Startup.download_percent(25, 100) == 25.0 and Startup.download_percent(120, 100) == 100.0 and Startup.download_percent(1, 0) == 0.0, "map source: download progress is bounded and handles an unknown size")
-	var replace_target := "/tmp/rrt-pbf-replace-test"
+	var replace_target := OS.get_temp_dir().path_join("rrt-pbf-replace-test-%d" % OS.get_process_id())
 	var replace_partial := replace_target + ".part"
 	var old_file := FileAccess.open(replace_target, FileAccess.WRITE)
 	old_file.store_string("old")
@@ -1932,7 +2074,7 @@ func test_road_rage() -> void:
 	main.phone.is_open = true
 	main._unhandled_input(_key_event(KEY_SPACE))
 	main.send({})
-	check(sim._last_command["road_rage"] == false, "not while the phone is open")
+	check(sim._last_command["road_rage"] == true, "SPACE rages with the phone's offers open too (the phone has no use for it)")
 	main.phone.busy = true
 	main._unhandled_input(_key_event(KEY_SPACE))
 	main._unhandled_input(_key_event(KEY_X))
@@ -2319,9 +2461,9 @@ func test_gameplay_points() -> void:
 	message = JSON.parse_string(JSON.stringify(message))  # as the client gets it: every number a float
 	check(map.add_chunk(message) and not map.add_chunk(message), "points arrive with their chunk, once")
 	var chunk = map._chunks["2_4"]
-	check(chunk._px_layers.size() == 2 + 4 and chunk._lights != null, "pumps, boards, roadworks/stands and posts each get one canvas item (besides the tracks and buildings every chunk has)")
+	check(chunk._px_layers.size() == 1 + 4 and chunk._lights != null, "pumps, boards, roadworks/stands and posts each get one canvas item (besides the tracks every chunk has)")
 	check(MapMath.point(map.origin, 1020.0, 2040.0) == Vector2(20, -40), "a stand sits at its map position relative to the origin")
-	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._px_layers.size() == 2 and map._chunks["0_0"]._lights == null,
+	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._px_layers.size() == 1 and map._chunks["0_0"]._lights == null,
 		"a chunk without points adds no point layers (older servers too)")
 	check(MapChunk.fuel_board_text(message["fuel_stations"][0]) == "Neste  1.89 €/L", "the board shows the server's price")
 
@@ -2363,31 +2505,43 @@ func test_obstacles() -> void:
 		"bollards": [[1040.0, 2000.0]]}))
 	check(map.add_chunk(message) and not map.add_chunk(message), "obstacles arrive with their chunk, once")
 	var chunk = map._chunks["2_4"]
-	check(chunk._trees != null and chunk._px_layers.size() == 2 + 2, "trees and bollards share one canvas item, fences another")
+	check(chunk._trees != null and chunk._px_layers.size() == 1 + 2, "trees and bollards share one canvas item, fences another")
 	check(MapChunk.obstacle_key(1010.0, 2020.0) == "1010.0,2020.0", "obstacles are named by position at 0.1 m, as the server rounds")
+	var street := {"layer": 0, "rank": 9, "half_width_m": 3.0}  # an asphalt residential street
+	var gravel := {"layer": 0, "rank": 8, "half_width_m": 3.0}  # an unpaved one, as wide
+	check(MapChunk._drawn_before(gravel, street) and not MapChunk._drawn_before(street, gravel), "the paved street is drawn over the gravel one")
+	check(MapChunk._drawn_before({"layer": 0, "rank": 9, "half_width_m": 6.0}, {"layer": 0, "rank": 11, "half_width_m": 3.0}), "the more important road is on top, however wide the other")
+	check(MapChunk._drawn_before({"layer": 0, "rank": 9, "half_width_m": 2.0}, street), "same rank: the wider on top, as before")
 
 	# Look: palette by variation, pine crowns smaller.
 	var pine := MapChunk.tree_style("pine", 0.25)
-	check(pine["crown"] == Color8(88, 108, 42) and is_equal_approx(pine["radius"], 1.9 * (0.72 + 0.25 * 0.62)), "a pine's crown")
+	check(pine["crown"] == Color8(38, 72, 27) and is_equal_approx(pine["radius"], 1.9 * (0.72 + 0.25 * 0.62)), "a dark-green pine crown")
 	check(MapChunk.tree_style("birch", 0.8)["trunk"] == Color8(222, 218, 206) and is_equal_approx(MapChunk.tree_style("birch", 0.8)["radius"], 2.2 * (0.72 + 0.8 * 0.62)), "a birch's crown and white trunk")
 
 	# Dashes: 1.5 m on, 1 m off, carried round a corner.
 	var pieces := MapChunk.dashes(PackedVector2Array([Vector2(0, 0), Vector2(2, 0), Vector2(2, 3)]), 1.5, 1.0)
 	check(pieces.size() == 2 and pieces[0] == [Vector2(0, 0), Vector2(1.5, 0)] and pieces[1][0].is_equal_approx(Vector2(2, 0.5)) and pieces[1][1].is_equal_approx(Vector2(2, 2)), "dash pattern carries over the corner")
 
-	# The server's state: a felled tree, a knocked bollard and a knocked lamp (no static lamp data).
-	var fallen: Array = JSON.parse_string("[[1010.0, 2020.0, 1.5]]")
+	# The server's state: a knocked bollard and a knocked lamp (no static lamp data).
 	var knocked: Array = JSON.parse_string("[[1040.0, 2000.0, 3.14, \"bollard\"], [1200.0, 2200.0, 0.0, \"street_lamp\"]]")
-	map.set_obstacles(fallen, knocked)
-	check(chunk._fallen == {"1010.0,2020.0": 1.5} and chunk._knocked.has("1040.0,2000.0"), "the chunk takes its own felled tree and knocked bollard")
+	map.set_obstacles(knocked)
+	check(chunk._knocked.has("1040.0,2000.0"), "the chunk takes its own knocked bollard")
 	check(map.knocked.size() == 2, "the knocked lamp is drawn from the state alone")
-	check(not chunk.set_obstacles(map.fallen, map.knocked), "unchanged state: no redraw")
-	map.set_obstacles(fallen.duplicate(true), knocked.duplicate(true))
-	check(chunk._fallen.size() == 1, "the same lists again change nothing")
+	check(not chunk.set_obstacles(map.knocked), "unchanged state: no redraw")
 
-	# Unload and reload: gone, back once, still felled.
+	# Trees are the client's: the drawn taxi knocks one over, the way it drives; it stays down.
+	var tree_at := MapMath.point(chunk._origin, 1010.0, 2020.0)
+	var taxi := {"position": tree_at + Vector2(-3.0, 0.0), "heading": 0.0, "length": 4.3, "width": 1.8}
+	check(map.knock_trees(taxi) == 0 and chunk._fallen.is_empty(), "a taxi 3 m short of the trunk knocks nothing over")
+	taxi["position"] = tree_at + Vector2(-2.3, 0.0)  # its nose at the trunk
+	check(map.knock_trees(taxi) == 1 and chunk._fallen == {"1010.0,2020.0": 0.0}, "touching it, the tree falls the way the taxi was going")
+	check(map.knock_trees(taxi) == 0, "a fallen tree falls once")
+	map.set_obstacles(knocked.duplicate(true))
+	check(chunk._fallen.size() == 1, "the server's state leaves a fallen tree down")
+
+	# Unload and reload: gone, back once, the tree standing again.
 	check(map.remove_chunk("2_4") and map.chunk_count() == 0, "obstacles go with their chunk")
-	check(map.add_chunk(message.duplicate(true)) and map._chunks["2_4"]._fallen.has("1010.0,2020.0"), "reloaded, the felled tree is still down")
+	check(map.add_chunk(message.duplicate(true)) and map._chunks["2_4"]._fallen.is_empty(), "reloaded, the knocked-over tree stands again")
 	check(map.chunk_count() == 1 and not map.add_chunk(message), "no duplicate after a revisit")
 	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._trees == null, "a chunk without obstacles adds no layer (older servers too)")
 	map.free()
@@ -2467,7 +2621,7 @@ func test_static_world() -> void:
 		"roads": [], "railways": [], "waters": [[[1100, 2100], [1120, 2100], [1120, 2120]]],
 		"buildings": [[[1300, 2300], [1310, 2300], [1310, 2310], [1300, 2310]]],
 		"railings": [["hedge", [[1000.0, 2010.0], [1020.0, 2010.0]]], ["fence", [[1000.0, 2020.0], [1010.0, 2020.0]]]],
-		"scenery_objects": [[1050.0, 2050.0, "bench", 0.5], [1052.0, 2050.0, "fountain", 0.0]],
+		"scenery_objects": [[1050.0, 2050.0, "bench", 0.5], [1052.0, 2050.0, "fountain", 0.0], [1054.0, 2050.0, "shrub", 0.0]],
 		"street_lights": [[1200.0, 2200.0, 1.0, 14.0], [1212.0, 2200.0, 1.0, 14.0]]}))
 	check(map.add_chunk(message) and not map.add_chunk(message), "drawing-only objects arrive with their chunk, once")
 	var chunk = map._chunks["2_4"]
@@ -2482,7 +2636,7 @@ func test_static_world() -> void:
 	map.add_chunk(message.duplicate(true))
 	chunk = map._chunks["2_4"]
 	check(not chunk._hedge_damage.is_empty(), "hedge gaps survive unloading and reloading the map chunk")
-	check(chunk._trees != null and chunk._px_layers.size() == 2 + 4, "decorations with the trees; railings, light pools, lamp heads: one canvas item each")
+	check(chunk._trees != null and chunk._px_layers.size() == 1 + 4, "decorations with the trees; railings, light pools, lamp heads: one canvas item each")
 	check(chunk.street_lights.size() == 2 and chunk.street_lights[0] == Vector2(200, -200), "street lights at their map position")
 	check(chunk._pools.get_parent() == map._pool_group, "a chunk's pools join the one pool group (added once, not per pool)")
 
@@ -2493,7 +2647,7 @@ func test_static_world() -> void:
 	map.set_light(1.0, Color(0.15, 0.2, 0.34))
 	check(is_equal_approx(map._pool_group.modulate.a, 1.0), "at night, full")
 	check(map.lamp_near(Vector2(203, -200), 5.0) and not map.lamp_near(Vector2(203, -250), 5.0), "a working light is near")
-	map.set_obstacles([], JSON.parse_string("[[1200.0, 2200.0, 0.5, \"street_lamp\"]]"))
+	map.set_obstacles(JSON.parse_string("[[1200.0, 2200.0, 0.5, \"street_lamp\"]]"))
 	check(chunk._broken == PackedInt32Array([0]), "the knocked lamp's light goes dark")
 	check(not map.lamp_near(Vector2(200, -200), 3.0) and map.lamp_near(Vector2(212, -200), 3.0), "a broken light lights nothing; its neighbour still does")
 	check(map.find_children("*", "CollisionObject2D", true, false).is_empty() and map.find_children("*", "CollisionShape2D", true, false).is_empty(),
@@ -2780,7 +2934,7 @@ func test_buildings_2_5d() -> void:
 	check(map._buildings.get_child(2) == map._chunks["0_0"].building_node, "radial order: the chunk nearest the view centre draws last")
 	map.remove_chunk("1_0")
 	check(Detail._lift(map._chunks["0_0"], Vector2(10, 20), 50.0) == Vector2(10, 20), "2D canopies remain flat regardless of height")
-	check(is_equal_approx(Detail.canopy_height(map._chunks["0_0"], map._chunks["0_0"]._data["canopies"][0]), 6.0), "a canopy is raised by its own height")
+	check(is_equal_approx(Detail.canopy_height(map._chunks["0_0"], 0), 6.0), "a canopy is raised by its own height")
 	map.set_map_level(-3)
 	check(map._underground.z_index > map._buildings.z_index, "below ground the dark view covers the buildings")
 	check(map._buildings.z_index < 13, "rail bridges (z 13) stay above the buildings")
@@ -2851,11 +3005,28 @@ func test_sun_and_shadows() -> void:
 	for v in crane["verts"]:
 		top = maxf(top, v.y)
 	check(crane["stats"].get("cranes", 0) == 1 and top >= 28.0 and not crane["shadow"].is_empty(), "a big construction site gets a tall, shadow-casting crane; a tiny one none")
+	var roof_top := func(gabled: int) -> float:
+		var arrays: Dictionary = B3.build([PackedVector2Array([Vector2(0, 0), Vector2(30, 0), Vector2(30, 12), Vector2(0, 12)])],
+			[[[90, 60, 50], gabled, 8.0, [], [200, 200, 200], 2, 0]], Vector2.ZERO)
+		var ridge := 0.0
+		for v in arrays["verts"]:
+			ridge = maxf(ridge, v.y)
+		return ridge
+	check(is_equal_approx(roof_top.call(1), 8.0 + 1.8) and is_equal_approx(roof_top.call(2), 8.0 + 6.0),
+		"a church's roof (gabled 2) rises about as far as it reaches, a house's (1) at a third of that")
+	var greenhouse: Dictionary = B3.build([PackedVector2Array([Vector2(0, 0), Vector2(30, 0), Vector2(30, 10), Vector2(0, 10)])],
+		[[[200, 200, 200], 1, 4.0, [], [200, 200, 200], 1, 0, 2]], Vector2.ZERO)
+	var glass_nodes: Array = B3.meshes(greenhouse)
+	check(greenhouse["verts"].is_empty() and greenhouse["shadow"].is_empty() and not greenhouse["glass"].is_empty()
+		and greenhouse["glass_colors"][0].a < 0.5 and glass_nodes.size() == 1
+		and glass_nodes[0].material_override.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA,
+		"a greenhouse is one see-through glass mesh: no opaque walls, windows or shadow")
 	var arrays: Dictionary = B3.build([PackedVector2Array([Vector2(0, 0), Vector2(10, 0), Vector2(10, 10), Vector2(0, 10)])], [], Vector2.ZERO)
 	var instances: Array = B3.meshes(arrays)
 	var casters := instances.filter(func(node): return node.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
 	var prism_triangles: int = casters[0].mesh.surface_get_array_len(0) / 3 if casters.size() == 1 else -1
-	check(casters.size() == 1 and casters[0].layers == B3.LAYER_SHADOW_GROUND and prism_triangles == 4 * 2 + 2, "each chunk casts through shadows-only prisms: 4 walls and a roof, no windows")
+	check(casters.size() == 1 and casters[0].layers == B3.LAYER_SHADOW_GROUND and prism_triangles == 4 * 2 + 2 + 4 * 2,
+		"each chunk casts through shadows-only prisms: 4 walls and a roof, its parapet, no windows")
 	check(instances[0].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "the drawn buildings cast nothing themselves")
 	for node in instances:
 		node.free()
@@ -2883,16 +3054,24 @@ func test_buildings_3d() -> void:
 	var l_shape := PackedVector2Array([Vector2(0, 0), Vector2(24, 0), Vector2(24, -10), Vector2(10, -10), Vector2(10, -22), Vector2(0, -22)])
 	var odd := PackedVector2Array([Vector2(0, 0), Vector2(9, -3), Vector2(14, 6), Vector2(4, 11), Vector2(-3, 5)])
 	var style := [[92, 57, 48], 0, 10.0, [], [158, 105, 82], 3, 0]
+	var retail := B3.build([box], [[[83, 86, 87], 0, 10.0, [], [139, 139, 137], 3, 4]], Vector2.ZERO)
+	check(retail["stats"]["windows"] == 2 * (B3.window_count(20.0, 4) + B3.window_count(10.0, 4)), "retail halls: only one ground-level window row even with several mapped floors")
+	for i in range(0, retail["window"].size(), 4):
+		if retail["window"][i + 2] >= 4000.0:
+			check(is_equal_approx(retail["window"][i + 1], 3.2), "retail glazing is human height, not the full hall height")
 	for footprint in [box, reversed, l_shape, odd]:
 		var out: Dictionary = B3.build([footprint], [style], Vector2.ZERO)
 		var ground := 0
 		var top := -INF
+		var at_roof := 0
 		for v in out["verts"]:
 			if v.y == 0.0:
 				ground += 1
 				check(Geometry2D.is_point_in_polygon(Vector2(v.x, v.z), footprint.duplicate()) or _on_outline(Vector2(v.x, v.z), footprint) , "ground vertices on the footprint")
+			at_roof += int(is_equal_approx(v.y, 10.0))
 			top = maxf(top, v.y)
-		check(out["stats"]["walls"] == footprint.size() and ground > 0 and is_equal_approx(top, 10.0), "every wall extruded from the ground to the height (%d sides)" % footprint.size())
+		check(out["stats"]["walls"] == footprint.size() and ground > 0 and at_roof > 0 and top <= 10.0 + 2.8 + 1e-4,
+			"every wall extruded from the ground to the height, roof details at most a machine room above (%d sides)" % footprint.size())
 		check(out["verts"] == B3.build([footprint], [style], Vector2.ZERO)["verts"], "deterministic geometry")
 	# godot-22 back-face culling: every triangle's front (clockwise, so its cross
 	# product points away) faces out of the building, whichever way it winds.
@@ -2911,9 +3090,11 @@ func test_buildings_3d() -> void:
 		check(inward == 0, "every wall, roof, window and door triangle faces outward (%d did not)" % inward)
 	var tall: Dictionary = B3.build([box], [[[92, 57, 48], 0, 40.0, [], [158, 105, 82], 12, 0]], Vector2.ZERO)
 	var top_tall := -INF
+	var roof_tall := false
 	for v in tall["verts"]:
 		top_tall = maxf(top_tall, v.y)
-	check(is_equal_approx(top_tall, 40.0), "a 40 m building is 40 m tall")
+		roof_tall = roof_tall or is_equal_approx(v.y, 40.0)
+	check(roof_tall and top_tall <= 40.0 + 2.8 + 1e-4, "a 40 m building is 40 m tall (its roof; a machine room above)")
 	var gabled: Dictionary = B3.build([box], [[[92, 57, 48], 1, 10.0, [], [158, 105, 82], 3, 0]], Vector2.ZERO)
 	var ridge := -INF
 	for v in gabled["verts"]:
@@ -2967,6 +3148,64 @@ func test_buildings_3d() -> void:
 	map.buildings_3d.set_light(0.0, Color.WHITE)
 	map.clear()
 	check(map.buildings_3d.instance_count() == 0, "a chunk's meshes go with it")
+	map.free()
+	MapChunk.buildings_3d = false
+
+
+func test_fields_frozen() -> void:
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.set_season([0.0, 0.0, 0.0, 1.0])  # measured zero snow in December
+	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500]})
+	var chunk = map._chunks["0_0"]
+	check(not chunk.fields_frozen(), "old server fallback: snowless ground is not frozen")
+	chunk.set_trees_leafless(true)
+	check(chunk._trees_leafless, "winter state can bare deciduous trees independently of snow cover")
+	chunk.set_trees_leafless(false)
+	check(not chunk._trees_leafless, "deciduous trees regain leaves outside thermal winter")
+	map.set_fields_frozen(true)
+	check(chunk.fields_frozen() and chunk._season[0] == 0.0, "a maintained winter field can be ice without ground snow")
+	map.set_season([0.1, 0.0, 0.0, 0.9])
+	check(chunk.fields_frozen(), "snow depth changes do not thaw the field")
+	map.add_chunk({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500]})
+	check(map._chunks["1_0"].fields_frozen(), "newly streamed chunks inherit the field ice state")
+	map.set_fields_frozen(false)
+	check(not chunk.fields_frozen() and not map._chunks["1_0"].fields_frozen(), "thaw reaches every loaded field")
+	map.set_season([1.0, 0.0, 0.0, 0.0])
+	check(not chunk.fields_frozen(), "snow alone cannot override the server's thaw state")
+	map.free()
+
+
+func test_shop_lights() -> void:
+	MapChunk.buildings_3d = true
+	var map := MapLayer.new()
+	root.add_child(map)
+	var style := [[83, 86, 87], 0, 6.0, [], [139, 139, 137], 1, 4]
+	for i in 2:
+		var x := i * 500
+		map.add_chunk(JSON.parse_string(JSON.stringify({"chunk_id": "%d_0" % i, "bounds": [x, 0, x + 500, 500],
+			"buildings": [[[x + 10, 10], [x + 40, 10], [x + 40, 30], [x + 10, 30]]], "building_styles": [style]})))
+	var first = map._chunks["0_0"]
+	var old_mesh = first.meshes_3d[0]
+	map.set_shop_lights({"0_0": [[0, 1]], "1_0": [[0, 0]]})
+	map._process(0.0)
+	check(first._data["building_styles"][0][8] == 1 and map._chunks["1_0"]._data["building_styles"][0].size() == 7, "shop lighting updates at most one chunk per frame")
+	check(not is_instance_valid(old_mesh) and first.stale_buildings.is_empty(), "shop lighting swaps the old building batch without leaking meshes")
+	map._process(0.0)
+	check(map._chunks["1_0"]._data["building_styles"][0][8] == 0, "closed shop state reaches its building")
+	var open_mesh = first.meshes_3d[0]
+	map.set_shop_lights({"0_0": [[0, 1]], "1_0": [[0, 0]]})
+	check(map._shop_light_updates.is_empty() and first.meshes_3d[0] == open_mesh, "unchanged shop hours do not rebuild geometry")
+	map.set_shop_lights({"0_0": [[0, 0]]})
+	map._process(0.0)
+	check(first._data["building_styles"][0][8] == 0, "crossing closing time changes the lights")
+	map.set_shop_lights({"0_0": [[0, 1]]})
+	map.set_shop_lights({"0_0": [[0, 0]]})
+	check(map._shop_light_updates.is_empty(), "a newer clock state cancels a superseded pending light change")
+	for status in [-1, 0, 1]:
+		var arrays := B3.build([PackedVector2Array([Vector2(0, 0), Vector2(30, 0), Vector2(30, 20), Vector2(0, 20)])],
+			[[[83, 86, 87], 0, 6.0, [], [139, 139, 137], 1, 4, 0, status]], Vector2.ZERO)
+		check(int(arrays["window"][2] / 10000.0) - 1 == status, "per-building shop state is encoded in the shared wall shader")
 	map.free()
 	MapChunk.buildings_3d = false
 
@@ -3065,9 +3304,18 @@ func test_performance_paths() -> void:
 
 	# Dry: no wet overlays drawn; no lightning: no full-screen flash.
 	chunk.set_wetness(0.0)
-	check(not chunk._wet_darken.visible and not chunk._wet_sheen.visible, "dry roads: the wet overlays are not drawn at all")
+	check(not chunk._wet.visible, "dry roads: the wet overlay is not drawn at all")
 	chunk.set_wetness(0.6)
-	check(chunk._wet_darken.visible and chunk._wet_sheen.visible, "wet: they are")
+	check(chunk._wet.visible, "wet: it is")
+	const RS := preload("res://render_style.gd")
+	var same_blend := true
+	for wetness in [0.1, 0.15, 0.4, 1.0]:
+		var alphas: Array = RS.wet_alphas(wetness)
+		for surface in [Color8(60, 62, 66), Color8(200, 190, 170)]:
+			var two_passes: Color = surface.blend(Color(RS.WET_DARKEN, alphas[0])).blend(Color(RS.WET_SHEEN, alphas[1]))
+			var one: Color = surface.blend(RS.wet_overlay(wetness))
+			same_blend = same_blend and absf(one.r - two_passes.r) < 1e-5 and absf(one.g - two_passes.g) < 1e-5 and absf(one.b - two_passes.b) < 1e-5
+	check(same_blend, "the one-pass wet overlay blends a road as the darkening and then the sheen did")
 	map.free()
 
 	# Buildings built on a worker: nothing drawn until ready, then exactly what in-place building gives.
@@ -3138,6 +3386,46 @@ func test_performance_paths() -> void:
 	check(is_equal_approx(report["low_1pct_fps"], 10.0) and is_equal_approx(report["avg_ms"], 10.9), "1 % low is the slowest 1 % of frames, as FPS")
 
 
+## rrt-019.1 sound pass: the new groups exist, their loops play, the site
+## loops follow the clock, the outdoors is muffled indoors.
+func test_new_sounds() -> void:
+	var audio := AudioManager.new()
+	root.add_child(audio)
+	for group in ["pedestrian.front_door", "pedestrian.footsteps_indoor", "vehicle.bicycle_bell", "collision.post_knock", "vehicle.bus_doors"]:
+		var played := audio.resolve({"type": "sound", "group": group, "at": [1.0, 2.0]})
+		check(played.size() == 1 and FileAccess.file_exists(played[0]["file"]), "%s resolves to a generated file" % group)
+	for key in ["bicycle", "motorcycle", "reverse_beep", "protest", "playground", "construction", "campfire", "biergarten"]:
+		audio.set_loop(key, 0.5, 1.0, Vector2(10, 20))
+		check(audio.loop_playing(key) and audio._loops[key] is AudioStreamPlayer2D, "the %s loop plays from its place" % key)
+		audio.set_loop(key, 0.0)
+	check(audio.bus_for("ambient.protest") == "Environment" and audio.bus_for("vehicle.motorcycle") == "Game", "site ambience on Environment, traffic on Game")
+	var noon := Main.site_gains(12.0, 3, 0.0)
+	var sunday_night := Main.site_gains(21.0, 0, 0.0)
+	var winter_evening := Main.site_gains(20.0, 2, 1.0)
+	check(noon["playground"] > 0.0 and noon["construction"] > 0.0 and noon["campfire"] == 0.0 and noon["biergarten"] == 0.0, "a weekday noon: children and the building site")
+	check(sunday_night["construction"] == 0.0 and sunday_night["playground"] == 0.0 and sunday_night["campfire"] > 0.0 and sunday_night["biergarten"] > 0.0, "a summer evening: campfires and beer gardens, sites quiet")
+	check(winter_evening["campfire"] == 0.0 and winter_evening["biergarten"] == 0.0, "no campfires or beer gardens in winter")
+	var Sites := preload("res://site_sounds.gd")
+	var chunk := {"_data": {"scenery_objects": [[110.0, 120.0, "swing", 0.0], [300.0, 100.0, "bench", 0.0], [130.0, 300.0, "biergarten", 0.0]],
+		"construction_fences": [PackedVector2Array([Vector2(0, -100), Vector2(20, -100), Vector2(20, -120), Vector2(0, -120)])]}}
+	var sites: Dictionary = Sites.nearest({"0_0": chunk}, Vector2.ZERO, Vector2(100, 100))
+	check(sites["playground"] == Vector2(110, 120) and sites["biergarten"] == Vector2(130, 300) and sites["campfire"] == null,
+		"site sounds come from the nearest equipment and beer garden")
+	check(sites["construction"] == Vector2(10, 110), "a building site sounds from its fence's middle, in world metres")
+	var bus := AudioServer.get_bus_index("Environment")
+	audio.set_indoors(true)
+	check(AudioServer.get_bus_effect_count(bus) == 2 and AudioServer.is_bus_effect_enabled(bus, 0), "indoors: the outdoors muffled")
+	audio.set_indoors(false)
+	audio.set_indoors(true)
+	audio.set_indoors(false)
+	check(AudioServer.get_bus_effect_count(bus) == 2 and not AudioServer.is_bus_effect_enabled(bus, 0), "outside again: clear, and no effects pile up")
+	var before: int = audio.played_groups.get("pedestrian.footsteps_indoor", 0)
+	for i in 20:
+		audio.update_footsteps(true, Vector2(i * 0.25, 0.0), "pedestrian.footsteps_indoor")
+	check(audio.played_groups.get("pedestrian.footsteps_indoor", 0) > before, "walking a floor plan plays indoor steps")
+	audio.free()
+
+
 func test_environment_ambience() -> void:
 	var ambience := preload("res://environment_ambience.gd").new()
 	var map := MapLayer.new()
@@ -3203,7 +3491,28 @@ func test_forest_canopy() -> void:
 		"landuse": [[[108, 120, 78], 1, [[500, 0], [1000, 0], [1000, 500], [500, 500]], "scrub"]]})
 	var scrub = map._chunks["1_0"]
 	check(scrub._season_layers.size() == 2 and scrub._season_layers[0].z_index == 13, "scrub creates the same overhead canopy as forests")
-	check(scrub._forest_mask().get_image().get_pixel(250, 250).r > 0.9, "scrub interiors retain canopy coverage")
+	check(scrub._forest_mask().get_image().get_pixel(250, 250).g > 0.9, "scrub interiors retain canopy coverage, in scrub's own mask channel")
+	check(scrub._season_layers[0].material.shader == MapChunk.FOREST_MATERIAL.shader, "scrub draws through the canopy shader, as its own kind")
+	map.add_chunk({"chunk_id": "4_0", "bounds": [2000, 0, 2500, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[100, 118, 76], 1, [[2000, 0], [2500, 0], [2500, 500], [2000, 500]], "shrubbery"]]})
+	var shrubs = map._chunks["4_0"]
+	check(shrubs._season_layers.size() == 2 and shrubs._season_layers[0].z_index == 13, "mapped shrubbery creates bush crowns instead of only a ground fill")
+	check(shrubs._forest_mask().get_image().get_pixel(250, 250).g > 0.9 and MapChunk.canopy_kind(shrubs._data.landuse[0]) == 1, "shrubbery uses the scrub mask channel and bush shader kind")
+	map.add_chunk({"chunk_id": "2_0", "bounds": [1000, 0, 1500, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[118, 130, 96], 1, [[1000, 0], [1500, 0], [1500, 500], [1000, 500]], "wetland"]]})
+	var bog = map._chunks["2_0"]
+	var bog_mask: Image = bog._forest_mask().get_image()
+	check(bog_mask.get_pixel(250, 250).b > 0.9 and bog_mask.get_pixel(250, 250).r < 0.1, "a wetland has its own mask channel: its pines are not forest crowns")
+	check(bog._season_layers.size() == 2 and bog._season_layers[0].z_index == 13, "a wetland gets the canopy layer for its scattered pines")
+	var bog_spots: Array = MapChunk.Detail.wetland_spots(PackedVector2Array([Vector2(0, 0), Vector2(200, 0), Vector2(200, -200), Vector2(0, -200)]))
+	check(bog_spots.any(func(spot): return spot[2] == 0) and bog_spots.any(func(spot): return spot[2] > 0), "a bog's ground has pools and tussocks")
+	check(bog_spots.all(func(spot): return Rect2(0, -200, 200, 200).has_point(spot[0])), "all inside the bog")
+	MapChunk.forest_canopy = false
+	map.add_chunk({"chunk_id": "3_0", "bounds": [1500, 0, 2000, 500], "roads": [], "railways": [], "trees": [],
+		"landuse": [[[118, 130, 96], 1, [[1500, 0], [2000, 0], [2000, 500], [1500, 500]], "wetland"]]})
+	var plain_bog = map._chunks["3_0"]
+	check(plain_bog._season_layers.size() == 1 and plain_bog._wetland_spots.is_empty(), "with the forest switch off a wetland is its flat fill: no pines, pools or tussocks")
+	MapChunk.forest_canopy = true
 	var wildlife := preload("res://wildlife.gd")
 	check(wildlife.habitat(0, 0, true) == "rural", "unmapped forest trees still provide rural wildlife habitat")
 	check(wildlife.habitat(30, 0, false) == "urban", "urban wildlife habitat is unchanged")

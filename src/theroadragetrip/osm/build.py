@@ -20,6 +20,7 @@ from .constants import (
 )
 
 from ..map_level import parse_level_list, parse_map_level
+from ..playground_equipment import OSM_EQUIPMENT_KINDS, longest_edge_angle
 from .parking import GARAGE_TYPES, make_parking_garage, parking_facility_type
 from .models import (
     Way,
@@ -390,6 +391,8 @@ def _level(tags: Dict[str, str]) -> Optional[int]:
 
 
 def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
+    if tags.get("natural") == "shrub":
+        return "shrub"
     amenity = tags.get("amenity")
     if amenity in ("bench", "waste_basket", "bicycle_parking", "fountain", "fuel", "biergarten", "grave_yard", "nightclub", "charging_station"):
         return amenity
@@ -405,6 +408,8 @@ def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
         return "statue"
     if tags.get("leisure") in ("picnic_table", "firepit"):
         return tags["leisure"]
+    if tags.get("playground") in OSM_EQUIPMENT_KINDS:  # swings, slides, ... (playground_equipment.py)
+        return OSM_EQUIPMENT_KINDS[tags["playground"]]
     if tags.get("barrier") in ("gate", "bollard"):
         return tags["barrier"]
     return None
@@ -752,6 +757,7 @@ def build_ways(
     tree_node_ids: List[int] = []
     tree_node_tags: Dict[int, dict] = {}
     scenery_object_nodes_raw: List[Tuple[dict, int]] = []
+    equipment_ways_raw: List[Tuple[dict, int, list]] = []  # playground=* mapped as an area (a sandpit, ...)
     entrance_node_ids: set[int] = set()
     ways_by_id: Dict[int, dict] = {}
     ways_raw: List[Tuple[dict, str, List[int]]] = []
@@ -799,7 +805,7 @@ def build_ways(
                 miniature_golf_nodes.append((tags, nid))
             if "place" in tags and "name" in tags:
                 place_nodes_raw.append((tags, nid))
-            elif "name" in tags:
+            elif "name" in tags or (tags.get("shop") and tags.get("opening_hours")):
                 named_nodes_raw.append((tags, nid))
             if tags.get("highway") == "traffic_signals":
                 traffic_signals_raw.append((tags, nid))
@@ -838,6 +844,8 @@ def build_ways(
         elif el_type == "way":
             tags = _stadium_as_ground(el.get("tags", {}))
             node_ids = el.get("nodes", [])
+            if tags.get("playground") in OSM_EQUIPMENT_KINDS:
+                equipment_ways_raw.append((tags, el["id"], node_ids))
             way_id = el.get("id")
             if way_id is not None:
                 ways_by_id[way_id] = el
@@ -1019,6 +1027,8 @@ def build_ways(
         pts, ibbox = process_node_ids(node_ids)
         if not pts or len(pts) < 3:
             continue
+        if parking_facility_type(tags) in GARAGE_TYPES:
+            continue  # a garage (its own record) is no paved lot on the surface
         is_parking = tags.get("amenity") == "parking" or tags.get("landuse") == "parking"
         is_fuel = tags.get("amenity") == "fuel"
         is_platform = tags.get("railway") == "platform"
@@ -1306,6 +1316,8 @@ def build_ways(
                 else None
             ),
             building_type=tags.get("building"),
+            opening_hours=tags.get("opening_hours"),
+            shop_type=tags.get("shop"),
             roof_shape=tags.get("roof:shape"),
             height_is_explicit=bool(tags.get("height") or tags.get("building:levels") or tags.get("levels")),
             center_m=(center_x, center_y),
@@ -1612,13 +1624,15 @@ def build_ways(
                         else None
                     ),
                     building_type=tags.get("building"),
+                    opening_hours=tags.get("opening_hours"),
+                    shop_type=tags.get("shop"),
                     roof_shape=tags.get("roof:shape"),
                     height_is_explicit=bool(tags.get("height") or tags.get("building:levels") or tags.get("levels")),
                     center_m=(center_x, center_y),
                     texture_seed=abs(math.sin(center_x * 0.013 + center_y * 0.017)),
                     **_level_metadata(tags),
                 ))
-            elif tags.get("amenity") == "parking" or tags.get("landuse") == "parking":
+            elif (tags.get("amenity") == "parking" or tags.get("landuse") == "parking") and parking_facility_type(tags) not in GARAGE_TYPES:
                 sceneries.append(Scenery(
                     points_m=pts, kind="parking", name=name, bbox=ibbox,
                     surface=tags.get("surface") or "asphalt",
@@ -1669,7 +1683,8 @@ def build_ways(
     for tags, nid in named_nodes_raw:
         pt = nodes_m.get(nid)
         if pt:
-            places.append(Place(x=pt[0], y=pt[1], name=tags["name"], kind=tags.get("amenity", "poi")))
+            places.append(Place(x=pt[0], y=pt[1], name=tags.get("name", ""), kind=tags.get("shop") or tags.get("amenity", "poi"),
+                                opening_hours=tags.get("opening_hours"), shop_type=tags.get("shop")))
     for tags, node_ids in named_ways_raw:
         pts, _ = process_node_ids(node_ids)
         if pts:
@@ -1678,7 +1693,9 @@ def build_ways(
                     x=sum(point[0] for point in pts) / len(pts),
                     y=sum(point[1] for point in pts) / len(pts),
                     name=tags["name"],
-                    kind=tags.get("amenity", "poi"),
+                    kind=tags.get("shop") or tags.get("amenity", "poi"),
+                    opening_hours=tags.get("opening_hours"),
+                    shop_type=tags.get("shop"),
                 )
             )
 
@@ -1726,6 +1743,14 @@ def build_ways(
                                              opening_hours=tags.get("opening_hours") if kind == "nightclub" else None,
                                              capacity=_capacity(tags) if kind == "charging_station" else None,
                                              level=_level(tags) if kind == "charging_station" else None))
+    for tags, way_id, node_ids in equipment_ways_raw:  # at its centre, square to its longest edge
+        pts = [nodes_m[n] for n in node_ids if n in nodes_m]
+        if len(pts) >= 3:
+            pts = pts[:-1] if pts[0] == pts[-1] else pts
+            scenery_objects.append(SceneryObject(
+                x=sum(x for x, _ in pts) / len(pts), y=sum(y for _, y in pts) / len(pts),
+                kind=OSM_EQUIPMENT_KINDS[tags["playground"]], name=tags.get("name"), id=-way_id,  # apart from node ids
+                direction_angle=longest_edge_angle(pts)))
 
     # Fuel stations are frequently mapped only as an amenity=fuel area,
     # especially when the same way is also the building=roof pump canopy.

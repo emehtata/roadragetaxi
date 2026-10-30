@@ -105,9 +105,16 @@ Task: `.github/prompts/rrt-018-traffic.md`. Code: `population.py`
 - **Passing traffic** (`THROUGH_TRAFFIC`, by OSM highway class): motorway
   0.6, trunk 0.45, primary 0.3, secondary 0.15, tertiary 0.06. A main road
   through an empty municipality still carries cars.
-- **Clock** (`hour_demand`): the hourly curve, multiplied by `MONTH_FACTOR`.
-  - The curve is `WEEKDAY_HOURLY` on weekdays and `WEEKEND_HOURLY` on weekends
-    and public holidays.
+- **Clock** (`hour_demand`): the hourly curve, multiplied by the month factor.
+  - Measured at Fintraffic LAM stations (`assets/traffic/lam_profiles.json`,
+    `tools/lam_profiles.py`, [the LAM audit](lam-traffic-audit.md)): an urban
+    and a rural weekday and weekend curve, and month factors interpolated
+    between the sampled January, April, July and October.
+  - The local people fraction picks the mix: at `URBAN_PEOPLE_FRACTION` (0.5) of
+    a town centre's or more fully urban, blended toward rural below.
+  - Weekend curves serve weekends and public holidays.
+  - Without the file (missing or unreadable) the estimates `WEEKDAY_HOURLY`,
+    `WEEKEND_HOURLY` and `MONTH_FACTOR` stay, with a warning.
   - Public holidays are the fixed-date ones plus Midsummer Eve and Day; Easter
     and Ascension are not covered.
 - **Season:** in June–August a cabin counts 2 people instead of 0.3, so
@@ -142,9 +149,9 @@ Task: `.github/prompts/rrt-018-traffic.md`. Code: `population.py`
   local, through, hour, nightlife, demand, people, highway, expected and target
   moving cars, and separate night taxi/cruiser targets.
 
-All curve values are **estimates**, shaped after Finnish automatic traffic
-counts (Fintraffic LAM): weekday peaks at 7–8 and 15–17, nights at 2–4 % of the
-peak. They are not calibrated against counted volumes.
+The clock curves are **measured shapes** (shares of a weekday peak hour), not
+counted volumes: the game's car count stays its own scale. The passing-traffic
+shares, the nightlife floor and the urban/rural blend are estimates.
 
 ### Nightlife verification (2026-10-19)
 

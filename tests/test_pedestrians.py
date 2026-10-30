@@ -1975,3 +1975,118 @@ def test_viewport_spawning_stops_at_its_budget_and_resumes_next_tick(monkeypatch
     assert first <= 1
     ped_mgr.update(player, dt=1 / 30, viewport_bounds=view)  # not 2 s later: the very next tick
     assert len(ped_mgr.pedestrians) > first
+
+
+def test_dog_walk_does_not_fall_back_to_car_road_for_disconnected_sidewalk(monkeypatch):
+    from theroadragetrip.activities import ActivityContext, ActivityInstance
+    from theroadragetrip.activities.plugins.dog_walking import DogWalkingPlugin
+    # Route and geometry recorded in the screenshot's Saaristonkatu map.
+    start = (427707.34734932275, 7210560.564095313)
+    target = (427701.23971883836, 7210493.831170409)
+    way = Way(points_m=[(427705.6754025336, 7210558.464672473),
+                       (427706.95620059426, 7210560.13935626),
+                       (427707.5389080226, 7210561.028268145),
+                       (427716.6974718875, 7210574.87581092)], highway="footway", half_width_m=1.5)
+    other = Way(points_m=[(427692.2968696597, 7210480.3351931395), target],
+                highway="footway", half_width_m=1.5)
+    def road_route(*args):
+        pytest.fail("A leisure dog walk must not use the disconnected car-road fallback")
+    manager = PedestrianManager([way, other], target_count=0,
+                               traffic_manager=SimpleNamespace(npcs=[], plan_route=road_route))
+    heading = math.atan2(target[1] - start[1], target[0] - start[0])
+    pedestrian = Pedestrian(*start, heading, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    manager.pedestrians = [pedestrian]
+    plugin = DogWalkingPlugin()
+    context = ActivityContext(pedestrian=pedestrian, pedestrian_manager=manager,
+                              residents=manager.residents, sim_time=0.0)
+    instance = ActivityInstance(plugin_id="dog_walking", location=None, started_sim_time=0.0)
+    pedestrian.activity, pedestrian.state = instance, "performing_activity"
+    plugin.start(context, instance)
+    distance = math.dist(start, target)
+    monkeypatch.setattr("theroadragetrip.activities.plugins.dog_walking.random.uniform",
+                        lambda low, high: distance if low == 35.0 else 0.0)
+    plugin.update(context, instance, 0.1)
+    assert manager.network.connected(start, instance.data["waypoint"])
+    for _ in range(60):
+        manager.update(Car(start[0] + 20, start[1], 0.0, 0.0), dt=0.1)
+        near = manager.network.nearest_point((pedestrian.x, pedestrian.y))
+        assert math.dist((pedestrian.x, pedestrian.y), near) < 0.2
+
+
+def test_displaced_walker_returns_sideways_before_next_waypoint(monkeypatch):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    pedestrian = Pedestrian(40.0, -6.0, math.pi / 2, 1.3, 1.3, way, 0, 1, (1, 1, 1),
+                            sway_frequency=0.0, sway_phase=0.0)
+    manager.pedestrians = [pedestrian]
+    monkeypatch.setattr(manager, "_consider_activities", lambda *args: None)
+    for _ in range(20):
+        manager.update(Car(50.0, -20.0, 0.0, 0.0), dt=0.1)
+    assert abs(pedestrian.x - 40.0) < 0.2
+    assert pedestrian.y > -4.0
+
+
+def test_activity_finishes_on_current_path_instead_of_walking_back_to_old_way():
+    from theroadragetrip.activities import ActivityInstance
+    old = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    current = Way(points_m=[(0.0, 10.0), (100.0, 10.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([old, current], target_count=0)
+    pedestrian = Pedestrian(40.0, 10.0, 0.0, 1.3, 1.3, old, 0, 1, (1, 1, 1))
+    instance = ActivityInstance(plugin_id="dog_walking", location=None, started_sim_time=0.0)
+    pedestrian.activity = instance
+    manager._end_activity(pedestrian, instance)
+    assert pedestrian.way is current
+    assert pedestrian.route is None
+
+
+def test_sideways_recovery_does_not_advance_the_waypoint(monkeypatch):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    pedestrian = Pedestrian(40.0, -2.0, math.pi / 2, 3.0, 3.0, way, 0, 1, (1, 1, 1),
+                            sway_frequency=0.0, sway_phase=0.0)
+    manager.pedestrians = [pedestrian]
+    monkeypatch.setattr(manager, "_consider_activities", lambda *args: None)
+    manager.update(Car(50.0, -20.0, 0.0, 0.0), dt=2.0)
+    assert (pedestrian.x, pedestrian.y) == pytest.approx((40.0, pedestrian.lateral_offset_m))
+    assert pedestrian.segment_idx == 0
+    assert pedestrian.direction == 1
+
+
+def test_activity_resume_keeps_current_map_layer():
+    from theroadragetrip.activities import ActivityInstance
+    ground = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    bridge = Way(points_m=[(0.0, 1.0), (100.0, 1.0)], highway="footway", half_width_m=1.5, layer=1)
+    manager = PedestrianManager([ground, bridge], target_count=0)
+    pedestrian = Pedestrian(40.0, 1.0, 0.0, 1.3, 1.3, ground, 0, 1, (1, 1, 1))
+    manager._end_activity(pedestrian, ActivityInstance(plugin_id="dog_walking", location=None, started_sim_time=0.0))
+    assert pedestrian.way is ground
+
+
+def test_a_spawned_taxi_stop_customer_joins_the_pedestrians(monkeypatch: pytest.MonkeyPatch):
+    way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0, spawn_radius_m=120.0)
+    player = Car(x=20.0, y=0.0, heading=0.0, speed=0.0)
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 0.0)
+
+    stop = TaxiStop(20.0, 0.0, id=1)
+    manager.ensure_taxi_stop_waiter([stop], player, viewport_bounds=(40.0, -10.0, 80.0, 10.0))
+    manager.ensure_taxi_stop_waiter([stop], player, viewport_bounds=(-10.0, -10.0, 30.0, 10.0))  # the stop enters view
+
+    assert len(manager.pedestrians) == 1 and manager.pedestrians[0].is_walking_to_taxi_stop
+
+
+def test_a_street_route_without_sidewalks_keeps_to_the_left_edge():
+    from theroadragetrip.pedestrian import ROAD_EDGE_WALK_OFFSET_M, _left_edge
+    route = _left_edge([(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)])
+    assert route == [(0.0, 0.0), (10.0, ROAD_EDGE_WALK_OFFSET_M), (20.0, 0.0)]
+
+
+def test_a_sidewalk_beside_the_street_wins_and_a_street_gap_is_walked_at_its_edge():
+    from theroadragetrip.pedestrian import ROAD_EDGE_WALK_OFFSET_M, PedestrianNetwork
+    street = Way(points_m=[(0.0, 0.0), (100.0, 0.0), (200.0, 0.0)], highway="residential", half_width_m=4.5)
+    sidewalk = Way(points_m=[(0.0, 2.0), (50.0, 6.0), (100.0, 6.0), (100.0, 0.0)], highway="footway", half_width_m=1.0)
+    network = PedestrianNetwork()
+    network.set_ways([sidewalk], [street])
+    route = network.route((0.0, 2.0), (200.0, 0.0))
+    assert (50.0, 6.0) in route  # along the sidewalk while there is one...
+    assert any(abs(y - ROAD_EDGE_WALK_OFFSET_M) < 0.01 and 100.0 < x <= 200.0 for x, y in route)  # ...then the street's edge

@@ -92,7 +92,6 @@ def map_sync_steps(world):
     close_garage_roads((*w.ways, *getattr(w, "level_ways", ())))
     for _ in remove_trees_under_roads_steps(w.sceneries, w.ways):
         yield "trees_under_roads"
-    w.taxi_mgr.invalidate_tree_collision_index()
     w.spatial_grid.start_rebuild(w.ways)
     while not w.spatial_grid.advance_rebuild(MAP_SYNC_BUDGET_S):
         yield "road_grid"

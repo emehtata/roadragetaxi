@@ -152,7 +152,6 @@ def test_random_driving_keeps_the_ride_state_consistent():
 
 def test_a_dropped_off_passenger_walks_on_as_the_same_person():
     """Bug: a woman dropped off stepped out as a different man."""
-    from types import SimpleNamespace
 
     from theroadragetrip.osm import Way
     from theroadragetrip.pedestrian import PedestrianManager

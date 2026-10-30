@@ -2,23 +2,28 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from theroadragetrip.home import load_home, save_home
-from theroadragetrip.osm import ParkingSpace
-from theroadragetrip.physics import Car
+from theroadragetrip.osm import Building, ParkingSpace
+from theroadragetrip.physics import Car, SpatialWayGrid
 from theroadragetrip.server import SimulationServer
 
 
 def _bay(x, y):
     return ParkingSpace(points_m=[(x - 2, y - 1), (x + 2, y - 1), (x + 2, y + 1), (x - 2, y + 1)],
-                        bbox=(x - 2, y - 1, x + 2, y + 1), source_building_key=(x, y))
+                        bbox=(x - 2, y - 1, x + 2, y + 1), source_building_key=(x - 7, y + 5, x + 7, y + 15))
 
 
 def _server(tmp_path: Path):
+    sounds = []
     taxi_mgr = SimpleNamespace(notification_msg="", notification_timer=0.0, handle_respawn=lambda x, y: None)
-    world = SimpleNamespace(ways=[], spatial_grid=None, parking_spaces=[_bay(0, 0), _bay(100, 0)], building_grid=None,
+    buildings = [Building(points_m=[(x - 7, 5), (x + 7, 5), (x + 7, 15), (x - 7, 15)],
+                          bbox=(x - 7, 5, x + 7, 15), building_type="detached") for x in (0, 100)]
+    world = SimpleNamespace(ways=[], spatial_grid=None, parking_spaces=[_bay(0, 0), _bay(100, 0)], building_grid=SpatialWayGrid(buildings),
                             waters=[], taxi_stops=[], taxi_mgr=taxi_mgr)
-    return SimpleNamespace(car=Car(x=50.0, y=50.0, heading=0.0, speed=0.0), world=world, language="en", _on_foot=False, _home=None,
+    return SimpleNamespace(car=Car(x=50.0, y=50.0, heading=0.0, speed=0.0), world=world, language="en", _on_foot=False, _home=None, _home_building_key=None,
                            _home_confirm_s=0.0, _homes_in_save=False, _prepared_home=None, _home_preparation=None, homes_file=tmp_path / "homes.json", chosen_city="Oulu",
-                           _camx=0.0, _camy=0.0, _notify=lambda message, seconds=3.0: setattr(taxi_mgr, "notification_msg", message))
+                           _camx=0.0, _camy=0.0, _inside=None,
+                           audio=SimpleNamespace(sounds=sounds, play_group=lambda group, volume=1.0, at=None: sounds.append((group, at))),
+                           _notify=lambda message, seconds=3.0: setattr(taxi_mgr, "notification_msg", message))
 
 
 def press(server):

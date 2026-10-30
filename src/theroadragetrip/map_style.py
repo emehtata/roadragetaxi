@@ -1,28 +1,68 @@
 """Map styling shared by the headless server and rendering clients."""
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 from .osm import Way
 
 
 SURFACE_COLORS = {
     "asphalt": (70, 70, 70),
-    "concrete": (142, 142, 138),
-    "concrete:lanes": (142, 142, 138),
-    "paving_stones": (125, 120, 112),
-    "sett": (105, 100, 94),
-    "cobblestone": (105, 100, 94),
-    "compacted": (125, 112, 92),
-    "fine_gravel": (145, 132, 108),
-    "gravel": (150, 135, 105),
+    "paved": (70, 70, 70),
+    "chipseal": (90, 88, 82),
+    "concrete": (166, 163, 154),
+    "concrete:lanes": (166, 163, 154),
+    "concrete:plates": (166, 163, 154),
+    "paving_stones": (157, 149, 136),
+    "paving_stones:lanes": (157, 149, 136),
+    "sett": (126, 129, 126),
+    "cobblestone": (112, 117, 111),
+    "unhewn_cobblestone": (112, 117, 111),
+    "grass_paver": (105, 128, 90),
+    "grass_paver:lanes": (105, 128, 90),
+    "metal": (115, 126, 132),
+    "compacted": (132, 121, 101),
+    "fine_gravel": (153, 146, 129),
+    "gravel": (137, 129, 112),
+    "pebblestone": (155, 145, 125),
+    "rock": (135, 131, 122),
     "unpaved": (155, 140, 108),
     "dirt": (125, 98, 68),
     "ground": (130, 105, 75),
     "earth": (130, 105, 75),
+    "clay": (155, 112, 78),
+    "mud": (95, 76, 55),
     "sand": (190, 170, 120),
     "grass": (75, 125, 62),
     "wood": (112, 83, 55),
+    "woodchips": (146, 112, 72),
+    "snow": (220, 229, 232),
+    "ice": (160, 200, 225),
 }
+
+# Visual pattern families used by Godot's surface.gdshader (0: flat/unknown).
+SURFACE_TEXTURES = {
+    **dict.fromkeys(('asphalt', 'chipseal'), 1),
+    **dict.fromkeys(('paving_stones', 'paving_stones:lanes'), 2),
+    'sett': 3,
+    **dict.fromkeys(('cobblestone', 'unhewn_cobblestone'), 4),
+    **dict.fromkeys(('gravel', 'fine_gravel', 'compacted', 'unpaved', 'pebblestone', 'dirt', 'earth',
+                     'ground', 'clay', 'mud', 'sand', 'woodchips', 'rock'), 5),
+    **dict.fromkeys(('concrete', 'concrete:plates', 'concrete:lanes'), 6),
+    'wood': 7,
+    **dict.fromkeys(('grass_paver', 'grass_paver:lanes'), 8),
+    'metal': 9,
+}
+
+
+def surface_texture(surface: Optional[str]) -> int:
+    return SURFACE_TEXTURES.get(str(surface or '').lower().split(';')[0].strip(), 0)
+
+
+def surface_color(surface: Optional[str]) -> Optional[Tuple[int, int, int]]:
+    """Shared road/area material palette; unknown surfaces keep their existing fallback."""
+    key = str(surface or "").lower().split(";")[0].strip()
+    return SURFACE_COLORS.get(key)
+
 
 LEGACY_HIGHWAY_COLORS = {
     "motorway": (58, 58, 60), "motorway_link": (58, 58, 60),
@@ -35,11 +75,29 @@ LEGACY_HIGHWAY_COLORS = {
 }
 
 
+# Draw order among roads on the same level: the more important road on top
+# where two meet, then paved over unpaved, then (godot/map_chunk.gd) the wider.
+ROAD_CLASS_RANK = {
+    "motorway": 9, "motorway_link": 9, "trunk": 8, "trunk_link": 8, "primary": 7, "primary_link": 7,
+    "secondary": 6, "secondary_link": 6, "tertiary": 5, "tertiary_link": 5, "unclassified": 4,
+    "residential": 4, "busway": 4, "living_street": 3, "service": 2, "track": 1,
+}
+UNPAVED_SURFACES = frozenset({"unpaved", "compacted", "gravel", "fine_gravel", "dirt", "earth", "ground", "grass",
+                              "sand", "mud", "pebblestone", "woodchips", "rock"})
+
+
+def road_draw_rank(way: Way) -> int:
+    """Class, then paved: twice the class rank, plus one if paved (unknown counts as paved, a track as not)."""
+    surface = str(getattr(way, "surface", "") or "").lower().split(";")[0].strip()
+    paved = surface not in UNPAVED_SURFACES and (surface or way.highway != "track")
+    return ROAD_CLASS_RANK.get(way.highway, 0) * 2 + int(bool(paved))
+
+
 def road_color_for_way(way: Way) -> Tuple[int, int, int]:
     """Return a road color from OSM surface, then highway-class fallback."""
-    surface = str(getattr(way, "surface", "") or "").lower().split(";")[0].strip()
-    if surface in SURFACE_COLORS:
-        return SURFACE_COLORS[surface]
+    color = surface_color(getattr(way, "surface", None))
+    if color is not None:
+        return color
     if not way.is_drivable:
         return (115, 145, 150) if way.highway == "cycleway" else (150, 150, 142)
     if getattr(way, "is_ice_road", False):
@@ -99,8 +157,8 @@ SEASONAL_GROUND_KINDS = frozenset({
 })
 
 # Finnish winter: sports fields and rinks are flooded and frozen for
-# skating - ice, not snow, once the winter (snow) weight reaches
-# FIELDS_FROZEN_WINTER_WEIGHT: drawn as ice and driven on with ice grip.
+# skating - ice, not snow, once the thermal winter weight reaches
+# FIELDS_FROZEN_WINTER_WEIGHT, independently of observed snow depth.
 FROZEN_IN_WINTER_KINDS = frozenset({"pitch", "ice_rink"})
 FIELDS_FROZEN_WINTER_WEIGHT = 0.5  # godot chunk_detail.gd uses the same
 

@@ -49,6 +49,16 @@ var red_light_assist := false  # B: likewise
 var lane_assist := false  # K: likewise
 var _respawn_pending := false
 var _home_pending := false  # H: choose this yard as home / back home
+var _home_door_pending := false  # E on foot: into the home at its front door / out again
+var home_first_person := preload("res://home_first_person.gd").new()
+var interior_3d := false
+var _interior_3d_failed := false
+var home_walk := preload("res://home_walk.gd").new()  # inside the home (state home_door.indoors)
+const SiteSounds := preload("res://site_sounds.gd")
+var _sites := {}  # site_sounds.gd: the nearest playground, campfire, beer garden and building site
+var _sites_left := 0.0  # seconds to the next sample
+var door_marks := preload("res://door_marks.gd").new()  # nearby houses' front doors, on foot
+var _home_plan_asked := false  # indoors without the plan: asked for once
 var _cancel_ride_pending := false
 var _reset_trip_pending := false
 var _help: PanelContainer
@@ -104,6 +114,7 @@ var _last_frame_usec := 0  # frame-time accounting (godot-18): real time between
 var _bench := 0.0  # --bench SECONDS: drive-through measurement, then the report as JSON
 var _bench_left := 0.0
 var _bench_hide: PackedStringArray = []
+var _bench_pre_draw := 0  # --bench: when the renderer started this frame (usec)
 var override_altitude := NAN  # --sun-altitude
 var override_azimuth := NAN  # --sun-azimuth (degrees from grid north), for the shadow checks
 var override_cloud := NAN  # --cloud-cover (0 clear .. 1 overcast)
@@ -130,9 +141,13 @@ func _ready() -> void:
 	add_child(car_stereos)
 	if graphics.has("buildings_3d"):
 		MapChunk.buildings_3d = graphics["buildings_3d"]
+	MapChunk.forest_canopy = graphics.get("forest_canopy", true)  # like the buildings: for the whole session
 	_apply_language()
 	_build_help()
 	_build_inspector()
+	add_child(home_walk)
+	add_child(home_first_person)
+	add_child(door_marks)
 	add_child(weather)
 	add_child(wildlife)
 	add_child(animal_audio)
@@ -145,6 +160,7 @@ func _ready() -> void:
 	add_child(holidays)
 	holidays.setup(map_layer)
 	holidays.audio = audio
+	holidays.entities = entities
 	entities.lamp_near = map_layer.lamp_near
 	entities.light_at = map_layer.light_at  # street light on the vehicles  # reflectors and long beams look up working street lights
 	entities.covered = map_layer.covered  # headlights under a higher road
@@ -207,6 +223,12 @@ func _ready() -> void:
 	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args:
 		_engine_on = true  # automated runs drive straight away: no sign, no hints
 		_entered_taxi = not "--start-sign" in args  # --start-sign: a screenshot of the city's start sign and forecast
+	if _bench > 0.0:  # rrt-019.1: the frame in phases - scripts, redraws and layout up to the render, then the render
+		Perf.time_draws(entities, "draw_entities")  # and the vehicles, people, lamps... each
+		RenderingServer.frame_pre_draw.connect(func():
+			_bench_pre_draw = Time.get_ticks_usec()
+			Perf.add("phase_process_to_render", _bench_pre_draw - _last_frame_usec))
+		RenderingServer.frame_post_draw.connect(func(): Perf.add("phase_render", Time.get_ticks_usec() - _bench_pre_draw))
 	instruments.layout = hud_layout
 	_apply_graphics()
 	hud.layout = hud_layout
@@ -272,6 +294,10 @@ func _apply_language() -> void:
 
 
 func _on_connection(up: bool) -> void:
+	if not up:
+		home_first_person.leave()
+		home_walk.leave()
+		_home_plan_asked = false
 	print("simulation ", "connected" if up else "disconnected")
 	phone.set_connected(up)
 	if not up:  # a new connection starts over: header, chunks, states
@@ -392,6 +418,12 @@ static func screenshot_directory(os_name: String, user_profile: String) -> Strin
 
 ## Mouse on a HUD panel: drag it, kept on screen.
 func _input(event: InputEvent) -> void:
+	if get_tree().paused:
+		return
+	if home_first_person.visible:
+		if home_first_person.handle_input(event):
+			get_viewport().set_input_as_handled()
+		return
 	drive.handle(event)
 	if event is InputEventMouseButton:
 		if event.pressed and _start_sign == null and not (phone.visible and phone.get_global_rect().has_point(event.position)) and (event.button_index == MOUSE_BUTTON_MIDDLE or (event.button_index == MOUSE_BUTTON_LEFT and event.ctrl_pressed)):
@@ -426,6 +458,21 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if get_tree().paused:
+		return
+	if home_first_person.visible:
+		if event is InputEventKey and event.pressed and not event.echo:
+			match event.keycode:
+				KEY_ESCAPE:
+					return  # startup opens the existing pause menu and releases the cursor
+				KEY_E:
+					_home_door_pending = home_first_person.at_exit()
+				KEY_H:
+					_home_pending = true
+				KEY_F12:
+					save_screenshot()
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventMouseButton and event.pressed and _start_sign == null:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_zoom(1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.9)
@@ -461,7 +508,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if not phone.is_open or phone.busy:
 					show_next_train = not show_next_train
 			KEY_SPACE:
-				if (not phone.is_open or phone.busy) and not summary_shown:
+				if not summary_shown:  # the phone has no use for SPACE: rage with offers on screen too
 					_road_rage_pending = true
 			KEY_V:
 				speed_limiter = not speed_limiter
@@ -479,7 +526,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_T:
 				_reset_trip_pending = true
 			KEY_E:  # toggles what the simulation shows (it may have stopped the engine: no fuel)
-				if not entities.shown_state().get("on_foot", true) and not _interact_pending:
+				var door: Dictionary = entities.shown_state().get("home_door", {})
+				if door.get("available", false) or (door.get("indoors", false) and (not home_walk.visible or home_walk.at_exit())):
+					_home_door_pending = true  # on foot at home's door (only then: E means nothing else on foot)
+				elif not entities.shown_state().get("on_foot", true) and not _interact_pending:
 					_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
 			KEY_F1:
 				_help.visible = not _help.visible
@@ -595,6 +645,7 @@ func _process(delta: float) -> void:
 		Perf.add("render_cpu", int(RenderingServer.viewport_get_measured_render_time_cpu(rid) * 1000.0))
 		Perf.add("render_gpu", int(RenderingServer.viewport_get_measured_render_time_gpu(rid) * 1000.0))
 		Perf.add("frame_setup_cpu", int(RenderingServer.get_frame_setup_time_cpu() * 1000.0))
+		Perf.add("time_physics", int(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1e6))
 		if map_layer.buildings_3d != null:  # godot-22: the 3D building pass alone
 			var view_3d: RID = map_layer.buildings_3d._view.get_viewport_rid()
 			RenderingServer.viewport_set_measure_render_time(view_3d, true)
@@ -602,6 +653,8 @@ func _process(delta: float) -> void:
 			Perf.add("render_3d_gpu", int(RenderingServer.viewport_get_measured_render_time_gpu(view_3d) * 1000.0))
 	if _bench > 0.0 and not state.is_empty():
 		_bench_left -= delta
+		if _bench - _bench_left > 5.0 and _bench - _bench_left - delta <= 5.0:
+			Perf.sections.clear()  # the sections as the frames: steady state, not the first chunks' loading
 		if _bench_left <= 0.0:
 			_perf_counters()
 			print("BENCH ", JSON.stringify(Perf.report()))
@@ -634,7 +687,14 @@ func _present(state: Dictionary) -> void:
 		debug_label.visible = false
 	var player: Dictionary = state["player_pedestrian"] if state.get("on_foot", false) else state["player"]
 	audio.player_at = Vector2(player["x"], player["y"])
-	audio.update_footsteps(state.get("on_foot", false), audio.player_at)
+	if home_first_person.visible:
+		var indoor_position := home_first_person.player.position
+		audio.update_footsteps(true, Vector2(indoor_position.x, -indoor_position.z), "pedestrian.footsteps_indoor")
+	elif home_walk.visible:  # walking a floor plan: its own steps, the outdoors muffled
+		audio.update_footsteps(true, home_walk.at, "pedestrian.footsteps_indoor")
+	else:
+		audio.update_footsteps(state.get("on_foot", false), audio.player_at)
+	audio.set_indoors(home_walk.visible or home_first_person.visible)
 	for event in entities.buffer.take_due_events(entities.now()):
 		events_presented += 1
 		if event.get("type") == "phone_result":
@@ -660,6 +720,8 @@ func _present(state: Dictionary) -> void:
 	if typeof(calendar) == TYPE_DICTIONARY:
 		map_layer.set_season(calendar.get("season", []))
 		var season = calendar.get("season", [])
+		map_layer.set_trees_leafless(bool(calendar.get("trees_leafless", false)))
+		map_layer.set_fields_frozen(bool(calendar.get("fields_frozen", float(season[0]) >= 0.5 if season is Array and season.size() == 4 else false)))
 		wildlife.winter = float(season[0]) if season is Array and season.size() == 4 else 0.0  # winter coats
 		map_layer.set_sports_hours(bool(calendar.get("sports_lights", false)))
 		map_layer.set_arena_lights(bool(calendar.get("arena_lights", false)))
@@ -688,6 +750,7 @@ func _present(state: Dictionary) -> void:
 	if not ambient.is_equal_approx(world_light.color):
 		world_light.color = ambient
 	map_layer.set_light(lights, ambient)
+	map_layer.set_shop_lights(state.get("shop_lights", {}))
 	var sun_strength := Daylight.sunlight(altitude, cloud)
 	if sun_strength > 0.01:
 		map_layer.set_celestial_light(altitude, Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth, sun_strength)
@@ -750,15 +813,21 @@ func _present(state: Dictionary) -> void:
 	entities.underground = level != 0
 	wildlife.visible = level == 0
 	weather.update(get_process_delta_time(), state, entities.player_position(), level != 0)
-	holidays.update(get_process_delta_time(), state, view, level != 0)
+	holidays.update(get_process_delta_time(), state, view, level != 0, entities.pedestrian_positions())
 	map_layer.set_flash(state.get("speed_camera_flash"))
 	labels.update_view(get_viewport().get_canvas_transform(), map_layer.chunk_count(), level != 0)
-	map_layer.set_obstacles(state.get("fallen_trees", []), state.get("knocked_posts", []))
+	map_layer.set_obstacles(state.get("knocked_posts", []))
+	var body: Dictionary = entities.player_body()
+	if not body.is_empty() and body["speed"] > 0.5 and map_layer.knock_trees(body) > 0:  # trees: the client's alone
+		audio.handle_event({"type": "sound", "group": "collision.tree"})
+		audio.handle_event({"type": "sound", "group": "collision.tree_fall"})
 	map_layer.set_broken_hedges(state.get("broken_hedges", []))
 	phone.clock_text = hud._clock.text.get_slice(" ", 1) if hud._clock.text.contains(" ") else hud._clock.text
 	if state.has("game_time_seconds"):
 		phone.set_game_seconds(float(state["game_time_seconds"]))
 	phone.protest_active = state.get("protest_active", false)
+	_home_view(state)
+	door_marks.show_doors(state.get("home_door", {}), entities.origin, camera.zoom.x)
 	phone.show_phone(state.get("phone", {}))
 	phone.show_navigation(state.get("navigation", {}), hud.task_text(state.get("taxi", {}), hud.language))
 	_refresh_inspector(state)
@@ -770,6 +839,58 @@ func _present(state: Dictionary) -> void:
 	nav_overlay.update_view(target, target_screen, camera_world, state["player"].get("heading", 0.0))
 	if debug_label.visible:
 		_update_debug(state)
+
+
+func set_interior_options(first_person: bool, sensitivity: float) -> void:
+	if interior_3d != first_person:
+		home_first_person.leave()
+		home_walk.leave()
+		drive.clear()
+		_interior_3d_failed = false
+	interior_3d = first_person
+	home_first_person.mouse_sensitivity = clampf(sensitivity, 0.0005, 0.006)
+	if is_instance_valid(home_first_person.player):
+		home_first_person.player.mouse_sensitivity = home_first_person.mouse_sensitivity
+
+
+func set_interior_paused(paused: bool) -> void:
+	drive.clear()
+	home_first_person.set_paused(paused)
+
+
+## The server owns entry/exit; both indoor views consume the same freshly requested plan.
+func _home_view(state: Dictionary) -> void:
+	if get_tree().paused:
+		return
+	var indoors: bool = state.get("home_door", {}).get("indoors", false)
+	home_walk.is_home = state.get("home_door", {}).get("is_home", false)
+	home_first_person.is_home = home_walk.is_home
+	if not indoors:
+		if home_first_person.visible:
+			drive.clear()
+		home_first_person.leave()
+		home_walk.leave()
+		_home_plan_asked = false
+		_interior_3d_failed = false
+		return
+	if home_first_person.visible or home_walk.visible:
+		return
+	if not _home_plan_asked:
+		sim.home_plan = {}  # a different house may have been selected since the last visit
+		_home_plan_asked = sim.send_home_interior()
+		return
+	if not sim.home_plan.has("footprint"):
+		return
+	home_walk.language = language
+	home_first_person.language = language
+	if interior_3d and not _interior_3d_failed:
+		if home_first_person.enter(sim.home_plan):
+			drive.clear()
+			return
+		_interior_3d_failed = true
+		push_warning("3D interior has no safe spawn; using the 2D interior")
+	home_walk.notice = T.text("home_3d_fallback", language) if _interior_3d_failed else ""
+	home_walk.enter(sim.home_plan)
 
 
 ## The nearest moving train rumbles from where it is (one train is enough).
@@ -877,6 +998,71 @@ func _feature_loops(state: Dictionary) -> void:
 	var calendar = state.get("calendar")
 	var arena = nearest_point(calendar.get("arena_games", []), from) if typeof(calendar) == TYPE_DICTIONARY else null
 	audio.set_loop("arena_crowd", 0.8 if arena != null else 0.0, 1.0, arena)
+	_traffic_loops(state, from, surface)
+	_site_loops(state, from, surface)
+
+
+## Bicycles, motorcycles and heavy vehicles backing up (state npcs), and protests.
+func _traffic_loops(state: Dictionary, from: Vector2, surface: bool) -> void:
+	var nearest := {"bicycle": null, "motorcycle": null, "reverse_beep": null}
+	var speed := {"bicycle": 0.0, "motorcycle": 0.0, "reverse_beep": 0.0}
+	for npc in state.get("npcs", []):
+		if not surface or npc.get("state", "") in ["PARKED", "CRASHED"]:
+			continue
+		var kind: String = npc.get("vehicle_type", "")
+		var moving := float(npc.get("speed", 0.0))
+		var key := ""
+		if kind == "bicycle" and moving > 1.5:
+			key = "bicycle"
+		elif kind == "motorcycle" and absf(moving) > 0.5:
+			key = "motorcycle"
+		elif kind in ["bus", "truck", "tractor"] and moving < -0.3:
+			key = "reverse_beep"
+		if key == "":
+			continue
+		var at := Vector2(npc["x"], npc["y"])
+		if nearest[key] == null or at.distance_to(from) < nearest[key].distance_to(from):
+			nearest[key] = at
+			speed[key] = absf(moving)
+	audio.set_loop("bicycle", 0.4 * minf(1.0, speed["bicycle"] / 6.0) if nearest["bicycle"] != null else 0.0, 1.0, nearest["bicycle"])
+	audio.set_loop("motorcycle", 0.75 if nearest["motorcycle"] != null else 0.0,
+		clampf(0.8 + speed["motorcycle"] / 30.0, 0.8, 1.6), nearest["motorcycle"])
+	audio.set_loop("reverse_beep", 0.6 if nearest["reverse_beep"] != null else 0.0, 1.0, nearest["reverse_beep"])
+	var protests: Array = []
+	for group in state.get("protests", []):
+		protests.append([group["x"], group["y"]])
+	var protest = nearest_point(protests, from) if surface else null
+	audio.set_loop("protest", 0.7 if protest != null else 0.0, 1.0, protest)
+
+
+## Playgrounds by day, building sites on weekday working hours, campfires and
+## beer gardens in the evening outside winter (site_sounds.gd finds them).
+func _site_loops(state: Dictionary, from: Vector2, surface: bool) -> void:
+	_sites_left -= get_process_delta_time()
+	if _sites_left <= 0.0:
+		_sites = SiteSounds.nearest(map_layer._chunks, entities.origin, from) if surface else {}
+		_sites_left = 0.5
+	var calendar = state.get("calendar")
+	var hour := fmod(float(state.get("game_time_seconds", 12.0 * 3600.0)) / 3600.0, 24.0)
+	var season: Array = calendar.get("season", [0.0, 0.0, 1.0, 0.0]) if typeof(calendar) == TYPE_DICTIONARY else [0.0, 0.0, 1.0, 0.0]
+	var winter := float(season[0]) if season.size() == 4 else 0.0
+	var weekday := 3
+	if typeof(calendar) == TYPE_DICTIONARY and calendar.has("date"):
+		weekday = int(Time.get_datetime_dict_from_datetime_string(str(calendar["date"]) + "T12:00:00", true)["weekday"])
+	var gains := site_gains(hour, weekday, winter)
+	for key in gains:
+		audio.set_loop(key, gains[key] if _sites.get(key) != null else 0.0, 1.0, _sites.get(key))
+
+
+## How loud each site loop is at this hour (0-24), weekday (0 Sunday) and winter weight.
+static func site_gains(hour: float, weekday: int, winter: float) -> Dictionary:
+	var summer := winter < 0.5
+	return {
+		"playground": 0.5 if hour >= 9.0 and hour < 20.0 and winter < 0.7 else 0.0,
+		"construction": 0.6 if weekday >= 1 and weekday <= 5 and hour >= 7.0 and hour < 16.0 else 0.0,
+		"campfire": 0.5 if summer and (hour >= 19.0 or hour < 1.0) else 0.0,
+		"biergarten": 0.55 if summer and hour >= 15.0 else 0.0,
+	}
 
 
 ## 0 by day, 1 at night, fading over an hour at dusk (21-22) and dawn (5-6).
@@ -1009,6 +1195,9 @@ func send(controls: Dictionary) -> void:
 	if outside or _interact_pending:
 		command["engine_on"] = null
 	command["language"] = language
+	command["home_door"] = _home_door_pending
+	# The inspect panel's subject: the simulation sends residents for it alone (protocol.py compact rows).
+	command["inspect"] = {"kind": _focus["kind"], "id": _focus["id"]} if _focus.get("kind") in ["npc", "pedestrian"] and _focus.has("id") else null
 	var view := get_viewport().get_canvas_transform().affine_inverse() * get_viewport().get_visible_rect()
 	command["view_bounds"] = [view.position.x + entities.origin.x, entities.origin.y - view.end.y,
 		view.end.x + entities.origin.x, entities.origin.y - view.position.y]
@@ -1017,6 +1206,7 @@ func send(controls: Dictionary) -> void:
 	_road_rage_pending = false
 	_respawn_pending = false
 	_home_pending = false
+	_home_door_pending = false
 	_cancel_ride_pending = false
 	_reset_trip_pending = false
 	sim.send_command(command)
@@ -1150,6 +1340,8 @@ func _apply_bench_hide() -> void:
 			"pools": map_layer._pool_group.visible = false
 			"entities": entities.visible = false
 			"ground": map_layer._ground.visible = false
+			"ui": $Ui.visible = false
+			"wildlife": wildlife.visible = false
 			_:
 				if name.begins_with("z"):
 					for chunk in map_layer._chunks.values():
@@ -1171,6 +1363,14 @@ func _perf_counters() -> void:
 	Perf.counters["chunks"] = map_layer.chunk_count()
 	Perf.counters["chunks_queued"] = _chunk_queue.size()
 	Perf.counters["draw_calls"] = Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+	Perf.counters["nodes"] = Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	Perf.counters["drawn_entities"] = entities.drawn_entities
+	var shown: Dictionary = entities.shown_state()
+	Perf.counters["npcs"] = shown.get("npcs", []).size()
+	Perf.counters["pedestrians"] = shown.get("pedestrians", []).size()
+	Perf.counters["objects"] = Performance.get_monitor(Performance.OBJECT_COUNT)
+	Perf.counters["canvas_items"] = Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)
+	Perf.counters["primitives"] = Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
 	Perf.counters["static_memory_mib"] = Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0
 
 
@@ -1209,6 +1409,7 @@ func _run_selftest(delta: float, state: Dictionary) -> void:
 		return
 	var at := Vector2(state["player"]["x"], state["player"]["y"])
 	if _selftest_start == Vector2.INF:
+		_engine_on = true  # send() follows the stopped engine while the test driver is still outside
 		_selftest_start = at
 		_selftest_time = 0.0
 		entities.buffer.reset_diagnostics()  # count from here: steady state, not the connect burst

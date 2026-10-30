@@ -30,6 +30,10 @@
 ## only by the chunk containing them.
 extends Node2D
 
+const CANOPY_KINDS := {"forest": 0, "wood": 0, "scrub": 1, "shrubbery": 1, "wetland": 2}  # forest.gdshader's kinds
+const CANOPY_MARGIN_M := 3.5  # the canopy drawn past the forest outline: room for its edge crowns
+const TRUNK_RADIUS_M := 0.4  # a tree the taxi touches within this of its trunk falls
+const TREE_CELL_M := 10.0  # knock_trees' lookup grid
 const RS := preload("res://render_style.gd")
 const Detail := preload("res://chunk_detail.gd")  # godot-16: the rest of the static world's drawing
 const B25 := preload("res://buildings_25d.gd")
@@ -40,6 +44,7 @@ const SHALLOW_WATER_M := 6.0  # the lighter band along a shore
 static var FOREST_MATERIAL := _forest_material()
 static var SHORE_MATERIAL := _shore_material()
 static var WATER_MATERIAL := _water_material()  # shared: one shader animates every lake
+static var SURFACE_MATERIAL := _surface_material()
 const SPRING_ICE_COLORS := [Color8(225, 236, 241), Color8(205, 224, 232), Color8(238, 243, 244)]
 const SPRING_ICE_EDGE := Color8(185, 207, 218)
 const SPRING_ICE_SPACING_M := 24.0
@@ -49,10 +54,9 @@ var _origin := Vector2.ZERO
 var _bounds := PackedVector2Array()  # chunk rectangle in layer coordinates (clipping)
 var _bounds_rect := Rect2()
 var _roads_by_z: Dictionary = {}  # z -> [road]
-var _wet_darken := Node2D.new()
-var _wet_sheen := Node2D.new()
+var _wet := Node2D.new()  # wet-road darkening and sheen in one pass (RS.wet_overlay)
 var _puddles := Node2D.new()
-var _bridge_weather: Array = []  # [darkening, sheen, puddles], at each deck's z
+var _bridge_weather: Array = []  # [wet roads, puddles], at each deck's z
 var _puddle_spots: Array = []  # [{"at", "radius", "reveal", "shape"}]
 var _water_ripple_spots: Array = []  # cached once; weather_layer animates their rings
 var _wetness := 0.0
@@ -70,17 +74,23 @@ var _lights: Node2D = null  # traffic-light posts, if this chunk has any
 var _phases: Dictionary = {}  # post id (String) -> phase as last drawn
 var _font: Font = ThemeDB.fallback_font
 var _trees: Node2D = null  # trees and bollards, if this chunk has any
-var _fallen: Dictionary = {}  # MapMath key -> angle, for this chunk's felled trees
+var _fallen: Dictionary = {}  # obstacle_key -> angle: trees the taxi knocked over (the client's alone: gone when the chunk reloads)
+var _wetland_spots: Dictionary = {}  # landuse index -> a bog's pools and tussocks (chunk_detail.wetland_spots)
+var _tree_grid: Dictionary = {}  # Vector2i cell -> [[point, tree index]]: built on the taxi's first visit (knock_trees)
 var _hedge_damage: Dictionary = {}
 var _railings: Node2D
 var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
 var drivable_roads: Array = []  # [Rect2, key] per drivable road: the night tint counts them (main.gd)
 var street_lights := PackedVector2Array()  # positions, for reflectors and long beams
+var light_cells := {}  # Vector2i LIGHT_CELL_M cell -> [indices of the street lights reaching into it] (MapLayer.light_at)
+const LIGHT_CELL_M := 20.0
 var _pools := Node2D.new()
 var _floods := Node2D.new()  # floodlit sports places (MapLayer's flood group)
 var _heads := Node2D.new()
 var _broken := PackedInt32Array()  # indices of this chunk's street lights that are knocked down
 var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state calendar.season)
+var _fields_frozen = null  # explicit server ice state; old servers use the winter weight
+var _trees_leafless := false
 var _season_layers: Array[Node2D] = []  # landuse and islands: their green kinds follow the season
 var _site_details := {}  # area index -> cached decorative positions; snow redraws only change colours
 var _signs: Node2D = null  # signs and speed cameras, if any
@@ -110,6 +120,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	_roads_by_z = prepared["roads_by_z"]
 	_snow_cells = prepared["snow_cells"]
 	street_lights = prepared["street_lights"]
+	light_cells = prepared["light_cells"]
 	if not message.get("waters", []).is_empty() or not message.get("water_lines", []).is_empty():
 		# Water alone carries the wave shader: nothing else drawn here can pick it up.
 		var water := _add_layer(0, _draw_water)
@@ -121,10 +132,13 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
 		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
+		landuse.material = SURFACE_MATERIAL
 		if prepared["forest_mask"] != null:
-			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
+			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse", CANOPY_MARGIN_M))
 			var material := FOREST_MATERIAL.duplicate() as ShaderMaterial
-			material.set_shader_parameter("canopy_mask", ImageTexture.create_from_image(prepared["forest_mask"]))
+			var mask := ImageTexture.create_from_image(prepared["forest_mask"])
+			material.set_shader_parameter("canopy_mask", mask)
+			material.set_shader_parameter("crown_mask", mask)  # the same, read unfiltered at crown centres
 			material.set_shader_parameter("mask_rect", Vector4(_bounds_rect.position.x, _bounds_rect.position.y, _bounds_rect.size.x, _bounds_rect.size.y))
 			canopy.material = material
 			_season_layers.append(canopy)
@@ -146,15 +160,15 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_rink_markings(self, node)))
 	for z in _roads_by_z:
 		var layer_z: int = z
-		_road_layers.append(_add_layer(z, func(node: Node2D): _draw_roads(layer_z, node)))
+		var roads := _add_layer(z, func(node: Node2D): _draw_roads(layer_z, node))
+		roads.material = SURFACE_MATERIAL
+		_road_layers.append(roads)
 		if z > 1:
-			var dark := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
-			var sheen := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
+			var wet := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
 			var puddles := _add_layer(z, func(node: Node2D): _draw_puddles(node, layer_z))
-			_bridge_weather.append([dark, sheen, puddles])
+			_bridge_weather.append([wet, puddles])
 		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_road_markings(layer_z, node)))
-	_add_layer(5, _draw_wet, _wet_darken)
-	_add_layer(5, _draw_wet, _wet_sheen)
+	_add_layer(5, _draw_wet, _wet)
 	_add_layer(5, _draw_puddles, _puddles)
 	if not message.get("parking", []).is_empty():
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_parking(self, node)))
@@ -166,10 +180,15 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	ground_tracks.name = "GroundTracks"
 	_px_layers.append(ground_tracks)
 	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails
-		_season_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands")))
-	var canopy_supports := _add_layer(7, _draw_canopy_supports)
-	_px_layers.append(canopy_supports)
-	_canopy_layers.append(canopy_supports)
+		var islands := _add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands"))
+		islands.material = SURFACE_MATERIAL
+		_season_layers.append(islands)
+	if not message.get("canopies", []).is_empty():
+		_add_layer(7, func(node: Node2D): Detail.draw_canopy_shadows(self, node))
+		var canopy_supports := _add_layer(7, _draw_canopy_supports)
+		_px_layers.append(canopy_supports)
+		_canopy_layers.append(canopy_supports)
+		_px_layers.append(_add_layer(7, func(node: Node2D): Detail.draw_canopy_feet(self, node)))
 	if not message.get("curbs", []).is_empty() or not message.get("crossings", []).is_empty() or not message.get("speed_bumps", []).is_empty():
 		# Under the light pools (6): crossings and kerbs are lit like the road.
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_road_features(self, node)))
@@ -268,15 +287,21 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 	var lights := PackedVector2Array()
 	for light in message.get("street_lights", []):
 		lights.append(MapMath.point(origin, light[0], light[1]))
+	var cells := light_cells_for(lights, message.get("street_lights", []))
 	message["prepared"] = {"origin": origin, "bounds_rect": bounds_rect, "bounds": bounds, "drivable_roads": drivable,
-		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "puddle_spots": puddles,
+		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "light_cells": cells, "puddle_spots": puddles,
 		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points,
 		# Rasterised here, on the parse worker: on the main thread it was a 60-115 ms hitch per forest chunk.
-		"forest_mask": forest_mask(message, bounds_rect, origin) if message.get("landuse", []).any(_is_forest) else null}
+		"forest_mask": forest_mask(message, bounds_rect, origin) if forest_canopy and message.get("landuse", []).any(_is_forest) else null}
 
 
 static func _is_forest(area) -> bool:
-	return area.size() > 3 and str(area[3]) in ["forest", "wood", "scrub"]
+	return area.size() > 3 and CANOPY_KINDS.has(str(area[3]))
+
+
+## A canopy kind's channel in the mask (and the shader's kind): red forest, green scrub, blue wetland.
+static func canopy_kind(area) -> int:
+	return int(CANOPY_KINDS.get(str(area[3]), -1)) if area.size() > 3 else -1
 
 
 ## Every polyline and polygon kept as a PackedVector2Array in layer
@@ -319,7 +344,14 @@ static func _compact(data: Dictionary, origin: Vector2) -> int:
 static func _drawn_before(p: Dictionary, q: Dictionary) -> bool:
 	var lp := int(p.get("layer", 0))
 	var lq := int(q.get("layer", 0))
-	return lp < lq or (lp == lq and float(p.get("half_width_m", 1.5)) < float(q.get("half_width_m", 1.5)))
+	if lp != lq:
+		return lp < lq
+	# The more important road on top (the server's rank: class, then paved), then the wider.
+	var rp := int(p.get("rank", 0))
+	var rq := int(q.get("rank", 0))
+	if rp != rq:
+		return rp < rq
+	return float(p.get("half_width_m", 1.5)) < float(q.get("half_width_m", 1.5))
 
 
 static func _clip_to_bounds(data: Dictionary, bounds: PackedVector2Array, bounds_rect: Rect2, roads_by_z: Dictionary) -> void:
@@ -375,25 +407,43 @@ func _add_layer(z: int, draw: Callable, node: Node2D = null) -> Node2D:
 	if node == null:
 		node = Node2D.new()
 	node.z_index = z
-	node.draw.connect(draw.bind(node))
+	if Perf.keep_all:  # --bench: each layer's redraws, by z and draw function
+		var section := "draw_z%d_%s" % [z, draw.get_method()]
+		node.draw.connect(func(): var t := Time.get_ticks_usec(); draw.call(node); Perf.add(section, Time.get_ticks_usec() - t))
+	else:
+		node.draw.connect(draw.bind(node))
 	add_child(node)
 	return node
+
+
+## Each light in every cell its pool reaches (a square around its reach,
+## street light [x, y, direction, reach m]; 10 m without one): a point's
+## lights are its own cell's, not the whole chunk's.
+static func light_cells_for(lights: PackedVector2Array, data: Array) -> Dictionary:
+	var cells := {}
+	for i in lights.size():
+		var reach := float(data[i][3]) if i < data.size() and data[i].size() > 3 else 10.0
+		var low := Vector2i(((lights[i] - Vector2(reach, reach)) / LIGHT_CELL_M).floor())
+		var high := Vector2i(((lights[i] + Vector2(reach, reach)) / LIGHT_CELL_M).floor())
+		for x in range(low.x, high.x + 1):
+			for y in range(low.y, high.y + 1):
+				if not cells.has(Vector2i(x, y)):
+					cells[Vector2i(x, y)] = []
+				cells[Vector2i(x, y)].append(i)
+	return cells
 
 
 ## Weather: overlays and puddles follow wetness 0..1.
 func set_wetness(wetness: float) -> void:
 	var previous := _wetness
 	_wetness = wetness
-	var alphas := RS.wet_alphas(wetness)
-	_wet_darken.modulate = Color(RS.WET_DARKEN, alphas[0])
-	_wet_sheen.modulate = Color(RS.WET_SHEEN, alphas[1])
-	var wet_nodes: Array = [_wet_darken, _wet_sheen]
+	_wet.modulate = RS.wet_overlay(wetness)
+	var wet_nodes: Array = [_wet]
 	var puddle_nodes: Array = [_puddles]
 	for layers in _bridge_weather:
-		layers[0].modulate = _wet_darken.modulate
-		layers[1].modulate = _wet_sheen.modulate
-		wet_nodes.append_array([layers[0], layers[1]])
-		puddle_nodes.append(layers[2])
+		layers[0].modulate = _wet.modulate
+		wet_nodes.append(layers[0])
+		puddle_nodes.append(layers[1])
 	# godot-18: hidden when dry - at alpha 0 they still blended every road twice
 	# each frame. A canvas item hidden when it entered the tree didn't draw
 	# its strokes when shown later (found in a windowed run), so becoming
@@ -458,10 +508,9 @@ func set_broken_hedges(damage: Dictionary) -> void:
 			_railings.queue_redraw()
 
 
-## The simulation's felled trees ({key: angle}) and knocked posts ({key:
-## ...}), keyed by position (obstacle_key): redraws this chunk's trees only
-## if one of its own changed. Returns whether it did.
-func set_obstacles(fallen: Dictionary, knocked: Dictionary) -> bool:
+## The simulation's knocked posts ({obstacle_key: ...}): redraws this
+## chunk's trees and posts only if one of its own changed. Returns whether it did.
+func set_obstacles(knocked: Dictionary) -> bool:
 	var broken := PackedInt32Array()  # a knocked street lamp is the light at its spot
 	for post in knocked.values():
 		if post[3] == "street_lamp" and not street_lights.is_empty():
@@ -476,22 +525,51 @@ func set_obstacles(fallen: Dictionary, knocked: Dictionary) -> bool:
 		_heads.queue_redraw()
 	if _trees == null:
 		return lamps_changed
-	var own_fallen := {}
-	for tree in _data.get("trees", []):
-		var key := obstacle_key(tree[0], tree[1])
-		if fallen.has(key):
-			own_fallen[key] = fallen[key]
 	var own_knocked := {}
 	for post in _data.get("bollards", []):
 		var key := obstacle_key(post[0], post[1])
 		if knocked.has(key):
 			own_knocked[key] = true
-	if own_fallen == _fallen and own_knocked == _knocked:
+	if own_knocked == _knocked:
 		return false
-	_fallen = own_fallen
 	_knocked = own_knocked
 	_trees.queue_redraw()
 	return true
+
+
+## Knock over the standing trees the taxi's body (centre, world heading,
+## length, width) touches: each falls the way the taxi was going. The client's
+## alone - the simulation never stops the taxi at a tree - and forgotten when
+## this chunk is unloaded. Returns how many fell.
+func knock_trees(at: Vector2, heading: float, length: float, width: float) -> int:
+	if _trees == null or not _bounds_rect.grow(length).has_point(at):
+		return 0
+	if _tree_grid.is_empty():  # once: the trees by TREE_CELL_M cell, so a frame tests only those around the taxi
+		var trees: Array = _data.get("trees", [])
+		for i in trees.size():
+			var p := MapMath.point(_origin, trees[i][0], trees[i][1])
+			var cell := Vector2i(floori(p.x / TREE_CELL_M), floori(p.y / TREE_CELL_M))
+			if not _tree_grid.has(cell):
+				_tree_grid[cell] = []
+			_tree_grid[cell].append([p, i])
+	var forward := Vector2(cos(heading), -sin(heading))
+	var reach := length * 0.5 + width + TRUNK_RADIUS_M
+	var felled := 0
+	for cx in range(floori((at.x - reach) / TREE_CELL_M), floori((at.x + reach) / TREE_CELL_M) + 1):
+		for cy in range(floori((at.y - reach) / TREE_CELL_M), floori((at.y + reach) / TREE_CELL_M) + 1):
+			for entry in _tree_grid.get(Vector2i(cx, cy), []):
+				var d: Vector2 = entry[0] - at
+				var outside := Vector2(maxf(0.0, absf(d.dot(forward)) - length * 0.5), maxf(0.0, absf(d.dot(forward.orthogonal())) - width * 0.5))
+				if outside.length() > TRUNK_RADIUS_M:
+					continue
+				var tree: Array = _data["trees"][entry[1]]
+				var key := obstacle_key(tree[0], tree[1])
+				if not _fallen.has(key):
+					_fallen[key] = heading
+					felled += 1
+	if felled > 0:
+		_trees.queue_redraw()
+	return felled
 
 
 var _elevated = null
@@ -581,7 +659,33 @@ func drop_stale_buildings() -> void:
 static var build_async := true  # tests build in place
 static var language := "en"  # unnamed fuel stations' board (main._apply_language)
 static var buildings_3d := true  # --buildings 2d uses flat footprints
+static var forest_canopy := true  # off (graphics setting): forests keep their flat fill, no crowns - for software rendering
 var meshes_3d: Array = []  # buildings_3d.meshes, added to MapLayer's 3D building layer
+
+
+func set_shop_lights(rows: Array) -> void:
+	_data["_shop_lights"] = rows
+	var styles: Array = _data.get("building_styles", []).duplicate(true)
+	var changed := false
+	for row in rows:
+		var index := int(row[0])
+		if index < 0 or index >= styles.size():
+			continue
+		var style: Array = styles[index]
+		var status := clampi(int(row[1]), -1, 1)
+		if (int(style[8]) if style.size() > 8 else -1) == status:
+			continue
+		while style.size() < 9:
+			style.append(0)  # index 7 is the existing arena/glasshouse flag
+		style[8] = status
+		changed = true
+	if not changed:
+		return
+	_data["building_styles"] = styles
+	if buildings_3d:
+		stale_buildings.append_array(meshes_3d)
+		meshes_3d = []
+		_build_2_5d()
 
 
 static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2, sites: Array = []) -> Dictionary:
@@ -709,6 +813,28 @@ func set_lights_on(on: bool) -> void:
 	_heads.visible = on  # the pools: MapLayer shows or hides its group
 
 
+func fields_frozen() -> bool:
+	return bool(_fields_frozen) if _fields_frozen != null else float(_season[0]) >= Detail.FIELDS_FROZEN_WINTER_WEIGHT
+
+
+func set_fields_frozen(frozen: bool) -> void:
+	if _fields_frozen == frozen:
+		return
+	_fields_frozen = frozen
+	for node in _season_layers:
+		node.queue_redraw()
+
+
+func set_trees_leafless(leafless: bool) -> void:
+	if _trees_leafless == leafless:
+		return
+	_trees_leafless = leafless
+	if _trees != null:
+		_trees.queue_redraw()
+	for node in _season_layers:
+		node.queue_redraw()
+
+
 ## The season's weights (state calendar.season): water, trees and their
 ## colours follow (water freezes to ice). They change about once a game day, not with the clock.
 func set_season(weights: Array) -> bool:
@@ -795,10 +921,19 @@ func _draw_ice_floe(node: Node2D, floe: Dictionary) -> void:
 	var polygon := PackedVector2Array()
 	for i in 10:
 		var angle := TAU * i / 10.0
-		polygon.append(floe["at"] + Vector2(cos(angle) * floe["rx"], sin(angle) * floe["ry"]).rotated(floe["angle"]))
+		polygon.append(Vector2(cos(angle) * floe["rx"], sin(angle) * floe["ry"]))
+	# Triangulate near zero: small plates lose precision at distant map coordinates.
+	node.draw_set_transform(floe["at"], floe["angle"])
 	node.draw_colored_polygon(polygon, floe["color"])
 	polygon.append(polygon[0])
 	node.draw_polyline(polygon, SPRING_ICE_EDGE, 0.18)
+	node.draw_set_transform(Vector2.ZERO)
+
+
+static func _surface_material() -> ShaderMaterial:
+	var surface := ShaderMaterial.new()
+	surface.shader = preload("res://surface.gdshader")
+	return surface
 
 
 static func _water_material() -> ShaderMaterial:
@@ -813,10 +948,11 @@ func _forest_mask() -> ImageTexture:
 
 
 static func forest_mask(data: Dictionary, bounds_rect: Rect2, origin: Vector2) -> Image:
-	var image := Image.create(maxi(1, ceili(bounds_rect.size.x)), maxi(1, ceili(bounds_rect.size.y)), false, Image.FORMAT_R8)
+	var image := Image.create(maxi(1, ceili(bounds_rect.size.x)), maxi(1, ceili(bounds_rect.size.y)), false, Image.FORMAT_RGB8)
 	image.fill(Color.BLACK)
 	for area in data.get("landuse", []):
-		_mask_polygon(image, bounds_rect, _to_points(area[2], origin), Color.WHITE if _is_forest(area) else Color.BLACK)
+		var kind := canopy_kind(area)
+		_mask_polygon(image, bounds_rect, _to_points(area[2], origin), [Color.RED, Color.GREEN, Color.BLUE][kind] if kind >= 0 else Color.BLACK)
 	for key in ["waters", "buildings", "parking"]:
 		for polygon in data.get(key, []):
 			_mask_polygon(image, bounds_rect, _to_points(polygon, origin), Color.BLACK)
@@ -953,14 +1089,16 @@ func redraw_road_snow() -> void:
 
 
 func _draw_roads(z: int, node: Node2D) -> void:
+	var strokes := Strokes.new()  # rrt-019.1: the layer's roads in one draw call, in order
 	for road in _roads_by_z[z]:
 		var width: float = max(0.6, 2.0 * float(road.get("half_width_m", 1.5)))
 		var color: Color = Detail._rgb(road["color"]) if road.has("color") else (Color(0.33, 0.33, 0.35) if road.get("drivable", false) else Color(0.55, 0.52, 0.45))
 		var points := _points(road["points"])
 		if z > 1:
-			node.draw_polyline(points, Color(0.12, 0.12, 0.13), width + 0.6)  # bridge edge
+			strokes.polyline(points, Color(0.12, 0.12, 0.13), width + 0.6)  # bridge edge
 		var snowy: bool = _snow_cover > 0.0 and road.get("drivable", false) and int(road.get("layer", 0)) >= 0
-		node.draw_polyline(points, color.lerp(Color8(230, 236, 240), _snow_cover) if snowy else color, width)
+		var family := float(road.get("surface_texture", 0))
+		strokes.polyline(points, color.lerp(Color8(230, 236, 240), _snow_cover) if snowy else color, width, Vector2(-family, _snow_cover if snowy else 0.0))
 		if snowy and not _plowed_cover.is_empty():
 			var snow_lines := {}
 			var segments: Dictionary = road["snow_segments"]
@@ -972,7 +1110,8 @@ func _draw_roads(z: int, node: Node2D) -> void:
 					snow_lines[cover] = PackedVector2Array()
 				snow_lines[cover].append_array(segments[cell])
 			for cover in snow_lines:
-				node.draw_multiline(snow_lines[cover], color.lerp(Color8(230, 236, 240), cover), width)
+				strokes.multiline(snow_lines[cover], color.lerp(Color8(230, 236, 240), cover), width, Vector2(-family, cover))
+	strokes.draw(node)
 
 
 func _draw_road_markings(z: int, node: Node2D) -> void:
@@ -989,6 +1128,8 @@ func _draw_road_markings(z: int, node: Node2D) -> void:
 
 ## White strokes over drivable roads, tinted by the node's modulate.
 func _draw_wet(node: Node2D, z: int = 1) -> void:
+	var straight := {}  # same-width two-point strokes share one draw command
+	var curved := Strokes.new()
 	for road in _data.get("roads", []):
 		if not road.get("drivable", false) or road_z(int(road.get("layer", 0))) != z:
 			continue
@@ -996,11 +1137,22 @@ func _draw_wet(node: Node2D, z: int = 1) -> void:
 		# godot-18: the part inside the chunk (clip_polyline_with_polygon, used before, returns the part outside)
 		var parts: Array = [line] if _bounds.is_empty() else Geometry2D.intersect_polyline_with_polygon(line, _bounds)
 		for part in parts:
-			if part.size() >= 2:
-				node.draw_polyline(part, Color.WHITE, 2.0 * float(road.get("half_width_m", 1.5)))
+			var width := 2.0 * float(road.get("half_width_m", 1.5))
+			if part.size() == 2:
+				if not straight.has(width):
+					straight[width] = PackedVector2Array()
+				straight[width].append_array(part)
+			elif part.size() > 2:
+				curved.polyline(part, Color.WHITE, width)
+	curved.draw(node)  # one draw call for every curved road (rrt-019.1); all strokes are white, so order doesn't matter
+	for width in straight:
+		node.draw_multiline(straight[width], Color.WHITE, width)
 
 
 func _draw_puddles(node: Node2D, z: int = 1) -> void:
+	var points := PackedVector2Array()  # every puddle in one draw call (rrt-019.1: one each was ~700 in rain)
+	var indices := PackedInt32Array()
+	var colors := PackedColorArray()
 	for spot in _puddle_spots:
 		if int(spot.get("z", 1)) != z:
 			continue
@@ -1013,13 +1165,21 @@ func _draw_puddles(node: Node2D, z: int = 1) -> void:
 		for i in shape.size():
 			var angle := TAU * i / shape.size()
 			polygon.append(spot["at"] + Vector2(cos(angle), sin(angle)) * radius * shape[i])
-		if Detail._valid(polygon):  # a jittered outline can cross itself
-			node.draw_colored_polygon(polygon, Color(RS.PUDDLE_COLOR, RS.PUDDLE_MAX_ALPHA * strength))
+		var triangles := Geometry2D.triangulate_polygon(polygon)
+		if triangles.is_empty():  # a jittered outline can cross itself
+			continue
+		for i in triangles:
+			indices.append(points.size() + i)
+		points.append_array(polygon)
+		var color := Color(RS.PUDDLE_COLOR, RS.PUDDLE_MAX_ALPHA * strength)
+		for i in polygon.size():
+			colors.append(color)
+	_triangles_colored(node, points, indices, colors)
 
 
 const TREE_CROWNS := {
-	"spruce": [Color8(14, 54, 20), Color8(18, 64, 24), Color8(24, 76, 30)],
-	"pine": [Color8(88, 108, 42), Color8(102, 122, 50), Color8(118, 136, 60)],
+	"spruce": [Color8(14, 45, 20), Color8(18, 52, 24), Color8(24, 61, 30)],
+	"pine": [Color8(38, 72, 27), Color8(45, 82, 30), Color8(53, 91, 35)],
 	"birch": [Color8(25, 78, 29), Color8(34, 101, 35), Color8(48, 119, 42), Color8(63, 112, 34)],
 }
 
@@ -1042,31 +1202,60 @@ static func tree_style(kind: String, variation: float) -> Dictionary:
 ## along the way it was hit, trunk showing. Then the standing bollards.
 func _draw_trees(node: Node2D) -> void:
 	var rng := RandomNumberGenerator.new()
+	var crowns := Strokes.new()  # one draw call for the crowns (rrt-019.1)
 	for tree in _data.get("trees", []):
 		var at := MapMath.point(_origin, tree[0], tree[1])
 		var style := tree_style(str(tree[2]), float(tree[3]))
-		style["crown"] = seasonal_color(style["crown"], _season)
+		var kind := str(tree[2])
+		if kind == "pine" or kind == "spruce":
+			style["crown"] = style["crown"].lerp(Color8(226, 234, 238), clampf(_season[0], 0.0, 1.0))
+		elif _trees_leafless and kind == "birch":
+			style["crown"] = Color8(91, 70, 48)
+		else:
+			style["crown"] = seasonal_color(style["crown"], _season)
 		var radius := maxf(_px(2.0), style["radius"])
 		var key := obstacle_key(tree[0], tree[1])
 		if _fallen.has(key):
+			crowns.draw(node)  # the crowns so far under it, as before
+			crowns = Strokes.new()
 			var tip := at + Vector2(cos(_fallen[key]), -sin(_fallen[key])) * 3.2
 			node.draw_line(at, tip, style["trunk"], maxf(_px(2.0), style["trunk_width"]))
 			node.draw_circle(tip, radius, style["crown"])
+			continue
+		if _trees_leafless and kind == "birch":
+			var branch_color: Color = style["trunk"].darkened(0.12)
+			for branch in 4:
+				var angle := TAU * branch / 4.0 + 0.35
+				var tip := at + Vector2(cos(angle), sin(angle)) * radius * 0.72
+				crowns.polyline(PackedVector2Array([at, tip]), branch_color, maxf(_px(0.25), 0.16))
+			if _season[0] > 0.0:
+				var snow_crown := PackedVector2Array()
+				for side in 8:
+					var angle := TAU * side / 8.0
+					snow_crown.append(Vector2(cos(angle), sin(angle)) * radius)
+				crowns.polygon(snow_crown, Color8(226, 234, 238).lerp(branch_color, 0.25 * (1.0 - _season[0])), at)
 			continue
 		rng.seed = hash(key)
 		var crown := PackedVector2Array()
 		for i in 8:
 			var angle := TAU * i / 8.0 + rng.randf_range(-0.2, 0.2)
 			crown.append(Vector2(cos(angle), sin(angle)) * radius * rng.randf_range(0.78, 1.15))
-		# Triangulate near zero: distant map coordinates lose the crown's small edges.
-		node.draw_set_transform(at)
-		node.draw_colored_polygon(crown, style["crown"])
-		node.draw_set_transform(Vector2.ZERO)
+		crowns.polygon(crown, style["crown"], at)  # triangulated near zero: distant map coordinates lose the crown's small edges
+	crowns.draw(node)
 	for post in _data.get("bollards", []):
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			node.draw_circle(MapMath.point(_origin, post[0], post[1]), maxf(_px(1.0), 0.25), Color8(48, 48, 46))
+	var shrubs := PackedVector2Array()
 	for obj in _data.get("scenery_objects", []):
+		if obj[2] == "shrub":
+			var at := MapMath.point(_origin, obj[0], obj[1])
+			shrubs.append_array(PackedVector2Array([at - Vector2(0.3, 0), at + Vector2(0.3, 0)]))
+			continue
 		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]), int(obj[4]) if obj.size() > 4 else 0)
+
+	if not shrubs.is_empty():
+		var foliage := hedge_foliage(shrubs)
+		_triangles_colored(node, foliage[0], foliage[1], foliage[2])
 
 
 ## The decorative scenery objects, in metres with minimum pixel sizes.
@@ -1151,11 +1340,64 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float,
 			var radius := maxf(_px(2.0), 0.7)
 			node.draw_circle(at, radius, Color8(90, 165, 185))
 			node.draw_circle(at, maxf(_px(1.0), radius / 3.0), Color8(220, 240, 245))
+		"sandpit", "swing", "slide", "spring_rider", "climbing_frame", "seesaw":  # playground_equipment.py
+			node.draw_set_transform(at, -angle)
+			_draw_playground_item(node, kind, PLAY_COLOURS[posmod(hash(at), PLAY_COLOURS.size())])
+			node.draw_set_transform(Vector2.ZERO)
 		"gate":  # across the path it stands on
 			var half := maxf(_px(2.0), 1.0)
 			node.draw_set_transform(at, -angle)
 			node.draw_line(Vector2(0, -half), Vector2(0, half), Color8(100, 92, 80), maxf(_px(1.0), 0.15))
 			node.draw_set_transform(Vector2.ZERO)
+
+
+const PLAY_COLOURS := [Color8(214, 58, 46), Color8(245, 190, 40), Color8(46, 112, 196), Color8(62, 158, 76)]
+const PLAY_STEEL := Color8(70, 76, 82)
+const PLAY_WOOD := Color8(150, 104, 60)
+const PLAY_SHADOW := Color8(25, 30, 28, 90)
+
+
+## One piece of playground equipment seen from above, about real size in
+## metres, along +x (the playground's long edge).
+func _draw_playground_item(node: Node2D, kind: String, paint: Color) -> void:
+	match kind:
+		"sandpit":  # a 2.6 m wooden frame of sand
+			node.draw_rect(Rect2(-1.3, -1.3, 2.6, 2.6), PLAY_WOOD)
+			node.draw_rect(Rect2(-1.1, -1.1, 2.2, 2.2), Color8(222, 200, 150))
+			node.draw_circle(Vector2(0.35, -0.2), 0.18, paint)  # a bucket left behind
+		"swing":  # an A-frame: a 3.4 m top beam, splayed legs, two seats and their worn patches
+			for x: float in [-0.75, 0.75]:
+				node.draw_rect(Rect2(x - 0.55, -1.1, 1.1, 2.2), Color8(176, 160, 120, 150))
+			node.draw_line(Vector2(-1.7, 0.15), Vector2(1.7, 0.15), PLAY_SHADOW, 0.25)
+			for x: float in [-1.7, 1.7]:
+				node.draw_line(Vector2(x, -0.8), Vector2(x, 0.8), PLAY_STEEL, 0.12)
+			node.draw_line(Vector2(-1.7, 0), Vector2(1.7, 0), paint, 0.16)
+			for x: float in [-0.75, 0.75]:  # the seats hang under the beam: drawn over it
+				node.draw_rect(Rect2(x - 0.25, -0.12, 0.5, 0.24), Color8(30, 32, 34))
+		"slide":  # a ladder tower and the chute running down from it
+			node.draw_rect(Rect2(-1.7, -0.55, 1.1, 1.1), PLAY_SHADOW)
+			node.draw_rect(Rect2(-1.8, -0.6, 1.1, 1.1), PLAY_WOOD)
+			node.draw_rect(Rect2(-1.65, -0.45, 0.8, 0.8), PLAY_WOOD.lightened(0.2))
+			node.draw_colored_polygon(PackedVector2Array([Vector2(-0.7, -0.3), Vector2(1.9, -0.35), Vector2(1.9, 0.35), Vector2(-0.7, 0.3)]), paint)
+			node.draw_line(Vector2(-0.7, 0), Vector2(1.9, 0), paint.lightened(0.35), 0.12)
+		"spring_rider":  # a little animal on a spring
+			node.draw_circle(Vector2(0.08, 0.08), 0.38, PLAY_SHADOW)
+			node.draw_circle(Vector2.ZERO, 0.36, paint)
+			node.draw_circle(Vector2(0.28, 0), 0.16, paint.lightened(0.25))  # the head
+			node.draw_line(Vector2(-0.1, -0.22), Vector2(-0.1, 0.22), Color8(30, 32, 34), 0.07)  # the handles
+		"climbing_frame":  # a 2.4 m grid of bars around a platform
+			node.draw_rect(Rect2(-1.1, -1.1, 2.4, 2.4), PLAY_SHADOW)
+			node.draw_rect(Rect2(-0.5, -0.5, 1.0, 1.0), paint)
+			for i in 5:
+				var p := -1.2 + i * 0.6
+				node.draw_line(Vector2(p, -1.2), Vector2(p, 1.2), PLAY_STEEL, 0.07)
+				node.draw_line(Vector2(-1.2, p), Vector2(1.2, p), PLAY_STEEL, 0.07)
+		"seesaw":  # a 3 m plank on a pivot, a seat and handle at each end
+			node.draw_rect(Rect2(-1.5, -0.14, 3.0, 0.28), paint)
+			node.draw_rect(Rect2(-0.2, -0.3, 0.4, 0.6), PLAY_STEEL)
+			for x: float in [-1.3, 1.3]:
+				node.draw_rect(Rect2(x - 0.18, -0.2, 0.36, 0.4), Color8(30, 32, 34))
+				node.draw_line(Vector2(x * 0.85, -0.28), Vector2(x * 0.85, 0.28), PLAY_STEEL, 0.07)
 
 
 func _draw_caravan(node: Node2D, hitched: bool, blue_car: bool) -> void:
@@ -1578,3 +1820,105 @@ func _draw_attractions(node: Node2D) -> void:
 		for point in ride[1]:
 			points.append(MapMath.point(_origin, point[0], point[1]))
 		preload("res://attraction_draw.gd").draw_ride(node, str(ride[0]), points)
+
+
+## Wide lines gathered into one triangle array: CanvasItem.draw_polyline is
+## a draw call per line, which the Compatibility renderer doesn't batch
+## (rrt-019.1: ~700 calls for one chunk's roads). The same triangles as
+## Godot 4.7's canvas_item_add_polyline / add_line without antialiasing,
+## drawn in the order added.
+class Strokes:
+	var points := PackedVector2Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	var uvs := PackedVector2Array()
+
+	func polyline(line: PackedVector2Array, color: Color, width: float, uv := Vector2.ZERO) -> void:
+		var count := line.size()
+		if count < 2:
+			return
+		var loop := line[0].is_equal_approx(line[count - 1])
+		var first := Vector2.ZERO
+		for i in range(1, count):
+			first = (line[i] - line[i - 1]).normalized()
+			if not first.is_zero_approx():
+				break
+		var last := Vector2.ZERO
+		for i in range(count - 1, 0, -1):
+			last = (line[i] - line[i - 1]).normalized()
+			if not last.is_zero_approx():
+				break
+		var base := points.size()
+		var previous := Vector2.ZERO
+		for i in count:
+			var direction := previous
+			if i < count - 1:
+				direction = (line[i + 1] - line[i]).normalized()
+				if direction.is_zero_approx():
+					direction = previous
+			if i == 0 and loop:
+				previous = last
+			elif i == count - 1 and loop:
+				previous = first
+			var offset: Vector2
+			if i == 0 and not loop:
+				offset = first.orthogonal()
+			elif i == count - 1 and not loop:
+				offset = last.orthogonal()
+			else:
+				offset = Strokes.edge_offset(direction, previous)
+			offset *= width * 0.5
+			points.append(line[i] + offset)
+			points.append(line[i] - offset)
+			colors.append(color)
+			colors.append(color)
+			previous = direction
+		for i in range(count - 1):  # the strip's triangles
+			var k := base + i * 2
+			indices.append_array([k, k + 1, k + 2, k + 1, k + 2, k + 3])
+		_append_uv(base, uv)
+
+	## Godot's compute_polyline_edge_offset_clamped: the joint's bisector, its miter at most 3x.
+	static func edge_offset(direction: Vector2, previous: Vector2) -> Vector2:
+		var bisector := (previous * direction.length() - direction * previous.length()).normalized()
+		var length := 1.0
+		var sine := sin(atan2(bisector.cross(previous), bisector.dot(previous)))
+		if not is_zero_approx(sine) and not direction.is_equal_approx(previous):
+			length = clampf(1.0 / sine, -3.0, 3.0)
+		else:
+			bisector = direction.orthogonal()
+		if bisector.is_zero_approx():
+			bisector = direction.orthogonal()
+		return bisector * length
+
+	## draw_multiline: a quad per segment.
+	func multiline(segments: PackedVector2Array, color: Color, width: float, uv := Vector2.ZERO) -> void:
+		for i in range(0, segments.size() - 1, 2):
+			var t := (segments[i] - segments[i + 1]).orthogonal().normalized() * width * 0.5
+			var k := points.size()
+			points.append_array([segments[i] + t, segments[i] - t, segments[i + 1] - t, segments[i + 1] + t])
+			colors.append_array([color, color, color, color])
+			indices.append_array([k, k + 1, k + 2, k, k + 2, k + 3])
+			_append_uv(k, uv)
+
+	## draw_colored_polygon: the same triangulation; nothing if it fails.
+	## `at` moves the outline after triangulating it (small shapes keep their edges near zero).
+	func polygon(outline: PackedVector2Array, color: Color, at := Vector2.ZERO) -> void:
+		var k := points.size()
+		for i in Geometry2D.triangulate_polygon(outline):
+			indices.append(k + i)
+		for point in outline:
+			points.append(point + at)
+			colors.append(color)
+		_append_uv(k, Vector2.ZERO)
+
+	func _append_uv(start: int, value: Vector2) -> void:
+		if uvs.is_empty() and value == Vector2.ZERO:
+			return
+		uvs.resize(points.size())
+		for i in range(start, points.size()):
+			uvs[i] = value
+
+	func draw(node: CanvasItem) -> void:
+		if not indices.is_empty():
+			RenderingServer.canvas_item_add_triangle_array(node.get_canvas_item(), indices, points, colors, uvs)

@@ -63,9 +63,12 @@ def road_style(way) -> dict:
     """The parts of a road's look that aren't geometry:
     colour (road_color_for_way), centre line (dashed, or solid on a two-way
     road of 3+ lanes), one-way chevrons, bridge."""
-    from .map_style import road_color_for_way
+    from .map_style import road_color_for_way, road_draw_rank, surface_texture
 
-    style = {"color": _rgb(road_color_for_way(way))}
+    style = {"color": _rgb(road_color_for_way(way)), "rank": road_draw_rank(way)}
+    texture = surface_texture(getattr(way, "surface", None))
+    if texture:
+        style["surface_texture"] = texture
     if way.is_drivable:
         lanes = max(1, int(getattr(way, "lanes", 1) or 1))
         forward, backward = getattr(way, "lanes_forward", None), getattr(way, "lanes_backward", None)
@@ -155,16 +158,20 @@ def rail_bridge_decks(railways, ways=(), bridge_parts=None):
 
 
 def building_style(building) -> list:
-    """[roof colour, gabled, height m, entrances, wall colour, floors,
+    """[roof colour, gabled (1, or 2 steep), height m, entrances, wall colour, floors,
     category] as building_style.py picks them: colours named in the
     building's (Finnish) name, else the per-building texture pick; the OSM
     entrances ([x, y] each); its floor count (OSM levels, else height / 3);
-    category 1 house, 2 commercial, 0 other (the window rules)."""
+    category 1 house, 2 commercial, 3 plain walls (outbuildings), 4 retail hall, 0 other
+    (the window rules); then
+    optionally 1 arena windows or 2 glasshouse."""
     from . import building_style as rb
 
     named = rb._building_colors_from_name(getattr(building, "colour_name", None) or getattr(building, "name", None))
     if named is not None:
         wall, roof = named
+    elif rb._building_type(building) in rb.TANK_TYPES:
+        wall = roof = rb.TANK_COLOR
     else:
         seed = getattr(building, "texture_seed", None)
         if seed is None:
@@ -172,11 +179,22 @@ def building_style(building) -> list:
             seed = abs(math.sin(cx * 0.013 + cy * 0.017))
         index = min(len(rb.BUILDING_ROOF_COLORS) - 1, int(seed * len(rb.BUILDING_ROOF_COLORS)))
         roof, wall = rb.BUILDING_ROOF_COLORS[index], rb.BUILDING_WALL_COLORS[index]
-    return [_rgb(roof), 1 if rb._uses_gabled_roof(building) else 0, round(rb._building_render_height(building), 1),
+    gabled = (2 if rb._building_type(building) in rb.CHURCH_TYPES else 1) if rb._uses_gabled_roof(building) else 0
+    return [_rgb(roof), gabled, round(rb._building_render_height(building), 1),
             [[round(x, 1), round(y, 1)] for x, y in getattr(building, "entrances", ())],
             _rgb(wall), rb._building_window_story_count(building),
-            1 if rb._building_is_house(building) else 2 if rb._building_is_commercial(building) else 0] + \
-        ([1] if getattr(building, "arena_windows", False) else [])
+            3 if rb._building_is_windowless(building) else 4 if rb._building_is_retail_hall(building)
+            else 1 if rb._building_is_house(building)
+            else 2 if rb._building_is_commercial(building) else 0] + \
+        ([1] if getattr(building, "arena_windows", False) else [2] if is_glasshouse(building) else [])
+
+
+GLASSHOUSE_TYPES = {"greenhouse", "glasshouse"}
+
+
+def is_glasshouse(building) -> bool:
+    """building=greenhouse/glasshouse: drawn as see-through glass (buildings_3d.gd)."""
+    return str(getattr(building, "building_type", "") or "").casefold() in GLASSHOUSE_TYPES
 
 
 def inherit_part_colours(buildings) -> int:
@@ -221,13 +239,35 @@ def is_open_roof(building) -> bool:
 BUS_BAY_DEPTH_M = 3.0  # beside the carriageway; a bus is 2.55 m wide
 
 
+# Not where a bus stops: a stop beside a driveway into a block, a track or a
+# pedestrian street is the bus road's stop (Oulu's Elokuvakeskus took a service
+# entrance's line and its bay lay across Torikatu's junction).
+NOT_BUS_ROADS = frozenset({"service", "track", "living_street", "pedestrian", "path", "footway", "cycleway"})
+
+
+def _bus_road_rank(way) -> int:
+    """0 a road on a mapped bus route, 1 an ordinary road, 2 any other drivable way."""
+    if getattr(way, "bus_routes", None):
+        return 0
+    return 2 if way.highway in NOT_BUS_ROADS else 1
+
+
 def _bus_stop_road(stop, ways):
-    """The nearest same-layer drivable road within 45 m of a bus stop:
-    (nearest point, unit direction t, unit normal n towards the stop, the
-    stop's side of t (+1 left), the way), or None."""
+    """The road a bus stop belongs to: the nearest same-layer drivable road
+    within 45 m, preferring a bus route's, then any but service roads and
+    tracks: (nearest point, unit direction t, unit normal n towards the stop,
+    the stop's side of t (+1 left), the way), or None."""
+    for rank in (0, 1, 2):
+        found = _nearest_stop_road(stop, [way for way in ways if way.is_drivable and _bus_road_rank(way) <= rank])
+        if found is not None:
+            return found
+    return None
+
+
+def _nearest_stop_road(stop, ways):
     nearest = None
     for way in ways:
-        if not way.is_drivable or len(way.points_m) < 2 or getattr(way, "layer", 0) != getattr(stop, "layer", 0):
+        if len(way.points_m) < 2 or getattr(way, "layer", 0) != getattr(stop, "layer", 0):
             continue
         for start, end in zip(way.points_m, way.points_m[1:]):
             dx, dy = end[0] - start[0], end[1] - start[1]
@@ -246,6 +286,24 @@ def _bus_stop_road(stop, ways):
     n = (-t[1], t[0])  # left of t
     side = 1.0 if (stop.x - p[0]) * n[0] + (stop.y - p[1]) * n[1] >= 0.0 else -1.0
     return p, t, (n[0] * side, n[1] * side), side, way
+
+
+def _clear_bay_length(p, t, n, out, direction, own, ways, longest=16.0) -> float:
+    """How far (up to `longest`) the bay's middle line, `out` from the road's
+    centre, runs along t in `direction` before entering another drivable road."""
+    reach = longest + out + 12.0
+    others = [way for way in ways if way is not own and way.is_drivable and len(way.points_m) >= 2
+              and any(abs(x - p[0]) < reach + 40.0 and abs(y - p[1]) < reach + 40.0 for x, y in way.points_m)]
+    along = 0.0
+    while along < longest:
+        nxt = min(longest, along + 1.0)
+        x, y = p[0] + t[0] * direction * nxt + n[0] * out, p[1] + t[1] * direction * nxt + n[1] * out
+        for way in others:
+            if any(dist_point_to_segment(x, y, a[0], a[1], b[0], b[1]) < way.half_width_m + 0.5
+                   for a, b in zip(way.points_m, way.points_m[1:])):
+                return along
+        along = nxt
+    return along
 
 
 def bus_stop_point(stop, ways):
@@ -270,7 +328,12 @@ def bus_stop_shapes(stop, ways):
     front = -side  # right-hand traffic: on t's left side buses drive against t
     hw = way.half_width_m
     depth = BUS_BAY_DEPTH_M
-    bay = [at(-16.0, hw), at(16.0, hw), at(11.0, hw + depth), at(-11.0, hw + depth)]
+    # 16 m each way, shortened where the bay would reach into another road (a junction ahead).
+    back, ahead = (_clear_bay_length(p, t, n, hw + depth / 2.0, -1.0, way, ways),
+                   _clear_bay_length(p, t, n, hw + depth / 2.0, 1.0, way, ways))
+    if back + ahead < 8.0:
+        return None  # no room for a bay at all: a stop squeezed into a junction
+    bay = [at(-back, hw), at(ahead, hw), at(ahead - min(5.0, ahead / 2.0), hw + depth), at(-back + min(5.0, back / 2.0), hw + depth)]
     kerb = hw + depth + 1.2  # the waiting area behind the bay's kerb
     rect = lambda along, out, half_along, half_out: [at(along - half_along, out - half_out), at(along + half_along, out - half_out),
                                                     at(along + half_along, out + half_out), at(along - half_along, out + half_out)]

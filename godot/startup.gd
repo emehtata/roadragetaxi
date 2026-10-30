@@ -12,6 +12,7 @@ const Graphics := preload("res://graphics_settings.gd")
 
 var _server_pid := -1
 var _game: Node
+var _home_viewer: Control
 var _panel: PanelContainer
 var _body: VBoxContainer
 var _menu_scroll: ScrollContainer
@@ -46,6 +47,7 @@ const THUMBS := "user://save_thumbs"  # NAME.png: the game as it was when the sl
 const THUMB_SIZE := Vector2i(160, 90)
 var _pause_shot: Image  # the frame just before the pause menu opened: a save's thumbnail
 const MAX_GIG_SLOTS := 5  # gig saves; a new game beyond them replaces one (career keeps its single save)
+var _gig_mode := "gig_driver"  # the slot-and-city flow's mode: gig driving, or simulation (always the real clock)
 var _save_slot := ""  # the gig's save slot (server saves/NAME.json): loaded if it exists, saved by the pause menu
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
 var _menu_music: AudioStreamPlayer
@@ -86,6 +88,7 @@ func _ready() -> void:
 			_game = preload("res://main.tscn").instantiate()
 			_game.language = _language
 			_game.set_graphics(Graphics.read(_settings))
+			_apply_interior_settings()
 			add_child(_game)
 			move_child(_game, 1)
 			_panel.visible = false
@@ -402,14 +405,17 @@ func _main_menu() -> void:
 	_clear()
 	_title("ROAD RAGE TRIP", _t("choose_start"))
 	var career := _button(_t("career"), func(): _start("career"))
-	var gig := _button(_t("gig_driver"), _slot_menu)
+	var gig := _button(_t("gig_driver"), func(): _gig_mode = "gig_driver"; _slot_menu())
+	var simulation := _button(_t("simulation"), func(): _gig_mode = "simulation"; _slot_menu())
+	_with_help(simulation, "help_simulation")
 	_button(_t("settings"), _settings_menu)
 	_button(_t("credits"), _credits_menu)
 	_button(_t("clear_cache"), _confirm_clear_cache)
 	_button(_t("quit"), get_tree().quit)
 	_focus_menu()
 	# Enter: the mode played last time (gig driving the first time).
-	(career if _settings.get_value("menu", "mode", "gig_driver") == "career" else gig).call_deferred("grab_focus")
+	var last: String = _settings.get_value("menu", "mode", "gig_driver")
+	(career if last == "career" else simulation if last == "simulation" else gig).call_deferred("grab_focus")
 
 
 ## "Clear all map cache": asked first; then the server deletes
@@ -451,13 +457,13 @@ func _confirm_reset_home() -> void:
 ## Gig driving: continue a saved game, or start a new one in a new slot.
 func _slot_menu() -> void:
 	_clear()
-	_title(_t("save_slots"), _t("gig_driver"))
-	var slots := _server_query("--list-saves").filter(func(slot): return slot is Dictionary)
+	_title(_t("save_slots"), _t(_gig_mode))
+	var slots := _server_query("--list-saves").filter(func(slot): return slot is Dictionary and is_mode_slot(str(slot.get("name", "")), _gig_mode))
 	_button(_t("new_game"), func():
 		if slots.size() >= MAX_GIG_SLOTS:
 			_replace_slot_menu(slots)
 		else:
-			_save_slot = "gig-%d" % int(Time.get_unix_time_from_system())
+			_save_slot = ("sim-%d" if _gig_mode == "simulation" else "gig-%d") % int(Time.get_unix_time_from_system())
 			_city_menu())
 	for slot in slots:
 		var name := str(slot.get("name", ""))
@@ -465,7 +471,7 @@ func _slot_menu() -> void:
 			_save_slot = name
 			_start_point = Vector2.INF
 			_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
-			_start("gig_driver"))  # the server takes the slot's city, place and time
+			_start(_gig_mode))  # the server takes the slot's city and place, and a gig's time
 		button.icon = _thumb(name)
 		button.custom_minimum_size.y = THUMB_SIZE.y + 10 if button.icon != null else button.custom_minimum_size.y
 	if not slots.is_empty():
@@ -526,6 +532,11 @@ func _thumb(name: String) -> Texture2D:
 	return ImageTexture.create_from_image(image) if image != null else null
 
 
+## Whether a save slot belongs to `mode`: simulation slots are "sim-…", every other is a gig's.
+static func is_mode_slot(name: String, mode: String) -> bool:
+	return name.begins_with("sim-") == (mode == "simulation")
+
+
 ## One saved game in the slot menu: where, the game time, the money.
 static func slot_label(slot: Dictionary, fare_text: String) -> String:
 	var place := str(slot.get("place_name", "")) if str(slot.get("place_name", "")) != "" else str(slot.get("city", ""))
@@ -536,7 +547,7 @@ static func slot_label(slot: Dictionary, fare_text: String) -> String:
 
 func _city_menu() -> void:
 	_clear()
-	_title(_t("choose_city"), _t("gig_driver"))
+	_title(_t("choose_city"), _t(_gig_mode))
 	var choices := OptionButton.new()
 	for city in _cities:
 		choices.add_item(str(city))
@@ -641,9 +652,11 @@ func _map_point_menu() -> void:
 
 ## The pin's municipality/village name from OSM Nominatim (one request per
 ## click, within its 1 request/s policy); offline, callback never fires.
+## The request lives in the menu: leaving it frees the request, so a late
+## answer never calls back into the freed labels.
 func _reverse_geocode(pin: Vector2, callback: Callable) -> void:
 	var request := HTTPRequest.new()
-	add_child(request)
+	_body.add_child(request)
 	request.request_completed.connect(func(result: int, code: int, _headers, body: PackedByteArray):
 		request.queue_free()
 		if result != HTTPRequest.RESULT_SUCCESS or code != 200:
@@ -656,7 +669,7 @@ func _reverse_geocode(pin: Vector2, callback: Callable) -> void:
 					callback.call(str(address[key]))
 					return)
 	var agent := "RoadRageTrip/%s (Godot)" % ProjectSettings.get_setting("application/config/version")
-	request.request("https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&lat=%.5f&lon=%.5f&accept-language=%s"
+	preload("res://map_browser.gd").ipv4_request(request, "https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&lat=%.5f&lon=%.5f&accept-language=%s"
 		% [pin.x, pin.y, _language], ["User-Agent: " + agent])
 
 
@@ -693,6 +706,9 @@ func _time_menu() -> void:
 	var from_now: bool = _settings.get_value("gig", "start_now", true) or resume.is_empty()
 	var today := Time.get_date_dict_from_system()
 	_start_time = clamp_start(Time.get_datetime_dict_from_system() if from_now else resume, today)
+	if _gig_mode == "simulation" or _settings.get_value("game", "live_clock", false):  # the real clock starts now: nothing to pick
+		_start(_gig_mode)
+		return
 	_clear()
 	_title(_t("start_time"), _city)
 	var calendar := preload("res://date_picker.gd").new()
@@ -734,7 +750,7 @@ func _time_menu() -> void:
 	var start := _button(_t("start"), func():
 		for key in spins:
 			spins[key].apply()
-		_start("gig_driver"))
+		_start(_gig_mode))
 	var back := _button(_t("back"), _city_menu)
 	for button in [now, start, back]:
 		_body.remove_child(button)
@@ -834,6 +850,7 @@ func _settings_menu() -> void:
 	_button(_t("graphics") + " >", _graphics_menu)
 	_button(_t("settings_audio") + " >", _audio_menu)
 	_button(_t("settings_maps") + " >", _maps_menu)
+	_button(_t("settings_experimental") + " >", _experimental_menu)
 	var back := _pause_menu if _game != null else _main_menu
 	_button(_t("back"), back)
 	_back_action = back
@@ -859,6 +876,12 @@ func _general_menu() -> void:
 	_button(_t("back"), _settings_menu)
 	_back_action = _settings_menu
 	_focus_menu()
+
+
+func _apply_interior_settings() -> void:
+	if is_instance_valid(_game) and _game.has_method("set_interior_options"):
+		_game.set_interior_options(_settings.get_value("experimental", "interior_3d", false),
+			_settings.get_value("game", "interior_mouse_sensitivity", 0.002))
 
 
 func _gameplay_menu() -> void:
@@ -888,6 +911,14 @@ func _gameplay_menu() -> void:
 		_settings.save("user://settings.cfg"))
 	_with_help(road, "help_realtime_road")
 	_focusables.append(road)
+	var live_clock := CheckButton.new()  # game time = the computer's clock, never 60x (off unless chosen)
+	live_clock.text = _t("live_clock")
+	live_clock.button_pressed = _settings.get_value("game", "live_clock", false)
+	live_clock.toggled.connect(func(on: bool):
+		_settings.set_value("game", "live_clock", on)
+		_settings.save("user://settings.cfg"))
+	_with_help(live_clock, "help_live_clock")
+	_focusables.append(live_clock)
 	var intercity := CheckButton.new()
 	intercity.text = _t("enable_intercity_fares")
 	intercity.button_pressed = _settings.get_value("game", "intercity_fares", false)
@@ -903,6 +934,41 @@ func _gameplay_menu() -> void:
 	_body.add_child(intercity_note)
 	if is_instance_valid(_game):
 		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
+	_button(_t("back"), _settings_menu)
+	_back_action = _settings_menu
+	_focus_menu()
+
+
+func _experimental_menu() -> void:
+	_clear()
+	_title(_t("settings_experimental").to_upper())
+	var interiors := CheckButton.new()
+	interiors.text = _t("interior_3d")
+	interiors.button_pressed = _settings.get_value("experimental", "interior_3d", false)
+	interiors.toggled.connect(func(on: bool):
+		_settings.set_value("experimental", "interior_3d", on)
+		_settings.save("user://settings.cfg")
+		_apply_interior_settings())
+	_with_help(interiors, "help_interior_3d")
+	_focusables.append(interiors)
+	var mouse_row := HBoxContainer.new()
+	var mouse_label := Label.new()
+	mouse_label.text = _t("interior_mouse_sensitivity")
+	mouse_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mouse_row.add_child(mouse_label)
+	var sensitivity := HSlider.new()
+	sensitivity.min_value = 0.5
+	sensitivity.max_value = 6.0
+	sensitivity.step = 0.1
+	sensitivity.custom_minimum_size.x = 240
+	sensitivity.value = _settings.get_value("game", "interior_mouse_sensitivity", 0.002) * 1000.0
+	sensitivity.value_changed.connect(func(value: float):
+		_settings.set_value("game", "interior_mouse_sensitivity", value / 1000.0)
+		_settings.save("user://settings.cfg")
+		_apply_interior_settings())
+	mouse_row.add_child(sensitivity)
+	_with_help(mouse_row, "help_interior_mouse_sensitivity")
+	_focusables.append(sensitivity)
 	_button(_t("back"), _settings_menu)
 	_back_action = _settings_menu
 	_focus_menu()
@@ -1044,7 +1110,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_body.add_child(_startup_history)
 	var args := ["--port", str(PORT), "--game-mode", mode, "--language", _language, "--parent-pid", str(OS.get_process_id())]
 	args.append_array(["--startup-progress", _startup_path])
-	if mode == "gig_driver":
+	if mode in ["gig_driver", "simulation"]:
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
 		if _save_slot != "":
 			args.append_array(["--save-slot", _save_slot])
@@ -1062,9 +1128,13 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		args.append("--train-timetable" if _settings.get_value("game", "train_timetable") else "--no-train-timetable")
 	if _settings.has_section_key("game", "road_digitraffic"):
 		args.append("--road-digitraffic" if _settings.get_value("game", "road_digitraffic") else "--no-road-digitraffic")
+	if _settings.has_section_key("game", "live_clock"):
+		args.append("--live-clock" if _settings.get_value("game", "live_clock") else "--no-live-clock")
 	args.append_array(_server_extra)
 	var command := Paths.server_command(args)  # the repo's .venv, or the release's bundled server
-	_server_pid = OS.create_process(command[0], command[1])
+	if OS.get_name() == "Windows":
+		command[1].append_array(["--log-file", ProjectSettings.globalize_path("user://server.log")])  # the install folder is read-only
+	_server_pid = OS.create_process(command[0], command[1], OS.get_name() == "Windows")
 	if _server_pid <= 0:
 		_clear()
 		_title(_t("start_failed"), _t("start_failed_detail"))
@@ -1075,6 +1145,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_game = preload("res://main.tscn").instantiate()
 	_game.language = _language
 	_game.set_graphics(Graphics.read(_settings))
+	_apply_interior_settings()
 	_game.get_node("SimClient").connection_changed.connect(_server_connected)
 	add_child(_game)
 	move_child(_game, 1)
@@ -1223,7 +1294,7 @@ func _download_pbf(mode: String, allow_existing := false, settings_only := false
 	var response: Array = []
 	request.request_completed.connect(func(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray):
 		response.assign([result, response_code, headers, body]))
-	var error := request.request(FINLAND_PBF_URL)
+	var error := preload("res://map_browser.gd").ipv4_request(request, FINLAND_PBF_URL, PackedStringArray(), 0.0)
 	if error != OK:
 		request.queue_free()
 		_pbf_download_failed(mode, allow_existing, settings_only)
@@ -1307,6 +1378,8 @@ func _server_connected(up: bool) -> void:
 
 func _pause_menu() -> void:
 	if not get_tree().paused:  # the game itself, before the menu covers it
+		if is_instance_valid(_game) and _game.has_method("set_interior_paused"):
+			_game.set_interior_paused(true)
 		_pause_shot = get_viewport().get_texture().get_image()
 	get_tree().paused = true
 	_play_menu_music()
@@ -1320,6 +1393,8 @@ func _pause_menu() -> void:
 	_pause_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_body.add_child(_pause_status)
 	_button(_t("resume"), _resume)
+	if is_instance_valid(_game):
+		_button(_t("home_floor_plan"), _open_home_interior)
 	if _can_save():
 		_button(_t("save_game"), func(): await _save_game(func(ok: bool): _pause_status.text = _t("saved") if ok else _t("save_failed")))
 	_button(_t("settings"), _settings_menu)
@@ -1333,8 +1408,39 @@ func _pause_menu() -> void:
 	_focus_menu()
 
 
+func _close_home_interior() -> void:
+	if is_instance_valid(_home_viewer):
+		_home_viewer.queue_free()
+	_home_viewer = null
+	_panel.visible = true
+	_back_action = _resume
+	_focus_menu()
+
+
+func _open_home_interior() -> void:
+	if is_instance_valid(_home_viewer):
+		return
+	var viewer := preload("res://home_interior.gd").new()
+	viewer.language = _language
+	viewer.closed.connect(_close_home_interior)
+	_home_viewer = viewer
+	_panel.get_parent().add_child(viewer)
+	_panel.visible = false
+	_back_action = _close_home_interior
+	_game.drive.clear()
+	var sim: SimClient = _game.sim
+	var requested := sim.send_home_interior()
+	var waited := 0.0
+	while requested and sim.home_plan.is_empty() and sim.connected and waited < 3.0 and is_instance_valid(viewer):
+		sim._process(0.05)  # the game client is paused; poll only while awaiting this reply
+		await get_tree().create_timer(0.05, true).timeout
+		waited += 0.05
+	if is_instance_valid(viewer):
+		viewer.show_plan(sim.home_plan if not sim.home_plan.is_empty() else {"error": "disconnected"})
+
+
 func _can_save() -> bool:
-	return _save_slot != "" and is_instance_valid(_game) and _settings.get_value("menu", "mode", "") == "gig_driver"
+	return _save_slot != "" and is_instance_valid(_game) and _settings.get_value("menu", "mode", "") in ["gig_driver", "simulation"]
 
 
 ## Ask the server to write the save slot and wait (paused, so the client
@@ -1367,11 +1473,13 @@ func _resume() -> void:
 	_stop_menu_music()
 	_panel.visible = false
 	get_tree().paused = false
+	if is_instance_valid(_game) and _game.has_method("set_interior_paused"):
+		_game.set_interior_paused(false)
 
 
 ## The gig's game date and time, so the next gig starts where this one left off.
 func _remember_game_time() -> void:
-	if not is_instance_valid(_game) or _settings.get_value("menu", "mode", "") != "gig_driver":
+	if not is_instance_valid(_game) or _settings.get_value("menu", "mode", "") != "gig_driver":  # simulation: always now
 		return
 	var state: Dictionary = _game.entities.shown_state()
 	var calendar = state.get("calendar")
@@ -1416,6 +1524,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _loading:
 		_stop_game()
+	elif is_instance_valid(_home_viewer):
+		_close_home_interior()
 	elif _panel.visible and _back_action.is_valid():
 		_back_action.call()
 	elif _game != null:  # the phone uses P/N, Enter, X and 1-3, never Esc

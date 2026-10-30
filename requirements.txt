@@ -1,8 +1,4 @@
-requests
-ephem
-pyproj
+-e .
 pytest
-shapely
 pytest-randomly
 pytest-xdist
-

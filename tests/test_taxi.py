@@ -879,69 +879,6 @@ def _grid_sceneries_with_trees(count, trees_per=8, spacing=50.0, cols=100):
 
 
 @pytest.mark.timing
-def test_nearby_collision_trees_indexes_incrementally_not_the_whole_map(gc_paused):
-    """Regression: same bug family as buildings/fences, but trickier -
-    an individual scenery's own .trees list can change after that
-    scenery is already indexed (osm/trees.py both appends to it as
-    tiles stream in and reassigns it outright when
-    remove_trees_under_roads() prunes some), so _nearby_collision_trees()
-    tracks how many of each scenery's trees are already indexed rather
-    than assuming the whole sceneries list is append-only. Confirmed via
-    profiling: unfixed, growing to 1500 sceneries (8 trees each, in
-    batches of 75) cost ~68ms total; fixed, ~11ms."""
-    mgr = TaxiManager(ways=[], language="en")
-    all_sceneries = _grid_sceneries_with_trees(1500)
-    live_sceneries: list = []
-    batch = 75
-
-    total_ms = 0.0
-    for start in range(0, len(all_sceneries), batch):
-        live_sceneries.extend(all_sceneries[start:start + batch])
-        t0 = time.perf_counter()
-        mgr._nearby_collision_trees(live_sceneries, 0.0, 0.0, 5.0)
-        total_ms += (time.perf_counter() - t0) * 1000.0
-
-    assert total_ms < 35.0, (
-        f"20 growth calls against 1500 tree-bearing sceneries took {total_ms:.1f}ms "
-        f"total - looks like the whole tree map is being re-indexed on every growth"
-    )
-
-
-def test_nearby_collision_trees_stays_correct_across_incremental_growth():
-    mgr = TaxiManager(ways=[], language="en")
-    all_sceneries = _grid_sceneries_with_trees(60)
-    live_sceneries: list = []
-    for start in range(0, len(all_sceneries), 10):
-        live_sceneries.extend(all_sceneries[start:start + 10])
-        mgr._nearby_collision_trees(live_sceneries, 0.0, 0.0, 5.0)
-
-    found = mgr._nearby_collision_trees(live_sceneries, 0.0, 0.0, 5.0)
-    found_positions = {(fx, fy) for _, _, fx, fy in found}
-    assert all_sceneries[0].trees[0] in found_positions
-    assert all_sceneries[-1].trees[0] not in found_positions
-
-
-def test_nearby_collision_trees_reflects_removal_from_an_already_indexed_scenery():
-    """remove_trees_under_roads() (osm/trees.py) reassigns an existing,
-    already-indexed scenery's .trees to a shorter list - a pruned tree
-    must actually disappear from collision queries, not linger as a
-    stale grid entry pointing at a tree that no longer exists."""
-    mgr = TaxiManager(ways=[], language="en")
-    scenery = Scenery(
-        points_m=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)],
-        kind="forest", trees=[(1.0, 1.0), (2.0, 2.0)],
-    )
-    sceneries = [scenery]
-    mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
-    found = mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
-    assert {(fx, fy) for _, _, fx, fy in found} == {(1.0, 1.0), (2.0, 2.0)}
-
-    scenery.trees = [(1.0, 1.0)]  # (2.0, 2.0) pruned
-    mgr.invalidate_tree_collision_index()
-    found_after = mgr._nearby_collision_trees(sceneries, 0.0, 0.0, 5.0)
-    assert {(fx, fy) for _, _, fx, fy in found_after} == {(1.0, 1.0)}
-
-
 def test_unnamed_road_is_a_valid_stop():
     way = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="service", half_width_m=3.0)
     taxi_mgr = TaxiManager(ways=[way], places=[Place(x=200.0, y=50.0, name="Kaukovainio", kind="suburb")], language="en")
@@ -983,3 +920,46 @@ def test_home_pickup_is_on_the_address_street_not_a_closer_main_road():
     target = taxi_mgr.pick_random_building_point(homes=True)
     assert target.address == "Helmikkäkuja 2" and target.way_name == "Helmikkäkuja"
     assert abs(target.x - 100.0) < 0.01  # on the side street, beside the house
+
+
+@pytest.mark.parametrize("language", ["fi", "en", "de"])
+def test_new_request_notice_does_not_tell_player_to_toggle_open_phone(language):
+    from theroadragetrip.localization import tr
+
+    way = Way(points_m=[(0.0, 0.0), (3000.0, 0.0)], highway="residential", half_width_m=4.5)
+    taxi = TaxiManager(ways=[way], min_distance_m=100.0, max_distance_m=1200.0, language=language)
+    taxi.next_offer_timer = 0.0
+    taxi.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), 0.1)
+
+    assert taxi.offers
+    assert taxi.notification_msg == tr(language, "new_request")
+    assert " P" not in taxi.notification_msg
+
+
+def test_failed_offer_generation_does_not_announce_an_existing_offer(monkeypatch):
+    taxi = TaxiManager(ways=[])
+    existing = TaxiOffer(SimpleNamespace(), 100.0)
+    taxi.offers = [existing]
+    taxi.next_offer_timer = 0.0
+    taxi.notification_msg, taxi.notification_timer = "Fare paid", 4.0
+    monkeypatch.setattr(taxi, "pick_phone_pickup", lambda *args: None)
+
+    taxi.update(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), 0.1)
+
+    assert taxi.offers == [existing]
+    assert taxi.notification_msg == "Fare paid"
+    assert taxi.notification_timer == pytest.approx(3.9)
+
+
+def test_rejecting_one_of_several_offers_does_not_claim_phone_is_empty():
+    from theroadragetrip.localization import tr
+
+    taxi = TaxiManager(ways=[], language="en")
+    taxi.offers = [TaxiOffer(SimpleNamespace(), 100.0) for _ in range(2)]
+
+    assert taxi.reject_offer(0)
+    assert len(taxi.offers) == 1
+    assert taxi.notification_msg == tr("en", "select_ride")
+    assert taxi.reject_offer(0)
+    assert not taxi.offers
+    assert taxi.notification_msg == tr("en", "no_requests")

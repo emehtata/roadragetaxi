@@ -7,7 +7,7 @@ of scope for this pipeline (see the module's own docstring).
 """
 import math
 
-from theroadragetrip.osm import SignalGroup, TrafficLight, Way, build_ways
+from theroadragetrip.osm import Way, build_ways
 from theroadragetrip.osm.traffic_signals import (
     MIN_SIGNALIZED_ARMS,
     build_traffic_light_system,

@@ -136,6 +136,7 @@ def test_a_motorcycle_collides_by_its_own_small_footprint():
         rider = residents.create(mode="driving")
         vehicle.owner_id, rider.active_vehicle_id = rider.resident_id, vehicle.vehicle_id
     manager.vehicles.extend([bike, beside, touching])
+    bike.car.speed = 20.0  # riding into them hard enough to wreck
     manager._check_vehicle_collision(bike, [beside], residents, pedestrians, sim_time=10.0)
     assert bike.state != NPCState.CRASHED and beside.state != NPCState.CRASHED
     manager._check_vehicle_collision(bike, [touching], residents, pedestrians, sim_time=10.0)

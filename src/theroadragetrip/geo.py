@@ -75,6 +75,26 @@ def get_oriented_box_corners(
     ]
 
 
+def box_contact_normal(
+    cx1: float, cy1: float, h1: float, l1: float, w1: float,
+    cx2: float, cy2: float, h2: float, l2: float, w2: float,
+):
+    """(unit normal from box 1 into box 2, depth) along their least overlap
+    (the separating-axis direction of a contact), or None when they don't overlap."""
+    best = None
+    for ax, ay in ((math.cos(h1), math.sin(h1)), (-math.sin(h1), math.cos(h1)),
+                   (math.cos(h2), math.sin(h2)), (-math.sin(h2), math.cos(h2))):
+        reach1 = l1 * 0.5 * abs(math.cos(h1) * ax + math.sin(h1) * ay) + w1 * 0.5 * abs(-math.sin(h1) * ax + math.cos(h1) * ay)
+        reach2 = l2 * 0.5 * abs(math.cos(h2) * ax + math.sin(h2) * ay) + w2 * 0.5 * abs(-math.sin(h2) * ax + math.cos(h2) * ay)
+        gap = (cx2 - cx1) * ax + (cy2 - cy1) * ay
+        overlap = reach1 + reach2 - abs(gap)
+        if overlap <= 0.0:
+            return None
+        if best is None or overlap < best[0]:
+            best = (overlap, (ax, ay) if gap >= 0.0 else (-ax, -ay))
+    return best[1], best[0]
+
+
 def boxes_intersect(
     cx1: float, cy1: float, h1: float, l1: float, w1: float,
     cx2: float, cy2: float, h2: float, l2: float, w2: float,
@@ -197,47 +217,6 @@ def segment_distance(
         dist_point_to_segment(b_start[0], b_start[1], a_start[0], a_start[1], a_end[0], a_end[1]),
         dist_point_to_segment(b_end[0], b_end[1], a_start[0], a_start[1], a_end[0], a_end[1]),
     )
-
-
-def clip_polygon_to_rect(
-    points: list[Tuple[float, float]],
-    rminx: float,
-    rminy: float,
-    rmaxx: float,
-    rmaxy: float,
-) -> list[Tuple[float, float]]:
-    """Sutherland-Hodgman polygon clipping algorithm against an AABB rectangle."""
-    output = points
-    edges = ((0, rminx, True), (0, rmaxx, False), (1, rminy, True), (1, rmaxy, False))
-    for axis, boundary, keep_greater in edges:
-        input_list = output
-        output = []
-        if not input_list:
-            break
-
-        def inside(point: Tuple[float, float]) -> bool:
-            return point[axis] >= boundary if keep_greater else point[axis] <= boundary
-
-        def intersect(start: Tuple[float, float], end: Tuple[float, float]) -> Tuple[float, float]:
-            delta = end[axis] - start[axis]
-            t = (boundary - start[axis]) / delta if delta else 0.0
-            return (
-                start[0] + t * (end[0] - start[0]),
-                start[1] + t * (end[1] - start[1]),
-            )
-
-        s = input_list[-1]
-        for e in input_list:
-            e_in = inside(e)
-            s_in = inside(s)
-            if e_in and not s_in:
-                output.append(intersect(s, e))
-            if e_in:
-                output.append(e)
-            elif s_in:
-                output.append(intersect(s, e))
-            s = e
-    return output
 
 
 def meters_to_latlon(

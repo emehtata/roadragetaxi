@@ -107,7 +107,15 @@ func run() -> void:
 	await process_frame
 	shell._settings = ConfigFile.new()
 	shell._language = "en"
-	for category in ["settings", "general", "gameplay", "graphics", "audio", "maps", "pbf"]:
+	shell._settings.set_value("game", "interior_3d", true)
+	await show_menu("experimental")
+	var interiors = shell._focusables[0]
+	check(interiors is CheckButton and not interiors.button_pressed, "3D interiors default off despite old Gameplay opt-in")
+	interiors.button_pressed = true
+	check(shell._settings.get_value("experimental", "interior_3d", false), "experimental opt-in is saved separately")
+	await show_menu("experimental")
+	check(shell._focusables[0].button_pressed, "experimental opt-in is restored")
+	for category in ["settings", "general", "gameplay", "graphics", "audio", "maps", "experimental", "pbf"]:
 		await show_menu(category)
 		var controls: Array[Control] = []
 		for node in shell._body.find_children("*", "Control", true, false):
@@ -182,7 +190,7 @@ func run() -> void:
 	shell._game.free()
 	shell._game = null
 	await test_calendar()
-	await show_menu("gameplay")
+	await show_menu("experimental")
 	if DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png("/tmp/settings-keyboard.png")

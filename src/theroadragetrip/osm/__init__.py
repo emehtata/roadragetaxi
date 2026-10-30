@@ -32,7 +32,6 @@ from .overpass import (
     _overpass_stats_lock,
     configure_user_agent,
     fetch_osm_ways,
-    get_overpass_diagnostics,
 )
 
 from .pbf_source import (

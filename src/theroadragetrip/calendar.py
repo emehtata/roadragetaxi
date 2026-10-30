@@ -15,30 +15,12 @@ class Season(str, Enum):
     AUTUMN = "autumn"
 
 
-def season_for_month(month: int) -> Season:
-    """Return the legacy fixed season for callers that only have a month."""
-    if not 1 <= month <= 12:
-        raise ValueError(f"month must be in 1..12, got {month}")
-    if month in (12, 1, 2):
-        return Season.WINTER
-    if month <= 5:
-        return Season.SPRING
-    if month <= 8:
-        return Season.SUMMER
-    return Season.AUTUMN
-
-
 @dataclass
 class GameCalendar:
     """Mutable local game datetime advanced in game seconds."""
 
     current: datetime
     latitude: float = 60.17
-
-    @classmethod
-    def from_date_and_seconds(cls, day: date, seconds: float) -> "GameCalendar":
-        midnight = datetime.combine(day, datetime.min.time())
-        return cls(midnight + timedelta(seconds=seconds))
 
     @property
     def date(self) -> date:
@@ -240,5 +222,3 @@ def clamp_start_datetime(value: datetime, today: date) -> datetime:
     if value.date() > today:
         return value.replace(year=today.year, month=today.month, day=today.day)
     return value
-
-

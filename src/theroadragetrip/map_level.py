@@ -47,20 +47,9 @@ def parse_level_list(raw) -> frozenset:
     return frozenset(levels) if None not in levels else frozenset()
 
 
-def object_map_level(obj) -> Optional[int]:
-    """The object's explicit map level, or None when it has none."""
-    return getattr(obj, "map_level", None)
-
-
 def visible_on_level(obj, current_level: int) -> bool:
     level = getattr(obj, "map_level", None)
     return current_level == SURFACE_LEVEL if level is None else level == current_level
-
-
-def surface_visible(current_level: int) -> bool:
-    """Whether level-less (surface) layers draw at all - one check per
-    layer per frame instead of one per object."""
-    return current_level == SURFACE_LEVEL
 
 
 # Way.map_level values the surface roads keep.

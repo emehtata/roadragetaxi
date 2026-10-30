@@ -1,8 +1,6 @@
 import json
 import logging
 import math
-import os
-import sys
 import time
 from dataclasses import asdict
 from typing import List, Optional
@@ -228,13 +226,6 @@ def _npc_snapshot(vehicle, driver=None) -> dict:
     }
 
 
-def _screenshot_directory() -> str:
-    if sys.platform.startswith("win"):
-        home_dir = os.getenv("USERPROFILE") or os.path.expanduser("~")
-        return os.path.join(home_dir, "Pictures", "TheRoadRageTrip")
-    return os.path.abspath("screenshots")
-
-
 def _write_debug_snapshot(
     path: str,
     car: Car,
@@ -274,6 +265,7 @@ def _write_debug_snapshot(
     frame_profiler=None,
     taxi_brawls=None,
     live_roadworks=None,
+    live_feed=None,
 ) -> None:
     minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
     now = time.time()
@@ -291,8 +283,6 @@ def _write_debug_snapshot(
             "scalar_properties": taxi_scalars,
             "current_passenger": asdict(passenger) if passenger is not None else None,
             "offer_count": len(taxi_mgr.offers),
-            "tree_effect_count": len(taxi_mgr.tree_effects),
-            "fallen_tree_count": len(taxi_mgr.fallen_trees),
             "vomit_puddle_count": len(taxi_mgr.vomit_puddles),
         },
         # Live Digitraffic roadworks (digitraffic_road.py): what was fetched and where it was placed.
@@ -304,6 +294,8 @@ def _write_debug_snapshot(
                         "speed_limit_kmh": z.speed_limit_kmh, "lane_closed": z.lane_closed, "closed": z.blocks}
                        for z in live_roadworks.zones],
         },
+        # Digitraffic MQTT (digitraffic_mqtt.py): connection, message counts and the feeds' own ages.
+        "live_feed": live_feed,
         # Taxi drivers' quarrels (taxi_brawls.py): the active ones and the last outcomes.
         "brawls": {
             "active": taxi_brawls.to_dicts(traffic_mgr.sim_time) if taxi_brawls is not None else [],

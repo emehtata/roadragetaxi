@@ -173,18 +173,6 @@ def test_restaurant_car_guests_drink_on_the_way_and_step_off_drunk():
     assert walker.is_drunk and walker.blood_alcohol_promille == drunk.promille
 
 
-def test_clicking_a_train_car_finds_that_car():
-    from theroadragetrip.trains import Train, TrainRoute
-
-    manager = RailwayManager([], None, None)
-    train = Train(TrainRoute([(0.0, 0.0), (1000.0, 0.0)]), 500.0, 1)
-    manager.trains.append(train)
-    cars = train.cars()
-    assert manager.vehicle_at(cars[2][0], cars[2][1] + 1.0) == (train, 2)
-    assert manager.vehicle_at(cars[2][0], 30.0) is None  # beside the track
-
-
-
 
 def test_waiting_passengers_stand_where_their_own_train_stops_not_at_the_station_point():
     """Two trains at one station on different tracks: each train's waiting
