@@ -16,6 +16,8 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\{#AppExeName}
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 
 [Files]
 Source: "..\dist\RoadRageTrip\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
