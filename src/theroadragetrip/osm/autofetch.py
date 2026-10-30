@@ -343,6 +343,11 @@ class AutoFetchManager:
         self.last_tile_unload_ms = 0.0
         self._tile_objects: dict[TileCoord, dict[str, dict[tuple, object]]] = {}
         self._object_tiles: dict[str, dict[tuple, set[TileCoord]]] = {}
+        # The object in the section list for each key, so an unload filters the
+        # list by identity: recomputing every object's key took 55-65 ms a tick.
+        # A section the initial world holds a key twice in falls back to keys.
+        self._live_items: dict[str, dict[tuple, object]] = {}
+        self._live_duplicates: set[str] = set()
         # Tiles that left the active window but aren't unloaded yet - kept
         # resident (map_revision-cheap on their own, since staying loaded
         # touches nothing) so a player who immediately doubles back doesn't
@@ -634,6 +639,10 @@ class AutoFetchManager:
         for section, objects in sections.items():
             for item in objects:
                 key = _map_object_key(item)
+                live = self._live_items.setdefault(section, {})
+                if key in live:
+                    self._live_duplicates.add(section)
+                live.setdefault(key, item)
                 owners = self._object_tiles.setdefault(section, {}).setdefault(key, set())
                 for tile in self._item_tiles(item):
                     owners.add(tile)
@@ -941,6 +950,7 @@ class AutoFetchManager:
         owners.update(owned_tiles)
         if is_new_key:
             target.append(item)
+            self._live_items.setdefault(section, {})[key] = item
 
     def _merge_world_bounds(self, world) -> None:
         world_bounds = getattr(world, "bounds", None)
@@ -991,7 +1001,6 @@ class AutoFetchManager:
         # multi-second stall as the tree/road-merge amortization bugs fixed
         # earlier - this is the tile-streaming equivalent of that.
         keys_to_remove: dict[str, set] = {}
-        any_removed = False
         for tile in tiles:
             tile_objects = self._tile_objects.pop(tile, {})
             self.loaded_tiles.discard(tile)
@@ -1005,14 +1014,29 @@ class AutoFetchManager:
                     owners_by_key.pop(key, None)
                     keys_to_remove.setdefault(section, set()).add(key)
             if tile_objects:
-                any_removed = True
                 self.map_revision += 1
                 self.dirty_tiles.add(tile)
+        removed_places: set[int] = set()
         for section, keys in keys_to_remove.items():
             target = sections[section]
-            target[:] = [item for item in target if _map_object_key(item) not in keys]
-        if any_removed:
-            associate_places_with_buildings(self.buildings, self.places)
+            before = {id(item) for item in target} if section == "places" else None
+            live = self._live_items.get(section, {})
+            gone = [live.pop(key, None) for key in keys]
+            if section in self._live_duplicates or any(item is None for item in gone):
+                target[:] = [item for item in target if _map_object_key(item) not in keys]
+            else:
+                ids = {id(item) for item in gone}
+                target[:] = [item for item in target if id(item) not in ids]
+            if before is not None:
+                removed_places = before - {id(item) for item in target}
+        if removed_places:
+            # Leaving objects can only end matches, never start one: drop the
+            # gone places instead of matching every place again (60-85 ms a tick).
+            for building in self.buildings:
+                if getattr(building, "associated_places", None):
+                    building.associated_places[:] = [
+                        place for place in building.associated_places if id(place) not in removed_places
+                    ]
 
     def _evict_inactive_tiles(self, now: float) -> None:
         """Unload resident-but-inactive tiles once memory pressure - or,

@@ -1259,3 +1259,18 @@ def test_dirty_areas_are_the_changed_tiles_not_their_span():
     manager._unload_tiles({TileCoord(8, 0)})
     assert sorted(manager.take_dirty_areas()) == [(0.0, 0.0, 2 * size, size), (8 * size, 0.0, 9 * size, size)]
     assert manager.take_dirty_areas() is None
+
+
+def test_unloading_a_venue_tile_ends_only_its_place_matches():
+    from theroadragetrip.osm.models import Building, Place
+
+    size = tile_streaming.TILE_SIZE_M
+    hall = Building(points_m=[(10.0, 10.0), (90.0, 10.0), (90.0, 90.0), (10.0, 90.0)], bbox=(10.0, 10.0, 90.0, 90.0))
+    kept = Place(50.0, 50.0, "Kahvila", "cafe")
+    leaving = Place(50.0, 60.0, "Kioski", "kiosk")
+    manager = AutoFetchManager([], (0.0, 0.0, 2 * size, size), transformer=None)
+    manager._merge_tile_world_for(TileCoord(0, 0), MapData([], [], [hall], [], [kept], (0.0, 0.0, 1.0, 1.0)))
+    manager._merge_tile_world_for(TileCoord(1, 0), MapData([], [], [], [], [leaving], (0.0, 0.0, 1.0, 1.0)))
+    assert {place.name for place in hall.associated_places} == {"Kahvila", "Kioski"}
+    manager._unload_tiles({TileCoord(1, 0)})
+    assert manager.places == [kept] and [place.name for place in hall.associated_places] == ["Kahvila"]
