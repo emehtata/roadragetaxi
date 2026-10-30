@@ -110,8 +110,13 @@ class ArenaCrowds:
         return sorted((event for event in self.events if event.start.date() == day), key=lambda event: event.start)
 
     def sync_buildings(self, buildings) -> None:
+        # Once per arena, not per game: a season's ~30 home games each scanned
+        # every building, 110-170 ms a tick through a map sync.
+        by_point = {}
         for event in self.events:
-            event.entrances = _arena_entrances(self.pedestrians, event.point, buildings)
+            if event.point not in by_point:
+                by_point[event.point] = _arena_entrances(self.pedestrians, event.point, buildings)
+            event.entrances = by_point[event.point]
 
     def lights_on(self, now: datetime) -> bool:
         """Whether an arena is occupied for arrivals, a game, or departures."""
