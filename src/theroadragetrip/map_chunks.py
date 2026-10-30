@@ -604,6 +604,10 @@ class ChunkIndex:
             data = self._encoded[cid] = encode(self.message(cid))
         return data
 
+    def is_encoded(self, cid: str) -> bool:
+        """Whether encoded(cid) is just a lookup (else 2-20 ms of JSON)."""
+        return cid in self._encoded
+
     def add_speed_camera(self, camera, index: int) -> str:
         """Add one runtime camera without rebuilding static map geometry."""
         cid = chunk_id(*cell_of(camera.x, camera.y, self.size))

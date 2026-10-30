@@ -169,6 +169,11 @@ def npc_braking(npc, last_speed: float, dt: float) -> bool:
 # How far past the merged objects' extent the map sync's own edits reach
 # (a new road's generated house bays ~35 m, the trees it removes, its lamps).
 CHANGED_AREA_MARGIN_M = 50.0
+# JSON-encoding chunks a client needs, per tick, beyond the player's own 3x3
+# (always sent at once): at 250 km/h a rebuild finishes after the car has
+# moved on, its chunks aren't pre-encoded, and encoding them all in one tick
+# took 50-115 ms. The rest go on the next ticks, nearest first.
+CHUNK_ENCODE_BUDGET_S = 0.006
 
 
 class SimulationServer:
@@ -1348,7 +1353,10 @@ class SimulationServer:
             for connection, (loaded, _) in list(self._client_chunks.items()):
                 # Nearest first; a resent chunk replaces the client's copy as it is drawn (no unload, no hole).
                 for cid in sorted(loaded & changed, key=distance):
-                    connection.send(self._chunks_index.encoded(cid))
+                    if distance(cid) <= 1 or index.is_encoded(cid):
+                        connection.send(index.encoded(cid))
+                    else:
+                        loaded.discard(cid)  # _stream_map_chunks resends it within its encode budget
                 self._client_chunks[connection] = (loaded, None)  # replan: the new area may be in reach
         logger.info("Map grew %s -> %s: %d chunks changed%s, built in %.0f ms", old_bounds, new_bounds, len(changed),
                     "" if final else " around the player", build_s * 1000.0)
@@ -1367,10 +1375,12 @@ class SimulationServer:
         player = self.world.player_pedestrian if self._on_foot else self.car
         cell = cell_of(player.x, player.y)
         indexed = self._indexed_tiles
+        started = time.perf_counter()
         for connection in clients:
             loaded, planned_for = self._client_chunks.get(connection, (set(), None))
             if planned_for == cell:
                 continue
+            complete = True
             to_load, to_drop = plan(loaded, cell)
             for cid in to_drop:
                 connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
@@ -1380,9 +1390,13 @@ class SimulationServer:
                 if indexed is not None and max(abs(ix - cell[0]), abs(iy - cell[1])) > 1 \
                         and world_to_tile((ix + 0.5) * CHUNK_SIZE_M, (iy + 0.5) * CHUNK_SIZE_M) not in indexed:
                     continue
+                if max(abs(ix - cell[0]), abs(iy - cell[1])) > 1 and not self._chunks_index.is_encoded(cid) \
+                        and time.perf_counter() - started > CHUNK_ENCODE_BUDGET_S:
+                    complete = False  # the next tick goes on from here
+                    break
                 connection.send(self._chunks_index.encoded(cid))
                 loaded.add(cid)
-            self._client_chunks[connection] = (loaded, cell)
+            self._client_chunks[connection] = (loaded, cell if complete else None)
 
     def _visible_bounds(self):
         views = [bounds for connection, (at, bounds) in self._client_views.items()
