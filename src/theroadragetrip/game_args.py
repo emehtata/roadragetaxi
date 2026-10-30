@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import sys
 from typing import Optional
 
 
@@ -135,7 +136,11 @@ def configure_logging(level: Optional[str] = None, file_logging: bool = False, l
     handlers = [logging.StreamHandler()]
     handlers[0].setFormatter(logging.Formatter(log_format))
     if file_logging or log_file:
-        file_handler = logging.FileHandler(log_file or "roadragetrip.log", encoding="utf-8")
-        file_handler.setFormatter(logging.Formatter(log_format))
-        handlers.append(file_handler)
+        try:
+            file_handler = logging.FileHandler(log_file or "roadragetrip.log", encoding="utf-8")
+        except OSError as exc:  # an unwritable log must not stop the game
+            print(f"logging to console only: {exc}", file=sys.stderr)
+        else:
+            file_handler.setFormatter(logging.Formatter(log_format))
+            handlers.append(file_handler)
     logging.basicConfig(level=log_level, handlers=handlers, force=True)
