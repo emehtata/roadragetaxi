@@ -343,11 +343,10 @@ class AutoFetchManager:
         self.last_tile_unload_ms = 0.0
         self._tile_objects: dict[TileCoord, dict[str, dict[tuple, object]]] = {}
         self._object_tiles: dict[str, dict[tuple, set[TileCoord]]] = {}
-        # The object in the section list for each key, so an unload filters the
-        # list by identity: recomputing every object's key took 55-65 ms a tick.
-        # A section the initial world holds a key twice in falls back to keys.
-        self._live_items: dict[str, dict[tuple, object]] = {}
-        self._live_duplicates: set[str] = set()
+        # The objects in the section list for each key (the initial world can
+        # hold a key twice), so an unload filters the list by identity:
+        # recomputing every object's key took 55-65 ms a tick.
+        self._live_items: dict[str, dict[tuple, list]] = {}
         # Tiles that left the active window but aren't unloaded yet - kept
         # resident (map_revision-cheap on their own, since staying loaded
         # touches nothing) so a player who immediately doubles back doesn't
@@ -639,10 +638,7 @@ class AutoFetchManager:
         for section, objects in sections.items():
             for item in objects:
                 key = _map_object_key(item)
-                live = self._live_items.setdefault(section, {})
-                if key in live:
-                    self._live_duplicates.add(section)
-                live.setdefault(key, item)
+                self._live_items.setdefault(section, {}).setdefault(key, []).append(item)
                 owners = self._object_tiles.setdefault(section, {}).setdefault(key, set())
                 for tile in self._item_tiles(item):
                     owners.add(tile)
@@ -950,7 +946,7 @@ class AutoFetchManager:
         owners.update(owned_tiles)
         if is_new_key:
             target.append(item)
-            self._live_items.setdefault(section, {})[key] = item
+            self._live_items.setdefault(section, {})[key] = [item]
 
     def _merge_world_bounds(self, world) -> None:
         world_bounds = getattr(world, "bounds", None)
@@ -1022,10 +1018,10 @@ class AutoFetchManager:
             before = {id(item) for item in target} if section == "places" else None
             live = self._live_items.get(section, {})
             gone = [live.pop(key, None) for key in keys]
-            if section in self._live_duplicates or any(item is None for item in gone):
+            if any(items is None for items in gone):  # added some other way: by key
                 target[:] = [item for item in target if _map_object_key(item) not in keys]
             else:
-                ids = {id(item) for item in gone}
+                ids = {id(item) for items in gone for item in items}
                 target[:] = [item for item in target if id(item) not in ids]
             if before is not None:
                 removed_places = before - {id(item) for item in target}

@@ -1274,3 +1274,12 @@ def test_unloading_a_venue_tile_ends_only_its_place_matches():
     assert {place.name for place in hall.associated_places} == {"Kahvila", "Kioski"}
     manager._unload_tiles({TileCoord(1, 0)})
     assert manager.places == [kept] and [place.name for place in hall.associated_places] == ["Kahvila"]
+
+
+def test_an_initial_world_with_a_key_twice_unloads_both_copies():
+    twin_a = Way([(10.0, 10.0), (20.0, 10.0)], "residential", 4.0, osm_id=5, bbox=(10.0, 10.0, 20.0, 10.0))
+    twin_b = Way([(10.0, 10.0), (20.0, 10.0)], "residential", 4.0, osm_id=5, bbox=(10.0, 10.0, 20.0, 10.0))
+    manager = AutoFetchManager([twin_a, twin_b], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager._register_existing_world()
+    manager._unload_tiles({TileCoord(0, 0)})
+    assert manager.ways == []
