@@ -1260,12 +1260,13 @@ class SimulationServer:
 
     def _map_grew(self, old_bounds, new_bounds, dirty=None) -> None:
         """A map sync finished: light the new roads and rebuild the chunks the
-        merges changed (`dirty`, metres; ChunkIndex.updated - the rest are
-        kept) in the background, the streamer holding further merges
-        meanwhile so the world stays as synced; _apply_map_growth swaps them
-        in on a later tick. The chunks around the player come first, as their
-        own result (after a Home jump: the destination drawn seconds before
-        the rest of the area is rebuilt)."""
+        merges changed (`dirty`: a list of metre rects, one per group of
+        merged or unloaded tiles; ChunkIndex.updated - the rest are kept) in
+        the background, the streamer holding further merges meanwhile so the
+        world stays as synced; _apply_map_growth swaps them in on a later
+        tick. The chunks around the player come first, as their own result
+        (after a Home jump: the destination drawn seconds before the rest of
+        the area is rebuilt)."""
         covered = set(self._map_streamer.sync_tiles)
 
         def build():
@@ -1275,10 +1276,11 @@ class SimulationServer:
                 self._map_growth.append((previous, index, set(), old_bounds, new_bounds, 0.0, True, covered))
                 return
             margin = CHANGED_AREA_MARGIN_M
-            area = (dirty[0] - margin, dirty[1] - margin, dirty[2] + margin, dirty[3] + margin)
+            areas = [(d[0] - margin, d[1] - margin, d[2] + margin, d[3] + margin) for d in dirty]
             ix, iy = cell_of(self.car.x, self.car.y)
-            near = (max(area[0], (ix - 1) * CHUNK_SIZE_M), max(area[1], (iy - 1) * CHUNK_SIZE_M),
-                    min(area[2], (ix + 2) * CHUNK_SIZE_M), min(area[3], (iy + 2) * CHUNK_SIZE_M))
+            near = [(max(a[0], (ix - 1) * CHUNK_SIZE_M), max(a[1], (iy - 1) * CHUNK_SIZE_M),
+                     min(a[2], (ix + 2) * CHUNK_SIZE_M), min(a[3], (iy + 2) * CHUNK_SIZE_M)) for a in areas]
+            near = [n for n in near if n[0] < n[2] and n[1] < n[3]]
 
             def encode_in_reach(index, changed):
                 # What the next ticks send (resends, the new tiles' chunks) is encoded
@@ -1288,31 +1290,39 @@ class SimulationServer:
                     if max(abs(cx - ix), abs(cy - iy)) <= LOAD_RADIUS:
                         index.encoded(cid)
 
-            if near[0] < near[2] and near[1] < near[3]:
+            def rebuilt(index, regions):
+                changed = set()
+                for region in regions:
+                    index, more = ChunkIndex.updated(index, self.world, region)
+                    changed |= more
+                return index, changed
+
+            if near:
                 # The player's 3x3 chunks changed: those first, with the street
                 # lights known so far (after a Home jump the destination is drawn
                 # a second or more sooner; its new lamps come with the next pass).
-                index, changed = ChunkIndex.updated(index, self.world, near)
+                index, changed = rebuilt(index, near)
                 encode_in_reach(index, changed)
                 self._map_growth.append((previous, index, changed, old_bounds, new_bounds,
                                          time.perf_counter() - started, False, covered))
             lights_started = time.perf_counter()
             # A merged tile can fill a hole inside old_bounds, not just extend it.
-            # Rebuild its dirty area, retaining lamps elsewhere unchanged.
+            # Rebuild its dirty areas, retaining lamps elsewhere unchanged.
             lights = [lamp for lamp in previous
-                      if not (area[0] <= lamp[0] <= area[2] and area[1] <= lamp[1] <= area[3])]
-            lights.extend(place_street_lights(self.world, region=area))
+                      if not any(a[0] <= lamp[0] <= a[2] and a[1] <= lamp[1] <= a[3] for a in areas)]
+            for area in areas:
+                lights.extend(place_street_lights(self.world, region=area))
             lights_s = time.perf_counter() - lights_started
             self.world.street_light_points = lights
             try:
-                index, changed = ChunkIndex.updated(index, self.world, area)
+                index, changed = rebuilt(index, areas)
             finally:
                 self.world.street_light_points = previous  # the tick's own until the swap
             encode_in_reach(index, changed)
             self._map_growth.append((lights, index, changed, old_bounds, new_bounds, time.perf_counter() - started, True,
                                      covered))
-            logger.info("Map chunks rebuilt for %.0f x %.0f m (lights %.0f ms)", area[2] - area[0], area[3] - area[1],
-                        lights_s * 1000.0)
+            logger.info("Map chunks rebuilt for %s (lights %.0f ms)",
+                        ", ".join("%.0f x %.0f m" % (a[2] - a[0], a[3] - a[1]) for a in areas), lights_s * 1000.0)
 
         self._map_streamer.hold = True
         threading.Thread(target=build, name="map-growth", daemon=True).start()

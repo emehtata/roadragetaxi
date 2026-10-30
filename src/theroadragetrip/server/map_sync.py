@@ -73,7 +73,7 @@ def prepare_initial_window(world, timeout_s: float = INITIAL_PREPARE_TIMEOUT_S, 
         # These changes are already reflected in the initial ChunkIndex built
         # after this function returns; a later runtime merge must not rebuild
         # them as if they were new.
-        manager.take_dirty_rect()
+        manager.take_dirty_areas()
     elapsed = time.perf_counter() - started
     logger.info(
         "Cold-start map preparation complete: integrated_tiles=%d elapsed=%.2f s",
@@ -164,7 +164,7 @@ def map_sync_steps(world):
 class MapStreamer:
     """Per tick: merge streamed tiles, ask for more near the edge, and run
     the map sync when a merge has settled. `on_synced(old_bounds,
-    new_bounds, dirty_rect)` is called once per sync, as soon as the chunk
+    new_bounds, dirty_areas)` is called once per sync, as soon as the chunk
     inputs are synced (CHUNK_INPUTS_READY; the gameplay graphs follow): the
     bounds before and after, and the area its merges changed (None:
     nothing)."""
@@ -235,7 +235,7 @@ class MapStreamer:
                 self._merged_since = None
                 self._sync_revision = manager.get_map_revision()
                 self._sync = map_sync_steps(self.world)
-                self._sync_dirty = manager.take_dirty_rect()  # what this sync's merges changed
+                self._sync_dirty = manager.take_dirty_areas()  # what this sync's merges changed
                 self.sync_tiles = set(manager.loaded_tiles)  # a tile merged from here on waits for the next sync
                 self._sync_started = time.perf_counter()
                 self._sync_ticks = 0

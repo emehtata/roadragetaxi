@@ -31,7 +31,7 @@ class FakeManager:
     def integrate_completed_tiles(self, budget_s=None):
         self.integrated += 1
 
-    def take_dirty_rect(self):
+    def take_dirty_areas(self):
         return (0.0, 0.0, 100.0, 100.0)
 
     def start_tile_streaming(self, x, y, vx, vy):
@@ -91,7 +91,7 @@ def test_cold_start_finishes_initial_merge_and_sync_before_gameplay(monkeypatch)
             self.integrated += 1
             return 9
 
-        def take_dirty_rect(self):
+        def take_dirty_areas(self):
             self.dirty_taken += 1
             return (0.0, 0.0, 100.0, 100.0)
 
