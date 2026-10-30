@@ -32,12 +32,13 @@ purely a speed optimization, never required for correctness.
 import logging
 import os
 import subprocess
+import threading
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
-from ..utils.pbf_index import default_index_dir, index_is_stale, osmium_command, tiles_for_bbox
+from ..utils.pbf_index import build_cells_for, default_index_dir, index_is_stale, osmium_command, tiles_for_bbox
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,34 @@ def local_pbf_available(pbf_path: Optional[Path] = None) -> bool:
     file exists and the `osmium` CLI (osmium-tool) is bundled or on PATH."""
     path = Path(pbf_path) if pbf_path else DEFAULT_FINLAND_PBF_PATH
     return path.is_file() and osmium_command() is not None
+
+
+_cell_builder_lock = threading.Lock()
+_cell_builder_busy = False
+
+
+def _cut_index_cells_later(path: Path, bbox: Tuple[float, float, float, float]) -> None:
+    """A whole-file extract scans all of Finland (~10 s, whatever the bbox);
+    from the bbox's grid index cell it takes ~1.5 s. Cut that cell (and any
+    neighbour within reach) in the background, one cut at a time: two
+    concurrent "smart" cuts were measured to need several GB of RAM."""
+    global _cell_builder_busy
+    with _cell_builder_lock:
+        if _cell_builder_busy:
+            return  # the next whole-file extract asks again
+        _cell_builder_busy = True
+
+    def run():
+        global _cell_builder_busy
+        try:
+            build_cells_for(path, bbox)
+        except Exception:
+            logger.exception("Cutting PBF index cells failed; extracts keep using the whole file")
+        finally:
+            with _cell_builder_lock:
+                _cell_builder_busy = False
+
+    threading.Thread(target=run, name="pbf-index-cells", daemon=True).start()
 
 
 def fetch_osm_ways_from_pbf(
@@ -124,6 +153,7 @@ def fetch_osm_ways_from_pbf(
                 by_key[(el["type"], el["id"])] = el
         elements = list(by_key.values())
     else:
+        _cut_index_cells_later(path, bbox)
         elements = _extract_elements(path, bbox)
 
     if progress_callback:
