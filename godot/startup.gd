@@ -1133,7 +1133,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	args.append_array(_server_extra)
 	var command := Paths.server_command(args)  # the repo's .venv, or the release's bundled server
 	if OS.get_name() == "Windows":
-		command[1].append_array(["--log-file", ProjectSettings.globalize_path("user://server.log")  # the install folder is read-only])
+		command[1].append_array(["--log-file", ProjectSettings.globalize_path("user://server.log")])  # the install folder is read-only
 	_server_pid = OS.create_process(command[0], command[1], OS.get_name() == "Windows")
 	if _server_pid <= 0:
 		_clear()
