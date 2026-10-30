@@ -24,15 +24,19 @@ from .tile_streaming import TileCoord
 logger = logging.getLogger(__name__)
 
 
-def _build_and_write_cache(path: str, area_id: str, elements: Any, build_func: Callable) -> None:
-    """Process-worker entry point: keep the CPU-heavy map build off the server GIL."""
+def _build_and_write_cache(path: str, area_id: str, elements: Any, build_func: Callable) -> Any:
+    """Process-worker entry point: keep the CPU-heavy map build off the server
+    GIL. The world comes back by pickle: ~40 ms in one call for a dense tile,
+    where reading back the cache just written took ~475 ms of Python decoding
+    contending with the ticks."""
     world = build_func(elements)
     BinaryWorldCacheWriter().write(path, world, area_id=area_id)
+    return world
 
 
 def _fetch_pbf_build_and_write_cache(
     path: str, area_id: str, bbox, pbf_path, build_func: Callable, force_refresh: bool,
-) -> None:
+) -> Any:
     """Process-worker cold path: extraction, XML/JSON conversion and build.
 
     Keeping the element dictionaries inside this process avoids both GIL
@@ -42,7 +46,7 @@ def _fetch_pbf_build_and_write_cache(
 
     elements = fetch_osm_ways_from_pbf(bbox, pbf_path=pbf_path, force_refresh=force_refresh)
     elements = list(elements) + [{"type": "fetch_bbox", "bounds": list(bbox)}]
-    _build_and_write_cache(path, area_id, elements, build_func)
+    return _build_and_write_cache(path, area_id, elements, build_func)
 
 
 def default_world_cache_dir() -> Path:
@@ -627,11 +631,10 @@ class WorldCacheManager:
         fetch_kwargs = {"force_refresh": True, **kwargs} if force_refresh else kwargs
         if self._build_executor is not None and self._process_pbf_path is not None:
             try:
-                self._build_executor.submit(
+                world = self._build_executor.submit(
                     _fetch_pbf_build_and_write_cache, str(path), area_id, bbox,
                     self._process_pbf_path or None, self._process_build_func, force_refresh,
                 ).result()
-                world = self.loader.load(path)
             except (BrokenProcessPool, OSError) as error:
                 logger.warning("[WorldCache] Process PBF pipeline failed; using loader thread: %s", error)
                 self._build_executor.shutdown(wait=False, cancel_futures=True)
@@ -643,10 +646,9 @@ class WorldCacheManager:
             elements = self.fetch_func(bbox, **fetch_kwargs)
             if self._build_executor is not None:
                 try:
-                    self._build_executor.submit(
+                    world = self._build_executor.submit(
                         _build_and_write_cache, str(path), area_id, elements, self._process_build_func,
                     ).result()
-                    world = self.loader.load(path)
                 except (BrokenProcessPool, OSError) as error:
                     logger.warning("[WorldCache] Process build failed; using loader thread: %s", error)
                     self._build_executor.shutdown(wait=False, cancel_futures=True)

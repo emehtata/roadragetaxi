@@ -600,6 +600,15 @@ class MapData(tuple):
         self.level_ways = level_ways if level_ways is not None else []
         self.level_connectors = level_connectors if level_connectors is not None else []
 
+    def __reduce__(self):
+        # A process build worker returns its world by pickle (world_cache):
+        # tuple pickling alone would call __new__ with just the six fields.
+        return MapData, (self.ways, self.waters, self.buildings, self.sceneries, self.places, self.bounds,
+                         self.traffic_lights, self.crossings, self.taxi_stops, self.bus_stops, self.parking_spaces,
+                         self.logical_intersections, self.stop_signs, self.yield_signs, self.curbs,
+                         self.scenery_objects, self.speed_bumps, self.railways, self.railings,
+                         self.parking_garages, self.level_ways, self.level_connectors)
+
     @property
     def traffic_signals(self):
         return self.traffic_lights
