@@ -12,7 +12,7 @@ refined. Bugs and performance problems remain.
 ### Windows
 
 Get the installer or portable ZIP from [GitHub Releases](https://github.com/emehtata/roadragetaxi/releases).
-Run `RoadRageTrip-Setup.exe`, or extract the ZIP and launch `RoadRageTrip.exe`.
+Run `RoadRageTrip-<version>-Setup.exe`, or extract the ZIP and launch `RoadRageTrip.exe`.
 The Windows package includes the simulation server and the tool needed to read
 local maps; you do not need to install Python separately. Tagged builds appear
 there after the release workflow finishes.
