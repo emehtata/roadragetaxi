@@ -100,6 +100,6 @@ test('download links target the published installer and local images exist', () 
   assert.doesNotMatch(html.replace(/<[^>]*>/g, ''), technicalCopy);
   const downloads = [...html.matchAll(/href="([^"]+releases\/download\/[^\"]+)"/g)];
   assert.equal(downloads.length, 3);
-  for (const [, url] of downloads) assert.equal(url, 'https://github.com/emehtata/roadragetaxi/releases/download/v0.18.0alpha/RoadRageTrip-Setup.exe');
+  for (const [, url] of downloads) assert.equal(url, 'https://github.com/emehtata/roadragetaxi/releases/download/v0.19.1alpha/RoadRageTrip-0.19.1alpha-Setup.exe');
   for (const [, asset] of html.matchAll(/(?:src|href)="(assets\/[^\"]+)"/g)) assert(fs.existsSync(path.join(__dirname, asset)), asset);
 });
