@@ -4,6 +4,9 @@ const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := {
+	"tut_nausea": "PYSÄHDY HETI! Matkustajalla on huono olo. Jarruta pysähdyksiin (S) ja odota, että olo helpottaa, tai hän oksentaa taksiin.",
+	"tut_no_station": "Junataulua ei ole: lähellä ei ole ladattuna rautatieasemaa aikatauluineen. Aja kohti rautatieasemaa (seuraa raiteita; Oulussa keskustan itäpuolella). Todellisten junien aikataulujen pitää olla päällä (Asetukset → Pelaaminen). Tab ohittaa.",
+	"tut_no_trains": "Lähimmälle asemalle ei ole tulossa junia juuri nyt. Aja toiselle asemalle tai yritä myöhemmin. Tab ohittaa.",
 	"tutorial": "Opetuspeli",
 	"help_tutorial": "Lyhyt opastettu ajo Oulussa: ohjaimet, ajaminen, kyyti, puhelin, junat, karttanäkymä ja koti. Ei tallennu.",
 	"tut_title": "Opetuspeli %d/%d",
@@ -245,6 +248,9 @@ const FI := {
 }
 
 const EN := {
+	"tut_nausea": "STOP NOW! The passenger feels sick. Brake to a stop (S) and wait until they feel better, or they throw up in your taxi.",
+	"tut_no_station": "No train board here: no railway station with a timetable is loaded around you. Drive towards the railway station (follow the tracks; Oulu's is east of the centre). Real train timetables must be on (Settings → Gameplay). Tab skips.",
+	"tut_no_trains": "The nearest station has no trains due right now. Drive to another station or try again later. Tab skips.",
 	"tutorial": "Tutorial",
 	"help_tutorial": "A short guided drive in Oulu: controls, driving, a fare, the phone, trains, the map view and your home. Not saved.",
 	"tut_title": "Tutorial %d/%d",
@@ -488,6 +494,9 @@ const EN := {
 }
 
 const DE := {
+	"tut_nausea": "SOFORT ANHALTEN! Dem Fahrgast ist schlecht. Bremse bis zum Stillstand (S) und warte, bis es ihm besser geht, sonst erbricht er ins Taxi.",
+	"tut_no_station": "Keine Zugtafel: In deiner Nähe ist kein Bahnhof mit Fahrplan geladen. Fahre zum Bahnhof (folge den Gleisen; in Oulu östlich des Zentrums). Echte Zugfahrpläne müssen an sein (Einstellungen → Spiel). Tab überspringt.",
+	"tut_no_trains": "Am nächsten Bahnhof kommen gerade keine Züge. Fahre zu einem anderen Bahnhof oder versuche es später. Tab überspringt.",
 	"tutorial": "Tutorial",
 	"help_tutorial": "Eine kurze geführte Fahrt in Oulu: Steuerung, Fahren, eine Fahrt, das Telefon, Züge, die Kartenansicht und dein Zuhause. Wird nicht gespeichert.",
 	"tut_title": "Tutorial %d/%d",

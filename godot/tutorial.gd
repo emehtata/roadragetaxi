@@ -60,10 +60,24 @@ func _t(key: String) -> String:
 	return I18n.text(key, main.language if main != null else "en")
 
 
-func _show() -> void:
+func _show(notice := "") -> void:
 	_title.text = _t("tut_title") % [step + 1, STEPS.size()]
-	_text.text = _t(STEPS[step][0]) + "\n\n" + _t("tut_skip" if step < STEPS.size() - 1 else "tut_close")
-	_baseline = {}
+	var text := _t(notice) if notice != "" else _t(STEPS[step][0]) + "\n\n" + _t("tut_skip" if step < STEPS.size() - 1 else "tut_close")
+	if text != _text.text:
+		_text.text = text
+	_text.add_theme_color_override("font_color", Color8(255, 110, 90) if notice == "tut_nausea" else Color8(235, 238, 242))
+
+
+## What must be said now instead of the step: a sick passenger (any step:
+## stopping now saves the taxi), or why J showed no train board.
+static func notice_key(state: Dictionary, step_check: String, board_on: bool, board_shown: bool) -> String:
+	var passenger = state.get("taxi", {}).get("current_passenger")
+	if passenger is Dictionary and float(passenger.get("nausea_warning_timer", 0.0)) > 0.0:
+		return "tut_nausea"
+	if step_check == "_train_board" and board_on and not board_shown:
+		var railway = state.get("railway")
+		return "tut_no_trains" if railway is Dictionary and not railway.is_empty() else "tut_no_station"
+	return ""
 
 
 func _process(delta: float) -> void:
@@ -79,6 +93,10 @@ func _process(delta: float) -> void:
 		return
 	var state: Dictionary = main.entities.shown_state()
 	if state.is_empty() or STEPS[step][1] == "":
+		return
+	var notice := notice_key(state, STEPS[step][1], main.show_next_train, main.hud._board.visible)
+	_show(notice)
+	if notice == "tut_nausea":
 		return
 	if _baseline.is_empty():
 		_baseline = baseline(main, state)
@@ -99,6 +117,7 @@ func advance() -> void:
 		queue_free()
 		return
 	step += 1
+	_baseline = {}
 	_show()
 
 
@@ -156,7 +175,7 @@ func _fare_done(_m, state: Dictionary, base: Dictionary) -> bool:
 
 
 func _train_board(m, _state: Dictionary, _base: Dictionary) -> bool:
-	return m.show_next_train
+	return m.show_next_train and m.hud._board.visible
 
 
 func _assist_toggled(m, _state: Dictionary, base: Dictionary) -> bool:

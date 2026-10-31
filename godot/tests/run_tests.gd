@@ -478,6 +478,8 @@ func test_tutorial() -> void:
 	check(not coach._fare_accepted(null, {"taxi": {"current_passenger": null}}, {}) and coach._fare_accepted(null, {"taxi": {"current_passenger": {"name": "A"}}}, {}), "tutorial: an accepted fare has a passenger")
 	check(coach._indoors(null, {"home_door": {"indoors": true}}, {}) and coach._at_home_door(null, {"home_door": {"available": true}}, {}) and not coach._at_home_door(null, {}, {}), "tutorial: home door and indoors")
 	check(coach._engine_on(null, {"on_foot": false, "player": {"engine_on": true}}, {}) and not coach._in_taxi(null, {}, {}), "tutorial: in the taxi, engine on")
+	check(Tutorial.notice_key({"taxi": {"current_passenger": {"nausea_warning_timer": 3.0}}}, "_trains", false, false) == "tut_nausea", "tutorial: a sick passenger interrupts any step")
+	check(Tutorial.notice_key({"railway": {}}, "_train_board", true, false) == "tut_no_station" and Tutorial.notice_key({"railway": {"nearest_station": "Oulu"}}, "_train_board", true, false) == "tut_no_trains" and Tutorial.notice_key({}, "_train_board", true, true) == "", "tutorial: why J showed no board")
 	coach.free()
 
 
