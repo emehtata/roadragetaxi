@@ -2412,6 +2412,7 @@ func test_controls_and_economy() -> void:
 	check(main.summary_shown and hud._summary.visible and hud._summary.text.contains("Next city: Tampere"), "should_stop shows the summary")
 	var others: Array = main.get_node("Ui").get_children().filter(func(n): return n != hud and not n is Button)
 	check(others.all(func(n): return not n.visible), "the rest of the game UI is hidden")
+	check(hud.get_child(hud.get_child_count() - 1) == hud._summary, "the summary is the HUD's top layer: no score or clock over it")
 	var next_buttons: Array = main.get_node("Ui").get_children().filter(func(n): return n is Button and n.text == I18n.text("next_city_button", "en"))
 	var asked := []
 	main.summary_action.connect(func(next: bool): asked.append(next))
