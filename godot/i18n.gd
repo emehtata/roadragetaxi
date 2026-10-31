@@ -4,6 +4,10 @@ const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := {
+	"tut_house_door": "Etsi nyt koti. Pysähdy omakotitalon viereen, nouse autosta (F) ja kävele sen ulko-ovelle (merkitty karttaan).",
+	"tut_enter_house": "Mene ulko-ovella sisään E-näppäimellä.",
+	"tut_choose_home": "Tee talosta kotisi painamalla sisällä H.",
+	"tut_leave_house": "Mene ovella takaisin ulos E-näppäimellä. Tästä lähtien H taksissa vie sinut kotiin.",
 	"tut_nausea": "PYSÄHDY HETI! Matkustajalla on huono olo. Jarruta pysähdyksiin (S) ja odota, että olo helpottaa, tai hän oksentaa taksiin.",
 	"tut_no_station": "Junataulua ei ole: lähellä ei ole ladattuna rautatieasemaa aikatauluineen. Aja kohti rautatieasemaa (seuraa raiteita; Oulussa keskustan itäpuolella). Todellisten junien aikataulujen pitää olla päällä (Asetukset → Pelaaminen). Tab ohittaa.",
 	"tut_no_trains": "Lähimmälle asemalle ei ole tulossa junia juuri nyt. Aja toiselle asemalle tai yritä myöhemmin. Tab ohittaa.",
@@ -27,8 +31,6 @@ const FI := {
 	"tut_trains": "Näytä lähimmän aseman junataulu J-näppäimellä (oikeat aikataulut, kun Digitraffic on käytössä).",
 	"tut_assists": "Avustimet: V nopeusrajoitin, K kaista-avustin, B valoavustin. Kokeile yhtä.",
 	"tut_help": "F1 näyttää kaikki ohjaimet (F1 tai Esc sulkee).",
-	"tut_home": "Valitse koti tai aja kotiin H-näppäimellä. Nouse sitten autosta (F) ja kävele ulko-ovelle.",
-	"tut_house": "Mene ovella sisään E-näppäimellä. E ovella vie taas ulos.",
 	"tut_done": "Valmista! Lisäksi: G tankkaa pumpulla, R palauttaa taksin tielle, Space purkaa rattiraivon, Esc pysäyttää. HUD-paneeleja voi siirtää hiirellä (U palauttaa).",
 	"setup_wizard": "Käyttöönoton ohjattu asetus",
 	"next": "Seuraava", "finish": "Valmis", "setup_step": "Käyttöönotto %d/%d", "setup_intro_data": "Peli voi käyttää oikeaa säätä, junien aikatauluja ja tietöitä. Valitse mitä haetaan verkosta.", "setup_intro_maps": "Kartta haetaan ajaessa verkosta tai ladataan kerralla koko Suomesta (toimii ilman verkkoa).",
@@ -248,6 +250,10 @@ const FI := {
 }
 
 const EN := {
+	"tut_house_door": "Now find a home. Stop next to a detached house, get out (F) and walk to its front door (marked on the map).",
+	"tut_enter_house": "Press E at the front door to go inside.",
+	"tut_choose_home": "Press H inside to make this house your home.",
+	"tut_leave_house": "Press E at the door to go out again. From now on H in the taxi takes you home.",
 	"tut_nausea": "STOP NOW! The passenger feels sick. Brake to a stop (S) and wait until they feel better, or they throw up in your taxi.",
 	"tut_no_station": "No train board here: no railway station with a timetable is loaded around you. Drive towards the railway station (follow the tracks; Oulu's is east of the centre). Real train timetables must be on (Settings → Gameplay). Tab skips.",
 	"tut_no_trains": "The nearest station has no trains due right now. Drive to another station or try again later. Tab skips.",
@@ -271,8 +277,6 @@ const EN := {
 	"tut_trains": "Press J to show the nearest station's train board (real timetables when Digitraffic is on).",
 	"tut_assists": "Driver assists: V speed limiter, K lane assist, B red-light assist. Toggle one.",
 	"tut_help": "Press F1 for the list of all controls (F1 or Esc closes it).",
-	"tut_home": "Press H to choose your home or drive there. Then get out (F) and walk to the front door.",
-	"tut_house": "At the door press E to go inside. E at the door again takes you out.",
 	"tut_done": "That's it! Also: G refuels at a fuel pump, R puts the taxi back on the road, Space vents road rage, Esc pauses. Drag the HUD panels with the mouse to rearrange them (U resets).",
 	"setup_wizard": "Setup wizard",
 	"next": "Next", "finish": "Finish", "setup_step": "Setup %d/%d", "setup_intro_data": "The game can use real weather, train timetables and roadworks. Choose what to fetch online.", "setup_intro_maps": "The map is fetched online as you drive, or downloaded once for all of Finland (works offline).",
@@ -494,6 +498,10 @@ const EN := {
 }
 
 const DE := {
+	"tut_house_door": "Such dir jetzt ein Zuhause. Halte neben einem Einfamilienhaus, steig aus (F) und geh zur Haustür (auf der Karte markiert).",
+	"tut_enter_house": "Drücke an der Haustür E, um hineinzugehen.",
+	"tut_choose_home": "Drücke drinnen H, um dieses Haus zu deinem Zuhause zu machen.",
+	"tut_leave_house": "Drücke an der Tür E, um wieder hinauszugehen. Ab jetzt bringt dich H im Taxi nach Hause.",
 	"tut_nausea": "SOFORT ANHALTEN! Dem Fahrgast ist schlecht. Bremse bis zum Stillstand (S) und warte, bis es ihm besser geht, sonst erbricht er ins Taxi.",
 	"tut_no_station": "Keine Zugtafel: In deiner Nähe ist kein Bahnhof mit Fahrplan geladen. Fahre zum Bahnhof (folge den Gleisen; in Oulu östlich des Zentrums). Echte Zugfahrpläne müssen an sein (Einstellungen → Spiel). Tab überspringt.",
 	"tut_no_trains": "Am nächsten Bahnhof kommen gerade keine Züge. Fahre zu einem anderen Bahnhof oder versuche es später. Tab überspringt.",
@@ -517,8 +525,6 @@ const DE := {
 	"tut_trains": "Zeige mit J die Zugtafel des nächsten Bahnhofs (echte Fahrpläne, wenn Digitraffic an ist).",
 	"tut_assists": "Assistenten: V Begrenzer, K Spurassistent, B Ampelassistent. Schalte einen um.",
 	"tut_help": "F1 zeigt alle Tasten (F1 oder Esc schließt).",
-	"tut_home": "Wähle mit H dein Zuhause oder fahre hin. Steig dann aus (F) und geh zur Haustür.",
-	"tut_house": "Drücke an der Tür E, um hineinzugehen. E an der Tür bringt dich wieder hinaus.",
 	"tut_done": "Fertig! Außerdem: G tankt an einer Zapfsäule, R setzt das Taxi zurück auf die Straße, Leertaste lässt Straßenwut raus, Esc pausiert. HUD-Elemente lassen sich mit der Maus verschieben (U setzt zurück).",
 	"setup_wizard": "Einrichtungsassistent",
 	"next": "Weiter", "finish": "Fertig", "setup_step": "Einrichtung %d/%d", "setup_intro_data": "Das Spiel kann echtes Wetter, Zugfahrpläne und Baustellen nutzen. Wähle, was online geladen wird.", "setup_intro_maps": "Die Karte wird während der Fahrt online geladen oder einmal für ganz Finnland heruntergeladen (offline nutzbar).",

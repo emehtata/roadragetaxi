@@ -21,8 +21,10 @@ const STEPS := [
 	["tut_trains", "_train_board"],
 	["tut_assists", "_assist_toggled"],
 	["tut_help", "_help_open"],
-	["tut_home", "_at_home_door"],
-	["tut_house", "_indoors"],
+	["tut_house_door", "_at_house_door"],
+	["tut_enter_house", "_indoors"],
+	["tut_choose_home", "_home_chosen"],
+	["tut_leave_house", "_outdoors"],
 	["tut_done", ""],
 ]
 
@@ -186,10 +188,19 @@ func _help_open(m, _state: Dictionary, _base: Dictionary) -> bool:
 	return m._help.visible
 
 
-func _at_home_door(_m, state: Dictionary, _base: Dictionary) -> bool:
+func _at_house_door(_m, state: Dictionary, _base: Dictionary) -> bool:
 	var door: Dictionary = state.get("home_door", {})
 	return door.get("available", false) or door.get("indoors", false)
 
 
 func _indoors(_m, state: Dictionary, _base: Dictionary) -> bool:
 	return state.get("home_door", {}).get("indoors", false)
+
+
+func _home_chosen(_m, state: Dictionary, _base: Dictionary) -> bool:
+	var door: Dictionary = state.get("home_door", {})
+	return door.get("indoors", false) and door.get("is_home", false)
+
+
+func _outdoors(_m, state: Dictionary, _base: Dictionary) -> bool:
+	return not state.get("home_door", {}).get("indoors", false)
