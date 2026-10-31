@@ -789,7 +789,8 @@ def test_pedestrians_spawn_near_hospitality_venues(monkeypatch):
     manager.update(Car(x=50.0, y=0.0, heading=0.0, speed=0.0), dt=0.1)
 
     assert len(manager.venue_locations) == 1
-    assert all(math.hypot(ped.x - 50.0, ped.y) <= 45.0 for ped in manager.pedestrians)
+    # spawned within 45 m, then walked one 0.1 s tick in the same update
+    assert all(math.hypot(ped.x - 50.0, ped.y) <= 45.5 for ped in manager.pedestrians)
 
 
 def test_pedestrian_spawn_area_is_limited_to_building_radius():
