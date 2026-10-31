@@ -4,6 +4,7 @@ const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := {
+	"setup_wizard": "Käyttöönoton ohjattu asetus",
 	"next": "Seuraava", "finish": "Valmis", "setup_step": "Käyttöönotto %d/%d", "setup_intro_data": "Peli voi käyttää oikeaa säätä, junien aikatauluja ja tietöitä. Valitse mitä haetaan verkosta.", "setup_intro_maps": "Kartta haetaan ajaessa verkosta tai ladataan kerralla koko Suomesta (toimii ilman verkkoa).",
 	"home_3d_fallback": "Turvallista 3D-sisäänkäyntiä ei löytynyt. Käytössä on 2D-sisätila.",
 	"interior_3d": "Talojen sisätilat ensimmäisestä persoonasta (3D)",
@@ -221,6 +222,7 @@ const FI := {
 }
 
 const EN := {
+	"setup_wizard": "Setup wizard",
 	"next": "Next", "finish": "Finish", "setup_step": "Setup %d/%d", "setup_intro_data": "The game can use real weather, train timetables and roadworks. Choose what to fetch online.", "setup_intro_maps": "The map is fetched online as you drive, or downloaded once for all of Finland (works offline).",
 	"home_3d_fallback": "No safe 3D entrance was found. Using the 2D interior.",
 	"interior_3d": "First-person house interiors (3D)",
@@ -440,6 +442,7 @@ const EN := {
 }
 
 const DE := {
+	"setup_wizard": "Einrichtungsassistent",
 	"next": "Weiter", "finish": "Fertig", "setup_step": "Einrichtung %d/%d", "setup_intro_data": "Das Spiel kann echtes Wetter, Zugfahrpläne und Baustellen nutzen. Wähle, was online geladen wird.", "setup_intro_maps": "Die Karte wird während der Fahrt online geladen oder einmal für ganz Finnland heruntergeladen (offline nutzbar).",
 	"home_3d_fallback": "Kein sicherer 3D-Eingang gefunden. Der 2D-Innenraum wird verwendet.",
 	"interior_3d": "Hausinnenräume aus der Ich-Perspektive (3D)",

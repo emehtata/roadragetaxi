@@ -247,6 +247,10 @@ func _choose_language(language: String) -> void:
 		if not _settings.has_section_key("game", key):
 			_settings.set_value("game", key, true)
 	_settings.save("user://settings.cfg")
+	_start_guide()
+
+
+func _start_guide() -> void:
 	_guide.assign([_gameplay_menu, _maps_menu, _graphics_menu, _audio_menu])
 	_guide_step = 0
 	_guide_next()
@@ -902,6 +906,8 @@ func _settings_menu() -> void:
 	_button(_t("settings_audio") + " >", _audio_menu)
 	_button(_t("settings_maps") + " >", _maps_menu)
 	_button(_t("settings_experimental") + " >", _experimental_menu)
+	if _game == null:  # the guide ends in the main menu
+		_button(_t("setup_wizard") + " >", _start_guide)
 	var back := _pause_menu if _game != null else _main_menu
 	_button(_t("back"), back)
 	_back_action = back
