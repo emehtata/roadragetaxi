@@ -18,7 +18,6 @@ from contextlib import nullcontext
 from dataclasses import replace
 
 import concurrent.futures
-from concurrent.futures.process import BrokenProcessPool
 import logging
 import math
 import multiprocessing
@@ -1343,8 +1342,8 @@ class SimulationServer:
                         index, more = ChunkIndex.replaced(index, built)
                         changed |= more
                         new_lamps.extend(lamps or ())
-                except (BrokenProcessPool, OSError, RuntimeError) as error:
-                    logger.warning("Chunk worker failed; rebuilding chunks on the map-growth thread: %s", error)
+                except Exception as error:  # anything: an escaping one would end this thread, holding the map
+                    logger.warning("Chunk worker failed; rebuilding chunks on the map-growth thread: %r", error)
                     self._close_chunk_executor()
                     return None
                 return index, changed, new_lamps

@@ -67,3 +67,36 @@ def test_replaced_keeps_the_chunks_outside_and_reports_only_real_changes():
     assert changed == {"2_0"}  # 1_0 rebuilt the same
     assert index._chunks["0_0"] is old._chunks["0_0"] and index._encoded["0_0"] == b"a"
     assert index._encoded["2_0"] == b"c" and index.is_encoded("1_0")
+
+
+def test_a_failing_worker_falls_back_to_the_thread_and_stays_off(monkeypatch):
+    """Whatever the worker raises, the map grows: the map-growth thread
+    rebuilds instead (an escaping exception would hold the map for good)."""
+    import theroadragetrip.server as server_module
+
+    class InlineThread:
+        def __init__(self, *, target, **kwargs):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    class Failing:
+        def submit(self, *args):
+            raise TypeError("cannot pickle")
+
+        def shutdown(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(server_module.threading, "Thread", InlineThread)
+    world = _world()
+    world.street_light_points = []
+    server = SimpleNamespace(world=world, car=SimpleNamespace(x=0, y=0), _chunks_index=ChunkIndex(world),
+                             _map_streamer=SimpleNamespace(sync_tiles=set(), hold=False), _map_growth=[],
+                             _chunk_workers=True, _chunk_pool=Failing())
+    server._chunk_executor = lambda: server._chunk_pool
+    server._close_chunk_executor = lambda: server_module.SimulationServer._close_chunk_executor(server)
+    outer = (-2000, -2000, 3000, 3000)
+    server_module.SimulationServer._map_grew(server, outer, outer, [(500.0, 0.0, 1400.0, 800.0)])
+    assert server._map_growth and server._map_growth[-1][6] is True  # the final pass arrived
+    assert server._chunk_workers is False and server._chunk_pool is None
