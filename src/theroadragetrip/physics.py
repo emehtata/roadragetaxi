@@ -1666,7 +1666,6 @@ def update_car_physics(
     ways: Optional[List] = None,
     spatial_grid: Optional[SpatialWayGrid] = None,
     block_offroad: bool = True,
-    enforce_oneway: bool = False,
     speed_limit_mps: Optional[float] = None,
     nearby_vehicles: Optional[List] = None,
     parking_spaces: Optional[List] = None,
@@ -1689,8 +1688,7 @@ def update_car_physics(
 
     When block_offroad is True and road data is provided, restricts motion to drivable
     car roads only, blocking movement if the vehicle attempts to leave the road.
-    When enforce_oneway is True, prevents moving against the legal direction on one-way streets.
-    Returns True if vehicle movement was blocked against the road boundary or one-way restriction.
+    Returns True if vehicle movement was blocked against the road boundary.
 
     Off-road speed capping (block_offroad=False) treats both an OSM
     parking_space (`parking_spaces`) and a mapped parking lot's whole
@@ -2064,16 +2062,6 @@ def update_car_physics(
             dy = math.sin(car.heading) * car.speed * dt + pivot_y
             target_x = car.x + dx
             target_y = car.y + dy
-
-    # Check one-way road violation
-    if enforce_oneway and has_road_data and (dx != 0.0 or dy != 0.0):
-        if is_violating_oneway(car, car.x, car.y, dx, dy, ways=ways, spatial_grid=spatial_grid):
-            blocked = True
-            car.speed = 0.0
-            dx = 0.0
-            dy = 0.0
-            target_x = car.x
-            target_y = car.y
 
     if block_offroad and has_road_data and (dx != 0.0 or dy != 0.0):
         currently_on_road = is_point_on_road(
