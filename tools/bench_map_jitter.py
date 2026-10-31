@@ -221,8 +221,9 @@ def main(argv=None) -> int:
             rec["busy"] = bool(rec["background"] or streamer.status() or server._map_growth)
             ticks.append(rec)
             next_tick += interval
-            if next_tick > time.monotonic():
-                time.sleep(next_tick - time.monotonic())
+            wait = next_tick - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)  # computed once: re-reading the clock could make it negative
             else:
                 next_tick = time.monotonic()  # behind: no catching up in a burst (run_forever)
 
