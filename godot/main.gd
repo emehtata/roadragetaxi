@@ -509,9 +509,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_interact_pending = true
 			KEY_G:
 				_refuel_pending = true
-			KEY_J:
-				if not phone.is_open or phone.busy:
-					show_next_train = not show_next_train
+			KEY_J:  # the phone has no use for J: the board shows beside it
+				show_next_train = not show_next_train
 			KEY_SPACE:
 				if not summary_shown:  # the phone has no use for SPACE: rage with offers on screen too
 					_road_rage_pending = true
