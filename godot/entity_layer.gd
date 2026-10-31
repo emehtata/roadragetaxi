@@ -1025,7 +1025,8 @@ func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false
 		var smoke: Color = RS.SMOKE.darkened(0.35 * strength) if behind else RS.SMOKE
 		var max_alpha: float = RS.SMOKE_MAX_ALPHA * (lerpf(0.35, 1.3, strength) if behind else 1.0)
 		smoke.a = clampf((1.0 - offset_t / 2.0) * max_alpha, 0.0, max_alpha)
-		_circle(self, puff, _px((3.0 + offset_t * 5.0) * (lerpf(0.7, 1.4, strength) if behind else 1.0)), smoke)
+		# draw_circle, not the shared _disc mesh: on this node the mesh puffs stopped showing after a while, for good
+		draw_circle(puff, _px((3.0 + offset_t * 5.0) * (lerpf(0.7, 1.4, strength) if behind else 1.0)), smoke)
 
 
 ## Someone lying flat along `h` (their heading, head first): spread out -
