@@ -1657,8 +1657,6 @@ def _plan_and_validate_npc_route(
     deadline: Optional[float] = None,
     vehicle_length_m: float = NPC_VEHICLE_LENGTH_M,
     vehicle_width_m: float = NPC_VEHICLE_WIDTH_M,
-    preserve_origin: bool = False,
-    origin_heading: Optional[float] = None,
 ) -> Optional[List[PathPoint]]:
     """Plan and fully validate a drivable path from origin to destination -
     the shared "never move a vehicle onto an unchecked route" core of both
@@ -1694,8 +1692,6 @@ def _plan_and_validate_npc_route(
         parking_space=parking_space, destination_is_off_road=destination_is_off_road,
         origin_is_off_road=origin_is_off_road,
         vehicle_length_m=vehicle_length_m, vehicle_width_m=vehicle_width_m,
-        preserve_origin=preserve_origin,
-        origin_heading=origin_heading,
     ), deadline)
 
 
