@@ -909,16 +909,16 @@ def test_phone_pickups_come_from_homes_on_small_streets_too():
 
 
 def test_home_pickup_is_on_the_address_street_not_a_closer_main_road():
-    """Reported: Helmikkäkuja 2's pickup was placed on Haukiputaantie, the nearer main road."""
+    """Reported: a home's pickup was placed on the nearer main road, not its own street."""
     from theroadragetrip.osm import Building
-    main = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="secondary", half_width_m=5.0, name="Haukiputaantie")
+    main = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="secondary", half_width_m=5.0, name="Pääkatu")
     side = Way(points_m=[(100.0, 0.0), (100.0, 60.0), (160.0, 60.0)], highway="residential", half_width_m=3.0,
-               name="Helmikkäkuja")
+               name="Kotikuja")
     house = Building(points_m=[(110.0, 15.0), (120.0, 15.0), (120.0, 25.0), (110.0, 25.0)], housenumber="2",
-                     street="Helmikkäkuja", building_type="detached")
+                     street="Kotikuja", building_type="detached")
     taxi_mgr = TaxiManager(ways=[main, side], buildings=[house])
     target = taxi_mgr.pick_random_building_point(homes=True)
-    assert target.address == "Helmikkäkuja 2" and target.way_name == "Helmikkäkuja"
+    assert target.address == "Kotikuja 2" and target.way_name == "Kotikuja"
     assert abs(target.x - 100.0) < 0.01  # on the side street, beside the house
 
 

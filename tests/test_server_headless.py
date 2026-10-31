@@ -1224,7 +1224,7 @@ def test_snowless_christmas_field_stays_frozen_and_never_opens_for_soccer(tmp_pa
     from theroadragetrip.activities.plugins.ice_skating import FIELD_ACTIVITIES
 
     server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
-    server.calendar.latitude = 65.07126350936632  # Talvikkipuisto, the reported screenshot
+    server.calendar.latitude = 65.0121  # Oulu
     server.calendar.current = datetime(2025, 12, 24, 20)
     server.weather_history = SimpleNamespace(get=lambda moment: SimpleNamespace(snow_depth_cm=0.0))
     server._update_sports()
@@ -1234,11 +1234,11 @@ def test_snowless_christmas_field_stays_frozen_and_never_opens_for_soccer(tmp_pa
     assert server.world.pedestrian_mgr.sports_ice_open
     assert not server.world.pedestrian_mgr.soccer_open
     # Exercise the actual sports population, not only its opening flags.
-    server.car.x, server.car.y = 425498.42123242805, 7217330.898091426
-    field = Scenery([(425454.59197231045, 7217406.975601245), (425515.76507815876, 7217417.169970076),
-                     (425533.29692551604, 7217314.024273276), (425471.8271408641, 7217303.5247490015)],
-                    "pitch", name="Talvikkipuisto", sport="soccer",
-                    bbox=(425454.59, 7217303.52, 425533.30, 7217417.17))
+    server.car.x, server.car.y = 1048.421232, 1030.898091
+    field = Scenery([(1004.591972, 1106.975601), (1065.765078, 1117.169970),
+                     (1083.296926, 1014.024273), (1021.827141, 1003.524749)],
+                    "pitch", name="Puisto", sport="soccer",
+                    bbox=(1004.59, 1003.52, 1083.30, 1117.17))
     manager = server.world.pedestrian_mgr
     manager.set_scenery_features([], [field], [])
     from theroadragetrip.physics import off_road_ground_kind

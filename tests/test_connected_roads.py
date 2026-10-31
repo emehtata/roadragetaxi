@@ -112,8 +112,8 @@ def test_taxi_roads_keep_a_far_home_network_but_not_fragments():
 
 
 def test_side_street_joining_mid_road_stays_connected():
-    """Reported: Helmikkäkuja (a cul-de-sac meeting its road at a middle node)
-    was dropped from the taxi's roads, so its fares were picked up on Haukiputaantie."""
+    """Reported: a cul-de-sac meeting its road at a middle node)
+    was dropped from the taxi's roads, so its fares were picked up on the main road."""
     from theroadragetrip.physics import connected_drivable_ways
     main = Way(points_m=[(0.0, 0.0), (500.0, 0.0), (1000.0, 0.0)], highway="secondary", half_width_m=4.0)
     side = Way(points_m=[(500.0, 0.0), (500.0, 60.0)], highway="residential", half_width_m=3.0)

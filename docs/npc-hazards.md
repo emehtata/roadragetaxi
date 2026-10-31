@@ -1,12 +1,12 @@
 # NPC hazards: stuck taxi, stopped and crashing NPCs (2026-10-28, in progress)
 
-Report: the player crashed into a rival taxi standing on Haukiputaantie (a
-60 km/h secondary road, on a bridge) in Oulu and was stuck inside it. Asked:
+Report: the player crashed into a rival taxi standing on a
+60 km/h secondary road (on a bridge) in Oulu and was stuck inside it. Asked:
 remove such stucks and hazardous NPC driving; iterate until none are found.
 Iteration was stopped here on request; this is where it stands.
 
-Screenshot: `screenshot_1793218469657999872` (Windows Pictures folder), taxi at
-425213, 7217320, 15:04 on a Wednesday.
+Screenshot: `screenshot_1793218469657999872` (Windows Pictures folder), 15:04 on a
+Wednesday (location left out).
 
 ## Method
 
@@ -43,7 +43,7 @@ Existing tests whose overlapping vehicles stood still now give them a speed
 
 | Place, time | Crashes | Still >= 20 s on a road |
 | --- | --- | --- |
-| Report's bridge (425213, 7217320), Wed 15:04 | 0 | 0 |
+| Report's bridge, Wed 15:04 | 0 | 0 |
 | Same, 17:00 | 0 | 0 |
 | Oulu centre (427872, 7211248), Fri 17:00 | 0 | 0 |
 | Oulu centre, Sat 23:30 | 0 | 0 |
