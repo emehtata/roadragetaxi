@@ -1895,7 +1895,7 @@ func test_speech_and_stations() -> void:
 	check(main.show_next_train and not sim._last_command.has("next_train") and not sim._last_command.has("j"), "J is local: no command")
 	main.phone.is_open = true
 	main._unhandled_input(_key_event(KEY_J))
-	check(main.show_next_train, "not while the phone is open")
+	check(not main.show_next_train, "J toggles the board with the phone open too")
 	main.free()
 	check(FileAccess.get_file_as_string("res://i18n.gd").contains("J   Train board"), "F1 help names J")
 
