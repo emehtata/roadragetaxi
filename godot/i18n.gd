@@ -4,6 +4,10 @@ const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := {
+	"tut_rage_meter": "RATTIRAIVO on pelin ydin. Mittari kuljettajan kuvan alla (oikealla alhaalla) nousee, kun ajat ylinopeutta, odotat punaisissa valoissa tai sladiat mutkissa; sääntöjen mukainen ajo rauhoittaa. Aja ylinopeutta, kunnes mittari näyttää 25 %.",
+	"tut_rage_shout": "Pura se nyt: paina Space. Tööttäät ja huudat, ja edessä oleva liikenne väistää. Jokainen purkaus vie 25 % raivosta, joten kerää sitä taas ennen seuraavaa.",
+	"tut_rage_brawl": "Kilpailevat taksikuskit pistävät vastaan. Tönäise kilpailijan taksia tai nouse autosta ja huuda (Space) sellaiselle muutaman metrin päästä. Tappelussa: Space lyö, pidä Shift pohjassa väistääksesi, F pakenee. Mitä enemmän raivoa, sitä kovemmin lyöt mutta sitä helpommin saat osuman.",
+	"tut_done": "Valmista! Lisäksi: G tankkaa pumpulla, R palauttaa taksin tielle, Esc pysäyttää. HUD-paneeleja voi siirtää hiirellä (U palauttaa). Anna raivon virrata – mutta pidä matkustajat tyytyväisinä.",
 	"tut_house_door": "Etsi nyt koti. Pysähdy omakotitalon viereen, nouse autosta (F) ja kävele sen ulko-ovelle (merkitty karttaan).",
 	"tut_enter_house": "Mene ulko-ovella sisään E-näppäimellä.",
 	"tut_choose_home": "Tee talosta kotisi painamalla sisällä H.",
@@ -31,7 +35,6 @@ const FI := {
 	"tut_trains": "Näytä lähimmän aseman junataulu J-näppäimellä (oikeat aikataulut, kun Digitraffic on käytössä).",
 	"tut_assists": "Avustimet: V nopeusrajoitin, K kaista-avustin, B valoavustin. Kokeile yhtä.",
 	"tut_help": "F1 näyttää kaikki ohjaimet (F1 tai Esc sulkee).",
-	"tut_done": "Valmista! Lisäksi: G tankkaa pumpulla, R palauttaa taksin tielle, Space purkaa rattiraivon, Esc pysäyttää. HUD-paneeleja voi siirtää hiirellä (U palauttaa).",
 	"setup_wizard": "Käyttöönoton ohjattu asetus",
 	"next": "Seuraava", "finish": "Valmis", "setup_step": "Käyttöönotto %d/%d", "setup_intro_data": "Peli voi käyttää oikeaa säätä, junien aikatauluja ja tietöitä. Valitse mitä haetaan verkosta.", "setup_intro_maps": "Kartta haetaan ajaessa verkosta tai ladataan kerralla koko Suomesta (toimii ilman verkkoa).",
 	"home_3d_fallback": "Turvallista 3D-sisäänkäyntiä ei löytynyt. Käytössä on 2D-sisätila.",
@@ -250,6 +253,10 @@ const FI := {
 }
 
 const EN := {
+	"tut_rage_meter": "ROAD RAGE is what this game is about. The meter under the driver's portrait (bottom right) rises when you speed, wait at red lights or slide in corners; driving by the rules calms it. Speed past the limit until the meter reaches 25%.",
+	"tut_rage_shout": "Now let it out: press Space. You honk and shout, and the traffic ahead gets out of your way. Each outburst costs 25% rage, so build it up again before the next one.",
+	"tut_rage_brawl": "Rival taxi drivers fight back. Bump a rival taxi, or get out and shout (Space) at one within a few metres. In the fight: Space punches, hold Shift to dodge, F runs away. More rage hits harder but leaves you open.",
+	"tut_done": "That's it! Also: G refuels at a fuel pump, R puts the taxi back on the road, Esc pauses. Drag the HUD panels with the mouse to rearrange them (U resets). Keep the rage flowing - but keep your passengers happy.",
 	"tut_house_door": "Now find a home. Stop next to a detached house, get out (F) and walk to its front door (marked on the map).",
 	"tut_enter_house": "Press E at the front door to go inside.",
 	"tut_choose_home": "Press H inside to make this house your home.",
@@ -277,7 +284,6 @@ const EN := {
 	"tut_trains": "Press J to show the nearest station's train board (real timetables when Digitraffic is on).",
 	"tut_assists": "Driver assists: V speed limiter, K lane assist, B red-light assist. Toggle one.",
 	"tut_help": "Press F1 for the list of all controls (F1 or Esc closes it).",
-	"tut_done": "That's it! Also: G refuels at a fuel pump, R puts the taxi back on the road, Space vents road rage, Esc pauses. Drag the HUD panels with the mouse to rearrange them (U resets).",
 	"setup_wizard": "Setup wizard",
 	"next": "Next", "finish": "Finish", "setup_step": "Setup %d/%d", "setup_intro_data": "The game can use real weather, train timetables and roadworks. Choose what to fetch online.", "setup_intro_maps": "The map is fetched online as you drive, or downloaded once for all of Finland (works offline).",
 	"home_3d_fallback": "No safe 3D entrance was found. Using the 2D interior.",
@@ -498,6 +504,10 @@ const EN := {
 }
 
 const DE := {
+	"tut_rage_meter": "STRASSENWUT ist der Kern des Spiels. Die Anzeige unter dem Fahrerbild (unten rechts) steigt, wenn du zu schnell fährst, an roten Ampeln wartest oder in Kurven rutschst; regelkonformes Fahren beruhigt. Fahre zu schnell, bis die Anzeige 25 % erreicht.",
+	"tut_rage_shout": "Jetzt raus damit: drücke die Leertaste. Du hupst und schreist, und der Verkehr vor dir weicht aus. Jeder Ausbruch kostet 25 % Wut – sammle sie vor dem nächsten wieder.",
+	"tut_rage_brawl": "Rivalisierende Taxifahrer wehren sich. Ramme ein Konkurrenztaxi leicht oder steig aus und schrei (Leertaste) einen Fahrer in wenigen Metern an. Im Kampf: Leertaste schlägt, Shift halten weicht aus, F flieht. Mehr Wut schlägt härter, macht dich aber verwundbarer.",
+	"tut_done": "Fertig! Außerdem: G tankt an einer Zapfsäule, R setzt das Taxi zurück auf die Straße, Esc pausiert. HUD-Elemente lassen sich mit der Maus verschieben (U setzt zurück). Lass die Wut raus – aber halte deine Fahrgäste bei Laune.",
 	"tut_house_door": "Such dir jetzt ein Zuhause. Halte neben einem Einfamilienhaus, steig aus (F) und geh zur Haustür (auf der Karte markiert).",
 	"tut_enter_house": "Drücke an der Haustür E, um hineinzugehen.",
 	"tut_choose_home": "Drücke drinnen H, um dieses Haus zu deinem Zuhause zu machen.",
@@ -525,7 +535,6 @@ const DE := {
 	"tut_trains": "Zeige mit J die Zugtafel des nächsten Bahnhofs (echte Fahrpläne, wenn Digitraffic an ist).",
 	"tut_assists": "Assistenten: V Begrenzer, K Spurassistent, B Ampelassistent. Schalte einen um.",
 	"tut_help": "F1 zeigt alle Tasten (F1 oder Esc schließt).",
-	"tut_done": "Fertig! Außerdem: G tankt an einer Zapfsäule, R setzt das Taxi zurück auf die Straße, Leertaste lässt Straßenwut raus, Esc pausiert. HUD-Elemente lassen sich mit der Maus verschieben (U setzt zurück).",
 	"setup_wizard": "Einrichtungsassistent",
 	"next": "Weiter", "finish": "Fertig", "setup_step": "Einrichtung %d/%d", "setup_intro_data": "Das Spiel kann echtes Wetter, Zugfahrpläne und Baustellen nutzen. Wähle, was online geladen wird.", "setup_intro_maps": "Die Karte wird während der Fahrt online geladen oder einmal für ganz Finnland heruntergeladen (offline nutzbar).",
 	"home_3d_fallback": "Kein sicherer 3D-Eingang gefunden. Der 2D-Innenraum wird verwendet.",

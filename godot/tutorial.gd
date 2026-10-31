@@ -14,6 +14,9 @@ const STEPS := [
 	["tut_zoom", "_zoomed"],
 	["tut_pan", "_panned"],
 	["tut_inspect", "_inspected"],
+	["tut_rage_meter", "_rage_built"],
+	["tut_rage_shout", "_rage_spent"],
+	["tut_rage_brawl", "_in_brawl"],
 	["tut_phone", "_phone_open"],
 	["tut_accept", "_fare_accepted"],
 	["tut_pickup", "_passenger_in"],
@@ -128,6 +131,7 @@ static func baseline(m, state: Dictionary) -> Dictionary:
 		"position": m.entities.player_position(),
 		"zoom": m.camera.zoom.x,
 		"fares": int(state.get("taxi", {}).get("completed_fares", 0)),
+		"rage": float(state.get("rage_power", 0.0)),
 		"assists": [m.speed_limiter, m.red_light_assist, m.lane_assist],
 	}
 
@@ -158,6 +162,22 @@ func _panned(m, _state: Dictionary, _base: Dictionary) -> bool:
 
 func _inspected(m, _state: Dictionary, _base: Dictionary) -> bool:
 	return m._focus.has("id")
+
+
+func _rage_built(_m, state: Dictionary, _base: Dictionary) -> bool:
+	return float(state.get("rage_power", 0.0)) >= 0.25  # a shout's cost (simulation RAGE_SHOUT_COST)
+
+
+func _rage_spent(_m, state: Dictionary, base: Dictionary) -> bool:
+	return float(state.get("rage_power", 0.0)) < base["rage"] - 0.2
+
+
+func _in_brawl(_m, state: Dictionary, _base: Dictionary) -> bool:
+	for brawl in state.get("brawls", []):
+		for fighter in brawl.get("fighters", []):
+			if fighter.get("kind") == "player":
+				return true
+	return false
 
 
 func _phone_open(m, _state: Dictionary, _base: Dictionary) -> bool:
