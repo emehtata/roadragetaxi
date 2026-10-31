@@ -23,6 +23,8 @@ var _city := "Oulu"
 var _start_place := ""  # its name from the picker's reverse geocode; "": unknown
 var _start_point := Vector2.INF  # a custom gig start (latitude, longitude); INF: the city's centre
 var _language := "en"
+var _guide: Array[Callable] = []  # the first-run settings guide's pages
+var _guide_step := 0
 var _settings := ConfigFile.new()
 var _server_extra: Array[String] = []
 var _loading := false
@@ -240,12 +242,49 @@ func _choose_language(language: String) -> void:
 	_language = language
 	_settings.set_value("game", "language", language)
 	_settings.save("user://settings.cfg")
-	# The first run: the settings next, real-world data on unless chosen otherwise.
-	for key in ["historical_weather", "train_timetable"]:
+	# The first run: real-world data on unless chosen otherwise, then the guide.
+	for key in ["historical_weather", "train_timetable", "road_digitraffic"]:
 		if not _settings.has_section_key("game", key):
 			_settings.set_value("game", key, true)
 	_settings.save("user://settings.cfg")
-	_settings_menu()
+	_guide.assign([_gameplay_menu, _maps_menu, _graphics_menu, _audio_menu])
+	_guide_step = 0
+	_guide_next()
+
+
+## The first-run guide: the settings menus one after another, Next instead
+## of Back, then the main menu.
+func _guide_next() -> void:
+	if _guide_step >= _guide.size():
+		_guide.clear()
+		_main_menu()
+		return
+	_guide_step += 1
+	_guide[_guide_step - 1].call()
+
+
+## A settings page's last button: Back, or Next/Finish while guiding.
+func _settings_back() -> void:
+	if _guide.is_empty():
+		_button(_t("back"), _settings_menu)
+		_back_action = _settings_menu
+	else:
+		_button(_t("finish" if _guide_step == _guide.size() else "next"), _guide_next)
+		_back_action = _guide_next
+
+
+## Under a settings page's title while guiding: the step and what it is about.
+func _guide_intro(intro_key := "") -> void:
+	if _guide.is_empty():
+		return
+	var text := _t("setup_step") % [_guide_step, _guide.size()]
+	var label := Label.new()
+	label.text = text + ("\n" + _t(intro_key) if intro_key != "" else "")
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.custom_minimum_size.x = 500
+	label.modulate = Color(0.8, 0.85, 0.9)
+	_body.add_child(label)
 
 
 ## The help tooltips: an opaque dark panel with light text (the default one
@@ -885,8 +924,7 @@ func _general_menu() -> void:
 		_general_menu.call_deferred())
 	_with_help(language, "help_language")
 	_focusables.append(language)
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
@@ -899,6 +937,7 @@ func _apply_interior_settings() -> void:
 func _gameplay_menu() -> void:
 	_clear()
 	_title(_t("settings_gameplay").to_upper())
+	_guide_intro("setup_intro_data")
 	var historical := CheckButton.new()  # FMI weather for the city and game time
 	historical.text = _t("historical_weather")
 	historical.button_pressed = _settings.get_value("game", "historical_weather", false)
@@ -946,8 +985,7 @@ func _gameplay_menu() -> void:
 	_body.add_child(intercity_note)
 	if is_instance_valid(_game):
 		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
@@ -981,14 +1019,14 @@ func _experimental_menu() -> void:
 	mouse_row.add_child(sensitivity)
 	_with_help(mouse_row, "help_interior_mouse_sensitivity")
 	_focusables.append(sensitivity)
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
 func _maps_menu() -> void:
 	_clear()
 	_title(_t("settings_maps").to_upper())
+	_guide_intro("setup_intro_maps")
 	var source := OptionButton.new()  # --osm-source: the map from Overpass, or a local .osm.pbf via osmium
 	source.add_item(_t("map_overpass"))
 	source.add_item(_t("map_pbf"))
@@ -1009,14 +1047,14 @@ func _maps_menu() -> void:
 	pbf_path.get_parent().get_parent().visible = source.selected == 1
 	_focusables.append(pbf_path)
 	_with_help(_button(_t("manage_pbf") + " >", _pbf_menu), "help_manage_pbf")
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
 func _audio_menu() -> void:
 	_clear()
 	_title(_t("settings_audio").to_upper())
+	_guide_intro()
 	for item in [[_t("master_volume"), "Master", "help_master_volume"], [_t("game_volume"), "Game", "help_game_volume"],
 			[_t("environment_volume"), "Environment", "help_environment_volume"], [_t("ui_volume"), "UI", "help_ui_volume"],
 			[_t("music_volume"), "Music", "help_music_volume"]]:
@@ -1035,14 +1073,14 @@ func _audio_menu() -> void:
 		row.add_child(slider)
 		_with_help(row, item[2])
 		_focusables.append(slider)
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
 func _graphics_menu() -> void:
 	_clear()
 	_title(_t("graphics").to_upper())
+	_guide_intro()
 	var options := Graphics.read(_settings)
 	var toggles := {}
 	for key in Graphics.DEFAULTS:
@@ -1060,8 +1098,7 @@ func _graphics_menu() -> void:
 		_with_help(toggle, "help_graphics_" + key)
 		_focusables.append(toggle)
 	toggles["shadows"].disabled = not options["buildings_3d"]
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
