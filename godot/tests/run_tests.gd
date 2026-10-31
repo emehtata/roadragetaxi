@@ -170,7 +170,7 @@ func test_settings_help() -> void:
 	var shell = preload("res://startup.gd").new()
 	root.add_child(shell)
 	shell._settings_menu()
-	check(shell._focusables.size() == 8 and shell._focusables[6].text.begins_with(I18n.text("setup_wizard", "en")), "settings: six categories, the setup wizard and Back")
+	check(shell._focusables.size() == 9 and shell._focusables[6].text.begins_with(I18n.text("setup_wizard", "en")) and shell._focusables[7].text.begins_with(I18n.text("tutorial", "en")), "settings: six categories, the setup wizard, the tutorial and Back")
 	var help_count := 0
 	for category in ["general", "gameplay", "graphics", "audio", "maps", "experimental"]:
 		shell.call("_" + category + "_menu")

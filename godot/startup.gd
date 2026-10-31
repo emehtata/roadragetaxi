@@ -923,6 +923,7 @@ func _settings_menu() -> void:
 	_button(_t("settings_experimental") + " >", _experimental_menu)
 	if _game == null:  # the guide ends in the main menu
 		_button(_t("setup_wizard") + " >", _start_guide)
+		_button(_t("tutorial") + " >", _start_tutorial)
 	var back := _pause_menu if _game != null else _main_menu
 	_button(_t("back"), back)
 	_back_action = back
