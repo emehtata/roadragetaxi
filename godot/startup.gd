@@ -805,11 +805,23 @@ func _pbf_path() -> String:
 	var configured := str(_settings.get_value("map", "osm_pbf_path", "")).strip_edges()
 	if configured != "" and FileAccess.file_exists(configured):
 		return configured
-	var packaged := Paths.package_path("assets/osm/finland-latest.osm.pbf")
-	if configured == "" and FileAccess.file_exists(packaged):
-		return packaged
+	# The in-game download (user://) wins: it is what "update" refreshes, while
+	# the packaged copy (the Windows installer's download) only ages.
 	var downloaded := downloaded_pbf_path()
-	return downloaded if FileAccess.file_exists(downloaded) else ""
+	if FileAccess.file_exists(downloaded):
+		return downloaded
+	var packaged := Paths.package_path("assets/osm/finland-latest.osm.pbf")
+	return packaged if configured == "" and FileAccess.file_exists(packaged) else ""
+
+
+## The map source setting; unset, a Finland .osm.pbf on disk (the Windows
+## installer's download) makes it "pbf".
+static func effective_osm_source(source: String, pbf_path: String) -> String:
+	return "pbf" if source == "" and pbf_path != "" else source
+
+
+func _osm_source() -> String:
+	return effective_osm_source(str(_settings.get_value("map", "osm_source", "")), _pbf_path())
 
 
 static func pbf_is_old(path: String, now: int) -> bool:
@@ -980,7 +992,7 @@ func _maps_menu() -> void:
 	var source := OptionButton.new()  # --osm-source: the map from Overpass, or a local .osm.pbf via osmium
 	source.add_item(_t("map_overpass"))
 	source.add_item(_t("map_pbf"))
-	source.selected = 1 if _settings.get_value("map", "osm_source", "overpass") == "pbf" else 0
+	source.selected = 1 if _osm_source() == "pbf" else 0
 	_with_help(source, "help_map_source")
 	_focusables.append(source)
 	var pbf_path := LineEdit.new()
@@ -1062,7 +1074,7 @@ func _set_volume(bus: String, value: float) -> void:
 
 
 func _start(mode: String, skip_pbf_offer := false) -> void:
-	if (_settings.get_value("map", "osm_source", "") == "pbf" or _settings.get_value("game", "intercity_fares", false)) and not skip_pbf_offer:
+	if (_osm_source() == "pbf" or _settings.get_value("game", "intercity_fares", false)) and not skip_pbf_offer:
 		var pbf := _pbf_path()
 		if pbf == "":
 			_offer_pbf_download(mode)
@@ -1118,7 +1130,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 			args.append_array(["--bbox", point_bbox(_start_point.x, _start_point.y)])
 			if _start_place != "":
 				args.append_array(["--place-name", _start_place])
-	args.append_array(map_source_args(_settings.get_value("map", "osm_source", ""), _pbf_path()))
+	args.append_array(map_source_args(_osm_source(), _pbf_path()))
 	args.append("--intercity-fares" if _settings.get_value("game", "intercity_fares", false) else "--no-intercity-fares")
 	if _settings.get_value("game", "intercity_fares", false) and _pbf_path() != "":
 		args.append_array(["--osm-pbf-path", _pbf_path()])

@@ -1823,6 +1823,7 @@ func test_speech_and_stations() -> void:
 	check(is_equal_approx((bbox[0] + bbox[2]) / 2.0, 65.0) and is_equal_approx((bbox[1] + bbox[3]) / 2.0, 25.0) and bbox[2] - bbox[0] > 0.02, "map point: the bbox is centred on the pin")
 	check(Startup.map_source_args("pbf", "") == ["--osm-source", "pbf"] and Startup.map_source_args("pbf", "/maps/fi.osm.pbf") == ["--osm-source", "pbf", "--osm-pbf-path", "/maps/fi.osm.pbf"], "map source: a local .osm.pbf, its path when set")
 	check(Startup.map_source_args("overpass", "x") == ["--osm-source", "overpass"] and Startup.map_source_args("", "") == [], "map source: Overpass, or the server's config")
+	check(Startup.effective_osm_source("", "C:/fi.osm.pbf") == "pbf" and Startup.effective_osm_source("", "") == "" and Startup.effective_osm_source("overpass", "C:/fi.osm.pbf") == "overpass", "map source: unset defaults to a .osm.pbf on disk, a choice wins")
 	check(Startup.FINLAND_PBF_URL == "https://download.geofabrik.de/europe/finland-latest.osm.pbf" and Startup.downloaded_pbf_path().ends_with("maps/finland-latest.osm.pbf"), "map source: Finland download uses the per-user data directory")
 	var pbf_modified := int(FileAccess.get_modified_time("res://finland_minimap.svg"))
 	check(not Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified) and Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified + Startup.PBF_MAX_AGE_S + 1), "map source: files over 30 days old are offered an update")
