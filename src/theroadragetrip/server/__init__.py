@@ -409,7 +409,6 @@ class SimulationServer:
         self._game_day_notice_shown = False
 
         self._listener: Optional[Listener] = None
-        self._running = False
 
     def _raining_last_hour(self) -> list:
         if self.weather_history is None:
@@ -652,7 +651,6 @@ class SimulationServer:
         self._listener = Listener(host, port, self._on_client_connect)
         self.host, self.port = self._listener.host, self._listener.port
         logger.info("Simulation server listening on %s:%d", self.host, self.port)
-        self._running = True
 
     def _live_feed(self):
         """Digitraffic MQTT (digitraffic_mqtt.py): live "now" data, so only
@@ -718,7 +716,6 @@ class SimulationServer:
     def close(self) -> None:
         """Stop listening and drop every client (tests; an embedding host).
         The process exit does this for the standalone server."""
-        self._running = False
         if getattr(self, "_chunk_pool", None) is not None:
             self._chunk_pool.shutdown(wait=False, cancel_futures=True)
         self.navigation.close()

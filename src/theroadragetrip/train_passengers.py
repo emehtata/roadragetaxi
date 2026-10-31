@@ -140,7 +140,6 @@ class PassengerFlow:
         self.waiting: Dict[str, Dict[Tuple[str, str], List[RailPassenger]]] = {}
         self.arrived: Dict[str, Deque[RailPassenger]] = {}
         self.boarded_total = 0
-        self.alighted_total = 0
 
     def _rng(self, service, when: datetime) -> random.Random:
         # Same train on the same day -> the same passengers (debuggable).
@@ -232,7 +231,6 @@ class PassengerFlow:
             train.manifest.setdefault(passenger.destination, []).append(passenger)
         for passenger in leaving:
             passenger.car = None
-        self.alighted_total += len(leaving)
         self.boarded_total += len(boarding)
         return leaving, boarding
 

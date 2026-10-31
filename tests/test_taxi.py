@@ -84,7 +84,6 @@ def test_offer_generation_adds_one_offer_at_a_time(monkeypatch):
 
     def fake_generate(car_x, car_y, count=3, append=False):
         requested_counts.append(count)
-        taxi_mgr._initial_offer_pending = False
         return []
 
     monkeypatch.setattr(taxi_mgr, "generate_offers", fake_generate)

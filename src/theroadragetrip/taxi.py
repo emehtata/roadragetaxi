@@ -232,12 +232,10 @@ class TaxiManager:
         self.rail_bookings = None
         self.driver_on_foot = False  # set every tick by simulation.advance_simulation
         self.offers: List[TaxiOffer] = []
-        self._initial_offer_pending = True
         self.fares_open = True  # False while the game starts up (the server opens it for the first client)
         self.state: str = TaxiState.WAITING_FOR_PICKUP
         self.total_score: int = 0
         self.completed_fares: int = 0
-        self.trip_start_time: float = 0.0
         self.elapsed_time: float = 0.0
         self.trip_distance_m: float = 0.0
         self.last_fare_points: int = 0
@@ -1958,7 +1956,6 @@ class TaxiManager:
         if self.has_job():
             self.offers = []
             return []
-        self._initial_offer_pending = False
         offers: List[TaxiOffer] = []
         available_slots = MAX_PHONE_OFFERS - len(self.offers) if append else MAX_PHONE_OFFERS
         for _ in range(min(max(1, count), max(0, available_slots))):
