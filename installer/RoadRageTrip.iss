@@ -1,5 +1,5 @@
 #define AppName "Road Rage Trip"
-#define AppVersion "0.20.0beta"
+#define AppVersion "0.21.0beta"
 #define AppPublisher "The Road Rage Trip"
 #define AppExeName "RoadRageTrip.exe"
 ; startup.gd's packaged map: Paths.package_path("assets/osm/finland-latest.osm.pbf")
