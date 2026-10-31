@@ -112,7 +112,7 @@ harder but is easier to hit, with no jump at any threshold.
 
 **The player**: the rage is the existing meter, `rage_power` (0..1, the HUD's
 "Rattiraivo"). Speeding, waiting at red lights and sliding raise it; legal
-driving lowers it; a shout spends 0.25. The simulation passes it to
+driving lowers it; a shout spends 0.5. The simulation passes it to
 `BrawlManager.update(player_rage=…)` every tick. It never comes from a client
 message, and fighting never changes it.
 

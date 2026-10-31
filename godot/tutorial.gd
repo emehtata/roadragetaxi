@@ -165,11 +165,11 @@ func _inspected(m, _state: Dictionary, _base: Dictionary) -> bool:
 
 
 func _rage_built(_m, state: Dictionary, _base: Dictionary) -> bool:
-	return float(state.get("rage_power", 0.0)) >= 0.25  # a shout's cost (simulation RAGE_SHOUT_COST)
+	return float(state.get("rage_power", 0.0)) >= 0.5  # a shout's cost (simulation RAGE_SHOUT_COST)
 
 
 func _rage_spent(_m, state: Dictionary, base: Dictionary) -> bool:
-	return float(state.get("rage_power", 0.0)) < base["rage"] - 0.2
+	return float(state.get("rage_power", 0.0)) < base["rage"] - 0.4
 
 
 func _in_brawl(_m, state: Dictionary, _base: Dictionary) -> bool:

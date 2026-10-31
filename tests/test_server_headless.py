@@ -818,13 +818,13 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
     real_broadcast = server._broadcast_state
     monkeypatch.setattr(server, "_broadcast_state", lambda **k: sent.append(k.get("events") or []) or real_broadcast(**k))
 
-    server._rage_power = 0.2  # below the cost: nothing at all
+    server._rage_power = 0.4  # below the cost: nothing at all
     server._pending_road_rages = 1
     server.tick(1.0 / 30.0)
     assert calls == [] and server._road_rage is None and not any(e.get("group") == "vehicle.horn" for e in sent[-1])
-    assert server._rage_power == pytest.approx(0.2, abs=0.01)
+    assert server._rage_power == pytest.approx(0.4, abs=0.01)
 
-    server._rage_power = 0.25  # exactly the cost: accepted, down to zero
+    server._rage_power = 0.5  # exactly the cost: accepted, down to zero
     server._pending_road_rages = 1
     at = (server.car.x, server.car.y, server.car.heading, server.world.traffic_mgr.sim_time)  # as the tick starts (the press before the step)
     server.tick(1.0 / 30.0)
@@ -847,12 +847,12 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
         server.tick(1.0 / 30.0)
     assert server._road_rage is None  # expired and cleared, never negative
 
-    server._rage_power = 0.6  # two distinct presses, two actions on two ticks
+    server._rage_power = 1.0  # two distinct presses, two actions on two ticks
     server._pending_road_rages = 2
     server.tick(1.0 / 30.0)
     server.tick(1.0 / 30.0)
     server.tick(1.0 / 30.0)
-    assert len(calls) == 3 and server._rage_power == pytest.approx(0.1, abs=0.01)
+    assert len(calls) == 3 and server._rage_power == pytest.approx(0.0, abs=0.01)
     assert sum(1 for events in sent[-3:] for e in events if e.get("group") == "vehicle.horn") == 2
 
 

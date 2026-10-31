@@ -4,8 +4,8 @@ const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := {
-	"tut_rage_meter": "RATTIRAIVO on pelin ydin. Mittari kuljettajan kuvan alla (oikealla alhaalla) nousee, kun ajat ylinopeutta, odotat punaisissa valoissa tai sladiat mutkissa; sääntöjen mukainen ajo rauhoittaa. Aja ylinopeutta, kunnes mittari näyttää 25 %.",
-	"tut_rage_shout": "Pura se nyt: paina Space. Tööttäät ja huudat, ja edessä oleva liikenne väistää. Jokainen purkaus vie 25 % raivosta, joten kerää sitä taas ennen seuraavaa.",
+	"tut_rage_meter": "RATTIRAIVO on pelin ydin. Mittari kuljettajan kuvan alla (oikealla alhaalla) nousee, kun ajat ylinopeutta, odotat punaisissa valoissa tai sladiat mutkissa; sääntöjen mukainen ajo rauhoittaa. Aja ylinopeutta, kunnes mittari näyttää 50 %.",
+	"tut_rage_shout": "Pura se nyt: paina Space. Tööttäät ja huudat, ja edessä oleva liikenne väistää. Jokainen purkaus vie 50 % raivosta, joten kerää sitä taas ennen seuraavaa.",
 	"tut_rage_brawl": "Kilpailevat taksikuskit pistävät vastaan. Tönäise kilpailijan taksia tai nouse autosta ja huuda (Space) sellaiselle muutaman metrin päästä. Tappelussa: Space lyö, pidä Shift pohjassa väistääksesi, F pakenee. Mitä enemmän raivoa, sitä kovemmin lyöt mutta sitä helpommin saat osuman.",
 	"tut_done": "Valmista! Lisäksi: G tankkaa pumpulla, R palauttaa taksin tielle, Esc pysäyttää. HUD-paneeleja voi siirtää hiirellä (U palauttaa). Anna raivon virrata – mutta pidä matkustajat tyytyväisinä.",
 	"tut_house_door": "Etsi nyt koti. Pysähdy omakotitalon viereen, nouse autosta (F) ja kävele sen ulko-ovelle (merkitty karttaan).",
@@ -253,8 +253,8 @@ const FI := {
 }
 
 const EN := {
-	"tut_rage_meter": "ROAD RAGE is what this game is about. The meter under the driver's portrait (bottom right) rises when you speed, wait at red lights or slide in corners; driving by the rules calms it. Speed past the limit until the meter reaches 25%.",
-	"tut_rage_shout": "Now let it out: press Space. You honk and shout, and the traffic ahead gets out of your way. Each outburst costs 25% rage, so build it up again before the next one.",
+	"tut_rage_meter": "ROAD RAGE is what this game is about. The meter under the driver's portrait (bottom right) rises when you speed, wait at red lights or slide in corners; driving by the rules calms it. Speed past the limit until the meter reaches 50%.",
+	"tut_rage_shout": "Now let it out: press Space. You honk and shout, and the traffic ahead gets out of your way. Each outburst costs 50% rage, so build it up again before the next one.",
 	"tut_rage_brawl": "Rival taxi drivers fight back. Bump a rival taxi, or get out and shout (Space) at one within a few metres. In the fight: Space punches, hold Shift to dodge, F runs away. More rage hits harder but leaves you open.",
 	"tut_done": "That's it! Also: G refuels at a fuel pump, R puts the taxi back on the road, Esc pauses. Drag the HUD panels with the mouse to rearrange them (U resets). Keep the rage flowing - but keep your passengers happy.",
 	"tut_house_door": "Now find a home. Stop next to a detached house, get out (F) and walk to its front door (marked on the map).",
@@ -504,8 +504,8 @@ const EN := {
 }
 
 const DE := {
-	"tut_rage_meter": "STRASSENWUT ist der Kern des Spiels. Die Anzeige unter dem Fahrerbild (unten rechts) steigt, wenn du zu schnell fährst, an roten Ampeln wartest oder in Kurven rutschst; regelkonformes Fahren beruhigt. Fahre zu schnell, bis die Anzeige 25 % erreicht.",
-	"tut_rage_shout": "Jetzt raus damit: drücke die Leertaste. Du hupst und schreist, und der Verkehr vor dir weicht aus. Jeder Ausbruch kostet 25 % Wut – sammle sie vor dem nächsten wieder.",
+	"tut_rage_meter": "STRASSENWUT ist der Kern des Spiels. Die Anzeige unter dem Fahrerbild (unten rechts) steigt, wenn du zu schnell fährst, an roten Ampeln wartest oder in Kurven rutschst; regelkonformes Fahren beruhigt. Fahre zu schnell, bis die Anzeige 50 % erreicht.",
+	"tut_rage_shout": "Jetzt raus damit: drücke die Leertaste. Du hupst und schreist, und der Verkehr vor dir weicht aus. Jeder Ausbruch kostet 50 % Wut – sammle sie vor dem nächsten wieder.",
 	"tut_rage_brawl": "Rivalisierende Taxifahrer wehren sich. Ramme ein Konkurrenztaxi leicht oder steig aus und schrei (Leertaste) einen Fahrer in wenigen Metern an. Im Kampf: Leertaste schlägt, Shift halten weicht aus, F flieht. Mehr Wut schlägt härter, macht dich aber verwundbarer.",
 	"tut_done": "Fertig! Außerdem: G tankt an einer Zapfsäule, R setzt das Taxi zurück auf die Straße, Esc pausiert. HUD-Elemente lassen sich mit der Maus verschieben (U setzt zurück). Lass die Wut raus – aber halte deine Fahrgäste bei Laune.",
 	"tut_house_door": "Such dir jetzt ein Zuhause. Halte neben einem Einfamilienhaus, steig aus (F) und geh zur Haustür (auf der Karte markiert).",
