@@ -247,17 +247,6 @@ def test_drunk_promille_changes_walking_and_can_cause_a_fall(monkeypatch: pytest
     assert pedestrian.animation_state == "fallen"
 
 
-def test_vehicle_exit_can_use_explicit_transition_state():
-    way = Way(points_m=[(0.0, 0.0), (30.0, 0.0)], highway="footway", half_width_m=1.5)
-    vehicle = SimpleNamespace(x=10.0, y=0.0, heading=0.0, width_m=1.8, state="occupied", current_driver_id=None)
-    manager = PedestrianManager([way], target_count=0, traffic_vehicles=[vehicle])
-    pedestrian = Pedestrian(10.0, 0.0, 0.0, 1.0, 1.0, way, 0, 1, (1, 1, 1))
-    pedestrian.current_vehicle_id = id(vehicle)
-    vehicle.current_driver_id = id(pedestrian)
-    assert manager.exit_vehicle(pedestrian, vehicle, animate=True)
-    assert pedestrian.state == PedestrianState.EXITING_VEHICLE.value
-
-
 def test_crashed_driver_pedestrian_keeps_resident_identity():
     way = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=2.0)
     residents = ResidentManager()

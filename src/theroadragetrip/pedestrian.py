@@ -450,7 +450,6 @@ class PedestrianState(str, Enum):
     IN_BUILDING = "in_building"
     EXITING_BUILDING = "exiting_building"
     ENTERING_VEHICLE = "entering_vehicle"
-    EXITING_VEHICLE = "exiting_vehicle"
     IN_VEHICLE = "in_vehicle"
     DESPAWNING = "despawning"
 
@@ -1579,7 +1578,7 @@ class PedestrianManager:
         pedestrian.animation_state = "idle"
         return True
 
-    def exit_vehicle(self, pedestrian: Pedestrian, vehicle, animate: bool = False) -> bool:
+    def exit_vehicle(self, pedestrian: Pedestrian, vehicle) -> bool:
         """Return a pedestrian beside an occupied vehicle and resume normal driving."""
         if (
             pedestrian.current_vehicle_id != id(vehicle)
@@ -1593,11 +1592,9 @@ class PedestrianManager:
         pedestrian.vehicle_destination = None
         pedestrian.destination = None
         pedestrian.speed = 0.0
-        pedestrian.state = (
-            PedestrianState.EXITING_VEHICLE.value if animate else PedestrianState.WALKING.value
-        )
+        pedestrian.state = PedestrianState.WALKING.value
         pedestrian.animation_state = "walking"
-        pedestrian.vehicle_entry_timer = 0.35 if animate else 0.0
+        pedestrian.vehicle_entry_timer = 0.0
         if self.traffic_manager is not None:
             self.traffic_manager.activate_occupied_vehicle(vehicle)
         else:
@@ -2942,13 +2939,6 @@ class PedestrianManager:
                         ) <= 3.0
                     ):
                         self.exit_vehicle(ped, vehicle)
-                continue
-            if ped.state == PedestrianState.EXITING_VEHICLE.value:
-                ped.speed = 0.0
-                ped.vehicle_entry_timer = max(0.0, ped.vehicle_entry_timer - update_dt)
-                if ped.vehicle_entry_timer <= 0.0:
-                    ped.state = PedestrianState.WALKING.value
-                    ped.animation_state = "walking"
                 continue
             if ped.state == "walking" and getattr(ped, "wants_vehicle", False):
                 vehicle = self.find_available_parked_vehicle(ped.x, ped.y)
