@@ -450,7 +450,7 @@ func _main_menu() -> void:
 	_clear()
 	_title("ROAD RAGE TRIP", _t("choose_start"))
 	_with_help(_button(_t("tutorial"), _start_tutorial), "help_tutorial")
-	var career := _button(_t("career"), func(): _start("career"))
+	var career := _button(_t("career"), _career_menu)
 	var gig := _button(_t("gig_driver"), func(): _gig_mode = "gig_driver"; _slot_menu())
 	var simulation := _button(_t("simulation"), func(): _gig_mode = "simulation"; _slot_menu())
 	_with_help(simulation, "help_simulation")
@@ -462,6 +462,21 @@ func _main_menu() -> void:
 	# Enter: the mode played last time (gig driving the first time).
 	var last: String = _settings.get_value("menu", "mode", "gig_driver")
 	(career if last == "career" else simulation if last == "simulation" else gig).call_deferred("grab_focus")
+
+
+## Career: what the goals are, then start (the server keeps the progress).
+func _career_menu() -> void:
+	_clear()
+	_title(_t("career").to_upper())
+	var goals := Label.new()
+	goals.text = _t("career_goals")
+	goals.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	goals.custom_minimum_size.x = 520
+	_body.add_child(goals)
+	_button(_t("start"), func(): _start("career"))
+	_button(_t("back"), _main_menu)
+	_back_action = _main_menu
+	_focus_menu()
 
 
 ## The tutorial: a fresh, unsaved gig in Oulu's centre at midday today.

@@ -170,6 +170,9 @@ func test_settings_help() -> void:
 	var shell = preload("res://startup.gd").new()
 	root.add_child(shell)
 	shell._settings_menu()
+	shell._career_menu()
+	check(shell._focusables.size() == 2 and shell._focusables[0].text == I18n.text("start", "en"), "career: the goals, then Start and Back")
+	shell._settings_menu()
 	check(shell._focusables.size() == 9 and shell._focusables[6].text.begins_with(I18n.text("setup_wizard", "en")) and shell._focusables[7].text.begins_with(I18n.text("tutorial", "en")), "settings: six categories, the setup wizard, the tutorial and Back")
 	var help_count := 0
 	for category in ["general", "gameplay", "graphics", "audio", "maps", "experimental"]:
