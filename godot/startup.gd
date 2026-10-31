@@ -50,6 +50,7 @@ const THUMB_SIZE := Vector2i(160, 90)
 var _pause_shot: Image  # the frame just before the pause menu opened: a save's thumbnail
 const MAX_GIG_SLOTS := 5  # gig saves; a new game beyond them replaces one (career keeps its single save)
 var _gig_mode := "gig_driver"  # the slot-and-city flow's mode: gig driving, or simulation (always the real clock)
+var _tutorial := false  # the next start is the tutorial game
 var _save_slot := ""  # the gig's save slot (server saves/NAME.json): loaded if it exists, saved by the pause menu
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
 var _menu_music: AudioStreamPlayer
@@ -89,6 +90,7 @@ func _ready() -> void:
 		if flag in command_line:
 			_game = preload("res://main.tscn").instantiate()
 			_game.language = _language
+			_game.tutorial = "--tutorial" in command_line  # the coach panel in a shot or test
 			_game.set_graphics(Graphics.read(_settings))
 			_apply_interior_settings()
 			add_child(_game)
@@ -447,6 +449,7 @@ func _main_menu() -> void:
 	_play_menu_music()
 	_clear()
 	_title("ROAD RAGE TRIP", _t("choose_start"))
+	_with_help(_button(_t("tutorial"), _start_tutorial), "help_tutorial")
 	var career := _button(_t("career"), func(): _start("career"))
 	var gig := _button(_t("gig_driver"), func(): _gig_mode = "gig_driver"; _slot_menu())
 	var simulation := _button(_t("simulation"), func(): _gig_mode = "simulation"; _slot_menu())
@@ -459,6 +462,18 @@ func _main_menu() -> void:
 	# Enter: the mode played last time (gig driving the first time).
 	var last: String = _settings.get_value("menu", "mode", "gig_driver")
 	(career if last == "career" else simulation if last == "simulation" else gig).call_deferred("grab_focus")
+
+
+## The tutorial: a fresh, unsaved gig in Oulu's centre at midday today.
+func _start_tutorial() -> void:
+	_city = "Oulu" if "Oulu" in _cities else _cities[0]
+	var today := Time.get_date_dict_from_system()
+	_start_time = {"year": today["year"], "month": today["month"], "day": today["day"], "hour": 12, "minute": 0}
+	_start_point = Vector2.INF
+	_start_place = ""
+	_save_slot = ""
+	_tutorial = true
+	_start("gig_driver")
 
 
 ## "Clear all map cache": asked first; then the server deletes
@@ -1199,6 +1214,8 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		return
 	_game = preload("res://main.tscn").instantiate()
 	_game.language = _language
+	_game.tutorial = _tutorial
+	_tutorial = false
 	_game.set_graphics(Graphics.read(_settings))
 	_apply_interior_settings()
 	_game.get_node("SimClient").connection_changed.connect(_server_connected)

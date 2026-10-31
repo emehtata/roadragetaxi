@@ -123,6 +123,7 @@ var override_rain := -1.0
 var override_train_at := Vector2.INF
 var override_wetness := -1.0  # audio test: a moving train here (presentation only)
 var language := "en"
+var tutorial := false  # the launcher's tutorial game: the coach panel (tutorial.gd)
 var graphics: Dictionary = {}  # empty for direct scenes/tests; the launcher supplies saved defaults
 
 
@@ -145,6 +146,10 @@ func _ready() -> void:
 	_apply_language()
 	_build_help()
 	_build_inspector()
+	if tutorial:
+		var coach := Tutorial.new()
+		coach.main = self
+		$Ui.add_child(coach)
 	add_child(home_walk)
 	add_child(home_first_person)
 	add_child(door_marks)

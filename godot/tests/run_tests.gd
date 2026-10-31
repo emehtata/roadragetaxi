@@ -63,6 +63,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_camera_view_command()
 	test_vomit_puddle()
 	test_i18n()
+	test_tutorial()
 	test_graphics_settings()
 	test_chunk_queue()
 	test_interpolation()
@@ -466,6 +467,18 @@ func test_chunk_queue() -> void:
 	check(map.chunk_count() == 4, "light ones still share a frame")
 	map.free()
 	main.free()
+
+
+func test_tutorial() -> void:
+	var coach := Tutorial.new()
+	check(Tutorial.STEPS.all(func(row): return I18n.EN.has(row[0]) and (row[1] == "" or coach.has_method(row[1]))), "tutorial: every step has its text and its check")
+	var base := {"fares": 2}
+	check(not coach._fare_done(null, {"taxi": {"completed_fares": 2}}, base) and coach._fare_done(null, {"taxi": {"completed_fares": 3}}, base), "tutorial: a fare is done when the completed count grows")
+	check(coach._passenger_in(null, {"taxi": {"state": "DROPOFF"}}, {}) and not coach._passenger_in(null, {"taxi": {"state": "PICKUP"}}, {}), "tutorial: the passenger is in on the way to the drop-off")
+	check(not coach._fare_accepted(null, {"taxi": {"current_passenger": null}}, {}) and coach._fare_accepted(null, {"taxi": {"current_passenger": {"name": "A"}}}, {}), "tutorial: an accepted fare has a passenger")
+	check(coach._indoors(null, {"home_door": {"indoors": true}}, {}) and coach._at_home_door(null, {"home_door": {"available": true}}, {}) and not coach._at_home_door(null, {}, {}), "tutorial: home door and indoors")
+	check(coach._engine_on(null, {"on_foot": false, "player": {"engine_on": true}}, {}) and not coach._in_taxi(null, {}, {}), "tutorial: in the taxi, engine on")
+	coach.free()
 
 
 func test_i18n() -> void:
