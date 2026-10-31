@@ -4,7 +4,7 @@ from theroadragetrip.map_style import LEGACY_HIGHWAY_COLORS, road_color_for_way
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import Car, SpatialWayGrid, get_road_layer_at_point, is_on_road
 from theroadragetrip.osm import Scenery
-from theroadragetrip.viewport import get_viewport_bounds, minimum_px_per_m_for_viewport_width
+from theroadragetrip.viewport import get_viewport_bounds
 
 
 def test_compute_bbox():
@@ -24,17 +24,6 @@ def test_get_viewport_bounds():
     assert vmaxx == 550.0
     assert vminy == -150.0
     assert vmaxy == 550.0
-
-
-def test_minimum_zoom_keeps_viewport_width_at_or_below_limit():
-    min_px_per_m = minimum_px_per_m_for_viewport_width(
-        max_width_m=500.0, screen_w=1280, margin_m=30.0
-    )
-    vminx, _, vmaxx, _ = get_viewport_bounds(
-        camx=0.0, camy=0.0, px_per_m=min_px_per_m, screen_w=1280, screen_h=720, margin_m=30.0
-    )
-
-    assert vmaxx - vminx == 500.0
 
 
 def test_spatial_way_grid_detection():

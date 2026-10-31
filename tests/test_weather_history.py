@@ -275,9 +275,6 @@ def test_forecast_fills_future_game_time_after_observations_and_keeps_snow():
     forecast = history.get(forecast_moment)
     assert forecast is not None and forecast.source == "forecast"
     assert forecast.snow_depth_cm == 16.0  # no depth forecast: last observed depth carries on
-    assert history.source_at(forecast_moment) == "forecast"
-    assert history.source_at(datetime(2025, 1, 15, 3)) == "observed"
-    assert history.source_at(datetime(2031, 1, 1)) == "generated"
 
     history.request(now, now + timedelta(hours=24))  # refreshed at most once per real hour
     history.wait_idle(5.0)
@@ -318,7 +315,7 @@ def test_recent_chunks_and_the_forecast_are_cached_for_an_hour(tmp_path, monkeyp
     second = session()
     assert len(observation_calls) == calls and len(forecast_calls) == 1  # all from SQLite
     moment = datetime(2026, 9, 24, 20, 0)  # in the fixture forecast
-    assert second.get(moment).temperature_c == first.get(moment).temperature_c and second.source_at(moment) == "forecast"
+    assert second.get(moment).temperature_c == first.get(moment).temperature_c
     real_time = wh.time.time
     monkeypatch.setattr(wh.time, "time", lambda: real_time() + 2 * 3600)  # two hours later
     session()

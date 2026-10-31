@@ -2,7 +2,7 @@
 import pytest
 
 from theroadragetrip.level_transitions import LevelTransitions, resolve_connectors
-from theroadragetrip.map_level import SURFACE_LEVEL, LevelRoadNetworks, explicit_levels, visible_on_level
+from theroadragetrip.map_level import SURFACE_LEVEL, LevelRoadNetworks, explicit_levels
 from theroadragetrip.osm import Building, LevelConnector, Way
 from theroadragetrip.physics import Car, SpatialWayGrid, get_current_road_at_car
 from theroadragetrip.taxi import TaxiManager
@@ -120,7 +120,6 @@ def test_level_change_flows_into_driving_rendering_and_collision():
     assert get_current_road_at_car(car, ways=roads, spatial_grid=grid, car_roads_only=True) is RAMP
     assert get_current_road_at_car(car, ways=ways, spatial_grid=surface_grid, car_roads_only=True) is RAMP
     surface_building = Building([(1.0, -2.0), (4.0, -2.0), (4.0, 2.0), (1.0, 2.0)])
-    assert not visible_on_level(surface_building, car.map_level)
     assert TaxiManager(ways=[]).check_building_collision(car, [surface_building], sim_time=1.0) is False
 
 

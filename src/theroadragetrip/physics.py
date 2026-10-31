@@ -443,17 +443,6 @@ def off_road_ground_kind(
     return "hard" if found_hard else "sand" if found_sand else "soft"
 
 
-def is_point_on_soft_ground(
-    px: float,
-    py: float,
-    sceneries: Optional[List] = None,
-    scenery_grid: Optional["SpatialWayGrid"] = None,
-) -> bool:
-    """Whether open ground at (px, py) is soft earth/grass specifically
-    (see off_road_ground_kind)."""
-    return off_road_ground_kind(px, py, sceneries, scenery_grid) == "soft"
-
-
 def is_point_in_water(
     px: float,
     py: float,

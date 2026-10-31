@@ -2,7 +2,6 @@
 only when it is one clean integer, and layer=* never feeds into it."""
 import pytest
 
-from theroadragetrip.map_level import visible_on_level
 from theroadragetrip.osm import AutoFetchManager, build_ways
 from theroadragetrip.osm.build import parse_map_level
 from theroadragetrip.world_cache import BinaryWorldCacheLoader, BinaryWorldCacheWriter
@@ -115,7 +114,6 @@ def test_level_ways_survive_cache_and_streaming(tmp_path):
 def test_multi_level_keeps_the_raw_tag_and_stays_surface():
     way = _road({"level": "-2;-1"})
     assert way.map_level is None and way.level == "-2;-1"
-    assert visible_on_level(way, 0)  # unchanged rendering: still surface world
 
 
 @pytest.mark.parametrize("indoor", ["yes", "parking", "corridor"])

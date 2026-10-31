@@ -357,7 +357,6 @@ def test_taxi_mission_lifecycle():
     assert taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
     assert taxi_mgr.current_passenger.boarded is True
     assert taxi_mgr.get_current_target() == dropoff
-    assert taxi_mgr.current_fare_cents() >= 800
 
     # 4. Drive towards dropoff
     car.odometer_m += 1000.0

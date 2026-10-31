@@ -113,9 +113,6 @@ area.
 Added `theroadragetrip.map_level` and `Car.map_level` (0), and a
 `map_level` line in the debug HUD.
 
-- **`visible_on_level(obj, level)`:** an object with a `map_level` is
-  visible only when it equals `level`. Without one, the object is surface
-  world.
 - **`surface_visible(level)`:** true on level 0.
 
 Rendering was unchanged in this phase. The gate followed in phase 5.

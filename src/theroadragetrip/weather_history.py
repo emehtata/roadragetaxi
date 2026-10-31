@@ -313,11 +313,6 @@ class WeatherHistory:
             current = replace(current, snow_depth_cm=latest_snow)
         return current
 
-    def source_at(self, moment: datetime) -> str:
-        """"observed", "forecast" or "generated" (nothing known)."""
-        observed = self.get(moment)
-        return observed.source if observed is not None else "generated"
-
     def previous(self, moment: datetime):
         """Latest earlier FMI hour with precipitation, including unloaded disk history.
         Returns (UTC epoch hour, weather) or None; caller caches this per game hour."""

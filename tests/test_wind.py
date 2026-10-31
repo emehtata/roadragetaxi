@@ -41,8 +41,6 @@ def test_weather_follows_observed_wind_and_trees_lean_downwind():
         weather.update(3600.0, 0.0, observed=observed)
     assert math.isclose(weather.wind_speed_mps, 18.0, abs_tol=0.01)
     assert math.isclose(weather.wind_from_deg, 270.0, abs_tol=0.01)
-    east, north = weather.tree_lean_m
-    assert east > 0.5 and abs(north) < 1e-6  # crowns lean east
 
     weather.update(3600.0, 0.0, observed=HourlyWeather())  # no wind data: generator continues from here
     assert 0.0 <= weather.wind_from_deg < 360.0

@@ -938,9 +938,6 @@ def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path,
             return HourlyWeather(temperature_c=-3.5, precipitation_mm=2.0, wawa=71,
                                  wind_speed_mps=6.5, wind_from_deg=225.0, snow_depth_cm=2.0)
 
-        def source_at(self, moment):
-            return "observed"
-
     server.weather_history = FakeHistory()
     import logging
     with caplog.at_level(logging.INFO, logger="theroadragetrip.server"):

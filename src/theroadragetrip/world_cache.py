@@ -500,9 +500,6 @@ class WorldCacheManager:
     def tile_id(tile: TileCoord) -> str:
         return f"tile_{tile.x}_{tile.y}"
 
-    def path_for_tile(self, tile: TileCoord) -> Path:
-        return self.path_for(self.tile_id(tile))
-
     def preload_region(self, bbox, **kwargs) -> Future:
         """Load one combined streaming region instead of one request per tile."""
         return self.preload(self.area_id(bbox), bbox, allow_covering=False, **kwargs)

@@ -393,10 +393,6 @@ class TaxiManager:
     def _current_game_datetime(self) -> datetime:
         return datetime.combine(self.game_date, datetime.min.time()) + timedelta(seconds=self.game_time_seconds)
 
-    def current_fare_cents(self) -> int:
-        """Return the live meter amount for the onboard passenger."""
-        return self.live_fare_cents
-
     def phone_item_index(self, item_id: str) -> Optional[int]:
         """The phone row of a client-side id ("offer-N" / "booking-N"), or None
         once it is gone (expired, taken, declined)."""
