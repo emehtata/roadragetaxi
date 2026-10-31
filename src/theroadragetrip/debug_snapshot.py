@@ -3,7 +3,7 @@ import logging
 import math
 import time
 from dataclasses import asdict
-from typing import List, Optional
+from typing import List
 
 
 from . import tile_streaming
@@ -26,147 +26,6 @@ def _nearest_boundary_distance(x: float, y: float, points: List, closed: bool) -
         (dist_point_to_segment(x, y, ax, ay, bx, by) for (ax, ay), (bx, by) in edges),
         default=math.inf,
     )
-
-
-def find_feature_at(
-    x: float,
-    y: float,
-    ways: Optional[List] = None,
-    curbs: Optional[List] = None,
-    railings: Optional[List] = None,
-    buildings: Optional[List] = None,
-    sceneries: Optional[List] = None,
-    parking_spaces: Optional[List] = None,
-    waters: Optional[List] = None,
-    railways: Optional[List] = None,
-    tolerance_m: float = 3.0,
-) -> Optional[dict]:
-    """RENDER-audit.md section 19: the nearest mapped OSM feature to
-    (x, y) - world coordinates - across the map's own already-loaded
-    feature lists, or None if nothing is within tolerance_m. A debug
-    tool for diagnosing "is this feature parsed? rendered? drivable?"
-    directly from the game instead of by reading code - only ever
-    called on a deliberate request, never per frame, so a plain linear
-    scan across each category is fine here.
-    """
-    candidates = []  # (distance, info)
-
-    for way in ways or ():
-        points = getattr(way, "points_m", None)
-        if not points or len(points) < 2:
-            continue
-        d = _nearest_boundary_distance(x, y, points, closed=False)
-        if d <= tolerance_m:
-            candidates.append((d, {
-                "type": f"highway={getattr(way, 'highway', '?')}",
-                "source": "OSM way",
-                "id": getattr(way, "osm_id", None) or "unknown (not preserved by parser)",
-                "rendered": "yes",
-                "drivable": "yes" if getattr(way, "is_drivable", True) else "no",
-            }))
-
-    for curb in curbs or ():
-        points = getattr(curb, "points_m", None)
-        if not points or len(points) < 2:
-            continue
-        d = _nearest_boundary_distance(x, y, points, closed=False)
-        if d <= tolerance_m:
-            candidates.append((d, {
-                "type": "barrier=kerb",
-                "source": "OSM way",
-                "id": "unknown (not preserved by parser)",
-                "rendered": "yes (outline)",
-                "drivable": "no",
-            }))
-
-    for railing in railings or ():
-        points = getattr(railing, "points_m", None)
-        if not points or len(points) < 2:
-            continue
-        d = _nearest_boundary_distance(x, y, points, closed=False)
-        if d <= tolerance_m:
-            candidates.append((d, {
-                "type": f"barrier={getattr(railing, 'kind', '?')}",
-                "source": "OSM way",
-                "id": "unknown (not preserved by parser)",
-                "rendered": "yes",
-                "drivable": "no",
-            }))
-
-    for railway in railways or ():
-        points = getattr(railway, "points_m", None)
-        if not points or len(points) < 2:
-            continue
-        d = _nearest_boundary_distance(x, y, points, closed=False)
-        if d <= tolerance_m:
-            candidates.append((d, {
-                "type": f"railway={getattr(railway, 'kind', '?')}",
-                "source": "OSM way",
-                "id": "unknown (not preserved by parser)",
-                "rendered": "yes",
-                "drivable": "no",
-            }))
-
-    for water in waters or ():
-        points = getattr(water, "points_m", None)
-        if not points or len(points) < 2:
-            continue
-        d = _nearest_boundary_distance(x, y, points, closed=bool(getattr(water, "is_polygon", False)))
-        if d <= tolerance_m:
-            candidates.append((d, {
-                "type": f"natural/waterway={getattr(water, 'kind', '?')}",
-                "source": "OSM way",
-                "id": "unknown (not preserved by parser)",
-                "rendered": "yes",
-                "drivable": "no",
-            }))
-
-    for building in buildings or ():
-        points = getattr(building, "points_m", None)
-        if not points or len(points) < 3:
-            continue
-        d = _nearest_boundary_distance(x, y, points, closed=True)
-        if d <= tolerance_m:
-            candidates.append((d, {
-                "type": "building",
-                "source": "OSM way",
-                "id": "unknown (not preserved by parser)",
-                "rendered": "yes",
-                "drivable": "no",
-            }))
-
-    for scenery in sceneries or ():
-        points = getattr(scenery, "points_m", None)
-        if not points or len(points) < 3:
-            continue
-        d = _nearest_boundary_distance(x, y, points, closed=True)
-        if d <= tolerance_m:
-            candidates.append((d, {
-                "type": f"area kind={getattr(scenery, 'kind', '?')}",
-                "source": "OSM way",
-                "id": "unknown (not preserved by parser)",
-                "rendered": "yes",
-                "drivable": "no",
-            }))
-
-    for space in parking_spaces or ():
-        points = getattr(space, "points_m", None)
-        if not points or len(points) < 3:
-            continue
-        d = _nearest_boundary_distance(x, y, points, closed=True)
-        if d <= tolerance_m:
-            candidates.append((d, {
-                "type": "amenity=parking_space",
-                "source": "OSM way/node",
-                "id": getattr(space, "osm_id", None) or "unknown",
-                "rendered": "yes",
-                "drivable": "no (parking target only)",
-            }))
-
-    if not candidates:
-        return None
-    candidates.sort(key=lambda c: c[0])
-    return candidates[0][1]
 
 
 def _npc_snapshot(vehicle, driver=None) -> dict:
@@ -361,11 +220,7 @@ def _write_debug_snapshot(
             "margin_m": args.fetch_margin,
             # The real live tile-streaming grid size (tile_streaming.
             # TILE_SIZE_M, set once at startup - see set_tile_size_m in
-            # world_loader), NOT args.fetch_tile_size: that CLI value only feeds
-            # AutoFetchManager.start_if_needed(), a legacy margin-based
-            # fetch path no longer called anywhere - reporting it here was
-            # reporting a number that has nothing to do with the tiles
-            # actually being streamed.
+            # world_loader).
             "tile_size_m": tile_streaming.TILE_SIZE_M,
             "build_in_process": bool(args.build_in_process),
             "osm_source": args.osm_source,

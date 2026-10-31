@@ -1243,3 +1243,43 @@ def test_incremental_merge_associates_places_identically_to_synchronous_merge():
     assert [[p.name for p in b.associated_places] for b in incr_manager.buildings] == \
         [[p.name for p in b.associated_places] for b in sync_manager.buildings]
     assert any(b.associated_places for b in incr_manager.buildings)
+
+
+def test_dirty_areas_are_the_changed_tiles_not_their_span():
+    """A long road merged with one tile, and a tile unloaded on the far side,
+    rebuild those tiles only - not one rect spanning everything between."""
+    size = tile_streaming.TILE_SIZE_M
+    long_road = Way([(0.0, 10.0), (9 * size, 10.0)], "primary", 6.0, osm_id=7)
+    manager = AutoFetchManager([], (0.0, 0.0, 10 * size, size), transformer=None)
+    far_road = Way([(8 * size + 10, 10.0), (8 * size + 90, 10.0)], "residential", 4.0, osm_id=8)
+    manager._merge_tile_world_for(TileCoord(8, 0), MapData([far_road], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+    manager.take_dirty_areas()
+    manager._merge_tile_world_for(TileCoord(0, 0), MapData([long_road], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+    manager._merge_tile_world_for(TileCoord(1, 0), MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+    manager._unload_tiles({TileCoord(8, 0)})
+    assert sorted(manager.take_dirty_areas()) == [(0.0, 0.0, 2 * size, size), (8 * size, 0.0, 9 * size, size)]
+    assert manager.take_dirty_areas() is None
+
+
+def test_unloading_a_venue_tile_ends_only_its_place_matches():
+    from theroadragetrip.osm.models import Building, Place
+
+    size = tile_streaming.TILE_SIZE_M
+    hall = Building(points_m=[(10.0, 10.0), (90.0, 10.0), (90.0, 90.0), (10.0, 90.0)], bbox=(10.0, 10.0, 90.0, 90.0))
+    kept = Place(50.0, 50.0, "Kahvila", "cafe")
+    leaving = Place(50.0, 60.0, "Kioski", "kiosk")
+    manager = AutoFetchManager([], (0.0, 0.0, 2 * size, size), transformer=None)
+    manager._merge_tile_world_for(TileCoord(0, 0), MapData([], [], [hall], [], [kept], (0.0, 0.0, 1.0, 1.0)))
+    manager._merge_tile_world_for(TileCoord(1, 0), MapData([], [], [], [], [leaving], (0.0, 0.0, 1.0, 1.0)))
+    assert {place.name for place in hall.associated_places} == {"Kahvila", "Kioski"}
+    manager._unload_tiles({TileCoord(1, 0)})
+    assert manager.places == [kept] and [place.name for place in hall.associated_places] == ["Kahvila"]
+
+
+def test_an_initial_world_with_a_key_twice_unloads_both_copies():
+    twin_a = Way([(10.0, 10.0), (20.0, 10.0)], "residential", 4.0, osm_id=5, bbox=(10.0, 10.0, 20.0, 10.0))
+    twin_b = Way([(10.0, 10.0), (20.0, 10.0)], "residential", 4.0, osm_id=5, bbox=(10.0, 10.0, 20.0, 10.0))
+    manager = AutoFetchManager([twin_a, twin_b], (0.0, 0.0, 1000.0, 1000.0), transformer=None)
+    manager._register_existing_world()
+    manager._unload_tiles({TileCoord(0, 0)})
+    assert manager.ways == []

@@ -312,17 +312,6 @@ class WeatherSystem:
         bearing = math.radians(self.wind_from_deg)
         return (-math.sin(bearing) * speed, -math.cos(bearing) * speed)
 
-    @property
-    def tree_lean_m(self) -> tuple:
-        """Downwind crown displacement (east, north) seen from above; grows
-        with wind pressure (speed squared) and sways with the gusts."""
-        east, north = self.wind_vector_mps
-        speed = math.hypot(east, north)
-        if speed < 1e-6:
-            return (0.0, 0.0)
-        lean = min(TREE_MAX_LEAN_M, TREE_LEAN_PER_WIND_SQ * speed * speed)
-        return (east / speed * lean, north / speed * lean)
-
     def _advance_wind(self, game_dt: float, observed) -> None:
         observed_speed = getattr(observed, "wind_speed_mps", None)
         if observed_speed is not None:

@@ -1,14 +1,10 @@
-import concurrent.futures
 import logging
 import math
-import multiprocessing
-import os
 import threading
 import time
 from typing import List, Optional, Set, Tuple
 
 
-from ..parent_watch import exit_with_parent
 from ..performance import advance_chunked
 from ..tile_streaming import TileCoord, active_tiles, lookahead_tiles, tile_bbox, tile_changes, world_to_tile
 
@@ -34,10 +30,6 @@ from .models import (
     BusStop,
     SceneryObject,
     SpeedBump,
-)
-
-from .cache import (
-    load_osm_cache,
 )
 
 from .overpass import (
@@ -343,6 +335,10 @@ class AutoFetchManager:
         self.last_tile_unload_ms = 0.0
         self._tile_objects: dict[TileCoord, dict[str, dict[tuple, object]]] = {}
         self._object_tiles: dict[str, dict[tuple, set[TileCoord]]] = {}
+        # The objects in the section list for each key (the initial world can
+        # hold a key twice), so an unload filters the list by identity:
+        # recomputing every object's key took 55-65 ms a tick.
+        self._live_items: dict[str, dict[tuple, list]] = {}
         # Tiles that left the active window but aren't unloaded yet - kept
         # resident (map_revision-cheap on their own, since staying loaded
         # touches nothing) so a player who immediately doubles back doesn't
@@ -351,9 +347,9 @@ class AutoFetchManager:
         # says it's worth it. Value is the time.monotonic() the tile went
         # inactive, for oldest-first eviction.
         self._inactive_tile_since: dict[TileCoord, float] = {}
-        # Union of the extents of objects merged in or unloaded since the
-        # last take_dirty_rect(): where the server's map chunks changed.
-        self.dirty_rect: Optional[tuple[float, float, float, float]] = None
+        # Tiles merged in or unloaded since the last take_dirty_areas():
+        # where the server's map chunks changed.
+        self.dirty_tiles: set[TileCoord] = set()
         self.tile_memory_budget_mb = tile_memory_budget_mb
         self.last_process_memory_mb: Optional[float] = None
         # Off unless runtime streaming is on (main sets it from
@@ -634,6 +630,7 @@ class AutoFetchManager:
         for section, objects in sections.items():
             for item in objects:
                 key = _map_object_key(item)
+                self._live_items.setdefault(section, {}).setdefault(key, []).append(item)
                 owners = self._object_tiles.setdefault(section, {}).setdefault(key, set())
                 for tile in self._item_tiles(item):
                     owners.add(tile)
@@ -683,20 +680,31 @@ class AutoFetchManager:
             max_y = max(point[1] for point in points)
         return min_x, min_y, max_x, max_y
 
-    def _mark_dirty(self, item) -> None:
-        """Grow dirty_rect by an object that entered or left the world."""
-        rect = self._item_rect(item)
-        if rect is None:
-            return
-        d = self.dirty_rect
-        self.dirty_rect = rect if d is None else (min(d[0], rect[0]), min(d[1], rect[1]), max(d[2], rect[2]), max(d[3], rect[3]))
-
-    def take_dirty_rect(self) -> Optional[tuple[float, float, float, float]]:
-        """The area changed by merges and unloads since the last call (the map
-        chunks to rebuild there), and start over. None: nothing changed."""
+    def take_dirty_areas(self) -> Optional[list[tuple[float, float, float, float]]]:
+        """The areas changed by merges and unloads since the last call (the map
+        chunks to rebuild there), one rect per group of touching tiles, and
+        start over. None: nothing changed. Only the tiles themselves: the rest
+        of a long road or forest crossing them is drawn already, or is rebuilt
+        when its own tile loads. One union rect spanned the tiles unloaded
+        behind the car and those loaded ahead, rebuilding everything between."""
         with self.lock:
-            rect, self.dirty_rect = self.dirty_rect, None
-            return rect
+            tiles, self.dirty_tiles = self.dirty_tiles, set()
+        areas = []
+        while tiles:
+            group, todo = set(), [tiles.pop()]
+            while todo:
+                tile = todo.pop()
+                group.add(tile)
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        near = TileCoord(tile.x + dx, tile.y + dy)
+                        if near in tiles:
+                            tiles.discard(near)
+                            todo.append(near)
+            boxes = [tile_bbox(tile) for tile in group]
+            areas.append((min(b[0] for b in boxes), min(b[1] for b in boxes),
+                          max(b[2] for b in boxes), max(b[3] for b in boxes)))
+        return areas or None
 
     def _background_tile_fetch(
         self,
@@ -820,6 +828,7 @@ class AutoFetchManager:
                     self._merge_queue.pop(0)
                     self.pending_tiles.difference_update(job.tile_group)
                     self.loaded_tiles.update(job.tiles)
+                    self.dirty_tiles.update(job.tiles)
                     integrated_tiles += len(job.tiles)
                     committed += 1
             else:
@@ -831,6 +840,7 @@ class AutoFetchManager:
                     self._merge_queue.pop(0)
                     self.pending_tiles.difference_update(job.tile_group)
                     self.loaded_tiles.update(job.tiles)
+                    self.dirty_tiles.update(job.tiles)
                     integrated_tiles += len(job.tiles)
                     if time.perf_counter() >= deadline:
                         break
@@ -928,7 +938,7 @@ class AutoFetchManager:
         owners.update(owned_tiles)
         if is_new_key:
             target.append(item)
-            self._mark_dirty(item)
+            self._live_items.setdefault(section, {})[key] = [item]
 
     def _merge_world_bounds(self, world) -> None:
         world_bounds = getattr(world, "bounds", None)
@@ -963,6 +973,7 @@ class AutoFetchManager:
                     continue
                 self._merge_item(section, target, item, owned_tiles)
         self._merge_world_bounds(world)
+        self.dirty_tiles.update(tiles)
         associate_places_with_buildings(self.buildings, self.places)
 
     def _unload_tiles(self, tiles: set[TileCoord]) -> None:
@@ -978,7 +989,6 @@ class AutoFetchManager:
         # multi-second stall as the tree/road-merge amortization bugs fixed
         # earlier - this is the tile-streaming equivalent of that.
         keys_to_remove: dict[str, set] = {}
-        any_removed = False
         for tile in tiles:
             tile_objects = self._tile_objects.pop(tile, {})
             self.loaded_tiles.discard(tile)
@@ -991,15 +1001,30 @@ class AutoFetchManager:
                         continue
                     owners_by_key.pop(key, None)
                     keys_to_remove.setdefault(section, set()).add(key)
-                    self._mark_dirty(objects[key])
             if tile_objects:
-                any_removed = True
                 self.map_revision += 1
+                self.dirty_tiles.add(tile)
+        removed_places: set[int] = set()
         for section, keys in keys_to_remove.items():
             target = sections[section]
-            target[:] = [item for item in target if _map_object_key(item) not in keys]
-        if any_removed:
-            associate_places_with_buildings(self.buildings, self.places)
+            before = {id(item) for item in target} if section == "places" else None
+            live = self._live_items.get(section, {})
+            gone = [live.pop(key, None) for key in keys]
+            if any(items is None for items in gone):  # added some other way: by key
+                target[:] = [item for item in target if _map_object_key(item) not in keys]
+            else:
+                ids = {id(item) for items in gone for item in items}
+                target[:] = [item for item in target if id(item) not in ids]
+            if before is not None:
+                removed_places = before - {id(item) for item in target}
+        if removed_places:
+            # Leaving objects can only end matches, never start one: drop the
+            # gone places instead of matching every place again (60-85 ms a tick).
+            for building in self.buildings:
+                if getattr(building, "associated_places", None):
+                    building.associated_places[:] = [
+                        place for place in building.associated_places if id(place) not in removed_places
+                    ]
 
     def _evict_inactive_tiles(self, now: float) -> None:
         """Unload resident-but-inactive tiles once memory pressure - or,
@@ -1132,339 +1157,6 @@ class AutoFetchManager:
                 "already_attempted": endpoint_key in self._attempted_endpoints,
                 "known_dead_end": self.is_known_dead_end(car.x, car.y, direction),
             }
-
-    def start_if_needed(
-        self,
-        car,
-        auto_fetch: bool,
-        margin_m: float,
-        tile_size_m: float,
-        current_way: Optional[Way] = None,
-    ) -> bool:
-        if not auto_fetch:
-            return False
-        with self.lock:
-            now = time.monotonic()
-            if now - self._last_edge_check_time < self._edge_check_interval_s:
-                return False
-            self._last_edge_check_time = now
-            if self.is_fetching:
-                return False
-            wall_time = time.time()
-            if wall_time - self.last_fetch_time < self.cooldown_s:
-                return False
-
-            minx, miny, maxx, maxy = self.bounds
-            expanded = False
-            trigger_reason = ""
-            # Expand in the direction the car is approaching or heading
-            fetch_minx, fetch_miny, fetch_maxx, fetch_maxy = minx, miny, maxx, maxy
-            direction = ""
-
-            # Determine expansion boxes centered around car's position with overlap into existing area
-            half_span = tile_size_m / 2.0
-            overlap = max(margin_m, 500.0)
-            lookahead_m = min(
-                half_span,
-                max(margin_m, max(0.0, car.speed) * 8.0),
-            )
-            ahead_x = car.x + math.cos(car.heading) * lookahead_m
-            ahead_y = car.y + math.sin(car.heading) * lookahead_m
-
-            if car.x < minx + margin_m or ahead_x < minx + margin_m:
-                direction = "west"
-                if not self.is_known_dead_end(car.x, car.y, direction):
-                    fetch_minx = car.x - tile_size_m
-                    fetch_maxx = car.x + overlap
-                    fetch_miny = car.y - half_span
-                    fetch_maxy = car.y + half_span
-                    expanded = True
-                    trigger_reason = "bbox west edge"
-            elif car.x > maxx - margin_m or ahead_x > maxx - margin_m:
-                direction = "east"
-                if not self.is_known_dead_end(car.x, car.y, direction):
-                    fetch_minx = car.x - overlap
-                    fetch_maxx = car.x + tile_size_m
-                    fetch_miny = car.y - half_span
-                    fetch_maxy = car.y + half_span
-                    expanded = True
-                    trigger_reason = "bbox east edge"
-
-            if not expanded:
-                if car.y < miny + margin_m or ahead_y < miny + margin_m:
-                    direction = "south"
-                    if not self.is_known_dead_end(car.x, car.y, direction):
-                        fetch_miny = car.y - tile_size_m
-                        fetch_maxy = car.y + overlap
-                        fetch_minx = car.x - half_span
-                        fetch_maxx = car.x + half_span
-                        expanded = True
-                        trigger_reason = "bbox south edge"
-
-            if not expanded and (car.y > maxy - margin_m or ahead_y > maxy - margin_m):
-                direction = "north"
-                if not self.is_known_dead_end(car.x, car.y, direction):
-                    fetch_miny = car.y - overlap
-                    fetch_maxy = car.y + tile_size_m
-                    fetch_minx = car.x - half_span
-                    fetch_maxx = car.x + half_span
-                    expanded = True
-                    trigger_reason = "bbox north edge"
-
-            endpoint_way = current_way or self._nearest_way_endpoint(car.x, car.y, lookahead_m)
-            if not expanded and endpoint_way is not None and len(endpoint_way.points_m) >= 2:
-                endpoint_candidates = (
-                    (endpoint_way.points_m[0], endpoint_way.points_m[1]),
-                    (endpoint_way.points_m[-1], endpoint_way.points_m[-2]),
-                )
-                endpoint, previous = min(
-                    endpoint_candidates,
-                    key=lambda candidate: math.hypot(car.x - candidate[0][0], car.y - candidate[0][1]),
-                )
-                endpoint_distance = math.hypot(car.x - endpoint[0], car.y - endpoint[1])
-                approach_x = endpoint[0] - previous[0]
-                approach_y = endpoint[1] - previous[1]
-                approach_length = math.hypot(approach_x, approach_y)
-                heading_alignment = (
-                    (math.cos(car.heading) * approach_x + math.sin(car.heading) * approach_y) / approach_length
-                    if approach_length > 0.0 else -1.0
-                )
-                endpoint_index = 0 if endpoint is endpoint_way.points_m[0] else -1
-                cache_key = (id(endpoint_way), endpoint_index, len(self.ways))
-                connected = self._endpoint_connection_cache.get(cache_key)
-                if connected is None:
-                    connected = any(
-                        other is not endpoint_way
-                        and getattr(other, "is_drivable", False)
-                        and any(
-                            math.hypot(endpoint[0] - point[0], endpoint[1] - point[1])
-                            <= max(12.0, endpoint_way.half_width_m + getattr(other, "half_width_m", 3.0))
-                            for point in getattr(other, "points_m", ())
-                        )
-                        for other in self.ways
-                    )
-                    self._endpoint_connection_cache[cache_key] = connected
-                direction = "east" if abs(approach_x) >= abs(approach_y) and approach_x >= 0 else "west"
-                if abs(approach_y) > abs(approach_x):
-                    direction = "north" if approach_y >= 0 else "south"
-                endpoint_key = (id(endpoint_way), direction)
-                if (
-                    endpoint_distance <= lookahead_m
-                    and not connected
-                    and heading_alignment > 0.2
-                    and endpoint_key not in self._attempted_endpoints
-                ):
-                    if not self.is_known_dead_end(car.x, car.y, direction):
-                        fetch_minx = car.x - (tile_size_m if approach_x < 0 else overlap)
-                        fetch_maxx = car.x + (tile_size_m if approach_x >= 0 else overlap)
-                        fetch_miny = car.y - (tile_size_m if approach_y < 0 else overlap)
-                        fetch_maxy = car.y + (tile_size_m if approach_y >= 0 else overlap)
-                        expanded = True
-                        trigger_reason = "road endpoint"
-                        self._attempted_endpoints.add((id(endpoint_way), direction))
-
-            if not expanded:
-                return False
-
-            fetch_bbox = (fetch_minx, fetch_miny, fetch_maxx, fetch_maxy)
-            target = _snap_projected_bbox(fetch_bbox, tile_size_m)
-            if target in self._completed_fetch_targets:
-                return False
-            self.is_fetching = True
-            self.fetch_progress = 0.1
-            self.last_fetch_time = wall_time
-            self.last_trigger_reason = trigger_reason
-            car_pos = (car.x, car.y)
-
-        t = threading.Thread(
-            target=self._background_fetch,
-            args=(fetch_bbox, direction, car_pos, target),
-            daemon=True,
-        )
-        t.start()
-        return True
-
-    def _background_fetch(
-        self,
-        fetch_bbox: Tuple[float, float, float, float],
-        direction: str = "",
-        car_pos: Tuple[float, float] = (0.0, 0.0),
-        target_bbox: Optional[Tuple[float, float, float, float]] = None,
-    ) -> None:
-        if target_bbox is None:
-            target_bbox = fetch_bbox
-        new_minx, new_miny, new_maxx, new_maxy = fetch_bbox
-        try:
-            lon1, lat1 = self.transformer.transform(new_minx, new_miny)
-            lon2, lat2 = self.transformer.transform(new_maxx, new_maxy)
-            car_lon, car_lat = self.transformer.transform(car_pos[0], car_pos[1])
-            south = min(lat1, lat2)
-            west = min(lon1, lon2)
-            north = max(lat1, lat2)
-            east = max(lon1, lon2)
-        except Exception as e:
-            logger.warning("Failed to compute lat/lon bbox for auto-fetch: %s", e)
-            with self.lock:
-                self.is_fetching = False
-                self.fetch_progress = 0.0
-            return
-
-        try:
-            with self.lock:
-                self.fetch_progress = 0.25
-            area_bbox = (south, west, north, east)
-            if self.world_cache_manager is not None:
-                target_minx, target_miny, target_maxx, target_maxy = target_bbox
-                target_lon1, target_lat1 = self.transformer.transform(target_minx, target_miny)
-                target_lon2, target_lat2 = self.transformer.transform(target_maxx, target_maxy)
-                target_bbox_ll = (
-                    min(target_lat1, target_lat2),
-                    min(target_lon1, target_lon2),
-                    max(target_lat1, target_lat2),
-                    max(target_lon1, target_lon2),
-                )
-                area_id = self.world_cache_manager.area_id(target_bbox_ll)
-                res = self.world_cache_manager.preload(area_id, target_bbox_ll).result()
-                elems = None
-            else:
-                elems = load_osm_cache(area_bbox, point=(car_lat, car_lon))
-                if elems is None:
-                    logger.info("Auto-fetch cache miss at car point (%.6f, %.6f); requesting network", car_lat, car_lon)
-                    elems = self.fetch_func(area_bbox)
-                else:
-                    logger.info("Auto-fetch cache hit at car point (%.6f, %.6f); network skipped", car_lat, car_lon)
-            with self.lock:
-                self.fetch_progress = 0.65
-            if self.world_cache_manager is None:
-                if self.build_in_process:
-                    context = multiprocessing.get_context("spawn")
-                    try:
-                        if self._build_executor is None:
-                            self._build_executor = concurrent.futures.ProcessPoolExecutor(
-                                max_workers=1, mp_context=context,
-                                initializer=exit_with_parent, initargs=(os.getpid(),),  # no orphan if the server is killed
-                            )
-                        res = self._build_executor.submit(self.build_func, elems).result()
-                    except (concurrent.futures.process.BrokenProcessPool, OSError) as exc:
-                        logger.warning("Auto-fetch process build failed; retrying in background thread: %s", exc)
-                        if self._build_executor is not None:
-                            self._build_executor.shutdown(wait=False, cancel_futures=True)
-                            self._build_executor = None
-                        res = self.build_func(elems)
-                else:
-                    res = self.build_func(elems)
-            with self.lock:
-                self.fetch_progress = 0.9
-            new_crossings = getattr(res, "crossings", [])
-            new_stop_signs = getattr(res, "stop_signs", [])
-            new_bus_stops = getattr(res, "bus_stops", [])
-            new_taxi_stops = getattr(res, "taxi_stops", [])
-            new_parking_spaces = getattr(res, "parking_spaces", [])
-            new_logical_intersections = getattr(res, "logical_intersections", [])
-            new_yield_signs = getattr(res, "yield_signs", [])
-            new_curbs = getattr(res, "curbs", [])
-            new_scenery_objects = getattr(res, "scenery_objects", [])
-            new_speed_bumps = getattr(res, "speed_bumps", [])
-            new_railways = getattr(res, "railways", [])
-            new_railings = getattr(res, "railings", [])
-            new_parking_garages = getattr(res, "parking_garages", [])
-            new_level_ways = getattr(res, "level_ways", [])
-            new_level_connectors = getattr(res, "level_connectors", [])
-            if len(res) == 8:
-                new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds, new_traffic_lights, new_crossings = res
-            elif len(res) == 7:
-                new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds, new_traffic_lights = res
-            elif len(res) == 6:
-                new_ways, new_waters, new_buildings, new_sceneries, new_places, new_bounds = res
-                new_traffic_lights = getattr(res, "traffic_lights", [])
-            elif len(res) == 5:
-                new_ways, new_waters, new_buildings, new_sceneries, new_bounds = res
-                new_places, new_traffic_lights = [], []
-            elif len(res) == 3:
-                new_ways, new_waters, new_bounds = res
-                new_buildings, new_sceneries, new_places, new_traffic_lights = [], [], [], []
-            else:
-                new_ways, new_bounds = res[0], res[-1]
-                new_waters, new_buildings, new_sceneries, new_places, new_traffic_lights = [], [], [], [], []
-
-            # Check if fetch returned no new drivable roads in target area (dead end)
-            drivable_new = [w for w in new_ways if w.is_drivable]
-            if not drivable_new:
-                logger.info(
-                    "No drivable roads found in direction %s at (%.1f, %.1f); marking as dead end in cache",
-                    direction,
-                    car_pos[0],
-                    car_pos[1],
-                )
-                entry = {
-                    "x": car_pos[0],
-                    "y": car_pos[1],
-                    "direction": direction,
-                    "target_bbox": list(target_bbox),
-                    "recorded_at": time.time(),
-                }
-                with self.lock:
-                    self.dead_ends.append(entry)
-
-            with self.lock:
-                known_way_ids = {
-                    way.osm_id for way in self.ways if getattr(way, "osm_id", None) is not None
-                }
-                unique_new_ways = [
-                    way for way in new_ways
-                    if way.osm_id is None or way.osm_id not in known_way_ids
-                ]
-                self.ways.extend(unique_new_ways)
-                added_waters = _extend_unique(self.waters, new_waters)
-                added_buildings = _extend_unique(self.buildings, new_buildings)
-                added_sceneries = _extend_unique(self.sceneries, new_sceneries)
-                added_places = _extend_unique(self.places, new_places)
-                associate_places_with_buildings(self.buildings, self.places)
-                added_traffic_lights = _extend_unique(self.traffic_lights, new_traffic_lights)
-                added_stop_signs = _extend_unique(self.stop_signs, new_stop_signs)
-                added_crossings = _extend_unique(self.crossings, new_crossings)
-                added_bus_stops = _extend_unique(self.bus_stops, new_bus_stops)
-                _extend_unique(self.taxi_stops, new_taxi_stops)
-                added_parking_spaces = _extend_unique(self.parking_spaces, new_parking_spaces)
-                _extend_unique(self.logical_intersections, new_logical_intersections)
-                _extend_unique(self.yield_signs, new_yield_signs)
-                _extend_unique(self.curbs, new_curbs)
-                _extend_unique(self.scenery_objects, new_scenery_objects)
-                _extend_unique(self.speed_bumps, new_speed_bumps)
-                _extend_unique(self.railways, new_railways)
-                _extend_unique(self.railings, new_railings)
-                _extend_unique(self.parking_garages, new_parking_garages)
-                _extend_unique(self.level_ways, new_level_ways)
-                _extend_unique(self.level_connectors, new_level_connectors)
-                minx = min(self.bounds[0], new_bounds[0])
-                miny = min(self.bounds[1], new_bounds[1])
-                maxx = max(self.bounds[2], new_bounds[2])
-                maxy = max(self.bounds[3], new_bounds[3])
-                self.bounds = (minx, miny, maxx, maxy)
-                self.last_fetch_time = time.time()
-                self._completed_fetch_targets.add(target_bbox)
-
-            # Rebuilding the segment index can be expensive; keep the game loop
-            # responsive while the background fetch finishes indexing new roads.
-            with self.lock:
-                self.fetch_progress = 1.0
-                self.is_fetching = False
-            logger.info(
-                "Auto-fetched and added %d ways, %d waters, %d buildings, %d scenery, %d places, %d traffic lights, %d crossings; new bounds: %s",
-                len(unique_new_ways),
-                added_waters,
-                added_buildings,
-                added_sceneries,
-                added_places,
-                added_traffic_lights,
-                added_crossings,
-                self.bounds,
-            )
-        except Exception as e:
-            logger.warning("Auto-fetch failed: %s", e)
-            with self.lock:
-                self.is_fetching = False
-                self.fetch_progress = 0.0
 
     def shutdown(self) -> None:
         """Stop the persistent map-building worker, if it was started."""

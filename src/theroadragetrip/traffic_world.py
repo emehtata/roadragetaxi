@@ -460,7 +460,6 @@ class TrafficWorld:
         self.residents = residents or ResidentManager()
         self.sim_time = 0.0
         self.logical_intersections: List = logical_intersections if logical_intersections is not None else []
-        self.intersection_manager = None
         self._route_nodes: List[Tuple[float, float, int]] = []
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
         self._route_node_grid: dict[Tuple[int, int], List[int]] = {}

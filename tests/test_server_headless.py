@@ -818,13 +818,13 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
     real_broadcast = server._broadcast_state
     monkeypatch.setattr(server, "_broadcast_state", lambda **k: sent.append(k.get("events") or []) or real_broadcast(**k))
 
-    server._rage_power = 0.2  # below the cost: nothing at all
+    server._rage_power = 0.4  # below the cost: nothing at all
     server._pending_road_rages = 1
     server.tick(1.0 / 30.0)
     assert calls == [] and server._road_rage is None and not any(e.get("group") == "vehicle.horn" for e in sent[-1])
-    assert server._rage_power == pytest.approx(0.2, abs=0.01)
+    assert server._rage_power == pytest.approx(0.4, abs=0.01)
 
-    server._rage_power = 0.25  # exactly the cost: accepted, down to zero
+    server._rage_power = 0.5  # exactly the cost: accepted, down to zero
     server._pending_road_rages = 1
     at = (server.car.x, server.car.y, server.car.heading, server.world.traffic_mgr.sim_time)  # as the tick starts (the press before the step)
     server.tick(1.0 / 30.0)
@@ -847,12 +847,12 @@ def test_road_rage_is_the_simulations_and_runs_once_per_press(tmp_path, monkeypa
         server.tick(1.0 / 30.0)
     assert server._road_rage is None  # expired and cleared, never negative
 
-    server._rage_power = 0.6  # two distinct presses, two actions on two ticks
+    server._rage_power = 1.0  # two distinct presses, two actions on two ticks
     server._pending_road_rages = 2
     server.tick(1.0 / 30.0)
     server.tick(1.0 / 30.0)
     server.tick(1.0 / 30.0)
-    assert len(calls) == 3 and server._rage_power == pytest.approx(0.1, abs=0.01)
+    assert len(calls) == 3 and server._rage_power == pytest.approx(0.0, abs=0.01)
     assert sum(1 for events in sent[-3:] for e in events if e.get("group") == "vehicle.horn") == 2
 
 
@@ -937,9 +937,6 @@ def test_historical_weather_drives_the_servers_weather_and_temperature(tmp_path,
         def get(self, moment):
             return HourlyWeather(temperature_c=-3.5, precipitation_mm=2.0, wawa=71,
                                  wind_speed_mps=6.5, wind_from_deg=225.0, snow_depth_cm=2.0)
-
-        def source_at(self, moment):
-            return "observed"
 
     server.weather_history = FakeHistory()
     import logging
@@ -1224,7 +1221,7 @@ def test_snowless_christmas_field_stays_frozen_and_never_opens_for_soccer(tmp_pa
     from theroadragetrip.activities.plugins.ice_skating import FIELD_ACTIVITIES
 
     server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
-    server.calendar.latitude = 65.07126350936632  # Talvikkipuisto, the reported screenshot
+    server.calendar.latitude = 65.0121  # Oulu
     server.calendar.current = datetime(2025, 12, 24, 20)
     server.weather_history = SimpleNamespace(get=lambda moment: SimpleNamespace(snow_depth_cm=0.0))
     server._update_sports()
@@ -1234,11 +1231,11 @@ def test_snowless_christmas_field_stays_frozen_and_never_opens_for_soccer(tmp_pa
     assert server.world.pedestrian_mgr.sports_ice_open
     assert not server.world.pedestrian_mgr.soccer_open
     # Exercise the actual sports population, not only its opening flags.
-    server.car.x, server.car.y = 425498.42123242805, 7217330.898091426
-    field = Scenery([(425454.59197231045, 7217406.975601245), (425515.76507815876, 7217417.169970076),
-                     (425533.29692551604, 7217314.024273276), (425471.8271408641, 7217303.5247490015)],
-                    "pitch", name="Talvikkipuisto", sport="soccer",
-                    bbox=(425454.59, 7217303.52, 425533.30, 7217417.17))
+    server.car.x, server.car.y = 1048.421232, 1030.898091
+    field = Scenery([(1004.591972, 1106.975601), (1065.765078, 1117.169970),
+                     (1083.296926, 1014.024273), (1021.827141, 1003.524749)],
+                    "pitch", name="Puisto", sport="soccer",
+                    bbox=(1004.59, 1003.52, 1083.30, 1117.17))
     manager = server.world.pedestrian_mgr
     manager.set_scenery_features([], [field], [])
     from theroadragetrip.physics import off_road_ground_kind

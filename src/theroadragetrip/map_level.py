@@ -47,11 +47,6 @@ def parse_level_list(raw) -> frozenset:
     return frozenset(levels) if None not in levels else frozenset()
 
 
-def visible_on_level(obj, current_level: int) -> bool:
-    level = getattr(obj, "map_level", None)
-    return current_level == SURFACE_LEVEL if level is None else level == current_level
-
-
 # Way.map_level values the surface roads keep.
 SURFACE_MAP_LEVELS = (None, SURFACE_LEVEL)
 

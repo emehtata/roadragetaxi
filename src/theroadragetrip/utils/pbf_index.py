@@ -181,22 +181,37 @@ def build_index(
             progress_callback(0.1 + 0.85 * i / len(cells), f"Cell {i + 1}/{len(cells)} ({cell['file']})...")
         if not force and out_path.is_file():
             continue  # resuming a previous (interrupted) build - this cell is already done
-        cw, cs, ce, cn = cell["bbox"]
-        cmd = [
-            osmium_command(), "extract",
-            "--bbox", f"{cw - cell_padding_deg},{cs - cell_padding_deg},{ce + cell_padding_deg},{cn + cell_padding_deg}",
-            "-s", strategy, "-f", "pbf", "-O",
-            "-o", str(temp_path),
-            str(pbf_path),
-        ]
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
-            if result.returncode != 0:
-                raise RuntimeError(f"osmium extract failed for cell {cell['file']} (exit {result.returncode}): {result.stderr.strip()}")
-            temp_path.replace(out_path)
-        finally:
-            temp_path.unlink(missing_ok=True)
+        _extract_cell(pbf_path, out_path, cell, strategy, cell_padding_deg)
 
+    _write_manifest(pbf_path, index_dir, grid_size_deg, strategy, cell_padding_deg, cells)
+
+    if progress_callback:
+        progress_callback(1.0, f"Index built: {len(cells)} cells")
+    logger.info("Built PBF index at %s (%d cells)", index_dir, len(cells))
+    return index_dir
+
+
+def _extract_cell(pbf_path: Path, out_path: Path, cell: dict, strategy: str, cell_padding_deg: float) -> None:
+    temp_path = out_path.with_name(f".{out_path.name}.tmp")
+    cw, cs, ce, cn = cell["bbox"]
+    cmd = [
+        osmium_command(), "extract",
+        "--bbox", f"{cw - cell_padding_deg},{cs - cell_padding_deg},{ce + cell_padding_deg},{cn + cell_padding_deg}",
+        "-s", strategy, "-f", "pbf", "-O",
+        "-o", str(temp_path),
+        str(pbf_path),
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+        if result.returncode != 0:
+            raise RuntimeError(f"osmium extract failed for cell {cell['file']} (exit {result.returncode}): {result.stderr.strip()}")
+        temp_path.replace(out_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _write_manifest(pbf_path: Path, index_dir: Path, grid_size_deg: float, strategy: str,
+                    cell_padding_deg: float, cells: list) -> None:
     st = pbf_path.stat()
     manifest = {
         "source": {"path": str(pbf_path.resolve()), "size": st.st_size, "mtime": st.st_mtime},
@@ -207,10 +222,43 @@ def build_index(
     }
     (index_dir / MANIFEST_NAME).write_text(json.dumps(manifest), encoding="utf-8")
 
-    if progress_callback:
-        progress_callback(1.0, f"Index built: {len(cells)} cells")
-    logger.info("Built PBF index at %s (%d cells)", index_dir, len(cells))
-    return index_dir
+
+def build_cells_for(
+    pbf_path: Path,
+    bbox: Tuple[float, float, float, float],
+    index_dir: Optional[Path] = None,
+    margin_deg: float = 0.1,
+) -> int:
+    """Cut just the cells that `bbox` (south, west, north, east), widened by
+    `margin_deg`, touches - the lazy build_index the game runs as the
+    player drives (one cell: ~15-20 s, once). The margin cuts a neighbour
+    before a query straddles into it. Writes the manifest first (a header
+    read) when there is none or it is stale. Returns the cells cut."""
+    pbf_path = Path(pbf_path)
+    index_dir = Path(index_dir) if index_dir else default_index_dir(pbf_path)
+    manifest = None if index_is_stale(pbf_path, index_dir) else load_manifest(index_dir)
+    if manifest is None:
+        west, south, east, north = _source_bbox(pbf_path)
+        grid = DEFAULT_GRID_SIZE_DEG
+        cells = [
+            {"gx": gx, "gy": gy, "bbox": list(_cell_bounds(gx, gy, grid)), "file": f"tile_{gx}_{gy}.osm.pbf"}
+            for gy in range(math.floor(south / grid), math.floor(north / grid) + 1)
+            for gx in range(math.floor(west / grid), math.floor(east / grid) + 1)
+        ]
+        index_dir.mkdir(parents=True, exist_ok=True)
+        _write_manifest(pbf_path, index_dir, grid, DEFAULT_STRATEGY, DEFAULT_CELL_PADDING_DEG, cells)
+        manifest = load_manifest(index_dir)
+    south, west, north, east = bbox
+    south, west, north, east = south - margin_deg, west - margin_deg, north + margin_deg, east + margin_deg
+    cut = 0
+    for cell in manifest["cells"]:
+        cw, cs, ce, cn = cell["bbox"]
+        out_path = index_dir / cell["file"]
+        if cw < east and ce > west and cs < north and cn > south and not out_path.is_file():
+            logger.info("Cutting PBF index cell %s for faster extracts here", cell["file"])
+            _extract_cell(pbf_path, out_path, cell, manifest["strategy"], manifest.get("cell_padding_deg", 0.0))
+            cut += 1
+    return cut
 
 
 def load_manifest(index_dir: Path) -> Optional[dict]:
@@ -279,8 +327,9 @@ def tiles_for_bbox(index_dir: Path, bbox: Tuple[float, float, float, float]) -> 
         cw, cs, ce, cn = cell["bbox"]
         if cw < east and ce > west and cs < north and cn > south:
             path = Path(index_dir) / cell["file"]
-            if path.is_file():
-                tiles.append(path)
+            if not path.is_file():
+                return []  # a cell not cut yet (build_cells_for): part of the bbox would be missing
+            tiles.append(path)
     return tiles
 
 

@@ -450,7 +450,6 @@ class PedestrianState(str, Enum):
     IN_BUILDING = "in_building"
     EXITING_BUILDING = "exiting_building"
     ENTERING_VEHICLE = "entering_vehicle"
-    EXITING_VEHICLE = "exiting_vehicle"
     IN_VEHICLE = "in_vehicle"
     DESPAWNING = "despawning"
 
@@ -1099,7 +1098,9 @@ class PedestrianManager:
         self._end_activity(pedestrian, instance)  # defensive: state drifted unexpectedly
         return False
 
-    def _end_activity(self, pedestrian: Pedestrian, instance: ActivityInstance) -> None:
+    def _end_activity(self, pedestrian: Pedestrian, instance: ActivityInstance, walk_on: bool = True) -> None:
+        """`walk_on` False: the pedestrian is being dropped (discard_outside) -
+        no way to snap back to (up to 400 ms for a crowd at speed)."""
         self.activity_manager.release(instance.location)
         pedestrian.activity_flags["last_activity_id"] = instance.plugin_id
         pedestrian.activity_flags["last_activity_end_time"] = self.sim_time
@@ -1107,6 +1108,8 @@ class PedestrianManager:
         pedestrian.state = "walking"
         pedestrian.animation_state = "walking"
         pedestrian.route = None
+        if not walk_on:
+            return
         # Activities can finish far from the way where they started.
         nearest_distance = float("inf")
         for way in self._nearby_ped_ways(pedestrian.x, pedestrian.y):
@@ -1575,7 +1578,7 @@ class PedestrianManager:
         pedestrian.animation_state = "idle"
         return True
 
-    def exit_vehicle(self, pedestrian: Pedestrian, vehicle, animate: bool = False) -> bool:
+    def exit_vehicle(self, pedestrian: Pedestrian, vehicle) -> bool:
         """Return a pedestrian beside an occupied vehicle and resume normal driving."""
         if (
             pedestrian.current_vehicle_id != id(vehicle)
@@ -1589,11 +1592,9 @@ class PedestrianManager:
         pedestrian.vehicle_destination = None
         pedestrian.destination = None
         pedestrian.speed = 0.0
-        pedestrian.state = (
-            PedestrianState.EXITING_VEHICLE.value if animate else PedestrianState.WALKING.value
-        )
+        pedestrian.state = PedestrianState.WALKING.value
         pedestrian.animation_state = "walking"
-        pedestrian.vehicle_entry_timer = 0.35 if animate else 0.0
+        pedestrian.vehicle_entry_timer = 0.0
         if self.traffic_manager is not None:
             self.traffic_manager.activate_occupied_vehicle(vehicle)
         else:
@@ -1946,7 +1947,7 @@ class PedestrianManager:
                 plugin = self.activity_manager.registry.get(instance.plugin_id)
                 if plugin is not None and ped.state == "performing_activity":
                     plugin.finish(self._activity_context(ped), instance)
-                self._end_activity(ped, instance)
+                self._end_activity(ped, instance, walk_on=False)
         self.pedestrians[:] = kept
         self.vomit_puddles[:] = [p for p in self.vomit_puddles if in_bounds(bounds, p[0], p[1], 2.0)]
         footprints = [p for p in self.vomit_footprints if in_bounds(bounds, p[0], p[1], 0.5)]
@@ -2938,13 +2939,6 @@ class PedestrianManager:
                         ) <= 3.0
                     ):
                         self.exit_vehicle(ped, vehicle)
-                continue
-            if ped.state == PedestrianState.EXITING_VEHICLE.value:
-                ped.speed = 0.0
-                ped.vehicle_entry_timer = max(0.0, ped.vehicle_entry_timer - update_dt)
-                if ped.vehicle_entry_timer <= 0.0:
-                    ped.state = PedestrianState.WALKING.value
-                    ped.animation_state = "walking"
                 continue
             if ped.state == "walking" and getattr(ped, "wants_vehicle", False):
                 vehicle = self.find_available_parked_vehicle(ped.x, ped.y)

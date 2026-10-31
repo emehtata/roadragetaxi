@@ -98,8 +98,8 @@ furniture and wall generation. It requires enough space for a 1.5 m hall,
 L shapes keep the previous layout fallback. The new generator version regenerates requested
 plans, including furniture placement; saved home selections are preserved.
 
-Generator version 5 also fits the actual Helmikkäkuja 2 A1, A2 and A3
-footprints (OSM ways 1555205363, 1555205359 and 1555205356). Shape matching
+Generator version 5 also fits real compact L-shaped house footprints
+(three mapped houses, kept without their location). Shape matching
 allows up to 25 cm wall deviation and 2% area difference from an ideal L;
 rooms are clipped to the original footprint, so this does not straighten or
 replace the mapped exterior. Both mirrored arrangements are considered.
@@ -107,7 +107,7 @@ Compact layouts retain the vestibule, short 1.5 m hall, open kitchen/living
 room, 3 m wide bedroom and bathroom; they omit a separate closet and stairs.
 The bathroom is 2.6 m deep to leave room for the door, toilet and sink.
 
-Exact source coordinates are in `tests/data/helmikkakuja_2.json`. Regression
+`tests/test_home_interior.py` keeps their shapes in local metres. Regression
 checks exercise all three through the server's selected-home and indoor plan
 paths, including rotated and mirrored footprints. Generated plans are also
 fixtures for the Godot floor coverage, collision, spawn and 2D walking checks.

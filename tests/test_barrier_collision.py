@@ -55,6 +55,19 @@ def test_gate_after_gate_and_gaps_split_cleanly():
         assert None not in part
 
 
+def test_a_wooden_fence_breaks_like_a_hedge():
+    wooden = Railing(FENCE.points_m, bbox=FENCE.bbox, kind="wood_fence")
+    manager = TaxiManager([])
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=5.0)
+    for step in range(1, 40):
+        previous = (car.x, car.y)
+        car.x += 0.5
+        manager.check_barrier_collision(car, [wooden], sim_time=step / 10, previous_position=previous)
+    assert car.x > 15 and car.speed > 0  # through it, not stopped at it
+    assert manager.total_score == -150 and manager.barrier_sound == "collision.fence"
+    assert len(manager.broken_hedges[manager.hedge_key(wooden)]) == 2  # a gap, both ends left standing
+
+
 def test_hedges_break_with_physics_and_leave_a_reusable_local_gap():
     from shapely.geometry import MultiLineString, Point
     from theroadragetrip.physics import update_car_physics

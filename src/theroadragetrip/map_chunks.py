@@ -408,6 +408,26 @@ class ChunkIndex:
         index._encoded = {cid: data for cid, data in list(old._encoded.items()) if cid not in changed}
         return index, changed
 
+    @classmethod
+    def replaced(cls, old: "ChunkIndex", built) -> tuple["ChunkIndex", set]:
+        """`old` with chunks rebuilt elsewhere (chunk_worker): `built` is
+        [(chunk id, content or None for an empty one, wire bytes)]. The same
+        result and changed ids as updated() for those chunks."""
+        index = cls.__new__(cls)
+        index.size, index._cells, index._outside = old.size, None, {}
+        ids = {cid for cid, _, _ in built}
+        index._chunks = {cid: chunk for cid, chunk in old._chunks.items() if cid not in ids}
+        # list(): the tick may be encoding into `old` meanwhile (a pass already swapped in).
+        index._encoded = {cid: data for cid, data in list(old._encoded.items()) if cid not in ids}
+        changed = set()
+        for cid, content, wire in built:
+            if content is not None:
+                index._chunks[cid] = content
+            index._encoded[cid] = wire
+            if old._chunks.get(cid) != content:
+                changed.add(cid)
+        return index, changed
+
     def _add(self, kind: str, points, feature) -> None:
         for cell in cells_touched_by_line(points, self.size):
             self._chunk(cell)[kind].append(feature)
@@ -603,6 +623,10 @@ class ChunkIndex:
         if data is None:
             data = self._encoded[cid] = encode(self.message(cid))
         return data
+
+    def is_encoded(self, cid: str) -> bool:
+        """Whether encoded(cid) is just a lookup (else 2-20 ms of JSON)."""
+        return cid in self._encoded
 
     def add_speed_camera(self, camera, index: int) -> str:
         """Add one runtime camera without rebuilding static map geometry."""

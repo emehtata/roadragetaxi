@@ -63,6 +63,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_camera_view_command()
 	test_vomit_puddle()
 	test_i18n()
+	test_tutorial()
+	test_career_summary_button()
 	test_graphics_settings()
 	test_chunk_queue()
 	test_interpolation()
@@ -169,7 +171,10 @@ func test_settings_help() -> void:
 	var shell = preload("res://startup.gd").new()
 	root.add_child(shell)
 	shell._settings_menu()
-	check(shell._focusables.size() == 7, "settings: six categories and Back")
+	shell._career_menu()
+	check(shell._focusables.size() == 2 and shell._focusables[0].text == I18n.text("start", "en"), "career: the goals, then Start and Back")
+	shell._settings_menu()
+	check(shell._focusables.size() == 9 and shell._focusables[6].text.begins_with(I18n.text("setup_wizard", "en")) and shell._focusables[7].text.begins_with(I18n.text("tutorial", "en")), "settings: six categories, the setup wizard, the tutorial and Back")
 	var help_count := 0
 	for category in ["general", "gameplay", "graphics", "audio", "maps", "experimental"]:
 		shell.call("_" + category + "_menu")
@@ -466,6 +471,31 @@ func test_chunk_queue() -> void:
 	check(map.chunk_count() == 4, "light ones still share a frame")
 	map.free()
 	main.free()
+
+
+func test_career_summary_button() -> void:
+	check(Hud.summary_next_city({"city_summary": ["Oulu", 5100, 12, "Raahe", 9000]}) == "Raahe" and Hud.summary_next_city({"city_summary": ["Helsinki", 5100, 12, null, 90000]}) == "" and Hud.summary_next_city({}) == "", "career summary: the next city, or none when the career is complete")
+
+
+func test_tutorial() -> void:
+	var coach := Tutorial.new()
+	check(Tutorial.STEPS.all(func(row): return I18n.EN.has(row[0]) and (row[1] == "" or coach.has_method(row[1]))), "tutorial: every step has its text and its check")
+	var base := {"fares": 2}
+	check(not coach._fare_done(null, {"taxi": {"completed_fares": 2}}, base) and coach._fare_done(null, {"taxi": {"completed_fares": 3}}, base), "tutorial: a fare is done when the completed count grows")
+	check(coach._passenger_in(null, {"taxi": {"state": "DROPOFF"}}, {}) and not coach._passenger_in(null, {"taxi": {"state": "PICKUP"}}, {}), "tutorial: the passenger is in on the way to the drop-off")
+	check(not coach._fare_accepted(null, {"taxi": {"current_passenger": null}}, {}) and coach._fare_accepted(null, {"taxi": {"current_passenger": {"name": "A"}}}, {}), "tutorial: an accepted fare has a passenger")
+	check(coach._indoors(null, {"home_door": {"indoors": true}}, {}) and coach._at_house_door(null, {"home_door": {"available": true}}, {}) and not coach._at_house_door(null, {}, {}), "tutorial: a house door and indoors")
+	check(coach._home_chosen(null, {"home_door": {"indoors": true, "is_home": true}}, {}) and not coach._home_chosen(null, {"home_door": {"indoors": true}}, {}) and coach._outdoors(null, {"home_door": {"indoors": false}}, {}), "tutorial: home chosen inside, then out")
+	check(coach._rage_built(null, {"rage_power": 0.5}, {}) and not coach._rage_built(null, {"rage_power": 0.4}, {}), "tutorial: rage built to a shout's worth")
+	check(coach._rage_spent(null, {"rage_power": 0.05}, {"rage": 0.55}) and not coach._rage_spent(null, {"rage_power": 0.3}, {"rage": 0.55}), "tutorial: a shout spends rage")
+	check(coach._in_brawl(null, {"brawls": [{"fighters": [{"kind": "npc"}, {"kind": "player"}]}]}, {}) and not coach._in_brawl(null, {"brawls": [{"fighters": [{"kind": "npc"}, {"kind": "npc"}]}]}, {}), "tutorial: the player in a brawl")
+	var order := Tutorial.STEPS.map(func(row): return row[1])
+	check(order.find("_in_brawl") < order.find("_fare_accepted"), "tutorial: rage and brawls before the fare (no brawl with a fare aboard)")
+	check(order.find("_at_house_door") < order.find("_indoors") and order.find("_indoors") < order.find("_home_chosen") and order.find("_home_chosen") < order.find("_outdoors"), "tutorial: out of the taxi, in, choose home, out")
+	check(coach._engine_on(null, {"on_foot": false, "player": {"engine_on": true}}, {}) and not coach._in_taxi(null, {}, {}), "tutorial: in the taxi, engine on")
+	check(Tutorial.notice_key({"taxi": {"current_passenger": {"nausea_warning_timer": 3.0}}}, "_trains", false, false) == "tut_nausea", "tutorial: a sick passenger interrupts any step")
+	check(Tutorial.notice_key({"railway": {}}, "_train_board", true, false) == "tut_no_station" and Tutorial.notice_key({"railway": {"nearest_station": "Oulu"}}, "_train_board", true, false) == "tut_no_trains" and Tutorial.notice_key({}, "_train_board", true, true) == "", "tutorial: why J showed no board")
+	coach.free()
 
 
 func test_i18n() -> void:
@@ -1823,6 +1853,7 @@ func test_speech_and_stations() -> void:
 	check(is_equal_approx((bbox[0] + bbox[2]) / 2.0, 65.0) and is_equal_approx((bbox[1] + bbox[3]) / 2.0, 25.0) and bbox[2] - bbox[0] > 0.02, "map point: the bbox is centred on the pin")
 	check(Startup.map_source_args("pbf", "") == ["--osm-source", "pbf"] and Startup.map_source_args("pbf", "/maps/fi.osm.pbf") == ["--osm-source", "pbf", "--osm-pbf-path", "/maps/fi.osm.pbf"], "map source: a local .osm.pbf, its path when set")
 	check(Startup.map_source_args("overpass", "x") == ["--osm-source", "overpass"] and Startup.map_source_args("", "") == [], "map source: Overpass, or the server's config")
+	check(Startup.effective_osm_source("", "C:/fi.osm.pbf") == "pbf" and Startup.effective_osm_source("", "") == "" and Startup.effective_osm_source("overpass", "C:/fi.osm.pbf") == "overpass", "map source: unset defaults to a .osm.pbf on disk, a choice wins")
 	check(Startup.FINLAND_PBF_URL == "https://download.geofabrik.de/europe/finland-latest.osm.pbf" and Startup.downloaded_pbf_path().ends_with("maps/finland-latest.osm.pbf"), "map source: Finland download uses the per-user data directory")
 	var pbf_modified := int(FileAccess.get_modified_time("res://finland_minimap.svg"))
 	check(not Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified) and Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified + Startup.PBF_MAX_AGE_S + 1), "map source: files over 30 days old are offered an update")
@@ -1879,7 +1910,7 @@ func test_speech_and_stations() -> void:
 	check(main.show_next_train and not sim._last_command.has("next_train") and not sim._last_command.has("j"), "J is local: no command")
 	main.phone.is_open = true
 	main._unhandled_input(_key_event(KEY_J))
-	check(main.show_next_train, "not while the phone is open")
+	check(not main.show_next_train, "J toggles the board with the phone open too")
 	main.free()
 	check(FileAccess.get_file_as_string("res://i18n.gd").contains("J   Train board"), "F1 help names J")
 
@@ -2379,8 +2410,15 @@ func test_controls_and_economy() -> void:
 	main._present(base.merged({"should_stop": true, "city_summary": ["Oulu", 10500, 12, "Tampere", 21000]}))
 	var hud: Control = main.get_node("Ui/Hud")
 	check(main.summary_shown and hud._summary.visible and hud._summary.text.contains("Next city: Tampere"), "should_stop shows the summary")
-	var others: Array = main.get_node("Ui").get_children().filter(func(n): return n != hud)
+	var others: Array = main.get_node("Ui").get_children().filter(func(n): return n != hud and not n is Button)
 	check(others.all(func(n): return not n.visible), "the rest of the game UI is hidden")
+	check(hud.get_child(hud.get_child_count() - 1) == hud._summary, "the summary is the HUD's top layer: no score or clock over it")
+	var next_buttons: Array = main.get_node("Ui").get_children().filter(func(n): return n is Button and n.text == I18n.text("next_city_button", "en"))
+	var asked := []
+	main.summary_action.connect(func(next: bool): asked.append(next))
+	if next_buttons.size() == 1:
+		next_buttons[0].pressed.emit()
+	check(next_buttons.size() == 1 and asked == [true], "career summary: Next city asks the launcher for the next city")
 	main._present(base.merged({"should_stop": false}))
 	check(hud._summary.visible, "it stays: the session is over")
 	main._present({})
@@ -2620,7 +2658,8 @@ func test_static_world() -> void:
 	var message: Dictionary = JSON.parse_string(JSON.stringify({"chunk_id": "2_4", "bounds": [1000, 2000, 1500, 2500],
 		"roads": [], "railways": [], "waters": [[[1100, 2100], [1120, 2100], [1120, 2120]]],
 		"buildings": [[[1300, 2300], [1310, 2300], [1310, 2310], [1300, 2310]]],
-		"railings": [["hedge", [[1000.0, 2010.0], [1020.0, 2010.0]]], ["fence", [[1000.0, 2020.0], [1010.0, 2020.0]]]],
+		"railings": [["hedge", [[1000.0, 2010.0], [1020.0, 2010.0]]], ["fence", [[1000.0, 2020.0], [1010.0, 2020.0]]],
+			["wood_fence", [[1000.0, 2030.0], [1020.0, 2030.0]]]],
 		"scenery_objects": [[1050.0, 2050.0, "bench", 0.5], [1052.0, 2050.0, "fountain", 0.0], [1054.0, 2050.0, "shrub", 0.0]],
 		"street_lights": [[1200.0, 2200.0, 1.0, 14.0], [1212.0, 2200.0, 1.0, 14.0]]}))
 	check(map.add_chunk(message) and not map.add_chunk(message), "drawing-only objects arrive with their chunk, once")
@@ -2629,6 +2668,11 @@ func test_static_world() -> void:
 	var hedge_parts := [[[1000.0, 2010.0], [1007.0, 2010.0]], [[1012.0, 2010.0], [1020.0, 2010.0]]]
 	map.set_broken_hedges([[0, hedge_points, hedge_parts]])
 	check(chunk._hedge_damage.get(MapChunk.hedge_key(["hedge", hedge_points])) == hedge_parts, "server hedge fragments replace only the damaged hedge")
+	var wood_points := [[1000.0, 2030.0], [1020.0, 2030.0]]
+	var wood_parts := [[[1000.0, 2030.0], [1008.0, 2030.0]]]
+	map.set_broken_hedges([[0, hedge_points, hedge_parts], [0, wood_points, wood_parts]])
+	check(chunk._hedge_damage.get(MapChunk.hedge_key(["wood_fence", wood_points])) == wood_parts and chunk._hedge_damage.size() == 2, "a wooden fence breaks like a hedge")
+	check(MapChunk.fence_lines(PackedVector2Array([Vector2.ZERO, Vector2(4, 0)]))[0].size() == 2, "a fence line: one rail pair per segment")
 	map.set_broken_hedges([[1, hedge_points, []]])
 	check(chunk._hedge_damage.is_empty(), "damage on another layer does not cut the ground hedge")
 	map.set_broken_hedges([[0, hedge_points, hedge_parts]])

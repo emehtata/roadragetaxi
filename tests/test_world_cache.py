@@ -208,7 +208,7 @@ def test_local_pbf_cold_pipeline_fetches_and_builds_inside_worker(tmp_path, samp
             calls.append((function, args))
             manager.writer.write(args[0], sample_world, area_id=args[1])
             future = Future()
-            future.set_result(None)
+            future.set_result(sample_world)  # the worker returns its world by pickle
             return future
 
         def shutdown(self, **kwargs):
@@ -379,3 +379,13 @@ def test_the_start_is_looked_up_by_its_point_in_every_cached_area(tmp_path, samp
     manager.close()
     assert "Point cache hit " + wide in caplog.text
     assert "no cached area holds the point lat=60.150000 lon=24.950000" in caplog.text and len(fetched) == 1
+
+
+def test_a_worker_world_survives_the_pickle_back(sample_world):
+    """Process builds return their MapData by pickle; plain tuple pickling
+    would rebuild it from the first six fields only."""
+    import pickle
+
+    copy = pickle.loads(pickle.dumps(sample_world))
+    assert copy.ways == sample_world.ways and copy.traffic_lights == sample_world.traffic_lights
+    assert copy.curbs == sample_world.curbs and copy.level_connectors == sample_world.level_connectors

@@ -84,12 +84,10 @@ class NavigationRoute:
     def __init__(self, budget_s: float = ROUTE_BUDGET_S) -> None:
         self.budget_s = budget_s
         self.points: list = []  # the published route, [[x, y], ...] in world metres
-        self.raw_point_count = 0  # before simplification (performance report)
         self.worst_slice_s = 0.0  # longest single tick of route search so far
         self.plans_started = 0
         self._key = None  # (target, level, graph revision) the route and job belong to
         self._job = None  # the surface route search in progress
-        self._job_started = 0.0
         self.instruction = {"maneuver": "no_target"}
         self._street_names = {}
         self._intercity = None
@@ -277,7 +275,6 @@ class NavigationRoute:
             self._job = world.traffic_mgr.plan_route_steps(
                 (car.x, car.y), (target.x, target.y), on_road=True,
                 start_layer=getattr(current_way, "layer", None))
-            self._job_started = time.perf_counter()
             return
         # Off the surface: this level's graph, out through its connectors; the
         # leg on this level (it re-plans on the next one). Synchronous.
@@ -301,5 +298,4 @@ class NavigationRoute:
 
     def _publish(self, route: Optional[Sequence[Tuple[float, float]]]) -> None:
         self._street_names = {}
-        self.raw_point_count = len(route) if route else 0
         self.points = [[round(x, 2), round(y, 2)] for x, y in simplify_polyline(route)] if route and len(route) >= 2 else []

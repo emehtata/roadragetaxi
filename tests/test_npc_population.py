@@ -886,59 +886,6 @@ def test_population_counts_by_type_matches_actual_vehicles():
     assert counts == {"car": 1, "truck": 1}
 
 
-def test_request_vehicle_reserves_an_eligible_household_vehicle():
-    manager = NPCVehicleManager(target_count=1)
-    residents = ResidentManager()
-    car = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")
-    manager.vehicles.append(car)
-    manager._make_household(car, residents)
-    household = manager.household_manager.get(car.household_id)
-
-    won = manager.request_vehicle(household, passengers=2)
-    assert won is car
-    assert car.availability == NPCAvailability.RESERVED
-
-
-def test_request_vehicle_excludes_a_reserved_vehicle():
-    from theroadragetrip.npc import reserve_household_vehicle
-
-    manager = NPCVehicleManager(target_count=1)
-    residents = ResidentManager()
-    car = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")
-    manager.vehicles.append(car)
-    manager._make_household(car, residents)
-    household = manager.household_manager.get(car.household_id)
-    reserve_household_vehicle(car)
-
-    assert manager.request_vehicle(household, passengers=1) is None
-
-
-def test_request_vehicle_excludes_a_vehicle_without_enough_capacity():
-    manager = NPCVehicleManager(target_count=1)
-    residents = ResidentManager()
-    motorcycle = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="motorcycle")
-    manager.vehicles.append(motorcycle)
-    manager._make_household(motorcycle, residents)
-    household = manager.household_manager.get(motorcycle.household_id)
-
-    assert manager.request_vehicle(household, passengers=3) is None
-    assert motorcycle.availability == NPCAvailability.AVAILABLE
-
-
-def test_request_vehicle_ignores_a_vehicle_the_household_does_not_own():
-    manager = NPCVehicleManager(target_count=1)
-    residents = ResidentManager()
-    own_car = place_parked_npc(1, (0.0, 0.0), None, vehicle_type="car")
-    other_car = place_parked_npc(2, (50.0, 0.0), None, vehicle_type="car")
-    manager.vehicles.extend([own_car, other_car])
-    manager._make_household(own_car, residents)
-    manager._make_household(other_car, residents)
-    household = manager.household_manager.get(own_car.household_id)
-
-    won = manager.request_vehicle(household, passengers=1)
-    assert won is own_car
-
-
 def test_reserve_household_vehicle_claims_an_available_vehicle():
     manager = NPCVehicleManager(target_count=1)
     residents = ResidentManager()

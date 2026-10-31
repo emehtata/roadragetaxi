@@ -103,8 +103,8 @@ class Railway:
 
 @dataclass
 class Railing:
-    """A linear barrier, open at mapped gates. Hedges break locally when hit;
-    other barriers stop the taxi (TaxiManager.check_barrier_collision)."""
+    """A linear barrier, open at mapped gates. Hedges and wooden fences break
+    locally when hit; other barriers stop the taxi (TaxiManager.check_barrier_collision)."""
     points_m: List[Tuple[float, float]]
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     kind: str = "fence"
@@ -599,6 +599,15 @@ class MapData(tuple):
         # filters out (underground service/track roads, garage-03.md).
         self.level_ways = level_ways if level_ways is not None else []
         self.level_connectors = level_connectors if level_connectors is not None else []
+
+    def __reduce__(self):
+        # A process build worker returns its world by pickle (world_cache):
+        # tuple pickling alone would call __new__ with just the six fields.
+        return MapData, (self.ways, self.waters, self.buildings, self.sceneries, self.places, self.bounds,
+                         self.traffic_lights, self.crossings, self.taxi_stops, self.bus_stops, self.parking_spaces,
+                         self.logical_intersections, self.stop_signs, self.yield_signs, self.curbs,
+                         self.scenery_objects, self.speed_bumps, self.railways, self.railings,
+                         self.parking_garages, self.level_ways, self.level_connectors)
 
     @property
     def traffic_signals(self):

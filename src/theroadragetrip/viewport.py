@@ -102,11 +102,3 @@ def get_viewport_bounds(
     return camx - half_w, camy - half_h, camx + half_w, camy + half_h
 
 
-def minimum_px_per_m_for_viewport_width(
-    max_width_m: float = 500.0,
-    screen_w: int = SCREEN_W,
-    margin_m: float = 30.0,
-) -> float:
-    """Return the minimum zoom that keeps the viewport width within its limit."""
-    drawable_width_m = max(1.0, max_width_m - 2.0 * margin_m)
-    return screen_w / drawable_width_m

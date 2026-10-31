@@ -1,6 +1,7 @@
 """City residents who may walk or control vehicles."""
 import gzip
 import json
+import itertools
 import random
 from datetime import date, timedelta
 from dataclasses import dataclass, field
@@ -52,10 +53,11 @@ def _weighted_name(entries: list[dict], group: Optional[str] = None) -> tuple[st
             candidates = entries
         if not candidates:
             return "Asukas", None
-        cached = (candidates, [max(1, int(entry.get("people", 1))) for entry in candidates])
+        # Cumulative once: weights= re-summed thousands of names per call.
+        cached = (candidates, list(itertools.accumulate(max(1, int(entry.get("people", 1))) for entry in candidates)))
         _weighted_name_cache[cache_key] = cached
-    candidates, weights = cached
-    selected = random.choices(candidates, weights=weights, k=1)[0]
+    candidates, cum_weights = cached
+    selected = random.choices(candidates, cum_weights=cum_weights, k=1)[0]
     return selected["name"], selected.get("group")
 
 

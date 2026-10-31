@@ -66,6 +66,7 @@ var _inspect_panel: PanelContainer
 var _inspect_label: Label
 var _focus := {}  # {kind: pan|pedestrian|npc, id or position}; empty follows the player
 var _pan_button := 0
+signal summary_action(next_city: bool)  # the career summary's button: the launcher starts the next city or opens the menu
 var summary_shown := false  # the career city summary is up: the session is over, no more driving commands
 var _engine_on := false  # the driver starts on foot, E starts the engine after getting in
 var _entered_taxi := false  # the "Press F" hint until the driver first gets in
@@ -123,6 +124,7 @@ var override_rain := -1.0
 var override_train_at := Vector2.INF
 var override_wetness := -1.0  # audio test: a moving train here (presentation only)
 var language := "en"
+var tutorial := false  # the launcher's tutorial game: the coach panel (tutorial.gd)
 var graphics: Dictionary = {}  # empty for direct scenes/tests; the launcher supplies saved defaults
 
 
@@ -145,6 +147,10 @@ func _ready() -> void:
 	_apply_language()
 	_build_help()
 	_build_inspector()
+	if tutorial:
+		var coach := Tutorial.new()
+		coach.main = self
+		$Ui.add_child(coach)
 	add_child(home_walk)
 	add_child(home_first_person)
 	add_child(door_marks)
@@ -504,9 +510,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_interact_pending = true
 			KEY_G:
 				_refuel_pending = true
-			KEY_J:
-				if not phone.is_open or phone.busy:
-					show_next_train = not show_next_train
+			KEY_J:  # the phone has no use for J: the board shows beside it
+				show_next_train = not show_next_train
 			KEY_SPACE:
 				if not summary_shown:  # the phone has no use for SPACE: rage with offers on screen too
 					_road_rage_pending = true
@@ -1078,8 +1083,9 @@ static func _night(game_time_seconds: float) -> float:
 
 
 ## The career city is done (state should_stop): the summary covers the
-## game and the client stops driving. The server owns what comes next; it
-## has no continue request, so this is the end of the session here.
+## game and the client stops driving. The server has already saved the
+## career at the next city; the button asks the launcher to start it
+## (summary_action true), or, with the career complete, to go back to the menu.
 func show_summary(state: Dictionary) -> void:
 	summary_shown = true
 	drive.clear()
@@ -1087,6 +1093,16 @@ func show_summary(state: Dictionary) -> void:
 		if node != hud:
 			node.visible = false
 	hud.show_summary(Hud.summary_text(state, language))
+	var next := Hud.summary_next_city(state) != ""
+	var button := Button.new()
+	button.text = T.text("next_city_button" if next else "back_to_menu", language)
+	button.add_theme_font_size_override("font_size", 24)
+	button.custom_minimum_size = Vector2(280, 56)
+	var view := get_viewport().get_visible_rect().size
+	button.position = Vector2((view.x - button.custom_minimum_size.x) / 2.0, view.y - 176.0)  # $Ui is no Control: no anchors
+	button.pressed.connect(func(): summary_action.emit(next))
+	$Ui.add_child(button)
+	button.grab_focus.call_deferred()  # Enter / Space press it too
 
 
 ## The distance gain: full within `range[0]`, 1/distance

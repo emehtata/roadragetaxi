@@ -1,7 +1,7 @@
 # Sun direction and building shadows
 
 The 3D buildings cast real shadows from the sun's actual direction, weakened by
-low sun and by clouds. Task: `.github/prompts/rrt-018-shadows.md`.
+low sun and by clouds.
 
 ## Coordinate conventions
 

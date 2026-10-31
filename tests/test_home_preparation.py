@@ -141,7 +141,7 @@ def test_changed_chunks_are_resent_nearest_the_player_first():
             self.sent.append(data)
 
     connection = Connection()
-    index = SimpleNamespace(encoded=lambda cid: cid)
+    index = SimpleNamespace(encoded=lambda cid: cid, is_encoded=lambda cid: True)
     server = SimpleNamespace(
         _map_growth=[([], index, {"9_0", "1_0", "4_0"}, None, None, 0.0, True, {"tile"})], _chunks_index=None,
         world=SimpleNamespace(street_light_points=[]), _map_streamer=SimpleNamespace(hold=True), _on_foot=False,
@@ -169,7 +169,7 @@ def test_chunks_beyond_the_players_own_wait_until_the_index_has_their_tile():
     connection = Connection()
     server = SimpleNamespace(
         _clients_lock=threading.Lock(), _clients=[connection], _client_chunks={connection: (set(), None)},
-        _on_foot=False, car=SimpleNamespace(x=250.0, y=250.0), _chunks_index=SimpleNamespace(encoded=lambda cid: cid),
+        _on_foot=False, car=SimpleNamespace(x=250.0, y=250.0), _chunks_index=SimpleNamespace(encoded=lambda cid: cid, is_encoded=lambda cid: True),
         _indexed_tiles={TileCoord(0, 0), TileCoord(1, 0)},
     )
     SimulationServer._stream_map_chunks(server)
@@ -180,3 +180,27 @@ def test_chunks_beyond_the_players_own_wait_until_the_index_has_their_tile():
     server._client_chunks[connection] = (server._client_chunks[connection][0], None)  # a growth replans
     SimulationServer._stream_map_chunks(server)
     assert set(sent) == {"0_2", "1_2", "0_3", "1_3"}
+
+
+def test_a_changed_far_chunk_not_yet_encoded_waits_for_the_streaming_budget():
+    import threading
+    from types import SimpleNamespace
+
+    from theroadragetrip.server import SimulationServer
+
+    sent = []
+
+    class Connection:
+        send = staticmethod(sent.append)
+
+    connection = Connection()
+    index = SimpleNamespace(encoded=lambda cid: cid, is_encoded=lambda cid: False)
+    server = SimpleNamespace(
+        _map_growth=[([], index, {"1_0", "4_0"}, None, None, 0.0, True, {"tile"})], _chunks_index=None,
+        world=SimpleNamespace(street_light_points=[]), _map_streamer=SimpleNamespace(hold=True), _on_foot=False,
+        car=SimpleNamespace(x=250.0, y=250.0), _clients_lock=threading.Lock(), _indexed_tiles=set(),
+        _client_chunks={connection: ({"1_0", "4_0"}, (0, 0))},
+    )
+    SimulationServer._apply_map_growth(server)
+    assert sent == ["1_0"]  # the player's own neighbour at once
+    assert server._client_chunks[connection] == ({"1_0"}, None)  # 4_0 is streamed again, within budget

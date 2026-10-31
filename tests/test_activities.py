@@ -46,7 +46,7 @@ def _make_manager_and_pedestrian(scenery_objects=None, sceneries=None, bus_stops
     # 0-100 birth date) - several tests assert can_start()/age-gated
     # behavior against "an ordinary adult resident", which a randomly
     # child-aged default resident occasionally violated (flaky failures
-    # in ball_game/playground/explain_candidates tests that never touched
+    # in ball_game/playground tests that never touched
     # age themselves). Tests that specifically want a child create one
     # explicitly with age=<18.
     pedestrian.resident_id = manager.residents.create("walking", age=30).resident_id
@@ -651,37 +651,6 @@ def test_set_target_count_releases_activity_reservation_when_trimming():
     manager.set_target_count(0)
 
     assert location.reservation_key not in manager.activity_manager._reservations
-
-
-def test_explain_candidates_reports_cooldown_and_ok_reasons():
-    manager, pedestrian = _make_manager_and_pedestrian()
-    registry = ActivityRegistry()
-    registry.register(PhoneUsagePlugin())
-    manager.activity_manager = ActivityManager(registry=registry)
-
-    pedestrian.activity_flags["last_activity_id"] = "phone_usage"
-    pedestrian.activity_flags["last_activity_end_time"] = 0.0
-
-    explanations = manager.activity_manager.explain_candidates(_context(manager, pedestrian, sim_time=1.0))
-    assert explanations == [("phone_usage", "cooldown, 44s left")]
-
-    later = manager.activity_manager.explain_candidates(_context(manager, pedestrian, sim_time=1000.0))
-    assert later[0][0] == "phone_usage"
-    assert later[0][1].startswith("OK, weight=")
-
-
-def test_explain_candidates_reports_no_location_and_can_start_false():
-    registry = ActivityRegistry()
-    registry.register(BenchSittingPlugin())  # requires a location
-    registry.register(BallGamePlugin())  # can_start requires a child resident
-    manager, pedestrian = _make_manager_and_pedestrian()
-    manager.activity_manager = ActivityManager(registry=registry)
-
-    explanations = dict(manager.activity_manager.explain_candidates(_context(manager, pedestrian)))
-    assert explanations["bench_sitting"] == "no suitable location nearby"
-    assert explanations["ball_game"] == "can_start() is False"
-
-
 
 
 def test_group_members_get_their_own_spots():

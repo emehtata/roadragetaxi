@@ -406,14 +406,14 @@ def test_a_road_rage_press_acts_once_and_a_new_client_sees_the_shout(monkeypatch
     server = _start_server(monkeypatch)
     connection = transport.connect(server.host, server.port)
     time.sleep(0.05)
-    server._rage_power = 0.9
+    server._rage_power = 1.0  # two shouts' worth: a second would leave 0.0
     connection.send(protocol.build_command_message(PlayerCommand(road_rage=True), interact=False, seq=1))
     connection.send(protocol.build_command_message(PlayerCommand(), interact=False, seq=2))  # the next ordinary command, same tick
     time.sleep(0.05)
     for _ in range(10):
         server.tick(1.0 / 30.0)
     assert server._latest_command.road_rage is False
-    assert server._rage_power == pytest.approx(0.65, abs=0.02)  # spent once, not each tick
+    assert server._rage_power == pytest.approx(0.5, abs=0.02)  # spent once, not each tick
     later = transport.connect(server.host, server.port)  # joins during the shout
     time.sleep(0.05)
     server.tick(1.0 / 30.0)

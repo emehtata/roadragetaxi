@@ -72,7 +72,6 @@ def test_no_deadlock_at_intersection():
         dt=0.1,
         spatial_grid=grid,
         block_offroad=True,
-        enforce_oneway=True,
     )
     assert not blocked
     assert car.x < 50.0  # moved West along Linnankatu without deadlock

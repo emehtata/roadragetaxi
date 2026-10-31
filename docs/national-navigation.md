@@ -1,7 +1,6 @@
 # Intercity navigation: audit and revised design
 
-Status: implemented end-to-end, following
-`.github/prompts/rrt-019-longdistance.md`: offline backbone and bounded town
+Status: implemented end-to-end, with an offline backbone and bounded town
 approaches, background routing, route-aware streaming and final-address handoff. The
 previous full-street experiment has been removed from the runtime and source.
 

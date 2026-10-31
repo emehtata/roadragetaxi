@@ -52,7 +52,7 @@
     },
     {
       "name": "LAM traffic profiles",
-      "paths": ["src/theroadragetrip/assets/traffic/lam_profiles.json"],
+      "paths": ["src/theroadragetrip/assets/traffic/lam_profiles.json.gz"],
       "purpose": "measured hourly traffic curves for calibrating NPC traffic demand", "shipped": true,
       "origin": "Fintraffic / digitraffic.fi TMS raw detections, aggregated to hourly shares by tools/lam_profiles.py",
       "copyright": "Fintraffic", "licence": "CC-BY-4.0",

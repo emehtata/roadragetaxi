@@ -85,16 +85,6 @@ def test_respawn_car_places_on_road_with_heading():
     assert car.heading == 0.0
 
 
-def test_respawn_car_near_edge_places_car_on_edge_road(monkeypatch):
-    west_road = Way(points_m=[(0.0, 20.0), (100.0, 20.0)], highway="residential", half_width_m=2.0)
-    car = Car(x=50.0, y=50.0, heading=0.0, speed=0.0)
-    monkeypatch.setattr(physics.random, "choice", lambda edges: "west")
-    respawn_car(car, [west_road], bounds=(0.0, 0.0, 100.0, 100.0), near_edge=True)
-
-    assert is_on_road(car, [west_road]) is True
-    assert car.x < 40.0
-
-
 def test_respawn_car_avoids_water_and_ice_roads():
     # Road 1: on top of lake (ice road)
     lake = Water(
@@ -211,20 +201,6 @@ def test_drivable_road_crossing_open_waterway_does_not_trigger_water_respawn():
     assert not is_car_fully_in_water(car, [stream], current_way=road)
 
 
-def test_soft_ground_only_for_grass_like_scenery_not_hard_surfaces():
-    from theroadragetrip.osm import Scenery
-
-    square = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
-    grass = Scenery(points_m=square, kind="grass", bbox=(0.0, 0.0, 100.0, 100.0))
-    plaza = Scenery(points_m=[(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)], kind="pedestrian_area", bbox=(40.0, 40.0, 60.0, 60.0))
-    industrial = Scenery(points_m=square, kind="industrial", bbox=(0.0, 0.0, 100.0, 100.0))
-
-    assert physics.is_point_on_soft_ground(500.0, 500.0, sceneries=[])  # unmapped open ground
-    assert physics.is_point_on_soft_ground(10.0, 10.0, sceneries=[grass, plaza])
-    assert not physics.is_point_on_soft_ground(50.0, 50.0, sceneries=[grass, plaza])  # plaza inside a park is hard
-    assert not physics.is_point_on_soft_ground(10.0, 10.0, sceneries=[industrial])
-
-
 def test_sand_and_beach_are_their_own_ground_kind():
     from theroadragetrip.osm import Scenery
 
@@ -236,7 +212,6 @@ def test_sand_and_beach_are_their_own_ground_kind():
     assert physics.off_road_ground_kind(10.0, 10.0, sceneries=[park, beach]) == "sand"
     assert physics.off_road_ground_kind(200.0, 200.0, sceneries=[park, beach]) == "soft"
     assert physics.off_road_ground_kind(50.0, 50.0, sceneries=[park, beach, plaza]) == "hard"
-    assert not physics.is_point_on_soft_ground(10.0, 10.0, sceneries=[beach])
 
 
 def test_ice_holds_on_lakes_in_winter_but_river_ice_may_break():

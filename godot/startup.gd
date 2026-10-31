@@ -23,6 +23,8 @@ var _city := "Oulu"
 var _start_place := ""  # its name from the picker's reverse geocode; "": unknown
 var _start_point := Vector2.INF  # a custom gig start (latitude, longitude); INF: the city's centre
 var _language := "en"
+var _guide: Array[Callable] = []  # the first-run settings guide's pages
+var _guide_step := 0
 var _settings := ConfigFile.new()
 var _server_extra: Array[String] = []
 var _loading := false
@@ -48,6 +50,7 @@ const THUMB_SIZE := Vector2i(160, 90)
 var _pause_shot: Image  # the frame just before the pause menu opened: a save's thumbnail
 const MAX_GIG_SLOTS := 5  # gig saves; a new game beyond them replaces one (career keeps its single save)
 var _gig_mode := "gig_driver"  # the slot-and-city flow's mode: gig driving, or simulation (always the real clock)
+var _tutorial := false  # the next start is the tutorial game
 var _save_slot := ""  # the gig's save slot (server saves/NAME.json): loaded if it exists, saved by the pause menu
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
 var _menu_music: AudioStreamPlayer
@@ -87,6 +90,7 @@ func _ready() -> void:
 		if flag in command_line:
 			_game = preload("res://main.tscn").instantiate()
 			_game.language = _language
+			_game.tutorial = "--tutorial" in command_line  # the coach panel in a shot or test
 			_game.set_graphics(Graphics.read(_settings))
 			_apply_interior_settings()
 			add_child(_game)
@@ -240,12 +244,53 @@ func _choose_language(language: String) -> void:
 	_language = language
 	_settings.set_value("game", "language", language)
 	_settings.save("user://settings.cfg")
-	# The first run: the settings next, real-world data on unless chosen otherwise.
-	for key in ["historical_weather", "train_timetable"]:
+	# The first run: real-world data on unless chosen otherwise, then the guide.
+	for key in ["historical_weather", "train_timetable", "road_digitraffic"]:
 		if not _settings.has_section_key("game", key):
 			_settings.set_value("game", key, true)
 	_settings.save("user://settings.cfg")
-	_settings_menu()
+	_start_guide()
+
+
+func _start_guide() -> void:
+	_guide.assign([_gameplay_menu, _maps_menu, _graphics_menu, _audio_menu])
+	_guide_step = 0
+	_guide_next()
+
+
+## The first-run guide: the settings menus one after another, Next instead
+## of Back, then the main menu.
+func _guide_next() -> void:
+	if _guide_step >= _guide.size():
+		_guide.clear()
+		_main_menu()
+		return
+	_guide_step += 1
+	_guide[_guide_step - 1].call()
+
+
+## A settings page's last button: Back, or Next/Finish while guiding.
+func _settings_back() -> void:
+	if _guide.is_empty():
+		_button(_t("back"), _settings_menu)
+		_back_action = _settings_menu
+	else:
+		_button(_t("finish" if _guide_step == _guide.size() else "next"), _guide_next)
+		_back_action = _guide_next
+
+
+## Under a settings page's title while guiding: the step and what it is about.
+func _guide_intro(intro_key := "") -> void:
+	if _guide.is_empty():
+		return
+	var text := _t("setup_step") % [_guide_step, _guide.size()]
+	var label := Label.new()
+	label.text = text + ("\n" + _t(intro_key) if intro_key != "" else "")
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.custom_minimum_size.x = 500
+	label.modulate = Color(0.8, 0.85, 0.9)
+	_body.add_child(label)
 
 
 ## The help tooltips: an opaque dark panel with light text (the default one
@@ -404,7 +449,8 @@ func _main_menu() -> void:
 	_play_menu_music()
 	_clear()
 	_title("ROAD RAGE TRIP", _t("choose_start"))
-	var career := _button(_t("career"), func(): _start("career"))
+	_with_help(_button(_t("tutorial"), _start_tutorial), "help_tutorial")
+	var career := _button(_t("career"), _career_menu)
 	var gig := _button(_t("gig_driver"), func(): _gig_mode = "gig_driver"; _slot_menu())
 	var simulation := _button(_t("simulation"), func(): _gig_mode = "simulation"; _slot_menu())
 	_with_help(simulation, "help_simulation")
@@ -416,6 +462,33 @@ func _main_menu() -> void:
 	# Enter: the mode played last time (gig driving the first time).
 	var last: String = _settings.get_value("menu", "mode", "gig_driver")
 	(career if last == "career" else simulation if last == "simulation" else gig).call_deferred("grab_focus")
+
+
+## Career: what the goals are, then start (the server keeps the progress).
+func _career_menu() -> void:
+	_clear()
+	_title(_t("career").to_upper())
+	var goals := Label.new()
+	goals.text = _t("career_goals")
+	goals.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	goals.custom_minimum_size.x = 520
+	_body.add_child(goals)
+	_button(_t("start"), func(): _start("career"))
+	_button(_t("back"), _main_menu)
+	_back_action = _main_menu
+	_focus_menu()
+
+
+## The tutorial: a fresh, unsaved gig in Oulu's centre at midday today.
+func _start_tutorial() -> void:
+	_city = "Oulu" if "Oulu" in _cities else _cities[0]
+	var today := Time.get_date_dict_from_system()
+	_start_time = {"year": today["year"], "month": today["month"], "day": today["day"], "hour": 12, "minute": 0}
+	_start_point = Vector2.INF
+	_start_place = ""
+	_save_slot = ""
+	_tutorial = true
+	_start("gig_driver")
 
 
 ## "Clear all map cache": asked first; then the server deletes
@@ -805,11 +878,23 @@ func _pbf_path() -> String:
 	var configured := str(_settings.get_value("map", "osm_pbf_path", "")).strip_edges()
 	if configured != "" and FileAccess.file_exists(configured):
 		return configured
-	var packaged := Paths.package_path("assets/osm/finland-latest.osm.pbf")
-	if configured == "" and FileAccess.file_exists(packaged):
-		return packaged
+	# The in-game download (user://) wins: it is what "update" refreshes, while
+	# the packaged copy (the Windows installer's download) only ages.
 	var downloaded := downloaded_pbf_path()
-	return downloaded if FileAccess.file_exists(downloaded) else ""
+	if FileAccess.file_exists(downloaded):
+		return downloaded
+	var packaged := Paths.package_path("assets/osm/finland-latest.osm.pbf")
+	return packaged if configured == "" and FileAccess.file_exists(packaged) else ""
+
+
+## The map source setting; unset, a Finland .osm.pbf on disk (the Windows
+## installer's download) makes it "pbf".
+static func effective_osm_source(source: String, pbf_path: String) -> String:
+	return "pbf" if source == "" and pbf_path != "" else source
+
+
+func _osm_source() -> String:
+	return effective_osm_source(str(_settings.get_value("map", "osm_source", "")), _pbf_path())
 
 
 static func pbf_is_old(path: String, now: int) -> bool:
@@ -851,6 +936,9 @@ func _settings_menu() -> void:
 	_button(_t("settings_audio") + " >", _audio_menu)
 	_button(_t("settings_maps") + " >", _maps_menu)
 	_button(_t("settings_experimental") + " >", _experimental_menu)
+	if _game == null:  # the guide ends in the main menu
+		_button(_t("setup_wizard") + " >", _start_guide)
+		_button(_t("tutorial") + " >", _start_tutorial)
 	var back := _pause_menu if _game != null else _main_menu
 	_button(_t("back"), back)
 	_back_action = back
@@ -873,8 +961,7 @@ func _general_menu() -> void:
 		_general_menu.call_deferred())
 	_with_help(language, "help_language")
 	_focusables.append(language)
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
@@ -887,6 +974,7 @@ func _apply_interior_settings() -> void:
 func _gameplay_menu() -> void:
 	_clear()
 	_title(_t("settings_gameplay").to_upper())
+	_guide_intro("setup_intro_data")
 	var historical := CheckButton.new()  # FMI weather for the city and game time
 	historical.text = _t("historical_weather")
 	historical.button_pressed = _settings.get_value("game", "historical_weather", false)
@@ -934,8 +1022,7 @@ func _gameplay_menu() -> void:
 	_body.add_child(intercity_note)
 	if is_instance_valid(_game):
 		_with_help(_button(_t("reset_home"), _confirm_reset_home), "help_reset_home")
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
@@ -969,18 +1056,18 @@ func _experimental_menu() -> void:
 	mouse_row.add_child(sensitivity)
 	_with_help(mouse_row, "help_interior_mouse_sensitivity")
 	_focusables.append(sensitivity)
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
 func _maps_menu() -> void:
 	_clear()
 	_title(_t("settings_maps").to_upper())
+	_guide_intro("setup_intro_maps")
 	var source := OptionButton.new()  # --osm-source: the map from Overpass, or a local .osm.pbf via osmium
 	source.add_item(_t("map_overpass"))
 	source.add_item(_t("map_pbf"))
-	source.selected = 1 if _settings.get_value("map", "osm_source", "overpass") == "pbf" else 0
+	source.selected = 1 if _osm_source() == "pbf" else 0
 	_with_help(source, "help_map_source")
 	_focusables.append(source)
 	var pbf_path := LineEdit.new()
@@ -997,14 +1084,14 @@ func _maps_menu() -> void:
 	pbf_path.get_parent().get_parent().visible = source.selected == 1
 	_focusables.append(pbf_path)
 	_with_help(_button(_t("manage_pbf") + " >", _pbf_menu), "help_manage_pbf")
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
 func _audio_menu() -> void:
 	_clear()
 	_title(_t("settings_audio").to_upper())
+	_guide_intro()
 	for item in [[_t("master_volume"), "Master", "help_master_volume"], [_t("game_volume"), "Game", "help_game_volume"],
 			[_t("environment_volume"), "Environment", "help_environment_volume"], [_t("ui_volume"), "UI", "help_ui_volume"],
 			[_t("music_volume"), "Music", "help_music_volume"]]:
@@ -1023,14 +1110,14 @@ func _audio_menu() -> void:
 		row.add_child(slider)
 		_with_help(row, item[2])
 		_focusables.append(slider)
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
 func _graphics_menu() -> void:
 	_clear()
 	_title(_t("graphics").to_upper())
+	_guide_intro()
 	var options := Graphics.read(_settings)
 	var toggles := {}
 	for key in Graphics.DEFAULTS:
@@ -1048,8 +1135,7 @@ func _graphics_menu() -> void:
 		_with_help(toggle, "help_graphics_" + key)
 		_focusables.append(toggle)
 	toggles["shadows"].disabled = not options["buildings_3d"]
-	_button(_t("back"), _settings_menu)
-	_back_action = _settings_menu
+	_settings_back()
 	_focus_menu()
 
 
@@ -1062,7 +1148,7 @@ func _set_volume(bus: String, value: float) -> void:
 
 
 func _start(mode: String, skip_pbf_offer := false) -> void:
-	if (_settings.get_value("map", "osm_source", "") == "pbf" or _settings.get_value("game", "intercity_fares", false)) and not skip_pbf_offer:
+	if (_osm_source() == "pbf" or _settings.get_value("game", "intercity_fares", false)) and not skip_pbf_offer:
 		var pbf := _pbf_path()
 		if pbf == "":
 			_offer_pbf_download(mode)
@@ -1118,7 +1204,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 			args.append_array(["--bbox", point_bbox(_start_point.x, _start_point.y)])
 			if _start_place != "":
 				args.append_array(["--place-name", _start_place])
-	args.append_array(map_source_args(_settings.get_value("map", "osm_source", ""), _pbf_path()))
+	args.append_array(map_source_args(_osm_source(), _pbf_path()))
 	args.append("--intercity-fares" if _settings.get_value("game", "intercity_fares", false) else "--no-intercity-fares")
 	if _settings.get_value("game", "intercity_fares", false) and _pbf_path() != "":
 		args.append_array(["--osm-pbf-path", _pbf_path()])
@@ -1144,9 +1230,12 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		return
 	_game = preload("res://main.tscn").instantiate()
 	_game.language = _language
+	_game.tutorial = _tutorial
+	_tutorial = false
 	_game.set_graphics(Graphics.read(_settings))
 	_apply_interior_settings()
 	_game.get_node("SimClient").connection_changed.connect(_server_connected)
+	_game.summary_action.connect(_career_summary_action)
 	add_child(_game)
 	move_child(_game, 1)
 	_loading = true
@@ -1491,6 +1580,14 @@ func _remember_game_time() -> void:
 		_settings.set_value("gig", "left_at", {"year": int(date[0]), "month": int(date[1]), "day": int(date[2]),
 			"hour": minutes / 60 % 24, "minute": minutes % 60})
 		_settings.save("user://settings.cfg")
+
+
+## The career summary's button: the server saved the career at the next
+## city, so a new career game starts there; with the career complete, the menu.
+func _career_summary_action(next_city: bool) -> void:
+	_stop_game()
+	if next_city:
+		_start("career", true)
 
 
 func _stop_game() -> void:

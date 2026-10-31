@@ -93,7 +93,6 @@ class LevelTransitions:
         self.enabled = enabled  # production disables the unfinished garage feature
         self.entrances = list(entrances)
         self._disarmed: set = set()
-        self.last_transition: Optional[Tuple[int, int, int]] = None  # (connector osm id, from, to)
 
     def update(self, car, previous_position, current_way) -> Optional[Tuple[int, int, int]]:
         """Change car.map_level if this frame's movement drove through a
@@ -126,8 +125,6 @@ class LevelTransitions:
             fired = (connector.osm_id, car.map_level, destination)
             car.map_level = destination
             self._disarmed.add(connector.osm_id)
-        if fired:
-            self.last_transition = fired
         return fired
 
     def blocks_entry(self, car, previous_position, current_way) -> bool:

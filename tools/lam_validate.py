@@ -15,6 +15,7 @@ traffic: hourly counts are small; compare shapes, not volumes.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import math
 import statistics
@@ -118,11 +119,11 @@ def compare(station: dict, run_result: dict) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--station", required=True, help="a part of the station's name in lam_profiles.json")
+    parser.add_argument("--station", required=True, help="a part of the station's name in lam_profiles.json.gz")
     parser.add_argument("--days", nargs="+", type=date.fromisoformat, required=True)
     parser.add_argument("--out", type=Path, help="write the comparison as JSON")
     args = parser.parse_args()
-    data = json.loads((ROOT / "src/theroadragetrip/assets/traffic/lam_profiles.json").read_text(encoding="utf-8"))
+    data = json.loads(gzip.decompress((ROOT / "src/theroadragetrip/assets/traffic/lam_profiles.json.gz").read_bytes()))
     station = next(s for s in data["stations"] if args.station.lower() in s["name"].lower())
     if station.get("bearing") is None:
         sys.exit(f"{station['name']} has no bearing: no detector direction")

@@ -104,7 +104,6 @@ DEFAULT_CONFIG = {
         "overpass_endpoints": ", ".join(DEFAULT_OVERPASS_ENDPOINTS),
         "auto_fetch": "true",
         "fetch_margin": "350.0",
-        "fetch_tile_size": "1000.0",
         "build_in_process": "true",
         # "pbf" reads assets/osm/finland-latest.osm.pbf (or osm_pbf_path)
         # via the local `osmium` tool instead of live Overpass requests -

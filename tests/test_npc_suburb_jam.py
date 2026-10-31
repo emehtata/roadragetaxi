@@ -1,4 +1,4 @@
-"""Regressions from the four-wreck pile-up on Tähtimötie, screenshot 1792606300483339008."""
+"""Regressions from the four-wreck pile-up on a suburban street, screenshot 1792606300483339008."""
 import math
 
 import pytest
@@ -21,9 +21,9 @@ def _junction(monkeypatch, angle, mirror):
     east = [point(69.942515, 12.571805), point(59.892589, 10.761264), point(0, 0)]
     north = [point(0, 0), point(-14.914103, 59.922144), point(-26.590811, 98.077940)]
     road = Way(points_m=[point(220, 40)] + east + north[1:] + [point(-65, 250)],
-               name="Tähtimötie", highway="residential", half_width_m=4.5, speed_limit_kmh=30)
+               name="Kotitie", highway="residential", half_width_m=4.5, speed_limit_kmh=30)
     side = Way(points_m=[point(-100, -25), point(-6, -1.35), point(0, 0)],
-               name="Helmikkäkuja", highway="residential", half_width_m=4.5, speed_limit_kmh=30)
+               name="Kotikuja", highway="residential", half_width_m=4.5, speed_limit_kmh=30)
     ways = [road, side]
     world, residents = TrafficWorld(ways), ResidentManager()
     manager = NPCVehicleManager(target_count=2)

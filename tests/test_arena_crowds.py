@@ -182,3 +182,15 @@ def test_the_game_is_heard_at_the_arena_only_while_it_is_played():
     assert crowds.games_in_progress(start) == [(10.0, 20.0)]
     assert crowds.games_in_progress(start + timedelta(hours=2, minutes=29)) == [(10.0, 20.0)]
     assert crowds.games_in_progress(start + timedelta(hours=2, minutes=30)) == []
+
+
+def test_a_season_of_games_scans_the_buildings_once_per_arena(monkeypatch):
+    import theroadragetrip.arena_crowds as arena_crowds
+
+    games = [dict(fixture(start=f"2026-10-{day:02d}T15:00:00Z"), id=f"game{day}") for day in range(1, 31)]
+    crowds = ArenaCrowds(Pedestrians(), [], "Oulu", games, to_metres=lambda lat, lon: (10.0, 20.0))
+    scans = []
+    real = arena_crowds._arena_entrances
+    monkeypatch.setattr(arena_crowds, "_arena_entrances", lambda *args: scans.append(args) or real(*args))
+    crowds.sync_buildings([])
+    assert len(scans) == 1 and len(crowds.events) == 30

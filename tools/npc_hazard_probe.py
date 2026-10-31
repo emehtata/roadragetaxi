@@ -5,7 +5,7 @@ tick the simulation with the player standing there, and report
 - every NPC standing still on a car road for 20 s or more (with its 3 nearest),
 - vehicles parked beside a road at more than 15 degrees to it.
 
-    PYTHONPATH=src .venv/bin/python tools/npc_hazard_probe.py --at 425213 7217320 \
+    PYTHONPATH=src .venv/bin/python tools/npc_hazard_probe.py --at 427400 7210900 \
         --city Oulu --start-time 2026-10-28T15:04 --seconds 600
 
 Built on .claude/skills/repro-at/repro_at.py (same options); never imported by the game.

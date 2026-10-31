@@ -33,7 +33,7 @@ from .osm import Curb, StopSign, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, min_turn_radius, rear_axle_behind, get_road_layer_at_point, is_point_on_road, update_car_physics
 from .population import CLASS_DENSITIES, URBAN_PEOPLE_FRACTION, people_within, station_for_way, traffic_demand
 from .road_rage import RoadRageClearance
-from .residents import Household, HouseholdManager, ResidentManager
+from .residents import HouseholdManager, ResidentManager
 from .traffic_rules import TrafficAction, TrafficDecision, decide_traffic_action, nearest_vehicle_ahead, crossing_yield_decision, stop_sign_decision
 from .traffic_world import _ROUTE_NODE_GRID_CELL_M, RouteSteps, TrafficWorld, run_route_steps
 from .vehicles.base import VEHICLE_DEFINITIONS, vehicle_definition
@@ -83,12 +83,8 @@ class NPCAvailability:
     IN_USE = "IN_USE"
 
 
-WAYPOINT_REACH_RADIUS_M = 4.0
-# Tighter than WAYPOINT_REACH_RADIUS_M (used for cruising through an
-# ordinary mid-route waypoint, where a few meters of slack doesn't
-# matter): reported bug - considering the NPC "arrived" from up to
-# WAYPOINT_REACH_RADIUS_M away let it settle anywhere within that whole
-# circle, bigger than the yard/building clearance offset itself
+# Reported bug: considering the NPC "arrived" from up to 4 m away let it
+# settle anywhere within that whole circle, bigger than the yard/building clearance offset itself
 # (NPC_BUILDING_YARD_CLEARANCE_M), so it could stop still partly on the
 # service road/driveway instead of actually reaching the yard point.
 NPC_ARRIVAL_RADIUS_M = 1.5
@@ -290,9 +286,6 @@ NPC_TRANSIT_SPAWN_NODE_TRIES = 6
 NPC_TRANSIT_TRIP_MIN_DISTANCE_M = 60.0
 NPC_TRANSIT_TRIP_MAX_DISTANCE_M = 220.0
 NPC_TRANSIT_SPAWNS_PER_TICK = 2
-# Route validation is ~45ms per candidate on dense real data: keep one
-# spawn attempt to a few candidates so it cannot stall a frame for seconds.
-NPC_TRANSIT_SPAWN_TIME_BUDGET_S = 0.1
 # One wall-clock budget for ALL trip-start/transit-spawn route searching in a
 # single population tick (each attempt alone may run several validations).
 # ponytail: too small for a typical Oulu route plan+validation (~25 ms
@@ -432,7 +425,6 @@ NPC_TARGET_MOVING_FRACTION = 0.5
 # discipline as NPC_TRIP_START_ATTEMPTS_PER_TICK, so several vehicles
 # reboarding in the same tick can't stack into one multi-second frame.
 NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK = 1
-NPC_CONTINUE_TRIP_TIME_BUDGET_S = 0.1
 # collision-avoidance: recovery reroute attempts for STUCK vehicles - same one-
 # expensive-plan_route-call-per-tick discipline as the two constants above.
 NPC_RECOVERY_ATTEMPTS_PER_TICK = 1
@@ -1665,8 +1657,6 @@ def _plan_and_validate_npc_route(
     deadline: Optional[float] = None,
     vehicle_length_m: float = NPC_VEHICLE_LENGTH_M,
     vehicle_width_m: float = NPC_VEHICLE_WIDTH_M,
-    preserve_origin: bool = False,
-    origin_heading: Optional[float] = None,
 ) -> Optional[List[PathPoint]]:
     """Plan and fully validate a drivable path from origin to destination -
     the shared "never move a vehicle onto an unchecked route" core of both
@@ -1702,8 +1692,6 @@ def _plan_and_validate_npc_route(
         parking_space=parking_space, destination_is_off_road=destination_is_off_road,
         origin_is_off_road=origin_is_off_road,
         vehicle_length_m=vehicle_length_m, vehicle_width_m=vehicle_width_m,
-        preserve_origin=preserve_origin,
-        origin_heading=origin_heading,
     ), deadline)
 
 
@@ -4769,35 +4757,6 @@ class NPCVehicleManager:
     def trigger_road_rage(self, sim_time: float) -> None:
         """Activate the explicit ten-second arcade road-clearance exception."""
         self.road_rage.activate(sim_time)
-
-    def request_vehicle(
-        self, household: Household, passengers: int = 1, purpose: Optional[str] = None,
-    ) -> Optional[NPCVehicle]:
-        """vehicle-population v2 section 10: the one generic entry point a future
-        Resident shopping/errand system calls - "find a vehicle that can
-        carry N Residents [and is suitable for `purpose`], reserve it
-        atomically". Does not implement the shopping system itself (see
-        the spec's own closing line), only the vehicle-selection/
-        reservation half of it.
-
-        Selection is plugin-capability-driven (can_carry_passengers,
-        get_passenger_capacity, can_be_used_for_errands), never a branch
-        on vehicle_type - the caller never needs to know whether the
-        winning vehicle is a car or a van."""
-        for vehicle_id in household.vehicle_ids:
-            vehicle = next((v for v in self.vehicles if v.vehicle_id == vehicle_id), None)
-            if vehicle is None or vehicle.availability != NPCAvailability.AVAILABLE:
-                continue
-            definition = vehicle_definition(vehicle.vehicle_type)
-            if not definition.passenger_eligible:
-                continue
-            if definition.capacity < passengers:
-                continue
-            if purpose is not None and not definition.errand_eligible:
-                continue
-            if reserve_household_vehicle(vehicle):
-                return vehicle
-        return None
 
     def _claimed_vehicle_points(self) -> List[Tuple[int, Tuple[float, float]]]:
         """Every position a vehicle currently occupies, is already headed

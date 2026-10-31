@@ -10,6 +10,7 @@ player moves on (a population check, a new 100 m cell).
 """
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 import math
@@ -131,7 +132,7 @@ MONTH_FACTOR = {1: 0.88, 2: 0.9, 3: 0.95, 4: 0.97, 5: 1.0, 6: 1.05, 7: 1.0, 8: 1
 # Passing traffic a road carries whoever lives along it, as a share of a
 # town centre's moving traffic (estimate, by OSM highway class).
 THROUGH_TRAFFIC = {"motorway": 0.6, "trunk": 0.45, "primary": 0.3, "secondary": 0.15, "tertiary": 0.06}
-LAM_PROFILES = Path(__file__).parent / "assets" / "traffic" / "lam_profiles.json"
+LAM_PROFILES = Path(__file__).parent / "assets" / "traffic" / "lam_profiles.json.gz"
 # Local people as a share of a town centre's at which traffic follows the urban
 # curves fully; below, it blends toward the rural ones (a suburb counts as urban).
 URBAN_PEOPLE_FRACTION = 0.5
@@ -156,7 +157,7 @@ def load_measured_curves(path: Path = LAM_PROFILES) -> Optional[dict]:
     measured at Fintraffic LAM stations (tools/lam_profiles.py), or None (the
     estimates stay) when the file is missing or unreadable."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(gzip.decompress(path.read_bytes()).decode("utf-8"))
         curves = {}
         for setting in ("urban", "rural"):
             group = data["groups"][setting]
@@ -195,7 +196,7 @@ def load_class_densities(path: Path = LAM_PROFILES) -> dict:
     streets no station measures (tertiary down to living streets) as estimates
     scaled from the measured secondary roads (SIDE_STREET_SHARE). {} without the file."""
     try:
-        groups = json.loads(path.read_text(encoding="utf-8"))["groups"]
+        groups = json.loads(gzip.decompress(path.read_bytes()))["groups"]
         out = {}
         for setting in ("urban", "rural"):
             measured = dict(groups[setting]["peak_density_per_km"])
@@ -219,7 +220,7 @@ def load_station_curves(path: Path = LAM_PROFILES) -> list:
     rejected only for a missing bearing: the curves are both directions'
     totals, so the road number and position are enough."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(gzip.decompress(path.read_bytes()).decode("utf-8"))
         return [{"name": s["name"], "road": str(s["road_number"]), "x": s["x_m"], "y": s["y_m"],
                  "weekday_hourly": s["profile"]["weekday_hourly"], "weekend_hourly": s["profile"]["weekend_hourly"],
                  "special_hourly": s["profile"].get("special_hourly", {}),

@@ -291,7 +291,7 @@ complete CLI. Useful options include:
 | `--train-timetable` / `--no-train-timetable` | Enable/disable real train timetables |
 | `--force-refresh` / `--no-cache` | Bypass cached map data |
 | `--no-auto-fetch` | Disable map expansion |
-| `--fetch-margin` / `--fetch-tile-size` | Map-streaming distances |
+| `--fetch-margin` | Map-streaming distance |
 | `--npc-vehicle-count` / `--pedestrian-count` | Traffic-population overrides |
 | `--log-level` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
 
@@ -351,9 +351,7 @@ The [Godot client architecture](docs/architecture/godot-client.md) describes the
 client/server boundary. For traffic work, read the
 [Finnish NPC traffic-law guide](docs/finnish-npc-traffic-law.md): it specifies
 requirements and acceptance scenarios, not a certificate of current compliance.
-The [performance analysis](.github/performance-analysis/weather-traffic-2026-10-14.md)
-is a historical baseline; see the [implementation record](docs/rrt-0.18-progress.md)
-for subsequent changes and remaining gaps.
+Performance reports are in [.github/performance-analysis](.github/performance-analysis/README.md).
 
 ### Project layout
 

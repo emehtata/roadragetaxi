@@ -8,8 +8,7 @@ from itertools import islice
 from typing import List, Optional, Tuple
 
 from .geo import angle_diff
-from .osm import TaxiStop, Way
-from .physics import connected_drivable_ways
+from .osm import Way
 
 logger = logging.getLogger(__name__)
 
@@ -64,36 +63,23 @@ class SpeedCamera:
     map_level: int = 0
 
 
-def camera_count(ways: List[Way], city_name: Optional[str] = None) -> int:
-    """Scale cameras from one to twenty; Helsinki is the maximum case."""
-    if city_name and city_name.casefold() == "helsinki":
-        return 20
-    road_count = len(connected_drivable_ways(ways))
-    return max(1, min(20, round(road_count / 10)))
-
-
 def place_speed_cameras(
     ways: List[Way],
     bounds: Tuple[float, float, float, float],
-    city_name: Optional[str] = None,
-    taxi_stops: Optional[List[TaxiStop]] = None,
     seed: Optional[int] = None,
 ) -> List[SpeedCamera]:
-    """Place directional cameras across the connected road network."""
+    """One directional camera on the first suitable road of `ways` ([] if none fits)."""
     candidates = [
         way for way in ways
         if way.is_drivable and way.highway in SPEED_CAMERA_HIGHWAYS and len(way.points_m) >= 2
     ]
     if not candidates:
         return []
-    target_count = camera_count(ways, city_name)
     rng = random.Random(repr(bounds) if seed is None else seed)
     result: List[SpeedCamera] = []
 
     rng.shuffle(candidates)
     for way in candidates:
-        if len(result) >= target_count:
-            break
         segment_index = rng.randrange(len(way.points_m) - 1)
         start = way.points_m[segment_index]
         end = way.points_m[segment_index + 1]
@@ -118,6 +104,7 @@ def place_speed_cameras(
             layer=getattr(way, "layer", 0),
             map_level=getattr(way, "map_level", None) or 0,
         ))
+        break
     return result
 
 

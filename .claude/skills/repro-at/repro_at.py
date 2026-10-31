@@ -2,7 +2,7 @@
 scratchpad and replace probe() with what the bug needs.
 
     PYTHONPATH=src .venv/bin/python repro_at.py --json screenshots/screenshot_X.json [options]
-    PYTHONPATH=src .venv/bin/python repro_at.py --at 425357.8 7216759.2 --city Oulu [options]
+    PYTHONPATH=src .venv/bin/python repro_at.py --at 427400 7210900 --city Oulu [options]
 
 Options: --heading RAD, --speed M_S (driven straight along the heading for
 --seconds of simulation), --seconds S, --start-time YYYY-MM-DDTHH:MM,

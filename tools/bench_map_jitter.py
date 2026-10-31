@@ -120,6 +120,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--preset", default="Oulu")
     parser.add_argument("--osm-source", choices=("overpass", "pbf"), default=None)
+    parser.add_argument("--osm-pbf-path", help="the local .osm.pbf for --osm-source pbf")
     parser.add_argument("--drive-s", type=float, default=180.0)
     parser.add_argument("--speed", type=float, default=20.0, help="m/s (20: 72 km/h)")
     parser.add_argument("--heading", type=float, default=0.0, help="radians, 0 east, 1.5708 north")
@@ -136,7 +137,8 @@ def main(argv=None) -> int:
     log_path = args.json.with_suffix(".log") if args.json else Path(tempfile.gettempdir()) / "bench_map_jitter.log"
     logging.basicConfig(level=logging.INFO, filename=str(log_path), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     sys.argv = ["bench", "--preset", args.preset, "--no-menu", "--game-mode", "gig_driver", "--no-historical-weather"] + (
-        ["--osm-source", args.osm_source] if args.osm_source else [])
+        ["--osm-source", args.osm_source] if args.osm_source else []) + (
+        ["--osm-pbf-path", args.osm_pbf_path] if args.osm_pbf_path else [])
     import theroadragetrip.server as server_module
     from theroadragetrip.performance import tune_interpreter
     from theroadragetrip.server.cli import parse_server_args
@@ -219,8 +221,9 @@ def main(argv=None) -> int:
             rec["busy"] = bool(rec["background"] or streamer.status() or server._map_growth)
             ticks.append(rec)
             next_tick += interval
-            if next_tick > time.monotonic():
-                time.sleep(next_tick - time.monotonic())
+            wait = next_tick - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)  # computed once: re-reading the clock could make it negative
             else:
                 next_tick = time.monotonic()  # behind: no catching up in a burst (run_forever)
 

@@ -73,7 +73,7 @@ def test_a_remote_sysma_road_at_one_in_october_has_hardly_any_traffic():
     """Regression: cars kept appearing on a remote Sysmä road at 01:00."""
     night, manager = mean_moving(REMOTE, 10, 0, OCTOBER_NIGHT, "tertiary", city_target=15)
     # under about one minute in 35 has a moving car wanted: measured rural roads keep ~4 % of their
-    # peak at 01:00 (assets/traffic/lam_profiles.json), the old estimate 2.5 %
+    # peak at 01:00 (assets/traffic/lam_profiles.json.gz), the old estimate 2.5 %
     assert night < 0.03
     reasons = manager.population_diagnostics["traffic_demand"]
     assert reasons["hour"] < 0.05 and reasons["people"] < 10  # why: night, nobody around

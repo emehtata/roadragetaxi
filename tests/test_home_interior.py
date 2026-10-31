@@ -1,7 +1,5 @@
 """Geometry contracts, yard binding and the actual interior request envelope."""
-import json
 from itertools import combinations
-from pathlib import Path
 
 import pytest
 from shapely.affinity import rotate, scale, translate
@@ -12,12 +10,18 @@ from theroadragetrip.interior import GENERATOR_VERSION, _generate_cached, genera
 
 REFERENCE_L = [(0, 0), (14, 0), (14, 6.5), (5.5, 6.5), (5.5, 13), (0, 13)]
 
-HELMIKKAKUJA_HOUSES = json.loads((Path(__file__).parent / "data/helmikkakuja_2.json").read_text())
+# Three mapped compact L-shaped houses side by side (local metres, origin and
+# address left out on purpose: real homes).
+COMPACT_L_HOUSES = [
+    [(42.78, 10.53), (40.55, 17.52), (35.87, 16.03), (34.10, 21.61), (43.63, 24.64), (47.62, 12.07)],
+    [(20.28, 3.66), (18.68, 9.99), (13.45, 8.67), (12.33, 13.80), (11.97, 14.57), (22.96, 17.32), (26.02, 5.10)],
+    [(10.06, 14.32), (10.31, 13.34), (13.29, 1.58), (7.04, 0.00), (5.33, 6.73), (1.52, 5.77), (0.77, 8.73), (0.00, 11.77)],
+]
 
 RECTANGLE = [(0, 0), (14, 0), (14, 10), (0, 10)]
 FOOTPRINTS = [
     RECTANGLE, REFERENCE_L,
-    *(case["points"] for case in HELMIKKAKUJA_HOUSES),
+    *COMPACT_L_HOUSES,
     [(0, 0), (14, 1), (12, 11), (2, 10), (-1, 5)],
     [(0, 0), (14, 0), (14, 7), (8, 7), (8, 12), (0, 12)],
     [(0, 0), (3, 0), (3, 2), (0, 2)],
@@ -194,19 +198,19 @@ def test_home_selection_and_plan_round_trip_over_tcp(tmp_path, monkeypatch):
         server.close()
 
 
-# Real Oulu houses around Helmikkäkuja (map metres minus 425000, 7216000): small wings
+# Real detached houses (local metres, origin left out on purpose): small wings
 # came out as one open room, a hall end without a straight wall, and L-shapes whose
 # rooms had thin strips along the hall where the door went (a walker was stuck).
 REAL_HOUSES = [
-    [(383.09, 752.44), (381.50, 758.77), (376.26, 757.45), (375.15, 762.59), (374.78, 763.35), (385.77, 766.10), (388.84, 753.88)],
-    [(405.59, 759.31), (403.37, 766.30), (398.68, 764.82), (396.91, 770.39), (406.44, 773.42), (410.43, 760.85)],
-    [(372.88, 763.10), (373.12, 762.12), (376.10, 750.36), (369.85, 748.78), (368.15, 755.51), (364.33, 754.55), (363.58, 757.51), (362.81, 760.55)],
-    [(382.99, 802.41), (386.32, 790.50), (375.52, 787.49), (374.14, 792.45), (377.94, 793.51), (375.99, 800.47)],
-    [(397.28, 805.97), (400.59, 794.31), (390.08, 791.33), (388.55, 796.71), (392.67, 797.88), (390.89, 804.16)],
-    [(371.63, 786.04), (361.26, 783.44), (360.08, 788.09), (363.76, 789.02), (361.78, 796.88), (368.47, 798.56)],
-    [(353.13, 795.25), (356.80, 782.68), (347.27, 779.91), (345.97, 784.36), (349.80, 785.48), (347.44, 793.59)],
-    [(369.32, 728.04), (367.34, 735.72), (377.51, 738.34), (379.49, 730.67)],
-    [(392.87, 742.23), (394.97, 735.10), (404.78, 737.98), (402.67, 745.11)],
+    [(37.12, 24.40), (35.53, 30.73), (30.29, 29.41), (29.18, 34.55), (28.81, 35.31), (39.80, 38.06), (42.87, 25.84)],
+    [(59.62, 31.27), (57.40, 38.26), (52.71, 36.78), (50.94, 42.35), (60.47, 45.38), (64.46, 32.81)],
+    [(26.91, 35.06), (27.15, 34.08), (30.13, 22.32), (23.88, 20.74), (22.18, 27.47), (18.36, 26.51), (17.61, 29.47), (16.84, 32.51)],
+    [(37.02, 74.37), (40.35, 62.46), (29.55, 59.45), (28.17, 64.41), (31.97, 65.47), (30.02, 72.43)],
+    [(51.31, 77.93), (54.62, 66.27), (44.11, 63.29), (42.58, 68.67), (46.70, 69.84), (44.92, 76.12)],
+    [(25.66, 58.00), (15.29, 55.40), (14.11, 60.05), (17.79, 60.98), (15.81, 68.84), (22.50, 70.52)],
+    [(7.16, 67.21), (10.83, 54.64), (1.30, 51.87), (0.00, 56.32), (3.83, 57.44), (1.47, 65.55)],
+    [(23.35, 0.00), (21.37, 7.68), (31.54, 10.30), (33.52, 2.63)],
+    [(46.90, 14.19), (49.00, 7.06), (58.81, 9.94), (56.70, 17.07)],
 ]
 
 
@@ -263,17 +267,17 @@ def test_small_l_keeps_existing_layout_instead_of_cramped_reference():
     assert "vestibule" not in {room["kind"] for room in plan["rooms"]}
 
 
-@pytest.mark.parametrize("case", HELMIKKAKUJA_HOUSES, ids=lambda case: case["unit"])
+@pytest.mark.parametrize("points", COMPACT_L_HOUSES, ids=["L1", "L2", "L3"])
 @pytest.mark.parametrize("angle,reflection", [(0, 1), (31, 1), (90, -1)])
-def test_helmikkakuja_2_uses_compact_reference_through_house_plan(case, angle, reflection, tmp_path):
+def test_compact_l_houses_use_compact_reference_through_house_plan(points, angle, reflection, tmp_path):
     from test_home import _server
     from theroadragetrip.home import home_building_key, house_plan
     from theroadragetrip.osm import Building
     from theroadragetrip.physics import SpatialWayGrid
     from theroadragetrip.server import SimulationServer
 
-    source = rotate(scale(Polygon(case["points"]), xfact=reflection, origin=(0, 0)), angle, origin=(0, 0))
-    building = Building(points_m=list(source.exterior.coords), bbox=source.bounds, street="Helmikkäkuja", housenumber="2", building_type="detached")
+    source = rotate(scale(Polygon(points), xfact=reflection, origin=(0, 0)), angle, origin=(0, 0))
+    building = Building(points_m=list(source.exterior.coords), bbox=source.bounds, street="Kotikuja", housenumber="2", building_type="detached")
     plan = house_plan(building, [])
     kinds = [room["kind"] for room in plan["rooms"]]
     assert set(kinds) == {"vestibule", "hall", "living_kitchen", "bedroom", "bathroom"}
@@ -284,7 +288,7 @@ def test_helmikkakuja_2_uses_compact_reference_through_house_plan(case, angle, r
     assert rooms["hall"].area < 6
     assert rooms["living_kitchen"].area > source.area / 2
     assert {"bed", "toilet", "sink"} <= {item["kind"] for item in plan["furniture"]}
-    assert plan["name"] == "Helmikkäkuja 2"
+    assert plan["name"] == "Kotikuja 2"
 
     server = _server(tmp_path)
     server.world.building_grid = SpatialWayGrid([building])

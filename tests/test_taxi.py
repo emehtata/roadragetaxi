@@ -84,7 +84,6 @@ def test_offer_generation_adds_one_offer_at_a_time(monkeypatch):
 
     def fake_generate(car_x, car_y, count=3, append=False):
         requested_counts.append(count)
-        taxi_mgr._initial_offer_pending = False
         return []
 
     monkeypatch.setattr(taxi_mgr, "generate_offers", fake_generate)
@@ -357,7 +356,6 @@ def test_taxi_mission_lifecycle():
     assert taxi_mgr.state == TaxiState.DRIVING_TO_DROPOFF
     assert taxi_mgr.current_passenger.boarded is True
     assert taxi_mgr.get_current_target() == dropoff
-    assert taxi_mgr.current_fare_cents() >= 800
 
     # 4. Drive towards dropoff
     car.odometer_m += 1000.0
@@ -909,16 +907,16 @@ def test_phone_pickups_come_from_homes_on_small_streets_too():
 
 
 def test_home_pickup_is_on_the_address_street_not_a_closer_main_road():
-    """Reported: Helmikkäkuja 2's pickup was placed on Haukiputaantie, the nearer main road."""
+    """Reported: a home's pickup was placed on the nearer main road, not its own street."""
     from theroadragetrip.osm import Building
-    main = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="secondary", half_width_m=5.0, name="Haukiputaantie")
+    main = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="secondary", half_width_m=5.0, name="Pääkatu")
     side = Way(points_m=[(100.0, 0.0), (100.0, 60.0), (160.0, 60.0)], highway="residential", half_width_m=3.0,
-               name="Helmikkäkuja")
+               name="Kotikuja")
     house = Building(points_m=[(110.0, 15.0), (120.0, 15.0), (120.0, 25.0), (110.0, 25.0)], housenumber="2",
-                     street="Helmikkäkuja", building_type="detached")
+                     street="Kotikuja", building_type="detached")
     taxi_mgr = TaxiManager(ways=[main, side], buildings=[house])
     target = taxi_mgr.pick_random_building_point(homes=True)
-    assert target.address == "Helmikkäkuja 2" and target.way_name == "Helmikkäkuja"
+    assert target.address == "Kotikuja 2" and target.way_name == "Kotikuja"
     assert abs(target.x - 100.0) < 0.01  # on the side street, beside the house
 
 
@@ -963,3 +961,18 @@ def test_rejecting_one_of_several_offers_does_not_claim_phone_is_empty():
     assert taxi.reject_offer(0)
     assert not taxi.offers
     assert taxi.notification_msg == tr("en", "no_requests")
+
+
+def test_roads_through_a_building_from_the_grid_match_the_full_scan():
+    from theroadragetrip.physics import SpatialWayGrid
+
+    through = Way(points_m=[(0.0, 10.0), (100.0, 10.0)], highway="residential", half_width_m=4.5)
+    far = [Way(points_m=[(x, 500.0), (x + 50.0, 500.0)], highway="residential", half_width_m=4.5)
+           for x in range(0, 5000, 100)]
+    ways = [through] + far
+    points = [(40.0, 0.0), (60.0, 0.0), (60.0, 20.0), (40.0, 20.0)]
+    building = Building(points_m=points)
+    bbox = (40.0, 0.0, 60.0, 20.0)
+    full = TaxiManager(ways=ways)._roads_through(building, points, bbox, ways)
+    grid = TaxiManager(ways=ways)._roads_through(building, points, bbox, ways, SpatialWayGrid(ways))
+    assert full == grid == [through]

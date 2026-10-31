@@ -86,7 +86,7 @@ def test_streamed_interior_tile_rebuilds_lamps_and_resends_lit_chunks(monkeypatc
     server = SimpleNamespace(world=world, car=SimpleNamespace(x=0, y=0), _chunks_index=index,
                              _map_streamer=SimpleNamespace(sync_tiles={"tile"}, hold=False), _map_growth=[])
     outer = (-2000, -2000, 2000, 2000)
-    server_module.SimulationServer._map_grew(server, outer, outer, (-100, -30, 100, 30))
+    server_module.SimulationServer._map_grew(server, outer, outer, [(-100, -30, 100, 30)])
     assert len(server._map_growth) == 2  # fast nearby pass, then the fully lit replacement
     lights = server._map_growth[-1][0]
     assert retained in lights and obsolete not in lights
@@ -95,7 +95,7 @@ def test_streamed_interior_tile_rebuilds_lamps_and_resends_lit_chunks(monkeypatc
     assert world.street_light_points is previous  # only the tick swaps live state
     assert len({(x, y) for x, y, *_ in lights}) == len(lights)
     world.street_light_points = lights
-    server_module.SimulationServer._map_grew(server, outer, outer, (-100, -30, 100, 30))
+    server_module.SimulationServer._map_grew(server, outer, outer, [(-100, -30, 100, 30)])
     assert sorted(server._map_growth[-1][0]) == sorted(lights)  # repeat merge is idempotent
 
 

@@ -108,6 +108,7 @@ func _ready() -> void:
 	for label: Label in [_clock, _money, _speed, _weather]:
 		label.get_parent().remove_child(label)
 		add_child(label)
+		move_child(_summary, -1)  # the summary stays the top layer: it covers these too
 		label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		label.add_theme_font_size_override("font_size", 17)
@@ -372,6 +373,14 @@ func show_summary(text: String) -> void:
 ## The city summary's lines from state city_summary
 ## [city, score, fares, next_city, career_total_score]; a missing or
 ## malformed summary shows only that the city is done, never made-up values.
+## The next career city from state city_summary, "" when there is none (the career is complete).
+static func summary_next_city(state: Dictionary) -> String:
+	var summary = state.get("city_summary")
+	if typeof(summary) == TYPE_ARRAY and summary.size() >= 4 and typeof(summary[3]) == TYPE_STRING:
+		return summary[3]
+	return ""
+
+
 static func summary_text(state: Dictionary, language := "en") -> String:
 	var summary = state.get("city_summary")
 	if typeof(summary) != TYPE_ARRAY or summary.size() < 5 or typeof(summary[0]) != TYPE_STRING \

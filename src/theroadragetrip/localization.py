@@ -1,7 +1,6 @@
 """Built-in Finnish, English and German translation tables."""
 
 SUPPORTED_LANGUAGES = ("fi", "en", "de")
-LANGUAGE_NAMES = {"fi": "Suomi", "en": "English", "de": "Deutsch"}
 
 TRANSLATIONS = {
     "fi": {

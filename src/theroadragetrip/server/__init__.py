@@ -17,9 +17,12 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import replace
 
+import concurrent.futures
 import logging
 import math
+import multiprocessing
 import os
+import pickle
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -28,7 +31,8 @@ from types import SimpleNamespace
 from typing import Optional
 
 
-from .. import protocol
+from .. import chunk_worker, protocol
+from ..parent_watch import exit_with_parent
 from ..navigation_route import NavigationRoute
 from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, ChunkIndex, cell_of, chunk_id, plan
 from ..police import SpeedCameraSpawner
@@ -169,6 +173,11 @@ def npc_braking(npc, last_speed: float, dt: float) -> bool:
 # How far past the merged objects' extent the map sync's own edits reach
 # (a new road's generated house bays ~35 m, the trees it removes, its lamps).
 CHANGED_AREA_MARGIN_M = 50.0
+# JSON-encoding chunks a client needs, per tick, beyond the player's own 3x3
+# (always sent at once): at 250 km/h a rebuild finishes after the car has
+# moved on, its chunks aren't pre-encoded, and encoding them all in one tick
+# took 50-115 ms. The rest go on the next ticks, nearest first.
+CHUNK_ENCODE_BUDGET_S = 0.006
 
 
 class SimulationServer:
@@ -390,11 +399,16 @@ class SimulationServer:
         # beyond them would reach the client half-built and be resent when its tile merges.
         self._indexed_tiles = set(self._map_streamer.manager.loaded_tiles) if self._map_streamer is not None else None
         self._map_growth: list = []  # the background rebuild's results, swapped in by ticks in order
+        # Chunk rebuilds in a worker process (chunk_worker.py), off the ticks' GIL;
+        # with --no-build-in-process (or after a failure) on the map-growth thread.
+        self._chunk_workers = bool(getattr(args, "build_in_process", False))
+        self._chunk_pool = None
+        if self._chunk_workers:
+            self._chunk_executor().submit(int)  # spawn and import now, not at the first growth
         self._server_time = 0.0
         self._game_day_notice_shown = False
 
         self._listener: Optional[Listener] = None
-        self._running = False
 
     def _raining_last_hour(self) -> list:
         if self.weather_history is None:
@@ -637,7 +651,6 @@ class SimulationServer:
         self._listener = Listener(host, port, self._on_client_connect)
         self.host, self.port = self._listener.host, self._listener.port
         logger.info("Simulation server listening on %s:%d", self.host, self.port)
-        self._running = True
 
     def _live_feed(self):
         """Digitraffic MQTT (digitraffic_mqtt.py): live "now" data, so only
@@ -686,10 +699,25 @@ class SimulationServer:
         logger.info("Digitraffic road data on (live roadworks, cache %s)", cache_path)
         return LiveRoadworks(RoadDataService(client, unproject), project)
 
+    def _chunk_executor(self):
+        if self._chunk_pool is None:
+            self._chunk_pool = concurrent.futures.ProcessPoolExecutor(
+                max_workers=1, mp_context=multiprocessing.get_context("spawn"),
+                initializer=exit_with_parent, initargs=(os.getpid(),),  # no orphan if the server is killed
+            )
+        return self._chunk_pool
+
+    def _close_chunk_executor(self) -> None:
+        self._chunk_workers = False  # stays off: the map-growth thread rebuilds from here on
+        if self._chunk_pool is not None:
+            self._chunk_pool.shutdown(wait=False, cancel_futures=True)
+            self._chunk_pool = None
+
     def close(self) -> None:
         """Stop listening and drop every client (tests; an embedding host).
         The process exit does this for the standalone server."""
-        self._running = False
+        if getattr(self, "_chunk_pool", None) is not None:
+            self._chunk_pool.shutdown(wait=False, cancel_futures=True)
         self.navigation.close()
         if getattr(self.world, "live_roadworks", None) is not None:
             self.world.live_roadworks.service.close()
@@ -1260,12 +1288,13 @@ class SimulationServer:
 
     def _map_grew(self, old_bounds, new_bounds, dirty=None) -> None:
         """A map sync finished: light the new roads and rebuild the chunks the
-        merges changed (`dirty`, metres; ChunkIndex.updated - the rest are
-        kept) in the background, the streamer holding further merges
-        meanwhile so the world stays as synced; _apply_map_growth swaps them
-        in on a later tick. The chunks around the player come first, as their
-        own result (after a Home jump: the destination drawn seconds before
-        the rest of the area is rebuilt)."""
+        merges changed (`dirty`: a list of metre rects, one per group of
+        merged or unloaded tiles; ChunkIndex.updated - the rest are kept) in
+        the background, the streamer holding further merges meanwhile so the
+        world stays as synced; _apply_map_growth swaps them in on a later
+        tick. The chunks around the player come first, as their own result
+        (after a Home jump: the destination drawn seconds before the rest of
+        the area is rebuilt)."""
         covered = set(self._map_streamer.sync_tiles)
 
         def build():
@@ -1275,10 +1304,11 @@ class SimulationServer:
                 self._map_growth.append((previous, index, set(), old_bounds, new_bounds, 0.0, True, covered))
                 return
             margin = CHANGED_AREA_MARGIN_M
-            area = (dirty[0] - margin, dirty[1] - margin, dirty[2] + margin, dirty[3] + margin)
+            areas = [(d[0] - margin, d[1] - margin, d[2] + margin, d[3] + margin) for d in dirty]
             ix, iy = cell_of(self.car.x, self.car.y)
-            near = (max(area[0], (ix - 1) * CHUNK_SIZE_M), max(area[1], (iy - 1) * CHUNK_SIZE_M),
-                    min(area[2], (ix + 2) * CHUNK_SIZE_M), min(area[3], (iy + 2) * CHUNK_SIZE_M))
+            near = [(max(a[0], (ix - 1) * CHUNK_SIZE_M), max(a[1], (iy - 1) * CHUNK_SIZE_M),
+                     min(a[2], (ix + 2) * CHUNK_SIZE_M), min(a[3], (iy + 2) * CHUNK_SIZE_M)) for a in areas]
+            near = [n for n in near if n[0] < n[2] and n[1] < n[3]]
 
             def encode_in_reach(index, changed):
                 # What the next ticks send (resends, the new tiles' chunks) is encoded
@@ -1288,31 +1318,66 @@ class SimulationServer:
                     if max(abs(cx - ix), abs(cy - iy)) <= LOAD_RADIUS:
                         index.encoded(cid)
 
-            if near[0] < near[2] and near[1] < near[3]:
+            def rebuilt(index, regions):
+                changed = set()
+                for region in regions:
+                    index, more = ChunkIndex.updated(index, self.world, region)
+                    changed |= more
+                return index, changed
+
+            def built_in_worker(index, regions, lights, place_lamps):
+                """rebuilt() and the regions' new lamps, in the chunk worker
+                (chunk_worker.py); None when it can't run."""
+                new_lamps, changed = [], set()
+                try:
+                    for region in regions:
+                        pieces = chunk_worker.snapshot(self.world, region, lights, index.size)
+                        lamps, chunks = self._chunk_executor().submit(
+                            chunk_worker.build_area, pieces, region, index.size, place_lamps).result()
+                        built = [(cid, None if content is None else pickle.loads(content), wire)
+                                 for cid, content, wire in chunks]
+                        index, more = ChunkIndex.replaced(index, built)
+                        changed |= more
+                        new_lamps.extend(lamps or ())
+                except Exception as error:  # anything: an escaping one would end this thread, holding the map
+                    logger.warning("Chunk worker failed; rebuilding chunks on the map-growth thread: %r", error)
+                    self._close_chunk_executor()
+                    return None
+                return index, changed, new_lamps
+
+            if near:
                 # The player's 3x3 chunks changed: those first, with the street
                 # lights known so far (after a Home jump the destination is drawn
                 # a second or more sooner; its new lamps come with the next pass).
-                index, changed = ChunkIndex.updated(index, self.world, near)
+                result = built_in_worker(index, near, previous, False) if getattr(self, "_chunk_workers", False) else None
+                index, changed = result[:2] if result else rebuilt(index, near)
                 encode_in_reach(index, changed)
                 self._map_growth.append((previous, index, changed, old_bounds, new_bounds,
                                          time.perf_counter() - started, False, covered))
             lights_started = time.perf_counter()
             # A merged tile can fill a hole inside old_bounds, not just extend it.
-            # Rebuild its dirty area, retaining lamps elsewhere unchanged.
+            # Rebuild its dirty areas, retaining lamps elsewhere unchanged.
             lights = [lamp for lamp in previous
-                      if not (area[0] <= lamp[0] <= area[2] and area[1] <= lamp[1] <= area[3])]
-            lights.extend(place_street_lights(self.world, region=area))
-            lights_s = time.perf_counter() - lights_started
-            self.world.street_light_points = lights
-            try:
-                index, changed = ChunkIndex.updated(index, self.world, area)
-            finally:
-                self.world.street_light_points = previous  # the tick's own until the swap
+                      if not any(a[0] <= lamp[0] <= a[2] and a[1] <= lamp[1] <= a[3] for a in areas)]
+            result = built_in_worker(index, areas, previous, True) if getattr(self, "_chunk_workers", False) else None
+            if result:  # lamps and chunks both came from the worker, already encoded
+                index, changed, new_lamps = result
+                lights.extend(new_lamps)
+                lights_s = time.perf_counter() - lights_started
+            else:
+                for area in areas:
+                    lights.extend(place_street_lights(self.world, region=area))
+                lights_s = time.perf_counter() - lights_started
+                self.world.street_light_points = lights
+                try:
+                    index, changed = rebuilt(index, areas)
+                finally:
+                    self.world.street_light_points = previous  # the tick's own until the swap
             encode_in_reach(index, changed)
             self._map_growth.append((lights, index, changed, old_bounds, new_bounds, time.perf_counter() - started, True,
                                      covered))
-            logger.info("Map chunks rebuilt for %.0f x %.0f m (lights %.0f ms)", area[2] - area[0], area[3] - area[1],
-                        lights_s * 1000.0)
+            logger.info("Map chunks rebuilt for %s (lights %.0f ms)",
+                        ", ".join("%.0f x %.0f m" % (a[2] - a[0], a[3] - a[1]) for a in areas), lights_s * 1000.0)
 
         self._map_streamer.hold = True
         threading.Thread(target=build, name="map-growth", daemon=True).start()
@@ -1338,7 +1403,10 @@ class SimulationServer:
             for connection, (loaded, _) in list(self._client_chunks.items()):
                 # Nearest first; a resent chunk replaces the client's copy as it is drawn (no unload, no hole).
                 for cid in sorted(loaded & changed, key=distance):
-                    connection.send(self._chunks_index.encoded(cid))
+                    if distance(cid) <= 1 or index.is_encoded(cid):
+                        connection.send(index.encoded(cid))
+                    else:
+                        loaded.discard(cid)  # _stream_map_chunks resends it within its encode budget
                 self._client_chunks[connection] = (loaded, None)  # replan: the new area may be in reach
         logger.info("Map grew %s -> %s: %d chunks changed%s, built in %.0f ms", old_bounds, new_bounds, len(changed),
                     "" if final else " around the player", build_s * 1000.0)
@@ -1357,10 +1425,12 @@ class SimulationServer:
         player = self.world.player_pedestrian if self._on_foot else self.car
         cell = cell_of(player.x, player.y)
         indexed = self._indexed_tiles
+        started = time.perf_counter()
         for connection in clients:
             loaded, planned_for = self._client_chunks.get(connection, (set(), None))
             if planned_for == cell:
                 continue
+            complete = True
             to_load, to_drop = plan(loaded, cell)
             for cid in to_drop:
                 connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
@@ -1370,9 +1440,13 @@ class SimulationServer:
                 if indexed is not None and max(abs(ix - cell[0]), abs(iy - cell[1])) > 1 \
                         and world_to_tile((ix + 0.5) * CHUNK_SIZE_M, (iy + 0.5) * CHUNK_SIZE_M) not in indexed:
                     continue
+                if max(abs(ix - cell[0]), abs(iy - cell[1])) > 1 and not self._chunks_index.is_encoded(cid) \
+                        and time.perf_counter() - started > CHUNK_ENCODE_BUDGET_S:
+                    complete = False  # the next tick goes on from here
+                    break
                 connection.send(self._chunks_index.encoded(cid))
                 loaded.add(cid)
-            self._client_chunks[connection] = (loaded, cell)
+            self._client_chunks[connection] = (loaded, cell if complete else None)
 
     def _visible_bounds(self):
         views = [bounds for connection, (at, bounds) in self._client_views.items()

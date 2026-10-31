@@ -209,20 +209,6 @@ passenger-lifecycle (`linked_vehicle_id`/`reserved_vehicle_id`/
 considered - that state machinery (`_update_linked_driver`) owns those
 pedestrians exclusively.
 
-## Debugging
-
-`ActivityManager.explain_candidates()` gives, for every registered plugin,
-a one-line reason it would or wouldn't be picked for a resident right now
-(cooldown remaining, `can_start()` false, no location found, location
-already reserved, or "OK, weight=..."). No in-game panel shows
-it; call it from a test or a debugger.
-
-`explain_candidates()` is intentionally never called from the real
-per-tick selection path (`select_activity`) - it's a separate, read-only
-method that mirrors the same eligibility checks purely for on-demand
-introspection, so debugging one pedestrian never adds overhead to the
-other few hundred that aren't being inspected.
-
 ## Group activities
 
 A multi-participant activity (conversation, ball game, ...) needs no

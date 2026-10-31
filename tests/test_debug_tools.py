@@ -2,9 +2,9 @@
 import json
 import types
 
-from theroadragetrip.debug_snapshot import _write_debug_snapshot, find_feature_at
+from theroadragetrip.debug_snapshot import _write_debug_snapshot
 from theroadragetrip.npc import spawn_npc
-from theroadragetrip.osm import Building, Curb, Way
+from theroadragetrip.osm import Way
 from theroadragetrip.physics import Car
 from theroadragetrip.residents import ResidentManager
 from theroadragetrip.traffic_world import TrafficWorld
@@ -50,9 +50,8 @@ def _fake_taxi_mgr():
 
 def test_debug_snapshot_reports_the_live_tile_streaming_grid_size(tmp_path):
     """Regression: the JSON's auto_fetch.tile_size_m (and the value fed into
-    get_endpoint_fetch_audit's lookahead_m calc) used to be args.fetch_tile_size
-    - a legacy CLI value that only feeds AutoFetchManager.start_if_needed(), a
-    fetch path nothing in the game calls any more - instead of the real live
+    get_endpoint_fetch_audit's lookahead_m calc) used to be a legacy CLI value
+    instead of the real live
     tile_streaming.TILE_SIZE_M grid the game actually streams by. That made
     every debug snapshot's tile_size_m (and the endpoint audit's lookahead_m)
     wrong for osm_source=pbf sessions, which run a different TILE_SIZE_M
@@ -64,7 +63,6 @@ def test_debug_snapshot_reports_the_live_tile_streaming_grid_size(tmp_path):
         args = types.SimpleNamespace(
             auto_fetch=True,
             fetch_margin=350.0,
-            fetch_tile_size=2500.0,  # deliberately different from TILE_SIZE_M
             build_in_process=True,
             osm_source="pbf",
         )
@@ -113,7 +111,7 @@ def test_debug_snapshot_reports_the_live_tile_streaming_grid_size(tmp_path):
 def _write_minimal_snapshot(path, **overrides):
     auto_fetch_manager = FakeAutoFetchManager()
     args = types.SimpleNamespace(
-        auto_fetch=True, fetch_margin=350.0, fetch_tile_size=2500.0,
+        auto_fetch=True, fetch_margin=350.0,
         build_in_process=True, osm_source="overpass",
     )
     pedestrian_mgr = types.SimpleNamespace(pedestrians=[])
@@ -190,39 +188,5 @@ def test_debug_snapshot_keeps_driverless_crashed_npc(tmp_path):
     assert data["npcs"][0]["vehicle_id"] == 7
     assert data["npcs"][0]["state"] == "CRASHED"
     assert data["npcs"][0]["has_driver"] is False
-
-
-def test_find_feature_at_returns_nearest_way_within_tolerance():
-    """RENDER-audit.md section 19: clicking near a drivable way should
-    report highway=* and drivable=yes."""
-    way = Way(points_m=[(0.0, 0.0), (20.0, 0.0)], highway="residential", half_width_m=4.5)
-    feature = find_feature_at(10.0, 1.0, ways=[way])
-    assert feature is not None
-    assert feature["type"] == "highway=residential"
-    assert feature["drivable"] == "yes"
-
-
-def test_find_feature_at_prefers_the_closer_of_two_candidates():
-    """When a way and a curb both fall within tolerance, the nearer one wins."""
-    way = Way(points_m=[(0.0, 0.0), (20.0, 0.0)], highway="residential", half_width_m=4.5)
-    curb = Curb(points_m=[(0.0, 2.9), (20.0, 2.9)])
-    feature = find_feature_at(10.0, 2.5, ways=[way], curbs=[curb], tolerance_m=5.0)
-    assert feature["type"] == "barrier=kerb"
-
-
-def test_find_feature_at_detects_point_inside_a_closed_building_polygon():
-    """A click inside a building's outline (not just on its edge) should
-    still resolve to that building via the closed-polygon distance=0 case."""
-    building = Building(points_m=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)])
-    feature = find_feature_at(5.0, 5.0, buildings=[building])
-    assert feature is not None
-    assert feature["type"] == "building"
-
-
-def test_find_feature_at_returns_none_when_nothing_is_within_tolerance():
-    way = Way(points_m=[(0.0, 0.0), (20.0, 0.0)], highway="residential", half_width_m=4.5)
-    assert find_feature_at(500.0, 500.0, ways=[way]) is None
-
-
 
 

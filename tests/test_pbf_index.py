@@ -297,3 +297,20 @@ def test_a_windows_source_run_uses_the_repo_osmium(tmp_path, monkeypatch):
     assert pbf_index.osmium_command() == str(installed)
     monkeypatch.setattr(sys, "platform", "linux")
     assert pbf_index.osmium_command() is None  # elsewhere PATH only
+
+
+def test_a_bbox_over_a_missing_cell_gets_no_partial_index(tmp_path):
+    """Cells are cut lazily (build_cells_for): a bbox straddling a cut cell
+    and an uncut one must fall back to the whole file, not lose half its data."""
+    import json
+    from theroadragetrip.utils.pbf_index import MANIFEST_NAME, tiles_for_bbox
+
+    manifest = {"source": {}, "grid_size_deg": 0.25, "strategy": "smart", "cell_padding_deg": 0.0, "cells": [
+        {"gx": 0, "gy": 0, "bbox": [25.0, 64.0, 25.25, 64.25], "file": "a.pbf"},
+        {"gx": 1, "gy": 0, "bbox": [25.25, 64.0, 25.5, 64.25], "file": "b.pbf"},
+    ]}
+    (tmp_path / MANIFEST_NAME).write_text(json.dumps(manifest))
+    (tmp_path / "a.pbf").write_bytes(b"")
+    assert tiles_for_bbox(tmp_path, (64.05, 25.2, 64.1, 25.3)) == []
+    (tmp_path / "b.pbf").write_bytes(b"")
+    assert len(tiles_for_bbox(tmp_path, (64.05, 25.2, 64.1, 25.3))) == 2

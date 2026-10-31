@@ -443,17 +443,6 @@ def off_road_ground_kind(
     return "hard" if found_hard else "sand" if found_sand else "soft"
 
 
-def is_point_on_soft_ground(
-    px: float,
-    py: float,
-    sceneries: Optional[List] = None,
-    scenery_grid: Optional["SpatialWayGrid"] = None,
-) -> bool:
-    """Whether open ground at (px, py) is soft earth/grass specifically
-    (see off_road_ground_kind)."""
-    return off_road_ground_kind(px, py, sceneries, scenery_grid) == "soft"
-
-
 def is_point_in_water(
     px: float,
     py: float,
@@ -769,7 +758,6 @@ def respawn_car(
     bounds: Optional[Tuple[float, float, float, float]] = None,
     waters: Optional[List] = None,
     taxi_stops: Optional[List] = None,
-    near_edge: bool = False,
     start_point: Optional[Tuple[float, float]] = None,
 ) -> None:
     """Place the car on a main connected drivable land road, avoiding isolated road segments.
@@ -781,45 +769,6 @@ def respawn_car(
     car.fuel_consumption_l_per_100km = 0.0
     car.idle_fuel_consumption_l_per_hour = 0.0
     car.engine_on = True
-
-    if near_edge and bounds:
-        minx, miny, maxx, maxy = bounds
-        edge = random.choice(("west", "east", "south", "north"))
-        segments = [
-            (way, p1, p2)
-            for way in ways
-            if is_car_road(way) and len(way.points_m) >= 2
-            for p1, p2 in zip(way.points_m, way.points_m[1:])
-        ]
-        if segments:
-            def edge_distance(segment) -> float:
-                _, p1, p2 = segment
-                if edge == "west":
-                    return min(p1[0], p2[0]) - minx
-                if edge == "east":
-                    return maxx - max(p1[0], p2[0])
-                if edge == "south":
-                    return min(p1[1], p2[1]) - miny
-                return maxy - max(p1[1], p2[1])
-
-            edge_segments = [segment for segment in segments if edge_distance(segment) <= 500.0]
-            way, p1, p2 = min(edge_segments or segments, key=edge_distance)
-            if edge == "west":
-                start, end = min((p1, p2), key=lambda point: point[0]), max((p1, p2), key=lambda point: point[0])
-            elif edge == "east":
-                start, end = max((p1, p2), key=lambda point: point[0]), min((p1, p2), key=lambda point: point[0])
-            elif edge == "south":
-                start, end = min((p1, p2), key=lambda point: point[1]), max((p1, p2), key=lambda point: point[1])
-            else:
-                start, end = max((p1, p2), key=lambda point: point[1]), min((p1, p2), key=lambda point: point[1])
-            progress = random.uniform(0.05, 0.35)
-            x = start[0] + (end[0] - start[0]) * progress
-            y = start[1] + (end[1] - start[1]) * progress
-            heading = math.atan2(end[1] - start[1], end[0] - start[0])
-            _place_car_on_right_lane(car, way, x, y, heading)
-            car.speed = 0.0
-            car.layer = getattr(way, "layer", 0)
-            return
 
     if start_point is not None:
         best = None
@@ -1717,7 +1666,6 @@ def update_car_physics(
     ways: Optional[List] = None,
     spatial_grid: Optional[SpatialWayGrid] = None,
     block_offroad: bool = True,
-    enforce_oneway: bool = False,
     speed_limit_mps: Optional[float] = None,
     nearby_vehicles: Optional[List] = None,
     parking_spaces: Optional[List] = None,
@@ -1740,8 +1688,7 @@ def update_car_physics(
 
     When block_offroad is True and road data is provided, restricts motion to drivable
     car roads only, blocking movement if the vehicle attempts to leave the road.
-    When enforce_oneway is True, prevents moving against the legal direction on one-way streets.
-    Returns True if vehicle movement was blocked against the road boundary or one-way restriction.
+    Returns True if vehicle movement was blocked against the road boundary.
 
     Off-road speed capping (block_offroad=False) treats both an OSM
     parking_space (`parking_spaces`) and a mapped parking lot's whole
@@ -2115,16 +2062,6 @@ def update_car_physics(
             dy = math.sin(car.heading) * car.speed * dt + pivot_y
             target_x = car.x + dx
             target_y = car.y + dy
-
-    # Check one-way road violation
-    if enforce_oneway and has_road_data and (dx != 0.0 or dy != 0.0):
-        if is_violating_oneway(car, car.x, car.y, dx, dy, ways=ways, spatial_grid=spatial_grid):
-            blocked = True
-            car.speed = 0.0
-            dx = 0.0
-            dy = 0.0
-            target_x = car.x
-            target_y = car.y
 
     if block_offroad and has_road_data and (dx != 0.0 or dy != 0.0):
         currently_on_road = is_point_on_road(

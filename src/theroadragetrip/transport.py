@@ -67,8 +67,6 @@ class LineJSONConnection:
         self._out_lock = threading.Condition()
         self._outgoing: collections.deque = collections.deque()
         self._pending_state: Optional[dict] = None
-        self.sent_messages = 0
-        self.sent_bytes = 0
         self.coalesced_states = 0
         self._writing = False  # a message taken off the queue is being written
         self._thread = threading.Thread(target=self._read_loop, daemon=True)
@@ -180,7 +178,6 @@ class LineJSONConnection:
                         written = 0
                     if written:
                         data = data[written:]
-                        self.sent_bytes += written
                         stalled_since = time.monotonic()
                     elif time.monotonic() - stalled_since > SEND_STALL_TIMEOUT_S:
                         logger.warning("Dropping a client that stopped reading (no progress for %.0f s)", SEND_STALL_TIMEOUT_S)
@@ -190,7 +187,6 @@ class LineJSONConnection:
                 logger.info("Client connection lost while sending: %s", exc)
                 self._fail(exc)
                 return
-            self.sent_messages += 1
 
     def try_recv_latest(self) -> Optional[dict]:
         """Drain the queue and return only the newest message - state

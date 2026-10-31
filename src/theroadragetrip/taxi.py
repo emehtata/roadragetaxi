@@ -118,6 +118,8 @@ class TaxiOffer:
     offer_id: int = field(default_factory=lambda: next(_offer_ids))
 
 
+BREAKABLE_BARRIERS = ("hedge", "wood_fence")  # broken through locally (broken_hedges), never a wall
+
 class TaxiState:
     WAITING_FOR_PICKUP = "PICKUP"
     CLIENT_WALKING_TO_CAR = "WALKING"
@@ -232,12 +234,10 @@ class TaxiManager:
         self.rail_bookings = None
         self.driver_on_foot = False  # set every tick by simulation.advance_simulation
         self.offers: List[TaxiOffer] = []
-        self._initial_offer_pending = True
         self.fares_open = True  # False while the game starts up (the server opens it for the first client)
         self.state: str = TaxiState.WAITING_FOR_PICKUP
         self.total_score: int = 0
         self.completed_fares: int = 0
-        self.trip_start_time: float = 0.0
         self.elapsed_time: float = 0.0
         self.trip_distance_m: float = 0.0
         self.last_fare_points: int = 0
@@ -392,10 +392,6 @@ class TaxiManager:
 
     def _current_game_datetime(self) -> datetime:
         return datetime.combine(self.game_date, datetime.min.time()) + timedelta(seconds=self.game_time_seconds)
-
-    def current_fare_cents(self) -> int:
-        """Return the live meter amount for the onboard passenger."""
-        return self.live_fare_cents
 
     def phone_item_index(self, item_id: str) -> Optional[int]:
         """The phone row of a client-side id ("offer-N" / "booking-N"), or None
@@ -678,8 +674,10 @@ class TaxiManager:
         penalty: int = 200,
         ways: Optional[List[Way]] = None,
         current_way: Optional[Way] = None,
+        spatial_grid=None,
     ) -> bool:
-        """Stop the car at a building footprint and apply one crash penalty per impact."""
+        """Stop the car at a building footprint and apply one crash penalty per impact.
+        `spatial_grid` indexes `ways` (the road-overlap exemption's candidates)."""
         expired = [bid for bid, t in self._crashed_building_cooldowns.items() if sim_time - t > 3.0]
         for bid in expired:
             del self._crashed_building_cooldowns[bid]
@@ -752,7 +750,7 @@ class TaxiManager:
                     ) <= getattr(way, "half_width_m", 3.0)
                     for road_start, road_end in zip(way.points_m, way.points_m[1:])
                 )
-                for way in self._roads_through(building, points, bbox, ways)
+                for way in self._roads_through(building, points, bbox, ways, spatial_grid)
             ):
                 continue
 
@@ -774,16 +772,24 @@ class TaxiManager:
 
         return False
 
-    def _roads_through(self, building, points, bbox, ways) -> list:
+    def _roads_through(self, building, points, bbox, ways, spatial_grid=None) -> list:
         """The car roads crossing `building`'s outline, cached per building until
         the road list changes (a map merge): checked in full every contact
-        frame, this was most of a contact's cost."""
-        key = (id(ways), len(ways))
+        frame, this was most of a contact's cost. With the road grid only the
+        roads near the building are tried: after a merge every new contact
+        scanned all the map's roads, 240-470 ms a tick at speed in a city."""
+        key = (id(ways), len(ways), id(spatial_grid))
         if key != self._roads_through_key:
             self._roads_through_key, self._roads_through_cache = key, {}
         roads = self._roads_through_cache.get(id(building))
         if roads is None:
-            roads = [way for way in ways if is_car_road(way) and self._road_overlaps_building(way, points, bbox)]
+            if spatial_grid is not None:
+                minx, miny, maxx, maxy = bbox if bbox and bbox != (0.0, 0.0, 0.0, 0.0) else compute_bbox(points)
+                reach = 30.0  # wider than any road's half width
+                candidates = spatial_grid.ways_in_rect(minx - reach, miny - reach, maxx + reach, maxy + reach)
+            else:
+                candidates = ways
+            roads = [way for way in candidates if is_car_road(way) and self._road_overlaps_building(way, points, bbox)]
             self._roads_through_cache[id(building)] = roads
         return roads
 
@@ -828,9 +834,25 @@ class TaxiManager:
             return False
 
         for road_start, road_end in zip(road_points, road_points[1:]):
+            # Only segments near the footprint: a long road's others can't
+            # touch it, and testing each against every wall made a contact
+            # with a big building take up to 400 ms.
+            if (
+                max(road_start[0], road_end[0]) + half_width < building_bbox[0]
+                or min(road_start[0], road_end[0]) - half_width > building_bbox[2]
+                or max(road_start[1], road_end[1]) + half_width < building_bbox[1]
+                or min(road_start[1], road_end[1]) - half_width > building_bbox[3]
+            ):
+                continue
             if point_in_polygon(road_start[0], road_start[1], building_points):
                 return True
+            sx0, sx1 = min(road_start[0], road_end[0]) - half_width, max(road_start[0], road_end[0]) + half_width
+            sy0, sy1 = min(road_start[1], road_end[1]) - half_width, max(road_start[1], road_end[1]) + half_width
             for building_start, building_end in zip(building_points, building_points[1:] + building_points[:1]):
+                # Walls away from this segment (a big building's hundreds): neither test can hit.
+                if (max(building_start[0], building_end[0]) < sx0 or min(building_start[0], building_end[0]) > sx1
+                        or max(building_start[1], building_end[1]) < sy0 or min(building_start[1], building_end[1]) > sy1):
+                    continue
                 if segments_intersect(road_start, road_end, building_start, building_end):
                     return True
                 if (
@@ -933,7 +955,7 @@ class TaxiManager:
         current_way: Optional[Way] = None,
         penalty: int = 150,
     ) -> bool:
-        """Break hedges locally; stop at other barriers (open at their gates).
+        """Break hedges and wooden fences locally; stop at other barriers (open at their gates).
         Apply one crash penalty per impact. On a car
         road they never block: one mapped across a road is not a wall there."""
         self.barrier_sound = "collision.fence"
@@ -957,7 +979,7 @@ class TaxiManager:
                     or player_car.y < box[1] - radius or player_car.y > box[3] + radius):
                 continue
             points = railing.points_m
-            if railing.kind == "hedge":
+            if railing.kind in BREAKABLE_BARRIERS:
                 from shapely.geometry import LineString, MultiLineString, Polygon
                 if hedge_sweep is None:
                     hedge_sweep = Polygon(corners)
@@ -973,7 +995,7 @@ class TaxiManager:
                 pieces = [remaining] if remaining.geom_type == "LineString" else list(remaining.geoms)
                 self.broken_hedges[key] = [list(piece.coords) for piece in pieces if not piece.is_empty and piece.length > .05]
                 player_car.speed *= .85
-                self.barrier_sound = "collision.hedge_break"
+                self.barrier_sound = "collision.hedge_break" if railing.kind == "hedge" else "collision.fence"
                 damaged = True
                 barrier_id = id(railing)
                 if barrier_id not in self._crashed_fence_cooldowns:
@@ -1158,7 +1180,6 @@ class TaxiManager:
         speed_bumps: List[SpeedBump],
         previous_position: Optional[Tuple[float, float]],
         sim_time: float,
-        speed_bump_grid: Optional[SpatialWayGrid] = None,
         safe_speed_kmh: float = 25.0,
         max_slowdown: float = 0.5,
     ) -> bool:
@@ -1178,16 +1199,7 @@ class TaxiManager:
         for key in expired:
             del self._speed_bump_cooldowns[key]
 
-        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
-        candidates = (
-            speed_bump_grid.ways_in_rect(
-                min(px, player_car.x) - radius, min(py, player_car.y) - radius,
-                max(px, player_car.x) + radius, max(py, player_car.y) + radius,
-            )
-            if speed_bump_grid is not None
-            else speed_bumps
-        )
-        for bump in candidates:
+        for bump in speed_bumps:
             bump_id = id(bump)
             if bump_id in self._speed_bump_cooldowns:
                 continue
@@ -1936,7 +1948,6 @@ class TaxiManager:
         if self.has_job():
             self.offers = []
             return []
-        self._initial_offer_pending = False
         offers: List[TaxiOffer] = []
         available_slots = MAX_PHONE_OFFERS - len(self.offers) if append else MAX_PHONE_OFFERS
         for _ in range(min(max(1, count), max(0, available_slots))):
