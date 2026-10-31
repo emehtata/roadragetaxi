@@ -208,7 +208,7 @@ Verified against real files rather than the documentation alone:
 
 ## Phase 1: offline profile builder (done 2026-10-28)
 
-`tools/lam_profiles.py` writes `src/theroadragetrip/assets/traffic/lam_profiles.json`
+`tools/lam_profiles.py` writes `src/theroadragetrip/assets/traffic/lam_profiles.json.gz`
 (about 31 KB; CC BY 4.0, in the licence inventory). Downloads are reduced to
 hourly counts per direction and cached in `~/.cache/RoadRageTrip/lam/`, so a
 rebuild is offline and byte-identical.
@@ -251,7 +251,7 @@ Before any per-road matching (phase 2), the measured *group* curves replace
 `population.py`'s estimated clock, since every NPC trip start and moving
 target already goes through `hour_demand`:
 
-- `population.load_measured_curves` reads `lam_profiles.json` once at import:
+- `population.load_measured_curves` reads `lam_profiles.json.gz` once at import:
   the urban and rural weekday/weekend curves, and per setting the mean of the
   group stations' month factors, interpolated linearly around the year
   (urban: 1.06 April to 0.93 July; rural: 0.83 January to 1.26 July).
@@ -275,7 +275,7 @@ curves, and the validation runs with a virtual detector on matched roads.
 ## Phase 2: station to OSM road matching (2026-10-28)
 
 `tools/lam_profiles.py` now stores each station's `osm_match` in
-`lam_profiles.json`: the matched OSM ways and, per way, which LAM direction
+`lam_profiles.json.gz`: the matched OSM ways and, per way, which LAM direction
 its forward and backward travel is (`null` where one-way). Overpass answers
 are cached beside the counts, so rebuilds stay offline and identical.
 

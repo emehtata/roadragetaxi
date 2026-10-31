@@ -1,4 +1,5 @@
 """Geometry contracts, yard binding and the actual interior request envelope."""
+import gzip
 import json
 from itertools import combinations
 from pathlib import Path
@@ -12,7 +13,7 @@ from theroadragetrip.interior import GENERATOR_VERSION, _generate_cached, genera
 
 REFERENCE_L = [(0, 0), (14, 0), (14, 6.5), (5.5, 6.5), (5.5, 13), (0, 13)]
 
-HELMIKKAKUJA_HOUSES = json.loads((Path(__file__).parent / "data/helmikkakuja_2.json").read_text())
+HELMIKKAKUJA_HOUSES = json.loads(gzip.decompress((Path(__file__).parent / "data/helmikkakuja_2.json.gz").read_bytes()))
 
 RECTANGLE = [(0, 0), (14, 0), (14, 10), (0, 10)]
 FOOTPRINTS = [

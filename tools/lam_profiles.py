@@ -7,7 +7,7 @@ detections (lamraw_<tmsNumber>_<yy>_<ordinal day>.csv) for a few
 representative stations and one holiday-free week per season, keeps only
 hourly counts per direction (cached; the raw files are ~2.5 MB a day), and
 writes normalized weekday/weekend hourly curves, month factors and the
-station metadata to src/theroadragetrip/assets/traffic/lam_profiles.json.
+station metadata to src/theroadragetrip/assets/traffic/lam_profiles.json.gz.
 It also prints the curves against population.py's estimates.
 
 Source: Fintraffic / digitraffic.fi, license CC 4.0 BY.
@@ -15,6 +15,7 @@ Source: Fintraffic / digitraffic.fi, license CC 4.0 BY.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import math
 import sys
@@ -33,7 +34,7 @@ from theroadragetrip.population import MONTH_FACTOR, WEEKDAY_HOURLY, WEEKEND_HOU
 
 BASE = "https://tie.digitraffic.fi"
 HEADERS = {"Accept-Encoding": "gzip", "Digitraffic-User": "RoadRageTrip/lam-profiles"}
-OUT = ROOT / "src/theroadragetrip/assets/traffic/lam_profiles.json"
+OUT = ROOT / "src/theroadragetrip/assets/traffic/lam_profiles.json.gz.gz"
 CACHE = Path.home() / ".cache/RoadRageTrip/lam"
 PBF = ROOT / "src/theroadragetrip/assets/osm/finland-latest.osm.pbf"
 SCHEMA_VERSION = 1
@@ -438,7 +439,7 @@ def main() -> None:
     args = parser.parse_args()
     data = build(args.cache)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    args.out.write_bytes(gzip.compress((json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True) + "\n").encode("utf-8"), mtime=0))
     report(data)
 
 

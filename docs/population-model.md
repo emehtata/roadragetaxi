@@ -106,7 +106,7 @@ Code: `population.py`
   0.6, trunk 0.45, primary 0.3, secondary 0.15, tertiary 0.06. A main road
   through an empty municipality still carries cars.
 - **Clock** (`hour_demand`): the hourly curve, multiplied by the month factor.
-  - Measured at Fintraffic LAM stations (`assets/traffic/lam_profiles.json`,
+  - Measured at Fintraffic LAM stations (`assets/traffic/lam_profiles.json.gz`,
     `tools/lam_profiles.py`, [the LAM audit](lam-traffic-audit.md)): an urban
     and a rural weekday and weekend curve, and month factors interpolated
     between the sampled January, April, July and October.

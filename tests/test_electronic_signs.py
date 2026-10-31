@@ -1,4 +1,5 @@
 import copy
+import gzip
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,12 +12,12 @@ from theroadragetrip.digitraffic_road import DigitrafficClient, LiveRoadworks, R
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import Car, SpatialWayGrid
 
-FIXTURE = Path(__file__).parent / 'fixtures/digitraffic_variable_signs.json'
+FIXTURE = Path(__file__).parent / 'fixtures/digitraffic_variable_signs.json.gz'
 NOW = datetime(2026, 10, 28, 9, tzinfo=timezone.utc)
 
 
 def feature(**changes):
-    value = copy.deepcopy(json.loads(FIXTURE.read_text())['features'][0])
+    value = copy.deepcopy(json.loads(gzip.decompress(FIXTURE.read_bytes()))['features'][0])
     value['properties'].update(changes)
     return value
 
@@ -40,7 +41,7 @@ def displayed(signs, car, road, moment):
 
 
 def test_recorded_speed_warning_and_information_signs():
-    signs = es.parse_signs(json.loads(FIXTURE.read_text()))
+    signs = es.parse_signs(json.loads(gzip.decompress(FIXTURE.read_bytes())))
     assert len(signs) == 3
     assert signs[0]['speed_limit_kmh'] == 100 and signs[1]['code'] == '165'
     assert signs[2]['text'] == ['SILTATYÖ'] and signs[2]['road'] == '1'
@@ -158,7 +159,7 @@ def test_changes_and_blank_readings_apply_inside_a_query_window():
 
 
 def test_only_nearest_of_each_sign_type_is_displayed():
-    signs = es.parse_signs(json.loads(FIXTURE.read_text()))
+    signs = es.parse_signs(json.loads(gzip.decompress(FIXTURE.read_bytes())))
     signs = [dict(s,road='1',x=10,y=0) for s in signs]
     farther = dict(signs[0],id='farther-speed',x=50)
     rows = displayed(signs+[farther],Car(0,0,0,0),SimpleNamespace(ref='1'),NOW)

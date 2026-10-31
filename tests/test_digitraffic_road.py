@@ -15,13 +15,13 @@ from theroadragetrip.calendar import FINLAND_TZ
 from theroadragetrip.osm import Way
 from theroadragetrip.physics import SpatialWayGrid
 
-FIXTURE = Path(__file__).parent / "fixtures" / "digitraffic_roadworks_oulu.json"
+FIXTURE = Path(__file__).parent / "fixtures" / "digitraffic_roadworks_oulu.json.gz"
 KUUSAMONTIE = "GUID50472677"  # road 20, 30 km/h over 600 m, a lane closed; Wed 10-14 local, liftable
 PROJECT = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True).transform
 
 
 def _collection():
-    return json.loads(FIXTURE.read_text(encoding="utf-8"))
+    return json.loads(gzip.decompress(FIXTURE.read_bytes()))
 
 
 def _kuusamontie():

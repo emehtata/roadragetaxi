@@ -107,7 +107,7 @@ Compact layouts retain the vestibule, short 1.5 m hall, open kitchen/living
 room, 3 m wide bedroom and bathroom; they omit a separate closet and stairs.
 The bathroom is 2.6 m deep to leave room for the door, toilet and sink.
 
-Exact source coordinates are in `tests/data/helmikkakuja_2.json`. Regression
+Exact source coordinates are in `tests/data/helmikkakuja_2.json.gz`. Regression
 checks exercise all three through the server's selected-home and indoor plan
 paths, including rotated and mirrored footprints. Generated plans are also
 fixtures for the Godot floor coverage, collision, spawn and 2D walking checks.
