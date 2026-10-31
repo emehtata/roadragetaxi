@@ -124,7 +124,7 @@ const translations = {
       ['A livelier city', 'Shop windows light up by opening hours, roofs carry machine rooms and playgrounds have swings and slides.'],
       ['Crashes and walkers', 'A hard hit stops a car and empties it; a lighter one only slows it down. Walkers keep to the sidewalks and swing their arms.'],
     ],
-    releaseKicker: 'AVAILABLE / WINDOWS', releaseTitle: 'Your next fare<br>is waiting.', releaseText: 'Download the latest Windows installer. This is a work-in-progress alpha: bugs and performance issues remain.', releaseButton: 'Download Windows installer',
+    releaseKicker: 'AVAILABLE / WINDOWS', releaseTitle: 'Your next fare<br>is waiting.', releaseText: 'Download the latest Windows installer. This is a work-in-progress beta: bugs and performance issues remain.', releaseButton: 'Download Windows installer',
     scroll: 'SCROLL TO EXPLORE', toggle: 'Switch to Finnish',
   },
 };
