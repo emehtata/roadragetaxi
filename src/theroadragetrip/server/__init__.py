@@ -17,9 +17,13 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import replace
 
+import concurrent.futures
+from concurrent.futures.process import BrokenProcessPool
 import logging
 import math
+import multiprocessing
 import os
+import pickle
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -28,7 +32,8 @@ from types import SimpleNamespace
 from typing import Optional
 
 
-from .. import protocol
+from .. import chunk_worker, protocol
+from ..parent_watch import exit_with_parent
 from ..navigation_route import NavigationRoute
 from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, ChunkIndex, cell_of, chunk_id, plan
 from ..police import SpeedCameraSpawner
@@ -395,6 +400,12 @@ class SimulationServer:
         # beyond them would reach the client half-built and be resent when its tile merges.
         self._indexed_tiles = set(self._map_streamer.manager.loaded_tiles) if self._map_streamer is not None else None
         self._map_growth: list = []  # the background rebuild's results, swapped in by ticks in order
+        # Chunk rebuilds in a worker process (chunk_worker.py), off the ticks' GIL;
+        # with --no-build-in-process (or after a failure) on the map-growth thread.
+        self._chunk_workers = bool(getattr(args, "build_in_process", False))
+        self._chunk_pool = None
+        if self._chunk_workers:
+            self._chunk_executor().submit(int)  # spawn and import now, not at the first growth
         self._server_time = 0.0
         self._game_day_notice_shown = False
 
@@ -691,10 +702,26 @@ class SimulationServer:
         logger.info("Digitraffic road data on (live roadworks, cache %s)", cache_path)
         return LiveRoadworks(RoadDataService(client, unproject), project)
 
+    def _chunk_executor(self):
+        if self._chunk_pool is None:
+            self._chunk_pool = concurrent.futures.ProcessPoolExecutor(
+                max_workers=1, mp_context=multiprocessing.get_context("spawn"),
+                initializer=exit_with_parent, initargs=(os.getpid(),),  # no orphan if the server is killed
+            )
+        return self._chunk_pool
+
+    def _close_chunk_executor(self) -> None:
+        self._chunk_workers = False  # stays off: the map-growth thread rebuilds from here on
+        if self._chunk_pool is not None:
+            self._chunk_pool.shutdown(wait=False, cancel_futures=True)
+            self._chunk_pool = None
+
     def close(self) -> None:
         """Stop listening and drop every client (tests; an embedding host).
         The process exit does this for the standalone server."""
         self._running = False
+        if getattr(self, "_chunk_pool", None) is not None:
+            self._chunk_pool.shutdown(wait=False, cancel_futures=True)
         self.navigation.close()
         if getattr(self.world, "live_roadworks", None) is not None:
             self.world.live_roadworks.service.close()
@@ -1302,11 +1329,32 @@ class SimulationServer:
                     changed |= more
                 return index, changed
 
+            def built_in_worker(index, regions, lights, place_lamps):
+                """rebuilt() and the regions' new lamps, in the chunk worker
+                (chunk_worker.py); None when it can't run."""
+                new_lamps, changed = [], set()
+                try:
+                    for region in regions:
+                        pieces = chunk_worker.snapshot(self.world, region, lights, index.size)
+                        lamps, chunks = self._chunk_executor().submit(
+                            chunk_worker.build_area, pieces, region, index.size, place_lamps).result()
+                        built = [(cid, None if content is None else pickle.loads(content), wire)
+                                 for cid, content, wire in chunks]
+                        index, more = ChunkIndex.replaced(index, built)
+                        changed |= more
+                        new_lamps.extend(lamps or ())
+                except (BrokenProcessPool, OSError, RuntimeError) as error:
+                    logger.warning("Chunk worker failed; rebuilding chunks on the map-growth thread: %s", error)
+                    self._close_chunk_executor()
+                    return None
+                return index, changed, new_lamps
+
             if near:
                 # The player's 3x3 chunks changed: those first, with the street
                 # lights known so far (after a Home jump the destination is drawn
                 # a second or more sooner; its new lamps come with the next pass).
-                index, changed = rebuilt(index, near)
+                result = built_in_worker(index, near, previous, False) if getattr(self, "_chunk_workers", False) else None
+                index, changed = result[:2] if result else rebuilt(index, near)
                 encode_in_reach(index, changed)
                 self._map_growth.append((previous, index, changed, old_bounds, new_bounds,
                                          time.perf_counter() - started, False, covered))
@@ -1315,14 +1363,20 @@ class SimulationServer:
             # Rebuild its dirty areas, retaining lamps elsewhere unchanged.
             lights = [lamp for lamp in previous
                       if not any(a[0] <= lamp[0] <= a[2] and a[1] <= lamp[1] <= a[3] for a in areas)]
-            for area in areas:
-                lights.extend(place_street_lights(self.world, region=area))
-            lights_s = time.perf_counter() - lights_started
-            self.world.street_light_points = lights
-            try:
-                index, changed = rebuilt(index, areas)
-            finally:
-                self.world.street_light_points = previous  # the tick's own until the swap
+            result = built_in_worker(index, areas, previous, True) if getattr(self, "_chunk_workers", False) else None
+            if result:  # lamps and chunks both came from the worker, already encoded
+                index, changed, new_lamps = result
+                lights.extend(new_lamps)
+                lights_s = time.perf_counter() - lights_started
+            else:
+                for area in areas:
+                    lights.extend(place_street_lights(self.world, region=area))
+                lights_s = time.perf_counter() - lights_started
+                self.world.street_light_points = lights
+                try:
+                    index, changed = rebuilt(index, areas)
+                finally:
+                    self.world.street_light_points = previous  # the tick's own until the swap
             encode_in_reach(index, changed)
             self._map_growth.append((lights, index, changed, old_bounds, new_bounds, time.perf_counter() - started, True,
                                      covered))
