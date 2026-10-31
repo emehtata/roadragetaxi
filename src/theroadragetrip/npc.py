@@ -1888,6 +1888,7 @@ def _begin_trip_on_vehicle(
     member_resident_ids: Optional[List[int]] = None,
     destination_is_off_road: bool = False,
     origin_is_off_road: bool = False,
+    min_age: int = 0,
 ) -> Driver:
     """Create the Resident group -> TripGroup -> Driver for a vehicle
     about to start driving `path` for the first time - shared by
@@ -1938,7 +1939,7 @@ def _begin_trip_on_vehicle(
     if not members:
         group_size = random.randint(1, max(1, vehicle.capacity))
         members = [resident_manager.create(mode="driving" if i == 0 else "riding",
-                   age=random.randint(18, 29) if vehicle.vehicle_kind == "night_cruise" else None)
+                   age=random.randint(18, 29) if vehicle.vehicle_kind == "night_cruise" else None, min_age=min_age)
                    for i in range(group_size)]
     driver_resident = members[0]
     for member in members:
@@ -4599,6 +4600,7 @@ class NPCVehicleManager:
         # enable_two_wheelers is set - see _default_vehicle_distribution).
         self.snowy = False  # set by the simulation from the weather: more tractors out ploughing
         self.target_cycling_count = 0  # moving cyclists near the player (set_local_density)
+        self.e_scooter_season = False  # set_local_density
         self.camping_sites: List[Tuple[float, float]] = []  # camping area centres (update(): from the sceneries)
         self._camping_from = (None, 0)
         self.vehicle_distribution = (
@@ -4894,6 +4896,7 @@ class NPCVehicleManager:
         winter = self.snowy or (month is not None and (month >= 11 or month <= 3))
         expected_cycling = expected_moving * CYCLING_SHARE * (CYCLING_WINTER_FACTOR if winter else 1.0)
         self.target_cycling_count = math.floor(expected_cycling) + (self._demand_draw < expected_cycling % 1.0)
+        self.e_scooter_season = not winter  # rental fleets are off the streets in winter (cycling.py)
         self.target_moving_count = min(self.max_count, self.target_moving_count + self._night_taxi_target)
         # Parked cars belong to the households around, whatever the hour;
         # passing traffic needs room on top of them.
@@ -6491,9 +6494,10 @@ class NPCVehicleManager:
         if (riding + queued >= self.target_cycling_count or queued >= CYCLIST_SPAWN_JOBS
                 or len(self._route_jobs) >= NPC_MAX_ROUTE_JOBS // 2 or not traffic_world.cycle_graph.nodes):
             return
-        definition = vehicle_definition("bicycle")
+        vehicle_type = "e_scooter" if self.e_scooter_season and random.random() < cycling.E_SCOOTER_SHARE else "bicycle"
+        definition = vehicle_definition(vehicle_type)
         to_rack = None
-        if viewport_bounds is not None and random.random() < cycling.RACK_TRIP_SHARE:
+        if vehicle_type == "bicycle" and viewport_bounds is not None and random.random() < cycling.RACK_TRIP_SHARE:
             taken = {}
             for d in self.drivers.values():
                 if d.rack_claim is not None:
@@ -6504,8 +6508,9 @@ class NPCVehicleManager:
         self._enqueue_route_job("cycle", None, cycling.cycle_spawn_steps(
             traffic_world.cycle_graph, (player_x, player_y), self._active_bounds, viewport_bounds,
             lambda point: any(True for _ in self.nearby_vehicles_at(point[0], point[1], cycling.CYCLIST_SPAWN_CLEARANCE_M)),
-            spatial_grid, definition.width_m, racks=self.bicycle_racks(), to_rack=to_rack,
+            spatial_grid, definition.width_m, racks=self.bicycle_racks() if vehicle_type == "bicycle" else (), to_rack=to_rack,
         ), traffic_world)
+        self._route_jobs[-1]["vehicle_type"] = vehicle_type
 
     def bicycle_racks(self) -> list:
         """The world's bicycle_parking objects, refiltered only when the scenery list changes."""
@@ -6621,6 +6626,8 @@ class NPCVehicleManager:
                 stats["discarded"] += 1
                 return
             driver.route_job_pending = False
+            if vehicle.vehicle_type == "e_scooter":
+                route.cruise_mps = driver.cycle.cruise_mps  # the same scooter, the same speed limiter
             if driver.stolen:  # a getaway
                 route.cruise_mps = min(route.cruise_mps * cycling.THIEF_CRUISE_FACTOR, cycling.THIEF_MAX_CRUISE_MPS)
                 driver.target_speed_mps = route.cruise_mps
@@ -6636,17 +6643,21 @@ class NPCVehicleManager:
             stats["discarded"] += 1
             self._count_discard("cyclist_spawn_unsafe")
             return
-        definition = vehicle_definition("bicycle")
+        vehicle_type = job.get("vehicle_type", "bicycle")
+        definition = vehicle_definition(vehicle_type)
+        if vehicle_type == "e_scooter":
+            route.cruise_mps = random.uniform(*cycling.E_SCOOTER_SPEED_MPS)
         heading = math.atan2(route.points[1][1] - start[1], route.points[1][0] - start[0])
         vehicle = NPCVehicle(
             vehicle_id=self._next_id(),
             car=Car(x=start[0], y=start[1], heading=heading, speed=0.0, length_m=definition.length_m,
                     width_m=definition.width_m),
-            state=NPCState.CRUISING, vehicle_type="bicycle", color=random.choice(NPC_VEHICLE_COLORS),
+            state=NPCState.CRUISING, vehicle_type=vehicle_type, color=random.choice(NPC_VEHICLE_COLORS),
             capacity=definition.capacity,
         )
         path = [PathPoint(x, y, way) for (x, y), way in zip(route.points, route.ways + route.ways[-1:])]
-        driver = _begin_trip_on_vehicle(vehicle, path, resident_manager, route.points[-1])
+        driver = _begin_trip_on_vehicle(vehicle, path, resident_manager, route.points[-1],
+                                        min_age=cycling.E_SCOOTER_RIDER_MIN_AGE if vehicle_type == "e_scooter" else 0)
         driver.cycle = route
         vehicle.car.layer = getattr(route.ways[0], "layer", 0)
         vehicle.car.speed = driver.target_speed_mps = route.cruise_mps * 0.8  # rides in from out of view
@@ -6696,13 +6707,14 @@ class NPCVehicleManager:
             driver.replans += 1
             driver.route_job_pending = True
             self._enqueue_route_job("cycle", vehicle, cycling.cycle_trip_steps(
-                traffic_world.cycle_graph, nearest, spatial_grid, vehicle.width_m, racks=self.bicycle_racks()), traffic_world)
+                traffic_world.cycle_graph, nearest, spatial_grid, vehicle.width_m,
+                racks=self.bicycle_racks() if vehicle.vehicle_type == "bicycle" else ()), traffic_world)
 
     @staticmethod
     def _pedestrian_lookup(pedestrian_mgr, active):
         """Walkers near a point, from a 10 m grid built once per tick - only
         when a cyclist is being simulated (cars use their own checks)."""
-        if pedestrian_mgr is None or not any(v.vehicle_type == "bicycle" for v in active):
+        if pedestrian_mgr is None or not any(cycling.is_cyclist(v) for v in active):
             return lambda x, y: ()
         grid: dict = {}
         for ped in pedestrian_mgr.pedestrians:

@@ -1241,6 +1241,10 @@ func test_rendering() -> void:
 		var rider := bike._car_shapes.any(func(shape): return shape[0] == "circle")
 		check(lines == 4 and rider == case[2], "bicycle: two tyres, frame and bars; rider %s" % ("shown" if case[2] else "hidden"))
 		bike.free()
+		var scooter := Entities.new()
+		scooter._vehicle(Vector2.ZERO, 0.0, 1.2, 0.5, Color8(200, 40, 40), "e_scooter", false, case[0], false, false, "", 0.0, case[1])
+		check(scooter._car_shapes.any(func(shape): return shape[0] == "circle") == case[2], "e-scooter: standing rider %s" % ("shown" if case[2] else "hidden"))
+		scooter.free()
 
 	# Wet roads: darken 90/255 at full wetness, no sheen below 0.15.
 	var dry := RS.wet_alphas(0.0)

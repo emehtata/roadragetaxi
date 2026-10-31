@@ -3,7 +3,7 @@ from theroadragetrip.vehicles.base import VEHICLE_DEFINITIONS, vehicle_definitio
 
 def test_builtin_vehicle_definitions_cover_traffic_capabilities():
     assert set(VEHICLE_DEFINITIONS) == {
-        "car", "van", "truck", "bus", "tractor", "camper_van", "car_caravan", "motorcycle", "bicycle",
+        "car", "van", "truck", "bus", "tractor", "camper_van", "car_caravan", "motorcycle", "bicycle", "e_scooter",
     }
     assert vehicle_definition("car").capacity == 5
     assert vehicle_definition("van").household_eligible
@@ -18,6 +18,8 @@ def test_builtin_vehicle_definitions_cover_traffic_capabilities():
     assert not motorcycle.experimental and motorcycle.traffic_weight > 0.0 and motorcycle.movement == "road"
     assert not vehicle_definition("bicycle").is_road_vehicle
     assert not vehicle_definition("bicycle").requires_parking
+    scooter = vehicle_definition("e_scooter")  # a light electric vehicle: the cycle network, 25 km/h at most
+    assert scooter.movement == "cycle" and scooter.max_speed_kmh == 25.0 and not scooter.is_road_vehicle
 
 
 def test_unknown_vehicle_uses_car_definition():

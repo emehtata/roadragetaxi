@@ -60,6 +60,10 @@ VEHICLE_DEFINITIONS = {
         # demand share (npc.CYCLING_SHARE), not the car traffic_weight draw.
         VehicleDefinition("bicycle", "Bicycle", "bicycle", 1.8, 0.6, 1, 25.0, requires_parking=False, is_road_vehicle=False,
                           household_eligible=False, passenger_eligible=False, errand_eligible=False, movement="cycle", mass_kg=95.0),
+        # A shared rental e-scooter, a light electric vehicle (Tieliikennelaki § 2): ridden
+        # like a bicycle (cycling.py), standing; left where the ride ends, in season only.
+        VehicleDefinition("e_scooter", "E-scooter", "e_scooter", 1.2, 0.5, 1, 25.0, requires_parking=False, is_road_vehicle=False,
+                          household_eligible=False, passenger_eligible=False, errand_eligible=False, movement="cycle", mass_kg=100.0),
     )
 }
 

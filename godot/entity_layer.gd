@@ -860,6 +860,22 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			_poly(_rect(c - f * hl * 0.05, f, r, hl * 0.28, -hl * 0.32, hw * 0.95), color, RS.OUTLINE)  # back and shoulders
 			_car_shapes.append(["circle", c + f * hl * 0.18, hw * 0.55, _lit(Color8(236, 196, 160))])  # head
 		return
+	if kind == "e_scooter":  # small wheels, a deck in the rental fleet's green, the stem and bars; the standing rider (in `color`) while ridden
+		if fallen:  # lying on its side, the rider gone
+			f = _forward(heading - PI / 2.0)
+			r = _right(heading - PI / 2.0)
+		var tyre := _lit(Color8(28, 28, 28))
+		var thin := maxf(_px(1.0), hl * 0.1)
+		for end: float in [0.78, -0.78]:
+			_car_shapes.append(["line", c + f * hl * (end + 0.18), c + f * hl * (end - 0.18), tyre, maxf(_px(1.5), hw * 0.4)])
+		_poly(_rect(c, f, r, hl * 0.62, -hl * 0.72, hw * 0.32), _lit(Color8(40, 160, 110)), RS.OUTLINE)  # the deck
+		_car_shapes.append(["line", c + f * hl * 0.78 + r * hw, c + f * hl * 0.78 - r * hw, tyre, thin])  # handlebar
+		if engine_on and not fallen:  # feet on the deck, arms forward to the bars
+			_car_shapes.append(["line", c + f * hl * 0.15 + r * hw * 0.5, c + f * hl * 0.72 + r * hw * 0.85, _lit(color), thin])
+			_car_shapes.append(["line", c + f * hl * 0.15 - r * hw * 0.5, c + f * hl * 0.72 - r * hw * 0.85, _lit(color), thin])
+			_poly(_rect(c, f, r, hl * 0.28, -hl * 0.12, hw * 0.95), color, RS.OUTLINE)  # back and shoulders
+			_car_shapes.append(["circle", c + f * hl * 0.1, hw * 0.55, _lit(Color8(236, 196, 160))])  # head
+		return
 	if kind in TWO_WHEELERS:  # a motorbike from above: tyres, tank in its paint, seat, bars; the rider while ridden
 		if fallen:  # lying on its side, the rider gone
 			f = _forward(heading - PI / 2.0)

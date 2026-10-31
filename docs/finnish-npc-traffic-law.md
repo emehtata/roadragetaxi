@@ -123,6 +123,11 @@ Law: §§ 11, 13–16, 24, 26–29.
 - A mounted cyclist does not automatically gain pedestrian priority from a zebra
   crossing alone. Evaluate cycle controls, B5/B6/B7, turning and driveway duties.
   A person walking a bicycle is a pedestrian.
+- A light electric vehicle such as an e-scooter (§ 2: at most 25 km/h and
+  1 kW) follows the cyclist's rules and gets the same duties from drivers. Since
+  17 June 2025 its rider must be at least 15, and it carries no passenger.
+  Game policy: NPC e-scooters are shared rentals ridden in the snow-free season
+  and left standing where the ride ends, never in a bicycle rack.
 - Give safe space and particular care to children, elderly/disabled people,
   school transport, stopped buses and trams (§ 29).
 - Yield to a bus signaling departure from its stop on a road limited to at most

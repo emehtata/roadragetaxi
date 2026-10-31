@@ -18,6 +18,11 @@ Finnish law (docs/finnish-npc-traffic-law.md, Tieliikennelaki 729/2018):
   (§ 24(2)) - npc.py's turning_yield_to_cyclists.
 - §§ 3-5 care: slow for and never ride into pedestrians, also on a shared
   path, whatever the priority.
+E-scooters (vehicle_type "e_scooter") ride the same network under the same
+rules: a light electric vehicle (§ 2: at most 25 km/h and 1 kW) follows the
+cyclist's rules. Since 17 June 2025 its rider must be at least 15 and carries
+no passenger. Game policy: they are shared rentals, in the snow-free season
+only, never walked into a rack - left standing where the ride ends.
 Game policies here are marked as such.
 """
 from __future__ import annotations
@@ -53,6 +58,10 @@ QUIET_STREETS = frozenset({"residential", "living_street", "service", "unclassif
 
 # Riding (game tuning, not law).
 CYCLIST_SPEED_MPS = (4.2, 6.4)  # 15-23 km/h, drawn per rider
+E_SCOOTER_SPEED_MPS = (5.0, 6.9)  # 18-25 km/h: rental scooters are limited to the 25 km/h legal maximum
+E_SCOOTER_SHARE = 0.3  # of new riders in the snow-free season (game tuning)
+E_SCOOTER_RIDER_MIN_AGE = 15  # § 2 a (in force 17.6.2025)
+CYCLE_TYPES = frozenset({"bicycle", "e_scooter"})
 CYCLIST_ACCEL_MPS2 = 1.2
 CYCLIST_BRAKE_MPS2 = 2.5  # comfortable; 4.0 in an emergency
 CYCLIST_EMERGENCY_BRAKE_MPS2 = 4.0
@@ -293,7 +302,7 @@ def _turn_angle_at(route: CycleRoute, index: int) -> float:
 
 
 def is_cyclist(obj) -> bool:
-    return getattr(obj, "vehicle_type", None) == "bicycle"
+    return getattr(obj, "vehicle_type", None) in CYCLE_TYPES
 
 
 def _motor_traffic(obj) -> bool:
