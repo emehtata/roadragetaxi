@@ -291,7 +291,7 @@ complete CLI. Useful options include:
 | `--train-timetable` / `--no-train-timetable` | Enable/disable real train timetables |
 | `--force-refresh` / `--no-cache` | Bypass cached map data |
 | `--no-auto-fetch` | Disable map expansion |
-| `--fetch-margin` / `--fetch-tile-size` | Map-streaming distances |
+| `--fetch-margin` | Map-streaming distance |
 | `--npc-vehicle-count` / `--pedestrian-count` | Traffic-population overrides |
 | `--log-level` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
 

@@ -50,9 +50,8 @@ def _fake_taxi_mgr():
 
 def test_debug_snapshot_reports_the_live_tile_streaming_grid_size(tmp_path):
     """Regression: the JSON's auto_fetch.tile_size_m (and the value fed into
-    get_endpoint_fetch_audit's lookahead_m calc) used to be args.fetch_tile_size
-    - a legacy CLI value that only feeds AutoFetchManager.start_if_needed(), a
-    fetch path nothing in the game calls any more - instead of the real live
+    get_endpoint_fetch_audit's lookahead_m calc) used to be a legacy CLI value
+    instead of the real live
     tile_streaming.TILE_SIZE_M grid the game actually streams by. That made
     every debug snapshot's tile_size_m (and the endpoint audit's lookahead_m)
     wrong for osm_source=pbf sessions, which run a different TILE_SIZE_M
@@ -64,7 +63,6 @@ def test_debug_snapshot_reports_the_live_tile_streaming_grid_size(tmp_path):
         args = types.SimpleNamespace(
             auto_fetch=True,
             fetch_margin=350.0,
-            fetch_tile_size=2500.0,  # deliberately different from TILE_SIZE_M
             build_in_process=True,
             osm_source="pbf",
         )
@@ -113,7 +111,7 @@ def test_debug_snapshot_reports_the_live_tile_streaming_grid_size(tmp_path):
 def _write_minimal_snapshot(path, **overrides):
     auto_fetch_manager = FakeAutoFetchManager()
     args = types.SimpleNamespace(
-        auto_fetch=True, fetch_margin=350.0, fetch_tile_size=2500.0,
+        auto_fetch=True, fetch_margin=350.0,
         build_in_process=True, osm_source="overpass",
     )
     pedestrian_mgr = types.SimpleNamespace(pedestrians=[])

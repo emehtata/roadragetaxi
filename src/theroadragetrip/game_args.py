@@ -89,7 +89,6 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
         default=map_config.getfloat("fetch_margin", fallback=350.0),
         help="Distance in meters from bbox edge that triggers auto-fetch",
     )
-    p.add_argument("--fetch-tile-size", type=float, default=map_config.getfloat("fetch_tile_size", fallback=500.0), help="Base auto-fetch bbox size in meters")
     p.add_argument(
         "--build-in-process",
         action="store_true",
