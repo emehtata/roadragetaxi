@@ -83,12 +83,8 @@ class NPCAvailability:
     IN_USE = "IN_USE"
 
 
-WAYPOINT_REACH_RADIUS_M = 4.0
-# Tighter than WAYPOINT_REACH_RADIUS_M (used for cruising through an
-# ordinary mid-route waypoint, where a few meters of slack doesn't
-# matter): reported bug - considering the NPC "arrived" from up to
-# WAYPOINT_REACH_RADIUS_M away let it settle anywhere within that whole
-# circle, bigger than the yard/building clearance offset itself
+# Reported bug: considering the NPC "arrived" from up to 4 m away let it
+# settle anywhere within that whole circle, bigger than the yard/building clearance offset itself
 # (NPC_BUILDING_YARD_CLEARANCE_M), so it could stop still partly on the
 # service road/driveway instead of actually reaching the yard point.
 NPC_ARRIVAL_RADIUS_M = 1.5
@@ -290,9 +286,6 @@ NPC_TRANSIT_SPAWN_NODE_TRIES = 6
 NPC_TRANSIT_TRIP_MIN_DISTANCE_M = 60.0
 NPC_TRANSIT_TRIP_MAX_DISTANCE_M = 220.0
 NPC_TRANSIT_SPAWNS_PER_TICK = 2
-# Route validation is ~45ms per candidate on dense real data: keep one
-# spawn attempt to a few candidates so it cannot stall a frame for seconds.
-NPC_TRANSIT_SPAWN_TIME_BUDGET_S = 0.1
 # One wall-clock budget for ALL trip-start/transit-spawn route searching in a
 # single population tick (each attempt alone may run several validations).
 # ponytail: too small for a typical Oulu route plan+validation (~25 ms
@@ -432,7 +425,6 @@ NPC_TARGET_MOVING_FRACTION = 0.5
 # discipline as NPC_TRIP_START_ATTEMPTS_PER_TICK, so several vehicles
 # reboarding in the same tick can't stack into one multi-second frame.
 NPC_CONTINUE_TRIP_ATTEMPTS_PER_TICK = 1
-NPC_CONTINUE_TRIP_TIME_BUDGET_S = 0.1
 # collision-avoidance: recovery reroute attempts for STUCK vehicles - same one-
 # expensive-plan_route-call-per-tick discipline as the two constants above.
 NPC_RECOVERY_ATTEMPTS_PER_TICK = 1

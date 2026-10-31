@@ -5,9 +5,6 @@ import math
 from datetime import datetime, timedelta, timezone
 
 SIGN_DISTANCE_M = 700.0
-WARNING_TEXT = {'133': 'Congestion', '141': 'Uneven road', '142': 'Road works', '143': 'Loose gravel',
-                '144': 'Slippery road', '147': 'Dangerous shoulder', '154': 'Ski track',
-                '155': 'Elk', '156': 'Reindeer', '165': 'Traffic lights', '183': 'Crosswind', '189': 'Other danger'}
 
 
 def _time(value):
