@@ -23,7 +23,6 @@ from .train_timetable import ScheduledPass, StationCall, TimetableClock, match_t
 
 logger = logging.getLogger(__name__)
 
-TRAIN_ENABLED = True
 # Timetable trains matched per map-sync slice (RailwayManager.rebuild_steps):
 # ~1-3 ms on a city map; the whole match took 30-50 ms in one tick.
 MATCH_SLICE_TRAINS = 20
@@ -546,8 +545,6 @@ class RailwayManager:
         """rebuild() in slices, MATCH_SLICE_TRAINS timetable trains each
         (the map sync yields between them). The new network is built aside
         and committed by the last slice; the old one serves meanwhile."""
-        if not TRAIN_ENABLED:
-            return
         graph = build_rail_graph(railways)
         routes = build_train_routes(railways, graph=graph)
         timed = self.timetable is not None and self.to_metres is not None
@@ -898,8 +895,6 @@ class RailwayManager:
         """dt moves trains (real seconds, like every vehicle); now (the
         game clock, naive Finnish time) drives timetable spawns, game_dt
         the fallback interval - both follow the game's time scale."""
-        if not TRAIN_ENABLED:
-            return
         self.bookings.update(now)
         current = {id(route) for route in self.routes}
         kept = []
