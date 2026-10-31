@@ -1235,6 +1235,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_game.set_graphics(Graphics.read(_settings))
 	_apply_interior_settings()
 	_game.get_node("SimClient").connection_changed.connect(_server_connected)
+	_game.summary_action.connect(_career_summary_action)
 	add_child(_game)
 	move_child(_game, 1)
 	_loading = true
@@ -1579,6 +1580,14 @@ func _remember_game_time() -> void:
 		_settings.set_value("gig", "left_at", {"year": int(date[0]), "month": int(date[1]), "day": int(date[2]),
 			"hour": minutes / 60 % 24, "minute": minutes % 60})
 		_settings.save("user://settings.cfg")
+
+
+## The career summary's button: the server saved the career at the next
+## city, so a new career game starts there; with the career complete, the menu.
+func _career_summary_action(next_city: bool) -> void:
+	_stop_game()
+	if next_city:
+		_start("career", true)
 
 
 func _stop_game() -> void:

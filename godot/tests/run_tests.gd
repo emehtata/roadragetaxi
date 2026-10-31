@@ -64,6 +64,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_vomit_puddle()
 	test_i18n()
 	test_tutorial()
+	test_career_summary_button()
 	test_graphics_settings()
 	test_chunk_queue()
 	test_interpolation()
@@ -470,6 +471,10 @@ func test_chunk_queue() -> void:
 	check(map.chunk_count() == 4, "light ones still share a frame")
 	map.free()
 	main.free()
+
+
+func test_career_summary_button() -> void:
+	check(Hud.summary_next_city({"city_summary": ["Oulu", 5100, 12, "Raahe", 9000]}) == "Raahe" and Hud.summary_next_city({"city_summary": ["Helsinki", 5100, 12, null, 90000]}) == "" and Hud.summary_next_city({}) == "", "career summary: the next city, or none when the career is complete")
 
 
 func test_tutorial() -> void:
@@ -2405,8 +2410,14 @@ func test_controls_and_economy() -> void:
 	main._present(base.merged({"should_stop": true, "city_summary": ["Oulu", 10500, 12, "Tampere", 21000]}))
 	var hud: Control = main.get_node("Ui/Hud")
 	check(main.summary_shown and hud._summary.visible and hud._summary.text.contains("Next city: Tampere"), "should_stop shows the summary")
-	var others: Array = main.get_node("Ui").get_children().filter(func(n): return n != hud)
+	var others: Array = main.get_node("Ui").get_children().filter(func(n): return n != hud and not n is Button)
 	check(others.all(func(n): return not n.visible), "the rest of the game UI is hidden")
+	var next_buttons: Array = main.get_node("Ui").get_children().filter(func(n): return n is Button and n.text == I18n.text("next_city_button", "en"))
+	var asked := []
+	main.summary_action.connect(func(next: bool): asked.append(next))
+	if next_buttons.size() == 1:
+		next_buttons[0].pressed.emit()
+	check(next_buttons.size() == 1 and asked == [true], "career summary: Next city asks the launcher for the next city")
 	main._present(base.merged({"should_stop": false}))
 	check(hud._summary.visible, "it stays: the session is over")
 	main._present({})

@@ -4,6 +4,7 @@ const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := {
+	"next_city_button": "Seuraava kaupunki", "back_to_menu": "Takaisin valikkoon",
 	"career_goals": "Aja taksia ympäri Suomea kaupunki kerrallaan, Sysmästä Lapin kautta Helsinkiin: 18 kaupunkia.\n\nTavoite: ansaitse kaupungissa 5 000 pistettä. Silloin kaupunki on valmis ja ura jatkuu seuraavaan.\n\nPisteitä saat suoritetuista kyydeistä: nopea ja tasainen kyyti, jossa matkustaja pysyy tyytyväisenä, palkitaan parhaiten. Kolarit, aidat, nopeuskamerat, väärään suuntaan ajaminen ja oksentava matkustaja vievät pisteitä.\n\nRahat ja kilometrit siirtyvät kaupungista toiseen, ja eteneminen tallentuu automaattisesti. Läpäise kaikki 18 kaupunkia suorittaaksesi uran.",
 	"tut_rage_meter": "RATTIRAIVO on pelin ydin. Mittari kuljettajan kuvan alla (oikealla alhaalla) nousee, kun ajat ylinopeutta, odotat punaisissa valoissa tai sladiat mutkissa; sääntöjen mukainen ajo rauhoittaa. Aja ylinopeutta, kunnes mittari näyttää 50 %.",
 	"tut_rage_shout": "Pura se nyt: paina Space. Tööttäät ja huudat, ja edessä oleva liikenne väistää. Jokainen purkaus vie 50 % raivosta, joten kerää sitä taas ennen seuraavaa.",
@@ -254,6 +255,7 @@ const FI := {
 }
 
 const EN := {
+	"next_city_button": "Next city", "back_to_menu": "Back to menu",
 	"career_goals": "Drive a taxi across Finland, one city at a time, from Sysmä up to Lapland and back down to Helsinki: 18 cities.\n\nGoal: earn 5,000 points in a city. Then the city is done and your career moves on to the next one.\n\nPoints come from completed fares: a quick, smooth ride that keeps the passenger happy pays best. Crashes, fences, speed cameras, driving the wrong way and a passenger throwing up cost points.\n\nYour money and kilometres carry over from city to city, and your progress is saved automatically. Finish all 18 cities to complete the career.",
 	"tut_rage_meter": "ROAD RAGE is what this game is about. The meter under the driver's portrait (bottom right) rises when you speed, wait at red lights or slide in corners; driving by the rules calms it. Speed past the limit until the meter reaches 50%.",
 	"tut_rage_shout": "Now let it out: press Space. You honk and shout, and the traffic ahead gets out of your way. Each outburst costs 50% rage, so build it up again before the next one.",
@@ -506,6 +508,7 @@ const EN := {
 }
 
 const DE := {
+	"next_city_button": "Nächste Stadt", "back_to_menu": "Zurück zum Menü",
 	"career_goals": "Fahre Taxi quer durch Finnland, eine Stadt nach der anderen, von Sysmä über Lappland bis nach Helsinki: 18 Städte.\n\nZiel: Verdiene in einer Stadt 5.000 Punkte. Dann ist die Stadt geschafft und deine Karriere geht in der nächsten weiter.\n\nPunkte gibt es für abgeschlossene Fahrten: Eine schnelle, ruhige Fahrt mit zufriedenem Fahrgast bringt am meisten. Unfälle, Zäune, Blitzer, Falschfahren und ein sich übergebender Fahrgast kosten Punkte.\n\nGeld und Kilometer nimmst du von Stadt zu Stadt mit, und dein Fortschritt wird automatisch gespeichert. Schaffe alle 18 Städte, um die Karriere abzuschließen.",
 	"tut_rage_meter": "STRASSENWUT ist der Kern des Spiels. Die Anzeige unter dem Fahrerbild (unten rechts) steigt, wenn du zu schnell fährst, an roten Ampeln wartest oder in Kurven rutschst; regelkonformes Fahren beruhigt. Fahre zu schnell, bis die Anzeige 50 % erreicht.",
 	"tut_rage_shout": "Jetzt raus damit: drücke die Leertaste. Du hupst und schreist, und der Verkehr vor dir weicht aus. Jeder Ausbruch kostet 50 % Wut – sammle sie vor dem nächsten wieder.",

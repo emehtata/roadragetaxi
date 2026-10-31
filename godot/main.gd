@@ -66,6 +66,7 @@ var _inspect_panel: PanelContainer
 var _inspect_label: Label
 var _focus := {}  # {kind: pan|pedestrian|npc, id or position}; empty follows the player
 var _pan_button := 0
+signal summary_action(next_city: bool)  # the career summary's button: the launcher starts the next city or opens the menu
 var summary_shown := false  # the career city summary is up: the session is over, no more driving commands
 var _engine_on := false  # the driver starts on foot, E starts the engine after getting in
 var _entered_taxi := false  # the "Press F" hint until the driver first gets in
@@ -1082,8 +1083,9 @@ static func _night(game_time_seconds: float) -> float:
 
 
 ## The career city is done (state should_stop): the summary covers the
-## game and the client stops driving. The server owns what comes next; it
-## has no continue request, so this is the end of the session here.
+## game and the client stops driving. The server has already saved the
+## career at the next city; the button asks the launcher to start it
+## (summary_action true), or, with the career complete, to go back to the menu.
 func show_summary(state: Dictionary) -> void:
 	summary_shown = true
 	drive.clear()
@@ -1091,6 +1093,16 @@ func show_summary(state: Dictionary) -> void:
 		if node != hud:
 			node.visible = false
 	hud.show_summary(Hud.summary_text(state, language))
+	var next := Hud.summary_next_city(state) != ""
+	var button := Button.new()
+	button.text = T.text("next_city_button" if next else "back_to_menu", language)
+	button.add_theme_font_size_override("font_size", 24)
+	button.custom_minimum_size = Vector2(280, 56)
+	var view := get_viewport().get_visible_rect().size
+	button.position = Vector2((view.x - button.custom_minimum_size.x) / 2.0, view.y - 176.0)  # $Ui is no Control: no anchors
+	button.pressed.connect(func(): summary_action.emit(next))
+	$Ui.add_child(button)
+	button.grab_focus.call_deferred()  # Enter / Space press it too
 
 
 ## The distance gain: full within `range[0]`, 1/distance
