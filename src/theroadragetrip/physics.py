@@ -758,7 +758,6 @@ def respawn_car(
     bounds: Optional[Tuple[float, float, float, float]] = None,
     waters: Optional[List] = None,
     taxi_stops: Optional[List] = None,
-    near_edge: bool = False,
     start_point: Optional[Tuple[float, float]] = None,
 ) -> None:
     """Place the car on a main connected drivable land road, avoiding isolated road segments.
@@ -770,45 +769,6 @@ def respawn_car(
     car.fuel_consumption_l_per_100km = 0.0
     car.idle_fuel_consumption_l_per_hour = 0.0
     car.engine_on = True
-
-    if near_edge and bounds:
-        minx, miny, maxx, maxy = bounds
-        edge = random.choice(("west", "east", "south", "north"))
-        segments = [
-            (way, p1, p2)
-            for way in ways
-            if is_car_road(way) and len(way.points_m) >= 2
-            for p1, p2 in zip(way.points_m, way.points_m[1:])
-        ]
-        if segments:
-            def edge_distance(segment) -> float:
-                _, p1, p2 = segment
-                if edge == "west":
-                    return min(p1[0], p2[0]) - minx
-                if edge == "east":
-                    return maxx - max(p1[0], p2[0])
-                if edge == "south":
-                    return min(p1[1], p2[1]) - miny
-                return maxy - max(p1[1], p2[1])
-
-            edge_segments = [segment for segment in segments if edge_distance(segment) <= 500.0]
-            way, p1, p2 = min(edge_segments or segments, key=edge_distance)
-            if edge == "west":
-                start, end = min((p1, p2), key=lambda point: point[0]), max((p1, p2), key=lambda point: point[0])
-            elif edge == "east":
-                start, end = max((p1, p2), key=lambda point: point[0]), min((p1, p2), key=lambda point: point[0])
-            elif edge == "south":
-                start, end = min((p1, p2), key=lambda point: point[1]), max((p1, p2), key=lambda point: point[1])
-            else:
-                start, end = max((p1, p2), key=lambda point: point[1]), min((p1, p2), key=lambda point: point[1])
-            progress = random.uniform(0.05, 0.35)
-            x = start[0] + (end[0] - start[0]) * progress
-            y = start[1] + (end[1] - start[1]) * progress
-            heading = math.atan2(end[1] - start[1], end[0] - start[0])
-            _place_car_on_right_lane(car, way, x, y, heading)
-            car.speed = 0.0
-            car.layer = getattr(way, "layer", 0)
-            return
 
     if start_point is not None:
         best = None

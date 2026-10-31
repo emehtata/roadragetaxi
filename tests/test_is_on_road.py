@@ -85,16 +85,6 @@ def test_respawn_car_places_on_road_with_heading():
     assert car.heading == 0.0
 
 
-def test_respawn_car_near_edge_places_car_on_edge_road(monkeypatch):
-    west_road = Way(points_m=[(0.0, 20.0), (100.0, 20.0)], highway="residential", half_width_m=2.0)
-    car = Car(x=50.0, y=50.0, heading=0.0, speed=0.0)
-    monkeypatch.setattr(physics.random, "choice", lambda edges: "west")
-    respawn_car(car, [west_road], bounds=(0.0, 0.0, 100.0, 100.0), near_edge=True)
-
-    assert is_on_road(car, [west_road]) is True
-    assert car.x < 40.0
-
-
 def test_respawn_car_avoids_water_and_ice_roads():
     # Road 1: on top of lake (ice road)
     lake = Water(
