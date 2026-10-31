@@ -1178,7 +1178,6 @@ class TaxiManager:
         speed_bumps: List[SpeedBump],
         previous_position: Optional[Tuple[float, float]],
         sim_time: float,
-        speed_bump_grid: Optional[SpatialWayGrid] = None,
         safe_speed_kmh: float = 25.0,
         max_slowdown: float = 0.5,
     ) -> bool:
@@ -1198,16 +1197,7 @@ class TaxiManager:
         for key in expired:
             del self._speed_bump_cooldowns[key]
 
-        radius = math.hypot(player_car.length_m, player_car.width_m) * 0.5
-        candidates = (
-            speed_bump_grid.ways_in_rect(
-                min(px, player_car.x) - radius, min(py, player_car.y) - radius,
-                max(px, player_car.x) + radius, max(py, player_car.y) + radius,
-            )
-            if speed_bump_grid is not None
-            else speed_bumps
-        )
-        for bump in candidates:
+        for bump in speed_bumps:
             bump_id = id(bump)
             if bump_id in self._speed_bump_cooldowns:
                 continue
