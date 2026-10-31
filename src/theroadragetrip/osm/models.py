@@ -103,8 +103,8 @@ class Railway:
 
 @dataclass
 class Railing:
-    """A linear barrier, open at mapped gates. Hedges break locally when hit;
-    other barriers stop the taxi (TaxiManager.check_barrier_collision)."""
+    """A linear barrier, open at mapped gates. Hedges and wooden fences break
+    locally when hit; other barriers stop the taxi (TaxiManager.check_barrier_collision)."""
     points_m: List[Tuple[float, float]]
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     kind: str = "fence"

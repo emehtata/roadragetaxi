@@ -118,6 +118,8 @@ class TaxiOffer:
     offer_id: int = field(default_factory=lambda: next(_offer_ids))
 
 
+BREAKABLE_BARRIERS = ("hedge", "wood_fence")  # broken through locally (broken_hedges), never a wall
+
 class TaxiState:
     WAITING_FOR_PICKUP = "PICKUP"
     CLIENT_WALKING_TO_CAR = "WALKING"
@@ -953,7 +955,7 @@ class TaxiManager:
         current_way: Optional[Way] = None,
         penalty: int = 150,
     ) -> bool:
-        """Break hedges locally; stop at other barriers (open at their gates).
+        """Break hedges and wooden fences locally; stop at other barriers (open at their gates).
         Apply one crash penalty per impact. On a car
         road they never block: one mapped across a road is not a wall there."""
         self.barrier_sound = "collision.fence"
@@ -977,7 +979,7 @@ class TaxiManager:
                     or player_car.y < box[1] - radius or player_car.y > box[3] + radius):
                 continue
             points = railing.points_m
-            if railing.kind == "hedge":
+            if railing.kind in BREAKABLE_BARRIERS:
                 from shapely.geometry import LineString, MultiLineString, Polygon
                 if hedge_sweep is None:
                     hedge_sweep = Polygon(corners)
@@ -993,7 +995,7 @@ class TaxiManager:
                 pieces = [remaining] if remaining.geom_type == "LineString" else list(remaining.geoms)
                 self.broken_hedges[key] = [list(piece.coords) for piece in pieces if not piece.is_empty and piece.length > .05]
                 player_car.speed *= .85
-                self.barrier_sound = "collision.hedge_break"
+                self.barrier_sound = "collision.hedge_break" if railing.kind == "hedge" else "collision.fence"
                 damaged = True
                 barrier_id = id(railing)
                 if barrier_id not in self._crashed_fence_cooldowns:

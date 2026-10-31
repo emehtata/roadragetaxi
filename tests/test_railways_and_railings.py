@@ -84,6 +84,16 @@ def test_build_ways_parses_barrier_hedge_and_wall_with_kind():
     assert by_kind == {"hedge", "wall"}
 
 
+def test_wooden_fences_get_their_own_kind():
+    from theroadragetrip.osm.build import _barrier_kind
+    assert _barrier_kind({"barrier": "fence", "fence_type": "wood"}) == "wood_fence"
+    assert _barrier_kind({"barrier": "fence", "fence_type": "split_rail"}) == "wood_fence"
+    assert _barrier_kind({"barrier": "fence", "material": "wood"}) == "wood_fence"
+    assert _barrier_kind({"barrier": "fence", "fence_type": "chain_link"}) == "fence"
+    assert _barrier_kind({"barrier": "fence"}) == "fence"
+    assert _barrier_kind({"barrier": "wall", "material": "wood"}) == "wall"
+
+
 
 
 def test_railway_is_bridge_round_trips_through_world_cache(tmp_path):

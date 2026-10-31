@@ -500,7 +500,7 @@ func set_broken_hedges(damage: Dictionary) -> void:
 	var own := {}
 	for railing in _data.get("railings", []):
 		var key := hedge_key(railing)
-		if railing[0] == "hedge" and damage.has(key):
+		if railing[0] in ["hedge", "wood_fence"] and damage.has(key):
 			own[key] = damage[key]
 	if own != _hedge_damage:
 		_hedge_damage = own
@@ -1433,6 +1433,23 @@ func _draw_caravan(node: Node2D, hitched: bool, blue_car: bool) -> void:
 
 ## Railings: hedges and walls solid, fences and
 ## railings dashed (0.8 m on, 0.4 m off).
+## One fence line: [the dark rail, light slats, a post every other slat] as line pairs.
+static func fence_lines(points: PackedVector2Array) -> Array:
+	var rails := PackedVector2Array()
+	var slats := PackedVector2Array()
+	var posts := PackedVector2Array()
+	for i in points.size() - 1:
+		rails.append_array(PackedVector2Array([points[i], points[i + 1]]))
+	var pieces := dashes(points, 0.8, 0.4)
+	for i in pieces.size():
+		var dash: Array = pieces[i]
+		slats.append_array(PackedVector2Array([dash[0], dash[1]]))
+		if i % 2 == 0:
+			var side: Vector2 = (dash[1] - dash[0]).normalized().orthogonal() * 0.25
+			posts.append_array(PackedVector2Array([dash[0] - side, dash[0] + side]))
+	return [rails, slats, posts]
+
+
 ## Batch each stroke style: a city has thousands of fences.
 func _draw_railings(node: Node2D) -> void:
 	var lines := {"hedge": PackedVector2Array(), "wall": PackedVector2Array(), "fence": PackedVector2Array(), "boards": PackedVector2Array()}
@@ -1448,15 +1465,13 @@ func _draw_railings(node: Node2D) -> void:
 					lines["hedge"].append_array(PackedVector2Array([branch[i], branch[i+1]]))
 			continue
 		if kind == "fence":
-			for i in points.size() - 1:
-				fence_rails.append_array(PackedVector2Array([points[i], points[i + 1]]))
-			var pieces := dashes(points, 0.8, 0.4)
-			for i in pieces.size():
-				var dash: Array = pieces[i]
-				lines["fence"].append_array(PackedVector2Array([dash[0], dash[1]]))
-				if i % 2 == 0:
-					var side: Vector2 = (dash[1] - dash[0]).normalized().orthogonal() * 0.25
-					fence_posts.append_array(PackedVector2Array([dash[0] - side, dash[0] + side]))
+			# A wooden fence breaks like a hedge: draw what is left of it.
+			var parts: Array = _hedge_damage.get(hedge_key(railing), [railing[1]]) if railing[0] == "wood_fence" else [railing[1]]
+			for part in parts:
+				var drawn := fence_lines(_points(part))
+				fence_rails.append_array(drawn[0])
+				lines["fence"].append_array(drawn[1])
+				fence_posts.append_array(drawn[2])
 		else:
 			for i in points.size() - 1:
 				lines[kind].append_array(PackedVector2Array([points[i], points[i + 1]]))

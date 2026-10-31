@@ -131,7 +131,8 @@ MAGIC = b"RWC\0"
 # 60: OSM playground=* equipment (nodes and areas) as scenery objects.
 # 61: individual natural=shrub nodes as scenery objects.
 # 62: building and shop-place opening_hours and raw shop types.
-FORMAT_VERSION = 62
+# 63: wooden fences (fence_type / material) as Railing.kind "wood_fence".
+FORMAT_VERSION = 63
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

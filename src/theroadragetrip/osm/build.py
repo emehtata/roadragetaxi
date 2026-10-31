@@ -419,6 +419,17 @@ BARRIER_OPENINGS = ("gate", "lift_gate", "swing_gate", "sliding_gate", "entrance
 BARRIER_OPENING_HALF_M = 1.5  # a gate leaves this much open on each side of its node
 
 
+WOODEN_FENCE_TYPES = {"wood", "split_rail", "picket"}  # OSM fence_type values that are wooden
+
+
+def _barrier_kind(tags) -> str:
+    """Railing.kind: the barrier tag, with wooden fences as "wood_fence" (they break like hedges)."""
+    kind = tags.get("barrier", "fence")
+    if kind == "fence" and (tags.get("fence_type") in WOODEN_FENCE_TYPES or tags.get("material") == "wood"):
+        return "wood_fence"
+    return kind
+
+
 def _split_at_openings(node_ids, opening_ids, nodes_m) -> list:
     """A fence's point lists between its gates, each cut back
     BARRIER_OPENING_HALF_M from a gate so a car fits through."""
@@ -1287,7 +1298,7 @@ def build_ways(
                 continue
             xs, ys = [p[0] for p in part], [p[1] for p in part]
             railings.append(Railing(points_m=part, bbox=(min(xs), min(ys), max(xs), max(ys)),
-                                    kind=tags.get("barrier", "fence"), layer=layer))
+                                    kind=_barrier_kind(tags), layer=layer))
 
     # 3. Buildings
     if progress_callback:
