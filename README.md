@@ -351,8 +351,7 @@ The [Godot client architecture](docs/architecture/godot-client.md) describes the
 client/server boundary. For traffic work, read the
 [Finnish NPC traffic-law guide](docs/finnish-npc-traffic-law.md): it specifies
 requirements and acceptance scenarios, not a certificate of current compliance.
-The [performance analysis](.github/performance-analysis/weather-traffic-2026-10-14.md)
-is a historical baseline.
+Performance reports are in [.github/performance-analysis](.github/performance-analysis/README.md).
 
 ### Project layout
 

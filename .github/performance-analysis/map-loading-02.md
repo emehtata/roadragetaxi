@@ -1,6 +1,6 @@
 # Map loading 02 — stalls and UI jitter while the map grows
 
-Follow-up to [map-loading-01](map-loading-01.md). Branch `release/0.17.0alpha`;
+Follow-up to map-loading-01. Branch `release/0.17.0alpha`;
 baseline code `df4bcbb`. Measured with `tools/bench_map_jitter.py` (added for
 this report) unless noted.
 
@@ -117,7 +117,7 @@ run measures the GDScript side of chunk handling and drawing, not the renderer.
   together collected 12–86 objects, and a final `gc.collect()` found none.
   Reference counting frees everything else.
 - This was measured and fixed once already.
-  [bin-loader-v10](bin-loader-v10.md) shipped
+  bin-loader-v10 shipped
   `gc.set_threshold(10000, 10, 1000)` (largest GC pause 492 → 22 ms), and
   osm-stream-00 `sys.setswitchinterval(0.0005)` (an Oulu drive's frames over
   100 ms: 36 → 7), both in the Pygame client's `main()`. The Godot split moved
@@ -155,7 +155,7 @@ run measures the GDScript side of chunk handling and drawing, not the renderer.
 per offer, each a scan over every road segment, and `pick_random_building_point`
 scans every building; train passengers reach the same scan through
 `rail_bookings`. These gave 60–420 ms ticks with no GC;
-[bin-loader-v4](bin-loader-v4-frame-spike-analysis.md) found the same (up to
+bin-loader-v4 found the same (up to
 ~650 ms). This isn't merging, but every merge makes them slower.
 
 ### 5. Server time never catches up
