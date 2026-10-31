@@ -1,7 +1,7 @@
 # Population model
 
 How many people and cars are around the player. Code:
-`src/theroadragetrip/population.py`. Task: `.github/prompts/rrt-018-population.md`.
+`src/theroadragetrip/population.py`.
 
 ## Audit and root cause (before this change)
 
@@ -81,7 +81,7 @@ Measured with 900 houses in a grid (synthetic, Python 3.12, WSL2):
 # Traffic demand
 
 Moving NPC traffic follows the people around, the road and the game clock.
-Task: `.github/prompts/rrt-018-traffic.md`. Code: `population.py`
+Code: `population.py`
 (`traffic_demand`, `hour_demand`, `is_public_holiday`) and
 `NPCVehicleManager.set_local_density`.
 

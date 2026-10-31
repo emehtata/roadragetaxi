@@ -1,8 +1,8 @@
 # Car stereos
 
 Some NPC cars boom bass-heavy electro pop. This is client-side sound only: the
-simulation, protocol and collisions are unchanged. Task:
-`.github/prompts/rrt-019-amikset.md`. Code: `godot/car_audio.gd`.
+simulation, protocol and collisions are unchanged.
+Code: `godot/car_audio.gd`.
 
 ## Which cars
 

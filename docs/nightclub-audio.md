@@ -1,7 +1,6 @@
 # Nightclub music
 
 Dance music leaks out of nightclubs into the streets around them, at night.
-Task: `.github/prompts/rrt-019-nightclub.md`.
 
 ## Where the venues come from
 

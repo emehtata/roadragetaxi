@@ -1,7 +1,7 @@
 # Testing Road Rage Trip
 
 How to run the tests, what each kind covers, how to write a new one, and
-what must pass before a release. Task: `.github/prompts/rrt-018-testing.md`.
+what must pass before a release.
 
 ## Commands
 
