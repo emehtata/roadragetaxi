@@ -1631,9 +1631,10 @@ static func route_tint(ambient_color: Color) -> Color:
 	return Color(ambient_color.lerp(Color.WHITE, ROUTE_NIGHT_VISIBILITY), 1.0)
 
 
-## The route to draw this frame: none while N is off or there's no target.
+## The route to draw this frame: none while N is off. The server sends one
+## only with a target: a fare's, or an accepted pre-booking's taxi stand.
 func route_for(state: Dictionary) -> PackedVector2Array:
-	if not show_route or current_target(state).is_empty():
+	if not show_route:
 		return PackedVector2Array()
 	var source = state.get("navigation", {}).get("points") if state.get("navigation") is Dictionary else null
 	if source != _route_source:  # a new route (or the first): convert once

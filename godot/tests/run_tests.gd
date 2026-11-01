@@ -2299,7 +2299,7 @@ func test_navigation_route() -> void:
 	var replanned := state.duplicate(true)
 	replanned["navigation"]["points"] = [[100.0, 200.0], [100.0, 150.0], [130.0, 160.0]]
 	check(layer.route_for(replanned).size() == 3, "a new route replaces the old line")
-	check(layer.route_for({"taxi": {"state": "PICKUP"}, "navigation": replanned["navigation"]}).is_empty(), "no target: no route")
+	check(layer.route_for({"taxi": {"state": "PICKUP"}, "navigation": replanned["navigation"]}).size() == 3, "no fare yet (a pre-booking's stand): the server's route")
 	check(layer.route_for(replanned.merged({"navigation": {"points": []}}, true)).is_empty(), "an empty route: nothing")
 	check(layer.route_for(replanned.merged({"navigation": null}, true)).is_empty() and layer.route_for({"taxi": replanned["taxi"]}).is_empty(), "null or missing navigation: nothing")
 	layer.show_route = false
