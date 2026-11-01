@@ -326,7 +326,22 @@ func _draw() -> void:
 	drawn_members = 0
 	var view := (get_canvas_transform().affine_inverse() * get_viewport_rect()).grow(5.0)  # on screen only: animals live 900 m out, the view is ~150 m
 	for animal in animals:
-		if view.has_point(animal["position"]): _draw_animal(animal)
+		if view.has_point(animal["position"]) and not (Buildings3D.opaque and animal["species"] in LARGE_3D):
+			_draw_animal(animal)
+
+
+## rtx-scene-readiness step 6: the larger animals are 3D bodies with
+## --outdoor-3d (entity_layer._animals_3d); the small ones and birds stay 2D.
+const LARGE_3D := ["moose", "roe_deer", "fox"]
+const Buildings3D := preload("res://buildings_3d.gd")
+const COATS := {"small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "crow": Color8(42, 43, 45), "duck": Color8(120, 98, 72),
+	"gull": Color8(242, 243, 240), "squirrel": Color8(144, 79, 38), "hare": Color8(142, 126, 101), "fox": Color8(194, 91, 38),
+	"roe_deer": Color8(151, 104, 62), "moose": Color8(91, 67, 48)}
+
+
+## A species' colour now, in its winter coat as the season goes.
+func coat(species: String) -> Color:
+	return winter_coat(species, COATS.get(species, Color.GRAY), winter)
 
 
 func _draw_animal(animal: Dictionary) -> void:
@@ -335,9 +350,7 @@ func _draw_animal(animal: Dictionary) -> void:
 	var species: String = animal["species"]
 	var scale_m: float = {"small_bird": 0.65, "pigeon": 0.72, "crow": 0.8, "duck": 0.75, "gull": 0.85, "squirrel": 0.3, "hare": 0.42,
 		"fox": 0.65, "roe_deer": 0.85, "moose": 1.15}.get(species, 0.4)
-	var color: Color = {"small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "crow": Color8(42, 43, 45), "duck": Color8(120, 98, 72), "gull": Color8(242, 243, 240), "squirrel": Color8(144, 79, 38),
-		"hare": Color8(142, 126, 101), "fox": Color8(194, 91, 38), "roe_deer": Color8(151, 104, 62), "moose": Color8(91, 67, 48)}.get(species, Color.GRAY)
-	color = winter_coat(species, color, winter)
+	var color := coat(species)
 	var members := 5 if species == "small_bird" else (3 if species in ["pigeon", "duck"] else (2 if species == "gull" else 1))
 	drawn_members += members
 	var flying: bool = animal["state"] == "FLY"

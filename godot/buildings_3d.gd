@@ -556,10 +556,18 @@ func begin_cars() -> void:
 ## `lamps` the LAMPS_* lit now.
 func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0, elevation := 0.0) -> void:
 	var key := "%s|%s|%.2f|%.2f|%d|%d" % [color.to_html(false), shape, length, width, sign, lamps]
+	place_body(key, func() -> Dictionary: return car_arrays(length, width, color, shape, sign, lamps), at, heading, elevation)
+
+
+## Any pooled body this frame (a car, a bus, a person, an animal): its mesh
+## built once per look (`key`) by `build` (car_arrays-style arrays), placed
+## on the road at `at` facing `heading`, `elevation` up (a deck), rolled
+## `roll` about its length (fallen over).
+func place_body(key: String, build: Callable, at: Vector2, heading: float, elevation := 0.0, roll := 0.0) -> void:
 	if not _car_meshes.has(key):
-		if _car_meshes.size() > 512:  # ponytail: drop the whole cache, an LRU if colours ever vary per frame
+		if _car_meshes.size() > 1024:  # ponytail: drop the whole cache, an LRU if colours ever vary per frame
 			_car_meshes.clear()
-		var arrays := car_arrays(length, width, color, shape, sign, lamps)
+		var arrays: Dictionary = build.call()
 		_car_meshes[key] = [_mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], PackedVector2Array(), PackedFloat32Array(), arrays["part"]),
 			_mesh(arrays["shadow"], PackedColorArray())]
 	if _cars_used == _car_nodes.size():
@@ -571,7 +579,7 @@ func car(at: Vector2, heading: float, length: float, width: float, color: Color,
 		_cars_root.add_child(body)
 		_cars_root.add_child(caster)
 		_car_nodes.append([body, caster])
-	var place := Transform3D(Basis(Vector3.UP, heading), to_3d(at, (ROAD_M + 0.016 if opaque else 0.0) + elevation))  # on the road surface (step 3), not in it  # local +x forward, +z right (entity_layer _forward/_right)
+	var place := Transform3D(Basis(Vector3.UP, heading) * Basis(Vector3.RIGHT, roll), to_3d(at, (ROAD_M + 0.016 if opaque else 0.0) + elevation))  # on the road surface (step 3), not in it  # local +x forward, +z right (entity_layer _forward/_right)
 	for i in 2:
 		var node: MeshInstance3D = _car_nodes[_cars_used][i]
 		node.mesh = _car_meshes[key][i]
@@ -584,6 +592,212 @@ func end_cars() -> void:
 	for i in range(_cars_used, _car_nodes.size()):
 		for node in _car_nodes[i]:
 			node.visible = false
+
+
+## rtx-scene-readiness step 6: every other vehicle as simple shaded boxes
+## (car.gdshader parts) - buses, trucks, tractors (a plough, its beacon),
+## motorhomes, caravans, motorbikes and mopeds, bicycles and e-scooters (their
+## riders while ridden), train and tram cars. `extra`: "riding", "fallen",
+## "plough", "beacon", "profile" (a train car's), "rider" (its colour).
+func vehicle(kind: String, at: Vector2, heading: float, length: float, width: float, color: Color, lamps := 0, elevation := 0.0, extra := {}) -> void:
+	var key := "v|%s|%.2f|%.2f|%s|%d|%s" % [kind, length, width, color.to_html(false), lamps, extra]
+	var fallen: bool = extra.get("fallen", false)
+	place_body(key, func() -> Dictionary: return vehicle_arrays(kind, length, width, color, lamps, extra), at, heading,
+		elevation + (width * 0.5 if fallen else 0.0), PI / 2.0 if fallen else 0.0)
+
+
+static func _empty_arrays() -> Dictionary:
+	return {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "shadow": PackedVector3Array(),
+		"part": PackedVector2Array(), "part_now": PAINT}
+
+
+static func _part(out: Dictionary, part: int, x0: float, x1: float, y0: float, y1: float, bottom: float, top: float, color: Color) -> void:
+	out["part_now"] = part
+	_car_box(out, x0, x1, y0, y1, bottom, top, color)
+	out["part_now"] = PAINT
+
+
+## A seated or standing rider from x0 (back) to x1 (front): torso, head.
+static func _rider(out: Dictionary, x0: float, x1: float, seat: float, color: Color, head: Color) -> void:
+	_part(out, PAINT, x0, x1, -0.22, 0.22, seat, seat + 0.6, color)
+	_part(out, PAINT, x1 - 0.22, x1 - 0.02, -0.11, 0.11, seat + 0.62, seat + 0.86, head)
+
+
+static func vehicle_arrays(kind: String, length: float, width: float, color: Color, lamps: int, extra: Dictionary) -> Dictionary:
+	var out := _empty_arrays()
+	var hl := length * 0.5
+	var hw := width * 0.5
+	var tyre := Color8(28, 28, 28)
+	var skin := Color8(236, 196, 160)
+	match kind:
+		"bus":
+			for x: float in [hl * 0.62, -hl * 0.55]:
+				for y: float in [hw * 0.8, -hw * 0.8]:
+					_part(out, RUBBER, x - 0.5, x + 0.5, y - 0.15, y + 0.15, 0.0, 1.0, tyre)
+			_car_box(out, -hl, hl, -hw, hw, 0.35, 1.15, color)
+			_part(out, GLASS_PART, -hl + 0.05, hl - 0.02, -hw + 0.02, hw - 0.02, 1.15, 2.6, CAR_GLASS)
+			_car_box(out, -hl, hl, -hw, hw, 2.6, 3.0, color)
+			for hatch: float in [hl * 0.55, -hl * 0.62]:
+				_car_box(out, hatch - hl * 0.07, hatch + hl * 0.07, -hw * 0.3, hw * 0.3, 3.0, 3.12, color.darkened(0.11))
+			_car_lamps(out, hl, hw, lamps)
+		"truck":
+			for x: float in [hl * 0.65, -hl * 0.45, -hl * 0.75]:
+				for y: float in [hw * 0.8, -hw * 0.8]:
+					_part(out, RUBBER, x - 0.5, x + 0.5, y - 0.18, y + 0.18, 0.0, 1.0, tyre)
+			_car_box(out, hl * 0.24, hl, -hw * 0.92, hw * 0.92, 0.5, 2.8, color)
+			_part(out, GLASS_PART, hl - 0.05, hl + 0.01, -hw * 0.8, hw * 0.8, 1.6, 2.5, CAR_GLASS)
+			_car_box(out, -hl, hl * 0.18, -hw, hw, 1.0, 3.4, color.lightened(0.11))
+			_car_lamps(out, hl, hw, lamps)
+		"tractor":
+			for y: float in [hw * 0.8, -hw * 0.8]:
+				_part(out, RUBBER, -hl * 0.9, -hl * 0.2, y - hw * 0.2, y + hw * 0.2, 0.0, 1.6, tyre)
+				_part(out, RUBBER, hl * 0.5, hl * 0.9, y * 0.78 - hw * 0.13, y * 0.78 + hw * 0.13, 0.0, 0.9, tyre)
+			_car_box(out, -hl * 0.1, hl, -hw * 0.36, hw * 0.36, 0.7, 1.5, color)
+			_car_box(out, -hl * 0.95, -hl * 0.05, -hw * 0.58, hw * 0.58, 0.9, 1.5, color)
+			_part(out, GLASS_PART, -hl * 0.9, -hl * 0.1, -hw * 0.54, hw * 0.54, 1.5, 2.6, CAR_GLASS)
+			_car_box(out, -hl * 0.95, -hl * 0.05, -hw * 0.6, hw * 0.6, 2.6, 2.75, color)
+			if extra.get("plough", false):  # an angled blade ahead, wider than the tractor
+				for i in 6:
+					var y0 := -hw * 1.2 + hw * 2.4 * i / 6.0
+					var x0 := hl * 1.02 + 0.28 * (1.0 - float(i) / 6.0)
+					_car_box(out, x0, x0 + 0.12, y0, y0 + hw * 0.4, 0.05, 0.9, Color8(240, 150, 20))
+				_part(out, LAMP if extra.get("beacon", false) else PAINT, -hl * 0.58, -hl * 0.42, -0.12, 0.12, 2.75, 2.95,
+					Color(1.0, 0.6, 0.05) if extra.get("beacon", false) else Color8(150, 105, 40))
+			_car_lamps(out, hl, hw * 0.6, lamps)
+		"camper_van":
+			var box := Color8(238, 234, 220)
+			for x: float in [hl * 0.6, -hl * 0.6]:
+				for y: float in [hw * 0.85, -hw * 0.85]:
+					_part(out, RUBBER, x - 0.35, x + 0.35, y - 0.15, y + 0.15, 0.0, 0.7, tyre)
+			_car_box(out, hl * 0.62, hl, -hw * 0.92, hw * 0.92, 0.3, 1.1, color)
+			_part(out, GLASS_PART, hl * 0.46, hl * 0.62, -hw * 0.86, hw * 0.86, 1.1, 1.9, CAR_GLASS)
+			_car_box(out, -hl, hl * 0.48, -hw, hw, 0.3, 2.9, box)
+			_car_box(out, -hl * 0.6, -hl * 0.45, -hw * 0.3, hw * 0.3, 2.9, 3.05, Color8(186, 185, 170))
+			_car_lamps(out, hl, hw, lamps)
+		"trailer":  # a caravan: its box, the drawbar to the hitch ahead, its wheels and tail lights
+			_part(out, RUBBER, -0.35, 0.35, -hw - 0.05, hw + 0.05, 0.0, 0.6, tyre)
+			_car_box(out, -hl, hl, -hw, hw, 0.35, 2.5, Color8(238, 234, 220))
+			_car_box(out, hl, hl + 0.9, -0.05, 0.05, 0.4, 0.5, Color8(165, 168, 162))
+			_part(out, GLASS_PART, hl * 0.2, hl * 0.55, -hw * 0.34, hw * 0.34, 2.5, 2.56, Color8(120, 150, 160))
+			_car_lamps(out, hl, hw, lamps)
+		"motorcycle", "moped":
+			_part(out, RUBBER, -hl * 0.98, -hl * 0.42, -hw * 0.25, hw * 0.25, 0.0, 0.62, tyre)
+			_part(out, RUBBER, hl * 0.52, hl * 0.98, -hw * 0.2, hw * 0.2, 0.0, 0.6, tyre)
+			_car_box(out, -hl * 0.55, hl * 0.52, -hw * 0.45, hw * 0.45, 0.45, 0.9, color)
+			_car_box(out, -hl * 0.5, -hl * 0.08, -hw * 0.3, hw * 0.3, 0.9, 0.98, Color8(40, 40, 42))
+			_part(out, LAMP if lamps & LAMPS_ON else PAINT, hl * 0.86, hl * 0.99, -0.08, 0.08, 0.8, 0.95,
+				Color(1.0, 0.97, 0.85) if lamps & LAMPS_ON else Color8(170, 170, 160))
+			if extra.get("riding", false):
+				_rider(out, -hl * 0.3, hl * 0.12, 0.95, Color8(34, 34, 38), color.lightened(0.15))
+		"bicycle":
+			_part(out, RUBBER, -hl * 0.95, -hl * 0.29, -0.03, 0.03, 0.0, 0.66, tyre)
+			_part(out, RUBBER, hl * 0.29, hl * 0.95, -0.03, 0.03, 0.0, 0.66, tyre)
+			_car_box(out, -hl * 0.62, hl * 0.62, -0.03, 0.03, 0.5, 0.62, color.darkened(0.25))
+			_car_box(out, hl * 0.45, hl * 0.55, -hw * 0.9, hw * 0.9, 0.95, 1.0, tyre)
+			if extra.get("riding", false):
+				_rider(out, -hl * 0.37, hl * 0.18, 0.8, color, skin)
+		"e_scooter":
+			for x: float in [hl * 0.78, -hl * 0.78]:
+				_part(out, RUBBER, x - hl * 0.18, x + hl * 0.18, -0.03, 0.03, 0.0, 0.2, tyre)
+			_car_box(out, -hl * 0.72, hl * 0.62, -hw * 0.32, hw * 0.32, 0.1, 0.18, Color8(40, 160, 110))
+			_car_box(out, hl * 0.72, hl * 0.82, -0.03, 0.03, 0.18, 1.1, Color8(40, 40, 42))
+			_car_box(out, hl * 0.72, hl * 0.82, -hw, hw, 1.05, 1.1, tyre)
+			if extra.get("riding", false):
+				_rider(out, -hl * 0.12, hl * 0.28, 0.85, color, skin)
+		"train", "tram":
+			var tram := kind == "tram"
+			var style: Array = RS.TRAIN_PROFILES.get(extra.get("profile", "standard"), RS.TRAIN_PROFILES["standard"])
+			var top := 3.4 if tram else 3.9
+			for x: float in [hl * 0.7, -hl * 0.7]:
+				_part(out, RUBBER, x - 1.2, x + 1.2, -hw * 0.75, hw * 0.75, 0.0, 0.6, Color8(40, 40, 40))
+			_car_box(out, -hl, hl, -hw, hw, 0.6, 1.5, style[0])
+			_part(out, GLASS_PART, -hl + 0.3, hl - 0.3, -hw + 0.01, hw - 0.01, 1.5, 2.4, CAR_GLASS)
+			_car_box(out, -hl, hl, -hw, hw, 2.4, top, style[0])
+			if style[1] != null and extra.get("profile", "") == "locomotive":
+				_car_box(out, hl - 3.0, hl, -hw, hw, top, top + 0.05, style[1])
+			elif style[1] != null:
+				_car_box(out, -hl + 1.0, hl - 1.0, -0.5, 0.5, top, top + 0.05, style[1])
+	return out
+
+
+## Step 6: a person, a dog, a larger wild animal as pooled boxes, posed by
+## their animation state; +x the way they face. Lying poses are rolled by
+## place_body (fallen, sunbathing).
+func person(at: Vector2, heading: float, clothing: Color, pose: String, scale := 1.0, costume := "", elevation := 0.0) -> void:
+	var key := "p|%s|%s|%.2f|%s" % [clothing.to_html(false), pose, scale, costume]
+	var lying := pose == "lying"
+	place_body(key, func() -> Dictionary: return person_arrays(clothing, pose, scale, costume), at, heading, elevation + (0.2 * scale if lying else 0.0),
+		PI / 2.0 if lying else 0.0)
+
+
+func animal(at: Vector2, heading: float, species: String, color: Color, pose: String, size := 1.0) -> void:
+	var key := "a|%s|%s|%s|%.2f" % [species, color.to_html(false), pose, size]
+	place_body(key, func() -> Dictionary: return animal_arrays(species, color, pose, size), at, heading)
+
+
+const PERSON_LEGS := Color8(35, 35, 45)  # render_style.PED_LEGS
+const PERSON_SKIN := Color8(238, 185, 145)  # render_style.PED_HEAD
+
+
+static func person_arrays(clothing: Color, pose: String, scale: float, costume: String) -> Dictionary:
+	var out := _empty_arrays()
+	var k := scale
+	match pose:
+		"sitting":
+			_car_box(out, 0.0, 0.45 * k, -0.17 * k, 0.17 * k, 0.4 * k, 0.52 * k, PERSON_LEGS)
+			_car_box(out, 0.38 * k, 0.5 * k, -0.17 * k, 0.17 * k, 0.0, 0.5 * k, PERSON_LEGS)
+			_car_box(out, -0.12 * k, 0.12 * k, -0.2 * k, 0.2 * k, 0.45 * k, 1.05 * k, clothing)
+			_car_box(out, -0.1 * k, 0.1 * k, -0.1 * k, 0.1 * k, 1.07 * k, 1.32 * k, PERSON_SKIN)
+		"swimming":  # head and shoulders above the water
+			_car_box(out, -0.15 * k, 0.15 * k, -0.2 * k, 0.2 * k, -0.2 * k, 0.1 * k, clothing)
+			_car_box(out, 0.0, 0.2 * k, -0.1 * k, 0.1 * k, 0.1 * k, 0.32 * k, PERSON_SKIN)
+		"riding":  # on horseback (riding schools): the horse under the rider
+			var horse := Color8(224, 93, 46)
+			_car_box(out, -0.9, 0.9, -0.25, 0.25, 0.9, 1.5, horse)
+			for x: float in [0.7, -0.7]:
+				for y: float in [0.15, -0.15]:
+					_car_box(out, x - 0.08, x + 0.08, y - 0.06, y + 0.06, 0.0, 0.95, horse.darkened(0.2))
+			_car_box(out, 0.8, 1.3, -0.12, 0.12, 1.4, 1.9, horse)
+			_car_box(out, -0.15, 0.15, -0.2, 0.2, 1.5, 2.1, clothing)
+			_car_box(out, -0.1, 0.1, -0.1, 0.1, 2.12, 2.36, PERSON_SKIN)
+		_:  # standing, a walking stride either way, lying (rolled flat by person())
+			var stride := 0.18 * k if pose == "walk_a" else -0.18 * k if pose == "walk_b" else 0.0
+			for side: float in [1.0, -1.0]:
+				var x := stride * side
+				_car_box(out, x - 0.08 * k, x + 0.08 * k, side * 0.1 * k - 0.07 * k, side * 0.1 * k + 0.07 * k, 0.0, 0.85 * k, PERSON_LEGS)
+			_car_box(out, -0.12 * k, 0.12 * k, -0.2 * k, 0.2 * k, 0.85 * k, 1.45 * k, clothing)
+			_car_box(out, -0.1 * k, 0.1 * k, -0.1 * k, 0.1 * k, 1.47 * k, 1.72 * k, PERSON_SKIN)
+	if costume in ["santa", "elf"]:  # a red pointed cap
+		var top := 2.36 if pose == "riding" else 1.32 * k if pose == "sitting" else 1.72 * k
+		_car_box(out, -0.11 * k, 0.11 * k, -0.11 * k, 0.11 * k, top, top + 0.12 * k, Color8(190, 30, 35))
+	return out
+
+
+## A four-legged animal `size` m long: body, legs, neck and head; "feed" the
+## head down to the ground, "walk_a"/"walk_b" its legs mid-stride. Moose get antlers.
+static func animal_arrays(species: String, color: Color, pose: String, size: float) -> Dictionary:
+	var out := _empty_arrays()
+	var dims: Array = {"moose": [3.0, 0.7, 1.9], "roe_deer": [1.2, 0.3, 0.8], "fox": [0.75, 0.18, 0.4],
+		"dog": [0.8, 0.22, 0.5]}.get(species, [1.0, 0.25, 0.6])  # length, half width, shoulder height
+	var hl: float = dims[0] * 0.5 * size
+	var hw: float = dims[1] * size
+	var shoulder: float = dims[2] * size
+	var leg := shoulder * 0.55
+	var stride := hl * 0.15 if pose == "walk_a" else -hl * 0.15 if pose == "walk_b" else 0.0
+	for x: float in [hl * 0.7, -hl * 0.7]:
+		for y: float in [hw * 0.6, -hw * 0.6]:
+			var swing := stride * signf(x) * signf(y)
+			_car_box(out, x + swing - hl * 0.08, x + swing + hl * 0.08, y - hw * 0.25, y + hw * 0.25, 0.0, leg, color.darkened(0.15))
+	_car_box(out, -hl, hl * 0.8, -hw, hw, leg, shoulder, color)
+	var head_low := pose == "feed"
+	var head_x := hl * (1.05 if head_low else 1.0)
+	var head_bottom := 0.05 if head_low else shoulder * 0.95
+	_car_box(out, hl * 0.7, hl * 0.95, -hw * 0.45, hw * 0.45, head_bottom + shoulder * 0.1, shoulder * 1.05, color)
+	_car_box(out, head_x - hl * 0.1, head_x + hl * 0.25, -hw * 0.4, hw * 0.4, head_bottom, head_bottom + shoulder * 0.28, color.lightened(0.05))
+	if species == "moose" and not head_low:
+		for y: float in [hw * 0.9, -hw * 0.9]:
+			_car_box(out, head_x - hl * 0.12, head_x, y - hw * 0.35, y + hw * 0.35, head_bottom + shoulder * 0.28, head_bottom + shoulder * 0.36, Color8(205, 190, 160))
+	return out
 
 
 ## One car's mesh arrays, centred at the origin, +x forward: the body,

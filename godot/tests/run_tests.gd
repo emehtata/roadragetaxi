@@ -3292,6 +3292,18 @@ func test_buildings_3d() -> void:
 	var counts: Array = grove.get_children().map(func(n): return n.multimesh.instance_count)
 	check(grove.get_child_count() == 3 and counts.reduce(func(a, b): return a + b) == 5, "trees as instances: two trunks and a bollard, a crown, a cone")
 	grove.free()
+	# rtx-scene-readiness step 6: every vehicle kind, person pose and larger animal has a 3D body
+	for kind in EntityLayer.VEHICLES_3D + ["trailer", "train", "tram"]:
+		var built_vehicle := B3.vehicle_arrays(kind, 6.0, 2.0, Color.RED, B3.LAMPS_ON, {"riding": true, "profile": "standard"})
+		check(built_vehicle["verts"].size() >= 36 and built_vehicle["part"].size() == built_vehicle["verts"].size(), "a %s has a 3D body" % kind)
+	var parked_bike := B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": false})["verts"].size()
+	var ridden_bike := B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": true})["verts"].size()
+	check(ridden_bike > parked_bike, "a ridden bicycle carries its rider, a parked one none")
+	check(EntityLayer.person_pose({"animation_state": "walking"}, 0.1) == "walk_a" and EntityLayer.person_pose({"animation_state": "walking"}, 0.4) == "walk_b"
+		and EntityLayer.person_pose({"animation_state": "fallen"}, 0.0) == "lying" and EntityLayer.person_pose({"animation_state": "sitting"}, 0.0) == "sitting"
+		and EntityLayer.person_pose({"animation_state": "waiting"}, 0.0) == "standing", "a person's pose follows their animation state and gait")
+	for species in ["moose", "roe_deer", "fox", "dog"]:
+		check(B3.animal_arrays(species, Color.BROWN, "stand", 1.0)["verts"].size() >= 36, "a %s has a 3D body" % species)
 	MapChunk.buildings_3d = false
 
 

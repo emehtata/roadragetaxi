@@ -845,6 +845,9 @@ func _lit(color: Color) -> Color:
 ## A trailer's body between two states: [x, y, heading, length, width, kind].
 func _trailer(a: Array, b: Array, t: float) -> void:
 	var c := Vector2(lerpf(a[0], b[0], t) - origin.x, -(lerpf(a[1], b[1], t) - origin.y))
+	if Buildings3D.opaque and Buildings3D.current != null:  # step 6: a 3D caravan, its tail lights with its tow's engine
+		Buildings3D.current.vehicle("trailer", c, lerp_angle(a[2], b[2], t), float(a[3]), float(a[4]), Color.WHITE, Buildings3D.LAMPS_ON)
+		return
 	_tint = vehicle_light(light_level * float(light_at.call(c)), ambient)  # lit like a vehicle (_vehicle)
 	_trailer_body(c, lerp_angle(a[2], b[2], t), float(a[3]), float(a[4]), str(a[5]))
 	_tint = null
@@ -872,6 +875,11 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
 	length = maxf(length, _px(5.0))
 	width = maxf(width, _px(2.5))
+	if Buildings3D.opaque and Buildings3D.current != null and kind in VEHICLES_3D:  # step 6: every vehicle in the 3D view
+		Buildings3D.current.vehicle(kind, c, heading, length, width, color, lamp_bits(engine_on, braking, reversing, turn_signal, signal_elapsed),
+			float(deck_height.call(c, _layer)), {"riding": engine_on and not fallen, "fallen": fallen, "plough": ploughing and kind == "tractor",
+			"beacon": ploughing and kind == "tractor" and fmod(_clock, 0.8) < 0.4})
+		return
 	var f := _forward(heading)
 	var r := _right(heading)
 	var hl := length * 0.5
@@ -982,11 +990,7 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			var cars_3d: Node2D = Buildings3D.current
 			if cars_3d != null and not _under and not fallen:  # godot-cars-3d: the body in the 3D view
 				var lit := engine_on and taxi_sign_on
-				var signal_on := turn_signal != "" and RS.signal_lit(signal_elapsed)
-				var lamps := (Buildings3D.LAMPS_ON if engine_on else 0) | (Buildings3D.LAMPS_BRAKE if braking else 0) \
-					| (Buildings3D.LAMPS_REVERSE if reversing else 0) \
-					| (Buildings3D.LAMPS_LEFT if signal_on and turn_signal in ["left", "hazard"] else 0) \
-					| (Buildings3D.LAMPS_RIGHT if signal_on and turn_signal in ["right", "hazard"] else 0)
+				var lamps := lamp_bits(engine_on, braking, reversing, turn_signal, signal_elapsed)
 				cars_3d.car(c, heading, length, width, color, shape, (2 if lit else 1) if is_taxi else 0, lamps,
 					float(deck_height.call(c, _layer)) if Buildings3D.opaque else 0.0)
 				if Buildings3D.opaque:  # --outdoor-3d: its lamps are emissive parts of the body, the beams 3D lights
@@ -996,6 +1000,19 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			else:
 				_car_body_2d(c, f, r, hl, hw, color, shape, is_taxi, engine_on)
 	_vehicle_lamps(c, f, r, length, width, hl, hw, engine_on, braking, reversing, turn_signal, signal_elapsed)
+
+
+## Step 6 (--outdoor-3d): the kinds buildings_3d.vehicle builds (cars, vans and taxis: car()).
+const VEHICLES_3D := ["bus", "truck", "tractor", "camper_van", "motorcycle", "moped", "bicycle", "e_scooter"]
+
+
+## A vehicle's lamps lit now, as buildings_3d's LAMPS_* bits.
+static func lamp_bits(engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float) -> int:
+	var signal_on := turn_signal != "" and RS.signal_lit(signal_elapsed)
+	return (Buildings3D.LAMPS_ON if engine_on else 0) | (Buildings3D.LAMPS_BRAKE if braking else 0) \
+		| (Buildings3D.LAMPS_REVERSE if reversing else 0) \
+		| (Buildings3D.LAMPS_LEFT if signal_on and turn_signal in ["left", "hazard"] else 0) \
+		| (Buildings3D.LAMPS_RIGHT if signal_on and turn_signal in ["right", "hazard"] else 0)
 
 
 func _car_body_2d(c: Vector2, f: Vector2, r: Vector2, hl: float, hw: float, color: Color, shape: Array, is_taxi: bool, engine_on: bool) -> void:
@@ -1925,6 +1942,9 @@ func _draw() -> void:
 				RS.CURSE_TEXT, RS.CURSE_BORDER, 1.0 if cursing >= 0.5 else cursing / 0.5)
 		count += 1
 	if Buildings3D.current != null:
+		if Buildings3D.opaque and not underground:
+			_trains_3d(a, b, t)
+			_people_3d()
 		Buildings3D.current.end_cars()
 
 	if a.get("taxi", {}).get("current_passenger") is Dictionary:
@@ -1949,7 +1969,7 @@ func _draw() -> void:
 ## from the same sample as everything else.
 func _draw_trains() -> void:
 	_trains_drawn = 0
-	if _frame.is_empty() or underground:
+	if _frame.is_empty() or underground or Buildings3D.opaque:  # --outdoor-3d: _trains_3d, in the body pool's frame
 		return
 	var a: Dictionary = _frame["a"]
 	var b: Dictionary = _frame["b"]
@@ -1966,6 +1986,71 @@ func _draw_trains() -> void:
 				continue
 			_train_car(c, lerp_angle(car[2], to[2], t), car[3], str(car[4]), _trains)
 		_trains_drawn += 1
+
+
+## Step 6 (--outdoor-3d): every train and tram car in view as a 3D car, up on a rail deck where it crosses one.
+func _trains_3d(a: Dictionary, b: Dictionary, t: float) -> void:
+	var later_trains := _by_id(b.get("trains", []))
+	for train in a.get("trains", []):
+		var next: Dictionary = later_trains.get(train["id"], train)
+		var same_cars: bool = next["cars"].size() == train["cars"].size()
+		for i in train["cars"].size():
+			var car: Array = train["cars"][i]
+			var to: Array = next["cars"][i] if same_cars else car
+			var c := MapMath.point(origin, lerpf(car[0], to[0], t), lerpf(car[1], to[1], t))
+			if not view_rect.has_point(c):
+				continue
+			var profile := str(car[4])
+			var width: float = RS.TRAM_WIDTH_M if profile.begins_with("tram") else RS.TRAIN_WIDTH_M
+			Buildings3D.current.vehicle("tram" if profile.begins_with("tram") else "train", c, lerp_angle(car[2], to[2], t), float(car[3]), width,
+				Color.WHITE, 0, float(rail_height.call(c)), {"profile": profile})
+		_trains_drawn += 1
+
+
+var rail_height := func(_at: Vector2) -> float: return 0.0  # map_layer.rail_height (main.gd): up on a rail deck
+var wildlife: Node = null  # main.gd's WildlifeLayer: its larger animals are 3D with --outdoor-3d
+
+
+## Step 6 (--outdoor-3d): this frame's people (posed by their animation
+## state), dogs, holiday elves and the larger wild animals as 3D bodies;
+## their 2D drawing (_draw_people, wildlife) is left out.
+func _people_3d() -> void:
+	var b3: Node2D = Buildings3D.current
+	for row in _people_rows:
+		var ped: Dictionary = row[2]
+		if ped.get("state", "") in INDOORS:
+			continue
+		var clothing: Color = Color8(190, 30, 35) if ped.get("costume", "") in ["santa", "elf"] else _rgb(ped.get("color", [200, 200, 200]))
+		b3.person(row[0], row[1], clothing, person_pose(ped, row[3]), clampf(float(ped.get("radius_m", 0.45)) / 0.45, 0.6, 1.2),
+			str(ped.get("costume", "")), float(deck_height.call(row[0], int(ped.get("layer", 0)))))
+	for at in elves:
+		b3.person(at, -PI / 2.0, Color8(190, 30, 35), "standing", ELF_RADIUS_M / 0.45, "elf")
+	for row in _dog_rows:
+		var dog: Dictionary = row[3]
+		b3.animal(row[1], row[2], "dog", _rgb(dog.get("color", [120, 90, 60])), "feed" if dog.get("sniffing", false) else "stand",
+			{"small": 0.6, "medium": 0.8, "large": 1.0}.get(str(dog.get("size", "medium")), 0.8))
+	_people_rows.clear()
+	_dog_rows.clear()
+	elves = PackedVector2Array()
+	if wildlife == null:
+		return
+	var stride := "walk_a" if fmod(_clock, 0.5) < 0.25 else "walk_b"
+	for creature in wildlife.animals:
+		if creature["species"] in wildlife.LARGE_3D and view_rect.has_point(creature["position"]):
+			var pose := "feed" if creature["state"] == "FEED" else stride if creature["state"] in ["FLEE", "WANDER"] else "stand"
+			b3.animal(creature["position"], -float(creature["heading"]), creature["species"], wildlife.coat(creature["species"]), pose)
+
+
+## A person's 3D pose from their animation state: a walking stride by the
+## gait (as the 2D legs swing), sitting, lying (fallen, sunbathing), swimming, riding, else standing.
+static func person_pose(ped: Dictionary, animation_time: float) -> String:
+	match str(ped.get("animation_state", "walking")):
+		"walking": return "walk_a" if sin(animation_time * 10.0) >= 0.0 else "walk_b"
+		"sitting": return "sitting"
+		"fallen", "sunbathing": return "lying"
+		"swimming": return "swimming"
+		"riding": return "riding"
+	return "standing"
 
 
 ## This frame's lightning flash alpha (main.gd shows it above the night

@@ -778,6 +778,8 @@ func _present(state: Dictionary) -> void:
 	entities.light_level = lights
 	if MapChunk.outdoor_3d:  # rtx-scene-readiness step 5: vehicles ride their bridge decks
 		entities.deck_height = map_layer.deck_height
+		entities.rail_height = map_layer.rail_height
+		entities.wildlife = wildlife
 	if MapChunk.outdoor_3d and map_layer.buildings_3d != null:  # rtx-scene-readiness step 4: the scene's own lights, no 2D beams
 		map_layer.update_lights_3d(view, lights)
 		map_layer.buildings_3d.set_headlights(lights, entities.headlight_sources() if lights > 0.01 else [])

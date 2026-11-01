@@ -602,6 +602,16 @@ func deck_height(at: Vector2, layer: int) -> float:
 	return Buildings3D.deck_height(at, layer, ends)
 
 
+## Step 6: a train's height at `at`: up on a rail deck (a railway bridge), else the ground.
+func rail_height(at: Vector2) -> float:
+	for chunk in _chunks.values():
+		if chunk._bounds_rect.size == Vector2.ZERO or chunk._bounds_rect.has_point(at):
+			for deck in chunk._data.get("rail_decks", []):
+				if Geometry2D.is_point_in_polygon(at, chunk._points(deck)):
+					return Buildings3D.DECK_M
+	return 0.0
+
+
 func set_shop_lights(states: Dictionary) -> void:
 	for id in states:
 		var chunk = _chunks.get(id)
