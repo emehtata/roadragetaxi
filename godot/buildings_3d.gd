@@ -1306,6 +1306,8 @@ const MARKING_M := 0.036
 const CURB_M := 0.12  # kerbs and traffic islands stand this high
 const CURB_HALF_M := 0.08
 const BUMP_M := 0.07
+const RAIL_M := 0.03  # ground railways' ballast, over the roads they cross (a level crossing)
+const RAIL_BALLAST_HALF_M := 1.65
 enum { ROAD_SURFACE, ROAD_WATER, ROAD_PUDDLE }  # road.gdshader's UV.x
 
 
@@ -1340,6 +1342,29 @@ static func _ground(out: Dictionary, ground: Dictionary) -> void:
 					else:
 						s += DASH_M * 2.0 - phase
 				carry += length
+	for line: PackedVector2Array in ground.get("rail_lines", []):  # ground railways: ballast, ties every 0.6 m, the rails (chunk_detail.draw_tracks' sizes)
+		var carry := 0.0
+		for i in line.size() - 1:
+			var length := line[i].distance_to(line[i + 1])
+			if length < 1e-3:
+				continue
+			_ribbon(out, line[i], line[i + 1], RAIL_BALLAST_HALF_M, 0.0, RAIL_M, Color8(108, 100, 92))
+			var u := (line[i + 1] - line[i]) / length
+			var s := fmod(0.6 - fmod(carry, 0.6), 0.6)
+			while s < length:
+				var at := line[i] + u * s
+				_ribbon(out, at - u * 0.09, at + u * 0.09, 1.3, 0.0, RAIL_M + 0.002, Color8(90, 65, 45))
+				s += 0.6
+			for offset: float in [-0.72, 0.72]:
+				var side := u.orthogonal() * offset
+				_ribbon(out, line[i] + side, line[i + 1] + side, 0.04, 0.0, RAIL_M + 0.004, Color8(150, 145, 135))
+			carry += length
+	for bay: Array in ground.get("bus_bays", []):  # [polygon, colour]: its paved bay and its kerb
+		var polygon: PackedVector2Array = bay[0]
+		_flat_polygon(out, polygon, ROAD_M + 0.003, bay[1], "road", Vector2(ROAD_SURFACE, 0))
+		if polygon.size() >= 4:
+			for k in [[1, 2], [2, 3], [3, 0]]:
+				_raised_strip(out, polygon[k[0]], polygon[k[1]], CURB_HALF_M, 0.0, CURB_M, Color8(175, 175, 168), "ground")
 	for stripe: Array in ground.get("stripes", []):  # zebra stripes, 0.5 m wide
 		_ribbon(out, stripe[0], stripe[1], 0.25, 0.0, MARKING_M, Color8(245, 245, 245))
 	for bump: Array in ground.get("bumps", []):
@@ -1641,10 +1666,10 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 static func _deck_piece(out: Dictionary, a: Vector2, b: Vector2, half: float, ha: float, hb: float, color: Color, lift: float) -> void:
 	_sloped_strip(out, "road", a, b, half, ha + lift, hb + lift, color, Vector2(ROAD_SURFACE, 0), Vector2(0, 1))
 	_sloped_strip(out, "deck", a, b, half, ha - 0.02, hb - 0.02, DECK_COLOR)
-	_sloped_strip(out, "deck", a, b, half, ha - SLAB_M, hb - SLAB_M, DECK_COLOR.darkened(0.3), Vector2.ZERO, Vector2.ZERO, true)
+	_sloped_strip(out, "deck", a, b, half, ha - SLAB_M, hb - SLAB_M, DECK_COLOR, Vector2.ZERO, Vector2.ZERO, true)
 	var side := (b - a).normalized().orthogonal() * half
 	for s: float in [1.0, -1.0]:
-		_sloped_wall(out, a + side * s, b + side * s, 0.0, ha - SLAB_M, hb - SLAB_M, SLAB_M, DECK_COLOR.darkened(0.1), side * s)
+		_sloped_wall(out, a + side * s, b + side * s, 0.0, ha - SLAB_M, hb - SLAB_M, SLAB_M, DECK_COLOR, side * s)
 
 
 ## A strip from a to b, `half` either side, at heights ha..hb; `down`: facing down (an underside).
@@ -1681,7 +1706,7 @@ static func _sloped_wall(out: Dictionary, a: Vector2, b: Vector2, thick: float, 
 				var t := q
 				q = r
 				r = t
-			_ground_push(out, "deck", p, q, r, color.darkened(0.12), Vector2.ZERO, Vector2.ZERO)
+			_ground_push(out, "deck", p, q, r, color, Vector2.ZERO, Vector2.ZERO)
 	if thick > 0.0:
 		_sloped_strip(out, "deck", a, b, thick * 0.5, ha + tall, hb + tall, color)
 
@@ -1703,7 +1728,7 @@ static func _raised_polygon_at(out: Dictionary, key: String, polygon: PackedVect
 		var q := polygon[(i + 1) % polygon.size()]
 		var edge := q - p
 		if edge.length_squared() > 1e-6:
-			_ground_wall(out, p, q, bottom, top, color.darkened(0.12), Vector2(edge.y, -edge.x) * winding, key)
+			_ground_wall(out, p, q, bottom, top, color, Vector2(edge.y, -edge.x) * winding, key)
 
 
 static func _flat_polygon(out: Dictionary, polygon: PackedVector2Array, h: float, color: Color, key: String, uv := Vector2.ZERO) -> void:
@@ -1742,7 +1767,7 @@ static func _raised_strip(out: Dictionary, a: Vector2, b: Vector2, half: float, 
 	for i in 4:
 		var p: Vector2 = corners[i]
 		var q: Vector2 = corners[(i + 1) % 4]
-		_ground_wall(out, p, q, bottom, top, color.darkened(0.15), (p + q) / 2.0 - (a + b) / 2.0, key)
+		_ground_wall(out, p, q, bottom, top, color, (p + q) / 2.0 - (a + b) / 2.0, key)
 
 
 ## A vertical face from p to q, facing `outward` (on the ground plan).
@@ -1863,7 +1888,7 @@ static func _roof_details(out: Dictionary, footprint: PackedVector2Array, height
 				continue  # the inset ring's corners in another order (a concave footprint): no parapet there
 			var normal := Vector2(-(b - a).y, (b - a).x).normalized() * outward
 			_quad(out, to_3d(a, height), to_3d(b, height), to_3d(b, top), to_3d(a, top), wall_color, to_3d(normal))  # outside
-			_quad(out, to_3d(ia, height), to_3d(ib, height), to_3d(ib, top), to_3d(ia, top), wall_color.darkened(0.25), to_3d(-normal))  # inside
+			_quad(out, to_3d(ia, height), to_3d(ib, height), to_3d(ib, top), to_3d(ia, top), wall_color if opaque else wall_color.darkened(0.25), to_3d(-normal))  # inside
 			_quad(out, to_3d(a, top), to_3d(b, top), to_3d(ib, top), to_3d(ia, top), rim, Vector3.UP)  # its top
 		_shadow_ring(out["shadow"], footprint, height, top)
 	# Machine rooms (lift, stairs) along the roof's longest edge, a few vents.

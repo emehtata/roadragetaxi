@@ -576,8 +576,9 @@ static func draw_bus_stops(chunk, node: Node2D) -> void:
 		var bay: PackedVector2Array = chunk._points(stop["bay"])
 		if not _valid(bay):
 			continue
-		node.draw_colored_polygon(bay, _rgb(stop["color"]) if stop.has("color") else Color8(82, 82, 78))
-		node.draw_polyline(PackedVector2Array([bay[1], bay[2], bay[3], bay[0]]), Color8(175, 175, 168), 0.25)  # the kerb
+		if not (chunk.get_script().outdoor_3d and chunk.get_script().buildings_3d):  # --outdoor-3d: the bay and kerb are 3D ground; its text and sign stay
+			node.draw_colored_polygon(bay, _rgb(stop["color"]) if stop.has("color") else Color8(82, 82, 78))
+			node.draw_polyline(PackedVector2Array([bay[1], bay[2], bay[3], bay[0]]), Color8(175, 175, 168), 0.25)  # the kerb
 		for key in ["shelter", "bench"]:
 			if stop.get(key) == null or (chunk.get_script().outdoor_3d and chunk.get_script().buildings_3d):  # --outdoor-3d: 3D (buildings_3d._structures)
 				continue
@@ -587,11 +588,14 @@ static func draw_bus_stops(chunk, node: Node2D) -> void:
 			node.draw_colored_polygon(box, Color(0.62, 0.78, 0.88, 0.6) if key == "shelter" else Color8(120, 82, 50))
 			box.append(box[0])
 			node.draw_polyline(box, Color8(45, 50, 55), 0.15 if key == "shelter" else 0.08)
-		# "BUS" painted in the bay, about 1.6 m tall, read on approach.
-		var size := clampi(roundi(1.6 * chunk._px_per_m), 8, 48)
+		# "BUS" painted in the bay, about 1.6 m tall, read on approach - not with --outdoor-3d: a
+		# road marking drawn over the 3D view would paint over the bus standing on it.
+		var outdoor: bool = chunk.get_script().outdoor_3d and chunk.get_script().buildings_3d
+		var size := clampi(roundi(1.6 * chunk._px_per_m), 8, 48) if not outdoor else 0
 		var text_size := font.get_string_size("BUS", HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 		node.draw_set_transform(MapMath.point(chunk._origin, stop["label"][0], stop["label"][1]), -float(stop["angle"]), Vector2.ONE / chunk._px_per_m)
-		node.draw_string(font, Vector2(-text_size.x / 2.0, text_size.y / 3.0), "BUS", HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color8(235, 235, 225))
+		if size > 0:
+			node.draw_string(font, Vector2(-text_size.x / 2.0, text_size.y / 3.0), "BUS", HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color8(235, 235, 225))
 		node.draw_set_transform(Vector2.ZERO)
 		if stop.has("sign"):
 			_draw_stop_sign(node, MapMath.point(chunk._origin, stop["sign"][0], stop["sign"][1]))

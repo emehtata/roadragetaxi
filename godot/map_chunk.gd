@@ -181,7 +181,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_guardrails(self, node), null, true))
 	if not message.get("bus_stops", []).is_empty():
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_bus_stops(self, node)))
-	var ground_tracks := _add_layer(1, func(node: Node2D): Detail.draw_tracks(self, node, "railways"))
+	var ground_tracks := _add_layer(1, func(node: Node2D): Detail.draw_tracks(self, node, "railways"), null, true)  # --outdoor-3d: in the 3D ground
 	ground_tracks.name = "GroundTracks"
 	_px_layers.append(ground_tracks)
 	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails
@@ -739,7 +739,9 @@ func _build_2_5d() -> void:
 			"shelters": shelters, "pumps": pumps,
 			"props": _data.get("scenery_objects", []).filter(func(o): return B3.PROPS.has(str(o[2]))).map(
 				func(o): return [MapMath.point(_origin, o[0], o[1]), float(o[3]), str(o[2])]),
-			"sign_posts": _data.get("signs", []).map(func(sign): return MapMath.point(_origin, sign[0], sign[1]))}
+			"sign_posts": _data.get("signs", []).map(func(sign): return MapMath.point(_origin, sign[0], sign[1])),
+			"rail_lines": _data.get("railways", []).map(func(line): return _points(line)),
+			"bus_bays": _data.get("bus_stops", []).map(func(stop): return [_points(stop["bay"]), Detail._rgb(stop["color"]) if stop.has("color") else Color8(82, 82, 78)])}
 		_lamps_3d()
 	if buildings_3d and not (buildings.is_empty() and sites.is_empty() and landmarks.is_empty() and ground.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
 		if not build_async:
