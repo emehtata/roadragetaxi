@@ -72,6 +72,25 @@ func _initialize() -> void:
 		layer.update(0.1, 12 * 3600, duck.position)
 	assert(duck.state != "FLY" and Geometry2D.is_point_in_polygon(duck.position, duck.water), "a flying duck returns and lands on its water")
 	layer.clear()
+	layer.density = 400.0
+	layer.max_active = 200
+	layer.replace_chunk(pond, Vector2.ZERO)
+	var landlubbers: Array = layer.animals.filter(func(animal): return not animal.has("water"))
+	var wet := func(animal): return Geometry2D.is_point_in_polygon(animal.position, pond.waters[0])
+	assert(landlubbers.size() > 50 and not landlubbers.any(wet), "land animals never spawn in the water")
+	var fox: Dictionary = landlubbers[0]
+	fox.merge({"species": "fox", "state": "WANDER", "position": Vector2(90, -250), "heading": 0.0}, true)  # walking east, into the pond
+	for unused in 100:
+		fox.timer = 10.0
+		layer.update(0.1, 12 * 3600, fox.position)
+	assert(not wet.call(fox), "the shore is a wall on foot")
+	var crow: Dictionary = landlubbers[1]
+	crow.merge({"state": "FLY", "position": Vector2(250, -250), "timer": 0.0}, true)  # mid-pond
+	for unused in 400:
+		layer.update(0.1, 12 * 3600, Vector2(250, -250))
+	assert(not layer.animals.has(crow), "a land bird over the water flies off out of sight and is gone")
+	layer.density = 2.0
+	layer.clear()
 	layer.winter = 1.0
 	layer.replace_chunk(pond, Vector2.ZERO)
 	assert(layer.animals.all(func(animal): return animal.species != "duck"), "no ducks on frozen water")

@@ -12,6 +12,7 @@ const BUILDING_CELL_M := 10.0  # the per-chunk building lookup grid
 const SPAWN_TRIES := 6
 const DUCK_WATER_M2 := 15000.0  # one flock of ducks per this much open water, up to three a pond
 const GULL_SHORE_M := 120.0  # one gull per this much shoreline, up to four a shore
+const LEAVING_GONE_M := 120.0  # a bird flown off over the water is removed this far from the view centre: off screen
 const BIRDS := ["small_bird", "pigeon", "crow", "duck", "gull"]
 const URBAN_COVERAGE := 0.2  # buildings cover this much of the ground: a city centre (Oulu's: 0.3-0.4), whatever its street trees
 
@@ -28,6 +29,7 @@ var winter := 0.0  # the season's winter weight (main.gd, from the calendar): ha
 var drawn_members := 0  # rendering regression check and F3/debug inspection
 var _chunks: Dictionary = {}
 var _buildings: Dictionary = {}  # chunk id -> {Vector2i cell: [building outline]}: where ground animals cannot go
+var _waters: Dictionary = {}  # chunk id -> the same grid of its water: only ducks, gulls and birds in flight go there
 var _next_id := 1
 var _accumulator := 0.0
 
@@ -75,6 +77,7 @@ func clear() -> void:
 	animals.clear()
 	_chunks.clear()
 	_buildings.clear()
+	_waters.clear()
 	queue_redraw()
 
 
@@ -85,6 +88,7 @@ func remove_chunk(chunk_id: String) -> void:
 	animals = animals.filter(func(animal): return not ids.has(animal["id"]))
 	_chunks.erase(chunk_id)
 	_buildings.erase(chunk_id)
+	_waters.erase(chunk_id)
 	queue_redraw()
 
 
@@ -113,12 +117,14 @@ func replace_chunk(message: Dictionary, origin: Vector2) -> void:
 	var trees: Array = message.get("trees", [])
 	var grid := building_grid(message.get("buildings", []))
 	_buildings[chunk_id] = grid
+	var wet := building_grid(message.get("waters", []))
+	_waters[chunk_id] = wet
 	var ids: Array = []
 	for index in wanted:
 		var species := _weighted_species(weights, rng.randf())
 		var animal := _animal(_next_id, species, rect, rng)
 		animal["chunk"] = chunk_id
-		for attempt in SPAWN_TRIES:  # on the ground: never inside a building
+		for attempt in SPAWN_TRIES:  # on the ground: never inside a building or in the water
 			if species != "pigeon" and not trees.is_empty():
 				var tree: Array = trees[(index + attempt) % trees.size()]
 				var tree_at := MapMath.point(origin, float(tree[0]), float(tree[1]))
@@ -126,9 +132,9 @@ func replace_chunk(message: Dictionary, origin: Vector2) -> void:
 				animal["position"] = Vector2(clampf(near_tree.x, rect.position.x, rect.end.x), clampf(near_tree.y, rect.position.y, rect.end.y))
 			elif attempt > 0:
 				animal["position"] = Vector2(rng.randf_range(rect.position.x, rect.end.x), rng.randf_range(rect.position.y, rect.end.y))
-			if not in_building(grid, animal["position"]):
+			if not in_building(grid, animal["position"]) and not in_building(wet, animal["position"]):
 				break
-		if in_building(grid, animal["position"]):
+		if in_building(grid, animal["position"]) or in_building(wet, animal["position"]):
 			continue
 		animals.append(animal)
 		ids.append(_next_id)
@@ -243,6 +249,7 @@ func update(delta: float, game_time_seconds: float, view_centre: Vector2, vehicl
 
 
 func _step(dt: float, game_time_seconds: float, view_centre: Vector2, vehicles: Array) -> void:
+	var gone: Array = []
 	for animal in animals:
 		if animal["position"].distance_squared_to(view_centre) > activity_distance_m * activity_distance_m: continue
 		animal["timer"] -= dt
@@ -255,7 +262,12 @@ func _step(dt: float, game_time_seconds: float, view_centre: Vector2, vehicles: 
 				and not Geometry2D.is_point_in_polygon(animal["position"], animal["water"]):
 			animal["heading"] = (animal["home"] - animal["position"]).angle()  # circle back and land on the water
 			animal["timer"] = 0.5
+		elif animal["timer"] <= 0.0 and animal["state"] == "FLY" and not animal.has("water") \
+				and in_building(_waters.get(animal.get("chunk", ""), {}), animal["position"]):
+			animal["leaving"] = true  # a land bird flies on out over the water, gone once out of sight
+			animal["timer"] = 0.5
 		elif animal["timer"] <= 0.0:
+			animal.erase("leaving")  # made it over to land
 			_transition(animal, activity(animal["species"], game_time_seconds))
 		var speed := _speed(animal["species"], animal["state"])
 		if speed > 0.0:
@@ -263,10 +275,18 @@ func _step(dt: float, game_time_seconds: float, view_centre: Vector2, vehicles: 
 			# On foot, a building is a wall - unless it stands on one already (a bird landed on a roof walks off it).
 			var grid: Dictionary = _buildings.get(animal.get("chunk", ""), {})
 			var walled: bool = animal["state"] != "FLY" and in_building(grid, next) and not in_building(grid, animal["position"])
+			if animal["state"] != "FLY" and in_building(_waters.get(animal.get("chunk", ""), {}), next):
+				walled = true  # the shore, on foot
 			if animal.has("water") and animal["state"] != "FLY":  # afloat: the shore is its wall
 				walled = not Geometry2D.is_point_in_polygon(next, animal["water"])
-			if animal["bounds"].has_point(next) and not walled: animal["position"] = next
+			if animal.get("leaving", false):
+				animal["position"] = next
+				if next.distance_squared_to(view_centre) > LEAVING_GONE_M * LEAVING_GONE_M:
+					gone.append(animal)
+			elif animal["bounds"].has_point(next) and not walled: animal["position"] = next
 			else: animal["heading"] += PI
+	if not gone.is_empty():
+		animals = animals.filter(func(animal): return not gone.has(animal))
 
 
 static func _nearest_vehicle(at: Vector2, vehicles: Array) -> Vector2:
