@@ -47,6 +47,8 @@ func _process(delta: float) -> void:
 	_t += delta
 	_step_t += delta
 	var name: String = STEPS[_step][0]
+	if name == "board" and state.get("on_foot", true) and fmod(_step_t, 1.0) < delta:  # the driver starts beside the taxi: F, once a second
+		main.send({"interact": true})
 	if _watching != "":
 		var sent: Dictionary = main.sim._last_command
 		_commands_after_release += 1
@@ -63,6 +65,7 @@ func _process(delta: float) -> void:
 func _start_step(name: String, state: Dictionary) -> void:
 	match name:
 		"hold_w", "hold_w_again", "hold_w_focus":
+			main._engine_on = true  # aboard: send() followed the parked taxi's stopped engine while outside
 			_key(KEY_W, true)
 		"release_w":
 			_key(KEY_W, false)
