@@ -264,6 +264,8 @@ def _pedestrian_to_dict(ped, residents=None, santa_day=None, person: bool = True
         "curse_text": ped.curse_text,
         "mood": ped.mood,
         "is_cyclist": ped.is_cyclist,
+        # The layer of the way they walk (a bridge > 0): the 3D view stands them on its deck (rtx-scene-readiness step 5).
+        "layer": getattr(getattr(ped, "way", None), "layer", 0) or 0,
         "costume": "santa" if santa_costume(ped, (residents or {}).get(ped.resident_id), santa_day) else "",
         # A thief stays anonymous: no resident (personality) is sent, and the client can't pick one.
         "resident": None if getattr(ped, "thief_target", None) is not None or not person else _resident_to_dict((residents or {}).get(ped.resident_id)),

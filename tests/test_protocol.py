@@ -81,6 +81,19 @@ def test_owned_dog_travels_with_its_one_pedestrian_owner():
                              "color": [86, 57, 37], "sniffing": True}
 
 
+def test_a_pedestrian_on_a_bridge_sends_its_layer():
+    """rtx-scene-readiness step 5: the 3D view stands people on a bridge's deck."""
+    from types import SimpleNamespace as Row
+
+    def walker(way):
+        return protocol._pedestrian_to_dict(Row(resident_id=7, x=1.0, y=2.0, heading=0.0, radius_m=0.45, color=(1, 2, 3),
+            state="walking", animation_state="walking", animation_time=0.0, curse_timer=0.0, curse_text="",
+            mood="normal", is_cyclist=False, blood_alcohol_promille=0.0, activity=None, way=way))
+
+    assert walker(Row(layer=1))["layer"] == 1
+    assert walker(None)["layer"] == 0 and walker(Row(layer=-1))["layer"] == -1
+
+
 def test_the_waiting_customer_crosses_the_wire():
     """godot-07: a client draws the customer waiting at (or walking to) the
     taxi from these fields."""
