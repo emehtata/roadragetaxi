@@ -46,6 +46,7 @@ var _shadow_view: SubViewport
 var _shadow_camera: Camera3D
 var _shadow_sprite: Sprite2D
 var _sun_key := Vector3(INF, INF, INF)  # the (altitude, azimuth, cloud) applied last
+var _surface_pixels_per_m := -1.0
 var shadows_enabled := true
 static var opaque := false  # --outdoor-3d (use_shaded): the view draws its own ground, shaded by real lights
 const GROUND := Color(0.27, 0.33, 0.25)  # map_layer._draw_ground's open ground
@@ -85,6 +86,10 @@ func _ready() -> void:
 		sky.glow_intensity = 0.5
 		_view.positional_shadow_atlas_size = 4096  # the nearest lamps' and the taxi's headlights' shadows
 		_camera.environment = sky
+		if preload("res://rtx_trial.gd").requested():
+			if not preload("res://rtx_trial.gd").configure(_view, sky, "outdoor"):
+				get_tree().quit(2)
+				return
 	_sprite = _make_sprite(_view, 7)
 	_sun = make_sun()
 	if opaque:
@@ -273,6 +278,8 @@ func _process(_delta: float) -> void:
 	var size := Vector2i(get_viewport().get_visible_rect().size)
 	var centre := camera_2d.get_screen_center_position()
 	var height := camera_height(size.y / camera_2d.zoom.y)
+	if opaque:
+		set_surface_scale(camera_2d.zoom.x * _view.scaling_3d_scale)
 	if _view.size != size:
 		_view.size = size
 	view_centre = centre
@@ -361,6 +368,14 @@ static func road_materials() -> Array:
 		return []
 	_road_copies = _road_copies.filter(func(ref): return ref.get_ref() != null)
 	return [_shared["road"]] + _road_copies.map(func(ref): return ref.get_ref())
+
+
+func set_surface_scale(pixels_per_m: float) -> void:
+	if is_equal_approx(pixels_per_m, _surface_pixels_per_m):
+		return
+	_surface_pixels_per_m = pixels_per_m
+	for material in road_materials():
+		material.set_shader_parameter("surface_pixels_per_m", pixels_per_m)
 
 
 func set_snow(cover: float) -> void:

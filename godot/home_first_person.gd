@@ -81,6 +81,10 @@ func enter(plan: Dictionary) -> bool:
 	environment.environment.ambient_light_color = Color.WHITE
 	environment.environment.ambient_light_energy = 0.75
 	_viewport.add_child(environment)
+	if preload("res://rtx_trial.gd").requested():
+		if not preload("res://rtx_trial.gd").configure(_viewport, environment.environment, "home"):
+			leave()
+			return false
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-60, -30, 0)
 	_viewport.add_child(light)

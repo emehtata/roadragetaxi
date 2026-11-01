@@ -7,6 +7,8 @@
 shader_type spatial;
 render_mode cull_back;
 
+// Camera footprint replaces raster derivatives, which are unavailable in ray hit shaders.
+uniform float surface_pixels_per_m = 1.0;
 uniform float wetness : hint_range(0.0, 1.0) = 0.0;  // weather.wetness (map_layer.set_wetness)
 uniform float wind = 0.3;  // step 6: open water's waves, 0 calm .. 1 rough (main.gd, as the 2D water's)
 // The chunk's road snow per 10 m world cell, ploughed ones cleared (map_chunk._road_snow_3d): one
@@ -115,10 +117,9 @@ void fragment() {
 			slope *= 0.08 + 0.25 * clamp(wind, 0.0, 1.0);
 			NORMAL = normalize(NORMAL - (VIEW_MATRIX * vec4(slope.x, 0.0, slope.y, 0.0)).xyz);
 		}
-		float pixels_per_m = 1.0 / max(max(length(dFdx(world.xz)), length(dFdy(world.xz))), 0.0001);
 		vec2 cell_uv = (vec2(world.x * 0.1, -world.z * 0.1) + cell_map.xy) / cell_map.zw;
 		float snow = clamp(texture(snow_cells, cell_uv).r, 0.0, 1.0) * UV2.y;
-		albedo *= 1.0 + pattern(int(round(UV.y)), world.xz, pixels_per_m) * (1.0 - snow);
+		albedo *= 1.0 + pattern(int(round(UV.y)), world.xz, surface_pixels_per_m) * (1.0 - snow);
 		albedo *= mix(1.0, 0.6, wetness * (1.0 - water) * (1.0 - snow));  // wet asphalt darkens
 		ALBEDO = mix(albedo, snow_color.rgb, snow);
 		ROUGHNESS = mix(mix(0.88, 0.12, max(wetness, water)), 0.7, snow);

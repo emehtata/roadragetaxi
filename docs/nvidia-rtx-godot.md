@@ -1,60 +1,46 @@
 # NVIDIA RTX Godot: experimental adoption analysis
 
-Research and project status reviewed: 1 November 2026. Engine integration
-remains a proposal. The completed 3D vehicle work below is verified from the
-repository source; it does not establish that the NVIDIA fork has been built
-or that the game has been tested on it.
+Research and project status reviewed: 1 November 2026. The experimental
+launch and runtime capability checks are implemented. Scene acceptance and
+performance evidence are recorded separately from successful configuration.
 
 For the ordered game-scene conversion prerequisites, see
 [Outdoor scene prerequisites before enabling RTX](rtx-scene-readiness.md).
 
 ## Recommendation
 
-Introduce an explicit Windows experimental engine launch, then validate
-Forward+ raster rendering before enabling path tracing in a selected 3D view.
-Use the existing first-person home interior as the first path tracing trial:
-it already has shaded meshes, a dedicated 3D world and an Environment. Treat
-outdoor path tracing as a later rendering project because the driving view
-combines a 2D map with a transparent 3D building/vehicle view and a separate
-shadow texture. Follow the [scene readiness plan](rtx-scene-readiness.md)
-for the ordered outdoor conversion and its completion criteria.
-
-A successful engine launch alone does not establish path tracing support.
-The adoption gates are: compatible engine, working Vulkan Forward+, working
-Streamline features, correctly configured per-view Environment, and measured
-visual benefit at an acceptable cost.
+Proceed with the controlled outdoor trial in
+[scene readiness Step 7](rtx-scene-readiness.md#step-7-prove-readiness-and-enable-a-controlled-rtx-trial).
+The preparation work in Steps 1–6 is implemented and has been rendered under
+native Windows Forward+/Vulkan. The remaining exclusions and evidence are
+recorded in that plan. The first-person home interior is another test view,
+not a prerequisite for the outdoor trial.
 
 ## Implementation status
 
-Completed in commit `0a1461b` (Cars in 3D):
+The opt-in `--outdoor-3d` path now renders chunk-owned ground, roads, wet
+surfaces, buildings, bridges, roadside props, vehicle kinds, people and larger
+animals in a shared World3D. Generated meshes carry normals; shaded materials
+separate paint, glass, rubber and emissive parts. Real scene lights replace
+the old lighting and multiplied shadow composition on this path. The standard
+Compatibility presentation remains the default.
 
-- Ordinary car, van and taxi bodies now use generated 3D geometry in the same
-  World3D and camera as buildings. This includes body shapes, wheels,
-  glasshouse geometry and taxi roof signs.
-- Vehicle body and shadow-caster instances are pooled; generated meshes are
-  cached. The existing separate ground-shadow pass includes their casters.
-- The existing 2D entity layer submits the supported bodies to the 3D layer
-  and retains vehicle lamps and glow effects. It also retains fallback body
-  rendering where the conversion does not apply.
-
-This is a geometry conversion within the established Compatibility renderer.
-The bodies still use the shared unshaded building shader, baked face shading
-and a mesh builder without vertex normals. Windows, tyres and paint do not
-have distinct shaded material responses. Under-bridge and fallen vehicles,
-as well as other vehicle categories, still have 2D presentation paths.
-
-The RTX-specific work is pending: no `run-rtx` target, experimental launcher
-switch, capability helper, path tracing setup or DLSS configuration exists in
-the inspected launch/client code. The project still selects `gl_compatibility`
-and the normal engine remains pinned to Godot 4.7.2. Forward+ compatibility,
-RTX visual acceptance and performance measurements remain unverified here.
-
-The [outdoor scene readiness plan](rtx-scene-readiness.md) describes the next
-steps: shared outdoor view, shaded mesh materials, 3D road surfaces and
-wetness, real scene lighting, vertical separation and wider scene coverage.
-Steps 1–4 on a bounded street are the entry criteria for an outdoor developer
-trial; the later coverage and acceptance steps govern general gameplay use.
-The home interior remains an independent, smaller engine trial.
+Experimental RTX integration adds `make run-rtx` and `--rtx`, which selects
+that outdoor scene and requires the NVIDIA engine, Vulkan Forward+, ray tracing
+pipeline support, DLSS and DLSS Ray Reconstruction. Fork-only classes,
+constants and methods are discovered at runtime by
+[rtx_trial.gd](../godot/rtx_trial.gd); upstream Godot can still load the project.
+Unavailable requirements produce an explanation and a nonzero exit before
+starting a session. The trial configures the outdoor SubViewport and, when
+entered, the separate home-interior SubViewport. It uses one sample per pixel,
+two bounces, Ray Reconstruction, native scale or DLSS Quality, and no Frame
+Generation. `RTX_TRIAL` log records identify the engine, GPU, renderer, driver
+and configured view. The trial disables asynchronous path-tracing shader
+compilation: the initial
+probe otherwise captured missing custom-material geometry even after waiting.
+Cold first frames can therefore pause while materials compile. Configuration
+is not proof that every shader or scene feature renders correctly; see the
+[trial results](rtx-trial-2026-11-01.md) for captures and remaining gates.
 
 ## What NVIDIA actually provides
 
@@ -62,23 +48,39 @@ The [linked website](https://nvidia-rtx.github.io/godot/) currently repeats
 Godot's general README. Its upstream download links do not supply an RTX
 build. Use NVIDIA's source repository and inspect the RTX branch explicitly.
 
-The [branch API](https://api.github.com/repos/NVIDIA-RTX/godot/branches/nvidia-pt-dlss)
-resolved `nvidia-pt-dlss` to
-`135dff3887a3d2ccf45cafbd9bdffa7b718e1e76`, dated 24 July 2026. Pin that
-revision for an initial reproducible evaluation. Recheck this information
-before implementation; it describes the inspected revision, not every fork
-version. The [official releases API](https://api.github.com/repos/NVIDIA-RTX/godot/releases)
+The [branch API](https://api.github.com/repos/NVIDIA-RTX/godot/branches/nvidia-pt-dlss-dev)
+resolved `nvidia-pt-dlss-dev` to
+`382d9d6bf0274af34b85d3cbcd98981de41cbd62`, dated 1 November 2026. Pin that
+revision for this reproducible evaluation. At 20:37 UTC the branch had been
+force-updated to `6a7a8406875c92b033c929bd284536a5c7d71209`. A recursive
+blob comparison found eight changed files: include cleanup and test guards,
+with no rendering algorithm changes. The recorded binary and screenshots
+remain pinned to `382d9d6`; `6a7a840` was inspected but not built. Do not confuse
+a moving branch name with the tested build identity. Recheck the branch before
+upgrading; these findings describe the inspected revision, not every fork
+version. The older `nvidia-pt-dlss` branch at `135dff3` failed the first
+street trial: it did not preserve UV2/CUSTOM0 material data and rejected the
+puddle shader's discard. Use the development branch pinned above, which adds
+vertex capture, UV2 and improved alpha handling. It declares CUSTOM0 but does
+not populate it from mesh data; the trial therefore also requires the small
+[custom0.patch](../tools/rtx/custom0.patch). This restores the FLOAT4 CUSTOM0
+window parameters used by our building material, and adds the
+`rrt_rtx_custom0` engine feature checked at startup. It does not implement
+other custom formats or CUSTOM1–3. The road material also uses an explicit camera footprint instead of `dFdx`/`dFdy`,
+which cannot execute in ray hit shaders.
+
+The [official releases API](https://api.github.com/repos/NVIDIA-RTX/godot/releases)
 returned no releases at inspection time. Community binaries are a separate
 supply and maintenance decision.
 
 | Finding at the inspected revision | Consequence for this game |
 | --- | --- |
-| [version.py](https://github.com/NVIDIA-RTX/godot/blob/135dff3887a3d2ccf45cafbd9bdffa7b718e1e76/version.py) reports 4.8-dev | This is a development-engine compatibility change from the game's pinned 4.7.2. Test scripts, shaders and imports. |
-| [SConstruct](https://github.com/NVIDIA-RTX/godot/blob/135dff3887a3d2ccf45cafbd9bdffa7b718e1e76/SConstruct) defaults `use_streamline` to true but disables it outside Windows | Start with native Windows. Linux path tracing without Streamline is a separate experiment, not equivalent DLSS support. |
-| [RenderingDevice reference](https://github.com/NVIDIA-RTX/godot/blob/135dff3887a3d2ccf45cafbd9bdffa7b718e1e76/doc/classes/RenderingDevice.xml) documents ray tracing pipeline support as Vulkan-only | Select `forward_plus` and `vulkan` explicitly. Streamline's D3D12 code does not prove D3D12 path tracing works. |
-| [Environment reference](https://github.com/NVIDIA-RTX/godot/blob/135dff3887a3d2ccf45cafbd9bdffa7b718e1e76/doc/classes/Environment.xml) exposes `pathtracing_enabled` and a DLSS Ray Reconstruction denoiser | Path tracing is enabled per Environment, independently of launching the engine. The listed denoisers are None and DLSS Ray Reconstruction. |
-| [Viewport reference](https://github.com/NVIDIA-RTX/godot/blob/135dff3887a3d2ccf45cafbd9bdffa7b718e1e76/doc/classes/Viewport.xml) adds `SCALING_3D_MODE_DLSS` | DLSS scales a viewport's 3D buffer. It will not accelerate all the game's 2D drawing or the Python simulation. |
-| [Streamline headers](https://github.com/NVIDIA-RTX/godot/blob/135dff3887a3d2ccf45cafbd9bdffa7b718e1e76/thirdparty/streamline/include/sl_version.h) specify SDK 2.10.0 | Begin with matching runtime files and record their versions. Avoid assuming the newest SDK is interchangeable. |
+| [version.py](https://github.com/NVIDIA-RTX/godot/blob/382d9d6bf0274af34b85d3cbcd98981de41cbd62/version.py) reports 4.8-dev | This is a development-engine compatibility change from the game's pinned 4.7.2. Test scripts, shaders and imports. |
+| [SConstruct](https://github.com/NVIDIA-RTX/godot/blob/382d9d6bf0274af34b85d3cbcd98981de41cbd62/SConstruct) defaults `use_streamline` to true but disables it outside Windows | Start with native Windows. Linux path tracing without Streamline is a separate experiment, not equivalent DLSS support. |
+| [RenderingDevice reference](https://github.com/NVIDIA-RTX/godot/blob/382d9d6bf0274af34b85d3cbcd98981de41cbd62/doc/classes/RenderingDevice.xml) documents ray tracing pipeline support as Vulkan-only | Select `forward_plus` and `vulkan` explicitly. Streamline's D3D12 code does not prove D3D12 path tracing works. |
+| [Environment reference](https://github.com/NVIDIA-RTX/godot/blob/382d9d6bf0274af34b85d3cbcd98981de41cbd62/doc/classes/Environment.xml) exposes `pathtracing_enabled` and a DLSS Ray Reconstruction denoiser | Path tracing is enabled per Environment, independently of launching the engine. The listed denoisers are None and DLSS Ray Reconstruction. |
+| [Viewport reference](https://github.com/NVIDIA-RTX/godot/blob/382d9d6bf0274af34b85d3cbcd98981de41cbd62/doc/classes/Viewport.xml) adds `SCALING_3D_MODE_DLSS` | DLSS scales a viewport's 3D buffer. It will not accelerate all the game's 2D drawing or the Python simulation. |
+| [Streamline headers](https://github.com/NVIDIA-RTX/godot/blob/382d9d6bf0274af34b85d3cbcd98981de41cbd62/thirdparty/streamline/include/sl_version.h) specify SDK 2.10.0 | Begin with matching runtime files and record their versions. Avoid assuming the newest SDK is interchangeable. |
 
 The path tracer requires ray tracing hardware. DLSS Ray Reconstruction
 specifically requires an NVIDIA RTX GPU according to the fork's Environment
@@ -94,34 +96,23 @@ The relevant integration points are:
 
 | File | Current behavior | Proposed responsibility |
 | --- | --- | --- |
-| [Makefile](../Makefile) | Pins 4.7.2; WSL `run` delegates to native Windows; other run targets use `GODOT` | Add an explicit experimental target and a separate fork executable variable. |
-| [tools/run-windows.ps1](../tools/run-windows.ps1) | Accepts `-Godot`, chooses Windows Python, prepares osmium and launches the project | Select and validate the experimental executable and pass engine arguments before `--`. |
+| [Makefile](../Makefile) | Pins 4.7.2 for standard runs; `run-rtx` selects `WINDOWS_RTX_GODOT` | Keep the experimental engine explicit and record the selected build. |
+| [tools/run-windows.ps1](../tools/run-windows.ps1) | Accepts `-Godot`, `-ExperimentalRtx`, and `-RtxQuality`; chooses Windows Python and prepares osmium | Pass Vulkan/Forward+ before `--` and RTX game flags after it. |
 | [godot/project.godot](../godot/project.godot) | Uses `gl_compatibility` | Override renderer and driver at process launch. |
 | [godot/startup.gd](../godot/startup.gd) | Owns menus and saved launch preferences | Later expose a restart-based experiment choice if the command-line trial succeeds. |
 | [godot/graphics_settings.gd](../godot/graphics_settings.gd) | Reads eight boolean graphics preferences | Keep engine selection distinct from live effect toggles; add validated RTX view options only when needed. |
-| [godot/home_first_person.gd](../godot/home_first_person.gd) | Creates an isolated SubViewport, WorldEnvironment and directional light | First candidate for guarded path tracing and per-viewport DLSS configuration. |
-| [godot/buildings_3d.gd](../godot/buildings_3d.gd) | Renders buildings and supported 3D vehicle bodies together; composites their transparent view and a separate multiplied ground-shadow texture | Add normals and shaded materials, then follow the shared outdoor scene conversion. |
-| [godot/entity_layer.gd](../godot/entity_layer.gd) | Submits supported car/van/taxi bodies to the 3D layer; retains 2D lamps, other categories and fallback bodies | Move relevant lamps and remaining bodies into the shared outdoor scene while preserving interpolation and state-driven appearance. |
+| [godot/home_first_person.gd](../godot/home_first_person.gd) | Creates an isolated SubViewport, WorldEnvironment and directional light | Applies the same guarded RTX configuration to its own view during the trial. |
+| [godot/buildings_3d.gd](../godot/buildings_3d.gd) | Outdoor mode has an opaque shared scene, shaded materials and real lights | Applies RTX to the outdoor camera Environment and its SubViewport. |
+| [godot/entity_layer.gd](../godot/entity_layer.gd) | Submits all vehicle categories and nearby people to the outdoor 3D layer | Verify moving meshes, lamp states and temporal reconstruction in the trial. |
 | [.github/workflows/windows-release.yml](../.github/workflows/windows-release.yml) | Downloads upstream editor/templates and packages one Windows client | A later RTX distribution needs templates built from the pinned fork and its own runtime manifest. |
 
-The outdoor buildings use unshaded materials and
-[building_snow.gdshader](../godot/building_snow.gdshader), with much of their
-lighting encoded in vertex colors and shader output. Their sun and shadow
-caster copies use a separate layer and a separate shadow viewport. Supported
-car, van and taxi bodies now share that 3D world, but also share its unshaded
-material path. Roads, pedestrians, vehicle lamps and the remaining vehicle
-body paths are still CanvasItem content outside it. Path tracing cannot infer
-3D geometry or lighting interactions for those 2D layers. The existing car
-conversion therefore supplies reusable geometry, not complete RTX materials
-or a complete outdoor lighting scene.
-
-The resulting risks are specific: transparent-background alpha may composite
-differently, denoising can leave trails around roofs, cull masks may not have
-the expected ray visibility behavior, and the existing multiplied shadow pass
-may double-darken a new lighting result. Shaded outdoor materials also need
-to avoid applying the existing baked lighting twice. These are evaluation
-questions, not confirmed fork defects. Do not enable path tracing globally
-on the building or shadow Environment to see whether it happens to work.
+The legacy transparent building view still exists for the standard game.
+The RTX trial uses the prepared opaque outdoor mode instead. Its outstanding
+fork-specific questions are custom shader compatibility, transparency and
+particles, small 2D overlays, dense foliage, off-screen reflection coverage,
+and temporal reconstruction of pooled moving meshes. Check the readiness
+plan's exclusions and compare the rendered results rather than inferring
+support from a successful engine launch.
 
 The home interior has shaded StandardMaterial3D surfaces and a mostly opaque
 full-screen 3D view, making it a smaller trial. It still needs deliberate
@@ -151,18 +142,42 @@ install compatible MSVC C++ tools, the Windows SDK, Python and SCons. Example
 PowerShell commands for the inspected revision:
 
 ```powershell
-git clone --branch nvidia-pt-dlss --single-branch https://github.com/NVIDIA-RTX/godot.git C:\Godot\nvidia-godot
+git clone --branch nvidia-pt-dlss-dev --single-branch https://github.com/NVIDIA-RTX/godot.git C:\Godot\nvidia-godot
 Set-Location C:\Godot\nvidia-godot
-git checkout --detach 135dff3887a3d2ccf45cafbd9bdffa7b718e1e76
+git checkout --detach 382d9d6bf0274af34b85d3cbcd98981de41cbd62
+git apply C:\path\to\roadragetaxi\tools\rtx\custom0.patch
 scons platform=windows target=editor arch=x86_64 use_streamline=yes
 Get-ChildItem .\bin\*console.exe
 ```
 
-These are proposed build commands, not a tested build transcript. Resolve
+The MSVC commands above are a setup example; the tested local build uses
+LLVM-MinGW as described below. Resolve
 build prerequisites against the pinned source and its build output. Record
 the compiler, SCons version, engine SHA and resulting binary filename; use
 the actual console executable emitted by the build rather than assuming an
 upstream release filename.
+
+### Tested Windows binary built under WSL
+
+The local trial cross-compiles with portable LLVM-MinGW
+`20261020-ucrt-ubuntu-22.04-x86_64` (Clang 23.1.4), Python/SCons in a venv,
+and this command in the pinned, patched engine checkout:
+
+```bash
+MINGW_PREFIX=/path/to/llvm-mingw /path/to/build-env/bin/scons \
+  platform=windows target=editor arch=x86_64 use_mingw=yes use_llvm=yes \
+  d3d12=no use_streamline=yes dev_build=no debug_symbols=no \
+  optimize=speed lto=none -j8
+```
+
+`use_llvm=yes` selects the compiler. The resulting `.exe` is a native Windows
+program, running Windows Vulkan and Streamline on the NVIDIA GPU. WSL is only
+the build host; there is no VM or Linux graphics layer in the running client.
+Copy both `godot.windows.editor.x86_64.llvm.exe` and its `.console.exe` wrapper
+to `C:\Godot\rtx`. Keep `rtx-build.json` beside them with `source_commit`,
+patch hash, compiler/build command, runtime versions and per-file SHA-256.
+The startup report reads that optional manifest for the source identity;
+the engine feature check independently verifies the material patch.
 
 Obtain the matching Streamline SDK from
 [NVIDIA's Streamline repository](https://github.com/NVIDIA-RTX/Streamline).
@@ -171,7 +186,7 @@ including the interposer, feature plugins and required NGX DLLs, beside the
 engine executable. Preserve the SDK's runtime layout and notices; copying
 headers does not install the runtime. The fork explicitly loads
 `sl.interposer.dll` through Windows LoadLibrary in
-[streamline_context.cpp](https://github.com/NVIDIA-RTX/godot/blob/135dff3887a3d2ccf45cafbd9bdffa7b718e1e76/drivers/streamline/streamline_context.cpp).
+[streamline_context.cpp](https://github.com/NVIDIA-RTX/godot/blob/382d9d6bf0274af34b85d3cbcd98981de41cbd62/drivers/streamline/streamline_context.cpp).
 Use release runtime files for any distributed package. Record hashes and
 versions of the deployed files, not just the engine executable.
 
@@ -181,7 +196,7 @@ application ID. Pinning DLLs alone therefore does not guarantee an unchanged
 runtime. Record loaded plugin versions during testing; review the OTA policy
 and application identity before distribution.
 
-## Try the engine before implementing launch support
+## Import and verify the engine
 
 Use the isolated game worktree and native Windows rendering. From its root,
 replace `$rtxGodot` with the actual compiled console executable:
@@ -196,77 +211,74 @@ $rtxGodot = 'C:\Godot\nvidia-godot\bin\ACTUAL_CONSOLE_EXECUTABLE.exe'
 The last invocation opens the existing game launcher with Forward+ raster
 rendering. It does not enable path tracing. Use the documented Windows Python
 environment from [README](../README.md#run-from-source) so the launcher can
-start its server. The existing PowerShell helper's `-Godot` parameter already
-supports a different executable, but it has no renderer/driver parameters:
-passing only `-Godot` leaves this project on Compatibility.
+start its server. The PowerShell helper requires `-ExperimentalRtx` as well as `-Godot`
+for the RTX trial. Passing only `-Godot` leaves the project on Compatibility.
 
 Headless import detects script/resource problems. It cannot demonstrate RT
 capabilities, successful DLSS initialization, visible rendering or performance.
 Under WSL use the native Windows executable and Windows Python environment;
 do not use Linux Mesa/software results to characterize Windows RTX performance.
 
-## Proposed experimental launch implementation
+## Experimental launch
 
-The smallest useful first implementation is `make run-rtx` with a separate
-`WINDOWS_RTX_GODOT` executable path and an `-ExperimentalRtx` switch on the
-PowerShell helper. These names are proposals and do not exist yet. The helper
-should construct an engine-argument array and launch approximately:
+Install the pinned Windows fork and matching Streamline runtime as described
+above. The local default executable is
+`C:\Godot\rtx\godot.windows.editor.x86_64.llvm.console.exe`; override it for
+other builds. From WSL:
 
-```text
-<fork-console.exe> --path <game>/godot --rendering-method forward_plus --rendering-driver vulkan -- <existing game arguments>
+```bash
+make run-rtx
+make run-rtx RTX_QUALITY=quality
+make run-rtx WINDOWS_RTX_GODOT='C:\path\to\fork_console.exe'
 ```
 
-The existing `--log-level` and `--osm-source` options belong after `--`;
-renderer/driver options belong before it. Preserve correct quoting for paths
-with spaces and existing Windows Python selection. An explicit CLI renderer
-and driver override is sufficient: a second project file or generated project
-copy is unnecessary for renderer selection. Use the isolated worktree during
-the initial evaluation to protect imports.
+From Windows PowerShell:
 
-Validate executable existence and report its version at launch. Do not point
-`fetch-godot` at the fork: its download URL and filename convention are for
-upstream releases. Add a fork-revision marker or build manifest because the
-version string `4.8.dev` does not uniquely identify NVIDIA's features. Keep
-normal headless checks pinned to the established engine; add a fork import
-check as a separate compatibility check.
+```powershell
+.\tools\run-windows.ps1 -Godot 'C:\path\to\fork_console.exe' -ExperimentalRtx -RtxQuality native
+```
 
-A failed experiment should print the cause and the standard launch command,
-return a nonzero status, and leave a useful log. Avoid automatic relaunch loops
-or silently substituting the standard engine. Log the actual renderer and GPU
-because an engine fallback can otherwise look like a successful RTX launch.
+`native` uses scale 1.0; `quality` uses 0.66. Both use DLSS Ray Reconstruction
+and leave Frame Generation off. Renderer and driver arguments precede `--`;
+`--rtx --rtx-quality native|quality` follow it. For raster comparison, launch
+the same fork with `--rendering-method forward_plus --rendering-driver vulkan`
+and game argument `--outdoor-3d`, omitting `--rtx`.
 
-An in-game experimental selector is a later step. Engine and renderer
-selection happen before the menu exists, so that choice needs an external
-launcher or a controlled restart. For packaged games the selected engine is
-part of the exported executable: a setting cannot transform an upstream
-export into the NVIDIA fork.
+Use an isolated game worktree for initial development-engine imports and a
+separate application user directory during measurements. The launcher does
+not automatically download or build the fork, change the default engine or
+relaunch with a different renderer after failure. `fetch-godot` remains tied
+to the upstream release. Use `make run` to return to the standard engine.
+
+An in-game engine selector and packaged RTX exports are later work. A stock
+export cannot gain the fork's renderer through a saved setting.
 
 ## Enable path tracing in a bounded 3D trial
 
-Add a small optional client helper used first by `home_first_person.gd`.
+The optional client helper is shared by the outdoor view and `home_first_person.gd`.
 Keep fork-only APIs behind runtime discovery so standard Godot still parses
 and runs the project. Avoid direct references to unknown `Streamline` classes
 or fork-only enum symbols in scripts parsed by upstream Godot.
 
-The helper should verify the selected rendering method and Vulkan device,
-check that Environment has `set_pathtracing_enabled`, and query the rendering
-device for ray tracing pipeline support. Obtain `Streamline` dynamically via
-`Engine.has_singleton` / `Engine.get_singleton`, and query `get_capability`
+The helper verifies the selected rendering method and Vulkan device,
+checks that Environment has `set_pathtracing_enabled`, and queries the rendering
+device for ray tracing pipeline support. It obtains `Streamline` dynamically via
+`Engine.has_singleton` / `Engine.get_singleton`, and queries `get_capability`
 using constants discovered through ClassDB. The fork's
-[Streamline reference](https://github.com/NVIDIA-RTX/godot/blob/135dff3887a3d2ccf45cafbd9bdffa7b718e1e76/doc/classes/Streamline.xml)
+[Streamline reference](https://github.com/NVIDIA-RTX/godot/blob/382d9d6bf0274af34b85d3cbcd98981de41cbd62/doc/classes/Streamline.xml)
 exposes separate capabilities for DLSS, Ray Reconstruction, Frame Generation
 and Reflex. Fail closed for missing APIs or capabilities and explain the
 unavailable feature.
 
-Configure the Environment actually assigned to the interior's WorldEnvironment.
+Configure the Environment assigned to the outdoor camera or interior WorldEnvironment.
 Set path tracing through guarded `Object.call`/`set` operations. Initial values
 for a measured trial are one sample per pixel, two bounces and DLSS Ray
 Reconstruction, when available. The implementation clamps bounces to 1–8 in
-[environment.cpp](https://github.com/NVIDIA-RTX/godot/blob/135dff3887a3d2ccf45cafbd9bdffa7b718e1e76/scene/resources/environment.cpp);
+[environment.cpp](https://github.com/NVIDIA-RTX/godot/blob/382d9d6bf0274af34b85d3cbcd98981de41cbd62/scene/resources/environment.cpp);
 its XML description of zero bounces should not be treated as a supported
 setting at this revision.
 
-Configure DLSS on the interior SubViewport, not only the root window. Discover
+Configure DLSS on the selected 3D SubViewport, not only the root window. Discover
 `SCALING_3D_MODE_DLSS` dynamically; start with scale 1.0 for image comparison,
 then evaluate the documented 0.66 Quality scale. Confirm which reconstruction
 path is actually active. The root window's 2D HUD and map compositing do not
@@ -324,10 +336,7 @@ by itself describe all NVIDIA runtime redistribution obligations. Review the
 chosen SDK's supplied license and deployment guidance before shipping.
 
 Keep upgrades deliberate: new engine SHA, matching runtime review, import and
-render checks, screenshots and the same performance scenes. Continue the
-completed car geometry work through the
-[outdoor scene readiness plan](rtx-scene-readiness.md): add the shared ground,
-materials, lighting and remaining scene coverage while preserving map-layer
-separation and bounded chunk work. An outdoor street trial can follow that
-plan independently of the smaller home-interior engine trial; neither should
-be reported as accepted until its rendered checks and measurements exist.
+render checks, screenshots and the same performance scenes. Track the remaining
+visual and performance gates in the
+[outdoor scene readiness plan](rtx-scene-readiness.md). Steps 1–6 are already
+complete; Step 7 records the experimental trial and its outstanding checks.

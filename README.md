@@ -256,6 +256,22 @@ make run-pbf                   # launcher using local PBF map data
 make help                      # all supported development targets
 ```
 
+An experimental NVIDIA fork launch is available on Windows/WSL after installing
+its engine and Streamline runtime:
+
+```bash
+make run-rtx                       # native-scale path tracing + Ray Reconstruction
+make run-rtx RTX_QUALITY=quality   # DLSS Quality (0.66 scale)
+```
+
+Set `WINDOWS_RTX_GODOT` to the fork's console executable if it is outside the
+default `C:\Godot\rtx` directory. The trial enables the prepared outdoor 3D
+scene, requires Vulkan ray tracing and DLSS capabilities, and keeps Frame
+Generation off. See [RTX adoption and setup](docs/nvidia-rtx-godot.md) and the
+[scene readiness plan](docs/rtx-scene-readiness.md) for requirements and limits.
+The [trial report](docs/rtx-trial-2026-11-01.md) records captures, measurements
+and the unresolved fork shutdown/stall issues.
+
 To run server and client separately, keep the first command running in one
 terminal, then start the client in another:
 

@@ -1,0 +1,50 @@
+Godot Engine v4.8.dev.custom_build - https://godotengine.org
+Vulkan 1.4.351 - Forward+ - Streamline - Using Device #0: NVIDIA - NVIDIA GeForce RTX 5060
+
+startup: 18 cities from the simulation (repo)
+simulation connected
+BENCH {"counters":{"buildings":2692,"canvas_items":990.0,"chunks":36,"chunks_queued":0,"draw_calls":402.0,"drawn_entities":39,"lit":0,"nodes":1787.0,"npcs":11,"objects":4812.0,"pedestrians":68,"primitives":185814.0,"static_memory_mib":229.654181480408,"walls":24190,"wildlife":128,"windows":242221},"frames":{"avg_fps":59.8008038608343,"avg_ms":16.7221832389938,"frames":895,"low_01pct_fps":14.8588403366184,"low_1pct_fps":22.1522575927103,"over_33ms":6,"over_66ms":1,"p50_ms":16.6569995880127,"p95_ms":17.1690006256104,"p99_ms":27.117000579834,"worst_ms":67.3000030517578},"sections":{"draw_entities_1__draw_trains":{"avg_ms":0.00158324022346369,"count":895,"max_ms":0.003,"total_ms":1.417},"draw_entities_3_<anonymous lambda>":{"avg_ms":0.000577653631284916,"count":895,"max_ms":0.007,"total_ms":0.517},"draw_entities_4__draw_route":{"avg_ms":0.00125586592178771,"count":895,"max_ms":0.008,"total_ms":1.124},"draw_entities_5__draw_people":{"avg_ms":0.00649720670391061,"count":895,"max_ms":0.023,"total_ms":5.815},"draw_entities_6_<anonymous lambda>":{"avg_ms":0.00144022346368715,"count":895,"max_ms":0.018,"total_ms":1.289},"draw_entities_7_<anonymous lambda>":{"avg_ms":0.000739664804469274,"count":895,"max_ms":0.002,"total_ms":0.662},"draw_entities_8_<anonymous lambda>":{"avg_ms":0.0039877094972067,"count":895,"max_ms":0.02,"total_ms":3.569},"draw_entities_9_<anonymous lambda>":{"avg_ms":0.00130279329608939,"count":895,"max_ms":0.013,"total_ms":1.166},"draw_z8__draw_traffic_lights":{"avg_ms":8.23688888888889,"count":18,"max_ms":15.577,"total_ms":148.264},"entities_draw":{"avg_ms":0.971837988826816,"count":895,"max_ms":2.597,"total_ms":869.795},"frame_setup_cpu":{"avg_ms":0.122348603351955,"count":895,"max_ms":0.432,"total_ms":109.502},"main_process":{"avg_ms":1.70492960893855,"count":895,"max_ms":20.669,"total_ms":1525.912},"night_beams":{"avg_ms":0.0278793296089386,"count":895,"max_ms":0.318,"total_ms":24.952},"parse_state":{"avg_ms":0.851683741648107,"count":449,"max_ms":1.588,"total_ms":382.406},"phase_process_to_render":{"avg_ms":3.76820782122905,"count":895,"max_ms":65.856,"total_ms":3372.546},"phase_render":{"avg_ms":12.7670558659218,"count":895,"max_ms":61.233,"total_ms":11426.515},"present":{"avg_ms":1.29357094972067,"count":895,"max_ms":19.741,"total_ms":1157.746},"render_3d_cpu":{"avg_ms":0.203297206703911,"count":895,"max_ms":0.624,"total_ms":181.951},"render_3d_gpu":{"avg_ms":0.937421229050279,"count":895,"max_ms":2.812,"total_ms":838.992},"render_cpu":{"avg_ms":0.306022346368715,"count":895,"max_ms":0.7,"total_ms":273.89},"render_gpu":{"avg_ms":0.111294972067039,"count":895,"max_ms":1.597,"total_ms":99.609},"time_physics":{"avg_ms":5.44207709497207,"count":895,"max_ms":12.231,"total_ms":4870.659},"weather":{"avg_ms":0.0139251396648045,"count":895,"max_ms":0.037,"total_ms":12.463}}}
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_common_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_pcl_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_reflex_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_g_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_d_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_nis_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_pcl_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_pcl_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.common.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_common_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.deepdvc.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.directsr.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.dlss.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.dlss_d.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_d_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.dlss_g.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_g_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.nis.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_nis_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.nvperf.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.pcl.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_pcl_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.reflex.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_reflex_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+
+================================================================
+CrashHandlerException: Program crashed with signal 11
+Engine version: Godot Engine v4.8.dev.custom_build
+Dumping the backtrace.
+Load address: 7ff4c3d20000
+
+[1] 7ffcc3fdf2e3 (ucrtbase.dll+8f2e3) - no debug info in PE/COFF executable
+[2] 7ff603d2140b (main+140b) - no debug info in PE/COFF executable
+[3] 7ffcc6c864ae (ntdll.dll+1664ae) - no debug info in PE/COFF executable
+[4] 7ffcc6be4064 (ntdll.dll+c4064) - no debug info in PE/COFF executable
+[5] 7ffcc6c85ded (ntdll.dll+165ded) - no debug info in PE/COFF executable
+[6] 7ffcc6b3ceec (ntdll.dll+1ceec) - no debug info in PE/COFF executable
+[7] 7ff60730e701 (main+35ee701) - no debug info in PE/COFF executable
+[8] 7ff60435c042 (main+63c042) - no debug info in PE/COFF executable
+[9] 7ff60462d52b (main+90d52b) - no debug info in PE/COFF executable
+[10] 7ff60462eb68 (main+90eb68) - no debug info in PE/COFF executable
+[11] 7ff604599d14 (main+879d14) - no debug

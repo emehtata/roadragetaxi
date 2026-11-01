@@ -1,0 +1,3 @@
+# Unified diff context contains meaningful leading spaces and tabs.
+tools/rtx/*.patch -whitespace
+.github/performance-analysis/rtx-trial-2026-11-01/*.diff -whitespace

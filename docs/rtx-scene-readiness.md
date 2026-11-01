@@ -428,6 +428,22 @@ agreed budget, and unavailable hardware/runtime features produce a useful
 explanation. Follow the separate adoption document's export and runtime
 packaging requirements before distributing it.
 
+### Trial implementation, 1 November 2026
+
+The native Windows experiment now launches through `make run-rtx`, with guarded
+capability checks, per-view path tracing/Ray Reconstruction, native or Quality
+scale, and Frame Generation disabled. It selects the completed outdoor 3D path.
+The pinned development fork needs the recorded FLOAT4 CUSTOM0 patch to retain
+procedural building windows; the road uses an explicit camera footprint rather
+than unsupported raster derivatives. The BUS label path also avoids querying
+a font at size zero when the outdoor view suppresses that 2D marking.
+
+See [the trial results and evidence](rtx-trial-2026-11-01.md) for the exact
+engine/runtime manifest, native GPU captures, checks and performance sample.
+This establishes a developer experiment, not completion of every Step 7 gate:
+long streaming runs, close temporal inspection, bridge/foliage edge cases and
+broader hardware coverage remain acceptance work. Export packaging is separate.
+
 ## Suggested atomic implementation sequence
 
 1. Shared outdoor viewport and a small 3D street surface.

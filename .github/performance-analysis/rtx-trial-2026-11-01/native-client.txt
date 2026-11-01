@@ -1,0 +1,34 @@
+Godot Engine v4.8.dev.custom_build - https://godotengine.org
+Vulkan 1.4.351 - Forward+ - Streamline - Using Device #0: NVIDIA - NVIDIA GeForce RTX 5060
+
+startup: 18 cities from the simulation (repo)
+simulation connected
+RTX_TRIAL {"async_shader_compilation":false,"available":true,"custom0_patch":true,"driver":"vulkan","engine":{"build":"custom_build","hash":"unknown","hex":264192,"major":4,"minor":8,"patch":0,"status":"dev","string":"4.8-dev (custom_build)","timestamp":0},"error":"","executable":"C:/Godot/rtx/godot.windows.editor.x86_64.llvm.exe","frame_generation":false,"gpu":"NVIDIA GeForce RTX 5060","max_bounces":2,"quality":"native","renderer":"forward_plus","samples_per_pixel":1,"scale":1.0,"source_commit":"382d9d6bf0274af34b85d3cbcd98981de41cbd62","status":"configured","view":"outdoor"}
+OpTypeForwardPointer is not supported yet.
+BENCH {"counters":{"buildings":2692,"canvas_items":989.0,"chunks":36,"chunks_queued":0,"draw_calls":320.0,"drawn_entities":48,"lit":0,"nodes":1622.0,"npcs":14,"objects":4392.0,"pedestrians":67,"primitives":394439.0,"static_memory_mib":231.096638679504,"walls":24190,"wildlife":128,"windows":242221},"frames":{"avg_fps":54.5513037643373,"avg_ms":18.3313675566769,"frames":827,"low_01pct_fps":5.10107779104713,"low_1pct_fps":5.92379332658279,"over_33ms":14,"over_66ms":11,"p50_ms":16.6560001373291,"p95_ms":17.1100006103516,"p99_ms":135.636001586914,"worst_ms":196.037002563477},"sections":{"chunk_buildings_build":{"avg_ms":111.362181818182,"count":11,"max_ms":163.158,"total_ms":1224.984},"draw_entities_1__draw_trains":{"avg_ms":0.00167593712212817,"count":827,"max_ms":0.008,"total_ms":1.386},"draw_entities_3_<anonymous lambda>":{"avg_ms":0.000615477629987908,"count":827,"max_ms":0.007,"total_ms":0.509},"draw_entities_4__draw_route":{"avg_ms":0.00138452237001209,"count":827,"max_ms":0.011,"total_ms":1.145},"draw_entities_5__draw_people":{"avg_ms":0.00658282950423216,"count":827,"max_ms":0.033,"total_ms":5.444},"draw_entities_6_<anonymous lambda>":{"avg_ms":0.0013869407496977,"count":827,"max_ms":0.009,"total_ms":1.147},"draw_entities_7_<anonymous lambda>":{"avg_ms":0.000816203143893591,"count":827,"max_ms":0.002,"total_ms":0.675},"draw_entities_8_<anonymous lambda>":{"avg_ms":0.0040459492140266,"count":827,"max_ms":0.015,"total_ms":3.346},"draw_entities_9_<anonymous lambda>":{"avg_ms":0.00149455864570738,"count":827,"max_ms":0.032,"total_ms":1.236},"draw_z8__draw_traffic_lights":{"avg_ms":7.558875,"count":24,"max_ms":13.345,"total_ms":181.413},"entities_draw":{"avg_ms":1.05654655380895,"count":827,"max_ms":3.518,"total_ms":873.764},"frame_setup_cpu":{"avg_ms":0.0861547762998791,"count":827,"max_ms":0.172,"total_ms":71.25},"main_process":{"avg_ms":1.70779201934704,"count":827,"max_ms":14.416,"total_ms":1412.344},"night_beams":{"avg_ms":0.0290906892382104,"count":827,"max_ms":0.408,"total_ms":24.058},"parse_state":{"avg_ms":0.836896995708155,"count":466,"max_ms":1.429,"total_ms":389.994},"phase_process_to_render":{"avg_ms":5.78353204353083,"count":827,"max_ms":193.978,"total_ms":4782.981},"phase_render":{"avg_ms":12.3150290205562,"count":827,"max_ms":14.619,"total_ms":10184.529},"present":{"avg_ms":1.28707738814994,"count":827,"max_ms":13.579,"total_ms":1064.413},"render_3d_cpu":{"avg_ms":0.306490931076179,"count":827,"max_ms":1.47,"total_ms":253.468},"render_3d_gpu":{"avg_ms":6.66050544135429,"count":827,"max_ms":7.664,"total_ms":5508.238},"render_cpu":{"avg_ms":0.310087061668682,"count":827,"max_ms":0.474,"total_ms":256.442},"render_gpu":{"avg_ms":0.0850048367593712,"count":827,"max_ms":0.098,"total_ms":70.299},"time_physics":{"avg_ms":6.55455501813785,"count":827,"max_ms":12.387,"total_ms":5420.617},"weather":{"avg_ms":0.0143736396614268,"count":827,"max_ms":0.101,"total_ms":11.887}}}
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_common_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_pcl_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_reflex_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_g_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_d_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_nis_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_pcl_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_pcl_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.common.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_common_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.deepdvc.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.directsr.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.dlss.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.dlss_d.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_d_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.dlss_g.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_dlss_g_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.nis.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_nis_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.nvperf.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.pcl.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_pcl_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\Godot\rtx\/sl.reflex.dll' is signed by NVIDIA and the signature was verified.
+File 'C:\ProgramData\NVIDIA/NGX/models/sl_reflex_0\versions\134672\files\1B0_E658703.dll' is signed by NVIDIA and the signature was verified.

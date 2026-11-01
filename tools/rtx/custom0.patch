@@ -1,0 +1,108 @@
+--- a/servers/rendering/renderer_rd/forward_clustered/render_raytracing.h
++++ b/servers/rendering/renderer_rd/forward_clustered/render_raytracing.h
+@@ -75,7 +75,7 @@
+ class RenderForwardClustered;
+ class SceneShaderRaytracing;
+ 
+-// Must match GLSL GeometryData (std430, 144 bytes, 8-byte alignment).
++// Must match GLSL GeometryData (std430, 160 bytes, 8-byte alignment).
+ struct alignas(8) RT_GeometryData {
+ 	uint64_t vertex_buffer_address;
+ 	uint64_t attribute_buffer_address;
+@@ -112,8 +112,10 @@
+ 	uint32_t debug_state; // See RTDynamicGeometryDebug::pack().
+ 	uint32_t material_index; // See rt_pack_material_index().
+ 	uint32_t material_flags;
+-};
+-static_assert(sizeof(RT_GeometryData) == 152, "RT_GeometryData must be 152 bytes for std430");
++	uint32_t custom0_byte_offset;
++	uint32_t custom0_reserved;
++};
++static_assert(sizeof(RT_GeometryData) == 160, "RT_GeometryData must be 160 bytes for std430");
+ 
+ // Marks an absent field in RT_GeometryData::instance_data_layout.
+ static constexpr uint32_t RT_INSTANCE_DATA_FIELD_NONE = 0xFF;
+--- a/servers/rendering/renderer_rd/shaders/raytracing/raytracing_data_inc.glsl
++++ b/servers/rendering/renderer_rd/shaders/raytracing/raytracing_data_inc.glsl
+@@ -58,6 +58,8 @@
+ 	uint debug_state; // See RTDynamicGeometryDebug::pack().
+ 	uint material_index; // See rt_pack_material_index().
+ 	uint material_flags;
++	uint custom0_byte_offset;
++	uint custom0_reserved;
+ };
+ 
+ // ============================================================================
+--- a/servers/rendering/renderer_rd/forward_clustered/render_raytracing.cpp
++++ b/servers/rendering/renderer_rd/forward_clustered/render_raytracing.cpp
+@@ -2433,6 +2433,7 @@
+ 	uint32_t attrib_offset = 0;
+ 	geom.uv_byte_offset = RT_OFFSET_NONE;
+ 	geom.uv2_byte_offset = RT_OFFSET_NONE;
++	geom.custom0_byte_offset = RT_OFFSET_NONE;
+ 	geom.color_byte_offset = RT_OFFSET_NONE;
+ 
+ 	if (surface_format & RSE::ARRAY_FORMAT_COLOR) {
+@@ -2452,6 +2453,9 @@
+ 		if (surface_format & (1ULL << (RSE::ARRAY_CUSTOM0 + ci))) {
+ 			uint32_t fmt = (surface_format >> fmt_shift[ci]) & RSE::ARRAY_FORMAT_CUSTOM_MASK;
+ 			const uint32_t fmtsize[RSE::ARRAY_CUSTOM_MAX] = { 4, 4, 4, 8, 4, 8, 12, 16 };
++			if (ci == 0 && fmt == RSE::ARRAY_CUSTOM_RGBA_FLOAT) {
++				geom.custom0_byte_offset = attrib_offset;
++			}
+ 			attrib_offset += fmtsize[fmt];
+ 		}
+ 	}
+@@ -4468,6 +4472,7 @@
+ 	geom.tangent_byte_offset = RT_OFFSET_NONE;
+ 	geom.uv_byte_offset = RT_OFFSET_NONE;
+ 	geom.uv2_byte_offset = RT_OFFSET_NONE;
++	geom.custom0_byte_offset = RT_OFFSET_NONE;
+ 	geom.color_byte_offset = RT_OFFSET_NONE;
+ 	geom.aabb_size_x = (float)ps->culling_aabb.size.x;
+ 	geom.aabb_size_y = (float)ps->culling_aabb.size.y;
+--- a/servers/rendering/renderer_rd/shaders/raytracing/raytracing_hit_inc.glsl
++++ b/servers/rendering/renderer_rd/shaders/raytracing/raytracing_hit_inc.glsl
+@@ -137,6 +137,13 @@
+ 	return bary.x * uv0 + bary.y * uv1 + bary.z * uv2;
+ }
+ 
++// Road Rage Trip uses FLOAT4 CUSTOM0 for procedural window parameters.
++vec4 fetch_custom0_vertex(in GeometryData geom, uint index) {
++	FloatBuffer attributes = FloatBuffer(geom.attribute_address);
++	uint offset = (index * geom.attribute_stride + geom.custom0_byte_offset) >> 2;
++	return vec4(attributes.v[offset], attributes.v[offset + 1u], attributes.v[offset + 2u], attributes.v[offset + 3u]);
++}
++
+ vec2 fetch_uv(in GeometryData geom, uint i0, uint i1, uint i2, vec3 bary) {
+ 	return fetch_uv_at(geom, geom.uv_byte_offset, geom.uv_scale_packed, i0, i1, i2, bary);
+ }
+--- a/servers/rendering/renderer_rd/shaders/raytracing/raytracing_custom_fragment_inc.glsl
++++ b/servers/rendering/renderer_rd/shaders/raytracing/raytracing_custom_fragment_inc.glsl
+@@ -49,6 +49,14 @@
+ binormal = mat3(rt_world_to_object) * rt_bitangent;
+ uv_interp = rt_uv;
+ uv2_interp = rt_uv2;
++if (rt_geom.custom0_byte_offset != OFFSET_NONE && rt_geom.attribute_address != 0ul && (rt_geom.flags & FLAG_PROCEDURAL) == 0u) {
++	uint custom_i0, custom_i1, custom_i2;
++	get_triangle_indices(rt_geom, custom_i0, custom_i1, custom_i2);
++	vec2 custom_bary = hit_attribs.bary_or_uv;
++	custom0_attrib = (1.0 - custom_bary.x - custom_bary.y) * fetch_custom0_vertex(rt_geom, custom_i0)
++			+ custom_bary.x * fetch_custom0_vertex(rt_geom, custom_i1)
++			+ custom_bary.y * fetch_custom0_vertex(rt_geom, custom_i2);
++}
+ color_interp = rt_color * fetch_instance_color(rt_geom, uint(gl_PrimitiveID));
+ // VIEW is view-space in the rasterizer; rotate the incoming ray to match.
+ view = -normalize(mat3(rt_view_matrix) * gl_WorldRayDirectionEXT);
+--- a/platform/windows/os_windows.cpp
++++ b/platform/windows/os_windows.cpp
+@@ -2542,6 +2542,9 @@
+ }
+ 
+ bool OS_Windows::_check_internal_feature_support(const String &p_feature) {
++	if (p_feature == "rrt_rtx_custom0") {
++		return true;
++	}
+ 	if (p_feature == "system_fonts") {
+ 		return dwrite_init;
+ 	}

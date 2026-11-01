@@ -61,6 +61,13 @@ func _t(key: String) -> String:
 
 
 func _ready() -> void:
+	var rtx := preload("res://rtx_trial.gd")
+	if rtx.requested():
+		var report := rtx.probe(rtx.quality())
+		if not report.available:
+			printerr("RTX_TRIAL " + JSON.stringify(report))
+			get_tree().quit(2)
+			return
 	var first_run := _settings.load("user://settings.cfg") != OK or not _settings.has_section_key("game", "language")
 	_language = _settings.get_value("game", "language", "en")
 	AudioManager.ensure_buses()
