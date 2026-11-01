@@ -3,6 +3,9 @@
 Research date: 1 November 2026. This is an implementation proposal, not a
 claim that the fork has been built or the game tested on it.
 
+For the ordered game-scene conversion prerequisites, see
+[Outdoor scene prerequisites before enabling RTX](rtx-scene-readiness.md).
+
 ## Recommendation
 
 Introduce an explicit Windows experimental engine launch, then validate
