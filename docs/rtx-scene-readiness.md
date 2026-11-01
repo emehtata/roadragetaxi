@@ -350,7 +350,10 @@ riders and a fallen bicycle; every person pose and the animals; lamps with
 one knocked down, signals in three phases, signs, props, shrubs and
 roadworks. A 20 s Oulu drive in the wet shows buses, the taxi, cars and
 people all in 3D. Client tests cover every vehicle kind, rider presence,
-pose mapping, animal bodies, signal lamps, lamp posts and props.
+pose mapping, animal bodies, signal lamps, lamp posts and props. At the
+river bridge, the open water's waves give the same patch a brightness
+standard deviation of 3.84, against 0.0 before. Exhaust puffs rise behind
+the moving taxi.
 
 Remaining exclusions, drawn as 2D overlays on purpose:
 - small animals and birds (hares, squirrels, small birds, pigeons, crows,
