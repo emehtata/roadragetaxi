@@ -4,7 +4,7 @@
   "assets": [
     {
       "name": "Road Rage Trip game code",
-      "paths": ["src/theroadragetrip/**/*.py", "godot/**/*.gd", "godot/**/*.tscn", "godot/**/*.tres", "godot/**/*.gdshader", "godot/project.godot", "godot/audio/audio_events.json"],
+      "paths": ["src/theroadragetrip/**/*.py", "godot/**/*.gd", "godot/**/*.tscn", "godot/**/*.tres", "godot/**/*.gdshader", "godot/project.godot", "godot/audio/audio_events.json", "src/theroadragetrip/assets/landmarks.json"],
       "purpose": "the game client and simulation server", "shipped": true,
       "origin": "this project", "copyright": "2026 Esa Mehtätalo", "licence": "MIT",
       "evidence": "LICENSE", "obligations": "keep the MIT notice",
