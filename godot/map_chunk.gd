@@ -123,7 +123,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	light_cells = prepared["light_cells"]
 	if not message.get("waters", []).is_empty() or not message.get("water_lines", []).is_empty():
 		# Water alone carries the wave shader: nothing else drawn here can pick it up.
-		var water := _add_layer(0, _draw_water)
+		var water := _add_layer(0, _draw_water, null, true)
 		water.material = WATER_MATERIAL
 		_season_layers.append(water)
 		var shore := _add_layer(0, _draw_shore_waves)
@@ -131,7 +131,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_season_layers.append(shore)
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
-		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
+		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"), null, true)
 		landuse.material = SURFACE_MATERIAL
 		if prepared["forest_mask"] != null:
 			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse", CANOPY_MARGIN_M))
@@ -160,18 +160,18 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_rink_markings(self, node)))
 	for z in _roads_by_z:
 		var layer_z: int = z
-		var roads := _add_layer(z, func(node: Node2D): _draw_roads(layer_z, node))
+		var roads := _add_layer(z, func(node: Node2D): _draw_roads(layer_z, node), null, z <= 1)
 		roads.material = SURFACE_MATERIAL
 		_road_layers.append(roads)
 		if z > 1:
 			var wet := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
 			var puddles := _add_layer(z, func(node: Node2D): _draw_puddles(node, layer_z))
 			_bridge_weather.append([wet, puddles])
-		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_road_markings(layer_z, node)))
-	_add_layer(5, _draw_wet, _wet)
-	_add_layer(5, _draw_puddles, _puddles)
+		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_road_markings(layer_z, node), null, z <= 1))
+	_add_layer(5, _draw_wet, _wet, true)
+	_add_layer(5, _draw_puddles, _puddles, true)
 	if not message.get("parking", []).is_empty():
-		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_parking(self, node)))
+		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_parking(self, node), null, true))
 	if not message.get("guardrails", []).is_empty():
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_guardrails(self, node)))
 	if not message.get("bus_stops", []).is_empty():
@@ -180,7 +180,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	ground_tracks.name = "GroundTracks"
 	_px_layers.append(ground_tracks)
 	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails
-		var islands := _add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands"))
+		var islands := _add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands"), null, true)
 		islands.material = SURFACE_MATERIAL
 		_season_layers.append(islands)
 	if not message.get("canopies", []).is_empty():
@@ -191,7 +191,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_add_layer(7, func(node: Node2D): Detail.draw_canopy_feet(self, node)))
 	if not message.get("curbs", []).is_empty() or not message.get("crossings", []).is_empty() or not message.get("speed_bumps", []).is_empty():
 		# Under the light pools (6): crossings and kerbs are lit like the road.
-		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_road_features(self, node)))
+		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_road_features(self, node), null, true))
 	if not message.get("canopies", []).is_empty():  # above vehicles; then rail bridges, then trains
 		var canopy_roofs := _add_layer(13, func(node: Node2D): Detail.draw_canopies(self, node))
 		_px_layers.append(canopy_roofs)
@@ -208,7 +208,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_pools.material = add
 		_pools.draw.connect(_draw_light_pools.bind(_pools))  # MapLayer puts it in its pool group
 		_px_layers.append(_pools)
-		_px_layers.append(_add_layer(6, _draw_lamp_heads, _heads))
+		_px_layers.append(_add_layer(6, _draw_lamp_heads, _heads, true))  # --outdoor-3d: the lit heads are buildings_3d's street lights
 		_heads.material = EMISSIVE
 		set_lights_on(false)
 	if not message.get("floodlit", []).is_empty():
@@ -403,11 +403,17 @@ static func _rect(points: PackedVector2Array) -> Rect2:
 
 
 ## A child canvas item at z; `draw` is called with that node to draw into.
-func _add_layer(z: int, draw: Callable, node: Node2D = null) -> Node2D:
+## `in_3d`: --outdoor-3d draws this layer's content in its 3D view (map_chunk
+## ground, buildings_3d._ground), so it is hidden there; any other layer under
+## the opaque view (z < 7) is lifted above it as a 2D overlay, in its order,
+## below the entities (12), until it gets its own 3D form (rtx-scene-readiness 5-6).
+func _add_layer(z: int, draw: Callable, node: Node2D = null, in_3d := false) -> Node2D:
 	if node == null:
 		node = Node2D.new()
 	node.z_index = z
-	node.visible = not (outdoor_3d and buildings_3d and z < 7)  # under the opaque 3D view: never drawn
+	if outdoor_3d and buildings_3d and z < 7:
+		node.visible = not in_3d
+		node.z_index = 8 + clampi(z, 0, 6) / 2
 	if Perf.keep_all:  # --bench: each layer's redraws, by z and draw function
 		var section := "draw_z%d_%s" % [z, draw.get_method()]
 		node.draw.connect(func(): var t := Time.get_ticks_usec(); draw.call(node); Perf.add(section, Time.get_ticks_usec() - t))

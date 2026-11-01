@@ -773,7 +773,12 @@ func _present(state: Dictionary) -> void:
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5
 	var night_started := Time.get_ticks_usec()
 	entities.light_level = lights
-	night.show_lights(lights, view, entities.headlight_beams() if lights > 0.01 else [])
+	if MapChunk.outdoor_3d and map_layer.buildings_3d != null:  # rtx-scene-readiness step 4: the scene's own lights, no 2D beams
+		map_layer.update_lights_3d(view, lights)
+		map_layer.buildings_3d.set_headlights(lights, entities.headlight_sources() if lights > 0.01 else [])
+		night.show_lights(lights, view, [])
+	else:
+		night.show_lights(lights, view, entities.headlight_beams() if lights > 0.01 else [])
 	Perf.add("night_beams", Time.get_ticks_usec() - night_started)
 	var lightning: float = entities.lightning_now() if graphics.get("lightning_flashes", true) else 0.0
 	if not is_equal_approx(flash.color.a, lightning):

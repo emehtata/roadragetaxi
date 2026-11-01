@@ -538,6 +538,58 @@ func set_road_snow(depth: float, cells: Array, falling := true) -> void:
 	set_process(not _snow_redraws.is_empty() or not _shop_light_updates.is_empty())
 
 
+## rtx-scene-readiness step 4 (--outdoor-3d): the nearest working street
+## lamps, open shops and lit sports fields around the view to the 3D view's
+## light pools - again when the view has moved 5 m, the lights changed or
+## half a second has passed (lamps get knocked down, shops open).
+var _lights_3d_key := [Vector2.INF, -1.0, 0]
+const LIGHTS_3D_MARGIN_M := 30.0
+
+
+func update_lights_3d(view: Rect2, level: float) -> void:
+	var now := Time.get_ticks_msec()
+	var key: Array = _lights_3d_key
+	if view.get_center().distance_to(key[0]) < 5.0 and is_equal_approx(level, key[1]) and now - int(key[2]) < 500:
+		return
+	_lights_3d_key = [view.get_center(), level, now]
+	var centre := view.get_center()
+	var area := view.grow(LIGHTS_3D_MARGIN_M)
+	var lamps: Array = []
+	var shops: Array = []
+	var floods: Array = []
+	for chunk in _chunks.values():
+		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.intersects(area):
+			continue
+		var rows: Array = chunk._data.get("street_lights", [])
+		for i in chunk.street_lights.size():
+			var at: Vector2 = chunk.street_lights[i]
+			if area.has_point(at) and not chunk._broken.has(i):
+				lamps.append([at, float(rows[i][3]) if i < rows.size() and rows[i].size() > 3 else 10.0, at.distance_squared_to(centre)])
+		var styles: Array = chunk._data.get("building_styles", [])
+		var footprints: Array = chunk._data.get("buildings", [])
+		for i in mini(styles.size(), footprints.size()):
+			if styles[i].size() > 8 and int(styles[i][8]) == 1:  # an open shop (shop_lights, set_shop_lights)
+				var footprint := chunk._points(footprints[i]) as PackedVector2Array
+				var middle := Vector2.ZERO
+				for p in footprint:
+					middle += p / footprint.size()
+				if area.has_point(middle):
+					shops.append([middle, 9.0, middle.distance_squared_to(centre)])
+		if _flood_group != null and _flood_group.visible:
+			for ring in chunk._data.get("floodlit", []):
+				var middle := Vector2.ZERO
+				for p in ring:
+					middle += p / ring.size()
+				var reach := 0.0
+				for p in ring:
+					reach = maxf(reach, middle.distance_to(p))
+				if area.grow(reach).has_point(middle):
+					floods.append([middle, reach, middle.distance_squared_to(centre)])
+	for rows in [lamps, shops, floods]:
+		rows.sort_custom(func(p, q): return p[2] < q[2])
+	_layer_3d().set_area_lights(level, lamps, shops, floods)
+
+
 func set_shop_lights(states: Dictionary) -> void:
 	for id in states:
 		var chunk = _chunks.get(id)

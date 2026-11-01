@@ -3253,6 +3253,16 @@ func test_buildings_3d() -> void:
 	check(Array(walls).all(func(n): return n.y >= -0.001), "no ground face looks down: walls face out, tops face up")
 	var under := Array(B3.flat_normals(taxi["verts"])).filter(func(n): return n.y < -0.99)
 	check(not under.is_empty(), "the car's boxes have undersides (reflections, secondary rays)")
+	# rtx-scene-readiness step 4: a car's lamps are emissive only while lit, each by its own state
+	var lamp_count := func(lamps: int) -> int:
+		var arrays := B3.car_arrays(4.4, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0, lamps)
+		return Array(arrays["part"]).filter(func(v): return int(v.x) == B3.LAMP).size()
+	var parked: int = lamp_count.call(0)
+	var running: int = lamp_count.call(B3.LAMPS_ON)
+	var braking: int = lamp_count.call(B3.LAMPS_ON | B3.LAMPS_BRAKE)
+	var indicating: int = lamp_count.call(B3.LAMPS_ON | B3.LAMPS_LEFT)
+	check(parked == 0 and running > 0 and braking == running and indicating > running,
+		"lamps: dark when parked, head and tail lights with the engine, brighter (not more) when braking, an indicator adds its side")
 	MapChunk.buildings_3d = false
 
 

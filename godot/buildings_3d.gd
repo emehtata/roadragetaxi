@@ -80,20 +80,26 @@ func _ready() -> void:
 		sky.sky = Sky.new()  # what wet roads and water reflect (the camera never sees it: the ground fills the view)
 		sky.sky.sky_material = ProceduralSkyMaterial.new()
 		sky.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+		sky.glow_enabled = true  # step 4: lit lamps and windows (emission above 1) bloom a little
+		sky.glow_hdr_threshold = 1.0
+		sky.glow_intensity = 0.5
+		_view.positional_shadow_atlas_size = 4096  # the nearest lamps' and the taxi's headlights' shadows
 		_camera.environment = sky
-		_camera.cull_mask |= LAYER_SHADOW_GROUND  # a camera culls the casters outside its mask; shadows-only, they are never drawn
 	_sprite = _make_sprite(_view, 7)
 	_sun = make_sun()
 	if opaque:
 		# The sun lights the drawn meshes and casts with the shadows-only copies
 		# straight onto them: no multiplied shadow overlay (it would shade twice).
-		_sun.layers = LAYER_BUILDINGS | LAYER_SHADOW_GROUND
-		_sun.light_cull_mask = LAYER_BUILDINGS | LAYER_SHADOW_GROUND  # the shadows-only casters must stay in its masks
+		_sun.layers = LAYER_BUILDINGS
+		_sun.light_cull_mask = LAYER_BUILDINGS
+		_sun.shadow_caster_mask = LAYER_BUILDINGS  # step 4: the drawn meshes cast (meshes(), car())
 	_view.add_child(_sun)
 	_shadow_ground = make_shadow_ground()
 	_view.add_child(_shadow_ground)
 	_cars_root = Node3D.new()
 	_view.add_child(_cars_root)
+	if opaque:
+		_make_lights()
 	_shadow_view = SubViewport.new()  # the same world: no building geometry twice
 	_shadow_view.world_3d = _view.find_world_3d()  # its own_world_3d (world_3d itself is unset)
 	_shadow_view.transparent_bg = false
@@ -304,6 +310,9 @@ func _process(_delta: float) -> void:
 func set_light(level: float, ambient: Color) -> void:
 	if opaque:
 		_camera.environment.ambient_light_color = ambient
+		_camera.environment.background_color = GROUND * ambient  # off the loaded chunks: the open ground, as dark as the night
+		var daylight := clampf(ambient.get_luminance(), 0.0, 1.0)  # the sky reflected in wet roads and water dims with the day
+		_camera.environment.sky.sky_material.energy_multiplier = daylight
 		_shared["material"].set_shader_parameter("lit_level", clampf(level, 0.0, 1.0))
 		return
 	_shared["material"].set_shader_parameter("ambient", ambient)
@@ -375,6 +384,11 @@ var _cars_used := 0
 const CAR_GLASS := Color8(52, 74, 92)  # render_style.WINDSHIELD
 const CAR_SIGN := Color8(240, 220, 20)  # render_style.TAXI_SIGN
 enum { PAINT, RUBBER, GLASS_PART, LAMP }  # car.gdshader's parts (UV2.x)
+const LAMPS_ON := 1  # car()'s `lamps`: the engine runs (head and tail lights)
+const LAMPS_BRAKE := 2
+const LAMPS_REVERSE := 4
+const LAMPS_LEFT := 8  # an indicator, blinking on now
+const LAMPS_RIGHT := 16
 
 
 func _enter_tree() -> void:
@@ -386,24 +400,138 @@ func _exit_tree() -> void:
 		current = null
 
 
+## rtx-scene-readiness step 4 (--outdoor-3d): the scene's own lights, from
+## fixed pools reused every update - the nearest lamps get them, only the
+## nearest few cast shadows. Street lamps (their heads emissive), open shops'
+## spill, floodlit fields, and every shining headlight pair as a spot.
+const STREET_POOL := 48
+const STREET_SHADOWED := 4
+const SHOP_POOL := 16
+const FLOOD_POOL := 6
+const HEAD_POOL := 16
+const HEAD_SHADOWED := 1  # the taxi's (headlight_sources: the taxi first)
+const LAMP_HEIGHT_M := 7.0
+const LAMP_ENERGY := 2.5
+const LAMP_COLOR := Color(1.0, 0.86, 0.62)  # high-pressure sodium to warm LED
+const SHOP_COLOR := Color(1.0, 0.95, 0.85)
+const FLOOD_COLOR := Color(0.95, 0.97, 1.0)
+const HEAD_COLOR := Color(1.0, 0.96, 0.88)
+var _street_lights: Array = []  # OmniLight3D, each with its head (a MeshInstance3D child)
+var _shop_lights: Array = []
+var _flood_lights: Array = []
+var _head_lights: Array = []  # SpotLight3D
+
+
+func _make_lights() -> void:
+	var head_mesh := BoxMesh.new()
+	head_mesh.size = Vector3(0.6, 0.25, 0.6)
+	var head_material := StandardMaterial3D.new()
+	head_material.emission_enabled = true
+	head_material.emission = LAMP_COLOR
+	head_material.emission_energy_multiplier = 4.0
+	head_material.albedo_color = LAMP_COLOR
+	head_mesh.material = head_material
+	for i in STREET_POOL:
+		var lamp := _omni(LAMP_COLOR, i < STREET_SHADOWED)
+		var head := MeshInstance3D.new()
+		head.mesh = head_mesh
+		head.layers = LAYER_BUILDINGS
+		head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		lamp.add_child(head)
+		_street_lights.append(lamp)
+	for i in SHOP_POOL:
+		_shop_lights.append(_omni(SHOP_COLOR, false))
+	for i in FLOOD_POOL:
+		_flood_lights.append(_omni(FLOOD_COLOR, false))
+	for i in HEAD_POOL:
+		var spot := SpotLight3D.new()
+		spot.light_color = HEAD_COLOR
+		spot.layers = LAYER_BUILDINGS
+		spot.light_cull_mask = LAYER_BUILDINGS
+		spot.shadow_caster_mask = LAYER_BUILDINGS
+		spot.shadow_enabled = i < HEAD_SHADOWED
+		spot.shadow_bias = 0.05
+		spot.visible = false
+		_view.add_child(spot)
+		_head_lights.append(spot)
+
+
+func _omni(color: Color, shadowed: bool) -> OmniLight3D:
+	var light := OmniLight3D.new()
+	light.light_color = color
+	light.layers = LAYER_BUILDINGS
+	light.light_cull_mask = LAYER_BUILDINGS
+	light.shadow_caster_mask = LAYER_BUILDINGS
+	light.shadow_enabled = shadowed
+	light.shadow_bias = 0.08
+	light.visible = false
+	_view.add_child(light)
+	return light
+
+
+## Street lamps, nearest first: [layer position, reach m]; open shops
+## [position, reach]; floodlit fields [centre, reach]. `level`
+## (Daylight.artificial) fades them all in at dusk.
+func set_area_lights(level: float, lamps: Array, shops: Array, floods: Array) -> void:
+	if _street_lights.is_empty():
+		return
+	var on := level > 0.01
+	_place_omnis(_street_lights, lamps if on else [], LAMP_HEIGHT_M, LAMP_ENERGY * level, 1.6)
+	_place_omnis(_shop_lights, shops if on else [], 2.5, 1.2 * level, 1.0)
+	_place_omnis(_flood_lights, floods, 18.0, 6.0, 1.3)  # floodlights keep their own schedule (map_layer)
+
+
+static func _place_omnis(pool: Array, rows: Array, height: float, energy: float, reach_scale: float) -> void:
+	for i in pool.size():
+		var light: OmniLight3D = pool[i]
+		light.visible = i < rows.size()
+		if light.visible:
+			light.position = to_3d(rows[i][0], height)
+			light.omni_range = float(rows[i][1]) * reach_scale
+			light.light_energy = energy
+
+
+## Headlight pairs (entity_layer.headlight_sources), the taxi first: one spot
+## from each front bumper's middle, dipped 15 m wide or high 150 m narrow.
+func set_headlights(level: float, sources: Array) -> void:
+	for i in _head_lights.size():
+		var spot: SpotLight3D = _head_lights[i]
+		spot.visible = level > 0.01 and i < sources.size()
+		if not spot.visible:
+			continue
+		var source: Array = sources[i]
+		var forward := Vector2(cos(source[1]), -sin(source[1]))  # entity_layer._forward
+		var reach := float(source[4])
+		var high := reach > 15.0
+		spot.position = to_3d(source[0] + forward * float(source[3]), 0.65)
+		spot.basis = Basis.looking_at(Vector3(forward.x, -0.6 / maxf(reach, 1.0) - 0.02, forward.y).normalized(), Vector3.UP)
+		spot.spot_range = reach * 1.3
+		spot.spot_angle = 22.0 if high else 38.0
+		spot.light_energy = (4.0 if high else 2.5) * level
+		spot.spot_attenuation = 0.8
+
+
 func begin_cars() -> void:
 	_cars_used = 0
 
 
 ## A car at `at` (layer position) facing `heading` (as the 2D layer's):
-## `shape` is entity_layer's CAR_SHAPES row; `sign` 0 none, 1 a taxi sign off, 2 lit.
-func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int) -> void:
-	var key := "%s|%s|%.2f|%.2f|%d" % [color.to_html(false), shape, length, width, sign]
+## `shape` is entity_layer's CAR_SHAPES row; `sign` 0 none, 1 a taxi sign off, 2 lit;
+## `lamps` the LAMPS_* lit now.
+func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0) -> void:
+	var key := "%s|%s|%.2f|%.2f|%d|%d" % [color.to_html(false), shape, length, width, sign, lamps]
 	if not _car_meshes.has(key):
 		if _car_meshes.size() > 512:  # ponytail: drop the whole cache, an LRU if colours ever vary per frame
 			_car_meshes.clear()
-		var arrays := car_arrays(length, width, color, shape, sign)
+		var arrays := car_arrays(length, width, color, shape, sign, lamps)
 		_car_meshes[key] = [_mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], PackedVector2Array(), PackedFloat32Array(), arrays["part"]),
 			_mesh(arrays["shadow"], PackedColorArray())]
 	if _cars_used == _car_nodes.size():
 		var body := _instance(_car_meshes[key][0], _shared.get("car", _shared["material"]), LAYER_BUILDINGS)
 		var caster := _instance(_car_meshes[key][1], _shared["caster"], LAYER_SHADOW_GROUND)
 		caster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		if opaque:  # step 4: the body itself casts; the shadows-only copy is the composite path's
+			body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		_cars_root.add_child(body)
 		_cars_root.add_child(caster)
 		_car_nodes.append([body, caster])
@@ -412,7 +540,7 @@ func car(at: Vector2, heading: float, length: float, width: float, color: Color,
 		var node: MeshInstance3D = _car_nodes[_cars_used][i]
 		node.mesh = _car_meshes[key][i]
 		node.transform = place
-		node.visible = true
+		node.visible = i == 0 or not opaque
 	_cars_used += 1
 
 
@@ -424,7 +552,7 @@ func end_cars() -> void:
 
 ## One car's mesh arrays, centred at the origin, +x forward: the body,
 ## wheels, the glasshouse sloping up to the roof, and its extras.
-static func car_arrays(length: float, width: float, color: Color, shape: Array, sign: int) -> Dictionary:
+static func car_arrays(length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "shadow": PackedVector3Array(),
 		"part": PackedVector2Array(), "part_now": PAINT}
 	var hl := length * 0.5
@@ -473,7 +601,28 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 		_car_box(out, -hl * 0.24, -hl * 0.04, -hw * 0.48, hw * 0.48, roof, roof + 0.08, Color8(30, 30, 30))
 		out["part_now"] = LAMP if sign == 2 else PAINT
 		_car_box(out, -hl * 0.22, -hl * 0.06, -hw * 0.42, hw * 0.42, roof + 0.08, roof + 0.24, CAR_SIGN if sign == 2 else CAR_SIGN.darkened(0.45))
+	_car_lamps(out, hl, hw, lamps)
 	return out
+
+
+## Step 4: the lamps, emissive while lit (car.gdshader's LAMP part): head
+## and tail lights by the engine, brighter brake lights, reversing lights,
+## the indicators on their side (left -z, right +z) while they blink on.
+static func _car_lamps(out: Dictionary, hl: float, hw: float, lamps: int) -> void:
+	var lamp := func(x0: float, x1: float, y_mid: float, half: float, lit: bool, on_color: Color, off_color: Color) -> void:
+		out["part_now"] = LAMP if lit else PAINT
+		_car_box(out, x0, x1, y_mid - half, y_mid + half, 0.5, 0.68, on_color if lit else off_color)
+	var on := lamps & LAMPS_ON != 0
+	for side: float in [1.0, -1.0]:
+		lamp.call(hl - 0.04, hl + 0.02, side * hw * 0.62, 0.16, on, Color(1.0, 0.97, 0.85), Color8(200, 200, 190))
+		var brake := lamps & LAMPS_BRAKE != 0
+		lamp.call(-hl - 0.02, -hl + 0.04, side * hw * 0.62, 0.16, on or brake,
+			Color(1.0, 0.08, 0.04) if brake else Color(0.55, 0.04, 0.02), Color8(120, 30, 25))
+		lamp.call(-hl - 0.02, -hl + 0.04, side * 0.15, 0.08, lamps & LAMPS_REVERSE != 0, Color(1.0, 1.0, 0.95), Color8(170, 170, 165))
+		var blinking := lamps & (LAMPS_RIGHT if side > 0.0 else LAMPS_LEFT) != 0
+		for x0: float in [hl - 0.04, -hl - 0.02]:
+			lamp.call(x0, x0 + 0.06, side * (hw - 0.07), 0.06, blinking, Color(1.0, 0.6, 0.05), Color8(150, 105, 40))
+	out["part_now"] = PAINT
 
 
 ## An axis-aligned box in the car's own frame: four shaded sides and the
@@ -531,11 +680,14 @@ static func meshes(arrays: Dictionary) -> Array:
 		return instances
 	var mesh := _mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], arrays.get("wall_uv", PackedVector2Array()),
 		arrays.get("window", PackedFloat32Array()))
-	instances.append(_instance(mesh, _shared["material"], LAYER_BUILDINGS))
+	var drawn := _instance(mesh, _shared["material"], LAYER_BUILDINGS)
+	instances.append(drawn)
+	if opaque:  # step 4: the buildings themselves cast and receive the sun's shadow; no shadows-only copies
+		drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	# rrt-018-shadows: each building as a plain prism (walls and a flat roof,
 	# no windows or doors: a fifth of the triangles), not drawn, only casting
 	# the sun's shadow in the shadow view (its layer)
-	if not arrays["shadow"].is_empty():
+	if not arrays["shadow"].is_empty() and not opaque:
 		var caster := _instance(_mesh(arrays["shadow"], PackedColorArray()), _shared["caster"], LAYER_SHADOW_GROUND)
 		caster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		instances.append(caster)

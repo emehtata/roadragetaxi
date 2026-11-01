@@ -199,6 +199,43 @@ Relevant code: [night_layer.gd](../godot/night_layer.gd),
 [map_chunk.gd](../godot/map_chunk.gd), and the shadow viewport in
 [buildings_3d.gd](../godot/buildings_3d.gd).
 
+**Status (1 November 2026, verified):** with `--outdoor-3d`, the scene has its
+own lights from fixed, reused pools filled nearest-first:
+- 48 street lamps with emissive heads, the nearest 4 casting shadows;
+- 16 open-shop spills;
+- 6 floodlit fields, following the existing sports schedule;
+- 16 headlight spots from `entity_layer.headlight_sources()` (dipped 15 m or
+  high 150 m, trains included); the taxi's spot casts shadows.
+
+`map_layer.update_lights_3d` refills the pools when the view moves 5 m or
+every 0.5 s. It skips knocked-down lamps and reads the server's shop states.
+Car lamps are emissive body parts keyed by engine, brake, reverse and
+indicator state. The taxi sign follows fare availability. The sun or moon
+comes from the server calendar and weather, and the sky's reflected energy
+and the off-map background dim with the ambient light. Tonemapping stays
+linear, which matches the shipped colours, with glow for emission above 1.
+
+The new path no longer uses the 2D beams, light pools, lamp heads, car lamp
+quads or halos. The multiplied ground-shadow composite and the shadows-only
+caster copies are gone too: buildings and cars cast with their own meshes,
+and lights cull and cast on the building layer only. Layers below the 3D
+view without a 3D form yet (tracks, trees, bus stops, guardrails, pumps,
+court markings, attractions) are lifted above it as 2D overlays instead of
+being hidden.
+
+Evidence (Forward+/Vulkan):
+- a scripted scene shows the taxi's headlights lighting the road and the
+  wall face, with nothing beyond the wall;
+- a street lamp lights a parked taxi, which casts a shadow, and the pavement;
+- an Oulu night shows lamps lighting pavement and walls, and headlights;
+- a Sysmä full-moon night is readable;
+- by day, building and car shadows are single, with no second overlay;
+- a 10 s night benchmark holds 60 fps (vsync), with no frame over 33 ms
+  (worst 18.0 ms vs 18.9 ms without the flag).
+
+Not verified: moonlight on an unlit road. Under street lights the existing
+design suppresses it, as in the shipped renderer.
+
 ## Step 5: convert vertical separation and major occluders
 
 - Represent bridges, ramps, rail decks, tunnel enclosures, canopy roofs and

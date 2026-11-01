@@ -511,8 +511,21 @@ static func reflector_lit(at: Vector2, taxi: Vector2, heading: float) -> bool:
 ## Polygons in layer coordinates, from this frame's sample.
 func headlight_beams() -> Array:
 	var polygons: Array = []
+	for source in headlight_sources():
+		if source[5]:  # a train: two long, straight beams from its nose
+			polygons.append_array(beam_polygons(source[0], source[1], source[2], source[4], true))
+		else:
+			polygons.append_array(beam_polygons(source[0], source[1], maxf(_px(3.0), source[2]), source[4], false, source[3]))
+	return polygons
+
+
+## Every shining headlight pair this frame, the taxi first: [centre (a
+## train: behind its nose), heading, width, centre to the front bumper, beam
+## length, is a train] - the 2D beams' and the 3D spot lights' (buildings_3d.set_headlights) source.
+func headlight_sources() -> Array:
+	var sources: Array = []
 	if _frame.is_empty():
-		return polygons
+		return sources
 	var a: Dictionary = _frame["a"]
 	var b: Dictionary = _frame["b"]
 	var t: float = _frame["t"]
@@ -534,23 +547,21 @@ func headlight_beams() -> Array:
 		if area.has_point(Vector2(p.x, p.y)) and not underground and (layer > 0 or not covered.call(Vector2(p.x, p.y), layer)):
 			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true, npc.get("length_m", 4.0)])
 	var shown := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
-	var drawn := 0
 	for vehicle in vehicles:
-		if drawn >= 80:
+		if sources.size() >= 80:
 			break
 		var c: Vector2 = vehicle[0]
 		if not shown.has_point(c):
 			continue
 		var length := beam_length(lamp_near.call(c, 22.0), oncoming(vehicle, vehicles))
-		polygons.append_array(beam_polygons(c, vehicle[1], maxf(_px(3.0), vehicle[2]), length, false, vehicle[4] * 0.5))
-		drawn += 1
+		sources.append([c, vehicle[1], vehicle[2], vehicle[4] * 0.5, length, false])
 	if not underground:
 		var later_trains := _by_id(b.get("trains", []))
 		for train in a.get("trains", []):
-			var beams := train_beams(train, later_trains.get(train["id"], train), t, origin)
-			if not beams.is_empty() and shown.grow(TRAIN_BEAM_M).has_point(beams[0][0]):
-				polygons.append_array(beams)
-	return polygons
+			var nose := train_nose(train, later_trains.get(train["id"], train), t, origin)
+			if not nose.is_empty() and shown.grow(TRAIN_BEAM_M).has_point(nose[0]):
+				sources.append([nose[0], nose[1], RS.TRAIN_WIDTH_M, 0.0, TRAIN_BEAM_M, true])
+	return sources
 
 
 const TRAIN_BEAM_M := 60.0
@@ -560,6 +571,12 @@ const HIGH_BEAM_M := 150.0
 ## A train's headlights: two long beams from the nose of its lead car (the
 ## first car, facing the way it runs), standing or moving; [] without cars.
 static func train_beams(train: Dictionary, next: Dictionary, t: float, origin: Vector2) -> Array:
+	var nose := train_nose(train, next, t, origin)
+	return [] if nose.is_empty() else beam_polygons(nose[0], nose[1], RS.TRAIN_WIDTH_M, TRAIN_BEAM_M, true)
+
+
+## Where a train's beams start (just behind its lead car's nose) and its heading: [position, heading], [] without cars.
+static func train_nose(train: Dictionary, next: Dictionary, t: float, origin: Vector2) -> Array:
 	var cars: Array = train.get("cars", [])
 	if cars.is_empty():
 		return []
@@ -568,8 +585,7 @@ static func train_beams(train: Dictionary, next: Dictionary, t: float, origin: V
 	var heading := lerp_angle(float(car[2]), float(to[2]), t)
 	var f := _forward(heading)
 	var nose := MapMath.point(origin, lerpf(car[0], to[0], t), lerpf(car[1], to[1], t)) + f * float(car[3]) / 2.0
-	var width: float = RS.TRAIN_WIDTH_M
-	return beam_polygons(nose - f * (1.0 + width * 0.55), heading, width, TRAIN_BEAM_M, true)
+	return [nose - f * (1.0 + RS.TRAIN_WIDTH_M * 0.55), heading]
 
 
 ## Automatic high beam, the taxi's as every NPC's: 150 m on a dark road, dipped to 15 m within 22 m of a street
@@ -952,9 +968,16 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			# and on a taxi the roof light - lit while a fare is on.
 			var shape: Array = VAN_SHAPE if kind == "van" else CAR_SHAPES[0 if is_taxi else body_style % CAR_SHAPES.size()]
 			var cars_3d: Node2D = Buildings3D.current
-			if cars_3d != null and not _under and not fallen:  # godot-cars-3d: the body in the 3D view, the lamps below stay 2D
+			if cars_3d != null and not _under and not fallen:  # godot-cars-3d: the body in the 3D view
 				var lit := engine_on and taxi_sign_on
-				cars_3d.car(c, heading, length, width, color, shape, (2 if lit else 1) if is_taxi else 0)
+				var signal_on := turn_signal != "" and RS.signal_lit(signal_elapsed)
+				var lamps := (Buildings3D.LAMPS_ON if engine_on else 0) | (Buildings3D.LAMPS_BRAKE if braking else 0) \
+					| (Buildings3D.LAMPS_REVERSE if reversing else 0) \
+					| (Buildings3D.LAMPS_LEFT if signal_on and turn_signal in ["left", "hazard"] else 0) \
+					| (Buildings3D.LAMPS_RIGHT if signal_on and turn_signal in ["right", "hazard"] else 0)
+				cars_3d.car(c, heading, length, width, color, shape, (2 if lit else 1) if is_taxi else 0, lamps)
+				if Buildings3D.opaque:  # --outdoor-3d: its lamps are emissive parts of the body, the beams 3D lights
+					return
 				if is_taxi and lit:
 					lamp_glow(c - f * hl * 0.14, TAXI_SIGN_GLOW, light_level, glow_points, glow_colors, glow_triangles)
 			else:
