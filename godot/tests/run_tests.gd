@@ -3214,6 +3214,11 @@ func test_buildings_3d() -> void:
 	check(grounds.size() == 2 and grounds.all(func(n): return n.layers == B3.LAYER_BUILDINGS) and is_equal_approx(extent.size.x, 108.0) and extent.size.y > 0.0 and extent.size.y < 0.2,
 		"a building-less chunk still brings its ground and its road (a mesh of its own) to the 3D view, the road just above the ground")
 	check(map._chunks.values()[0].get_children().all(func(n): return not (n is Node2D and n.z_index < 7 and n.visible)), "the 2D ground layers under the opaque 3D view are not drawn")
+	var street_chunk: Node = map._chunks.values()[0]
+	var built_before: Array = street_chunk.meshes_3d.duplicate()
+	street_chunk.set_season([1.0, 0.0, 0.0, 0.0])
+	check(not street_chunk.meshes_3d.is_empty() and street_chunk.meshes_3d.all(func(n): return not built_before.has(n)),
+		"a new season builds the chunk's 3D ground again (landuse colours, ice), as the 2D layers redraw")
 	map.clear()
 	check(map.buildings_3d.instance_count() == 0, "the ground goes with its chunk")
 	map.free()
