@@ -401,6 +401,8 @@ func _bury_tracks() -> void:
 	for trail in _trails:
 		var cover := _snow_cover(trail[1][-1])
 		trail[2].modulate.a = 1.0 - cover
+		if Buildings3D.opaque:
+			trail[2].queue_redraw()  # the 3D track takes the fade on its redraw
 		if cover >= 1.0:
 			_track_points -= trail[1].size()
 			trail[2].queue_free()
@@ -425,7 +427,9 @@ func _draw_trail(trail: Array) -> void:
 					points.append(point[0] + _forward(point[1]) * axle + _right(point[1]) * side)
 					colors.append(color)
 		previous = point
-	if not colors.is_empty():
+	if Buildings3D.opaque and Buildings3D.current != null:  # --outdoor-3d: on the road in the 3D view, under the cars
+		Buildings3D.current.track(node, points, colors, style[2])
+	elif not colors.is_empty():
 		node.draw_multiline_colors(points, colors, maxf(_px(3.0), style[2]))
 	preload("res://perf.gd").add("tracks_draw", Time.get_ticks_usec() - started)
 

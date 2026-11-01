@@ -511,6 +511,40 @@ func set_headlights(level: float, sources: Array) -> void:
 		spot.spot_attenuation = 0.8
 
 
+## Tyre tracks (entity_layer._draw_trail): each trail segment's lines as
+## flat strips 4 cm up - over the road markings, under the cars - owned by
+## the segment's Node2D (gone with it), faded by its modulate (fresh snow).
+const TRACK_M := 0.04
+var _tracks := {}  # the owner's instance id -> MeshInstance3D
+static var _track_material: StandardMaterial3D = null
+
+
+func track(owner: Node2D, lines: PackedVector2Array, colors: PackedColorArray, width: float) -> void:
+	var id := owner.get_instance_id()
+	if not _tracks.has(id):
+		if _track_material == null:
+			_track_material = StandardMaterial3D.new()
+			_track_material.vertex_color_use_as_albedo = true
+			_track_material.vertex_color_is_srgb = true
+			_track_material.roughness = 0.9
+		var node := MeshInstance3D.new()
+		node.material_override = _track_material
+		node.layers = LAYER_BUILDINGS
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_view.add_child(node)
+		_tracks[id] = node
+		owner.tree_exiting.connect(func(): _tracks.erase(id); node.queue_free())
+	var out := {"ground": PackedVector3Array(), "ground_colors": PackedColorArray()}
+	for i in range(0, lines.size() - 1, 2):
+		if lines[i].distance_squared_to(lines[i + 1]) > 1e-6:
+			var along := (lines[i + 1] - lines[i]).normalized()
+			var side := Vector2(-along.y, along.x) * width * 0.5
+			_ground_quad(out, lines[i] - side, lines[i + 1] - side, lines[i + 1] + side, lines[i] + side, TRACK_M, colors[i / 2])
+	var mesh: MeshInstance3D = _tracks[id]
+	mesh.mesh = _mesh(out["ground"], out["ground_colors"]) if not out["ground"].is_empty() else null
+	mesh.transparency = 1.0 - owner.modulate.a
+
+
 func begin_cars() -> void:
 	_cars_used = 0
 
