@@ -87,6 +87,7 @@ var _last_interact := -10.0
 var _screenshot_path := ""
 var _screenshot_wait := 6.0
 var _screenshot_drive := 0.0
+var _screenshot_resize := Vector2i.ZERO  # --screenshot-resize WxH: the window resized 3 s before the shot (a live resize)
 var _screenshot_steer := 0.0  # --screenshot-steer: -1 full left .. 1 full right while the screenshot drive runs
 var _report := {}
 var _fps_samples: Array = []
@@ -231,6 +232,9 @@ func _ready() -> void:
 				show_next_train = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
 				_screenshot_drive = float(args[i + 1])
+			"--screenshot-resize":
+				var size: PackedStringArray = args[i + 1].split("x")
+				_screenshot_resize = Vector2i(int(size[0]), int(size[1]))
 			"--screenshot-steer":  # with --screenshot-drive: steer this much (-1 left .. 1 right), e.g. off the road onto grass
 				_screenshot_steer = clampf(float(args[i + 1]), -1.0, 1.0)
 	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args:
@@ -619,6 +623,9 @@ func _process(delta: float) -> void:
 				"steer_left": maxf(-_screenshot_steer, 0.0), "steer_right": maxf(_screenshot_steer, 0.0), "forward": 0.0, "turn": 0.0, "sprint": false})
 	elif _screenshot_path != "" and not state.is_empty():
 		_screenshot_wait -= delta
+		if _screenshot_resize != Vector2i.ZERO and _screenshot_wait <= 3.0:
+			get_window().size = _screenshot_resize
+			_screenshot_resize = Vector2i.ZERO
 		if _screenshot_wait <= 0.0:
 			get_viewport().get_texture().get_image().save_png(_screenshot_path)
 			print("screenshot saved: ", _screenshot_path)
