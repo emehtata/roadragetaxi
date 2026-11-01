@@ -65,3 +65,5 @@ src/theroadragetrip/assets/osm/roads-*/
 graphify-out/
 tools/godot/Godot_v*-stable_linux.*
 *.code-workspace
+# Release builds
+*.zip
