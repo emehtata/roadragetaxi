@@ -3296,8 +3296,8 @@ func test_buildings_3d() -> void:
 	for kind in EntityLayer.VEHICLES_3D + ["trailer", "train", "tram"]:
 		var built_vehicle := B3.vehicle_arrays(kind, 6.0, 2.0, Color.RED, B3.LAMPS_ON, {"riding": true, "profile": "standard"})
 		check(built_vehicle["verts"].size() >= 36 and built_vehicle["part"].size() == built_vehicle["verts"].size(), "a %s has a 3D body" % kind)
-	var parked_bike := B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": false})["verts"].size()
-	var ridden_bike := B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": true})["verts"].size()
+	var parked_bike: int = B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": false})["verts"].size()
+	var ridden_bike: int = B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": true})["verts"].size()
 	check(ridden_bike > parked_bike, "a ridden bicycle carries its rider, a parked one none")
 	check(EntityLayer.person_pose({"animation_state": "walking"}, 0.1) == "walk_a" and EntityLayer.person_pose({"animation_state": "walking"}, 0.4) == "walk_b"
 		and EntityLayer.person_pose({"animation_state": "fallen"}, 0.0) == "lying" and EntityLayer.person_pose({"animation_state": "sitting"}, 0.0) == "sitting"
