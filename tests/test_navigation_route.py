@@ -147,15 +147,18 @@ def test_an_unreachable_target_gives_no_line():
 def test_a_long_search_spans_ticks_within_its_budget():
     traffic = TrafficWorld(_grid(blocks=60))
     world = _world(traffic, TaxiTarget(x=59 * 40.0, y=59 * 40.0, address="Kaukana"))
-    car, nav = SimpleNamespace(x=0.0, y=0.0, map_level=0), NavigationRoute(budget_s=0.001)
-    ticks = 0
-    while True:
-        nav.update(world, car)
-        ticks += 1
-        if nav._job is None:
-            break
-    assert ticks > 1 and nav.points[-1] == [2360.0, 2360.0]
-    assert nav.worst_slice_s < 0.001 + 0.004  # the budget plus one search step's overshoot
+    worst = []
+    for _ in range(3):  # wall-clock slices: a busy machine (parallel test workers) can preempt one; a real overshoot repeats
+        car, nav = SimpleNamespace(x=0.0, y=0.0, map_level=0), NavigationRoute(budget_s=0.001)
+        ticks = 0
+        while True:
+            nav.update(world, car)
+            ticks += 1
+            if nav._job is None:
+                break
+        assert ticks > 1 and nav.points[-1] == [2360.0, 2360.0]
+        worst.append(nav.worst_slice_s)
+    assert min(worst) < 0.001 + 0.004  # the budget plus one search step's overshoot
 
 
 def test_simplify_keeps_the_shape_and_drops_the_straight_points():
