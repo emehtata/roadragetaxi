@@ -631,8 +631,21 @@ func _build_2_5d() -> void:
 		for road in _data.get("roads", []):
 			if int(road.get("layer", 0)) >= 0:
 				var color: Color = Detail._rgb(road["color"]) if road.has("color") else (Color(0.33, 0.33, 0.35) if road.get("drivable", false) else Color(0.55, 0.52, 0.45))
-				roads.append([_points(road["points"]), maxf(0.3, float(road.get("half_width_m", 1.5))), color, int(road.get("rank", 0))])
-		ground = {"rect": _bounds_rect, "roads": roads}
+				var center = road.get("center")  # [r, g, b, 2 solid / dashed]
+				roads.append([_points(road["points"]), maxf(0.3, float(road.get("half_width_m", 1.5))), color, int(road.get("rank", 0)),
+					Detail._rgb(center) if center != null else null, center != null and int(center[3]) == 2])
+		var areas: Array = []  # [polygon, colour, water], drawn in this order (the 2D layers')
+		for area in _data.get("landuse", []):
+			var color := Detail._rgb(area[0])
+			if int(area[1]) > 0:
+				color = seasonal_color(color, _season)
+			areas.append([_points(area[2]), color, false])
+		for space in _data.get("parking", []):
+			areas.append([_points(space), Color8(72, 75, 74), false])
+		var ice := clampf(_season[0], 0.0, 1.0)
+		for water in _data.get("waters", []):
+			areas.append([_points(water), Color(0.20, 0.26, 0.29).lerp(Color8(232, 240, 244), ice), ice < 0.5])
+		ground = {"rect": _bounds_rect, "roads": roads, "areas": areas}
 	if buildings_3d and not (buildings.is_empty() and sites.is_empty() and landmarks.is_empty() and ground.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
 		if not build_async:
 			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground))

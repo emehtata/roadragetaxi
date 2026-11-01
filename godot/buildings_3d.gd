@@ -76,6 +76,9 @@ func _ready() -> void:
 		sky.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 		sky.ambient_light_color = Color.WHITE
 		sky.ambient_light_energy = AMBIENT_ENERGY
+		sky.sky = Sky.new()  # what wet roads and water reflect (the camera never sees it: the ground fills the view)
+		sky.sky.sky_material = ProceduralSkyMaterial.new()
+		sky.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 		_camera.environment = sky
 		_camera.cull_mask |= LAYER_SHADOW_GROUND  # a camera culls the casters outside its mask; shadows-only, they are never drawn
 	_sprite = _make_sprite(_view, 7)
@@ -324,6 +327,12 @@ var _lit_on := false
 var _arena_on := false
 
 
+## Step 3: road wetness 0..1 (map_layer.set_wetness), the road shader's.
+func set_wetness(value: float) -> void:
+	if _shared.has("road"):
+		_shared["road"].set_shader_parameter("wetness", value)
+
+
 func set_snow(cover: float) -> void:
 	_shared["material"].set_shader_parameter("snow_cover", clampf(cover, 0.0, 1.0))
 
@@ -484,6 +493,7 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 		"wall_uv": PackedVector2Array(), "window": PackedFloat32Array(),  # the shader's windows (building_snow.gdshader)
 		"arena": PackedVector3Array(), "shadow": PackedVector3Array(), "glass": PackedVector3Array(), "glass_colors": PackedColorArray(),
 		"ground": PackedVector3Array(), "ground_colors": PackedColorArray(),
+		"road": PackedVector3Array(), "road_colors": PackedColorArray(), "road_uv": PackedVector2Array(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
 	if not ground.is_empty():
 		_ground(out, ground)
@@ -495,7 +505,7 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 		_crane(out, site, origin)
 	for landmark in landmarks:  # [layer position, angle, spec]
 		_landmark(out, landmark[0], landmark[1], landmark[2])
-	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size() + out["glass"].size() + out["ground"].size()) / 3
+	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size() + out["glass"].size() + out["ground"].size() + out["road"].size()) / 3
 	return out
 
 
@@ -505,6 +515,8 @@ static func meshes(arrays: Dictionary) -> Array:
 	var instances: Array = []
 	if not arrays.get("ground", PackedVector3Array()).is_empty():
 		instances.append(_instance(_mesh(arrays["ground"], arrays["ground_colors"]), _shared["ground"], LAYER_BUILDINGS))
+	if not arrays.get("road", PackedVector3Array()).is_empty():
+		instances.append(_instance(_mesh(arrays["road"], arrays["road_colors"], arrays["road_uv"]), _shared.get("road", _shared["ground"]), LAYER_BUILDINGS))
 	if not arrays.get("glass", PackedVector3Array()).is_empty():
 		instances.append(_instance(_mesh(arrays["glass"], arrays["glass_colors"]), _shared["glass"], LAYER_BUILDINGS))
 	if arrays["verts"].is_empty():
@@ -814,6 +826,8 @@ static func use_shaded() -> void:
 	ground.vertex_color_is_srgb = true
 	ground.roughness = 0.95
 	_shared["ground"] = ground
+	_shared["road"] = ShaderMaterial.new()
+	_shared["road"].shader = preload("res://road.gdshader")
 	_shared["car"] = ShaderMaterial.new()
 	_shared["car"].shader = preload("res://car.gdshader")
 
@@ -827,33 +841,73 @@ static func baked(shade: float) -> float:
 ## ribbons just above it (square caps close the bends), the more important
 ## roads a little higher so crossings don't flicker. Flat colours for now:
 ## materials, markings and wetness are step 3.
+## Step 3: landuse, parking and water under the roads, in the 2D layers'
+## order (each a little higher: no flicker where they overlap); roads, their
+## centre lines and open water in the road mesh (road.gdshader: wet and glossy).
+const DASH_M := 3.0  # a dashed centre line: 3 m paint, 3 m gap
+const MARKING_HALF_M := 0.06
+
+
 static func _ground(out: Dictionary, ground: Dictionary) -> void:
 	var rect: Rect2 = ground["rect"]
 	_ground_quad(out, rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y), 0.0, GROUND)
+	var areas: Array = ground.get("areas", [])
+	for i in areas.size():
+		var polygon: PackedVector2Array = areas[i][0]
+		var triangles := Geometry2D.triangulate_polygon(polygon) if polygon.size() >= 3 else PackedInt32Array()
+		var h := 0.005 + 0.025 * i / maxf(1.0, areas.size())  # under the lowest road (0.04)
+		var key := "road" if areas[i][2] else "ground"
+		for t in range(0, triangles.size(), 3):
+			_ground_tri(out, polygon[triangles[t]], polygon[triangles[t + 1]], polygon[triangles[t + 2]], h, areas[i][1], key, 1.0)
 	for road: Array in ground["roads"]:
 		var points: PackedVector2Array = road[0]
 		var half: float = road[1]
-		var h := 0.03 + 0.01 * clampi(road[3], 0, 8)
+		var h := 0.04 + 0.01 * clampi(road[3], 0, 8)
+		var carry := 0.0  # metres along the road, for the dashes
 		for i in points.size() - 1:
-			var along := points[i + 1] - points[i]
-			if along.length_squared() < 1e-6:
+			var length := points[i].distance_to(points[i + 1])
+			if length < 1e-3:
 				continue
-			along = along.normalized() * half
-			var side := Vector2(-along.y, along.x)
-			var a := points[i] - along
-			var b := points[i + 1] + along
-			_ground_quad(out, a - side, b - side, b + side, a + side, h, road[2])
+			_ribbon(out, points[i], points[i + 1], half, half, h, road[2])
+			if road[4] != null and half >= 2.0:  # a centre line on a two-lane road, just above it
+				var u := (points[i + 1] - points[i]) / length
+				var s := 0.0
+				while s < length:
+					var phase := 0.0 if road[5] else fmod(carry + s, DASH_M * 2.0)
+					if phase < DASH_M:  # painted (a solid line: all the way)
+						var paint := length - s if road[5] else minf(DASH_M - phase, length - s)
+						_ribbon(out, points[i] + u * s, points[i] + u * (s + paint), MARKING_HALF_M, 0.0, h + 0.005, road[4])
+						s += paint
+					else:
+						s += DASH_M * 2.0 - phase
+				carry += length
 
 
-static func _ground_quad(out: Dictionary, a: Vector2, b: Vector2, c: Vector2, d: Vector2, h: float, color: Color) -> void:
-	# Seen from above only: wound clockwise as seen from +y (Godot's front faces)
-	var up := (to_3d(b) - to_3d(a)).cross(to_3d(c) - to_3d(a)).y > 0.0
-	var verts := [to_3d(a, h), to_3d(b, h), to_3d(c, h), to_3d(a, h), to_3d(c, h), to_3d(d, h)]
-	if up:
-		verts = [verts[0], verts[2], verts[1], verts[3], verts[5], verts[4]]
-	out["ground"].append_array(PackedVector3Array(verts))
-	for i in 6:
-		out["ground_colors"].append(color)
+## A strip from `a` to `b`, `half` either side, `cap` beyond each end (closing the bends).
+static func _ribbon(out: Dictionary, a: Vector2, b: Vector2, half: float, cap: float, h: float, color: Color) -> void:
+	var along := (b - a).normalized()
+	var side := Vector2(-along.y, along.x) * half
+	a -= along * cap
+	b += along * cap
+	_ground_quad(out, a - side, b - side, b + side, a + side, h, color, "road")
+
+
+static func _ground_quad(out: Dictionary, a: Vector2, b: Vector2, c: Vector2, d: Vector2, h: float, color: Color, key := "ground") -> void:
+	_ground_tri(out, a, b, c, h, color, key)
+	_ground_tri(out, a, c, d, h, color, key)
+
+
+## One flat triangle seen from above: wound clockwise as seen from +y (Godot's
+## front faces). `water`: the road shader's always-glossy surface.
+static func _ground_tri(out: Dictionary, a: Vector2, b: Vector2, c: Vector2, h: float, color: Color, key := "ground", water := 0.0) -> void:
+	if (to_3d(b) - to_3d(a)).cross(to_3d(c) - to_3d(a)).y > 0.0:
+		var t := b
+		b = c
+		c = t
+	out[key].append_array(PackedVector3Array([to_3d(a, h), to_3d(b, h), to_3d(c, h)]))
+	out[key + "_colors"].append_array(PackedColorArray([color, color, color]))
+	if key == "road":
+		out["road_uv"].append_array(PackedVector2Array([Vector2(water, 0), Vector2(water, 0), Vector2(water, 0)]))
 
 
 ## A box from `a` to `b` on the ground plan, `half_width` either side,

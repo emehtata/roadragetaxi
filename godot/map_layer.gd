@@ -107,6 +107,7 @@ func _layer_3d() -> Node2D:
 		buildings_3d.set_shadows_enabled(shadows_enabled)
 		buildings_3d.set_arena_lights(arena_lights_on)
 		buildings_3d.set_snow(float(season[0]))
+		buildings_3d.set_wetness(wetness)
 	return buildings_3d
 
 
@@ -515,6 +516,8 @@ func set_wetness(value: float) -> bool:
 	if is_equal_approx(stepped, wetness):
 		return false
 	wetness = stepped
+	if buildings_3d != null:
+		buildings_3d.set_wetness(wetness)
 	for chunk in _chunks.values():
 		chunk.set_wetness(wetness)
 	return true

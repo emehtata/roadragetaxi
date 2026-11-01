@@ -3210,9 +3210,9 @@ func test_buildings_3d() -> void:
 	root.add_child(map)
 	map.add_chunk({"chunk_id": "street", "bounds": [0, 0, 100, 100], "roads": [{"points": [[0, 50], [100, 50]], "half_width_m": 4.0, "drivable": true}]})
 	var grounds: Array = map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D and n.material_override == B3._shared["ground"])
-	var extent: AABB = grounds[0].mesh.get_aabb() if grounds.size() == 1 else AABB()
-	check(grounds.size() == 1 and grounds[0].layers == B3.LAYER_BUILDINGS and is_equal_approx(extent.size.x, 108.0) and extent.size.y > 0.0 and extent.size.y < 0.2,
-		"a building-less chunk still brings its ground and road to the 3D view, the road just above the ground")
+	var extent: AABB = grounds[0].mesh.get_aabb().merge(grounds[1].mesh.get_aabb()) if grounds.size() == 2 else AABB()
+	check(grounds.size() == 2 and grounds.all(func(n): return n.layers == B3.LAYER_BUILDINGS) and is_equal_approx(extent.size.x, 108.0) and extent.size.y > 0.0 and extent.size.y < 0.2,
+		"a building-less chunk still brings its ground and its road (a mesh of its own) to the 3D view, the road just above the ground")
 	check(map._chunks.values()[0].get_children().all(func(n): return not (n is Node2D and n.z_index < 7 and n.visible)), "the 2D ground layers under the opaque 3D view are not drawn")
 	map.clear()
 	check(map.buildings_3d.instance_count() == 0, "the ground goes with its chunk")
@@ -3228,6 +3228,17 @@ func test_buildings_3d() -> void:
 	var parts: Array = Array(taxi["part"]).map(func(v): return int(v.x))
 	check(taxi["part"].size() == taxi["verts"].size() and B3.PAINT in parts and B3.RUBBER in parts and B3.GLASS_PART in parts and B3.LAMP in parts,
 		"a lit taxi's paint, tyres, glass and sign each carry their material")
+	# rtx-scene-readiness step 3: areas under the roads, a dashed centre line on top, open water glossy
+	var surfaces := {"ground": PackedVector3Array(), "ground_colors": PackedColorArray(),
+		"road": PackedVector3Array(), "road_colors": PackedColorArray(), "road_uv": PackedVector2Array()}
+	var lake := PackedVector2Array([Vector2(0, 0), Vector2(20, 0), Vector2(20, 20), Vector2(0, 20)])
+	B3._ground(surfaces, {"rect": Rect2(0, 0, 100, 100), "areas": [[lake, Color.BLUE, true]],
+		"roads": [[PackedVector2Array([Vector2(0, 50), Vector2(30, 50)]), 4.0, Color.GRAY, 0, Color.WHITE, false]]})
+	var line_tris: Array = range(0, surfaces["road"].size(), 3).filter(func(i): return surfaces["road_colors"][i] == Color.WHITE)
+	var water_tris: Array = range(0, surfaces["road"].size(), 3).filter(func(i): return surfaces["road_uv"][i].x == 1.0)
+	check(line_tris.size() == 10 and surfaces["road"][line_tris[0]].y > 0.04, "a 30 m road gets five 3 m dashes, just above its surface")
+	check(water_tris.size() == 2 and surfaces["road"][water_tris[0]].y < 0.04 and surfaces["road_uv"].size() == surfaces["road"].size(),
+		"open water joins the glossy road mesh, below the roads")
 	MapChunk.buildings_3d = false
 
 

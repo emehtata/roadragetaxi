@@ -141,6 +141,24 @@ and road appearance stays continuous across loaded chunks.
 Relevant code: `_draw_roads`, `_draw_wet`, `_draw_puddles` in
 [map_chunk.gd](../godot/map_chunk.gd).
 
+**Status (1 November 2026):** with `--outdoor-3d`, each chunk's landuse,
+parking and water are flat triangulated areas in the 2D layers' order (a few
+millimetres apart, below the roads). Roads, dashed or solid centre lines and
+open water form a road mesh using [road.gdshader](../godot/road.gdshader).
+Its wetness comes from the server's `weather.wetness` (`set_wetness`): wet
+asphalt darkens and turns glossy, water is always glossy, and ice is matte.
+The Environment has a procedural sky for reflections. Rendered with
+Forward+/Vulkan: dashes and landuse show, and wet roads are darker and bluer
+than dry ones (RGB 71/67/57 dry versus 60/58/54 wet on the same patch).
+
+Open items:
+- Puddles and ripple normals.
+- Curbs and island height.
+- Surface texture patterns (`surface.gdshader`).
+- One-way arrows.
+- Snow on roads and ploughed strips.
+- Seam checks across many chunks.
+
 ## Step 4: replace the lighting and shadow composition
 
 - Provide a 3D sky/environment and sun/moon lights driven by the existing
