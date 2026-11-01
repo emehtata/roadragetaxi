@@ -4,14 +4,15 @@ class_name Wildlife
 extends Node2D
 
 const Entities := preload("res://entity_layer.gd")  # its _circle: draw_circle without rebuilding the disc
-const SPECIES := [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow", &"duck"]
+const SPECIES := [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow", &"duck", &"gull"]
 const VALID_STATES := [&"IDLE", &"WANDER", &"FEED", &"FLEE", &"FLY", &"CROSSING"]
 const STEP_S := 0.1
 const REACTION_M := 18.0
 const BUILDING_CELL_M := 10.0  # the per-chunk building lookup grid
 const SPAWN_TRIES := 6
 const DUCK_WATER_M2 := 15000.0  # one flock of ducks per this much open water, up to three a pond
-const BIRDS := ["small_bird", "pigeon", "crow", "duck"]
+const GULL_SHORE_M := 120.0  # one gull per this much shoreline, up to four a shore
+const BIRDS := ["small_bird", "pigeon", "crow", "duck", "gull"]
 const URBAN_COVERAGE := 0.2  # buildings cover this much of the ground: a city centre (Oulu's: 0.3-0.4), whatever its street trees
 
 # Public layer properties follow the existing client-side configuration style.
@@ -20,7 +21,7 @@ var max_active := 128
 var activity_distance_m := 900.0
 var vehicle_reactions := true
 var species_weights := {"squirrel": 1.0, "small_bird": 1.0, "pigeon": 1.0, "hare": 1.0,
-	"fox": 1.0, "moose": 1.0, "roe_deer": 1.0, "crow": 1.0, "duck": 1.0}
+	"fox": 1.0, "moose": 1.0, "roe_deer": 1.0, "crow": 1.0, "duck": 1.0, "gull": 1.0}
 
 var animals: Array = []
 var winter := 0.0  # the season's winter weight (main.gd, from the calendar): hares turn white, squirrels grey
@@ -60,7 +61,7 @@ static func activity(species: String, game_time_seconds: float) -> float:
 	var dawn_dusk := maxf(exp(-pow((hour - 6.0) / 1.8, 2.0)), exp(-pow((hour - 19.0) / 1.8, 2.0)))
 	var daylight := clampf(sin((hour - 6.0) * PI / 12.0), 0.0, 1.0)
 	match species:
-		"small_bird", "pigeon", "crow", "squirrel", "duck": return 0.15 + 0.75 * daylight + 0.1 * dawn_dusk
+		"small_bird", "pigeon", "crow", "squirrel", "duck", "gull": return 0.15 + 0.75 * daylight + 0.1 * dawn_dusk
 		"fox": return 0.25 + 0.55 * (1.0 - daylight) + 0.2 * dawn_dusk
 		"moose", "roe_deer": return 0.45 + 0.55 * dawn_dusk
 		_: return 0.45 + 0.35 * dawn_dusk
@@ -137,7 +138,8 @@ func replace_chunk(message: Dictionary, origin: Vector2) -> void:
 	queue_redraw()
 
 
-## Ducks float on the chunk's open water (none once it freezes: they migrate south).
+## Ducks float on the chunk's open water, gulls on its shores (none once it
+## freezes: most migrate south).
 func _spawn_ducks(chunk_id: String, waters: Array, rect: Rect2, rng: RandomNumberGenerator, ids: Array) -> void:
 	var weight := float(species_weights.get("duck", 1.0)) * clampf(1.0 - winter, 0.0, 1.0)
 	for water in waters:
@@ -156,6 +158,24 @@ func _spawn_ducks(chunk_id: String, waters: Array, rect: Rect2, rng: RandomNumbe
 					var duck := _animal(_next_id, "duck", rect.merge(box), rng)
 					duck.merge({"position": at, "chunk": chunk_id, "water": water, "home": at}, true)
 					animals.append(duck)
+					ids.append(_next_id)
+					_next_id += 1
+					break
+		var shore := 0.0
+		for i in water.size():
+			shore += water[i - 1].distance_to(water[i])
+		var gulls := mini(4, floori(shore * float(species_weights.get("gull", 1.0)) * clampf(1.0 - winter, 0.0, 1.0) / GULL_SHORE_M))
+		var centre := box.get_center()
+		for unused in gulls:
+			if animals.size() >= max_active:
+				return
+			var corner: Vector2 = water[rng.randi() % water.size()]
+			for attempt in SPAWN_TRIES:  # just off a shore point, on the water's side
+				var at := corner.lerp(centre, rng.randf_range(0.01, 0.08) * (attempt + 1))
+				if Geometry2D.is_point_in_polygon(at, water):
+					var gull := _animal(_next_id, "gull", rect.merge(box), rng)
+					gull.merge({"position": at, "chunk": chunk_id, "water": water, "home": at}, true)
+					animals.append(gull)
 					ids.append(_next_id)
 					_next_id += 1
 					break
@@ -268,7 +288,7 @@ static func _transition(animal: Dictionary, active: float) -> void:
 		animal["timer"] = 1.0 + phase * 3.0
 		return
 	var species: String = animal["species"]
-	if species in BIRDS and phase < (0.06 if species == "duck" else 0.18): animal["state"] = "FLY"
+	if species in BIRDS and phase < {"duck": 0.06, "gull": 0.35}.get(species, 0.18): animal["state"] = "FLY"
 	elif (species in BIRDS or species == "squirrel") and phase < 0.45: animal["state"] = "FEED"
 	else: animal["state"] = "WANDER"
 	animal["heading"] = fmod(float(animal["id"] * 2 + animal["cycle"] * 3), TAU) - PI
@@ -279,7 +299,7 @@ static func _speed(species: String, state: String) -> float:
 	if state in ["IDLE", "FEED"]: return 0.0
 	if state in ["FLEE", "FLY"]: return 7.0 if species in BIRDS else 5.0
 	return {"squirrel": 1.6, "small_bird": 0.5, "pigeon": 0.55, "hare": 1.8,
-		"fox": 1.5, "moose": 1.0, "roe_deer": 1.2, "crow": 0.65, "duck": 0.4}.get(species, 1.0)
+		"fox": 1.5, "moose": 1.0, "roe_deer": 1.2, "crow": 0.65, "duck": 0.4, "gull": 0.5}.get(species, 1.0)
 
 
 func _draw() -> void:
@@ -293,12 +313,12 @@ func _draw_animal(animal: Dictionary) -> void:
 	var at: Vector2 = animal["position"]
 	var direction := Vector2.from_angle(animal["heading"])
 	var species: String = animal["species"]
-	var scale_m: float = {"small_bird": 0.65, "pigeon": 0.72, "crow": 0.8, "duck": 0.75, "squirrel": 0.3, "hare": 0.42,
+	var scale_m: float = {"small_bird": 0.65, "pigeon": 0.72, "crow": 0.8, "duck": 0.75, "gull": 0.85, "squirrel": 0.3, "hare": 0.42,
 		"fox": 0.65, "roe_deer": 0.85, "moose": 1.15}.get(species, 0.4)
-	var color: Color = {"small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "crow": Color8(42, 43, 45), "duck": Color8(120, 98, 72), "squirrel": Color8(144, 79, 38),
+	var color: Color = {"small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "crow": Color8(42, 43, 45), "duck": Color8(120, 98, 72), "gull": Color8(242, 243, 240), "squirrel": Color8(144, 79, 38),
 		"hare": Color8(142, 126, 101), "fox": Color8(194, 91, 38), "roe_deer": Color8(151, 104, 62), "moose": Color8(91, 67, 48)}.get(species, Color.GRAY)
 	color = winter_coat(species, color, winter)
-	var members := 5 if species == "small_bird" else (3 if species in ["pigeon", "duck"] else 1)
+	var members := 5 if species == "small_bird" else (3 if species in ["pigeon", "duck"] else (2 if species == "gull" else 1))
 	drawn_members += members
 	var flying: bool = animal["state"] == "FLY"
 	var seconds := Time.get_ticks_msec() / 1000.0
@@ -319,7 +339,11 @@ const FLIGHT := {  # span (x scale), flaps per second, wing chord (x scale)
 	"pigeon": [2.0, 3.2, 0.40],
 	"crow": [2.3, 2.2, 0.55],
 	"duck": [2.0, 5.0, 0.36],  # narrow wings, fast beats
+	"gull": [3.0, 1.8, 0.38],  # long narrow wings, slow beats
 }
+const GULL_MANTLE := Color8(158, 167, 176)  # a herring gull's grey back and wings
+const GULL_TIPS := Color8(38, 38, 40)
+const GULL_BILL := Color8(236, 196, 60)
 
 
 func _draw_flying(at: Vector2, direction: Vector2, scale_m: float, color: Color, species: String, seconds: float) -> void:
@@ -331,7 +355,10 @@ func _draw_flying(at: Vector2, direction: Vector2, scale_m: float, color: Color,
 	var chord: float = scale_m * float(shape[2])
 	var side := direction.orthogonal()
 	var feather := color.lightened(0.18)
-	_draw_wings(at, direction, side, span, chord, sweep * scale_m, color, feather)
+	if species == "gull":  # grey wings with black tips
+		_draw_wings(at, direction, side, span, chord, sweep * scale_m, GULL_MANTLE, GULL_TIPS)
+	else:
+		_draw_wings(at, direction, side, span, chord, sweep * scale_m, color, feather)
 	var body := PackedVector2Array([at + direction * scale_m * 0.6, at + side * scale_m * 0.24,
 		at - direction * scale_m * 0.6, at - side * scale_m * 0.24])
 	draw_primitive(body, PackedColorArray([color.darkened(0.08)]), PackedVector2Array())
@@ -339,9 +366,9 @@ func _draw_flying(at: Vector2, direction: Vector2, scale_m: float, color: Color,
 	draw_primitive(PackedVector2Array([tail, tail - direction * scale_m * 0.5 + side * scale_m * 0.26,
 		tail - direction * scale_m * 0.5 - side * scale_m * 0.26]), PackedColorArray([color]), PackedVector2Array())
 	Entities._circle(self, at + direction * scale_m * 0.62, scale_m * 0.19, color.lightened(0.05))
-	if species == "crow" or species == "pigeon":  # the bill
+	if species in ["crow", "pigeon", "gull"]:  # the bill
 		var bill := at + direction * scale_m * 0.78
-		draw_line(bill, bill + direction * scale_m * 0.18, Color8(30, 30, 28) if species == "crow" else Color8(200, 170, 120), scale_m * 0.08)
+		draw_line(bill, bill + direction * scale_m * 0.18, {"crow": Color8(30, 30, 28), "gull": GULL_BILL}.get(species, Color8(200, 170, 120)), scale_m * 0.08)
 
 
 func _draw_wings(at: Vector2, direction: Vector2, side: Vector2, span: float, chord: float, sweep: float,
@@ -438,6 +465,14 @@ func _draw_body(at: Vector2, direction: Vector2, scale_m: float, color: Color, s
 			Entities._circle(self, at + d * 0.5, scale_m * 0.19, Color8(40, 92, 52) if id % 2 == 0 else color.lightened(0.05))
 			_quad(at + d * 0.62 + s * 0.07, at + d * 0.85 + s * 0.06, at + d * 0.85 - s * 0.06, at + d * 0.62 - s * 0.07,
 				Color8(214, 168, 52))  # the broad flat bill
+		"gull":  # standing at the shore or afloat: white, grey folded wings, black wingtips past the tail
+			Entities._circle(self, at, scale_m * 0.6, Color(1, 1, 1, 0.1))
+			_tri(at - d * 0.35, at - d * 0.75 + s * 0.15, at - d * 0.75 - s * 0.15, color.darkened(0.08))  # tail
+			_capsule(at + d * 0.15, at - d * 0.3, scale_m * 0.27, color)
+			_quad(at + d * 0.15 + s * 0.24, at + d * 0.15 - s * 0.24, at - d * 0.55 - s * 0.12, at - d * 0.55 + s * 0.12, GULL_MANTLE)
+			_tri(at - d * 0.55 + s * 0.12, at - d * 0.55 - s * 0.12, at - d * 0.95, GULL_TIPS)
+			Entities._circle(self, at + d * 0.48, scale_m * 0.18, color)
+			_tri(at + d * 0.85, at + d * 0.62 + s * 0.05, at + d * 0.62 - s * 0.05, GULL_BILL)
 		_:  # a bird on the ground: round body, folded wings, head and bill, tail
 			_tri(at - d * 0.4, at - d * 0.95 + s * 0.2, at - d * 0.95 - s * 0.2, dark)  # tail
 			_capsule(at + d * 0.15, at - d * 0.3, scale_m * 0.3, color)

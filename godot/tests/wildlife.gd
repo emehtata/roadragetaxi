@@ -3,7 +3,7 @@ extends SceneTree
 
 func _initialize() -> void:
 	var WildlifeLayer := preload("res://wildlife.gd")
-	assert(WildlifeLayer.SPECIES == [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow", &"duck"])
+	assert(WildlifeLayer.SPECIES == [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow", &"duck", &"gull"])
 	assert(WildlifeLayer._speed("crow", "FLY") == 7.0)
 	var layer: Node = WildlifeLayer.new()
 	root.add_child(layer)
@@ -56,6 +56,9 @@ func _initialize() -> void:
 	layer.replace_chunk(pond, Vector2.ZERO)
 	var ducks: Array = layer.animals.filter(func(animal): return animal.species == "duck")
 	assert(ducks.size() == 3 and ducks.all(func(duck): return Geometry2D.is_point_in_polygon(duck.position, duck.water)), "ducks float on open water")
+	var gulls: Array = layer.animals.filter(func(animal): return animal.species == "gull")
+	var at_shore := func(gull): return Geometry2D.is_point_in_polygon(gull.position, gull.water) and Array(gull.water).any(func(corner): return corner.distance_to(gull.position) < 40.0)
+	assert(gulls.size() == 4 and gulls.all(at_shore), "gulls sit at the shore")
 	var duck: Dictionary = ducks[0]
 	duck.state = "WANDER"
 	for unused in 600:
