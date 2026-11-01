@@ -558,6 +558,8 @@ func set_obstacles(knocked: Dictionary) -> bool:
 	var lamps_changed: bool = broken != _broken
 	if lamps_changed:
 		_broken = broken
+		if outdoor_3d and buildings_3d:
+			_lamps_3d()
 		_pools.queue_redraw()
 		_heads.queue_redraw()
 	if _trees == null:
@@ -734,7 +736,11 @@ func _build_2_5d() -> void:
 			"bumps": bumps, "puddles": puddles, "bridges": bridges, "bridge_ends": bridge_ends, "guardrails": guardrails,
 			"rail_decks": _data.get("rail_decks", []).map(func(d): return _points(d)), "rail_tracks": _data.get("rail_bridges", []).map(func(d): return _points(d)),
 			"canopies": canopies, "site_fences": _data.get("construction_fences", []).map(func(d): return _points(d)),
-			"shelters": shelters, "pumps": pumps}
+			"shelters": shelters, "pumps": pumps,
+			"props": _data.get("scenery_objects", []).filter(func(o): return B3.PROPS.has(str(o[2]))).map(
+				func(o): return [MapMath.point(_origin, o[0], o[1]), float(o[3]), str(o[2])]),
+			"sign_posts": _data.get("signs", []).map(func(sign): return MapMath.point(_origin, sign[0], sign[1]))}
+		_lamps_3d()
 	if buildings_3d and not (buildings.is_empty() and sites.is_empty() and landmarks.is_empty() and ground.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
 		if not build_async:
 			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground))
@@ -1380,7 +1386,10 @@ func _draw_trees(node: Node2D) -> void:
 
 func _draw_scenery(node: Node2D) -> void:
 	var shrubs := PackedVector2Array()
+	var in_3d := outdoor_3d and buildings_3d  # step 6: shrubs and props are 3D (_trees_3d, buildings_3d.props)
 	for obj in _data.get("scenery_objects", []):
+		if in_3d and (obj[2] == "shrub" or B3.PROPS.has(str(obj[2]))):
+			continue
 		if obj[2] == "shrub":
 			var at := MapMath.point(_origin, obj[0], obj[1])
 			shrubs.append_array(PackedVector2Array([at - Vector2(0.3, 0), at + Vector2(0.3, 0)]))
@@ -1629,11 +1638,24 @@ func _trees_3d() -> void:
 			crown = seasonal_color(crown, _season)
 		var key := obstacle_key(tree[0], tree[1])
 		rows.append([MapMath.point(_origin, tree[0], tree[1]), kind, radius, crown, style["trunk"], float(_fallen[key]) if _fallen.has(key) else NAN])
+	for obj in _data.get("scenery_objects", []):
+		if obj[2] == "shrub":
+			rows.append([MapMath.point(_origin, obj[0], obj[1]), "shrub", 0.6, seasonal_color(Color8(52, 96, 44), _season), Color.BLACK, NAN])
 	var bollards := PackedVector2Array()
 	for post in _data.get("bollards", []):
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			bollards.append(MapMath.point(_origin, post[0], post[1]))
 	_set_dynamic_3d("trees", B3.trees_node(rows, bollards))
+
+
+## Step 6: this chunk's working street lamps' posts (a knocked-down one goes).
+func _lamps_3d() -> void:
+	var rows: Array = []
+	var lights: Array = _data.get("street_lights", [])
+	for i in street_lights.size():
+		if not _broken.has(i) and i < lights.size():
+			rows.append([street_lights[i], Vector2(cos(float(lights[i][2])), -sin(float(lights[i][2])))])
+	_set_dynamic_3d("lamps", B3.lamp_posts_node(rows))
 
 
 ## A rebuilt 3D part of this chunk replaces the old one in the 3D view.
@@ -1972,6 +1994,13 @@ static func lamps(phase: String) -> Array:
 ## Traffic lights: a 7 x 18 px housing along the
 ## traffic, red end toward the intersection, lamps by the server's phase.
 func _draw_traffic_lights(node: Node2D) -> void:
+	if outdoor_3d and buildings_3d:  # step 6: 3D signals, their lamps by the phase (this layer redraws on a change)
+		var rows: Array = []
+		for post in _data["traffic_lights"]:
+			var angle := float(post["angle"])
+			rows.append([MapMath.point(_origin, post["x"], post["y"]), Vector2(-cos(angle), sin(angle)), lamps(_phases.get(str(int(post["id"])), ""))])
+		_set_dynamic_3d("signals", B3.signals_node(rows))
+		return
 	var colors := [[Color8(255, 30, 30), Color8(60, 10, 10)], [Color8(255, 210, 0), Color8(60, 50, 0)], [Color8(40, 240, 60), Color8(10, 50, 15)]]
 	for post in _data["traffic_lights"]:
 		# The upright housing turns by degrees(angle) - 90 counter-clockwise on screen.

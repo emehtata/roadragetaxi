@@ -1087,6 +1087,16 @@ func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false
 	var f := _forward(heading)
 	var r := _right(heading)
 	var base := c + f * (length * 0.4) * (-1.0 if behind else 1.0)
+	if Buildings3D.opaque and Buildings3D.current != null:  # step 6: puffs with depth, rising from the 3D car
+		for i in 4:
+			var age := fmod(t * lerpf(1.5, 3.5, strength) + i * 0.7, 2.0)
+			var drift := -f * age * lerpf(0.8, 1.8, strength) if behind else r * sin(t * 3.0 + i) * 0.3 * age
+			var color: Color = RS.SMOKE.darkened(0.35 * strength) if behind else RS.SMOKE
+			var fade: float = RS.SMOKE_MAX_ALPHA * (lerpf(0.35, 1.3, strength) if behind else 1.0)
+			color.a = clampf((1.0 - age / 2.0) * fade, 0.0, fade)
+			Buildings3D.current.puff(base + drift, (0.4 + age * 0.4) if behind else (1.2 + age * 1.6),
+				(0.25 + age * 0.35) * (lerpf(0.7, 1.4, strength) if behind else 1.0), color)
+		return
 	for i in 4:
 		var offset_t := fmod(t * lerpf(1.5, 3.5, strength) + i * 0.7, 2.0)
 		var puff := base
@@ -1336,7 +1346,9 @@ func _live_roadworks(rows: Array) -> void:
 		var open_end: bool = open[index][1]
 		if not (view_rect.has_point(start) or view_rect.has_point(end)):
 			continue
-		if row.get("closed", false) or row.get("lane_closed", false):
+		if (row.get("closed", false) or row.get("lane_closed", false)) and Buildings3D.opaque and Buildings3D.current != null:
+			_roadwork_3d(start, end, float(row.get("half_width_m", 4.0)), row.get("lane_closed", false), [open_start, open_end])
+		elif row.get("closed", false) or row.get("lane_closed", false):
 			MapChunk.draw_roadwork(_canvas, start, end, float(row.get("half_width_m", 4.0)),
 				row.get("lane_closed", false), px_per_m, [open_start, open_end])
 		var limit = row.get("speed_limit_kmh")
@@ -1345,6 +1357,21 @@ func _live_roadworks(rows: Array) -> void:
 				if [open_start, open_end][i]:
 					var side := (end - start).normalized().orthogonal() * float(row.get("half_width_m", 4.0))
 					_speed_sign((start if i == 0 else end) - side * 1.3, int(limit))
+
+
+## Step 6 (--outdoor-3d): a roadworks piece's barrier boards at its open
+## ends and its cones every 25 m, as MapChunk.draw_roadwork lays them out.
+func _roadwork_3d(start: Vector2, end: Vector2, half_width: float, lane_only: bool, barriers: Array) -> void:
+	var length := maxf(start.distance_to(end), 0.001)
+	var normal := (end - start).orthogonal() / length
+	for i in 2:
+		if barriers[i]:
+			var point := start if i == 0 else end
+			var middle := point + normal * half_width * 0.5 if lane_only else point
+			Buildings3D.current.roadwork_barrier(middle, -normal.angle(), half_width if lane_only else half_width * 2.0)
+	var steps := maxi(2, int(length / 25.0))
+	for i in steps + 1:
+		Buildings3D.current.roadwork_cone(start.lerp(end, float(i) / steps) + (normal * half_width * 0.5 if lane_only else Vector2.ZERO))
 
 
 ## [start open, end open] per piece: an end no other piece shares is where a

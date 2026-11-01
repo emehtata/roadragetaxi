@@ -3304,6 +3304,16 @@ func test_buildings_3d() -> void:
 		and EntityLayer.person_pose({"animation_state": "waiting"}, 0.0) == "standing", "a person's pose follows their animation state and gait")
 	for species in ["moose", "roe_deer", "fox", "dog"]:
 		check(B3.animal_arrays(species, Color.BROWN, "stand", 1.0)["verts"].size() >= 36, "a %s has a 3D body" % species)
+	var signal_node := B3.signals_node([[Vector2.ZERO, Vector2.RIGHT, [false, false, true]]])
+	var signal_parts: Array = Array(signal_node.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV2]).map(func(v): return int(v.x))
+	check(signal_parts.count(B3.LAMP) == 36, "a signal: only its lit lamp (green) glows")
+	signal_node.free()
+	var posts := B3.lamp_posts_node([[Vector2(5, 0), Vector2.UP]])
+	check(posts != null and posts.mesh.get_aabb().end.y > B3.LAMP_HEIGHT_M and B3.lamp_posts_node([]) == null, "a lamp's post stands to its height; no lamps, no node")
+	posts.free()
+	var props_out := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.props(props_out, [[Vector2.ZERO, 0.0, "bench"], [Vector2(5, 0), 0.0, "not_a_prop"]])
+	check(is_equal_approx(Array(props_out["deck"]).map(func(v): return v.y).max(), B3.PROPS["bench"][2]), "a bench stands its height; unknown kinds are left out")
 	MapChunk.buildings_3d = false
 
 

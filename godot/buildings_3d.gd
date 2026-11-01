@@ -549,6 +549,36 @@ func track(owner: Node2D, lines: PackedVector2Array, colors: PackedColorArray, w
 
 func begin_cars() -> void:
 	_cars_used = 0
+	_puffs_used = 0
+
+
+## Step 6: smoke puffs (crash smoke, exhaust) - pooled translucent spheres,
+## placed each frame like the bodies, gone at end_cars.
+var _puffs: Array = []
+var _puffs_used := 0
+static var _puff_mesh: SphereMesh = null
+
+
+func puff(at: Vector2, height: float, radius: float, color: Color) -> void:
+	if _puffs_used == _puffs.size():
+		if _puff_mesh == null:
+			_puff_mesh = SphereMesh.new()
+			_puff_mesh.radial_segments = 8
+			_puff_mesh.rings = 4
+			var material := ShaderMaterial.new()
+			material.shader = preload("res://smoke.gdshader")
+			_puff_mesh.material = material
+		var node := MeshInstance3D.new()
+		node.mesh = _puff_mesh
+		node.layers = LAYER_BUILDINGS
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_cars_root.add_child(node)
+		_puffs.append(node)
+	var node: MeshInstance3D = _puffs[_puffs_used]
+	node.transform = Transform3D(Basis().scaled(Vector3.ONE * radius), to_3d(at, height))
+	node.set_instance_shader_parameter("tint", color)
+	node.visible = true
+	_puffs_used += 1
 
 
 ## A car at `at` (layer position) facing `heading` (as the 2D layer's):
@@ -592,6 +622,8 @@ func end_cars() -> void:
 	for i in range(_cars_used, _car_nodes.size()):
 		for node in _car_nodes[i]:
 			node.visible = false
+	for i in range(_puffs_used, _puffs.size()):
+		_puffs[i].visible = false
 
 
 ## rtx-scene-readiness step 6: every other vehicle as simple shaded boxes
@@ -1397,6 +1429,9 @@ static func _structures(out: Dictionary, ground: Dictionary) -> void:
 				_box3d(out, "deck", p, 0.05, 0.0, 2.3, Color8(70, 80, 90))
 		else:
 			_raised_polygon_at(out, "deck", footprint, 0.0, 0.45, Color8(120, 82, 50))
+	props(out, ground.get("props", []))
+	for sign: Vector2 in ground.get("sign_posts", []):  # the post; its readable face stays a 2D overlay
+		_box3d(out, "deck", sign, 0.04, 0.0, 2.2, Color8(110, 112, 115))
 	for pump: Array in ground.get("pumps", []):  # [position, along]
 		var along: Vector2 = pump[1]
 		_raised_polygon_at(out, "deck", PackedVector2Array([pump[0] - along * 0.4 - along.orthogonal() * 0.25, pump[0] + along * 0.4 - along.orthogonal() * 0.25,
@@ -1446,6 +1481,9 @@ static func trees_node(rows: Array, bollards: PackedVector2Array) -> Node3D:
 		var radius: float = row[2]
 		var conifer: bool = row[1] == "pine" or row[1] == "spruce"
 		var felled: float = row[5]
+		if row[1] == "shrub":  # a low round bush, no trunk
+			parts["crown"].append([Transform3D(Basis().scaled(Vector3(radius, radius * 0.8, radius)), to_3d(at, radius * 0.6)), row[3]])
+			continue
 		var trunk_top := radius * (2.6 if row[1] == "pine" else 1.0 if row[1] == "spruce" else 1.6)
 		var crown_top := trunk_top + radius * (3.2 if conifer else 1.6)
 		if not is_nan(felled):  # lying along where it fell: trunk and crown on the ground
@@ -1500,6 +1538,101 @@ static func railings_node(rows: Array) -> MeshInstance3D:
 	var node := _instance(_mesh(out["deck"], out["deck_colors"]), _shared["ground"], LAYER_BUILDINGS)
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	return node
+
+
+## Step 6: roadside fixtures as one node per chunk part, built in layer
+## coordinates (an identity transform: _car_box's x and y are the map's):
+## street lamp posts reaching to their lamp; traffic signals, their housing's
+## three lamps on top lit by the phase (readable from above, as the 2D ones).
+static func _world_node(out: Dictionary) -> MeshInstance3D:
+	if out["verts"].is_empty():
+		return null
+	var node := _instance(_mesh(out["verts"], out["colors"], out["roof_mask"], PackedVector2Array(), PackedFloat32Array(), out["part"]),
+		_shared.get("car", _shared["material"]), LAYER_BUILDINGS)
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	return node
+
+
+## rows [lamp position, toward the road (unit)]: the pole 1.2 m behind the lamp, its arm and head.
+static func lamp_posts_node(rows: Array) -> MeshInstance3D:
+	var out := _empty_arrays()
+	var steel := Color8(110, 112, 115)
+	for row: Array in rows:
+		var lamp: Vector2 = row[0]
+		var pole: Vector2 = lamp - row[1] * 1.2
+		_car_box(out, pole.x - 0.08, pole.x + 0.08, pole.y - 0.08, pole.y + 0.08, 0.0, LAMP_HEIGHT_M + 0.1, steel)
+		for k in 3:
+			var p := pole.lerp(lamp, (k + 0.5) / 3.0)
+			_car_box(out, p.x - 0.22, p.x + 0.22, p.y - 0.05, p.y + 0.05, LAMP_HEIGHT_M - 0.02, LAMP_HEIGHT_M + 0.08, steel)
+		_car_box(out, lamp.x - 0.28, lamp.x + 0.28, lamp.y - 0.28, lamp.y + 0.28, LAMP_HEIGHT_M - 0.2, LAMP_HEIGHT_M, Color8(60, 62, 64))
+	return _world_node(out)
+
+
+const SIGNAL_COLORS := [[Color(1.0, 0.12, 0.12), Color8(60, 10, 10)], [Color(1.0, 0.82, 0.0), Color8(60, 50, 0)], [Color(0.16, 0.94, 0.24), Color8(10, 50, 15)]]
+
+
+## rows [post position, along the housing (red end first), lit [red, yellow, green]].
+static func signals_node(rows: Array) -> MeshInstance3D:
+	var out := _empty_arrays()
+	for row: Array in rows:
+		var at: Vector2 = row[0]
+		var along: Vector2 = row[1]
+		_car_box(out, at.x - 0.06, at.x + 0.06, at.y - 0.06, at.y + 0.06, 0.0, 2.6, Color8(70, 70, 70))
+		for k in 3:
+			var p: Vector2 = at + along * (k - 1) * 0.3
+			_car_box(out, p.x - 0.18, p.x + 0.18, p.y - 0.18, p.y + 0.18, 2.6, 2.95, Color8(15, 15, 15))
+			var lit: bool = row[2][k]
+			_part(out, LAMP if lit else PAINT, p.x - 0.11, p.x + 0.11, p.y - 0.11, p.y + 0.11, 2.95, 3.0,
+				SIGNAL_COLORS[k][0] if lit else SIGNAL_COLORS[k][1])
+	return _world_node(out)
+
+
+## Live roadworks (entity_layer): a cone, a barrier board `length` long across the road.
+func roadwork_cone(at: Vector2) -> void:
+	place_body("cone", func() -> Dictionary:
+		var out := _empty_arrays()
+		_car_box(out, -0.2, 0.2, -0.2, 0.2, 0.0, 0.05, Color8(30, 30, 30))
+		_car_box(out, -0.12, 0.12, -0.12, 0.12, 0.05, 0.45, Color8(245, 105, 25))
+		_car_box(out, -0.09, 0.09, -0.09, 0.09, 0.45, 0.55, Color8(255, 240, 220))
+		_car_box(out, -0.06, 0.06, -0.06, 0.06, 0.55, 0.72, Color8(245, 105, 25))
+		return out, at, 0.0)
+
+
+func roadwork_barrier(at: Vector2, heading: float, length: float) -> void:
+	place_body("barrier|%.1f" % length, func() -> Dictionary:
+		var out := _empty_arrays()
+		for x: float in [-length * 0.45, length * 0.45]:
+			_car_box(out, x - 0.05, x + 0.05, -0.05, 0.05, 0.0, 1.0, Color8(200, 200, 200))
+		for k in 4:  # yellow and white panels along the board
+			var x0 := -length * 0.5 + length * k / 4.0
+			_car_box(out, x0, x0 + length / 4.0, -0.04, 0.04, 0.7, 1.0, Color8(235, 190, 35) if k % 2 == 0 else Color8(245, 245, 240))
+		return out, at, heading)
+
+
+## Step 6: scenery objects as simple shapes at their size and height:
+## [length along its angle, width, height, colour]; the rest (shrubs, landmarks) elsewhere.
+const PROPS := {"caravan": [6.0, 2.3, 2.5, Color8(238, 234, 220)], "caravan_with_car": [10.5, 2.3, 2.5, Color8(238, 234, 220)],
+	"tent": [2.4, 2.0, 1.3, Color8(70, 120, 90)], "camper_van": [7.0, 2.3, 2.9, Color8(238, 234, 220)],
+	"bench": [1.4, 0.4, 0.45, Color8(120, 82, 50)], "waste_basket": [0.4, 0.4, 0.9, Color8(60, 90, 60)],
+	"bicycle_parking": [3.0, 0.6, 0.8, Color8(150, 150, 150)], "charging_station": [0.5, 0.3, 1.5, Color8(40, 120, 70)],
+	"statue": [1.2, 1.2, 2.6, Color8(120, 110, 95)], "picnic_table": [1.8, 1.5, 0.75, Color8(130, 92, 58)],
+	"firepit": [1.2, 1.2, 0.3, Color8(90, 85, 80)], "fountain": [4.0, 4.0, 0.6, Color8(170, 175, 180)],
+	"gate": [3.0, 0.1, 1.2, Color8(90, 90, 92)], "sandpit": [2.6, 2.6, 0.3, Color8(200, 180, 130)],
+	"swing": [3.4, 1.8, 2.2, Color8(170, 60, 50)], "slide": [3.2, 0.9, 1.8, Color8(220, 170, 40)],
+	"spring_rider": [0.7, 0.3, 0.8, Color8(60, 150, 210)], "climbing_frame": [2.4, 2.4, 1.6, Color8(200, 80, 60)],
+	"seesaw": [3.0, 0.3, 0.6, Color8(70, 140, 70)]}
+
+
+static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angle, kind]
+	for row: Array in rows:
+		var look: Array = PROPS.get(row[2], [])
+		if look.is_empty():
+			continue
+		var along: Vector2 = Vector2(cos(row[1]), -sin(row[1])) * float(look[0]) * 0.5
+		var across: Vector2 = along.orthogonal().normalized() * float(look[1]) * 0.5
+		var at: Vector2 = row[0]
+		_raised_polygon_at(out, "deck", PackedVector2Array([at - along - across, at + along - across, at + along + across, at - along + across]),
+			0.0, look[2], look[3])
 
 
 ## One piece of a deck from a to b: its road surface (the road mesh: wet,

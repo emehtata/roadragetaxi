@@ -8,6 +8,7 @@ shader_type spatial;
 render_mode cull_back;
 
 uniform float wetness : hint_range(0.0, 1.0) = 0.0;  // weather.wetness (map_layer.set_wetness)
+uniform float wind = 0.3;  // step 6: open water's waves, 0 calm .. 1 rough (main.gd, as the 2D water's)
 instance uniform float snow_cover = 0.0;  // the chunk's visible road snow (map_chunk._snow_cover)
 uniform vec4 puddle_color : source_color = vec4(0.3608, 0.4235, 0.5020, 1.0);  // render_style.PUDDLE_COLOR
 uniform vec4 snow_color : source_color = vec4(0.9020, 0.9255, 0.9412, 1.0);  // Color8(230, 236, 240), the 2D road snow
@@ -97,6 +98,13 @@ void fragment() {
 		SPECULAR = 0.6;
 	} else {
 		float water = kind == 1 ? 1.0 : 0.0;
+		if (kind == 1) {  // step 6: wind waves on open water - a few travelling swells, their slopes as the normal
+			vec2 p = world.xz;
+			vec2 slope = vec2(cos(dot(p, vec2(0.9, 0.4)) - TIME * 1.3), cos(dot(p, vec2(-0.3, 1.1)) - TIME * 1.1)) * 0.5
+				+ vec2(cos(dot(p, vec2(2.3, -1.7)) - TIME * 2.1), cos(dot(p, vec2(1.9, 2.6)) - TIME * 2.4)) * 0.2;
+			slope *= 0.08 + 0.25 * clamp(wind, 0.0, 1.0);
+			NORMAL = normalize(NORMAL - (VIEW_MATRIX * vec4(slope.x, 0.0, slope.y, 0.0)).xyz);
+		}
 		float pixels_per_m = 1.0 / max(max(length(dFdx(world.xz)), length(dFdy(world.xz))), 0.0001);
 		float snow = clamp(snow_cover, 0.0, 1.0) * UV2.y;
 		albedo *= 1.0 + pattern(int(round(UV.y)), world.xz, pixels_per_m) * (1.0 - snow);

@@ -328,6 +328,48 @@ surface but do not require thick 3D models.
 between the shared 3D scene and unrelated 2D body drawings. Record any
 remaining effect exclusions explicitly.
 
+**Status (1 November 2026, verified):** with `--outdoor-3d`, these are pooled
+3D bodies or chunk-owned 3D parts. None of them falls back to a 2D body on
+this path:
+- every vehicle kind: cars, vans, taxis, buses, trucks, tractors (with
+  plough and beacon), motorhomes, caravans, motorbikes, mopeds, bicycles,
+  e-scooters, and train and tram cars (raised onto rail decks), with riders
+  while ridden and fallen two-wheelers on their side;
+- people posed by their animation state (walking stride, standing, sitting,
+  lying when fallen or sunbathing, swimming, riding), dogs, holiday elves,
+  and moose, roe deer and foxes;
+- street lamp posts (knocked-down ones gone), traffic signals with their
+  lamps lit by the live phase, sign posts, scenery props (benches, statues,
+  play equipment, fountains, caravans, tents and the rest), shrubs, and live
+  roadworks cones and barriers;
+- open water with wind-driven wave normals; frozen water as matte ice;
+- crash smoke and exhaust as rising, fading 3D puffs.
+
+Evidence (Forward+/Vulkan): scripted renders of every vehicle kind with
+riders and a fallen bicycle; every person pose and the animals; lamps with
+one knocked down, signals in three phases, signs, props, shrubs and
+roadworks. A 20 s Oulu drive in the wet shows buses, the taxi, cars and
+people all in 3D. Client tests cover every vehicle kind, rider presence,
+pose mapping, animal bodies, signal lamps, lamp posts and props.
+
+Remaining exclusions, drawn as 2D overlays on purpose:
+- small animals and birds (hares, squirrels, small birds, pigeons, crows,
+  ducks, gulls);
+- golf balls, hockey pucks and beach balls;
+- readable faces: sign faces, roadworks speed signs, bus-stop bays and
+  signs, bus line numbers, fuel price boards;
+- speech and curse bubbles, rage faces and night reflectors;
+- shore waves and water ripples, dust and splashes, and screen-space
+  precipitation;
+- the 2D shapes of landmarks (their 3D shapes already exist), the forest
+  canopy (dense foliage waits on the fork check), attractions and site
+  details.
+
+Not verified, because no NVIDIA fork build exists in this environment:
+reflection, transparency and ice appearance on the fork, and its
+particle/transparency support. Those checks belong to Step 7's controlled
+trial.
+
 ## Step 7: prove readiness and enable a controlled RTX trial
 
 Steps 1–4 on a bounded street are enough for the first developer trial.

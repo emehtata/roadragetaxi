@@ -20,6 +20,7 @@ const T := preload("res://i18n.gd")
 const NightclubAudio := preload("res://nightclub_audio.gd")
 const CarAudio := preload("res://car_audio.gd")
 const WildlifeLayer := preload("res://wildlife.gd")
+const Buildings3DScript := preload("res://buildings_3d.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
@@ -746,6 +747,8 @@ func _present(state: Dictionary) -> void:
 	water_wind.y = -water_wind.y
 	MapChunk.WATER_MATERIAL.set_shader_parameter("wind", water_wind)
 	MapChunk.SHORE_MATERIAL.set_shader_parameter("wind", water_wind)
+	if MapChunk.outdoor_3d and Buildings3DScript._shared.has("road"):  # step 6: the 3D water's waves, as rough as the 2D water's
+		Buildings3DScript._shared["road"].set_shader_parameter("wind", water_wind)
 	var moon_altitude := Daylight.moon_value(state, "moon_altitude_deg", -90.0)
 	var moon_strength := Daylight.moonlight(altitude, moon_altitude,
 		Daylight.moon_value(state, "moon_illumination", 0.0), cloud)
