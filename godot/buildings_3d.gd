@@ -46,6 +46,8 @@ var _shadow_camera: Camera3D
 var _shadow_sprite: Sprite2D
 var _sun_key := Vector3(INF, INF, INF)  # the (altitude, azimuth, cloud) applied last
 var shadows_enabled := true
+static var opaque := false  # --outdoor-3d: the view draws its own ground, nothing of the 2D map shows through
+const GROUND := Color(0.27, 0.33, 0.25)  # map_layer._draw_ground's open ground
 
 
 static func _make_material(flat := false) -> Material:
@@ -64,6 +66,12 @@ static func _make_material(flat := false) -> Material:
 func _ready() -> void:
 	_view = _make_view(LAYER_BUILDINGS)
 	_camera = _view.get_child(0)
+	if opaque:
+		_view.transparent_bg = false
+		var sky := Environment.new()  # off the loaded chunks: the 2D map's open ground
+		sky.background_mode = Environment.BG_COLOR
+		sky.background_color = GROUND
+		_camera.environment = sky
 	_sprite = _make_sprite(_view, 7)
 	_sun = make_sun()
 	_view.add_child(_sun)
@@ -272,6 +280,7 @@ func set_light(level: float, ambient: Color) -> void:
 	_shared["material"].set_shader_parameter("ambient", ambient)
 	_shared["material"].set_shader_parameter("lit_level", clampf(level, 0.0, 1.0))  # the walls' own lit windows
 	_shared["glass"].albedo_color = Color(ambient.r, ambient.g, ambient.b)
+	_shared["ground"].albedo_color = Color(ambient.r, ambient.g, ambient.b)
 	_shared["lit"].albedo_color = lit_color(level, ambient)
 	if (level > 0.01) != _lit_on:  # the lit meshes in or out (by day they'd only cost)
 		_lit_on = level > 0.01
@@ -439,11 +448,14 @@ static func _car_box(out: Dictionary, x0: float, x1: float, y0: float, y1: float
 
 ## One chunk's mesh arrays (any thread): {"verts", "colors", "lit" (the
 ## lit windows' verts), "stats"}.
-static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array = [], landmarks: Array = []) -> Dictionary:
+static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array = [], landmarks: Array = [], ground := {}) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "lit": PackedVector3Array(),
 		"wall_uv": PackedVector2Array(), "window": PackedFloat32Array(),  # the shader's windows (building_snow.gdshader)
 		"arena": PackedVector3Array(), "shadow": PackedVector3Array(), "glass": PackedVector3Array(), "glass_colors": PackedColorArray(),
+		"ground": PackedVector3Array(), "ground_colors": PackedColorArray(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
+	if not ground.is_empty():
+		_ground(out, ground)
 	for i in buildings.size():
 		var footprint: PackedVector2Array = buildings[i]
 		if footprint.size() >= 3 and not Geometry2D.triangulate_polygon(footprint).is_empty():
@@ -452,7 +464,7 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 		_crane(out, site, origin)
 	for landmark in landmarks:  # [layer position, angle, spec]
 		_landmark(out, landmark[0], landmark[1], landmark[2])
-	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size() + out["glass"].size()) / 3
+	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size() + out["glass"].size() + out["ground"].size()) / 3
 	return out
 
 
@@ -460,6 +472,8 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 ## windows, both in the one building view.
 static func meshes(arrays: Dictionary) -> Array:
 	var instances: Array = []
+	if not arrays.get("ground", PackedVector3Array()).is_empty():
+		instances.append(_instance(_mesh(arrays["ground"], arrays["ground_colors"]), _shared["ground"], LAYER_BUILDINGS))
 	if not arrays.get("glass", PackedVector3Array()).is_empty():
 		instances.append(_instance(_mesh(arrays["glass"], arrays["glass_colors"]), _shared["glass"], LAYER_BUILDINGS))
 	if arrays["verts"].is_empty():
@@ -491,7 +505,7 @@ static func meshes(arrays: Dictionary) -> Array:
 
 static var _shared := {"material": _make_material(), "lit": _make_material(true), "arena": _make_material(true),
 	"caster": _caster_material(),  # the shadows-only prisms: any opaque material casts (the unshaded shader didn't)
-	"glass": _glass_material()}
+	"glass": _glass_material(), "ground": _make_material(true)}
 
 
 ## Greenhouse glass: alpha-blended vertex colours, both faces (the far
@@ -732,6 +746,39 @@ static func _frustum(out: Dictionary, centre: Vector2, r_bottom: float, r_top: f
 			if r_top > 0.0:
 				_tri(out, to_3d(centre + u * r_bottom, bottom), to_3d(centre + v * r_top, top), to_3d(centre + u * r_top, top), lit, to_3d(outward), key)
 				_tri(out, to_3d(centre, top), to_3d(centre + u * r_top, top), to_3d(centre + v * r_top, top), color, Vector3.UP, key)
+
+
+## rtx-scene-readiness step 1: a chunk's ground plane and its roads as flat
+## ribbons just above it (square caps close the bends), the more important
+## roads a little higher so crossings don't flicker. Flat colours for now:
+## materials, markings and wetness are step 3.
+static func _ground(out: Dictionary, ground: Dictionary) -> void:
+	var rect: Rect2 = ground["rect"]
+	_ground_quad(out, rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y), 0.0, GROUND)
+	for road: Array in ground["roads"]:
+		var points: PackedVector2Array = road[0]
+		var half: float = road[1]
+		var h := 0.03 + 0.01 * clampi(road[3], 0, 8)
+		for i in points.size() - 1:
+			var along := points[i + 1] - points[i]
+			if along.length_squared() < 1e-6:
+				continue
+			along = along.normalized() * half
+			var side := Vector2(-along.y, along.x)
+			var a := points[i] - along
+			var b := points[i + 1] + along
+			_ground_quad(out, a - side, b - side, b + side, a + side, h, road[2])
+
+
+static func _ground_quad(out: Dictionary, a: Vector2, b: Vector2, c: Vector2, d: Vector2, h: float, color: Color) -> void:
+	# Seen from above only: wound clockwise as seen from +y (Godot's front faces)
+	var up := (to_3d(b) - to_3d(a)).cross(to_3d(c) - to_3d(a)).y > 0.0
+	var verts := [to_3d(a, h), to_3d(b, h), to_3d(c, h), to_3d(a, h), to_3d(c, h), to_3d(d, h)]
+	if up:
+		verts = [verts[0], verts[2], verts[1], verts[3], verts[5], verts[4]]
+	out["ground"].append_array(PackedVector3Array(verts))
+	for i in 6:
+		out["ground_colors"].append(color)
 
 
 ## A box from `a` to `b` on the ground plan, `half_width` either side,

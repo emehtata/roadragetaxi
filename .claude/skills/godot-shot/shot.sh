@@ -5,6 +5,7 @@
 #   OUT.png          where the screenshot goes (an absolute path is safest)
 #   --wait S         seconds of play before the screenshot (default 15)
 #   --godot-arg ARG  extra user argument for the game (after --), e.g. --godot-arg --zoom --godot-arg 2
+#   --engine-arg ARG engine argument (before --), e.g. --engine-arg --rendering-method --engine-arg forward_plus
 #   SERVER ARGS      passed to `python -m theroadragetrip.server`, e.g.
 #                    --preset Helsinki --start-time 2026-09-27T00:30 --no-historical-weather
 #
@@ -19,11 +20,13 @@ fi
 out=$(realpath -m "$1"); shift
 wait_s=15
 godot_args=()
+engine_args=()
 server_args=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --wait) wait_s=$2; shift 2 ;;
     --godot-arg) godot_args+=("$2"); shift 2 ;;
+    --engine-arg) engine_args+=("$2"); shift 2 ;;
     *) server_args+=("$1"); shift ;;
   esac
 done
@@ -63,7 +66,7 @@ if [[ "$godot" == *.exe ]]; then
   shot_path=$(wslpath -w "$out")
   renderer_args=()
 fi
-timeout $((wait_s + 120)) "$godot" --path "$project" "${renderer_args[@]}" \
+timeout $((wait_s + 120)) "$godot" --path "$project" "${renderer_args[@]}" "${engine_args[@]}" \
   -- --port "$port" --screenshot "$shot_path" --screenshot-wait "$wait_s" "${godot_args[@]}" 2>&1 \
   | grep -E "SCRIPT ERROR|Parse Error|screenshot saved|Using Device" >&2
 

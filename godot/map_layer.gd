@@ -76,6 +76,7 @@ func _ready() -> void:
 	_ground = Node2D.new()  # under everything, the landuse (z -1) included
 	_ground.z_index = -2
 	_ground.draw.connect(_draw_ground)
+	_ground.visible = not (MapChunk.outdoor_3d and MapChunk.buildings_3d)  # the 3D view draws the ground
 	add_child(_ground)
 	_buildings = Node2D.new()
 	_buildings.z_index = 7

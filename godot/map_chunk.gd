@@ -407,6 +407,7 @@ func _add_layer(z: int, draw: Callable, node: Node2D = null) -> Node2D:
 	if node == null:
 		node = Node2D.new()
 	node.z_index = z
+	node.visible = not (outdoor_3d and buildings_3d and z < 7)  # under the opaque 3D view: never drawn
 	if Perf.keep_all:  # --bench: each layer's redraws, by z and draw function
 		var section := "draw_z%d_%s" % [z, draw.get_method()]
 		node.draw.connect(func(): var t := Time.get_ticks_usec(); draw.call(node); Perf.add(section, Time.get_ticks_usec() - t))
@@ -624,11 +625,19 @@ func _build_2_5d() -> void:
 	for obj in _data.get("scenery_objects", []):
 		if obj[2] == "landmark":
 			landmarks.append([MapMath.point(origin, obj[0], obj[1]), float(obj[3]), obj[4]])
-	if buildings_3d and not (buildings.is_empty() and sites.is_empty() and landmarks.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
+	var ground := {}
+	if outdoor_3d:  # the chunk's ground and its surface roads (tunnels left out), most important on top
+		var roads: Array = []
+		for road in _data.get("roads", []):
+			if int(road.get("layer", 0)) >= 0:
+				var color: Color = Detail._rgb(road["color"]) if road.has("color") else (Color(0.33, 0.33, 0.35) if road.get("drivable", false) else Color(0.55, 0.52, 0.45))
+				roads.append([_points(road["points"]), maxf(0.3, float(road.get("half_width_m", 1.5))), color, int(road.get("rank", 0))])
+		ground = {"rect": _bounds_rect, "roads": roads}
+	if buildings_3d and not (buildings.is_empty() and sites.is_empty() and landmarks.is_empty() and ground.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
 		if not build_async:
-			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites, landmarks))
+			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground))
 		else:
-			_building_task = WorkerThreadPool.add_task(func(): _meshes_ready.call_deferred(_build_3d_timed(buildings, styles, origin, sites, landmarks)))
+			_building_task = WorkerThreadPool.add_task(func(): _meshes_ready.call_deferred(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground)))
 		return
 	if buildings.is_empty() or buildings_3d:
 		return
@@ -663,6 +672,7 @@ func drop_stale_buildings() -> void:
 static var build_async := true  # tests build in place
 static var language := "en"  # unnamed fuel stations' board (main._apply_language)
 static var buildings_3d := true  # --buildings 2d uses flat footprints
+static var outdoor_3d := false  # --outdoor-3d (rtx-scene-readiness step 1): ground and roads in the 3D view, the 2D ground layers hidden
 static var forest_canopy := true  # off (graphics setting): forests keep their flat fill, no crowns - for software rendering
 var meshes_3d: Array = []  # buildings_3d.meshes, added to MapLayer's 3D building layer
 
@@ -692,9 +702,9 @@ func set_shop_lights(rows: Array) -> void:
 		_build_2_5d()
 
 
-static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2, sites: Array = [], landmarks: Array = []) -> Dictionary:
+static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2, sites: Array = [], landmarks: Array = [], ground := {}) -> Dictionary:
 	var started := Time.get_ticks_usec()
-	var arrays := B3.build(buildings, styles, origin, sites, landmarks)
+	var arrays := B3.build(buildings, styles, origin, sites, landmarks, ground)
 	arrays["build_usec"] = Time.get_ticks_usec() - started
 	return arrays
 

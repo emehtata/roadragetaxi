@@ -62,6 +62,17 @@ input remain aligned. Capture and inspect the rendered result.
 Relevant code: [map_layer.gd](../godot/map_layer.gd),
 [buildings_3d.gd](../godot/buildings_3d.gd), [main.gd](../godot/main.gd).
 
+**Status (1 November 2026):** an opt-in `--outdoor-3d` client flag makes the
+building view opaque and adds each chunk's ground plane and surface roads
+(flat colours, tunnels left out) to the shared World3D, owned and freed with
+the chunk's building meshes. The 2D ground layers under it (z < 7) are not
+drawn. Rendered with Forward+/Vulkan on an RTX 5060 (native Windows Godot
+4.7.2): ground, roads, buildings, the taxi and NPC cars in one view, HUD
+aligned. Colours look paler under Forward+ than under Compatibility (Step 2
+material work). Landuse, lamp pools and wet sheen are not in the 3D path yet
+(Steps 3–4). `godot-shot` passes engine options with `--engine-arg`. The
+driving check didn't run: the shot's engine was off. Resize was not rendered.
+
 ## Step 2: make existing meshes respond to light
 
 - Add outward-facing normals to the generated meshes. Generate tangents where

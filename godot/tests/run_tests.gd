@@ -3204,6 +3204,20 @@ func test_buildings_3d() -> void:
 	map.clear()
 	check(map.buildings_3d.instance_count() == 0, "a chunk's meshes go with it")
 	map.free()
+	# rtx-scene-readiness step 1: --outdoor-3d puts a chunk's ground and roads in the same 3D view, owned by the chunk
+	MapChunk.outdoor_3d = true
+	map = MapLayer.new()
+	root.add_child(map)
+	map.add_chunk({"chunk_id": "street", "bounds": [0, 0, 100, 100], "roads": [{"points": [[0, 50], [100, 50]], "half_width_m": 4.0, "drivable": true}]})
+	var grounds: Array = map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D and n.material_override == B3._shared["ground"])
+	var extent: AABB = grounds[0].mesh.get_aabb() if grounds.size() == 1 else AABB()
+	check(grounds.size() == 1 and grounds[0].layers == B3.LAYER_BUILDINGS and is_equal_approx(extent.size.x, 108.0) and extent.size.y > 0.0 and extent.size.y < 0.2,
+		"a building-less chunk still brings its ground and road to the 3D view, the road just above the ground")
+	check(map._chunks.values()[0].get_children().all(func(n): return not (n is Node2D and n.z_index < 7 and n.visible)), "the 2D ground layers under the opaque 3D view are not drawn")
+	map.clear()
+	check(map.buildings_3d.instance_count() == 0, "the ground goes with its chunk")
+	map.free()
+	MapChunk.outdoor_3d = false
 	MapChunk.buildings_3d = false
 
 
