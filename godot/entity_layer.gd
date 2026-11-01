@@ -111,7 +111,9 @@ const CAR_SHAPES := [
 	[0.36, 0.06, -0.46, -0.66, 0.76, ""],  # city car
 ]
 const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
-var _under := false  # the vehicle being drawn is under a bridge: 2D, below the deck (no 3D body)
+var _under := false  # the vehicle being drawn is under a bridge: 2D, below the deck (no 3D body) - not with --outdoor-3d
+var _layer := 0  # the vehicle being drawn's map layer: --outdoor-3d rides it at its deck height
+var deck_height := func(_at: Vector2, _layer: int) -> float: return 0.0  # map_layer.deck_height (main.gd)
 var taxi_sign_on := false  # the taxi being drawn is free for a fare (its roof light lit)
 var ploughing := false  # snowing: tractors carry a plough blade and a flashing beacon
 var smoke_enabled := true
@@ -525,7 +527,7 @@ func headlight_beams() -> Array:
 
 ## Every shining headlight pair this frame, the taxi first: [centre (a
 ## train: behind its nose), heading, width, centre to the front bumper, beam
-## length, is a train] - the 2D beams' and the 3D spot lights' (buildings_3d.set_headlights) source.
+## length, is a train, height of its deck (step 5)] - the 2D beams' and the 3D spot lights' (buildings_3d.set_headlights) source.
 func headlight_sources() -> Array:
 	var sources: Array = []
 	if _frame.is_empty():
@@ -540,7 +542,8 @@ func headlight_sources() -> Array:
 		var p := StateBuffer.blend(player, b.get("player", player), t, origin)
 		# Under a higher road: no beams - unless on a bridge itself.
 		if road.get("bridge", false) or not covered.call(Vector2(p.x, p.y), int(road.get("layer", 0))):
-			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false, player.get("length_m", 4.0)])
+			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false, player.get("length_m", 4.0),
+				int(road.get("layer", 0)) if road.get("bridge", false) else 0])
 	var later := _by_id(b.get("npcs", []))
 	var area := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	for npc in a.get("npcs", []):
@@ -549,7 +552,7 @@ func headlight_sources() -> Array:
 		var p := StateBuffer.blend(npc, later.get(npc["id"], npc), t, origin)
 		var layer := int(npc.get("layer", 0))  # an NPC on a raised layer counts as on its bridge
 		if area.has_point(Vector2(p.x, p.y)) and not underground and (layer > 0 or not covered.call(Vector2(p.x, p.y), layer)):
-			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true, npc.get("length_m", 4.0)])
+			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true, npc.get("length_m", 4.0), layer])
 	var shown := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	for vehicle in vehicles:
 		if sources.size() >= 80:
@@ -558,7 +561,7 @@ func headlight_sources() -> Array:
 		if not shown.has_point(c):
 			continue
 		var length := beam_length(lamp_near.call(c, 22.0), oncoming(vehicle, vehicles))
-		sources.append([c, vehicle[1], vehicle[2], vehicle[4] * 0.5, length, false])
+		sources.append([c, vehicle[1], vehicle[2], vehicle[4] * 0.5, length, false, float(deck_height.call(c, vehicle[5]))])
 	if not underground:
 		var later_trains := _by_id(b.get("trains", []))
 		for train in a.get("trains", []):
@@ -735,9 +738,12 @@ static func lamp_glow(at: Vector2, glow: Array, level: float, points: PackedVect
 
 func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Color, kind: String,
 		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false,
-		under := false) -> void:
+		under := false, layer := 0) -> void:
 	_tint = vehicle_light(light_level * float(light_at.call(c)), ambient)  # lit by the street lights it stands under
-	_under = under
+	_under = under and not Buildings3D.opaque  # --outdoor-3d: in 3D at its own height, the deck above it hides it
+	_layer = layer
+	if Buildings3D.opaque:
+		under = false
 	var shapes := _car_shapes
 	var lamps := _lamp_polys
 	var level := light_level
@@ -979,7 +985,8 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 					| (Buildings3D.LAMPS_REVERSE if reversing else 0) \
 					| (Buildings3D.LAMPS_LEFT if signal_on and turn_signal in ["left", "hazard"] else 0) \
 					| (Buildings3D.LAMPS_RIGHT if signal_on and turn_signal in ["right", "hazard"] else 0)
-				cars_3d.car(c, heading, length, width, color, shape, (2 if lit else 1) if is_taxi else 0, lamps)
+				cars_3d.car(c, heading, length, width, color, shape, (2 if lit else 1) if is_taxi else 0, lamps,
+					float(deck_height.call(c, _layer)) if Buildings3D.opaque else 0.0)
 				if Buildings3D.opaque:  # --outdoor-3d: its lamps are emissive parts of the body, the beams 3D lights
 					return
 				if is_taxi and lit:
@@ -1877,7 +1884,8 @@ func _draw() -> void:
 		_smoke(taxi_at, taxi.z, taxi_length, _clock, true, _exhaust)
 	taxi_sign_on = taxi_sign_lit(a.get("taxi", {}))
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
-		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under)
+		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under,
+		int(road.get("layer", 0)) if road.get("bridge", false) or int(road.get("layer", 0)) < 0 else 0)
 	taxi_sign_on = false
 	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
 	if smoke_timer > 0.0:
@@ -1901,7 +1909,7 @@ func _draw() -> void:
 		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
 			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
 			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false),
-			int(npc.get("layer", 0)) <= 0 and covered.call(c, int(npc.get("layer", 0))))
+			int(npc.get("layer", 0)) <= 0 and covered.call(c, int(npc.get("layer", 0))), int(npc.get("layer", 0)))
 		if npc.has("trailer"):  # a towed trailer: its own body, swinging on the hitch (server trailers.py)
 			_trailer(npc["trailer"], later_npcs.get(npc["id"], npc).get("trailer", npc["trailer"]), t)
 		if npc.get("bus_line") != null:  # a line bus: its number, like the destination display

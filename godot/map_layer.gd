@@ -590,6 +590,18 @@ func update_lights_3d(view: Rect2, level: float) -> void:
 	_layer_3d().set_area_lights(level, lamps, shops, floods)
 
 
+## Step 5 (--outdoor-3d): how high a vehicle on layer `layer` rides at `at`:
+## its bridge deck (ramped toward the deck's ends), the ground, or below it in a tunnel.
+func deck_height(at: Vector2, layer: int) -> float:
+	if layer <= 0:
+		return Buildings3D.deck_height(at, layer, PackedVector2Array())
+	var ends := PackedVector2Array()
+	for chunk in _chunks.values():
+		if chunk._bounds_rect.grow(Buildings3D.RAMP_M).has_point(at):
+			ends.append_array(chunk.bridge_ends)
+	return Buildings3D.deck_height(at, layer, ends)
+
+
 func set_shop_lights(states: Dictionary) -> void:
 	for id in states:
 		var chunk = _chunks.get(id)

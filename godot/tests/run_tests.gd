@@ -3263,6 +3263,35 @@ func test_buildings_3d() -> void:
 	var indicating: int = lamp_count.call(B3.LAMPS_ON | B3.LAMPS_LEFT)
 	check(parked == 0 and running > 0 and braking == running and indicating > running,
 		"lamps: dark when parked, head and tail lights with the engine, brighter (not more) when braking, an indicator adds its side")
+	# rtx-scene-readiness step 5: bridge decks ramp to where they meet a lower road; tunnels are below the ground
+	var ways := [{"points": [[100, 20], [100, 180]], "layer": 1}, {"points": [[100, 0], [100, 20]]}, {"points": [[100, 180], [100, 200]], "layer": 1},
+		{"points": [[0, 100], [200, 100]]}]
+	var ends := MapChunk.bridge_ends_of(ways, Vector2.ZERO)
+	check(ends.size() == 1 and ends[0].is_equal_approx(Vector2(100, -20)), "a bridge's end is where it meets a lower road, not where it joins more bridge")
+	check(is_equal_approx(B3.deck_height(Vector2(100, -100), 1, ends), B3.DECK_M) and B3.deck_height(Vector2(100, -40), 1, ends) > 0.0
+		and B3.deck_height(Vector2(100, -40), 1, ends) < B3.DECK_M and B3.deck_height(Vector2(100, -20), 1, ends) == 0.0
+		and B3.deck_height(Vector2(5, 5), -1, ends) < 0.0, "the deck: full height on the bridge, ramping to its end; a tunnel below ground")
+	var built := {"ground": PackedVector3Array(), "ground_colors": PackedColorArray(), "deck": PackedVector3Array(), "deck_colors": PackedColorArray(),
+		"canopy": PackedVector3Array(), "canopy_colors": PackedColorArray(), "road": PackedVector3Array(), "road_colors": PackedColorArray(),
+		"road_uv": PackedVector2Array(), "road_uv2": PackedVector2Array()}
+	B3._structures(built, {"bridge_ends": ends, "bridges": [[PackedVector2Array([Vector2(100, -20), Vector2(100, -180)]), 5.0, Color.GRAY, 1, 0, null, false]],
+		"canopies": [[PackedVector2Array([Vector2(150, -90), Vector2(162, -90), Vector2(162, -110), Vector2(150, -110)]), 5.0]]})
+	var deck_tops: Array = Array(built["road"]).map(func(v): return v.y)
+	check(is_equal_approx(deck_tops.max(), B3.DECK_M) and deck_tops.min() == 0.0, "the deck's road surface climbs from its end to full height")
+	check(Array(built["deck"]).any(func(v): return v.y < 0.01) and Array(built["deck"]).map(func(v): return v.y).max() > B3.DECK_M - 0.1,
+		"the slab and its piers stand from the ground up to the deck")
+	check(built["canopy"].size() >= 6 and Array(built["canopy"]).all(func(v): return is_equal_approx(v.y, 5.0)), "a canopy's roof at its height")
+	var meshes_built := B3.meshes(built.merged({"verts": PackedVector3Array(), "lit": PackedVector3Array(), "arena": PackedVector3Array(), "shadow": PackedVector3Array(),
+		"glass": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array()}))
+	check(meshes_built.any(func(n): return n.material_override == B3._shared["ground"] and n.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+		and meshes_built.any(func(n): return n.material_override == B3._shared["caster"] and n.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY),
+		"the deck casts its shadow; the see-through canopy casts a solid one")
+	for node in meshes_built:
+		node.free()
+	var grove := B3.trees_node([[Vector2.ZERO, "birch", 2.0, Color.GREEN, Color.WHITE, NAN], [Vector2(5, 0), "spruce", 2.0, Color.DARK_GREEN, Color.BROWN, NAN]], PackedVector2Array([Vector2(9, 0)]))
+	var counts: Array = grove.get_children().map(func(n): return n.multimesh.instance_count)
+	check(grove.get_child_count() == 3 and counts.reduce(func(a, b): return a + b) == 5, "trees as instances: two trunks and a bollard, a crown, a cone")
+	grove.free()
 	MapChunk.buildings_3d = false
 
 

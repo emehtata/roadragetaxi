@@ -260,6 +260,52 @@ Relevant code: [chunk_detail.gd](../godot/chunk_detail.gd),
 [map_chunk.gd](../godot/map_chunk.gd), [forest.gdshader](../godot/forest.gdshader),
 and `_vehicle_body` in [entity_layer.gd](../godot/entity_layer.gd).
 
+**Status (1 November 2026, verified):** with `--outdoor-3d`, bridge decks
+stand at `DECK_M` = 6 m per OSM layer. This is a client presentation policy;
+the layer is not metres, and no protocol change was needed. Decks ramp to the
+ground over 45 m toward where they meet a lower road. `map_chunk.bridge_ends_of`
+finds those ends from the whole ways, so neighbouring chunks agree. Each deck
+has:
+- a road surface in the road mesh;
+- a slab with a casting top, sides and underside;
+- piers every 24 m;
+- guardrails.
+
+Tunnels (negative layers) sit below the ground, which encloses them. Rail
+decks and rail-bridge tracks are slabs at deck height. Canopies have
+see-through roofs that throw solid shadows, on posts. Vehicles ride their
+deck through `map_layer.deck_height`, and so do their headlight spots. The
+2D under-bridge fallback is off on this path: a vehicle below a deck is 3D at
+ground level and hidden by it.
+
+These are 3D now:
+- trees, by kind and season, felled trees lying down, and bollards, as
+  MultiMesh instances of shared meshes rebuilt when the chunk redraws them;
+- hedges, walls, fences and rink boards, including broken hedges and wooden
+  fences;
+- construction fences, bus shelters and benches, and fuel pumps.
+
+Their 2D layers are hidden on this path. Shrubs, scenery objects, bus bays,
+signs and the forest canopy remain 2D overlays (Step 6, and the foliage
+check before dense forest).
+
+Evidence (Forward+/Vulkan):
+- a scripted bridge over a road: a car under the deck is hidden while one
+  beside it shows; cars ride the deck northbound and southbound; one sits
+  2.5 m up the ramp (6.0 m in the middle, 0 m at the end); the deck casts a
+  shadow; a canopy roof covers a car and throws a solid shadow;
+- a real road-over-road bridge in central Oulu: the deck
+  covers the road below, casts its shadow, and the taxi rides it;
+- a bridge over water with its ramp, and shore trees;
+- scripted props: trees, a felled birch, bollards, hedge, wall, fence, rink
+  boards, construction fence, bus shelter, bench, and pumps under a canopy,
+  all casting shadows;
+- client tests cover bridge ends, the deck profile, deck, slab and canopy
+  geometry and casting, and tree instancing.
+
+Not verified: the fork's ray-tracing cost per instance, and foliage
+materials. Dense forest stays 2D until that check is done.
+
 ## Step 6: complete nearby scene coverage
 
 Before offering outdoor RTX as a general gameplay option, cover the entities

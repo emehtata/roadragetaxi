@@ -579,7 +579,7 @@ static func draw_bus_stops(chunk, node: Node2D) -> void:
 		node.draw_colored_polygon(bay, _rgb(stop["color"]) if stop.has("color") else Color8(82, 82, 78))
 		node.draw_polyline(PackedVector2Array([bay[1], bay[2], bay[3], bay[0]]), Color8(175, 175, 168), 0.25)  # the kerb
 		for key in ["shelter", "bench"]:
-			if stop.get(key) == null:
+			if stop.get(key) == null or (chunk.get_script().outdoor_3d and chunk.get_script().buildings_3d):  # --outdoor-3d: 3D (buildings_3d._structures)
 				continue
 			var box: PackedVector2Array = chunk._points(stop[key])
 			if not _valid(box):

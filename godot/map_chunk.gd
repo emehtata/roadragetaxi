@@ -52,6 +52,8 @@ const SPRING_ICE_SPACING_M := 24.0
 var _data: Dictionary = {}
 var _origin := Vector2.ZERO
 var _bounds := PackedVector2Array()  # chunk rectangle in layer coordinates (clipping)
+var bridge_ends := PackedVector2Array()  # step 5: where this chunk's bridges meet lower roads (bridge_ends_of)
+var _dynamic_3d := {}  # --outdoor-3d: "trees", "railings" -> their 3D node, rebuilt as the 2D layer would redraw
 var _bounds_rect := Rect2()
 var _roads_by_z: Dictionary = {}  # z -> [road]
 var _wet := Node2D.new()  # wet-road darkening and sheen in one pass (RS.wet_overlay)
@@ -105,6 +107,9 @@ func _notification(what: int) -> void:
 		for node in [_pools, _floods, _heads, building_node] + meshes_3d:
 			if is_instance_valid(node) and node.get_parent() == null:
 				node.free()
+		for node in _dynamic_3d.values():
+			if is_instance_valid(node):
+				node.queue_free()
 
 
 func setup(message: Dictionary, origin: Vector2) -> void:
@@ -160,20 +165,20 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_rink_markings(self, node)))
 	for z in _roads_by_z:
 		var layer_z: int = z
-		var roads := _add_layer(z, func(node: Node2D): _draw_roads(layer_z, node), null, z <= 1)
+		var roads := _add_layer(z, func(node: Node2D): _draw_roads(layer_z, node), null, true)  # ground roads and bridge decks: 3D
 		roads.material = SURFACE_MATERIAL
 		_road_layers.append(roads)
 		if z > 1:
-			var wet := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
-			var puddles := _add_layer(z, func(node: Node2D): _draw_puddles(node, layer_z))
+			var wet := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z), null, true)
+			var puddles := _add_layer(z, func(node: Node2D): _draw_puddles(node, layer_z), null, true)
 			_bridge_weather.append([wet, puddles])
-		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_road_markings(layer_z, node), null, z <= 1))
+		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_road_markings(layer_z, node), null, true))
 	_add_layer(5, _draw_wet, _wet, true)
 	_add_layer(5, _draw_puddles, _puddles, true)
 	if not message.get("parking", []).is_empty():
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_parking(self, node), null, true))
 	if not message.get("guardrails", []).is_empty():
-		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_guardrails(self, node)))
+		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_guardrails(self, node), null, true))
 	if not message.get("bus_stops", []).is_empty():
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_bus_stops(self, node)))
 	var ground_tracks := _add_layer(1, func(node: Node2D): Detail.draw_tracks(self, node, "railways"))
@@ -184,20 +189,20 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		islands.material = SURFACE_MATERIAL
 		_season_layers.append(islands)
 	if not message.get("canopies", []).is_empty():
-		_add_layer(7, func(node: Node2D): Detail.draw_canopy_shadows(self, node))
-		var canopy_supports := _add_layer(7, _draw_canopy_supports)
+		_add_layer(7, func(node: Node2D): Detail.draw_canopy_shadows(self, node), null, true)
+		var canopy_supports := _add_layer(7, _draw_canopy_supports, null, true)
 		_px_layers.append(canopy_supports)
 		_canopy_layers.append(canopy_supports)
-		_px_layers.append(_add_layer(7, func(node: Node2D): Detail.draw_canopy_feet(self, node)))
+		_px_layers.append(_add_layer(7, func(node: Node2D): Detail.draw_canopy_feet(self, node), null, true))
 	if not message.get("curbs", []).is_empty() or not message.get("crossings", []).is_empty() or not message.get("speed_bumps", []).is_empty():
 		# Under the light pools (6): crossings and kerbs are lit like the road.
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_road_features(self, node), null, true))
 	if not message.get("canopies", []).is_empty():  # above vehicles; then rail bridges, then trains
-		var canopy_roofs := _add_layer(13, func(node: Node2D): Detail.draw_canopies(self, node))
+		var canopy_roofs := _add_layer(13, func(node: Node2D): Detail.draw_canopies(self, node), null, true)
 		_px_layers.append(canopy_roofs)
 		_canopy_layers.append(canopy_roofs)
 	if not message.get("rail_bridges", []).is_empty() or not message.get("rail_decks", []).is_empty():
-		_px_layers.append(_add_layer(13, func(node: Node2D): Detail.draw_rail_bridges(self, node)))
+		_px_layers.append(_add_layer(13, func(node: Node2D): Detail.draw_rail_bridges(self, node), null, true))
 	if not message.get("railings", []).is_empty():
 		_railings = _add_layer(8, _draw_railings)
 		_px_layers.append(_railings)
@@ -221,9 +226,9 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_trees = _add_layer(6, _draw_trees)
 		_px_layers.append(_trees)
 	if not message.get("construction_fences", []).is_empty():
-		_px_layers.append(_add_layer(8, _draw_fences))
+		_px_layers.append(_add_layer(8, _draw_fences, null, true))
 	if not message.get("fuel_stations", []).is_empty():
-		_px_layers.append(_add_layer(6, _draw_fuel_pumps))
+		_px_layers.append(_add_layer(6, _draw_fuel_pumps, null, true))
 		var boards := _add_layer(15, _draw_fuel_boards)  # above the trains (14)
 		boards.material = EMISSIVE  # lit price boards
 		_px_layers.append(boards)
@@ -237,6 +242,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_signs = _add_layer(8, func(node: Node2D): Detail.draw_signs(self, node, _flash))
 		_px_layers.append(_signs)
 	_puddle_spots = prepared["puddle_spots"]
+	bridge_ends = prepared.get("bridge_ends", PackedVector2Array())
 	_water_ripple_spots = prepared["water_ripple_spots"]
 	_build_2_5d()
 	set_wetness(_wetness)
@@ -273,6 +279,7 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 			roads_by_z[z] = []
 		roads_by_z[z].append(road)
 	var puddles := puddle_spots(message.get("roads", []), bounds_rect, origin)  # from the raw coordinates
+	var bridge_ends := bridge_ends_of(message.get("roads", []), origin)  # whole ways: every chunk a bridge crosses agrees
 	var points := _compact(message, origin)
 	if not bounds.is_empty():
 		_clip_to_bounds(message, bounds, bounds_rect, roads_by_z)
@@ -289,10 +296,32 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 		lights.append(MapMath.point(origin, light[0], light[1]))
 	var cells := light_cells_for(lights, message.get("street_lights", []))
 	message["prepared"] = {"origin": origin, "bounds_rect": bounds_rect, "bounds": bounds, "drivable_roads": drivable,
-		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "light_cells": cells, "puddle_spots": puddles,
+		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "light_cells": cells, "puddle_spots": puddles, "bridge_ends": bridge_ends,
 		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points,
 		# Rasterised here, on the parse worker: on the main thread it was a 60-115 ms hitch per forest chunk.
 		"forest_mask": forest_mask(message, bounds_rect, origin) if forest_canopy and message.get("landuse", []).any(_is_forest) else null}
+
+
+## rtx-scene-readiness step 5: where bridge ways (layer > 0) meet a lower road
+## at one of their ends, in layer coordinates - the 3D decks ramp down to these
+## (buildings_3d.deck_height). From the whole ways the server sends to every
+## chunk they touch, so neighbouring chunks agree.
+static func bridge_ends_of(roads: Array, origin: Vector2) -> PackedVector2Array:
+	var lower := {}  # a rounded point -> the lowest layer with a road through it
+	for road in roads:
+		var layer := int(road.get("layer", 0))
+		for point in road["points"]:
+			var key := Vector2i(roundi(point[0]), roundi(point[1]))
+			lower[key] = mini(int(lower.get(key, layer)), layer)
+	var ends := PackedVector2Array()
+	for road in roads:
+		var layer := int(road.get("layer", 0))
+		if layer <= 0 or road["points"].size() < 2:
+			continue
+		for point in [road["points"][0], road["points"][-1]]:
+			if int(lower.get(Vector2i(roundi(point[0]), roundi(point[1])), layer)) < layer:
+				ends.append(MapMath.point(origin, point[0], point[1]))
+	return ends
 
 
 static func _is_forest(area) -> bool:
@@ -411,9 +440,10 @@ func _add_layer(z: int, draw: Callable, node: Node2D = null, in_3d := false) -> 
 	if node == null:
 		node = Node2D.new()
 	node.z_index = z
-	if outdoor_3d and buildings_3d and z < 7:
+	if outdoor_3d and buildings_3d:
 		node.visible = not in_3d
-		node.z_index = 8 + clampi(z, 0, 6) / 2
+		if z < 7:
+			node.z_index = 8 + clampi(z, 0, 6) / 2
 	if Perf.keep_all:  # --bench: each layer's redraws, by z and draw function
 		var section := "draw_z%d_%s" % [z, draw.get_method()]
 		node.draw.connect(func(): var t := Time.get_ticks_usec(); draw.call(node); Perf.add(section, Time.get_ticks_usec() - t))
@@ -676,8 +706,35 @@ func _build_2_5d() -> void:
 		var ice := clampf(_season[0], 0.0, 1.0)
 		for water in _data.get("waters", []):
 			areas.append([_points(water), Color(0.20, 0.26, 0.29).lerp(Color8(232, 240, 244), ice), ice < 0.5])
+		var bridges: Array = []  # step 5: the decks
+		for road in _data.get("roads", []):
+			if int(road.get("layer", 0)) > 0:
+				var center = road.get("center")
+				bridges.append([_points(road["points"]), maxf(0.3, float(road.get("half_width_m", 1.5))),
+					Detail._rgb(road["color"]) if road.has("color") else Color(0.33, 0.33, 0.35), int(road.get("layer", 1)), int(road.get("rank", 0)),
+					Detail._rgb(center) if center != null else null, center != null and int(center[3]) == 2])
+		var guardrails: Array = []
+		for r in _data.get("guardrails", []):  # bridge guardrails carry no layer: the common first one
+			guardrails.append([MapMath.point(_origin, r[0], r[1]), MapMath.point(_origin, r[2], r[3]), 1])
+		var canopies: Array = []
+		for index in _data.get("canopies", []).size():
+			canopies.append([_points(_data["canopies"][index]), Detail.canopy_height(self, index)])
+		var shelters: Array = []
+		for stop in _data.get("bus_stops", []):
+			for key in ["shelter", "bench"]:
+				if stop.get(key) != null:
+					shelters.append([_points(stop[key]), key])
+		var pumps: Array = []
+		for station in _data.get("fuel_stations", []):
+			var at := MapMath.point(_origin, station["x"], station["y"])
+			var along := Vector2(cos(station["angle"]), -sin(station["angle"]))
+			for offset: float in ([-0.85, 0.85] if station["is_area"] else [0.0]):
+				pumps.append([at + along * offset, along])
 		ground = {"rect": _bounds_rect, "roads": roads, "areas": areas, "islands": islands, "curbs": curbs, "stripes": stripes,
-			"bumps": bumps, "puddles": puddles}
+			"bumps": bumps, "puddles": puddles, "bridges": bridges, "bridge_ends": bridge_ends, "guardrails": guardrails,
+			"rail_decks": _data.get("rail_decks", []).map(func(d): return _points(d)), "rail_tracks": _data.get("rail_bridges", []).map(func(d): return _points(d)),
+			"canopies": canopies, "site_fences": _data.get("construction_fences", []).map(func(d): return _points(d)),
+			"shelters": shelters, "pumps": pumps}
 	if buildings_3d and not (buildings.is_empty() and sites.is_empty() and landmarks.is_empty() and ground.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
 		if not build_async:
 			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground))
@@ -1270,6 +1327,10 @@ static func tree_style(kind: String, variation: float) -> Dictionary:
 ## tree's position (same shape every redraw); a felled tree lies 3.2 m
 ## along the way it was hit, trunk showing. Then the standing bollards.
 func _draw_trees(node: Node2D) -> void:
+	if outdoor_3d and buildings_3d:  # step 5: the trees and bollards are 3D; shrubs and scenery stay 2D overlays
+		_trees_3d()
+		_draw_scenery(node)
+		return
 	var rng := RandomNumberGenerator.new()
 	var crowns := Strokes.new()  # one draw call for the crowns (rrt-019.1)
 	for tree in _data.get("trees", []):
@@ -1314,6 +1375,10 @@ func _draw_trees(node: Node2D) -> void:
 	for post in _data.get("bollards", []):
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			node.draw_circle(MapMath.point(_origin, post[0], post[1]), maxf(_px(1.0), 0.25), Color8(48, 48, 46))
+	_draw_scenery(node)
+
+
+func _draw_scenery(node: Node2D) -> void:
 	var shrubs := PackedVector2Array()
 	for obj in _data.get("scenery_objects", []):
 		if obj[2] == "shrub":
@@ -1545,7 +1610,54 @@ static func fence_lines(points: PackedVector2Array) -> Array:
 
 
 ## Batch each stroke style: a city has thousands of fences.
+## --outdoor-3d: this chunk's trees (as the 2D crowns: seasonal colour, a
+## leafless birch's bare crown, a felled one lying) and standing bollards as
+## buildings_3d instances, rebuilt when the layer would redraw.
+func _trees_3d() -> void:
+	var rows: Array = []
+	for tree in _data.get("trees", []):
+		var kind := str(tree[2])
+		var style := tree_style(kind, float(tree[3]))
+		var crown: Color = style["crown"]
+		var radius: float = style["radius"]
+		if kind == "pine" or kind == "spruce":
+			crown = crown.lerp(Color8(226, 234, 238), clampf(_season[0], 0.0, 1.0))
+		elif _trees_leafless and kind == "birch":
+			crown = Color8(91, 70, 48).lerp(Color8(226, 234, 238), 0.6 * clampf(_season[0], 0.0, 1.0))
+			radius *= 0.6
+		else:
+			crown = seasonal_color(crown, _season)
+		var key := obstacle_key(tree[0], tree[1])
+		rows.append([MapMath.point(_origin, tree[0], tree[1]), kind, radius, crown, style["trunk"], float(_fallen[key]) if _fallen.has(key) else NAN])
+	var bollards := PackedVector2Array()
+	for post in _data.get("bollards", []):
+		if not _knocked.has(obstacle_key(post[0], post[1])):
+			bollards.append(MapMath.point(_origin, post[0], post[1]))
+	_set_dynamic_3d("trees", B3.trees_node(rows, bollards))
+
+
+## A rebuilt 3D part of this chunk replaces the old one in the 3D view.
+func _set_dynamic_3d(name: String, node: Node3D) -> void:
+	if _dynamic_3d.has(name) and is_instance_valid(_dynamic_3d[name]):
+		_dynamic_3d[name].queue_free()
+	_dynamic_3d.erase(name)
+	if node != null and B3.current != null:
+		B3.current.add([node])
+		_dynamic_3d[name] = node
+	elif node != null:
+		node.free()
+
+
 func _draw_railings(node: Node2D) -> void:
+	if outdoor_3d and buildings_3d:  # step 5: standing in the 3D view (what is left of broken hedges and wooden fences)
+		var rows: Array = []
+		for railing in _data["railings"]:
+			var kind := str(railing[0]) if railing[0] in ["hedge", "wall", "boards"] else "fence"
+			var parts: Array = _hedge_damage.get(hedge_key(railing), [railing[1]]) if railing[0] in ["hedge", "wood_fence"] else [railing[1]]
+			for part in parts:
+				rows.append([kind, _points(part)])
+		_set_dynamic_3d("railings", B3.railings_node(rows))
+		return
 	var lines := {"hedge": PackedVector2Array(), "wall": PackedVector2Array(), "fence": PackedVector2Array(), "boards": PackedVector2Array()}
 	var fence_rails := PackedVector2Array()
 	var fence_posts := PackedVector2Array()

@@ -362,7 +362,9 @@ static func lit_color(level: float, ambient := Color.WHITE) -> Color:
 func add(instances: Array) -> void:
 	for node in instances:
 		if node.get_parent() == null:
-			if node.material_override == _shared["lit"]:
+			if not node is GeometryInstance3D:  # a group (a chunk's trees)
+				pass
+			elif node.material_override == _shared["lit"]:
 				node.visible = _lit_on
 			elif node.material_override == _shared["arena"]:
 				node.visible = _arena_on
@@ -503,7 +505,7 @@ func set_headlights(level: float, sources: Array) -> void:
 		var forward := Vector2(cos(source[1]), -sin(source[1]))  # entity_layer._forward
 		var reach := float(source[4])
 		var high := reach > 15.0
-		spot.position = to_3d(source[0] + forward * float(source[3]), 0.65)
+		spot.position = to_3d(source[0] + forward * float(source[3]), 0.65 + (float(source[6]) if source.size() > 6 else 0.0))  # on its deck
 		spot.basis = Basis.looking_at(Vector3(forward.x, -0.6 / maxf(reach, 1.0) - 0.02, forward.y).normalized(), Vector3.UP)
 		spot.spot_range = reach * 1.3
 		spot.spot_angle = 22.0 if high else 38.0
@@ -552,7 +554,7 @@ func begin_cars() -> void:
 ## A car at `at` (layer position) facing `heading` (as the 2D layer's):
 ## `shape` is entity_layer's CAR_SHAPES row; `sign` 0 none, 1 a taxi sign off, 2 lit;
 ## `lamps` the LAMPS_* lit now.
-func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0) -> void:
+func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0, elevation := 0.0) -> void:
 	var key := "%s|%s|%.2f|%.2f|%d|%d" % [color.to_html(false), shape, length, width, sign, lamps]
 	if not _car_meshes.has(key):
 		if _car_meshes.size() > 512:  # ponytail: drop the whole cache, an LRU if colours ever vary per frame
@@ -569,7 +571,7 @@ func car(at: Vector2, heading: float, length: float, width: float, color: Color,
 		_cars_root.add_child(body)
 		_cars_root.add_child(caster)
 		_car_nodes.append([body, caster])
-	var place := Transform3D(Basis(Vector3.UP, heading), to_3d(at, ROAD_M + 0.016 if opaque else 0.0))  # on the road surface (step 3), not in it  # local +x forward, +z right (entity_layer _forward/_right)
+	var place := Transform3D(Basis(Vector3.UP, heading), to_3d(at, (ROAD_M + 0.016 if opaque else 0.0) + elevation))  # on the road surface (step 3), not in it  # local +x forward, +z right (entity_layer _forward/_right)
 	for i in 2:
 		var node: MeshInstance3D = _car_nodes[_cars_used][i]
 		node.mesh = _car_meshes[key][i]
@@ -683,6 +685,8 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 		"wall_uv": PackedVector2Array(), "window": PackedFloat32Array(),  # the shader's windows (building_snow.gdshader)
 		"arena": PackedVector3Array(), "shadow": PackedVector3Array(), "glass": PackedVector3Array(), "glass_colors": PackedColorArray(),
 		"ground": PackedVector3Array(), "ground_colors": PackedColorArray(),
+		"deck": PackedVector3Array(), "deck_colors": PackedColorArray(),  # step 5: solid structures that cast (bridges, fences, shelters)
+		"canopy": PackedVector3Array(), "canopy_colors": PackedColorArray(),  # step 5: see-through open roofs
 		"road": PackedVector3Array(), "road_colors": PackedColorArray(), "road_uv": PackedVector2Array(), "road_uv2": PackedVector2Array(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
 	if not ground.is_empty():
@@ -705,6 +709,16 @@ static func meshes(arrays: Dictionary) -> Array:
 	var instances: Array = []
 	if not arrays.get("ground", PackedVector3Array()).is_empty():
 		instances.append(_instance(_mesh(arrays["ground"], arrays["ground_colors"]), _shared["ground"], LAYER_BUILDINGS))
+	if not arrays.get("deck", PackedVector3Array()).is_empty():
+		var deck := _instance(_mesh(arrays["deck"], arrays["deck_colors"]), _shared["ground"], LAYER_BUILDINGS)
+		deck.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		instances.append(deck)
+	if not arrays.get("canopy", PackedVector3Array()).is_empty():
+		var roof_mesh := _mesh(arrays["canopy"], arrays["canopy_colors"])
+		instances.append(_instance(roof_mesh, _shared["glass"], LAYER_BUILDINGS))  # see-through: the taxi and the pumps show under it
+		var roof_shadow := _instance(roof_mesh, _shared["caster"], LAYER_BUILDINGS)  # but its shade is solid
+		roof_shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		instances.append(roof_shadow)
 	if not arrays.get("road", PackedVector3Array()).is_empty():
 		instances.append(_instance(_mesh(arrays["road"], arrays["road_colors"], arrays["road_uv"], PackedVector2Array(), PackedFloat32Array(), arrays["road_uv2"]),
 			_shared.get("road", _shared["ground"]), LAYER_BUILDINGS))
@@ -1092,6 +1106,257 @@ static func _ground(out: Dictionary, ground: Dictionary) -> void:
 		for i in curb.size() - 1:
 			if curb[i].distance_to(curb[i + 1]) > 1e-3:
 				_raised_strip(out, curb[i], curb[i + 1], CURB_HALF_M, 0.0, CURB_M, Color8(145, 145, 140), "ground")
+	_structures(out, ground)
+
+
+## rtx-scene-readiness step 5: bridge decks at their height (DECK_M per OSM
+## layer: a game policy, the layer is not metres), ramping down to where they
+## meet a lower road; their slab and piers cast shadows; guardrails on them.
+## Rail decks, open canopies on their posts, construction fences, bus
+## shelters and benches, fuel pumps.
+const DECK_M := 6.0  # a bridge's deck above the road it crosses, per layer (4.6 m clearance + structure)
+const RAMP_M := 45.0  # a deck climbs to its height over this from where it meets a lower road
+const SLAB_M := 0.8
+const PIER_EVERY_M := 24.0
+const DECK_STEP_M := 5.0  # the deck follows its ramp in pieces this long
+const GUARDRAIL_M := 0.9
+const DECK_COLOR := Color8(150, 150, 146)
+const BALLAST := Color8(120, 112, 100)
+
+
+## A deck's height at `at` on a layer-`layer` bridge: full height, eased down
+## to the ground over RAMP_M toward the nearest end (`ends`: where bridge ways
+## meet a lower road, map_chunk.prepare). Negative layers: tunnels, below ground.
+static func deck_height(at: Vector2, layer: int, ends: PackedVector2Array) -> float:
+	if layer <= 0:
+		return float(layer) * DECK_M
+	var nearest := INF
+	for end in ends:
+		nearest = minf(nearest, at.distance_to(end))
+	return float(layer) * DECK_M * smoothstep(0.0, RAMP_M, nearest)
+
+
+static func _structures(out: Dictionary, ground: Dictionary) -> void:
+	var ends: PackedVector2Array = ground.get("bridge_ends", PackedVector2Array())
+	for bridge: Array in ground.get("bridges", []):  # [points, half width, colour, layer, rank, centre colour, solid]
+		var points: PackedVector2Array = bridge[0]
+		var half: float = bridge[1]
+		var since_pier := PIER_EVERY_M * 0.5
+		for i in points.size() - 1:
+			var length := points[i].distance_to(points[i + 1])
+			var pieces := maxi(1, ceili(length / DECK_STEP_M))
+			for k in pieces:
+				var a := points[i].lerp(points[i + 1], float(k) / pieces)
+				var b := points[i].lerp(points[i + 1], float(k + 1) / pieces)
+				var ha := deck_height(a, bridge[3], ends)
+				var hb := deck_height(b, bridge[3], ends)
+				_deck_piece(out, a, b, half, ha, hb, bridge[2], 0.002 * clampi(bridge[4], 0, 8))
+				if bridge[5] != null and half >= 2.0 and (k % 2 == 0 or bridge[6]):  # its centre line, dashed by pieces
+					_sloped_strip(out, "road", a, b, MARKING_HALF_M, ha + 0.05, hb + 0.05, bridge[5], Vector2.ZERO, Vector2.ZERO)
+				since_pier += a.distance_to(b)
+				if since_pier >= PIER_EVERY_M and minf(ha, hb) > SLAB_M + 1.0:
+					since_pier = 0.0
+					_box3d(out, "deck", b, 0.5, 0.0, minf(ha, hb) - SLAB_M, DECK_COLOR.darkened(0.15))
+	for rail: Array in ground.get("guardrails", []):  # [from, to, layer]
+		var ha := deck_height(rail[0], rail[2], ends)
+		var hb := deck_height(rail[1], rail[2], ends)
+		_sloped_wall(out, rail[0], rail[1], 0.06, ha, hb, GUARDRAIL_M, Color8(170, 172, 168))
+	for deck: PackedVector2Array in ground.get("rail_decks", []):  # a railway bridge: a slab at deck height, ballast on top
+		_raised_polygon_at(out, "deck", deck, DECK_M - SLAB_M, DECK_M, BALLAST)
+	for line: PackedVector2Array in ground.get("rail_tracks", []):  # its rails, on the ballast
+		for i in line.size() - 1:
+			_sloped_strip(out, "deck", line[i], line[i + 1], 0.9, DECK_M + 0.03, DECK_M + 0.03, Color8(70, 66, 60), Vector2.ZERO, Vector2.ZERO)
+	for canopy: Array in ground.get("canopies", []):  # [polygon, height]: a thin see-through roof on posts at its corners
+		var polygon: PackedVector2Array = canopy[0]
+		var height: float = canopy[1]
+		_flat_polygon(out, polygon, height, Color(0.78, 0.80, 0.82, 0.55), "canopy")
+		for p in polygon:
+			_box3d(out, "deck", p, 0.12, 0.0, height, Color8(150, 150, 150))
+	for ring: PackedVector2Array in ground.get("site_fences", []):  # construction sites: an orange 2 m mesh fence
+		for i in ring.size():
+			_sloped_wall(out, ring[i], ring[(i + 1) % ring.size()], 0.05, 0.0, 0.0, 2.0, Color8(235, 140, 30))
+	for box: Array in ground.get("shelters", []):  # [footprint, kind]: a bus shelter's glass box roof, a bench
+		var footprint: PackedVector2Array = box[0]
+		if box[1] == "shelter":
+			_raised_polygon_at(out, "deck", footprint, 2.3, 2.45, Color8(70, 80, 90))
+			for p in footprint:
+				_box3d(out, "deck", p, 0.05, 0.0, 2.3, Color8(70, 80, 90))
+		else:
+			_raised_polygon_at(out, "deck", footprint, 0.0, 0.45, Color8(120, 82, 50))
+	for pump: Array in ground.get("pumps", []):  # [position, along]
+		var along: Vector2 = pump[1]
+		_raised_polygon_at(out, "deck", PackedVector2Array([pump[0] - along * 0.4 - along.orthogonal() * 0.25, pump[0] + along * 0.4 - along.orthogonal() * 0.25,
+			pump[0] + along * 0.4 + along.orthogonal() * 0.25, pump[0] - along * 0.4 + along.orthogonal() * 0.25]), 0.0, 1.6, Color8(205, 62, 48))
+
+
+## Step 5: a chunk's trees and bollards as instances of shared meshes (one
+## MultiMesh each: trunks, round crowns, conifer cones, bollards), rebuilt
+## when the chunk redraws them (one felled, the season); rows
+## [position, kind, crown radius, crown colour, trunk colour, felled angle or NAN].
+static var _tree_meshes := {}
+
+
+static func _tree_mesh(name: String) -> Mesh:
+	if _tree_meshes.is_empty():
+		var material := StandardMaterial3D.new()
+		material.vertex_color_use_as_albedo = true
+		material.vertex_color_is_srgb = true
+		material.roughness = 0.9
+		var trunk := CylinderMesh.new()
+		trunk.top_radius = 0.5
+		trunk.bottom_radius = 0.5
+		trunk.height = 1.0
+		trunk.radial_segments = 6
+		trunk.rings = 1
+		var crown := SphereMesh.new()
+		crown.radius = 1.0
+		crown.height = 1.6
+		crown.radial_segments = 8
+		crown.rings = 4
+		var cone := CylinderMesh.new()
+		cone.top_radius = 0.0
+		cone.bottom_radius = 1.0
+		cone.height = 1.0
+		cone.radial_segments = 8
+		cone.rings = 1
+		for mesh in [trunk, crown, cone]:
+			mesh.material = material
+		_tree_meshes = {"trunk": trunk, "crown": crown, "cone": cone}
+	return _tree_meshes[name]
+
+
+static func trees_node(rows: Array, bollards: PackedVector2Array) -> Node3D:
+	var parts := {"trunk": [], "crown": [], "cone": []}  # [Transform3D, Color]
+	for row: Array in rows:
+		var at: Vector2 = row[0]
+		var radius: float = row[2]
+		var conifer: bool = row[1] == "pine" or row[1] == "spruce"
+		var felled: float = row[5]
+		var trunk_top := radius * (2.6 if row[1] == "pine" else 1.0 if row[1] == "spruce" else 1.6)
+		var crown_top := trunk_top + radius * (3.2 if conifer else 1.6)
+		if not is_nan(felled):  # lying along where it fell: trunk and crown on the ground
+			var along := Vector2(cos(felled), -sin(felled))
+			var lying := Basis.looking_at(to_3d(along), Vector3.UP) * Basis(Vector3.RIGHT, -PI / 2.0)
+			parts["trunk"].append([Transform3D(lying.scaled(Vector3(radius * 0.18, trunk_top, radius * 0.18)), to_3d(at + along * trunk_top * 0.5, 0.25)), row[4]])
+			parts["crown"].append([Transform3D(Basis().scaled(Vector3(radius, radius * 0.5, radius)), to_3d(at + along * (trunk_top + radius), radius * 0.4)), row[3]])
+			continue
+		parts["trunk"].append([Transform3D(Basis().scaled(Vector3(radius * 0.16, trunk_top + radius, radius * 0.16)), to_3d(at, (trunk_top + radius) * 0.5)), row[4]])
+		if conifer:
+			parts["cone"].append([Transform3D(Basis().scaled(Vector3(radius, crown_top - trunk_top, radius)), to_3d(at, (trunk_top + crown_top) * 0.5)), row[3]])
+		else:
+			parts["crown"].append([Transform3D(Basis().scaled(Vector3(radius, radius, radius)), to_3d(at, trunk_top + radius * 0.8)), row[3]])
+	for post in bollards:
+		parts["trunk"].append([Transform3D(Basis().scaled(Vector3(0.24, 0.9, 0.24)), to_3d(post, 0.45)), Color8(48, 48, 46)])
+	var node := Node3D.new()
+	for name in parts:
+		if parts[name].is_empty():
+			continue
+		var multi := MultiMesh.new()
+		multi.transform_format = MultiMesh.TRANSFORM_3D
+		multi.use_colors = true
+		multi.mesh = _tree_mesh(name)
+		multi.instance_count = parts[name].size()
+		for i in parts[name].size():
+			multi.set_instance_transform(i, parts[name][i][0])
+			multi.set_instance_color(i, parts[name][i][1])
+		var instance := MultiMeshInstance3D.new()
+		instance.multimesh = multi
+		instance.layers = LAYER_BUILDINGS
+		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		node.add_child(instance)
+	return node
+
+
+## Step 5: hedges, walls, fences and rink boards standing along their lines,
+## casting shadows; rows [kind, PackedVector2Array]. Rebuilt with the chunk's
+## railings (a hedge or wooden fence broken through).
+const RAILINGS := {"hedge": [0.8, 1.3, Color8(34, 62, 34)], "wall": [0.3, 1.5, Color8(175, 164, 144)],
+	"fence": [0.08, 1.2, Color8(205, 193, 157)], "boards": [0.12, 1.1, Color8(240, 242, 244)]}
+
+
+static func railings_node(rows: Array) -> MeshInstance3D:
+	var out := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	for row: Array in rows:
+		var style: Array = RAILINGS.get(row[0], RAILINGS["fence"])
+		var line: PackedVector2Array = row[1]
+		for i in line.size() - 1:
+			_sloped_wall(out, line[i], line[i + 1], style[0], 0.0, 0.0, style[1], style[2])
+	if out["deck"].is_empty():
+		return null
+	var node := _instance(_mesh(out["deck"], out["deck_colors"]), _shared["ground"], LAYER_BUILDINGS)
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	return node
+
+
+## One piece of a deck from a to b: its road surface (the road mesh: wet,
+## snowy, patterned), the slab under it with a casting top just below the
+## surface, its sides and underside.
+static func _deck_piece(out: Dictionary, a: Vector2, b: Vector2, half: float, ha: float, hb: float, color: Color, lift: float) -> void:
+	_sloped_strip(out, "road", a, b, half, ha + lift, hb + lift, color, Vector2(ROAD_SURFACE, 0), Vector2(0, 1))
+	_sloped_strip(out, "deck", a, b, half, ha - 0.02, hb - 0.02, DECK_COLOR)
+	_sloped_strip(out, "deck", a, b, half, ha - SLAB_M, hb - SLAB_M, DECK_COLOR.darkened(0.3), Vector2.ZERO, Vector2.ZERO, true)
+	var side := (b - a).normalized().orthogonal() * half
+	for s: float in [1.0, -1.0]:
+		_sloped_wall(out, a + side * s, b + side * s, 0.0, ha - SLAB_M, hb - SLAB_M, SLAB_M, DECK_COLOR.darkened(0.1), side * s)
+
+
+## A strip from a to b, `half` either side, at heights ha..hb; `down`: facing down (an underside).
+static func _sloped_strip(out: Dictionary, key: String, a: Vector2, b: Vector2, half: float, ha: float, hb: float, color: Color,
+		uv := Vector2.ZERO, uv2 := Vector2.ZERO, down := false) -> void:
+	var side := (b - a).normalized().orthogonal() * half
+	var corners := [to_3d(a - side, ha), to_3d(b - side, hb), to_3d(b + side, hb), to_3d(a + side, ha)]
+	for tri in [[0, 1, 2], [0, 2, 3]]:
+		var p: Vector3 = corners[tri[0]]
+		var q: Vector3 = corners[tri[1]]
+		var r: Vector3 = corners[tri[2]]
+		if ((q - p).cross(r - p).y > 0.0) != down:  # Godot's clockwise front faces: the cross points away from the viewer
+			var t := q
+			q = r
+			r = t
+		_ground_push(out, key, p, q, r, color, uv, uv2)
+
+
+## A wall `thick` thick along a..b, standing `tall` on heights ha..hb (both sides and its top), facing `outward` if given.
+static func _sloped_wall(out: Dictionary, a: Vector2, b: Vector2, thick: float, ha: float, hb: float, tall: float, color: Color,
+		outward := Vector2.ZERO) -> void:
+	if a.distance_squared_to(b) < 1e-6:
+		return
+	var side := (b - a).normalized().orthogonal()
+	var faces := [outward] if outward != Vector2.ZERO else [side, -side]
+	for facing: Vector2 in faces:
+		var off := facing.normalized() * thick * 0.5
+		var quad := [to_3d(a + off, ha), to_3d(b + off, hb), to_3d(b + off, hb + tall), to_3d(a + off, ha + tall)]
+		for tri in [[0, 1, 2], [0, 2, 3]]:
+			var p: Vector3 = quad[tri[0]]
+			var q: Vector3 = quad[tri[1]]
+			var r: Vector3 = quad[tri[2]]
+			if (q - p).cross(r - p).dot(to_3d(facing)) > 0.0:
+				var t := q
+				q = r
+				r = t
+			_ground_push(out, "deck", p, q, r, color.darkened(0.12), Vector2.ZERO, Vector2.ZERO)
+	if thick > 0.0:
+		_sloped_strip(out, "deck", a, b, thick * 0.5, ha + tall, hb + tall, color)
+
+
+## A square post (half width `half`) from `bottom` to `top`.
+static func _box3d(out: Dictionary, key: String, at: Vector2, half: float, bottom: float, top: float, color: Color) -> void:
+	var square := PackedVector2Array([at + Vector2(-half, -half), at + Vector2(half, -half), at + Vector2(half, half), at + Vector2(-half, half)])
+	_raised_polygon_at(out, key, square, bottom, top, color)
+
+
+## A prism over `polygon` from `bottom` to `top`: its top and walls.
+static func _raised_polygon_at(out: Dictionary, key: String, polygon: PackedVector2Array, bottom: float, top: float, color: Color) -> void:
+	if polygon.size() < 3:
+		return
+	_flat_polygon(out, polygon, top, color, key)
+	var winding := signf(_signed_area(polygon))
+	for i in polygon.size():
+		var p := polygon[i]
+		var q := polygon[(i + 1) % polygon.size()]
+		var edge := q - p
+		if edge.length_squared() > 1e-6:
+			_ground_wall(out, p, q, bottom, top, color.darkened(0.12), Vector2(edge.y, -edge.x) * winding, key)
 
 
 static func _flat_polygon(out: Dictionary, polygon: PackedVector2Array, h: float, color: Color, key: String, uv := Vector2.ZERO) -> void:
