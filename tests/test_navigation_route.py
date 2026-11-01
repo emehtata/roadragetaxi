@@ -22,7 +22,7 @@ def _grid(blocks=12, step=40.0):
 
 def _world(traffic=None, target=None):
     taxi = SimpleNamespace(target=target)
-    taxi.get_current_target = lambda: taxi.target
+    taxi.navigation_target = lambda: taxi.target
     return SimpleNamespace(traffic_mgr=traffic or TrafficWorld(_grid()), taxi_mgr=taxi, level_routes=None)
 
 

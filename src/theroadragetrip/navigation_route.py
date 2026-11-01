@@ -2,7 +2,8 @@
 
 The route lifecycle, for every client:
 
-- **No route without a target.**
+- **No route without a target:** the fare's pickup/drop-off, or an accepted
+  pre-booked pickup's taxi stand.
 - **When it replans:** for a new pickup/drop-off target, a new map level, a new
   route graph (`route_graph_revision`), or when the taxi is more than 35 m from
   every segment.
@@ -198,7 +199,7 @@ class NavigationRoute:
 
     def update(self, world, car, current_way=None) -> None:
         """Once per server tick, after the simulation step."""
-        target = world.taxi_mgr.get_current_target()
+        target = world.taxi_mgr.navigation_target()
         if (target is not None and getattr(target,"municipality",None)
                 and getattr(target,"intercity_place_id",None) and getattr(world,"intercity_database",None)
                 and getattr(car,"map_level",SURFACE_LEVEL) == SURFACE_LEVEL):

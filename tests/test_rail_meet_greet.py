@@ -435,3 +435,19 @@ def test_the_phone_queues_nothing_while_a_job_is_on():
     manager = taxi(pending)
     manager.current_passenger = SimpleNamespace(name="Eero")  # a fare on
     assert not manager.accept_offer(0, 0.0, 0.0) and booking.status == "PENDING"
+
+
+def test_navigation_leads_to_the_stand_from_acceptance_until_the_passenger_is_met():
+    bookings, train = booked_train("Aino Virtanen")
+    manager = taxi(bookings)
+    target = manager.navigation_target()  # accepted, train still due
+    assert (target.x, target.y) == (STAND.x, STAND.y) and manager.get_current_target() is None
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    assert (manager.navigation_target().x, manager.navigation_target().y) == (STAND.x, STAND.y)  # waiting there
+    player = get_out(car, manager)
+    walk_to(player, passenger.pedestrian)
+    press_f(car, player, manager)
+    assert manager.navigation_target() is manager.get_current_target()  # met: the fare's own target from here
+    passenger.booking.status = MISSED
+    manager.current_passenger = None
+    assert manager.navigation_target() is None
