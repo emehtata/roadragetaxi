@@ -69,7 +69,8 @@ var _trains_drawn := 0
 var _brawl_punches := {}  # brawl id -> [last action seq seen, when its punch began]
 const BRAWL_JACKETS := [[40, 40, 48], [120, 30, 30]]
 const PLAYER_JACKET := [255, 217, 64]  # the player's own on-foot colour
-var _tracks: Node2D  # tyre tracks, z 8 (before roadworks and signs)
+var _tracks: Node2D  # tyre tracks, z 10 (before roadworks and signs); z 6 under the 3D cars (TRACKS_UNDER_3D_Z)
+const TRACKS_UNDER_3D_Z := -6  # 12 - 6: under the 3D building view's cars (7), over the roads and puddles (5)
 var _trails: Array = []  # [kind, [[position, heading, intensity, front, snowfall when laid], ...], its Node2D]
 const TRACK_SEGMENT := 200  # points per trail segment: a new point redraws only its own segment
 const TRACK_SNOW_COVER_S := 120.0  # seconds of snowfall that cover a tyre track completely
@@ -339,6 +340,7 @@ func update_frame(delta: float) -> void:
 ## points (the oldest trails go, down to 3500); the oldest go once a
 ## viewport diagonal away.
 func _lay_track() -> void:
+	_tracks.z_index = TRACKS_UNDER_3D_Z if Buildings3D.current != null else -2  # 3D car bodies: the tracks go under them
 	if not is_equal_approx(_last_track_px, px_per_m):
 		_last_track_px = px_per_m
 		for trail in _trails:  # line widths are in pixels
