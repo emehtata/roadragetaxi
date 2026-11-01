@@ -1,7 +1,9 @@
 # NVIDIA RTX Godot: experimental adoption analysis
 
-Research date: 1 November 2026. This is an implementation proposal, not a
-claim that the fork has been built or the game tested on it.
+Research and project status reviewed: 1 November 2026. Engine integration
+remains a proposal. The completed 3D vehicle work below is verified from the
+repository source; it does not establish that the NVIDIA fork has been built
+or that the game has been tested on it.
 
 For the ordered game-scene conversion prerequisites, see
 [Outdoor scene prerequisites before enabling RTX](rtx-scene-readiness.md).
@@ -13,12 +15,46 @@ Forward+ raster rendering before enabling path tracing in a selected 3D view.
 Use the existing first-person home interior as the first path tracing trial:
 it already has shaded meshes, a dedicated 3D world and an Environment. Treat
 outdoor path tracing as a later rendering project because the driving view
-combines a 2D map with transparent 3D building and shadow textures.
+combines a 2D map with a transparent 3D building/vehicle view and a separate
+shadow texture. Follow the [scene readiness plan](rtx-scene-readiness.md)
+for the ordered outdoor conversion and its completion criteria.
 
 A successful engine launch alone does not establish path tracing support.
 The adoption gates are: compatible engine, working Vulkan Forward+, working
 Streamline features, correctly configured per-view Environment, and measured
 visual benefit at an acceptable cost.
+
+## Implementation status
+
+Completed in commit `0a1461b` (Cars in 3D):
+
+- Ordinary car, van and taxi bodies now use generated 3D geometry in the same
+  World3D and camera as buildings. This includes body shapes, wheels,
+  glasshouse geometry and taxi roof signs.
+- Vehicle body and shadow-caster instances are pooled; generated meshes are
+  cached. The existing separate ground-shadow pass includes their casters.
+- The existing 2D entity layer submits the supported bodies to the 3D layer
+  and retains vehicle lamps and glow effects. It also retains fallback body
+  rendering where the conversion does not apply.
+
+This is a geometry conversion within the established Compatibility renderer.
+The bodies still use the shared unshaded building shader, baked face shading
+and a mesh builder without vertex normals. Windows, tyres and paint do not
+have distinct shaded material responses. Under-bridge and fallen vehicles,
+as well as other vehicle categories, still have 2D presentation paths.
+
+The RTX-specific work is pending: no `run-rtx` target, experimental launcher
+switch, capability helper, path tracing setup or DLSS configuration exists in
+the inspected launch/client code. The project still selects `gl_compatibility`
+and the normal engine remains pinned to Godot 4.7.2. Forward+ compatibility,
+RTX visual acceptance and performance measurements remain unverified here.
+
+The [outdoor scene readiness plan](rtx-scene-readiness.md) describes the next
+steps: shared outdoor view, shaded mesh materials, 3D road surfaces and
+wetness, real scene lighting, vertical separation and wider scene coverage.
+Steps 1–4 on a bounded street are the entry criteria for an outdoor developer
+trial; the later coverage and acceptance steps govern general gameplay use.
+The home interior remains an independent, smaller engine trial.
 
 ## What NVIDIA actually provides
 
@@ -64,16 +100,20 @@ The relevant integration points are:
 | [godot/startup.gd](../godot/startup.gd) | Owns menus and saved launch preferences | Later expose a restart-based experiment choice if the command-line trial succeeds. |
 | [godot/graphics_settings.gd](../godot/graphics_settings.gd) | Reads eight boolean graphics preferences | Keep engine selection distinct from live effect toggles; add validated RTX view options only when needed. |
 | [godot/home_first_person.gd](../godot/home_first_person.gd) | Creates an isolated SubViewport, WorldEnvironment and directional light | First candidate for guarded path tracing and per-viewport DLSS configuration. |
-| [godot/buildings_3d.gd](../godot/buildings_3d.gd) | Composites transparent buildings and a separate multiplied ground-shadow texture | Requires a separate visual design and compatibility trial before outdoor path tracing. |
+| [godot/buildings_3d.gd](../godot/buildings_3d.gd) | Renders buildings and supported 3D vehicle bodies together; composites their transparent view and a separate multiplied ground-shadow texture | Add normals and shaded materials, then follow the shared outdoor scene conversion. |
+| [godot/entity_layer.gd](../godot/entity_layer.gd) | Submits supported car/van/taxi bodies to the 3D layer; retains 2D lamps, other categories and fallback bodies | Move relevant lamps and remaining bodies into the shared outdoor scene while preserving interpolation and state-driven appearance. |
 | [.github/workflows/windows-release.yml](../.github/workflows/windows-release.yml) | Downloads upstream editor/templates and packages one Windows client | A later RTX distribution needs templates built from the pinned fork and its own runtime manifest. |
 
 The outdoor buildings use unshaded materials and
 [building_snow.gdshader](../godot/building_snow.gdshader), with much of their
 lighting encoded in vertex colors and shader output. Their sun and shadow
-caster copies use a separate layer and a separate shadow viewport. Roads,
-vehicles and pedestrians are predominantly CanvasItem content outside that
-3D world. Path tracing cannot infer 3D geometry or lighting interactions for
-those 2D layers.
+caster copies use a separate layer and a separate shadow viewport. Supported
+car, van and taxi bodies now share that 3D world, but also share its unshaded
+material path. Roads, pedestrians, vehicle lamps and the remaining vehicle
+body paths are still CanvasItem content outside it. Path tracing cannot infer
+3D geometry or lighting interactions for those 2D layers. The existing car
+conversion therefore supplies reusable geometry, not complete RTX materials
+or a complete outdoor lighting scene.
 
 The resulting risks are specific: transparent-background alpha may composite
 differently, denoising can leave trails around roofs, cull masks may not have
@@ -284,7 +324,10 @@ by itself describe all NVIDIA runtime redistribution obligations. Review the
 chosen SDK's supplied license and deployment guidance before shipping.
 
 Keep upgrades deliberate: new engine SHA, matching runtime review, import and
-render checks, screenshots and the same performance scenes. A full outdoor
-conversion would require additional 3D ground, objects, materials and lights
-while preserving map-layer separation and bounded chunk work. Scope that as
-its own rendering feature after the home-interior trial establishes value.
+render checks, screenshots and the same performance scenes. Continue the
+completed car geometry work through the
+[outdoor scene readiness plan](rtx-scene-readiness.md): add the shared ground,
+materials, lighting and remaining scene coverage while preserving map-layer
+separation and bounded chunk work. An outdoor street trial can follow that
+plan independently of the smaller home-interior engine trial; neither should
+be reported as accepted until its rendered checks and measurements exist.
