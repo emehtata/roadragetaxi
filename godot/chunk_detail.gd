@@ -592,9 +592,9 @@ static func draw_bus_stops(chunk, node: Node2D) -> void:
 		# road marking drawn over the 3D view would paint over the bus standing on it.
 		var outdoor: bool = chunk.get_script().outdoor_3d and chunk.get_script().buildings_3d
 		var size := clampi(roundi(1.6 * chunk._px_per_m), 8, 48) if not outdoor else 0
-		var text_size := font.get_string_size("BUS", HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 		node.draw_set_transform(MapMath.point(chunk._origin, stop["label"][0], stop["label"][1]), -float(stop["angle"]), Vector2.ONE / chunk._px_per_m)
 		if size > 0:
+			var text_size := font.get_string_size("BUS", HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 			node.draw_string(font, Vector2(-text_size.x / 2.0, text_size.y / 3.0), "BUS", HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color8(235, 235, 225))
 		node.draw_set_transform(Vector2.ZERO)
 		if stop.has("sign"):
