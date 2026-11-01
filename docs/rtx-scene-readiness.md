@@ -373,6 +373,27 @@ reflection, transparency and ice appearance on the fork, and its
 particle/transparency support. Those checks belong to Step 7's controlled
 trial.
 
+**Review of Steps 1–6 (1 November 2026):** each bullet and "Done when" was
+re-checked against the code and renders. Fixed during the review:
+- People on bridges stood at ground level under the deck, because the
+  protocol didn't send their layer. Pedestrian rows now carry the way's
+  `layer`, an explicit protocol addition.
+- Ground railway tracks and bus bays were 2D overlays drawn over the trains
+  and buses on them. They are now part of the 3D ground, and the bay's
+  painted BUS marking is left out on this path.
+- Walls, kerb sides, deck undersides and parapet insides on this path had
+  darkening baked into their colours. It is removed (Step 2).
+
+Still open:
+- Sports-court, rink and football markings, construction-site details and
+  shore waves are 2D overlays above the 3D view. People and boats on them are
+  drawn under the markings. They need to become part of the 3D ground, for
+  example as a per-chunk marking texture, before Step 6's ground-marking
+  requirement is met.
+- Attractions and volleyball nets are prominent props that are still 2D.
+- Moonlight on an unlit road (Step 4) and resizing a running window (Step 1)
+  have not been rendered. Ploughed snow cells stay 2D-only (Step 3).
+
 ## Step 7: prove readiness and enable a controlled RTX trial
 
 Steps 1–4 on a bounded street are enough for the first developer trial.
