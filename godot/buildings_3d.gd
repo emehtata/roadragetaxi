@@ -318,7 +318,7 @@ func instance_count() -> int:
 
 ## One chunk's mesh arrays (any thread): {"verts", "colors", "lit" (the
 ## lit windows' verts), "stats"}.
-static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array = []) -> Dictionary:
+static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array = [], landmarks: Array = []) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "lit": PackedVector3Array(),
 		"wall_uv": PackedVector2Array(), "window": PackedFloat32Array(),  # the shader's windows (building_snow.gdshader)
 		"arena": PackedVector3Array(), "shadow": PackedVector3Array(), "glass": PackedVector3Array(), "glass_colors": PackedColorArray(),
@@ -329,6 +329,8 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 			_building(out, footprint, styles[i] if i < styles.size() else [], origin)
 	for site in sites:
 		_crane(out, site, origin)
+	for landmark in landmarks:  # [layer position, angle, spec]
+		_landmark(out, landmark[0], landmark[1], landmark[2])
 	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size() + out["glass"].size()) / 3
 	return out
 
@@ -575,6 +577,40 @@ static func _crane(out: Dictionary, site: PackedVector2Array, origin: Vector2) -
 	_box(out, centre - d * jib * 0.3, centre - d * (jib * 0.3 - 3.0), 1.3, height - 1.5, height + 1.2, Color8(150, 150, 145))  # its weights
 	_box(out, centre + d * 1.0, centre + d * 3.0, 1.0, height - 2.5, height, Color8(60, 70, 80))  # the cab
 	out["stats"]["cranes"] = out["stats"].get("cranes", 0) + 1
+
+
+## A named landmark's 3D shapes (assets/landmarks.json): boxes and cylinders
+## (cones, frustums) in metres from its point, times its scale, drawn and
+## casting the sun's shadow like a building. Its 2D shapes are map_chunk's.
+const LANDMARK_SEGMENTS := 12
+
+static func _landmark(out: Dictionary, at: Vector2, angle: float, spec: Dictionary) -> void:
+	var scale := float(spec.get("scale", 1.0))
+	var turn := Transform2D(-angle, at) * Transform2D.IDENTITY.scaled(Vector2(scale, scale))
+	for shape: Array in spec.get("shapes", []):
+		var colour := Color.html(str(shape[-1]))
+		match str(shape[0]):
+			"box":  # [x, y, width, depth, bottom, top]
+				var along := turn.basis_xform(Vector2(float(shape[3]) / 2.0, 0.0))
+				var centre := turn * Vector2(shape[1], shape[2])
+				_box(out, centre - along, centre + along, float(shape[4]) * scale / 2.0, float(shape[5]) * scale, float(shape[6]) * scale, colour)
+			"cylinder":  # [x, y, bottom radius, top radius, bottom, top]
+				_frustum(out, turn * Vector2(shape[1], shape[2]), float(shape[3]) * scale, float(shape[4]) * scale,
+					float(shape[5]) * scale, float(shape[6]) * scale, colour)
+
+
+static func _frustum(out: Dictionary, centre: Vector2, r_bottom: float, r_top: float, bottom: float, top: float, color: Color) -> void:
+	for key in ["verts", "shadow"]:
+		for i in LANDMARK_SEGMENTS:
+			var u := Vector2.from_angle(TAU * i / LANDMARK_SEGMENTS)
+			var v := Vector2.from_angle(TAU * (i + 1) / LANDMARK_SEGMENTS)
+			var outward := (u + v).normalized()
+			var shade := 0.72 + 0.28 * clampf(outward.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+			var lit := Color(color.r * shade, color.g * shade, color.b * shade)
+			_tri(out, to_3d(centre + u * r_bottom, bottom), to_3d(centre + v * r_bottom, bottom), to_3d(centre + v * r_top, top), lit, to_3d(outward), key)
+			if r_top > 0.0:
+				_tri(out, to_3d(centre + u * r_bottom, bottom), to_3d(centre + v * r_top, top), to_3d(centre + u * r_top, top), lit, to_3d(outward), key)
+				_tri(out, to_3d(centre, top), to_3d(centre + u * r_top, top), to_3d(centre + v * r_top, top), color, Vector3.UP, key)
 
 
 ## A box from `a` to `b` on the ground plan, `half_width` either side,

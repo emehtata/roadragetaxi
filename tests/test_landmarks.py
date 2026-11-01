@@ -2,7 +2,7 @@ import re
 
 from theroadragetrip.map_chunks import LANDMARKS
 
-ARGS = {"circle": 3, "rect": 4, "line": 5, "polygon": 1}
+ARGS = {"circle": 3, "rect": 4, "line": 5, "polygon": 1, "box": 6, "cylinder": 6}
 
 
 def test_every_landmark_shape_is_drawable():
