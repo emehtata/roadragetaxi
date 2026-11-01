@@ -464,6 +464,9 @@ func _main_menu() -> void:
 	(career if last == "career" else simulation if last == "simulation" else gig).call_deferred("grab_focus")
 
 
+var career_status := func() -> Array: return _server_query("--career-status")  # [a career under way]; tests replace it
+
+
 ## Career: what the goals are, then start (the server keeps the progress).
 func _career_menu() -> void:
 	_clear()
@@ -473,10 +476,26 @@ func _career_menu() -> void:
 	goals.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	goals.custom_minimum_size.x = 520
 	_body.add_child(goals)
-	_button(_t("start"), func(): _start("career"))
+	var ongoing: bool = career_status.call() == [true]
+	_button(_t("continue") if ongoing else _t("start"), func(): _start("career"))
+	if ongoing:
+		_button(_t("reset_career"), _confirm_reset_career)
 	_button(_t("back"), _main_menu)
 	_back_action = _main_menu
 	_focus_menu()
+
+
+## Forget the career progress (career.json): the next career starts from the first city.
+func _confirm_reset_career() -> void:
+	_clear()
+	_title(_t("reset_career").to_upper(), _t("confirm_reset_career"))
+	var no := _button(_t("cancel"), _career_menu)
+	_button(_t("reset_career"), func():
+		_server_query("--reset-career")
+		_career_menu())
+	_back_action = _career_menu
+	_focus_menu()
+	no.call_deferred("grab_focus")  # Enter does not delete anything
 
 
 ## The tutorial: a fresh, unsaved gig in Oulu's centre at midday today.

@@ -53,6 +53,14 @@ def main() -> None:
         homes_path(CONFIG_PATH).unlink(missing_ok=True)
         print("[]")
         return
+    if getattr(args, "career_status", False) or getattr(args, "reset_career", False):  # [a career under way]
+        from ..career import career_ongoing, career_path
+        from ..config import CONFIG_PATH
+
+        if getattr(args, "reset_career", False):
+            career_path(CONFIG_PATH).unlink(missing_ok=True)
+        print(json.dumps([career_ongoing(career_path(CONFIG_PATH))]))
+        return
     if args.parent_pid:
         exit_with_parent(args.parent_pid)
     configure_logging(args.log_level, file_logging=config.getboolean("game", "file_logging", fallback=False),

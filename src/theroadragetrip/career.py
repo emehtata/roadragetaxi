@@ -14,6 +14,15 @@ def gig_odometer_path(config_path: Path) -> Path:
     return config_path.parent / "gig_odometer.json"
 
 
+def career_ongoing(path: Path) -> bool:
+    """A saved career not yet completed: the menu offers to continue it."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return False
+    return isinstance(data, dict) and not data.get("completed", False)
+
+
 def load_career(path: Path, city_count: int) -> dict[str, object]:
     default = {"city_index": 0, "completed": False, "total_score": 0}
     try:
