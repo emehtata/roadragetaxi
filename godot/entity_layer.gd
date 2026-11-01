@@ -11,6 +11,7 @@
 extends Node2D
 
 const RS := preload("res://render_style.gd")
+const Buildings3D := preload("res://buildings_3d.gd")
 const T := preload("res://i18n.gd")
 const MapChunk := preload("res://map_chunk.gd")  # its static roadwork drawing, shared with live roadworks
 const CULL_MARGIN_M := 30.0
@@ -110,6 +111,7 @@ const CAR_SHAPES := [
 	[0.36, 0.06, -0.46, -0.66, 0.76, ""],  # city car
 ]
 const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
+var _under := false  # the vehicle being drawn is under a bridge: 2D, below the deck (no 3D body)
 var taxi_sign_on := false  # the taxi being drawn is free for a fare (its roof light lit)
 var ploughing := false  # snowing: tractors carry a plough blade and a flashing beacon
 var smoke_enabled := true
@@ -715,6 +717,7 @@ func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Co
 		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false,
 		under := false) -> void:
 	_tint = vehicle_light(light_level * float(light_at.call(c)), ambient)  # lit by the street lights it stands under
+	_under = under
 	var shapes := _car_shapes
 	var lamps := _lamp_polys
 	var level := light_level
@@ -947,38 +950,54 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			# A car from above: body, the roof in its own (darker) colour, the
 			# windshield sloping down to the bonnet, the smaller rear window,
 			# and on a taxi the roof light - lit while a fare is on.
-			_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
 			var shape: Array = VAN_SHAPE if kind == "van" else CAR_SHAPES[0 if is_taxi else body_style % CAR_SHAPES.size()]
-			var glass_front: float = shape[0]
-			var roof_front: float = shape[1]
-			var roof_rear: float = shape[2]
-			var glass_rear: float = shape[3]
-			var roof_half: float = shape[4]
-			_poly(_trapezoid(c, f, r, hl * glass_front, hl * roof_front, hw * 0.86, hw * roof_half), RS.WINDSHIELD)
-			_poly(_rect(c, f, r, hl * roof_front, hl * roof_rear, hw * roof_half), color.darkened(0.12))
-			if glass_rear < roof_rear:
-				_poly(_trapezoid(c, f, r, hl * roof_rear, hl * glass_rear, hw * roof_half, hw * minf(roof_half + 0.08, 0.86)), RS.WINDSHIELD)
-			match shape[5]:
-				"bed":  # a pickup's open load bed behind the cab
-					_poly(_rect(c, f, r, hl * (glass_rear - 0.06), -hl * 0.92, hw * 0.8), color.darkened(0.35), color.darkened(0.55))
-				"rails":  # roof rails: an estate or an SUV
-					for side: float in [1.0, -1.0]:
-						_car_shapes.append(["line", c + f * hl * roof_front + r * hw * roof_half * 0.82 * side,
-							c + f * hl * roof_rear + r * hw * roof_half * 0.82 * side, _lit(color.darkened(0.5)), maxf(_px(1.0), hw * 0.08)])
-				"stripes":  # a sports car's bonnet stripes
-					for side: float in [1.0, -1.0]:
-						_car_shapes.append(["line", c + f * hl * 0.98 + r * hw * 0.18 * side,
-							c + f * hl * glass_front + r * hw * 0.18 * side, _lit(color.lightened(0.55)), maxf(_px(1.0), hw * 0.12)])
-				"door":  # a van's sliding door seam
-					_car_shapes.append(["line", c + f * hl * 0.1 + r * hw, c - f * hl * 0.35 + r * hw, _lit(color.darkened(0.45)), maxf(_px(1.0), hw * 0.06)])
-			if is_taxi:
-				var roof_light := _rect(c, f, r, -hl * 0.06, -hl * 0.22, hw * 0.42)
-				_poly(_rect(c, f, r, -hl * 0.04, -hl * 0.24, hw * 0.48), Color8(30, 30, 30))  # its frame, readable on a yellow roof
-				if engine_on and taxi_sign_on:
-					_lamp_polys.append([roof_light, RS.TAXI_SIGN])  # unshaded: it shines at night
+			var cars_3d: Node2D = Buildings3D.current
+			if cars_3d != null and not _under and not fallen:  # godot-cars-3d: the body in the 3D view, the lamps below stay 2D
+				var lit := engine_on and taxi_sign_on
+				cars_3d.car(c, heading, length, width, color, shape, (2 if lit else 1) if is_taxi else 0)
+				if is_taxi and lit:
 					lamp_glow(c - f * hl * 0.14, TAXI_SIGN_GLOW, light_level, glow_points, glow_colors, glow_triangles)
-				else:
-					_poly(roof_light, RS.TAXI_SIGN.darkened(0.45), Color8(30, 30, 30))
+			else:
+				_car_body_2d(c, f, r, hl, hw, color, shape, is_taxi, engine_on)
+	_vehicle_lamps(c, f, r, length, width, hl, hw, engine_on, braking, reversing, turn_signal, signal_elapsed)
+
+
+func _car_body_2d(c: Vector2, f: Vector2, r: Vector2, hl: float, hw: float, color: Color, shape: Array, is_taxi: bool, engine_on: bool) -> void:
+	_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
+	var glass_front: float = shape[0]
+	var roof_front: float = shape[1]
+	var roof_rear: float = shape[2]
+	var glass_rear: float = shape[3]
+	var roof_half: float = shape[4]
+	_poly(_trapezoid(c, f, r, hl * glass_front, hl * roof_front, hw * 0.86, hw * roof_half), RS.WINDSHIELD)
+	_poly(_rect(c, f, r, hl * roof_front, hl * roof_rear, hw * roof_half), color.darkened(0.12))
+	if glass_rear < roof_rear:
+		_poly(_trapezoid(c, f, r, hl * roof_rear, hl * glass_rear, hw * roof_half, hw * minf(roof_half + 0.08, 0.86)), RS.WINDSHIELD)
+	match shape[5]:
+		"bed":  # a pickup's open load bed behind the cab
+			_poly(_rect(c, f, r, hl * (glass_rear - 0.06), -hl * 0.92, hw * 0.8), color.darkened(0.35), color.darkened(0.55))
+		"rails":  # roof rails: an estate or an SUV
+			for side: float in [1.0, -1.0]:
+				_car_shapes.append(["line", c + f * hl * roof_front + r * hw * roof_half * 0.82 * side,
+					c + f * hl * roof_rear + r * hw * roof_half * 0.82 * side, _lit(color.darkened(0.5)), maxf(_px(1.0), hw * 0.08)])
+		"stripes":  # a sports car's bonnet stripes
+			for side: float in [1.0, -1.0]:
+				_car_shapes.append(["line", c + f * hl * 0.98 + r * hw * 0.18 * side,
+					c + f * hl * glass_front + r * hw * 0.18 * side, _lit(color.lightened(0.55)), maxf(_px(1.0), hw * 0.12)])
+		"door":  # a van's sliding door seam
+			_car_shapes.append(["line", c + f * hl * 0.1 + r * hw, c - f * hl * 0.35 + r * hw, _lit(color.darkened(0.45)), maxf(_px(1.0), hw * 0.06)])
+	if is_taxi:
+		var roof_light := _rect(c, f, r, -hl * 0.06, -hl * 0.22, hw * 0.42)
+		_poly(_rect(c, f, r, -hl * 0.04, -hl * 0.24, hw * 0.48), Color8(30, 30, 30))  # its frame, readable on a yellow roof
+		if engine_on and taxi_sign_on:
+			_lamp_polys.append([roof_light, RS.TAXI_SIGN])  # unshaded: it shines at night
+			lamp_glow(c - f * hl * 0.14, TAXI_SIGN_GLOW, light_level, glow_points, glow_colors, glow_triangles)
+		else:
+			_poly(roof_light, RS.TAXI_SIGN.darkened(0.45), Color8(30, 30, 30))
+
+
+func _vehicle_lamps(c: Vector2, f: Vector2, r: Vector2, length: float, width: float, hl: float, hw: float,
+		engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float) -> void:
 	# Lamps (inset, sizes and colours as _draw_vehicle_lights, in metres).
 	var light_r := maxf(_px(1.2), width * 0.18)
 	var light_len := minf(width * 0.25, maxf(_px(1.0), light_r * 2.4))
@@ -1716,6 +1735,8 @@ func _draw() -> void:
 	_puck_frame = []
 	_overlays.clear()
 	_car_shapes.clear()
+	if Buildings3D.current != null:
+		Buildings3D.current.begin_cars()
 	_under_shapes.clear()
 	_under_lamps.clear()
 	glow_points.clear()
@@ -1866,6 +1887,8 @@ func _draw() -> void:
 			_bubble(c - Vector2(0, float(npc["length_m"]) * 0.5 + _px(6.0)), str(npc.get("curse_text", "@#*!%")),
 				RS.CURSE_TEXT, RS.CURSE_BORDER, 1.0 if cursing >= 0.5 else cursing / 0.5)
 		count += 1
+	if Buildings3D.current != null:
+		Buildings3D.current.end_cars()
 
 	if a.get("taxi", {}).get("current_passenger") is Dictionary:
 		var passenger: Dictionary = a["taxi"]["current_passenger"]

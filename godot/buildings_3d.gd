@@ -69,6 +69,8 @@ func _ready() -> void:
 	_view.add_child(_sun)
 	_shadow_ground = make_shadow_ground()
 	_view.add_child(_shadow_ground)
+	_cars_root = Node3D.new()
+	_view.add_child(_cars_root)
 	_shadow_view = SubViewport.new()  # the same world: no building geometry twice
 	_shadow_view.world_3d = _view.find_world_3d()  # its own_world_3d (world_3d itself is unset)
 	_shadow_view.transparent_bg = false
@@ -313,7 +315,126 @@ func add(instances: Array) -> void:
 
 
 func instance_count() -> int:
-	return _view.get_child_count() - 3  # minus the camera, the sun and the shadow ground
+	return _view.get_child_count() - 4  # minus the camera, the sun, the shadow ground and the cars
+
+
+## godot-cars-3d: cars as 3D bodies in this view - the buildings' camera,
+## light and sun shadows; the 2D entity layer keeps their lamps and glows on
+## top. Each frame: begin_cars(), car() for each one drawn, end_cars().
+static var current: Node2D = null  # the live 3D layer, for the entity layer
+static var _car_meshes := {}  # [body, shadow caster] meshes by look
+var _cars_root: Node3D
+var _car_nodes: Array = []  # pooled [body, caster] instances
+var _cars_used := 0
+const CAR_GLASS := Color8(52, 74, 92)  # render_style.WINDSHIELD
+const CAR_SIGN := Color8(240, 220, 20)  # render_style.TAXI_SIGN
+
+
+func _enter_tree() -> void:
+	current = self
+
+
+func _exit_tree() -> void:
+	if current == self:
+		current = null
+
+
+func begin_cars() -> void:
+	_cars_used = 0
+
+
+## A car at `at` (layer position) facing `heading` (as the 2D layer's):
+## `shape` is entity_layer's CAR_SHAPES row; `sign` 0 none, 1 a taxi sign off, 2 lit.
+func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int) -> void:
+	var key := "%s|%s|%.2f|%.2f|%d" % [color.to_html(false), shape, length, width, sign]
+	if not _car_meshes.has(key):
+		if _car_meshes.size() > 512:  # ponytail: drop the whole cache, an LRU if colours ever vary per frame
+			_car_meshes.clear()
+		var arrays := car_arrays(length, width, color, shape, sign)
+		_car_meshes[key] = [_mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"]), _mesh(arrays["shadow"], PackedColorArray())]
+	if _cars_used == _car_nodes.size():
+		var body := _instance(_car_meshes[key][0], _shared["material"], LAYER_BUILDINGS)
+		var caster := _instance(_car_meshes[key][1], _shared["caster"], LAYER_SHADOW_GROUND)
+		caster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		_cars_root.add_child(body)
+		_cars_root.add_child(caster)
+		_car_nodes.append([body, caster])
+	var place := Transform3D(Basis(Vector3.UP, heading), to_3d(at))  # local +x forward, +z right (entity_layer _forward/_right)
+	for i in 2:
+		var node: MeshInstance3D = _car_nodes[_cars_used][i]
+		node.mesh = _car_meshes[key][i]
+		node.transform = place
+		node.visible = true
+	_cars_used += 1
+
+
+func end_cars() -> void:
+	for i in range(_cars_used, _car_nodes.size()):
+		for node in _car_nodes[i]:
+			node.visible = false
+
+
+## One car's mesh arrays, centred at the origin, +x forward: the body,
+## wheels, the glasshouse sloping up to the roof, and its extras.
+static func car_arrays(length: float, width: float, color: Color, shape: Array, sign: int) -> Dictionary:
+	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "shadow": PackedVector3Array()}
+	var hl := length * 0.5
+	var hw := width * 0.5
+	var van := str(shape[5]) == "door"
+	var sill := 1.0 if van else 0.8
+	var roof := 1.95 if van else 1.42
+	var tyre := Color8(28, 28, 28)
+	for x: float in [hl * 0.64, -hl * 0.64]:
+		for y: float in [hw * 0.86, -hw * 0.86]:
+			_car_box(out, x - 0.33, x + 0.33, y - 0.14, y + 0.14, 0.0, 0.62, tyre)
+	_car_box(out, -hl, hl, -hw, hw, 0.28, sill, color)
+	var top := color.darkened(0.12)
+	var glass_front: float = shape[0]
+	var roof_front: float = shape[1]
+	var roof_rear: float = shape[2]
+	var glass_rear: float = minf(shape[3], roof_rear)
+	var roof_half: float = shape[4]
+	var low := [Vector3(hl * glass_front, sill, -hw * 0.86), Vector3(hl * glass_front, sill, hw * 0.86),
+		Vector3(hl * glass_rear, sill, hw * 0.86), Vector3(hl * glass_rear, sill, -hw * 0.86)]
+	var high := [Vector3(hl * roof_front, roof, -hw * roof_half), Vector3(hl * roof_front, roof, hw * roof_half),
+		Vector3(hl * roof_rear, roof, hw * roof_half), Vector3(hl * roof_rear, roof, -hw * roof_half)]
+	var middle := Vector3((glass_front + glass_rear) * hl * 0.5, (sill + roof) * 0.5, 0.0)
+	for key in ["verts", "shadow"]:
+		for i in 4:  # windshield, right windows, rear window, left windows
+			var j := (i + 1) % 4
+			var facing: Vector3 = (low[i] + low[j] + high[i] + high[j]) / 4.0 - middle
+			_quad(out, low[i], low[j], high[j], high[i], CAR_GLASS.lightened(0.1 if i % 2 else 0.0), facing, key)
+		_quad(out, high[0], high[1], high[2], high[3], top, Vector3.UP, key)
+	var flat := func(x0: float, x1: float, y0: float, y1: float, h: float, c: Color) -> void:
+		_quad(out, Vector3(x0, h, y0), Vector3(x1, h, y0), Vector3(x1, h, y1), Vector3(x0, h, y1), c, Vector3.UP)
+	match str(shape[5]):
+		"bed":  # a pickup's open load bed behind the cab
+			flat.call(-hl * 0.92, hl * (glass_rear - 0.06), -hw * 0.8, hw * 0.8, sill + 0.01, color.darkened(0.35))
+		"rails":
+			for y: float in [hw * roof_half * 0.82, -hw * roof_half * 0.82]:
+				_car_box(out, hl * roof_rear, hl * roof_front, y - 0.03, y + 0.03, roof, roof + 0.08, color.darkened(0.5))
+		"stripes":
+			for y: float in [hw * 0.18, -hw * 0.18]:
+				flat.call(hl * glass_front, hl * 0.98, y - hw * 0.06, y + hw * 0.06, sill + 0.01, color.lightened(0.55))
+	if sign > 0:  # a taxi's roof light, lit while free for a fare
+		_car_box(out, -hl * 0.24, -hl * 0.04, -hw * 0.48, hw * 0.48, roof, roof + 0.08, Color8(30, 30, 30))
+		_car_box(out, -hl * 0.22, -hl * 0.06, -hw * 0.42, hw * 0.42, roof + 0.08, roof + 0.24, CAR_SIGN if sign == 2 else CAR_SIGN.darkened(0.45))
+	return out
+
+
+## An axis-aligned box in the car's own frame: four shaded sides and the
+## top, drawn and casting a shadow (the sides' shading turns with the car).
+static func _car_box(out: Dictionary, x0: float, x1: float, y0: float, y1: float, bottom: float, top: float, color: Color) -> void:
+	var corners := [Vector2(x0, y0), Vector2(x1, y0), Vector2(x1, y1), Vector2(x0, y1)]
+	var shades := [0.86, 0.80, 0.94, 0.80]  # left, front, right, rear
+	for key in ["verts", "shadow"]:
+		for i in 4:
+			var p: Vector2 = corners[i]
+			var q: Vector2 = corners[(i + 1) % 4]
+			var outward := (p + q) / 2.0 - Vector2(x0 + x1, y0 + y1) / 2.0
+			var c := Color(color.r * shades[i], color.g * shades[i], color.b * shades[i])
+			_quad(out, to_3d(p, bottom), to_3d(q, bottom), to_3d(q, top), to_3d(p, top), c, to_3d(outward), key)
+		_quad(out, to_3d(corners[0], top), to_3d(corners[1], top), to_3d(corners[2], top), to_3d(corners[3], top), color, Vector3.UP, key)
 
 
 ## One chunk's mesh arrays (any thread): {"verts", "colors", "lit" (the
