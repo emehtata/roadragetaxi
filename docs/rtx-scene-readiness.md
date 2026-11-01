@@ -384,15 +384,14 @@ re-checked against the code and renders. Fixed during the review:
 - Walls, kerb sides, deck undersides and parapet insides on this path had
   darkening baked into their colours. It is removed (Step 2).
 
-Still open:
-- Sports-court, rink and football markings, construction-site details and
-  shore waves are 2D overlays above the 3D view. People and boats on them are
-  drawn under the markings. They need to become part of the 3D ground, for
-  example as a per-chunk marking texture, before Step 6's ground-marking
-  requirement is met.
-- Attractions and volleyball nets are prominent props that are still 2D.
-- Moonlight on an unlit road (Step 4) and resizing a running window (Step 1)
-  have not been rendered. Ploughed snow cells stay 2D-only (Step 3).
+Closed after the review:
+- Court, rink and football markings are drawn into a per-chunk marking
+  texture on the 3D ground; construction-site details and shore foam are 3D
+  (ee8e2d6). Attractions and volleyball nets are 3D props (ee8e2d6).
+- Moonlight on an unlit road was rendered: the road reads RGB 51/58/50 against
+  10/17/25 without the moon, with moon shadows. Resizing a running window
+  renders correctly (`--screenshot-resize`, 59f93e0). Ploughed snow cells
+  are cleared on the 3D roads (6a0121f).
 
 ## Step 7: prove readiness and enable a controlled RTX trial
 
