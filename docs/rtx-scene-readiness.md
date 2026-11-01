@@ -98,6 +98,28 @@ Relevant code: `_mesh`, `_car_box`, `_make_material`, `set_light` in
 [buildings_3d.gd](../godot/buildings_3d.gd), and
 [building_snow.gdshader](../godot/building_snow.gdshader).
 
+**Status (1 November 2026):** with `--outdoor-3d`, `use_shaded()` swaps in
+lit materials before any mesh is built: a shaded copy of the building shader
+(lit windows, shop windows and candles as emission), a shaded ground
+material, and [car.gdshader](../godot/car.gdshader) with paint, rubber, glass
+and lamp parts tagged per vertex (UV2.x). `_mesh` writes flat outward
+normals. `baked()` drops the baked face shading on this path. Vertex colours
+are converted from sRGB. Ambient light moved to the Environment. The sun
+lights the drawn meshes and its shadows land on them directly: the camera
+includes the shadows-only caster layer, its far plane leaves room for the
+shadow fit, and the multiplied shadow overlay is off. Rendered with
+Forward+/Vulkan:
+- With the sun at 135° and then 300°, wall shading and rooftop shadows swap
+  sides.
+- In the open countryside (Sysmä) the taxi casts its shadow away from the
+  sun.
+
+Open items:
+- Paint versus rubber highlights are not yet distinguishable at gameplay zoom.
+- Shadow edges are soft and blocky (shadow map resolution).
+- Glasshouse glass and lit window meshes stay unshaded.
+- Night not yet rendered on this path.
+
 ## Step 3: add ground, roads and wet surface materials
 
 - Build chunked 3D surfaces from existing ground, road, pavement, parking and

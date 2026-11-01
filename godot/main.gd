@@ -210,7 +210,7 @@ func _ready() -> void:
 				Perf.keep_all = true
 			"--outdoor-3d":  # rtx-scene-readiness step 1: ground and roads in the 3D view (developer trial)
 				MapChunk.outdoor_3d = true
-				preload("res://buildings_3d.gd").opaque = true
+				preload("res://buildings_3d.gd").use_shaded()
 			"--buildings":  # godot-21: "2d" the radial 2D renderer, "3d" (default) the 3D building layer
 				MapChunk.buildings_3d = args[i + 1] != "2d"
 			"--building-fov":  # godot-22: try a 3D building camera FOV (degrees)

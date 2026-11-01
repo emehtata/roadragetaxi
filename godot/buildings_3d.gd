@@ -46,8 +46,10 @@ var _shadow_camera: Camera3D
 var _shadow_sprite: Sprite2D
 var _sun_key := Vector3(INF, INF, INF)  # the (altitude, azimuth, cloud) applied last
 var shadows_enabled := true
-static var opaque := false  # --outdoor-3d: the view draws its own ground, nothing of the 2D map shows through
+static var opaque := false  # --outdoor-3d (use_shaded): the view draws its own ground, shaded by real lights
 const GROUND := Color(0.27, 0.33, 0.25)  # map_layer._draw_ground's open ground
+const SUN_ENERGY := 1.0  # --outdoor-3d light: full clear-sky sun, plus the ambient fill below
+const AMBIENT_ENERGY := 0.45
 
 
 static func _make_material(flat := false) -> Material:
@@ -71,9 +73,18 @@ func _ready() -> void:
 		var sky := Environment.new()  # off the loaded chunks: the 2D map's open ground
 		sky.background_mode = Environment.BG_COLOR
 		sky.background_color = GROUND
+		sky.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		sky.ambient_light_color = Color.WHITE
+		sky.ambient_light_energy = AMBIENT_ENERGY
 		_camera.environment = sky
+		_camera.cull_mask |= LAYER_SHADOW_GROUND  # a camera culls the casters outside its mask; shadows-only, they are never drawn
 	_sprite = _make_sprite(_view, 7)
 	_sun = make_sun()
+	if opaque:
+		# The sun lights the drawn meshes and casts with the shadows-only copies
+		# straight onto them: no multiplied shadow overlay (it would shade twice).
+		_sun.layers = LAYER_BUILDINGS | LAYER_SHADOW_GROUND
+		_sun.light_cull_mask = LAYER_BUILDINGS | LAYER_SHADOW_GROUND  # the shadows-only casters must stay in its masks
 	_view.add_child(_sun)
 	_shadow_ground = make_shadow_ground()
 	_view.add_child(_shadow_ground)
@@ -159,6 +170,12 @@ func set_celestial_light(altitude_deg: float, azimuth_deg: float, strength: floa
 		return
 	_sun_key = key
 	var on := shadows_enabled and strength > 0.01
+	if opaque:  # the sun lights the scene even without shadows; its shadows land on the meshes themselves
+		_sun.visible = strength > 0.01
+		_sun.shadow_enabled = shadows_enabled
+		_sun.light_energy = strength * SUN_ENERGY
+		_sun.basis = sun_basis(Daylight.sun_direction(altitude_deg, azimuth_deg))
+		return
 	_sun.visible = on
 	_shadow_ground.visible = on
 	_shadow_sprite.visible = on
@@ -251,7 +268,7 @@ func _process(_delta: float) -> void:
 	get_parent().canopies_moved(Rect2(centre - Vector2(size) / camera_2d.zoom / 2.0, Vector2(size) / camera_2d.zoom))
 	_camera.position = Vector3(centre.x, height, centre.y)
 	_camera.near = maxf(1.0, height * 0.02)
-	_camera.far = height + 1.0
+	_camera.far = height * 2.0 + 10.0 if opaque else height + 1.0  # opaque: shadows on the ground (see the shadow camera below)
 	if _shadow_ground.visible:  # under the whole view; shadows only as far as the camera sees
 		if _shadow_view.size != size / SHADOW_VIEW_SCALE:
 			_shadow_view.size = size / SHADOW_VIEW_SCALE
@@ -266,6 +283,8 @@ func _process(_delta: float) -> void:
 		_shadow_ground.position = Vector3(centre.x, 0.0, centre.y)
 		_shadow_ground.scale = Vector3(view_m.x * SHADOW_GROUND_MARGIN, 1.0, view_m.y * SHADOW_GROUND_MARGIN)
 		_sun.directional_shadow_max_distance = Vector2(height, view_m.length() * 0.5 * SHADOW_GROUND_MARGIN).length()
+	elif opaque:  # shadows straight on the meshes: as far as the camera sees the ground
+		_sun.directional_shadow_max_distance = Vector2(height, (Vector2(size) / camera_2d.zoom).length() * 0.5 * SHADOW_GROUND_MARGIN).length()
 	_sprite.position = centre
 	_sprite.scale = Vector2.ONE / camera_2d.zoom
 
@@ -277,6 +296,10 @@ func _process(_delta: float) -> void:
 ## windows fade from an ordinary window under that light to their own warm
 ## light as `level` (Daylight.artificial) rises - no geometry is rebuilt.
 func set_light(level: float, ambient: Color) -> void:
+	if opaque:
+		_camera.environment.ambient_light_color = ambient
+		_shared["material"].set_shader_parameter("lit_level", clampf(level, 0.0, 1.0))
+		return
 	_shared["material"].set_shader_parameter("ambient", ambient)
 	_shared["material"].set_shader_parameter("lit_level", clampf(level, 0.0, 1.0))  # the walls' own lit windows
 	_shared["glass"].albedo_color = Color(ambient.r, ambient.g, ambient.b)
@@ -337,6 +360,7 @@ var _car_nodes: Array = []  # pooled [body, caster] instances
 var _cars_used := 0
 const CAR_GLASS := Color8(52, 74, 92)  # render_style.WINDSHIELD
 const CAR_SIGN := Color8(240, 220, 20)  # render_style.TAXI_SIGN
+enum { PAINT, RUBBER, GLASS_PART, LAMP }  # car.gdshader's parts (UV2.x)
 
 
 func _enter_tree() -> void:
@@ -360,9 +384,10 @@ func car(at: Vector2, heading: float, length: float, width: float, color: Color,
 		if _car_meshes.size() > 512:  # ponytail: drop the whole cache, an LRU if colours ever vary per frame
 			_car_meshes.clear()
 		var arrays := car_arrays(length, width, color, shape, sign)
-		_car_meshes[key] = [_mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"]), _mesh(arrays["shadow"], PackedColorArray())]
+		_car_meshes[key] = [_mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], PackedVector2Array(), PackedFloat32Array(), arrays["part"]),
+			_mesh(arrays["shadow"], PackedColorArray())]
 	if _cars_used == _car_nodes.size():
-		var body := _instance(_car_meshes[key][0], _shared["material"], LAYER_BUILDINGS)
+		var body := _instance(_car_meshes[key][0], _shared.get("car", _shared["material"]), LAYER_BUILDINGS)
 		var caster := _instance(_car_meshes[key][1], _shared["caster"], LAYER_SHADOW_GROUND)
 		caster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		_cars_root.add_child(body)
@@ -386,16 +411,19 @@ func end_cars() -> void:
 ## One car's mesh arrays, centred at the origin, +x forward: the body,
 ## wheels, the glasshouse sloping up to the roof, and its extras.
 static func car_arrays(length: float, width: float, color: Color, shape: Array, sign: int) -> Dictionary:
-	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "shadow": PackedVector3Array()}
+	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "shadow": PackedVector3Array(),
+		"part": PackedVector2Array(), "part_now": PAINT}
 	var hl := length * 0.5
 	var hw := width * 0.5
 	var van := str(shape[5]) == "door"
 	var sill := 1.0 if van else 0.8
 	var roof := 1.95 if van else 1.42
 	var tyre := Color8(28, 28, 28)
+	out["part_now"] = RUBBER
 	for x: float in [hl * 0.64, -hl * 0.64]:
 		for y: float in [hw * 0.86, -hw * 0.86]:
 			_car_box(out, x - 0.33, x + 0.33, y - 0.14, y + 0.14, 0.0, 0.62, tyre)
+	out["part_now"] = PAINT
 	_car_box(out, -hl, hl, -hw, hw, 0.28, sill, color)
 	var top := color.darkened(0.12)
 	var glass_front: float = shape[0]
@@ -412,7 +440,9 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 		for i in 4:  # windshield, right windows, rear window, left windows
 			var j := (i + 1) % 4
 			var facing: Vector3 = (low[i] + low[j] + high[i] + high[j]) / 4.0 - middle
-			_quad(out, low[i], low[j], high[j], high[i], CAR_GLASS.lightened(0.1 if i % 2 else 0.0), facing, key)
+			out["part_now"] = GLASS_PART
+			_quad(out, low[i], low[j], high[j], high[i], CAR_GLASS.lightened(0.1 if i % 2 and not opaque else 0.0), facing, key)
+		out["part_now"] = PAINT
 		_quad(out, high[0], high[1], high[2], high[3], top, Vector3.UP, key)
 	var flat := func(x0: float, x1: float, y0: float, y1: float, h: float, c: Color) -> void:
 		_quad(out, Vector3(x0, h, y0), Vector3(x1, h, y0), Vector3(x1, h, y1), Vector3(x0, h, y1), c, Vector3.UP)
@@ -427,6 +457,7 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 				flat.call(hl * glass_front, hl * 0.98, y - hw * 0.06, y + hw * 0.06, sill + 0.01, color.lightened(0.55))
 	if sign > 0:  # a taxi's roof light, lit while free for a fare
 		_car_box(out, -hl * 0.24, -hl * 0.04, -hw * 0.48, hw * 0.48, roof, roof + 0.08, Color8(30, 30, 30))
+		out["part_now"] = LAMP if sign == 2 else PAINT
 		_car_box(out, -hl * 0.22, -hl * 0.06, -hw * 0.42, hw * 0.42, roof + 0.08, roof + 0.24, CAR_SIGN if sign == 2 else CAR_SIGN.darkened(0.45))
 	return out
 
@@ -435,7 +466,7 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 ## top, drawn and casting a shadow (the sides' shading turns with the car).
 static func _car_box(out: Dictionary, x0: float, x1: float, y0: float, y1: float, bottom: float, top: float, color: Color) -> void:
 	var corners := [Vector2(x0, y0), Vector2(x1, y0), Vector2(x1, y1), Vector2(x0, y1)]
-	var shades := [0.86, 0.80, 0.94, 0.80]  # left, front, right, rear
+	var shades := [baked(0.86), baked(0.80), baked(0.94), baked(0.80)]  # left, front, right, rear
 	for key in ["verts", "shadow"]:
 		for i in 4:
 			var p: Vector2 = corners[i]
@@ -526,10 +557,13 @@ static func _caster_material() -> StandardMaterial3D:
 
 
 static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask := PackedVector2Array(),
-		wall_uv := PackedVector2Array(), window := PackedFloat32Array()) -> ArrayMesh:
+		wall_uv := PackedVector2Array(), window := PackedFloat32Array(), part := PackedVector2Array()) -> ArrayMesh:
 	var surface := []
 	surface.resize(Mesh.ARRAY_MAX)
 	surface[Mesh.ARRAY_VERTEX] = verts
+	surface[Mesh.ARRAY_NORMAL] = flat_normals(verts)
+	if part.size() == verts.size():
+		surface[Mesh.ARRAY_TEX_UV2] = part
 	if not colors.is_empty():
 		surface[Mesh.ARRAY_COLOR] = colors
 	if not roof_mask.is_empty():
@@ -542,6 +576,19 @@ static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface, [], {}, flags)
 	return mesh
+
+
+## Each triangle's outward normal: _tri winds (b - a) x (c - a) inward
+## (Godot's clockwise front faces), so the outward side is its negative.
+static func flat_normals(verts: PackedVector3Array) -> PackedVector3Array:
+	var normals := PackedVector3Array()
+	normals.resize(verts.size())
+	for i in range(0, verts.size() - 2, 3):
+		var n := -(verts[i + 1] - verts[i]).cross(verts[i + 2] - verts[i]).normalized()
+		normals[i] = n
+		normals[i + 1] = n
+		normals[i + 2] = n
+	return normals
 
 
 static func _instance(mesh: ArrayMesh, material: Material, layer: int) -> MeshInstance3D:
@@ -575,7 +622,10 @@ static func _tri(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, color: Col
 		for i in 3:
 			out["window"].append_array(PackedFloat32Array([window.x, window.y, window.z, window.w]))
 	out["colors"].append_array(PackedColorArray([color, color, color]))
-	var shade := 0.90 if facing.y > 0.5 and Vector2(-normal.x, -normal.z).dot(LIGHT) < -0.001 else 1.0
+	if out.has("part"):  # a car: the part's material (car.gdshader)
+		var part := Vector2(out["part_now"], 0.0)
+		out["part"].append_array(PackedVector2Array([part, part, part]))
+	var shade := baked(0.90 if facing.y > 0.5 and Vector2(-normal.x, -normal.z).dot(LIGHT) < -0.001 else 1.0)
 	var mask := Vector2(1.0 if facing.y > 0.5 else 0.0, shade)
 	out["roof_mask"].append_array(PackedVector2Array([mask, mask, mask]))
 
@@ -625,7 +675,7 @@ static func _building(out: Dictionary, footprint: PackedVector2Array, style: Arr
 		if edge.length_squared() < 1e-6:
 			continue
 		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
-		var shade := 0.72 + 0.28 * clampf(normal.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+		var shade := baked(0.72 + 0.28 * clampf(normal.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0))
 		var wall_shade := Color(wall_color.r * shade, wall_color.g * shade, wall_color.b * shade)
 		out["stats"]["walls"] += 1
 		if arena:  # their windows light up with a match (set_arena_lights): geometry, as before
@@ -667,7 +717,7 @@ static func _glasshouse(out: Dictionary, footprint: PackedVector2Array, height: 
 		if edge.length_squared() < 1e-6:
 			continue
 		var normal := Vector2(-edge.y, edge.x).normalized() * outward_sign
-		var shade := 0.85 + 0.15 * clampf(normal.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+		var shade := baked(0.85 + 0.15 * clampf(normal.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0))
 		_quad(glass, to_3d(a), to_3d(b), to_3d(b, height), to_3d(a, height), Color(GLASS.r * shade, GLASS.g * shade, GLASS.b * shade), to_3d(normal))
 	if gabled:
 		_gabled(glass, footprint, height, GLASS, GLASS)
@@ -740,12 +790,37 @@ static func _frustum(out: Dictionary, centre: Vector2, r_bottom: float, r_top: f
 			var u := Vector2.from_angle(TAU * i / LANDMARK_SEGMENTS)
 			var v := Vector2.from_angle(TAU * (i + 1) / LANDMARK_SEGMENTS)
 			var outward := (u + v).normalized()
-			var shade := 0.72 + 0.28 * clampf(outward.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+			var shade := baked(0.72 + 0.28 * clampf(outward.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0))
 			var lit := Color(color.r * shade, color.g * shade, color.b * shade)
 			_tri(out, to_3d(centre + u * r_bottom, bottom), to_3d(centre + v * r_bottom, bottom), to_3d(centre + v * r_top, top), lit, to_3d(outward), key)
 			if r_top > 0.0:
 				_tri(out, to_3d(centre + u * r_bottom, bottom), to_3d(centre + v * r_top, top), to_3d(centre + u * r_top, top), lit, to_3d(outward), key)
 				_tri(out, to_3d(centre, top), to_3d(centre + u * r_top, top), to_3d(centre + v * r_top, top), color, Vector3.UP, key)
+
+
+## rtx-scene-readiness step 2: --outdoor-3d's materials respond to light.
+## Before any mesh is built: shaded copies of the building shader (lit windows
+## as emission) and of the ground, the car shader, and no baked shading.
+static func use_shaded() -> void:
+	opaque = true
+	var shader := Shader.new()
+	# Vertex colours are sRGB: Forward+ lights in linear space (Compatibility's unshaded view never converted them)
+	shader.code = preload("res://building_snow.gdshader").code.replace("render_mode unshaded, cull_back;", "render_mode cull_back;") \
+		.replace("mix(COLOR.rgb,", "mix(pow(COLOR.rgb, vec3(2.2)),")
+	_shared["material"].shader = shader
+	_shared["material"].set_shader_parameter("ambient", Color.WHITE)  # the Environment's ambient light instead
+	var ground := StandardMaterial3D.new()
+	ground.vertex_color_use_as_albedo = true
+	ground.vertex_color_is_srgb = true
+	ground.roughness = 0.95
+	_shared["ground"] = ground
+	_shared["car"] = ShaderMaterial.new()
+	_shared["car"].shader = preload("res://car.gdshader")
+
+
+## A face's baked directional shading: none where real lights shade it.
+static func baked(shade: float) -> float:
+	return 1.0 if opaque else shade
 
 
 ## rtx-scene-readiness step 1: a chunk's ground plane and its roads as flat
@@ -793,7 +868,7 @@ static func _box(out: Dictionary, a: Vector2, b: Vector2, half_width: float, bot
 			var p: Vector2 = corners[i]
 			var q: Vector2 = corners[(i + 1) % 4]
 			var outward := ((p + q) / 2.0 - (a + b) / 2.0).normalized()
-			var shade := 0.72 + 0.28 * clampf(outward.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+			var shade := baked(0.72 + 0.28 * clampf(outward.dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0))
 			_quad(out, to_3d(p, bottom), to_3d(q, bottom), to_3d(q, top), to_3d(p, top), Color(color.r * shade, color.g * shade, color.b * shade),
 				to_3d(outward), key)
 		_quad(out, to_3d(corners[0], top), to_3d(corners[1], top), to_3d(corners[2], top), to_3d(corners[3], top), color, Vector3.UP, key)
@@ -875,7 +950,7 @@ static func _roof_box(out: Dictionary, footprint: PackedVector2Array, at: Vector
 		var a := corners[i]
 		var b := corners[(i + 1) % 4]
 		var mid := (a + b) / 2.0
-		var shade := 0.72 + 0.28 * clampf((mid - centre).normalized().dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+		var shade := baked(0.72 + 0.28 * clampf((mid - centre).normalized().dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0))
 		_quad(out, to_3d(a, base), to_3d(b, base), to_3d(b, top), to_3d(a, top),
 			Color(side_color.r * shade, side_color.g * shade, side_color.b * shade), to_3d(mid - centre))
 	_quad(out, to_3d(corners[0], top), to_3d(corners[1], top), to_3d(corners[2], top), to_3d(corners[3], top), top_color, Vector3.UP)
@@ -1000,7 +1075,7 @@ static func _gabled(out: Dictionary, footprint: PackedVector2Array, height: floa
 	var far := 10000.0
 	for side: float in [1.0, -1.0]:
 		var half := PackedVector2Array([centre - axis * far, centre + axis * far, centre + axis * far + normal * side * far, centre - axis * far + normal * side * far])
-		var shade := color.lightened(14.0 / 255.0) if side > 0.0 else color.darkened(12.0 / 255.0)
+		var shade := color if opaque else color.lightened(14.0 / 255.0) if side > 0.0 else color.darkened(12.0 / 255.0)
 		for facet in Geometry2D.intersect_polygons(footprint, half):
 			var heights := PackedFloat32Array()
 			for p in facet:
@@ -1020,7 +1095,7 @@ static func _gabled(out: Dictionary, footprint: PackedVector2Array, height: floa
 			continue  # an eave: the roof meets this wall at its top
 		var edge := b - a
 		var facing := to_3d(Vector2(-edge.y, edge.x).normalized() * outward_sign)
-		var shade := 0.72 + 0.28 * clampf(Vector2(facing.x, facing.z).dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0)
+		var shade := baked(0.72 + 0.28 * clampf(Vector2(facing.x, facing.z).dot(LIGHT.normalized()) * 0.5 + 0.5, 0.0, 1.0))
 		var wall := Color(wall_color.r * shade, wall_color.g * shade, wall_color.b * shade)
 		var fan := [to_3d(b, height)] + top
 		for t in fan.size() - 1:

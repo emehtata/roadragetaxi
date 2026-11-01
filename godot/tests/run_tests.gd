@@ -3218,6 +3218,16 @@ func test_buildings_3d() -> void:
 	check(map.buildings_3d.instance_count() == 0, "the ground goes with its chunk")
 	map.free()
 	MapChunk.outdoor_3d = false
+	# rtx-scene-readiness step 2: outward normals, and every car vertex tagged with its part's material
+	var up_tri := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array()}
+	B3._tri(up_tri, Vector3(0, 1, 0), Vector3(1, 1, 0), Vector3(0, 1, 1), Color.WHITE, Vector3.UP)
+	B3._tri(up_tri, Vector3(0, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1), Color.WHITE, Vector3.LEFT)
+	var normals := B3.flat_normals(up_tri["verts"])
+	check(normals[0].is_equal_approx(Vector3.UP) and normals[3].is_equal_approx(Vector3.LEFT), "flat normals face outward, as _tri winds them")
+	var taxi := B3.car_arrays(4.4, 1.8, Color.YELLOW, EntityLayer.CAR_SHAPES[0], 2)
+	var parts: Array = Array(taxi["part"]).map(func(v): return int(v.x))
+	check(taxi["part"].size() == taxi["verts"].size() and B3.PAINT in parts and B3.RUBBER in parts and B3.GLASS_PART in parts and B3.LAMP in parts,
+		"a lit taxi's paint, tyres, glass and sign each carry their material")
 	MapChunk.buildings_3d = false
 
 
