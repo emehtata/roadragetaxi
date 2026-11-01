@@ -586,7 +586,7 @@ const LANDMARK_SEGMENTS := 12
 
 static func _landmark(out: Dictionary, at: Vector2, angle: float, spec: Dictionary) -> void:
 	var scale := float(spec.get("scale", 1.0))
-	var turn := Transform2D(-angle, at) * Transform2D.IDENTITY.scaled(Vector2(scale, scale))
+	var turn := Transform2D(deg_to_rad(float(spec.get("heading_deg", 0.0))) - angle, at) * Transform2D.IDENTITY.scaled(Vector2(scale, scale))
 	for shape: Array in spec.get("shapes", []):
 		var colour := Color.html(str(shape[-1]))
 		match str(shape[0]):

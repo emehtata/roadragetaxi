@@ -1270,7 +1270,7 @@ func _draw_trees(node: Node2D) -> void:
 ## shapes are buildings_3d's, or their footprints here without the 3D layer.
 static func draw_landmark(node: Node2D, at: Vector2, angle: float, spec: Dictionary, footprints := false) -> void:
 	var scale := float(spec.get("scale", 1.0))
-	node.draw_set_transform(at, -angle, Vector2(scale, scale))
+	node.draw_set_transform(at, deg_to_rad(float(spec.get("heading_deg", 0.0))) - angle, Vector2(scale, scale))
 	for shape: Array in spec.get("shapes", []):
 		var colour := Color.html(str(shape[-1]))
 		match str(shape[0]):
