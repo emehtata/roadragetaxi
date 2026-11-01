@@ -3523,24 +3523,47 @@ func test_performance_paths() -> void:
 	async_chunk.free()
 	sync_chunk.free()
 
-	# Chunk messages parsed off the main thread: one unloaded meanwhile is dropped.
+	# Complete jobs in controlled orders, including replacements and reconnects.
 	var sim := SimClient.new()
 	root.add_child(sim)
+	sim.set_process(false)
 	var got: Array = []
-	sim.chunk_received.connect(func(m): got.append(m["chunk_id"]))
-	sim._parse_chunk('{"type":"chunk","version":1,"chunk_id":"3_4","bounds":[0,0,1,1]}')
-	sim._parse_chunk('{"type":"chunk","version":1,"chunk_id":"5_6","bounds":[0,0,1,1]}')
-	check(sim._parsing.has("3_4") and sim._parsing.has("5_6"), "the chunk id is read without parsing the line")
-	sim._cancelled["5_6"] = true  # its chunk_unload came first
-	for id in sim._parsing.keys():
-		while not WorkerThreadPool.is_task_completed(sim._parsing[id]):
-			OS.delay_msec(1)
-	sim._chunk_parsed("3_4", JSON.parse_string('{"type":"chunk","version":1,"chunk_id":"3_4"}'), 10)
-	sim._chunk_parsed("5_6", JSON.parse_string('{"type":"chunk","version":1,"chunk_id":"5_6"}'), 10)
-	check(got == ["3_4"], "parsed chunks arrive; one unloaded while parsing doesn't (%s)" % [got])
+	sim.chunk_received.connect(func(m): got.append(m.get("revision", "initial")))
+	var line := '{"type":"chunk","version":1,"chunk_id":"3_4","bounds":[0,0,1,1]}'
+	sim._parse_chunk(line)
+	var older: int = sim._next_generation
+	sim._parse_chunk(line)
+	var newer: int = sim._next_generation
+	check(sim._parsing.size() == 2, "replacement chunks retain both worker task handles")
+	sim._chunk_parsed("3_4", newer, {"version": 1, "revision": "new"}, 10)
+	sim._chunk_parsed("3_4", older, {"version": 1, "revision": "old"}, 10)
+	check(got == ["new"], "an older worker finishing last cannot replace a newer chunk")
+	sim._parse_chunk(line)
+	older = sim._next_generation
+	sim._buffer = '{"type":"chunk_unload","version":1,"chunk_id":"3_4"}\n'.to_utf8_buffer()
+	sim._drain_lines()
+	sim._parse_chunk(line)
+	newer = sim._next_generation
+	sim._chunk_parsed("3_4", older, {"version": 1, "revision": "unloaded"}, 10)
+	check(sim._parsing.has(newer), "an old callback cannot consume a replacement task")
+	sim._chunk_parsed("3_4", newer, {"version": 1, "revision": "reloaded"}, 10)
+	check(got == ["new", "reloaded"], "unload then reload never revives the old chunk")
+	sim._parse_chunk(line)
+	older = sim._next_generation
 	sim._buffer = '{"type":"world","version":1,"center":[1000.0,2000.0]}\n'.to_utf8_buffer()
 	sim._drain_lines()
+	sim._parse_chunk(line)
+	newer = sim._next_generation
+	sim._chunk_parsed("3_4", older, {"version": 1, "revision": "old world"}, 10)
+	sim._chunk_parsed("3_4", newer, {"version": 1, "revision": "new world"}, 10)
+	check(got == ["new", "reloaded", "new world"], "a new world invalidates jobs from the previous connection")
 	check(sim._origin == Vector2(1000.0, 2000.0), "the worker prepares chunks for the world's origin")
+	sim._parse_chunk(line)
+	older = sim._next_generation
+	sim.connected = true
+	sim._process(0.0)  # disconnected peer: invalidate old work before reconnecting
+	sim._chunk_parsed("3_4", older, {"version": 1, "revision": "disconnected"}, 10)
+	check(got.size() == 3 and sim._parsing.is_empty(), "disconnect invalidates pending chunks and every task is collected")
 	sim.free()
 
 	# A chunk prepared on the parsing worker sets up exactly as one prepared in place.
