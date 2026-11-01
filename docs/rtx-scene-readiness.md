@@ -62,16 +62,21 @@ input remain aligned. Capture and inspect the rendered result.
 Relevant code: [map_layer.gd](../godot/map_layer.gd),
 [buildings_3d.gd](../godot/buildings_3d.gd), [main.gd](../godot/main.gd).
 
-**Status (1 November 2026):** an opt-in `--outdoor-3d` client flag makes the
-building view opaque and adds each chunk's ground plane and surface roads
-(flat colours, tunnels left out) to the shared World3D, owned and freed with
-the chunk's building meshes. The 2D ground layers under it (z < 7) are not
-drawn. Rendered with Forward+/Vulkan on an RTX 5060 (native Windows Godot
-4.7.2): ground, roads, buildings, the taxi and NPC cars in one view, HUD
-aligned. Colours look paler under Forward+ than under Compatibility (Step 2
-material work). Landuse, lamp pools and wet sheen are not in the 3D path yet
-(Steps 3–4). `godot-shot` passes engine options with `--engine-arg`. The
-driving check didn't run: the shot's engine was off. Resize was not rendered.
+**Status (1 November 2026, verified):** the opt-in `--outdoor-3d` client flag
+makes the building view opaque and adds each chunk's ground, landuse, roads
+and road furniture to the shared World3D. These are built with the chunk's
+building meshes off the frame path and freed with them. The 2D layers under
+the view (z < 7) are hidden. Bridge roads stay 2D until Step 5, so nothing is
+drawn twice. Evidence (Forward+/Vulkan, RTX 5060, native Windows Godot 4.7.2):
+- ground, buildings, the taxi and NPC cars render in one view;
+- zoom 0.35–8 renders correctly, and a ~1 km view shows no seams between chunks;
+- a 1600×900 window renders with the view filled and the HUD aligned;
+- a 25 s screenshot drive moved the taxi 0.2 km through a junction;
+- a scripted MapLayer render shows a removed chunk's building, ground and road
+  gone, with the neighbour intact;
+- `--inputtest` with and without `--outdoor-3d` (Forward+) gives matching
+  results: holding W reaches 8.33 m/s, the taxi steers, and throttle releases
+  match.
 
 ## Step 2: make existing meshes respond to light
 
@@ -98,27 +103,30 @@ Relevant code: `_mesh`, `_car_box`, `_make_material`, `set_light` in
 [buildings_3d.gd](../godot/buildings_3d.gd), and
 [building_snow.gdshader](../godot/building_snow.gdshader).
 
-**Status (1 November 2026):** with `--outdoor-3d`, `use_shaded()` swaps in
-lit materials before any mesh is built: a shaded copy of the building shader
-(lit windows, shop windows and candles as emission), a shaded ground
-material, and [car.gdshader](../godot/car.gdshader) with paint, rubber, glass
-and lamp parts tagged per vertex (UV2.x). `_mesh` writes flat outward
-normals. `baked()` drops the baked face shading on this path. Vertex colours
-are converted from sRGB. Ambient light moved to the Environment. The sun
-lights the drawn meshes and its shadows land on them directly: the camera
-includes the shadows-only caster layer, its far plane leaves room for the
-shadow fit, and the multiplied shadow overlay is off. Rendered with
-Forward+/Vulkan:
-- With the sun at 135° and then 300°, wall shading and rooftop shadows swap
-  sides.
-- In the open countryside (Sysmä) the taxi casts its shadow away from the
-  sun.
+**Status (1 November 2026, verified):** with `--outdoor-3d`, `use_shaded()`
+swaps in lit materials before any mesh is built:
+- a shaded building shader, with lit windows, shop windows and candles as
+  emission;
+- `ground.gdshader`, with season snow driven by `set_snow`;
+- `road.gdshader`;
+- `car.gdshader`, with paint, rubber, glass and lamp parts tagged per vertex.
 
-Open items:
-- Paint versus rubber highlights are not yet distinguishable at gameplay zoom.
-- Shadow edges are soft and blocky (shadow map resolution).
-- Glasshouse glass and lit window meshes stay unshaded.
-- Night not yet rendered on this path.
+Meshes carry flat outward normals, and car boxes have undersides. `baked()`
+drops baked face shading, and sRGB vertex colours are linearised. Ambient
+light lives in the Environment at full strength without the sun, falling to
+0.45 under full sun. The sun lights the meshes and shadows land on them
+directly, without the multiplied overlay. Evidence:
+- sun at 135° vs 300°: building wall shading and rooftop shadows swap sides;
+- an oblique scripted render under two lights shows car and house faces
+  turning with the light, no missing or inverted faces, and cast shadows;
+- with the sun placed to glint, paint shows bright highlights, glass
+  reflects the sky, and tyres stay matte;
+- night under Forward+ matches the shipped Compatibility renderer's
+  brightness (a roof measures RGB 19/16/25 vs 17/14/21), so the canvas tint
+  is not applied twice;
+- lit windows glow as emission at night;
+- winter roofs and ground are snow-covered;
+- the taxi casts its shadow in open countryside (Sysmä).
 
 ## Step 3: add ground, roads and wet surface materials
 
@@ -141,23 +149,28 @@ and road appearance stays continuous across loaded chunks.
 Relevant code: `_draw_roads`, `_draw_wet`, `_draw_puddles` in
 [map_chunk.gd](../godot/map_chunk.gd).
 
-**Status (1 November 2026):** with `--outdoor-3d`, each chunk's landuse,
-parking and water are flat triangulated areas in the 2D layers' order (a few
-millimetres apart, below the roads). Roads, dashed or solid centre lines and
-open water form a road mesh using [road.gdshader](../godot/road.gdshader).
-Its wetness comes from the server's `weather.wetness` (`set_wetness`): wet
-asphalt darkens and turns glossy, water is always glossy, and ice is matte.
-The Environment has a procedural sky for reflections. Rendered with
-Forward+/Vulkan: dashes and landuse show, and wet roads are darker and bluer
-than dry ones (RGB 71/67/57 dry versus 60/58/54 wet on the same patch).
+**Status (1 November 2026, verified):** each chunk's landuse, parking and
+water are flat areas 2–10 mm above the ground. Roads sit at 12–28 mm, puddles
+at 32 mm and markings at 36 mm, so cars (lifted 28 mm) rest on the road
+rather than sinking into it. The road mesh (`road.gdshader`) carries:
+- the surface pattern families ported from `surface.gdshader`;
+- wetness from `weather.wetness`, which darkens and glosses the asphalt;
+- glossy open water;
+- puddles that grow with wetness from their reveal level, as the 2D ones do,
+  with rain-ripple normals;
+- per-chunk road snow through an instance uniform.
 
-Open items:
-- Puddles and ripple normals.
-- Curbs and island height.
-- Surface texture patterns (`surface.gdshader`).
-- One-way arrows.
-- Snow on roads and ploughed strips.
-- Seam checks across many chunks.
+Curbs and traffic islands stand 12 cm high with walls. Speed bumps are low
+humps. Zebra crossings and 0.2 m centre lines are road-surface markings.
+The Environment has a procedural sky for reflections. Evidence:
+- wet roads measure darker and bluer than dry (RGB 60/58/54 vs 71/67/57);
+- puddles show at close zoom when wet;
+- crossings, islands and curbs render;
+- no flicker or seams appear while driving or in a ~1 km view;
+- winter shows snowy driving lanes and bare pavements, matching the 2D map.
+
+Not ported: the ploughed 10 m snow cells. The 3D road takes the chunk's
+cover, and the ploughed cells remain a 2D-only refinement.
 
 ## Step 4: replace the lighting and shadow composition
 

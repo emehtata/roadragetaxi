@@ -626,14 +626,39 @@ func _build_2_5d() -> void:
 		if obj[2] == "landmark":
 			landmarks.append([MapMath.point(origin, obj[0], obj[1]), float(obj[3]), obj[4]])
 	var ground := {}
-	if outdoor_3d:  # the chunk's ground and its surface roads (tunnels left out), most important on top
+	if outdoor_3d:  # the chunk's ground and its ground-level roads (tunnels and bridges left out: step 5), most important on top
 		var roads: Array = []
 		for road in _data.get("roads", []):
-			if int(road.get("layer", 0)) >= 0:
+			if int(road.get("layer", 0)) == 0:
 				var color: Color = Detail._rgb(road["color"]) if road.has("color") else (Color(0.33, 0.33, 0.35) if road.get("drivable", false) else Color(0.55, 0.52, 0.45))
 				var center = road.get("center")  # [r, g, b, 2 solid / dashed]
 				roads.append([_points(road["points"]), maxf(0.3, float(road.get("half_width_m", 1.5))), color, int(road.get("rank", 0)),
-					Detail._rgb(center) if center != null else null, center != null and int(center[3]) == 2])
+					Detail._rgb(center) if center != null else null, center != null and int(center[3]) == 2,
+					int(road.get("surface_texture", 0)), road.get("drivable", false)])
+		var islands: Array = []
+		for island in _data.get("traffic_islands", []):
+			islands.append([_points(island[2]), seasonal_color(Detail._rgb(island[0]), _season) if int(island[1]) > 0 else Detail._rgb(island[0])])
+		var curbs: Array = []
+		for curb in _data.get("curbs", []):
+			curbs.append(_points(curb))
+		var stripes: Array = []  # zebra crossings (Detail.draw_road_features): 0.5 m stripes, 0.9 m apart
+		for c in _data.get("crossings", []):
+			var at := MapMath.point(_origin, c[0], c[1])
+			var along := Vector2(cos(c[2]), -sin(c[2]))
+			var across := Vector2(-along.y, along.x)
+			var count := maxi(3, int(float(c[3]) / 0.9))
+			for i in count:
+				var centre: Vector2 = at + across * (-(count - 1) * 0.9 / 2.0 + i * 0.9)
+				stripes.append([centre - along * float(c[4]) / 2.0, centre + along * float(c[4]) / 2.0])
+		var bumps: Array = []
+		for bump in _data.get("speed_bumps", []):
+			var at := MapMath.point(_origin, bump[0], bump[1])
+			var along: Vector2 = Vector2(cos(bump[2]), -sin(bump[2])) * float(Detail.BUMP_LENGTHS.get(str(bump[4]), 0.6)) / 2.0
+			bumps.append([at - along, at + along, float(bump[3]) / 2.0])
+		var puddles: Array = []  # [centre, radius, rim shape, reveal wetness]: the road shader grows them with the weather
+		for spot in _puddle_spots:
+			if int(spot.get("z", 1)) == 1:
+				puddles.append([spot["at"], float(spot["radius"]), spot["shape"], float(spot["reveal"])])
 		var areas: Array = []  # [polygon, colour, water], drawn in this order (the 2D layers')
 		for area in _data.get("landuse", []):
 			var color := Detail._rgb(area[0])
@@ -645,7 +670,8 @@ func _build_2_5d() -> void:
 		var ice := clampf(_season[0], 0.0, 1.0)
 		for water in _data.get("waters", []):
 			areas.append([_points(water), Color(0.20, 0.26, 0.29).lerp(Color8(232, 240, 244), ice), ice < 0.5])
-		ground = {"rect": _bounds_rect, "roads": roads, "areas": areas}
+		ground = {"rect": _bounds_rect, "roads": roads, "areas": areas, "islands": islands, "curbs": curbs, "stripes": stripes,
+			"bumps": bumps, "puddles": puddles}
 	if buildings_3d and not (buildings.is_empty() and sites.is_empty() and landmarks.is_empty() and ground.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
 		if not build_async:
 			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground))
@@ -722,12 +748,21 @@ static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2, si
 	return arrays
 
 
+## --outdoor-3d: the chunk's visible road snow on its own road mesh (road.gdshader's instance uniform).
+## ponytail: one cover for the chunk; the ploughed 10 m cells stay 2D-only until a cell texture is worth it
+func _road_snow_3d() -> void:
+	for node in meshes_3d:
+		if node is MeshInstance3D and node.material_override == B3._shared.get("road"):
+			node.set_instance_shader_parameter("snow_cover", _snow_cover)
+
+
 func _meshes_ready(arrays: Dictionary) -> void:
 	if _building_task >= 0:
 		WorkerThreadPool.wait_for_task_completion(_building_task)
 		_building_task = -1
 	Perf.add("chunk_buildings_build", arrays.get("build_usec", 0))
 	meshes_3d = B3.meshes(arrays)
+	_road_snow_3d()
 	_volumes = {"stats": arrays["stats"]}  # the vertices live in the meshes
 	if is_inside_tree():
 		get_parent().add_building_meshes(self)
@@ -1101,6 +1136,7 @@ func set_road_snow(depth: float, cells: Array, redraw := true) -> bool:
 		return false
 	_snow_cover = cover
 	_plowed_cover = cleared
+	_road_snow_3d()
 	if redraw:
 		redraw_road_snow()
 	return true

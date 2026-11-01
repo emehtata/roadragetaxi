@@ -15,6 +15,7 @@
 extends Node2D
 
 const B25 := preload("res://buildings_25d.gd")  # colours, window rules, unit()
+const RS := preload("res://render_style.gd")  # the puddles' colour
 static var FOV := 30.0  # degrees, vertical; higher = deeper facades. godot-22: 40 let tall buildings swallow streets, 25 flattens low ones
 const LIGHT := Vector2(-0.6, -0.8)  # walls facing up-left are lit (2D screen direction)
 const WINDOW_OUT := 0.05  # metres in front of the wall, so depth testing keeps windows on top
@@ -174,6 +175,8 @@ func set_celestial_light(altitude_deg: float, azimuth_deg: float, strength: floa
 	_sun_key = key
 	var on := shadows_enabled and strength > 0.01
 	if opaque:  # the sun lights the scene even without shadows; its shadows land on the meshes themselves
+		# Without the sun the ambient light is all there is, at full strength as the unshaded path had it
+		_camera.environment.ambient_light_energy = lerpf(1.0, AMBIENT_ENERGY, clampf(strength, 0.0, 1.0))
 		_sun.visible = strength > 0.01
 		_sun.shadow_enabled = shadows_enabled
 		_sun.light_energy = strength * SUN_ENERGY
@@ -335,6 +338,8 @@ func set_wetness(value: float) -> void:
 
 func set_snow(cover: float) -> void:
 	_shared["material"].set_shader_parameter("snow_cover", clampf(cover, 0.0, 1.0))
+	if _shared["ground"] is ShaderMaterial:  # --outdoor-3d's ground (ground.gdshader)
+		_shared["ground"].set_shader_parameter("snow_cover", clampf(cover, 0.0, 1.0))
 
 
 ## The lit windows' multiplier over their (warm, varied) vertex colours: at
@@ -402,7 +407,7 @@ func car(at: Vector2, heading: float, length: float, width: float, color: Color,
 		_cars_root.add_child(body)
 		_cars_root.add_child(caster)
 		_car_nodes.append([body, caster])
-	var place := Transform3D(Basis(Vector3.UP, heading), to_3d(at))  # local +x forward, +z right (entity_layer _forward/_right)
+	var place := Transform3D(Basis(Vector3.UP, heading), to_3d(at, ROAD_M + 0.016 if opaque else 0.0))  # on the road surface (step 3), not in it  # local +x forward, +z right (entity_layer _forward/_right)
 	for i in 2:
 		var node: MeshInstance3D = _car_nodes[_cars_used][i]
 		node.mesh = _car_meshes[key][i]
@@ -431,7 +436,7 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 	out["part_now"] = RUBBER
 	for x: float in [hl * 0.64, -hl * 0.64]:
 		for y: float in [hw * 0.86, -hw * 0.86]:
-			_car_box(out, x - 0.33, x + 0.33, y - 0.14, y + 0.14, 0.0, 0.62, tyre)
+			_car_box(out, x - 0.33, x + 0.33, y + signf(y) * 0.05 - 0.14, y + signf(y) * 0.05 + 0.14, 0.0, 0.62, tyre)  # 5 cm out past the body
 	out["part_now"] = PAINT
 	_car_box(out, -hl, hl, -hw, hw, 0.28, sill, color)
 	var top := color.darkened(0.12)
@@ -484,6 +489,8 @@ static func _car_box(out: Dictionary, x0: float, x1: float, y0: float, y1: float
 			var c := Color(color.r * shades[i], color.g * shades[i], color.b * shades[i])
 			_quad(out, to_3d(p, bottom), to_3d(q, bottom), to_3d(q, top), to_3d(p, top), c, to_3d(outward), key)
 		_quad(out, to_3d(corners[0], top), to_3d(corners[1], top), to_3d(corners[2], top), to_3d(corners[3], top), color, Vector3.UP, key)
+		_quad(out, to_3d(corners[0], bottom), to_3d(corners[1], bottom), to_3d(corners[2], bottom), to_3d(corners[3], bottom),
+			color.darkened(0.3), Vector3.DOWN, key)  # the underside: seen in reflections and by secondary rays
 
 
 ## One chunk's mesh arrays (any thread): {"verts", "colors", "lit" (the
@@ -493,7 +500,7 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 		"wall_uv": PackedVector2Array(), "window": PackedFloat32Array(),  # the shader's windows (building_snow.gdshader)
 		"arena": PackedVector3Array(), "shadow": PackedVector3Array(), "glass": PackedVector3Array(), "glass_colors": PackedColorArray(),
 		"ground": PackedVector3Array(), "ground_colors": PackedColorArray(),
-		"road": PackedVector3Array(), "road_colors": PackedColorArray(), "road_uv": PackedVector2Array(),
+		"road": PackedVector3Array(), "road_colors": PackedColorArray(), "road_uv": PackedVector2Array(), "road_uv2": PackedVector2Array(),
 		"stats": {"buildings": 0, "walls": 0, "windows": 0, "lit": 0, "triangles": 0}}
 	if not ground.is_empty():
 		_ground(out, ground)
@@ -516,7 +523,8 @@ static func meshes(arrays: Dictionary) -> Array:
 	if not arrays.get("ground", PackedVector3Array()).is_empty():
 		instances.append(_instance(_mesh(arrays["ground"], arrays["ground_colors"]), _shared["ground"], LAYER_BUILDINGS))
 	if not arrays.get("road", PackedVector3Array()).is_empty():
-		instances.append(_instance(_mesh(arrays["road"], arrays["road_colors"], arrays["road_uv"]), _shared.get("road", _shared["ground"]), LAYER_BUILDINGS))
+		instances.append(_instance(_mesh(arrays["road"], arrays["road_colors"], arrays["road_uv"], PackedVector2Array(), PackedFloat32Array(), arrays["road_uv2"]),
+			_shared.get("road", _shared["ground"]), LAYER_BUILDINGS))
 	if not arrays.get("glass", PackedVector3Array()).is_empty():
 		instances.append(_instance(_mesh(arrays["glass"], arrays["glass_colors"]), _shared["glass"], LAYER_BUILDINGS))
 	if arrays["verts"].is_empty():
@@ -821,11 +829,8 @@ static func use_shaded() -> void:
 		.replace("mix(COLOR.rgb,", "mix(pow(COLOR.rgb, vec3(2.2)),")
 	_shared["material"].shader = shader
 	_shared["material"].set_shader_parameter("ambient", Color.WHITE)  # the Environment's ambient light instead
-	var ground := StandardMaterial3D.new()
-	ground.vertex_color_use_as_albedo = true
-	ground.vertex_color_is_srgb = true
-	ground.roughness = 0.95
-	_shared["ground"] = ground
+	_shared["ground"] = ShaderMaterial.new()
+	_shared["ground"].shader = preload("res://ground.gdshader")
 	_shared["road"] = ShaderMaterial.new()
 	_shared["road"].shader = preload("res://road.gdshader")
 	_shared["car"] = ShaderMaterial.new()
@@ -842,10 +847,20 @@ static func baked(shade: float) -> float:
 ## roads a little higher so crossings don't flicker. Flat colours for now:
 ## materials, markings and wetness are step 3.
 ## Step 3: landuse, parking and water under the roads, in the 2D layers'
-## order (each a little higher: no flicker where they overlap); roads, their
-## centre lines and open water in the road mesh (road.gdshader: wet and glossy).
+## order (a little higher each: no flicker where they overlap); roads, their
+## centre lines, crossings, bumps, puddles and open water in the road mesh
+## (road.gdshader: patterns, wetness, puddles, snow); raised islands and
+## curbs. Everything flat stays within 4 cm of the ground, under the tyres.
 const DASH_M := 3.0  # a dashed centre line: 3 m paint, 3 m gap
-const MARKING_HALF_M := 0.06
+const MARKING_HALF_M := 0.1  # a 0.2 m line: thinner vanishes under a pixel at the default zoom
+const AREAS_TOP_M := 0.010  # the landuse, parking and water layers between 0.002 m and this
+const ROAD_M := 0.012  # a road's surface (+ 0.002 m per rank, the more important on top)
+const PUDDLE_M := 0.032
+const MARKING_M := 0.036
+const CURB_M := 0.12  # kerbs and traffic islands stand this high
+const CURB_HALF_M := 0.08
+const BUMP_M := 0.07
+enum { ROAD_SURFACE, ROAD_WATER, ROAD_PUDDLE }  # road.gdshader's UV.x
 
 
 static func _ground(out: Dictionary, ground: Dictionary) -> void:
@@ -853,61 +868,152 @@ static func _ground(out: Dictionary, ground: Dictionary) -> void:
 	_ground_quad(out, rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y), 0.0, GROUND)
 	var areas: Array = ground.get("areas", [])
 	for i in areas.size():
-		var polygon: PackedVector2Array = areas[i][0]
-		var triangles := Geometry2D.triangulate_polygon(polygon) if polygon.size() >= 3 else PackedInt32Array()
-		var h := 0.005 + 0.025 * i / maxf(1.0, areas.size())  # under the lowest road (0.04)
-		var key := "road" if areas[i][2] else "ground"
-		for t in range(0, triangles.size(), 3):
-			_ground_tri(out, polygon[triangles[t]], polygon[triangles[t + 1]], polygon[triangles[t + 2]], h, areas[i][1], key, 1.0)
-	for road: Array in ground["roads"]:
+		var h := 0.002 + (AREAS_TOP_M - 0.002) * i / maxf(1.0, areas.size())
+		_flat_polygon(out, areas[i][0], h, areas[i][1], "road" if areas[i][2] else "ground", Vector2(ROAD_WATER, 0))
+	for road: Array in ground.get("roads", []):
 		var points: PackedVector2Array = road[0]
 		var half: float = road[1]
-		var h := 0.04 + 0.01 * clampi(road[3], 0, 8)
+		var h := ROAD_M + 0.002 * clampi(road[3], 0, 8)
+		var surface := Vector2(ROAD_SURFACE, float(road[6]) if road.size() > 6 else 0.0)
+		var drivable := Vector2(0.0, 1.0 if road.size() > 7 and road[7] else 0.0)
 		var carry := 0.0  # metres along the road, for the dashes
 		for i in points.size() - 1:
 			var length := points[i].distance_to(points[i + 1])
 			if length < 1e-3:
 				continue
-			_ribbon(out, points[i], points[i + 1], half, half, h, road[2])
-			if road[4] != null and half >= 2.0:  # a centre line on a two-lane road, just above it
+			_ribbon(out, points[i], points[i + 1], half, half, h, road[2], surface, drivable)
+			if road[4] != null and half >= 2.0:  # a centre line on a two-lane road
 				var u := (points[i + 1] - points[i]) / length
 				var s := 0.0
 				while s < length:
 					var phase := 0.0 if road[5] else fmod(carry + s, DASH_M * 2.0)
 					if phase < DASH_M:  # painted (a solid line: all the way)
 						var paint := length - s if road[5] else minf(DASH_M - phase, length - s)
-						_ribbon(out, points[i] + u * s, points[i] + u * (s + paint), MARKING_HALF_M, 0.0, h + 0.005, road[4])
+						_ribbon(out, points[i] + u * s, points[i] + u * (s + paint), MARKING_HALF_M, 0.0, MARKING_M, road[4])
 						s += paint
 					else:
 						s += DASH_M * 2.0 - phase
 				carry += length
+	for stripe: Array in ground.get("stripes", []):  # zebra stripes, 0.5 m wide
+		_ribbon(out, stripe[0], stripe[1], 0.25, 0.0, MARKING_M, Color8(245, 245, 245))
+	for bump: Array in ground.get("bumps", []):
+		_raised_strip(out, bump[0], bump[1], bump[2], ROAD_M, BUMP_M, Color8(45, 42, 40), "road")
+	for puddle: Array in ground.get("puddles", []):
+		_puddle(out, puddle[0], puddle[1], puddle[2], puddle[3])
+	for island: Array in ground.get("islands", []):
+		_raised_polygon(out, island[0], CURB_M, island[1])
+	for curb: PackedVector2Array in ground.get("curbs", []):
+		for i in curb.size() - 1:
+			if curb[i].distance_to(curb[i + 1]) > 1e-3:
+				_raised_strip(out, curb[i], curb[i + 1], CURB_HALF_M, 0.0, CURB_M, Color8(145, 145, 140), "ground")
+
+
+static func _flat_polygon(out: Dictionary, polygon: PackedVector2Array, h: float, color: Color, key: String, uv := Vector2.ZERO) -> void:
+	var triangles := Geometry2D.triangulate_polygon(polygon) if polygon.size() >= 3 else PackedInt32Array()
+	for t in range(0, triangles.size(), 3):
+		_ground_tri(out, polygon[triangles[t]], polygon[triangles[t + 1]], polygon[triangles[t + 2]], h, color, key, uv)
+
+
+## A traffic island: its top at `top` and its kerb walls down to the ground.
+static func _raised_polygon(out: Dictionary, polygon: PackedVector2Array, top: float, color: Color) -> void:
+	if polygon.size() < 3:
+		return
+	_flat_polygon(out, polygon, top, color, "ground")
+	var winding := signf(_signed_area(polygon))
+	for i in polygon.size():
+		var p := polygon[i]
+		var q := polygon[(i + 1) % polygon.size()]
+		var edge := q - p
+		if edge.length_squared() > 1e-6:
+			_ground_wall(out, p, q, 0.0, top, Color8(150, 150, 145), Vector2(edge.y, -edge.x) * winding, "ground")
+
+
+static func _signed_area(polygon: PackedVector2Array) -> float:
+	var area := 0.0
+	for i in polygon.size():
+		area += polygon[i].cross(polygon[(i + 1) % polygon.size()])
+	return area * 0.5
+
+
+## A low box from `a` to `b`, `half` either side: a kerb or a speed bump.
+static func _raised_strip(out: Dictionary, a: Vector2, b: Vector2, half: float, bottom: float, top: float, color: Color, key: String) -> void:
+	var along := (b - a).normalized()
+	var side := Vector2(-along.y, along.x) * half
+	var corners := [a - side, b - side, b + side, a + side]
+	_ground_quad(out, corners[0], corners[1], corners[2], corners[3], top, color, key)
+	for i in 4:
+		var p: Vector2 = corners[i]
+		var q: Vector2 = corners[(i + 1) % 4]
+		_ground_wall(out, p, q, bottom, top, color.darkened(0.15), (p + q) / 2.0 - (a + b) / 2.0, key)
+
+
+## A vertical face from p to q, facing `outward` (on the ground plan).
+static func _ground_wall(out: Dictionary, p: Vector2, q: Vector2, bottom: float, top: float, color: Color, outward: Vector2, key: String) -> void:
+	for tri in [[to_3d(p, bottom), to_3d(q, bottom), to_3d(q, top)], [to_3d(p, bottom), to_3d(q, top), to_3d(p, top)]]:
+		var a: Vector3 = tri[0]
+		var b: Vector3 = tri[1]
+		var c: Vector3 = tri[2]
+		if (b - a).cross(c - a).dot(to_3d(outward)) > 0.0:  # Godot's clockwise front faces: the cross points inward
+			var t := b
+			b = c
+			c = t
+		_ground_push(out, key, a, b, c, color, Vector2.ZERO, Vector2.ZERO)
+
+
+## A puddle as a fan from its centre: UV2.x its distance out (1 at the rim),
+## COLOR.a the wetness it shows from - the road shader grows it.
+static func _puddle(out: Dictionary, at: Vector2, radius: float, shape: Array, reveal: float) -> void:
+	var color := Color(RS.PUDDLE_COLOR, reveal)
+	var rim := PackedVector2Array()
+	for i in shape.size():
+		var angle := TAU * i / shape.size()
+		rim.append(at + Vector2(cos(angle), sin(angle)) * radius * float(shape[i]))
+	for i in rim.size():
+		var b := rim[i]
+		var c := rim[(i + 1) % rim.size()]
+		var verts := [to_3d(at, PUDDLE_M), to_3d(b, PUDDLE_M), to_3d(c, PUDDLE_M)]
+		var reach := [0.0, 1.0, 1.0]
+		if (verts[1] - verts[0]).cross(verts[2] - verts[0]).y > 0.0:
+			verts = [verts[0], verts[2], verts[1]]
+		out["road"].append_array(PackedVector3Array(verts))
+		out["road_colors"].append_array(PackedColorArray([color, color, color]))
+		out["road_uv"].append_array(PackedVector2Array([Vector2(ROAD_PUDDLE, 0), Vector2(ROAD_PUDDLE, 0), Vector2(ROAD_PUDDLE, 0)]))
+		out["road_uv2"].append_array(PackedVector2Array([Vector2(reach[0], 0), Vector2(reach[1], 0), Vector2(reach[2], 0)]))
 
 
 ## A strip from `a` to `b`, `half` either side, `cap` beyond each end (closing the bends).
-static func _ribbon(out: Dictionary, a: Vector2, b: Vector2, half: float, cap: float, h: float, color: Color) -> void:
+static func _ribbon(out: Dictionary, a: Vector2, b: Vector2, half: float, cap: float, h: float, color: Color,
+		uv := Vector2.ZERO, uv2 := Vector2.ZERO) -> void:
 	var along := (b - a).normalized()
 	var side := Vector2(-along.y, along.x) * half
 	a -= along * cap
 	b += along * cap
-	_ground_quad(out, a - side, b - side, b + side, a + side, h, color, "road")
+	_ground_quad(out, a - side, b - side, b + side, a + side, h, color, "road", uv, uv2)
 
 
-static func _ground_quad(out: Dictionary, a: Vector2, b: Vector2, c: Vector2, d: Vector2, h: float, color: Color, key := "ground") -> void:
-	_ground_tri(out, a, b, c, h, color, key)
-	_ground_tri(out, a, c, d, h, color, key)
+static func _ground_quad(out: Dictionary, a: Vector2, b: Vector2, c: Vector2, d: Vector2, h: float, color: Color, key := "ground",
+		uv := Vector2.ZERO, uv2 := Vector2.ZERO) -> void:
+	_ground_tri(out, a, b, c, h, color, key, uv, uv2)
+	_ground_tri(out, a, c, d, h, color, key, uv, uv2)
 
 
-## One flat triangle seen from above: wound clockwise as seen from +y (Godot's
-## front faces). `water`: the road shader's always-glossy surface.
-static func _ground_tri(out: Dictionary, a: Vector2, b: Vector2, c: Vector2, h: float, color: Color, key := "ground", water := 0.0) -> void:
+## One flat triangle seen from above: wound clockwise as seen from +y (Godot's front faces).
+static func _ground_tri(out: Dictionary, a: Vector2, b: Vector2, c: Vector2, h: float, color: Color, key := "ground",
+		uv := Vector2.ZERO, uv2 := Vector2.ZERO) -> void:
 	if (to_3d(b) - to_3d(a)).cross(to_3d(c) - to_3d(a)).y > 0.0:
 		var t := b
 		b = c
 		c = t
-	out[key].append_array(PackedVector3Array([to_3d(a, h), to_3d(b, h), to_3d(c, h)]))
+	_ground_push(out, key, to_3d(a, h), to_3d(b, h), to_3d(c, h), color, uv, uv2)
+
+
+## The road mesh carries the road shader's UV (kind, pattern) and UV2 (puddle reach, drivable).
+static func _ground_push(out: Dictionary, key: String, a: Vector3, b: Vector3, c: Vector3, color: Color, uv: Vector2, uv2: Vector2) -> void:
+	out[key].append_array(PackedVector3Array([a, b, c]))
 	out[key + "_colors"].append_array(PackedColorArray([color, color, color]))
 	if key == "road":
-		out["road_uv"].append_array(PackedVector2Array([Vector2(water, 0), Vector2(water, 0), Vector2(water, 0)]))
+		out["road_uv"].append_array(PackedVector2Array([uv, uv, uv]))
+		out["road_uv2"].append_array(PackedVector2Array([uv2, uv2, uv2]))
 
 
 ## A box from `a` to `b` on the ground plan, `half_width` either side,

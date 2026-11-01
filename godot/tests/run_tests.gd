@@ -3228,17 +3228,31 @@ func test_buildings_3d() -> void:
 	var parts: Array = Array(taxi["part"]).map(func(v): return int(v.x))
 	check(taxi["part"].size() == taxi["verts"].size() and B3.PAINT in parts and B3.RUBBER in parts and B3.GLASS_PART in parts and B3.LAMP in parts,
 		"a lit taxi's paint, tyres, glass and sign each carry their material")
-	# rtx-scene-readiness step 3: areas under the roads, a dashed centre line on top, open water glossy
+	# rtx-scene-readiness step 3: areas under the roads, a dashed centre line on top, open water glossy, kerbs and islands raised, puddles
 	var surfaces := {"ground": PackedVector3Array(), "ground_colors": PackedColorArray(),
-		"road": PackedVector3Array(), "road_colors": PackedColorArray(), "road_uv": PackedVector2Array()}
+		"road": PackedVector3Array(), "road_colors": PackedColorArray(), "road_uv": PackedVector2Array(), "road_uv2": PackedVector2Array()}
 	var lake := PackedVector2Array([Vector2(0, 0), Vector2(20, 0), Vector2(20, 20), Vector2(0, 20)])
 	B3._ground(surfaces, {"rect": Rect2(0, 0, 100, 100), "areas": [[lake, Color.BLUE, true]],
-		"roads": [[PackedVector2Array([Vector2(0, 50), Vector2(30, 50)]), 4.0, Color.GRAY, 0, Color.WHITE, false]]})
-	var line_tris: Array = range(0, surfaces["road"].size(), 3).filter(func(i): return surfaces["road_colors"][i] == Color.WHITE)
-	var water_tris: Array = range(0, surfaces["road"].size(), 3).filter(func(i): return surfaces["road_uv"][i].x == 1.0)
-	check(line_tris.size() == 10 and surfaces["road"][line_tris[0]].y > 0.04, "a 30 m road gets five 3 m dashes, just above its surface")
-	check(water_tris.size() == 2 and surfaces["road"][water_tris[0]].y < 0.04 and surfaces["road_uv"].size() == surfaces["road"].size(),
+		"roads": [[PackedVector2Array([Vector2(0, 50), Vector2(30, 50)]), 4.0, Color.GRAY, 0, Color.WHITE, false, 3, true]],
+		"curbs": [PackedVector2Array([Vector2(0, 45), Vector2(30, 45)])], "islands": [[PackedVector2Array([Vector2(40, 40), Vector2(44, 40), Vector2(44, 42)]), Color.GREEN]],
+		"puddles": [[Vector2(10, 50), 1.0, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], 0.4]]})
+	var road_rows := range(0, surfaces["road"].size(), 3)
+	var line_tris: Array = road_rows.filter(func(i): return surfaces["road_colors"][i] == Color.WHITE)
+	var water_tris: Array = road_rows.filter(func(i): return surfaces["road_uv"][i].x == B3.ROAD_WATER)
+	var puddle_tris: Array = road_rows.filter(func(i): return surfaces["road_uv"][i].x == B3.ROAD_PUDDLE)
+	var lane_tris: Array = road_rows.filter(func(i): return surfaces["road_colors"][i] == Color.GRAY)
+	check(line_tris.size() == 10 and surfaces["road"][line_tris[0]].y > B3.ROAD_M, "a 30 m road gets five 3 m dashes, just above its surface")
+	check(water_tris.size() == 2 and surfaces["road"][water_tris[0]].y < B3.ROAD_M and surfaces["road_uv2"].size() == surfaces["road"].size(),
 		"open water joins the glossy road mesh, below the roads")
+	check(surfaces["road_uv"][lane_tris[0]].y == 3.0 and surfaces["road_uv2"][lane_tris[0]].y == 1.0, "a road carries its surface pattern and takes the road snow")
+	check(puddle_tris.size() == 6 and is_equal_approx(surfaces["road_colors"][puddle_tris[0]].a, 0.4) and surfaces["road_uv2"][puddle_tris[0]].x == 0.0
+		and surfaces["road_uv2"][puddle_tris[0] + 1].x == 1.0, "a puddle: a fan from its centre out to the rim, showing from its reveal wetness")
+	var tops: Array = Array(surfaces["ground"]).map(func(v): return v.y)
+	check(is_equal_approx(tops.max(), B3.CURB_M) and tops.filter(func(y): return is_equal_approx(y, B3.CURB_M)).size() >= 9, "kerbs and the island stand 12 cm high")
+	var walls := B3.flat_normals(surfaces["ground"])
+	check(Array(walls).all(func(n): return n.y >= -0.001), "no ground face looks down: walls face out, tops face up")
+	var under := Array(B3.flat_normals(taxi["verts"])).filter(func(n): return n.y < -0.99)
+	check(not under.is_empty(), "the car's boxes have undersides (reflections, secondary rays)")
 	MapChunk.buildings_3d = false
 
 
