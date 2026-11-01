@@ -819,12 +819,31 @@ static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2, si
 	return arrays
 
 
-## --outdoor-3d: the chunk's visible road snow on its own road mesh (road.gdshader's instance uniform).
-## ponytail: one cover for the chunk; the ploughed 10 m cells stay 2D-only until a cell texture is worth it
+## --outdoor-3d: the chunk's road snow on its road mesh, as the 2D roads
+## show it - the chunk's cover, the ploughed 10 m cells their own - one texel
+## a world cell in its own road material copy (road.gdshader's snow_cells).
 func _road_snow_3d() -> void:
 	for node in meshes_3d:
-		if node is MeshInstance3D and node.material_override == B3._shared.get("road"):
-			node.set_instance_shader_parameter("snow_cover", _snow_cover)
+		if not node is MeshInstance3D or not node.material_override is ShaderMaterial:
+			continue
+		var material: ShaderMaterial = node.material_override
+		if material == B3._shared.get("road"):
+			material = B3.road_material_copy()
+			node.material_override = material
+		elif not material.has_meta("snow_cells"):
+			continue
+		var low := Vector2i(floori((_bounds_rect.position.x + _origin.x) / 10.0), floori((_origin.y - _bounds_rect.end.y) / 10.0))
+		var high := Vector2i(floori((_bounds_rect.end.x + _origin.x) / 10.0), floori((_origin.y - _bounds_rect.position.y) / 10.0))
+		var size := (high - low + Vector2i.ONE).clampi(1, 256)
+		var cells := Image.create(size.x, size.y, false, Image.FORMAT_R8)
+		cells.fill(Color(_snow_cover, 0, 0))
+		for cell in _plowed_cover:
+			var at: Vector2i = cell - low
+			if at.x >= 0 and at.y >= 0 and at.x < size.x and at.y < size.y:
+				cells.set_pixelv(at, Color(float(_plowed_cover[cell]), 0, 0))
+		material.set_meta("snow_cells", true)
+		material.set_shader_parameter("snow_cells", ImageTexture.create_from_image(cells))
+		material.set_shader_parameter("cell_map", Vector4(_origin.x / 10.0 - low.x, _origin.y / 10.0 - low.y, size.x, size.y))
 
 
 func _meshes_ready(arrays: Dictionary) -> void:

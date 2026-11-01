@@ -754,8 +754,9 @@ func _present(state: Dictionary) -> void:
 	water_wind.y = -water_wind.y
 	MapChunk.WATER_MATERIAL.set_shader_parameter("wind", water_wind)
 	MapChunk.SHORE_MATERIAL.set_shader_parameter("wind", water_wind)
-	if MapChunk.outdoor_3d and Buildings3DScript._shared.has("road"):  # step 6: the 3D water's waves, as rough as the 2D water's
-		Buildings3DScript._shared["road"].set_shader_parameter("wind", water_wind)
+	if MapChunk.outdoor_3d:  # step 6: the 3D water's waves, as rough as the 2D water's
+		for material in Buildings3DScript.road_materials():
+			material.set_shader_parameter("wind", water_wind)
 	var moon_altitude := Daylight.moon_value(state, "moon_altitude_deg", -90.0)
 	var moon_strength := Daylight.moonlight(altitude, moon_altitude,
 		Daylight.moon_value(state, "moon_illumination", 0.0), cloud)

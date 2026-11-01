@@ -341,8 +341,26 @@ var _arena_on := false
 
 ## Step 3: road wetness 0..1 (map_layer.set_wetness), the road shader's.
 func set_wetness(value: float) -> void:
-	if _shared.has("road"):
-		_shared["road"].set_shader_parameter("wetness", value)
+	for material in road_materials():
+		material.set_shader_parameter("wetness", value)
+
+
+## Step 3: each chunk's road carries its own copy of the road material (its
+## snow cells texture); the weather's wetness and wind go to every live one.
+static var _road_copies: Array = []  # WeakRef to each chunk's copy
+
+
+static func road_material_copy() -> ShaderMaterial:
+	var copy: ShaderMaterial = _shared["road"].duplicate()
+	_road_copies.append(weakref(copy))
+	return copy
+
+
+static func road_materials() -> Array:
+	if not _shared.has("road"):
+		return []
+	_road_copies = _road_copies.filter(func(ref): return ref.get_ref() != null)
+	return [_shared["road"]] + _road_copies.map(func(ref): return ref.get_ref())
 
 
 func set_snow(cover: float) -> void:
