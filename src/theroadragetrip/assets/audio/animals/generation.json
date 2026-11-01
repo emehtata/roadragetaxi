@@ -97,5 +97,16 @@
     "channels": 1,
     "duration_s": 3.137052154195011,
     "review": "listening pending"
+  },
+  "duck": {
+    "file": "duck.ogg",
+    "prompt": "Close field recording of a female mallard duck on a pond giving a descending series of loud raspy nasal quacks: QUACK quack quack quack. Low buzzy honking duck quacks from the throat, farmyard domestic duck, not a gull, not a scream",
+    "seed": 71009,
+    "steps": 100,
+    "model": "stabilityai/stable-audio-open-1.0",
+    "sample_rate": 44100,
+    "channels": 1,
+    "duration_s": 3.411700680272109,
+    "review": "closest of four seeds; not perfect"
   }
 }
