@@ -19,6 +19,7 @@ var port := 8765
 var player_id := "local_player"  # the world message says which player this client is
 var connected := false
 var parse_usec := 0  # time spent decoding the last message (performance readout)
+var save_error_count := 0
 var save_count := -1  # the server's saves written (state "save_count"): a save request's acknowledgement
 var home_plan: Dictionary = {}
 
@@ -114,6 +115,7 @@ func _drain_lines() -> void:
 				_origin = Vector2(message["center"][0], message["center"][1])
 				world_received.emit(message)
 			"state":
+				save_error_count = int(message.get("state", {}).get("save_error_count", save_error_count))
 				save_count = int(message.get("state", {}).get("save_count", save_count))
 				state_received.emit(message)
 			"home_interior":

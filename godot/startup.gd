@@ -1509,7 +1509,15 @@ func _pause_menu() -> void:
 	_button(_t("main_menu"), _stop_game)
 	_button(_t("quit"), func():
 		if _can_save():
-			await _save_game(func(_ok: bool): get_tree().quit())
+			await _save_game(func(ok: bool):
+				if ok:
+					get_tree().quit()
+				else:
+					_pause_status.text = _t("save_failed")
+					if not _body.has_node("QuitWithoutSaving"):
+						var leave := _button(_t("quit_without_saving"), get_tree().quit)
+						leave.name = "QuitWithoutSaving"
+					_focus_menu())
 		else:
 			get_tree().quit())
 	_back_action = _resume
@@ -1556,6 +1564,7 @@ func _can_save() -> bool:
 func _save_game(done: Callable) -> void:
 	var sim: SimClient = _game.sim
 	var before := sim.save_count
+	var errors_before := sim.save_error_count
 	if not sim.send_save():
 		done.call(false)
 		return
@@ -1564,7 +1573,7 @@ func _save_game(done: Callable) -> void:
 	var mode := sim.process_mode
 	sim.process_mode = Node.PROCESS_MODE_ALWAYS
 	var waited := 0.0
-	while sim.save_count <= before and waited < 3.0:
+	while sim.connected and sim.save_count <= before and sim.save_error_count == errors_before and waited < 3.0:
 		await get_tree().create_timer(0.1, true).timeout
 		waited += 0.1
 	sim.process_mode = mode

@@ -210,6 +210,7 @@ class SimulationServer:
             if saved.get("city") and saved.get("bbox"):
                 args.preset, args.bbox = saved["city"], saved["bbox"]
                 args.place_name = saved.get("place_name") or None
+        self.save_error_count = 0
         self.save_count = 0  # saves written: the client's "saved" acknowledgement
         self._fares_opened = False  # no fares or pre-bookings until the game has started (the first client)
         self._pending_save = False
@@ -885,10 +886,26 @@ class SimulationServer:
         if latitude is None:
             logger.warning("Save slot not written: no coordinate conversion")
             return False
-        write_slot(self.save_slot_file, car=self.car, taxi_mgr=self.world.taxi_mgr, calendar=self.calendar,
-                   city=self.chosen_city, place_name=getattr(self.args, "place_name", None) or "",
-                   latlon=(latitude, longitude))
+        try:
+            write_slot(self.save_slot_file, car=self.car, taxi_mgr=self.world.taxi_mgr, calendar=self.calendar,
+                       city=self.chosen_city, place_name=getattr(self.args, "place_name", None) or "",
+                       latlon=(latitude, longitude))
+        except OSError:
+            logger.exception("Save slot %s could not be written", self.save_slot_file.stem)
+            return False
         logger.info("Saved to slot %s", self.save_slot_file.stem)
+        return True
+
+    def _save_gig_progress(self) -> bool:
+        if self.save_slot_file is not None:
+            return self.save_game()
+        from ..career import save_gig_odometer
+        try:
+            save_gig_odometer(self.gig_odometer_file, self.car.odometer_m,
+                              self.car.fuel_l, self.world.taxi_mgr.balance_cents)
+        except OSError:
+            logger.exception("Gig progress could not be written")
+            return False
         return True
 
     def tick(self, dt: float) -> None:
@@ -898,6 +915,8 @@ class SimulationServer:
             self._pending_save = False
             if self.save_game():
                 self.save_count += 1
+            else:
+                self.save_error_count += 1
         self._apply_incoming_messages()
         self.audio.advance(dt)
 
@@ -1015,6 +1034,7 @@ class SimulationServer:
             career=self.career,
             career_file=self.career_file,
             gig_odometer_file=self.gig_odometer_file,
+            gig_save=self._save_gig_progress,
             chosen_city=self.chosen_city,
             cities_list=self.cities_list,
             outside_temperature_c=self.world.weather.outside_temperature_c,
@@ -1471,6 +1491,7 @@ class SimulationServer:
             railway=protocol.railway_state(getattr(self.world, "railway_mgr", None), self.car.x, self.car.y, self.calendar.current),
             inspect=self._inspect, npc_bounds=self._visible_bounds(),
         )
+        message["state"]["save_error_count"] = self.save_error_count
         message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
         message["state"]["home_door"] = self._home_door_state()
         with self._clients_lock:

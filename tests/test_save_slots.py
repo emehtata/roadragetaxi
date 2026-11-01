@@ -20,6 +20,7 @@ def test_a_saved_gig_continues_mid_fare_with_money_fuel_pose_and_time(tmp_path, 
     car = server.car
     car.x, car.y, car.heading, car.fuel_l = car.x + 3.0, car.y - 2.0, 1.25, 17.5
     taxi.balance_cents, taxi.total_score, taxi.completed_fares = 12345, 420, 7
+    server._saved_gig_fares = taxi.completed_fares
     friend = TaxiPassenger(name="Ville", pickup=TaxiTarget(0.0, 0.0, "Asema"), dropoff=TaxiTarget(9.0, 9.0, "Kotikatu 1"))
     rider = TaxiPassenger(name="Aino", pickup=TaxiTarget(0.0, 0.0, "Asema"),
                           dropoff=TaxiTarget(5000.0, 9000.0, "Tampere", municipality="Tampere"), companions=[friend])
@@ -157,3 +158,69 @@ def test_home_belongs_to_slot_and_survives_save_reload_and_clear(tmp_path, monke
     assert _server(tmp_path, monkeypatch, slot="one")._home is None
     assert load_home(server.homes_file, city, in_save=True) is None
     assert read_slot(server.homes_file)["city"] == server.chosen_city
+
+
+def test_fare_autosave_replaces_the_whole_slot(tmp_path, monkeypatch):
+    server = _server(tmp_path, monkeypatch)
+    taxi = server.world.taxi_mgr
+    taxi.current_passenger = TaxiPassenger(name="Aino", pickup=TaxiTarget(server.car.x, server.car.y, "A"),
+                                          dropoff=TaxiTarget(server.car.x + 100, server.car.y, "B"))
+    taxi.state = TaxiState.DRIVING_TO_DROPOFF
+    assert server.save_game()
+    assert read_slot(server.save_slot_file)["fare"] is not None
+
+    taxi.current_passenger = None
+    taxi.completed_fares += 1
+    taxi.balance_cents = 4200
+    taxi.total_score = 123
+    server.car.x += 2
+    server.tick(1 / 30)
+
+    data = read_slot(server.save_slot_file)
+    assert data["fare"] is None
+    assert data["completed_fares"] == 1 and data["total_score"] == 123
+    assert data["balance_cents"] == taxi.balance_cents
+    assert data["car"]["x"] == server.car.x
+    again = _server(tmp_path, monkeypatch)
+    assert again.world.taxi_mgr.current_passenger is None
+    assert again.world.taxi_mgr.completed_fares == 1
+    assert again.world.taxi_mgr.balance_cents == taxi.balance_cents
+
+
+def test_save_failure_preserves_slot_and_simulation_can_retry(tmp_path, monkeypatch):
+    from pathlib import Path
+    server = _server(tmp_path, monkeypatch)
+    assert server.save_game()
+    original = server.save_slot_file.read_bytes()
+    replace = Path.replace
+
+    def disk_full(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "replace", disk_full)
+    server._pending_save = True
+    server.tick(1 / 30)
+    assert server.save_count == 0 and server.save_error_count == 1
+    assert server.save_slot_file.read_bytes() == original
+
+    server.world.taxi_mgr.completed_fares += 1
+    server.tick(1 / 30)  # automatic saving also keeps the simulation alive
+    assert server.save_slot_file.read_bytes() == original
+    monkeypatch.setattr(Path, "replace", replace)
+    server._pending_save = True
+    server.tick(1 / 30)
+    assert server.save_count == 1 and server.save_error_count == 1
+    assert read_slot(server.save_slot_file)["completed_fares"] == 1
+
+
+def test_legacy_gig_autosave_failure_does_not_stop_tick(tmp_path, monkeypatch):
+    server = _server(tmp_path, monkeypatch)
+    server.save_slot_file = None
+
+    def disk_full(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("theroadragetrip.career.save_gig_odometer", disk_full)
+    server.world.taxi_mgr.completed_fares += 1
+    server.tick(1 / 30)
+    assert server._saved_gig_fares == 1
