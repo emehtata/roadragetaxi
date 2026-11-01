@@ -13,7 +13,9 @@ Built from the same world objects the simulation uses - no second map model.
 
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 
 from . import static_world
 from .fuel import fuel_station_price_cents
@@ -35,6 +37,9 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "bonfires", "flagpoles", "shop_hours")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
+# Named landmarks drawn by their own shape list (assets/landmarks.json): name -> {"scale", "shapes"}
+LANDMARKS = {name: spec for name, spec in json.loads((Path(__file__).with_name("assets") / "landmarks.json").read_text()).items()
+             if not name.startswith("_")}
 DECORATIVE_KINDS = ("shrub", "bench", "waste_basket", "bicycle_parking", "charging_station", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
 
 CHUNK_SIZE_M = 500.0
@@ -354,6 +359,10 @@ class ChunkIndex:
                 self._add("nightclubs", ((x, y),), [round(x, 1), round(y, 1), nightclub_schedule(None)])
         for obj in getattr(world, "scenery_objects", ()):
             if obj.kind in DECORATIVE_KINDS and not getattr(obj, "level", None):  # a garage's or roof deck's: not on the street
+                if obj.name in LANDMARKS:  # its own drawing: [x, y, "landmark", angle, {scale, shapes}]
+                    self._add("scenery_objects", ((obj.x, obj.y),), [round(obj.x, 1), round(obj.y, 1), "landmark",
+                                                                    round(obj.direction_angle or 0.0, 3), LANDMARKS[obj.name]])
+                    continue
                 row = [round(obj.x, 1), round(obj.y, 1), obj.kind, round(obj.direction_angle or 0.0, 3)]
                 if obj.kind == "charging_station":  # how many cars it charges at once: its posts
                     row.append(obj.capacity or 2)

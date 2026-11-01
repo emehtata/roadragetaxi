@@ -1251,11 +1251,33 @@ func _draw_trees(node: Node2D) -> void:
 			var at := MapMath.point(_origin, obj[0], obj[1])
 			shrubs.append_array(PackedVector2Array([at - Vector2(0.3, 0), at + Vector2(0.3, 0)]))
 			continue
+		if obj[2] == "landmark":
+			draw_landmark(node, MapMath.point(_origin, obj[0], obj[1]), float(obj[3]), obj[4])
+			continue
 		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]), int(obj[4]) if obj.size() > 4 else 0)
 
 	if not shrubs.is_empty():
 		var foliage := hedge_foliage(shrubs)
 		_triangles_colored(node, foliage[0], foliage[1], foliage[2])
+
+
+## A named landmark from its shape list (the server's assets/landmarks.json,
+## whose _help lists the shapes): metres from its point, times its scale.
+static func draw_landmark(node: Node2D, at: Vector2, angle: float, spec: Dictionary) -> void:
+	var scale := float(spec.get("scale", 1.0))
+	node.draw_set_transform(at, -angle, Vector2(scale, scale))
+	for shape: Array in spec.get("shapes", []):
+		var colour := Color.html(str(shape[-1]))
+		match str(shape[0]):
+			"circle": node.draw_circle(Vector2(shape[1], shape[2]), float(shape[3]), colour)
+			"rect": node.draw_rect(Rect2(shape[1], shape[2], shape[3], shape[4]), colour)
+			"line": node.draw_line(Vector2(shape[1], shape[2]), Vector2(shape[3], shape[4]), colour, float(shape[5]))
+			"polygon":
+				var points := PackedVector2Array()
+				for k in range(0, shape[1].size() - 1, 2):
+					points.append(Vector2(shape[1][k], shape[1][k + 1]))
+				node.draw_colored_polygon(points, colour)
+	node.draw_set_transform(Vector2.ZERO)
 
 
 ## The decorative scenery objects, in metres with minimum pixel sizes.

@@ -1,0 +1,21 @@
+{
+  "_help": "Named OSM objects drawn by their own shape list instead of the generic icon. Key: the OSM name tag of a statue, fountain or other scenery object. Units are metres from the object's point, +y down the screen (south), then multiplied by scale. Shapes, drawn in order: [\"circle\", x, y, radius, colour], [\"rect\", x, y, width, height, colour], [\"polygon\", [x1, y1, x2, y2, ...], colour], [\"line\", x1, y1, x2, y2, width, colour]. Colours are HTML hex, #rrggbb or #rrggbbaa.",
+  "Toripolliisi": {
+    "note": "Oulu's 2.2 m bronze bobby on the market square (Kaarlo Mikkonen, 1987); drawn 2.2x to read from the taxi",
+    "scale": 2.2,
+    "shapes": [
+      ["circle", 0, 0, 1.3, "#1414123c"],
+      ["rect", -0.95, -0.95, 1.9, 1.9, "#464440"],
+      ["rect", -0.8, -0.8, 1.6, 1.6, "#96938c"],
+      ["circle", -0.2, 0.5, 0.15, "#352715"],
+      ["circle", 0.2, 0.5, 0.15, "#352715"],
+      ["circle", -0.55, 0.08, 0.16, "#4d3820"],
+      ["circle", 0.55, 0.08, 0.16, "#4d3820"],
+      ["circle", 0, 0.08, 0.5, "#604626"],
+      ["circle", -0.14, -0.02, 0.22, "#a0917c"],
+      ["circle", 0, -0.32, 0.3, "#3a2a17"],
+      ["circle", 0, -0.35, 0.2, "#563f22"],
+      ["circle", 0, -0.37, 0.06, "#ebc86e"]
+    ]
+  }
+}
