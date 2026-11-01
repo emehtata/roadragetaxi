@@ -4,12 +4,14 @@ class_name Wildlife
 extends Node2D
 
 const Entities := preload("res://entity_layer.gd")  # its _circle: draw_circle without rebuilding the disc
-const SPECIES := [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow"]
+const SPECIES := [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow", &"duck"]
 const VALID_STATES := [&"IDLE", &"WANDER", &"FEED", &"FLEE", &"FLY", &"CROSSING"]
 const STEP_S := 0.1
 const REACTION_M := 18.0
 const BUILDING_CELL_M := 10.0  # the per-chunk building lookup grid
 const SPAWN_TRIES := 6
+const DUCK_WATER_M2 := 15000.0  # one flock of ducks per this much open water, up to three a pond
+const BIRDS := ["small_bird", "pigeon", "crow", "duck"]
 const URBAN_COVERAGE := 0.2  # buildings cover this much of the ground: a city centre (Oulu's: 0.3-0.4), whatever its street trees
 
 # Public layer properties follow the existing client-side configuration style.
@@ -18,7 +20,7 @@ var max_active := 128
 var activity_distance_m := 900.0
 var vehicle_reactions := true
 var species_weights := {"squirrel": 1.0, "small_bird": 1.0, "pigeon": 1.0, "hare": 1.0,
-	"fox": 1.0, "moose": 1.0, "roe_deer": 1.0, "crow": 1.0}
+	"fox": 1.0, "moose": 1.0, "roe_deer": 1.0, "crow": 1.0, "duck": 1.0}
 
 var animals: Array = []
 var winter := 0.0  # the season's winter weight (main.gd, from the calendar): hares turn white, squirrels grey
@@ -58,7 +60,7 @@ static func activity(species: String, game_time_seconds: float) -> float:
 	var dawn_dusk := maxf(exp(-pow((hour - 6.0) / 1.8, 2.0)), exp(-pow((hour - 19.0) / 1.8, 2.0)))
 	var daylight := clampf(sin((hour - 6.0) * PI / 12.0), 0.0, 1.0)
 	match species:
-		"small_bird", "pigeon", "crow", "squirrel": return 0.15 + 0.75 * daylight + 0.1 * dawn_dusk
+		"small_bird", "pigeon", "crow", "squirrel", "duck": return 0.15 + 0.75 * daylight + 0.1 * dawn_dusk
 		"fox": return 0.25 + 0.55 * (1.0 - daylight) + 0.2 * dawn_dusk
 		"moose", "roe_deer": return 0.45 + 0.55 * dawn_dusk
 		_: return 0.45 + 0.35 * dawn_dusk
@@ -130,8 +132,33 @@ func replace_chunk(message: Dictionary, origin: Vector2) -> void:
 		animals.append(animal)
 		ids.append(_next_id)
 		_next_id += 1
+	_spawn_ducks(chunk_id, message.get("waters", []), rect, rng, ids)
 	_chunks[chunk_id] = ids
 	queue_redraw()
+
+
+## Ducks float on the chunk's open water (none once it freezes: they migrate south).
+func _spawn_ducks(chunk_id: String, waters: Array, rect: Rect2, rng: RandomNumberGenerator, ids: Array) -> void:
+	var weight := float(species_weights.get("duck", 1.0)) * clampf(1.0 - winter, 0.0, 1.0)
+	for water in waters:
+		if typeof(water) != TYPE_PACKED_VECTOR2_ARRAY or water.size() < 3:
+			continue
+		var box := Rect2(water[0], Vector2.ZERO)
+		for point in water:
+			box = box.expand(point)
+		var flocks := mini(3, floori(building_coverage([water], 1.0) * weight / DUCK_WATER_M2))
+		for unused in flocks:
+			if animals.size() >= max_active:
+				return
+			for attempt in SPAWN_TRIES:
+				var at := Vector2(rng.randf_range(box.position.x, box.end.x), rng.randf_range(box.position.y, box.end.y))
+				if Geometry2D.is_point_in_polygon(at, water):
+					var duck := _animal(_next_id, "duck", rect.merge(box), rng)
+					duck.merge({"position": at, "chunk": chunk_id, "water": water, "home": at}, true)
+					animals.append(duck)
+					ids.append(_next_id)
+					_next_id += 1
+					break
 
 
 ## Building outlines by the BUILDING_CELL_M cells their boxes touch: a point
@@ -201,9 +228,13 @@ func _step(dt: float, game_time_seconds: float, view_centre: Vector2, vehicles: 
 		animal["timer"] -= dt
 		var threat := _nearest_vehicle(animal["position"], vehicles) if vehicle_reactions else Vector2.INF
 		if threat != Vector2.INF and threat.distance_to(animal["position"]) < REACTION_M:
-			animal["state"] = "FLY" if animal["species"] in ["small_bird", "pigeon", "crow"] else "FLEE"
+			animal["state"] = "FLY" if animal["species"] in BIRDS else "FLEE"
 			animal["heading"] = (animal["position"] - threat).angle()
 			animal["timer"] = 1.5
+		elif animal["timer"] <= 0.0 and animal["state"] == "FLY" and animal.has("water") \
+				and not Geometry2D.is_point_in_polygon(animal["position"], animal["water"]):
+			animal["heading"] = (animal["home"] - animal["position"]).angle()  # circle back and land on the water
+			animal["timer"] = 0.5
 		elif animal["timer"] <= 0.0:
 			_transition(animal, activity(animal["species"], game_time_seconds))
 		var speed := _speed(animal["species"], animal["state"])
@@ -212,6 +243,8 @@ func _step(dt: float, game_time_seconds: float, view_centre: Vector2, vehicles: 
 			# On foot, a building is a wall - unless it stands on one already (a bird landed on a roof walks off it).
 			var grid: Dictionary = _buildings.get(animal.get("chunk", ""), {})
 			var walled: bool = animal["state"] != "FLY" and in_building(grid, next) and not in_building(grid, animal["position"])
+			if animal.has("water") and animal["state"] != "FLY":  # afloat: the shore is its wall
+				walled = not Geometry2D.is_point_in_polygon(next, animal["water"])
 			if animal["bounds"].has_point(next) and not walled: animal["position"] = next
 			else: animal["heading"] += PI
 
@@ -235,8 +268,8 @@ static func _transition(animal: Dictionary, active: float) -> void:
 		animal["timer"] = 1.0 + phase * 3.0
 		return
 	var species: String = animal["species"]
-	if species in ["small_bird", "pigeon", "crow"] and phase < 0.18: animal["state"] = "FLY"
-	elif species in ["small_bird", "pigeon", "crow", "squirrel"] and phase < 0.45: animal["state"] = "FEED"
+	if species in BIRDS and phase < (0.06 if species == "duck" else 0.18): animal["state"] = "FLY"
+	elif species in BIRDS or species == "squirrel" and phase < 0.45: animal["state"] = "FEED"
 	else: animal["state"] = "WANDER"
 	animal["heading"] = fmod(float(animal["id"] * 2 + animal["cycle"] * 3), TAU) - PI
 	animal["timer"] = 0.8 + phase * 2.0
@@ -244,9 +277,9 @@ static func _transition(animal: Dictionary, active: float) -> void:
 
 static func _speed(species: String, state: String) -> float:
 	if state in ["IDLE", "FEED"]: return 0.0
-	if state in ["FLEE", "FLY"]: return 7.0 if species in ["small_bird", "pigeon", "crow"] else 5.0
+	if state in ["FLEE", "FLY"]: return 7.0 if species in BIRDS else 5.0
 	return {"squirrel": 1.6, "small_bird": 0.5, "pigeon": 0.55, "hare": 1.8,
-		"fox": 1.5, "moose": 1.0, "roe_deer": 1.2, "crow": 0.65}.get(species, 1.0)
+		"fox": 1.5, "moose": 1.0, "roe_deer": 1.2, "crow": 0.65, "duck": 0.4}.get(species, 1.0)
 
 
 func _draw() -> void:
@@ -260,12 +293,12 @@ func _draw_animal(animal: Dictionary) -> void:
 	var at: Vector2 = animal["position"]
 	var direction := Vector2.from_angle(animal["heading"])
 	var species: String = animal["species"]
-	var scale_m: float = {"small_bird": 0.65, "pigeon": 0.72, "crow": 0.8, "squirrel": 0.3, "hare": 0.42,
+	var scale_m: float = {"small_bird": 0.65, "pigeon": 0.72, "crow": 0.8, "duck": 0.75, "squirrel": 0.3, "hare": 0.42,
 		"fox": 0.65, "roe_deer": 0.85, "moose": 1.15}.get(species, 0.4)
-	var color: Color = {"small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "crow": Color8(42, 43, 45), "squirrel": Color8(144, 79, 38),
+	var color: Color = {"small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "crow": Color8(42, 43, 45), "duck": Color8(120, 98, 72), "squirrel": Color8(144, 79, 38),
 		"hare": Color8(142, 126, 101), "fox": Color8(194, 91, 38), "roe_deer": Color8(151, 104, 62), "moose": Color8(91, 67, 48)}.get(species, Color.GRAY)
 	color = winter_coat(species, color, winter)
-	var members := 5 if species == "small_bird" else (3 if species == "pigeon" else 1)
+	var members := 5 if species == "small_bird" else (3 if species in ["pigeon", "duck"] else 1)
 	drawn_members += members
 	var flying: bool = animal["state"] == "FLY"
 	var seconds := Time.get_ticks_msec() / 1000.0
@@ -285,6 +318,7 @@ const FLIGHT := {  # span (x scale), flaps per second, wing chord (x scale)
 	"small_bird": [1.7, 4.5, 0.42],
 	"pigeon": [2.0, 3.2, 0.40],
 	"crow": [2.3, 2.2, 0.55],
+	"duck": [2.0, 5.0, 0.36],  # narrow wings, fast beats
 }
 
 
@@ -394,6 +428,16 @@ func _draw_body(at: Vector2, direction: Vector2, scale_m: float, color: Color, s
 					for tine in 3:  # the tines along the palm's front edge
 						var on := base + d * (0.1 - tine * 0.1) + s * (0.42 + tine * 0.09) * side
 						_tri(on, on + d * 0.04 + s * 0.12 * side, on - d * 0.05 + s * 0.06 * side, antler)
+		"duck":  # afloat: a ripple ring, a boat-shaped body, mallard drakes green-headed
+			Entities._circle(self, at, scale_m * 0.62, Color(1, 1, 1, 0.12))
+			_tri(at - d * 0.35, at - d * 0.7 + s * 0.12, at - d * 0.7 - s * 0.12, dark)  # tail
+			_capsule(at + d * 0.15, at - d * 0.35, scale_m * 0.3, color)
+			for side: float in [-1.0, 1.0]:
+				_quad(at + d * 0.1 + s * 0.12 * side, at + d * 0.1 + s * 0.25 * side,
+					at - d * 0.5 + s * 0.14 * side, at - d * 0.45 + s * 0.04 * side, light)
+			Entities._circle(self, at + d * 0.5, scale_m * 0.19, Color8(40, 92, 52) if id % 2 == 0 else color.lightened(0.05))
+			_quad(at + d * 0.62 + s * 0.07, at + d * 0.85 + s * 0.06, at + d * 0.85 - s * 0.06, at + d * 0.62 - s * 0.07,
+				Color8(214, 168, 52))  # the broad flat bill
 		_:  # a bird on the ground: round body, folded wings, head and bill, tail
 			_tri(at - d * 0.4, at - d * 0.95 + s * 0.2, at - d * 0.95 - s * 0.2, dark)  # tail
 			_capsule(at + d * 0.15, at - d * 0.3, scale_m * 0.3, color)

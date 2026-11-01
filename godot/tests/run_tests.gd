@@ -1585,7 +1585,7 @@ func test_wildlife() -> void:
 	var WildlifeLayer := preload("res://wildlife.gd")
 	var layer: Node = WildlifeLayer.new()
 	root.add_child(layer)
-	check(layer.config_valid(layer.species_weights) and WildlifeLayer.SPECIES.size() == 8, "wildlife: species configuration is valid")
+	check(layer.config_valid(layer.species_weights) and WildlifeLayer.SPECIES.size() == 9, "wildlife: species configuration is valid")
 	var brown := Color8(142, 126, 101)
 	check(WildlifeLayer.winter_coat("hare", brown, 1.0).get_luminance() > 0.9 and WildlifeLayer.winter_coat("hare", brown, 0.0) == brown, "wildlife: a hare is white in winter, brown in summer")
 	var squirrel_grey := WildlifeLayer.winter_coat("squirrel", Color8(144, 79, 38), 1.0)

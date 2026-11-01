@@ -3,7 +3,7 @@ extends SceneTree
 
 func _initialize() -> void:
 	var WildlifeLayer := preload("res://wildlife.gd")
-	assert(WildlifeLayer.SPECIES == [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow"])
+	assert(WildlifeLayer.SPECIES == [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow", &"duck"])
 	assert(WildlifeLayer._speed("crow", "FLY") == 7.0)
 	var layer: Node = WildlifeLayer.new()
 	root.add_child(layer)
@@ -48,6 +48,32 @@ func _initialize() -> void:
 	var started := Time.get_ticks_usec()
 	for unused in 1000:
 		layer.update(0.1, 12 * 3600, Vector2.ZERO)
+	layer.clear()
+	layer.max_active = 20
+	var pond := {"chunk_id": "3_3", "bounds": [0.0, 0.0, 500.0, 500.0], "buildings": [], "trees": [],
+		"waters": [[[100.0, 100.0], [400.0, 100.0], [400.0, 400.0], [100.0, 400.0]]]}
+	preload("res://map_chunk.gd").prepare(pond, Vector2.ZERO)
+	layer.replace_chunk(pond, Vector2.ZERO)
+	var ducks: Array = layer.animals.filter(func(animal): return animal.species == "duck")
+	assert(ducks.size() == 3 and ducks.all(func(duck): return Geometry2D.is_point_in_polygon(duck.position, duck.water)), "ducks float on open water")
+	var duck: Dictionary = ducks[0]
+	duck.state = "WANDER"
+	for unused in 600:
+		duck.timer = 10.0
+		layer.update(0.1, 12 * 3600, duck.position)
+	assert(Geometry2D.is_point_in_polygon(duck.position, duck.water), "a swimming duck stays off the shore")
+	duck.state = "FLY"
+	duck.position = Vector2(30, -30)  # flown off over land
+	duck.timer = 0.0
+	for unused in 600:
+		layer.update(0.1, 12 * 3600, duck.position)
+	assert(duck.state != "FLY" and Geometry2D.is_point_in_polygon(duck.position, duck.water), "a flying duck returns and lands on its water")
+	layer.clear()
+	layer.winter = 1.0
+	layer.replace_chunk(pond, Vector2.ZERO)
+	assert(layer.animals.all(func(animal): return animal.species != "duck"), "no ducks on frozen water")
+	layer.winter = 0.0
+	layer.clear()
 	print("Wildlife benchmark: 48 animals x 1000 fixed updates = %.2f ms" % ((Time.get_ticks_usec() - started) / 1000.0))
 	print("Wildlife tests passed")
 	quit()
