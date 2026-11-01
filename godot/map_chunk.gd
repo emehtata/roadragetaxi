@@ -131,7 +131,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		var water := _add_layer(0, _draw_water, null, true)
 		water.material = WATER_MATERIAL
 		_season_layers.append(water)
-		var shore := _add_layer(0, _draw_shore_waves)
+		var shore := _add_layer(0, _draw_shore_waves, null, true)  # --outdoor-3d: foam strips on the 3D water
 		shore.material = SHORE_MATERIAL
 		_season_layers.append(shore)
 	# z-1 landuse (under the water)
@@ -149,20 +149,20 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 			_season_layers.append(canopy)
 		_season_layers.append(landuse)
 		if message["landuse"].any(func(area): return area.size() > 3 and str(area[3]) in ["biergarten", "grave_yard", "cemetery"]):
-			_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_site_details(self, node)))
+			_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_site_details(self, node), null, true))  # --outdoor-3d: 3D props
 	if not message.get("attractions", []).is_empty():
-		_px_layers.append(_add_layer(6, _draw_attractions))
+		_px_layers.append(_add_layer(6, _draw_attractions, null, true))  # --outdoor-3d: buildings_3d.attractions
 	if not message.get("volleyball_courts", []).is_empty():
-		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_volleyball_courts(self, node)))
-		_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_volleyball_nets(self, node)))
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_volleyball_courts(self, node), null, false, true))
+		_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_volleyball_nets(self, node), null, true))  # --outdoor-3d: 3D nets
 	if not message.get("tennis_courts", []).is_empty():
-		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_tennis_courts(self, node)))
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_tennis_courts(self, node), null, false, true))
 	# Field markings at z0, over every chunk's landuse (z-1): at -1 a neighbouring
 	# chunk's piece of the same pitch painted over the part reaching into it.
 	if not message.get("soccer_pitches", []).is_empty():  # soccer lines on bare pitches
-		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_soccer_markings(self, node)))
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_soccer_markings(self, node), null, false, true))
 	if not message.get("rinks", []).is_empty():  # hockey markings on frozen rinks
-		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_rink_markings(self, node)))
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_rink_markings(self, node), null, false, true))
 	for z in _roads_by_z:
 		var layer_z: int = z
 		var roads := _add_layer(z, func(node: Node2D): _draw_roads(layer_z, node), null, true)  # ground roads and bridge decks: 3D
@@ -436,10 +436,16 @@ static func _rect(points: PackedVector2Array) -> Rect2:
 ## ground, buildings_3d._ground), so it is hidden there; any other layer under
 ## the opaque view (z < 7) is lifted above it as a 2D overlay, in its order,
 ## below the entities (12), until it gets its own 3D form (rtx-scene-readiness 5-6).
-func _add_layer(z: int, draw: Callable, node: Node2D = null, in_3d := false) -> Node2D:
+## `marking`: --outdoor-3d draws it into the chunk's marking texture, laid on
+## the 3D ground under the people (sports-court and rink markings).
+func _add_layer(z: int, draw: Callable, node: Node2D = null, in_3d := false, marking := false) -> Node2D:
 	if node == null:
 		node = Node2D.new()
 	node.z_index = z
+	if outdoor_3d and buildings_3d and marking:
+		node.draw.connect(draw.bind(node))
+		_marking_root().add_child(node)
+		return node
 	if outdoor_3d and buildings_3d:
 		node.visible = not in_3d
 		if z < 7:
@@ -741,6 +747,13 @@ func _build_2_5d() -> void:
 				func(o): return [MapMath.point(_origin, o[0], o[1]), float(o[3]), str(o[2])]),
 			"sign_posts": _data.get("signs", []).map(func(sign): return MapMath.point(_origin, sign[0], sign[1])),
 			"rail_lines": _data.get("railways", []).map(func(line): return _points(line)),
+			"shore_foam": _data.get("shore_waves", []).map(func(band): return [band["points"], float(band["distance"]) / SHALLOW_WATER_M]) \
+				if _season[0] < 1.0 else [],
+			"site_details": _site_detail_rows(), "snow": float(_season[0]),
+			"attractions": _data.get("attractions", []).map(func(ride): return [str(ride[0]), PackedVector2Array(ride[1].map(func(p): return MapMath.point(_origin, p[0], p[1])))]),
+			"nets": _data.get("volleyball_courts", []).map(func(court):
+				var frame := Detail.RinkFrame.new(self, court, float(court[3]), float(court[4]))
+				return [frame.at(0, -.47), frame.at(0, .47)]),
 			"bus_bays": _data.get("bus_stops", []).map(func(stop): return [_points(stop["bay"]), Detail._rgb(stop["color"]) if stop.has("color") else Color8(82, 82, 78)])}
 		_lamps_3d()
 	if buildings_3d and not (buildings.is_empty() and sites.is_empty() and landmarks.is_empty() and ground.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
@@ -975,6 +988,7 @@ func set_fields_frozen(frozen: bool) -> void:
 	_fields_frozen = frozen
 	for node in _season_layers:
 		node.queue_redraw()
+	_refresh_3d_ground()
 
 
 func set_trees_leafless(leafless: bool) -> void:
@@ -985,6 +999,7 @@ func set_trees_leafless(leafless: bool) -> void:
 		_trees.queue_redraw()
 	for node in _season_layers:
 		node.queue_redraw()
+	_refresh_3d_ground()
 
 
 ## The season's weights (state calendar.season): water, trees and their
@@ -999,6 +1014,7 @@ func set_season(weights: Array) -> bool:
 		_trees.queue_redraw()
 	for node in _season_layers:
 		node.queue_redraw()
+	_refresh_3d_ground()
 	return true
 
 
@@ -1667,6 +1683,76 @@ func _trees_3d() -> void:
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			bollards.append(MapMath.point(_origin, post[0], post[1]))
 	_set_dynamic_3d("trees", B3.trees_node(rows, bollards))
+
+
+## --outdoor-3d: biergarten tables and graves (Detail.site_detail_positions) for the 3D props.
+func _site_detail_rows() -> Array:
+	var rows: Array = []
+	var areas: Array = _data.get("landuse", [])
+	for index in areas.size():
+		var area = areas[index]
+		if area.size() <= 3:
+			continue
+		if not _site_details.has(index):
+			_site_details[index] = Detail.site_detail_positions(_points(area[2]), str(area[3]), _origin)
+		for at in _site_details[index]:
+			rows.append([at, str(area[3])])
+	return rows
+
+
+## --outdoor-3d: the season, frozen fields or leafless trees changed - the
+## chunk's 3D ground is built again (its landuse colours, ice, foam), the old
+## meshes kept until the new ones are ready, and its markings drawn again.
+func _refresh_3d_ground() -> void:
+	if not (outdoor_3d and buildings_3d) or not is_inside_tree():
+		return
+	stale_buildings.append_array(meshes_3d)
+	meshes_3d = []
+	_build_2_5d()
+	if _marking_view != null:
+		_marking_view.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
+## --outdoor-3d: the courts' and rinks' markings, drawn once into a texture
+## over their bounding box (up to 10 px a metre, at most 2048 px) and laid
+## on the 3D ground between the landuse and the roads.
+var _marking_view: SubViewport = null
+
+
+func _marking_root() -> Node2D:
+	if _marking_view != null:
+		return _marking_view.get_child(0)
+	var box := Rect2()
+	for key in ["volleyball_courts", "tennis_courts", "soccer_pitches", "rinks"]:
+		for court in _data.get(key, []):
+			var centre := MapMath.point(_origin, court[0], court[1])
+			var reach := 0.5 * Vector2(float(court[3]), float(court[4])).length() + 3.0
+			var court_box := Rect2(centre - Vector2(reach, reach), Vector2(reach, reach) * 2.0)
+			box = court_box if box.size == Vector2.ZERO else box.merge(court_box)
+	var px_per_m := minf(10.0, 2048.0 / maxf(maxf(box.size.x, box.size.y), 1.0))
+	_marking_view = SubViewport.new()
+	_marking_view.transparent_bg = true
+	_marking_view.size = Vector2i((box.size * px_per_m).ceil()).max(Vector2i.ONE)
+	_marking_view.render_target_update_mode = SubViewport.UPDATE_ONCE
+	_marking_view.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR
+	var root := Node2D.new()
+	root.transform = Transform2D(0.0, Vector2(px_per_m, px_per_m), 0.0, -box.position * px_per_m)
+	_marking_view.add_child(root)
+	add_child(_marking_view)
+	var plane := MeshInstance3D.new()
+	var quad := PlaneMesh.new()
+	quad.size = box.size
+	plane.mesh = quad
+	var material := StandardMaterial3D.new()
+	material.albedo_texture = _marking_view.get_texture()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.roughness = 0.9
+	plane.material_override = material
+	plane.layers = B3.LAYER_BUILDINGS
+	plane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	plane.position = B3.to_3d(box.get_center(), B3.AREAS_TOP_M + 0.001)
+	_set_dynamic_3d.call_deferred("markings", plane)
+	return root
 
 
 ## Step 6: this chunk's working street lamps' posts (a knocked-down one goes).

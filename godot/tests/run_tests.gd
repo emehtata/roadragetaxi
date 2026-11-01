@@ -3314,6 +3314,21 @@ func test_buildings_3d() -> void:
 	var props_out := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
 	B3.props(props_out, [[Vector2.ZERO, 0.0, "bench"], [Vector2(5, 0), 0.0, "not_a_prop"]])
 	check(is_equal_approx(Array(props_out["deck"]).map(func(v): return v.y).max(), B3.PROPS["bench"][2]), "a bench stands its height; unknown kinds are left out")
+	var rides := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	var ring := PackedVector2Array([Vector2(0, 0), Vector2(20, 2), Vector2(0, 4), Vector2(-20, 2), Vector2(0, 0)])
+	B3.attractions(rides, [["drop_tower", ring]])
+	check(is_equal_approx(Array(rides["deck"]).map(func(v): return v.y).max(), 30.0), "a drop tower stands 30 m")
+	rides["deck"] = PackedVector3Array()
+	B3.attractions(rides, [["ferris_wheel", ring]])
+	check(Array(rides["deck"]).map(func(v): return v.y).max() > 20.0, "a Ferris wheel's ring stands over its frame")
+	var graves := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.site_details(graves, [[Vector2.ZERO, "grave_yard"]], 0.0)
+	check(is_equal_approx(Array(graves["deck"]).map(func(v): return v.y).max(), 0.85), "a grave's headstone stands 0.85 m")
+	var foam := {"ground": PackedVector3Array(), "ground_colors": PackedColorArray(), "road": PackedVector3Array(), "road_colors": PackedColorArray(),
+		"road_uv": PackedVector2Array(), "road_uv2": PackedVector2Array(), "deck": PackedVector3Array(), "deck_colors": PackedColorArray(),
+		"canopy": PackedVector3Array(), "canopy_colors": PackedColorArray()}
+	B3._structures(foam, {"shore_foam": [[PackedVector2Array([Vector2(0, 0), Vector2(10, 0)]), 0.5]]})
+	check(foam["road"].size() == 6 and foam["road_uv"][0].x == B3.ROAD_FOAM and is_equal_approx(foam["road_uv2"][0].x, 0.5), "shore foam: a strip on the water, its shore distance")
 	MapChunk.buildings_3d = false
 
 

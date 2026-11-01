@@ -1,6 +1,6 @@
 // rtx-scene-readiness step 3 (--outdoor-3d): roads, markings, water and
 // puddles as lit surfaces (buildings_3d._ground).
-// UV.x: 0 road, 1 open water (always glossy), 2 a puddle.
+// UV.x: 0 road, 1 open water (always glossy), 2 a puddle, 3 shore foam (UV2.x its distance from the shore 0..1).
 // UV.y: the road's surface pattern family (surface.gdshader's, 0 none).
 // UV2.x: a puddle's distance from its centre (1 at the rim); UV2.y: 1 on a
 // drivable road (it takes the road snow). COLOR.a: a puddle's reveal wetness.
@@ -89,7 +89,13 @@ vec2 ripple_slope(vec2 p, float time) {
 void fragment() {
 	int kind = int(round(UV.x));
 	vec3 albedo = pow(COLOR.rgb, vec3(2.2));  // sRGB vertex colours, lit in linear space
-	if (kind == 2) {  // a puddle: grows from its rim as the road gets wetter (render_style.puddle_strength)
+	if (kind == 3) {  // step 6: foam lines rolling in to the shore, fading out over the shallows
+		float roll = 0.5 + 0.5 * sin(TIME * 1.4 - UV2.x * 9.0 + (world.x + world.z) * 0.07);
+		float foam = smoothstep(0.55, 0.95, roll) * (1.0 - UV2.x);
+		ALBEDO = mix(albedo, vec3(0.85, 0.88, 0.9), foam);
+		ROUGHNESS = mix(0.12, 0.7, foam);
+		SPECULAR = 0.6;
+	} else if (kind == 2) {  // a puddle: grows from its rim as the road gets wetter (render_style.puddle_strength)
 		float reveal = COLOR.a;
 		float strength = clamp((wetness - reveal) / max(1.0 - reveal, 0.001), 0.0, 1.0);
 		if (strength <= 0.0 || UV2.x > 0.4 + 0.6 * strength) {

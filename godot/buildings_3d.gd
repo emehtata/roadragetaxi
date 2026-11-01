@@ -1326,7 +1326,7 @@ const CURB_HALF_M := 0.08
 const BUMP_M := 0.07
 const RAIL_M := 0.03  # ground railways' ballast, over the roads they cross (a level crossing)
 const RAIL_BALLAST_HALF_M := 1.65
-enum { ROAD_SURFACE, ROAD_WATER, ROAD_PUDDLE }  # road.gdshader's UV.x
+enum { ROAD_SURFACE, ROAD_WATER, ROAD_PUDDLE, ROAD_FOAM }  # road.gdshader's UV.x
 
 
 static func _ground(out: Dictionary, ground: Dictionary) -> void:
@@ -1473,6 +1473,17 @@ static func _structures(out: Dictionary, ground: Dictionary) -> void:
 		else:
 			_raised_polygon_at(out, "deck", footprint, 0.0, 0.45, Color8(120, 82, 50))
 	props(out, ground.get("props", []))
+	attractions(out, ground.get("attractions", []))
+	site_details(out, ground.get("site_details", []), float(ground.get("snow", 0.0)))
+	for band: Array in ground.get("shore_foam", []):  # [line, its distance from the shore 0..1]: foam on the water (road.gdshader)
+		var line: PackedVector2Array = band[0]
+		for i in line.size() - 1:
+			if line[i].distance_to(line[i + 1]) > 1e-3:
+				_ribbon(out, line[i], line[i + 1], 0.33, 0.0, AREAS_TOP_M + 0.0005, Color(0.20, 0.26, 0.29), Vector2(ROAD_FOAM, 0), Vector2(band[1], 0))
+	for net: Array in ground.get("nets", []):  # a volleyball net: its posts, the 1 m net below the 2.43 m top
+		for end: Vector2 in net:
+			_box3d(out, "deck", end, 0.07, 0.0, 2.43, Color8(65, 85, 115))
+		_sloped_wall(out, net[0], net[1], 0.03, 1.43, 1.43, 1.0, Color8(55, 60, 65))
 	for sign: Vector2 in ground.get("sign_posts", []):  # the post; its readable face stays a 2D overlay
 		_box3d(out, "deck", sign, 0.04, 0.0, 2.2, Color8(110, 112, 115))
 	for pump: Array in ground.get("pumps", []):  # [position, along]
@@ -1676,6 +1687,87 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 		var at: Vector2 = row[0]
 		_raised_polygon_at(out, "deck", PackedVector2Array([at - along - across, at + along - across, at + along + across, at - along + across]),
 			0.0, look[2], look[3])
+
+
+## Step 6: amusement rides from their footprint loop (attraction_draw's
+## kinds): a roller coaster's track rising and falling on supports, a drop
+## tower, a carousel's or swing carousel's canopy on its pole, a Ferris
+## wheel's cabins standing in a ring over its A-frame. rows [kind, loop].
+const RIDE_COLORS := [Color8(232, 76, 65), Color8(248, 194, 62), Color8(65, 160, 198), Color8(160, 94, 185)]
+
+
+static func attractions(out: Dictionary, rows: Array) -> void:
+	for row: Array in rows:
+		var loop: PackedVector2Array = row[1]
+		if loop.size() < 4:
+			continue
+		var centre := Vector2.ZERO
+		for i in loop.size() - 1:
+			centre += loop[i] / (loop.size() - 1)
+		match str(row[0]):
+			"roller_coaster":
+				var height := func(i: int) -> float: return 3.0 + 3.0 * (0.5 + 0.5 * sin(i * 0.4))
+				for i in loop.size() - 1:
+					_sloped_strip(out, "deck", loop[i], loop[i + 1], 0.6, height.call(i), height.call(i + 1), Color8(211, 70, 55))
+					if i % 3 == 0:
+						_box3d(out, "deck", loop[i], 0.12, 0.0, height.call(i), Color8(104, 79, 65))
+			"drop_tower":
+				_box3d(out, "deck", centre, 1.2, 0.0, 30.0, Color8(91, 108, 126))
+				_box3d(out, "deck", centre, 2.0, 8.0, 9.0, RIDE_COLORS[0])
+			"carousel", "swing_carousel":
+				var swing := str(row[0]) == "swing_carousel"
+				var top := 7.0 if swing else 4.5
+				_box3d(out, "deck", centre, 0.3, 0.0, top + 0.6, Color8(248, 213, 93))
+				var rim := PackedVector2Array()
+				for i in loop.size() - 1:
+					rim.append(centre + (loop[i] - centre) * (0.45 if swing else 0.72))
+				for i in rim.size():  # coloured wedges of the canopy
+					var wedge := PackedVector2Array([centre, rim[i], rim[(i + 1) % rim.size()]])
+					_raised_polygon_at(out, "deck", wedge, top, top + 0.4, RIDE_COLORS[(i / 6) % 4])
+				for i in range(0, loop.size() - 1, 6):  # the seats out at the rim
+					_box3d(out, "deck", loop[i], 0.6, 0.9 if not swing else 3.0, 1.6 if not swing else 3.6, RIDE_COLORS[(i / 6) % 4])
+			_:  # a Ferris wheel: across its loop's longest axis, cabins in a vertical ring
+				var far := loop[0]
+				for p in loop:
+					if p.distance_to(centre) > far.distance_to(centre):
+						far = p
+				var radius := maxf(far.distance_to(centre), 3.0)
+				var axis := (far - centre).normalized()
+				var hub := radius + 2.0
+				for side: float in [-1.0, 1.0]:
+					var foot := centre + axis.orthogonal() * 2.0 * side
+					_sloped_wall(out, foot - axis * 3.0, centre + axis.orthogonal() * 0.5 * side, 0.4, 0.0, hub, 0.4, Color8(77, 99, 124))
+					_sloped_wall(out, foot + axis * 3.0, centre + axis.orthogonal() * 0.5 * side, 0.4, 0.0, hub, 0.4, Color8(77, 99, 124))
+				for k in 16:
+					var t := TAU * k / 16.0
+					var at := centre + axis * radius * cos(t)
+					var h := hub + radius * sin(t)
+					_box3d(out, "deck", at, 0.6, h - 0.7, h + 0.7, RIDE_COLORS[k % 4])
+					var next := TAU * (k + 1) / 16.0
+					_sloped_wall(out, at, centre + axis * radius * cos(next), 0.2, h, hub + radius * sin(next), 0.2, Color8(233, 229, 208))
+
+
+## Step 6: a biergarten's tables (benches either side, now and then an
+## umbrella) and a cemetery's graves (a plot, its headstone), snowed over as the 2D ones.
+static func site_details(out: Dictionary, rows: Array, snow: float) -> void:
+	var snowy := Color8(215, 224, 232)
+	for row: Array in rows:
+		var at: Vector2 = row[0]
+		if row[1] == "biergarten":
+			var wood := Color8(140, 94, 52).lerp(snowy, snow * 0.7)
+			_raised_polygon_at(out, "deck", _rect_at(at, 1.1, 0.45), 0.0, 0.75, wood)
+			for side: float in [-1.0, 1.0]:
+				_raised_polygon_at(out, "deck", _rect_at(at + Vector2(0, side * 0.95), 1.1, 0.16), 0.0, 0.45, wood)
+			if fposmod(sin(at.dot(Vector2(0.73, 0.37))) * 43758.0, 1.0) < 0.4:
+				_box3d(out, "deck", at, 0.04, 0.75, 2.2, Color8(236, 209, 161))
+				_raised_polygon_at(out, "deck", _rect_at(at, 1.25, 1.25), 2.2, 2.3, Color8(185, 67, 45).lerp(snowy, snow * 0.8))
+		else:
+			_raised_polygon_at(out, "deck", _rect_at(at, 0.65, 0.9), 0.0, 0.08, Color8(68, 80, 57).lerp(snowy, snow * 0.85))
+			_raised_polygon_at(out, "deck", _rect_at(at - Vector2(0, 0.8), 0.6, 0.1), 0.0, 0.85, Color8(155, 157, 150).lerp(snowy, snow * 0.5))
+
+
+static func _rect_at(at: Vector2, half_x: float, half_y: float) -> PackedVector2Array:
+	return PackedVector2Array([at + Vector2(-half_x, -half_y), at + Vector2(half_x, -half_y), at + Vector2(half_x, half_y), at + Vector2(-half_x, half_y)])
 
 
 ## One piece of a deck from a to b: its road surface (the road mesh: wet,
