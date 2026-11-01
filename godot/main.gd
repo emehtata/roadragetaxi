@@ -86,6 +86,7 @@ var _last_interact := -10.0
 var _screenshot_path := ""
 var _screenshot_wait := 6.0
 var _screenshot_drive := 0.0
+var _screenshot_steer := 0.0  # --screenshot-steer: -1 full left .. 1 full right while the screenshot drive runs
 var _report := {}
 var _fps_samples: Array = []
 var _max_camera_lag_px := 0.0
@@ -229,6 +230,8 @@ func _ready() -> void:
 				show_next_train = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
 				_screenshot_drive = float(args[i + 1])
+			"--screenshot-steer":  # with --screenshot-drive: steer this much (-1 left .. 1 right), e.g. off the road onto grass
+				_screenshot_steer = clampf(float(args[i + 1]), -1.0, 1.0)
 	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args:
 		_engine_on = true  # automated runs drive straight away: no sign, no hints
 		_entered_taxi = not "--start-sign" in args  # --start-sign: a screenshot of the city's start sign and forecast
@@ -612,7 +615,7 @@ func _process(delta: float) -> void:
 			_screenshot_drive -= delta
 			_engine_on = true  # boarded: send() followed the parked taxi's stopped engine while outside
 			send({"throttle": 1.0 if _screenshot_drive > 1.0 else 0.0, "brake": 0.0 if _screenshot_drive > 1.0 else 1.0,
-				"steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
+				"steer_left": maxf(-_screenshot_steer, 0.0), "steer_right": maxf(_screenshot_steer, 0.0), "forward": 0.0, "turn": 0.0, "sprint": false})
 	elif _screenshot_path != "" and not state.is_empty():
 		_screenshot_wait -= delta
 		if _screenshot_wait <= 0.0:
