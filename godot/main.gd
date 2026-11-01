@@ -610,6 +610,7 @@ func _process(delta: float) -> void:
 				send({"interact": true})
 		else:
 			_screenshot_drive -= delta
+			_engine_on = true  # boarded: send() followed the parked taxi's stopped engine while outside
 			send({"throttle": 1.0 if _screenshot_drive > 1.0 else 0.0, "brake": 0.0 if _screenshot_drive > 1.0 else 1.0,
 				"steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
 	elif _screenshot_path != "" and not state.is_empty():
