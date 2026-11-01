@@ -269,7 +269,7 @@ static func _transition(animal: Dictionary, active: float) -> void:
 		return
 	var species: String = animal["species"]
 	if species in BIRDS and phase < (0.06 if species == "duck" else 0.18): animal["state"] = "FLY"
-	elif species in BIRDS or species == "squirrel" and phase < 0.45: animal["state"] = "FEED"
+	elif (species in BIRDS or species == "squirrel") and phase < 0.45: animal["state"] = "FEED"
 	else: animal["state"] = "WANDER"
 	animal["heading"] = fmod(float(animal["id"] * 2 + animal["cycle"] * 3), TAU) - PI
 	animal["timer"] = 0.8 + phase * 2.0
