@@ -4,6 +4,7 @@ param(
     [switch]$DebugLogging,
     [switch]$LocalPbf,
     [switch]$ExperimentalRtx,
+    [switch]$Outdoor3d,
     [ValidateSet("native", "quality")][string]$RtxQuality = "native"
 )
 $ErrorActionPreference = "Stop"
@@ -42,6 +43,7 @@ if ($ExperimentalRtx) {
     $engineArgs = @("--rendering-method", "forward_plus", "--rendering-driver", "vulkan")
     $gameArgs += @("--rtx", "--rtx-quality", $RtxQuality)
 }
+if ($Outdoor3d) { $gameArgs += "--outdoor-3d" }
 if ($DebugLogging) { $gameArgs += @("--log-level", "DEBUG") }
 if ($LocalPbf) { $gameArgs += @("--osm-source", "pbf") }
 & $Godot --path (Join-Path $repo "godot") @engineArgs -- @gameArgs

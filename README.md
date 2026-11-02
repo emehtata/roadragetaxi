@@ -251,6 +251,7 @@ imports the Godot project before opening the launcher. Use
 `make run GODOT=/absolute/path/to/godot` to supply your own binary.
 
 ```bash
+make run-2d                    # launcher with the 2D outdoor view (make run is 3D)
 make run-debug                 # launcher with DEBUG logging
 make run-pbf                   # launcher using local PBF map data
 make help                      # all supported development targets

@@ -10,12 +10,13 @@ PRESET ?= Oulu
 BOT_MINUTES ?= 10
 BOT_OUT ?= /tmp/rrt-play-bot
 
-.PHONY: help venv install run run-rtx run-windows run-debug run-pbf index-pbf run-server fetch-godot run-godot run-godot-all play-bot godot-selftest godot-selftest-sample godot-test audio-check test compile check clean stop
+.PHONY: help venv install run run-2d run-rtx run-windows run-debug run-pbf index-pbf run-server fetch-godot run-godot run-godot-all play-bot godot-selftest godot-selftest-sample godot-test audio-check test compile check clean stop
 
 help:
 	@printf '%s\n' \
 		'install                Create .venv and install project dependencies' \
-		'run                    Start the game (native Windows Godot under WSL)' \
+		'run                    Start the game with the 3D outdoor view (native Windows Godot under WSL)' \
+		'run-2d                 Start the game with the 2D outdoor view' \
 		'run-windows            Start native Windows Godot with its Windows Python server' \
 		'run-rtx                Experimental NVIDIA path tracing (WINDOWS_RTX_GODOT, RTX_QUALITY=native|quality)' \
 		'run-debug              Start the game with DEBUG logging' \
@@ -43,7 +44,10 @@ install: venv
 	$(PIP) install -r requirements.txt
 
 ifneq ($(wildcard /proc/sys/fs/binfmt_misc/WSLInterop),)
-run: run-windows
+run:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_GODOT)" -Outdoor3d
+
+run-2d: run-windows
 
 run-debug:
 	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_GODOT)" -DebugLogging
@@ -52,6 +56,9 @@ run-pbf:
 	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_GODOT)" -LocalPbf
 else
 run: godot/.godot
+	$(GODOT) --path godot -- --outdoor-3d
+
+run-2d: godot/.godot
 	$(GODOT) --path godot
 
 run-debug: godot/.godot
