@@ -297,6 +297,9 @@ class SimulationServer:
             if restore_fare(taxi_mgr, saved.get("fare")):
                 logger.info("Save slot %s: fare to %s continues", self.save_slot_file.stem,
                             taxi_mgr.current_passenger.dropoff.address)
+        if getattr(args, "test_seed", None) is not None:  # again: a world built now (no cache yet) drew numbers a cached one does not
+            import random
+            random.seed(args.test_seed)
         pose = getattr(args, "test_pose", None)
         if pose:  # visual tests: in the taxi at an exact spot (the player boards below)
             self.car.x, self.car.y, self.car.heading = (float(v) for v in pose.split(","))
