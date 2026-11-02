@@ -54,7 +54,7 @@ from ..building_style import _building_is_house_by_tag
 from ..localization import SUPPORTED_LANGUAGES, tr
 from ..moon import moon_info_on, moon_position_at
 from ..transport import Listener
-from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
+from ..weather import WeatherSystem, WeatherType, raining_last_hour, weather_type_for_observation
 from ..weather_history import WeatherHistory, gradual_weather, precipitation_from_observation, game_time_to_utc_hour
 from ..calendar import clamp_start_datetime, finnish_local_time
 from ..osm import CACHE_DIR
@@ -190,6 +190,9 @@ class SimulationServer:
         standalone `python -m theroadragetrip.server` process (no client
         menu involved) resolves it here instead, CLI-driven, no menu."""
         self.args = args
+        if getattr(args, "test_seed", None) is not None:  # visual tests: the same traffic and weather draws each run
+            import random
+            random.seed(args.test_seed)
         from .startup_progress import StartupProgress
         progress = startup_progress or StartupProgress(getattr(args, "startup_progress", None))
         progress("starting")
@@ -294,6 +297,10 @@ class SimulationServer:
             if restore_fare(taxi_mgr, saved.get("fare")):
                 logger.info("Save slot %s: fare to %s continues", self.save_slot_file.stem,
                             taxi_mgr.current_passenger.dropoff.address)
+        pose = getattr(args, "test_pose", None)
+        if pose:  # visual tests: in the taxi at an exact spot (the player boards below)
+            self.car.x, self.car.y, self.car.heading = (float(v) for v in pose.split(","))
+            self.car.speed = 0.0
         # Moving traffic from the start, at the start time's demand (populate_initial only parks cars).
         from ..npc import NPCState
         w = self.world
@@ -316,12 +323,20 @@ class SimulationServer:
             moon_time(self.moon_info.set), self.moon_info.phase, self.moon_info.illumination * 100.0,
             self.moon_info.age_days,
         )
-        self.world.weather = WeatherSystem(season=self.calendar.season)
+        test_weather = getattr(args, "test_weather", None)
+        self.world.weather = WeatherSystem(WeatherType(test_weather) if test_weather else None, season=self.calendar.season)
+        if getattr(args, "test_seed", None) is not None:
+            self.world.weather._rng.seed(args.test_seed)
+        if getattr(args, "test_cloud", None) is not None:  # visual tests: clouds held (_advance_clouds aims at the target)
+            self.world.weather.cloud_cover = self.world.weather._cloud_target = float(args.test_cloud)
+            self.world.weather._cloud_timer = float("inf")
         # Historical weather (opt-in): FMI observations/forecast for
         # this city and game time where known, generated weather otherwise.
         historical = getattr(args, "historical_weather", None)
         if historical is None:
             historical = config.getboolean("game", "historical_weather", fallback=False)
+        if test_weather or getattr(args, "test_cloud", None) is not None:
+            historical = False  # the test's weather, not the FMI's
         self.weather_history = None
         self._historical_weather = historical
         self.weather_city = self.chosen_city
@@ -339,7 +354,10 @@ class SimulationServer:
             self.world.weather.update(0.001, 0.0, outside_temperature_c=self.world.weather.outside_temperature_c,
                                       observed=observed)
         self.world.weather.settle_initial_wetness(self._raining_last_hour())
-        self._on_foot = True
+        self._on_foot = not pose
+        if pose:
+            self.car.engine_on = True  # headlights and the HUD as when driving
+            self.world.player_pedestrian.x, self.world.player_pedestrian.y = self.car.x, self.car.y
         self._camx, self._camy = self.car.x, self.car.y
         self._px_per_m = _DEFAULT_PX_PER_M
         self._current_way = None
@@ -979,6 +997,8 @@ class SimulationServer:
         # Game time runs 60x while there is no fare, 1:1 during one; the live
         # clock is the computer's clock itself (read, not integrated: no drift).
         time_scale = self._time_scale = 1.0 if self._live_clock or self.world.taxi_mgr.has_active_job() else 60.0
+        if getattr(self.args, "test_time_scale", None) is not None:  # visual tests: a held or slowed clock
+            time_scale = self._time_scale = self.args.test_time_scale
         previous_date = self.calendar.date
         if self._live_clock:
             self.calendar.current = finnish_local_time(_utc_now())
