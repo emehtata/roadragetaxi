@@ -443,8 +443,8 @@ const STREET_POOL := 48
 const STREET_SHADOWED := 4
 const SHOP_POOL := 16
 const FLOOD_POOL := 6
-const HEAD_POOL := 16
-const HEAD_SHADOWED := 1  # the taxi's (headlight_sources: the taxi first)
+const HEAD_POOL := 32  # two spots a pair
+const HEAD_SHADOWED := 2  # the taxi's (headlight_sources: the taxi first)
 const LAMP_HEIGHT_M := 7.0
 const LAMP_ENERGY := 8.0
 const LAMP_COLOR := Color(1.0, 0.86, 0.62)  # high-pressure sodium to warm LED
@@ -530,23 +530,24 @@ static func _place_omnis(pool: Array, rows: Array, height: float, energy: float,
 			light.light_energy = energy
 
 
-## Headlight pairs (entity_layer.headlight_sources), the taxi first: one spot
-## from each front bumper's middle, dipped 15 m wide or high 150 m narrow.
+## Headlight pairs (entity_layer.headlight_sources), the taxi first: a spot
+## from each front corner, dipped 15 m wide or high 150 m narrow.
 func set_headlights(level: float, sources: Array) -> void:
 	for i in _head_lights.size():
 		var spot: SpotLight3D = _head_lights[i]
-		spot.visible = level > 0.01 and i < sources.size()
+		spot.visible = level > 0.01 and i / 2 < sources.size()
 		if not spot.visible:
 			continue
-		var source: Array = sources[i]
+		var source: Array = sources[i / 2]
 		var forward := Vector2(cos(source[1]), -sin(source[1]))  # entity_layer._forward
+		var side := Vector2(-forward.y, forward.x) * float(source[2]) * (0.35 if i % 2 == 0 else -0.35)
 		var reach := float(source[4])
 		var high := reach > 15.0
-		spot.position = to_3d(source[0] + forward * float(source[3]), 0.65 + (float(source[6]) if source.size() > 6 else 0.0))  # on its deck
+		spot.position = to_3d(source[0] + forward * float(source[3]) + side, 0.65 + (float(source[6]) if source.size() > 6 else 0.0))  # on its deck
 		spot.basis = Basis.looking_at(Vector3(forward.x, -0.6 / maxf(reach, 1.0) - 0.02, forward.y).normalized(), Vector3.UP)
 		spot.spot_range = reach * 1.3
 		spot.spot_angle = 22.0 if high else 38.0
-		spot.light_energy = (40.0 if high else 30.0) * level  # grazing a dark road: far dimmer than the street lamps straight down
+		spot.light_energy = (24.0 if high else 18.0) * level  # one of two; grazing a dark road: far dimmer than the street lamps straight down
 		spot.spot_attenuation = 0.8
 
 
