@@ -491,14 +491,15 @@ func set_wetness(wetness: float) -> void:
 	# each frame. A canvas item hidden when it entered the tree didn't draw
 	# its strokes when shown later (found in a windowed run), so becoming
 	# visible asks for a redraw.
+	var in_3d := outdoor_3d and buildings_3d  # the road mesh (road.gdshader) has the wetness and puddles; these overlays would cover the cars
 	for node in wet_nodes:
-		var show: bool = node.modulate.a > 0.0
+		var show: bool = node.modulate.a > 0.0 and not in_3d
 		if show and not node.visible:
 			node.queue_redraw()
 		node.visible = show
 	for node in puddle_nodes:
-		node.visible = wetness > 0.0
-		if not _puddle_spots.is_empty() and (wetness > 0.0 or previous > 0.0):
+		node.visible = wetness > 0.0 and not in_3d
+		if node.visible and not _puddle_spots.is_empty() and (wetness > 0.0 or previous > 0.0):
 			node.queue_redraw()
 
 

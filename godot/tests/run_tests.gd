@@ -3516,6 +3516,14 @@ func test_performance_paths() -> void:
 	check(not chunk._wet.visible, "dry roads: the wet overlay is not drawn at all")
 	chunk.set_wetness(0.6)
 	check(chunk._wet.visible, "wet: it is")
+	var was_3d := [MapChunk.outdoor_3d, MapChunk.buildings_3d]
+	MapChunk.outdoor_3d = true
+	MapChunk.buildings_3d = true
+	chunk.set_wetness(0.6)
+	check(not chunk._wet.visible and not chunk._puddles.visible, "3D view, rain: no 2D wet overlay or puddles over the cars (the road mesh has them)")
+	MapChunk.outdoor_3d = was_3d[0]
+	MapChunk.buildings_3d = was_3d[1]
+	chunk.set_wetness(0.6)
 	const RS := preload("res://render_style.gd")
 	var same_blend := true
 	for wetness in [0.1, 0.15, 0.4, 1.0]:
