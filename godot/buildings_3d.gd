@@ -271,7 +271,8 @@ static func to_3d(p: Vector2, height := 0.0) -> Vector3:
 
 
 ## Follow the 2D camera: same centre, same metres per screen pixel.
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	fade_lamps(delta)
 	var camera_2d := get_viewport().get_camera_2d()
 	if camera_2d == null:
 		return
@@ -498,22 +499,93 @@ func _omni(color: Color, shadowed: bool) -> OmniLight3D:
 
 ## Street lamps, nearest first: [layer position, reach m]; open shops
 ## [position, reach]; floodlit fields [centre, reach]. `level`
-## (Daylight.artificial) fades them all in at dusk.
+## (Daylight.artificial) fades them all in at dusk. A lamp keeps its light
+## while it ranks among the nearest STREET_KEEP; a dropped one fades out
+## (fade_lamps) before its light goes to another lamp, which fades in.
+const STREET_KEEP := 60  # hysteresis over STREET_POOL: no light swaps back and forth at the cut
+const LAMP_FADE_S := 0.5
+var _lamp_keys: Array = []  # each light's lamp position, Vector2.INF while free
+var _lamp_weights := PackedFloat32Array()
+var _lamp_targets := PackedFloat32Array()
+var _lamp_level := 0.0
+
+
 func set_area_lights(level: float, lamps: Array, shops: Array, floods: Array) -> void:
 	if _street_lights.is_empty():
 		return
 	var on := level > 0.01
+	_lamp_level = level
+	if _lamp_keys.is_empty():
+		_lamp_keys.resize(STREET_POOL)
+		_lamp_keys.fill(Vector2.INF)
+		_lamp_weights.resize(STREET_POOL)
+		_lamp_targets.resize(STREET_POOL)
+	var before := _lamp_keys.duplicate()
+	var reaches := assign_lamps(_lamp_keys, _lamp_weights, _lamp_targets, lamps if on else [], STREET_KEEP)
+	var counters: Dictionary = preload("res://perf.gd").counters  # the driving bench's (--bench) light stability
 	for i in _street_lights.size():
-		var lamp: SpotLight3D = _street_lights[i]
-		lamp.visible = on and i < lamps.size()
-		if lamp.visible:
-			var reach := float(lamps[i][1]) * 1.6
-			lamp.position = to_3d(lamps[i][0], LAMP_HEIGHT_M - 0.2)  # the housing's underside
+		if _lamp_keys[i] != before[i]:
+			counters["lamp_reassigned"] = counters.get("lamp_reassigned", 0) + 1
+			if _lamp_weights[i] > 0.0:
+				counters["lamp_moved_lit"] = counters.get("lamp_moved_lit", 0) + 1
+		if reaches[i] > 0.0:
+			var lamp: SpotLight3D = _street_lights[i]
+			var reach: float = reaches[i] * 1.6
+			lamp.position = to_3d(_lamp_keys[i], LAMP_HEIGHT_M - 0.2)  # the housing's underside
 			lamp.spot_range = Vector2(reach, LAMP_HEIGHT_M).length()
 			lamp.spot_angle = rad_to_deg(atan2(reach, LAMP_HEIGHT_M))
-			lamp.light_energy = LAMP_ENERGY * level
 	_place_omnis(_shop_lights, shops if on else [], 2.5, 1.2 * level, 1.0)
 	_place_omnis(_flood_lights, floods, 18.0, 6.0, 1.3)  # floodlights keep their own schedule (map_layer)
+	fade_lamps(0.0)
+	counters["lamp_lights_max"] = maxi(counters.get("lamp_lights_max", 0), _lamp_targets.count(1.0))
+	counters["lamps_offered_max"] = maxi(counters.get("lamps_offered_max", 0), lamps.size())
+
+
+## Gives each light (keys: its lamp's position or Vector2.INF, weights: how
+## lit it is now) a lamp: kept while the lamp ranks among the first `keep`
+## of `lamps` (nearest first, [position, reach]), else targeted to fade out;
+## the nearest lamps without one take free (dark) lights. Sets targets; the
+## lamps' reaches by light, 0.0 where nothing new is placed.
+static func assign_lamps(keys: Array, weights: PackedFloat32Array, targets: PackedFloat32Array, lamps: Array, keep: int) -> PackedFloat32Array:
+	var reaches := PackedFloat32Array()
+	reaches.resize(keys.size())
+	var ranked := {}
+	for i in mini(lamps.size(), keep):
+		if not ranked.has(lamps[i][0]):  # a lamp twice (chunks overlap) gets one light
+			ranked[lamps[i][0]] = i
+	var lit := {}
+	for i in keys.size():
+		targets[i] = 1.0 if ranked.has(keys[i]) else 0.0
+		if targets[i] > 0.0:
+			lit[keys[i]] = true
+			reaches[i] = float(lamps[ranked[keys[i]]][1])
+	var free := 0
+	for i in mini(lamps.size(), keep):
+		var at: Vector2 = lamps[i][0]
+		if lit.has(at):
+			continue
+		while free < keys.size() and not (targets[free] == 0.0 and weights[free] == 0.0):
+			free += 1
+		if free == keys.size():
+			break  # the rest wait for a light to fade out (the next update)
+		keys[free] = at
+		targets[free] = 1.0
+		reaches[free] = float(lamps[i][1])
+		lit[at] = true
+	return reaches
+
+
+## Every frame: each lamp's light toward its target, LAMP_FADE_S from dark to full.
+func fade_lamps(delta: float) -> void:
+	for i in _lamp_keys.size():
+		var w := move_toward(_lamp_weights[i], _lamp_targets[i], delta / LAMP_FADE_S)
+		_lamp_weights[i] = w
+		if w == 0.0 and _lamp_targets[i] == 0.0:
+			_lamp_keys[i] = Vector2.INF
+		var lamp: SpotLight3D = _street_lights[i]
+		lamp.visible = w > 0.0 and _lamp_level > 0.01
+		if lamp.visible:
+			lamp.light_energy = LAMP_ENERGY * _lamp_level * w
 
 
 static func _place_omnis(pool: Array, rows: Array, height: float, energy: float, reach_scale: float) -> void:

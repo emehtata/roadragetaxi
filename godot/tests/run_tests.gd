@@ -93,6 +93,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_rest_of_static_world()
 	test_buildings_2_5d()
 	test_buildings_3d()
+	test_street_lamp_slots()
 	test_shop_lights()
 	test_sun_and_shadows()
 	test_roof_snow()
@@ -3086,6 +3087,29 @@ func test_sun_and_shadows() -> void:
 	for node in instances:
 		node.free()
 	layer.queue_free()
+
+
+## rrt-021-streetlights-01: lamps keep their lights while the view moves; a
+## dropped lamp fades out before its light goes to another lamp.
+func test_street_lamp_slots() -> void:
+	var keys: Array = [Vector2.INF, Vector2.INF, Vector2.INF]
+	var weights := PackedFloat32Array([0.0, 0.0, 0.0])
+	var targets := PackedFloat32Array([0.0, 0.0, 0.0])
+	var row := func(x: float) -> Array: return [Vector2(x, 0.0), 10.0]
+	B3.assign_lamps(keys, weights, targets, [row.call(1.0), row.call(2.0), row.call(2.0), row.call(3.0)], 4)
+	check(keys == [Vector2(1, 0), Vector2(2, 0), Vector2(3, 0)], "lamp slots: the nearest lamps, a lamp twice (chunks overlap) once")
+	weights = PackedFloat32Array([1.0, 1.0, 1.0])
+	B3.assign_lamps(keys, weights, targets, [row.call(3.0), row.call(4.0), row.call(2.0), row.call(1.0)], 4)
+	check(keys == [Vector2(1, 0), Vector2(2, 0), Vector2(3, 0)] and targets == PackedFloat32Array([1, 1, 1]),
+		"lamp slots: a reordered view moves no light; ranked within the hysteresis, lamp 1 keeps its light")
+	B3.assign_lamps(keys, weights, targets, [row.call(3.0), row.call(4.0), row.call(2.0), row.call(5.0)], 4)
+	check(keys[0] == Vector2(1, 0) and targets[0] == 0.0 and keys.find(Vector2(4, 0)) == -1,
+		"lamp slots: a dropped lamp fades out first, its light still in place")
+	weights[0] = 0.0
+	B3.assign_lamps(keys, weights, targets, [row.call(3.0), row.call(4.0), row.call(2.0), row.call(5.0)], 4)
+	check(keys[0] == Vector2(4, 0) and targets[0] == 1.0, "lamp slots: once dark, the light goes to the next lamp")
+	B3.assign_lamps(keys, weights, targets, [], 4)
+	check(targets == PackedFloat32Array([0, 0, 0]) and keys[1] == Vector2(2, 0), "lamp slots: lights off at dawn fade, not snap")
 
 
 func test_buildings_3d() -> void:
