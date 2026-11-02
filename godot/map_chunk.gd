@@ -206,14 +206,14 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	if not message.get("railings", []).is_empty():
 		_railings = _add_layer(8, _draw_railings)
 		_px_layers.append(_railings)
-	if not message.get("street_lights", []).is_empty():
+	if not message.get("street_lights", []).is_empty() and not (outdoor_3d and buildings_3d):  # 3D: posts, heads and lights are buildings_3d's
 		var add := CanvasItemMaterial.new()
 		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 		add.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED  # light, not lit: the ambient multiply leaves it be
 		_pools.material = add
 		_pools.draw.connect(_draw_light_pools.bind(_pools))  # MapLayer puts it in its pool group
 		_px_layers.append(_pools)
-		_px_layers.append(_add_layer(6, _draw_lamp_heads, _heads, true))  # --outdoor-3d: the lit heads are buildings_3d's street lights
+		_px_layers.append(_add_layer(6, _draw_lamp_heads, _heads, true))
 		_heads.material = EMISSIVE
 		set_lights_on(false)
 	if not message.get("floodlit", []).is_empty():
