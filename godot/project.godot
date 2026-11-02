@@ -37,7 +37,7 @@ interior_right={
 
 [rendering]
 
-limits/opengl/max_lights_per_object=32
+limits/opengl/max_lights_per_object=128
 limits/opengl/max_renderable_lights=128
 
 renderer/rendering_method="gl_compatibility"
