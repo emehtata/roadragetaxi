@@ -123,6 +123,7 @@ void fragment() {
 	// UV.x marks only roof triangles; walls, gables, doors and windows stay bare.
 	vec3 color = mix(COLOR.rgb, snow_color.rgb * UV.y, UV.x * snow_cover) * ambient.rgb;
 	vec3 glow = vec3(0.0);  // the windows' own light: emission in the shaded variant (buildings_3d.use_shaded)
+	float pane = 0.0;  // 1 on a window's glass: glossy (the shaded variant); walls and roofs stay matte
 	float count = mod(wall.z, 1000.0);
 	if (count >= 1.0 && wall.y > 0.0) {
 		float category = mod(floor(wall.z / 1000.0 + 0.001), 10.0);
@@ -177,8 +178,11 @@ void fragment() {
 				glow = mix(glow, candle.rgb, candle.a);
 			}
 			color = glass;
+			pane = 1.0 - curtain;
 		}
 	}
 	ALBEDO = color;
+	ROUGHNESS = mix(0.9, 0.08, pane);  // plaster, brick and concrete alike: the map gives no facade material
+	SPECULAR = mix(0.3, 0.5, pane);
 	EMISSION = glow;
 }
