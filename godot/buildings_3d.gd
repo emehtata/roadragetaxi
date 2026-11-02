@@ -419,7 +419,7 @@ var _car_nodes: Array = []  # pooled [body, caster] instances
 var _cars_used := 0
 const CAR_GLASS := Color8(52, 74, 92)  # render_style.WINDSHIELD
 const CAR_SIGN := Color8(240, 220, 20)  # render_style.TAXI_SIGN
-enum { PAINT, RUBBER, GLASS_PART, LAMP, STEEL }  # car.gdshader's parts (UV2.x)
+enum { PAINT, RUBBER, GLASS_PART, LAMP }  # car.gdshader's parts (UV2.x)
 const LAMPS_ON := 1  # car()'s `lamps`: the engine runs (head and tail lights)
 const LAMPS_BRAKE := 2
 const LAMPS_REVERSE := 4
@@ -1702,10 +1702,10 @@ static func lamp_posts_node(rows: Array) -> MeshInstance3D:
 	for row: Array in rows:
 		var lamp: Vector2 = row[0]
 		var pole: Vector2 = lamp - row[1] * 1.2
-		_part(out, STEEL, pole.x - 0.08, pole.x + 0.08, pole.y - 0.08, pole.y + 0.08, 0.0, LAMP_HEIGHT_M + 0.1, steel)
+		_car_box(out, pole.x - 0.08, pole.x + 0.08, pole.y - 0.08, pole.y + 0.08, 0.0, LAMP_HEIGHT_M + 0.1, steel)
 		for k in 3:
 			var p := pole.lerp(lamp, (k + 0.5) / 3.0)
-			_part(out, STEEL, p.x - 0.22, p.x + 0.22, p.y - 0.05, p.y + 0.05, LAMP_HEIGHT_M - 0.02, LAMP_HEIGHT_M + 0.08, steel)
+			_car_box(out, p.x - 0.22, p.x + 0.22, p.y - 0.05, p.y + 0.05, LAMP_HEIGHT_M - 0.02, LAMP_HEIGHT_M + 0.08, steel)
 		_car_box(out, lamp.x - 0.28, lamp.x + 0.28, lamp.y - 0.28, lamp.y + 0.28, LAMP_HEIGHT_M - 0.2, LAMP_HEIGHT_M, Color8(60, 62, 64))
 	return _world_node(out)
 
@@ -1719,7 +1719,7 @@ static func signals_node(rows: Array) -> MeshInstance3D:
 	for row: Array in rows:
 		var at: Vector2 = row[0]
 		var along: Vector2 = row[1]
-		_part(out, STEEL, at.x - 0.06, at.x + 0.06, at.y - 0.06, at.y + 0.06, 0.0, 2.6, Color8(70, 70, 70))
+		_car_box(out, at.x - 0.06, at.x + 0.06, at.y - 0.06, at.y + 0.06, 0.0, 2.6, Color8(70, 70, 70))
 		for k in 3:
 			var p: Vector2 = at + along * (k - 1) * 0.3
 			_car_box(out, p.x - 0.18, p.x + 0.18, p.y - 0.18, p.y + 0.18, 2.6, 2.95, Color8(15, 15, 15))
