@@ -87,6 +87,7 @@ var _last_interact := -10.0
 var _screenshot_path := ""
 var _screenshot_wait := 6.0
 var _screenshot_drive := 0.0
+var _visual_test: Node = null  # --visual-test (visual_test.gd)
 var _screenshot_resize := Vector2i.ZERO  # --screenshot-resize WxH: the window resized 3 s before the shot (a live resize)
 var _screenshot_steer := 0.0  # --screenshot-steer: -1 full left .. 1 full right while the screenshot drive runs
 var _report := {}
@@ -239,9 +240,16 @@ func _ready() -> void:
 			"--screenshot-resize":
 				var size: PackedStringArray = args[i + 1].split("x")
 				_screenshot_resize = Vector2i(int(size[0]), int(size[1]))
+			"--visual-test":  # tools/visual_test.py: a scenario's readiness checks, screenshot and result (visual_test.gd)
+				var test := preload("res://visual_test.gd").new()
+				_visual_test = test
+				test.main = self
+				test.scenario = JSON.parse_string(FileAccess.get_file_as_string(args[i + 1]))
+				test.out_dir = args[i + 1].get_base_dir()
+				add_child(test)
 			"--screenshot-steer":  # with --screenshot-drive: steer this much (-1 left .. 1 right), e.g. off the road onto grass
 				_screenshot_steer = clampf(float(args[i + 1]), -1.0, 1.0)
-	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args:
+	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args or "--visual-test" in args:
 		_engine_on = true  # automated runs drive straight away: no sign, no hints
 		_entered_taxi = not "--start-sign" in args  # --start-sign: a screenshot of the city's start sign and forecast
 	if _bench > 0.0:  # rrt-019.1: the frame in phases - scripts, redraws and layout up to the render, then the render
@@ -684,7 +692,8 @@ func _process(delta: float) -> void:
 			print("BENCH ", JSON.stringify(Perf.report()))
 			get_tree().quit()
 	_command_timer -= delta
-	if _command_timer <= 0.0 and not _selftest and not _audiotest and not screenshot_driving and not summary_shown:  # the tests drive instead
+	if _command_timer <= 0.0 and not _selftest and not _audiotest and not screenshot_driving and not summary_shown \
+			and not (_visual_test != null and _visual_test.driving):  # the tests drive instead
 		_command_timer = COMMAND_INTERVAL_S
 		send({} if _start_sign != null else drive.controls(state.get("on_foot", true)))  # the start sign: no driving yet
 

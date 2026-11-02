@@ -93,7 +93,7 @@ func _ready() -> void:
 	if not _city in _cities:
 		_city = _cities[0]
 	_build_shell()
-	for flag in ["--skip-menu", "--selftest", "--audiotest", "--inputtest", "--screenshot", "--bench"]:
+	for flag in ["--skip-menu", "--selftest", "--audiotest", "--inputtest", "--screenshot", "--bench", "--visual-test"]:
 		if flag in command_line:
 			_game = preload("res://main.tscn").instantiate()
 			_game.language = _language
