@@ -37,5 +37,7 @@ interior_right={
 
 [rendering]
 
+limits/opengl/max_lights_per_object=32
+
 renderer/rendering_method="gl_compatibility"
 lights_and_shadows/directional_shadow/size=2048

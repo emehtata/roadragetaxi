@@ -437,7 +437,7 @@ func _exit_tree() -> void:
 
 ## rtx-scene-readiness step 4 (--outdoor-3d): the scene's own lights, from
 ## fixed pools reused every update - the nearest lamps get them, only the
-## nearest few cast shadows. Street lamps (their heads emissive), open shops'
+## nearest few cast shadows. Street lamps (spots down), open shops'
 ## spill, floodlit fields, and every shining headlight pair as a spot.
 const STREET_POOL := 48
 const STREET_SHADOWED := 4
@@ -446,33 +446,29 @@ const FLOOD_POOL := 6
 const HEAD_POOL := 16
 const HEAD_SHADOWED := 1  # the taxi's (headlight_sources: the taxi first)
 const LAMP_HEIGHT_M := 7.0
-const LAMP_ENERGY := 2.5
+const LAMP_ENERGY := 8.0
 const LAMP_COLOR := Color(1.0, 0.86, 0.62)  # high-pressure sodium to warm LED
 const SHOP_COLOR := Color(1.0, 0.95, 0.85)
 const FLOOD_COLOR := Color(0.95, 0.97, 1.0)
 const HEAD_COLOR := Color(1.0, 0.96, 0.88)
-var _street_lights: Array = []  # OmniLight3D, each with its head (a MeshInstance3D child)
+var _street_lights: Array = []  # SpotLight3D, pointing down
 var _shop_lights: Array = []
 var _flood_lights: Array = []
 var _head_lights: Array = []  # SpotLight3D
 
 
 func _make_lights() -> void:
-	var head_mesh := BoxMesh.new()
-	head_mesh.size = Vector3(0.6, 0.25, 0.6)
-	var head_material := StandardMaterial3D.new()
-	head_material.emission_enabled = true
-	head_material.emission = LAMP_COLOR
-	head_material.emission_energy_multiplier = 4.0
-	head_material.albedo_color = LAMP_COLOR
-	head_mesh.material = head_material
-	for i in STREET_POOL:
-		var lamp := _omni(LAMP_COLOR, i < STREET_SHADOWED)
-		var head := MeshInstance3D.new()
-		head.mesh = head_mesh
-		head.layers = LAYER_BUILDINGS
-		head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		lamp.add_child(head)
+	for i in STREET_POOL:  # a lamp shines down onto the street, never up: a spot, its dark housing lamp_posts_node's
+		var lamp := SpotLight3D.new()
+		lamp.light_color = LAMP_COLOR
+		lamp.layers = LAYER_BUILDINGS
+		lamp.light_cull_mask = LAYER_BUILDINGS
+		lamp.shadow_caster_mask = LAYER_BUILDINGS
+		lamp.shadow_enabled = i < STREET_SHADOWED
+		lamp.shadow_bias = 0.08
+		lamp.rotation_degrees.x = -90.0  # -Z, a spot's axis, straight down
+		lamp.visible = false
+		_view.add_child(lamp)
 		_street_lights.append(lamp)
 	for i in SHOP_POOL:
 		_shop_lights.append(_omni(SHOP_COLOR, false))
@@ -511,7 +507,15 @@ func set_area_lights(level: float, lamps: Array, shops: Array, floods: Array) ->
 	if _street_lights.is_empty():
 		return
 	var on := level > 0.01
-	_place_omnis(_street_lights, lamps if on else [], LAMP_HEIGHT_M, LAMP_ENERGY * level, 1.6)
+	for i in _street_lights.size():
+		var lamp: SpotLight3D = _street_lights[i]
+		lamp.visible = on and i < lamps.size()
+		if lamp.visible:
+			var reach := float(lamps[i][1]) * 1.6
+			lamp.position = to_3d(lamps[i][0], LAMP_HEIGHT_M - 0.2)  # the housing's underside
+			lamp.spot_range = Vector2(reach, LAMP_HEIGHT_M).length()
+			lamp.spot_angle = rad_to_deg(atan2(reach, LAMP_HEIGHT_M))
+			lamp.light_energy = LAMP_ENERGY * level
 	_place_omnis(_shop_lights, shops if on else [], 2.5, 1.2 * level, 1.0)
 	_place_omnis(_flood_lights, floods, 18.0, 6.0, 1.3)  # floodlights keep their own schedule (map_layer)
 
