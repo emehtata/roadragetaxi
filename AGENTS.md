@@ -11,6 +11,10 @@ separation and bounded per-frame work.
 
 Whenever changing UI or Godot code, render the affected view, capture a
 screenshot and inspect it visually before considering the change complete.
+For rendering features, verify with a named scenario from
+`tools/visual_scenarios.json` (or add one from real map data) and follow the
+rules in [docs/visual-testing.md](docs/visual-testing.md): a screenshot only
+counts when the scenario's readiness checks passed.
 
 Game screenshots are in `/home/ubuntu/work/roadragetaxi/screenshots/`.
 When the user refers to a screenshot, inspect the newest relevant PNG in

@@ -67,3 +67,7 @@ tools/godot/Godot_v*-stable_linux.*
 *.code-workspace
 # Release builds
 *.zip
+
+# tools/visual_test.py output (docs/visual-testing.md)
+visual-test-results/
+visual-test-compare.png
