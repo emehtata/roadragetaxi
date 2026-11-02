@@ -546,7 +546,7 @@ func set_headlights(level: float, sources: Array) -> void:
 		spot.basis = Basis.looking_at(Vector3(forward.x, -0.6 / maxf(reach, 1.0) - 0.02, forward.y).normalized(), Vector3.UP)
 		spot.spot_range = reach * 1.3
 		spot.spot_angle = 22.0 if high else 38.0
-		spot.light_energy = (4.0 if high else 2.5) * level
+		spot.light_energy = (40.0 if high else 30.0) * level  # grazing a dark road: far dimmer than the street lamps straight down
 		spot.spot_attenuation = 0.8
 
 
