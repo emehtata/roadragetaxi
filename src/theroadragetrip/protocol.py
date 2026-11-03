@@ -522,6 +522,13 @@ def _station_price_cents(world, car) -> Optional[int]:
     return fuel_station_price_cents(station) if station is not None else None
 
 
+def _abroad_text(border_watch, language: str) -> str:
+    country = getattr(border_watch, "country", None)
+    if country in (None, "FIN"):
+        return ""
+    return tr(language, "abroad", country=tr(language, f"country_in_{country}"))
+
+
 def _meet_to_dict(taxi_mgr, player_pedestrian, language: str) -> Optional[dict]:
     """The meet & greet in progress: the
     panel's three lines (taxi_mgr.meet_prompt, localized here) and, while
@@ -660,6 +667,8 @@ def build_state_message(
         "speed_camera_flash": taxi_mgr.speed_camera_flash_index if taxi_mgr.speed_camera_flash_timer > 0.0 else None,
         "traffic_lights": _traffic_light_phases(traffic_mgr, *player_at),
         "meet": _meet_to_dict(taxi_mgr, player_pedestrian, language),
+        # Out of Finland: "You can drive in Sweden, but everything is Finnish here." (borders.py), else "".
+        "abroad": _abroad_text(getattr(world, "border_watch", None), language),
         # The route to the taxi target, planned by the server (navigation_route.py): [[x, y], ...], [] while none.
         "navigation": navigation if navigation is not None else {"points": []},
         # The rage shout above the taxi while it lasts ({"text", "timer"} seconds left), else null.

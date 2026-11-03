@@ -25,6 +25,7 @@ var _summary := Label.new()  # the city summary: covers everything once the care
 var _notice_style := StyleBoxFlat.new()
 var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
 var _notice_mode := ""
+var _abroad_sign := Label.new()  # out of Finland: the game stays Finnish (state.abroad)
 var _map_sign := Label.new()  # the map growing at its edge: wait for it (state.map_loading)  # "camera", "start" or "" (the banner)
 var language := "en"
 
@@ -96,6 +97,12 @@ func _ready() -> void:
 	_map_sign.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_map_sign.visible = false
 	add_child(_map_sign)
+	_abroad_sign.add_theme_font_size_override("font_size", 15)
+	_abroad_sign.add_theme_color_override("font_color", Color8(255, 200, 50))
+	_abroad_sign.add_theme_constant_override("outline_size", 5)
+	_abroad_sign.add_theme_color_override("font_outline_color", Color8(20, 24, 28, 230))
+	_abroad_sign.visible = false
+	add_child(_abroad_sign)
 	add_child(_meter)
 	add_child(_electronic)
 	add_child(_summary)  # last child: above the HUD rows
@@ -172,6 +179,8 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	_subtitle.visible = Time.get_ticks_msec() < _subtitle_until
 	_map_sign.text = map_loading_text(str(state.get("map_loading", "")), Time.get_ticks_msec(), language, str(state.get("map_loading_detail", "")))
 	_map_sign.visible = _map_sign.text != ""
+	_abroad_sign.text = str(state.get("abroad", ""))
+	_abroad_sign.visible = _abroad_sign.text != ""
 	_layout()
 	var railway = state.get("railway")
 	if not _timetable_hint_shown and railway is Dictionary and railway.get("stations") is Array and not railway["stations"].is_empty():
@@ -213,6 +222,11 @@ func _layout() -> void:
 		_map_sign.size = Vector2.ZERO
 		_map_sign.reset_size()
 		_map_sign.position = Vector2(_weather.position.x + _weather.size.x - _map_sign.size.x, _weather.position.y + _weather.size.y)
+	if _abroad_sign.visible:  # under the weather line (and the map sign)
+		_abroad_sign.size = Vector2.ZERO
+		_abroad_sign.reset_size()
+		var below := _map_sign.get_rect().end.y if _map_sign.visible else _weather.position.y + _weather.size.y
+		_abroad_sign.position = Vector2(_weather.position.x + _weather.size.x - _abroad_sign.size.x, below + 2.0)
 	match _notice_mode:
 		"camera":  # a speed-camera hit centred on screen, red
 			_notice.position = (size - _notice.size) / 2.0

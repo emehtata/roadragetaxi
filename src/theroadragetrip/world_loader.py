@@ -22,6 +22,7 @@ from .level_routing import LevelRouteGraphs
 from .level_transitions import LevelTransitions, resolve_connectors, close_garage_roads
 from .map_level import SURFACE_LEVEL, LevelRoadNetworks
 from .trams import TramManager
+from .borders import BorderWatch
 from .ferries import FerryManager
 from .osm.build import FERRY_KIND
 from .competitor_taxis import Dispatcher
@@ -485,6 +486,7 @@ def load_world(
         railway_mgr=railway_mgr,
         tram_mgr=TramManager(railways, chosen_city),  # trams on their rails where the city has them (trams.py)
         ferry_mgr=ferry_mgr,
+        border_watch=BorderWatch(),  # the out-of-Finland notice (borders.py)
         auto_fetch_manager=auto_fetch_manager,
         base_pedestrian_count=base_pedestrian_count,
         bounds=bounds,

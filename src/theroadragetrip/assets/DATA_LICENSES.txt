@@ -68,6 +68,13 @@ godot/finland_minimap.svg (the city menu's map, shipped in the game)
   tools/osm/build_finland_minimap.py. © OpenStreetMap contributors, ODbL 1.0
   (https://www.openstreetmap.org/copyright).
 
+borders.json.gz (the out-of-Finland notice, borders.py)
+  Finland's outline from OpenStreetMap relation 54224, © OpenStreetMap
+  contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright); its
+  neighbours' outlines from Natural Earth 1:50m admin 0 countries v5.1.2,
+  public domain (https://www.naturalearthdata.com). Built by
+  tools/osm/build_borders.py.
+
 sample_osm.json.gz (repository root, shipped with the server)
   Offline sample map for --use-sample. Its origin is not recorded:
   UNRESOLVED (see LICENSE_AUDIT.md).
