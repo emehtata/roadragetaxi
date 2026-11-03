@@ -969,6 +969,40 @@ def test_release_household_vehicle_is_idempotent():
     assert car.availability == NPCAvailability.AVAILABLE
 
 
+def test_transit_walk_timing_excludes_time_between_slices_and_closes_on_cancel(monkeypatch):
+    import theroadragetrip.npc as npc
+    from types import SimpleNamespace
+    manager = NPCVehicleManager(target_count=0)
+    world = SimpleNamespace(_route_nodes=[], _route_node_grid={})
+    clock, closed = [0.0], []
+    result = object()
+
+    def walk(*args):
+        try:
+            clock[0] += 0.002
+            yield
+            clock[0] += 0.003
+            return result
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(manager, "_walked_transit_trip_steps", walk)
+    monkeypatch.setattr(npc.time, "perf_counter", lambda: clock[0])
+    args = (None, (0.0, 0.0), None, world, [], None, None, None, None, None, None, None, [])
+    job = manager._short_transit_trip_steps(*args)
+    next(job)
+    clock[0] += 100.0
+    with pytest.raises(StopIteration) as done:
+        next(job)
+    assert done.value.value is result
+    assert manager.spawn_stats["search_ms"] == pytest.approx(5.0)
+    assert len(closed) == 1
+    job = manager._short_transit_trip_steps(*args)
+    next(job)
+    job.close()
+    assert len(closed) == 2
+
+
 def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
     """vehicle-population v2 acceptance criterion ("vehicle ownership persists") and
     this project's own testing checklist ("household association

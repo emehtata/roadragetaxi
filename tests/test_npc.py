@@ -4,6 +4,35 @@ from types import SimpleNamespace
 
 import pytest
 
+
+def test_driving_path_job_yields_between_road_lookups(monkeypatch):
+    import theroadragetrip.npc as npc
+    from theroadragetrip.osm import Way
+    from theroadragetrip.physics import SpatialWayGrid
+    route = [(float(i * 10), 0.0) for i in range(100)]
+    ways = [Way(points_m=route, highway="residential", half_width_m=4.5)]
+    grid = SpatialWayGrid(ways)
+    expected = npc.build_driving_path(route, ways, spatial_grid=grid)
+    original = npc._way_at_point
+    lookups = []
+
+    def counted(*args, **kwargs):
+        lookups.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(npc, "_way_at_point", counted)
+    steps = npc._build_driving_path_steps(route, ways, spatial_grid=grid)
+    previous = 0
+    while True:
+        try:
+            next(steps)
+        except StopIteration as done:
+            assert done.value == expected
+            break
+        assert len(lookups) - previous <= 1
+        previous = len(lookups)
+    assert len(lookups) == len(route) - 1
+
 from theroadragetrip.npc import (
     Driver,
     NPCState,

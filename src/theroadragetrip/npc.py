@@ -602,14 +602,15 @@ def _stalled_vehicle_on_route(vehicle, driver, obstacles, reach):
         for other in candidates:
             dx, dy = other.x - ax, other.y - ay
             along, lateral = dx * hx + dy * hy, abs(dy * hx - dx * hy)
+            gap = distance + along
+            if not (0.0 <= along <= length and 0.0 < gap <= reach):
+                continue
             angle = getattr(other, "heading", heading) - heading
             if not (_is_stalled(other) or abs(getattr(other, "speed", 0.0)) < 0.5 or math.cos(angle) > 0.5):
                 continue  # oncoming traffic is not in our lane's queue
             width = (abs(math.sin(angle)) * getattr(other, "length_m", NPC_VEHICLE_LENGTH_M)
                      + abs(math.cos(angle)) * getattr(other, "width_m", NPC_VEHICLE_WIDTH_M))
-            gap = distance + along
-            if (0.0 <= along <= length and 0.0 < gap <= reach
-                    and lateral < (vehicle.width_m + width) * 0.5 + 0.3
+            if (lateral < (vehicle.width_m + width) * 0.5 + 0.3
                     and (nearest is None or gap < nearest[0])):
                 nearest = gap, other
         distance += length
@@ -1124,10 +1125,7 @@ def build_driving_path(
     """Turn a raw centerline route (TrafficWorld.plan_route's output) into
     a lane-correct, corner-smoothed path for an NPC to follow.
 
-    Kept as one function for autonomous-driving (one vehicle, no need for a generic
-    multi-stage pipeline object yet), but route planning (the caller),
-    lane offsetting, and corner rounding remain distinct, independently
-    testable steps - see build_driving_path's own helpers.
+    Synchronous callers drain the same resumable construction used by route jobs.
 
     aligned_parking_approach preserves the penultimate parking waypoint
     so lane offsets cannot rotate the deliberately aligned final leg.
@@ -1144,6 +1142,18 @@ def build_driving_path(
     a plain point on a road, or the deliberate roadside-parking fallback
     that relies on exactly this offset to hug the curb.
     """
+    return run_route_steps(_build_driving_path_steps(
+        route_points, ways, spatial_grid, vehicle_width_m, corner_radius_m,
+        skip_final_lane_offset, aligned_parking_approach, skip_initial_lane_offset,
+    ))
+
+
+def _build_driving_path_steps(
+    route_points, ways, spatial_grid=None, vehicle_width_m=NPC_VEHICLE_WIDTH_M,
+    corner_radius_m=CORNER_RADIUS_M, skip_final_lane_offset=False,
+    aligned_parking_approach=False, skip_initial_lane_offset=False,
+) -> RouteSteps:
+    """Yield between road lookups and vertices so route jobs can honor their slice."""
     route_points = _dedupe_points(route_points)
     n = len(route_points)
     if n < 2:
@@ -1157,14 +1167,14 @@ def build_driving_path(
         math.hypot(route_points[i + 1][0] - route_points[i][0], route_points[i + 1][1] - route_points[i][1])
         for i in range(n - 1)
     ]
-    segment_way = [
-        _way_at_point(
+    segment_way = []
+    for i in range(n - 1):
+        yield
+        segment_way.append(_way_at_point(
             spatial_grid, ways,
             (route_points[i][0] + route_points[i + 1][0]) / 2.0,
             (route_points[i][1] + route_points[i + 1][1]) / 2.0,
-        )[0]
-        for i in range(n - 1)
-    ]
+        )[0])
 
     # Which vertices are real turns and which way, computed once up front
     # so lane offsetting (needs to know a turn is *coming*) and corner
@@ -1193,6 +1203,7 @@ def build_driving_path(
     lane_points: List[Tuple[float, float, Optional[Way]]] = []
     lane_bias: List[Optional[str]] = []
     for i, (x, y) in enumerate(route_points):
+        yield
         seg = min(i, n - 2)
         bias = _upcoming_maneuver(i)
         if (i == 0 and skip_initial_lane_offset) or (i == n - 1 and skip_final_lane_offset) or (i == n - 2 and aligned_parking_approach):
@@ -1214,6 +1225,7 @@ def build_driving_path(
 
     path: List[PathPoint] = [PathPoint(*lane_points[0], lane_bias=lane_bias[0])]
     for i in range(1, len(lane_points) - 1):
+        yield
         maneuver = corner_maneuver[i]
         if maneuver is not None:
             prev_xy = (path[-1].x, path[-1].y)
@@ -1778,7 +1790,7 @@ def _plan_and_validate_npc_route_steps(
         return None
     yield
 
-    path = build_driving_path(
+    path = yield from _build_driving_path_steps(
         deduped_route, ways, spatial_grid=spatial_grid, skip_final_lane_offset=destination_is_off_road,
         aligned_parking_approach=final_segment_count == 2,
         vehicle_width_m=vehicle_width_m,
@@ -5411,9 +5423,20 @@ class NPCVehicleManager:
         nodes = traffic_world._route_nodes
         grid = traffic_world._route_node_grid
         cell_size = _ROUTE_NODE_GRID_CELL_M
-        started = time.perf_counter()
-        walked = self._walked_transit_trip(vehicle, origin, traffic_world, ways, spatial_grid, claimed_points, through_point)
-        self.spawn_stats["search_ms"] += (time.perf_counter() - started) * 1000.0
+        steps = self._walked_transit_trip_steps(vehicle, origin, traffic_world, ways, spatial_grid, claimed_points, through_point)
+        try:
+            while True:
+                started = time.perf_counter()
+                try:
+                    next(steps)
+                except StopIteration as done:
+                    walked = done.value
+                    break
+                finally:
+                    self.spawn_stats["search_ms"] += (time.perf_counter() - started) * 1000.0
+                yield
+        finally:
+            steps.close()
         if walked is not None:  # a long trip on through, without a route search
             self.spawn_stats["routes_walked"] += 1
             return walked
@@ -5485,7 +5508,7 @@ class NPCVehicleManager:
                 None, 1,
             )):
                 continue
-            path = build_driving_path(
+            path = yield from _build_driving_path_steps(
                 raw_route, ways, spatial_grid=spatial_grid, skip_final_lane_offset=True,
                 vehicle_width_m=vehicle.width_m,
             )
@@ -5495,7 +5518,7 @@ class NPCVehicleManager:
                 return path, destination, None, True
         return None
 
-    def _walked_transit_trip(self, vehicle, origin, traffic_world, ways, spatial_grid, claimed_points, through_point):
+    def _walked_transit_trip_steps(self, vehicle, origin, traffic_world, ways, spatial_grid, claimed_points, through_point):
         """A passing trip by walking the road graph (walk_road_graph) from the
         spawn node past the player to a roadside spot, up to TRANSIT_WALK_MAX_M:
         the searched trips stay within 220 m and the cars parked again within
@@ -5510,9 +5533,11 @@ class NPCVehicleManager:
         toward = math.atan2(through_point[1] - origin[1], through_point[0] - origin[0]) if through_point else None
         others = [pos for _, pos in claimed_points]
         for _attempt in range(TRANSIT_WALK_TRIES):  # random walks: one into a dead-end yard, the next on through
+            yield
             points = walk_road_graph(nodes, edges, start, TRANSIT_WALK_MAX_M, heading=toward)
             walked = 0.0
             for i in range(1, len(points)):
+                yield
                 walked += math.dist(points[i - 1], points[i])
                 if walked < past_player or math.dist(points[i - 1], points[i]) < 20.0:
                     continue
@@ -5524,11 +5549,11 @@ class NPCVehicleManager:
                 if not _arrives_on_right(raw_route, destination):
                     continue
                 raw_route = _roadside_pull_in(raw_route, destination, ways, spatial_grid)
-                if not run_route_steps(_route_stays_on_road_steps(  # the searched trips' own check: no kerb corners cut
+                if not (yield from _route_stays_on_road_steps(  # the searched trips' own check: no kerb corners cut
                         _densify_path(raw_route), ways, spatial_grid, MAX_ROUTE_OFFROAD_TOLERANCE_M,
                         NPC_PARKING_ACCESS_TOLERANCE_M, 1, None, 1)):
                     break
-                path = build_driving_path(raw_route, ways, spatial_grid=spatial_grid, skip_final_lane_offset=True,
+                path = yield from _build_driving_path_steps(raw_route, ways, spatial_grid=spatial_grid, skip_final_lane_offset=True,
                                           vehicle_width_m=vehicle.width_m)
                 if len(path) >= 2:
                     return path, destination, None, True
