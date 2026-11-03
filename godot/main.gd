@@ -129,6 +129,7 @@ var override_train_at := Vector2.INF
 var override_wetness := -1.0  # audio test: a moving train here (presentation only)
 var language := "en"
 var tutorial := false  # the launcher's tutorial game: the coach panel (tutorial.gd)
+var _picture: ColorRect = null  # brightness and contrast (picture.gdshader), made when first set off the defaults
 var graphics: Dictionary = {}  # empty for direct scenes/tests; the launcher supplies saved defaults
 
 
@@ -299,6 +300,19 @@ func _apply_graphics() -> void:
 	entities.queue_redraw()
 	if not graphics.get("lightning_flashes", true):
 		flash.hide()
+	var brightness := float(graphics.get("brightness", 1.0))
+	var contrast := float(graphics.get("contrast", 1.0))
+	if _picture == null and not (is_equal_approx(brightness, 1.0) and is_equal_approx(contrast, 1.0)):
+		_picture = ColorRect.new()  # the world under it, the HUD over it; none at the defaults (no full-screen pass)
+		_picture.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_picture.material = ShaderMaterial.new()
+		_picture.material.shader = preload("res://picture.gdshader")
+		$Sky.add_child(_picture)
+	if _picture != null:
+		_picture.visible = not (is_equal_approx(brightness, 1.0) and is_equal_approx(contrast, 1.0))
+		_picture.material.set_shader_parameter("brightness", brightness)
+		_picture.material.set_shader_parameter("contrast", contrast)
 	# 3D/2D geometry stays consistent across loaded and incoming chunks until the next session.
 
 

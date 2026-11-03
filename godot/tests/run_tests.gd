@@ -615,7 +615,16 @@ func test_decorated_sites() -> void:
 func test_graphics_settings() -> void:
 	var Graphics := preload("res://graphics_settings.gd")
 	var config := ConfigFile.new()
-	check(Graphics.read(config) == Graphics.DEFAULTS, "graphics: defaults preserve current visuals")
+	var defaults := Graphics.DEFAULTS.merged(Graphics.LEVELS)
+	check(Graphics.read(config) == defaults, "graphics: defaults preserve current visuals (brightness and contrast 1)")
+	config.set_value("graphics", "brightness", 9.0)
+	config.set_value("graphics", "contrast", "high")
+	check(Graphics.read(config).brightness == 1.5 and Graphics.read(config).contrast == 1.0, "graphics: brightness clamped to 0.5..1.5, a malformed contrast its default")
+	config.set_value("graphics", "brightness", 1.0)
+	config.set_value("graphics", "contrast", 1.0)
+	for key in Graphics.LEVELS:
+		for lang in I18n.LANGUAGES:
+			check(I18n.text("graphics_" + key, lang) != "graphics_" + key and I18n.text("help_graphics_" + key, lang) != "help_graphics_" + key, "graphics labels/help translated: " + key + " " + lang)
 	config.set_value("graphics", "shadows", "false")
 	check(Graphics.read(config).shadows, "graphics: malformed non-boolean settings use defaults")
 	for key in Graphics.DEFAULTS:
@@ -624,7 +633,7 @@ func test_graphics_settings() -> void:
 			check(I18n.text("graphics_" + key, lang) != "graphics_" + key and I18n.text("help_graphics_" + key, lang) != "help_graphics_" + key, "graphics labels/help translated: " + key + " " + lang)
 	check(config.save("user://graphics-test.cfg") == OK, "graphics: settings saved")
 	var reloaded := ConfigFile.new()
-	check(reloaded.load("user://graphics-test.cfg") == OK and Graphics.read(reloaded).values().all(func(on): return on == false), "graphics: all disabled choices survive reload")
+	check(reloaded.load("user://graphics-test.cfg") == OK and Graphics.DEFAULTS.keys().all(func(key): return Graphics.read(reloaded)[key] == false), "graphics: all disabled choices survive reload")
 	DirAccess.remove_absolute("user://graphics-test.cfg")
 	var previous_3d: bool = MapChunk.buildings_3d
 	var previous_canopy: bool = MapChunk.forest_canopy

@@ -254,6 +254,10 @@ const FI := {
 	"help_graphics_vehicle_smoke": "Näyttää kolarisavun ja pakokaasun. Auton vauriot ja äänet eivät muutu.",
 	"graphics_lightning_flashes": "Salamavälähdykset",
 	"help_graphics_lightning_flashes": "Näyttää ukkosen välähdykset. Ukkonen ja sen äänet jatkuvat myös ilman välähdyksiä.",
+	"graphics_brightness": "Kirkkaus",
+	"help_graphics_brightness": "Pelimaailman kirkkaus. Mittarit ja puhelin pysyvät ennallaan.",
+	"graphics_contrast": "Kontrasti",
+	"help_graphics_contrast": "Pelimaailman kontrasti: vaaleat vaaleammiksi ja tummat tummemmiksi.",
 }
 
 const EN := {
@@ -510,6 +514,10 @@ const EN := {
 	"help_graphics_vehicle_smoke": "Crash smoke and exhaust puffs. Vehicle damage and sound are unchanged.",
 	"graphics_lightning_flashes": "Lightning flashes",
 	"help_graphics_lightning_flashes": "Thunderstorm flashes. Thunderstorms and their sounds continue with flashes off.",
+	"graphics_brightness": "Brightness",
+	"help_graphics_brightness": "How bright the game world is. The gauges and the phone stay as they are.",
+	"graphics_contrast": "Contrast",
+	"help_graphics_contrast": "The game world's contrast: lights lighter and darks darker.",
 }
 
 const DE := {
@@ -896,6 +904,10 @@ const DE := {
 	"help_graphics_vehicle_smoke": "Unfallrauch und Abgaswolken. Fahrzeugschäden und Geräusche bleiben unverändert.",
 	"graphics_lightning_flashes": "Blitzlicht",
 	"help_graphics_lightning_flashes": "Lichtblitze bei Gewitter. Gewitter und Donner bleiben auch ohne Lichtblitze aktiv.",
+	"graphics_brightness": "Helligkeit",
+	"help_graphics_brightness": "Wie hell die Spielwelt ist. Anzeigen und Telefon bleiben unverändert.",
+	"graphics_contrast": "Kontrast",
+	"help_graphics_contrast": "Der Kontrast der Spielwelt: Helles heller, Dunkles dunkler.",
 }
 
 

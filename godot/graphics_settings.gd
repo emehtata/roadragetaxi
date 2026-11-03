@@ -10,6 +10,7 @@ const DEFAULTS := {
 	"vehicle_smoke": true,
 	"lightning_flashes": true,
 }
+const LEVELS := {"brightness": 1.0, "contrast": 1.0}  # sliders, 0.5..1.5 (picture.gdshader)
 
 
 static func read(config: ConfigFile) -> Dictionary:
@@ -18,4 +19,7 @@ static func read(config: ConfigFile) -> Dictionary:
 		var value = config.get_value("graphics", key, DEFAULTS[key])
 		if value is bool:
 			options[key] = value
+	for key in LEVELS:
+		var value = config.get_value("graphics", key, LEVELS[key])
+		options[key] = clampf(float(value), 0.5, 1.5) if (value is float or value is int) else LEVELS[key]
 	return options

@@ -1161,6 +1161,26 @@ func _graphics_menu() -> void:
 		_with_help(toggle, "help_graphics_" + key)
 		_focusables.append(toggle)
 	toggles["shadows"].disabled = not options["buildings_3d"]
+	for key in Graphics.LEVELS:
+		var row := HBoxContainer.new()
+		var label := Label.new()
+		label.text = _t("graphics_" + key)
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(label)
+		var slider := HSlider.new()
+		slider.min_value = 0.5
+		slider.max_value = 1.5
+		slider.step = 0.05
+		slider.custom_minimum_size.x = 240
+		slider.value = options[key]
+		slider.value_changed.connect(func(value: float):
+			_settings.set_value("graphics", key, value)
+			_settings.save("user://settings.cfg")
+			if _game != null:
+				_game.set_graphics(Graphics.read(_settings)))
+		row.add_child(slider)
+		_with_help(row, "help_graphics_" + key)
+		_focusables.append(slider)
 	_settings_back()
 	_focus_menu()
 
