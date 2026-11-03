@@ -1535,6 +1535,7 @@ class NPCVehicle:
     stunned_timer: float = 0.0  # > 0: after a moderate crash the driver waits, then drives on
     knock_spin: float = 0.0  # rad/s while knocked: a severe crash spins the car
     trailer_axle: Optional[Tuple[float, float]] = None  # a towed trailer's axle (trailers.py), None: straight behind
+    ferry_rider: bool = False  # on a ferry's deck (ferries.py): parked, driverless, the ferry moves it until ashore
 
     @property
     def x(self) -> float:
@@ -4619,6 +4620,7 @@ class NPCVehicleManager:
             vehicle_distribution if vehicle_distribution is not None else self._default_vehicle_distribution()
         )
         self._next_vehicle_id = 1
+        self._ferry_ashore: List[NPCVehicle] = []  # off a ferry, waiting for their trip (ferry_car_ashore)
         # Fires on the very first update() rather than waiting a full
         # NPC_POPULATION_TICK_S - main.py's loading screen already gets an
         # initial fill (see populate_initial), this only matters for
@@ -4705,6 +4707,66 @@ class NPCVehicleManager:
             for vehicle in [v for v in self.vehicles if v.vehicle_type == "motorcycle"]:
                 self.retire_vehicle(vehicle, resident_manager)
                 self.population_diagnostics["motorcycles_retired_for_winter"] += 1
+
+    def ferry_car(self, x: float, y: float, heading: float) -> NPCVehicle:
+        """A parked car on a ferry deck (ferries.py): no driver while the ferry
+        carries and unloads it; ferry_car_ashore gives it a trip."""
+        definition = vehicle_definition("car")
+        vehicle = NPCVehicle(
+            vehicle_id=self._next_id(), car=Car(x=x, y=y, heading=heading, speed=0.0,
+                                                length_m=definition.length_m, width_m=definition.width_m),
+            state=NPCState.PARKED, color=random.choice(NPC_VEHICLE_COLORS), capacity=definition.capacity,
+            ferry_rider=True,
+        )
+        self.vehicles.append(vehicle)
+        return vehicle
+
+    def ferry_car_ashore(self, vehicle: NPCVehicle) -> None:
+        """Off the deck at a landing: its next trip starts on this manager's next update."""
+        vehicle.ferry_rider = False
+        self._ferry_ashore.append(vehicle)
+
+    def _start_ferry_trips(self, resident_manager, traffic_world, ways, spatial_grid, parking_spaces, sceneries,
+                           buildings, curbs, curb_grid, building_grid) -> None:
+        """Cars just off a ferry drive on at once (one a tick): an ordinary trip
+        from the landing, or, with none to be found, they are retired."""
+        while self._ferry_ashore:
+            vehicle = self._ferry_ashore.pop()
+            if vehicle not in self.vehicles:
+                continue
+            driver = find_and_start_npc_trip(
+                vehicle, resident_manager, traffic_world, ways, spatial_grid=spatial_grid,
+                parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
+                curbs=curbs, curb_grid=curb_grid, building_grid=building_grid)
+            if driver is None:  # no parking found near (an arterial landing road has no roadside tier)
+                driver = self._ferry_through_trip(vehicle, resident_manager, traffic_world, ways, spatial_grid,
+                                                  curbs, curb_grid, buildings, building_grid)
+            if driver is None:
+                self.retire_vehicle(vehicle, resident_manager)
+            else:
+                self.drivers[vehicle.vehicle_id] = driver
+            break
+
+    def _ferry_through_trip(self, vehicle, resident_manager, traffic_world, ways, spatial_grid,
+                            curbs, curb_grid, buildings, building_grid) -> Optional[Driver]:
+        """Through traffic off a ferry: on along the road graph to a far node
+        (beyond the view: the visibility cleanup takes it there), the trip
+        validated like any other."""
+        origin_index = _nearest_route_node_index(traffic_world, vehicle.x, vehicle.y)
+        if origin_index is None:
+            return None
+        nodes = traffic_world._route_nodes
+        deadline = time.perf_counter() + NPC_TRIP_START_TIME_BUDGET_S
+        for index in _bfs_destination_order(nodes, traffic_world._route_edges, origin_index)[:NPC_TRIP_START_CANDIDATE_POINTS]:
+            destination = (nodes[index][0], nodes[index][1])
+            path = run_route_steps(_plan_and_validate_npc_route_steps(
+                traffic_world, ways, (vehicle.x, vehicle.y), destination, spatial_grid=spatial_grid,
+                curbs=curbs, curb_grid=curb_grid, buildings=buildings, building_grid=building_grid,
+                origin_is_off_road=True, vehicle_length_m=vehicle.length_m, vehicle_width_m=vehicle.width_m,
+            ), deadline)
+            if path is not None:
+                return _apply_npc_trip(vehicle, resident_manager, (path, destination, None, False))
+        return None
 
     def _next_id(self) -> int:
         vehicle_id = self._next_vehicle_id
@@ -6334,6 +6396,7 @@ class NPCVehicleManager:
             # vehicle, but this makes the "never resumes" invariant explicit
             # rather than incidental.
             and not vehicle.driver_departed
+            and not vehicle.ferry_rider  # it drives off the deck first (ferry_car_ashore)
             # Short on nearby traffic: pulling out a car the player will
             # never simulate/see is wasted (and expensive) route search.
             and (not below_moving_target or _near_player(vehicle))
@@ -6983,6 +7046,8 @@ class NPCVehicleManager:
             )
 
         self._advance_route_jobs(player_x, player_y, resident_manager, traffic_world, viewport_bounds)
+        self._start_ferry_trips(resident_manager, traffic_world, ways, spatial_grid, parking_spaces, sceneries,
+                                buildings, curbs, curb_grid, building_grid)
 
         self._population_elapsed += dt
         if self._population_elapsed >= NPC_POPULATION_TICK_S:

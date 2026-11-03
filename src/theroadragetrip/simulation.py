@@ -475,6 +475,9 @@ def advance_simulation(
         if protests is not None and protests.blocks_movement(car, previous_position):
             car.x, car.y = previous_position
             car.speed = 0.0
+        if deck is not None and ferry_mgr.blocks(car, previous_position):  # a ferry's side rails
+            car.x, car.y = previous_position
+            car.speed = 0.0
         midpoint = (
             (previous_position[0] + car.x) * 0.5,
             (previous_position[1] + car.y) * 0.5,
@@ -664,7 +667,7 @@ def advance_simulation(
     ferry_mgr = getattr(world, "ferry_mgr", None)
     if ferry_mgr is not None and ferry_mgr.routes:
         with frame_profiler.section("ferries"):
-            ferry_mgr.update(dt, (camx, camy), car if car.map_level == SURFACE_LEVEL else None)
+            ferry_mgr.update(dt, (camx, camy), car if car.map_level == SURFACE_LEVEL else None, npc_manager)
     tram_mgr = getattr(world, "tram_mgr", None)
     if tram_mgr is not None and tram_mgr.has_track:
         with frame_profiler.section("trams"):
