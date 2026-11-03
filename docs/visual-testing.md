@@ -106,6 +106,7 @@ Scenarios live in `tools/visual_scenarios.json`. Fields:
 | `requires` | `lamps_in_view`, `buildings_in_view` minimums |
 | `measure_s` / `drive_s` | seconds measured standing / driving |
 | `seed` | random seed (default 1) |
+| `graphics` | graphics settings under test, over the saved ones, e.g. `{"brightness": 1.4}` |
 | `godot_args`, `server_args` | extra flags |
 
 ### Choosing the place

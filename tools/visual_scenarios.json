@@ -196,6 +196,37 @@
         "buildings_in_view": 15
       },
       "measure_s": 15
+    },
+    {
+      "id": "graphics_brightness",
+      "description": "The graphics settings' brightness 1.4 over a daylight street (compare with building_materials_day)",
+      "why": "The building_materials_day view (Lapinlahdenkatu: facades, park, road) with the picture settings raised: the world brighter, the HUD unchanged.",
+      "city": "Helsinki",
+      "pose": [
+        385248.8,
+        6671727.7,
+        2.825
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 2.0,
+      "requires": {
+        "buildings_in_view": 6
+      },
+      "measure_s": 5,
+      "graphics": {
+        "brightness": 1.4,
+        "contrast": 1.0
+      }
     }
   ]
 }

@@ -27,6 +27,13 @@ var _measure_failures: Array = []
 var driving := false  # measuring with `drive_s`: main.gd leaves the controls to this node
 
 
+func _ready() -> void:
+	if scenario.has("graphics"):  # graphics settings under test (brightness, contrast...), over the player's saved ones
+		var options: Dictionary = main.graphics.duplicate()
+		options.merge(scenario["graphics"], true)
+		main.set_graphics.call_deferred(options)
+
+
 func _process(delta: float) -> void:
 	_elapsed += delta
 	if main.phone.is_open and not scenario.get("phone", false):  # ride offers open it: it would cover the scene
