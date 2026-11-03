@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import time
 from dataclasses import asdict, fields
@@ -41,7 +42,15 @@ def read_slot(path: Path) -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, json.JSONDecodeError):
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    if data.get("game_time"):
+        try:
+            _saved_datetime(data["game_time"])
+        except (TypeError, ValueError):
+            logger.warning("Ignoring invalid game time in %s", path)
+            data.pop("game_time")
+    return data
 
 
 def list_slots(config_path: Path) -> list:
@@ -54,14 +63,40 @@ def list_slots(config_path: Path) -> list:
         rows.append({
             "name": path.stem, "path": str(path), "city": data.get("city", ""), "place_name": data.get("place_name", ""),
             "game_time": data.get("game_time", ""), "balance_cents": data.get("balance_cents", 0),
-            "fare": data.get("fare") is not None, "saved_at": data.get("saved_at", 0),
+            "fare": data.get("fare") is not None, "saved_at": data.get("saved_at", 0) if isinstance(data.get("saved_at", 0), (int, float))
+            and math.isfinite(data.get("saved_at", 0)) else 0,
         })
     return sorted(rows, key=lambda row: row["saved_at"], reverse=True)
 
 
+def _saved_number(value, minimum=None):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError("saved number must be finite")
+    if minimum is not None and value < minimum:
+        raise ValueError("saved number is below its minimum")
+    return value
+
+
+def _saved_datetime(value):
+    result = datetime.fromisoformat(value)
+    if result.tzinfo is not None:
+        raise ValueError("saved game dates must use local game time")
+    return result
+
+
 def _target(data: dict) -> TaxiTarget:
     known = {f.name for f in fields(TaxiTarget)}
-    return TaxiTarget(**{key: value for key, value in data.items() if key in known})
+    target = TaxiTarget(**{key: value for key, value in data.items() if key in known})
+    if not isinstance(target.address, str):
+        raise ValueError("invalid saved target address")
+    _saved_number(target.x)
+    _saved_number(target.y)
+    _saved_number(target.radius_m, 0)
+    for key in known - {"x", "y", "radius_m"}:
+        value = getattr(target, key)
+        if value is not None and not isinstance(value, str):
+            raise ValueError("invalid saved target text")
+    return target
 
 
 def _passenger_data(passenger: TaxiPassenger) -> dict:
@@ -86,6 +121,12 @@ def _passenger(data: dict, boarded: bool = True) -> TaxiPassenger:
         motion_sickness=data.get("motion_sickness", 0.0), nausea_delay=data.get("nausea_delay", 0.0),
         nausea_resolved=data.get("nausea_resolved", False), nausea_vomited=data.get("nausea_vomited", False),
     )
+    if not isinstance(passenger.name, str) or not isinstance(passenger.gender, str):
+        raise ValueError("invalid saved passenger name or gender")
+    for value in (passenger.ped_x, passenger.ped_y, passenger.ped_heading):
+        _saved_number(value)
+    for value in (passenger.ped_speed, passenger.weight_kg, passenger.motion_sickness, passenger.nausea_delay):
+        _saved_number(value, 0)
     passenger.companions = [_passenger(member, boarded) for member in data.get("companions", [])]
     return passenger
 
@@ -120,26 +161,32 @@ def fare_data(taxi_mgr) -> Optional[dict]:
 def restore_fare(taxi_mgr, data: Optional[dict]) -> bool:
     if not data:
         return False
-    pickup_ahead = data.get("state") == TaxiState.WAITING_FOR_PICKUP
     try:
-        taxi_mgr.current_passenger = _passenger(data["passenger"], boarded=not pickup_ahead)
-    except (KeyError, TypeError, IndexError) as exc:
+        state = data["state"]
+        if state not in (TaxiState.WAITING_FOR_PICKUP, TaxiState.DRIVING_TO_DROPOFF):
+            raise ValueError("invalid saved fare state")
+        pickup_ahead = state == TaxiState.WAITING_FOR_PICKUP
+        passenger = _passenger(data["passenger"], boarded=not pickup_ahead)
+        values = {}
+        if not pickup_ahead:
+            for name, default in (("elapsed_time", 0.0), ("fare_distance_m", 0.0), ("live_fare_cents", 0),
+                                  ("passenger_happiness", 50.0), ("trip_distance_m", 0.0)):
+                values[name] = _saved_number(data.get(name, default), None if name == "passenger_happiness" else 0)
+            odometer = data.get("fare_start_odometer_m")
+            values["fare_start_odometer_m"] = None if odometer is None else _saved_number(odometer, 0)
+            started = data.get("fare_started_at")
+            values["fare_started_at"] = _saved_datetime(started) if started else None
+    except (KeyError, TypeError, IndexError, ValueError, AttributeError, OverflowError, RecursionError) as exc:
         logger.warning("Saved fare could not be restored: %s", exc)
         return False
+    taxi_mgr.current_passenger = passenger
     taxi_mgr.offers = []
-    if pickup_ahead:  # accepted, the customer waiting where they stood
-        taxi_mgr.state = TaxiState.WAITING_FOR_PICKUP
+    taxi_mgr.state = state
+    if pickup_ahead:
         taxi_mgr.elapsed_time = 0.0
-        return True
-    taxi_mgr.state = TaxiState.DRIVING_TO_DROPOFF
-    taxi_mgr.elapsed_time = data.get("elapsed_time", 0.0)
-    started = data.get("fare_started_at")
-    taxi_mgr.fare_started_at = datetime.fromisoformat(started) if started else None
-    taxi_mgr.fare_start_odometer_m = data.get("fare_start_odometer_m")
-    taxi_mgr.fare_distance_m = data.get("fare_distance_m", 0.0)
-    taxi_mgr.live_fare_cents = data.get("live_fare_cents", 0)
-    taxi_mgr.passenger_happiness = data.get("passenger_happiness", 50.0)
-    taxi_mgr.trip_distance_m = data.get("trip_distance_m", 0.0)
+    else:
+        for name, value in values.items():
+            setattr(taxi_mgr, name, value)
     return True
 
 

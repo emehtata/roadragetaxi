@@ -224,3 +224,30 @@ def test_legacy_gig_autosave_failure_does_not_stop_tick(tmp_path, monkeypatch):
     server.world.taxi_mgr.completed_fares += 1
     server.tick(1 / 30)
     assert server._saved_gig_fares == 1
+
+
+def test_invalid_fare_is_rejected_before_changing_manager():
+    from types import SimpleNamespace
+    from theroadragetrip.save_slots import restore_fare
+    from copy import deepcopy
+    valid = {"state": TaxiState.DRIVING_TO_DROPOFF,
+             "passenger": {"name": "Aino", "pickup": {"x": 0, "y": 0, "address": "A"},
+                           "dropoff": {"x": 10, "y": 10, "address": "B"}}}
+    cases = [{"fare_started_at": "bad"}, {"elapsed_time": "30"}, {"live_fare_cents": float("inf")},
+             {"fare_distance_m": -1}, {"fare_start_odometer_m": float("nan")}, {"state": "unknown"}]
+    for bad in cases:
+        manager = SimpleNamespace(current_passenger=None, offers=["keep"], state=TaxiState.WAITING_FOR_PICKUP)
+        data = {**deepcopy(valid), **bad}
+        assert not restore_fare(manager, data)
+        assert vars(manager) == {"current_passenger": None, "offers": ["keep"], "state": TaxiState.WAITING_FOR_PICKUP}
+    invalid_passenger = deepcopy(valid)
+    invalid_passenger["passenger"]["pickup"]["x"] = float("nan")
+    assert not restore_fare(SimpleNamespace(), invalid_passenger)
+
+
+def test_invalid_slot_date_and_sort_value_do_not_break_listing(tmp_path):
+    path = slot_path(tmp_path / "config.ini", "bad-date")
+    path.parent.mkdir()
+    path.write_text('{"city":"Oulu","saved_at":"bad","game_time":"bad"}')
+    assert "game_time" not in read_slot(path)
+    assert list_slots(tmp_path / "config.ini")[0]["saved_at"] == 0
