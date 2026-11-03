@@ -5,16 +5,30 @@
       "description": "Straight ahead from the taxi interior on Eerikinkatu",
       "why": "The existing Eerikinkatu taxi pose faces a street with nearby 3D roads, facades, traffic and lights.",
       "city": "Helsinki",
-      "pose": [385325.8, 6671757.1, 0.59],
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
       "start_time": "2026-06-20T13:00",
       "weather": "clear",
       "cloud": 0.1,
-      "wetness": [0.0, 0.05],
-      "sun_altitude_deg": [40, 90],
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
       "zoom": 3.0,
       "windshield": true,
-      "server_args": ["--no-auto-fetch"],
-      "requires": {"buildings_in_view": 3},
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
       "measure_s": 3
     },
     {
@@ -22,16 +36,30 @@
       "description": "Street view at the Oulu taxi pose from the latest F12 screenshot",
       "why": "The captured player view shows close cars, pedestrians, signals and open sky.",
       "city": "Oulu",
-      "pose": [427752.6020218936, 7210620.188026317, -1.9872317961141932],
+      "pose": [
+        427752.6020218936,
+        7210620.188026317,
+        -1.9872317961141932
+      ],
       "start_time": "2026-06-20T14:30",
       "weather": "clear",
       "cloud": 0.1,
-      "wetness": [0.0, 0.05],
-      "sun_altitude_deg": [30, 90],
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        30,
+        90
+      ],
       "zoom": 3.0,
       "windshield": true,
-      "server_args": ["--no-auto-fetch"],
-      "requires": {"buildings_in_view": 3},
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
       "measure_s": 3
     },
     {
@@ -322,17 +350,58 @@
       "description": "Train model view at Pasila station",
       "why": "The Pasila station tracks are real map data; the larger area includes Helsinki Central so timetable routes can be resolved.",
       "city": "Helsinki",
-      "pose": [385384.5, 6675335.0, 0.0],
+      "pose": [
+        385384.5,
+        6675335.0,
+        0.0
+      ],
       "box_km": 8.0,
       "start_time": "2026-06-20T13:00",
       "weather": "clear",
       "cloud": 0.1,
-      "wetness": [0.0, 0.05],
-      "sun_altitude_deg": [40, 90],
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
       "zoom": 1.5,
-      "server_args": ["--osm-source=pbf"],
-      "requires": {"train_models_in_view": 1},
+      "server_args": [
+        "--osm-source=pbf"
+      ],
+      "requires": {
+        "train_models_in_view": 1
+      },
       "measure_s": 3
+    },
+    {
+      "id": "motorway_through_traffic",
+      "description": "Fast traffic on the Per\u00e4merentie motorway at 58 m/s: cars ahead of the taxi, passed and gone behind",
+      "why": "Per\u00e4merentie (Oulu): a 1.76 km straight motorway from the start pose (find, 10 km Oulu world): fast traffic should be on it ahead of the taxi and not parked on it; daylight so the motorway is visible.",
+      "city": "Oulu",
+      "pose": [
+        383200.8,
+        7302861.8,
+        -0.056
+      ],
+      "box_km": 10,
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 1.0,
+      "requires": {},
+      "drive_s": 40,
+      "seed": 1
     }
   ]
 }

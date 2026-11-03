@@ -24,6 +24,9 @@ var _measuring := false
 var _measure_left := 0.0
 var _frames := PackedFloat32Array()
 var _measure_failures: Array = []
+var _npc_max := 0
+var _npc_min_moving := 1 << 30  # fewest moving NPC cars in view during the drive
+var _speed_max := 0.0
 var driving := false  # measuring with `drive_s`: main.gd leaves the controls to this node
 var _windshield_pressed := false
 
@@ -51,6 +54,10 @@ func _process(delta: float) -> void:
 		if driving:  # full throttle down the street, straight on (as --screenshot-drive)
 			main.send({"throttle": 1.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
 		_frames.append(delta * 1000.0)
+		var shown: Dictionary = main.entities.shown_state()
+		_npc_max = maxi(_npc_max, shown.get("npcs", []).size())
+		_npc_min_moving = mini(_npc_min_moving, _moving(shown))
+		_speed_max = maxf(_speed_max, absf(float(shown.get("player", {}).get("speed", 0.0))))
 		for reason in missing:
 			if not reason in _measure_failures:
 				_measure_failures.append(reason)
@@ -178,12 +185,22 @@ func _finish() -> void:
 			var s: Array = perf.sections[name]
 			sections[name] = {"avg_ms": s[1] / 1000.0 / maxi(1, s[0]), "max_ms": s[2] / 1000.0}
 	var ok := _measure_failures.is_empty()
+	var traffic := {"npcs_max": _npc_max, "moving_min": _npc_min_moving if _npc_min_moving < (1 << 30) else 0, "speed_max": _speed_max}
 	var lamps := {}
 	for key in ["lamp_reassigned", "lamp_moved_lit", "lamp_lights_max", "lamps_offered_max"]:
 		lamps[key] = perf.counters.get(key, 0)
-	_write({"status": "passed" if ok else "failed", "screenshot": path, "frames": perf.summary(_frames), "render": sections, "lamps": lamps,
+	_write({"status": "passed" if ok else "failed", "screenshot": path, "frames": perf.summary(_frames), "render": sections, "lamps": lamps, "traffic": traffic,
 		"errors": [] if ok else ["conditions lost while measuring"] + _measure_failures})
 	main.get_tree().quit(0 if ok else 1)
+
+
+## Moving NPC cars in the shown state (the drive's traffic check).
+func _moving(shown: Dictionary) -> int:
+	var count := 0
+	for npc in shown.get("npcs", []):
+		if absf(float(npc.get("speed", 0.0))) > 0.5:
+			count += 1
+	return count
 
 
 func _write(result: Dictionary) -> void:
