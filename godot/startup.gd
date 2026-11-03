@@ -51,6 +51,7 @@ var _pause_shot: Image  # the frame just before the pause menu opened: a save's 
 const MAX_GIG_SLOTS := 5  # gig saves; a new game beyond them replaces one (career keeps its single save)
 var _gig_mode := "gig_driver"  # the slot-and-city flow's mode: gig driving, or simulation (always the real clock)
 var _tutorial := false  # the next start is the tutorial game
+var _new_save_slot := false
 var _save_slot := ""  # the gig's save slot (server saves/NAME.json): loaded if it exists, saved by the pause menu
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
 var _menu_music: AudioStreamPlayer
@@ -562,12 +563,14 @@ func _slot_menu() -> void:
 		if slots.size() >= MAX_GIG_SLOTS:
 			_replace_slot_menu(slots)
 		else:
+			_new_save_slot = true
 			_save_slot = ("sim-%d" if _gig_mode == "simulation" else "gig-%d") % int(Time.get_unix_time_from_system())
 			_city_menu())
 	for slot in slots:
 		var name := str(slot.get("name", ""))
 		var button := _button(slot_label(slot, _t("fare_in_progress")), func():
 			_save_slot = name
+			_new_save_slot = false
 			_start_point = Vector2.INF
 			_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
 			_start(_gig_mode))  # the server takes the slot's city and place, and a gig's time
@@ -610,11 +613,8 @@ func _replace_slot_menu(slots: Array) -> void:
 	_title(_t("save_slots"), _t("replace_slot") % MAX_GIG_SLOTS)
 	for slot in slots:
 		var name := str(slot.get("name", ""))
-		var path := str(slot.get("path", ""))
 		_button(slot_label(slot, _t("fare_in_progress")), func():
-			if path.ends_with(name + ".json"):
-				DirAccess.remove_absolute(path)
-				DirAccess.remove_absolute(THUMBS.path_join(name + ".png"))
+			_new_save_slot = true
 			_save_slot = name
 			_city_menu())
 	_button(_t("back"), _slot_menu)
@@ -1246,6 +1246,8 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
 		if _save_slot != "":
 			args.append_array(["--save-slot", _save_slot])
+			if _new_save_slot:
+				args.append("--new-save-slot")
 		if _start_point != Vector2.INF:
 			args.append_array(["--bbox", point_bbox(_start_point.x, _start_point.y)])
 			if _start_place != "":

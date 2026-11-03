@@ -24,6 +24,7 @@ import multiprocessing
 import os
 import pickle
 import threading
+import tempfile
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -212,10 +213,17 @@ class SimulationServer:
         # A gig save slot: the slot file is the gig car file, and a saved
         # game continues in its city, around the car, at its game time.
         self.save_slot_file = None
+        self._replacement_slot = None
+        self._slot_staging = None
         saved = {}
         if getattr(args, "save_slot", None) and getattr(args, "game_mode", "gig_driver") != "career":
             from ..save_slots import read_slot, slot_path
             self.save_slot_file = self.gig_odometer_file = slot_path(CONFIG_PATH, args.save_slot)
+            if getattr(args, "new_save_slot", False):
+                self._replacement_slot = self.save_slot_file
+                self.save_slot_file.parent.mkdir(parents=True, exist_ok=True)
+                self._slot_staging = tempfile.TemporaryDirectory(prefix=".new-slot-", dir=self.save_slot_file.parent)
+                self.save_slot_file = self.gig_odometer_file = Path(self._slot_staging.name) / self._replacement_slot.name
             saved = read_slot(self.save_slot_file)
             if saved.get("city") and saved.get("bbox"):
                 args.preset, args.bbox = saved["city"], saved["bbox"]
@@ -925,6 +933,12 @@ class SimulationServer:
             write_slot(self.save_slot_file, car=self.car, taxi_mgr=self.world.taxi_mgr, calendar=self.calendar,
                        city=self.chosen_city, place_name=getattr(self.args, "place_name", None) or "",
                        latlon=(latitude, longitude))
+            if self._replacement_slot is not None:
+                self.save_slot_file.replace(self._replacement_slot)
+                self.save_slot_file = self.gig_odometer_file = self.homes_file = self._replacement_slot
+                self._replacement_slot = None
+                self._slot_staging.cleanup()
+                self._slot_staging = None
         except OSError:
             logger.exception("Save slot %s could not be written", self.save_slot_file.stem)
             return False

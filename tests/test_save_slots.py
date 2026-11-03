@@ -5,12 +5,13 @@ from theroadragetrip.save_slots import list_slots, read_slot, slot_path
 from theroadragetrip.taxi import TaxiPassenger, TaxiState, TaxiTarget
 
 
-def _server(tmp_path, monkeypatch, slot="test-slot"):
+def _server(tmp_path, monkeypatch, slot="test-slot", new=False):
     monkeypatch.setattr("theroadragetrip.server.CONFIG_PATH", tmp_path / "roadragetrip.ini")
     monkeypatch.setattr(sys, "argv", ["prog", "--use-sample", "--no-menu", "--no-historical-weather", "--save-slot", slot])
     from theroadragetrip.server import SimulationServer
     from theroadragetrip.server.cli import parse_server_args
     args, config = parse_server_args()
+    args.new_save_slot = new
     return SimulationServer(args, config)
 
 
@@ -224,6 +225,36 @@ def test_legacy_gig_autosave_failure_does_not_stop_tick(tmp_path, monkeypatch):
     server.world.taxi_mgr.completed_fares += 1
     server.tick(1 / 30)
     assert server._saved_gig_fares == 1
+
+
+def test_replacement_keeps_old_slot_until_complete_new_save(tmp_path, monkeypatch):
+    from theroadragetrip.home import save_home
+    old = _server(tmp_path, monkeypatch)
+    old.world.taxi_mgr.total_score = 321
+    assert old.save_game()
+    target = old.save_slot_file
+    original = target.read_bytes()
+    fresh = _server(tmp_path, monkeypatch, new=True)
+    assert fresh.world.taxi_mgr.total_score == 0
+    assert target.read_bytes() == original
+    save_home(fresh.homes_file, "Oulu", (1, 2, 3), in_save=True)
+    assert target.read_bytes() == original
+    replace = type(target).replace
+
+    def fail_publication(path, destination):
+        if destination == target:
+            raise OSError("disk full")
+        return replace(path, destination)
+
+    monkeypatch.setattr(type(target), "replace", fail_publication)
+    assert not fresh.save_game()
+    assert target.read_bytes() == original
+    monkeypatch.setattr(type(target), "replace", replace)
+    assert fresh.save_game()
+    assert fresh.save_slot_file == fresh.homes_file == target
+    data = read_slot(target)
+    assert data["total_score"] == 0 and data["homes"]["Oulu"]["x"] == 1
+    assert [row["name"] for row in list_slots(tmp_path / "roadragetrip.ini")] == ["test-slot"]
 
 
 def test_invalid_fare_is_rejected_before_changing_manager():
