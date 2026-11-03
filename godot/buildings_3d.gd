@@ -999,7 +999,7 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 		for y: float in [hw * 0.86, -hw * 0.86]:
 			_wheel(out, x, y + signf(y) * 0.05, 0.31, 0.28, tyre)  # 5 cm out past the body
 	out["part_now"] = METAL_PAINT
-	_car_box(out, -hl, hl, -hw, hw, 0.28, sill, color)
+	_car_shell(out, hl, hw, sill, color)
 	var top := color.darkened(0.12)
 	var glass_front: float = shape[0]
 	var roof_front: float = shape[1]
@@ -1008,8 +1008,10 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 	var roof_half: float = shape[4]
 	var low := [Vector3(hl * glass_front, sill, -hw * 0.86), Vector3(hl * glass_front, sill, hw * 0.86),
 		Vector3(hl * glass_rear, sill, hw * 0.86), Vector3(hl * glass_rear, sill, -hw * 0.86)]
-	var high := [Vector3(hl * roof_front, roof, -hw * roof_half), Vector3(hl * roof_front, roof, hw * roof_half),
-		Vector3(hl * roof_rear, roof, hw * roof_half), Vector3(hl * roof_rear, roof, -hw * roof_half)]
+	var high := [Vector3(hl * roof_front, roof - 0.1, -hw * roof_half), Vector3(hl * roof_front, roof - 0.1, hw * roof_half),
+		Vector3(hl * roof_rear, roof - 0.1, hw * roof_half), Vector3(hl * roof_rear, roof - 0.1, -hw * roof_half)]
+	var roof_edge := [Vector3(high[0].x - 0.1, roof, high[0].z + 0.1), Vector3(high[1].x - 0.1, roof, high[1].z - 0.1),
+		Vector3(high[2].x + 0.1, roof, high[2].z - 0.1), Vector3(high[3].x + 0.1, roof, high[3].z + 0.1)]
 	var middle := Vector3((glass_front + glass_rear) * hl * 0.5, (sill + roof) * 0.5, 0.0)
 	for key in ["verts", "shadow"]:
 		for i in 4:  # windshield, right windows, rear window, left windows
@@ -1018,7 +1020,10 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 			out["part_now"] = GLASS_PART
 			_quad(out, low[i], low[j], high[j], high[i], CAR_GLASS.lightened(0.1 if i % 2 and not opaque else 0.0), facing, key)
 		out["part_now"] = METAL_PAINT
-		_quad(out, high[0], high[1], high[2], high[3], top, Vector3.UP, key)
+		for i in 4:
+			var j := (i + 1) % 4
+			_quad(out, high[i], high[j], roof_edge[j], roof_edge[i], color, (high[i] + high[j]) * 0.5 - middle, key)
+		_quad(out, roof_edge[0], roof_edge[1], roof_edge[2], roof_edge[3], top, Vector3.UP, key)
 	var flat := func(x0: float, x1: float, y0: float, y1: float, h: float, c: Color) -> void:
 		_quad(out, Vector3(x0, h, y0), Vector3(x1, h, y0), Vector3(x1, h, y1), Vector3(x0, h, y1), c, Vector3.UP)
 	match str(shape[5]):
@@ -1073,6 +1078,28 @@ static func _car_box(out: Dictionary, x0: float, x1: float, y0: float, y1: float
 		_quad(out, to_3d(corners[0], top), to_3d(corners[1], top), to_3d(corners[2], top), to_3d(corners[3], top), color, Vector3.UP, key)
 		_quad(out, to_3d(corners[0], bottom), to_3d(corners[1], bottom), to_3d(corners[2], bottom), to_3d(corners[3], bottom),
 			color.darkened(0.3), Vector3.DOWN, key)  # the underside: seen in reflections and by secondary rays
+
+
+static func _car_shell(out: Dictionary, hl: float, hw: float, sill: float, color: Color) -> void:
+	var rings := []
+	for profile in [[0.28, 0.92, 0.82], [0.43, 0.98, 0.96], [sill - 0.12, 1.0, 1.0], [sill, 0.9, 0.88]]:
+		var x: float = hl * profile[1]
+		var z: float = hw * profile[2]
+		var c := minf(0.24, z * 0.35)
+		rings.append([Vector3(x - c, profile[0], -z), Vector3(x, profile[0], -z + c),
+			Vector3(x, profile[0], z - c), Vector3(x - c, profile[0], z),
+			Vector3(-x + c, profile[0], z), Vector3(-x, profile[0], z - c),
+			Vector3(-x, profile[0], -z + c), Vector3(-x + c, profile[0], -z)])
+	for key in ["verts", "shadow"]:
+		for r in rings.size() - 1:
+			for i in 8:
+				var j := (i + 1) % 8
+				var facing: Vector3 = (rings[r][i] + rings[r][j]) * 0.5
+				_quad(out, rings[r][i], rings[r][j], rings[r + 1][j], rings[r + 1][i], color, Vector3(facing.x, 0.0, facing.z), key)
+		for i in 8:
+			var j := (i + 1) % 8
+			_tri(out, Vector3(0.0, sill, 0.0), rings[-1][i], rings[-1][j], color, Vector3.UP, key)
+			_tri(out, Vector3(0.0, 0.28, 0.0), rings[0][j], rings[0][i], color.darkened(0.3), Vector3.DOWN, key)
 
 
 static func _wheel(out: Dictionary, x: float, y: float, radius: float, width: float, color: Color) -> void:
