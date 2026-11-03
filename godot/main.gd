@@ -914,6 +914,8 @@ func set_interior_options(first_person: bool, sensitivity: float) -> void:
 
 func set_interior_paused(paused: bool) -> void:
 	drive.clear()
+	sim.send_pause(paused)
+	sim.process_mode = Node.PROCESS_MODE_ALWAYS if paused else Node.PROCESS_MODE_INHERIT
 	home_first_person.set_paused(paused)
 
 

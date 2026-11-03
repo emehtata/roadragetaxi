@@ -155,6 +155,16 @@ func send_command(command: Dictionary) -> void:
 	_peer.put_data(command_line(command, _seq, player_id).to_utf8_buffer())
 
 
+func send_pause(paused: bool) -> void:
+	_last_command = {}
+	if not connected:
+		return
+	_seq += 1
+	var message := {"type": "command", "version": PROTOCOL_VERSION, "seq": _seq,
+		"player_id": player_id, "command": {}, "paused": paused}
+	_peer.put_data((JSON.stringify(message) + "\n").to_utf8_buffer())
+
+
 ## A phone answer, riding on a command with the current controls (the
 ## simulation applies it once). False without a connection.
 func send_phone(action: String, item_id: String, request_id: int) -> bool:

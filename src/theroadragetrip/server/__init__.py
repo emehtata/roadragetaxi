@@ -411,6 +411,7 @@ class SimulationServer:
 
         self._clients_lock = threading.Lock()
         self._clients: list = []
+        self._paused_clients: set = set()
         self._client_views = {}  # connection -> (last simulation time, world camera bounds)
         self._inspect = None  # {"kind", "id"}: what the client's inspect panel shows (its residents are sent)
         # Per connection: the map chunks it has, and the player cell they were planned for.
@@ -816,6 +817,10 @@ class SimulationServer:
                 if protocol.command_player_id(message) != LOCAL_PLAYER_ID:
                     logger.warning("Ignoring a command for unknown player %r", message.get("player_id"))
                     continue
+                if message.get("paused") is True:
+                    self._paused_clients.add(connection)
+                elif message.get("paused") is False:
+                    self._paused_clients.discard(connection)
                 command, interact = protocol.command_from_message(message)
                 from ..viewport import client_view_bounds
                 view = client_view_bounds(message)
@@ -870,6 +875,7 @@ class SimulationServer:
                     logger.info("Client dropped: %s", connection.error)
                 del self._client_chunks[connection]
                 self._client_views.pop(connection, None)
+                self._paused_clients.discard(connection)
             gone = len(self._clients) != before
             if gone:
                 logger.info("Client disconnected (%d remaining)", len(self._clients))
@@ -947,6 +953,9 @@ class SimulationServer:
             else:
                 self.save_error_count += 1
         self._apply_incoming_messages()
+        if self._paused_clients:
+            self._broadcast_state()
+            return
         self.audio.advance(dt)
 
         with self._command_lock:
