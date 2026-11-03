@@ -35,23 +35,6 @@
       "measure_s": 3
     },
     {
-      "id": "windshield_oulu_tree",
-      "description": "Reported tree on the Oulu grass island from the F12 screenshot",
-      "why": "The taxi faces the small grass island at EPSG:3067 427677.8,7210609.1.",
-      "city": "Oulu",
-      "pose": [427695.66047695396, 7210619.660883263, -2.539270336628862],
-      "start_time": "2026-06-20T15:43",
-      "weather": "clear",
-      "cloud": 0.1,
-      "wetness": [0.0, 0.05],
-      "sun_altitude_deg": [25, 90],
-      "zoom": 3.0,
-      "windshield": true,
-      "server_args": ["--no-auto-fetch"],
-      "requires": {"buildings_in_view": 3},
-      "measure_s": 3
-    },
-    {
       "id": "metallic_vehicle_paint_day",
       "description": "The taxi's and parked cars' paint under a high summer sun, buildings close on both sides",
       "why": "Eerikinkatu, Kamppi (find: 12 lamps, 13 buildings, 4 colours within 70 x 40 m): a narrow street of 5-7 storey blocks whose walls the paint can reflect; June noon sun ~53 deg.",

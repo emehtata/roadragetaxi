@@ -116,17 +116,6 @@ def plant_trees(
                                  trees=[(x, y)], tree_variations=[abs(math.sin(x * 12.9898 + y * 78.233))],
                                  tree_kinds=[classify_tree_kind(tags, x, y)], trees_from_osm=True))
         assigned.add((x, y))
-    # Player-reported tree on the small grass island at Oulu's street corner.
-    reported = (427677.8, 7210609.1)
-    if not any((x - reported[0]) ** 2 + (y - reported[1]) ** 2 < 9.0 for x, y in assigned):
-        for scenery in sceneries:
-            if (scenery.kind == "grass" and scenery.bbox[0] <= reported[0] <= scenery.bbox[2]
-                    and scenery.bbox[1] <= reported[1] <= scenery.bbox[3]
-                    and point_in_polygon(*reported, scenery.points_m)):
-                scenery.trees.append(reported)
-                scenery.tree_variations.append(0.5)
-                scenery.tree_kinds.append("birch")
-                break
     if progress_callback:
         progress_callback(progress_end, f"Loaded {len(assigned)} OSM trees")
 
