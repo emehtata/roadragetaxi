@@ -419,7 +419,7 @@ var _car_nodes: Array = []  # pooled [body, caster] instances
 var _cars_used := 0
 const CAR_GLASS := Color8(52, 74, 92)  # render_style.WINDSHIELD
 const CAR_SIGN := Color8(240, 220, 20)  # render_style.TAXI_SIGN
-enum { PAINT, RUBBER, GLASS_PART, LAMP }  # car.gdshader's parts (UV2.x)
+enum { PAINT, RUBBER, GLASS_PART, LAMP, METAL_PAINT }  # car.gdshader's parts (UV2.x): METAL_PAINT the four-wheelers' bodywork
 const LAMPS_ON := 1  # car()'s `lamps`: the engine runs (head and tail lights)
 const LAMPS_BRAKE := 2
 const LAMPS_REVERSE := 4
@@ -750,9 +750,10 @@ static func _empty_arrays() -> Dictionary:
 
 
 static func _part(out: Dictionary, part: int, x0: float, x1: float, y0: float, y1: float, bottom: float, top: float, color: Color) -> void:
+	var before: int = out["part_now"]
 	out["part_now"] = part
 	_car_box(out, x0, x1, y0, y1, bottom, top, color)
-	out["part_now"] = PAINT
+	out["part_now"] = before
 
 
 ## A seated or standing rider from x0 (back) to x1 (front): torso, head.
@@ -767,6 +768,8 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 	var hw := width * 0.5
 	var tyre := Color8(28, 28, 28)
 	var skin := Color8(236, 196, 160)
+	if kind in ["bus", "truck", "tractor", "camper_van", "trailer"]:  # metallic-painted bodywork; riders' and bikes' paint stays plain
+		out["part_now"] = METAL_PAINT
 	match kind:
 		"bus":
 			for x: float in [hl * 0.62, -hl * 0.55]:
@@ -953,7 +956,7 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 	for x: float in [hl * 0.64, -hl * 0.64]:
 		for y: float in [hw * 0.86, -hw * 0.86]:
 			_car_box(out, x - 0.33, x + 0.33, y + signf(y) * 0.05 - 0.14, y + signf(y) * 0.05 + 0.14, 0.0, 0.62, tyre)  # 5 cm out past the body
-	out["part_now"] = PAINT
+	out["part_now"] = METAL_PAINT
 	_car_box(out, -hl, hl, -hw, hw, 0.28, sill, color)
 	var top := color.darkened(0.12)
 	var glass_front: float = shape[0]
@@ -972,7 +975,7 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 			var facing: Vector3 = (low[i] + low[j] + high[i] + high[j]) / 4.0 - middle
 			out["part_now"] = GLASS_PART
 			_quad(out, low[i], low[j], high[j], high[i], CAR_GLASS.lightened(0.1 if i % 2 and not opaque else 0.0), facing, key)
-		out["part_now"] = PAINT
+		out["part_now"] = METAL_PAINT
 		_quad(out, high[0], high[1], high[2], high[3], top, Vector3.UP, key)
 	var flat := func(x0: float, x1: float, y0: float, y1: float, h: float, c: Color) -> void:
 		_quad(out, Vector3(x0, h, y0), Vector3(x1, h, y0), Vector3(x1, h, y1), Vector3(x0, h, y1), c, Vector3.UP)
