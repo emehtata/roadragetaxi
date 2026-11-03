@@ -995,6 +995,15 @@ def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
     assert household_id is not None
     home_position = vehicle.home_position
 
+    # Exercise this household's trip, rather than a random city-wide traffic jam.
+    manager.vehicles[:] = [vehicle]
+    manager.target_count = manager.min_count = manager.max_count = 1
+    from theroadragetrip.pedestrian import PedestrianManager
+    from theroadragetrip.physics import Car
+    pedestrians = PedestrianManager(ways, target_count=0, residents=residents, traffic_manager=traffic_world,
+                                   traffic_vehicles=manager.vehicles)
+    player = Car(x=px, y=py, heading=0.0, speed=0.0)
+
     driver = find_and_start_npc_trip(vehicle, residents, traffic_world, ways)
     assert driver is not None
     manager.drivers[vehicle.vehicle_id] = driver
@@ -1015,7 +1024,9 @@ def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
     retired = False
     crashed = False
     for _ in range(12000):
-        manager.update(1.0 / 30.0, px, py, residents, traffic_world, ways)
+        traffic_world.sim_time += 1.0 / 30.0
+        manager.update(1.0 / 30.0, px, py, residents, traffic_world, ways, pedestrian_mgr=pedestrians)
+        pedestrians.update(player, dt=1.0 / 30.0)
         # Ownership must survive every leg of the trip - departure,
         # arrival/waiting, and the drive home - not just the first one.
         assert vehicle.vehicle_kind == "household"
