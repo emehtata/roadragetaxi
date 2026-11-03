@@ -220,8 +220,10 @@ class MapStreamer:
         manager = self.manager
         if self.hold and self._sync is None:
             return
+        budget = MAP_SYNC_URGENT_BUDGET_S if urgent else budget_s
+        deadline = time.perf_counter() + budget
         if not self.hold:  # while the chunks are rebuilt the world stays as synced: no merges, no new fetches
-            manager.integrate_completed_tiles(budget_s=MAP_SYNC_URGENT_BUDGET_S if urgent else budget_s)
+            manager.integrate_completed_tiles(budget_s=max(0.0, deadline - time.perf_counter()))
             if manager.start_tile_streaming(x, y, vx, vy):
                 logger.info("Map streaming: tiles around (%.0f, %.0f), tile %s", x, y, manager.player_tile)
         if self._sync is None:
@@ -244,7 +246,10 @@ class MapStreamer:
             return
         self._sync_ticks += 1
         started = time.perf_counter()
-        deadline = started + (MAP_SYNC_URGENT_BUDGET_S if urgent else MAP_SYNC_BUDGET_S)
+        # Merge and derived-data sync share one frame budget; independent caps
+        # let both consume 4 ms in the same tick.
+        if started >= deadline:
+            return
         for stage in self._sync:
             now = time.perf_counter()
             self.sync_stage_ms[stage] = self.sync_stage_ms.get(stage, 0.0) + (now - started) * 1000.0

@@ -173,6 +173,37 @@ def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch)
     assert manager.integrated == before
 
 
+def test_tile_merge_and_map_sync_share_one_tick_budget(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(map_sync.time, "perf_counter", lambda: now[0])
+    monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 0.0)
+    monkeypatch.setattr(map_sync, "MAP_SYNC_BUDGET_S", 0.004)
+    stages = []
+
+    def sync_steps(_world):
+        while True:
+            now[0] += 0.002
+            stages.append("step")
+            yield "stage"
+
+    monkeypatch.setattr(map_sync, "map_sync_steps", sync_steps)
+    manager = FakeManager()
+    budgets = []
+
+    def integrate(*, budget_s):
+        budgets.append(budget_s)
+        now[0] += 0.003
+
+    manager.integrate_completed_tiles = integrate
+    streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager, ways=[]), lambda *args: None)
+    manager.revision = 2
+    streamer.tick(0, 0, 0, 0)  # start the sync
+    streamer.tick(0, 0, 0, 0)
+
+    assert budgets == [0.004, 0.004]
+    assert stages == ["step"]  # the remaining 1 ms doesn't fund another 2 ms sync unit
+
+
 def test_the_status_tells_the_client_what_the_map_is_doing(monkeypatch):
     """For the loading sign: fetching, merging, syncing, building, then ""."""
     monkeypatch.setattr(map_sync, "map_sync_steps", lambda world: iter([None]))
