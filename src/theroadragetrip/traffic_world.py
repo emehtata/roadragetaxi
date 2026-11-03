@@ -446,6 +446,17 @@ def _cycle_graph_build(ways) -> RouteGraphBuild:
     return RouteGraphBuild(ways, include=is_cyclable_way, oneway=cycle_oneway, weight=cycle_cost_factor, track_ways=True)
 
 
+MOTORWAY_HIGHWAYS = ("motorway", "motorway_link")  # the motorway and its ramps: fast traffic's network (law § 58)
+
+
+def is_motorway_way(way) -> bool:
+    return getattr(way, "highway", None) in MOTORWAY_HIGHWAYS
+
+
+def _motorway_graph_build(ways) -> RouteGraphBuild:
+    return RouteGraphBuild(ways, include=is_motorway_way, track_ways=True)
+
+
 class TrafficWorld:
     """Own shared world traffic services while vehicles remain player-controlled."""
 
@@ -482,6 +493,9 @@ class TrafficWorld:
         # graph, under the same route_graph_revision.
         self.cycle_graph: RouteGraphBuild = RouteGraphBuild([], include=lambda way: False, track_ways=True)
         self._pending_cycle_graph: Optional[RouteGraphBuild] = None
+        # The motorway network (MOTORWAY_HIGHWAYS): fast traffic routes here only (npc.py).
+        self.motorway_graph: RouteGraphBuild = RouteGraphBuild([], include=lambda way: False, track_ways=True)
+        self._pending_motorway_graph: Optional[RouteGraphBuild] = None
         # Set by main.py once npc.py's NPC vehicle list exists (a plain
         # list, kept as the same object reference so later appends to it
         # stay visible here) - lets PedestrianManager's linked-driver/
@@ -525,6 +539,8 @@ class TrafficWorld:
         build.advance(math.inf)
         self.cycle_graph = _cycle_graph_build(self.ways)
         self.cycle_graph.advance(math.inf)
+        self.motorway_graph = _motorway_graph_build(self.ways)
+        self.motorway_graph.advance(math.inf)
         self._commit_route_graph(build)
 
     def _commit_route_graph(self, build: "RouteGraphBuild") -> None:
@@ -603,6 +619,7 @@ class TrafficWorld:
             self.logical_intersections = logical_intersections
         self._pending_route_graph = RouteGraphBuild(ways)
         self._pending_cycle_graph = _cycle_graph_build(ways)
+        self._pending_motorway_graph = _motorway_graph_build(ways)
 
     def advance_map_sync(self, budget_s: float) -> bool:
         """Advance a start_map_sync() build by about budget_s; True once the
@@ -616,11 +633,16 @@ class TrafficWorld:
         cycle_build = self._pending_cycle_graph
         if cycle_build is not None and not cycle_build.advance(max(0.0, deadline - time.perf_counter())):
             return False
+        motorway_build = self._pending_motorway_graph
+        if motorway_build is not None and not motorway_build.advance(max(0.0, deadline - time.perf_counter())):
+            return False
         self.ways = build.ways
         if cycle_build is not None:
             self.cycle_graph = cycle_build
+        if motorway_build is not None:
+            self.motorway_graph = motorway_build
         self._commit_route_graph(build)
-        self._pending_route_graph = self._pending_cycle_graph = None
+        self._pending_route_graph = self._pending_cycle_graph = self._pending_motorway_graph = None
         return True
 
     def plan_route(
@@ -655,6 +677,10 @@ class TrafficWorld:
         navigation also crosses on car ferries)."""
         preferred = getattr(self, "_bus_route_edges", {}).get(bus_route) if bus_route is not None else None
         return graph_route_steps(_SurfaceGraphView(self, ferries), start, target, layer, on_road, start_layer, preferred=preferred)
+
+    def plan_motorway_route_steps(self, start: Tuple[float, float], target: Tuple[float, float]) -> RouteSteps:
+        """A fast vehicle's route on the motorway network only (no ordinary roads): a resumable job like plan_route_steps."""
+        return graph_route_steps(self.motorway_graph, start, target)
 
     def plan_cycle_route_steps(self, start: Tuple[float, float], target: Tuple[float, float]) -> RouteSteps:
         """A cyclist's route on the cycle network (cycling.py) as a resumable
