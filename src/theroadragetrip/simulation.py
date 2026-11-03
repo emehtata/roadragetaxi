@@ -465,6 +465,7 @@ def advance_simulation(
                 black_ice=weather.road_ice_fraction,
                 wind=weather.wind_vector_mps,
                 fields_frozen=getattr(world, "fields_frozen", False),
+                hard_at=deck,  # a ferry's steel deck, not the mud under the water
             )
         car.braking = brake > 0.0 and car.speed > 0.05
         if world.level_transitions.blocks_entry(car, previous_position, approach_way):

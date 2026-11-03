@@ -1679,8 +1679,12 @@ def update_car_physics(
     wind: Tuple[float, float] = (0.0, 0.0),
     fields_frozen: bool = False,
     turning_circle: bool = True,
+    hard_at=None,
 ) -> bool:
     """Update car speed, heading, and position.
+
+    `hard_at(x, y)`: points that are hard ground whatever the map has
+    there (a ferry's steel deck, ferries.py).
 
     `turning_circle`: the steering lock (min_turn_radius). NPCs pass False for
     now: their routes and parking manoeuvres are planned tighter than a real
@@ -2045,6 +2049,7 @@ def update_car_physics(
             is_point_on_parking_space(target_x, target_y, parking_spaces)
             or is_point_in_parking_lot(target_x, target_y, scenery_grid=scenery_grid)
             or is_point_on_light_traffic_way(target_x, target_y, ways=ways, spatial_grid=spatial_grid)
+            or (hard_at is not None and hard_at(target_x, target_y))
         ):
             car.ground_kind = "hard"
         else:

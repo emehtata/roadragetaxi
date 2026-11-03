@@ -148,3 +148,18 @@ def test_the_deck_is_dry_for_the_water_brake_and_sinking():
     assert not is_car_fully_in_water(car, sea, dry=lambda x, y: abs(x) < 25.0)
     assert water_ahead_speed_limit(car, sea, 7) is not None
     assert water_ahead_speed_limit(car, sea, 7, dry=lambda x, y: abs(x) < 25.0) is None
+
+
+def test_the_deck_drives_like_hard_ground_not_the_mud_under_the_water():
+    from theroadragetrip.osm.models import Way
+    from theroadragetrip.physics import update_car_physics
+
+    mgr = _manager()
+    _run(mgr, 2.5)
+    far_road = [Way(points_m=[(0.0, 5000.0), (100.0, 5000.0)], highway="residential", half_width_m=3.0)]
+    on_deck = _car(HALF - 10.0, 0.0, 0.0, 5.0)
+    update_car_physics(on_deck, 1.0, 0.0, False, False, 0.1, ways=far_road, block_offroad=False, hard_at=mgr.on_deck)
+    assert on_deck.ground_kind == "hard"
+    in_the_mud = _car(HALF - 10.0, 0.0, 0.0, 5.0)
+    update_car_physics(in_the_mud, 1.0, 0.0, False, False, 0.1, ways=far_road, block_offroad=False)
+    assert in_the_mud.ground_kind == "soft"
