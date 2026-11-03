@@ -46,5 +46,19 @@ if ($ExperimentalRtx) {
 if ($Outdoor3d) { $gameArgs += "--outdoor-3d" }
 if ($DebugLogging) { $gameArgs += @("--log-level", "DEBUG") }
 if ($LocalPbf) { $gameArgs += @("--osm-source", "pbf") }
-& $Godot --path (Join-Path $repo "godot") @engineArgs -- @gameArgs
+# New or changed assets (a pull adding models) must be imported before a script preloads them.
+$project = Join-Path $repo "godot"
+$stamp = Join-Path $project ".godot\import-stamp"
+$since = if (Test-Path -LiteralPath $stamp) { (Get-Item -LiteralPath $stamp).LastWriteTime } else { [datetime]::MinValue }
+$assets = @(".import", ".glb", ".gltf", ".png", ".jpg", ".ogg", ".wav", ".mp3", ".ttf", ".otf")
+$changed = Get-ChildItem -LiteralPath $project -Recurse -File -ErrorAction SilentlyContinue |
+    Where-Object { $assets -contains $_.Extension -and $_.FullName -notlike "*\.godot\*" -and $_.LastWriteTime -gt $since } |
+    Select-Object -First 1
+if ($changed) {
+    Write-Host "Importing new or changed assets ($($changed.Name)...)"
+    & $Godot --headless --path $project --import | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Godot could not import the project's assets." }
+    New-Item -ItemType File -Force -Path $stamp | Out-Null
+}
+& $Godot --path $project @engineArgs -- @gameArgs
 exit $LASTEXITCODE
