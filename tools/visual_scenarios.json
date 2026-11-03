@@ -1,6 +1,23 @@
 {
   "scenarios": [
     {
+      "id": "windshield_kamppi_day",
+      "description": "Straight ahead from the taxi interior on Eerikinkatu",
+      "why": "The existing Eerikinkatu taxi pose faces a street with nearby 3D roads, facades, traffic and lights.",
+      "city": "Helsinki",
+      "pose": [385325.8, 6671757.1, 0.59],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [0.0, 0.05],
+      "sun_altitude_deg": [40, 90],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": ["--no-auto-fetch"],
+      "requires": {"buildings_in_view": 3},
+      "measure_s": 3
+    },
+    {
       "id": "metallic_vehicle_paint_day",
       "description": "The taxi's and parked cars' paint under a high summer sun, buildings close on both sides",
       "why": "Eerikinkatu, Kamppi (find: 12 lamps, 13 buildings, 4 colours within 70 x 40 m): a narrow street of 5-7 storey blocks whose walls the paint can reflect; June noon sun ~53 deg.",

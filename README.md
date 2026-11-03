@@ -102,6 +102,7 @@ Ei sankaripuheita. Taksamittari käy.
 | `K` / `V` / `B` | Toggle lane assist / speed limiter / traffic-light assist |
 | `C` | Toggle compass |
 | `J` | Toggle train arrivals/departures board |
+| `I` | Toggle the experimental view through the taxi windshield (3D mode) |
 | `L` | Cycle labels: none, streets, all places |
 | `R` | Reset the taxi to a road; an onboard fare can incur a penalty |
 | `T` | Reset the trip meter |

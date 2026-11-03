@@ -25,6 +25,7 @@ var _measure_left := 0.0
 var _frames := PackedFloat32Array()
 var _measure_failures: Array = []
 var driving := false  # measuring with `drive_s`: main.gd leaves the controls to this node
+var _windshield_pressed := false
 
 
 func _ready() -> void:
@@ -36,6 +37,13 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_elapsed += delta
+	if scenario.get("windshield", false) and not _windshield_pressed and not main.entities.player_body().is_empty():
+		var key := InputEventKey.new()
+		key.keycode = KEY_I
+		key.physical_keycode = KEY_I
+		key.pressed = true
+		Input.parse_input_event(key)
+		_windshield_pressed = true
 	if main.phone.is_open and not scenario.get("phone", false):  # ride offers open it: it would cover the scene
 		main.phone.close()
 	var missing := check()
@@ -104,6 +112,8 @@ func check() -> Array:
 	missing.append_array(_check_map(at - main.entities.origin))
 	if main.camera.position.distance_to(main.entities.player_position()) > 2.0:
 		missing.append("camera not on the vehicle yet")
+	if scenario.get("windshield", false) and not main._windshield.visible:
+		missing.append("windshield view not active yet")
 	return missing
 
 

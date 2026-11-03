@@ -75,6 +75,9 @@ var hud_layout = preload("res://hud_layout.gd").new()  # the movable panels, sav
 var _start_sign: PanelContainer  # the start sign: city and forecast, any key starts
 var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
 var _lead := Vector2.ZERO  # camera look-ahead, metres
+var _windshield: CanvasLayer
+var _windshield_view: TextureRect
+var _windshield_zoom := 0.0
 const LEAD_S := 0.6  # look this far ahead of the taxi at its speed
 const LEAD_MAX := 0.3  # at most this share of the view
 var _state_usec := 0.0  # handling one state (parse + buffer), smoothed
@@ -253,6 +256,7 @@ func _ready() -> void:
 	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args or "--visual-test" in args:
 		_engine_on = true  # automated runs drive straight away: no sign, no hints
 		_entered_taxi = not "--start-sign" in args  # --start-sign: a screenshot of the city's start sign and forecast
+	_build_windshield()
 	if _bench > 0.0:  # rrt-019.1: the frame in phases - scripts, redraws and layout up to the render, then the render
 		Perf.time_draws(entities, "draw_entities")  # and the vehicles, people, lamps... each
 		RenderingServer.frame_pre_draw.connect(func():
@@ -536,6 +540,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
+			KEY_I:
+				_set_windshield(not _windshield.visible)
 			KEY_F12:
 				save_screenshot()
 			KEY_U, KEY_F2:  # the HUD layout back to default
@@ -602,6 +608,47 @@ func _zoom(factor: float) -> void:
 	camera.zoom = Vector2.ONE * clampf(camera.zoom.x * factor, 3.0, 24.0)
 
 
+func _build_windshield() -> void:
+	_windshield = CanvasLayer.new()
+	_windshield.layer = 1  # over the road, below the HUD
+	_windshield.visible = false
+	add_child(_windshield)
+	var frame := Control.new()
+	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_windshield.add_child(frame)
+	_windshield_view = TextureRect.new()
+	_windshield_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_windshield_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_windshield_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(_windshield_view)
+	for edges: Array in [[0.0, 0.0, 1.0, 0.035], [0.0, 0.83, 1.0, 1.0],
+			[0.0, 0.0, 0.035, 1.0], [0.965, 0.0, 1.0, 1.0]]:
+		var trim := ColorRect.new()
+		trim.color = Color8(24, 26, 29)
+		trim.anchor_left = edges[0]
+		trim.anchor_top = edges[1]
+		trim.anchor_right = edges[2]
+		trim.anchor_bottom = edges[3]
+		trim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		frame.add_child(trim)
+
+
+func _set_windshield(on: bool) -> void:
+	if on and (not MapChunk.outdoor_3d or entities.player_body().is_empty()):
+		return
+	if on:
+		_clear_focus()
+		_windshield_zoom = camera.zoom.x
+		camera.zoom = Vector2.ONE * 3.0  # keep forward chunks and traffic available to the 3D view
+		_windshield_view.texture = map_layer._layer_3d()._view.get_texture()
+	else:
+		camera.zoom = Vector2.ONE * _windshield_zoom
+	_windshield.visible = on
+	if map_layer.buildings_3d != null:
+		map_layer.buildings_3d.windshield_on = on
+
+
 func _clear_focus() -> void:
 	_focus.clear()
 	_pan_button = 0
@@ -657,6 +704,14 @@ func _process(delta: float) -> void:
 			print("screenshot saved: ", _screenshot_path)
 			get_tree().quit()
 	camera.position = entities.player_position() + _camera_lead(delta)
+	if _windshield.visible:
+		var body: Dictionary = entities.player_body()
+		if body.is_empty():
+			_set_windshield(false)
+		else:
+			map_layer.buildings_3d.windshield_at = body["position"]
+			map_layer.buildings_3d.windshield_heading = body["heading"]
+			map_layer.buildings_3d.windshield_elevation = map_layer.deck_height(body["position"], 0)
 	if _focus.get("kind") == "pan":
 		camera.position = _focus["position"]
 	elif _focus.has("id"):

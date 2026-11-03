@@ -48,6 +48,10 @@ var _shadow_sprite: Sprite2D
 var _sun_key := Vector3(INF, INF, INF)  # the (altitude, azimuth, cloud) applied last
 var _surface_pixels_per_m := -1.0
 var shadows_enabled := true
+var windshield_on := false
+var windshield_at := Vector2.ZERO
+var windshield_heading := 0.0
+var windshield_elevation := 0.0
 static var opaque := false  # --outdoor-3d (use_shaded): the view draws its own ground, shaded by real lights
 const GROUND := Color(0.27, 0.33, 0.25)  # map_layer._draw_ground's open ground
 const SUN_ENERGY := 1.0  # --outdoor-3d light: full clear-sky sun, plus the ambient fill below
@@ -289,6 +293,14 @@ func _process(delta: float) -> void:
 	_camera.position = Vector3(centre.x, height, centre.y)
 	_camera.near = maxf(1.0, height * 0.02)
 	_camera.far = height * 2.0 + 10.0 if opaque else height + 1.0  # opaque: shadows on the ground (see the shadow camera below)
+	if windshield_on:
+		var forward := Vector3(cos(windshield_heading), 0.0, -sin(windshield_heading))
+		_camera.position = Vector3(windshield_at.x, 1.35 + windshield_elevation, windshield_at.y) + forward * 0.55
+		_camera.look_at(_camera.position + forward * 100.0, Vector3.UP)
+		_camera.near = 0.08
+		_camera.far = 350.0
+	else:
+		_camera.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 	if _shadow_ground.visible:  # under the whole view; shadows only as far as the camera sees
 		if _shadow_view.size != size / SHADOW_VIEW_SCALE:
 			_shadow_view.size = size / SHADOW_VIEW_SCALE

@@ -108,6 +108,7 @@ Scenarios live in `tools/visual_scenarios.json`. Fields:
 | `seed` | random seed (default 1) |
 | `graphics` | graphics settings under test, over the saved ones, e.g. `{"brightness": 1.4}` |
 | `godot_args`, `server_args` | extra flags |
+| `windshield` | press `I` once the taxi is ready and require the forward view before capture |
 
 ### Choosing the place
 
