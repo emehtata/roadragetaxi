@@ -3264,6 +3264,9 @@ func test_buildings_3d() -> void:
 	var normals := B3.flat_normals(up_tri["verts"])
 	check(normals[0].is_equal_approx(Vector3.UP) and normals[3].is_equal_approx(Vector3.LEFT), "flat normals face outward, as _tri winds them")
 	var taxi := B3.car_arrays(4.4, 1.8, Color.YELLOW, EntityLayer.CAR_SHAPES[0], 2)
+	var distant_taxi := B3.car_arrays(4.4, 1.8, Color.YELLOW, EntityLayer.CAR_SHAPES[0], 2, 0, 0)
+	check(distant_taxi["verts"].size() < taxi["verts"].size() and distant_taxi["part"].size() == distant_taxi["verts"].size(),
+		"distant cars keep their silhouette with fewer wheel and trim vertices")
 	var parts: Array = Array(taxi["part"]).map(func(v): return int(v.x))
 	check(taxi["part"].size() == taxi["verts"].size() and B3.PAINT in parts and B3.RUBBER in parts and B3.GLASS_PART in parts and B3.LAMP in parts,
 		"a lit taxi's paint, tyres, glass and sign each carry their material")

@@ -717,8 +717,9 @@ func puff(at: Vector2, height: float, radius: float, color: Color) -> void:
 ## `shape` is entity_layer's CAR_SHAPES row; `sign` 0 none, 1 a taxi sign off, 2 lit;
 ## `lamps` the LAMPS_* lit now.
 func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0, elevation := 0.0) -> void:
-	var key := "%s|%s|%.2f|%.2f|%d|%d" % [color.to_html(false), shape, length, width, sign, lamps]
-	place_body(key, func() -> Dictionary: return car_arrays(length, width, color, shape, sign, lamps), at, heading, elevation)
+	var detail := 0 if at.distance_to(windshield_at if windshield_on else view_centre) > 35.0 else 1
+	var key := "%s|%s|%.2f|%.2f|%d|%d|%d" % [color.to_html(false), shape, length, width, sign, lamps, detail]
+	place_body(key, func() -> Dictionary: return car_arrays(length, width, color, shape, sign, lamps, detail), at, heading, elevation)
 
 
 ## Any pooled body this frame (a car, a bus, a person, an animal): its mesh
@@ -1123,7 +1124,7 @@ static func animal_arrays(species: String, color: Color, pose: String, size: flo
 
 ## One car's mesh arrays, centred at the origin, +x forward: the body,
 ## wheels, the glasshouse sloping up to the roof, and its extras.
-static func car_arrays(length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0) -> Dictionary:
+static func car_arrays(length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0, detail := 1) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "shadow": PackedVector3Array(),
 		"part": PackedVector2Array(), "part_now": PAINT}
 	var hl := length * 0.5
@@ -1131,13 +1132,22 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 	var van := str(shape[5]) == "door"
 	var sill := 1.0 if van else 0.8
 	var roof := 1.95 if van else 1.42
+	if not van and str(shape[5]) == "rails" and shape[2] > -0.7:
+		roof = 1.68  # SUV; estates keep the lower roofline
 	var tyre := Color8(28, 28, 28)
 	out["part_now"] = RUBBER
 	for x: float in [hl * 0.64, -hl * 0.64]:
 		for y: float in [hw * 0.86, -hw * 0.86]:
-			_wheel(out, x, y + signf(y) * 0.05, 0.31, 0.28, tyre)  # 5 cm out past the body
+			_wheel(out, x, y + signf(y) * 0.05, 0.31, 0.28, tyre, detail)  # 5 cm out past the body
 	out["part_now"] = METAL_PAINT
 	_car_shell(out, hl, hw, sill, color)
+	# Dark arch liners make the tyre sit inside the body, instead of on its side.
+	if detail > 0:
+		for x: float in [hl * 0.64, -hl * 0.64]:
+			for side: float in [-1.0, 1.0]:
+				out["part_now"] = RUBBER
+				_round_part(out, Vector3(x, 0.34, side * hw * 0.76), Vector3(0.39, 0.39, 0.015), Color8(29, 30, 31), RUBBER, 0)
+			out["part_now"] = METAL_PAINT
 	var top := color.darkened(0.12)
 	var glass_front: float = shape[0]
 	var roof_front: float = shape[1]
@@ -1162,6 +1172,23 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 			var j := (i + 1) % 4
 			_quad(out, high[i], high[j], roof_edge[j], roof_edge[i], color, (high[i] + high[j]) * 0.5 - middle, key)
 		_quad(out, roof_edge[0], roof_edge[1], roof_edge[2], roof_edge[3], top, Vector3.UP, key)
+	# The pillars and window belt are separate narrow metal strips, following
+	# each actual glass edge rather than floating rectangular window decals.
+	if detail > 0:
+		for i in 4:
+			var j := (i + 1) % 4
+			_round_limb(out, low[i], high[i], 0.023, 0.023, color.darkened(0.3), METAL_PAINT, 0)
+			_round_limb(out, low[i], low[j], 0.016, 0.016, color.darkened(0.25), METAL_PAINT, 0)
+	# Door seams, handles, mirrors and a fuel cap give a readable scale.
+	for side: float in [-1.0, 1.0] if detail > 0 else []:
+		var edge := side * hw * 0.97
+		for door_x: float in [hl * (glass_front + glass_rear) * 0.5, hl * glass_rear - 0.03]:
+			_round_limb(out, Vector3(door_x, 0.35, edge), Vector3(door_x, sill - 0.06, edge), 0.007, 0.007, color.darkened(0.42), PAINT, 0)
+		for handle_x: float in [hl * 0.03, hl * glass_rear + 0.13]:
+			_car_box(out, handle_x - 0.055, handle_x + 0.055, edge - 0.012, edge + 0.012, sill - 0.16, sill - 0.13, Color8(80, 84, 86))
+		_round_part(out, Vector3(hl * glass_front + 0.06, sill + 0.03, side * hw * 0.99), Vector3(0.11, 0.045, 0.10), color.darkened(0.2), METAL_PAINT, 0)
+		_round_part(out, Vector3(-hl * 0.72, sill - 0.18, edge), Vector3(0.055, 0.055, 0.008), color.darkened(0.22), PAINT, 0)
+		_car_box(out, -hl * 0.88, hl * 0.88, edge - 0.016, edge + 0.016, 0.29, 0.33, Color8(37, 39, 40))
 	var flat := func(x0: float, x1: float, y0: float, y1: float, h: float, c: Color) -> void:
 		_quad(out, Vector3(x0, h, y0), Vector3(x1, h, y0), Vector3(x1, h, y1), Vector3(x0, h, y1), c, Vector3.UP)
 	match str(shape[5]):
@@ -1220,7 +1247,8 @@ static func _car_box(out: Dictionary, x0: float, x1: float, y0: float, y1: float
 
 static func _car_shell(out: Dictionary, hl: float, hw: float, sill: float, color: Color) -> void:
 	var rings := []
-	for profile in [[0.28, 0.92, 0.82], [0.43, 0.98, 0.96], [sill - 0.12, 1.0, 1.0], [sill, 0.9, 0.88]]:
+	for profile in [[0.24, 0.88, 0.72], [0.29, 0.95, 0.87], [0.42, 0.99, 0.96],
+		[sill - 0.16, 1.0, 1.0], [sill - 0.035, 0.96, 0.97], [sill, 0.90, 0.88]]:
 		var x: float = hl * profile[1]
 		var z: float = hw * profile[2]
 		var c := minf(0.24, z * 0.35)
@@ -1240,20 +1268,33 @@ static func _car_shell(out: Dictionary, hl: float, hw: float, sill: float, color
 			_tri(out, Vector3(0.0, 0.28, 0.0), rings[0][j], rings[0][i], color.darkened(0.3), Vector3.DOWN, key)
 
 
-static func _wheel(out: Dictionary, x: float, y: float, radius: float, width: float, color: Color) -> void:
+static func _wheel(out: Dictionary, x: float, y: float, radius: float, width: float, color: Color, detail := 1) -> void:
 	var previous: int = out["part_now"]
 	out["part_now"] = RUBBER
-	for i in 10:
-		var a := float(i) * TAU / 10.0
-		var b := float(i + 1) * TAU / 10.0
+	var sides := 16 if detail > 0 else 8
+	for i in sides:
+		var a := float(i) * TAU / sides
+		var b := float(i + 1) * TAU / sides
 		var p := Vector2(x + cos(a) * radius, sin(a) * radius + radius)
 		var q := Vector2(x + cos(b) * radius, sin(b) * radius + radius)
 		for key in ["verts", "shadow"]:
 			_quad(out, Vector3(p.x, p.y, y - width * 0.5), Vector3(q.x, q.y, y - width * 0.5),
 				Vector3(q.x, q.y, y + width * 0.5), Vector3(p.x, p.y, y + width * 0.5), color, Vector3(cos((a + b) * 0.5), sin((a + b) * 0.5), 0.0), key)
 			for side: float in [-1.0, 1.0]:
-				_tri(out, Vector3(x, radius, y + side * width * 0.5), Vector3(p.x, p.y, y + side * width * 0.5),
-					Vector3(q.x, q.y, y + side * width * 0.5), color.darkened(0.12), Vector3(0.0, 0.0, side), key)
+				var face := y + side * width * 0.5
+				var rim := radius * 0.57
+				var inner_p := Vector3(x + cos(a) * rim, radius + sin(a) * rim, face + side * 0.004)
+				var inner_q := Vector3(x + cos(b) * rim, radius + sin(b) * rim, face + side * 0.004)
+				_quad(out, Vector3(p.x, p.y, face), Vector3(q.x, q.y, face), inner_q, inner_p,
+					color.darkened(0.12), Vector3(0.0, 0.0, side), key)
+				if key == "verts" and detail > 0:
+					out["part_now"] = PAINT
+					_tri(out, Vector3(x, radius, face + side * 0.006), inner_p, inner_q,
+						Color8(127, 137, 143) if i % 4 != 0 else Color8(52, 56, 58), Vector3(0.0, 0.0, side), key)
+					out["part_now"] = RUBBER
+	if detail > 0:
+		for side: float in [-1.0, 1.0]:
+			_round_part(out, Vector3(x, radius, y + side * (width * 0.5 + 0.009)), Vector3(radius * 0.13, radius * 0.13, 0.009), Color8(58, 62, 64), PAINT, 0)
 	out["part_now"] = previous
 
 
