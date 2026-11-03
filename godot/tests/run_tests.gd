@@ -3267,6 +3267,14 @@ func test_buildings_3d() -> void:
 	var distant_taxi := B3.car_arrays(4.4, 1.8, Color.YELLOW, EntityLayer.CAR_SHAPES[0], 2, 0, 0)
 	check(distant_taxi["verts"].size() < taxi["verts"].size() and distant_taxi["part"].size() == distant_taxi["verts"].size(),
 		"distant cars keep their silhouette with fewer wheel and trim vertices")
+	for i in EntityLayer.CAR_SHAPES.size():
+		check(B3.car_model_kind(EntityLayer.CAR_SHAPES[i], 3.8 if i == 6 else 4.5) ==
+			["saloon", "hatchback", "estate", "suv", "pickup", "sports", "city_car"][i],
+			"car style %d selects its own close model" % i)
+	check(B3.car_model_kind(EntityLayer.VAN_SHAPE, 5.0) == "panel_van", "the van keeps its own close model")
+	var model_lamps := B3.model_car_details(4.4, 1.8, 2, B3.LAMPS_ON | B3.LAMPS_LEFT)
+	check(model_lamps["part"].size() == model_lamps["verts"].size() and
+		Array(model_lamps["part"]).any(func(v): return int(v.x) == B3.LAMP), "close models retain the live taxi sign and lamp states")
 	var parts: Array = Array(taxi["part"]).map(func(v): return int(v.x))
 	check(taxi["part"].size() == taxi["verts"].size() and B3.PAINT in parts and B3.RUBBER in parts and B3.GLASS_PART in parts and B3.LAMP in parts,
 		"a lit taxi's paint, tyres, glass and sign each carry their material")
@@ -3350,7 +3358,7 @@ func test_buildings_3d() -> void:
 		check(animal["verts"].size() >= 36 and animal["part"].size() == animal["verts"].size(), "a %s has a 3D body" % species)
 	var signal_node := B3.signals_node([[Vector2.ZERO, Vector2.RIGHT, [false, false, true]]])
 	var signal_parts: Array = Array(signal_node.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV2]).map(func(v): return int(v.x))
-	check(signal_parts.count(B3.LAMP) == 36, "a signal: only its lit lamp (green) glows")
+	check(signal_parts.count(B3.LAMP) == 6, "a signal: only its lit lamp (green) glows")
 	signal_node.free()
 	var posts := B3.lamp_posts_node([[Vector2(5, 0), Vector2.UP]])
 	check(posts != null and posts.mesh.get_aabb().end.y > B3.LAMP_HEIGHT_M and B3.lamp_posts_node([]) == null, "a lamp's post stands to its height; no lamps, no node")

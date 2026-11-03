@@ -440,6 +440,8 @@ static var _car_meshes := {}  # [body, shadow caster] meshes by look
 var _cars_root: Node3D
 var _car_nodes: Array = []  # pooled [body, caster] instances
 var _cars_used := 0
+var _model_nodes := {}  # imported close-range cars, pooled by silhouette
+var _model_used := {}
 var _animal_rows := {}  # look -> [first model parameters, transforms this frame]
 var _animal_batches := {}  # look -> one MultiMeshInstance3D
 const CAR_GLASS := Color8(52, 74, 92)  # render_style.WINDSHIELD
@@ -450,6 +452,34 @@ const LAMPS_BRAKE := 2
 const LAMPS_REVERSE := 4
 const LAMPS_LEFT := 8  # an indicator, blinking on now
 const LAMPS_RIGHT := 16
+const MODEL_SCENES := {
+	"saloon": preload("res://assets/vehicles/saloon.glb"),
+	"hatchback": preload("res://assets/vehicles/hatchback.glb"),
+	"estate": preload("res://assets/vehicles/estate.glb"),
+	"suv": preload("res://assets/vehicles/suv.glb"),
+	"pickup": preload("res://assets/vehicles/pickup.glb"),
+	"sports": preload("res://assets/vehicles/sports.glb"),
+	"city_car": preload("res://assets/vehicles/city_car.glb"),
+	"panel_van": preload("res://assets/vehicles/panel_van.glb"),
+	"box_truck": preload("res://assets/vehicles/box_truck.glb"),
+	"motorcycle": preload("res://assets/vehicles/motorcycle.glb"),
+	"city_bus": preload("res://assets/vehicles/city_bus.glb"),
+	"camper_van": preload("res://assets/vehicles/camper_van.glb"),
+	"tractor": preload("res://assets/vehicles/tractor.glb"),
+	"caravan": preload("res://assets/vehicles/caravan.glb"),
+	"e_scooter": preload("res://assets/vehicles/e_scooter.glb"),
+}
+const MODEL_SIZE := {  # [width, length] in the source scenes, metres
+	"saloon": Vector2(2.0, 4.822), "hatchback": Vector2(1.952, 4.342),
+	"estate": Vector2(2.01, 5.041), "suv": Vector2(2.077, 4.782),
+	"pickup": Vector2(2.077, 5.392), "sports": Vector2(2.058, 4.882),
+	"city_car": Vector2(1.828, 3.592), "panel_van": Vector2(2.154, 5.392),
+	"box_truck": Vector2(2.652, 7.542), "motorcycle": Vector2(0.58, 2.106),
+	"city_bus": Vector2(3.084, 12.198),
+	"camper_van": Vector2(2.154, 5.042),
+	"tractor": Vector2(2.33, 3.665), "caravan": Vector2(2.647, 5.365),
+	"e_scooter": Vector2(0.482, 0.844),
+}
 
 
 func _enter_tree() -> void:
@@ -680,6 +710,8 @@ func track(owner: Node2D, lines: PackedVector2Array, colors: PackedColorArray, w
 
 func begin_cars() -> void:
 	_cars_used = 0
+	for kind in _model_used:
+		_model_used[kind] = 0
 	_puffs_used = 0
 	_animal_rows.clear()
 
@@ -717,9 +749,112 @@ func puff(at: Vector2, height: float, radius: float, color: Color) -> void:
 ## `shape` is entity_layer's CAR_SHAPES row; `sign` 0 none, 1 a taxi sign off, 2 lit;
 ## `lamps` the LAMPS_* lit now.
 func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0, elevation := 0.0) -> void:
+	if opaque and at.distance_to(windshield_at if windshield_on else view_centre) < 22.0:
+		var kind := car_model_kind(shape, length)
+		place_model_car(kind, at, heading, length, width, color, elevation, lamps)
+		var detail_key := "d|%s|%.2f|%.2f|%d|%d" % [kind, length, width, sign, lamps]
+		place_body(detail_key, func() -> Dictionary: return model_car_details(length, width, sign, lamps, 0.5, true,
+			2.26 if kind == "panel_van" else 1.41), at, heading, elevation)
+		return
 	var detail := 0 if at.distance_to(windshield_at if windshield_on else view_centre) > 35.0 else 1
 	var key := "%s|%s|%.2f|%.2f|%d|%d|%d" % [color.to_html(false), shape, length, width, sign, lamps, detail]
 	place_body(key, func() -> Dictionary: return car_arrays(length, width, color, shape, sign, lamps, detail), at, heading, elevation)
+
+
+static func car_model_kind(shape: Array, length: float) -> String:
+	match str(shape[5]):
+		"door": return "panel_van"
+		"bed": return "pickup"
+		"stripes": return "sports"
+		"rails": return "estate" if shape[2] < -0.7 else "suv"
+	if length < 4.0:
+		return "city_car"
+	return "hatchback" if shape[3] < -0.7 else "saloon"
+
+
+func place_model_car(kind: String, at: Vector2, heading: float, length: float, width: float, color: Color, elevation: float, lamps := 0) -> void:
+	if not _model_nodes.has(kind):
+		_model_nodes[kind] = []
+		_model_used[kind] = 0
+	var used: int = _model_used[kind]
+	var pool: Array = _model_nodes[kind]
+	if used == pool.size():
+		var model: Node3D = MODEL_SCENES[kind].instantiate()
+		var paint_materials := []
+		var light_materials := []
+		for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+			mesh.layers = LAYER_BUILDINGS
+			mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			for surface in mesh.mesh.get_surface_count():
+				var original: Material = mesh.mesh.surface_get_material(surface)
+				if original == null:
+					continue
+				if original.resource_name.begins_with("paint") or (kind == "tractor" and original.resource_name == "orange") or \
+					(kind == "caravan" and original.resource_name == "shell") or (kind == "e_scooter" and original.resource_name == "teal"):
+					var paint: StandardMaterial3D = original.duplicate()
+					paint.resource_local_to_scene = true
+					paint.albedo_texture = null
+					mesh.set_surface_override_material(surface, paint)
+					paint_materials.append(paint)
+				elif original.resource_name.begins_with("light"):
+					var lens: StandardMaterial3D = original.duplicate()
+					lens.emission_enabled = false  # per-side live lamps are the overlay mesh
+					mesh.set_surface_override_material(surface, lens)
+					light_materials.append([lens, original.resource_name])
+		model.set_meta("paint_materials", paint_materials)
+		model.set_meta("light_materials", light_materials)
+		_cars_root.add_child(model)
+		pool.append(model)
+	var car_node: Node3D = pool[used]
+	if car_node.get_meta("paint", Color.TRANSPARENT) != color:
+		for material: StandardMaterial3D in car_node.get_meta("paint_materials"):
+			material.albedo_color = color
+		car_node.set_meta("paint", color)
+	if car_node.get_meta("lamps", -1) != lamps:
+		for pair: Array in car_node.get_meta("light_materials"):
+			var material: StandardMaterial3D = pair[0]
+			var name: String = pair[1]
+			if name == "lightWhite":
+				material.emission_enabled = lamps & LAMPS_ON != 0
+			elif name == "lightRed":
+				material.emission_enabled = lamps & (LAMPS_ON | LAMPS_BRAKE) != 0
+				material.emission_energy_multiplier = 3.0 if lamps & LAMPS_BRAKE else 1.0
+		car_node.set_meta("lamps", lamps)
+	var source: Vector2 = MODEL_SIZE[kind]
+	var along_x := kind == "city_bus"
+	var turn := heading if along_x else heading + PI / 2.0
+	var scale_3d := Vector3(length / source.y, 1.0, width / source.x) if along_x else Vector3(width / source.x, 1.0, length / source.y)
+	car_node.transform = Transform3D(Basis(Vector3.UP, turn).scaled_local(scale_3d),
+		to_3d(at, ROAD_M + 0.016 + elevation))
+	car_node.visible = true
+	_model_used[kind] = used + 1
+
+
+static func model_car_details(length: float, width: float, sign: int, lamps: int, lamp_height := 0.5, native_lights := false,
+		roof_height := 1.41) -> Dictionary:
+	var out := _empty_arrays()
+	var hl := length * 0.5
+	var hw := width * 0.5
+	if sign > 0:
+		_car_box(out, -hl * 0.24, -hl * 0.04, -hw * 0.48, hw * 0.48, roof_height, roof_height + 0.08, Color8(30, 30, 30))
+		out["part_now"] = LAMP if sign == 2 else PAINT
+		_car_box(out, -hl * 0.22, -hl * 0.06, -hw * 0.42, hw * 0.42, roof_height + 0.08, roof_height + 0.24,
+			CAR_SIGN if sign == 2 else CAR_SIGN.darkened(0.45))
+	var lens := func(x: float, side: float, across: float, half_width: float, lit: bool, on_color: Color, off_color: Color) -> void:
+		out["part_now"] = LAMP if lit else PAINT
+		_car_box(out, x - 0.014, x + 0.014, side * across - half_width, side * across + half_width,
+			lamp_height, lamp_height + 0.085, on_color if lit else off_color)
+	for side: float in [-1.0, 1.0]:
+		if not native_lights:
+			lens.call(hl, side, hw * 0.68, 0.10, lamps & LAMPS_ON != 0, Color(1.0, 0.95, 0.78), Color8(190, 190, 183))
+			lens.call(-hl, side, hw * 0.68, 0.10, lamps & (LAMPS_ON | LAMPS_BRAKE) != 0,
+				Color(1.0, 0.07, 0.04) if lamps & LAMPS_BRAKE else Color(0.55, 0.03, 0.02), Color8(120, 30, 25))
+		lens.call(-hl + 0.08, side, hw * 0.20, 0.035, lamps & LAMPS_REVERSE != 0, Color.WHITE, Color8(170, 170, 165))
+		var indicating := lamps & (LAMPS_RIGHT if side > 0.0 else LAMPS_LEFT) != 0
+		for x: float in [-hl + 0.08, hl - 0.08]:
+			lens.call(x, side, hw * 0.72, 0.025, indicating, Color(1.0, 0.6, 0.05), Color8(150, 105, 40))
+	out["part_now"] = PAINT
+	return out
 
 
 ## Any pooled body this frame (a car, a bus, a person, an animal): its mesh
@@ -754,6 +889,10 @@ func place_body(key: String, build: Callable, at: Vector2, heading: float, eleva
 
 
 func end_cars() -> void:
+	for kind in _model_nodes:
+		var pool: Array = _model_nodes[kind]
+		for i in range(_model_used[kind], pool.size()):
+			pool[i].visible = false
 	for i in range(_cars_used, _car_nodes.size()):
 		for node in _car_nodes[i]:
 			node.visible = false
@@ -789,12 +928,26 @@ func end_cars() -> void:
 		multi.visible_instance_count = rows.size()
 
 
-## rtx-scene-readiness step 6: every other vehicle as simple shaded boxes
-## (car.gdshader parts) - buses, trucks, tractors (a plough, its beacon),
-## motorhomes, caravans, motorbikes and mopeds, bicycles and e-scooters (their
-## riders while ridden), train and tram cars. `extra`: "riding", "fallen",
+## Other vehicles use close-range models where available and the existing
+## procedural meshes farther away. `extra`: "riding", "fallen",
 ## "plough", "beacon", "profile" (a train car's), "rider" (its colour).
 func vehicle(kind: String, at: Vector2, heading: float, length: float, width: float, color: Color, lamps := 0, elevation := 0.0, extra := {}) -> void:
+	if opaque and kind in ["bus", "truck", "motorcycle", "camper_van", "tractor", "trailer", "e_scooter"] and \
+			(kind != "tractor" or not extra.get("plough", false)) and \
+			at.distance_to(windshield_at if windshield_on else view_centre) < (16.0 if kind == "bus" else 22.0):
+		var model_kind := "city_bus" if kind == "bus" else "box_truck" if kind == "truck" else "caravan" if kind == "trailer" else kind
+		place_model_car(model_kind, at, heading, length, width, color, elevation, lamps)
+		var detail_key := "vd|%s|%.2f|%.2f|%d|%s" % [kind, length, width, lamps, str(extra)]
+		var build := func() -> Dictionary:
+			var out := model_car_details(length, width, 0, lamps, 0.8,
+				kind in ["truck", "motorcycle", "camper_van"])
+			if kind == "motorcycle" and extra.get("riding", false):
+				_rider(out, -length * 0.15, length * 0.06, 0.95, Color8(34, 34, 38), color.lightened(0.15))
+			elif kind == "e_scooter" and extra.get("riding", false):
+				_rider(out, -length * 0.06, length * 0.14, 0.85, color, Color8(236, 196, 160))
+			return out
+		place_body(detail_key, build, at, heading, elevation)
+		return
 	var key := "v|%s|%.2f|%.2f|%s|%d|%s" % [kind, length, width, color.to_html(false), lamps, extra]
 	var fallen: bool = extra.get("fallen", false)
 	place_body(key, func() -> Dictionary: return vehicle_arrays(kind, length, width, color, lamps, extra), at, heading,
@@ -889,10 +1042,23 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 			if extra.get("riding", false):
 				_rider(out, -hl * 0.3, hl * 0.12, 0.95, Color8(34, 34, 38), color.lightened(0.15))
 		"bicycle":
-			_wheel(out, -hl * 0.62, 0.0, 0.33, 0.06, tyre)
-			_wheel(out, hl * 0.62, 0.0, 0.33, 0.06, tyre)
-			_car_box(out, -hl * 0.62, hl * 0.62, -0.03, 0.03, 0.5, 0.62, color.darkened(0.25))
-			_car_box(out, hl * 0.45, hl * 0.55, -hw * 0.9, hw * 0.9, 0.95, 1.0, tyre)
+			var rear := Vector3(-hl * 0.62, 0.33, 0.0)
+			var front := Vector3(hl * 0.62, 0.33, 0.0)
+			var crank := Vector3(-hl * 0.04, 0.38, 0.0)
+			var saddle := Vector3(-hl * 0.20, 0.86, 0.0)
+			var fork := Vector3(hl * 0.39, 0.88, 0.0)
+			_bike_wheel(out, rear, 0.33)
+			_bike_wheel(out, front, 0.33)
+			for tube in [[rear, saddle], [rear, crank], [saddle, crank], [saddle, fork], [fork, crank], [fork, front]]:
+				_round_limb(out, tube[0], tube[1], 0.019, 0.019, color, PAINT, 0)
+			_round_limb(out, saddle, saddle + Vector3(-0.03, 0.13, 0.0), 0.016, 0.014, Color8(95, 100, 104), PAINT, 0)
+			_car_box(out, saddle.x - 0.13, saddle.x + 0.08, -0.06, 0.06, 0.99, 1.04, Color8(35, 36, 39))
+			_round_limb(out, fork, fork + Vector3(0.04, 0.17, 0.0), 0.016, 0.016, Color8(95, 100, 104), PAINT, 0)
+			_car_box(out, fork.x - 0.02, fork.x + 0.10, -hw * 0.9, hw * 0.9, 1.04, 1.07, tyre)
+			_round_part(out, crank, Vector3(0.055, 0.055, 0.016), Color8(75, 79, 82), PAINT, 0)
+			for side: float in [-1.0, 1.0]:
+				_round_limb(out, crank + Vector3(0.0, 0.0, side * 0.03), crank + Vector3(0.08 * side, 0.0, side * 0.08),
+					0.01, 0.01, Color8(82, 86, 88), PAINT, 0)
 			if extra.get("riding", false):
 				_rider(out, -hl * 0.37, hl * 0.18, 0.8, color, skin)
 		"e_scooter":
@@ -1134,6 +1300,10 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 	var roof := 1.95 if van else 1.42
 	if not van and str(shape[5]) == "rails" and shape[2] > -0.7:
 		roof = 1.68  # SUV; estates keep the lower roofline
+	elif not van and str(shape[5]) == "stripes":
+		roof = 1.29
+	elif not van and length < 4.0:
+		roof = 1.5
 	var tyre := Color8(28, 28, 28)
 	out["part_now"] = RUBBER
 	for x: float in [hl * 0.64, -hl * 0.64]:
@@ -1141,13 +1311,6 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 			_wheel(out, x, y + signf(y) * 0.05, 0.31, 0.28, tyre, detail)  # 5 cm out past the body
 	out["part_now"] = METAL_PAINT
 	_car_shell(out, hl, hw, sill, color)
-	# Dark arch liners make the tyre sit inside the body, instead of on its side.
-	if detail > 0:
-		for x: float in [hl * 0.64, -hl * 0.64]:
-			for side: float in [-1.0, 1.0]:
-				out["part_now"] = RUBBER
-				_round_part(out, Vector3(x, 0.34, side * hw * 0.76), Vector3(0.39, 0.39, 0.015), Color8(29, 30, 31), RUBBER, 0)
-			out["part_now"] = METAL_PAINT
 	var top := color.darkened(0.12)
 	var glass_front: float = shape[0]
 	var roof_front: float = shape[1]
@@ -1205,16 +1368,26 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 		out["part_now"] = LAMP if sign == 2 else PAINT
 		_car_box(out, -hl * 0.22, -hl * 0.06, -hw * 0.42, hw * 0.42, roof + 0.08, roof + 0.24, CAR_SIGN if sign == 2 else CAR_SIGN.darkened(0.45))
 	_car_lamps(out, hl, hw, lamps)
+	# Bumpers and grille sit below the lamp assemblies; their depth helps the
+	# silhouette read correctly from the front and in the rear-view mirror.
+	out["part_now"] = RUBBER
+	_car_box(out, hl - 0.04, hl + 0.035, -hw * 0.83, hw * 0.83, 0.28, 0.36, Color8(37, 39, 41))
+	_car_box(out, -hl - 0.035, -hl + 0.04, -hw * 0.83, hw * 0.83, 0.28, 0.36, Color8(37, 39, 41))
+	if detail > 0:
+		_car_box(out, hl + 0.022, hl + 0.032, -hw * 0.42, hw * 0.42, 0.43, 0.54, Color8(27, 30, 32))
+		for height: float in [0.46, 0.51]:
+			_car_box(out, hl + 0.033, hl + 0.038, -hw * 0.39, hw * 0.39, height, height + 0.008, Color8(115, 123, 125))
+	out["part_now"] = PAINT
 	return out
 
 
 ## Step 4: the lamps, emissive while lit (car.gdshader's LAMP part): head
 ## and tail lights by the engine, brighter brake lights, reversing lights,
 ## the indicators on their side (left -z, right +z) while they blink on.
-static func _car_lamps(out: Dictionary, hl: float, hw: float, lamps: int) -> void:
+static func _car_lamps(out: Dictionary, hl: float, hw: float, lamps: int, height := 0.5) -> void:
 	var lamp := func(x0: float, x1: float, y_mid: float, half: float, lit: bool, on_color: Color, off_color: Color) -> void:
 		out["part_now"] = LAMP if lit else PAINT
-		_car_box(out, x0, x1, y_mid - half, y_mid + half, 0.5, 0.68, on_color if lit else off_color)
+		_car_box(out, x0, x1, y_mid - half, y_mid + half, height, height + 0.18, on_color if lit else off_color)
 	var on := lamps & LAMPS_ON != 0
 	for side: float in [1.0, -1.0]:
 		lamp.call(hl - 0.04, hl + 0.02, side * hw * 0.62, 0.16, on, Color(1.0, 0.97, 0.85), Color8(200, 200, 190))
@@ -1266,6 +1439,18 @@ static func _car_shell(out: Dictionary, hl: float, hw: float, sill: float, color
 			var j := (i + 1) % 8
 			_tri(out, Vector3(0.0, sill, 0.0), rings[-1][i], rings[-1][j], color, Vector3.UP, key)
 			_tri(out, Vector3(0.0, 0.28, 0.0), rings[0][j], rings[0][i], color.darkened(0.3), Vector3.DOWN, key)
+
+
+static func _bike_wheel(out: Dictionary, hub: Vector3, radius: float) -> void:
+	for i in 16:
+		var angle := TAU * i / 16.0
+		var next := TAU * (i + 1) / 16.0
+		var rim := hub + Vector3(cos(angle) * radius, sin(angle) * radius, 0.0)
+		var rim_next := hub + Vector3(cos(next) * radius, sin(next) * radius, 0.0)
+		_round_limb(out, rim, rim_next, 0.027, 0.027, Color8(27, 28, 30), RUBBER, 0)
+		if i % 2 == 0:
+			_round_limb(out, hub, rim, 0.005, 0.005, Color8(150, 155, 158), PAINT, 0)
+	_round_part(out, hub, Vector3(0.045, 0.045, 0.045), Color8(107, 111, 114), PAINT, 0)
 
 
 static func _wheel(out: Dictionary, x: float, y: float, radius: float, width: float, color: Color, detail := 1) -> void:

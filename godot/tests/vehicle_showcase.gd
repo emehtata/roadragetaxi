@@ -1,4 +1,4 @@
-## Fixed vehicle lineup for visual review. Usage: -- /tmp/vehicles.png day|evening|night
+## Fixed vehicle lineup for visual review. Usage: -- /tmp/vehicles.png day|evening|night close|cars|commercial|bikes
 extends SceneTree
 const B3 := preload("res://buildings_3d.gd")
 const EntityLayer := preload("res://entity_layer.gd")
@@ -10,12 +10,14 @@ func capture() -> void:
 	var args := OS.get_cmdline_user_args()
 	var output: String = args[0] if args.size() else "/tmp/vehicles.png"
 	var light: String = args[1] if args.size() > 1 else "day"
+	var group: String = args[2] if args.size() > 2 else "cars"
+	var close := group == "close"
 	root.size = Vector2i(1400, 800)
 	B3.use_shaded()
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 19.0
-	camera.position = Vector3(12.0, 15.0, 24.0)
+	camera.size = 5.5 if close else 9.0 if group == "bikes" else 24.0 if group == "commercial" else 18.0
+	camera.position = Vector3(6.0, 3.1, 7.0) if close else Vector3(12.0, 15.0, 24.0)
 	root.add_child(camera)
 	camera.look_at(Vector3(0.0, 0.6, 0.0))
 	var env := Environment.new()
@@ -41,15 +43,44 @@ func capture() -> void:
 		["truck", 8.0, 2.5, Color8(70, 115, 145), [], 0],
 		["motorcycle", 2.1, 0.8, Color8(195, 47, 45), [], 0],
 		["bicycle", 1.8, 0.6, Color8(62, 158, 102), [], 0],
+		["car", 3.8, 1.7, Color8(95, 175, 132), EntityLayer.CAR_SHAPES[6], 0],
+		["car", 5.0, 1.9, Color8(164, 128, 63), EntityLayer.CAR_SHAPES[4], 0],
+		["camper_van", 6.0, 2.2, Color8(234, 228, 209), [], 0],
+		["tractor", 4.0, 2.0, Color8(205, 120, 35), [], 0],
+		["trailer", 5.0, 2.1, Color8(240, 236, 222), [], 0],
+		["e_scooter", 1.3, 0.5, Color8(35, 155, 115), [], 0],
 	]
-	for i in rows.size():
+	var selected := [0] if close else [0, 1, 2, 3, 4, 10, 11] if group == "cars" else [5, 6, 7, 12, 13, 14] if group == "commercial" else [8, 9, 15]
+	for j in selected.size():
+		var i: int = selected[j]
 		var row: Array = rows[i]
-		var arrays: Dictionary = B3.car_arrays(row[1], row[2], row[3], row[4], row[5], B3.LAMPS_ON) if row[0] == "car" else B3.vehicle_arrays(row[0], row[1], row[2], row[3], B3.LAMPS_ON, {})
-		var mesh := B3._mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], PackedVector2Array(), PackedFloat32Array(), arrays["part"])
-		var node := B3._instance(mesh, B3._shared["car"], B3.LAYER_BUILDINGS)
-		node.position = Vector3((i % 5 - 2) * 5.2, 0.0, (i / 5 - 0.5) * 8.0)
-		node.rotation.y = 0.45 if i % 2 else -0.4
+		var kind: String = B3.car_model_kind(row[4], row[1]) if row[0] == "car" else "city_bus" if row[0] == "bus" else "box_truck" if row[0] == "truck" else "caravan" if row[0] == "trailer" else row[0]
+		var node: Node3D
+		var heading := 0.45 if i % 2 else -0.4
+		if B3.MODEL_SCENES.has(kind):
+			node = B3.MODEL_SCENES[kind].instantiate()
+			var source: Vector2 = B3.MODEL_SIZE[kind]
+			node.scale = Vector3(row[1] / source.y, 1.0, row[2] / source.x) if kind == "city_bus" else Vector3(row[2] / source.x, 1.0, row[1] / source.y)
+			node.rotation.y = heading + (0.0 if kind == "city_bus" else PI / 2.0)
+		else:
+			var arrays: Dictionary = B3.vehicle_arrays(row[0], row[1], row[2], row[3], B3.LAMPS_ON, {})
+			var mesh := B3._mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], PackedVector2Array(), PackedFloat32Array(), arrays["part"])
+			node = B3._instance(mesh, B3._shared["car"], B3.LAYER_BUILDINGS)
+			node.rotation.y = heading
+		var columns := 3 if group == "commercial" else 4 if group == "cars" else 3
+		var gap := 9.0 if group == "commercial" else 5.7 if group == "cars" else 2.4
+		node.position = Vector3.ZERO if close else Vector3((j % columns - (columns - 1) * 0.5) * gap, 0.0,
+			(j / columns - (selected.size() / columns - 1) * 0.5) * (8.0 if group == "commercial" else gap))
 		root.add_child(node)
+		if B3.MODEL_SCENES.has(kind):
+			var details := B3.model_car_details(row[1], row[2], row[5] if row[0] == "car" else 0, B3.LAMPS_ON,
+				0.8 if row[0] in ["bus", "truck", "motorcycle", "tractor"] else 0.5,
+				kind in ["saloon", "hatchback", "estate", "suv", "pickup", "sports", "city_car", "panel_van", "box_truck", "motorcycle", "camper_van"])
+			var detail_mesh := B3._mesh(details["verts"], details["colors"], details["roof_mask"], PackedVector2Array(), PackedFloat32Array(), details["part"])
+			var detail_node := B3._instance(detail_mesh, B3._shared["car"], B3.LAYER_BUILDINGS)
+			detail_node.position = node.position
+			detail_node.rotation.y = heading
+			root.add_child(detail_node)
 	for i in 8:
 		await process_frame
 	await RenderingServer.frame_post_draw
