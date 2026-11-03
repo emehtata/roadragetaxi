@@ -139,7 +139,7 @@ def test_cold_start_timeout_leaves_runtime_streaming_as_the_fallback(monkeypatch
 def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch):
     synced_steps = []
 
-    def steps(world):
+    def steps(world, remaining_budget=None):
         synced_steps.append("start")
         yield map_sync.CHUNK_INPUTS_READY  # the chunks are rebuilt from here; the graphs continue
         assert grown  # reported before the sync ends
@@ -173,40 +173,59 @@ def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch)
     assert manager.integrated == before
 
 
-def test_tile_merge_and_map_sync_share_one_tick_budget(monkeypatch):
+def test_tile_merge_and_real_grid_sync_share_one_tick_budget(monkeypatch):
     now = [0.0]
     monkeypatch.setattr(map_sync.time, "perf_counter", lambda: now[0])
     monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 0.0)
-    monkeypatch.setattr(map_sync, "MAP_SYNC_BUDGET_S", 0.004)
-    stages = []
+    slices = []
 
-    def sync_steps(_world):
-        while True:
-            now[0] += 0.002
-            stages.append("step")
-            yield "stage"
+    class Grid:
+        def start_rebuild(self, ways):
+            pass
 
-    monkeypatch.setattr(map_sync, "map_sync_steps", sync_steps)
+        def advance_rebuild(self, budget):
+            slices.append(budget)
+            now[0] += budget
+            return False
+
     manager = FakeManager()
-    budgets = []
 
     def integrate(*, budget_s):
-        budgets.append(budget_s)
         now[0] += 0.003
 
     manager.integrate_completed_tiles = integrate
-    streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager, ways=[]), lambda *args: None)
+    world = SimpleNamespace(auto_fetch_manager=manager, ways=[], sceneries=[], spatial_grid=Grid())
+    streamer = map_sync.MapStreamer(world, lambda *args: None)
     manager.revision = 2
-    streamer.tick(0, 0, 0, 0)  # start the sync
     streamer.tick(0, 0, 0, 0)
+    started = now[0]
+    streamer.tick(0, 0, 0, 0)
+    assert len(slices) == 1 and abs(slices[0] - 0.001) < 1e-9
+    assert abs(now[0] - started - 0.004) < 1e-9
 
-    assert budgets == [0.004, 0.004]
-    assert stages == ["step"]  # the remaining 1 ms doesn't fund another 2 ms sync unit
+
+def test_waiting_for_taxi_worker_returns_without_polling_until_deadline(monkeypatch):
+    monkeypatch.setattr(map_sync.time, "perf_counter", lambda: 0.0)
+    manager = FakeManager()
+    streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager), lambda *args: None)
+    polls = []
+
+    def waiting():
+        while True:
+            polls.append(1)
+            assert len(polls) <= 2
+            yield map_sync.TAXI_WAIT
+
+    streamer._sync = waiting()
+    streamer.tick(0, 0, 0, 0)
+    assert len(polls) == 1
+    streamer.tick(0, 0, 0, 0)
+    assert len(polls) == 2
 
 
 def test_the_status_tells_the_client_what_the_map_is_doing(monkeypatch):
     """For the loading sign: fetching, merging, syncing, building, then ""."""
-    monkeypatch.setattr(map_sync, "map_sync_steps", lambda world: iter([None]))
+    monkeypatch.setattr(map_sync, "map_sync_steps", lambda world, remaining_budget=None: iter([None]))
     monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 0.0)
     manager = FakeManager()
     manager.fetching = False
@@ -231,7 +250,7 @@ def test_the_status_tells_the_client_what_the_map_is_doing(monkeypatch):
 def test_a_settled_merge_waits_briefly_for_a_fetch_in_flight(monkeypatch):
     """The lookahead tile is requested right after the core window, or a
     moment later: one whole-world sync for both, not one each."""
-    monkeypatch.setattr(map_sync, "map_sync_steps", lambda world: iter([None]))
+    monkeypatch.setattr(map_sync, "map_sync_steps", lambda world, remaining_budget=None: iter([None]))
     monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 0.0)
 
     def merged(fetching=True):
