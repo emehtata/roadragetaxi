@@ -96,7 +96,7 @@ def test_visual_profiles_stay_green_with_a_striped_restaurant_car():
     assert vehicle_profile("wagon", ["something-new"]) == "standard"
     assert vehicle_profile("locomotive", []) == "locomotive"
     for name, (base, _) in PROFILES.items():
-        if not name.startswith("tram_"):  # (trams wear their city's colours: Tampere's are red)
+        if not name.startswith("tram_") and name != "ferry":  # (trams wear their city's colours, Tampere's red; ferries yellow)
             assert base[1] > base[0] and base[1] > base[2]  # green dominates every VR vehicle
     assert PROFILES["restaurant"][1] == (245, 245, 240)  # white stripe
 

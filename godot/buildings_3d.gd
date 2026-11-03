@@ -845,6 +845,15 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 			_car_box(out, hl * 0.72, hl * 0.82, -hw, hw, 1.05, 1.1, tyre)
 			if extra.get("riding", false):
 				_rider(out, -hl * 0.12, hl * 0.28, 0.85, color, skin)
+		"ferry":  # a road ferry (ferries.py): the car deck level with the landing, yellow side rails, a wheelhouse on one side
+			var hull: Color = RS.TRAIN_PROFILES["ferry"][0]
+			_car_box(out, -hl, hl, -hw, hw, -0.9, -0.05, hull.darkened(0.15))
+			_car_box(out, -hl, hl, -hw + 0.5, hw - 0.5, -0.05, 0.02, RS.TRAIN_PROFILES["ferry"][1])
+			for y: float in [hw - 0.5, -hw]:
+				_car_box(out, -hl * 0.92, hl * 0.92, y, y + 0.5, -0.05, 1.1, hull)
+			_car_box(out, -4.0, 4.0, hw - 2.0, hw - 0.5, 1.1, 3.6, Color8(238, 238, 232))
+			_part(out, GLASS_PART, -3.8, 3.8, hw - 2.02, hw - 0.48, 3.6, 4.6, CAR_GLASS)
+			_car_box(out, -4.2, 4.2, hw - 2.2, hw - 0.3, 4.6, 4.8, Color8(238, 238, 232))
 		"train", "tram":
 			var tram := kind == "tram"
 			var style: Array = RS.TRAIN_PROFILES.get(extra.get("profile", "standard"), RS.TRAIN_PROFILES["standard"])

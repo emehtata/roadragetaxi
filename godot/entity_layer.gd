@@ -66,6 +66,7 @@ var underground := false  # the taxi below ground (state player.map_level): only
 var covered := func(_at: Vector2, _layer: int) -> bool: return false  # MapLayer.covered (headlights under a bridge)
 var _trains: Node2D  # trains, z 14: above the canopies and rail bridges (z 13), drawn last
 var _trains_drawn := 0
+var _ferries: Node2D  # ferries, z -1 (TRACKS_UNDER_3D_Z with 3D car bodies): under the vehicles on their decks
 var _brawl_punches := {}  # brawl id -> [last action seq seen, when its punch began]
 const BRAWL_JACKETS := [[40, 40, 48], [120, 30, 30]]
 const PLAYER_JACKET := [255, 217, 64]  # the player's own on-foot colour
@@ -134,6 +135,10 @@ func _ready() -> void:
 	_trains.z_index = 2
 	_trains.draw.connect(_draw_trains)
 	add_child(_trains)
+	_ferries = Node2D.new()
+	_ferries.z_index = -1
+	_ferries.draw.connect(_draw_ferries)
+	add_child(_ferries)
 	_tracks = Node2D.new()
 	_tracks.z_index = -2
 	add_child(_tracks)
@@ -331,6 +336,7 @@ func update_frame(delta: float) -> void:
 		_reflectors.queue_redraw()
 	if _trains != null:
 		_trains.queue_redraw()
+		_ferries.queue_redraw()
 		_lay_track()
 
 
@@ -341,6 +347,7 @@ func update_frame(delta: float) -> void:
 ## viewport diagonal away.
 func _lay_track() -> void:
 	_tracks.z_index = TRACKS_UNDER_3D_Z if Buildings3D.current != null else -2  # 3D car bodies: the tracks go under them
+	_ferries.z_index = TRACKS_UNDER_3D_Z if Buildings3D.current != null else -1  # and the ferries, under the cars on their decks
 	if not is_equal_approx(_last_track_px, px_per_m):
 		_last_track_px = px_per_m
 		for trail in _trails:  # line widths are in pixels
@@ -590,6 +597,8 @@ static func train_nose(train: Dictionary, next: Dictionary, t: float, origin: Ve
 	if cars.is_empty():
 		return []
 	var car: Array = cars[0]
+	if str(car[4]) == "ferry":  # no train headlights
+		return []
 	var to: Array = next.get("cars", cars)[0] if not next.get("cars", []).is_empty() else car
 	var heading := lerp_angle(float(car[2]), float(to[2]), t)
 	var f := _forward(heading)
@@ -1996,6 +2005,15 @@ func _draw() -> void:
 ## from the same sample as everything else.
 func _draw_trains() -> void:
 	_trains_drawn = 0
+	_draw_train_cars(_trains, false)
+
+
+## Ferries, under the vehicles they carry.
+func _draw_ferries() -> void:
+	_draw_train_cars(_ferries, true)
+
+
+func _draw_train_cars(node: Node2D, ferries: bool) -> void:
 	if _frame.is_empty() or underground or Buildings3D.opaque:  # --outdoor-3d: _trains_3d, in the body pool's frame
 		return
 	var a: Dictionary = _frame["a"]
@@ -2009,10 +2027,10 @@ func _draw_trains() -> void:
 			var car: Array = train["cars"][i]
 			var to: Array = next["cars"][i] if same_cars else car
 			var c := MapMath.point(origin, lerpf(car[0], to[0], t), lerpf(car[1], to[1], t))
-			if not view_rect.has_point(c):
+			if (str(car[4]) == "ferry") != ferries or not view_rect.grow(float(car[3])).has_point(c):
 				continue
-			_train_car(c, lerp_angle(car[2], to[2], t), car[3], str(car[4]), _trains)
-		_trains_drawn += 1
+			_train_car(c, lerp_angle(car[2], to[2], t), car[3], str(car[4]), node)
+		_trains_drawn += 0 if ferries else 1
 
 
 ## Step 6 (--outdoor-3d): every train and tram car in view as a 3D car, up on a rail deck where it crosses one.
@@ -2028,8 +2046,8 @@ func _trains_3d(a: Dictionary, b: Dictionary, t: float) -> void:
 			if not view_rect.has_point(c):
 				continue
 			var profile := str(car[4])
-			var width: float = RS.TRAM_WIDTH_M if profile.begins_with("tram") else RS.TRAIN_WIDTH_M
-			Buildings3D.current.vehicle("tram" if profile.begins_with("tram") else "train", c, lerp_angle(car[2], to[2], t), float(car[3]), width,
+			var width: float = RS.train_width(profile)
+			Buildings3D.current.vehicle("ferry" if profile == "ferry" else "tram" if profile.begins_with("tram") else "train", c, lerp_angle(car[2], to[2], t), float(car[3]), width,
 				Color.WHITE, 0, float(rail_height.call(c)), {"profile": profile})
 		_trains_drawn += 1
 
@@ -2130,11 +2148,15 @@ func _train_car(c: Vector2, heading: float, length: float, profile: String, node
 	var f := _forward(heading)
 	var r := _right(heading)
 	var hl := length / 2.0
-	var hw := (RS.TRAM_WIDTH_M if profile.begins_with("tram") else RS.TRAIN_WIDTH_M) / 2.0
+	var hw := RS.train_width(profile) / 2.0
 	var body := _rect(c, f, r, hl, -hl, hw)
 	if not drawable(body):  # a car of no length or a bad heading
 		return
 	node.draw_colored_polygon(body, style[0])
+	if profile == "ferry":  # the car deck inside its yellow rails, a wheelhouse on one side
+		node.draw_colored_polygon(_rect(c, f, r, hl - 0.6, -hl + 0.6, hw - 1.0), style[1])
+		node.draw_colored_polygon(_rect(c + r * (hw - 0.9), f, r, 4.0, -4.0, 0.9), RS.TRAIN_PROFILES["ferry"][0].darkened(0.2))
+		return
 	if style[1] != null and profile == "locomotive":
 		node.draw_colored_polygon(_rect(c, f, r, hl, hl - 3.0, hw), style[1])
 	elif style[1] != null:

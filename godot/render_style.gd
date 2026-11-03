@@ -35,8 +35,15 @@ const TRAIN_PROFILES := {
 	# Trams (trams.py): their sections, a light roof stripe down the middle.
 	"tram_helsinki": [Color8(20, 140, 70), Color8(235, 240, 235)],
 	"tram_tampere": [Color8(185, 25, 40), Color8(240, 240, 240)],
+	# A road ferry (ferries.py): the yellow hull, its grey car deck.
+	"ferry": [Color8(236, 186, 30), Color8(128, 132, 136)],
 }
 const TRAM_WIDTH_M := 2.4  # trams.py TRAM_WIDTH_M
+const FERRY_WIDTH_M := 12.0  # ferries.py FERRY_WIDTH_M
+
+
+static func train_width(profile: String) -> float:
+	return FERRY_WIDTH_M if profile == "ferry" else TRAM_WIDTH_M if profile.begins_with("tram") else TRAIN_WIDTH_M
 
 # Pedestrians (appearance isn't sent: these are the defaults, with the
 # pedestrian's own colour as clothing)
