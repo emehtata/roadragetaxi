@@ -667,7 +667,8 @@ def advance_simulation(
             railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), now)
     border_watch = getattr(world, "border_watch", None)
     if border_watch is not None:  # out of Finland: the HUD says so (state "abroad", borders.py)
-        border_watch.update(dt, car.x, car.y)
+        player = player_pedestrian if on_foot else car  # the driver, in the taxi or walking
+        border_watch.update(dt, player.x, player.y)
     ferry_mgr = getattr(world, "ferry_mgr", None)
     if ferry_mgr is not None and ferry_mgr.routes:
         with frame_profiler.section("ferries"):
