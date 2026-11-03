@@ -83,6 +83,7 @@ jobs:
       - name: Client tests
         run: |
           ./godot-bin --headless --path godot --script res://tests/run_tests.gd
+          ./godot-bin --headless --path godot --script res://tests/audit_menu_safety.gd
           ./godot-bin --headless --path godot --script res://tests/animal_audio.gd
           ./godot-bin --headless --path godot --script res://tests/rtx_trial.gd
       - name: Server + client selftest (sample map, offline)
