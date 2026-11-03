@@ -440,6 +440,8 @@ static var _car_meshes := {}  # [body, shadow caster] meshes by look
 var _cars_root: Node3D
 var _car_nodes: Array = []  # pooled [body, caster] instances
 var _cars_used := 0
+var _animal_rows := {}  # look -> [first model parameters, transforms this frame]
+var _animal_batches := {}  # look -> one MultiMeshInstance3D
 const CAR_GLASS := Color8(52, 74, 92)  # render_style.WINDSHIELD
 const CAR_SIGN := Color8(240, 220, 20)  # render_style.TAXI_SIGN
 enum { PAINT, RUBBER, GLASS_PART, LAMP, METAL_PAINT }  # car.gdshader's parts (UV2.x): METAL_PAINT the four-wheelers' bodywork
@@ -679,6 +681,7 @@ func track(owner: Node2D, lines: PackedVector2Array, colors: PackedColorArray, w
 func begin_cars() -> void:
 	_cars_used = 0
 	_puffs_used = 0
+	_animal_rows.clear()
 
 
 ## Step 6: smoke puffs (crash smoke, exhaust) - pooled translucent spheres,
@@ -722,12 +725,12 @@ func car(at: Vector2, heading: float, length: float, width: float, color: Color,
 ## built once per look (`key`) by `build` (car_arrays-style arrays), placed
 ## on the road at `at` facing `heading`, `elevation` up (a deck), rolled
 ## `roll` about its length (fallen over).
-func place_body(key: String, build: Callable, at: Vector2, heading: float, elevation := 0.0, roll := 0.0) -> void:
+func place_body(key: String, build: Callable, at: Vector2, heading: float, elevation := 0.0, roll := 0.0, organic := false) -> void:
 	if not _car_meshes.has(key):
 		if _car_meshes.size() > 1024:  # ponytail: drop the whole cache, an LRU if colours ever vary per frame
 			_car_meshes.clear()
 		var arrays: Dictionary = build.call()
-		_car_meshes[key] = [_mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], PackedVector2Array(), PackedFloat32Array(), arrays["part"]),
+		_car_meshes[key] = [_mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], PackedVector2Array(), PackedFloat32Array(), arrays["part"], organic),
 			_mesh(arrays["shadow"], PackedColorArray())]
 	if _cars_used == _car_nodes.size():
 		var body := _instance(_car_meshes[key][0], _shared.get("car", _shared["material"]), LAYER_BUILDINGS)
@@ -742,6 +745,8 @@ func place_body(key: String, build: Callable, at: Vector2, heading: float, eleva
 	for i in 2:
 		var node: MeshInstance3D = _car_nodes[_cars_used][i]
 		node.mesh = _car_meshes[key][i]
+		if i == 0:
+			node.material_override = _shared.get("organic", _shared["car"]) if organic else _shared.get("car", _shared["material"])
 		node.transform = place
 		node.visible = i == 0 or not opaque
 	_cars_used += 1
@@ -753,6 +758,34 @@ func end_cars() -> void:
 			node.visible = false
 	for i in range(_puffs_used, _puffs.size()):
 		_puffs[i].visible = false
+	if _animal_batches.size() > 64:
+		for old_key in _animal_batches.keys():
+			if not _animal_rows.has(old_key):
+				_animal_batches[old_key].queue_free()
+				_animal_batches.erase(old_key)
+	for key in _animal_batches:
+		_animal_batches[key].multimesh.visible_instance_count = 0
+	for key in _animal_rows:
+		var rows: Array = _animal_rows[key]
+		if not _animal_batches.has(key):
+			var spec: Array = rows[0]
+			var arrays := animal_arrays(spec[0], spec[1], spec[2], spec[3], spec[4])
+			var multi := MultiMesh.new()
+			multi.transform_format = MultiMesh.TRANSFORM_3D
+			multi.mesh = _mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], PackedVector2Array(), PackedFloat32Array(), arrays["part"], true)
+			var node := MultiMeshInstance3D.new()
+			node.multimesh = multi
+			node.material_override = _shared["organic"]
+			node.layers = LAYER_BUILDINGS
+			node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			_cars_root.add_child(node)
+			_animal_batches[key] = node
+		var multi: MultiMesh = _animal_batches[key].multimesh
+		if multi.instance_count < rows.size():
+			multi.instance_count = rows.size()
+		for i in rows.size():
+			multi.set_instance_transform(i, rows[i][5])
+		multi.visible_instance_count = rows.size()
 
 
 ## rtx-scene-readiness step 6: every other vehicle as simple shaded boxes
@@ -903,83 +936,188 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 ## Step 6: a person, a dog, a larger wild animal as pooled boxes, posed by
 ## their animation state; +x the way they face. Lying poses are rolled by
 ## place_body (fallen, sunbathing).
-func person(at: Vector2, heading: float, clothing: Color, pose: String, scale := 1.0, costume := "", elevation := 0.0) -> void:
-	var key := "p|%s|%s|%.2f|%s" % [clothing.to_html(false), pose, scale, costume]
+func person(at: Vector2, heading: float, clothing: Color, pose: String, scale := 1.0, costume := "", elevation := 0.0,
+		variant := 0, winter := false) -> void:
+	var detail := 0 if at.distance_to(windshield_at if windshield_on else view_centre) > 40.0 else 1
+	var key := "p|%s|%s|%.2f|%s|%d|%d|%d" % [clothing.to_html(false), pose, scale, costume, variant, int(winter), detail]
 	var lying := pose == "lying"
-	place_body(key, func() -> Dictionary: return person_arrays(clothing, pose, scale, costume), at, heading, elevation + (0.2 * scale if lying else 0.0),
-		PI / 2.0 if lying else 0.0)
+	place_body(key, func() -> Dictionary: return person_arrays(clothing, pose, scale, costume, variant, winter, detail), at, heading,
+		elevation + (0.2 * scale if lying else 0.0), PI / 2.0 if lying else 0.0, true)
 
 
-func animal(at: Vector2, heading: float, species: String, color: Color, pose: String, size := 1.0) -> void:
-	var key := "a|%s|%s|%s|%.2f" % [species, color.to_html(false), pose, size]
-	place_body(key, func() -> Dictionary: return animal_arrays(species, color, pose, size), at, heading)
+func animal(at: Vector2, heading: float, species: String, color: Color, pose: String, size := 1.0, elevation := 0.0) -> void:
+	var detail := 0 if at.distance_to(windshield_at if windshield_on else view_centre) > 40.0 else 1
+	var key := "a|%s|%s|%s|%.2f|%d" % [species, color.to_html(false), pose, size, detail]
+	if not _animal_rows.has(key):
+		_animal_rows[key] = []
+	_animal_rows[key].append([species, color, pose, size, detail,
+		Transform3D(Basis(Vector3.UP, heading), to_3d(at, ROAD_M + 0.016 + elevation))])
 
 
-const PERSON_LEGS := Color8(35, 35, 45)  # render_style.PED_LEGS
-const PERSON_SKIN := Color8(238, 185, 145)  # render_style.PED_HEAD
+const SKIN_TONES := [Color8(232, 184, 150), Color8(191, 137, 103), Color8(145, 93, 66), Color8(222, 162, 119)]
+const HAIR_TONES := [Color8(49, 35, 29), Color8(108, 67, 39), Color8(178, 147, 95), Color8(35, 32, 34)]
 
 
-static func person_arrays(clothing: Color, pose: String, scale: float, costume: String) -> Dictionary:
+static func person_arrays(clothing: Color, pose: String, scale: float, costume: String, variant := 0, winter := false, detail := 1) -> Dictionary:
 	var out := _empty_arrays()
-	var k := scale
-	match pose:
-		"sitting":
-			_car_box(out, 0.0, 0.45 * k, -0.17 * k, 0.17 * k, 0.4 * k, 0.52 * k, PERSON_LEGS)
-			_car_box(out, 0.38 * k, 0.5 * k, -0.17 * k, 0.17 * k, 0.0, 0.5 * k, PERSON_LEGS)
-			_car_box(out, -0.12 * k, 0.12 * k, -0.2 * k, 0.2 * k, 0.45 * k, 1.05 * k, clothing)
-			_car_box(out, -0.1 * k, 0.1 * k, -0.1 * k, 0.1 * k, 1.07 * k, 1.32 * k, PERSON_SKIN)
-		"swimming":  # head and shoulders above the water
-			_car_box(out, -0.15 * k, 0.15 * k, -0.2 * k, 0.2 * k, -0.2 * k, 0.1 * k, clothing)
-			_car_box(out, 0.0, 0.2 * k, -0.1 * k, 0.1 * k, 0.1 * k, 0.32 * k, PERSON_SKIN)
-		"riding":  # on horseback (riding schools): the horse under the rider
-			var horse := Color8(224, 93, 46)
-			_car_box(out, -0.9, 0.9, -0.25, 0.25, 0.9, 1.5, horse)
-			for x: float in [0.7, -0.7]:
-				for y: float in [0.15, -0.15]:
-					_car_box(out, x - 0.08, x + 0.08, y - 0.06, y + 0.06, 0.0, 0.95, horse.darkened(0.2))
-			_car_box(out, 0.8, 1.3, -0.12, 0.12, 1.4, 1.9, horse)
-			_car_box(out, -0.15, 0.15, -0.2, 0.2, 1.5, 2.1, clothing)
-			_car_box(out, -0.1, 0.1, -0.1, 0.1, 2.12, 2.36, PERSON_SKIN)
-		_:  # standing, a walking stride either way, lying (rolled flat by person())
-			var phase := int(pose.trim_prefix("walk_")) if pose.begins_with("walk_") else 0
-			var stride := sin(float(phase) * TAU / 4.0) * 0.2 * k
-			for side: float in [1.0, -1.0]:
-				var x := stride * side
-				var lift := maxf(0.0, cos(float(phase) * TAU / 4.0) * side) * 0.1 * k if pose.begins_with("walk_") else 0.0
-				_car_box(out, x - 0.08 * k, x + 0.08 * k, side * 0.1 * k - 0.07 * k, side * 0.1 * k + 0.07 * k, lift, 0.85 * k, PERSON_LEGS)
-				_car_box(out, -x * 0.6 - 0.06 * k, -x * 0.6 + 0.06 * k, side * 0.23 * k - 0.06 * k, side * 0.23 * k + 0.06 * k, 0.82 * k, 1.38 * k, clothing)
-			_car_box(out, -0.12 * k, 0.12 * k, -0.2 * k, 0.2 * k, 0.85 * k, 1.45 * k, clothing)
-			_car_box(out, -0.1 * k, 0.1 * k, -0.1 * k, 0.1 * k, 1.47 * k, 1.72 * k, PERSON_SKIN)
-	if costume in ["santa", "elf"]:  # a red pointed cap
-		var top := 2.36 if pose == "riding" else 1.32 * k if pose == "sitting" else 1.72 * k
-		_car_box(out, -0.11 * k, 0.11 * k, -0.11 * k, 0.11 * k, top, top + 0.12 * k, Color8(190, 30, 35))
+	var k := scale * (0.96 + 0.015 * (variant % 5))
+	var skin: Color = SKIN_TONES[variant % SKIN_TONES.size()]
+	var hair: Color = Color8(150, 150, 145) if variant == 7 else HAIR_TONES[(variant / 2) % HAIR_TONES.size()]
+	var style := 3 if winter else variant % 8
+	var jacket := style in [1, 3, 4, 7]
+	var skirt := style == 5
+	var shorts := style == 6
+	var fabric := Color8(224, 170, 54) if style == 4 else clothing.lerp(Color8(88, 91, 92), 0.22)
+	var trousers := Color8(48, 58, 74) if style % 3 == 0 else Color8(38, 43, 53) if style % 3 == 1 else Color8(79, 72, 66)
+	var offset := -0.32 if pose == "sitting" else 0.68 if pose == "riding" else -1.34 if pose == "swimming" else 0.0
+	var moving := pose.begins_with("walk_") or pose.begins_with("run_")
+	var running := pose.begins_with("run_")
+	var phase := int(pose.split("_")[1]) if moving else 0
+	var swing := sin(float(phase) * TAU / 6.0) * (0.31 if running else 0.21) if moving else 0.0
+	if pose == "riding":
+		var mount := animal_arrays("horse", Color8(139, 91, 57), "stand", scale, detail)
+		for key in ["verts", "colors", "roof_mask", "shadow", "part"]:
+			out[key].append_array(mount[key])
+	if pose != "swimming":
+		for side: float in [-1.0, 1.0]:
+			var z := side * 0.11
+			var lift := maxf(0.0, cos(float(phase) * TAU / 6.0) * side) * (0.15 if running else 0.1) if moving else 0.0
+			var hip := Vector3(0.0, 0.87 + offset, z) * k
+			var knee := Vector3((0.32 if pose == "sitting" else swing * side * 0.5), (0.5 if pose == "sitting" else 0.45 + lift * 0.3) + offset, z * 1.1) * k
+			var ankle := Vector3((0.38 if pose == "sitting" else swing * side), (0.09 if pose != "riding" else 0.82) + (0.0 if pose == "sitting" else lift), z * 1.1) * k
+			_round_limb(out, hip, knee, 0.094 * k, 0.075 * k, trousers, 0, detail)
+			_round_part(out, knee, Vector3(0.076, 0.074, 0.075) * k, trousers, 0, detail)
+			_round_limb(out, knee, ankle, 0.073 * k, 0.046 * k, skin if shorts else trousers, 1 if shorts else 0, detail)
+			_round_part(out, ankle + Vector3(0.06, -0.025, 0.0) * k, Vector3(0.12, 0.055, 0.072) * k, Color8(42, 42, 46), 4, detail)
+	var torso_y := 1.14 + offset
+	_garment_torso(out, torso_y * k, k, fabric, jacket, 0.94 + 0.04 * (variant % 4), detail)
+	if skirt:
+		_garment_skirt(out, offset * k, k, fabric.darkened(0.08), detail)
+	if jacket:
+		_round_limb(out, Vector3(0.168, 0.93 + offset, 0.0) * k, Vector3(0.17, 1.4 + offset, 0.0) * k,
+			0.008 * k, 0.008 * k, fabric.darkened(0.22), 0, detail)
+	if style == 4:
+		for h in [1.05, 1.32]:
+			_round_limb(out, Vector3(0.17, h + offset, -0.17) * k, Vector3(0.17, h + offset, 0.17) * k,
+				0.015 * k, 0.015 * k, Color8(225, 230, 218), 0, detail)
+	for side: float in [-1.0, 1.0]:
+		var shoulder := Vector3(0.0, 1.37 + offset, side * 0.215) * k
+		var elbow := Vector3(-side * 0.045, 1.13 + offset, side * 0.245) * k
+		var wrist := Vector3(-swing * side * 0.75, 0.91 + offset, side * 0.24) * k
+		_round_limb(out, shoulder, elbow, 0.072 * k, 0.057 * k, fabric, 0, detail)
+		_round_part(out, elbow, Vector3(0.058, 0.06, 0.058) * k, fabric, 0, detail)
+		_round_limb(out, elbow, wrist, 0.055 * k, 0.042 * k, fabric if jacket else skin, 0 if jacket else 1, detail)
+		_round_part(out, wrist, Vector3(0.045, 0.055, 0.045) * k, skin, 1, detail)
+	_round_limb(out, Vector3(0.0, 1.42 + offset, 0.0) * k, Vector3(0.0, 1.54 + offset, 0.0) * k,
+		0.055 * k, 0.05 * k, skin, 1, detail)
+	var head := Vector3(0.025, 1.61 + offset, 0.0) * k
+	_round_part(out, head, Vector3(0.118, 0.145, 0.112) * k, skin, 1, detail)
+	_round_part(out, head + Vector3(-0.015, 0.085, 0.0) * k, Vector3(0.122, 0.07, 0.115) * k, hair, 2, detail)
+	if style == 1:
+		_round_part(out, head + Vector3(-0.07, -0.025, 0.0) * k, Vector3(0.09, 0.14, 0.14) * k, fabric.darkened(0.12), 0, detail)
+	if variant % 3 == 1:
+		for side: float in [-1.0, 1.0]:
+			_round_part(out, head + Vector3(-0.04, -0.01, side * 0.1) * k, Vector3(0.05, 0.085, 0.028) * k, hair, 2, detail)
+	if detail > 0:
+		for side: float in [-1.0, 1.0]:
+			_round_part(out, head + Vector3(0.0, -0.01, side * 0.11) * k, Vector3(0.032, 0.045, 0.026) * k, skin, 1, detail)
+			_round_part(out, head + Vector3(0.105, 0.016, side * 0.047) * k, Vector3(0.014, 0.016, 0.015) * k, Color8(49, 42, 38), 3, detail)
+			_round_part(out, head + Vector3(0.112, 0.05, side * 0.048) * k, Vector3(0.013, 0.009, 0.026) * k, hair, 2, detail)
+		_round_part(out, head + Vector3(0.12, -0.022, 0.0) * k, Vector3(0.032, 0.038, 0.029) * k, skin, 1, detail)
+		_round_part(out, head + Vector3(0.113, -0.078, 0.0) * k, Vector3(0.012, 0.008, 0.031) * k, skin.darkened(0.3), 1, detail)
+	if costume in ["santa", "elf"]:
+		_round_part(out, head + Vector3(-0.025, 0.145, 0.0) * k, Vector3(0.14, 0.08, 0.13) * k, Color8(190, 30, 35), 0, detail)
+		_round_limb(out, head + Vector3(0.0, 0.18, 0.0) * k, head + Vector3(-0.04, 0.36, 0.0) * k,
+			0.10 * k, 0.015 * k, Color8(190, 30, 35), 0, detail)
 	return out
 
 
-## A four-legged animal `size` m long: body, legs, neck and head; "feed" the
-## head down to the ground, "walk_a"/"walk_b" its legs mid-stride. Moose get antlers.
-static func animal_arrays(species: String, color: Color, pose: String, size: float) -> Dictionary:
+## One mesh per species, coat, pose and detail level; all animals share the
+## same smooth organic material and the existing pooled body instances.
+static func animal_arrays(species: String, color: Color, pose: String, size: float, detail := 1) -> Dictionary:
 	var out := _empty_arrays()
-	var dims: Array = {"moose": [3.0, 0.7, 1.9], "roe_deer": [1.2, 0.3, 0.8], "fox": [0.75, 0.18, 0.4],
-		"dog": [0.8, 0.22, 0.5]}.get(species, [1.0, 0.25, 0.6])  # length, half width, shoulder height
+	if species in ["small_bird", "pigeon", "crow", "duck", "gull"]:
+		var bird_size: float = {"small_bird": 0.3, "pigeon": 0.48, "crow": 0.52, "duck": 0.58, "gull": 0.65}.get(species, 0.4) * size
+		var flying := pose.begins_with("fly")
+		var body_y := 0.28 if flying else 0.22
+		_round_part(out, Vector3(0.0, body_y, 0.0), Vector3(bird_size * 0.48, bird_size * 0.28, bird_size * 0.27), color, 5, detail)
+		_round_part(out, Vector3(bird_size * 0.38, body_y + bird_size * 0.18, 0.0), Vector3(bird_size * 0.2, bird_size * 0.2, bird_size * 0.18),
+			color.lightened(0.08), 5, detail)
+		_round_limb(out, Vector3(bird_size * 0.48, body_y + bird_size * 0.12, 0.0),
+			Vector3(bird_size * 0.78, body_y + bird_size * 0.08, 0.0), bird_size * 0.09, 0.005,
+			Color8(229, 190, 64) if species in ["duck", "gull"] else Color8(55, 48, 43), 4, detail)
+		for side: float in [-1.0, 1.0]:
+			var wing_y: float = body_y + (bird_size * 0.38 if pose == "fly_1" else -bird_size * 0.12 if flying else 0.06)
+			_round_limb(out, Vector3(0.0, body_y + 0.02, side * bird_size * 0.18),
+				Vector3(-bird_size * 0.12, wing_y, side * bird_size * (1.35 if flying else 0.48)),
+				bird_size * 0.17, bird_size * 0.025, color.darkened(0.08), 5, detail)
+			_round_part(out, Vector3(bird_size * 0.52, body_y + bird_size * 0.2, side * bird_size * 0.105),
+				Vector3(0.012, 0.012, 0.012), Color8(32, 30, 28), 3, detail)
+			if not flying:
+				_round_limb(out, Vector3(-bird_size * 0.1, body_y - bird_size * 0.12, side * bird_size * 0.13),
+					Vector3(-bird_size * 0.04, 0.02, side * bird_size * 0.13), 0.017, 0.012, Color8(96, 73, 53), 4, detail)
+		_round_part(out, Vector3(-bird_size * 0.5, body_y, 0.0), Vector3(bird_size * 0.22, 0.035, bird_size * 0.18),
+			color.darkened(0.12), 5, detail)
+		return out
+	var dims: Array = {"moose": [3.0, 0.7, 1.9], "roe_deer": [1.25, 0.3, 0.9], "fox": [0.8, 0.18, 0.42],
+		"dog": [0.9, 0.23, 0.53], "horse": [2.0, 0.32, 1.45], "hare": [0.5, 0.18, 0.34], "squirrel": [0.32, 0.11, 0.23]}.get(species, [0.9, 0.2, 0.5])
 	var hl: float = dims[0] * 0.5 * size
 	var hw: float = dims[1] * size
 	var shoulder: float = dims[2] * size
-	var leg := shoulder * 0.55
-	var stride := hl * 0.15 if pose == "walk_a" else -hl * 0.15 if pose == "walk_b" else 0.0
-	for x: float in [hl * 0.7, -hl * 0.7]:
-		for y: float in [hw * 0.6, -hw * 0.6]:
-			var swing := stride * signf(x) * signf(y)
-			_car_box(out, x + swing - hl * 0.08, x + swing + hl * 0.08, y - hw * 0.25, y + hw * 0.25, 0.0, leg, color.darkened(0.15))
-	_car_box(out, -hl, hl * 0.8, -hw, hw, leg, shoulder, color)
-	var head_low := pose == "feed"
-	var head_x := hl * (1.05 if head_low else 1.0)
-	var head_bottom := 0.05 if head_low else shoulder * 0.95
-	_car_box(out, hl * 0.7, hl * 0.95, -hw * 0.45, hw * 0.45, head_bottom + shoulder * 0.1, shoulder * 1.05, color)
-	_car_box(out, head_x - hl * 0.1, head_x + hl * 0.25, -hw * 0.4, hw * 0.4, head_bottom, head_bottom + shoulder * 0.28, color.lightened(0.05))
-	if species == "moose" and not head_low:
-		for y: float in [hw * 0.9, -hw * 0.9]:
-			_car_box(out, head_x - hl * 0.12, head_x, y - hw * 0.35, y + hw * 0.35, head_bottom + shoulder * 0.28, head_bottom + shoulder * 0.36, Color8(205, 190, 160))
+	var body_y := shoulder * (0.79 if species in ["moose", "roe_deer", "horse"] else 0.72)
+	var leg_top := shoulder * 0.72
+	var stride := hl * (0.13 if pose == "walk_a" else -0.13 if pose == "walk_b" else 0.0)
+	_round_part(out, Vector3(-hl * 0.12, body_y, 0.0), Vector3(hl * 0.84, shoulder * 0.22, hw), color, 5, detail)
+	_round_part(out, Vector3(hl * 0.46, body_y + shoulder * 0.05, 0.0), Vector3(hl * 0.36, shoulder * 0.27, hw * 0.85),
+		color.lightened(0.04), 5, detail)
+	for x: float in [-hl * 0.64, hl * 0.58]:
+		for side: float in [-1.0, 1.0]:
+			var z := side * hw * 0.66
+			var swing := stride * signf(x) * side
+			var hip := Vector3(x, leg_top, z)
+			var knee := Vector3(x + swing * 0.45, shoulder * 0.36, z)
+			var foot := Vector3(x + swing, 0.06 * size, z)
+			var radius := minf(hw * 0.36, shoulder * 0.085)
+			_round_limb(out, hip, knee, radius, radius * 0.72, color.darkened(0.08), 5, detail)
+			_round_part(out, knee, Vector3(radius * 0.8, radius * 0.8, radius * 0.8), color.darkened(0.08), 5, detail)
+			_round_limb(out, knee, foot, radius * 0.7, radius * 0.46, color.darkened(0.12), 5, detail)
+			_round_part(out, foot + Vector3(0.035 * size, 0.0, 0.0), Vector3(radius * 1.3, 0.045 * size, radius * 0.7),
+				Color8(61, 54, 46) if species in ["moose", "roe_deer", "horse"] else color.darkened(0.23), 4, detail)
+	var feeding := pose == "feed"
+	var head := Vector3(hl * 0.9, shoulder * (0.5 if feeding else 1.03), 0.0)
+	var neck_base := Vector3(hl * 0.55, body_y + shoulder * 0.12, 0.0)
+	_round_limb(out, neck_base, head, hw * 0.72, hw * 0.43, color, 5, detail)
+	_round_part(out, head, Vector3(hl * 0.25, shoulder * 0.18, hw * 0.55), color.lightened(0.05), 5, detail)
+	var muzzle := head + Vector3(hl * (0.22 if species in ["moose", "fox", "dog", "horse"] else 0.14), -shoulder * 0.07, 0.0)
+	_round_part(out, muzzle, Vector3(hl * 0.24, shoulder * 0.095, hw * 0.36),
+		Color8(225, 215, 197) if species == "fox" else color.lightened(0.08), 5, detail)
+	for side: float in [-1.0, 1.0]:
+		var ear := head + Vector3(-hl * 0.08, shoulder * 0.17, side * hw * 0.37)
+		_round_limb(out, ear, ear + Vector3(-hl * 0.04, shoulder * (0.22 if species in ["hare", "fox", "roe_deer"] else 0.12),
+			side * hw * 0.35), hw * 0.15, hw * 0.025, color.darkened(0.1), 5, detail)
+		if detail > 0:
+			_round_part(out, head + Vector3(hl * 0.1, shoulder * 0.04, side * hw * 0.51),
+				Vector3(0.016 * size, 0.018 * size, 0.012 * size), Color8(33, 30, 27), 3, detail)
+	if species == "fox":
+		_round_limb(out, Vector3(-hl * 0.84, body_y, 0.0), Vector3(-hl * 1.65, body_y - shoulder * 0.08, 0.0),
+			hw * 0.38, hw * 0.18, color, 5, detail)
+		_round_part(out, Vector3(-hl * 1.66, body_y - shoulder * 0.08, 0.0), Vector3(hl * 0.2, hw * 0.22, hw * 0.19),
+			Color8(235, 231, 219), 5, detail)
+	elif species in ["dog", "horse", "squirrel"]:
+		_round_limb(out, Vector3(-hl * 0.88, body_y, 0.0), Vector3(-hl * 1.4, body_y + shoulder * 0.12, 0.0),
+			hw * 0.24, hw * 0.08, color, 5, detail)
+	elif species in ["hare", "roe_deer"]:
+		_round_part(out, Vector3(-hl * 0.9, body_y, 0.0), Vector3(hl * 0.16, shoulder * 0.13, hw * 0.35),
+			Color8(235, 231, 219), 5, detail)
+	if species == "moose" and not feeding:
+		for side: float in [-1.0, 1.0]:
+			var antler := head + Vector3(-hl * 0.05, shoulder * 0.18, side * hw * 0.38)
+			var palm := antler + Vector3(-hl * 0.11, shoulder * 0.3, side * hw * 0.7)
+			_round_limb(out, antler, palm, 0.05 * size, 0.04 * size, Color8(189, 164, 128), 5, detail)
+			for tine in 3:
+				_round_limb(out, palm + Vector3(-hl * 0.055 * tine, 0.0, side * hw * 0.1 * tine),
+					palm + Vector3(-hl * 0.06 * tine, shoulder * (0.22 + 0.04 * tine), side * hw * (0.14 + 0.18 * tine)),
+					0.035 * size, 0.008 * size, Color8(189, 164, 128), 5, detail)
 	return out
 
 
@@ -1119,6 +1257,90 @@ static func _wheel(out: Dictionary, x: float, y: float, radius: float, width: fl
 	out["part_now"] = previous
 
 
+static func _round_part(out: Dictionary, centre: Vector3, radii: Vector3, color: Color, part := 0, detail := 1) -> void:
+	var previous: int = out["part_now"]
+	out["part_now"] = part
+	var sides := 12 if detail > 0 else 6
+	var bands := 6 if detail > 0 else 3
+	for key in ["verts", "shadow"]:
+		for band in bands:
+			var low := -PI * 0.5 + PI * float(band) / bands
+			var high := -PI * 0.5 + PI * float(band + 1) / bands
+			for i in sides:
+				var a := TAU * float(i) / sides
+				var b := TAU * float(i + 1) / sides
+				var p := centre + Vector3(cos(low) * cos(a) * radii.x, sin(low) * radii.y, cos(low) * sin(a) * radii.z)
+				var q := centre + Vector3(cos(low) * cos(b) * radii.x, sin(low) * radii.y, cos(low) * sin(b) * radii.z)
+				var r := centre + Vector3(cos(high) * cos(b) * radii.x, sin(high) * radii.y, cos(high) * sin(b) * radii.z)
+				var s := centre + Vector3(cos(high) * cos(a) * radii.x, sin(high) * radii.y, cos(high) * sin(a) * radii.z)
+				var outward := (p + q + r + s) * 0.25 - centre
+				if band == 0:
+					_tri(out, centre - Vector3.UP * radii.y, r, s, color, outward, key)
+				elif band == bands - 1:
+					_tri(out, p, q, centre + Vector3.UP * radii.y, color, outward, key)
+				else:
+					_quad(out, p, q, r, s, color, outward, key)
+	out["part_now"] = previous
+
+
+static func _round_limb(out: Dictionary, start: Vector3, finish: Vector3, start_radius: float, end_radius: float,
+		color: Color, part := 0, detail := 1) -> void:
+	var direction := (finish - start).normalized()
+	if direction.length_squared() < 0.5:
+		return
+	var tangent := direction.cross(Vector3.FORWARD if absf(direction.z) < 0.9 else Vector3.RIGHT).normalized()
+	var other := direction.cross(tangent)
+	var previous: int = out["part_now"]
+	out["part_now"] = part
+	var sides := 12 if detail > 0 else 6
+	for key in ["verts", "shadow"]:
+		for i in sides:
+			var a := (tangent * cos(TAU * float(i) / sides) + other * sin(TAU * float(i) / sides))
+			var b := (tangent * cos(TAU * float(i + 1) / sides) + other * sin(TAU * float(i + 1) / sides))
+			_quad(out, start + a * start_radius, start + b * start_radius, finish + b * end_radius, finish + a * end_radius,
+				color, (a + b).normalized(), key)
+			_tri(out, start, start + b * start_radius, start + a * start_radius, color, -direction, key)
+			_tri(out, finish, finish + a * end_radius, finish + b * end_radius, color, direction, key)
+	out["part_now"] = previous
+
+
+static func _garment_torso(out: Dictionary, centre_y: float, scale: float, color: Color, jacket: bool, build: float, detail: int) -> void:
+	var sides := 12 if detail > 0 else 6
+	var rings := []
+	for profile in [[-0.29, 0.12, 0.17], [-0.2, 0.14, 0.19], [0.0, 0.17, 0.22], [0.18, 0.16, 0.24], [0.29, 0.10, 0.13]]:
+		var ring := []
+		for i in sides:
+			var angle := TAU * float(i) / sides
+			ring.append(Vector3(cos(angle) * float(profile[1]) * scale * build * (1.12 if jacket else 1.0),
+				centre_y + float(profile[0]) * scale, sin(angle) * float(profile[2]) * scale * build * (1.09 if jacket else 1.0)))
+		rings.append(ring)
+	for key in ["verts", "shadow"]:
+		for r in rings.size() - 1:
+			for i in sides:
+				var j := (i + 1) % sides
+				var facing: Vector3 = (rings[r][i] + rings[r][j]) * 0.5
+				_quad(out, rings[r][i], rings[r][j], rings[r + 1][j], rings[r + 1][i], color,
+					Vector3(facing.x, 0.0, facing.z), key)
+		for i in sides:
+			var j := (i + 1) % sides
+			_tri(out, Vector3(0.0, centre_y + 0.29 * scale, 0.0), rings[-1][i], rings[-1][j], color, Vector3.UP, key)
+			_tri(out, Vector3(0.0, centre_y - 0.29 * scale, 0.0), rings[0][j], rings[0][i], color, Vector3.DOWN, key)
+
+
+static func _garment_skirt(out: Dictionary, offset: float, scale: float, color: Color, detail: int) -> void:
+	var sides := 12 if detail > 0 else 6
+	for key in ["verts", "shadow"]:
+		for i in sides:
+			var a := TAU * float(i) / sides
+			var b := TAU * float(i + 1) / sides
+			var top_a := Vector3(cos(a) * 0.15, 0.96, sin(a) * 0.17) * scale + Vector3.UP * offset
+			var top_b := Vector3(cos(b) * 0.15, 0.96, sin(b) * 0.17) * scale + Vector3.UP * offset
+			var hem_a := Vector3(cos(a) * 0.25, 0.61, sin(a) * 0.28) * scale + Vector3.UP * offset
+			var hem_b := Vector3(cos(b) * 0.25, 0.61, sin(b) * 0.28) * scale + Vector3.UP * offset
+			_quad(out, hem_a, hem_b, top_b, top_a, color, (hem_a + hem_b) * 0.5, key)
+			_tri(out, Vector3(0.0, 0.61 * scale + offset, 0.0), hem_b, hem_a, color.darkened(0.1), Vector3.DOWN, key)
+
+
 ## One chunk's mesh arrays (any thread): {"verts", "colors", "lit" (the
 ## lit windows' verts), "stats"}.
 static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array = [], landmarks: Array = [], ground := {}) -> Dictionary:
@@ -1218,11 +1440,11 @@ static func _caster_material() -> StandardMaterial3D:
 
 
 static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask := PackedVector2Array(),
-		wall_uv := PackedVector2Array(), window := PackedFloat32Array(), part := PackedVector2Array()) -> ArrayMesh:
+		wall_uv := PackedVector2Array(), window := PackedFloat32Array(), part := PackedVector2Array(), smooth := false) -> ArrayMesh:
 	var surface := []
 	surface.resize(Mesh.ARRAY_MAX)
 	surface[Mesh.ARRAY_VERTEX] = verts
-	surface[Mesh.ARRAY_NORMAL] = flat_normals(verts)
+	surface[Mesh.ARRAY_NORMAL] = smooth_normals(verts, colors) if smooth else flat_normals(verts)
 	if part.size() == verts.size():
 		surface[Mesh.ARRAY_TEX_UV2] = part
 	if not colors.is_empty():
@@ -1237,6 +1459,20 @@ static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface, [], {}, flags)
 	return mesh
+
+
+static func smooth_normals(verts: PackedVector3Array, colors: PackedColorArray) -> PackedVector3Array:
+	var normals := flat_normals(verts)
+	var sums := {}
+	for i in verts.size():
+		var p := verts[i]
+		var key := Vector4i(roundi(p.x * 10000.0), roundi(p.y * 10000.0), roundi(p.z * 10000.0), colors[i].to_rgba32())
+		sums[key] = sums.get(key, Vector3.ZERO) + normals[i]
+	for i in verts.size():
+		var p := verts[i]
+		var key := Vector4i(roundi(p.x * 10000.0), roundi(p.y * 10000.0), roundi(p.z * 10000.0), colors[i].to_rgba32())
+		normals[i] = sums[key].normalized()
+	return normals
 
 
 ## Each triangle's outward normal: _tri winds (b - a) x (c - a) inward
@@ -1476,6 +1712,8 @@ static func use_shaded() -> void:
 	_shared["road"].shader = preload("res://road.gdshader")
 	_shared["car"] = ShaderMaterial.new()
 	_shared["car"].shader = preload("res://car.gdshader")
+	_shared["organic"] = ShaderMaterial.new()
+	_shared["organic"].shader = preload("res://character.gdshader")
 
 
 ## A face's baked directional shading: none where real lights shade it.

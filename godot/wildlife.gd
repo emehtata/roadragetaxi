@@ -326,13 +326,11 @@ func _draw() -> void:
 	drawn_members = 0
 	var view := (get_canvas_transform().affine_inverse() * get_viewport_rect()).grow(5.0)  # on screen only: animals live 900 m out, the view is ~150 m
 	for animal in animals:
-		if view.has_point(animal["position"]) and not (Buildings3D.opaque and animal["species"] in LARGE_3D):
+		if view.has_point(animal["position"]) and not Buildings3D.opaque:
 			_draw_animal(animal)
 
 
-## rtx-scene-readiness step 6: the larger animals are 3D bodies with
-## --outdoor-3d (entity_layer._animals_3d); the small ones and birds stay 2D.
-const LARGE_3D := ["moose", "roe_deer", "fox"]
+## In the outdoor 3D view the entity layer renders every species as a mesh.
 const Buildings3D := preload("res://buildings_3d.gd")
 const COATS := {"small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "crow": Color8(42, 43, 45), "duck": Color8(120, 98, 72),
 	"gull": Color8(242, 243, 240), "squirrel": Color8(144, 79, 38), "hare": Color8(142, 126, 101), "fox": Color8(194, 91, 38),

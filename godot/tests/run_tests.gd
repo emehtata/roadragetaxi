@@ -14,6 +14,7 @@ const Labels := preload("res://labels.gd")
 const Detail := preload("res://chunk_detail.gd")
 const B25 := preload("res://buildings_25d.gd")
 const B3 := preload("res://buildings_3d.gd")
+const WildlifeLayer := preload("res://wildlife.gd")
 const Perf := preload("res://perf.gd")
 const EntityLayer2 := preload("res://entity_layer.gd")
 
@@ -3337,11 +3338,13 @@ func test_buildings_3d() -> void:
 	var parked_bike: int = B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": false})["verts"].size()
 	var ridden_bike: int = B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": true})["verts"].size()
 	check(ridden_bike > parked_bike, "a ridden bicycle carries its rider, a parked one none")
-	check(EntityLayer.person_pose({"animation_state": "walking"}, 0.1) == "walk_a" and EntityLayer.person_pose({"animation_state": "walking"}, 0.4) == "walk_b"
+	check(EntityLayer.person_pose({"animation_state": "walking"}, 0.1) == "walk_0" and EntityLayer.person_pose({"animation_state": "walking"}, 0.4) == "walk_3"
+		and EntityLayer.person_pose({"animation_state": "walking", "speed": 2.4}, 0.1) == "run_1"
 		and EntityLayer.person_pose({"animation_state": "fallen"}, 0.0) == "lying" and EntityLayer.person_pose({"animation_state": "sitting"}, 0.0) == "sitting"
 		and EntityLayer.person_pose({"animation_state": "waiting"}, 0.0) == "standing", "a person's pose follows their animation state and gait")
-	for species in ["moose", "roe_deer", "fox", "dog"]:
-		check(B3.animal_arrays(species, Color.BROWN, "stand", 1.0)["verts"].size() >= 36, "a %s has a 3D body" % species)
+	for species in WildlifeLayer.SPECIES + [&"dog"]:
+		var animal := B3.animal_arrays(str(species), Color.BROWN, "stand", 1.0)
+		check(animal["verts"].size() >= 36 and animal["part"].size() == animal["verts"].size(), "a %s has a 3D body" % species)
 	var signal_node := B3.signals_node([[Vector2.ZERO, Vector2.RIGHT, [false, false, true]]])
 	var signal_parts: Array = Array(signal_node.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV2]).map(func(v): return int(v.x))
 	check(signal_parts.count(B3.LAMP) == 36, "a signal: only its lit lamp (green) glows")

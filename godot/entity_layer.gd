@@ -2063,13 +2063,16 @@ var wildlife: Node = null  # main.gd's WildlifeLayer: its larger animals are 3D 
 ## their 2D drawing (_draw_people, wildlife) is left out.
 func _people_3d() -> void:
 	var b3: Node2D = Buildings3D.current
+	var season: Array = _frame["a"].get("calendar", {}).get("season", [])
+	var winter := season.size() > 0 and float(season[0]) > 0.5
 	for row in _people_rows:
 		var ped: Dictionary = row[2]
 		if ped.get("state", "") in INDOORS:
 			continue
 		var clothing: Color = Color8(190, 30, 35) if ped.get("costume", "") in ["santa", "elf"] else _rgb(ped.get("color", [200, 200, 200]))
 		b3.person(row[0], row[1], clothing, person_pose(ped, row[3]), clampf(float(ped.get("radius_m", 0.45)) / 0.45, 0.6, 1.2),
-			str(ped.get("costume", "")), float(deck_height.call(row[0], int(ped.get("layer", 0)))))
+			str(ped.get("costume", "")), float(deck_height.call(row[0], int(ped.get("layer", 0)))),
+			absi(hash(ped.get("id", ped.get("color", [])))) % 8, winter)
 	for at in elves:
 		b3.person(at, -PI / 2.0, Color8(190, 30, 35), "standing", ELF_RADIUS_M / 0.45, "elf")
 	for row in _dog_rows:
@@ -2083,16 +2086,25 @@ func _people_3d() -> void:
 		return
 	var stride := "walk_a" if fmod(_clock, 0.5) < 0.25 else "walk_b"
 	for creature in wildlife.animals:
-		if creature["species"] in wildlife.LARGE_3D and view_rect.has_point(creature["position"]):
-			var pose := "feed" if creature["state"] == "FEED" else stride if creature["state"] in ["FLEE", "WANDER"] else "stand"
-			b3.animal(creature["position"], -float(creature["heading"]), creature["species"], wildlife.coat(creature["species"]), pose)
+		if not view_rect.has_point(creature["position"]):
+			continue
+		var species: String = creature["species"]
+		var flying: bool = creature["state"] == "FLY"
+		var pose := "fly_%d" % (int(_clock * 8.0) % 2) if flying else "feed" if creature["state"] == "FEED" else stride if creature["state"] in ["FLEE", "WANDER"] else "stand"
+		var members := 5 if species == "small_bird" else 3 if species in ["pigeon", "duck"] else 2 if species == "gull" else 1
+		for member in members:
+			var offset := Vector2.ZERO if member == 0 else Vector2.from_angle(float(int(creature["id"]) * 2 + member * 2)) * (1.5 + member * 0.8)
+			b3.animal(creature["position"] + offset, -float(creature["heading"]), species, wildlife.coat(species), pose, 1.0,
+				2.5 + 0.4 * sin(_clock * 5.0 + member) if flying else 0.0)
 
 
 ## A person's 3D pose from their animation state: a walking stride by the
 ## gait (as the 2D legs swing), sitting, lying (fallen, sunbathing), swimming, riding, else standing.
 static func person_pose(ped: Dictionary, animation_time: float) -> String:
 	match str(ped.get("animation_state", "walking")):
-		"walking": return "walk_%d" % (floori(animation_time * 10.0 / TAU * 4.0) % 4)
+		"walking":
+			var running := float(ped.get("speed", 0.0)) >= 2.0
+			return "%s_%d" % ["run" if running else "walk", floori(animation_time * (14.0 if running else 10.0) / TAU * 6.0) % 6]
 		"sitting": return "sitting"
 		"fallen", "sunbathing": return "lying"
 		"swimming": return "swimming"
