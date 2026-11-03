@@ -1,0 +1,88 @@
+{
+  "baseline": "6ca8a0b9",
+  "cache": "60p168383_24p908308_60p187171_24p963475.rwc",
+  "cache_bytes": 33385203,
+  "objects": 50263,
+  "equal_sections": true,
+  "loads": [
+    {
+      "variant": "before",
+      "wall_ms": 2210.0442180017126,
+      "cpu_ms": 2209.878225
+    },
+    {
+      "variant": "after",
+      "wall_ms": 1838.7101650005206,
+      "cpu_ms": 1838.5195720000002
+    },
+    {
+      "variant": "before",
+      "wall_ms": 2339.497772001778,
+      "cpu_ms": 2339.3110319999996
+    },
+    {
+      "variant": "after",
+      "wall_ms": 1846.7330190032953,
+      "cpu_ms": 1846.7184949999994
+    },
+    {
+      "variant": "before",
+      "wall_ms": 2120.0667309967685,
+      "cpu_ms": 2119.91132
+    },
+    {
+      "variant": "after",
+      "wall_ms": 1805.4278490017168,
+      "cpu_ms": 1805.360523000001
+    },
+    {
+      "variant": "before",
+      "wall_ms": 2172.5538600003347,
+      "cpu_ms": 2172.4699019999994
+    },
+    {
+      "variant": "after",
+      "wall_ms": 2048.6998339983984,
+      "cpu_ms": 2048.594366
+    }
+  ],
+  "snapshot_area_m": [
+    383650.4074950698,
+    6672280.940912604,
+    384650.4074950698,
+    6673280.940912604
+  ],
+  "snapshot_note": "Loaded map lists, mapped lamps; no generated lamps, roadworks or speed cameras. Not a live growth workload.",
+  "snapshots": [
+    {
+      "wall_ms": 47.79642299399711,
+      "cpu_ms": 47.79463199999867,
+      "bytes": 3885552
+    },
+    {
+      "wall_ms": 52.495668998744804,
+      "cpu_ms": 52.497339000002086,
+      "bytes": 3885552
+    },
+    {
+      "wall_ms": 47.61303100531222,
+      "cpu_ms": 47.613879000000026,
+      "bytes": 3885552
+    }
+  ],
+  "logs": [
+    "[WorldCache] Loaded 60p168383_24p908308_60p187171_24p963475.rwc in 1994.2 ms: nodes=86223 roads=20463 buildings=3234 parking spaces=64 read_validate_ms=121.5 decode_ms=1553.0 restore_ms=322.2",
+    "[WorldCache] Loaded 60p168383_24p908308_60p187171_24p963475.rwc in 1817.8 ms: nodes=86223 roads=20463 buildings=3234 parking spaces=64 read_validate_ms=74.0 decode_ms=1485.6 restore_ms=261.2",
+    "[WorldCache] Loaded 60p168383_24p908308_60p187171_24p963475.rwc in 1829.6 ms: nodes=86223 roads=20463 buildings=3234 parking spaces=64 read_validate_ms=81.8 decode_ms=1491.3 restore_ms=258.4",
+    "[WorldCache] Loaded 60p168383_24p908308_60p187171_24p963475.rwc in 1785.7 ms: nodes=86223 roads=20463 buildings=3234 parking spaces=64 read_validate_ms=74.2 decode_ms=1453.7 restore_ms=259.7",
+    "[WorldCache] Loaded 60p168383_24p908308_60p187171_24p963475.rwc in 2029.0 ms: nodes=86223 roads=20463 buildings=3234 parking spaces=64 read_validate_ms=73.5 decode_ms=1617.9 restore_ms=339.7",
+    "[WorldCache] Loaded 60p168383_24p908308_60p187171_24p963475.rwc in 2146.7 ms: nodes=86223 roads=20463 buildings=3234 parking spaces=64 read_validate_ms=91.9 decode_ms=1802.5 restore_ms=254.1",
+    "Chunk snapshot: select_ms=17.9 pickle_ms=29.8 cpu_ms=47.6 objects=14460 pieces=44 bytes=3885552",
+    "Chunk snapshot: select_ms=23.5 pickle_ms=28.8 cpu_ms=52.3 objects=14460 pieces=44 bytes=3885552",
+    "Chunk snapshot: select_ms=18.0 pickle_ms=29.5 cpu_ms=47.5 objects=14460 pieces=44 bytes=3885552"
+  ],
+  "median_ms": {
+    "before": 2191.2990390010236,
+    "after": 1842.721592001908
+  }
+}

@@ -3,6 +3,7 @@
 Measured performance work on the Godot client and the Python simulation server.
 Each report names its own date, revision and reproduction steps.
 
+- [rrt-021-cache-decode.md](rrt-021-cache-decode.md) (2026-11-03): binary cache decoder optimization, isolated comparison and connected-drive checks.
 - [rrt-019.1-fps-audit.md](rrt-019.1-fps-audit.md) (2026-10-28): native client
   FPS audit, ranked bottlenecks; raw data and scripts in `rrt-019.1-fps-audit-data/`.
 - `rrt-019-sim-audit-data/` (2026-10-28): simulation-server tick benchmark

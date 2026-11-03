@@ -12,10 +12,14 @@ are the ones ChunkIndex.updated() gives in process (tests/test_chunk_worker).
 """
 from __future__ import annotations
 
+import logging
 import pickle
+import time
 from types import SimpleNamespace
 
 from .map_chunks import _REGION_LISTS, REGION_MARGIN_M, ChunkIndex, _item_rect, cell_of, chunk_id
+
+logger = logging.getLogger(__name__)
 
 # Around the chunks an area rebuilds (they reach past it to whole chunks):
 # everything their lamps and contents look at (junctions, buildings by a
@@ -40,6 +44,7 @@ def area_cells(area, size: float) -> set:
 def snapshot(world, area, lights, size: float) -> list[bytes]:
     """`world`'s objects that the rebuild of `area` reads, as pickles of at
     most PIECE_SIZE objects: [(name, items)] pieces, then the scalars."""
+    started, cpu_started = time.perf_counter(), time.thread_time()
     cells = area_cells(area, size)
     (x0, y0), (x1, y1) = min(cells), max(cells)
     m = SNAPSHOT_MARGIN_M
@@ -61,6 +66,7 @@ def snapshot(world, area, lights, size: float) -> list[bytes]:
     lists["street_light_points"] = [lamp for lamp in lights if _overlaps(_item_rect(lamp), rect)]
     lists["traffic_lights"] = [light if _overlaps((light.x, light.y, light.x, light.y), rect) else _HIDDEN_LIGHT
                                for light in getattr(getattr(world, "traffic_mgr", None), "traffic_lights", ())]
+    selected_at = time.perf_counter()
     pieces = []
     for name, items in lists.items():
         pieces.extend(pickle.dumps((name, items[start:start + PIECE_SIZE]), pickle.HIGHEST_PROTOCOL)
@@ -69,6 +75,12 @@ def snapshot(world, area, lights, size: float) -> list[bytes]:
             pieces.append(pickle.dumps((name, []), pickle.HIGHEST_PROTOCOL))
     scalars = {"roadworks": list(getattr(world, "roadworks", ())), "speed_cameras": list(getattr(world, "speed_cameras", ()))}
     pieces.append(pickle.dumps(("", scalars), pickle.HIGHEST_PROTOCOL))
+    logger.info(
+        "Chunk snapshot: select_ms=%.1f pickle_ms=%.1f cpu_ms=%.1f objects=%d pieces=%d bytes=%d",
+        (selected_at - started) * 1000.0, (time.perf_counter() - selected_at) * 1000.0,
+        (time.thread_time() - cpu_started) * 1000.0, sum(len(items) for items in lists.values()),
+        len(pieces), sum(len(piece) for piece in pieces),
+    )
     return pieces
 
 

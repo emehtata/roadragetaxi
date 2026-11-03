@@ -1,0 +1,861 @@
+{
+  "preset": "Oulu",
+  "osm_source": "overpass",
+  "drive_s": 90.0,
+  "speed_mps": 20.0,
+  "heading": 0.0,
+  "distance_m": 1768,
+  "ticks": {
+    "ticks": 2652,
+    "p50": 11.5,
+    "p95": 36.2,
+    "p99": 49.4,
+    "max": 87.9,
+    "over_50ms": 23,
+    "over_100ms": 0
+  },
+  "tick_start_late_ms": {
+    "p99": 1.2,
+    "max": 14,
+    "over_20ms": 0
+  },
+  "map_idle": {
+    "ticks": 921,
+    "p50": 7.6,
+    "p95": 14.5,
+    "p99": 21.4,
+    "max": 30.5,
+    "over_50ms": 0,
+    "over_100ms": 0
+  },
+  "map_busy": {
+    "ticks": 1731,
+    "p50": 14.4,
+    "p95": 39.7,
+    "p99": 52.4,
+    "max": 87.9,
+    "over_50ms": 23,
+    "over_100ms": 0
+  },
+  "busy_pct": 65.3,
+  "waiting_ms_per_tick": {
+    "_background_tile_fetch": {
+      "mean": 17.1,
+      "p95": 27.8,
+      "ticks": 168
+    },
+    "-": {
+      "mean": 0.1,
+      "p95": 0.1,
+      "ticks": 1752
+    },
+    "map-growth": {
+      "mean": 1.1,
+      "p95": 4.6,
+      "ticks": 726
+    },
+    "map-growth,taxi-roads": {
+      "mean": 13.6,
+      "p95": 33.6,
+      "ticks": 6
+    }
+  },
+  "slow_ticks": {
+    "count": 177,
+    "wall_ms": 7438,
+    "waiting_ms": 2913,
+    "phases_ms": {
+      "simulation": 5250,
+      "simulation.npc": 2637,
+      "simulation.pedestrians": 1730,
+      "state": 1206,
+      "pedestrians:movement": 1021,
+      "pedestrians:wait": 589,
+      "map_sync": 559,
+      "npc._advance_route_jobs": 433,
+      "pedestrians:spawn": 366,
+      "simulation.physics": 290,
+      "map_sync:pedestrians:route_graph": 239,
+      "npc._check_vehicle_collision": 199,
+      "state._npc_to_dict": 182,
+      "simulation.collisions": 143,
+      "npc.rebuild_spatial_grid": 134,
+      "npc._run_population_tick": 118,
+      "state._pedestrian_to_dict": 112,
+      "map_sync:pedestrians:wait": 107,
+      "merge": 106,
+      "pedestrians:activities": 91,
+      "state.shown_pedestrians": 85,
+      "pedestrians:route_search": 82,
+      "pedestrians:lod": 74,
+      "state._traffic_light_phases": 60,
+      "pedestrians:despawn": 51,
+      "map_sync:pedestrians:junction_grid": 37,
+      "state._broken_hedges": 35,
+      "simulation.taxi": 35,
+      "simulation.trains": 31,
+      "state._knocked": 30,
+      "pedestrians:materialize_drivers": 27,
+      "pedestrians:route_nearest": 24,
+      "map_sync:pedestrians:building_free": 23,
+      "pedestrians:avoidance": 21,
+      "chunk_swap_and_resend": 17,
+      "map_sync:pedestrians:spawn_grid": 15,
+      "tile_streaming": 15,
+      "map_sync:pedestrians:commit": 14,
+      "npc._update_bike_thefts": 13,
+      "chunk_streaming": 3,
+      "state._live_roadworks": 1,
+      "simulation.traffic": 0
+    }
+  },
+  "gc": {
+    "count": 535,
+    "max_ms": 33,
+    "total_ms": 1209,
+    "by_generation": {
+      "0": {
+        "count": 491,
+        "total_ms": 602,
+        "max_ms": 8
+      },
+      "1": {
+        "count": 44,
+        "total_ms": 607,
+        "max_ms": 33
+      },
+      "2": {
+        "count": 0,
+        "total_ms": 0,
+        "max_ms": 0
+      }
+    },
+    "longest_over_10ms": [
+      [
+        32.9,
+        1,
+        "MainThread"
+      ],
+      [
+        29.8,
+        1,
+        "map-growth"
+      ],
+      [
+        29.6,
+        1,
+        "map-growth"
+      ],
+      [
+        26.7,
+        1,
+        "map-growth"
+      ],
+      [
+        26.7,
+        1,
+        "map-growth"
+      ],
+      [
+        24.2,
+        1,
+        "map-growth"
+      ],
+      [
+        21.6,
+        1,
+        "MainThread"
+      ],
+      [
+        20.9,
+        1,
+        "MainThread"
+      ],
+      [
+        19.6,
+        1,
+        "map-growth"
+      ],
+      [
+        18.3,
+        1,
+        "world-cache_0"
+      ],
+      [
+        17.9,
+        1,
+        "MainThread"
+      ],
+      [
+        17.5,
+        1,
+        "MainThread"
+      ],
+      [
+        17.2,
+        1,
+        "MainThread"
+      ],
+      [
+        17.1,
+        1,
+        "MainThread"
+      ],
+      [
+        17.1,
+        1,
+        "MainThread"
+      ],
+      [
+        16.9,
+        1,
+        "MainThread"
+      ],
+      [
+        16.2,
+        1,
+        "map-growth"
+      ],
+      [
+        16.0,
+        1,
+        "MainThread"
+      ],
+      [
+        15.0,
+        1,
+        "MainThread"
+      ],
+      [
+        14.9,
+        1,
+        "world-cache_0"
+      ]
+    ]
+  },
+  "full_gc": {
+    "count": 0,
+    "max_ms": 0,
+    "total_ms": 0,
+    "by_thread": [],
+    "tracked_objects_at_end": 1632997,
+    "frozen_at_end": 0,
+    "cyclic_garbage_at_end": 127
+  },
+  "young_gc": {
+    "count": 535,
+    "max_ms": 32.9,
+    "total_ms": 1209,
+    "over_10ms": 26
+  },
+  "chunks": {
+    "sent": 90,
+    "resent": 64,
+    "mb": 18.8
+  },
+  "client": {
+    "states": 2652,
+    "gap_p99_ms": 55.6,
+    "gap_max_ms": 103,
+    "gaps_over_100ms": 1,
+    "frames": 5399,
+    "frozen_frames": 0,
+    "freezes": 0,
+    "frozen_s": 0.0,
+    "late_frames": 32,
+    "late_episodes": 24,
+    "late_s": 0.5,
+    "clock_snaps": 0,
+    "wrong_speed_pct": 12.8,
+    "worst_gaps": [
+      {
+        "t_s": 0.0,
+        "ms": 103
+      },
+      {
+        "t_s": 24.9,
+        "ms": 90
+      },
+      {
+        "t_s": 21.0,
+        "ms": 84
+      },
+      {
+        "t_s": 73.2,
+        "ms": 80
+      },
+      {
+        "t_s": 1.6,
+        "ms": 78
+      }
+    ]
+  },
+  "worst_ticks": [
+    {
+      "t_s": 21.0,
+      "wall_ms": 88,
+      "cpu_ms": 40,
+      "phases": {
+        "simulation": 78,
+        "map_streamer": 5,
+        "state": 4
+      },
+      "gc": [],
+      "sim_sections": {
+        "physics": 3.4280059990123846,
+        "collisions": 0.4032750002807006,
+        "trains": 0.08675600111018866,
+        "taxi": 0.014072000340092927,
+        "npc": 20.35413600242464,
+        "traffic": 0.002883003617171198,
+        "pedestrians": 49.275946999841835
+      },
+      "ped_internal": {
+        "pedestrians:lod": 0.28263800049899146,
+        "pedestrians:wait": 25.998926996056326,
+        "pedestrians:materialize_drivers": 2.0793980002054013,
+        "pedestrians:despawn": 2.5740130004123785,
+        "pedestrians:spawn": 39.2015920006088,
+        "pedestrians:activities": 1.6077719992608763,
+        "pedestrians:avoidance": 0.09037899872055277,
+        "pedestrians:route_nearest": 0.5002349935239181,
+        "pedestrians:route_search": 0.4042739965370856,
+        "pedestrians:movement": 2.7925980029976927
+      },
+      "population": {
+        "npcs": 28,
+        "moving_npcs": 18,
+        "pedestrians": 102
+      }
+    },
+    {
+      "t_s": 1.6,
+      "wall_ms": 76,
+      "cpu_ms": 37,
+      "phases": {
+        "simulation": 65,
+        "npc._run_population_tick": 15,
+        "state": 10
+      },
+      "gc": [
+        [
+          1,
+          0,
+          "world-cache_0"
+        ]
+      ],
+      "sim_sections": {
+        "physics": 0.6735649949405342,
+        "collisions": 0.4491720028454438,
+        "trains": 0.07361500320257619,
+        "taxi": 0.010933006706181914,
+        "npc": 42.07930100528756,
+        "traffic": 0.0060589954955503345,
+        "pedestrians": 10.237621005217079
+      },
+      "ped_internal": {
+        "pedestrians:lod": 0.4340779996709898,
+        "pedestrians:wait": 3.9909910011672878,
+        "pedestrians:materialize_drivers": 0.06206899706739932,
+        "pedestrians:avoidance": 0.202698000066448,
+        "pedestrians:movement": 9.180075001495425
+      },
+      "population": {
+        "npcs": 32,
+        "moving_npcs": 15,
+        "pedestrians": 103
+      }
+    },
+    {
+      "t_s": 24.9,
+      "wall_ms": 69,
+      "cpu_ms": 15,
+      "phases": {
+        "state": 37,
+        "state._npc_to_dict": 30,
+        "simulation": 26
+      },
+      "gc": [
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          3,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          1,
+          0,
+          "map-growth"
+        ],
+        [
+          1,
+          0,
+          "map-growth"
+        ],
+        [
+          1,
+          0,
+          "map-growth"
+        ],
+        [
+          30,
+          1,
+          "map-growth"
+        ],
+        [
+          1,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ]
+      ],
+      "sim_sections": {
+        "physics": 5.154739003046416,
+        "collisions": 0.16847900405991822,
+        "trains": 0.06852899969089776,
+        "taxi": 0.011113996151834726,
+        "npc": 9.016429001349024,
+        "traffic": 0.002168002538383007,
+        "pedestrians": 8.271324993984308
+      },
+      "ped_internal": {
+        "pedestrians:lod": 0.231787002121564,
+        "pedestrians:wait": 5.10629100135418,
+        "pedestrians:materialize_drivers": 0.033585994970053434,
+        "pedestrians:avoidance": 0.0527299998793751,
+        "pedestrians:movement": 7.797236001351848,
+        "map_sync:pedestrians:building_free": 4.976311000064015,
+        "map_sync:pedestrians:wait": 3.182530000060524
+      },
+      "population": {
+        "npcs": 30,
+        "moving_npcs": 17,
+        "pedestrians": 119
+      }
+    },
+    {
+      "t_s": 0.0,
+      "wall_ms": 67,
+      "cpu_ms": 24,
+      "phases": {
+        "simulation": 60,
+        "state": 7,
+        "npc._advance_route_jobs": 1
+      },
+      "gc": [
+        [
+          3,
+          0,
+          "world-cache_0"
+        ]
+      ],
+      "sim_sections": {
+        "physics": 0.1145979986176826,
+        "collisions": 0.23570199846290052,
+        "trains": 0.04679300036514178,
+        "taxi": 0.006569003744516522,
+        "npc": 24.9336589986342,
+        "traffic": 0.0014969991752877831,
+        "pedestrians": 27.21858500444796
+      },
+      "ped_internal": {
+        "pedestrians:lod": 0.10845799988601357,
+        "pedestrians:wait": 17.851647011800864,
+        "pedestrians:materialize_drivers": 0.01655799860600382,
+        "pedestrians:despawn": 1.1111179992440157,
+        "pedestrians:spawn": 5.101750000903849,
+        "pedestrians:activities": 4.535416002909187,
+        "pedestrians:avoidance": 0.03798700345214456,
+        "pedestrians:route_nearest": 0.539416003448423,
+        "pedestrians:route_search": 9.562523002387024,
+        "pedestrians:movement": 15.174252002907451
+      },
+      "population": {
+        "npcs": 33,
+        "moving_npcs": 15,
+        "pedestrians": 75
+      }
+    },
+    {
+      "t_s": 1.5,
+      "wall_ms": 62,
+      "cpu_ms": 32,
+      "phases": {
+        "simulation": 50,
+        "state": 11,
+        "npc._check_vehicle_collision": 5
+      },
+      "gc": [],
+      "sim_sections": {
+        "physics": 0.7854970026528463,
+        "collisions": 0.428316998295486,
+        "trains": 0.05912000051466748,
+        "taxi": 0.009526993380859494,
+        "npc": 32.70198300015181,
+        "traffic": 0.004483998054638505,
+        "pedestrians": 13.48757900268538
+      },
+      "ped_internal": {
+        "pedestrians:lod": 5.259151999780443,
+        "pedestrians:wait": 8.373040998989723,
+        "pedestrians:materialize_drivers": 0.11116100358776748,
+        "pedestrians:avoidance": 0.18070100486511365,
+        "pedestrians:movement": 7.557151999208145
+      },
+      "population": {
+        "npcs": 33,
+        "moving_npcs": 15,
+        "pedestrians": 103
+      }
+    },
+    {
+      "t_s": 21.3,
+      "wall_ms": 61,
+      "cpu_ms": 27,
+      "phases": {
+        "simulation": 39,
+        "state": 11,
+        "npc._advance_route_jobs": 5
+      },
+      "gc": [
+        [
+          3,
+          0,
+          "taxi-roads"
+        ],
+        [
+          5,
+          0,
+          "taxi-roads"
+        ]
+      ],
+      "sim_sections": {
+        "physics": 4.512239000177942,
+        "collisions": 1.316479996603448,
+        "trains": 0.8895280043361709,
+        "taxi": 0.03010499494848773,
+        "npc": 22.41693500400288,
+        "traffic": 0.00468800135422498,
+        "pedestrians": 7.7140249995864
+      },
+      "ped_internal": {
+        "pedestrians:lod": 1.2463349994504824,
+        "pedestrians:wait": 3.542869003204885,
+        "pedestrians:materialize_drivers": 0.049192996812053025,
+        "pedestrians:avoidance": 0.0848440031404607,
+        "pedestrians:movement": 5.774825003754813
+      },
+      "population": {
+        "npcs": 28,
+        "moving_npcs": 18,
+        "pedestrians": 105
+      }
+    },
+    {
+      "t_s": 16.6,
+      "wall_ms": 59,
+      "cpu_ms": 29,
+      "phases": {
+        "simulation": 41,
+        "state": 15,
+        "state._pedestrian_to_dict": 4
+      },
+      "gc": [
+        [
+          3,
+          0,
+          "world-cache_0"
+        ]
+      ],
+      "sim_sections": {
+        "physics": 4.601335000188556,
+        "collisions": 0.9825039960560389,
+        "trains": 0.07993100007297471,
+        "taxi": 0.013094999303575605,
+        "npc": 24.317363000591286,
+        "traffic": 0.0021800005924887955,
+        "pedestrians": 8.017546002520248
+      },
+      "ped_internal": {
+        "pedestrians:lod": 1.0893540020333603,
+        "pedestrians:wait": 3.229284000298094,
+        "pedestrians:materialize_drivers": 0.04965599509887397,
+        "pedestrians:avoidance": 0.10197600204264745,
+        "pedestrians:movement": 6.550040998263285
+      },
+      "population": {
+        "npcs": 29,
+        "moving_npcs": 17,
+        "pedestrians": 136
+      }
+    },
+    {
+      "t_s": 8.1,
+      "wall_ms": 59,
+      "cpu_ms": 36,
+      "phases": {
+        "simulation": 46,
+        "chunk_swap_and_resend": 4,
+        "map_streamer": 4
+      },
+      "gc": [
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          1,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ]
+      ],
+      "sim_sections": {
+        "physics": 2.315935998922214,
+        "collisions": 1.2442980005289428,
+        "trains": 0.0698689982527867,
+        "taxi": 0.011602998711168766,
+        "npc": 32.416636000561994,
+        "traffic": 0.003102002665400505,
+        "pedestrians": 9.322155005065724
+      },
+      "ped_internal": {
+        "pedestrians:lod": 1.18583000585204,
+        "pedestrians:wait": 1.0347890035333762,
+        "pedestrians:materialize_drivers": 0.06258000212255865,
+        "pedestrians:avoidance": 0.12581200280692428,
+        "pedestrians:movement": 7.700358997681178
+      },
+      "population": {
+        "npcs": 32,
+        "moving_npcs": 12,
+        "pedestrians": 164
+      }
+    },
+    {
+      "t_s": 13.8,
+      "wall_ms": 58,
+      "cpu_ms": 30,
+      "phases": {
+        "simulation": 48,
+        "state": 5,
+        "map_streamer": 4
+      },
+      "gc": [
+        [
+          2,
+          0,
+          "world-cache_0"
+        ]
+      ],
+      "sim_sections": {
+        "physics": 0.11292300041532144,
+        "collisions": 0.18355599604547024,
+        "trains": 0.05476200021803379,
+        "taxi": 0.009305003914050758,
+        "npc": 35.38322199892718,
+        "traffic": 0.002019995008595288,
+        "pedestrians": 10.559255999396555
+      },
+      "ped_internal": {
+        "pedestrians:lod": 0.26092999905813485,
+        "pedestrians:wait": 1.2516059993323836,
+        "pedestrians:materialize_drivers": 0.030246999813243747,
+        "pedestrians:avoidance": 0.06398800178430974,
+        "pedestrians:movement": 10.002319999330211
+      },
+      "population": {
+        "npcs": 31,
+        "moving_npcs": 14,
+        "pedestrians": 126
+      }
+    },
+    {
+      "t_s": 20.9,
+      "wall_ms": 58,
+      "cpu_ms": 22,
+      "phases": {
+        "map_streamer": 22,
+        "simulation": 19,
+        "state": 16
+      },
+      "gc": [],
+      "sim_sections": {
+        "physics": 0.13184799900045618,
+        "collisions": 1.1116770037915558,
+        "trains": 0.06810999911976978,
+        "taxi": 0.012117998267058283,
+        "npc": 10.991092000040226,
+        "traffic": 0.002606000634841621,
+        "pedestrians": 6.130382003902923
+      },
+      "ped_internal": {
+        "pedestrians:lod": 0.9206749964505434,
+        "pedestrians:wait": 2.9364499989554815,
+        "pedestrians:materialize_drivers": 0.052718998631462455,
+        "pedestrians:avoidance": 0.08241300383815542,
+        "pedestrians:movement": 4.882683002506383
+      },
+      "population": {
+        "npcs": 28,
+        "moving_npcs": 18,
+        "pedestrians": 123
+      }
+    },
+    {
+      "t_s": 21.3,
+      "wall_ms": 57,
+      "cpu_ms": 26,
+      "phases": {
+        "simulation": 42,
+        "state": 12,
+        "state.shown_pedestrians": 1
+      },
+      "gc": [
+        [
+          8,
+          0,
+          "taxi-roads"
+        ]
+      ],
+      "sim_sections": {
+        "physics": 1.6837589937495068,
+        "collisions": 0.3774879951379262,
+        "trains": 0.16153199976542965,
+        "taxi": 0.014835000911261886,
+        "npc": 16.393322999647353,
+        "traffic": 0.0026240013539791107,
+        "pedestrians": 19.13278400024865
+      },
+      "ped_internal": {
+        "pedestrians:lod": 2.9294560008565895,
+        "pedestrians:wait": 11.670474002816178,
+        "pedestrians:materialize_drivers": 0.19150199659634382,
+        "pedestrians:avoidance": 0.25572499725967646,
+        "pedestrians:movement": 15.384958001959603
+      },
+      "population": {
+        "npcs": 28,
+        "moving_npcs": 18,
+        "pedestrians": 105
+      }
+    },
+    {
+      "t_s": 33.9,
+      "wall_ms": 57,
+      "cpu_ms": 11,
+      "phases": {
+        "state": 35,
+        "simulation": 21,
+        "npc._update_bike_thefts": 3
+      },
+      "gc": [
+        [
+          1,
+          0,
+          "map-growth"
+        ],
+        [
+          3,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ],
+        [
+          30,
+          1,
+          "map-growth"
+        ],
+        [
+          2,
+          0,
+          "map-growth"
+        ]
+      ],
+      "sim_sections": {
+        "physics": 0.24951000523287803,
+        "collisions": 0.2729780026129447,
+        "trains": 0.057532000937499106,
+        "taxi": 0.009501003660261631,
+        "npc": 12.75234200147679,
+        "traffic": 0.0014350007404573262,
+        "pedestrians": 5.282279998937156
+      },
+      "ped_internal": {
+        "pedestrians:lod": 0.16146100097103044,
+        "pedestrians:wait": 3.193694000543701,
+        "pedestrians:materialize_drivers": 0.028165006369818002,
+        "pedestrians:avoidance": 0.03742900298675522,
+        "pedestrians:movement": 4.942854000546504
+      },
+      "population": {
+        "npcs": 34,
+        "moving_npcs": 18,
+        "pedestrians": 91
+      }
+    }
+  ],
+  "log": "/tmp/rrt-cache-connected-after.log"
+}
