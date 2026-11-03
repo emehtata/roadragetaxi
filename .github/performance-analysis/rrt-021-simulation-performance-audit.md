@@ -2,6 +2,8 @@
 
 Source-code review and measurements only. No production code or game behavior was changed.
 
+Optimization follow-through: [implemented changes, checks and before/after measurements](rrt-021-simulation-optimization.md). The baseline audit below is retained as the evidence for that work.
+
 ## Executive summary
 
 Two current-code Oulu rush-hour runs varied substantially: mean tick time 9.89–13.61 ms, p95 18.16–28.30 ms, p99 23.85–40.17 ms and maximum 32.28–79.21 ms. The first run had 2.17% over the 33.33 ms budget and 5/1,800 ticks (0.28%) over 50 ms, reconstructed from its sorted top-eight list; the instrumented repeat had 0% above 33.33 or 50 ms. Both saw 0% over 100 ms. Most sustained work is in `NPCManager.update`; the worst spikes combine that phase with state construction and pedestrian work. This is an in-process, back-to-back benchmark, not a connected-client real-time run.

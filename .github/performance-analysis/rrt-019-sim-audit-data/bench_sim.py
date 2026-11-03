@@ -43,6 +43,7 @@ p.add_argument("--sample-ms", type=float, default=0.0,
                help="sample the tick thread's stack every N ms; ticks over 25 ms keep their samples (adds overhead)")
 p.add_argument("--population-bands", action="store_true",
                help="sample NPC counts after each timed tick and report natural 10/20/40/60-vehicle bands")
+p.add_argument("--route-steps", action="store_true", help="diagnose route generator steps over 1 ms (adds overhead)")
 p.add_argument("--out")
 A = p.parse_args()
 
@@ -76,6 +77,8 @@ server._visible_bounds = lambda: (car.x - vw / 2, car.y - vh / 2, car.x + vw / 2
 
 # --- instrumentation -------------------------------------------------------
 tick_sections = defaultdict(float)
+tick_calls = defaultdict(int)
+tick_route_spikes = []
 
 
 @contextmanager
@@ -99,11 +102,13 @@ def timed(obj, attr, label):
             return fn(*a, **k)
         finally:
             tick_sections[label] += time.perf_counter() - t
+            tick_calls[label] += 1
     setattr(obj, attr, wrapper)
 
 
 import theroadragetrip.server as srv_mod  # noqa: E402
 from theroadragetrip import protocol  # noqa: E402
+from theroadragetrip import npc as npc_mod  # noqa: E402
 
 _last_msg = {}
 _build = protocol.build_state_message
@@ -125,6 +130,42 @@ timed(server.world.weather, "update", "srv.weather")
 if server._map_streamer is not None:
     timed(server._map_streamer, "tick", "srv.map_streamer")
 w = server.world
+if A.route_steps:
+    timed(w.npc_manager, "_finish_route_job", "npc.finish_route_job")
+    def probe_route(steps, kind):
+        try:
+            while True:
+                started = time.perf_counter()
+                try:
+                    value = next(steps)
+                except StopIteration as done:
+                    return done.value
+                finally:
+                    elapsed = time.perf_counter() - started
+                    if elapsed > 0.001:
+                        frames, current = [], steps
+                        while getattr(current, "gi_frame", None) is not None:
+                            frame = current.gi_frame
+                            frames.append([frame.f_code.co_name, frame.f_lineno])
+                            current = current.gi_yieldfrom
+                        tick_route_spikes.append({"kind": kind, "ms": elapsed * 1000, "frames": frames})
+                yield value
+        finally:
+            steps.close()
+
+    advance_routes = w.npc_manager._advance_route_jobs
+
+    def probe_routes(*args, **kwargs):
+        for job in w.npc_manager._route_jobs:
+            if not job.get("audit_probed"):
+                job["steps"] = probe_route(job["steps"], job["kind"])
+                job["audit_probed"] = True
+        return advance_routes(*args, **kwargs)
+
+    w.npc_manager._advance_route_jobs = probe_routes
+for attr in ("rebuild_spatial_grid", "_check_vehicle_collision", "_advance_route_jobs", "_run_population_tick"):
+    timed(w.npc_manager, attr, "npc." + attr.lstrip("_"))
+timed(npc_mod, "update_npc", "npc.movement")
 timed(w.npc_manager, "discard_outside", "npc.discard_outside")
 timed(w.pedestrian_mgr, "discard_outside", "ped.discard_outside")
 for attr in ("ensure_taxi_stop_waiter", "ensure_sports_players"):
@@ -238,6 +279,8 @@ if prof:
     prof.enable()
 for i in range(n):
     tick_sections.clear()
+    tick_calls.clear()
+    tick_route_spikes.clear()
     cur_tick[0] = i
     g0 = len(gc_pauses)
     c0 = time.thread_time()
@@ -252,6 +295,12 @@ for i in range(n):
     if A.population_bands:  # outside the measured tick; NPC populations are not changed
         rec["vehicles"] = len(w.npc_manager.vehicles)
         rec["moving"] = sum(1 for v in w.npc_manager.vehicles if abs(v.car.speed) > 0.5)
+        rec["calls"] = dict(tick_calls)
+        rec["route_jobs"] = {key: w.npc_manager.route_job_stats.get(key, 0)
+                             for key in ("queued", "ready", "failed", "stale", "discarded")}
+        rec["route_jobs"]["pending"] = len(w.npc_manager._route_jobs)
+    if A.route_steps:
+        rec["route_step_spikes"] = list(tick_route_spikes)
     if i % 30 == 0:
         rec["counts"] = counts()
     if wall < 0.025:
@@ -307,6 +356,8 @@ summary["worst"] = [{"i": i, "wall_ms": 1000 * ticks[i]["wall"], "cpu_ms": 1000 
                      "gc": ticks[i]["gc"],
                      "sec_ms": {k: round(1000 * v, 2) for k, v in sorted(ticks[i]["sec"].items(), key=lambda kv: -kv[1])[:6]}}
                     for i in worst]
+if A.population_bands or A.route_steps:
+    summary["tick_samples"] = ticks
 if A.population_bands:
     summary["population_bands"] = {}
     for target in (10, 20, 40, 60):
