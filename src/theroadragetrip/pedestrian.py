@@ -295,6 +295,7 @@ class PedestrianNetwork:
         self._street_node_grid = build.street_node_grid
         self._component_parent = build.component_parent
         self._street_edges = build.street_edges
+        self._nearest_node_cache = {}  # exact coordinates; never reuse a node from the previous map graph
 
     def set_ways(self, ways: List[Way], streets: Sequence[Way] = ()) -> None:
         build = _PedestrianNetworkBuild(ways, streets)
@@ -349,6 +350,9 @@ class PedestrianNetwork:
     def _nearest_node(self, point: Tuple[float, float]) -> int:
         """The nearest footway node within FOOTWAY_SNAP_M, else the nearest
         node of any kind (smallest squared distance, lowest id on ties)."""
+        cached = self._nearest_node_cache.get(point)
+        if cached is not None:
+            return cached
         nodes = self.nodes
 
         def nearest(grid):
@@ -360,9 +364,14 @@ class PedestrianNetwork:
 
         footway = nearest(self._node_grid)
         if footway is not None and footway[0] <= FOOTWAY_SNAP_M ** 2:
-            return footway[1]
-        street = nearest(self._street_node_grid)
-        return min(key for key in (footway, street) if key is not None)[1]
+            node = footway[1]
+        else:
+            street = nearest(self._street_node_grid)
+            node = min(key for key in (footway, street) if key is not None)[1]
+        if len(self._nearest_node_cache) >= 2048:
+            self._nearest_node_cache.clear()
+        self._nearest_node_cache[point] = node
+        return node
 
     def connected(self, start: Tuple[float, float], target: Tuple[float, float]) -> bool:
         """Whether route() can find a network path (not its straight fallback)."""
@@ -2417,16 +2426,16 @@ class PedestrianManager:
                     x += perp_x * init_lat
                     y += perp_y * init_lat
 
-                    if self._point_inside_building(x, y):
-                        continue
-                    if not self._point_near_building(x, y):
-                        continue
-
                     if max_distance_m is not None and math.hypot(x - near_x, y - near_y) > max_distance_m:
                         continue
 
                     # Sanity check: do not spawn directly on top of player car
                     if math.hypot(x - near_x, y - near_y) < 3.0:
+                        continue
+
+                    if self._point_inside_building(x, y):
+                        continue
+                    if not self._point_near_building(x, y):
                         continue
 
                     # Sanity check: do not cluster pedestrians on top of each other

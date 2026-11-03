@@ -30,6 +30,55 @@ def test_pedestrian_network_routes_across_connected_ways():
     assert network.nearest_point((8.0, 2.0)) == (8.0, 0.0)
 
 
+def test_network_endpoint_cache_preserves_routes_across_map_rebuild(monkeypatch):
+    import theroadragetrip.pedestrian as module
+    network = PedestrianNetwork([
+        Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.5),
+    ])
+    start, target = (0.0, 0.0), (10.0, 0.0)
+    expected = [start, start, target, target]
+    assert network.route(start, target) == expected
+    original = module._ring_search
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "_ring_search", counted)
+    assert network.connected(start, target)
+    assert network.route(start, target) == expected
+    assert not calls  # repeated endpoints need no spatial search
+    network.start_rebuild([
+        Way(points_m=[(100.0, 0.0), (110.0, 0.0)], highway="footway", half_width_m=1.5),
+        Way(points_m=[start, target], highway="footway", half_width_m=1.5),
+    ])
+    assert network.connected(start, target)  # the old graph is still live
+    while not network.advance_rebuild(0.0):
+        pass
+    assert network.route(start, target) == expected
+    assert calls  # old node IDs must not survive the graph commit
+
+
+def test_network_endpoint_cache_is_bounded_and_uses_exact_coordinates():
+    network = PedestrianNetwork([
+        Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.5),
+    ])
+    assert network._nearest_node((4.999, 0.0)) == 0
+    assert network._nearest_node((5.001, 0.0)) == 1
+    for index in range(2100):
+        network._nearest_node((index / 1000.0, 0.0))
+    assert len(network._nearest_node_cache) <= 2048
+
+
+def test_spawn_rejects_distant_venue_candidates_before_building_queries(monkeypatch):
+    way = Way(points_m=[(100.0, 0.0), (110.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    monkeypatch.setattr(manager, "_point_inside_building",
+                        lambda x, y: pytest.fail("outside the spawn limit: no building query needed"))
+    assert manager.spawn_pedestrian(0.0, 0.0, max_distance_m=45.0) is None
+
+
 def test_sync_map_data_adds_streamed_footway():
     initial_way = Way(
         points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=2.0,
