@@ -98,3 +98,16 @@ beside their lane (a plain distance test); then one waited behind it in
 the left-hand lane, until they kept right; then the car ashore found no
 trip at this rural landing (only parking tiers) and was retired, until
 the through-traffic fallback.
+
+## Phase 4 (2026-11-03): the deck is steel
+
+The deck had counted as the open ground under the water (soft mud): it
+left muddy tracks that stayed on the water as the ferry moved on, and
+gave the taxi grass grip. Now no tyre mark is laid on a deck (the
+server's `_tyre_mark`) and `update_car_physics(hard_at=...)` makes it
+hard ground. Driven on the real map (Vartsala, headless, the player's
+throttle and brake): on to mid-deck at 13.7 m/s, ground "hard", no
+marks; stopped (the game's 28 m/s² brake, as on a road); the ferry left
+4 s later and carried the taxi 925 m in 208 s without it moving on the
+deck; at the far landing it drove off onto the road. No sinking at any
+point.
