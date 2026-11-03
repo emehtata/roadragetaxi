@@ -335,6 +335,15 @@ def _trams_to_dicts(tram_mgr) -> list:
             for tram in tram_mgr.trams]
 
 
+def _ferries_to_dicts(ferry_mgr) -> list:
+    """Ferries drawn like trains of one car (look "ferry", ferries.py)."""
+    if ferry_mgr is None:
+        return []
+    return [{"id": f"ferry-{ferry.ferry_id}", "state": ferry.state, "speed": ferry.speed_mps, "line": "",
+             "cars": [[round(x, 2), round(y, 2), round(h, 4), length, look] for x, y, h, length, look in ferry_mgr.cars(ferry)]}
+            for ferry in ferry_mgr.ferries]
+
+
 def _train_to_dict(train) -> dict:
     return {
         "id": id(train),
@@ -623,7 +632,8 @@ def build_state_message(
         "vomit_puddles": [list(point) for point in taxi_mgr.vomit_puddles + world.pedestrian_mgr.vomit_puddles],
         "vomit_footprints": [list(point) for point in world.pedestrian_mgr.vomit_footprints],
         "trains": [_train_to_dict(t) for t in getattr(getattr(world, "railway_mgr", None), "trains", ())]
-                  + _trams_to_dicts(getattr(world, "tram_mgr", None)),
+                  + _trams_to_dicts(getattr(world, "tram_mgr", None))
+                  + _ferries_to_dicts(getattr(world, "ferry_mgr", None)),
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
                     "road_snow": round(weather.road_snow, 1),
                     # 0 clear .. 1 overcast: dims the sunlight and building shadows (rrt-018-shadows)

@@ -84,7 +84,8 @@ class Curb:
 
 @dataclass
 class Railway:
-    """A rail line (OSM railway=rail/light_rail/tram/narrow_gauge/funicular). Visual only."""
+    """A rail line (OSM railway=rail/light_rail/tram/narrow_gauge/funicular). Visual only.
+    Kind "ferry": a car ferry route (OSM route=ferry, ferries.py), no track."""
     points_m: List[Tuple[float, float]]
     kind: str = "rail"
     bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)

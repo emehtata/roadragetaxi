@@ -22,6 +22,7 @@ from .fuel import fuel_station_price_cents
 from .geo import dist_point_to_segment, meters_to_latlon
 from .holiday_events import BONFIRE_SHORE_SPACING_M, bonfire_spot_is_clear, flagpole_spot, house_yard_spot
 from .map_level import SURFACE_MAP_LEVELS
+from .osm.build import FERRY_KIND
 from .nightlife import nightclub_schedule
 from .playground_equipment import equipment_rows
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
@@ -268,11 +269,12 @@ class ChunkIndex:
                     "drivable": bool(way.is_drivable), "layer": way.layer,
                     **static_world.road_style(way),  # colour, centre line, one-way, bridge (godot-16)
                 })
-        bridge_parts = static_world.rail_bridge_parts(world.railways, world.ways)
-        for rail in world.railways:
+        rails = [rail for rail in world.railways if rail.kind != FERRY_KIND]  # a ferry route is no track
+        bridge_parts = static_world.rail_bridge_parts(rails, world.ways)
+        for rail in rails:
             if len(rail.points_m) >= 2:  # a bridge track is drawn above the vehicles
                 self._add("rail_bridges" if rail.is_bridge else "railways", rail.points_m, _line(rail.points_m))
-        explicit_bridge_count = sum(rail.is_bridge and len(rail.points_m) >= 2 for rail in world.railways)
+        explicit_bridge_count = sum(rail.is_bridge and len(rail.points_m) >= 2 for rail in rails)
         for part in bridge_parts[explicit_bridge_count:]:
             # Explicit bridge tracks were added whole above; these are the
             # inferred short spans over a mapped below-grade road.

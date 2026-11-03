@@ -18,6 +18,7 @@ import time
 
 from ..world_loader import level_structures as _level_structures
 from ..osm import TILE_MERGE_BUDGET_S, remove_trees_under_roads_steps
+from ..osm.build import FERRY_KIND
 from ..performance import MAP_SYNC_BUDGET_S, MAP_SYNC_URGENT_BUDGET_S
 from ..parking import generate_detached_house_parking_chunk
 from ..physics import connected_drivable_ways
@@ -115,7 +116,7 @@ def map_sync_steps(world, remaining_budget=None):
     w.street_lamps[:] = [obj for obj in w.scenery_objects if obj.kind == "street_lamp"]
     for grid, items in ((w.street_lamp_grid, w.street_lamps), (w.water_grid, w.waters),
                         (w.crossing_grid, w.crossings), (w.curb_grid, w.curbs),
-                        (w.railway_grid, w.railways), (w.railing_grid, w.railings),
+                        (w.railway_grid, [r for r in w.railways if r.kind != FERRY_KIND]), (w.railing_grid, w.railings),
                         (w.traffic_light_grid, w.traffic_lights)):
         grid.start_rebuild(items)
         while True:
@@ -140,6 +141,8 @@ def map_sync_steps(world, remaining_budget=None):
             yield "railways"
     if getattr(w, "tram_mgr", None) is not None:
         w.tram_mgr.rebuild(w.railways)  # (the tram network: small, one step)
+    if getattr(w, "ferry_mgr", None) is not None:
+        w.ferry_mgr.rebuild(w.railways)  # the car ferry routes (ferries.py)
     yield "railways"
     with w.auto_fetch_manager.lock:
         w.auto_fetch_manager._attempted_endpoints.clear()

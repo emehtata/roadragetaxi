@@ -132,7 +132,8 @@ MAGIC = b"RWC\0"
 # 61: individual natural=shrub nodes as scenery objects.
 # 62: building and shop-place opening_hours and raw shop types.
 # 63: wooden fences (fence_type / material) as Railing.kind "wood_fence".
-FORMAT_VERSION = 63
+# 64: car ferry routes (route=ferry) as Railway kind "ferry".
+FORMAT_VERSION = 64
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")

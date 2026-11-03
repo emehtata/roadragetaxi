@@ -436,11 +436,13 @@ def advance_simulation(
         if streaming_cap_mps is not None:
             speed_limit_mps = streaming_cap_mps if speed_limit_mps is None else min(speed_limit_mps, streaming_cap_mps)
 
+    ferry_mgr = getattr(world, "ferry_mgr", None)
+    deck = ferry_mgr.on_deck if ferry_mgr is not None and ferry_mgr.ferries else None  # a ferry deck is dry (ferries.py)
     # Safety brake before open water straight ahead, off-road only: a shore road's
     # bends point at the water without leaving the road (surface only: levels have none).
     # Braking from a standstill reverses: that backs away from the shore, never capped.
     if on_surface and not on_foot and waters and current_way is None and not (brake > 0.0 and car.speed <= 0.5):
-        water_limit_mps = water_ahead_speed_limit(car, waters, now.month if now is not None else None, drive_grid)
+        water_limit_mps = water_ahead_speed_limit(car, waters, now.month if now is not None else None, drive_grid, dry=deck)
         if water_limit_mps is not None:
             speed_limit_mps = water_limit_mps if speed_limit_mps is None else min(speed_limit_mps, water_limit_mps)
             if car.speed > water_limit_mps + 0.5:  # too close for the gentle limit: brake hard
@@ -505,10 +507,10 @@ def advance_simulation(
                 car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True,
             )
         # water_elapsed: seconds the taxi has been sinking (0: afloat or on ice)
-        if water_elapsed > 0.0 and (not on_surface or not is_car_fully_in_water(car, waters, current_way)):
+        if water_elapsed > 0.0 and (not on_surface or not is_car_fully_in_water(car, waters, current_way, dry=deck)):
             water_elapsed = 0.0  # streamed geometry can correct a false water overlap
         elif water_elapsed == 0.0 and on_surface and not entered_roadwork and water_sinks_car(
-                car, waters, current_way, now.month if now is not None else None, dt):
+                car, waters, current_way, now.month if now is not None else None, dt, dry=deck):
             water_elapsed = dt
             audio.play_group("vehicle.water_splash")
         elif water_elapsed > 0.0:
@@ -659,6 +661,10 @@ def advance_simulation(
                 )
             railway_mgr.view_point = (camx, camy)
             railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), now)
+    ferry_mgr = getattr(world, "ferry_mgr", None)
+    if ferry_mgr is not None and ferry_mgr.routes:
+        with frame_profiler.section("ferries"):
+            ferry_mgr.update(dt, (camx, camy), car if car.map_level == SURFACE_LEVEL else None)
     tram_mgr = getattr(world, "tram_mgr", None)
     if tram_mgr is not None and tram_mgr.has_track:
         with frame_profiler.section("trams"):

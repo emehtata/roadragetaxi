@@ -22,6 +22,8 @@ from .level_routing import LevelRouteGraphs
 from .level_transitions import LevelTransitions, resolve_connectors, close_garage_roads
 from .map_level import SURFACE_LEVEL, LevelRoadNetworks
 from .trams import TramManager
+from .ferries import FerryManager
+from .osm.build import FERRY_KIND
 from .competitor_taxis import Dispatcher
 from .taxi_brawls import BrawlManager
 from .npc import NPCVehicleManager, npc_target_count_for_population
@@ -264,7 +266,7 @@ def load_world(
     curb_grid = SpatialWayGrid()
     curb_grid.rebuild(curbs)
     railway_grid = SpatialWayGrid()
-    railway_grid.rebuild(railways)
+    railway_grid.rebuild([r for r in railways if r.kind != FERRY_KIND])  # a ferry route is no track
     railing_grid = SpatialWayGrid()
     railing_grid.rebuild(railings)
 
@@ -480,6 +482,7 @@ def load_world(
         arena_crowds=arena_crowds,
         railway_mgr=railway_mgr,
         tram_mgr=TramManager(railways, chosen_city),  # trams on their rails where the city has them (trams.py)
+        ferry_mgr=FerryManager(railways),  # car ferries on their routes (ferries.py)
         auto_fetch_manager=auto_fetch_manager,
         base_pedestrian_count=base_pedestrian_count,
         bounds=bounds,

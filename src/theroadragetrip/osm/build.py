@@ -94,6 +94,21 @@ _KERB_CROSSING_GRID_CELL_M = 50.0
 # Helsinki's Raide-Jokeri). trams.py runs on both; trains keep to rail.
 TRAM_KINDS = ("tram", "light_rail")
 TRAM_STOP_SNAP_M = 15.0  # a tram stop beside its track (Railway.stops; trams.py snaps it the same)
+# A car ferry route (ferries.py) is kept as a Railway of this kind: cached
+# and streamed with the rails, but no rail consumer takes it.
+FERRY_KIND = "ferry"
+_FERRY_NOT_ROAD_CLASSES = ("footway", "path", "cycleway", "pedestrian")
+
+
+def _is_car_ferry(tags: dict) -> bool:
+    """An OSM route=ferry way that carries cars: motor_vehicle/motorcar=yes,
+    or a road class (ferry=secondary) that does not shut cars out."""
+    if tags.get("route") != "ferry":
+        return False
+    access = tags.get("motorcar", tags.get("motor_vehicle", ""))
+    if access in ("yes", "designated"):
+        return True
+    return access not in ("no", "private") and tags.get("ferry", "") not in ("", *_FERRY_NOT_ROAD_CLASSES)
 
 
 def _stadium_as_ground(tags: dict) -> dict:
@@ -893,6 +908,8 @@ def build_ways(
                     scenery_raw.append((tags, node_ids))
             elif tags.get("railway") in ("rail", "light_rail", "tram", "narrow_gauge", "funicular"):
                 railway_raw.append((tags, node_ids, way_id))
+            elif _is_car_ferry(tags):
+                railway_raw.append(({"railway": FERRY_KIND}, node_ids, way_id))
             elif tags.get("natural") == "coastline":
                 pass  # already collected, including coastline + waterway tags
             elif "waterway" in tags and (tags.get("tunnel") or tags.get("location") == "underground"):
