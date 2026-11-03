@@ -10,7 +10,7 @@ PRESET ?= Oulu
 BOT_MINUTES ?= 10
 BOT_OUT ?= /tmp/rrt-play-bot
 
-.PHONY: help venv install run run-2d run-rtx run-windows run-debug run-pbf index-pbf run-server fetch-godot run-godot run-godot-all play-bot godot-selftest godot-selftest-sample godot-test audio-check test compile check clean stop
+.PHONY: help venv install run run-2d run-rtx run-windows run-debug run-pbf index-pbf run-server docker-build docker-run docker-start docker-stop docker-rm docker-rmi fetch-godot run-godot run-godot-all play-bot godot-selftest godot-selftest-sample godot-test audio-check test compile check clean stop
 
 help:
 	@printf '%s\n' \
@@ -23,6 +23,12 @@ help:
 		'run-pbf                Start the game with the map from the local .osm.pbf extract' \
 		'index-pbf              Build the grid index for the local .osm.pbf extract (faster run-pbf)' \
 		'run-server             Start the headless simulation server (PRESET=Oulu PORT=8765)' \
+		'docker-build           Build the simulation server Docker image' \
+		'docker-run             Build and start the simulation server container' \
+		'docker-start           Start the existing simulation server container' \
+		'docker-stop            Stop the simulation server container' \
+		'docker-rm              Stop and remove the simulation server container' \
+		'docker-rmi             Remove the simulation server image' \
 		'fetch-godot            Download the Godot editor binary to $$(GODOT) if missing' \
 		'run-godot              Start the Godot client against a running server (GODOT=path)' \
 		'run-godot-all          Start the server in the background, then the Godot client' \
@@ -79,6 +85,24 @@ index-pbf:
 
 run-server:
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30
+
+docker-build:
+	docker compose -f docker/compose.yaml build
+
+docker-run:
+	docker compose -f docker/compose.yaml up --build -d
+
+docker-start:
+	docker compose -f docker/compose.yaml start
+
+docker-stop:
+	docker compose -f docker/compose.yaml stop
+
+docker-rm:
+	docker compose -f docker/compose.yaml down
+
+docker-rmi:
+	docker image rm docker-simulation-server
 
 fetch-godot: $(GODOT)
 

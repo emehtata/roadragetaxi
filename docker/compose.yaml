@@ -1,0 +1,7 @@
+services:
+  simulation-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8765:8765"
