@@ -1259,6 +1259,7 @@ def test_no_tyre_marks_on_a_ferry_deck(tmp_path, monkeypatch):
 
     server = _build_server(tmp_path, monkeypatch)
     server._on_foot = False
+    server.world.weather.wetness = 0.0  # a dry road keeps black marks (a start may begin in rain)
     server.car.skid_amount, server.car.braking = 1.0, True  # a full braking skid: marks anywhere else
     assert server._tyre_mark(previous=(server.car.x - 1.0, server.car.y)) is not None
     x, y = server.car.x, server.car.y
