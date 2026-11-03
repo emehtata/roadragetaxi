@@ -3275,6 +3275,10 @@ func test_buildings_3d() -> void:
 	var model_lamps := B3.model_car_details(4.4, 1.8, 2, B3.LAMPS_ON | B3.LAMPS_LEFT)
 	check(model_lamps["part"].size() == model_lamps["verts"].size() and
 		Array(model_lamps["part"]).any(func(v): return int(v.x) == B3.LAMP), "close models retain the live taxi sign and lamp states")
+	for kind in ["train", "tram", "ferry"]:
+		var transit := B3.vehicle_arrays(kind, 32.0 if kind == "ferry" else 20.0, 10.0 if kind == "ferry" else 3.0, Color.WHITE, 0, {})
+		check(Array(transit["part"]).any(func(v): return int(v.x) == B3.GLASS_PART),
+			"%s has visible bridge or passenger glazing" % kind)
 	var parts: Array = Array(taxi["part"]).map(func(v): return int(v.x))
 	check(taxi["part"].size() == taxi["verts"].size() and B3.PAINT in parts and B3.RUBBER in parts and B3.GLASS_PART in parts and B3.LAMP in parts,
 		"a lit taxi's paint, tyres, glass and sign each carry their material")

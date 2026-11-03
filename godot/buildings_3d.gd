@@ -1082,7 +1082,13 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 				_car_box(out, x, x + 1.3, -hw, -hw + 1.1, 0.02, 1.6, hull)
 				_car_box(out, x, x + 1.3, hw - 1.1, hw, 0.02, 1.6, hull)
 			_car_box(out, -3.3, 3.3, hw - 2.0, hw - 0.5, 1.05, 3.1, hull)
-			_part(out, GLASS_PART, -3.1, 3.1, hw - 2.02, hw - 0.48, 3.1, 4.0, Color8(37, 62, 72))
+			_car_box(out, -3.3, 3.3, hw - 2.0, hw - 0.5, 3.1, 4.0, hull)
+			for x: float in [-2.6, -1.3, 0.0, 1.3, 2.6]:
+				_part(out, GLASS_PART, x - 0.52, x + 0.52, hw - 2.025, hw - 1.995, 3.2, 3.86, CAR_GLASS)
+				_part(out, GLASS_PART, x - 0.52, x + 0.52, hw - 0.505, hw - 0.475, 3.2, 3.86, CAR_GLASS)
+			for side: float in [hw - 1.8, hw - 0.7]:
+				_part(out, GLASS_PART, -3.325, -3.295, side - 0.42, side + 0.42, 3.2, 3.86, CAR_GLASS)
+				_part(out, GLASS_PART, 3.295, 3.325, side - 0.42, side + 0.42, 3.2, 3.86, CAR_GLASS)
 			_car_box(out, -3.5, 3.5, hw - 2.2, hw - 0.3, 4.0, 4.2, hull)
 		"train", "tram":
 			var tram := kind == "tram"
@@ -1090,9 +1096,26 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 			var top := 3.4 if tram else 3.9
 			for x: float in [hl * 0.7, -hl * 0.7]:
 				_part(out, RUBBER, x - 1.2, x + 1.2, -hw * 0.75, hw * 0.75, 0.0, 0.6, Color8(40, 40, 40))
-			_car_box(out, -hl, hl, -hw, hw, 0.6, 1.5, style[0])
-			_part(out, GLASS_PART, -hl + 0.3, hl - 0.3, -hw + 0.01, hw - 0.01, 1.5, 2.4, CAR_GLASS)
-			_car_box(out, -hl, hl, -hw, hw, 2.4, top, style[0])
+			_car_box(out, -hl, hl, -hw, hw, 0.6, 1.45, style[0])
+			_car_box(out, -hl, hl, -hw, hw, 1.45, 2.55, style[0].darkened(0.16))
+			_car_box(out, -hl, hl, -hw, hw, 2.55, top, style[0])
+			var bay_count := maxi(2, int(length / 2.2))
+			for bay in bay_count:
+				var x0 := -hl + 0.45 + bay * (length - 0.9) / bay_count
+				var x1 := -hl + 0.3 + (bay + 1) * (length - 0.9) / bay_count
+				for side: float in [-1.0, 1.0]:
+					var y := side * (hw + 0.012)
+					_part(out, GLASS_PART, x0, x1, y - 0.013, y + 0.013, 1.63, 2.44, CAR_GLASS)
+			for side: float in [-0.55, 0.55]:
+				_part(out, GLASS_PART, hl - 0.018, hl + 0.018, side * hw - hw * 0.4, side * hw + hw * 0.4,
+					1.65, 2.48, CAR_GLASS)
+				_part(out, LAMP, hl + 0.02, hl + 0.05, side * hw - 0.11, side * hw + 0.11,
+					0.95, 1.13, Color8(242, 236, 205))
+				_part(out, LAMP, -hl - 0.05, -hl - 0.02, side * hw - 0.11, side * hw + 0.11,
+					0.95, 1.13, Color8(203, 36, 28))
+			if tram:
+				for door_x: float in [-hl * 0.55, hl * 0.38]:
+					_part(out, PAINT, door_x, door_x + 0.065, -hw - 0.02, -hw + 0.01, 0.68, 2.53, Color8(42, 48, 51))
 			if style[1] != null and extra.get("profile", "") == "locomotive":
 				_car_box(out, hl - 3.0, hl, -hw, hw, top, top + 0.05, style[1])
 			elif style[1] != null:

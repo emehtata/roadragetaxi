@@ -1,4 +1,4 @@
-## Fixed vehicle lineup for visual review. Usage: -- /tmp/vehicles.png day|evening|night close|cars|commercial|bikes
+## Fixed vehicle lineup for visual review. Usage: -- /tmp/vehicles.png day|evening|night close|cars|commercial|bikes|transit
 extends SceneTree
 const B3 := preload("res://buildings_3d.gd")
 const EntityLayer := preload("res://entity_layer.gd")
@@ -16,7 +16,7 @@ func capture() -> void:
 	B3.use_shaded()
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 5.5 if close else 9.0 if group == "bikes" else 24.0 if group == "commercial" else 18.0
+	camera.size = 5.5 if close else 9.0 if group == "bikes" else 60.0 if group == "transit" else 24.0 if group == "commercial" else 18.0
 	camera.position = Vector3(6.0, 3.1, 7.0) if close else Vector3(12.0, 15.0, 24.0)
 	root.add_child(camera)
 	camera.look_at(Vector3(0.0, 0.6, 0.0))
@@ -49,8 +49,11 @@ func capture() -> void:
 		["tractor", 4.0, 2.0, Color8(205, 120, 35), [], 0],
 		["trailer", 5.0, 2.1, Color8(240, 236, 222), [], 0],
 		["e_scooter", 1.3, 0.5, Color8(35, 155, 115), [], 0],
+		["train", 20.0, 3.0, Color8(230, 230, 225), [], 0],
+		["tram", 22.0, 2.6, Color8(120, 175, 205), [], 0],
+		["ferry", 32.0, 10.0, Color8(242, 183, 25), [], 0],
 	]
-	var selected := [0] if close else [0, 1, 2, 3, 4, 10, 11] if group == "cars" else [5, 6, 7, 12, 13, 14] if group == "commercial" else [8, 9, 15]
+	var selected := [0] if close else [0, 1, 2, 3, 4, 10, 11] if group == "cars" else [5, 6, 7, 12, 13, 14] if group == "commercial" else [16, 17, 18] if group == "transit" else [8, 9, 15]
 	for j in selected.size():
 		var i: int = selected[j]
 		var row: Array = rows[i]
@@ -68,8 +71,8 @@ func capture() -> void:
 			node = B3._instance(mesh, B3._shared["car"], B3.LAYER_BUILDINGS)
 			node.rotation.y = heading
 		var columns := 3 if group == "commercial" else 4 if group == "cars" else 3
-		var gap := 9.0 if group == "commercial" else 5.7 if group == "cars" else 2.4
-		node.position = Vector3.ZERO if close else Vector3((j % columns - (columns - 1) * 0.5) * gap, 0.0,
+		var gap := 16.0 if group == "transit" else 9.0 if group == "commercial" else 5.7 if group == "cars" else 2.4
+		node.position = Vector3(0.0, 0.0, (j - 1) * 18.0) if group == "transit" else Vector3.ZERO if close else Vector3((j % columns - (columns - 1) * 0.5) * gap, 0.0,
 			(j / columns - (selected.size() / columns - 1) * 0.5) * (8.0 if group == "commercial" else gap))
 		root.add_child(node)
 		if B3.MODEL_SCENES.has(kind):
