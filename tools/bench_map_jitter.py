@@ -37,6 +37,7 @@ import tempfile
 import threading
 import time
 import traceback
+from contextlib import contextmanager
 from pathlib import Path
 
 # godot/state_buffer.gd
@@ -166,6 +167,43 @@ def main(argv=None) -> int:
                     rec["phases"][name] = (w + (time.perf_counter() - w0) * 1000.0, c + (time.thread_time() - c0) * 1000.0)
         return wrapper
 
+    @contextmanager
+    def profile_section(name):
+        started = time.perf_counter()
+        try:
+            yield
+        finally:
+            rec = current[0]
+            if rec is not None:
+                elapsed = (time.perf_counter() - started) * 1000.0
+                rec.setdefault("sim_sections", {})[name] = rec.setdefault("sim_sections", {}).get(name, 0.0) + elapsed
+
+    class FrameProfiler:
+        section = staticmethod(profile_section)
+
+    server_module._NullFrameProfiler.INSTANCE = FrameProfiler()
+
+    # Attribute state-build time to the repeated serializers and nearby scans.
+    from theroadragetrip import protocol
+    from theroadragetrip.npc import NPCVehicleManager
+
+    for helper in ("_npc_to_dict", "_pedestrian_to_dict", "shown_pedestrians", "_broken_hedges", "_knocked",
+                   "_traffic_light_phases", "_live_roadworks"):
+        original = getattr(protocol, helper)
+        setattr(protocol, helper, timed("state." + helper, original))
+    for helper in ("rebuild_spatial_grid", "_update_bike_thefts", "_advance_route_jobs", "_run_population_tick",
+                   "_check_vehicle_collision"):
+        setattr(NPCVehicleManager, helper, timed("npc." + helper, getattr(NPCVehicleManager, helper)))
+
+    class PedestrianProfiler:
+        def record(self, name, elapsed_ms):
+            rec = current[0]
+            if rec is not None:
+                values = rec.setdefault("ped_internal", {})
+                values[name] = values.get(name, 0.0) + elapsed_ms
+
+    server.world.pedestrian_mgr.profiler = PedestrianProfiler()
+
     manager = streamer.manager
     server_module.advance_simulation = timed("simulation", server_module.advance_simulation)
     streamer.tick = timed("map_streamer", streamer.tick)
@@ -219,6 +257,9 @@ def main(argv=None) -> int:
             rec["end"] = time.monotonic()
             rec["background"] = sorted({name for t in threading.enumerate() for name in BACKGROUND if name in t.name})
             rec["busy"] = bool(rec["background"] or streamer.status() or server._map_growth)
+            rec["population"] = {"npcs": len(server.world.npc_manager.vehicles),
+                                  "moving_npcs": sum(abs(v.speed) > 0.5 for v in server.world.npc_manager.vehicles),
+                                  "pedestrians": len(server.world.pedestrian_mgr.pedestrians)}
             ticks.append(rec)
             next_tick += interval
             wait = next_tick - time.monotonic()
@@ -261,8 +302,9 @@ def main(argv=None) -> int:
     os.unlink(client_log)
 
     t0, t1 = ticks[0]["start"], ticks[-1]["end"]
-    full = [c for c in collections if c[1] == 2 and t0 <= c[0] <= t1]
-    young = [c[2] for c in collections if c[1] < 2 and t0 <= c[0] <= t1]
+    in_window = [c for c in collections if t0 <= c[0] <= t1]
+    full = [c for c in in_window if c[1] == 2]
+    young = [c[2] for c in in_window if c[1] < 2]
     slow = [t for t in ticks if t["wall"] > interval * 1000.0]
     phases = {}
     for t in slow:
@@ -271,9 +313,17 @@ def main(argv=None) -> int:
         ph.pop("map_streamer", None)
         for name, ms in ph.items():
             phases[name] = phases.get(name, 0.0) + ms
+        for name, ms in t.get("sim_sections", {}).items():
+            phases["simulation." + name] = phases.get("simulation." + name, 0.0) + ms
+        for name, ms in t.get("ped_internal", {}).items():
+            phases[name] = phases.get(name, 0.0) + ms
+        for name, (wall_ms, _cpu_ms) in t["phases"].items():
+            if name.startswith("npc."):
+                phases[name] = phases.get(name, 0.0) + wall_ms
 
     def overlapping(t):
-        return [[round(c[2]), c[3]] for c in full if c[0] >= t["start"] and c[0] - c[2] / 1000.0 <= t["end"]]
+        return [[round(c[2]), c[1], c[3]] for c in collections
+                if c[0] >= t["start"] and c[0] - c[2] / 1000.0 <= t["end"]]
 
     def tick_stats(rows_):
         walls = [t["wall"] for t in rows_]
@@ -310,6 +360,13 @@ def main(argv=None) -> int:
         "slow_ticks": {"count": len(slow), "wall_ms": round(sum(t["wall"] for t in slow)),
                        "waiting_ms": round(sum(t["wall"] - t["cpu"] for t in slow)),
                        "phases_ms": {k: round(v) for k, v in sorted(phases.items(), key=lambda kv: -kv[1])}},
+        "gc": {"count": len(in_window), "max_ms": round(max((c[2] for c in in_window), default=0.0)),
+                    "total_ms": round(sum(c[2] for c in in_window)),
+                    "by_generation": {str(g): {"count": sum(c[1] == g for c in in_window),
+                                                "total_ms": round(sum(c[2] for c in in_window if c[1] == g)),
+                                                "max_ms": round(max((c[2] for c in in_window if c[1] == g), default=0.0))}
+                                      for g in range(3)},
+                    "longest_over_10ms": [[round(c[2], 1), c[1], c[3]] for c in sorted(in_window, key=lambda c: c[2], reverse=True)[:20]]},
         "full_gc": {"count": len(full), "max_ms": round(max((c[2] for c in full), default=0.0)),
                     "total_ms": round(sum(c[2] for c in full)), "by_thread": sorted({c[3].split(" (")[0] for c in full}),
                     "tracked_objects_at_end": tracked, "frozen_at_end": frozen, "cyclic_garbage_at_end": garbage},
@@ -321,7 +378,10 @@ def main(argv=None) -> int:
                    "worst_gaps": [{"t_s": round(at - t0, 1), "ms": round(gap * 1000.0)} for gap, at in worst_gaps]},
         "worst_ticks": [{"t_s": round(t["start"] - t0, 1), "wall_ms": round(t["wall"]), "cpu_ms": round(t["cpu"]),
                          "phases": {k: round(v[0]) for k, v in sorted(t["phases"].items(), key=lambda kv: -kv[1][0])[:3]},
-                         "full_gc": overlapping(t), **({"stack": t["stack"]} if "stack" in t else {})}
+                         "gc": overlapping(t), "sim_sections": t.get("sim_sections", {}),
+                         "ped_internal": t.get("ped_internal", {}),
+                         "population": t.get("population", {}),
+                         **({"stack": t["stack"]} if "stack" in t else {})}
                         for t in sorted(ticks, key=lambda t: -t["wall"])[:12]],
         "log": str(log_path),
     }
