@@ -84,7 +84,7 @@
       "name": "Liiga and Veikkausliiga fixtures",
       "paths": ["src/theroadragetrip/assets/sports_fixtures.json.gz"],
       "purpose": "arena crowds on match days", "shipped": true,
-      "origin": "retrieved 2026-10-15 from https://www.liiga.fi/api/v2/schedule and https://www.veikkausliiga.com/tilastot/",
+      "origin": "refreshed 2026-11-03 from the Liiga schedule API and official Veikkausliiga result tables; Veikkausliiga stadium coordinates from OpenStreetMap via Nominatim",
       "copyright": "Liiga, Veikkausliiga and their data providers (per DATA_LICENSES.txt)",
       "licence": "none found", "evidence": "no terms of use found for redistribution",
       "obligations": "unknown", "commercial": "unknown", "status": "unresolved",

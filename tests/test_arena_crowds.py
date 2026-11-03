@@ -165,6 +165,35 @@ def test_game_day_schedule_uses_local_date_and_start_time():
     ]
 
 
+def test_veikkausliiga_schedule_drives_local_football_crowds_for_two_hours():
+    match = {
+        "id": "veikkausliiga:2026:test", "competition": "veikkausliiga", "sport": "football",
+        "start": "2026-11-01T13:00:00Z", "home_team": "AC Oulu", "away_team": "KuPS",
+        "attendance": 2732,
+        "venue": {"name": "OTC Stadion", "city": "Oulu", "latitude": 65.001214, "longitude": 25.452736},
+    }
+    crowds = ArenaCrowds(Pedestrians(), [], "Oulu", [match], to_metres=lambda lat, lon: (lat, lon))
+    event, = crowds.schedule_on(date(2026, 11, 1))
+
+    assert event.venue_name == "OTC Stadion"
+    assert event.start.strftime("%H:%M") == "15:00"  # Finland winter time
+    assert event.game_duration == timedelta(hours=2)
+    assert crowds.lights_on(event.start + timedelta(hours=2, minutes=15))
+    assert crowds.games_in_progress(event.start + timedelta(hours=2, minutes=15)) == []
+
+
+def test_bundled_veikkausliiga_fixture_appears_in_oulu_game_day_schedule():
+    from theroadragetrip.sports_fixtures import load_sports_fixtures
+
+    crowds = ArenaCrowds(Pedestrians(), [], "Oulu", to_metres=lambda lat, lon: (lat, lon))
+    games = crowds.schedule_on(date(2026, 11, 1))
+
+    assert [(game.home_team, game.away_team, game.venue_name) for game in games] == [
+        ("AC Oulu", "KuPS", "OTC Stadion"),
+    ]
+    assert any(match["competition"] == "veikkausliiga" for match in load_sports_fixtures())
+
+
 def test_arena_lights_cover_arrivals_game_and_departures():
     crowds = ArenaCrowds(Pedestrians(), [], "Oulu", [fixture()], to_metres=lambda lat, lon: (10.0, 20.0))
     start = crowds.events[0].start
