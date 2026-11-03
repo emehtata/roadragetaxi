@@ -2153,9 +2153,15 @@ func _train_car(c: Vector2, heading: float, length: float, profile: String, node
 	if not drawable(body):  # a car of no length or a bad heading
 		return
 	node.draw_colored_polygon(body, style[0])
-	if profile == "ferry":  # the car deck inside its yellow rails, a wheelhouse on one side
+	if profile == "ferry":
 		node.draw_colored_polygon(_rect(c, f, r, hl - 0.6, -hl + 0.6, hw - 1.0), style[1])
-		node.draw_colored_polygon(_rect(c + r * (hw - 0.9), f, r, 4.0, -4.0, 0.9), RS.TRAIN_PROFILES["ferry"][0].darkened(0.2))
+		for x: float in [-hl + 2.0, hl - 2.0]:
+			for y: float in [-hw + 0.8, hw - 0.8]:
+				node.draw_colored_polygon(_rect(c + f * x + r * y, f, r, 1.3, -1.3, 0.8), style[0])
+		node.draw_colored_polygon(_rect(c + r * (hw - 1.2), f, r, 3.5, -3.5, 0.8), style[0])
+		node.draw_colored_polygon(_rect(c + r * (hw - 1.2), f, r, 2.9, -2.9, 0.5), Color8(37, 62, 72))
+		for x: float in [-hl * 0.55, 0.0, hl * 0.55]:
+			node.draw_colored_polygon(_rect(c + f * x, f, r, 1.4, -1.4, 0.06), Color8(228, 226, 196))
 		return
 	if style[1] != null and profile == "locomotive":
 		node.draw_colored_polygon(_rect(c, f, r, hl, hl - 3.0, hw), style[1])

@@ -67,8 +67,11 @@ ways whose `ferry=*` is a backbone class (`ferry=trunk/primary/secondary`)
 as segments timed at 4.5 m/s + 60 s boarding (`intercity.VERSION` 2:
 prepared graphs rebuild).
 
-**Looks.** A yellow hull, a grey car deck level with the landing,
-side rails and a white wheelhouse on one side. 2D: drawn under the
+**Looks.** A yellow hull with a dark waterline, a grey car deck level
+with the landing, yellow side rails and ramp corners, deck lane marks,
+and a yellow glazed wheelhouse on one side. The shape follows the yellow
+vehicle ferries in [Timo Hirvi's ferry gallery](https://tjh.1g.fi/kuvat/LAIVAT,+VENEET++YM./MAANTIELAUTAT,+SAARISTOLAUTAT,+YHTEYSALUKSET/);
+the photos are references only and are not shipped. 2D: drawn under the
 vehicles (`entity_layer.gd`, `_ferries`). Visual scenarios
 `ferry_vartsala_3d` and `ferry_vartsala_2d`.
 
