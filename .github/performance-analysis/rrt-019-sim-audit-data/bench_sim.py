@@ -41,6 +41,8 @@ p.add_argument("--fare", action="store_true", help="accept an offer: game time 1
 p.add_argument("--cprofile")
 p.add_argument("--sample-ms", type=float, default=0.0,
                help="sample the tick thread's stack every N ms; ticks over 25 ms keep their samples (adds overhead)")
+p.add_argument("--population-bands", action="store_true",
+               help="sample NPC counts after each timed tick and report natural 10/20/40/60-vehicle bands")
 p.add_argument("--out")
 A = p.parse_args()
 
@@ -247,6 +249,9 @@ for i in range(n):
     blob = protocol.encode(_last_msg["m"])  # what transport.py's writer thread does per client
     rec = {"wall": wall, "cpu": cpu, "sec": dict(tick_sections), "encode": time.perf_counter() - e0, "bytes": len(blob),
            "gc": [p for p in gc_pauses[g0:]]}
+    if A.population_bands:  # outside the measured tick; NPC populations are not changed
+        rec["vehicles"] = len(w.npc_manager.vehicles)
+        rec["moving"] = sum(1 for v in w.npc_manager.vehicles if abs(v.car.speed) > 0.5)
     if i % 30 == 0:
         rec["counts"] = counts()
     if wall < 0.025:
@@ -273,6 +278,8 @@ summary = {
     "cpu_mean_ms": 1000 * sum(t["cpu"] for t in ticks) / len(ticks),
     "over_budget_pct": 100 * sum(1 for x in walls if x > DT) / len(walls),
     "over_half_budget_pct": 100 * sum(1 for x in walls if x > DT / 2) / len(walls),
+    "over_50ms_pct": 100 * sum(1 for x in walls if x > 0.050) / len(walls),
+    "over_100ms_pct": 100 * sum(1 for x in walls if x > 0.100) / len(walls),
     "encode_ms": {"mean": 1000 * sum(t["encode"] for t in ticks) / len(ticks), "max": 1000 * max(t["encode"] for t in ticks)},
     "state_bytes": {"mean": sum(t["bytes"] for t in ticks) / len(ticks), "max": max(t["bytes"] for t in ticks)},
     "sections_mean_ms": {},
@@ -300,6 +307,32 @@ summary["worst"] = [{"i": i, "wall_ms": 1000 * ticks[i]["wall"], "cpu_ms": 1000 
                      "gc": ticks[i]["gc"],
                      "sec_ms": {k: round(1000 * v, 2) for k, v in sorted(ticks[i]["sec"].items(), key=lambda kv: -kv[1])[:6]}}
                     for i in worst]
+if A.population_bands:
+    summary["population_bands"] = {}
+    for target in (10, 20, 40, 60):
+        rows = [t for t in ticks if target - 5 <= t["vehicles"] < target + 5]
+        if not rows:
+            continue
+        band_walls = sorted(t["wall"] * 1000 for t in rows)
+        summary["population_bands"][str(target)] = {
+            "ticks": len(rows),
+            "vehicles": [min(t["vehicles"] for t in rows), max(t["vehicles"] for t in rows)],
+            "mean_vehicles": sum(t["vehicles"] for t in rows) / len(rows),
+            "mean_moving": sum(t["moving"] for t in rows) / len(rows),
+            "mean_ms": sum(band_walls) / len(rows),
+            "p50_ms": band_walls[len(rows) // 2],
+            "p95_ms": band_walls[min(len(rows) - 1, int(0.95 * len(rows)))],
+            "p99_ms": band_walls[min(len(rows) - 1, int(0.99 * len(rows)))],
+            "max_ms": band_walls[-1],
+            "over_16_67ms_pct": 100 * sum(t["wall"] > DT / 2 for t in rows) / len(rows),
+            "over_33_33ms_pct": 100 * sum(t["wall"] > DT for t in rows) / len(rows),
+            "over_50ms_pct": 100 * sum(t["wall"] > 0.050 for t in rows) / len(rows),
+            "over_100ms_pct": 100 * sum(t["wall"] > 0.100 for t in rows) / len(rows),
+            "phase_mean_ms": {
+                name: 1000 * sum(t["sec"].get(name, 0.0) for t in rows) / len(rows)
+                for name in ("sim.npc", "sim.pedestrians", "sim.collisions", "srv.broadcast_state")
+            },
+        }
 summary["npc_diag"] = {k: v for k, v in (getattr(w.npc_manager, "population_diagnostics", {}) or {}).items()
                        if isinstance(v, (int, float))}
 rjs = getattr(w.npc_manager, "route_job_stats", None)
