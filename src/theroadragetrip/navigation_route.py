@@ -275,7 +275,7 @@ class NavigationRoute:
             # Surface roads include connected bridges of different OSM layers.
             self._job = world.traffic_mgr.plan_route_steps(
                 (car.x, car.y), (target.x, target.y), on_road=True,
-                start_layer=getattr(current_way, "layer", None))
+                start_layer=getattr(current_way, "layer", None), ferries=True)
             return
         # Off the surface: this level's graph, out through its connectors; the
         # leg on this level (it re-plans on the next one). Synchronous.

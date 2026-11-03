@@ -380,6 +380,8 @@ def load_world(
     npcs = npc_manager.vehicles
     npc_drivers = npc_manager.drivers
     traffic_mgr.npcs = npcs
+    ferry_mgr = FerryManager(railways)  # car ferries on their routes (ferries.py)
+    traffic_mgr.set_ferry_routes(route.points for route in ferry_mgr.routes)  # crossings for navigation
     # Initialize autonomous Pedestrian Manager
     on_load_progress(0.92, "Preparing pedestrians...")
     pedestrian_mgr = PedestrianManager(
@@ -482,7 +484,7 @@ def load_world(
         arena_crowds=arena_crowds,
         railway_mgr=railway_mgr,
         tram_mgr=TramManager(railways, chosen_city),  # trams on their rails where the city has them (trams.py)
-        ferry_mgr=FerryManager(railways),  # car ferries on their routes (ferries.py)
+        ferry_mgr=ferry_mgr,
         auto_fetch_manager=auto_fetch_manager,
         base_pedestrian_count=base_pedestrian_count,
         bounds=bounds,

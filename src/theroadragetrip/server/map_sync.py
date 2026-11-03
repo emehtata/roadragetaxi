@@ -143,6 +143,7 @@ def map_sync_steps(world, remaining_budget=None):
         w.tram_mgr.rebuild(w.railways)  # (the tram network: small, one step)
     if getattr(w, "ferry_mgr", None) is not None:
         w.ferry_mgr.rebuild(w.railways)  # the car ferry routes (ferries.py)
+        w.traffic_mgr.set_ferry_routes(route.points for route in w.ferry_mgr.routes)
     yield "railways"
     with w.auto_fetch_manager.lock:
         w.auto_fetch_manager._attempted_endpoints.clear()

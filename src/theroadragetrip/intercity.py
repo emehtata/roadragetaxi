@@ -21,14 +21,19 @@ import time
 import xml.etree.ElementTree as ET
 import zlib
 
+from .osm.build import _is_car_ferry
 from .utils.pbf_index import osmium_command
 
-VERSION = 1
+VERSION = 2  # 2: car ferries (route=ferry with a backbone ferry=* class) are segments
 ROAD_CLASSES = ("motorway", "motorway_link", "trunk", "trunk_link",
                 "primary", "primary_link", "secondary", "secondary_link")
 DEFAULT_SPEED_KMH = {"motorway": 100, "trunk": 80, "primary": 80, "secondary": 70,
                      "motorway_link": 40, "trunk_link": 40, "primary_link": 40, "secondary_link": 40,
                      "tertiary":60,"tertiary_link":40,"unclassified":50,"residential":30,"living_street":20,"service":20}
+# A car ferry segment (ferries.py): its crossing at the ferry's speed, plus the
+# boarding wait (game policy: the ferry waits at the landing for the taxi).
+FERRY_SPEED_MPS = 4.5
+FERRY_BOARDING_S = 60.0
 
 
 # ponytail: module-level reporter set only while prepare_database runs (one build at a time).
@@ -161,7 +166,9 @@ def build_xml(stream, output, project, road_classes=ROAD_CLASSES, source=None, *
                                      and not any(tags.get(key) in {"yes", "permissive", "designated"} for key in ("taxi", "motorcar", "motor_vehicle"))):
                 blocked_nodes.add(identifier)
         elif element.tag == "way":
-            if tags.get("highway") not in road_classes or tags.get("area") == "yes" or not _access(tags):
+            if _is_car_ferry(tags) and tags.get("ferry") in road_classes:
+                tags = {**tags, "highway": "ferry"}  # a backbone-class ferry crossing
+            elif tags.get("highway") not in road_classes or tags.get("area") == "yes" or not _access(tags):
                 continue
             refs = [int(node.get("ref")) for node in element.findall("nd")]
             if len(refs) < 2:
@@ -230,6 +237,8 @@ def build_xml(stream, output, project, road_classes=ROAD_CLASSES, source=None, *
                     if length <= 0:
                         continue
                     speeds = [_speed(tags,direction,tags["highway"]) for direction in ("forward","backward")]
+                    if tags["highway"] == "ferry":
+                        speeds = [length/(length/FERRY_SPEED_MPS+FERRY_BOARDING_S)]*2
                     geometry = zlib.compress(struct.pack("<"+"d"*len(points)*2, *(coordinate for point in points for coordinate in point)))
                     db.execute("INSERT INTO segments(a,b,way,highway,name,length,forward_s,reverse_s,geometry) VALUES(?,?,?,?,?,?,?,?,?)",
                                (ids[0],ids[-1],way,tags["highway"],tags.get("name",tags.get("ref","")),length,
@@ -263,7 +272,7 @@ def build_pbf(source, output, road_classes=ROAD_CLASSES):
     with tempfile.TemporaryDirectory(prefix="intercity-source-") as temp:
         filtered = Path(temp) / "roads.pbf"
         staged = Path(temp) / "graph.sqlite"
-        subprocess.run([command,"tags-filter",str(source),"w/highway="+",".join(road_classes),"r/type=restriction","-o",str(filtered)],
+        subprocess.run([command,"tags-filter",str(source),"w/highway="+",".join(road_classes),"w/route=ferry","r/type=restriction","-o",str(filtered)],
                        check=True,capture_output=True,timeout=1800)
         project = Transformer.from_crs("EPSG:4326","EPSG:3067",always_xy=True).transform
         with subprocess.Popen([command,"cat",str(filtered),"-f","osm"],stdout=subprocess.PIPE) as process:
