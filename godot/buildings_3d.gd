@@ -294,12 +294,16 @@ func _process(delta: float) -> void:
 	_camera.near = maxf(1.0, height * 0.02)
 	_camera.far = height * 2.0 + 10.0 if opaque else height + 1.0  # opaque: shadows on the ground (see the shadow camera below)
 	if windshield_on:
+		if opaque:
+			_camera.environment.background_mode = Environment.BG_SKY
 		var forward := Vector3(cos(windshield_heading), 0.0, -sin(windshield_heading))
 		_camera.position = Vector3(windshield_at.x, 1.35 + windshield_elevation, windshield_at.y) + forward * 0.55
 		_camera.look_at(_camera.position + forward * 100.0, Vector3.UP)
 		_camera.near = 0.08
 		_camera.far = 350.0
 	else:
+		if opaque:
+			_camera.environment.background_mode = Environment.BG_COLOR
 		_camera.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 	if _shadow_ground.visible:  # under the whole view; shadows only as far as the camera sees
 		if _shadow_view.size != size / SHADOW_VIEW_SCALE:
@@ -327,6 +331,13 @@ func _process(delta: float) -> void:
 ## material (the composite is unshaded, so they're darkened once); the lit
 ## windows fade from an ordinary window under that light to their own warm
 ## light as `level` (Daylight.artificial) rises - no geometry is rebuilt.
+func set_sky_color(color: Color) -> void:
+	if opaque:
+		var material: ProceduralSkyMaterial = _camera.environment.sky.sky_material
+		material.sky_top_color = color.darkened(0.1)
+		material.sky_horizon_color = color.lightened(0.2)
+
+
 func set_light(level: float, ambient: Color) -> void:
 	if opaque:
 		_camera.environment.ambient_light_color = ambient
@@ -786,7 +797,7 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 		"bus":
 			for x: float in [hl * 0.62, -hl * 0.55]:
 				for y: float in [hw * 0.8, -hw * 0.8]:
-					_part(out, RUBBER, x - 0.5, x + 0.5, y - 0.15, y + 0.15, 0.0, 1.0, tyre)
+					_wheel(out, x, y, 0.5, 0.3, tyre)
 			_car_box(out, -hl, hl, -hw, hw, 0.35, 1.15, color)
 			_part(out, GLASS_PART, -hl + 0.05, hl - 0.02, -hw + 0.02, hw - 0.02, 1.15, 2.6, CAR_GLASS)
 			_car_box(out, -hl, hl, -hw, hw, 2.6, 3.0, color)
@@ -796,15 +807,15 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 		"truck":
 			for x: float in [hl * 0.65, -hl * 0.45, -hl * 0.75]:
 				for y: float in [hw * 0.8, -hw * 0.8]:
-					_part(out, RUBBER, x - 0.5, x + 0.5, y - 0.18, y + 0.18, 0.0, 1.0, tyre)
+					_wheel(out, x, y, 0.5, 0.36, tyre)
 			_car_box(out, hl * 0.24, hl, -hw * 0.92, hw * 0.92, 0.5, 2.8, color)
 			_part(out, GLASS_PART, hl - 0.05, hl + 0.01, -hw * 0.8, hw * 0.8, 1.6, 2.5, CAR_GLASS)
 			_car_box(out, -hl, hl * 0.18, -hw, hw, 1.0, 3.4, color.lightened(0.11))
 			_car_lamps(out, hl, hw, lamps)
 		"tractor":
 			for y: float in [hw * 0.8, -hw * 0.8]:
-				_part(out, RUBBER, -hl * 0.9, -hl * 0.2, y - hw * 0.2, y + hw * 0.2, 0.0, 1.6, tyre)
-				_part(out, RUBBER, hl * 0.5, hl * 0.9, y * 0.78 - hw * 0.13, y * 0.78 + hw * 0.13, 0.0, 0.9, tyre)
+				_wheel(out, -hl * 0.55, y, 0.8, hw * 0.4, tyre)
+				_wheel(out, hl * 0.7, y * 0.78, 0.45, hw * 0.26, tyre)
 			_car_box(out, -hl * 0.1, hl, -hw * 0.36, hw * 0.36, 0.7, 1.5, color)
 			_car_box(out, -hl * 0.95, -hl * 0.05, -hw * 0.58, hw * 0.58, 0.9, 1.5, color)
 			_part(out, GLASS_PART, -hl * 0.9, -hl * 0.1, -hw * 0.54, hw * 0.54, 1.5, 2.6, CAR_GLASS)
@@ -821,21 +832,22 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 			var box := Color8(238, 234, 220)
 			for x: float in [hl * 0.6, -hl * 0.6]:
 				for y: float in [hw * 0.85, -hw * 0.85]:
-					_part(out, RUBBER, x - 0.35, x + 0.35, y - 0.15, y + 0.15, 0.0, 0.7, tyre)
+					_wheel(out, x, y, 0.35, 0.3, tyre)
 			_car_box(out, hl * 0.62, hl, -hw * 0.92, hw * 0.92, 0.3, 1.1, color)
 			_part(out, GLASS_PART, hl * 0.46, hl * 0.62, -hw * 0.86, hw * 0.86, 1.1, 1.9, CAR_GLASS)
 			_car_box(out, -hl, hl * 0.48, -hw, hw, 0.3, 2.9, box)
 			_car_box(out, -hl * 0.6, -hl * 0.45, -hw * 0.3, hw * 0.3, 2.9, 3.05, Color8(186, 185, 170))
 			_car_lamps(out, hl, hw, lamps)
 		"trailer":  # a caravan: its box, the drawbar to the hitch ahead, its wheels and tail lights
-			_part(out, RUBBER, -0.35, 0.35, -hw - 0.05, hw + 0.05, 0.0, 0.6, tyre)
+			for y: float in [-hw, hw]:
+				_wheel(out, 0.0, y, 0.3, 0.2, tyre)
 			_car_box(out, -hl, hl, -hw, hw, 0.35, 2.5, Color8(238, 234, 220))
 			_car_box(out, hl, hl + 0.9, -0.05, 0.05, 0.4, 0.5, Color8(165, 168, 162))
 			_part(out, GLASS_PART, hl * 0.2, hl * 0.55, -hw * 0.34, hw * 0.34, 2.5, 2.56, Color8(120, 150, 160))
 			_car_lamps(out, hl, hw, lamps)
 		"motorcycle", "moped":
-			_part(out, RUBBER, -hl * 0.98, -hl * 0.42, -hw * 0.25, hw * 0.25, 0.0, 0.62, tyre)
-			_part(out, RUBBER, hl * 0.52, hl * 0.98, -hw * 0.2, hw * 0.2, 0.0, 0.6, tyre)
+			_wheel(out, -hl * 0.7, 0.0, 0.31, hw * 0.5, tyre)
+			_wheel(out, hl * 0.75, 0.0, 0.3, hw * 0.4, tyre)
 			_car_box(out, -hl * 0.55, hl * 0.52, -hw * 0.45, hw * 0.45, 0.45, 0.9, color)
 			_car_box(out, -hl * 0.5, -hl * 0.08, -hw * 0.3, hw * 0.3, 0.9, 0.98, Color8(40, 40, 42))
 			_part(out, LAMP if lamps & LAMPS_ON else PAINT, hl * 0.86, hl * 0.99, -0.08, 0.08, 0.8, 0.95,
@@ -843,8 +855,8 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 			if extra.get("riding", false):
 				_rider(out, -hl * 0.3, hl * 0.12, 0.95, Color8(34, 34, 38), color.lightened(0.15))
 		"bicycle":
-			_part(out, RUBBER, -hl * 0.95, -hl * 0.29, -0.03, 0.03, 0.0, 0.66, tyre)
-			_part(out, RUBBER, hl * 0.29, hl * 0.95, -0.03, 0.03, 0.0, 0.66, tyre)
+			_wheel(out, -hl * 0.62, 0.0, 0.33, 0.06, tyre)
+			_wheel(out, hl * 0.62, 0.0, 0.33, 0.06, tyre)
 			_car_box(out, -hl * 0.62, hl * 0.62, -0.03, 0.03, 0.5, 0.62, color.darkened(0.25))
 			_car_box(out, hl * 0.45, hl * 0.55, -hw * 0.9, hw * 0.9, 0.95, 1.0, tyre)
 			if extra.get("riding", false):
@@ -929,10 +941,13 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 			_car_box(out, -0.15, 0.15, -0.2, 0.2, 1.5, 2.1, clothing)
 			_car_box(out, -0.1, 0.1, -0.1, 0.1, 2.12, 2.36, PERSON_SKIN)
 		_:  # standing, a walking stride either way, lying (rolled flat by person())
-			var stride := 0.18 * k if pose == "walk_a" else -0.18 * k if pose == "walk_b" else 0.0
+			var phase := int(pose.trim_prefix("walk_")) if pose.begins_with("walk_") else 0
+			var stride := sin(float(phase) * TAU / 4.0) * 0.2 * k
 			for side: float in [1.0, -1.0]:
 				var x := stride * side
-				_car_box(out, x - 0.08 * k, x + 0.08 * k, side * 0.1 * k - 0.07 * k, side * 0.1 * k + 0.07 * k, 0.0, 0.85 * k, PERSON_LEGS)
+				var lift := maxf(0.0, cos(float(phase) * TAU / 4.0) * side) * 0.1 * k if pose.begins_with("walk_") else 0.0
+				_car_box(out, x - 0.08 * k, x + 0.08 * k, side * 0.1 * k - 0.07 * k, side * 0.1 * k + 0.07 * k, lift, 0.85 * k, PERSON_LEGS)
+				_car_box(out, -x * 0.6 - 0.06 * k, -x * 0.6 + 0.06 * k, side * 0.23 * k - 0.06 * k, side * 0.23 * k + 0.06 * k, 0.82 * k, 1.38 * k, clothing)
 			_car_box(out, -0.12 * k, 0.12 * k, -0.2 * k, 0.2 * k, 0.85 * k, 1.45 * k, clothing)
 			_car_box(out, -0.1 * k, 0.1 * k, -0.1 * k, 0.1 * k, 1.47 * k, 1.72 * k, PERSON_SKIN)
 	if costume in ["santa", "elf"]:  # a red pointed cap
@@ -982,7 +997,7 @@ static func car_arrays(length: float, width: float, color: Color, shape: Array, 
 	out["part_now"] = RUBBER
 	for x: float in [hl * 0.64, -hl * 0.64]:
 		for y: float in [hw * 0.86, -hw * 0.86]:
-			_car_box(out, x - 0.33, x + 0.33, y + signf(y) * 0.05 - 0.14, y + signf(y) * 0.05 + 0.14, 0.0, 0.62, tyre)  # 5 cm out past the body
+			_wheel(out, x, y + signf(y) * 0.05, 0.31, 0.28, tyre)  # 5 cm out past the body
 	out["part_now"] = METAL_PAINT
 	_car_box(out, -hl, hl, -hw, hw, 0.28, sill, color)
 	var top := color.darkened(0.12)
@@ -1058,6 +1073,23 @@ static func _car_box(out: Dictionary, x0: float, x1: float, y0: float, y1: float
 		_quad(out, to_3d(corners[0], top), to_3d(corners[1], top), to_3d(corners[2], top), to_3d(corners[3], top), color, Vector3.UP, key)
 		_quad(out, to_3d(corners[0], bottom), to_3d(corners[1], bottom), to_3d(corners[2], bottom), to_3d(corners[3], bottom),
 			color.darkened(0.3), Vector3.DOWN, key)  # the underside: seen in reflections and by secondary rays
+
+
+static func _wheel(out: Dictionary, x: float, y: float, radius: float, width: float, color: Color) -> void:
+	var previous: int = out["part_now"]
+	out["part_now"] = RUBBER
+	for i in 10:
+		var a := float(i) * TAU / 10.0
+		var b := float(i + 1) * TAU / 10.0
+		var p := Vector2(x + cos(a) * radius, sin(a) * radius + radius)
+		var q := Vector2(x + cos(b) * radius, sin(b) * radius + radius)
+		for key in ["verts", "shadow"]:
+			_quad(out, Vector3(p.x, p.y, y - width * 0.5), Vector3(q.x, q.y, y - width * 0.5),
+				Vector3(q.x, q.y, y + width * 0.5), Vector3(p.x, p.y, y + width * 0.5), color, Vector3(cos((a + b) * 0.5), sin((a + b) * 0.5), 0.0), key)
+			for side: float in [-1.0, 1.0]:
+				_tri(out, Vector3(x, radius, y + side * width * 0.5), Vector3(p.x, p.y, y + side * width * 0.5),
+					Vector3(q.x, q.y, y + side * width * 0.5), color.darkened(0.12), Vector3(0.0, 0.0, side), key)
+	out["part_now"] = previous
 
 
 ## One chunk's mesh arrays (any thread): {"verts", "colors", "lit" (the
@@ -1743,19 +1775,23 @@ static func lamp_posts_node(rows: Array) -> MeshInstance3D:
 const SIGNAL_COLORS := [[Color(1.0, 0.12, 0.12), Color8(60, 10, 10)], [Color(1.0, 0.82, 0.0), Color8(60, 50, 0)], [Color(0.16, 0.94, 0.24), Color8(10, 50, 15)]]
 
 
-## rows [post position, along the housing (red end first), lit [red, yellow, green]].
+## rows [post position, direction toward approaching traffic, lit [red, yellow, green]].
 static func signals_node(rows: Array) -> MeshInstance3D:
 	var out := _empty_arrays()
 	for row: Array in rows:
 		var at: Vector2 = row[0]
-		var along: Vector2 = row[1]
+		var facing: Vector2 = row[1]
+		var side := Vector2(-facing.y, facing.x) * 0.16
 		_car_box(out, at.x - 0.06, at.x + 0.06, at.y - 0.06, at.y + 0.06, 0.0, 2.6, Color8(70, 70, 70))
+		_car_box(out, at.x - 0.19, at.x + 0.19, at.y - 0.19, at.y + 0.19, 2.18, 3.02, Color8(15, 15, 15))
 		for k in 3:
-			var p: Vector2 = at + along * (k - 1) * 0.3
-			_car_box(out, p.x - 0.18, p.x + 0.18, p.y - 0.18, p.y + 0.18, 2.6, 2.95, Color8(15, 15, 15))
+			var p: Vector2 = at + facing * 0.2
+			var h := 2.84 - k * 0.26
 			var lit: bool = row[2][k]
-			_part(out, LAMP if lit else PAINT, p.x - 0.11, p.x + 0.11, p.y - 0.11, p.y + 0.11, 2.95, 3.0,
-				SIGNAL_COLORS[k][0] if lit else SIGNAL_COLORS[k][1])
+			out["part_now"] = LAMP if lit else PAINT
+			_quad(out, to_3d(p - side * 0.65, h - 0.095), to_3d(p + side * 0.65, h - 0.095),
+				to_3d(p + side * 0.65, h + 0.095), to_3d(p - side * 0.65, h + 0.095),
+				SIGNAL_COLORS[k][0] if lit else SIGNAL_COLORS[k][1], to_3d(facing))
 	return _world_node(out)
 
 

@@ -831,7 +831,10 @@ func _present(state: Dictionary) -> void:
 	# ambient multiply (CanvasModulate: no fill) and how strongly the lights show.
 	var altitude := Daylight.altitude(state) if is_nan(override_altitude) else override_altitude
 	var cloud := Daylight.cloud_cover(state) if is_nan(override_cloud) else override_cloud
-	MapChunk.WATER_MATERIAL.set_shader_parameter("sky_color", Daylight.sky_color(altitude, cloud))
+	var sky_color := Daylight.sky_color(altitude, cloud)
+	MapChunk.WATER_MATERIAL.set_shader_parameter("sky_color", sky_color)
+	if map_layer.buildings_3d:
+		map_layer.buildings_3d.set_sky_color(sky_color)
 	var water_wind := WeatherLayer.wind_vector(state)
 	water_wind.y = -water_wind.y
 	MapChunk.WATER_MATERIAL.set_shader_parameter("wind", water_wind)

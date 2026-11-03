@@ -2092,7 +2092,7 @@ func _people_3d() -> void:
 ## gait (as the 2D legs swing), sitting, lying (fallen, sunbathing), swimming, riding, else standing.
 static func person_pose(ped: Dictionary, animation_time: float) -> String:
 	match str(ped.get("animation_state", "walking")):
-		"walking": return "walk_a" if sin(animation_time * 10.0) >= 0.0 else "walk_b"
+		"walking": return "walk_%d" % (floori(animation_time * 10.0 / TAU * 4.0) % 4)
 		"sitting": return "sitting"
 		"fallen", "sunbathing": return "lying"
 		"swimming": return "swimming"

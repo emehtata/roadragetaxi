@@ -18,6 +18,23 @@
       "measure_s": 3
     },
     {
+      "id": "windshield_oulu_day",
+      "description": "Street view at the Oulu taxi pose from the latest F12 screenshot",
+      "why": "The captured player view shows close cars, pedestrians, signals and open sky.",
+      "city": "Oulu",
+      "pose": [427752.6020218936, 7210620.188026317, -1.9872317961141932],
+      "start_time": "2026-06-20T14:30",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [0.0, 0.05],
+      "sun_altitude_deg": [30, 90],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": ["--no-auto-fetch"],
+      "requires": {"buildings_in_view": 3},
+      "measure_s": 3
+    },
+    {
       "id": "metallic_vehicle_paint_day",
       "description": "The taxi's and parked cars' paint under a high summer sun, buildings close on both sides",
       "why": "Eerikinkatu, Kamppi (find: 12 lamps, 13 buildings, 4 colours within 70 x 40 m): a narrow street of 5-7 storey blocks whose walls the paint can reflect; June noon sun ~53 deg.",
