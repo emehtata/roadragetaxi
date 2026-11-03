@@ -222,3 +222,51 @@ def test_a_behind_client_gets_the_newest_state_with_every_event(monkeypatch):
     assert [e["group"] for e in states[0]["state"]["events"]] == ["vehicle.door_open", "vehicle.door_close", "taxi.payment"]
     connection.close()
     peer.close()
+
+
+def test_incoming_oversized_line_and_queue_overflow_are_dropped(server, monkeypatch):
+    from theroadragetrip import transport
+    monkeypatch.setattr(transport, "MAX_LINE_BYTES", 512)
+    raw = socket.create_connection((server.host, server.port))
+    try:
+        _connected(server)
+        connection = server._clients[-1]
+        raw.sendall(b"x" * 513)
+        assert _wait_for(lambda: connection.is_closed)
+        server.tick(TICK)
+    finally:
+        raw.close()
+    monkeypatch.setattr(transport, "MAX_RECEIVED_MESSAGES", 3)
+    raw = socket.create_connection((server.host, server.port))
+    try:
+        _connected(server)
+        connection = server._clients[-1]
+        raw.sendall(b'{"type":"command","version":1,"command":{}}\n' * 4)
+        assert _wait_for(lambda: connection.is_closed)
+        assert connection._queue.qsize() <= 3
+    finally:
+        raw.close()
+
+
+def test_tick_consumes_only_a_bounded_batch_of_incoming_commands(server, monkeypatch):
+    from theroadragetrip import protocol
+    raw = socket.create_connection((server.host, server.port))
+    try:
+        _connected(server)
+        connection = server._clients[-1]
+        raw.sendall(b'{"type":"command","version":1,"command":{}}\n' * 128)
+        assert _wait_for(lambda: connection._queue.qsize() == 128)
+        calls = []
+        original = protocol.command_from_message
+
+        def counted(message):
+            calls.append(message)
+            return original(message)
+
+        monkeypatch.setattr(protocol, "command_from_message", counted)
+        server.tick(TICK)
+        assert len(calls) == 64 and connection._queue.qsize() == 64
+        server.tick(TICK)
+        assert len(calls) == 128 and connection._queue.empty()
+    finally:
+        raw.close()

@@ -810,7 +810,7 @@ class SimulationServer:
         with self._clients_lock:
             clients = list(self._clients)
         for connection in clients:
-            for message in connection.try_recv_all():
+            for message in connection.try_recv_all(limit=64):
                 if message.get("type") != "command":
                     continue
                 if protocol.command_player_id(message) != LOCAL_PLAYER_ID:

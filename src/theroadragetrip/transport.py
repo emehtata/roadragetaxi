@@ -30,6 +30,8 @@ _SOCKET_TIMEOUT_S = 0.25  # how often a blocked read/write wakes to check for sh
 # accepts no bytes for this long is disconnected - a non-reading client must
 # not hold memory or a thread forever.
 MAX_QUEUED_MESSAGES = 256
+MAX_RECEIVED_MESSAGES = 256
+MAX_LINE_BYTES = 16 * 1024 * 1024  # map chunks can be several MiB; commands are much smaller
 SEND_STALL_TIMEOUT_S = 10.0
 SEND_BUFFER_BYTES: Optional[int] = None  # tests shrink the kernel buffer to make a stall deterministic
 
@@ -60,7 +62,7 @@ class LineJSONConnection:
         if SEND_BUFFER_BYTES is not None:
             self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, SEND_BUFFER_BYTES)
         self._sock.settimeout(_SOCKET_TIMEOUT_S)
-        self._queue: "queue.Queue[dict]" = queue.Queue()
+        self._queue: "queue.Queue[dict]" = queue.Queue(maxsize=MAX_RECEIVED_MESSAGES)
         self._buffer = b""
         self._closed = False
         self._error: Optional[Exception] = None
@@ -86,10 +88,16 @@ class LineJSONConnection:
                 self._buffer += chunk
                 while b"\n" in self._buffer:
                     line, self._buffer = self._buffer.split(b"\n", 1)
+                    if len(line) > MAX_LINE_BYTES:
+                        self._fail(ProtocolError("incoming message exceeds byte limit"))
+                        return
                     if not line:
                         continue
                     try:
-                        self._queue.put(decode(line))
+                        self._queue.put_nowait(decode(line))
+                    except queue.Full:
+                        self._fail(ProtocolError("incoming message queue full"))
+                        return
                     except ProtocolError as exc:
                         # A malformed message or a protocol-version
                         # mismatch is a controlled failure (client-server-
@@ -98,6 +106,9 @@ class LineJSONConnection:
                         logger.warning("Dropping connection: %s", exc)
                         self._fail(exc)
                         return
+                if len(self._buffer) > MAX_LINE_BYTES:
+                    self._fail(ProtocolError("incoming message exceeds byte limit"))
+                    return
         except OSError as exc:
             if not self._closed:  # not our own close()
                 self._fail(exc)
@@ -198,16 +209,17 @@ class LineJSONConnection:
             except queue.Empty:
                 return latest
 
-    def try_recv_all(self) -> list[dict]:
+    def try_recv_all(self, limit: Optional[int] = None) -> list[dict]:
         """Drain the queue in order - used for edge-triggered messages
         (e.g. an `interact` command) where every one matters, not just
         the newest."""
         messages = []
-        while True:
+        while limit is None or len(messages) < limit:
             try:
                 messages.append(self._queue.get_nowait())
             except queue.Empty:
                 return messages
+        return messages
 
     @property
     def is_closed(self) -> bool:
