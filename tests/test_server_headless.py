@@ -1249,3 +1249,20 @@ def test_snowless_christmas_field_stays_frozen_and_never_opens_for_soccer(tmp_pa
     server.calendar.current = datetime(2026, 7, 15, 20)
     server._update_sports()
     assert not server.world.fields_frozen and not manager.sports_ice_open and manager.soccer_open
+
+
+def test_no_tyre_marks_on_a_ferry_deck(tmp_path, monkeypatch):
+    """The deck moves on with the taxi: a track laid there would be left behind on the water."""
+    from theroadragetrip.ferries import FerryManager
+    from theroadragetrip.osm.build import FERRY_KIND
+    from theroadragetrip.osm.models import Railway
+
+    server = _build_server(tmp_path, monkeypatch)
+    server._on_foot = False
+    server.car.skid_amount, server.car.braking = 1.0, True  # a full braking skid: marks anywhere else
+    assert server._tyre_mark(previous=(server.car.x - 1.0, server.car.y)) is not None
+    x, y = server.car.x, server.car.y
+    server.world.ferry_mgr = FerryManager([Railway(points_m=[(x - 25.0, y), (x + 500.0, y)], kind=FERRY_KIND)])
+    server.world.ferry_mgr.update(0.1, (x, y))
+    assert server.world.ferry_mgr.on_deck(x, y)
+    assert server._tyre_mark(previous=(x - 1.0, y)) is None

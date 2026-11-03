@@ -563,6 +563,9 @@ class SimulationServer:
         car, world = self.car, self.world
         if self._on_foot or (car.x, car.y) == previous:
             return None
+        ferry_mgr = getattr(world, "ferry_mgr", None)
+        if ferry_mgr is not None and ferry_mgr.on_deck(car.x, car.y):
+            return None  # a moving steel deck: no ground to mark, and tracks stay where they were laid (ferries.py)
         on_surface = getattr(car, "map_level", SURFACE_LEVEL) == SURFACE_LEVEL
         surface_way = get_current_road_at_car(car, ways=world.ways, spatial_grid=world.spatial_grid, car_roads_only=False) \
             if on_surface else None
