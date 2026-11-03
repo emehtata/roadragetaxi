@@ -1,4 +1,4 @@
-## Nearby Digitraffic readings. The main speed-limit sign remains a separate instrument.
+## Applicable Digitraffic readings. The main speed-limit sign remains a separate instrument.
 extends PanelContainer
 const T := preload('res://i18n.gd')
 const WARNINGS := {'133':'congestion', '141':'uneven', '142':'roadworks', '143':'gravel', '144':'slippery',
@@ -25,8 +25,7 @@ func _ready() -> void:
 		var row := Label.new()
 		row.add_theme_font_size_override('font_size', 16)
 		row.add_theme_color_override('font_color', Color8(255, 195, 70))
-		row.clip_text = true
-		row.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		column.add_child(row)
 		_rows.append(row)
 	hide()
@@ -43,7 +42,7 @@ static func reading_text(sign: Dictionary, language: String) -> String:
 	route.compile('\\[tie_(\\d+)\\]')
 	for line in sign.get('text', []):
 		parts.append(route.sub(str(line), '[$1]', true))
-	return ' · '.join(parts) + '  (%d m)' % int(sign.get('distance_m', 0))
+	return ' · '.join(parts)
 
 func show_state(signs: Array, language: String) -> void:
 	visible = not signs.is_empty()

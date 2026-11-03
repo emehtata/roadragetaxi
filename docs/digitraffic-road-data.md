@@ -504,15 +504,15 @@ today's behaviour when the data is missing.
    Phase 0 should report match rates for Helsinki, Tampere and Oulu before
    committing to the thresholds above.
 
-## Electronic signs beside the HUD limit (2026-10-28)
+## Electronic sign messages beside the HUD limit (updated 2026-11-03)
 
 Enable **Settings → gameplay → Digitraffic: roadworks and signs** (the existing
 `--road-digitraffic` / `game.road_digitraffic` option). The panel beside the
-round limit sign shows the next speed reading, warning and text message facing
-the taxi on its connected road approach, with distance along the road and an
-“ahead” label. English, Finnish and German UI
-labels are provided; the original sign's message text is retained. Long text
-uses ellipsis with its full reading in the tooltip. Fintraffic attribution is
+round limit sign shows the latest passed speed reading, warning and information
+message applying to the taxi's directed, connected road. It shows the actual
+sign text rather than an approaching-sign label or distance. English, Finnish
+and German UI labels are provided; the original text from all display screens
+is retained in screen/row order. Long messages wrap so they remain readable. Fintraffic attribution is
 in the panel tooltip. The panel stays visible above the movable phone and the
 train board moves below it.
 
@@ -534,8 +534,12 @@ checks for new data on the existing game-time query windows. Failures retain
 the existing backoff and retry behavior. A failed sign fetch hides its readings
 until a successful retry.
 
-The server sends `state.electronic_signs`: at most one reading per type, up to
-700 m **ahead along the connected road**, on the surface map level and layer.
+The server sends `state.electronic_signs`: the nearest passed reading per type,
+within 700 m **behind along the connected road**, on the surface map level and
+layer. The display starts at the sign and continues downstream; the next passed
+sign of the same type replaces it, including a blank sign clearing that type.
+The public point feed supplies no effective-zone endpoint. This 700 m display
+zone is an explicit bounded game fallback, not a claim of statutory validity.
 The taxi's heading and reverse motion determine its travel direction. Sign
 bindings use Digitraffic's direction, full road-register address and carriageway,
 with an increasing-address baseline from Väylä's public reference converter.
@@ -547,8 +551,9 @@ geometry, ambiguous road matches and ambiguous forks hide the sign.
 checking its numbered road, location, one-way direction and level. A bounded
 walk from the taxi follows only a unique same-numbered continuation, including
 curved roads and OSM ways whose point order reverses at a join. Opposite
-carriageways, disconnected same-numbered roads, signs behind the taxi and signs
-beyond an unselected fork are excluded. Passing a sign or reversing updates the
+carriageways, disconnected same-numbered roads, signs ahead of the taxi and signs
+beyond an ambiguous fork are excluded. The walk traces backwards while retaining
+the legal forward direction on one-way roads. Passing a sign or reversing updates the
 display from current physics state. Sign bindings refresh with map matching;
 node lookup caches clear when the spatial-grid revision changes. The walk has a
 128-segment work budget and hides anything beyond it.
@@ -563,9 +568,9 @@ short reference interval cannot be resolved. The existing administrative
 surface-only limitation remains: bridge/tunnel layers are not inferred from
 point sign metadata.
 
-This implements directional **approaching-sign display**, not downstream legal
-speed-limit validity or changes to the limiter, NPC speeds or speed cameras.
-Those remain separate work.
+This implements directional **downstream message display**. It does not establish
+legal speed-limit zone endpoints or change the limiter, NPC speeds or speed
+cameras. Those remain separate work.
 
 Direction references: [Väylä's reference-converter API](https://avoinapi.vaylapilvi.fi/viitekehysmuunnin/rajapintakuvaus)
 and [road-register carriageway conventions](https://ohje.velho.vaylapilvi.fi/tievelho/tietorakenne/sijaintitiedon-hallinta/).
@@ -585,3 +590,11 @@ direction, layer separation and bounded work; this display change does not
 certify traffic-law compliance. No native GPU benchmark is claimed.
 
 API reference: [Digitraffic variable signs](https://www.digitraffic.fi/en/road-traffic/#variable-signs).
+
+2026-11-03 message-zone correction: 76 relevant Python checks passed (41 focused
+on signs), covering
+entry/exit, blank replacement, time changes, multiple display screens, directed
+curved roads, one-way travel, forks, map rematching and real physics-loop passing.
+The dedicated Godot HUD check verifies message formatting, wrapping, hiding and
+layout; its render path checks the captured image dimensions. Screenshots were rendered
+and visually inspected at 1280×720 and 800×600 with full wrapped messages.

@@ -93,8 +93,8 @@ def bind_sign(sign, grid):
     return best[1:]
 
 
-def approach(car, way, grid, distance_m, node_cache=None):
-    """Walk forward along unambiguous same-road segments; no routing guess at a fork."""
+def approach(car, way, grid, distance_m, node_cache=None, *, backwards=False):
+    """Walk the directed road; backwards traces passed signs without guessing at forks."""
     if grid is None or not _surface(way):
         return []
     point = car.x, car.y
@@ -108,12 +108,12 @@ def approach(car, way, grid, distance_m, node_cache=None):
     if lateral > way.half_width_m + 2:
         return []
     a,b = way.points_m[index:index+2]
-    travel = car.heading + (math.pi if car.speed < 0 else 0)
+    travel = car.heading + (math.pi if car.speed < 0 else 0) + (math.pi if backwards else 0)
     alignment = math.cos(travel - math.atan2(b[1]-a[1],b[0]-a[0]))
     if abs(alignment) < math.cos(math.radians(45)):
         return []
     step = 1 if alignment > 0 else -1
-    if way.oneway not in (0, step):
+    if way.oneway not in (0, -step if backwards else step):
         return []
     roads = {r for r in _roads(way) if r.isdigit()}
     node_cache = {} if node_cache is None else node_cache
@@ -149,7 +149,7 @@ def approach(car, way, grid, distance_m, node_cache=None):
                     continue
                 for direction in (-1,1):
                     end = j+direction
-                    if not 0 <= end < len(other.points_m) or other.oneway not in (0,direction):
+                    if not 0 <= end < len(other.points_m) or other.oneway not in (0,-direction if backwards else direction):
                         continue
                     segment = min(j,end)
                     if other is way and segment == index:

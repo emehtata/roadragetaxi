@@ -167,7 +167,7 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	_board.visible = board != ""
 	if _board.visible:
 		_board.reset_size()
-		_board.position = Vector2(size.x - 10.0 - _board.size.x, 180.0 if _electronic.visible else 116.0)
+		_board.position = Vector2(size.x - 10.0 - _board.size.x, maxf(116.0, _electronic.get_rect().end.y + 8.0) if _electronic.visible else 116.0)
 	_layout_subtitle()
 	_subtitle.visible = Time.get_ticks_msec() < _subtitle_until
 	_map_sign.text = map_loading_text(str(state.get("map_loading", "")), Time.get_ticks_msec(), language, str(state.get("map_loading_detail", "")))

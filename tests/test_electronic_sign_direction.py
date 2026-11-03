@@ -40,8 +40,8 @@ def test_only_signs_facing_the_taxi_on_its_approach_are_shown(angle,reverse_osm)
     opposite=sign_at(*p(80),angle+math.pi,id='opposite')
     behind=sign_at(*p(10),angle,id='behind')
     rows=result([opposite,behind,ahead],car,way,[way])
-    assert [row['id'] for row in rows] == ['ahead']
-    assert rows[0]['distance_m'] == 80
+    assert [row['id'] for row in rows] == ['behind']
+    assert rows[0]['distance_m'] == 10
     car.heading += math.pi
     assert [row['id'] for row in result([ahead],car,way,[way])] == []
 
@@ -50,7 +50,7 @@ def test_parallel_carriageway_and_same_numbered_disconnected_road_are_excluded()
     east=road([(0,0),(300,0)],oneway=1)
     west=road([(300,20),(0,20)],oneway=1)
     disconnected=road([(350,0),(600,0)])
-    car=Car(10,0,0,0)
+    car=Car(110,0,0,0)
     good=sign_at(100,0,id='good')
     wrong=sign_at(100,20,math.pi,id='wrong')
     far=sign_at(400,0,id='disconnected')
@@ -61,20 +61,20 @@ def test_curved_connected_ways_use_path_distance_and_local_sign_direction():
     first=road([(0,0),(100,0)])
     second=road([(100,100),(100,0)])  # OSM order reverses at the join
     third=road([(100,100),(0,100)])
-    car=Car(10,0,0,0)
-    # Sign faces west, while the taxi currently faces east: the connected road bends around.
-    sign=sign_at(50,100,math.pi)
-    rows=result([sign],car,first,[first,second,third])
-    assert len(rows)==1 and rows[0]['distance_m']==240
+    car=Car(50,100,math.pi,0)
+    # The passed sign faces east; the same connected road bends around to the west.
+    sign=sign_at(50,0)
+    rows=result([sign],car,third,[first,second,third])
+    assert len(rows)==1 and rows[0]['distance_m']==200
 
 
 def test_fork_and_other_levels_fail_closed():
     first=road([(0,0),(100,0)])
     left=road([(100,0),(200,60)])
     right=road([(100,0),(200,-60)])
-    car=Car(10,0,0,0)
-    sign=sign_at(150,30,math.atan2(60,100))
-    assert result([sign],car,first,[first,left,right]) == []
+    car=Car(150,30,math.atan2(60,100),0)
+    sign=sign_at(50,0)
+    assert result([sign],car,left,[first,left,right]) == []
     bridge=road([(0,0),(300,0)],layer=1)
     assert bind_sign(sign_at(100,0),SpatialWayGrid([bridge])) is None
     assert approach(car,bridge,SpatialWayGrid([bridge]),700)==[]
@@ -140,10 +140,10 @@ def test_map_streaming_rematches_direction_binding_after_new_roads_load():
     grid=SpatialWayGrid([first])
     moment=datetime(2026,10,28,tzinfo=timezone.utc)
     live.update(0,0,moment,moment,1,grid)
-    assert live.electronic_signs_near(Car(0,0,0,0),first)==[]
+    assert live.electronic_signs_near(Car(200,0,0,0),second)==[]
     grid.rebuild([first,second]);now[0]=6
     live.update(0,0,moment,moment,2,grid)
-    assert live.electronic_signs_near(Car(0,0,0,0),first)[0]['distance_m']==150
+    assert live.electronic_signs_near(Car(200,0,0,0),second)[0]['distance_m']==50
 
 
 def test_roadworks_publish_before_slow_direction_metadata_finishes(monkeypatch):
@@ -163,3 +163,44 @@ def test_roadworks_publish_before_slow_direction_metadata_finishes(monkeypatch):
         assert service.revision >= 1
     finally:
         release.set();service.close()
+
+
+def test_effective_zone_starts_at_sign_and_ends_after_bounded_same_road_distance():
+    way = road([(-1000, 0), (1000, 0)], oneway=1)
+    sign = sign_at(0, 0, type='INFORMATION', speed_limit_kmh=None, text=['SILTATYÖ'])
+    for x, active in [(-1, False), (0, True), (300, True), (700, True), (701, False)]:
+        rows = result([sign], Car(x, 0, 0, 0), way, [way])
+        assert bool(rows) == active
+        if active:
+            assert rows[0]['text'] == ['SILTATYÖ']
+
+
+def test_nearer_passed_sign_replaces_previous_message_even_when_blank():
+    way = road([(0, 0), (1000, 0)], oneway=1)
+    first = sign_at(100, 0, id='old', type='INFORMATION', speed_limit_kmh=None, text=['RUUHKA'])
+    next_sign = sign_at(300, 0, id='new', type='INFORMATION', speed_limit_kmh=None, text=['TIE AUKI'])
+    assert result([first, next_sign], Car(200, 0, 0, 0), way, [way])[0]['text'] == ['RUUHKA']
+    assert result([first, next_sign], Car(400, 0, 0, 0), way, [way])[0]['text'] == ['TIE AUKI']
+    next_sign['text'] = []
+    assert result([first, next_sign], Car(400, 0, 0, 0), way, [way]) == []
+
+
+def test_message_appears_after_passing_sign_in_real_physics_updates():
+    way = road([(-300, 0), (300, 0)], oneway=1)
+    sign = sign_at(3, 0, type='INFORMATION', speed_limit_kmh=None, text=['LIUKASTA'])
+    car = Car(0, 0, 0, 0, engine_on=True)
+    assert result([sign], car, way, [way]) == []
+    grid = SpatialWayGrid([way])
+    for _ in range(90):
+        update_car_physics(car, 1, 0, 0, 0, 1 / 30, ways=[way], spatial_grid=grid)
+    assert car.x > 3
+    assert result([sign], car, way, [way])[0]['text'] == ['LIUKASTA']
+    car.y = 30
+    assert result([sign], car, way, [way]) == []
+
+
+def test_blank_sign_wins_when_distances_round_to_the_same_ten_metres():
+    way = road([(0, 0), (200, 0)], oneway=1)
+    old = sign_at(100, 0, id='a-old')
+    clear = sign_at(101, 0, id='z-clear', speed_limit_kmh=None)
+    assert result([old, clear], Car(104, 0, 0, 0), way, [way]) == []
