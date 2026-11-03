@@ -15,7 +15,7 @@ budgeted steps, and the server resends the chunks that changed
 from __future__ import annotations
 
 from contextlib import nullcontext
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 import concurrent.futures
 import logging
@@ -178,6 +178,13 @@ CHANGED_AREA_MARGIN_M = 50.0
 # moved on, its chunks aren't pre-encoded, and encoding them all in one tick
 # took 50-115 ms. The rest go on the next ticks, nearest first.
 CHUNK_ENCODE_BUDGET_S = 0.006
+
+
+@dataclass(frozen=True)
+class MapGrowthFailure:
+    old_bounds: object
+    new_bounds: object
+    dirty: object
 
 
 class SimulationServer:
@@ -420,6 +427,7 @@ class SimulationServer:
         # The tiles the chunk index was built with (None: the map never grows). A chunk
         # beyond them would reach the client half-built and be resent when its tile merges.
         self._indexed_tiles = set(self._map_streamer.manager.loaded_tiles) if self._map_streamer is not None else None
+        self._map_growth_retry = None
         self._map_growth: list = []  # the background rebuild's results, swapped in by ticks in order
         # Chunk rebuilds in a worker process (chunk_worker.py), off the ticks' GIL;
         # with --no-build-in-process (or after a failure) on the map-growth thread.
@@ -1100,6 +1108,10 @@ class SimulationServer:
             railway_mgr.sound_events.clear()
         if self._map_growth:
             self._apply_map_growth()
+        if self._map_growth_retry is not None and time.monotonic() >= self._map_growth_retry[0]:
+            _, failed = self._map_growth_retry
+            self._map_growth_retry = None
+            self._map_grew(failed.old_bounds, failed.new_bounds, failed.dirty)
         if self._map_streamer is not None:  # auto-fetch near the edge, then map sync
             self._map_streamer.tick(self.car.x, self.car.y, math.cos(self.car.heading) * self.car.speed,
                                     math.sin(self.car.heading) * self.car.speed, urgent=not self.central_chunk_ready())
@@ -1422,14 +1434,27 @@ class SimulationServer:
             logger.info("Map chunks rebuilt for %s (lights %.0f ms)",
                         ", ".join("%.0f x %.0f m" % (a[2] - a[0], a[3] - a[1]) for a in areas), lights_s * 1000.0)
 
+        def guarded_build():
+            try:
+                build()
+            except Exception:
+                logger.exception("Map chunk rebuild failed; retrying with the synced world")
+                self._map_growth.append(MapGrowthFailure(old_bounds, new_bounds, dirty))
+
         self._map_streamer.hold = True
-        threading.Thread(target=build, name="map-growth", daemon=True).start()
+        threading.Thread(target=guarded_build, name="map-growth", daemon=True).start()
 
     def _apply_map_growth(self) -> None:
         """Swap in the grown map's lamps and chunks (the next result of the
         background rebuild); resend every chunk a client has whose content
         changed (new roads across the old edge, lamps, buildings...)."""
-        lights, index, changed, old_bounds, new_bounds, build_s, final, covered = self._map_growth.pop(0)
+        result = self._map_growth.pop(0)
+        if isinstance(result, MapGrowthFailure):
+            # Keep merges held during the retry so its dirty regions stay valid.
+            self._map_streamer.hold = True
+            self._map_growth_retry = (time.monotonic() + 1.0, result)
+            return
+        lights, index, changed, old_bounds, new_bounds, build_s, final, covered = result
         self._chunks_index = index
         self.world.street_light_points = lights
         self._map_streamer.hold = not final
