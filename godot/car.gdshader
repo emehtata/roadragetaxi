@@ -9,7 +9,7 @@ render_mode cull_back;
 // this much per metre - so the sun and the street lamps glint on the side of
 // the body facing them, as on a real curved panel (flat, they mirror only
 // the plain sky and look darker than plain paint).
-const float DOME_PER_M = 0.22;
+const float DOME_PER_M = 0.35;
 
 varying vec3 local_position;  // model space: the vehicle's centre at the origin, +x forward
 varying vec3 local_normal;
@@ -29,7 +29,7 @@ void fragment() {
 		CLEARCOAT = 1.0;
 		CLEARCOAT_ROUGHNESS = 0.12;
 		if (local_normal.y > 0.7) {
-			vec2 lean = clamp(local_position.xz * DOME_PER_M, vec2(-0.4), vec2(0.4));  // a bus's 12 m roof: the ends no steeper than a car's
+			vec2 lean = local_position.xz * DOME_PER_M;  // ever steeper outwards: the mirror angle is passed once, a narrow glint (a plateau made a bus's roof a blown-out band)
 			vec3 domed = normalize(vec3(lean.x, 1.0, lean.y));
 			NORMAL = normalize((VIEW_MATRIX * MODEL_MATRIX * vec4(domed, 0.0)).xyz);
 		}
