@@ -1,4 +1,4 @@
-## Fixed vehicle lineup for visual review. Usage: -- /tmp/vehicles.png day|evening|night close|cars|commercial|bikes|transit
+## Fixed vehicle lineup for visual review. Usage: -- /tmp/vehicles.png day|evening|night close|cars|commercial|bikes|trains|transit
 extends SceneTree
 const B3 := preload("res://buildings_3d.gd")
 const EntityLayer := preload("res://entity_layer.gd")
@@ -16,7 +16,7 @@ func capture() -> void:
 	B3.use_shaded()
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 5.5 if close else 9.0 if group == "bikes" else 60.0 if group == "transit" else 24.0 if group == "commercial" else 18.0
+	camera.size = 5.5 if close else 9.0 if group == "bikes" else 60.0 if group == "transit" else 32.0 if group == "trains" else 24.0 if group == "commercial" else 18.0
 	camera.position = Vector3(6.0, 3.1, 7.0) if close else Vector3(12.0, 15.0, 24.0)
 	root.add_child(camera)
 	camera.look_at(Vector3(0.0, 0.6, 0.0))
@@ -52,8 +52,10 @@ func capture() -> void:
 		["train", 20.0, 3.0, Color8(230, 230, 225), [], 0],
 		["tram", 22.0, 2.6, Color8(120, 175, 205), [], 0],
 		["ferry", 32.0, 10.0, Color8(242, 183, 25), [], 0],
+		["train_locomotive", 19.0, 3.2, Color8(12, 48, 24), [], 0],
+		["train_coach", 24.0, 3.2, Color8(46, 125, 60), [], 0],
 	]
-	var selected := [0] if close else [0, 1, 2, 3, 4, 10, 11] if group == "cars" else [5, 6, 7, 12, 13, 14] if group == "commercial" else [16, 17, 18] if group == "transit" else [8, 9, 15]
+	var selected := [0] if close else [0, 1, 2, 3, 4, 10, 11] if group == "cars" else [5, 6, 7, 12, 13, 14] if group == "commercial" else [19, 20] if group == "trains" else [16, 17, 18] if group == "transit" else [8, 9, 15]
 	for j in selected.size():
 		var i: int = selected[j]
 		var row: Array = rows[i]
@@ -62,9 +64,18 @@ func capture() -> void:
 		var heading := 0.45 if i % 2 else -0.4
 		if B3.MODEL_SCENES.has(kind):
 			node = B3.MODEL_SCENES[kind].instantiate()
+			if kind in ["train_locomotive", "train_coach"]:
+				for mesh: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+					for surface in mesh.mesh.get_surface_count():
+						var material: Material = mesh.mesh.surface_get_material(surface)
+						if material != null and material.resource_name == ("Original teal enamel paint" if kind == "train_locomotive" else "Original warm white outdoor paint"):
+							var paint: StandardMaterial3D = material.duplicate()
+							paint.albedo_texture = null
+							paint.albedo_color = row[3]
+							mesh.set_surface_override_material(surface, paint)
 			var source: Vector2 = B3.MODEL_SIZE[kind]
-			node.scale = Vector3(row[1] / source.y, 1.0, row[2] / source.x) if kind == "city_bus" else Vector3(row[2] / source.x, 1.0, row[1] / source.y)
-			node.rotation.y = heading + (0.0 if kind == "city_bus" else PI / 2.0)
+			node.scale = Vector3(row[1] / source.y, 1.0, row[2] / source.x) if kind in ["city_bus", "train_locomotive", "train_coach"] else Vector3(row[2] / source.x, 1.0, row[1] / source.y)
+			node.rotation.y = heading + (0.0 if kind in ["city_bus", "train_locomotive", "train_coach"] else PI / 2.0)
 		else:
 			var arrays: Dictionary = B3.vehicle_arrays(row[0], row[1], row[2], row[3], B3.LAMPS_ON, {})
 			var mesh := B3._mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], PackedVector2Array(), PackedFloat32Array(), arrays["part"])
@@ -72,7 +83,7 @@ func capture() -> void:
 			node.rotation.y = heading
 		var columns := 3 if group == "commercial" else 4 if group == "cars" else 3
 		var gap := 16.0 if group == "transit" else 9.0 if group == "commercial" else 5.7 if group == "cars" else 2.4
-		node.position = Vector3(0.0, 0.0, (j - 1) * 18.0) if group == "transit" else Vector3.ZERO if close else Vector3((j % columns - (columns - 1) * 0.5) * gap, 0.0,
+		node.position = Vector3(0.0, 0.0, (j - 1) * 18.0) if group == "transit" else Vector3(0.0, 0.0, (j - 0.5) * 9.0) if group == "trains" else Vector3.ZERO if close else Vector3((j % columns - (columns - 1) * 0.5) * gap, 0.0,
 			(j / columns - (selected.size() / columns - 1) * 0.5) * (8.0 if group == "commercial" else gap))
 		root.add_child(node)
 		if B3.MODEL_SCENES.has(kind):

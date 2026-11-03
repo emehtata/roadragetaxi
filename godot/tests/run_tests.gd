@@ -3279,6 +3279,22 @@ func test_buildings_3d() -> void:
 		var transit := B3.vehicle_arrays(kind, 32.0 if kind == "ferry" else 20.0, 10.0 if kind == "ferry" else 3.0, Color.WHITE, 0, {})
 		check(Array(transit["part"]).any(func(v): return int(v.x) == B3.GLASS_PART),
 			"%s has visible bridge or passenger glazing" % kind)
+	var rail_renderer := B3.new()
+	rail_renderer._cars_root = Node3D.new()
+	rail_renderer.add_child(rail_renderer._cars_root)
+	var old_opaque: bool = B3.opaque
+	var old_view_centre: Vector2 = B3.view_centre
+	B3.opaque = true
+	B3.view_centre = Vector2.ZERO
+	rail_renderer.vehicle("train", Vector2.ZERO, 0.0, 19.0, 3.2, Color.WHITE, 0, 0.0, {"profile": "locomotive"})
+	rail_renderer.vehicle("train", Vector2(4.0, 0.0), 0.0, 24.0, 3.2, Color.WHITE, 0, 0.0, {"profile": "family"})
+	check(rail_renderer._model_nodes.has("train_locomotive") and rail_renderer._model_nodes.has("train_coach"),
+		"close trains use separate locomotive and passenger coach models")
+	check(rail_renderer._model_nodes["train_coach"][0].get_meta("paint_materials")[0].albedo_color == B3.RS.TRAIN_PROFILES["family"][0],
+		"train coach paint follows its simulation profile")
+	B3.opaque = old_opaque
+	B3.view_centre = old_view_centre
+	rail_renderer.free()
 	var parts: Array = Array(taxi["part"]).map(func(v): return int(v.x))
 	check(taxi["part"].size() == taxi["verts"].size() and B3.PAINT in parts and B3.RUBBER in parts and B3.GLASS_PART in parts and B3.LAMP in parts,
 		"a lit taxi's paint, tyres, glass and sign each carry their material")

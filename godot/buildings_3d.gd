@@ -468,6 +468,8 @@ const MODEL_SCENES := {
 	"tractor": preload("res://assets/vehicles/tractor.glb"),
 	"caravan": preload("res://assets/vehicles/caravan.glb"),
 	"e_scooter": preload("res://assets/vehicles/e_scooter.glb"),
+	"train_locomotive": preload("res://assets/vehicles/train_locomotive.glb"),
+	"train_coach": preload("res://assets/vehicles/train_coach.glb"),
 }
 const MODEL_SIZE := {  # [width, length] in the source scenes, metres
 	"saloon": Vector2(2.0, 4.822), "hatchback": Vector2(1.952, 4.342),
@@ -479,6 +481,7 @@ const MODEL_SIZE := {  # [width, length] in the source scenes, metres
 	"camper_van": Vector2(2.154, 5.042),
 	"tractor": Vector2(2.33, 3.665), "caravan": Vector2(2.647, 5.365),
 	"e_scooter": Vector2(0.482, 0.844),
+	"train_locomotive": Vector2(3.03, 16.25), "train_coach": Vector2(2.89, 26.4),
 }
 
 
@@ -790,7 +793,9 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 				if original == null:
 					continue
 				if original.resource_name.begins_with("paint") or (kind == "tractor" and original.resource_name == "orange") or \
-					(kind == "caravan" and original.resource_name == "shell") or (kind == "e_scooter" and original.resource_name == "teal"):
+					(kind == "caravan" and original.resource_name == "shell") or (kind == "e_scooter" and original.resource_name == "teal") or \
+					(kind == "train_locomotive" and original.resource_name == "Original teal enamel paint") or \
+					(kind == "train_coach" and original.resource_name == "Original warm white outdoor paint"):
 					var paint: StandardMaterial3D = original.duplicate()
 					paint.resource_local_to_scene = true
 					paint.albedo_texture = null
@@ -821,7 +826,7 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 				material.emission_energy_multiplier = 3.0 if lamps & LAMPS_BRAKE else 1.0
 		car_node.set_meta("lamps", lamps)
 	var source: Vector2 = MODEL_SIZE[kind]
-	var along_x := kind == "city_bus"
+	var along_x := kind in ["city_bus", "train_locomotive", "train_coach"]
 	var turn := heading if along_x else heading + PI / 2.0
 	var scale_3d := Vector3(length / source.y, 1.0, width / source.x) if along_x else Vector3(width / source.x, 1.0, length / source.y)
 	car_node.transform = Transform3D(Basis(Vector3.UP, turn).scaled_local(scale_3d),
@@ -932,6 +937,11 @@ func end_cars() -> void:
 ## procedural meshes farther away. `extra`: "riding", "fallen",
 ## "plough", "beacon", "profile" (a train car's), "rider" (its colour).
 func vehicle(kind: String, at: Vector2, heading: float, length: float, width: float, color: Color, lamps := 0, elevation := 0.0, extra := {}) -> void:
+	if opaque and kind == "train" and at.distance_to(windshield_at if windshield_on else view_centre) < 35.0:
+		var profile: String = extra.get("profile", "standard")
+		var model_kind := "train_locomotive" if profile == "locomotive" else "train_coach"
+		place_model_car(model_kind, at, heading, length, width, RS.TRAIN_PROFILES.get(profile, RS.TRAIN_PROFILES["standard"])[0], elevation)
+		return
 	if opaque and kind in ["bus", "truck", "motorcycle", "camper_van", "tractor", "trailer", "e_scooter"] and \
 			(kind != "tractor" or not extra.get("plough", false)) and \
 			at.distance_to(windshield_at if windshield_on else view_centre) < (16.0 if kind == "bus" else 22.0):

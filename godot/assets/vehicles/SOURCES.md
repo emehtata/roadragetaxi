@@ -20,6 +20,8 @@ All meshes remain visual children of the Python-authoritative vehicle position.
 | `tractor.glb` | [Farm tractor](https://3dassets.dev/assets/air-land-sea-vehicles-farm-tractor-0254fd80) |
 | `caravan.glb` | [Touring caravan](https://3dassets.dev/assets/caravan-park-and-campsite-touring-caravan-f889a9ff) |
 | `e_scooter.glb` | [Folding kick scooter](https://3dassets.dev/assets/skate-park-and-street-sports-kick-scooter-e917e852) |
+| `train_locomotive.glb` | [Rail locomotive](https://www.innerscene.com/tools/library/3d-parts/rail-locomotive-3b815032) |
+| `train_coach.glb` | [Regional train coach](https://www.innerscene.com/tools/library/3d-parts/regional-train-coach-4ceef1bc) |
 
 3DAssets.dev and Innerscene mark these models CC0. The 3DAssets.dev files were
 processed with `gltf-transform dequantize` because this Godot build cannot import
@@ -27,3 +29,7 @@ processed with `gltf-transform dequantize` because this Godot build cannot impor
 (`simplify --ratio 0.08 --error 0.1`), flattened and joined. This reduced it
 from 829 mesh nodes to 10. The GLBs here are Godot-compatible results; the
 URLs above are the originals.
+
+The rail models were welded, simplified (`--ratio 0.12 --error 0.1`), flattened,
+joined and resized to 256-pixel textures. Their close-range meshes are pooled;
+the procedural train mesh remains the distant LOD.

@@ -316,6 +316,23 @@
         "buildings_in_view": 0
       },
       "measure_s": 3
+    },
+    {
+      "id": "pasila_trains_day",
+      "description": "Train model view at Pasila station",
+      "why": "The Pasila station tracks are real map data; the larger area includes Helsinki Central so timetable routes can be resolved.",
+      "city": "Helsinki",
+      "pose": [385384.5, 6675335.0, 0.0],
+      "box_km": 8.0,
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [0.0, 0.05],
+      "sun_altitude_deg": [40, 90],
+      "zoom": 1.5,
+      "server_args": ["--osm-source=pbf"],
+      "requires": {"train_models_in_view": 1},
+      "measure_s": 3
     }
   ]
 }
