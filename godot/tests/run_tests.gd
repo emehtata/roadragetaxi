@@ -170,19 +170,19 @@ func test_date_picker() -> void:
 
 func test_settings_help() -> void:
 	var shell = preload("res://startup.gd").new()
-	root.add_child(shell)
+	root.add_child(shell)  # (its texts in the player's own language: user://settings.cfg)
 	shell._settings_menu()
 	shell.career_status = func() -> Array: return [false]
 	shell._career_menu()
-	check(shell._focusables.size() == 2 and shell._focusables[0].text == I18n.text("start", "en"), "career: the goals, then Start and Back")
+	check(shell._focusables.size() == 2 and shell._focusables[0].text == shell._t("start"), "career: the goals, then Start and Back")
 	shell.career_status = func() -> Array: return [true]
 	shell._career_menu()
-	check(shell._focusables.size() == 3 and shell._focusables[0].text == I18n.text("continue", "en")
-		and shell._focusables[1].text == I18n.text("reset_career", "en"), "career under way: Continue, Reset career, Back")
+	check(shell._focusables.size() == 3 and shell._focusables[0].text == shell._t("continue")
+		and shell._focusables[1].text == shell._t("reset_career"), "career under way: Continue, Reset career, Back")
 	shell._confirm_reset_career()
-	check(shell._focusables.size() == 2 and shell._focusables[0].text == I18n.text("cancel", "en"), "reset career asks first, Cancel first")
+	check(shell._focusables.size() == 2 and shell._focusables[0].text == shell._t("cancel"), "reset career asks first, Cancel first")
 	shell._settings_menu()
-	check(shell._focusables.size() == 9 and shell._focusables[6].text.begins_with(I18n.text("setup_wizard", "en")) and shell._focusables[7].text.begins_with(I18n.text("tutorial", "en")), "settings: six categories, the setup wizard, the tutorial and Back")
+	check(shell._focusables.size() == 9 and shell._focusables[6].text.begins_with(shell._t("setup_wizard")) and shell._focusables[7].text.begins_with(shell._t("tutorial")), "settings: six categories, the setup wizard, the tutorial and Back")
 	var help_count := 0
 	for category in ["general", "gameplay", "graphics", "audio", "maps", "experimental"]:
 		shell.call("_" + category + "_menu")
