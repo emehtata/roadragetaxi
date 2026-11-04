@@ -22,8 +22,14 @@ All meshes remain visual children of the Python-authoritative vehicle position.
 | `e_scooter.glb` | [Folding kick scooter](https://3dassets.dev/assets/skate-park-and-street-sports-kick-scooter-e917e852) |
 | `train_locomotive.glb` | [Rail locomotive](https://www.innerscene.com/tools/library/3d-parts/rail-locomotive-3b815032) |
 | `train_coach.glb` | [Regional train coach](https://www.innerscene.com/tools/library/3d-parts/regional-train-coach-4ceef1bc) |
+| `tram.glb` | [Tram](https://grab3d.com/models/vehicles/tram/) |
+| `bicycle.glb` | [Bicycle](https://grab3d.com/models/vehicles/bicycle/) |
+| `bmx_bike.glb` | [BMX bike](https://grab3d.com/models/vehicles/bmx-bike/) |
+| `mountain_bike.glb` | [Mountain bike](https://grab3d.com/models/vehicles/mountain-bike/) |
+| `moped.glb` | [Moped](https://grab3d.com/models/vehicles/moped/) |
+| `subway_train.glb` | [Subway train (a metro train, a stand-in for a tram where no tram model exists)](https://grab3d.com/models/vehicles/subway-train/) |
 
-3DAssets.dev and Innerscene mark these models CC0. The 3DAssets.dev files were
+3DAssets.dev and Innerscene mark these models CC0. The Grab3D models (tram, bicycle, BMX bike, mountain bike, moped, subway train) are CC0 1.0 with no attribution; their pages say so. The 3DAssets.dev files were
 processed with `gltf-transform dequantize` because this Godot build cannot import
 `KHR_mesh_quantization`. The bus was welded, simplified with glTF Transform
 (`simplify --ratio 0.08 --error 0.1`), flattened and joined. This reduced it

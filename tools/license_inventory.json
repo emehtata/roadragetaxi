@@ -174,6 +174,46 @@
       "paths": ["src/theroadragetrip/assets/DATA_LICENSES.txt", "src/theroadragetrip/assets/railway_announcements/README.md", "src/theroadragetrip/assets/railway_announcements/manifest.json", "src/theroadragetrip/assets/railway_announcements/place_forms.json"],
       "purpose": "notices and metadata", "shipped": true, "origin": "this project", "copyright": "2026 Esa Mehtätalo",
       "licence": "MIT", "evidence": "LICENSE", "obligations": "none", "commercial": "yes", "status": "verified", "remediation": ""
+    },
+    {
+      "name": "Grab3D vehicle models (CC0)",
+      "paths": [
+        "godot/assets/vehicles/tram*",
+        "godot/assets/vehicles/bicycle*",
+        "godot/assets/vehicles/bmx_bike*",
+        "godot/assets/vehicles/mountain_bike*",
+        "godot/assets/vehicles/moped*",
+        "godot/assets/vehicles/subway_train*"
+      ],
+      "purpose": "close-range 3D models for trams, bicycles, a moped and a metro train",
+      "shipped": true,
+      "origin": "grab3d.com vehicle pages (tram, bicycle, bmx-bike, mountain-bike, moped, subway-train)",
+      "copyright": "not named on the pages",
+      "licence": "CC0 1.0 (public domain)",
+      "evidence": "each model page states 'CC0 1.0 · public domain' and 'no attribution'; see godot/assets/vehicles/SOURCES.md",
+      "obligations": "none (CC0); keep the source note",
+      "commercial": "yes",
+      "status": "verified",
+      "remediation": ""
+    },
+    {
+      "name": "Vehicle models from 3dassets.dev and Innerscene",
+      "paths": [
+        "godot/assets/vehicles/*.glb",
+        "godot/assets/vehicles/*.png",
+        "godot/assets/vehicles/*.jpg",
+        "godot/assets/vehicles/SOURCES.md"
+      ],
+      "purpose": "close-range 3D models for cars, vans, buses, trucks, trains and small vehicles",
+      "shipped": true,
+      "origin": "3dassets.dev and innerscene.com, as listed in godot/assets/vehicles/SOURCES.md",
+      "copyright": "not named in SOURCES.md",
+      "licence": "CC0 1.0 (as stated by the sources)",
+      "evidence": "godot/assets/vehicles/SOURCES.md",
+      "obligations": "none if CC0; keep the source note",
+      "commercial": "yes",
+      "status": "conditional",
+      "remediation": "re-check each source page for its licence line and record the author"
     }
   ],
   "python_packages": {
