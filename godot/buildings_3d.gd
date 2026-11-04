@@ -801,6 +801,8 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 					paint.albedo_texture = null
 					mesh.set_surface_override_material(surface, paint)
 					paint_materials.append(paint)
+				elif original.resource_name == "glass":
+					mesh.set_surface_override_material(surface, car_glazing(original))
 				elif original.resource_name.begins_with("light"):
 					var lens: StandardMaterial3D = original.duplicate()
 					lens.emission_enabled = false  # per-side live lamps are the overlay mesh
@@ -833,6 +835,14 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 		to_3d(at, ROAD_M + 0.016 + elevation))
 	car_node.visible = true
 	_model_used[kind] = used + 1
+
+
+## A car's glass from its model: the file's 28% tint reads as a pale sheet
+## over the body, so it is a dark, mostly opaque pane.
+static func car_glazing(original: Material) -> StandardMaterial3D:
+	var glazing: StandardMaterial3D = original.duplicate()
+	glazing.albedo_color = Color(0.02, 0.03, 0.04, 0.8)
+	return glazing
 
 
 static func model_car_details(length: float, width: float, sign: int, lamps: int, lamp_height := 0.5, native_lights := false,

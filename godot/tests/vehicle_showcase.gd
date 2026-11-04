@@ -75,6 +75,10 @@ func capture() -> void:
 							mesh.set_surface_override_material(surface, paint)
 			var source: Vector2 = B3.MODEL_SIZE[kind]
 			node.scale = Vector3(row[1] / source.y, 1.0, row[2] / source.x) if kind in ["city_bus", "train_locomotive", "train_coach"] else Vector3(row[2] / source.x, 1.0, row[1] / source.y)
+			for mesh: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+				for surface in mesh.mesh.get_surface_count():
+					if mesh.mesh.surface_get_material(surface) != null and mesh.mesh.surface_get_material(surface).resource_name == "glass":
+						mesh.set_surface_override_material(surface, B3.car_glazing(mesh.mesh.surface_get_material(surface)))
 			node.rotation.y = heading + (0.0 if kind in ["city_bus", "train_locomotive", "train_coach"] else PI / 2.0)
 		else:
 			var arrays: Dictionary = B3.vehicle_arrays(row[0], row[1], row[2], row[3], B3.LAMPS_ON, {})
