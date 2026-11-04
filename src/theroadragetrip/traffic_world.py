@@ -446,7 +446,7 @@ def _cycle_graph_build(ways) -> RouteGraphBuild:
     return RouteGraphBuild(ways, include=is_cyclable_way, oneway=cycle_oneway, weight=cycle_cost_factor, track_ways=True)
 
 
-MOTORWAY_HIGHWAYS = ("motorway", "motorway_link")  # the motorway and its ramps: fast traffic's network (law § 58)
+MOTORWAY_HIGHWAYS = ("motorway", "motorway_link", "trunk", "trunk_link")  # motorways, trunk roads and their ramps: fast traffic's network (law § 58)
 
 
 def is_motorway_way(way) -> bool:
@@ -493,7 +493,7 @@ class TrafficWorld:
         # graph, under the same route_graph_revision.
         self.cycle_graph: RouteGraphBuild = RouteGraphBuild([], include=lambda way: False, track_ways=True)
         self._pending_cycle_graph: Optional[RouteGraphBuild] = None
-        # The motorway network (MOTORWAY_HIGHWAYS): fast traffic routes here only (npc.py).
+        # The fast-road network (MOTORWAY_HIGHWAYS): fast traffic routes here only (npc.py).
         self.motorway_graph: RouteGraphBuild = RouteGraphBuild([], include=lambda way: False, track_ways=True)
         self._pending_motorway_graph: Optional[RouteGraphBuild] = None
         # Set by main.py once npc.py's NPC vehicle list exists (a plain
