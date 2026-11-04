@@ -48,6 +48,8 @@ var _shadow_sprite: Sprite2D
 var _sun_key := Vector3(INF, INF, INF)  # the (altitude, azimuth, cloud) applied last
 var _surface_pixels_per_m := -1.0
 var shadows_enabled := true
+var sky_wind := Vector2.ZERO  # m/s, the clouds' drift (main.gd)
+var _sky_offset := Vector2.ZERO
 var windshield_on := false
 var windshield_at := Vector2.ZERO
 var windshield_heading := 0.0
@@ -83,7 +85,8 @@ func _ready() -> void:
 		sky.ambient_light_color = Color.WHITE
 		sky.ambient_light_energy = AMBIENT_ENERGY
 		sky.sky = Sky.new()  # what wet roads and water reflect (the camera never sees it: the ground fills the view)
-		sky.sky.sky_material = ProceduralSkyMaterial.new()
+		sky.sky.sky_material = ShaderMaterial.new()
+		sky.sky.sky_material.shader = preload("res://sky_clouds.gdshader")
 		sky.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 		sky.glow_enabled = true  # step 4: lit lamps and windows (emission above 1) bloom a little
 		sky.glow_hdr_threshold = 1.0
@@ -285,6 +288,8 @@ func _process(delta: float) -> void:
 	var height := camera_height(size.y / camera_2d.zoom.y)
 	if opaque:
 		set_surface_scale(camera_2d.zoom.x * _view.scaling_3d_scale)
+		_sky_offset += (sky_wind + Vector2(1.5, 0.5)) * delta * 0.003  # the clouds drift with the wind, slowly even in a calm
+		_camera.environment.sky.sky_material.set_shader_parameter("wind_offset", _sky_offset)
 	if _view.size != size:
 		_view.size = size
 	view_centre = centre
@@ -333,9 +338,14 @@ func _process(delta: float) -> void:
 ## light as `level` (Daylight.artificial) rises - no geometry is rebuilt.
 func set_sky_color(color: Color) -> void:
 	if opaque:
-		var material: ProceduralSkyMaterial = _camera.environment.sky.sky_material
-		material.sky_top_color = color.darkened(0.1)
-		material.sky_horizon_color = color.lightened(0.2)
+		var material: ShaderMaterial = _camera.environment.sky.sky_material
+		material.set_shader_parameter("sky_top_color", color.darkened(0.1))
+		material.set_shader_parameter("sky_horizon_color", color.lightened(0.2))
+
+
+func set_cloud_cover(cover: float) -> void:
+	if opaque:
+		_camera.environment.sky.sky_material.set_shader_parameter("coverage", Daylight.cloud_coverage(cover))
 
 
 func set_light(level: float, ambient: Color) -> void:
@@ -343,7 +353,7 @@ func set_light(level: float, ambient: Color) -> void:
 		_camera.environment.ambient_light_color = ambient
 		_camera.environment.background_color = GROUND * ambient  # off the loaded chunks: the open ground, as dark as the night
 		var daylight := clampf(ambient.get_luminance(), 0.0, 1.0)  # the sky reflected in wet roads and water dims with the day
-		_camera.environment.sky.sky_material.energy_multiplier = daylight
+		_camera.environment.sky.sky_material.set_shader_parameter("energy", daylight)
 		_shared["material"].set_shader_parameter("lit_level", clampf(level, 0.0, 1.0))
 		return
 	_shared["material"].set_shader_parameter("ambient", ambient)

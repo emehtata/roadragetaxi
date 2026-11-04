@@ -52,6 +52,17 @@ static func sky_color(altitude_deg: float, cloud_cover: float) -> Color:
 	return clear.lerp(overcast, clampf(cloud_cover, 0.0, 1.0))
 
 
+## sky-cloud-cover: the noise level above which sky_clouds.gdshader draws cloud
+## (its fbm stays below 1.0): clear 0, scattered ~30% at 0.3, 90%+ from 0.8.
+static func cloud_coverage(cloud_cover: float) -> float:
+	var c := clampf(cloud_cover, 0.0, 1.0)
+	if c <= 0.3:
+		return lerpf(1.0, 0.57, c / 0.3)
+	if c <= 0.8:
+		return lerpf(0.57, 0.25, (c - 0.3) / 0.5)
+	return lerpf(0.25, 0.0, (c - 0.8) / 0.2)
+
+
 ## The sun's altitude from a state: the server's value, else (an older
 ## server) back from its darkness, which is linear in altitude between -12
 ## and +6 degrees; no calendar at all: daylight.

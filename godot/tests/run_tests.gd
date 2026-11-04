@@ -60,6 +60,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_scripts_compile()
 	test_forest_canopy()
 	test_car_glazing_is_dark_and_reflective()
+	test_cloud_coverage_mapping()
+	test_sky_material_takes_cloud_cover()
 	test_car_model_range()
 	test_bus_model_radius_matches_car()
 	test_decorated_sites()
@@ -3883,3 +3885,55 @@ func test_car_glazing_is_dark_and_reflective() -> void:
 	check(is_equal_approx(glass.metallic, 0.15) and glass.albedo_color == Color(0.6, 0.7, 0.8, 0.5), "the GLB glass material is unchanged")
 
 
+## sky-cloud-cover: a CPU copy of sky_clouds.gdshader's noise and threshold test.
+func _sky_hash(p: Vector2) -> float:
+	var v := sin(p.dot(Vector2(127.1, 311.7))) * 43758.5453
+	return v - floorf(v)
+
+
+func _sky_noise(p: Vector2) -> float:
+	var i := p.floor()
+	var f := p - i
+	var u := f * f * (Vector2(3.0, 3.0) - 2.0 * f)
+	var a := _sky_hash(i)
+	var b := _sky_hash(i + Vector2(1, 0))
+	var c := _sky_hash(i + Vector2(0, 1))
+	var d := _sky_hash(i + Vector2(1, 1))
+	return a + (b - a) * u.x + (c - a) * u.y + (a - b - c + d) * u.x * u.y
+
+
+func _sky_covered(threshold: float) -> float:
+	var covered := 0
+	for i in 64:
+		for j in 64:
+			var p := Vector2(i, j) * 0.37
+			var n := 0.5 * _sky_noise(p) + 0.3 * _sky_noise(p * 2.03) + 0.2 * _sky_noise(p * 4.01)
+			if n > threshold:
+				covered += 1
+	return covered / 4096.0
+
+
+func test_cloud_coverage_mapping() -> void:
+	check(_sky_covered(Daylight.cloud_coverage(0.0)) == 0.0, "cloud 0: no cloud pixels")
+	var scattered := _sky_covered(Daylight.cloud_coverage(0.3))
+	check(scattered >= 0.2 and scattered <= 0.4, "cloud 0.3: scattered patches (%.2f)" % scattered)
+	for c in [0.8, 0.9, 1.0]:
+		check(_sky_covered(Daylight.cloud_coverage(c)) >= 0.9, "cloud %.1f covers 90%%+" % c)
+	var last := INF
+	for k in 21:
+		var t := Daylight.cloud_coverage(k / 20.0)
+		check(t <= last, "coverage threshold is monotonic at %.2f" % (k / 20.0))
+		last = t
+	check(Daylight.cloud_coverage(-1.0) == Daylight.cloud_coverage(0.0) and Daylight.cloud_coverage(2.0) == Daylight.cloud_coverage(1.0), "cover is clamped to 0..1")
+
+
+func test_sky_material_takes_cloud_cover() -> void:
+	var old_opaque: bool = B3.opaque
+	B3.opaque = true
+	var r: Node2D = B3.new()
+	r._ready()
+	r.set_cloud_cover(0.9)
+	var material: Material = r._camera.environment.sky.sky_material
+	check(material is ShaderMaterial and is_equal_approx(material.get_shader_parameter("coverage"), Daylight.cloud_coverage(0.9)), "the sky's coverage follows cloud cover")
+	B3.opaque = old_opaque
+	r.free()

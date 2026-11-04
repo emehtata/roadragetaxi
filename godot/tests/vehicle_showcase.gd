@@ -26,6 +26,11 @@ func capture() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.67, 0.75, 0.95) if light == "night" else Color.WHITE
 	env.ambient_light_energy = 0.22 if light == "night" else 0.4 if light == "evening" else 0.7
+	# A sky for the glass to reflect, as in the game (the flat colour gave it nothing to mirror)
+	env.sky = Sky.new()
+	env.sky.sky_material = ProceduralSkyMaterial.new()
+	env.background_mode = Environment.BG_SKY
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	camera.environment = env
 	camera.make_current()
 	var sun := DirectionalLight3D.new()

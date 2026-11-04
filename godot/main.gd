@@ -835,8 +835,11 @@ func _present(state: Dictionary) -> void:
 	MapChunk.WATER_MATERIAL.set_shader_parameter("sky_color", sky_color)
 	if map_layer.buildings_3d:
 		map_layer.buildings_3d.set_sky_color(sky_color)
+		map_layer.buildings_3d.set_cloud_cover(cloud)
 	var water_wind := WeatherLayer.wind_vector(state)
 	water_wind.y = -water_wind.y
+	if map_layer.buildings_3d:
+		map_layer.buildings_3d.sky_wind = water_wind
 	MapChunk.WATER_MATERIAL.set_shader_parameter("wind", water_wind)
 	MapChunk.SHORE_MATERIAL.set_shader_parameter("wind", water_wind)
 	if MapChunk.outdoor_3d:  # step 6: the 3D water's waves, as rough as the 2D water's

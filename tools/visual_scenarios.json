@@ -32,6 +32,111 @@
       "measure_s": 3
     },
     {
+      "id": "sky_clouds_clear_day",
+      "description": "Windshield sky at cloud 0.0: clear sky: the plain gradient",
+      "why": "The Eerikinkatu taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.0,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3,
+      "godot_args": [
+        "--sun-altitude",
+        "30"
+      ]
+    },
+    {
+      "id": "sky_clouds_broken_day",
+      "description": "Windshield sky at cloud 0.5: broken cloud patches",
+      "why": "The Eerikinkatu taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.5,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3,
+      "godot_args": [
+        "--sun-altitude",
+        "30"
+      ]
+    },
+    {
+      "id": "sky_clouds_overcast_day",
+      "description": "Windshield sky at cloud 0.9: a nearly closed cloud deck",
+      "why": "The Eerikinkatu taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.9,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3,
+      "godot_args": [
+        "--sun-altitude",
+        "30"
+      ]
+    },
+    {
       "id": "windshield_oulu_day",
       "description": "Street view at the Oulu taxi pose from the latest F12 screenshot",
       "why": "The captured player view shows close cars, pedestrians, signals and open sky.",
