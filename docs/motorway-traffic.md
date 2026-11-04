@@ -88,3 +88,29 @@ So the patch did not help and was not committed.
 Read `visual-test-results/motorway_through_traffic/*/result.json`, field
 `traffic`. The baseline numbers above are for the commit that introduced the
 scenario.
+
+## Phase: motorway spawning applied (2026-11-04)
+
+Applied `docs/motorway-traffic/motorway_spawn.patch` by hand: `git apply` no
+longer fits `npc.py`, so the hunks were applied with fuzz. The transit replan
+from `5a72bc7d` now carries `motorway=` too, so a replanned motorway spawn stays
+on the motorway.
+
+Keep Lane on, same drive:
+
+| Measure | Before | After |
+|---|---|---|
+| Activated (visual scenario) | 0 | 8 |
+| Headless: activated on motorway | 0 (all on `unclassified`) | 12 of 15 |
+| Headless: stopped cars on motorway | n/a | 2 (WAITING: stuck / recovery failed) |
+
+Rejections in the visual run: `crowded` 79, `near_taxi` 15, the rest under 4
+each. `crowded` is the 106 m clearance from `_transit_clearance`: the open
+question for the next phase.
+
+Open problems:
+- Two motorway spawns end stopped in WAITING (`stuck`, `recovery failed`). A
+  car stopped on the motorway breaks § 37; this needs a fix before the spawn
+  counts as done.
+- The motorway ends about 1.8 km from the start pose, so the NPC count falls to
+  zero at the end of the drive. Expected for this scenario.
