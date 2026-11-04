@@ -23,6 +23,7 @@ import math
 import multiprocessing
 import os
 import pickle
+import re
 import threading
 import tempfile
 import time
@@ -76,6 +77,18 @@ LIVE_FEED_PER_TICK = 200  # MQTT messages taken per tick; a few stations send we
 def _utc_now() -> datetime:
     """The computer's clock, naive UTC, for the live clock (tests replace it)."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+
+def server_path(path: str) -> str:
+    """A path sent by a Windows client, as this server sees it. On Linux a
+    `\\\\wsl.localhost\\<distro>\\...` path (or `\\\\wsl$\\...`) is the Linux path after
+    the distro; any other backslash path is used as the server's own."""
+    if os.sep == "/" and "\\" in path:
+        match = re.match(r"^[\\/]{2}wsl(?:\.localhost|\$)[\\/][^\\/]+(.*)$", path, re.IGNORECASE)
+        if match:
+            return match.group(1).replace("\\", "/")
+    return path
 
 
 class NullAudio:
@@ -897,6 +910,7 @@ class SimulationServer:
                 self._latest_command = PlayerCommand()
 
     def write_debug_snapshot(self, path: str) -> None:
+        path = server_path(path)
         """The F12 JSON (debug_snapshot.py) for the
         client's screenshot, from the server's world; the client's view is
         the server's camera at its zoom."""
