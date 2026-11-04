@@ -29,6 +29,7 @@ var _npc_min_moving := 1 << 30  # fewest moving NPC cars in view during the driv
 var _speed_max := 0.0
 var driving := false  # measuring with `drive_s`: main.gd leaves the controls to this node
 var _windshield_pressed := false
+var _lane_assist_pressed := false
 
 
 func _ready() -> void:
@@ -47,6 +48,13 @@ func _process(delta: float) -> void:
 		key.pressed = true
 		Input.parse_input_event(key)
 		_windshield_pressed = true
+	if scenario.get("lane_assist", false) and not _lane_assist_pressed and not main.entities.player_body().is_empty():
+		var lane_key := InputEventKey.new()  # K: "keep car on lane"
+		lane_key.keycode = KEY_K
+		lane_key.physical_keycode = KEY_K
+		lane_key.pressed = true
+		Input.parse_input_event(lane_key)
+		_lane_assist_pressed = true
 	if main.phone.is_open and not scenario.get("phone", false):  # ride offers open it: it would cover the scene
 		main.phone.close()
 	var missing := check()

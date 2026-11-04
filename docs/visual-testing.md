@@ -109,6 +109,7 @@ Scenarios live in `tools/visual_scenarios.json`. Fields:
 | `graphics` | graphics settings under test, over the saved ones, e.g. `{"brightness": 1.4}` |
 | `godot_args`, `server_args` | extra flags |
 | `windshield` | press `I` once the taxi is ready and require the forward view before capture |
+| `lane_assist` | press `K` once the taxi is ready ("keep car on lane") |
 
 ### Choosing the place
 

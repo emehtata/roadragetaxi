@@ -401,7 +401,8 @@
       "zoom": 1.0,
       "requires": {},
       "drive_s": 40,
-      "seed": 1
+      "seed": 1,
+      "lane_assist": true
     }
   ]
 }
