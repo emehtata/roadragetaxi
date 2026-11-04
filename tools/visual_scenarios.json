@@ -628,6 +628,37 @@
         "buildings_in_view": 3
       },
       "measure_s": 3
+    },
+    {
+      "id": "terrain_hill_bridge_day",
+      "description": "Southbound on Merihaankatu toward Hakaniemensilta (layer-1 bridge) over a DEM hill: a sloped road and a deck above sloped ground",
+      "why": "Hakaniemensilta (OSM bridge=yes, layer=1, 170 m) starts 30 m ahead. Needs <cache>/Helsinki.dem.json: tools/make_dem.py Helsinki --test-hill 386740,6672850,10,60 (synthetic test raster) or --asc from the NLS 10 m DEM.",
+      "city": "Helsinki",
+      "pose": [
+        386708.0,
+        6673009.0,
+        -1.504
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 0
+      },
+      "measure_s": 3,
+      "windshield": true
     }
   ]
 }

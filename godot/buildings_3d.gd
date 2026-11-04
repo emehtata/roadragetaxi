@@ -1648,6 +1648,15 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 		_crane(out, site, origin)
 	for landmark in landmarks:  # [layer position, angle, spec]
 		_landmark(out, landmark[0], landmark[1], landmark[2])
+	var grid: Dictionary = ground.get("ground_heights", {})
+	if not grid.is_empty():  # DEM terrain: every vertex onto the ground under it (decks keep their DECK_M above it)
+		# ponytail: per vertex - a tall building's roof follows the slope and big flat areas stay planar between
+		# their corners; per-building base height and a gridded ground mesh if hills show it
+		for key in ["verts", "shadow", "lit", "glass", "arena", "ground", "deck", "canopy", "road"]:
+			var verts: PackedVector3Array = out[key]
+			for i in verts.size():
+				verts[i].y += ground_height(grid, Vector2(verts[i].x, verts[i].z))
+			out[key] = verts
 	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size() + out["glass"].size() + out["ground"].size() + out["road"].size()) / 3
 	return out
 
@@ -2117,13 +2126,38 @@ const BALLAST := Color8(120, 112, 100)
 ## A deck's height at `at` on a layer-`layer` bridge: full height, eased down
 ## to the ground over RAMP_M toward the nearest end (`ends`: where bridge ways
 ## meet a lower road, map_chunk.prepare). Negative layers: tunnels, below ground.
-static func deck_height(at: Vector2, layer: int, ends: PackedVector2Array) -> float:
+## `grid`: the chunk's ground_heights (map_chunk.prepare) - the deck rides on the DEM ground.
+static func deck_height(at: Vector2, layer: int, ends: PackedVector2Array, grid := {}) -> float:
+	var ground := ground_height(grid, at)
 	if layer <= 0:
-		return float(layer) * DECK_M
+		return float(layer) * DECK_M + ground
 	var nearest := INF
 	for end in ends:
 		nearest = minf(nearest, at.distance_to(end))
-	return float(layer) * DECK_M * smoothstep(0.0, RAMP_M, nearest)
+	return float(layer) * DECK_M * smoothstep(0.0, RAMP_M, nearest) + ground
+
+
+## The DEM ground's height at layer point `at`: bilinear on the chunk's grid
+## (origin: its first sample, map metres from the layer origin, rows along map
+## +y = layer -y), clamped at its edges. Empty grid: flat ground, 0.
+static func ground_height(grid: Dictionary, at: Vector2) -> float:
+	if grid.is_empty():
+		return 0.0
+	var heights: PackedFloat32Array = grid["heights"]
+	var cols: int = grid["cols"]
+	var rows := heights.size() / cols
+	var o: Vector2 = grid["origin"]
+	var fx := clampf((at.x - o.x) / float(grid["step"]), 0.0, cols - 1)
+	var fy := clampf((-at.y - o.y) / float(grid["step"]), 0.0, rows - 1)
+	var ix := mini(int(fx), maxi(cols - 2, 0))
+	var iy := mini(int(fy), maxi(rows - 2, 0))
+	var ix1 := mini(ix + 1, cols - 1)
+	var iy1 := mini(iy + 1, rows - 1)
+	var tx := fx - ix
+	var ty := fy - iy
+	var low := lerpf(heights[iy * cols + ix], heights[iy * cols + ix1], tx)
+	var high := lerpf(heights[iy1 * cols + ix], heights[iy1 * cols + ix1], tx)
+	return lerpf(low, high, ty)
 
 
 static func _structures(out: Dictionary, ground: Dictionary) -> void:

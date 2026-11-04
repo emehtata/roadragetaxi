@@ -52,6 +52,7 @@ const SPRING_ICE_SPACING_M := 24.0
 var _data: Dictionary = {}
 var _origin := Vector2.ZERO
 var _bounds := PackedVector2Array()  # chunk rectangle in layer coordinates (clipping)
+var ground_heights := {}  # the DEM ground grid (prepare; Buildings3D.ground_height), empty: flat
 var bridge_ends := PackedVector2Array()  # step 5: where this chunk's bridges meet lower roads (bridge_ends_of)
 var _dynamic_3d := {}  # --outdoor-3d: "trees", "railings" -> their 3D node, rebuilt as the 2D layer would redraw
 var _bounds_rect := Rect2()
@@ -243,6 +244,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_signs)
 	_puddle_spots = prepared["puddle_spots"]
 	bridge_ends = prepared.get("bridge_ends", PackedVector2Array())
+	ground_heights = prepared.get("ground_heights", {})
 	_water_ripple_spots = prepared["water_ripple_spots"]
 	_build_2_5d()
 	set_wetness(_wetness)
@@ -295,11 +297,21 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 	for light in message.get("street_lights", []):
 		lights.append(MapMath.point(origin, light[0], light[1]))
 	var cells := light_cells_for(lights, message.get("street_lights", []))
-	message["prepared"] = {"origin": origin, "bounds_rect": bounds_rect, "bounds": bounds, "drivable_roads": drivable,
+	var grid := {}
+	var raw: Dictionary = message.get("ground_heights", {})
+	if not raw.is_empty():
+		grid = {"origin": Vector2(raw["origin"][0] - origin.x, raw["origin"][1] - origin.y), "step": float(raw["step"]),
+			"cols": int(raw["cols"]), "heights": PackedFloat32Array(raw["heights"])}
+	message["prepared"] = {"ground_heights": grid, "origin": origin, "bounds_rect": bounds_rect, "bounds": bounds, "drivable_roads": drivable,
 		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "light_cells": cells, "puddle_spots": puddles, "bridge_ends": bridge_ends,
 		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points,
 		# Rasterised here, on the parse worker: on the main thread it was a 60-115 ms hitch per forest chunk.
 		"forest_mask": forest_mask(message, bounds_rect, origin) if forest_canopy and message.get("landuse", []).any(_is_forest) else null}
+
+
+## The DEM ground's height at layer point `at` on a prepared grid (0 without one).
+static func ground_height(grid: Dictionary, at: Vector2) -> float:
+	return B3.ground_height(grid, at)
 
 
 ## rtx-scene-readiness step 5: where bridge ways (layer > 0) meet a lower road
@@ -740,7 +752,7 @@ func _build_2_5d() -> void:
 			for offset: float in ([-0.85, 0.85] if station["is_area"] else [0.0]):
 				pumps.append([at + along * offset, along])
 		ground = {"rect": _bounds_rect, "roads": roads, "areas": areas, "islands": islands, "curbs": curbs, "stripes": stripes,
-			"bumps": bumps, "puddles": puddles, "bridges": bridges, "bridge_ends": bridge_ends, "guardrails": guardrails,
+			"bumps": bumps, "puddles": puddles, "bridges": bridges, "bridge_ends": bridge_ends, "guardrails": guardrails, "ground_heights": ground_heights,
 			"rail_decks": _data.get("rail_decks", []).map(func(d): return _points(d)), "rail_tracks": _data.get("rail_bridges", []).map(func(d): return _points(d)),
 			"canopies": canopies, "site_fences": _data.get("construction_fences", []).map(func(d): return _points(d)),
 			"shelters": shelters, "pumps": pumps,

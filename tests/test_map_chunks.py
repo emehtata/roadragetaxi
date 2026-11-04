@@ -638,3 +638,19 @@ def test_midsummer_bonfires_stand_on_the_shore_and_at_firepits():
     assert [-200.0, 50.0] in spots
     assert len(shore) == 5  # a 1.6 km shore, every 300 m
     assert all(not (0 <= x <= 400 and 0 <= y <= 400) and min(abs(x), abs(x - 400), abs(y), abs(y - 400)) <= 6 for x, y in shore)
+
+
+def test_ground_heights_absent_without_dem():
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[])
+    assert "ground_heights" not in map_chunks.ChunkIndex(world).message("0_0")
+
+
+def test_ground_heights_shared_at_chunk_edge():
+    dem = SimpleNamespace(height_m=lambda x, y: 0.01 * x + 0.02 * y)
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], dem=dem)
+    index = map_chunks.ChunkIndex(world)
+    left, right = index.message("0_0")["ground_heights"], index.message("1_0")["ground_heights"]
+    cols = left["cols"]
+    assert left["origin"] == [0.0, 0.0] and right["origin"] == [500.0, 0.0]
+    rows = len(left["heights"]) // cols
+    assert [left["heights"][r * cols + cols - 1] for r in range(rows)] == [right["heights"][r * cols] for r in range(rows)]

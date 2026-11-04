@@ -44,6 +44,7 @@ LANDMARKS = {name: spec for name, spec in json.loads((Path(__file__).with_name("
 DECORATIVE_KINDS = ("shrub", "bench", "waste_basket", "bicycle_parking", "charging_station", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
 
 CHUNK_SIZE_M = 500.0
+GROUND_STEP_M = 20.0  # ground_heights grid spacing; divides CHUNK_SIZE_M so neighbours share edge samples
 LOAD_RADIUS = 3    # chunks around the player's chunk that must be loaded (7 x 7, >= 1.5 km each way)
 UNLOAD_RADIUS = 4  # loaded chunks are dropped beyond this - the gap stops edge flapping
 
@@ -260,6 +261,7 @@ class ChunkIndex:
         self._outside = {kind: [] for kind in _KINDS}  # a region rebuild's features outside its cells, thrown away with it
         self._chunks: dict[str, dict] = {}
         self._encoded: dict[str, bytes] = {}
+        self._dem = getattr(world, "dem", None)  # osm.elevation.Dem or None: flat ground, no grid
         for way in world.ways:
             # Surface roads only: a garage aisle
             # (map_level -1) stays in world.ways but is sent as a level road below.
@@ -410,7 +412,7 @@ class ChunkIndex:
         rebuilt = cls(_RegionWorld(world, (first[0] * size - margin, first[1] * size - margin,
                                            (last[0] + 1) * size + margin, (last[1] + 1) * size + margin)), size, cells)
         index = cls.__new__(cls)
-        index.size, index._cells, index._outside = size, None, {}
+        index.size, index._cells, index._outside, index._dem = size, None, {}, rebuilt._dem
         ids = {chunk_id(*cell) for cell in cells}
         index._chunks = {cid: chunk for cid, chunk in old._chunks.items() if cid not in ids}
         index._chunks.update(rebuilt._chunks)
@@ -425,7 +427,7 @@ class ChunkIndex:
         [(chunk id, content or None for an empty one, wire bytes)]. The same
         result and changed ids as updated() for those chunks."""
         index = cls.__new__(cls)
-        index.size, index._cells, index._outside = old.size, None, {}
+        index.size, index._cells, index._outside, index._dem = old.size, None, {}, getattr(old, "_dem", None)
         ids = {cid for cid, _, _ in built}
         index._chunks = {cid: chunk for cid, chunk in old._chunks.items() if cid not in ids}
         # list(): the tick may be encoding into `old` meanwhile (a pass already swapped in).
@@ -624,7 +626,16 @@ class ChunkIndex:
             "type": "chunk", "version": PROTOCOL_VERSION, "chunk_id": cid,
             "bounds": [ix * self.size, iy * self.size, (ix + 1) * self.size, (iy + 1) * self.size],
             **content,
+            **({"ground_heights": self._ground_heights(ix, iy)} if self._dem is not None else {}),
         }
+
+    def _ground_heights(self, ix: int, iy: int) -> dict:
+        """The chunk's ground grid, corners included (shared with neighbours), rows along +y."""
+        cols = round(self.size / GROUND_STEP_M) + 1
+        step = self.size / (cols - 1)
+        x0, y0 = ix * self.size, iy * self.size
+        return {"origin": [x0, y0], "step": step, "cols": cols,
+                "heights": [round(self._dem.height_m(x0 + c * step, y0 + r * step), 2) for r in range(cols) for c in range(cols)]}
 
     def encoded(self, cid: str) -> bytes:
         """The chunk message as wire bytes, encoded once: the map doesn't
