@@ -2509,6 +2509,16 @@ def test_stale_route_job_is_planned_again_on_the_new_graph():
     assert stats["discard_reasons"] == {"job_stale": 1}
 
 
+def test_spawn_summary_reports_flow_counters():
+    manager = NPCVehicleManager(target_count=10)
+    world = SimpleNamespace(route_graph_revision=1)
+    manager._enqueue_route_job("transit", None, iter(()), world)
+    summary = manager._spawn_summary(12.0, 0)
+    assert summary["flow"]["transit_pending"] == 1
+    assert summary["flow"]["since_last_activation_s"] is None
+    assert summary["flow"]["route_graph_rebuilds"] == 0
+
+
 def test_every_transit_discard_counts_exactly_one_reason():
     residents = ResidentManager()
     road = Way([(-100.0, 0.0), (100.0, 0.0)], "residential", 4.5)

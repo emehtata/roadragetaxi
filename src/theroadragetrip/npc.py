@@ -4611,6 +4611,13 @@ class NPCVehicleManager:
         # Passing-traffic spawn pipeline (rrt-019-rush-hour): cumulative counts, step by step.
         self.spawn_stats = {"candidates": 0, "placed": 0, "routes_walked": 0, "routes_searched": 0,
                             "activated": 0, "moving_after_10s": 0, "stopped_after_10s": 0, "search_ms": 0.0}
+        # Spawn-pipeline flow (F12 JSON, spawn.flow): queue clears, road-graph rebuilds,
+        # activations by direction, time of the last spawn. Counts only, no per-frame log.
+        self.spawn_flow = {"queue_clears_outside": 0, "jobs_cleared": 0, "route_graph_rebuilds": 0,
+                           "activated_same_direction": 0, "activated_opposite_direction": 0,
+                           "last_activation_sim_time": None}
+        self._seen_route_revision = None
+        self._player_heading = None
         self._recent_spawns = collections.deque(maxlen=128)  # (vehicle, sim time): still moving 10 s on?
         self.population_diagnostics = {
             "trip_start_attempts": 0, "successful_trip_starts": 0,
@@ -5899,6 +5906,9 @@ class NPCVehicleManager:
                 self._trip_start_failures.pop(victim.vehicle_id, None)
             self._apply_transit_spawn(result, resident_manager, claimed_points)
             self.spawn_stats["activated"] += 1
+            aligned = self._player_heading is None or math.cos(vehicle.car.heading - self._player_heading) >= 0.0
+            self.spawn_flow["activated_same_direction" if aligned else "activated_opposite_direction"] += 1
+            self.spawn_flow["last_activation_sim_time"] = job["world"].sim_time if job.get("world") is not None else None
             self._recent_spawns.append((vehicle, job["world"].sim_time if job.get("world") is not None else 0.0))
             if standing:
                 vehicle.car.speed = 0.0
@@ -6016,6 +6026,9 @@ class NPCVehicleManager:
             **{k: round(v, 1) if isinstance(v, float) else v for k, v in stats.items()},
             "jobs": {k: jobs[k] for k in ("queued", "ready", "failed", "discarded", "stale", "replanned")},
             "queue_depth": len(self._route_jobs),
+            "flow": {**self.spawn_flow, "transit_pending": sum(1 for j in self._route_jobs if j["kind"] == "transit"),
+                     "since_last_activation_s": None if self.spawn_flow["last_activation_sim_time"] is None
+                     else round(now - self.spawn_flow["last_activation_sim_time"], 1)},
             "latency_frames_p50": waits[len(waits) // 2] if waits else 0,
             "latency_frames_max": waits[-1] if waits else 0,
             "discard_reasons": self.spawn_rejection_summary(),
@@ -6999,6 +7012,7 @@ class NPCVehicleManager:
                 continue
             dropped.add(id(vehicle))
             self._release_vehicle_links(vehicle, residents)
+        self.spawn_flow["queue_clears_outside"] += len(dropped)
         self._drop_vehicles(dropped)
 
     def _release_vehicle_links(self, vehicle, residents) -> None:
@@ -7045,6 +7059,7 @@ class NPCVehicleManager:
             if "driver" in job:
                 job["driver"].route_job_pending = False
             self.route_job_stats["discarded"] += 1
+            self.spawn_flow["jobs_cleared"] += 1
             self._count_discard("vehicle_removed")
         self._route_jobs[:] = kept_jobs
 
@@ -7073,6 +7088,10 @@ class NPCVehicleManager:
         """`near_bounds`: around the view; traffic beyond it (in `active_bounds`)
         drives on every other tick, with twice the step (FAR_TRAFFIC_STEP)."""
         self._active_bounds = active_bounds
+        self._player_heading = getattr(player_car, "heading", None)
+        if self._seen_route_revision is not None and traffic_world.route_graph_revision != self._seen_route_revision:
+            self.spawn_flow["route_graph_rebuilds"] += 1  # a map sync: queued routes are replanned or dropped
+        self._seen_route_revision = traffic_world.route_graph_revision
         self._lod_frame = getattr(self, "_lod_frame", 0) + 1
         self._update_motorcycle_season(resident_manager)
         self._note_camping_sites(sceneries)
