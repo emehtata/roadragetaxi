@@ -2468,3 +2468,47 @@ def test_npcs_touching_at_walking_pace_scrape_and_go_on():
     manager.vehicles.extend([crawling, parking])
     assert manager._check_vehicle_collision(crawling, [parking], residents, PedestrianManager([], target_count=0), sim_time=5.0)
     assert NPCState.CRASHED not in (crawling.state, parking.state) and not manager.accidents
+
+
+def test_transit_route_failure_counts_route_failed():
+    manager = NPCVehicleManager(target_count=10)
+    manager._finish_route_job({"kind": "transit", "vehicle": None, "members": None}, None,
+                              0.0, 0.0, ResidentManager(), None)
+    stats = manager.route_job_stats
+    assert stats["discard_reasons"] == {"route_failed": 1}
+    assert stats["failed"] == 1
+    assert manager.population_diagnostics["route_generation_failures"] == 1
+
+
+def test_every_transit_discard_counts_exactly_one_reason():
+    residents = ResidentManager()
+    road = Way([(-100.0, 0.0), (100.0, 0.0)], "residential", 4.5)
+    plan = ([PathPoint(-100.0, 0.0, way=road), PathPoint(100.0, 0.0, way=road)],
+            (100.0, 0.0), None, True)
+    job = {"kind": "transit", "vehicle": None, "members": None}
+    manager = NPCVehicleManager(target_count=10)
+    manager._finish_route_job(job, None, 0.0, 0.0, residents, None)  # route_failed
+    manager._finish_route_job(job, (place_parked_npc(1, (-100.0, 0.0), None), plan), 0.0, 0.0, residents, None)
+    manager._finish_route_job(job, (place_parked_npc(2, (-100.0, 0.0), None), plan), 0.0, 0.0, residents, None)  # crowded
+    manager._finish_route_job(job, (place_parked_npc(3, (-50.0, 0.0), None), plan), 0.0, 0.0, residents, None)  # destination_taken
+    manager._finish_route_job(job, (place_parked_npc(4, (-100.0, 50.0), None), plan), 0.0, 0.0, residents,
+                              (-200.0, -200.0, 200.0, 200.0))  # in_view
+    manager.target_count = 1
+    manager._finish_route_job(job, (place_parked_npc(5, (-100.0, -50.0), None), plan), 0.0, 0.0, residents, None)  # full
+    stats = manager.route_job_stats
+    assert set(stats["discard_reasons"]) == {"route_failed", "crowded", "destination_taken", "in_view", "full"}
+    assert sum(stats["discard_reasons"].values()) == (
+        stats["discarded"] + manager.population_diagnostics["route_generation_failures"])
+
+
+def test_spawn_rejection_summary_sorted_with_shares():
+    manager = NPCVehicleManager(target_count=10)
+    assert manager.spawn_rejection_summary() == {"total": 0, "share": {}}
+    for reason, n in (("in_view", 1), ("crowded", 5), ("no_speed", 2)):
+        for _ in range(n):
+            manager._count_discard(reason)
+    summary = manager.spawn_rejection_summary()
+    assert list(summary)[:3] == ["crowded", "no_speed", "in_view"]
+    assert summary["total"] == 8
+    assert list(summary["share"]) == ["crowded", "no_speed", "in_view"]
+    assert abs(sum(summary["share"].values()) - 1.0) < 1e-6

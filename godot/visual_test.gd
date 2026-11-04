@@ -176,8 +176,10 @@ var _counts := {}
 
 
 func _finish() -> void:
+	set_process(false)  # awaits below: finish once
 	var path := out_dir.path_join("screenshot.png")
 	main.get_viewport().get_texture().get_image().save_png(path)
+	var rejections := await _spawn_rejections()
 	var perf := preload("res://perf.gd")
 	var sections := {}
 	for name in ["render_3d_gpu", "render_3d_cpu", "render_gpu", "render_cpu"]:
@@ -185,13 +187,36 @@ func _finish() -> void:
 			var s: Array = perf.sections[name]
 			sections[name] = {"avg_ms": s[1] / 1000.0 / maxi(1, s[0]), "max_ms": s[2] / 1000.0}
 	var ok := _measure_failures.is_empty()
-	var traffic := {"npcs_max": _npc_max, "moving_min": _npc_min_moving if _npc_min_moving < (1 << 30) else 0, "speed_max": _speed_max}
+	var traffic := {"npcs_max": _npc_max, "moving_min": _npc_min_moving if _npc_min_moving < (1 << 30) else 0, "speed_max": _speed_max, "spawn_rejections": rejections}
 	var lamps := {}
 	for key in ["lamp_reassigned", "lamp_moved_lit", "lamp_lights_max", "lamps_offered_max"]:
 		lamps[key] = perf.counters.get(key, 0)
 	_write({"status": "passed" if ok else "failed", "screenshot": path, "frames": perf.summary(_frames), "render": sections, "lamps": lamps, "traffic": traffic,
 		"errors": [] if ok else ["conditions lost while measuring"] + _measure_failures})
 	main.get_tree().quit(0 if ok else 1)
+
+
+## Planned transit cars dropped per reason this drive, from the server's debug JSON;
+## prints one `spawn_rejections:` line.
+func _spawn_rejections() -> Dictionary:
+	var path := ProjectSettings.globalize_path(out_dir.path_join("server_debug.json"))
+	DirAccess.remove_absolute(path)
+	if not main.sim.send_debug_snapshot(path):
+		return {}
+	for i in 300:  # bounded: about 5 s at 60 fps
+		await main.get_tree().process_frame
+		if FileAccess.file_exists(path):
+			var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+			if typeof(data) != TYPE_DICTIONARY:
+				continue  # still being written
+			var reasons: Dictionary = data.get("npc_population", {}).get("diagnostics", {}).get("spawn", {}).get("discard_reasons", {})
+			var parts := []
+			for reason in reasons:
+				if reason != "total" and reason != "share":
+					parts.append("%s=%d (%.0f%%)" % [reason, reasons[reason], 100.0 * float(reasons.get("share", {}).get(reason, 0.0))])
+			print("spawn_rejections: ", " ".join(parts))
+			return reasons
+	return {}
 
 
 ## Moving NPC cars in the shown state (the drive's traffic check).

@@ -5816,6 +5816,7 @@ class NPCVehicleManager:
             if result is None:
                 stats["failed"] += 1
                 self.population_diagnostics["route_generation_failures"] += 1
+                self._count_discard("route_failed")
                 return
             vehicle, _plan = result
             if self._active_bounds is not None:
@@ -5984,13 +5985,20 @@ class NPCVehicleManager:
             "queue_depth": len(self._route_jobs),
             "latency_frames_p50": waits[len(waits) // 2] if waits else 0,
             "latency_frames_max": waits[-1] if waits else 0,
-            "discard_reasons": dict(jobs.get("discard_reasons", {})),
+            "discard_reasons": self.spawn_rejection_summary(),
             "memory_good": len(self._spawn_memory.good),
             "memory_hopeless": sum(1 for n in self._spawn_memory.bad.values() if n >= SpawnMemory.MAX_FAILURES),
         }
 
+    def spawn_rejection_summary(self) -> dict:
+        """Discarded planned traffic per reason, largest first, with total and shares."""
+        counts = sorted(self.route_job_stats.get("discard_reasons", {}).items(), key=lambda kv: -kv[1])
+        total = sum(n for _, n in counts)
+        return {**dict(counts), "total": total, "share": {r: n / total for r, n in counts}}
+
     def _count_discard(self, reason: str) -> None:
         """Why planned moving traffic was dropped (route_job_stats, F12 JSON)."""
+        reason = reason or "other"
         reasons = self.route_job_stats.setdefault("discard_reasons", {})
         reasons[reason] = reasons.get(reason, 0) + 1
 

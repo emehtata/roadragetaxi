@@ -27,6 +27,25 @@ theorising; measure before and after a fix.
 4. To compare with the code before your change: `git stash` (stashes test
    files too - or copy the old file from `git show HEAD:path`), run, restore.
 
+## Analyse the symptom before fixing
+
+Learned the hard way (a cyclist circling through a building, 2026-10-29: two
+guessed causes, a wrong fix and two tests that passed without it):
+
+1. **Detect the symptom as the player sees it**, directly in `probe()`: e.g.
+   "stays within 6 m for 10 s while moving > 2.5 m/s". Proxies mislead: summed
+   heading changes flagged riders that only went straight; a vehicle outside
+   the simulated area keeps its stored speed while frozen in place.
+2. **Dump the state that decides the behaviour for one real instance** (route
+   points, progress vs. the threshold that should advance it, distances, aim
+   point, decision reason) and explain the symptom from those numbers. Write
+   each hypothesis down and check it against them before touching code.
+3. **Build the regression test from the recorded geometry and see it fail on
+   the unfixed code.** A test that passes without the fix proves nothing.
+4. **Random, rare symptoms:** count them over several runs before and after the
+   fix, with the same detector, and report how strong that evidence is.
+5. Revert a speculative change the data does not support; never commit it.
+
 ## Notes
 
 - The first run in an area after a world-cache format change, or a new area,
