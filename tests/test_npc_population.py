@@ -10,6 +10,7 @@ import pytest
 from theroadragetrip.npc import (
     NPC_CRASH_CLEAR_S,
     Driver,
+    _route_replanner,
     NPCAvailability,
     NPCState,
     NPCVehicleManager,
@@ -2478,6 +2479,34 @@ def test_transit_route_failure_counts_route_failed():
     assert stats["discard_reasons"] == {"route_failed": 1}
     assert stats["failed"] == 1
     assert manager.population_diagnostics["route_generation_failures"] == 1
+
+
+def test_stale_route_job_is_planned_again_on_the_new_graph():
+    residents = ResidentManager()
+    world = SimpleNamespace(route_graph_revision=1)
+    manager = NPCVehicleManager(target_count=10)
+    planned_on = []
+
+    def planner(traffic_world, tag):
+        planned_on.append(traffic_world.route_graph_revision)
+
+        def steps():
+            while True:  # still searching: stays queued
+                yield
+        return steps()
+
+    replan = _route_replanner(planner, 0, "transit")
+    manager._enqueue_route_job("transit", None, replan(world), world, replan=replan)
+    manager._enqueue_route_job("transit", None, planner(world, "plain"), world)  # no replan: dropped
+    planned_on.clear()
+    world.route_graph_revision = 2  # a map sync committed a new graph
+    for _ in range(3):
+        manager._advance_route_jobs(0.0, 0.0, residents, world, None, budget_s=0.0)
+    assert len(manager._route_jobs) == 1 and manager._route_jobs[0]["revision"] == 2
+    assert planned_on == [2]  # planned again once, on the new graph
+    stats = manager.route_job_stats
+    assert stats["replanned"] == 1 and stats["stale"] == 1
+    assert stats["discard_reasons"] == {"job_stale": 1}
 
 
 def test_every_transit_discard_counts_exactly_one_reason():

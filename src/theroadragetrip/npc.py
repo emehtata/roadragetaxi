@@ -4499,6 +4499,16 @@ def _apply_npc_continuation(vehicle, driver, plan) -> None:
         vehicle.trip_group.disembarked_resident_ids.clear()
 
 
+def _route_replanner(planner, traffic_world_index: int, *args, **kwargs):
+    """A route job's replan: the same planner call against a newer road graph.
+    The arguments are captured now, so later loop variables cannot leak in."""
+    def replan(traffic_world):
+        call = list(args)
+        call.insert(traffic_world_index, traffic_world)
+        return planner(*call, **kwargs)
+    return replan
+
+
 class NPCVehicleManager:
     """vehicle-population: owns the whole NPC vehicle population - the same role
     pedestrian.PedestrianManager plays for pedestrians. Replaces
@@ -4587,7 +4597,7 @@ class NPCVehicleManager:
         self._route_job_frame = 0
         self._existing_route_last_frame: Dict[int, int] = {}
         self.route_job_stats = {
-            "queued": 0, "ready": 0, "failed": 0, "stale": 0, "discarded": 0,
+            "queued": 0, "ready": 0, "failed": 0, "stale": 0, "replanned": 0, "discarded": 0,
             "max_frame_ms": 0.0, "waits_frames": collections.deque(maxlen=2000),
             "continued": 0, "recovered": 0, "safe_holds": 0,
         }
@@ -5623,23 +5633,24 @@ class NPCVehicleManager:
         return None
 
     def _enqueue_route_job(self, kind: str, vehicle, steps: RouteSteps, traffic_world: TrafficWorld,
-                           member_resident_ids: Optional[List[int]] = None) -> None:
+                           member_resident_ids: Optional[List[int]] = None, replan=None) -> None:
         """Queue a trip-start ("trip", an idle parked vehicle) or transit
         spawn ("transit") route job, tied to the current road graph
-        revision - its result is dropped if the graph is rebuilt first."""
+        revision. If the graph is rebuilt first, a job with a replan is
+        planned again on the new graph; any other job is dropped."""
         self._route_jobs.append({
             "kind": kind, "vehicle": vehicle, "steps": steps, "members": member_resident_ids,
             "revision": traffic_world.route_graph_revision, "queued_frame": self._route_job_frame,
-            "world": traffic_world,
+            "world": traffic_world, "replan": replan,
         })
         self.route_job_stats["queued"] += 1
         if kind in ("trip", "transit"):
             self.population_diagnostics["trip_start_attempts"] += 1
 
-    def _enqueue_existing_route_job(self, kind, vehicle, steps, traffic_world) -> None:
+    def _enqueue_existing_route_job(self, kind, vehicle, steps, traffic_world, replan=None) -> None:
         driver = self.drivers[vehicle.vehicle_id]
         group = vehicle.trip_group
-        self._enqueue_route_job(kind, vehicle, steps, traffic_world)
+        self._enqueue_route_job(kind, vehicle, steps, traffic_world, replan=replan)
         self._route_jobs[-1].update(
             driver=driver, group=group,
             occupants=None if group is None else (
@@ -5697,11 +5708,18 @@ class NPCVehicleManager:
             first_slice = False
             index %= len(self._route_jobs)
             job = self._route_jobs[index]
-            if job["revision"] != traffic_world.route_graph_revision or (
-                job["kind"] == "trip" and job["vehicle"] not in self.vehicles
-            ) or (
+            invalid = (job["kind"] == "trip" and job["vehicle"] not in self.vehicles) or (
                 "driver" in job and not self._existing_route_job_valid(job)
-            ):
+            )
+            stale = job["revision"] != traffic_world.route_graph_revision
+            if stale and not invalid and job.get("replan") is not None:
+                job["steps"].close()
+                job["steps"] = job["replan"](traffic_world)
+                job["revision"] = traffic_world.route_graph_revision
+                self.route_job_stats["replanned"] += 1
+                index += 1
+                continue
+            if stale or invalid:
                 job["steps"].close()
                 if "driver" in job:
                     job["driver"].route_job_pending = False
@@ -5989,7 +6007,7 @@ class NPCVehicleManager:
         return {
             "moving_target": self.target_moving_count, "moving": moving,
             **{k: round(v, 1) if isinstance(v, float) else v for k, v in stats.items()},
-            "jobs": {k: jobs[k] for k in ("queued", "ready", "failed", "discarded", "stale")},
+            "jobs": {k: jobs[k] for k in ("queued", "ready", "failed", "discarded", "stale", "replanned")},
             "queue_depth": len(self._route_jobs),
             "latency_frames_p50": waits[len(waits) // 2] if waits else 0,
             "latency_frames_max": waits[-1] if waits else 0,
@@ -6350,12 +6368,13 @@ class NPCVehicleManager:
                 continue
             if len(self._route_jobs) >= NPC_MAX_ROUTE_JOBS:
                 break
-            self._enqueue_existing_route_job("reroute", vehicle, _continue_npc_trip_steps(
-                vehicle, traffic_world, ways, spatial_grid=spatial_grid,
+            replan = _route_replanner(
+                _continue_npc_trip_steps, 1, vehicle, ways, spatial_grid=spatial_grid,
                 parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
                 curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
                 other_vehicle_positions=[pos for vid, pos in claimed_points if vid != vehicle.vehicle_id],
-            ), traffic_world)
+            )
+            self._enqueue_existing_route_job("reroute", vehicle, replan(traffic_world), traffic_world, replan=replan)
             break  # at most one reroute per tick
 
         # 3. Roll idle parked vehicles for "start a new trip now" (section
@@ -6444,12 +6463,13 @@ class NPCVehicleManager:
                 ) is None:
                     break
                 transit_spawns += 1
-                self._enqueue_route_job("transit", None, self._transit_spawn_steps(
-                    transit_x, transit_y, resident_manager, traffic_world, ways, spatial_grid,
+                replan = _route_replanner(
+                    self._transit_spawn_steps, 3, transit_x, transit_y, resident_manager, ways, spatial_grid,
                     parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
                     viewport_bounds, list(claimed_points), preferred_heading=transit_heading,
                     player_position=(player_x, player_y),
-                ), traffic_world)
+                )
+                self._enqueue_route_job("transit", None, replan(traffic_world), traffic_world, replan=replan)
         random.shuffle(idle_candidates)
         # living-traffic occupancy invariant: a household's members are shared
         # across its (up to NPC_MAX_VEHICLES_PER_HOUSEHOLD) vehicles, so a
@@ -6492,14 +6512,16 @@ class NPCVehicleManager:
                     continue
                 take = random.randint(1, len(available_ids))
                 member_resident_ids = random.sample(sorted(available_ids), take)
-            self._enqueue_route_job("trip", vehicle, _find_npc_trip_steps(
-                vehicle, traffic_world, ways, spatial_grid=spatial_grid,
+            replan = _route_replanner(
+                _find_npc_trip_steps, 1, vehicle, ways, spatial_grid=spatial_grid,
                 parking_spaces=parking_spaces, sceneries=sceneries, buildings=buildings,
                 curbs=curbs, curb_grid=curb_grid, building_grid=building_grid,
                 other_vehicle_positions=[
                     pos for vid, pos in claimed_points if vid != vehicle.vehicle_id
                 ],
-            ), traffic_world, member_resident_ids=member_resident_ids)
+            )
+            self._enqueue_route_job("trip", vehicle, replan(traffic_world), traffic_world,
+                                    member_resident_ids=member_resident_ids, replan=replan)
 
         # Existing trips use reserved job slots; fresh population work cannot
         # fill the queue before a ready passenger group or stuck car is served.
