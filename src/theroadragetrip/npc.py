@@ -5706,7 +5706,12 @@ class NPCVehicleManager:
                 if "driver" in job:
                     job["driver"].route_job_pending = False
                 del self._route_jobs[index]
-                self.route_job_stats["stale" if job["revision"] != traffic_world.route_graph_revision else "discarded"] += 1
+                if job["revision"] != traffic_world.route_graph_revision:
+                    self.route_job_stats["stale"] += 1
+                    self._count_discard("job_stale")
+                else:
+                    self.route_job_stats["discarded"] += 1
+                    self._count_discard("job_invalid")
                 continue
             finished, result = False, None
             slice_end = min(deadline, time.perf_counter() + NPC_ROUTE_JOB_SLICE_S)
@@ -5745,6 +5750,7 @@ class NPCVehicleManager:
             driver.route_job_pending = False
             if not valid:
                 stats["discarded"] += 1
+                self._count_discard("driver_invalid")
                 return
             if job["kind"] == "recovery" and result is not None:
                 if driver.recovery_route_attempts >= NPC_RECOVERY_MAX_WITHOUT_PROGRESS:
@@ -5780,6 +5786,7 @@ class NPCVehicleManager:
                 )
             ):
                 stats["discarded"] += 1
+                self._count_discard("point_claimed")
                 return
             if job["kind"] == "recovery":
                 if driver.recovery_anchor is None:
@@ -5902,6 +5909,7 @@ class NPCVehicleManager:
             or any(resident_id in busy for resident_id in job["members"] or ())
         ):
             stats["discarded"] += 1
+            self._count_discard("resident_busy")
             return
         driver = _apply_npc_trip(vehicle, resident_manager, result, member_resident_ids=job["members"])
         self._trip_start_failures.pop(vehicle.vehicle_id, None)
@@ -6720,6 +6728,7 @@ class NPCVehicleManager:
             driver = self.drivers.get(vehicle.vehicle_id)
             if driver is None or vehicle not in self.vehicles:
                 stats["discarded"] += 1
+                self._count_discard("driver_gone")
                 return
             driver.route_job_pending = False
             if vehicle.vehicle_type == "e_scooter":
@@ -6900,6 +6909,7 @@ class NPCVehicleManager:
             if "driver" in job:
                 job["driver"].route_job_pending = False
             self.route_job_stats["discarded"] += 1
+            self._count_discard("vehicle_removed")
         self._route_jobs[:] = kept_jobs
 
     def update(
