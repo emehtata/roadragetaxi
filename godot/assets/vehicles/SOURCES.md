@@ -30,6 +30,12 @@ processed with `gltf-transform dequantize` because this Godot build cannot impor
 from 829 mesh nodes to 10. The GLBs here are Godot-compatible results; the
 URLs above are the originals.
 
+The passenger-car GLBs (saloon, hatchback, estate, suv, pickup, sports, city_car)
+also had their painted windscreen triangles removed from the body mesh, so the
+glass under them shows. The windscreen was painted body geometry that hid it.
+The removed triangles are forward-facing body faces inside the glass windscreen's
+bounds; the change was made with a script over the glTF index buffers.
+
 The rail models were welded, simplified (`--ratio 0.12 --error 0.1`), flattened,
 joined and resized to 256-pixel textures. Their close-range meshes are pooled;
 the procedural train mesh remains the distant LOD.

@@ -58,6 +58,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
+	test_car_glazing_is_dark_and_reflective()
 	test_forest_canopy()
 	test_decorated_sites()
 	test_menu_music()
@@ -3822,3 +3823,19 @@ func test_forest_canopy() -> void:
 	check(wildlife.habitat(0, 0, true) == "rural", "unmapped forest trees still provide rural wildlife habitat")
 	check(wildlife.habitat(30, 0, false) == "urban", "urban wildlife habitat is unchanged")
 	map.free()
+
+
+func test_car_glazing_is_dark_and_reflective() -> void:
+	var glass := StandardMaterial3D.new()
+	glass.resource_name = "glass"
+	glass.albedo_color = Color(0.6, 0.7, 0.8, 0.5)
+	glass.metallic = 0.15
+	glass.roughness = 0.5
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var glazing := B3.car_glazing(glass)
+	check(glazing != glass and glazing.metallic >= 0.5 and glazing.roughness <= 0.08
+		and glazing.albedo_color.get_luminance() < 0.05 and glazing.albedo_color.a >= 0.85,
+		"car glazing is a dark reflective duplicate")
+	check(is_equal_approx(glass.metallic, 0.15) and glass.albedo_color == Color(0.6, 0.7, 0.8, 0.5), "the GLB glass material is unchanged")
+
+

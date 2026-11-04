@@ -841,7 +841,10 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 ## over the body, so it is a dark, mostly opaque pane.
 static func car_glazing(original: Material) -> StandardMaterial3D:
 	var glazing: StandardMaterial3D = original.duplicate()
-	glazing.albedo_color = Color(0.02, 0.03, 0.04, 0.8)
+	glazing.albedo_color = Color(0.02, 0.03, 0.04, 0.9)
+	glazing.metallic = 0.55  # as car.gdshader glass
+	glazing.metallic_specular = 0.6
+	glazing.roughness = 0.05
 	return glazing
 
 
