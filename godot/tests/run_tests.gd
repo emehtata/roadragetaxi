@@ -58,8 +58,10 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
-	test_car_glazing_is_dark_and_reflective()
 	test_forest_canopy()
+	test_car_glazing_is_dark_and_reflective()
+	test_car_model_range()
+	test_bus_model_radius_matches_car()
 	test_decorated_sites()
 	test_menu_music()
 	test_camera_view_command()
@@ -3823,6 +3825,48 @@ func test_forest_canopy() -> void:
 	check(wildlife.habitat(0, 0, true) == "rural", "unmapped forest trees still provide rural wildlife habitat")
 	check(wildlife.habitat(30, 0, false) == "urban", "urban wildlife habitat is unchanged")
 	map.free()
+
+
+## car-model-lod-pop: draws `draw` on a fresh opaque renderer centred at 0 and returns it.
+func _model_frame(draw: Callable) -> Node2D:
+	var renderer: Node2D = B3.new()
+	renderer._cars_root = Node3D.new()
+	renderer.add_child(renderer._cars_root)
+	var old_opaque: bool = B3.opaque
+	var old_centre: Vector2 = B3.view_centre
+	B3.opaque = true
+	B3.view_centre = Vector2.ZERO
+	renderer.begin_cars()
+	draw.call(renderer)
+	renderer.end_cars()
+	B3.opaque = old_opaque
+	B3.view_centre = old_centre
+	return renderer
+
+
+func _models_used(renderer: Node2D) -> int:
+	var total := 0
+	for kind in renderer._model_used:
+		total += int(renderer._model_used[kind])
+	return total
+
+
+func test_car_model_range() -> void:
+	var near: Node2D = _model_frame(func(b: Node2D) -> void:
+		b.car(Vector2(60.0, 0.0), 0.0, 4.5, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0))
+	check(_models_used(near) == 1, "a car at 60 m uses its model")
+	near.free()
+	var far: Node2D = _model_frame(func(b: Node2D) -> void:
+		b.car(Vector2(70.0, 0.0), 0.0, 4.5, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0))
+	check(_models_used(far) == 0, "a car at 70 m is procedural")
+	far.free()
+
+
+func test_bus_model_radius_matches_car() -> void:
+	var r: Node2D = _model_frame(func(b: Node2D) -> void:
+		b.vehicle("bus", Vector2(20.0, 0.0), 0.0, 12.0, 2.5, Color.BLUE))
+	check(int(r._model_used.get("city_bus", 0)) == 1, "a bus at 20 m uses its model")
+	r.free()
 
 
 func test_car_glazing_is_dark_and_reflective() -> void:

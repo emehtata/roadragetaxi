@@ -405,6 +405,36 @@
       "lane_assist": true
     },
     {
+      "id": "car_lod_pass_day",
+      "description": "Windshield view on the Per\u00e4merentie motorway, driving at full throttle: traffic ahead and oncoming passes from ~70 m to ~5 m; a frame every 0.5 s",
+      "why": "Per\u00e4merentie (Oulu): the motorway_through_traffic pose, which has fast traffic ahead of the taxi and on the other carriageway (seed 1). Every car crosses the old 22 m model swap and the 60 m radius; daylight so the cars are visible.",
+      "city": "Oulu",
+      "pose": [
+        383200.8,
+        7302861.8,
+        -0.056
+      ],
+      "box_km": 10,
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 1.0,
+      "requires": {},
+      "drive_s": 15,
+      "seed": 1,
+      "windshield": true,
+      "frame_every_s": 0.5,
+      "lane_assist": true
+    },
+    {
       "id": "hud_weather_clear_day",
       "description": "HUD weather line at cloud cover 0.1, dry",
       "why": "The HUD weather label follows cloud cover when there is no precipitation.",

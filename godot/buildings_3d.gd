@@ -711,6 +711,10 @@ func track(owner: Node2D, lines: PackedVector2Array, colors: PackedColorArray, w
 	mesh.transparency = 1.0 - owner.modulate.a
 
 
+## Cars and vehicles closer than this to the view centre (or the windshield) draw their GLB model; farther ones the procedural mesh.
+const MODEL_CAR_RANGE := 66.0
+
+
 func begin_cars() -> void:
 	_cars_used = 0
 	for kind in _model_used:
@@ -752,7 +756,7 @@ func puff(at: Vector2, height: float, radius: float, color: Color) -> void:
 ## `shape` is entity_layer's CAR_SHAPES row; `sign` 0 none, 1 a taxi sign off, 2 lit;
 ## `lamps` the LAMPS_* lit now.
 func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0, elevation := 0.0) -> void:
-	if opaque and at.distance_to(windshield_at if windshield_on else view_centre) < 22.0:
+	if opaque and at.distance_to(windshield_at if windshield_on else view_centre) < MODEL_CAR_RANGE:
 		var kind := car_model_kind(shape, length)
 		place_model_car(kind, at, heading, length, width, color, elevation, lamps)
 		var detail_key := "d|%s|%.2f|%.2f|%d|%d" % [kind, length, width, sign, lamps]
@@ -955,9 +959,9 @@ func vehicle(kind: String, at: Vector2, heading: float, length: float, width: fl
 		var model_kind := "train_locomotive" if profile == "locomotive" else "train_coach"
 		place_model_car(model_kind, at, heading, length, width, RS.TRAIN_PROFILES.get(profile, RS.TRAIN_PROFILES["standard"])[0], elevation)
 		return
-	if opaque and kind in ["bus", "truck", "motorcycle", "camper_van", "tractor", "trailer", "e_scooter"] and \
-			(kind != "tractor" or not extra.get("plough", false)) and \
-			at.distance_to(windshield_at if windshield_on else view_centre) < (16.0 if kind == "bus" else 22.0):
+	var modelled: bool = opaque and kind in ["bus", "truck", "motorcycle", "camper_van", "tractor", "trailer", "e_scooter"] and \
+			(kind != "tractor" or not extra.get("plough", false))
+	if modelled and at.distance_to(windshield_at if windshield_on else view_centre) < MODEL_CAR_RANGE:
 		var model_kind := "city_bus" if kind == "bus" else "box_truck" if kind == "truck" else "caravan" if kind == "trailer" else kind
 		place_model_car(model_kind, at, heading, length, width, color, elevation, lamps)
 		var detail_key := "vd|%s|%.2f|%.2f|%d|%s" % [kind, length, width, lamps, str(extra)]
