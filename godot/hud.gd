@@ -274,7 +274,7 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 	else:
 		text["clock"] = "--:--"
 	if weather.has("weather_type"):
-		text["weather"] = T.text("road_wet", language) % [T.weather(str(weather["weather_type"]), language), roundi(weather.get("wetness", 0.0) * 100)]
+		text["weather"] = T.text("road_wet", language) % [T.weather(T.sky_weather(str(weather["weather_type"]), float(weather.get("cloud_cover", 0.0))), language), roundi(weather.get("wetness", 0.0) * 100)]
 	else:
 		text["weather"] = ""
 	text["notice"] = str(taxi.get("notification_msg", "")) if taxi.get("notification_timer", 0.0) > 0.0 else ""

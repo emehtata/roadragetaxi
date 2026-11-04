@@ -64,6 +64,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_camera_view_command()
 	test_vomit_puddle()
 	test_i18n()
+	test_hud_weather_cloudiness()
 	test_tutorial()
 	test_career_summary_button()
 	test_graphics_settings()
@@ -506,6 +507,14 @@ func test_tutorial() -> void:
 	check(Tutorial.notice_key({"railway": {}}, "_train_board", true, false) == "tut_no_station" and Tutorial.notice_key({"railway": {"nearest_station": "Oulu"}}, "_train_board", true, false) == "tut_no_trains" and Tutorial.notice_key({}, "_train_board", true, true) == "", "tutorial: why J showed no board")
 	coach.free()
 
+
+func test_hud_weather_cloudiness() -> void:
+	for case in [[0.0, "clear"], [0.29, "clear"], [0.3, "partly_cloudy"], [0.79, "partly_cloudy"], [0.8, "overcast"], [1.0, "overcast"]]:
+		check(I18n.sky_weather("clear", case[0]) == case[1], "clear sky at cloud %s is %s" % case)
+	check(I18n.sky_weather("rain", 1.0) == "rain", "rain keeps its label under full cloud")
+	check(I18n.weather(I18n.sky_weather("clear", 0.5), "fi") == "Puolipilvistä" and I18n.weather(I18n.sky_weather("clear", 0.9), "fi") == "Pilvistä", "Finnish cloudiness labels")
+	for key in ["weather_partly_cloudy", "weather_overcast"]:
+		check(I18n.FI.has(key) and I18n.EN.has(key) and I18n.DE.has(key), "%s in FI/EN/DE" % key)
 
 func test_i18n() -> void:
 	check(I18n.FI.keys().filter(func(k): return not I18n.EN.has(k)).is_empty(), "every Finnish text has English")

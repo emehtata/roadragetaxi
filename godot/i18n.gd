@@ -131,7 +131,7 @@ const FI := {
 	"loading": "LADATAAN", "starting": "Käynnistetään simulaatiota…", "start_failed": "KÄYNNISTYS EPÄONNISTUI",
 	"start_failed_detail": "Python-simulaatiota ei voitu käynnistää", "paused": "PELI TAUOLLA",
 	"resume": "Jatka peliä", "main_menu": "Alkuvalikko", "score": "Pisteet", "on_foot": "jalan",
-	"road_wet": "%s, tie %d%% märkä", "weather_clear": "Selkeää", "weather_rain": "Sadetta",
+	"road_wet": "%s, tie %d%% märkä", "weather_clear": "Selkeää", "weather_partly_cloudy": "Puolipilvistä", "weather_overcast": "Pilvistä", "weather_rain": "Sadetta",
 	"weather_slush": "Räntää", "weather_snow": "Lumisadetta", "weather_thunderstorm": "Ukkosta",
 	"passenger": "Asiakas", "pick_up": "Nouda %s paikasta %s",
 	"walking_taxi": "%s kävelee taksille", "drive_to": "Vie %s osoitteeseen %s", "road": "Tie",
@@ -399,7 +399,7 @@ const EN := {
 	"music_volume": "Music volume", "help_music_volume": "Background music volume in menus.",
 	"environment_volume": "Environment volume", "ui_volume": "UI volume", "loading": "LOADING", "starting": "Starting the simulation…",
 	"start_failed": "START FAILED", "start_failed_detail": "Could not launch the Python simulation", "paused": "PAUSED", "resume": "Resume",
-	"main_menu": "Main menu", "score": "Score", "on_foot": "on foot", "road_wet": "%s, road %d%% wet", "weather_clear": "Clear", "weather_rain": "Rain",
+	"main_menu": "Main menu", "score": "Score", "on_foot": "on foot", "road_wet": "%s, road %d%% wet", "weather_clear": "Clear", "weather_partly_cloudy": "Partly cloudy", "weather_overcast": "Overcast", "weather_rain": "Rain",
 	"weather_slush": "Slush", "weather_snow": "Snow", "weather_thunderstorm": "Thunderstorm", "passenger": "Passenger",
 	"pick_up": "Pick up %s at %s", "walking_taxi": "%s is walking to the taxi", "drive_to": "Drive %s to %s", "road": "Road", "off_road": "Off-road",
 	"limit": "Limit", "hint_foot": "F get in the taxi · WASD walk · P phone", "home_enter_prompt": "Press E to enter home", "house_enter_prompt": "Press E to go in", "house_leave_prompt": "Press E to go out", "home_walk_hint": "WASD walk · E at the front door to go out", "home_choose_hint": "H make this your home", "hint_brawl": "Space punch · Shift dodge · F run", "hint_engine": "E start the engine · F get out · P phone",
@@ -727,6 +727,8 @@ const DE := {
 	"on_foot": "zu Fuß",
 	"road_wet": "%s, Straße %d%% nass",
 	"weather_clear": "Klar",
+	"weather_partly_cloudy": "Teilweise bewölkt",
+	"weather_overcast": "Bedeckt",
 	"weather_rain": "Regen",
 	"weather_slush": "Schneeregen",
 	"weather_snow": "Schnee",
@@ -916,6 +918,12 @@ const DE := {
 static func text(key: String, language: String) -> String:
 	var table: Dictionary = DE if language == "de" else (FI if language == "fi" else EN)
 	return table.get(key, EN.get(key, key))
+
+## A dry sky's label from its cloud cover; precipitation keeps its own label.
+static func sky_weather(weather_type: String, cloud_cover: float) -> String:
+	if weather_type != "clear":
+		return weather_type
+	return "overcast" if cloud_cover >= 0.8 else ("partly_cloudy" if cloud_cover >= 0.3 else "clear")
 
 static func weather(value: String, language: String) -> String:
 	return text("weather_" + value, language) if EN.has("weather_" + value) else value.capitalize()

@@ -403,6 +403,96 @@
       "drive_s": 40,
       "seed": 1,
       "lane_assist": true
+    },
+    {
+      "id": "hud_weather_clear_day",
+      "description": "HUD weather line at cloud cover 0.1, dry",
+      "why": "The HUD weather label follows cloud cover when there is no precipitation.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3
+    },
+    {
+      "id": "hud_weather_partly_cloudy_day",
+      "description": "HUD weather line at cloud cover 0.5, dry",
+      "why": "The HUD weather label follows cloud cover when there is no precipitation.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.5,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3
+    },
+    {
+      "id": "hud_weather_overcast_day",
+      "description": "HUD weather line at cloud cover 0.9, dry",
+      "why": "The HUD weather label follows cloud cover when there is no precipitation.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.9,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3
     }
   ]
 }
