@@ -2931,6 +2931,19 @@ func test_rest_of_static_world() -> void:
 	var run := [{"start": [0.0, 0.0], "end": [50.0, 0.0]}, {"start": [50.0, 0.0], "end": [100.0, 0.2]},
 		{"start": [500.0, 0.0], "end": [540.0, 0.0]}]
 	check(EL.open_ends(run) == [[true, false], [false, true], [true, true]], "a run's shared ends are not barriers (%s)" % [EL.open_ends(run)])
+	# Tie 21 Tornio: way 1552544935's last piece ends 0.1 m before way 1552544936's first begins.
+	var joined := [{"start": [370796.0, 7306872.0], "end": [370797.70, 7306883.20]},
+		{"start": [370797.72, 7306883.30], "end": [370805.0, 7306930.0]}]
+	check(EL.open_ends(joined) == [[true, false], [false, true]], "pieces of two ways meeting within 1 m are one run (%s)" % [EL.open_ends(joined)])
+	var chain := []
+	for i in 5:  # five pieces sharing exact ends, then a 0.3 m join to the next way (250.0 and 250.3 snap to different 0.5 m cells), then three more
+		chain.append({"start": [0.0, i * 50.0], "end": [0.0, i * 50.0 + 50.0]})
+	for i in 3:
+		chain.append({"start": [0.02, 250.3 + i * 50.0], "end": [0.02, 300.3 + i * 50.0]})
+	var open_count := 0
+	for pair in EL.open_ends(chain):
+		open_count += int(pair[0]) + int(pair[1])
+	check(open_count == 2 and EL.open_ends(chain)[0][0] and EL.open_ends(chain)[7][1], "an 8-piece run over two ways has only its 2 ends open (%s)" % [EL.open_ends(chain)])
 
 	# Taxi brawls: drawn from the server's current state; a punch per action seq.
 	var brawler = load("res://entity_layer.gd").new()

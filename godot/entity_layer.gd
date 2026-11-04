@@ -1347,8 +1347,13 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 ## pieces): cones and barriers where a lane or the road is closed, with
 ## barriers only at a run's open ends, and the speed-limit sign where a run
 ## begins - drawn from the state, nothing decided here.
+var _open_rows = null  # the state's rows open_ends last ran on: once per snapshot, not per frame
+var _open_cache := []
 func _live_roadworks(rows: Array) -> void:
-	var open := open_ends(rows)
+	if not is_same(rows, _open_rows):
+		_open_rows = rows
+		_open_cache = open_ends(rows)
+	var open := _open_cache
 	for index in rows.size():
 		var row: Dictionary = rows[index]
 		var start := MapMath.point(origin, row["start"][0], row["start"][1])
@@ -1385,18 +1390,33 @@ func _roadwork_3d(start: Vector2, end: Vector2, half_width: float, lane_only: bo
 		Buildings3D.current.roadwork_cone(start.lerp(end, float(i) / steps) + (normal * half_width * 0.5 if lane_only else Vector2.ZERO))
 
 
-## [start open, end open] per piece: an end no other piece shares is where a
-## run of pieces begins or ends (barriers and signs go there only).
+## [start open, end open] per piece: an end with no other piece's end within
+## JOIN_M (pieces of consecutive ways meet a little apart) is where a run of
+## pieces begins or ends (barriers and signs go there only). Linear: 1 m cells.
+const JOIN_M := 1.0
 static func open_ends(rows: Array) -> Array:
-	var ends := {}
-	for row in rows:
+	var cells := {}
+	for index in rows.size():
 		for key in ["start", "end"]:
-			var at := Vector2(row[key][0], row[key][1]).snapped(Vector2(0.5, 0.5))
-			ends[at] = ends.get(at, 0) + 1
+			var at := Vector2(rows[index][key][0], rows[index][key][1])
+			var cell := Vector2i((at / JOIN_M).floor())
+			if not cells.has(cell):
+				cells[cell] = []
+			cells[cell].append([at, index])
 	var result := []
-	for row in rows:
-		result.append([ends[Vector2(row["start"][0], row["start"][1]).snapped(Vector2(0.5, 0.5))] < 2,
-			ends[Vector2(row["end"][0], row["end"][1]).snapped(Vector2(0.5, 0.5))] < 2])
+	for index in rows.size():
+		var pair := []
+		for key in ["start", "end"]:
+			var at := Vector2(rows[index][key][0], rows[index][key][1])
+			var cell := Vector2i((at / JOIN_M).floor())
+			var joined := false
+			for dx in [-1, 0, 1]:
+				for dy in [-1, 0, 1]:
+					for other in cells.get(cell + Vector2i(dx, dy), []):
+						if other[1] != index and at.distance_to(other[0]) <= JOIN_M:
+							joined = true
+			pair.append(not joined)
+		result.append(pair)
 	return result
 
 
