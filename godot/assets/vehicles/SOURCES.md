@@ -28,8 +28,9 @@ All meshes remain visual children of the Python-authoritative vehicle position.
 | `mountain_bike.glb` | [Mountain bike](https://grab3d.com/models/vehicles/mountain-bike/) |
 | `moped.glb` | [Moped](https://grab3d.com/models/vehicles/moped/) |
 | `subway_train.glb` | [Subway train (a metro train, a stand-in for a tram where no tram model exists)](https://grab3d.com/models/vehicles/subway-train/) |
+| `e_scooter_grab3d.glb` | [E-scooter (Grab3D, a second model beside `e_scooter.glb`)](https://grab3d.com/models/vehicles/e-scooter/) |
 
-3DAssets.dev and Innerscene mark these models CC0. The Grab3D models (tram, bicycle, BMX bike, mountain bike, moped, subway train) are CC0 1.0 with no attribution; their pages say so. The 3DAssets.dev files were
+3DAssets.dev and Innerscene mark these models CC0. The Grab3D models (tram, bicycle, BMX bike, mountain bike, moped, e-scooter, subway train) are CC0 1.0 with no attribution; their pages say so. The 3DAssets.dev files were
 processed with `gltf-transform dequantize` because this Godot build cannot import
 `KHR_mesh_quantization`. The bus was welded, simplified with glTF Transform
 (`simplify --ratio 0.08 --error 0.1`), flattened and joined. This reduced it

@@ -183,11 +183,12 @@
         "godot/assets/vehicles/bmx_bike*",
         "godot/assets/vehicles/mountain_bike*",
         "godot/assets/vehicles/moped*",
-        "godot/assets/vehicles/subway_train*"
+        "godot/assets/vehicles/subway_train*",
+        "godot/assets/vehicles/e_scooter_grab3d*"
       ],
-      "purpose": "close-range 3D models for trams, bicycles, a moped and a metro train",
+      "purpose": "close-range 3D models for trams, bicycles, a moped, an e-scooter and a metro train",
       "shipped": true,
-      "origin": "grab3d.com vehicle pages (tram, bicycle, bmx-bike, mountain-bike, moped, subway-train)",
+      "origin": "grab3d.com vehicle pages (tram, bicycle, bmx-bike, mountain-bike, moped, e-scooter, subway-train)",
       "copyright": "not named on the pages",
       "licence": "CC0 1.0 (public domain)",
       "evidence": "each model page states 'CC0 1.0 · public domain' and 'no attribution'; see godot/assets/vehicles/SOURCES.md",
