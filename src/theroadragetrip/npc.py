@@ -1523,6 +1523,8 @@ class NPCVehicle:
     # continue_npc_trip again. False for every other leg (including a
     # traffic vehicle's endless errands, which never sets it).
     returning_home: bool = False
+    # A motorway/trunk through-trip (law § 37): never parks at its end; retired out of view.
+    fast_through: bool = False
     # vehicle-population perf: is_vehicle_pose_valid's live footprint safety net
     # (see NPC_FOOTPRINT_CHECK_INTERVAL_S) runs at a reduced rate, not
     # every frame - this is its own per-vehicle accumulator/cache so a
@@ -3118,6 +3120,7 @@ def update_npc(
     final_point = path[-1]
     distance_to_target = math.hypot(final_point.x - vehicle.car.x, final_point.y - vehicle.car.y)
     at_destination = approaching_final_waypoint and distance_to_target < NPC_ARRIVAL_RADIUS_M
+    through = vehicle.fast_through  # no braking or parking at the end (law § 37)
     # Multi-point manoeuvres (_plan_manoeuvre): arriving, onto the final point;
     # setting off (still near where the trip began), onto the route a little way on.
     arriving = (approaching_final_waypoint or driver.path_index >= len(path) - 3) and distance_to_target < NPC_MANOEUVRE_START_M
@@ -3215,7 +3218,7 @@ def update_npc(
     max_speed_kmh = vehicle_definition(vehicle.vehicle_type).max_speed_kmh
     if max_speed_kmh is not None:
         driver.target_speed_mps = min(driver.target_speed_mps, max_speed_kmh / 3.6)
-    if approaching_final_waypoint or distance_to_target < NPC_ARRIVAL_BRAKING_HORIZON_M:
+    if not through and (approaching_final_waypoint or distance_to_target < NPC_ARRIVAL_BRAKING_HORIZON_M):
         # Brake for arrival the same comfortable way the traffic rule
         # engine brakes for a stop line, rather than cruising right up to
         # the destination and only then snapping to a stop - against the
@@ -3323,7 +3326,7 @@ def update_npc(
     if pull_out_wait:
         driver.target_speed_mps = 0.0
 
-    if at_destination and footprint_clear:
+    if at_destination and footprint_clear and not through:
         driver.target_speed_mps = 0.0
         if vehicle.reserved_parking_space is not None:
             # RESERVED -> OCCUPIED (NPC-more.md section 4's state trio) -
@@ -3396,6 +3399,9 @@ def update_npc(
             "recovery failed - no validated route" if driver.recovery_stage == "HOLD"
             else "awaiting route job" if driver.route_job_pending else "stuck - awaiting recovery"
         )
+    elif at_destination and through:
+        vehicle.state = NPCState.CRUISING  # keeps moving until retired out of view
+        vehicle.debug_waiting_for = ""
     elif at_destination:
         # ARRIVING while still coasting to a stop; PARKED (multi-passenger-
         # car.md section 17) once genuinely stationary - the same 0.05 m/s
@@ -4613,7 +4619,7 @@ class NPCVehicleManager:
                             "activated": 0, "moving_after_10s": 0, "stopped_after_10s": 0, "search_ms": 0.0}
         # Spawn-pipeline flow (F12 JSON, spawn.flow): queue clears, road-graph rebuilds,
         # activations by direction, time of the last spawn. Counts only, no per-frame log.
-        self.spawn_flow = {"queue_clears_outside": 0, "jobs_cleared": 0, "route_graph_rebuilds": 0,
+        self.spawn_flow = {"queue_clears_outside": 0, "through_retired": 0, "through_dead_end": 0, "jobs_cleared": 0, "route_graph_rebuilds": 0,
                            "activated_same_direction": 0, "activated_opposite_direction": 0,
                            "last_activation_sim_time": None}
         self._seen_route_revision = None
@@ -4676,6 +4682,19 @@ class NPCVehicleManager:
             if viewport_bounds is None or not _point_in_viewport(vehicle.x, vehicle.y, viewport_bounds):
                 self._retire_trip(vehicle, resident_manager)
                 self.vehicles.remove(vehicle)
+
+    def _retire_finished_through_traffic(self, resident_manager, viewport_bounds) -> None:
+        """A fast through-trip past its last waypoint is retired once out of sight (law § 37)."""
+        for vehicle in [v for v in self.vehicles if v.fast_through]:
+            driver = self.drivers.get(vehicle.vehicle_id)
+            # Finished, or stuck with no validated route (a dead end): it may not park on the motorway.
+            if driver is not None and driver.path_index < len(driver.path) - 1 and driver.recovery_stage not in ("STUCK", "HOLD"):
+                continue
+            dead_end = driver is not None and driver.path_index >= len(driver.path) - 1 \
+                and driver.recovery_stage in ("STUCK", "HOLD")  # no road on: may not stand on the carriageway
+            if dead_end or viewport_bounds is None or not _point_in_viewport(vehicle.x, vehicle.y, viewport_bounds):
+                self.retire_vehicle(vehicle, resident_manager)
+                self.spawn_flow["through_dead_end" if dead_end else "through_retired"] += 1
 
     def _wants_line_bus(self) -> bool:
         return bool(self.bus_lines()) and sum(map(is_line_bus, self.vehicles)) < self.line_buses
@@ -6110,6 +6129,7 @@ class NPCVehicleManager:
                 release_npc_parking_reservation(vehicle)
                 continue
             vehicle.car.speed = speed
+            vehicle.fast_through = True
             self.spawn_stats["routes_searched"] += 1
             return vehicle, plan
         return None
@@ -7096,6 +7116,7 @@ class NPCVehicleManager:
         self._update_motorcycle_season(resident_manager)
         self._note_camping_sites(sceneries)
         self._retire_finished_line_buses(resident_manager, viewport_bounds)
+        self._retire_finished_through_traffic(resident_manager, viewport_bounds)
         # collision-avoidance: nearby_vehicles_at (avoidance/collision) reads
         # self.spatial_grid, which used to only get rebuilt at population-
         # tick cadence (every NPC_POPULATION_TICK_S=5s) or on initial
