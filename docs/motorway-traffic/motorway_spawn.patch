@@ -1,0 +1,175 @@
+diff --git a/src/theroadragetrip/npc.py b/src/theroadragetrip/npc.py
+index 682fe4c..72baaf1 100644
+--- a/src/theroadragetrip/npc.py
++++ b/src/theroadragetrip/npc.py
+@@ -282,6 +282,13 @@ NPC_TRANSIT_SPAWN_MAX_DISTANCE_M = 220.0
+ # Moving traffic is planned this far ahead of the taxi: route planning takes
+ # up to ~2 s, and a spot the taxi reaches first is discarded (it would pop into view).
+ NPC_TRANSIT_PLAYER_LOOKAHEAD_S = 6.0
++# Fast traffic (motorway through traffic): spawned on the motorway network ahead of
++# a taxi doing over 60 km/h on or beside a motorway, routed there only, and never
++# parked (law § 37, § 58): it leaves the simulated area and despawns as it is passed.
++MOTORWAY_SPAWN_MIN_SPEED_MPS = 60.0 / 3.6
++MOTORWAY_SPAWN_NEAR_M = 150.0
++MOTORWAY_TRIP_MIN_M = 300.0
++MOTORWAY_TRIP_MAX_M = 600.0
+ NPC_TRANSIT_SPAWN_NODE_TRIES = 6
+ NPC_TRANSIT_TRIP_MIN_DISTANCE_M = 60.0
+ NPC_TRANSIT_TRIP_MAX_DISTANCE_M = 220.0
+@@ -5994,6 +6001,104 @@ class NPCVehicleManager:
+         reasons = self.route_job_stats.setdefault("discard_reasons", {})
+         reasons[reason] = reasons.get(reason, 0) + 1
+ 
++    def _motorway_spawning(self, player_x, player_y, player_car, traffic_world) -> bool:
++        """Fast traffic joins the motorways only while the taxi does over 60 km/h on or beside one."""
++        if player_car is None or abs(player_car.speed) < MOTORWAY_SPAWN_MIN_SPEED_MPS:
++            return False
++        graph = traffic_world.motorway_graph
++        cell = _ROUTE_NODE_GRID_CELL_M
++        reach = MOTORWAY_SPAWN_NEAR_M
++        for cell_x in range(math.floor((player_x - reach) / cell), math.floor((player_x + reach) / cell) + 1):
++            for cell_y in range(math.floor((player_y - reach) / cell), math.floor((player_y + reach) / cell) + 1):
++                for index in graph.node_grid.get((cell_x, cell_y), ()):
++                    if math.hypot(graph.nodes[index][0] - player_x, graph.nodes[index][1] - player_y) <= reach:
++                        return True
++        return False
++
++    def _motorway_spawn_steps(self, resident_manager, traffic_world, ways, spatial_grid, curbs, curb_grid,
++                              buildings, building_grid, viewport_bounds, player_x, player_y, heading):
++        """A motorway through-trip starting on a motorway node ahead of the taxi, outside its view.
++        (vehicle, plan) like _transit_spawn_steps, or None."""
++        from .viewport import in_bounds
++        graph = traffic_world.motorway_graph
++        nodes, grid = graph.nodes, graph.node_grid
++        cell = _ROUTE_NODE_GRID_CELL_M
++        ahead = (math.cos(heading), math.sin(heading)) if heading is not None else (0.0, 0.0)
++        bounds = self._active_bounds
++        ring = []
++        if bounds is not None:
++            for cell_x in range(math.floor(bounds[0] / cell), math.floor(bounds[2] / cell) + 1):
++                for cell_y in range(math.floor(bounds[1] / cell), math.floor(bounds[3] / cell) + 1):
++                    yield
++                    for index in grid.get((cell_x, cell_y), ()):
++                        x, y = nodes[index][0], nodes[index][1]
++                        if (x - player_x) * ahead[0] + (y - player_y) * ahead[1] > NPC_TRANSIT_SPAWN_CLEARANCE_M and \
++                                in_bounds(bounds, x, y):
++                            ring.append(index)
++        random.shuffle(ring)
++        for index in ring:
++            yield
++            point = (nodes[index][0], nodes[index][1])
++            if viewport_bounds is not None and _point_in_viewport(
++                point[0], point[1], viewport_bounds, margin_m=NPC_PARKING_ACCESS_TOLERANCE_M,
++            ):
++                continue
++            if any(True for _ in self.nearby_vehicles_at(point[0], point[1], NPC_TRANSIT_SPAWN_CLEARANCE_M)):
++                continue
++            self.spawn_stats["candidates"] += 1
++            vehicle = self._place_one(point, None, ways, spatial_grid, curbs, curb_grid, buildings, building_grid,
++                                      player_position=(player_x, player_y))
++            if vehicle is None:
++                continue
++            self.spawn_stats["placed"] += 1
++            plan = yield from self._motorway_through_steps(vehicle, point, traffic_world, ways, spatial_grid, heading)
++            if plan is None:
++                release_npc_parking_reservation(vehicle)
++                continue
++            start, aim = plan[0][0], plan[0][1]
++            heading_here = math.atan2(aim.y - start.y, aim.x - start.x)
++            vehicle.car.x, vehicle.car.y, vehicle.car.heading = start.x, start.y, heading_here
++            speed = _transit_initial_speed(vehicle, plan)
++            if speed is None:
++                release_npc_parking_reservation(vehicle)
++                continue
++            vehicle.car.speed = speed
++            self.spawn_stats["routes_searched"] += 1
++            return vehicle, plan
++        return None
++
++    def _motorway_through_steps(self, vehicle, origin, traffic_world, ways, spatial_grid, heading):
++        """A route on the motorway network from `origin` to a motorway node
++        MOTORWAY_TRIP_MIN_M..MAX_M ahead: the trip ends beyond the taxi's view
++        (never a parking stop), so the car despawns as it is passed. The plan
++        tuple _short_transit_trip_steps returns, or None."""
++        graph = traffic_world.motorway_graph
++        nodes, grid = graph.nodes, graph.node_grid
++        cell = _ROUTE_NODE_GRID_CELL_M
++        ahead = (math.cos(heading), math.sin(heading)) if heading is not None else (1.0, 0.0)
++        targets = []
++        for cell_x in range(math.floor((origin[0] - MOTORWAY_TRIP_MAX_M) / cell), math.floor((origin[0] + MOTORWAY_TRIP_MAX_M) / cell) + 1):
++            for cell_y in range(math.floor((origin[1] - MOTORWAY_TRIP_MAX_M) / cell), math.floor((origin[1] + MOTORWAY_TRIP_MAX_M) / cell) + 1):
++                for index in grid.get((cell_x, cell_y), ()):
++                    dx, dy = nodes[index][0] - origin[0], nodes[index][1] - origin[1]
++                    distance = math.hypot(dx, dy)
++                    if MOTORWAY_TRIP_MIN_M <= distance <= MOTORWAY_TRIP_MAX_M and (dx * ahead[0] + dy * ahead[1]) > 0.8 * distance:
++                        targets.append(index)
++        random.shuffle(targets)
++        for index in targets[:3]:
++            yield
++            destination = (nodes[index][0], nodes[index][1])
++            raw_route = yield from traffic_world.plan_motorway_route_steps((vehicle.car.x, vehicle.car.y), destination)
++            if raw_route is None:
++                continue
++            path = yield from _build_driving_path_steps(
++                raw_route, ways, spatial_grid=spatial_grid, skip_final_lane_offset=False,
++                vehicle_width_m=vehicle.width_m,
++            )
++            if len(path) >= 2:
++                return path, destination, None, False
++        return None
++
+     def _transit_spawn_steps(
+         self,
+         focus_x: float,
+@@ -6012,12 +6117,18 @@ class NPCVehicleManager:
+         claimed_points: List[Tuple[int, Tuple[float, float]]],
+         preferred_heading: Optional[float] = None,
+         player_position: Optional[Tuple[float, float]] = None,
++        motorway: bool = False,
+     ) -> RouteSteps:
+         """_spawn_transit_vehicle's search as a resumable job: returns
+         (placed vehicle, plan) - the vehicle is not yet in self.vehicles -
+-        or None."""
++        or None. `motorway`: on the motorway network ahead of the taxi (see
++        _motorway_through_steps), instead of the ordinary road nodes."""
+         player_x, player_y = player_position or (focus_x, focus_y)
+         cell_size = _ROUTE_NODE_GRID_CELL_M
++        if motorway:
++            return (yield from self._motorway_spawn_steps(
++                resident_manager, traffic_world, ways, spatial_grid, curbs, curb_grid, buildings, building_grid,
++                viewport_bounds, player_x, player_y, preferred_heading))
+         nodes = traffic_world._route_nodes
+         grid = traffic_world._route_node_grid
+         low_x = math.floor((focus_x - NPC_TRANSIT_SPAWN_MAX_DISTANCE_M) / cell_size)
+@@ -6141,6 +6252,7 @@ class NPCVehicleManager:
+         transit_focus: Optional[Tuple[float, float]] = None,
+         transit_heading: Optional[float] = None,
+         current_way=None,
++        motorway_spawns: bool = False,
+     ) -> None:
+         population_tick_started = time.perf_counter()
+         population_deadline = population_tick_started + NPC_TRIP_START_TICK_BUDGET_S
+@@ -6411,6 +6523,8 @@ class NPCVehicleManager:
+             # or the target is never reached (2 a tick topped out at about 30 moving).
+             transit_cap = min(NPC_MAX_ROUTE_JOBS, max(NPC_TRANSIT_SPAWNS_PER_TICK,
+                                                       (self.target_moving_count - currently_moving) // 4))
++            if motorway_spawns:  # fast traffic leaves the view at speed: the whole shortfall, not a quarter
++                transit_cap = min(NPC_MAX_ROUTE_JOBS, max(transit_cap, self.target_moving_count - currently_moving))
+             while (
+                 trip_starts_this_tick < max(trip_start_attempt_cap, transit_cap)
+                 and transit_spawns < transit_cap
+@@ -6432,7 +6546,7 @@ class NPCVehicleManager:
+                     transit_x, transit_y, resident_manager, traffic_world, ways, spatial_grid,
+                     parking_spaces, sceneries, buildings, curbs, curb_grid, building_grid,
+                     viewport_bounds, list(claimed_points), preferred_heading=transit_heading,
+-                    player_position=(player_x, player_y),
++                    player_position=(player_x, player_y), motorway=motorway_spawns,
+                 ), traffic_world)
+         random.shuffle(idle_candidates)
+         # living-traffic occupancy invariant: a household's members are shared
+@@ -7059,4 +7173,5 @@ class NPCVehicleManager:
+                 viewport_bounds=viewport_bounds, transit_focus=transit_focus,
+                 transit_heading=getattr(player_car, "heading", None),
+                 current_way=current_way,
++                motorway_spawns=self._motorway_spawning(player_x, player_y, player_car, traffic_world),
+             )
