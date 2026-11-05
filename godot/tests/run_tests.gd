@@ -248,6 +248,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_light_at_cells()
 	test_deck_height_adds_ground()
 	test_camper_drawn_length_matches_row()
+	test_drawn_campers_cleared_per_draw()
 	test_date_picker()
 	test_settings_help()
 	test_credits()
@@ -485,6 +486,26 @@ func test_camper_drawn_length_matches_row() -> void:
 	node.free()
 	chunk.free()
 	check(absf(body - 6.2) <= 0.05, "camper body drawn %.2f m for a 6.2 m row" % body)
+
+
+## Each _draw_scenery rebuilds drawn_campers from the rows it draws: no stale keys.
+func test_drawn_campers_cleared_per_draw() -> void:
+	var chunk := MapChunk.new()
+	var node := Node2D.new()
+	chunk._data = {"scenery_objects": [[3, 4, "camper_van", 0.0, 6.2], [10, 4, "camper_van", 0.0, 7.0]]}
+	chunk._draw_scenery(node)
+	chunk._draw_scenery(node)
+	check(chunk.drawn_campers.size() == 2, "two camper rows drawn twice: %d records" % chunk.drawn_campers.size())
+	var old_key := MapMath.point(chunk._origin, 3, 4)
+	chunk._data = {"scenery_objects": [[20, 8, "camper_van", 0.0, 6.2]]}
+	chunk._draw_scenery(node)
+	check(chunk.drawn_campers.size() == 1 and not chunk.drawn_campers.has(old_key),
+		"redraw with new rows drops old camper keys: %d records" % chunk.drawn_campers.size())
+	chunk._data = {}
+	chunk._draw_scenery(node)
+	check(chunk.drawn_campers.is_empty(), "removed camper rows leave an empty record")
+	node.free()
+	chunk.free()
 
 
 ## MapLayer.light_at reads each point's light cell, not the whole chunk:

@@ -1435,6 +1435,7 @@ func _draw_trees(node: Node2D) -> void:
 
 
 func _draw_scenery(node: Node2D) -> void:
+	drawn_campers.clear()  # rebuilt each draw from the rows drawn: no stale keys
 	var shrubs := PackedVector2Array()
 	var in_3d := outdoor_3d and buildings_3d  # step 6: shrubs and props are 3D (_trees_3d, buildings_3d.props)
 	for obj in _data.get("scenery_objects", []):
