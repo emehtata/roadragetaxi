@@ -4,8 +4,12 @@ must cover every sound the audio catalog names, the catalog itself and the
 railway announcements. `assets/*` once matched none of them (godot-03/04);
 a real wheel build was checked by hand - too slow for a unit test."""
 import json
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 (requires-python >=3.10): tomli is the same parser
+    import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src" / "theroadragetrip"
