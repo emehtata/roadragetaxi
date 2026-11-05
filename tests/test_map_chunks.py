@@ -26,6 +26,16 @@ def test_charging_stations_are_streamed_with_their_capacity():
     assert rows == [[10, 20, "charging_station", 0.5, 6], [30, 20, "charging_station", 0.0, 2]]  # unmapped: a two-bay post
 
 
+def test_camper_vans_are_streamed_with_the_vehicle_length():
+    from theroadragetrip.osm import SceneryObject
+    from theroadragetrip.vehicles.base import vehicle_definition
+
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[],
+                            scenery_objects=[SceneryObject(10, 20, "camper_van")])
+    rows = map_chunks.ChunkIndex(world).message("0_0")["scenery_objects"]
+    assert rows == [[10, 20, "camper_van", 0.0, vehicle_definition("camper_van").length_m]]  # the client has no default
+
+
 def test_runtime_camera_updates_only_its_chunk_and_invalidates_wire_cache():
     from theroadragetrip.police import SpeedCamera
 

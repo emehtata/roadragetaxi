@@ -32,7 +32,42 @@ var _windshield_pressed := false
 var _lane_assist_pressed := false
 
 
+## "lineup": every kind the 2D view draws, in rows east of the pose, heading east, at the sizes
+## tools/visual_test.py takes from the simulation (lineup_rows, lineup_trailer, lineup_tram); the tram west of the taxi.
+func _lineup() -> Array:
+	var pose: Array = scenario["pose"]
+	var out := []
+	var rows: Array = scenario["lineup_rows"]
+	for i in rows.size():
+		var row: Array = rows[i]
+		var x: float = pose[0] + 6.0 + row[1] * 0.5
+		var y: float = pose[1] + 13.5 - i * 3.0
+		var npc := {"id": "lineup_%d" % i, "x": x, "y": y, "heading": 0.0, "length_m": row[1], "width_m": row[2],
+			"color": [60 + i * 18, 110, 200 - i * 12], "vehicle_type": row[0], "state": "DRIVING", "speed": 0.0,
+			"is_taxi": i == 0}
+		if row[0] == "car_caravan":
+			var trailer: Array = scenario["lineup_trailer"]
+			npc["vehicle_type"] = "car"
+			npc["trailer"] = [x - row[1] * 0.5 - trailer[2] - trailer[0] * 0.5, y, 0.0, trailer[0], trailer[1], "caravan"]
+		out.append(npc)
+	return out
+
+
+func _lineup_tram() -> Dictionary:
+	var pose: Array = scenario["pose"]
+	var tram: Array = scenario["lineup_tram"]  # [look, section lengths, width]
+	var cars := []
+	var front: float = pose[0] - 2.5  # west of the taxi, level with the first row: clear of the HUD
+	for length: float in tram[1]:  # front first, heading east
+		cars.append([front - length * 0.5, pose[1] + 13.5, 0.0, length, tram[0]])
+		front -= length
+	return {"id": "lineup_tram", "state": "STOPPED", "speed": 0.0, "line": "", "cars": cars}
+
+
 func _ready() -> void:
+	if scenario.get("lineup", false):
+		main.entities.extra_npcs = _lineup()
+		main.entities.extra_trains = [_lineup_tram()]
 	if scenario.has("graphics"):  # graphics settings under test (brightness, contrast...), over the player's saved ones
 		var options: Dictionary = main.graphics.duplicate()
 		options.merge(scenario["graphics"], true)
@@ -163,6 +198,30 @@ func _check_map(centre: Vector2) -> Array:
 				box = box.expand(p)
 			if box.intersects(view):  # a city block's corners are often all outside a close view
 				buildings += 1
+	var boxes := []  # [name, box]: every lineup body east-west, in view and clear of the HUD
+	for npc in main.entities.extra_npcs:
+		var half := Vector2(float(npc["length_m"]), float(npc["width_m"])) * 0.5
+		boxes.append([npc["vehicle_type"], Rect2(Vector2(npc["x"] - main.entities.origin.x, -(npc["y"] - main.entities.origin.y)) - half, half * 2.0)])
+	for train in main.entities.extra_trains:
+		for car: Array in train["cars"]:
+			var half := Vector2(float(car[3]), float(scenario["lineup_tram"][2])) * 0.5
+			boxes.append(["tram section", Rect2(Vector2(car[0] - main.entities.origin.x, -(car[1] - main.entities.origin.y)) - half, half * 2.0)])
+	var to_screen: Transform2D = main.get_viewport().get_canvas_transform()
+	var screen_size: Vector2 = main.get_viewport().get_visible_rect().size
+	var hud := []
+	for control: Control in main.get_node("Ui").find_children("*", "Control", true, false):  # every HUD panel and label
+		if control.is_visible_in_tree() and (control is Label or control is TextureRect or control is Panel or control is PanelContainer) \
+				and control.size.x < screen_size.x * 0.8 and not (control is Label and control.text == ""):
+			hud.append(control.get_global_rect())
+	for row: Array in boxes:
+		if not view.encloses(row[1]):
+			missing.append("lineup %s not in view" % row[0])
+			continue
+		var on_screen: Rect2 = to_screen * row[1]
+		for rect: Rect2 in hud:
+			if rect.intersects(on_screen):
+				missing.append("lineup %s under the HUD at %s" % [row[0], rect])
+				break
 	var needs: Dictionary = scenario.get("requires", {})
 	if lamps < int(needs.get("lamps_in_view", 0)):
 		missing.append("%d street lamps in view, the scenario needs %d" % [lamps, needs["lamps_in_view"]])

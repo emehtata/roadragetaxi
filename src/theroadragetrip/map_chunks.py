@@ -25,6 +25,7 @@ from .map_level import SURFACE_MAP_LEVELS
 from .osm.build import FERRY_KIND
 from .nightlife import nightclub_schedule
 from .playground_equipment import equipment_rows
+from .vehicles.base import vehicle_definition
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
 from .shop_lights import opening_state, retail_hours
 
@@ -370,6 +371,8 @@ class ChunkIndex:
                 row = [round(obj.x, 1), round(obj.y, 1), obj.kind, round(obj.direction_angle or 0.0, 3)]
                 if obj.kind == "charging_station":  # how many cars it charges at once: its posts
                     row.append(obj.capacity or 2)
+                elif obj.kind == "camper_van":  # its length: the camper van's own (vehicles/base.py)
+                    row.append(vehicle_definition("camper_van").length_m)
                 self._add("scenery_objects", ((obj.x, obj.y),), row)
         # Swings, slides, ... (playground_equipment.py): mapped in OSM, else a typical set per playground.
         for row in equipment_rows(getattr(world, "sceneries", ()), getattr(world, "scenery_objects", ())):

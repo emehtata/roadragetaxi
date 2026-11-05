@@ -74,6 +74,16 @@ def run_one(scenario: dict, start_time: str, out_root: Path) -> dict:
     out = out_root / scenario["id"] / f"{start_time.replace(':', '')}_{dt.datetime.now():%Y%m%d-%H%M%S}_{commit}"
     out.mkdir(parents=True, exist_ok=True)
     spec = dict(scenario, start_time=start_time, commit=commit)
+    if scenario.get("lineup"):  # the 2D lineup at the simulation's own sizes (godot/visual_test.gd)
+        sys.path.insert(0, str(REPO / "src"))
+        from theroadragetrip.trams import DEFAULT_TRAM, TRAM_WIDTH_M
+        from theroadragetrip.vehicles.base import vehicle_definition
+
+        kinds = ("car", "van", "truck", "bus", "tractor", "camper_van", "car_caravan", "motorcycle", "bicycle", "e_scooter")
+        spec["lineup_rows"] = [[kind, vehicle_definition(kind).length_m, vehicle_definition(kind).width_m] for kind in kinds]
+        trailer = vehicle_definition("car_caravan").trailer
+        spec["lineup_trailer"] = [trailer.length_m, trailer.width_m, trailer.drawbar_m]
+        spec["lineup_tram"] = [DEFAULT_TRAM[0], list(DEFAULT_TRAM[1]), TRAM_WIDTH_M]
     (out / "scenario.json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
     x, y, heading = scenario["pose"]
     with socket.socket() as s:

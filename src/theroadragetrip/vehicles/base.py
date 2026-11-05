@@ -42,7 +42,7 @@ VEHICLE_DEFINITIONS = {
         VehicleDefinition("car", "Car", "car", 4.3, 1.8, 5, household_eligible=True, traffic_weight=0.75, mass_kg=1500.0),
         VehicleDefinition("van", "Van", "car", 5.2, 2.0, 8, household_eligible=True, traffic_weight=0.08, mass_kg=2300.0),
         VehicleDefinition("truck", "Truck", "car", 7.5, 2.3, 2, 80.0, errand_eligible=False, traffic_weight=0.05, mass_kg=11000.0),
-        VehicleDefinition("bus", "Bus", "car", 11.0, 2.5, 40, 70.0, errand_eligible=False, traffic_weight=0.02, mass_kg=14000.0),
+        VehicleDefinition("bus", "Bus", "car", 12.0, 2.55, 40, 70.0, errand_eligible=False, traffic_weight=0.02, mass_kg=14000.0),
         # Snow ploughing and other work later; for now ordinary slow traffic.
         VehicleDefinition("tractor", "Tractor", "car", 4.0, 2.2, 1, 60.0, passenger_eligible=False, errand_eligible=False, traffic_weight=0.02, mass_kg=4500.0),
         # Holiday traffic, as on the camp pitches (osm/campsites.py): a camper

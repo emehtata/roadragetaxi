@@ -757,7 +757,7 @@ func _build_2_5d() -> void:
 			"canopies": canopies, "site_fences": _data.get("construction_fences", []).map(func(d): return _points(d)),
 			"shelters": shelters, "pumps": pumps,
 			"props": _data.get("scenery_objects", []).filter(func(o): return B3.PROPS.has(str(o[2]))).map(
-				func(o): return [MapMath.point(_origin, o[0], o[1]), float(o[3]), str(o[2])]),
+				func(o): return [MapMath.point(_origin, o[0], o[1]), float(o[3]), str(o[2])] + ([float(o[4])] if o[2] == "camper_van" and o.size() > 4 else [])),
 			"sign_posts": _data.get("signs", []).map(func(sign): return MapMath.point(_origin, sign[0], sign[1])),
 			"rail_lines": _data.get("railways", []).map(func(line): return _points(line)),
 			"shore_foam": _data.get("shore_waves", []).map(func(band): return [band["points"], float(band["distance"]) / SHALLOW_WATER_M]) \
@@ -1447,7 +1447,7 @@ func _draw_scenery(node: Node2D) -> void:
 		if obj[2] == "landmark":
 			draw_landmark(node, MapMath.point(_origin, obj[0], obj[1]), float(obj[3]), obj[4], not buildings_3d)
 			continue
-		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]), int(obj[4]) if obj.size() > 4 else 0)
+		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]), float(obj[4]) if obj.size() > 4 else 0.0)
 
 	if not shrubs.is_empty():
 		var foliage := hedge_foliage(shrubs)
@@ -1477,7 +1477,7 @@ static func draw_landmark(node: Node2D, at: Vector2, angle: float, spec: Diction
 
 
 ## The decorative scenery objects, in metres with minimum pixel sizes.
-func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float, capacity := 0) -> void:
+func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float, extra := 0.0) -> void:  # extra: posts, camper length
 	match kind:
 		"caravan", "caravan_with_car":
 			node.draw_set_transform(at, -angle)
@@ -1496,8 +1496,8 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float,
 				node.draw_line(Vector2(-1.4,side), Vector2(-1.55,side*1.15), Color8(199, 195, 162), .04)
 				node.draw_line(Vector2(1.4,side), Vector2(1.55,side*1.15), Color8(199, 195, 162), .04)
 			node.draw_set_transform(Vector2.ZERO)
-		"camper_van":
-			node.draw_set_transform(at, -angle)
+		"camper_van":  # drawn 6.2 m long, stretched to its length (vehicles/base.py via map_chunks)
+			node.draw_set_transform(at, -angle, Vector2((extra if extra > 0.0 else 6.2) / 6.2, 1.0))
 			node.draw_rect(Rect2(-2.9,-1.05,6.2,2.55), Color8(25, 30, 28, 110))
 			for x: float in [-1.9, 1.9]:
 				for side: float in [-1,1]:
@@ -1528,7 +1528,7 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float,
 					node.draw_line(Vector2(x, -0.4), Vector2(x, 0.4), stroke[0], stroke[1])
 			node.draw_set_transform(Vector2.ZERO)
 		"charging_station":  # from above: a pedestal between each two bays, its lit screen and a bolt
-			var posts := clampi(ceili(maxi(capacity, 1) / 2.0), 1, 6)
+			var posts := clampi(ceili(maxf(extra, 1.0) / 2.0), 1, 6)
 			node.draw_set_transform(at, -angle)
 			for i in posts:
 				var x := (i - (posts - 1) / 2.0) * 2.6  # a bay's width apart

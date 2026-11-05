@@ -78,8 +78,7 @@ func capture() -> void:
 							paint.albedo_texture = null
 							paint.albedo_color = row[3]
 							mesh.set_surface_override_material(surface, paint)
-			var source: Vector2 = B3.MODEL_SIZE[kind]
-			node.scale = Vector3(row[1] / source.y, 1.0, row[2] / source.x) if kind in ["city_bus", "train_locomotive", "train_coach"] else Vector3(row[2] / source.x, 1.0, row[1] / source.y)
+			node.scale = B3.model_scale(kind, row[1], row[2])
 			for mesh: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
 				for surface in mesh.mesh.get_surface_count():
 					if mesh.mesh.surface_get_material(surface) != null and mesh.mesh.surface_get_material(surface).resource_name == "glass":

@@ -493,6 +493,8 @@ const MODEL_SIZE := {  # [width, length] in the source scenes, metres
 	"e_scooter": Vector2(0.482, 0.844),
 	"train_locomotive": Vector2(3.03, 16.25), "train_coach": Vector2(2.89, 26.4),
 }
+## Height scaled with the length: stretched over 15 % in length alone, their wheels would turn oval.
+const UNIFORM_SCALE_MODELS := ["e_scooter", "camper_van"]
 
 
 func _enter_tree() -> void:
@@ -841,14 +843,22 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 				material.emission_enabled = lamps & (LAMPS_ON | LAMPS_BRAKE) != 0
 				material.emission_energy_multiplier = 3.0 if lamps & LAMPS_BRAKE else 1.0
 		car_node.set_meta("lamps", lamps)
-	var source: Vector2 = MODEL_SIZE[kind]
 	var along_x := kind in ["city_bus", "train_locomotive", "train_coach"]
 	var turn := heading if along_x else heading + PI / 2.0
-	var scale_3d := Vector3(length / source.y, 1.0, width / source.x) if along_x else Vector3(width / source.x, 1.0, length / source.y)
-	car_node.transform = Transform3D(Basis(Vector3.UP, turn).scaled_local(scale_3d),
+	car_node.transform = Transform3D(Basis(Vector3.UP, turn).scaled_local(model_scale(kind, length, width)),
 		to_3d(at, ROAD_M + 0.016 + elevation))
 	car_node.visible = true
 	_model_used[kind] = used + 1
+
+
+## A model's scale to the sim's length x width; UNIFORM_SCALE_MODELS take their height from the length
+## factor (round wheels), the rest keep the source height.
+static func model_scale(kind: String, length: float, width: float) -> Vector3:
+	var source: Vector2 = MODEL_SIZE[kind]
+	var up := length / source.y if kind in UNIFORM_SCALE_MODELS else 1.0
+	if kind in ["city_bus", "train_locomotive", "train_coach"]:
+		return Vector3(length / source.y, up, width / source.x)
+	return Vector3(width / source.x, up, length / source.y)
 
 
 ## A car's glass from its model: the file's 28% tint reads as a pale sheet
@@ -1069,7 +1079,7 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 			_car_box(out, hl, hl + 0.9, -0.05, 0.05, 0.4, 0.5, Color8(165, 168, 162))
 			_part(out, GLASS_PART, hl * 0.2, hl * 0.55, -hw * 0.34, hw * 0.34, 2.5, 2.56, Color8(120, 150, 160))
 			_car_lamps(out, hl, hw, lamps)
-		"motorcycle", "moped":
+		"motorcycle":
 			_wheel(out, -hl * 0.7, 0.0, 0.31, hw * 0.5, tyre)
 			_wheel(out, hl * 0.75, 0.0, 0.3, hw * 0.4, tyre)
 			_car_box(out, -hl * 0.55, hl * 0.52, -hw * 0.45, hw * 0.45, 0.45, 0.9, color)
@@ -1150,9 +1160,15 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 					0.95, 1.13, Color8(242, 236, 205))
 				_part(out, LAMP, -hl - 0.05, -hl - 0.02, side * hw - 0.11, side * hw + 0.11,
 					0.95, 1.13, Color8(203, 36, 28))
-			if tram:
-				for door_x: float in [-hl * 0.55, hl * 0.38]:
-					_part(out, PAINT, door_x, door_x + 0.065, -hw - 0.02, -hw + 0.01, 0.68, 2.53, Color8(42, 48, 51))
+			if tram or extra.get("profile", "") != "locomotive":  # a coach's doors near its ends
+				for door_x: float in ([-hl * 0.55, hl * 0.38] if tram else [-hl + 0.9, hl - 0.965]):
+					for side: float in ([-1.0, 1.0] if tram else [1.0]):  # a tram's on both sides, a coach's on the right (+y)
+						_part(out, PAINT, door_x, door_x + 0.065, side * hw - 0.015, side * hw + 0.015, 0.68, 2.53, Color8(42, 48, 51))
+			if tram:  # the locomotive model is a diesel: no pantograph
+				var pan := Color8(52, 54, 56)
+				_car_box(out, -0.5, 0.5, -0.4, 0.4, top, top + 0.15, pan)  # base frame
+				_car_box(out, -0.05, 0.05, -0.03, 0.03, top + 0.15, top + 0.75, pan)  # arm
+				_car_box(out, -0.08, 0.08, -0.7, 0.7, top + 0.75, top + 0.8, pan)  # collector head
 			if style[1] != null and extra.get("profile", "") == "locomotive":
 				_car_box(out, hl - 3.0, hl, -hw, hw, top, top + 0.05, style[1])
 			elif style[1] != null:
@@ -2405,7 +2421,7 @@ func roadwork_barrier(at: Vector2, heading: float, length: float) -> void:
 ## Step 6: scenery objects as simple shapes at their size and height:
 ## [length along its angle, width, height, colour]; the rest (shrubs, landmarks) elsewhere.
 const PROPS := {"caravan": [6.0, 2.3, 2.5, Color8(238, 234, 220)], "caravan_with_car": [10.5, 2.3, 2.5, Color8(238, 234, 220)],
-	"tent": [2.4, 2.0, 1.3, Color8(70, 120, 90)], "camper_van": [7.0, 2.3, 2.9, Color8(238, 234, 220)],
+	"tent": [2.4, 2.0, 1.3, Color8(70, 120, 90)], "camper_van": [0.0, 2.3, 2.9, Color8(238, 234, 220)],  # camper_van: no default length, the row carries vehicles/base.py's (props errors without)
 	"bench": [1.4, 0.4, 0.45, Color8(120, 82, 50)], "waste_basket": [0.4, 0.4, 0.9, Color8(60, 90, 60)],
 	"bicycle_parking": [3.0, 0.6, 0.8, Color8(150, 150, 150)], "charging_station": [0.5, 0.3, 1.5, Color8(40, 120, 70)],
 	"statue": [1.2, 1.2, 2.6, Color8(120, 110, 95)], "picnic_table": [1.8, 1.5, 0.75, Color8(130, 92, 58)],
@@ -2416,12 +2432,16 @@ const PROPS := {"caravan": [6.0, 2.3, 2.5, Color8(238, 234, 220)], "caravan_with
 	"seesaw": [3.0, 0.3, 0.6, Color8(70, 140, 70)]}
 
 
-static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angle, kind]
+static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angle, kind, length (camper_van: the server's)]
 	for row: Array in rows:
 		var look: Array = PROPS.get(row[2], [])
 		if look.is_empty():
 			continue
-		var along: Vector2 = Vector2(cos(row[1]), -sin(row[1])) * float(look[0]) * 0.5
+		var length := float(row[3] if row.size() > 3 else look[0])
+		if length <= 0.0:  # a camper van without the server's length (map_chunks): an error, not a flat deck
+			push_error("prop %s without its length" % row[2])
+			continue
+		var along: Vector2 = Vector2(cos(row[1]), -sin(row[1])) * length * 0.5
 		var across: Vector2 = along.orthogonal().normalized() * float(look[1]) * 0.5
 		var at: Vector2 = row[0]
 		_raised_polygon_at(out, "deck", PackedVector2Array([at - along - across, at + along - across, at + along + across, at - along + across]),

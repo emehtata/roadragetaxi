@@ -15,7 +15,7 @@ const Buildings3D := preload("res://buildings_3d.gd")
 const T := preload("res://i18n.gd")
 const MapChunk := preload("res://map_chunk.gd")  # its static roadwork drawing, shared with live roadworks
 const CULL_MARGIN_M := 30.0
-const TWO_WHEELERS := ["motorcycle", "moped", "bicycle"]
+const TWO_WHEELERS := ["motorcycle", "bicycle"]
 const INDOORS := ["entering_building", "in_building"]
 
 var origin := Vector2.ZERO
@@ -328,9 +328,20 @@ static func current_target(state: Dictionary) -> Dictionary:
 ## (Sampling in this node's own _process ran after main's - the camera then
 ## followed the previous frame's taxi: up to ~5 px of wobble at 30 km/h with
 ## uneven frame times, godot-08.)
+var extra_npcs: Array = []  # drawn as NPCs on top of the server's (visual_test.gd lineup)
+var extra_trains: Array = []  # and trains (a lineup tram)
+
+
 func update_frame(delta: float) -> void:
 	_clock += delta
 	_frame = buffer.sample(now())
+	if not (extra_npcs.is_empty() and extra_trains.is_empty()) and not _frame.is_empty():  # a visual test's fixed lineup (visual_test.gd)
+		_frame = _frame.duplicate()
+		for key in ["a", "b"]:
+			var state: Dictionary = _frame[key].duplicate()
+			state["npcs"] = state.get("npcs", []) + extra_npcs
+			state["trains"] = state.get("trains", []) + extra_trains
+			_frame[key] = state
 	queue_redraw()
 	if _reflectors != null and (reflectors_on or _reflectors_drawn):
 		_reflectors.queue_redraw()
@@ -1014,7 +1025,7 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 
 
 ## Step 6 (--outdoor-3d): the kinds buildings_3d.vehicle builds (cars, vans and taxis: car()).
-const VEHICLES_3D := ["bus", "truck", "tractor", "camper_van", "motorcycle", "moped", "bicycle", "e_scooter"]
+const VEHICLES_3D := ["bus", "truck", "tractor", "camper_van", "motorcycle", "bicycle", "e_scooter"]
 
 
 ## A vehicle's lamps lit now, as buildings_3d's LAMPS_* bits.

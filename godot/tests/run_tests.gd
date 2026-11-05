@@ -29,6 +29,42 @@ func check(ok: bool, what: String) -> void:
 		printerr("FAIL: ", what)
 
 
+## Vehicle models at their sim length x width (docs/specs/vehicle-realism-audit.md): length and width
+## within 10 %; UNIFORM_SCALE_MODELS keep their source height-to-length ratio (round wheels).
+func test_model_sizes_match_sim() -> void:
+	var sim := {"motorcycle": [2.2, 0.8, 1.2], "e_scooter": [1.2, 0.5, 1.2], "city_bus": [12.0, 2.55, 3.1], "camper_van": [6.2, 2.3, 2.9],
+		"box_truck": [7.5, 2.3, 3.4], "tractor": [4.0, 2.2, 2.8], "panel_van": [5.2, 2.0, 2.3]}  # L, W (base.py), H (the spec's)
+	for kind: String in sim:
+		var node: Node3D = B3.MODEL_SCENES[kind].instantiate()
+		root.add_child(node)
+		var raw := _model_aabb(node)
+		node.scale = B3.model_scale(kind, sim[kind][0], sim[kind][1])
+		var box := _model_aabb(node)
+		var along_x: bool = kind == "city_bus"
+		var length := box.size.x if along_x else box.size.z
+		var width := box.size.z if along_x else box.size.x
+		check(absf(length / sim[kind][0] - 1.0) <= 0.1 and absf(width / sim[kind][1] - 1.0) <= 0.1,
+			"%s rendered %.2f x %.2f m, sim %s" % [kind, length, width, sim[kind]])
+		check(absf(box.size.y / sim[kind][2] - 1.0) <= 0.15, "%s rendered %.2f m high, real %.1f" % [kind, box.size.y, sim[kind][2]])
+		if kind in B3.UNIFORM_SCALE_MODELS:
+			var raw_length := raw.size.x if along_x else raw.size.z
+			check(is_equal_approx(box.size.y / length, raw.size.y / raw_length), "%s keeps its height to length" % kind)
+		node.free()
+
+
+func _model_aabb(node: Node3D) -> AABB:
+	var out := AABB()
+	var first := true
+	for mesh: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):  # its vertices: rotated parts' boxes overstate
+		var to_root := node.global_transform.affine_inverse() * mesh.global_transform
+		var scaled := Transform3D(Basis.from_scale(node.scale), Vector3.ZERO) * to_root
+		for p: Vector3 in mesh.mesh.get_faces():
+			var at := scaled * p
+			out = AABB(at, Vector3.ZERO) if first else out.expand(at)
+			first = false
+	return out
+
+
 ## A script that fails to parse only aborts the test using it, silently:
 ## every script must compile.
 func test_scripts_compile() -> void:
@@ -60,6 +96,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_scripts_compile()
 	test_forest_canopy()
 	test_car_glazing_is_dark_and_reflective()
+	test_model_sizes_match_sim()
 	test_cloud_coverage_mapping()
 	test_sky_material_takes_cloud_cover()
 	test_car_model_range()
