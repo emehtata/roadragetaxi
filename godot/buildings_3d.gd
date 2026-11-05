@@ -503,6 +503,7 @@ const UNIFORM_SCALE_MODELS := ["e_scooter", "camper_van"]
 const MODEL_HEIGHT := {"e_scooter": [0.970, 1.2]}
 ## The 3D scooter rider's hips (the _rider body's bottom), between the deck and the bar.
 const SCOOTER_RIDER_SEAT := 0.85
+const SCOOTER_DECK_Y := 0.12
 ## A kind's close-range models; each vehicle keeps one, picked from its id (docs/specs/vehicle-model-variants.md).
 ## bmx_bike (1.45 m long: stretched 24 % to the sim's 1.8 m) and tram (22.6 x 3.3 m vs 9.2 m sections, 2.4 m wide) stay out.
 const MODEL_VARIANTS := {"bicycle": ["bicycle", "mountain_bike"], "e_scooter": ["e_scooter", "e_scooter_grab3d"]}
@@ -1018,6 +1019,7 @@ func vehicle(kind: String, at: Vector2, heading: float, length: float, width: fl
 				_rider(out, -length * 0.15, length * 0.08, 0.8, color, Color8(236, 196, 160))
 			elif kind == "e_scooter" and extra.get("riding", false):
 				_rider(out, -length * 0.06, length * 0.14, SCOOTER_RIDER_SEAT, color, Color8(236, 196, 160))
+				_rider_legs(out, -length * 0.06, length * 0.14, SCOOTER_RIDER_SEAT, SCOOTER_DECK_Y, Color8(48, 58, 74))
 			return out
 		place_body(detail_key, build, at, heading, elevation)
 		return
@@ -1043,6 +1045,31 @@ static func _part(out: Dictionary, part: int, x0: float, x1: float, y0: float, y
 static func _rider(out: Dictionary, x0: float, x1: float, seat: float, color: Color, head: Color) -> void:
 	_part(out, PAINT, x0, x1, -0.22, 0.22, seat, seat + 0.6, color)
 	_part(out, PAINT, x1 - 0.22, x1 - 0.02, -0.11, 0.11, seat + 0.62, seat + 0.86, head)
+
+
+## A standing rider's legs (person_arrays limbs): hips over the deck, back foot at x0,
+## front foot at x1, knees bent forward, shoe soles on the deck.
+static func _rider_legs(out: Dictionary, x0: float, x1: float, hip: float, deck: float, trousers: Color) -> void:
+	for joints: Array in rider_leg_joints(x0, x1, hip, deck):
+		var top: Vector3 = joints[0]
+		var knee: Vector3 = joints[1]
+		var ankle: Vector3 = joints[2]
+		_round_limb(out, top, knee, 0.094, 0.075, trousers)
+		_round_part(out, knee, Vector3(0.076, 0.074, 0.075), trousers)
+		_round_limb(out, knee, ankle, 0.073, 0.046, trousers)
+		_round_part(out, ankle + Vector3(0.06, -0.025, 0.0), Vector3(0.12, 0.055, 0.072), Color8(42, 42, 46), 4)
+
+
+## [hip, knee, ankle] per leg (z -0.1, +0.1): ankle 0.08 m over the deck so the
+## shoe sole (0.025 + 0.055 below the ankle) is on it; knee 0.1 m ahead of the
+## hip-ankle midpoint.
+static func rider_leg_joints(x0: float, x1: float, hip: float, deck: float) -> Array:
+	var legs := []
+	for side: float in [-1.0, 1.0]:
+		var top := Vector3((x0 + x1) * 0.5, hip, side * 0.1)
+		var ankle := Vector3(x0 if side < 0.0 else x1, deck + 0.08, side * 0.1)
+		legs.append([top, (top + ankle) * 0.5 + Vector3(0.1, 0.0, 0.0), ankle])
+	return legs
 
 
 static func vehicle_arrays(kind: String, length: float, width: float, color: Color, lamps: int, extra: Dictionary) -> Dictionary:
@@ -1141,7 +1168,8 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 			_car_box(out, hl * 0.72, hl * 0.82, -0.03, 0.03, 0.18, 1.1, Color8(40, 40, 42))
 			_car_box(out, hl * 0.72, hl * 0.82, -hw, hw, 1.05, 1.1, tyre)
 			if extra.get("riding", false):
-				_rider(out, -hl * 0.12, hl * 0.28, 0.85, color, skin)
+				_rider(out, -hl * 0.12, hl * 0.28, SCOOTER_RIDER_SEAT, color, skin)
+				_rider_legs(out, -hl * 0.12, hl * 0.28, SCOOTER_RIDER_SEAT, SCOOTER_DECK_Y, Color8(48, 58, 74))
 		"ferry":  # open vehicle deck and side wheelhouse, like Finnish yellow road ferries
 			var hull: Color = RS.TRAIN_PROFILES["ferry"][0]
 			_car_box(out, -hl, hl, -hw, hw, -0.9, -0.05, hull.darkened(0.15))

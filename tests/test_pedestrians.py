@@ -2129,3 +2129,55 @@ def test_a_sidewalk_beside_the_street_wins_and_a_street_gap_is_walked_at_its_edg
     route = network.route((0.0, 2.0), (200.0, 0.0))
     assert (50.0, 6.0) in route  # along the sidewalk while there is one...
     assert any(abs(y - ROAD_EDGE_WALK_OFFSET_M) < 0.01 and 100.0 < x <= 200.0 for x, y in route)  # ...then the street's edge
+
+
+def test_route_walker_animation_time_advances():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    pedestrian = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    pedestrian.route, pedestrian.destination = [(20.0, 0.0), (150.0, 0.0)], (150.0, 0.0)
+
+    for _ in range(10):
+        manager._walk_route_to(pedestrian, 0.1, (150.0, 0.0))
+
+    assert pedestrian.animation_time == pytest.approx(1.0)
+
+
+def test_dodging_walker_animation_time_advances():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    pedestrian = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    pedestrian.dodge_timer = 10.0
+    manager.pedestrians = [pedestrian]
+
+    manager.update(Car(-30.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert pedestrian.dodge_timer > 0.0
+    assert pedestrian.animation_time == pytest.approx(0.1)
+
+
+def test_route_snap_step_advances_animation_time():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    pedestrian = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    pedestrian.route, pedestrian.destination = [(20.0, 0.0), (20.5, 0.0), (150.0, 0.0)], (150.0, 0.0)
+
+    assert not manager._walk_route_to(pedestrian, 0.1, (150.0, 0.0))  # within 1 m: snaps to the node
+
+    assert (pedestrian.x, pedestrian.current_route_segment) == (20.5, 2)
+    assert pedestrian.animation_time == pytest.approx(0.1)
+
+
+def test_dodging_walker_picks_no_activity(monkeypatch: pytest.MonkeyPatch):
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    dodging = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    dodging.dodge_timer = 0.4
+    manager.pedestrians = [dodging]
+    draws = []
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: draws.append(1) or 0.0)
+
+    manager._consider_activities()
+
+    assert dodging.activity is None and dodging.state == "walking"
+    assert draws == []  # skipped before the roll: no random draw spent on it

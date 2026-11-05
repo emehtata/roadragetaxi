@@ -2133,11 +2133,16 @@ func _people_3d() -> void:
 
 ## A person's 3D pose from their animation state: a walking stride by the
 ## gait (as the 2D legs swing), sitting, lying (fallen, sunbathing), swimming, riding, else standing.
+## Walk poses per second (6 per stride, 1.75 strides/s): above 10 so every
+## 0.1 s server step shows the next pose (docs/specs/person-legs-walk-swing.md).
+const WALK_POSES_PER_S := 10.5
+
+
 static func person_pose(ped: Dictionary, animation_time: float) -> String:
 	match str(ped.get("animation_state", "walking")):
 		"walking":
 			var running := float(ped.get("speed", 0.0)) >= 2.0
-			return "%s_%d" % ["run" if running else "walk", floori(animation_time * (14.0 if running else 10.0) / TAU * 6.0) % 6]
+			return "%s_%d" % ["run" if running else "walk", floori(animation_time * (14.0 / TAU * 6.0 if running else WALK_POSES_PER_S)) % 6]
 		"sitting": return "sitting"
 		"fallen", "sunbathing": return "lying"
 		"swimming": return "swimming"

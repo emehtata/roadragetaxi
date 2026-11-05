@@ -82,6 +82,72 @@ func test_model_variant_stable_and_covering() -> void:
 	check(B3.model_variant("motorcycle", 7) == "motorcycle", "no variants: the kind itself")
 
 
+## docs/specs/person-legs-walk-swing.md acceptance 3: each walk phase is its own leg swing.
+func test_walk_pose_phase_changes_mesh() -> void:
+	var walk := {}
+	for pose in ["walk_0", "walk_1", "walk_4"]:
+		walk[pose] = B3.person_arrays(Color.BLUE, pose, 1.0, "")["verts"]
+	check(walk["walk_1"] != walk["walk_4"] and walk["walk_1"] != walk["walk_0"] and walk["walk_4"] != walk["walk_0"],
+		"walk_0, walk_1 and walk_4 swing the legs differently")
+
+
+## Acceptance 4-5: the e-scooter rider stands on the deck on two bent legs, torso unchanged.
+## Rules: hips at >= seat - 0.05 m and above the deck; lowest vertex within 0.02 m of SCOOTER_DECK_Y;
+## ankles in x0..x1 (staggered, back foot x0, front x1); the shoes reach from x0 - 0.06 (back shoe's heel)
+## to x1 + 0.18 (front toe: shoe centre 0.06 + half-length 0.12 ahead of the ankle), inside the deck
+## (-0.72 .. 0.62 of the half-length), |z| <= 0.2;
+## knee bend: the knee is >= 0.05 m ahead (+x) of the straight hip-to-ankle line at the knee's height.
+func test_scooter_rider_feet_on_deck() -> void:
+	var length := 1.2
+	var x0 := -length * 0.5 * 0.12  # vehicle_arrays' e_scooter rider span
+	var x1 := length * 0.5 * 0.28
+	var seat := B3.SCOOTER_RIDER_SEAT
+	var deck := B3.SCOOTER_DECK_Y
+	var parked: int = B3.vehicle_arrays("e_scooter", length, 0.5, Color.RED, 0, {"riding": false})["verts"].size()
+	var body := B3._empty_arrays()
+	B3._rider(body, x0, x1, seat, Color.RED, Color.WHITE)
+	var rider: PackedVector3Array = B3.vehicle_arrays("e_scooter", length, 0.5, Color.RED, 0, {"riding": true})["verts"].slice(parked)
+	check(rider.slice(0, body["verts"].size()) == body["verts"], "scooter torso and head unchanged at the seat")
+	var legs := rider.slice(body["verts"].size())
+	check(legs.size() > 0 and legs.size() % 2 == 0, "scooter rider has two legs (%d leg vertices)" % legs.size())
+	var low := INF
+	var back := INF
+	var front := -INF
+	for v in legs:
+		low = minf(low, v.y)
+		back = minf(back, v.x)
+		front = maxf(front, v.x)
+		check(absf(v.z) <= 0.2, "leg vertex %s within +-0.2 m of the centre line" % v)
+	check(absf(low - deck) <= 0.02, "lowest foot vertex %.3f on the deck %.2f" % [low, deck])
+	check(absf(back - (x0 - 0.06)) <= 0.005 and absf(front - (x1 + 0.18)) <= 0.005,
+		"feet reach %.3f..%.3f, rule x0 - 0.06 .. x1 + 0.18 = %.3f..%.3f" % [back, front, x0 - 0.06, x1 + 0.18])
+	check(back >= -length * 0.5 * 0.72 and front <= length * 0.5 * 0.62, "feet inside the deck")
+	var joints := B3.rider_leg_joints(x0, x1, seat, deck)
+	check(joints.size() == 2, "two leg joint sets")
+	for leg: Array in joints:
+		var hip: Vector3 = leg[0]
+		var knee: Vector3 = leg[1]
+		var ankle: Vector3 = leg[2]
+		check(hip.y >= seat - 0.05 and hip.y > deck, "hip %.2f at the seat, above the deck" % hip.y)
+		check(ankle.x >= x0 and ankle.x <= x1 and absf(ankle.z) <= 0.2, "ankle x %.3f in %.3f..%.3f" % [ankle.x, x0, x1])
+		var line_x := lerpf(hip.x, ankle.x, (hip.y - knee.y) / (hip.y - ankle.y))
+		check(knee.x - line_x >= 0.05, "knee %.3f m ahead of the hip-ankle line" % (knee.x - line_x))
+	check(absf(joints[0][2].x - joints[1][2].x) >= 0.1, "scooter rider's feet staggered along the deck")
+
+
+## Acceptance 2: at walking speed every 0.1 s step shows the next walk pose (WALK_POSES_PER_S > 10).
+func test_walk_pose_changes_every_step() -> void:
+	var walker := {"animation_state": "walking", "speed": 1.3}
+	for start: float in [0.0, 0.037, 0.0952]:
+		var t := start
+		var changed := 0
+		for i in 100:
+			if EntityLayer.person_pose(walker, t) != EntityLayer.person_pose(walker, t + 0.1):
+				changed += 1
+			t += 0.1
+		check(changed == 100, "walk pose changes on %d of 100 0.1 s steps from %.3f s" % [changed, start])
+
+
 func _model_aabb(node: Node3D) -> AABB:
 	var out := AABB()
 	var first := true
@@ -127,6 +193,9 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_forest_canopy()
 	test_car_glazing_is_dark_and_reflective()
 	test_model_sizes_match_sim()
+	test_walk_pose_phase_changes_mesh()
+	test_scooter_rider_feet_on_deck()
+	test_walk_pose_changes_every_step()
 	test_model_variant_stable_and_covering()
 	test_cloud_coverage_mapping()
 	test_sky_material_takes_cloud_cover()
@@ -3488,7 +3557,7 @@ func test_buildings_3d() -> void:
 	var parked_bike: int = B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": false})["verts"].size()
 	var ridden_bike: int = B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": true})["verts"].size()
 	check(ridden_bike > parked_bike, "a ridden bicycle carries its rider, a parked one none")
-	check(EntityLayer.person_pose({"animation_state": "walking"}, 0.1) == "walk_0" and EntityLayer.person_pose({"animation_state": "walking"}, 0.4) == "walk_3"
+	check(EntityLayer.person_pose({"animation_state": "walking"}, 0.05) == "walk_0" and EntityLayer.person_pose({"animation_state": "walking"}, 0.4) == "walk_4"
 		and EntityLayer.person_pose({"animation_state": "walking", "speed": 2.4}, 0.1) == "run_1"
 		and EntityLayer.person_pose({"animation_state": "fallen"}, 0.0) == "lying" and EntityLayer.person_pose({"animation_state": "sitting"}, 0.0) == "sitting"
 		and EntityLayer.person_pose({"animation_state": "waiting"}, 0.0) == "standing", "a person's pose follows their animation state and gait")

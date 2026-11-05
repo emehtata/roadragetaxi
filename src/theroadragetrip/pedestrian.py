@@ -933,6 +933,7 @@ class PedestrianManager:
         route_index = min(max(1, pedestrian.current_route_segment), len(route) - 1)
         target_x, target_y = route[route_index]
         distance = math.hypot(target_x - pedestrian.x, target_y - pedestrian.y)
+        pedestrian.animation_time += update_dt  # every step, the snap onto a route node too
         if distance <= 1.0:
             pedestrian.x, pedestrian.y = target_x, target_y
             pedestrian.current_route_segment = route_index + 1
@@ -1060,6 +1061,7 @@ class PedestrianManager:
                 or pedestrian.wants_vehicle
                 or pedestrian.is_walking_to_taxi_stop
                 or pedestrian.is_taxi_stop_waiter
+                or pedestrian.dodge_timer > 0.0  # jumping clear of a car, not choosing a bench
             ):
                 continue
             if random.random() >= ACTIVITY_CONSIDER_PROBABILITY:
@@ -2992,6 +2994,7 @@ class PedestrianManager:
                     ped.y += math.sin(ped.heading) * step
                     ped.state = "approaching_vehicle"
                     ped.animation_state = "walking"
+                    ped.animation_time += update_dt
                     continue
             taxi_stop_target = getattr(ped, "taxi_stop_target", None)
             if getattr(ped, "is_walking_to_taxi_stop", False) and taxi_stop_target is not None:
@@ -3073,7 +3076,8 @@ class PedestrianManager:
                 ped.state = PedestrianState.CROSSING.value if ped.crossing is not None else PedestrianState.WALKING.value
                 ped.animation_state = "walking"
             if ped.dodge_timer > 0.0:
-                # Controlled by dodge physics
+                # Controlled by dodge physics; the legs keep stepping
+                ped.animation_time += update_dt
                 continue
 
             pts = ped.way.points_m
