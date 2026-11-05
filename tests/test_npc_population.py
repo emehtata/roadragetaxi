@@ -1829,12 +1829,20 @@ def test_route_stays_on_road_applies_off_road_tolerance_with_a_spatial_grid():
     assert not route_stays_on_road(route, [road], spatial_grid=grid, initial_segment_tolerance_m=5.0)
 
 
-def test_population_tick_seeds_moving_traffic_near_the_player():
+def test_population_tick_seeds_moving_traffic_near_the_player(monkeypatch):
     """Parked cars near the player aren't a reliable source of moving traffic
     (their exits often fail route validation), so a tick below the moving
     target must be able to put a real driven vehicle on a nearby road."""
+    import itertools
+    import time
     from theroadragetrip.npc import NPC_POPULATION_TICK_S
     from theroadragetrip.physics import SpatialWayGrid
+
+    # Route searches run against wall-clock deadlines (perf_counter), so the
+    # outcome used to depend on machine speed and PYTHONHASHSEED. Every read
+    # advances a fake clock by a fixed step, making the search reproducible.
+    ticks = itertools.count()
+    monkeypatch.setattr(time, "perf_counter", lambda: next(ticks) * 1e-5)
 
     random.seed(11)
     ways = _city_block_grid()
