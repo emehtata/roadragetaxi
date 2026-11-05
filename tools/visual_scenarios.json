@@ -717,6 +717,93 @@
       "measure_s": 2,
       "view": "2d",
       "lineup": true
+    },
+    {
+      "id": "vehicle_lineup_3d_day",
+      "description": "Every vehicle kind the 3D view draws, one per row, by day",
+      "why": "Size and silhouette check per kind (docs/specs/vehicle-realism-audit.md) on a real street: the lineup is drawn by the client east of the taxi.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 1.2,
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 2,
+      "lineup": true,
+      "lineup_along_road": true
+    },
+    {
+      "id": "vehicle_lineup_3d_night",
+      "description": "The same 3D vehicle lineup at night: lamps, beams, the taxi sign",
+      "why": "Size and silhouette check per kind (docs/specs/vehicle-realism-audit.md) on a real street: the lineup is drawn by the client east of the taxi.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-10-20T22:30",
+      "weather": "clear",
+      "cloud": 0.2,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        -90,
+        -12
+      ],
+      "zoom": 1.2,
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 2,
+      "lineup": true,
+      "lineup_along_road": true
+    },
+    {
+      "id": "vehicle_lineup_3d_coach_right",
+      "description": "One train coach close up in the 3D view, its right side towards the camera: its doors",
+      "why": "Size and silhouette check per kind (docs/specs/vehicle-realism-audit.md) on a real street: the lineup is drawn by the client east of the taxi.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 2.2,
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 2,
+      "lineup": "coach",
+      "lineup_along_road": true
     }
   ]
 }

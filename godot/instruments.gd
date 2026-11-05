@@ -22,6 +22,7 @@ var _state: Dictionary = {}
 var language := "en"
 var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
 var trip_reset_rect := Rect2()  # where the trip reset button was drawn: main.gd clicks it
+var cluster_rect := Rect2()  # the dashboard as drawn, in this control (visual_test.gd keeps scenes clear of it)
 var chips := [false, false, false]
 var _housing := _make_housing()  # the dashboard cluster behind the dials  # lane assist (K), speed limiter (V), navigation (N): main.gd
 const MAX_SPEED_KMH := 210.0  # physics.MAX_SPEED: the dial's end
@@ -245,6 +246,7 @@ static func speed_angle(kmh: float) -> float:
 ## transform set for the fuel gauge (_draw resets it).
 func _draw_speedometer(at: Vector2, kmh: float, odometer: Array) -> Rect2:
 	var cluster: Rect2 = layout.place("speedometer", Rect2(at, Vector2(CLUSTER_WIDTH, 226)), size)  # the whole dashboard
+	cluster_rect = cluster
 	var factor: float = layout.scale_of("speedometer")
 	draw_set_transform(cluster.position, 0.0, Vector2(factor, factor))
 	at = Vector2.ZERO

@@ -38,36 +38,75 @@ func _lineup() -> Array:
 	var pose: Array = scenario["pose"]
 	var out := []
 	var rows: Array = scenario["lineup_rows"]
+	var along: bool = scenario.get("lineup_along_road", false)  # 3D: end to end in a lane left of the taxi, clear of buildings
+	var heading: float = pose[2] if along else 0.0
+	var trailer: Array = scenario["lineup_trailer"]
+	var total := 0.0
+	for row: Array in rows:
+		total += float(row[1]) + LINEUP_GAP_M + (float(trailer[0]) + float(trailer[2]) if row[0] == "car_caravan" else 0.0)
+	var s := -total * 0.5 + LINEUP_SHIFT_M  # forward a little: the back end clear of the dashboard
 	for i in rows.size():
 		var row: Array = rows[i]
 		var x: float = pose[0] + 6.0 + row[1] * 0.5
 		var y: float = pose[1] + 13.5 - i * 3.0
-		var npc := {"id": "lineup_%d" % i, "x": x, "y": y, "heading": 0.0, "length_m": row[1], "width_m": row[2],
+		if along:
+			if row[0] == "car_caravan":
+				s += float(trailer[0]) + float(trailer[2])
+			var at := _on_road(s + row[1] * 0.5, LINEUP_LANE_M)
+			x = at.x
+			y = at.y
+			s += float(row[1]) + LINEUP_GAP_M
+		var npc := {"id": "lineup_%d" % i, "x": x, "y": y, "heading": heading, "length_m": row[1], "width_m": row[2],
 			"color": [60 + i * 18, 110, 200 - i * 12], "vehicle_type": row[0], "state": "DRIVING", "speed": 0.0,
 			"is_taxi": i == 0}
 		if row[0] == "car_caravan":
-			var trailer: Array = scenario["lineup_trailer"]
 			npc["vehicle_type"] = "car"
-			npc["trailer"] = [x - row[1] * 0.5 - trailer[2] - trailer[0] * 0.5, y, 0.0, trailer[0], trailer[1], "caravan"]
+			var back: Vector2 = Vector2(cos(heading), sin(heading)) * -(float(row[1]) * 0.5 + float(trailer[2]) + float(trailer[0]) * 0.5)
+			npc["trailer"] = [x + back.x, y + back.y, heading, trailer[0], trailer[1], "caravan"]
 		out.append(npc)
 	return out
 
 
-func _lineup_tram() -> Dictionary:
+const LINEUP_GAP_M := 1.5
+const LINEUP_LANE_M := 3.5
+const LINEUP_SHIFT_M := 6.0
+
+
+## A point `s` metres along the pose's heading, `lane` metres to its left, in the server's metres.
+func _on_road(s: float, lane: float) -> Vector2:
 	var pose: Array = scenario["pose"]
-	var tram: Array = scenario["lineup_tram"]  # [look, section lengths, width]
+	var d := Vector2(cos(pose[2]), sin(pose[2]))
+	return Vector2(pose[0], pose[1]) + d * s + Vector2(-d.y, d.x) * lane
+
+
+func _lineup_train(name: String, look: String, lengths: Array, width: float, y: float, lane := -LINEUP_LANE_M - 0.5) -> Dictionary:
+	var pose: Array = scenario["pose"]
 	var cars := []
-	var front: float = pose[0] - 2.5  # west of the taxi, level with the first row: clear of the HUD
-	for length: float in tram[1]:  # front first, heading east
-		cars.append([front - length * 0.5, pose[1] + 13.5, 0.0, length, tram[0]])
+	var front: float = pose[0] - 2.5  # west of the taxi: clear of the HUD
+	for length: float in lengths:  # front first, heading east
+		cars.append([front - length * 0.5, pose[1] + y, 0.0, length, look])
 		front -= length
-	return {"id": "lineup_tram", "state": "STOPPED", "speed": 0.0, "line": "", "cars": cars}
+	if scenario.get("lineup_along_road", false):  # 3D: end to end in the lane right of the taxi (y: the start along it)
+		cars = []
+		front = y
+		for length: float in lengths:
+			var at := _on_road(front - length * 0.5, lane)
+			cars.append([at.x, at.y, float(pose[2]), length, look])
+			front -= length
+	return {"id": "lineup_" + name, "name": name, "width_m": width, "state": "STOPPED", "speed": 0.0, "line": "", "cars": cars}
 
 
 func _ready() -> void:
-	if scenario.get("lineup", false):
+	if scenario.get("lineup", "") is String and scenario.get("lineup", "") == "coach":  # one coach left of the taxi: its right side faces the camera
+		var coach: Array = scenario["lineup_coach"]
+		main.entities.extra_trains = [_lineup_train("train coach", coach[0], [coach[1]], coach[2], coach[1] * 0.5, LINEUP_LANE_M + 0.5)]
+	elif scenario.get("lineup", false):
 		main.entities.extra_npcs = _lineup()
-		main.entities.extra_trains = [_lineup_tram()]
+		var tram: Array = scenario["lineup_tram"]  # [look, section lengths, width]
+		main.entities.extra_trains = [_lineup_train("tram section", tram[0], tram[1], tram[2], 27.0 if scenario.get("lineup_along_road", false) else 13.5)]
+		if scenario.has("lineup_coach"):  # [look, length, width]: a train coach under the tram
+			var coach: Array = scenario["lineup_coach"]
+			main.entities.extra_trains.append(_lineup_train("train coach", coach[0], [coach[1]], coach[2], -2.0 if scenario.get("lineup_along_road", false) else 8.5))
 	if scenario.has("graphics"):  # graphics settings under test (brightness, contrast...), over the player's saved ones
 		var options: Dictionary = main.graphics.duplicate()
 		options.merge(scenario["graphics"], true)
@@ -176,6 +215,7 @@ func _check_map(centre: Vector2) -> Array:
 	var corners := [view.position, view.end, Vector2(view.position.x, view.end.y), Vector2(view.end.x, view.position.y), centre]
 	var lamps := 0
 	var buildings := 0
+	var footprints := []
 	for corner in corners:
 		var covered := false
 		for chunk in main.map_layer._chunks.values():
@@ -193,34 +233,74 @@ func _check_map(centre: Vector2) -> Array:
 				lamps += 1
 		for footprint in chunk._data.get("buildings", []):
 			var points: PackedVector2Array = chunk._points(footprint)
+			footprints.append(points)
 			var box := Rect2(points[0], Vector2.ZERO)
 			for p in points:
 				box = box.expand(p)
 			if box.intersects(view):  # a city block's corners are often all outside a close view
 				buildings += 1
-	var boxes := []  # [name, box]: every lineup body east-west, in view and clear of the HUD
+	var boxes := []  # [name, corners]: every lineup body, in view, clear of the HUD (and in 3D of the buildings)
 	for npc in main.entities.extra_npcs:
-		var half := Vector2(float(npc["length_m"]), float(npc["width_m"])) * 0.5
-		boxes.append([npc["vehicle_type"], Rect2(Vector2(npc["x"] - main.entities.origin.x, -(npc["y"] - main.entities.origin.y)) - half, half * 2.0)])
+		boxes.append([npc["vehicle_type"], _corners(npc["x"], npc["y"], npc["heading"], npc["length_m"], npc["width_m"])])
+		if npc.has("trailer"):
+			var t: Array = npc["trailer"]
+			boxes.append(["caravan", _corners(t[0], t[1], t[2], t[3], t[4])])
 	for train in main.entities.extra_trains:
 		for car: Array in train["cars"]:
-			var half := Vector2(float(car[3]), float(scenario["lineup_tram"][2])) * 0.5
-			boxes.append(["tram section", Rect2(Vector2(car[0] - main.entities.origin.x, -(car[1] - main.entities.origin.y)) - half, half * 2.0)])
+			boxes.append([train["name"], _corners(car[0], car[1], car[2], car[3], train["width_m"])])
 	var to_screen: Transform2D = main.get_viewport().get_canvas_transform()
 	var screen_size: Vector2 = main.get_viewport().get_visible_rect().size
 	var hud := []
 	for control: Control in main.get_node("Ui").find_children("*", "Control", true, false):  # every HUD panel and label
-		if control.is_visible_in_tree() and (control is Label or control is TextureRect or control is Panel or control is PanelContainer) \
-				and control.size.x < screen_size.x * 0.8 and not (control is Label and control.text == ""):
+		if control.is_visible_in_tree() and not control is Container and control.size.x < screen_size.x * 0.8 \
+				and control.size.y < screen_size.y * 0.8 and not (control is Label and control.text == ""):  # labels, panels, the instruments
 			hud.append(control.get_global_rect())
-	for row: Array in boxes:
-		if not view.encloses(row[1]):
+	if main.instruments.visible:  # a full-screen control: the dashboard it draws
+		hud.append(main.instruments.get_global_transform() * main.instruments.cluster_rect)
+	var camera_3d: Camera3D = null if layer_3d_view() == null else layer_3d_view()._camera
+	_lineup_seen = {}
+	for i in boxes.size():
+		var row: Array = boxes[i]
+		var body: PackedVector2Array = row[1]
+		var on_screen := Rect2()
+		var in_view := true
+		var first := true
+		for corner: Vector2 in body:
+			if MapChunkScript.outdoor_3d and camera_3d != null:  # each corner, on the ground and 3.5 m up, through the 3D camera
+				for height: float in [0.0, 3.5]:
+					var at := Vector3(corner.x, height, corner.y)
+					if camera_3d.is_position_behind(at):
+						in_view = false
+						continue
+					var p := camera_3d.unproject_position(at)
+					on_screen = Rect2(p, Vector2.ZERO) if first else on_screen.expand(p)
+					first = false
+			else:
+				in_view = in_view and view.has_point(corner)
+				var p: Vector2 = to_screen * corner
+				on_screen = Rect2(p, Vector2.ZERO) if first else on_screen.expand(p)
+				first = false
+		in_view = in_view and Rect2(Vector2.ZERO, screen_size).encloses(on_screen)
+		var hidden := false
+		if MapChunkScript.outdoor_3d:  # under a building's footprint: hidden in the 3D view
+			for footprint: PackedVector2Array in footprints:
+				for corner: Vector2 in body:
+					if Geometry2D.is_point_in_polygon(corner, footprint):
+						hidden = true
+		var key := "%d %s" % [i, row[0]]
+		if not in_view:
 			missing.append("lineup %s not in view" % row[0])
+			_lineup_seen[key] = "not in view"
 			continue
-		var on_screen: Rect2 = to_screen * row[1]
+		if hidden:
+			missing.append("lineup %s under a building" % row[0])
+			_lineup_seen[key] = "under a building"
+			continue
+		_lineup_seen[key] = "visible"
 		for rect: Rect2 in hud:
 			if rect.intersects(on_screen):
 				missing.append("lineup %s under the HUD at %s" % [row[0], rect])
+				_lineup_seen[key] = "under the HUD"
 				break
 	var needs: Dictionary = scenario.get("requires", {})
 	if lamps < int(needs.get("lamps_in_view", 0)):
@@ -235,10 +315,25 @@ func _check_map(centre: Vector2) -> Array:
 		if trains < int(needs["train_models_in_view"]):
 			missing.append("%d train models in view, the scenario needs %d" % [trains, needs["train_models_in_view"]])
 	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count()}
+	if not boxes.is_empty():
+		_counts["lineup"] = _lineup_seen  # each row: visible, not in view or under the HUD
 	return missing
 
 
 const MapChunkScript := preload("res://map_chunk.gd")
+var _lineup_seen := {}
+
+
+## A body's four ground corners in the view's coordinates (server x, y; heading counter-clockwise from east).
+func _corners(x: float, y: float, heading: float, length: float, width: float) -> PackedVector2Array:
+	var c := Vector2(x - main.entities.origin.x, -(y - main.entities.origin.y))
+	var f := Vector2(cos(heading), -sin(heading)) * length * 0.5
+	var r := Vector2(-f.y, f.x).normalized() * width * 0.5
+	return PackedVector2Array([c + f + r, c + f - r, c - f - r, c - f + r])
+
+
+func layer_3d_view():
+	return main.map_layer.buildings_3d
 var _counts := {}
 
 

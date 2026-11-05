@@ -62,7 +62,7 @@ Mismatch 7 (far bus door/window bands, far tractor wheel sizes): far boxes are d
 ## Open at commit (accepted as is, 2026-11-05)
 
 The final tester run failed the render criteria, so these are recorded as open rather than done:
-- **3D lineup, day and night:** no named 3D scenario with readiness exists; the lineup scenarios are 2D only. To be added.
-- **Train right-side doors:** coach doors are in the code, but too small to see in the render.
+- **3D lineup, day and night:** done (vehicle_lineup_3d_day and vehicle_lineup_3d_night, readiness passed, every row visible).
+- **Train right-side doors:** coach doors are in the code; the close 3D frame is top-down and does not settle them. Needs an oblique side-elevation frame of the right face, or a door-count check in vehicle_arrays.
 - **2D camp pitch:** the frame is a scratch render, not a named scenario; the camper draws about 3 % short of 6.2 m.
 - **E-scooter height:** 1.379 m, which is 14.9 % above 1.2 m; inside the 15 % limit, but at the edge.
