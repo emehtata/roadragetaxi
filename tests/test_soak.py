@@ -29,8 +29,24 @@ def test_the_server_runs_through_midnight_and_every_state_parses(monkeypatch):
     connection = transport.connect(server.host, server.port)
     time.sleep(0.05)
     start = server.calendar.current
-    previous, states = start, 0
+    previous, states, ticks_seen = start, 0, []
     ticks = int(4000 * SCALE)
+
+    def drain_until(tick_number):  # wait (bounded) until the state of this tick arrives
+        nonlocal states
+        deadline = time.monotonic() + 10
+        while not ticks_seen or ticks_seen[-1] < tick_number:
+            assert time.monotonic() < deadline, f"no state for tick {tick_number}: {ticks_seen[-3:]}"
+            for message in connection.try_recv_all():  # decoded by the transport: a bad one closes it
+                if message["type"] == "state":
+                    states += 1
+                    ticks_seen.append(message["tick"])
+                    assert message["state"]["game_time_seconds"] >= 0
+            assert not connection.is_closed, connection.error
+            time.sleep(0.01)
+
+    server.tick(0.1)  # the first state
+    drain_until(server._tick)
     for tick in range(ticks):
         server.tick(0.1)
         now = server.calendar.current
@@ -40,10 +56,16 @@ def test_the_server_runs_through_midnight_and_every_state_parses(monkeypatch):
             for message in connection.try_recv_all():  # decoded by the transport: a bad one closes it
                 if message["type"] == "state":
                     states += 1
+                    ticks_seen.append(message["tick"])
                     assert message["state"]["game_time_seconds"] >= 0
             assert not connection.is_closed, connection.error
     assert previous - start >= timedelta(hours=6) and previous.date() > start.date()
-    assert states >= ticks // 100
+    drain_until(server._tick)
+    # A behind client gets only the newest state (transport.send_state coalesces),
+    # so the delivered count depends on scheduling; the stream must still advance.
+    assert states >= 1 and ticks_seen[-1] > ticks_seen[0], ticks_seen
+    assert server._tick >= ticks
+    assert sum(client.coalesced_states for client in server._clients) + states <= server._tick
     connection.close()
 
 
