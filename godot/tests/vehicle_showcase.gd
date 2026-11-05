@@ -1,4 +1,4 @@
-## Fixed vehicle lineup for visual review. Usage: -- /tmp/vehicles.png day|evening|night close|cars|commercial|bikes|trains|transit
+## Fixed vehicle lineup for visual review. Usage: -- /tmp/vehicles.png day|evening|night close|cars|commercial|bikes|trains|transit|coach_right|coach_left
 extends SceneTree
 const B3 := preload("res://buildings_3d.gd")
 const EntityLayer := preload("res://entity_layer.gd")
@@ -12,14 +12,17 @@ func capture() -> void:
 	var light: String = args[1] if args.size() > 1 else "day"
 	var group: String = args[2] if args.size() > 2 else "cars"
 	var close := group == "close"
+	var coach := group.begins_with("coach_")  # the coaches side on, about 20 deg up: their +y (right) or -y face
 	root.size = Vector2i(1400, 800)
 	B3.use_shaded()
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 5.5 if close else 9.0 if group == "bikes" else 60.0 if group == "transit" else 32.0 if group == "trains" else 24.0 if group == "commercial" else 18.0
+	camera.size = 32.0 if coach else 5.5 if close else 9.0 if group == "bikes" else 60.0 if group == "transit" else 32.0 if group == "trains" else 24.0 if group == "commercial" else 18.0
 	camera.position = Vector3(6.0, 3.1, 7.0) if close else Vector3(12.0, 15.0, 24.0)
 	root.add_child(camera)
-	camera.look_at(Vector3(0.0, 0.6, 0.0))
+	if coach:
+		camera.position = Vector3(0.0, 14.6, 40.0 if group == "coach_right" else -40.0)
+	camera.look_at(Vector3(0.0, 1.5 if coach else 0.6, 0.0))
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.29, 0.34, 0.39) * (0.3 if light == "night" else 0.65 if light == "evening" else 1.0)
@@ -60,13 +63,13 @@ func capture() -> void:
 		["train_locomotive", 19.0, 3.2, Color8(12, 48, 24), [], 0],
 		["train_coach", 24.0, 3.2, Color8(46, 125, 60), [], 0],
 	]
-	var selected := [0] if close else [0, 1, 2, 3, 4, 10, 11] if group == "cars" else [5, 6, 7, 12, 13, 14] if group == "commercial" else [19, 20] if group == "trains" else [16, 17, 18] if group == "transit" else [8, 9, 15]
+	var selected := [16, 20] if coach else [0] if close else [0, 1, 2, 3, 4, 10, 11] if group == "cars" else [5, 6, 7, 12, 13, 14] if group == "commercial" else [19, 20] if group == "trains" else [16, 17, 18] if group == "transit" else [8, 9, 15]
 	for j in selected.size():
 		var i: int = selected[j]
 		var row: Array = rows[i]
 		var kind: String = B3.car_model_kind(row[4], row[1]) if row[0] == "car" else "city_bus" if row[0] == "bus" else "box_truck" if row[0] == "truck" else "caravan" if row[0] == "trailer" else row[0]
 		var node: Node3D
-		var heading := 0.45 if i % 2 else -0.4
+		var heading := 0.0 if coach else 0.45 if i % 2 else -0.4
 		if B3.MODEL_SCENES.has(kind):
 			node = B3.MODEL_SCENES[kind].instantiate()
 			if kind in ["train_locomotive", "train_coach"]:
@@ -91,7 +94,7 @@ func capture() -> void:
 			node.rotation.y = heading
 		var columns := 3 if group == "commercial" else 4 if group == "cars" else 3
 		var gap := 16.0 if group == "transit" else 9.0 if group == "commercial" else 5.7 if group == "cars" else 2.4
-		node.position = Vector3(0.0, 0.0, (j - 1) * 18.0) if group == "transit" else Vector3(0.0, 0.0, (j - 0.5) * 9.0) if group == "trains" else Vector3.ZERO if close else Vector3((j % columns - (columns - 1) * 0.5) * gap, 0.0,
+		node.position = Vector3((j - 0.5) * 26.0, 0.0, 0.0) if coach else Vector3(0.0, 0.0, (j - 1) * 18.0) if group == "transit" else Vector3(0.0, 0.0, (j - 0.5) * 9.0) if group == "trains" else Vector3.ZERO if close else Vector3((j % columns - (columns - 1) * 0.5) * gap, 0.0,
 			(j / columns - (selected.size() / columns - 1) * 0.5) * (8.0 if group == "commercial" else gap))
 		root.add_child(node)
 		if B3.MODEL_SCENES.has(kind):

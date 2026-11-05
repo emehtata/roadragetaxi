@@ -1183,7 +1183,8 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 			if tram or extra.get("profile", "") != "locomotive":  # a coach's doors near its ends
 				for door_x: float in ([-hl * 0.55, hl * 0.38] if tram else [-hl + 0.9, hl - 0.965]):
 					for side: float in ([-1.0, 1.0] if tram else [1.0]):  # a tram's on both sides, a coach's on the right (+y)
-						_part(out, PAINT, door_x, door_x + 0.065, side * hw - 0.015, side * hw + 0.015, 0.68, 2.53, Color8(42, 48, 51))
+						var leaf := 0.0 if tram else 0.6  # a coach door: a 1.3 m leaf, seen at lineup zoom
+						_part(out, PAINT, door_x - leaf, door_x + 0.065 + leaf, side * hw - 0.015, side * hw + 0.015, 0.68, 2.53, Color8(42, 48, 51))
 			if tram:  # the locomotive model is a diesel: no pantograph
 				var pan := Color8(52, 54, 56)
 				_car_box(out, -0.5, 0.5, -0.4, 0.4, top, top + 0.15, pan)  # base frame
