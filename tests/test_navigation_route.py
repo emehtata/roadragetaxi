@@ -144,6 +144,7 @@ def test_an_unreachable_target_gives_no_line():
     assert nav.plans_started == 1  # no retry every tick
 
 
+@pytest.mark.timing  # asserts wall-clock slice times: serial in make test (pytest.ini)
 def test_a_long_search_spans_ticks_within_its_budget():
     traffic = TrafficWorld(_grid(blocks=60))
     world = _world(traffic, TaxiTarget(x=59 * 40.0, y=59 * 40.0, address="Kaukana"))
