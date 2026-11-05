@@ -132,6 +132,7 @@ def test_changed_chunks_are_resent_nearest_the_player_first():
     from types import SimpleNamespace
 
     from theroadragetrip.server import SimulationServer
+    from theroadragetrip.station_announcer import StationAnnouncer
 
     class Connection:
         def __init__(self):
@@ -144,7 +145,7 @@ def test_changed_chunks_are_resent_nearest_the_player_first():
     index = SimpleNamespace(encoded=lambda cid: cid, is_encoded=lambda cid: True)
     server = SimpleNamespace(
         _map_growth=[([], index, {"9_0", "1_0", "4_0"}, None, None, 0.0, True, {"tile"})], _chunks_index=None,
-        world=SimpleNamespace(street_light_points=[]), _map_streamer=SimpleNamespace(hold=True), _on_foot=False,
+        world=SimpleNamespace(street_light_points=[], ways=[]), announcer=StationAnnouncer(), _map_streamer=SimpleNamespace(hold=True), _on_foot=False,
         car=SimpleNamespace(x=250.0, y=250.0), _clients_lock=threading.Lock(), _indexed_tiles=set(),
         _client_chunks={connection: ({"9_0", "1_0", "4_0", "2_0"}, (0, 0))},
     )
@@ -187,6 +188,7 @@ def test_a_changed_far_chunk_not_yet_encoded_waits_for_the_streaming_budget():
     from types import SimpleNamespace
 
     from theroadragetrip.server import SimulationServer
+    from theroadragetrip.station_announcer import StationAnnouncer
 
     sent = []
 
@@ -197,10 +199,29 @@ def test_a_changed_far_chunk_not_yet_encoded_waits_for_the_streaming_budget():
     index = SimpleNamespace(encoded=lambda cid: cid, is_encoded=lambda cid: False)
     server = SimpleNamespace(
         _map_growth=[([], index, {"1_0", "4_0"}, None, None, 0.0, True, {"tile"})], _chunks_index=None,
-        world=SimpleNamespace(street_light_points=[]), _map_streamer=SimpleNamespace(hold=True), _on_foot=False,
+        world=SimpleNamespace(street_light_points=[], ways=[]), announcer=StationAnnouncer(), _map_streamer=SimpleNamespace(hold=True), _on_foot=False,
         car=SimpleNamespace(x=250.0, y=250.0), _clients_lock=threading.Lock(), _indexed_tiles=set(),
         _client_chunks={connection: ({"1_0", "4_0"}, (0, 0))},
     )
     SimulationServer._apply_map_growth(server)
     assert sent == ["1_0"]  # the player's own neighbour at once
     assert server._client_chunks[connection] == ({"1_0"}, None)  # 4_0 is streamed again, within budget
+
+
+def test_a_final_map_growth_refreshes_the_station_platforms():
+    from types import SimpleNamespace
+
+    from theroadragetrip.server import SimulationServer
+    from theroadragetrip.station_announcer import StationAnnouncer
+
+    platform = SimpleNamespace(highway="platform", is_busway=False, points_m=[(0.0, 10.0), (100.0, 10.0)])
+    road = SimpleNamespace(highway="primary", is_busway=False, points_m=[(0.0, 0.0), (100.0, 0.0)])
+    index = SimpleNamespace(encoded=lambda cid: cid, is_encoded=lambda cid: True)
+    server = SimpleNamespace(
+        _map_growth=[([], index, set(), None, None, 0.0, True, {"tile"})], _chunks_index=None,
+        world=SimpleNamespace(street_light_points=[], ways=[road, platform]), announcer=StationAnnouncer(),
+        _map_streamer=SimpleNamespace(hold=True), _on_foot=False, car=SimpleNamespace(x=0.0, y=0.0),
+        _clients_lock=threading.Lock(), _indexed_tiles=set(), _client_chunks={},
+    )
+    SimulationServer._apply_map_growth(server)
+    assert server.announcer.platforms == [platform]

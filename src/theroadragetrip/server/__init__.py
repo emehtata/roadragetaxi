@@ -80,6 +80,11 @@ def _utc_now() -> datetime:
 
 
 
+def _platform_ways(ways) -> list:
+    """Railway platforms (highway=platform, not bus): the station loudspeakers."""
+    return [way for way in ways if way.highway == "platform" and not getattr(way, "is_busway", False)]
+
+
 def server_path(path: str) -> str:
     """A path sent by a Windows client, as this server sees it. On Linux a
     `\\\\wsl.localhost\\<distro>\\...` path (or `\\\\wsl$\\...`) is the Linux path after
@@ -248,7 +253,7 @@ class SimulationServer:
 
         overpass_endpoints = get_overpass_endpoints(config)
         bus_stops_enabled = True  # always: an old ini's bus_stops = false (the former default) is ignored
-        roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
+        roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False) or getattr(args, "test_roadworks", False)
         # Loading never streams; the map grows while playing (map_sync.py).
         self._auto_fetch = bool(getattr(args, "auto_fetch", True)) and not getattr(args, "use_sample", False)
         if getattr(args,"intercity_fares",False) and not self._auto_fetch:
@@ -410,8 +415,7 @@ class SimulationServer:
         self._latest_command = PlayerCommand()
         self._pending_interacts = 0
         from ..station_announcer import StationAnnouncer
-        self.announcer = StationAnnouncer(platforms=[way for way in self.world.ways
-                                                     if way.highway == "platform" and not getattr(way, "is_busway", False)])
+        self.announcer = StationAnnouncer(platforms=_platform_ways(self.world.ways))
         self.navigation = NavigationRoute()  # the player's route to the taxi target (godot-final-04)
         self._pending_refuels = 0  # edge-triggered too: one press buys fuel once, never again each tick
         self._pending_road_rages = 0  # SPACE presses, likewise
@@ -1503,6 +1507,8 @@ class SimulationServer:
         self._map_streamer.hold = not final
         if final and self._indexed_tiles is not None:
             self._indexed_tiles = covered
+        if final:
+            self.announcer.set_platforms(_platform_ways(self.world.ways))
         player = self.world.player_pedestrian if self._on_foot else self.car
         px, py = cell_of(player.x, player.y)
 

@@ -23,6 +23,7 @@ from ..performance import MAP_SYNC_BUDGET_S, MAP_SYNC_URGENT_BUDGET_S
 from ..parking import generate_detached_house_parking_chunk
 from ..physics import connected_drivable_ways
 from ..level_transitions import close_garage_roads
+from ..roadworks import create_roadworks
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,28 @@ def prepare_initial_window(world, timeout_s: float = INITIAL_PREPARE_TIMEOUT_S, 
     return {"started": True, "integrated_tiles": integrated, "elapsed_s": elapsed, "timed_out": False}
 
 
+ROADWORKS_PER_KM2 = 1.0  # extension density; the opening map gets create_roadworks' default 3
+
+
+def _add_roadworks_on_new_ways(w) -> None:
+    """Roadworks for ways merged since the last sync (keyed by OSM id, so a
+    way split across tiles never gets a second work). Off when the world has
+    no roadwork_way_keys (roadworks disabled)."""
+    seen = getattr(w, "roadwork_way_keys", None)
+    if seen is None:
+        return
+    new = [way for way in w.ways if (way.osm_id if way.osm_id is not None else id(way)) not in seen]
+    seen.update(way.osm_id if way.osm_id is not None else id(way) for way in new)
+    if not new:
+        return
+    xs = [x for way in new for x, _ in way.points_m]
+    ys = [y for way in new for _, y in way.points_m]
+    count = max(1, round((max(xs) - min(xs)) * (max(ys) - min(ys)) / 1e6 * ROADWORKS_PER_KM2))
+    works, lights = create_roadworks(new, count=count)
+    w.roadworks.extend(works)
+    w.traffic_lights.extend(lights)
+
+
 def map_sync_steps(world, remaining_budget=None):
     """The map sync stages 1..14 as one generator: each `yield` is a
     point where the tick may stop (its budget spent) and resume later, and
@@ -113,6 +136,7 @@ def map_sync_steps(world, remaining_budget=None):
             yield name
             if done:
                 break
+    _add_roadworks_on_new_ways(w)
     w.street_lamps[:] = [obj for obj in w.scenery_objects if obj.kind == "street_lamp"]
     for grid, items in ((w.street_lamp_grid, w.street_lamps), (w.water_grid, w.waters),
                         (w.crossing_grid, w.crossings), (w.curb_grid, w.curbs),

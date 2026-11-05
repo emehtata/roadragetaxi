@@ -522,6 +522,8 @@ def load_world(
         player_pedestrian=player_pedestrian,
         residents=residents,
         roadworks=roadworks,
+        # Ways already given their chance of a roadwork; map sync adds works on merged ones only.
+        roadwork_way_keys={way.osm_id if way.osm_id is not None else id(way) for way in ways} if roadworks_enabled else None,
         sceneries=sceneries,
         scenery_grid=scenery_grid,
         scenery_objects=scenery_objects,

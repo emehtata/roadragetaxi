@@ -173,3 +173,9 @@ def test_announcements_come_from_the_station_platforms_not_the_train():
 
 def test_a_station_without_mapped_platforms_announces_from_the_stop():
     assert scripted_announcer().event("arrived", train(), STOP, (50.0, 0.0), (80.0, 40.0))["at"] == [50.0, 0.0]
+
+
+def test_platforms_from_map_growth_are_announced():
+    announcer = scripted_announcer()
+    announcer.set_platforms([SimpleNamespace(points_m=[(0.0, 10.0), (100.0, 10.0)])])
+    assert announcer.event("arrived", train(), STOP, (50.0, 0.0), (80.0, 40.0))["at"] == [80.0, 10.0]
