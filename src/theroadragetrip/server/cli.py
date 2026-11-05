@@ -48,6 +48,7 @@ def parse_server_args():
     parser.add_argument("--test-cloud", type=float, default=None, help="visual tests: cloud cover 0..1, unchanging")
     parser.add_argument("--test-time-scale", type=float, default=None,
                         help="visual tests: game seconds per real second (0 holds the clock at --start-time)")
+    parser.add_argument("--test-roadworks", action="store_true", help="visual tests: generated roadworks on (game.roadworks_enabled)")
     parser.add_argument("--test-seed", type=int, default=None, help="visual tests: seed the random generators")
 
     # Any municipality: a map-picker start takes its nearest one's settings.
