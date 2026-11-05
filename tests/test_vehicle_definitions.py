@@ -100,3 +100,20 @@ def test_glb_aspect_close_to_sim():
 def test_camp_pitch_camper_van_is_the_vehicle():
     from theroadragetrip.osm.campsites import CAMPING_SIZES
     assert CAMPING_SIZES["camper_van"][0] == vehicle_definition("camper_van").length_m
+
+
+def test_moped_has_no_spawner_or_drawn_kind():
+    # docs/specs/moped-closure.md: no traffic source spawns mopeds, so no definition and no Godot drawing kind.
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parents[1]
+    assert "moped" not in VEHICLE_DEFINITIONS and vehicle_definition("moped").id == "car"
+    gd = (root / "godot/entity_layer.gd").read_text()
+    for name in ("TWO_WHEELERS", "VEHICLES_3D"):
+        line = re.search(rf"^const {name} := \[.*\]$", gd, re.M).group(0)
+        assert "moped" not in line
+    src = root / "src/theroadragetrip"
+    hits = [p for p in src.rglob("*.py") if "assets" not in p.relative_to(src).parts and "moped" in p.read_text().lower()]
+    assert not hits
+    audit = (root / "docs/specs/vehicle-realism-audit.md").read_text()
+    assert "moped: closed" in audit

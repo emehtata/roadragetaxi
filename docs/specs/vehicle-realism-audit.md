@@ -15,7 +15,7 @@ the 2D layer and the 3D view, checked against one dimension table.
 | camper_van | 6.2 x 2.3 (camp pitch 7.0 x 2.3 x 2.9) | cab + living box | camper_van.glb | boxes | 2.154 x 5.042 |
 | caravan trailer | 4.8 x 2.3 | box | caravan.glb | box + drawbar | 2.647 x 5.365 |
 | motorcycle | 2.2 x 0.8 | TWO_WHEELERS drawing | motorcycle.glb | boxes shared with moped | 0.58 x 2.106 |
-| moped | no definition | as motorcycle | none | motorcycle boxes | - |
+| moped | closed: no spawner (see moped-closure.md) | - | none | - | - |
 | bicycle | 1.8 x 0.6 | tyres, frame, bars | none | procedural frame | - |
 | e_scooter | 1.2 x 0.5 | wheels, deck, stem | e_scooter.glb | deck + stem | 0.482 x 0.844 |
 | tram / train | trams.py / train_compositions.py | profile rects | train GLBs (< 35 m, train only) | 3 slabs, tram doors | 3.03 x 16.25, 2.89 x 26.4 |
@@ -36,7 +36,7 @@ Reference values: base.py where it exists, otherwise typical Finnish fleet value
 2. camper_van GLB 5.04 m stretched to 6.2 m (x1.23 length, x1.07 width); camp pitch uses 7.0 m, a third size.
 3. bus GLB 3.084 m wide (mirrors included) squeezed to 2.5 m while length scales x0.90: non-uniform; sim 11.0 m is short for a 12 m city bus.
 4. motorcycle GLB width 0.58 vs sim 0.8: model scaled x1.38 sideways.
-5. moped has no definition or model; drawn as a motorcycle in 2D and 3D (no open frame).
+5. moped has no definition or model; drawn as a motorcycle in 2D and 3D (no open frame). Closed: no spawner (see moped-closure.md).
 6. tram 3D has no pantograph (grep finds none) and only left-side doors.
 7. Far bus boxes have no door or window bands; far tractor has equal-size wheels? (verify in render).
 8. Night render metallic_vehicle_paint_night (20261103-073028): the taxi shows its roof sign but no headlight pool or tail lamps, while the other cars do.
@@ -47,7 +47,7 @@ Reference values: base.py where it exists, otherwise typical Finnish fleet value
 2. base.py: bus 12.0 x 2.55; camper_van length shared with the camp-pitch entry at line ~2408 (one value).
 3. Taxi night lamps: none needed (mismatch 8 not reproduced); the windshield_on early return only hides the body the camera is inside.
 4. vehicle_arrays "train","tram": a pantograph on the tram only (the locomotive model is a diesel); doors on both sides of a tram (the real-world line), on the right side of a train coach.
-5. moped: a VehicleDefinition("moped", ...) only when a traffic source spawns mopeds; else drop "moped" from VEHICLES_3D/TWO_WHEELERS (YAGNI).
+5. moped: a VehicleDefinition("moped", ...) only when a traffic source spawns mopeds; else drop "moped" from VEHICLES_3D/TWO_WHEELERS (YAGNI). Closed: no spawner (see moped-closure.md).
 
 ## Tests to add
 - tests/test_vehicle_definitions.py::test_dimensions_match_real_world_table: a REAL_WORLD dict of L/W per kind; fails today on bus (11.0 vs 12.0).
@@ -66,3 +66,6 @@ The final tester run failed the render criteria, so these are recorded as open r
 - **Train right-side doors:** coach doors are in the code; the close 3D frame is top-down and does not settle them. Needs an oblique side-elevation frame of the right face, or a door-count check in vehicle_arrays.
 - **2D camp pitch:** the frame is a scratch render, not a named scenario; the camper draws about 3 % short of 6.2 m.
 - **E-scooter height:** 1.379 m, which is 14.9 % above 1.2 m; inside the 15 % limit, but at the edge.
+
+## Open/closed
+- moped: closed (no spawner; see moped-closure.md).
