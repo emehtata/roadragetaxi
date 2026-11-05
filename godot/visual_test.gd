@@ -212,9 +212,16 @@ func check() -> Array:
 		missing.append("road wetness %.2f, the scenario needs %s" % [float(weather.get("wetness", -1.0)), wet])
 	if driving:
 		return missing
-	missing.append_array(_check_map(at - main.entities.origin))
-	if main.camera.position.distance_to(main.entities.player_position()) > 2.0:
-		missing.append("camera not on the vehicle yet")
+	if scenario.has("camera_at"):  # the camera held on a map point (server x, y), the vehicle elsewhere
+		var look := MapMath.point(main.entities.origin, scenario["camera_at"][0], scenario["camera_at"][1])
+		main._focus = {"kind": "pan", "position": look}
+		missing.append_array(_check_map(look))
+		if main.camera.position.distance_to(look) > 0.5:
+			missing.append("camera not on camera_at yet")
+	else:
+		missing.append_array(_check_map(at - main.entities.origin))
+		if main.camera.position.distance_to(main.entities.player_position()) > 2.0:
+			missing.append("camera not on the vehicle yet")
 	if scenario.get("windshield", false) and not main._windshield.visible:
 		missing.append("windshield view not active yet")
 	return missing
@@ -328,7 +335,26 @@ func _check_map(centre: Vector2) -> Array:
 		var trains: int = 0 if layer_3d == null else int(layer_3d._model_used.get("train_locomotive", 0)) + int(layer_3d._model_used.get("train_coach", 0))
 		if trains < int(needs["train_models_in_view"]):
 			missing.append("%d train models in view, the scenario needs %d" % [trains, needs["train_models_in_view"]])
+	if needs.has("roadworks_outside_start_box"):
+		var outside := _roadworks_outside_start_box()
+		if outside < int(needs["roadworks_outside_start_box"]):
+			missing.append("%d roadworks loaded outside the start box, the scenario needs %d" % [outside, needs["roadworks_outside_start_box"]])
+	var campers := []
+	if needs.has("camper_pitch_in_view"):
+		campers = _campers_in_view()
+		if campers.size() < int(needs["camper_pitch_in_view"]):
+			missing.append("%d camper pitches in view, the scenario needs %d" % [campers.size(), needs["camper_pitch_in_view"]])
+		for c: Array in campers:
+			if absf(c[1] / c[0] - 1.0) > 0.1:
+				missing.append("camper drawn %.2f m, its row %.2f m (over 10 %%)" % [c[1], c[0]])
 	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count()}
+	if not campers.is_empty():
+		_counts["campers"] = campers  # each: [row length m, drawn body m]
+	if scenario.has("pitches"):
+		_counts["pitches"] = _pitch_fits()
+		for fit: Array in _counts["pitches"]:
+			if fit[1] == "" or fit[2] > fit[3]:
+				missing.append("pitch %s: %s reaches %.2f m, outline %.1f m" % [fit[0], fit[1] if fit[1] != "" else "nothing", fit[2], fit[3]])
 	if not boxes.is_empty():
 		_counts["lineup"] = _lineup_seen  # each row: visible, not in view or under the HUD
 	return missing
@@ -423,3 +449,52 @@ func _write(result: Dictionary) -> void:
 	file.store_string(JSON.stringify(result, "  "))
 	file.close()
 	print("VISUAL_TEST ", JSON.stringify({"scenario": result["scenario"], "status": result["status"], "errors": result.get("errors", [])}))
+
+
+## Roadworks in the view whose midpoint is outside the start --bbox
+## (start_box_center, default the pose, +- box_km/2): works the map
+## extension added, not the opening load.
+func _roadworks_outside_start_box() -> int:
+	var centre: Array = scenario.get("start_box_center", scenario["pose"])
+	var half := float(scenario.get("box_km", 2.0)) * 500.0
+	var view: Rect2 = main.get_viewport().get_canvas_transform().affine_inverse() * main.get_viewport().get_visible_rect()
+	var count := 0
+	for chunk in main.map_layer._chunks.values():
+		for work in chunk._data.get("roadworks", []):
+			var mx := (float(work["start"][0]) + float(work["end"][0])) / 2.0
+			var my := (float(work["start"][1]) + float(work["end"][1])) / 2.0
+			var outside := absf(mx - float(centre[0])) > half or absf(my - float(centre[1])) > half
+			if outside and view.has_point(Vector2(mx - main.entities.origin.x, -(my - main.entities.origin.y))):
+				count += 1
+	return count
+
+
+## Camper rows in the view: [row length, body length the draw path recorded (map_chunk drawn_campers)].
+func _campers_in_view() -> Array:
+	var view: Rect2 = main.get_viewport().get_canvas_transform().affine_inverse() * main.get_viewport().get_visible_rect()
+	var found := []
+	for chunk in main.map_layer._chunks.values():
+		for o in chunk._data.get("scenery_objects", []):
+			if o[2] == "camper_van" and view.has_point(Vector2(float(o[0]) - main.entities.origin.x, -(float(o[1]) - main.entities.origin.y))):
+				var length := float(o[4]) if o.size() > 4 else 0.0
+				found.append([length, chunk.drawn_campers.get(MapMath.point(chunk._origin, o[0], o[1]), 0.0)])  # 0: not drawn
+	return found
+
+
+## Each scenario pitch [x, y, r] (a point pitch: campsites.py's 5 m envelope) and the camping
+## row on it: [pitch, kind or "", farthest footprint corner from the pitch centre m, r].
+func _pitch_fits() -> Array:
+	const SIZES := {"tent": [3.2, 2.4], "camper_van": [6.2, 2.5], "caravan": [6.2, 2.5], "caravan_with_car": [9.4, 2.5]}  # campsites.py CAMPING_SIZES
+	var fits := []
+	for pitch: Array in scenario["pitches"]:
+		var fit := [pitch, "", 0.0, float(pitch[2])]
+		for chunk in main.map_layer._chunks.values():
+			for o in chunk._data.get("scenery_objects", []):
+				if SIZES.has(o[2]) and Vector2(float(o[0]), float(o[1])).distance_to(Vector2(pitch[0], pitch[1])) < 0.5:
+					var length: float = float(o[4]) if o.size() > 4 else SIZES[o[2]][0]
+					var centre := MapMath.point(main.entities.origin, pitch[0], pitch[1])
+					fit[1] = o[2]
+					for corner in _corners(float(o[0]), float(o[1]), float(o[3]), length, SIZES[o[2]][1]):
+						fit[2] = maxf(fit[2], corner.distance_to(centre))
+		fits.append(fit)
+	return fits

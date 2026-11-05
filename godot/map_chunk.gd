@@ -1476,6 +1476,7 @@ static func draw_landmark(node: Node2D, at: Vector2, angle: float, spec: Diction
 	node.draw_set_transform(Vector2.ZERO)
 
 
+var drawn_campers := {}  # camper position -> its drawn body length, m (the 6.0 m body rect * x scale)
 ## The decorative scenery objects, in metres with minimum pixel sizes.
 func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float, extra := 0.0) -> void:  # extra: posts, camper length
 	match kind:
@@ -1496,8 +1497,10 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float,
 				node.draw_line(Vector2(-1.4,side), Vector2(-1.55,side*1.15), Color8(199, 195, 162), .04)
 				node.draw_line(Vector2(1.4,side), Vector2(1.55,side*1.15), Color8(199, 195, 162), .04)
 			node.draw_set_transform(Vector2.ZERO)
-		"camper_van":  # drawn 6.2 m long, stretched to its length (vehicles/base.py via map_chunks)
-			node.draw_set_transform(at, -angle, Vector2((extra if extra > 0.0 else 6.2) / 6.2, 1.0))
+		"camper_van":  # body drawn 6.0 m long, stretched to its length (vehicles/base.py via map_chunks)
+			var stretch := Vector2((extra if extra > 0.0 else 6.0) / 6.0, 1.0)
+			drawn_campers[at] = 6.0 * stretch.x
+			node.draw_set_transform(at, -angle, stretch)
 			node.draw_rect(Rect2(-2.9,-1.05,6.2,2.55), Color8(25, 30, 28, 110))
 			for x: float in [-1.9, 1.9]:
 				for side: float in [-1,1]:

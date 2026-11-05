@@ -872,6 +872,56 @@
       "lineup": "coach",
       "lineup_coach": ["standard", 26.4, 2.89],
       "lineup_along_road": true
+    },
+    {
+      "id": "camp_pitch_2d_nallikari",
+      "description": "A camper van, a caravan and a tent on their pitches at Nallikari camping, 2D top-down: the camper drawn at its streamed length",
+      "why": "Oulu, Nallikari camping: mapped point pitches inside the campsite; populate_camp_pitches puts a camper_van on the pitch at 425660.5, 7212600.6, a caravan 8 m west of it and a tent 16 m west (each pitch: campsites.py's 5 m envelope around the point). camera_at holds the camera between the camper and caravan pitches; the taxi waits on the campsite service road about 20 m north (pose), since on a pitch it would cover the camper and stand off the road. Zoom 5 (45 px/m) resolves the 0.24 m lights. Readiness needs the camper in view, its drawn body within 10 % of its row and each row's footprint inside its pitch. Daylight, clear.",
+      "city": "Oulu",
+      "pose": [
+        425646.3,
+        7212617.6,
+        2.848
+      ],
+      "camera_at": [
+        425656.5,
+        7212602.0
+      ],
+      "pitches": [
+        [
+          425660.5,
+          7212600.6,
+          5.0
+        ],
+        [
+          425652.6,
+          7212603.4,
+          5.0
+        ],
+        [
+          425644.3,
+          7212606.5,
+          5.0
+        ]
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 5.0,
+      "view": "2d",
+      "requires": {
+        "camper_pitch_in_view": 1
+      },
+      "measure_s": 2,
+      "seed": 1
     }
   ]
 }

@@ -173,6 +173,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_holiday_events()
 	test_light_at_cells()
 	test_deck_height_adds_ground()
+	test_camper_drawn_length_matches_row()
 	test_date_picker()
 	test_settings_help()
 	test_credits()
@@ -399,6 +400,17 @@ func test_deck_height_adds_ground() -> void:
 	check(is_equal_approx(B3.deck_height(Vector2(5.0 + B3.RAMP_M, -5.0), 1, end, grid), 10.0 + B3.DECK_M), "full deck height RAMP_M from its end")
 	check(B3.deck_height(Vector2(5.0, -5.0), -1, PackedVector2Array(), grid) < 10.0, "a tunnel stays below the ground")
 	check(MapChunk.ground_height({}, Vector2(5.0, 5.0)) == 0.0, "no grid: flat ground")
+
+
+## The 2D camper's body (6.0 m design rect) is drawn at the streamed row length (docs/specs/camp-pitch-2d.md).
+func test_camper_drawn_length_matches_row() -> void:
+	var chunk := MapChunk.new()
+	var node := Node2D.new()
+	chunk._draw_scenery_object(node, Vector2(3, 4), "camper_van", 0.0, 6.2)  # outside NOTIFICATION_DRAW: draw calls no-op, the record stays
+	var body: float = chunk.drawn_campers.get(Vector2(3, 4), 0.0)
+	node.free()
+	chunk.free()
+	check(absf(body - 6.2) <= 0.05, "camper body drawn %.2f m for a 6.2 m row" % body)
 
 
 ## MapLayer.light_at reads each point's light cell, not the whole chunk:
