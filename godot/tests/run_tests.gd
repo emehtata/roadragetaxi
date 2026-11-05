@@ -45,6 +45,11 @@ func test_model_sizes_match_sim() -> void:
 				var vbox := _model_aabb(vnode)
 				check(absf(vbox.size.z / real[0] - 1.0) <= 0.1 and absf(vbox.size.x / real[1] - 1.0) <= 0.1,
 					"%s rendered %.2f x %.2f m, sim %s" % [variant, vbox.size.z, vbox.size.x, real])
+				if kind == "e_scooter":  # handlebar at a standing rider's hands; the rider's hips (seat 0.85 m) above the deck, at or under the bar
+					print("%s rendered %.3f m high" % [variant, vbox.size.y])
+					check(absf(vbox.size.y / 1.2 - 1.0) <= 0.1, "%s rendered %.2f m high, real 1.2" % [variant, vbox.size.y])
+					check(B3.SCOOTER_RIDER_SEAT > 0.25 and B3.SCOOTER_RIDER_SEAT <= vbox.size.y,
+						"%s rider seat %.2f m between deck and bar %.2f m" % [variant, B3.SCOOTER_RIDER_SEAT, vbox.size.y])
 				vnode.free()
 	for kind: String in sim:
 		var node: Node3D = B3.MODEL_SCENES[kind].instantiate()
@@ -58,7 +63,7 @@ func test_model_sizes_match_sim() -> void:
 		check(absf(length / sim[kind][0] - 1.0) <= 0.1 and absf(width / sim[kind][1] - 1.0) <= 0.1,
 			"%s rendered %.2f x %.2f m, sim %s" % [kind, length, width, sim[kind]])
 		check(absf(box.size.y / sim[kind][2] - 1.0) <= 0.15, "%s rendered %.2f m high, real %.1f" % [kind, box.size.y, sim[kind][2]])
-		if kind in B3.UNIFORM_SCALE_MODELS:
+		if kind in B3.UNIFORM_SCALE_MODELS and not B3.MODEL_HEIGHT.has(kind):
 			var raw_length := raw.size.x if along_x else raw.size.z
 			check(is_equal_approx(box.size.y / length, raw.size.y / raw_length), "%s keeps its height to length" % kind)
 		node.free()

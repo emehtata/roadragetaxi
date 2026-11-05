@@ -499,6 +499,10 @@ const MODEL_SIZE := {  # [width, length] in the source scenes, metres
 }
 ## Height scaled with the length: stretched over 15 % in length alone, their wheels would turn oval.
 const UNIFORM_SCALE_MODELS := ["e_scooter", "camper_van"]
+## Source and rendered height (m) overriding the length factor: the scooter's bar at a standing rider's hands.
+const MODEL_HEIGHT := {"e_scooter": [0.970, 1.2]}
+## The 3D scooter rider's hips (the _rider body's bottom), between the deck and the bar.
+const SCOOTER_RIDER_SEAT := 0.85
 ## A kind's close-range models; each vehicle keeps one, picked from its id (docs/specs/vehicle-model-variants.md).
 ## bmx_bike (1.45 m long: stretched 24 % to the sim's 1.8 m) and tram (22.6 x 3.3 m vs 9.2 m sections, 2.4 m wide) stay out.
 const MODEL_VARIANTS := {"bicycle": ["bicycle", "mountain_bike"], "e_scooter": ["e_scooter", "e_scooter_grab3d"]}
@@ -870,6 +874,8 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 static func model_scale(kind: String, length: float, width: float) -> Vector3:
 	var source: Vector2 = MODEL_SIZE[kind]
 	var up := length / source.y if kind in UNIFORM_SCALE_MODELS else 1.0
+	if kind in MODEL_HEIGHT:
+		up = MODEL_HEIGHT[kind][1] / MODEL_HEIGHT[kind][0]
 	if kind in ["city_bus", "train_locomotive", "train_coach"]:
 		return Vector3(length / source.y, up, width / source.x)
 	return Vector3(width / source.x, up, length / source.y)
@@ -1011,7 +1017,7 @@ func vehicle(kind: String, at: Vector2, heading: float, length: float, width: fl
 			elif kind == "bicycle" and extra.get("riding", false):
 				_rider(out, -length * 0.15, length * 0.08, 0.8, color, Color8(236, 196, 160))
 			elif kind == "e_scooter" and extra.get("riding", false):
-				_rider(out, -length * 0.06, length * 0.14, 0.85, color, Color8(236, 196, 160))
+				_rider(out, -length * 0.06, length * 0.14, SCOOTER_RIDER_SEAT, color, Color8(236, 196, 160))
 			return out
 		place_body(detail_key, build, at, heading, elevation)
 		return
