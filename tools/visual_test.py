@@ -80,7 +80,7 @@ def run_one(scenario: dict, start_time: str, out_root: Path) -> dict:
         from theroadragetrip.vehicles.base import vehicle_definition
 
         kinds = ("car", "van", "truck", "bus", "tractor", "camper_van", "car_caravan", "motorcycle", "bicycle", "e_scooter")
-        spec["lineup_rows"] = [[kind, vehicle_definition(kind).length_m, vehicle_definition(kind).width_m] for kind in kinds]
+        spec["lineup_rows"] = [[kind, vehicle_definition(kind).length_m, vehicle_definition(kind).width_m] for kind in scenario.get("lineup_kinds", kinds)]
         trailer = vehicle_definition("car_caravan").trailer
         spec["lineup_trailer"] = [trailer.length_m, trailer.width_m, trailer.drawbar_m]
         spec["lineup_tram"] = [DEFAULT_TRAM[0], list(DEFAULT_TRAM[1]), TRAM_WIDTH_M]

@@ -85,15 +85,16 @@ def test_glb_aspect_close_to_sim():
     source = (Path(__file__).parents[1] / "godot" / "buildings_3d.gd").read_text()
     sizes = {k: (float(w), float(l)) for k, w, l in re.findall(r'"(\w+)": Vector2\(([\d.]+), ([\d.]+)\)', source)}
     uniform = set(re.search(r"UNIFORM_SCALE_MODELS := \[([^\]]*)\]", source).group(1).replace('"', "").replace(" ", "").split(","))
-    models = {"van": "panel_van", "truck": "box_truck", "bus": "city_bus", "tractor": "tractor",
-              "camper_van": "camper_van", "motorcycle": "motorcycle", "e_scooter": "e_scooter"}
-    for kind, model in models.items():
+    models = {"van": ["panel_van"], "truck": ["box_truck"], "bus": ["city_bus"], "tractor": ["tractor"],
+              "camper_van": ["camper_van"], "motorcycle": ["motorcycle"], "e_scooter": ["e_scooter", "e_scooter_grab3d"],
+              "bicycle": ["bicycle", "mountain_bike"]}
+    for kind, variants in models.items():
         definition = vehicle_definition(kind)
-        glb_length = sizes[model][1]
-        stretch = definition.length_m / glb_length
-        # Width always to the sim's; stretched over 15 % in length, the height follows the length too
-        # (UNIFORM_SCALE_MODELS: round wheels). Rendered sizes: godot/tests/run_tests.gd test_model_sizes_match_sim.
-        assert (abs(stretch - 1.0) > 0.15) == (model in uniform), (kind, round(stretch, 3))
+        for model in variants:
+            stretch = definition.length_m / sizes[model][1]
+            # Width always to the sim's; stretched over 15 % in length, the height follows the length too
+            # (UNIFORM_SCALE_MODELS: round wheels). Rendered sizes: godot/tests/run_tests.gd test_model_sizes_match_sim.
+            assert (abs(stretch - 1.0) > 0.15) == (model in uniform), (model, round(stretch, 3))
 
 
 def test_camp_pitch_camper_van_is_the_vehicle():

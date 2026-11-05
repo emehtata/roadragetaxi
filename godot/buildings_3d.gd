@@ -478,6 +478,9 @@ const MODEL_SCENES := {
 	"tractor": preload("res://assets/vehicles/tractor.glb"),
 	"caravan": preload("res://assets/vehicles/caravan.glb"),
 	"e_scooter": preload("res://assets/vehicles/e_scooter.glb"),
+	"e_scooter_grab3d": preload("res://assets/vehicles/e_scooter_grab3d.glb"),
+	"bicycle": preload("res://assets/vehicles/bicycle.glb"),
+	"mountain_bike": preload("res://assets/vehicles/mountain_bike.glb"),
 	"train_locomotive": preload("res://assets/vehicles/train_locomotive.glb"),
 	"train_coach": preload("res://assets/vehicles/train_coach.glb"),
 }
@@ -490,11 +493,22 @@ const MODEL_SIZE := {  # [width, length] in the source scenes, metres
 	"city_bus": Vector2(3.084, 12.198),
 	"camper_van": Vector2(2.154, 5.042),
 	"tractor": Vector2(2.33, 3.665), "caravan": Vector2(2.647, 5.365),
-	"e_scooter": Vector2(0.482, 0.844),
+	"e_scooter": Vector2(0.482, 0.844), "e_scooter_grab3d": Vector2(0.52, 1.247),
+	"bicycle": Vector2(0.617, 1.87), "mountain_bike": Vector2(0.78, 1.885),
 	"train_locomotive": Vector2(3.03, 16.25), "train_coach": Vector2(2.89, 26.4),
 }
 ## Height scaled with the length: stretched over 15 % in length alone, their wheels would turn oval.
 const UNIFORM_SCALE_MODELS := ["e_scooter", "camper_van"]
+## A kind's close-range models; each vehicle keeps one, picked from its id (docs/specs/vehicle-model-variants.md).
+## bmx_bike (1.45 m long: stretched 24 % to the sim's 1.8 m) and tram (22.6 x 3.3 m vs 9.2 m sections, 2.4 m wide) stay out.
+const MODEL_VARIANTS := {"bicycle": ["bicycle", "mountain_bike"], "e_scooter": ["e_scooter", "e_scooter_grab3d"]}
+
+
+static func model_variant(kind: String, id) -> String:
+	if not MODEL_VARIANTS.has(kind):
+		return kind
+	var variants: Array = MODEL_VARIANTS[kind]
+	return variants[absi(hash(id)) % variants.size()]
 
 
 func _enter_tree() -> void:
@@ -974,15 +988,19 @@ func end_cars() -> void:
 ## procedural meshes farther away. `extra`: "riding", "fallen",
 ## "plough", "beacon", "profile" (a train car's), "rider" (its colour).
 func vehicle(kind: String, at: Vector2, heading: float, length: float, width: float, color: Color, lamps := 0, elevation := 0.0, extra := {}) -> void:
+	var id: Variant = extra.get("id", 0)
+	if extra.has("id"):  # out of the cache keys below: one shared mesh per look, not per vehicle
+		extra = extra.duplicate()
+		extra.erase("id")
 	if opaque and kind == "train" and at.distance_to(windshield_at if windshield_on else view_centre) < 35.0:
 		var profile: String = extra.get("profile", "standard")
 		var model_kind := "train_locomotive" if profile == "locomotive" else "train_coach"
 		place_model_car(model_kind, at, heading, length, width, RS.TRAIN_PROFILES.get(profile, RS.TRAIN_PROFILES["standard"])[0], elevation)
 		return
-	var modelled: bool = opaque and kind in ["bus", "truck", "motorcycle", "camper_van", "tractor", "trailer", "e_scooter"] and \
+	var modelled: bool = opaque and kind in ["bus", "truck", "motorcycle", "camper_van", "tractor", "trailer", "e_scooter", "bicycle"] and \
 			(kind != "tractor" or not extra.get("plough", false))
 	if modelled and at.distance_to(windshield_at if windshield_on else view_centre) < MODEL_CAR_RANGE:
-		var model_kind := "city_bus" if kind == "bus" else "box_truck" if kind == "truck" else "caravan" if kind == "trailer" else kind
+		var model_kind := "city_bus" if kind == "bus" else "box_truck" if kind == "truck" else "caravan" if kind == "trailer" else model_variant(kind, id)
 		place_model_car(model_kind, at, heading, length, width, color, elevation, lamps)
 		var detail_key := "vd|%s|%.2f|%.2f|%d|%s" % [kind, length, width, lamps, str(extra)]
 		var build := func() -> Dictionary:
@@ -990,6 +1008,8 @@ func vehicle(kind: String, at: Vector2, heading: float, length: float, width: fl
 				kind in ["truck", "motorcycle", "camper_van"])
 			if kind == "motorcycle" and extra.get("riding", false):
 				_rider(out, -length * 0.15, length * 0.06, 0.95, Color8(34, 34, 38), color.lightened(0.15))
+			elif kind == "bicycle" and extra.get("riding", false):
+				_rider(out, -length * 0.15, length * 0.08, 0.8, color, Color8(236, 196, 160))
 			elif kind == "e_scooter" and extra.get("riding", false):
 				_rider(out, -length * 0.06, length * 0.14, 0.85, color, Color8(236, 196, 160))
 			return out

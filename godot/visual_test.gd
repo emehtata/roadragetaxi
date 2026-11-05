@@ -64,12 +64,25 @@ func _lineup() -> Array:
 			var back: Vector2 = Vector2(cos(heading), sin(heading)) * -(float(row[1]) * 0.5 + float(trailer[2]) + float(trailer[0]) * 0.5)
 			npc["trailer"] = [x + back.x, y + back.y, heading, trailer[0], trailer[1], "caravan"]
 		out.append(npc)
+		if along and Buildings3D.MODEL_VARIANTS.has(row[0]):  # 3D: more ids beside it until each model shows
+			var shown := {Buildings3D.model_variant(row[0], npc["id"]): true}
+			var k := 0
+			while shown.size() < Buildings3D.MODEL_VARIANTS[row[0]].size() and k < 32:
+				k += 1
+				var id := "lineup_%d_%d" % [i, k]
+				if not shown.has(Buildings3D.model_variant(row[0], id)):
+					shown[Buildings3D.model_variant(row[0], id)] = true
+					var side := _on_road(s - row[1] * 0.5 - LINEUP_GAP_M, LINEUP_LANE_M + 1.2 * shown.size() - 1.2)
+					var more := npc.duplicate()
+					more.merge({"id": id, "x": side.x, "y": side.y}, true)
+					out.append(more)
 	return out
 
 
 const LINEUP_GAP_M := 1.5
 const LINEUP_LANE_M := 3.5
 const LINEUP_SHIFT_M := 6.0
+const Buildings3D := preload("res://buildings_3d.gd")
 
 
 ## A point `s` metres along the pose's heading, `lane` metres to its left, in the server's metres.
@@ -102,6 +115,7 @@ func _ready() -> void:
 		main.entities.extra_trains = [_lineup_train("train coach", coach[0], [coach[1]], coach[2], coach[1] * 0.5, LINEUP_LANE_M + 0.5)]
 	elif scenario.get("lineup", false):
 		main.entities.extra_npcs = _lineup()
+	if scenario.get("lineup", false) is bool and scenario.get("lineup", false) and not scenario.has("lineup_kinds"):  # a close lineup: its rows only
 		var tram: Array = scenario["lineup_tram"]  # [look, section lengths, width]
 		main.entities.extra_trains = [_lineup_train("tram section", tram[0], tram[1], tram[2], 27.0 if scenario.get("lineup_along_road", false) else 13.5)]
 		if scenario.has("lineup_coach"):  # [look, length, width]: a train coach under the tram
@@ -402,6 +416,9 @@ func _write(result: Dictionary) -> void:
 		"camera": {"zoom": main.camera.zoom.x, "position": [main.camera.position.x, main.camera.position.y]},
 		"scene": _counts, "elapsed_s": _elapsed})
 	result["weather"].erase("plowed_cells")
+	if scenario.get("lineup", false) is bool and scenario.get("lineup", false):  # each lineup vehicle's close-range model
+		result["lineup_models"] = main.entities.extra_npcs.map(func(n: Dictionary) -> Array:
+			return [n["id"], n["vehicle_type"], Buildings3D.model_variant(n["vehicle_type"], n["id"])])
 	var file := FileAccess.open(out_dir.path_join("result.json"), FileAccess.WRITE)
 	file.store_string(JSON.stringify(result, "  "))
 	file.close()

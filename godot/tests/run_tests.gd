@@ -34,6 +34,18 @@ func check(ok: bool, what: String) -> void:
 func test_model_sizes_match_sim() -> void:
 	var sim := {"motorcycle": [2.2, 0.8, 1.2], "e_scooter": [1.2, 0.5, 1.2], "city_bus": [12.0, 2.55, 3.1], "camper_van": [6.2, 2.3, 2.9],
 		"box_truck": [7.5, 2.3, 3.4], "tractor": [4.0, 2.2, 2.8], "panel_van": [5.2, 2.0, 2.3]}  # L, W (base.py), H (the spec's)
+	for kind: String in B3.MODEL_VARIANTS:  # every variant to its kind's length and width (heights differ by model)
+		for variant: String in B3.MODEL_VARIANTS[kind]:
+			check(B3.MODEL_SIZE.has(variant), "%s has a MODEL_SIZE" % variant)
+			if B3.MODEL_SIZE.has(variant):
+				var real: Array = {"bicycle": [1.8, 0.6], "e_scooter": [1.2, 0.5]}[kind]
+				var vnode: Node3D = B3.MODEL_SCENES[variant].instantiate()
+				root.add_child(vnode)
+				vnode.scale = B3.model_scale(variant, real[0], real[1])
+				var vbox := _model_aabb(vnode)
+				check(absf(vbox.size.z / real[0] - 1.0) <= 0.1 and absf(vbox.size.x / real[1] - 1.0) <= 0.1,
+					"%s rendered %.2f x %.2f m, sim %s" % [variant, vbox.size.z, vbox.size.x, real])
+				vnode.free()
 	for kind: String in sim:
 		var node: Node3D = B3.MODEL_SCENES[kind].instantiate()
 		root.add_child(node)
@@ -50,6 +62,19 @@ func test_model_sizes_match_sim() -> void:
 			var raw_length := raw.size.x if along_x else raw.size.z
 			check(is_equal_approx(box.size.y / length, raw.size.y / raw_length), "%s keeps its height to length" % kind)
 		node.free()
+
+
+func test_model_variant_stable_and_covering() -> void:
+	for kind: String in ["bicycle", "e_scooter"]:
+		var seen := {}
+		for i in 1000:
+			var id := "npc_%d" % i
+			var pick: String = B3.model_variant(kind, id)
+			check(pick == B3.model_variant(kind, id), "%s variant stable for %s" % [kind, id])
+			seen[pick] = true
+		for variant: String in B3.MODEL_VARIANTS[kind]:
+			check(seen.has(variant), "%s picks %s" % [kind, variant])
+	check(B3.model_variant("motorcycle", 7) == "motorcycle", "no variants: the kind itself")
 
 
 func _model_aabb(node: Node3D) -> AABB:
@@ -97,6 +122,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_forest_canopy()
 	test_car_glazing_is_dark_and_reflective()
 	test_model_sizes_match_sim()
+	test_model_variant_stable_and_covering()
 	test_cloud_coverage_mapping()
 	test_sky_material_takes_cloud_cover()
 	test_car_model_range()

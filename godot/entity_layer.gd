@@ -101,6 +101,7 @@ const BRAKE_GLOW := [Color(0.65, 0.05, 0.03), 2.2]
 const REVERSE_GLOW := [Color(0.55, 0.55, 0.50), 4.5]
 const TAXI_SIGN_GLOW := [Color(0.35, 0.30, 0.05), 1.6]  # the roof light of a free taxi, a small yellow halo
 var body_style := 0  # an NPC car's body (CAR_SHAPES), from its id: the same car keeps its look
+var vehicle_id: Variant = 0  # the drawn NPC's id: Buildings3D.model_variant picks its model from it
 # Car bodies from above, in half-lengths from the centre (+ front): windshield
 # front, roof front, roof rear, rear window rear, roof half-width, an extra.
 const CAR_SHAPES := [
@@ -898,7 +899,7 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 	if Buildings3D.opaque and Buildings3D.current != null and kind in VEHICLES_3D:  # step 6: every vehicle in the 3D view
 		Buildings3D.current.vehicle(kind, c, heading, length, width, color, lamp_bits(engine_on, braking, reversing, turn_signal, signal_elapsed),
 			float(deck_height.call(c, _layer)), {"riding": engine_on and not fallen, "fallen": fallen, "plough": ploughing and kind == "tractor",
-			"beacon": ploughing and kind == "tractor" and fmod(_clock, 0.8) < 0.4})
+			"beacon": ploughing and kind == "tractor" and fmod(_clock, 0.8) < 0.4}.merged({"id": vehicle_id} if kind in Buildings3D.MODEL_VARIANTS else {}))
 		return
 	var f := _forward(heading)
 	var r := _right(heading)
@@ -1993,6 +1994,7 @@ func _draw() -> void:
 		if not view_rect.has_point(c):
 			continue
 		body_style = absi(hash(npc["id"]))  # its own body, every frame the same
+		vehicle_id = npc["id"]
 		taxi_sign_on = not npc.get("taxi_fare", false)  # a competitor taxi: lit when free, off with a passenger aboard
 		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
 			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
