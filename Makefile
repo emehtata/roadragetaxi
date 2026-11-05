@@ -61,16 +61,16 @@ run-debug:
 run-pbf:
 	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_GODOT)" -LocalPbf
 else
-run: godot/.godot
+run: godot/.godot/import-stamp
 	$(GODOT) --path godot -- --outdoor-3d
 
-run-2d: godot/.godot
+run-2d: godot/.godot/import-stamp
 	$(GODOT) --path godot
 
-run-debug: godot/.godot
+run-debug: godot/.godot/import-stamp
 	$(GODOT) --path godot -- --log-level DEBUG
 
-run-pbf: godot/.godot
+run-pbf: godot/.godot/import-stamp
 	$(GODOT) --path godot -- --osm-source pbf
 endif
 
@@ -112,31 +112,36 @@ $(GODOT):
 	unzip -o -d $(dir $@) $@.zip && rm $@.zip && chmod +x $@
 
 # A fresh checkout has no .godot/ class cache; import once or class_name types fail to parse.
-godot/.godot: | $(GODOT)
-	$(GODOT) --headless --path godot --import
+# Re-import whenever an asset gained or changed an .import sidecar: a stale cache
+# made the scripts that preload new models (e_scooter_grab3d.glb, mountain_bike.glb) fail to compile.
+IMPORT_SIDECARS := $(shell find godot -name "*.import" -not -path "godot/.godot/*" 2>/dev/null)
 
-run-godot: godot/.godot
+godot/.godot/import-stamp: $(IMPORT_SIDECARS) | $(GODOT)
+	$(GODOT) --headless --path godot --import
+	touch $@
+
+run-godot: godot/.godot/import-stamp
 	$(GODOT) --path godot -- --skip-menu --port $(PORT)
 
-play-bot: godot/.godot
+play-bot: godot/.godot/import-stamp
 	mkdir -p $(BOT_OUT)
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 --game-mode gig_driver > $(BOT_OUT)/server.log 2>&1 & \
 	server=$$!; trap 'kill $$server' EXIT INT TERM; \
 	$(PYTHON) tools/wait_for_port.py 127.0.0.1 $(PORT) 240 && $(GODOT) --path godot --script $(CURDIR)/tools/play_bot.gd -- \
 		--skip-menu --port $(PORT) --bot-out $(BOT_OUT) --bot-minutes $(BOT_MINUTES) 2>&1 | tee $(BOT_OUT)/godot.log
 
-run-godot-all: godot/.godot
+run-godot-all: godot/.godot/import-stamp
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 & \
 	server=$$!; trap 'kill $$server' EXIT INT TERM; \
 	$(PYTHON) tools/wait_for_port.py 127.0.0.1 $(PORT) 180 && $(GODOT) --path godot -- --skip-menu --port $(PORT)
 
-godot-selftest: godot/.godot
+godot-selftest: godot/.godot/import-stamp
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30 & \
 	server=$$!; trap 'kill $$server' EXIT INT TERM; \
 	$(PYTHON) tools/wait_for_port.py 127.0.0.1 $(PORT) 180 && \
 	$(GODOT) --headless --path godot -- --port $(PORT) --selftest
 
-godot-selftest-sample: godot/.godot
+godot-selftest-sample: godot/.godot/import-stamp
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --use-sample --no-historical-weather --port $(PORT) --tick-rate 30 & \
 	server=$$!; trap 'kill $$server' EXIT INT TERM; \
 	$(PYTHON) tools/wait_for_port.py 127.0.0.1 $(PORT) 60 && \
