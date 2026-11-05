@@ -22,6 +22,17 @@
       "remediation": "in-game attribution (Credits, map views: done); ODbL notice in DATA_LICENSES.txt (present)"
     },
     {
+      "name": "Country borders",
+      "paths": ["src/theroadragetrip/assets/borders.json.gz"],
+      "purpose": "country borders for the map", "shipped": true,
+      "origin": "OpenStreetMap relation 54224 and Natural Earth 1:50m v5.1.2, tools/osm/build_borders.py",
+      "copyright": "OpenStreetMap contributors; Natural Earth (public domain)", "licence": "ODbL-1.0 AND LicenseRef-PublicDomain (Natural Earth)",
+      "evidence": "https://www.openstreetmap.org/copyright; https://www.naturalearthdata.com/about/terms-of-use/; DATA_LICENSES.txt",
+      "obligations": "attribution where the OSM data is used; the derived database stays under ODbL with a notice; offer the database (it ships in the release)",
+      "commercial": "yes, under ODbL", "status": "conditional",
+      "remediation": "in-game attribution (Credits, map views: done); ODbL and Natural Earth notice in DATA_LICENSES.txt (present)"
+    },
+    {
       "name": "Sample OSM extract",
       "paths": ["sample_osm.json.gz"],
       "purpose": "offline sample map (--use-sample)", "shipped": true,
