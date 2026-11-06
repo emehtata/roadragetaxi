@@ -305,6 +305,28 @@
       "measure_s": 5
     },
     {
+      "id": "roadworks_after_extension",
+      "description": "A generated roadwork on a way merged by map extension, outside the start box, top-down",
+      "why": "Oulu: the start --bbox is the motorway_through_traffic 0.6 km box (start_box_center); the cold-start tile window merges the tiles around it through map sync, which adds roadworks there. The pose is the midpoint of one of them from a run's server.log (a full-road work about 1 km west of the box). Readiness needs a roadworks entry in the view outside the start box. Daylight.",
+      "city": "Oulu",
+      "pose": [382154.6, 7303004.5, 1.447],
+      "start_box_center": [383200.8, 7302861.8],
+      "box_km": 0.6,
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [0.0, 0.05],
+      "sun_altitude_deg": [40, 90],
+      "zoom": 2.0,
+      "view": "2d",
+      "requires": {
+        "roadworks_outside_start_box": 1
+      },
+      "measure_s": 3,
+      "seed": 1,
+      "server_args": ["--test-roadworks", "--bbox", "65.82301238761534,24.436836770542975,65.82841779302075,24.450036344685195"]
+    },
+    {
       "id": "streetlight_transition",
       "description": "Street lamps through dusk, night and dawn, then driving down the street",
       "why": "Lamp-lined city street (find: 11 street lamps within 70 x 40 m, a straight street heading south): many lamps in view; October dusk 17:30, night 22:00, dawn 07:45. Each run drives 8 s and counts lamp light reassignments.",
