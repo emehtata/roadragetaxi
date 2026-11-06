@@ -633,7 +633,7 @@ def test_startup_does_not_claim_tiles_the_startup_world_never_reached():
 
 
 def test_startup_only_claims_tiles_inside_the_fetched_area():
-    """Bug (Oulu, Kajaanintie east): ways and areas crossing the startup bbox
+    """Bug (Oulu, a main road, east): ways and areas crossing the startup bbox
     come whole, so the world's bounds reached 900 m past the fetched area
     into the next tile; that tile was marked loaded, never fetched, and the
     road ended there for good. Only tiles wholly inside the fetched area count."""

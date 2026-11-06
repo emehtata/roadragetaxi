@@ -32,7 +32,7 @@ def test_one_line_at_a_time_and_the_driver_cooldown_on_simulation_time():
     audio.play_driver_line("collision", "fi")
     first = audio.take_events()
     clip = audio._clips["driver"][("m", "fi", first[0]["hash"])]
-    audio.play_passenger_line_for_situation("collision", "woman", "fi", "Aino")
+    audio.play_passenger_line_for_situation("collision", "woman", "fi", "Test Person 1")
     assert audio.take_events() == []  # the driver is still talking
     audio._busy_until = 0.0  # as if the clip had ended at once
     audio.advance(speech.DRIVER_COOLDOWN_S - 0.1)
@@ -46,25 +46,25 @@ def test_one_line_at_a_time_and_the_driver_cooldown_on_simulation_time():
 def test_passenger_situation_moods_and_the_specific_line():
     audio = EventAudio(rng=random.Random(2))
     for _ in range(20):
-        audio.play_passenger_line_for_situation("nausea", "woman", "fi", "Aino")
+        audio.play_passenger_line_for_situation("nausea", "woman", "fi", "Test Person 1")
         for event in audio.take_events():
             entry = next(line for line in speech.load_lines("passenger") if line["hash"] == event["hash"])
             assert entry["mood"] in speech.MOODS_BY_SITUATION["nausea"]
-            assert event["speaker"] == "passenger" and event["speaker_name"] == "Aino" and event["gender"] == "f"
+            assert event["speaker"] == "passenger" and event["speaker_name"] == "Test Person 1" and event["gender"] == "f"
         audio.advance(30.0)
-    audio.play_passenger_line("Nyt alkaa jo helpottaa.", "man", "fi", "Pekka")
+    audio.play_passenger_line("Nyt alkaa jo helpottaa.", "man", "fi", "Test Person 2")
     (event,) = audio.take_events()
     assert event["text"] == "Nyt alkaa jo helpottaa." and event["gender"] == "m"
 
 
 def test_passenger_chatter_waits_its_random_interval():
     audio = EventAudio(rng=random.Random(3))
-    audio.update_passenger_speech(False, "woman", "fi", 1 / 30, "Aino")  # off the meter: the interval restarts
+    audio.update_passenger_speech(False, "woman", "fi", 1 / 30, "Test Person 1")  # off the meter: the interval restarts
     interval = audio._speech.interval
     assert 45.0 <= interval <= 120.0
     ticks = 0
     while not audio.events and ticks < 30 * 125:
-        audio.update_passenger_speech(True, "woman", "fi", 1 / 30, "Aino")
+        audio.update_passenger_speech(True, "woman", "fi", 1 / 30, "Test Person 1")
         audio.advance(1 / 30)
         ticks += 1
     assert audio.events and abs(ticks / 30 - interval) < 0.05
@@ -72,7 +72,7 @@ def test_passenger_chatter_waits_its_random_interval():
     assert 45.0 <= audio._speech.interval <= 120.0
     for _ in range(30 * 44):
         audio.advance(1 / 30)
-        audio.update_passenger_speech(True, "woman", "fi", 1 / 30, "Aino")
+        audio.update_passenger_speech(True, "woman", "fi", 1 / 30, "Test Person 1")
     assert audio.take_events() == []
 
 
@@ -95,19 +95,19 @@ def test_missing_voice_uses_finnish_but_keeps_requested_subtitle(speaker, gender
     if speaker == "driver":
         result = selector.driver("pickup", "de", gender, 0.0, False)
     else:
-        result = selector.passenger_for_situation("pickup", gender, "de", "Aino", False)
-        assert selector.passenger_line("Hei!", gender, "de", "Aino", False)["key"] == (code, "fi", "abc")
+        result = selector.passenger_for_situation("pickup", gender, "de", "Test Person 1", False)
+        assert selector.passenger_line("Hei!", gender, "de", "Test Person 1", False)["key"] == (code, "fi", "abc")
         selector.interval = 0.0
-        assert selector.passenger_tick(True, gender, "de", 0.1, "Aino", False)["key"] == (code, "fi", "abc")
+        assert selector.passenger_tick(True, gender, "de", 0.1, "Test Person 1", False)["key"] == (code, "fi", "abc")
     assert result["key"] == (code, "fi", "abc") and result["text"] == "Hallo!"
 
 
 def test_native_voice_is_preferred_and_missing_both_is_silent():
     selector = speech.Speech(lambda who, key: True)
     entry = {"hash": "abc", "fi": "Hei!", "de": "Hallo!"}
-    assert selector._passenger(entry, "woman", "de", "Aino", False)["key"][1] == "de"
+    assert selector._passenger(entry, "woman", "de", "Test Person 1", False)["key"][1] == "de"
     selector.available = lambda who, key: False
-    assert selector._passenger(entry, "woman", "de", "Aino", False) is None
+    assert selector._passenger(entry, "woman", "de", "Test Person 1", False) is None
 
 
 def test_german_subtitles_exist_for_every_shipped_line_and_finnish_audio_plays():
@@ -120,7 +120,7 @@ def test_german_subtitles_exist_for_every_shipped_line_and_finnish_audio_plays()
     entry = next(line for line in speech.load_lines("driver") if line["hash"] == event["hash"])
     assert event["text"] == entry["de"]
     audio.advance(30.0)
-    audio.play_passenger_line_for_situation("pickup", "woman", "de", "Aino")
+    audio.play_passenger_line_for_situation("pickup", "woman", "de", "Test Person 1")
     (event,) = audio.take_events()
     assert event["language"] == "fi" and event["gender"] == "f"
     entry = next(line for line in speech.load_lines("passenger") if line["hash"] == event["hash"])

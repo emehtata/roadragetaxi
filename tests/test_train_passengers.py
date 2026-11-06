@@ -196,13 +196,13 @@ def test_waiting_passengers_stand_where_their_own_train_stops_not_at_the_station
 
 def test_a_rail_passengers_name_keeps_its_gender():
     """A pre-booked passenger's name and voice agree: the name comes with its
-    first name's gender (Irmeli is a woman)."""
+    first name's gender (a woman's name gives a woman)."""
     import random
 
     from theroadragetrip import train_passengers
     from theroadragetrip.residents import FIRST_NAMES
 
-    entries = {(entry["name"], entry["group"]) for entry in FIRST_NAMES}  # (Sebastian is also 6 women's name)
+    entries = {(entry["name"], entry["group"]) for entry in FIRST_NAMES}  # (a mostly male name is also 6 women's name)
     rng = random.Random(3)
     for _ in range(50):
         name, gender = train_passengers._name(rng)
@@ -211,7 +211,7 @@ def test_a_rail_passengers_name_keeps_its_gender():
 
 def test_rail_passenger_names_are_as_common_as_in_finland():
     """Drawn by people count, like residents: not uniformly over 17 000
-    entries, where names a handful of people have came up as often as Juha."""
+    entries, where names a handful of people have came up as often as the most common name."""
     import random
 
     from theroadragetrip import train_passengers

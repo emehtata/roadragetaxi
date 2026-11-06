@@ -1,7 +1,7 @@
 
 
 def test_a_building_part_takes_its_colour_named_buildings_colour():
-    """Valkealinnantalo (white by name) and its unnamed, taller building:part
+    """Test Valko Building (white by name) and its unnamed, taller building:part
     over the same footprint: the part is white too, not a palette brown
     covering the named roof. A part elsewhere, or a named building, keeps
     its own colour."""
@@ -17,7 +17,7 @@ def test_a_building_part_takes_its_colour_named_buildings_colour():
                                texture_seed=0.03, entrances=(), levels=None, roof_shape=None, venue_type=None)
 
     square = [(0.0, 0.0), (40.0, 0.0), (40.0, 30.0), (0.0, 30.0)]
-    white = building(square, name="Valkealinnantalo", height=20.0)
+    white = building(square, name="Test Valko Building", height=20.0)
     part = building([(2.0, 2.0), (36.0, 2.0), (36.0, 28.0), (2.0, 28.0)], building_type=None, height=30.0)
     elsewhere = building([(100.0, 0.0), (120.0, 0.0), (120.0, 20.0)], building_type=None)
     assert static_world.inherit_part_colours([white, part, elsewhere]) == 1
@@ -115,10 +115,10 @@ def test_retail_halls_do_not_invent_apartment_floors():
         return Building([(0, 0), (60, 0), (60, 40), (0, 40)], height_m=13.2,
                         building_type="retail", venue_type="supermarket", **tags)
 
-    # S-market, Tervakukkatie 2: no OSM height/levels; footprint fallback was 4 storeys.
+    # A supermarket on a test street: no OSM height/levels; footprint fallback was 4 storeys.
     assert building_style(store())[2:3] == [6.0]
     assert building_style(store())[5:7] == [1, 4]
-    # Prisma Linnanmaa / Limingantulli / Raksila have explicit 1 / 2 / 2 levels.
+    # Three hypermarkets have explicit 1 / 2 / 2 levels.
     for levels in (1, 2):
         style = building_style(store(levels=levels, height_is_explicit=True))
         assert style[2] == 13.2 and style[5:7] == [levels, 4]

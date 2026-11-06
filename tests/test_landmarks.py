@@ -6,7 +6,7 @@ ARGS = {"circle": 3, "rect": 4, "line": 5, "polygon": 1, "box": 6, "cylinder": 6
 
 
 def test_every_landmark_shape_is_drawable():
-    assert "Toripolliisi" in LANDMARKS
+    assert LANDMARKS
     for name, spec in LANDMARKS.items():
         assert spec.get("scale", 1.0) > 0, name
         for shape in spec["shapes"]:

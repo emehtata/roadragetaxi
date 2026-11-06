@@ -69,15 +69,15 @@ def test_non_finite_counts_are_ignored(value):
 def test_garage_way_keeps_metadata_identity_and_geometry():
     tags = {
         "amenity": "parking", "parking": "multi-storey", "building:levels": "5",
-        "building:levels:underground": "1", "capacity": "420", "name": "P-Torikatu",
-        "operator": "Oulun Pysäköinti", "access": "customers", "fee": "yes", "maxheight": "2.1",
+        "building:levels:underground": "1", "capacity": "420", "name": "Test Garage",
+        "operator": "Test Parking Oy", "access": "customers", "fee": "yes", "maxheight": "2.1",
     }
     world = build_ways(_square() + [_area(100, tags)])
     (garage,) = world.parking_garages
     assert (garage.osm_type, garage.osm_id, garage.garage_type) == ("way", 100, PARKING_MULTI_STOREY)
     assert (garage.building_levels, garage.underground_levels, garage.parking_levels) == (5, 1, None)
-    assert garage.capacity == 420 and garage.name == "P-Torikatu" and garage.maxheight == "2.1"
-    assert garage.operator == "Oulun Pysäköinti" and garage.access == "customers" and garage.fee == "yes"
+    assert garage.capacity == 420 and garage.name == "Test Garage" and garage.maxheight == "2.1"
+    assert garage.operator == "Test Parking Oy" and garage.access == "customers" and garage.fee == "yes"
     assert garage.maxweight is None and garage.opening_hours is None
     assert len(garage.points_m) == 5
     minx, miny, maxx, maxy = garage.bbox
@@ -93,7 +93,7 @@ def test_surface_parking_is_not_a_garage_and_still_draws_as_a_lot():
 
 @pytest.mark.parametrize("parking", ["multi-storey", "underground"])
 def test_a_garage_draws_no_surface_lot(parking):
-    """Oulu's Pekuri garage lies under a block and a walking street: its
+    """Test Garage lies under a block and a walking street: its
     amenity=parking area is no paved lot over them."""
     world = build_ways(_square() + [_area(100, {"amenity": "parking", "parking": parking})])
     assert len(world.parking_garages) == 1 and world.sceneries == []

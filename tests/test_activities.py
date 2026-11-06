@@ -239,7 +239,7 @@ def test_shop_window_watching_finds_a_nearby_amenity_entrance():
 
 
 def test_bus_stop_waiting_finds_a_nearby_stop_and_looks_around_periodically():
-    stop = BusStop(x=25.0, y=0.0, name="Keskustori")
+    stop = BusStop(x=25.0, y=0.0, name="Market Square")
     manager, pedestrian = _make_manager_and_pedestrian(bus_stops=[stop])
     plugin = BusStopWaitingPlugin()
 

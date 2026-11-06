@@ -29,7 +29,7 @@ from test_station_passengers import FakePedestrians
 NOW = datetime(2026, 9, 25, 18, 42)
 STATION = (0.0, 0.0)
 STAND = SimpleNamespace(x=20.0, y=40.0)  # the stand's waiting spot is on the walkway at (20, 40)
-DESTINATION = SimpleNamespace(x=900.0, y=900.0, address="Kirkkokatu 1", radius_m=25.0)
+DESTINATION = SimpleNamespace(x=900.0, y=900.0, address="Test Street 1", radius_m=25.0)
 ELSEWHERE = SimpleNamespace(x=-900.0, y=0.0, address="Random street 2", radius_m=25.0)
 SILENT = SimpleNamespace(play=lambda *args, **kwargs: None, play_group=lambda *args, **kwargs: None)
 
@@ -104,7 +104,7 @@ def greeted(*names):
 
 
 def test_the_booked_passenger_steps_off_as_one_linked_pedestrian():
-    bookings, train = booked_train("Aino Virtanen")
+    bookings, train = booked_train("Test Person 1")
     pedestrians = FakePedestrians()
     view = StationPassengerView(pedestrians)
     (passenger,) = arrive(bookings, train, view, view_point=STATION)
@@ -118,7 +118,7 @@ def test_the_booked_passenger_steps_off_as_one_linked_pedestrian():
 
 
 def test_the_walk_to_the_stand_is_a_footway_route_planned_once():
-    bookings, train = booked_train("Aino Virtanen")
+    bookings, train = booked_train("Test Person 1")
     pedestrians = FakePedestrians()
     pedestrians.via = [(20.0, 10.0), (20.0, 30.0)]  # what the footway network returned
     view = StationPassengerView(pedestrians)
@@ -132,7 +132,7 @@ def test_the_walk_to_the_stand_is_a_footway_route_planned_once():
 
 
 def test_no_safe_route_to_the_stand_means_walking_off_not_through_a_building(caplog):
-    bookings, train = booked_train("Aino Virtanen")
+    bookings, train = booked_train("Test Person 1")
     pedestrians = FakePedestrians()
     pedestrians._path_crosses_building = lambda *line: True
     with caplog.at_level("INFO", logger="theroadragetrip.station_passengers"):
@@ -148,7 +148,7 @@ def test_a_waiting_booking_keeps_the_clock_real_time():
     ran 60x, so PICKUP_WINDOW (20 game minutes) lapsed ~20 real seconds
     after the train came in - usually just as the driver reached the
     passenger - and the booking was MISSED."""
-    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Test Person 1")
     assert manager.current_passenger is None and manager.has_active_job()
 
     bookings.update(NOW + timedelta(seconds=25))  # 25 real seconds at 1x
@@ -158,7 +158,7 @@ def test_a_waiting_booking_keeps_the_clock_real_time():
 
 
 def test_parking_by_the_booked_passenger_no_longer_picks_them_up():
-    bookings, (passenger,), pedestrians, manager, _ = at_stand("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, _ = at_stand("Test Person 1")
     manager.taxi_stops = [STAND]
     right_by = Car(x=20.0, y=45.0, heading=0.0, speed=0.0)
     for _ in range(10):  # well past the stand's 2 s at 5 m
@@ -167,14 +167,14 @@ def test_parking_by_the_booked_passenger_no_longer_picks_them_up():
 
 
 def test_f_in_the_taxi_only_gets_the_driver_out():
-    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Test Person 1")
     car.x, car.y = passenger.pedestrian.x, passenger.pedestrian.y - 1.0  # even parked on top of them
     get_out(car, manager)
     assert passenger.booking.status == PASSENGER_WAITING and manager.current_passenger is None
 
 
 def test_the_target_is_the_booked_passenger_itself_not_whoever_is_nearest():
-    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Test Person 1")
     stranger = SimpleNamespace(x=20.0, y=39.5, heading=0.0, wants_taxi=True)
     pedestrians.pedestrians.append(stranger)
     passenger.pedestrian.x = 21.5  # walked a bit - the arrow and greeting follow them
@@ -189,11 +189,11 @@ def test_the_target_is_the_booked_passenger_itself_not_whoever_is_nearest():
 
 
 def test_the_panel_says_who_and_what_to_do_and_f_stays_available_by_the_passenger():
-    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Test Person 1")
     booking = passenger.booking
     player = PlayerPedestrian(x=0.0, y=0.0)
     assert manager.meet_prompt(player) == (booking, "meet_get_out")
-    assert (booking.passenger.name, booking.train_number, booking.station) == ("Aino Virtanen", "IC57", "Oulu")
+    assert (booking.passenger.name, booking.train_number, booking.station) == ("Test Person 1", "IC57", "Oulu")
 
     player = get_out(car, manager)
     assert manager.meet_prompt(player) == (booking, "meet_walk_to_passenger")
@@ -212,7 +212,7 @@ def test_the_panel_says_who_and_what_to_do_and_f_stays_available_by_the_passenge
 
 
 def test_after_greeting_the_passenger_stays_and_walks_to_the_taxi_as_themselves():
-    bookings, (passenger,), pedestrians, manager, car, player = greeted("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, car, player = greeted("Test Person 1")
     pedestrian = passenger.pedestrian
 
     assert pedestrian in pedestrians.pedestrians and pedestrian.rail_passenger is passenger
@@ -228,7 +228,7 @@ def test_after_greeting_the_passenger_stays_and_walks_to_the_taxi_as_themselves(
 
 
 def test_boarding_and_the_trip_wait_for_the_passenger_and_the_driver():
-    bookings, (passenger,), pedestrians, manager, car, player = greeted("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, car, player = greeted("Test Person 1")
     booking, customer, pedestrian = passenger.booking, manager.current_passenger, passenger.pedestrian
 
     walk_to(player, car)  # the driver is back in first; the passenger is still on their way
@@ -254,14 +254,14 @@ def test_boarding_and_the_trip_wait_for_the_passenger_and_the_driver():
     assert pedestrian not in pedestrians.pedestrians and passenger.pedestrian is None  # gone only now
     assert manager.meet_prompt(player) is None and manager.meet_context() is None
     assert customer.rail_booking is booking and customer.dropoff is DESTINATION  # not regenerated
-    assert customer.name == "Aino Virtanen"
+    assert customer.name == "Test Person 1"
     assert booking.surcharge_cents == PREBOOKING_SURCHARGE_CENTS == 800
     # The meter starts at the normal startup fare, the fee is not added into it.
     assert manager.live_fare_cents == calculate_fare_cents(0.0, 0.0, manager.fare_started_at)
 
 
 def test_one_meeting_at_a_time_and_the_others_untouched():
-    bookings, (first, second), pedestrians, manager, car = at_stand("Aino Virtanen", "Eero Laine")
+    bookings, (first, second), pedestrians, manager, car = at_stand("Test Person 1", "Test Person 3")
     second.booking.arrival_at -= timedelta(minutes=5)  # came in on an earlier train
     second.pedestrian.x = 25.0
     assert manager.meet_booking() is second.booking
@@ -277,7 +277,7 @@ def test_one_meeting_at_a_time_and_the_others_untouched():
 
 
 def test_a_missed_booking_can_no_longer_be_greeted():
-    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Test Person 1")
     pedestrian = passenger.pedestrian
     player = get_out(car, manager)
     walk_to(player, pedestrian)
@@ -289,7 +289,7 @@ def test_a_missed_booking_can_no_longer_be_greeted():
 
 
 def test_an_ordinary_stand_customer_still_boards_by_stopping():
-    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Test Person 1")
     passenger.pedestrian.x, passenger.pedestrian.y = 20.0, 80.0
     ordinary = SimpleNamespace(x=20.0, y=40.0, heading=0.0, wants_taxi=True)
     manager.taxi_stops = [STAND]
@@ -302,7 +302,7 @@ def test_an_ordinary_stand_customer_still_boards_by_stopping():
 
 
 def test_an_uncollected_passenger_is_missed_and_becomes_ordinary():
-    bookings, train = booked_train("Aino Virtanen")
+    bookings, train = booked_train("Test Person 1")
     view = StationPassengerView(FakePedestrians())
     (passenger,) = arrive(bookings, train, view, view_point=STATION)
     booking, pedestrian = passenger.booking, passenger.pedestrian
@@ -326,7 +326,7 @@ def test_a_pending_booking_is_missed_when_its_train_comes_in():
 
 
 def test_an_out_of_view_arrival_stays_data_until_its_station_is_seen():
-    bookings, train = booked_train("Aino Virtanen")
+    bookings, train = booked_train("Test Person 1")
     pedestrians = FakePedestrians()
     view = StationPassengerView(pedestrians)
     far = (5000.0, 0.0)
@@ -358,7 +358,7 @@ def test_from_accepting_the_panel_says_who_off_which_train_and_where():
     later, sooner = (
         bookings.consider(RailPassenger("Helsinki", "Oulu", ("IC", "57"), ON_TRAIN, name=name, intent=TAXI,
                                         taxi_stand=STAND), train, NOW - timedelta(minutes=22), Always())
-        for name in ("Eero Laine", "Aino Virtanen")
+        for name in ("Test Person 3", "Test Person 1")
     )
     later.arrival_at += timedelta(minutes=30)
     manager = taxi(bookings)
@@ -369,7 +369,7 @@ def test_from_accepting_the_panel_says_who_off_which_train_and_where():
     assert manager.meet_prompt(player) == (later, "meet_train_due")
     bookings.accept(sooner)
     assert manager.meet_prompt(player) == (sooner, "meet_train_due")  # the next train first
-    assert (sooner.passenger.name, sooner.train_number, sooner.station) == ("Aino Virtanen", "IC57", "Oulu")
+    assert (sooner.passenger.name, sooner.train_number, sooner.station) == ("Test Person 1", "IC57", "Oulu")
 
     sooner.status = TRAIN_ARRIVING
     assert manager.meet_prompt(player) == (sooner, "meet_train_due")
@@ -381,14 +381,14 @@ def test_the_meet_crosses_the_wire_step_by_step():
     protocol's `meet`, which follows meet_prompt."""
     from theroadragetrip import protocol
 
-    bookings, train = booked_train("Aino Virtanen")
+    bookings, train = booked_train("Test Person 1")
     manager = taxi(bookings)
     player = PlayerPedestrian(x=0.0, y=0.0)
     meet = protocol._meet_to_dict(manager, player, "en")
     assert meet["status"] == "ACCEPTED" and meet["arrow"] is None  # train due: no arrow yet
-    assert meet["lines"] == ["Meet: Aino Virtanen", "IC57 | Oulu", "Train due 18:42 - drive to Oulu taxi stand"]
+    assert meet["lines"] == ["Meet: Test Person 1", "IC57 | Oulu", "Train due 18:42 - drive to Oulu taxi stand"]
 
-    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Test Person 1")
     meet = protocol._meet_to_dict(manager, player, "en")
     assert meet["status"] == PASSENGER_WAITING and meet["lines"][2] == "Park and get out (F)"
     assert (meet["arrow"]["x"], meet["arrow"]["y"]) == (20.0, 40.0)
@@ -409,7 +409,7 @@ def test_no_meet_on_the_wire_without_a_booking_or_after_it_is_missed():
     from theroadragetrip import protocol
 
     assert protocol._meet_to_dict(taxi(None), PlayerPedestrian(x=0.0, y=0.0), "en") is None
-    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Test Person 1")
     bookings.update(NOW + PICKUP_WINDOW + timedelta(seconds=1))
     assert passenger.booking.status == MISSED
     assert protocol._meet_to_dict(manager, PlayerPedestrian(x=0.0, y=0.0), "en") is None
@@ -421,28 +421,28 @@ def test_the_phone_queues_nothing_while_a_job_is_on():
     from theroadragetrip.protocol import _phone_to_dict
     from theroadragetrip.taxi import TaxiOffer, TaxiTarget
 
-    bookings, train = booked_train("Aino Virtanen")  # one pre-booking accepted
+    bookings, train = booked_train("Test Person 1")  # one pre-booking accepted
     manager = taxi(bookings)
-    eero = SimpleNamespace(name="Eero", pickup=TaxiTarget(x=10.0, y=0.0, address="A"), dropoff=TaxiTarget(x=90.0, y=0.0, address="B"))
-    manager.offers = [TaxiOffer(passenger=eero, pickup_distance_m=100.0)]
+    passenger_d = SimpleNamespace(name="Test Person 4", pickup=TaxiTarget(x=10.0, y=0.0, address="A"), dropoff=TaxiTarget(x=90.0, y=0.0, address="B"))
+    manager.offers = [TaxiOffer(passenger=passenger_d, pickup_distance_m=100.0)]
     offer_index = len(manager.phone_items()) - 1
     assert not manager.accept_offer(offer_index, 0.0, 0.0) and manager.current_passenger is None
     assert _phone_to_dict(manager, SimpleNamespace(x=0.0, y=0.0))["busy"]
 
     pending, train = booked_train()
-    passenger = RailPassenger("Helsinki", "Oulu", ("IC", "57"), ON_TRAIN, name="Liisa", intent=TAXI, taxi_stand=STAND)
+    passenger = RailPassenger("Helsinki", "Oulu", ("IC", "57"), ON_TRAIN, name="Test Person 5", intent=TAXI, taxi_stand=STAND)
     booking = pending.consider(passenger, train, NOW - timedelta(minutes=22), Always())
     manager = taxi(pending)
-    manager.current_passenger = SimpleNamespace(name="Eero")  # a fare on
+    manager.current_passenger = SimpleNamespace(name="Test Person 4")  # a fare on
     assert not manager.accept_offer(0, 0.0, 0.0) and booking.status == "PENDING"
 
 
 def test_navigation_leads_to_the_stand_from_acceptance_until_the_passenger_is_met():
-    bookings, train = booked_train("Aino Virtanen")
+    bookings, train = booked_train("Test Person 1")
     manager = taxi(bookings)
     target = manager.navigation_target()  # accepted, train still due
     assert (target.x, target.y) == (STAND.x, STAND.y) and manager.get_current_target() is None
-    bookings, (passenger,), pedestrians, manager, car = at_stand("Aino Virtanen")
+    bookings, (passenger,), pedestrians, manager, car = at_stand("Test Person 1")
     assert (manager.navigation_target().x, manager.navigation_target().y) == (STAND.x, STAND.y)  # waiting there
     player = get_out(car, manager)
     walk_to(player, passenger.pedestrian)

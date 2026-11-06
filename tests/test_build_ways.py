@@ -272,12 +272,12 @@ def test_a_stadium_outline_is_open_ground_not_a_roof():
     nodes = [{"type": "node", "id": i, "lat": lat, "lon": lon}
              for i, (lat, lon) in enumerate([(65.0, 25.4), (65.0, 25.402), (65.001, 25.402), (65.001, 25.4)], start=1)]
     stadium = {"type": "way", "id": 9, "nodes": [1, 2, 3, 4, 1],
-               "tags": {"building": "commercial", "leisure": "stadium", "name": "Heinäpään jalkapallostadion"}}
+               "tags": {"building": "commercial", "leisure": "stadium", "name": "Test Stadium"}}
     hall = {"type": "way", "id": 10, "nodes": [1, 2, 3, 4, 1],
-            "tags": {"building": "air-supported", "leisure": "sports_centre", "name": "Oulun jalkapallohalli"}}
+            "tags": {"building": "air-supported", "leisure": "sports_centre", "name": "Test Dome"}}
     world = build_ways(nodes + [stadium, hall])
-    assert [b.name for b in world.buildings] == ["Oulun jalkapallohalli"]  # the dome is a building
-    assert [s.kind for s in world.sceneries if s.name == "Heinäpään jalkapallostadion"] == ["stadium"]
+    assert [b.name for b in world.buildings] == ["Test Dome"]  # the dome is a building
+    assert [s.kind for s in world.sceneries if s.name == "Test Stadium"] == ["stadium"]
 
 
 def test_a_building_stadium_is_stadium_ground_too():
@@ -296,8 +296,8 @@ def test_an_indoor_arena_stays_a_roofed_building():
     nodes = [{"type": "node", "id": i, "lat": lat, "lon": lon}
              for i, (lat, lon) in enumerate([(60.18, 24.92), (60.18, 24.922), (60.181, 24.922), (60.181, 24.92)], start=1)]
     hall = {"type": "way", "id": 9, "nodes": [1, 2, 3, 4, 1],
-            "tags": {"building": "yes", "leisure": "stadium", "sport": "ice_hockey", "name": "Helsingin jäähalli"}}
-    assert [b.name for b in build_ways(nodes + [hall]).buildings] == ["Helsingin jäähalli"]
+            "tags": {"building": "yes", "leisure": "stadium", "sport": "ice_hockey", "name": "Test Ice Hall"}}
+    assert [b.name for b in build_ways(nodes + [hall]).buildings] == ["Test Ice Hall"]
 
 
 def test_build_ways_keeps_cycling_metadata():

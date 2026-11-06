@@ -165,10 +165,10 @@ def _gtfs_zip() -> bytes:
         ],
         "calendar_dates.txt": [["service_id", "date", "exception_type"], ["weekdays", "20260930", "2"]],  # no Wednesday
         "routes.txt": [["route_id", "agency_id", "route_short_name", "route_long_name", "route_desc", "route_type"],
-                       ["R1", "10", "IC 21", "Helsinki - Oulu", "", "102"], ["R2", "10", "A", "Leppävaara", "", "109"]],
+                       ["R1", "10", "IC 21", "Helsinki - Oulu", "", "102"], ["R2", "10", "A", "Suburb", "", "109"]],
         "trips.txt": [["route_id", "service_id", "trip_id", "trip_headsign", "trip_short_name"],
                       ["R1", "weekdays", "t1", "Oulu", "IC 21"], ["R1", "weekend", "t2", "Oulu", "IC 21"],
-                      ["R2", "weekdays", "t3", "Leppävaara", "A (HL 8193)"]],
+                      ["R2", "weekdays", "t3", "Suburb", "A (HL 8193)"]],
         "stops.txt": [["stop_id", "stop_name", "stop_lat", "stop_lon", "location_type", "parent_station", "platform_code"],
                       ["HKI", "Helsinki", "60.17", "24.94", "1", "", ""], ["HKI_1", "Helsinki", "60.1702", "24.9401", "0", "HKI", "1"],
                       ["OL", "Oulu", "65.01", "25.48", "1", "", ""], ["OL_2", "Oulu", "65.0101", "25.4802", "0", "OL", "2"]],

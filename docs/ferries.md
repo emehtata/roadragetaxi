@@ -73,7 +73,7 @@ and a yellow glazed wheelhouse on one side. The shape follows the yellow
 vehicle ferries in [Timo Hirvi's ferry gallery](https://tjh.1g.fi/kuvat/LAIVAT,+VENEET++YM./MAANTIELAUTAT,+SAARISTOLAUTAT,+YHTEYSALUKSET/);
 the photos are references only and are not shipped. 2D: drawn under the
 vehicles (`entity_layer.gd`, `_ferries`). Visual scenarios
-`ferry_vartsala_3d` and `ferry_vartsala_2d`.
+`ferry_car_3d` and `ferry_car_2d`.
 
 ## Phases 1-2 (2026-11-03)
 

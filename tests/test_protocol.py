@@ -45,7 +45,7 @@ def test_character_details_reach_godot_state():
     from datetime import date
     from types import SimpleNamespace as Row
 
-    resident = Row(resident_id=7, first_name="Aino", surname="Korhonen", gender="female",
+    resident = Row(resident_id=7, first_name="Test", surname="Person 2", gender="female",
                    birth_date=date(1990, 4, 5), mode="driving")
     npc = Row(vehicle_id=8, x=1.0, y=2.0, heading=0.0, speed=3.0, color=(1, 2, 3),
               vehicle_type="car", is_taxi=False, is_police=False, is_on_foot=False,
@@ -59,7 +59,7 @@ def test_character_details_reach_godot_state():
               blood_alcohol_promille=0.5, activity=None)
     vehicle = protocol._npc_to_dict(npc, {7: resident})
     walker = protocol._pedestrian_to_dict(ped, {7: resident})
-    assert vehicle["owner"]["name"] == "Aino Korhonen"
+    assert vehicle["owner"]["name"] == "Test Person 2"
     assert vehicle["occupants"] == [vehicle["owner"]]
     assert walker["resident"]["birth_date"] == "1990-04-05"
     assert walker["blood_alcohol_promille"] == 0.5
@@ -100,8 +100,8 @@ def test_the_waiting_customer_crosses_the_wire():
     from theroadragetrip.taxi import TaxiPassenger, TaxiTarget
 
     passenger = TaxiPassenger(
-        name="Aino", pickup=TaxiTarget(x=10.0, y=20.0, address="Kirkkokatu 4"),
-        dropoff=TaxiTarget(x=500.0, y=-40.0, address="Rautatientori"),
+        name="Test Person 3", pickup=TaxiTarget(x=10.0, y=20.0, address="Test Street 4"),
+        dropoff=TaxiTarget(x=500.0, y=-40.0, address="Station Square"),
         ped_x=11.5, ped_y=19.0, ped_heading=1.25, is_walking_to_car=True,
     )
     data = protocol._passenger_to_dict(passenger)
@@ -173,6 +173,6 @@ def test_residents_are_sent_only_for_the_inspected_entity():
     from theroadragetrip.pedestrian import Pedestrian
     ped = Pedestrian(x=0.0, y=0.0, heading=0.0, speed=1.0, base_speed=1.0, way=None, segment_idx=0, direction=1,
                      color=(1, 2, 3), resident_id=5)
-    residents = {5: SimpleNamespace(resident_id=5, name="Aino", birth_date="2000-01-01", gender="female", age=26,
+    residents = {5: SimpleNamespace(resident_id=5, name="Test Person 3", birth_date="2000-01-01", gender="female", age=26,
                                     household_id=None, mode="walking", personality={})}
     assert _pedestrian_to_dict(ped, residents, person=False)["resident"] is None

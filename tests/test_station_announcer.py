@@ -58,7 +58,7 @@ def test_a_departure_says_where_it_goes_and_skips_what_has_no_clip():
 
 
 def test_commuter_trains_without_a_type_clip_are_not_announced():
-    assert AnnouncementScript(MANIFEST).files("arrived", "K", "8247", "Tikkurila", "Helsinki", "Kerava", "4") == []
+    assert AnnouncementScript(MANIFEST).files("arrived", "K", "8247", "Test Station", "Helsinki", "Kerava", "4") == []
 
 
 def test_no_announcement_without_clips(tmp_path):
@@ -145,7 +145,7 @@ def test_the_two_meanings_of_h_come_from_the_timetable_category():
 def test_unsupported_types_are_not_announced_as_something_else():
     assert REAL_SCRIPT.train_phrase("K", "commuter") == []  # no clip for line K yet
     assert REAL_SCRIPT.train_phrase("XYZ", "long_distance") == []
-    assert REAL_SCRIPT.phrases("arrived", "K", "8247", "Tikkurila", "Helsinki", "Kerava", "4", "commuter") == []
+    assert REAL_SCRIPT.phrases("arrived", "K", "8247", "Test Station", "Helsinki", "Kerava", "4", "commuter") == []
 
 
 def test_train_numbers_stay_composed_after_the_train_type():
@@ -153,7 +153,7 @@ def test_train_numbers_stay_composed_after_the_train_type():
     assert spoken(ic) == ["InterCity", "viisisataa", "yhdeksäntoista"]
     pyo = REAL_SCRIPT.phrases("arrived", "PYO", "273", "Oulu", "Helsinki", "Rovaniemi", "", "long_distance")[1]
     assert spoken(pyo) == ["yöjuna", "kaksisataa", "seitsemänkymmentä", "kolme"]
-    r = REAL_SCRIPT.phrases("departed", "R", "123", "Tikkurila", "Helsinki", "Riihimäki", "4", "commuter")[0]
+    r = REAL_SCRIPT.phrases("departed", "R", "123", "Test Station", "Helsinki", "Riihimäki", "4", "commuter")[0]
     assert spoken(r) == ["lähijuna", "är", "sata", "kaksikymmentä", "kolme"]
 
 

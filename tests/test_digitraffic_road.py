@@ -16,7 +16,7 @@ from theroadragetrip.osm import Way
 from theroadragetrip.physics import SpatialWayGrid
 
 FIXTURE = Path(__file__).parent / "fixtures" / "digitraffic_roadworks_oulu.json.gz"
-KUUSAMONTIE = "GUID50472677"  # road 20, 30 km/h over 600 m, a lane closed; Wed 10-14 local, liftable
+RECORDED_WORK = "GUID50472677"  # road 20, 30 km/h over 600 m, a lane closed; Wed 10-14 local, liftable
 PROJECT = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True).transform
 
 
@@ -24,8 +24,8 @@ def _collection():
     return json.loads(gzip.decompress(FIXTURE.read_bytes()))
 
 
-def _kuusamontie():
-    return next(w for w in dr.parse_roadworks(_collection()) if w.situation_id == KUUSAMONTIE)
+def _recorded_work():
+    return next(w for w in dr.parse_roadworks(_collection()) if w.situation_id == RECORDED_WORK)
 
 
 def _local(year, month, day, hour, minute=0):
@@ -75,8 +75,10 @@ def test_http_opener_handles_compression_timeout_and_deprecation(monkeypatch, ca
 def test_a_recorded_roadwork_parses_with_its_real_restrictions():
     works = dr.parse_roadworks(_collection())
     assert len(works) == 8 and all(w.phases for w in works)
-    work = _kuusamontie()
-    assert work.road == 20 and "Kuusamontie" in work.title
+    work = _recorded_work()
+    feature = next(f for f in _collection()["features"] if f["properties"]["situationId"] == RECORDED_WORK)
+    title = next(a["title"] for a in feature["properties"]["announcements"] if a.get("language") == "fi")
+    assert work.road == 20 and title and work.title == title
     (phase,) = work.phases
     assert phase.restrictions["speed limit"] == 30.0 and phase.restrictions["speed limit length"] == 600.0
     assert "single lane closed" in phase.restrictions and phase.liftable
@@ -85,7 +87,7 @@ def test_a_recorded_roadwork_parses_with_its_real_restrictions():
 
 
 def test_a_liftable_phase_is_in_force_only_in_its_working_hours_on_its_dates():
-    phase = _kuusamontie().phases[0]
+    phase = _recorded_work().phases[0]
     assert phase.active(*_local(2026, 10, 28, 11))  # Wednesday 11:00
     assert not phase.active(*_local(2026, 10, 28, 15))  # lifted after 14:00
     assert not phase.active(*_local(2026, 10, 27, 11))  # Tuesday: before its dates
@@ -157,7 +159,7 @@ def test_the_service_fetches_the_tiles_around_the_player_off_the_simulation_thre
         x, y = PROJECT(25.53, 65.03)
         service.request(x, y, datetime(2026, 10, 28, 9, 5, tzinfo=timezone.utc))
         service.wait_idle(5.0)
-        assert {w.situation_id for w in service.roadworks} >= {KUUSAMONTIE} and service.revision >= 1
+        assert {w.situation_id for w in service.roadworks} >= {RECORDED_WORK} and service.revision >= 1
         fetched = client.fetched
         service.request(x + 50, y, datetime(2026, 10, 28, 9, 10, tzinfo=timezone.utc))  # same tiles, same window
         service.wait_idle(1.0)
@@ -201,7 +203,7 @@ def _road_along(lines, ref="20", offset_m=0.0, highway="trunk"):
 
 
 def test_a_live_roadwork_lands_on_its_road_with_its_speed_limit_and_closed_lane():
-    work = _kuusamontie()
+    work = _recorded_work()
     road = _road_along(work.lines_ll)
     zones = dr.match_roadwork(work, work.phases[0], PROJECT, SpatialWayGrid([road]))
     assert zones and all(z.way is road for z in zones)
@@ -215,7 +217,7 @@ def test_a_live_roadwork_lands_on_its_road_with_its_speed_limit_and_closed_lane(
 
 def test_the_road_number_beats_a_closer_parallel_road():
     import dataclasses
-    real = _kuusamontie()
+    real = _recorded_work()
     ends = sorted(p for line in real.lines_ll for p in line)
     work = dataclasses.replace(real, lines_ll=[[ends[0], ends[-1]]])  # one clean line between its real ends
     vt20 = _road_along(work.lines_ll, ref="20", offset_m=3.0)
@@ -225,7 +227,7 @@ def test_the_road_number_beats_a_closer_parallel_road():
 
 
 def test_a_roadwork_that_does_not_fit_the_loaded_roads_is_not_placed():
-    work = _kuusamontie()
+    work = _recorded_work()
     x, y = PROJECT(*work.lines_ll[0][0])
     crossing = Way(points_m=[(x, y - 300), (x, y + 300)], highway="trunk", half_width_m=4.0)  # heading 90 deg off
     far = Way(points_m=[(x + 500, y), (x + 900, y)], highway="trunk", half_width_m=4.0)
@@ -233,7 +235,7 @@ def test_a_roadwork_that_does_not_fit_the_loaded_roads_is_not_placed():
 
 
 def test_a_closed_road_blocks_and_a_closed_lane_only_closes_its_half():
-    work = _kuusamontie()
+    work = _recorded_work()
     road = _road_along(work.lines_ll)
     closed = dr.RoadworkPhase(work.phases[0].start, None, restrictions={"road closed": None})
     (zone, *_) = dr.match_roadwork(work, closed, PROJECT, SpatialWayGrid([road]))
@@ -247,7 +249,7 @@ def test_a_closed_road_blocks_and_a_closed_lane_only_closes_its_half():
 
 
 def test_live_roadworks_follow_the_game_clock_and_set_the_speed_limit():
-    work = _kuusamontie()
+    work = _recorded_work()
     road = _road_along(work.lines_ll)
 
     class Service:
@@ -399,7 +401,7 @@ def test_a_streaming_map_does_not_rematch_every_tick(caplog):
     geometry is projected once per version, and the log line only changes
     with the placement (a user's log once had it 30 times a second)."""
     import logging
-    work = _kuusamontie()
+    work = _recorded_work()
     road = _road_along(work.lines_ll)
     projections = []
 
@@ -449,7 +451,7 @@ def test_console_debug_locates_loaded_and_placed_roadworks_without_logging_each_
     import logging
     from types import SimpleNamespace
 
-    work = _kuusamontie()
+    work = _recorded_work()
     service = SimpleNamespace(roadworks=[work], revision=1, request=lambda *a: None)
     live = dr.LiveRoadworks(service, PROJECT)
     moment = _local(2026, 10, 28, 11)

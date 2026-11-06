@@ -1,9 +1,9 @@
 {
   "scenarios": [
     {
-      "id": "windshield_kamppi_day",
-      "description": "Straight ahead from the taxi interior on Eerikinkatu",
-      "why": "The existing Eerikinkatu taxi pose faces a street with nearby 3D roads, facades, traffic and lights.",
+      "id": "windshield_city_day",
+      "description": "Straight ahead from the taxi interior on a city-centre street",
+      "why": "The existing city-centre street taxi pose faces a street with nearby 3D roads, facades, traffic and lights.",
       "city": "Helsinki",
       "pose": [
         385325.8,
@@ -34,7 +34,7 @@
     {
       "id": "sky_clouds_clear_day",
       "description": "Windshield sky at cloud 0.0: clear sky: the plain gradient",
-      "why": "The Eerikinkatu taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
+      "why": "The city-centre street taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
       "city": "Helsinki",
       "pose": [
         385325.8,
@@ -69,7 +69,7 @@
     {
       "id": "sky_clouds_broken_day",
       "description": "Windshield sky at cloud 0.5: broken cloud patches",
-      "why": "The Eerikinkatu taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
+      "why": "The city-centre street taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
       "city": "Helsinki",
       "pose": [
         385325.8,
@@ -104,7 +104,7 @@
     {
       "id": "sky_clouds_overcast_day",
       "description": "Windshield sky at cloud 0.9: a nearly closed cloud deck",
-      "why": "The Eerikinkatu taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
+      "why": "The city-centre street taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
       "city": "Helsinki",
       "pose": [
         385325.8,
@@ -170,7 +170,7 @@
     {
       "id": "metallic_vehicle_paint_day",
       "description": "The taxi's and parked cars' paint under a high summer sun, buildings close on both sides",
-      "why": "Eerikinkatu, Kamppi (find: 12 lamps, 13 buildings, 4 colours within 70 x 40 m): a narrow street of 5-7 storey blocks whose walls the paint can reflect; June noon sun ~53 deg.",
+      "why": "City-centre street, inner-city district (find: 12 lamps, 13 buildings, 4 colours within 70 x 40 m): a narrow street of 5-7 storey blocks whose walls the paint can reflect; June noon sun ~53 deg.",
       "city": "Helsinki",
       "pose": [
         385325.8,
@@ -197,7 +197,7 @@
     {
       "id": "metallic_vehicle_paint_night",
       "description": "Car paint highlights under street lamps and lit windows at night",
-      "why": "The same Eerikinkatu pose: 12 street lamps within 70 x 40 m and apartment windows on both sides; October 22:30, sun far below the horizon.",
+      "why": "The same city-centre street pose: 12 street lamps within 70 x 40 m and apartment windows on both sides; October 22:30, sun far below the horizon.",
       "city": "Helsinki",
       "pose": [
         385325.8,
@@ -225,7 +225,7 @@
     {
       "id": "wet_asphalt_night",
       "description": "Wet asphalt and puddles in rain at night, lit by street lamps and the taxi's headlights",
-      "why": "Eerikinkatu is paved city street with 12 lamps nearby; rain makes it fully wet; October 22:30.",
+      "why": "city-centre street is paved city street with 12 lamps nearby; rain makes it fully wet; October 22:30.",
       "city": "Helsinki",
       "pose": [
         385325.8,
@@ -253,7 +253,7 @@
     {
       "id": "building_materials_day",
       "description": "Facades of several building types and colours in daylight",
-      "why": "Lapinlahdenkatu, Kamppi (find: 14 buildings, 4 colours, 3 commercial within 70 x 40 m). OSM gives no facade materials here: colours and categories differ, materials cannot be promised.",
+      "why": "Second inner-city street (find: 14 buildings, 4 colours, 3 commercial within 70 x 40 m). OSM gives no facade materials here: colours and categories differ, materials cannot be promised.",
       "city": "Helsinki",
       "pose": [
         385248.8,
@@ -280,7 +280,7 @@
     {
       "id": "glass_and_metal_facades",
       "description": "Window glass of commercial blocks reflecting the sky, overcast-free afternoon",
-      "why": "Lapinlahdenkatu has the most commercial buildings found (3) beside apartment blocks: storefront and office glazing. No mapped glass or metal facades exist in the data; this tests the window glass.",
+      "why": "second inner-city street has the most commercial buildings found (3) beside apartment blocks: storefront and office glazing. No mapped glass or metal facades exist in the data; this tests the window glass.",
       "city": "Helsinki",
       "pose": [
         385248.8,
@@ -307,7 +307,7 @@
     {
       "id": "streetlight_transition",
       "description": "Street lamps through dusk, night and dawn, then driving down the street",
-      "why": "Fabianinkatu (find: 11 street lamps within 70 x 40 m, a straight street heading south): many lamps in view; October dusk 17:30, night 22:00, dawn 07:45. Each run drives 8 s and counts lamp light reassignments.",
+      "why": "Lamp-lined city street (find: 11 street lamps within 70 x 40 m, a straight street heading south): many lamps in view; October dusk 17:30, night 22:00, dawn 07:45. Each run drives 8 s and counts lamp light reassignments.",
       "city": "Helsinki",
       "pose": [
         386223.9,
@@ -339,7 +339,7 @@
     {
       "id": "dense_city_performance",
       "description": "Fixed dense-city view at night for repeatable rendering measurements",
-      "why": "Eerikinkatu, Kamppi: dense blocks, 12 lamps and 13 buildings around; night so every light pool is active; the default zoom shows the most of it.",
+      "why": "City-centre street, inner-city district: dense blocks, 12 lamps and 13 buildings around; night so every light pool is active; the default zoom shows the most of it.",
       "city": "Helsinki",
       "pose": [
         385325.8,
@@ -367,7 +367,7 @@
     {
       "id": "graphics_brightness",
       "description": "The graphics settings' brightness 1.4 over a daylight street (compare with building_materials_day)",
-      "why": "The building_materials_day view (Lapinlahdenkatu: facades, park, road) with the picture settings raised: the world brighter, the HUD unchanged.",
+      "why": "The building_materials_day view (second inner-city street: facades, park, road) with the picture settings raised: the world brighter, the HUD unchanged.",
       "city": "Helsinki",
       "pose": [
         385248.8,
@@ -396,9 +396,9 @@
       }
     },
     {
-      "id": "ferry_vartsala_3d",
-      "description": "A road ferry at the Vartsala landing, the taxi waiting on the slip",
-      "why": "Vartsala ferry, Kustavi (OSM route=ferry, ferry=secondary, 925 m): the taxi 8 m back from the route's east end, facing the deck of the ferry docked there (or under way, after its 40 s wait).",
+      "id": "ferry_car_3d",
+      "description": "A road ferry at a ferry landing, the taxi waiting on the slip",
+      "why": "A road ferry (OSM route=ferry, ferry=secondary, 925 m): the taxi 8 m back from the route's east end, facing the deck of the ferry docked there (or under way, after its 40 s wait).",
       "city": "Kustavi",
       "pose": [
         189532.1,
@@ -423,9 +423,9 @@
       "measure_s": 3
     },
     {
-      "id": "ferry_vartsala_2d",
+      "id": "ferry_car_2d",
       "description": "The same ferry landing in the 2D view: the ferry drawn under the vehicles",
-      "why": "As ferry_vartsala_3d, 2D: the ferry layer is below the cars it carries.",
+      "why": "As ferry_car_3d, 2D: the ferry layer is below the cars it carries.",
       "view": "2d",
       "city": "Kustavi",
       "pose": [
@@ -451,9 +451,9 @@
       "measure_s": 3
     },
     {
-      "id": "pasila_trains_day",
-      "description": "Train model view at Pasila station",
-      "why": "The Pasila station tracks are real map data; the larger area includes Helsinki Central so timetable routes can be resolved.",
+      "id": "train_station_day",
+      "description": "Train model view at a city station",
+      "why": "The station tracks are real map data; the larger area includes the central station so timetable routes can be resolved.",
       "city": "Helsinki",
       "pose": [
         385384.5,
@@ -483,8 +483,8 @@
     },
     {
       "id": "motorway_through_traffic",
-      "description": "Fast traffic on the Per\u00e4merentie motorway at 58 m/s: cars ahead of the taxi, passed and gone behind",
-      "why": "Per\u00e4merentie (Oulu): a 1.76 km straight motorway from the start pose (find, 10 km Oulu world): fast traffic should be on it ahead of the taxi and not parked on it; daylight so the motorway is visible.",
+      "description": "Fast traffic on a motorway through a mid-size city at 58 m/s: cars ahead of the taxi, passed and gone behind",
+      "why": "Motorway through a mid-size city (Oulu): a 1.76 km straight motorway from the start pose (find, 10 km Oulu world): fast traffic should be on it ahead of the taxi and not parked on it; daylight so the motorway is visible.",
       "city": "Oulu",
       "pose": [
         383200.8,
@@ -511,8 +511,8 @@
     },
     {
       "id": "car_lod_pass_day",
-      "description": "Windshield view on the Per\u00e4merentie motorway, driving at full throttle: traffic ahead and oncoming passes from ~70 m to ~5 m; a frame every 0.5 s",
-      "why": "Per\u00e4merentie (Oulu): the motorway_through_traffic pose, which has fast traffic ahead of the taxi and on the other carriageway (seed 1). Every car crosses the old 22 m model swap and the 60 m radius; daylight so the cars are visible.",
+      "description": "Windshield view on a motorway through a mid-size city, driving at full throttle: traffic ahead and oncoming passes from ~70 m to ~5 m; a frame every 0.5 s",
+      "why": "Motorway through a mid-size city (Oulu): the motorway_through_traffic pose, which has fast traffic ahead of the taxi and on the other carriageway (seed 1). Every car crosses the old 22 m model swap and the 60 m radius; daylight so the cars are visible.",
       "city": "Oulu",
       "pose": [
         383200.8,
@@ -631,8 +631,8 @@
     },
     {
       "id": "terrain_hill_bridge_day",
-      "description": "Southbound on Merihaankatu toward Hakaniemensilta (layer-1 bridge) over a DEM hill: a sloped road and a deck above sloped ground",
-      "why": "Hakaniemensilta (OSM bridge=yes, layer=1, 170 m) starts 30 m ahead. Needs <cache>/Helsinki.dem.json: tools/make_dem.py Helsinki --test-hill 386740,6672850,10,60 (synthetic test raster) or --asc from the NLS 10 m DEM.",
+      "description": "Southbound on a city street toward a layer-1 bridge over a DEM hill: a sloped road and a deck above sloped ground",
+      "why": "The bridge (OSM bridge=yes, layer=1, 170 m) starts 30 m ahead. Needs <cache>/Helsinki.dem.json: tools/make_dem.py Helsinki --test-hill 386740,6672850,10,60 (synthetic test raster) or --asc from the NLS 10 m DEM.",
       "city": "Helsinki",
       "pose": [
         386708.0,

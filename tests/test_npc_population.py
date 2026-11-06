@@ -2439,7 +2439,7 @@ def test_through_traffic_parks_at_its_own_kerb_never_across_the_oncoming_lane():
     """§ 36 / game policy: a roadside stop is on the right of the travel
     direction. The kerb used to be the right of the map way's direction, so
     traffic driving against it crossed the oncoming lane to park facing
-    traffic (a car with a caravan on Toppilansaarentie, Oulu)."""
+    traffic (a car with a caravan on an island road, Oulu)."""
     from theroadragetrip.traffic_world import run_route_steps
 
     random.seed(4)

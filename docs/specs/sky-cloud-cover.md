@@ -22,7 +22,7 @@ Draw noise clouds in the 3D sky so the visible coverage follows `cloud_cover`
 - `godot/main.gd` (~834): call `map_layer.buildings_3d.set_cloud_cover(cloud)` next to `set_sky_color`.
 - `tools/visual_scenarios.json`: add `sky_clouds_clear_day`, `sky_clouds_broken_day` and
   `sky_clouds_overcast_day`. They are windshield scenarios at cloud 0.0, 0.5 and 0.9.
-  Copy the pose and time from `windshield_kamppi_day`, set sun altitude to about 30 deg,
+  Copy the pose and time from `windshield_city_day`, set sun altitude to about 30 deg,
   and give them readiness `requires` like the existing windshield entries.
 
 ## Behaviour / acceptance criteria

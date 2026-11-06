@@ -174,7 +174,7 @@ def test_explicit_median_lamp_is_round_but_outer_verge_lamp_is_directional():
 
 
 def test_a_wide_median_has_one_even_row_down_its_middle():
-    """Pohjantie, Oulu: carriageways 10-25 m apart each put their median lamp
+    """Motorway Road, Oulu: carriageways 10-25 m apart each put their median lamp
     at their own edge, and the 12 m merge then zig-zagged between the two
     rows (12/24 m gaps) and left the far lane dark - the taxi's automatic
     high beam flashed on and off there."""

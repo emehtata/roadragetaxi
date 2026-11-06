@@ -77,7 +77,7 @@ def test_named_road_does_not_inherit_lighting_into_rural_segment():
         points_m=[(0.0, 0.0), (100.0, 0.0)],
         highway="tertiary",
         half_width_m=4.0,
-        name="Rautatienkatu",
+        name="Station Street",
     )
 
     assert not _way_should_have_street_lighting(road, [], (0.0, 0.0))
@@ -102,7 +102,7 @@ def test_build_ways_extracts_crossings_and_aligns_with_road():
             "type": "way",
             "id": 10,
             "nodes": [1, 2],
-            "tags": {"highway": "residential", "name": "Torikatu"},
+            "tags": {"highway": "residential", "name": "Market Street"},
         },
         # Crossing node located near middle of the road
         {
@@ -139,7 +139,7 @@ def test_crossing_node_off_road_centerline_snaps_onto_the_road():
             "type": "way",
             "id": 10,
             "nodes": [1, 2],
-            "tags": {"highway": "residential", "name": "Torikatu"},
+            "tags": {"highway": "residential", "name": "Market Street"},
         },
         # Crossing node ~3m off the (flat, east-west) road's latitude.
         {
@@ -164,7 +164,7 @@ def test_crossing_node_off_road_centerline_snaps_onto_the_road():
 
 def test_nearby_crossings_at_a_compact_junction_dont_overlap():
     """Regression: a real, compact junction mapped one highway=crossing
-    node per leg a few meters apart (Torikatu/Pakkahuoneenkatu in Oulu).
+    node per leg a few meters apart (Market Street/Harbour Road in Oulu).
     Each crossing sized to its own road's full width rendered as an
     ~8m-wide zebra field regardless of how close the next crossing was,
     so two crossings on roughly perpendicular roads overlapped into an
@@ -175,13 +175,13 @@ def test_nearby_crossings_at_a_compact_junction_dont_overlap():
         {"type": "node", "id": 2, "lat": 65.0, "lon": 25.01},
         {
             "type": "way", "id": 10, "nodes": [1, 2],
-            "tags": {"highway": "residential", "name": "Torikatu"},
+            "tags": {"highway": "residential", "name": "Market Street"},
         },
         {"type": "node", "id": 3, "lat": 64.998, "lon": 25.005},
         {"type": "node", "id": 4, "lat": 65.002, "lon": 25.005},
         {
             "type": "way", "id": 11, "nodes": [3, 4],
-            "tags": {"highway": "residential", "name": "Pakkahuoneenkatu"},
+            "tags": {"highway": "residential", "name": "Harbour Road"},
         },
         # Two crossings close to each other (~4m apart) near the junction -
         # one on each road.

@@ -239,8 +239,8 @@ def test_scattered_signal_nodes_around_one_junction_cluster_together():
 
 
 def test_three_way_junction_clusters_regardless_of_node_order():
-    """Regression: a real 3-street Oulu junction (Uusikatu / Lävistäjä /
-    Kajaaninkatu) has one traffic_signals node per street - A=43.5m from
+    """Regression: a real 3-street Oulu junction (street A / street B /
+    street C) has one traffic_signals node per street - A=43.5m from
     B, but A=32.5m from C and B=28.7m from C, so all three belong to one
     physical junction via C. The old greedy centroid clustering checked
     each new point against existing cluster centroids one at a time: in
@@ -257,9 +257,9 @@ def test_three_way_junction_clusters_regardless_of_node_order():
         far = (center[0] + math.cos(angle) * 150.0, center[1] + math.sin(angle) * 150.0)
         return Way([center, far], "primary", 5.0)
 
-    point_a = (32.18, 4.44, 0)   # Lävistäjä
-    point_b = (3.78, -28.46, 0)  # Uusikatu
-    point_c = (0.0, 0.0, 0)      # Kajaaninkatu
+    point_a = (32.18, 4.44, 0)   # street B
+    point_b = (3.78, -28.46, 0)  # street A
+    point_c = (0.0, 0.0, 0)      # street C
     ways = [arm(31.6), arm(-111.9), arm(146.3)]
     real_positions = {(point_a[0], point_a[1]), (point_b[0], point_b[1]), (point_c[0], point_c[1])}
 
@@ -278,8 +278,8 @@ def test_three_way_junction_clusters_regardless_of_node_order():
 
 
 def test_wide_real_junction_stays_one_intersection():
-    """Regression: a real 4-street Oulu junction (Kajaanintie / Heikinkatu
-    / Tulliväylä / Rautatienkatu) has one traffic_signals node per
+    """Regression: a real 4-street Oulu junction (main road / street D
+    / street E / street F) has one traffic_signals node per
     approach, spread up to ~48m apart - wider than the old 30m clustering
     radius, which split it into 3 separate LogicalIntersections. Each then
     picked its own (wrong) mix of nearby roads as arms, scattering lights
@@ -363,10 +363,10 @@ def test_single_central_signal_point_is_divided_not_pinned_to_one_arm():
 
 
 def test_parking_aisle_arm_doesnt_get_a_traffic_light():
-    """Regression: a real 3-street signalized junction (Uusikatu /
-    Lävistäjä / Kajaaninkatu in Oulu) had a highway=service,
+    """Regression: a real 3-street signalized junction (street A /
+    street B / street C in Oulu) had a highway=service,
     service=parking_aisle branching off at nearly the same angle as the
-    genuine Lävistäjä approach. It's drivable (unlike a footway) but not a
+    genuine street B approach. It's drivable (unlike a footway) but not a
     real signalized approach - it was still getting counted as a 4th arm
     with its own synthesized light."""
     arms = _four_way_ways()
@@ -484,7 +484,7 @@ def test_build_ways_end_to_end_generates_logical_intersections():
 
 
 def test_signal_point_is_assigned_to_the_arm_it_actually_sits_on():
-    """Regression: a real Kajaanintie / motorway_link junction in Oulu has
+    """Regression: a real main road / motorway_link junction in Oulu has
     a ramp signal node that sits exactly on the ramp's own geometry, but
     is closer *by bearing from the cluster center* to the through road on
     the opposite side (just ~10 degrees separates them) - bearing-only
@@ -515,7 +515,7 @@ def test_signal_point_is_assigned_to_the_arm_it_actually_sits_on():
     ramp_light = next(light for light in lights if (round(light.x, 2), round(light.y, 2)) == ramp_point[:2])
     # direction_angle points back along the arm the light belongs to; the
     # ramp's arm angle is ~56.7 degrees, so its light's direction_angle is
-    # ~180 degrees from that (~236.7) - not Kajaanintie's (~5.6).
+    # ~180 degrees from that (~236.7) - not main road's (~5.6).
     assert math.isclose(math.degrees(ramp_light.direction_angle), 236.7, abs_tol=1.0), (
         f"the point sitting on the ramp's own vertex was attached to the wrong arm "
         f"(direction_angle={math.degrees(ramp_light.direction_angle):.1f} degrees)"

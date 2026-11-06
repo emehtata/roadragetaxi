@@ -727,18 +727,18 @@ func test_i18n() -> void:
 	check(I18n.EN.keys().filter(func(k): return not I18n.DE.has(k)).is_empty(), "every English text has German")
 	check(I18n.DE.keys().filter(func(k): return not I18n.EN.has(k)).is_empty(), "every German text has English")
 	check(I18n.LANGUAGES.has("de") and I18n.LANGUAGE_NAMES.de == "Deutsch", "German is selectable")
-	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "de") == "[ZUM TAXI] Aino", "German walking passenger tag")
+	check(EntityLayer.passenger_tag({"name": "Test Person 5", "is_walking_to_car": true}, "de") == "[ZUM TAXI] Test Person 5", "German walking passenger tag")
 	check(Phone.status_text(true, false, [], "", "de") == "Zurzeit keine Fahrtanfragen.", "German phone status")
 	check(Phone.card_text({"passenger_count": 3}, "de") == Phone.card_text({}, "de"), "German fare hides passenger count")
 	check(I18n.startup_detail("Preparing NPC traffic...", "de") == "Verkehr wird vorbereitet…", "German startup details")
 	check(I18n.text("settings", "de") == "EINSTELLUNGEN" and I18n.text("nav_left", "de") == "Links abbiegen", "German settings and navigation")
 	check(Hud.subtitle_text({"speaker": "driver", "text": "Hallo!"}, "de") == "Fahrer: Hallo!", "German subtitle speaker")
 	check(Phone.status_text(true, false, [], "", "fi") == "Ei kyytipyyntöjä juuri nyt.", "the phone reads the Finnish table")
-	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "fi") == "[TAKSILLE] Aino", "walking passenger tag is Finnish")
-	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "en") == "[TO TAXI] Aino", "walking passenger tag is English")
-	check(EntityLayer.passenger_tag({"name": "Aino"}, "fi") == "[NOUTO] Aino", "waiting passenger tag uses the selected language")
+	check(EntityLayer.passenger_tag({"name": "Test Person 5", "is_walking_to_car": true}, "fi") == "[TAKSILLE] Test Person 5", "walking passenger tag is Finnish")
+	check(EntityLayer.passenger_tag({"name": "Test Person 5", "is_walking_to_car": true}, "en") == "[TO TAXI] Test Person 5", "walking passenger tag is English")
+	check(EntityLayer.passenger_tag({"name": "Test Person 5"}, "fi") == "[NOUTO] Test Person 5", "waiting passenger tag uses the selected language")
 	for status in ["PENDING", "ACCEPTED", "TRAIN_ARRIVING", "PASSENGER_WAITING", "PASSENGER_MET", "IN_TAXI", "DECLINED", "MISSED"]:
-		var item := {"id": "booking-1", "kind": "booking", "name": "Aino", "status": status}
+		var item := {"id": "booking-1", "kind": "booking", "name": "Test Person 5", "status": status}
 		check(Phone.details_text(item, "fi").contains("Tila: " + I18n.value_label(status, "fi")), "Finnish booking details: " + status)
 		check(Phone.details_text(item, "en").contains("Status: " + I18n.value_label(status, "en")), "English booking details: " + status)
 		if status != "PENDING":
@@ -1301,7 +1301,7 @@ func test_hud() -> void:
 		"player": {"speed": 13.9, "engine_on": true},
 		"weather": {"weather_type": "rain", "wetness": 0.4},
 		"taxi": {"balance_cents": 12345, "state": "DROPOFF", "completed_fares": 2, "notification_msg": "Fare paid", "notification_timer": 2.0,
-			"current_passenger": {"name": "Aino", "pickup": {"address": "Kauppurienkatu 1"}, "dropoff": {"address": "Rautatientori"}}},
+			"current_passenger": {"name": "Test Person 5", "pickup": {"address": "Harbour Road 1"}, "dropoff": {"address": "Station Square"}}},
 	})
 	check(text["money"] == "123.45 €", "money (%s)" % text["money"])
 	check(text["speed"] == "50 km/h", "speed (%s)" % text["speed"])
@@ -1620,8 +1620,8 @@ func test_mouse_inspection() -> void:
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
 	main.phone.close()
-	check(main._character_text("pedestrian", {"id": 7, "resident": {"name": "Aino Korhonen", "birth_date": "1990-04-05"}}).contains("Aino Korhonen"), "inspector shows the resident name")
-	check(main._character_text("npc", {"id": 8, "owner": {"name": "Aino Korhonen"}, "occupants": [{"name": "Aino Korhonen"}]}).contains("Aino Korhonen"), "vehicle inspector shows its people")
+	check(main._character_text("pedestrian", {"id": 7, "resident": {"name": "Test Person 2", "birth_date": "1990-04-05"}}).contains("Test Person 2"), "inspector shows the resident name")
+	check(main._character_text("npc", {"id": 8, "owner": {"name": "Test Person 2"}, "occupants": [{"name": "Test Person 2"}]}).contains("Test Person 2"), "vehicle inspector shows its people")
 	main.set_language("fi")
 	var person_text: String = main._character_text("pedestrian", {"state": "waiting_at_light", "activity": "bench_sitting", "resident": {"gender": "female"}})
 	check(person_text.contains("Sukupuoli: nainen") and person_text.contains("Tila: odottaa liikennevaloissa") and person_text.contains("Puuhailee: istuu penkillä"), "inspector translates gender, state and activity")
@@ -1684,8 +1684,8 @@ func _key(code: Key) -> InputEventKey:
 
 
 func _offer(id: String, name: String, metres: int = 800, seconds: float = 40.0) -> Dictionary:
-	return {"id": id, "kind": "offer", "status": "AVAILABLE", "name": name, "pickup": "Kirkkokatu 4",
-		"dropoff": "Rautatientori", "pickup_distance_m": metres, "trip_distance_m": 2300, "time_remaining_s": seconds}
+	return {"id": id, "kind": "offer", "status": "AVAILABLE", "name": name, "pickup": "Test Street 4",
+		"dropoff": "Station Square", "pickup_distance_m": metres, "trip_distance_m": 2300, "time_remaining_s": seconds}
 
 
 func test_phone() -> void:
@@ -1746,9 +1746,9 @@ func test_phone() -> void:
 	phone.open()
 	phone.show_phone({"busy": false, "items": []})
 	check(phone._status.text == "No ride requests right now." and phone._accept.disabled, "no offers: said so, nothing to accept")
-	phone.show_phone({"busy": false, "items": [_offer("offer-1", "Aino"), _offer("offer-2", "Eero", 1500)]})
-	check(phone._rows.get_child_count() == 2 and phone._rows.get_child(0).find_child("Title", true, false).text == "[1] Aino" and phone._rows.get_child(0).find_child("Body", true, false).text.contains("Pickup  Kirkkokatu 4"), "offers are listed as the app's cards")
-	check(phone.selected_id == "offer-1" and phone._details.text.contains("Pickup: Kirkkokatu 4") and phone._details.text.contains("Trip: 2.30 km"), "the first offer's details")
+	phone.show_phone({"busy": false, "items": [_offer("offer-1", "Test Person 5"), _offer("offer-2", "Test Person 6", 1500)]})
+	check(phone._rows.get_child_count() == 2 and phone._rows.get_child(0).find_child("Title", true, false).text == "[1] Test Person 5" and phone._rows.get_child(0).find_child("Body", true, false).text.contains("Pickup  Test Street 4"), "offers are listed as the app's cards")
+	check(phone.selected_id == "offer-1" and phone._details.text.contains("Pickup: Test Street 4") and phone._details.text.contains("Trip: 2.30 km"), "the first offer's details")
 	check(phone._details.text.contains("Fare: unavailable"), "no invented fare")
 	phone._unhandled_input(_key(KEY_DOWN))
 	check(phone.selected_id == "offer-1" and requests.is_empty(), "driving arrows do not change the selected offer")
@@ -1760,7 +1760,7 @@ func test_phone() -> void:
 	check(phone.selected_id == "offer-2" and phone._details.text.contains("To the customer: 1.50 km") and requests.is_empty(), "selecting the second card does not accept it")
 	check(phone._rows.get_child(1).find_child("Badge", true, false).text == "1.50 km", "a card's badge: the distance to the customer")
 	var row_before := phone._rows.get_child(0)
-	phone.show_phone({"busy": false, "items": [_offer("offer-1", "Aino", 790, 39.0), _offer("offer-2", "Eero", 1490, 39.0)]})
+	phone.show_phone({"busy": false, "items": [_offer("offer-1", "Test Person 5", 790, 39.0), _offer("offer-2", "Test Person 6", 1490, 39.0)]})
 	check(phone._rows.get_child(0) == row_before and phone._details.text.contains("1.49 km"), "a value update refreshes text without rebuilding rows")
 
 	phone._unhandled_input(_key(KEY_ENTER))
@@ -1780,20 +1780,20 @@ func test_phone() -> void:
 	check(phone._status.text == "Finish the current fare first." and phone._rows.get_child_count() == 0, "the simulation's state replaces the rows: busy")
 	check(phone.navigation.visible and not phone._offers.visible and not phone._buttons.visible, "accepted fare switches the phone to navigation")
 
-	phone.show_phone({"busy": false, "items": [_offer("offer-3", "Liisa")]})
+	phone.show_phone({"busy": false, "items": [_offer("offer-3", "Test Person 7")]})
 	check(not phone.navigation.visible and phone._offers.visible and phone._buttons.visible, "finished fare switches back to the fare picker")
 	phone.accept_selected()
-	phone.show_phone({"busy": false, "items": [_offer("offer-4", "Matti")]})  # offer-3 expired meanwhile
+	phone.show_phone({"busy": false, "items": [_offer("offer-4", "Test Person 8")]})  # offer-3 expired meanwhile
 	check(phone.pending.is_empty() and phone.selected_id == "offer-4" and phone._rows.get_child_count() == 1, "an expired offer disappears with its pending request")
-	phone.show_phone({"busy": false, "items": [{"id": "booking-7", "kind": "booking", "status": "ACCEPTED", "name": "Kaisa", "train": "IC 27",
-		"pickup": "Oulu", "arrival": "18:42", "dropoff": "Torikatu 1", "surcharge_cents": 800}]})
+	phone.show_phone({"busy": false, "items": [{"id": "booking-7", "kind": "booking", "status": "ACCEPTED", "name": "Test Person 9", "train": "IC 27",
+		"pickup": "Oulu", "arrival": "18:42", "dropoff": "Market Street 1", "surcharge_cents": 800}]})
 	check(phone._rows.get_child(0).find_child("Title", true, false).text.contains("accepted") and phone._accept.disabled and phone._details.text.contains("+8.00 €"), "a booking's state change shows; an accepted one can't be answered")
 
 	requests.clear()
-	phone.show_phone({"busy": false, "items": [_offer("offer-8", "Ville"), _offer("offer-9", "Ulla")]})
+	phone.show_phone({"busy": false, "items": [_offer("offer-8", "Test Person 10"), _offer("offer-9", "Test Person 11")]})
 	phone._unhandled_input(_key(KEY_2))
 	check(requests.size() == 1 and requests[0][0] == "accept" and requests[0][1] == "offer-9", "2 accepts the second offer at once")
-	phone.show_phone({"busy": false, "items": [_offer("offer-5", "Olli")]})
+	phone.show_phone({"busy": false, "items": [_offer("offer-5", "Test Person 12")]})
 	phone.accept_selected()
 	requests.clear()
 	phone.set_connected(false)
@@ -1945,7 +1945,7 @@ func test_speech_and_stations() -> void:
 	hud.show_state({"game_time_seconds": 31980.0, "calendar": {"date": "2026-10-10", "time_scale": 1.0}, "on_foot": false,
 		"player": {"engine_on": true}, "weather": {"weather_type": "rain", "wetness": 1.0, "temperature_c": -0.2},
 		"taxi": {"balance_cents": 123456, "total_score": -1200, "completed_fares": 12, "state": "PICKUP",
-			"current_passenger": {"name": "Matti Vesterinen", "pickup": {"address": "Aaltovaarantie 12, Kaakkuri, a very long address indeed that goes on"}}}})
+			"current_passenger": {"name": "Test Person 4", "pickup": {"address": "Test Road 12, Suburb, a very long address indeed that goes on"}}}})
 	var boxes := []
 	for name in ["_clock", "_money", "_weather"]:
 		var label: Label = hud.get(name)
@@ -1956,11 +1956,11 @@ func test_speech_and_stations() -> void:
 		for j in range(i + 1, boxes.size()):
 			apart = apart and not boxes[i].intersects(boxes[j])
 	check(apart and not boxes[2].intersects(Rect2(1280 - 79, 45, 62, 62)), "HUD: clock, score and weather on screen, none overlapping, clear of the limit sign")
-	check(Hud.subtitle_text({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei"}) == "Aino: Hei" and Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}) == "Driver: Mennään", "the passenger's name, else the speaker")
+	check(Hud.subtitle_text({"speaker": "passenger", "speaker_name": "Test Person 5", "text": "Hei"}) == "Test Person 5: Hei" and Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}) == "Driver: Mennään", "the passenger's name, else the speaker")
 	check(Hud.subtitle_text({"speaker": "passenger", "text": ""}) == "" and Hud.subtitle_text({}) == "", "no text: no subtitle")
 	check(Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}, "fi") == "Kuljettaja: Mennään", "the speaker in Finnish")
-	hud.show_subtitle({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei", "duration_s": 4.0})
-	check(hud._subtitle.visible and hud._subtitle.text == "Aino: Hei", "one subtitle shows")
+	hud.show_subtitle({"speaker": "passenger", "speaker_name": "Test Person 5", "text": "Hei", "duration_s": 4.0})
+	check(hud._subtitle.visible and hud._subtitle.text == "Test Person 5: Hei", "one subtitle shows")
 	var glow_p := PackedVector2Array()
 	var glow_c := PackedColorArray()
 	var glow_t := PackedInt32Array()
@@ -2399,10 +2399,10 @@ func test_label_modes() -> void:
 	labels.update_view(Transform2D(), 1, false)
 	check(labels.visible, "mode 1 shows the overlay")
 	labels.free()
-	var candidates := [[0.0, 0.0, "Keskusta", 0], [0.0, 0.0, "Kirkkokatu", 4]]
+	var candidates := [[0.0, 0.0, "Keskusta", 0], [0.0, 0.0, "Test Street", 4]]
 	var canvas := Transform2D(0.0, Vector2(640, 360)).scaled_local(Vector2(9, 9))
 	var font: Font = ThemeDB.fallback_font
-	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 1).map(func(p): return p[1]) == ["Kirkkokatu"], "mode 1: only the street name")
+	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 1).map(func(p): return p[1]) == ["Test Street"], "mode 1: only the street name")
 	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 2).map(func(p): return p[1]) == ["Keskusta"], "mode 2: everything, by priority (one spot: the district wins)")
 	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 0).is_empty(), "mode 0: none")
 	var driving := {"on_foot": false, "player": {"engine_on": true}}
@@ -2427,10 +2427,10 @@ func test_navigation_route() -> void:
 	check(is_equal_approx((device.size * device.scale).x, 270.0) and is_equal_approx(device.size.aspect(), Phone.DEVICE_SIZE.aspect()), "shared phone: compact portrait dimensions")
 	check(device._clock.text == "23:59" and device._battery_label.text == "  19%", "shared phone: clock and live battery")
 	check(device._clock.get_parent().get_child(2).text == "▂▄▆█ 5G", "navigation phone: signal indicator matches offer app")
-	var instruction := {"instruction": {"maneuver": "left", "distance_m": 125.0, "street": "Kirkkokatu"}}
+	var instruction := {"instruction": {"maneuver": "left", "distance_m": 125.0, "street": "Test Street"}}
 	device.show_navigation(instruction)
 	var app = device.navigation
-	check(device.visible and app.visible and app._distance.text == "130 m" and app._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
+	check(device.visible and app.visible and app._distance.text == "130 m" and app._street.text == "Test Street", "navigation phone: distance and outgoing street from server")
 	device.update_layout()
 	var default_position: Vector2 = device.position
 	var phone_rect := Rect2(device.position, device.size * device.scale)
@@ -2457,7 +2457,7 @@ func test_navigation_route() -> void:
 	device.open()
 	check(device.position == default_position + drag.relative, "navigation phone: retains moved position when shown again")
 	check(device.layout.panel_at(device.position + Vector2(20, 150)) == "", "phone: only header drags, app buttons remain clickable")
-	device.show_phone({"busy": false, "items": [_offer("offer-1", "Aino")]})
+	device.show_phone({"busy": false, "items": [_offer("offer-1", "Test Person 5")]})
 	check(device.position == default_position + drag.relative and not app.visible and device._offers.visible, "switching apps keeps phone position")
 	device.show_phone({"busy": true, "items": []})
 	device.layout.reset()
@@ -2472,7 +2472,7 @@ func test_navigation_route() -> void:
 		shown.append(NavigationPhone.format_distance(metres))
 	check(shown == ["3 m", "10 m", "10 m", "90 m", "460 m", "1.0 km", "1.0 km", "1.1 km", "12.3 km"],
 		"navigation phone: 1 m under 10 m, 10 m steps under 1 km, 100 m steps above: %s" % [shown])
-	device.show_navigation({"instruction": {"maneuver": "left", "distance_m": 87.0, "total_m": 2345.0, "street": "Torikatu"}})
+	device.show_navigation({"instruction": {"maneuver": "left", "distance_m": 87.0, "total_m": 2345.0, "street": "Market Street"}})
 	check(app._distance.text == "90 m" and app._total.text == "Yhteensä 2.3 km", "navigation phone: next turn and the total driving distance")
 	device.show_navigation({})
 	check(device.visible and app._distance.text == "" and app._street.text == "Ei määränpäätä", "navigation phone: no stale instruction without a destination")
@@ -2519,7 +2519,7 @@ func test_navigation_route() -> void:
 		check(EntityLayer.route_points(bad, origin).is_empty(), "no line from %s" % str(bad))
 	var layer: Node2D = EntityLayer.new()
 	layer.origin = origin
-	var passenger := {"name": "Aino", "pickup": {"x": 130.0, "y": 160.0, "address": "A", "radius_m": 4.0}, "dropoff": {"x": 0.0, "y": 0.0, "address": "B", "radius_m": 4.0}}
+	var passenger := {"name": "Test Person 5", "pickup": {"x": 130.0, "y": 160.0, "address": "A", "radius_m": 4.0}, "dropoff": {"x": 0.0, "y": 0.0, "address": "B", "radius_m": 4.0}}
 	var state := {"taxi": {"state": "PICKUP", "current_passenger": passenger}, "navigation": {"points": [[100.0, 200.0], [130.0, 160.0]]}}
 	check(layer.route_for(state).is_empty(), "N off: nothing drawn")
 	layer.show_route = true
@@ -2556,12 +2556,12 @@ func test_navigation_route() -> void:
 
 ## godot-final-03: the running fare in the mission line, the pump price in the gauge.
 func test_taxi_information() -> void:
-	var passenger := {"name": "Aino", "pickup": {"address": "Kirkkokatu 4"}, "dropoff": {"address": "Rautatientori"}}
+	var passenger := {"name": "Test Person 5", "pickup": {"address": "Test Street 4"}, "dropoff": {"address": "Station Square"}}
 	var fare := {"state": "DROPOFF", "current_passenger": passenger, "elapsed_time": 61.6, "live_fare_cents": 1234,
 		"fare_distance_m": 2345.6, "passenger_happiness": 49.6}
-	check(Hud.task_text(fare) == "Drive Aino to Rautatientori", "the task: who and where to")
-	check(Hud.task_text(fare.merged({"state": "PICKUP"}, true)) == "Pick up Aino at Kirkkokatu 4", "pickup task")
-	check(Hud.task_text(fare.merged({"state": "WALKING"}, true)) == "Aino is walking to the taxi", "walking task")
+	check(Hud.task_text(fare) == "Drive Test Person 5 to Station Square", "the task: who and where to")
+	check(Hud.task_text(fare.merged({"state": "PICKUP"}, true)) == "Pick up Test Person 5 at Test Street 4", "pickup task")
+	check(Hud.task_text(fare.merged({"state": "WALKING"}, true)) == "Test Person 5 is walking to the taxi", "walking task")
 	check(Hud.task_text({"completed_fares": 3}) == "", "no passenger: no task")
 	check(Hud.meter_info(fare) == "2.35 km", "the meter shows distance without customer satisfaction")
 	check(Hud.meter_info(fare.merged({"fare_distance_m": null, "passenger_happiness": [1]}, true)) == "", "missing or malformed: left out")
@@ -2671,10 +2671,10 @@ func test_meet_road_camera_lightning() -> void:
 	# Road and limit: the simulation's values.
 	check(Hud.values({})["road"] == "" and Instruments.speed_limit({}) == 0, "no road field (older server): nothing shown")
 	check(Hud.values({"road": {"name": null, "speed_limit_kmh": null}})["road"] == "Road: Off-road", "off-road")
-	check(Hud.values({"road": {"name": "Isokatu", "speed_limit_kmh": 40}})["road"] == "Road: Isokatu [Limit: 40 km/h]", "named road with its limit")
+	check(Hud.values({"road": {"name": "Main Street", "speed_limit_kmh": 40}})["road"] == "Road: Main Street [Limit: 40 km/h]", "named road with its limit")
 	check(Hud.values({"road": {"name": "Living Street", "speed_limit_kmh": null}})["road"] == "Road: Living Street", "unnamed road (highway type) without a limit")
-	check(Instruments.speed_limit({"road": {"name": "Isokatu", "speed_limit_kmh": 40}}) == 40, "limit sign value")
-	check(Instruments.speed_limit({"road": {"name": "Isokatu", "speed_limit_kmh": null}}) == 0, "no limit known: no sign")
+	check(Instruments.speed_limit({"road": {"name": "Main Street", "speed_limit_kmh": 40}}) == 40, "limit sign value")
+	check(Instruments.speed_limit({"road": {"name": "Main Street", "speed_limit_kmh": null}}) == 0, "no limit known: no sign")
 
 	# Speed camera: only a running notice flagged by the simulation.
 	var camera_hit := {"taxi": {"notification_msg": "Speed camera! 12 km/h over -50 pts", "notification_timer": 3.0, "speed_camera_notice": true}}
@@ -2684,9 +2684,9 @@ func test_meet_road_camera_lightning() -> void:
 	check(Hud.values(camera_hit)["notice"] == "" and not Hud.values(camera_hit)["notice_camera"], "an expired notice shows nothing")
 
 	# Meet panel: the server's lines while a meet is on, gone after.
-	var meet := {"status": "PASSENGER_WAITING", "lines": ["Meet: Aino", "IC57 | Oulu", "Park and get out (F)"],
+	var meet := {"status": "PASSENGER_WAITING", "lines": ["Meet: Test Person 5", "IC57 | Oulu", "Park and get out (F)"],
 		"arrow": {"id": 7, "x": 20.0, "y": 40.0, "radius_m": 0.45}}
-	check(Hud.values({"meet": meet})["meet"] == "Meet: Aino\nIC57 | Oulu\nPark and get out (F)", "meet panel lines")
+	check(Hud.values({"meet": meet})["meet"] == "Meet: Test Person 5\nIC57 | Oulu\nPark and get out (F)", "meet panel lines")
 	check(Hud.values({"meet": null})["meet"] == "" and Hud.values({})["meet"] == "", "no meet: no panel")
 	var scene: Node = load("res://main.tscn").instantiate()
 	var hud: Control = scene.get_node("Ui/Hud")
@@ -2697,7 +2697,7 @@ func test_meet_road_camera_lightning() -> void:
 	scene.free()
 	root.add_child(hud)
 	hud.show_state({"meet": meet, "taxi": camera_hit["taxi"]})
-	check(hud._meet.visible and hud._meet.text.begins_with("Meet: Aino"), "the panel shows")
+	check(hud._meet.visible and hud._meet.text.begins_with("Meet: Test Person 5"), "the panel shows")
 	hud.show_state({"meet": null})
 	check(not hud._meet.visible, "boarded or missed: the panel goes")
 	hud.queue_free()
@@ -2729,7 +2729,7 @@ func test_gameplay_points() -> void:
 	map.set_origin(Vector2(1000, 2000))
 	var message := {"chunk_id": "2_4", "bounds": [1000, 2000, 1500, 2500], "roads": [], "railways": [], "waters": [], "buildings": [],
 		"taxi_stands": [[1020.0, 2040.0]],
-		"fuel_stations": [{"x": 1030.0, "y": 2060.0, "angle": 0.5, "is_area": true, "name": "Neste", "price_cents": 189}],
+		"fuel_stations": [{"x": 1030.0, "y": 2060.0, "angle": 0.5, "is_area": true, "name": "Fuel Station", "price_cents": 189}],
 		"traffic_lights": [{"id": 0, "x": 1102.0, "y": 2050.0, "angle": 1.5708}, {"id": 1, "x": 1200.0, "y": 2050.0, "angle": 0.0}],
 		"roadworks": [{"start": [1480.0, 2100.0], "end": [1540.0, 2100.0], "lane_closed": true, "half_width_m": 3.5}]}
 	message = JSON.parse_string(JSON.stringify(message))  # as the client gets it: every number a float
@@ -2739,7 +2739,7 @@ func test_gameplay_points() -> void:
 	check(MapMath.point(map.origin, 1020.0, 2040.0) == Vector2(20, -40), "a stand sits at its map position relative to the origin")
 	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._px_layers.size() == 1 and map._chunks["0_0"]._lights == null,
 		"a chunk without points adds no point layers (older servers too)")
-	check(MapChunk.fuel_board_text(message["fuel_stations"][0]) == "Neste  1.89 €/L", "the board shows the server's price")
+	check(MapChunk.fuel_board_text(message["fuel_stations"][0]) == "Fuel Station  1.89 €/L", "the board shows the server's price")
 
 	# Phases: lit as sent, unlit when not sent, redrawn only on change.
 	check(MapChunk.lamps("green") == [false, false, true] and MapChunk.lamps("red+yellow") == [true, true, false], "lamps by phase")
@@ -3045,7 +3045,7 @@ func test_rest_of_static_world() -> void:
 		"parking": [[[200, 200], [205, 200], [205, 210], [200, 210]]], "curbs": [[[0, 5], [50, 5]]],
 		"crossings": [[100, 10, 0.0, 6.0, 2.2]], "speed_bumps": [[150, 10, 0.0, 4.0, "table"]],
 		"signs": [[120, 20, "stop", 0.0]], "speed_cameras": [[3, 130, 20, 1.5]], "guardrails": [[45, 0, 45, 100]],
-		"labels": [[10, 10, "Isokatu", 4], [12, 10, "Keskusta", 0]], "level_roads": [[[-3], [[0, 50], [80, 50]], 3.0, [70, 70, 70]]]}))
+		"labels": [[10, 10, "Main Street", 4], [12, 10, "Keskusta", 0]], "level_roads": [[[-3], [[0, 50], [80, 50]], 3.0, [70, 70, 70]]]}))
 	check(map.add_chunk(message), "the rest of the static world arrives with its chunk")
 	var chunk = map._chunks["0_0"]
 	check(typeof(chunk._data["landuse"][0][2]) == TYPE_PACKED_VECTOR2_ARRAY and typeof(chunk._data["roads"][0]["points"]) == TYPE_PACKED_VECTOR2_ARRAY,
@@ -3087,11 +3087,11 @@ func test_rest_of_static_world() -> void:
 	# Labels: priority, one per name, no overlaps, zoom gates, the HUD band left free.
 	var canvas := Transform2D(0.0, Vector2(9, 9), 0.0, Vector2(640, 360))
 	var font := ThemeDB.fallback_font
-	var shown := Labels.declutter([[0, 0, "Isokatu", 4], [1, 0, "Keskusta", 0], [0, -20, "Torikatu", 4], [0, 20, "Torikatu", 4], [0, -35, "Ylhaalla", 4]],
+	var shown := Labels.declutter([[0, 0, "Main Street", 4], [1, 0, "Keskusta", 0], [0, -20, "Market Street", 4], [0, 20, "Market Street", 4], [0, -35, "Ylhaalla", 4]],
 		canvas, Vector2(1280, 720), font)
-	check(shown.map(func(l): return l[1]) == ["Keskusta", "Torikatu"],
+	check(shown.map(func(l): return l[1]) == ["Keskusta", "Market Street"],
 		"the district wins the spot over an overlapping road label; a name shows once; the HUD band (y < 80) stays free")
-	check(Labels.declutter([[0, 0, "Isokatu", 4]], Transform2D(0.0, Vector2(0.3, 0.3), 0.0, Vector2(640, 360)), Vector2(1280, 720), font).is_empty(),
+	check(Labels.declutter([[0, 0, "Main Street", 4]], Transform2D(0.0, Vector2(0.3, 0.3), 0.0, Vector2(640, 360)), Vector2(1280, 720), font).is_empty(),
 		"roads are labelled from 0.35 px/m")
 	var many: Array = []
 	for i in 50:

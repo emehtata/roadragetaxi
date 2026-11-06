@@ -58,7 +58,7 @@ def test_rwc_round_trip_preserves_scenery_objects(tmp_path):
 
 
 def test_rwc_rehydrates_building_place_associations(tmp_path, sample_world):
-    place = Place(10.0, 10.0, "K-Market", "supermarket", opening_hours="Mo-Sa 08:00-22:00", shop_type="supermarket")
+    place = Place(10.0, 10.0, "Test Grocery", "supermarket", opening_hours="Mo-Sa 08:00-22:00", shop_type="supermarket")
     building = Building(
         [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
         name="Shop",

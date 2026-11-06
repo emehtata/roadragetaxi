@@ -52,7 +52,7 @@ class FakeNPCs:
 
 def test_only_ferries_that_carry_cars():
     assert _is_car_ferry({"route": "ferry", "motor_vehicle": "yes"})
-    assert _is_car_ferry({"route": "ferry", "ferry": "secondary"})  # Vartsala
+    assert _is_car_ferry({"route": "ferry", "ferry": "secondary"})  # a road ferry
     assert not _is_car_ferry({"route": "ferry"})  # a passenger boat
     assert not _is_car_ferry({"route": "ferry", "ferry": "trunk", "motor_vehicle": "no"})
     assert not _is_car_ferry({"route": "ferry", "ferry": "footway"})

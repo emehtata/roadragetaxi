@@ -27,11 +27,11 @@ def test_unsupported_hours_fall_back_to_the_default():
 def test_a_nightclub_node_keeps_its_hours_and_a_bar_is_not_a_nightclub():
     world = build_ways([
         {"type": "node", "id": 1, "lat": 65.0, "lon": 25.47,
-         "tags": {"amenity": "nightclub", "name": "Ilona", "opening_hours": "Fr-Su 23:00-05:00"}},
+         "tags": {"amenity": "nightclub", "name": "Test Person 1", "opening_hours": "Fr-Su 23:00-05:00"}},
         {"type": "node", "id": 2, "lat": 65.0, "lon": 25.48, "tags": {"amenity": "bar", "name": "Pub"}},
     ])
     clubs = [obj for obj in world.scenery_objects if obj.kind == "nightclub"]
-    assert [(club.name, club.opening_hours) for club in clubs] == [("Ilona", "Fr-Su 23:00-05:00")]
+    assert [(club.name, club.opening_hours) for club in clubs] == [("Test Person 1", "Fr-Su 23:00-05:00")]
 
 
 def test_nightclubs_reach_one_chunk_each_from_points_and_buildings():

@@ -38,7 +38,7 @@ def test_hit_hard_a_lamp_bends_over_breaks_and_lets_the_taxi_through():
 @pytest.mark.parametrize('kind', ['bollard', 'street_lamp'])
 def test_reverse_clears_an_existing_front_corner_overlap(heading, kind):
     taxi = TaxiManager(ways=[])
-    # The reported Tervakukkatie bollard in car-local metres.
+    # The reported Flower Road bollard in car-local metres.
     along, across = 2.109298111454215, 0.9001576428779481
     post = SimpleNamespace(x=along * math.cos(heading) - across * math.sin(heading),
                            y=along * math.sin(heading) + across * math.cos(heading), kind=kind)

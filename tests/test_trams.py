@@ -8,7 +8,7 @@ from theroadragetrip.taxi import TaxiManager
 from theroadragetrip.trains import build_rail_graph
 from theroadragetrip.trams import STOP_DWELL_S, TRAM_SPEED_MPS, SAFETY_GAP_M, Tram, TramManager
 
-LINE = Railway(points_m=[(0.0, 0.0), (2000.0, 0.0)], kind="tram", stops=[(800.0, 0.0, "Kauppatori")])
+LINE = Railway(points_m=[(0.0, 0.0), (2000.0, 0.0)], kind="tram", stops=[(800.0, 0.0, "Market Square")])
 
 
 def _drive(manager, seconds, obstacles=(), view_centre=(1000.0, 0.0), view=None, dt=0.1):
@@ -102,11 +102,11 @@ def test_tram_stops_are_read_from_osm_and_trains_keep_off_tram_track():
     from theroadragetrip.osm.build import build_ways
 
     nodes = [{"type": "node", "id": 1, "lat": 60.17, "lon": 24.94},
-             {"type": "node", "id": 2, "lat": 60.17, "lon": 24.945, "tags": {"railway": "tram_stop", "name": "Senaatintori"}},
+             {"type": "node", "id": 2, "lat": 60.17, "lon": 24.945, "tags": {"railway": "tram_stop", "name": "Market Square"}},
              {"type": "node", "id": 3, "lat": 60.17, "lon": 24.95}]
     line = {"type": "way", "id": 9, "nodes": [1, 2, 3], "tags": {"railway": "tram"}}
     (railway,) = build_ways(nodes + [line]).railways
-    assert railway.kind == "tram" and [name for _, _, name in railway.stops] == ["Senaatintori"]
+    assert railway.kind == "tram" and [name for _, _, name in railway.stops] == ["Market Square"]
     assert not build_rail_graph([railway]).edges and build_rail_graph([railway], kind="tram").edges
 
 
@@ -114,13 +114,13 @@ def test_a_tram_stop_beside_the_track_is_its_stop():
     from theroadragetrip.osm.build import build_ways
 
     nodes = [{"type": "node", "id": 1, "lat": 60.17, "lon": 24.94}, {"type": "node", "id": 3, "lat": 60.17, "lon": 24.95},
-             {"type": "node", "id": 2, "lat": 60.17006, "lon": 24.945, "tags": {"railway": "tram_stop", "name": "Ritarihuone"}},
+             {"type": "node", "id": 2, "lat": 60.17006, "lon": 24.945, "tags": {"railway": "tram_stop", "name": "Test Stop"}},
              {"type": "node", "id": 4, "lat": 60.22, "lon": 24.945, "tags": {"railway": "tram_stop", "name": "Far away"}}]
     line = {"type": "way", "id": 9, "nodes": [1, 3], "tags": {"railway": "tram"}}
     (railway,) = build_ways(nodes + [line]).railways
-    assert [name for _, _, name in railway.stops] == ["Ritarihuone"]  # ~7 m beside it; not the one ~5.5 km off
+    assert [name for _, _, name in railway.stops] == ["Test Stop"]  # ~7 m beside it; not the one ~5.5 km off
     manager = TramManager([railway], "Helsinki")
-    assert list(manager.stop_nodes.values()) == ["Ritarihuone"]
+    assert list(manager.stop_nodes.values()) == ["Test Stop"]
 
 
 def test_trams_keep_right_on_a_double_line():
@@ -169,12 +169,12 @@ def test_tamperes_light_rail_is_tram_track_with_its_lines_and_stops():
 
     nodes = [{"type": "node", "id": 1, "lat": 61.50, "lon": 23.76}, {"type": "node", "id": 3, "lat": 61.50, "lon": 23.78},
              {"type": "node", "id": 2, "lat": 61.50, "lon": 23.77,
-              "tags": {"railway": "stop", "public_transport": "stop_position", "light_rail": "yes", "name": "Keskustori"}}]
+              "tags": {"railway": "stop", "public_transport": "stop_position", "light_rail": "yes", "name": "Market Square"}}]
     track = {"type": "way", "id": 9, "nodes": [1, 2, 3], "tags": {"railway": "light_rail"}}
     line = {"type": "relation", "id": 70, "tags": {"type": "route", "route": "light_rail", "ref": "1"},
             "members": [{"type": "way", "ref": 9, "role": ""}]}
     (railway,) = build_ways(nodes + [track, line]).railways
-    assert railway.kind == "light_rail" and railway.lines == ["1"] and [s[2] for s in railway.stops] == ["Keskustori"]
+    assert railway.kind == "light_rail" and railway.lines == ["1"] and [s[2] for s in railway.stops] == ["Market Square"]
     manager = TramManager([railway], "Tampere")
-    assert manager.has_track and list(manager.stop_nodes.values()) == ["Keskustori"] and manager.profile == "tram_tampere"
+    assert manager.has_track and list(manager.stop_nodes.values()) == ["Market Square"] and manager.profile == "tram_tampere"
     assert not build_rail_graph([railway]).edges  # trains keep off it

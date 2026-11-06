@@ -120,7 +120,7 @@ def test_sea_stays_inside_the_fetched_bbox():
     ]
     ways = [
         {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"natural": "coastline"}},
-        {"type": "way", "id": 11, "nodes": [3, 4], "tags": {"highway": "residential", "name": "Pitkätie"}},
+        {"type": "way", "id": 11, "nodes": [3, 4], "tags": {"highway": "residential", "name": "Long Road"}},
     ]
     seas = [w for w in build_ways(with_fetch_bbox(nodes + ways, bbox)).waters if w.kind == "sea"]
     assert seas

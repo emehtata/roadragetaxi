@@ -24,7 +24,7 @@ func run() -> void:
 	phone.set_connected(true)
 	phone.open()
 	phone.show_phone({"busy": true, "items": []})
-	phone.show_navigation({"instruction": {"maneuver": "straight", "distance_m": 4800.0, "total_m": 671400.0}}, "Aino → Helsinki")
+	phone.show_navigation({"instruction": {"maneuver": "straight", "distance_m": 4800.0, "total_m": 671400.0}}, "Test Person 1 → Helsinki")
 	for i in 6:
 		await process_frame
 	await RenderingServer.frame_post_draw

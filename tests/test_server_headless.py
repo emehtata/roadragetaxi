@@ -71,7 +71,7 @@ def test_match_day_notice_excludes_finished_games(tmp_path, monkeypatch, hour, m
 
     server = _build_server(tmp_path, monkeypatch)
     server.calendar.current = datetime(2026, 10, 17, hour, minute, second)
-    game = SimpleNamespace(start=datetime(2026, 10, 17, 18), home_team="Kärpät", away_team="Sport", venue_name="Arena")
+    game = SimpleNamespace(start=datetime(2026, 10, 17, 18), home_team="Test Home", away_team="Test Away", venue_name="Arena")
     server.world.arena_crowds = SimpleNamespace(schedule_on=lambda day: [game])
     notices = []
     monkeypatch.setattr(server, "_notify", lambda *args: notices.append(args))
@@ -319,7 +319,7 @@ def _state(server):
     )["state"]
 
 
-def test_ilokapina_blocks_taxi_requires_paid_rage_and_syncs_phone_notice(tmp_path, monkeypatch):
+def test_protest_blocks_taxi_requires_paid_rage_and_syncs_phone_notice(tmp_path, monkeypatch):
     from theroadragetrip.osm import Way
     from theroadragetrip.physics import SpatialWayGrid
     from theroadragetrip.protests import ProtestGroup
@@ -453,8 +453,8 @@ def test_road_name_and_limit_follow_the_way_under_the_taxi(tmp_path, monkeypatch
 
     server = _build_server(tmp_path, monkeypatch)
     assert _state(server)["road"] == {"name": None, "speed_limit_kmh": None, "layer": 0, "bridge": False}
-    server._current_way = SimpleNamespace(name="Isokatu", highway="primary", speed_limit_kmh=40, layer=1, is_bridge=True)
-    assert _state(server)["road"] == {"name": "Isokatu", "speed_limit_kmh": 40, "layer": 1, "bridge": True}
+    server._current_way = SimpleNamespace(name="Main Street", highway="primary", speed_limit_kmh=40, layer=1, is_bridge=True)
+    assert _state(server)["road"] == {"name": "Main Street", "speed_limit_kmh": 40, "layer": 1, "bridge": True}
     server._current_way = SimpleNamespace(name="", highway="living_street", speed_limit_kmh=None)
     assert _state(server)["road"] == {"name": "Living Street", "speed_limit_kmh": None, "layer": 0, "bridge": False}
 

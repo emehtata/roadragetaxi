@@ -27,13 +27,13 @@ def test_taxi_target_address_generation():
         points_m=[(100.0, 100.0), (200.0, 100.0)],
         highway="residential",
         half_width_m=4.5,
-        name="Kirkkokatu",
+        name="Test Street",
     )
     place = Place(x=150.0, y=100.0, name="Keskusta", kind="suburb")
     taxi_mgr = TaxiManager(ways=[way], places=[place])
 
-    addr = taxi_mgr.generate_address_for_point(150.0, 100.0, way_name="Kirkkokatu")
-    assert "Kirkkokatu" in addr
+    addr = taxi_mgr.generate_address_for_point(150.0, 100.0, way_name="Test Street")
+    assert "Test Street" in addr
     assert "Keskusta" in addr
 
 
@@ -146,7 +146,7 @@ def test_taxi_fallback_to_named_road():
         points_m=[(100.0, 100.0), (200.0, 100.0)],
         highway="residential",
         half_width_m=4.5,
-        name="Saaristonkatu",
+        name="Harbour Road",
     )
     way2 = Way(
         points_m=[(120.0, 110.0), (180.0, 110.0)],
@@ -156,7 +156,7 @@ def test_taxi_fallback_to_named_road():
     )
     taxi_mgr = TaxiManager(ways=[way1, way2])
     addr = taxi_mgr.generate_address_for_point(150.0, 110.0, way_name=None)
-    assert "Saaristonkatu" in addr
+    assert "Harbour Road" in addr
     assert "Tie " not in addr
 
 
@@ -167,17 +167,17 @@ def test_taxi_real_osm_housenumber():
         points_m=[(100.0, 100.0), (200.0, 100.0)],
         highway="residential",
         half_width_m=4.5,
-        name="Kauppakatu",
+        name="Shop Street",
     )
     bldg = Building(
         points_m=[(140.0, 110.0), (160.0, 110.0), (160.0, 130.0), (140.0, 130.0)],
         name="Kirjasto",
         housenumber="42B",
-        street="Kauppakatu",
+        street="Shop Street",
     )
     taxi_mgr = TaxiManager(ways=[way], buildings=[bldg])
-    addr = taxi_mgr.generate_address_for_point(150.0, 100.0, way_name="Kauppakatu")
-    assert "Kauppakatu 42B" in addr
+    addr = taxi_mgr.generate_address_for_point(150.0, 100.0, way_name="Shop Street")
+    assert "Shop Street 42B" in addr
 
 
 def test_taxi_named_building_target_uses_reachable_road_point():
@@ -187,7 +187,7 @@ def test_taxi_named_building_target_uses_reachable_road_point():
         points_m=[(0.0, 0.0), (300.0, 0.0)],
         highway="residential",
         half_width_m=4.5,
-        name="Asemakatu",
+        name="Station Street",
     )
     building = Building(
         points_m=[(120.0, 30.0), (180.0, 30.0), (180.0, 60.0), (120.0, 60.0)],
@@ -199,7 +199,7 @@ def test_taxi_named_building_target_uses_reachable_road_point():
 
     assert target is not None
     assert target.address == "Kaupungintalo"
-    assert target.way_name == "Asemakatu"
+    assert target.way_name == "Station Street"
     assert target.y == 0.0
     assert 120.0 <= target.x <= 180.0
 
@@ -211,13 +211,13 @@ def test_taxi_venue_target_prefers_nearby_unnamed_access_road():
         points_m=[(0.0, 0.0), (145.0, 0.0)],
         highway="primary",
         half_width_m=5.0,
-        name="Iso tie",
+        name="Test Road",
     )
     main_road_continuation = Way(
         points_m=[(145.0, 0.0), (300.0, 0.0)],
         highway="primary",
         half_width_m=5.0,
-        name="Iso tie",
+        name="Test Road",
     )
     access_road = Way(
         points_m=[(145.0, 0.0), (145.0, 70.0)],
@@ -246,7 +246,7 @@ def test_taxi_venue_target_accepts_named_amenity_place():
         points_m=[(0.0, 0.0), (100.0, 0.0)],
         highway="service",
         half_width_m=3.0,
-        name="Pihakatu",
+        name="Yard Street",
     )
     pub = Place(x=40.0, y=6.0, name="Kulmapubi", kind="pub")
     taxi_mgr = TaxiManager(ways=[way], places=[pub])
@@ -256,7 +256,7 @@ def test_taxi_venue_target_accepts_named_amenity_place():
     assert target is not None
     assert target.address == "Kulmapubi"
     assert target.venue_type == "pub"
-    assert target.way_name == "Pihakatu"
+    assert target.way_name == "Yard Street"
 
 
 def test_the_indexed_road_searches_find_what_a_scan_of_every_road_finds():
@@ -290,7 +290,7 @@ def test_the_indexed_road_searches_find_what_a_scan_of_every_road_finds():
 def test_a_building_out_of_range_is_skipped_before_the_road_scan(monkeypatch):
     import theroadragetrip.taxi as taxi_module
 
-    road = Way(points_m=[(float(x), 0.0) for x in range(0, 10001, 500)], highway="residential", half_width_m=4.5, name="Pitkätie")
+    road = Way(points_m=[(float(x), 0.0) for x in range(0, 10001, 500)], highway="residential", half_width_m=4.5, name="Long Road")
 
     def house(x, name):
         return Building(points_m=[(x, 30.0), (x + 20.0, 30.0), (x + 20.0, 50.0), (x, 50.0)], name=name)
@@ -309,13 +309,13 @@ def test_taxi_mission_lifecycle():
         points_m=[(0.0, 0.0), (100.0, 0.0)],
         highway="residential",
         half_width_m=4.5,
-        name="Torikatu",
+        name="Market Street",
     )
     way2 = Way(
         points_m=[(500.0, 0.0), (600.0, 0.0)],
         highway="primary",
         half_width_m=6.0,
-        name="Saaristonkatu",
+        name="Harbour Road",
     )
     taxi_mgr = TaxiManager(
         ways=[way1, way2],
@@ -437,7 +437,7 @@ def test_phone_offers_use_allowed_pickup_and_dropoff_locations():
         points_m=[(0.0, 0.0), (3000.0, 0.0)],
         highway="residential",
         half_width_m=4.5,
-        name="Keskuskatu",
+        name="Centre Street",
     )
     stops = [TaxiStop(500.0, 0.0), TaxiStop(2500.0, 0.0)]
     buildings = [
@@ -457,7 +457,7 @@ def test_phone_offers_use_allowed_pickup_and_dropoff_locations():
     assert len(offers) == 1
     pickup = offers[0].passenger.pickup
     dropoff = offers[0].passenger.dropoff
-    assert pickup.address in {"Kahvila", "Hotelli"} or "Keskuskatu" in pickup.address
+    assert pickup.address in {"Kahvila", "Hotelli"} or "Centre Street" in pickup.address
     assert dropoff.x not in {stop.x for stop in stops}
 
 
@@ -661,7 +661,7 @@ def test_discard_pickup_penalty():
         points_m=[(0.0, 0.0), (100.0, 0.0)],
         highway="residential",
         half_width_m=4.5,
-        name="Torikatu",
+        name="Market Street",
     )
     taxi_mgr = TaxiManager(ways=[way1])
     car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
@@ -692,7 +692,7 @@ def test_phone_offers_fall_back_to_a_road_point_with_no_buildings_or_stands(hour
         points_m=[(0.0, 0.0), (500.0, 0.0)],
         highway="residential",
         half_width_m=4.5,
-        name="Torikatu",
+        name="Market Street",
     )
     taxi_mgr = TaxiManager(ways=[way])  # no buildings, no places, no taxi stops
     taxi_mgr.game_time_seconds = hour * 3600.0
@@ -724,7 +724,7 @@ def test_respawn_penalizes_onboard_passenger():
         points_m=[(0.0, 0.0), (100.0, 0.0)],
         highway="residential",
         half_width_m=4.5,
-        name="Torikatu",
+        name="Market Street",
     )
     taxi_mgr = TaxiManager(ways=[way1], pickup_radius_m=20.0, max_stop_speed_mps=2.0)
     car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
@@ -879,9 +879,9 @@ def _grid_sceneries_with_trees(count, trees_per=8, spacing=50.0, cols=100):
 @pytest.mark.timing
 def test_unnamed_road_is_a_valid_stop():
     way = Way(points_m=[(0.0, 0.0), (400.0, 0.0)], highway="service", half_width_m=3.0)
-    taxi_mgr = TaxiManager(ways=[way], places=[Place(x=200.0, y=50.0, name="Kaukovainio", kind="suburb")], language="en")
+    taxi_mgr = TaxiManager(ways=[way], places=[Place(x=200.0, y=50.0, name="Test District", kind="suburb")], language="en")
     target = taxi_mgr.pick_random_road_point(0.0, 0.0, 50.0, 400.0)
-    assert target is not None and target.address == "Roadside, Kaukovainio"
+    assert target is not None and target.address == "Roadside, Test District"
 
 
 def test_phone_pickups_come_from_homes_on_small_streets_too():
@@ -891,25 +891,25 @@ def test_phone_pickups_come_from_homes_on_small_streets_too():
     import random
     from theroadragetrip import taxi as taxi_module
 
-    main_road = Way(points_m=[(0.0, 0.0), (1000.0, 0.0)], highway="primary", half_width_m=6.0, name="Kauppakatu")
-    side_street = Way(points_m=[(500.0, 300.0), (500.0, 700.0)], highway="residential", half_width_m=3.0, name="Majakkatie")
+    main_road = Way(points_m=[(0.0, 0.0), (1000.0, 0.0)], highway="primary", half_width_m=6.0, name="Shop Street")
+    side_street = Way(points_m=[(500.0, 300.0), (500.0, 700.0)], highway="residential", half_width_m=3.0, name="Lighthouse Road")
     office = Building(points_m=[(390.0, 10.0), (420.0, 10.0), (420.0, 30.0), (390.0, 30.0)], name="Toimistotalo",
                       building_type="office")
     house = Building(points_m=[(506.0, 490.0), (520.0, 490.0), (520.0, 505.0), (506.0, 505.0)],
-                     street="Majakkatie", housenumber="5C", building_type="detached")
+                     street="Lighthouse Road", housenumber="5C", building_type="detached")
     manager = TaxiManager([main_road, side_street], buildings=[office, house])
     manager.game_time_seconds = 9 * 3600.0  # a morning: building pickups
     random.seed(4)
     picks = [manager.pick_phone_pickup(0.0, 400.0) for _ in range(400)]
-    homes = [pick for pick in picks if pick.address == "Majakkatie 5C"]
-    assert all(pick.way_name == "Majakkatie" for pick in homes)
+    homes = [pick for pick in picks if pick.address == "Lighthouse Road 5C"]
+    assert all(pick.way_name == "Lighthouse Road" for pick in homes)
     assert abs(len(homes) / len(picks) - taxi_module.HOME_PICKUP_SHARE) < 0.1
 
 
 def test_home_pickup_is_on_the_address_street_not_a_closer_main_road():
     """Reported: a home's pickup was placed on the nearer main road, not its own street."""
     from theroadragetrip.osm import Building
-    main = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="secondary", half_width_m=5.0, name="Pääkatu")
+    main = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="secondary", half_width_m=5.0, name="Main Street")
     side = Way(points_m=[(100.0, 0.0), (100.0, 60.0), (160.0, 60.0)], highway="residential", half_width_m=3.0,
                name="Kotikuja")
     house = Building(points_m=[(110.0, 15.0), (120.0, 15.0), (120.0, 25.0), (110.0, 25.0)], housenumber="2",

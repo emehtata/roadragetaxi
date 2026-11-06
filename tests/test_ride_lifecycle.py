@@ -17,8 +17,8 @@ from theroadragetrip.taxi import TaxiManager, TaxiState
 def make_taxi(seed=3):
     random.seed(seed)
     ways = [
-        Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5, name="Torikatu"),
-        Way(points_m=[(500.0, 0.0), (600.0, 0.0)], highway="primary", half_width_m=6.0, name="Saaristonkatu"),
+        Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=4.5, name="Market Street"),
+        Way(points_m=[(500.0, 0.0), (600.0, 0.0)], highway="primary", half_width_m=6.0, name="Harbour Road"),
     ]
     residents = ResidentManager()
     taxi = TaxiManager(ways=ways, min_distance_m=100.0, max_distance_m=1000.0, pickup_radius_m=20.0,

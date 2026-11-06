@@ -44,7 +44,7 @@ def test_client_translates_all_activity_names():
 def test_german_notifications_and_currency():
     from theroadragetrip.fare import format_euros
     assert normalize_language("de") == "de"
-    assert tr("de", "boarded_destination", name="Aino", address="Kirkkokatu 4") == "Aino ist eingestiegen! Fahrtziel: Kirkkokatu 4"
+    assert tr("de", "boarded_destination", name="Test Person 1", address="Test Street 4") == "Test Person 1 ist eingestiegen! Fahrtziel: Test Street 4"
     assert format_euros(1234, "de") == "12,34 €"
 
 
@@ -56,8 +56,8 @@ def test_german_server_language_argument(monkeypatch):
 
 
 @pytest.mark.parametrize("state,expected", [
-    ("PICKUP", "Kyyti peruttu! Asiakkaan Aino nouto peruttu (-150 pistettä)"),
-    ("DROPOFF", "Kyyti peruttu! Asiakas Aino jäi kyydistä (-150 pistettä)"),
+    ("PICKUP", "Kyyti peruttu! Asiakkaan Test Person 1 nouto peruttu (-150 pistettä)"),
+    ("DROPOFF", "Kyyti peruttu! Asiakas Test Person 1 jäi kyydistä (-150 pistettä)"),
 ])
 def test_a_discarded_fare_is_announced_in_the_game_language(state, expected):
     """The cancel notice was English whatever the language (2026-10-22 screenshot)."""
@@ -65,7 +65,7 @@ def test_a_discarded_fare_is_announced_in_the_game_language(state, expected):
 
     manager = TaxiManager(ways=[])
     manager.set_language("fi")
-    manager.current_passenger = TaxiPassenger("Aino", TaxiTarget(0, 0, "A"), TaxiTarget(50, 0, "B"))
+    manager.current_passenger = TaxiPassenger("Test Person 1", TaxiTarget(0, 0, "A"), TaxiTarget(50, 0, "B"))
     manager.state = state
     manager.discard_mission(0.0, 0.0)
     assert manager.notification_msg == expected

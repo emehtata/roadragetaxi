@@ -74,7 +74,7 @@ def test_speed_bump_at_a_t_junction_snaps_to_the_through_road_not_the_side_stree
     that merely starts there. Picking whichever's enumerated first used to
     be a coin flip, and landing on the side street put the rendered bar up
     to 90 degrees off the real crossing/bump - confirmed against real OSM
-    data (Oulu: Rantakatu x Pakkahuoneenkatu, ~57 deg vs ~142 deg)."""
+    data (Oulu: a shore street x a harbour street, ~57 deg vs ~142 deg)."""
     elements = [
         {"type": "node", "id": 1, "lat": 60.000, "lon": 25.000},
         # The junction vertex - also the crossing/speed-bump node.

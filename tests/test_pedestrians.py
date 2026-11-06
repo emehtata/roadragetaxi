@@ -2019,7 +2019,7 @@ def test_viewport_spawning_stops_at_its_budget_and_resumes_next_tick(monkeypatch
 def test_dog_walk_does_not_fall_back_to_car_road_for_disconnected_sidewalk(monkeypatch):
     from theroadragetrip.activities import ActivityContext, ActivityInstance
     from theroadragetrip.activities.plugins.dog_walking import DogWalkingPlugin
-    # Route and geometry recorded in the screenshot's Saaristonkatu map.
+    # Route and geometry recorded in the screenshot's Harbour Road map.
     start = (427707.34734932275, 7210560.564095313)
     target = (427701.23971883836, 7210493.831170409)
     way = Way(points_m=[(427705.6754025336, 7210558.464672473),
