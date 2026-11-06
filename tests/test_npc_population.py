@@ -1009,6 +1009,7 @@ def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
     this project's own testing checklist ("household association
     survives a full drive-park-drive-home cycle") - not just the single
     leg most other tests exercise."""
+    random.seed(2)  # placement is random; keep this scenario fixed
     from theroadragetrip.npc import find_and_start_npc_trip
 
     ways = _city_block_grid()
