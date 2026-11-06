@@ -43,8 +43,11 @@ func test_model_sizes_match_sim() -> void:
 				root.add_child(vnode)
 				vnode.scale = B3.model_scale(variant, real[0], real[1])
 				var vbox := _model_aabb(vnode)
-				check(absf(vbox.size.z / real[0] - 1.0) <= 0.1 and absf(vbox.size.x / real[1] - 1.0) <= 0.1,
-					"%s rendered %.2f x %.2f m, sim %s" % [variant, vbox.size.z, vbox.size.x, real])
+				var wide: bool = B3.MODEL_WIDTH.has(variant)  # MODEL_WIDTH replaces the sim width, 3 %
+				var want_w: float = B3.MODEL_WIDTH[variant] if wide else real[1]
+				var tol := 0.03 if wide else 0.1
+				check(absf(vbox.size.z / real[0] - 1.0) <= tol and absf(vbox.size.x / want_w - 1.0) <= tol,
+					"%s rendered %.2f x %.2f m, want %.2f x %.2f" % [variant, vbox.size.z, vbox.size.x, real[0], want_w])
 				if kind == "e_scooter":  # handlebar at a standing rider's hands; the rider's hips (seat 0.85 m) above the deck, at or under the bar
 					print("%s rendered %.3f m high" % [variant, vbox.size.y])
 					check(absf(vbox.size.y / 1.2 - 1.0) <= 0.1, "%s rendered %.2f m high, real 1.2" % [variant, vbox.size.y])
@@ -67,6 +70,20 @@ func test_model_sizes_match_sim() -> void:
 			var raw_length := raw.size.x if along_x else raw.size.z
 			check(is_equal_approx(box.size.y / length, raw.size.y / raw_length), "%s keeps its height to length" % kind)
 		node.free()
+
+
+## docs/specs/mountain-bike-size-override.md 1-2: the bars keep the model's 0.78 m, not the sim's 0.6.
+func test_mountain_bike_keeps_its_width() -> void:
+	var s := B3.model_scale("mountain_bike", 1.8, 0.6)
+	check(absf(s.x - 1.0) <= 0.001 and is_equal_approx(s.z, 1.8 / 1.885) and s.y == 1.0, "mountain_bike scale %s" % s)
+	var node: Node3D = B3.MODEL_SCENES["mountain_bike"].instantiate()
+	root.add_child(node)
+	node.scale = s
+	var box := _model_aabb(node)
+	print("mountain_bike rendered %.3f x %.3f x %.3f m" % [box.size.x, box.size.y, box.size.z])
+	check(absf(box.size.x / 0.78 - 1.0) <= 0.03 and absf(box.size.z / 1.8 - 1.0) <= 0.03,
+		"mountain_bike rendered %.2f x %.2f m, want 1.80 x 0.78" % [box.size.z, box.size.x])
+	node.free()
 
 
 func test_model_variant_stable_and_covering() -> void:
@@ -193,6 +210,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_forest_canopy()
 	test_car_glazing_is_dark_and_reflective()
 	test_model_sizes_match_sim()
+	test_mountain_bike_keeps_its_width()
 	test_walk_pose_phase_changes_mesh()
 	test_scooter_rider_feet_on_deck()
 	test_walk_pose_changes_every_step()

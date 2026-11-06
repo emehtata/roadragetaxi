@@ -501,6 +501,9 @@ const MODEL_SIZE := {  # [width, length] in the source scenes, metres
 const UNIFORM_SCALE_MODELS := ["e_scooter", "camper_van"]
 ## Source and rendered height (m) overriding the length factor: the scooter's bar at a standing rider's hands.
 const MODEL_HEIGHT := {"e_scooter": [0.970, 1.2]}
+## Rendered width (m) replacing the sim width, only for models whose source width is over 15 % off the
+## sim's: the mountain bike's 0.78 m riser bars (the sim's 0.6 m is the body, bars overhang as mirrors).
+const MODEL_WIDTH := {"mountain_bike": 0.78}
 ## The 3D scooter rider's hips (the _rider body's bottom), between the deck and the bar.
 const SCOOTER_RIDER_SEAT := 0.85
 const SCOOTER_DECK_Y := 0.12
@@ -877,6 +880,8 @@ static func model_scale(kind: String, length: float, width: float) -> Vector3:
 	var up := length / source.y if kind in UNIFORM_SCALE_MODELS else 1.0
 	if kind in MODEL_HEIGHT:
 		up = MODEL_HEIGHT[kind][1] / MODEL_HEIGHT[kind][0]
+	if kind in MODEL_WIDTH:
+		width = MODEL_WIDTH[kind]
 	if kind in ["city_bus", "train_locomotive", "train_coach"]:
 		return Vector3(length / source.y, up, width / source.x)
 	return Vector3(width / source.x, up, length / source.y)

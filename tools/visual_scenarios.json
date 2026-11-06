@@ -808,6 +808,36 @@
       ]
     },
     {
+      "id": "vehicle_bike_close_day",
+      "description": "City bicycle and mountain bike side by side, very close, by day",
+      "why": "docs/specs/mountain-bike-size-override.md AC 7: the bikes lineup is too far to see bar width and wheels.",
+      "city": "Helsinki",
+      "pose": [
+        385351.8,
+        6671751.2,
+        2.15
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 6.5,
+      "requires": {},
+      "measure_s": 2,
+      "lineup": true,
+      "lineup_along_road": true,
+      "lineup_kinds": [
+        "bicycle"
+      ]
+    },
+    {
       "id": "vehicle_lineup_bikes_night",
       "description": "Bicycle and e-scooter rows only, close: each kind's model variants side by side, by night",
       "why": "docs/specs/vehicle-model-variants.md AC 5: the lineup's zoom is too far to tell the models apart.",

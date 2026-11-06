@@ -117,3 +117,8 @@ def test_moped_has_no_spawner_or_drawn_kind():
     assert not hits
     audit = (root / "docs/specs/vehicle-realism-audit.md").read_text()
     assert "moped: closed" in audit
+
+
+def test_bicycle_sim_size_unchanged():  # the mountain bike's wider render is client-side only
+    bicycle = vehicle_definition("bicycle")
+    assert (bicycle.length_m, bicycle.width_m) == (1.8, 0.6)

@@ -27,7 +27,7 @@ Reference values: base.py where it exists, otherwise typical Finnish fleet value
 - tractor: 4.0 x 2.2 x 2.8, rear wheels about 2x front diameter, cab over the rear axle.
 - camper_van: 6.2-7.0 x 2.3 x 2.9, van cab plus a wider living box, 2 axles.
 - motorcycle: 2.2 x 0.8 x 1.2; moped: 1.8 x 0.7 x 1.1 with open step-through frame (no tank between knees).
-- bicycle: 1.8 x 0.6 x 1.05, 2 x 0.7 m wheels; e_scooter: 1.1-1.2 x 0.5 x 1.2, deck about 0.15 m up.
+- bicycle: 1.8 x 0.6 x 1.05, 2 x 0.7 m wheels (mountain_bike model renders 0.78 m wide at its bars via MODEL_WIDTH, sim stays 0.6; no squeeze); e_scooter: 1.1-1.2 x 0.5 x 1.2, deck about 0.15 m up.
 - tram: about 2.4-2.65 wide, 3.4-3.8 high, pantograph on the roof, doors both sides; train: no pantograph only if diesel.
 - taxi: car dimensions; at night head lamps, tail lamps and lit roof sign visible from above.
 
