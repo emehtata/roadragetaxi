@@ -94,6 +94,10 @@ var _broken := PackedInt32Array()  # indices of this chunk's street lights that 
 var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state calendar.season)
 var _fields_frozen = null  # explicit server ice state; old servers use the winter weight
 var _trees_leafless := false
+var _forest_rows: Array = []  # --outdoor-3d: forest_trees, [layer point, kind, variation]
+var _forest_task := -1
+var forest_ms := [0.0, 0.0]  # the 3D forest's CPU time: placement, instance build (worker threads)
+var _forest_look := []  # the season and leaflessness the 3D forest was built for
 var _season_layers: Array[Node2D] = []  # landuse and islands: their green kinds follow the season
 var _site_details := {}  # area index -> cached decorative positions; snow redraws only change colours
 var _signs: Node2D = null  # signs and speed cameras, if any
@@ -105,6 +109,8 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:  # light nodes of a chunk without lights never joined the tree
 		if _building_task >= 0:
 			WorkerThreadPool.wait_for_task_completion(_building_task)
+		if _forest_task >= 0:
+			WorkerThreadPool.wait_for_task_completion(_forest_task)
 		for node in [_pools, _floods, _heads, building_node] + meshes_3d:
 			if is_instance_valid(node) and node.get_parent() == null:
 				node.free()
@@ -140,7 +146,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"), null, true)
 		landuse.material = SURFACE_MATERIAL
 		if prepared["forest_mask"] != null:
-			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse", CANOPY_MARGIN_M))
+			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse", CANOPY_MARGIN_M), null, not prepared["forest_trees"].is_empty())  # 3D: the forest's own trees
 			var material := FOREST_MATERIAL.duplicate() as ShaderMaterial
 			var mask := ImageTexture.create_from_image(prepared["forest_mask"])
 			material.set_shader_parameter("canopy_mask", mask)
@@ -223,7 +229,9 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		add.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 		_floods.material = add
 		_floods.draw.connect(_draw_floodlights.bind(_floods))  # drawn once; MapLayer shows and fades it
-	if not message.get("trees", []).is_empty() or not message.get("bollards", []).is_empty() or not message.get("scenery_objects", []).is_empty():
+	_forest_rows = prepared["forest_trees"]
+	forest_ms[0] = prepared.get("forest_place_ms", 0.0)
+	if not message.get("trees", []).is_empty() or not message.get("bollards", []).is_empty() or not message.get("scenery_objects", []).is_empty() or not _forest_rows.is_empty():
 		_trees = _add_layer(6, _draw_trees)
 		_px_layers.append(_trees)
 	if not message.get("construction_fences", []).is_empty():
@@ -306,7 +314,56 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "light_cells": cells, "puddle_spots": puddles, "bridge_ends": bridge_ends,
 		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points,
 		# Rasterised here, on the parse worker: on the main thread it was a 60-115 ms hitch per forest chunk.
-		"forest_mask": forest_mask(message, bounds_rect, origin) if forest_canopy and message.get("landuse", []).any(_is_forest) else null}
+		"forest_mask": null, "forest_trees": []}
+	if message.get("landuse", []).any(_is_forest) and (forest_canopy or (outdoor_3d and buildings_3d)):
+		var mask := forest_mask(message, bounds_rect, origin)
+		message["prepared"]["forest_mask"] = mask if forest_canopy else null
+		if outdoor_3d and buildings_3d:  # the 3D forest's trees, placed here off the main thread too
+			var started := Time.get_ticks_usec()
+			message["prepared"]["forest_trees"] = forest_trees(mask, bounds_rect, origin)
+			message["prepared"]["forest_place_ms"] = (Time.get_ticks_usec() - started) / 1000.0
+
+
+const FOREST_CELL_M := 4.5  # forest_trees: one candidate tree per cell of this world grid
+
+
+static func _hash(x: float, y: float) -> float:
+	return fposmod(sin(x * 127.1 + y * 311.7) * 43758.5453, 1.0)
+
+
+## The 3D forest: deterministic trees on the forest mask's red (forest)
+## pixels only - roads, buildings, water and parking are already cut out.
+## One candidate per FOREST_CELL_M world cell, jittered and thinned by a
+## patchy density, its species from a stand type per 60 m patch (pine,
+## spruce or mixed), all hashed from world coordinates: the same trees
+## whichever chunk origin asks. Rows [layer point, kind, variation].
+static func forest_trees(mask: Image, bounds_rect: Rect2, origin: Vector2) -> Array:
+	var out := []
+	var west := origin.x + bounds_rect.position.x
+	var south := origin.y - bounds_rect.end.y
+	for i in range(floori(west / FOREST_CELL_M), ceili((west + bounds_rect.size.x) / FOREST_CELL_M)):
+		for j in range(floori(south / FOREST_CELL_M), ceili((south + bounds_rect.size.y) / FOREST_CELL_M)):
+			var density := 0.45 + 0.5 * _hash(floorf(i / 6.0) + 0.37, floorf(j / 6.0) - 0.71)  # thinner and denser stands
+			if _hash(i + 0.13, j + 0.29) > density:
+				continue
+			var x := (i + 0.1 + 0.8 * _hash(i + 0.5, j)) * FOREST_CELL_M
+			var y := (j + 0.1 + 0.8 * _hash(i, j + 0.5)) * FOREST_CELL_M
+			var at := MapMath.point(origin, x, y)
+			var px := floori(at.x - bounds_rect.position.x)
+			var py := floori(at.y - bounds_rect.position.y)
+			if px < 0 or py < 0 or px >= mask.get_width() or py >= mask.get_height() or mask.get_pixel(px, py).r < 0.5:
+				continue
+			var stand := _hash(floorf(x / 60.0) + 0.91, floorf(y / 60.0) + 0.17)  # Finnish stands: pine-led, spruce-led, mixed
+			var roll := _hash(i + 0.77, j + 0.61)
+			var kind := "pine"
+			if stand < 0.45:
+				kind = "pine" if roll < 0.8 else "birch" if roll < 0.9 else "spruce"
+			elif stand < 0.75:
+				kind = "spruce" if roll < 0.75 else "birch" if roll < 0.9 else "pine"
+			else:
+				kind = "pine" if roll < 0.4 else "spruce" if roll < 0.7 else "birch"
+			out.append([at, kind, _hash(i + 0.33, j + 0.47)])
+	return out
 
 
 ## The DEM ground's height at layer point `at` on a prepared grid (0 without one).
@@ -1676,22 +1733,35 @@ static func fence_lines(points: PackedVector2Array) -> Array:
 ## --outdoor-3d: this chunk's trees (as the 2D crowns: seasonal colour, a
 ## leafless birch's bare crown, a felled one lying) and standing bollards as
 ## buildings_3d instances, rebuilt when the layer would redraw.
+func _tree_row(kind: String, variation: float) -> Array:
+	var style := tree_style(kind, variation)
+	var crown: Color = style["crown"]
+	var radius: float = style["radius"]
+	if kind == "pine" or kind == "spruce":
+		crown = crown.lerp(Color8(226, 234, 238), clampf(_season[0], 0.0, 1.0))
+	elif _trees_leafless and kind == "birch":
+		crown = Color8(91, 70, 48).lerp(Color8(226, 234, 238), 0.6 * clampf(_season[0], 0.0, 1.0))
+		radius *= 0.6
+	else:
+		crown = seasonal_color(crown, _season)
+	return [Vector2.ZERO, kind, radius, crown, style["trunk"], NAN]
+
+
 func _trees_3d() -> void:
 	var rows: Array = []
 	for tree in _data.get("trees", []):
-		var kind := str(tree[2])
-		var style := tree_style(kind, float(tree[3]))
-		var crown: Color = style["crown"]
-		var radius: float = style["radius"]
-		if kind == "pine" or kind == "spruce":
-			crown = crown.lerp(Color8(226, 234, 238), clampf(_season[0], 0.0, 1.0))
-		elif _trees_leafless and kind == "birch":
-			crown = Color8(91, 70, 48).lerp(Color8(226, 234, 238), 0.6 * clampf(_season[0], 0.0, 1.0))
-			radius *= 0.6
-		else:
-			crown = seasonal_color(crown, _season)
+		var row := _tree_row(str(tree[2]), float(tree[3]))
 		var key := obstacle_key(tree[0], tree[1])
-		rows.append([MapMath.point(_origin, tree[0], tree[1]), kind, radius, crown, style["trunk"], float(_fallen[key]) if _fallen.has(key) else NAN])
+		row[0] = MapMath.point(_origin, tree[0], tree[1])
+		row[5] = float(_fallen[key]) if _fallen.has(key) else NAN
+		rows.append(row)
+	if not _forest_rows.is_empty() and _forest_look != [_season, _trees_leafless]:  # rebuilt for the season only, not per felled tree
+		_forest_look = [_season.duplicate(), _trees_leafless]
+		if _forest_task >= 0:
+			WorkerThreadPool.wait_for_task_completion(_forest_task)
+		B3._tree_mesh("trunk")  # the shared meshes made here, never raced by two workers
+		# Built on a worker: thousands of instances took 20-70 ms on the main thread per forest chunk.
+		_forest_task = WorkerThreadPool.add_task(func(): _forest_ready.call_deferred(_forest_node()))
 	for obj in _data.get("scenery_objects", []):
 		if obj[2] == "shrub":
 			rows.append([MapMath.point(_origin, obj[0], obj[1]), "shrub", 0.6, seasonal_color(Color8(52, 96, 44), _season), Color.BLACK, NAN])
@@ -1699,7 +1769,7 @@ func _trees_3d() -> void:
 	for post in _data.get("bollards", []):
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			bollards.append(MapMath.point(_origin, post[0], post[1]))
-	_set_dynamic_3d("trees", B3.trees_node(rows, bollards))
+	_set_dynamic_3d("trees", B3.trees_node(rows, bollards, ground_heights))
 
 
 ## --outdoor-3d: biergarten tables and graves (Detail.site_detail_positions) for the 3D props.
@@ -1783,6 +1853,26 @@ func _lamps_3d() -> void:
 
 
 ## A rebuilt 3D part of this chunk replaces the old one in the 3D view.
+func _forest_node() -> Node3D:
+	var started := Time.get_ticks_usec()
+	var rows := []
+	for tree in _forest_rows:
+		var row := _tree_row(tree[1], tree[2])
+		row[0] = tree[0]
+		row[2] *= 1.15 + 0.35 * tree[2]  # forest-grown: taller than a park tree
+		rows.append(row)
+	var node := B3.forest_node(rows, ground_heights)
+	forest_ms[1] = (Time.get_ticks_usec() - started) / 1000.0
+	return node
+
+
+func _forest_ready(node: Node3D) -> void:
+	if _forest_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_forest_task)
+		_forest_task = -1
+	_set_dynamic_3d("forest", node)
+
+
 func _set_dynamic_3d(name: String, node: Node3D) -> void:
 	if _dynamic_3d.has(name) and is_instance_valid(_dynamic_3d[name]):
 		_dynamic_3d[name].queue_free()

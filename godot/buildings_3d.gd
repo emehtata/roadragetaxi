@@ -54,6 +54,7 @@ var windshield_on := false
 var windshield_at := Vector2.ZERO
 var windshield_heading := 0.0
 var windshield_elevation := 0.0
+var test_eye := {}  # visual tests only: "at" (layer point, else the windshield), "height" m above the ground there, "yaw" rad left of the heading
 static var opaque := false  # --outdoor-3d (use_shaded): the view draws its own ground, shaded by real lights
 const GROUND := Color(0.27, 0.33, 0.25)  # map_layer._draw_ground's open ground
 const SUN_ENERGY := 1.0  # --outdoor-3d light: full clear-sky sun, plus the ambient fill below
@@ -303,9 +304,13 @@ func _process(delta: float) -> void:
 			_camera.environment.background_mode = Environment.BG_SKY
 		var forward := Vector3(cos(windshield_heading), 0.0, -sin(windshield_heading))
 		_camera.position = Vector3(windshield_at.x, 1.35 + windshield_elevation, windshield_at.y) + forward * 0.55
+		if not test_eye.is_empty():
+			var at: Vector2 = test_eye.get("at", windshield_at)
+			forward = forward.rotated(Vector3.UP, float(test_eye.get("yaw", 0.0)))
+			_camera.position = to_3d(at, float(test_eye.get("height", 1.35)) + float(test_eye.get("ground", windshield_elevation)))
 		_camera.look_at(_camera.position + forward * 100.0, Vector3.UP)
 		_camera.near = 0.08
-		_camera.far = 350.0
+		_camera.far = 1200.0  # far enough to see a forest edge across an open field (the forest's far LOD starts at 400 m)
 	else:
 		if opaque:
 			_camera.environment.background_mode = Environment.BG_COLOR
@@ -2308,6 +2313,18 @@ static func _structures(out: Dictionary, ground: Dictionary) -> void:
 ## when the chunk redraws them (one felled, the season); rows
 ## [position, kind, crown radius, crown colour, trunk colour, felled angle or NAN].
 static var _tree_meshes := {}
+const FOREST_NEAR_M := 400.0  # forest_node: detailed crowns nearer (the chunk's centre), simple ones beyond
+
+
+## A crown built from primitives into one mesh: [mesh, transform] parts,
+## base at y 0, top at y 1, radius about 1.
+static func _merged(parts: Array, material: Material) -> Mesh:
+	var tool := SurfaceTool.new()
+	for part: Array in parts:
+		tool.append_from(part[0], 0, part[1])
+	var mesh := tool.commit()
+	mesh.surface_set_material(0, material)
+	return mesh
 
 
 static func _tree_mesh(name: String) -> Mesh:
@@ -2335,35 +2352,27 @@ static func _tree_mesh(name: String) -> Mesh:
 		cone.rings = 1
 		for mesh in [trunk, crown, cone]:
 			mesh.material = material
-		_tree_meshes = {"trunk": trunk, "crown": crown, "cone": cone}
+		var tiers := []  # spruce: four drooping branch whorls narrowing to the top
+		for i in 4:
+			tiers.append([cone, Transform3D(Basis().scaled(Vector3(1.0 - 0.2 * i, 0.34, 1.0 - 0.2 * i)), Vector3(0, 0.22 * i + 0.17, 0))])
+		var pine := [  # pine: a flat, lumpy umbrella of clumps
+			[crown, Transform3D(Basis().scaled(Vector3(0.7, 0.45, 0.7)), Vector3(0, 0.6, 0))],
+			[crown, Transform3D(Basis().scaled(Vector3(0.45, 0.35, 0.45)), Vector3(0.45, 0.45, 0.15))],
+			[crown, Transform3D(Basis().scaled(Vector3(0.45, 0.3, 0.45)), Vector3(-0.35, 0.5, -0.3))],
+			[crown, Transform3D(Basis().scaled(Vector3(0.35, 0.3, 0.35)), Vector3(0.05, 0.4, 0.5))]]
+		var birch := [  # birch: a tall, loose oval with offset lobes
+			[crown, Transform3D(Basis().scaled(Vector3(0.75, 0.5, 0.75)), Vector3(0, 0.42, 0))],
+			[crown, Transform3D(Basis().scaled(Vector3(0.5, 0.4, 0.5)), Vector3(0.2, 0.68, 0.1))],
+			[crown, Transform3D(Basis().scaled(Vector3(0.45, 0.35, 0.45)), Vector3(-0.25, 0.3, -0.2))]]
+		_tree_meshes = {"trunk": trunk, "crown": crown, "cone": cone,
+			"spruce": _merged(tiers, material), "pine": _merged(pine, material), "birch": _merged(birch, material)}
 	return _tree_meshes[name]
 
 
-static func trees_node(rows: Array, bollards: PackedVector2Array) -> Node3D:
-	var parts := {"trunk": [], "crown": [], "cone": []}  # [Transform3D, Color]
-	for row: Array in rows:
-		var at: Vector2 = row[0]
-		var radius: float = row[2]
-		var conifer: bool = row[1] == "pine" or row[1] == "spruce"
-		var felled: float = row[5]
-		if row[1] == "shrub":  # a low round bush, no trunk
-			parts["crown"].append([Transform3D(Basis().scaled(Vector3(radius, radius * 0.8, radius)), to_3d(at, radius * 0.6)), row[3]])
-			continue
-		var trunk_top := radius * (2.6 if row[1] == "pine" else 1.0 if row[1] == "spruce" else 1.6)
-		var crown_top := trunk_top + radius * (3.2 if conifer else 1.6)
-		if not is_nan(felled):  # lying along where it fell: trunk and crown on the ground
-			var along := Vector2(cos(felled), -sin(felled))
-			var lying := Basis.looking_at(to_3d(along), Vector3.UP) * Basis(Vector3.RIGHT, -PI / 2.0)
-			parts["trunk"].append([Transform3D(lying.scaled(Vector3(radius * 0.18, trunk_top, radius * 0.18)), to_3d(at + along * trunk_top * 0.5, 0.25)), row[4]])
-			parts["crown"].append([Transform3D(Basis().scaled(Vector3(radius, radius * 0.5, radius)), to_3d(at + along * (trunk_top + radius), radius * 0.4)), row[3]])
-			continue
-		parts["trunk"].append([Transform3D(Basis().scaled(Vector3(radius * 0.16, trunk_top + radius, radius * 0.16)), to_3d(at, (trunk_top + radius) * 0.5)), row[4]])
-		if conifer:
-			parts["cone"].append([Transform3D(Basis().scaled(Vector3(radius, crown_top - trunk_top, radius)), to_3d(at, (trunk_top + crown_top) * 0.5)), row[3]])
-		else:
-			parts["crown"].append([Transform3D(Basis().scaled(Vector3(radius, radius, radius)), to_3d(at, trunk_top + radius * 0.8)), row[3]])
-	for post in bollards:
-		parts["trunk"].append([Transform3D(Basis().scaled(Vector3(0.24, 0.9, 0.24)), to_3d(post, 0.45)), Color8(48, 48, 46)])
+## `grid`: the chunk's DEM ground (trunks stand on it); `far`: the simple
+## shapes (one cone or blob per crown) instead of the species' crowns.
+static func trees_node(rows: Array, bollards: PackedVector2Array, grid := {}, far := false) -> Node3D:
+	var parts := tree_parts(rows, bollards, grid, far)
 	var node := Node3D.new()
 	for name in parts:
 		if parts[name].is_empty():
@@ -2381,6 +2390,59 @@ static func trees_node(rows: Array, bollards: PackedVector2Array) -> Node3D:
 		instance.layers = LAYER_BUILDINGS
 		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		node.add_child(instance)
+	return node
+
+
+## trees_node's instances: mesh name -> [[Transform3D, Color]].
+static func tree_parts(rows: Array, bollards: PackedVector2Array, grid := {}, far := false) -> Dictionary:
+	var parts := {"trunk": [], "crown": [], "cone": [], "spruce": [], "pine": [], "birch": []}  # [Transform3D, Color]
+	for row: Array in rows:
+		var at: Vector2 = row[0]
+		var radius: float = row[2]
+		var conifer: bool = row[1] == "pine" or row[1] == "spruce"
+		var felled: float = row[5]
+		var ground := ground_height(grid, at)
+		if row[1] == "shrub":  # a low round bush, no trunk
+			parts["crown"].append([Transform3D(Basis().scaled(Vector3(radius, radius * 0.8, radius)), to_3d(at, ground + radius * 0.6)), row[3]])
+			continue
+		var trunk_top := radius * (2.6 if row[1] == "pine" else 1.0 if row[1] == "spruce" else 1.6)
+		var crown_top := trunk_top + radius * (3.2 if conifer else 1.6)
+		if not is_nan(felled):  # lying along where it fell: trunk and crown on the ground
+			var along := Vector2(cos(felled), -sin(felled))
+			var lying := Basis.looking_at(to_3d(along), Vector3.UP) * Basis(Vector3.RIGHT, -PI / 2.0)
+			parts["trunk"].append([Transform3D(lying.scaled(Vector3(radius * 0.18, trunk_top, radius * 0.18)), to_3d(at + along * trunk_top * 0.5, ground + 0.25)), row[4]])
+			parts["crown"].append([Transform3D(Basis().scaled(Vector3(radius, radius * 0.5, radius)), to_3d(at + along * (trunk_top + radius), ground + radius * 0.4)), row[3]])
+			continue
+		parts["trunk"].append([Transform3D(Basis().scaled(Vector3(radius * 0.16, trunk_top + radius, radius * 0.16)), to_3d(at, ground + (trunk_top + radius) * 0.5)), row[4]])
+		if far:
+			if conifer:
+				parts["cone"].append([Transform3D(Basis().scaled(Vector3(radius, crown_top - trunk_top, radius)), to_3d(at, ground + (trunk_top + crown_top) * 0.5)), row[3]])
+			else:
+				parts["crown"].append([Transform3D(Basis().scaled(Vector3(radius, radius, radius)), to_3d(at, ground + trunk_top + radius * 0.8)), row[3]])
+			continue
+		var turn := Basis(Vector3.UP, fposmod(at.x * 12.9898 + at.y * 78.233, TAU))  # each crown its own way round
+		var top := ground + trunk_top - (radius * 0.4 if row[1] == "birch" else 0.0)
+		var tall := crown_top - trunk_top + (radius * 0.4 if row[1] == "birch" else 0.0)
+		parts[row[1]].append([Transform3D(turn.scaled(Vector3(radius, tall, radius)), to_3d(at, top)), row[3]])
+	for post in bollards:
+		parts["trunk"].append([Transform3D(Basis().scaled(Vector3(0.24, 0.9, 0.24)), to_3d(post, ground_height(grid, post) + 0.45)), Color8(48, 48, 46)])
+	return parts
+
+
+## A chunk's procedural forest (map_chunk.forest_trees): the species'
+## crowns within FOREST_NEAR_M of the camera, simple cones and blobs beyond
+## (Godot's visibility ranges, per chunk instance batch).
+static func forest_node(rows: Array, grid: Dictionary) -> Node3D:
+	var node := trees_node(rows, PackedVector2Array(), grid)
+	for child: GeometryInstance3D in node.get_children():
+		child.visibility_range_end = FOREST_NEAR_M
+	var far := trees_node(rows, PackedVector2Array(), grid, true)
+	for child: GeometryInstance3D in far.get_children():
+		child.visibility_range_begin = FOREST_NEAR_M
+		child.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		far.remove_child(child)
+		node.add_child(child)
+	far.free()
 	return node
 
 

@@ -153,7 +153,32 @@ def compare(a: Path, b: Path, out: Path) -> None:
               f"p99 {frames.get('p99_ms', 0):.1f} ms, render {result.get('render', {})}")
 
 
-def find(city: str, near: tuple, radius: float) -> None:
+def find_forest(world, near: tuple, radius: float) -> None:
+    """Road points ranked by the forest (landuse=forest, natural=wood) within
+    80 m: dense first, then the sparsest that still see some forest."""
+    from theroadragetrip.geo import point_in_polygon
+    forests = [s for s in world.sceneries if s.kind in ("forest", "wood") and len(s.points_m) >= 3]
+
+    def forest_at(x, y):
+        return any(f.bbox[0] <= x <= f.bbox[2] and f.bbox[1] <= y <= f.bbox[3] and point_in_polygon(x, y, f.points_m) for f in forests)
+
+    rows = []
+    for way in world.ways:
+        if not way.is_drivable or way.is_bridge or way.is_tunnel or way.layer != 0:
+            continue
+        for (ax, ay), (bx, by) in zip(way.points_m, way.points_m[1:]):
+            x, y = (ax + bx) / 2, (ay + by) / 2
+            if math.hypot(x - near[0], y - near[1]) > radius:
+                continue
+            cover = sum(forest_at(x + dx, y + dy) for dx in range(-80, 81, 20) for dy in range(-80, 81, 20)) / 81
+            rows.append((round(cover, 2), round(x, 1), round(y, 1), round(math.atan2(by - ay, bx - ax), 3), way.name or way.highway))
+    rows.sort(key=lambda r: -r[0])
+    print("forest_cover_80m x y heading street   (dense first, then sparse)")
+    for row in rows[:12] + [r for r in rows if 0.0 < r[0] <= 0.15][:12]:
+        print(*row)
+
+
+def find(city: str, near: tuple, radius: float, forest: bool = False) -> None:
     """Rank drivable road points near `near` by street lamps and buildings
     around them (and how many building colours): candidate scenario poses
     from the real map, with the heading along the road."""
@@ -166,6 +191,8 @@ def find(city: str, near: tuple, radius: float) -> None:
 
     args, config = parse_server_args()
     world = SimulationServer(args, config).world
+    if forest:
+        return find_forest(world, near, radius)
     lamps = [(x, y) for x, y, *_ in place_street_lights(world)]
     centres = [((min(p[0] for p in b.points_m) + max(p[0] for p in b.points_m)) / 2,
                 (min(p[1] for p in b.points_m) + max(p[1] for p in b.points_m)) / 2, tuple(building_style(b)[0]), b)
@@ -204,6 +231,7 @@ def main() -> None:
     fnd.add_argument("--city", required=True)
     fnd.add_argument("--near", nargs=2, type=float, required=True, metavar=("X", "Y"))
     fnd.add_argument("--radius", type=float, default=800.0)
+    fnd.add_argument("--forest", action="store_true", help="rank road points by nearby forest instead of lamps and buildings")
     args = parser.parse_args()
     if args.command == "list":
         for s in scenarios().values():
@@ -211,7 +239,7 @@ def main() -> None:
     elif args.command == "compare":
         compare(args.a, args.b, args.out)
     elif args.command == "find":
-        find(args.city, tuple(args.near), args.radius)
+        find(args.city, tuple(args.near), args.radius, args.forest)
     else:
         known = scenarios()
         failed = 0

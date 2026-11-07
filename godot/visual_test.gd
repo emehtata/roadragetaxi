@@ -136,6 +136,14 @@ func _process(delta: float) -> void:
 		key.pressed = true
 		Input.parse_input_event(key)
 		_windshield_pressed = true
+	if scenario.has("eye") and Buildings3D.current != null:  # a camera on foot or turned to a side window
+		var eye: Dictionary = scenario["eye"]
+		var test_eye := {"height": float(eye.get("height", 1.35)), "yaw": float(eye.get("yaw", 0.0))}
+		if eye.has("at"):
+			test_eye["at"] = MapMath.point(main.entities.origin, eye["at"][0], eye["at"][1])
+			test_eye["ground"] = main.map_layer.deck_height(test_eye["at"], 0)
+		Buildings3D.current.test_eye = test_eye
+		RenderingServer.viewport_set_measure_render_time(Buildings3D.current._view.get_viewport_rid(), true)
 	if scenario.get("lane_assist", false) and not _lane_assist_pressed and not main.entities.player_body().is_empty():
 		var lane_key := InputEventKey.new()  # K: "keep car on lane"
 		lane_key.keycode = KEY_K
@@ -242,7 +250,7 @@ func _check_map(centre: Vector2) -> Array:
 		for chunk in main.map_layer._chunks.values():
 			if chunk._bounds_rect.has_point(corner):
 				covered = true
-				if chunk._building_task >= 0:
+				if chunk._building_task >= 0 or chunk._forest_task >= 0:
 					missing.append("a chunk under the view is still building its meshes")
 		if not covered:
 			missing.append("no chunk loaded at %s" % corner)
@@ -430,6 +438,38 @@ func _moving(shown: Dictionary) -> int:
 	return count
 
 
+## The 3D forest's cost (docs/specs/forests-fps-3d.md section 7): tree instances
+## loaded (near detail and far LOD batches), the frame's draw calls and objects,
+## memory, the 3D pass's render times and the chunks' forest CPU times.
+func _forest_stats() -> Dictionary:
+	var near := 0
+	var far := 0
+	var place := []
+	var build := []
+	for chunk in main.map_layer._chunks.values():
+		var forest = chunk._dynamic_3d.get("forest")
+		if forest == null or not is_instance_valid(forest):
+			continue
+		place.append(chunk.forest_ms[0])
+		build.append(chunk.forest_ms[1])
+		for batch: MultiMeshInstance3D in forest.get_children():
+			if batch.visibility_range_begin > 0.0:
+				far += batch.multimesh.instance_count
+			elif batch.multimesh.mesh != Buildings3D._tree_mesh("trunk"):
+				near += batch.multimesh.instance_count
+	var view_3d: RID = Buildings3D.current._view.get_viewport_rid() if Buildings3D.current != null else RID()
+	return {"trees_loaded": near, "far_lod_crowns_loaded": far, "forest_chunks": place.size(),
+		"place_ms_max": place.max() if place else 0.0, "build_ms_max": build.max() if build else 0.0,
+		"build_ms_total": build.reduce(func(a, b): return a + b, 0.0),
+		"draw_calls": Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+		"objects": Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
+		"primitives": Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
+		"static_memory_mb": Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
+		"video_memory_mb": Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
+		"render_3d_cpu_ms": RenderingServer.viewport_get_measured_render_time_cpu(view_3d) if view_3d.is_valid() else null,
+		"render_3d_gpu_ms": RenderingServer.viewport_get_measured_render_time_gpu(view_3d) if view_3d.is_valid() else null}
+
+
 func _write(result: Dictionary) -> void:
 	var state: Dictionary = main.entities.shown_state()
 	var player: Dictionary = state.get("player", {})
@@ -440,7 +480,7 @@ func _write(result: Dictionary) -> void:
 		"game_time": [state.get("calendar", {}).get("date", "") if typeof(state.get("calendar")) == TYPE_DICTIONARY else "", state.get("game_time_seconds", null)],
 		"weather": state.get("weather", {}).duplicate(), "vehicle": {"x": player.get("x"), "y": player.get("y"), "heading": player.get("heading")},
 		"camera": {"zoom": main.camera.zoom.x, "position": [main.camera.position.x, main.camera.position.y]},
-		"scene": _counts, "elapsed_s": _elapsed})
+		"scene": _counts, "elapsed_s": _elapsed, "forest": _forest_stats()})
 	result["weather"].erase("plowed_cells")
 	if scenario.get("lineup", false) is bool and scenario.get("lineup", false):  # each lineup vehicle's close-range model
 		result["lineup_models"] = main.entities.extra_npcs.map(func(n: Dictionary) -> Array:
