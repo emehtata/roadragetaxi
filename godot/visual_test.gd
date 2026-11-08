@@ -84,14 +84,14 @@ func _walk(delta: float) -> void:
 		var door := Vector2(float(player["x"]) + c * float(player.get("length_m", 4.0)) * 0.2 - sn * float(player.get("width_m", 1.8)) * 0.85,
 			float(player["y"]) + sn * float(player.get("length_m", 4.0)) * 0.2 + c * float(player.get("width_m", 1.8)) * 0.85)
 		var walker: Dictionary = state["player_pedestrian"]
-		if walk["back"] == "vehicle":  # to the parked car at walk.target instead
+		if walk["back"] in ["vehicle", "point"]:  # to the parked car (or the map point) at walk.target instead
 			door = Vector2(walk["target"][0], walk["target"][1])
 		var to_door := door - Vector2(float(walker["x"]), float(walker["y"]))
 		main.look_yaw = to_door.angle()  # server axes: the angle is the heading
-		var arrived: bool = to_door.length() < APPROACH_M if walk["back"] == "vehicle" \
+		var arrived: bool = to_door.length() < APPROACH_M if walk["back"] in ["vehicle", "point"] \
 			else state.get("taxi_door", false) and to_door.length() < 1.2  # a step back: the taxi in view
 		if arrived:
-			main.look_pitch = 0.0 if walk["back"] == "vehicle" else -0.35  # looking down at the door; level at a car
+			main.look_pitch = 0.0 if walk["back"] == "vehicle" else -0.35  # looking down at the door (or the point); level at a car
 			main.map_layer.buildings_3d.eye_pitch = main.look_pitch
 		main.send({"throttle": 0.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0, "forward": 0.0 if arrived else 1.0, "turn": 0.0, "sprint": false})
 		if arrived:
@@ -206,6 +206,8 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_elapsed += delta
+	if scenario.has("bench_sitter") and main.entities.extra_pedestrians.is_empty():
+		_seat_bench_sitter()
 	if scenario.has("walk"):
 		_walk(delta)
 	if scenario.get("windshield", false) and not _windshield_pressed and not main.entities.player_body().is_empty():
@@ -273,6 +275,23 @@ func _process(delta: float) -> void:
 		main.get_tree().quit(1)
 
 
+## "bench_sitter": [x, y] of a mapped bench (server axes): once its chunk is
+## loaded, a figure sits on it as bench_sitting.py seats one (facing across it).
+func _seat_bench_sitter() -> void:
+	var at := Vector2(scenario["bench_sitter"][0], scenario["bench_sitter"][1])
+	var best: Array = []
+	for chunk in main.map_layer._chunks.values():
+		for o in chunk._data.get("scenery_objects", []):
+			var d := Vector2(float(o[0]), float(o[1])).distance_to(at)
+			if str(o[2]) == "bench" and d < 3.0 and (best.is_empty() or d < best[0]):  # the build aligns benches to their path
+				best = [d, o]
+	if not best.is_empty():
+		var o: Array = best[1]
+		print("visual_test: bench_sitter on the bench at %s, %.1f m from the given point" % [o, best[0]])
+		main.entities.extra_pedestrians = [{"id": "bench_sitter", "x": float(o[0]), "y": float(o[1]), "heading": float(o[3]) - PI / 2.0,
+			"animation_state": "sitting", "color": [200, 110, 20], "radius_m": 0.45}]
+
+
 ## What the scenario needs and the scene does not show yet ([] when ready).
 func check() -> Array:
 	var state: Dictionary = main.entities.shown_state()
@@ -283,6 +302,8 @@ func check() -> Array:
 	var player: Dictionary = state.get("player", {})
 	var at := Vector2(float(player.get("x", INF)), float(player.get("y", INF)))
 	var walking := scenario.has("walk")
+	if scenario.has("bench_sitter") and main.entities.extra_pedestrians.is_empty():
+		missing.append("no mapped bench at bench_sitter yet")
 	var back: String = scenario.get("walk", {}).get("back", "")
 	if walking and _walk_phase < 6:
 		missing.append("still getting out and walking")
@@ -307,6 +328,8 @@ func check() -> Array:
 			missing.append("no vehicle parked at walk.target %s" % [scenario["walk"]["target"]])
 		elif back == "vehicle" and Vector2(float(walker.get("x", INF)), float(walker.get("y", INF))).distance_to(Vector2(scenario["walk"]["target"][0], scenario["walk"]["target"][1])) >= APPROACH_M:
 			missing.append("the walker is not beside the parked car yet")
+		elif back == "point" and Vector2(float(walker.get("x", INF)), float(walker.get("y", INF))).distance_to(Vector2(scenario["walk"]["target"][0], scenario["walk"]["target"][1])) >= APPROACH_M:
+			missing.append("the walker is not at walk.target yet")
 		elif back == "door" and not state.get("taxi_door", false):
 			missing.append("the server offers no taxi door here")
 		elif back == "" and walked < float(scenario["walk"].get("min_m", 0.0)):

@@ -3648,6 +3648,10 @@ func test_buildings_3d() -> void:
 	var props_out := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
 	B3.props(props_out, [[Vector2.ZERO, 0.0, "bench"], [Vector2(5, 0), 0.0, "not_a_prop"]])
 	check(is_equal_approx(Array(props_out["deck"]).map(func(v): return v.y).max(), B3.PROPS["bench"][2]), "a bench stands its height; unknown kinds are left out")
+	check(props_out["deck"].size() >= 6 * 30, "a bench is slats, a backrest and side supports, not one box")
+	var seated: PackedVector3Array = B3.person_arrays(Color.ORANGE, "sitting", 1.0, "", 0)["verts"]
+	check(Array(seated).all(func(v): return v.x < 0.05 or v.x > 0.24 or v.y > 0.38), "a seated figure rests on the seat: nothing hangs through its front half")
+	check(Array(seated).any(func(v): return v.x > 0.35 and v.y > 0.42), "a seated figure's knees are bent, thighs forward over the seat edge")
 	var rides := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
 	var ring := PackedVector2Array([Vector2(0, 0), Vector2(20, 2), Vector2(0, 4), Vector2(-20, 2), Vector2(0, 0)])
 	B3.attractions(rides, [["drop_tower", ring]])

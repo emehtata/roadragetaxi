@@ -332,17 +332,19 @@ static func current_target(state: Dictionary) -> Dictionary:
 ## uneven frame times, godot-08.)
 var extra_npcs: Array = []  # drawn as NPCs on top of the server's (visual_test.gd lineup)
 var extra_trains: Array = []  # and trains (a lineup tram)
+var extra_pedestrians: Array = []  # and people (visual_test.gd "bench_sitter")
 
 
 func update_frame(delta: float) -> void:
 	_clock += delta
 	_frame = buffer.sample(now())
-	if not (extra_npcs.is_empty() and extra_trains.is_empty()) and not _frame.is_empty():  # a visual test's fixed lineup (visual_test.gd)
+	if not (extra_npcs.is_empty() and extra_trains.is_empty() and extra_pedestrians.is_empty()) and not _frame.is_empty():  # a visual test's fixed lineup (visual_test.gd)
 		_frame = _frame.duplicate()
 		for key in ["a", "b"]:
 			var state: Dictionary = _frame[key].duplicate()
 			state["npcs"] = state.get("npcs", []) + extra_npcs
 			state["trains"] = state.get("trains", []) + extra_trains
+			state["pedestrians"] = state.get("pedestrians", []) + extra_pedestrians
 			_frame[key] = state
 	queue_redraw()
 	if _reflectors != null and (reflectors_on or _reflectors_drawn):

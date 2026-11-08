@@ -1,6 +1,7 @@
 """Sit on a nearby OSM bench for a while (residents-live.md section 6)."""
 from __future__ import annotations
 
+import math
 import random
 
 from ..base import ActivityContext, ActivityDefinition, ActivityInstance, ActivityLocation, ActivityPlugin
@@ -38,7 +39,7 @@ class BenchSittingPlugin(ActivityPlugin):
         context.pedestrian.animation_state = "sitting"
         bench = instance.location.extra if instance.location is not None else None
         if bench is not None and bench.direction_angle is not None:
-            context.pedestrian.heading = bench.direction_angle
+            context.pedestrian.heading = bench.direction_angle - math.pi / 2  # across the seat, back to the backrest (buildings_3d BENCH)
 
     def update(self, context: ActivityContext, instance: ActivityInstance, dt: float) -> bool:
         instance.data["elapsed_s"] += dt

@@ -1293,7 +1293,7 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 	var shorts := style == 6
 	var fabric := Color8(224, 170, 54) if style == 4 else clothing.lerp(Color8(88, 91, 92), 0.22)
 	var trousers := Color8(48, 58, 74) if style % 3 == 0 else Color8(38, 43, 53) if style % 3 == 1 else Color8(79, 72, 66)
-	var offset := -0.32 if pose == "sitting" else 0.68 if pose == "riding" else -1.34 if pose == "swimming" else 0.0
+	var offset := -0.35 if pose == "sitting" else 0.68 if pose == "riding" else -1.34 if pose == "swimming" else 0.0
 	var moving := pose.begins_with("walk_") or pose.begins_with("run_")
 	var running := pose.begins_with("run_")
 	var phase := int(pose.split("_")[1]) if moving else 0
@@ -1307,8 +1307,8 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 			var z := side * 0.11
 			var lift := maxf(0.0, cos(float(phase) * TAU / 6.0) * side) * (0.15 if running else 0.1) if moving else 0.0
 			var hip := Vector3(0.0, 0.87 + offset, z) * k
-			var knee := Vector3((0.32 if pose == "sitting" else swing * side * 0.5), (0.5 if pose == "sitting" else 0.45 + lift * 0.3) + offset, z * 1.1) * k
-			var ankle := Vector3((0.38 if pose == "sitting" else swing * side), (0.09 if pose != "riding" else 0.82) + (0.0 if pose == "sitting" else lift), z * 1.1) * k
+			var knee := Vector3((0.44 if pose == "sitting" else swing * side * 0.5), (0.85 if pose == "sitting" else 0.45 + lift * 0.3) + offset, z * 1.1) * k  # sitting: thighs level on the seat
+			var ankle := Vector3((0.47 if pose == "sitting" else swing * side), (0.09 if pose != "riding" else 0.82) + (0.0 if pose == "sitting" else lift), z * 1.1) * k
 			_round_limb(out, hip, knee, 0.094 * k, 0.075 * k, trousers, 0, detail)
 			_round_part(out, knee, Vector3(0.076, 0.074, 0.075) * k, trousers, 0, detail)
 			_round_limb(out, knee, ankle, 0.073 * k, 0.046 * k, skin if shorts else trousers, 1 if shorts else 0, detail)
@@ -1326,8 +1326,9 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 				0.015 * k, 0.015 * k, Color8(225, 230, 218), 0, detail)
 	for side: float in [-1.0, 1.0]:
 		var shoulder := Vector3(0.0, 1.37 + offset, side * 0.215) * k
-		var elbow := Vector3(-side * 0.045, 1.13 + offset, side * 0.245) * k
-		var wrist := Vector3(-swing * side * 0.75, 0.91 + offset, side * 0.24) * k
+		var elbow := Vector3(0.06 if pose == "sitting" else -side * 0.045, 1.13 + offset, side * 0.245) * k
+		var wrist := Vector3(0.3, 1.0 + offset, side * 0.16) * k if pose == "sitting" \
+			else Vector3(-swing * side * 0.75, 0.91 + offset, side * 0.24) * k  # sitting: hands on the thighs
 		_round_limb(out, shoulder, elbow, 0.072 * k, 0.057 * k, fabric, 0, detail)
 		_round_part(out, elbow, Vector3(0.058, 0.06, 0.058) * k, fabric, 0, detail)
 		_round_limb(out, elbow, wrist, 0.055 * k, 0.042 * k, fabric if jacket else skin, 0 if jacket else 1, detail)
@@ -2560,7 +2561,7 @@ func roadwork_barrier(at: Vector2, heading: float, length: float) -> void:
 ## [length along its angle, width, height, colour]; the rest (shrubs, landmarks) elsewhere.
 const PROPS := {"caravan": [6.0, 2.3, 2.5, Color8(238, 234, 220)], "caravan_with_car": [10.5, 2.3, 2.5, Color8(238, 234, 220)],
 	"tent": [2.4, 2.0, 1.3, Color8(70, 120, 90)], "camper_van": [0.0, 2.3, 2.9, Color8(238, 234, 220)],  # camper_van: no default length, the row carries vehicles/base.py's (props errors without)
-	"bench": [1.4, 0.4, 0.45, Color8(120, 82, 50)], "waste_basket": [0.4, 0.4, 0.9, Color8(60, 90, 60)],
+	"bench": [1.4, 0.45, 0.85, Color8(120, 82, 50)], "waste_basket": [0.4, 0.4, 0.9, Color8(60, 90, 60)],
 	"bicycle_parking": [3.0, 0.6, 0.8, Color8(150, 150, 150)], "charging_station": [0.5, 0.3, 1.5, Color8(40, 120, 70)],
 	"statue": [1.2, 1.2, 2.6, Color8(120, 110, 95)], "picnic_table": [1.8, 1.5, 0.75, Color8(130, 92, 58)],
 	"firepit": [1.2, 1.2, 0.3, Color8(90, 85, 80)], "fountain": [4.0, 4.0, 0.6, Color8(170, 175, 180)],
@@ -2582,8 +2583,34 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 		var along: Vector2 = Vector2(cos(row[1]), -sin(row[1])) * length * 0.5
 		var across: Vector2 = along.orthogonal().normalized() * float(look[1]) * 0.5
 		var at: Vector2 = row[0]
+		if row[2] == "bench":
+			_bench(out, at, along, across, look[3])
+			continue
 		_raised_polygon_at(out, "deck", PackedVector2Array([at - along - across, at + along - across, at + along + across, at - along + across]),
 			0.0, look[2], look[3])
+
+
+## A park bench (PROPS "bench"): three seat slats at 0.46 m, two backrest
+## slats on the +across side up to 0.85 m, and a metal side frame at each end.
+## The sitter faces -across (bench_sitting.py), hips on the seat's middle.
+static func _bench(out: Dictionary, at: Vector2, along: Vector2, across: Vector2, wood: Color) -> void:
+	var u := along.normalized()
+	var v := across.normalized()
+	var half := along.length()
+	var depth := across.length()  # half the seat's depth
+	var piece := func(u0: float, u1: float, v0: float, v1: float, z0: float, z1: float, color: Color) -> void:
+		_raised_polygon_at(out, "deck", PackedVector2Array([at + u * u0 + v * v0, at + u * u1 + v * v0, at + u * u1 + v * v1, at + u * u0 + v * v1]), z0, z1, color)
+	for slat in 3:  # the seat
+		var v0 := -depth + slat * depth * 2.0 / 3.0
+		piece.call(-half, half, v0 + 0.01, v0 + depth * 2.0 / 3.0 - 0.01, 0.42, 0.46, wood)
+	for z in [0.56, 0.72]:  # the backrest
+		piece.call(-half, half, depth - 0.04, depth, z, z + 0.11, wood)
+	var metal := Color8(55, 58, 62)
+	for end in [-1.0, 1.0]:
+		var u0: float = end * (half - 0.12)
+		piece.call(u0 - 0.03, u0 + 0.03, -depth + 0.03, -depth + 0.08, 0.0, 0.42, metal)  # front leg
+		piece.call(u0 - 0.03, u0 + 0.03, depth - 0.08, depth - 0.03, 0.0, 0.85, metal)  # back leg and backrest upright
+		piece.call(u0 - 0.03, u0 + 0.03, -depth + 0.03, depth - 0.03, 0.36, 0.42, metal)  # the seat's bearer
 
 
 ## Step 6: amusement rides from their footprint loop (attraction_draw's
