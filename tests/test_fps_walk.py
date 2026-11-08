@@ -75,3 +75,9 @@ def test_the_walker_figure_faces_where_it_moves_not_where_it_looks():
     assert row["heading"] == math.pi / 2 and abs(row["facing"]) < 1e-6 and row["speed"] > 1.0
     ped.velocity, ped.speed = (0.0, 0.0), 0.0
     assert player_walker_dict(ped)["facing"] == math.pi / 2  # standing: the way they look
+
+
+def test_the_walker_slides_along_a_diagonal_wall():
+    from theroadragetrip.simulation import walk_blocked_by_walls
+    x, y = walk_blocked_by_walls(4.99, 4.99, 0.1, 0.0, lambda px, py: px + py > 10.0)  # a 45 degree facade ahead-left
+    assert x > 4.99 and y < 4.99 and x + y <= 10.0

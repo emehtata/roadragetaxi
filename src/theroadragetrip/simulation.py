@@ -107,16 +107,23 @@ class SimulationFrameResult:
     rage_shout: Optional[str] = None  # an accepted SPACE this tick: the shout to show for RAGE_SHOUT_DURATION_S
 
 
+WALL_SLIDE_RAD = 0.8  # slanted walls up to ~45 degrees off the walking line still slide
+
+
 def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, blocked) -> Tuple[float, float]:
     """The on-foot player's next position: walls block, the player slides
     along them; someone already inside (e.g. spawned in) walks out freely."""
     if not blocked(x + step_x, y + step_y) or blocked(x, y):
         return x + step_x, y + step_y
-    if not blocked(x + step_x, y):
+    if step_x and not blocked(x + step_x, y):
         return x + step_x, y
-    if not blocked(x, y + step_y):
+    if step_y and not blocked(x, y + step_y):  # (a zero step is no slide: walking straight at a wall)
         return x, y + step_y
-    return x, y
+    k = math.cos(WALL_SLIDE_RAD)  # a slanted wall: along it (turned the free way), slowed by the angle
+    slides = [((step_x * k - step_y * s) * k, (step_x * s + step_y * k) * k)
+              for s in (math.sin(WALL_SLIDE_RAD), -math.sin(WALL_SLIDE_RAD))]
+    free = [(x + sx, y + sy) for sx, sy in slides if not blocked(x + sx, y + sy)]
+    return free[0] if len(free) == 1 else (x, y)  # both ways free: head-on at the wall, stop
 
 
 FPS_WALK_SPEED_MPS = 1.5  # first-person walking: a natural pace

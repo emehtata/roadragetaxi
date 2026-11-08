@@ -9,6 +9,9 @@
 extends Node
 
 const TIMEOUT_S := 240.0
+const PROGRESS_S := 10.0  # a readiness line in godot.log this often
+const STALL_S := 60.0  # the same missing list this long: stalled, fail with it
+var _progress_at := 0.0
 const STABLE_FRAMES := 60
 const POSE_M := 1.0
 const HEADING_RAD := 0.02
@@ -81,11 +84,14 @@ func _walk(delta: float) -> void:
 		var door := Vector2(float(player["x"]) + c * float(player.get("length_m", 4.0)) * 0.2 - sn * float(player.get("width_m", 1.8)) * 0.85,
 			float(player["y"]) + sn * float(player.get("length_m", 4.0)) * 0.2 + c * float(player.get("width_m", 1.8)) * 0.85)
 		var walker: Dictionary = state["player_pedestrian"]
+		if walk["back"] == "vehicle":  # to the parked car at walk.target instead
+			door = Vector2(walk["target"][0], walk["target"][1])
 		var to_door := door - Vector2(float(walker["x"]), float(walker["y"]))
 		main.look_yaw = to_door.angle()  # server axes: the angle is the heading
-		var arrived: bool = state.get("taxi_door", false) and to_door.length() < 1.2  # a step back: the taxi in view
+		var arrived: bool = to_door.length() < APPROACH_M if walk["back"] == "vehicle" \
+			else state.get("taxi_door", false) and to_door.length() < 1.2  # a step back: the taxi in view
 		if arrived:
-			main.look_pitch = -0.35  # looking down at the door
+			main.look_pitch = 0.0 if walk["back"] == "vehicle" else -0.35  # looking down at the door; level at a car
 			main.map_layer.buildings_3d.eye_pitch = main.look_pitch
 		main.send({"throttle": 0.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0, "forward": 0.0 if arrived else 1.0, "turn": 0.0, "sprint": false})
 		if arrived:
@@ -228,7 +234,7 @@ func _process(delta: float) -> void:
 		main.phone.close()
 	var missing := check()
 	if _measuring:
-		if driving:  # full throttle down the street, straight on (as --screenshot-drive)
+		if driving and not scenario.has("walk"):  # full throttle down the street, straight on (as --screenshot-drive); a walk sends its own
 			main.send({"throttle": 1.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
 		_frames.append(delta * 1000.0)
 		var shown: Dictionary = main.entities.shown_state()
@@ -242,8 +248,16 @@ func _process(delta: float) -> void:
 		if _measure_left <= 0.0:
 			_finish()
 		return
+	if str(missing) != str(_missing):
+		_progress_at = _elapsed  # something changed: still getting ready
 	_missing = missing
 	_stable = _stable + 1 if missing.is_empty() else 0
+	if int(_elapsed / PROGRESS_S) != int((_elapsed - delta) / PROGRESS_S):
+		print("visual_test: %.0f s, waiting for %s" % [_elapsed, missing])
+	if _elapsed - _progress_at > STALL_S:
+		_write({"status": "failed", "errors": ["stalled: no readiness change for %d s" % STALL_S] + _missing})
+		main.get_tree().quit(1)
+		return
 	if _stable >= STABLE_FRAMES:
 		_measuring = true
 		_measure_left = float(scenario.get("measure_s", 5.0))
@@ -286,6 +300,13 @@ func check() -> Array:
 			missing.append("the player is not walking in the scenario's view")
 		elif scenario["walk"].has("expect") and state.get("interaction", {}).get("kind", "") != scenario["walk"]["expect"]:
 			missing.append("the server offers %s here, not %s" % [state.get("interaction", {}), scenario["walk"]["expect"]])
+		elif scenario["walk"].get("cross_chunk", false) and floori(float(walker.get("x", 0.0)) / main.CHUNK_SIZE_M) == floori(pose[0] / main.CHUNK_SIZE_M) \
+				and floori(float(walker.get("y", 0.0)) / main.CHUNK_SIZE_M) == floori(pose[1] / main.CHUNK_SIZE_M):
+			missing.append("the walker at %s is still in the taxi's map chunk" % [Vector2(float(walker.get("x", 0.0)), float(walker.get("y", 0.0)))])
+		elif back == "vehicle" and not _npc_at(state, Vector2(scenario["walk"]["target"][0], scenario["walk"]["target"][1])):
+			missing.append("no vehicle parked at walk.target %s" % [scenario["walk"]["target"]])
+		elif back == "vehicle" and Vector2(float(walker.get("x", INF)), float(walker.get("y", INF))).distance_to(Vector2(scenario["walk"]["target"][0], scenario["walk"]["target"][1])) >= APPROACH_M:
+			missing.append("the walker is not beside the parked car yet")
 		elif back == "door" and not state.get("taxi_door", false):
 			missing.append("the server offers no taxi door here")
 		elif back == "" and walked < float(scenario["walk"].get("min_m", 0.0)):
@@ -425,6 +446,8 @@ func _check_map(centre: Vector2) -> Array:
 	var needs: Dictionary = scenario.get("requires", {})
 	if lamps < int(needs.get("lamps_in_view", 0)):
 		missing.append("%d street lamps in view, the scenario needs %d" % [lamps, needs["lamps_in_view"]])
+	if _moving(main.entities.shown_state()) < int(needs.get("moving_npcs", 0)):  # traffic running around the walker
+		missing.append("%d moving NPC vehicles, the scenario needs %d" % [_moving(main.entities.shown_state()), needs["moving_npcs"]])
 	if buildings < int(needs.get("buildings_in_view", 0)):
 		missing.append("%d buildings in view, the scenario needs %d" % [buildings, needs["buildings_in_view"]])
 	var layer_3d = main.map_layer.buildings_3d
@@ -521,6 +544,14 @@ func _spawn_rejections() -> Dictionary:
 
 
 ## Moving NPC cars in the shown state (the drive's traffic check).
+const APPROACH_M := 3.5  # walk.back "vehicle": arrived this near the parked car's centre
+
+
+## An NPC vehicle stands within 1 m of `at` (server axes).
+static func _npc_at(state: Dictionary, at: Vector2) -> bool:
+	return state.get("npcs", []).any(func(npc): return Vector2(float(npc.get("x", INF)), float(npc.get("y", INF))).distance_to(at) < 1.0)
+
+
 func _moving(shown: Dictionary) -> int:
 	var count := 0
 	for npc in shown.get("npcs", []):
