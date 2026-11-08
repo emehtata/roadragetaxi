@@ -24,6 +24,7 @@ var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shar
 var trip_reset_rect := Rect2()  # where the trip reset button was drawn: main.gd clicks it
 var cluster_rect := Rect2()  # the dashboard as drawn, in this control (visual_test.gd keeps scenes clear of it)
 var chips := [false, false, false]
+var on_foot := true  # before the first state: hidden, like state.get("on_foot", true)
 var _housing := _make_housing()  # the dashboard cluster behind the dials  # lane assist (K), speed limiter (V), navigation (N): main.gd
 const MAX_SPEED_KMH := 210.0  # physics.MAX_SPEED: the dial's end
 
@@ -81,7 +82,11 @@ func show_state(state: Dictionary) -> void:
 	var values := [snappedf(player.get("fuel_l", 0.0), 0.1), roundi(state.get("rage_power", 0.0) * 100.0),
 		snappedf(state.get("water_elapsed", 0.0), 0.1), roundi(player.get("trip_m", 0.0)), roundi(player.get("odometer_m", 0.0) / 100.0),
 		snappedf(player.get("fuel_consumption_l_per_100km", 0.0), 0.1), absf(player.get("speed", 0.0)) > 0.5, size,
-		speed_limit(state), price_text(state), roundi(speed_kmh(player.get("speed", 0.0))), chips.duplicate(), player.get("engine_on", false)]
+		speed_limit(state), price_text(state), roundi(speed_kmh(player.get("speed", 0.0))), chips.duplicate(), player.get("engine_on", false), not shows_car_ui(state)]
+	on_foot = not shows_car_ui(state)
+	if on_foot:  # nothing to click or keep clear
+		trip_reset_rect = Rect2()
+		cluster_rect = Rect2()
 	_state = state
 	if values != _shown:
 		_shown = values
@@ -203,17 +208,27 @@ static func dial_point(center: Vector2, fraction: float, distance: float, sweep 
 	return center + Vector2(cos(angle), -sin(angle)) * distance
 
 
+## The dashboard, rage meter and limit sign are driving UI: hidden on foot.
+static func shows_car_ui(state: Dictionary) -> bool:
+	return not state.get("on_foot", true)
+
+
+static func shows_water_warning(state: Dictionary) -> bool:
+	return state.get("water_elapsed", 0.0) > 0.0
+
+
 func _draw() -> void:
 	if _state.is_empty():
 		return
 	var player: Dictionary = _state.get("player", {})
-	_draw_speedometer(Vector2(10, size.y - 236), speed_kmh(player.get("speed", 0.0)),
-		odometer_lines(player.get("trip_m", 0.0), player.get("odometer_m", 0.0)) + [economy_text(player)])
-	_draw_fuel(Vector2(CLUSTER_WIDTH - 72, 92), player)  # in the cluster's scaled, local drawing
-	draw_set_transform(Vector2.ZERO)
-	_draw_rage(Vector2(size.x - 190, size.y - 246), _state.get("rage_power", 0.0))
+	if not on_foot:
+		_draw_speedometer(Vector2(10, size.y - 236), speed_kmh(player.get("speed", 0.0)),
+			odometer_lines(player.get("trip_m", 0.0), player.get("odometer_m", 0.0)) + [economy_text(player)])
+		_draw_fuel(Vector2(CLUSTER_WIDTH - 72, 92), player)  # in the cluster's scaled, local drawing
+		draw_set_transform(Vector2.ZERO)
+		_draw_rage(Vector2(size.x - 190, size.y - 246), _state.get("rage_power", 0.0))
 	var water: float = _state.get("water_elapsed", 0.0)
-	if water > 0.0:
+	if shows_water_warning(_state):
 		var text := T.text("in_water", language) % (WATER_LIMIT_S - water)
 		var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18)
 		var box := Rect2(Vector2(size.x / 2.0 - text_size.x / 2.0 - 12.0, 78.0 - text_size.y / 2.0 - 5.0), text_size + Vector2(24, 10))
@@ -221,7 +236,7 @@ func _draw() -> void:
 		draw_rect(box, Color8(230, 120, 60), false, 2.0)
 		draw_string(_font, box.position + Vector2(12, text_size.y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color8(255, 210, 140))
 	var limit := speed_limit(_state)
-	if limit > 0:  # the round limit sign under the clock
+	if limit > 0 and not on_foot:  # the round limit sign under the clock
 		_draw_limit_sign(Vector2(size.x - 48.0, 76.0), 31.0, limit)
 
 

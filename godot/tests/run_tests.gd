@@ -271,9 +271,34 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_settings_help()
 	test_credits()
 	test_minimap_is_exported()
+	test_instruments_hide_on_foot()
+	test_instruments_water_warning_on_foot()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
+
+
+## On foot the dashboard and rage meter are not drawn and leave no click/keep-clear rects.
+func test_instruments_hide_on_foot() -> void:
+	var gauge := Instruments.new()
+	root.add_child(gauge)
+	gauge.cluster_rect = Rect2(0, 0, 10, 10)
+	gauge.trip_reset_rect = Rect2(0, 0, 5, 5)
+	var state := {"player": {"fuel_l": 20.0}, "on_foot": true}
+	gauge.show_state(state)
+	check(gauge.on_foot and gauge.cluster_rect == Rect2() and gauge.trip_reset_rect == Rect2(), "on foot: no dashboard or trip reset rect")
+	var before: Array = gauge._shown.duplicate()
+	gauge.show_state({"player": {"fuel_l": 20.0}, "on_foot": false})
+	check(not gauge.on_foot and gauge._shown != before, "back in the taxi: the on_foot flip alone redraws")
+	gauge.free()
+	check(not Instruments.shows_car_ui({}), "no state yet: dashboard hidden")
+
+
+## The in-water warning is not car UI: it stays on foot.
+func test_instruments_water_warning_on_foot() -> void:
+	var swim := {"player": {}, "on_foot": true, "water_elapsed": 1.0}
+	check(not Instruments.shows_car_ui(swim) and Instruments.shows_car_ui({"on_foot": false}), "car UI only in the taxi")
+	check(Instruments.shows_water_warning(swim), "swimming: water warning still drawn")
 
 
 ## The city menu reads finland_minimap.svg as text (FileAccess): an imported
