@@ -940,3 +940,12 @@ def test_mapped_shrubs_keep_their_position_beside_houses():
     ])
     shrub, = result.scenery_objects
     assert (shrub.kind, shrub.id, shrub.x, shrub.y) == ("shrub", 1, 25413.0, 65066.0)
+
+
+def test_bench_backrest_tag_no_is_false_yes_and_unknown_true_or_none():
+    values = {50: "no", 51: "yes", 52: "unknown", 53: None}
+    elements = [{"type": "node", "id": nid, "lat": 60.0 + nid * 0.001, "lon": 25.0,
+                 "tags": {"amenity": "bench", **({"backrest": v} if v else {})}} for nid, v in values.items()]
+    result = build_ways(elements)
+    backrest = {obj.id: obj.backrest for obj in result.scenery_objects if obj.kind == "bench"}
+    assert backrest == {50: False, 51: True, 52: None, 53: None}

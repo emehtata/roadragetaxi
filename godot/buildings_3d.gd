@@ -2306,6 +2306,7 @@ static func _structures(out: Dictionary, ground: Dictionary) -> void:
 		else:
 			_raised_polygon_at(out, "deck", footprint, 0.0, 0.45, Color8(120, 82, 50))
 	props(out, ground.get("props", []))
+	power_lines(out, ground.get("power_lines", []))
 	attractions(out, ground.get("attractions", []))
 	site_details(out, ground.get("site_details", []), float(ground.get("snow", 0.0)))
 	for band: Array in ground.get("shore_foam", []):  # [line, its distance from the shore 0..1]: foam on the water (road.gdshader)
@@ -2568,13 +2569,27 @@ const PROPS := {"caravan": [6.0, 2.3, 2.5, Color8(238, 234, 220)], "caravan_with
 	"gate": [3.0, 0.1, 1.2, Color8(90, 90, 92)], "sandpit": [2.6, 2.6, 0.3, Color8(200, 180, 130)],
 	"swing": [3.4, 1.8, 2.2, Color8(170, 60, 50)], "slide": [3.2, 0.9, 1.8, Color8(220, 170, 40)],
 	"spring_rider": [0.7, 0.3, 0.8, Color8(60, 150, 210)], "climbing_frame": [2.4, 2.4, 1.6, Color8(200, 80, 60)],
-	"seesaw": [3.0, 0.3, 0.6, Color8(70, 140, 70)]}
+	"seesaw": [3.0, 0.3, 0.6, Color8(70, 140, 70)],
+	# osm-render-gaps.md (gap_prop): row[3] is a skyline structure's height or a boulder's size from the server
+	"power_pole": [0.0, 0.0, POLE_TOP_M, Color8(92, 72, 52)], "power_tower": [0.0, 0.0, 22.0, Color8(140, 145, 150)],
+	"chimney": [0.0, 0.0, 25.0, Color8(150, 72, 58)], "mast": [0.0, 0.0, 30.0, Color8(200, 200, 205)],
+	"tower": [0.0, 0.0, 30.0, Color8(170, 168, 160)], "communications_tower": [0.0, 0.0, 30.0, Color8(190, 190, 195)],
+	"water_tower": [0.0, 0.0, 20.0, Color8(180, 182, 178)], "boulder": [0.0, 0.0, 1.0, Color8(118, 116, 110)],
+	"level_crossing": [0.0, 0.0, 2.6, Color8(235, 235, 235)], "level_crossing_barrier": [0.0, 0.0, 1.0, Color8(235, 235, 235)]}
+const GAP_KINDS := ["power_pole", "power_tower", "chimney", "mast", "tower", "communications_tower", "water_tower", "boulder",
+	"level_crossing", "level_crossing_barrier"]
+const POLE_TOP_M := 9.0
+const WIRE_M := 8.6  # the crossarm's height: where the wires hang
+const WIRE_SPAN_MAX_M := 150.0
 
 
-static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angle, kind, length (camper_van: the server's)]
+static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angle, kind, length (camper_van: the server's), bench: backrest 0/1]
 	for row: Array in rows:
 		var look: Array = PROPS.get(row[2], [])
 		if look.is_empty():
+			continue
+		if GAP_KINDS.has(row[2]):
+			_gap_prop(out, row[0], float(row[1]), str(row[2]), float(row[3] if row.size() > 3 else look[2]), look[3])
 			continue
 		var length := float(row[3] if row.size() > 3 else look[0])
 		if length <= 0.0:  # a camper van without the server's length (map_chunks): an error, not a flat deck
@@ -2584,16 +2599,17 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 		var across: Vector2 = along.orthogonal().normalized() * float(look[1]) * 0.5
 		var at: Vector2 = row[0]
 		if row[2] == "bench":
-			_bench(out, at, along, across, look[3])
+			_bench(out, at, along, across, look[3], row.size() < 5 or bool(row[4]))
 			continue
 		_raised_polygon_at(out, "deck", PackedVector2Array([at - along - across, at + along - across, at + along + across, at - along + across]),
 			0.0, look[2], look[3])
 
 
 ## A park bench (PROPS "bench"): three seat slats at 0.46 m, two backrest
-## slats on the +across side up to 0.85 m, and a metal side frame at each end.
+## slats on the +across side up to 0.85 m (without them for OSM backrest=no),
+## and a metal side frame at each end.
 ## The sitter faces -across (bench_sitting.py), hips on the seat's middle.
-static func _bench(out: Dictionary, at: Vector2, along: Vector2, across: Vector2, wood: Color) -> void:
+static func _bench(out: Dictionary, at: Vector2, along: Vector2, across: Vector2, wood: Color, backrest := true) -> void:
 	var u := along.normalized()
 	var v := across.normalized()
 	var half := along.length()
@@ -2603,14 +2619,80 @@ static func _bench(out: Dictionary, at: Vector2, along: Vector2, across: Vector2
 	for slat in 3:  # the seat
 		var v0 := -depth + slat * depth * 2.0 / 3.0
 		piece.call(-half, half, v0 + 0.01, v0 + depth * 2.0 / 3.0 - 0.01, 0.42, 0.46, wood)
-	for z in [0.56, 0.72]:  # the backrest
+	for z in ([0.56, 0.72] if backrest else []):  # the backrest
 		piece.call(-half, half, depth - 0.04, depth, z, z + 0.11, wood)
 	var metal := Color8(55, 58, 62)
 	for end in [-1.0, 1.0]:
 		var u0: float = end * (half - 0.12)
 		piece.call(u0 - 0.03, u0 + 0.03, -depth + 0.03, -depth + 0.08, 0.0, 0.42, metal)  # front leg
-		piece.call(u0 - 0.03, u0 + 0.03, depth - 0.08, depth - 0.03, 0.0, 0.85, metal)  # back leg and backrest upright
+		piece.call(u0 - 0.03, u0 + 0.03, depth - 0.08, depth - 0.03, 0.0, 0.85 if backrest else 0.42, metal)  # back leg and backrest upright
 		piece.call(u0 - 0.03, u0 + 0.03, -depth + 0.03, depth - 0.03, 0.36, 0.42, metal)  # the seat's bearer
+
+
+## osm-render-gaps.md: visual only, nothing collides with these. `size`: the
+## height (skyline structures, poles) or a boulder's size; `angle` the road's
+## direction at a level crossing.
+static func _gap_prop(out: Dictionary, at: Vector2, angle: float, kind: String, size: float, color: Color) -> void:
+	var ring := func(radius: float, sides: int, wobble: float) -> PackedVector2Array:
+		var points := PackedVector2Array()
+		for i in sides:
+			var a := TAU * i / sides
+			points.append(at + Vector2(cos(a), sin(a)) * radius * (1.0 + wobble * sin(a * 3.0 + at.x)))
+		return points
+	var along := Vector2(cos(angle), -sin(angle))
+	var across := along.orthogonal()
+	match kind:
+		"power_pole":  # a wooden pole and its crossarm
+			_box3d(out, "deck", at, 0.13, 0.0, size, color)
+			_sloped_wall(out, at - across * 0.9, at + across * 0.9, 0.12, WIRE_M, WIRE_M, 0.12, color)
+		"power_tower":  # a lattice-style tower: four legs narrowing upwards, two crossarms
+			for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+				for s in 3:
+					_box3d(out, "deck", at + corner * (2.0 - s * 0.6), 0.12, size * s / 3.0, size * (s + 1) / 3.0, color)
+			for z in [size * 0.75, size - 0.3]:
+				_sloped_wall(out, at - across * 5.0, at + across * 5.0, 0.3, z, z, 0.3, color)
+		"chimney":
+			_raised_polygon_at(out, "deck", ring.call(1.2, 10, 0.0), 0.0, size, color)
+		"mast":
+			_box3d(out, "deck", at, 0.35, 0.0, size, color)
+		"tower", "communications_tower":
+			_raised_polygon_at(out, "deck", ring.call(2.0, 8, 0.0), 0.0, size - 3.0, color)
+			_raised_polygon_at(out, "deck", ring.call(3.2, 8, 0.0), size - 3.0, size, color)
+		"water_tower":  # a shaft and its tank
+			_raised_polygon_at(out, "deck", ring.call(1.6, 10, 0.0), 0.0, size * 0.7, color)
+			_raised_polygon_at(out, "deck", ring.call(5.0, 12, 0.0), size * 0.7, size, color)
+		"boulder":  # a lumpy rock, wider than tall
+			_raised_polygon_at(out, "deck", ring.call(size * 0.7, 7, 0.15), 0.0, size * 0.6, color)
+			_raised_polygon_at(out, "deck", ring.call(size * 0.45, 7, 0.2), size * 0.6, size, color)
+		"level_crossing":  # a crossbuck (St Andrew's cross) on a post either side of the road
+			for side in [-1.0, 1.0]:
+				var post: Vector2 = at + across * side * 4.0
+				_box3d(out, "deck", post, 0.05, 0.0, 2.6, Color8(70, 70, 70))
+				_sloped_wall(out, post - along * 0.6, post + along * 0.6, 0.03, 1.8, 2.5, 0.15, color)
+				_sloped_wall(out, post - along * 0.6, post + along * 0.6, 0.03, 2.5, 1.8, 0.15, color)
+		_:  # level_crossing_barrier: a lowered boom across each half of the road
+			for side in [-1.0, 1.0]:
+				var post: Vector2 = at + across * side * 4.0
+				_box3d(out, "deck", post, 0.15, 0.0, 1.0, Color8(70, 70, 70))
+				_sloped_wall(out, post, post - across * side * 3.8, 0.08, 0.85, 0.85, 0.1, Color8(215, 40, 40))
+
+
+## osm-render-gaps.md: a sagging wire between consecutive poles of a power
+## line (lines [pole positions]); spans over WIRE_SPAN_MAX_M stay unwired.
+static func power_lines(out: Dictionary, lines: Array) -> void:
+	for line: PackedVector2Array in lines:
+		for i in line.size() - 1:
+			var a := line[i]
+			var b := line[i + 1]
+			var span := a.distance_to(b)
+			if span < 1.0 or span > WIRE_SPAN_MAX_M:
+				continue
+			var sag := span * 0.02
+			for k in 4:  # a parabola in four pieces
+				var t0 := k / 4.0
+				var t1 := (k + 1) / 4.0
+				_sloped_wall(out, a.lerp(b, t0), a.lerp(b, t1), 0.0, WIRE_M - 4.0 * sag * t0 * (1.0 - t0),
+					WIRE_M - 4.0 * sag * t1 * (1.0 - t1), 0.04, Color8(40, 40, 42))
 
 
 ## Step 6: amusement rides from their footprint loop (attraction_draw's

@@ -814,7 +814,8 @@ func _build_2_5d() -> void:
 			"canopies": canopies, "site_fences": _data.get("construction_fences", []).map(func(d): return _points(d)),
 			"shelters": shelters, "pumps": pumps,
 			"props": _data.get("scenery_objects", []).filter(func(o): return B3.PROPS.has(str(o[2]))).map(
-				func(o): return [MapMath.point(_origin, o[0], o[1]), float(o[3]), str(o[2])] + ([float(o[4])] if o[2] == "camper_van" and o.size() > 4 else [])),
+				func(o): return [MapMath.point(_origin, o[0], o[1]), float(o[3]), str(o[2])] + ([float(o[4])] if (o[2] == "camper_van" or B3.GAP_KINDS.has(o[2])) and o.size() > 4 else [B3.PROPS["bench"][0], int(o[4])] if o[2] == "bench" and o.size() > 4 else [])),
+			"power_lines": _data.get("power_lines", []).map(func(line): return _points(line)),
 			"sign_posts": _data.get("signs", []).map(func(sign): return MapMath.point(_origin, sign[0], sign[1])),
 			"rail_lines": _data.get("railways", []).map(func(line): return _points(line)),
 			"shore_foam": _data.get("shore_waves", []).map(func(band): return [band["points"], float(band["distance"]) / SHALLOW_WATER_M]) \

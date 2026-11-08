@@ -4056,9 +4056,12 @@
  {
   "key": "man_made",
   "value": "chimney",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not read by build_ways"
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind; drawn at its height tag (capped 80 m), areas at their centroid; visual only"
  },
  {
   "key": "man_made",
@@ -4077,9 +4080,12 @@
  {
   "key": "man_made",
   "value": "communications_tower",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not read by build_ways"
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind; drawn at its height tag (capped 80 m), areas at their centroid; visual only"
  },
  {
   "key": "man_made",
@@ -4175,9 +4181,12 @@
  {
   "key": "man_made",
   "value": "mast",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not read by build_ways"
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind; drawn at its height tag (capped 80 m), areas at their centroid; visual only"
  },
  {
   "key": "man_made",
@@ -4336,9 +4345,12 @@
  {
   "key": "man_made",
   "value": "tower",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not read by build_ways"
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind; drawn at its height tag (capped 80 m), areas at their centroid; visual only"
  },
  {
   "key": "man_made",
@@ -4364,9 +4376,12 @@
  {
   "key": "man_made",
   "value": "water_tower",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not read by build_ways"
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind; drawn at its height tag (capped 80 m), areas at their centroid; visual only"
  },
  {
   "key": "man_made",
@@ -4434,9 +4449,11 @@
  {
   "key": "natural",
   "value": "bare_rock",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "NATURAL_SCENERY_KINDS; grey ground fill"
  },
  {
   "key": "natural",
@@ -4623,9 +4640,11 @@
  {
   "key": "natural",
   "value": "rock",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+  "geometry": [
+   "node"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind boulder (0.6-1.5 m from its id), visual only"
  },
  {
   "key": "natural",
@@ -4693,9 +4712,11 @@
  {
   "key": "natural",
   "value": "stone",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+  "geometry": [
+   "node"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind boulder (0.6-1.5 m from its id), visual only"
  },
  {
   "key": "natural",
@@ -4714,9 +4735,11 @@
  {
   "key": "natural",
   "value": "tree_row",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+  "geometry": [
+   "way"
+  ],
+  "handling": "vegetation",
+  "notes": "gap_ways_raw: trees every 6 m into the natural=tree path"
  },
  {
   "key": "natural",
@@ -5036,16 +5059,20 @@
  {
   "key": "power",
   "value": "line",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not read by build_ways"
+  "geometry": [
+   "way"
+  ],
+  "handling": "structure",
+  "notes": "gap_ways_raw power_line -> map_chunks power_lines; sagging wires <= 150 m spans"
  },
  {
   "key": "power",
   "value": "minor_line",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not read by build_ways"
+  "geometry": [
+   "way"
+  ],
+  "handling": "structure",
+  "notes": "gap_ways_raw power_line -> map_chunks power_lines; sagging wires <= 150 m spans"
  },
  {
   "key": "power",
@@ -5057,9 +5084,11 @@
  {
   "key": "power",
   "value": "pole",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not read by build_ways"
+  "geometry": [
+   "node"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind power_pole; 3D pole + crossarm, visual only"
  },
  {
   "key": "power",
@@ -5099,9 +5128,11 @@
  {
   "key": "power",
   "value": "tower",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not read by build_ways"
+  "geometry": [
+   "node"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind power_tower; 3D lattice-style tower, visual only"
  },
  {
   "key": "power",
@@ -5232,8 +5263,8 @@
   "geometry": [
    "node"
   ],
-  "handling": "ignored",
-  "notes": "not read by build_ways"
+  "handling": "structure",
+  "notes": "_scenery_object_kind level_crossing / level_crossing_barrier (crossing:barrier=yes|full|half), along the road; visual only"
  },
  {
   "key": "railway",

@@ -152,6 +152,12 @@ def fetch_osm_ways(
     node["playground"]({south},{west},{north},{east});
     way["playground"]({south},{west},{north},{east});
     node["barrier"~"gate|bollard"]({south},{west},{north},{east});
+    node["power"~"^(pole|tower)$"]({south},{west},{north},{east});
+    way["power"~"^(line|minor_line)$"]({south},{west},{north},{east});
+    nwr["man_made"~"^(chimney|tower|mast|communications_tower|water_tower)$"]({south},{west},{north},{east});
+    way["natural"="tree_row"]({south},{west},{north},{east});
+    node["natural"~"^(stone|rock)$"]({south},{west},{north},{east});
+    node["railway"="level_crossing"]({south},{west},{north},{east});
     node["historic"="memorial"]({south},{west},{north},{east});
     nwr["tourism"~"^(theme_park|camp_site|caravan_site|camp_pitch)$"]({south},{west},{north},{east});
     nwr["attraction"]({south},{west},{north},{east});

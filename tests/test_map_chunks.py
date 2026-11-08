@@ -36,6 +36,30 @@ def test_camper_vans_are_streamed_with_the_vehicle_length():
     assert rows == [[10, 20, "camper_van", 0.0, vehicle_definition("camper_van").length_m]]  # the client has no default
 
 
+def test_bench_row_carries_backrest_flag():
+    from theroadragetrip.osm import SceneryObject
+
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], scenery_objects=[
+        SceneryObject(10, 20, "bench", backrest=False), SceneryObject(30, 20, "bench", backrest=True),
+        SceneryObject(50, 20, "bench")])
+    rows = map_chunks.ChunkIndex(world).message("0_0")["scenery_objects"]
+    assert [row[4] for row in rows] == [0, 1, 1]
+
+
+def test_new_feature_lists_are_capped_and_empty_when_absent():
+    from theroadragetrip.osm import SceneryObject
+
+    empty = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], scenery_objects=[SceneryObject(10, 20, "bench")])
+    assert map_chunks.ChunkIndex(empty).message("0_0").get("power_lines", []) == []
+    lines = [SceneryObject(10, 20 + i * 0.1, "power_line", points_m=[(10, 20 + i * 0.1), (60, 20 + i * 0.1)])
+             for i in range(map_chunks.POWER_LINES_PER_CHUNK + 50)]
+    poles = [SceneryObject(30, 20 + i * 0.1, "power_pole") for i in range(map_chunks.FEATURES_PER_CHUNK + 50)]
+    message = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], scenery_objects=lines + poles)).message("0_0")
+    assert len(message["power_lines"]) == map_chunks.POWER_LINES_PER_CHUNK
+    assert message["power_lines"][0] == [[10, 20.0], [60, 20.0]]
+    assert sum(row[2] == "power_pole" for row in message["scenery_objects"]) == map_chunks.FEATURES_PER_CHUNK
+
+
 def test_runtime_camera_updates_only_its_chunk_and_invalidates_wire_cache():
     from theroadragetrip.police import SpeedCamera
 
@@ -174,7 +198,7 @@ def test_railings_decorations_and_street_lights_are_each_in_one_chunk():
     index = map_chunks.ChunkIndex(world, size=500.0)
     here, east = index.message("0_0"), index.message("1_0")
     assert here["railings"] == [["hedge", [[480.0, 5.0], [530.0, 5.0]], 0]] and east["railings"] == []  # first point's chunk, whole
-    assert here["scenery_objects"] == [[46.0, 0.0, "bench", 0.0], [12.0, 13.0, "bench", 0.5], [14.0, 15.0, "gate", 0.0]]
+    assert here["scenery_objects"] == [[46.0, 0.0, "bench", 0.0, 1], [12.0, 13.0, "bench", 0.5, 1], [14.0, 15.0, "gate", 0.0]]
     assert here["street_lights"] == [[100.0, 100.0, 1.25, 14.0]] and east["street_lights"] == [[600.0, 100.0, 0.0, 14.0]]
 
 
@@ -664,3 +688,13 @@ def test_ground_heights_shared_at_chunk_edge():
     assert left["origin"] == [0.0, 0.0] and right["origin"] == [500.0, 0.0]
     rows = len(left["heights"]) // cols
     assert [left["heights"][r * cols + cols - 1] for r in range(rows)] == [right["heights"][r * cols] for r in range(rows)]
+
+
+def test_bare_rock_area_is_a_grey_landuse_fill():
+    from theroadragetrip.map_style import SCENERY_COLORS
+    from theroadragetrip.osm import Scenery
+
+    rock = Scenery([(10, 10), (60, 10), (60, 40), (10, 40)], "bare_rock", bbox=(10, 10, 60, 40))
+    area = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[rock])).message("0_0")["landuse"][0]
+    assert area[0] == list(SCENERY_COLORS["bare_rock"])
+    assert max(area[0]) - min(area[0]) < 12  # grey, not green

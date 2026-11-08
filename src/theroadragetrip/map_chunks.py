@@ -36,13 +36,18 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
           "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards",
           "nightclubs", "attractions", "tennis_courts", "volleyball_courts", "shore_waves",
-          "bonfires", "flagpoles", "shop_hours")
+          "bonfires", "flagpoles", "shop_hours", "power_lines")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
 # Named landmarks drawn by their own shape list (assets/landmarks.json): name -> {"scale", "shapes"}
 LANDMARKS = {name: spec for name, spec in json.loads((Path(__file__).with_name("assets") / "landmarks.json").read_text()).items()
              if not name.startswith("_")}
 DECORATIVE_KINDS = ("shrub", "bench", "waste_basket", "bicycle_parking", "charging_station", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
+# osm-render-gaps.md: drawing only, never obstacles; at most this many of them per chunk, in map order
+GAP_KINDS = ("power_pole", "power_tower", "chimney", "mast", "tower", "communications_tower", "water_tower", "boulder",
+             "level_crossing", "level_crossing_barrier")
+FEATURES_PER_CHUNK = 400
+POWER_LINES_PER_CHUNK = 150
 
 CHUNK_SIZE_M = 500.0
 GROUND_STEP_M = 20.0  # ground_heights grid spacing; divides CHUNK_SIZE_M so neighbours share edge samples
@@ -363,6 +368,15 @@ class ChunkIndex:
                 x, y = static_world.building_owner(building)
                 self._add("nightclubs", ((x, y),), [round(x, 1), round(y, 1), nightclub_schedule(None)])
         for obj in getattr(world, "scenery_objects", ()):
+            if obj.kind == "power_line" and obj.points_m and len(obj.points_m) >= 2:  # in its first pole's chunk
+                self._add_capped("power_lines", obj.points_m[:1], _line(obj.points_m), POWER_LINES_PER_CHUNK)
+            elif obj.kind in GAP_KINDS:  # [x, y, kind, angle, height (skyline) | size (boulder)]
+                row = [round(obj.x, 1), round(obj.y, 1), obj.kind, round(obj.direction_angle or 0.0, 3)]
+                if obj.height_m is not None:
+                    row.append(round(obj.height_m, 1))
+                elif obj.kind == "boulder":  # 0.6-1.5 m from its id (its position when unmapped)
+                    row.append(round(0.6 + 0.9 * ((obj.id or int(obj.x * 7 + obj.y * 13)) * 2654435761 % 997) / 996, 2))
+                self._add_capped("scenery_objects", ((obj.x, obj.y),), row, FEATURES_PER_CHUNK, obj.kind)
             if obj.kind in DECORATIVE_KINDS and not getattr(obj, "level", None):  # a garage's or roof deck's: not on the street
                 if obj.name in LANDMARKS:  # its own drawing: [x, y, "landmark", angle, {scale, shapes}]
                     self._add("scenery_objects", ((obj.x, obj.y),), [round(obj.x, 1), round(obj.y, 1), "landmark",
@@ -373,6 +387,8 @@ class ChunkIndex:
                     row.append(obj.capacity or 2)
                 elif obj.kind == "camper_van":  # its length: the camper van's own (vehicles/base.py)
                     row.append(vehicle_definition("camper_van").length_m)
+                elif obj.kind == "bench":  # its backrest: 0 only for OSM backrest=no
+                    row.append(0 if obj.backrest is False else 1)
                 self._add("scenery_objects", ((obj.x, obj.y),), row)
         # Swings, slides, ... (playground_equipment.py): mapped in OSM, else a typical set per playground.
         for row in equipment_rows(getattr(world, "sceneries", ()), getattr(world, "scenery_objects", ())):
@@ -447,6 +463,15 @@ class ChunkIndex:
     def _add(self, kind: str, points, feature) -> None:
         for cell in cells_touched_by_line(points, self.size):
             self._chunk(cell)[kind].append(feature)
+
+    def _add_capped(self, kind: str, points, feature, cap: int, row_kind=None) -> None:
+        """_add, but a chunk keeps at most `cap` of them (of `row_kind`, for mixed lists): later ones are dropped."""
+        counts = self.__dict__.setdefault("_capped_counts", {})
+        for cell in cells_touched_by_line(points, self.size):
+            key = (cell, kind, row_kind)
+            if counts.get(key, 0) < cap:
+                counts[key] = counts.get(key, 0) + 1
+                self._chunk(cell)[kind].append(feature)
 
     def _add_water_shores(self, waters, world=None) -> None:
         from shapely.geometry import Polygon, box

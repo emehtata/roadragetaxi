@@ -567,6 +567,9 @@ class SceneryObject:
     opening_hours: Optional[str] = None  # OSM opening_hours (nightclubs: nightlife.py)
     capacity: Optional[int] = None  # OSM capacity: vehicles at once (charging stations; EVs to come)
     level: Optional[int] = None  # OSM level: a charging station in a garage (-1) or on a roof deck (5), not on the street
+    backrest: Optional[bool] = None  # bench only: OSM backrest=no -> False, yes -> True, absent/unknown -> None
+    height_m: Optional[float] = None  # chimney / mast / tower / water_tower: its height (osm-render-gaps.md)
+    points_m: Optional[list] = None  # power_line: its poles' positions in order (drawing only)
 
 
 class MapData(tuple):

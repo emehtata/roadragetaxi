@@ -379,6 +379,8 @@ func _check_map(centre: Vector2) -> Array:
 	var corners := [view.position, view.end, Vector2(view.position.x, view.end.y), Vector2(view.end.x, view.position.y), centre]
 	var lamps := 0
 	var buildings := 0
+	var wanted: Dictionary = scenario.get("requires", {}).get("scenery_in_view", {})  # {scenery_objects kind, "trees" or "power_lines": minimum}
+	var seen := {}
 	var footprints := []
 	for corner in corners:
 		var covered := false
@@ -403,6 +405,18 @@ func _check_map(centre: Vector2) -> Array:
 				box = box.expand(p)
 			if box.intersects(view):  # a city block's corners are often all outside a close view
 				buildings += 1
+		for o in chunk._data.get("scenery_objects", []):
+			if wanted.has(str(o[2])) and view.has_point(MapMath.point(chunk._origin, o[0], o[1])):
+				seen[str(o[2])] = int(seen.get(str(o[2]), 0)) + 1
+		for t in (chunk._data.get("trees", []) if wanted.has("trees") else []):
+			if view.has_point(MapMath.point(chunk._origin, t[0], t[1])):
+				seen["trees"] = int(seen.get("trees", 0)) + 1
+		for line in (chunk._data.get("power_lines", []) if wanted.has("power_lines") else []):
+			if chunk._points(line).size() > 0 and chunk._points(line)[0].distance_to(view.get_center()) < view.size.length():
+				seen["power_lines"] = int(seen.get("power_lines", 0)) + 1
+	for kind: String in wanted:
+		if int(seen.get(kind, 0)) < int(wanted[kind]):
+			missing.append("%d %s in view, the scenario needs %d" % [int(seen.get(kind, 0)), kind, wanted[kind]])
 	var boxes := []  # [name, corners]: every lineup body, in view, clear of the HUD (and in 3D of the buildings)
 	for npc in main.entities.extra_npcs:
 		boxes.append([npc["vehicle_type"], _corners(npc["x"], npc["y"], npc["heading"], npc["length_m"], npc["width_m"])])
@@ -492,7 +506,7 @@ func _check_map(centre: Vector2) -> Array:
 		for c: Array in campers:
 			if absf(c[1] / c[0] - 1.0) > 0.1:
 				missing.append("camper drawn %.2f m, its row %.2f m (over 10 %%)" % [c[1], c[0]])
-	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count()}
+	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count(), "scenery_in_view": seen}
 	if not campers.is_empty():
 		_counts["campers"] = campers  # each: [row length m, drawn body m]
 	if scenario.has("pitches"):

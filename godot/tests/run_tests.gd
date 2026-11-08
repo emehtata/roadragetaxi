@@ -3649,6 +3649,39 @@ func test_buildings_3d() -> void:
 	B3.props(props_out, [[Vector2.ZERO, 0.0, "bench"], [Vector2(5, 0), 0.0, "not_a_prop"]])
 	check(is_equal_approx(Array(props_out["deck"]).map(func(v): return v.y).max(), B3.PROPS["bench"][2]), "a bench stands its height; unknown kinds are left out")
 	check(props_out["deck"].size() >= 6 * 30, "a bench is slats, a backrest and side supports, not one box")
+	var backed := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	var bare := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.props(backed, [[Vector2.ZERO, 0.0, "bench", 1.4, 1]])
+	B3.props(bare, [[Vector2.ZERO, 0.0, "bench", 1.4, 0]])
+	check(bare["deck"].size() < backed["deck"].size(), "a backrest=no bench has fewer deck vertices")
+	check(is_equal_approx(Array(bare["deck"]).map(func(v): return v.y).max(), 0.46), "a backrest=no bench tops out at its seat, no 0.85 m upright")
+	var gap_top := func(rows: Array) -> float:  # osm-render-gaps.md: the builders' tallest vertex, -1 when nothing was built
+		var gap_out := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+		B3.props(gap_out, rows)
+		return Array(gap_out["deck"]).map(func(v): return v.y).max() if gap_out["deck"].size() > 0 else -1.0
+	var pole_top: float = gap_top.call([[Vector2.ZERO, 0.0, "power_pole"]])
+	check(pole_top >= 8.0 and pole_top <= 10.0, "a power pole stands 8-10 m")
+	check(gap_top.call([[Vector2.ZERO, 0.0, "power_tower"]]) > 15.0, "a power tower is taller than a pole")
+	check(is_equal_approx(gap_top.call([[Vector2.ZERO, 0.0, "chimney", 25.0]]), 25.0), "a chimney stands its height")
+	check(is_equal_approx(gap_top.call([[Vector2.ZERO, 0.0, "water_tower", 20.0]]), 20.0), "a water tower stands its height")
+	check(is_equal_approx(gap_top.call([[Vector2.ZERO, 0.0, "mast", 30.0]]), 30.0), "a mast stands its height")
+	var boulder_top: float = gap_top.call([[Vector2.ZERO, 0.0, "boulder", 1.2]])
+	check(boulder_top >= 0.6 and boulder_top <= 1.5, "a boulder is 0.6-1.5 m")
+	check(gap_top.call([[Vector2.ZERO, 0.0, "level_crossing"]]) > 2.0, "a level crossing's crossbuck stands on its post")
+	check(gap_top.call([[Vector2.ZERO, 0.0, "level_crossing_barrier"]]) > 0.8, "a level crossing barrier pair is built")
+	var crossing := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.props(crossing, [[Vector2.ZERO, 0.0, "level_crossing"]])  # the road along +x: posts either side of it, across
+	var xs: Array = Array(crossing["deck"]).map(func(v): return absf(v.x))
+	var zs: Array = Array(crossing["deck"]).map(func(v): return absf(v.z))
+	check(zs.max() > 3.9 and zs.max() < 4.2 and xs.max() < 0.7, "a crossbuck's posts stand either side of the road, its boards along it")
+	var crossing_turned := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.props(crossing_turned, [[Vector2.ZERO, PI / 2.0, "level_crossing_barrier"]])  # the road along z: the booms reach across x
+	check(Array(crossing_turned["deck"]).map(func(v): return absf(v.x)).max() > 3.9 and Array(crossing_turned["deck"]).map(func(v): return absf(v.z)).max() < 0.5, "a barrier pair turns with its road")
+	var wires := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.power_lines(wires, [PackedVector2Array([Vector2.ZERO, Vector2(40, 0)])])
+	var short_span: int = wires["deck"].size()
+	B3.power_lines(wires, [PackedVector2Array([Vector2.ZERO, Vector2(200, 0)])])
+	check(short_span > 0 and wires["deck"].size() == short_span, "poles 40 m apart are wired; a 200 m span is not")
 	var seated: PackedVector3Array = B3.person_arrays(Color.ORANGE, "sitting", 1.0, "", 0)["verts"]
 	check(Array(seated).all(func(v): return v.x < 0.05 or v.x > 0.24 or v.y > 0.38), "a seated figure rests on the seat: nothing hangs through its front half")
 	check(Array(seated).any(func(v): return v.x > 0.35 and v.y > 0.42), "a seated figure's knees are bent, thighs forward over the seat edge")

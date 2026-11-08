@@ -1,3 +1,4 @@
+import math
 from theroadragetrip.osm import build_ways, parse_speed_limit_kmh
 
 
@@ -316,3 +317,95 @@ def test_build_ways_keeps_cycling_metadata():
     assert ways[11].bicycle == "designated"
     assert ways[12].motorroad is True
     assert (ways[13].oneway_bicycle, ways[13].bicycle, ways[13].cycleway, ways[13].motorroad) == (None, None, None, False)
+
+
+def test_power_man_made_tree_row_stone_level_crossing_are_read():
+    def node(nid, lon, **tags):
+        return {"type": "node", "id": nid, "lat": 60.0, "lon": 25.0 + lon, "tags": tags}
+    elements = [
+        node(1, 0.0, power="pole"), node(2, 0.05, power="pole"), node(3, 0.3, power="tower"),
+        {"type": "way", "id": 100, "nodes": [1, 2, 3], "tags": {"power": "minor_line"}},
+        node(4, 0.4, man_made="chimney"), node(5, 0.41, man_made="mast", height="120"),
+        node(6, 0.42, man_made="water_tower", height="31.5"),
+        node(10, 0.5), node(11, 0.51), node(12, 0.51), node(13, 0.5),
+        {"type": "way", "id": 101, "nodes": [10, 11, 12, 13, 10], "tags": {"man_made": "tower"}},
+        node(20, 0.6), node(21, 0.64),
+        {"type": "way", "id": 102, "nodes": [20, 21], "tags": {"natural": "tree_row"}},
+        node(30, 0.7, natural="stone"), node(31, 0.71, natural="rock"),
+        node(40, 0.8, railway="level_crossing"), node(41, 0.81, railway="level_crossing", **{"crossing:barrier": "half"}),
+    ]
+    elements[11]["lat"] = elements[12]["lat"] = 60.01  # the tower area's far side
+    result = build_ways(elements)
+    kinds = {}
+    for obj in result.scenery_objects:
+        kinds.setdefault(obj.kind, []).append(obj)
+    assert len(kinds["power_pole"]) == 2 and len(kinds["power_tower"]) == 1
+    assert [len(line.points_m) for line in kinds["power_line"]] == [3]
+    assert [o.height_m for o in kinds["chimney"]] == [25.0]
+    assert [o.height_m for o in kinds["mast"]] == [80.0]  # capped
+    assert [o.height_m for o in kinds["water_tower"]] == [31.5]
+    assert [(o.height_m, round(o.x, 1)) for o in kinds["tower"]] == [(30.0, 25505.0)]  # an area: once, at its centre
+    assert len(kinds["boulder"]) == 2
+    assert [o.kind for o in result.scenery_objects if o.kind.startswith("level_crossing")] == ["level_crossing", "level_crossing_barrier"]
+    row_trees = [p for s in result.sceneries for p in s.trees if 25600 <= p[0] <= 25640]
+    assert len(row_trees) >= 6  # 40 m at <= 8 m spacing
+
+
+def test_bare_rock_is_a_grey_ground_fill():
+    from theroadragetrip.map_style import SCENERY_COLORS
+    from theroadragetrip.osm.constants import NATURAL_SCENERY_KINDS
+
+    assert "bare_rock" in NATURAL_SCENERY_KINDS
+    r, g, b = SCENERY_COLORS["bare_rock"]
+    assert abs(r - g) < 12 and abs(g - b) < 12
+
+
+def test_skyline_height_is_capped_at_80_m_with_a_default_per_kind():
+    from theroadragetrip.osm.build import _skyline_height
+
+    assert _skyline_height("chimney", {"height": "300"}) == 80.0
+    assert _skyline_height("communications_tower", {"height": "81 m"}) == 80.0
+    assert _skyline_height("water_tower", {"height": "42,5"}) == 42.5
+    assert [_skyline_height(k, {}) for k in ("chimney", "mast", "tower", "water_tower")] == [25.0, 30.0, 30.0, 20.0]
+    assert _skyline_height("mast", {"height": "tall"}) == 30.0  # not a number: the default
+
+
+def test_man_made_area_is_drawn_once_at_its_centroid():
+    corners = [(1, 0.0, 0.0), (2, 0.0, 0.02), (3, 0.01, 0.02), (4, 0.01, 0.0)]  # 20 x 10 m (fake transform: 0.001 deg = 1 m)
+    elements = [{"type": "node", "id": nid, "lat": 60.0 + lat, "lon": 25.0 + lon} for nid, lat, lon in corners]
+    elements.append({"type": "way", "id": 7, "nodes": [1, 2, 3, 4, 1], "tags": {"man_made": "water_tower", "height": "33"}})
+    towers = [o for o in build_ways(elements).scenery_objects if o.kind == "water_tower"]
+    assert [(round(o.x, 1), round(o.y, 1), o.height_m, o.id) for o in towers] == [(25010.0, 60005.0, 33.0, -7)]
+
+
+def test_tree_row_trees_are_at_most_8_m_apart_through_the_tree_kinds_and_chunk_lod_list():
+    from theroadragetrip import map_chunks
+
+    elements = [{"type": "node", "id": 1, "lat": 60.0, "lon": 25.0}, {"type": "node", "id": 2, "lat": 60.0, "lon": 25.05},
+                {"type": "node", "id": 3, "lat": 60.03, "lon": 25.05},
+                {"type": "way", "id": 9, "nodes": [1, 2, 3], "tags": {"natural": "tree_row"}}]
+    world = build_ways(elements)
+    trees = sorted((p, kind) for s in world.sceneries for p, kind in zip(s.trees, s.tree_kinds))
+    points = [p for p, _ in trees]
+    assert points[0] == (25000.0, 60000.0) and (25050.0, 60030.0) in points  # both ends
+    path = sorted(points, key=lambda p: (p[0], p[1]))
+    assert max(abs(a[0] - b[0]) + abs(a[1] - b[1]) for a, b in zip(path, path[1:])) <= 8.0  # 50 m + 30 m legs, no gap over 8 m
+    assert len(points) == len(set(points)) >= 80 // 8
+    assert all(kind for _, kind in trees)  # each a regular tree kind (trees.py classify_tree_kind)
+    streamed = [row for cid in map_chunks.ChunkIndex(world)._chunks for row in map_chunks.ChunkIndex(world).message(cid)["trees"]]
+    assert len(streamed) == len(points)  # in the chunks' "trees" list: the client's existing tree LOD draws them
+
+
+def test_level_crossing_takes_its_road_direction_and_barrier_or_crossbuck():
+    elements = [{"type": "node", "id": 1, "lat": 60.0, "lon": 25.0}, {"type": "node", "id": 2, "lat": 60.1, "lon": 25.1},
+                {"type": "way", "id": 5, "nodes": [1, 2], "tags": {"highway": "residential"}}]
+    barriers = {10: "yes", 11: "full", 12: "half", 13: "no", 14: None}
+    for nid, value in barriers.items():
+        tags = {"railway": "level_crossing", **({"crossing:barrier": value} if value else {})}
+        elements.append({"type": "node", "id": nid, "lat": 60.0 + (nid - 9) * 0.01, "lon": 25.0 + (nid - 9) * 0.01, "tags": tags})
+    crossings = {o.id: o for o in build_ways(elements).scenery_objects if o.kind.startswith("level_crossing")}
+    assert {nid: o.kind for nid, o in crossings.items()} == {10: "level_crossing_barrier", 11: "level_crossing_barrier",
+                                                            12: "level_crossing_barrier", 13: "level_crossing", 14: "level_crossing"}
+    for o in crossings.values():  # along the road (45 degrees), and left where it is mapped (on the road)
+        assert abs(math.sin(o.direction_angle - math.pi / 4)) < 1e-6
+        assert abs(o.x - 25000.0 - (o.id - 9) * 10) < 1e-6
