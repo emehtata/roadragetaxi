@@ -55,6 +55,7 @@ var _rng := RandomNumberGenerator.new()
 var _ripple_points := PackedVector2Array()
 var _ripple_colors := PackedColorArray()
 var precipitation_enabled := true
+var precipitation_3d := false  # the 3D view draws the drops (precipitation_3d.gd): no 2D overlay
 var ripples_enabled := true
 var splashes_enabled := true
 
@@ -116,7 +117,7 @@ func update(delta: float, state: Dictionary, taxi: Vector2, underground: bool) -
 	if precipitation_enabled:
 		advance_particles(delta)
 	if precipitation != null:
-		precipitation.visible = precipitation_enabled and kind != ""
+		precipitation.visible = precipitation_enabled and kind != "" and not precipitation_3d
 		if precipitation.visible:
 			precipitation.queue_redraw()
 	var wetness := float(state.get("weather", {}).get("wetness", 0.0)) if state.get("weather") is Dictionary else 0.0

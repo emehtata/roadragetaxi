@@ -251,6 +251,24 @@
       "measure_s": 5
     },
     {
+      "id": "snow_street_day",
+      "description": "Snow falling on the city-centre street by day: flakes drift and flutter down to the ground and roofs",
+      "why": "wet_asphalt_night's pose (paved street, 4 buildings in view) in January daylight with snow; snow leaves the road dry.",
+      "city": "Helsinki",
+      "pose": [385325.8, 6671757.1, 0.59],
+      "start_time": "2026-01-15T12:00",
+      "weather": "snow",
+      "cloud": 0.9,
+      "wetness": [0.0, 0.2],
+      "sun_altitude_deg": [0, 20],
+      "zoom": 2.0,
+      "requires": {
+        "buildings_in_view": 4
+      },
+      "measure_s": 5,
+      "second_shot_s": 0.5
+    },
+    {
       "id": "building_materials_day",
       "description": "Facades of several building types and colours in daylight",
       "why": "Second inner-city street (find: 14 buildings, 4 colours, 3 commercial within 70 x 40 m). OSM gives no facade materials here: colours and categories differ, materials cannot be promised.",

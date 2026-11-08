@@ -540,6 +540,9 @@ func _finish() -> void:
 	set_process(false)  # awaits below: finish once
 	var path := out_dir.path_join("screenshot.png")
 	main.get_viewport().get_texture().get_image().save_png(path)
+	if scenario.has("second_shot_s"):  # motion check: the same view a moment later
+		await main.get_tree().create_timer(float(scenario["second_shot_s"])).timeout
+		main.get_viewport().get_texture().get_image().save_png(out_dir.path_join("screenshot_2.png"))
 	var rejections := await _spawn_rejections()
 	var perf := preload("res://perf.gd")
 	var sections := {}

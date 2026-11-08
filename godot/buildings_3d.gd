@@ -49,6 +49,9 @@ var _sun_key := Vector3(INF, INF, INF)  # the (altitude, azimuth, cloud) applied
 var _surface_pixels_per_m := -1.0
 var shadows_enabled := true
 var sky_wind := Vector2.ZERO  # m/s, the clouds' drift (main.gd)
+var precip_kind := ""  # main.gd: "" underground, clear or with precipitation off
+var precip_intensity := 0.7
+var _precip: Precipitation3D
 var _sky_offset := Vector2.ZERO
 var windshield_on := false
 var windshield_at := Vector2.ZERO
@@ -83,6 +86,8 @@ static func _make_material(flat := false) -> Material:
 func _ready() -> void:
 	_view = _make_view(LAYER_BUILDINGS)
 	_camera = _view.get_child(0)
+	_precip = Precipitation3D.new()
+	_view.add_child(_precip)
 	if opaque:
 		_view.transparent_bg = false
 		var sky := Environment.new()  # off the loaded chunks: the 2D map's open ground
@@ -293,6 +298,7 @@ func _process(delta: float) -> void:
 	var size := Vector2i(get_viewport().get_visible_rect().size)
 	var centre := camera_2d.get_screen_center_position()
 	var height := camera_height(size.y / camera_2d.zoom.y)
+	_precip.set_weather(precip_kind, precip_intensity, sky_wind)
 	if opaque:
 		set_surface_scale(camera_2d.zoom.x * _view.scaling_3d_scale)
 		_sky_offset += (sky_wind + Vector2(1.5, 0.5)) * delta * 0.003  # the clouds drift with the wind, slowly even in a calm
@@ -460,7 +466,7 @@ func add(instances: Array) -> void:
 
 
 func instance_count() -> int:
-	return _view.get_child_count() - 4  # minus the camera, the sun, the shadow ground and the cars
+	return _view.get_child_count() - 5  # minus the camera, the precipitation, the sun, the shadow ground and the cars
 
 
 ## godot-cars-3d: cars as 3D bodies in this view - the buildings' camera,

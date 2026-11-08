@@ -217,6 +217,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_model_variant_stable_and_covering()
 	test_cloud_coverage_mapping()
 	test_sky_material_takes_cloud_cover()
+	test_precipitation_3d()
 	test_car_model_range()
 	test_bus_model_radius_matches_car()
 	test_decorated_sites()
@@ -4209,3 +4210,12 @@ func test_sky_material_takes_cloud_cover() -> void:
 	check(material is ShaderMaterial and is_equal_approx(material.get_shader_parameter("coverage"), Daylight.cloud_coverage(0.9)), "the sky's coverage follows cloud cover")
 	B3.opaque = old_opaque
 	r.free()
+
+
+## docs/specs/precipitation-falling.md: the standalone script's tests, counted here too.
+func test_precipitation_3d() -> void:
+	var tests: Object = preload("res://tests/precipitation_3d.gd").new()
+	tests.host = root
+	tests.run()
+	check(tests.failures == 0, "precipitation_3d: %d failures (see FAIL lines above)" % tests.failures)
+	tests.free()

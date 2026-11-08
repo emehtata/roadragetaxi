@@ -903,6 +903,11 @@ func _present(state: Dictionary) -> void:
 	water_wind.y = -water_wind.y
 	if map_layer.buildings_3d:
 		map_layer.buildings_3d.sky_wind = water_wind
+		var falling := WeatherLayer.falling(state)
+		var surface := int(state.get("player", {}).get("map_level", 0)) == 0
+		map_layer.buildings_3d.precip_kind = falling if surface and weather.precipitation_enabled else ""
+		map_layer.buildings_3d.precip_intensity = 1.0 if state.get("weather") is Dictionary and state["weather"].get("is_thunderstorm", false) else 0.7
+	weather.precipitation_3d = map_layer.buildings_3d != null
 	MapChunk.WATER_MATERIAL.set_shader_parameter("wind", water_wind)
 	MapChunk.SHORE_MATERIAL.set_shader_parameter("wind", water_wind)
 	if MapChunk.outdoor_3d:  # step 6: the 3D water's waves, as rough as the 2D water's
