@@ -250,6 +250,15 @@ def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
     return always + others[:max(0, cap - len(always))]
 
 
+def player_walker_dict(ped) -> dict:
+    """The on-foot player: "heading" the look (first-person camera), "facing" the
+    figure's way (the way it moves; standing, the look), "speed" its gait."""
+    vx, vy = getattr(ped, "velocity", (0.0, 0.0))
+    moving = math.hypot(vx, vy) > 0.2
+    return {"x": ped.x, "y": ped.y, "heading": ped.heading, "speed": abs(ped.speed),
+            "facing": math.atan2(vy, vx) if moving else ped.heading}
+
+
 def _pedestrian_to_dict(ped, residents=None, santa_day=None, person: bool = True) -> dict:
     row = {
         "id": ped.resident_id,
@@ -619,9 +628,7 @@ def build_state_message(
             "passenger_mass_kg": car.passenger_mass_kg,
             "length_m": getattr(car, "length_m", 4.0), "width_m": getattr(car, "width_m", 1.8),
         },
-        "player_pedestrian": {
-            "x": player_pedestrian.x, "y": player_pedestrian.y, "heading": player_pedestrian.heading,
-        },
+        "player_pedestrian": player_walker_dict(player_pedestrian),
         # Residents (owner, occupants, a pedestrian's person) only for what the client inspects:
         # {"kind": "npc" | "pedestrian", "id": ...} from its commands - a pedestrian inside a vehicle too.
         "npcs": [compact_row(_npc_to_dict(npc, residents, _inspected(inspect, "npc", npc.vehicle_id) or (

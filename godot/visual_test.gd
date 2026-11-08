@@ -52,7 +52,7 @@ func _walk(delta: float) -> void:
 		main._interact_pending = true  # F: out of the taxi
 		_walk_phase = 1
 	elif _walk_phase == 1 and state.get("on_foot", false):
-		if not main.walk_eye:  # from the windshield view main.gd has switched by itself
+		if not main.walk_eye and not walk.get("top_down", false):  # from the windshield view main.gd has switched by itself
 			main._set_windshield(true, true)
 		main.look_yaw = wrapf(float(pose[2]) + float(walk.get("yaw", 0.0)), -PI, PI)
 		main.look_pitch = float(walk.get("pitch", 0.0))
@@ -60,13 +60,19 @@ func _walk(delta: float) -> void:
 		_walk_left = float(walk.get("s", 3.0))
 		driving = true  # main.gd leaves the commands to this node
 		_walk_phase = 2
-	elif _walk_phase == 2:
+	elif _walk_phase == 2 or (_walk_phase == 6 and walk.get("keep", false)):
 		_walk_left -= delta
-		var on := _walk_left > 0.0
-		main.send({"throttle": 0.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0,
+		var keep: bool = walk.get("keep", false)  # still walking in the screenshot: the figure mid-stride
+		var on := _walk_left > 0.0 or keep
+		var controls := {"throttle": 0.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0,
 			"forward": float(walk.get("forward", 1.0)) if on else 0.0, "turn": -float(walk.get("strafe", 0.0)) if on else 0.0,
-			"sprint": on and bool(walk.get("sprint", false))})
-		if _walk_left <= -1.0:  # a second to stop
+			"sprint": on and bool(walk.get("sprint", false))}
+		main.send(main.walk_controls(controls, main.look_yaw) if walk.get("top_down", false) else controls)  # top_down: the figure seen from above
+		if _walk_phase == 6:
+			pass
+		elif keep and _walk_left <= 0.0:
+			_walk_phase = 6
+		elif _walk_left <= -1.0:  # a second to stop
 			_walk_phase = 4 if walk.has("back") else 6
 			driving = _walk_phase == 4
 	elif _walk_phase == 4:
@@ -276,8 +282,10 @@ func check() -> Array:
 	elif walking:  # the taxi stays where it was parked (checked above); the walker moved away from it
 		var walker: Dictionary = state.get("player_pedestrian", {})
 		var walked := Vector2(float(walker.get("x", INF)), float(walker.get("y", INF))).distance_to(Vector2(pose[0], pose[1]))
-		if not state.get("on_foot", false) or not main.walk_eye:
-			missing.append("the player is not walking in first person")
+		if not state.get("on_foot", false) or main.walk_eye == bool(scenario["walk"].get("top_down", false)):
+			missing.append("the player is not walking in the scenario's view")
+		elif scenario["walk"].has("expect") and state.get("interaction", {}).get("kind", "") != scenario["walk"]["expect"]:
+			missing.append("the server offers %s here, not %s" % [state.get("interaction", {}), scenario["walk"]["expect"]])
 		elif back == "door" and not state.get("taxi_door", false):
 			missing.append("the server offers no taxi door here")
 		elif back == "" and walked < float(scenario["walk"].get("min_m", 0.0)):

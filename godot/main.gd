@@ -584,10 +584,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_reset_trip_pending = true
 			KEY_E:  # toggles what the simulation shows (it may have stopped the engine: no fuel)
 				var door: Dictionary = entities.shown_state().get("home_door", {})
-				if entities.shown_state().get("on_foot", false) and entities.shown_state().get("taxi_door", false):
-					_interact_pending = true  # at the taxi's driver's door: get in (the server checks the reach again)
-				elif door.get("available", false) or (door.get("indoors", false) and (not home_walk.visible or home_walk.at_exit())):
-					_home_door_pending = true  # on foot at home's door (only then: E means nothing else on foot)
+				if not entities.shown_state().get("interaction", {}).is_empty() or (door.get("indoors", false) and (not home_walk.visible or home_walk.at_exit())):
+					_home_door_pending = true  # on foot: what the server offers here (taxi door, house door, building; it checks again), or out of the house
 				elif not entities.shown_state().get("on_foot", true) and not _interact_pending:
 					_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
 			KEY_F1:

@@ -48,6 +48,7 @@ from ..config import CONFIG_PATH, cities_from_config, default_city_configuration
 from ..world_loader import load_world, resolve_city
 from ..viewport import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle, driver_door_available
+from .. import interaction
 from ..physics import reset_trip, respawn_car
 from ..home import (clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home,
                     find_home_building, home_building_key, load_home_building_key,
@@ -1022,8 +1023,14 @@ class SimulationServer:
             phone_requests, self._phone_requests = self._phone_requests, []
         phone_results = [self._apply_phone_request(request) for request in phone_requests]
 
-        if home_door:
-            self._home_door_pressed()
+        if home_door:  # E on foot: whatever the server offers here now (state.interaction), checked again
+            kind = SimulationServer._interaction(self).get("kind")
+            if kind == "taxi_door":
+                interact = True
+            elif kind == "building":
+                self._notify(SimulationServer._interaction(self)["label"] or tr(self.language, "building_unnamed"))
+            else:
+                self._home_door_pressed()
         if self._inside is not None:  # the map player stays at the door: no walking, taxi or respawn; H picks this house
             command = replace(command, forward=0.0, turn=0.0, sprint=False)
             interact = respawn = False
@@ -1304,6 +1311,13 @@ class SimulationServer:
                   home_building_key(building) == self._home_building_key] for _, building, door in near]
         return {"indoors": self._inside is not None, "available": self._inside is None and at is not None,
                 "is_home": at is not None and home_building_key(at[0]) == self._home_building_key, "doors": doors}
+
+    def _interaction(self) -> dict:
+        """state.interaction: what E does on foot here (interaction.pick), {} indoors or at the wheel."""
+        if not self._on_foot or self._inside is not None:
+            return {}
+        return interaction.pick(self.car, self.world.player_pedestrian, SimulationServer._house_at_door(self) is not None,
+                                getattr(self.world, "building_grid", None))
 
     def _home_door_pressed(self) -> None:
         """E: inside, out to the doorstep; at a house's front door, in. The interior is
@@ -1591,6 +1605,7 @@ class SimulationServer:
         message["state"]["save_error_count"] = self.save_error_count
         message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
         message["state"]["home_door"] = self._home_door_state()
+        message["state"]["interaction"] = SimulationServer._interaction(self)
         message["state"]["taxi_door"] = self._on_foot and driver_door_available(self.car, self.world.player_pedestrian)
         with self._clients_lock:
             clients = list(self._clients)

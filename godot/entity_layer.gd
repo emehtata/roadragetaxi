@@ -1957,7 +1957,8 @@ func _draw() -> void:
 		count += _brawls(a, b, t, view_rect)
 	if a.get("on_foot", false) and not player_fighting(a) and not first_person:  # in a brawl the fighter figure is the player
 		var walker := StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), t, origin)
-		_pedestrian(Vector2(walker.x, walker.y), walker.z, {"color": [255, 217, 64], "animation_state": "standing"}, 0.0)
+		var facing := float(a["player_pedestrian"].get("facing", walker.z))  # the way it moves (protocol.player_walker_dict)
+		_pedestrian(Vector2(walker.x, walker.y), facing, player_walker(a["player_pedestrian"]), _clock)
 		count += 1
 
 	_route(a)
@@ -2137,6 +2138,13 @@ func _people_3d() -> void:
 ## Walk poses per second (6 per stride, 1.75 strides/s): above 10 so every
 ## 0.1 s server step shows the next pose (docs/specs/person-legs-walk-swing.md).
 const WALK_POSES_PER_S := 10.5
+
+
+## The on-foot player's figure as a pedestrian row (fps-3d-view section 6): the
+## shared person body, standing, walking, or running at sprint speed.
+static func player_walker(walker: Dictionary) -> Dictionary:
+	var speed := float(walker.get("speed", 0.0))
+	return {"color": [255, 217, 64], "animation_state": "walking" if speed > 0.2 else "standing", "speed": speed, "id": "player"}
 
 
 static func person_pose(ped: Dictionary, animation_time: float) -> String:

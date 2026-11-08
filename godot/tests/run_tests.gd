@@ -3192,8 +3192,10 @@ func test_rest_of_static_world() -> void:
 	var hint: String = Hud.values({"on_foot": true, "brawls": with_me["brawls"]})["hint"]
 	check(hint == Hud.T.text("hint_brawl", "en") and hint.contains("Space"), "in a fight on foot the hint lists the fight keys")
 	check(Hud.values({"on_foot": true})["hint"] == Hud.T.text("hint_foot", "en"), "otherwise the walking hint")
-	check(Hud.values({"on_foot": true, "taxi_door": true})["hint"].begins_with("Press E to get in the taxi"), "at the driver's door: the E prompt")
-	check(Hud.values({"on_foot": false, "taxi_door": true, "player": {"engine_on": true}})["hint"] == "", "no door prompt at the wheel")
+	check(Hud.values({"on_foot": true, "interaction": {"kind": "taxi_door"}})["hint"].begins_with("Press E to get in the taxi"), "at the driver's door: the E prompt")
+	check(Hud.values({"on_foot": false, "interaction": {"kind": "taxi_door"}, "player": {"engine_on": true}})["hint"] == "", "no door prompt at the wheel")
+	check(Hud.values({"on_foot": true, "interaction": {"kind": "building", "label": "Kauppa"}})["hint"].begins_with("Press E to look at Kauppa"), "by a wall: the look prompt names the building")
+	check(Hud.values({"on_foot": true, "interaction": {"kind": "building", "label": ""}})["hint"].begins_with("Press E to look at the building"), "an unnamed building: the plain look prompt")
 	brawler._brawls({"brawls": []}, {}, 0.0, view)
 	check(brawler._brawl_punches.is_empty(), "a finished brawl is forgotten")
 	brawler.free()
@@ -3605,6 +3607,9 @@ func test_buildings_3d() -> void:
 		and EntityLayer.person_pose({"animation_state": "walking", "speed": 2.4}, 0.1) == "run_1"
 		and EntityLayer.person_pose({"animation_state": "fallen"}, 0.0) == "lying" and EntityLayer.person_pose({"animation_state": "sitting"}, 0.0) == "sitting"
 		and EntityLayer.person_pose({"animation_state": "waiting"}, 0.0) == "standing", "a person's pose follows their animation state and gait")
+	check(EntityLayer.person_pose(EntityLayer.player_walker({"speed": 0.0}), 0.1) == "standing"
+		and EntityLayer.person_pose(EntityLayer.player_walker({"speed": 1.5}), 0.1) == "walk_1"
+		and EntityLayer.person_pose(EntityLayer.player_walker({"speed": 5.5}), 0.1) == "run_1", "the player's figure stands, walks and sprints by its speed")
 	for species in WildlifeLayer.SPECIES + [&"dog"]:
 		var animal := B3.animal_arrays(str(species), Color.BROWN, "stand", 1.0)
 		check(animal["verts"].size() >= 36 and animal["part"].size() == animal["verts"].size(), "a %s has a 3D body" % species)

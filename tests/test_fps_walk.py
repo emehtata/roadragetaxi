@@ -65,3 +65,13 @@ def test_protocol_reads_look_heading_and_strafe_and_rejects_junk():
     assert command.look_heading == 1.0 and command.strafe == 1.0
     command, _ = command_from_message({"command": {"look_heading": float("nan"), "strafe": "x"}})
     assert command.look_heading is None and command.strafe == 0.0
+
+
+def test_the_walker_figure_faces_where_it_moves_not_where_it_looks():
+    from theroadragetrip.protocol import player_walker_dict
+    ped = PlayerPedestrian(0.0, 0.0)
+    fps_walk_step(ped, 0.0, 1.0, math.pi / 2, False, 1.0, lambda *_: False)  # looking north, strafing right
+    row = player_walker_dict(ped)
+    assert row["heading"] == math.pi / 2 and abs(row["facing"]) < 1e-6 and row["speed"] > 1.0
+    ped.velocity, ped.speed = (0.0, 0.0), 0.0
+    assert player_walker_dict(ped)["facing"] == math.pi / 2  # standing: the way they look

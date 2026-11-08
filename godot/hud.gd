@@ -308,11 +308,14 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 			text["road"] += " [%s: %d km/h]" % [T.text("limit", language), int(road["speed_limit_kmh"])]
 	if on_foot and preload("res://entity_layer.gd").player_fighting(state):
 		text["hint"] = T.text("hint_brawl", language)
-	elif on_foot and state.get("taxi_door", false):
+	elif on_foot and state.get("interaction", {}).get("kind", "") == "taxi_door":
 		text["hint"] = T.text("taxi_enter_prompt", language) + " · " + T.text("hint_foot", language)
 	elif on_foot and state.get("home_door", {}).get("available", false):
 		var door: Dictionary = state["home_door"]
 		text["hint"] = T.text("home_enter_prompt" if door.get("is_home", false) else "house_enter_prompt", language) + " · " + T.text("hint_foot", language)
+	elif on_foot and state.get("interaction", {}).get("kind", "") == "building":  # interaction.py: a wall within reach
+		var label: String = state["interaction"].get("label", "")
+		text["hint"] = (T.text("building_look_prompt", language) % label if label else T.text("building_look_plain", language)) + " · " + T.text("hint_foot", language)
 	elif on_foot:
 		text["hint"] = T.text("hint_foot", language)
 	elif not player.get("engine_on", true):
