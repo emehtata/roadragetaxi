@@ -30,6 +30,42 @@ var _speed_max := 0.0
 var driving := false  # measuring with `drive_s`: main.gd leaves the controls to this node
 var _windshield_pressed := false
 var _lane_assist_pressed := false
+var _walk_phase := 0  # "walk" scenarios: 0 in the taxi, 1 getting out, 2 walking, 3 walked
+var _walk_left := 0.0
+
+
+## A "walk" scenario (fps-3d-view phase 1): out of the parked taxi, first
+## person (I), then walk `walk.s` seconds with `walk.forward`/`walk.strafe`
+## (sprint optional) towards `walk.yaw` rad left of the pose heading; the
+## server moves the player, this only presses the keys.
+func _walk(delta: float) -> void:
+	var state: Dictionary = main.entities.shown_state()
+	if state.is_empty():
+		return
+	var walk: Dictionary = scenario["walk"]
+	var pose: Array = scenario["pose"]
+	var player: Dictionary = state.get("player", {})
+	if _walk_phase == 0 and not state.get("on_foot", true) \
+			and Vector2(float(player.get("x", INF)), float(player.get("y", INF))).distance_to(Vector2(pose[0], pose[1])) <= POSE_M:
+		main._interact_pending = true  # F: out of the taxi
+		_walk_phase = 1
+	elif _walk_phase == 1 and state.get("on_foot", false):
+		main._set_windshield(true, true)
+		main.look_yaw = wrapf(float(pose[2]) + float(walk.get("yaw", 0.0)), -PI, PI)
+		main.look_pitch = float(walk.get("pitch", 0.0))
+		main.map_layer.buildings_3d.eye_pitch = main.look_pitch
+		_walk_left = float(walk.get("s", 3.0))
+		driving = true  # main.gd leaves the commands to this node
+		_walk_phase = 2
+	elif _walk_phase == 2:
+		_walk_left -= delta
+		var on := _walk_left > 0.0
+		main.send({"throttle": 0.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0,
+			"forward": float(walk.get("forward", 1.0)) if on else 0.0, "turn": -float(walk.get("strafe", 0.0)) if on else 0.0,
+			"sprint": on and bool(walk.get("sprint", false))})
+		if _walk_left <= -1.0:  # a second to stop
+			driving = false
+			_walk_phase = 3
 
 
 ## "lineup": every kind the 2D view draws, in rows east of the pose, heading east, at the sizes
@@ -129,6 +165,8 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_elapsed += delta
+	if scenario.has("walk"):
+		_walk(delta)
 	if scenario.get("windshield", false) and not _windshield_pressed and not main.entities.player_body().is_empty():
 		var key := InputEventKey.new()
 		key.keycode = KEY_I
@@ -195,11 +233,21 @@ func check() -> Array:
 	var pose: Array = scenario["pose"]
 	var player: Dictionary = state.get("player", {})
 	var at := Vector2(float(player.get("x", INF)), float(player.get("y", INF)))
+	var walking := scenario.has("walk")
+	if walking and _walk_phase < 3:
+		missing.append("still getting out and walking")
 	if driving:  # moving on purpose: the clock and weather must hold, the pose and view change
 		pass
 	elif at.distance_to(Vector2(pose[0], pose[1])) > POSE_M or absf(angle_difference(float(player.get("heading", 0.0)), pose[2])) > HEADING_RAD:
 		missing.append("vehicle at %s heading %.3f, not the scenario's %s" % [at, float(player.get("heading", 0.0)), pose])
-	if state.get("on_foot", true):
+	if walking:  # the taxi stays where it was parked (checked above); the walker moved away from it
+		var walker: Dictionary = state.get("player_pedestrian", {})
+		var walked := Vector2(float(walker.get("x", INF)), float(walker.get("y", INF))).distance_to(Vector2(pose[0], pose[1]))
+		if not state.get("on_foot", false) or not main.walk_eye:
+			missing.append("the player is not walking in first person")
+		elif walked < float(scenario["walk"].get("min_m", 0.0)):
+			missing.append("the walker is %.1f m from the taxi, the scenario needs %s" % [walked, scenario["walk"]["min_m"]])
+	elif state.get("on_foot", true):
 		missing.append("the player is on foot, not in the vehicle")
 	var calendar: Dictionary = state.get("calendar", {}) if typeof(state.get("calendar")) == TYPE_DICTIONARY else {}
 	var start: String = scenario["start_time"]
@@ -479,6 +527,7 @@ func _write(result: Dictionary) -> void:
 		"resolution": [main.get_viewport().get_visible_rect().size.x, main.get_viewport().get_visible_rect().size.y],
 		"game_time": [state.get("calendar", {}).get("date", "") if typeof(state.get("calendar")) == TYPE_DICTIONARY else "", state.get("game_time_seconds", null)],
 		"weather": state.get("weather", {}).duplicate(), "vehicle": {"x": player.get("x"), "y": player.get("y"), "heading": player.get("heading")},
+		"walker": state.get("player_pedestrian", {}).duplicate() if state.get("on_foot", false) else {},
 		"camera": {"zoom": main.camera.zoom.x, "position": [main.camera.position.x, main.camera.position.y]},
 		"scene": _counts, "elapsed_s": _elapsed, "forest": _forest_stats()})
 	result["weather"].erase("plowed_cells")

@@ -104,7 +104,8 @@ def command_player_id(message: dict) -> str:
 
 COMMAND_RANGES = {  # the analogue inputs and their valid range; the rest are flags
     "throttle": (0.0, 1.0), "brake": (0.0, 1.0), "steer_left": (0.0, 1.0), "steer_right": (0.0, 1.0),
-    "forward": (-1.0, 1.0), "turn": (-1.0, 1.0),
+    "forward": (-1.0, 1.0), "turn": (-1.0, 1.0), "strafe": (-1.0, 1.0),
+    "look_heading": (-2.0 * math.pi, 2.0 * math.pi),
 }
 
 

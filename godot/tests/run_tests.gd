@@ -1878,6 +1878,9 @@ func test_commands_carry_the_player_id() -> void:
 	var refuel := Main.command_for({"throttle": 0.0}, true, false, true)
 	check(refuel["refuel"] == true and refuel["interact"] == false and refuel["throttle"] == 0.0, "a G press sends refuel")
 	check(Main.command_for({}, true, false, false)["refuel"] == false, "no press, no refuel")
+	var walk := Main.walk_controls({"forward": 1.0, "turn": 1.0}, 7.0)  # first person: A steps left, the yaw is the heading
+	check(walk["strafe"] == -1.0 and walk["turn"] == 0.0 and is_equal_approx(walk["look_heading"], 7.0 - TAU), "first-person walk: A strafes, the camera yaw goes to the server")
+	check(not Main.walk_controls({}, 1.0).has("look_heading"), "no walking keys in the command, no look heading")
 	check(FileAccess.get_file_as_string("res://i18n.gd").contains("G   Refuel"), "F1 help names G")
 	test_controls_and_economy()
 	test_taxi_information()

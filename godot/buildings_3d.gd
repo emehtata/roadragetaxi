@@ -54,6 +54,9 @@ var windshield_on := false
 var windshield_at := Vector2.ZERO
 var windshield_heading := 0.0
 var windshield_elevation := 0.0
+var eye_height := 1.35  # m above the ground: the driver's eyes, or a walker's (main.gd)
+var eye_ahead := 0.55  # m forward of windshield_at
+var eye_pitch := 0.0  # rad, up(+)
 var test_eye := {}  # visual tests only: "at" (layer point, else the windshield), "height" m above the ground there, "yaw" rad left of the heading
 static var opaque := false  # --outdoor-3d (use_shaded): the view draws its own ground, shaded by real lights
 const GROUND := Color(0.27, 0.33, 0.25)  # map_layer._draw_ground's open ground
@@ -303,7 +306,8 @@ func _process(delta: float) -> void:
 		if opaque:
 			_camera.environment.background_mode = Environment.BG_SKY
 		var forward := Vector3(cos(windshield_heading), 0.0, -sin(windshield_heading))
-		_camera.position = Vector3(windshield_at.x, 1.35 + windshield_elevation, windshield_at.y) + forward * 0.55
+		_camera.position = Vector3(windshield_at.x, eye_height + windshield_elevation, windshield_at.y) + forward * eye_ahead
+		forward = Vector3(forward.x * cos(eye_pitch), sin(eye_pitch), forward.z * cos(eye_pitch))
 		if not test_eye.is_empty():
 			var at: Vector2 = test_eye.get("at", windshield_at)
 			forward = forward.rotated(Vector3.UP, float(test_eye.get("yaw", 0.0)))

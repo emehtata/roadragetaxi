@@ -150,6 +150,8 @@ def test_random_command_payloads_never_raise_and_stay_in_range():
         assert isinstance(interact, bool)
         for name, (low, high) in protocol.COMMAND_RANGES.items():
             value = getattr(command, name)
+            if name == "look_heading" and value is None:  # optional: absent means walking with the turn keys
+                continue
             assert isinstance(value, float) and low <= value <= high
         for name in PlayerCommand.__dataclass_fields__:
             if name not in protocol.COMMAND_RANGES:

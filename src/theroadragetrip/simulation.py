@@ -65,6 +65,8 @@ class PlayerCommand:
     forward: float = 0.0  # on-foot forward(+)/back(-), -1..1
     turn: float = 0.0  # on-foot turn left(+)/right(-), -1..1
     sprint: bool = False
+    strafe: float = 0.0  # first-person walking: right(+)/left(-), -1..1
+    look_heading: Optional[float] = None  # first-person walking: the camera's yaw (server heading, rad); None = turn keys
     # Session toggles (K/V/B keys) - continuously reported rather than
     # edge-triggered, since the client already tracks their current
     # on/off state locally exactly like it tracks on_foot today.
@@ -115,6 +117,47 @@ def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, bloc
     if not blocked(x, y + step_y):
         return x, y + step_y
     return x, y
+
+
+FPS_WALK_SPEED_MPS = 1.5  # first-person walking: a natural pace
+FPS_SPRINT_SPEED_MPS = 5.5
+FPS_ACCEL_MPS2 = 8.0  # reaches walking pace in ~0.2 s, sprint in ~0.7 s; the same to stop
+
+
+def point_in_vehicle(x: float, y: float, vehicle, margin_m: float) -> bool:
+    """Whether (x, y) is within `margin_m` of a vehicle's rectangle (x, y, heading, length_m, width_m)."""
+    dx, dy = x - vehicle.x, y - vehicle.y
+    c, s = math.cos(vehicle.heading), math.sin(vehicle.heading)
+    return (abs(dx * c + dy * s) <= vehicle.length_m * 0.5 + margin_m
+            and abs(-dx * s + dy * c) <= vehicle.width_m * 0.5 + margin_m)
+
+
+def fps_walk_step(ped, forward: float, strafe: float, look_heading: float, sprint: bool, dt: float, blocked) -> None:
+    """One tick of first-person walking: move relative to the client's look
+    heading, speed limited and smoothed here on the server, walls and
+    vehicles (`blocked`) stop the player, who slides along them."""
+    ped.heading = look_heading
+    c, s = math.cos(look_heading), math.sin(look_heading)
+    wish_x, wish_y = forward * c + strafe * s, forward * s - strafe * c  # strafe right = heading turned clockwise
+    wish = math.hypot(wish_x, wish_y)
+    top = FPS_SPRINT_SPEED_MPS if sprint else FPS_WALK_SPEED_MPS
+    if wish > 1e-6:
+        scale = top * min(1.0, wish) / wish
+        wish_x, wish_y = wish_x * scale, wish_y * scale
+    vx, vy = ped.velocity
+    change_x, change_y = wish_x - vx, wish_y - vy
+    change = math.hypot(change_x, change_y)
+    limit = FPS_ACCEL_MPS2 * dt
+    if change > limit:
+        change_x, change_y = change_x * limit / change, change_y * limit / change
+    vx, vy = vx + change_x, vy + change_y
+    x, y = walk_blocked_by_walls(ped.x, ped.y, vx * dt, vy * dt, blocked)
+    if x == ped.x:
+        vx = 0.0
+    if y == ped.y:
+        vy = 0.0
+    ped.x, ped.y, ped.velocity = x, y, (vx, vy)
+    ped.speed = math.hypot(vx, vy)
 
 
 def _roadwork_bars(work, x: float, y: float, *, layer: int = 0, map_level: int = 0) -> bool:
@@ -293,7 +336,18 @@ def advance_simulation(
     if brawl_heading is not None:  # squaring up or knocked down: the brawl holds the player in place
         player_pedestrian.speed = 0.0
         player_pedestrian.heading = brawl_heading
+    elif on_foot and command.look_heading is not None:
+        near_vehicles = [car, *npc_manager.nearby_vehicles_at(player_pedestrian.x, player_pedestrian.y, 8.0)]
+        inside_building = pedestrian_mgr._point_inside_building
+
+        def blocked(x: float, y: float) -> bool:
+            return inside_building(x, y) or any(
+                point_in_vehicle(x, y, v, player_pedestrian.radius_m * 0.5) for v in near_vehicles)
+
+        fps_walk_step(player_pedestrian, command.forward, command.strafe, command.look_heading,
+                      command.sprint, dt, blocked)
     elif on_foot:
+        player_pedestrian.velocity = (0.0, 0.0)
         forward_input = command.forward
         steer_input = command.turn
         sprinting = command.sprint

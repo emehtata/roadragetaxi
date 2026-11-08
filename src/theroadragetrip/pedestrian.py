@@ -581,6 +581,7 @@ class PlayerPedestrian:
     color: Tuple[int, int, int] = (255, 215, 60)
     radius_m: float = 0.55
     way: Optional[Way] = None
+    velocity: Tuple[float, float] = (0.0, 0.0)  # first-person walking (simulation.fps_walk_step)
 
 
 class PedestrianManager:

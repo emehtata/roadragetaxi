@@ -78,6 +78,12 @@ var _lead := Vector2.ZERO  # camera look-ahead, metres
 var _windshield: CanvasLayer
 var _windshield_view: TextureRect
 var _windshield_zoom := 0.0
+var _windshield_trims: Array[ColorRect] = []
+var walk_eye := false  # first-person walking: the windshield view at the walking player's eyes (I on foot)
+var look_yaw := 0.0  # server heading convention (rad, counter-clockwise from east); the server walks this way
+var look_pitch := 0.0
+const WALK_EYE_HEIGHT_M := 1.7
+const LOOK_PITCH_LIMIT := 1.35  # rad, about 77 degrees up or down
 const LEAD_S := 0.6  # look this far ahead of the taxi at its speed
 const LEAD_MAX := 0.3  # at most this share of the view
 var _state_usec := 0.0  # handling one state (parse + buffer), smoothed
@@ -472,6 +478,9 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 	drive.handle(event)
+	if walk_eye and _walk_look(event):
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventMouseButton:
 		if event.pressed and _start_sign == null and not (phone.visible and phone.get_global_rect().has_point(event.position)) and (event.button_index == MOUSE_BUTTON_MIDDLE or (event.button_index == MOUSE_BUTTON_LEFT and event.ctrl_pressed)):
 			_pan_button = event.button_index
@@ -541,7 +550,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_I:
-				_set_windshield(not _windshield.visible)
+				_set_windshield(not _windshield.visible, entities.shown_state().get("on_foot", false))
 			KEY_F12:
 				save_screenshot()
 			KEY_U, KEY_F2:  # the HUD layout back to default
@@ -632,11 +641,20 @@ func _build_windshield() -> void:
 		trim.anchor_bottom = edges[3]
 		trim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		frame.add_child(trim)
+		_windshield_trims.append(trim)
 
 
-func _set_windshield(on: bool) -> void:
-	if on and (not MapChunk.outdoor_3d or entities.player_body().is_empty()):
+func _set_windshield(on: bool, walking := false) -> void:
+	if on and (not MapChunk.outdoor_3d or (entities.player_body().is_empty() and not walking)):
 		return
+	walk_eye = on and walking
+	entities.first_person = walk_eye
+	for trim in _windshield_trims:
+		trim.visible = not walk_eye  # no car frame around a walker's eyes
+	if walk_eye:
+		look_yaw = float(entities.shown_state().get("player_pedestrian", {}).get("heading", 0.0))
+		look_pitch = 0.0
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if walk_eye and DisplayServer.get_name() != "headless" else Input.MOUSE_MODE_VISIBLE
 	if on:
 		_clear_focus()
 		_windshield_zoom = camera.zoom.x
@@ -647,6 +665,36 @@ func _set_windshield(on: bool) -> void:
 	_windshield.visible = on
 	if map_layer.buildings_3d != null:
 		map_layer.buildings_3d.windshield_on = on
+		map_layer.buildings_3d.eye_height = WALK_EYE_HEIGHT_M if walk_eye else 1.35
+		map_layer.buildings_3d.eye_ahead = 0.0 if walk_eye else 0.55
+		map_layer.buildings_3d.eye_pitch = 0.0
+
+
+## First-person walking: the mouse looks around (yaw goes to the server
+## with each command); Esc frees the cursor, a click takes it back.
+func _walk_look(event: InputEvent) -> bool:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		var sensitivity: float = home_first_person.mouse_sensitivity
+		look_yaw = wrapf(look_yaw - event.relative.x * sensitivity, -PI, PI)
+		look_pitch = clampf(look_pitch - event.relative.y * sensitivity, -LOOK_PITCH_LIMIT, LOOK_PITCH_LIMIT)
+		map_layer.buildings_3d.eye_pitch = look_pitch
+		return true
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT \
+			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		return true
+	return false
+
+
+## The walking command in first person: A/D step sideways, the camera's yaw sets the heading.
+static func walk_controls(controls: Dictionary, yaw: float) -> Dictionary:
+	if controls.has("turn"):
+		controls["strafe"] = -float(controls["turn"])
+		controls["turn"] = 0.0
+		controls["look_heading"] = wrapf(yaw, -PI, PI)
+	return controls
 
 
 func _clear_focus() -> void:
@@ -704,7 +752,15 @@ func _process(delta: float) -> void:
 			print("screenshot saved: ", _screenshot_path)
 			get_tree().quit()
 	camera.position = entities.player_position() + _camera_lead(delta)
-	if _windshield.visible:
+	if walk_eye:
+		if not state.get("on_foot", false):
+			_set_windshield(false)
+		else:
+			var at: Vector2 = entities.player_position()  # the server's position, interpolated
+			map_layer.buildings_3d.windshield_at = at
+			map_layer.buildings_3d.windshield_heading = look_yaw
+			map_layer.buildings_3d.windshield_elevation = map_layer.deck_height(at, 0)
+	elif _windshield.visible:
 		var body: Dictionary = entities.player_body()
 		if body.is_empty():
 			_set_windshield(false)
@@ -1323,6 +1379,8 @@ func send(controls: Dictionary) -> void:
 	var outside: bool = entities.shown_state().get("on_foot", true)
 	if outside:
 		_engine_on = bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
+	if walk_eye and outside:
+		controls = walk_controls(controls, look_yaw)
 	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist,
 		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending, _home_pending)
 	if outside or _interact_pending:

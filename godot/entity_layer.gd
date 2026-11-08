@@ -62,6 +62,7 @@ var _car_shapes: Array = []  # [kind, ...] this frame: ["poly", points, fill, ou
 const STREET_LIGHT_ON_VEHICLES := 0.55  # how strongly a lamp lights a car, like the pool on the road
 var language := "en"
 var _reflectors: Node2D  # made in _ready (an instance never in the tree leaks nothing)
+var first_person := false  # walking in first person (main.gd): the walker's own figure would fill the eye camera
 var underground := false  # the taxi below ground (state player.map_level): only it and the walker are shown
 var covered := func(_at: Vector2, _layer: int) -> bool: return false  # MapLayer.covered (headlights under a bridge)
 var _trains: Node2D  # trains, z 14: above the canopies and rail bridges (z 13), drawn last
@@ -1954,7 +1955,7 @@ func _draw() -> void:
 			count += 1
 	if not underground:
 		count += _brawls(a, b, t, view_rect)
-	if a.get("on_foot", false) and not player_fighting(a):  # in a brawl the fighter figure is the player
+	if a.get("on_foot", false) and not player_fighting(a) and not first_person:  # in a brawl the fighter figure is the player
 		var walker := StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), t, origin)
 		_pedestrian(Vector2(walker.x, walker.y), walker.z, {"color": [255, 217, 64], "animation_state": "standing"}, 0.0)
 		count += 1
