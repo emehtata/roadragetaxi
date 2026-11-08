@@ -30,14 +30,16 @@ var _speed_max := 0.0
 var driving := false  # measuring with `drive_s`: main.gd leaves the controls to this node
 var _windshield_pressed := false
 var _lane_assist_pressed := false
-var _walk_phase := 0  # "walk" scenarios: 0 in the taxi, 1 getting out, 2 walking, 3 walked
+var _walk_phase := 0  # "walk" scenarios: 0 in the taxi, 1 getting out, 2 walking, 3 walked, 4 back to the door, 5 getting in, 6 done
 var _walk_left := 0.0
 
 
 ## A "walk" scenario (fps-3d-view phase 1): out of the parked taxi, first
 ## person (I), then walk `walk.s` seconds with `walk.forward`/`walk.strafe`
 ## (sprint optional) towards `walk.yaw` rad left of the pose heading; the
-## server moves the player, this only presses the keys.
+## server moves the player, this only presses the keys. `walk.back`: then
+## walk back to the driver's door until the server offers it ("door"), and
+## press E there ("in").
 func _walk(delta: float) -> void:
 	var state: Dictionary = main.entities.shown_state()
 	if state.is_empty():
@@ -45,12 +47,13 @@ func _walk(delta: float) -> void:
 	var walk: Dictionary = scenario["walk"]
 	var pose: Array = scenario["pose"]
 	var player: Dictionary = state.get("player", {})
-	if _walk_phase == 0 and not state.get("on_foot", true) \
+	if _walk_phase == 0 and not state.get("on_foot", true) and (_windshield_pressed or not scenario.get("windshield", false)) \
 			and Vector2(float(player.get("x", INF)), float(player.get("y", INF))).distance_to(Vector2(pose[0], pose[1])) <= POSE_M:
 		main._interact_pending = true  # F: out of the taxi
 		_walk_phase = 1
 	elif _walk_phase == 1 and state.get("on_foot", false):
-		main._set_windshield(true, true)
+		if not main.walk_eye:  # from the windshield view main.gd has switched by itself
+			main._set_windshield(true, true)
 		main.look_yaw = wrapf(float(pose[2]) + float(walk.get("yaw", 0.0)), -PI, PI)
 		main.look_pitch = float(walk.get("pitch", 0.0))
 		main.map_layer.buildings_3d.eye_pitch = main.look_pitch
@@ -64,8 +67,34 @@ func _walk(delta: float) -> void:
 			"forward": float(walk.get("forward", 1.0)) if on else 0.0, "turn": -float(walk.get("strafe", 0.0)) if on else 0.0,
 			"sprint": on and bool(walk.get("sprint", false))})
 		if _walk_left <= -1.0:  # a second to stop
+			_walk_phase = 4 if walk.has("back") else 6
+			driving = _walk_phase == 4
+	elif _walk_phase == 4:
+		var c := cos(float(player["heading"]))
+		var sn := sin(float(player["heading"]))
+		var door := Vector2(float(player["x"]) + c * float(player.get("length_m", 4.0)) * 0.2 - sn * float(player.get("width_m", 1.8)) * 0.85,
+			float(player["y"]) + sn * float(player.get("length_m", 4.0)) * 0.2 + c * float(player.get("width_m", 1.8)) * 0.85)
+		var walker: Dictionary = state["player_pedestrian"]
+		var to_door := door - Vector2(float(walker["x"]), float(walker["y"]))
+		main.look_yaw = to_door.angle()  # server axes: the angle is the heading
+		var arrived: bool = state.get("taxi_door", false) and to_door.length() < 1.2  # a step back: the taxi in view
+		if arrived:
+			main.look_pitch = -0.35  # looking down at the door
+			main.map_layer.buildings_3d.eye_pitch = main.look_pitch
+		main.send({"throttle": 0.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0, "forward": 0.0 if arrived else 1.0, "turn": 0.0, "sprint": false})
+		if arrived:
 			driving = false
-			_walk_phase = 3
+			if walk["back"] == "in":
+				var key := InputEventKey.new()  # E at the door, as the player
+				key.keycode = KEY_E
+				key.physical_keycode = KEY_E
+				key.pressed = true
+				Input.parse_input_event(key)
+				_walk_phase = 5
+			else:
+				_walk_phase = 6
+	elif _walk_phase == 5 and not state.get("on_foot", true):
+		_walk_phase = 6
 
 
 ## "lineup": every kind the 2D view draws, in rows east of the pose, heading east, at the sizes
@@ -234,18 +263,24 @@ func check() -> Array:
 	var player: Dictionary = state.get("player", {})
 	var at := Vector2(float(player.get("x", INF)), float(player.get("y", INF)))
 	var walking := scenario.has("walk")
-	if walking and _walk_phase < 3:
+	var back: String = scenario.get("walk", {}).get("back", "")
+	if walking and _walk_phase < 6:
 		missing.append("still getting out and walking")
 	if driving:  # moving on purpose: the clock and weather must hold, the pose and view change
 		pass
 	elif at.distance_to(Vector2(pose[0], pose[1])) > POSE_M or absf(angle_difference(float(player.get("heading", 0.0)), pose[2])) > HEADING_RAD:
 		missing.append("vehicle at %s heading %.3f, not the scenario's %s" % [at, float(player.get("heading", 0.0)), pose])
-	if walking:  # the taxi stays where it was parked (checked above); the walker moved away from it
+	if back == "in":  # back at the wheel, the driver's eyes, the taxi where it was left
+		if state.get("on_foot", true) or main.walk_eye or not main._windshield.visible:
+			missing.append("not back in the taxi's windshield view")
+	elif walking:  # the taxi stays where it was parked (checked above); the walker moved away from it
 		var walker: Dictionary = state.get("player_pedestrian", {})
 		var walked := Vector2(float(walker.get("x", INF)), float(walker.get("y", INF))).distance_to(Vector2(pose[0], pose[1]))
 		if not state.get("on_foot", false) or not main.walk_eye:
 			missing.append("the player is not walking in first person")
-		elif walked < float(scenario["walk"].get("min_m", 0.0)):
+		elif back == "door" and not state.get("taxi_door", false):
+			missing.append("the server offers no taxi door here")
+		elif back == "" and walked < float(scenario["walk"].get("min_m", 0.0)):
 			missing.append("the walker is %.1f m from the taxi, the scenario needs %s" % [walked, scenario["walk"]["min_m"]])
 	elif state.get("on_foot", true):
 		missing.append("the player is on foot, not in the vehicle")

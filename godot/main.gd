@@ -584,7 +584,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				_reset_trip_pending = true
 			KEY_E:  # toggles what the simulation shows (it may have stopped the engine: no fuel)
 				var door: Dictionary = entities.shown_state().get("home_door", {})
-				if door.get("available", false) or (door.get("indoors", false) and (not home_walk.visible or home_walk.at_exit())):
+				if entities.shown_state().get("on_foot", false) and entities.shown_state().get("taxi_door", false):
+					_interact_pending = true  # at the taxi's driver's door: get in (the server checks the reach again)
+				elif door.get("available", false) or (door.get("indoors", false) and (not home_walk.visible or home_walk.at_exit())):
 					_home_door_pending = true  # on foot at home's door (only then: E means nothing else on foot)
 				elif not entities.shown_state().get("on_foot", true) and not _interact_pending:
 					_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
@@ -647,6 +649,9 @@ func _build_windshield() -> void:
 func _set_windshield(on: bool, walking := false) -> void:
 	if on and (not MapChunk.outdoor_3d or (entities.player_body().is_empty() and not walking)):
 		return
+	var switching := on and _windshield.visible and walk_eye != walking  # out of the taxi or back in: the eye glides over
+	if switching:
+		map_layer.buildings_3d.begin_eye_transition()
 	walk_eye = on and walking
 	entities.first_person = walk_eye
 	for trim in _windshield_trims:
@@ -655,12 +660,12 @@ func _set_windshield(on: bool, walking := false) -> void:
 		look_yaw = float(entities.shown_state().get("player_pedestrian", {}).get("heading", 0.0))
 		look_pitch = 0.0
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if walk_eye and DisplayServer.get_name() != "headless" else Input.MOUSE_MODE_VISIBLE
-	if on:
+	if on and not switching:
 		_clear_focus()
 		_windshield_zoom = camera.zoom.x
 		camera.zoom = Vector2.ONE * 3.0  # keep forward chunks and traffic available to the 3D view
 		_windshield_view.texture = map_layer._layer_3d()._view.get_texture()
-	else:
+	elif not on:
 		camera.zoom = Vector2.ONE * _windshield_zoom
 	_windshield.visible = on
 	if map_layer.buildings_3d != null:
@@ -754,7 +759,9 @@ func _process(delta: float) -> void:
 	camera.position = entities.player_position() + _camera_lead(delta)
 	if walk_eye:
 		if not state.get("on_foot", false):
-			_set_windshield(false)
+			_set_windshield(true)  # back at the wheel: the driver's eyes
+			if walk_eye:  # no taxi body (underground): the map view
+				_set_windshield(false)
 		else:
 			var at: Vector2 = entities.player_position()  # the server's position, interpolated
 			map_layer.buildings_3d.windshield_at = at
@@ -762,7 +769,9 @@ func _process(delta: float) -> void:
 			map_layer.buildings_3d.windshield_elevation = map_layer.deck_height(at, 0)
 	elif _windshield.visible:
 		var body: Dictionary = entities.player_body()
-		if body.is_empty():
+		if state.get("on_foot", false):
+			_set_windshield(true, true)  # out of the taxi in the windshield view: walking in first person
+		elif body.is_empty():
 			_set_windshield(false)
 		else:
 			map_layer.buildings_3d.windshield_at = body["position"]

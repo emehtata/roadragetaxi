@@ -47,7 +47,7 @@ from ..career import career_path, gig_odometer_path, load_career
 from ..config import CONFIG_PATH, cities_from_config, default_city_configuration, get_overpass_endpoints
 from ..world_loader import load_world, resolve_city
 from ..viewport import SCREEN_H, SCREEN_W
-from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
+from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle, driver_door_available
 from ..physics import reset_trip, respawn_car
 from ..home import (clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home,
                     find_home_building, home_building_key, load_home_building_key,
@@ -1036,7 +1036,7 @@ class SimulationServer:
             command = replace(command, engine_on=None)
             self._on_foot = apply_enter_exit_vehicle(
                 self.car, self.world.player_pedestrian, self._on_foot, self.audio, self.world.taxi_mgr,
-                self.world.pedestrian_mgr.pedestrians,
+                self.world.pedestrian_mgr.pedestrians, blocked=self.world.pedestrian_mgr._point_inside_building,
             )
 
         self.car.lane_assist_enabled = command.lane_assist_enabled
@@ -1591,6 +1591,7 @@ class SimulationServer:
         message["state"]["save_error_count"] = self.save_error_count
         message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
         message["state"]["home_door"] = self._home_door_state()
+        message["state"]["taxi_door"] = self._on_foot and driver_door_available(self.car, self.world.player_pedestrian)
         with self._clients_lock:
             clients = list(self._clients)
             loaded = set().union(*(chunks for chunks, _ in self._client_chunks.values()))

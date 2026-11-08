@@ -1011,7 +1011,7 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			var shape: Array = VAN_SHAPE if kind == "van" else CAR_SHAPES[0 if is_taxi else body_style % CAR_SHAPES.size()]
 			var cars_3d: Node2D = Buildings3D.current
 			if cars_3d != null and not _under and not fallen:  # godot-cars-3d: the body in the 3D view
-				if is_taxi and cars_3d.windshield_on:
+				if is_taxi and cars_3d.windshield_on and not first_person:
 					return  # the camera is inside this body
 				var lit := engine_on and taxi_sign_on
 				var lamps := lamp_bits(engine_on, braking, reversing, turn_signal, signal_elapsed)

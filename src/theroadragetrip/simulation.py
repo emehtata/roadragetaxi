@@ -182,7 +182,25 @@ def _provoke_rival(brawls, npc_manager, player_pedestrian, sim_time: float) -> N
     brawls.report("provoke", (PLAYER, LOCAL_PLAYER_ID), (NPC, rival.vehicle_id), ("provoke", rival.vehicle_id, int(sim_time)))
 
 
-def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None, pedestrians=()) -> bool:
+EXIT_MAX_SPEED_MPS = 1.0  # getting out: the taxi (nearly) stopped
+DRIVER_DOOR_REACH_M = 1.5  # the "get in" prompt within this of the driver's door
+
+
+def driver_door(car, side: float = 1.0) -> Tuple[float, float]:
+    """Where the driver stands getting out: beside the front door, left (side 1) or right (-1)."""
+    length_m, width_m = getattr(car, "length_m", 4.0), getattr(car, "width_m", 1.8)
+    c, s = math.cos(car.heading), math.sin(car.heading)
+    return (car.x + c * length_m * 0.2 - s * width_m * 0.85 * side,
+            car.y + s * length_m * 0.2 + c * width_m * 0.85 * side)
+
+
+def driver_door_available(car, player_pedestrian) -> bool:
+    """The on-foot player is at the standing taxi's driver's door (the E prompt)."""
+    x, y = driver_door(car)
+    return abs(car.speed) <= EXIT_MAX_SPEED_MPS and math.hypot(player_pedestrian.x - x, player_pedestrian.y - y) <= DRIVER_DOOR_REACH_M
+
+
+def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None, pedestrians=(), blocked=None) -> bool:
     """The 'F' key's get-in/get-out-of-the-car action - authoritative
     gameplay logic (a distance check gates re-entry), so it belongs on
     the simulation side of the boundary, not decided by a client. On foot by a pre-booked rail
@@ -194,21 +212,18 @@ def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_
         audio.play_group("gameplay.meet_greet")
         return on_foot
     if not on_foot:
-        length_m = getattr(car, "length_m", 4.0)
-        width_m = getattr(car, "width_m", 1.8)
-        left_x = -math.sin(car.heading)
-        left_y = math.cos(car.heading)
-        player_pedestrian.x = (
-            car.x + math.cos(car.heading) * length_m * 0.2 + left_x * width_m * 0.85
-        )
-        player_pedestrian.y = (
-            car.y + math.sin(car.heading) * length_m * 0.2 + left_y * width_m * 0.85
-        )
+        if abs(car.speed) > EXIT_MAX_SPEED_MPS:  # no jumping out of a moving taxi
+            return False
+        spot = next((p for p in (driver_door(car), driver_door(car, side=-1.0))
+                     if blocked is None or not blocked(*p)), None)  # the driver's door; a wall there: the other side
+        if spot is None:
+            return False
+        player_pedestrian.x, player_pedestrian.y = spot
         player_pedestrian.heading = car.heading
         car.speed = 0.0  # the engine keeps running (idling) until E turns it off
         audio.play_group("vehicle.door_open")
         return True
-    elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) <= 3.0:
+    elif driver_door_available(car, player_pedestrian):  # the same rule as the E prompt
         car.speed = 0.0
         audio.play_group("vehicle.door_open")  # getting in: the door opens (passengers boarding get door_close)
         return False

@@ -19,7 +19,7 @@ from theroadragetrip.rail_bookings import (
     RailBookingManager,
     waiting_booking,
 )
-from theroadragetrip.simulation import apply_enter_exit_vehicle, remove_boarded_rail_walker
+from theroadragetrip.simulation import apply_enter_exit_vehicle, driver_door, remove_boarded_rail_walker
 from theroadragetrip.station_passengers import SYNC_INTERVAL_S, StationPassengerView
 from theroadragetrip.taxi import GREET_RADIUS_M, TaxiManager, TaxiState
 from theroadragetrip.train_passengers import ON_TRAIN, TAXI, PassengerFlow, RailPassenger
@@ -231,7 +231,7 @@ def test_boarding_and_the_trip_wait_for_the_passenger_and_the_driver():
     bookings, (passenger,), pedestrians, manager, car, player = greeted("Test Person 1")
     booking, customer, pedestrian = passenger.booking, manager.current_passenger, passenger.pedestrian
 
-    walk_to(player, car)  # the driver is back in first; the passenger is still on their way
+    player.x, player.y = driver_door(car)  # the driver is back in first; the passenger is still on their way
     assert press_f(car, player, manager) is False
     pedestrian.x, pedestrian.y = 20.0, 42.0
     manager.update(car, 0.1)
@@ -246,7 +246,7 @@ def test_boarding_and_the_trip_wait_for_the_passenger_and_the_driver():
     assert booking.status == PASSENGER_MET and manager.fare_started_at is None  # waits for the driver
     assert pedestrian in pedestrians.pedestrians
 
-    walk_to(player, car)
+    player.x, player.y = driver_door(car)
     assert press_f(car, player, manager) is False
     manager.update(car, 0.1)
     remove_boarded_rail_walker(manager, pedestrians)

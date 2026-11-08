@@ -57,6 +57,9 @@ var windshield_elevation := 0.0
 var eye_height := 1.35  # m above the ground: the driver's eyes, or a walker's (main.gd)
 var eye_ahead := 0.55  # m forward of windshield_at
 var eye_pitch := 0.0  # rad, up(+)
+const EYE_TRANSITION_S := 0.6  # getting out of the taxi or back in: the eye glides between seat and standing height
+var _eye_from := Transform3D()
+var _eye_blend := 1.0
 var test_eye := {}  # visual tests only: "at" (layer point, else the windshield), "height" m above the ground there, "yaw" rad left of the heading
 static var opaque := false  # --outdoor-3d (use_shaded): the view draws its own ground, shaded by real lights
 const GROUND := Color(0.27, 0.33, 0.25)  # map_layer._draw_ground's open ground
@@ -313,6 +316,9 @@ func _process(delta: float) -> void:
 			forward = forward.rotated(Vector3.UP, float(test_eye.get("yaw", 0.0)))
 			_camera.position = to_3d(at, float(test_eye.get("height", 1.35)) + float(test_eye.get("ground", windshield_elevation)))
 		_camera.look_at(_camera.position + forward * 100.0, Vector3.UP)
+		if _eye_blend < 1.0:
+			_eye_blend = minf(1.0, _eye_blend + delta / EYE_TRANSITION_S)
+			_camera.transform = _eye_from.interpolate_with(_camera.transform, smoothstep(0.0, 1.0, _eye_blend))
 		_camera.near = 0.08
 		_camera.far = 1200.0  # far enough to see a forest edge across an open field (the forest's far LOD starts at 400 m)
 	else:
@@ -337,6 +343,12 @@ func _process(delta: float) -> void:
 		_sun.directional_shadow_max_distance = Vector2(height, (Vector2(size) / camera_2d.zoom).length() * 0.5 * SHADOW_GROUND_MARGIN).length()
 	_sprite.position = centre
 	_sprite.scale = Vector2.ONE / camera_2d.zoom
+
+
+## Glide the eye from where it is now to its next place (main.gd: out of the taxi, back in).
+func begin_eye_transition() -> void:
+	_eye_from = _camera.transform
+	_eye_blend = 0.0
 
 
 ## Night windows, as the 2D renderer: lit from darkness 0.25, fully by 0.5

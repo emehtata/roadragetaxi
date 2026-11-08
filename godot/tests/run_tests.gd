@@ -3192,6 +3192,8 @@ func test_rest_of_static_world() -> void:
 	var hint: String = Hud.values({"on_foot": true, "brawls": with_me["brawls"]})["hint"]
 	check(hint == Hud.T.text("hint_brawl", "en") and hint.contains("Space"), "in a fight on foot the hint lists the fight keys")
 	check(Hud.values({"on_foot": true})["hint"] == Hud.T.text("hint_foot", "en"), "otherwise the walking hint")
+	check(Hud.values({"on_foot": true, "taxi_door": true})["hint"].begins_with("Press E to get in the taxi"), "at the driver's door: the E prompt")
+	check(Hud.values({"on_foot": false, "taxi_door": true, "player": {"engine_on": true}})["hint"] == "", "no door prompt at the wheel")
 	brawler._brawls({"brawls": []}, {}, 0.0, view)
 	check(brawler._brawl_punches.is_empty(), "a finished brawl is forgotten")
 	brawler.free()

@@ -295,7 +295,7 @@ def test_engine_stays_off_after_entering_until_started():
     from theroadragetrip.simulation import apply_enter_exit_vehicle
 
     car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, engine_on=False)
-    pedestrian = types.SimpleNamespace(x=1.0, y=0.0, heading=0.0)
+    pedestrian = types.SimpleNamespace(x=0.8, y=1.53, heading=0.0)
     from theroadragetrip.server import NullAudio
 
     audio = NullAudio()
