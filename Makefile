@@ -114,9 +114,12 @@ $(GODOT):
 # A fresh checkout has no .godot/ class cache; import once or class_name types fail to parse.
 # Re-import whenever an asset gained or changed an .import sidecar: a stale cache
 # made the scripts that preload new models (e_scooter_grab3d.glb, mountain_bike.glb) fail to compile.
+# Also re-import when a class_name script is added or changed: the class cache lacked
+# the new Precipitation3D and buildings_3d.gd failed to parse.
 IMPORT_SIDECARS := $(shell find godot -name "*.import" -not -path "godot/.godot/*" 2>/dev/null)
+CLASS_SCRIPTS := $(shell grep -rl '^class_name' godot --include=*.gd --exclude-dir=.godot 2>/dev/null)
 
-godot/.godot/import-stamp: $(IMPORT_SIDECARS) | $(GODOT)
+godot/.godot/import-stamp: $(IMPORT_SIDECARS) $(CLASS_SCRIPTS) | $(GODOT)
 	$(GODOT) --headless --path godot --import
 	touch $@
 
@@ -166,6 +169,7 @@ audio-check:
 	PYTHONPATH=src $(PYTHON) tools/validate_audio_assets.py
 
 test:
+	sh tools/check_class_cache.sh
 	PYTHONPATH=src $(PYTHON) -m pytest -q -n auto -m "not timing"
 	PYTHONPATH=src $(PYTHON) -m pytest -q -m timing
 
