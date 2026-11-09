@@ -40,6 +40,10 @@ _endpoint_cooldown_lock = threading.Lock()
 DEFAULT_RATE_LIMIT_COOLDOWN_S = 60.0
 
 
+def force_refresh_requested(force_refresh: bool = False) -> bool:
+    return force_refresh or os.getenv("OVERPASS_FORCE_REFRESH", "0").lower() in ("1", "true", "yes")
+
+
 def _endpoint_on_cooldown(endpoint: str) -> bool:
     with _endpoint_cooldown_lock:
         return time.monotonic() < _endpoint_cooldown_until.get(endpoint, 0.0)
@@ -214,7 +218,7 @@ def fetch_osm_ways(
     if progress_callback:
         progress_callback(0.1, "Checking cache...")
 
-    force_refresh = force_refresh or os.getenv("OVERPASS_FORCE_REFRESH", "0").lower() in ("1", "true", "yes")
+    force_refresh = force_refresh_requested(force_refresh)
     if not force_refresh:
         cached = load_osm_cache(bbox)
         if cached is not None:

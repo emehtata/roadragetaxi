@@ -77,3 +77,25 @@ def test_trains_on_a_replaced_route_retire_at_their_turnaround():
     assert all(train.route is manager.routes[0] for train in manager.trains)
 
 
+def test_platform_clearance_uses_geo_distance():
+    from theroadragetrip import geo, trains
+
+    d = geo.dist_point_to_segment
+    assert d(3.0, 4.0, 0.0, 0.0, 6.0, 0.0) == 4.0  # projects inside
+    assert d(-3.0, 4.0, 0.0, 0.0, 6.0, 0.0) == 5.0  # past a
+    assert d(9.0, 4.0, 0.0, 0.0, 6.0, 0.0) == 5.0  # past b
+    assert d(3.0, 4.0, 0.0, 0.0, 0.0, 0.0) == 5.0  # zero-length
+
+    # The real check in RailwayManager._occupied_nodes, with minimal stubs.
+    from types import SimpleNamespace as NS
+
+    c = 2.0
+    assert trains.PLATFORM_CLEARANCE_M == c
+    stop = (None, None, "STA", None, None, (0.0, 0.0))
+    other = NS(stops=[stop], stop_index=0, route=NS(points=[(-10.0, 0.0), (10.0, 0.0)]))
+    manager = NS(trains=[other], graph=NS(node_at=lambda p: p))
+    service = NS(stops=[stop])
+    for offset, occupied in ((c - 0.1, True), (c + 0.1, False)):
+        route = NS(point_at=lambda along, y=offset: (0.0, y, 0.0))
+        nodes = trains.RailwayManager._occupied_nodes(manager, route, [0.0], service)
+        assert bool(nodes) is occupied, offset

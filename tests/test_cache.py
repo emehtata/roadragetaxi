@@ -626,3 +626,16 @@ def test_cache_skips_a_much_bigger_covering_file_when_asked(tmp_path, monkeypatc
     assert load_osm_cache(small) == sample
     assert load_osm_cache(small, max_cover_ratio=4.0) is None
     assert load_osm_cache((64.9, 25.3, 65.0, 25.45), max_cover_ratio=4.0) == sample  # 2.7x
+
+
+def test_force_refresh_requested_env_values(monkeypatch):
+    from theroadragetrip.osm.overpass import force_refresh_requested
+
+    monkeypatch.delenv("OVERPASS_FORCE_REFRESH", raising=False)
+    assert force_refresh_requested() is False
+    assert force_refresh_requested(True) is True
+    for value, expected in (("0", False), ("", False), ("1", True), ("true", True), ("YES", True)):
+        monkeypatch.setenv("OVERPASS_FORCE_REFRESH", value)
+        assert force_refresh_requested() is expected
+    monkeypatch.setenv("OVERPASS_FORCE_REFRESH", "0")
+    assert force_refresh_requested(True) is True

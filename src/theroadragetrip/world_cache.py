@@ -19,7 +19,6 @@ from typing import Any, Callable, Mapping
 
 from .parent_watch import exit_with_parent
 from .osm.cache import default_cache_root
-from .tile_streaming import TileCoord
 
 logger = logging.getLogger(__name__)
 
@@ -504,10 +503,6 @@ class WorldCacheManager:
         if area_id.startswith("tile_"):
             return self.cache_dir / "tiles" / f"{area_id}.rwc"
         return self.cache_dir / f"{area_id}.rwc"
-
-    @staticmethod
-    def tile_id(tile: TileCoord) -> str:
-        return f"tile_{tile.x}_{tile.y}"
 
     def preload_region(self, bbox, **kwargs) -> Future:
         """Load one combined streaming region instead of one request per tile."""

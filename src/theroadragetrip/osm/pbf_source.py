@@ -38,6 +38,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
+from .overpass import force_refresh_requested
 from ..utils.pbf_index import build_cells_for, default_index_dir, index_is_stale, osmium_command, tiles_for_bbox
 
 logger = logging.getLogger(__name__)
@@ -113,7 +114,7 @@ def fetch_osm_ways_from_pbf(
 
     if progress_callback:
         progress_callback(0.1, "Checking cache...")
-    force_refresh = force_refresh or os.getenv("OVERPASS_FORCE_REFRESH", "0").lower() in ("1", "true", "yes")
+    force_refresh = force_refresh_requested(force_refresh)
     if not force_refresh:
         cached = load_osm_cache(bbox, max_cover_ratio=COVERING_CACHE_MAX_RATIO)
         if cached is not None:
