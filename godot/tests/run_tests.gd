@@ -2123,6 +2123,13 @@ func test_speech_and_stations() -> void:
 	var pbf_modified := int(FileAccess.get_modified_time("res://finland_minimap.svg"))
 	check(not Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified) and Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified + Startup.PBF_MAX_AGE_S + 1), "map source: files over 30 days old are offered an update")
 	check(Startup.download_percent(25, 100) == 25.0 and Startup.download_percent(120, 100) == 100.0 and Startup.download_percent(1, 0) == 0.0, "map source: download progress is bounded and handles an unknown size")
+	check(not Startup.download_should_refresh(1153434, 1048576, 1500, 1000) and Startup.download_should_refresh(2097152, 1048576, 1100, 1000) and Startup.download_should_refresh(1058816, 1048576, 2000, 1000) and Startup.download_should_refresh(1000, -1, 0, 0), "startup download refresh throttle")
+	var ema: float = 0.0
+	for _i in 40:
+		ema = Startup.download_speed(ema, 2097152, 1.0)
+	var spiked: float = Startup.download_speed(ema, 20971520, 1.0)
+	check(absf(ema - 2097152.0) < 1.0 and spiked - ema <= 0.2 * 20971520.0 + 0.001 and Startup.download_speed(ema, 5000, 0.0) == ema, "startup download speed smoothing")
+	check(Startup.download_text(12900000, 314572800, 2097152.0) == "12.0 / 300.0 MiB  -  2.0 MiB/s" and Startup.download_text(12900000, 0, 2097152.0) == "12.0 MiB  -  2.0 MiB/s" and Startup.download_text(12900000, 314572800, 0.0) == "12.0 / 300.0 MiB  -  -- MiB/s", "startup download text")
 	var replace_target := OS.get_temp_dir().path_join("rrt-pbf-replace-test-%d" % OS.get_process_id())
 	var replace_partial := replace_target + ".part"
 	var old_file := FileAccess.open(replace_target, FileAccess.WRITE)

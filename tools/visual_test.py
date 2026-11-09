@@ -90,6 +90,8 @@ def run_one(scenario: dict, start_time: str, out_root: Path) -> dict:
 
             spec["lineup_coach"] = ["standard", DEFAULT_WAGON_LENGTH_M, TRAIN_WIDTH_M]
     (out / "scenario.json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
+    if scenario.get("kind") == "startup_download":
+        return _run_startup_download(scenario, out)
     x, y, heading = scenario["pose"]
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -127,6 +129,49 @@ def run_one(scenario: dict, start_time: str, out_root: Path) -> dict:
         except subprocess.TimeoutExpired:
             server.kill()
         log.close()
+    path = out / "result.json"
+    result = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {
+        "scenario": scenario["id"], "status": "failed", "errors": ["the client wrote no result (godot.log)"]}
+    return result | {"dir": str(out)}
+
+
+def _run_startup_download(scenario: dict, out: Path) -> dict:
+    """The launcher's map download screen fed by a local server at ~rate_mib_s
+    (godot/visual_test_startup.gd). Linux Godot with a throwaway user dir: the
+    download must never touch the player's map or settings."""
+    import http.server
+    import tempfile
+    import threading
+    import time
+
+    size, rate = int(scenario["size_mib"] * 1048576), scenario["rate_mib_s"]
+
+    class Slow(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(size))
+            self.end_headers()
+            try:
+                for _ in range(size // 65536):
+                    self.wfile.write(bytes(65536))
+                    time.sleep(1 / 16 / rate)
+            except OSError:
+                pass
+
+        def log_message(self, *args):
+            pass
+
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Slow)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    godot = sorted(Path.home().glob("tools/godot/Godot_v*-stable_linux.x86_64"))[-1]
+    try:
+        with tempfile.TemporaryDirectory() as data, open(out / "godot.log", "w", encoding="utf-8") as godot_log:
+            env = dict(os.environ, XDG_DATA_HOME=data, RRT_PBF_URL=f"http://127.0.0.1:{httpd.server_port}/finland.osm.pbf")
+            subprocess.run([str(godot), "--path", str(REPO / "godot"), "--display-driver", "x11", "--rendering-driver", "opengl3",
+                            "--script", "res://visual_test_startup.gd", "--", "--startup-scenario", str(out / "scenario.json")],
+                           cwd=REPO, stdout=godot_log, stderr=subprocess.STDOUT, env=env, timeout=300)
+    finally:
+        httpd.shutdown()
     path = out / "result.json"
     result = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {
         "scenario": scenario["id"], "status": "failed", "errors": ["the client wrote no result (godot.log)"]}

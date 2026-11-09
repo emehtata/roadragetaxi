@@ -947,6 +947,24 @@ static func download_percent(downloaded: int, total: int) -> float:
 	return clampf(float(downloaded) / float(total) * 100.0, 0.0, 100.0) if total > 0 else 0.0
 
 
+static func download_should_refresh(downloaded: int, last_shown: int, now_ms: int, last_ms: int) -> bool:
+	return last_shown < 0 or downloaded / 1048576 != last_shown / 1048576 or now_ms - last_ms >= 1000
+
+
+static func download_speed(prev_bps: float, delta_bytes: int, delta_s: float) -> float:
+	if delta_s <= 0.0:
+		return prev_bps
+	var bps := delta_bytes / delta_s
+	return bps if prev_bps <= 0.0 else lerpf(prev_bps, bps, 0.2)
+
+
+static func download_text(downloaded: int, total: int, bps: float) -> String:
+	var mib := "%.1f" % float(downloaded / 1048576)
+	if total > 0:
+		mib += " / %.1f" % (total / 1048576.0)
+	return "%s MiB  -  %s MiB/s" % [mib, "%.1f" % (bps / 1048576.0) if bps > 0.0 else "--"]
+
+
 static func _days_in(year: int, month: int) -> int:
 	if month == 2:
 		return 29 if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0 else 28
@@ -1427,24 +1445,36 @@ func _download_pbf(mode: String, allow_existing := false, settings_only := false
 		DirAccess.remove_absolute(partial)
 	var request := HTTPRequest.new()
 	request.download_file = partial
+	request.use_threads = true
+	request.download_chunk_size = 1048576
 	add_child(request)
 	var response: Array = []
 	request.request_completed.connect(func(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray):
 		response.assign([result, response_code, headers, body]))
-	var error := preload("res://map_browser.gd").ipv4_request(request, FINLAND_PBF_URL, PackedStringArray(), 0.0)
+	var error := preload("res://map_browser.gd").ipv4_request(request, OS.get_environment("RRT_PBF_URL") if OS.has_environment("RRT_PBF_URL") else FINLAND_PBF_URL, PackedStringArray(), 0.0)
 	if error != OK:
 		request.queue_free()
 		_pbf_download_failed(mode, allow_existing, settings_only)
 		return
+	var last_shown := -1
+	var last_ms := Time.get_ticks_msec()
+	var last_byte_ms := last_ms
+	var bps := 0.0
 	while response.is_empty():
 		var downloaded_bytes := request.get_downloaded_bytes()
 		var total_bytes := request.get_body_size()
-		progress.indeterminate = total_bytes <= 0
-		if total_bytes > 0:
-			progress.value = download_percent(downloaded_bytes, total_bytes)
-			progress_text.text = "%.1f / %.1f MiB" % [downloaded_bytes / 1048576.0, total_bytes / 1048576.0]
-		else:
-			progress_text.text = "%.1f MiB" % [downloaded_bytes / 1048576.0]
+		var now_ms := Time.get_ticks_msec()
+		if download_should_refresh(downloaded_bytes, last_shown, now_ms, last_ms):
+			if last_shown >= 0:
+				bps = download_speed(bps, downloaded_bytes - last_shown, (now_ms - last_ms) / 1000.0)
+			if downloaded_bytes != last_shown:
+				last_byte_ms = now_ms
+			progress.indeterminate = total_bytes <= 0
+			if total_bytes > 0:
+				progress.value = download_percent(downloaded_bytes, total_bytes)
+			progress_text.text = download_text(downloaded_bytes, total_bytes, bps if now_ms - last_byte_ms <= 3000 else 0.0)
+			last_shown = downloaded_bytes
+			last_ms = now_ms
 		await get_tree().process_frame
 	request.queue_free()
 	var downloaded := FileAccess.open(partial, FileAccess.READ)

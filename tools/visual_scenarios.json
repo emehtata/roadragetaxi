@@ -1,6 +1,15 @@
 {
   "scenarios": [
     {
+      "id": "startup_pbf_download",
+      "kind": "startup_download",
+      "description": "The launcher's Finland map download screen: progress bar, MiB count and speed",
+      "why": "docs/specs/pbf-download-progress.md: throttled progress and smoothed speed; a local server sends a 200 MiB body at ~2 MiB/s.",
+      "start_time": "2026-06-20T13:00",
+      "size_mib": 200,
+      "rate_mib_s": 2.0
+    },
+    {
       "id": "windshield_city_day",
       "description": "Straight ahead from the taxi interior on a city-centre street",
       "why": "The existing city-centre street taxi pose faces a street with nearby 3D roads, facades, traffic and lights.",
