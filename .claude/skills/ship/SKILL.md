@@ -12,3 +12,9 @@ Run sequentially, passing only paths/short text between agents (not file content
    user's wish (default: commit and push; "no commit" / "do not push" if the user said so).
    It commits atomically (spec + code + tests), pushes, and reports verdict and commit in ≤6 lines.
    On FAIL or after 5 loops, do not run it: ask user for direction.
+
+Every step must end with that agent's report. If an agent returns without a report
+(stopped with work still running, or with no final message), do not treat it as done:
+resume the same agent with SendMessage and ask it to finish and report, then keep
+polling (every 5 minutes while work runs) until the report arrives. Never run the next
+step on an unreported result.

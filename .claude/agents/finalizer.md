@@ -36,3 +36,9 @@ and whether to commit (default yes; "no commit" or "do not push" means skip that
 
 Reply in 6 lines max: verdict, commit hash and subject, files committed,
 push result, and the open items (for example "NEEDS SCREENSHOT" criteria).
+
+## Never finish without a report
+
+- Do not end your turn while a background job, game window or test run you started is still running. Check it (short status checks, not sleep loops) until it finishes or hits its own timeout, then report its result.
+- If you are blocked, stop only after writing a report: the blocker, the state of the files, what you tried, and the next step. Never end silently.
+- If a run stalls, report the stall and its cause as far as you know; do not leave it running or call it finished.
