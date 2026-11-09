@@ -54,7 +54,7 @@ const translations = {
     ],
     howKicker: '04 / RATTIIN', howTitle: 'Tunne<br><span>säännöt.</span><br>Riko rauha.', howLead: 'Kaupunki on sinun pelikenttäsi. Pisteet voit pilata itse.',
     controls: ['Aja, jarruta, ohjaa (myös nuolinäppäimet)', 'RageCab-puhelin: 1–3 hyväksyy, X hylkää', 'Raivohuuto: raivaa tie', 'Puhelin: kyytipyynnöt tai navigointi', 'Kaista-avustin', 'Nopeusrajoitin', 'Liikennevaloavustin', 'Palauta taksi tielle, T nollaa trippimittarin', 'Tauko, asetukset ja kaupungin vaihto', 'Astu taksiin tai ulos', 'Käynnistä tai sammuta moottori', 'Tankkaa huoltoasemalla', 'Junien saapumistaulu', 'Tappelussa: lyö, väistä, pakene', 'Sisällä: tee talosta koti'],
-    notesKicker: '05 / UUSIN VERSIO', notesTitle: 'Mitä<br><em>uutta.</em>', notesLead: 'Versio 0.20.0beta opettaa pelin uusille kuskeille, tuo koko Suomen kartan asennukseen ja pitää ajon sujuvana suurillakin nopeuksilla.',
+    notesKicker: '05 / UUSIN VERSIO', notesTitle: 'Mitä<br><em>uutta.</em>', notesLead: 'Versio 0.21.0beta opettaa pelin uusille kuskeille, tuo koko Suomen kartan asennukseen ja pitää ajon sujuvana suurillakin nopeuksilla.',
     notes: [
       ['Opetuspeli', 'Lyhyt opastettu ajo Oulussa opettaa ohjaimet, kyydit, puhelimen, junat ja rattiraivon. Sen voi pelata uudelleen asetuksista.'],
       ['Käyttöönotto', 'Ensimmäisellä kerralla peli kysyy kielen ja tarjoaa oikean sään, junien aikataulut ja tietyöt sekä kartan valinnan. Ohjattu asetus löytyy myös asetuksista.'],
@@ -121,7 +121,7 @@ const translations = {
     ],
     howKicker: '04 / TAKE THE WHEEL', howTitle: 'Know the<br><span>rules.</span><br>Break the calm.', howLead: 'The city is your playground. The score is yours to ruin.',
     controls: ['Drive, brake, steer (arrow keys also work)', 'RageCab phone: 1–3 accept, X declines', 'Rage shout: clear the way', 'Phone: ride requests or navigation', 'Lane assist', 'Speed limiter', 'Traffic-light assist', 'Return the taxi to the road, T resets trip meter', 'Pause, settings, change city', 'Enter or leave the taxi', 'Start or stop the engine', 'Refuel at a gas station', 'Train arrival board', 'In a brawl: punch, dodge, run', 'Inside: make the house your home'],
-    notesKicker: '05 / LATEST VERSION', notesTitle: 'What\'s<br><em>new.</em>', notesLead: 'Version 0.20.0beta teaches new drivers the game, brings the whole of Finland to the installer and keeps driving smooth even at high speed.',
+    notesKicker: '05 / LATEST VERSION', notesTitle: 'What\'s<br><em>new.</em>', notesLead: 'Version 0.21.0beta teaches new drivers the game, brings the whole of Finland to the installer and keeps driving smooth even at high speed.',
     notes: [
       ['Tutorial', 'A short guided drive in Oulu teaches the controls, fares, the phone, trains and road rage. Replay it any time from the settings.'],
       ['First-run setup', 'On the first start the game asks your language and offers real weather, train timetables and roadworks, and the map choice. The setup wizard is also in the settings.'],
