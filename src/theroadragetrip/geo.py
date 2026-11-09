@@ -1,3 +1,4 @@
+import functools
 import math
 from typing import Optional, Tuple
 
@@ -219,6 +220,14 @@ def segment_distance(
     )
 
 
+@functools.lru_cache(maxsize=None)
+def get_transformer(src: str, dst: str):
+    """One shared pyproj Transformer (always_xy) per CRS pair: building one costs ~10 ms."""
+    from pyproj import Transformer
+
+    return Transformer.from_crs(src, dst, always_xy=True)
+
+
 def meters_to_latlon(
     x: float, y: float, transformer: Optional[object] = None
 ) -> Tuple[Optional[float], Optional[float]]:
@@ -228,9 +237,7 @@ def meters_to_latlon(
     """
     try:
         if transformer is None:
-            from pyproj import Transformer
-
-            transformer = Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True)
+            transformer = get_transformer("EPSG:3067", "EPSG:4326")
         # transformer.transform(x, y) returns (lon, lat) when always_xy=True
         lon, lat = transformer.transform(x, y)
         return lat, lon

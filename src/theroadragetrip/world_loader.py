@@ -23,6 +23,7 @@ from .level_transitions import LevelTransitions, resolve_connectors, close_garag
 from .map_level import SURFACE_LEVEL, LevelRoadNetworks
 from .trams import TramManager
 from .borders import BorderWatch
+from .geo import get_transformer
 from .ferries import FerryManager
 from .osm.build import FERRY_KIND
 from .competitor_taxis import Dispatcher
@@ -88,11 +89,18 @@ def latlon_to_world_metres():
     """(lat, lon) -> world metres (EPSG:3067, x east / y north), or None
     without pyproj (trains then fall back to the fixed interval)."""
     try:
-        from pyproj import Transformer
+        transformer = get_transformer("EPSG:4326", "EPSG:3067")
     except ImportError:
         return None
-    transformer = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True)
     return lambda lat, lon: transformer.transform(lon, lat)
+
+
+def prepare_initial_window(auto_fetch_manager, args, x, y):
+    """Start reading the initial 3x3 window now (auto-fetch only): the
+    initial tile streaming gets the same future, so it is built once."""
+    if args.auto_fetch and not getattr(args, "use_sample", False):
+        return auto_fetch_manager.prepare_window(x, y)
+    return None
 
 
 def fetched_area_metres(bbox):
@@ -411,9 +419,7 @@ def load_world(
 
     # Prepare transformer for meters->latlon display
     try:
-        from pyproj import Transformer
-
-        transformer_to_ll = Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True)
+        transformer_to_ll = get_transformer("EPSG:3067", "EPSG:4326")
     except Exception:
         transformer_to_ll = None
         logger.debug("pyproj not available; lat/lon display disabled")
@@ -457,6 +463,7 @@ def load_world(
         and local_pbf_available(getattr(args, "osm_pbf_path", None)) else 5.0,
     )
     auto_fetch_manager.initialize_player_tile(car.x, car.y, fetched_area_metres(bbox))
+    prepare_initial_window(auto_fetch_manager, args, car.x, car.y)
     taxi_mgr.map_covers = auto_fetch_manager.covers
     auto_fetch_manager.soft_boundary_enabled = args.auto_fetch
 

@@ -1,3 +1,4 @@
+import pytest
 import theroadragetrip.tile_streaming as tile_streaming
 from theroadragetrip.tile_streaming import (
     PBF_TILE_SIZE_M,
@@ -1283,3 +1284,78 @@ def test_an_initial_world_with_a_key_twice_unloads_both_copies():
     manager._register_existing_world()
     manager._unload_tiles({TileCoord(0, 0)})
     assert manager.ways == []
+
+
+def test_initial_window_prepared_once(monkeypatch):
+    """load_world prepares the initial window at the car, and the startup
+    prepare and the initial tile streaming share one build of the window's
+    area (preload hands both the same future)."""
+    import sys
+    import threading
+    import theroadragetrip.world_loader as world_loader
+    from theroadragetrip.server import SimulationServer
+    from theroadragetrip.server.cli import parse_server_args
+
+    real_prepare = world_loader.prepare_initial_window
+    startup_calls = []
+
+    def record(manager, args, x, y):
+        startup_calls.append((x, y))
+        return real_prepare(manager, args, x, y)
+
+    monkeypatch.setattr(world_loader, "prepare_initial_window", record)
+    monkeypatch.setattr(sys, "argv", ["prog", "--use-sample", "--no-menu", "--no-historical-weather",
+                                      "--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    server = SimulationServer(*parse_server_args())
+    assert len(startup_calls) == 1
+    assert startup_calls[0] == pytest.approx((server.car.x, server.car.y), abs=50.0)
+
+    class Transformer:
+        def transform(self, x, y):
+            return x, y
+
+    release = threading.Event()
+
+    class Cache:
+        def __init__(self):
+            self.builds = {}
+            self.futures = {}
+
+        def area_id(self, bbox):
+            return repr(bbox)
+
+        def preload(self, area_id, bbox=None, **kwargs):
+            future = self.futures.get(area_id)
+            if future is None:
+                self.builds[area_id] = self.builds.get(area_id, 0) + 1
+                future = self.futures[area_id] = Future()
+
+                def finish():
+                    release.wait(2.0)
+                    future.set_result(MapData([], [], [], [], [], (0.0, 0.0, 1.0, 1.0)))
+                threading.Thread(target=finish, daemon=True).start()
+            return future
+
+        def prepare_region(self, bbox):
+            return self.preload(self.area_id(bbox), bbox)
+
+        def preload_region(self, bbox, **kwargs):
+            return self.preload(self.area_id(bbox), bbox, **kwargs)
+
+    cache = Cache()
+    manager = AutoFetchManager([], (0.0, 0.0, 1000.0, 1000.0), Transformer(), world_cache_manager=cache)
+    manager.initialize_player_tile(500.0, 500.0, (0.0, 0.0, 0.0, 0.0))
+    from types import SimpleNamespace
+    from theroadragetrip.world_loader import prepare_initial_window
+
+    assert prepare_initial_window(manager, SimpleNamespace(auto_fetch=False), 500.0, 500.0) is None
+    assert prepare_initial_window(manager, SimpleNamespace(auto_fetch=True, use_sample=True), 500.0, 500.0) is None
+    assert cache.builds == {}
+    assert prepare_initial_window(manager, SimpleNamespace(auto_fetch=True), 500.0, 500.0) is not None
+    assert manager.start_initial_tile_streaming()
+    release.set()
+    deadline = time.time() + 2.0
+    while manager.is_fetching and time.time() < deadline:
+        time.sleep(0.01)
+    assert not manager.is_fetching
+    assert list(cache.builds.values()) == [1]
