@@ -485,6 +485,15 @@ func _check_map(centre: Vector2) -> Array:
 		missing.append("%d street lamps in view, the scenario needs %d" % [lamps, needs["lamps_in_view"]])
 	if _moving(main.entities.shown_state()) < int(needs.get("moving_npcs", 0)):  # traffic running around the walker
 		missing.append("%d moving NPC vehicles, the scenario needs %d" % [_moving(main.entities.shown_state()), needs["moving_npcs"]])
+	if needs.has("far_npcs"):  # glb-only-vehicles: traffic 66-200 m from the player (the old procedural range)
+		var shown: Dictionary = main.entities.shown_state()
+		var me := Vector2(float(shown.get("player", {}).get("x", 0.0)), float(shown.get("player", {}).get("y", 0.0)))
+		var far := 0
+		for n in shown.get("npcs", []):
+			var d := Vector2(float(n["x"]), float(n["y"])).distance_to(me)
+			far += 1 if d > 66.0 and d < 200.0 else 0
+		if far < int(needs["far_npcs"]):
+			missing.append("%d NPC vehicles 66-200 m away, the scenario needs %d" % [far, needs["far_npcs"]])
 	if buildings < int(needs.get("buildings_in_view", 0)):
 		missing.append("%d buildings in view, the scenario needs %d" % [buildings, needs["buildings_in_view"]])
 	var layer_3d = main.map_layer.buildings_3d
@@ -494,6 +503,26 @@ func _check_map(centre: Vector2) -> Array:
 		var trains: int = 0 if layer_3d == null else int(layer_3d._model_used.get("train_locomotive", 0)) + int(layer_3d._model_used.get("train_coach", 0))
 		if trains < int(needs["train_models_in_view"]):
 			missing.append("%d train models in view, the scenario needs %d" % [trains, needs["train_models_in_view"]])
+	if needs.has("far_car_models_ahead"):  # glb-only-vehicles AC 4: GLB vehicles over 66 m ahead of the windshield, within 30 deg of its heading
+		var ahead := 0
+		if layer_3d != null:
+			var eye: Vector2 = layer_3d.windshield_at
+			var forward := Vector2(cos(layer_3d.windshield_heading), -sin(layer_3d.windshield_heading))
+			for kind in layer_3d._model_nodes:
+				for i in int(layer_3d._model_used.get(kind, 0)):
+					var p: Vector3 = layer_3d._model_nodes[kind][i].position
+					var off := Vector2(p.x, p.z) - eye
+					ahead += 1 if off.length() > 66.0 and absf(forward.angle_to(off)) < deg_to_rad(30.0) else 0
+		_counts["far_car_models_ahead"] = ahead
+		if ahead < int(needs["far_car_models_ahead"]):
+			var models := []
+			if layer_3d != null:
+				for kind in layer_3d._model_nodes:
+					for i in int(layer_3d._model_used.get(kind, 0)):
+						var p: Vector3 = layer_3d._model_nodes[kind][i].position
+						models.append("%s %s" % [kind, (Vector2(p.x, p.z) - layer_3d.windshield_at).round()])
+			missing.append("%d GLB vehicles over 66 m ahead, the scenario needs %d (heading %.2f, models %s)" % [ahead, needs["far_car_models_ahead"],
+				0.0 if layer_3d == null else layer_3d.windshield_heading, models])
 	if needs.has("roadworks_outside_start_box"):
 		var outside := _roadworks_outside_start_box()
 		if outside < int(needs["roadworks_outside_start_box"]):

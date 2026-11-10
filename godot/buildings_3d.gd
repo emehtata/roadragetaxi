@@ -772,8 +772,14 @@ func track(owner: Node2D, lines: PackedVector2Array, colors: PackedColorArray, w
 	mesh.transparency = 1.0 - owner.modulate.a
 
 
-## Cars and vehicles closer than this to the view centre (or the windshield) draw their GLB model; farther ones the procedural mesh.
-const MODEL_CAR_RANGE := 66.0
+## A vehicle kind drawn as a GLB in the opaque view at any distance (docs/specs/glb-only-vehicles.md).
+static func has_model(kind: String) -> bool:
+	return kind == "train" or MODEL_SCENES.has(vehicle_model_kind(kind, 0))
+
+
+## The MODEL_SCENES key `vehicle()` draws for `kind` (variants picked by `id`).
+static func vehicle_model_kind(kind: String, id) -> String:
+	return {"bus": "city_bus", "truck": "box_truck", "trailer": "caravan"}.get(kind, model_variant(kind, id))
 
 
 func begin_cars() -> void:
@@ -817,7 +823,7 @@ func puff(at: Vector2, height: float, radius: float, color: Color) -> void:
 ## `shape` is entity_layer's CAR_SHAPES row; `sign` 0 none, 1 a taxi sign off, 2 lit;
 ## `lamps` the LAMPS_* lit now.
 func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0, elevation := 0.0) -> void:
-	if opaque and at.distance_to(windshield_at if windshield_on else view_centre) < MODEL_CAR_RANGE:
+	if opaque:
 		var kind := car_model_kind(shape, length)
 		place_model_car(kind, at, heading, length, width, color, elevation, lamps)
 		var detail_key := "d|%s|%.2f|%.2f|%d|%d" % [kind, length, width, sign, lamps]
@@ -847,7 +853,10 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 	var used: int = _model_used[kind]
 	var pool: Array = _model_nodes[kind]
 	if used == pool.size():
-		var model: Node3D = MODEL_SCENES[kind].instantiate()
+		var model := Node3D.new()
+		var merged := MeshInstance3D.new()
+		merged.mesh = merged_model(kind)
+		model.add_child(merged)
 		var paint_materials := []
 		var light_materials := []
 		for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
@@ -898,6 +907,38 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 		to_3d(at, ROAD_M + 0.016 + elevation))
 	car_node.visible = true
 	_model_used[kind] = used + 1
+
+
+## A GLB as one mesh, one surface per material, its node transforms baked in: a saloon's 23 mesh
+## nodes draw (and cast) as 8 draw calls (docs/specs/glb-only-vehicles.md AC 7). Built once per kind.
+static var _merged_models := {}
+
+
+static func merged_model(kind: String) -> ArrayMesh:
+	if _merged_models.has(kind):
+		return _merged_models[kind]
+	var source: Node3D = MODEL_SCENES[kind].instantiate()
+	var tools := {}  # Material -> SurfaceTool, in first-seen order
+	for mi: MeshInstance3D in source.find_children("*", "MeshInstance3D", true, false):
+		var xform := Transform3D()
+		var node: Node = mi
+		while node != source:
+			xform = (node as Node3D).transform * xform
+			node = node.get_parent()
+		for surface in mi.mesh.get_surface_count():
+			var material: Material = mi.mesh.surface_get_material(surface)
+			if not tools.has(material):
+				tools[material] = SurfaceTool.new()
+			tools[material].append_from(mi.mesh, surface, xform)
+	var importer := ImporterMesh.new()  # its LODs, as the GLB import made them: far cars draw few triangles
+	for material: Material in tools:
+		tools[material].index()  # generate_lods needs indices
+		importer.add_surface(Mesh.PRIMITIVE_TRIANGLES, tools[material].commit_to_arrays(), [], {}, material)
+	importer.generate_lods(25.0, 60.0, [])
+	var mesh: ArrayMesh = importer.get_mesh()
+	source.free()
+	_merged_models[kind] = mesh
+	return mesh
 
 
 ## A model's scale to the sim's length x width; UNIFORM_SCALE_MODELS take their height from the length
@@ -1023,23 +1064,21 @@ func end_cars() -> void:
 		multi.visible_instance_count = rows.size()
 
 
-## Other vehicles use close-range models where available and the existing
-## procedural meshes farther away. `extra`: "riding", "fallen",
+## Other vehicles: their GLB in the opaque view where one exists (any distance),
+## else the procedural mesh. `extra`: "riding", "fallen",
 ## "plough", "beacon", "profile" (a train car's), "rider" (its colour).
 func vehicle(kind: String, at: Vector2, heading: float, length: float, width: float, color: Color, lamps := 0, elevation := 0.0, extra := {}) -> void:
 	var id: Variant = extra.get("id", 0)
 	if extra.has("id"):  # out of the cache keys below: one shared mesh per look, not per vehicle
 		extra = extra.duplicate()
 		extra.erase("id")
-	if opaque and kind == "train" and at.distance_to(windshield_at if windshield_on else view_centre) < 35.0:
+	if opaque and kind == "train":
 		var profile: String = extra.get("profile", "standard")
 		var model_kind := "train_locomotive" if profile == "locomotive" else "train_coach"
 		place_model_car(model_kind, at, heading, length, width, RS.TRAIN_PROFILES.get(profile, RS.TRAIN_PROFILES["standard"])[0], elevation)
 		return
-	var modelled: bool = opaque and kind in ["bus", "truck", "motorcycle", "camper_van", "tractor", "trailer", "e_scooter", "bicycle"] and \
-			(kind != "tractor" or not extra.get("plough", false))
-	if modelled and at.distance_to(windshield_at if windshield_on else view_centre) < MODEL_CAR_RANGE:
-		var model_kind := "city_bus" if kind == "bus" else "box_truck" if kind == "truck" else "caravan" if kind == "trailer" else model_variant(kind, id)
+	var model_kind := vehicle_model_kind(kind, id)
+	if opaque and has_model(kind) and (kind != "tractor" or not extra.get("plough", false)):
 		place_model_car(model_kind, at, heading, length, width, color, elevation, lamps)
 		var detail_key := "vd|%s|%.2f|%.2f|%d|%s" % [kind, length, width, lamps, str(extra)]
 		var build := func() -> Dictionary:

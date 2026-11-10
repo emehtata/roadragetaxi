@@ -218,8 +218,13 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_cloud_coverage_mapping()
 	test_sky_material_takes_cloud_cover()
 	test_precipitation_3d()
-	test_car_model_range()
+	test_car_model_has_no_range_limit()
 	test_bus_model_radius_matches_car()
+	test_vehicle_models_at_distance()
+	test_unmodelled_kinds_stay_procedural()
+	test_has_model_matches_scenes()
+	test_trees_unaffected_by_vehicle_models()
+	test_pooled_models_merge_by_material()
 	test_decorated_sites()
 	test_menu_music()
 	test_camera_view_command()
@@ -4118,6 +4123,7 @@ func _model_frame(draw: Callable) -> Node2D:
 	var old_centre: Vector2 = B3.view_centre
 	B3.opaque = true
 	B3.view_centre = Vector2.ZERO
+	renderer._car_meshes.clear()  # a shared cache: only this frame's bodies count
 	renderer.begin_cars()
 	draw.call(renderer)
 	renderer.end_cars()
@@ -4133,22 +4139,112 @@ func _models_used(renderer: Node2D) -> int:
 	return total
 
 
-func test_car_model_range() -> void:
-	var near: Node2D = _model_frame(func(b: Node2D) -> void:
-		b.car(Vector2(60.0, 0.0), 0.0, 4.5, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0))
-	check(_models_used(near) == 1, "a car at 60 m uses its model")
-	near.free()
-	var far: Node2D = _model_frame(func(b: Node2D) -> void:
-		b.car(Vector2(70.0, 0.0), 0.0, 4.5, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0))
-	check(_models_used(far) == 0, "a car at 70 m is procedural")
-	far.free()
+## glb-only-vehicles: procedural bodies placed this frame (model details are "d|"/"vd|" keys).
+func _procedural_bodies(renderer: Node2D) -> int:
+	return renderer._car_meshes.keys().filter(func(k: String) -> bool: return not (k.begins_with("d|") or k.begins_with("vd|"))).size()
+
+
+func test_car_model_has_no_range_limit() -> void:
+	for d: float in [10.0, 60.0, 70.0, 200.0]:
+		var r: Node2D = _model_frame(func(b: Node2D) -> void:
+			b.car(Vector2(d, 0.0), 0.0, 4.5, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0))
+		check(_models_used(r) == 1 and _procedural_bodies(r) == 0, "a car at %d m uses its model" % d)
+		r.free()
+	var w: Node2D = _model_frame(func(b: Node2D) -> void:
+		b.windshield_on = true
+		b.windshield_at = Vector2(500.0, 0.0)
+		b.car(Vector2(0.0, 0.0), 0.0, 4.5, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0))
+	check(_models_used(w) == 1, "a car 500 m from the windshield uses its model")
+	w.free()
 
 
 func test_bus_model_radius_matches_car() -> void:
 	var r: Node2D = _model_frame(func(b: Node2D) -> void:
-		b.vehicle("bus", Vector2(20.0, 0.0), 0.0, 12.0, 2.5, Color.BLUE))
-	check(int(r._model_used.get("city_bus", 0)) == 1, "a bus at 20 m uses its model")
+		b.vehicle("bus", Vector2(200.0, 0.0), 0.0, 12.0, 2.5, Color.BLUE))
+	check(int(r._model_used.get("city_bus", 0)) == 1, "a bus at 200 m uses its model, as a car does")
 	r.free()
+
+
+func test_vehicle_models_at_distance() -> void:
+	var cases := [["bus", "city_bus", {}], ["truck", "box_truck", {}], ["motorcycle", "motorcycle", {}],
+		["camper_van", "camper_van", {}], ["tractor", "tractor", {}], ["trailer", "caravan", {}],
+		["e_scooter", B3.model_variant("e_scooter", 0), {"id": 0}], ["bicycle", B3.model_variant("bicycle", 0), {"id": 0}],
+		["train", "train_locomotive", {"profile": "locomotive"}], ["train", "train_coach", {"profile": "standard"}]]
+	for row: Array in cases:
+		var at := Vector2(100.0 if row[0] == "train" else 200.0, 0.0)
+		var r: Node2D = _model_frame(func(b: Node2D) -> void:
+			b.vehicle(row[0], at, 0.0, 4.0, 1.8, Color.BLUE, 0, 0.0, row[2]))
+		check(int(r._model_used.get(row[1], 0)) == 1 and _procedural_bodies(r) == 0, "a %s far away draws %s" % [row[0], row[1]])
+		r.free()
+
+
+func test_unmodelled_kinds_stay_procedural() -> void:
+	for row: Array in [["tram", {"profile": "tram"}], ["tractor", {"plough": true}]]:
+		var r: Node2D = _model_frame(func(b: Node2D) -> void:
+			b.vehicle(row[0], Vector2(10.0, 0.0), 0.0, 9.0, 2.4, Color.BLUE, 0, 0.0, row[1]))
+		check(_models_used(r) == 0 and _procedural_bodies(r) == 1, "%s %s stays procedural" % row)
+		r.free()
+
+
+func test_has_model_matches_scenes() -> void:
+	var procedural_only := ["tram", "ferry"]
+	for kind: String in EntityLayer.VEHICLES_3D + ["trailer", "train", "tram", "ferry"]:
+		check(B3.has_model(kind) != (kind in procedural_only), "%s: has_model matches MODEL_SCENES" % kind)
+
+
+## The frame's tree meshes: [mesh name or class, instance count] of every MultiMesh outside the car pool.
+func _tree_meshes(renderer: Node2D) -> Array:
+	var out := []
+	for node: MultiMeshInstance3D in renderer.find_children("*", "MultiMeshInstance3D", true, false):
+		if not renderer._cars_root.is_ancestor_of(node):
+			out.append([node.multimesh.mesh.resource_name if node.multimesh.mesh else "", node.multimesh.instance_count])
+	return out
+
+
+func test_trees_unaffected_by_vehicle_models() -> void:
+	var rows := [[Vector2.ZERO, "birch", 2.0, Color.GREEN, Color.WHITE, NAN], [Vector2(5, 0), "spruce", 2.0, Color.DARK_GREEN, Color.BROWN, NAN],
+		[Vector2(9, 3), "pine", 2.0, Color.DARK_GREEN, Color.BROWN, NAN], [Vector2(12, 0), "shrub", 1.0, Color.GREEN, Color.BROWN, NAN]]
+	var frames := []
+	for with_cars: bool in [false, true]:
+		var r: Node2D = _model_frame(func(b: Node2D) -> void:
+			b.add_child(B3.trees_node(rows, PackedVector2Array()))
+			if with_cars:
+				for d: float in [10.0, 200.0]:
+					b.car(Vector2(d, 0.0), 0.0, 4.5, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0)
+				b.vehicle("bus", Vector2(150.0, 0.0), 0.0, 12.0, 2.5, Color.BLUE))
+		frames.append([_tree_meshes(r), _models_used(r), str(B3.tree_parts(rows, PackedVector2Array()))])
+		r.free()
+	check(frames[1][1] == 3 and frames[0][1] == 0, "the car frame draws 3 models, the other none")
+	check(not frames[0][0].is_empty() and frames[0][0] == frames[1][0], "tree meshes and instance counts are the same with cars: %s vs %s" % [frames[0][0], frames[1][0]])
+	check(frames[0][2] == frames[1][2], "tree parts are the same with cars in the frame")
+
+
+## glb-only-vehicles AC 7: a pooled GLB is one mesh, one surface per material (23 draw calls -> 8 for a saloon), same bounds.
+func test_pooled_models_merge_by_material() -> void:
+	for kind: String in ["saloon", "city_bus", "bicycle"]:
+		var r: Node2D = _model_frame(func(b: Node2D) -> void: b.place_model_car(kind, Vector2.ZERO, 0.0, 4.5, 1.8, Color.RED, 0.0))
+		var meshes: Array = r._model_nodes[kind][0].find_children("*", "MeshInstance3D", true, false)
+		var source: Node3D = B3.MODEL_SCENES[kind].instantiate()
+		var materials := {}
+		var box := AABB()
+		var first := true
+		for mi: MeshInstance3D in source.find_children("*", "MeshInstance3D", true, false):
+			var xform := Transform3D()
+			var n: Node = mi
+			while n != source:
+				xform = (n as Node3D).transform * xform
+				n = n.get_parent()
+			for i in mi.mesh.get_surface_count():
+				materials[mi.mesh.surface_get_material(i)] = true
+				for v: Vector3 in mi.mesh.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]:  # vertex bounds: some imported AABBs are loose
+					box = AABB(xform * v, Vector3.ZERO) if first else box.expand(xform * v)
+					first = false
+		check(meshes.size() == 1 and meshes[0].mesh.get_surface_count() == materials.size(),
+			"%s pools as 1 mesh of %d surfaces (got %d meshes)" % [kind, materials.size(), meshes.size()])
+		check(meshes.size() == 1 and meshes[0].mesh.get_aabb().position.is_equal_approx(box.position) and meshes[0].mesh.get_aabb().size.is_equal_approx(box.size),
+			"%s merged bounds match the GLB's vertices: %s vs %s" % [kind, meshes[0].mesh.get_aabb(), box])
+		source.free()
+		r.free()
 
 
 func test_car_glazing_is_dark_and_reflective() -> void:

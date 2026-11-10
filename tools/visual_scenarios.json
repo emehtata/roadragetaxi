@@ -797,6 +797,66 @@
       "lineup_along_road": true
     },
     {
+      "id": "glb_only_traffic_day",
+      "description": "3D view over a Helsinki centre street with moving traffic and trees, driving: cars 66-200 m away are GLB models, not procedural boxes",
+      "why": "docs/specs/glb-only-vehicles.md: the vehicle_lineup_3d_day pose (Helsinki centre, street trees and buildings); seeded traffic passes 80-200 m from the taxi while it drives.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 1.2,
+      "requires": {
+        "buildings_in_view": 3,
+        "far_npcs": 3
+      },
+      "drive_s": 10,
+      "seed": 1
+    },
+    {
+      "id": "glb_only_traffic_windshield_day",
+      "description": "Windshield view on the Oulu motorway (car_lod_pass_day pose): traffic ahead 66-200 m away is GLB models, measured from the windshield",
+      "why": "docs/specs/glb-only-vehicles.md AC 4: the car_lod_pass_day pose has seeded traffic ahead on the same carriageway (seed 1); the taxi is turned (heading -1.91) towards the seeded car ~118 m away so it is in frame; readiness waits for a GLB vehicle over 66 m ahead within 30 deg of the windshield heading.",
+      "city": "Oulu",
+      "pose": [
+        383200.8,
+        7302861.8,
+        -1.91
+      ],
+      "box_km": 10,
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 1.0,
+      "requires": {
+        "far_car_models_ahead": 1
+      },
+      "measure_s": 3,
+      "seed": 1,
+      "lane_assist": true,
+      "windshield": true
+    },
+    {
       "id": "vehicle_lineup_3d_night",
       "description": "The same 3D vehicle lineup at night: lamps, beams, the taxi sign",
       "why": "Size and silhouette check per kind (docs/specs/vehicle-realism-audit.md) on a real street: the lineup is drawn by the client east of the taxi.",
