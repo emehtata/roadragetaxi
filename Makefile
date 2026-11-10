@@ -10,7 +10,7 @@ PRESET ?= Oulu
 BOT_MINUTES ?= 10
 BOT_OUT ?= /tmp/rrt-play-bot
 
-.PHONY: help venv install run run-2d run-rtx run-windows run-debug run-pbf index-pbf run-server docker-build docker-run docker-start docker-stop docker-rm docker-rmi fetch-godot run-godot run-godot-all play-bot godot-selftest godot-selftest-sample godot-test audio-check test compile check clean stop
+.PHONY: help venv install run run-2d run-rtx run-windows run-debug run-pbf index-pbf install-osmium run-server docker-build docker-run docker-start docker-stop docker-rm docker-rmi fetch-godot run-godot run-godot-all play-bot godot-selftest godot-selftest-sample godot-test audio-check test compile check clean stop
 
 help:
 	@printf '%s\n' \
@@ -22,6 +22,7 @@ help:
 		'run-debug              Start the game with DEBUG logging' \
 		'run-pbf                Start the game with the map from the local .osm.pbf extract' \
 		'index-pbf              Build the grid index for the local .osm.pbf extract (faster run-pbf)' \
+			'install-osmium         Install osmium-tool (needed for run-pbf): apt on Linux, Homebrew on macOS' \
 		'run-server             Start the headless simulation server (PRESET=Oulu PORT=8765)' \
 		'docker-build           Build the simulation server Docker image' \
 		'docker-run             Build and start the simulation server container' \
@@ -82,6 +83,13 @@ run-rtx:
 
 index-pbf:
 	$(PYTHON) src/theroadragetrip/utils/pbf_index.py src/theroadragetrip/assets/osm/finland-latest.osm.pbf
+
+install-osmium:
+	@case "$$(uname -s)" in \
+		Linux) sudo apt-get update && sudo apt-get install -y osmium-tool ;; \
+		Darwin) brew install osmium-tool ;; \
+		*) echo 'install-osmium: unsupported OS; install osmium-tool by hand' >&2; exit 1 ;; \
+	esac
 
 run-server:
 	PYTHONPATH=src $(PYTHON) -m theroadragetrip.server --preset $(PRESET) --port $(PORT) --tick-rate 30
