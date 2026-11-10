@@ -340,3 +340,108 @@ def test_pbf_osmium_timeout_falls_back(tmp_path, monkeypatch):
     assert len(overpass_calls) == 1
     assert list(pbf_source.pbf_fallback_notices) == ["osmium_failed"]
     assert "timed out" in data_source_notice("en")
+
+
+def _pbf_with_fake_osmium(tmp_path, monkeypatch):
+    from theroadragetrip.osm import pbf_source
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path / "cache"))
+    pbf_path = tmp_path / "finland-latest.osm.pbf"
+    pbf_path.write_bytes(b"not a real pbf, just needs to exist")
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(pbf_source, "_cut_index_cells_later", lambda *a: None)
+    return pbf_path
+
+
+def test_oserror_from_osmium_falls_back(tmp_path, monkeypatch):
+    from theroadragetrip.osm import pbf_source
+    from theroadragetrip.protocol import data_source_notice
+
+    pbf_path = _pbf_with_fake_osmium(tmp_path, monkeypatch)
+
+    def _vanished(cmd, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "osmium")
+
+    monkeypatch.setattr(subprocess, "run", _vanished)
+    with pytest.raises(PbfUnavailable) as exc_info:
+        fetch_osm_ways_from_pbf((64.0, 25.0, 64.1, 25.1), pbf_path=pbf_path)
+    assert exc_info.value.reason == "osmium_failed"
+
+    fetch, overpass_calls = _pbf_fetch_with_fake_overpass(monkeypatch, pbf_path)
+    fetch((64.0, 25.0, 64.1, 25.1))
+    assert len(overpass_calls) == 1
+    assert list(pbf_source.pbf_fallback_notices) == ["osmium_failed"]
+    assert data_source_notice("en")
+
+
+def test_truncated_osm_xml_falls_back(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    pbf_path = _pbf_with_fake_osmium(tmp_path, monkeypatch)
+    out_dirs = []
+
+    def _killed_mid_write(cmd, **kwargs):
+        out = Path(cmd[cmd.index("-o") + 1])
+        out.write_text("<osm><node", encoding="utf-8")
+        out_dirs.append(out.parent)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", _killed_mid_write)
+    with pytest.raises(PbfUnavailable) as exc_info:
+        fetch_osm_ways_from_pbf((64.0, 25.0, 64.1, 25.1), pbf_path=pbf_path)
+    assert exc_info.value.reason == "osmium_failed"
+    assert out_dirs and not out_dirs[0].exists(), "the extract tmpdir is removed"
+
+
+def test_sigkilled_osmium_reports_exit_code(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    pbf_path = _pbf_with_fake_osmium(tmp_path, monkeypatch)
+
+    def _oom_killed(cmd, **kwargs):
+        Path(cmd[cmd.index("-o") + 1]).write_bytes(b"")
+        return subprocess.CompletedProcess(cmd, -9, "", "")
+
+    monkeypatch.setattr(subprocess, "run", _oom_killed)
+    with pytest.raises(PbfUnavailable) as exc_info:
+        fetch_osm_ways_from_pbf((64.0, 25.0, 64.1, 25.1), pbf_path=pbf_path)
+    assert exc_info.value.reason == "osmium_failed"
+    assert "exit -9" in exc_info.value.detail
+
+
+def test_cell_cut_deferred_during_foreground_extract(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    from theroadragetrip.osm import pbf_source
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path / "cache"))
+    pbf_path = tmp_path / "finland-latest.osm.pbf"
+    pbf_path.write_bytes(b"not a real pbf, just needs to exist")
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    events = []
+    cut_done = threading.Event()
+
+    def _cut(path, bbox):
+        events.append("cut")
+        cut_done.set()
+        return 1
+
+    def _extract(source, bbox):
+        events.append("extract_start")
+        pbf_source._cut_index_cells_later(pbf_path, bbox)  # a concurrent fetch asks too
+        time.sleep(0.2)  # give a wrongly started cut thread time to run
+        events.append("extract_end")
+        return [{"type": "node", "id": 1, "lat": 64.05, "lon": 25.05, "tags": {}}]
+
+    monkeypatch.setattr(pbf_source, "build_cells_for", _cut)
+    monkeypatch.setattr(pbf_source, "_extract_elements", _extract)
+
+    fetch_osm_ways_from_pbf((64.0, 25.0, 64.1, 25.1), pbf_path=pbf_path)
+
+    assert cut_done.wait(5), "the cut is retried once the foreground extract is done"
+    for _ in range(100):
+        if not pbf_source._cell_builder_busy:
+            break
+        time.sleep(0.01)
+    assert events == ["extract_start", "extract_end", "cut"]

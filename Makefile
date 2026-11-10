@@ -81,8 +81,11 @@ run-windows:
 run-rtx:
 	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_RTX_GODOT)" -ExperimentalRtx -RtxQuality "$(RTX_QUALITY)"
 
+PBF ?= src/theroadragetrip/assets/osm/finland-latest.osm.pbf
+
 index-pbf:
-	$(PYTHON) src/theroadragetrip/utils/pbf_index.py src/theroadragetrip/assets/osm/finland-latest.osm.pbf
+	@test -f "$(PBF)" || { echo "index-pbf: $(PBF) not found; download https://download.geofabrik.de/europe/finland-latest.osm.pbf there or run 'make index-pbf PBF=/path/to/file.osm.pbf'" >&2; exit 1; }
+	$(PYTHON) src/theroadragetrip/utils/pbf_index.py "$(PBF)"
 
 install-osmium:
 	@case "$$(uname -s)" in \

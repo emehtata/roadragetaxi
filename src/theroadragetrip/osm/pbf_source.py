@@ -94,18 +94,20 @@ def local_pbf_available(pbf_path: Optional[Path] = None) -> bool:
     return pbf_unavailable_reason(pbf_path) is None
 
 
-_cell_builder_lock = threading.Lock()
+_cell_builder_lock = threading.Condition()
 _cell_builder_busy = False
+_foreground_extracts = 0
 
 
 def _cut_index_cells_later(path: Path, bbox: Tuple[float, float, float, float]) -> None:
     """A whole-file extract scans all of Finland (~10 s, whatever the bbox);
     from the bbox's grid index cell it takes ~1.5 s. Cut that cell (and any
-    neighbour within reach) in the background, one cut at a time: two
-    concurrent "smart" cuts were measured to need several GB of RAM."""
+    neighbour within reach) in the background, one cut at a time and never
+    beside a whole-file extract: two concurrent "smart" passes were measured
+    to need several GB of RAM (OOM killer on small machines and WSL)."""
     global _cell_builder_busy
     with _cell_builder_lock:
-        if _cell_builder_busy:
+        if _cell_builder_busy or _foreground_extracts:
             return  # the next whole-file extract asks again
         _cell_builder_busy = True
 
@@ -118,8 +120,25 @@ def _cut_index_cells_later(path: Path, bbox: Tuple[float, float, float, float]) 
         finally:
             with _cell_builder_lock:
                 _cell_builder_busy = False
+                _cell_builder_lock.notify_all()
 
     threading.Thread(target=run, name="pbf-index-cells", daemon=True).start()
+
+
+def _extract_whole_file(path: Path, bbox: Tuple[float, float, float, float]) -> List[dict]:
+    """Whole-file extract, after any running cell cut (each cut is bounded
+    by its own timeout) and holding off new ones; then ask for the cut."""
+    global _foreground_extracts
+    with _cell_builder_lock:
+        _cell_builder_lock.wait_for(lambda: not _cell_builder_busy)
+        _foreground_extracts += 1
+    try:
+        elements = _extract_elements(path, bbox)
+    finally:
+        with _cell_builder_lock:
+            _foreground_extracts -= 1
+    _cut_index_cells_later(path, bbox)
+    return elements
 
 
 def fetch_osm_ways_from_pbf(
@@ -184,10 +203,12 @@ def fetch_osm_ways_from_pbf(
                     by_key[(el["type"], el["id"])] = el
             elements = list(by_key.values())
         else:
-            _cut_index_cells_later(path, bbox)
-            elements = _extract_elements(path, bbox)
+            elements = _extract_whole_file(path, bbox)
     except RuntimeError as exc:
         raise PbfUnavailable("osmium_failed", path, str(exc)) from exc
+    except (OSError, ET.ParseError, MemoryError) as exc:
+        # osmium vanished/not executable, killed mid-write, or too big to hold
+        raise PbfUnavailable("osmium_failed", path, f"osmium extract failed: {type(exc).__name__}: {exc}") from exc
 
     if progress_callback:
         progress_callback(0.5, "Parsing local extract...")
