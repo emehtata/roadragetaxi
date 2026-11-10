@@ -208,6 +208,8 @@ func _process(delta: float) -> void:
 	_elapsed += delta
 	if scenario.has("bench_sitter") and main.entities.extra_pedestrians.is_empty():
 		_seat_bench_sitter()
+	if scenario.has("animals") and not _animals_placed:
+		_place_animals()
 	if scenario.has("walk"):
 		_walk(delta)
 	if scenario.get("windshield", false) and not _windshield_pressed and not main.entities.player_body().is_empty():
@@ -273,6 +275,28 @@ func _process(delta: float) -> void:
 	elif _elapsed > TIMEOUT_S:
 		_write({"status": "failed", "errors": ["not ready after %d s" % TIMEOUT_S] + _missing})
 		main.get_tree().quit(1)
+
+
+var _animals_placed := false
+
+
+## "animals": [[species, x, y, heading], ...] (server axes; "rider" a person on a horse):
+## held still in view as wildlife records (no vehicle reactions), once the server state is in.
+func _place_animals() -> void:
+	if main.entities.shown_state().is_empty():
+		return
+	main.wildlife.vehicle_reactions = false
+	var riders := []
+	for row: Array in scenario["animals"]:
+		var at := MapMath.point(main.entities.origin, row[1], row[2])
+		if row[0] == "rider":
+			riders.append({"id": "rider_%d" % riders.size(), "x": float(row[1]), "y": float(row[2]), "heading": float(row[3]),
+				"animation_state": "riding", "color": [40, 70, 140], "radius_m": 0.45})
+		else:
+			main.wildlife.animals.append({"id": -1 - main.wildlife.animals.size(), "species": row[0], "position": at,
+				"bounds": Rect2(at - Vector2(5, 5), Vector2(10, 10)), "heading": -float(row[3]), "state": "IDLE", "timer": 1e9, "cycle": 0})
+	main.entities.extra_pedestrians.append_array(riders)
+	_animals_placed = true
 
 
 ## "bench_sitter": [x, y] of a mapped bench (server axes): once its chunk is
@@ -367,6 +391,12 @@ func check() -> Array:
 			missing.append("camera not on the vehicle yet")
 	if scenario.get("windshield", false) and not main._windshield.visible:
 		missing.append("windshield view not active yet")
+	if scenario.get("requires", {}).has("animals_in_view"):
+		var view: Rect2 = main.get_viewport().get_canvas_transform().affine_inverse() * main.get_viewport().get_visible_rect()
+		var seen: int = main.wildlife.animals.filter(func(a): return view.has_point(a["position"])).size()
+		_counts["animals_in_view"] = seen
+		if seen < int(scenario["requires"]["animals_in_view"]):
+			missing.append("%d animals in view, the scenario needs %d" % [seen, scenario["requires"]["animals_in_view"]])
 	return missing
 
 

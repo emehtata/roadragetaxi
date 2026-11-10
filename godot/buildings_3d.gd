@@ -1034,6 +1034,11 @@ func end_cars() -> void:
 			node.visible = false
 	for i in range(_puffs_used, _puffs.size()):
 		_puffs[i].visible = false
+	_flush_animals()
+
+
+## This frame's animals: one MultiMeshInstance3D per look, built once.
+func _flush_animals() -> void:
 	if _animal_batches.size() > 64:
 		for old_key in _animal_batches.keys():
 			if not _animal_rows.has(old_key):
@@ -1402,9 +1407,104 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 	return out
 
 
+static var ANIMAL_MODELS := {  # species -> [CC0 GLB (assets/animals/SOURCES.md), yaw turning its nose to +x, body length m, its coat (no tint)]
+	"fox": ["res://assets/animals/fox.glb", 0.0, 0.9, Color8(194, 91, 38)],
+	"small_bird": ["res://assets/animals/small_bird.glb", PI / 2.0, 0.3, Color.WHITE],  # untinted; the old 0.3 m bird size (a real robin is 0.14 m), to read on screen
+	"roe_deer": ["res://assets/animals/roe_deer.glb", PI / 2.0, 1.2, Color8(151, 104, 62)],
+	"horse": ["res://assets/animals/horse.glb", PI / 2.0, 2.0, Color8(139, 91, 57)],
+	"hare": ["res://assets/animals/hare.glb", PI / 2.0, 0.5, Color8(142, 126, 101)],
+}
+static var _animal_models := {}  # species -> [verts at body length 1, feet at y=0, nose +x; face colours; face normals], [] if unusable
+
+
+## A species' GLB flattened once into triangles; [] (with one warning) when missing.
+static func _animal_model(species: String) -> Array:
+	if _animal_models.has(species):
+		return _animal_models[species]
+	var spec: Array = ANIMAL_MODELS[species]
+	var scene: PackedScene = load(spec[0]) if ResourceLoader.exists(spec[0]) else null
+	_animal_models[species] = []
+	if scene == null:
+		push_warning("animal model %s missing: %s stays procedural" % [spec[0], species])
+		return []
+	var root := scene.instantiate()
+	var verts := PackedVector3Array()
+	var colors := PackedColorArray()
+	var normals := PackedVector3Array()
+	for mesh_node: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
+		var xf := Transform3D(Basis(Vector3.UP, spec[1]))
+		var chain := Transform3D.IDENTITY
+		var up: Node = mesh_node
+		while up != root:
+			chain = (up as Node3D).transform * chain
+			up = up.get_parent()
+		xf = xf * chain
+		for surface in mesh_node.mesh.get_surface_count():
+			var arrays := mesh_node.mesh.surface_get_arrays(surface)
+			var material := mesh_node.mesh.surface_get_material(surface) as BaseMaterial3D
+			var tint := material.albedo_color if material else Color.WHITE
+			var image: Image = material.albedo_texture.get_image() if material and material.albedo_texture else null
+			if image and image.is_compressed():
+				image.decompress()
+			var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var uvs = arrays[Mesh.ARRAY_TEX_UV]
+			var index = arrays[Mesh.ARRAY_INDEX]
+			var order: PackedInt32Array = index if index != null else PackedInt32Array(range(points.size()))
+			for t in range(0, order.size() - 2, 3):
+				var tri := [xf * points[order[t]], xf * points[order[t + 1]], xf * points[order[t + 2]]]
+				verts.append_array(PackedVector3Array(tri))
+				normals.append((tri[1] - tri[0]).cross(tri[2] - tri[0]))
+				var color := tint
+				if image and uvs != null:
+					var uv: Vector2 = (uvs[order[t]] + uvs[order[t + 1]] + uvs[order[t + 2]]) / 3.0
+					color *= image.get_pixel(clampi(int(uv.x * image.get_width()), 0, image.get_width() - 1),
+						clampi(int(uv.y * image.get_height()), 0, image.get_height() - 1))
+				colors.append(color)
+	root.free()
+	if verts.is_empty():
+		push_warning("animal model %s has no mesh: %s stays procedural" % [spec[0], species])
+		return []
+	var box := AABB(verts[0], Vector3.ZERO)
+	for v in verts:
+		box = box.expand(v)
+	var shift := Vector3(box.get_center().x, box.position.y, box.get_center().z)
+	for i in verts.size():
+		verts[i] = (verts[i] - shift) / box.size.x
+	# The palette's sRGB colours, as the procedural shapes' vertex colours are.
+	_animal_models[species] = [verts, colors, normals]
+	return _animal_models[species]
+
+
+## A modelled species' arrays (as animal_arrays builds them), {} without a model. No rig: pose is ignored.
+static func _model_arrays(species: String, color: Color, _pose: String, size: float) -> Dictionary:
+	if not ANIMAL_MODELS.has(species):
+		return {}
+	var model := _animal_model(species)
+	if model.is_empty():
+		return {}
+	var spec: Array = ANIMAL_MODELS[species]
+	var coat: Color = spec[3]
+	var tint := Color(color.r / maxf(coat.r, 0.01), color.g / maxf(coat.g, 0.01), color.b / maxf(coat.b, 0.01)) if coat != Color.WHITE else Color.WHITE
+	var k: float = spec[2] * size
+	var out := _empty_arrays()
+	out["part_now"] = 5
+	var verts: PackedVector3Array = model[0]
+	for key in ["verts", "shadow"]:
+		for f in model[1].size():
+			var c: Color = model[1][f] * tint
+			_tri(out, verts[f * 3] * k, verts[f * 3 + 1] * k, verts[f * 3 + 2] * k, Color(minf(c.r, 1.0), minf(c.g, 1.0), minf(c.b, 1.0)),
+				-model[2][f], key)
+	return out
+
+
 ## One mesh per species, coat, pose and detail level; all animals share the
 ## same smooth organic material and the existing pooled body instances.
+## A species with a GLB draws it at every detail, ridden horses too; the procedural shape only without one (or its file missing).
 static func animal_arrays(species: String, color: Color, pose: String, size: float, detail := 1) -> Dictionary:
+	if ANIMAL_MODELS.has(species):
+		var model := _model_arrays(species, color, pose, size)
+		if not model.is_empty():
+			return model
 	var out := _empty_arrays()
 	if species in ["small_bird", "pigeon", "crow", "duck", "gull"]:
 		var bird_size: float = {"small_bird": 0.3, "pigeon": 0.48, "crow": 0.52, "duck": 0.58, "gull": 0.65}.get(species, 0.4) * size

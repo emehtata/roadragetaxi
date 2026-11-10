@@ -1,0 +1,45 @@
+{
+ "slug": "low-poly-rabbit",
+ "triangles": 2999,
+ "texture_px": 24,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "low-poly-rabbit.glb",
+   "bytes": 307948
+  },
+  "blend": {
+   "name": "low-poly-rabbit.blend",
+   "bytes": 192311
+  },
+  "fbx": {
+   "name": "low-poly-rabbit.fbx",
+   "bytes": 185532
+  },
+  "obj": {
+   "name": "low-poly-rabbit-obj.zip",
+   "bytes": 86658
+  },
+  "usdz": {
+   "name": "low-poly-rabbit.usdz",
+   "bytes": 305493
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "0.181 x 0.365 x 0.454",
+  "triangles": 3000,
+  "variant": "download",
+  "generator": "Created by grab3d",
+  "created": "2026-09-28",
+  "derived_from": "rabbit",
+  "style": "low poly, flat shaded, palette texture"
+ },
+ "origin": {
+  "method": "ai-assisted",
+  "detail": "Derived in Blender from the AI-assisted model \"rabbit\", whose base mesh and textures were generated with an AI image-to-3D tool (Meshy). This version was reduced to low poly and given a palette texture in Blender.",
+  "ai_content": true
+ }
+}

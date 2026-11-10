@@ -332,7 +332,7 @@ func _draw() -> void:
 
 ## In the outdoor 3D view the entity layer renders every species as a mesh.
 const Buildings3D := preload("res://buildings_3d.gd")
-const COATS := {"small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "crow": Color8(42, 43, 45), "duck": Color8(120, 98, 72),
+const COATS := {"horse": Color8(139, 91, 57), "small_bird": Color8(54, 49, 42), "pigeon": Color8(92, 99, 108), "crow": Color8(42, 43, 45), "duck": Color8(120, 98, 72),
 	"gull": Color8(242, 243, 240), "squirrel": Color8(144, 79, 38), "hare": Color8(142, 126, 101), "fox": Color8(194, 91, 38),
 	"roe_deer": Color8(151, 104, 62), "moose": Color8(91, 67, 48)}
 

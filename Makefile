@@ -164,6 +164,7 @@ godot-test:
 	$(GODOT) --headless --path godot --script res://tests/home_walk.gd
 	$(GODOT) --headless --path godot --script res://tests/home_interior_3d.gd
 	$(GODOT) --headless --path godot --script res://tests/home_first_person.gd
+	$(GODOT) --headless --path godot --script res://animal_models_test.gd
 
 audio-check:
 	PYTHONPATH=src $(PYTHON) tools/validate_audio_assets.py

@@ -1,0 +1,45 @@
+{
+ "slug": "low-poly-bird",
+ "triangles": 1990,
+ "texture_px": 24,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "low-poly-bird.glb",
+   "bytes": 204948
+  },
+  "blend": {
+   "name": "low-poly-bird.blend",
+   "bytes": 155555
+  },
+  "fbx": {
+   "name": "low-poly-bird.fbx",
+   "bytes": 129500
+  },
+  "obj": {
+   "name": "low-poly-bird-obj.zip",
+   "bytes": 57699
+  },
+  "usdz": {
+   "name": "low-poly-bird.usdz",
+   "bytes": 203429
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "0.052 x 0.139 x 0.095",
+  "triangles": 2000,
+  "variant": "download",
+  "generator": "Created by grab3d",
+  "created": "2026-09-28",
+  "derived_from": "bird",
+  "style": "low poly, flat shaded, palette texture"
+ },
+ "origin": {
+  "method": "ai-assisted",
+  "detail": "Derived in Blender from the AI-assisted model \"bird\", whose base mesh and textures were generated with an AI image-to-3D tool (Meshy). This version was reduced to low poly and given a palette texture in Blender.",
+  "ai_content": true
+ }
+}

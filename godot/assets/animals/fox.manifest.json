@@ -1,0 +1,45 @@
+{
+ "slug": "low-poly-fox",
+ "triangles": 2999,
+ "texture_px": 24,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "low-poly-fox.glb",
+   "bytes": 307928
+  },
+  "blend": {
+   "name": "low-poly-fox.blend",
+   "bytes": 191693
+  },
+  "fbx": {
+   "name": "low-poly-fox.fbx",
+   "bytes": 183660
+  },
+  "obj": {
+   "name": "low-poly-fox-obj.zip",
+   "bytes": 87530
+  },
+  "usdz": {
+   "name": "low-poly-fox.usdz",
+   "bytes": 305979
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "0.999 x 0.817 x 0.793",
+  "triangles": 3000,
+  "variant": "download",
+  "generator": "Created by grab3d",
+  "created": "2026-09-28",
+  "derived_from": "fox",
+  "style": "low poly, flat shaded, palette texture"
+ },
+ "origin": {
+  "method": "ai-assisted",
+  "detail": "Derived in Blender from the AI-assisted model \"fox\", whose base mesh and textures were generated with an AI image-to-3D tool (Meshy). This version was reduced to low poly and given a palette texture in Blender.",
+  "ai_content": true
+ }
+}
