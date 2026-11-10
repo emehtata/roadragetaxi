@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://5xa5cg8xy6j4"
-path="res://.godot/imported/e_scooter_grab3d_e-scooter_body_normal.jpg-96394511c7ae909747c49c8806c07f37.ctex"
+path.s3tc="res://.godot/imported/e_scooter_grab3d_e-scooter_body_normal.jpg-96394511c7ae909747c49c8806c07f37.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "e4b3249f7606396baeb976ae4624b67d"
@@ -14,22 +15,22 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/vehicles/e_scooter_grab3d_e-scooter_body_normal.jpg"
-dest_files=["res://.godot/imported/e_scooter_grab3d_e-scooter_body_normal.jpg-96394511c7ae909747c49c8806c07f37.ctex"]
+dest_files=["res://.godot/imported/e_scooter_grab3d_e-scooter_body_normal.jpg-96394511c7ae909747c49c8806c07f37.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=0
-roughness/src_normal=""
+roughness/mode=1
+roughness/src_normal="res://assets/vehicles/e_scooter_grab3d_e-scooter_body_normal.jpg"
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

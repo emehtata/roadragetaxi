@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dpb3j3x1upqcs"
-path="res://.godot/imported/city_bus_c351c4d86278de41.png-6396997c3abf8338e41235dcace03986.ctex"
+path.s3tc="res://.godot/imported/city_bus_c351c4d86278de41.png-6396997c3abf8338e41235dcace03986.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "2b6387d7e7dbccb6f525ad219d1e686e"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/vehicles/city_bus_c351c4d86278de41.png"
-dest_files=["res://.godot/imported/city_bus_c351c4d86278de41.png-6396997c3abf8338e41235dcace03986.ctex"]
+dest_files=["res://.godot/imported/city_bus_c351c4d86278de41.png-6396997c3abf8338e41235dcace03986.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0
