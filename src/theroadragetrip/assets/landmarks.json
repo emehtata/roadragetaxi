@@ -1,8 +1,8 @@
 {
   "_help": "Named OSM objects drawn by their own shapes instead of the generic icon. Key: the OSM name tag of a statue, fountain or other scenery object. heading_deg turns the model so its front (-y, up the screen) faces that compass bearing. Units are metres from the object's point, +y down the screen (south); scale multiplies all of them, heights too. 3D shapes join the building layer, with perspective, winter snow on top and sun shadows: [\"box\", x, y, width, depth, bottom, top, colour] (x, y its centre) and [\"cylinder\", x, y, bottom radius, top radius, bottom, top, colour] (top radius 0 is a cone). Flat ground shapes, drawn under them: [\"circle\", x, y, radius, colour], [\"rect\", x, y, width, height, colour], [\"polygon\", [x1, y1, x2, y2, ...], colour], [\"line\", x1, y1, x2, y2, width, colour]. Colours are HTML hex, #rrggbb or #rrggbbaa.",
   "Toripolliisi": {
-    "heading_deg": 122,
-    "note": "Oulu's 2.2 m bronze bobby on the market square (Kaarlo Mikkonen, 1987); scaled 1.5x to read from the taxi; faces the market square (122°: the square's grid)",
+    "heading_deg": 302,
+    "note": "Oulu's 2.2 m bronze bobby on the market square (Kaarlo Mikkonen, 1987); scaled 1.5x to read from the taxi; faces the market square (302°: the square's grid, 122° turned 180° after the visual check)",
     "scale": 1.5,
     "shapes": [
       [
@@ -30,7 +30,7 @@
         0.13,
         0.35,
         0.9,
-        "#45321b"
+        "#3a3b35"
       ],
       [
         "cylinder",
@@ -40,7 +40,7 @@
         0.13,
         0.35,
         0.9,
-        "#45321b"
+        "#3a3b35"
       ],
       [
         "cylinder",
@@ -50,7 +50,7 @@
         0.55,
         0.9,
         1.3,
-        "#6a4d2a"
+        "#4d4f45"
       ],
       [
         "cylinder",
@@ -60,7 +60,7 @@
         0.36,
         1.3,
         1.68,
-        "#8c6c40"
+        "#65675c"
       ],
       [
         "cylinder",
@@ -70,7 +70,7 @@
         0.1,
         1.15,
         1.62,
-        "#45321b"
+        "#3a3b35"
       ],
       [
         "cylinder",
@@ -80,57 +80,57 @@
         0.1,
         1.15,
         1.62,
-        "#45321b"
+        "#3a3b35"
       ],
       [
         "cylinder",
         0,
         0,
-        0.19,
-        0.19,
+        0.23,
+        0.23,
         1.68,
+        1.9,
+        "#4d4d42"
+      ],
+      [
+        "cylinder",
+        0,
+        0,
+        0.33,
+        0.33,
+        1.9,
+        1.95,
+        "#3a3b35"
+      ],
+      [
+        "cylinder",
+        0,
+        0,
+        0.33,
+        0.31,
+        1.95,
+        2.08,
+        "#4d4f45"
+      ],
+      [
+        "box",
+        0,
+        -0.3,
+        0.68,
+        0.24,
+        1.86,
         1.92,
-        "#8c6c40"
+        "#3a3b35"
       ],
       [
         "cylinder",
         0,
-        0,
-        0.3,
-        0.3,
-        1.92,
-        1.96,
-        "#45321b"
-      ],
-      [
-        "cylinder",
-        0,
-        0,
-        0.21,
-        0.13,
-        1.96,
-        2.2,
-        "#6a4d2a"
-      ],
-      [
-        "cylinder",
-        0,
-        -0.12,
-        0.07,
-        0.0,
-        2.1,
-        2.2,
-        "#e3bf63"
-      ],
-      [
-        "cylinder",
-        0,
-        0,
+        -0.2,
         0.06,
-        0.0,
-        2.2,
-        2.28,
-        "#45321b"
+        0.06,
+        2.0,
+        2.04,
+        "#6f7165"
       ]
     ]
   }
