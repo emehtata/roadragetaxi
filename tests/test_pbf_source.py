@@ -216,3 +216,26 @@ def test_fetch_from_pbf_uses_the_grid_index_when_present(tmp_path, monkeypatch):
     assert all(src != str(fixture_pbf) for src in extract_sources), (
         "with an index present, extraction must read an index cell, not the full source file"
     )
+
+
+def test_pbf_request_never_silently_falls_back_to_overpass(tmp_path, monkeypatch):
+    """osm_source=pbf with osmium missing must fail loudly, not download
+    the same area from Overpass behind the player's back."""
+    from types import SimpleNamespace
+
+    from theroadragetrip import world_loader
+
+    pbf_path = tmp_path / "finland-latest.osm.pbf"
+    pbf_path.write_bytes(b"not a real pbf, just needs to exist")
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+
+    def _overpass_must_not_run(*args, **kwargs):
+        raise AssertionError("Overpass must not be used when osm_source=pbf")
+
+    monkeypatch.setattr(world_loader, "fetch_osm_ways", _overpass_must_not_run)
+    args = SimpleNamespace(osm_source="pbf", osm_pbf_path=str(pbf_path))
+
+    fetch = world_loader.resolve_osm_fetch_func(args, ["https://overpass.example/api"])
+
+    with pytest.raises(RuntimeError, match="osmium-tool"):
+        fetch((64.0, 25.0, 64.1, 25.1))

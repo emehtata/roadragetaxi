@@ -108,8 +108,8 @@ DEFAULT_CONFIG = {
         # "pbf" reads assets/osm/finland-latest.osm.pbf (or osm_pbf_path)
         # via the local `osmium` tool instead of live Overpass requests -
         # no downloads, no rate limits, works offline. Requires osmium-tool
-        # installed and the .pbf file present; falls back to "overpass"
-        # with a warning otherwise.
+        # installed and the .pbf file present; otherwise map loading fails
+        # with an error naming the fix. It never falls back to Overpass.
         "osm_source": "overpass",
         "osm_pbf_path": "",
     },
