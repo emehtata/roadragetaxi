@@ -103,7 +103,7 @@ Scenarios live in `tools/visual_scenarios.json`. Fields:
 | `sun_altitude_deg` | `[min, max]` the light the scenario needs |
 | `zoom` | camera zoom factor (the camera is top-down, following the vehicle) |
 | `view` | `3d` (default) or `2d` |
-| `requires` | `lamps_in_view`, `buildings_in_view` minimums |
+| `requires` | `lamps_in_view`, `buildings_in_view` minimums; `notice_contains`: a HUD notice with that text, wholly on screen (the data-source notice's ~15 s clock is held while it is checked) |
 | `measure_s` / `drive_s` | seconds measured standing / driving |
 | `seed` | random seed (default 1) |
 | `graphics` | graphics settings under test, over the saved ones, e.g. `{"brightness": 1.4}` |

@@ -397,6 +397,16 @@ func check() -> Array:
 		_counts["animals_in_view"] = seen
 		if seen < int(scenario["requires"]["animals_in_view"]):
 			missing.append("%d animals in view, the scenario needs %d" % [seen, scenario["requires"]["animals_in_view"]])
+	if scenario.get("requires", {}).has("notice_contains"):  # a HUD notice showing this text, wholly on screen
+		var notice: Label = main.hud._notice
+		# Held like the game clock (--test-time-scale 0): its ~15 s run in wall time, while 60 ready
+		# frames at a loaded llvmpipe's ~2 fps take 30 s. Its timing is tested in tests/run_tests.gd.
+		if main.hud._source_notice_until > 0:
+			main.hud._source_notice_until = Time.get_ticks_msec() + 15000
+		if not (notice.visible and str(scenario["requires"]["notice_contains"]) in notice.text):
+			missing.append("HUD notice with \"%s\" not shown" % scenario["requires"]["notice_contains"])
+		elif not main.get_viewport().get_visible_rect().encloses(notice.get_global_rect()):
+			missing.append("HUD notice clipped by the screen edge")
 	return missing
 
 
