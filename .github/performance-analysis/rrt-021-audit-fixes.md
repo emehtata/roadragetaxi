@@ -24,6 +24,6 @@ All seven findings from the repository audit have focused fixes and regression c
 
 The existing harness completed a 180-second Oulu drive at 20 m/s, covering 3,559 m over 5,339 ticks. Map work was active in 58.3% of ticks. Tick median/p95/p99/maximum were 12.2/30.1/45.0/88.3 ms; 35 ticks exceeded 50 ms and none exceeded 100 ms. The client received 5,337 states, with p99/maximum gaps of 54.2/102 ms and one gap over 100 ms. Replay recorded no frozen frames or clock snaps, and 8.0% wrong-speed frames.
 
-This was a functional workload check, run while correctness checks were also being completed. It is not a controlled before/after benchmark and establishes no overall speedup. The raw capture is in [the data directory](rrt-021-audit-fixes-data/map-growth.json.gz).
+This was a functional workload check, run while correctness checks were also being completed. It is not a controlled before/after benchmark and establishes no overall speedup. The raw capture is in the data directory.
 
 The frame deadline remains soft: an individual geometry operation cannot be interrupted halfway through. Background world decoding, object transfer and garbage collection still contend with simulation; the capture recorded 54 young collections over 10 ms. These fixes do not establish that all rubberbanding is eliminated. Persistent rebuild errors retry with their dirty areas retained and logged, rather than silently abandoning those areas.

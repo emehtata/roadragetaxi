@@ -24,7 +24,7 @@ CPU time, object count, number of pieces and byte count.
 
 ## Isolated comparison
 
-[Raw results](rrt-021-cache-decode-data/isolated.json). Both loaders read the same
+Raw results. Both loaders read the same
 warm file with the same interpreter tuning. All collection sections and bounds
 compare equal across the two restored worlds (50,263 top-level map objects).
 After warming both loaders, four alternating baseline/current pairs run
@@ -68,8 +68,8 @@ The configured source was Overpass, with warm cache loads. Map work was active
 50 ms and none exceeded 100 ms. State gaps had p99/max 55.6/103 ms, with one over
 100 ms. Replay recorded zero freezes and clock snaps, but 12.8% wrong-speed
 frames. There were no generation-2 collections; generation 1 still reached
-33 ms. [Raw capture](rrt-021-cache-decode-data/connected.json) and
-[cache phase logs](rrt-021-cache-decode-data/cache-phases.txt) are retained.
+33 ms. Raw capture and
+cache phase logs are retained.
 
 This is a functional drive, not a paired before/after comparison. Short
 correctness checks overlapped its startup/early drive. No overall reduction in

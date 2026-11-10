@@ -1,6 +1,6 @@
 # Rubberbanding profile, 2026-11-03
 
-This adds phase detail to the connected-client map-growth harness. The 90-second Oulu drive used the real server and a socket client, with 2,657 measured ticks; map work was active for 66.9% of ticks. The harness now records simulation sections, existing pedestrian subphases, selected NPC subphases, population counts, and garbage collections overlapping the drive. The raw capture is [rrt-021-rubberband-profile.json](rrt-021-rubberband-profile.json).
+This adds phase detail to the connected-client map-growth harness. The 90-second Oulu drive used the real server and a socket client, with 2,657 measured ticks; map work was active for 66.9% of ticks. The harness now records simulation sections, existing pedestrian subphases, selected NPC subphases, population counts, and garbage collections overlapping the drive. The raw capture is rrt-021-rubberband-profile.json.
 
 This was a diagnostic run, not a controlled before/after comparison. Instrumentation and naturally changing traffic can affect timings.
 
