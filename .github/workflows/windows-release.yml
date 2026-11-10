@@ -200,13 +200,24 @@ jobs:
             dist/osmium-tool-feedstock-recipe.tar.gz
             dist/geos-*-source.tar.bz2
 
-      - name: Publish GitHub release
+      - name: Add the builds to the GitHub release
+        # The other release jobs (linux-release.yml, macos-release.yml) may
+        # have created the release already; whichever job gets there first
+        # creates it, the other one uploads to it.
         if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "${{ github.ref_name }}"
-          dist/RoadRageTrip-windows-x64.zip (Get-ChildItem dist/RoadRageTrip-*-Setup.exe).FullName
-          dist/osmium-tool-${{ env.OSMIUM_VERSION }}-source.tar.gz dist/osmium-tool-feedstock-recipe.tar.gz
-          (Get-ChildItem dist/geos-*-source.tar.bz2).FullName
-          --generate-notes
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:TAG --generate-notes *> $null
+            gh release view $env:TAG *> $null
+            if ($LASTEXITCODE -ne 0) { throw "could not create the release $env:TAG" }
+          }
+          $files = @("dist/RoadRageTrip-windows-x64.zip") + (Get-ChildItem dist/RoadRageTrip-*-Setup.exe).FullName `
+            + @("dist/osmium-tool-$env:OSMIUM_VERSION-source.tar.gz", "dist/osmium-tool-feedstock-recipe.tar.gz") `
+            + (Get-ChildItem dist/geos-*-source.tar.bz2).FullName
+          gh release upload $env:TAG @files --clobber
+          if ($LASTEXITCODE -ne 0) { throw "could not upload to the release $env:TAG" }
