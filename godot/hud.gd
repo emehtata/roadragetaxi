@@ -25,6 +25,8 @@ var _summary := Label.new()  # the city summary: covers everything once the care
 var _notice_style := StyleBoxFlat.new()
 var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
 var _notice_mode := ""
+var _source_notice := ""  # state.data_source_notice: why osm_source=pbf fell back to Overpass
+var _source_notice_until := 0  # 0: the map still loading (shown, clock not started); then ~15 s
 var _abroad_sign := Label.new()  # out of Finland: the game stays Finnish (state.abroad)
 var _map_sign := Label.new()  # the map growing at its edge: wait for it (state.map_loading)  # "camera", "start" or "" (the banner)
 var language := "en"
@@ -159,13 +161,24 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	if _meter.visible:
 		_meter.cents = int(live)
 		_meter.info = meter_info(taxi)
-	var start_hint: bool = text["notice"] == "" and text["start_hint"] != ""  # the start hint, blue
-	_notice.text = text["start_hint"] if start_hint else text["notice"]
+	var source_notice := str(state.get("data_source_notice", ""))
+	if source_notice != _source_notice:
+		_source_notice = source_notice
+		_source_notice_until = 0
+	# Its ~15 s start once the map has loaded (server and client), so a slow first load cannot hide it.
+	if _source_notice != "" and _source_notice_until == 0 and str(state.get("map_loading", "")) == "" and toggles.get("map_ready", true):
+		_source_notice_until = Time.get_ticks_msec() + 15000
+	# The data-source notice: under the server's own notices, over the start hint; wraps (it is long).
+	var source: bool = text["notice"] == "" and _source_notice != "" and (_source_notice_until == 0 or Time.get_ticks_msec() < _source_notice_until)
+	var start_hint: bool = text["notice"] == "" and not source and text["start_hint"] != ""  # the start hint, blue
+	_notice.text = _source_notice if source else (text["start_hint"] if start_hint else text["notice"])
 	_notice.visible = _notice.text != ""
+	_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if source else TextServer.AUTOWRAP_OFF
+	_notice.custom_minimum_size.x = minf(760.0, size.x - 40.0) if source else 0.0
 	# A speed-camera hit is centred on screen with a red border, other notices at the top in amber.
 	_notice_style.border_color = Color8(255, 70, 45) if text["notice_camera"] else (Color8(100, 190, 240) if start_hint else Color8(255, 200, 50))
 	_notice_style.bg_color = Color8(16, 35, 55, 235) if start_hint else Color8(20, 30, 40, 235)
-	_notice_mode = "camera" if text["notice_camera"] else ("start" if start_hint else "")
+	_notice_mode = "camera" if text["notice_camera"] else ("start" if start_hint or source else "")
 	_meet.text = text["meet"]
 	_meet.visible = text["meet"] != ""
 	_hint.text = text["hint"]
@@ -230,7 +243,7 @@ func _layout() -> void:
 	match _notice_mode:
 		"camera":  # a speed-camera hit centred on screen, red
 			_notice.position = (size - _notice.size) / 2.0
-		"start":  # the start hint: top middle, blue
+		"start":  # the start hint (blue) or the data-source notice: top middle
 			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, 100.0)
 		_:  # the notification banner: low in the middle
 			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, size.y - 45.0 - _notice.size.y / 2.0)

@@ -8,6 +8,7 @@ import pytest
 
 import theroadragetrip.osm as osm
 from theroadragetrip.osm.pbf_source import (
+    PbfUnavailable,
     _parse_osm_xml,
     fetch_osm_ways_from_pbf,
     local_pbf_available,
@@ -94,8 +95,9 @@ def test_fetch_from_pbf_uses_cache_and_never_shells_out(tmp_path, monkeypatch):
 
 def test_fetch_from_pbf_raises_when_pbf_file_is_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path / "cache"))
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(PbfUnavailable, match="not found") as error:
         fetch_osm_ways_from_pbf((64.0, 25.0, 64.1, 25.1), pbf_path=tmp_path / "does-not-exist.osm.pbf")
+    assert error.value.reason == "pbf_missing"
 
 
 def test_fetch_from_pbf_raises_cleanly_when_osmium_extract_hangs(tmp_path, monkeypatch):
@@ -218,24 +220,123 @@ def test_fetch_from_pbf_uses_the_grid_index_when_present(tmp_path, monkeypatch):
     )
 
 
-def test_pbf_request_never_silently_falls_back_to_overpass(tmp_path, monkeypatch):
-    """osm_source=pbf with osmium missing must fail loudly, not download
-    the same area from Overpass behind the player's back."""
+def _pbf_fetch_with_fake_overpass(monkeypatch, pbf_path):
     from types import SimpleNamespace
 
     from theroadragetrip import world_loader
+    from theroadragetrip.osm import pbf_source
 
+    pbf_source.pbf_fallback_notices.clear()  # session state: start each test clean
+    overpass_calls = []
+    monkeypatch.setattr(world_loader, "fetch_osm_ways",
+                        lambda bbox, **kwargs: overpass_calls.append(bbox) or [{"type": "node", "id": 1}])
+    args = SimpleNamespace(osm_source="pbf", osm_pbf_path=str(pbf_path))
+    return world_loader.resolve_osm_fetch_func(args, ["https://overpass.example/api"]), overpass_calls
+
+
+def test_pbf_osmium_missing_falls_back_with_notice(tmp_path, monkeypatch):
+    from theroadragetrip.osm import pbf_source
+    from theroadragetrip.protocol import data_source_notice
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path / "cache"))
     pbf_path = tmp_path / "finland-latest.osm.pbf"
     pbf_path.write_bytes(b"not a real pbf, just needs to exist")
     monkeypatch.setattr(shutil, "which", lambda name: None)
+    fetch, overpass_calls = _pbf_fetch_with_fake_overpass(monkeypatch, pbf_path)
 
-    def _overpass_must_not_run(*args, **kwargs):
-        raise AssertionError("Overpass must not be used when osm_source=pbf")
+    elements = fetch((64.0, 25.0, 64.1, 25.1))
 
-    monkeypatch.setattr(world_loader, "fetch_osm_ways", _overpass_must_not_run)
-    args = SimpleNamespace(osm_source="pbf", osm_pbf_path=str(pbf_path))
+    assert overpass_calls == [(64.0, 25.0, 64.1, 25.1)]
+    assert elements[0] == {"type": "node", "id": 1}
+    assert list(pbf_source.pbf_fallback_notices) == ["osmium_missing"]
+    assert "osmium-tool" in data_source_notice("en")
 
-    fetch = world_loader.resolve_osm_fetch_func(args, ["https://overpass.example/api"])
 
-    with pytest.raises(RuntimeError, match="osmium-tool"):
-        fetch((64.0, 25.0, 64.1, 25.1))
+def test_pbf_file_missing_falls_back_with_path_in_notice(tmp_path, monkeypatch):
+    from theroadragetrip.osm import pbf_source
+    from theroadragetrip.protocol import data_source_notice
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path / "cache"))
+    pbf_path = tmp_path / "does-not-exist.osm.pbf"
+    fetch, overpass_calls = _pbf_fetch_with_fake_overpass(monkeypatch, pbf_path)
+
+    fetch((64.0, 25.0, 64.1, 25.1))
+
+    assert len(overpass_calls) == 1
+    assert list(pbf_source.pbf_fallback_notices) == ["pbf_missing"]
+    for language in ("fi", "en", "de"):
+        assert str(pbf_path) in data_source_notice(language)
+        assert f"{pbf_path.name} " in data_source_notice(language)
+        assert f" {tmp_path}," in data_source_notice(language), "names the folder to put the file in"
+
+
+def test_pbf_osmium_failure_falls_back(tmp_path, monkeypatch):
+    from theroadragetrip.osm import pbf_source
+    from theroadragetrip.protocol import data_source_notice
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path / "cache"))
+    pbf_path = tmp_path / "finland-latest.osm.pbf"
+    pbf_path.write_bytes(b"not a real pbf, just needs to exist")
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(pbf_source, "_cut_index_cells_later", lambda *a: None)
+
+    def _fails(source, bbox):
+        raise RuntimeError("osmium extract failed (exit 1): PBF error: invalid BlobHeader")
+
+    monkeypatch.setattr(pbf_source, "_extract_elements", _fails)
+    fetch, overpass_calls = _pbf_fetch_with_fake_overpass(monkeypatch, pbf_path)
+
+    fetch((64.0, 25.0, 64.1, 25.1))
+
+    assert len(overpass_calls) == 1
+    assert list(pbf_source.pbf_fallback_notices) == ["osmium_failed"]
+    assert "invalid BlobHeader" in data_source_notice("en")
+
+
+def test_pbf_fallback_notice_emitted_once(tmp_path, monkeypatch):
+    from theroadragetrip.osm import pbf_source
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path / "cache"))
+    fetch, overpass_calls = _pbf_fetch_with_fake_overpass(monkeypatch, tmp_path / "missing.osm.pbf")
+    fetch((64.0, 25.0, 64.1, 25.1))
+    notices = dict(pbf_source.pbf_fallback_notices)
+    fetch((64.1, 25.1, 64.2, 25.2))
+
+    assert len(overpass_calls) == 2
+    assert pbf_source.pbf_fallback_notices == notices and len(notices) == 1
+
+
+def test_osm_source_overpass_records_no_notice(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from theroadragetrip import world_loader
+    from theroadragetrip.osm import pbf_source
+
+    pbf_source.pbf_fallback_notices.clear()  # session state: start each test clean
+    monkeypatch.setattr(world_loader, "fetch_osm_ways", lambda bbox, **kwargs: [])
+    fetch = world_loader.resolve_osm_fetch_func(SimpleNamespace(osm_source="overpass"), ["x"])
+    fetch((64.0, 25.0, 64.1, 25.1))
+    assert pbf_source.pbf_fallback_notices == {}
+
+
+def test_pbf_osmium_timeout_falls_back(tmp_path, monkeypatch):
+    from theroadragetrip.osm import pbf_source
+    from theroadragetrip.protocol import data_source_notice
+
+    monkeypatch.setattr(osm, "CACHE_DIR", str(tmp_path / "cache"))
+    pbf_path = tmp_path / "finland-latest.osm.pbf"
+    pbf_path.write_bytes(b"not a real pbf, just needs to exist")
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(pbf_source, "_cut_index_cells_later", lambda *a: None)
+
+    def _hangs(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
+
+    monkeypatch.setattr(subprocess, "run", _hangs)
+    fetch, overpass_calls = _pbf_fetch_with_fake_overpass(monkeypatch, pbf_path)
+
+    fetch((64.0, 25.0, 64.1, 25.1))
+
+    assert len(overpass_calls) == 1
+    assert list(pbf_source.pbf_fallback_notices) == ["osmium_failed"]
+    assert "timed out" in data_source_notice("en")

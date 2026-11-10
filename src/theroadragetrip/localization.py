@@ -196,6 +196,9 @@ TRANSLATIONS = {
         "brawl_ignored": "Kuski kyllästyi odottamaan.",
         "brawl_separated": "Tappelu jäi ratkaisematta.",
         "fare_complete_points": "Kyyti valmis! Hinta {amount}, tippi {tip}, +{earned} pistettä ({avg:.0f} km/h keskiarvo, {seconds:.1f} s). Asiakkaan arvio: {stars} ({rating}/5)",
+        "pbf_fallback_osmium_missing": "Paikallista karttatiedostoa ei voitu käyttää: osmium-tool ei ole asennettu tai se ei ole PATHissa. Asenna se (apt/brew/conda install osmium-tool; Windowsissa mukana tuleva osmium puuttuu, asenna peli uudelleen tai aja tools/run-windows.ps1) tai vaihda osm_source arvoon overpass. Käytetään toistaiseksi Overpassia.",
+        "pbf_fallback_pbf_missing": "Paikallista karttatiedostoa ei löydy: {path}. Laita {name} kansioon {folder}, aseta osm_pbf_path tai vaihda osm_source arvoon overpass. Käytetään toistaiseksi Overpassia.",
+        "pbf_fallback_osmium_failed": "osmium ei saanut luettua paikallista karttatiedostoa ({detail}). Tarkista, että tiedosto on kelvollinen .osm.pbf. Käytetään toistaiseksi Overpassia.",
     },
     "en": {
         "home_invalid_building": "No usable house footprint here. Choose another house yard.",
@@ -390,6 +393,9 @@ TRANSLATIONS = {
         "brawl_ignored": "The driver got tired of waiting.",
         "brawl_separated": "The fight ended in a draw.",
         "fare_complete_points": "Fare complete! Fare {amount}, tip {tip}, +{earned} pts ({avg:.0f} km/h average in {seconds:.1f}s). Customer rating: {stars} ({rating}/5)",
+        "pbf_fallback_osmium_missing": "Local map file not used: osmium-tool is not installed or not on PATH. Install it (apt/brew/conda install osmium-tool; on Windows the bundled osmium is missing, reinstall or run tools/run-windows.ps1) or set osm_source to overpass. Using Overpass for now.",
+        "pbf_fallback_pbf_missing": "Local map file not found: {path}. Put {name} into the folder {folder}, set osm_pbf_path, or set osm_source to overpass. Using Overpass for now.",
+        "pbf_fallback_osmium_failed": "osmium failed to read the local map file ({detail}). Check that it is a valid .osm.pbf. Using Overpass for now.",
     },
 }
 
@@ -640,6 +646,9 @@ TRANSLATIONS["de"] = {
     "brawl_ignored": "Der Fahrer hatte keine Lust mehr zu warten.",
     "brawl_separated": "Die Schlägerei endete unentschieden.",
     "fare_complete_points": "Fahrt abgeschlossen! Fahrpreis {amount}, Trinkgeld {tip}, +{earned} Punkte (durchschnittlich {avg:.0f} km/h in {seconds:.1f}s). Kundenbewertung: {stars} ({rating}/5)",
+    "pbf_fallback_osmium_missing": "Lokale Kartendatei nicht verwendet: osmium-tool ist nicht installiert oder nicht im PATH. Installiere es (apt/brew/conda install osmium-tool; unter Windows fehlt das mitgelieferte osmium, neu installieren oder tools/run-windows.ps1 ausführen) oder setze osm_source auf overpass. Vorerst wird Overpass verwendet.",
+    "pbf_fallback_pbf_missing": "Lokale Kartendatei nicht gefunden: {path}. Lege {name} in den Ordner {folder}, setze osm_pbf_path oder setze osm_source auf overpass. Vorerst wird Overpass verwendet.",
+    "pbf_fallback_osmium_failed": "osmium konnte die lokale Kartendatei nicht lesen ({detail}). Prüfe, ob sie eine gültige .osm.pbf ist. Vorerst wird Overpass verwendet.",
 }
 
 

@@ -1267,3 +1267,14 @@ def test_no_tyre_marks_on_a_ferry_deck(tmp_path, monkeypatch):
     server.world.ferry_mgr.update(0.1, (x, y))
     assert server.world.ferry_mgr.on_deck(x, y)
     assert server._tyre_mark(previous=(x - 1.0, y)) is None
+
+
+def test_snapshot_carries_the_pbf_fallback_notice(tmp_path, monkeypatch):
+    from theroadragetrip.osm.pbf_source import pbf_fallback_notices
+
+    server = _build_server(tmp_path, monkeypatch)
+    pbf_fallback_notices.clear()
+    assert _state(server)["data_source_notice"] == ""
+    monkeypatch.setitem(pbf_fallback_notices, "pbf_missing", ("/x/finland-latest.osm.pbf", ""))
+    notice = _state(server)["data_source_notice"]
+    assert "/x/finland-latest.osm.pbf" in notice and "Overpass" in notice

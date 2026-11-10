@@ -19,6 +19,7 @@ from typing import Any, Callable, Mapping
 
 from .parent_watch import exit_with_parent
 from .osm.cache import default_cache_root
+from .osm.pbf_source import PbfUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -636,7 +637,8 @@ class WorldCacheManager:
                     _fetch_pbf_build_and_write_cache, str(path), area_id, bbox,
                     self._process_pbf_path or None, self._process_build_func, force_refresh,
                 ).result()
-            except (BrokenProcessPool, OSError) as error:
+            except (BrokenProcessPool, OSError, PbfUnavailable) as error:
+                # PbfUnavailable: the loader thread's fetch_func falls back to Overpass with a notice.
                 logger.warning("[WorldCache] Process PBF pipeline failed; using loader thread: %s", error)
                 self._build_executor.shutdown(wait=False, cancel_futures=True)
                 self._build_executor = None

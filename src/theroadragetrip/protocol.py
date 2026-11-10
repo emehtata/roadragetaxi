@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 from dataclasses import asdict
 from datetime import date
 from typing import Optional
@@ -41,6 +42,7 @@ from .activities.plugins.soccer import ball_positions
 from .fuel import fuel_station_price_cents, nearest_fuel_station
 from .holiday_events import santa_costume
 from .localization import tr
+from .osm.pbf_source import pbf_fallback_notices
 from .rail_bookings import PASSENGER_MET, PASSENGER_WAITING
 from .simulation import PlayerCommand
 from .taxi import TaxiPassenger
@@ -532,6 +534,15 @@ def _station_price_cents(world, car) -> Optional[int]:
     return fuel_station_price_cents(station) if station is not None else None
 
 
+def data_source_notice(language: str) -> str:
+    """Why osm_source=pbf fell back to Overpass, in `language`; "" if it did not."""
+    return "\n".join(
+        tr(language, f"pbf_fallback_{reason}", path=path, detail=detail[-200:],
+           folder=str(Path(path).parent), name=Path(path).name)
+        for reason, (path, detail) in pbf_fallback_notices.items()
+    )
+
+
 def _abroad_text(border_watch, language: str) -> str:
     country = getattr(border_watch, "country", None)
     if country in (None, "FIN"):
@@ -677,6 +688,8 @@ def build_state_message(
         "meet": _meet_to_dict(taxi_mgr, player_pedestrian, language),
         # Out of Finland: "You can drive in Sweden, but everything is Finnish here." (borders.py), else "".
         "abroad": _abroad_text(getattr(world, "border_watch", None), language),
+        # osm_source=pbf fell back to Overpass: why and what to do (the HUD shows it ~15 s), else "".
+        "data_source_notice": data_source_notice(language),
         # The route to the taxi target, planned by the server (navigation_route.py): [[x, y], ...], [] while none.
         "navigation": navigation if navigation is not None else {"points": []},
         # The rage shout above the taxi while it lasts ({"text", "timer"} seconds left), else null.

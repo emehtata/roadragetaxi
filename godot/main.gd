@@ -987,7 +987,7 @@ func _present(state: Dictionary) -> void:
 		show_summary(state)
 	if not state.get("on_foot", true):
 		_entered_taxi = true
-	hud.show_state(state, {"entered_taxi": _entered_taxi, "speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "lane_assist": lane_assist, "navigation": nav_overlay.show_route, "labels": labels.mode, "next_train": show_next_train})
+	hud.show_state(state, {"entered_taxi": _entered_taxi, "speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "lane_assist": lane_assist, "navigation": nav_overlay.show_route, "labels": labels.mode, "next_train": show_next_train, "map_ready": _chunk_queue.is_empty() and map_layer.chunk_count() > 0})
 	instruments.chips = [lane_assist, speed_limiter, nav_overlay.show_route]  # K, V, N under the speedometer
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)

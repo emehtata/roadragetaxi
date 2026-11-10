@@ -33,6 +33,7 @@ from .osm import (AutoFetchManager, build_ways, fetch_osm_ways,
                   fetch_osm_ways_from_pbf, load_local_sample, local_pbf_available,
                   remove_trees_under_roads)
 from .osm.cache import OSM_CACHE_TTL_S
+from .osm.pbf_source import PbfUnavailable, pbf_fallback_notices
 from .parking import generate_detached_house_parking
 from .pedestrian import PedestrianManager, PlayerPedestrian
 from .physics import Car, SpatialWayGrid, respawn_car
@@ -59,24 +60,30 @@ def with_fetch_bbox(elements, fetch_bbox):
 def resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=None):
     """Pick where OSM data comes from: live Overpass, or a local .osm.pbf
     extract via osmium-tool (osm_source=pbf) - no downloads, no rate
-    limits, works offline. A "pbf" request never falls back to Overpass:
-    a missing extract or osmium-tool fails the fetch with an error that
-    says what to fix.
+    limits, works offline. A "pbf" fetch that cannot use the extract
+    falls back to Overpass and records a notice the HUD shows the player
+    (once per reason per session; later fallbacks only log).
     """
+    def _use_overpass(fetch_bbox, **fetch_kwargs):
+        if progress_callback is not None:
+            fetch_kwargs.setdefault("progress_callback", progress_callback)
+        return with_fetch_bbox(fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints, **fetch_kwargs), fetch_bbox)
+
     if getattr(args, "osm_source", "overpass") == "pbf":
         pbf_path = getattr(args, "osm_pbf_path", None)
 
         def _use_pbf(fetch_bbox, **fetch_kwargs):
             if progress_callback is not None:
                 fetch_kwargs.setdefault("progress_callback", progress_callback)
-            return with_fetch_bbox(fetch_osm_ways_from_pbf(fetch_bbox, pbf_path=pbf_path, **fetch_kwargs), fetch_bbox)
+            try:
+                return with_fetch_bbox(fetch_osm_ways_from_pbf(fetch_bbox, pbf_path=pbf_path, **fetch_kwargs), fetch_bbox)
+            except PbfUnavailable as error:
+                logger.warning("osm_source=pbf unusable (%s, path=%s): %s - falling back to the Overpass API",
+                               error.reason, error.path, error)
+                pbf_fallback_notices.setdefault(error.reason, (error.path, error.detail))
+                return _use_overpass(fetch_bbox, **fetch_kwargs)
 
         return _use_pbf
-
-    def _use_overpass(fetch_bbox, **fetch_kwargs):
-        if progress_callback is not None:
-            fetch_kwargs.setdefault("progress_callback", progress_callback)
-        return with_fetch_bbox(fetch_osm_ways(fetch_bbox, endpoints=overpass_endpoints, **fetch_kwargs), fetch_bbox)
 
     return _use_overpass
 

@@ -327,6 +327,17 @@ func test_credits() -> void:
 	root.add_child(scene)
 	var hud = scene.get_node("Ui/Hud")
 	check(hud.osm_credit.text == "© OpenStreetMap contributors" and hud.osm_credit.get_parent() == hud, "the game view credits OpenStreetMap")
+	var source_notice := "Local map file not found: /x/finland-latest.osm.pbf. Put the .osm.pbf there, set osm_pbf_path, or set osm_source to overpass. Using Overpass for now."
+	hud.show_state({"data_source_notice": source_notice, "taxi": {}}, {"map_ready": false})
+	check(hud._notice.visible and hud._source_notice_until == 0, "the pbf fallback notice stays while the first map load runs")
+	hud.show_state({"data_source_notice": source_notice, "taxi": {}, "map_loading": "fetching"}, {"map_ready": true})
+	check(hud._notice.visible and hud._source_notice_until == 0, "the pbf fallback notice's clock waits while the server still loads the map")
+	hud.show_state({"data_source_notice": source_notice, "taxi": {}})
+	check(hud._source_notice_until > 0 and hud._notice.visible and hud._notice.text == source_notice and hud._notice.autowrap_mode != TextServer.AUTOWRAP_OFF,
+		"the pbf fallback notice shows in the HUD, wrapping")
+	hud._source_notice_until = 1  # ~15 s after the map loaded
+	hud.show_state({"data_source_notice": source_notice, "taxi": {}})
+	check(not hud._notice.visible, "the pbf fallback notice goes after its time and does not come back")
 	scene.free()
 
 

@@ -69,3 +69,9 @@ def test_a_discarded_fare_is_announced_in_the_game_language(state, expected):
     manager.state = state
     manager.discard_mission(0.0, 0.0)
     assert manager.notification_msg == expected
+
+
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_pbf_fallback_notices_exist_in_every_language(language):
+    for reason in ("osmium_missing", "pbf_missing", "osmium_failed"):
+        assert f"pbf_fallback_{reason}" in TRANSLATIONS[language]
