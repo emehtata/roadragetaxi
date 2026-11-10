@@ -163,19 +163,7 @@ godot-selftest-sample: godot/.godot/import-stamp
 
 godot-test:
 	$(GODOT) --headless --path godot --import
-	$(GODOT) --headless --path godot --script res://tests/run_tests.gd
-	$(GODOT) --headless --path godot --script res://tests/audit_menu_safety.gd
-	$(GODOT) --headless --path godot --script res://tests/home_interior.gd
-	$(GODOT) --headless --path godot --script res://tests/electronic_signs.gd
-	$(GODOT) --headless --path godot --script res://tests/surface_details.gd
-	$(GODOT) --headless --path godot --script res://tests/forest_trees.gd
-	$(GODOT) --headless --path godot --script res://tests/precipitation_3d.gd
-	$(GODOT) --headless --path godot --script res://tests/animal_audio.gd
-	$(GODOT) --headless --path godot --script res://tests/rtx_trial.gd
-	$(GODOT) --headless --path godot --script res://tests/home_walk.gd
-	$(GODOT) --headless --path godot --script res://tests/home_interior_3d.gd
-	$(GODOT) --headless --path godot --script res://tests/home_first_person.gd
-	$(GODOT) --headless --path godot --script res://animal_models_test.gd
+	$(PYTHON) tools/run_godot_tests.py --godot $(GODOT)
 
 audio-check:
 	PYTHONPATH=src $(PYTHON) tools/validate_audio_assets.py
