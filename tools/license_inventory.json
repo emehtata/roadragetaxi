@@ -209,6 +209,22 @@
       "remediation": ""
     },
     {
+      "name": "Grab3D animal models (CC0)",
+      "paths": [
+        "godot/assets/animals/*"
+      ],
+      "purpose": "close-range 3D models for a fox, a small bird, a roe deer, a horse and a hare in the 3D view",
+      "shipped": true,
+      "origin": "grab3d.com animal pages (low-poly-fox, low-poly-bird, low-poly-deer, low-poly-horse, low-poly-rabbit); see godot/assets/animals/SOURCES.md",
+      "copyright": "not named on the pages",
+      "licence": "CC0 1.0 (public domain)",
+      "evidence": "each <name>.manifest.json is the verbatim grab3d manifest with licence CC0-1.0; see godot/assets/animals/SOURCES.md",
+      "obligations": "none (CC0); manifests are AI-assisted derivatives (ai_content: true), approved by the user; keep the source note",
+      "commercial": "yes",
+      "status": "verified",
+      "remediation": ""
+    },
+    {
       "name": "Vehicle models from 3dassets.dev and Innerscene",
       "paths": [
         "godot/assets/vehicles/*.glb",
