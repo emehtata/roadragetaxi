@@ -35,13 +35,15 @@ from typing import Callable, List, Optional, Tuple
 
 
 def osmium_command() -> Optional[str]:
-    """The `osmium` program (osmium-tool) to run, or None without one: the
-    Windows release ships it beside the server (server/osmium/osmium.exe,
-    windows-release.yml); a Windows source run has it in the repo's
-    .osmium-windows (tools/run-windows.ps1 installs it); elsewhere PATH."""
+    """The `osmium` program (osmium-tool) to run, or None without one: a
+    release ships it beside the server (server/osmium/osmium.exe on Windows,
+    server/osmium/bin/osmium on Linux; windows-release.yml, linux-release.yml);
+    a Windows source run has it in the repo's .osmium-windows
+    (tools/run-windows.ps1 installs it); elsewhere PATH."""
     import sys
 
-    bundled = Path(sys.executable).parent / "osmium" / "osmium.exe"
+    exe = "osmium.exe" if sys.platform == "win32" else "bin/osmium"
+    bundled = Path(sys.executable).parent / "osmium" / exe
     if getattr(sys, "frozen", False) and bundled.is_file():
         return str(bundled)
     source = Path(__file__).resolve().parents[3] / ".osmium-windows" / "Library" / "bin" / "osmium.exe"
