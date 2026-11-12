@@ -1,4 +1,4 @@
-## Inside a house (rrt-019-in-house-02): the server's floor plan, walked on
+## Inside a house: the server's floor plan, walked on
 ## by the client. The simulation only knows the player is indoors (state
 ## home_door.indoors) - its map player waits at the front door; the walk here
 ## is presentation and never reaches the map, roads or traffic. E at the front

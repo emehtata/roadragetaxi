@@ -1,7 +1,6 @@
 # activities
 
-Ambient pedestrian activity plugin system (see `.github/prompts/residents-live.md`
-for the original spec). Lets an ordinary walking `Pedestrian` spontaneously
+Ambient pedestrian activity plugin system. Lets an ordinary walking `Pedestrian` spontaneously
 sit on a bench, check their phone, throw away trash, relax in a park, eat
 or drink, watch traffic, window-shop, wait at a bus stop, take a photo, go
 for a jog, strike up a conversation, or (if a child) play ball or visit a

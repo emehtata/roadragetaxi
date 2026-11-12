@@ -1,6 +1,6 @@
 """Tests for procedural traffic-light and intersection-signal generation
 (src/theroadragetrip/osm/traffic_signals.py), per
-.github/prompts/TRAFFICLIGHTS_PROMPT.md.
+the traffic-light spec.
 
 Deliberately does not test NPC AI's interaction with signals - that's out
 of scope for this pipeline (see the module's own docstring).

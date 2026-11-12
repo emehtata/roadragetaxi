@@ -1,7 +1,7 @@
 """autonomous-driving: the first properly architected autonomous NPC car.
 
 One Resident -> one Driver -> one NPCVehicle -> one preplanned OSM route,
-driven with real traffic rules. See .github/prompts/autonomous-driving.md.
+driven with real traffic rules.
 
 Layering (section 18 of that spec):
 

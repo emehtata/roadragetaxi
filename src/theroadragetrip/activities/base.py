@@ -1,4 +1,4 @@
-"""Generic pedestrian-activity plugin interface (see .github/prompts/residents-live.md).
+"""Generic pedestrian-activity plugin interface.
 
 A plugin describes one contextual activity (sitting on a bench, checking a
 phone, ...) via a plain ``ActivityPlugin`` subclass. The core orchestration

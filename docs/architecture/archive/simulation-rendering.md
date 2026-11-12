@@ -3,7 +3,7 @@
 > **Archived (0.17.0alpha):** the Pygame client was removed. This records how
 > the Godot client and the simulation server were split from it.
 
-Phase 1 of `.github/prompts/client-server-01.md`: separate the gameplay
+Phase 1 of the client-server plan: separate the gameplay
 simulation from Pygame rendering, incrementally, without changing
 behavior. Not multiplayer, not a new renderer, not a real server yet.
 
@@ -123,7 +123,7 @@ there is still one process, one world, no networking.
 
 # Phase 1.5: restore direct single-process execution
 
-`.github/prompts/client-server-015.md`. Phase 2 (below) made the
+the client-server plan (phase 1.5). Phase 2 (below) made the
 client/server split the *only* way to play, even for normal single-player
 gameplay - every frame paid for a real loopback TCP round-trip, JSON
 encode/decode, and shadow-object reconciliation, competing with the
@@ -197,7 +197,7 @@ phase fixes.
 `--connect` only - see the section above. It is no longer what a normal
 single-player launch does.**
 
-`.github/prompts/client-server-02.md` takes the next step: the
+Phase 2 of the client-server plan takes the next step: the
 `advance_simulation()` tick Phase 1 extracted can run in an independent
 process - `SimulationServer` - with the Pygame app as a real network
 client of it (`--connect`), never calling `advance_simulation()` itself.

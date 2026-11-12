@@ -280,6 +280,7 @@ def test_a_release_runs_its_bundled_osmium(tmp_path, monkeypatch, platform, rela
     bundled.write_bytes(b"")
     monkeypatch.setattr(sys, "executable", str(tmp_path / "RoadRageServer"))
     monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(pbf_index, "__file__", str(tmp_path / "repo" / "src" / "theroadragetrip" / "utils" / "pbf_index.py"))
     monkeypatch.setattr(pbf_index.shutil, "which", lambda _name: None)
     assert pbf_index.osmium_command() == str(bundled)
     monkeypatch.setattr(sys, "frozen", False)

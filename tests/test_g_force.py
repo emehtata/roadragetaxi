@@ -1,5 +1,5 @@
 """Tests for the physically-derived g-force measurement (see
-.github/prompts/GFORCE.md and physics._update_g_force).
+physics._update_g_force).
 
 These drive _update_g_force directly with hand-placed positions/headings
 representing exact circular arcs, rather than going through the arcade

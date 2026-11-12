@@ -21,7 +21,7 @@ TILE_SIZE_M = 1000.0
 # extract's "worth it once you're already scanning the whole file" appeal.
 # Not applied at present: nothing calls set_tile_size_m since the Pygame
 # client's removal, so PBF streaming uses TILE_SIZE_M too (measured in
-# .github/performance-analysis/map-loading-01.md: a full-file 3x3 km
+# an earlier map-loading audit: a full-file 3x3 km
 # extract takes ~11 s, the same scan as a 10x10 km one).
 PBF_TILE_SIZE_M = 3300.0
 

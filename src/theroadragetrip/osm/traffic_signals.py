@@ -1,7 +1,7 @@
 """Procedural traffic-light and intersection-signal generation.
 
 Builds a believable signal-controlled intersection model from OSM traffic
-signal evidence, per .github/prompts/TRAFFICLIGHTS_PROMPT.md. OSM traffic
+signal evidence. OSM traffic
 signal nodes only prove an intersection *is* signal-controlled - not that
 every physical light or approach is represented, or that lane/phase data
 exists at all. This module follows the prompt's pipeline:

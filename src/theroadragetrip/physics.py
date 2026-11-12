@@ -48,7 +48,7 @@ G_FORCE_SMOOTHING_TIME_CONSTANT_S = 0.15
 # speed before and after both stay within what the car could actually be
 # doing; a teleport implies a speed no real drive could ever reach.
 MAX_PLAUSIBLE_SPEED_MPS = MAX_SPEED * 3.0
-# --- Tire grip model (.github/prompts/GRIP.md) -----------------------------
+# --- Tire grip model ---------------------------------------------------
 #
 # Maximum *combined* tire grip in g, by road surface - a friction circle:
 # longitudinal (accel/brake) and lateral (cornering) forces share this one
@@ -102,7 +102,7 @@ FULL_SLIDE_RATIO = 1.00 / 0.90
 # flicker for a car riding right at the boundary.
 SLIDE_ENTER_THRESHOLD = 0.80
 SLIDE_EXIT_THRESHOLD = 0.65
-# Visible skidmarks (.github/prompts/SKIDMARK.md), as thresholds on
+# Visible skidmarks, as thresholds on
 # car.slip_amount (already a continuous 0..1 - see _slip_amount_from_ratio)
 # rather than a second slip metric. Deliberately below SLIDE_ENTER_THRESHOLD:
 # a tire can be visibly slipping (worth a mark on the road) before the

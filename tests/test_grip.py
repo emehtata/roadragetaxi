@@ -1,5 +1,4 @@
-"""Acceptance tests for the tire grip/slip model (.github/prompts/GRIP.md
-section 20), on top of the g-force measurement it builds on
+"""Acceptance tests for the tire grip/slip model, on top of the g-force measurement it builds on
 (GFORCE.md, tests/test_g_force.py, tests/test_cornering_grip.py)."""
 import math
 

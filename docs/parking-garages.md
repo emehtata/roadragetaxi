@@ -7,7 +7,7 @@ driven on. Driving through a parking entrance whose roads state both levels
 moves the player between them; F11 (debug HUD on) also switches the level
 for testing.
 
-The work happens in phases, one `.github/prompts/garage-NN.md` prompt each.
+The work happens in phases, one task prompt each.
 "Current state" below is always up to date. The phase sections record what
 each phase added, in order; a later phase can change what an earlier one
 describes, and when it does it says so.

@@ -1,4 +1,4 @@
-"""Tests for the tire-slip-driven skidmark model (.github/prompts/SKIDMARK.md).
+"""Tests for the tire-slip-driven skidmark model.
 
 Covers physics.skidmark_should_mark/skidmark_intensity (the "source of
 truth" the spec requires - real tire slip, not brake input) and the

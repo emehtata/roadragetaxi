@@ -1,4 +1,4 @@
-"""Ambient pedestrian activity plugin system (.github/prompts/residents-live.md).
+"""Ambient pedestrian activity plugin system.
 
 Public surface for pedestrian.py, the only consumer. Individual plugins
 live under .plugins and are never imported directly - they're found via

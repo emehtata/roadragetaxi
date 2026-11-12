@@ -133,7 +133,7 @@ installation was available; references and callers were traced directly with
 repository searches instead. Shared Godot skill symlinks were broken; the local
 `godot-shot` workflow was available and used.
 
-## Entering houses (rrt-019-in-house-02)
+## Entering houses
 
 **Decision: the server owns the door, the client owns the walk.** Being indoors
 changes what the simulation may do with the player, so it is server state
