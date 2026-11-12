@@ -30,7 +30,7 @@ That is 8.53x faster for this validator (88.3% less measured time), not an
 7.42/7.80 ms per tick and had different entity/route workloads and host contention;
 no overall tick-speed claim is made. cProfile timings include profiler overhead.
 
-Raw summaries are in [2026-10-27-load-and-render/](2026-10-27-load-and-render/).
+Raw summaries are in 2026-10-27-load-and-render/.
 The replay compared the previous Git version of the function with the working
 version, using identical positional/keyword arguments, timed with perf_counter.
 The initial audit driver is an existing local diagnostic under

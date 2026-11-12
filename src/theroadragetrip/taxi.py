@@ -2249,6 +2249,18 @@ class TaxiManager:
             return self.current_passenger.dropoff
         return None
 
+    def navigation_target(self) -> Optional[TaxiTarget]:
+        """Where navigation leads: the fare's target, else the taxi stand of
+        an accepted pre-booked pickup (meet_context) until the passenger is met."""
+        target = self.get_current_target()
+        if target is not None:
+            return target
+        booking = self.meet_context()
+        stand = getattr(booking, "taxi_stand", None)
+        if stand is None:
+            return None
+        return TaxiTarget(x=stand.x, y=stand.y, address=booking.station, radius_m=self.pickup_radius_m)
+
     def discard_mission(self, car_x: float, car_y: float, penalty: int = 150, reason: str = "discard_cancelled") -> int:
         """Discard the active pickup or onboard passenger mission with a score penalty."""
         if not self.current_passenger:

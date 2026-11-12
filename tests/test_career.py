@@ -1,6 +1,7 @@
 import json
 
 from theroadragetrip.career import (
+    career_ongoing,
     career_path,
     gig_odometer_path,
     load_career,
@@ -103,3 +104,29 @@ def test_career_balance_carries_over_and_new_career_starts_at_zero(tmp_path):
     assert load_career(path, 5)["city_index"] == 2  # progress shape unchanged
     save_career(path, 0)  # starting a new career
     assert load_career_balance(path) == 0
+
+
+def test_career_is_ongoing_only_while_saved_and_not_completed(tmp_path):
+    path = tmp_path / "career.json"
+    assert not career_ongoing(path)  # never started
+    path.write_text(json.dumps({"city_index": 3, "completed": False, "total_score": 900}), encoding="utf-8")
+    assert career_ongoing(path)
+    path.write_text(json.dumps({"city_index": 17, "completed": True, "total_score": 90000}), encoding="utf-8")
+    assert not career_ongoing(path)
+    path.write_text("{broken", encoding="utf-8")
+    assert not career_ongoing(path)
+
+
+def test_reset_career_query_deletes_the_progress(tmp_path, monkeypatch, capsys):
+    import sys
+    from theroadragetrip import config
+    from theroadragetrip.server import __main__ as server_main
+    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.ini")
+    path = career_path(tmp_path / "config.ini")
+    path.write_text(json.dumps({"city_index": 3, "completed": False, "total_score": 900}), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["server", "--career-status"])
+    server_main.main()
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1]) == [True]
+    monkeypatch.setattr(sys, "argv", ["server", "--reset-career"])
+    server_main.main()
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1]) == [False] and not path.exists()

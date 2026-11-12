@@ -177,7 +177,7 @@ def test_cancelled_intercity_job_cannot_publish_old_fare(tmp_path):
     path,identity = prepared(tmp_path)
     way = Way([(0,0),(1000,0)],'primary',4,osm_id=10)
     taxi = SimpleNamespace(target=TaxiTarget(20200,0,'Town',municipality='Town',intercity_place_id=identity))
-    taxi.get_current_target = lambda:taxi.target
+    taxi.navigation_target = lambda:taxi.target
     world = SimpleNamespace(taxi_mgr=taxi,traffic_mgr=TrafficWorld([way]),intercity_database=path)
     car = Car(x=100,y=0,heading=0,speed=0)
     nav = NavigationRoute()

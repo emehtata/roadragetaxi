@@ -50,7 +50,7 @@ def test_node_station_is_extracted_with_code_osm_source_and_names():
 
 def test_area_airport_gets_its_centroid_and_optional_codes():
     corners, ring = square(10, 64.92, 25.34)
-    elements = corners + [way(100, ring, aeroway="aerodrome", name="Oulun lentoasema", iata="OUL", icao="EFOU")]
+    elements = corners + [way(100, ring, aeroway="aerodrome", name="Test Airport", iata="OUL", icao="EFOU")]
     (place,), _ = ep.extract_places(elements)
     assert place["id"] == "airport_efou" and place["osm"] == {"type": "way", "id": 100}
     assert (place["iata"], place["icao"]) == ("OUL", "EFOU")
@@ -60,7 +60,7 @@ def test_area_airport_gets_its_centroid_and_optional_codes():
 def test_airport_point_is_its_passenger_terminal_not_the_airfield():
     corners, ring = square(10, 64.92, 25.34)
     elements = corners + [
-        way(100, ring, aeroway="aerodrome", name="Oulun lentoasema", iata="OUL"),
+        way(100, ring, aeroway="aerodrome", name="Test Airport", iata="OUL"),
         node(200, 64.93, 25.37, aeroway="terminal", name="Terminaali"),
         node(201, 64.925, 25.346, aeroway="terminal", terminal="cargo"),
     ]
@@ -115,13 +115,13 @@ def test_category_matching_rejects_airfields_platforms_metro_and_closed():
 def test_same_station_as_several_elements_dedupes_to_one_but_different_names_do_not():
     corners, ring = square(40, 65.011, 25.484, size=0.001)
     elements = corners + [
-        way(400, ring, railway="station", name="Oulun rautatieasema", **{"name:en": "Oulu"}),
+        way(400, ring, railway="station", name="Test Railway Station", **{"name:en": "Oulu"}),
         node(41, 65.0112, 25.4845, railway="station", name="Oulu", **{"railway:ref": "OL"}),
         node(42, 65.0200, 25.4900, railway="halt", name="Oulu railway station", **{"railway:ref": "OL"}),  # same code
-        node(43, 65.0114, 25.4846, railway="halt", name="Oulun satama"),  # similar name, different place
+        node(43, 65.0114, 25.4846, railway="halt", name="Oulu Test Halt"),  # similar name, different place
     ]
     places, stats = ep.extract_places(elements)
-    assert sorted(p["name"] for p in places) == ["Oulu", "Oulun satama"]
+    assert sorted(p["name"] for p in places) == ["Oulu", "Oulu Test Halt"]
     oulu = by_id(places)["railway_station_ol"]
     assert oulu["osm"] == {"type": "node", "id": 41}  # stations prefer the station point
     assert oulu["osm_duplicates"] == [{"type": "node", "id": 42}, {"type": "way", "id": 400}]
@@ -158,11 +158,11 @@ def test_a_new_category_needs_only_configuration():
         identity_tags=(),
         dedupe_radius_m=500.0,
     )
-    elements = [node(9, 60.15, 24.95, amenity="ferry_terminal", name="Katajanokka", operator="Viking")]
+    elements = [node(9, 60.15, 24.95, amenity="ferry_terminal", name="Harbour Terminal", operator="Test Ferry Line")]
     places, stats = ep.extract_places(elements, CATEGORIES + (ferry,))
     assert places == [{
-        "id": "ferry_terminal_n9", "type": "ferry_terminal", "name": "Katajanokka",
-        "lat": 60.15, "lon": 24.95, "osm": {"type": "node", "id": 9}, "operator": "Viking",
+        "id": "ferry_terminal_n9", "type": "ferry_terminal", "name": "Harbour Terminal",
+        "lat": 60.15, "lon": 24.95, "osm": {"type": "node", "id": 9}, "operator": "Test Ferry Line",
     }]
     assert set(stats["categories"]) == {"airport", "railway_station", "ferry_terminal"}
 
@@ -198,7 +198,7 @@ def test_cli_on_a_small_pbf_writes_json_the_game_loads(tmp_path):
  <node id="6" version="1" lat="65.02" lon="25.49"><tag k="railway" v="platform"/><tag k="name" v="Raide 1"/></node>
  <way id="10" version="1">
   <nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="4"/><nd ref="1"/>
-  <tag k="aeroway" v="aerodrome"/><tag k="name" v="Oulun lentoasema"/><tag k="iata" v="OUL"/><tag k="icao" v="EFOU"/>
+  <tag k="aeroway" v="aerodrome"/><tag k="name" v="Test Airport"/><tag k="iata" v="OUL"/><tag k="icao" v="EFOU"/>
  </way>
 </osm>
 """

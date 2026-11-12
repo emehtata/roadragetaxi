@@ -182,7 +182,7 @@ def test_building_part_with_height_and_levels_is_renderable_building_data():
         {"type": "node", "id": 4, "lat": 60.001, "lon": 25.0},
         {
             "type": "way", "id": 100, "nodes": [1, 2, 3, 4, 1],
-            "tags": {"building": "yes", "name": "Valkealinnantalo"},
+            "tags": {"building": "yes", "name": "Test Valko Building"},
         },
         {"type": "node", "id": 5, "lat": 60.0002, "lon": 25.0002},
         {"type": "node", "id": 6, "lat": 60.0002, "lon": 25.0008},
@@ -687,7 +687,7 @@ def test_build_ways_parses_fuel_forecourt_as_paved_scenery():
             "type": "way",
             "id": 10,
             "nodes": [1, 2, 3, 4, 1],
-            "tags": {"amenity": "fuel", "name": "Neste"},
+            "tags": {"amenity": "fuel", "name": "Fuel Station"},
         },
     ]
 
@@ -698,7 +698,7 @@ def test_build_ways_parses_fuel_forecourt_as_paved_scenery():
     assert result.sceneries[0].surface == "asphalt"
     assert len(result.scenery_objects) == 1
     assert result.scenery_objects[0].kind == "fuel"
-    assert result.scenery_objects[0].name == "Neste"
+    assert result.scenery_objects[0].name == "Fuel Station"
     assert result.scenery_objects[0].id == 10
     assert result.scenery_objects[0].is_area is True
 
@@ -716,8 +716,8 @@ def test_build_ways_creates_fuel_pumps_for_named_roof_station_area():
             "tags": {
                 "amenity": "fuel",
                 "building": "roof",
-                "brand": "Neste",
-                "name": "Neste Express Oulu Lävistäjä",
+                "brand": "Fuel Station",
+                "name": "Fuel Express Test Street",
             },
         },
     ]
@@ -729,7 +729,7 @@ def test_build_ways_creates_fuel_pumps_for_named_roof_station_area():
     assert len(result.scenery_objects) == 1
     station = result.scenery_objects[0]
     assert station.kind == "fuel"
-    assert station.name == "Neste Express Oulu Lävistäjä"
+    assert station.name == "Fuel Express Test Street"
     assert station.id == 159917622
     assert station.is_area is True
 
@@ -844,8 +844,8 @@ def test_restaurant_place_is_not_a_map_district_label():
 
 def test_finnish_color_name_maps_to_expected_wall_color():
     assert _building_colors_from_name("Sininen talo")[0] == FINNISH_BUILDING_COLOR_NAMES["sini"]
-    assert _building_colors_from_name("Punatalo Oy")[0] == FINNISH_BUILDING_COLOR_NAMES["puna"]
-    assert _building_colors_from_name("Valkea Kartano")[0] == FINNISH_BUILDING_COLOR_NAMES["valkea"]
+    assert _building_colors_from_name("Punainen Testitalo Oy")[0] == FINNISH_BUILDING_COLOR_NAMES["puna"]
+    assert _building_colors_from_name("Valkea testikartano")[0] == FINNISH_BUILDING_COLOR_NAMES["valkea"]
     assert _building_colors_from_name("Kissankulma") is None
     assert _building_colors_from_name(None) is None
 
@@ -940,3 +940,12 @@ def test_mapped_shrubs_keep_their_position_beside_houses():
     ])
     shrub, = result.scenery_objects
     assert (shrub.kind, shrub.id, shrub.x, shrub.y) == ("shrub", 1, 25413.0, 65066.0)
+
+
+def test_bench_backrest_tag_no_is_false_yes_and_unknown_true_or_none():
+    values = {50: "no", 51: "yes", 52: "unknown", 53: None}
+    elements = [{"type": "node", "id": nid, "lat": 60.0 + nid * 0.001, "lon": 25.0,
+                 "tags": {"amenity": "bench", **({"backrest": v} if v else {})}} for nid, v in values.items()]
+    result = build_ways(elements)
+    backrest = {obj.id: obj.backrest for obj in result.scenery_objects if obj.kind == "bench"}
+    assert backrest == {50: False, 51: True, 52: None, 53: None}

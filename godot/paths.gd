@@ -7,6 +7,9 @@
 ##   RoadRageTrip.exe, RoadRageTrip.pck
 ##   server/RoadRageServer(.exe)
 ##   server/_internal/theroadragetrip/{assets,img,sounds}
+##
+## On macOS (macos-release.yml) the same folder is the app bundle's
+## Contents/MacOS: RoadRageTrip.app/Contents/MacOS/server/...
 extends RefCounted
 
 

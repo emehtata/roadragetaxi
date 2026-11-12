@@ -19,7 +19,7 @@ from typing import Any, Callable, Mapping
 
 from .parent_watch import exit_with_parent
 from .osm.cache import default_cache_root
-from .tile_streaming import TileCoord
+from .osm.pbf_source import PbfUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,9 @@ MAGIC = b"RWC\0"
 # 61: individual natural=shrub nodes as scenery objects.
 # 62: building and shop-place opening_hours and raw shop types.
 # 63: wooden fences (fence_type / material) as Railing.kind "wood_fence".
-FORMAT_VERSION = 63
+# 64: car ferry routes (route=ferry) as Railway kind "ferry".
+# 65: bench SceneryObject.backrest (OSM backrest=*).
+FORMAT_VERSION = 65
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -193,32 +195,33 @@ def _encode(value: Any) -> bytes:
     raise TypeError(f"unsupported cache value: {type(value).__name__}")
 
 
-def _decode(data: memoryview, offset: int = 0) -> tuple[Any, int]:
+def _decode(data: bytes, offset: int = 0) -> tuple[Any, int]:
+    # Literal wire tags match _TYPES; this runs millions of times per tile.
     if offset + _VALUE.size > len(data):
         raise InvalidWorldCache("truncated value header")
     type_id, size = _VALUE.unpack_from(data, offset)
     offset += _VALUE.size
-    if type_id == _TYPES["none"]:
+    if type_id == 0:
         return None, offset
-    if type_id == _TYPES["bool"]:
+    if type_id == 1:
         return bool(size), offset
-    if type_id == _TYPES["int"]:
+    if type_id == 2:
         if size != 8 or offset + 8 > len(data):
             raise InvalidWorldCache("invalid integer")
         return struct.unpack_from("<q", data, offset)[0], offset + 8
-    if type_id == _TYPES["float"]:
+    if type_id == 3:
         if size != 8 or offset + 8 > len(data):
             raise InvalidWorldCache("invalid float")
         return struct.unpack_from("<d", data, offset)[0], offset + 8
-    if type_id == _TYPES["str"]:
+    if type_id == 4:
         end = offset + size
         if end > len(data):
             raise InvalidWorldCache("truncated string")
-        return bytes(data[offset:end]).decode("utf-8"), end
+        return data[offset:end].decode("utf-8"), end
     end = offset + size
     if end > len(data):
         raise InvalidWorldCache("truncated container")
-    if type_id in (_TYPES["list"], _TYPES["tuple"]):
+    if type_id in (5, 6):
         if size < 4:
             raise InvalidWorldCache("invalid sequence")
         count = struct.unpack_from("<I", data, offset)[0]
@@ -228,8 +231,8 @@ def _decode(data: memoryview, offset: int = 0) -> tuple[Any, int]:
             items.append(item)
         if cursor != end:
             raise InvalidWorldCache("sequence size mismatch")
-        return (items if type_id == _TYPES["list"] else tuple(items)), end
-    if type_id == _TYPES["dict"]:
+        return (items if type_id == 5 else tuple(items)), end
+    if type_id == 7:
         if size < 4:
             raise InvalidWorldCache("invalid mapping")
         count = struct.unpack_from("<I", data, offset)[0]
@@ -338,11 +341,13 @@ class BinaryWorldCacheLoader:
             if binascii.crc32(payload) & 0xffffffff != checksum:
                 raise InvalidWorldCache(f"checksum mismatch in {name}")
             payloads[name] = payload
+        validated_at = time.perf_counter()
         decoded = {}
         for name in _SECTIONS:
-            decoded[name], end = _decode(memoryview(payloads[name]))
+            decoded[name], end = _decode(payloads[name])
             if end != len(payloads[name]):
                 raise InvalidWorldCache(f"trailing data in {name}")
+        decoded_at = time.perf_counter()
         classes = {
             "ways": "Way", "waters": "Water", "buildings": "Building", "sceneries": "Scenery",
             "places": "Place", "traffic_lights": "TrafficLight", "crossings": "Crossing",
@@ -423,10 +428,13 @@ class BinaryWorldCacheLoader:
             restored["logical_intersections"].append(osm.LogicalIntersection(**record))
         world = MapData(**restored)
         logger.info(
-            "[WorldCache] Loaded %s in %.1f ms: nodes=%d roads=%d buildings=%d parking spaces=%d",
+            "[WorldCache] Loaded %s in %.1f ms: nodes=%d roads=%d buildings=%d parking spaces=%d "
+            "read_validate_ms=%.1f decode_ms=%.1f restore_ms=%.1f",
             target.name, (time.perf_counter() - started) * 1000.0,
             sum(len(way.points_m) for way in world.ways), len(world.ways),
             len(world.buildings), len(world.parking_spaces),
+            (validated_at - started) * 1000.0, (decoded_at - validated_at) * 1000.0,
+            (time.perf_counter() - decoded_at) * 1000.0,
         )
         return world
 
@@ -496,10 +504,6 @@ class WorldCacheManager:
         if area_id.startswith("tile_"):
             return self.cache_dir / "tiles" / f"{area_id}.rwc"
         return self.cache_dir / f"{area_id}.rwc"
-
-    @staticmethod
-    def tile_id(tile: TileCoord) -> str:
-        return f"tile_{tile.x}_{tile.y}"
 
     def preload_region(self, bbox, **kwargs) -> Future:
         """Load one combined streaming region instead of one request per tile."""
@@ -633,7 +637,8 @@ class WorldCacheManager:
                     _fetch_pbf_build_and_write_cache, str(path), area_id, bbox,
                     self._process_pbf_path or None, self._process_build_func, force_refresh,
                 ).result()
-            except (BrokenProcessPool, OSError) as error:
+            except (BrokenProcessPool, OSError, PbfUnavailable) as error:
+                # PbfUnavailable: the loader thread's fetch_func falls back to Overpass with a notice.
                 logger.warning("[WorldCache] Process PBF pipeline failed; using loader thread: %s", error)
                 self._build_executor.shutdown(wait=False, cancel_futures=True)
                 self._build_executor = None

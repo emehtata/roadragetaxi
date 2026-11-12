@@ -16,6 +16,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
+from . import geo
 from .train_compositions import GENERIC, MAX_TRAIN_LENGTH_M, TrainComposition, resolve
 from .train_passengers import PassengerFlow
 from .rail_bookings import RailBookingManager
@@ -283,13 +284,6 @@ def build_rail_graph(railways: Sequence, kind="rail") -> RailGraph:
                 if lines:
                     graph.lines.setdefault(frozenset((a, b)), set()).update(lines)
     return graph
-
-
-def _segment_distance(point, a, b) -> float:
-    dx, dy = b[0] - a[0], b[1] - a[1]
-    length_sq = dx * dx + dy * dy
-    t = 0.0 if length_sq == 0 else min(1.0, max(0.0, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length_sq))
-    return math.hypot(a[0] + dx * t - point[0], a[1] + dy * t - point[1])
 
 
 def build_train_routes(
@@ -680,7 +674,7 @@ class RailwayManager:
                 # Their track through this station: if I would stop on it,
                 # it is taken.
                 theirs = [p for p in other.route.points if math.dist(p, stop[5]) <= STATION_TRACK_RADIUS_M]
-                if any(_segment_distance(mine, a, b) <= PLATFORM_CLEARANCE_M for a, b in zip(theirs, theirs[1:])):
+                if any(geo.dist_point_to_segment(mine[0], mine[1], a[0], a[1], b[0], b[1]) <= PLATFORM_CLEARANCE_M for a, b in zip(theirs, theirs[1:])):
                     occupied.update(self.graph.node_at(p) for p in theirs)
         occupied.discard(None)
         return frozenset(occupied)

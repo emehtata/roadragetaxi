@@ -40,6 +40,10 @@ _endpoint_cooldown_lock = threading.Lock()
 DEFAULT_RATE_LIMIT_COOLDOWN_S = 60.0
 
 
+def force_refresh_requested(force_refresh: bool = False) -> bool:
+    return force_refresh or os.getenv("OVERPASS_FORCE_REFRESH", "0").lower() in ("1", "true", "yes")
+
+
 def _endpoint_on_cooldown(endpoint: str) -> bool:
     with _endpoint_cooldown_lock:
         return time.monotonic() < _endpoint_cooldown_until.get(endpoint, 0.0)
@@ -152,6 +156,12 @@ def fetch_osm_ways(
     node["playground"]({south},{west},{north},{east});
     way["playground"]({south},{west},{north},{east});
     node["barrier"~"gate|bollard"]({south},{west},{north},{east});
+    node["power"~"^(pole|tower)$"]({south},{west},{north},{east});
+    way["power"~"^(line|minor_line)$"]({south},{west},{north},{east});
+    nwr["man_made"~"^(chimney|tower|mast|communications_tower|water_tower)$"]({south},{west},{north},{east});
+    way["natural"="tree_row"]({south},{west},{north},{east});
+    node["natural"~"^(stone|rock)$"]({south},{west},{north},{east});
+    node["railway"="level_crossing"]({south},{west},{north},{east});
     node["historic"="memorial"]({south},{west},{north},{east});
     nwr["tourism"~"^(theme_park|camp_site|caravan_site|camp_pitch)$"]({south},{west},{north},{east});
     nwr["attraction"]({south},{west},{north},{east});
@@ -163,6 +173,7 @@ def fetch_osm_ways(
       way["barrier"~"fence|railing|hedge|wall"]({south},{west},{north},{east});
       way["railway"~"rail|light_rail|tram|narrow_gauge|funicular"]({south},{west},{north},{east});
       way["railway"="platform"]({south},{west},{north},{east});
+      way["route"="ferry"]({south},{west},{north},{east});
       relation["railway"="platform"]({south},{west},{north},{east});
       way["natural"="water"]({south},{west},{north},{east});
     way["natural"="bay"]({south},{west},{north},{east});
@@ -207,7 +218,7 @@ def fetch_osm_ways(
     if progress_callback:
         progress_callback(0.1, "Checking cache...")
 
-    force_refresh = force_refresh or os.getenv("OVERPASS_FORCE_REFRESH", "0").lower() in ("1", "true", "yes")
+    force_refresh = force_refresh_requested(force_refresh)
     if not force_refresh:
         cached = load_osm_cache(bbox)
         if cached is not None:

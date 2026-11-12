@@ -71,7 +71,7 @@ def test_match_day_notice_excludes_finished_games(tmp_path, monkeypatch, hour, m
 
     server = _build_server(tmp_path, monkeypatch)
     server.calendar.current = datetime(2026, 10, 17, hour, minute, second)
-    game = SimpleNamespace(start=datetime(2026, 10, 17, 18), home_team="Kärpät", away_team="Sport", venue_name="Arena")
+    game = SimpleNamespace(start=datetime(2026, 10, 17, 18), home_team="Test Home", away_team="Test Away", venue_name="Arena")
     server.world.arena_crowds = SimpleNamespace(schedule_on=lambda day: [game])
     notices = []
     monkeypatch.setattr(server, "_notify", lambda *args: notices.append(args))
@@ -295,7 +295,7 @@ def test_engine_stays_off_after_entering_until_started():
     from theroadragetrip.simulation import apply_enter_exit_vehicle
 
     car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0, engine_on=False)
-    pedestrian = types.SimpleNamespace(x=1.0, y=0.0, heading=0.0)
+    pedestrian = types.SimpleNamespace(x=0.8, y=1.53, heading=0.0)
     from theroadragetrip.server import NullAudio
 
     audio = NullAudio()
@@ -319,7 +319,7 @@ def _state(server):
     )["state"]
 
 
-def test_ilokapina_blocks_taxi_requires_paid_rage_and_syncs_phone_notice(tmp_path, monkeypatch):
+def test_protest_blocks_taxi_requires_paid_rage_and_syncs_phone_notice(tmp_path, monkeypatch):
     from theroadragetrip.osm import Way
     from theroadragetrip.physics import SpatialWayGrid
     from theroadragetrip.protests import ProtestGroup
@@ -453,8 +453,8 @@ def test_road_name_and_limit_follow_the_way_under_the_taxi(tmp_path, monkeypatch
 
     server = _build_server(tmp_path, monkeypatch)
     assert _state(server)["road"] == {"name": None, "speed_limit_kmh": None, "layer": 0, "bridge": False}
-    server._current_way = SimpleNamespace(name="Isokatu", highway="primary", speed_limit_kmh=40, layer=1, is_bridge=True)
-    assert _state(server)["road"] == {"name": "Isokatu", "speed_limit_kmh": 40, "layer": 1, "bridge": True}
+    server._current_way = SimpleNamespace(name="Main Street", highway="primary", speed_limit_kmh=40, layer=1, is_bridge=True)
+    assert _state(server)["road"] == {"name": "Main Street", "speed_limit_kmh": 40, "layer": 1, "bridge": True}
     server._current_way = SimpleNamespace(name="", highway="living_street", speed_limit_kmh=None)
     assert _state(server)["road"] == {"name": "Living Street", "speed_limit_kmh": None, "layer": 0, "bridge": False}
 
@@ -1249,3 +1249,32 @@ def test_snowless_christmas_field_stays_frozen_and_never_opens_for_soccer(tmp_pa
     server.calendar.current = datetime(2026, 7, 15, 20)
     server._update_sports()
     assert not server.world.fields_frozen and not manager.sports_ice_open and manager.soccer_open
+
+
+def test_no_tyre_marks_on_a_ferry_deck(tmp_path, monkeypatch):
+    """The deck moves on with the taxi: a track laid there would be left behind on the water."""
+    from theroadragetrip.ferries import FerryManager
+    from theroadragetrip.osm.build import FERRY_KIND
+    from theroadragetrip.osm.models import Railway
+
+    server = _build_server(tmp_path, monkeypatch)
+    server._on_foot = False
+    server.world.weather.wetness = 0.0  # a dry road keeps black marks (a start may begin in rain)
+    server.car.skid_amount, server.car.braking = 1.0, True  # a full braking skid: marks anywhere else
+    assert server._tyre_mark(previous=(server.car.x - 1.0, server.car.y)) is not None
+    x, y = server.car.x, server.car.y
+    server.world.ferry_mgr = FerryManager([Railway(points_m=[(x - 25.0, y), (x + 500.0, y)], kind=FERRY_KIND)])
+    server.world.ferry_mgr.update(0.1, (x, y))
+    assert server.world.ferry_mgr.on_deck(x, y)
+    assert server._tyre_mark(previous=(x - 1.0, y)) is None
+
+
+def test_snapshot_carries_the_pbf_fallback_notice(tmp_path, monkeypatch):
+    from theroadragetrip.osm.pbf_source import pbf_fallback_notices
+
+    server = _build_server(tmp_path, monkeypatch)
+    pbf_fallback_notices.clear()
+    assert _state(server)["data_source_notice"] == ""
+    monkeypatch.setitem(pbf_fallback_notices, "pbf_missing", ("/x/finland-latest.osm.pbf", ""))
+    notice = _state(server)["data_source_notice"]
+    assert "/x/finland-latest.osm.pbf" in notice and "Overpass" in notice

@@ -11,10 +11,11 @@
 extends Node2D
 
 const RS := preload("res://render_style.gd")
+const Buildings3D := preload("res://buildings_3d.gd")
 const T := preload("res://i18n.gd")
 const MapChunk := preload("res://map_chunk.gd")  # its static roadwork drawing, shared with live roadworks
 const CULL_MARGIN_M := 30.0
-const TWO_WHEELERS := ["motorcycle", "moped", "bicycle"]
+const TWO_WHEELERS := ["motorcycle", "bicycle"]
 const INDOORS := ["entering_building", "in_building"]
 
 var origin := Vector2.ZERO
@@ -61,14 +62,17 @@ var _car_shapes: Array = []  # [kind, ...] this frame: ["poly", points, fill, ou
 const STREET_LIGHT_ON_VEHICLES := 0.55  # how strongly a lamp lights a car, like the pool on the road
 var language := "en"
 var _reflectors: Node2D  # made in _ready (an instance never in the tree leaks nothing)
+var first_person := false  # walking in first person (main.gd): the walker's own figure would fill the eye camera
 var underground := false  # the taxi below ground (state player.map_level): only it and the walker are shown
 var covered := func(_at: Vector2, _layer: int) -> bool: return false  # MapLayer.covered (headlights under a bridge)
 var _trains: Node2D  # trains, z 14: above the canopies and rail bridges (z 13), drawn last
 var _trains_drawn := 0
+var _ferries: Node2D  # ferries, z -1 (TRACKS_UNDER_3D_Z with 3D car bodies): under the vehicles on their decks
 var _brawl_punches := {}  # brawl id -> [last action seq seen, when its punch began]
 const BRAWL_JACKETS := [[40, 40, 48], [120, 30, 30]]
 const PLAYER_JACKET := [255, 217, 64]  # the player's own on-foot colour
-var _tracks: Node2D  # tyre tracks, z 8 (before roadworks and signs)
+var _tracks: Node2D  # tyre tracks, z 10 (before roadworks and signs); z 6 under the 3D cars (TRACKS_UNDER_3D_Z)
+const TRACKS_UNDER_3D_Z := -6  # 12 - 6: under the 3D building view's cars (7), over the roads and puddles (5)
 var _trails: Array = []  # [kind, [[position, heading, intensity, front, snowfall when laid], ...], its Node2D]
 const TRACK_SEGMENT := 200  # points per trail segment: a new point redraws only its own segment
 const TRACK_SNOW_COVER_S := 120.0  # seconds of snowfall that cover a tyre track completely
@@ -98,6 +102,7 @@ const BRAKE_GLOW := [Color(0.65, 0.05, 0.03), 2.2]
 const REVERSE_GLOW := [Color(0.55, 0.55, 0.50), 4.5]
 const TAXI_SIGN_GLOW := [Color(0.35, 0.30, 0.05), 1.6]  # the roof light of a free taxi, a small yellow halo
 var body_style := 0  # an NPC car's body (CAR_SHAPES), from its id: the same car keeps its look
+var vehicle_id: Variant = 0  # the drawn NPC's id: Buildings3D.model_variant picks its model from it
 # Car bodies from above, in half-lengths from the centre (+ front): windshield
 # front, roof front, roof rear, rear window rear, roof half-width, an extra.
 const CAR_SHAPES := [
@@ -110,6 +115,9 @@ const CAR_SHAPES := [
 	[0.36, 0.06, -0.46, -0.66, 0.76, ""],  # city car
 ]
 const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
+var _under := false  # the vehicle being drawn is under a bridge: 2D, below the deck (no 3D body) - not with --outdoor-3d
+var _layer := 0  # the vehicle being drawn's map layer: --outdoor-3d rides it at its deck height
+var deck_height := func(_at: Vector2, _layer: int) -> float: return 0.0  # map_layer.deck_height (main.gd)
 var taxi_sign_on := false  # the taxi being drawn is free for a fare (its roof light lit)
 var ploughing := false  # snowing: tractors carry a plough blade and a flashing beacon
 var smoke_enabled := true
@@ -129,6 +137,10 @@ func _ready() -> void:
 	_trains.z_index = 2
 	_trains.draw.connect(_draw_trains)
 	add_child(_trains)
+	_ferries = Node2D.new()
+	_ferries.z_index = -1
+	_ferries.draw.connect(_draw_ferries)
+	add_child(_ferries)
 	_tracks = Node2D.new()
 	_tracks.z_index = -2
 	add_child(_tracks)
@@ -318,14 +330,28 @@ static func current_target(state: Dictionary) -> Dictionary:
 ## (Sampling in this node's own _process ran after main's - the camera then
 ## followed the previous frame's taxi: up to ~5 px of wobble at 30 km/h with
 ## uneven frame times, godot-08.)
+var extra_npcs: Array = []  # drawn as NPCs on top of the server's (visual_test.gd lineup)
+var extra_trains: Array = []  # and trains (a lineup tram)
+var extra_pedestrians: Array = []  # and people (visual_test.gd "bench_sitter")
+
+
 func update_frame(delta: float) -> void:
 	_clock += delta
 	_frame = buffer.sample(now())
+	if not (extra_npcs.is_empty() and extra_trains.is_empty() and extra_pedestrians.is_empty()) and not _frame.is_empty():  # a visual test's fixed lineup (visual_test.gd)
+		_frame = _frame.duplicate()
+		for key in ["a", "b"]:
+			var state: Dictionary = _frame[key].duplicate()
+			state["npcs"] = state.get("npcs", []) + extra_npcs
+			state["trains"] = state.get("trains", []) + extra_trains
+			state["pedestrians"] = state.get("pedestrians", []) + extra_pedestrians
+			_frame[key] = state
 	queue_redraw()
 	if _reflectors != null and (reflectors_on or _reflectors_drawn):
 		_reflectors.queue_redraw()
 	if _trains != null:
 		_trains.queue_redraw()
+		_ferries.queue_redraw()
 		_lay_track()
 
 
@@ -335,6 +361,8 @@ func update_frame(delta: float) -> void:
 ## points (the oldest trails go, down to 3500); the oldest go once a
 ## viewport diagonal away.
 func _lay_track() -> void:
+	_tracks.z_index = TRACKS_UNDER_3D_Z if Buildings3D.current != null else -2  # 3D car bodies: the tracks go under them
+	_ferries.z_index = TRACKS_UNDER_3D_Z if Buildings3D.current != null else -1  # and the ferries, under the cars on their decks
 	if not is_equal_approx(_last_track_px, px_per_m):
 		_last_track_px = px_per_m
 		for trail in _trails:  # line widths are in pixels
@@ -399,6 +427,8 @@ func _bury_tracks() -> void:
 	for trail in _trails:
 		var cover := _snow_cover(trail[1][-1])
 		trail[2].modulate.a = 1.0 - cover
+		if Buildings3D.opaque:
+			trail[2].queue_redraw()  # the 3D track takes the fade on its redraw
 		if cover >= 1.0:
 			_track_points -= trail[1].size()
 			trail[2].queue_free()
@@ -423,7 +453,9 @@ func _draw_trail(trail: Array) -> void:
 					points.append(point[0] + _forward(point[1]) * axle + _right(point[1]) * side)
 					colors.append(color)
 		previous = point
-	if not colors.is_empty():
+	if Buildings3D.opaque and Buildings3D.current != null:  # --outdoor-3d: on the road in the 3D view, under the cars
+		Buildings3D.current.track(node, points, colors, style[2])
+	elif not colors.is_empty():
 		node.draw_multiline_colors(points, colors, maxf(_px(3.0), style[2]))
 	preload("res://perf.gd").add("tracks_draw", Time.get_ticks_usec() - started)
 
@@ -509,8 +541,21 @@ static func reflector_lit(at: Vector2, taxi: Vector2, heading: float) -> bool:
 ## Polygons in layer coordinates, from this frame's sample.
 func headlight_beams() -> Array:
 	var polygons: Array = []
+	for source in headlight_sources():
+		if source[5]:  # a train: two long, straight beams from its nose
+			polygons.append_array(beam_polygons(source[0], source[1], source[2], source[4], true))
+		else:
+			polygons.append_array(beam_polygons(source[0], source[1], maxf(_px(3.0), source[2]), source[4], false, source[3]))
+	return polygons
+
+
+## Every shining headlight pair this frame, the taxi first: [centre (a
+## train: behind its nose), heading, width, centre to the front bumper, beam
+## length, is a train, height of its deck (step 5)] - the 2D beams' and the 3D spot lights' (buildings_3d.set_headlights) source.
+func headlight_sources() -> Array:
+	var sources: Array = []
 	if _frame.is_empty():
-		return polygons
+		return sources
 	var a: Dictionary = _frame["a"]
 	var b: Dictionary = _frame["b"]
 	var t: float = _frame["t"]
@@ -521,7 +566,8 @@ func headlight_beams() -> Array:
 		var p := StateBuffer.blend(player, b.get("player", player), t, origin)
 		# Under a higher road: no beams - unless on a bridge itself.
 		if road.get("bridge", false) or not covered.call(Vector2(p.x, p.y), int(road.get("layer", 0))):
-			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false, player.get("length_m", 4.0)])
+			vehicles.append([Vector2(p.x, p.y), p.z, player.get("width_m", 1.8), false, player.get("length_m", 4.0),
+				int(road.get("layer", 0)) if road.get("bridge", false) else 0])
 	var later := _by_id(b.get("npcs", []))
 	var area := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	for npc in a.get("npcs", []):
@@ -530,25 +576,23 @@ func headlight_beams() -> Array:
 		var p := StateBuffer.blend(npc, later.get(npc["id"], npc), t, origin)
 		var layer := int(npc.get("layer", 0))  # an NPC on a raised layer counts as on its bridge
 		if area.has_point(Vector2(p.x, p.y)) and not underground and (layer > 0 or not covered.call(Vector2(p.x, p.y), layer)):
-			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true, npc.get("length_m", 4.0)])
+			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true, npc.get("length_m", 4.0), layer])
 	var shown := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
-	var drawn := 0
 	for vehicle in vehicles:
-		if drawn >= 80:
+		if sources.size() >= 80:
 			break
 		var c: Vector2 = vehicle[0]
 		if not shown.has_point(c):
 			continue
 		var length := beam_length(lamp_near.call(c, 22.0), oncoming(vehicle, vehicles))
-		polygons.append_array(beam_polygons(c, vehicle[1], maxf(_px(3.0), vehicle[2]), length, false, vehicle[4] * 0.5))
-		drawn += 1
+		sources.append([c, vehicle[1], vehicle[2], vehicle[4] * 0.5, length, false, float(deck_height.call(c, vehicle[5]))])
 	if not underground:
 		var later_trains := _by_id(b.get("trains", []))
 		for train in a.get("trains", []):
-			var beams := train_beams(train, later_trains.get(train["id"], train), t, origin)
-			if not beams.is_empty() and shown.grow(TRAIN_BEAM_M).has_point(beams[0][0]):
-				polygons.append_array(beams)
-	return polygons
+			var nose := train_nose(train, later_trains.get(train["id"], train), t, origin)
+			if not nose.is_empty() and shown.grow(TRAIN_BEAM_M).has_point(nose[0]):
+				sources.append([nose[0], nose[1], RS.TRAIN_WIDTH_M, 0.0, TRAIN_BEAM_M, true])
+	return sources
 
 
 const TRAIN_BEAM_M := 60.0
@@ -558,16 +602,23 @@ const HIGH_BEAM_M := 150.0
 ## A train's headlights: two long beams from the nose of its lead car (the
 ## first car, facing the way it runs), standing or moving; [] without cars.
 static func train_beams(train: Dictionary, next: Dictionary, t: float, origin: Vector2) -> Array:
+	var nose := train_nose(train, next, t, origin)
+	return [] if nose.is_empty() else beam_polygons(nose[0], nose[1], RS.TRAIN_WIDTH_M, TRAIN_BEAM_M, true)
+
+
+## Where a train's beams start (just behind its lead car's nose) and its heading: [position, heading], [] without cars.
+static func train_nose(train: Dictionary, next: Dictionary, t: float, origin: Vector2) -> Array:
 	var cars: Array = train.get("cars", [])
 	if cars.is_empty():
 		return []
 	var car: Array = cars[0]
+	if str(car[4]) == "ferry":  # no train headlights
+		return []
 	var to: Array = next.get("cars", cars)[0] if not next.get("cars", []).is_empty() else car
 	var heading := lerp_angle(float(car[2]), float(to[2]), t)
 	var f := _forward(heading)
 	var nose := MapMath.point(origin, lerpf(car[0], to[0], t), lerpf(car[1], to[1], t)) + f * float(car[3]) / 2.0
-	var width: float = RS.TRAIN_WIDTH_M
-	return beam_polygons(nose - f * (1.0 + width * 0.55), heading, width, TRAIN_BEAM_M, true)
+	return [nose - f * (1.0 + RS.TRAIN_WIDTH_M * 0.55), heading]
 
 
 ## Automatic high beam, the taxi's as every NPC's: 150 m on a dark road, dipped to 15 m within 22 m of a street
@@ -713,8 +764,12 @@ static func lamp_glow(at: Vector2, glow: Array, level: float, points: PackedVect
 
 func _vehicle(c: Vector2, heading: float, length: float, width: float, color: Color, kind: String,
 		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false,
-		under := false) -> void:
+		under := false, layer := 0) -> void:
 	_tint = vehicle_light(light_level * float(light_at.call(c)), ambient)  # lit by the street lights it stands under
+	_under = under and not Buildings3D.opaque  # --outdoor-3d: in 3D at its own height, the deck above it hides it
+	_layer = layer
+	if Buildings3D.opaque:
+		under = false
 	var shapes := _car_shapes
 	var lamps := _lamp_polys
 	var level := light_level
@@ -814,6 +869,9 @@ func _lit(color: Color) -> Color:
 ## A trailer's body between two states: [x, y, heading, length, width, kind].
 func _trailer(a: Array, b: Array, t: float) -> void:
 	var c := Vector2(lerpf(a[0], b[0], t) - origin.x, -(lerpf(a[1], b[1], t) - origin.y))
+	if Buildings3D.opaque and Buildings3D.current != null:  # step 6: a 3D caravan, its tail lights with its tow's engine
+		Buildings3D.current.vehicle("trailer", c, lerp_angle(a[2], b[2], t), float(a[3]), float(a[4]), Color.WHITE, Buildings3D.LAMPS_ON)
+		return
 	_tint = vehicle_light(light_level * float(light_at.call(c)), ambient)  # lit like a vehicle (_vehicle)
 	_trailer_body(c, lerp_angle(a[2], b[2], t), float(a[3]), float(a[4]), str(a[5]))
 	_tint = null
@@ -841,6 +899,11 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 		is_taxi: bool, engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float, fallen := false) -> void:
 	length = maxf(length, _px(5.0))
 	width = maxf(width, _px(2.5))
+	if Buildings3D.opaque and Buildings3D.current != null and kind in VEHICLES_3D:  # step 6: every vehicle in the 3D view
+		Buildings3D.current.vehicle(kind, c, heading, length, width, color, lamp_bits(engine_on, braking, reversing, turn_signal, signal_elapsed),
+			float(deck_height.call(c, _layer)), {"riding": engine_on and not fallen, "fallen": fallen, "plough": ploughing and kind == "tractor",
+			"beacon": ploughing and kind == "tractor" and fmod(_clock, 0.8) < 0.4}.merged({"id": vehicle_id} if kind in Buildings3D.MODEL_VARIANTS else {}))
+		return
 	var f := _forward(heading)
 	var r := _right(heading)
 	var hl := length * 0.5
@@ -859,6 +922,22 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 		if engine_on and not flat:
 			_poly(_rect(c - f * hl * 0.05, f, r, hl * 0.28, -hl * 0.32, hw * 0.95), color, RS.OUTLINE)  # back and shoulders
 			_car_shapes.append(["circle", c + f * hl * 0.18, hw * 0.55, _lit(Color8(236, 196, 160))])  # head
+		return
+	if kind == "e_scooter":  # small wheels, a deck in the rental fleet's green, the stem and bars; the standing rider (in `color`) while ridden
+		if fallen:  # lying on its side, the rider gone
+			f = _forward(heading - PI / 2.0)
+			r = _right(heading - PI / 2.0)
+		var tyre := _lit(Color8(28, 28, 28))
+		var thin := maxf(_px(1.0), hl * 0.1)
+		for end: float in [0.78, -0.78]:
+			_car_shapes.append(["line", c + f * hl * (end + 0.18), c + f * hl * (end - 0.18), tyre, maxf(_px(1.5), hw * 0.4)])
+		_poly(_rect(c, f, r, hl * 0.62, -hl * 0.72, hw * 0.32), _lit(Color8(40, 160, 110)), RS.OUTLINE)  # the deck
+		_car_shapes.append(["line", c + f * hl * 0.78 + r * hw, c + f * hl * 0.78 - r * hw, tyre, thin])  # handlebar
+		if engine_on and not fallen:  # feet on the deck, arms forward to the bars
+			_car_shapes.append(["line", c + f * hl * 0.15 + r * hw * 0.5, c + f * hl * 0.72 + r * hw * 0.85, _lit(color), thin])
+			_car_shapes.append(["line", c + f * hl * 0.15 - r * hw * 0.5, c + f * hl * 0.72 - r * hw * 0.85, _lit(color), thin])
+			_poly(_rect(c, f, r, hl * 0.28, -hl * 0.12, hw * 0.95), color, RS.OUTLINE)  # back and shoulders
+			_car_shapes.append(["circle", c + f * hl * 0.1, hw * 0.55, _lit(Color8(236, 196, 160))])  # head
 		return
 	if kind in TWO_WHEELERS:  # a motorbike from above: tyres, tank in its paint, seat, bars; the rider while ridden
 		if fallen:  # lying on its side, the rider gone
@@ -931,38 +1010,73 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			# A car from above: body, the roof in its own (darker) colour, the
 			# windshield sloping down to the bonnet, the smaller rear window,
 			# and on a taxi the roof light - lit while a fare is on.
-			_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
 			var shape: Array = VAN_SHAPE if kind == "van" else CAR_SHAPES[0 if is_taxi else body_style % CAR_SHAPES.size()]
-			var glass_front: float = shape[0]
-			var roof_front: float = shape[1]
-			var roof_rear: float = shape[2]
-			var glass_rear: float = shape[3]
-			var roof_half: float = shape[4]
-			_poly(_trapezoid(c, f, r, hl * glass_front, hl * roof_front, hw * 0.86, hw * roof_half), RS.WINDSHIELD)
-			_poly(_rect(c, f, r, hl * roof_front, hl * roof_rear, hw * roof_half), color.darkened(0.12))
-			if glass_rear < roof_rear:
-				_poly(_trapezoid(c, f, r, hl * roof_rear, hl * glass_rear, hw * roof_half, hw * minf(roof_half + 0.08, 0.86)), RS.WINDSHIELD)
-			match shape[5]:
-				"bed":  # a pickup's open load bed behind the cab
-					_poly(_rect(c, f, r, hl * (glass_rear - 0.06), -hl * 0.92, hw * 0.8), color.darkened(0.35), color.darkened(0.55))
-				"rails":  # roof rails: an estate or an SUV
-					for side: float in [1.0, -1.0]:
-						_car_shapes.append(["line", c + f * hl * roof_front + r * hw * roof_half * 0.82 * side,
-							c + f * hl * roof_rear + r * hw * roof_half * 0.82 * side, _lit(color.darkened(0.5)), maxf(_px(1.0), hw * 0.08)])
-				"stripes":  # a sports car's bonnet stripes
-					for side: float in [1.0, -1.0]:
-						_car_shapes.append(["line", c + f * hl * 0.98 + r * hw * 0.18 * side,
-							c + f * hl * glass_front + r * hw * 0.18 * side, _lit(color.lightened(0.55)), maxf(_px(1.0), hw * 0.12)])
-				"door":  # a van's sliding door seam
-					_car_shapes.append(["line", c + f * hl * 0.1 + r * hw, c - f * hl * 0.35 + r * hw, _lit(color.darkened(0.45)), maxf(_px(1.0), hw * 0.06)])
-			if is_taxi:
-				var roof_light := _rect(c, f, r, -hl * 0.06, -hl * 0.22, hw * 0.42)
-				_poly(_rect(c, f, r, -hl * 0.04, -hl * 0.24, hw * 0.48), Color8(30, 30, 30))  # its frame, readable on a yellow roof
-				if engine_on and taxi_sign_on:
-					_lamp_polys.append([roof_light, RS.TAXI_SIGN])  # unshaded: it shines at night
+			var cars_3d: Node2D = Buildings3D.current
+			if cars_3d != null and not _under and not fallen:  # godot-cars-3d: the body in the 3D view
+				if is_taxi and cars_3d.windshield_on and not first_person:
+					return  # the camera is inside this body
+				var lit := engine_on and taxi_sign_on
+				var lamps := lamp_bits(engine_on, braking, reversing, turn_signal, signal_elapsed)
+				cars_3d.car(c, heading, length, width, color, shape, (2 if lit else 1) if is_taxi else 0, lamps,
+					float(deck_height.call(c, _layer)) if Buildings3D.opaque else 0.0)
+				if Buildings3D.opaque:  # --outdoor-3d: its lamps are emissive parts of the body, the beams 3D lights
+					return
+				if is_taxi and lit:
 					lamp_glow(c - f * hl * 0.14, TAXI_SIGN_GLOW, light_level, glow_points, glow_colors, glow_triangles)
-				else:
-					_poly(roof_light, RS.TAXI_SIGN.darkened(0.45), Color8(30, 30, 30))
+			else:
+				_car_body_2d(c, f, r, hl, hw, color, shape, is_taxi, engine_on)
+	_vehicle_lamps(c, f, r, length, width, hl, hw, engine_on, braking, reversing, turn_signal, signal_elapsed)
+
+
+## Step 6 (--outdoor-3d): the kinds buildings_3d.vehicle builds (cars, vans and taxis: car()).
+const VEHICLES_3D := ["bus", "truck", "tractor", "camper_van", "motorcycle", "bicycle", "e_scooter"]
+
+
+## A vehicle's lamps lit now, as buildings_3d's LAMPS_* bits.
+static func lamp_bits(engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float) -> int:
+	var signal_on := turn_signal != "" and RS.signal_lit(signal_elapsed)
+	return (Buildings3D.LAMPS_ON if engine_on else 0) | (Buildings3D.LAMPS_BRAKE if braking else 0) \
+		| (Buildings3D.LAMPS_REVERSE if reversing else 0) \
+		| (Buildings3D.LAMPS_LEFT if signal_on and turn_signal in ["left", "hazard"] else 0) \
+		| (Buildings3D.LAMPS_RIGHT if signal_on and turn_signal in ["right", "hazard"] else 0)
+
+
+func _car_body_2d(c: Vector2, f: Vector2, r: Vector2, hl: float, hw: float, color: Color, shape: Array, is_taxi: bool, engine_on: bool) -> void:
+	_poly(_rect(c, f, r, hl, -hl, hw), color, RS.OUTLINE)
+	var glass_front: float = shape[0]
+	var roof_front: float = shape[1]
+	var roof_rear: float = shape[2]
+	var glass_rear: float = shape[3]
+	var roof_half: float = shape[4]
+	_poly(_trapezoid(c, f, r, hl * glass_front, hl * roof_front, hw * 0.86, hw * roof_half), RS.WINDSHIELD)
+	_poly(_rect(c, f, r, hl * roof_front, hl * roof_rear, hw * roof_half), color.darkened(0.12))
+	if glass_rear < roof_rear:
+		_poly(_trapezoid(c, f, r, hl * roof_rear, hl * glass_rear, hw * roof_half, hw * minf(roof_half + 0.08, 0.86)), RS.WINDSHIELD)
+	match shape[5]:
+		"bed":  # a pickup's open load bed behind the cab
+			_poly(_rect(c, f, r, hl * (glass_rear - 0.06), -hl * 0.92, hw * 0.8), color.darkened(0.35), color.darkened(0.55))
+		"rails":  # roof rails: an estate or an SUV
+			for side: float in [1.0, -1.0]:
+				_car_shapes.append(["line", c + f * hl * roof_front + r * hw * roof_half * 0.82 * side,
+					c + f * hl * roof_rear + r * hw * roof_half * 0.82 * side, _lit(color.darkened(0.5)), maxf(_px(1.0), hw * 0.08)])
+		"stripes":  # a sports car's bonnet stripes
+			for side: float in [1.0, -1.0]:
+				_car_shapes.append(["line", c + f * hl * 0.98 + r * hw * 0.18 * side,
+					c + f * hl * glass_front + r * hw * 0.18 * side, _lit(color.lightened(0.55)), maxf(_px(1.0), hw * 0.12)])
+		"door":  # a van's sliding door seam
+			_car_shapes.append(["line", c + f * hl * 0.1 + r * hw, c - f * hl * 0.35 + r * hw, _lit(color.darkened(0.45)), maxf(_px(1.0), hw * 0.06)])
+	if is_taxi:
+		var roof_light := _rect(c, f, r, -hl * 0.06, -hl * 0.22, hw * 0.42)
+		_poly(_rect(c, f, r, -hl * 0.04, -hl * 0.24, hw * 0.48), Color8(30, 30, 30))  # its frame, readable on a yellow roof
+		if engine_on and taxi_sign_on:
+			_lamp_polys.append([roof_light, RS.TAXI_SIGN])  # unshaded: it shines at night
+			lamp_glow(c - f * hl * 0.14, TAXI_SIGN_GLOW, light_level, glow_points, glow_colors, glow_triangles)
+		else:
+			_poly(roof_light, RS.TAXI_SIGN.darkened(0.45), Color8(30, 30, 30))
+
+
+func _vehicle_lamps(c: Vector2, f: Vector2, r: Vector2, length: float, width: float, hl: float, hw: float,
+		engine_on: bool, braking: bool, reversing: bool, turn_signal: String, signal_elapsed: float) -> void:
 	# Lamps (inset, sizes and colours as _draw_vehicle_lights, in metres).
 	var light_r := maxf(_px(1.2), width * 0.18)
 	var light_len := minf(width * 0.25, maxf(_px(1.0), light_r * 2.4))
@@ -999,6 +1113,16 @@ func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false
 	var f := _forward(heading)
 	var r := _right(heading)
 	var base := c + f * (length * 0.4) * (-1.0 if behind else 1.0)
+	if Buildings3D.opaque and Buildings3D.current != null:  # step 6: puffs with depth, rising from the 3D car
+		for i in 4:
+			var age := fmod(t * lerpf(1.5, 3.5, strength) + i * 0.7, 2.0)
+			var drift := -f * age * lerpf(0.8, 1.8, strength) if behind else r * sin(t * 3.0 + i) * 0.3 * age
+			var color: Color = RS.SMOKE.darkened(0.35 * strength) if behind else RS.SMOKE
+			var fade: float = RS.SMOKE_MAX_ALPHA * (lerpf(0.35, 1.3, strength) if behind else 1.0)
+			color.a = clampf((1.0 - age / 2.0) * fade, 0.0, fade)
+			Buildings3D.current.puff(base + drift, (0.4 + age * 0.4) if behind else (1.2 + age * 1.6),
+				(0.25 + age * 0.35) * (lerpf(0.7, 1.4, strength) if behind else 1.0), color)
+		return
 	for i in 4:
 		var offset_t := fmod(t * lerpf(1.5, 3.5, strength) + i * 0.7, 2.0)
 		var puff := base
@@ -1009,7 +1133,8 @@ func _smoke(c: Vector2, heading: float, length: float, t: float, behind := false
 		var smoke: Color = RS.SMOKE.darkened(0.35 * strength) if behind else RS.SMOKE
 		var max_alpha: float = RS.SMOKE_MAX_ALPHA * (lerpf(0.35, 1.3, strength) if behind else 1.0)
 		smoke.a = clampf((1.0 - offset_t / 2.0) * max_alpha, 0.0, max_alpha)
-		_circle(self, puff, _px((3.0 + offset_t * 5.0) * (lerpf(0.7, 1.4, strength) if behind else 1.0)), smoke)
+		# draw_circle, not the shared _disc mesh: on this node the mesh puffs stopped showing after a while, for good
+		draw_circle(puff, _px((3.0 + offset_t * 5.0) * (lerpf(0.7, 1.4, strength) if behind else 1.0)), smoke)
 
 
 ## Someone lying flat along `h` (their heading, head first): spread out -
@@ -1237,8 +1362,13 @@ func _pedestrian(c: Vector2, heading: float, ped: Dictionary, animation_time: fl
 ## pieces): cones and barriers where a lane or the road is closed, with
 ## barriers only at a run's open ends, and the speed-limit sign where a run
 ## begins - drawn from the state, nothing decided here.
+var _open_rows = null  # the state's rows open_ends last ran on: once per snapshot, not per frame
+var _open_cache := []
 func _live_roadworks(rows: Array) -> void:
-	var open := open_ends(rows)
+	if not is_same(rows, _open_rows):
+		_open_rows = rows
+		_open_cache = open_ends(rows)
+	var open := _open_cache
 	for index in rows.size():
 		var row: Dictionary = rows[index]
 		var start := MapMath.point(origin, row["start"][0], row["start"][1])
@@ -1247,7 +1377,9 @@ func _live_roadworks(rows: Array) -> void:
 		var open_end: bool = open[index][1]
 		if not (view_rect.has_point(start) or view_rect.has_point(end)):
 			continue
-		if row.get("closed", false) or row.get("lane_closed", false):
+		if (row.get("closed", false) or row.get("lane_closed", false)) and Buildings3D.opaque and Buildings3D.current != null:
+			_roadwork_3d(start, end, float(row.get("half_width_m", 4.0)), row.get("lane_closed", false), [open_start, open_end])
+		elif row.get("closed", false) or row.get("lane_closed", false):
 			MapChunk.draw_roadwork(_canvas, start, end, float(row.get("half_width_m", 4.0)),
 				row.get("lane_closed", false), px_per_m, [open_start, open_end])
 		var limit = row.get("speed_limit_kmh")
@@ -1258,18 +1390,48 @@ func _live_roadworks(rows: Array) -> void:
 					_speed_sign((start if i == 0 else end) - side * 1.3, int(limit))
 
 
-## [start open, end open] per piece: an end no other piece shares is where a
-## run of pieces begins or ends (barriers and signs go there only).
+## Step 6 (--outdoor-3d): a roadworks piece's barrier boards at its open
+## ends and its cones every 25 m, as MapChunk.draw_roadwork lays them out.
+func _roadwork_3d(start: Vector2, end: Vector2, half_width: float, lane_only: bool, barriers: Array) -> void:
+	var length := maxf(start.distance_to(end), 0.001)
+	var normal := (end - start).orthogonal() / length
+	for i in 2:
+		if barriers[i]:
+			var point := start if i == 0 else end
+			var middle := point + normal * half_width * 0.5 if lane_only else point
+			Buildings3D.current.roadwork_barrier(middle, -normal.angle(), half_width if lane_only else half_width * 2.0)
+	var steps := maxi(2, int(length / 25.0))
+	for i in steps + 1:
+		Buildings3D.current.roadwork_cone(start.lerp(end, float(i) / steps) + (normal * half_width * 0.5 if lane_only else Vector2.ZERO))
+
+
+## [start open, end open] per piece: an end with no other piece's end within
+## JOIN_M (pieces of consecutive ways meet a little apart) is where a run of
+## pieces begins or ends (barriers and signs go there only). Linear: 1 m cells.
+const JOIN_M := 1.0
 static func open_ends(rows: Array) -> Array:
-	var ends := {}
-	for row in rows:
+	var cells := {}
+	for index in rows.size():
 		for key in ["start", "end"]:
-			var at := Vector2(row[key][0], row[key][1]).snapped(Vector2(0.5, 0.5))
-			ends[at] = ends.get(at, 0) + 1
+			var at := Vector2(rows[index][key][0], rows[index][key][1])
+			var cell := Vector2i((at / JOIN_M).floor())
+			if not cells.has(cell):
+				cells[cell] = []
+			cells[cell].append([at, index])
 	var result := []
-	for row in rows:
-		result.append([ends[Vector2(row["start"][0], row["start"][1]).snapped(Vector2(0.5, 0.5))] < 2,
-			ends[Vector2(row["end"][0], row["end"][1]).snapped(Vector2(0.5, 0.5))] < 2])
+	for index in rows.size():
+		var pair := []
+		for key in ["start", "end"]:
+			var at := Vector2(rows[index][key][0], rows[index][key][1])
+			var cell := Vector2i((at / JOIN_M).floor())
+			var joined := false
+			for dx in [-1, 0, 1]:
+				for dy in [-1, 0, 1]:
+					for other in cells.get(cell + Vector2i(dx, dy), []):
+						if other[1] != index and at.distance_to(other[0]) <= JOIN_M:
+							joined = true
+			pair.append(not joined)
+		result.append(pair)
 	return result
 
 
@@ -1614,9 +1776,10 @@ static func route_tint(ambient_color: Color) -> Color:
 	return Color(ambient_color.lerp(Color.WHITE, ROUTE_NIGHT_VISIBILITY), 1.0)
 
 
-## The route to draw this frame: none while N is off or there's no target.
+## The route to draw this frame: none while N is off. The server sends one
+## only with a target: a fare's, or an accepted pre-booking's taxi stand.
 func route_for(state: Dictionary) -> PackedVector2Array:
-	if not show_route or current_target(state).is_empty():
+	if not show_route:
 		return PackedVector2Array()
 	var source = state.get("navigation", {}).get("points") if state.get("navigation") is Dictionary else null
 	if source != _route_source:  # a new route (or the first): convert once
@@ -1698,6 +1861,8 @@ func _draw() -> void:
 	_puck_frame = []
 	_overlays.clear()
 	_car_shapes.clear()
+	if Buildings3D.current != null:
+		Buildings3D.current.begin_cars()
 	_under_shapes.clear()
 	_under_lamps.clear()
 	glow_points.clear()
@@ -1792,9 +1957,10 @@ func _draw() -> void:
 			count += 1
 	if not underground:
 		count += _brawls(a, b, t, view_rect)
-	if a.get("on_foot", false) and not player_fighting(a):  # in a brawl the fighter figure is the player
+	if a.get("on_foot", false) and not player_fighting(a) and not first_person:  # in a brawl the fighter figure is the player
 		var walker := StateBuffer.blend(a["player_pedestrian"], b.get("player_pedestrian", a["player_pedestrian"]), t, origin)
-		_pedestrian(Vector2(walker.x, walker.y), walker.z, {"color": [255, 217, 64], "animation_state": "standing"}, 0.0)
+		var facing := float(a["player_pedestrian"].get("facing", walker.z))  # the way it moves (protocol.player_walker_dict)
+		_pedestrian(Vector2(walker.x, walker.y), facing, player_walker(a["player_pedestrian"]), _clock)
 		count += 1
 
 	_route(a)
@@ -1811,7 +1977,8 @@ func _draw() -> void:
 		_smoke(taxi_at, taxi.z, taxi_length, _clock, true, _exhaust)
 	taxi_sign_on = taxi_sign_lit(a.get("taxi", {}))
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
-		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under)
+		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under,
+		int(road.get("layer", 0)) if road.get("bridge", false) or int(road.get("layer", 0)) < 0 else 0)
 	taxi_sign_on = false
 	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
 	if smoke_timer > 0.0:
@@ -1831,11 +1998,12 @@ func _draw() -> void:
 		if not view_rect.has_point(c):
 			continue
 		body_style = absi(hash(npc["id"]))  # its own body, every frame the same
+		vehicle_id = npc["id"]
 		taxi_sign_on = not npc.get("taxi_fare", false)  # a competitor taxi: lit when free, off with a passenger aboard
 		_vehicle(c, p.z, npc["length_m"], npc["width_m"], _rgb(npc["color"]), npc.get("vehicle_type", "car"),
 			npc.get("is_taxi", false), npc.get("state", "") != "PARKED", npc.get("braking", false), is_reversing(npc.get("speed", 0.0)),
 			npc.get("turn_signal", ""), npc.get("turn_signal_elapsed", 0.0), npc.get("fallen", false),
-			int(npc.get("layer", 0)) <= 0 and covered.call(c, int(npc.get("layer", 0))))
+			int(npc.get("layer", 0)) <= 0 and covered.call(c, int(npc.get("layer", 0))), int(npc.get("layer", 0)))
 		if npc.has("trailer"):  # a towed trailer: its own body, swinging on the hitch (server trailers.py)
 			_trailer(npc["trailer"], later_npcs.get(npc["id"], npc).get("trailer", npc["trailer"]), t)
 		if npc.get("bus_line") != null:  # a line bus: its number, like the destination display
@@ -1848,6 +2016,11 @@ func _draw() -> void:
 			_bubble(c - Vector2(0, float(npc["length_m"]) * 0.5 + _px(6.0)), str(npc.get("curse_text", "@#*!%")),
 				RS.CURSE_TEXT, RS.CURSE_BORDER, 1.0 if cursing >= 0.5 else cursing / 0.5)
 		count += 1
+	if Buildings3D.current != null:
+		if Buildings3D.opaque and not underground:
+			_trains_3d(a, b, t)
+			_people_3d()
+		Buildings3D.current.end_cars()
 
 	if a.get("taxi", {}).get("current_passenger") is Dictionary:
 		var passenger: Dictionary = a["taxi"]["current_passenger"]
@@ -1871,7 +2044,16 @@ func _draw() -> void:
 ## from the same sample as everything else.
 func _draw_trains() -> void:
 	_trains_drawn = 0
-	if _frame.is_empty() or underground:
+	_draw_train_cars(_trains, false)
+
+
+## Ferries, under the vehicles they carry.
+func _draw_ferries() -> void:
+	_draw_train_cars(_ferries, true)
+
+
+func _draw_train_cars(node: Node2D, ferries: bool) -> void:
+	if _frame.is_empty() or underground or Buildings3D.opaque:  # --outdoor-3d: _trains_3d, in the body pool's frame
 		return
 	var a: Dictionary = _frame["a"]
 	var b: Dictionary = _frame["b"]
@@ -1884,10 +2066,99 @@ func _draw_trains() -> void:
 			var car: Array = train["cars"][i]
 			var to: Array = next["cars"][i] if same_cars else car
 			var c := MapMath.point(origin, lerpf(car[0], to[0], t), lerpf(car[1], to[1], t))
+			if (str(car[4]) == "ferry") != ferries or not view_rect.grow(float(car[3])).has_point(c):
+				continue
+			_train_car(c, lerp_angle(car[2], to[2], t), car[3], str(car[4]), node)
+		_trains_drawn += 0 if ferries else 1
+
+
+## Step 6 (--outdoor-3d): every train and tram car in view as a 3D car, up on a rail deck where it crosses one.
+func _trains_3d(a: Dictionary, b: Dictionary, t: float) -> void:
+	var later_trains := _by_id(b.get("trains", []))
+	for train in a.get("trains", []):
+		var next: Dictionary = later_trains.get(train["id"], train)
+		var same_cars: bool = next["cars"].size() == train["cars"].size()
+		for i in train["cars"].size():
+			var car: Array = train["cars"][i]
+			var to: Array = next["cars"][i] if same_cars else car
+			var c := MapMath.point(origin, lerpf(car[0], to[0], t), lerpf(car[1], to[1], t))
 			if not view_rect.has_point(c):
 				continue
-			_train_car(c, lerp_angle(car[2], to[2], t), car[3], str(car[4]), _trains)
+			var profile := str(car[4])
+			var width: float = RS.train_width(profile)
+			Buildings3D.current.vehicle("ferry" if profile == "ferry" else "tram" if profile.begins_with("tram") else "train", c, lerp_angle(car[2], to[2], t), float(car[3]), width,
+				Color.WHITE, 0, float(rail_height.call(c)), {"profile": profile})
 		_trains_drawn += 1
+
+
+var rail_height := func(_at: Vector2) -> float: return 0.0  # map_layer.rail_height (main.gd): up on a rail deck
+var wildlife: Node = null  # main.gd's WildlifeLayer: its larger animals are 3D with --outdoor-3d
+
+
+## Step 6 (--outdoor-3d): this frame's people (posed by their animation
+## state), dogs, holiday elves and the larger wild animals as 3D bodies;
+## their 2D drawing (_draw_people, wildlife) is left out.
+func _people_3d() -> void:
+	var b3: Node2D = Buildings3D.current
+	var season: Array = _frame["a"].get("calendar", {}).get("season", [])
+	var winter := season.size() > 0 and float(season[0]) > 0.5
+	for row in _people_rows:
+		var ped: Dictionary = row[2]
+		if ped.get("state", "") in INDOORS:
+			continue
+		var clothing: Color = Color8(190, 30, 35) if ped.get("costume", "") in ["santa", "elf"] else _rgb(ped.get("color", [200, 200, 200]))
+		b3.person(row[0], row[1], clothing, person_pose(ped, row[3]), clampf(float(ped.get("radius_m", 0.45)) / 0.45, 0.6, 1.2),
+			str(ped.get("costume", "")), float(deck_height.call(row[0], int(ped.get("layer", 0)))),
+			absi(hash(ped.get("id", ped.get("color", [])))) % 8, winter)
+	for at in elves:
+		b3.person(at, -PI / 2.0, Color8(190, 30, 35), "standing", ELF_RADIUS_M / 0.45, "elf")
+	for row in _dog_rows:
+		var dog: Dictionary = row[3]
+		b3.animal(row[1], row[2], "dog", _rgb(dog.get("color", [120, 90, 60])), "feed" if dog.get("sniffing", false) else "stand",
+			{"small": 0.6, "medium": 0.8, "large": 1.0}.get(str(dog.get("size", "medium")), 0.8))
+	_people_rows.clear()
+	_dog_rows.clear()
+	elves = PackedVector2Array()
+	if wildlife == null:
+		return
+	var stride := "walk_a" if fmod(_clock, 0.5) < 0.25 else "walk_b"
+	for creature in wildlife.animals:
+		if not view_rect.has_point(creature["position"]):
+			continue
+		var species: String = creature["species"]
+		var flying: bool = creature["state"] == "FLY"
+		var pose := "fly_%d" % (int(_clock * 8.0) % 2) if flying else "feed" if creature["state"] == "FEED" else stride if creature["state"] in ["FLEE", "WANDER"] else "stand"
+		var members := 5 if species == "small_bird" else 3 if species in ["pigeon", "duck"] else 2 if species == "gull" else 1
+		for member in members:
+			var offset := Vector2.ZERO if member == 0 else Vector2.from_angle(float(int(creature["id"]) * 2 + member * 2)) * (1.5 + member * 0.8)
+			b3.animal(creature["position"] + offset, -float(creature["heading"]), species, wildlife.coat(species), pose, 1.0,
+				2.5 + 0.4 * sin(_clock * 5.0 + member) if flying else 0.0)
+
+
+## A person's 3D pose from their animation state: a walking stride by the
+## gait (as the 2D legs swing), sitting, lying (fallen, sunbathing), swimming, riding, else standing.
+## Walk poses per second (6 per stride, 1.75 strides/s): above 10 so every
+## 0.1 s server step shows the next pose (docs/specs/person-legs-walk-swing.md).
+const WALK_POSES_PER_S := 10.5
+
+
+## The on-foot player's figure as a pedestrian row (fps-3d-view section 6): the
+## shared person body, standing, walking, or running at sprint speed.
+static func player_walker(walker: Dictionary) -> Dictionary:
+	var speed := float(walker.get("speed", 0.0))
+	return {"color": [255, 217, 64], "animation_state": "walking" if speed > 0.2 else "standing", "speed": speed, "id": "player"}
+
+
+static func person_pose(ped: Dictionary, animation_time: float) -> String:
+	match str(ped.get("animation_state", "walking")):
+		"walking":
+			var running := float(ped.get("speed", 0.0)) >= 2.0
+			return "%s_%d" % ["run" if running else "walk", floori(animation_time * (14.0 / TAU * 6.0 if running else WALK_POSES_PER_S)) % 6]
+		"sitting": return "sitting"
+		"fallen", "sunbathing": return "lying"
+		"swimming": return "swimming"
+		"riding": return "riding"
+	return "standing"
 
 
 ## This frame's lightning flash alpha (main.gd shows it above the night
@@ -1940,11 +2211,21 @@ func _train_car(c: Vector2, heading: float, length: float, profile: String, node
 	var f := _forward(heading)
 	var r := _right(heading)
 	var hl := length / 2.0
-	var hw := (RS.TRAM_WIDTH_M if profile.begins_with("tram") else RS.TRAIN_WIDTH_M) / 2.0
+	var hw := RS.train_width(profile) / 2.0
 	var body := _rect(c, f, r, hl, -hl, hw)
 	if not drawable(body):  # a car of no length or a bad heading
 		return
 	node.draw_colored_polygon(body, style[0])
+	if profile == "ferry":
+		node.draw_colored_polygon(_rect(c, f, r, hl - 0.6, -hl + 0.6, hw - 1.0), style[1])
+		for x: float in [-hl + 2.0, hl - 2.0]:
+			for y: float in [-hw + 0.8, hw - 0.8]:
+				node.draw_colored_polygon(_rect(c + f * x + r * y, f, r, 1.3, -1.3, 0.8), style[0])
+		node.draw_colored_polygon(_rect(c + r * (hw - 1.2), f, r, 3.5, -3.5, 0.8), style[0])
+		node.draw_colored_polygon(_rect(c + r * (hw - 1.2), f, r, 2.9, -2.9, 0.5), Color8(37, 62, 72))
+		for x: float in [-hl * 0.55, 0.0, hl * 0.55]:
+			node.draw_colored_polygon(_rect(c + f * x, f, r, 1.4, -1.4, 0.06), Color8(228, 226, 196))
+		return
 	if style[1] != null and profile == "locomotive":
 		node.draw_colored_polygon(_rect(c, f, r, hl, hl - 3.0, hw), style[1])
 	elif style[1] != null:

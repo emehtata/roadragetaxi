@@ -25,6 +25,9 @@ var _summary := Label.new()  # the city summary: covers everything once the care
 var _notice_style := StyleBoxFlat.new()
 var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
 var _notice_mode := ""
+var _source_notice := ""  # state.data_source_notice: why osm_source=pbf fell back to Overpass
+var _source_notice_until := 0  # 0: the map still loading (shown, clock not started); then ~15 s
+var _abroad_sign := Label.new()  # out of Finland: the game stays Finnish (state.abroad)
 var _map_sign := Label.new()  # the map growing at its edge: wait for it (state.map_loading)  # "camera", "start" or "" (the banner)
 var language := "en"
 
@@ -96,6 +99,12 @@ func _ready() -> void:
 	_map_sign.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_map_sign.visible = false
 	add_child(_map_sign)
+	_abroad_sign.add_theme_font_size_override("font_size", 15)
+	_abroad_sign.add_theme_color_override("font_color", Color8(255, 200, 50))
+	_abroad_sign.add_theme_constant_override("outline_size", 5)
+	_abroad_sign.add_theme_color_override("font_outline_color", Color8(20, 24, 28, 230))
+	_abroad_sign.visible = false
+	add_child(_abroad_sign)
 	add_child(_meter)
 	add_child(_electronic)
 	add_child(_summary)  # last child: above the HUD rows
@@ -152,13 +161,24 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	if _meter.visible:
 		_meter.cents = int(live)
 		_meter.info = meter_info(taxi)
-	var start_hint: bool = text["notice"] == "" and text["start_hint"] != ""  # the start hint, blue
-	_notice.text = text["start_hint"] if start_hint else text["notice"]
+	var source_notice := str(state.get("data_source_notice", ""))
+	if source_notice != _source_notice:
+		_source_notice = source_notice
+		_source_notice_until = 0
+	# Its ~15 s start once the map has loaded (server and client), so a slow first load cannot hide it.
+	if _source_notice != "" and _source_notice_until == 0 and str(state.get("map_loading", "")) == "" and toggles.get("map_ready", true):
+		_source_notice_until = Time.get_ticks_msec() + 15000
+	# The data-source notice: under the server's own notices, over the start hint; wraps (it is long).
+	var source: bool = text["notice"] == "" and _source_notice != "" and (_source_notice_until == 0 or Time.get_ticks_msec() < _source_notice_until)
+	var start_hint: bool = text["notice"] == "" and not source and text["start_hint"] != ""  # the start hint, blue
+	_notice.text = _source_notice if source else (text["start_hint"] if start_hint else text["notice"])
 	_notice.visible = _notice.text != ""
+	_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if source else TextServer.AUTOWRAP_OFF
+	_notice.custom_minimum_size.x = minf(760.0, size.x - 40.0) if source else 0.0
 	# A speed-camera hit is centred on screen with a red border, other notices at the top in amber.
 	_notice_style.border_color = Color8(255, 70, 45) if text["notice_camera"] else (Color8(100, 190, 240) if start_hint else Color8(255, 200, 50))
 	_notice_style.bg_color = Color8(16, 35, 55, 235) if start_hint else Color8(20, 30, 40, 235)
-	_notice_mode = "camera" if text["notice_camera"] else ("start" if start_hint else "")
+	_notice_mode = "camera" if text["notice_camera"] else ("start" if start_hint or source else "")
 	_meet.text = text["meet"]
 	_meet.visible = text["meet"] != ""
 	_hint.text = text["hint"]
@@ -167,11 +187,13 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	_board.visible = board != ""
 	if _board.visible:
 		_board.reset_size()
-		_board.position = Vector2(size.x - 10.0 - _board.size.x, 180.0 if _electronic.visible else 116.0)
+		_board.position = Vector2(size.x - 10.0 - _board.size.x, maxf(116.0, _electronic.get_rect().end.y + 8.0) if _electronic.visible else 116.0)
 	_layout_subtitle()
 	_subtitle.visible = Time.get_ticks_msec() < _subtitle_until
 	_map_sign.text = map_loading_text(str(state.get("map_loading", "")), Time.get_ticks_msec(), language, str(state.get("map_loading_detail", "")))
 	_map_sign.visible = _map_sign.text != ""
+	_abroad_sign.text = str(state.get("abroad", ""))
+	_abroad_sign.visible = _abroad_sign.text != ""
 	_layout()
 	var railway = state.get("railway")
 	if not _timetable_hint_shown and railway is Dictionary and railway.get("stations") is Array and not railway["stations"].is_empty():
@@ -213,10 +235,15 @@ func _layout() -> void:
 		_map_sign.size = Vector2.ZERO
 		_map_sign.reset_size()
 		_map_sign.position = Vector2(_weather.position.x + _weather.size.x - _map_sign.size.x, _weather.position.y + _weather.size.y)
+	if _abroad_sign.visible:  # under the weather line (and the map sign)
+		_abroad_sign.size = Vector2.ZERO
+		_abroad_sign.reset_size()
+		var below := _map_sign.get_rect().end.y if _map_sign.visible else _weather.position.y + _weather.size.y
+		_abroad_sign.position = Vector2(_weather.position.x + _weather.size.x - _abroad_sign.size.x, below + 2.0)
 	match _notice_mode:
 		"camera":  # a speed-camera hit centred on screen, red
 			_notice.position = (size - _notice.size) / 2.0
-		"start":  # the start hint: top middle, blue
+		"start":  # the start hint (blue) or the data-source notice: top middle
 			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, 100.0)
 		_:  # the notification banner: low in the middle
 			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, size.y - 45.0 - _notice.size.y / 2.0)
@@ -260,7 +287,7 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 	else:
 		text["clock"] = "--:--"
 	if weather.has("weather_type"):
-		text["weather"] = T.text("road_wet", language) % [T.weather(str(weather["weather_type"]), language), roundi(weather.get("wetness", 0.0) * 100)]
+		text["weather"] = T.text("road_wet", language) % [T.weather(T.sky_weather(str(weather["weather_type"]), float(weather.get("cloud_cover", 0.0))), language), roundi(weather.get("wetness", 0.0) * 100)]
 	else:
 		text["weather"] = ""
 	text["notice"] = str(taxi.get("notification_msg", "")) if taxi.get("notification_timer", 0.0) > 0.0 else ""
@@ -294,9 +321,14 @@ static func values(state: Dictionary, toggles := {}, language := "en") -> Dictio
 			text["road"] += " [%s: %d km/h]" % [T.text("limit", language), int(road["speed_limit_kmh"])]
 	if on_foot and preload("res://entity_layer.gd").player_fighting(state):
 		text["hint"] = T.text("hint_brawl", language)
+	elif on_foot and state.get("interaction", {}).get("kind", "") == "taxi_door":
+		text["hint"] = T.text("taxi_enter_prompt", language) + " · " + T.text("hint_foot", language)
 	elif on_foot and state.get("home_door", {}).get("available", false):
 		var door: Dictionary = state["home_door"]
 		text["hint"] = T.text("home_enter_prompt" if door.get("is_home", false) else "house_enter_prompt", language) + " · " + T.text("hint_foot", language)
+	elif on_foot and state.get("interaction", {}).get("kind", "") == "building":  # interaction.py: a wall within reach
+		var label: String = state["interaction"].get("label", "")
+		text["hint"] = (T.text("building_look_prompt", language) % label if label else T.text("building_look_plain", language)) + " · " + T.text("hint_foot", language)
 	elif on_foot:
 		text["hint"] = T.text("hint_foot", language)
 	elif not player.get("engine_on", true):

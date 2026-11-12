@@ -1,0 +1,7132 @@
+[
+ {
+  "key": "aeroway",
+  "value": "aerodrome",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "aircraft_crossing",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "apron",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "gate",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "hangar",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "helipad",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "heliport",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "navigationaid",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "runway",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "spaceport",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "taxiway",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "terminal",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "aeroway",
+  "value": "windsock",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "amenity",
+  "value": "animal_boarding",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "animal_breeding",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "animal_shelter",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "animal_training",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "arts_centre",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "atm",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "baby_hatch",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "baking_oven",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "bank",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "bar",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "bbq",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "bench",
+  "geometry": [
+   "node",
+   "way"
+  ],
+  "handling": "poi",
+  "notes": "_scenery_object_kind"
+ },
+ {
+  "key": "amenity",
+  "value": "bicycle_parking",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "_scenery_object_kind"
+ },
+ {
+  "key": "amenity",
+  "value": "bicycle_rental",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "bicycle_repair_station",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "bicycle_wash",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "biergarten",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "Scenery area; _scenery_object_kind node"
+ },
+ {
+  "key": "amenity",
+  "value": "boat_rental",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "boat_sharing",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "boat_storage",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "brothel",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "bureau_de_change",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "bus_station",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "cafe",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "car_rental",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "car_sharing",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "car_wash",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "casino",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "charging_station",
+  "geometry": [
+   "node",
+   "area",
+   "relation"
+  ],
+  "handling": "poi",
+  "notes": "_scenery_object_kind"
+ },
+ {
+  "key": "amenity",
+  "value": "check_in",
+  "geometry": [
+   "node",
+   "way",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "cinema",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "clinic",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "clock",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "college",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "community_centre",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "compressed_air",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "conference_centre",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "courthouse",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "crematorium",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "dancing_school",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "dentist",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "dive_centre",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "doctors",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "dog_toilet",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "dressing_room",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "drinking_water",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "driver_training",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "driving_school",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "events_venue",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "exhibition_centre",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "fast_food",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "ferry_terminal",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "fire_station",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "first_aid_school",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "food_court",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "fountain",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "_scenery_object_kind"
+ },
+ {
+  "key": "amenity",
+  "value": "fuel",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "Scenery (parking.py); fuel_area_raw for fuel"
+ },
+ {
+  "key": "amenity",
+  "value": "funeral_hall",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "gambling",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "give_box",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "grave_yard",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "Scenery area; _scenery_object_kind node"
+ },
+ {
+  "key": "amenity",
+  "value": "grit_bin",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "hospital",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "hunting_stand",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "hydrant",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "ice_cream",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "internet_cafe",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "kindergarten",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "kitchen",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "kneipp_water_cure",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "language_school",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "library",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "lounge",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "lounger",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "love_hotel",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "mailroom",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "marketplace",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "monastery",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "money_transfer",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "mortuary",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "motorcycle_parking",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "music_school",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "music_venue",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "nightclub",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "_scenery_object_kind"
+ },
+ {
+  "key": "amenity",
+  "value": "nursing_home",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "parcel_locker",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "parking",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "Scenery (parking.py); fuel_area_raw for fuel"
+ },
+ {
+  "key": "amenity",
+  "value": "parking_entrance",
+  "geometry": [
+   "node"
+  ],
+  "handling": "structure",
+  "notes": "parking.py parking spaces / garage connectors"
+ },
+ {
+  "key": "amenity",
+  "value": "parking_space",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "structure",
+  "notes": "parking.py parking spaces / garage connectors"
+ },
+ {
+  "key": "amenity",
+  "value": "payment_centre",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "payment_terminal",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "pharmacy",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "photo_booth",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "place_of_mourning",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "place_of_worship",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "planetarium",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "police",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "post_box",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "post_depot",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "post_office",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "prison",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "pub",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "public_bath",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "public_bookcase",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "public_building",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "ranger_station",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "recycling",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "refugee_site",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "research_institute",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "restaurant",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "sanitary_dump_station",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "school",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "shelter",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "shower",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "social_centre",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "social_facility",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "stage",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "stripclub",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "studio",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "surf_school",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "swingerclub",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "taxi",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "taxi_stops_raw"
+ },
+ {
+  "key": "amenity",
+  "value": "telephone",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "theatre",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "toilets",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "townhall",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "toy_library",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "traffic_park",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "training",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "university",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "vehicle_inspection",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "vending_machine",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "veterinary",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "waste_basket",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "_scenery_object_kind"
+ },
+ {
+  "key": "amenity",
+  "value": "waste_disposal",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "waste_transfer_station",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "water_point",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "watering_place",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "amenity",
+  "value": "weighbridge",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "named node -> Place; Building venue_type on a building"
+ },
+ {
+  "key": "barrier",
+  "value": "block",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "bollard",
+  "geometry": [],
+  "handling": "structure",
+  "notes": "_scenery_object_kind"
+ },
+ {
+  "key": "barrier",
+  "value": "border_control",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "bump_gate",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "bus_trap",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "cable_barrier",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "cattle_grid",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "chain",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "city_wall",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "cycle_barrier",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "debris",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "ditch",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "entrance",
+  "geometry": [],
+  "handling": "structure",
+  "notes": "BARRIER_OPENINGS: an opening in a fence"
+ },
+ {
+  "key": "barrier",
+  "value": "fence",
+  "geometry": [],
+  "handling": "structure",
+  "notes": "build_ways railing_raw"
+ },
+ {
+  "key": "barrier",
+  "value": "full-height_turnstile",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "gate",
+  "geometry": [],
+  "handling": "structure",
+  "notes": "_scenery_object_kind; BARRIER_OPENINGS"
+ },
+ {
+  "key": "barrier",
+  "value": "guard_rail",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "hampshire_gate",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "handrail",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "hedge",
+  "geometry": [],
+  "handling": "structure",
+  "notes": "build_ways railing_raw"
+ },
+ {
+  "key": "barrier",
+  "value": "height_restrictor",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "horse_stile",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "jersey_barrier",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "kerb",
+  "geometry": [],
+  "handling": "structure",
+  "notes": "build_ways curb_raw"
+ },
+ {
+  "key": "barrier",
+  "value": "kissing_gate",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "lift_gate",
+  "geometry": [],
+  "handling": "structure",
+  "notes": "BARRIER_OPENINGS: an opening in a fence"
+ },
+ {
+  "key": "barrier",
+  "value": "log",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "motorcycle_barrier",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "retaining_wall",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "rope",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "sally_port",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "spikes",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "stile",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "sump_buster",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "swing_gate",
+  "geometry": [],
+  "handling": "structure",
+  "notes": "BARRIER_OPENINGS: an opening in a fence"
+ },
+ {
+  "key": "barrier",
+  "value": "toll_booth",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "turnstile",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "barrier",
+  "value": "wall",
+  "geometry": [],
+  "handling": "structure",
+  "notes": "build_ways railing_raw"
+ },
+ {
+  "key": "barrier",
+  "value": "yes",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "aboriginal_lands",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "administrative",
+  "geometry": [
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "border_zone",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "census",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "disputed",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "forest",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "forest_compartment",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "hazard",
+  "geometry": [
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "health",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "historic",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "limited_traffic_zone",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "local_authority",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "low_emission_zone",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "maritime",
+  "geometry": [
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "marker",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "national_park",
+  "geometry": [
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "place",
+  "geometry": [
+   "way",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "political",
+  "geometry": [
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "postal_code",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "protected_area",
+  "geometry": [
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "public_transport",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "religious_administration",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "special_economic_zone",
+  "geometry": [
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "statistical",
+  "geometry": [
+   "area",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "boundary",
+  "value": "timezone",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "bridge",
+  "value": "aqueduct",
+  "geometry": [
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "only yes/viaduct/movable set is_bridge (layer>0 still does)"
+ },
+ {
+  "key": "bridge",
+  "value": "cantilever",
+  "geometry": [
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "only yes/viaduct/movable set is_bridge (layer>0 still does)"
+ },
+ {
+  "key": "bridge",
+  "value": "covered",
+  "geometry": [
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "only yes/viaduct/movable set is_bridge (layer>0 still does)"
+ },
+ {
+  "key": "bridge",
+  "value": "movable",
+  "geometry": [
+   "way"
+  ],
+  "handling": "structure",
+  "notes": "build_ways is_bridge (roads and Railway)"
+ },
+ {
+  "key": "bridge",
+  "value": "viaduct",
+  "geometry": [
+   "way"
+  ],
+  "handling": "structure",
+  "notes": "build_ways is_bridge (roads and Railway)"
+ },
+ {
+  "key": "bridge",
+  "value": "yes",
+  "geometry": [
+   "way"
+  ],
+  "handling": "structure",
+  "notes": "build_ways is_bridge (roads and Railway)"
+ },
+ {
+  "key": "building",
+  "value": "allotment_house",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "annexe",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "apartments",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "bakehouse",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "barn",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "barracks",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "beach_hut",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "boathouse",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "bridge",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "bungalow",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "bunker",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "cabin",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "carport",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; OPEN_ROOF_BUILDING_TYPES: open roof on posts, driven under"
+ },
+ {
+  "key": "building",
+  "value": "castle",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "cathedral",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "chapel",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "church",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "civic",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "clock_tower",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "coach_house",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "college",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "commercial",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "conservatory",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "construction",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "container",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "cowshed",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "detached",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "digester",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "dormitory",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "farm",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "farm_auxiliary",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "fire_station",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "garage",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "garages",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "gatehouse",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "ger",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "government",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "grandstand",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "greenhouse",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "guardhouse",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "hangar",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "hospital",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "hotel",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "house",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "houseboat",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "hut",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "industrial",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "kindergarten",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "kingdom_hall",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "kiosk",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "livestock",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "military",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "monastery",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "mosque",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "museum",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "office",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "outbuilding",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "pagoda",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "parking",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "pavilion",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "presbytery",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "public",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "quonset_hut",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "religious",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "residential",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "retail",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "riding_hall",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "roof",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; OPEN_ROOF_BUILDING_TYPES: open roof on posts, driven under"
+ },
+ {
+  "key": "building",
+  "value": "ruins",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "school",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "semidetached_house",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "service",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "shed",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "ship",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "shrine",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "silo",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "slurry_tank",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "sports_centre",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "sports_hall",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "stable",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "stadium",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "static_caravan",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "stilt_house",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "storage_tank",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "sty",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "supermarket",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "synagogue",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "tech_cab",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "temple",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "tent",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "terrace",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "toilets",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "tower",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "train_station",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "transformer_tower",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "transportation",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "tree_house",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "triumphal_arch",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "trullo",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "university",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "warehouse",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "water_tower",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "building",
+  "value": "windmill",
+  "geometry": [],
+  "handling": "building",
+  "notes": "_is_building; Building with building_type (building_style.py)"
+ },
+ {
+  "key": "highway",
+  "value": "bridleway",
+  "geometry": [
+   "way"
+  ],
+  "handling": "path",
+  "notes": "non_drivable_highways in build_ways, DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "bus_guideway",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "bus_stop",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "_is_bus_stop"
+ },
+ {
+  "key": "highway",
+  "value": "busway",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "HIGHWAY_HALF_WIDTH width; drivable Way in build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "construction",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "corridor",
+  "geometry": [
+   "way"
+  ],
+  "handling": "path",
+  "notes": "non_drivable_highways in build_ways, DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "crossing",
+  "geometry": [
+   "node"
+  ],
+  "handling": "traffic_control",
+  "notes": "node read in build_ways (traffic_signals.py, stop/yield signs, crossings_raw)"
+ },
+ {
+  "key": "highway",
+  "value": "cycleway",
+  "geometry": [
+   "way"
+  ],
+  "handling": "path",
+  "notes": "HIGHWAY_HALF_WIDTH width; non_drivable_highways in build_ways (not drivable)"
+ },
+ {
+  "key": "highway",
+  "value": "cyclist_waiting_aid",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "elevator",
+  "geometry": [
+   "node",
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "emergency_access_point",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "emergency_bay",
+  "geometry": [
+   "node",
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "escape",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "footway",
+  "geometry": [
+   "way",
+   "area"
+  ],
+  "handling": "path",
+  "notes": "HIGHWAY_HALF_WIDTH width; non_drivable_highways in build_ways (not drivable)"
+ },
+ {
+  "key": "highway",
+  "value": "give_way",
+  "geometry": [
+   "node"
+  ],
+  "handling": "traffic_control",
+  "notes": "node read in build_ways (traffic_signals.py, stop/yield signs, crossings_raw)"
+ },
+ {
+  "key": "highway",
+  "value": "hitchhiking",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "ladder",
+  "geometry": [
+   "node",
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "living_street",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "HIGHWAY_HALF_WIDTH width; drivable Way in build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "milestone",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "mini_roundabout",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "motorway",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "HIGHWAY_HALF_WIDTH width; drivable Way in build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "motorway_junction",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "motorway_link",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "passing_place",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "path",
+  "geometry": [
+   "way"
+  ],
+  "handling": "path",
+  "notes": "HIGHWAY_HALF_WIDTH width; non_drivable_highways in build_ways (not drivable)"
+ },
+ {
+  "key": "highway",
+  "value": "pedestrian",
+  "geometry": [
+   "way",
+   "area"
+  ],
+  "handling": "path",
+  "notes": "non_drivable_highways in build_ways, DEFAULT_ROAD_HALF_WIDTH_M; a closed area is a pedestrian_area Scenery"
+ },
+ {
+  "key": "highway",
+  "value": "platform",
+  "geometry": [
+   "node",
+   "way",
+   "area"
+  ],
+  "handling": "path",
+  "notes": "non_drivable_highways in build_ways, DEFAULT_ROAD_HALF_WIDTH_M; a closed area is a pedestrian_area Scenery"
+ },
+ {
+  "key": "highway",
+  "value": "primary",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "HIGHWAY_HALF_WIDTH width; drivable Way in build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "primary_link",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "proposed",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "raceway",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "residential",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "HIGHWAY_HALF_WIDTH width; drivable Way in build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "rest_area",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "road",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "secondary",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "HIGHWAY_HALF_WIDTH width; drivable Way in build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "secondary_link",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "service",
+  "geometry": [
+   "way",
+   "area"
+  ],
+  "handling": "drivable_road",
+  "notes": "HIGHWAY_HALF_WIDTH width; drivable Way in build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "services",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "speed_camera",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "speed_display",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "steps",
+  "geometry": [
+   "way"
+  ],
+  "handling": "path",
+  "notes": "non_drivable_highways in build_ways, DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "stop",
+  "geometry": [
+   "node"
+  ],
+  "handling": "traffic_control",
+  "notes": "node read in build_ways (traffic_signals.py, stop/yield signs, crossings_raw)"
+ },
+ {
+  "key": "highway",
+  "value": "street_lamp",
+  "geometry": [
+   "node"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind street_lamp; street_lights.py prefers mapped lamps"
+ },
+ {
+  "key": "highway",
+  "value": "tertiary",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "HIGHWAY_HALF_WIDTH width; drivable Way in build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "tertiary_link",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "toll_gantry",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "track",
+  "geometry": [
+   "way"
+  ],
+  "handling": "path",
+  "notes": "HIGHWAY_HALF_WIDTH width; non_drivable_highways in build_ways (not drivable)"
+ },
+ {
+  "key": "highway",
+  "value": "traffic_mirror",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "traffic_signals",
+  "geometry": [
+   "node"
+  ],
+  "handling": "traffic_control",
+  "notes": "node read in build_ways (traffic_signals.py, stop/yield signs, crossings_raw)"
+ },
+ {
+  "key": "highway",
+  "value": "trailhead",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "trunk",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "HIGHWAY_HALF_WIDTH width; drivable Way in build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "trunk_link",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "highway",
+  "value": "turning_circle",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "turning_loop",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "node feature; not read by build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "unclassified",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "HIGHWAY_HALF_WIDTH width; drivable Way in build_ways"
+ },
+ {
+  "key": "highway",
+  "value": "via_ferrata",
+  "geometry": [
+   "way"
+  ],
+  "handling": "drivable_road",
+  "notes": "not in HIGHWAY_HALF_WIDTH: build_ways makes it a drivable Way at DEFAULT_ROAD_HALF_WIDTH_M"
+ },
+ {
+  "key": "landuse",
+  "value": "allotments",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "animal_keeping",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "aquaculture",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "basin",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "brownfield",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "cemetery",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "commercial",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "conservation",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "construction",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "depot",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "education",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "fairground",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "farmland",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "farmyard",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "flowerbed",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "forest",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "vegetation",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "garages",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "grass",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "vegetation",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "greenery",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "greenfield",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "vegetation",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "greenhouse_horticulture",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "highway",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "industrial",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "institutional",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "landfill",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "logging",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "meadow",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "vegetation",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "military",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "orchard",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "vegetation",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "plant_nursery",
+  "geometry": [
+   "area"
+  ],
+  "handling": "vegetation",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "port",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "quarry",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "railway",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "recreation_ground",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "religious",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "reservoir",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "water",
+  "notes": "build_ways water_raw (_is_water_area)"
+ },
+ {
+  "key": "landuse",
+  "value": "residential",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "retail",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "salt_pond",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "village_green",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "vineyard",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "vegetation",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "landuse",
+  "value": "winter_sports",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any landuse=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "layer",
+  "value": "*",
+  "geometry": [
+   "way"
+  ],
+  "handling": "structure",
+  "notes": "build_ways layer on roads and Railway"
+ },
+ {
+  "key": "leisure",
+  "value": "adult_gaming_centre",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "amusement_arcade",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "bandstand",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "beach_resort",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "bird_hide",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "common",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "dance",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "disc_golf_course",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "dog_park",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "escape_game",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "firepit",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "_scenery_object_kind; an area is also Scenery"
+ },
+ {
+  "key": "leisure",
+  "value": "fishing",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "fitness_centre",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "fitness_station",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "garden",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "hackerspace",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "horse_riding",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "ice_rink",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "marina",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "miniature_golf",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour); miniature_golf.py"
+ },
+ {
+  "key": "leisure",
+  "value": "nature_reserve",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "park",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "picnic_table",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "_scenery_object_kind; an area is also Scenery"
+ },
+ {
+  "key": "leisure",
+  "value": "pitch",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "playground",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "slipway",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "sports_centre",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "stadium",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour); _is_building INDOOR_SPORTS"
+ },
+ {
+  "key": "leisure",
+  "value": "summer_camp",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "swimming_area",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "swimming_pool",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "track",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "leisure",
+  "value": "water_park",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "any leisure=* way -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "man_made",
+  "value": "adit",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "beacon",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "breakwater",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "bridge",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "bunker_silo",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "carpet_hanger",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "chimney",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind; drawn at its height tag (capped 80 m), areas at their centroid; visual only"
+ },
+ {
+  "key": "man_made",
+  "value": "clearcut",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "column",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "communications_tower",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind; drawn at its height tag (capped 80 m), areas at their centroid; visual only"
+ },
+ {
+  "key": "man_made",
+  "value": "crane",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "cross",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "cutline",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "dovecote",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "dyke",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "embankment",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "flagpole",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "gasometer",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "goods_conveyor",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "groyne",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "guard_stone",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "kiln",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "lighthouse",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "mast",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind; drawn at its height tag (capped 80 m), areas at their centroid; visual only"
+ },
+ {
+  "key": "man_made",
+  "value": "mineshaft",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "monitoring_station",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "obelisk",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "observatory",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "offshore_platform",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "petroleum_well",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "pier",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "pipeline",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "pump",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "pumping_station",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "reservoir_covered",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "sewer_vent",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "silo",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "snow_fence",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "snow_net",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "storage_tank",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "street_cabinet",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "stupa",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "surveillance",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "survey_point",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "tailings_pond",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "telescope",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "tower",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind; drawn at its height tag (capped 80 m), areas at their centroid; visual only"
+ },
+ {
+  "key": "man_made",
+  "value": "video_wall",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "wastewater_plant",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "water_tap",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "water_tower",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind; drawn at its height tag (capped 80 m), areas at their centroid; visual only"
+ },
+ {
+  "key": "man_made",
+  "value": "water_well",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "water_works",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "watermill",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "wildlife_crossing",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "windmill",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "works",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "man_made",
+  "value": "yes",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "arch",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "arete",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "bare_rock",
+  "geometry": [
+   "area"
+  ],
+  "handling": "landuse_fill",
+  "notes": "NATURAL_SCENERY_KINDS; grey ground fill"
+ },
+ {
+  "key": "natural",
+  "value": "bay",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (_is_water_area)"
+ },
+ {
+  "key": "natural",
+  "value": "beach",
+  "geometry": [],
+  "handling": "vegetation",
+  "notes": "NATURAL_SCENERY_KINDS -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "natural",
+  "value": "blockfield",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "blowhole",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "cape",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "cave_entrance",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "cliff",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "coastline",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways coast_raw"
+ },
+ {
+  "key": "natural",
+  "value": "crevasse",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "dune",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "earth_bank",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "fell",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "fumarole",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "geyser",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "glacier",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "grassland",
+  "geometry": [],
+  "handling": "vegetation",
+  "notes": "NATURAL_SCENERY_KINDS -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "natural",
+  "value": "heath",
+  "geometry": [],
+  "handling": "vegetation",
+  "notes": "NATURAL_SCENERY_KINDS -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "natural",
+  "value": "hill",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "hot_spring",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "isthmus",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "moor",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "mud",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "peak",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "peninsula",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "reef",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "ridge",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "rock",
+  "geometry": [
+   "node"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind boulder (0.6-1.5 m from its id), visual only"
+ },
+ {
+  "key": "natural",
+  "value": "saddle",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "sand",
+  "geometry": [],
+  "handling": "vegetation",
+  "notes": "NATURAL_SCENERY_KINDS -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "natural",
+  "value": "scree",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "scrub",
+  "geometry": [],
+  "handling": "vegetation",
+  "notes": "NATURAL_SCENERY_KINDS -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "natural",
+  "value": "shingle",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "shoal",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "shrubbery",
+  "geometry": [],
+  "handling": "vegetation",
+  "notes": "NATURAL_SCENERY_KINDS -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "natural",
+  "value": "sinkhole",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "spring",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "stone",
+  "geometry": [
+   "node"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind boulder (0.6-1.5 m from its id), visual only"
+ },
+ {
+  "key": "natural",
+  "value": "strait",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (_is_water_area)"
+ },
+ {
+  "key": "natural",
+  "value": "tree",
+  "geometry": [],
+  "handling": "vegetation",
+  "notes": "tree_node_ids -> trees.py classify_tree_kind"
+ },
+ {
+  "key": "natural",
+  "value": "tree_row",
+  "geometry": [
+   "way"
+  ],
+  "handling": "vegetation",
+  "notes": "gap_ways_raw: trees every 6 m into the natural=tree path"
+ },
+ {
+  "key": "natural",
+  "value": "tundra",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "valley",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "volcano",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not in NATURAL_SCENERY_KINDS; not read by build_ways"
+ },
+ {
+  "key": "natural",
+  "value": "water",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (_is_water_area)"
+ },
+ {
+  "key": "natural",
+  "value": "wetland",
+  "geometry": [],
+  "handling": "vegetation",
+  "notes": "NATURAL_SCENERY_KINDS -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "natural",
+  "value": "wood",
+  "geometry": [],
+  "handling": "vegetation",
+  "notes": "NATURAL_SCENERY_KINDS -> Scenery (map_style.py colour)"
+ },
+ {
+  "key": "place",
+  "value": "allotments",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "archipelago",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "borough",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "city",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "city_block",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "continent",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "country",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "county",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "district",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "farm",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "hamlet",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "island",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "islet",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "isolated_dwelling",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "locality",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "municipality",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "neighbourhood",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "ocean",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "plot",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "polder",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "province",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "quarter",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "region",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "sea",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "square",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "state",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "subdistrict",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "suburb",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "town",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "place",
+  "value": "village",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named place -> Place label (build_ways)"
+ },
+ {
+  "key": "power",
+  "value": "cable",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "catenary_mast",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "compensator",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "connection",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "converter",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "generator",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "heliostat",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "insulator",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "inverter",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "line",
+  "geometry": [
+   "way"
+  ],
+  "handling": "structure",
+  "notes": "gap_ways_raw power_line -> map_chunks power_lines; sagging wires <= 150 m spans"
+ },
+ {
+  "key": "power",
+  "value": "minor_line",
+  "geometry": [
+   "way"
+  ],
+  "handling": "structure",
+  "notes": "gap_ways_raw power_line -> map_chunks power_lines; sagging wires <= 150 m spans"
+ },
+ {
+  "key": "power",
+  "value": "plant",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "pole",
+  "geometry": [
+   "node"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind power_pole; 3D pole + crossarm, visual only"
+ },
+ {
+  "key": "power",
+  "value": "portal",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "substation",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "switch",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "switchgear",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "terminal",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "power",
+  "value": "tower",
+  "geometry": [
+   "node"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind power_tower; 3D lattice-style tower, visual only"
+ },
+ {
+  "key": "power",
+  "value": "transformer",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "public_transport",
+  "value": "platform",
+  "geometry": [
+   "node",
+   "way",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "_is_bus_stop"
+ },
+ {
+  "key": "public_transport",
+  "value": "station",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "public_transport",
+  "value": "stop_area",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "public_transport",
+  "value": "stop_area_group",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "public_transport",
+  "value": "stop_position",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "tram_stop_names when tram=yes or light_rail=yes"
+ },
+ {
+  "key": "railway",
+  "value": "abandoned",
+  "geometry": [
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "buffer_stop",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "construction",
+  "geometry": [
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "crossing",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "derail",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "disused",
+  "geometry": [
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "funicular",
+  "geometry": [
+   "way"
+  ],
+  "handling": "rail",
+  "notes": "build_ways railway_raw -> Railway"
+ },
+ {
+  "key": "railway",
+  "value": "halt",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "tram_stop_names when tram=yes or light_rail=yes"
+ },
+ {
+  "key": "railway",
+  "value": "level_crossing",
+  "geometry": [
+   "node"
+  ],
+  "handling": "structure",
+  "notes": "_scenery_object_kind level_crossing / level_crossing_barrier (crossing:barrier=yes|full|half), along the road; visual only"
+ },
+ {
+  "key": "railway",
+  "value": "light_rail",
+  "geometry": [
+   "way"
+  ],
+  "handling": "rail",
+  "notes": "build_ways railway_raw -> Railway; TRAM_KINDS tram line"
+ },
+ {
+  "key": "railway",
+  "value": "miniature",
+  "geometry": [
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "monorail",
+  "geometry": [
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "narrow_gauge",
+  "geometry": [
+   "way"
+  ],
+  "handling": "rail",
+  "notes": "build_ways railway_raw -> Railway"
+ },
+ {
+  "key": "railway",
+  "value": "platform",
+  "geometry": [
+   "way",
+   "area"
+  ],
+  "handling": "path",
+  "notes": "closed way -> pedestrian_area Scenery in build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "preserved",
+  "geometry": [
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "proposed",
+  "geometry": [
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "rail",
+  "geometry": [
+   "way"
+  ],
+  "handling": "rail",
+  "notes": "build_ways railway_raw -> Railway"
+ },
+ {
+  "key": "railway",
+  "value": "railway_crossing",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "roundhouse",
+  "geometry": [
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "signal",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "station",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "poi",
+  "notes": "tram_stop_names when tram=yes or light_rail=yes"
+ },
+ {
+  "key": "railway",
+  "value": "stop",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "tram_stop_names when tram=yes or light_rail=yes"
+ },
+ {
+  "key": "railway",
+  "value": "subway",
+  "geometry": [
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "subway_entrance",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "switch",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "tram",
+  "geometry": [
+   "way"
+  ],
+  "handling": "rail",
+  "notes": "build_ways railway_raw -> Railway; TRAM_KINDS tram line"
+ },
+ {
+  "key": "railway",
+  "value": "tram_level_crossing",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "tram_stop",
+  "geometry": [
+   "node"
+  ],
+  "handling": "poi",
+  "notes": "tram_stop_names (Railway.stops)"
+ },
+ {
+  "key": "railway",
+  "value": "traverser",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "turntable",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "ventilation_shaft",
+  "geometry": [
+   "node",
+   "way"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "wash",
+  "geometry": [
+   "node",
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "water_crane",
+  "geometry": [
+   "node"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "railway",
+  "value": "workshop",
+  "geometry": [
+   "area"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "bicycle",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "bus",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "poi",
+  "notes": "BUS_ROUTE_KINDS: _bus_route_stops and bus_route_refs"
+ },
+ {
+  "key": "route",
+  "value": "canoe",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "detour",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "ferry",
+  "geometry": [
+   "way",
+   "relation"
+  ],
+  "handling": "rail",
+  "notes": "_is_car_ferry -> Railway kind FERRY_KIND (ferries.py)"
+ },
+ {
+  "key": "route",
+  "value": "fitness_trail",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "foot",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "funicular",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "hiking",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "horse",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "inline_skates",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "light_rail",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "rail",
+  "notes": "type=route relation -> tram_line_refs (Railway.lines)"
+ },
+ {
+  "key": "route",
+  "value": "mtb",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "piste",
+  "geometry": [
+   "way",
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "railway",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "road",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "running",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "ski",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "subway",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "tracks",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "train",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "ignored",
+  "notes": "not read by build_ways"
+ },
+ {
+  "key": "route",
+  "value": "tram",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "rail",
+  "notes": "type=route relation -> tram_line_refs (Railway.lines)"
+ },
+ {
+  "key": "route",
+  "value": "trolleybus",
+  "geometry": [
+   "relation"
+  ],
+  "handling": "poi",
+  "notes": "BUS_ROUTE_KINDS: _bus_route_stops and bus_route_refs"
+ },
+ {
+  "key": "shop",
+  "value": "agrarian",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "alcohol",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "anime",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "antiques",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "appliance",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "art",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "atv",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "aviation",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "baby_goods",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "bag",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "bakery",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "bathroom_furnishing",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "beach",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "beauty",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "bed",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "beverages",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "bicycle",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "boat",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "bookmaker",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "books",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "boutique",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "brewing_supplies",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "butcher",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "camera",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "candles",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "cannabis",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "car",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "car_parts",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "car_repair",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "caravan",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "carpet",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "charity",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "cheese",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "chemist",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "chocolate",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "clothes",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "coffee",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "collector",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "computer",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "confectionery",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "convenience",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "copyshop",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "cosmetics",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "country_store",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "craft",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "curtain",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "dairy",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "deli",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "department_store",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "doityourself",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "doors",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "dry_cleaning",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "e-cigarette",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "electrical",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "electronics",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "energy",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "erotic",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "fabric",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "farm",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "fashion",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "fashion_accessories",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "fireplace",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "fishing",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "flooring",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "florist",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "food",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "frame",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "frozen_food",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "fuel",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "funeral_directors",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "furniture",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "games",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "garden_centre",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "garden_furniture",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "gas",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "general",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "gift",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "glaziery",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "golf",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "graffiti",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "greengrocer",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "groundskeeping",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "hairdresser",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "hairdresser_supply",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "hardware",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "health_food",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "hearing_aids",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "herbalist",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "hifi",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "household_linen",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "houseware",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "hunting",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "ice_cream",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "interior_decoration",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "jewelry",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "kiosk",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "kitchen",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "laundry",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "leather",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "lighting",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "locksmith",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "lottery",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "mall",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "massage",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "medical_supply",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "military_surplus",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "mobile_phone",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "model",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "money_lender",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "motorcycle",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "motorcycle_repair",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "music",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "musical_instrument",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "newsagent",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "nutrition_supplements",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "nuts",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "optician",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "outdoor",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "outpost",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "paint",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "party",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "pasta",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "pastry",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "pawnbroker",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "perfumery",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "pest_control",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "pet",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "pet_grooming",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "photo",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "piercing",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "pottery",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "printer_ink",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "pyrotechnics",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "radiotechnics",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "religion",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "rental",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "scooter",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "scuba_diving",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "seafood",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "second_hand",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "security",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "sewing",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "shoe_repair",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "shoes",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "ski",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "snowmobile",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "spices",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "sports",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "stationery",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "storage_rental",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "supermarket",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "surf",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "swimming_pool",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "tailor",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "tattoo",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "tea",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "telecommunication",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "ticket",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "tiles",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "tobacco",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "tool_hire",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "tortilla",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "toys",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "trade",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "trailer",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "travel_agency",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "trophy",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "truck",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "tyres",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "vacant",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "vacuum_cleaner",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "variety_store",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "vending_machine",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "video",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "video_games",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "watches",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "water",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "weapons",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "wholesale",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "window_blind",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "wine",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "wool",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "shop",
+  "value": "yes",
+  "geometry": [],
+  "handling": "poi",
+  "notes": "named node -> Place shop_type; Building shop_type on a building"
+ },
+ {
+  "key": "tunnel",
+  "value": "yes",
+  "geometry": [
+   "way"
+  ],
+  "handling": "structure",
+  "notes": "build_ways tunnel_tag; waterway tunnels dropped"
+ },
+ {
+  "key": "waterway",
+  "value": "boatyard",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ },
+ {
+  "key": "waterway",
+  "value": "canal",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ },
+ {
+  "key": "waterway",
+  "value": "dam",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ },
+ {
+  "key": "waterway",
+  "value": "ditch",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ },
+ {
+  "key": "waterway",
+  "value": "dock",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ },
+ {
+  "key": "waterway",
+  "value": "drain",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ },
+ {
+  "key": "waterway",
+  "value": "fairway",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ },
+ {
+  "key": "waterway",
+  "value": "fuel",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "node feature; build_ways only reads waterway=* on ways"
+ },
+ {
+  "key": "waterway",
+  "value": "lock_gate",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "node feature; build_ways only reads waterway=* on ways"
+ },
+ {
+  "key": "waterway",
+  "value": "pressurised",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ },
+ {
+  "key": "waterway",
+  "value": "river",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ },
+ {
+  "key": "waterway",
+  "value": "riverbank",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw; _water_kind river"
+ },
+ {
+  "key": "waterway",
+  "value": "soakhole",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "node feature; build_ways only reads waterway=* on ways"
+ },
+ {
+  "key": "waterway",
+  "value": "stream",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ },
+ {
+  "key": "waterway",
+  "value": "tidal_channel",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ },
+ {
+  "key": "waterway",
+  "value": "turning_point",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "node feature; build_ways only reads waterway=* on ways"
+ },
+ {
+  "key": "waterway",
+  "value": "water_point",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "node feature; build_ways only reads waterway=* on ways"
+ },
+ {
+  "key": "waterway",
+  "value": "waterfall",
+  "geometry": [],
+  "handling": "ignored",
+  "notes": "node feature; build_ways only reads waterway=* on ways"
+ },
+ {
+  "key": "waterway",
+  "value": "weir",
+  "geometry": [],
+  "handling": "water",
+  "notes": "build_ways water_raw (any waterway=* way not in a tunnel)"
+ }
+]

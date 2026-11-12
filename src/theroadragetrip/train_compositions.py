@@ -49,6 +49,7 @@ PROFILES = {
     # Trams (trams.py TRAM_CITIES): drawn like train cars, a light roof stripe.
     "tram_helsinki": ((20, 140, 70), (235, 240, 235)),  # HSL green
     "tram_tampere": ((185, 25, 40), (240, 240, 240)),  # Tampere red
+    "ferry": ((236, 186, 30), (128, 132, 136)),  # a road ferry (ferries.py): yellow hull, grey deck
 }
 
 

@@ -56,3 +56,10 @@ def test_create_roadworks_skips_short_and_non_drivable_ways():
 
     assert roadworks == []
     assert lights == []
+
+def test_roadwork_on_another_layer_or_level_never_bars_the_taxi():
+    from theroadragetrip.simulation import _roadwork_bars
+    work = Roadwork(make_way(), 20.0, 70.0, False, (20.0, 0.0), (70.0, 0.0))  # closed (blocks), layer 0 level 0
+    assert _roadwork_bars(work, 40.0, 0.0)
+    assert not _roadwork_bars(work, 40.0, 0.0, layer=1)
+    assert not _roadwork_bars(work, 40.0, 0.0, map_level=1)

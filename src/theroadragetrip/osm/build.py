@@ -68,7 +68,19 @@ _STATUE_ARTWORK_TYPES = {"statue", "sculpture"}
 _ALIGN_TO_PATH_SCENERY_KINDS = {"bench", "waste_basket", "bicycle_parking", "picnic_table"}
 # Mapped on the path itself, or beside the bays they serve: they take the
 # nearest way's direction but stay where they are.
-_ON_PATH_SCENERY_KINDS = {"gate", "charging_station"}
+_ON_PATH_SCENERY_KINDS = {"gate", "charging_station", "level_crossing", "level_crossing_barrier"}
+# Skyline structures (man_made=*): default and maximum drawn height, metres.
+_SKYLINE_HEIGHTS_M = {"chimney": 25.0, "mast": 30.0, "tower": 30.0, "communications_tower": 30.0, "water_tower": 20.0}
+_SKYLINE_MAX_M = 80.0
+TREE_ROW_SPACING_M = 6.0
+
+
+def _skyline_height(kind: str, tags: Dict[str, str]) -> float:
+    try:
+        height = float(str(tags.get("height", "")).split()[0].replace(",", "."))
+    except (ValueError, IndexError):
+        height = _SKYLINE_HEIGHTS_M[kind]
+    return min(max(height, 2.0), _SKYLINE_MAX_M)
 
 # A real traffic/pedestrian-refuge island's kerb outline is compact (real
 # Oulu examples measured 3-12m across) and has genuine extent in both
@@ -94,6 +106,21 @@ _KERB_CROSSING_GRID_CELL_M = 50.0
 # Helsinki's Raide-Jokeri). trams.py runs on both; trains keep to rail.
 TRAM_KINDS = ("tram", "light_rail")
 TRAM_STOP_SNAP_M = 15.0  # a tram stop beside its track (Railway.stops; trams.py snaps it the same)
+# A car ferry route (ferries.py) is kept as a Railway of this kind: cached
+# and streamed with the rails, but no rail consumer takes it.
+FERRY_KIND = "ferry"
+_FERRY_NOT_ROAD_CLASSES = ("footway", "path", "cycleway", "pedestrian")
+
+
+def _is_car_ferry(tags: dict) -> bool:
+    """An OSM route=ferry way that carries cars: motor_vehicle/motorcar=yes,
+    or a road class (ferry=secondary) that does not shut cars out."""
+    if tags.get("route") != "ferry":
+        return False
+    access = tags.get("motorcar", tags.get("motor_vehicle", ""))
+    if access in ("yes", "designated"):
+        return True
+    return access not in ("no", "private") and tags.get("ferry", "") not in ("", *_FERRY_NOT_ROAD_CLASSES)
 
 
 def _stadium_as_ground(tags: dict) -> dict:
@@ -412,6 +439,14 @@ def _scenery_object_kind(tags: Dict[str, str]) -> Optional[str]:
         return OSM_EQUIPMENT_KINDS[tags["playground"]]
     if tags.get("barrier") in ("gate", "bollard"):
         return tags["barrier"]
+    if tags.get("power") in ("pole", "tower"):
+        return "power_" + tags["power"]
+    if tags.get("man_made") in _SKYLINE_HEIGHTS_M:
+        return tags["man_made"]
+    if tags.get("natural") in ("stone", "rock"):
+        return "boulder"
+    if tags.get("railway") == "level_crossing":
+        return "level_crossing_barrier" if tags.get("crossing:barrier") in ("yes", "full", "half") else "level_crossing"
     return None
 
 
@@ -769,6 +804,7 @@ def build_ways(
     tree_node_tags: Dict[int, dict] = {}
     scenery_object_nodes_raw: List[Tuple[dict, int]] = []
     equipment_ways_raw: List[Tuple[dict, int, list]] = []  # playground=* mapped as an area (a sandpit, ...)
+    gap_ways_raw: List[Tuple[dict, int, list]] = []  # power lines, tree rows, man_made areas (osm-render-gaps.md)
     entrance_node_ids: set[int] = set()
     ways_by_id: Dict[int, dict] = {}
     ways_raw: List[Tuple[dict, str, List[int]]] = []
@@ -857,6 +893,9 @@ def build_ways(
             node_ids = el.get("nodes", [])
             if tags.get("playground") in OSM_EQUIPMENT_KINDS:
                 equipment_ways_raw.append((tags, el["id"], node_ids))
+            if tags.get("power") in ("line", "minor_line") or tags.get("natural") == "tree_row" or (
+                    tags.get("man_made") in _SKYLINE_HEIGHTS_M and len(node_ids) >= 4 and node_ids[0] == node_ids[-1]):
+                gap_ways_raw.append((tags, el["id"], node_ids))
             way_id = el.get("id")
             if way_id is not None:
                 ways_by_id[way_id] = el
@@ -893,6 +932,8 @@ def build_ways(
                     scenery_raw.append((tags, node_ids))
             elif tags.get("railway") in ("rail", "light_rail", "tram", "narrow_gauge", "funicular"):
                 railway_raw.append((tags, node_ids, way_id))
+            elif _is_car_ferry(tags):
+                railway_raw.append(({"railway": FERRY_KIND}, node_ids, way_id))
             elif tags.get("natural") == "coastline":
                 pass  # already collected, including coastline + waterway tags
             elif "waterway" in tags and (tags.get("tunnel") or tags.get("location") == "underground"):
@@ -982,6 +1023,15 @@ def build_ways(
     real_tree_tags: List[dict] = [
         tree_node_tags.get(nid, {}) for nid in tree_node_ids if nid in nodes_m
     ]
+    for tags, _way_id, node_ids in gap_ways_raw:  # natural=tree_row: a tree every TREE_ROW_SPACING_M along it
+        if tags.get("natural") != "tree_row":
+            continue
+        pts = [nodes_m[n] for n in node_ids if n in nodes_m]
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            steps = max(1, math.ceil(math.hypot(bx - ax, by - ay) / TREE_ROW_SPACING_M))
+            for i in range(steps + (1 if (bx, by) == pts[-1] else 0)):
+                real_trees_m.append((ax + (bx - ax) * i / steps, ay + (by - ay) * i / steps))
+                real_tree_tags.append({})
     if real_trees_m:
         logger.info("Found %d real OSM tree positions (natural=tree)", len(real_trees_m))
 
@@ -1753,7 +1803,20 @@ def build_ways(
         scenery_objects.append(SceneryObject(x=obj_x, y=obj_y, kind=kind, name=tags.get("name"), id=nid, direction_angle=angle,
                                              opening_hours=tags.get("opening_hours") if kind == "nightclub" else None,
                                              capacity=_capacity(tags) if kind == "charging_station" else None,
-                                             level=_level(tags) if kind == "charging_station" else None))
+                                             level=_level(tags) if kind == "charging_station" else None,
+                                             backrest={"no": False, "yes": True}.get(tags.get("backrest")) if kind == "bench" else None,
+                                             height_m=_skyline_height(kind, tags) if kind in _SKYLINE_HEIGHTS_M else None))
+    for tags, way_id, node_ids in gap_ways_raw:  # power lines along their poles; man_made areas once, at their centre
+        pts = [nodes_m[n] for n in node_ids if n in nodes_m]
+        if len(pts) < 2 or tags.get("natural") == "tree_row":
+            continue
+        if tags.get("power"):
+            scenery_objects.append(SceneryObject(x=pts[0][0], y=pts[0][1], kind="power_line", id=-way_id, points_m=pts))
+            continue
+        pts = pts[:-1] if pts[0] == pts[-1] else pts
+        scenery_objects.append(SceneryObject(x=sum(x for x, _ in pts) / len(pts), y=sum(y for _, y in pts) / len(pts),
+                                             kind=tags["man_made"], name=tags.get("name"), id=-way_id,
+                                             height_m=_skyline_height(tags["man_made"], tags)))
     for tags, way_id, node_ids in equipment_ways_raw:  # at its centre, square to its longest edge
         pts = [nodes_m[n] for n in node_ids if n in nodes_m]
         if len(pts) >= 3:

@@ -1,4 +1,4 @@
-"""Small, bounded samples of Liiga crowds around the current city's arena."""
+"""Small, bounded samples of Finnish top-league crowds around local arenas."""
 from __future__ import annotations
 
 import math
@@ -66,6 +66,7 @@ class ArenaEvent:
     home_team: str = ""
     away_team: str = ""
     venue_name: str = ""
+    game_duration: timedelta = GAME_DURATION
     entrances: tuple[tuple[float, float], ...] = ()
     next_entrance: int = 0
     arrivals_spawned: int = 0
@@ -74,7 +75,7 @@ class ArenaEvent:
 
 
 class ArenaCrowds:
-    """Turn local Liiga fixtures into a few visible pedestrians near the taxi."""
+    """Turn local Liiga and Veikkausliiga fixtures into visible spectators."""
 
     def __init__(self, pedestrians, taxi_stops, city: str, fixtures: Iterable[dict] | None = None,
                  to_metres=None, seed: int = 0) -> None:
@@ -89,7 +90,8 @@ class ArenaCrowds:
         self.events = []
         for match in fixtures if fixtures is not None else load_sports_fixtures():
             venue = match.get("venue", {})
-            if match.get("competition") != "liiga" or str(venue.get("city", "")).casefold() != city_key:
+            competition = match.get("competition")
+            if competition not in {"liiga", "veikkausliiga"} or str(venue.get("city", "")).casefold() != city_key:
                 continue
             latitude, longitude = venue.get("latitude"), venue.get("longitude")
             if latitude is None or longitude is None:
@@ -102,11 +104,13 @@ class ArenaCrowds:
             self.events.append(ArenaEvent(
                 match["id"], _local_time(match["start"]), point, visible,
                 home_team=match.get("home_team", ""), away_team=match.get("away_team", ""),
-                venue_name=venue.get("name", ""), entrances=_arena_entrances(pedestrians, point),
+                venue_name=venue.get("name", ""),
+                game_duration=GAME_DURATION if competition == "liiga" else timedelta(hours=2),
+                entrances=_arena_entrances(pedestrians, point),
             ))
 
     def schedule_on(self, day: date) -> list[ArenaEvent]:
-        """The current city's Liiga games on a Finnish local calendar day."""
+        """The current city's league games on a Finnish local calendar day."""
         return sorted((event for event in self.events if event.start.date() == day), key=lambda event: event.start)
 
     def sync_buildings(self, buildings) -> None:
@@ -120,12 +124,12 @@ class ArenaCrowds:
 
     def lights_on(self, now: datetime) -> bool:
         """Whether an arena is occupied for arrivals, a game, or departures."""
-        return any(event.start - ARRIVAL_BEFORE <= now < event.start + GAME_DURATION + DEPARTURE_WINDOW
+        return any(event.start - ARRIVAL_BEFORE <= now < event.start + event.game_duration + DEPARTURE_WINDOW
                    for event in self.events)
 
     def games_in_progress(self, now: datetime) -> list[tuple[float, float]]:
         """Where a game is being played right now (the crowd heard outside)."""
-        return [event.point for event in self.events if event.start <= now < event.start + GAME_DURATION]
+        return [event.point for event in self.events if event.start <= now < event.start + event.game_duration]
 
     def update(self, now: datetime, taxi_position: tuple[float, float]) -> None:
         if self._next_update is not None and now < self._next_update:
@@ -133,7 +137,7 @@ class ArenaCrowds:
         self._next_update = now + timedelta(seconds=10)
         for event in self.events:
             arrival_start = event.start - ARRIVAL_BEFORE
-            departure_start = event.start + GAME_DURATION
+            departure_start = event.start + event.game_duration
             if now >= event.start:
                 self._move_arrivals_inside(event)
             if math.dist(event.point, taxi_position) > VISIBLE_RADIUS_M:

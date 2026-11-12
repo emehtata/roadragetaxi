@@ -1,0 +1,1099 @@
+{
+  "scenarios": [
+    {
+      "id": "startup_pbf_download",
+      "kind": "startup_download",
+      "description": "The launcher's Finland map download screen: progress bar, MiB count and speed",
+      "why": "docs/specs/pbf-download-progress.md: throttled progress and smoothed speed; a local server sends a 200 MiB body at ~2 MiB/s.",
+      "start_time": "2026-06-20T13:00",
+      "size_mib": 200,
+      "rate_mib_s": 2.0
+    },
+    {
+      "id": "windshield_city_day",
+      "description": "Straight ahead from the taxi interior on a city-centre street",
+      "why": "The existing city-centre street taxi pose faces a street with nearby 3D roads, facades, traffic and lights.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3
+    },
+    {
+      "id": "sky_clouds_clear_day",
+      "description": "Windshield sky at cloud 0.0: clear sky: the plain gradient",
+      "why": "The city-centre street taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.0,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3,
+      "godot_args": [
+        "--sun-altitude",
+        "30"
+      ]
+    },
+    {
+      "id": "sky_clouds_broken_day",
+      "description": "Windshield sky at cloud 0.5: broken cloud patches",
+      "why": "The city-centre street taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.5,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3,
+      "godot_args": [
+        "--sun-altitude",
+        "30"
+      ]
+    },
+    {
+      "id": "sky_clouds_overcast_day",
+      "description": "Windshield sky at cloud 0.9: a nearly closed cloud deck",
+      "why": "The city-centre street taxi pose looks down an open street with sky above the facades; the sun is held near 30 degrees.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.9,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3,
+      "godot_args": [
+        "--sun-altitude",
+        "30"
+      ]
+    },
+    {
+      "id": "windshield_oulu_day",
+      "description": "Street view at the Oulu taxi pose from the latest F12 screenshot",
+      "why": "The captured player view shows close cars, pedestrians, signals and open sky.",
+      "city": "Oulu",
+      "pose": [
+        427752.6020218936,
+        7210620.188026317,
+        -1.9872317961141932
+      ],
+      "start_time": "2026-06-20T14:30",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        30,
+        90
+      ],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3
+    },
+    {
+      "id": "metallic_vehicle_paint_day",
+      "description": "The taxi's and parked cars' paint under a high summer sun, buildings close on both sides",
+      "why": "City-centre street, inner-city district (find: 12 lamps, 13 buildings, 4 colours within 70 x 40 m): a narrow street of 5-7 storey blocks whose walls the paint can reflect; June noon sun ~53 deg.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 5
+    },
+    {
+      "id": "metallic_vehicle_paint_night",
+      "description": "Car paint highlights under street lamps and lit windows at night",
+      "why": "The same city-centre street pose: 12 street lamps within 70 x 40 m and apartment windows on both sides; October 22:30, sun far below the horizon.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-10-20T22:30",
+      "weather": "clear",
+      "cloud": 0.2,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        -90,
+        -12
+      ],
+      "zoom": 3.0,
+      "requires": {
+        "lamps_in_view": 3,
+        "buildings_in_view": 3
+      },
+      "measure_s": 5
+    },
+    {
+      "id": "wet_asphalt_night",
+      "description": "Wet asphalt and puddles in rain at night, lit by street lamps and the taxi's headlights",
+      "why": "city-centre street is paved city street with 12 lamps nearby; rain makes it fully wet; October 22:30.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-10-20T22:30",
+      "weather": "rain",
+      "cloud": 0.9,
+      "wetness": [
+        0.95,
+        1.0
+      ],
+      "sun_altitude_deg": [
+        -90,
+        -12
+      ],
+      "zoom": 2.0,
+      "requires": {
+        "lamps_in_view": 4,
+        "buildings_in_view": 4
+      },
+      "measure_s": 5
+    },
+    {
+      "id": "snow_street_day",
+      "description": "Snow falling on the city-centre street by day: flakes drift and flutter down to the ground and roofs",
+      "why": "wet_asphalt_night's pose (paved street, 4 buildings in view) in January daylight with snow; snow leaves the road dry.",
+      "city": "Helsinki",
+      "pose": [385325.8, 6671757.1, 0.59],
+      "start_time": "2026-01-15T12:00",
+      "weather": "snow",
+      "cloud": 0.9,
+      "wetness": [0.0, 0.2],
+      "sun_altitude_deg": [0, 20],
+      "zoom": 2.0,
+      "requires": {
+        "buildings_in_view": 4
+      },
+      "measure_s": 5,
+      "second_shot_s": 0.5
+    },
+    {
+      "id": "building_materials_day",
+      "description": "Facades of several building types and colours in daylight",
+      "why": "Second inner-city street (find: 14 buildings, 4 colours, 3 commercial within 70 x 40 m). OSM gives no facade materials here: colours and categories differ, materials cannot be promised.",
+      "city": "Helsinki",
+      "pose": [
+        385248.8,
+        6671727.7,
+        2.825
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 2.0,
+      "requires": {
+        "buildings_in_view": 6
+      },
+      "measure_s": 5
+    },
+    {
+      "id": "glass_and_metal_facades",
+      "description": "Window glass of commercial blocks reflecting the sky, overcast-free afternoon",
+      "why": "second inner-city street has the most commercial buildings found (3) beside apartment blocks: storefront and office glazing. No mapped glass or metal facades exist in the data; this tests the window glass.",
+      "city": "Helsinki",
+      "pose": [
+        385248.8,
+        6671727.7,
+        2.825
+      ],
+      "start_time": "2026-06-20T16:00",
+      "weather": "clear",
+      "cloud": 0.0,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        25,
+        90
+      ],
+      "zoom": 2.0,
+      "requires": {
+        "buildings_in_view": 4
+      },
+      "measure_s": 5
+    },
+    {
+      "id": "roadworks_after_extension",
+      "description": "A generated roadwork on a way merged by map extension, outside the start box, top-down",
+      "why": "Oulu: the start --bbox is the motorway_through_traffic 0.6 km box (start_box_center); the cold-start tile window merges the tiles around it through map sync, which adds roadworks there. The pose is the midpoint of one of them from a run's server.log (a full-road work about 1 km west of the box). Readiness needs a roadworks entry in the view outside the start box. Daylight.",
+      "city": "Oulu",
+      "pose": [382154.6, 7303004.5, 1.447],
+      "start_box_center": [383200.8, 7302861.8],
+      "box_km": 0.6,
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [0.0, 0.05],
+      "sun_altitude_deg": [40, 90],
+      "zoom": 2.0,
+      "view": "2d",
+      "requires": {
+        "roadworks_outside_start_box": 1
+      },
+      "measure_s": 3,
+      "seed": 1,
+      "server_args": ["--test-roadworks", "--bbox", "65.82301238761534,24.436836770542975,65.82841779302075,24.450036344685195"]
+    },
+    {
+      "id": "streetlight_transition",
+      "description": "Street lamps through dusk, night and dawn, then driving down the street",
+      "why": "Lamp-lined city street (find: 11 street lamps within 70 x 40 m, a straight street heading south): many lamps in view; October dusk 17:30, night 22:00, dawn 07:45. Each run drives 8 s and counts lamp light reassignments.",
+      "city": "Helsinki",
+      "pose": [
+        386223.9,
+        6671583.9,
+        -1.545
+      ],
+      "start_time": [
+        "2026-10-20T17:30",
+        "2026-10-20T22:00",
+        "2026-10-21T07:45"
+      ],
+      "weather": "clear",
+      "cloud": 0.3,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        -90,
+        2
+      ],
+      "zoom": 1.0,
+      "requires": {
+        "lamps_in_view": 6,
+        "buildings_in_view": 6
+      },
+      "drive_s": 8
+    },
+    {
+      "id": "dense_city_performance",
+      "description": "Fixed dense-city view at night for repeatable rendering measurements",
+      "why": "City-centre street, inner-city district: dense blocks, 12 lamps and 13 buildings around; night so every light pool is active; the default zoom shows the most of it.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-10-20T22:30",
+      "weather": "clear",
+      "cloud": 0.2,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        -90,
+        -12
+      ],
+      "zoom": 1.0,
+      "requires": {
+        "lamps_in_view": 8,
+        "buildings_in_view": 15
+      },
+      "measure_s": 15
+    },
+    {
+      "id": "graphics_brightness",
+      "description": "The graphics settings' brightness 1.4 over a daylight street (compare with building_materials_day)",
+      "why": "The building_materials_day view (second inner-city street: facades, park, road) with the picture settings raised: the world brighter, the HUD unchanged.",
+      "city": "Helsinki",
+      "pose": [
+        385248.8,
+        6671727.7,
+        2.825
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 2.0,
+      "requires": {
+        "buildings_in_view": 6
+      },
+      "measure_s": 5,
+      "graphics": {
+        "brightness": 1.4,
+        "contrast": 1.0
+      }
+    },
+    {
+      "id": "ferry_car_3d",
+      "description": "A road ferry at a ferry landing, the taxi waiting on the slip",
+      "why": "A road ferry (OSM route=ferry, ferry=secondary, 925 m): the taxi 8 m back from the route's east end, facing the deck of the ferry docked there (or under way, after its 40 s wait).",
+      "city": "Kustavi",
+      "pose": [
+        189532.1,
+        6725218.5,
+        -3.033
+      ],
+      "start_time": "2026-07-15T12:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        30,
+        90
+      ],
+      "zoom": 1.0,
+      "requires": {
+        "buildings_in_view": 0
+      },
+      "measure_s": 3
+    },
+    {
+      "id": "ferry_car_2d",
+      "description": "The same ferry landing in the 2D view: the ferry drawn under the vehicles",
+      "why": "As ferry_car_3d, 2D: the ferry layer is below the cars it carries.",
+      "view": "2d",
+      "city": "Kustavi",
+      "pose": [
+        189532.1,
+        6725218.5,
+        -3.033
+      ],
+      "start_time": "2026-07-15T12:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        30,
+        90
+      ],
+      "zoom": 1.0,
+      "requires": {
+        "buildings_in_view": 0
+      },
+      "measure_s": 3
+    },
+    {
+      "id": "train_station_day",
+      "description": "Train model view at a city station",
+      "why": "The station tracks are real map data; the larger area includes the central station so timetable routes can be resolved.",
+      "city": "Helsinki",
+      "pose": [
+        385384.5,
+        6675335.0,
+        0.0
+      ],
+      "box_km": 8.0,
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 1.5,
+      "server_args": [
+        "--osm-source=pbf"
+      ],
+      "requires": {
+        "train_models_in_view": 1
+      },
+      "measure_s": 3
+    },
+    {
+      "id": "motorway_through_traffic",
+      "description": "Fast traffic on a motorway through a mid-size city at 58 m/s: cars ahead of the taxi, passed and gone behind",
+      "why": "Motorway through a mid-size city (Oulu): a 1.76 km straight motorway from the start pose (find, 10 km Oulu world): fast traffic should be on it ahead of the taxi and not parked on it; daylight so the motorway is visible.",
+      "city": "Oulu",
+      "pose": [
+        383200.8,
+        7302861.8,
+        -0.056
+      ],
+      "box_km": 10,
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 1.0,
+      "requires": {},
+      "drive_s": 40,
+      "seed": 1,
+      "lane_assist": true
+    },
+    {
+      "id": "car_lod_pass_day",
+      "description": "Windshield view on a motorway through a mid-size city, driving at full throttle: traffic ahead and oncoming passes from ~70 m to ~5 m; a frame every 0.5 s",
+      "why": "Motorway through a mid-size city (Oulu): the motorway_through_traffic pose, which has fast traffic ahead of the taxi and on the other carriageway (seed 1). Every car crosses the old 22 m model swap and the 60 m radius; daylight so the cars are visible.",
+      "city": "Oulu",
+      "pose": [
+        383200.8,
+        7302861.8,
+        -0.056
+      ],
+      "box_km": 10,
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 1.0,
+      "requires": {},
+      "drive_s": 15,
+      "seed": 1,
+      "windshield": true,
+      "frame_every_s": 0.5,
+      "lane_assist": true
+    },
+    {
+      "id": "hud_weather_clear_day",
+      "description": "HUD weather line at cloud cover 0.1, dry",
+      "why": "The HUD weather label follows cloud cover when there is no precipitation.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3
+    },
+    {
+      "id": "hud_weather_partly_cloudy_day",
+      "description": "HUD weather line at cloud cover 0.5, dry",
+      "why": "The HUD weather label follows cloud cover when there is no precipitation.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.5,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3
+    },
+    {
+      "id": "hud_weather_overcast_day",
+      "description": "HUD weather line at cloud cover 0.9, dry",
+      "why": "The HUD weather label follows cloud cover when there is no precipitation.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.9,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 3
+    },
+    {
+      "id": "terrain_hill_bridge_day",
+      "description": "Southbound on a city street toward a layer-1 bridge over a DEM hill: a sloped road and a deck above sloped ground",
+      "why": "The bridge (OSM bridge=yes, layer=1, 170 m) starts 30 m ahead. Needs <cache>/Helsinki.dem.json: tools/make_dem.py Helsinki --test-hill 386740,6672850,10,60 (synthetic test raster) or --asc from the NLS 10 m DEM.",
+      "city": "Helsinki",
+      "pose": [
+        386708.0,
+        6673009.0,
+        -1.504
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 0
+      },
+      "measure_s": 3,
+      "windshield": true
+    },
+    {
+      "id": "vehicle_lineup_2d_day",
+      "description": "Every vehicle kind the 2D view draws, one per row, top-down by day",
+      "why": "Size and silhouette check per kind (docs/specs/vehicle-realism-audit.md) on a real street: the lineup is drawn by the client east of the taxi.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.0
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 2.0,
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 2,
+      "view": "2d",
+      "lineup": true
+    },
+    {
+      "id": "vehicle_lineup_2d_night",
+      "description": "The same 2D vehicle lineup at night: lamps, beams, the taxi sign",
+      "why": "Size and silhouette check per kind (docs/specs/vehicle-realism-audit.md) on a real street: the lineup is drawn by the client east of the taxi.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.0
+      ],
+      "start_time": "2026-10-20T22:30",
+      "weather": "clear",
+      "cloud": 0.2,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        -90,
+        -12
+      ],
+      "zoom": 2.0,
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 2,
+      "view": "2d",
+      "lineup": true
+    },
+    {
+      "id": "vehicle_lineup_3d_day",
+      "description": "Every vehicle kind the 3D view draws, one per row, by day",
+      "why": "Size and silhouette check per kind (docs/specs/vehicle-realism-audit.md) on a real street: the lineup is drawn by the client east of the taxi.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 1.2,
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 2,
+      "lineup": true,
+      "lineup_along_road": true
+    },
+    {
+      "id": "glb_only_traffic_day",
+      "description": "3D view over a Helsinki centre street with moving traffic and trees, driving: cars 66-200 m away are GLB models, not procedural boxes",
+      "why": "docs/specs/glb-only-vehicles.md: the vehicle_lineup_3d_day pose (Helsinki centre, street trees and buildings); seeded traffic passes 80-200 m from the taxi while it drives.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 1.2,
+      "requires": {
+        "buildings_in_view": 3,
+        "far_npcs": 3
+      },
+      "drive_s": 10,
+      "seed": 1
+    },
+    {
+      "id": "glb_only_traffic_windshield_day",
+      "description": "Windshield view on the Oulu motorway (car_lod_pass_day pose): traffic ahead 66-200 m away is GLB models, measured from the windshield",
+      "why": "docs/specs/glb-only-vehicles.md AC 4: the car_lod_pass_day pose has seeded traffic ahead on the same carriageway (seed 1); the taxi is turned (heading -1.91) towards the seeded car ~118 m away so it is in frame; readiness waits for a GLB vehicle over 66 m ahead within 30 deg of the windshield heading.",
+      "city": "Oulu",
+      "pose": [
+        383200.8,
+        7302861.8,
+        -1.91
+      ],
+      "box_km": 10,
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 1.0,
+      "requires": {
+        "far_car_models_ahead": 1
+      },
+      "measure_s": 3,
+      "seed": 1,
+      "lane_assist": true,
+      "windshield": true
+    },
+    {
+      "id": "vehicle_lineup_3d_night",
+      "description": "The same 3D vehicle lineup at night: lamps, beams, the taxi sign",
+      "why": "Size and silhouette check per kind (docs/specs/vehicle-realism-audit.md) on a real street: the lineup is drawn by the client east of the taxi.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-10-20T22:30",
+      "weather": "clear",
+      "cloud": 0.2,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        -90,
+        -12
+      ],
+      "zoom": 1.2,
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 2,
+      "lineup": true,
+      "lineup_along_road": true
+    },
+    {
+      "id": "vehicle_lineup_bikes_day",
+      "description": "Bicycle and e-scooter rows only, close: each kind's model variants side by side, by day",
+      "why": "docs/specs/vehicle-model-variants.md AC 5: the lineup's zoom is too far to tell the models apart.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 3.0,
+      "requires": {},
+      "measure_s": 2,
+      "lineup": true,
+      "lineup_along_road": true,
+      "lineup_kinds": [
+        "bicycle",
+        "e_scooter"
+      ]
+    },
+    {
+      "id": "vehicle_bike_close_day",
+      "description": "City bicycle and mountain bike side by side, very close, by day",
+      "why": "docs/specs/mountain-bike-size-override.md AC 7: the bikes lineup is too far to see bar width and wheels.",
+      "city": "Helsinki",
+      "pose": [
+        385351.8,
+        6671751.2,
+        2.15
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 6.5,
+      "requires": {},
+      "measure_s": 2,
+      "lineup": true,
+      "lineup_along_road": true,
+      "lineup_kinds": [
+        "bicycle"
+      ]
+    },
+    {
+      "id": "vehicle_lineup_bikes_night",
+      "description": "Bicycle and e-scooter rows only, close: each kind's model variants side by side, by night",
+      "why": "docs/specs/vehicle-model-variants.md AC 5: the lineup's zoom is too far to tell the models apart.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-10-20T22:30",
+      "weather": "clear",
+      "cloud": 0.2,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        -90,
+        -12
+      ],
+      "zoom": 3.0,
+      "requires": {},
+      "measure_s": 2,
+      "lineup": true,
+      "lineup_along_road": true,
+      "lineup_kinds": [
+        "bicycle",
+        "e_scooter"
+      ]
+    },
+    {
+      "id": "vehicle_lineup_3d_coach_right",
+      "description": "One train coach close up in the 3D view, its right side towards the camera: its doors",
+      "why": "Size and silhouette check per kind (docs/specs/vehicle-realism-audit.md) on a real street: the lineup is drawn by the client east of the taxi.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 2.2,
+      "requires": {
+        "buildings_in_view": 3,
+        "train_models_in_view": 1
+      },
+      "measure_s": 2,
+      "view": "3d",
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "lineup": "coach",
+      "lineup_coach": ["standard", 26.4, 2.89],
+      "lineup_along_road": true
+    },
+    {
+      "id": "camp_pitch_2d_nallikari",
+      "description": "A camper van, a caravan and a tent on their pitches at Nallikari camping, 2D top-down: the camper drawn at its streamed length",
+      "why": "Oulu, Nallikari camping: mapped point pitches inside the campsite; populate_camp_pitches puts a camper_van on the pitch at 425660.5, 7212600.6, a caravan 8 m west of it and a tent 16 m west (each pitch: campsites.py's 5 m envelope around the point). camera_at holds the camera between the camper and caravan pitches; the taxi waits on the campsite service road about 20 m north (pose), since on a pitch it would cover the camper and stand off the road. Zoom 5 (45 px/m) resolves the 0.24 m lights. Readiness needs the camper in view, its drawn body within 10 % of its row and each row's footprint inside its pitch. Daylight, clear.",
+      "city": "Oulu",
+      "pose": [
+        425646.3,
+        7212617.6,
+        2.848
+      ],
+      "camera_at": [
+        425656.5,
+        7212602.0
+      ],
+      "pitches": [
+        [
+          425660.5,
+          7212600.6,
+          5.0
+        ],
+        [
+          425652.6,
+          7212603.4,
+          5.0
+        ],
+        [
+          425644.3,
+          7212606.5,
+          5.0
+        ]
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        40,
+        90
+      ],
+      "zoom": 5.0,
+      "view": "2d",
+      "requires": {
+        "camper_pitch_in_view": 1
+      },
+      "measure_s": 2,
+      "seed": 1
+    },
+    {"id": "pbf_fallback_notice_day", "description": "osm_source=pbf with no extract at the configured path: the map comes from Overpass and the HUD names the missing file and the fix", "why": "The forest_3d_day spot in Utajärvi: a small real area, so the Overpass fallback fetch stays short; --force-refresh skips the OSM cache so the pbf path is really tried.", "city": "Utajärvi", "pose": [477629.2, 7170029.2, -2.299], "box_km": 1.0, "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch", "--force-refresh", "--osm-source", "pbf", "--osm-pbf-path", "/nonexistent/finland-latest.osm.pbf"], "requires": {"buildings_in_view": 0, "notice_contains": "/nonexistent/finland-latest.osm.pbf"}, "measure_s": 1},
+    {"id": "forest_3d_day", "description": "Utajärvi forest road from the taxi, 3D top-down view", "why": "A real forest road in Utajärvi: forest on both sides, the procedural 3D forest's main test spot.", "city": "Utajärvi", "pose": [477629.2, 7170029.2, -2.299], "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 0}, "measure_s": 3},
+    {"id": "menu_start_3d_day", "description": "Utajärvi forest road from the taxi with no view flag: the default (menu, shortcut, exe) start is the 3D view with 3D cars", "why": "The forest_3d_day spot; no_view_flag: the harness passes no --outdoor-3d/--outdoor-2d, like a release start.", "city": "Utajärvi", "pose": [477629.2, 7170029.2, -2.299], "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "no_view_flag": true, "requires": {"buildings_in_view": 0, "outdoor_3d": true, "car_models_in_view": 1}, "measure_s": 3},
+    {"id": "forest_3d_windshield_day", "description": "Utajärvi forest road through the taxi windshield", "why": "A real forest road in Utajärvi: forest on both sides, the procedural 3D forest's main test spot.", "city": "Utajärvi", "pose": [477629.2, 7170029.2, -2.299], "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 0}, "measure_s": 3, "windshield": true},
+    {"city": "Utajärvi", "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "windshield": true, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 0}, "measure_s": 3, "id": "forest_dense_windshield_day", "description": "Dense forest road through the taxi windshield", "why": "find --forest: 95 % forest within 80 m of this road point (the densest in the area).", "pose": [479053.5, 7170311.2, 1.884]},
+    {"city": "Utajärvi", "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "windshield": true, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 0}, "measure_s": 0, "id": "forest_dense_drive_day", "description": "Driving through dense forest, windshield view", "why": "find --forest: 95 % forest within 80 m of this road point (the densest in the area).", "pose": [479053.5, 7170311.2, 1.884], "drive_s": 4},
+    {"city": "Utajärvi", "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "windshield": true, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 0}, "measure_s": 3, "id": "forest_dense_side_window_day", "description": "Dense forest through the taxi's left side window", "why": "find --forest: 95 % forest within 80 m of this road point (the densest in the area).", "pose": [479053.5, 7170311.2, 1.884], "eye": {"yaw": 1.571}},
+    {"city": "Utajärvi", "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "windshield": true, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 0}, "measure_s": 3, "id": "forest_road_on_foot_day", "description": "Standing on the dense forest road at eye height (1.7 m), looking along it", "why": "find --forest: 95 % forest within 80 m of this road point (the densest in the area).", "pose": [479053.5, 7170311.2, 1.884], "eye": {"at": [479053.5, 7170311.2], "height": 1.7}},
+    {"city": "Utajärvi", "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "windshield": true, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 0}, "measure_s": 3, "id": "forest_inside_standing_day", "description": "Standing still 25 m inside the dense forest at eye height, looking along the road", "why": "find --forest: 95 % forest within 80 m of this road point (the densest in the area). The eye is 25 m left of the road, inside the forest polygon.", "pose": [479053.5, 7170311.2, 1.884], "eye": {"at": [479029.7, 7170303.5], "height": 1.7}},
+    {"city": "Utajärvi", "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "windshield": true, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 0}, "measure_s": 3, "id": "forest_walk_eye_day", "description": "Eye height (1.7 m) at the Utajärvi forest_3d_day spot", "why": "The user's Utajärvi test spot: village edge with forest beside it.", "pose": [477629.2, 7170029.2, -2.299], "eye": {"at": [477629.2, 7170029.2], "height": 1.7}},
+    {"city": "Utajärvi", "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "windshield": true, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 0}, "measure_s": 3, "id": "forest_open_field_day", "description": "Open field with a forest edge beyond it, through the windshield", "why": "find --forest: 15 % forest within 80 m; open field ahead, the forest edge 150-300 m off.", "pose": [477405.4, 7169824.6, -2.329]},
+    {"city": "Utajärvi", "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "windshield": true, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 0}, "measure_s": 3, "id": "forest_sparse_windshield_day", "description": "Patchy woodland along a main road through the windshield", "why": "find --forest: 15 % forest within 80 m (patchy woodland lining the road).", "pose": [477828.8, 7172916.7, 1.542]},
+    {"id": "walk_city_street_day", "description": "First-person walking: out of the parked taxi on a city-centre street, 4 s walking ahead along the street at eye height", "why": "The windshield_city_day pose: a city-centre street with facades, traffic and lights on both sides; the walker gets out at the driver's door and walks along the street.", "city": "Helsinki", "pose": [385325.8, 6671757.1, 0.59], "requires": {"buildings_in_view": 3}, "walk": {"s": 4, "forward": 1.0, "min_m": 3.5}, "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_city_look_buildings_day", "description": "First-person walking: out of the taxi, turned left towards the facades, looking slightly up, walking 3 s towards them", "why": "The windshield_city_day pose: buildings line the street's left side close to the taxi, so the walker faces facades at street level.", "city": "Helsinki", "pose": [385325.8, 6671757.1, 0.59], "requires": {"buildings_in_view": 3}, "walk": {"s": 3, "forward": 1.0, "yaw": 1.571, "pitch": 0.15, "min_m": 2.0}, "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_forest_sprint_day", "description": "First-person walking: out of the taxi on the dense forest road, sprinting 5 s left off the road into the forest", "why": "find --forest: 95 % forest within 80 m of this road point (the densest in the area); the walker leaves the road into the trees.", "city": "Utajärvi", "pose": [479053.5, 7170311.2, 1.884], "requires": {"buildings_in_view": 0}, "walk": {"s": 5, "forward": 1.0, "yaw": 1.571, "sprint": true, "min_m": 15.0}, "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_taxi_door_prompt_day", "description": "Out of the taxi from the windshield view, 3 s towards the facades, back to the driver's door: the server offers it and the HUD shows the E prompt", "why": "The windshield_city_day pose: a city-centre street with facades on the left, so the walker crosses the sidewalk side and comes back to the parked taxi.", "walk": {"s": 3, "forward": 1.0, "yaw": 1.571, "back": "door"}, "city": "Helsinki", "pose": [385325.8, 6671757.1, 0.59], "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "windshield": true, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 3}, "measure_s": 3},
+    {"id": "walk_taxi_reenter_day", "description": "Out of the taxi, 3 s towards the facades, back to the driver's door and E: back at the wheel in the windshield view, the taxi where it was left", "why": "The windshield_city_day pose: a city-centre street with facades on the left, so the walker crosses the sidewalk side and comes back to the parked taxi.", "walk": {"s": 3, "forward": 1.0, "yaw": 1.571, "back": "in"}, "city": "Helsinki", "pose": [385325.8, 6671757.1, 0.59], "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "windshield": true, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 3}, "measure_s": 3},
+    {"id": "walk_figure_sprint_top_down_day", "description": "The player's 3D figure from above, out of the taxi and sprinting diagonally (looking along the street, stepping left away from the taxi): mid-stride, facing the way it moves", "why": "The windshield_city_day pose: a city-centre street with room to sprint beside the parked taxi.", "walk": {"s": 1.5, "forward": 1.0, "strafe": -1.0, "sprint": true, "top_down": true, "keep": true, "min_m": 4.0}, "zoom": 6.5, "requires": {"buildings_in_view": 1}, "city": "Helsinki", "pose": [385325.8, 6671757.1, 0.59], "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_building_prompt_day", "description": "First-person walking: out of the taxi, 5 s across the sidewalk to the facade: the server offers the building and the HUD names it", "why": "The windshield_city_day pose: buildings line the street's left side close to the taxi.", "walk": {"s": 5, "forward": 1.0, "yaw": 1.571, "expect": "building"}, "zoom": 3.0, "requires": {"buildings_in_view": 3}, "city": "Helsinki", "pose": [385325.8, 6671757.1, 0.59], "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_sidewalk_traffic_day", "description": "First-person walking across the left sidewalk to the arcade facade, with NPC traffic moving", "why": "The windshield_city_day pose: a city-centre street with traffic; the walking frame rate in a dense urban area (walk_city_street_day measures standing).", "city": "Helsinki", "pose": [385325.8, 6671757.1, 0.59], "walk": {"s": 6, "forward": 1.0, "yaw": 1.0}, "requires": {"buildings_in_view": 3, "moving_npcs": 1}, "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_forest_walking_day", "description": "First-person walking into the dense forest, still walking while measured", "why": "The walk_forest_sprint_day pose (95 % forest within 80 m): the walking frame rate among trees (walk_forest_sprint_day measures standing).", "city": "Utajärvi", "pose": [479053.5, 7170311.2, 1.884], "walk": {"s": 4, "forward": 1.0, "yaw": 1.571, "keep": true}, "requires": {"buildings_in_view": 0}, "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_chunk_cross_day", "description": "The walker figure from above sprinting west past the traffic queued on Annankatu, from one 500 m map chunk into the next (x 385500)", "why": "find --near 385497 6671757: Annankatu 21 m east of the chunk edge, heading north-west across it.", "city": "Helsinki", "pose": [385521.4, 6671778.3, 2.155], "walk": {"s": 9, "forward": 1.0, "yaw": 0.8, "sprint": true, "cross_chunk": true, "keep": true, "top_down": true}, "requires": {"buildings_in_view": 1}, "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 5.0, "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_approach_vehicle_day", "description": "First-person walking: out of the taxi on a city-centre service road, to the car parked 21 m ahead, stopping 3.5 m from its centre", "why": "find --near 385214 6671771: a service road behind a parking spot where the seeded traffic parks a car at (385226.7, 6671767.9) every run.", "city": "Helsinki", "pose": [385207.9, 6671777.3, -0.339], "walk": {"s": 0.5, "forward": 1.0, "back": "vehicle", "target": [385226.7, 6671767.9]}, "requires": {"buildings_in_view": 1}, "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_park_day", "description": "First-person walking: out of the taxi on Kaisaniemenranta, 6 s left into Kaisaniemi park", "why": "OSM leisure=park way 122869880 (Kaisaniemenpuisto) lies 12 m left of this Kaisaniemenranta segment.", "city": "Helsinki", "pose": [386087.7, 6672789.0, 2.89], "walk": {"s": 6, "forward": 1.0, "yaw": 1.571, "min_m": 6.0}, "requires": {"buildings_in_view": 0}, "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_bench_oulu_day", "description": "First-person walking: from the taxi on a service road to the mapped benches on an Oulu city-centre square, looking down at a bench (and its sitter, when one sits there)", "why": "The user's screenshot 2026-11-08 15:55 (bench-sitter figure): OSM amenity=bench node 8878256629 (backrest=yes) among a row of benches, 16 m from this service road (the user's taxi stood 110 m away behind buildings).", "city": "Oulu", "pose": [427897.3, 7210634.9, 2.555], "walk": {"s": 0.5, "forward": 1.0, "back": "point", "target": [427884.3, 7210625.9]}, "bench_sitter": [427884.3, 7210625.9], "requires": {"buildings_in_view": 1}, "start_time": "2026-06-20T15:00", "weather": "clear", "cloud": 0.4, "wetness": [0.0, 0.05], "sun_altitude_deg": [30, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_bench_nobackrest_day", "description": "First-person walking: from the taxi on a service road to a mapped backrest=no bench on an Oulu city-centre square, looking down at it: seat and side frames, no backrest slats or uprights", "why": "OSM amenity=bench with backrest=no 12 m from this service road point on the same square as walk_bench_oulu_day (found from the loaded map).", "city": "Oulu", "pose": [427940.3, 7210619.5, 2.80], "walk": {"s": 0.5, "forward": 1.0, "back": "point", "target": [427929.4, 7210623.4]}, "requires": {"buildings_in_view": 1}, "start_time": "2026-06-20T15:00", "weather": "clear", "cloud": 0.4, "wetness": [0.0, 0.05], "sun_altitude_deg": [30, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "drive_power_poles_day", "description": "Power line towers and their wires beside a road (osm-render-gaps gap 1)", "why": "OSM power=tower nodes of a power=line 19-21 m from this Oulu service road point (Overpass 2026-11-08); their wires join consecutive towers under 150 m apart.", "city": "Oulu", "pose": [426307.2, 7209696.8, 1.601], "requires": {"scenery_in_view": {"power_tower": 1}}, "zoom": 2.0, "start_time": "2026-06-20T15:00", "weather": "clear", "cloud": 0.4, "wetness": [0.0, 0.05], "sun_altitude_deg": [30, 90], "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "skyline_chimney_day", "description": "First-person walking: a tall mapped chimney at its height tag, seen from the street 95 m away (osm-render-gaps gap 2)", "why": "OSM man_made=chimney node with height=65 (Overpass 2026-11-08), 95 m ahead of this Oulu service road point along its heading, no mapped building on the line of sight; the walker stands by the taxi and looks slightly up so the whole 65 m is in frame.", "city": "Oulu", "pose": [427247.9, 7209147.9, -0.755], "walk": {"s": 0.3, "forward": 1.0, "pitch": 0.35}, "requires": {"scenery_in_view": {"chimney": 1}}, "zoom": 3.0, "start_time": "2026-06-20T15:00", "weather": "clear", "cloud": 0.4, "wetness": [0.0, 0.05], "sun_altitude_deg": [30, 90], "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_tree_row_day", "description": "First-person walking: towards a mapped tree row (natural=tree_row) beside a road (osm-render-gaps gap 3)", "why": "OSM natural=tree_row ways 10-16 m from this Oulu tertiary road point, on its left (Overpass 2026-11-08); their trees are placed every 6 m along them. (A row 5 m from a road centre is swept away with the trees under the road.)", "city": "Oulu", "pose": [428915.1, 7211560.3, -3.004], "walk": {"s": 0.3, "forward": 1.0, "yaw": 0.9, "pitch": 0.05}, "requires": {"scenery_in_view": {"trees": 3}}, "zoom": 3.0, "start_time": "2026-06-20T15:00", "weather": "clear", "cloud": 0.4, "wetness": [0.0, 0.05], "sun_altitude_deg": [30, 90], "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "walk_boulder_day", "description": "First-person walking: towards a mapped boulder (natural=rock) beside a service road (osm-render-gaps gap 4)", "why": "OSM natural=rock nodes 5-11 m from this Oulu service road point (Overpass 2026-11-08).", "city": "Oulu", "pose": [427308.1, 7211879.7, 1.284], "walk": {"s": 0.5, "forward": 1.0, "back": "point", "target": [427302.9, 7211880.1]}, "requires": {"scenery_in_view": {"boulder": 1}}, "zoom": 3.0, "start_time": "2026-06-20T15:00", "weather": "clear", "cloud": 0.4, "wetness": [0.0, 0.05], "sun_altitude_deg": [30, 90], "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "drive_level_crossing_day", "description": "A level crossing where a rail line crosses a service road: crossbucks (osm-render-gaps gap 5)", "why": "OSM railway=level_crossing node (crossing:barrier=no) 1 m from this Oulu service road point (Overpass 2026-11-08).", "city": "Oulu", "pose": [428628.9, 7210670.0, -0.909], "requires": {"scenery_in_view": {"level_crossing": 1}}, "zoom": 6.5, "start_time": "2026-06-20T15:00", "weather": "clear", "cloud": 0.4, "wetness": [0.0, 0.05], "sun_altitude_deg": [30, 90], "server_args": ["--no-auto-fetch"], "measure_s": 3},
+    {"id": "wildlife_models_day", "description": "The CC0 low-poly animals (fox, robin, deer, horse, hare) and a horse rider held still 5-13 m ahead of the taxi, 3D top-down view", "why": "The forest_3d_day pose (Utajärvi village edge with forest): open ground beside the taxi for scale; animals placed by the visual test (docs/specs/animal-models-lowpoly.md).", "city": "Utajärvi", "pose": [477629.2, 7170029.2, -2.299], "animals": [["fox", 477623.0, 7170026.7, -0.728], ["small_bird", 477627.0, 7170024.5, -0.728], ["roe_deer", 477625.4, 7170020.5, -0.728], ["horse", 477620.2, 7170025.1, -0.728], ["rider", 477625.3, 7170023.3, -0.728], ["hare", 477628.9, 7170022.8, -0.728]], "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [40, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "requires": {"buildings_in_view": 0, "animals_in_view": 5}, "measure_s": 3},
+    {"id": "toripolliisi_front_day", "description": "The Toripolliisi statue on the Oulu market square from 12 m in front of it at eye height (the user's reference photo's view): its face towards the camera, the restaurant row behind it", "why": "OSM tourism=artwork node 576296537 (Toripolliisi); the restaurant Toripolliisi (former Ravintola Matala, node 355556585) is behind the statue in the user's photos, 105 deg from it, so the statue faces about 285 deg. The taxi stands on Rantakatu 34 m south; the eye is 12 m west-north-west of the statue looking at it.", "city": "Oulu", "pose": [427645.9, 7210781.2, 0.987], "eye": {"at": [427630.9, 7210818.0], "height": 1.7, "yaw": -1.248}, "windshield": true, "requires": {"buildings_in_view": 1}, "start_time": "2026-06-20T15:00", "weather": "clear", "cloud": 0.4, "wetness": [0.0, 0.05], "sun_altitude_deg": [30, 90], "zoom": 3.0, "server_args": ["--no-auto-fetch"], "measure_s": 3}
+  ]
+}

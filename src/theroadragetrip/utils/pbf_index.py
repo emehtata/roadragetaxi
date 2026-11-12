@@ -35,13 +35,15 @@ from typing import Callable, List, Optional, Tuple
 
 
 def osmium_command() -> Optional[str]:
-    """The `osmium` program (osmium-tool) to run, or None without one: the
-    Windows release ships it beside the server (server/osmium/osmium.exe,
-    windows-release.yml); a Windows source run has it in the repo's
-    .osmium-windows (tools/run-windows.ps1 installs it); elsewhere PATH."""
+    """The `osmium` program (osmium-tool) to run, or None without one: a
+    release ships it beside the server (server/osmium/osmium.exe on Windows,
+    server/osmium/bin/osmium on Linux; windows-release.yml, linux-release.yml);
+    a Windows source run has it in the repo's .osmium-windows
+    (tools/run-windows.ps1 installs it); elsewhere PATH."""
     import sys
 
-    bundled = Path(sys.executable).parent / "osmium" / "osmium.exe"
+    exe = "osmium.exe" if sys.platform == "win32" else "bin/osmium"
+    bundled = Path(sys.executable).parent / "osmium" / exe
     if getattr(sys, "frozen", False) and bundled.is_file():
         return str(bundled)
     source = Path(__file__).resolve().parents[3] / ".osmium-windows" / "Library" / "bin" / "osmium.exe"
@@ -79,6 +81,10 @@ MANIFEST_NAME = "manifest.json"
 # redundant work for the common case, never removes correctness.
 DEFAULT_CELL_PADDING_DEG = 0.05
 
+# Bounds each osmium call here (fileinfo, one cell cut: seconds to tens of
+# seconds measured) so a hung osmium cannot hold the single cut slot forever.
+OSMIUM_TIMEOUT_S = 600.0
+
 
 def default_index_dir(pbf_path: Path) -> Path:
     return Path(pbf_path).parent / f"{Path(pbf_path).name}.index"
@@ -92,22 +98,24 @@ def _source_bbox(pbf_path: Path) -> Tuple[float, float, float, float]:
     `osmium cat`) falls back to `fileinfo -e`, which scans the whole file
     to compute one - no slower than the indexing pass that follows anyway.
     """
-    result = subprocess.run(
-        [osmium_command() or "osmium", "fileinfo", "--json", str(pbf_path)],
-        capture_output=True, text=True, encoding="utf-8", check=True,
-    )
-    boxes = json.loads(result.stdout)["header"]["boxes"]
-    if boxes:
-        west, south, east, north = boxes[0]
-        return west, south, east, north
+    try:
+        result = subprocess.run(
+            [osmium_command() or "osmium", "fileinfo", "--json", str(pbf_path)],
+            capture_output=True, text=True, encoding="utf-8", check=True, timeout=OSMIUM_TIMEOUT_S,
+        )
+        boxes = json.loads(result.stdout)["header"]["boxes"]
+        if boxes:
+            west, south, east, north = boxes[0]
+            return west, south, east, north
 
-    result = subprocess.run(
-        [osmium_command() or "osmium", "fileinfo", "-e", "--json", str(pbf_path)],
-        capture_output=True, text=True, encoding="utf-8", check=True,
-    )
-    bbox = json.loads(result.stdout)["data"]["bbox"]
-    west, south, east, north = bbox
-    return west, south, east, north
+        result = subprocess.run(
+            [osmium_command() or "osmium", "fileinfo", "-e", "--json", str(pbf_path)],
+            capture_output=True, text=True, encoding="utf-8", check=True, timeout=OSMIUM_TIMEOUT_S,
+        )
+        west, south, east, north = json.loads(result.stdout)["data"]["bbox"]
+        return west, south, east, north
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError, IndexError) as exc:
+        raise RuntimeError(f"osmium fileinfo of {pbf_path} failed: {type(exc).__name__}: {exc}") from exc
 
 
 def _cell(lon: float, lat: float, grid_size_deg: float) -> Tuple[int, int]:
@@ -202,7 +210,12 @@ def _extract_cell(pbf_path: Path, out_path: Path, cell: dict, strategy: str, cel
         str(pbf_path),
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=OSMIUM_TIMEOUT_S)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"osmium extract of cell {cell['file']} timed out after {OSMIUM_TIMEOUT_S:.0f}s") from exc
+        except OSError as exc:
+            raise RuntimeError(f"osmium extract of cell {cell['file']} could not run: {exc}") from exc
         if result.returncode != 0:
             raise RuntimeError(f"osmium extract failed for cell {cell['file']} (exit {result.returncode}): {result.stderr.strip()}")
         temp_path.replace(out_path)

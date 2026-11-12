@@ -1,10 +1,10 @@
-"""Digitraffic sign readings for the nearby-sign HUD, not traffic-control decisions."""
+"""Digitraffic sign messages applying to the taxi, separate from traffic-control decisions."""
 from __future__ import annotations
 
 import math
 from datetime import datetime, timedelta, timezone
 
-SIGN_DISTANCE_M = 700.0
+SIGN_DISTANCE_M = 700.0  # shortcut: bounded downstream display zone until provider zone endpoints are available.
 
 
 def _time(value):
@@ -44,7 +44,7 @@ def parse_signs(collection):
                 continue
             text = []
             for row in sorted(rows, key=lambda r: (r.get('screen', 1), r.get('rowNumber', 0))):
-                if row.get('screen', 1) != 1 or not isinstance(row.get('text'), str):
+                if not isinstance(row.get('text'), str):
                     continue
                 line = row['text'].strip()
                 try:
@@ -120,7 +120,7 @@ def fetch_signs(client, tiles, start):
 
 
 def nearby_signs(signs, car, way, moment, grid=None, node_cache=None):
-    """Time-valid signs facing the taxi on its connected, unambiguous approach."""
+    """Latest passed signs on the taxi's directed, connected road within the display zone."""
     if way is None or getattr(car, 'layer', 0) != 0 or getattr(car, 'map_level', 0) != 0:
         return []
     roads = {r.strip() for r in str(getattr(way, 'ref', '') or '').replace(',', ';').split(';')}
@@ -132,19 +132,20 @@ def nearby_signs(signs, car, way, moment, grid=None, node_cache=None):
             continue
         if sign['id'] not in newest or sign['_effect_time'] > newest[sign['id']]['_effect_time']:
             newest[sign['id']] = sign
-    eligible = [s for s in newest.values() if s.get('_binding') is not None
-                and (s['speed_limit_kmh'] is not None or s['code'] or s['text'])]
+    eligible = [s for s in newest.values() if s.get('_binding') is not None]
     if not eligible:
         return []
-    path = approach(car, way, grid, SIGN_DISTANCE_M, node_cache)
+    path = approach(car, way, grid, SIGN_DISTANCE_M, node_cache, backwards=True)
     rows = []
     for sign in eligible:
-        distance = distance_on_approach(sign.get('_binding'), path)
+        road, segment, direction, fraction = sign['_binding']
+        distance = distance_on_approach((road, segment, -direction, fraction), path)
         if distance is not None and distance <= SIGN_DISTANCE_M:
-            rows.append({k: v for k, v in dict(sign, distance_m=round(distance / 10) * 10).items()
+            rows.append({k: v for k, v in dict(sign, distance_m=distance).items()
                          if k not in ('x', 'y', 'lon', 'lat') and not k.startswith('_')})
     rows.sort(key=lambda s: (s['distance_m'], s['id']))
     selected = {}
     for row in rows:
         selected.setdefault(row['type'], row)
-    return list(selected.values())
+    return [dict(s, distance_m=round(s['distance_m'] / 10) * 10) for s in selected.values()
+            if s['speed_limit_kmh'] is not None or s['code'] or s['text']]

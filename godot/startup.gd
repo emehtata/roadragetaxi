@@ -51,6 +51,7 @@ var _pause_shot: Image  # the frame just before the pause menu opened: a save's 
 const MAX_GIG_SLOTS := 5  # gig saves; a new game beyond them replaces one (career keeps its single save)
 var _gig_mode := "gig_driver"  # the slot-and-city flow's mode: gig driving, or simulation (always the real clock)
 var _tutorial := false  # the next start is the tutorial game
+var _new_save_slot := false
 var _save_slot := ""  # the gig's save slot (server saves/NAME.json): loaded if it exists, saved by the pause menu
 var _back: CanvasLayer  # the backdrop and logo: hidden while the game runs
 var _menu_music: AudioStreamPlayer
@@ -61,6 +62,13 @@ func _t(key: String) -> String:
 
 
 func _ready() -> void:
+	var rtx := preload("res://rtx_trial.gd")
+	if rtx.requested():
+		var report := rtx.probe(rtx.quality())
+		if not report.available:
+			printerr("RTX_TRIAL " + JSON.stringify(report))
+			get_tree().quit(2)
+			return
 	var first_run := _settings.load("user://settings.cfg") != OK or not _settings.has_section_key("game", "language")
 	_language = _settings.get_value("game", "language", "en")
 	AudioManager.ensure_buses()
@@ -78,6 +86,8 @@ func _ready() -> void:
 	_city_locations = _municipalities.filter(func(city): return city.get("menu", true))
 	_cities.assign(_city_locations.map(func(city): return str(city["name"])))
 	print("startup: %d cities from the simulation (%s)" % [_cities.size(), "release" if Paths.exported() else "repo"])
+	print("view: outdoor_3d=%s renderer=%s driver=%s (running %s %s)" % [preload("res://map_chunk.gd").wants_3d(), ProjectSettings.get_setting("rendering/renderer/rendering_method"),
+		ProjectSettings.get_setting("rendering/rendering_device/driver.windows"), RenderingServer.get_current_rendering_method(), RenderingServer.get_current_rendering_driver_name()])
 	if _cities.is_empty():
 		_cities = ["Oulu"]
 		_city_locations = [{"name": "Oulu", "latitude": 65.012, "longitude": 25.468}]
@@ -86,7 +96,7 @@ func _ready() -> void:
 	if not _city in _cities:
 		_city = _cities[0]
 	_build_shell()
-	for flag in ["--skip-menu", "--selftest", "--audiotest", "--inputtest", "--screenshot", "--bench"]:
+	for flag in ["--skip-menu", "--selftest", "--audiotest", "--inputtest", "--screenshot", "--bench", "--visual-test"]:
 		if flag in command_line:
 			_game = preload("res://main.tscn").instantiate()
 			_game.language = _language
@@ -464,6 +474,9 @@ func _main_menu() -> void:
 	(career if last == "career" else simulation if last == "simulation" else gig).call_deferred("grab_focus")
 
 
+var career_status := func() -> Array: return _server_query("--career-status")  # [a career under way]; tests replace it
+
+
 ## Career: what the goals are, then start (the server keeps the progress).
 func _career_menu() -> void:
 	_clear()
@@ -473,10 +486,26 @@ func _career_menu() -> void:
 	goals.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	goals.custom_minimum_size.x = 520
 	_body.add_child(goals)
-	_button(_t("start"), func(): _start("career"))
+	var ongoing: bool = career_status.call() == [true]
+	_button(_t("continue") if ongoing else _t("start"), func(): _start("career"))
+	if ongoing:
+		_button(_t("reset_career"), _confirm_reset_career)
 	_button(_t("back"), _main_menu)
 	_back_action = _main_menu
 	_focus_menu()
+
+
+## Forget the career progress (career.json): the next career starts from the first city.
+func _confirm_reset_career() -> void:
+	_clear()
+	_title(_t("reset_career").to_upper(), _t("confirm_reset_career"))
+	var no := _button(_t("cancel"), _career_menu)
+	_button(_t("reset_career"), func():
+		_server_query("--reset-career")
+		_career_menu())
+	_back_action = _career_menu
+	_focus_menu()
+	no.call_deferred("grab_focus")  # Enter does not delete anything
 
 
 ## The tutorial: a fresh, unsaved gig in Oulu's centre at midday today.
@@ -536,12 +565,14 @@ func _slot_menu() -> void:
 		if slots.size() >= MAX_GIG_SLOTS:
 			_replace_slot_menu(slots)
 		else:
+			_new_save_slot = true
 			_save_slot = ("sim-%d" if _gig_mode == "simulation" else "gig-%d") % int(Time.get_unix_time_from_system())
 			_city_menu())
 	for slot in slots:
 		var name := str(slot.get("name", ""))
 		var button := _button(slot_label(slot, _t("fare_in_progress")), func():
 			_save_slot = name
+			_new_save_slot = false
 			_start_point = Vector2.INF
 			_start_time = clamp_start(Time.get_datetime_dict_from_system(), Time.get_date_dict_from_system())
 			_start(_gig_mode))  # the server takes the slot's city and place, and a gig's time
@@ -584,11 +615,8 @@ func _replace_slot_menu(slots: Array) -> void:
 	_title(_t("save_slots"), _t("replace_slot") % MAX_GIG_SLOTS)
 	for slot in slots:
 		var name := str(slot.get("name", ""))
-		var path := str(slot.get("path", ""))
 		_button(slot_label(slot, _t("fare_in_progress")), func():
-			if path.ends_with(name + ".json"):
-				DirAccess.remove_absolute(path)
-				DirAccess.remove_absolute(THUMBS.path_join(name + ".png"))
+			_new_save_slot = true
 			_save_slot = name
 			_city_menu())
 	_button(_t("back"), _slot_menu)
@@ -921,6 +949,24 @@ static func download_percent(downloaded: int, total: int) -> float:
 	return clampf(float(downloaded) / float(total) * 100.0, 0.0, 100.0) if total > 0 else 0.0
 
 
+static func download_should_refresh(downloaded: int, last_shown: int, now_ms: int, last_ms: int) -> bool:
+	return last_shown < 0 or downloaded / 1048576 != last_shown / 1048576 or now_ms - last_ms >= 1000
+
+
+static func download_speed(prev_bps: float, delta_bytes: int, delta_s: float) -> float:
+	if delta_s <= 0.0:
+		return prev_bps
+	var bps := delta_bytes / delta_s
+	return bps if prev_bps <= 0.0 else lerpf(prev_bps, bps, 0.2)
+
+
+static func download_text(downloaded: int, total: int, bps: float) -> String:
+	var mib := "%.1f" % float(downloaded / 1048576)
+	if total > 0:
+		mib += " / %.1f" % (total / 1048576.0)
+	return "%s MiB  -  %s MiB/s" % [mib, "%.1f" % (bps / 1048576.0) if bps > 0.0 else "--"]
+
+
 static func _days_in(year: int, month: int) -> int:
 	if month == 2:
 		return 29 if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0 else 28
@@ -1135,6 +1181,26 @@ func _graphics_menu() -> void:
 		_with_help(toggle, "help_graphics_" + key)
 		_focusables.append(toggle)
 	toggles["shadows"].disabled = not options["buildings_3d"]
+	for key in Graphics.LEVELS:
+		var row := HBoxContainer.new()
+		var label := Label.new()
+		label.text = _t("graphics_" + key)
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(label)
+		var slider := HSlider.new()
+		slider.min_value = 0.5
+		slider.max_value = 1.5
+		slider.step = 0.05
+		slider.custom_minimum_size.x = 240
+		slider.value = options[key]
+		slider.value_changed.connect(func(value: float):
+			_settings.set_value("graphics", key, value)
+			_settings.save("user://settings.cfg")
+			if _game != null:
+				_game.set_graphics(Graphics.read(_settings)))
+		row.add_child(slider)
+		_with_help(row, "help_graphics_" + key)
+		_focusables.append(slider)
 	_settings_back()
 	_focus_menu()
 
@@ -1200,6 +1266,8 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
 		if _save_slot != "":
 			args.append_array(["--save-slot", _save_slot])
+			if _new_save_slot:
+				args.append("--new-save-slot")
 		if _start_point != Vector2.INF:
 			args.append_array(["--bbox", point_bbox(_start_point.x, _start_point.y)])
 			if _start_place != "":
@@ -1379,24 +1447,36 @@ func _download_pbf(mode: String, allow_existing := false, settings_only := false
 		DirAccess.remove_absolute(partial)
 	var request := HTTPRequest.new()
 	request.download_file = partial
+	request.use_threads = true
+	request.download_chunk_size = 1048576
 	add_child(request)
 	var response: Array = []
 	request.request_completed.connect(func(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray):
 		response.assign([result, response_code, headers, body]))
-	var error := preload("res://map_browser.gd").ipv4_request(request, FINLAND_PBF_URL, PackedStringArray(), 0.0)
+	var error := preload("res://map_browser.gd").ipv4_request(request, OS.get_environment("RRT_PBF_URL") if OS.has_environment("RRT_PBF_URL") else FINLAND_PBF_URL, PackedStringArray(), 0.0)
 	if error != OK:
 		request.queue_free()
 		_pbf_download_failed(mode, allow_existing, settings_only)
 		return
+	var last_shown := -1
+	var last_ms := Time.get_ticks_msec()
+	var last_byte_ms := last_ms
+	var bps := 0.0
 	while response.is_empty():
 		var downloaded_bytes := request.get_downloaded_bytes()
 		var total_bytes := request.get_body_size()
-		progress.indeterminate = total_bytes <= 0
-		if total_bytes > 0:
-			progress.value = download_percent(downloaded_bytes, total_bytes)
-			progress_text.text = "%.1f / %.1f MiB" % [downloaded_bytes / 1048576.0, total_bytes / 1048576.0]
-		else:
-			progress_text.text = "%.1f MiB" % [downloaded_bytes / 1048576.0]
+		var now_ms := Time.get_ticks_msec()
+		if download_should_refresh(downloaded_bytes, last_shown, now_ms, last_ms):
+			if last_shown >= 0:
+				bps = download_speed(bps, downloaded_bytes - last_shown, (now_ms - last_ms) / 1000.0)
+			if downloaded_bytes != last_shown:
+				last_byte_ms = now_ms
+			progress.indeterminate = total_bytes <= 0
+			if total_bytes > 0:
+				progress.value = download_percent(downloaded_bytes, total_bytes)
+			progress_text.text = download_text(downloaded_bytes, total_bytes, bps if now_ms - last_byte_ms <= 3000 else 0.0)
+			last_shown = downloaded_bytes
+			last_ms = now_ms
 		await get_tree().process_frame
 	request.queue_free()
 	var downloaded := FileAccess.open(partial, FileAccess.READ)
@@ -1490,7 +1570,15 @@ func _pause_menu() -> void:
 	_button(_t("main_menu"), _stop_game)
 	_button(_t("quit"), func():
 		if _can_save():
-			await _save_game(func(_ok: bool): get_tree().quit())
+			await _save_game(func(ok: bool):
+				if ok:
+					get_tree().quit()
+				else:
+					_pause_status.text = _t("save_failed")
+					if not _body.has_node("QuitWithoutSaving"):
+						var leave := _button(_t("quit_without_saving"), get_tree().quit)
+						leave.name = "QuitWithoutSaving"
+					_focus_menu())
 		else:
 			get_tree().quit())
 	_back_action = _resume
@@ -1537,6 +1625,7 @@ func _can_save() -> bool:
 func _save_game(done: Callable) -> void:
 	var sim: SimClient = _game.sim
 	var before := sim.save_count
+	var errors_before := sim.save_error_count
 	if not sim.send_save():
 		done.call(false)
 		return
@@ -1545,7 +1634,7 @@ func _save_game(done: Callable) -> void:
 	var mode := sim.process_mode
 	sim.process_mode = Node.PROCESS_MODE_ALWAYS
 	var waited := 0.0
-	while sim.save_count <= before and waited < 3.0:
+	while sim.connected and sim.save_count <= before and sim.save_error_count == errors_before and waited < 3.0:
 		await get_tree().create_timer(0.1, true).timeout
 		waited += 0.1
 	sim.process_mode = mode

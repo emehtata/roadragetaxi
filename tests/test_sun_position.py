@@ -1,7 +1,7 @@
 """rrt-018-shadows: the sun's azimuth from the same model as its altitude,
 checked against an independent reference (NOAA's general solar position
 equations: Julian centuries, true longitude, obliquity - not the game's
-Spencer/Cooper formulas), and the map's grid azimuth against pyproj."""
+the published solar formula), and the map's grid azimuth against pyproj."""
 import math
 from datetime import datetime, timedelta, timezone
 
@@ -61,7 +61,7 @@ def azimuth_gap(a, b):
 def test_the_sun_agrees_with_an_independent_solar_position_algorithm(local, place):
     altitude, azimuth = game(local, place)
     ref_altitude, ref_azimuth = noaa_altitude_azimuth(finnish_utc(local).replace(tzinfo=timezone.utc), *place)
-    # The game's model (Cooper's declination, Spencer's equation of time)
+    # The game's model (the published solar formula)
     # is good to about 1.5 degrees; enough for shadows and daylight.
     assert altitude == pytest.approx(ref_altitude, abs=1.5)
     assert azimuth_gap(azimuth, ref_azimuth) < 1.5

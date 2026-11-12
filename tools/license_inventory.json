@@ -4,7 +4,7 @@
   "assets": [
     {
       "name": "Road Rage Trip game code",
-      "paths": ["src/theroadragetrip/**/*.py", "godot/**/*.gd", "godot/**/*.tscn", "godot/**/*.tres", "godot/**/*.gdshader", "godot/project.godot", "godot/audio/audio_events.json"],
+      "paths": ["src/theroadragetrip/**/*.py", "godot/**/*.gd", "godot/**/*.tscn", "godot/**/*.tres", "godot/**/*.gdshader", "godot/project.godot", "godot/audio/audio_events.json", "src/theroadragetrip/assets/landmarks.json"],
       "purpose": "the game client and simulation server", "shipped": true,
       "origin": "this project", "copyright": "2026 Esa Mehtätalo", "licence": "MIT",
       "evidence": "LICENSE", "obligations": "keep the MIT notice",
@@ -20,6 +20,17 @@
       "obligations": "attribution where the data is used; the derived database stays under ODbL with a notice; offer the database (it ships in the release)",
       "commercial": "yes, under ODbL", "status": "conditional",
       "remediation": "in-game attribution (Credits, map views: done); ODbL notice in DATA_LICENSES.txt (present)"
+    },
+    {
+      "name": "Country borders",
+      "paths": ["src/theroadragetrip/assets/borders.json.gz"],
+      "purpose": "country borders for the map", "shipped": true,
+      "origin": "OpenStreetMap relation 54224 and Natural Earth 1:50m v5.1.2, tools/osm/build_borders.py",
+      "copyright": "OpenStreetMap contributors; Natural Earth (public domain)", "licence": "ODbL-1.0 AND LicenseRef-PublicDomain (Natural Earth)",
+      "evidence": "https://www.openstreetmap.org/copyright; https://www.naturalearthdata.com/about/terms-of-use/; DATA_LICENSES.txt",
+      "obligations": "attribution where the OSM data is used; the derived database stays under ODbL with a notice; offer the database (it ships in the release)",
+      "commercial": "yes, under ODbL", "status": "conditional",
+      "remediation": "in-game attribution (Credits, map views: done); ODbL and Natural Earth notice in DATA_LICENSES.txt (present)"
     },
     {
       "name": "Sample OSM extract",
@@ -84,7 +95,7 @@
       "name": "Liiga and Veikkausliiga fixtures",
       "paths": ["src/theroadragetrip/assets/sports_fixtures.json.gz"],
       "purpose": "arena crowds on match days", "shipped": true,
-      "origin": "retrieved 2026-10-15 from https://www.liiga.fi/api/v2/schedule and https://www.veikkausliiga.com/tilastot/",
+      "origin": "refreshed 2026-11-03 from the Liiga schedule API and official Veikkausliiga result tables; Veikkausliiga stadium coordinates from OpenStreetMap via Nominatim",
       "copyright": "Liiga, Veikkausliiga and their data providers (per DATA_LICENSES.txt)",
       "licence": "none found", "evidence": "no terms of use found for redistribution",
       "obligations": "unknown", "commercial": "unknown", "status": "unresolved",
@@ -174,6 +185,63 @@
       "paths": ["src/theroadragetrip/assets/DATA_LICENSES.txt", "src/theroadragetrip/assets/railway_announcements/README.md", "src/theroadragetrip/assets/railway_announcements/manifest.json", "src/theroadragetrip/assets/railway_announcements/place_forms.json"],
       "purpose": "notices and metadata", "shipped": true, "origin": "this project", "copyright": "2026 Esa Mehtätalo",
       "licence": "MIT", "evidence": "LICENSE", "obligations": "none", "commercial": "yes", "status": "verified", "remediation": ""
+    },
+    {
+      "name": "Grab3D vehicle models (CC0)",
+      "paths": [
+        "godot/assets/vehicles/tram*",
+        "godot/assets/vehicles/bicycle*",
+        "godot/assets/vehicles/bmx_bike*",
+        "godot/assets/vehicles/mountain_bike*",
+        "godot/assets/vehicles/moped*",
+        "godot/assets/vehicles/subway_train*",
+        "godot/assets/vehicles/e_scooter_grab3d*"
+      ],
+      "purpose": "close-range 3D models for trams, bicycles, a moped, an e-scooter and a metro train",
+      "shipped": true,
+      "origin": "grab3d.com vehicle pages (tram, bicycle, bmx-bike, mountain-bike, moped, e-scooter, subway-train)",
+      "copyright": "not named on the pages",
+      "licence": "CC0 1.0 (public domain)",
+      "evidence": "each model page states 'CC0 1.0 · public domain' and 'no attribution'; see godot/assets/vehicles/SOURCES.md",
+      "obligations": "none (CC0); keep the source note",
+      "commercial": "yes",
+      "status": "verified",
+      "remediation": ""
+    },
+    {
+      "name": "Grab3D animal models (CC0)",
+      "paths": [
+        "godot/assets/animals/*"
+      ],
+      "purpose": "close-range 3D models for a fox, a small bird, a roe deer, a horse and a hare in the 3D view",
+      "shipped": true,
+      "origin": "grab3d.com animal pages (low-poly-fox, low-poly-bird, low-poly-deer, low-poly-horse, low-poly-rabbit); see godot/assets/animals/SOURCES.md",
+      "copyright": "not named on the pages",
+      "licence": "CC0 1.0 (public domain)",
+      "evidence": "each <name>.manifest.json is the verbatim grab3d manifest with licence CC0-1.0; see godot/assets/animals/SOURCES.md",
+      "obligations": "none (CC0); manifests are AI-assisted derivatives (ai_content: true), approved by the user; keep the source note",
+      "commercial": "yes",
+      "status": "verified",
+      "remediation": ""
+    },
+    {
+      "name": "Vehicle models from 3dassets.dev and Innerscene",
+      "paths": [
+        "godot/assets/vehicles/*.glb",
+        "godot/assets/vehicles/*.png",
+        "godot/assets/vehicles/*.jpg",
+        "godot/assets/vehicles/SOURCES.md"
+      ],
+      "purpose": "close-range 3D models for cars, vans, buses, trucks, trains and small vehicles",
+      "shipped": true,
+      "origin": "3dassets.dev and innerscene.com, as listed in godot/assets/vehicles/SOURCES.md",
+      "copyright": "not named in SOURCES.md",
+      "licence": "CC0 1.0 (as stated by the sources)",
+      "evidence": "godot/assets/vehicles/SOURCES.md",
+      "obligations": "none if CC0; keep the source note",
+      "commercial": "yes",
+      "status": "conditional",
+      "remediation": "re-check each source page for its licence line and record the author"
     }
   ],
   "python_packages": {

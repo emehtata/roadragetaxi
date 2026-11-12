@@ -4,9 +4,9 @@ extends Node
 const Paths := preload("res://paths.gd")
 const PLAYERS := 4
 const RANGES := {"squirrel": 30.0, "small_bird": 65.0, "pigeon": 40.0,
-    "hare": 45.0, "fox": 120.0, "moose": 100.0, "roe_deer": 100.0, "dog": 100.0, "crow": 100.0}
+    "hare": 45.0, "fox": 120.0, "moose": 100.0, "roe_deer": 100.0, "dog": 100.0, "crow": 100.0, "duck": 60.0, "gull": 120.0}
 const INTERVALS := {"squirrel": 35.0, "small_bird": 12.0, "pigeon": 25.0,
-    "hare": 60.0, "fox": 65.0, "moose": 90.0, "roe_deer": 75.0, "dog": 30.0, "crow": 22.0}
+    "hare": 60.0, "fox": 65.0, "moose": 90.0, "roe_deer": 75.0, "dog": 30.0, "crow": 22.0, "duck": 20.0, "gull": 18.0}
 
 var _streams := {}
 var _players: Array = []
@@ -16,11 +16,17 @@ var _clock := 0.0
 
 
 func _ready() -> void:
-    for species in RANGES:
-        var path := Paths.package_path("assets/audio/animals/%s.ogg" % species)
-        var stream := AudioStreamOggVorbis.load_from_file(path)
-        if stream != null:
-            _streams[species] = stream
+    for species in RANGES:  # NAME.ogg, then variations NAME_2.ogg, NAME_3.ogg, ... until one is missing
+        var clips: Array = []
+        while true:
+            var suffix := "" if clips.is_empty() else "_%d" % (clips.size() + 1)
+            var path := Paths.package_path("assets/audio/animals/%s%s.ogg" % [species, suffix])
+            var stream := AudioStreamOggVorbis.load_from_file(path) if FileAccess.file_exists(path) else null
+            if stream == null:
+                break
+            clips.append(stream)
+        if not clips.is_empty():
+            _streams[species] = clips
     for i in PLAYERS:
         var player := AudioStreamPlayer2D.new()
         player.bus = "Environment"
@@ -86,7 +92,7 @@ func update(animals: Array, dogs: Array, listener: Vector2, delta: float, surfac
         if not _streams.has(species):
             continue
         _sources[slot] = id
-        _players[slot].stream = _streams[species]
+        _players[slot].stream = _streams[species].pick_random()
         _players[slot].pitch_scale = randf_range(0.94, 1.06)
         _position(slot, nearby[id], listener)
         _players[slot].play()

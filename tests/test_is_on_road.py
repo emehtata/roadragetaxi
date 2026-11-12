@@ -16,7 +16,7 @@ import theroadragetrip.physics as physics
 
 def test_is_on_road_true_and_false():
     # Create a simple horizontal road from (0,0) to (10,0)
-    w = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="residential", half_width_m=2.0, name="Torikatu")
+    w = Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="residential", half_width_m=2.0, name="Market Street")
     car_on = Car(x=5.0, y=0.0, heading=0.0, speed=0.0)
     car_off = Car(x=100.0, y=100.0, heading=0.0, speed=0.0)
 
@@ -26,12 +26,12 @@ def test_is_on_road_true_and_false():
     # Check get_current_road_at_car
     road = get_current_road_at_car(car_on, [w])
     assert road is not None
-    assert road.name == "Torikatu"
+    assert road.name == "Market Street"
 
     grid = SpatialWayGrid([w])
     road_grid = get_current_road_at_car(car_on, spatial_grid=grid)
     assert road_grid is not None
-    assert road_grid.name == "Torikatu"
+    assert road_grid.name == "Market Street"
 
     assert get_current_road_at_car(car_off, [w]) is None
     assert get_current_road_at_car(car_off, spatial_grid=grid) is None
@@ -139,7 +139,7 @@ def test_bridge_over_water_does_not_trigger_water_respawn():
 
 def test_solid_road_surface_overrides_overlapping_water_without_a_bridge_tag():
     lake = Water([(-30, -30), (30, -30), (30, 30), (-30, 30), (-30, -30)], "river", True)
-    road = Way([(-25, 0), (25, 0)], "primary", 5.5, name="Merikosken sillat")
+    road = Way([(-25, 0), (25, 0)], "primary", 5.5, name="Test Bridges")
     car = Car(0, 0, math.pi / 4, 0)
     assert is_point_in_water(car.x, car.y, [lake])
     assert not is_car_fully_in_water(car, [lake], current_way=road)

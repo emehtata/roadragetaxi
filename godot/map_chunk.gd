@@ -52,6 +52,9 @@ const SPRING_ICE_SPACING_M := 24.0
 var _data: Dictionary = {}
 var _origin := Vector2.ZERO
 var _bounds := PackedVector2Array()  # chunk rectangle in layer coordinates (clipping)
+var ground_heights := {}  # the DEM ground grid (prepare; Buildings3D.ground_height), empty: flat
+var bridge_ends := PackedVector2Array()  # step 5: where this chunk's bridges meet lower roads (bridge_ends_of)
+var _dynamic_3d := {}  # --outdoor-3d: "trees", "railings" -> their 3D node, rebuilt as the 2D layer would redraw
 var _bounds_rect := Rect2()
 var _roads_by_z: Dictionary = {}  # z -> [road]
 var _wet := Node2D.new()  # wet-road darkening and sheen in one pass (RS.wet_overlay)
@@ -91,6 +94,10 @@ var _broken := PackedInt32Array()  # indices of this chunk's street lights that 
 var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state calendar.season)
 var _fields_frozen = null  # explicit server ice state; old servers use the winter weight
 var _trees_leafless := false
+var _forest_rows: Array = []  # --outdoor-3d: forest_trees, [layer point, kind, variation]
+var _forest_task := -1
+var forest_ms := [0.0, 0.0]  # the 3D forest's CPU time: placement, instance build (worker threads)
+var _forest_look := []  # the season and leaflessness the 3D forest was built for
 var _season_layers: Array[Node2D] = []  # landuse and islands: their green kinds follow the season
 var _site_details := {}  # area index -> cached decorative positions; snow redraws only change colours
 var _signs: Node2D = null  # signs and speed cameras, if any
@@ -102,9 +109,14 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:  # light nodes of a chunk without lights never joined the tree
 		if _building_task >= 0:
 			WorkerThreadPool.wait_for_task_completion(_building_task)
+		if _forest_task >= 0:
+			WorkerThreadPool.wait_for_task_completion(_forest_task)
 		for node in [_pools, _floods, _heads, building_node] + meshes_3d:
 			if is_instance_valid(node) and node.get_parent() == null:
 				node.free()
+		for node in _dynamic_3d.values():
+			if is_instance_valid(node):
+				node.queue_free()
 
 
 func setup(message: Dictionary, origin: Vector2) -> void:
@@ -123,18 +135,18 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	light_cells = prepared["light_cells"]
 	if not message.get("waters", []).is_empty() or not message.get("water_lines", []).is_empty():
 		# Water alone carries the wave shader: nothing else drawn here can pick it up.
-		var water := _add_layer(0, _draw_water)
+		var water := _add_layer(0, _draw_water, null, true)
 		water.material = WATER_MATERIAL
 		_season_layers.append(water)
-		var shore := _add_layer(0, _draw_shore_waves)
+		var shore := _add_layer(0, _draw_shore_waves, null, true)  # --outdoor-3d: foam strips on the 3D water
 		shore.material = SHORE_MATERIAL
 		_season_layers.append(shore)
 	# z-1 landuse (under the water)
 	if not message.get("landuse", []).is_empty():
-		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"))
+		var landuse := _add_layer(-1, func(node: Node2D): Detail.draw_areas(self, node, "landuse"), null, true)
 		landuse.material = SURFACE_MATERIAL
 		if prepared["forest_mask"] != null:
-			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse", CANOPY_MARGIN_M))
+			var canopy := _add_layer(13, func(node: Node2D): Detail.draw_areas(self, node, "landuse", CANOPY_MARGIN_M), null, not prepared["forest_trees"].is_empty())  # 3D: the forest's own trees
 			var material := FOREST_MATERIAL.duplicate() as ShaderMaterial
 			var mask := ImageTexture.create_from_image(prepared["forest_mask"])
 			material.set_shader_parameter("canopy_mask", mask)
@@ -144,71 +156,71 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 			_season_layers.append(canopy)
 		_season_layers.append(landuse)
 		if message["landuse"].any(func(area): return area.size() > 3 and str(area[3]) in ["biergarten", "grave_yard", "cemetery"]):
-			_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_site_details(self, node)))
+			_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_site_details(self, node), null, true))  # --outdoor-3d: 3D props
 	if not message.get("attractions", []).is_empty():
-		_px_layers.append(_add_layer(6, _draw_attractions))
+		_px_layers.append(_add_layer(6, _draw_attractions, null, true))  # --outdoor-3d: buildings_3d.attractions
 	if not message.get("volleyball_courts", []).is_empty():
-		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_volleyball_courts(self, node)))
-		_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_volleyball_nets(self, node)))
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_volleyball_courts(self, node), null, false, true))
+		_px_layers.append(_add_layer(6, func(node: Node2D): Detail.draw_volleyball_nets(self, node), null, true))  # --outdoor-3d: 3D nets
 	if not message.get("tennis_courts", []).is_empty():
-		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_tennis_courts(self, node)))
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_tennis_courts(self, node), null, false, true))
 	# Field markings at z0, over every chunk's landuse (z-1): at -1 a neighbouring
 	# chunk's piece of the same pitch painted over the part reaching into it.
 	if not message.get("soccer_pitches", []).is_empty():  # soccer lines on bare pitches
-		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_soccer_markings(self, node)))
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_soccer_markings(self, node), null, false, true))
 	if not message.get("rinks", []).is_empty():  # hockey markings on frozen rinks
-		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_rink_markings(self, node)))
+		_season_layers.append(_add_layer(0, func(node: Node2D): Detail.draw_rink_markings(self, node), null, false, true))
 	for z in _roads_by_z:
 		var layer_z: int = z
-		var roads := _add_layer(z, func(node: Node2D): _draw_roads(layer_z, node))
+		var roads := _add_layer(z, func(node: Node2D): _draw_roads(layer_z, node), null, true)  # ground roads and bridge decks: 3D
 		roads.material = SURFACE_MATERIAL
 		_road_layers.append(roads)
 		if z > 1:
-			var wet := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z))
-			var puddles := _add_layer(z, func(node: Node2D): _draw_puddles(node, layer_z))
+			var wet := _add_layer(z, func(node: Node2D): _draw_wet(node, layer_z), null, true)
+			var puddles := _add_layer(z, func(node: Node2D): _draw_puddles(node, layer_z), null, true)
 			_bridge_weather.append([wet, puddles])
-		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_road_markings(layer_z, node)))
-	_add_layer(5, _draw_wet, _wet)
-	_add_layer(5, _draw_puddles, _puddles)
+		_px_layers.append(_add_layer(z, func(node: Node2D): _draw_road_markings(layer_z, node), null, true))
+	_add_layer(5, _draw_wet, _wet, true)
+	_add_layer(5, _draw_puddles, _puddles, true)
 	if not message.get("parking", []).is_empty():
-		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_parking(self, node)))
+		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_parking(self, node), null, true))
 	if not message.get("guardrails", []).is_empty():
-		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_guardrails(self, node)))
+		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_guardrails(self, node), null, true))
 	if not message.get("bus_stops", []).is_empty():
 		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_bus_stops(self, node)))
-	var ground_tracks := _add_layer(1, func(node: Node2D): Detail.draw_tracks(self, node, "railways"))
+	var ground_tracks := _add_layer(1, func(node: Node2D): Detail.draw_tracks(self, node, "railways"), null, true)  # --outdoor-3d: in the 3D ground
 	ground_tracks.name = "GroundTracks"
 	_px_layers.append(ground_tracks)
 	if not message.get("traffic_islands", []).is_empty():  # above the roads and rails
-		var islands := _add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands"))
+		var islands := _add_layer(6, func(node: Node2D): Detail.draw_areas(self, node, "traffic_islands"), null, true)
 		islands.material = SURFACE_MATERIAL
 		_season_layers.append(islands)
 	if not message.get("canopies", []).is_empty():
-		_add_layer(7, func(node: Node2D): Detail.draw_canopy_shadows(self, node))
-		var canopy_supports := _add_layer(7, _draw_canopy_supports)
+		_add_layer(7, func(node: Node2D): Detail.draw_canopy_shadows(self, node), null, true)
+		var canopy_supports := _add_layer(7, _draw_canopy_supports, null, true)
 		_px_layers.append(canopy_supports)
 		_canopy_layers.append(canopy_supports)
-		_px_layers.append(_add_layer(7, func(node: Node2D): Detail.draw_canopy_feet(self, node)))
+		_px_layers.append(_add_layer(7, func(node: Node2D): Detail.draw_canopy_feet(self, node), null, true))
 	if not message.get("curbs", []).is_empty() or not message.get("crossings", []).is_empty() or not message.get("speed_bumps", []).is_empty():
 		# Under the light pools (6): crossings and kerbs are lit like the road.
-		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_road_features(self, node)))
+		_px_layers.append(_add_layer(5, func(node: Node2D): Detail.draw_road_features(self, node), null, true))
 	if not message.get("canopies", []).is_empty():  # above vehicles; then rail bridges, then trains
-		var canopy_roofs := _add_layer(13, func(node: Node2D): Detail.draw_canopies(self, node))
+		var canopy_roofs := _add_layer(13, func(node: Node2D): Detail.draw_canopies(self, node), null, true)
 		_px_layers.append(canopy_roofs)
 		_canopy_layers.append(canopy_roofs)
 	if not message.get("rail_bridges", []).is_empty() or not message.get("rail_decks", []).is_empty():
-		_px_layers.append(_add_layer(13, func(node: Node2D): Detail.draw_rail_bridges(self, node)))
+		_px_layers.append(_add_layer(13, func(node: Node2D): Detail.draw_rail_bridges(self, node), null, true))
 	if not message.get("railings", []).is_empty():
 		_railings = _add_layer(8, _draw_railings)
 		_px_layers.append(_railings)
-	if not message.get("street_lights", []).is_empty():
+	if not message.get("street_lights", []).is_empty() and not (outdoor_3d and buildings_3d):  # 3D: posts, heads and lights are buildings_3d's
 		var add := CanvasItemMaterial.new()
 		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 		add.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED  # light, not lit: the ambient multiply leaves it be
 		_pools.material = add
 		_pools.draw.connect(_draw_light_pools.bind(_pools))  # MapLayer puts it in its pool group
 		_px_layers.append(_pools)
-		_px_layers.append(_add_layer(6, _draw_lamp_heads, _heads))
+		_px_layers.append(_add_layer(6, _draw_lamp_heads, _heads, true))
 		_heads.material = EMISSIVE
 		set_lights_on(false)
 	if not message.get("floodlit", []).is_empty():
@@ -217,13 +229,15 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		add.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 		_floods.material = add
 		_floods.draw.connect(_draw_floodlights.bind(_floods))  # drawn once; MapLayer shows and fades it
-	if not message.get("trees", []).is_empty() or not message.get("bollards", []).is_empty() or not message.get("scenery_objects", []).is_empty():
+	_forest_rows = prepared["forest_trees"]
+	forest_ms[0] = prepared.get("forest_place_ms", 0.0)
+	if not message.get("trees", []).is_empty() or not message.get("bollards", []).is_empty() or not message.get("scenery_objects", []).is_empty() or not _forest_rows.is_empty():
 		_trees = _add_layer(6, _draw_trees)
 		_px_layers.append(_trees)
 	if not message.get("construction_fences", []).is_empty():
-		_px_layers.append(_add_layer(8, _draw_fences))
+		_px_layers.append(_add_layer(8, _draw_fences, null, true))
 	if not message.get("fuel_stations", []).is_empty():
-		_px_layers.append(_add_layer(6, _draw_fuel_pumps))
+		_px_layers.append(_add_layer(6, _draw_fuel_pumps, null, true))
 		var boards := _add_layer(15, _draw_fuel_boards)  # above the trains (14)
 		boards.material = EMISSIVE  # lit price boards
 		_px_layers.append(boards)
@@ -237,6 +251,8 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_signs = _add_layer(8, func(node: Node2D): Detail.draw_signs(self, node, _flash))
 		_px_layers.append(_signs)
 	_puddle_spots = prepared["puddle_spots"]
+	bridge_ends = prepared.get("bridge_ends", PackedVector2Array())
+	ground_heights = prepared.get("ground_heights", {})
 	_water_ripple_spots = prepared["water_ripple_spots"]
 	_build_2_5d()
 	set_wetness(_wetness)
@@ -273,6 +289,7 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 			roads_by_z[z] = []
 		roads_by_z[z].append(road)
 	var puddles := puddle_spots(message.get("roads", []), bounds_rect, origin)  # from the raw coordinates
+	var bridge_ends := bridge_ends_of(message.get("roads", []), origin)  # whole ways: every chunk a bridge crosses agrees
 	var points := _compact(message, origin)
 	if not bounds.is_empty():
 		_clip_to_bounds(message, bounds, bounds_rect, roads_by_z)
@@ -288,11 +305,92 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 	for light in message.get("street_lights", []):
 		lights.append(MapMath.point(origin, light[0], light[1]))
 	var cells := light_cells_for(lights, message.get("street_lights", []))
-	message["prepared"] = {"origin": origin, "bounds_rect": bounds_rect, "bounds": bounds, "drivable_roads": drivable,
-		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "light_cells": cells, "puddle_spots": puddles,
+	var grid := {}
+	var raw: Dictionary = message.get("ground_heights", {})
+	if not raw.is_empty():
+		grid = {"origin": Vector2(raw["origin"][0] - origin.x, raw["origin"][1] - origin.y), "step": float(raw["step"]),
+			"cols": int(raw["cols"]), "heights": PackedFloat32Array(raw["heights"])}
+	message["prepared"] = {"ground_heights": grid, "origin": origin, "bounds_rect": bounds_rect, "bounds": bounds, "drivable_roads": drivable,
+		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "light_cells": cells, "puddle_spots": puddles, "bridge_ends": bridge_ends,
 		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points,
 		# Rasterised here, on the parse worker: on the main thread it was a 60-115 ms hitch per forest chunk.
-		"forest_mask": forest_mask(message, bounds_rect, origin) if forest_canopy and message.get("landuse", []).any(_is_forest) else null}
+		"forest_mask": null, "forest_trees": []}
+	if message.get("landuse", []).any(_is_forest) and (forest_canopy or (outdoor_3d and buildings_3d)):
+		var mask := forest_mask(message, bounds_rect, origin)
+		message["prepared"]["forest_mask"] = mask if forest_canopy else null
+		if outdoor_3d and buildings_3d:  # the 3D forest's trees, placed here off the main thread too
+			var started := Time.get_ticks_usec()
+			message["prepared"]["forest_trees"] = forest_trees(mask, bounds_rect, origin)
+			message["prepared"]["forest_place_ms"] = (Time.get_ticks_usec() - started) / 1000.0
+
+
+const FOREST_CELL_M := 4.5  # forest_trees: one candidate tree per cell of this world grid
+
+
+static func _hash(x: float, y: float) -> float:
+	return fposmod(sin(x * 127.1 + y * 311.7) * 43758.5453, 1.0)
+
+
+## The 3D forest: deterministic trees on the forest mask's red (forest)
+## pixels only - roads, buildings, water and parking are already cut out.
+## One candidate per FOREST_CELL_M world cell, jittered and thinned by a
+## patchy density, its species from a stand type per 60 m patch (pine,
+## spruce or mixed), all hashed from world coordinates: the same trees
+## whichever chunk origin asks. Rows [layer point, kind, variation].
+static func forest_trees(mask: Image, bounds_rect: Rect2, origin: Vector2) -> Array:
+	var out := []
+	var west := origin.x + bounds_rect.position.x
+	var south := origin.y - bounds_rect.end.y
+	for i in range(floori(west / FOREST_CELL_M), ceili((west + bounds_rect.size.x) / FOREST_CELL_M)):
+		for j in range(floori(south / FOREST_CELL_M), ceili((south + bounds_rect.size.y) / FOREST_CELL_M)):
+			var density := 0.45 + 0.5 * _hash(floorf(i / 6.0) + 0.37, floorf(j / 6.0) - 0.71)  # thinner and denser stands
+			if _hash(i + 0.13, j + 0.29) > density:
+				continue
+			var x := (i + 0.1 + 0.8 * _hash(i + 0.5, j)) * FOREST_CELL_M
+			var y := (j + 0.1 + 0.8 * _hash(i, j + 0.5)) * FOREST_CELL_M
+			var at := MapMath.point(origin, x, y)
+			var px := floori(at.x - bounds_rect.position.x)
+			var py := floori(at.y - bounds_rect.position.y)
+			if px < 0 or py < 0 or px >= mask.get_width() or py >= mask.get_height() or mask.get_pixel(px, py).r < 0.5:
+				continue
+			var stand := _hash(floorf(x / 60.0) + 0.91, floorf(y / 60.0) + 0.17)  # Finnish stands: pine-led, spruce-led, mixed
+			var roll := _hash(i + 0.77, j + 0.61)
+			var kind := "pine"
+			if stand < 0.45:
+				kind = "pine" if roll < 0.8 else "birch" if roll < 0.9 else "spruce"
+			elif stand < 0.75:
+				kind = "spruce" if roll < 0.75 else "birch" if roll < 0.9 else "pine"
+			else:
+				kind = "pine" if roll < 0.4 else "spruce" if roll < 0.7 else "birch"
+			out.append([at, kind, _hash(i + 0.33, j + 0.47)])
+	return out
+
+
+## The DEM ground's height at layer point `at` on a prepared grid (0 without one).
+static func ground_height(grid: Dictionary, at: Vector2) -> float:
+	return B3.ground_height(grid, at)
+
+
+## rtx-scene-readiness step 5: where bridge ways (layer > 0) meet a lower road
+## at one of their ends, in layer coordinates - the 3D decks ramp down to these
+## (buildings_3d.deck_height). From the whole ways the server sends to every
+## chunk they touch, so neighbouring chunks agree.
+static func bridge_ends_of(roads: Array, origin: Vector2) -> PackedVector2Array:
+	var lower := {}  # a rounded point -> the lowest layer with a road through it
+	for road in roads:
+		var layer := int(road.get("layer", 0))
+		for point in road["points"]:
+			var key := Vector2i(roundi(point[0]), roundi(point[1]))
+			lower[key] = mini(int(lower.get(key, layer)), layer)
+	var ends := PackedVector2Array()
+	for road in roads:
+		var layer := int(road.get("layer", 0))
+		if layer <= 0 or road["points"].size() < 2:
+			continue
+		for point in [road["points"][0], road["points"][-1]]:
+			if int(lower.get(Vector2i(roundi(point[0]), roundi(point[1])), layer)) < layer:
+				ends.append(MapMath.point(origin, point[0], point[1]))
+	return ends
 
 
 static func _is_forest(area) -> bool:
@@ -403,10 +501,24 @@ static func _rect(points: PackedVector2Array) -> Rect2:
 
 
 ## A child canvas item at z; `draw` is called with that node to draw into.
-func _add_layer(z: int, draw: Callable, node: Node2D = null) -> Node2D:
+## `in_3d`: --outdoor-3d draws this layer's content in its 3D view (map_chunk
+## ground, buildings_3d._ground), so it is hidden there; any other layer under
+## the opaque view (z < 7) is lifted above it as a 2D overlay, in its order,
+## below the entities (12), until it gets its own 3D form (rtx-scene-readiness 5-6).
+## `marking`: --outdoor-3d draws it into the chunk's marking texture, laid on
+## the 3D ground under the people (sports-court and rink markings).
+func _add_layer(z: int, draw: Callable, node: Node2D = null, in_3d := false, marking := false) -> Node2D:
 	if node == null:
 		node = Node2D.new()
 	node.z_index = z
+	if outdoor_3d and buildings_3d and marking:
+		node.draw.connect(draw.bind(node))
+		_marking_root().add_child(node)
+		return node
+	if outdoor_3d and buildings_3d:
+		node.visible = not in_3d
+		if z < 7:
+			node.z_index = 8 + clampi(z, 0, 6) / 2
 	if Perf.keep_all:  # --bench: each layer's redraws, by z and draw function
 		var section := "draw_z%d_%s" % [z, draw.get_method()]
 		node.draw.connect(func(): var t := Time.get_ticks_usec(); draw.call(node); Perf.add(section, Time.get_ticks_usec() - t))
@@ -448,14 +560,15 @@ func set_wetness(wetness: float) -> void:
 	# each frame. A canvas item hidden when it entered the tree didn't draw
 	# its strokes when shown later (found in a windowed run), so becoming
 	# visible asks for a redraw.
+	var in_3d := outdoor_3d and buildings_3d  # the road mesh (road.gdshader) has the wetness and puddles; these overlays would cover the cars
 	for node in wet_nodes:
-		var show: bool = node.modulate.a > 0.0
+		var show: bool = node.modulate.a > 0.0 and not in_3d
 		if show and not node.visible:
 			node.queue_redraw()
 		node.visible = show
 	for node in puddle_nodes:
-		node.visible = wetness > 0.0
-		if not _puddle_spots.is_empty() and (wetness > 0.0 or previous > 0.0):
+		node.visible = wetness > 0.0 and not in_3d
+		if node.visible and not _puddle_spots.is_empty() and (wetness > 0.0 or previous > 0.0):
 			node.queue_redraw()
 
 
@@ -521,6 +634,8 @@ func set_obstacles(knocked: Dictionary) -> bool:
 	var lamps_changed: bool = broken != _broken
 	if lamps_changed:
 		_broken = broken
+		if outdoor_3d and buildings_3d:
+			_lamps_3d()
 		_pools.queue_redraw()
 		_heads.queue_redraw()
 	if _trees == null:
@@ -620,11 +735,103 @@ func _build_2_5d() -> void:
 	var sites: Array = _data.get("construction_fences", [])  # each gets a tower crane in 3D
 	var styles: Array = _data.get("building_styles", [])
 	var origin := _origin
-	if buildings_3d and not (buildings.is_empty() and sites.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
+	var landmarks: Array = []  # their 3D shapes join the building mesh
+	for obj in _data.get("scenery_objects", []):
+		if obj[2] == "landmark":
+			landmarks.append([MapMath.point(origin, obj[0], obj[1]), float(obj[3]), obj[4]])
+	var ground := {}
+	if outdoor_3d:  # the chunk's ground and its ground-level roads (tunnels and bridges left out: step 5), most important on top
+		var roads: Array = []
+		for road in _data.get("roads", []):
+			if int(road.get("layer", 0)) == 0:
+				var color: Color = Detail._rgb(road["color"]) if road.has("color") else (Color(0.33, 0.33, 0.35) if road.get("drivable", false) else Color(0.55, 0.52, 0.45))
+				var center = road.get("center")  # [r, g, b, 2 solid / dashed]
+				roads.append([_points(road["points"]), maxf(0.3, float(road.get("half_width_m", 1.5))), color, int(road.get("rank", 0)),
+					Detail._rgb(center) if center != null else null, center != null and int(center[3]) == 2,
+					int(road.get("surface_texture", 0)), road.get("drivable", false)])
+		var islands: Array = []
+		for island in _data.get("traffic_islands", []):
+			islands.append([_points(island[2]), seasonal_color(Detail._rgb(island[0]), _season) if int(island[1]) > 0 else Detail._rgb(island[0])])
+		var curbs: Array = []
+		for curb in _data.get("curbs", []):
+			curbs.append(_points(curb))
+		var stripes: Array = []  # zebra crossings (Detail.draw_road_features): 0.5 m stripes, 0.9 m apart
+		for c in _data.get("crossings", []):
+			var at := MapMath.point(_origin, c[0], c[1])
+			var along := Vector2(cos(c[2]), -sin(c[2]))
+			var across := Vector2(-along.y, along.x)
+			var count := maxi(3, int(float(c[3]) / 0.9))
+			for i in count:
+				var centre: Vector2 = at + across * (-(count - 1) * 0.9 / 2.0 + i * 0.9)
+				stripes.append([centre - along * float(c[4]) / 2.0, centre + along * float(c[4]) / 2.0])
+		var bumps: Array = []
+		for bump in _data.get("speed_bumps", []):
+			var at := MapMath.point(_origin, bump[0], bump[1])
+			var along: Vector2 = Vector2(cos(bump[2]), -sin(bump[2])) * float(Detail.BUMP_LENGTHS.get(str(bump[4]), 0.6)) / 2.0
+			bumps.append([at - along, at + along, float(bump[3]) / 2.0])
+		var puddles: Array = []  # [centre, radius, rim shape, reveal wetness]: the road shader grows them with the weather
+		for spot in _puddle_spots:
+			if int(spot.get("z", 1)) == 1:
+				puddles.append([spot["at"], float(spot["radius"]), spot["shape"], float(spot["reveal"])])
+		var areas: Array = []  # [polygon, colour, water], drawn in this order (the 2D layers')
+		for area in _data.get("landuse", []):
+			var color := Detail._rgb(area[0])
+			if int(area[1]) > 0:
+				color = seasonal_color(color, _season)
+			areas.append([_points(area[2]), color, false])
+		for space in _data.get("parking", []):
+			areas.append([_points(space), Color8(72, 75, 74), false])
+		var ice := clampf(_season[0], 0.0, 1.0)
+		for water in _data.get("waters", []):
+			areas.append([_points(water), Color(0.20, 0.26, 0.29).lerp(Color8(232, 240, 244), ice), ice < 0.5])
+		var bridges: Array = []  # step 5: the decks
+		for road in _data.get("roads", []):
+			if int(road.get("layer", 0)) > 0:
+				var center = road.get("center")
+				bridges.append([_points(road["points"]), maxf(0.3, float(road.get("half_width_m", 1.5))),
+					Detail._rgb(road["color"]) if road.has("color") else Color(0.33, 0.33, 0.35), int(road.get("layer", 1)), int(road.get("rank", 0)),
+					Detail._rgb(center) if center != null else null, center != null and int(center[3]) == 2])
+		var guardrails: Array = []
+		for r in _data.get("guardrails", []):  # bridge guardrails carry no layer: the common first one
+			guardrails.append([MapMath.point(_origin, r[0], r[1]), MapMath.point(_origin, r[2], r[3]), 1])
+		var canopies: Array = []
+		for index in _data.get("canopies", []).size():
+			canopies.append([_points(_data["canopies"][index]), Detail.canopy_height(self, index)])
+		var shelters: Array = []
+		for stop in _data.get("bus_stops", []):
+			for key in ["shelter", "bench"]:
+				if stop.get(key) != null:
+					shelters.append([_points(stop[key]), key])
+		var pumps: Array = []
+		for station in _data.get("fuel_stations", []):
+			var at := MapMath.point(_origin, station["x"], station["y"])
+			var along := Vector2(cos(station["angle"]), -sin(station["angle"]))
+			for offset: float in ([-0.85, 0.85] if station["is_area"] else [0.0]):
+				pumps.append([at + along * offset, along])
+		ground = {"rect": _bounds_rect, "roads": roads, "areas": areas, "islands": islands, "curbs": curbs, "stripes": stripes,
+			"bumps": bumps, "puddles": puddles, "bridges": bridges, "bridge_ends": bridge_ends, "guardrails": guardrails, "ground_heights": ground_heights,
+			"rail_decks": _data.get("rail_decks", []).map(func(d): return _points(d)), "rail_tracks": _data.get("rail_bridges", []).map(func(d): return _points(d)),
+			"canopies": canopies, "site_fences": _data.get("construction_fences", []).map(func(d): return _points(d)),
+			"shelters": shelters, "pumps": pumps,
+			"props": _data.get("scenery_objects", []).filter(func(o): return B3.PROPS.has(str(o[2]))).map(
+				func(o): return [MapMath.point(_origin, o[0], o[1]), float(o[3]), str(o[2])] + ([float(o[4])] if (o[2] == "camper_van" or B3.GAP_KINDS.has(o[2])) and o.size() > 4 else [B3.PROPS["bench"][0], int(o[4])] if o[2] == "bench" and o.size() > 4 else [])),
+			"power_lines": _data.get("power_lines", []).map(func(line): return _points(line)),
+			"sign_posts": _data.get("signs", []).map(func(sign): return MapMath.point(_origin, sign[0], sign[1])),
+			"rail_lines": _data.get("railways", []).map(func(line): return _points(line)),
+			"shore_foam": _data.get("shore_waves", []).map(func(band): return [band["points"], float(band["distance"]) / SHALLOW_WATER_M]) \
+				if _season[0] < 1.0 else [],
+			"site_details": _site_detail_rows(), "snow": float(_season[0]),
+			"attractions": _data.get("attractions", []).map(func(ride): return [str(ride[0]), PackedVector2Array(ride[1].map(func(p): return MapMath.point(_origin, p[0], p[1])))]),
+			"nets": _data.get("volleyball_courts", []).map(func(court):
+				var frame := Detail.RinkFrame.new(self, court, float(court[3]), float(court[4]))
+				return [frame.at(0, -.47), frame.at(0, .47)]),
+			"bus_bays": _data.get("bus_stops", []).map(func(stop): return [_points(stop["bay"]), Detail._rgb(stop["color"]) if stop.has("color") else Color8(82, 82, 78)])}
+		_lamps_3d()
+	if buildings_3d and not (buildings.is_empty() and sites.is_empty() and landmarks.is_empty() and ground.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
 		if not build_async:
-			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites))
+			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground))
 		else:
-			_building_task = WorkerThreadPool.add_task(func(): _meshes_ready.call_deferred(_build_3d_timed(buildings, styles, origin, sites)))
+			_building_task = WorkerThreadPool.add_task(func(): _meshes_ready.call_deferred(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground)))
 		return
 	if buildings.is_empty() or buildings_3d:
 		return
@@ -659,6 +866,13 @@ func drop_stale_buildings() -> void:
 static var build_async := true  # tests build in place
 static var language := "en"  # unnamed fuel stations' board (main._apply_language)
 static var buildings_3d := true  # --buildings 2d uses flat footprints
+static var outdoor_3d := false  # --outdoor-3d (rtx-scene-readiness step 1): ground and roads in the 3D view, the 2D ground layers hidden
+
+
+## The 3D outdoor view is the default from every start path (menu, shortcut, exe); --outdoor-2d keeps the 2D view.
+static var default_3d := true  # tests of the 2D client turn it off
+static func wants_3d() -> bool:
+	return default_3d and not "--outdoor-2d" in OS.get_cmdline_user_args()
 static var forest_canopy := true  # off (graphics setting): forests keep their flat fill, no crowns - for software rendering
 var meshes_3d: Array = []  # buildings_3d.meshes, added to MapLayer's 3D building layer
 
@@ -688,11 +902,38 @@ func set_shop_lights(rows: Array) -> void:
 		_build_2_5d()
 
 
-static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2, sites: Array = []) -> Dictionary:
+static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2, sites: Array = [], landmarks: Array = [], ground := {}) -> Dictionary:
 	var started := Time.get_ticks_usec()
-	var arrays := B3.build(buildings, styles, origin, sites)
+	var arrays := B3.build(buildings, styles, origin, sites, landmarks, ground)
 	arrays["build_usec"] = Time.get_ticks_usec() - started
 	return arrays
+
+
+## --outdoor-3d: the chunk's road snow on its road mesh, as the 2D roads
+## show it - the chunk's cover, the ploughed 10 m cells their own - one texel
+## a world cell in its own road material copy (road.gdshader's snow_cells).
+func _road_snow_3d() -> void:
+	for node in meshes_3d:
+		if not node is MeshInstance3D or not node.material_override is ShaderMaterial:
+			continue
+		var material: ShaderMaterial = node.material_override
+		if material == B3._shared.get("road"):
+			material = B3.road_material_copy()
+			node.material_override = material
+		elif not material.has_meta("snow_cells"):
+			continue
+		var low := Vector2i(floori((_bounds_rect.position.x + _origin.x) / 10.0), floori((_origin.y - _bounds_rect.end.y) / 10.0))
+		var high := Vector2i(floori((_bounds_rect.end.x + _origin.x) / 10.0), floori((_origin.y - _bounds_rect.position.y) / 10.0))
+		var size := (high - low + Vector2i.ONE).clampi(1, 256)
+		var cells := Image.create(size.x, size.y, false, Image.FORMAT_R8)
+		cells.fill(Color(_snow_cover, 0, 0))
+		for cell in _plowed_cover:
+			var at: Vector2i = cell - low
+			if at.x >= 0 and at.y >= 0 and at.x < size.x and at.y < size.y:
+				cells.set_pixelv(at, Color(float(_plowed_cover[cell]), 0, 0))
+		material.set_meta("snow_cells", true)
+		material.set_shader_parameter("snow_cells", ImageTexture.create_from_image(cells))
+		material.set_shader_parameter("cell_map", Vector4(_origin.x / 10.0 - low.x, _origin.y / 10.0 - low.y, size.x, size.y))
 
 
 func _meshes_ready(arrays: Dictionary) -> void:
@@ -701,6 +942,7 @@ func _meshes_ready(arrays: Dictionary) -> void:
 		_building_task = -1
 	Perf.add("chunk_buildings_build", arrays.get("build_usec", 0))
 	meshes_3d = B3.meshes(arrays)
+	_road_snow_3d()
 	_volumes = {"stats": arrays["stats"]}  # the vertices live in the meshes
 	if is_inside_tree():
 		get_parent().add_building_meshes(self)
@@ -823,6 +1065,7 @@ func set_fields_frozen(frozen: bool) -> void:
 	_fields_frozen = frozen
 	for node in _season_layers:
 		node.queue_redraw()
+	_refresh_3d_ground()
 
 
 func set_trees_leafless(leafless: bool) -> void:
@@ -833,6 +1076,7 @@ func set_trees_leafless(leafless: bool) -> void:
 		_trees.queue_redraw()
 	for node in _season_layers:
 		node.queue_redraw()
+	_refresh_3d_ground()
 
 
 ## The season's weights (state calendar.season): water, trees and their
@@ -847,6 +1091,7 @@ func set_season(weights: Array) -> bool:
 		_trees.queue_redraw()
 	for node in _season_layers:
 		node.queue_redraw()
+	_refresh_3d_ground()
 	return true
 
 
@@ -1074,6 +1319,7 @@ func set_road_snow(depth: float, cells: Array, redraw := true) -> bool:
 		return false
 	_snow_cover = cover
 	_plowed_cover = cleared
+	_road_snow_3d()
 	if redraw:
 		redraw_road_snow()
 	return true
@@ -1201,6 +1447,10 @@ static func tree_style(kind: String, variation: float) -> Dictionary:
 ## tree's position (same shape every redraw); a felled tree lies 3.2 m
 ## along the way it was hit, trunk showing. Then the standing bollards.
 func _draw_trees(node: Node2D) -> void:
+	if outdoor_3d and buildings_3d:  # step 5: the trees and bollards are 3D; shrubs and scenery stay 2D overlays
+		_trees_3d()
+		_draw_scenery(node)
+		return
 	var rng := RandomNumberGenerator.new()
 	var crowns := Strokes.new()  # one draw call for the crowns (rrt-019.1)
 	for tree in _data.get("trees", []):
@@ -1245,21 +1495,55 @@ func _draw_trees(node: Node2D) -> void:
 	for post in _data.get("bollards", []):
 		if not _knocked.has(obstacle_key(post[0], post[1])):
 			node.draw_circle(MapMath.point(_origin, post[0], post[1]), maxf(_px(1.0), 0.25), Color8(48, 48, 46))
+	_draw_scenery(node)
+
+
+func _draw_scenery(node: Node2D) -> void:
+	drawn_campers.clear()  # rebuilt each draw from the rows drawn: no stale keys
 	var shrubs := PackedVector2Array()
+	var in_3d := outdoor_3d and buildings_3d  # step 6: shrubs and props are 3D (_trees_3d, buildings_3d.props)
 	for obj in _data.get("scenery_objects", []):
+		if in_3d and (obj[2] == "shrub" or B3.PROPS.has(str(obj[2]))):
+			continue
 		if obj[2] == "shrub":
 			var at := MapMath.point(_origin, obj[0], obj[1])
 			shrubs.append_array(PackedVector2Array([at - Vector2(0.3, 0), at + Vector2(0.3, 0)]))
 			continue
-		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]), int(obj[4]) if obj.size() > 4 else 0)
+		if obj[2] == "landmark":
+			draw_landmark(node, MapMath.point(_origin, obj[0], obj[1]), float(obj[3]), obj[4], not buildings_3d)
+			continue
+		_draw_scenery_object(node, MapMath.point(_origin, obj[0], obj[1]), str(obj[2]), float(obj[3]), float(obj[4]) if obj.size() > 4 else 0.0)
 
 	if not shrubs.is_empty():
 		var foliage := hedge_foliage(shrubs)
 		_triangles_colored(node, foliage[0], foliage[1], foliage[2])
 
 
+## A named landmark's 2D shapes (the server's assets/landmarks.json, whose
+## _help lists the shapes): metres from its point, times its scale. Its 3D
+## shapes are buildings_3d's, or their footprints here without the 3D layer.
+static func draw_landmark(node: Node2D, at: Vector2, angle: float, spec: Dictionary, footprints := false) -> void:
+	var scale := float(spec.get("scale", 1.0))
+	node.draw_set_transform(at, deg_to_rad(float(spec.get("heading_deg", 0.0))) - angle, Vector2(scale, scale))
+	for shape: Array in spec.get("shapes", []):
+		var colour := Color.html(str(shape[-1]))
+		match str(shape[0]):
+			"circle": node.draw_circle(Vector2(shape[1], shape[2]), float(shape[3]), colour)
+			"rect": node.draw_rect(Rect2(shape[1], shape[2], shape[3], shape[4]), colour)
+			"line": node.draw_line(Vector2(shape[1], shape[2]), Vector2(shape[3], shape[4]), colour, float(shape[5]))
+			"box": if footprints: node.draw_rect(Rect2(shape[1] - shape[3] / 2.0, shape[2] - shape[4] / 2.0, shape[3], shape[4]), colour)
+			"cylinder": if footprints: node.draw_circle(Vector2(shape[1], shape[2]), maxf(shape[3], shape[4]), colour)
+			"polygon":
+				var points := PackedVector2Array()
+				for k in range(0, shape[1].size() - 1, 2):
+					points.append(Vector2(shape[1][k], shape[1][k + 1]))
+				node.draw_colored_polygon(points, colour)
+	node.draw_set_transform(Vector2.ZERO)
+
+
+var drawn_campers := {}  # camper position -> its drawn body length, m (the 6.0 m body rect * x scale)
 ## The decorative scenery objects, in metres with minimum pixel sizes.
-func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float, capacity := 0) -> void:
+func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float, extra := 0.0) -> void:  # extra: posts, camper length
 	match kind:
 		"caravan", "caravan_with_car":
 			node.draw_set_transform(at, -angle)
@@ -1278,8 +1562,10 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float,
 				node.draw_line(Vector2(-1.4,side), Vector2(-1.55,side*1.15), Color8(199, 195, 162), .04)
 				node.draw_line(Vector2(1.4,side), Vector2(1.55,side*1.15), Color8(199, 195, 162), .04)
 			node.draw_set_transform(Vector2.ZERO)
-		"camper_van":
-			node.draw_set_transform(at, -angle)
+		"camper_van":  # body drawn 6.0 m long, stretched to its length (vehicles/base.py via map_chunks)
+			var stretch := Vector2((extra if extra > 0.0 else 6.0) / 6.0, 1.0)
+			drawn_campers[at] = 6.0 * stretch.x
+			node.draw_set_transform(at, -angle, stretch)
 			node.draw_rect(Rect2(-2.9,-1.05,6.2,2.55), Color8(25, 30, 28, 110))
 			for x: float in [-1.9, 1.9]:
 				for side: float in [-1,1]:
@@ -1310,7 +1596,7 @@ func _draw_scenery_object(node: Node2D, at: Vector2, kind: String, angle: float,
 					node.draw_line(Vector2(x, -0.4), Vector2(x, 0.4), stroke[0], stroke[1])
 			node.draw_set_transform(Vector2.ZERO)
 		"charging_station":  # from above: a pedestal between each two bays, its lit screen and a bolt
-			var posts := clampi(ceili(maxi(capacity, 1) / 2.0), 1, 6)
+			var posts := clampi(ceili(maxf(extra, 1.0) / 2.0), 1, 6)
 			node.draw_set_transform(at, -angle)
 			for i in posts:
 				var x := (i - (posts - 1) / 2.0) * 2.6  # a bay's width apart
@@ -1451,7 +1737,170 @@ static func fence_lines(points: PackedVector2Array) -> Array:
 
 
 ## Batch each stroke style: a city has thousands of fences.
+## --outdoor-3d: this chunk's trees (as the 2D crowns: seasonal colour, a
+## leafless birch's bare crown, a felled one lying) and standing bollards as
+## buildings_3d instances, rebuilt when the layer would redraw.
+func _tree_row(kind: String, variation: float) -> Array:
+	var style := tree_style(kind, variation)
+	var crown: Color = style["crown"]
+	var radius: float = style["radius"]
+	if kind == "pine" or kind == "spruce":
+		crown = crown.lerp(Color8(226, 234, 238), clampf(_season[0], 0.0, 1.0))
+	elif _trees_leafless and kind == "birch":
+		crown = Color8(91, 70, 48).lerp(Color8(226, 234, 238), 0.6 * clampf(_season[0], 0.0, 1.0))
+		radius *= 0.6
+	else:
+		crown = seasonal_color(crown, _season)
+	return [Vector2.ZERO, kind, radius, crown, style["trunk"], NAN]
+
+
+func _trees_3d() -> void:
+	var rows: Array = []
+	for tree in _data.get("trees", []):
+		var row := _tree_row(str(tree[2]), float(tree[3]))
+		var key := obstacle_key(tree[0], tree[1])
+		row[0] = MapMath.point(_origin, tree[0], tree[1])
+		row[5] = float(_fallen[key]) if _fallen.has(key) else NAN
+		rows.append(row)
+	if not _forest_rows.is_empty() and _forest_look != [_season, _trees_leafless]:  # rebuilt for the season only, not per felled tree
+		_forest_look = [_season.duplicate(), _trees_leafless]
+		if _forest_task >= 0:
+			WorkerThreadPool.wait_for_task_completion(_forest_task)
+		B3._tree_mesh("trunk")  # the shared meshes made here, never raced by two workers
+		# Built on a worker: thousands of instances took 20-70 ms on the main thread per forest chunk.
+		_forest_task = WorkerThreadPool.add_task(func(): _forest_ready.call_deferred(_forest_node()))
+	for obj in _data.get("scenery_objects", []):
+		if obj[2] == "shrub":
+			rows.append([MapMath.point(_origin, obj[0], obj[1]), "shrub", 0.6, seasonal_color(Color8(52, 96, 44), _season), Color.BLACK, NAN])
+	var bollards := PackedVector2Array()
+	for post in _data.get("bollards", []):
+		if not _knocked.has(obstacle_key(post[0], post[1])):
+			bollards.append(MapMath.point(_origin, post[0], post[1]))
+	_set_dynamic_3d("trees", B3.trees_node(rows, bollards, ground_heights))
+
+
+## --outdoor-3d: biergarten tables and graves (Detail.site_detail_positions) for the 3D props.
+func _site_detail_rows() -> Array:
+	var rows: Array = []
+	var areas: Array = _data.get("landuse", [])
+	for index in areas.size():
+		var area = areas[index]
+		if area.size() <= 3:
+			continue
+		if not _site_details.has(index):
+			_site_details[index] = Detail.site_detail_positions(_points(area[2]), str(area[3]), _origin)
+		for at in _site_details[index]:
+			rows.append([at, str(area[3])])
+	return rows
+
+
+## --outdoor-3d: the season, frozen fields or leafless trees changed - the
+## chunk's 3D ground is built again (its landuse colours, ice, foam), the old
+## meshes kept until the new ones are ready, and its markings drawn again.
+func _refresh_3d_ground() -> void:
+	if not (outdoor_3d and buildings_3d) or not is_inside_tree():
+		return
+	stale_buildings.append_array(meshes_3d)
+	meshes_3d = []
+	_build_2_5d()
+	if _marking_view != null:
+		_marking_view.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
+## --outdoor-3d: the courts' and rinks' markings, drawn once into a texture
+## over their bounding box (up to 10 px a metre, at most 2048 px) and laid
+## on the 3D ground between the landuse and the roads.
+var _marking_view: SubViewport = null
+
+
+func _marking_root() -> Node2D:
+	if _marking_view != null:
+		return _marking_view.get_child(0)
+	var box := Rect2()
+	for key in ["volleyball_courts", "tennis_courts", "soccer_pitches", "rinks"]:
+		for court in _data.get(key, []):
+			var centre := MapMath.point(_origin, court[0], court[1])
+			var reach := 0.5 * Vector2(float(court[3]), float(court[4])).length() + 3.0
+			var court_box := Rect2(centre - Vector2(reach, reach), Vector2(reach, reach) * 2.0)
+			box = court_box if box.size == Vector2.ZERO else box.merge(court_box)
+	var px_per_m := minf(10.0, 2048.0 / maxf(maxf(box.size.x, box.size.y), 1.0))
+	_marking_view = SubViewport.new()
+	_marking_view.transparent_bg = true
+	_marking_view.size = Vector2i((box.size * px_per_m).ceil()).max(Vector2i.ONE)
+	_marking_view.render_target_update_mode = SubViewport.UPDATE_ONCE
+	_marking_view.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR
+	var root := Node2D.new()
+	root.transform = Transform2D(0.0, Vector2(px_per_m, px_per_m), 0.0, -box.position * px_per_m)
+	_marking_view.add_child(root)
+	add_child(_marking_view)
+	var plane := MeshInstance3D.new()
+	var quad := PlaneMesh.new()
+	quad.size = box.size
+	plane.mesh = quad
+	var material := StandardMaterial3D.new()
+	material.albedo_texture = _marking_view.get_texture()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.roughness = 0.9
+	plane.material_override = material
+	plane.layers = B3.LAYER_BUILDINGS
+	plane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	plane.position = B3.to_3d(box.get_center(), B3.AREAS_TOP_M + 0.001)
+	_set_dynamic_3d.call_deferred("markings", plane)
+	return root
+
+
+## Step 6: this chunk's working street lamps' posts (a knocked-down one goes).
+func _lamps_3d() -> void:
+	var rows: Array = []
+	var lights: Array = _data.get("street_lights", [])
+	for i in street_lights.size():
+		if not _broken.has(i) and i < lights.size():
+			rows.append([street_lights[i], Vector2(cos(float(lights[i][2])), -sin(float(lights[i][2])))])
+	_set_dynamic_3d("lamps", B3.lamp_posts_node(rows))
+
+
+## A rebuilt 3D part of this chunk replaces the old one in the 3D view.
+func _forest_node() -> Node3D:
+	var started := Time.get_ticks_usec()
+	var rows := []
+	for tree in _forest_rows:
+		var row := _tree_row(tree[1], tree[2])
+		row[0] = tree[0]
+		row[2] *= 1.15 + 0.35 * tree[2]  # forest-grown: taller than a park tree
+		rows.append(row)
+	var node := B3.forest_node(rows, ground_heights)
+	forest_ms[1] = (Time.get_ticks_usec() - started) / 1000.0
+	return node
+
+
+func _forest_ready(node: Node3D) -> void:
+	if _forest_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_forest_task)
+		_forest_task = -1
+	_set_dynamic_3d("forest", node)
+
+
+func _set_dynamic_3d(name: String, node: Node3D) -> void:
+	if _dynamic_3d.has(name) and is_instance_valid(_dynamic_3d[name]):
+		_dynamic_3d[name].queue_free()
+	_dynamic_3d.erase(name)
+	if node != null and B3.current != null:
+		B3.current.add([node])
+		_dynamic_3d[name] = node
+	elif node != null:
+		node.free()
+
+
 func _draw_railings(node: Node2D) -> void:
+	if outdoor_3d and buildings_3d:  # step 5: standing in the 3D view (what is left of broken hedges and wooden fences)
+		var rows: Array = []
+		for railing in _data["railings"]:
+			var kind := str(railing[0]) if railing[0] in ["hedge", "wall", "boards"] else "fence"
+			var parts: Array = _hedge_damage.get(hedge_key(railing), [railing[1]]) if railing[0] in ["hedge", "wood_fence"] else [railing[1]]
+			for part in parts:
+				rows.append([kind, _points(part)])
+		_set_dynamic_3d("railings", B3.railings_node(rows))
+		return
 	var lines := {"hedge": PackedVector2Array(), "wall": PackedVector2Array(), "fence": PackedVector2Array(), "boards": PackedVector2Array()}
 	var fence_rails := PackedVector2Array()
 	var fence_posts := PackedVector2Array()
@@ -1766,6 +2215,13 @@ static func lamps(phase: String) -> Array:
 ## Traffic lights: a 7 x 18 px housing along the
 ## traffic, red end toward the intersection, lamps by the server's phase.
 func _draw_traffic_lights(node: Node2D) -> void:
+	if outdoor_3d and buildings_3d:  # step 6: 3D signals, their lamps by the phase (this layer redraws on a change)
+		var rows: Array = []
+		for post in _data["traffic_lights"]:
+			var angle := float(post["angle"])
+			rows.append([MapMath.point(_origin, post["x"], post["y"]), Vector2(-cos(angle), sin(angle)), lamps(_phases.get(str(int(post["id"])), ""))])
+		_set_dynamic_3d("signals", B3.signals_node(rows))
+		return
 	var colors := [[Color8(255, 30, 30), Color8(60, 10, 10)], [Color8(255, 210, 0), Color8(60, 50, 0)], [Color8(40, 240, 60), Color8(10, 50, 15)]]
 	for post in _data["traffic_lights"]:
 		# The upright housing turns by degrees(angle) - 90 counter-clockwise on screen.

@@ -3,7 +3,7 @@ from theroadragetrip.vehicles.base import VEHICLE_DEFINITIONS, vehicle_definitio
 
 def test_builtin_vehicle_definitions_cover_traffic_capabilities():
     assert set(VEHICLE_DEFINITIONS) == {
-        "car", "van", "truck", "bus", "tractor", "camper_van", "car_caravan", "motorcycle", "bicycle",
+        "car", "van", "truck", "bus", "tractor", "camper_van", "car_caravan", "motorcycle", "bicycle", "e_scooter",
     }
     assert vehicle_definition("car").capacity == 5
     assert vehicle_definition("van").household_eligible
@@ -18,6 +18,8 @@ def test_builtin_vehicle_definitions_cover_traffic_capabilities():
     assert not motorcycle.experimental and motorcycle.traffic_weight > 0.0 and motorcycle.movement == "road"
     assert not vehicle_definition("bicycle").is_road_vehicle
     assert not vehicle_definition("bicycle").requires_parking
+    scooter = vehicle_definition("e_scooter")  # a light electric vehicle: the cycle network, 25 km/h at most
+    assert scooter.movement == "cycle" and scooter.max_speed_kmh == 25.0 and not scooter.is_road_vehicle
 
 
 def test_unknown_vehicle_uses_car_definition():
@@ -62,3 +64,61 @@ def test_holiday_vehicles_gather_by_camping_areas():
     share = lambda at: sum(manager._pick_vehicle_type(at) in ("camper_van", "car_caravan") for _ in range(4000)) / 4000
     by_camping, in_town = share((300.0, 50.0)), share((5050.0, 50.0))
     assert by_camping > 0.15 and in_town < 0.05  # about a quarter beside the campsite, 2 % elsewhere
+
+
+REAL_WORLD = {  # length, width in metres (docs/specs/vehicle-realism-audit.md)
+    "car": (4.3, 1.8), "van": (5.2, 2.0), "truck": (7.5, 2.5), "bus": (12.0, 2.55), "tractor": (4.0, 2.2),
+    "camper_van": (6.2, 2.3), "motorcycle": (2.2, 0.8), "bicycle": (1.8, 0.6), "e_scooter": (1.2, 0.5),
+}
+
+
+def test_dimensions_match_real_world_table():
+    for kind, (length, width) in REAL_WORLD.items():
+        definition = vehicle_definition(kind)
+        assert abs(definition.length_m - length) <= 0.1 * length, kind
+        assert abs(definition.width_m - width) <= 0.1 * width, kind
+
+
+def test_glb_aspect_close_to_sim():
+    import re
+    from pathlib import Path
+    source = (Path(__file__).parents[1] / "godot" / "buildings_3d.gd").read_text()
+    sizes = {k: (float(w), float(l)) for k, w, l in re.findall(r'"(\w+)": Vector2\(([\d.]+), ([\d.]+)\)', source)}
+    uniform = set(re.search(r"UNIFORM_SCALE_MODELS := \[([^\]]*)\]", source).group(1).replace('"', "").replace(" ", "").split(","))
+    models = {"van": ["panel_van"], "truck": ["box_truck"], "bus": ["city_bus"], "tractor": ["tractor"],
+              "camper_van": ["camper_van"], "motorcycle": ["motorcycle"], "e_scooter": ["e_scooter", "e_scooter_grab3d"],
+              "bicycle": ["bicycle", "mountain_bike"]}
+    for kind, variants in models.items():
+        definition = vehicle_definition(kind)
+        for model in variants:
+            stretch = definition.length_m / sizes[model][1]
+            # Width always to the sim's; stretched over 15 % in length, the height follows the length too
+            # (UNIFORM_SCALE_MODELS: round wheels). Rendered sizes: godot/tests/run_tests.gd test_model_sizes_match_sim.
+            assert (abs(stretch - 1.0) > 0.15) == (model in uniform), (model, round(stretch, 3))
+
+
+def test_camp_pitch_camper_van_is_the_vehicle():
+    from theroadragetrip.osm.campsites import CAMPING_SIZES
+    assert CAMPING_SIZES["camper_van"][0] == vehicle_definition("camper_van").length_m
+
+
+def test_moped_has_no_spawner_or_drawn_kind():
+    # docs/specs/moped-closure.md: no traffic source spawns mopeds, so no definition and no Godot drawing kind.
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parents[1]
+    assert "moped" not in VEHICLE_DEFINITIONS and vehicle_definition("moped").id == "car"
+    gd = (root / "godot/entity_layer.gd").read_text()
+    for name in ("TWO_WHEELERS", "VEHICLES_3D"):
+        line = re.search(rf"^const {name} := \[.*\]$", gd, re.M).group(0)
+        assert "moped" not in line
+    src = root / "src/theroadragetrip"
+    hits = [p for p in src.rglob("*.py") if "assets" not in p.relative_to(src).parts and "moped" in p.read_text().lower()]
+    assert not hits
+    audit = (root / "docs/specs/vehicle-realism-audit.md").read_text()
+    assert "moped: closed" in audit
+
+
+def test_bicycle_sim_size_unchanged():  # the mountain bike's wider render is client-side only
+    bicycle = vehicle_definition("bicycle")
+    assert (bicycle.length_m, bicycle.width_m) == (1.8, 0.6)

@@ -5,9 +5,10 @@ from shapely.affinity import rotate, translate
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.strtree import STRtree
 
+from ..vehicles.base import vehicle_definition
 from .models import SceneryObject
 
-CAMPING_SIZES = {"tent": (3.2, 2.4), "camper_van": (6.2, 2.5), "caravan": (6.2, 2.5), "caravan_with_car": (9.4, 2.5)}
+CAMPING_SIZES = {"tent": (3.2, 2.4), "camper_van": (vehicle_definition("camper_van").length_m, 2.5), "caravan": (6.2, 2.5), "caravan_with_car": (9.4, 2.5)}
 
 
 def populate_camp_pitches(elements, nodes_m, buildings, waters, ways, railings):

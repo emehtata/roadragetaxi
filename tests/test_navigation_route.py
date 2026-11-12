@@ -22,7 +22,7 @@ def _grid(blocks=12, step=40.0):
 
 def _world(traffic=None, target=None):
     taxi = SimpleNamespace(target=target)
-    taxi.get_current_target = lambda: taxi.target
+    taxi.navigation_target = lambda: taxi.target
     return SimpleNamespace(traffic_mgr=traffic or TrafficWorld(_grid()), taxi_mgr=taxi, level_routes=None)
 
 
@@ -58,12 +58,12 @@ def test_next_turn_counts_intermediate_segments_and_arrival():
 
 
 def test_named_next_street_follows_the_outgoing_road_and_resets_with_target():
-    first = Way([(0, 0), (100, 0)], "residential", 4, name="Isokatu")
-    second = Way([(100, 0), (100, 100)], "residential", 4, name="Kirkkokatu")
-    world = _world(TrafficWorld([first, second]), TaxiTarget(x=100, y=100, address="Kirkkokatu 10"))
+    first = Way([(0, 0), (100, 0)], "residential", 4, name="Main Street")
+    second = Way([(100, 0), (100, 100)], "residential", 4, name="Test Street")
+    world = _world(TrafficWorld([first, second]), TaxiTarget(x=100, y=100, address="Test Street 10"))
     car, nav = SimpleNamespace(x=0, y=0, map_level=0), NavigationRoute()
     _finish(nav, world, car)
-    assert nav.instruction == {"maneuver": "left", "distance_m": 100, "total_m": 200, "angle_deg": 90, "street": "Kirkkokatu"}
+    assert nav.instruction == {"maneuver": "left", "distance_m": 100, "total_m": 200, "angle_deg": 90, "street": "Test Street"}
     car.x = 70
     nav.update(world, car)
     assert nav.instruction["distance_m"] == 30
@@ -76,7 +76,7 @@ def test_named_next_street_follows_the_outgoing_road_and_resets_with_target():
 
 
 def test_a_pickup_gets_a_route_from_the_taxi_to_the_target_once():
-    pickup = TaxiTarget(x=400.0, y=280.0, address="Kirkkokatu 4")
+    pickup = TaxiTarget(x=400.0, y=280.0, address="Test Street 4")
     world, car, nav = _world(target=pickup), SimpleNamespace(x=0.0, y=0.0, map_level=0), NavigationRoute()
     _finish(nav, world, car)
     assert nav.points[0] == [0.0, 0.0] and nav.points[-1] == [400.0, 280.0]
@@ -86,19 +86,19 @@ def test_a_pickup_gets_a_route_from_the_taxi_to_the_target_once():
 
 
 def test_the_drop_off_replaces_the_pickup_route_and_its_job():
-    pickup = TaxiTarget(x=400.0, y=280.0, address="Kirkkokatu 4")
+    pickup = TaxiTarget(x=400.0, y=280.0, address="Test Street 4")
     world, car = _world(target=pickup), SimpleNamespace(x=0.0, y=0.0, map_level=0)
     nav = NavigationRoute(budget_s=0.0)  # one search step per tick: the pickup job is still running
     nav.update(world, car)
     assert nav._job is not None
-    world.taxi_mgr.target = TaxiTarget(x=40.0, y=440.0, address="Rautatientori")
+    world.taxi_mgr.target = TaxiTarget(x=40.0, y=440.0, address="Station Square")
     nav.update(world, car)  # the stale pickup job is dropped, never published
     _finish(nav, world, car)
     assert nav.points[-1] == [40.0, 440.0] and nav.plans_started == 2
 
 
 def test_the_route_is_replanned_only_beyond_35_m_off_it():
-    target = TaxiTarget(x=440.0, y=0.0, address="Isokatu 1")
+    target = TaxiTarget(x=440.0, y=0.0, address="Main Street 1")
     world, car, nav = _world(target=target), SimpleNamespace(x=0.0, y=0.0, map_level=0), NavigationRoute()
     _finish(nav, world, car)
     car.y = 35.0  # exactly 35 m off the straight route along y = 0
@@ -110,7 +110,7 @@ def test_the_route_is_replanned_only_beyond_35_m_off_it():
 
 
 def test_a_new_route_graph_replans_and_keeps_the_old_line_until_then():
-    target = TaxiTarget(x=440.0, y=0.0, address="Isokatu 1")
+    target = TaxiTarget(x=440.0, y=0.0, address="Main Street 1")
     world, car, nav = _world(target=target), SimpleNamespace(x=0.0, y=0.0, map_level=0), NavigationRoute(budget_s=0.0)
     _finish(nav, world, car)
     old = nav.points
@@ -123,7 +123,7 @@ def test_a_level_change_plans_that_levels_leg():
     calls = []
     leg = [(5.0, 5.0), (20.0, 5.0), (20.0, 30.0)]
     level_routes = SimpleNamespace(plan=lambda graph, start, level, goal: calls.append((start, level, goal)) or SimpleNamespace(legs=[(level, leg)]))
-    world = _world(target=TaxiTarget(x=440.0, y=0.0, address="Isokatu 1"))
+    world = _world(target=TaxiTarget(x=440.0, y=0.0, address="Main Street 1"))
     world.level_routes = level_routes
     car, nav = SimpleNamespace(x=5.0, y=5.0, map_level=-1), NavigationRoute()
     nav.update(world, car)
@@ -144,18 +144,22 @@ def test_an_unreachable_target_gives_no_line():
     assert nav.plans_started == 1  # no retry every tick
 
 
+@pytest.mark.timing  # asserts wall-clock slice times: serial in make test (pytest.ini)
 def test_a_long_search_spans_ticks_within_its_budget():
     traffic = TrafficWorld(_grid(blocks=60))
     world = _world(traffic, TaxiTarget(x=59 * 40.0, y=59 * 40.0, address="Kaukana"))
-    car, nav = SimpleNamespace(x=0.0, y=0.0, map_level=0), NavigationRoute(budget_s=0.001)
-    ticks = 0
-    while True:
-        nav.update(world, car)
-        ticks += 1
-        if nav._job is None:
-            break
-    assert ticks > 1 and nav.points[-1] == [2360.0, 2360.0]
-    assert nav.worst_slice_s < 0.001 + 0.004  # the budget plus one search step's overshoot
+    worst = []
+    for _ in range(3):  # wall-clock slices: a busy machine (parallel test workers) can preempt one; a real overshoot repeats
+        car, nav = SimpleNamespace(x=0.0, y=0.0, map_level=0), NavigationRoute(budget_s=0.001)
+        ticks = 0
+        while True:
+            nav.update(world, car)
+            ticks += 1
+            if nav._job is None:
+                break
+        assert ticks > 1 and nav.points[-1] == [2360.0, 2360.0]
+        worst.append(nav.worst_slice_s)
+    assert min(worst) < 0.001 + 0.004  # the budget plus one search step's overshoot
 
 
 def test_simplify_keeps_the_shape_and_drops_the_straight_points():

@@ -1,7 +1,11 @@
 """Keep the game, Python package and Windows installer on the same release."""
 import re
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 (requires-python >=3.10): tomli is the same parser
+    import tomli as tomllib
 
 
 def test_release_versions_match():

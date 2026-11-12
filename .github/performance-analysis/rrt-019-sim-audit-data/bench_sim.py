@@ -41,6 +41,9 @@ p.add_argument("--fare", action="store_true", help="accept an offer: game time 1
 p.add_argument("--cprofile")
 p.add_argument("--sample-ms", type=float, default=0.0,
                help="sample the tick thread's stack every N ms; ticks over 25 ms keep their samples (adds overhead)")
+p.add_argument("--population-bands", action="store_true",
+               help="sample NPC counts after each timed tick and report natural 10/20/40/60-vehicle bands")
+p.add_argument("--route-steps", action="store_true", help="diagnose route generator steps over 1 ms (adds overhead)")
 p.add_argument("--out")
 A = p.parse_args()
 
@@ -74,6 +77,8 @@ server._visible_bounds = lambda: (car.x - vw / 2, car.y - vh / 2, car.x + vw / 2
 
 # --- instrumentation -------------------------------------------------------
 tick_sections = defaultdict(float)
+tick_calls = defaultdict(int)
+tick_route_spikes = []
 
 
 @contextmanager
@@ -97,11 +102,13 @@ def timed(obj, attr, label):
             return fn(*a, **k)
         finally:
             tick_sections[label] += time.perf_counter() - t
+            tick_calls[label] += 1
     setattr(obj, attr, wrapper)
 
 
 import theroadragetrip.server as srv_mod  # noqa: E402
 from theroadragetrip import protocol  # noqa: E402
+from theroadragetrip import npc as npc_mod  # noqa: E402
 
 _last_msg = {}
 _build = protocol.build_state_message
@@ -123,6 +130,42 @@ timed(server.world.weather, "update", "srv.weather")
 if server._map_streamer is not None:
     timed(server._map_streamer, "tick", "srv.map_streamer")
 w = server.world
+if A.route_steps:
+    timed(w.npc_manager, "_finish_route_job", "npc.finish_route_job")
+    def probe_route(steps, kind):
+        try:
+            while True:
+                started = time.perf_counter()
+                try:
+                    value = next(steps)
+                except StopIteration as done:
+                    return done.value
+                finally:
+                    elapsed = time.perf_counter() - started
+                    if elapsed > 0.001:
+                        frames, current = [], steps
+                        while getattr(current, "gi_frame", None) is not None:
+                            frame = current.gi_frame
+                            frames.append([frame.f_code.co_name, frame.f_lineno])
+                            current = current.gi_yieldfrom
+                        tick_route_spikes.append({"kind": kind, "ms": elapsed * 1000, "frames": frames})
+                yield value
+        finally:
+            steps.close()
+
+    advance_routes = w.npc_manager._advance_route_jobs
+
+    def probe_routes(*args, **kwargs):
+        for job in w.npc_manager._route_jobs:
+            if not job.get("audit_probed"):
+                job["steps"] = probe_route(job["steps"], job["kind"])
+                job["audit_probed"] = True
+        return advance_routes(*args, **kwargs)
+
+    w.npc_manager._advance_route_jobs = probe_routes
+for attr in ("rebuild_spatial_grid", "_check_vehicle_collision", "_advance_route_jobs", "_run_population_tick"):
+    timed(w.npc_manager, attr, "npc." + attr.lstrip("_"))
+timed(npc_mod, "update_npc", "npc.movement")
 timed(w.npc_manager, "discard_outside", "npc.discard_outside")
 timed(w.pedestrian_mgr, "discard_outside", "ped.discard_outside")
 for attr in ("ensure_taxi_stop_waiter", "ensure_sports_players"):
@@ -236,6 +279,8 @@ if prof:
     prof.enable()
 for i in range(n):
     tick_sections.clear()
+    tick_calls.clear()
+    tick_route_spikes.clear()
     cur_tick[0] = i
     g0 = len(gc_pauses)
     c0 = time.thread_time()
@@ -247,6 +292,15 @@ for i in range(n):
     blob = protocol.encode(_last_msg["m"])  # what transport.py's writer thread does per client
     rec = {"wall": wall, "cpu": cpu, "sec": dict(tick_sections), "encode": time.perf_counter() - e0, "bytes": len(blob),
            "gc": [p for p in gc_pauses[g0:]]}
+    if A.population_bands:  # outside the measured tick; NPC populations are not changed
+        rec["vehicles"] = len(w.npc_manager.vehicles)
+        rec["moving"] = sum(1 for v in w.npc_manager.vehicles if abs(v.car.speed) > 0.5)
+        rec["calls"] = dict(tick_calls)
+        rec["route_jobs"] = {key: w.npc_manager.route_job_stats.get(key, 0)
+                             for key in ("queued", "ready", "failed", "stale", "discarded")}
+        rec["route_jobs"]["pending"] = len(w.npc_manager._route_jobs)
+    if A.route_steps:
+        rec["route_step_spikes"] = list(tick_route_spikes)
     if i % 30 == 0:
         rec["counts"] = counts()
     if wall < 0.025:
@@ -273,6 +327,8 @@ summary = {
     "cpu_mean_ms": 1000 * sum(t["cpu"] for t in ticks) / len(ticks),
     "over_budget_pct": 100 * sum(1 for x in walls if x > DT) / len(walls),
     "over_half_budget_pct": 100 * sum(1 for x in walls if x > DT / 2) / len(walls),
+    "over_50ms_pct": 100 * sum(1 for x in walls if x > 0.050) / len(walls),
+    "over_100ms_pct": 100 * sum(1 for x in walls if x > 0.100) / len(walls),
     "encode_ms": {"mean": 1000 * sum(t["encode"] for t in ticks) / len(ticks), "max": 1000 * max(t["encode"] for t in ticks)},
     "state_bytes": {"mean": sum(t["bytes"] for t in ticks) / len(ticks), "max": max(t["bytes"] for t in ticks)},
     "sections_mean_ms": {},
@@ -300,6 +356,34 @@ summary["worst"] = [{"i": i, "wall_ms": 1000 * ticks[i]["wall"], "cpu_ms": 1000 
                      "gc": ticks[i]["gc"],
                      "sec_ms": {k: round(1000 * v, 2) for k, v in sorted(ticks[i]["sec"].items(), key=lambda kv: -kv[1])[:6]}}
                     for i in worst]
+if A.population_bands or A.route_steps:
+    summary["tick_samples"] = ticks
+if A.population_bands:
+    summary["population_bands"] = {}
+    for target in (10, 20, 40, 60):
+        rows = [t for t in ticks if target - 5 <= t["vehicles"] < target + 5]
+        if not rows:
+            continue
+        band_walls = sorted(t["wall"] * 1000 for t in rows)
+        summary["population_bands"][str(target)] = {
+            "ticks": len(rows),
+            "vehicles": [min(t["vehicles"] for t in rows), max(t["vehicles"] for t in rows)],
+            "mean_vehicles": sum(t["vehicles"] for t in rows) / len(rows),
+            "mean_moving": sum(t["moving"] for t in rows) / len(rows),
+            "mean_ms": sum(band_walls) / len(rows),
+            "p50_ms": band_walls[len(rows) // 2],
+            "p95_ms": band_walls[min(len(rows) - 1, int(0.95 * len(rows)))],
+            "p99_ms": band_walls[min(len(rows) - 1, int(0.99 * len(rows)))],
+            "max_ms": band_walls[-1],
+            "over_16_67ms_pct": 100 * sum(t["wall"] > DT / 2 for t in rows) / len(rows),
+            "over_33_33ms_pct": 100 * sum(t["wall"] > DT for t in rows) / len(rows),
+            "over_50ms_pct": 100 * sum(t["wall"] > 0.050 for t in rows) / len(rows),
+            "over_100ms_pct": 100 * sum(t["wall"] > 0.100 for t in rows) / len(rows),
+            "phase_mean_ms": {
+                name: 1000 * sum(t["sec"].get(name, 0.0) for t in rows) / len(rows)
+                for name in ("sim.npc", "sim.pedestrians", "sim.collisions", "srv.broadcast_state")
+            },
+        }
 summary["npc_diag"] = {k: v for k, v in (getattr(w.npc_manager, "population_diagnostics", {}) or {}).items()
                        if isinstance(v, (int, float))}
 rjs = getattr(w.npc_manager, "route_job_stats", None)

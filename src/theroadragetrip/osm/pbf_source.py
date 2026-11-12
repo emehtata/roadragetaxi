@@ -38,6 +38,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
+from .overpass import force_refresh_requested
 from ..utils.pbf_index import build_cells_for, default_index_dir, index_is_stale, osmium_command, tiles_for_bbox
 
 logger = logging.getLogger(__name__)
@@ -59,25 +60,54 @@ EXTRACT_STRATEGY = "smart"
 COVERING_CACHE_MAX_RATIO = 4.0
 
 
+class PbfUnavailable(RuntimeError):
+    """The local extract could not be used: `reason` is "pbf_missing",
+    "osmium_missing" or "osmium_failed"; `path` the resolved .osm.pbf."""
+
+    def __init__(self, reason: str, path, detail: str = ""):
+        super().__init__(reason, str(path), detail)  # all args: picklable across the build process
+        self.reason, self.path, self.detail = reason, str(path), detail
+
+    def __str__(self) -> str:
+        return self.detail or f"{self.reason}: {self.path}"
+
+
+# Why osm_source=pbf fell back to Overpass this server session: reason ->
+# (path, detail). Recorded once per reason (world_loader), shown by the HUD.
+pbf_fallback_notices: dict = {}
+
+
+def pbf_unavailable_reason(pbf_path: Optional[Path] = None) -> Optional[str]:
+    """Why the local extract is not usable here ("pbf_missing" /
+    "osmium_missing"), or None when it is."""
+    path = Path(pbf_path) if pbf_path else DEFAULT_FINLAND_PBF_PATH
+    if not path.is_file():
+        return "pbf_missing"
+    if osmium_command() is None:
+        return "osmium_missing"
+    return None
+
+
 def local_pbf_available(pbf_path: Optional[Path] = None) -> bool:
     """Whether a local .pbf extract source is actually usable here: the
     file exists and the `osmium` CLI (osmium-tool) is bundled or on PATH."""
-    path = Path(pbf_path) if pbf_path else DEFAULT_FINLAND_PBF_PATH
-    return path.is_file() and osmium_command() is not None
+    return pbf_unavailable_reason(pbf_path) is None
 
 
-_cell_builder_lock = threading.Lock()
+_cell_builder_lock = threading.Condition()
 _cell_builder_busy = False
+_foreground_extracts = 0
 
 
 def _cut_index_cells_later(path: Path, bbox: Tuple[float, float, float, float]) -> None:
     """A whole-file extract scans all of Finland (~10 s, whatever the bbox);
     from the bbox's grid index cell it takes ~1.5 s. Cut that cell (and any
-    neighbour within reach) in the background, one cut at a time: two
-    concurrent "smart" cuts were measured to need several GB of RAM."""
+    neighbour within reach) in the background, one cut at a time and never
+    beside a whole-file extract: two concurrent "smart" passes were measured
+    to need several GB of RAM (OOM killer on small machines and WSL)."""
     global _cell_builder_busy
     with _cell_builder_lock:
-        if _cell_builder_busy:
+        if _cell_builder_busy or _foreground_extracts:
             return  # the next whole-file extract asks again
         _cell_builder_busy = True
 
@@ -90,8 +120,25 @@ def _cut_index_cells_later(path: Path, bbox: Tuple[float, float, float, float]) 
         finally:
             with _cell_builder_lock:
                 _cell_builder_busy = False
+                _cell_builder_lock.notify_all()
 
     threading.Thread(target=run, name="pbf-index-cells", daemon=True).start()
+
+
+def _extract_whole_file(path: Path, bbox: Tuple[float, float, float, float]) -> List[dict]:
+    """Whole-file extract, after any running cell cut (each cut is bounded
+    by its own timeout) and holding off new ones; then ask for the cut."""
+    global _foreground_extracts
+    with _cell_builder_lock:
+        _cell_builder_lock.wait_for(lambda: not _cell_builder_busy)
+        _foreground_extracts += 1
+    try:
+        elements = _extract_elements(path, bbox)
+    finally:
+        with _cell_builder_lock:
+            _foreground_extracts -= 1
+    _cut_index_cells_later(path, bbox)
+    return elements
 
 
 def fetch_osm_ways_from_pbf(
@@ -113,7 +160,7 @@ def fetch_osm_ways_from_pbf(
 
     if progress_callback:
         progress_callback(0.1, "Checking cache...")
-    force_refresh = force_refresh or os.getenv("OVERPASS_FORCE_REFRESH", "0").lower() in ("1", "true", "yes")
+    force_refresh = force_refresh_requested(force_refresh)
     if not force_refresh:
         cached = load_osm_cache(bbox, max_cover_ratio=COVERING_CACHE_MAX_RATIO)
         if cached is not None:
@@ -123,10 +170,12 @@ def fetch_osm_ways_from_pbf(
             return cached
 
     path = Path(pbf_path) if pbf_path else DEFAULT_FINLAND_PBF_PATH
-    if not path.is_file():
-        raise FileNotFoundError(f"Local OSM extract not found: {path}")
-    if osmium_command() is None:
-        raise RuntimeError(
+    reason = pbf_unavailable_reason(path)
+    if reason == "pbf_missing":
+        raise PbfUnavailable(reason, path, f"Local OSM extract not found: {path}")
+    if reason == "osmium_missing":
+        raise PbfUnavailable(
+            reason, path,
             "osm_source=pbf requires the 'osmium' command-line tool "
             "(osmium-tool). Install it with your package manager, e.g. "
             "'apt install osmium-tool', 'brew install osmium-tool', or "
@@ -139,22 +188,27 @@ def fetch_osm_ways_from_pbf(
     index_dir = default_index_dir(path)
     tiles = [] if index_is_stale(path, index_dir) else tiles_for_bbox(index_dir, bbox)
 
-    if tiles:
-        # A cell is a "smart"-complete superset for anything touching it
-        # (see utils/pbf_index.py), so extracting the same query bbox from
-        # each overlapping cell and merging by (type, id) reproduces
-        # exactly what extracting from the full source file would give -
-        # just from much smaller inputs. Usually one cell; more than one
-        # only for a bbox straddling a cell boundary.
-        logger.info("Using PBF grid index: %d cell(s) for bbox %s", len(tiles), bbox)
-        by_key = {}
-        for tile in tiles:
-            for el in _extract_elements(tile, bbox):
-                by_key[(el["type"], el["id"])] = el
-        elements = list(by_key.values())
-    else:
-        _cut_index_cells_later(path, bbox)
-        elements = _extract_elements(path, bbox)
+    try:
+        if tiles:
+            # A cell is a "smart"-complete superset for anything touching it
+            # (see utils/pbf_index.py), so extracting the same query bbox from
+            # each overlapping cell and merging by (type, id) reproduces
+            # exactly what extracting from the full source file would give -
+            # just from much smaller inputs. Usually one cell; more than one
+            # only for a bbox straddling a cell boundary.
+            logger.info("Using PBF grid index: %d cell(s) for bbox %s", len(tiles), bbox)
+            by_key = {}
+            for tile in tiles:
+                for el in _extract_elements(tile, bbox):
+                    by_key[(el["type"], el["id"])] = el
+            elements = list(by_key.values())
+        else:
+            elements = _extract_whole_file(path, bbox)
+    except RuntimeError as exc:
+        raise PbfUnavailable("osmium_failed", path, str(exc)) from exc
+    except (OSError, ET.ParseError, MemoryError) as exc:
+        # osmium vanished/not executable, killed mid-write, or too big to hold
+        raise PbfUnavailable("osmium_failed", path, f"osmium extract failed: {type(exc).__name__}: {exc}") from exc
 
     if progress_callback:
         progress_callback(0.5, "Parsing local extract...")
@@ -202,7 +256,7 @@ def _extract_elements(source_pbf: Path, bbox: Tuple[float, float, float, float])
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=EXTRACT_TIMEOUT_S)
         except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(f"osmium extract timed out after {EXTRACT_TIMEOUT_S:.0f}s: {' '.join(cmd)}") from exc
+            raise RuntimeError(f"osmium extract of {source_pbf} timed out after {EXTRACT_TIMEOUT_S:.0f}s") from exc  # the command is logged above; the reason ends the message, the notice shows its tail
         if result.returncode != 0:
             raise RuntimeError(f"osmium extract failed (exit {result.returncode}): {result.stderr.strip()}")
         return _parse_osm_xml(out_path)

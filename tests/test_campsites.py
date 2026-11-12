@@ -104,3 +104,12 @@ def test_caravan_only_pitch_gets_a_trailer_when_camper_vans_are_prohibited():
     elements = [dict(type="node",id=2,tags={"tourism":"camp_pitch","motorhome":"no","tents":"no","caravans":"yes"})]
     obj, = populate_camp_pitches(elements,{2:(0,0)},[],[],[],[])
     assert obj.kind == "caravan"
+
+
+def test_camper_row_carries_vehicle_length():
+    from theroadragetrip.vehicles.base import vehicle_definition
+    elements,nodes = pitches()
+    objects = populate_camp_pitches(elements,nodes,[],[],[],[])
+    world = SimpleNamespace(ways=[],railways=[],waters=[],buildings=[],sceneries=[],scenery_objects=objects)
+    rows = [r for c in ChunkIndex(world)._chunks.values() for r in c["scenery_objects"] if r[2] == "camper_van"]
+    assert rows and all(r[4] == vehicle_definition("camper_van").length_m for r in rows)

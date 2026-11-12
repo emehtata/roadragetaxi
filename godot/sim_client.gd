@@ -19,6 +19,7 @@ var port := 8765
 var player_id := "local_player"  # the world message says which player this client is
 var connected := false
 var parse_usec := 0  # time spent decoding the last message (performance readout)
+var save_error_count := 0
 var save_count := -1  # the server's saves written (state "save_count"): a save request's acknowledgement
 var home_plan: Dictionary = {}
 
@@ -27,8 +28,9 @@ var _buffer := PackedByteArray()
 var _retry_in := 0.0
 var _seq := 0
 var _last_command: Dictionary = {}
-var _parsing := {}  # chunk_id -> worker task parsing it (godot-18: a big chunk took up to ~18 ms on the main thread)
-var _cancelled := {}  # chunk ids unloaded while still being parsed
+var _parsing := {}  # generation -> worker task; every job owns its task
+var _chunk_generations := {}  # chunk_id -> newest generation allowed to publish
+var _next_generation := 0
 var _origin := Vector2.ZERO  # the world message's centre: the worker prepares each chunk for it (MapChunk.prepare)
 const CHUNK_PREFIX := "{\"type\":\"chunk\","  # protocol.encode: compact JSON, "type" first
 const MapChunk := preload("res://map_chunk.gd")
@@ -52,8 +54,7 @@ func _process(delta: float) -> void:
 		if connected:
 			connected = false
 			_buffer.clear()
-			for chunk_id in _parsing:  # chunks still being parsed belong to the lost connection
-				_cancelled[chunk_id] = true
+			_chunk_generations.clear()  # pending jobs belong to the lost connection
 			connection_changed.emit(false)
 		_retry_in -= delta
 		if _retry_in <= 0.0:
@@ -65,28 +66,38 @@ func _process(delta: float) -> void:
 func _parse_chunk(line: String) -> void:
 	var at := line.find("\"chunk_id\":\"") + 12
 	var chunk_id := line.substr(at, line.find("\"", at) - at)
-	_cancelled.erase(chunk_id)
+	_next_generation += 1
+	var generation := _next_generation
+	_chunk_generations[chunk_id] = generation
 	var origin := _origin
-	_parsing[chunk_id] = WorkerThreadPool.add_task(func():
+	_parsing[generation] = WorkerThreadPool.add_task(func():
 		var started := Time.get_ticks_usec()
 		var message = JSON.parse_string(line)
 		if typeof(message) == TYPE_DICTIONARY:
 			MapChunk.prepare(message, origin)
-		_chunk_parsed.call_deferred(chunk_id, message, Time.get_ticks_usec() - started))
+		_chunk_parsed.call_deferred(chunk_id, generation, message, Time.get_ticks_usec() - started))
 
 
-func _chunk_parsed(chunk_id: String, message, usec: int) -> void:
-	if _parsing.has(chunk_id):
-		WorkerThreadPool.wait_for_task_completion(_parsing[chunk_id])
-		_parsing.erase(chunk_id)
-	preload("res://perf.gd").add("parse_chunk", usec)
-	if _cancelled.has(chunk_id):
-		_cancelled.erase(chunk_id)
+func _chunk_parsed(chunk_id: String, generation: int, message, usec: int) -> void:
+	if not _parsing.has(generation):
 		return
+	WorkerThreadPool.wait_for_task_completion(_parsing[generation])
+	_parsing.erase(generation)
+	preload("res://perf.gd").add("parse_chunk", usec)
+	if _chunk_generations.get(chunk_id) != generation:
+		return
+	_chunk_generations.erase(chunk_id)
 	if typeof(message) != TYPE_DICTIONARY or message.get("version") != PROTOCOL_VERSION:
 		push_warning("Ignoring malformed chunk from the simulation")
 		return
 	chunk_received.emit(message)
+
+
+func _exit_tree() -> void:
+	_chunk_generations.clear()
+	for task in _parsing.values():
+		WorkerThreadPool.wait_for_task_completion(task)
+	_parsing.clear()
 
 
 func _drain_lines() -> void:
@@ -111,9 +122,11 @@ func _drain_lines() -> void:
 			continue
 		match message.get("type"):
 			"world":
+				_chunk_generations.clear()
 				_origin = Vector2(message["center"][0], message["center"][1])
 				world_received.emit(message)
 			"state":
+				save_error_count = int(message.get("state", {}).get("save_error_count", save_error_count))
 				save_count = int(message.get("state", {}).get("save_count", save_count))
 				state_received.emit(message)
 			"home_interior":
@@ -121,8 +134,7 @@ func _drain_lines() -> void:
 			"chunk":
 				chunk_received.emit(message)
 			"chunk_unload":
-				if _parsing.has(message["chunk_id"]):
-					_cancelled[message["chunk_id"]] = true  # never shown: drop it when its parse is done
+				_chunk_generations.erase(message["chunk_id"])
 				chunk_unloaded.emit(message["chunk_id"])
 	if start > 0:
 		_buffer = _buffer.slice(start)
@@ -141,6 +153,16 @@ func send_command(command: Dictionary) -> void:
 		return
 	_seq += 1
 	_peer.put_data(command_line(command, _seq, player_id).to_utf8_buffer())
+
+
+func send_pause(paused: bool) -> void:
+	_last_command = {}
+	if not connected:
+		return
+	_seq += 1
+	var message := {"type": "command", "version": PROTOCOL_VERSION, "seq": _seq,
+		"player_id": player_id, "command": {}, "paused": paused}
+	_peer.put_data((JSON.stringify(message) + "\n").to_utf8_buffer())
 
 
 ## A phone answer, riding on a command with the current controls (the

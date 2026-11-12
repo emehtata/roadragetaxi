@@ -309,7 +309,9 @@ static func _lerp_edge(e0: Array, e1: Array, t: float) -> Array:
 ## The band from `v0` to `v1` (0 the top edge, 1 the bottom) between two edges.
 func _flag_quad(e0: Array, e1: Array, v0: float, v1: float, color: Color) -> void:
 	var points := PackedVector2Array([e0[0].lerp(e0[1], v0), e1[0].lerp(e1[1], v0), e1[0].lerp(e1[1], v1), e0[0].lerp(e0[1], v1)])
-	flag_layer.draw_colored_polygon(points, color)
+	# draw_primitive takes the quad as two fixed triangles: a fold twisting it into a bow-tie,
+	# or a calm collapsing it to a line, made draw_colored_polygon's triangulation fail.
+	flag_layer.draw_primitive(points, PackedColorArray([color, color, color, color]), PackedVector2Array())
 
 
 func _draw_bonfires() -> void:

@@ -18,15 +18,18 @@ import time
 
 from ..world_loader import level_structures as _level_structures
 from ..osm import TILE_MERGE_BUDGET_S, remove_trees_under_roads_steps
+from ..osm.build import FERRY_KIND
 from ..performance import MAP_SYNC_BUDGET_S, MAP_SYNC_URGENT_BUDGET_S
 from ..parking import generate_detached_house_parking_chunk
 from ..physics import connected_drivable_ways
 from ..level_transitions import close_garage_roads
+from ..roadworks import create_roadworks
 
 logger = logging.getLogger(__name__)
 
 
 CHUNK_INPUTS_READY = "chunk_inputs_ready"
+TAXI_WAIT = "taxi_wait"
 # A settled merge waits SYNC_SETTLE_S, and while a tile fetch is in flight up
 # to SYNC_WAIT_FOR_FETCH_S, before its sync starts: the lookahead tile is
 # requested right after the core window or a moment later, as the car moves,
@@ -82,38 +85,69 @@ def prepare_initial_window(world, timeout_s: float = INITIAL_PREPARE_TIMEOUT_S, 
     return {"started": True, "integrated_tiles": integrated, "elapsed_s": elapsed, "timed_out": False}
 
 
-def map_sync_steps(world):
+ROADWORKS_PER_KM2 = 1.0  # extension density; the opening map gets create_roadworks' default 3
+
+
+def _add_roadworks_on_new_ways(w) -> None:
+    """Roadworks for ways merged since the last sync (keyed by OSM id, so a
+    way split across tiles never gets a second work). Off when the world has
+    no roadwork_way_keys (roadworks disabled)."""
+    seen = getattr(w, "roadwork_way_keys", None)
+    if seen is None:
+        return
+    new = [way for way in w.ways if (way.osm_id if way.osm_id is not None else id(way)) not in seen]
+    seen.update(way.osm_id if way.osm_id is not None else id(way) for way in new)
+    if not new:
+        return
+    xs = [x for way in new for x, _ in way.points_m]
+    ys = [y for way in new for _, y in way.points_m]
+    count = max(1, round((max(xs) - min(xs)) * (max(ys) - min(ys)) / 1e6 * ROADWORKS_PER_KM2))
+    works, lights = create_roadworks(new, count=count)
+    w.roadworks.extend(works)
+    w.traffic_lights.extend(lights)
+
+
+def map_sync_steps(world, remaining_budget=None):
     """The map sync stages 1..14 as one generator: each `yield` is a
     point where the tick may stop (its budget spent) and resume later, and
     names the stage the slice just before it belonged to (MapStreamer adds
     up the time per stage). The old structures keep serving until each
     stage's new one is complete."""
+    budget = remaining_budget or (lambda: MAP_SYNC_BUDGET_S)
     w = world
     close_garage_roads((*w.ways, *getattr(w, "level_ways", ())))
     for _ in remove_trees_under_roads_steps(w.sceneries, w.ways):
         yield "trees_under_roads"
     w.spatial_grid.start_rebuild(w.ways)
-    while not w.spatial_grid.advance_rebuild(MAP_SYNC_BUDGET_S):
+    while True:
+        done = w.spatial_grid.advance_rebuild(budget())
         yield "road_grid"
+        if done:
+            break
     index = 0
     while index < len(w.buildings):
         index, _ = generate_detached_house_parking_chunk(w.buildings, w.ways, w.parking_spaces, w.spatial_grid,
-                                                         index, MAP_SYNC_BUDGET_S)
+                                                         index, budget())
         yield "house_parking"
     for name, grid, items in (("building_grid", w.building_grid, w.buildings), ("scenery_grid", w.scenery_grid, w.sceneries)):
         grid.start_rebuild(items)
-        while not grid.advance_rebuild(MAP_SYNC_BUDGET_S):
+        while True:
+            done = grid.advance_rebuild(budget())
             yield name
-        yield name
+            if done:
+                break
+    _add_roadworks_on_new_ways(w)
     w.street_lamps[:] = [obj for obj in w.scenery_objects if obj.kind == "street_lamp"]
     for grid, items in ((w.street_lamp_grid, w.street_lamps), (w.water_grid, w.waters),
                         (w.crossing_grid, w.crossings), (w.curb_grid, w.curbs),
-                        (w.railway_grid, w.railways), (w.railing_grid, w.railings),
+                        (w.railway_grid, [r for r in w.railways if r.kind != FERRY_KIND]), (w.railing_grid, w.railings),
                         (w.traffic_light_grid, w.traffic_lights)):
         grid.start_rebuild(items)
-        while not grid.advance_rebuild(MAP_SYNC_BUDGET_S):
+        while True:
+            done = grid.advance_rebuild(budget())
             yield "small_grids"
-        yield "small_grids"
+            if done:
+                break
     # Everything the map chunks are built from is final now (trees under the
     # new roads gone, house bays added, the street-lamp grid the lights are
     # placed from): MapStreamer starts the chunk rebuild here, while the
@@ -131,6 +165,9 @@ def map_sync_steps(world):
             yield "railways"
     if getattr(w, "tram_mgr", None) is not None:
         w.tram_mgr.rebuild(w.railways)  # (the tram network: small, one step)
+    if getattr(w, "ferry_mgr", None) is not None:
+        w.ferry_mgr.rebuild(w.railways)  # the car ferry routes (ferries.py)
+        w.traffic_mgr.set_ferry_routes(route.points for route in w.ferry_mgr.routes)
     yield "railways"
     with w.auto_fetch_manager.lock:
         w.auto_fetch_manager._attempted_endpoints.clear()
@@ -142,17 +179,23 @@ def map_sync_steps(world):
                               name="taxi-roads", daemon=True)
     search.start()
     while search.is_alive():
-        yield "taxi"
+        yield TAXI_WAIT
     w.taxi_mgr.sync_map_data(w.ways, places=w.places, buildings=w.buildings, connected=found.get("ways"))
     yield "taxi"
-    while not w.traffic_mgr.advance_map_sync(MAP_SYNC_BUDGET_S):
+    while True:
+        done = w.traffic_mgr.advance_map_sync(budget())
         yield "traffic"
+        if done:
+            break
     w.pedestrian_mgr.start_incremental_sync(
         w.ways, traffic_lights=w.traffic_lights, logical_intersections=w.logical_intersections,
         venue_buildings=w.buildings, scenery_features=(w.scenery_objects, w.sceneries, w.bus_stops),
     )
-    while not w.pedestrian_mgr.advance_incremental_sync(MAP_SYNC_BUDGET_S):
+    while True:
+        done = w.pedestrian_mgr.advance_incremental_sync(budget())
         yield "pedestrians"
+        if done:
+            break
     rebuilt = _level_structures(w.ways, w.level_ways, w.level_connectors)
     w.level_roads = rebuilt["level_roads"]
     w.level_transitions.topologies = rebuilt["level_transitions"].topologies
@@ -177,6 +220,7 @@ class MapStreamer:
         self._synced_revision = self.manager.get_map_revision()
         self._synced_bounds = self.manager.get_bounds()
         self._sync = None
+        self._sync_deadline = 0.0
         self._sync_revision = None
         self._sync_started = 0.0
         self._merged_since = None  # when an unsynced merge settled (SYNC_WAIT_FOR_FETCH_S)
@@ -220,8 +264,10 @@ class MapStreamer:
         manager = self.manager
         if self.hold and self._sync is None:
             return
+        budget = MAP_SYNC_URGENT_BUDGET_S if urgent else budget_s
+        deadline = self._sync_deadline = time.perf_counter() + budget
         if not self.hold:  # while the chunks are rebuilt the world stays as synced: no merges, no new fetches
-            manager.integrate_completed_tiles(budget_s=MAP_SYNC_URGENT_BUDGET_S if urgent else budget_s)
+            manager.integrate_completed_tiles(budget_s=max(0.0, deadline - time.perf_counter()))
             if manager.start_tile_streaming(x, y, vx, vy):
                 logger.info("Map streaming: tiles around (%.0f, %.0f), tile %s", x, y, manager.player_tile)
         if self._sync is None:
@@ -234,7 +280,8 @@ class MapStreamer:
                     return
                 self._merged_since = None
                 self._sync_revision = manager.get_map_revision()
-                self._sync = map_sync_steps(self.world)
+                self._sync = map_sync_steps(self.world, lambda: min(
+                    MAP_SYNC_BUDGET_S, max(0.0, self._sync_deadline - time.perf_counter())))
                 self._sync_dirty = manager.take_dirty_areas()  # what this sync's merges changed
                 self.sync_tiles = set(manager.loaded_tiles)  # a tile merged from here on waits for the next sync
                 self._sync_started = time.perf_counter()
@@ -244,14 +291,17 @@ class MapStreamer:
             return
         self._sync_ticks += 1
         started = time.perf_counter()
-        deadline = started + (MAP_SYNC_URGENT_BUDGET_S if urgent else MAP_SYNC_BUDGET_S)
+        # Merge and derived-data sync share one frame budget; independent caps
+        # let both consume 4 ms in the same tick.
+        if started >= deadline:
+            return
         for stage in self._sync:
             now = time.perf_counter()
             self.sync_stage_ms[stage] = self.sync_stage_ms.get(stage, 0.0) + (now - started) * 1000.0
             started = now
             if stage == CHUNK_INPUTS_READY:
                 self._report_growth()
-            if now >= deadline:
+            if stage == TAXI_WAIT or time.perf_counter() >= deadline:
                 return
         self._sync = None
         if CHUNK_INPUTS_READY not in self.sync_stage_ms:

@@ -26,16 +26,30 @@ def parse_server_args():
     parser.add_argument("--list-cities", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--list-city-locations", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--list-saves", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--new-save-slot", action="store_true",
+                        help="Start fresh in --save-slot; replace its previous contents only after a successful save")
     parser.add_argument("--save-slot", default=None,
                         help="Gig save slot name: continue it if it exists, else start it (saves/NAME.json)")
     parser.add_argument("--clear-cache", action="store_true",
                         help="Delete all cached map data (OSM downloads and built worlds) and exit")
     parser.add_argument("--parent-pid", type=int, default=None, help="Exit when this process (the client) exits")
     parser.add_argument("--reset-home", action="store_true", help="Forget the driver's home in every city and exit")
+    parser.add_argument("--career-status", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--reset-career", action="store_true", help="Forget the career progress and exit")
     parser.add_argument("--start-time", type=datetime.fromisoformat, default=None,
                         help="Gig game start, local YYYY-MM-DDTHH:MM, up to a year back (default: today 18:00)")
     parser.add_argument("--historical-weather", action=argparse.BooleanOptionalAction, default=None,
                         help="FMI observed/forecast weather for the city and game time (default: config game.historical_weather)")
+    # Developer visual tests (tools/visual_test.py): fixed, repeatable start conditions. Never in normal play.
+    parser.add_argument("--test-pose", default=None, metavar="X,Y,HEADING",
+                        help="visual tests: start in the taxi, engine on, at EPSG:3067 metres, heading in radians")
+    parser.add_argument("--test-weather", choices=["clear", "rain", "slush", "snow"], default=None,
+                        help="visual tests: this weather, unchanging (no historical weather)")
+    parser.add_argument("--test-cloud", type=float, default=None, help="visual tests: cloud cover 0..1, unchanging")
+    parser.add_argument("--test-time-scale", type=float, default=None,
+                        help="visual tests: game seconds per real second (0 holds the clock at --start-time)")
+    parser.add_argument("--test-roadworks", action="store_true", help="visual tests: generated roadworks on (game.roadworks_enabled)")
+    parser.add_argument("--test-seed", type=int, default=None, help="visual tests: seed the random generators")
 
     # Any municipality: a map-picker start takes its nearest one's settings.
     args = parse_args(config, city_names=list(city_centers) + [n for n in load_city_catalog() if n not in city_centers], parser=parser)

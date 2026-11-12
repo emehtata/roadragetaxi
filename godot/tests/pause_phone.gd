@@ -34,7 +34,7 @@ func run() -> void:
 	var phone = game.get_node('Ui/Phone')
 	phone.request.connect(func(_action, _item, _id): requests += 1)
 	phone.set_connected(true)
-	phone.show_phone({'busy':false, 'items':[{'id':'fare','status':'AVAILABLE','name':'Aino','pickup':'Oulu','dropoff':'Raahe','price_cents':1000,'expires_in_s':60.0}]})
+	phone.show_phone({'busy':false, 'items':[{'id':'fare','status':'AVAILABLE','name':'Test Person 1','pickup':'Oulu','dropoff':'Raahe','price_cents':1000,'expires_in_s':60.0}]})
 	phone.open()
 	shell._panel.hide()
 	await key(KEY_ESCAPE)

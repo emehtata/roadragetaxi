@@ -57,8 +57,8 @@ def test_two_idle_taxis_side_by_side_start_a_quarrel_and_their_cars_are_locked()
 
 
 @pytest.mark.parametrize("spoil", [
-    lambda a, n: setattr(a, "taxi_job", TaxiJob("Aino", (0, 0), (1, 1), leg="dropoff")),  # a fare aboard
-    lambda a, n: setattr(a, "taxi_job", TaxiJob("Aino", (0, 0), (1, 1), state="stopped")),  # boarding
+    lambda a, n: setattr(a, "taxi_job", TaxiJob("Test Person 1", (0, 0), (1, 1), leg="dropoff")),  # a fare aboard
+    lambda a, n: setattr(a, "taxi_job", TaxiJob("Test Person 1", (0, 0), (1, 1), state="stopped")),  # boarding
     lambda a, n: setattr(a, "state", NPCState.CRUISING),
     lambda a, n: setattr(a, "state", NPCState.CRASHED),
     lambda a, n: n.drivers.pop(a.vehicle_id),
@@ -252,7 +252,7 @@ def test_a_rival_waiting_beside_the_taxi_that_got_the_fare_picks_a_quarrel(monke
     a, b = _taxi(1, 0.0), _taxi(2, 12.0)
     npcs = _npcs(a, b)
     target = SimpleNamespace(x=0.0, y=0.0)
-    phone = SimpleNamespace(offers=[SimpleNamespace(passenger=SimpleNamespace(name="Aino", pickup=target,
+    phone = SimpleNamespace(offers=[SimpleNamespace(passenger=SimpleNamespace(name="Test Person 1", pickup=target,
                                                                               dropoff=SimpleNamespace(x=900, y=0)))],
                             language="en", notification_msg="", notification_timer=0.0)
     brawls = BrawlManager(random.Random(1))
@@ -486,7 +486,7 @@ def test_a_rival_that_lost_the_fare_is_angry_and_fights_angrier(monkeypatch):
     monkeypatch.setattr(tb, "DISPUTE_CHANCE", 0.0)
     a, b = _taxi(1, 0.0), _taxi(2, 12.0)
     target = SimpleNamespace(x=0.0, y=0.0)
-    phone = SimpleNamespace(offers=[SimpleNamespace(passenger=SimpleNamespace(name="Aino", pickup=target,
+    phone = SimpleNamespace(offers=[SimpleNamespace(passenger=SimpleNamespace(name="Test Person 1", pickup=target,
                                                                               dropoff=SimpleNamespace(x=900, y=0)))],
                             language="en", notification_msg="", notification_timer=0.0)
     dispatcher = Dispatcher(rng=random.Random(1))

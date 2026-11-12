@@ -45,7 +45,7 @@ def test_character_details_reach_godot_state():
     from datetime import date
     from types import SimpleNamespace as Row
 
-    resident = Row(resident_id=7, first_name="Aino", surname="Korhonen", gender="female",
+    resident = Row(resident_id=7, first_name="Test", surname="Person 2", gender="female",
                    birth_date=date(1990, 4, 5), mode="driving")
     npc = Row(vehicle_id=8, x=1.0, y=2.0, heading=0.0, speed=3.0, color=(1, 2, 3),
               vehicle_type="car", is_taxi=False, is_police=False, is_on_foot=False,
@@ -59,7 +59,7 @@ def test_character_details_reach_godot_state():
               blood_alcohol_promille=0.5, activity=None)
     vehicle = protocol._npc_to_dict(npc, {7: resident})
     walker = protocol._pedestrian_to_dict(ped, {7: resident})
-    assert vehicle["owner"]["name"] == "Aino Korhonen"
+    assert vehicle["owner"]["name"] == "Test Person 2"
     assert vehicle["occupants"] == [vehicle["owner"]]
     assert walker["resident"]["birth_date"] == "1990-04-05"
     assert walker["blood_alcohol_promille"] == 0.5
@@ -81,14 +81,27 @@ def test_owned_dog_travels_with_its_one_pedestrian_owner():
                              "color": [86, 57, 37], "sniffing": True}
 
 
+def test_a_pedestrian_on_a_bridge_sends_its_layer():
+    """rtx-scene-readiness step 5: the 3D view stands people on a bridge's deck."""
+    from types import SimpleNamespace as Row
+
+    def walker(way):
+        return protocol._pedestrian_to_dict(Row(resident_id=7, x=1.0, y=2.0, heading=0.0, radius_m=0.45, color=(1, 2, 3),
+            state="walking", animation_state="walking", animation_time=0.0, curse_timer=0.0, curse_text="",
+            mood="normal", is_cyclist=False, blood_alcohol_promille=0.0, activity=None, way=way))
+
+    assert walker(Row(layer=1))["layer"] == 1
+    assert walker(None)["layer"] == 0 and walker(Row(layer=-1))["layer"] == -1
+
+
 def test_the_waiting_customer_crosses_the_wire():
     """godot-07: a client draws the customer waiting at (or walking to) the
     taxi from these fields."""
     from theroadragetrip.taxi import TaxiPassenger, TaxiTarget
 
     passenger = TaxiPassenger(
-        name="Aino", pickup=TaxiTarget(x=10.0, y=20.0, address="Kirkkokatu 4"),
-        dropoff=TaxiTarget(x=500.0, y=-40.0, address="Rautatientori"),
+        name="Test Person 3", pickup=TaxiTarget(x=10.0, y=20.0, address="Test Street 4"),
+        dropoff=TaxiTarget(x=500.0, y=-40.0, address="Station Square"),
         ped_x=11.5, ped_y=19.0, ped_heading=1.25, is_walking_to_car=True,
     )
     data = protocol._passenger_to_dict(passenger)
@@ -137,6 +150,8 @@ def test_random_command_payloads_never_raise_and_stay_in_range():
         assert isinstance(interact, bool)
         for name, (low, high) in protocol.COMMAND_RANGES.items():
             value = getattr(command, name)
+            if name == "look_heading" and value is None:  # optional: absent means walking with the turn keys
+                continue
             assert isinstance(value, float) and low <= value <= high
         for name in PlayerCommand.__dataclass_fields__:
             if name not in protocol.COMMAND_RANGES:
@@ -160,6 +175,6 @@ def test_residents_are_sent_only_for_the_inspected_entity():
     from theroadragetrip.pedestrian import Pedestrian
     ped = Pedestrian(x=0.0, y=0.0, heading=0.0, speed=1.0, base_speed=1.0, way=None, segment_idx=0, direction=1,
                      color=(1, 2, 3), resident_id=5)
-    residents = {5: SimpleNamespace(resident_id=5, name="Aino", birth_date="2000-01-01", gender="female", age=26,
+    residents = {5: SimpleNamespace(resident_id=5, name="Test Person 3", birth_date="2000-01-01", gender="female", age=26,
                                     household_id=None, mode="walking", personality={})}
     assert _pedestrian_to_dict(ped, residents, person=False)["resident"] is None

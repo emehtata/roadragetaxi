@@ -1,0 +1,181 @@
+name: Linux release
+
+# The Linux counterpart of windows-release.yml: the Godot game with its
+# Python simulation server bundled beside it, as one tarball:
+#
+#   RoadRageTrip/RoadRageTrip.x86_64, RoadRageTrip.pck       (Godot export)
+#   RoadRageTrip/server/RoadRageServer + _internal/           (PyInstaller)
+#   RoadRageTrip/server/osmium/bin/osmium + lib/              (osmium-tool)
+#
+# A manual run (workflow_dispatch) uploads the tarball as an artifact to try
+# before tagging; a v* tag adds it to the GitHub release the Windows job
+# publishes (whichever job creates the release, the other uploads to it).
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.7.2"
+  OSMIUM_VERSION: "1.19.1"  # bundled for local .osm.pbf maps (conda-forge, linux-64)
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build the simulation server
+        # --add-data separates source and destination with ':' on Linux.
+        run: >-
+          python -m PyInstaller --noconfirm --clean --onedir --console
+          --python-option "X utf8"
+          --name RoadRageServer --paths src
+          --collect-submodules theroadragetrip
+          --add-data "sample_osm.json.gz:."
+          --add-data "src/theroadragetrip/img:theroadragetrip/img"
+          --add-data "src/theroadragetrip/sounds:theroadragetrip/sounds"
+          --add-data "src/theroadragetrip/assets:theroadragetrip/assets"
+          --distpath build/server --workpath build/server-work
+          road_rage_server.py
+
+      - name: Collect the bundled software's licences
+        run: python tools/collect_licenses.py build/server/RoadRageServer/licenses/python
+
+      - name: Bundle osmium-tool (local .osm.pbf maps)
+        # GPL-3.0-only: shipped as a separate program the server runs
+        # (THIRD_PARTY_LICENSES.md); its source goes with every release below.
+        # Layout: osmium/bin/osmium with its libraries in osmium/lib, which is
+        # where conda-forge's binaries look for them ($ORIGIN/../lib).
+        run: |
+          curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C "$RUNNER_TEMP" bin/micromamba
+          "$RUNNER_TEMP/bin/micromamba" create --yes --quiet --prefix "$PWD/osmium-env" --override-channels -c conda-forge "osmium-tool=${OSMIUM_VERSION}"
+          dest=build/server/RoadRageServer/osmium
+          mkdir -p "$dest/bin" "$dest/lib" "$dest/licenses"
+          cp osmium-env/bin/osmium "$dest/bin/"
+          cp -P osmium-env/lib/*.so* "$dest/lib/"
+          python - <<'PY'
+          import json, pathlib, shutil
+          dest = pathlib.Path("build/server/RoadRageServer/osmium/licenses")
+          for meta in sorted(pathlib.Path("osmium-env/conda-meta").glob("*.json")):
+              package = json.loads(meta.read_text())
+              licenses = pathlib.Path(package["extracted_package_dir"]) / "info" / "licenses"
+              if licenses.is_dir():
+                  shutil.copytree(licenses, dest / package["name"], dirs_exist_ok=True)
+              with (dest / "PACKAGES.txt").open("a") as out:
+                  out.write(f"{package['name']} {package['version']}: {package['license']}\n")
+          PY
+          find "$dest" -maxdepth 2 | sort
+
+      - name: Smoke-test the bundled osmium
+        run: |
+          osmium="build/server/RoadRageServer/osmium/bin/osmium"
+          "$osmium" --version
+          cat > smoke.osm <<'XML'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <osm version="0.6">
+            <node id="1" lat="65.01" lon="25.46" version="1"/>
+            <node id="2" lat="65.02" lon="25.47" version="1"/>
+            <way id="10" version="1"><nd ref="1"/><nd ref="2"/><tag k="highway" v="residential"/></way>
+          </osm>
+          XML
+          "$osmium" cat smoke.osm -o smoke.osm.pbf -O
+          "$osmium" extract --bbox 25.45,65.0,25.48,65.03 --strategy=smart -f osm -O -o smoke-extract.osm smoke.osm.pbf
+          grep -q 'way id="10"' smoke-extract.osm || { echo "the bundled osmium could not extract"; exit 1; }
+
+      - name: The source of the bundled osmium-tool (GPL-3.0) and GEOS (LGPL-2.1)
+        run: |
+          mkdir -p dist
+          curl -fsSL -o "dist/osmium-tool-${OSMIUM_VERSION}-source.tar.gz" "https://github.com/osmcode/osmium-tool/archive/refs/tags/v${OSMIUM_VERSION}.tar.gz"
+          # The build scripts used (GPLv3 Corresponding Source): conda-forge's recipe.
+          curl -fsSL -o dist/osmium-tool-feedstock-recipe.tar.gz "https://github.com/conda-forge/osmium-tool-feedstock/archive/refs/heads/main.tar.gz"
+          # GEOS (LGPL-2.1, bundled by shapely as a shared library): its source, the version shapely ships.
+          geos=$(python -c "import shapely; print(shapely.geos_version_string)")
+          curl -fsSL -o "dist/geos-$geos-source.tar.bz2" "https://github.com/libgeos/geos/releases/download/$geos/geos-$geos.tar.bz2"
+
+      - name: Smoke-test the server
+        run: |
+          cities=$(build/server/RoadRageServer/RoadRageServer --list-cities | tail -n 1)
+          echo "Cities: $cities"
+          python -c "import json,sys; sys.exit(0 if json.loads(sys.argv[1]) else 1)" "$cities"
+
+      - name: Fetch Godot and its Linux export templates
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          mkdir -p godot-bin
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip -d godot-bin && mv "godot-bin/Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot-bin/godot && chmod +x godot-bin/godot
+          rm godot.zip
+          curl -fsSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q templates.tpz -d templates-all
+          # Only Linux's are needed.
+          dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dest"
+          cp templates-all/templates/linux_* templates-all/templates/version.txt "$dest/"
+          rm -rf templates.tpz templates-all
+
+      - name: Export the Godot game
+        run: |
+          mkdir -p dist/RoadRageTrip
+          ./godot-bin/godot --headless --path godot --import
+          ./godot-bin/godot --headless --path godot --export-release "Linux" "$PWD/dist/RoadRageTrip/RoadRageTrip.x86_64"
+          test -f dist/RoadRageTrip/RoadRageTrip.x86_64 || { echo "the Godot export produced no RoadRageTrip.x86_64"; exit 1; }
+          mv build/server/RoadRageServer dist/RoadRageTrip/server
+          cp THIRD_PARTY_LICENSES.md dist/RoadRageTrip/
+          mkdir -p dist/RoadRageTrip/licenses/godot
+          ./godot-bin/godot --headless -s "$PWD/tools/godot_licenses.gd" -- "$PWD/dist/RoadRageTrip/licenses/godot/LICENSES.txt"
+          test -f dist/RoadRageTrip/licenses/godot/LICENSES.txt || { echo "no Godot licence notices"; exit 1; }
+          chmod +x dist/RoadRageTrip/RoadRageTrip.x86_64 dist/RoadRageTrip/server/RoadRageServer
+          ls -la dist/RoadRageTrip
+
+      - name: Package and smoke-test the release
+        run: |
+          tar -czf dist/RoadRageTrip-linux-x86_64.tar.gz -C dist RoadRageTrip
+          rm -rf install && mkdir install && tar -xzf dist/RoadRageTrip-linux-x86_64.tar.gz -C install
+          for file in RoadRageTrip.x86_64 RoadRageTrip.pck server/RoadRageServer server/osmium/bin/osmium THIRD_PARTY_LICENSES.md licenses/godot/LICENSES.txt server/licenses/python/PACKAGES.txt server/_internal/theroadragetrip/img/theroadragetrip_1672_941.png server/_internal/theroadragetrip/assets/audio/audio_catalog.json; do
+            test -e "install/RoadRageTrip/$file" || { echo "packaged file missing: $file"; exit 1; }
+          done
+          install/RoadRageTrip/server/osmium/bin/osmium --version
+          cities=$(install/RoadRageTrip/server/RoadRageServer --list-cities | tail -n 1)
+          python -c "import json,sys; sys.exit(0 if json.loads(sys.argv[1]) else 1)" "$cities"
+          # The game starts headless against the packaged server layout.
+          (cd install/RoadRageTrip && timeout 180 ./RoadRageTrip.x86_64 --headless --quit-after 10 --log-file "$RUNNER_TEMP/godot-startup.log")
+          grep -Eq 'startup: [0-9]+ cities from the simulation \(release\)' "$RUNNER_TEMP/godot-startup.log" || { echo "installed game did not start"; cat "$RUNNER_TEMP/godot-startup.log"; exit 1; }
+
+      - name: Upload the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoadRageTrip-linux
+          path: |
+            dist/RoadRageTrip-linux-x86_64.tar.gz
+            dist/osmium-tool-*-source.tar.gz
+            dist/osmium-tool-feedstock-recipe.tar.gz
+            dist/geos-*-source.tar.bz2
+
+      - name: Add the build to the GitHub release
+        # The Windows job creates the release on a tag; whichever job gets
+        # there first creates it, the other one uploads to it.
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --generate-notes || true
+          gh release upload "$TAG" dist/RoadRageTrip-linux-x86_64.tar.gz dist/osmium-tool-${OSMIUM_VERSION}-source.tar.gz dist/osmium-tool-feedstock-recipe.tar.gz dist/geos-*-source.tar.bz2 --clobber

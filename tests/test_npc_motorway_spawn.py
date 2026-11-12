@@ -14,7 +14,7 @@ from theroadragetrip.traffic_world import TrafficWorld, run_route_steps
 @pytest.mark.parametrize('indexed', [False, True])
 @pytest.mark.parametrize('angle', [0, math.pi / 2, math.pi, 3 * math.pi / 2])
 def test_transit_rejects_disconnected_service_road_across_motorway(indexed, angle):
-    # Pohjantie screenshot 1792607591798546176: motorway to an isolated
+    # Motorway Road screenshot 1792607591798546176: motorway to an isolated
     # service road 128 m away. A* permits endpoint connectors across the gap.
     def point(x, y):
         return x * math.cos(angle) - y * math.sin(angle), x * math.sin(angle) + y * math.cos(angle)

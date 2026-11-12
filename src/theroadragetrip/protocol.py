@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 from dataclasses import asdict
 from datetime import date
 from typing import Optional
@@ -41,6 +42,7 @@ from .activities.plugins.soccer import ball_positions
 from .fuel import fuel_station_price_cents, nearest_fuel_station
 from .holiday_events import santa_costume
 from .localization import tr
+from .osm.pbf_source import pbf_fallback_notices
 from .rail_bookings import PASSENGER_MET, PASSENGER_WAITING
 from .simulation import PlayerCommand
 from .taxi import TaxiPassenger
@@ -104,7 +106,8 @@ def command_player_id(message: dict) -> str:
 
 COMMAND_RANGES = {  # the analogue inputs and their valid range; the rest are flags
     "throttle": (0.0, 1.0), "brake": (0.0, 1.0), "steer_left": (0.0, 1.0), "steer_right": (0.0, 1.0),
-    "forward": (-1.0, 1.0), "turn": (-1.0, 1.0),
+    "forward": (-1.0, 1.0), "turn": (-1.0, 1.0), "strafe": (-1.0, 1.0),
+    "look_heading": (-2.0 * math.pi, 2.0 * math.pi),
 }
 
 
@@ -249,6 +252,15 @@ def shown_pedestrians(pedestrian_mgr, camx: float, camy: float) -> list:
     return always + others[:max(0, cap - len(always))]
 
 
+def player_walker_dict(ped) -> dict:
+    """The on-foot player: "heading" the look (first-person camera), "facing" the
+    figure's way (the way it moves; standing, the look), "speed" its gait."""
+    vx, vy = getattr(ped, "velocity", (0.0, 0.0))
+    moving = math.hypot(vx, vy) > 0.2
+    return {"x": ped.x, "y": ped.y, "heading": ped.heading, "speed": abs(ped.speed),
+            "facing": math.atan2(vy, vx) if moving else ped.heading}
+
+
 def _pedestrian_to_dict(ped, residents=None, santa_day=None, person: bool = True) -> dict:
     row = {
         "id": ped.resident_id,
@@ -264,6 +276,8 @@ def _pedestrian_to_dict(ped, residents=None, santa_day=None, person: bool = True
         "curse_text": ped.curse_text,
         "mood": ped.mood,
         "is_cyclist": ped.is_cyclist,
+        # The layer of the way they walk (a bridge > 0): the 3D view stands them on its deck (rtx-scene-readiness step 5).
+        "layer": getattr(getattr(ped, "way", None), "layer", 0) or 0,
         "costume": "santa" if santa_costume(ped, (residents or {}).get(ped.resident_id), santa_day) else "",
         # A thief stays anonymous: no resident (personality) is sent, and the client can't pick one.
         "resident": None if getattr(ped, "thief_target", None) is not None or not person else _resident_to_dict((residents or {}).get(ped.resident_id)),
@@ -331,6 +345,15 @@ def _trams_to_dicts(tram_mgr) -> list:
     return [{"id": f"tram-{tram.tram_id}", "state": tram.state, "speed": tram.speed_mps, "line": tram.line or "",
              "cars": [[round(x, 2), round(y, 2), round(h, 4), length, look] for x, y, h, length, look in tram_mgr.cars(tram)]}
             for tram in tram_mgr.trams]
+
+
+def _ferries_to_dicts(ferry_mgr) -> list:
+    """Ferries drawn like trains of one car (look "ferry", ferries.py)."""
+    if ferry_mgr is None:
+        return []
+    return [{"id": f"ferry-{ferry.ferry_id}", "state": ferry.state, "speed": ferry.speed_mps, "line": "",
+             "cars": [[round(x, 2), round(y, 2), round(h, 4), length, look] for x, y, h, length, look in ferry_mgr.cars(ferry)]}
+            for ferry in ferry_mgr.ferries]
 
 
 def _train_to_dict(train) -> dict:
@@ -511,6 +534,22 @@ def _station_price_cents(world, car) -> Optional[int]:
     return fuel_station_price_cents(station) if station is not None else None
 
 
+def data_source_notice(language: str) -> str:
+    """Why osm_source=pbf fell back to Overpass, in `language`; "" if it did not."""
+    return "\n".join(
+        tr(language, f"pbf_fallback_{reason}", path=path, detail=detail[-200:],
+           folder=str(Path(path).parent), name=Path(path).name)
+        for reason, (path, detail) in pbf_fallback_notices.items()
+    )
+
+
+def _abroad_text(border_watch, language: str) -> str:
+    country = getattr(border_watch, "country", None)
+    if country in (None, "FIN"):
+        return ""
+    return tr(language, "abroad", country=tr(language, f"country_in_{country}"))
+
+
 def _meet_to_dict(taxi_mgr, player_pedestrian, language: str) -> Optional[dict]:
     """The meet & greet in progress: the
     panel's three lines (taxi_mgr.meet_prompt, localized here) and, while
@@ -600,9 +639,7 @@ def build_state_message(
             "passenger_mass_kg": car.passenger_mass_kg,
             "length_m": getattr(car, "length_m", 4.0), "width_m": getattr(car, "width_m", 1.8),
         },
-        "player_pedestrian": {
-            "x": player_pedestrian.x, "y": player_pedestrian.y, "heading": player_pedestrian.heading,
-        },
+        "player_pedestrian": player_walker_dict(player_pedestrian),
         # Residents (owner, occupants, a pedestrian's person) only for what the client inspects:
         # {"kind": "npc" | "pedestrian", "id": ...} from its commands - a pedestrian inside a vehicle too.
         "npcs": [compact_row(_npc_to_dict(npc, residents, _inspected(inspect, "npc", npc.vehicle_id) or (
@@ -621,7 +658,8 @@ def build_state_message(
         "vomit_puddles": [list(point) for point in taxi_mgr.vomit_puddles + world.pedestrian_mgr.vomit_puddles],
         "vomit_footprints": [list(point) for point in world.pedestrian_mgr.vomit_footprints],
         "trains": [_train_to_dict(t) for t in getattr(getattr(world, "railway_mgr", None), "trains", ())]
-                  + _trams_to_dicts(getattr(world, "tram_mgr", None)),
+                  + _trams_to_dicts(getattr(world, "tram_mgr", None))
+                  + _ferries_to_dicts(getattr(world, "ferry_mgr", None)),
         "weather": {"weather_type": weather.weather_type.value, "wetness": weather.wetness,
                     "road_snow": round(weather.road_snow, 1),
                     # 0 clear .. 1 overcast: dims the sunlight and building shadows (rrt-018-shadows)
@@ -648,6 +686,10 @@ def build_state_message(
         "speed_camera_flash": taxi_mgr.speed_camera_flash_index if taxi_mgr.speed_camera_flash_timer > 0.0 else None,
         "traffic_lights": _traffic_light_phases(traffic_mgr, *player_at),
         "meet": _meet_to_dict(taxi_mgr, player_pedestrian, language),
+        # Out of Finland: "You can drive in Sweden, but everything is Finnish here." (borders.py), else "".
+        "abroad": _abroad_text(getattr(world, "border_watch", None), language),
+        # osm_source=pbf fell back to Overpass: why and what to do (the HUD shows it ~15 s), else "".
+        "data_source_notice": data_source_notice(language),
         # The route to the taxi target, planned by the server (navigation_route.py): [[x, y], ...], [] while none.
         "navigation": navigation if navigation is not None else {"points": []},
         # The rage shout above the taxi while it lasts ({"text", "timer"} seconds left), else null.

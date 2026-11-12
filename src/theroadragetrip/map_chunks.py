@@ -13,15 +13,19 @@ Built from the same world objects the simulation uses - no second map model.
 
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 
 from . import static_world
 from .fuel import fuel_station_price_cents
 from .geo import dist_point_to_segment, meters_to_latlon
 from .holiday_events import BONFIRE_SHORE_SPACING_M, bonfire_spot_is_clear, flagpole_spot, house_yard_spot
 from .map_level import SURFACE_MAP_LEVELS
+from .osm.build import FERRY_KIND
 from .nightlife import nightclub_schedule
 from .playground_equipment import equipment_rows
+from .vehicles.base import vehicle_definition
 from .protocol import PROTOCOL_VERSION, _line, encode, traffic_light_render_point
 from .shop_lights import opening_state, retail_hours
 
@@ -32,12 +36,21 @@ _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stand
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
           "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards",
           "nightclubs", "attractions", "tennis_courts", "volleyball_courts", "shore_waves",
-          "bonfires", "flagpoles", "shop_hours")
+          "bonfires", "flagpoles", "shop_hours", "power_lines")
 # Decorative scenery_objects kinds; bollards, fuel pumps
 # and street lamps have their own lists.
+# Named landmarks drawn by their own shape list (assets/landmarks.json): name -> {"scale", "shapes"}
+LANDMARKS = {name: spec for name, spec in json.loads((Path(__file__).with_name("assets") / "landmarks.json").read_text()).items()
+             if not name.startswith("_")}
 DECORATIVE_KINDS = ("shrub", "bench", "waste_basket", "bicycle_parking", "charging_station", "statue", "picnic_table", "firepit", "fountain", "gate", "biergarten", "grave_yard", "tent", "camper_van", "caravan", "caravan_with_car")
+# osm-render-gaps.md: drawing only, never obstacles; at most this many of them per chunk, in map order
+GAP_KINDS = ("power_pole", "power_tower", "chimney", "mast", "tower", "communications_tower", "water_tower", "boulder",
+             "level_crossing", "level_crossing_barrier")
+FEATURES_PER_CHUNK = 400
+POWER_LINES_PER_CHUNK = 150
 
 CHUNK_SIZE_M = 500.0
+GROUND_STEP_M = 20.0  # ground_heights grid spacing; divides CHUNK_SIZE_M so neighbours share edge samples
 LOAD_RADIUS = 3    # chunks around the player's chunk that must be loaded (7 x 7, >= 1.5 km each way)
 UNLOAD_RADIUS = 4  # loaded chunks are dropped beyond this - the gap stops edge flapping
 
@@ -254,6 +267,7 @@ class ChunkIndex:
         self._outside = {kind: [] for kind in _KINDS}  # a region rebuild's features outside its cells, thrown away with it
         self._chunks: dict[str, dict] = {}
         self._encoded: dict[str, bytes] = {}
+        self._dem = getattr(world, "dem", None)  # osm.elevation.Dem or None: flat ground, no grid
         for way in world.ways:
             # Surface roads only: a garage aisle
             # (map_level -1) stays in world.ways but is sent as a level road below.
@@ -263,11 +277,12 @@ class ChunkIndex:
                     "drivable": bool(way.is_drivable), "layer": way.layer,
                     **static_world.road_style(way),  # colour, centre line, one-way, bridge (godot-16)
                 })
-        bridge_parts = static_world.rail_bridge_parts(world.railways, world.ways)
-        for rail in world.railways:
+        rails = [rail for rail in world.railways if rail.kind != FERRY_KIND]  # a ferry route is no track
+        bridge_parts = static_world.rail_bridge_parts(rails, world.ways)
+        for rail in rails:
             if len(rail.points_m) >= 2:  # a bridge track is drawn above the vehicles
                 self._add("rail_bridges" if rail.is_bridge else "railways", rail.points_m, _line(rail.points_m))
-        explicit_bridge_count = sum(rail.is_bridge and len(rail.points_m) >= 2 for rail in world.railways)
+        explicit_bridge_count = sum(rail.is_bridge and len(rail.points_m) >= 2 for rail in rails)
         for part in bridge_parts[explicit_bridge_count:]:
             # Explicit bridge tracks were added whole above; these are the
             # inferred short spans over a mapped below-grade road.
@@ -353,10 +368,27 @@ class ChunkIndex:
                 x, y = static_world.building_owner(building)
                 self._add("nightclubs", ((x, y),), [round(x, 1), round(y, 1), nightclub_schedule(None)])
         for obj in getattr(world, "scenery_objects", ()):
+            if obj.kind == "power_line" and obj.points_m and len(obj.points_m) >= 2:  # in its first pole's chunk
+                self._add_capped("power_lines", obj.points_m[:1], _line(obj.points_m), POWER_LINES_PER_CHUNK)
+            elif obj.kind in GAP_KINDS:  # [x, y, kind, angle, height (skyline) | size (boulder)]
+                row = [round(obj.x, 1), round(obj.y, 1), obj.kind, round(obj.direction_angle or 0.0, 3)]
+                if obj.height_m is not None:
+                    row.append(round(obj.height_m, 1))
+                elif obj.kind == "boulder":  # 0.6-1.5 m from its id (its position when unmapped)
+                    row.append(round(0.6 + 0.9 * ((obj.id or int(obj.x * 7 + obj.y * 13)) * 2654435761 % 997) / 996, 2))
+                self._add_capped("scenery_objects", ((obj.x, obj.y),), row, FEATURES_PER_CHUNK, obj.kind)
             if obj.kind in DECORATIVE_KINDS and not getattr(obj, "level", None):  # a garage's or roof deck's: not on the street
+                if obj.name in LANDMARKS:  # its own drawing: [x, y, "landmark", angle, {scale, shapes}]
+                    self._add("scenery_objects", ((obj.x, obj.y),), [round(obj.x, 1), round(obj.y, 1), "landmark",
+                                                                    round(obj.direction_angle or 0.0, 3), LANDMARKS[obj.name]])
+                    continue
                 row = [round(obj.x, 1), round(obj.y, 1), obj.kind, round(obj.direction_angle or 0.0, 3)]
                 if obj.kind == "charging_station":  # how many cars it charges at once: its posts
                     row.append(obj.capacity or 2)
+                elif obj.kind == "camper_van":  # its length: the camper van's own (vehicles/base.py)
+                    row.append(vehicle_definition("camper_van").length_m)
+                elif obj.kind == "bench":  # its backrest: 0 only for OSM backrest=no
+                    row.append(0 if obj.backrest is False else 1)
                 self._add("scenery_objects", ((obj.x, obj.y),), row)
         # Swings, slides, ... (playground_equipment.py): mapped in OSM, else a typical set per playground.
         for row in equipment_rows(getattr(world, "sceneries", ()), getattr(world, "scenery_objects", ())):
@@ -399,7 +431,7 @@ class ChunkIndex:
         rebuilt = cls(_RegionWorld(world, (first[0] * size - margin, first[1] * size - margin,
                                            (last[0] + 1) * size + margin, (last[1] + 1) * size + margin)), size, cells)
         index = cls.__new__(cls)
-        index.size, index._cells, index._outside = size, None, {}
+        index.size, index._cells, index._outside, index._dem = size, None, {}, rebuilt._dem
         ids = {chunk_id(*cell) for cell in cells}
         index._chunks = {cid: chunk for cid, chunk in old._chunks.items() if cid not in ids}
         index._chunks.update(rebuilt._chunks)
@@ -414,7 +446,7 @@ class ChunkIndex:
         [(chunk id, content or None for an empty one, wire bytes)]. The same
         result and changed ids as updated() for those chunks."""
         index = cls.__new__(cls)
-        index.size, index._cells, index._outside = old.size, None, {}
+        index.size, index._cells, index._outside, index._dem = old.size, None, {}, getattr(old, "_dem", None)
         ids = {cid for cid, _, _ in built}
         index._chunks = {cid: chunk for cid, chunk in old._chunks.items() if cid not in ids}
         # list(): the tick may be encoding into `old` meanwhile (a pass already swapped in).
@@ -431,6 +463,15 @@ class ChunkIndex:
     def _add(self, kind: str, points, feature) -> None:
         for cell in cells_touched_by_line(points, self.size):
             self._chunk(cell)[kind].append(feature)
+
+    def _add_capped(self, kind: str, points, feature, cap: int, row_kind=None) -> None:
+        """_add, but a chunk keeps at most `cap` of them (of `row_kind`, for mixed lists): later ones are dropped."""
+        counts = self.__dict__.setdefault("_capped_counts", {})
+        for cell in cells_touched_by_line(points, self.size):
+            key = (cell, kind, row_kind)
+            if counts.get(key, 0) < cap:
+                counts[key] = counts.get(key, 0) + 1
+                self._chunk(cell)[kind].append(feature)
 
     def _add_water_shores(self, waters, world=None) -> None:
         from shapely.geometry import Polygon, box
@@ -613,7 +654,16 @@ class ChunkIndex:
             "type": "chunk", "version": PROTOCOL_VERSION, "chunk_id": cid,
             "bounds": [ix * self.size, iy * self.size, (ix + 1) * self.size, (iy + 1) * self.size],
             **content,
+            **({"ground_heights": self._ground_heights(ix, iy)} if self._dem is not None else {}),
         }
+
+    def _ground_heights(self, ix: int, iy: int) -> dict:
+        """The chunk's ground grid, corners included (shared with neighbours), rows along +y."""
+        cols = round(self.size / GROUND_STEP_M) + 1
+        step = self.size / (cols - 1)
+        x0, y0 = ix * self.size, iy * self.size
+        return {"origin": [x0, y0], "step": step, "cols": cols,
+                "heights": [round(self._dem.height_m(x0 + c * step, y0 + r * step), 2) for r in range(cols) for c in range(cols)]}
 
     def encoded(self, cid: str) -> bytes:
         """The chunk message as wire bytes, encoded once: the map doesn't

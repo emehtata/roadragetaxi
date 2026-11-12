@@ -118,7 +118,7 @@ SCENERY_COLORS = {
     "nature_reserve": (62, 102, 56), "pitch": (80, 150, 64), "playground": (150, 138, 104),
     "dog_park": (100, 142, 82), "track": (176, 96, 70), "sand": (196, 180, 130),
     "beach": (206, 192, 150), "grassland": (146, 158, 96), "shrubbery": (100, 118, 76),
-    "wetland": (118, 130, 96), "farmland": (172, 148, 88), "farmyard": (146, 130, 100),
+    "wetland": (118, 130, 96), "bare_rock": (128, 126, 122), "farmland": (172, 148, 88), "farmyard": (146, 130, 100),
     "allotments": (142, 132, 82), "flowerbed": (150, 90, 120),
     "greenhouse_horticulture": (208, 210, 202), "residential": (108, 138, 92),
     "commercial": (112, 108, 104), "retail": (118, 104, 96), "industrial": (98, 96, 94),

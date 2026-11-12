@@ -463,3 +463,41 @@ def test_a_cyclist_past_a_hairpin_rides_on_instead_of_circling():
         if math.dist((bike.x, bike.y), points[4]) < 3.0:
             break
     assert math.dist((bike.x, bike.y), points[4]) < 3.0  # past the hairpin and on along the cycle path
+
+
+def test_e_scooters_ride_like_bikes_with_a_15_plus_rider_and_are_left_where_the_ride_ends():
+    path = _way([(0, 0), (150, 0)], "cycleway")
+    world = _World([path])
+    scooters = []
+    for _ in range(20):
+        route = run_route_steps(cycling.cycle_trip_steps(
+            world.traffic.cycle_graph, (0, 0), world.grid, 0.5, destination=(150, 0)))
+        world.manager._finish_cycle_job({"kind": "cycle", "vehicle": None, "vehicle_type": "e_scooter"},
+                                        route, 1e6, 1e6, None, world.residents)
+        scooters.append(world.manager.vehicles[-1])
+    for scooter in scooters:
+        driver = world.manager.drivers[scooter.vehicle_id]
+        assert scooter.vehicle_type == "e_scooter" and cycling.is_cyclist(scooter)
+        assert cycling.E_SCOOTER_SPEED_MPS[0] <= driver.cycle.cruise_mps <= cycling.E_SCOOTER_SPEED_MPS[1]
+        assert ResidentManager.age_of(world.residents.get(driver.resident_id)) >= cycling.E_SCOOTER_RIDER_MIN_AGE
+    for scooter in scooters[1:]:
+        world.manager.retire_vehicle(scooter, world.residents)
+    scooter = scooters[0]
+    scooter.car.speed = 0.0
+    assert world.tick(60, until=lambda: scooter.state == NPCState.PARKED)
+    assert abs(scooter.x - 150) < 2.5 and world.manager.drivers[scooter.vehicle_id].rack_slot is None
+
+
+def test_e_scooters_join_new_riders_only_in_their_season():
+    path = _way([(0, 0), (150, 0)], "cycleway")
+    world = _World([path])
+    manager = world.manager
+    manager.target_cycling_count = 1
+    for season, expect in ((False, {"bicycle"}), (True, {"bicycle", "e_scooter"})):
+        manager.e_scooter_season = season
+        kinds = set()
+        for _ in range(60):
+            manager._route_jobs.clear()
+            manager._top_up_cyclists(1e6, 1e6, world.traffic, world.residents, world.grid, None, lambda v: True)
+            kinds.update(job["vehicle_type"] for job in manager._route_jobs)
+        assert kinds == expect

@@ -30,7 +30,7 @@ def test_busway_and_living_street_are_drivable():
             "type": "way",
             "id": 103,
             "nodes": [5, 6],
-            "tags": {"highway": "living_street", "name": "Pihakatu"},
+            "tags": {"highway": "living_street", "name": "Yard Street"},
         },
     ]
 

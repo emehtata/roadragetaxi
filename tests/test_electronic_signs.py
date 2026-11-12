@@ -29,7 +29,7 @@ def parse(*features):
 def displayed(signs, car, road, moment):
     from theroadragetrip.electronic_sign_direction import bind_sign
     if not isinstance(road, Way):
-        road = Way([(0,0),(1100,0)], 'primary', 4, ref=road.ref)
+        road = Way([(-1100,0),(1100,0)], 'primary', 4, ref=road.ref)
     grid = SpatialWayGrid([road])
     prepared = []
     for sign in signs:
@@ -63,7 +63,7 @@ def test_coordinates_blank_display_and_text_validation():
         {'screen': 1, 'rowNumber': 2, 'text': '[tie_4] +5 min'},
         {'screen': 1, 'rowNumber': 1, 'text': 'ILMA +10 Â°C'},
         {'screen': 2, 'rowNumber': 1, 'text': 'OTHER SCREEN'}]))[0]
-    assert sign['text'] == ['ILMA +10 °C', '[tie_4] +5 min']
+    assert sign['text'] == ['ILMA +10 °C', '[tie_4] +5 min', 'OTHER SCREEN']
 
 
 def test_nearby_signs_follow_time_same_road_surface_level_and_distance():
@@ -71,7 +71,7 @@ def test_nearby_signs_follow_time_same_road_surface_level_and_distance():
                   feature(id='other-road', roadAddress='4 1 1'), feature(id='far'))
     signs = [dict(s, x=10 if s['id'] != 'far' else 1000, y=0) for s in signs]
     road = Way([(0, 0), (100, 0)], 'primary', 4, ref='E18;1')
-    car = Car(0, 0, 0, 0)
+    car = Car(20, 0, 0, 0)
     assert len(displayed(signs, car, road, NOW)) == 1
     assert displayed(signs, car, road, NOW)[0]['distance_m'] == 10
     for attr, value in [('layer', 1), ('map_level', -1)]:
@@ -137,7 +137,7 @@ def test_background_service_loads_signs_and_publishes_projected_nearby_readings(
         live = LiveRoadworks(service, lambda lon,lat:(10,0))
         road = Way([(0,0),(100,0)],'primary',4,ref='1')
         live.update(0,0,NOW,NOW,1,SpatialWayGrid([road]))
-        assert live.electronic_signs_near(Car(0,0,0,0), road)[0]['speed_limit_kmh'] == 100
+        assert live.electronic_signs_near(Car(20,0,0,0), road)[0]['speed_limit_kmh'] == 100
     finally:
         service.close()
 
@@ -161,7 +161,7 @@ def test_changes_and_blank_readings_apply_inside_a_query_window():
 def test_only_nearest_of_each_sign_type_is_displayed():
     signs = es.parse_signs(json.loads(gzip.decompress(FIXTURE.read_bytes())))
     signs = [dict(s,road='1',x=10,y=0) for s in signs]
-    farther = dict(signs[0],id='farther-speed',x=50)
-    rows = displayed(signs+[farther],Car(0,0,0,0),SimpleNamespace(ref='1'),NOW)
+    farther = dict(signs[0],id='farther-speed',x=0)
+    rows = displayed(signs+[farther],Car(20,0,0,0),SimpleNamespace(ref='1'),NOW)
     assert len(rows) == 3 and {r['type'] for r in rows} == {'SPEEDLIMIT','WARNING','INFORMATION'}
     assert all(r['id'] != 'farther-speed' for r in rows)

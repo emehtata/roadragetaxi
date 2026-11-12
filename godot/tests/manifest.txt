@@ -1,0 +1,52 @@
+# Godot test manifest: the one list run by tools/run_godot_tests.py, used by
+# `make godot-test` and the CI "Client tests" step. Every godot/tests/*.gd is
+# listed here, as a headless assertion test or under [excluded] with a reason
+# (tests/test_godot_manifest.py checks this).
+res://tests/run_tests.gd
+res://tests/audit_menu_safety.gd
+res://tests/home_interior.gd
+res://tests/electronic_signs.gd
+res://tests/surface_details.gd
+res://tests/forest_trees.gd
+res://tests/precipitation_3d.gd
+res://tests/animal_audio.gd
+res://tests/rtx_trial.gd
+res://tests/home_walk.gd
+res://tests/home_interior_3d.gd
+res://tests/home_first_person.gd
+res://tests/phone_apps.gd
+res://tests/pause_save.gd
+res://tests/pedestrian_render.gd
+res://tests/train_doors.gd
+res://tests/wildlife.gd
+res://animal_models_test.gd
+
+res://tests/release_3d_default.gd
+res://tests/animal_models_packed.gd
+[excluded]
+res://tests/animal_audio_render.gd  # render tool: waits for a drawn frame, hangs headless
+res://tests/bridge_occlusion.gd  # rendered pixel regression: needs a display
+res://tests/building_scene.gd  # visual check: screenshot tool
+res://tests/canopy_supports_render.gd  # rendered regression: waits for a drawn frame, hangs headless
+res://tests/character_showcase.gd  # visual review: screenshot tool (PNG path argument)
+res://tests/christmas_star_render.gd  # render tool: screenshot
+res://tests/high_beams.gd  # rendered regression: needs a display (gl_compatibility)
+res://tests/intercity_loading_shot.gd  # screenshot of a real game launch with saved settings
+res://tests/intercity_render.gd  # visual regression: screenshot tool
+res://tests/limit_sign_shot.gd  # rendered measurement: waits for a drawn frame, hangs headless
+res://tests/metallic_paint_render.gd  # rendered regression: needs a display
+res://tests/nav_clear.gd  # rendered regression: needs a display (gl_compatibility)
+res://tests/pause_phone.gd  # takes a screenshot mid-test (frame_post_draw): hangs headless
+res://tests/road_snow_render.gd  # rendered pixel regression: needs a display
+res://tests/road_strokes.gd  # rendered regression: needs a display
+res://tests/settings_keyboard.gd  # needs isolated settings (XDG_DATA_HOME) and a display; fails headless
+res://tests/shadow_bench.gd  # benchmark, not an assertion test
+res://tests/shadow_scene.gd  # visual check: screenshot tool
+res://tests/shop_lights_render.gd  # rendered regression: needs a display (PNG path argument)
+res://tests/sports_nets_render.gd  # rendered regression: waits for a drawn frame, hangs headless
+res://tests/summary_shot.gd  # visual check: screenshot tool
+res://tests/tree_render.gd  # rendered regression: waits for a drawn frame, hangs headless
+res://tests/vehicle_body.gd  # rendered regression: waits for a drawn frame, hangs headless
+res://tests/vehicle_showcase.gd  # visual review: screenshot tool
+res://tests/wet_road_batching.gd  # rendered regression: needs a display
+res://tests/wildlife_render.gd  # render tool: waits for a drawn frame, hangs headless

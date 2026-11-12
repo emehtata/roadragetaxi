@@ -68,7 +68,7 @@ OPEN_ROOF_BUILDING_TYPES = frozenset({"roof", "canopy", "carport"})  # posts and
 
 NATURAL_SCENERY_KINDS: Tuple[str, ...] = (
     "wood", "scrub", "grass", "sand", "heath",
-    "beach", "wetland", "grassland", "shrubbery",
+    "beach", "wetland", "grassland", "shrubbery", "bare_rock",
 )
 
 

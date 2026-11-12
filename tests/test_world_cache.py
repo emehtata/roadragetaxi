@@ -58,7 +58,7 @@ def test_rwc_round_trip_preserves_scenery_objects(tmp_path):
 
 
 def test_rwc_rehydrates_building_place_associations(tmp_path, sample_world):
-    place = Place(10.0, 10.0, "K-Market", "supermarket", opening_hours="Mo-Sa 08:00-22:00", shop_type="supermarket")
+    place = Place(10.0, 10.0, "Test Grocery", "supermarket", opening_hours="Mo-Sa 08:00-22:00", shop_type="supermarket")
     building = Building(
         [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)],
         name="Shop",
@@ -389,3 +389,23 @@ def test_a_worker_world_survives_the_pickle_back(sample_world):
     copy = pickle.loads(pickle.dumps(sample_world))
     assert copy.ways == sample_world.ways and copy.traffic_lights == sample_world.traffic_lights
     assert copy.curbs == sample_world.curbs and copy.level_connectors == sample_world.level_connectors
+
+
+def test_binary_values_preserve_nested_types_and_offsets():
+    from theroadragetrip.world_cache import _decode, _encode
+
+    value = {"nested": [None, True, False, -123, 1.25, "Åbo", (2.0, 3.0)], "empty": {"items": []}}
+    payload = _encode(value)
+    restored, end = _decode(b"prefix" + payload + b"tail", len(b"prefix"))
+    assert restored == value
+    assert isinstance(restored["nested"][-1], tuple)
+    assert end == len(b"prefix") + len(payload)
+
+
+def test_binary_decoder_rejects_every_truncation_of_nested_values():
+    from theroadragetrip.world_cache import _decode, _encode
+
+    payload = _encode({"nested": [None, True, -123, 1.25, "Åbo", (2.0, 3.0)]})
+    for end in range(len(payload)):
+        with pytest.raises(InvalidWorldCache):
+            _decode(payload[:end])

@@ -295,6 +295,7 @@ class PedestrianNetwork:
         self._street_node_grid = build.street_node_grid
         self._component_parent = build.component_parent
         self._street_edges = build.street_edges
+        self._nearest_node_cache = {}  # exact coordinates; never reuse a node from the previous map graph
 
     def set_ways(self, ways: List[Way], streets: Sequence[Way] = ()) -> None:
         build = _PedestrianNetworkBuild(ways, streets)
@@ -349,6 +350,9 @@ class PedestrianNetwork:
     def _nearest_node(self, point: Tuple[float, float]) -> int:
         """The nearest footway node within FOOTWAY_SNAP_M, else the nearest
         node of any kind (smallest squared distance, lowest id on ties)."""
+        cached = self._nearest_node_cache.get(point)
+        if cached is not None:
+            return cached
         nodes = self.nodes
 
         def nearest(grid):
@@ -360,9 +364,14 @@ class PedestrianNetwork:
 
         footway = nearest(self._node_grid)
         if footway is not None and footway[0] <= FOOTWAY_SNAP_M ** 2:
-            return footway[1]
-        street = nearest(self._street_node_grid)
-        return min(key for key in (footway, street) if key is not None)[1]
+            node = footway[1]
+        else:
+            street = nearest(self._street_node_grid)
+            node = min(key for key in (footway, street) if key is not None)[1]
+        if len(self._nearest_node_cache) >= 2048:
+            self._nearest_node_cache.clear()
+        self._nearest_node_cache[point] = node
+        return node
 
     def connected(self, start: Tuple[float, float], target: Tuple[float, float]) -> bool:
         """Whether route() can find a network path (not its straight fallback)."""
@@ -572,6 +581,7 @@ class PlayerPedestrian:
     color: Tuple[int, int, int] = (255, 215, 60)
     radius_m: float = 0.55
     way: Optional[Way] = None
+    velocity: Tuple[float, float] = (0.0, 0.0)  # first-person walking (simulation.fps_walk_step)
 
 
 class PedestrianManager:
@@ -924,6 +934,7 @@ class PedestrianManager:
         route_index = min(max(1, pedestrian.current_route_segment), len(route) - 1)
         target_x, target_y = route[route_index]
         distance = math.hypot(target_x - pedestrian.x, target_y - pedestrian.y)
+        pedestrian.animation_time += update_dt  # every step, the snap onto a route node too
         if distance <= 1.0:
             pedestrian.x, pedestrian.y = target_x, target_y
             pedestrian.current_route_segment = route_index + 1
@@ -1051,6 +1062,7 @@ class PedestrianManager:
                 or pedestrian.wants_vehicle
                 or pedestrian.is_walking_to_taxi_stop
                 or pedestrian.is_taxi_stop_waiter
+                or pedestrian.dodge_timer > 0.0  # jumping clear of a car, not choosing a bench
             ):
                 continue
             if random.random() >= ACTIVITY_CONSIDER_PROBABILITY:
@@ -2417,16 +2429,16 @@ class PedestrianManager:
                     x += perp_x * init_lat
                     y += perp_y * init_lat
 
-                    if self._point_inside_building(x, y):
-                        continue
-                    if not self._point_near_building(x, y):
-                        continue
-
                     if max_distance_m is not None and math.hypot(x - near_x, y - near_y) > max_distance_m:
                         continue
 
                     # Sanity check: do not spawn directly on top of player car
                     if math.hypot(x - near_x, y - near_y) < 3.0:
+                        continue
+
+                    if self._point_inside_building(x, y):
+                        continue
+                    if not self._point_near_building(x, y):
                         continue
 
                     # Sanity check: do not cluster pedestrians on top of each other
@@ -2983,6 +2995,7 @@ class PedestrianManager:
                     ped.y += math.sin(ped.heading) * step
                     ped.state = "approaching_vehicle"
                     ped.animation_state = "walking"
+                    ped.animation_time += update_dt
                     continue
             taxi_stop_target = getattr(ped, "taxi_stop_target", None)
             if getattr(ped, "is_walking_to_taxi_stop", False) and taxi_stop_target is not None:
@@ -3064,7 +3077,8 @@ class PedestrianManager:
                 ped.state = PedestrianState.CROSSING.value if ped.crossing is not None else PedestrianState.WALKING.value
                 ped.animation_state = "walking"
             if ped.dodge_timer > 0.0:
-                # Controlled by dodge physics
+                # Controlled by dodge physics; the legs keep stepping
+                ped.animation_time += update_dt
                 continue
 
             pts = ped.way.points_m

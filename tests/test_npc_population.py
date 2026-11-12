@@ -10,6 +10,7 @@ import pytest
 from theroadragetrip.npc import (
     NPC_CRASH_CLEAR_S,
     Driver,
+    _route_replanner,
     NPCAvailability,
     NPCState,
     NPCVehicleManager,
@@ -969,11 +970,46 @@ def test_release_household_vehicle_is_idempotent():
     assert car.availability == NPCAvailability.AVAILABLE
 
 
+def test_transit_walk_timing_excludes_time_between_slices_and_closes_on_cancel(monkeypatch):
+    import theroadragetrip.npc as npc
+    from types import SimpleNamespace
+    manager = NPCVehicleManager(target_count=0)
+    world = SimpleNamespace(_route_nodes=[], _route_node_grid={})
+    clock, closed = [0.0], []
+    result = object()
+
+    def walk(*args):
+        try:
+            clock[0] += 0.002
+            yield
+            clock[0] += 0.003
+            return result
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(manager, "_walked_transit_trip_steps", walk)
+    monkeypatch.setattr(npc.time, "perf_counter", lambda: clock[0])
+    args = (None, (0.0, 0.0), None, world, [], None, None, None, None, None, None, None, [])
+    job = manager._short_transit_trip_steps(*args)
+    next(job)
+    clock[0] += 100.0
+    with pytest.raises(StopIteration) as done:
+        next(job)
+    assert done.value.value is result
+    assert manager.spawn_stats["search_ms"] == pytest.approx(5.0)
+    assert len(closed) == 1
+    job = manager._short_transit_trip_steps(*args)
+    next(job)
+    job.close()
+    assert len(closed) == 2
+
+
 def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
     """vehicle-population v2 acceptance criterion ("vehicle ownership persists") and
     this project's own testing checklist ("household association
     survives a full drive-park-drive-home cycle") - not just the single
     leg most other tests exercise."""
+    random.seed(2)  # placement is random; keep this scenario fixed
     from theroadragetrip.npc import find_and_start_npc_trip
 
     ways = _city_block_grid()
@@ -995,6 +1031,15 @@ def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
     assert household_id is not None
     home_position = vehicle.home_position
 
+    # Exercise this household's trip, rather than a random city-wide traffic jam.
+    manager.vehicles[:] = [vehicle]
+    manager.target_count = manager.min_count = manager.max_count = 1
+    from theroadragetrip.pedestrian import PedestrianManager
+    from theroadragetrip.physics import Car
+    pedestrians = PedestrianManager(ways, target_count=0, residents=residents, traffic_manager=traffic_world,
+                                   traffic_vehicles=manager.vehicles)
+    player = Car(x=px, y=py, heading=0.0, speed=0.0)
+
     driver = find_and_start_npc_trip(vehicle, residents, traffic_world, ways)
     assert driver is not None
     manager.drivers[vehicle.vehicle_id] = driver
@@ -1015,7 +1060,9 @@ def test_household_vehicle_ownership_persists_through_a_full_trip_cycle():
     retired = False
     crashed = False
     for _ in range(12000):
-        manager.update(1.0 / 30.0, px, py, residents, traffic_world, ways)
+        traffic_world.sim_time += 1.0 / 30.0
+        manager.update(1.0 / 30.0, px, py, residents, traffic_world, ways, pedestrian_mgr=pedestrians)
+        pedestrians.update(player, dt=1.0 / 30.0)
         # Ownership must survive every leg of the trip - departure,
         # arrival/waiting, and the drive home - not just the first one.
         assert vehicle.vehicle_kind == "household"
@@ -1783,12 +1830,20 @@ def test_route_stays_on_road_applies_off_road_tolerance_with_a_spatial_grid():
     assert not route_stays_on_road(route, [road], spatial_grid=grid, initial_segment_tolerance_m=5.0)
 
 
-def test_population_tick_seeds_moving_traffic_near_the_player():
+def test_population_tick_seeds_moving_traffic_near_the_player(monkeypatch):
     """Parked cars near the player aren't a reliable source of moving traffic
     (their exits often fail route validation), so a tick below the moving
     target must be able to put a real driven vehicle on a nearby road."""
+    import itertools
+    import time
     from theroadragetrip.npc import NPC_POPULATION_TICK_S
     from theroadragetrip.physics import SpatialWayGrid
+
+    # Route searches run against wall-clock deadlines (perf_counter), so the
+    # outcome used to depend on machine speed and PYTHONHASHSEED. Every read
+    # advances a fake clock by a fixed step, making the search reproducible.
+    ticks = itertools.count()
+    monkeypatch.setattr(time, "perf_counter", lambda: next(ticks) * 1e-5)
 
     random.seed(11)
     ways = _city_block_grid()
@@ -2384,7 +2439,7 @@ def test_through_traffic_parks_at_its_own_kerb_never_across_the_oncoming_lane():
     """§ 36 / game policy: a roadside stop is on the right of the travel
     direction. The kerb used to be the right of the map way's direction, so
     traffic driving against it crossed the oncoming lane to park facing
-    traffic (a car with a caravan on Toppilansaarentie, Oulu)."""
+    traffic (a car with a caravan on an island road, Oulu)."""
     from theroadragetrip.traffic_world import run_route_steps
 
     random.seed(4)
@@ -2423,3 +2478,85 @@ def test_npcs_touching_at_walking_pace_scrape_and_go_on():
     manager.vehicles.extend([crawling, parking])
     assert manager._check_vehicle_collision(crawling, [parking], residents, PedestrianManager([], target_count=0), sim_time=5.0)
     assert NPCState.CRASHED not in (crawling.state, parking.state) and not manager.accidents
+
+
+def test_transit_route_failure_counts_route_failed():
+    manager = NPCVehicleManager(target_count=10)
+    manager._finish_route_job({"kind": "transit", "vehicle": None, "members": None}, None,
+                              0.0, 0.0, ResidentManager(), None)
+    stats = manager.route_job_stats
+    assert stats["discard_reasons"] == {"route_failed": 1}
+    assert stats["failed"] == 1
+    assert manager.population_diagnostics["route_generation_failures"] == 1
+
+
+def test_stale_route_job_is_planned_again_on_the_new_graph():
+    residents = ResidentManager()
+    world = SimpleNamespace(route_graph_revision=1)
+    manager = NPCVehicleManager(target_count=10)
+    planned_on = []
+
+    def planner(traffic_world, tag):
+        planned_on.append(traffic_world.route_graph_revision)
+
+        def steps():
+            while True:  # still searching: stays queued
+                yield
+        return steps()
+
+    replan = _route_replanner(planner, 0, "transit")
+    manager._enqueue_route_job("transit", None, replan(world), world, replan=replan)
+    manager._enqueue_route_job("transit", None, planner(world, "plain"), world)  # no replan: dropped
+    planned_on.clear()
+    world.route_graph_revision = 2  # a map sync committed a new graph
+    for _ in range(3):
+        manager._advance_route_jobs(0.0, 0.0, residents, world, None, budget_s=0.0)
+    assert len(manager._route_jobs) == 1 and manager._route_jobs[0]["revision"] == 2
+    assert planned_on == [2]  # planned again once, on the new graph
+    stats = manager.route_job_stats
+    assert stats["replanned"] == 1 and stats["stale"] == 1
+    assert stats["discard_reasons"] == {"job_stale": 1}
+
+
+def test_spawn_summary_reports_flow_counters():
+    manager = NPCVehicleManager(target_count=10)
+    world = SimpleNamespace(route_graph_revision=1)
+    manager._enqueue_route_job("transit", None, iter(()), world)
+    summary = manager._spawn_summary(12.0, 0)
+    assert summary["flow"]["transit_pending"] == 1
+    assert summary["flow"]["since_last_activation_s"] is None
+    assert summary["flow"]["route_graph_rebuilds"] == 0
+
+
+def test_every_transit_discard_counts_exactly_one_reason():
+    residents = ResidentManager()
+    road = Way([(-100.0, 0.0), (100.0, 0.0)], "residential", 4.5)
+    plan = ([PathPoint(-100.0, 0.0, way=road), PathPoint(100.0, 0.0, way=road)],
+            (100.0, 0.0), None, True)
+    job = {"kind": "transit", "vehicle": None, "members": None}
+    manager = NPCVehicleManager(target_count=10)
+    manager._finish_route_job(job, None, 0.0, 0.0, residents, None)  # route_failed
+    manager._finish_route_job(job, (place_parked_npc(1, (-100.0, 0.0), None), plan), 0.0, 0.0, residents, None)
+    manager._finish_route_job(job, (place_parked_npc(2, (-100.0, 0.0), None), plan), 0.0, 0.0, residents, None)  # crowded
+    manager._finish_route_job(job, (place_parked_npc(3, (-50.0, 0.0), None), plan), 0.0, 0.0, residents, None)  # destination_taken
+    manager._finish_route_job(job, (place_parked_npc(4, (-100.0, 50.0), None), plan), 0.0, 0.0, residents,
+                              (-200.0, -200.0, 200.0, 200.0))  # in_view
+    manager.target_count = 1
+    manager._finish_route_job(job, (place_parked_npc(5, (-100.0, -50.0), None), plan), 0.0, 0.0, residents, None)  # full
+    stats = manager.route_job_stats
+    assert set(stats["discard_reasons"]) == {"route_failed", "crowded", "destination_taken", "in_view", "full"}
+    assert sum(stats["discard_reasons"].values()) == (
+        stats["discarded"] + manager.population_diagnostics["route_generation_failures"])
+
+
+def test_spawn_rejection_summary_sorted_with_shares():
+    manager = NPCVehicleManager(target_count=10)
+    assert manager.spawn_rejection_summary() == {"total": 0, "share": {}}
+    for reason, n in (("in_view", 1), ("crowded", 5), ("no_speed", 2)):
+        for _ in range(n):
+            manager._count_discard(reason)
+    summary = manager.spawn_rejection_summary()
+    assert list(summary)[:3] == ["crowded", "no_speed", "in_view"]
+    assert summary["total"] == 8
+    assert list(summary["share"]) == ["crowded", "no_speed", "in_view"]
+    assert abs(sum(summary["share"].values()) - 1.0) < 1e-6

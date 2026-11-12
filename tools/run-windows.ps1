@@ -2,7 +2,10 @@
 param(
     [string]$Godot = "C:\Godot\Godot_v4.7.2-stable_win64_console.exe",
     [switch]$DebugLogging,
-    [switch]$LocalPbf
+    [switch]$LocalPbf,
+    [switch]$ExperimentalRtx,
+    [switch]$Outdoor3d,
+    [ValidateSet("native", "quality")][string]$RtxQuality = "native"
 )
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
@@ -31,8 +34,31 @@ if (-not (Test-Path -LiteralPath $osmium)) {
     if ($LASTEXITCODE -ne 0) { throw "micromamba could not install osmium-tool" }
     Copy-Item (Join-Path $osmiumEnv "*.dll") (Split-Path $osmium)  # the MSVC runtime beside osmium.exe, as in the release
 }
+$engineArgs = @()
 $gameArgs = @()
+if ($ExperimentalRtx) {
+    Write-Host "Experimental RTX: $Godot (DLSS $RtxQuality; Frame Generation off)"
+    & $Godot --version
+    if ($LASTEXITCODE -ne 0) { throw "The experimental engine could not start. Use make run for the standard engine." }
+    $engineArgs = @("--rendering-method", "forward_plus", "--rendering-driver", "vulkan")
+    $gameArgs += @("--rtx", "--rtx-quality", $RtxQuality)
+}
+if ($Outdoor3d) { $gameArgs += "--outdoor-3d" }
 if ($DebugLogging) { $gameArgs += @("--log-level", "DEBUG") }
 if ($LocalPbf) { $gameArgs += @("--osm-source", "pbf") }
-& $Godot --path (Join-Path $repo "godot") -- @gameArgs
+# New or changed assets (a pull adding models) must be imported before a script preloads them.
+$project = Join-Path $repo "godot"
+$stamp = Join-Path $project ".godot\import-stamp"
+$since = if (Test-Path -LiteralPath $stamp) { (Get-Item -LiteralPath $stamp).LastWriteTime } else { [datetime]::MinValue }
+$assets = @(".import", ".glb", ".gltf", ".png", ".jpg", ".ogg", ".wav", ".mp3", ".ttf", ".otf")
+$changed = Get-ChildItem -LiteralPath $project -Recurse -File -ErrorAction SilentlyContinue |
+    Where-Object { $assets -contains $_.Extension -and $_.FullName -notlike "*\.godot\*" -and $_.LastWriteTime -gt $since } |
+    Select-Object -First 1
+if ($changed) {
+    Write-Host "Importing new or changed assets ($($changed.Name)...)"
+    & $Godot --headless --path $project --import | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Godot could not import the project's assets." }
+    New-Item -ItemType File -Force -Path $stamp | Out-Null
+}
+& $Godot --path $project @engineArgs -- @gameArgs
 exit $LASTEXITCODE

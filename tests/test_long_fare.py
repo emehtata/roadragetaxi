@@ -59,14 +59,14 @@ def test_long_fare_goes_to_a_town_then_its_address(monkeypatch):
     town = taxi.pick_long_dropoff(*oulu)
     assert town.municipality == "Muhos" and town.address == "Muhos"
 
-    taxi.current_passenger = TaxiPassenger(name="Aino", pickup=TaxiTarget(*oulu, "Kauppatori"), dropoff=town, boarded=True)
+    taxi.current_passenger = TaxiPassenger(name="Test Person 1", pickup=TaxiTarget(*oulu, "Market Square"), dropoff=town, boarded=True)
     taxi.state = TaxiState.DRIVING_TO_DROPOFF
     car = Car(x=town.x, y=town.y, heading=0.0, speed=0.0)  # stopped at the bare town centre: no fare end
     taxi.update(car, 0.1)
     assert taxi.current_passenger.dropoff is town and taxi.completed_fares == 0
 
     # The town's map streams in: the next search finds a street address.
-    taxi.sync_map_data([Way(points_m=[(town.x - 200, town.y), (town.x + 200, town.y)], highway="residential", half_width_m=4.5, name="Kirkkotie")])
+    taxi.sync_map_data([Way(points_m=[(town.x - 200, town.y), (town.x + 200, town.y)], highway="residential", half_width_m=4.5, name="Church Road")])
     taxi.update(car, 3.0)
     dropoff = taxi.current_passenger.dropoff
     assert dropoff.municipality is None and dropoff.address.endswith(", " + town.municipality)
@@ -74,43 +74,43 @@ def test_long_fare_goes_to_a_town_then_its_address(monkeypatch):
 
 def test_long_fare_to_an_airport_keeps_its_name(monkeypatch):
     airport = (430_000.0, 7_250_000.0)
-    monkeypatch.setattr(taxi_module, "_municipality_points", [("Kemi-Tornion lentoasema", *airport, 100_000, "airport")])
+    monkeypatch.setattr(taxi_module, "_municipality_points", [("Test Field Airport", *airport, 100_000, "airport")])
     taxi = TaxiManager(ways=[])
     target = taxi.pick_airport_dropoff(430_000.0, 7_210_000.0)
-    taxi.current_passenger = TaxiPassenger(name="Aino", pickup=TaxiTarget(0, 0, "x"), dropoff=target, boarded=True)
+    taxi.current_passenger = TaxiPassenger(name="Test Person 1", pickup=TaxiTarget(0, 0, "x"), dropoff=target, boarded=True)
     taxi.state = TaxiState.DRIVING_TO_DROPOFF
     taxi.sync_map_data([Way(points_m=[(airport[0] - 300, airport[1] + 100), (airport[0] + 300, airport[1] + 100)],
-                            highway="service", half_width_m=3.0, name="Lentoasemantie")])
+                            highway="service", half_width_m=3.0, name="Airport Road")])
     taxi.update(Car(x=airport[0], y=airport[1], heading=0.0, speed=0.0), 3.0)
     dropoff = taxi.current_passenger.dropoff
-    assert dropoff.address == "Kemi-Tornion lentoasema" and dropoff.municipality is None
+    assert dropoff.address == "Test Field Airport" and dropoff.municipality is None
     assert abs(dropoff.y - (airport[1] + 100)) < 1.0
 
 
 def test_long_fare_to_an_airport_prefers_its_taxi_stand(monkeypatch):
     from theroadragetrip.osm import TaxiStop
     airport = (430_000.0, 7_250_000.0)
-    monkeypatch.setattr(taxi_module, "_municipality_points", [("Oulun lentoasema", *airport, 100_000, "airport")])
+    monkeypatch.setattr(taxi_module, "_municipality_points", [("Test Airport", *airport, 100_000, "airport")])
     stand = TaxiStop(x=airport[0] + 500, y=airport[1])
     taxi = TaxiManager(ways=[], taxi_stops=[stand])
     target = taxi.pick_airport_dropoff(430_000.0, 7_210_000.0)
-    taxi.current_passenger = TaxiPassenger(name="Aino", pickup=TaxiTarget(0, 0, "x"), dropoff=target, boarded=True)
+    taxi.current_passenger = TaxiPassenger(name="Test Person 1", pickup=TaxiTarget(0, 0, "x"), dropoff=target, boarded=True)
     taxi.state = TaxiState.DRIVING_TO_DROPOFF
     taxi.sync_map_data([Way(points_m=[(airport[0] - 50, airport[1]), (airport[0] + 50, airport[1])],
                             highway="service", half_width_m=3.0)])
     taxi.update(Car(x=airport[0], y=airport[1], heading=0.0, speed=0.0), 3.0)
     dropoff = taxi.current_passenger.dropoff
-    assert (dropoff.x, dropoff.y) == (stand.x, stand.y) and dropoff.address == "Oulun lentoasema"
+    assert (dropoff.x, dropoff.y) == (stand.x, stand.y) and dropoff.address == "Test Airport"
 
 
 def test_an_airport_road_waits_for_the_airport_tile_where_its_stand_may_be(monkeypatch):
     airport = (430_000.0, 7_250_000.0)
-    monkeypatch.setattr(taxi_module, "_municipality_points", [("Oulun lentoasema", *airport, 100_000, "airport")])
+    monkeypatch.setattr(taxi_module, "_municipality_points", [("Test Airport", *airport, 100_000, "airport")])
     taxi = TaxiManager(ways=[])
     loaded = []
     taxi.map_covers = lambda x, y: bool(loaded)
     target = taxi.pick_airport_dropoff(430_000.0, 7_210_000.0)
-    taxi.current_passenger = TaxiPassenger(name="Aino", pickup=TaxiTarget(0, 0, "x"), dropoff=target, boarded=True)
+    taxi.current_passenger = TaxiPassenger(name="Test Person 1", pickup=TaxiTarget(0, 0, "x"), dropoff=target, boarded=True)
     taxi.state = TaxiState.DRIVING_TO_DROPOFF
     taxi.sync_map_data([Way(points_m=[(airport[0] - 300, airport[1] + 300), (airport[0] + 300, airport[1] + 300)],
                             highway="service", half_width_m=3.0)])  # a car park, streamed in first

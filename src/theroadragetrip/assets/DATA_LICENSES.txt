@@ -22,13 +22,15 @@ train_compositions.json.gz
   as is, without warranty.
 
 sports_fixtures.json.gz
-  Match schedules, results, teams, attendances and venue names retrieved
-  2026-10-15 from the public Liiga and Veikkausliiga result services:
+  Match schedules, results, teams, attendances and venue names from the
+  public Liiga and Veikkausliiga result services:
   https://www.liiga.fi/api/v2/schedule
   https://www.veikkausliiga.com/tilastot/
   Modified: the 2025-26 and 2026-27 Liiga seasons and the calendar-year
   2025 and 2026 Veikkausliiga seasons were normalized to UTC JSON with
-  game crowd windows. Provided as is, without warranty. The source data
+  game crowd windows. Veikkausliiga stadium coordinates were looked up
+  from OpenStreetMap with Nominatim; © OpenStreetMap contributors, ODbL 1.0.
+  Provided as is, without warranty. The source data
   remains copyright of Liiga, Veikkausliiga and their data providers.
   Status: UNRESOLVED - no licence or redistribution terms found; see
   LICENSE_AUDIT.md before a commercial release.
@@ -65,6 +67,13 @@ godot/finland_minimap.svg (the city menu's map, shipped in the game)
   Drawn from OpenStreetMap motorway, trunk and primary roads by
   tools/osm/build_finland_minimap.py. © OpenStreetMap contributors, ODbL 1.0
   (https://www.openstreetmap.org/copyright).
+
+borders.json.gz (the out-of-Finland notice, borders.py)
+  Finland's outline from OpenStreetMap relation 54224, © OpenStreetMap
+  contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright); its
+  neighbours' outlines from Natural Earth 1:50m admin 0 countries v5.1.2,
+  public domain (https://www.naturalearthdata.com). Built by
+  tools/osm/build_borders.py.
 
 sample_osm.json.gz (repository root, shipped with the server)
   Offline sample map for --use-sample. Its origin is not recorded:

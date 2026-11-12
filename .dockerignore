@@ -1,0 +1,8 @@
+**
+!pyproject.toml
+!README.md
+!sample_osm.json.gz
+!sample_osm_large.json.gz
+!src/
+!src/**
+src/theroadragetrip/assets/osm/

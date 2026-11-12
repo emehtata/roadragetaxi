@@ -65,3 +65,16 @@ src/theroadragetrip/assets/osm/roads-*/
 graphify-out/
 tools/godot/Godot_v*-stable_linux.*
 *.code-workspace
+# Release builds
+*.zip
+
+# tools/visual_test.py output (docs/visual-testing.md)
+visual-test-results/
+visual-test-compare.png
+
+# Test and benchmark output: never commit it. Keep the scripts and the .md reports.
+.github/performance-analysis/**/*.json
+.github/performance-analysis/**/*.json.gz
+.github/performance-analysis/**/*.txt
+.github/performance-analysis/**/*.png
+.github/performance-analysis/**/*.diff

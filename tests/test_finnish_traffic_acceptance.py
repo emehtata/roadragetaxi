@@ -90,7 +90,7 @@ def _freeway_transit(heading=0.0, vehicle_type="car"):
     from theroadragetrip.npc import PathPoint
     fx, fy = math.cos(heading), math.sin(heading)
     way = Way([(0, 0), (2000 * fx, 2000 * fy)], "motorway", 5,
-              speed_limit_kmh=120, oneway=1, name="Pohjantie")
+              speed_limit_kmh=120, oneway=1, name="Motorway Road")
     path = [PathPoint(x * fx + 2 * fy, x * fy - 2 * fx, way=way) for x in range(300, 1301, 20)]
     vehicle = place_parked_npc(1, (path[0].x, path[0].y), None, vehicle_type=vehicle_type)
     plan = (path, (path[-1].x, path[-1].y), None, False)

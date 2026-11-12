@@ -521,3 +521,46 @@ def test_one_refuel_press_buys_fuel_once_and_refused_presses_cost_nothing(monkey
     press(refuel=True)  # running engine: refused
     assert taxi.balance_cents == balance
     connection.close()
+
+
+def test_pause_freezes_gameplay_but_processes_save_and_resume(monkeypatch, tmp_path):
+    from theroadragetrip import protocol, transport
+    from theroadragetrip.simulation import PlayerCommand
+    server = _start_server(monkeypatch)
+    connection = transport.connect(server.host, server.port)
+    try:
+        driving = protocol.build_command_message(PlayerCommand(throttle=1, engine_on=True), interact=False, seq=1)
+        connection.send(driving)
+        assert _tick_until(server, lambda: server._latest_command.throttle == 1)
+        pause = protocol.build_command_message(PlayerCommand(), interact=False, seq=2)
+        pause["paused"] = True
+        connection.send(pause)
+        assert _tick_until(server, lambda: bool(server._paused_clients))
+        pose = (server.car.x, server.car.y, server.car.speed)
+        clock = (server.calendar.current, server._server_time, server._tick)
+        for _ in range(10):
+            server.tick(1 / 30)
+        assert pose == (server.car.x, server.car.y, server.car.speed)
+        assert clock == (server.calendar.current, server._server_time, server._tick)
+        errors = server.save_error_count
+        pause["save_game"] = True  # no slot: failure must still be acknowledged while paused
+        connection.send(pause)
+        assert _tick_until(server, lambda: server.save_error_count > errors)
+        assert pose == (server.car.x, server.car.y, server.car.speed)
+        server.save_slot_file = tmp_path / "paused.json"
+        connection.send(pause)
+        assert _tick_until(server, lambda: server.save_count == 1)
+        assert server.save_slot_file.exists()
+        assert pose == (server.car.x, server.car.y, server.car.speed)
+        resume = {**pause, "paused": False, "save_game": False}
+        connection.send(resume)
+        assert _tick_until(server, lambda: not server._paused_clients)
+        assert server._latest_command.throttle == 0
+        assert server._tick > clock[2]
+        connection.send(pause)
+        assert _tick_until(server, lambda: bool(server._paused_clients))
+        connection.close()
+        assert _tick_until(server, lambda: not server._paused_clients)
+    finally:
+        connection.close()
+        server.close()

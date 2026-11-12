@@ -76,6 +76,7 @@ func _ready() -> void:
 	_ground = Node2D.new()  # under everything, the landuse (z -1) included
 	_ground.z_index = -2
 	_ground.draw.connect(_draw_ground)
+	_ground.visible = not (MapChunk.outdoor_3d and MapChunk.buildings_3d)  # the 3D view draws the ground
 	add_child(_ground)
 	_buildings = Node2D.new()
 	_buildings.z_index = 7
@@ -106,6 +107,7 @@ func _layer_3d() -> Node2D:
 		buildings_3d.set_shadows_enabled(shadows_enabled)
 		buildings_3d.set_arena_lights(arena_lights_on)
 		buildings_3d.set_snow(float(season[0]))
+		buildings_3d.set_wetness(wetness)
 	return buildings_3d
 
 
@@ -514,6 +516,8 @@ func set_wetness(value: float) -> bool:
 	if is_equal_approx(stepped, wetness):
 		return false
 	wetness = stepped
+	if buildings_3d != null:
+		buildings_3d.set_wetness(wetness)
 	for chunk in _chunks.values():
 		chunk.set_wetness(wetness)
 	return true
@@ -532,6 +536,81 @@ func set_road_snow(depth: float, cells: Array, falling := true) -> void:
 		if chunk.set_road_snow(depth, cells, false) and not chunk._road_layers.is_empty():
 			_snow_redraws[id] = true
 	set_process(not _snow_redraws.is_empty() or not _shop_light_updates.is_empty())
+
+
+## rtx-scene-readiness step 4 (--outdoor-3d): the nearest working street
+## lamps, open shops and lit sports fields around the view to the 3D view's
+## light pools - again when the view has moved 5 m, the lights changed or
+## half a second has passed (lamps get knocked down, shops open).
+var _lights_3d_key := [Vector2.INF, -1.0, 0]
+const LIGHTS_3D_MARGIN_M := 30.0
+
+
+func update_lights_3d(view: Rect2, level: float) -> void:
+	var now := Time.get_ticks_msec()
+	var key: Array = _lights_3d_key
+	if view.get_center().distance_to(key[0]) < 5.0 and is_equal_approx(level, key[1]) and now - int(key[2]) < 500:
+		return
+	_lights_3d_key = [view.get_center(), level, now]
+	var centre := view.get_center()
+	var area := view.grow(LIGHTS_3D_MARGIN_M)
+	var lamps: Array = []
+	var shops: Array = []
+	var floods: Array = []
+	for chunk in _chunks.values():
+		if chunk._bounds_rect.size != Vector2.ZERO and not chunk._bounds_rect.intersects(area):
+			continue
+		var rows: Array = chunk._data.get("street_lights", [])
+		for i in chunk.street_lights.size():
+			var at: Vector2 = chunk.street_lights[i]
+			if area.has_point(at) and not chunk._broken.has(i):
+				lamps.append([at, float(rows[i][3]) if i < rows.size() and rows[i].size() > 3 else 10.0, at.distance_squared_to(centre)])
+		var styles: Array = chunk._data.get("building_styles", [])
+		var footprints: Array = chunk._data.get("buildings", [])
+		for i in mini(styles.size(), footprints.size()):
+			if styles[i].size() > 8 and int(styles[i][8]) == 1:  # an open shop (shop_lights, set_shop_lights)
+				var footprint := chunk._points(footprints[i]) as PackedVector2Array
+				var middle := Vector2.ZERO
+				for p in footprint:
+					middle += p / footprint.size()
+				if area.has_point(middle):
+					shops.append([middle, 9.0, middle.distance_squared_to(centre)])
+		if _flood_group != null and _flood_group.visible:
+			for ring in chunk._data.get("floodlit", []):
+				var middle := Vector2.ZERO
+				for p in ring:
+					middle += p / ring.size()
+				var reach := 0.0
+				for p in ring:
+					reach = maxf(reach, middle.distance_to(p))
+				if area.grow(reach).has_point(middle):
+					floods.append([middle, reach, middle.distance_squared_to(centre)])
+	for rows in [lamps, shops, floods]:
+		rows.sort_custom(func(p, q): return p[2] < q[2])
+	_layer_3d().set_area_lights(level, lamps, shops, floods)
+
+
+## Step 5 (--outdoor-3d): how high a vehicle on layer `layer` rides at `at`:
+## its bridge deck (ramped toward the deck's ends), the ground, or below it in a tunnel.
+func deck_height(at: Vector2, layer: int) -> float:
+	var grid := {}
+	var ends := PackedVector2Array()
+	for chunk in _chunks.values():
+		if not chunk.ground_heights.is_empty() and chunk._bounds_rect.has_point(at):
+			grid = chunk.ground_heights
+		if layer > 0 and chunk._bounds_rect.grow(Buildings3D.RAMP_M).has_point(at):
+			ends.append_array(chunk.bridge_ends)
+	return Buildings3D.deck_height(at, layer, ends, grid)
+
+
+## Step 6: a train's height at `at`: up on a rail deck (a railway bridge), else the ground.
+func rail_height(at: Vector2) -> float:
+	for chunk in _chunks.values():
+		if chunk._bounds_rect.size == Vector2.ZERO or chunk._bounds_rect.has_point(at):
+			for deck in chunk._data.get("rail_decks", []):
+				if Geometry2D.is_point_in_polygon(at, chunk._points(deck)):
+					return Buildings3D.DECK_M
+	return 0.0
 
 
 func set_shop_lights(states: Dictionary) -> void:

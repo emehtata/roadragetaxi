@@ -56,3 +56,20 @@ def test_the_bundled_packages_licences_are_collected(tmp_path):
     assert any(row.startswith("shapely ") for row in rows) and any(row.startswith("certifi ") for row in rows)
     assert (tmp_path / "shapely" / "licenses" / "LICENSE_GEOS").is_file()  # GEOS, LGPL-2.1
     assert (tmp_path / "PACKAGES.txt").read_text(encoding="utf-8").count("\n") == len(rows)
+
+
+def _packages() -> list[str]:
+    return ([d.metadata["Name"] for d in collect_licenses.runtime_closure(collect_licenses.RUNTIME)]
+            + collect_licenses.BUNDLED_TOOLS)
+
+
+def test_inventory_has_no_problems():
+    inventory = json.loads(check.INVENTORY.read_text(encoding="utf-8"))
+    assert check.problems(inventory, check.shipped_files(), _packages()) == []
+
+
+def test_every_package_listed_in_third_party_md():
+    inventory = json.loads(check.INVENTORY.read_text(encoding="utf-8"))
+    text = (ROOT / "THIRD_PARTY_LICENSES.md").read_text(encoding="utf-8").lower().replace("-", "_")
+    missing = [name for name in inventory["python_packages"] if name.lower().replace("-", "_") not in text]
+    assert missing == []

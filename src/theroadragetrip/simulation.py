@@ -65,6 +65,8 @@ class PlayerCommand:
     forward: float = 0.0  # on-foot forward(+)/back(-), -1..1
     turn: float = 0.0  # on-foot turn left(+)/right(-), -1..1
     sprint: bool = False
+    strafe: float = 0.0  # first-person walking: right(+)/left(-), -1..1
+    look_heading: Optional[float] = None  # first-person walking: the camera's yaw (server heading, rad); None = turn keys
     # Session toggles (K/V/B keys) - continuously reported rather than
     # edge-triggered, since the client already tracks their current
     # on/off state locally exactly like it tracks on_foot today.
@@ -105,16 +107,64 @@ class SimulationFrameResult:
     rage_shout: Optional[str] = None  # an accepted SPACE this tick: the shout to show for RAGE_SHOUT_DURATION_S
 
 
+WALL_SLIDE_RAD = 0.8  # slanted walls up to ~45 degrees off the walking line still slide
+
+
 def walk_blocked_by_walls(x: float, y: float, step_x: float, step_y: float, blocked) -> Tuple[float, float]:
     """The on-foot player's next position: walls block, the player slides
     along them; someone already inside (e.g. spawned in) walks out freely."""
     if not blocked(x + step_x, y + step_y) or blocked(x, y):
         return x + step_x, y + step_y
-    if not blocked(x + step_x, y):
+    if step_x and not blocked(x + step_x, y):
         return x + step_x, y
-    if not blocked(x, y + step_y):
+    if step_y and not blocked(x, y + step_y):  # (a zero step is no slide: walking straight at a wall)
         return x, y + step_y
-    return x, y
+    k = math.cos(WALL_SLIDE_RAD)  # a slanted wall: along it (turned the free way), slowed by the angle
+    slides = [((step_x * k - step_y * s) * k, (step_x * s + step_y * k) * k)
+              for s in (math.sin(WALL_SLIDE_RAD), -math.sin(WALL_SLIDE_RAD))]
+    free = [(x + sx, y + sy) for sx, sy in slides if not blocked(x + sx, y + sy)]
+    return free[0] if len(free) == 1 else (x, y)  # both ways free: head-on at the wall, stop
+
+
+FPS_WALK_SPEED_MPS = 1.5  # first-person walking: a natural pace
+FPS_SPRINT_SPEED_MPS = 5.5
+FPS_ACCEL_MPS2 = 8.0  # reaches walking pace in ~0.2 s, sprint in ~0.7 s; the same to stop
+
+
+def point_in_vehicle(x: float, y: float, vehicle, margin_m: float) -> bool:
+    """Whether (x, y) is within `margin_m` of a vehicle's rectangle (x, y, heading, length_m, width_m)."""
+    dx, dy = x - vehicle.x, y - vehicle.y
+    c, s = math.cos(vehicle.heading), math.sin(vehicle.heading)
+    return (abs(dx * c + dy * s) <= vehicle.length_m * 0.5 + margin_m
+            and abs(-dx * s + dy * c) <= vehicle.width_m * 0.5 + margin_m)
+
+
+def fps_walk_step(ped, forward: float, strafe: float, look_heading: float, sprint: bool, dt: float, blocked) -> None:
+    """One tick of first-person walking: move relative to the client's look
+    heading, speed limited and smoothed here on the server, walls and
+    vehicles (`blocked`) stop the player, who slides along them."""
+    ped.heading = look_heading
+    c, s = math.cos(look_heading), math.sin(look_heading)
+    wish_x, wish_y = forward * c + strafe * s, forward * s - strafe * c  # strafe right = heading turned clockwise
+    wish = math.hypot(wish_x, wish_y)
+    top = FPS_SPRINT_SPEED_MPS if sprint else FPS_WALK_SPEED_MPS
+    if wish > 1e-6:
+        scale = top * min(1.0, wish) / wish
+        wish_x, wish_y = wish_x * scale, wish_y * scale
+    vx, vy = ped.velocity
+    change_x, change_y = wish_x - vx, wish_y - vy
+    change = math.hypot(change_x, change_y)
+    limit = FPS_ACCEL_MPS2 * dt
+    if change > limit:
+        change_x, change_y = change_x * limit / change, change_y * limit / change
+    vx, vy = vx + change_x, vy + change_y
+    x, y = walk_blocked_by_walls(ped.x, ped.y, vx * dt, vy * dt, blocked)
+    if x == ped.x:
+        vx = 0.0
+    if y == ped.y:
+        vy = 0.0
+    ped.x, ped.y, ped.velocity = x, y, (vx, vy)
+    ped.speed = math.hypot(vx, vy)
 
 
 def _roadwork_bars(work, x: float, y: float, *, layer: int = 0, map_level: int = 0) -> bool:
@@ -139,7 +189,25 @@ def _provoke_rival(brawls, npc_manager, player_pedestrian, sim_time: float) -> N
     brawls.report("provoke", (PLAYER, LOCAL_PLAYER_ID), (NPC, rival.vehicle_id), ("provoke", rival.vehicle_id, int(sim_time)))
 
 
-def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None, pedestrians=()) -> bool:
+EXIT_MAX_SPEED_MPS = 1.0  # getting out: the taxi (nearly) stopped
+DRIVER_DOOR_REACH_M = 1.5  # the "get in" prompt within this of the driver's door
+
+
+def driver_door(car, side: float = 1.0) -> Tuple[float, float]:
+    """Where the driver stands getting out: beside the front door, left (side 1) or right (-1)."""
+    length_m, width_m = getattr(car, "length_m", 4.0), getattr(car, "width_m", 1.8)
+    c, s = math.cos(car.heading), math.sin(car.heading)
+    return (car.x + c * length_m * 0.2 - s * width_m * 0.85 * side,
+            car.y + s * length_m * 0.2 + c * width_m * 0.85 * side)
+
+
+def driver_door_available(car, player_pedestrian) -> bool:
+    """The on-foot player is at the standing taxi's driver's door (the E prompt)."""
+    x, y = driver_door(car)
+    return abs(car.speed) <= EXIT_MAX_SPEED_MPS and math.hypot(player_pedestrian.x - x, player_pedestrian.y - y) <= DRIVER_DOOR_REACH_M
+
+
+def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_mgr=None, pedestrians=(), blocked=None) -> bool:
     """The 'F' key's get-in/get-out-of-the-car action - authoritative
     gameplay logic (a distance check gates re-entry), so it belongs on
     the simulation side of the boundary, not decided by a client. On foot by a pre-booked rail
@@ -151,21 +219,18 @@ def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_
         audio.play_group("gameplay.meet_greet")
         return on_foot
     if not on_foot:
-        length_m = getattr(car, "length_m", 4.0)
-        width_m = getattr(car, "width_m", 1.8)
-        left_x = -math.sin(car.heading)
-        left_y = math.cos(car.heading)
-        player_pedestrian.x = (
-            car.x + math.cos(car.heading) * length_m * 0.2 + left_x * width_m * 0.85
-        )
-        player_pedestrian.y = (
-            car.y + math.sin(car.heading) * length_m * 0.2 + left_y * width_m * 0.85
-        )
+        if abs(car.speed) > EXIT_MAX_SPEED_MPS:  # no jumping out of a moving taxi
+            return False
+        spot = next((p for p in (driver_door(car), driver_door(car, side=-1.0))
+                     if blocked is None or not blocked(*p)), None)  # the driver's door; a wall there: the other side
+        if spot is None:
+            return False
+        player_pedestrian.x, player_pedestrian.y = spot
         player_pedestrian.heading = car.heading
         car.speed = 0.0  # the engine keeps running (idling) until E turns it off
         audio.play_group("vehicle.door_open")
         return True
-    elif math.hypot(player_pedestrian.x - car.x, player_pedestrian.y - car.y) <= 3.0:
+    elif driver_door_available(car, player_pedestrian):  # the same rule as the E prompt
         car.speed = 0.0
         audio.play_group("vehicle.door_open")  # getting in: the door opens (passengers boarding get door_close)
         return False
@@ -259,6 +324,7 @@ def advance_simulation(
     now=None,
     view_bounds=None,
     brawl_flee: bool = False,
+    gig_save=None,
 ) -> SimulationFrameResult:
     """Run one gameplay tick: physics, collisions, camera follow, and the
     taxi/NPC/traffic/pedestrian manager updates."""
@@ -292,7 +358,18 @@ def advance_simulation(
     if brawl_heading is not None:  # squaring up or knocked down: the brawl holds the player in place
         player_pedestrian.speed = 0.0
         player_pedestrian.heading = brawl_heading
+    elif on_foot and command.look_heading is not None:
+        near_vehicles = [car, *npc_manager.nearby_vehicles_at(player_pedestrian.x, player_pedestrian.y, 8.0)]
+        inside_building = pedestrian_mgr._point_inside_building
+
+        def blocked(x: float, y: float) -> bool:
+            return inside_building(x, y) or any(
+                point_in_vehicle(x, y, v, player_pedestrian.radius_m * 0.5) for v in near_vehicles)
+
+        fps_walk_step(player_pedestrian, command.forward, command.strafe, command.look_heading,
+                      command.sprint, dt, blocked)
     elif on_foot:
+        player_pedestrian.velocity = (0.0, 0.0)
         forward_input = command.forward
         steer_input = command.turn
         sprinting = command.sprint
@@ -435,11 +512,13 @@ def advance_simulation(
         if streaming_cap_mps is not None:
             speed_limit_mps = streaming_cap_mps if speed_limit_mps is None else min(speed_limit_mps, streaming_cap_mps)
 
+    ferry_mgr = getattr(world, "ferry_mgr", None)
+    deck = ferry_mgr.on_deck if ferry_mgr is not None and ferry_mgr.ferries else None  # a ferry deck is dry (ferries.py)
     # Safety brake before open water straight ahead, off-road only: a shore road's
     # bends point at the water without leaving the road (surface only: levels have none).
     # Braking from a standstill reverses: that backs away from the shore, never capped.
     if on_surface and not on_foot and waters and current_way is None and not (brake > 0.0 and car.speed <= 0.5):
-        water_limit_mps = water_ahead_speed_limit(car, waters, now.month if now is not None else None, drive_grid)
+        water_limit_mps = water_ahead_speed_limit(car, waters, now.month if now is not None else None, drive_grid, dry=deck)
         if water_limit_mps is not None:
             speed_limit_mps = water_limit_mps if speed_limit_mps is None else min(speed_limit_mps, water_limit_mps)
             if car.speed > water_limit_mps + 0.5:  # too close for the gentle limit: brake hard
@@ -462,6 +541,7 @@ def advance_simulation(
                 black_ice=weather.road_ice_fraction,
                 wind=weather.wind_vector_mps,
                 fields_frozen=getattr(world, "fields_frozen", False),
+                hard_at=deck,  # a ferry's steel deck, not the mud under the water
             )
         car.braking = brake > 0.0 and car.speed > 0.05
         if world.level_transitions.blocks_entry(car, previous_position, approach_way):
@@ -470,6 +550,9 @@ def advance_simulation(
             taxi_mgr.notification_msg = tr(language, "garage_closed")
             taxi_mgr.notification_timer = 2.5
         if protests is not None and protests.blocks_movement(car, previous_position):
+            car.x, car.y = previous_position
+            car.speed = 0.0
+        if deck is not None and ferry_mgr.blocks(car, previous_position):  # a ferry's side rails
             car.x, car.y = previous_position
             car.speed = 0.0
         midpoint = (
@@ -504,10 +587,10 @@ def advance_simulation(
                 car, ways=drive_ways, spatial_grid=drive_grid, car_roads_only=True,
             )
         # water_elapsed: seconds the taxi has been sinking (0: afloat or on ice)
-        if water_elapsed > 0.0 and (not on_surface or not is_car_fully_in_water(car, waters, current_way)):
+        if water_elapsed > 0.0 and (not on_surface or not is_car_fully_in_water(car, waters, current_way, dry=deck)):
             water_elapsed = 0.0  # streamed geometry can correct a false water overlap
         elif water_elapsed == 0.0 and on_surface and not entered_roadwork and water_sinks_car(
-                car, waters, current_way, now.month if now is not None else None, dt):
+                car, waters, current_way, now.month if now is not None else None, dt, dry=deck):
             water_elapsed = dt
             audio.play_group("vehicle.water_splash")
         elif water_elapsed > 0.0:
@@ -658,6 +741,14 @@ def advance_simulation(
                 )
             railway_mgr.view_point = (camx, camy)
             railway_mgr.update(dt, dt * (1.0 if taxi_mgr.has_active_job() else 60.0), now)
+    border_watch = getattr(world, "border_watch", None)
+    if border_watch is not None:  # out of Finland: the HUD says so (state "abroad", borders.py)
+        player = player_pedestrian if on_foot else car  # the driver, in the taxi or walking
+        border_watch.update(dt, player.x, player.y)
+    ferry_mgr = getattr(world, "ferry_mgr", None)
+    if ferry_mgr is not None and ferry_mgr.routes:
+        with frame_profiler.section("ferries"):
+            ferry_mgr.update(dt, (camx, camy), car if car.map_level == SURFACE_LEVEL else None, npc_manager)
     tram_mgr = getattr(world, "tram_mgr", None)
     if tram_mgr is not None and tram_mgr.has_track:
         with frame_profiler.section("trams"):
@@ -796,7 +887,10 @@ def advance_simulation(
     city_summary = None
     next_active_city_name = None
     if career is None and taxi_mgr.completed_fares > saved_gig_fares:
-        save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l, taxi_mgr.balance_cents)
+        if gig_save is not None:
+            gig_save()
+        else:
+            save_gig_odometer(gig_odometer_file, car.odometer_m, car.fuel_l, taxi_mgr.balance_cents)
         saved_gig_fares = taxi_mgr.completed_fares
     if career is not None and taxi_mgr.total_score >= CAREER_SCORE_LIMIT:
         career_index = int(career["city_index"])

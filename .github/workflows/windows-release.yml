@@ -155,6 +155,8 @@ jobs:
           & $godot --headless --path godot --import
           & $godot --headless --path godot --export-release "Windows Desktop" "$PWD/dist/RoadRageTrip/RoadRageTrip.exe"
           if (-not (Test-Path dist/RoadRageTrip/RoadRageTrip.exe)) { throw "the Godot export produced no RoadRageTrip.exe" }
+          bash tools/check_export_pck.sh "$PWD/$godot"
+          if ($LASTEXITCODE -ne 0) { throw "the exported pck is missing GLB models or animal textures" }
           Move-Item build/server/RoadRageServer dist/RoadRageTrip/server
           Copy-Item THIRD_PARTY_LICENSES.md dist/RoadRageTrip/
           New-Item -ItemType Directory -Force dist/RoadRageTrip/licenses/godot | Out-Null
@@ -188,6 +190,9 @@ jobs:
           if ($game.ExitCode -ne 0 -or -not (Test-Path $log) -or -not ((Get-Content $log -Raw) -match 'startup: \d+ cities from the simulation \(release\)')) {
             throw "installed game did not start: $((Get-Content $log -Raw -ErrorAction SilentlyContinue))"
           }
+          if (-not ((Get-Content $log -Raw) -match 'view: outdoor_3d=true renderer=forward_plus driver=vulkan')) {
+            throw "installed game does not start in the 3D view with Forward+/Vulkan: $((Get-Content $log -Raw))"
+          }
 
       - name: Upload the builds
         uses: actions/upload-artifact@v4
@@ -200,13 +205,24 @@ jobs:
             dist/osmium-tool-feedstock-recipe.tar.gz
             dist/geos-*-source.tar.bz2
 
-      - name: Publish GitHub release
+      - name: Add the builds to the GitHub release
+        # The other release jobs (linux-release.yml, macos-release.yml) may
+        # have created the release already; whichever job gets there first
+        # creates it, the other one uploads to it.
         if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "${{ github.ref_name }}"
-          dist/RoadRageTrip-windows-x64.zip (Get-ChildItem dist/RoadRageTrip-*-Setup.exe).FullName
-          dist/osmium-tool-${{ env.OSMIUM_VERSION }}-source.tar.gz dist/osmium-tool-feedstock-recipe.tar.gz
-          (Get-ChildItem dist/geos-*-source.tar.bz2).FullName
-          --generate-notes
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:TAG --generate-notes *> $null
+            gh release view $env:TAG *> $null
+            if ($LASTEXITCODE -ne 0) { throw "could not create the release $env:TAG" }
+          }
+          $files = @("dist/RoadRageTrip-windows-x64.zip") + (Get-ChildItem dist/RoadRageTrip-*-Setup.exe).FullName `
+            + @("dist/osmium-tool-$env:OSMIUM_VERSION-source.tar.gz", "dist/osmium-tool-feedstock-recipe.tar.gz") `
+            + (Get-ChildItem dist/geos-*-source.tar.bz2).FullName
+          gh release upload $env:TAG @files --clobber
+          if ($LASTEXITCODE -ne 0) { throw "could not upload to the release $env:TAG" }

@@ -100,3 +100,54 @@ def test_a_failing_worker_falls_back_to_the_thread_and_stays_off(monkeypatch):
     server_module.SimulationServer._map_grew(server, outer, outer, [(500.0, 0.0, 1400.0, 800.0)])
     assert server._map_growth and server._map_growth[-1][6] is True  # the final pass arrived
     assert server._chunk_workers is False and server._chunk_pool is None
+
+
+def test_failed_fallback_reports_failure_and_retry_preserves_dirty_regions(monkeypatch):
+    import theroadragetrip.server as server_module
+
+    class InlineThread:
+        def __init__(self, *, target, **kwargs):
+            self.target = target
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(server_module.threading, "Thread", InlineThread)
+    world = _world()
+    server = SimpleNamespace(world=world, car=SimpleNamespace(x=0, y=0), _chunks_index=ChunkIndex(world),
+                             _map_streamer=SimpleNamespace(sync_tiles={"tile"}, hold=False), _map_growth=[],
+                             _indexed_tiles=set(), _on_foot=False)
+    dirty = [(500.0, 0.0, 1400.0, 800.0)]
+    outer = (-2000, -2000, 3000, 3000)
+    with monkeypatch.context() as broken:
+        def fail(*args):
+            raise ValueError("invalid geometry")
+        broken.setattr(server_module.ChunkIndex, "updated", fail)
+        server_module.SimulationServer._map_grew(server, outer, outer, dirty)
+    server_module.SimulationServer._apply_map_growth(server)
+    _, failed = server._map_growth_retry
+    assert failed.dirty == dirty and failed.old_bounds == failed.new_bounds == outer
+    assert server._map_streamer.hold
+    server_module.SimulationServer._map_grew(server, failed.old_bounds, failed.new_bounds, failed.dirty)
+    assert server._map_growth[-1][6] is True
+
+
+def test_tick_restarts_a_failed_map_build_after_backoff(tmp_path, monkeypatch):
+    import sys
+    import theroadragetrip.server as server_module
+    from theroadragetrip.server.cli import parse_server_args
+    monkeypatch.setattr(sys, "argv", ["prog", "--use-sample", "--no-historical-weather"])
+    args, config = parse_server_args()
+    server = server_module.SimulationServer(args, config)
+    try:
+        failed = server_module.MapGrowthFailure((0, 0, 1, 1), (0, 0, 2, 2), [(1, 1, 2, 2)])
+        calls = []
+        monkeypatch.setattr(server, "_map_grew", lambda *args: calls.append(args))
+        server._map_growth_retry = (float("inf"), failed)
+        server.tick(1 / 30)
+        assert calls == []
+        server._map_growth_retry = (0, failed)
+        server.tick(1 / 30)
+        assert calls == [(failed.old_bounds, failed.new_bounds, failed.dirty)]
+        assert server._map_growth_retry is None
+    finally:
+        server.close()

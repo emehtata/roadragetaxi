@@ -20,6 +20,7 @@ const T := preload("res://i18n.gd")
 const NightclubAudio := preload("res://nightclub_audio.gd")
 const CarAudio := preload("res://car_audio.gd")
 const WildlifeLayer := preload("res://wildlife.gd")
+const Buildings3DScript := preload("res://buildings_3d.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
@@ -74,6 +75,15 @@ var hud_layout = preload("res://hud_layout.gd").new()  # the movable panels, sav
 var _start_sign: PanelContainer  # the start sign: city and forecast, any key starts
 var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
 var _lead := Vector2.ZERO  # camera look-ahead, metres
+var _windshield: CanvasLayer
+var _windshield_view: TextureRect
+var _windshield_zoom := 0.0
+var _windshield_trims: Array[ColorRect] = []
+var walk_eye := false  # first-person walking: the windshield view at the walking player's eyes (I on foot)
+var look_yaw := 0.0  # server heading convention (rad, counter-clockwise from east); the server walks this way
+var look_pitch := 0.0
+const WALK_EYE_HEIGHT_M := 1.7
+const LOOK_PITCH_LIMIT := 1.35  # rad, about 77 degrees up or down
 const LEAD_S := 0.6  # look this far ahead of the taxi at its speed
 const LEAD_MAX := 0.3  # at most this share of the view
 var _state_usec := 0.0  # handling one state (parse + buffer), smoothed
@@ -86,6 +96,9 @@ var _last_interact := -10.0
 var _screenshot_path := ""
 var _screenshot_wait := 6.0
 var _screenshot_drive := 0.0
+var _visual_test: Node = null  # --visual-test (visual_test.gd)
+var _screenshot_resize := Vector2i.ZERO  # --screenshot-resize WxH: the window resized 3 s before the shot (a live resize)
+var _screenshot_steer := 0.0  # --screenshot-steer: -1 full left .. 1 full right while the screenshot drive runs
 var _report := {}
 var _fps_samples: Array = []
 var _max_camera_lag_px := 0.0
@@ -125,6 +138,7 @@ var override_train_at := Vector2.INF
 var override_wetness := -1.0  # audio test: a moving train here (presentation only)
 var language := "en"
 var tutorial := false  # the launcher's tutorial game: the coach panel (tutorial.gd)
+var _picture: ColorRect = null  # brightness and contrast (picture.gdshader), made when first set off the defaults
 var graphics: Dictionary = {}  # empty for direct scenes/tests; the launcher supplies saved defaults
 
 
@@ -172,6 +186,13 @@ func _ready() -> void:
 	entities.covered = map_layer.covered  # headlights under a higher road
 	labels.map_layer = map_layer
 	var args := OS.get_cmdline_user_args()
+	if MapChunk.wants_3d():
+		MapChunk.outdoor_3d = true
+		preload("res://buildings_3d.gd").use_shaded()
+	if "--rtx" in args:
+		MapChunk.outdoor_3d = true
+		MapChunk.buildings_3d = true
+		preload("res://buildings_3d.gd").use_shaded()
 	for i in args.size():
 		match args[i]:
 			"--host":
@@ -208,8 +229,10 @@ func _ready() -> void:
 				_bench = float(args[i + 1])
 				_bench_left = _bench
 				Perf.keep_all = true
+			"--outdoor-3d", "--outdoor-2d":  # the view is chosen above (3D unless --outdoor-2d); --outdoor-3d is kept as a no-op
+				pass
 			"--buildings":  # godot-21: "2d" the radial 2D renderer, "3d" (default) the 3D building layer
-				MapChunk.buildings_3d = args[i + 1] != "2d"
+				MapChunk.buildings_3d = "--rtx" in args or args[i + 1] != "2d"
 			"--building-fov":  # godot-22: try a 3D building camera FOV (degrees)
 				preload("res://buildings_3d.gd").FOV = float(args[i + 1])
 			"--compass":
@@ -226,9 +249,22 @@ func _ready() -> void:
 				show_next_train = true
 			"--screenshot-drive":  # with --screenshot: get in and drive this many seconds first
 				_screenshot_drive = float(args[i + 1])
-	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args:
+			"--screenshot-resize":
+				var size: PackedStringArray = args[i + 1].split("x")
+				_screenshot_resize = Vector2i(int(size[0]), int(size[1]))
+			"--visual-test":  # tools/visual_test.py: a scenario's readiness checks, screenshot and result (visual_test.gd)
+				var test := preload("res://visual_test.gd").new()
+				_visual_test = test
+				test.main = self
+				test.scenario = JSON.parse_string(FileAccess.get_file_as_string(args[i + 1]))
+				test.out_dir = args[i + 1].get_base_dir()
+				add_child(test)
+			"--screenshot-steer":  # with --screenshot-drive: steer this much (-1 left .. 1 right), e.g. off the road onto grass
+				_screenshot_steer = clampf(float(args[i + 1]), -1.0, 1.0)
+	if _selftest or _bench > 0.0 or _screenshot_path != "" or "--audiotest" in args or "--inputtest" in args or "--visual-test" in args:
 		_engine_on = true  # automated runs drive straight away: no sign, no hints
 		_entered_taxi = not "--start-sign" in args  # --start-sign: a screenshot of the city's start sign and forecast
+	_build_windshield()
 	if _bench > 0.0:  # rrt-019.1: the frame in phases - scripts, redraws and layout up to the render, then the render
 		Perf.time_draws(entities, "draw_entities")  # and the vehicles, people, lamps... each
 		RenderingServer.frame_pre_draw.connect(func():
@@ -276,6 +312,19 @@ func _apply_graphics() -> void:
 	entities.queue_redraw()
 	if not graphics.get("lightning_flashes", true):
 		flash.hide()
+	var brightness := float(graphics.get("brightness", 1.0))
+	var contrast := float(graphics.get("contrast", 1.0))
+	if _picture == null and not (is_equal_approx(brightness, 1.0) and is_equal_approx(contrast, 1.0)):
+		_picture = ColorRect.new()  # the world under it, the HUD over it; none at the defaults (no full-screen pass)
+		_picture.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_picture.material = ShaderMaterial.new()
+		_picture.material.shader = preload("res://picture.gdshader")
+		$Sky.add_child(_picture)
+	if _picture != null:
+		_picture.visible = not (is_equal_approx(brightness, 1.0) and is_equal_approx(contrast, 1.0))
+		_picture.material.set_shader_parameter("brightness", brightness)
+		_picture.material.set_shader_parameter("contrast", contrast)
 	# 3D/2D geometry stays consistent across loaded and incoming chunks until the next session.
 
 
@@ -431,6 +480,9 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 	drive.handle(event)
+	if walk_eye and _walk_look(event):
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventMouseButton:
 		if event.pressed and _start_sign == null and not (phone.visible and phone.get_global_rect().has_point(event.position)) and (event.button_index == MOUSE_BUTTON_MIDDLE or (event.button_index == MOUSE_BUTTON_LEFT and event.ctrl_pressed)):
 			_pan_button = event.button_index
@@ -499,6 +551,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
+			KEY_I:
+				_set_windshield(not _windshield.visible, entities.shown_state().get("on_foot", false))
 			KEY_F12:
 				save_screenshot()
 			KEY_U, KEY_F2:  # the HUD layout back to default
@@ -532,8 +586,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_reset_trip_pending = true
 			KEY_E:  # toggles what the simulation shows (it may have stopped the engine: no fuel)
 				var door: Dictionary = entities.shown_state().get("home_door", {})
-				if door.get("available", false) or (door.get("indoors", false) and (not home_walk.visible or home_walk.at_exit())):
-					_home_door_pending = true  # on foot at home's door (only then: E means nothing else on foot)
+				if not entities.shown_state().get("interaction", {}).is_empty() or (door.get("indoors", false) and (not home_walk.visible or home_walk.at_exit())):
+					_home_door_pending = true  # on foot: what the server offers here (taxi door, house door, building; it checks again), or out of the house
 				elif not entities.shown_state().get("on_foot", true) and not _interact_pending:
 					_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
 			KEY_F1:
@@ -563,6 +617,89 @@ func _camera_lead(delta: float) -> Vector2:
 
 func _zoom(factor: float) -> void:
 	camera.zoom = Vector2.ONE * clampf(camera.zoom.x * factor, 3.0, 24.0)
+
+
+func _build_windshield() -> void:
+	_windshield = CanvasLayer.new()
+	_windshield.layer = 1  # over the road, below the HUD
+	_windshield.visible = false
+	add_child(_windshield)
+	var frame := Control.new()
+	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_windshield.add_child(frame)
+	_windshield_view = TextureRect.new()
+	_windshield_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_windshield_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_windshield_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(_windshield_view)
+	for edges: Array in [[0.0, 0.0, 1.0, 0.035], [0.0, 0.83, 1.0, 1.0],
+			[0.0, 0.0, 0.035, 1.0], [0.965, 0.0, 1.0, 1.0]]:
+		var trim := ColorRect.new()
+		trim.color = Color8(24, 26, 29)
+		trim.anchor_left = edges[0]
+		trim.anchor_top = edges[1]
+		trim.anchor_right = edges[2]
+		trim.anchor_bottom = edges[3]
+		trim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		frame.add_child(trim)
+		_windshield_trims.append(trim)
+
+
+func _set_windshield(on: bool, walking := false) -> void:
+	if on and (not MapChunk.outdoor_3d or (entities.player_body().is_empty() and not walking)):
+		return
+	var switching := on and _windshield.visible and walk_eye != walking  # out of the taxi or back in: the eye glides over
+	if switching:
+		map_layer.buildings_3d.begin_eye_transition()
+	walk_eye = on and walking
+	entities.first_person = walk_eye
+	for trim in _windshield_trims:
+		trim.visible = not walk_eye  # no car frame around a walker's eyes
+	if walk_eye:
+		look_yaw = float(entities.shown_state().get("player_pedestrian", {}).get("heading", 0.0))
+		look_pitch = 0.0
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if walk_eye and DisplayServer.get_name() != "headless" else Input.MOUSE_MODE_VISIBLE
+	if on and not switching:
+		_clear_focus()
+		_windshield_zoom = camera.zoom.x
+		camera.zoom = Vector2.ONE * 3.0  # keep forward chunks and traffic available to the 3D view
+		_windshield_view.texture = map_layer._layer_3d()._view.get_texture()
+	elif not on:
+		camera.zoom = Vector2.ONE * _windshield_zoom
+	_windshield.visible = on
+	if map_layer.buildings_3d != null:
+		map_layer.buildings_3d.windshield_on = on
+		map_layer.buildings_3d.eye_height = WALK_EYE_HEIGHT_M if walk_eye else 1.35
+		map_layer.buildings_3d.eye_ahead = 0.0 if walk_eye else 0.55
+		map_layer.buildings_3d.eye_pitch = 0.0
+
+
+## First-person walking: the mouse looks around (yaw goes to the server
+## with each command); Esc frees the cursor, a click takes it back.
+func _walk_look(event: InputEvent) -> bool:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		var sensitivity: float = home_first_person.mouse_sensitivity
+		look_yaw = wrapf(look_yaw - event.relative.x * sensitivity, -PI, PI)
+		look_pitch = clampf(look_pitch - event.relative.y * sensitivity, -LOOK_PITCH_LIMIT, LOOK_PITCH_LIMIT)
+		map_layer.buildings_3d.eye_pitch = look_pitch
+		return true
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT \
+			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		return true
+	return false
+
+
+## The walking command in first person: A/D step sideways, the camera's yaw sets the heading.
+static func walk_controls(controls: Dictionary, yaw: float) -> Dictionary:
+	if controls.has("turn"):
+		controls["strafe"] = -float(controls["turn"])
+		controls["turn"] = 0.0
+		controls["look_heading"] = wrapf(yaw, -PI, PI)
+	return controls
 
 
 func _clear_focus() -> void:
@@ -607,15 +744,39 @@ func _process(delta: float) -> void:
 				send({"interact": true})
 		else:
 			_screenshot_drive -= delta
+			_engine_on = true  # boarded: send() followed the parked taxi's stopped engine while outside
 			send({"throttle": 1.0 if _screenshot_drive > 1.0 else 0.0, "brake": 0.0 if _screenshot_drive > 1.0 else 1.0,
-				"steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
+				"steer_left": maxf(-_screenshot_steer, 0.0), "steer_right": maxf(_screenshot_steer, 0.0), "forward": 0.0, "turn": 0.0, "sprint": false})
 	elif _screenshot_path != "" and not state.is_empty():
 		_screenshot_wait -= delta
+		if _screenshot_resize != Vector2i.ZERO and _screenshot_wait <= 3.0:
+			get_window().size = _screenshot_resize
+			_screenshot_resize = Vector2i.ZERO
 		if _screenshot_wait <= 0.0:
 			get_viewport().get_texture().get_image().save_png(_screenshot_path)
 			print("screenshot saved: ", _screenshot_path)
 			get_tree().quit()
 	camera.position = entities.player_position() + _camera_lead(delta)
+	if walk_eye:
+		if not state.get("on_foot", false):
+			_set_windshield(true)  # back at the wheel: the driver's eyes
+			if walk_eye:  # no taxi body (underground): the map view
+				_set_windshield(false)
+		else:
+			var at: Vector2 = entities.player_position()  # the server's position, interpolated
+			map_layer.buildings_3d.windshield_at = at
+			map_layer.buildings_3d.windshield_heading = look_yaw
+			map_layer.buildings_3d.windshield_elevation = map_layer.deck_height(at, 0)
+	elif _windshield.visible:
+		var body: Dictionary = entities.player_body()
+		if state.get("on_foot", false):
+			_set_windshield(true, true)  # out of the taxi in the windshield view: walking in first person
+		elif body.is_empty():
+			_set_windshield(false)
+		else:
+			map_layer.buildings_3d.windshield_at = body["position"]
+			map_layer.buildings_3d.windshield_heading = body["heading"]
+			map_layer.buildings_3d.windshield_elevation = map_layer.deck_height(body["position"], 0)
 	if _focus.get("kind") == "pan":
 		camera.position = _focus["position"]
 	elif _focus.has("id"):
@@ -665,7 +826,8 @@ func _process(delta: float) -> void:
 			print("BENCH ", JSON.stringify(Perf.report()))
 			get_tree().quit()
 	_command_timer -= delta
-	if _command_timer <= 0.0 and not _selftest and not _audiotest and not screenshot_driving and not summary_shown:  # the tests drive instead
+	if _command_timer <= 0.0 and not _selftest and not _audiotest and not screenshot_driving and not summary_shown \
+			and not (_visual_test != null and _visual_test.driving):  # the tests drive instead
 		_command_timer = COMMAND_INTERVAL_S
 		send({} if _start_sign != null else drive.controls(state.get("on_foot", true)))  # the start sign: no driving yet
 
@@ -734,11 +896,25 @@ func _present(state: Dictionary) -> void:
 	# ambient multiply (CanvasModulate: no fill) and how strongly the lights show.
 	var altitude := Daylight.altitude(state) if is_nan(override_altitude) else override_altitude
 	var cloud := Daylight.cloud_cover(state) if is_nan(override_cloud) else override_cloud
-	MapChunk.WATER_MATERIAL.set_shader_parameter("sky_color", Daylight.sky_color(altitude, cloud))
+	var sky_color := Daylight.sky_color(altitude, cloud)
+	MapChunk.WATER_MATERIAL.set_shader_parameter("sky_color", sky_color)
+	if map_layer.buildings_3d:
+		map_layer.buildings_3d.set_sky_color(sky_color)
+		map_layer.buildings_3d.set_cloud_cover(cloud)
 	var water_wind := WeatherLayer.wind_vector(state)
 	water_wind.y = -water_wind.y
+	if map_layer.buildings_3d:
+		map_layer.buildings_3d.sky_wind = water_wind
+		var falling := WeatherLayer.falling(state)
+		var surface := int(state.get("player", {}).get("map_level", 0)) == 0
+		map_layer.buildings_3d.precip_kind = falling if surface and weather.precipitation_enabled else ""
+		map_layer.buildings_3d.precip_intensity = 1.0 if state.get("weather") is Dictionary and state["weather"].get("is_thunderstorm", false) else 0.7
+	weather.precipitation_3d = map_layer.buildings_3d != null
 	MapChunk.WATER_MATERIAL.set_shader_parameter("wind", water_wind)
 	MapChunk.SHORE_MATERIAL.set_shader_parameter("wind", water_wind)
+	if MapChunk.outdoor_3d:  # step 6: the 3D water's waves, as rough as the 2D water's
+		for material in Buildings3DScript.road_materials():
+			material.set_shader_parameter("wind", water_wind)
 	var moon_altitude := Daylight.moon_value(state, "moon_altitude_deg", -90.0)
 	var moon_strength := Daylight.moonlight(altitude, moon_altitude,
 		Daylight.moon_value(state, "moon_illumination", 0.0), cloud)
@@ -769,7 +945,16 @@ func _present(state: Dictionary) -> void:
 	entities.reflectors_on = typeof(calendar) == TYPE_DICTIONARY and calendar.get("sun_altitude_deg", 90.0) < -7.5
 	var night_started := Time.get_ticks_usec()
 	entities.light_level = lights
-	night.show_lights(lights, view, entities.headlight_beams() if lights > 0.01 else [])
+	if MapChunk.outdoor_3d:  # rtx-scene-readiness step 5: vehicles ride their bridge decks
+		entities.deck_height = map_layer.deck_height
+		entities.rail_height = map_layer.rail_height
+		entities.wildlife = wildlife
+	if MapChunk.outdoor_3d and map_layer.buildings_3d != null:  # rtx-scene-readiness step 4: the scene's own lights, no 2D beams
+		map_layer.update_lights_3d(view, lights)
+		map_layer.buildings_3d.set_headlights(lights, entities.headlight_sources() if lights > 0.01 else [])
+		night.show_lights(lights, view, [])
+	else:
+		night.show_lights(lights, view, entities.headlight_beams() if lights > 0.01 else [])
 	Perf.add("night_beams", Time.get_ticks_usec() - night_started)
 	var lightning: float = entities.lightning_now() if graphics.get("lightning_flashes", true) else 0.0
 	if not is_equal_approx(flash.color.a, lightning):
@@ -804,7 +989,7 @@ func _present(state: Dictionary) -> void:
 		show_summary(state)
 	if not state.get("on_foot", true):
 		_entered_taxi = true
-	hud.show_state(state, {"entered_taxi": _entered_taxi, "speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "lane_assist": lane_assist, "navigation": nav_overlay.show_route, "labels": labels.mode, "next_train": show_next_train})
+	hud.show_state(state, {"entered_taxi": _entered_taxi, "speed_limiter": speed_limiter, "red_light_assist": red_light_assist, "lane_assist": lane_assist, "navigation": nav_overlay.show_route, "labels": labels.mode, "next_train": show_next_train, "map_ready": _chunk_queue.is_empty() and map_layer.chunk_count() > 0})
 	instruments.chips = [lane_assist, speed_limiter, nav_overlay.show_route]  # K, V, N under the speedometer
 	instruments.show_state(state)
 	map_layer.set_wetness(state.get("weather", {}).get("wetness", 0.0) if override_wetness < 0.0 else override_wetness)
@@ -860,6 +1045,8 @@ func set_interior_options(first_person: bool, sensitivity: float) -> void:
 
 func set_interior_paused(paused: bool) -> void:
 	drive.clear()
+	sim.send_pause(paused)
+	sim.process_mode = Node.PROCESS_MODE_ALWAYS if paused else Node.PROCESS_MODE_INHERIT
 	home_first_person.set_paused(paused)
 
 
@@ -1206,6 +1393,8 @@ func send(controls: Dictionary) -> void:
 	var outside: bool = entities.shown_state().get("on_foot", true)
 	if outside:
 		_engine_on = bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
+	if walk_eye and outside:
+		controls = walk_controls(controls, look_yaw)
 	var command := command_for(controls, _engine_on, _interact_pending, _refuel_pending, speed_limiter, red_light_assist,
 		_road_rage_pending, lane_assist, _respawn_pending, _cancel_ride_pending, _reset_trip_pending, _home_pending)
 	if outside or _interact_pending:

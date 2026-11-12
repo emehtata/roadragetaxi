@@ -3,7 +3,7 @@ extends SceneTree
 
 func _initialize() -> void:
 	var WildlifeLayer := preload("res://wildlife.gd")
-	assert(WildlifeLayer.SPECIES == [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow"])
+	assert(WildlifeLayer.SPECIES == [&"squirrel", &"small_bird", &"pigeon", &"hare", &"fox", &"moose", &"roe_deer", &"crow", &"duck", &"gull"])
 	assert(WildlifeLayer._speed("crow", "FLY") == 7.0)
 	var layer: Node = WildlifeLayer.new()
 	root.add_child(layer)
@@ -48,6 +48,54 @@ func _initialize() -> void:
 	var started := Time.get_ticks_usec()
 	for unused in 1000:
 		layer.update(0.1, 12 * 3600, Vector2.ZERO)
+	layer.clear()
+	layer.max_active = 20
+	var pond := {"chunk_id": "3_3", "bounds": [0.0, 0.0, 500.0, 500.0], "buildings": [], "trees": [],
+		"waters": [[[100.0, 100.0], [400.0, 100.0], [400.0, 400.0], [100.0, 400.0]]]}
+	preload("res://map_chunk.gd").prepare(pond, Vector2.ZERO)
+	layer.replace_chunk(pond, Vector2.ZERO)
+	var ducks: Array = layer.animals.filter(func(animal): return animal.species == "duck")
+	assert(ducks.size() == 3 and ducks.all(func(duck): return Geometry2D.is_point_in_polygon(duck.position, duck.water)), "ducks float on open water")
+	var gulls: Array = layer.animals.filter(func(animal): return animal.species == "gull")
+	var at_shore := func(gull): return Geometry2D.is_point_in_polygon(gull.position, gull.water) and Array(gull.water).any(func(corner): return corner.distance_to(gull.position) < 40.0)
+	assert(gulls.size() == 4 and gulls.all(at_shore), "gulls sit at the shore")
+	var duck: Dictionary = ducks[0]
+	duck.state = "WANDER"
+	for unused in 600:
+		duck.timer = 10.0
+		layer.update(0.1, 12 * 3600, duck.position)
+	assert(Geometry2D.is_point_in_polygon(duck.position, duck.water), "a swimming duck stays off the shore")
+	duck.state = "FLY"
+	duck.position = Vector2(30, -30)  # flown off over land
+	duck.timer = 0.0
+	for unused in 600:
+		layer.update(0.1, 12 * 3600, duck.position)
+	assert(duck.state != "FLY" and Geometry2D.is_point_in_polygon(duck.position, duck.water), "a flying duck returns and lands on its water")
+	layer.clear()
+	layer.density = 400.0
+	layer.max_active = 200
+	layer.replace_chunk(pond, Vector2.ZERO)
+	var landlubbers: Array = layer.animals.filter(func(animal): return not animal.has("water"))
+	var wet := func(animal): return Geometry2D.is_point_in_polygon(animal.position, pond.waters[0])
+	assert(landlubbers.size() > 50 and not landlubbers.any(wet), "land animals never spawn in the water")
+	var fox: Dictionary = landlubbers[0]
+	fox.merge({"species": "fox", "state": "WANDER", "position": Vector2(90, -250), "heading": 0.0}, true)  # walking east, into the pond
+	for unused in 100:
+		fox.timer = 10.0
+		layer.update(0.1, 12 * 3600, fox.position)
+	assert(not wet.call(fox), "the shore is a wall on foot")
+	var crow: Dictionary = landlubbers[1]
+	crow.merge({"state": "FLY", "position": Vector2(250, -250), "timer": 0.0}, true)  # mid-pond
+	for unused in 400:
+		layer.update(0.1, 12 * 3600, Vector2(250, -250))
+	assert(not layer.animals.has(crow), "a land bird over the water flies off out of sight and is gone")
+	layer.density = 2.0
+	layer.clear()
+	layer.winter = 1.0
+	layer.replace_chunk(pond, Vector2.ZERO)
+	assert(layer.animals.all(func(animal): return animal.species != "duck"), "no ducks on frozen water")
+	layer.winter = 0.0
+	layer.clear()
 	print("Wildlife benchmark: 48 animals x 1000 fixed updates = %.2f ms" % ((Time.get_ticks_usec() - started) / 1000.0))
 	print("Wildlife tests passed")
 	quit()

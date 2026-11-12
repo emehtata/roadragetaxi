@@ -4,6 +4,7 @@ const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := {
+	"quit_without_saving": "Lopeta tallentamatta",
 	"next_city_button": "Seuraava kaupunki", "back_to_menu": "Takaisin valikkoon",
 	"career_goals": "Aja taksia ympäri Suomea kaupunki kerrallaan, Sysmästä Lapin kautta Helsinkiin: 18 kaupunkia.\n\nTavoite: ansaitse kaupungissa 5 000 pistettä. Silloin kaupunki on valmis ja ura jatkuu seuraavaan.\n\nPisteitä saat suoritetuista kyydeistä: nopea ja tasainen kyyti, jossa matkustaja pysyy tyytyväisenä, palkitaan parhaiten. Kolarit, aidat, nopeuskamerat, väärään suuntaan ajaminen ja oksentava matkustaja vievät pisteitä.\n\nRahat ja kilometrit siirtyvät kaupungista toiseen, ja eteneminen tallentuu automaattisesti. Läpäise kaikki 18 kaupunkia suorittaaksesi uran.",
 	"tut_rage_meter": "RATTIRAIVO on pelin ydin. Mittari kuljettajan kuvan alla (oikealla alhaalla) nousee, kun ajat ylinopeutta, odotat punaisissa valoissa tai sladiat mutkissa; sääntöjen mukainen ajo rauhoittaa. Aja ylinopeutta, kunnes mittari näyttää 50 %.",
@@ -46,7 +47,7 @@ const FI := {
 	"help_interior_mouse_sensitivity": "Hiirellä katselun nopeus talon sisällä.",
 	"home_first_person_hint": "WASD liiku · hiiri katsele · Esc tauko",
 	"home_mouse_resume": "Jatka katselua napsauttamalla",
-	"electronic_nearby": "Sähköiset opasteet edessä",
+	"electronic_nearby": "Sähköisten opasteiden tiedot",
 	"electronic_warning": "Varoitus",
 	"electronic_congestion": "Ruuhka",
 	"electronic_uneven": "Epätasainen tie",
@@ -114,7 +115,7 @@ const FI := {
 	"startup_intercity_4": "Rakennetaan paikkakuntien yhteyksiä",
 	"startup_intercity_wait": "Valmistellaan navigointitietoja%s\nVaroitus: tietokannan alustus voi kestää useita minuutteja. Tilapäivityksiä odotetaan palvelimelta.",
 	"startup_exited": "Simulaatiopalvelin sulkeutui ennen yhteyden muodostumista.",
-	"gig_driver": "Keikkakuski", "settings": "Asetukset", "realtime_trains": "Todelliset junien aikataulut (Digitraffic)", "map_loading": "Ladataan karttaa…", "map_fetching": "haetaan edessä olevaa aluetta", "map_merging": "liitetään karttaan", "map_syncing": "valmistellaan teitä ja liikennettä", "map_building": "piirretään uutta aluetta", "clear_cache": "Tyhjennä välimuisti kokonaan", "reset_home": "Poista nykyisen pelin koti", "confirm_reset_home": "Poistetaanko nykyisen pelin kodit kaikista kaupungeista?", "confirm_clear_cache": "Tyhjennetäänkö karttavälimuisti? Kartat ladataan uudelleen.", "cache_cleared_done": "Karttavälimuisti tyhjennetty.", "cache_clear_failed": "Karttavälimuistia ei voitu tyhjentää.", "cancel": "Peruuta", "delete": "Poista", "clear": "Tyhjennä", "clearing": "Tyhjennetään…", "fares": "Kyydit", "map_overpass": "Karttadata: Overpass (verkko)", "map_pbf": "Karttadata: paikallinen .osm.pbf-tiedosto", "hint_enter_taxi": "Painamalla F pääset sisään taksiisi", "hint_start_engine": "Käynnistä moottori painamalla E", "weather_forecast_24h": "Arvioitu sää seuraavalle 24 tunnille", "press_any_key_start": "Paina mitä tahansa aloittaaksesi", "weather_source_observed": "havainto", "snow_depth": "lumi %.0f cm", "weather_source_forecast": "ennuste", "start_time": "ALOITUSAIKA", "year": "Vuosi", "month": "Kuukausi", "day": "Päivä", "hour": "Tunti", "minute": "Minuutti", "now": "Nyt", "start": "Aloita", "historical_weather": "FMI-sää (havainnot ja ennusteet)", "quit": "Lopeta peli", "save_slots": "TALLENNETUT PELIT", "new_game": "Uusi peli", "delete_slot": "Poista tallennus", "confirm_delete_slot": "Poistetaanko tallennus %s? Sitä ei voi palauttaa.", "replace_slot": "Kaikki %d paikkaa käytössä: uusi peli korvaa valitsemasi tallennuksen", "fare_in_progress": "kyyti kesken", "save_game": "Tallenna peli", "saving": "Tallennetaan…", "saved": "Peli tallennettu.", "save_failed": "Tallennus epäonnistui.", "credits": "Tekijät ja lisenssit",
+	"gig_driver": "Keikkakuski", "settings": "Asetukset", "realtime_trains": "Todelliset junien aikataulut (Digitraffic)", "map_loading": "Ladataan karttaa…", "map_fetching": "haetaan edessä olevaa aluetta", "map_merging": "liitetään karttaan", "map_syncing": "valmistellaan teitä ja liikennettä", "map_building": "piirretään uutta aluetta", "clear_cache": "Tyhjennä välimuisti kokonaan", "reset_home": "Poista nykyisen pelin koti", "confirm_reset_home": "Poistetaanko nykyisen pelin kodit kaikista kaupungeista?", "continue": "Jatka", "reset_career": "Nollaa ura", "confirm_reset_career": "Haluatko varmasti nollata uran? Eteneminen, pisteet, rahat ja kilometrit poistetaan, ja ura alkaa alusta Sysmästä.", "confirm_clear_cache": "Tyhjennetäänkö karttavälimuisti? Kartat ladataan uudelleen.", "cache_cleared_done": "Karttavälimuisti tyhjennetty.", "cache_clear_failed": "Karttavälimuistia ei voitu tyhjentää.", "cancel": "Peruuta", "delete": "Poista", "clear": "Tyhjennä", "clearing": "Tyhjennetään…", "fares": "Kyydit", "map_overpass": "Karttadata: Overpass (verkko)", "map_pbf": "Karttadata: paikallinen .osm.pbf-tiedosto", "hint_enter_taxi": "Painamalla F pääset sisään taksiisi", "hint_start_engine": "Käynnistä moottori painamalla E", "weather_forecast_24h": "Arvioitu sää seuraavalle 24 tunnille", "press_any_key_start": "Paina mitä tahansa aloittaaksesi", "weather_source_observed": "havainto", "snow_depth": "lumi %.0f cm", "weather_source_forecast": "ennuste", "start_time": "ALOITUSAIKA", "year": "Vuosi", "month": "Kuukausi", "day": "Päivä", "hour": "Tunti", "minute": "Minuutti", "now": "Nyt", "start": "Aloita", "historical_weather": "FMI-sää (havainnot ja ennusteet)", "quit": "Lopeta peli", "save_slots": "TALLENNETUT PELIT", "new_game": "Uusi peli", "delete_slot": "Poista tallennus", "confirm_delete_slot": "Poistetaanko tallennus %s? Sitä ei voi palauttaa.", "replace_slot": "Kaikki %d paikkaa käytössä: uusi peli korvaa valitsemasi tallennuksen", "fare_in_progress": "kyyti kesken", "save_game": "Tallenna peli", "saving": "Tallennetaan…", "saved": "Peli tallennettu.", "save_failed": "Tallennus epäonnistui.", "credits": "Tekijät ja lisenssit",
 	"choose_city": "VALITSE KAUPUNKI", "drive": "Aloita", "custom_map_point": "Oma karttapiste >", "map_point_settings": "liikenne kuten %s", "map_point_help": "Napsauta aloituspaikka. Vedä tai nuolinäppäimet: siirrä, rulla tai +/-: zoomaa, välilyönti: keskikohta.", "back": "Takaisin",
 	"pbf_missing": "SUOMEN KARTTAA EI LÖYDY", "pbf_download_offer": "Ladataanko Suomen OpenStreetMap-tiedosto? Lataus on suuri ja tallennetaan käyttäjäkohtaiseen kansioon.",
 	"download": "Lataa", "use_overpass": "Käytä Overpassia", "downloading_map": "LADATAAN SUOMEN KARTTAA",
@@ -130,13 +131,13 @@ const FI := {
 	"loading": "LADATAAN", "starting": "Käynnistetään simulaatiota…", "start_failed": "KÄYNNISTYS EPÄONNISTUI",
 	"start_failed_detail": "Python-simulaatiota ei voitu käynnistää", "paused": "PELI TAUOLLA",
 	"resume": "Jatka peliä", "main_menu": "Alkuvalikko", "score": "Pisteet", "on_foot": "jalan",
-	"road_wet": "%s, tie %d%% märkä", "weather_clear": "Selkeää", "weather_rain": "Sadetta",
+	"road_wet": "%s, tie %d%% märkä", "weather_clear": "Selkeää", "weather_partly_cloudy": "Puolipilvistä", "weather_overcast": "Pilvistä", "weather_rain": "Sadetta",
 	"weather_slush": "Räntää", "weather_snow": "Lumisadetta", "weather_thunderstorm": "Ukkosta",
 	"passenger": "Asiakas", "pick_up": "Nouda %s paikasta %s",
 	"walking_taxi": "%s kävelee taksille", "drive_to": "Vie %s osoitteeseen %s", "road": "Tie",
-	"off_road": "Maastossa", "limit": "Rajoitus", "hint_foot": "F taksiin · WASD kävele · P puhelin", "home_enter_prompt": "E mene kotiin", "house_enter_prompt": "E mene sisään", "house_leave_prompt": "E mene ulos", "home_walk_hint": "WASD kävele · ovelta E ulos", "home_choose_hint": "H valitse kodiksi", "hint_brawl": "Space lyö · Shift väistä · F pakene",
+	"off_road": "Maastossa", "limit": "Rajoitus", "hint_foot": "F taksiin · WASD kävele · P puhelin", "taxi_enter_prompt": "E nouse taksiin", "building_look_prompt": "E katso: %s", "building_look_plain": "E katso rakennusta", "home_enter_prompt": "E mene kotiin", "house_enter_prompt": "E mene sisään", "house_leave_prompt": "E mene ulos", "home_walk_hint": "WASD kävele · ovelta E ulos", "home_choose_hint": "H valitse kodiksi", "hint_brawl": "Space lyö · Shift väistä · F pakene",
 	"hint_engine": "E käynnistä moottori · F ulos · P puhelin",
-	"controls_help": "OHJAIMET\n\nWASD / nuolet   Aja tai kävele      Shift   Juokse\nF   Mene taksiin / poistu           E   Moottori / talon ovi\nP   Puhelin                          1–3 / Enter / X   Puhelimen valinnat\nSpace   Rattiraivo                   G   Tankkaa\nR   Palauta taksi                   X   Peru kyyti\nT   Nollaa matkamittari             K   Kaista-avustin\nV   Nopeusrajoitin                  B   Valoavustin\nN   Navigointi                      C   Kompassi\nJ   Junataulu                       L   Nimet\n+ / - / rulla   Zoom                Esc   Tauko\nCtrl+veto / keskinappi   Siirrä      NPC-klikkaus   Tiedot\nF1   Sulje ohje                     F3   Diagnostiikka\nHiiri   Siirrä / kulmasta koko       U   Palauta asettelu\nF12   Kuvakaappaus                H   Kotiin / valitse koti",
+	"controls_help": "OHJAIMET\n\nWASD / nuolet   Aja tai kävele      Shift   Juokse\nF   Mene taksiin / poistu           E   Moottori / talon ovi\nP   Puhelin                          1–3 / Enter / X   Puhelimen valinnat\nSpace   Rattiraivo                   G   Tankkaa\nR   Palauta taksi                   X   Peru kyyti\nT   Nollaa matkamittari             K   Kaista-avustin\nV   Nopeusrajoitin                  B   Valoavustin\nN   Navigointi                      C   Kompassi\nJ   Junataulu                       L   Nimet\n+ / - / rulla   Zoom                Esc   Tauko\nCtrl+veto / keskinappi   Siirrä      NPC-klikkaus   Tiedot\nF1   Sulje ohje                     F3   Diagnostiikka\nHiiri   Siirrä / kulmasta koko       U   Palauta asettelu\nF12   Kuvakaappaus                H   Kotiin / valitse koti\nI   Tuulilasista eteen (3D)",
 	"train_hint": "Juna-aikataulut saatavilla. Paina J.   ", "next_trains": "Saapuvat junat",
 	"departing_trains": "Lähtevät junat", "track": "raide", "driver": "Kuljettaja",
 	"city_summary": "Kaupungin yhteenveto", "city_complete": "Tämä kaupunki on suoritettu.",
@@ -217,6 +218,7 @@ const FI := {
 	"value_tractor": "traktori",
 	"value_motorcycle": "moottoripyörä",
 	"value_bicycle": "polkupyörä",
+	"value_e_scooter": "sähköpotkulauta",
 	"value_male": "mies",
 	"value_female": "nainen",
 	"value_man": "mies", "value_woman": "nainen",
@@ -226,7 +228,7 @@ const FI := {
 	"help_language": "Valikoiden, puhelimen ja tekstitysten kieli. Puuttuvan puheäänitteen tilalla käytetään suomenkielistä äänitettä.",
 	"help_historical_weather": "Ilmatieteen laitoksen sää valitulle kaupungille ja ajalle: havainnot menneisyydessä, ennuste tulevassa. Pois: sää arvotaan vuodenajan mukaan. Tarvitsee verkkoyhteyden.",
 	"help_train_timetable": "Fintrafficin todelliset junien aikataulut asemille. Pelin mukana on viikon aikataulu; verkon ollessa käytössä se päivitetään kerran viikossa. Pois: junat kulkevat tasaisin välein.",
-	"live_clock": "Reaaliaikainen kello", "help_live_clock": "Pelin aika on tietokoneen kello: peli alkaa nyt eikä aika koskaan kulje 60-kertaisena. Aloitusajan valinta ja tallennuksen aika ohitetaan. Tarvitaan reaaliaikaiselle liikennedatalle.", "realtime_road": "Digitraffic: tietyöt ja opasteet", "help_realtime_road": "Fintrafficin tieliikennekeskuksen todelliset tietyöt pelin ajankohtana: nopeusrajoitukset, suljetut kaistat ja suljetut tiet valta- ja kantateillä. Tietyöhaut tallennetaan pysyvästi. Edessä ajosuuntaan vaikuttavat sähköiset opasteet näkyvät nopeusrajoituksen vieressä. Pois: tietyöt arvotaan.",
+	"live_clock": "Reaaliaikainen kello", "help_live_clock": "Pelin aika on tietokoneen kello: peli alkaa nyt eikä aika koskaan kulje 60-kertaisena. Aloitusajan valinta ja tallennuksen aika ohitetaan. Tarvitaan reaaliaikaiselle liikennedatalle.", "realtime_road": "Digitraffic: tietyöt ja opasteet", "help_realtime_road": "Fintrafficin tieliikennekeskuksen todelliset tietyöt pelin ajankohtana: nopeusrajoitukset, suljetut kaistat ja suljetut tiet valta- ja kantateillä. Tietyöhaut tallennetaan pysyvästi. Sähköisen opasteen viesti näkyy sen näyttöalueella samalla ajosuunnalla. Pois: tietyöt arvotaan.",
 	"help_map_source": "Mistä kartta tulee. Overpass hakee kartan verkosta ajaessasi. Paikallinen .osm.pbf-tiedosto (koko Suomi, noin 0,8 Gt) toimii ilman verkkoa. Windows-versiossa tarvittava osmium-ohjelma on mukana; muualla se asennetaan erikseen (osmium-tool).",
 	"help_pbf_path": "Oman .osm.pbf-tiedoston polku. Tyhjä: ladattu Suomen kartta.",
 	"help_manage_pbf": "Lataa uusin Suomen karttatiedosto tai poista ladattu.",
@@ -252,9 +254,14 @@ const FI := {
 	"help_graphics_vehicle_smoke": "Näyttää kolarisavun ja pakokaasun. Auton vauriot ja äänet eivät muutu.",
 	"graphics_lightning_flashes": "Salamavälähdykset",
 	"help_graphics_lightning_flashes": "Näyttää ukkosen välähdykset. Ukkonen ja sen äänet jatkuvat myös ilman välähdyksiä.",
+	"graphics_brightness": "Kirkkaus",
+	"help_graphics_brightness": "Pelimaailman kirkkaus. Mittarit ja puhelin pysyvät ennallaan.",
+	"graphics_contrast": "Kontrasti",
+	"help_graphics_contrast": "Pelimaailman kontrasti: vaaleat vaaleammiksi ja tummat tummemmiksi.",
 }
 
 const EN := {
+	"quit_without_saving": "Quit without saving",
 	"next_city_button": "Next city", "back_to_menu": "Back to menu",
 	"career_goals": "Drive a taxi across Finland, one city at a time, from Sysmä up to Lapland and back down to Helsinki: 18 cities.\n\nGoal: earn 5,000 points in a city. Then the city is done and your career moves on to the next one.\n\nPoints come from completed fares: a quick, smooth ride that keeps the passenger happy pays best. Crashes, fences, speed cameras, driving the wrong way and a passenger throwing up cost points.\n\nYour money and kilometres carry over from city to city, and your progress is saved automatically. Finish all 18 cities to complete the career.",
 	"tut_rage_meter": "ROAD RAGE is what this game is about. The meter under the driver's portrait (bottom right) rises when you speed, wait at red lights or slide in corners; driving by the rules calms it. Speed past the limit until the meter reaches 50%.",
@@ -297,7 +304,7 @@ const EN := {
 	"help_interior_mouse_sensitivity": "How quickly the mouse turns your view inside houses.",
 	"home_first_person_hint": "WASD move · mouse look · Esc pause",
 	"home_mouse_resume": "Click to resume looking",
-	"electronic_nearby": "Electronic signs ahead",
+	"electronic_nearby": "Electronic sign messages",
 	"electronic_warning": "Warning",
 	"electronic_congestion": "Congestion",
 	"electronic_uneven": "Uneven road",
@@ -371,6 +378,7 @@ const EN := {
 	"map_fetching": "downloading the area ahead", "map_merging": "adding it to the map", "map_syncing": "preparing roads and traffic",
 	"map_building": "drawing the new area", "clear_cache": "Clear all map cache", "reset_home": "Clear current game home",
 	"confirm_reset_home": "Clear the home in every city for the current game?",
+	"continue": "Continue", "reset_career": "Reset career", "confirm_reset_career": "Are you sure you want to reset your career? Progress, points, money and kilometres are deleted, and the career starts again from Sysmä.",
 	"confirm_clear_cache": "Clear the map cache? Maps will be downloaded again.", "cache_cleared_done": "Map cache cleared.",
 	"cache_clear_failed": "Could not clear the map cache.", "cancel": "Cancel", "delete": "Delete", "clear": "Clear", "clearing": "Clearing…",
 	"fares": "Fares", "map_overpass": "Map data: Overpass (online)", "map_pbf": "Map data: local .osm.pbf file",
@@ -391,11 +399,11 @@ const EN := {
 	"music_volume": "Music volume", "help_music_volume": "Background music volume in menus.",
 	"environment_volume": "Environment volume", "ui_volume": "UI volume", "loading": "LOADING", "starting": "Starting the simulation…",
 	"start_failed": "START FAILED", "start_failed_detail": "Could not launch the Python simulation", "paused": "PAUSED", "resume": "Resume",
-	"main_menu": "Main menu", "score": "Score", "on_foot": "on foot", "road_wet": "%s, road %d%% wet", "weather_clear": "Clear", "weather_rain": "Rain",
+	"main_menu": "Main menu", "score": "Score", "on_foot": "on foot", "road_wet": "%s, road %d%% wet", "weather_clear": "Clear", "weather_partly_cloudy": "Partly cloudy", "weather_overcast": "Overcast", "weather_rain": "Rain",
 	"weather_slush": "Slush", "weather_snow": "Snow", "weather_thunderstorm": "Thunderstorm", "passenger": "Passenger",
 	"pick_up": "Pick up %s at %s", "walking_taxi": "%s is walking to the taxi", "drive_to": "Drive %s to %s", "road": "Road", "off_road": "Off-road",
-	"limit": "Limit", "hint_foot": "F get in the taxi · WASD walk · P phone", "home_enter_prompt": "Press E to enter home", "house_enter_prompt": "Press E to go in", "house_leave_prompt": "Press E to go out", "home_walk_hint": "WASD walk · E at the front door to go out", "home_choose_hint": "H make this your home", "hint_brawl": "Space punch · Shift dodge · F run", "hint_engine": "E start the engine · F get out · P phone",
-	"controls_help": "CONTROLS\n\nWASD / arrows   Drive or walk       Shift   Sprint\nF   Enter / exit taxi               E   Engine / house door\nP   Phone                            1–3 / Enter / X   Phone actions\nSpace   Road rage                   G   Refuel\nR   Respawn taxi                    X   Cancel fare\nT   Reset trip meter                K   Lane assist\nV   Speed limiter                   B   Red-light assist\nN   Navigation                      C   Compass\nJ   Train board                     L   Labels\n+ / - / Wheel   Zoom                Esc   Pause\nCtrl+drag / Middle-drag   Pan        Click NPC   Inspect\nF1   Close help                     F3   Diagnostics\nMouse   Move / corner: resize HUD   U   Reset HUD layout\nF12   Screenshot                  H   Home / choose home",
+	"limit": "Limit", "hint_foot": "F get in the taxi · WASD walk · P phone", "taxi_enter_prompt": "Press E to get in the taxi", "building_look_prompt": "Press E to look at %s", "building_look_plain": "Press E to look at the building", "home_enter_prompt": "Press E to enter home", "house_enter_prompt": "Press E to go in", "house_leave_prompt": "Press E to go out", "home_walk_hint": "WASD walk · E at the front door to go out", "home_choose_hint": "H make this your home", "hint_brawl": "Space punch · Shift dodge · F run", "hint_engine": "E start the engine · F get out · P phone",
+	"controls_help": "CONTROLS\n\nWASD / arrows   Drive or walk       Shift   Sprint\nF   Enter / exit taxi               E   Engine / house door\nP   Phone                            1–3 / Enter / X   Phone actions\nSpace   Road rage                   G   Refuel\nR   Respawn taxi                    X   Cancel fare\nT   Reset trip meter                K   Lane assist\nV   Speed limiter                   B   Red-light assist\nN   Navigation                      C   Compass\nJ   Train board                     L   Labels\n+ / - / Wheel   Zoom                Esc   Pause\nCtrl+drag / Middle-drag   Pan        Click NPC   Inspect\nF1   Close help                     F3   Diagnostics\nMouse   Move / corner: resize HUD   U   Reset HUD layout\nF12   Screenshot                  H   Home / choose home\nI   Windshield view (3D)",
 	"train_hint": "Train timetables available. Press J.   ", "next_trains": "Next trains", "departing_trains": "Departing trains", "track": "track",
 	"driver": "Driver", "city_summary": "City summary", "city_complete": "This city is complete.", "fares_completed": "Fares completed: %d",
 	"next_city": "Next city: %s", "career_complete": "Career complete! Helsinki conquered.", "career_score": "Total career score: %d",
@@ -470,6 +478,7 @@ const EN := {
 	"value_tractor": "tractor",
 	"value_motorcycle": "motorcycle",
 	"value_bicycle": "bicycle",
+	"value_e_scooter": "e-scooter",
 	"value_male": "male",
 	"value_female": "female",
 	"value_man": "male", "value_woman": "female",
@@ -479,7 +488,7 @@ const EN := {
 	"help_language": "The language of menus, the phone and subtitles. Missing voice recordings use the Finnish recording instead.",
 	"help_historical_weather": "The Finnish Meteorological Institute's weather for the chosen city and time: observations in the past, the forecast ahead. Off: weather is generated for the season. Needs a network connection.",
 	"help_train_timetable": "Fintraffic's real train timetables for the stations. A week's timetable comes with the game; online, it is refreshed once a week. Off: trains run at a fixed interval.",
-	"live_clock": "Real-time clock", "help_live_clock": "Game time is the computer's clock: the game starts now and time never runs 60x. The start-time picker and a save's time are skipped. Needed for live traffic data.", "realtime_road": "Digitraffic: roadworks and signs", "help_realtime_road": "Fintraffic's real roadworks at the game time: speed limits, closed lanes and closed roads on the main and regional roads. Roadwork queries are saved. Electronic signs facing your direction ahead appear beside the speed limit. Off: roadworks are made up.",
+	"live_clock": "Real-time clock", "help_live_clock": "Game time is the computer's clock: the game starts now and time never runs 60x. The start-time picker and a save's time are skipped. Needed for live traffic data.", "realtime_road": "Digitraffic: roadworks and signs", "help_realtime_road": "Fintraffic's real roadworks at the game time: speed limits, closed lanes and closed roads on the main and regional roads. Roadwork queries are saved. The current electronic sign message appears while driving in its display zone. Off: roadworks are made up.",
 	"help_map_source": "Where the map comes from. Overpass downloads it as you drive. A local .osm.pbf file (all of Finland, about 0.8 GB) works offline. The Windows release includes the osmium program it needs; elsewhere, install osmium-tool.",
 	"help_pbf_path": "Path to your own .osm.pbf file. Empty: the downloaded Finland map.",
 	"help_manage_pbf": "Download the latest Finland map file, or delete the downloaded one.",
@@ -505,9 +514,14 @@ const EN := {
 	"help_graphics_vehicle_smoke": "Crash smoke and exhaust puffs. Vehicle damage and sound are unchanged.",
 	"graphics_lightning_flashes": "Lightning flashes",
 	"help_graphics_lightning_flashes": "Thunderstorm flashes. Thunderstorms and their sounds continue with flashes off.",
+	"graphics_brightness": "Brightness",
+	"help_graphics_brightness": "How bright the game world is. The gauges and the phone stay as they are.",
+	"graphics_contrast": "Contrast",
+	"help_graphics_contrast": "The game world's contrast: lights lighter and darks darker.",
 }
 
 const DE := {
+	"quit_without_saving": "Ohne Speichern beenden",
 	"next_city_button": "Nächste Stadt", "back_to_menu": "Zurück zum Menü",
 	"career_goals": "Fahre Taxi quer durch Finnland, eine Stadt nach der anderen, von Sysmä über Lappland bis nach Helsinki: 18 Städte.\n\nZiel: Verdiene in einer Stadt 5.000 Punkte. Dann ist die Stadt geschafft und deine Karriere geht in der nächsten weiter.\n\nPunkte gibt es für abgeschlossene Fahrten: Eine schnelle, ruhige Fahrt mit zufriedenem Fahrgast bringt am meisten. Unfälle, Zäune, Blitzer, Falschfahren und ein sich übergebender Fahrgast kosten Punkte.\n\nGeld und Kilometer nimmst du von Stadt zu Stadt mit, und dein Fortschritt wird automatisch gespeichert. Schaffe alle 18 Städte, um die Karriere abzuschließen.",
 	"tut_rage_meter": "STRASSENWUT ist der Kern des Spiels. Die Anzeige unter dem Fahrerbild (unten rechts) steigt, wenn du zu schnell fährst, an roten Ampeln wartest oder in Kurven rutschst; regelkonformes Fahren beruhigt. Fahre zu schnell, bis die Anzeige 50 % erreicht.",
@@ -550,7 +564,7 @@ const DE := {
 	"help_interior_mouse_sensitivity": "Wie schnell die Maus den Blick im Haus dreht.",
 	"home_first_person_hint": "WASD bewegen · Maus umsehen · Esc Pause",
 	"home_mouse_resume": "Zum Fortsetzen klicken",
-	"electronic_nearby": "Elektronische Anzeigen voraus",
+	"electronic_nearby": "Elektronische Anzeigen",
 	"electronic_warning": "Warnung",
 	"electronic_congestion": "Stau",
 	"electronic_uneven": "Unebene Fahrbahn",
@@ -644,6 +658,7 @@ const DE := {
 	"clear_cache": "Gesamten Kartenspeicher leeren",
 	"reset_home": "Zuhause im aktuellen Spiel löschen",
 	"confirm_reset_home": "Das Zuhause in allen Städten für das aktuelle Spiel löschen?",
+	"continue": "Fortsetzen", "reset_career": "Karriere zurücksetzen", "confirm_reset_career": "Möchtest du deine Karriere wirklich zurücksetzen? Fortschritt, Punkte, Geld und Kilometer werden gelöscht, und die Karriere beginnt wieder in Sysmä.",
 	"confirm_clear_cache": "Kartenspeicher leeren? Die Karten werden erneut heruntergeladen.",
 	"cache_cleared_done": "Kartenspeicher geleert.",
 	"cache_clear_failed": "Kartenspeicher konnte nicht geleert werden.",
@@ -712,6 +727,8 @@ const DE := {
 	"on_foot": "zu Fuß",
 	"road_wet": "%s, Straße %d%% nass",
 	"weather_clear": "Klar",
+	"weather_partly_cloudy": "Teilweise bewölkt",
+	"weather_overcast": "Bedeckt",
 	"weather_rain": "Regen",
 	"weather_slush": "Schneeregen",
 	"weather_snow": "Schnee",
@@ -723,9 +740,9 @@ const DE := {
 	"road": "Straße",
 	"off_road": "Abseits der Straße",
 	"limit": "Tempolimit",
-	"hint_foot": "F ins Taxi · WASD gehen · P Telefon", "home_enter_prompt": "E nach Hause gehen", "house_enter_prompt": "E hineingehen", "house_leave_prompt": "E hinausgehen", "home_walk_hint": "WASD gehen · E an der Haustür: hinaus", "home_choose_hint": "H als Zuhause wählen", "hint_brawl": "Leertaste schlagen · Shift ausweichen · F fliehen",
+	"hint_foot": "F ins Taxi · WASD gehen · P Telefon", "taxi_enter_prompt": "E ins Taxi einsteigen", "building_look_prompt": "E ansehen: %s", "building_look_plain": "E Gebäude ansehen", "home_enter_prompt": "E nach Hause gehen", "house_enter_prompt": "E hineingehen", "house_leave_prompt": "E hinausgehen", "home_walk_hint": "WASD gehen · E an der Haustür: hinaus", "home_choose_hint": "H als Zuhause wählen", "hint_brawl": "Leertaste schlagen · Shift ausweichen · F fliehen",
 	"hint_engine": "E Motor starten · F aussteigen · P Telefon",
-	"controls_help": "STEUERUNG\n\nWASD / Pfeile   Fahren oder gehen     Shift   Rennen\nF   Ins Taxi / aussteigen             E   Motor / Haustür\nP   Telefon                           1–3 / Enter / X   Telefon bedienen\nLeertaste   Straßenwut                G   Tanken\nR   Taxi zurücksetzen                 X   Fahrt abbrechen\nT   Tageskilometer zurücksetzen       K   Spurassistent\nV   Geschwindigkeitsbegrenzer          B   Ampelassistent\nN   Navigation                        C   Kompass\nJ   Zugtafel                          L   Namen\n+ / - / Mausrad   Zoom                Esc   Pause\nStrg+Ziehen / Mitteltaste   Ansicht    Fahrzeug/Person anklicken   Infos\nF1   Hilfe schließen                  F3   Diagnose\nMaus   Ziehen / Ecke: Größe           U   Anordnung zurücksetzen\nF12   Bildschirmfoto                  H   Nach Hause / Zuhause wählen",
+	"controls_help": "STEUERUNG\n\nWASD / Pfeile   Fahren oder gehen     Shift   Rennen\nF   Ins Taxi / aussteigen             E   Motor / Haustür\nP   Telefon                           1–3 / Enter / X   Telefon bedienen\nLeertaste   Straßenwut                G   Tanken\nR   Taxi zurücksetzen                 X   Fahrt abbrechen\nT   Tageskilometer zurücksetzen       K   Spurassistent\nV   Geschwindigkeitsbegrenzer          B   Ampelassistent\nN   Navigation                        C   Kompass\nJ   Zugtafel                          L   Namen\n+ / - / Mausrad   Zoom                Esc   Pause\nStrg+Ziehen / Mitteltaste   Ansicht    Fahrzeug/Person anklicken   Infos\nF1   Hilfe schließen                  F3   Diagnose\nMaus   Ziehen / Ecke: Größe           U   Anordnung zurücksetzen\nF12   Bildschirmfoto                  H   Nach Hause / Zuhause wählen\nI   Blick durch Windschutzscheibe (3D)",
 	"train_hint": "Zugfahrpläne verfügbar. Drücke J.   ",
 	"next_trains": "Ankünfte",
 	"departing_trains": "Abfahrten",
@@ -853,6 +870,7 @@ const DE := {
 	"value_tractor": "Traktor",
 	"value_motorcycle": "Motorrad",
 	"value_bicycle": "Fahrrad",
+	"value_e_scooter": "E-Scooter",
 	"value_male": "männlich",
 	"value_female": "weiblich",
 	"value_man": "männlich", "value_woman": "weiblich",
@@ -862,7 +880,7 @@ const DE := {
 	"help_language": "Sprache der Menüs, des Telefons und der Untertitel. Fehlt eine Sprachaufnahme, wird die finnische Aufnahme verwendet.",
 	"help_historical_weather": "Wetter des finnischen Wetterdienstes für den gewählten Ort und Zeitpunkt: Beobachtungen für die Vergangenheit, Vorhersagen für die Zukunft. Aus: zur Jahreszeit passendes Zufallswetter. Benötigt eine Netzwerkverbindung.",
 	"help_train_timetable": "Echte Zugfahrpläne von Fintraffic für die Bahnhöfe. Ein Wochenfahrplan liegt dem Spiel bei; online wird er wöchentlich aktualisiert. Aus: Züge fahren in festen Abständen.",
-	"live_clock": "Echtzeituhr", "help_live_clock": "Die Spielzeit ist die Uhr des Computers: Das Spiel beginnt jetzt, und die Zeit läuft nie 60-fach. Startzeitauswahl und Speicherzeit werden übersprungen. Nötig für Live-Verkehrsdaten.", "realtime_road": "Digitraffic: Baustellen und Anzeigen", "help_realtime_road": "Echte Baustellen von Fintraffic zur Spielzeit: Tempolimits, gesperrte Fahrstreifen und gesperrte Straßen auf den Haupt- und Regionalstraßen. Baustellenabfragen werden gespeichert. Elektronische Anzeigen voraus erscheinen neben dem Tempolimit. Aus: Baustellen werden erfunden.",
+	"live_clock": "Echtzeituhr", "help_live_clock": "Die Spielzeit ist die Uhr des Computers: Das Spiel beginnt jetzt, und die Zeit läuft nie 60-fach. Startzeitauswahl und Speicherzeit werden übersprungen. Nötig für Live-Verkehrsdaten.", "realtime_road": "Digitraffic: Baustellen und Anzeigen", "help_realtime_road": "Echte Baustellen von Fintraffic zur Spielzeit: Tempolimits, gesperrte Fahrstreifen und gesperrte Straßen auf den Haupt- und Regionalstraßen. Baustellenabfragen werden gespeichert. Elektronische Anzeigen erscheinen neben dem Tempolimit. Aus: Baustellen werden erfunden.",
 	"help_map_source": "Herkunft der Karte. Overpass lädt sie während der Fahrt. Eine lokale .osm.pbf-Datei (ganz Finnland, etwa 0,8 GB) funktioniert offline. Unter Windows ist osmium enthalten; andernfalls osmium-tool installieren.",
 	"help_pbf_path": "Pfad zu deiner eigenen .osm.pbf-Datei. Leer: heruntergeladene Finnland-Karte.",
 	"help_manage_pbf": "Neueste Finnland-Kartendatei herunterladen oder die vorhandene löschen.",
@@ -888,6 +906,10 @@ const DE := {
 	"help_graphics_vehicle_smoke": "Unfallrauch und Abgaswolken. Fahrzeugschäden und Geräusche bleiben unverändert.",
 	"graphics_lightning_flashes": "Blitzlicht",
 	"help_graphics_lightning_flashes": "Lichtblitze bei Gewitter. Gewitter und Donner bleiben auch ohne Lichtblitze aktiv.",
+	"graphics_brightness": "Helligkeit",
+	"help_graphics_brightness": "Wie hell die Spielwelt ist. Anzeigen und Telefon bleiben unverändert.",
+	"graphics_contrast": "Kontrast",
+	"help_graphics_contrast": "Der Kontrast der Spielwelt: Helles heller, Dunkles dunkler.",
 }
 
 
@@ -896,6 +918,12 @@ const DE := {
 static func text(key: String, language: String) -> String:
 	var table: Dictionary = DE if language == "de" else (FI if language == "fi" else EN)
 	return table.get(key, EN.get(key, key))
+
+## A dry sky's label from its cloud cover; precipitation keeps its own label.
+static func sky_weather(weather_type: String, cloud_cover: float) -> String:
+	if weather_type != "clear":
+		return weather_type
+	return "overcast" if cloud_cover >= 0.8 else ("partly_cloudy" if cloud_cover >= 0.3 else "clear")
 
 static func weather(value: String, language: String) -> String:
 	return text("weather_" + value, language) if EN.has("weather_" + value) else value.capitalize()

@@ -167,6 +167,10 @@ class StationAnnouncer:
         except (OSError, ValueError) as exc:
             logger.info("Station announcements unavailable: %s", exc)
 
+    def set_platforms(self, platforms: list) -> None:
+        """The platforms of the grown map (a station streamed in later)."""
+        self.platforms = list(platforms)
+
     def clips(self, phrases: List[List[str]]) -> List[str]:
         """The clip files in playing order: a connector pause between
         phrases, none inside one (a number stays one word: "kaksikymmentä

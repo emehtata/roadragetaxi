@@ -81,9 +81,7 @@ jobs:
       - name: Import the project
         run: ./godot-bin --headless --path godot --import
       - name: Client tests
-        run: |
-          ./godot-bin --headless --path godot --script res://tests/run_tests.gd
-          ./godot-bin --headless --path godot --script res://tests/animal_audio.gd
+        run: python tools/run_godot_tests.py --godot ./godot-bin
       - name: Server + client selftest (sample map, offline)
         run: |
           PYTHONPATH=src python -m theroadragetrip.server --use-sample --no-historical-weather --port 8765 --tick-rate 30 > server.log 2>&1 &

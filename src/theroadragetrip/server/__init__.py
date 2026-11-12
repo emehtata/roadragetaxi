@@ -15,7 +15,7 @@ budgeted steps, and the server resends the chunks that changed
 from __future__ import annotations
 
 from contextlib import nullcontext
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 import concurrent.futures
 import logging
@@ -23,7 +23,9 @@ import math
 import multiprocessing
 import os
 import pickle
+import re
 import threading
+import tempfile
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -40,12 +42,13 @@ from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer, prepare_initial_window
 from ..protocol import LOCAL_PLAYER_ID
 from ..calendar import GameCalendar, darkness_for_sun_altitude, sports_lights_hours, finnish_utc_offset_hours, solar_position_on, grid_azimuth
-from ..career import career_path, gig_odometer_path, load_career
 from ..arena_crowds import GAME_DURATION
+from ..career import career_path, gig_odometer_path, load_career
 from ..config import CONFIG_PATH, cities_from_config, default_city_configuration, get_overpass_endpoints
 from ..world_loader import load_world, resolve_city
 from ..viewport import SCREEN_H, SCREEN_W
-from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle
+from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle, driver_door_available
+from .. import interaction
 from ..physics import reset_trip, respawn_car
 from ..home import (clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home,
                     find_home_building, home_building_key, load_home_building_key,
@@ -54,7 +57,7 @@ from ..building_style import _building_is_house_by_tag
 from ..localization import SUPPORTED_LANGUAGES, tr
 from ..moon import moon_info_on, moon_position_at
 from ..transport import Listener
-from ..weather import WeatherSystem, raining_last_hour, weather_type_for_observation
+from ..weather import WeatherSystem, WeatherType, raining_last_hour, weather_type_for_observation
 from ..weather_history import WeatherHistory, gradual_weather, precipitation_from_observation, game_time_to_utc_hour
 from ..calendar import clamp_start_datetime, finnish_local_time
 from ..osm import CACHE_DIR
@@ -75,6 +78,23 @@ LIVE_FEED_PER_TICK = 200  # MQTT messages taken per tick; a few stations send we
 def _utc_now() -> datetime:
     """The computer's clock, naive UTC, for the live clock (tests replace it)."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+
+def _platform_ways(ways) -> list:
+    """Railway platforms (highway=platform, not bus): the station loudspeakers."""
+    return [way for way in ways if way.highway == "platform" and not getattr(way, "is_busway", False)]
+
+
+def server_path(path: str) -> str:
+    """A path sent by a Windows client, as this server sees it. On Linux a
+    `\\\\wsl.localhost\\<distro>\\...` path (or `\\\\wsl$\\...`) is the Linux path after
+    the distro; any other backslash path is used as the server's own."""
+    if os.sep == "/" and "\\" in path:
+        match = re.match(r"^[\\/]{2}wsl(?:\.localhost|\$)[\\/][^\\/]+(.*)$", path, re.IGNORECASE)
+        if match:
+            return match.group(1).replace("\\", "/")
+    return path
 
 
 class NullAudio:
@@ -180,6 +200,13 @@ CHANGED_AREA_MARGIN_M = 50.0
 CHUNK_ENCODE_BUDGET_S = 0.006
 
 
+@dataclass(frozen=True)
+class MapGrowthFailure:
+    old_bounds: object
+    new_bounds: object
+    dirty: object
+
+
 class SimulationServer:
     def __init__(self, args, config, city_choice=None, startup_progress=None):
         """`city_choice` (a `_choose_city`-shaped SimpleNamespace) lets an
@@ -190,6 +217,9 @@ class SimulationServer:
         standalone `python -m theroadragetrip.server` process (no client
         menu involved) resolves it here instead, CLI-driven, no menu."""
         self.args = args
+        if getattr(args, "test_seed", None) is not None:  # visual tests: the same traffic and weather draws each run
+            import random
+            random.seed(args.test_seed)
         from .startup_progress import StartupProgress
         progress = startup_progress or StartupProgress(getattr(args, "startup_progress", None))
         progress("starting")
@@ -202,21 +232,29 @@ class SimulationServer:
         # A gig save slot: the slot file is the gig car file, and a saved
         # game continues in its city, around the car, at its game time.
         self.save_slot_file = None
+        self._replacement_slot = None
+        self._slot_staging = None
         saved = {}
         if getattr(args, "save_slot", None) and getattr(args, "game_mode", "gig_driver") != "career":
             from ..save_slots import read_slot, slot_path
             self.save_slot_file = self.gig_odometer_file = slot_path(CONFIG_PATH, args.save_slot)
+            if getattr(args, "new_save_slot", False):
+                self._replacement_slot = self.save_slot_file
+                self.save_slot_file.parent.mkdir(parents=True, exist_ok=True)
+                self._slot_staging = tempfile.TemporaryDirectory(prefix=".new-slot-", dir=self.save_slot_file.parent)
+                self.save_slot_file = self.gig_odometer_file = Path(self._slot_staging.name) / self._replacement_slot.name
             saved = read_slot(self.save_slot_file)
             if saved.get("city") and saved.get("bbox"):
                 args.preset, args.bbox = saved["city"], saved["bbox"]
                 args.place_name = saved.get("place_name") or None
+        self.save_error_count = 0
         self.save_count = 0  # saves written: the client's "saved" acknowledgement
         self._fares_opened = False  # no fares or pre-bookings until the game has started (the first client)
         self._pending_save = False
 
         overpass_endpoints = get_overpass_endpoints(config)
         bus_stops_enabled = True  # always: an old ini's bus_stops = false (the former default) is ignored
-        roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False)
+        roadworks_enabled = config.getboolean("game", "roadworks_enabled", fallback=False) or getattr(args, "test_roadworks", False)
         # Loading never streams; the map grows while playing (map_sync.py).
         self._auto_fetch = bool(getattr(args, "auto_fetch", True)) and not getattr(args, "use_sample", False)
         if getattr(args,"intercity_fares",False) and not self._auto_fetch:
@@ -253,6 +291,9 @@ class SimulationServer:
             self.gig_odometer_file, self.language,
             progress=lambda fraction, message: progress("world", message),
         )
+        from ..osm.cache import default_cache_root
+        from ..osm.elevation import load_dem
+        self.world.dem = load_dem(Path(default_cache_root()) / f"{city_choice.chosen_city}.dem.json")  # render-only ground; None: flat
         self.initial_map_preparation = (
             prepare_initial_window(self.world, progress=progress) if self._auto_fetch
             else {"started": False, "integrated_tiles": 0, "elapsed_s": 0.0}
@@ -293,6 +334,13 @@ class SimulationServer:
             if restore_fare(taxi_mgr, saved.get("fare")):
                 logger.info("Save slot %s: fare to %s continues", self.save_slot_file.stem,
                             taxi_mgr.current_passenger.dropoff.address)
+        if getattr(args, "test_seed", None) is not None:  # again: a world built now (no cache yet) drew numbers a cached one does not
+            import random
+            random.seed(args.test_seed)
+        pose = getattr(args, "test_pose", None)
+        if pose:  # visual tests: in the taxi at an exact spot (the player boards below)
+            self.car.x, self.car.y, self.car.heading = (float(v) for v in pose.split(","))
+            self.car.speed = 0.0
         # Moving traffic from the start, at the start time's demand (populate_initial only parks cars).
         from ..npc import NPCState
         w = self.world
@@ -315,12 +363,20 @@ class SimulationServer:
             moon_time(self.moon_info.set), self.moon_info.phase, self.moon_info.illumination * 100.0,
             self.moon_info.age_days,
         )
-        self.world.weather = WeatherSystem(season=self.calendar.season)
+        test_weather = getattr(args, "test_weather", None)
+        self.world.weather = WeatherSystem(WeatherType(test_weather) if test_weather else None, season=self.calendar.season)
+        if getattr(args, "test_seed", None) is not None:
+            self.world.weather._rng.seed(args.test_seed)
+        if getattr(args, "test_cloud", None) is not None:  # visual tests: clouds held (_advance_clouds aims at the target)
+            self.world.weather.cloud_cover = self.world.weather._cloud_target = float(args.test_cloud)
+            self.world.weather._cloud_timer = float("inf")
         # Historical weather (opt-in): FMI observations/forecast for
         # this city and game time where known, generated weather otherwise.
         historical = getattr(args, "historical_weather", None)
         if historical is None:
             historical = config.getboolean("game", "historical_weather", fallback=False)
+        if test_weather or getattr(args, "test_cloud", None) is not None:
+            historical = False  # the test's weather, not the FMI's
         self.weather_history = None
         self._historical_weather = historical
         self.weather_city = self.chosen_city
@@ -338,7 +394,10 @@ class SimulationServer:
             self.world.weather.update(0.001, 0.0, outside_temperature_c=self.world.weather.outside_temperature_c,
                                       observed=observed)
         self.world.weather.settle_initial_wetness(self._raining_last_hour())
-        self._on_foot = True
+        self._on_foot = not pose
+        if pose:
+            self.car.engine_on = True  # headlights and the HUD as when driving
+            self.world.player_pedestrian.x, self.world.player_pedestrian.y = self.car.x, self.car.y
         self._camx, self._camy = self.car.x, self.car.y
         self._px_per_m = _DEFAULT_PX_PER_M
         self._current_way = None
@@ -357,8 +416,7 @@ class SimulationServer:
         self._latest_command = PlayerCommand()
         self._pending_interacts = 0
         from ..station_announcer import StationAnnouncer
-        self.announcer = StationAnnouncer(platforms=[way for way in self.world.ways
-                                                     if way.highway == "platform" and not getattr(way, "is_busway", False)])
+        self.announcer = StationAnnouncer(platforms=_platform_ways(self.world.ways))
         self.navigation = NavigationRoute()  # the player's route to the taxi target (godot-final-04)
         self._pending_refuels = 0  # edge-triggered too: one press buys fuel once, never again each tick
         self._pending_road_rages = 0  # SPACE presses, likewise
@@ -382,6 +440,7 @@ class SimulationServer:
 
         self._clients_lock = threading.Lock()
         self._clients: list = []
+        self._paused_clients: set = set()
         self._client_views = {}  # connection -> (last simulation time, world camera bounds)
         self._inspect = None  # {"kind", "id"}: what the client's inspect panel shows (its residents are sent)
         # Per connection: the map chunks it has, and the player cell they were planned for.
@@ -398,6 +457,7 @@ class SimulationServer:
         # The tiles the chunk index was built with (None: the map never grows). A chunk
         # beyond them would reach the client half-built and be resent when its tile merges.
         self._indexed_tiles = set(self._map_streamer.manager.loaded_tiles) if self._map_streamer is not None else None
+        self._map_growth_retry = None
         self._map_growth: list = []  # the background rebuild's results, swapped in by ticks in order
         # Chunk rebuilds in a worker process (chunk_worker.py), off the ticks' GIL;
         # with --no-build-in-process (or after a failure) on the map-growth thread.
@@ -524,6 +584,9 @@ class SimulationServer:
         car, world = self.car, self.world
         if self._on_foot or (car.x, car.y) == previous:
             return None
+        ferry_mgr = getattr(world, "ferry_mgr", None)
+        if ferry_mgr is not None and ferry_mgr.on_deck(car.x, car.y):
+            return None  # a moving steel deck: no ground to mark, and tracks stay where they were laid (ferries.py)
         on_surface = getattr(car, "map_level", SURFACE_LEVEL) == SURFACE_LEVEL
         surface_way = get_current_road_at_car(car, ways=world.ways, spatial_grid=world.spatial_grid, car_roads_only=False) \
             if on_surface else None
@@ -767,7 +830,7 @@ class SimulationServer:
             self._set_fares_open(True)
         if not self._game_day_notice_shown:
             games = [game for game in self.world.arena_crowds.schedule_on(self.calendar.date)
-                     if self.calendar.current < game.start + GAME_DURATION]
+                     if self.calendar.current < game.start + getattr(game, "game_duration", GAME_DURATION)]
             if games:
                 schedule = "; ".join(
                     f"{game.home_team}–{game.away_team} {game.start:%H:%M} ({game.venue_name})"
@@ -780,12 +843,16 @@ class SimulationServer:
         with self._clients_lock:
             clients = list(self._clients)
         for connection in clients:
-            for message in connection.try_recv_all():
+            for message in connection.try_recv_all(limit=64):
                 if message.get("type") != "command":
                     continue
                 if protocol.command_player_id(message) != LOCAL_PLAYER_ID:
                     logger.warning("Ignoring a command for unknown player %r", message.get("player_id"))
                     continue
+                if message.get("paused") is True:
+                    self._paused_clients.add(connection)
+                elif message.get("paused") is False:
+                    self._paused_clients.discard(connection)
                 command, interact = protocol.command_from_message(message)
                 from ..viewport import client_view_bounds
                 view = client_view_bounds(message)
@@ -840,6 +907,7 @@ class SimulationServer:
                     logger.info("Client dropped: %s", connection.error)
                 del self._client_chunks[connection]
                 self._client_views.pop(connection, None)
+                self._paused_clients.discard(connection)
             gone = len(self._clients) != before
             if gone:
                 logger.info("Client disconnected (%d remaining)", len(self._clients))
@@ -850,6 +918,7 @@ class SimulationServer:
                 self._latest_command = PlayerCommand()
 
     def write_debug_snapshot(self, path: str) -> None:
+        path = server_path(path)
         """The F12 JSON (debug_snapshot.py) for the
         client's screenshot, from the server's world; the client's view is
         the server's camera at its zoom."""
@@ -885,10 +954,32 @@ class SimulationServer:
         if latitude is None:
             logger.warning("Save slot not written: no coordinate conversion")
             return False
-        write_slot(self.save_slot_file, car=self.car, taxi_mgr=self.world.taxi_mgr, calendar=self.calendar,
-                   city=self.chosen_city, place_name=getattr(self.args, "place_name", None) or "",
-                   latlon=(latitude, longitude))
+        try:
+            write_slot(self.save_slot_file, car=self.car, taxi_mgr=self.world.taxi_mgr, calendar=self.calendar,
+                       city=self.chosen_city, place_name=getattr(self.args, "place_name", None) or "",
+                       latlon=(latitude, longitude))
+            if self._replacement_slot is not None:
+                self.save_slot_file.replace(self._replacement_slot)
+                self.save_slot_file = self.gig_odometer_file = self.homes_file = self._replacement_slot
+                self._replacement_slot = None
+                self._slot_staging.cleanup()
+                self._slot_staging = None
+        except OSError:
+            logger.exception("Save slot %s could not be written", self.save_slot_file.stem)
+            return False
         logger.info("Saved to slot %s", self.save_slot_file.stem)
+        return True
+
+    def _save_gig_progress(self) -> bool:
+        if self.save_slot_file is not None:
+            return self.save_game()
+        from ..career import save_gig_odometer
+        try:
+            save_gig_odometer(self.gig_odometer_file, self.car.odometer_m,
+                              self.car.fuel_l, self.world.taxi_mgr.balance_cents)
+        except OSError:
+            logger.exception("Gig progress could not be written")
+            return False
         return True
 
     def tick(self, dt: float) -> None:
@@ -898,7 +989,12 @@ class SimulationServer:
             self._pending_save = False
             if self.save_game():
                 self.save_count += 1
+            else:
+                self.save_error_count += 1
         self._apply_incoming_messages()
+        if self._paused_clients:
+            self._broadcast_state()
+            return
         self.audio.advance(dt)
 
         with self._command_lock:
@@ -927,8 +1023,14 @@ class SimulationServer:
             phone_requests, self._phone_requests = self._phone_requests, []
         phone_results = [self._apply_phone_request(request) for request in phone_requests]
 
-        if home_door:
-            self._home_door_pressed()
+        if home_door:  # E on foot: whatever the server offers here now (state.interaction), checked again
+            kind = SimulationServer._interaction(self).get("kind")
+            if kind == "taxi_door":
+                interact = True
+            elif kind == "building":
+                self._notify(SimulationServer._interaction(self)["label"] or tr(self.language, "building_unnamed"))
+            else:
+                self._home_door_pressed()
         if self._inside is not None:  # the map player stays at the door: no walking, taxi or respawn; H picks this house
             command = replace(command, forward=0.0, turn=0.0, sprint=False)
             interact = respawn = False
@@ -941,7 +1043,7 @@ class SimulationServer:
             command = replace(command, engine_on=None)
             self._on_foot = apply_enter_exit_vehicle(
                 self.car, self.world.player_pedestrian, self._on_foot, self.audio, self.world.taxi_mgr,
-                self.world.pedestrian_mgr.pedestrians,
+                self.world.pedestrian_mgr.pedestrians, blocked=self.world.pedestrian_mgr._point_inside_building,
             )
 
         self.car.lane_assist_enabled = command.lane_assist_enabled
@@ -960,6 +1062,8 @@ class SimulationServer:
         # Game time runs 60x while there is no fare, 1:1 during one; the live
         # clock is the computer's clock itself (read, not integrated: no drift).
         time_scale = self._time_scale = 1.0 if self._live_clock or self.world.taxi_mgr.has_active_job() else 60.0
+        if getattr(self.args, "test_time_scale", None) is not None:  # visual tests: a held or slowed clock
+            time_scale = self._time_scale = self.args.test_time_scale
         previous_date = self.calendar.date
         if self._live_clock:
             self.calendar.current = finnish_local_time(_utc_now())
@@ -1015,6 +1119,7 @@ class SimulationServer:
             career=self.career,
             career_file=self.career_file,
             gig_odometer_file=self.gig_odometer_file,
+            gig_save=self._save_gig_progress,
             chosen_city=self.chosen_city,
             cities_list=self.cities_list,
             outside_temperature_c=self.world.weather.outside_temperature_c,
@@ -1057,6 +1162,10 @@ class SimulationServer:
             railway_mgr.sound_events.clear()
         if self._map_growth:
             self._apply_map_growth()
+        if self._map_growth_retry is not None and time.monotonic() >= self._map_growth_retry[0]:
+            _, failed = self._map_growth_retry
+            self._map_growth_retry = None
+            self._map_grew(failed.old_bounds, failed.new_bounds, failed.dirty)
         if self._map_streamer is not None:  # auto-fetch near the edge, then map sync
             self._map_streamer.tick(self.car.x, self.car.y, math.cos(self.car.heading) * self.car.speed,
                                     math.sin(self.car.heading) * self.car.speed, urgent=not self.central_chunk_ready())
@@ -1202,6 +1311,13 @@ class SimulationServer:
                   home_building_key(building) == self._home_building_key] for _, building, door in near]
         return {"indoors": self._inside is not None, "available": self._inside is None and at is not None,
                 "is_home": at is not None and home_building_key(at[0]) == self._home_building_key, "doors": doors}
+
+    def _interaction(self) -> dict:
+        """state.interaction: what E does on foot here (interaction.pick), {} indoors or at the wheel."""
+        if not self._on_foot or self._inside is not None:
+            return {}
+        return interaction.pick(self.car, self.world.player_pedestrian, SimulationServer._house_at_door(self) is not None,
+                                getattr(self.world, "building_grid", None))
 
     def _home_door_pressed(self) -> None:
         """E: inside, out to the doorstep; at a house's front door, in. The interior is
@@ -1379,19 +1495,34 @@ class SimulationServer:
             logger.info("Map chunks rebuilt for %s (lights %.0f ms)",
                         ", ".join("%.0f x %.0f m" % (a[2] - a[0], a[3] - a[1]) for a in areas), lights_s * 1000.0)
 
+        def guarded_build():
+            try:
+                build()
+            except Exception:
+                logger.exception("Map chunk rebuild failed; retrying with the synced world")
+                self._map_growth.append(MapGrowthFailure(old_bounds, new_bounds, dirty))
+
         self._map_streamer.hold = True
-        threading.Thread(target=build, name="map-growth", daemon=True).start()
+        threading.Thread(target=guarded_build, name="map-growth", daemon=True).start()
 
     def _apply_map_growth(self) -> None:
         """Swap in the grown map's lamps and chunks (the next result of the
         background rebuild); resend every chunk a client has whose content
         changed (new roads across the old edge, lamps, buildings...)."""
-        lights, index, changed, old_bounds, new_bounds, build_s, final, covered = self._map_growth.pop(0)
+        result = self._map_growth.pop(0)
+        if isinstance(result, MapGrowthFailure):
+            # Keep merges held during the retry so its dirty regions stay valid.
+            self._map_streamer.hold = True
+            self._map_growth_retry = (time.monotonic() + 1.0, result)
+            return
+        lights, index, changed, old_bounds, new_bounds, build_s, final, covered = result
         self._chunks_index = index
         self.world.street_light_points = lights
         self._map_streamer.hold = not final
         if final and self._indexed_tiles is not None:
             self._indexed_tiles = covered
+        if final:
+            self.announcer.set_platforms(_platform_ways(self.world.ways))
         player = self.world.player_pedestrian if self._on_foot else self.car
         px, py = cell_of(player.x, player.y)
 
@@ -1471,8 +1602,11 @@ class SimulationServer:
             railway=protocol.railway_state(getattr(self.world, "railway_mgr", None), self.car.x, self.car.y, self.calendar.current),
             inspect=self._inspect, npc_bounds=self._visible_bounds(),
         )
+        message["state"]["save_error_count"] = self.save_error_count
         message["state"]["save_count"] = self.save_count  # the pause menu waits for its save
         message["state"]["home_door"] = self._home_door_state()
+        message["state"]["interaction"] = SimulationServer._interaction(self)
+        message["state"]["taxi_door"] = self._on_foot and driver_door_available(self.car, self.world.player_pedestrian)
         with self._clients_lock:
             clients = list(self._clients)
             loaded = set().union(*(chunks for chunks, _ in self._client_chunks.values()))

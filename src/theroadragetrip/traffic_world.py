@@ -35,6 +35,12 @@ ROUTE_MAX_EDGE_LENGTH_M = 100.0
 # straight line between their nodes.
 ROUTE_CONNECTOR_COST_FACTOR = 4.0
 OFF_BUS_ROUTE_COST_FACTOR = 4.0  # a line bus's route avoids streets its OSM route relation does not use
+# A car ferry crossing (ferries.py) in the player's route search: its length
+# this many times (a ferry crosses at ~4.5 m/s, roads ~14 m/s), plus a fixed
+# cost for boarding, as metres of road. Both keep the A* heuristic admissible.
+FERRY_COST_FACTOR = 3.0
+FERRY_BOARDING_COST_M = 300.0
+FERRY_LANDING_SNAP_M = 40.0  # a ferry route's end joins the road node this near it
 
 # A resumable route search: a generator that yields after each unit of work
 # and returns its result (bin-loader-v12.md "route planning is a job").
@@ -319,6 +325,7 @@ def graph_route_steps(
     ranked_targets = yield from nearest_node_indices_steps(graph.nodes, graph.node_grid, target, max_candidate_count, allowed)
     nodes = graph.nodes
     parent = graph.component_parent
+    ferry_edges = getattr(graph, "ferry_edges", None) or {}  # the player's navigation: car ferry crossings
 
     def search(candidate_count: int):
         starts = ranked_starts[:candidate_count]
@@ -368,7 +375,7 @@ def graph_route_steps(
                 if total < best_total:
                     best_total = total
                     best_target = current
-            for neighbor, edge_distance in graph.edges.get(current, ()):
+            for neighbor, edge_distance in itertools.chain(graph.edges.get(current, ()), ferry_edges.get(current, ())):
                 if allowed is not None and neighbor not in allowed:
                     continue
                 if preferred is not None and (current, neighbor) not in preferred:
@@ -423,18 +430,31 @@ class _SurfaceGraphView:
     """TrafficWorld's committed surface route graph in RouteGraphBuild's
     attribute shape, for graph_route_steps."""
 
-    __slots__ = ("nodes", "edges", "node_grid", "component_parent")
+    __slots__ = ("nodes", "edges", "node_grid", "component_parent", "ferry_edges")
 
-    def __init__(self, world: "TrafficWorld") -> None:
+    def __init__(self, world: "TrafficWorld", ferries: bool = False) -> None:
         self.nodes = world._route_nodes
         self.edges = world._route_edges
         self.node_grid = world._route_node_grid
-        self.component_parent = world._route_component_parent
+        # With ferries: their crossings join the islands' components too.
+        self.ferry_edges = world._ferry_edges if ferries else None
+        self.component_parent = world._ferry_component_parent if ferries else world._route_component_parent
 
 
 def _cycle_graph_build(ways) -> RouteGraphBuild:
     from .cycling import cycle_cost_factor, cycle_oneway, is_cyclable_way
     return RouteGraphBuild(ways, include=is_cyclable_way, oneway=cycle_oneway, weight=cycle_cost_factor, track_ways=True)
+
+
+MOTORWAY_HIGHWAYS = ("motorway", "motorway_link", "trunk", "trunk_link")  # motorways, trunk roads and their ramps: fast traffic's network (law § 58)
+
+
+def is_motorway_way(way) -> bool:
+    return getattr(way, "highway", None) in MOTORWAY_HIGHWAYS
+
+
+def _motorway_graph_build(ways) -> RouteGraphBuild:
+    return RouteGraphBuild(ways, include=is_motorway_way, track_ways=True)
 
 
 class TrafficWorld:
@@ -463,11 +483,19 @@ class TrafficWorld:
         self._route_nodes: List[Tuple[float, float, int]] = []
         self._route_edges: dict[int, List[Tuple[int, float]]] = {}
         self._route_node_grid: dict[Tuple[int, int], List[int]] = {}
+        # Car ferry routes' points (ferries.py): crossings for the player's
+        # navigation only, kept out of _route_edges (NPC trips, spawning).
+        self.ferry_routes: List[List[Tuple[float, float]]] = []
+        self._ferry_edges: dict[int, List[Tuple[int, float]]] = {}
+        self._ferry_component_parent: List[int] = []
         self._pending_route_graph: Optional[RouteGraphBuild] = None
         # The cycle network (cycling.py): built and committed with the car
         # graph, under the same route_graph_revision.
         self.cycle_graph: RouteGraphBuild = RouteGraphBuild([], include=lambda way: False, track_ways=True)
         self._pending_cycle_graph: Optional[RouteGraphBuild] = None
+        # The fast-road network (MOTORWAY_HIGHWAYS): fast traffic routes here only (npc.py).
+        self.motorway_graph: RouteGraphBuild = RouteGraphBuild([], include=lambda way: False, track_ways=True)
+        self._pending_motorway_graph: Optional[RouteGraphBuild] = None
         # Set by main.py once npc.py's NPC vehicle list exists (a plain
         # list, kept as the same object reference so later appends to it
         # stay visible here) - lets PedestrianManager's linked-driver/
@@ -511,6 +539,8 @@ class TrafficWorld:
         build.advance(math.inf)
         self.cycle_graph = _cycle_graph_build(self.ways)
         self.cycle_graph.advance(math.inf)
+        self.motorway_graph = _motorway_graph_build(self.ways)
+        self.motorway_graph.advance(math.inf)
         self._commit_route_graph(build)
 
     def _commit_route_graph(self, build: "RouteGraphBuild") -> None:
@@ -522,7 +552,35 @@ class TrafficWorld:
         self._route_node_grid = build.node_grid
         self._route_component_parent = build.component_parent
         self._bus_route_edges = build.bus_route_edges
+        self._link_ferries()
         self.route_graph_revision = getattr(self, "route_graph_revision", 0) + 1
+
+    def set_ferry_routes(self, routes) -> None:
+        """The car ferry routes' points (ferries.py), linked into the committed graph."""
+        self.ferry_routes = [list(points) for points in routes]
+        if self._route_nodes:
+            self._link_ferries()
+            self.route_graph_revision = getattr(self, "route_graph_revision", 0) + 1
+
+    def _link_ferries(self) -> None:
+        """Each ferry route as a crossing between the road nodes at its ends."""
+        self._ferry_edges = {}
+        parent = list(self._route_component_parent)
+        for points in self.ferry_routes:
+            ends = [nearest_node_indices(self._route_nodes, self._route_node_grid, point, 1, None) for point in (points[0], points[-1])]
+            if not all(ends) or ends[0][0] == ends[1][0]:
+                continue
+            a, b = ends[0][0], ends[1][0]
+            if any(math.dist(self._route_nodes[node][:2], point) > FERRY_LANDING_SNAP_M
+                   for node, point in ((a, points[0]), (b, points[-1]))):
+                continue  # a landing whose road is not loaded
+            cost = sum(math.dist(p, q) for p, q in zip(points, points[1:])) * FERRY_COST_FACTOR + FERRY_BOARDING_COST_M
+            self._ferry_edges.setdefault(a, []).append((b, cost))
+            self._ferry_edges.setdefault(b, []).append((a, cost))
+            root_a, root_b = _component_root(parent, a), _component_root(parent, b)
+            if root_a != root_b:
+                parent[max(root_a, root_b)] = min(root_a, root_b)
+        self._ferry_component_parent = parent
 
     def _finish_route_graph(self) -> None:
         """Rebuild the derived indexes (grid, components) for an already
@@ -561,6 +619,7 @@ class TrafficWorld:
             self.logical_intersections = logical_intersections
         self._pending_route_graph = RouteGraphBuild(ways)
         self._pending_cycle_graph = _cycle_graph_build(ways)
+        self._pending_motorway_graph = _motorway_graph_build(ways)
 
     def advance_map_sync(self, budget_s: float) -> bool:
         """Advance a start_map_sync() build by about budget_s; True once the
@@ -574,11 +633,16 @@ class TrafficWorld:
         cycle_build = self._pending_cycle_graph
         if cycle_build is not None and not cycle_build.advance(max(0.0, deadline - time.perf_counter())):
             return False
+        motorway_build = self._pending_motorway_graph
+        if motorway_build is not None and not motorway_build.advance(max(0.0, deadline - time.perf_counter())):
+            return False
         self.ways = build.ways
         if cycle_build is not None:
             self.cycle_graph = cycle_build
+        if motorway_build is not None:
+            self.motorway_graph = motorway_build
         self._commit_route_graph(build)
-        self._pending_route_graph = self._pending_cycle_graph = None
+        self._pending_route_graph = self._pending_cycle_graph = self._pending_motorway_graph = None
         return True
 
     def plan_route(
@@ -593,9 +657,9 @@ class TrafficWorld:
         return run_route_steps(self.plan_route_steps(start, target, layer), deadline)
 
     def route_graph(self) -> "_SurfaceGraphView":
-        """The committed surface route graph, for graph_route_steps and
-        level_routing (level 0)."""
-        return _SurfaceGraphView(self)
+        """The committed surface route graph with its ferry crossings, for the
+        player's navigation (graph_route_steps, level_routing level 0)."""
+        return _SurfaceGraphView(self, ferries=True)
 
     def plan_route_steps(
         self,
@@ -605,12 +669,18 @@ class TrafficWorld:
         on_road: bool = False,
         start_layer: Optional[int] = None,
         bus_route: Optional[str] = None,
+        ferries: bool = False,
     ) -> RouteSteps:
         """plan_route as a resumable job on the surface graph - see
         graph_route_steps (on_road: the player's navigation; bus_route: a
-        line bus keeps to its route relation's streets)."""
+        line bus keeps to its route relation's streets; ferries: the player's
+        navigation also crosses on car ferries)."""
         preferred = getattr(self, "_bus_route_edges", {}).get(bus_route) if bus_route is not None else None
-        return graph_route_steps(_SurfaceGraphView(self), start, target, layer, on_road, start_layer, preferred=preferred)
+        return graph_route_steps(_SurfaceGraphView(self, ferries), start, target, layer, on_road, start_layer, preferred=preferred)
+
+    def plan_motorway_route_steps(self, start: Tuple[float, float], target: Tuple[float, float]) -> RouteSteps:
+        """A fast vehicle's route on the motorway network only (no ordinary roads): a resumable job like plan_route_steps."""
+        return graph_route_steps(self.motorway_graph, start, target)
 
     def plan_cycle_route_steps(self, start: Tuple[float, float], target: Tuple[float, float]) -> RouteSteps:
         """A cyclist's route on the cycle network (cycling.py) as a resumable

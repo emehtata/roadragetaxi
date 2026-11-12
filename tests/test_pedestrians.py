@@ -30,6 +30,55 @@ def test_pedestrian_network_routes_across_connected_ways():
     assert network.nearest_point((8.0, 2.0)) == (8.0, 0.0)
 
 
+def test_network_endpoint_cache_preserves_routes_across_map_rebuild(monkeypatch):
+    import theroadragetrip.pedestrian as module
+    network = PedestrianNetwork([
+        Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.5),
+    ])
+    start, target = (0.0, 0.0), (10.0, 0.0)
+    expected = [start, start, target, target]
+    assert network.route(start, target) == expected
+    original = module._ring_search
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "_ring_search", counted)
+    assert network.connected(start, target)
+    assert network.route(start, target) == expected
+    assert not calls  # repeated endpoints need no spatial search
+    network.start_rebuild([
+        Way(points_m=[(100.0, 0.0), (110.0, 0.0)], highway="footway", half_width_m=1.5),
+        Way(points_m=[start, target], highway="footway", half_width_m=1.5),
+    ])
+    assert network.connected(start, target)  # the old graph is still live
+    while not network.advance_rebuild(0.0):
+        pass
+    assert network.route(start, target) == expected
+    assert calls  # old node IDs must not survive the graph commit
+
+
+def test_network_endpoint_cache_is_bounded_and_uses_exact_coordinates():
+    network = PedestrianNetwork([
+        Way(points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=1.5),
+    ])
+    assert network._nearest_node((4.999, 0.0)) == 0
+    assert network._nearest_node((5.001, 0.0)) == 1
+    for index in range(2100):
+        network._nearest_node((index / 1000.0, 0.0))
+    assert len(network._nearest_node_cache) <= 2048
+
+
+def test_spawn_rejects_distant_venue_candidates_before_building_queries(monkeypatch):
+    way = Way(points_m=[(100.0, 0.0), (110.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    monkeypatch.setattr(manager, "_point_inside_building",
+                        lambda x, y: pytest.fail("outside the spawn limit: no building query needed"))
+    assert manager.spawn_pedestrian(0.0, 0.0, max_distance_m=45.0) is None
+
+
 def test_sync_map_data_adds_streamed_footway():
     initial_way = Way(
         points_m=[(0.0, 0.0), (10.0, 0.0)], highway="footway", half_width_m=2.0,
@@ -789,7 +838,8 @@ def test_pedestrians_spawn_near_hospitality_venues(monkeypatch):
     manager.update(Car(x=50.0, y=0.0, heading=0.0, speed=0.0), dt=0.1)
 
     assert len(manager.venue_locations) == 1
-    assert all(math.hypot(ped.x - 50.0, ped.y) <= 45.0 for ped in manager.pedestrians)
+    # spawned within 45 m, then walked one 0.1 s tick in the same update
+    assert all(math.hypot(ped.x - 50.0, ped.y) <= 45.5 for ped in manager.pedestrians)
 
 
 def test_pedestrian_spawn_area_is_limited_to_building_radius():
@@ -1969,7 +2019,7 @@ def test_viewport_spawning_stops_at_its_budget_and_resumes_next_tick(monkeypatch
 def test_dog_walk_does_not_fall_back_to_car_road_for_disconnected_sidewalk(monkeypatch):
     from theroadragetrip.activities import ActivityContext, ActivityInstance
     from theroadragetrip.activities.plugins.dog_walking import DogWalkingPlugin
-    # Route and geometry recorded in the screenshot's Saaristonkatu map.
+    # Route and geometry recorded in the screenshot's Harbour Road map.
     start = (427707.34734932275, 7210560.564095313)
     target = (427701.23971883836, 7210493.831170409)
     way = Way(points_m=[(427705.6754025336, 7210558.464672473),
@@ -2079,3 +2129,55 @@ def test_a_sidewalk_beside_the_street_wins_and_a_street_gap_is_walked_at_its_edg
     route = network.route((0.0, 2.0), (200.0, 0.0))
     assert (50.0, 6.0) in route  # along the sidewalk while there is one...
     assert any(abs(y - ROAD_EDGE_WALK_OFFSET_M) < 0.01 and 100.0 < x <= 200.0 for x, y in route)  # ...then the street's edge
+
+
+def test_route_walker_animation_time_advances():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    pedestrian = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    pedestrian.route, pedestrian.destination = [(20.0, 0.0), (150.0, 0.0)], (150.0, 0.0)
+
+    for _ in range(10):
+        manager._walk_route_to(pedestrian, 0.1, (150.0, 0.0))
+
+    assert pedestrian.animation_time == pytest.approx(1.0)
+
+
+def test_dodging_walker_animation_time_advances():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    pedestrian = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    pedestrian.dodge_timer = 10.0
+    manager.pedestrians = [pedestrian]
+
+    manager.update(Car(-30.0, 0.0, 0.0, 0.0), dt=0.1)
+
+    assert pedestrian.dodge_timer > 0.0
+    assert pedestrian.animation_time == pytest.approx(0.1)
+
+
+def test_route_snap_step_advances_animation_time():
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    pedestrian = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    pedestrian.route, pedestrian.destination = [(20.0, 0.0), (20.5, 0.0), (150.0, 0.0)], (150.0, 0.0)
+
+    assert not manager._walk_route_to(pedestrian, 0.1, (150.0, 0.0))  # within 1 m: snaps to the node
+
+    assert (pedestrian.x, pedestrian.current_route_segment) == (20.5, 2)
+    assert pedestrian.animation_time == pytest.approx(0.1)
+
+
+def test_dodging_walker_picks_no_activity(monkeypatch: pytest.MonkeyPatch):
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    dodging = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    dodging.dodge_timer = 0.4
+    manager.pedestrians = [dodging]
+    draws = []
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: draws.append(1) or 0.0)
+
+    manager._consider_activities()
+
+    assert dodging.activity is None and dodging.state == "walking"
+    assert draws == []  # skipped before the roll: no random draw spent on it

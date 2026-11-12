@@ -17,7 +17,7 @@ from theroadragetrip.train_passengers import TAXI, WALK, RailPassenger
 
 OCCURRENCE = datetime(2026, 9, 25, 18, 20)
 STAND = SimpleNamespace(x=10.0, y=20.0)
-DESTINATION = SimpleNamespace(address="Kirkkokatu 1")
+DESTINATION = SimpleNamespace(address="Test Street 1")
 
 
 class Always:

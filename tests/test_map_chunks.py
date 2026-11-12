@@ -26,6 +26,40 @@ def test_charging_stations_are_streamed_with_their_capacity():
     assert rows == [[10, 20, "charging_station", 0.5, 6], [30, 20, "charging_station", 0.0, 2]]  # unmapped: a two-bay post
 
 
+def test_camper_vans_are_streamed_with_the_vehicle_length():
+    from theroadragetrip.osm import SceneryObject
+    from theroadragetrip.vehicles.base import vehicle_definition
+
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[],
+                            scenery_objects=[SceneryObject(10, 20, "camper_van")])
+    rows = map_chunks.ChunkIndex(world).message("0_0")["scenery_objects"]
+    assert rows == [[10, 20, "camper_van", 0.0, vehicle_definition("camper_van").length_m]]  # the client has no default
+
+
+def test_bench_row_carries_backrest_flag():
+    from theroadragetrip.osm import SceneryObject
+
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], scenery_objects=[
+        SceneryObject(10, 20, "bench", backrest=False), SceneryObject(30, 20, "bench", backrest=True),
+        SceneryObject(50, 20, "bench")])
+    rows = map_chunks.ChunkIndex(world).message("0_0")["scenery_objects"]
+    assert [row[4] for row in rows] == [0, 1, 1]
+
+
+def test_new_feature_lists_are_capped_and_empty_when_absent():
+    from theroadragetrip.osm import SceneryObject
+
+    empty = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], scenery_objects=[SceneryObject(10, 20, "bench")])
+    assert map_chunks.ChunkIndex(empty).message("0_0").get("power_lines", []) == []
+    lines = [SceneryObject(10, 20 + i * 0.1, "power_line", points_m=[(10, 20 + i * 0.1), (60, 20 + i * 0.1)])
+             for i in range(map_chunks.POWER_LINES_PER_CHUNK + 50)]
+    poles = [SceneryObject(30, 20 + i * 0.1, "power_pole") for i in range(map_chunks.FEATURES_PER_CHUNK + 50)]
+    message = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], scenery_objects=lines + poles)).message("0_0")
+    assert len(message["power_lines"]) == map_chunks.POWER_LINES_PER_CHUNK
+    assert message["power_lines"][0] == [[10, 20.0], [60, 20.0]]
+    assert sum(row[2] == "power_pole" for row in message["scenery_objects"]) == map_chunks.FEATURES_PER_CHUNK
+
+
 def test_runtime_camera_updates_only_its_chunk_and_invalidates_wire_cache():
     from theroadragetrip.police import SpeedCamera
 
@@ -77,7 +111,7 @@ def _points_world():
     return SimpleNamespace(
         ways=[road], railways=[], waters=[], buildings=[],
         taxi_stops=[TaxiStop(20.0, 40.0, id=5)],
-        scenery_objects=[SceneryObject(30.0, 60.0, "fuel", name="Neste", id=77, direction_angle=0.5, is_area=True),
+        scenery_objects=[SceneryObject(30.0, 60.0, "fuel", name="Fuel Station", id=77, direction_angle=0.5, is_area=True),
                          SceneryObject(31.0, 61.0, "bench")],
         traffic_mgr=SimpleNamespace(traffic_lights=lights, sim_time=0.0),
         roadworks=[Roadwork(road, 480.0, 540.0, True, (480.0, 0.0), (540.0, 0.0))],
@@ -91,7 +125,7 @@ def test_gameplay_points_are_each_in_exactly_one_chunk():
     index = map_chunks.ChunkIndex(world, size=500.0)
     here, east = index.message("0_0"), index.message("1_0")
     assert here["taxi_stands"] == [[20.0, 40.0]] and east["taxi_stands"] == []
-    assert here["fuel_stations"] == [{"x": 30.0, "y": 60.0, "angle": 0.5, "is_area": True, "name": "Neste",
+    assert here["fuel_stations"] == [{"x": 30.0, "y": 60.0, "angle": 0.5, "is_area": True, "name": "Fuel Station",
                                       "price_cents": fuel_station_price_cents(world.scenery_objects[0])}]
     # Posts by list index (stable for the session, unlike the missing roadwork ids), at
     # their render position (protocol.traffic_light_render_point); a non-renderable post is not sent.
@@ -164,7 +198,7 @@ def test_railings_decorations_and_street_lights_are_each_in_one_chunk():
     index = map_chunks.ChunkIndex(world, size=500.0)
     here, east = index.message("0_0"), index.message("1_0")
     assert here["railings"] == [["hedge", [[480.0, 5.0], [530.0, 5.0]], 0]] and east["railings"] == []  # first point's chunk, whole
-    assert here["scenery_objects"] == [[46.0, 0.0, "bench", 0.0], [12.0, 13.0, "bench", 0.5], [14.0, 15.0, "gate", 0.0]]
+    assert here["scenery_objects"] == [[46.0, 0.0, "bench", 0.0, 1], [12.0, 13.0, "bench", 0.5, 1], [14.0, 15.0, "gate", 0.0]]
     assert here["street_lights"] == [[100.0, 100.0, 1.25, 14.0]] and east["street_lights"] == [[600.0, 100.0, 0.0, 14.0]]
 
 
@@ -201,7 +235,7 @@ def test_static_world_lists_in_the_chunks():
     from theroadragetrip import static_world
 
     world = _obstacle_world()
-    world.sceneries[0].name = "Hupisaaret"
+    world.sceneries[0].name = "Test Park"
     world.buildings = [Building([(10.0, 10.0), (20.0, 10.0), (20.0, 20.0), (10.0, 20.0)], building_type="house", name="Sininen talo"),
                        Building([(30.0, 30.0), (40.0, 30.0), (40.0, 40.0), (30.0, 40.0)], building_type="roof")]
     world.crossings = [Crossing(50.0, 60.0, direction_angle=0.5, width_m=6.0, length_m=2.5)]
@@ -219,7 +253,7 @@ def test_static_world_lists_in_the_chunks():
     assert here["signs"] == [[80.0, 60.0, "stop", 0.0]] and here["speed_cameras"] == [[0, 90.0, 60.0, 1.5]]
     assert here["rail_bridges"] == [[[0.0, 400.0], [100.0, 400.0]]] and here["railways"] == [[[0.0, 450.0], [100.0, 450.0]]]
     assert len(here["rail_decks"]) == 1  # the bridge track's deck
-    assert [l for l in here["labels"] if l[2] == "Hupisaaret"][0][3] == static_world.LABEL_AREA
+    assert [l for l in here["labels"] if l[2] == "Test Park"][0][3] == static_world.LABEL_AREA
     assert any(l[2] == "Sininen talo" and l[3] == static_world.LABEL_BUILDING for l in here["labels"])
     assert [l[0] for l in here["landuse"]] == [[100, 145, 80], [170, 142, 96]]  # park, construction (map_style.py colours)
 
@@ -501,7 +535,7 @@ def test_a_stadium_mapped_twice_gets_one_ring_of_stands():
     world = _obstacle_world()
     world.buildings = []
     outline = [(100.0, 100.0), (240.0, 100.0), (240.0, 200.0), (100.0, 200.0)]
-    world.sceneries = [Scenery(points_m=outline, kind="stadium", name="Bolt Arena"), Scenery(points_m=outline[::-1], kind="stadium")]
+    world.sceneries = [Scenery(points_m=outline, kind="stadium", name="Test Arena"), Scenery(points_m=outline[::-1], kind="stadium")]
     assert len(map_chunks.ChunkIndex(world, size=500.0).message("0_0")["buildings"]) == 4
 
 
@@ -573,7 +607,7 @@ def test_roads_rank_by_class_then_paved_for_their_draw_order():
     unknown = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="residential")
     track = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="track")
     main = Way(points_m=[(0, 0), (10, 0)], half_width_m=3.0, highway="primary", surface="gravel")
-    # Kiviniementie (asphalt) under an unnamed compacted residential street: reported drawn the wrong way round.
+    # Stone Road (asphalt) under an unnamed compacted residential street: reported drawn the wrong way round.
     assert road_draw_rank(street) > road_draw_rank(gravel)
     assert road_draw_rank(unknown) == road_draw_rank(street) > road_draw_rank(track)
     assert road_draw_rank(main) > road_draw_rank(street)  # the class first: a gravel main road over a street
@@ -581,11 +615,11 @@ def test_roads_rank_by_class_then_paved_for_their_draw_order():
 
 def test_a_bus_stop_by_a_driveway_belongs_to_the_bus_road_and_its_bay_stops_at_junctions():
     """Oulu's Elokuvakeskus: the stop was nearer a service entrance than
-    Torikatu, and its bay was laid along the entrance, across the junction."""
+    Market Street, and its bay was laid along the entrance, across the junction."""
     from types import SimpleNamespace
     from theroadragetrip import static_world
     from theroadragetrip.osm import Way
-    street = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=4.5, highway="residential", name="Torikatu")
+    street = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=4.5, highway="residential", name="Market Street")
     entrance = Way(points_m=[(40.0, 13.0), (60.0, 35.0)], half_width_m=3.5, highway="service")
     cross = Way(points_m=[(56.0, -40.0), (56.0, 40.0)], half_width_m=4.0, highway="residential")
     stop = SimpleNamespace(x=44.0, y=12.0, layer=0, shelter=False, bench=False)
@@ -638,3 +672,29 @@ def test_midsummer_bonfires_stand_on_the_shore_and_at_firepits():
     assert [-200.0, 50.0] in spots
     assert len(shore) == 5  # a 1.6 km shore, every 300 m
     assert all(not (0 <= x <= 400 and 0 <= y <= 400) and min(abs(x), abs(x - 400), abs(y), abs(y - 400)) <= 6 for x, y in shore)
+
+
+def test_ground_heights_absent_without_dem():
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[])
+    assert "ground_heights" not in map_chunks.ChunkIndex(world).message("0_0")
+
+
+def test_ground_heights_shared_at_chunk_edge():
+    dem = SimpleNamespace(height_m=lambda x, y: 0.01 * x + 0.02 * y)
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], dem=dem)
+    index = map_chunks.ChunkIndex(world)
+    left, right = index.message("0_0")["ground_heights"], index.message("1_0")["ground_heights"]
+    cols = left["cols"]
+    assert left["origin"] == [0.0, 0.0] and right["origin"] == [500.0, 0.0]
+    rows = len(left["heights"]) // cols
+    assert [left["heights"][r * cols + cols - 1] for r in range(rows)] == [right["heights"][r * cols] for r in range(rows)]
+
+
+def test_bare_rock_area_is_a_grey_landuse_fill():
+    from theroadragetrip.map_style import SCENERY_COLORS
+    from theroadragetrip.osm import Scenery
+
+    rock = Scenery([(10, 10), (60, 10), (60, 40), (10, 40)], "bare_rock", bbox=(10, 10, 60, 40))
+    area = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[rock])).message("0_0")["landuse"][0]
+    assert area[0] == list(SCENERY_COLORS["bare_rock"])
+    assert max(area[0]) - min(area[0]) < 12  # grey, not green

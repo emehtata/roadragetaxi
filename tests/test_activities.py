@@ -109,6 +109,17 @@ def test_bench_sitting_finds_a_nearby_bench():
     assert location.reservation_key == ("bench", id(bench))
 
 
+def test_bench_sitter_faces_across_the_bench_not_along_it():
+    bench = SceneryObject(x=15.0, y=0.0, kind="bench", direction_angle=1.2)  # the bench's long axis
+    manager, pedestrian = _make_manager_and_pedestrian(scenery_objects=[bench])
+    plugin = BenchSittingPlugin()
+    location = plugin.find_location(_context(manager, pedestrian))
+    from theroadragetrip.activities import ActivityInstance
+    plugin.start(_context(manager, pedestrian), ActivityInstance(plugin_id="bench_sitting", location=location, started_sim_time=0.0))
+    assert pedestrian.animation_state == "sitting"
+    assert math.isclose(pedestrian.heading, 1.2 - math.pi / 2)
+
+
 def test_bench_sitting_returns_none_when_no_bench_nearby():
     manager, pedestrian = _make_manager_and_pedestrian(scenery_objects=[])
     plugin = BenchSittingPlugin()
@@ -239,7 +250,7 @@ def test_shop_window_watching_finds_a_nearby_amenity_entrance():
 
 
 def test_bus_stop_waiting_finds_a_nearby_stop_and_looks_around_periodically():
-    stop = BusStop(x=25.0, y=0.0, name="Keskustori")
+    stop = BusStop(x=25.0, y=0.0, name="Market Square")
     manager, pedestrian = _make_manager_and_pedestrian(bus_stops=[stop])
     plugin = BusStopWaitingPlugin()
 

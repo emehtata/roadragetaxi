@@ -74,6 +74,65 @@ def test_new_traffic_lights_are_available_when_chunk_rebuild_starts(monkeypatch)
     assert traffic.traffic_lights is world.traffic_lights
 
 
+def _roadwork_world(ways, seen):
+    class Grid:
+        items = ()
+
+        def start_rebuild(self, items):
+            self.items = list(items)
+
+        def advance_rebuild(self, budget):
+            return True
+
+    manager = FakeManager()
+    manager._attempted_endpoints = set()
+    return SimpleNamespace(
+        auto_fetch_manager=manager, ways=ways, level_ways=[], level_connectors=[], sceneries=[], buildings=[],
+        parking_spaces=[], waters=[], crossings=[], curbs=[], railways=[], railings=[], traffic_lights=[],
+        logical_intersections=[], stop_signs=[], yield_signs=[], scenery_objects=[], street_lamps=[],
+        traffic_mgr=SimpleNamespace(start_map_sync=lambda *a, **k: None), roadworks=[], roadwork_way_keys=seen,
+        building_grid=Grid(), scenery_grid=Grid(), street_lamp_grid=Grid(), water_grid=Grid(), crossing_grid=Grid(),
+        curb_grid=Grid(), railway_grid=Grid(), railing_grid=Grid(), traffic_light_grid=Grid(), spatial_grid=Grid(),
+        arena_crowds=None,
+    )
+
+
+def _sync_to_chunk_inputs(world):
+    stages = map_sync.map_sync_steps(world)
+    while next(stages) != map_sync.CHUNK_INPUTS_READY:
+        pass
+
+
+def test_extension_adds_roadworks_on_merged_ways(monkeypatch):
+    from theroadragetrip import map_chunks, roadworks
+    from theroadragetrip.osm.models import Way
+
+    monkeypatch.setattr(map_sync, "remove_trees_under_roads_steps", lambda sceneries, ways: ())
+    monkeypatch.setattr(roadworks.random, "random", lambda: 0.9)  # one-lane closure: temporary lights
+    old = Way([(0.0, 0.0), (300.0, 0.0)], "primary", 3.5, osm_id=1)
+    new = Way([(0.0, 2000.0), (400.0, 2000.0)], "primary", 3.5, osm_id=2)
+    world = _roadwork_world([old, new], {1})
+    _sync_to_chunk_inputs(world)
+    assert [work.way for work in world.roadworks] == [new]
+    assert len(world.traffic_lights) == 2 and world.traffic_light_grid.items == world.traffic_lights
+    world.taxi_stops = []
+    world.traffic_mgr.traffic_lights, world.traffic_mgr.sim_time = [], 0.0
+    work = world.roadworks[0]
+    middle = map_chunks.cell_of((work.start[0] + work.end[0]) / 2.0, (work.start[1] + work.end[1]) / 2.0)
+    assert map_chunks.ChunkIndex(world).message(map_chunks.chunk_id(*middle))["roadworks"]
+
+
+def test_second_sync_adds_no_duplicate_roadworks(monkeypatch):
+    from theroadragetrip.osm.models import Way
+
+    monkeypatch.setattr(map_sync, "remove_trees_under_roads_steps", lambda sceneries, ways: ())
+    world = _roadwork_world([Way([(0.0, 0.0), (400.0, 0.0)], "primary", 3.5, osm_id=2)], set())
+    _sync_to_chunk_inputs(world)
+    works, lights = list(world.roadworks), list(world.traffic_lights)
+    _sync_to_chunk_inputs(world)
+    assert world.roadworks == works and world.traffic_lights == lights
+
+
 def test_cold_start_finishes_initial_merge_and_sync_before_gameplay(monkeypatch):
     stages = []
 
@@ -139,7 +198,7 @@ def test_cold_start_timeout_leaves_runtime_streaming_as_the_fallback(monkeypatch
 def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch):
     synced_steps = []
 
-    def steps(world):
+    def steps(world, remaining_budget=None):
         synced_steps.append("start")
         yield map_sync.CHUNK_INPUTS_READY  # the chunks are rebuilt from here; the graphs continue
         assert grown  # reported before the sync ends
@@ -173,9 +232,59 @@ def test_streamer_syncs_once_a_merge_settles_and_reports_the_growth(monkeypatch)
     assert manager.integrated == before
 
 
+def test_tile_merge_and_real_grid_sync_share_one_tick_budget(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(map_sync.time, "perf_counter", lambda: now[0])
+    monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 0.0)
+    slices = []
+
+    class Grid:
+        def start_rebuild(self, ways):
+            pass
+
+        def advance_rebuild(self, budget):
+            slices.append(budget)
+            now[0] += budget
+            return False
+
+    manager = FakeManager()
+
+    def integrate(*, budget_s):
+        now[0] += 0.003
+
+    manager.integrate_completed_tiles = integrate
+    world = SimpleNamespace(auto_fetch_manager=manager, ways=[], sceneries=[], spatial_grid=Grid())
+    streamer = map_sync.MapStreamer(world, lambda *args: None)
+    manager.revision = 2
+    streamer.tick(0, 0, 0, 0)
+    started = now[0]
+    streamer.tick(0, 0, 0, 0)
+    assert len(slices) == 1 and abs(slices[0] - 0.001) < 1e-9
+    assert abs(now[0] - started - 0.004) < 1e-9
+
+
+def test_waiting_for_taxi_worker_returns_without_polling_until_deadline(monkeypatch):
+    monkeypatch.setattr(map_sync.time, "perf_counter", lambda: 0.0)
+    manager = FakeManager()
+    streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager), lambda *args: None)
+    polls = []
+
+    def waiting():
+        while True:
+            polls.append(1)
+            assert len(polls) <= 2
+            yield map_sync.TAXI_WAIT
+
+    streamer._sync = waiting()
+    streamer.tick(0, 0, 0, 0)
+    assert len(polls) == 1
+    streamer.tick(0, 0, 0, 0)
+    assert len(polls) == 2
+
+
 def test_the_status_tells_the_client_what_the_map_is_doing(monkeypatch):
     """For the loading sign: fetching, merging, syncing, building, then ""."""
-    monkeypatch.setattr(map_sync, "map_sync_steps", lambda world: iter([None]))
+    monkeypatch.setattr(map_sync, "map_sync_steps", lambda world, remaining_budget=None: iter([None]))
     monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 0.0)
     manager = FakeManager()
     manager.fetching = False
@@ -200,7 +309,7 @@ def test_the_status_tells_the_client_what_the_map_is_doing(monkeypatch):
 def test_a_settled_merge_waits_briefly_for_a_fetch_in_flight(monkeypatch):
     """The lookahead tile is requested right after the core window, or a
     moment later: one whole-world sync for both, not one each."""
-    monkeypatch.setattr(map_sync, "map_sync_steps", lambda world: iter([None]))
+    monkeypatch.setattr(map_sync, "map_sync_steps", lambda world, remaining_budget=None: iter([None]))
     monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 0.0)
 
     def merged(fetching=True):

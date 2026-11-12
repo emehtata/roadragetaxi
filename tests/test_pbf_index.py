@@ -264,15 +264,21 @@ def test_interrupted_build_does_not_leave_a_resumable_partial_cell(tmp_path, mon
     assert not list(index_dir.glob("*.tmp"))
 
 
-def test_the_windows_release_runs_its_bundled_osmium(tmp_path, monkeypatch):
-    """windows-release.yml ships osmium-tool beside the frozen server
-    (server/osmium/osmium.exe): that one first, else PATH."""
+@pytest.mark.parametrize(
+    "platform, relative",
+    [("win32", "osmium.exe"), ("linux", "bin/osmium")],
+)
+def test_a_release_runs_its_bundled_osmium(tmp_path, monkeypatch, platform, relative):
+    """windows-release.yml ships osmium-tool as server/osmium/osmium.exe and
+    linux-release.yml as server/osmium/bin/osmium, beside the frozen server:
+    that one first, else PATH."""
     import sys
 
-    bundled = tmp_path / "osmium" / "osmium.exe"
-    bundled.parent.mkdir()
+    monkeypatch.setattr(sys, "platform", platform)
+    bundled = tmp_path / "osmium" / relative
+    bundled.parent.mkdir(parents=True)
     bundled.write_bytes(b"")
-    monkeypatch.setattr(sys, "executable", str(tmp_path / "RoadRageServer.exe"))
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "RoadRageServer"))
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(pbf_index.shutil, "which", lambda _name: None)
     assert pbf_index.osmium_command() == str(bundled)
@@ -314,3 +320,45 @@ def test_a_bbox_over_a_missing_cell_gets_no_partial_index(tmp_path):
     assert tiles_for_bbox(tmp_path, (64.05, 25.2, 64.1, 25.3)) == []
     (tmp_path / "b.pbf").write_bytes(b"")
     assert len(tiles_for_bbox(tmp_path, (64.05, 25.2, 64.1, 25.3))) == 2
+
+
+def test_extract_cell_timeout_cleans_tmp(tmp_path, monkeypatch):
+    out_path = tmp_path / "tile_25_64.osm.pbf"
+    cell = {"bbox": [25.0, 64.0, 26.0, 65.0], "file": out_path.name}
+    monkeypatch.setattr(pbf_index.shutil, "which", lambda _name: "/usr/bin/osmium")
+    timeouts = []
+
+    def hung_run(cmd, **kwargs):
+        Path(cmd[cmd.index("-o") + 1]).write_bytes(b"partial")
+        timeouts.append(kwargs.get("timeout"))
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
+
+    monkeypatch.setattr(pbf_index.subprocess, "run", hung_run)
+
+    with pytest.raises(RuntimeError, match="timed out"):
+        pbf_index._extract_cell(tmp_path / "source.osm.pbf", out_path, cell, "smart", 0.05)
+
+    assert timeouts and timeouts[0] is not None, "the cut has a bounded wait"
+    assert not out_path.exists()
+    assert not list(tmp_path.glob("*.tmp")) and not list(tmp_path.glob(".*.tmp"))
+
+
+def test_source_bbox_bad_json_is_runtimeerror(tmp_path, monkeypatch):
+    timeouts = []
+
+    def bad_json(cmd, **kwargs):
+        timeouts.append(kwargs.get("timeout"))
+        return subprocess.CompletedProcess(cmd, 0, "{\"header\": {}}", "")
+
+    monkeypatch.setattr(pbf_index.subprocess, "run", bad_json)
+    with pytest.raises(RuntimeError):
+        pbf_index._source_bbox(tmp_path / "source.osm.pbf")
+
+    def failed(cmd, **kwargs):
+        timeouts.append(kwargs.get("timeout"))
+        raise subprocess.CalledProcessError(1, cmd, "", "boom")
+
+    monkeypatch.setattr(pbf_index.subprocess, "run", failed)
+    with pytest.raises(RuntimeError):
+        pbf_index._source_bbox(tmp_path / "source.osm.pbf")
+    assert timeouts and all(t is not None for t in timeouts), "fileinfo has a bounded wait"

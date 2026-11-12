@@ -14,6 +14,7 @@ const Labels := preload("res://labels.gd")
 const Detail := preload("res://chunk_detail.gd")
 const B25 := preload("res://buildings_25d.gd")
 const B3 := preload("res://buildings_3d.gd")
+const WildlifeLayer := preload("res://wildlife.gd")
 const Perf := preload("res://perf.gd")
 const EntityLayer2 := preload("res://entity_layer.gd")
 
@@ -26,6 +27,155 @@ func check(ok: bool, what: String) -> void:
 	if not ok:
 		_failures += 1
 		printerr("FAIL: ", what)
+
+
+## Vehicle models at their sim length x width (docs/specs/vehicle-realism-audit.md): length and width
+## within 10 %; UNIFORM_SCALE_MODELS keep their source height-to-length ratio (round wheels).
+func test_model_sizes_match_sim() -> void:
+	var sim := {"motorcycle": [2.2, 0.8, 1.2], "e_scooter": [1.2, 0.5, 1.2], "city_bus": [12.0, 2.55, 3.1], "camper_van": [6.2, 2.3, 2.9],
+		"box_truck": [7.5, 2.3, 3.4], "tractor": [4.0, 2.2, 2.8], "panel_van": [5.2, 2.0, 2.3]}  # L, W (base.py), H (the spec's)
+	for kind: String in B3.MODEL_VARIANTS:  # every variant to its kind's length and width (heights differ by model)
+		for variant: String in B3.MODEL_VARIANTS[kind]:
+			check(B3.MODEL_SIZE.has(variant), "%s has a MODEL_SIZE" % variant)
+			if B3.MODEL_SIZE.has(variant):
+				var real: Array = {"bicycle": [1.8, 0.6], "e_scooter": [1.2, 0.5]}[kind]
+				var vnode: Node3D = B3.MODEL_SCENES[variant].instantiate()
+				root.add_child(vnode)
+				vnode.scale = B3.model_scale(variant, real[0], real[1])
+				var vbox := _model_aabb(vnode)
+				var wide: bool = B3.MODEL_WIDTH.has(variant)  # MODEL_WIDTH replaces the sim width, 3 %
+				var want_w: float = B3.MODEL_WIDTH[variant] if wide else real[1]
+				var tol := 0.03 if wide else 0.1
+				check(absf(vbox.size.z / real[0] - 1.0) <= tol and absf(vbox.size.x / want_w - 1.0) <= tol,
+					"%s rendered %.2f x %.2f m, want %.2f x %.2f" % [variant, vbox.size.z, vbox.size.x, real[0], want_w])
+				if kind == "e_scooter":  # handlebar at a standing rider's hands; the rider's hips (seat 0.85 m) above the deck, at or under the bar
+					print("%s rendered %.3f m high" % [variant, vbox.size.y])
+					check(absf(vbox.size.y / 1.2 - 1.0) <= 0.1, "%s rendered %.2f m high, real 1.2" % [variant, vbox.size.y])
+					check(B3.SCOOTER_RIDER_SEAT > 0.25 and B3.SCOOTER_RIDER_SEAT <= vbox.size.y,
+						"%s rider seat %.2f m between deck and bar %.2f m" % [variant, B3.SCOOTER_RIDER_SEAT, vbox.size.y])
+				vnode.free()
+	for kind: String in sim:
+		var node: Node3D = B3.MODEL_SCENES[kind].instantiate()
+		root.add_child(node)
+		var raw := _model_aabb(node)
+		node.scale = B3.model_scale(kind, sim[kind][0], sim[kind][1])
+		var box := _model_aabb(node)
+		var along_x: bool = kind == "city_bus"
+		var length := box.size.x if along_x else box.size.z
+		var width := box.size.z if along_x else box.size.x
+		check(absf(length / sim[kind][0] - 1.0) <= 0.1 and absf(width / sim[kind][1] - 1.0) <= 0.1,
+			"%s rendered %.2f x %.2f m, sim %s" % [kind, length, width, sim[kind]])
+		check(absf(box.size.y / sim[kind][2] - 1.0) <= 0.15, "%s rendered %.2f m high, real %.1f" % [kind, box.size.y, sim[kind][2]])
+		if kind in B3.UNIFORM_SCALE_MODELS and not B3.MODEL_HEIGHT.has(kind):
+			var raw_length := raw.size.x if along_x else raw.size.z
+			check(is_equal_approx(box.size.y / length, raw.size.y / raw_length), "%s keeps its height to length" % kind)
+		node.free()
+
+
+## docs/specs/mountain-bike-size-override.md 1-2: the bars keep the model's 0.78 m, not the sim's 0.6.
+func test_mountain_bike_keeps_its_width() -> void:
+	var s := B3.model_scale("mountain_bike", 1.8, 0.6)
+	check(absf(s.x - 1.0) <= 0.001 and is_equal_approx(s.z, 1.8 / 1.885) and s.y == 1.0, "mountain_bike scale %s" % s)
+	var node: Node3D = B3.MODEL_SCENES["mountain_bike"].instantiate()
+	root.add_child(node)
+	node.scale = s
+	var box := _model_aabb(node)
+	print("mountain_bike rendered %.3f x %.3f x %.3f m" % [box.size.x, box.size.y, box.size.z])
+	check(absf(box.size.x / 0.78 - 1.0) <= 0.03 and absf(box.size.z / 1.8 - 1.0) <= 0.03,
+		"mountain_bike rendered %.2f x %.2f m, want 1.80 x 0.78" % [box.size.z, box.size.x])
+	node.free()
+
+
+func test_model_variant_stable_and_covering() -> void:
+	for kind: String in ["bicycle", "e_scooter"]:
+		var seen := {}
+		for i in 1000:
+			var id := "npc_%d" % i
+			var pick: String = B3.model_variant(kind, id)
+			check(pick == B3.model_variant(kind, id), "%s variant stable for %s" % [kind, id])
+			seen[pick] = true
+		for variant: String in B3.MODEL_VARIANTS[kind]:
+			check(seen.has(variant), "%s picks %s" % [kind, variant])
+	check(B3.model_variant("motorcycle", 7) == "motorcycle", "no variants: the kind itself")
+
+
+## docs/specs/person-legs-walk-swing.md acceptance 3: each walk phase is its own leg swing.
+func test_walk_pose_phase_changes_mesh() -> void:
+	var walk := {}
+	for pose in ["walk_0", "walk_1", "walk_4"]:
+		walk[pose] = B3.person_arrays(Color.BLUE, pose, 1.0, "")["verts"]
+	check(walk["walk_1"] != walk["walk_4"] and walk["walk_1"] != walk["walk_0"] and walk["walk_4"] != walk["walk_0"],
+		"walk_0, walk_1 and walk_4 swing the legs differently")
+
+
+## Acceptance 4-5: the e-scooter rider stands on the deck on two bent legs, torso unchanged.
+## Rules: hips at >= seat - 0.05 m and above the deck; lowest vertex within 0.02 m of SCOOTER_DECK_Y;
+## ankles in x0..x1 (staggered, back foot x0, front x1); the shoes reach from x0 - 0.06 (back shoe's heel)
+## to x1 + 0.18 (front toe: shoe centre 0.06 + half-length 0.12 ahead of the ankle), inside the deck
+## (-0.72 .. 0.62 of the half-length), |z| <= 0.2;
+## knee bend: the knee is >= 0.05 m ahead (+x) of the straight hip-to-ankle line at the knee's height.
+func test_scooter_rider_feet_on_deck() -> void:
+	var length := 1.2
+	var x0 := -length * 0.5 * 0.12  # vehicle_arrays' e_scooter rider span
+	var x1 := length * 0.5 * 0.28
+	var seat := B3.SCOOTER_RIDER_SEAT
+	var deck := B3.SCOOTER_DECK_Y
+	var parked: int = B3.vehicle_arrays("e_scooter", length, 0.5, Color.RED, 0, {"riding": false})["verts"].size()
+	var body := B3._empty_arrays()
+	B3._rider(body, x0, x1, seat, Color.RED, Color.WHITE)
+	var rider: PackedVector3Array = B3.vehicle_arrays("e_scooter", length, 0.5, Color.RED, 0, {"riding": true})["verts"].slice(parked)
+	check(rider.slice(0, body["verts"].size()) == body["verts"], "scooter torso and head unchanged at the seat")
+	var legs := rider.slice(body["verts"].size())
+	check(legs.size() > 0 and legs.size() % 2 == 0, "scooter rider has two legs (%d leg vertices)" % legs.size())
+	var low := INF
+	var back := INF
+	var front := -INF
+	for v in legs:
+		low = minf(low, v.y)
+		back = minf(back, v.x)
+		front = maxf(front, v.x)
+		check(absf(v.z) <= 0.2, "leg vertex %s within +-0.2 m of the centre line" % v)
+	check(absf(low - deck) <= 0.02, "lowest foot vertex %.3f on the deck %.2f" % [low, deck])
+	check(absf(back - (x0 - 0.06)) <= 0.005 and absf(front - (x1 + 0.18)) <= 0.005,
+		"feet reach %.3f..%.3f, rule x0 - 0.06 .. x1 + 0.18 = %.3f..%.3f" % [back, front, x0 - 0.06, x1 + 0.18])
+	check(back >= -length * 0.5 * 0.72 and front <= length * 0.5 * 0.62, "feet inside the deck")
+	var joints := B3.rider_leg_joints(x0, x1, seat, deck)
+	check(joints.size() == 2, "two leg joint sets")
+	for leg: Array in joints:
+		var hip: Vector3 = leg[0]
+		var knee: Vector3 = leg[1]
+		var ankle: Vector3 = leg[2]
+		check(hip.y >= seat - 0.05 and hip.y > deck, "hip %.2f at the seat, above the deck" % hip.y)
+		check(ankle.x >= x0 and ankle.x <= x1 and absf(ankle.z) <= 0.2, "ankle x %.3f in %.3f..%.3f" % [ankle.x, x0, x1])
+		var line_x := lerpf(hip.x, ankle.x, (hip.y - knee.y) / (hip.y - ankle.y))
+		check(knee.x - line_x >= 0.05, "knee %.3f m ahead of the hip-ankle line" % (knee.x - line_x))
+	check(absf(joints[0][2].x - joints[1][2].x) >= 0.1, "scooter rider's feet staggered along the deck")
+
+
+## Acceptance 2: at walking speed every 0.1 s step shows the next walk pose (WALK_POSES_PER_S > 10).
+func test_walk_pose_changes_every_step() -> void:
+	var walker := {"animation_state": "walking", "speed": 1.3}
+	for start: float in [0.0, 0.037, 0.0952]:
+		var t := start
+		var changed := 0
+		for i in 100:
+			if EntityLayer.person_pose(walker, t) != EntityLayer.person_pose(walker, t + 0.1):
+				changed += 1
+			t += 0.1
+		check(changed == 100, "walk pose changes on %d of 100 0.1 s steps from %.3f s" % [changed, start])
+
+
+func _model_aabb(node: Node3D) -> AABB:
+	var out := AABB()
+	var first := true
+	for mesh: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):  # its vertices: rotated parts' boxes overstate
+		var to_root := node.global_transform.affine_inverse() * mesh.global_transform
+		var scaled := Transform3D(Basis.from_scale(node.scale), Vector3.ZERO) * to_root
+		for p: Vector3 in mesh.mesh.get_faces():
+			var at := scaled * p
+			out = AABB(at, Vector3.ZERO) if first else out.expand(at)
+			first = false
+	return out
 
 
 ## A script that fails to parse only aborts the test using it, silently:
@@ -53,16 +203,35 @@ var _ran := false
 func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes get _ready
 	if _ran:
 		return false
+	MapChunk.default_3d = false  # these tests cover the 2D client; tests/release_3d_default.gd the 3D default
 	_ran = true
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
 	test_forest_canopy()
+	test_car_glazing_is_dark_and_reflective()
+	test_model_sizes_match_sim()
+	test_mountain_bike_keeps_its_width()
+	test_walk_pose_phase_changes_mesh()
+	test_scooter_rider_feet_on_deck()
+	test_walk_pose_changes_every_step()
+	test_model_variant_stable_and_covering()
+	test_cloud_coverage_mapping()
+	test_sky_material_takes_cloud_cover()
+	test_precipitation_3d()
+	test_car_model_has_no_range_limit()
+	test_bus_model_radius_matches_car()
+	test_vehicle_models_at_distance()
+	test_unmodelled_kinds_stay_procedural()
+	test_has_model_matches_scenes()
+	test_trees_unaffected_by_vehicle_models()
+	test_pooled_models_merge_by_material()
 	test_decorated_sites()
 	test_menu_music()
 	test_camera_view_command()
 	test_vomit_puddle()
 	test_i18n()
+	test_hud_weather_cloudiness()
 	test_tutorial()
 	test_career_summary_button()
 	test_graphics_settings()
@@ -93,6 +262,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_rest_of_static_world()
 	test_buildings_2_5d()
 	test_buildings_3d()
+	test_street_lamp_slots()
 	test_shop_lights()
 	test_sun_and_shadows()
 	test_roof_snow()
@@ -101,13 +271,41 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_startup_progress()
 	test_holiday_events()
 	test_light_at_cells()
+	test_deck_height_adds_ground()
+	test_camper_drawn_length_matches_row()
+	test_drawn_campers_cleared_per_draw()
 	test_date_picker()
 	test_settings_help()
 	test_credits()
 	test_minimap_is_exported()
+	test_instruments_hide_on_foot()
+	test_instruments_water_warning_on_foot()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 	return false
+
+
+## On foot the dashboard and rage meter are not drawn and leave no click/keep-clear rects.
+func test_instruments_hide_on_foot() -> void:
+	var gauge := Instruments.new()
+	root.add_child(gauge)
+	gauge.cluster_rect = Rect2(0, 0, 10, 10)
+	gauge.trip_reset_rect = Rect2(0, 0, 5, 5)
+	var state := {"player": {"fuel_l": 20.0}, "on_foot": true}
+	gauge.show_state(state)
+	check(gauge.on_foot and gauge.cluster_rect == Rect2() and gauge.trip_reset_rect == Rect2(), "on foot: no dashboard or trip reset rect")
+	var before: Array = gauge._shown.duplicate()
+	gauge.show_state({"player": {"fuel_l": 20.0}, "on_foot": false})
+	check(not gauge.on_foot and gauge._shown != before, "back in the taxi: the on_foot flip alone redraws")
+	gauge.free()
+	check(not Instruments.shows_car_ui({}), "no state yet: dashboard hidden")
+
+
+## The in-water warning is not car UI: it stays on foot.
+func test_instruments_water_warning_on_foot() -> void:
+	var swim := {"player": {}, "on_foot": true, "water_elapsed": 1.0}
+	check(not Instruments.shows_car_ui(swim) and Instruments.shows_car_ui({"on_foot": false}), "car UI only in the taxi")
+	check(Instruments.shows_water_warning(swim), "swimming: water warning still drawn")
 
 
 ## The city menu reads finland_minimap.svg as text (FileAccess): an imported
@@ -130,6 +328,17 @@ func test_credits() -> void:
 	root.add_child(scene)
 	var hud = scene.get_node("Ui/Hud")
 	check(hud.osm_credit.text == "© OpenStreetMap contributors" and hud.osm_credit.get_parent() == hud, "the game view credits OpenStreetMap")
+	var source_notice := "Local map file not found: /x/finland-latest.osm.pbf. Put the .osm.pbf there, set osm_pbf_path, or set osm_source to overpass. Using Overpass for now."
+	hud.show_state({"data_source_notice": source_notice, "taxi": {}}, {"map_ready": false})
+	check(hud._notice.visible and hud._source_notice_until == 0, "the pbf fallback notice stays while the first map load runs")
+	hud.show_state({"data_source_notice": source_notice, "taxi": {}, "map_loading": "fetching"}, {"map_ready": true})
+	check(hud._notice.visible and hud._source_notice_until == 0, "the pbf fallback notice's clock waits while the server still loads the map")
+	hud.show_state({"data_source_notice": source_notice, "taxi": {}})
+	check(hud._source_notice_until > 0 and hud._notice.visible and hud._notice.text == source_notice and hud._notice.autowrap_mode != TextServer.AUTOWRAP_OFF,
+		"the pbf fallback notice shows in the HUD, wrapping")
+	hud._source_notice_until = 1  # ~15 s after the map loaded
+	hud.show_state({"data_source_notice": source_notice, "taxi": {}})
+	check(not hud._notice.visible, "the pbf fallback notice goes after its time and does not come back")
 	scene.free()
 
 
@@ -169,12 +378,19 @@ func test_date_picker() -> void:
 
 func test_settings_help() -> void:
 	var shell = preload("res://startup.gd").new()
-	root.add_child(shell)
+	root.add_child(shell)  # (its texts in the player's own language: user://settings.cfg)
 	shell._settings_menu()
+	shell.career_status = func() -> Array: return [false]
 	shell._career_menu()
-	check(shell._focusables.size() == 2 and shell._focusables[0].text == I18n.text("start", "en"), "career: the goals, then Start and Back")
+	check(shell._focusables.size() == 2 and shell._focusables[0].text == shell._t("start"), "career: the goals, then Start and Back")
+	shell.career_status = func() -> Array: return [true]
+	shell._career_menu()
+	check(shell._focusables.size() == 3 and shell._focusables[0].text == shell._t("continue")
+		and shell._focusables[1].text == shell._t("reset_career"), "career under way: Continue, Reset career, Back")
+	shell._confirm_reset_career()
+	check(shell._focusables.size() == 2 and shell._focusables[0].text == shell._t("cancel"), "reset career asks first, Cancel first")
 	shell._settings_menu()
-	check(shell._focusables.size() == 9 and shell._focusables[6].text.begins_with(I18n.text("setup_wizard", "en")) and shell._focusables[7].text.begins_with(I18n.text("tutorial", "en")), "settings: six categories, the setup wizard, the tutorial and Back")
+	check(shell._focusables.size() == 9 and shell._focusables[6].text.begins_with(shell._t("setup_wizard")) and shell._focusables[7].text.begins_with(shell._t("tutorial")), "settings: six categories, the setup wizard, the tutorial and Back")
 	var help_count := 0
 	for category in ["general", "gameplay", "graphics", "audio", "maps", "experimental"]:
 		shell.call("_" + category + "_menu")
@@ -309,6 +525,48 @@ func test_roof_snow() -> void:
 	check(B3._shared.material.get_shader_parameter("snow_cover") == 0.0, "roof snow: summer restores original roofs")
 	map.free()
 	MapChunk.buildings_3d = false
+
+
+func test_deck_height_adds_ground() -> void:
+	var grid := {"origin": Vector2.ZERO, "step": 20.0, "cols": 2, "heights": PackedFloat32Array([10.0, 10.0, 10.0, 10.0])}
+	check(is_equal_approx(MapChunk.ground_height(grid, Vector2(7.0, -3.0)), 10.0), "ground height on a 10 m grid")
+	check(is_equal_approx(B3.deck_height(Vector2(5.0, -5.0), 1, PackedVector2Array(), grid), 10.0 + B3.DECK_M), "layer-1 deck sits DECK_M above the ground")
+	var end := PackedVector2Array([Vector2(5.0, -5.0)])
+	check(is_equal_approx(B3.deck_height(Vector2(5.0, -5.0), 1, end, grid), 10.0), "a deck ramps to the ground at its end")
+	check(is_equal_approx(B3.deck_height(Vector2(5.0 + B3.RAMP_M, -5.0), 1, end, grid), 10.0 + B3.DECK_M), "full deck height RAMP_M from its end")
+	check(B3.deck_height(Vector2(5.0, -5.0), -1, PackedVector2Array(), grid) < 10.0, "a tunnel stays below the ground")
+	check(MapChunk.ground_height({}, Vector2(5.0, 5.0)) == 0.0, "no grid: flat ground")
+
+
+## The 2D camper's body (6.0 m design rect) is drawn at the streamed row length (docs/specs/camp-pitch-2d.md).
+func test_camper_drawn_length_matches_row() -> void:
+	var chunk := MapChunk.new()
+	var node := Node2D.new()
+	chunk._draw_scenery_object(node, Vector2(3, 4), "camper_van", 0.0, 6.2)  # outside NOTIFICATION_DRAW: draw calls no-op, the record stays
+	var body: float = chunk.drawn_campers.get(Vector2(3, 4), 0.0)
+	node.free()
+	chunk.free()
+	check(absf(body - 6.2) <= 0.05, "camper body drawn %.2f m for a 6.2 m row" % body)
+
+
+## Each _draw_scenery rebuilds drawn_campers from the rows it draws: no stale keys.
+func test_drawn_campers_cleared_per_draw() -> void:
+	var chunk := MapChunk.new()
+	var node := Node2D.new()
+	chunk._data = {"scenery_objects": [[3, 4, "camper_van", 0.0, 6.2], [10, 4, "camper_van", 0.0, 7.0]]}
+	chunk._draw_scenery(node)
+	chunk._draw_scenery(node)
+	check(chunk.drawn_campers.size() == 2, "two camper rows drawn twice: %d records" % chunk.drawn_campers.size())
+	var old_key := MapMath.point(chunk._origin, 3, 4)
+	chunk._data = {"scenery_objects": [[20, 8, "camper_van", 0.0, 6.2]]}
+	chunk._draw_scenery(node)
+	check(chunk.drawn_campers.size() == 1 and not chunk.drawn_campers.has(old_key),
+		"redraw with new rows drops old camper keys: %d records" % chunk.drawn_campers.size())
+	chunk._data = {}
+	chunk._draw_scenery(node)
+	check(chunk.drawn_campers.is_empty(), "removed camper rows leave an empty record")
+	node.free()
+	chunk.free()
 
 
 ## MapLayer.light_at reads each point's light cell, not the whole chunk:
@@ -498,24 +756,32 @@ func test_tutorial() -> void:
 	coach.free()
 
 
+func test_hud_weather_cloudiness() -> void:
+	for case in [[0.0, "clear"], [0.29, "clear"], [0.3, "partly_cloudy"], [0.79, "partly_cloudy"], [0.8, "overcast"], [1.0, "overcast"]]:
+		check(I18n.sky_weather("clear", case[0]) == case[1], "clear sky at cloud %s is %s" % case)
+	check(I18n.sky_weather("rain", 1.0) == "rain", "rain keeps its label under full cloud")
+	check(I18n.weather(I18n.sky_weather("clear", 0.5), "fi") == "Puolipilvistä" and I18n.weather(I18n.sky_weather("clear", 0.9), "fi") == "Pilvistä", "Finnish cloudiness labels")
+	for key in ["weather_partly_cloudy", "weather_overcast"]:
+		check(I18n.FI.has(key) and I18n.EN.has(key) and I18n.DE.has(key), "%s in FI/EN/DE" % key)
+
 func test_i18n() -> void:
 	check(I18n.FI.keys().filter(func(k): return not I18n.EN.has(k)).is_empty(), "every Finnish text has English")
 	check(I18n.EN.keys().filter(func(k): return not I18n.FI.has(k)).is_empty(), "every English text has Finnish")
 	check(I18n.EN.keys().filter(func(k): return not I18n.DE.has(k)).is_empty(), "every English text has German")
 	check(I18n.DE.keys().filter(func(k): return not I18n.EN.has(k)).is_empty(), "every German text has English")
 	check(I18n.LANGUAGES.has("de") and I18n.LANGUAGE_NAMES.de == "Deutsch", "German is selectable")
-	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "de") == "[ZUM TAXI] Aino", "German walking passenger tag")
+	check(EntityLayer.passenger_tag({"name": "Test Person 5", "is_walking_to_car": true}, "de") == "[ZUM TAXI] Test Person 5", "German walking passenger tag")
 	check(Phone.status_text(true, false, [], "", "de") == "Zurzeit keine Fahrtanfragen.", "German phone status")
 	check(Phone.card_text({"passenger_count": 3}, "de") == Phone.card_text({}, "de"), "German fare hides passenger count")
 	check(I18n.startup_detail("Preparing NPC traffic...", "de") == "Verkehr wird vorbereitet…", "German startup details")
 	check(I18n.text("settings", "de") == "EINSTELLUNGEN" and I18n.text("nav_left", "de") == "Links abbiegen", "German settings and navigation")
 	check(Hud.subtitle_text({"speaker": "driver", "text": "Hallo!"}, "de") == "Fahrer: Hallo!", "German subtitle speaker")
 	check(Phone.status_text(true, false, [], "", "fi") == "Ei kyytipyyntöjä juuri nyt.", "the phone reads the Finnish table")
-	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "fi") == "[TAKSILLE] Aino", "walking passenger tag is Finnish")
-	check(EntityLayer.passenger_tag({"name": "Aino", "is_walking_to_car": true}, "en") == "[TO TAXI] Aino", "walking passenger tag is English")
-	check(EntityLayer.passenger_tag({"name": "Aino"}, "fi") == "[NOUTO] Aino", "waiting passenger tag uses the selected language")
+	check(EntityLayer.passenger_tag({"name": "Test Person 5", "is_walking_to_car": true}, "fi") == "[TAKSILLE] Test Person 5", "walking passenger tag is Finnish")
+	check(EntityLayer.passenger_tag({"name": "Test Person 5", "is_walking_to_car": true}, "en") == "[TO TAXI] Test Person 5", "walking passenger tag is English")
+	check(EntityLayer.passenger_tag({"name": "Test Person 5"}, "fi") == "[NOUTO] Test Person 5", "waiting passenger tag uses the selected language")
 	for status in ["PENDING", "ACCEPTED", "TRAIN_ARRIVING", "PASSENGER_WAITING", "PASSENGER_MET", "IN_TAXI", "DECLINED", "MISSED"]:
-		var item := {"id": "booking-1", "kind": "booking", "name": "Aino", "status": status}
+		var item := {"id": "booking-1", "kind": "booking", "name": "Test Person 5", "status": status}
 		check(Phone.details_text(item, "fi").contains("Tila: " + I18n.value_label(status, "fi")), "Finnish booking details: " + status)
 		check(Phone.details_text(item, "en").contains("Status: " + I18n.value_label(status, "en")), "English booking details: " + status)
 		if status != "PENDING":
@@ -607,7 +873,16 @@ func test_decorated_sites() -> void:
 func test_graphics_settings() -> void:
 	var Graphics := preload("res://graphics_settings.gd")
 	var config := ConfigFile.new()
-	check(Graphics.read(config) == Graphics.DEFAULTS, "graphics: defaults preserve current visuals")
+	var defaults := Graphics.DEFAULTS.merged(Graphics.LEVELS)
+	check(Graphics.read(config) == defaults, "graphics: defaults preserve current visuals (brightness and contrast 1)")
+	config.set_value("graphics", "brightness", 9.0)
+	config.set_value("graphics", "contrast", "high")
+	check(Graphics.read(config).brightness == 1.5 and Graphics.read(config).contrast == 1.0, "graphics: brightness clamped to 0.5..1.5, a malformed contrast its default")
+	config.set_value("graphics", "brightness", 1.0)
+	config.set_value("graphics", "contrast", 1.0)
+	for key in Graphics.LEVELS:
+		for lang in I18n.LANGUAGES:
+			check(I18n.text("graphics_" + key, lang) != "graphics_" + key and I18n.text("help_graphics_" + key, lang) != "help_graphics_" + key, "graphics labels/help translated: " + key + " " + lang)
 	config.set_value("graphics", "shadows", "false")
 	check(Graphics.read(config).shadows, "graphics: malformed non-boolean settings use defaults")
 	for key in Graphics.DEFAULTS:
@@ -616,7 +891,7 @@ func test_graphics_settings() -> void:
 			check(I18n.text("graphics_" + key, lang) != "graphics_" + key and I18n.text("help_graphics_" + key, lang) != "help_graphics_" + key, "graphics labels/help translated: " + key + " " + lang)
 	check(config.save("user://graphics-test.cfg") == OK, "graphics: settings saved")
 	var reloaded := ConfigFile.new()
-	check(reloaded.load("user://graphics-test.cfg") == OK and Graphics.read(reloaded).values().all(func(on): return on == false), "graphics: all disabled choices survive reload")
+	check(reloaded.load("user://graphics-test.cfg") == OK and Graphics.DEFAULTS.keys().all(func(key): return Graphics.read(reloaded)[key] == false), "graphics: all disabled choices survive reload")
 	DirAccess.remove_absolute("user://graphics-test.cfg")
 	var previous_3d: bool = MapChunk.buildings_3d
 	var previous_canopy: bool = MapChunk.forest_canopy
@@ -1069,7 +1344,7 @@ func test_hud() -> void:
 		"player": {"speed": 13.9, "engine_on": true},
 		"weather": {"weather_type": "rain", "wetness": 0.4},
 		"taxi": {"balance_cents": 12345, "state": "DROPOFF", "completed_fares": 2, "notification_msg": "Fare paid", "notification_timer": 2.0,
-			"current_passenger": {"name": "Aino", "pickup": {"address": "Kauppurienkatu 1"}, "dropoff": {"address": "Rautatientori"}}},
+			"current_passenger": {"name": "Test Person 5", "pickup": {"address": "Harbour Road 1"}, "dropoff": {"address": "Station Square"}}},
 	})
 	check(text["money"] == "123.45 €", "money (%s)" % text["money"])
 	check(text["speed"] == "50 km/h", "speed (%s)" % text["speed"])
@@ -1241,6 +1516,10 @@ func test_rendering() -> void:
 		var rider := bike._car_shapes.any(func(shape): return shape[0] == "circle")
 		check(lines == 4 and rider == case[2], "bicycle: two tyres, frame and bars; rider %s" % ("shown" if case[2] else "hidden"))
 		bike.free()
+		var scooter := Entities.new()
+		scooter._vehicle(Vector2.ZERO, 0.0, 1.2, 0.5, Color8(200, 40, 40), "e_scooter", false, case[0], false, false, "", 0.0, case[1])
+		check(scooter._car_shapes.any(func(shape): return shape[0] == "circle") == case[2], "e-scooter: standing rider %s" % ("shown" if case[2] else "hidden"))
+		scooter.free()
 
 	# Wet roads: darken 90/255 at full wetness, no sheen below 0.15.
 	var dry := RS.wet_alphas(0.0)
@@ -1384,8 +1663,8 @@ func test_mouse_inspection() -> void:
 	var main: Node = load("res://main.tscn").instantiate()
 	root.add_child(main)
 	main.phone.close()
-	check(main._character_text("pedestrian", {"id": 7, "resident": {"name": "Aino Korhonen", "birth_date": "1990-04-05"}}).contains("Aino Korhonen"), "inspector shows the resident name")
-	check(main._character_text("npc", {"id": 8, "owner": {"name": "Aino Korhonen"}, "occupants": [{"name": "Aino Korhonen"}]}).contains("Aino Korhonen"), "vehicle inspector shows its people")
+	check(main._character_text("pedestrian", {"id": 7, "resident": {"name": "Test Person 2", "birth_date": "1990-04-05"}}).contains("Test Person 2"), "inspector shows the resident name")
+	check(main._character_text("npc", {"id": 8, "owner": {"name": "Test Person 2"}, "occupants": [{"name": "Test Person 2"}]}).contains("Test Person 2"), "vehicle inspector shows its people")
 	main.set_language("fi")
 	var person_text: String = main._character_text("pedestrian", {"state": "waiting_at_light", "activity": "bench_sitting", "resident": {"gender": "female"}})
 	check(person_text.contains("Sukupuoli: nainen") and person_text.contains("Tila: odottaa liikennevaloissa") and person_text.contains("Puuhailee: istuu penkillä"), "inspector translates gender, state and activity")
@@ -1448,8 +1727,8 @@ func _key(code: Key) -> InputEventKey:
 
 
 func _offer(id: String, name: String, metres: int = 800, seconds: float = 40.0) -> Dictionary:
-	return {"id": id, "kind": "offer", "status": "AVAILABLE", "name": name, "pickup": "Kirkkokatu 4",
-		"dropoff": "Rautatientori", "pickup_distance_m": metres, "trip_distance_m": 2300, "time_remaining_s": seconds}
+	return {"id": id, "kind": "offer", "status": "AVAILABLE", "name": name, "pickup": "Test Street 4",
+		"dropoff": "Station Square", "pickup_distance_m": metres, "trip_distance_m": 2300, "time_remaining_s": seconds}
 
 
 func test_phone() -> void:
@@ -1510,9 +1789,9 @@ func test_phone() -> void:
 	phone.open()
 	phone.show_phone({"busy": false, "items": []})
 	check(phone._status.text == "No ride requests right now." and phone._accept.disabled, "no offers: said so, nothing to accept")
-	phone.show_phone({"busy": false, "items": [_offer("offer-1", "Aino"), _offer("offer-2", "Eero", 1500)]})
-	check(phone._rows.get_child_count() == 2 and phone._rows.get_child(0).find_child("Title", true, false).text == "[1] Aino" and phone._rows.get_child(0).find_child("Body", true, false).text.contains("Pickup  Kirkkokatu 4"), "offers are listed as the app's cards")
-	check(phone.selected_id == "offer-1" and phone._details.text.contains("Pickup: Kirkkokatu 4") and phone._details.text.contains("Trip: 2.30 km"), "the first offer's details")
+	phone.show_phone({"busy": false, "items": [_offer("offer-1", "Test Person 5"), _offer("offer-2", "Test Person 6", 1500)]})
+	check(phone._rows.get_child_count() == 2 and phone._rows.get_child(0).find_child("Title", true, false).text == "[1] Test Person 5" and phone._rows.get_child(0).find_child("Body", true, false).text.contains("Pickup  Test Street 4"), "offers are listed as the app's cards")
+	check(phone.selected_id == "offer-1" and phone._details.text.contains("Pickup: Test Street 4") and phone._details.text.contains("Trip: 2.30 km"), "the first offer's details")
 	check(phone._details.text.contains("Fare: unavailable"), "no invented fare")
 	phone._unhandled_input(_key(KEY_DOWN))
 	check(phone.selected_id == "offer-1" and requests.is_empty(), "driving arrows do not change the selected offer")
@@ -1524,7 +1803,7 @@ func test_phone() -> void:
 	check(phone.selected_id == "offer-2" and phone._details.text.contains("To the customer: 1.50 km") and requests.is_empty(), "selecting the second card does not accept it")
 	check(phone._rows.get_child(1).find_child("Badge", true, false).text == "1.50 km", "a card's badge: the distance to the customer")
 	var row_before := phone._rows.get_child(0)
-	phone.show_phone({"busy": false, "items": [_offer("offer-1", "Aino", 790, 39.0), _offer("offer-2", "Eero", 1490, 39.0)]})
+	phone.show_phone({"busy": false, "items": [_offer("offer-1", "Test Person 5", 790, 39.0), _offer("offer-2", "Test Person 6", 1490, 39.0)]})
 	check(phone._rows.get_child(0) == row_before and phone._details.text.contains("1.49 km"), "a value update refreshes text without rebuilding rows")
 
 	phone._unhandled_input(_key(KEY_ENTER))
@@ -1544,20 +1823,20 @@ func test_phone() -> void:
 	check(phone._status.text == "Finish the current fare first." and phone._rows.get_child_count() == 0, "the simulation's state replaces the rows: busy")
 	check(phone.navigation.visible and not phone._offers.visible and not phone._buttons.visible, "accepted fare switches the phone to navigation")
 
-	phone.show_phone({"busy": false, "items": [_offer("offer-3", "Liisa")]})
+	phone.show_phone({"busy": false, "items": [_offer("offer-3", "Test Person 7")]})
 	check(not phone.navigation.visible and phone._offers.visible and phone._buttons.visible, "finished fare switches back to the fare picker")
 	phone.accept_selected()
-	phone.show_phone({"busy": false, "items": [_offer("offer-4", "Matti")]})  # offer-3 expired meanwhile
+	phone.show_phone({"busy": false, "items": [_offer("offer-4", "Test Person 8")]})  # offer-3 expired meanwhile
 	check(phone.pending.is_empty() and phone.selected_id == "offer-4" and phone._rows.get_child_count() == 1, "an expired offer disappears with its pending request")
-	phone.show_phone({"busy": false, "items": [{"id": "booking-7", "kind": "booking", "status": "ACCEPTED", "name": "Kaisa", "train": "IC 27",
-		"pickup": "Oulu", "arrival": "18:42", "dropoff": "Torikatu 1", "surcharge_cents": 800}]})
+	phone.show_phone({"busy": false, "items": [{"id": "booking-7", "kind": "booking", "status": "ACCEPTED", "name": "Test Person 9", "train": "IC 27",
+		"pickup": "Oulu", "arrival": "18:42", "dropoff": "Market Street 1", "surcharge_cents": 800}]})
 	check(phone._rows.get_child(0).find_child("Title", true, false).text.contains("accepted") and phone._accept.disabled and phone._details.text.contains("+8.00 €"), "a booking's state change shows; an accepted one can't be answered")
 
 	requests.clear()
-	phone.show_phone({"busy": false, "items": [_offer("offer-8", "Ville"), _offer("offer-9", "Ulla")]})
+	phone.show_phone({"busy": false, "items": [_offer("offer-8", "Test Person 10"), _offer("offer-9", "Test Person 11")]})
 	phone._unhandled_input(_key(KEY_2))
 	check(requests.size() == 1 and requests[0][0] == "accept" and requests[0][1] == "offer-9", "2 accepts the second offer at once")
-	phone.show_phone({"busy": false, "items": [_offer("offer-5", "Olli")]})
+	phone.show_phone({"busy": false, "items": [_offer("offer-5", "Test Person 12")]})
 	phone.accept_selected()
 	requests.clear()
 	phone.set_connected(false)
@@ -1574,7 +1853,7 @@ func test_wildlife() -> void:
 	var WildlifeLayer := preload("res://wildlife.gd")
 	var layer: Node = WildlifeLayer.new()
 	root.add_child(layer)
-	check(layer.config_valid(layer.species_weights) and WildlifeLayer.SPECIES.size() == 8, "wildlife: species configuration is valid")
+	check(layer.config_valid(layer.species_weights) and WildlifeLayer.SPECIES.size() == 10, "wildlife: species configuration is valid")
 	var brown := Color8(142, 126, 101)
 	check(WildlifeLayer.winter_coat("hare", brown, 1.0).get_luminance() > 0.9 and WildlifeLayer.winter_coat("hare", brown, 0.0) == brown, "wildlife: a hare is white in winter, brown in summer")
 	var squirrel_grey := WildlifeLayer.winter_coat("squirrel", Color8(144, 79, 38), 1.0)
@@ -1642,6 +1921,9 @@ func test_commands_carry_the_player_id() -> void:
 	var refuel := Main.command_for({"throttle": 0.0}, true, false, true)
 	check(refuel["refuel"] == true and refuel["interact"] == false and refuel["throttle"] == 0.0, "a G press sends refuel")
 	check(Main.command_for({}, true, false, false)["refuel"] == false, "no press, no refuel")
+	var walk := Main.walk_controls({"forward": 1.0, "turn": 1.0}, 7.0)  # first person: A steps left, the yaw is the heading
+	check(walk["strafe"] == -1.0 and walk["turn"] == 0.0 and is_equal_approx(walk["look_heading"], 7.0 - TAU), "first-person walk: A strafes, the camera yaw goes to the server")
+	check(not Main.walk_controls({}, 1.0).has("look_heading"), "no walking keys in the command, no look heading")
 	check(FileAccess.get_file_as_string("res://i18n.gd").contains("G   Refuel"), "F1 help names G")
 	test_controls_and_economy()
 	test_taxi_information()
@@ -1709,7 +1991,7 @@ func test_speech_and_stations() -> void:
 	hud.show_state({"game_time_seconds": 31980.0, "calendar": {"date": "2026-10-10", "time_scale": 1.0}, "on_foot": false,
 		"player": {"engine_on": true}, "weather": {"weather_type": "rain", "wetness": 1.0, "temperature_c": -0.2},
 		"taxi": {"balance_cents": 123456, "total_score": -1200, "completed_fares": 12, "state": "PICKUP",
-			"current_passenger": {"name": "Matti Vesterinen", "pickup": {"address": "Aaltovaarantie 12, Kaakkuri, a very long address indeed that goes on"}}}})
+			"current_passenger": {"name": "Test Person 4", "pickup": {"address": "Test Road 12, Suburb, a very long address indeed that goes on"}}}})
 	var boxes := []
 	for name in ["_clock", "_money", "_weather"]:
 		var label: Label = hud.get(name)
@@ -1720,11 +2002,11 @@ func test_speech_and_stations() -> void:
 		for j in range(i + 1, boxes.size()):
 			apart = apart and not boxes[i].intersects(boxes[j])
 	check(apart and not boxes[2].intersects(Rect2(1280 - 79, 45, 62, 62)), "HUD: clock, score and weather on screen, none overlapping, clear of the limit sign")
-	check(Hud.subtitle_text({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei"}) == "Aino: Hei" and Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}) == "Driver: Mennään", "the passenger's name, else the speaker")
+	check(Hud.subtitle_text({"speaker": "passenger", "speaker_name": "Test Person 5", "text": "Hei"}) == "Test Person 5: Hei" and Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}) == "Driver: Mennään", "the passenger's name, else the speaker")
 	check(Hud.subtitle_text({"speaker": "passenger", "text": ""}) == "" and Hud.subtitle_text({}) == "", "no text: no subtitle")
 	check(Hud.subtitle_text({"speaker": "driver", "text": "Mennään"}, "fi") == "Kuljettaja: Mennään", "the speaker in Finnish")
-	hud.show_subtitle({"speaker": "passenger", "speaker_name": "Aino", "text": "Hei", "duration_s": 4.0})
-	check(hud._subtitle.visible and hud._subtitle.text == "Aino: Hei", "one subtitle shows")
+	hud.show_subtitle({"speaker": "passenger", "speaker_name": "Test Person 5", "text": "Hei", "duration_s": 4.0})
+	check(hud._subtitle.visible and hud._subtitle.text == "Test Person 5: Hei", "one subtitle shows")
 	var glow_p := PackedVector2Array()
 	var glow_c := PackedColorArray()
 	var glow_t := PackedInt32Array()
@@ -1858,6 +2140,13 @@ func test_speech_and_stations() -> void:
 	var pbf_modified := int(FileAccess.get_modified_time("res://finland_minimap.svg"))
 	check(not Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified) and Startup.pbf_is_old("res://finland_minimap.svg", pbf_modified + Startup.PBF_MAX_AGE_S + 1), "map source: files over 30 days old are offered an update")
 	check(Startup.download_percent(25, 100) == 25.0 and Startup.download_percent(120, 100) == 100.0 and Startup.download_percent(1, 0) == 0.0, "map source: download progress is bounded and handles an unknown size")
+	check(not Startup.download_should_refresh(1153434, 1048576, 1500, 1000) and Startup.download_should_refresh(2097152, 1048576, 1100, 1000) and Startup.download_should_refresh(1058816, 1048576, 2000, 1000) and Startup.download_should_refresh(1000, -1, 0, 0), "startup download refresh throttle")
+	var ema: float = 0.0
+	for _i in 40:
+		ema = Startup.download_speed(ema, 2097152, 1.0)
+	var spiked: float = Startup.download_speed(ema, 20971520, 1.0)
+	check(absf(ema - 2097152.0) < 1.0 and spiked - ema <= 0.2 * 20971520.0 + 0.001 and Startup.download_speed(ema, 5000, 0.0) == ema, "startup download speed smoothing")
+	check(Startup.download_text(12900000, 314572800, 2097152.0) == "12.0 / 300.0 MiB  -  2.0 MiB/s" and Startup.download_text(12900000, 0, 2097152.0) == "12.0 MiB  -  2.0 MiB/s" and Startup.download_text(12900000, 314572800, 0.0) == "12.0 / 300.0 MiB  -  -- MiB/s", "startup download text")
 	var replace_target := OS.get_temp_dir().path_join("rrt-pbf-replace-test-%d" % OS.get_process_id())
 	var replace_partial := replace_target + ".part"
 	var old_file := FileAccess.open(replace_target, FileAccess.WRITE)
@@ -2163,10 +2452,10 @@ func test_label_modes() -> void:
 	labels.update_view(Transform2D(), 1, false)
 	check(labels.visible, "mode 1 shows the overlay")
 	labels.free()
-	var candidates := [[0.0, 0.0, "Keskusta", 0], [0.0, 0.0, "Kirkkokatu", 4]]
+	var candidates := [[0.0, 0.0, "Keskusta", 0], [0.0, 0.0, "Test Street", 4]]
 	var canvas := Transform2D(0.0, Vector2(640, 360)).scaled_local(Vector2(9, 9))
 	var font: Font = ThemeDB.fallback_font
-	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 1).map(func(p): return p[1]) == ["Kirkkokatu"], "mode 1: only the street name")
+	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 1).map(func(p): return p[1]) == ["Test Street"], "mode 1: only the street name")
 	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 2).map(func(p): return p[1]) == ["Keskusta"], "mode 2: everything, by priority (one spot: the district wins)")
 	check(Labels.declutter(candidates, canvas, Vector2(1280, 720), font, 0).is_empty(), "mode 0: none")
 	var driving := {"on_foot": false, "player": {"engine_on": true}}
@@ -2191,10 +2480,10 @@ func test_navigation_route() -> void:
 	check(is_equal_approx((device.size * device.scale).x, 270.0) and is_equal_approx(device.size.aspect(), Phone.DEVICE_SIZE.aspect()), "shared phone: compact portrait dimensions")
 	check(device._clock.text == "23:59" and device._battery_label.text == "  19%", "shared phone: clock and live battery")
 	check(device._clock.get_parent().get_child(2).text == "▂▄▆█ 5G", "navigation phone: signal indicator matches offer app")
-	var instruction := {"instruction": {"maneuver": "left", "distance_m": 125.0, "street": "Kirkkokatu"}}
+	var instruction := {"instruction": {"maneuver": "left", "distance_m": 125.0, "street": "Test Street"}}
 	device.show_navigation(instruction)
 	var app = device.navigation
-	check(device.visible and app.visible and app._distance.text == "130 m" and app._street.text == "Kirkkokatu", "navigation phone: distance and outgoing street from server")
+	check(device.visible and app.visible and app._distance.text == "130 m" and app._street.text == "Test Street", "navigation phone: distance and outgoing street from server")
 	device.update_layout()
 	var default_position: Vector2 = device.position
 	var phone_rect := Rect2(device.position, device.size * device.scale)
@@ -2221,7 +2510,7 @@ func test_navigation_route() -> void:
 	device.open()
 	check(device.position == default_position + drag.relative, "navigation phone: retains moved position when shown again")
 	check(device.layout.panel_at(device.position + Vector2(20, 150)) == "", "phone: only header drags, app buttons remain clickable")
-	device.show_phone({"busy": false, "items": [_offer("offer-1", "Aino")]})
+	device.show_phone({"busy": false, "items": [_offer("offer-1", "Test Person 5")]})
 	check(device.position == default_position + drag.relative and not app.visible and device._offers.visible, "switching apps keeps phone position")
 	device.show_phone({"busy": true, "items": []})
 	device.layout.reset()
@@ -2236,7 +2525,7 @@ func test_navigation_route() -> void:
 		shown.append(NavigationPhone.format_distance(metres))
 	check(shown == ["3 m", "10 m", "10 m", "90 m", "460 m", "1.0 km", "1.0 km", "1.1 km", "12.3 km"],
 		"navigation phone: 1 m under 10 m, 10 m steps under 1 km, 100 m steps above: %s" % [shown])
-	device.show_navigation({"instruction": {"maneuver": "left", "distance_m": 87.0, "total_m": 2345.0, "street": "Torikatu"}})
+	device.show_navigation({"instruction": {"maneuver": "left", "distance_m": 87.0, "total_m": 2345.0, "street": "Market Street"}})
 	check(app._distance.text == "90 m" and app._total.text == "Yhteensä 2.3 km", "navigation phone: next turn and the total driving distance")
 	device.show_navigation({})
 	check(device.visible and app._distance.text == "" and app._street.text == "Ei määränpäätä", "navigation phone: no stale instruction without a destination")
@@ -2283,7 +2572,7 @@ func test_navigation_route() -> void:
 		check(EntityLayer.route_points(bad, origin).is_empty(), "no line from %s" % str(bad))
 	var layer: Node2D = EntityLayer.new()
 	layer.origin = origin
-	var passenger := {"name": "Aino", "pickup": {"x": 130.0, "y": 160.0, "address": "A", "radius_m": 4.0}, "dropoff": {"x": 0.0, "y": 0.0, "address": "B", "radius_m": 4.0}}
+	var passenger := {"name": "Test Person 5", "pickup": {"x": 130.0, "y": 160.0, "address": "A", "radius_m": 4.0}, "dropoff": {"x": 0.0, "y": 0.0, "address": "B", "radius_m": 4.0}}
 	var state := {"taxi": {"state": "PICKUP", "current_passenger": passenger}, "navigation": {"points": [[100.0, 200.0], [130.0, 160.0]]}}
 	check(layer.route_for(state).is_empty(), "N off: nothing drawn")
 	layer.show_route = true
@@ -2295,7 +2584,7 @@ func test_navigation_route() -> void:
 	var replanned := state.duplicate(true)
 	replanned["navigation"]["points"] = [[100.0, 200.0], [100.0, 150.0], [130.0, 160.0]]
 	check(layer.route_for(replanned).size() == 3, "a new route replaces the old line")
-	check(layer.route_for({"taxi": {"state": "PICKUP"}, "navigation": replanned["navigation"]}).is_empty(), "no target: no route")
+	check(layer.route_for({"taxi": {"state": "PICKUP"}, "navigation": replanned["navigation"]}).size() == 3, "no fare yet (a pre-booking's stand): the server's route")
 	check(layer.route_for(replanned.merged({"navigation": {"points": []}}, true)).is_empty(), "an empty route: nothing")
 	check(layer.route_for(replanned.merged({"navigation": null}, true)).is_empty() and layer.route_for({"taxi": replanned["taxi"]}).is_empty(), "null or missing navigation: nothing")
 	layer.show_route = false
@@ -2320,12 +2609,12 @@ func test_navigation_route() -> void:
 
 ## godot-final-03: the running fare in the mission line, the pump price in the gauge.
 func test_taxi_information() -> void:
-	var passenger := {"name": "Aino", "pickup": {"address": "Kirkkokatu 4"}, "dropoff": {"address": "Rautatientori"}}
+	var passenger := {"name": "Test Person 5", "pickup": {"address": "Test Street 4"}, "dropoff": {"address": "Station Square"}}
 	var fare := {"state": "DROPOFF", "current_passenger": passenger, "elapsed_time": 61.6, "live_fare_cents": 1234,
 		"fare_distance_m": 2345.6, "passenger_happiness": 49.6}
-	check(Hud.task_text(fare) == "Drive Aino to Rautatientori", "the task: who and where to")
-	check(Hud.task_text(fare.merged({"state": "PICKUP"}, true)) == "Pick up Aino at Kirkkokatu 4", "pickup task")
-	check(Hud.task_text(fare.merged({"state": "WALKING"}, true)) == "Aino is walking to the taxi", "walking task")
+	check(Hud.task_text(fare) == "Drive Test Person 5 to Station Square", "the task: who and where to")
+	check(Hud.task_text(fare.merged({"state": "PICKUP"}, true)) == "Pick up Test Person 5 at Test Street 4", "pickup task")
+	check(Hud.task_text(fare.merged({"state": "WALKING"}, true)) == "Test Person 5 is walking to the taxi", "walking task")
 	check(Hud.task_text({"completed_fares": 3}) == "", "no passenger: no task")
 	check(Hud.meter_info(fare) == "2.35 km", "the meter shows distance without customer satisfaction")
 	check(Hud.meter_info(fare.merged({"fare_distance_m": null, "passenger_happiness": [1]}, true)) == "", "missing or malformed: left out")
@@ -2435,10 +2724,10 @@ func test_meet_road_camera_lightning() -> void:
 	# Road and limit: the simulation's values.
 	check(Hud.values({})["road"] == "" and Instruments.speed_limit({}) == 0, "no road field (older server): nothing shown")
 	check(Hud.values({"road": {"name": null, "speed_limit_kmh": null}})["road"] == "Road: Off-road", "off-road")
-	check(Hud.values({"road": {"name": "Isokatu", "speed_limit_kmh": 40}})["road"] == "Road: Isokatu [Limit: 40 km/h]", "named road with its limit")
+	check(Hud.values({"road": {"name": "Main Street", "speed_limit_kmh": 40}})["road"] == "Road: Main Street [Limit: 40 km/h]", "named road with its limit")
 	check(Hud.values({"road": {"name": "Living Street", "speed_limit_kmh": null}})["road"] == "Road: Living Street", "unnamed road (highway type) without a limit")
-	check(Instruments.speed_limit({"road": {"name": "Isokatu", "speed_limit_kmh": 40}}) == 40, "limit sign value")
-	check(Instruments.speed_limit({"road": {"name": "Isokatu", "speed_limit_kmh": null}}) == 0, "no limit known: no sign")
+	check(Instruments.speed_limit({"road": {"name": "Main Street", "speed_limit_kmh": 40}}) == 40, "limit sign value")
+	check(Instruments.speed_limit({"road": {"name": "Main Street", "speed_limit_kmh": null}}) == 0, "no limit known: no sign")
 
 	# Speed camera: only a running notice flagged by the simulation.
 	var camera_hit := {"taxi": {"notification_msg": "Speed camera! 12 km/h over -50 pts", "notification_timer": 3.0, "speed_camera_notice": true}}
@@ -2448,9 +2737,9 @@ func test_meet_road_camera_lightning() -> void:
 	check(Hud.values(camera_hit)["notice"] == "" and not Hud.values(camera_hit)["notice_camera"], "an expired notice shows nothing")
 
 	# Meet panel: the server's lines while a meet is on, gone after.
-	var meet := {"status": "PASSENGER_WAITING", "lines": ["Meet: Aino", "IC57 | Oulu", "Park and get out (F)"],
+	var meet := {"status": "PASSENGER_WAITING", "lines": ["Meet: Test Person 5", "IC57 | Oulu", "Park and get out (F)"],
 		"arrow": {"id": 7, "x": 20.0, "y": 40.0, "radius_m": 0.45}}
-	check(Hud.values({"meet": meet})["meet"] == "Meet: Aino\nIC57 | Oulu\nPark and get out (F)", "meet panel lines")
+	check(Hud.values({"meet": meet})["meet"] == "Meet: Test Person 5\nIC57 | Oulu\nPark and get out (F)", "meet panel lines")
 	check(Hud.values({"meet": null})["meet"] == "" and Hud.values({})["meet"] == "", "no meet: no panel")
 	var scene: Node = load("res://main.tscn").instantiate()
 	var hud: Control = scene.get_node("Ui/Hud")
@@ -2461,7 +2750,7 @@ func test_meet_road_camera_lightning() -> void:
 	scene.free()
 	root.add_child(hud)
 	hud.show_state({"meet": meet, "taxi": camera_hit["taxi"]})
-	check(hud._meet.visible and hud._meet.text.begins_with("Meet: Aino"), "the panel shows")
+	check(hud._meet.visible and hud._meet.text.begins_with("Meet: Test Person 5"), "the panel shows")
 	hud.show_state({"meet": null})
 	check(not hud._meet.visible, "boarded or missed: the panel goes")
 	hud.queue_free()
@@ -2493,7 +2782,7 @@ func test_gameplay_points() -> void:
 	map.set_origin(Vector2(1000, 2000))
 	var message := {"chunk_id": "2_4", "bounds": [1000, 2000, 1500, 2500], "roads": [], "railways": [], "waters": [], "buildings": [],
 		"taxi_stands": [[1020.0, 2040.0]],
-		"fuel_stations": [{"x": 1030.0, "y": 2060.0, "angle": 0.5, "is_area": true, "name": "Neste", "price_cents": 189}],
+		"fuel_stations": [{"x": 1030.0, "y": 2060.0, "angle": 0.5, "is_area": true, "name": "Fuel Station", "price_cents": 189}],
 		"traffic_lights": [{"id": 0, "x": 1102.0, "y": 2050.0, "angle": 1.5708}, {"id": 1, "x": 1200.0, "y": 2050.0, "angle": 0.0}],
 		"roadworks": [{"start": [1480.0, 2100.0], "end": [1540.0, 2100.0], "lane_closed": true, "half_width_m": 3.5}]}
 	message = JSON.parse_string(JSON.stringify(message))  # as the client gets it: every number a float
@@ -2503,7 +2792,7 @@ func test_gameplay_points() -> void:
 	check(MapMath.point(map.origin, 1020.0, 2040.0) == Vector2(20, -40), "a stand sits at its map position relative to the origin")
 	check(map.add_chunk({"chunk_id": "0_0"}) and map._chunks["0_0"]._px_layers.size() == 1 and map._chunks["0_0"]._lights == null,
 		"a chunk without points adds no point layers (older servers too)")
-	check(MapChunk.fuel_board_text(message["fuel_stations"][0]) == "Neste  1.89 €/L", "the board shows the server's price")
+	check(MapChunk.fuel_board_text(message["fuel_stations"][0]) == "Fuel Station  1.89 €/L", "the board shows the server's price")
 
 	# Phases: lit as sent, unlit when not sent, redrawn only on change.
 	check(MapChunk.lamps("green") == [false, false, true] and MapChunk.lamps("red+yellow") == [true, true, false], "lamps by phase")
@@ -2809,7 +3098,7 @@ func test_rest_of_static_world() -> void:
 		"parking": [[[200, 200], [205, 200], [205, 210], [200, 210]]], "curbs": [[[0, 5], [50, 5]]],
 		"crossings": [[100, 10, 0.0, 6.0, 2.2]], "speed_bumps": [[150, 10, 0.0, 4.0, "table"]],
 		"signs": [[120, 20, "stop", 0.0]], "speed_cameras": [[3, 130, 20, 1.5]], "guardrails": [[45, 0, 45, 100]],
-		"labels": [[10, 10, "Isokatu", 4], [12, 10, "Keskusta", 0]], "level_roads": [[[-3], [[0, 50], [80, 50]], 3.0, [70, 70, 70]]]}))
+		"labels": [[10, 10, "Main Street", 4], [12, 10, "Keskusta", 0]], "level_roads": [[[-3], [[0, 50], [80, 50]], 3.0, [70, 70, 70]]]}))
 	check(map.add_chunk(message), "the rest of the static world arrives with its chunk")
 	var chunk = map._chunks["0_0"]
 	check(typeof(chunk._data["landuse"][0][2]) == TYPE_PACKED_VECTOR2_ARRAY and typeof(chunk._data["roads"][0]["points"]) == TYPE_PACKED_VECTOR2_ARRAY,
@@ -2851,11 +3140,11 @@ func test_rest_of_static_world() -> void:
 	# Labels: priority, one per name, no overlaps, zoom gates, the HUD band left free.
 	var canvas := Transform2D(0.0, Vector2(9, 9), 0.0, Vector2(640, 360))
 	var font := ThemeDB.fallback_font
-	var shown := Labels.declutter([[0, 0, "Isokatu", 4], [1, 0, "Keskusta", 0], [0, -20, "Torikatu", 4], [0, 20, "Torikatu", 4], [0, -35, "Ylhaalla", 4]],
+	var shown := Labels.declutter([[0, 0, "Main Street", 4], [1, 0, "Keskusta", 0], [0, -20, "Market Street", 4], [0, 20, "Market Street", 4], [0, -35, "Ylhaalla", 4]],
 		canvas, Vector2(1280, 720), font)
-	check(shown.map(func(l): return l[1]) == ["Keskusta", "Torikatu"],
+	check(shown.map(func(l): return l[1]) == ["Keskusta", "Market Street"],
 		"the district wins the spot over an overlapping road label; a name shows once; the HUD band (y < 80) stays free")
-	check(Labels.declutter([[0, 0, "Isokatu", 4]], Transform2D(0.0, Vector2(0.3, 0.3), 0.0, Vector2(640, 360)), Vector2(1280, 720), font).is_empty(),
+	check(Labels.declutter([[0, 0, "Main Street", 4]], Transform2D(0.0, Vector2(0.3, 0.3), 0.0, Vector2(640, 360)), Vector2(1280, 720), font).is_empty(),
 		"roads are labelled from 0.35 px/m")
 	var many: Array = []
 	for i in 50:
@@ -2909,6 +3198,19 @@ func test_rest_of_static_world() -> void:
 	var run := [{"start": [0.0, 0.0], "end": [50.0, 0.0]}, {"start": [50.0, 0.0], "end": [100.0, 0.2]},
 		{"start": [500.0, 0.0], "end": [540.0, 0.0]}]
 	check(EL.open_ends(run) == [[true, false], [false, true], [true, true]], "a run's shared ends are not barriers (%s)" % [EL.open_ends(run)])
+	# Tie 21 Tornio: way 1552544935's last piece ends 0.1 m before way 1552544936's first begins.
+	var joined := [{"start": [370796.0, 7306872.0], "end": [370797.70, 7306883.20]},
+		{"start": [370797.72, 7306883.30], "end": [370805.0, 7306930.0]}]
+	check(EL.open_ends(joined) == [[true, false], [false, true]], "pieces of two ways meeting within 1 m are one run (%s)" % [EL.open_ends(joined)])
+	var chain := []
+	for i in 5:  # five pieces sharing exact ends, then a 0.3 m join to the next way (250.0 and 250.3 snap to different 0.5 m cells), then three more
+		chain.append({"start": [0.0, i * 50.0], "end": [0.0, i * 50.0 + 50.0]})
+	for i in 3:
+		chain.append({"start": [0.02, 250.3 + i * 50.0], "end": [0.02, 300.3 + i * 50.0]})
+	var open_count := 0
+	for pair in EL.open_ends(chain):
+		open_count += int(pair[0]) + int(pair[1])
+	check(open_count == 2 and EL.open_ends(chain)[0][0] and EL.open_ends(chain)[7][1], "an 8-piece run over two ways has only its 2 ends open (%s)" % [EL.open_ends(chain)])
 
 	# Taxi brawls: drawn from the server's current state; a punch per action seq.
 	var brawler = load("res://entity_layer.gd").new()
@@ -2940,6 +3242,10 @@ func test_rest_of_static_world() -> void:
 	var hint: String = Hud.values({"on_foot": true, "brawls": with_me["brawls"]})["hint"]
 	check(hint == Hud.T.text("hint_brawl", "en") and hint.contains("Space"), "in a fight on foot the hint lists the fight keys")
 	check(Hud.values({"on_foot": true})["hint"] == Hud.T.text("hint_foot", "en"), "otherwise the walking hint")
+	check(Hud.values({"on_foot": true, "interaction": {"kind": "taxi_door"}})["hint"].begins_with("Press E to get in the taxi"), "at the driver's door: the E prompt")
+	check(Hud.values({"on_foot": false, "interaction": {"kind": "taxi_door"}, "player": {"engine_on": true}})["hint"] == "", "no door prompt at the wheel")
+	check(Hud.values({"on_foot": true, "interaction": {"kind": "building", "label": "Kauppa"}})["hint"].begins_with("Press E to look at Kauppa"), "by a wall: the look prompt names the building")
+	check(Hud.values({"on_foot": true, "interaction": {"kind": "building", "label": ""}})["hint"].begins_with("Press E to look at the building"), "an unnamed building: the plain look prompt")
 	brawler._brawls({"brawls": []}, {}, 0.0, view)
 	check(brawler._brawl_punches.is_empty(), "a finished brawl is forgotten")
 	brawler.free()
@@ -3077,6 +3383,29 @@ func test_sun_and_shadows() -> void:
 	layer.queue_free()
 
 
+## rrt-021-streetlights-01: lamps keep their lights while the view moves; a
+## dropped lamp fades out before its light goes to another lamp.
+func test_street_lamp_slots() -> void:
+	var keys: Array = [Vector2.INF, Vector2.INF, Vector2.INF]
+	var weights := PackedFloat32Array([0.0, 0.0, 0.0])
+	var targets := PackedFloat32Array([0.0, 0.0, 0.0])
+	var row := func(x: float) -> Array: return [Vector2(x, 0.0), 10.0]
+	B3.assign_lamps(keys, weights, targets, [row.call(1.0), row.call(2.0), row.call(2.0), row.call(3.0)], 4)
+	check(keys == [Vector2(1, 0), Vector2(2, 0), Vector2(3, 0)], "lamp slots: the nearest lamps, a lamp twice (chunks overlap) once")
+	weights = PackedFloat32Array([1.0, 1.0, 1.0])
+	B3.assign_lamps(keys, weights, targets, [row.call(3.0), row.call(4.0), row.call(2.0), row.call(1.0)], 4)
+	check(keys == [Vector2(1, 0), Vector2(2, 0), Vector2(3, 0)] and targets == PackedFloat32Array([1, 1, 1]),
+		"lamp slots: a reordered view moves no light; ranked within the hysteresis, lamp 1 keeps its light")
+	B3.assign_lamps(keys, weights, targets, [row.call(3.0), row.call(4.0), row.call(2.0), row.call(5.0)], 4)
+	check(keys[0] == Vector2(1, 0) and targets[0] == 0.0 and keys.find(Vector2(4, 0)) == -1,
+		"lamp slots: a dropped lamp fades out first, its light still in place")
+	weights[0] = 0.0
+	B3.assign_lamps(keys, weights, targets, [row.call(3.0), row.call(4.0), row.call(2.0), row.call(5.0)], 4)
+	check(keys[0] == Vector2(4, 0) and targets[0] == 1.0, "lamp slots: once dark, the light goes to the next lamp")
+	B3.assign_lamps(keys, weights, targets, [], 4)
+	check(targets == PackedFloat32Array([0, 0, 0]) and keys[1] == Vector2(2, 0), "lamp slots: lights off at dawn fade, not snap")
+
+
 func test_buildings_3d() -> void:
 	check(B3.to_3d(Vector2(12.5, -40.0)) == Vector3(12.5, 0.0, -40.0), "2D (x, y) -> 3D (x, 0, y)")
 	check(B3.to_3d(Vector2(1, 2), 7.0).y == 7.0, "height is the 3D y")
@@ -3193,6 +3522,209 @@ func test_buildings_3d() -> void:
 	map.clear()
 	check(map.buildings_3d.instance_count() == 0, "a chunk's meshes go with it")
 	map.free()
+	# rtx-scene-readiness step 1: --outdoor-3d puts a chunk's ground and roads in the same 3D view, owned by the chunk
+	MapChunk.outdoor_3d = true
+	map = MapLayer.new()
+	root.add_child(map)
+	map.add_chunk({"chunk_id": "street", "bounds": [0, 0, 100, 100], "roads": [{"points": [[0, 50], [100, 50]], "half_width_m": 4.0, "drivable": true}]})
+	var grounds: Array = map.buildings_3d._view.get_children().filter(func(n): return n is MeshInstance3D and n.material_override == B3._shared["ground"])
+	var extent: AABB = grounds[0].mesh.get_aabb().merge(grounds[1].mesh.get_aabb()) if grounds.size() == 2 else AABB()
+	check(grounds.size() == 2 and grounds.all(func(n): return n.layers == B3.LAYER_BUILDINGS) and is_equal_approx(extent.size.x, 108.0) and extent.size.y > 0.0 and extent.size.y < 0.2,
+		"a building-less chunk still brings its ground and its road (a mesh of its own) to the 3D view, the road just above the ground")
+	check(map._chunks.values()[0].get_children().all(func(n): return not (n is Node2D and n.z_index < 7 and n.visible)), "the 2D ground layers under the opaque 3D view are not drawn")
+	var street_chunk: Node = map._chunks.values()[0]
+	var built_before: Array = street_chunk.meshes_3d.duplicate()
+	street_chunk.set_season([1.0, 0.0, 0.0, 0.0])
+	check(not street_chunk.meshes_3d.is_empty() and street_chunk.meshes_3d.all(func(n): return not built_before.has(n)),
+		"a new season builds the chunk's 3D ground again (landuse colours, ice), as the 2D layers redraw")
+	map.clear()
+	check(map.buildings_3d.instance_count() == 0, "the ground goes with its chunk")
+	map.free()
+	MapChunk.outdoor_3d = false
+	# rtx-scene-readiness step 2: outward normals, and every car vertex tagged with its part's material
+	var up_tri := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array()}
+	B3._tri(up_tri, Vector3(0, 1, 0), Vector3(1, 1, 0), Vector3(0, 1, 1), Color.WHITE, Vector3.UP)
+	B3._tri(up_tri, Vector3(0, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1), Color.WHITE, Vector3.LEFT)
+	var normals := B3.flat_normals(up_tri["verts"])
+	check(normals[0].is_equal_approx(Vector3.UP) and normals[3].is_equal_approx(Vector3.LEFT), "flat normals face outward, as _tri winds them")
+	var taxi := B3.car_arrays(4.4, 1.8, Color.YELLOW, EntityLayer.CAR_SHAPES[0], 2)
+	var distant_taxi := B3.car_arrays(4.4, 1.8, Color.YELLOW, EntityLayer.CAR_SHAPES[0], 2, 0, 0)
+	check(distant_taxi["verts"].size() < taxi["verts"].size() and distant_taxi["part"].size() == distant_taxi["verts"].size(),
+		"distant cars keep their silhouette with fewer wheel and trim vertices")
+	for i in EntityLayer.CAR_SHAPES.size():
+		check(B3.car_model_kind(EntityLayer.CAR_SHAPES[i], 3.8 if i == 6 else 4.5) ==
+			["saloon", "hatchback", "estate", "suv", "pickup", "sports", "city_car"][i],
+			"car style %d selects its own close model" % i)
+	check(B3.car_model_kind(EntityLayer.VAN_SHAPE, 5.0) == "panel_van", "the van keeps its own close model")
+	var model_lamps := B3.model_car_details(4.4, 1.8, 2, B3.LAMPS_ON | B3.LAMPS_LEFT)
+	check(model_lamps["part"].size() == model_lamps["verts"].size() and
+		Array(model_lamps["part"]).any(func(v): return int(v.x) == B3.LAMP), "close models retain the live taxi sign and lamp states")
+	for kind in ["train", "tram", "ferry"]:
+		var transit := B3.vehicle_arrays(kind, 32.0 if kind == "ferry" else 20.0, 10.0 if kind == "ferry" else 3.0, Color.WHITE, 0, {})
+		check(Array(transit["part"]).any(func(v): return int(v.x) == B3.GLASS_PART),
+			"%s has visible bridge or passenger glazing" % kind)
+	var rail_renderer := B3.new()
+	rail_renderer._cars_root = Node3D.new()
+	rail_renderer.add_child(rail_renderer._cars_root)
+	var old_opaque: bool = B3.opaque
+	var old_view_centre: Vector2 = B3.view_centre
+	B3.opaque = true
+	B3.view_centre = Vector2.ZERO
+	rail_renderer.vehicle("train", Vector2.ZERO, 0.0, 19.0, 3.2, Color.WHITE, 0, 0.0, {"profile": "locomotive"})
+	rail_renderer.vehicle("train", Vector2(4.0, 0.0), 0.0, 24.0, 3.2, Color.WHITE, 0, 0.0, {"profile": "family"})
+	check(rail_renderer._model_nodes.has("train_locomotive") and rail_renderer._model_nodes.has("train_coach"),
+		"close trains use separate locomotive and passenger coach models")
+	check(rail_renderer._model_nodes["train_coach"][0].get_meta("paint_materials")[0].albedo_color == B3.RS.TRAIN_PROFILES["family"][0],
+		"train coach paint follows its simulation profile")
+	B3.opaque = old_opaque
+	B3.view_centre = old_view_centre
+	rail_renderer.free()
+	var parts: Array = Array(taxi["part"]).map(func(v): return int(v.x))
+	check(taxi["part"].size() == taxi["verts"].size() and B3.PAINT in parts and B3.RUBBER in parts and B3.GLASS_PART in parts and B3.LAMP in parts,
+		"a lit taxi's paint, tyres, glass and sign each carry their material")
+	# rtx-scene-readiness step 3: areas under the roads, a dashed centre line on top, open water glossy, kerbs and islands raised, puddles
+	var surfaces := {"ground": PackedVector3Array(), "ground_colors": PackedColorArray(),
+		"road": PackedVector3Array(), "road_colors": PackedColorArray(), "road_uv": PackedVector2Array(), "road_uv2": PackedVector2Array()}
+	var lake := PackedVector2Array([Vector2(0, 0), Vector2(20, 0), Vector2(20, 20), Vector2(0, 20)])
+	B3._ground(surfaces, {"rect": Rect2(0, 0, 100, 100), "areas": [[lake, Color.BLUE, true]],
+		"roads": [[PackedVector2Array([Vector2(0, 50), Vector2(30, 50)]), 4.0, Color.GRAY, 0, Color.WHITE, false, 3, true]],
+		"curbs": [PackedVector2Array([Vector2(0, 45), Vector2(30, 45)])], "islands": [[PackedVector2Array([Vector2(40, 40), Vector2(44, 40), Vector2(44, 42)]), Color.GREEN]],
+		"puddles": [[Vector2(10, 50), 1.0, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], 0.4]]})
+	var road_rows := range(0, surfaces["road"].size(), 3)
+	var line_tris: Array = road_rows.filter(func(i): return surfaces["road_colors"][i] == Color.WHITE)
+	var water_tris: Array = road_rows.filter(func(i): return surfaces["road_uv"][i].x == B3.ROAD_WATER)
+	var puddle_tris: Array = road_rows.filter(func(i): return surfaces["road_uv"][i].x == B3.ROAD_PUDDLE)
+	var lane_tris: Array = road_rows.filter(func(i): return surfaces["road_colors"][i] == Color.GRAY)
+	check(line_tris.size() == 10 and surfaces["road"][line_tris[0]].y > B3.ROAD_M, "a 30 m road gets five 3 m dashes, just above its surface")
+	check(water_tris.size() == 2 and surfaces["road"][water_tris[0]].y < B3.ROAD_M and surfaces["road_uv2"].size() == surfaces["road"].size(),
+		"open water joins the glossy road mesh, below the roads")
+	check(surfaces["road_uv"][lane_tris[0]].y == 3.0 and surfaces["road_uv2"][lane_tris[0]].y == 1.0, "a road carries its surface pattern and takes the road snow")
+	check(puddle_tris.size() == 6 and is_equal_approx(surfaces["road_colors"][puddle_tris[0]].a, 0.4) and surfaces["road_uv2"][puddle_tris[0]].x == 0.0
+		and surfaces["road_uv2"][puddle_tris[0] + 1].x == 1.0, "a puddle: a fan from its centre out to the rim, showing from its reveal wetness")
+	var tops: Array = Array(surfaces["ground"]).map(func(v): return v.y)
+	check(is_equal_approx(tops.max(), B3.CURB_M) and tops.filter(func(y): return is_equal_approx(y, B3.CURB_M)).size() >= 9, "kerbs and the island stand 12 cm high")
+	var walls := B3.flat_normals(surfaces["ground"])
+	check(Array(walls).all(func(n): return n.y >= -0.001), "no ground face looks down: walls face out, tops face up")
+	var under := Array(B3.flat_normals(taxi["verts"])).filter(func(n): return n.y < -0.99)
+	check(not under.is_empty(), "the car's boxes have undersides (reflections, secondary rays)")
+	# rtx-scene-readiness step 4: a car's lamps are emissive only while lit, each by its own state
+	var lamp_count := func(lamps: int) -> int:
+		var arrays := B3.car_arrays(4.4, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0, lamps)
+		return Array(arrays["part"]).filter(func(v): return int(v.x) == B3.LAMP).size()
+	var parked: int = lamp_count.call(0)
+	var running: int = lamp_count.call(B3.LAMPS_ON)
+	var braking: int = lamp_count.call(B3.LAMPS_ON | B3.LAMPS_BRAKE)
+	var indicating: int = lamp_count.call(B3.LAMPS_ON | B3.LAMPS_LEFT)
+	check(parked == 0 and running > 0 and braking == running and indicating > running,
+		"lamps: dark when parked, head and tail lights with the engine, brighter (not more) when braking, an indicator adds its side")
+	# rtx-scene-readiness step 5: bridge decks ramp to where they meet a lower road; tunnels are below the ground
+	var ways := [{"points": [[100, 20], [100, 180]], "layer": 1}, {"points": [[100, 0], [100, 20]]}, {"points": [[100, 180], [100, 200]], "layer": 1},
+		{"points": [[0, 100], [200, 100]]}]
+	var ends := MapChunk.bridge_ends_of(ways, Vector2.ZERO)
+	check(ends.size() == 1 and ends[0].is_equal_approx(Vector2(100, -20)), "a bridge's end is where it meets a lower road, not where it joins more bridge")
+	check(is_equal_approx(B3.deck_height(Vector2(100, -100), 1, ends), B3.DECK_M) and B3.deck_height(Vector2(100, -40), 1, ends) > 0.0
+		and B3.deck_height(Vector2(100, -40), 1, ends) < B3.DECK_M and B3.deck_height(Vector2(100, -20), 1, ends) == 0.0
+		and B3.deck_height(Vector2(5, 5), -1, ends) < 0.0, "the deck: full height on the bridge, ramping to its end; a tunnel below ground")
+	var built := {"ground": PackedVector3Array(), "ground_colors": PackedColorArray(), "deck": PackedVector3Array(), "deck_colors": PackedColorArray(),
+		"canopy": PackedVector3Array(), "canopy_colors": PackedColorArray(), "road": PackedVector3Array(), "road_colors": PackedColorArray(),
+		"road_uv": PackedVector2Array(), "road_uv2": PackedVector2Array()}
+	B3._structures(built, {"bridge_ends": ends, "bridges": [[PackedVector2Array([Vector2(100, -20), Vector2(100, -180)]), 5.0, Color.GRAY, 1, 0, null, false]],
+		"canopies": [[PackedVector2Array([Vector2(150, -90), Vector2(162, -90), Vector2(162, -110), Vector2(150, -110)]), 5.0]]})
+	var deck_tops: Array = Array(built["road"]).map(func(v): return v.y)
+	check(is_equal_approx(deck_tops.max(), B3.DECK_M) and deck_tops.min() == 0.0, "the deck's road surface climbs from its end to full height")
+	check(Array(built["deck"]).any(func(v): return v.y < 0.01) and Array(built["deck"]).map(func(v): return v.y).max() > B3.DECK_M - 0.1,
+		"the slab and its piers stand from the ground up to the deck")
+	check(built["canopy"].size() >= 6 and Array(built["canopy"]).all(func(v): return is_equal_approx(v.y, 5.0)), "a canopy's roof at its height")
+	var meshes_built := B3.meshes(built.merged({"verts": PackedVector3Array(), "lit": PackedVector3Array(), "arena": PackedVector3Array(), "shadow": PackedVector3Array(),
+		"glass": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array()}))
+	check(meshes_built.any(func(n): return n.material_override == B3._shared["ground"] and n.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+		and meshes_built.any(func(n): return n.material_override == B3._shared["caster"] and n.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY),
+		"the deck casts its shadow; the see-through canopy casts a solid one")
+	for node in meshes_built:
+		node.free()
+	var grove := B3.trees_node([[Vector2.ZERO, "birch", 2.0, Color.GREEN, Color.WHITE, NAN], [Vector2(5, 0), "spruce", 2.0, Color.DARK_GREEN, Color.BROWN, NAN]], PackedVector2Array([Vector2(9, 0)]))
+	var counts: Array = grove.get_children().map(func(n): return n.multimesh.instance_count)
+	check(grove.get_child_count() == 3 and counts.reduce(func(a, b): return a + b) == 5, "trees as instances: two trunks and a bollard, a crown, a cone")
+	grove.free()
+	# rtx-scene-readiness step 6: every vehicle kind, person pose and larger animal has a 3D body
+	for kind in EntityLayer.VEHICLES_3D + ["trailer", "train", "tram"]:
+		var built_vehicle := B3.vehicle_arrays(kind, 6.0, 2.0, Color.RED, B3.LAMPS_ON, {"riding": true, "profile": "standard"})
+		check(built_vehicle["verts"].size() >= 36 and built_vehicle["part"].size() == built_vehicle["verts"].size(), "a %s has a 3D body" % kind)
+	var parked_bike: int = B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": false})["verts"].size()
+	var ridden_bike: int = B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": true})["verts"].size()
+	check(ridden_bike > parked_bike, "a ridden bicycle carries its rider, a parked one none")
+	check(EntityLayer.person_pose({"animation_state": "walking"}, 0.05) == "walk_0" and EntityLayer.person_pose({"animation_state": "walking"}, 0.4) == "walk_4"
+		and EntityLayer.person_pose({"animation_state": "walking", "speed": 2.4}, 0.1) == "run_1"
+		and EntityLayer.person_pose({"animation_state": "fallen"}, 0.0) == "lying" and EntityLayer.person_pose({"animation_state": "sitting"}, 0.0) == "sitting"
+		and EntityLayer.person_pose({"animation_state": "waiting"}, 0.0) == "standing", "a person's pose follows their animation state and gait")
+	check(EntityLayer.person_pose(EntityLayer.player_walker({"speed": 0.0}), 0.1) == "standing"
+		and EntityLayer.person_pose(EntityLayer.player_walker({"speed": 1.5}), 0.1) == "walk_1"
+		and EntityLayer.person_pose(EntityLayer.player_walker({"speed": 5.5}), 0.1) == "run_1", "the player's figure stands, walks and sprints by its speed")
+	for species in WildlifeLayer.SPECIES + [&"dog"]:
+		var animal := B3.animal_arrays(str(species), Color.BROWN, "stand", 1.0)
+		check(animal["verts"].size() >= 36 and animal["part"].size() == animal["verts"].size(), "a %s has a 3D body" % species)
+	var signal_node := B3.signals_node([[Vector2.ZERO, Vector2.RIGHT, [false, false, true]]])
+	var signal_parts: Array = Array(signal_node.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV2]).map(func(v): return int(v.x))
+	check(signal_parts.count(B3.LAMP) == 6, "a signal: only its lit lamp (green) glows")
+	signal_node.free()
+	var posts := B3.lamp_posts_node([[Vector2(5, 0), Vector2.UP]])
+	check(posts != null and posts.mesh.get_aabb().end.y > B3.LAMP_HEIGHT_M and B3.lamp_posts_node([]) == null, "a lamp's post stands to its height; no lamps, no node")
+	posts.free()
+	var props_out := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.props(props_out, [[Vector2.ZERO, 0.0, "bench"], [Vector2(5, 0), 0.0, "not_a_prop"]])
+	check(is_equal_approx(Array(props_out["deck"]).map(func(v): return v.y).max(), B3.PROPS["bench"][2]), "a bench stands its height; unknown kinds are left out")
+	check(props_out["deck"].size() >= 6 * 30, "a bench is slats, a backrest and side supports, not one box")
+	var backed := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	var bare := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.props(backed, [[Vector2.ZERO, 0.0, "bench", 1.4, 1]])
+	B3.props(bare, [[Vector2.ZERO, 0.0, "bench", 1.4, 0]])
+	check(bare["deck"].size() < backed["deck"].size(), "a backrest=no bench has fewer deck vertices")
+	check(is_equal_approx(Array(bare["deck"]).map(func(v): return v.y).max(), 0.46), "a backrest=no bench tops out at its seat, no 0.85 m upright")
+	var gap_top := func(rows: Array) -> float:  # osm-render-gaps.md: the builders' tallest vertex, -1 when nothing was built
+		var gap_out := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+		B3.props(gap_out, rows)
+		return Array(gap_out["deck"]).map(func(v): return v.y).max() if gap_out["deck"].size() > 0 else -1.0
+	var pole_top: float = gap_top.call([[Vector2.ZERO, 0.0, "power_pole"]])
+	check(pole_top >= 8.0 and pole_top <= 10.0, "a power pole stands 8-10 m")
+	check(gap_top.call([[Vector2.ZERO, 0.0, "power_tower"]]) > 15.0, "a power tower is taller than a pole")
+	check(is_equal_approx(gap_top.call([[Vector2.ZERO, 0.0, "chimney", 25.0]]), 25.0), "a chimney stands its height")
+	check(is_equal_approx(gap_top.call([[Vector2.ZERO, 0.0, "water_tower", 20.0]]), 20.0), "a water tower stands its height")
+	check(is_equal_approx(gap_top.call([[Vector2.ZERO, 0.0, "mast", 30.0]]), 30.0), "a mast stands its height")
+	var boulder_top: float = gap_top.call([[Vector2.ZERO, 0.0, "boulder", 1.2]])
+	check(boulder_top >= 0.6 and boulder_top <= 1.5, "a boulder is 0.6-1.5 m")
+	check(gap_top.call([[Vector2.ZERO, 0.0, "level_crossing"]]) > 2.0, "a level crossing's crossbuck stands on its post")
+	check(gap_top.call([[Vector2.ZERO, 0.0, "level_crossing_barrier"]]) > 0.8, "a level crossing barrier pair is built")
+	var crossing := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.props(crossing, [[Vector2.ZERO, 0.0, "level_crossing"]])  # the road along +x: posts either side of it, across
+	var xs: Array = Array(crossing["deck"]).map(func(v): return absf(v.x))
+	var zs: Array = Array(crossing["deck"]).map(func(v): return absf(v.z))
+	check(zs.max() > 3.9 and zs.max() < 4.2 and xs.max() < 0.7, "a crossbuck's posts stand either side of the road, its boards along it")
+	var crossing_turned := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.props(crossing_turned, [[Vector2.ZERO, PI / 2.0, "level_crossing_barrier"]])  # the road along z: the booms reach across x
+	check(Array(crossing_turned["deck"]).map(func(v): return absf(v.x)).max() > 3.9 and Array(crossing_turned["deck"]).map(func(v): return absf(v.z)).max() < 0.5, "a barrier pair turns with its road")
+	var wires := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.power_lines(wires, [PackedVector2Array([Vector2.ZERO, Vector2(40, 0)])])
+	var short_span: int = wires["deck"].size()
+	B3.power_lines(wires, [PackedVector2Array([Vector2.ZERO, Vector2(200, 0)])])
+	check(short_span > 0 and wires["deck"].size() == short_span, "poles 40 m apart are wired; a 200 m span is not")
+	var seated: PackedVector3Array = B3.person_arrays(Color.ORANGE, "sitting", 1.0, "", 0)["verts"]
+	check(Array(seated).all(func(v): return v.x < 0.05 or v.x > 0.24 or v.y > 0.38), "a seated figure rests on the seat: nothing hangs through its front half")
+	check(Array(seated).any(func(v): return v.x > 0.35 and v.y > 0.42), "a seated figure's knees are bent, thighs forward over the seat edge")
+	var rides := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	var ring := PackedVector2Array([Vector2(0, 0), Vector2(20, 2), Vector2(0, 4), Vector2(-20, 2), Vector2(0, 0)])
+	B3.attractions(rides, [["drop_tower", ring]])
+	check(is_equal_approx(Array(rides["deck"]).map(func(v): return v.y).max(), 30.0), "a drop tower stands 30 m")
+	rides["deck"] = PackedVector3Array()
+	B3.attractions(rides, [["ferris_wheel", ring]])
+	check(Array(rides["deck"]).map(func(v): return v.y).max() > 20.0, "a Ferris wheel's ring stands over its frame")
+	var graves := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
+	B3.site_details(graves, [[Vector2.ZERO, "grave_yard"]], 0.0)
+	check(is_equal_approx(Array(graves["deck"]).map(func(v): return v.y).max(), 0.85), "a grave's headstone stands 0.85 m")
+	var foam := {"ground": PackedVector3Array(), "ground_colors": PackedColorArray(), "road": PackedVector3Array(), "road_colors": PackedColorArray(),
+		"road_uv": PackedVector2Array(), "road_uv2": PackedVector2Array(), "deck": PackedVector3Array(), "deck_colors": PackedColorArray(),
+		"canopy": PackedVector3Array(), "canopy_colors": PackedColorArray()}
+	B3._structures(foam, {"shore_foam": [[PackedVector2Array([Vector2(0, 0), Vector2(10, 0)]), 0.5]]})
+	check(foam["road"].size() == 6 and foam["road_uv"][0].x == B3.ROAD_FOAM and is_equal_approx(foam["road_uv2"][0].x, 0.5), "shore foam: a strip on the water, its shore distance")
 	MapChunk.buildings_3d = false
 
 
@@ -3351,6 +3883,14 @@ func test_performance_paths() -> void:
 	check(not chunk._wet.visible, "dry roads: the wet overlay is not drawn at all")
 	chunk.set_wetness(0.6)
 	check(chunk._wet.visible, "wet: it is")
+	var was_3d := [MapChunk.outdoor_3d, MapChunk.buildings_3d]
+	MapChunk.outdoor_3d = true
+	MapChunk.buildings_3d = true
+	chunk.set_wetness(0.6)
+	check(not chunk._wet.visible and not chunk._puddles.visible, "3D view, rain: no 2D wet overlay or puddles over the cars (the road mesh has them)")
+	MapChunk.outdoor_3d = was_3d[0]
+	MapChunk.buildings_3d = was_3d[1]
+	chunk.set_wetness(0.6)
 	const RS := preload("res://render_style.gd")
 	var same_blend := true
 	for wetness in [0.1, 0.15, 0.4, 1.0]:
@@ -3382,24 +3922,47 @@ func test_performance_paths() -> void:
 	async_chunk.free()
 	sync_chunk.free()
 
-	# Chunk messages parsed off the main thread: one unloaded meanwhile is dropped.
+	# Complete jobs in controlled orders, including replacements and reconnects.
 	var sim := SimClient.new()
 	root.add_child(sim)
+	sim.set_process(false)
 	var got: Array = []
-	sim.chunk_received.connect(func(m): got.append(m["chunk_id"]))
-	sim._parse_chunk('{"type":"chunk","version":1,"chunk_id":"3_4","bounds":[0,0,1,1]}')
-	sim._parse_chunk('{"type":"chunk","version":1,"chunk_id":"5_6","bounds":[0,0,1,1]}')
-	check(sim._parsing.has("3_4") and sim._parsing.has("5_6"), "the chunk id is read without parsing the line")
-	sim._cancelled["5_6"] = true  # its chunk_unload came first
-	for id in sim._parsing.keys():
-		while not WorkerThreadPool.is_task_completed(sim._parsing[id]):
-			OS.delay_msec(1)
-	sim._chunk_parsed("3_4", JSON.parse_string('{"type":"chunk","version":1,"chunk_id":"3_4"}'), 10)
-	sim._chunk_parsed("5_6", JSON.parse_string('{"type":"chunk","version":1,"chunk_id":"5_6"}'), 10)
-	check(got == ["3_4"], "parsed chunks arrive; one unloaded while parsing doesn't (%s)" % [got])
+	sim.chunk_received.connect(func(m): got.append(m.get("revision", "initial")))
+	var line := '{"type":"chunk","version":1,"chunk_id":"3_4","bounds":[0,0,1,1]}'
+	sim._parse_chunk(line)
+	var older: int = sim._next_generation
+	sim._parse_chunk(line)
+	var newer: int = sim._next_generation
+	check(sim._parsing.size() == 2, "replacement chunks retain both worker task handles")
+	sim._chunk_parsed("3_4", newer, {"version": 1, "revision": "new"}, 10)
+	sim._chunk_parsed("3_4", older, {"version": 1, "revision": "old"}, 10)
+	check(got == ["new"], "an older worker finishing last cannot replace a newer chunk")
+	sim._parse_chunk(line)
+	older = sim._next_generation
+	sim._buffer = '{"type":"chunk_unload","version":1,"chunk_id":"3_4"}\n'.to_utf8_buffer()
+	sim._drain_lines()
+	sim._parse_chunk(line)
+	newer = sim._next_generation
+	sim._chunk_parsed("3_4", older, {"version": 1, "revision": "unloaded"}, 10)
+	check(sim._parsing.has(newer), "an old callback cannot consume a replacement task")
+	sim._chunk_parsed("3_4", newer, {"version": 1, "revision": "reloaded"}, 10)
+	check(got == ["new", "reloaded"], "unload then reload never revives the old chunk")
+	sim._parse_chunk(line)
+	older = sim._next_generation
 	sim._buffer = '{"type":"world","version":1,"center":[1000.0,2000.0]}\n'.to_utf8_buffer()
 	sim._drain_lines()
+	sim._parse_chunk(line)
+	newer = sim._next_generation
+	sim._chunk_parsed("3_4", older, {"version": 1, "revision": "old world"}, 10)
+	sim._chunk_parsed("3_4", newer, {"version": 1, "revision": "new world"}, 10)
+	check(got == ["new", "reloaded", "new world"], "a new world invalidates jobs from the previous connection")
 	check(sim._origin == Vector2(1000.0, 2000.0), "the worker prepares chunks for the world's origin")
+	sim._parse_chunk(line)
+	older = sim._next_generation
+	sim.connected = true
+	sim._process(0.0)  # disconnected peer: invalidate old work before reconnecting
+	sim._chunk_parsed("3_4", older, {"version": 1, "revision": "disconnected"}, 10)
+	check(got.size() == 3 and sim._parsing.is_empty(), "disconnect invalidates pending chunks and every task is collected")
 	sim.free()
 
 	# A chunk prepared on the parsing worker sets up exactly as one prepared in place.
@@ -3561,3 +4124,213 @@ func test_forest_canopy() -> void:
 	check(wildlife.habitat(0, 0, true) == "rural", "unmapped forest trees still provide rural wildlife habitat")
 	check(wildlife.habitat(30, 0, false) == "urban", "urban wildlife habitat is unchanged")
 	map.free()
+
+
+## car-model-lod-pop: draws `draw` on a fresh opaque renderer centred at 0 and returns it.
+func _model_frame(draw: Callable) -> Node2D:
+	var renderer: Node2D = B3.new()
+	renderer._cars_root = Node3D.new()
+	renderer.add_child(renderer._cars_root)
+	var old_opaque: bool = B3.opaque
+	var old_centre: Vector2 = B3.view_centre
+	B3.opaque = true
+	B3.view_centre = Vector2.ZERO
+	renderer._car_meshes.clear()  # a shared cache: only this frame's bodies count
+	renderer.begin_cars()
+	draw.call(renderer)
+	renderer.end_cars()
+	B3.opaque = old_opaque
+	B3.view_centre = old_centre
+	return renderer
+
+
+func _models_used(renderer: Node2D) -> int:
+	var total := 0
+	for kind in renderer._model_used:
+		total += int(renderer._model_used[kind])
+	return total
+
+
+## glb-only-vehicles: procedural bodies placed this frame (model details are "d|"/"vd|" keys).
+func _procedural_bodies(renderer: Node2D) -> int:
+	return renderer._car_meshes.keys().filter(func(k: String) -> bool: return not (k.begins_with("d|") or k.begins_with("vd|"))).size()
+
+
+func test_car_model_has_no_range_limit() -> void:
+	for d: float in [10.0, 60.0, 70.0, 200.0]:
+		var r: Node2D = _model_frame(func(b: Node2D) -> void:
+			b.car(Vector2(d, 0.0), 0.0, 4.5, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0))
+		check(_models_used(r) == 1 and _procedural_bodies(r) == 0, "a car at %d m uses its model" % d)
+		r.free()
+	var w: Node2D = _model_frame(func(b: Node2D) -> void:
+		b.windshield_on = true
+		b.windshield_at = Vector2(500.0, 0.0)
+		b.car(Vector2(0.0, 0.0), 0.0, 4.5, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0))
+	check(_models_used(w) == 1, "a car 500 m from the windshield uses its model")
+	w.free()
+
+
+func test_bus_model_radius_matches_car() -> void:
+	var r: Node2D = _model_frame(func(b: Node2D) -> void:
+		b.vehicle("bus", Vector2(200.0, 0.0), 0.0, 12.0, 2.5, Color.BLUE))
+	check(int(r._model_used.get("city_bus", 0)) == 1, "a bus at 200 m uses its model, as a car does")
+	r.free()
+
+
+func test_vehicle_models_at_distance() -> void:
+	var cases := [["bus", "city_bus", {}], ["truck", "box_truck", {}], ["motorcycle", "motorcycle", {}],
+		["camper_van", "camper_van", {}], ["tractor", "tractor", {}], ["trailer", "caravan", {}],
+		["e_scooter", B3.model_variant("e_scooter", 0), {"id": 0}], ["bicycle", B3.model_variant("bicycle", 0), {"id": 0}],
+		["train", "train_locomotive", {"profile": "locomotive"}], ["train", "train_coach", {"profile": "standard"}]]
+	for row: Array in cases:
+		var at := Vector2(100.0 if row[0] == "train" else 200.0, 0.0)
+		var r: Node2D = _model_frame(func(b: Node2D) -> void:
+			b.vehicle(row[0], at, 0.0, 4.0, 1.8, Color.BLUE, 0, 0.0, row[2]))
+		check(int(r._model_used.get(row[1], 0)) == 1 and _procedural_bodies(r) == 0, "a %s far away draws %s" % [row[0], row[1]])
+		r.free()
+
+
+func test_unmodelled_kinds_stay_procedural() -> void:
+	for row: Array in [["tram", {"profile": "tram"}], ["tractor", {"plough": true}]]:
+		var r: Node2D = _model_frame(func(b: Node2D) -> void:
+			b.vehicle(row[0], Vector2(10.0, 0.0), 0.0, 9.0, 2.4, Color.BLUE, 0, 0.0, row[1]))
+		check(_models_used(r) == 0 and _procedural_bodies(r) == 1, "%s %s stays procedural" % row)
+		r.free()
+
+
+func test_has_model_matches_scenes() -> void:
+	var procedural_only := ["tram", "ferry"]
+	for kind: String in EntityLayer.VEHICLES_3D + ["trailer", "train", "tram", "ferry"]:
+		check(B3.has_model(kind) != (kind in procedural_only), "%s: has_model matches MODEL_SCENES" % kind)
+
+
+## The frame's tree meshes: [mesh name or class, instance count] of every MultiMesh outside the car pool.
+func _tree_meshes(renderer: Node2D) -> Array:
+	var out := []
+	for node: MultiMeshInstance3D in renderer.find_children("*", "MultiMeshInstance3D", true, false):
+		if not renderer._cars_root.is_ancestor_of(node):
+			out.append([node.multimesh.mesh.resource_name if node.multimesh.mesh else "", node.multimesh.instance_count])
+	return out
+
+
+func test_trees_unaffected_by_vehicle_models() -> void:
+	var rows := [[Vector2.ZERO, "birch", 2.0, Color.GREEN, Color.WHITE, NAN], [Vector2(5, 0), "spruce", 2.0, Color.DARK_GREEN, Color.BROWN, NAN],
+		[Vector2(9, 3), "pine", 2.0, Color.DARK_GREEN, Color.BROWN, NAN], [Vector2(12, 0), "shrub", 1.0, Color.GREEN, Color.BROWN, NAN]]
+	var frames := []
+	for with_cars: bool in [false, true]:
+		var r: Node2D = _model_frame(func(b: Node2D) -> void:
+			b.add_child(B3.trees_node(rows, PackedVector2Array()))
+			if with_cars:
+				for d: float in [10.0, 200.0]:
+					b.car(Vector2(d, 0.0), 0.0, 4.5, 1.8, Color.RED, EntityLayer.CAR_SHAPES[1], 0)
+				b.vehicle("bus", Vector2(150.0, 0.0), 0.0, 12.0, 2.5, Color.BLUE))
+		frames.append([_tree_meshes(r), _models_used(r), str(B3.tree_parts(rows, PackedVector2Array()))])
+		r.free()
+	check(frames[1][1] == 3 and frames[0][1] == 0, "the car frame draws 3 models, the other none")
+	check(not frames[0][0].is_empty() and frames[0][0] == frames[1][0], "tree meshes and instance counts are the same with cars: %s vs %s" % [frames[0][0], frames[1][0]])
+	check(frames[0][2] == frames[1][2], "tree parts are the same with cars in the frame")
+
+
+## glb-only-vehicles AC 7: a pooled GLB is one mesh, one surface per material (23 draw calls -> 8 for a saloon), same bounds.
+func test_pooled_models_merge_by_material() -> void:
+	for kind: String in ["saloon", "city_bus", "bicycle"]:
+		var r: Node2D = _model_frame(func(b: Node2D) -> void: b.place_model_car(kind, Vector2.ZERO, 0.0, 4.5, 1.8, Color.RED, 0.0))
+		var meshes: Array = r._model_nodes[kind][0].find_children("*", "MeshInstance3D", true, false)
+		var source: Node3D = B3.MODEL_SCENES[kind].instantiate()
+		var materials := {}
+		var box := AABB()
+		var first := true
+		for mi: MeshInstance3D in source.find_children("*", "MeshInstance3D", true, false):
+			var xform := Transform3D()
+			var n: Node = mi
+			while n != source:
+				xform = (n as Node3D).transform * xform
+				n = n.get_parent()
+			for i in mi.mesh.get_surface_count():
+				materials[mi.mesh.surface_get_material(i)] = true
+				for v: Vector3 in mi.mesh.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]:  # vertex bounds: some imported AABBs are loose
+					box = AABB(xform * v, Vector3.ZERO) if first else box.expand(xform * v)
+					first = false
+		check(meshes.size() == 1 and meshes[0].mesh.get_surface_count() == materials.size(),
+			"%s pools as 1 mesh of %d surfaces (got %d meshes)" % [kind, materials.size(), meshes.size()])
+		check(meshes.size() == 1 and meshes[0].mesh.get_aabb().position.is_equal_approx(box.position) and meshes[0].mesh.get_aabb().size.is_equal_approx(box.size),
+			"%s merged bounds match the GLB's vertices: %s vs %s" % [kind, meshes[0].mesh.get_aabb(), box])
+		source.free()
+		r.free()
+
+
+func test_car_glazing_is_dark_and_reflective() -> void:
+	var glass := StandardMaterial3D.new()
+	glass.resource_name = "glass"
+	glass.albedo_color = Color(0.6, 0.7, 0.8, 0.5)
+	glass.metallic = 0.15
+	glass.roughness = 0.5
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var glazing := B3.car_glazing(glass)
+	check(glazing != glass and glazing.metallic >= 0.5 and glazing.roughness <= 0.08
+		and glazing.albedo_color.get_luminance() < 0.05 and glazing.albedo_color.a >= 0.85,
+		"car glazing is a dark reflective duplicate")
+	check(is_equal_approx(glass.metallic, 0.15) and glass.albedo_color == Color(0.6, 0.7, 0.8, 0.5), "the GLB glass material is unchanged")
+
+
+## sky-cloud-cover: a CPU copy of sky_clouds.gdshader's noise and threshold test.
+func _sky_hash(p: Vector2) -> float:
+	var v := sin(p.dot(Vector2(127.1, 311.7))) * 43758.5453
+	return v - floorf(v)
+
+
+func _sky_noise(p: Vector2) -> float:
+	var i := p.floor()
+	var f := p - i
+	var u := f * f * (Vector2(3.0, 3.0) - 2.0 * f)
+	var a := _sky_hash(i)
+	var b := _sky_hash(i + Vector2(1, 0))
+	var c := _sky_hash(i + Vector2(0, 1))
+	var d := _sky_hash(i + Vector2(1, 1))
+	return a + (b - a) * u.x + (c - a) * u.y + (a - b - c + d) * u.x * u.y
+
+
+func _sky_covered(threshold: float) -> float:
+	var covered := 0
+	for i in 64:
+		for j in 64:
+			var p := Vector2(i, j) * 0.37
+			var n := 0.5 * _sky_noise(p) + 0.3 * _sky_noise(p * 2.03) + 0.2 * _sky_noise(p * 4.01)
+			if n > threshold:
+				covered += 1
+	return covered / 4096.0
+
+
+func test_cloud_coverage_mapping() -> void:
+	check(_sky_covered(Daylight.cloud_coverage(0.0)) == 0.0, "cloud 0: no cloud pixels")
+	var scattered := _sky_covered(Daylight.cloud_coverage(0.3))
+	check(scattered >= 0.2 and scattered <= 0.4, "cloud 0.3: scattered patches (%.2f)" % scattered)
+	for c in [0.8, 0.9, 1.0]:
+		check(_sky_covered(Daylight.cloud_coverage(c)) >= 0.9, "cloud %.1f covers 90%%+" % c)
+	var last := INF
+	for k in 21:
+		var t := Daylight.cloud_coverage(k / 20.0)
+		check(t <= last, "coverage threshold is monotonic at %.2f" % (k / 20.0))
+		last = t
+	check(Daylight.cloud_coverage(-1.0) == Daylight.cloud_coverage(0.0) and Daylight.cloud_coverage(2.0) == Daylight.cloud_coverage(1.0), "cover is clamped to 0..1")
+
+
+func test_sky_material_takes_cloud_cover() -> void:
+	var old_opaque: bool = B3.opaque
+	B3.opaque = true
+	var r: Node2D = B3.new()
+	r._ready()
+	r.set_cloud_cover(0.9)
+	var material: Material = r._camera.environment.sky.sky_material
+	check(material is ShaderMaterial and is_equal_approx(material.get_shader_parameter("coverage"), Daylight.cloud_coverage(0.9)), "the sky's coverage follows cloud cover")
+	B3.opaque = old_opaque
+	r.free()
+
+
+## docs/specs/precipitation-falling.md: the standalone script's tests, counted here too.
+func test_precipitation_3d() -> void:
+	var tests: Object = preload("res://tests/precipitation_3d.gd").new()
+	tests.host = root
+	tests.run()
+	check(tests.failures == 0, "precipitation_3d: %d failures (see FAIL lines above)" % tests.failures)
+	tests.free()

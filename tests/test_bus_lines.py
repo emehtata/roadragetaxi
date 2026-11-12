@@ -216,7 +216,7 @@ def test_a_route_relation_marks_the_streets_it_runs_on():
 def test_a_line_bus_keeps_to_its_route_streets_not_the_shortcut():
     from theroadragetrip.osm import Way
     from theroadragetrip.traffic_world import TrafficWorld, run_route_steps
-    shortcut = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=3.0)  # Tervakukkatie
+    shortcut = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="residential", half_width_m=3.0)  # Flower Road
     route = Way(points_m=[(0.0, 0.0), (0.0, 50.0), (100.0, 50.0), (100.0, 0.0)], highway="residential",
                 half_width_m=3.0, bus_routes=["4"])
     world = TrafficWorld([shortcut, route])

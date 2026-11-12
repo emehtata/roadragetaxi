@@ -479,8 +479,9 @@ def is_point_in_water(
     return False
 
 
-def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
-    """All four corners in water, excluding the actual solid road surface.
+def is_car_fully_in_water(car: Car, waters: List, current_way=None, dry=None) -> bool:
+    """All four corners in water, excluding the actual solid road surface
+    and points dry(x, y) says are dry (a ferry deck).
 
     OSM water can overlap a causeway/bridge approach whose way lacks bridge=yes.
     A stale nearby road reference must not protect a car that left its surface.
@@ -511,6 +512,7 @@ def is_car_fully_in_water(car: Car, waters: List, current_way=None) -> bool:
     )
     return bool(waters) and all(
         not (road is not None and is_point_on_road(x, y, ways=[road], car_roads_only=True, layer=road_layer))
+        and not (dry is not None and dry(x, y))
         and is_point_in_water(x, y, waters, layer=road_layer)
         for x, y in world_corners
     )
@@ -527,7 +529,7 @@ WATER_ASSIST_MARGIN_M = 1.5  # stop this far before the water, past the front bu
 WATER_ASSIST_PROBES = 8  # bounded per-tick work: at most this many point tests ahead
 
 
-def water_ahead_speed_limit(car: Car, waters: List, month: Optional[int], spatial_grid=None) -> Optional[float]:
+def water_ahead_speed_limit(car: Car, waters: List, month: Optional[int], spatial_grid=None, dry=None) -> Optional[float]:
     """Safety brake: the speed that still stops before open water straight
     ahead (None: no water within braking distance). Points on a car road
     (bridges, causeways) are not water; lake and sea ice carry a car in
@@ -547,17 +549,17 @@ def water_ahead_speed_limit(car: Car, waters: List, month: Optional[int], spatia
     while distance <= reach:
         x = car.x + forward_x * (front + distance)
         y = car.y + forward_y * (front + distance)
-        if is_point_in_water(x, y, waters, layer=layer) and not (
+        if is_point_in_water(x, y, waters, layer=layer) and not (dry is not None and dry(x, y)) and not (
                 spatial_grid is not None and is_point_on_road(x, y, spatial_grid=spatial_grid, car_roads_only=True, layer=layer)):
             return math.sqrt(2.0 * WATER_ASSIST_DECEL * max(0.0, distance - WATER_ASSIST_MARGIN_M))
         distance += step
     return None
 
 
-def water_sinks_car(car: Car, waters: List, current_way, month: Optional[int], dt: float, rng=random.random) -> bool:
+def water_sinks_car(car: Car, waters: List, current_way, month: Optional[int], dt: float, rng=random.random, dry=None) -> bool:
     """Whether the car goes under this tick: fully in open water, or on river
     ice that breaks. Lake and sea ice hold in January-February."""
-    if not is_car_fully_in_water(car, waters, current_way=current_way):
+    if not is_car_fully_in_water(car, waters, current_way=current_way, dry=dry):
         return False
     if month not in ICE_MONTHS:
         return True
@@ -1677,8 +1679,12 @@ def update_car_physics(
     wind: Tuple[float, float] = (0.0, 0.0),
     fields_frozen: bool = False,
     turning_circle: bool = True,
+    hard_at=None,
 ) -> bool:
     """Update car speed, heading, and position.
+
+    `hard_at(x, y)`: points that are hard ground whatever the map has
+    there (a ferry's steel deck, ferries.py).
 
     `turning_circle`: the steering lock (min_turn_radius). NPCs pass False for
     now: their routes and parking manoeuvres are planned tighter than a real
@@ -2043,6 +2049,7 @@ def update_car_physics(
             is_point_on_parking_space(target_x, target_y, parking_spaces)
             or is_point_in_parking_lot(target_x, target_y, scenery_grid=scenery_grid)
             or is_point_on_light_traffic_way(target_x, target_y, ways=ways, spatial_grid=spatial_grid)
+            or (hard_at is not None and hard_at(target_x, target_y))
         ):
             car.ground_kind = "hard"
         else:

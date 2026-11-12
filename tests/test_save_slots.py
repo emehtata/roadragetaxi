@@ -5,12 +5,13 @@ from theroadragetrip.save_slots import list_slots, read_slot, slot_path
 from theroadragetrip.taxi import TaxiPassenger, TaxiState, TaxiTarget
 
 
-def _server(tmp_path, monkeypatch, slot="test-slot"):
+def _server(tmp_path, monkeypatch, slot="test-slot", new=False):
     monkeypatch.setattr("theroadragetrip.server.CONFIG_PATH", tmp_path / "roadragetrip.ini")
     monkeypatch.setattr(sys, "argv", ["prog", "--use-sample", "--no-menu", "--no-historical-weather", "--save-slot", slot])
     from theroadragetrip.server import SimulationServer
     from theroadragetrip.server.cli import parse_server_args
     args, config = parse_server_args()
+    args.new_save_slot = new
     return SimulationServer(args, config)
 
 
@@ -20,8 +21,9 @@ def test_a_saved_gig_continues_mid_fare_with_money_fuel_pose_and_time(tmp_path, 
     car = server.car
     car.x, car.y, car.heading, car.fuel_l = car.x + 3.0, car.y - 2.0, 1.25, 17.5
     taxi.balance_cents, taxi.total_score, taxi.completed_fares = 12345, 420, 7
-    friend = TaxiPassenger(name="Ville", pickup=TaxiTarget(0.0, 0.0, "Asema"), dropoff=TaxiTarget(9.0, 9.0, "Kotikatu 1"))
-    rider = TaxiPassenger(name="Aino", pickup=TaxiTarget(0.0, 0.0, "Asema"),
+    server._saved_gig_fares = taxi.completed_fares
+    friend = TaxiPassenger(name="Test Person 1", pickup=TaxiTarget(0.0, 0.0, "Asema"), dropoff=TaxiTarget(9.0, 9.0, "Kotikatu 1"))
+    rider = TaxiPassenger(name="Test Person 2", pickup=TaxiTarget(0.0, 0.0, "Asema"),
                           dropoff=TaxiTarget(5000.0, 9000.0, "Tampere", municipality="Tampere"), companions=[friend])
     taxi.current_passenger, taxi.state = rider, TaxiState.DRIVING_TO_DROPOFF
     taxi.fare_started_at, taxi.fare_start_odometer_m, taxi.live_fare_cents = server.calendar.current, car.odometer_m - 900.0, 4200
@@ -39,8 +41,8 @@ def test_a_saved_gig_continues_mid_fare_with_money_fuel_pose_and_time(tmp_path, 
     assert abs((again.calendar.current - game_time).total_seconds()) < 1.0
     assert restored.state == TaxiState.DRIVING_TO_DROPOFF and restored.live_fare_cents == 4200
     passenger = restored.current_passenger
-    assert passenger.name == "Aino" and passenger.dropoff.municipality == "Tampere" and passenger.boarded
-    assert [member.name for member in passenger.members] == ["Aino", "Ville"] and passenger.companions[0].boarded
+    assert passenger.name == "Test Person 2" and passenger.dropoff.municipality == "Tampere" and passenger.boarded
+    assert [member.name for member in passenger.members] == ["Test Person 2", "Test Person 1"] and passenger.companions[0].boarded
 
 
 def test_a_completed_fare_keeps_the_slot_and_the_menu_lists_it(tmp_path):
@@ -68,13 +70,13 @@ def test_the_slot_list_prints_ascii_escapes(tmp_path, monkeypatch, capsys):
     config = tmp_path / "roadragetrip.ini"
     path = slot_path(config, "a")
     path.parent.mkdir(parents=True)
-    path.write_text('{"city": "Inari", "place_name": "Anár, Čeavetjávri", "saved_at": 1}', encoding="utf-8")
+    path.write_text('{"city": "Inari", "place_name": "Anár, Testijärvi Č", "saved_at": 1}', encoding="utf-8")
     monkeypatch.setattr("theroadragetrip.config.CONFIG_PATH", config)
     monkeypatch.setattr(sys, "argv", ["prog", "--list-saves"])
     server_main.main()
     out = capsys.readouterr().out.strip()
     # \u escapes: Godot reads the pipe in the Windows code page (Sysmä came out as SysmÃ¤); JSON restores them.
-    assert json.loads(out)[0]["place_name"] == "Anár, Čeavetjávri" and out.isascii()
+    assert json.loads(out)[0]["place_name"] == "Anár, Testijärvi Č" and out.isascii()
 
 
 def test_a_legacy_code_page_pipe_still_gets_utf8(tmp_path, monkeypatch):
@@ -85,23 +87,23 @@ def test_a_legacy_code_page_pipe_still_gets_utf8(tmp_path, monkeypatch):
     config = tmp_path / "roadragetrip.ini"
     path = slot_path(config, "a")
     path.parent.mkdir(parents=True)
-    path.write_text('{"city": "Inari", "place_name": "Čeavetjávri", "saved_at": 1}', encoding="utf-8")
+    path.write_text('{"city": "Inari", "place_name": "Testijärvi Č", "saved_at": 1}', encoding="utf-8")
     monkeypatch.setattr("theroadragetrip.config.CONFIG_PATH", config)
     monkeypatch.setattr(sys, "argv", ["prog", "--list-saves"])
     pipe = io.BytesIO()
     monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(pipe, encoding="cp1252"))
     server_main.main()
     sys.stdout.flush()
-    assert json.loads(pipe.getvalue().decode("utf-8"))[0]["place_name"] == "Čeavetjávri"
+    assert json.loads(pipe.getvalue().decode("utf-8"))[0]["place_name"] == "Testijärvi Č"
 
 
 def test_an_accepted_fare_still_on_its_way_to_pickup_survives_a_save(tmp_path, monkeypatch):
     server = _server(tmp_path, monkeypatch)
     taxi, car = server.world.taxi_mgr, server.car
     pickup = TaxiTarget(car.x + 6.0, car.y, "Asema")
-    friend = TaxiPassenger(name="Ville", pickup=pickup, dropoff=TaxiTarget(car.x + 900.0, car.y, "Kotikatu 1"),
+    friend = TaxiPassenger(name="Test Person 1", pickup=pickup, dropoff=TaxiTarget(car.x + 900.0, car.y, "Kotikatu 1"),
                            ped_x=car.x + 7.0, ped_y=car.y + 3.0)
-    rider = TaxiPassenger(name="Aino", pickup=pickup, dropoff=TaxiTarget(car.x + 900.0, car.y, "Kotikatu 1"),
+    rider = TaxiPassenger(name="Test Person 2", pickup=pickup, dropoff=TaxiTarget(car.x + 900.0, car.y, "Kotikatu 1"),
                           ped_x=car.x + 6.0, ped_y=car.y + 3.0, companions=[friend])
     taxi.current_passenger, taxi.state = rider, TaxiState.WAITING_FOR_PICKUP
     server._pending_save = True
@@ -110,7 +112,7 @@ def test_an_accepted_fare_still_on_its_way_to_pickup_survives_a_save(tmp_path, m
     again = _server(tmp_path, monkeypatch)
     restored = again.world.taxi_mgr
     waiting = restored.current_passenger
-    assert restored.state == TaxiState.WAITING_FOR_PICKUP and waiting.name == "Aino"
+    assert restored.state == TaxiState.WAITING_FOR_PICKUP and waiting.name == "Test Person 2"
     assert (waiting.ped_x, waiting.ped_y) == (car.x + 6.0, car.y + 3.0)
     assert not waiting.boarded and not waiting.companions[0].boarded
     again.car.x, again.car.y, again.car.speed = car.x, car.y, 0.0  # at the pickup
@@ -157,3 +159,126 @@ def test_home_belongs_to_slot_and_survives_save_reload_and_clear(tmp_path, monke
     assert _server(tmp_path, monkeypatch, slot="one")._home is None
     assert load_home(server.homes_file, city, in_save=True) is None
     assert read_slot(server.homes_file)["city"] == server.chosen_city
+
+
+def test_fare_autosave_replaces_the_whole_slot(tmp_path, monkeypatch):
+    server = _server(tmp_path, monkeypatch)
+    taxi = server.world.taxi_mgr
+    taxi.current_passenger = TaxiPassenger(name="Test Person 2", pickup=TaxiTarget(server.car.x, server.car.y, "A"),
+                                          dropoff=TaxiTarget(server.car.x + 100, server.car.y, "B"))
+    taxi.state = TaxiState.DRIVING_TO_DROPOFF
+    assert server.save_game()
+    assert read_slot(server.save_slot_file)["fare"] is not None
+
+    taxi.current_passenger = None
+    taxi.completed_fares += 1
+    taxi.balance_cents = 4200
+    taxi.total_score = 123
+    server.car.x += 2
+    server.tick(1 / 30)
+
+    data = read_slot(server.save_slot_file)
+    assert data["fare"] is None
+    assert data["completed_fares"] == 1 and data["total_score"] == 123
+    assert data["balance_cents"] == taxi.balance_cents
+    assert data["car"]["x"] == server.car.x
+    again = _server(tmp_path, monkeypatch)
+    assert again.world.taxi_mgr.current_passenger is None
+    assert again.world.taxi_mgr.completed_fares == 1
+    assert again.world.taxi_mgr.balance_cents == taxi.balance_cents
+
+
+def test_save_failure_preserves_slot_and_simulation_can_retry(tmp_path, monkeypatch):
+    from pathlib import Path
+    server = _server(tmp_path, monkeypatch)
+    assert server.save_game()
+    original = server.save_slot_file.read_bytes()
+    replace = Path.replace
+
+    def disk_full(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "replace", disk_full)
+    server._pending_save = True
+    server.tick(1 / 30)
+    assert server.save_count == 0 and server.save_error_count == 1
+    assert server.save_slot_file.read_bytes() == original
+
+    server.world.taxi_mgr.completed_fares += 1
+    server.tick(1 / 30)  # automatic saving also keeps the simulation alive
+    assert server.save_slot_file.read_bytes() == original
+    monkeypatch.setattr(Path, "replace", replace)
+    server._pending_save = True
+    server.tick(1 / 30)
+    assert server.save_count == 1 and server.save_error_count == 1
+    assert read_slot(server.save_slot_file)["completed_fares"] == 1
+
+
+def test_legacy_gig_autosave_failure_does_not_stop_tick(tmp_path, monkeypatch):
+    server = _server(tmp_path, monkeypatch)
+    server.save_slot_file = None
+
+    def disk_full(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("theroadragetrip.career.save_gig_odometer", disk_full)
+    server.world.taxi_mgr.completed_fares += 1
+    server.tick(1 / 30)
+    assert server._saved_gig_fares == 1
+
+
+def test_replacement_keeps_old_slot_until_complete_new_save(tmp_path, monkeypatch):
+    from theroadragetrip.home import save_home
+    old = _server(tmp_path, monkeypatch)
+    old.world.taxi_mgr.total_score = 321
+    assert old.save_game()
+    target = old.save_slot_file
+    original = target.read_bytes()
+    fresh = _server(tmp_path, monkeypatch, new=True)
+    assert fresh.world.taxi_mgr.total_score == 0
+    assert target.read_bytes() == original
+    save_home(fresh.homes_file, "Oulu", (1, 2, 3), in_save=True)
+    assert target.read_bytes() == original
+    replace = type(target).replace
+
+    def fail_publication(path, destination):
+        if destination == target:
+            raise OSError("disk full")
+        return replace(path, destination)
+
+    monkeypatch.setattr(type(target), "replace", fail_publication)
+    assert not fresh.save_game()
+    assert target.read_bytes() == original
+    monkeypatch.setattr(type(target), "replace", replace)
+    assert fresh.save_game()
+    assert fresh.save_slot_file == fresh.homes_file == target
+    data = read_slot(target)
+    assert data["total_score"] == 0 and data["homes"]["Oulu"]["x"] == 1
+    assert [row["name"] for row in list_slots(tmp_path / "roadragetrip.ini")] == ["test-slot"]
+
+
+def test_invalid_fare_is_rejected_before_changing_manager():
+    from types import SimpleNamespace
+    from theroadragetrip.save_slots import restore_fare
+    from copy import deepcopy
+    valid = {"state": TaxiState.DRIVING_TO_DROPOFF,
+             "passenger": {"name": "Test Person 2", "pickup": {"x": 0, "y": 0, "address": "A"},
+                           "dropoff": {"x": 10, "y": 10, "address": "B"}}}
+    cases = [{"fare_started_at": "bad"}, {"elapsed_time": "30"}, {"live_fare_cents": float("inf")},
+             {"fare_distance_m": -1}, {"fare_start_odometer_m": float("nan")}, {"state": "unknown"}]
+    for bad in cases:
+        manager = SimpleNamespace(current_passenger=None, offers=["keep"], state=TaxiState.WAITING_FOR_PICKUP)
+        data = {**deepcopy(valid), **bad}
+        assert not restore_fare(manager, data)
+        assert vars(manager) == {"current_passenger": None, "offers": ["keep"], "state": TaxiState.WAITING_FOR_PICKUP}
+    invalid_passenger = deepcopy(valid)
+    invalid_passenger["passenger"]["pickup"]["x"] = float("nan")
+    assert not restore_fare(SimpleNamespace(), invalid_passenger)
+
+
+def test_invalid_slot_date_and_sort_value_do_not_break_listing(tmp_path):
+    path = slot_path(tmp_path / "config.ini", "bad-date")
+    path.parent.mkdir()
+    path.write_text('{"city":"Oulu","saved_at":"bad","game_time":"bad"}')
+    assert "game_time" not in read_slot(path)
+    assert list_slots(tmp_path / "config.ini")[0]["saved_at"] == 0

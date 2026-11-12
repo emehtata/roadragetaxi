@@ -17,7 +17,7 @@ func run() -> void:
 	phone.open()
 	var offers: Array = []
 	for i in 3:
-		offers.append({"id": "offer-%d" % i, "kind": "offer", "status": "AVAILABLE", "name": "Aino", "pickup": "Kirkkokatu", "dropoff": "Rautatientori"})
+		offers.append({"id": "offer-%d" % i, "kind": "offer", "status": "AVAILABLE", "name": "Test Person 1", "pickup": "Test Street", "dropoff": "Station Square"})
 	phone.show_phone({"busy": false, "items": offers})
 	await process_frame
 	await process_frame

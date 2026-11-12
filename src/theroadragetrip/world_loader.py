@@ -22,6 +22,10 @@ from .level_routing import LevelRouteGraphs
 from .level_transitions import LevelTransitions, resolve_connectors, close_garage_roads
 from .map_level import SURFACE_LEVEL, LevelRoadNetworks
 from .trams import TramManager
+from .borders import BorderWatch
+from .geo import get_transformer
+from .ferries import FerryManager
+from .osm.build import FERRY_KIND
 from .competitor_taxis import Dispatcher
 from .taxi_brawls import BrawlManager
 from .npc import NPCVehicleManager, npc_target_count_for_population
@@ -29,6 +33,7 @@ from .osm import (AutoFetchManager, build_ways, fetch_osm_ways,
                   fetch_osm_ways_from_pbf, load_local_sample, local_pbf_available,
                   remove_trees_under_roads)
 from .osm.cache import OSM_CACHE_TTL_S
+from .osm.pbf_source import PbfUnavailable, pbf_fallback_notices
 from .parking import generate_detached_house_parking
 from .pedestrian import PedestrianManager, PlayerPedestrian
 from .physics import Car, SpatialWayGrid, respawn_car
@@ -55,9 +60,9 @@ def with_fetch_bbox(elements, fetch_bbox):
 def resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=None):
     """Pick where OSM data comes from: live Overpass, or a local .osm.pbf
     extract via osmium-tool (osm_source=pbf) - no downloads, no rate
-    limits, works offline. Falls back to Overpass with a warning if "pbf"
-    was requested but the local file or the `osmium` tool aren't actually
-    usable, so a missing extract doesn't just crash map loading outright.
+    limits, works offline. A "pbf" fetch that cannot use the extract
+    falls back to Overpass and records a notice the HUD shows the player
+    (once per reason per session; later fallbacks only log).
     """
     def _use_overpass(fetch_bbox, **fetch_kwargs):
         if progress_callback is not None:
@@ -66,18 +71,20 @@ def resolve_osm_fetch_func(args, overpass_endpoints, progress_callback=None):
 
     if getattr(args, "osm_source", "overpass") == "pbf":
         pbf_path = getattr(args, "osm_pbf_path", None)
-        if local_pbf_available(pbf_path):
-            def _use_pbf(fetch_bbox, **fetch_kwargs):
-                if progress_callback is not None:
-                    fetch_kwargs.setdefault("progress_callback", progress_callback)
-                return with_fetch_bbox(fetch_osm_ways_from_pbf(fetch_bbox, pbf_path=pbf_path, **fetch_kwargs), fetch_bbox)
 
-            return _use_pbf
-        logger.warning(
-            "osm_source=pbf requested but no usable local .osm.pbf/osmium-tool "
-            "found (path=%s) - falling back to the Overpass API",
-            pbf_path or "assets/osm/finland-latest.osm.pbf",
-        )
+        def _use_pbf(fetch_bbox, **fetch_kwargs):
+            if progress_callback is not None:
+                fetch_kwargs.setdefault("progress_callback", progress_callback)
+            try:
+                return with_fetch_bbox(fetch_osm_ways_from_pbf(fetch_bbox, pbf_path=pbf_path, **fetch_kwargs), fetch_bbox)
+            except PbfUnavailable as error:
+                logger.warning("osm_source=pbf unusable (%s, path=%s): %s - falling back to the Overpass API",
+                               error.reason, error.path, error)
+                pbf_fallback_notices.setdefault(error.reason, (error.path, error.detail))
+                return _use_overpass(fetch_bbox, **fetch_kwargs)
+
+        return _use_pbf
+
     return _use_overpass
 
 
@@ -85,11 +92,18 @@ def latlon_to_world_metres():
     """(lat, lon) -> world metres (EPSG:3067, x east / y north), or None
     without pyproj (trains then fall back to the fixed interval)."""
     try:
-        from pyproj import Transformer
+        transformer = get_transformer("EPSG:4326", "EPSG:3067")
     except ImportError:
         return None
-    transformer = Transformer.from_crs("EPSG:4326", "EPSG:3067", always_xy=True)
     return lambda lat, lon: transformer.transform(lon, lat)
+
+
+def prepare_initial_window(auto_fetch_manager, args, x, y):
+    """Start reading the initial 3x3 window now (auto-fetch only): the
+    initial tile streaming gets the same future, so it is built once."""
+    if args.auto_fetch and not getattr(args, "use_sample", False):
+        return auto_fetch_manager.prepare_window(x, y)
+    return None
 
 
 def fetched_area_metres(bbox):
@@ -264,7 +278,7 @@ def load_world(
     curb_grid = SpatialWayGrid()
     curb_grid.rebuild(curbs)
     railway_grid = SpatialWayGrid()
-    railway_grid.rebuild(railways)
+    railway_grid.rebuild([r for r in railways if r.kind != FERRY_KIND])  # a ferry route is no track
     railing_grid = SpatialWayGrid()
     railing_grid.rebuild(railings)
 
@@ -378,6 +392,8 @@ def load_world(
     npcs = npc_manager.vehicles
     npc_drivers = npc_manager.drivers
     traffic_mgr.npcs = npcs
+    ferry_mgr = FerryManager(railways)  # car ferries on their routes (ferries.py)
+    traffic_mgr.set_ferry_routes(route.points for route in ferry_mgr.routes)  # crossings for navigation
     # Initialize autonomous Pedestrian Manager
     on_load_progress(0.92, "Preparing pedestrians...")
     pedestrian_mgr = PedestrianManager(
@@ -406,9 +422,7 @@ def load_world(
 
     # Prepare transformer for meters->latlon display
     try:
-        from pyproj import Transformer
-
-        transformer_to_ll = Transformer.from_crs("EPSG:3067", "EPSG:4326", always_xy=True)
+        transformer_to_ll = get_transformer("EPSG:3067", "EPSG:4326")
     except Exception:
         transformer_to_ll = None
         logger.debug("pyproj not available; lat/lon display disabled")
@@ -452,6 +466,7 @@ def load_world(
         and local_pbf_available(getattr(args, "osm_pbf_path", None)) else 5.0,
     )
     auto_fetch_manager.initialize_player_tile(car.x, car.y, fetched_area_metres(bbox))
+    prepare_initial_window(auto_fetch_manager, args, car.x, car.y)
     taxi_mgr.map_covers = auto_fetch_manager.covers
     auto_fetch_manager.soft_boundary_enabled = args.auto_fetch
 
@@ -480,6 +495,8 @@ def load_world(
         arena_crowds=arena_crowds,
         railway_mgr=railway_mgr,
         tram_mgr=TramManager(railways, chosen_city),  # trams on their rails where the city has them (trams.py)
+        ferry_mgr=ferry_mgr,
+        border_watch=BorderWatch(),  # the out-of-Finland notice (borders.py)
         auto_fetch_manager=auto_fetch_manager,
         base_pedestrian_count=base_pedestrian_count,
         bounds=bounds,
@@ -515,6 +532,8 @@ def load_world(
         player_pedestrian=player_pedestrian,
         residents=residents,
         roadworks=roadworks,
+        # Ways already given their chance of a roadwork; map sync adds works on merged ones only.
+        roadwork_way_keys={way.osm_id if way.osm_id is not None else id(way) for way in ways} if roadworks_enabled else None,
         sceneries=sceneries,
         scenery_grid=scenery_grid,
         scenery_objects=scenery_objects,
