@@ -867,6 +867,12 @@ static var build_async := true  # tests build in place
 static var language := "en"  # unnamed fuel stations' board (main._apply_language)
 static var buildings_3d := true  # --buildings 2d uses flat footprints
 static var outdoor_3d := false  # --outdoor-3d (rtx-scene-readiness step 1): ground and roads in the 3D view, the 2D ground layers hidden
+
+
+## The 3D outdoor view is the default from every start path (menu, shortcut, exe); --outdoor-2d keeps the 2D view.
+static var default_3d := true  # tests of the 2D client turn it off
+static func wants_3d() -> bool:
+	return default_3d and not "--outdoor-2d" in OS.get_cmdline_user_args()
 static var forest_canopy := true  # off (graphics setting): forests keep their flat fill, no crowns - for software rendering
 var meshes_3d: Array = []  # buildings_3d.meshes, added to MapLayer's 3D building layer
 

@@ -539,6 +539,15 @@ func _check_map(centre: Vector2) -> Array:
 	var layer_3d = main.map_layer.buildings_3d
 	if MapChunkScript.outdoor_3d and (layer_3d == null or (layer_3d._street_lights.is_empty() and layer_3d.opaque)):
 		missing.append("the 3D view's lights are not made yet")
+	if needs.get("outdoor_3d", false) and not MapChunkScript.outdoor_3d:
+		missing.append("the client is not in the 3D outdoor view")
+	if needs.has("car_models_in_view"):  # GLB vehicles shown by the 3D layer (the player's taxi counts)
+		var cars := 0
+		if layer_3d != null:
+			for kind in layer_3d._model_used:
+				cars += int(layer_3d._model_used[kind])
+		if cars < int(needs["car_models_in_view"]):
+			missing.append("%d 3D car models in view, the scenario needs %d" % [cars, needs["car_models_in_view"]])
 	if needs.has("train_models_in_view"):
 		var trains: int = 0 if layer_3d == null else int(layer_3d._model_used.get("train_locomotive", 0)) + int(layer_3d._model_used.get("train_coach", 0))
 		if trains < int(needs["train_models_in_view"]):

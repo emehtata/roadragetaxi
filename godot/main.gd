@@ -186,6 +186,9 @@ func _ready() -> void:
 	entities.covered = map_layer.covered  # headlights under a higher road
 	labels.map_layer = map_layer
 	var args := OS.get_cmdline_user_args()
+	if MapChunk.wants_3d():
+		MapChunk.outdoor_3d = true
+		preload("res://buildings_3d.gd").use_shaded()
 	if "--rtx" in args:
 		MapChunk.outdoor_3d = true
 		MapChunk.buildings_3d = true
@@ -226,9 +229,8 @@ func _ready() -> void:
 				_bench = float(args[i + 1])
 				_bench_left = _bench
 				Perf.keep_all = true
-			"--outdoor-3d":  # rtx-scene-readiness step 1: ground and roads in the 3D view (developer trial)
-				MapChunk.outdoor_3d = true
-				preload("res://buildings_3d.gd").use_shaded()
+			"--outdoor-3d", "--outdoor-2d":  # the view is chosen above (3D unless --outdoor-2d); --outdoor-3d is kept as a no-op
+				pass
 			"--buildings":  # godot-21: "2d" the radial 2D renderer, "3d" (default) the 3D building layer
 				MapChunk.buildings_3d = "--rtx" in args or args[i + 1] != "2d"
 			"--building-fov":  # godot-22: try a 3D building camera FOV (degrees)

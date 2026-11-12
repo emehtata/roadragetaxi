@@ -1407,12 +1407,12 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 	return out
 
 
-static var ANIMAL_MODELS := {  # species -> [CC0 GLB (assets/animals/SOURCES.md), yaw turning its nose to +x, body length m, its coat (no tint)]
-	"fox": ["res://assets/animals/fox.glb", 0.0, 0.9, Color8(194, 91, 38)],
-	"small_bird": ["res://assets/animals/small_bird.glb", PI / 2.0, 0.3, Color.WHITE],  # untinted; the old 0.3 m bird size (a real robin is 0.14 m), to read on screen
-	"roe_deer": ["res://assets/animals/roe_deer.glb", PI / 2.0, 1.2, Color8(151, 104, 62)],
-	"horse": ["res://assets/animals/horse.glb", PI / 2.0, 2.0, Color8(139, 91, 57)],
-	"hare": ["res://assets/animals/hare.glb", PI / 2.0, 0.5, Color8(142, 126, 101)],
+static var ANIMAL_MODELS := {  # species -> [CC0 GLB preloaded so exports pack it (assets/animals/SOURCES.md), yaw turning its nose to +x, body length m, its coat (no tint)]
+	"fox": [preload("res://assets/animals/fox.glb"), 0.0, 0.9, Color8(194, 91, 38)],
+	"small_bird": [preload("res://assets/animals/small_bird.glb"), PI / 2.0, 0.3, Color.WHITE],  # untinted; the old 0.3 m bird size (a real robin is 0.14 m), to read on screen
+	"roe_deer": [preload("res://assets/animals/roe_deer.glb"), PI / 2.0, 1.2, Color8(151, 104, 62)],
+	"horse": [preload("res://assets/animals/horse.glb"), PI / 2.0, 2.0, Color8(139, 91, 57)],
+	"hare": [preload("res://assets/animals/hare.glb"), PI / 2.0, 0.5, Color8(142, 126, 101)],
 }
 static var _animal_models := {}  # species -> [verts at body length 1, feet at y=0, nose +x; face colours; face normals], [] if unusable
 
@@ -1422,10 +1422,10 @@ static func _animal_model(species: String) -> Array:
 	if _animal_models.has(species):
 		return _animal_models[species]
 	var spec: Array = ANIMAL_MODELS[species]
-	var scene: PackedScene = load(spec[0]) if ResourceLoader.exists(spec[0]) else null
+	var scene: PackedScene = spec[0]
 	_animal_models[species] = []
 	if scene == null:
-		push_warning("animal model %s missing: %s stays procedural" % [spec[0], species])
+		push_warning("animal model missing: %s stays procedural" % species)
 		return []
 	var root := scene.instantiate()
 	var verts := PackedVector3Array()

@@ -21,6 +21,8 @@ res://tests/train_doors.gd
 res://tests/wildlife.gd
 res://animal_models_test.gd
 
+res://tests/release_3d_default.gd
+res://tests/animal_models_packed.gd
 [excluded]
 res://tests/animal_audio_render.gd  # render tool: waits for a drawn frame, hangs headless
 res://tests/bridge_occlusion.gd  # rendered pixel regression: needs a display

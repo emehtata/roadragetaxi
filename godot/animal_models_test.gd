@@ -69,7 +69,7 @@ func test_horse_saddle_height() -> void:
 ## Criterion 7: a missing GLB: procedural shape, a warning, no error.
 func test_missing_glb_falls_back() -> void:
 	var real: Array = B3.ANIMAL_MODELS["fox"]
-	B3.ANIMAL_MODELS["fox"] = ["res://assets/animals/no_such_fox.glb"] + real.slice(1)
+	B3.ANIMAL_MODELS["fox"] = [null] + real.slice(1)
 	B3._animal_models.erase("fox")
 	check(B3._model_arrays("fox", Color.GRAY, "stand", 1.0).is_empty(), "missing fox GLB builds no model")
 	var arrays := B3.animal_arrays("fox", Color.GRAY, "stand", 1.0, 1)

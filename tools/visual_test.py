@@ -117,8 +117,8 @@ def run_one(scenario: dict, start_time: str, out_root: Path) -> dict:
         engine = [] if godot.suffix == ".exe" else ["--display-driver", "x11", "--rendering-driver", "opengl3"]
         client = ["--port", str(port), "--zoom", str(scenario.get("zoom", 1.0)),
                   "--visual-test", _host_path(out / "scenario.json", godot), *scenario.get("godot_args", [])]
-        if scenario.get("view", "3d") == "3d":
-            client.append("--outdoor-3d")
+        if scenario.get("view", "3d") == "2d" and not scenario.get("no_view_flag"):  # 3D is the client's default
+            client.append("--outdoor-2d")
         with open(out / "godot.log", "w", encoding="utf-8") as godot_log:
             subprocess.run([str(godot), "--path", project, *engine, "--", *client], cwd=REPO, stdout=godot_log,
                            stderr=subprocess.STDOUT, timeout=600)

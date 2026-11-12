@@ -86,6 +86,8 @@ func _ready() -> void:
 	_city_locations = _municipalities.filter(func(city): return city.get("menu", true))
 	_cities.assign(_city_locations.map(func(city): return str(city["name"])))
 	print("startup: %d cities from the simulation (%s)" % [_cities.size(), "release" if Paths.exported() else "repo"])
+	print("view: outdoor_3d=%s renderer=%s driver=%s (running %s %s)" % [preload("res://map_chunk.gd").wants_3d(), ProjectSettings.get_setting("rendering/renderer/rendering_method"),
+		ProjectSettings.get_setting("rendering/rendering_device/driver.windows"), RenderingServer.get_current_rendering_method(), RenderingServer.get_current_rendering_driver_name()])
 	if _cities.is_empty():
 		_cities = ["Oulu"]
 		_city_locations = [{"name": "Oulu", "latitude": 65.012, "longitude": 25.468}]

@@ -66,7 +66,7 @@ run: godot/.godot/import-stamp
 	$(GODOT) --path godot -- --outdoor-3d
 
 run-2d: godot/.godot/import-stamp
-	$(GODOT) --path godot
+	$(GODOT) --path godot -- --outdoor-2d
 
 run-debug: godot/.godot/import-stamp
 	$(GODOT) --path godot -- --log-level DEBUG

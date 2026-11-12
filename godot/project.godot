@@ -46,7 +46,8 @@ interior_right={
 
 [rendering]
 
-renderer/rendering_method="gl_compatibility"
+renderer/rendering_method="forward_plus"
+rendering_device/driver.windows="vulkan"
 lights_and_shadows/directional_shadow/size=2048
 limits/opengl/max_renderable_lights=128
 limits/opengl/max_lights_per_object=128

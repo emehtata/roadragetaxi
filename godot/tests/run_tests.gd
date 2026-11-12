@@ -203,6 +203,7 @@ var _ran := false
 func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes get _ready
 	if _ran:
 		return false
+	MapChunk.default_3d = false  # these tests cover the 2D client; tests/release_3d_default.gd the 3D default
 	_ran = true
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
