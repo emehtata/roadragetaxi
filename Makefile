@@ -52,7 +52,7 @@ install: venv
 
 ifneq ($(wildcard /proc/sys/fs/binfmt_misc/WSLInterop),)
 run:
-	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_GODOT)" -Outdoor3d
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_GODOT)"
 
 run-2d: run-windows
 
@@ -63,7 +63,7 @@ run-pbf:
 	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_GODOT)" -LocalPbf
 else
 run: godot/.godot/import-stamp
-	$(GODOT) --path godot -- --outdoor-3d
+	$(GODOT) --path godot
 
 run-2d: godot/.godot/import-stamp
 	$(GODOT) --path godot -- --outdoor-2d
