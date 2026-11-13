@@ -1455,8 +1455,10 @@ class SimulationServer:
                         pieces = chunk_worker.snapshot(self.world, region, lights, index.size)
                         lamps, chunks = self._chunk_executor().submit(
                             chunk_worker.build_area, pieces, region, index.size, place_lamps).result()
-                        built = [(cid, None if content is None else pickle.loads(content), wire)
-                                 for cid, content, wire in chunks]
+                        built = []
+                        for cid, content, wire in chunks:  # a chunk's unpickling holds the GIL: one at a time
+                            built.append((cid, None if content is None else pickle.loads(content), wire))
+                            chunk_worker.yield_gil()
                         index, more = ChunkIndex.replaced(index, built)
                         changed |= more
                         new_lamps.extend(lamps or ())

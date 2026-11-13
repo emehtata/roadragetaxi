@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # road, a yard's street, shores) lies within this.
 SNAPSHOT_MARGIN_M = 300.0
 # Objects per pickle: a few ms of GIL each on the map-growth thread.
-PIECE_SIZE = 500
+PIECE_SIZE = 100
 # An explicit street lamp is matched to a road anywhere along the road's bbox.
 LAMP_REACH_M = 60.0
 _HIDDEN_LIGHT = SimpleNamespace(renderable=False)  # keeps the other lights' ids (their list index)
@@ -39,6 +39,17 @@ def _overlaps(r, rect) -> bool:
 def area_cells(area, size: float) -> set:
     first, last = cell_of(area[0], area[1], size), cell_of(area[2], area[3], size)
     return {(ix, iy) for ix in range(first[0], last[0] + 1) for iy in range(first[1], last[1] + 1)}
+
+
+GIL_YIELD_S = 0.001
+
+
+def yield_gil() -> None:
+    """Hand the GIL to the simulation tick between pickle calls: each one is
+    a C call that keeps it, and back to back (a snapshot, ~50 of them) they
+    left the tick a fraction of the GIL - ticks of 13 ms CPU took 54-78 ms.
+    A sleep really releases it; this thread only gets slower by ~1 ms a piece."""
+    time.sleep(GIL_YIELD_S)
 
 
 def snapshot(world, area, lights, size: float) -> list[bytes]:
@@ -69,8 +80,9 @@ def snapshot(world, area, lights, size: float) -> list[bytes]:
     selected_at = time.perf_counter()
     pieces = []
     for name, items in lists.items():
-        pieces.extend(pickle.dumps((name, items[start:start + PIECE_SIZE]), pickle.HIGHEST_PROTOCOL)
-                      for start in range(0, len(items), PIECE_SIZE))
+        for start in range(0, len(items), PIECE_SIZE):
+            pieces.append(pickle.dumps((name, items[start:start + PIECE_SIZE]), pickle.HIGHEST_PROTOCOL))
+            yield_gil()
         if not items:
             pieces.append(pickle.dumps((name, []), pickle.HIGHEST_PROTOCOL))
     scalars = {"roadworks": list(getattr(world, "roadworks", ())), "speed_cameras": list(getattr(world, "speed_cameras", ()))}
