@@ -29,7 +29,7 @@ def from_asc(path: Path) -> dict:
     y0 = head.get("yllcorner", head.get("yllcenter", 0.0) - step / 2)
     values = [float(v) for line in lines for v in line.split()]
     nodata = head.get("nodata_value")
-    values = [0.0 if v == nodata else v for v in values]
+    values = [None if v == nodata else v for v in values]  # NoData stays NoData (JSON null), never 0 m
     grid = [values[r * cols:(r + 1) * cols] for r in range(rows)][::-1]
     return {"origin": [x0, y0], "step": step, "cols": cols, "heights": [v for row in grid for v in row]}
 

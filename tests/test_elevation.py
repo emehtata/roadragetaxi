@@ -4,11 +4,55 @@ from theroadragetrip.osm import elevation
 
 
 def test_bilinear_and_edge_clamp(tmp_path):
-    path = tmp_path / "dem.json"  # 2 x 2 cells of 10 m, centres at (5, 5) .. (15, 15); map origin (0, 0) clamps to 1.0
+    path = tmp_path / "dem.json"  # 2 x 2 cells of 10 m, centres at (5, 5) .. (15, 15); absolute heights
     path.write_text(json.dumps({"origin": [0.0, 0.0], "step": 10.0, "cols": 2, "heights": [1.0, 3.0, 5.0, 7.0]}))
     dem = elevation.load_dem(path)
-    assert dem.height_m(15.0, 5.0) == 2.0  # a cell centre: its value, relative to the origin's height
-    assert dem.height_m(10.0, 5.0) == 1.0  # halfway along x
-    assert dem.height_m(10.0, 10.0) == 3.0  # bilinear in the middle
-    assert dem.height_m(-50.0, 100.0) == 4.0  # outside: the nearest edge value
+    assert dem.height_m(15.0, 5.0) == 3.0  # a cell centre: its value (base 0, absolute N2000)
+    assert dem.height_m(10.0, 5.0) == 2.0  # halfway along x
+    assert dem.height_m(10.0, 10.0) == 4.0  # bilinear in the middle
+    assert dem.height_m(-50.0, 100.0) == 5.0  # outside: the nearest edge value
     assert elevation.load_dem(tmp_path / "missing.json") is None
+
+
+def test_nodata_null_is_skipped_never_zero(tmp_path):
+    path = tmp_path / "dem.json"
+    path.write_text(json.dumps({"origin": [0.0, 0.0], "step": 10.0, "cols": 2, "heights": [None, 4.0, None, 4.0]}))
+    dem = elevation.load_dem(path)
+    assert dem.height_m(10.0, 5.0) == 4.0  # the NoData neighbour is skipped, not averaged in as 0 m
+    assert dem.height_m(5.0, 5.0) is None
+
+
+def test_make_dem_asc_keeps_nodata_and_absolute_base(tmp_path):
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("make_dem", Path(__file__).resolve().parents[1] / "tools" / "make_dem.py")
+    make_dem = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(make_dem)
+    asc = tmp_path / "a.asc"
+    asc.write_text("ncols 2\nnrows 1\nxllcorner 400000\nyllcorner 7200000\ncellsize 10\nNODATA_value -9999\n-9999 12.5\n")
+    data = make_dem.from_asc(asc)
+    assert data["heights"] == [None, 12.5]
+    dem = elevation.Dem(data["origin"], data["step"], data["cols"], data["heights"])
+    assert dem.base == 0.0 and dem.height_m(400015.0, 7200005.0) == 12.5
+
+
+def test_ground_heights_no_zero_for_nodata():
+    from types import SimpleNamespace
+    from theroadragetrip import map_chunks
+    dem = SimpleNamespace(height_m=lambda x, y: None if x < 250 else 7.0)
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], dem=dem)
+    heights = map_chunks.ChunkIndex(world).message("0_0")["ground_heights"]["heights"]
+    assert heights and all(h == 7.0 for h in heights)  # NoData filled from the nearest valid sample
+    empty = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], dem=SimpleNamespace(height_m=lambda x, y: None))
+    assert "ground_heights" not in map_chunks.ChunkIndex(empty).message("0_0")
+
+
+def test_server_falls_back_to_flat_without_dem80(tmp_path):
+    assert elevation.load_ground(tmp_path, "Oulu", dem80_enabled=True) is None  # nothing: flat
+    (tmp_path / "Oulu.dem.json").write_text(json.dumps({"origin": [0, 0], "step": 10, "cols": 1, "heights": [3.0]}))
+    assert isinstance(elevation.load_ground(tmp_path, "Oulu", dem80_enabled=True), elevation.Dem)
+    (tmp_path / "dem80").mkdir()
+    (tmp_path / "dem80" / "dem80.json").write_text(json.dumps(
+        {"crs": "EPSG:3067", "step_m": 80, "tile_size": 256, "scale": 0.1, "nodata": -32768, "tiles": []}))
+    assert isinstance(elevation.load_ground(tmp_path, "Oulu", dem80_enabled=True), elevation.Dem80)
+    assert isinstance(elevation.load_ground(tmp_path, "Oulu", dem80_enabled=False), elevation.Dem)  # switch off: as today

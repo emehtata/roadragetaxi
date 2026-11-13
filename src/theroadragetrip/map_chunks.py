@@ -674,16 +674,23 @@ class ChunkIndex:
             "type": "chunk", "version": PROTOCOL_VERSION, "chunk_id": cid,
             "bounds": [ix * self.size, iy * self.size, (ix + 1) * self.size, (iy + 1) * self.size],
             **content,
-            **({"ground_heights": self._ground_heights(ix, iy)} if self._dem is not None else {}),
+            **({"ground_heights": grid} if self._dem is not None and (grid := self._ground_heights(ix, iy)) else {}),
         }
 
-    def _ground_heights(self, ix: int, iy: int) -> dict:
-        """The chunk's ground grid, corners included (shared with neighbours), rows along +y."""
+    def _ground_heights(self, ix: int, iy: int) -> dict | None:
+        """The chunk's ground grid, corners included (shared with neighbours), rows along +y.
+        NoData samples take the nearest valid one in the chunk; None if all are NoData (never 0 m)."""
         cols = round(self.size / GROUND_STEP_M) + 1
         step = self.size / (cols - 1)
         x0, y0 = ix * self.size, iy * self.size
-        return {"origin": [x0, y0], "step": step, "cols": cols,
-                "heights": [round(self._dem.height_m(x0 + c * step, y0 + r * step), 2) for r in range(cols) for c in range(cols)]}
+        heights = [self._dem.height_m(x0 + c * step, y0 + r * step) for r in range(cols) for c in range(cols)]
+        valid = [k for k, h in enumerate(heights) if h is not None]
+        if not valid:
+            return None
+        if len(valid) < len(heights):  # ponytail: O(n^2) over 26x26 samples, only on chunks with NoData
+            heights = [h if h is not None else heights[min(valid, key=lambda v: (v // cols - k // cols) ** 2 + (v % cols - k % cols) ** 2)]
+                       for k, h in enumerate(heights)]
+        return {"origin": [x0, y0], "step": step, "cols": cols, "heights": [round(h, 2) for h in heights]}
 
     def encoded(self, cid: str) -> bytes:
         """The chunk message as wire bytes, encoded once: the map doesn't
