@@ -275,6 +275,37 @@
       "measure_s": 20
     },
     {
+      "id": "frozen_pond_snowless_winter_taxi_on_ice",
+      "description": "frozen_pond_snowless_winter with the taxi standing on the bay ice: lake ice carries the car, no sink countdown",
+      "why": "Kaisaniemenlahti, 50 m right of the frozen_pond_snowless_winter pose: the whole car is inside the bay's water polygon (is_car_fully_in_water). The pose check fails if the server sinks and respawns the taxi.",
+      "city": "Helsinki",
+      "pose": [385934.9, 6672898.5, 2.396],
+      "start_time": "2026-01-15T12:00",
+      "weather": "clear",
+      "cloud": 0.2,
+      "wetness": [0.0, 0.05],
+      "sun_altitude_deg": [0, 20],
+      "zoom": 0.5,
+      "server_args": ["--test-snow-depth", "0"],
+      "measure_s": 20
+    },
+    {
+      "id": "frozen_bay_north_late_november",
+      "description": "Oulu sea bay on 28 Nov, snowless: the modelled lake ice (about 21 cm) holds and the taxi stands on it with no sink countdown",
+      "why": "The northernmost map data at hand (Oulu, 65.0 N). 427000, 7210500 is inside non-river water at least 30 m from every shore (checked with is_point_in_water on the loaded map). Snowless clear ice: lake_ice_thickness_cm(2025-11-28, 65.0, 1.0) = 21.3 cm >= CAR_ICE_MIN_CM. The pose check fails if the server sinks and respawns the taxi.",
+      "city": "Oulu",
+      "pose": [427000.0, 7210500.0, 0.0],
+      "start_time": "2025-11-28T12:00",
+      "weather": "clear",
+      "cloud": 0.2,
+      "wetness": [0.0, 0.05],
+      "sun_altitude_deg": [-5, 10],
+      "zoom": 0.5,
+      "server_args": ["--test-snow-depth", "0", "--no-auto-fetch"],
+      "requires": {"buildings_in_view": 0},
+      "measure_s": 5
+    },
+    {
       "id": "frozen_pond_snowless_winter_windshield",
       "description": "frozen_pond_snowless_winter from the windshield: the 3D water area is ice in perspective",
       "why": "Same pose and conditions; heading along Kaisaniemenranta keeps the bay on the right of the forward view.",
