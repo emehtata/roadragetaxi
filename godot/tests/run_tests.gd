@@ -3839,6 +3839,12 @@ func test_resent_chunk_buildings() -> void:
 	ready_chunk._queue_meshes(arrays)
 	map.remove_chunk("0_0")
 	check(MapChunk.ready_meshes.is_empty(), "a freed chunk's queued arrays go with it")
+	var lamp_rows := [[Vector2(3, 4), Vector2.RIGHT], [Vector2(30, 4), Vector2.UP]]
+	var lamp_arrays := B3.lamp_posts_arrays(lamp_rows)
+	var lamp_node := B3.lamp_posts_node(lamp_rows)
+	check(lamp_arrays["normals"] == B3.flat_normals(lamp_arrays["verts"])
+		and lamp_node.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] == lamp_arrays["verts"], "lamp posts: worker arrays, the same mesh")
+	lamp_node.free()
 	map.free()
 	MapChunk.buildings_3d = false
 

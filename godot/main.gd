@@ -375,6 +375,7 @@ func _process_chunk_queues(started_usec: int, budget := CHUNK_BUDGET_USEC) -> vo
 			break
 		var message: Dictionary = _chunk_queue.pop_front()
 		wildlife.replace_chunk(message, map_layer.origin)
+		Perf.add("chunk_wildlife", Time.get_ticks_usec() - at)
 		map_layer.replace_chunk(message)
 		var now := Time.get_ticks_usec()
 		last = now - at

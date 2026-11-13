@@ -2655,7 +2655,8 @@ static func railings_node(rows: Array) -> MeshInstance3D:
 static func _world_node(out: Dictionary) -> MeshInstance3D:
 	if out["verts"].is_empty():
 		return null
-	var node := _instance(_mesh(out["verts"], out["colors"], out["roof_mask"], PackedVector2Array(), PackedFloat32Array(), out["part"]),
+	var node := _instance(_mesh(out["verts"], out["colors"], out["roof_mask"], PackedVector2Array(), PackedFloat32Array(), out["part"],
+		false, out.get("normals", PackedVector3Array())),
 		_shared.get("car", _shared["material"]), LAYER_BUILDINGS)
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	return node
@@ -2663,6 +2664,11 @@ static func _world_node(out: Dictionary) -> MeshInstance3D:
 
 ## rows [lamp position, toward the road (unit)]: the pole 1.2 m behind the lamp, its arm and head.
 static func lamp_posts_node(rows: Array) -> MeshInstance3D:
+	return _world_node(lamp_posts_arrays(rows))
+
+
+## lamp_posts_node's arrays (pure data, worker-safe), normals included.
+static func lamp_posts_arrays(rows: Array) -> Dictionary:
 	var out := _empty_arrays()
 	var steel := Color8(110, 112, 115)
 	for row: Array in rows:
@@ -2673,7 +2679,8 @@ static func lamp_posts_node(rows: Array) -> MeshInstance3D:
 			var p := pole.lerp(lamp, (k + 0.5) / 3.0)
 			_car_box(out, p.x - 0.22, p.x + 0.22, p.y - 0.05, p.y + 0.05, LAMP_HEIGHT_M - 0.02, LAMP_HEIGHT_M + 0.08, steel)
 		_car_box(out, lamp.x - 0.28, lamp.x + 0.28, lamp.y - 0.28, lamp.y + 0.28, LAMP_HEIGHT_M - 0.2, LAMP_HEIGHT_M, Color8(60, 62, 64))
-	return _world_node(out)
+	out["normals"] = flat_normals(out["verts"])
+	return out
 
 
 const SIGNAL_COLORS := [[Color(1.0, 0.12, 0.12), Color8(60, 10, 10)], [Color(1.0, 0.82, 0.0), Color8(60, 50, 0)], [Color(0.16, 0.94, 0.24), Color8(10, 50, 15)]]

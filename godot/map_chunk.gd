@@ -96,6 +96,8 @@ var _fields_frozen = null  # explicit server ice state; old servers use the wint
 var _trees_leafless := false
 var _forest_rows: Array = []  # --outdoor-3d: forest_trees, [layer point, kind, variation]
 var _forest_task := -1
+var _lamp_task := -1  # the 3D lamp posts' arrays, built on a worker
+var _lamp_build := 0  # the newest lamp build: an older one's arrays are dropped
 var forest_ms := [0.0, 0.0]  # the 3D forest's CPU time: placement, instance build (worker threads)
 var _forest_look := []  # the season and leaflessness the 3D forest was built for
 var _season_layers: Array[Node2D] = []  # landuse and islands: their green kinds follow the season
@@ -111,6 +113,8 @@ func _notification(what: int) -> void:
 			WorkerThreadPool.wait_for_task_completion(_building_task)
 		if _forest_task >= 0:
 			WorkerThreadPool.wait_for_task_completion(_forest_task)
+		if _lamp_task >= 0:
+			WorkerThreadPool.wait_for_task_completion(_lamp_task)
 		for node in [_pools, _floods, _heads, building_node] + meshes_3d:
 			if is_instance_valid(node) and node.get_parent() == null:
 				node.free()
@@ -120,8 +124,10 @@ func _notification(what: int) -> void:
 
 
 func setup(message: Dictionary, origin: Vector2) -> void:
+	var started := Time.get_ticks_usec()
 	if message.get("prepared", {}).get("origin") != origin:
 		prepare(message, origin)
+		Perf.add("chunk_prepare_main", Time.get_ticks_usec() - started)
 	var prepared: Dictionary = message["prepared"]
 	message.erase("prepared")
 	_data = message
@@ -254,6 +260,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	bridge_ends = prepared.get("bridge_ends", PackedVector2Array())
 	ground_heights = prepared.get("ground_heights", {})
 	_water_ripple_spots = prepared["water_ripple_spots"]
+	Perf.add("chunk_layers", Time.get_ticks_usec() - started)
 	_build_2_5d()
 	set_wetness(_wetness)
 
@@ -731,6 +738,7 @@ var _built_view := Vector2.INF
 
 ## Build either 3D meshes or flat footprints, independently of camera movement.
 func _build_2_5d() -> void:
+	var started := Time.get_ticks_usec()
 	var buildings: Array = _data.get("buildings", [])
 	var sites: Array = _data.get("construction_fences", [])  # each gets a tower crane in 3D
 	var styles: Array = _data.get("building_styles", [])
@@ -826,7 +834,10 @@ func _build_2_5d() -> void:
 				var frame := Detail.RinkFrame.new(self, court, float(court[3]), float(court[4]))
 				return [frame.at(0, -.47), frame.at(0, .47)]),
 			"bus_bays": _data.get("bus_stops", []).map(func(stop): return [_points(stop["bay"]), Detail._rgb(stop["color"]) if stop.has("color") else Color8(82, 82, 78)])}
+		Perf.add("chunk_ground_dict", Time.get_ticks_usec() - started)
+		var lamps_started := Time.get_ticks_usec()
 		_lamps_3d()
+		Perf.add("chunk_lamps_3d", Time.get_ticks_usec() - lamps_started)
 	if buildings_3d and not (buildings.is_empty() and sites.is_empty() and landmarks.is_empty() and ground.is_empty()):  # godot-21: one mesh for the 3D building layer, never rebuilt for the view
 		if not build_async:
 			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground))
@@ -1881,7 +1892,26 @@ func _lamps_3d() -> void:
 	for i in street_lights.size():
 		if not _broken.has(i) and i < lights.size():
 			rows.append([street_lights[i], Vector2(cos(float(lights[i][2])), -sin(float(lights[i][2])))])
-	_set_dynamic_3d("lamps", B3.lamp_posts_node(rows))
+	if not build_async:
+		_set_dynamic_3d("lamps", B3.lamp_posts_node(rows))
+		return
+	# The per-lamp boxes are pure arrays: a worker builds them (a motorway chunk's
+	# hundreds of lamps took 30-75 ms on the main thread); main only makes the mesh.
+	_lamp_build += 1
+	var build_id := _lamp_build
+	if _lamp_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_lamp_task)
+	_lamp_task = WorkerThreadPool.add_task(func(): _lamps_ready.call_deferred(B3.lamp_posts_arrays(rows), build_id))
+
+
+func _lamps_ready(arrays: Dictionary, build_id: int) -> void:
+	if build_id != _lamp_build:
+		return
+	WorkerThreadPool.wait_for_task_completion(_lamp_task)
+	_lamp_task = -1
+	var started := Time.get_ticks_usec()
+	_set_dynamic_3d("lamps", B3._world_node(arrays))
+	Perf.add("chunk_lamps_main", Time.get_ticks_usec() - started)
 
 
 ## A rebuilt 3D part of this chunk replaces the old one in the 3D view.

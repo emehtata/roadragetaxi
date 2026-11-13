@@ -427,7 +427,7 @@ func _check_map(centre: Vector2) -> Array:
 		for chunk in main.map_layer._chunks.values():
 			if chunk._bounds_rect.has_point(corner):
 				covered = true
-				if chunk._building_task >= 0 or chunk._forest_task >= 0:
+				if chunk._building_task >= 0 or chunk._forest_task >= 0 or chunk._lamp_task >= 0:
 					missing.append("a chunk under the view is still building its meshes")
 		if not covered:
 			missing.append("no chunk loaded at %s" % corner)
@@ -625,7 +625,7 @@ func _finish() -> void:
 	var perf := preload("res://perf.gd")
 	var sections := {}
 	for name in ["render_3d_gpu", "render_3d_cpu", "render_gpu", "render_cpu",
-			"chunk_add", "chunk_meshes_main", "chunk_build_worker", "chunk_buildings_build", "chunk_unload"]:
+			"chunk_add", "chunk_prepare_main", "chunk_layers", "chunk_ground_dict", "chunk_lamps_3d", "chunk_lamps_main", "chunk_wildlife", "chunk_meshes_main", "chunk_build_worker", "chunk_buildings_build", "chunk_unload"]:
 		if perf.sections.has(name):
 			var s: Array = perf.sections[name]
 			sections[name] = {"avg_ms": s[1] / 1000.0 / maxi(1, s[0]), "max_ms": s[2] / 1000.0}
