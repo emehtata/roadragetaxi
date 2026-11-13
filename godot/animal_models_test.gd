@@ -109,6 +109,28 @@ func test_other_poses_unchanged() -> void:
 		check(h == POSE_HASHES[pose], "%s pose unchanged" % pose)
 
 
+## Costume hats sit on the comic head: the cap is centred on the hair crown (within 0.01 m),
+## covers it (no gap) and its brim stays above the eyes (no sink into the face).
+func test_costume_hat_on_crown() -> void:
+	var plain: PackedVector3Array = B3.person_arrays(Color.GRAY, "stand", 1.0, "", 0, false, 1)["verts"]
+	var crown := plain[0]
+	for v in plain:
+		if v.y > crown.y:
+			crown = v
+	for costume in ["santa", "elf"]:
+		var hat: PackedVector3Array = B3.person_arrays(Color.GRAY, "stand", 1.0, costume, 0, false, 1)["verts"].slice(plain.size())
+		var cap := AABB(Vector3.INF, Vector3.ZERO)
+		var lo := INF
+		for v in hat:
+			lo = minf(lo, v.y)
+			if v.y < crown.y:
+				cap = AABB(v, Vector3.ZERO) if cap.position == Vector3.INF else cap.expand(v)
+		var centre := cap.get_center()
+		check(absf(centre.x - crown.x) < 0.01 and absf(centre.z - crown.z) < 0.01,
+			"%s hat centred on the crown (%s vs %s)" % [costume, centre, crown])
+		check(lo < crown.y and lo > crown.y - 0.2, "%s hat brim %.3f covers the crown %.3f, above the eyes" % [costume, lo, crown.y])
+
+
 ## Criterion 7: a missing GLB: procedural shape, a warning, no error.
 func test_missing_glb_falls_back() -> void:
 	var real: Array = B3.ANIMAL_MODELS["fox"]
