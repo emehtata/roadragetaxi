@@ -363,15 +363,15 @@ func _on_connection(up: bool) -> void:
 		audio.stop_voices()
 
 
-func _process_chunk_queues(started_usec: int) -> void:
+func _process_chunk_queues(started_usec: int, budget := CHUNK_BUDGET_USEC) -> void:
 	# Another one only if it fits too: a 3 ms frame doesn't start a 20 ms chunk. A chunk costs
 	# its add (cheap: the worker prepared it) and its first draw, later in this frame, by its points.
-	var spent := MapChunk.drain_ready_meshes(CHUNK_BUDGET_USEC)  # main-thread mesh creation shares the budget
-	var at := started_usec + spent
+	var spent := MapChunk.drain_ready_meshes(budget)  # main-thread mesh creation shares the budget
+	var at := maxi(started_usec, Time.get_ticks_usec() - spent)
 	var last := 0
 	while not _chunk_queue.is_empty():
 		var draw := int(_chunk_queue[0].get("prepared", {}).get("points", 0) * DRAW_USEC_PER_POINT)
-		if spent > 0 and spent + last + draw > CHUNK_BUDGET_USEC:
+		if spent > 0 and spent + last + draw > budget:
 			break
 		var message: Dictionary = _chunk_queue.pop_front()
 		wildlife.replace_chunk(message, map_layer.origin)
@@ -383,7 +383,7 @@ func _process_chunk_queues(started_usec: int) -> void:
 		at = now
 	if not _chunk_queue.is_empty():
 		return  # unloads wait: drawing what the player needs comes first
-	while not _chunk_unload_queue.is_empty() and (spent == 0 or spent + last <= CHUNK_BUDGET_USEC):
+	while not _chunk_unload_queue.is_empty() and (spent == 0 or spent + last <= budget):
 		var chunk_id: String = _chunk_unload_queue.pop_front()
 		wildlife.remove_chunk(chunk_id)
 		map_layer.remove_chunk(chunk_id)

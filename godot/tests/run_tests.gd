@@ -723,9 +723,11 @@ func test_chunk_queue() -> void:
 		MapChunk.prepare(message, Vector2.ZERO)
 		message["prepared"]["points"] = 2500 if i < 2 else 10  # two dense chunks, then two light ones
 		main._chunk_queue.append(message)
+	MapChunk.ready_meshes.clear()  # earlier tests' async builds must not spend this frame's budget
 	main._process_chunk_queues(Time.get_ticks_usec())
 	check(map.chunk_count() == 1, "a dense chunk's first draw takes its frame's budget: the next dense one waits")
-	main._process_chunk_queues(Time.get_ticks_usec())
+	# Points decide, not this machine's wall time: slack for the adds themselves (slow CI took >1.5 ms each).
+	main._process_chunk_queues(Time.get_ticks_usec(), 100000)
 	check(map.chunk_count() == 4, "light ones still share a frame")
 	map.free()
 	main.free()
