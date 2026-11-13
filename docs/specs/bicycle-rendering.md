@@ -58,3 +58,4 @@ New bike meshes, 2D top-down drawing, motorcycle lamps, any server/simulation ch
   `visual-test-results/vehicle_bike_riding_night/2026-10-20T2230_20261113-214938_1d406951-dirty/screenshot.png`,
   `visual-test-results/vehicle_lineup_bikes_night/2026-10-20T2230_20261113-215103_1d406951-dirty/screenshot.png`.
 - Gap: AC5 (daytime `vehicle_bike_close_day` unchanged) was not re-run for this verdict.
+- E-scooter: rear lamp moved onto the deck in dbf449f7 (one white front, one red rear lamp); close-up `visual-test-results/escooter_closeup_night/2026-10-20T2230_20261113-232724_8a50bb63-dirty/screenshot.png`.
