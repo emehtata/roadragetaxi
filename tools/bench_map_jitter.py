@@ -117,6 +117,26 @@ def replay(states) -> dict:
             "clock_snaps": snaps, "wrong_speed_pct": round(100.0 * off_speed / max(1, frames), 1)}
 
 
+def _rss_mb() -> float:
+    """This process's resident set (the server's: it ticks in-process), MiB; 0 without /proc."""
+    try:
+        for line in Path("/proc/self/status").read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                return round(int(line.split()[1]) / 1024.0)
+    except OSError:
+        pass
+    return 0.0
+
+
+def _memory_summary(samples: list) -> dict:
+    if not samples:
+        return {}
+    return {"rss_start_mb": samples[0]["rss_mb"], "rss_end_mb": samples[-1]["rss_mb"],
+            "rss_max_mb": max(s["rss_mb"] for s in samples), "tiles_end": samples[-1]["tiles"],
+            "tiles_max": max(s["tiles"] for s in samples), "chunks_end": samples[-1]["chunks"],
+            "every_30s": samples[::30]}
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--preset", default="Oulu")
@@ -260,6 +280,9 @@ def main(argv=None) -> int:
             rec["population"] = {"npcs": len(server.world.npc_manager.vehicles),
                                   "moving_npcs": sum(abs(v.speed) > 0.5 for v in server.world.npc_manager.vehicles),
                                   "pedestrians": len(server.world.pedestrian_mgr.pedestrians)}
+            if len(ticks) % server.tick_rate == 0:  # once a second: resident memory and what is held
+                rec["memory"] = {"rss_mb": _rss_mb(), "tiles": len(streamer.manager.loaded_tiles),
+                                 "chunks": len(server._chunks_index._chunks)}
             ticks.append(rec)
             next_tick += interval
             wait = next_tick - time.monotonic()
@@ -373,6 +396,7 @@ def main(argv=None) -> int:
         "young_gc": {"count": len(young), "max_ms": round(max(young, default=0.0), 1), "total_ms": round(sum(young)),
                      "over_10ms": sum(ms > 10 for ms in young)},
         "chunks": {"sent": sent, "resent": resent, "mb": round(size / 1e6, 1)},
+        "memory": _memory_summary([t["memory"] for t in ticks if "memory" in t and t0 <= t["start"]]),
         "client": {"states": len(states), "gap_p99_ms": pct(gaps, .99), "gap_max_ms": round(max(gaps, default=0.0)),
                    "gaps_over_100ms": sum(g > 100 for g in gaps), **replay(states),
                    "worst_gaps": [{"t_s": round(at - t0, 1), "ms": round(gap * 1000.0)} for gap, at in worst_gaps]},
