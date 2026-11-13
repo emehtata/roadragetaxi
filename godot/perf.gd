@@ -49,6 +49,7 @@ static func summary(times: PackedFloat32Array = frames) -> Dictionary:
 		return 1000.0 / (worst / k)
 	return {"frames": n, "avg_ms": total / n, "avg_fps": 1000.0 / (total / n), "p50_ms": pct.call(0.5), "p95_ms": pct.call(0.95), "p99_ms": pct.call(0.99),
 		"worst_ms": sorted[n - 1], "low_1pct_fps": low.call(0.01), "low_01pct_fps": low.call(0.001),
+		"over_16ms": times.size() - Array(times).filter(func(t): return t <= 16.7).size(),
 		"over_33ms": times.size() - Array(times).filter(func(t): return t <= 33.3).size(),
 		"over_66ms": times.size() - Array(times).filter(func(t): return t <= 66.7).size()}
 
