@@ -183,7 +183,7 @@ def test_chunks_beyond_the_players_own_wait_until_the_index_has_their_tile():
     assert set(sent) == {"0_2", "1_2", "0_3", "1_3"}
 
 
-def test_a_changed_far_chunk_not_yet_encoded_waits_for_the_streaming_budget():
+def test_a_changed_chunk_not_yet_encoded_waits_for_the_streaming_budget():
     import threading
     from types import SimpleNamespace
 
@@ -204,8 +204,8 @@ def test_a_changed_far_chunk_not_yet_encoded_waits_for_the_streaming_budget():
         _client_chunks={connection: ({"1_0", "4_0"}, (0, 0))},
     )
     SimulationServer._apply_map_growth(server)
-    assert sent == ["1_0"]  # the player's own neighbour at once
-    assert server._client_chunks[connection] == ({"1_0"}, None)  # 4_0 is streamed again, within budget
+    assert sent == []  # no 2-20 ms encode inside the swap, not even for the player's own neighbour
+    assert server._client_chunks[connection] == (set(), None)  # both are streamed again, within the encode budget
 
 
 def test_a_final_map_growth_refreshes_the_station_platforms():

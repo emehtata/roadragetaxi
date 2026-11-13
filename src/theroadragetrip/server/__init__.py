@@ -1538,10 +1538,10 @@ class SimulationServer:
             for connection, (loaded, _) in list(self._client_chunks.items()):
                 # Nearest first; a resent chunk replaces the client's copy as it is drawn (no unload, no hole).
                 for cid in sorted(loaded & changed, key=distance):
-                    if distance(cid) <= 1 or index.is_encoded(cid):
+                    if index.is_encoded(cid):
                         connection.send(index.encoded(cid))
-                    else:
-                        loaded.discard(cid)  # _stream_map_chunks resends it within its encode budget
+                    else:  # encoding is 2-20 ms a chunk: _stream_map_chunks does it within its budget
+                        loaded.discard(cid)
                 self._client_chunks[connection] = (loaded, None)  # replan: the new area may be in reach
         logger.info("Map grew %s -> %s: %d chunks changed%s, built in %.0f ms", old_bounds, new_bounds, len(changed),
                     "" if final else " around the player", build_s * 1000.0)
@@ -1575,8 +1575,9 @@ class SimulationServer:
                 if indexed is not None and max(abs(ix - cell[0]), abs(iy - cell[1])) > 1 \
                         and world_to_tile((ix + 0.5) * CHUNK_SIZE_M, (iy + 0.5) * CHUNK_SIZE_M) not in indexed:
                     continue
-                if max(abs(ix - cell[0]), abs(iy - cell[1])) > 1 and not self._chunks_index.is_encoded(cid) \
-                        and time.perf_counter() - started > CHUNK_ENCODE_BUDGET_S:
+                # The budget holds for the player's own chunks too (a resend after growth did 18 ms
+                # encodes in one tick); the first is always sent, so they still come one a tick at least.
+                if not self._chunks_index.is_encoded(cid) and time.perf_counter() - started > CHUNK_ENCODE_BUDGET_S:
                     complete = False  # the next tick goes on from here
                     break
                 connection.send(self._chunks_index.encoded(cid))
