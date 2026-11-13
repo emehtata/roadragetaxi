@@ -15,6 +15,17 @@ from theroadragetrip.osm.pbf_source import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _join_cell_cuts():
+    """A real index-cell cut (end-to-end test) runs on a daemon thread; left
+    running it calls the next test's patched subprocess.run."""
+    yield
+    import threading
+    for thread in threading.enumerate():
+        if thread.name == "pbf-index-cells":
+            thread.join(timeout=30)
+
+
 def test_parse_osm_xml_produces_overpass_shaped_elements(tmp_path):
     """build_ways() expects the exact same dict shapes Overpass's JSON
     uses - this is the one place that translation happens, so it must be
