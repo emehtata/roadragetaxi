@@ -64,6 +64,49 @@ func test_horse_saddle_height() -> void:
 	var rider: PackedVector3Array = B3.person_arrays(Color.GRAY, "riding", 1.0, "")["verts"]
 	check(model == B3._model_arrays("horse", Color8(139, 91, 57), "stand", 1.0)["verts"], "an unmounted horse uses the model")
 	check(rider.slice(0, model.size()) == model, "the rider's mount is the GLB horse")
+	var back := _horse_top(model, -0.05, 0.05)
+	var seat := INF
+	for v in rider.slice(model.size()):
+		if absf(v.z) < 0.01 and absf(v.x) < 0.2:
+			seat = minf(seat, v.y)
+	check(absf(seat - back) < 0.08, "rider's torso (%.2f m) sits on the horse's back (%.2f m)" % [seat, back])
+
+
+## The horse GLB's highest vertex with x in [x0, x1]; half-width within 5 cm of x.
+static func _horse_top(model: PackedVector3Array, x0: float, x1: float) -> float:
+	var top := -INF
+	for v in model:
+		if v.x >= x0 and v.x <= x1:
+			top = maxf(top, v.y)
+	return top
+
+
+static func _horse_half_width(model: PackedVector3Array, x: float) -> float:
+	var w := 0.0
+	for v in model:
+		if absf(v.x - x) < 0.05:
+			w = maxf(w, absf(v.z))
+	return w
+
+
+## Criteria 2-3: riding legs hang astride, outside the body, feet off the ground.
+func test_horse_rider_legs_astride() -> void:
+	var model: PackedVector3Array = B3.animal_arrays("horse", Color8(139, 91, 57), "stand", 1.0, 1)["verts"]
+	for side: float in [-1.0, 1.0]:
+		var j: Array = B3.riding_leg_joints(side)
+		for i in [1, 2]:
+			check(absf(j[i].z) > _horse_half_width(model, j[i].x), "riding joint %d side %d outside the body" % [i, side])
+		check(j[2].y < j[0].y and j[2].x > j[0].x and j[2].y > 0.45, "riding ankle %d hangs ahead of the hip, off the ground" % side)
+
+
+## Criterion 4: other poses' vertices unchanged (hash recorded before the riding change).
+const POSE_HASHES := {"sitting": 2789825266, "stand": 3490249161, "walk_2": 2284535438, "swimming": 597618965}
+
+
+func test_other_poses_unchanged() -> void:
+	for pose in ["sitting", "stand", "walk_2", "swimming"]:
+		var h := hash(B3.person_arrays(Color.GRAY, pose, 1.0, "", 3)["verts"])
+		check(h == POSE_HASHES[pose], "%s pose unchanged" % pose)
 
 
 ## Criterion 7: a missing GLB: procedural shape, a warning, no error.
@@ -99,7 +142,7 @@ func test_rows_batched_per_key() -> void:
 
 func _initialize() -> void:
 	for test in ["test_model_aabb_scale", "test_model_faces_heading", "test_unmodelled_species_use_procedural",
-			"test_horse_saddle_height", "test_missing_glb_falls_back", "test_rows_batched_per_key"]:
+			"test_horse_saddle_height", "test_horse_rider_legs_astride", "test_other_poses_unchanged", "test_missing_glb_falls_back", "test_rows_batched_per_key"]:
 		call(test)
 	print("animal_models_test: %d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)

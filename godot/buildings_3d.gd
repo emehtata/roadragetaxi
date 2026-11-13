@@ -1354,6 +1354,16 @@ const SKIN_TONES := [Color8(232, 184, 150), Color8(191, 137, 103), Color8(145, 9
 const HAIR_TONES := [Color8(49, 35, 29), Color8(108, 67, 39), Color8(178, 147, 95), Color8(35, 32, 34)]
 
 
+## Rider's hip height on the GLB horse: its back at x=0 (~1.2 m, measured from the horse GLB at size 1) plus saddle.
+const HORSE_SADDLE_Y := 1.25
+
+
+## A horse rider's [hip, knee, ankle] at k=1: legs astride, outside the GLB body (half-width ~0.22 m).
+static func riding_leg_joints(side: float) -> Array:
+	return [Vector3(0.0, HORSE_SADDLE_Y, side * 0.11), Vector3(0.15, HORSE_SADDLE_Y - 0.3, side * 0.3),
+		Vector3(0.05, HORSE_SADDLE_Y - 0.65, side * 0.27)]
+
+
 static func person_arrays(clothing: Color, pose: String, scale: float, costume: String, variant := 0, winter := false, detail := 1) -> Dictionary:
 	var out := _empty_arrays()
 	var k := scale * (0.96 + 0.015 * (variant % 5))
@@ -1365,7 +1375,7 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 	var shorts := style == 6
 	var fabric := Color8(224, 170, 54) if style == 4 else clothing.lerp(Color8(88, 91, 92), 0.22)
 	var trousers := Color8(48, 58, 74) if style % 3 == 0 else Color8(38, 43, 53) if style % 3 == 1 else Color8(79, 72, 66)
-	var offset := -0.35 if pose == "sitting" else 0.68 if pose == "riding" else -1.34 if pose == "swimming" else 0.0
+	var offset := -0.35 if pose == "sitting" else HORSE_SADDLE_Y - 0.87 if pose == "riding" else -1.34 if pose == "swimming" else 0.0
 	var moving := pose.begins_with("walk_") or pose.begins_with("run_")
 	var running := pose.begins_with("run_")
 	var phase := int(pose.split("_")[1]) if moving else 0
@@ -1379,6 +1389,13 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 			var z := side * 0.11
 			var lift := maxf(0.0, cos(float(phase) * TAU / 6.0) * side) * (0.15 if running else 0.1) if moving else 0.0
 			var hip := Vector3(0.0, 0.87 + offset, z) * k
+			if pose == "riding":
+				var j := riding_leg_joints(side)
+				_round_limb(out, j[0] * k, j[1] * k, 0.094 * k, 0.075 * k, trousers, 0, detail)
+				_round_part(out, j[1] * k, Vector3(0.076, 0.074, 0.075) * k, trousers, 0, detail)
+				_round_limb(out, j[1] * k, j[2] * k, 0.073 * k, 0.046 * k, skin if shorts else trousers, 1 if shorts else 0, detail)
+				_round_part(out, j[2] * k + Vector3(0.06, -0.025, 0.0) * k, Vector3(0.12, 0.055, 0.072) * k, Color8(42, 42, 46), 4, detail)
+				continue
 			var knee := Vector3((0.44 if pose == "sitting" else swing * side * 0.5), (0.85 if pose == "sitting" else 0.45 + lift * 0.3) + offset, z * 1.1) * k  # sitting: thighs level on the seat
 			var ankle := Vector3((0.47 if pose == "sitting" else swing * side), (0.09 if pose != "riding" else 0.82) + (0.0 if pose == "sitting" else lift), z * 1.1) * k
 			_round_limb(out, hip, knee, 0.094 * k, 0.075 * k, trousers, 0, detail)
