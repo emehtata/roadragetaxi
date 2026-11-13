@@ -36,7 +36,7 @@ from typing import Optional
 from .. import chunk_worker, protocol
 from ..parent_watch import exit_with_parent
 from ..navigation_route import NavigationRoute
-from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, ChunkIndex, cell_of, chunk_id, plan
+from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, UNLOAD_RADIUS, ChunkIndex, cell_of, chunk_id, plan
 from ..police import SpeedCameraSpawner
 from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer, prepare_initial_window
@@ -1525,6 +1525,8 @@ class SimulationServer:
             self.announcer.set_platforms(_platform_ways(self.world.ways))
         player = self.world.player_pedestrian if self._on_foot else self.car
         px, py = cell_of(player.x, player.y)
+        if final:  # the chunks of unloaded tiles go with them (memory); a client's chunks near the player stay
+            index.prune(set(self._map_streamer.manager.loaded_tiles), (px, py), UNLOAD_RADIUS + 1)
 
         def distance(cid: str) -> int:
             ix, iy = (int(part) for part in cid.split("_"))

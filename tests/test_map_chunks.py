@@ -698,3 +698,18 @@ def test_bare_rock_area_is_a_grey_landuse_fill():
     area = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], sceneries=[rock])).message("0_0")["landuse"][0]
     assert area[0] == list(SCENERY_COLORS["bare_rock"])
     assert max(area[0]) - min(area[0]) < 12  # grey, not green
+
+
+def test_pruned_index_keeps_only_loaded_tiles_and_chunks_near_the_player():
+    from theroadragetrip.map_chunks import ChunkIndex
+    from theroadragetrip.tile_streaming import TileCoord
+
+    index = ChunkIndex.__new__(ChunkIndex)
+    index.size = 500.0
+    index._chunks = {cid: {"roads": []} for cid in ("0_0", "1_1", "40_0", "41_0", "2_0")}
+    index._encoded = {cid: b"x" for cid in index._chunks}
+    old_chunks = index._chunks
+    # tile (0, 0) loaded holds chunks 0_0 and 1_1; chunk 2_0 is unloaded but beside the player
+    dropped = index.prune({TileCoord(0, 0)}, player_cell=(3, 0), radius=1)
+    assert set(index._chunks) == set(index._encoded) == {"0_0", "1_1", "2_0"}
+    assert dropped == 2 and set(old_chunks) == {"0_0", "1_1", "40_0", "41_0", "2_0"}  # a reader of the old dict is unaffected

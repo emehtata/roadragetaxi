@@ -417,6 +417,26 @@ class ChunkIndex:
             chunk = self._chunks[cid] = {kind: [] for kind in _KINDS}
         return chunk
 
+    def prune(self, loaded_tiles, player_cell: tuple[int, int], radius: int) -> int:
+        """Drop chunks (and their bytes) whose tile is no longer loaded, except
+        those within `radius` chunks of the player's cell (a client may still
+        hold them). Without this the index kept every chunk ever built.
+        New dicts, not in-place deletes: a map-growth thread may be reading
+        the old ones. Returns how many were dropped."""
+        from .tile_streaming import world_to_tile
+
+        def keep(cid: str) -> bool:
+            ix, iy = (int(part) for part in cid.split("_"))
+            return (max(abs(ix - player_cell[0]), abs(iy - player_cell[1])) <= radius
+                    or world_to_tile((ix + 0.5) * self.size, (iy + 0.5) * self.size) in loaded_tiles)
+
+        chunks = {cid: chunk for cid, chunk in list(self._chunks.items()) if keep(cid)}
+        dropped = len(self._chunks) - len(chunks)
+        if dropped:
+            self._chunks = chunks
+            self._encoded = {cid: data for cid, data in list(self._encoded.items()) if cid in chunks}
+        return dropped
+
     @classmethod
     def updated(cls, old: "ChunkIndex", world, region) -> tuple["ChunkIndex", set]:
         """`old` with the chunks touching `region` (metres rect) rebuilt from
