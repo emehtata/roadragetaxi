@@ -281,8 +281,7 @@ def main(argv=None) -> int:
                         names = {t.ident: t.name for t in threading.enumerate()}
                         rec["others"] = {names.get(ident, str(ident)): " < ".join(
                             f"{Path(f.filename).stem}:{f.name}:{f.lineno}" for f in reversed(traceback.extract_stack(other)[-6:]))
-                            for ident, other in frames.items() if ident not in (main_id, threading.get_ident())
-                            and any(name in names.get(ident, "") for name in BACKGROUND)}
+                            for ident, other in frames.items() if ident not in (main_id, threading.get_ident())}
 
         threading.Thread(target=sampler, name="sampler", daemon=True).start()
 
