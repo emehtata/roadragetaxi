@@ -455,6 +455,7 @@ class SimulationServer:
         self._camera_spawner = SpeedCameraSpawner()
         self._client_chunks: dict = {}
         self.collector = CollectorSchedule()
+        self._retired_indexes: list = []  # replaced chunk indexes, freed in budgeted steps
         self._map_streamer = MapStreamer(self.world, self._map_grew) if self._auto_fetch else None
         # The tiles the chunk index was built with (None: the map never grows). A chunk
         # beyond them would reach the client half-built and be resent when its tile merges.
@@ -1174,6 +1175,7 @@ class SimulationServer:
         self._prepare_home_map()
         self._update_speed_cameras(dt)
         self._stream_map_chunks()
+        self._free_retired()
         self.navigation.update(self.world, self.car, self._current_way)
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
 
@@ -1518,6 +1520,8 @@ class SimulationServer:
             self._map_growth_retry = (time.monotonic() + 1.0, result)
             return
         lights, index, changed, old_bounds, new_bounds, build_s, final, covered = result
+        if self._chunks_index is not None:
+            self._retired_indexes.append(self._chunks_index)  # freed a few chunks a tick (_free_retired)
         self._chunks_index = index
         self.world.street_light_points = lights
         self._map_streamer.hold = not final
@@ -1620,6 +1624,24 @@ class SimulationServer:
         message["state"]["electronic_signs"] = live.electronic_signs_near(self.car, self._current_way) if live is not None else []
         for connection in clients:
             connection.send_state(message)  # never waits: a behind client gets the newest state
+
+    def _free_retired(self, budget_s: float = 0.002) -> None:
+        """Drop replaced chunk indexes a chunk at a time: freeing one whole took
+        ~30 ms on the tick (its chunks' content, ~1e5 objects, deallocated at
+        once). Not while a map-growth pass may still read it."""
+        if not self._retired_indexes or any(t.name == "map-growth" for t in threading.enumerate()):
+            return
+        deadline = time.perf_counter() + budget_s
+        first = True
+        while self._retired_indexes and (first or time.perf_counter() < deadline):
+            first = False
+            old = self._retired_indexes[0]
+            if old._chunks:
+                old._chunks.popitem()  # ponytail: one chunk can exceed the budget; finer would need splitting its lists
+            elif old._encoded:
+                old._encoded.clear()
+            else:
+                self._retired_indexes.pop(0)
 
     def collect_between_ticks(self, room_s: float) -> None:
         """Cyclic GC in the gap before the next tick (performance.CollectorSchedule);

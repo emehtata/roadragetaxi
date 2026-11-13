@@ -713,3 +713,16 @@ def test_pruned_index_keeps_only_loaded_tiles_and_chunks_near_the_player():
     dropped = index.prune({TileCoord(0, 0)}, player_cell=(3, 0), radius=1)
     assert set(index._chunks) == set(index._encoded) == {"0_0", "1_1", "2_0"}
     assert dropped == 2 and set(old_chunks) == {"0_0", "1_1", "40_0", "41_0", "2_0"}  # a reader of the old dict is unaffected
+
+
+def test_a_replaced_chunk_index_is_freed_in_budgeted_steps():
+    from types import SimpleNamespace
+
+    from theroadragetrip.server import SimulationServer
+
+    old = SimpleNamespace(_chunks={f"{i}_0": {"roads": [[1.0] * 10]} for i in range(5)}, _encoded={"0_0": b"x"})
+    server = SimpleNamespace(_retired_indexes=[old])
+    SimulationServer._free_retired(server, budget_s=0.0)  # always one step
+    assert len(old._chunks) == 4 and server._retired_indexes == [old]
+    SimulationServer._free_retired(server, budget_s=1.0)
+    assert server._retired_indexes == [] and not old._chunks and not old._encoded

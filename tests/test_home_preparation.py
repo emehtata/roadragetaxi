@@ -144,7 +144,7 @@ def test_changed_chunks_are_resent_nearest_the_player_first():
     connection = Connection()
     index = SimpleNamespace(prune=lambda *a: 0, encoded=lambda cid: cid, is_encoded=lambda cid: True)
     server = SimpleNamespace(
-        _map_growth=[([], index, {"9_0", "1_0", "4_0"}, None, None, 0.0, True, {"tile"})], _chunks_index=None,
+        _map_growth=[([], index, {"9_0", "1_0", "4_0"}, None, None, 0.0, True, {"tile"})], _chunks_index=None, _retired_indexes=[],
         world=SimpleNamespace(street_light_points=[], ways=[]), announcer=StationAnnouncer(), _map_streamer=SimpleNamespace(hold=True, manager=SimpleNamespace(loaded_tiles=set())), _on_foot=False,
         car=SimpleNamespace(x=250.0, y=250.0), _clients_lock=threading.Lock(), _indexed_tiles=set(),
         _client_chunks={connection: ({"9_0", "1_0", "4_0", "2_0"}, (0, 0))},
@@ -198,7 +198,7 @@ def test_a_changed_chunk_not_yet_encoded_waits_for_the_streaming_budget():
     connection = Connection()
     index = SimpleNamespace(prune=lambda *a: 0, encoded=lambda cid: cid, is_encoded=lambda cid: False)
     server = SimpleNamespace(
-        _map_growth=[([], index, {"1_0", "4_0"}, None, None, 0.0, True, {"tile"})], _chunks_index=None,
+        _map_growth=[([], index, {"1_0", "4_0"}, None, None, 0.0, True, {"tile"})], _chunks_index=None, _retired_indexes=[],
         world=SimpleNamespace(street_light_points=[], ways=[]), announcer=StationAnnouncer(), _map_streamer=SimpleNamespace(hold=True, manager=SimpleNamespace(loaded_tiles=set())), _on_foot=False,
         car=SimpleNamespace(x=250.0, y=250.0), _clients_lock=threading.Lock(), _indexed_tiles=set(),
         _client_chunks={connection: ({"1_0", "4_0"}, (0, 0))},
@@ -218,7 +218,7 @@ def test_a_final_map_growth_refreshes_the_station_platforms():
     road = SimpleNamespace(highway="primary", is_busway=False, points_m=[(0.0, 0.0), (100.0, 0.0)])
     index = SimpleNamespace(prune=lambda *a: 0, encoded=lambda cid: cid, is_encoded=lambda cid: True)
     server = SimpleNamespace(
-        _map_growth=[([], index, set(), None, None, 0.0, True, {"tile"})], _chunks_index=None,
+        _map_growth=[([], index, set(), None, None, 0.0, True, {"tile"})], _chunks_index=None, _retired_indexes=[],
         world=SimpleNamespace(street_light_points=[], ways=[road, platform]), announcer=StationAnnouncer(),
         _map_streamer=SimpleNamespace(hold=True, manager=SimpleNamespace(loaded_tiles=set())), _on_foot=False, car=SimpleNamespace(x=0.0, y=0.0),
         _clients_lock=threading.Lock(), _indexed_tiles=set(), _client_chunks={},
