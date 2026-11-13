@@ -366,8 +366,8 @@ func _on_connection(up: bool) -> void:
 func _process_chunk_queues(started_usec: int, budget := CHUNK_BUDGET_USEC) -> void:
 	# Another one only if it fits too: a 3 ms frame doesn't start a 20 ms chunk. A chunk costs
 	# its add (cheap: the worker prepared it) and its first draw, later in this frame, by its points.
-	var spent := MapChunk.drain_ready_meshes(budget)  # main-thread mesh creation shares the budget
-	var at := maxi(started_usec, Time.get_ticks_usec() - spent)
+	var spent := 0
+	var at := started_usec
 	var last := 0
 	while not _chunk_queue.is_empty():
 		var draw := int(_chunk_queue[0].get("prepared", {}).get("points", 0) * DRAW_USEC_PER_POINT)
@@ -382,9 +382,8 @@ func _process_chunk_queues(started_usec: int, budget := CHUNK_BUDGET_USEC) -> vo
 		Perf.add("chunk_add", last)
 		spent += last + draw
 		at = now
-	if not _chunk_queue.is_empty():
-		return  # unloads wait: drawing what the player needs comes first
-	while not _chunk_unload_queue.is_empty() and (spent == 0 or spent + last <= budget):
+	# Unloads wait while chunks are queued: drawing what the player needs comes first.
+	while _chunk_queue.is_empty() and not _chunk_unload_queue.is_empty() and (spent == 0 or spent + last <= budget):
 		var chunk_id: String = _chunk_unload_queue.pop_front()
 		wildlife.remove_chunk(chunk_id)
 		map_layer.remove_chunk(chunk_id)
@@ -393,6 +392,9 @@ func _process_chunk_queues(started_usec: int, budget := CHUNK_BUDGET_USEC) -> vo
 		Perf.add("chunk_unload", last)
 		spent += last
 		at = now
+	# Worker-built meshes last, in what is left (at least one surface a frame): before the
+	# adds they took the whole budget in a dense city and new chunks queued up.
+	MapChunk.drain_ready_meshes(budget - spent)
 
 
 ## After a jump (Home, respawn): how long until the chunk under the player
