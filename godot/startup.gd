@@ -375,6 +375,9 @@ static func credits_text() -> String:
 		"© OpenStreetMap contributors. Map data is available under the Open Database License (ODbL) 1.0: [url=https://www.openstreetmap.org/copyright]openstreetmap.org/copyright[/url]. Read live from Overpass API servers or from a Geofabrik extract of Finland; airports and stations (places.json.gz) and the Finland minimap are derived from it and likewise under the ODbL.",
 		"Start-map tiles © OpenStreetMap contributors (tile.openstreetmap.org); place names by Nominatim.",
 		"",
+		"[b]Terrain[/b]",
+		T.text("credits_terrain", "en"),
+		"",
 		"[b]Trains[/b]",
 		"Source: Fintraffic / digitraffic.fi, license CC 4.0 BY ([url=https://creativecommons.org/licenses/by/4.0/]creativecommons.org/licenses/by/4.0[/url]). Modified: the passenger timetable and train compositions are condensed for the game.",
 		"",
@@ -890,6 +893,11 @@ static func clamp_start(value: Dictionary, today: Dictionary) -> Dictionary:
 
 ## The server's map source options from the settings ("" source: the
 ## server's own config decides).
+## The experimental 80 m DEM terrain switch (settings.cfg game.terrain_dem80): off unless chosen.
+static func terrain_args(settings: ConfigFile) -> Array:
+	return ["--terrain-dem80"] if settings.get_value("game", "terrain_dem80", false) else ["--no-terrain-dem80"]
+
+
 static func map_source_args(source: String, pbf_path: String) -> Array:
 	if source == "pbf":
 		return ["--osm-source", "pbf"] + (["--osm-pbf-path", pbf_path] if pbf_path != "" else [])
@@ -1290,6 +1298,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 		args.append("--train-timetable" if _settings.get_value("game", "train_timetable") else "--no-train-timetable")
 	if _settings.has_section_key("game", "road_digitraffic"):
 		args.append("--road-digitraffic" if _settings.get_value("game", "road_digitraffic") else "--no-road-digitraffic")
+	args.append_array(terrain_args(_settings))
 	if _settings.has_section_key("game", "live_clock"):
 		args.append("--live-clock" if _settings.get_value("game", "live_clock") else "--no-live-clock")
 	args.append_array(_server_extra)

@@ -444,7 +444,7 @@ func test_credits() -> void:
 	var credits: String = preload("res://startup.gd").credits_text()
 	for required in ["© OpenStreetMap contributors", "Open Database License", "openstreetmap.org/copyright",
 			"Fintraffic / digitraffic.fi", "CC 4.0 BY", "Finnish Meteorological Institute", "Digital and Population Data Services Agency",
-			"© Wikipedia contributors", "CC BY-SA 4.0", "Liiga", "Veikkausliiga", "MIT License", "osmium-tool", "Godot Engine"]:
+			"produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014", "© Wikipedia contributors", "CC BY-SA 4.0", "Liiga", "Veikkausliiga", "MIT License", "osmium-tool", "Godot Engine"]:
 		check(credits.contains(required), "credits name: %s" % required)
 	check(Engine.get_license_text().contains("Godot"), "the Godot licence text is available to the credits")
 	var scene: Node = load("res://main.tscn").instantiate()

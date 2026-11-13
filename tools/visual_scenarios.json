@@ -1,5 +1,7 @@
 {
   "scenarios": [
+    {"id": "terrain_oulu_dem80", "description": "Oulu east hill (Ylikiimingintie, ~67 m) with the experimental 80 m DEM terrain on", "why": "docs/dem-terrain-80m.md: ground under roads and trees, the camera at its usual height above the road; needs <cache>/dem80/ (tools/dem80.py).", "city": "Oulu", "pose": [453249.0, 7201078.5, -2.07], "start_time": "2026-10-21T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [3, 90], "zoom": 1.0, "box_km": 2.0, "measure_s": 3, "server_args": ["--no-auto-fetch", "--terrain-dem80"], "requires": {"dem_ground": true}},
+    {"id": "terrain_oulu_dem80_off", "description": "The same pose as terrain_oulu_dem80 with the terrain switch off: flat ground as before", "why": "Compare with terrain_oulu_dem80: same camera height above the road.", "city": "Oulu", "pose": [453249.0, 7201078.5, -2.07], "start_time": "2026-10-21T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0.0, 0.05], "sun_altitude_deg": [3, 90], "zoom": 1.0, "box_km": 2.0, "measure_s": 3, "server_args": ["--no-auto-fetch", "--no-terrain-dem80"], "requires": {}},
     {
       "id": "startup_pbf_download",
       "kind": "startup_download",

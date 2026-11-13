@@ -760,6 +760,8 @@ func _process(delta: float) -> void:
 			print("screenshot saved: ", _screenshot_path)
 			get_tree().quit()
 	camera.position = entities.player_position() + _camera_lead(delta)
+	if map_layer.buildings_3d != null:  # 2D view: no 3D camera
+		map_layer.buildings_3d.ground_elevation = map_layer.deck_height(entities.player_position(), 0)
 	if walk_eye:
 		if not state.get("on_foot", false):
 			_set_windshield(true)  # back at the wheel: the driver's eyes

@@ -296,8 +296,9 @@ class SimulationServer:
             progress=lambda fraction, message: progress("world", message),
         )
         from ..osm.cache import default_cache_root
-        from ..osm.elevation import load_dem
-        self.world.dem = load_dem(Path(default_cache_root()) / f"{city_choice.chosen_city}.dem.json")  # render-only ground; None: flat
+        from ..osm.elevation import load_ground
+        self.world.dem = load_ground(default_cache_root(), city_choice.chosen_city,
+                                     bool(getattr(args, "terrain_dem80", False)))  # render-only ground; None: flat
         self.initial_map_preparation = (
             prepare_initial_window(self.world, progress=progress) if self._auto_fetch
             else {"started": False, "integrated_tiles": 0, "elapsed_s": 0.0}

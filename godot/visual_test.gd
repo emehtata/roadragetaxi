@@ -415,6 +415,13 @@ func check() -> Array:
 		_counts["animals_in_view"] = seen
 		if seen < int(scenario["requires"]["animals_in_view"]):
 			missing.append("%d animals in view, the scenario needs %d" % [seen, scenario["requires"]["animals_in_view"]])
+	if scenario.get("requires", {}).get("dem_ground", false):  # DEM terrain loaded under the taxi; the camera rides on it
+		var ground: float = main.map_layer.deck_height(main.entities.player_position(), 0)
+		_counts["dem_ground_m"] = ground
+		if ground == 0.0:
+			missing.append("no DEM ground under the vehicle (terrain switch off or no dem80/)")
+		elif not is_equal_approx(main.map_layer.buildings_3d.ground_elevation, ground):
+			missing.append("camera ground offset %.2f m, the ground is %.2f m" % [main.map_layer.buildings_3d.ground_elevation, ground])
 	if scenario.get("requires", {}).has("notice_contains"):  # a HUD notice showing this text, wholly on screen
 		var notice: Label = main.hud._notice
 		# Held like the game clock (--test-time-scale 0): its ~15 s run in wall time, while 60 ready

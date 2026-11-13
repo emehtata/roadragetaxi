@@ -57,6 +57,7 @@ var windshield_on := false
 var windshield_at := Vector2.ZERO
 var windshield_heading := 0.0
 var windshield_elevation := 0.0
+var ground_elevation := 0.0  # the ground under the taxi (main.gd, map_layer.deck_height): the map camera keeps its height above it
 var eye_height := 1.35  # m above the ground: the driver's eyes, or a walker's (main.gd)
 var eye_ahead := 0.55  # m forward of windshield_at
 var eye_pitch := 0.0  # rad, up(+)
@@ -285,6 +286,12 @@ static func project(p: Vector3, centre: Vector2, height: float) -> Vector2:
 	return centre + (Vector2(p.x, p.z) - centre) * height / (height - p.y)
 
 
+## The top-down camera above the view centre, `height` over the ground under the taxi
+## (absolute DEM heights; flat ground: 0, as before).
+static func top_camera_position(centre: Vector2, height: float, ground: float) -> Vector3:
+	return Vector3(centre.x, height + ground, centre.y)
+
+
 static func to_3d(p: Vector2, height := 0.0) -> Vector3:
 	return Vector3(p.x, height, p.y)
 
@@ -308,7 +315,7 @@ func _process(delta: float) -> void:
 	view_centre = centre
 	view_height = height
 	get_parent().canopies_moved(Rect2(centre - Vector2(size) / camera_2d.zoom / 2.0, Vector2(size) / camera_2d.zoom))
-	_camera.position = Vector3(centre.x, height, centre.y)
+	_camera.position = top_camera_position(centre, height, ground_elevation)
 	_camera.near = maxf(1.0, height * 0.02)
 	_camera.far = height * 2.0 + 10.0 if opaque else height + 1.0  # opaque: shadows on the ground (see the shadow camera below)
 	if windshield_on:
@@ -1940,9 +1947,16 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 	if not grid.is_empty():  # DEM terrain: every vertex onto the ground under it (decks keep their DECK_M above it)
 		# ponytail: per vertex - a tall building's roof follows the slope and big flat areas stay planar between
 		# their corners; per-building base height and a gridded ground mesh if hills show it
+		# the flat layers span whole chunks and long road segments: split them to the DEM grid first, or
+		# the plane between far corners cuts over the roads in a dip
+		subdivide(out, "ground", ["ground_colors"], DEM_EDGE_M)
+		subdivide(out, "road", ["road_colors", "road_uv", "road_uv2"], DEM_EDGE_M)
 		for key in ["verts", "shadow", "lit", "glass", "arena", "ground", "deck", "canopy", "road"]:
 			var verts: PackedVector3Array = out[key]
+			var spread: bool = key in ["ground", "road"]
 			for i in verts.size():
+				if spread:  # ponytail: the mm layer gaps x20 (to 1 m), over the cm a 20 m facet misses the bilinear ground by
+					verts[i].y = verts[i].y * 20.0 if verts[i].y < 0.05 else verts[i].y + 0.95
 				verts[i].y += ground_height(grid, Vector2(verts[i].x, verts[i].z))
 			out[key] = verts
 	# The per-vertex loops run here, on the worker, not in meshes() on the main thread.
@@ -2480,6 +2494,45 @@ static func deck_height(at: Vector2, layer: int, ends: PackedVector2Array, grid 
 	for end in ends:
 		nearest = minf(nearest, at.distance_to(end))
 	return float(layer) * DECK_M * smoothstep(0.0, RAMP_M, nearest) + ground
+
+
+const DEM_EDGE_M := 20.0  # the ground grid's step (map_chunks.GROUND_STEP_M)
+
+
+## Split the triangles of out[key] (a triangle list) at the midpoint of their longest edge until
+## no edge is longer than `max_edge` m; the per-vertex arrays named in `extras` are interpolated alike.
+static func subdivide(out: Dictionary, key: String, extras: Array, max_edge: float) -> void:
+	var src: PackedVector3Array = out[key]
+	var verts := PackedVector3Array()
+	var attrs: Array = extras.map(func(e): return out[e].duplicate().slice(0, 0))
+	var stack: Array = []
+	for t in range(0, src.size() - 2, 3):
+		stack.append([[src[t], src[t + 1], src[t + 2]], extras.map(func(e): return [out[e][t], out[e][t + 1], out[e][t + 2]])])
+	while not stack.is_empty():
+		var tri: Array = stack.pop_back()
+		var v: Array = tri[0]
+		var lengths := [v[0].distance_squared_to(v[1]), v[1].distance_squared_to(v[2]), v[2].distance_squared_to(v[0])]
+		var k := lengths.find(lengths.max())
+		if lengths[k] <= max_edge * max_edge:
+			verts.append_array(PackedVector3Array(v))
+			for e in extras.size():
+				attrs[e].append_array(tri[1][e])
+			continue
+		var a := k
+		var b := (k + 1) % 3
+		var c := (k + 2) % 3
+		var mid: Vector3 = (v[a] + v[b]) / 2.0
+		var first := [[v[a], mid, v[c]], []]
+		var second := [[mid, v[b], v[c]], []]
+		for values: Array in tri[1]:
+			var m = values[a].lerp(values[b], 0.5)
+			first[1].append([values[a], m, values[c]])
+			second[1].append([m, values[b], values[c]])
+		stack.append(first)
+		stack.append(second)
+	out[key] = verts
+	for e in extras.size():
+		out[extras[e]] = attrs[e]
 
 
 ## The DEM ground's height at layer point `at`: bilinear on the chunk's grid
