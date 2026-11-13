@@ -2,7 +2,6 @@
 ## simulation process. The game scene remains a pure network client.
 extends Control
 
-const PORT := 8765
 const FINLAND_PBF_URL := "https://download.geofabrik.de/europe/finland-latest.osm.pbf"
 const PBF_MAX_AGE_S := 30 * 24 * 60 * 60
 const T := preload("res://i18n.gd")
@@ -11,6 +10,7 @@ const MapBrowser := preload("res://map_browser.gd")
 const Graphics := preload("res://graphics_settings.gd")
 
 var _server_pid := -1
+var _port := -1  # the server's and SimClient's port: --port, else the first free one
 var _game: Node
 var _home_viewer: Control
 var _panel: PanelContainer
@@ -1260,7 +1260,15 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_startup_history = Label.new()
 	_startup_history.add_theme_color_override("font_color", Color8(170, 185, 200))
 	_body.add_child(_startup_history)
-	var args := ["--port", str(PORT), "--game-mode", mode, "--language", _language, "--parent-pid", str(OS.get_process_id())]
+	_port = server_port(OS.get_cmdline_user_args())
+	if _port < 0:
+		_clear()
+		_title(_t("start_failed"), "ports 8765–8775 busy")
+		_button(_t("back"), _main_menu)
+		_back_action = _main_menu
+		_focus_menu()
+		return
+	var args := ["--port", str(_port), "--game-mode", mode, "--language", _language, "--parent-pid", str(OS.get_process_id())]
 	args.append_array(["--startup-progress", _startup_path])
 	if mode in ["gig_driver", "simulation"]:
 		args.append_array(["--preset", _city, "--start-time", "%04d-%02d-%02dT%02d:%02d" % [_start_time["year"], _start_time["month"], _start_time["day"], _start_time["hour"], _start_time["minute"]]])
@@ -1302,6 +1310,7 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_tutorial = false
 	_game.set_graphics(Graphics.read(_settings))
 	_apply_interior_settings()
+	_game.get_node("SimClient").port = _port  # before add_child: connect only to our server
 	_game.get_node("SimClient").connection_changed.connect(_server_connected)
 	_game.summary_action.connect(_career_summary_action)
 	add_child(_game)
@@ -1312,6 +1321,23 @@ func _start(mode: String, skip_pbf_offer := false) -> void:
 	_focus_menu()
 	for bus in ["Master"] + AudioManager.BUSES:
 		_set_volume(bus, _settings.get_value("audio", bus, 1.0))
+
+
+## The first port in first..last that nothing listens on; -1 if all are busy.
+## The probe releases it, so the server may still lose a race: then it exits.
+static func find_free_port(first := 8765, last := 8775) -> int:
+	for port in range(first, last + 1):
+		var probe := TCPServer.new()
+		if probe.listen(port, "127.0.0.1") == OK:
+			probe.stop()
+			return port
+	return -1
+
+
+## The user's --port N as is (no probe), else find_free_port().
+static func server_port(command_line: PackedStringArray) -> int:
+	var at := command_line.find("--port")
+	return int(command_line[at + 1]) if at >= 0 and at + 1 < command_line.size() else find_free_port()
 
 
 static func startup_status(text: String) -> Dictionary:
@@ -1394,6 +1420,10 @@ func _process(delta: float) -> void:
 		_startup_stage.text = _t("start_failed")
 		if _startup_last.get("stage", "") != "error":
 			_startup_detail.text = _t("startup_exited") + "\n" + _startup_detail.text
+		if _game != null:  # never stay on a server we did not launch
+			_game.get_node("SimClient").drop_connection()
+			_game.queue_free()
+			_game = null
 
 
 func _remove_startup_status() -> void:
