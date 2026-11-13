@@ -95,7 +95,7 @@ func _walk(delta: float) -> void:
 		var arrived: bool = to_door.length() < APPROACH_M if walk["back"] in ["vehicle", "point"] \
 			else state.get("taxi_door", false) and to_door.length() < 1.2  # a step back: the taxi in view
 		if arrived:
-			main.look_pitch = 0.0 if walk["back"] == "vehicle" else -0.35  # looking down at the door (or the point); level at a car
+			main.look_pitch = 0.0 if walk["back"] == "vehicle" else float(walk.get("pitch", -0.35))  # looking down at the door (or the point); level at a car
 			main.map_layer.buildings_3d.eye_pitch = main.look_pitch
 		main.send({"throttle": 0.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0, "forward": 0.0 if arrived else 1.0, "turn": 0.0, "sprint": false})
 		if arrived:
@@ -210,7 +210,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_elapsed += delta
-	if scenario.has("bench_sitter") and main.entities.extra_pedestrians.is_empty():
+	if scenario.has("bench_sitter") and not main.entities.extra_pedestrians.any(func(p): return p["id"] == "bench_sitter"):
 		_seat_bench_sitter()
 	if scenario.has("animals") and not _animals_placed:
 		_place_animals()
@@ -292,7 +292,7 @@ func _process(delta: float) -> void:
 var _animals_placed := false
 
 
-## "animals": [[species, x, y, heading], ...] (server axes; "rider" a person on a horse):
+## "animals": [[species, x, y, heading], ...] (server axes; "rider" a person on a horse, "walker" one walking in place):
 ## held still in view as wildlife records (no vehicle reactions), once the server state is in.
 func _place_animals() -> void:
 	if main.entities.shown_state().is_empty():
@@ -301,9 +301,9 @@ func _place_animals() -> void:
 	var riders := []
 	for row: Array in scenario["animals"]:
 		var at := MapMath.point(main.entities.origin, row[1], row[2])
-		if row[0] == "rider":
-			riders.append({"id": "rider_%d" % riders.size(), "x": float(row[1]), "y": float(row[2]), "heading": float(row[3]),
-				"animation_state": "riding", "color": [40, 70, 140], "radius_m": 0.45})
+		if row[0] in ["rider", "walker"]:
+			riders.append({"id": "%s_%d" % [row[0], riders.size()], "x": float(row[1]), "y": float(row[2]), "heading": float(row[3]),
+				"animation_state": "riding" if row[0] == "rider" else "walking", "color": [40, 70, 140], "radius_m": 0.45})
 		else:
 			main.wildlife.animals.append({"id": -1 - main.wildlife.animals.size(), "species": row[0], "position": at,
 				"bounds": Rect2(at - Vector2(5, 5), Vector2(10, 10)), "heading": -float(row[3]), "state": "IDLE", "timer": 1e9, "cycle": 0})
@@ -324,8 +324,8 @@ func _seat_bench_sitter() -> void:
 	if not best.is_empty():
 		var o: Array = best[1]
 		print("visual_test: bench_sitter on the bench at %s, %.1f m from the given point" % [o, best[0]])
-		main.entities.extra_pedestrians = [{"id": "bench_sitter", "x": float(o[0]), "y": float(o[1]), "heading": float(o[3]) - PI / 2.0,
-			"animation_state": "sitting", "color": [200, 110, 20], "radius_m": 0.45}]
+		main.entities.extra_pedestrians.append({"id": "bench_sitter", "x": float(o[0]), "y": float(o[1]), "heading": float(o[3]) - PI / 2.0,
+			"animation_state": "sitting", "color": [200, 110, 20], "radius_m": 0.45})
 
 
 ## What the scenario needs and the scene does not show yet ([] when ready).
@@ -338,7 +338,7 @@ func check() -> Array:
 	var player: Dictionary = state.get("player", {})
 	var at := Vector2(float(player.get("x", INF)), float(player.get("y", INF)))
 	var walking := scenario.has("walk")
-	if scenario.has("bench_sitter") and main.entities.extra_pedestrians.is_empty():
+	if scenario.has("bench_sitter") and not main.entities.extra_pedestrians.any(func(p): return p["id"] == "bench_sitter"):
 		missing.append("no mapped bench at bench_sitter yet")
 	var back: String = scenario.get("walk", {}).get("back", "")
 	if walking and _walk_phase < 6:
