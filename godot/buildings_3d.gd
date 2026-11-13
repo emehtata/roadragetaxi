@@ -1014,13 +1014,14 @@ static func model_vehicle_details(kind: String, length: float, width: float, col
 	return out
 
 
-## A bike's lamps (docs/specs/bicycle-rendering.md): white under the bars, red under the saddle, centred.
+## A bike's lamps (docs/specs/bicycle-rendering.md): white under the bars, red under the saddle, centred;
+## 12 cm long so each reads as a dot from the top-down camera.
 static func _bike_lamps(out: Dictionary, hl: float, lamps: int) -> void:
 	var front := lamps & LAMPS_ON != 0
-	_part(out, LAMP if front else PAINT, hl * 0.80 - 0.02, hl * 0.80 + 0.02, -0.03, 0.03, 0.85, 0.91,
+	_part(out, LAMP if front else PAINT, hl * 0.80 - 0.06, hl * 0.80 + 0.06, -0.045, 0.045, 0.82, 0.94,
 		Color(1.0, 0.95, 0.78) if front else Color8(190, 190, 183))
 	var rear := lamps & (LAMPS_ON | LAMPS_BRAKE) != 0
-	_part(out, LAMP if rear else PAINT, -hl * 0.80 - 0.02, -hl * 0.80 + 0.02, -0.025, 0.025, 0.75, 0.80,
+	_part(out, LAMP if rear else PAINT, -hl * 0.80 - 0.06, -hl * 0.80 + 0.06, -0.045, 0.045, 0.72, 0.84,
 		(Color(1.0, 0.07, 0.04) if lamps & LAMPS_BRAKE else Color(0.55, 0.03, 0.02)) if rear else Color8(120, 30, 25))
 
 
