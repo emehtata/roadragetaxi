@@ -267,14 +267,22 @@ def test_commands_carry_the_player_id_and_others_are_ignored(monkeypatch):
     connection.close()
 
 
+def _poll(condition, timeout=5.0):
+    """Wait for a cross-thread condition, bounded (a fixed sleep raced under load)."""
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.005)
+
+
 def _phone_round(server, connection, **phone):
     from theroadragetrip import protocol
     from theroadragetrip.simulation import PlayerCommand
 
     connection.send(protocol.build_command_message(PlayerCommand(), interact=False, seq=1, phone=phone))
-    time.sleep(0.05)
+    _poll(lambda: server._clients[0]._queue.qsize() > 0)  # the server has it before the tick reads it
     server.tick(1.0 / 30.0)
-    state = [m for m in _all_messages(connection) if m["type"] == "state"][-1]["state"]
+    state = [m for m in _until_state(connection) if m["type"] == "state"][-1]["state"]
     return state, [e for e in state["events"] if e["type"] == "phone_result"]
 
 
@@ -287,7 +295,7 @@ def test_the_phone_shows_offers_and_answers_by_id(monkeypatch):
     taxi_mgr = server.world.taxi_mgr
     assert taxi_mgr.generate_offers(server.car.x, server.car.y, count=3) == [], "no fares before the game has started"
     connection = transport.connect(server.host, server.port)
-    time.sleep(0.05)
+    _poll(lambda: server._clients)
     server.tick(1.0 / 30.0)  # the client is in: fares open
     taxi_mgr.offers = []
     offers = taxi_mgr.generate_offers(server.car.x, server.car.y, count=3)
