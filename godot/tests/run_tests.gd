@@ -72,7 +72,6 @@ func test_model_sizes_match_sim() -> void:
 		node.free()
 
 
-## docs/specs/mountain-bike-size-override.md 1-2: the bars keep the model's 0.78 m, not the sim's 0.6.
 ## docs/specs/bicycle-rendering.md AC 1-2: a riding bike has one front and one rear lamp, centred; a car keeps its set.
 func test_bicycle_lamps_single_pair() -> void:
 	var lit := B3.LAMPS_ON | B3.LAMPS_BRAKE | B3.LAMPS_LEFT | B3.LAMPS_REVERSE
@@ -105,6 +104,7 @@ func test_bicycle_headlight_single_beam() -> void:
 	layer.free()
 
 
+## docs/specs/mountain-bike-size-override.md 1-2: the bars keep the model's 0.78 m, not the sim's 0.6.
 func test_mountain_bike_keeps_its_width() -> void:
 	var s := B3.model_scale("mountain_bike", 1.8, 0.6)
 	check(absf(s.x - 1.0) <= 0.001 and is_equal_approx(s.z, 1.8 / 1.885) and s.y == 1.0, "mountain_bike scale %s" % s)
