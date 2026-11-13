@@ -2152,6 +2152,8 @@ static func player_walker(walker: Dictionary) -> Dictionary:
 
 
 static func person_pose(ped: Dictionary, animation_time: float) -> String:
+	if ped.has("pose"):  # held pose (visual_test.gd walkers)
+		return str(ped["pose"])
 	match str(ped.get("animation_state", "walking")):
 		"walking":
 			var running := float(ped.get("speed", 0.0)) >= 2.0

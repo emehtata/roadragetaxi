@@ -304,6 +304,8 @@ func _place_animals() -> void:
 		if row[0] in ["rider", "walker"]:
 			riders.append({"id": "%s_%d" % [row[0], riders.size()], "x": float(row[1]), "y": float(row[2]), "heading": float(row[3]),
 				"animation_state": "riding" if row[0] == "rider" else "walking", "color": [40, 70, 140], "radius_m": 0.45})
+			if row[0] == "walker":
+				riders[-1]["pose"] = "walk_2"  # held mid-stride (a high-swing phase)
 		else:
 			main.wildlife.animals.append({"id": -1 - main.wildlife.animals.size(), "species": row[0], "position": at,
 				"bounds": Rect2(at - Vector2(5, 5), Vector2(10, 10)), "heading": -float(row[3]), "state": "IDLE", "timer": 1e9, "cycle": 0})
