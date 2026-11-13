@@ -341,6 +341,22 @@
       "second_shot_s": 0.5
     },
     {
+      "id": "snowplough_cleared_lane",
+      "description": "A ploughed lane on a white city-centre street: a dark strip with soft edges along the plough's track, no 10 m squares",
+      "why": "snow_street_day's paved straight street (4 buildings in view) in January daylight; --test-plough whitens the roads and makes the taxi plough its own track while it drives 6 s along the street with lane assist, so the lane runs diagonally behind it across the 10 m grid.",
+      "city": "Helsinki",
+      "pose": [385325.8, 6671757.1, 0.59],
+      "start_time": "2026-01-15T12:00",
+      "weather": "snow",
+      "cloud": 0.9,
+      "wetness": [0.0, 0.2],
+      "sun_altitude_deg": [0, 20],
+      "zoom": 2.0,
+      "lane_assist": true,
+      "server_args": ["--test-snow-depth", "10", "--test-plough"],
+      "drive_s": 6
+    },
+    {
       "id": "building_materials_day",
       "description": "Facades of several building types and colours in daylight",
       "why": "Second inner-city street (find: 14 buildings, 4 colours, 3 commercial within 70 x 40 m). OSM gives no facade materials here: colours and categories differ, materials cannot be promised.",

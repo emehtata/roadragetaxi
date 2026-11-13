@@ -47,6 +47,7 @@ def parse_server_args():
                         help="visual tests: this weather, unchanging (no historical weather)")
     parser.add_argument("--test-cloud", type=float, default=None, help="visual tests: cloud cover 0..1, unchanging")
     parser.add_argument("--test-snow-depth", type=float, default=None, help="visual tests: ground snow depth in cm, unchanging")
+    parser.add_argument("--test-plough", action="store_true", help="visual tests: white roads; the taxi ploughs its own track")
     parser.add_argument("--test-time-scale", type=float, default=None,
                         help="visual tests: game seconds per real second (0 holds the clock at --start-time)")
     parser.add_argument("--test-roadworks", action="store_true", help="visual tests: generated roadworks on (game.roadworks_enabled)")

@@ -9,10 +9,14 @@ are drawn by the client alone; nothing visual-only is simulated here.
 import copy
 import math
 import random
+from collections import deque
 from enum import Enum
 from typing import Optional
 from .calendar import Season
 from .weather_history import gradual_weather, precipitation_from_observation
+
+PLOUGH_BLADE_M = 3.5  # cleared lane width, centred on the plough's path
+PLOUGH_REACH_M = 2.0  # blade half-width plus the feather: road_snow_at clears within this
 
 
 class WeatherType(str, Enum):
@@ -135,6 +139,13 @@ def raining_last_hour(history, now, typical_temperature, key="") -> list:
     return steps if any(step is not None for step in steps) else []
 
 
+def _segment_distance(px, py, x0, y0, x1, y1) -> float:
+    dx, dy = x1 - x0, y1 - y0
+    length2 = dx * dx + dy * dy
+    t = 0.0 if length2 == 0.0 else max(0.0, min(1.0, ((px - x0) * dx + (py - y0) * dy) / length2))
+    return math.hypot(px - x0 - t * dx, py - y0 - t * dy)
+
+
 class WeatherSystem:
     """Owns the current weather type and road wetness.
 
@@ -152,7 +163,11 @@ class WeatherSystem:
         self.road_ice_override: Optional[float] = None  # live station road ice; None: from the air temperature
         self.wetness = 0.0  # 0.0 dry .. 1.0 fully wet; independent of weather_type -
         self.road_snow = 0.0  # centimetres; fully white at three centimetres
-        self.plowed_cells = {}  # 10 m road cells -> snow level when last cleared
+        # Swept plough segments [x0, y0, x1, y1, snow level when cleared], oldest first;
+        # _plow_index maps 10 m cells to segment ids (lookup only, never rendered).
+        self.plowed_paths = deque(maxlen=2048)
+        self._plow_index = {}
+        self._plow_count = 0  # segments ever added: id - (count - len) is the deque position
         # CLEAR does not imply dry, e.g. right after rain stops (see #9).
         self._rng = random.Random()
         self.is_thunderstorm = False
@@ -381,22 +396,45 @@ class WeatherSystem:
             self.is_thunderstorm = False
 
     def road_snow_at(self, x: float, y: float) -> float:
-        cell = (math.floor(x / 10.0), math.floor(y / 10.0))
-        return max(0.0, self.road_snow - self.plowed_cells.get(cell, 0.0))
+        cleared = 0.0
+        first = self._plow_count - len(self.plowed_paths)
+        for seg_id in self._plow_index.get((math.floor(x / 10.0), math.floor(y / 10.0)), ()):
+            if seg_id >= first:
+                x0, y0, x1, y1, level = self.plowed_paths[seg_id - first]
+                if level > cleared and _segment_distance(x, y, x0, y0, x1, y1) <= PLOUGH_REACH_M:
+                    cleared = level
+        return max(0.0, self.road_snow - cleared)
+
+    def _plow_cells(self, segment):
+        x0, y0, x1, y1 = segment[:4]
+        for cx in range(math.floor((min(x0, x1) - PLOUGH_REACH_M) / 10.0), math.floor((max(x0, x1) + PLOUGH_REACH_M) / 10.0) + 1):
+            for cy in range(math.floor((min(y0, y1) - PLOUGH_REACH_M) / 10.0), math.floor((max(y0, y1) + PLOUGH_REACH_M) / 10.0) + 1):
+                yield (cx, cy)
 
     def plow_road(self, start, end) -> None:
         if self.road_snow <= 0.0:
             return
-        distance = math.hypot(end[0] - start[0], end[1] - start[1])
-        steps = max(1, math.ceil(distance / 2.0))
-        for step in range(steps + 1):
-            t = step / steps
-            cell = (math.floor((start[0] + (end[0] - start[0]) * t) / 10.0),
-                    math.floor((start[1] + (end[1] - start[1]) * t) / 10.0))
-            self.plowed_cells[cell] = self.road_snow
-        # Keep streaming trips from retaining an unlimited history of cleared roads.
-        while len(self.plowed_cells) > 4096:
-            del self.plowed_cells[next(iter(self.plowed_cells))]
+        last = self.plowed_paths[-1] if self.plowed_paths else None
+        if (last is not None and math.hypot(last[2] - last[0], last[3] - last[1]) < 1.0
+                and math.hypot(start[0] - last[2], start[1] - last[3]) < 1e-6):
+            # short ticks extend the last segment until it is 1 m long, so the history stays bounded in metres
+            last[2], last[3], last[4] = end[0], end[1], self.road_snow
+            for cell in self._plow_cells(last):
+                self._plow_index.setdefault(cell, set()).add(self._plow_count - 1)
+            return
+        if len(self.plowed_paths) == self.plowed_paths.maxlen:
+            evicted, evicted_id = self.plowed_paths[0], self._plow_count - len(self.plowed_paths)
+            for cell in self._plow_cells(evicted):
+                ids = self._plow_index.get(cell)
+                if ids is not None:
+                    ids.discard(evicted_id)
+                    if not ids:
+                        del self._plow_index[cell]
+        segment = [start[0], start[1], end[0], end[1], self.road_snow]
+        self.plowed_paths.append(segment)
+        for cell in self._plow_cells(segment):
+            self._plow_index.setdefault(cell, set()).add(self._plow_count)
+        self._plow_count += 1
 
     def update(
         self,
@@ -445,10 +483,11 @@ class WeatherSystem:
                 self.road_snow += game_dt / 600.0
             elif self._outside_temperature_c is not None and self._outside_temperature_c > 0.0:
                 self.road_snow = max(0.0, self.road_snow - game_dt / 1800.0)
-                for cell, cleared_at in self.plowed_cells.items():
-                    self.plowed_cells[cell] = min(cleared_at, self.road_snow)
+                for segment in self.plowed_paths:
+                    segment[4] = min(segment[4], self.road_snow)
             if self.road_snow == 0.0:
-                self.plowed_cells.clear()
+                self.plowed_paths.clear()
+                self._plow_index.clear()
             if self.weather_type in (WeatherType.RAIN, WeatherType.SLUSH):
                 self.wetness = min(1.0, self.wetness + game_dt / RAIN_WETTING_DURATION_S)
             elif self.road_ice_fraction > 0.0:

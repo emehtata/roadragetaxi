@@ -65,9 +65,16 @@ var _water_ripple_spots: Array = []  # cached once; weather_layer animates their
 var _wetness := 0.0
 var _road_snow := 0.0
 var snow_baseline := 0.0
-var _plowed_cells: Dictionary = {}
 var _snow_cover := 0.0
-var _plowed_cover: Dictionary = {}
+## Ploughed lanes (the server's plowed_paths) shown here: [world a, world b, cover], cover != _snow_cover.
+var _plowed_cover: Array = []
+const PLOUGH_RADIUS_M := 1.75  # PLOUGH_BLADE_M / 2 (weather.py)
+const PLOUGH_FEATHER_M := 1.5  # the 3D mask's ramp, centred 2 m off the lane: under 2 texels bilinear filtering steps
+const PLOUGH_SEGMENTS_PER_FRAME := 64
+var _snow_mask_build := 0
+var _snow_mask: Image  # the 3D snow mask, painted lane by lane (_road_snow_3d)
+var _snow_mask_cover := -1.0
+var _snow_mask_paths: Array = []  # the lanes painted on _snow_mask
 var _snow_cells: Dictionary = {}
 var _road_layers: Array[Node2D] = []
 var _px_per_m := 9.0
@@ -923,9 +930,12 @@ static func _build_3d_timed(buildings: Array, styles: Array, origin: Vector2, si
 
 
 ## --outdoor-3d: the chunk's road snow on its road mesh, as the 2D roads
-## show it - the chunk's cover, the ploughed 10 m cells their own - one texel
-## a world cell in its own road material copy (road.gdshader's snow_cells).
+## show it - the chunk's cover, the ploughed lanes as capsules of radius
+## PLOUGH_RADIUS_M with a PLOUGH_FEATHER_M linear edge centred 0.25 m outside - one R8 texel a metre
+## (at most 512 x 512) in its own road material copy (road.gdshader's
+## snow_cells). PLOUGH_SEGMENTS_PER_FRAME lanes a frame; the rest wait a frame.
 func _road_snow_3d() -> void:
+	var materials: Array[ShaderMaterial] = []
 	for node in meshes_3d:
 		if not node is MeshInstance3D or not node.material_override is ShaderMaterial:
 			continue
@@ -935,18 +945,58 @@ func _road_snow_3d() -> void:
 			node.material_override = material
 		elif not material.has_meta("snow_cells"):
 			continue
-		var low := Vector2i(floori((_bounds_rect.position.x + _origin.x) / 10.0), floori((_origin.y - _bounds_rect.end.y) / 10.0))
-		var high := Vector2i(floori((_bounds_rect.end.x + _origin.x) / 10.0), floori((_origin.y - _bounds_rect.position.y) / 10.0))
-		var size := (high - low + Vector2i.ONE).clampi(1, 256)
-		var cells := Image.create(size.x, size.y, false, Image.FORMAT_R8)
-		cells.fill(Color(_snow_cover, 0, 0))
-		for cell in _plowed_cover:
-			var at: Vector2i = cell - low
-			if at.x >= 0 and at.y >= 0 and at.x < size.x and at.y < size.y:
-				cells.set_pixelv(at, Color(float(_plowed_cover[cell]), 0, 0))
 		material.set_meta("snow_cells", true)
-		material.set_shader_parameter("snow_cells", ImageTexture.create_from_image(cells))
-		material.set_shader_parameter("cell_map", Vector4(_origin.x / 10.0 - low.x, _origin.y / 10.0 - low.y, size.x, size.y))
+		materials.append(material)
+	if materials.is_empty():
+		return
+	_snow_mask_build += 1
+	var build := _snow_mask_build
+	var low := Vector2i(floori(_bounds_rect.position.x + _origin.x), floori(_origin.y - _bounds_rect.end.y))
+	var high := Vector2i(floori(_bounds_rect.end.x + _origin.x), floori(_origin.y - _bounds_rect.position.y))
+	var size := (high - low + Vector2i.ONE).clampi(1, 512)  # 500 m chunks (map_chunks.CHUNK_SIZE_M)
+	var paths := _plowed_cover.duplicate()
+	# A plough moving on only grows the newest lane: paint just that onto the mask (a capsule
+	# grown along its own line covers the old one); anything else repaints from scratch.
+	var done := _snow_mask_paths.size()
+	var start := 0
+	if _snow_mask != null and _snow_mask_cover == _snow_cover and done > 0 and done <= paths.size() \
+			and paths.slice(0, done - 1) == _snow_mask_paths.slice(0, done - 1) \
+			and paths[done - 1][0] == _snow_mask_paths[done - 1][0] and paths[done - 1][2] == _snow_mask_paths[done - 1][2]:
+		start = done - 1
+	else:
+		_snow_mask = Image.create(size.x, size.y, false, Image.FORMAT_R8)
+		_snow_mask.fill(Color(_snow_cover, 0, 0))
+		_snow_mask_cover = _snow_cover
+	var edge := PLOUGH_RADIUS_M + 0.25 - PLOUGH_FEATHER_M * 0.5
+	var reach := edge + PLOUGH_FEATHER_M
+	for i in range(start, paths.size()):
+		if i > start and (i - start) % PLOUGH_SEGMENTS_PER_FRAME == 0 and is_inside_tree():
+			_upload_snow_mask(materials, low, size)
+			await get_tree().process_frame
+			if build != _snow_mask_build:
+				return
+		var a: Vector2 = paths[i][0] - Vector2(low)
+		var b: Vector2 = paths[i][1] - Vector2(low)
+		var cover: float = paths[i][2]
+		var from := Vector2i((a.min(b) - Vector2.ONE * reach).floor()).maxi(0)
+		var to := Vector2i((a.max(b) + Vector2.ONE * reach).ceil()).min(size - Vector2i.ONE)
+		for y in range(from.y, to.y + 1):
+			for x in range(from.x, to.x + 1):
+				var p := Vector2(x + 0.5, y + 0.5)
+				var t := clampf((p.distance_to(Geometry2D.get_closest_point_to_segment(p, a, b)) - edge) / PLOUGH_FEATHER_M, 0.0, 1.0)
+				var value := lerpf(cover, _snow_cover, t)
+				if value < _snow_mask.get_pixel(x, y).r:
+					_snow_mask.set_pixel(x, y, Color(value, 0, 0))
+		_snow_mask_paths = paths.slice(0, i + 1)
+	_snow_mask_paths = paths
+	_upload_snow_mask(materials, low, size)
+
+
+func _upload_snow_mask(materials: Array[ShaderMaterial], low: Vector2i, size: Vector2i) -> void:
+	var texture := ImageTexture.create_from_image(_snow_mask)
+	for material in materials:
+		material.set_shader_parameter("snow_cells", texture)
+		material.set_shader_parameter("cell_map", Vector4(_origin.x - low.x, _origin.y - low.y, size.x, size.y))
 
 
 # Worker results wait here instead of all running in one deferred flush: main
@@ -1385,23 +1435,19 @@ static func _road_snow_segments(points: PackedVector2Array, origin: Vector2) -> 
 	return segments
 
 
-func set_road_snow(depth: float, cells: Array, redraw := true) -> bool:
-	var stepped := roundf(depth * 10.0) / 10.0
-	var local_cells := {}
-	for cell in cells:
-		var at := MapMath.point(_origin, float(cell[0]) * 10.0 + 5.0, float(cell[1]) * 10.0 + 5.0)
-		if _bounds_rect.grow(10.0).has_point(at):
-			local_cells[Vector2i(int(cell[0]), int(cell[1]))] = roundf(float(cell[2]) * 10.0) / 10.0
-	_road_snow = stepped
-	_plowed_cells = local_cells
+func set_road_snow(depth: float, paths: Array, redraw := true) -> bool:
+	_road_snow = roundf(depth * 10.0) / 10.0
 	var cover := _visible_snow_cover(snow_baseline)
-	var cleared := {}
-	for cell in local_cells:
-		if not _snow_cells.has(cell):
+	var cleared := []
+	var area := _bounds_rect.grow(PLOUGH_RADIUS_M + PLOUGH_FEATHER_M)
+	for path in paths:
+		var a := Vector2(float(path[0]), float(path[1]))
+		var b := Vector2(float(path[2]), float(path[3]))
+		if not area.intersects(Rect2(MapMath.point(_origin, a.x, a.y), Vector2.ZERO).expand(MapMath.point(_origin, b.x, b.y)).grow(0.01)):
 			continue
-		var cell_cover := _visible_snow_cover(maxf(snow_baseline, local_cells[cell]))
-		if cell_cover != cover:
-			cleared[cell] = cell_cover
+		var path_cover := _visible_snow_cover(maxf(snow_baseline, roundf(float(path[4]) * 10.0) / 10.0))
+		if path_cover != cover and _near_snow_cells(a, b):
+			cleared.append([a, b, path_cover])
 	if cover == _snow_cover and cleared == _plowed_cover:
 		return false
 	_snow_cover = cover
@@ -1410,6 +1456,17 @@ func set_road_snow(depth: float, cells: Array, redraw := true) -> bool:
 	if redraw:
 		redraw_road_snow()
 	return true
+
+
+## A lane from world a to b crosses a 10 m cell with snow-eligible road.
+func _near_snow_cells(a: Vector2, b: Vector2) -> bool:
+	var from := ((a.min(b) - Vector2.ONE * 2.0) / 10.0).floor()
+	var to := ((a.max(b) + Vector2.ONE * 2.0) / 10.0).floor()
+	for x in range(int(from.x), int(to.x) + 1):
+		for y in range(int(from.y), int(to.y) + 1):
+			if _snow_cells.has(Vector2i(x, y)):
+				return true
+	return false
 
 
 func _visible_snow_cover(baseline: float) -> float:
@@ -1433,17 +1490,23 @@ func _draw_roads(z: int, node: Node2D) -> void:
 		var family := float(road.get("surface_texture", 0))
 		strokes.polyline(points, color.lerp(Color8(230, 236, 240), _snow_cover) if snowy else color, width, Vector2(-family, _snow_cover if snowy else 0.0))
 		if snowy and not _plowed_cover.is_empty():
-			var snow_lines := {}
-			var segments: Dictionary = road["snow_segments"]
-			for cell in segments:
-				if not _plowed_cover.has(cell):
+			# the ploughed lanes, round-ended, clipped to this road's surface
+			var surface := Geometry2D.offset_polyline(points, width * 0.5, Geometry2D.JOIN_ROUND, Geometry2D.END_BUTT)
+			var box := Rect2(points[0], Vector2.ZERO)
+			for point in points:
+				box = box.expand(point)
+			box = box.grow(width * 0.5 + PLOUGH_RADIUS_M)
+			for path in _plowed_cover:
+				var a := MapMath.point(_origin, path[0].x, path[0].y)
+				var b := MapMath.point(_origin, path[1].x, path[1].y)
+				if not box.intersects(Rect2(a, Vector2.ZERO).expand(b).grow(0.01)):
 					continue
-				var cover: float = _plowed_cover[cell]
-				if not snow_lines.has(cover):
-					snow_lines[cover] = PackedVector2Array()
-				snow_lines[cover].append_array(segments[cell])
-			for cover in snow_lines:
-				strokes.multiline(snow_lines[cover], color.lerp(Color8(230, 236, 240), cover), width, Vector2(-family, cover))
+				var cover: float = path[2]
+				for lane in Geometry2D.offset_polyline(PackedVector2Array([a, b]), PLOUGH_RADIUS_M, Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND):
+					for part in surface:
+						for clipped in Geometry2D.intersect_polygons(lane, part):
+							if not Geometry2D.is_polygon_clockwise(clipped):  # a hole would be clockwise
+								strokes.polygon(clipped, color.lerp(Color8(230, 236, 240), cover), Vector2.ZERO, Vector2(-family, cover))
 	strokes.draw(node)
 
 
@@ -2480,14 +2543,14 @@ class Strokes:
 
 	## draw_colored_polygon: the same triangulation; nothing if it fails.
 	## `at` moves the outline after triangulating it (small shapes keep their edges near zero).
-	func polygon(outline: PackedVector2Array, color: Color, at := Vector2.ZERO) -> void:
+	func polygon(outline: PackedVector2Array, color: Color, at := Vector2.ZERO, uv := Vector2.ZERO) -> void:
 		var k := points.size()
 		for i in Geometry2D.triangulate_polygon(outline):
 			indices.append(k + i)
 		for point in outline:
 			points.append(point + at)
 			colors.append(color)
-		_append_uv(k, Vector2.ZERO)
+		_append_uv(k, uv)
 
 	func _append_uv(start: int, value: Vector2) -> void:
 		if uvs.is_empty() and value == Vector2.ZERO:

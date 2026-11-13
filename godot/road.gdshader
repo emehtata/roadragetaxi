@@ -11,10 +11,10 @@ render_mode cull_back;
 uniform float surface_pixels_per_m = 1.0;
 uniform float wetness : hint_range(0.0, 1.0) = 0.0;  // weather.wetness (map_layer.set_wetness)
 uniform float wind = 0.3;  // step 6: open water's waves, 0 calm .. 1 rough (main.gd, as the 2D water's)
-// The chunk's road snow per 10 m world cell, ploughed ones cleared (map_chunk._road_snow_3d): one
-// texel a cell; cell_map (a, b, cells across, cells down): the texel of layer point p is
-// (p.x / 10 + a, -p.y / 10 + b) / (cells across, down) - world y runs up, layer y down.
-uniform sampler2D snow_cells : filter_nearest, repeat_disable, hint_default_black;
+// The chunk's road snow per world metre, ploughed lanes cleared with soft edges (map_chunk._road_snow_3d):
+// one texel a metre; cell_map (a, b, texels across, down): the texel of layer point p is
+// (p.x + a, -p.y + b) / (across, down) - world y runs up, layer y down.
+uniform sampler2D snow_cells : filter_linear, repeat_disable, hint_default_black;
 uniform vec4 cell_map = vec4(0.0, 0.0, 1.0, 1.0);
 uniform vec4 puddle_color : source_color = vec4(0.3608, 0.4235, 0.5020, 1.0);  // render_style.PUDDLE_COLOR
 uniform vec4 snow_color : source_color = vec4(0.9020, 0.9255, 0.9412, 1.0);  // Color8(230, 236, 240), the 2D road snow
@@ -117,7 +117,7 @@ void fragment() {
 			slope *= 0.08 + 0.25 * clamp(wind, 0.0, 1.0);
 			NORMAL = normalize(NORMAL - (VIEW_MATRIX * vec4(slope.x, 0.0, slope.y, 0.0)).xyz);
 		}
-		vec2 cell_uv = (vec2(world.x * 0.1, -world.z * 0.1) + cell_map.xy) / cell_map.zw;
+		vec2 cell_uv = (vec2(world.x, -world.z) + cell_map.xy) / cell_map.zw;
 		float snow = clamp(texture(snow_cells, cell_uv).r, 0.0, 1.0) * UV2.y;
 		albedo *= 1.0 + pattern(int(round(UV.y)), world.xz, surface_pixels_per_m) * (1.0 - snow);
 		albedo *= mix(1.0, 0.6, wetness * (1.0 - water) * (1.0 - snow));  // wet asphalt darkens

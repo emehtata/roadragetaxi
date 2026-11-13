@@ -749,7 +749,7 @@ func _write(result: Dictionary) -> void:
 		"scene": _counts, "elapsed_s": _elapsed, "forest": _forest_stats(),
 		"lake_ice": {"cm": state.get("calendar", {}).get("lake_ice_cm") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null,
 			"holds": state.get("calendar", {}).get("lake_ice_holds") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null}})
-	result["weather"].erase("plowed_cells")
+	result["weather"].erase("plowed_paths")
 	if scenario.get("lineup", false) is bool and scenario.get("lineup", false):  # each lineup vehicle's close-range model
 		result["lineup_models"] = main.entities.extra_npcs.map(func(n: Dictionary) -> Array:
 			return [n["id"], n["vehicle_type"], Buildings3D.model_variant(n["vehicle_type"], n["id"])])

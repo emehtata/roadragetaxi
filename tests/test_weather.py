@@ -42,10 +42,9 @@ def test_snow_accumulates_plows_clear_only_passed_cells_and_snow_returns():
     weather.update(1800.0, 0.0, outside_temperature_c=-5.0)
     assert weather.road_snow == pytest.approx(3.0)
     weather.plow_road((1.0, 1.0), (31.0, 1.0))
-    assert set(weather.plowed_cells) == {(0, 0), (1, 0), (2, 0), (3, 0)}
-    assert weather.road_snow - weather.plowed_cells[(1, 0)] == 0.0
+    assert weather.road_snow_at(15.0, 1.0) == 0.0 and weather.road_snow_at(15.0, 8.0) == pytest.approx(3.0)
     weather.update(600.0, 0.0, outside_temperature_c=-5.0)
-    assert weather.road_snow - weather.plowed_cells[(1, 0)] == pytest.approx(1.0)
+    assert weather.road_snow_at(15.0, 1.0) == pytest.approx(1.0)
 
 
 def test_road_snow_persists_in_cold_and_melts_above_freezing():
@@ -57,7 +56,7 @@ def test_road_snow_persists_in_cold_and_melts_above_freezing():
     assert weather.road_snow == pytest.approx(3.0)
     weather.update(5400.0, 0.0, outside_temperature_c=5.0)
     assert weather.road_snow == 0.0
-    assert not weather.plowed_cells
+    assert not weather.plowed_paths
 
 
 def test_starts_clear_and_dry():
@@ -268,3 +267,67 @@ def test_the_road_starts_as_the_last_hours_weather_left_it():
     raining = WeatherSystem(weather_type=WeatherType.RAIN)
     raining.settle_initial_wetness([])  # no history: raining now means it has rained a while
     assert raining.wetness == 1.0
+
+
+def _snowy_weather():
+    weather = WeatherSystem(WeatherType.SNOW, Season.WINTER)
+    weather.road_snow = 3.0
+    return weather
+
+
+def test_plough_clears_corridor_not_grid_cells():
+    import math
+    weather = _snowy_weather()
+    c, s = math.cos(math.radians(30.0)), math.sin(math.radians(30.0))
+    start = (2.0, 3.0)
+    previous = start
+    for step in range(1, 51):  # 50 m at 30 degrees, one metre a tick
+        here = (start[0] + c * step, start[1] + s * step)
+        weather.plow_road(previous, here)
+        previous = here
+    for along in range(0, 51, 5):
+        x, y = start[0] + c * along, start[1] + s * along
+        assert weather.road_snow_at(x, y) == 0.0
+        assert weather.road_snow_at(x - s * 1.5, y + c * 1.5) == 0.0
+        assert weather.road_snow_at(x - s * 3.0, y + c * 3.0) == 3.0
+        assert weather.road_snow_at(x + s * 3.0, y - c * 3.0) == 3.0
+    # inside the same 10 m cell as a cleared point, 3 m off the path stays snowy
+    x, y = start[0] + c * 20, start[1] + s * 20
+    off = (x - s * 3.0, y + c * 3.0)
+    assert (math.floor(x / 10), math.floor(y / 10)) == (math.floor(off[0] / 10), math.floor(off[1] / 10))
+    assert weather.road_snow_at(*off) == 3.0
+    # no cleared point lies more than 2 m from the path
+    for gx in range(-10, 70):
+        for gy in range(-10, 40):
+            px, py = gx + 0.5, gy + 0.5
+            t = max(0.0, min(50.0, (px - start[0]) * c + (py - start[1]) * s))
+            distance = math.hypot(px - start[0] - c * t, py - start[1] - s * t)
+            if weather.road_snow_at(px, py) < 3.0:
+                assert distance <= 2.0
+
+
+def test_plough_keeps_opposite_lane_snowy():
+    weather = _snowy_weather()
+    # east along the right lane (y = -2; the opposite lane centre y = +2), then a right turn south at x = 30
+    route = [(0.0, -2.0), (30.0, -2.0), (30.0, -30.0)]
+    for a, b in zip(route, route[1:]):
+        weather.plow_road(a, b)
+    assert weather.road_snow_at(15.0, -2.0) == 0.0 and weather.road_snow_at(30.0, -15.0) == 0.0
+    assert weather.road_snow_at(15.0, 2.0) == 3.0  # opposite lane of the same road
+    assert weather.road_snow_at(34.0, -15.0) == 3.0  # opposite lane after the turn
+    assert weather.road_snow_at(45.0, -2.0) == 3.0  # straight on past the junction: not ploughed
+
+
+def test_plowed_paths_bounded_and_serialised():
+    from theroadragetrip import protocol
+    weather = _snowy_weather()
+    for i in range(3000):
+        weather.plow_road((i * 2.0, 0.0), (i * 2.0 + 1.5, 0.0))
+    assert len(weather.plowed_paths) == 2048
+    assert weather.road_snow_at(1.0, 0.0) == 3.0  # the oldest fell out of the history
+    assert weather.road_snow_at(5999.0, 0.0) == 0.0
+    weather.plow_road((6000.0, 0.0), (6000.4, 0.0))
+    weather.plow_road((6000.4, 0.0), (6000.8, 0.0))  # the last segment is under 1 m: extended
+    assert len(weather.plowed_paths) == 2048 and weather.plowed_paths[-1][2] == 6000.8
+    wire = protocol.plowed_paths_wire(weather, 5990.0, 0.0)
+    assert wire[-1] == [6000.0, 0.0, 6000.8, 0.0, 3.0] and len(wire) < 2048  # only those near the car

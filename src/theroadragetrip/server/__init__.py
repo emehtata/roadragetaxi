@@ -383,6 +383,9 @@ class SimulationServer:
             historical = False  # the test's weather, not the FMI's
         self.weather_history = None
         self._test_snow_depth = getattr(args, "test_snow_depth", None)
+        self._test_plough = bool(getattr(args, "test_plough", False))
+        if self._test_plough:
+            self.world.weather.road_snow = 3.0  # fully white roads to plough
         self._historical_weather = historical
         self.weather_city = self.chosen_city
         self._weather_latitude = self.calendar.latitude
@@ -1170,6 +1173,8 @@ class SimulationServer:
             now=self.calendar.current,
             view_bounds=self._visible_bounds(),
         )
+        if getattr(self, "_test_plough", False):  # visual tests: the taxi ploughs its own track
+            self.world.weather.plow_road((car_x, car_y), (self.car.x, self.car.y))
         self._tire_mark = self._tyre_mark(previous=(car_x, car_y), throttle=command.throttle)
         for npc in self.world.npc_manager.vehicles:  # brake lamps
             npc.braking = npc_braking(npc, getattr(npc, "_last_speed", npc.speed), dt)

@@ -12,7 +12,7 @@ const SNOW_REDRAW_CHUNKS_PER_FRAME := 2
 
 var origin := Vector2.ZERO
 var road_snow := 0.0
-var plowed_cells: Array = []
+var plowed_paths: Array = []
 var snowing := false
 var _snow_baselines: Dictionary = {}  # preserve a new area's clean start across chunk refreshes
 var _snow_redraws: Dictionary = {}
@@ -341,7 +341,7 @@ func add_chunk(message: Dictionary) -> bool:
 		_snow_baselines[chunk_id] = 0.0 if snowing else road_snow
 	chunk.snow_baseline = float(_snow_baselines[chunk_id])
 	chunk.set_wetness(wetness)
-	chunk.set_road_snow(road_snow, plowed_cells)
+	chunk.set_road_snow(road_snow, plowed_paths)
 	chunk.set_px_per_m(px_per_m)
 	chunk.set_phases(phases)
 	chunk.set_obstacles(knocked)
@@ -536,17 +536,17 @@ func set_wetness(value: float) -> bool:
 	return true
 
 
-func set_road_snow(depth: float, cells: Array, falling := true) -> void:
+func set_road_snow(depth: float, paths: Array, falling := true) -> void:
 	snowing = falling
-	if depth == road_snow and cells == plowed_cells:
+	if depth == road_snow and paths == plowed_paths:
 		return
 	road_snow = depth
-	plowed_cells = cells
+	plowed_paths = paths
 	for chunk in _chunks.values():
 		var id: String = chunk._data["chunk_id"]
 		_snow_baselines[id] = minf(float(_snow_baselines[id]), depth)
 		chunk.snow_baseline = float(_snow_baselines[id])
-		if chunk.set_road_snow(depth, cells, false) and not chunk._road_layers.is_empty():
+		if chunk.set_road_snow(depth, paths, false) and not chunk._road_layers.is_empty():
 			_snow_redraws[id] = true
 	set_process(not _snow_redraws.is_empty() or not _shop_light_updates.is_empty())
 

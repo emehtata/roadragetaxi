@@ -55,6 +55,12 @@ class ProtocolError(Exception):
     """A malformed message, or one from an incompatible protocol version."""
 
 
+def plowed_paths_wire(weather, x: float, y: float) -> list:
+    """The swept plough segments within 600 m of (x, y), metres rounded to 0.1."""
+    return [[round(v, 1) for v in segment] for segment in weather.plowed_paths
+            if abs(segment[0] - x) < 600.0 and abs(segment[1] - y) < 600.0]
+
+
 def encode(message: dict) -> bytes:
     """A message -> one newline-delimited JSON line."""
     return (json.dumps(message, separators=(",", ":")) + "\n").encode("utf-8")
@@ -664,8 +670,7 @@ def build_state_message(
                     "road_snow": round(weather.road_snow, 1),
                     # 0 clear .. 1 overcast: dims the sunlight and building shadows (rrt-018-shadows)
                     "cloud_cover": round(getattr(weather, "cloud_cover", 0.0), 3),
-                    "plowed_cells": [[x, y, round(depth, 1)] for (x, y), depth in weather.plowed_cells.items()
-                                     if abs(x * 10.0 - car.x) < 600.0 and abs(y * 10.0 - car.y) < 600.0],
+                    "plowed_paths": plowed_paths_wire(weather, car.x, car.y),
                     "lightning_intensity": weather.lightning_intensity,  # 1 at a strike, fading
                     # For the client's weather audio heavy rain, wind loops.
                     "is_thunderstorm": bool(weather.is_thunderstorm),
