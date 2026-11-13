@@ -485,7 +485,7 @@ def load_world(
     railway_mgr.bookings.destination_for = lambda stand: taxi_mgr.pick_phone_dropoff(stand.x, stand.y)
     taxi_mgr.rail_bookings = railway_mgr.bookings
     arena_crowds = ArenaCrowds(
-        pedestrian_mgr, taxi_stops, chosen_city, to_metres=latlon_to_world_metres(),
+        pedestrian_mgr, taxi_stops, chosen_city, to_metres=latlon_to_world_metres(), sceneries=sceneries,
     )
     on_load_progress(1.0, "Ready")
     logger.info("World preparation complete")

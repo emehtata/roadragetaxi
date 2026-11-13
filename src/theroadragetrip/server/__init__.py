@@ -879,10 +879,11 @@ class SimulationServer:
                      if self.calendar.current < game.start + getattr(game, "game_duration", GAME_DURATION)]
             if games:
                 schedule = "; ".join(
-                    f"{game.home_team}–{game.away_team} {game.start:%H:%M} ({game.venue_name})"
+                    tr(self.language, "game_today_at" if game.venue_name else "game_today_at_time",
+                       time=f"{game.start:%H:%M}", venue=game.venue_name)
                     for game in games
                 )
-                self._notify(tr(self.language, "game_day_schedule", schedule=schedule), 10.0)
+                self._notify(schedule, 10.0)
             self._game_day_notice_shown = True
 
     def _apply_incoming_messages(self) -> None:

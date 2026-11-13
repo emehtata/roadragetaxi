@@ -16,7 +16,6 @@ ARRIVAL_BEFORE = timedelta(hours=1)
 GAME_DURATION = timedelta(hours=2, minutes=30)
 DEPARTURE_WINDOW = timedelta(minutes=30)
 VISIBLE_RADIUS_M = 600.0
-MAX_VISIBLE_SPECTATORS = 40
 DEFAULT_VISIBLE_SPECTATORS = 24
 TAXI_SHARE = 0.10
 WEEKDAY_INTOXICATION_CHANCE = 0.10
@@ -57,14 +56,22 @@ def _arena_entrances(pedestrians, point: tuple[float, float], buildings=None) ->
     ))
 
 
+OSM_VENUE_KINDS = frozenset({"stadium", "sports_centre", "ice_rink", "pitch"})
+OSM_VENUE_RADIUS_M = 250.0
+
+
+def _osm_venue_name(venues, point) -> str:
+    """The nearest named OSM venue's name, or "" (fixture names are never shown)."""
+    best = min(((min(math.dist(point, p) for p in points), name) for name, points in venues), default=None)
+    return best[1] if best and best[0] <= OSM_VENUE_RADIUS_M else ""
+
+
 @dataclass
 class ArenaEvent:
     fixture_id: str
     start: datetime
     point: tuple[float, float]
     visible_total: int
-    home_team: str = ""
-    away_team: str = ""
     venue_name: str = ""
     game_duration: timedelta = GAME_DURATION
     entrances: tuple[tuple[float, float], ...] = ()
@@ -78,7 +85,7 @@ class ArenaCrowds:
     """Turn local Liiga and Veikkausliiga fixtures into visible spectators."""
 
     def __init__(self, pedestrians, taxi_stops, city: str, fixtures: Iterable[dict] | None = None,
-                 to_metres=None, seed: int = 0) -> None:
+                 to_metres=None, seed: int = 0, sceneries: Iterable = ()) -> None:
         self.pedestrians = pedestrians
         self.taxi_stops = taxi_stops
         self.rng = random.Random(seed)
@@ -87,6 +94,8 @@ class ArenaCrowds:
             from .world_loader import latlon_to_world_metres
             to_metres = latlon_to_world_metres()
         city_key = city.strip().casefold()
+        venues = [(scenery.name, scenery.points_m) for scenery in sceneries
+                  if scenery.name and scenery.kind in OSM_VENUE_KINDS and scenery.points_m]
         self.events = []
         for match in fixtures if fixtures is not None else load_sports_fixtures():
             venue = match.get("venue", {})
@@ -96,15 +105,11 @@ class ArenaCrowds:
             latitude, longitude = venue.get("latitude"), venue.get("longitude")
             if latitude is None or longitude is None:
                 continue
-            attendance = match.get("attendance")
-            visible = DEFAULT_VISIBLE_SPECTATORS if attendance is None else max(
-                8, min(MAX_VISIBLE_SPECTATORS, round(attendance / 150)),
-            )
+            visible = DEFAULT_VISIBLE_SPECTATORS
             point = to_metres(latitude, longitude)
             self.events.append(ArenaEvent(
                 match["id"], _local_time(match["start"]), point, visible,
-                home_team=match.get("home_team", ""), away_team=match.get("away_team", ""),
-                venue_name=venue.get("name", ""),
+                venue_name=_osm_venue_name(venues, point),
                 game_duration=GAME_DURATION if competition == "liiga" else timedelta(hours=2),
                 entrances=_arena_entrances(pedestrians, point),
             ))

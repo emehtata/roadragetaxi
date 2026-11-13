@@ -71,13 +71,21 @@ def test_match_day_notice_excludes_finished_games(tmp_path, monkeypatch, hour, m
 
     server = _build_server(tmp_path, monkeypatch)
     server.calendar.current = datetime(2026, 10, 17, hour, minute, second)
-    game = SimpleNamespace(start=datetime(2026, 10, 17, 18), home_team="Test Home", away_team="Test Away", venue_name="Arena")
+    server.language = "fi"
+    game = SimpleNamespace(start=datetime(2026, 10, 17, 18), venue_name="Arena")
     server.world.arena_crowds = SimpleNamespace(schedule_on=lambda day: [game])
     notices = []
     monkeypatch.setattr(server, "_notify", lambda *args: notices.append(args))
     connection = Mock()
     server._on_client_connect(connection)
     assert bool(notices) == expected
+    if expected:
+        assert notices[0][0] == "Peli tänään 18:00 (Arena)"  # generic: no team names
+    game.venue_name = ""  # no OSM venue name: time only
+    server._game_day_notice_shown = False
+    notices.clear()
+    server._on_client_connect(Mock())
+    assert notices[0][0] == "Peli tänään 18:00" if expected else not notices
     assert server._game_day_notice_shown
     server._on_client_connect(connection)
     assert len(notices) == int(expected)  # do not repeat the notice on reconnect

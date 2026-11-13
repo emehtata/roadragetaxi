@@ -31,10 +31,9 @@ class Pedestrians:
         return [(pedestrian.x, pedestrian.y), destination]
 
 
-def fixture(start="2026-10-15T15:00:00Z", attendance=3000):
-    return {"id": "game", "competition": "liiga", "start": start, "attendance": attendance,
-            "home_team": "Test Home", "away_team": "Test Away",
-            "venue": {"name": "Test Hall", "city": "Oulu", "latitude": 65.0, "longitude": 25.0}}
+def fixture(start="2026-10-15T15:00:00Z"):
+    return {"id": "game", "competition": "liiga", "start": start,
+            "venue": {"city": "Oulu", "latitude": 65.0, "longitude": 25.0}}
 
 
 def test_arena_fills_during_hour_before_game_and_arrivals_go_inside_at_start():
@@ -43,7 +42,7 @@ def test_arena_fills_during_hour_before_game_and_arrivals_go_inside_at_start():
     start = crowds.events[0].start
 
     crowds.update(start - timedelta(minutes=30), (10.0, 20.0))
-    assert len(pedestrians.pedestrians) == 10
+    assert len(pedestrians.pedestrians) == 12  # DEFAULT_VISIBLE_SPECTATORS (24), half arrived
     assert all(pedestrian.held_by is crowds for pedestrian in pedestrians.pedestrians)
 
     crowds.update(start, (10.0, 20.0))
@@ -53,13 +52,13 @@ def test_arena_fills_during_hour_before_game_and_arrivals_go_inside_at_start():
 def test_spectators_leave_from_two_and_a_half_hours_and_some_seek_taxis():
     pedestrians = Pedestrians()
     stand = SimpleNamespace(x=30.0, y=40.0)
-    crowds = ArenaCrowds(pedestrians, [stand], "Oulu", [fixture(attendance=6000)],
+    crowds = ArenaCrowds(pedestrians, [stand], "Oulu", [fixture()],
                          to_metres=lambda lat, lon: (10.0, 20.0), seed=1)
     departure = crowds.events[0].start + timedelta(hours=2, minutes=30)
 
     crowds.update(departure + timedelta(minutes=15), (10.0, 20.0))
 
-    assert len(pedestrians.pedestrians) == 20
+    assert len(pedestrians.pedestrians) == 12
     assert any(pedestrian.wants_taxi for pedestrian in pedestrians.pedestrians)
     assert all(
         pedestrian.taxi_stop_target == (30.0, 40.0)
@@ -76,7 +75,7 @@ def test_spectators_leave_from_nearby_arena_doors():
 
     crowds.update(departure + timedelta(minutes=15), (10.0, 20.0))
 
-    assert len(pedestrians.pedestrians) == 10
+    assert len(pedestrians.pedestrians) == 12
     assert all((pedestrian.x, pedestrian.y) == (12.0, 20.0) for pedestrian in pedestrians.pedestrians)
 
 
@@ -96,7 +95,7 @@ def test_spectators_are_distributed_evenly_across_all_arena_doors():
 
     counts = {(x, y): sum((pedestrian.x, pedestrian.y) == (x, y)
                           for pedestrian in pedestrians.pedestrians) for x, y in doors}
-    assert sorted(counts.values()) == [3, 3, 4]
+    assert sorted(counts.values()) == [4, 4, 4]
 
 
 def test_failed_arena_spawns_are_retried():
@@ -156,26 +155,34 @@ def test_other_cities_and_distant_arenas_do_not_spawn_people():
 
 
 def test_game_day_schedule_uses_local_date_and_start_time():
-    crowds = ArenaCrowds(Pedestrians(), [], "Oulu", [fixture()], to_metres=lambda lat, lon: (10.0, 20.0))
+    osm_hall = SimpleNamespace(name="OSM Hall", kind="ice_rink", points_m=[(30.0, 20.0)])
+    far_pitch = SimpleNamespace(name="Far Pitch", kind="pitch", points_m=[(900.0, 20.0)])
+    crowds = ArenaCrowds(Pedestrians(), [], "Oulu", [fixture()], to_metres=lambda lat, lon: (10.0, 20.0),
+                         sceneries=[far_pitch, osm_hall])
 
     games = crowds.schedule_on(crowds.events[0].start.date())
 
-    assert [(game.home_team, game.away_team, game.start.strftime("%H:%M"), game.venue_name) for game in games] == [
-        ("Test Home", "Test Away", "18:00", "Test Hall"),
+    assert [(game.start.strftime("%H:%M"), game.venue_name) for game in games] == [
+        ("18:00", "OSM Hall"),  # the OSM name, never a fixture name
     ]
+    assert not hasattr(games[0], "home_team")
+
+
+def test_venue_without_osm_name_has_no_name():
+    crowds = ArenaCrowds(Pedestrians(), [], "Oulu", [fixture()], to_metres=lambda lat, lon: (10.0, 20.0))
+    assert crowds.events[0].venue_name == ""
 
 
 def test_football_league_schedule_drives_local_football_crowds_for_two_hours():
     match = {
         "id": "veikkausliiga:2026:test", "competition": "veikkausliiga", "sport": "football",
-        "start": "2026-11-01T13:00:00Z", "home_team": "Test FC", "away_team": "Test United",
-        "attendance": 2732,
-        "venue": {"name": "Test Stadium", "city": "Oulu", "latitude": 65.001214, "longitude": 25.452736},
+        "start": "2026-11-01T13:00:00Z",
+        "venue": {"city": "Oulu", "latitude": 65.001214, "longitude": 25.452736},
     }
     crowds = ArenaCrowds(Pedestrians(), [], "Oulu", [match], to_metres=lambda lat, lon: (lat, lon))
     event, = crowds.schedule_on(date(2026, 11, 1))
 
-    assert event.venue_name == "Test Stadium"
+    assert event.venue_name == ""  # no OSM venue nearby: the fixture name is not used
     assert event.start.strftime("%H:%M") == "15:00"  # Finland winter time
     assert event.game_duration == timedelta(hours=2)
     assert crowds.lights_on(event.start + timedelta(hours=2, minutes=15))
@@ -188,9 +195,7 @@ def test_bundled_football_league_fixture_appears_in_oulu_game_day_schedule():
     crowds = ArenaCrowds(Pedestrians(), [], "Oulu", to_metres=lambda lat, lon: (lat, lon))
     games = crowds.schedule_on(date(2026, 11, 1))
 
-    assert [(game.home_team, game.away_team, game.venue_name) for game in games] == [
-        ("AC Oulu", "KuPS", "OTC Stadion"),
-    ]
+    assert [game.start.strftime("%H:%M") for game in games] == ["15:00"]
     assert any(match["competition"] == "veikkausliiga" for match in load_sports_fixtures())
 
 
