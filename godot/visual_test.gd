@@ -279,6 +279,9 @@ func _process(delta: float) -> void:
 			_measure_left = float(scenario["drive_s"])
 		var perf := preload("res://perf.gd")
 		perf.reset()
+		main.entities.buffer.reset_diagnostics()
+		main.entities.buffer.timeline.clear()
+		main.entities.buffer.record_timeline = true  # M7: every state's arrival, server time and tile status
 		for key in ["lamp_reassigned", "lamp_moved_lit", "lamp_lights_max", "lamps_offered_max"]:
 			perf.counters.erase(key)
 	elif _elapsed > TIMEOUT_S:
@@ -647,6 +650,7 @@ func _finish() -> void:
 			var s: Array = perf.sections[name]
 			sections[name] = {"avg_ms": s[1] / 1000.0 / maxi(1, s[0]), "max_ms": s[2] / 1000.0}
 	sections["long_frames"] = _long_frames
+	sections["state_timeline"] = _state_timeline_summary(main.entities.buffer)
 	var ok := _measure_failures.is_empty()
 	var traffic := {"npcs_max": _npc_max, "moving_min": _npc_min_moving if _npc_min_moving < (1 << 30) else 0, "speed_max": _speed_max, "spawn_rejections": rejections}
 	var lamps := {}
@@ -812,3 +816,42 @@ func _work_totals() -> Array:
 			Performance.PIPELINE_COMPILATIONS_DRAW, Performance.PIPELINE_COMPILATIONS_SPECIALIZATION]:
 		pipelines += int(Performance.get_monitor(monitor))
 	return [perf.sections.get("main_process", [0, 0, 0])[1], chunk, pipelines]
+
+
+## M7: the states' arrival gaps beside their server-time gaps (a long arrival gap with a
+## normal server gap is transport or a client stall; both long is the server's tick), and
+## whether each long gap fell within 1 s of a tile event (the server's map_loading changing).
+func _state_timeline_summary(buffer) -> Dictionary:
+	var rows: Array = buffer.timeline
+	buffer.record_timeline = false
+	if rows.size() < 2:
+		return {}
+	var arrival := PackedFloat32Array()
+	var server := PackedFloat32Array()
+	var events := PackedFloat32Array()  # local times the map_loading status changed
+	for i in range(1, rows.size()):
+		arrival.append((rows[i][0] - rows[i - 1][0]) * 1000.0)
+		server.append((rows[i][1] - rows[i - 1][1]) * 1000.0)
+		if rows[i][3] != rows[i - 1][3]:
+			events.append(rows[i][0])
+	var long_gaps: Array = []
+	for i in arrival.size():
+		if arrival[i] > 66.7:
+			var at: float = rows[i + 1][0]
+			var near := false
+			for t in events:
+				if absf(t - at) <= 1.0:
+					near = true
+			long_gaps.append({"t_s": at - rows[0][0], "arrival_ms": arrival[i], "server_ms": server[i], "near_tile_event": near,
+				"map_loading": rows[i + 1][3]})
+	var sorted_arrival := arrival.duplicate()
+	sorted_arrival.sort()
+	var pct := func(p: float) -> float: return sorted_arrival[clampi(int(ceil(p * sorted_arrival.size())) - 1, 0, sorted_arrival.size() - 1)]
+	var server_max := 0.0
+	for g in server:
+		server_max = maxf(server_max, g)
+	return {"states": rows.size(), "arrival_p50_ms": pct.call(0.5), "arrival_p95_ms": pct.call(0.95), "arrival_p99_ms": pct.call(0.99),
+		"arrival_max_ms": sorted_arrival[-1], "arrival_over_66ms": long_gaps.size(), "server_gap_max_ms": server_max,
+		"tile_events": events.size(), "long_gaps_near_tile_events": long_gaps.filter(func(g): return g["near_tile_event"]).size(),
+		"long_gaps": long_gaps.slice(0, 40), "underruns": buffer.underruns, "underrun_episodes": buffer.underrun_episodes,
+		"render_backsteps": buffer.render_backsteps, "clock_snaps": buffer.clock_snaps}

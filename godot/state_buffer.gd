@@ -44,6 +44,10 @@ var render_backsteps := 0  # samples whose render time was earlier than the prev
 var max_backstep_s := 0.0
 var _last_render_time := -INF
 var _last_arrival := -1.0
+var clock_snaps := 0  # render-clock jumps (a visible snap of every moving thing)
+# M7 timeline (visual tests): per state [local arrival s, server time, tick, map_loading, speed].
+var record_timeline := false
+var timeline: Array = []
 
 var _states: Array = []  # [{"tick", "time", "state"}], oldest first
 var _events: Array = []  # [{"time", "events"}] not yet presented
@@ -65,6 +69,7 @@ func reset_diagnostics() -> void:
 	_underrun_since = -1.0
 	render_backsteps = 0
 	max_backstep_s = 0.0
+	clock_snaps = 0
 
 
 func clear() -> void:
@@ -89,6 +94,9 @@ func push(tick: int, server_time: float, state: Dictionary, local_now: float) ->
 	if _last_arrival >= 0.0:
 		max_arrival_gap_s = maxf(max_arrival_gap_s, local_now - _last_arrival)
 	_last_arrival = local_now
+	if record_timeline and timeline.size() < 50000:
+		timeline.append([local_now, server_time, tick, str(state.get("map_loading", "")),
+			float(state.get("player", {}).get("speed", 0.0)) if state.get("player") is Dictionary else 0.0])
 	_states.append({"tick": tick, "time": server_time, "state": state})
 	if _states.size() > MAX_STATES:
 		_states.pop_front()
@@ -125,6 +133,8 @@ func target_time(local_now: float) -> float:
 func render_time(local_now: float) -> float:
 	var target := target_time(local_now)
 	if _clock_local < 0.0 or local_now < _clock_local or absf(target - _clock_time) > CLOCK_SNAP_S:
+		if _clock_local >= 0.0:
+			clock_snaps += 1
 		_clock_time = target
 	else:
 		var rate := 1.0 + clampf((target - _clock_time) * SLEW_GAIN, -MAX_SLEW, MAX_SLEW)
