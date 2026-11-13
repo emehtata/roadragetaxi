@@ -260,6 +260,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_static_world()
 	test_fields_frozen()
 	test_water_freezes_in_snowless_thermal_winter()
+	test_water_ice_follows_lake_ice_holds()
 	test_rest_of_static_world()
 	test_buildings_2_5d()
 	test_buildings_3d()
@@ -3771,6 +3772,22 @@ func test_water_freezes_in_snowless_thermal_winter() -> void:
 		check(1.0 - chunk.water_ice() <= 0.0, "frozen water has no liquid for shore waves")
 		map.set_fields_frozen(false)
 		check(chunk.water_ice() == 0.0 and chunk.water_color(open) == open, "thaw reopens the water")
+	map.free()
+
+
+func test_water_ice_follows_lake_ice_holds() -> void:
+	var map := MapLayer.new()
+	root.add_child(map)
+	map.set_season([1.0, 0.0, 0.0, 0.0])
+	map.set_fields_frozen(true)
+	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500]})
+	var chunk = map._chunks["0_0"]
+	map.set_lake_ice(false)
+	check(chunk.water_ice() == 0.0, "thin lake ice renders open water under snow and frozen fields")
+	map.set_lake_ice(true)
+	check(chunk.water_ice() == 1.0, "holding lake ice renders as ice")
+	map.add_chunk({"chunk_id": "1_0", "bounds": [500, 0, 1000, 500]})
+	check(map._chunks["1_0"].water_ice() == 1.0, "newly streamed chunks inherit the lake ice")
 	map.free()
 
 

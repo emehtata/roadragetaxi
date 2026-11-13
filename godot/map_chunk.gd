@@ -93,6 +93,7 @@ var _heads := Node2D.new()
 var _broken := PackedInt32Array()  # indices of this chunk's street lights that are knocked down
 var _season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] (state calendar.season)
 var _fields_frozen = null  # explicit server ice state; old servers use the winter weight
+var _lake_ice = null  # server lake_ice_holds (modelled thickness); old servers: snow or field ice
 var _trees_leafless := false
 var _forest_rows: Array = []  # --outdoor-3d: forest_trees, [layer point, kind, variation]
 var _forest_task := -1
@@ -1124,14 +1125,26 @@ func fields_frozen() -> bool:
 	return bool(_fields_frozen) if _fields_frozen != null else float(_season[0]) >= Detail.FIELDS_FROZEN_WINTER_WEIGHT
 
 
-## Lakes freeze with snow cover or, snowless, in thermal winter like the fields.
+## Lakes are ice when the server's modelled ice holds a car; old servers:
+## with snow cover or, snowless, in thermal winter like the fields.
 func water_ice() -> float:
+	if _lake_ice != null:
+		return 1.0 if _lake_ice else 0.0
 	return maxf(clampf(_season[0], 0.0, 1.0), 1.0 if fields_frozen() else 0.0)
 
 
 ## Open water's colour, lerped to ice by water_ice().
 func water_color(open: Color) -> Color:
 	return open.lerp(Color8(232, 240, 244), water_ice())
+
+
+func set_lake_ice(holds: bool) -> void:
+	if _lake_ice == holds:
+		return
+	_lake_ice = holds
+	for node in _season_layers:
+		node.queue_redraw()
+	_refresh_3d_ground()
 
 
 func set_fields_frozen(frozen: bool) -> void:

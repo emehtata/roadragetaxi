@@ -890,6 +890,8 @@ func _present(state: Dictionary) -> void:
 		var season = calendar.get("season", [])
 		map_layer.set_trees_leafless(bool(calendar.get("trees_leafless", false)))
 		map_layer.set_fields_frozen(bool(calendar.get("fields_frozen", float(season[0]) >= 0.5 if season is Array and season.size() == 4 else false)))
+		if calendar.has("lake_ice_holds"):
+			map_layer.set_lake_ice(bool(calendar["lake_ice_holds"]))
 		wildlife.winter = float(season[0]) if season is Array and season.size() == 4 else 0.0  # winter coats
 		map_layer.set_sports_hours(bool(calendar.get("sports_lights", false)))
 		map_layer.set_arena_lights(bool(calendar.get("arena_lights", false)))
