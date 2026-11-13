@@ -950,39 +950,69 @@ func _road_snow_3d() -> void:
 
 
 # Worker results wait here instead of all running in one deferred flush: main
-# applies them under its chunk budget (drain_ready_meshes), one at least per frame.
-static var ready_meshes: Array = []  # [chunk, arrays, build id]
+# applies them under its chunk budget (drain_ready_meshes), one surface per
+# step, at least one step per frame.
+static var ready_meshes: Array = []  # [chunk, arrays, build id, steps left, instances built]
 var _mesh_build := 0  # the newest async 3D build: an older one's arrays are dropped
 
 
 func _queue_meshes(arrays: Dictionary, build_id := -1) -> void:
-	ready_meshes.append([self, arrays, _mesh_build if build_id < 0 else build_id])
+	ready_meshes.append([self, arrays, _mesh_build if build_id < 0 else build_id, null, []])
+
+
+## Remove a chunk's queued work (it is being freed), with any surfaces built so far.
+static func drop_queued(chunk) -> void:
+	for entry in ready_meshes.filter(func(e): return e[0] == chunk):
+		_free_nodes(entry[4])
+	ready_meshes = ready_meshes.filter(func(e): return e[0] != chunk)
+
+
+static func _free_nodes(nodes: Array) -> void:
+	for node in nodes:
+		if is_instance_valid(node):
+			node.free()
 
 
 static func drain_ready_meshes(budget_usec: int) -> int:
 	var started := Time.get_ticks_usec()
 	var spent := 0
 	while not ready_meshes.is_empty() and (spent == 0 or spent < budget_usec):
-		var entry: Array = ready_meshes.pop_front()
-		if is_instance_valid(entry[0]) and entry[2] == entry[0]._mesh_build:
-			entry[0]._meshes_ready(entry[1])
+		var step_started := Time.get_ticks_usec()
+		var entry: Array = ready_meshes[0]
+		if not is_instance_valid(entry[0]) or entry[2] != entry[0]._mesh_build:
+			ready_meshes.pop_front()
+			_free_nodes(entry[4])
+		elif entry[3] == null:
+			entry[3] = B3.mesh_steps(entry[1])
+		elif not entry[3].is_empty():
+			entry[4].append_array(entry[3].pop_front().call())
+			Perf.add("chunk_mesh_surface", Time.get_ticks_usec() - step_started)
+		else:
+			ready_meshes.pop_front()
+			entry[0]._meshes_done(entry[1], entry[4])
 		spent = Time.get_ticks_usec() - started
 	return spent
 
 
 func _meshes_ready(arrays: Dictionary) -> void:
+	_meshes_done(arrays, B3.meshes(arrays))
+
+
+func _meshes_done(arrays: Dictionary, instances: Array) -> void:
 	var started := Time.get_ticks_usec()
 	if _building_task >= 0:
 		WorkerThreadPool.wait_for_task_completion(_building_task)
 		_building_task = -1
 	Perf.add("chunk_build_worker", arrays.get("build_usec", 0))
-	meshes_3d = B3.meshes(arrays)
+	meshes_3d = instances
 	_road_snow_3d()
 	_volumes = {"stats": arrays["stats"]}  # the vertices live in the meshes
 	if is_inside_tree():
 		get_parent().add_building_meshes(self)
 	drop_stale_buildings()
-	Perf.add("chunk_meshes_main", Time.get_ticks_usec() - started)
+	Perf.add("chunk_meshes_main", Time.get_ticks_usec() - started)  # attaching the built surfaces
+
+
 var _building_task := -1
 
 

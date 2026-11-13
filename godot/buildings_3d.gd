@@ -1914,47 +1914,86 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 ## windows, both in the one building view.
 static func meshes(arrays: Dictionary) -> Array:
 	var instances: Array = []
-	if not arrays.get("ground", PackedVector3Array()).is_empty():
-		instances.append(_instance(_mesh(arrays["ground"], arrays["ground_colors"], PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "ground")), _shared["ground"], LAYER_BUILDINGS))
+	for step: Callable in mesh_steps(arrays):
+		instances.append_array(step.call())
+	return instances
+
+
+## meshes() one surface at a time: each Callable makes one ArrayMesh and
+## returns its instances, so the main thread can spread a chunk over frames.
+static func mesh_steps(arrays: Dictionary) -> Array:
+	var steps: Array = []
+	for r in _pieces(arrays.get("ground", PackedVector3Array()).size()):
+		steps.append(func(): return [_instance(_mesh(_cut(arrays["ground"], r), _cut(arrays["ground_colors"], r), PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _cut(_n(arrays, "ground"), r)), _shared["ground"], LAYER_BUILDINGS)])
 	if not arrays.get("deck", PackedVector3Array()).is_empty():
-		var deck := _instance(_mesh(arrays["deck"], arrays["deck_colors"], PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "deck")), _shared["ground"], LAYER_BUILDINGS)
-		deck.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		instances.append(deck)
+		steps.append(func():
+			var deck := _instance(_mesh(arrays["deck"], arrays["deck_colors"], PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "deck")), _shared["ground"], LAYER_BUILDINGS)
+			deck.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			return [deck])
 	if not arrays.get("canopy", PackedVector3Array()).is_empty():
-		var roof_mesh := _mesh(arrays["canopy"], arrays["canopy_colors"], PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "canopy"))
-		instances.append(_instance(roof_mesh, _shared["glass"], LAYER_BUILDINGS))  # see-through: the taxi and the pumps show under it
-		var roof_shadow := _instance(roof_mesh, _shared["caster"], LAYER_BUILDINGS)  # but its shade is solid
-		roof_shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
-		instances.append(roof_shadow)
-	if not arrays.get("road", PackedVector3Array()).is_empty():
-		instances.append(_instance(_mesh(arrays["road"], arrays["road_colors"], arrays["road_uv"], PackedVector2Array(), PackedFloat32Array(), arrays["road_uv2"], false, _n(arrays, "road")),
-			_shared.get("road", _shared["ground"]), LAYER_BUILDINGS))
+		steps.append(func():
+			var roof_mesh := _mesh(arrays["canopy"], arrays["canopy_colors"], PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "canopy"))
+			var roof_shadow := _instance(roof_mesh, _shared["caster"], LAYER_BUILDINGS)  # its shade is solid
+			roof_shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			return [_instance(roof_mesh, _shared["glass"], LAYER_BUILDINGS), roof_shadow])  # see-through: the taxi and the pumps show under it
+	for r in _pieces(arrays.get("road", PackedVector3Array()).size()):
+		steps.append(func(): return [_instance(_mesh(_cut(arrays["road"], r), _cut(arrays["road_colors"], r), _cut(arrays["road_uv"], r), PackedVector2Array(), PackedFloat32Array(),
+			_cut(arrays["road_uv2"], r), false, _cut(_n(arrays, "road"), r)), _shared.get("road", _shared["ground"]), LAYER_BUILDINGS)])
 	if not arrays.get("glass", PackedVector3Array()).is_empty():
-		instances.append(_instance(_mesh(arrays["glass"], arrays["glass_colors"], PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "glass")), _shared["glass"], LAYER_BUILDINGS))
+		steps.append(func(): return [_instance(_mesh(arrays["glass"], arrays["glass_colors"], PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "glass")), _shared["glass"], LAYER_BUILDINGS)])
 	if arrays["verts"].is_empty():
-		return instances
-	var mesh := _mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], arrays.get("wall_uv", PackedVector2Array()),
-		arrays.get("window", PackedFloat32Array()), PackedVector2Array(), false, _n(arrays, "verts"))
-	var drawn := _instance(mesh, _shared["material"], LAYER_BUILDINGS)
-	instances.append(drawn)
-	if opaque:  # step 4: the buildings themselves cast and receive the sun's shadow; no shadows-only copies
-		drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		return steps
+	for r in _pieces(arrays["verts"].size()):
+		steps.append(func():
+			var drawn := _instance(_mesh(_cut(arrays["verts"], r), _cut(arrays["colors"], r), _cut(arrays["roof_mask"], r), _cut(arrays.get("wall_uv", PackedVector2Array()), r),
+				_cut(arrays.get("window", PackedFloat32Array()), r, 4), PackedVector2Array(), false, _cut(_n(arrays, "verts"), r)), _shared["material"], LAYER_BUILDINGS)
+			if opaque:  # step 4: the buildings themselves cast and receive the sun's shadow; no shadows-only copies
+				drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			return [drawn])
 	# rrt-018-shadows: each building as a plain prism (walls and a flat roof,
 	# no windows or doors: a fifth of the triangles), not drawn, only casting
 	# the sun's shadow in the shadow view (its layer)
-	if not arrays["shadow"].is_empty() and not opaque:
-		var caster := _instance(_mesh(arrays["shadow"], PackedColorArray(), PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "shadow")), _shared["caster"], LAYER_SHADOW_GROUND)
-		caster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
-		instances.append(caster)
-	if not arrays["lit"].is_empty():
-		var colors: PackedColorArray = arrays["lit_colors"] if arrays.has("lit_colors") else lit_colors(arrays["lit"])
-		instances.append(_instance(_mesh(arrays["lit"], colors, PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "lit")), _shared["lit"], LAYER_BUILDINGS))
+	if not opaque:
+		for r in _pieces(arrays["shadow"].size()):
+			steps.append(func():
+				var caster := _instance(_mesh(_cut(arrays["shadow"], r), PackedColorArray(), PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _cut(_n(arrays, "shadow"), r)), _shared["caster"], LAYER_SHADOW_GROUND)
+				caster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+				return [caster])
+	for r in _pieces(arrays["lit"].size()):
+		steps.append(func():
+			var colors: PackedColorArray = arrays["lit_colors"] if arrays.has("lit_colors") else lit_colors(arrays["lit"])
+			return [_instance(_mesh(_cut(arrays["lit"], r), _cut(colors, r), PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _cut(_n(arrays, "lit"), r)), _shared["lit"], LAYER_BUILDINGS)])
 	if not arrays["arena"].is_empty():
-		var colors := PackedColorArray()
-		colors.resize(arrays["arena"].size())
-		colors.fill(WINDOW_LIT_NIGHT)
-		instances.append(_instance(_mesh(arrays["arena"], colors, PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "arena")), _shared["arena"], LAYER_BUILDINGS))
-	return instances
+		steps.append(func():
+			var colors := PackedColorArray()
+			colors.resize(arrays["arena"].size())
+			colors.fill(WINDOW_LIT_NIGHT)
+			return [_instance(_mesh(arrays["arena"], colors, PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "arena")), _shared["arena"], LAYER_BUILDINGS)])
+	return steps
+
+
+## A surface's vertex ranges for mesh_steps: one ArrayMesh per range, so no
+## single main-thread step uploads a whole dense chunk (5-6 ms measured).
+## ponytail: fixed size; more pieces = more draw calls on dense chunks.
+const MESH_STEP_VERTS := 24000  # a multiple of 3: whole triangles
+
+
+static func _pieces(count: int) -> Array:
+	var ranges: Array = []
+	for start in range(0, count, MESH_STEP_VERTS):
+		ranges.append(Vector2i(start, mini(count, start + MESH_STEP_VERTS)))
+	return ranges
+
+
+## One vertex range of a per-vertex array (`per` values a vertex); an array
+## that isn't per-vertex (empty, or absent) is passed through as it is.
+static func _cut(values, r: Vector2i, per := 1):
+	var count: int = values.size()
+	if count == 0 or count % per != 0 or count / per < r.y:
+		return values
+	if r.x == 0 and r.y * per == count:
+		return values
+	return values.slice(r.x * per, r.y * per)
 
 
 static func _n(arrays: Dictionary, key: String) -> PackedVector3Array:

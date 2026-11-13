@@ -3826,8 +3826,11 @@ func test_resent_chunk_buildings() -> void:
 	MapChunk.ready_meshes.clear()
 	for i in 6:
 		ready_chunk._queue_meshes(arrays)
+	var before_drain: Array = ready_chunk.meshes_3d.duplicate()
 	MapChunk.drain_ready_meshes(1)
-	check(MapChunk.ready_meshes.size() == 5, "six ready chunks: one over-budget frame applies one, not all")
+	MapChunk.drain_ready_meshes(1)
+	check(MapChunk.ready_meshes.size() == 6 and ready_chunk.meshes_3d == before_drain,
+		"six ready chunks: an over-budget frame takes one step (one surface), not a chunk")
 	MapChunk.drain_ready_meshes(1 << 30)
 	check(MapChunk.ready_meshes.is_empty() and not ready_chunk.meshes_3d.is_empty(), "the rest follow in later frames")
 	var applied: Array = ready_chunk.meshes_3d.duplicate()
@@ -3845,6 +3848,15 @@ func test_resent_chunk_buildings() -> void:
 	check(lamp_arrays["normals"] == B3.flat_normals(lamp_arrays["verts"])
 		and lamp_node.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] == lamp_arrays["verts"], "lamp posts: worker arrays, the same mesh")
 	lamp_node.free()
+	var big := PackedVector3Array()
+	big.resize(B3.MESH_STEP_VERTS * 2 + 3)
+	var window := PackedFloat32Array()
+	window.resize(big.size() * 4)
+	var pieces: Array = B3._pieces(big.size())
+	check(pieces.size() == 3 and pieces.all(func(r): return r.x % 3 == 0 and r.y - r.x <= B3.MESH_STEP_VERTS)
+		and pieces.map(func(r): return B3._cut(big, r).size()).reduce(func(a, b): return a + b) == big.size()
+		and B3._cut(window, pieces[2], 4).size() == 12 and B3._cut(PackedVector2Array(), pieces[1]).is_empty(),
+		"a dense surface is uploaded in whole-triangle pieces, per-vertex arrays cut alike")
 	map.free()
 	MapChunk.buildings_3d = false
 

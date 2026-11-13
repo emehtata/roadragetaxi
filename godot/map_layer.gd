@@ -228,7 +228,7 @@ func _free_chunk(chunk: Node) -> void:
 	if _flood_group != null and chunk._floods.get_parent() == _flood_group:
 		_flood_group.remove_child(chunk._floods)
 		chunk._floods.free()
-	MapChunk.ready_meshes = MapChunk.ready_meshes.filter(func(entry): return entry[0] != chunk)  # its queued arrays go now
+	MapChunk.drop_queued(chunk)  # its queued arrays and half-built surfaces go now
 	chunk.queue_free()
 
 
