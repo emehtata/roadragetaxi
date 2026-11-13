@@ -1003,7 +1003,7 @@ static func model_vehicle_details(kind: String, length: float, width: float, col
 	var out := model_car_details(length, width, 0, lamps, 0.8,
 		bike or kind in ["truck", "motorcycle", "camper_van"], 1.41, bike)
 	if bike:
-		_bike_lamps(out, length * 0.5, lamps)
+		_bike_lamps(out, length * 0.5, lamps, SCOOTER_DECK_Y - 0.04 if kind == "e_scooter" else 0.72)
 	if kind == "motorcycle" and extra.get("riding", false):
 		_rider(out, -length * 0.15, length * 0.06, 0.95, Color8(34, 34, 38), color.lightened(0.15))
 	elif kind == "bicycle" and extra.get("riding", false):
@@ -1015,13 +1015,14 @@ static func model_vehicle_details(kind: String, length: float, width: float, col
 
 
 ## A bike's lamps (docs/specs/bicycle-rendering.md): white under the bars, red under the saddle, centred;
-## 12 cm long so each reads as a dot from the top-down camera.
-static func _bike_lamps(out: Dictionary, hl: float, lamps: int) -> void:
+## 12 cm long so each reads as a dot from the top-down camera. `rear_y`: the rear lamp's bottom
+## (an e-scooter's sits on the back of its deck).
+static func _bike_lamps(out: Dictionary, hl: float, lamps: int, rear_y := 0.72) -> void:
 	var front := lamps & LAMPS_ON != 0
 	_part(out, LAMP if front else PAINT, hl * 0.80 - 0.06, hl * 0.80 + 0.06, -0.045, 0.045, 0.82, 0.94,
 		Color(1.0, 0.95, 0.78) if front else Color8(190, 190, 183))
 	var rear := lamps & (LAMPS_ON | LAMPS_BRAKE) != 0
-	_part(out, LAMP if rear else PAINT, -hl * 0.80 - 0.06, -hl * 0.80 + 0.06, -0.045, 0.045, 0.72, 0.84,
+	_part(out, LAMP if rear else PAINT, -hl * 0.80 - 0.06, -hl * 0.80 + 0.06, -0.045, 0.045, rear_y, rear_y + 0.12,
 		(Color(1.0, 0.07, 0.04) if lamps & LAMPS_BRAKE else Color(0.55, 0.03, 0.02)) if rear else Color8(120, 30, 25))
 
 

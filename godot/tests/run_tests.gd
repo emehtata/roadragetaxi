@@ -87,6 +87,9 @@ func test_bicycle_lamps_single_pair() -> void:
 		check(lamps.size() == 2 * per_box and lamps.all(func(v): return absf(v.z) < 0.05)
 			and lamps.any(func(v): return v.x > 0.5) and lamps.any(func(v): return v.x < -0.5),
 			"%s: one front and one rear lamp, centred (%d lamp vertices)" % [kind, lamps.size()])
+		if kind == "e_scooter":
+			var rear_top: float = lamps.filter(func(v): return v.x < -0.5).reduce(func(m, v): return maxf(m, v.y), -1.0)
+			check(rear_top <= B3.SCOOTER_DECK_Y + 0.1, "e_scooter rear lamp at the deck, top %.2f m" % rear_top)
 	var car := B3.model_vehicle_details("sedan", 4.4, 1.8, Color.RED, lit, {})
 	var car_lamps := Array(car["part"]).filter(func(v): return int(v.x) == B3.LAMP).size()
 	check(car_lamps == 2 * 2 * per_box + 2 * per_box + 2 * per_box, "a car keeps 2+2 lamps, reverse lamps and indicators (%d)" % car_lamps)
