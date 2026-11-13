@@ -176,12 +176,9 @@ DEFAULT_TILE_MEMORY_BUDGET_MB = 768.0
 # a fast car never asks for more than a few extra tiles.
 LOOKAHEAD_HORIZON_S = 90.0
 MAX_LOOKAHEAD_TILES = 3
-# Soft boundary: probe this far ahead along the velocity for the first
-# unloaded tile and cap speed in proportion to its distance, never below
-# the floor - the player slows near missing data, never hits a wall.
-SOFT_BOUNDARY_PROBE_STEP_M = 100.0
-SOFT_BOUNDARY_PROBE_STEPS = 6
-SOFT_BOUNDARY_MPS_PER_M = 0.08
+# Hard limit only where there is no road data under the car (the edge of the
+# known world). A tile ahead that is still fetching or merging never slows
+# the player: streaming must keep up, not the driver slow down.
 SOFT_BOUNDARY_MIN_SPEED_MPS = 8.0
 # Without /proc (no live memory reading available), fall back to a hard
 # ceiling on how many inactive tiles can stay resident, so behavior is still
@@ -409,18 +406,13 @@ class AutoFetchManager:
         return world_to_tile(x, y) in self.loaded_tiles
 
     def streaming_speed_cap_mps(self, x: float, y: float, vx: float, vy: float) -> Optional[float]:
-        """Speed cap while driving toward a tile that isn't loaded yet, or
-        None when the probed path ahead is all loaded. A handful of set
-        lookups per frame; loaded_tiles is only mutated on the main thread."""
-        speed = math.hypot(vx, vy)
-        if not self.soft_boundary_enabled or speed < 1.0:
+        """Speed cap only when the car is on a tile with no data yet; None
+        otherwise, including while tiles ahead are fetching or merging."""
+        if not self.soft_boundary_enabled or math.hypot(vx, vy) < 1.0:
             return None
-        ux, uy = vx / speed, vy / speed
-        for step in range(SOFT_BOUNDARY_PROBE_STEPS + 1):
-            distance = step * SOFT_BOUNDARY_PROBE_STEP_M
-            if world_to_tile(x + ux * distance, y + uy * distance) not in self.loaded_tiles:
-                return max(SOFT_BOUNDARY_MIN_SPEED_MPS, distance * SOFT_BOUNDARY_MPS_PER_M)
-        return None
+        if world_to_tile(x, y) in self.loaded_tiles:
+            return None
+        return SOFT_BOUNDARY_MIN_SPEED_MPS
 
     def set_route_tiles(self, tiles) -> None:
         """At most three navigation priorities, through the ordinary loader."""

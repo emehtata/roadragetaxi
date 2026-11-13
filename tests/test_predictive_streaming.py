@@ -64,19 +64,24 @@ def test_lookahead_tiles_stay_active_while_steering_within_a_tile():
     assert {TileCoord(2, 0), TileCoord(0, 2)} <= manager.active_tiles
 
 
-def test_soft_boundary_caps_speed_only_near_unloaded_tiles():
+def test_soft_boundary_never_caps_for_a_pending_tile_ahead():
     manager = _manager()
     manager.soft_boundary_enabled = True
     manager.loaded_tiles = {TileCoord(0, 0), TileCoord(1, 0)}
-    assert manager.streaming_speed_cap_mps(500.0, 500.0, 30.0, 0.0) is None  # 600m ahead all loaded
-    far = manager.streaming_speed_cap_mps(1500.0, 500.0, 30.0, 0.0)
-    near = manager.streaming_speed_cap_mps(1950.0, 500.0, 30.0, 0.0)
-    assert far is not None and near is not None and near < far
-    assert near >= autofetch_module.SOFT_BOUNDARY_MIN_SPEED_MPS
-    assert manager.streaming_speed_cap_mps(1950.0, 500.0, -30.0, 0.0) is None  # driving away
-    manager.loaded_tiles.add(TileCoord(2, 0))
-    manager.loaded_tiles.add(TileCoord(3, 0))
-    assert manager.streaming_speed_cap_mps(1950.0, 500.0, 30.0, 0.0) is None  # data arrived
+    manager.is_fetching = True  # tile (2, 0) is in flight
+    assert manager.streaming_speed_cap_mps(500.0, 500.0, 30.0, 0.0) is None
+    assert manager.streaming_speed_cap_mps(1500.0, 500.0, 30.0, 0.0) is None
+    assert manager.streaming_speed_cap_mps(1950.0, 500.0, 30.0, 0.0) is None
+
+
+def test_soft_boundary_hard_limit_only_without_data_under_the_car():
+    manager = _manager()
+    manager.soft_boundary_enabled = True
+    manager.loaded_tiles = {TileCoord(0, 0)}
+    assert manager.streaming_speed_cap_mps(1500.0, 500.0, 30.0, 0.0) == (
+        autofetch_module.SOFT_BOUNDARY_MIN_SPEED_MPS)
+    manager.loaded_tiles.add(TileCoord(1, 0))
+    assert manager.streaming_speed_cap_mps(1500.0, 500.0, 30.0, 0.0) is None
 
 
 def test_soft_boundary_off_without_runtime_streaming():
