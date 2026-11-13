@@ -331,6 +331,11 @@ func add_chunk(message: Dictionary) -> bool:
 	var chunk := MapChunk.new()
 	chunk.name = "Chunk_" + chunk_id
 	chunk._building_view = building_view_centre
+	# Ice state before setup: setup builds the 3D ground (water colour) once, out of the tree.
+	if _fields_frozen != null:
+		chunk.set_fields_frozen(bool(_fields_frozen))
+	if _lake_ice != null:
+		chunk.set_lake_ice(bool(_lake_ice))
 	chunk.setup(message, origin)
 	if not _snow_baselines.has(chunk_id):
 		_snow_baselines[chunk_id] = 0.0 if snowing else road_snow
@@ -343,10 +348,6 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.set_broken_hedges(broken_hedges)
 	chunk.set_season(season)
 	chunk.set_trees_leafless(_trees_leafless)
-	if _fields_frozen != null:
-		chunk.set_fields_frozen(bool(_fields_frozen))
-	if _lake_ice != null:
-		chunk.set_lake_ice(bool(_lake_ice))
 	chunk.set_lights_on(lights_on)
 	chunk.set_arena_lights(arena_lights_on)
 	chunk.set_flash(flash)
