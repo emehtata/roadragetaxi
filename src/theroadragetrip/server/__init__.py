@@ -296,9 +296,11 @@ class SimulationServer:
             progress=lambda fraction, message: progress("world", message),
         )
         from ..osm.cache import default_cache_root
-        from ..osm.elevation import load_ground
-        self.world.dem = load_ground(default_cache_root(), city_choice.chosen_city,
-                                     bool(getattr(args, "terrain_dem80", False)))  # render-only ground; None: flat
+        from ..osm.elevation import load_ground, missing_ground_message
+        terrain = bool(getattr(args, "terrain_dem80", False))
+        self.world.dem = load_ground(default_cache_root(), city_choice.chosen_city, terrain)  # render-only ground; None: flat
+        self.ground_error = missing_ground_message(default_cache_root(), city_choice.chosen_city) \
+            if terrain and self.world.dem is None else ""  # printed in the Godot console too (world message)
         self.initial_map_preparation = (
             prepare_initial_window(self.world, progress=progress) if self._auto_fetch
             else {"started": False, "integrated_tiles": 0, "elapsed_s": 0.0}
@@ -868,6 +870,8 @@ class SimulationServer:
         message = protocol.build_world_message((self.car.x, self.car.y), CHUNK_SIZE_M, LOCAL_PLAYER_ID,
                                                self._place_name(), self._forecast())
         message["weather_city"] = self.weather_city
+        if getattr(self, "ground_error", ""):
+            message["ground_error"] = self.ground_error
         connection.send(message)
         with self._clients_lock:
             self._client_chunks[connection] = (set(), None)

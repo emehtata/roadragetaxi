@@ -122,6 +122,8 @@ func _drain_lines() -> void:
 			continue
 		match message.get("type"):
 			"world":
+				if message.has("ground_error"):  # terrain on, no DEM found: flat ground, say why
+					printerr("ERROR: ", message["ground_error"])
 				_chunk_generations.clear()
 				_origin = Vector2(message["center"][0], message["center"][1])
 				world_received.emit(message)

@@ -9,7 +9,10 @@ OSM `ele` nodes are too sparse for ground and are not used. JSON `null` is NoDat
 `<cache>/dem80/dem80.json` + `dem80_<i>_<j>.bin`, absolute EPSG:3067 / N2000.
 """
 import json
+import logging
 import math
+import os
+import re
 import struct
 import zlib
 from functools import lru_cache
@@ -135,6 +138,36 @@ def load_dem80(directory) -> Dem80 | None:
     return Dem80(directory)
 
 
+DEM80_ENV = "THEROADRAGETRIP_DEM80_DIR"
+WSL_MARKER = Path("/proc/sys/fs/binfmt_misc/WSLInterop")  # the Makefile's WSL test too
+
+
+def native_path(text: str) -> Path:
+    """A path from the env var on this OS: C:\\x <-> /mnt/c/x between Windows and WSL."""
+    if os.name == "nt" and (m := re.match(r"^/mnt/([a-zA-Z])(/.*)?$", text)):
+        return Path(f"{m[1].upper()}:" + (m[2] or "/").replace("/", "\\"))
+    if os.name != "nt" and WSL_MARKER.exists() and (m := re.match(r"^([a-zA-Z]):[\\/](.*)$", text)):
+        return Path(f"/mnt/{m[1].lower()}") / m[2].replace("\\", "/")
+    return Path(text)
+
+
+def dem80_dirs(cache_root) -> list:
+    return [Path(cache_root) / "dem80"] + ([native_path(env)] if (env := os.environ.get(DEM80_ENV)) else [])
+
+
+def missing_ground_message(cache_root, city: str) -> str:
+    return (f"terrain on but no DEM ground: tried {', '.join(str(d / 'dem80.json') for d in dem80_dirs(cache_root))} "
+            f"and {Path(cache_root) / f'{city}.dem.json'}; set {DEM80_ENV} to a dem80 folder "
+            "(or run make dem80-windows under WSL); the ground stays flat")
+
+
 def load_ground(cache_root, city: str, dem80_enabled: bool):
-    """The render-only ground: <cache>/dem80/ when enabled, else <city>.dem.json, else None (flat)."""
-    return (load_dem80(Path(cache_root) / "dem80") if dem80_enabled else None) or load_dem(Path(cache_root) / f"{city}.dem.json")
+    """The render-only ground: <cache>/dem80/ (or $THEROADRAGETRIP_DEM80_DIR) when enabled,
+    else <city>.dem.json, else None (flat; logged as an error when terrain was asked for)."""
+    for directory in dem80_dirs(cache_root) if dem80_enabled else []:
+        if ground := load_dem80(directory):
+            return ground
+    ground = load_dem(Path(cache_root) / f"{city}.dem.json")
+    if ground is None and dem80_enabled:
+        logging.getLogger(__name__).error(missing_ground_message(cache_root, city))
+    return ground
