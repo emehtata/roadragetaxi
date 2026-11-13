@@ -3828,6 +3828,15 @@ func test_resent_chunk_buildings() -> void:
 	check(MapChunk.ready_meshes.size() == 5, "six ready chunks: one over-budget frame applies one, not all")
 	MapChunk.drain_ready_meshes(1 << 30)
 	check(MapChunk.ready_meshes.is_empty() and not ready_chunk.meshes_3d.is_empty(), "the rest follow in later frames")
+	var applied: Array = ready_chunk.meshes_3d.duplicate()
+	var old_build: int = ready_chunk._mesh_build
+	ready_chunk._mesh_build += 1  # a newer build started
+	ready_chunk._queue_meshes(arrays, old_build)
+	MapChunk.drain_ready_meshes(1 << 30)
+	check(ready_chunk.meshes_3d == applied, "a replaced build's arrays are dropped, never applied")
+	ready_chunk._queue_meshes(arrays)
+	map.remove_chunk("0_0")
+	check(MapChunk.ready_meshes.is_empty(), "a freed chunk's queued arrays go with it")
 	map.free()
 	MapChunk.buildings_3d = false
 

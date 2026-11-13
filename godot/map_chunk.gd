@@ -831,7 +831,9 @@ func _build_2_5d() -> void:
 		if not build_async:
 			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground))
 		else:
-			_building_task = WorkerThreadPool.add_task(func(): _queue_meshes.call_deferred(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground)))
+			_mesh_build += 1
+			var build_id := _mesh_build
+			_building_task = WorkerThreadPool.add_task(func(): _queue_meshes.call_deferred(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground), build_id))
 		return
 	if buildings.is_empty() or buildings_3d:
 		return
@@ -938,11 +940,12 @@ func _road_snow_3d() -> void:
 
 # Worker results wait here instead of all running in one deferred flush: main
 # applies them under its chunk budget (drain_ready_meshes), one at least per frame.
-static var ready_meshes: Array = []  # [chunk, arrays]
+static var ready_meshes: Array = []  # [chunk, arrays, build id]
+var _mesh_build := 0  # the newest async 3D build: an older one's arrays are dropped
 
 
-func _queue_meshes(arrays: Dictionary) -> void:
-	ready_meshes.append([self, arrays])
+func _queue_meshes(arrays: Dictionary, build_id := -1) -> void:
+	ready_meshes.append([self, arrays, _mesh_build if build_id < 0 else build_id])
 
 
 static func drain_ready_meshes(budget_usec: int) -> int:
@@ -950,7 +953,7 @@ static func drain_ready_meshes(budget_usec: int) -> int:
 	var spent := 0
 	while not ready_meshes.is_empty() and (spent == 0 or spent < budget_usec):
 		var entry: Array = ready_meshes.pop_front()
-		if is_instance_valid(entry[0]):
+		if is_instance_valid(entry[0]) and entry[2] == entry[0]._mesh_build:
 			entry[0]._meshes_ready(entry[1])
 		spent = Time.get_ticks_usec() - started
 	return spent
