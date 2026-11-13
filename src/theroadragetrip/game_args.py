@@ -73,8 +73,8 @@ def parse_args(config=None, city_names=None, parser: Optional[argparse.ArgumentP
     p.add_argument(
         "--terrain-dem80",
         action=argparse.BooleanOptionalAction,
-        default=config.getboolean("game", "terrain_dem80", fallback=False) if config else False,
-        help="Experimental 80 m MML terrain from <cache>/dem80/ (render only; default: config game.terrain_dem80)",
+        default=config.getboolean("game", "terrain_dem80", fallback=True) if config else True,
+        help="Experimental 80 m Copernicus terrain from <cache>/dem80/ (render only; default: config game.terrain_dem80)",
     )
 
     p.add_argument(

@@ -11,7 +11,7 @@ var failed := false
 
 func _initialize() -> void:
 	var settings := ConfigFile.new()
-	check(Startup.terrain_args(settings) == ["--no-terrain-dem80"], "no setting: terrain off")
+	check(Startup.terrain_args(settings) == ["--terrain-dem80"], "no setting: terrain on")
 	settings.set_value("game", "terrain_dem80", true)
 	check(Startup.terrain_args(settings) == ["--terrain-dem80"], "setting on: --terrain-dem80")
 	settings.set_value("game", "terrain_dem80", false)

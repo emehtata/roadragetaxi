@@ -893,9 +893,9 @@ static func clamp_start(value: Dictionary, today: Dictionary) -> Dictionary:
 
 ## The server's map source options from the settings ("" source: the
 ## server's own config decides).
-## The experimental 80 m DEM terrain switch (settings.cfg game.terrain_dem80): off unless chosen.
+## The 80 m DEM terrain switch (settings.cfg game.terrain_dem80): on unless turned off.
 static func terrain_args(settings: ConfigFile) -> Array:
-	return ["--terrain-dem80"] if settings.get_value("game", "terrain_dem80", false) else ["--no-terrain-dem80"]
+	return ["--terrain-dem80"] if settings.get_value("game", "terrain_dem80", true) else ["--no-terrain-dem80"]
 
 
 static func map_source_args(source: String, pbf_path: String) -> Array:
