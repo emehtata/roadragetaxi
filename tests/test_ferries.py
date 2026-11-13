@@ -146,8 +146,8 @@ def test_the_deck_is_dry_for_the_water_brake_and_sinking():
     car = _car(0.0, 0.0, 0.0, 8.0)
     assert is_car_fully_in_water(car, sea)
     assert not is_car_fully_in_water(car, sea, dry=lambda x, y: abs(x) < 25.0)
-    assert water_ahead_speed_limit(car, sea, 7) is not None
-    assert water_ahead_speed_limit(car, sea, 7, dry=lambda x, y: abs(x) < 25.0) is None
+    assert water_ahead_speed_limit(car, sea, False) is not None
+    assert water_ahead_speed_limit(car, sea, False, dry=lambda x, y: abs(x) < 25.0) is None
 
 
 def test_the_deck_drives_like_hard_ground_not_the_mud_under_the_water():

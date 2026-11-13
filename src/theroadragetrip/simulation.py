@@ -518,7 +518,7 @@ def advance_simulation(
     # bends point at the water without leaving the road (surface only: levels have none).
     # Braking from a standstill reverses: that backs away from the shore, never capped.
     if on_surface and not on_foot and waters and current_way is None and not (brake > 0.0 and car.speed <= 0.5):
-        water_limit_mps = water_ahead_speed_limit(car, waters, now.month if now is not None else None, drive_grid, dry=deck)
+        water_limit_mps = water_ahead_speed_limit(car, waters, getattr(world, "lake_ice_holds", False), drive_grid, dry=deck)
         if water_limit_mps is not None:
             speed_limit_mps = water_limit_mps if speed_limit_mps is None else min(speed_limit_mps, water_limit_mps)
             if car.speed > water_limit_mps + 0.5:  # too close for the gentle limit: brake hard
@@ -542,6 +542,8 @@ def advance_simulation(
                 wind=weather.wind_vector_mps,
                 fields_frozen=getattr(world, "fields_frozen", False),
                 hard_at=deck,  # a ferry's steel deck, not the mud under the water
+                waters=waters if on_surface else None,
+                lake_ice_holds=getattr(world, "lake_ice_holds", False),
             )
         car.braking = brake > 0.0 and car.speed > 0.05
         if world.level_transitions.blocks_entry(car, previous_position, approach_way):
@@ -590,7 +592,7 @@ def advance_simulation(
         if water_elapsed > 0.0 and (not on_surface or not is_car_fully_in_water(car, waters, current_way, dry=deck)):
             water_elapsed = 0.0  # streamed geometry can correct a false water overlap
         elif water_elapsed == 0.0 and on_surface and not entered_roadwork and water_sinks_car(
-                car, waters, current_way, now.month if now is not None else None, dt, dry=deck):
+                car, waters, current_way, getattr(world, "lake_ice_holds", False), dt, dry=deck):
             water_elapsed = dt
             audio.play_group("vehicle.water_splash")
         elif water_elapsed > 0.0:

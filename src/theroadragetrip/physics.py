@@ -518,7 +518,7 @@ def is_car_fully_in_water(car: Car, waters: List, current_way=None, dry=None) ->
     )
 
 
-ICE_MONTHS = (1, 2)  # lakes and sea carry a car; rivers (current) stay treacherous
+CAR_ICE_MIN_CM = 20.0  # choice for a ~1.5 t car: Minnesota DNR 20-30 cm small car, Alberta 18 cm for 2 t; Finnish 15 cm is snowmobiles only. Tune here.
 RIVER_KINDS = frozenset({"river", "stream", "canal", "drain", "ditch", "brook", "rapids"})
 RIVER_ICE_BREAK_PER_S = 0.3  # the chance per second on river ice that it gives way
 SINK_S = 5.0  # sinking, then a respawn
@@ -529,14 +529,14 @@ WATER_ASSIST_MARGIN_M = 1.5  # stop this far before the water, past the front bu
 WATER_ASSIST_PROBES = 8  # bounded per-tick work: at most this many point tests ahead
 
 
-def water_ahead_speed_limit(car: Car, waters: List, month: Optional[int], spatial_grid=None, dry=None) -> Optional[float]:
+def water_ahead_speed_limit(car: Car, waters: List, lake_ice_holds: bool, spatial_grid=None, dry=None) -> Optional[float]:
     """Safety brake: the speed that still stops before open water straight
     ahead (None: no water within braking distance). Points on a car road
-    (bridges, causeways) are not water; lake and sea ice carry a car in
-    January-February, so then only rivers count."""
+    (bridges, causeways) are not water; lake and sea ice carry a car when
+    `lake_ice_holds` (world.lake_ice_holds: >= CAR_ICE_MIN_CM), so then only rivers count."""
     if not waters or car.speed < 0.0:  # reversing away is always free
         return None
-    if month in ICE_MONTHS:
+    if lake_ice_holds:
         waters = [w for w in waters if w.kind in RIVER_KINDS]
         if not waters:
             return None
@@ -556,12 +556,12 @@ def water_ahead_speed_limit(car: Car, waters: List, month: Optional[int], spatia
     return None
 
 
-def water_sinks_car(car: Car, waters: List, current_way, month: Optional[int], dt: float, rng=random.random, dry=None) -> bool:
+def water_sinks_car(car: Car, waters: List, current_way, lake_ice_holds: bool, dt: float, rng=random.random, dry=None) -> bool:
     """Whether the car goes under this tick: fully in open water, or on river
-    ice that breaks. Lake and sea ice hold in January-February."""
+    ice that breaks. Lake and sea ice hold when `lake_ice_holds`."""
     if not is_car_fully_in_water(car, waters, current_way=current_way, dry=dry):
         return False
-    if month not in ICE_MONTHS:
+    if not lake_ice_holds:
         return True
     rivers = [w for w in waters if w.kind in RIVER_KINDS]
     return is_point_in_water(car.x, car.y, rivers) and rng() < 1.0 - math.exp(-RIVER_ICE_BREAK_PER_S * dt)
@@ -1680,6 +1680,8 @@ def update_car_physics(
     fields_frozen: bool = False,
     turning_circle: bool = True,
     hard_at=None,
+    waters: Optional[List] = None,
+    lake_ice_holds: bool = False,
 ) -> bool:
     """Update car speed, heading, and position.
 
@@ -2052,6 +2054,8 @@ def update_car_physics(
             or (hard_at is not None and hard_at(target_x, target_y))
         ):
             car.ground_kind = "hard"
+        elif lake_ice_holds and waters and is_point_in_water(target_x, target_y, waters, layer=getattr(car, "layer", 0)):
+            car.ground_kind = "ice"  # lake ice, as rendered: the driver's call
         else:
             car.ground_kind = off_road_ground_kind(target_x, target_y, scenery_grid=scenery_grid, frozen=fields_frozen)
         if car.ground_kind == "sand":

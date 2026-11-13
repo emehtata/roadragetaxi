@@ -1267,6 +1267,19 @@ def test_snowless_thermal_winter_freezes_fields(tmp_path, monkeypatch):
     assert not server.world.fields_frozen
 
 
+def test_season_weights_sets_lake_ice_by_latitude(tmp_path, monkeypatch):
+    from datetime import datetime
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    server.calendar.current = datetime(2025, 11, 28, 12)
+    server.calendar.latitude = 67.5
+    state = server.calendar_state()
+    assert server.world.lake_ice_holds and state["lake_ice_holds"] and state["lake_ice_cm"] >= 20.0
+    server.calendar.latitude = 60.2
+    server.season_weights()
+    assert not server.world.lake_ice_holds and server.world.lake_ice_cm < 20.0
+
+
 def test_no_tyre_marks_on_a_ferry_deck(tmp_path, monkeypatch):
     """The deck moves on with the taxi: a track laid there would be left behind on the water."""
     from theroadragetrip.ferries import FerryManager

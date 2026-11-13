@@ -8,7 +8,7 @@ LAKE = Water(points_m=[(30.0, -50.0), (200.0, -50.0), (200.0, 50.0), (30.0, 50.0
 def test_full_throttle_towards_a_lake_stops_before_the_shore():
     car = Car(x=0.0, y=0.0, heading=0.0, speed=20.0)
     for _ in range(600):
-        limit = water_ahead_speed_limit(car, [LAKE], month=9)
+        limit = water_ahead_speed_limit(car, [LAKE], lake_ice_holds=False)
         hard = limit is not None and car.speed > limit + 0.5  # as simulation.py: emergency braking
         update_car_physics(car, 0.0 if hard else 1.0, 1.0 if hard else 0.0, 0.0, 0.0, 1 / 30,
                            ways=[], block_offroad=False, speed_limit_mps=limit)
@@ -19,11 +19,11 @@ def test_full_throttle_towards_a_lake_stops_before_the_shore():
 
 def test_reversing_away_from_the_shore_is_free():
     car = Car(x=26.0, y=0.0, heading=0.0, speed=-2.0)
-    assert water_ahead_speed_limit(car, [LAKE], month=9) is None
+    assert water_ahead_speed_limit(car, [LAKE], lake_ice_holds=False) is None
 
 
 def test_a_bridge_over_the_water_and_winter_lake_ice_do_not_brake():
     car = Car(x=0.0, y=0.0, heading=0.0, speed=20.0)
-    assert water_ahead_speed_limit(car, [LAKE], month=1) is None
+    assert water_ahead_speed_limit(car, [LAKE], lake_ice_holds=True) is None
     bridge = Way(points_m=[(-10.0, 0.0), (300.0, 0.0)], highway="primary", half_width_m=4.0, is_bridge=True)
-    assert water_ahead_speed_limit(car, [LAKE], month=9, spatial_grid=SpatialWayGrid([bridge])) is None
+    assert water_ahead_speed_limit(car, [LAKE], lake_ice_holds=False, spatial_grid=SpatialWayGrid([bridge])) is None

@@ -143,16 +143,16 @@ def test_solid_road_surface_overrides_overlapping_water_without_a_bridge_tag():
     car = Car(0, 0, math.pi / 4, 0)
     assert is_point_in_water(car.x, car.y, [lake])
     assert not is_car_fully_in_water(car, [lake], current_way=road)
-    assert not physics.water_sinks_car(car, [lake], road, 9, .1)
+    assert not physics.water_sinks_car(car, [lake], road, False, .1)
 
 
 def test_a_stale_road_or_bridge_reference_does_not_prevent_offroad_sinking():
     lake = Water([(-30, -30), (30, -30), (30, 30), (-30, 30), (-30, -30)], "river", True)
     road = Way([(-25, 0), (25, 0)], "primary", 4)
     car = Car(0, 15, 0, 0)
-    assert physics.water_sinks_car(car, [lake], road, 9, .1)
+    assert physics.water_sinks_car(car, [lake], road, False, .1)
     road.is_bridge = True
-    assert physics.water_sinks_car(car, [lake], road, 9, .1)
+    assert physics.water_sinks_car(car, [lake], road, False, .1)
     car.x, car.y = 35, 0
     assert not is_car_fully_in_water(car, [lake], current_way=road)
 
@@ -161,8 +161,8 @@ def test_ice_road_is_not_a_solid_surface_when_ice_does_not_hold():
     lake = Water([(-30, -30), (30, -30), (30, 30), (-30, 30), (-30, -30)], "river", True)
     road = Way([(-25, 0), (25, 0)], "track", 4, is_ice_road=True)
     car = Car(0, 0, 0, 0)
-    assert physics.water_sinks_car(car, [lake], road, 9, .1)
-    assert physics.water_sinks_car(car, [lake], road, 1, .1, rng=lambda: 0)
+    assert physics.water_sinks_car(car, [lake], road, False, .1)
+    assert physics.water_sinks_car(car, [lake], road, True, .1, rng=lambda: 0)
 
 
 def test_raised_road_layer_does_not_trigger_water_respawn():
@@ -219,13 +219,13 @@ def test_ice_holds_on_lakes_in_winter_but_river_ice_may_break():
     lake = Water(points_m=square, kind="water", is_polygon=True)
     river = Water(points_m=square, kind="river", is_polygon=True)
     car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
-    assert physics.water_sinks_car(car, [lake], None, 6, 0.1)  # open water: under at once
-    assert physics.water_sinks_car(car, [lake], None, None, 0.1)
-    assert not physics.water_sinks_car(car, [lake], None, 1, 0.1, rng=lambda: 0.0)  # lake ice holds
-    assert physics.water_sinks_car(car, [river], None, 2, 0.1, rng=lambda: 0.0)  # river ice breaks...
-    assert not physics.water_sinks_car(car, [river], None, 2, 0.1, rng=lambda: 0.99)  # ...sometimes
+    assert physics.water_sinks_car(car, [lake], None, False, 0.1)  # open water: under at once
+    assert physics.water_sinks_car(car, [lake], None, False, 0.1)
+    assert not physics.water_sinks_car(car, [lake], None, True, 0.1, rng=lambda: 0.0)  # lake ice holds
+    assert physics.water_sinks_car(car, [river], None, True, 0.1, rng=lambda: 0.0)  # river ice breaks...
+    assert not physics.water_sinks_car(car, [river], None, True, 0.1, rng=lambda: 0.99)  # ...sometimes
     car.x = 9.5  # one wheel in the water: nothing happens
-    assert not physics.water_sinks_car(car, [lake], None, 6, 0.1)
+    assert not physics.water_sinks_car(car, [lake], None, False, 0.1)
 
 
 def test_river_areas_are_built_as_river():
@@ -267,3 +267,31 @@ def test_beach_volleyball_pitch_is_sand_instead_of_grass_or_flooded_ice():
     court.volleyball_frame = []
     assert physics.off_road_ground_kind(10, 6, sceneries=[court]) == "soft"
     assert physics.off_road_ground_kind(10, 6, sceneries=[court], frozen=True) == "ice"
+
+
+_SQUARE = [(-30.0, -30.0), (30.0, -30.0), (30.0, 30.0), (-30.0, 30.0), (-30.0, -30.0)]
+
+
+def test_lake_ice_holds_drivable_thin_ice_sinks():
+    lake = Water(points_m=_SQUARE, kind="lake", is_polygon=True)
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    assert not physics.water_sinks_car(car, [lake], None, True, 0.1, rng=lambda: 0.0)
+    assert physics.water_sinks_car(car, [lake], None, False, 0.1)
+    shore = Car(x=-40.0, y=0.0, heading=0.0, speed=15.0)
+    assert physics.water_ahead_speed_limit(shore, [lake], True) is None
+    assert physics.water_ahead_speed_limit(shore, [lake], False) is not None
+
+
+def test_river_ice_still_breaks():
+    river = Water(points_m=_SQUARE, kind="river", is_polygon=True)
+    assert physics.water_ahead_speed_limit(Car(x=-40.0, y=0.0, heading=0.0, speed=15.0), [river], True) is not None
+    assert physics.water_sinks_car(Car(x=0.0, y=0.0, heading=0.0, speed=0.0), [river], None, True, 0.1, rng=lambda: 0)
+
+
+def test_frozen_lake_ground_is_ice():
+    lake = Water(points_m=_SQUARE, kind="lake", is_polygon=True)
+    for frozen in (True, False):
+        car = Car(x=0.0, y=0.0, heading=0.0, speed=5.0)
+        physics.update_car_physics(car, 0.5, 0.0, 0.0, 0.0, 0.05, ways=[Way([(500.0, 0.0), (600.0, 0.0)], "residential", 4.0)],
+                                   block_offroad=False, lake_ice_holds=frozen, waters=[lake])
+        assert (car.ground_kind == "ice") is frozen

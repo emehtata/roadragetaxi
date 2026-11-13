@@ -50,7 +50,7 @@ from ..world_loader import load_world, resolve_city
 from ..viewport import SCREEN_H, SCREEN_W
 from ..simulation import RAGE_SHOUT_DURATION_S, PlayerCommand, advance_simulation, apply_enter_exit_vehicle, driver_door_available
 from .. import interaction
-from ..physics import reset_trip, respawn_car
+from ..physics import CAR_ICE_MIN_CM, reset_trip, respawn_car
 from ..home import (clear_homes, CONFIRM_S, at_house_yard, homes_path, is_same_home, load_home, save_home,
                     find_home_building, home_building_key, load_home_building_key,
                     DOOR_HINT_M, DOOR_HINTS, DOOR_REACH_M, plan_entrance, house_bay, house_plan)
@@ -63,7 +63,7 @@ from ..weather_history import WeatherHistory, gradual_weather, precipitation_fro
 from ..calendar import clamp_start_datetime, finnish_local_time
 from ..osm import CACHE_DIR
 from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
-from ..climate import appearance_with_snow_depth, typical_temperature
+from ..climate import appearance_with_snow_depth, lake_ice_thickness_cm, typical_temperature
 
 logger = logging.getLogger(__name__)
 
@@ -637,8 +637,22 @@ class SimulationServer:
             look = appearance_with_snow_depth(look, self._test_snow_depth)
         elif observed is not None and observed.snow_depth_cm is not None:  # FMI's measured snow, over the date's guess
             look = appearance_with_snow_depth(look, observed.snow_depth_cm)
+        self._update_lake_ice(observed)
         season = [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]
         return season
+
+    def _update_lake_ice(self, observed) -> None:
+        """world.lake_ice_cm / lake_ice_holds: one modelled thickness for the
+        map (climate.lake_ice_thickness_cm), recomputed when the date changes.
+        ponytail: today's snow sets the snow factor for the whole season; per-day FMI history if it matters."""
+        snow = getattr(self, "_test_snow_depth", None)
+        if snow is None and observed is not None:
+            snow = observed.snow_depth_cm
+        key = (self.calendar.date, self.calendar.latitude, 1.0 if snow == 0 else 0.5)
+        if getattr(self, "_lake_ice_key", None) != key:
+            self._lake_ice_key = key
+            self.world.lake_ice_cm = lake_ice_thickness_cm(key[0], key[1], key[2])
+            self.world.lake_ice_holds = self.world.lake_ice_cm >= CAR_ICE_MIN_CM
 
     def _sun_altitude(self) -> float:
         return self._sun_position()[0]
@@ -705,6 +719,7 @@ class SimulationServer:
         return {"date": self.calendar.date.isoformat(), "time_scale": self._time_scale,
                 "season": season,
                 "fields_frozen": self.world.fields_frozen,
+                "lake_ice_cm": round(self.world.lake_ice_cm, 1), "lake_ice_holds": self.world.lake_ice_holds,
                 "trees_leafless": self.calendar.season.value == "winter",
                 "sun_altitude_deg": round(altitude, 2), "sun_azimuth_deg": round(azimuth, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
                 "moon_altitude_deg": round(moon_altitude, 2), "moon_azimuth_deg": round(moon_azimuth, 2),
