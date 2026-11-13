@@ -1010,6 +1010,36 @@
       ]
     },
     {
+      "id": "vehicle_bike_riding_night",
+      "description": "A riding NPC cyclist on a Helsinki-centre road at night, very close",
+      "why": "docs/specs/bicycle-rendering.md AC 4: one white lamp at the front, one red at the back, not car lamp pairs.",
+      "city": "Helsinki",
+      "pose": [
+        385351.8,
+        6671751.2,
+        2.15
+      ],
+      "start_time": "2026-10-20T22:30",
+      "weather": "clear",
+      "cloud": 0.2,
+      "wetness": [
+        0.0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        -90,
+        -12
+      ],
+      "zoom": 6.5,
+      "requires": {},
+      "measure_s": 2,
+      "lineup": true,
+      "lineup_along_road": true,
+      "lineup_kinds": [
+        "bicycle"
+      ]
+    },
+    {
       "id": "vehicle_lineup_bikes_night",
       "description": "Bicycle and e-scooter rows only, close: each kind's model variants side by side, by night",
       "why": "docs/specs/vehicle-model-variants.md AC 5: the lineup's zoom is too far to tell the models apart.",

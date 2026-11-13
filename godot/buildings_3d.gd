@@ -726,15 +726,17 @@ func set_headlights(level: float, sources: Array) -> void:
 		if not spot.visible:
 			continue
 		var source: Array = sources[i / 2]
+		var single: bool = source.size() > 7 and source[7]  # a bike: one centred lamp
+		spot.visible = not (single and i % 2 == 1)
 		var forward := Vector2(cos(source[1]), -sin(source[1]))  # entity_layer._forward
-		var side := Vector2(-forward.y, forward.x) * float(source[2]) * (0.35 if i % 2 == 0 else -0.35)
+		var side := Vector2(-forward.y, forward.x) * float(source[2]) * (0.0 if single else 0.35 if i % 2 == 0 else -0.35)
 		var reach := float(source[4])
 		var high := reach > 15.0
 		spot.position = to_3d(source[0] + forward * float(source[3]) + side, 0.65 + (float(source[6]) if source.size() > 6 else 0.0))  # on its deck
 		spot.basis = Basis.looking_at(Vector3(forward.x, -0.6 / maxf(reach, 1.0) - 0.02, forward.y).normalized(), Vector3.UP)
 		spot.spot_range = reach * 1.3
-		spot.spot_angle = 22.0 if high else 38.0
-		spot.light_energy = (24.0 if high else 18.0) * level  # one of two; grazing a dark road: far dimmer than the street lamps straight down
+		spot.spot_angle = 12.0 if single else 22.0 if high else 38.0
+		spot.light_energy = (24.0 if high else 18.0) * level * (0.3 if single else 1.0)  # one of two; grazing a dark road: far dimmer than the street lamps straight down
 		spot.spot_attenuation = 0.8
 
 
@@ -967,7 +969,7 @@ static func car_glazing(original: Material) -> StandardMaterial3D:
 
 
 static func model_car_details(length: float, width: float, sign: int, lamps: int, lamp_height := 0.5, native_lights := false,
-		roof_height := 1.41) -> Dictionary:
+		roof_height := 1.41, two_wheeler := false) -> Dictionary:
 	var out := _empty_arrays()
 	var hl := length * 0.5
 	var hw := width * 0.5
@@ -985,12 +987,41 @@ static func model_car_details(length: float, width: float, sign: int, lamps: int
 			lens.call(hl, side, hw * 0.68, 0.10, lamps & LAMPS_ON != 0, Color(1.0, 0.95, 0.78), Color8(190, 190, 183))
 			lens.call(-hl, side, hw * 0.68, 0.10, lamps & (LAMPS_ON | LAMPS_BRAKE) != 0,
 				Color(1.0, 0.07, 0.04) if lamps & LAMPS_BRAKE else Color(0.55, 0.03, 0.02), Color8(120, 30, 25))
+		if two_wheeler:
+			continue
 		lens.call(-hl + 0.08, side, hw * 0.20, 0.035, lamps & LAMPS_REVERSE != 0, Color.WHITE, Color8(170, 170, 165))
 		var indicating := lamps & (LAMPS_RIGHT if side > 0.0 else LAMPS_LEFT) != 0
 		for x: float in [-hl + 0.08, hl - 0.08]:
 			lens.call(x, side, hw * 0.72, 0.025, indicating, Color(1.0, 0.6, 0.05), Color8(150, 105, 40))
 	out["part_now"] = PAINT
 	return out
+
+
+## A GLB vehicle's live lamps and rider (vehicle()); bikes and e-scooters get one front and one rear lamp.
+static func model_vehicle_details(kind: String, length: float, width: float, color: Color, lamps: int, extra: Dictionary) -> Dictionary:
+	var bike := kind in ["bicycle", "e_scooter"]
+	var out := model_car_details(length, width, 0, lamps, 0.8,
+		bike or kind in ["truck", "motorcycle", "camper_van"], 1.41, bike)
+	if bike:
+		_bike_lamps(out, length * 0.5, lamps)
+	if kind == "motorcycle" and extra.get("riding", false):
+		_rider(out, -length * 0.15, length * 0.06, 0.95, Color8(34, 34, 38), color.lightened(0.15))
+	elif kind == "bicycle" and extra.get("riding", false):
+		_rider(out, -length * 0.15, length * 0.08, 0.8, color, Color8(236, 196, 160))
+	elif kind == "e_scooter" and extra.get("riding", false):
+		_rider(out, -length * 0.06, length * 0.14, SCOOTER_RIDER_SEAT, color, Color8(236, 196, 160))
+		_rider_legs(out, -length * 0.06, length * 0.14, SCOOTER_RIDER_SEAT, SCOOTER_DECK_Y, Color8(48, 58, 74))
+	return out
+
+
+## A bike's lamps (docs/specs/bicycle-rendering.md): white under the bars, red under the saddle, centred.
+static func _bike_lamps(out: Dictionary, hl: float, lamps: int) -> void:
+	var front := lamps & LAMPS_ON != 0
+	_part(out, LAMP if front else PAINT, hl * 0.80 - 0.02, hl * 0.80 + 0.02, -0.03, 0.03, 0.85, 0.91,
+		Color(1.0, 0.95, 0.78) if front else Color8(190, 190, 183))
+	var rear := lamps & (LAMPS_ON | LAMPS_BRAKE) != 0
+	_part(out, LAMP if rear else PAINT, -hl * 0.80 - 0.02, -hl * 0.80 + 0.02, -0.025, 0.025, 0.75, 0.80,
+		(Color(1.0, 0.07, 0.04) if lamps & LAMPS_BRAKE else Color(0.55, 0.03, 0.02)) if rear else Color8(120, 30, 25))
 
 
 ## Any pooled body this frame (a car, a bus, a person, an animal): its mesh
@@ -1086,18 +1117,7 @@ func vehicle(kind: String, at: Vector2, heading: float, length: float, width: fl
 	if opaque and has_model(kind) and (kind != "tractor" or not extra.get("plough", false)):
 		place_model_car(model_kind, at, heading, length, width, color, elevation, lamps)
 		var detail_key := "vd|%s|%.2f|%.2f|%d|%s" % [kind, length, width, lamps, str(extra)]
-		var build := func() -> Dictionary:
-			var out := model_car_details(length, width, 0, lamps, 0.8,
-				kind in ["truck", "motorcycle", "camper_van"])
-			if kind == "motorcycle" and extra.get("riding", false):
-				_rider(out, -length * 0.15, length * 0.06, 0.95, Color8(34, 34, 38), color.lightened(0.15))
-			elif kind == "bicycle" and extra.get("riding", false):
-				_rider(out, -length * 0.15, length * 0.08, 0.8, color, Color8(236, 196, 160))
-			elif kind == "e_scooter" and extra.get("riding", false):
-				_rider(out, -length * 0.06, length * 0.14, SCOOTER_RIDER_SEAT, color, Color8(236, 196, 160))
-				_rider_legs(out, -length * 0.06, length * 0.14, SCOOTER_RIDER_SEAT, SCOOTER_DECK_Y, Color8(48, 58, 74))
-			return out
-		place_body(detail_key, build, at, heading, elevation)
+		place_body(detail_key, model_vehicle_details.bind(kind, length, width, color, lamps, extra), at, heading, elevation)
 		return
 	var key := "v|%s|%.2f|%.2f|%s|%d|%s" % [kind, length, width, color.to_html(false), lamps, extra]
 	var fallen: bool = extra.get("fallen", false)
@@ -1235,6 +1255,7 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 			for side: float in [-1.0, 1.0]:
 				_round_limb(out, crank + Vector3(0.0, 0.0, side * 0.03), crank + Vector3(0.08 * side, 0.0, side * 0.08),
 					0.01, 0.01, Color8(82, 86, 88), PAINT, 0)
+			_bike_lamps(out, hl, lamps)
 			if extra.get("riding", false):
 				_rider(out, -hl * 0.37, hl * 0.18, 0.8, color, skin)
 		"e_scooter":

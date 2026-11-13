@@ -551,7 +551,7 @@ func headlight_beams() -> Array:
 
 ## Every shining headlight pair this frame, the taxi first: [centre (a
 ## train: behind its nose), heading, width, centre to the front bumper, beam
-## length, is a train, height of its deck (step 5)] - the 2D beams' and the 3D spot lights' (buildings_3d.set_headlights) source.
+## length, is a train, height of its deck (step 5), one centred beam (a two-wheeler)] - the 2D beams' and the 3D spot lights' (buildings_3d.set_headlights) source.
 func headlight_sources() -> Array:
 	var sources: Array = []
 	if _frame.is_empty():
@@ -576,7 +576,8 @@ func headlight_sources() -> Array:
 		var p := StateBuffer.blend(npc, later.get(npc["id"], npc), t, origin)
 		var layer := int(npc.get("layer", 0))  # an NPC on a raised layer counts as on its bridge
 		if area.has_point(Vector2(p.x, p.y)) and not underground and (layer > 0 or not covered.call(Vector2(p.x, p.y), layer)):
-			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true, npc.get("length_m", 4.0), layer])
+			vehicles.append([Vector2(p.x, p.y), p.z, npc.get("width_m", 1.8), true, npc.get("length_m", 4.0), layer,
+				npc.get("vehicle_type", "") in TWO_WHEELERS])
 	var shown := view_rect.grow(HIGH_BEAM_M - CULL_MARGIN_M)
 	for vehicle in vehicles:
 		if sources.size() >= 80:
@@ -585,7 +586,8 @@ func headlight_sources() -> Array:
 		if not shown.has_point(c):
 			continue
 		var length := beam_length(lamp_near.call(c, 22.0), oncoming(vehicle, vehicles))
-		sources.append([c, vehicle[1], vehicle[2], vehicle[4] * 0.5, length, false, float(deck_height.call(c, vehicle[5]))])
+		sources.append([c, vehicle[1], vehicle[2], vehicle[4] * 0.5, length, false, float(deck_height.call(c, vehicle[5])),
+			vehicle.size() > 6 and vehicle[6]])
 	if not underground:
 		var later_trains := _by_id(b.get("trains", []))
 		for train in a.get("trains", []):

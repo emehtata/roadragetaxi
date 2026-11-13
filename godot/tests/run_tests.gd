@@ -73,6 +73,38 @@ func test_model_sizes_match_sim() -> void:
 
 
 ## docs/specs/mountain-bike-size-override.md 1-2: the bars keep the model's 0.78 m, not the sim's 0.6.
+## docs/specs/bicycle-rendering.md AC 1-2: a riding bike has one front and one rear lamp, centred; a car keeps its set.
+func test_bicycle_lamps_single_pair() -> void:
+	var lit := B3.LAMPS_ON | B3.LAMPS_BRAKE | B3.LAMPS_LEFT | B3.LAMPS_REVERSE
+	var box := B3._empty_arrays()
+	B3._car_box(box, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, Color.WHITE)
+	var per_box: int = box["verts"].size()
+	for kind in ["bicycle", "e_scooter"]:
+		var bike := B3.model_vehicle_details(kind, 1.8, 0.62, Color.RED, lit, {"riding": true})
+		var lamps := []
+		for i in bike["verts"].size():
+			if int(bike["part"][i].x) == B3.LAMP:
+				lamps.append(bike["verts"][i])
+		check(lamps.size() == 2 * per_box and lamps.all(func(v): return absf(v.z) < 0.05)
+			and lamps.any(func(v): return v.x > 0.5) and lamps.any(func(v): return v.x < -0.5),
+			"%s: one front and one rear lamp, centred (%d lamp vertices)" % [kind, lamps.size()])
+	var car := B3.model_vehicle_details("sedan", 4.4, 1.8, Color.RED, lit, {})
+	var car_lamps := Array(car["part"]).filter(func(v): return int(v.x) == B3.LAMP).size()
+	check(car_lamps == 2 * 2 * per_box + 2 * per_box + 2 * per_box, "a car keeps 2+2 lamps, reverse lamps and indicators (%d)" % car_lamps)
+
+
+## docs/specs/bicycle-rendering.md AC 3: a riding bike casts one centred beam, not a pair.
+func test_bicycle_headlight_single_beam() -> void:
+	var layer := EntityLayer.new()
+	layer.view_rect = Rect2(-200, -200, 400, 400)
+	var state := {"player": {"x": 0.0, "y": 0.0, "heading": 0.0, "engine_on": false},
+		"npcs": [{"id": 1, "x": 5.0, "y": 0.0, "heading": 0.0, "width_m": 0.62, "length_m": 1.8, "vehicle_type": "bicycle"}]}
+	layer._frame = {"a": state, "b": state, "t": 0.0}
+	var sources := layer.headlight_sources()
+	check(sources.size() == 1 and sources[0].size() > 7 and sources[0][7], "a riding bicycle gets one single-beam headlight source")
+	layer.free()
+
+
 func test_mountain_bike_keeps_its_width() -> void:
 	var s := B3.model_scale("mountain_bike", 1.8, 0.6)
 	check(absf(s.x - 1.0) <= 0.001 and is_equal_approx(s.z, 1.8 / 1.885) and s.y == 1.0, "mountain_bike scale %s" % s)
@@ -208,6 +240,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
+	test_bicycle_lamps_single_pair()
+	test_bicycle_headlight_single_beam()
 	test_forest_canopy()
 	test_car_glazing_is_dark_and_reflective()
 	test_model_sizes_match_sim()
