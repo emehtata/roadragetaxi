@@ -18,12 +18,14 @@ from contextlib import nullcontext
 from dataclasses import dataclass, replace
 
 import concurrent.futures
+import errno
 import logging
 import math
 import multiprocessing
 import os
 import pickle
 import re
+import sys
 import threading
 import tempfile
 import time
@@ -735,6 +737,7 @@ class SimulationServer:
         self._listener = Listener(host, port, self._on_client_connect)
         self.host, self.port = self._listener.host, self._listener.port
         logger.info("Simulation server listening on %s:%d", self.host, self.port)
+        print(f"listening on {self.host}:{self.port}", flush=True)
 
     def _live_feed(self):
         """Digitraffic MQTT (digitraffic_mqtt.py): live "now" data, so only
@@ -1777,5 +1780,8 @@ def run_server(args, config) -> SimulationServer:
         progress("ready")
     except Exception as exc:
         progress("error", f"{type(exc).__name__}: {exc}")
+        if isinstance(exc, OSError) and exc.errno == errno.EADDRINUSE:
+            print(f"port {args.port} is in use; pass --port <free port>", file=sys.stderr)
+            raise SystemExit(1) from None
         raise
     return server
