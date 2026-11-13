@@ -338,22 +338,3 @@ def test_a_settled_merge_waits_briefly_for_a_fetch_in_flight(monkeypatch):
     _, streamer = merged()
     streamer.tick(0, 0, 0, 0)
     assert streamer.syncing  # waited long enough: a slow fetch gets its own sync
-
-
-def test_identical_chunk_resend_is_skipped():
-    from theroadragetrip.server import SimulationServer
-
-    class Conn:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, data):
-            self.sent.append(data)
-
-    server = SimulationServer.__new__(SimulationServer)
-    server._client_sent, server.chunk_resends_skipped = {}, 0
-    conn = Conn()
-    server._send_chunk(conn, "0_0", b"a")
-    server._send_chunk(conn, "0_0", b"a")  # unchanged content: the client keeps its copy
-    server._send_chunk(conn, "0_0", b"b")
-    assert conn.sent == [b"a", b"b"] and server.chunk_resends_skipped == 1

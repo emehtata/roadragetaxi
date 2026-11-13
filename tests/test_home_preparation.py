@@ -128,14 +128,6 @@ def test_a_moved_home_cancels_the_old_preparation_and_prepares_the_new_one_once(
     assert prepared == [(100.0, 200.0), (900.0, 200.0)] and first.cancelled()
 
 
-def _with_chunk_sends(server):
-    """The per-client sent-chunk record _send_chunk keeps (a fake server)."""
-    from theroadragetrip.server import SimulationServer
-
-    server._client_sent, server.chunk_resends_skipped = {}, 0
-    server._send_chunk = lambda connection, cid, data: SimulationServer._send_chunk(server, connection, cid, data)
-
-
 def test_changed_chunks_are_resent_nearest_the_player_first():
     from types import SimpleNamespace
 
@@ -157,7 +149,6 @@ def test_changed_chunks_are_resent_nearest_the_player_first():
         car=SimpleNamespace(x=250.0, y=250.0), _clients_lock=threading.Lock(), _indexed_tiles=set(),
         _client_chunks={connection: ({"9_0", "1_0", "4_0", "2_0"}, (0, 0))},
     )
-    _with_chunk_sends(server)
     SimulationServer._apply_map_growth(server)
     assert connection.sent == ["1_0", "4_0", "9_0"]  # no unload messages: the client swaps each in place
     assert server._map_streamer.hold is False and server._client_chunks[connection] == ({"9_0", "1_0", "4_0", "2_0"}, None)
@@ -182,7 +173,6 @@ def test_chunks_beyond_the_players_own_wait_until_the_index_has_their_tile():
         _on_foot=False, car=SimpleNamespace(x=250.0, y=250.0), _chunks_index=SimpleNamespace(encoded=lambda cid: cid, is_encoded=lambda cid: True),
         _indexed_tiles={TileCoord(0, 0), TileCoord(1, 0)},
     )
-    _with_chunk_sends(server)
     SimulationServer._stream_map_chunks(server)
     own = {f"{x}_{y}" for x in (-1, 0, 1) for y in (-1, 0, 1)}  # the player's own 3x3, whatever is indexed
     assert set(sent) == own | {"2_0", "3_0", "2_1", "3_1"}  # beyond it, only tile (1, 0)'s chunks
@@ -213,7 +203,6 @@ def test_a_changed_far_chunk_not_yet_encoded_waits_for_the_streaming_budget():
         car=SimpleNamespace(x=250.0, y=250.0), _clients_lock=threading.Lock(), _indexed_tiles=set(),
         _client_chunks={connection: ({"1_0", "4_0"}, (0, 0))},
     )
-    _with_chunk_sends(server)
     SimulationServer._apply_map_growth(server)
     assert sent == ["1_0"]  # the player's own neighbour at once
     assert server._client_chunks[connection] == ({"1_0"}, None)  # 4_0 is streamed again, within budget
@@ -234,6 +223,5 @@ def test_a_final_map_growth_refreshes_the_station_platforms():
         _map_streamer=SimpleNamespace(hold=True), _on_foot=False, car=SimpleNamespace(x=0.0, y=0.0),
         _clients_lock=threading.Lock(), _indexed_tiles=set(), _client_chunks={},
     )
-    _with_chunk_sends(server)
     SimulationServer._apply_map_growth(server)
     assert server.announcer.platforms == [platform]
