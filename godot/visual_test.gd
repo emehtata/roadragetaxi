@@ -403,6 +403,8 @@ func check() -> Array:
 			missing.append("camera not on the vehicle yet")
 	if scenario.get("windshield", false) and not main._windshield.visible:
 		missing.append("windshield view not active yet")
+	if scenario.get("requires", {}).has("lake_ice_holds") and calendar.get("lake_ice_holds", null) != scenario["requires"]["lake_ice_holds"]:
+		missing.append("lake_ice_holds %s (%s cm), the scenario needs %s" % [calendar.get("lake_ice_holds", "?"), calendar.get("lake_ice_cm", "?"), scenario["requires"]["lake_ice_holds"]])
 	if scenario.get("requires", {}).has("animals_in_view"):
 		var view: Rect2 = main.get_viewport().get_canvas_transform().affine_inverse() * main.get_viewport().get_visible_rect()
 		var seen: int = main.wildlife.animals.filter(func(a): return view.has_point(a["position"])).size()
@@ -744,7 +746,9 @@ func _write(result: Dictionary) -> void:
 		"weather": state.get("weather", {}).duplicate(), "vehicle": {"x": player.get("x"), "y": player.get("y"), "heading": player.get("heading")},
 		"walker": state.get("player_pedestrian", {}).duplicate() if state.get("on_foot", false) else {},
 		"camera": {"zoom": main.camera.zoom.x, "position": [main.camera.position.x, main.camera.position.y]},
-		"scene": _counts, "elapsed_s": _elapsed, "forest": _forest_stats()})
+		"scene": _counts, "elapsed_s": _elapsed, "forest": _forest_stats(),
+		"lake_ice": {"cm": state.get("calendar", {}).get("lake_ice_cm") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null,
+			"holds": state.get("calendar", {}).get("lake_ice_holds") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null}})
 	result["weather"].erase("plowed_cells")
 	if scenario.get("lineup", false) is bool and scenario.get("lineup", false):  # each lineup vehicle's close-range model
 		result["lineup_models"] = main.entities.extra_npcs.map(func(n: Dictionary) -> Array:

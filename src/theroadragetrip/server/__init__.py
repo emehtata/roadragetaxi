@@ -960,6 +960,7 @@ class SimulationServer:
                 railings=w.railings, npcs=w.npcs, npc_drivers=w.npc_drivers, npc_manager=w.npc_manager,
                 taxi_brawls=getattr(w, "taxi_brawls", None), live_roadworks=getattr(w, "live_roadworks", None),
                 live_feed=self._live_feed_diagnostics(),
+                lake_ice=(getattr(w, "lake_ice_cm", None), getattr(w, "lake_ice_holds", None)),
             )
             logger.info("Debug snapshot %s", path)
         except Exception:  # a debugging aid: never take the game down

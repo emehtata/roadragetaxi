@@ -125,6 +125,7 @@ def _write_debug_snapshot(
     taxi_brawls=None,
     live_roadworks=None,
     live_feed=None,
+    lake_ice=(None, None),
 ) -> None:
     minx, miny, maxx, maxy = auto_fetch_manager.get_bounds()
     now = time.time()
@@ -194,6 +195,8 @@ def _write_debug_snapshot(
             "spatial_grid": {"indexed_way_count": spatial_grid.indexed_way_count},
             "map_sync_stage": map_sync_stage,
             "on_foot": on_foot,
+            "lake_ice_cm": lake_ice[0],  # the modelled ice that gates driving on water and its ice look
+            "lake_ice_holds": lake_ice[1],
         },
         "npcs": [
             _npc_snapshot(vehicle, npc_drivers.get(vehicle.vehicle_id) if npc_drivers is not None else None)
