@@ -228,7 +228,7 @@ class MapStreamer:
         self._sync_dirty = None
         self.sync_tiles: set = set()  # the tiles loaded when the running (or last) sync started: what it covers
         self.sync_stage_ms: dict[str, float] = {}  # busy time per stage of the running (or last) sync
-        self.sync_stage_max_ms: dict[str, float] = {}  # longest single slice per stage
+        self.sync_stage_max_ms: dict[str, tuple] = {}  # longest single slice per stage: (wall ms, thread CPU ms)
         self.last_sync = None  # (wall s, busy ms, ticks) of the last completed sync
         self.hold = False  # the server rebuilds its chunks from the synced world: no merges meanwhile
 
@@ -293,16 +293,19 @@ class MapStreamer:
             return
         self._sync_ticks += 1
         started = time.perf_counter()
+        cpu_started = time.thread_time()
         # Merge and derived-data sync share one frame budget; independent caps
         # let both consume 4 ms in the same tick.
         if started >= deadline:
             return
         for stage in self._sync:
-            now = time.perf_counter()
+            now, cpu_now = time.perf_counter(), time.thread_time()
             slice_ms = (now - started) * 1000.0
             self.sync_stage_ms[stage] = self.sync_stage_ms.get(stage, 0.0) + slice_ms
-            self.sync_stage_max_ms[stage] = max(self.sync_stage_max_ms.get(stage, 0.0), slice_ms)
-            started = now
+            if slice_ms > self.sync_stage_max_ms.get(stage, (0.0, 0.0))[0]:
+                # (wall, thread CPU): wall far above CPU means the slice waited (GIL, lock), not worked
+                self.sync_stage_max_ms[stage] = (slice_ms, (cpu_now - cpu_started) * 1000.0)
+            started, cpu_started = now, cpu_now
             if stage == CHUNK_INPUTS_READY:
                 self._report_growth()
             if stage == TAXI_WAIT or time.perf_counter() >= deadline:
@@ -316,7 +319,8 @@ class MapStreamer:
         logger.info("Map sync stages: %.1f s wall, %.0f ms busy over %d ticks: %s", self.last_sync[0], busy_ms,
                     self._sync_ticks, ", ".join(f"{name} {ms:.0f}" for name, ms in
                                                 sorted(self.sync_stage_ms.items(), key=lambda item: -item[1])))
-        logger.info("Map sync longest slice per stage: %s", ", ".join(
-            f"{name} {ms:.1f}" for name, ms in sorted(self.sync_stage_max_ms.items(), key=lambda item: -item[1])))
+        logger.info("Map sync longest slice per stage (wall/cpu ms): %s", ", ".join(
+            f"{name} {wall:.1f}/{cpu:.1f}" for name, (wall, cpu) in
+            sorted(self.sync_stage_max_ms.items(), key=lambda item: -item[1][0])))
         self._synced_revision = self._sync_revision
         logger.info("Map sync complete: revision %d, bounds %s", self._synced_revision, self._synced_bounds)
