@@ -65,7 +65,8 @@ from ..weather_history import WeatherHistory, gradual_weather, precipitation_fro
 from ..calendar import clamp_start_datetime, finnish_local_time
 from ..osm import CACHE_DIR
 from ..map_style import FIELDS_FROZEN_WINTER_WEIGHT
-from ..climate import appearance_with_snow_depth, lake_ice_thickness_cm, typical_temperature
+from ..climate import (appearance_with_snow_depth, lake_ice_from_daily, lake_ice_season_start,
+                       lake_ice_thickness_cm, typical_daily_mean_temperature, typical_temperature)
 
 logger = logging.getLogger(__name__)
 
@@ -645,15 +646,33 @@ class SimulationServer:
 
     def _update_lake_ice(self, observed) -> None:
         """world.lake_ice_cm / lake_ice_holds: one modelled thickness for the
-        map (climate.lake_ice_thickness_cm), recomputed when the date changes.
-        ponytail: today's snow sets the snow factor for the whole season; per-day FMI history if it matters."""
+        map from 1 September, observed FMI daily means over the climate curve
+        day by day. Without observations: climate.lake_ice_thickness_cm with
+        today's snow factor. Season history is requested once per date."""
+        day, latitude = self.calendar.date, self.calendar.latitude
         snow = getattr(self, "_test_snow_depth", None)
         if snow is None and observed is not None:
             snow = observed.snow_depth_cm
-        key = (self.calendar.date, self.calendar.latitude, 1.0 if snow == 0 else 0.5)
+        history = self.weather_history if hasattr(self.weather_history, "daily_means") else None
+        start = lake_ice_season_start(day)
+        if history is not None and getattr(self, "_lake_ice_requested", None) != day:
+            self._lake_ice_requested = day
+            history.request(datetime(start.year, start.month, start.day), self.calendar.current)  # queued, never blocks
+        sig = (len(history._hours), day) if history is not None else None
+        if getattr(self, "_lake_ice_days_sig", False) != sig:  # rebuild the daily series only when hours arrive
+            self._lake_ice_days_sig = sig
+            self._lake_ice_days = history.daily_means(start, day) if history is not None else []
+        days = [(t, s) for _, t, s in self._lake_ice_days if t is not None]
+        key = (day, latitude, len(days), round(sum(t for t, _ in days), 1),
+               tuple(None if s is None else s >= 1.0 for _, s in days), 1.0 if snow == 0 else 0.5)
         if getattr(self, "_lake_ice_key", None) != key:
             self._lake_ice_key = key
-            self.world.lake_ice_cm = lake_ice_thickness_cm(key[0], key[1], key[2])
+            if days:
+                self.world.lake_ice_cm = lake_ice_from_daily(
+                    (t if t is not None else typical_daily_mean_temperature(d, latitude), 1.0 if s == 0 else 0.5)
+                    for d, t, s in self._lake_ice_days)
+            else:
+                self.world.lake_ice_cm = lake_ice_thickness_cm(day, latitude, key[-1])
             self.world.lake_ice_holds = self.world.lake_ice_cm >= CAR_ICE_MIN_CM
 
     def _sun_altitude(self) -> float:

@@ -90,20 +90,30 @@ STEFAN_K_CM = 3.3  # cm/sqrt(°C·day), Stefan's law fitted at Pääjärvi, Finl
 LAKE_ICE_MELT_CM_PER_DEGREE_DAY = 0.5  # choice: simple degree-day erosion above 0 °C
 
 
-def lake_ice_thickness_cm(day: date, latitude: float, snow_factor: float = 0.5) -> float:
-    """Modelled lake ice on `day`: Stefan's law h = k*sqrt(s*FDD), grown
-    daily from 1 September on the typical daily means, melted by degree-days
-    above zero. `snow_factor` s scales the freezing degree-days: 0.5 under
-    snow (the default, climatological snow), 1.0 for clear ice."""
-    start = date(day.year if day.month >= 9 else day.year - 1, 9, 1)
+def lake_ice_from_daily(days) -> float:
+    """Lake ice (cm) after (daily mean °C, snow factor s) days, oldest first:
+    Stefan's law h = sqrt(h² + k²·s·FDD) on freezing days, degree-day melt otherwise."""
     h = 0.0
-    for offset in range((day - start).days + 1):  # at most 366 days
-        t = typical_daily_mean_temperature(start + timedelta(days=offset), latitude)
+    for t, snow_factor in days:
         if t < 0.0:
             h = math.sqrt(h * h + STEFAN_K_CM * STEFAN_K_CM * snow_factor * -t)
         else:
             h = max(0.0, h - LAKE_ICE_MELT_CM_PER_DEGREE_DAY * t)
     return h
+
+
+def lake_ice_season_start(day: date) -> date:
+    return date(day.year if day.month >= 9 else day.year - 1, 9, 1)
+
+
+def lake_ice_thickness_cm(day: date, latitude: float, snow_factor: float = 0.5) -> float:
+    """Modelled lake ice on `day`, grown daily from 1 September on the typical
+    daily means (lake_ice_from_daily). `snow_factor` s scales the freezing
+    degree-days: 0.5 under snow (the default, climatological snow), 1.0 for clear ice."""
+    start = lake_ice_season_start(day)
+    return lake_ice_from_daily(
+        (typical_daily_mean_temperature(start + timedelta(days=i), latitude), snow_factor)
+        for i in range((day - start).days + 1))  # at most 366 days
 
 
 def typical_temperature(moment: datetime, latitude: float) -> float:

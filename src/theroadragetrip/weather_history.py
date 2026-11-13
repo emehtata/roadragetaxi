@@ -23,7 +23,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -338,6 +338,22 @@ class WeatherHistory:
                             candidates[h] = HourlyWeather(temperature, precipitation, wawa, depth, speed, direction, source, cloud)
             usable = [(h, w) for h, w in candidates.items() if precipitation_from_observation(w)[0] is not None]
             return max(usable, key=lambda item: item[0]) if usable else None
+
+    def daily_means(self, start: date, end: date):
+        """[(day, mean °C or None, mean snow cm or None)] of observed hours, start..end
+        local days; under 12 hourly temperatures gives None. Memory only: request()
+        loads cached chunks from sqlite, so this never blocks."""
+        out = []
+        with self._lock:
+            for i in range((end - start).days + 1):
+                day = start + timedelta(days=i)
+                base = math.floor(game_time_to_utc_hour(datetime(day.year, day.month, day.day)))
+                hours = [self._hours.get(base + h) for h in range(24)]
+                temps = [w.temperature_c for w in hours if w is not None and w.temperature_c is not None]
+                snows = [w.snow_depth_cm for w in hours if w is not None and w.snow_depth_cm is not None]
+                out.append((day, sum(temps) / len(temps) if len(temps) >= 12 else None,
+                            sum(snows) / len(snows) if snows else None))
+        return out
 
     # -- fetching ------------------------------------------------------------
 
