@@ -90,3 +90,17 @@ def test_soft_boundary_off_without_runtime_streaming():
     assert manager.streaming_speed_cap_mps(500.0, 500.0, 30.0, 0.0) is None
 
 
+
+
+def test_tick_distribution_reports_tail_and_overruns():
+    from theroadragetrip.server import tick_distribution
+    text = tick_distribution([0.01] * 98 + [0.04, 0.2], 1 / 30)
+    assert "max 200.0" in text and "2/100 over 33.3" in text
+
+
+def test_hard_limit_ticks_counted():
+    manager = _manager()
+    manager.soft_boundary_enabled = True
+    manager.loaded_tiles = set()
+    manager.streaming_speed_cap_mps(500.0, 500.0, 30.0, 0.0)
+    assert manager.hard_limit_ticks == 1

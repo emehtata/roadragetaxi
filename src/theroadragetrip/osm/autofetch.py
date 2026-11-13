@@ -352,6 +352,7 @@ class AutoFetchManager:
         # Off unless runtime streaming is on (main sets it from
         # --auto-fetch): without streaming the startup bounds are the map.
         self.soft_boundary_enabled = False
+        self.hard_limit_ticks = 0  # ticks the no-data speed limit applied (diagnostics)
         # Load known dead-end boundaries from disk cache
         self.dead_ends: List[dict] = []
 
@@ -399,6 +400,7 @@ class AutoFetchManager:
                 "tile_unload_ms": self.last_tile_unload_ms,
                 "tiles_active": len(self.active_tiles),
                 "tiles_fetching": self.is_fetching,
+                "hard_limit_ticks": self.hard_limit_ticks,
             }
 
     def covers(self, x: float, y: float) -> bool:
@@ -412,6 +414,7 @@ class AutoFetchManager:
             return None
         if world_to_tile(x, y) in self.loaded_tiles:
             return None
+        self.hard_limit_ticks += 1
         return SOFT_BOUNDARY_MIN_SPEED_MPS
 
     def set_route_tiles(self, tiles) -> None:

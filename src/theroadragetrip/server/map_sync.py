@@ -228,6 +228,7 @@ class MapStreamer:
         self._sync_dirty = None
         self.sync_tiles: set = set()  # the tiles loaded when the running (or last) sync started: what it covers
         self.sync_stage_ms: dict[str, float] = {}  # busy time per stage of the running (or last) sync
+        self.sync_stage_max_ms: dict[str, float] = {}  # longest single slice per stage
         self.last_sync = None  # (wall s, busy ms, ticks) of the last completed sync
         self.hold = False  # the server rebuilds its chunks from the synced world: no merges meanwhile
 
@@ -287,6 +288,7 @@ class MapStreamer:
                 self._sync_started = time.perf_counter()
                 self._sync_ticks = 0
                 self.sync_stage_ms = {}
+                self.sync_stage_max_ms = {}
                 logger.info("Map sync started: revision %d, %d ways", self._sync_revision, len(self.world.ways))
             return
         self._sync_ticks += 1
@@ -297,7 +299,9 @@ class MapStreamer:
             return
         for stage in self._sync:
             now = time.perf_counter()
-            self.sync_stage_ms[stage] = self.sync_stage_ms.get(stage, 0.0) + (now - started) * 1000.0
+            slice_ms = (now - started) * 1000.0
+            self.sync_stage_ms[stage] = self.sync_stage_ms.get(stage, 0.0) + slice_ms
+            self.sync_stage_max_ms[stage] = max(self.sync_stage_max_ms.get(stage, 0.0), slice_ms)
             started = now
             if stage == CHUNK_INPUTS_READY:
                 self._report_growth()
@@ -312,5 +316,7 @@ class MapStreamer:
         logger.info("Map sync stages: %.1f s wall, %.0f ms busy over %d ticks: %s", self.last_sync[0], busy_ms,
                     self._sync_ticks, ", ".join(f"{name} {ms:.0f}" for name, ms in
                                                 sorted(self.sync_stage_ms.items(), key=lambda item: -item[1])))
+        logger.info("Map sync longest slice per stage: %s", ", ".join(
+            f"{name} {ms:.1f}" for name, ms in sorted(self.sync_stage_max_ms.items(), key=lambda item: -item[1])))
         self._synced_revision = self._sync_revision
         logger.info("Map sync complete: revision %d, bounds %s", self._synced_revision, self._synced_bounds)

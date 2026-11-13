@@ -1620,24 +1620,32 @@ class SimulationServer:
         """Blocking tick loop - the body of `python -m theroadragetrip.server`."""
         interval = 1.0 / self.tick_rate
         next_tick = time.perf_counter()
-        window_start, window_ticks, worst = next_tick, 0, 0.0
+        window_start, durations = next_tick, []
         while True:
             started = time.perf_counter()
             self.tick(interval)
-            worst = max(worst, time.perf_counter() - started)
-            window_ticks += 1
+            durations.append(time.perf_counter() - started)
             if started - window_start >= 10.0:
-                rate = window_ticks / (started - window_start)
+                rate = len(durations) / (started - window_start)
                 if rate < 0.9 * self.tick_rate:
                     logger.warning("Server behind: %.1f of %.0f ticks/s, worst tick %.0f ms",
-                                   rate, self.tick_rate, worst * 1000)
-                window_start, window_ticks, worst = started, 0, 0.0
+                                   rate, self.tick_rate, max(durations) * 1000)
+                logger.info("Tick ms: %s", tick_distribution(durations, interval))
+                window_start, durations = started, []
             next_tick += interval
             sleep_for = next_tick - time.perf_counter()
             if sleep_for > 0:
                 time.sleep(sleep_for)
             else:
                 next_tick = time.perf_counter()  # fell behind; don't try to catch up in a burst
+
+
+def tick_distribution(durations: list, interval: float) -> str:
+    """p50/p95/p99/max in ms and the count of ticks over the interval."""
+    ordered = sorted(durations)
+    pick = lambda q: ordered[min(len(ordered) - 1, int(q * len(ordered)))] * 1000
+    return (f"p50 {pick(0.5):.1f} p95 {pick(0.95):.1f} p99 {pick(0.99):.1f} max {ordered[-1] * 1000:.1f}, "
+            f"{sum(d > interval for d in ordered)}/{len(ordered)} over {interval * 1000:.1f}")
 
 
 def place_street_lights(world, region=None) -> list:
