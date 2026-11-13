@@ -2181,3 +2181,36 @@ def test_dodging_walker_picks_no_activity(monkeypatch: pytest.MonkeyPatch):
 
     assert dodging.activity is None and dodging.state == "walking"
     assert draws == []  # skipped before the roll: no random draw spent on it
+
+
+def _walk_headings(drunk: bool, monkeypatch) -> tuple[Pedestrian, list[float]]:
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=3.0)
+    manager = PedestrianManager([way], target_count=0)
+    ped = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1),
+                     is_drunk=drunk, blood_alcohol_promille=3.0 if drunk else 0.0)
+    ped.fall_cooldown = ped.drunk_vomit_cooldown = 100.0
+    manager.pedestrians = [ped]
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 1.0)
+    headings = []
+    for _ in range(30):
+        manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+        headings.append(ped.heading)
+    return ped, headings
+
+
+def test_drunk_pedestrian_stumbles_instead_of_swirling(monkeypatch):
+    """Even at 3.0 promille the heading swings at most 4 rad/s; the drunk gait is a stumble."""
+    ped, headings = _walk_headings(True, monkeypatch)
+    rates = [abs(b - a) / 0.1 for a, b in zip(headings, headings[1:])]
+    assert max(rates) <= 4.0
+    assert ped.speed > 0.0
+
+
+def test_sober_pedestrian_sway_is_unchanged(monkeypatch):
+    way = Way(points_m=[(0.0, 0.0), (200.0, 0.0)], highway="footway", half_width_m=3.0)
+    manager = PedestrianManager([way], target_count=0)
+    ped = Pedestrian(20.0, 0.0, 0.0, 1.3, 1.3, way, 0, 1, (1, 1, 1))
+    manager.pedestrians = [ped]
+    monkeypatch.setattr("theroadragetrip.pedestrian.random.random", lambda: 1.0)
+    manager.update(Car(0.0, 0.0, 0.0, 0.0), dt=0.1)
+    assert ped.heading == pytest.approx(math.sin(ped.sway_phase) * math.radians(3.5), abs=5e-4)

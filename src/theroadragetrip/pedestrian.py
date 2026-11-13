@@ -3087,7 +3087,7 @@ class PedestrianManager:
             if getattr(ped, "is_drunk", False):
                 promille = max(0.5, min(3.0, getattr(ped, "blood_alcohol_promille", 0.5)))
                 drunk_level = (promille - 0.5) / 2.5
-                ped.drunk_phase += update_dt * (2.7 + drunk_level * 2.5)
+                ped.drunk_phase += update_dt * (2.7 + drunk_level * 1.5)  # stumble every ~2.3-1.5 s
                 ped.fall_cooldown = max(0.0, ped.fall_cooldown - update_dt)
                 ped.drunk_vomit_cooldown = max(0.0, ped.drunk_vomit_cooldown - update_dt)
                 if ped.drunk_vomit_cooldown <= 0.0 and random.random() < 0.012 * update_dt:
@@ -3188,9 +3188,10 @@ class PedestrianManager:
             # Small natural curve/wobble in heading
             drunk_promille = max(0.5, min(3.0, getattr(ped, "blood_alcohol_promille", 0.5)))
             drunk_level = (drunk_promille - 0.5) / 2.5 if getattr(ped, "is_drunk", False) else 0.0
-            sway_angle = math.sin(ped.sway_phase) * math.radians(3.5 + drunk_level * 38.0)
+            sway_angle = math.sin(ped.sway_phase) * math.radians(3.5)
             if getattr(ped, "is_drunk", False):
-                sway_angle += math.sin(ped.drunk_phase) * math.radians(8.0 + drunk_level * 24.0)
+                # Rate-scaled stumble (deg/s), so drunks lurch instead of swirling each tick.
+                sway_angle += math.sin(ped.drunk_phase) * math.radians(20.0 + drunk_level * 40.0) * update_dt
             if recovering_path:
                 sway_angle = 0.0
 
