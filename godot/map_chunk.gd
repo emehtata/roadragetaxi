@@ -2007,7 +2007,7 @@ func _lamps_3d() -> void:
 		if not _broken.has(i) and i < lights.size():
 			rows.append([street_lights[i], Vector2(cos(float(lights[i][2])), -sin(float(lights[i][2])))])
 	if not build_async:
-		_set_dynamic_3d("lamps", B3.lamp_posts_node(rows))
+		_set_dynamic_3d("lamps", B3.lamp_posts_node(rows, ground_heights))
 		return
 	# The per-lamp boxes are pure arrays: a worker builds them (a motorway chunk's
 	# hundreds of lamps took 30-75 ms on the main thread); main only makes the mesh.
@@ -2015,7 +2015,7 @@ func _lamps_3d() -> void:
 	var build_id := _lamp_build
 	if _lamp_task >= 0:
 		WorkerThreadPool.wait_for_task_completion(_lamp_task)
-	_lamp_task = WorkerThreadPool.add_task(func(): _lamps_ready.call_deferred(B3.lamp_posts_arrays(rows), build_id))
+	_lamp_task = WorkerThreadPool.add_task(func(): _lamps_ready.call_deferred(B3.lamp_posts_arrays(rows, ground_heights), build_id))
 
 
 func _lamps_ready(arrays: Dictionary, build_id: int) -> void:

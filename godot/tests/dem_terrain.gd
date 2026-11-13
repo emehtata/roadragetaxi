@@ -29,6 +29,7 @@ func _initialize() -> void:
 	check(is_equal_approx(B3.top_camera_position(Vector2(15, -5), 300.0, ground).y - ground, 300.0), "camera: same height above the ground under the taxi")
 	check(B3.top_camera_position(Vector2(15, -5), 300.0, B3.ground_height({}, taxi)) == Vector3(15, 300.0, -5), "switch off: camera unchanged")
 	test_eye_follows_ground()
+	test_lamp_stands_on_ground()
 	print("dem_terrain: ", "FAIL" if failed else "PASS")
 	quit(1 if failed else 0)
 
@@ -40,6 +41,19 @@ func test_eye_follows_ground() -> void:
 		var elevation := B3.deck_height(point[0], 0, PackedVector2Array(), grid["prepared"]["ground_heights"])
 		var eye := B3.windshield_camera_position(point[0], 0.0, 1.7, elevation, 0.0)
 		check(absf(eye.y - (point[1] + 1.7)) < 0.01, "eye at %s follows the ground: %.2f" % [point[0], eye.y])
+
+## A street lamp's pole base sits on the DEM ground at the pole.
+func test_lamp_stands_on_ground() -> void:
+	var grid := {"ground_heights": {"origin": [0, 0], "step": 100.0, "cols": 2, "heights": [6.0, 12.0, 6.0, 12.0]}}
+	MapChunk.prepare(grid, Vector2.ZERO)
+	var ground: Dictionary = grid["prepared"]["ground_heights"]
+	var lamp := Vector2(51.2, -10.0)
+	var verts: PackedVector3Array = B3.lamp_posts_arrays([[lamp, Vector2(1, 0)]], ground)["verts"]
+	var lowest := INF
+	for v in verts:
+		lowest = minf(lowest, v.y)
+	var pole := lamp - Vector2(1.2, 0)
+	check(absf(lowest - B3.ground_height(ground, pole)) < 0.01, "lamp base %.2f on the ground %.2f" % [lowest, B3.ground_height(ground, pole)])
 
 func check(ok: bool, message: String) -> void:
 	if not ok:

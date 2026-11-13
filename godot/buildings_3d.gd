@@ -661,7 +661,8 @@ func set_area_lights(level: float, lamps: Array, shops: Array, floods: Array) ->
 		if reaches[i] > 0.0:
 			var lamp: SpotLight3D = _street_lights[i]
 			var reach: float = reaches[i] * 1.6
-			lamp.position = to_3d(_lamp_keys[i], LAMP_HEIGHT_M - 0.2)  # the housing's underside
+			var ground: float = get_parent().deck_height(_lamp_keys[i], 0) if get_parent().has_method("deck_height") else 0.0
+			lamp.position = to_3d(_lamp_keys[i], ground + LAMP_HEIGHT_M - 0.2)  # the housing's underside, on the DEM ground
 			lamp.spot_range = Vector2(reach, LAMP_HEIGHT_M).length()
 			lamp.spot_angle = rad_to_deg(atan2(reach, LAMP_HEIGHT_M))
 	_place_omnis(_shop_lights, shops if on else [], 2.5, 1.2 * level, 1.0)
@@ -2804,22 +2805,23 @@ static func _world_node(out: Dictionary) -> MeshInstance3D:
 
 
 ## rows [lamp position, toward the road (unit)]: the pole 1.2 m behind the lamp, its arm and head.
-static func lamp_posts_node(rows: Array) -> MeshInstance3D:
-	return _world_node(lamp_posts_arrays(rows))
+static func lamp_posts_node(rows: Array, grid := {}) -> MeshInstance3D:
+	return _world_node(lamp_posts_arrays(rows, grid))
 
 
-## lamp_posts_node's arrays (pure data, worker-safe), normals included.
-static func lamp_posts_arrays(rows: Array) -> Dictionary:
+## lamp_posts_node's arrays (pure data, worker-safe), normals included; lifted onto the DEM `grid` at the pole.
+static func lamp_posts_arrays(rows: Array, grid := {}) -> Dictionary:
 	var out := _empty_arrays()
 	var steel := Color8(110, 112, 115)
 	for row: Array in rows:
 		var lamp: Vector2 = row[0]
 		var pole: Vector2 = lamp - row[1] * 1.2
-		_car_box(out, pole.x - 0.08, pole.x + 0.08, pole.y - 0.08, pole.y + 0.08, 0.0, LAMP_HEIGHT_M + 0.1, steel)
+		var g := ground_height(grid, pole)
+		_car_box(out, pole.x - 0.08, pole.x + 0.08, pole.y - 0.08, pole.y + 0.08, g, g + LAMP_HEIGHT_M + 0.1, steel)
 		for k in 3:
 			var p := pole.lerp(lamp, (k + 0.5) / 3.0)
-			_car_box(out, p.x - 0.22, p.x + 0.22, p.y - 0.05, p.y + 0.05, LAMP_HEIGHT_M - 0.02, LAMP_HEIGHT_M + 0.08, steel)
-		_car_box(out, lamp.x - 0.28, lamp.x + 0.28, lamp.y - 0.28, lamp.y + 0.28, LAMP_HEIGHT_M - 0.2, LAMP_HEIGHT_M, Color8(60, 62, 64))
+			_car_box(out, p.x - 0.22, p.x + 0.22, p.y - 0.05, p.y + 0.05, g + LAMP_HEIGHT_M - 0.02, g + LAMP_HEIGHT_M + 0.08, steel)
+		_car_box(out, lamp.x - 0.28, lamp.x + 0.28, lamp.y - 0.28, lamp.y + 0.28, g + LAMP_HEIGHT_M - 0.2, g + LAMP_HEIGHT_M, Color8(60, 62, 64))
 	out["normals"] = flat_normals(out["verts"])
 	return out
 
