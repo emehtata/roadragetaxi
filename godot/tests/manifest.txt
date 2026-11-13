@@ -4,6 +4,7 @@
 # (tests/test_godot_manifest.py checks this).
 res://tests/run_tests.gd
 res://tests/audit_menu_safety.gd
+res://tests/server_port.gd
 res://tests/home_interior.gd
 res://tests/electronic_signs.gd
 res://tests/surface_details.gd
