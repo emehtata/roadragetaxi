@@ -831,7 +831,7 @@ func _build_2_5d() -> void:
 		if not build_async:
 			_meshes_ready(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground))
 		else:
-			_building_task = WorkerThreadPool.add_task(func(): _meshes_ready.call_deferred(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground)))
+			_building_task = WorkerThreadPool.add_task(func(): _queue_meshes.call_deferred(_build_3d_timed(buildings, styles, origin, sites, landmarks, ground)))
 		return
 	if buildings.is_empty() or buildings_3d:
 		return
@@ -936,17 +936,39 @@ func _road_snow_3d() -> void:
 		material.set_shader_parameter("cell_map", Vector4(_origin.x / 10.0 - low.x, _origin.y / 10.0 - low.y, size.x, size.y))
 
 
+# Worker results wait here instead of all running in one deferred flush: main
+# applies them under its chunk budget (drain_ready_meshes), one at least per frame.
+static var ready_meshes: Array = []  # [chunk, arrays]
+
+
+func _queue_meshes(arrays: Dictionary) -> void:
+	ready_meshes.append([self, arrays])
+
+
+static func drain_ready_meshes(budget_usec: int) -> int:
+	var started := Time.get_ticks_usec()
+	var spent := 0
+	while not ready_meshes.is_empty() and (spent == 0 or spent < budget_usec):
+		var entry: Array = ready_meshes.pop_front()
+		if is_instance_valid(entry[0]):
+			entry[0]._meshes_ready(entry[1])
+		spent = Time.get_ticks_usec() - started
+	return spent
+
+
 func _meshes_ready(arrays: Dictionary) -> void:
+	var started := Time.get_ticks_usec()
 	if _building_task >= 0:
 		WorkerThreadPool.wait_for_task_completion(_building_task)
 		_building_task = -1
-	Perf.add("chunk_buildings_build", arrays.get("build_usec", 0))
+	Perf.add("chunk_build_worker", arrays.get("build_usec", 0))
 	meshes_3d = B3.meshes(arrays)
 	_road_snow_3d()
 	_volumes = {"stats": arrays["stats"]}  # the vertices live in the meshes
 	if is_inside_tree():
 		get_parent().add_building_meshes(self)
 	drop_stale_buildings()
+	Perf.add("chunk_meshes_main", Time.get_ticks_usec() - started)
 var _building_task := -1
 
 

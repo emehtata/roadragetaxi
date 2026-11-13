@@ -3818,6 +3818,16 @@ func test_resent_chunk_buildings() -> void:
 	map.remove_chunk("0_0")
 	check(kept.all(func(n): return not is_instance_valid(n)), "unloaded before its new buildings are built: the old ones go too")
 	MapChunk.build_async = false
+	map.replace_chunk(message.call([house]))
+	var ready_chunk = map._chunks["0_0"]
+	var arrays := MapChunk._build_3d_timed(ready_chunk._data["buildings"], ready_chunk._data["building_styles"], ready_chunk._origin)
+	MapChunk.ready_meshes.clear()
+	for i in 6:
+		ready_chunk._queue_meshes(arrays)
+	MapChunk.drain_ready_meshes(1)
+	check(MapChunk.ready_meshes.size() == 5, "six ready chunks: one over-budget frame applies one, not all")
+	MapChunk.drain_ready_meshes(1 << 30)
+	check(MapChunk.ready_meshes.is_empty() and not ready_chunk.meshes_3d.is_empty(), "the rest follow in later frames")
 	map.free()
 	MapChunk.buildings_3d = false
 

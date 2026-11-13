@@ -366,8 +366,8 @@ func _on_connection(up: bool) -> void:
 func _process_chunk_queues(started_usec: int) -> void:
 	# Another one only if it fits too: a 3 ms frame doesn't start a 20 ms chunk. A chunk costs
 	# its add (cheap: the worker prepared it) and its first draw, later in this frame, by its points.
-	var at := started_usec
-	var spent := 0
+	var spent := MapChunk.drain_ready_meshes(CHUNK_BUDGET_USEC)  # main-thread mesh creation shares the budget
+	var at := started_usec + spent
 	var last := 0
 	while not _chunk_queue.is_empty():
 		var draw := int(_chunk_queue[0].get("prepared", {}).get("points", 0) * DRAW_USEC_PER_POINT)
