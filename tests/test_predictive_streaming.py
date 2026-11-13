@@ -130,3 +130,21 @@ def test_collector_is_off_in_a_sync_and_unfreezes_for_the_idle_full_pass(monkeyp
     finally:
         gc.enable()
 
+
+def test_graveyard_frees_in_steps_and_never_dismantles_what_others_hold():
+    from types import SimpleNamespace
+
+    from theroadragetrip.performance import Graveyard
+
+    graveyard = Graveyard()
+    graph = SimpleNamespace(edges={i: [i] for i in range(5000)}, nodes=list(range(5000)))
+    in_use = {i: i for i in range(10)}
+    held_by_a_route_job = in_use
+    graveyard.bury(graph, in_use)
+    del graph, in_use
+    graveyard.dig(0.0)  # one step: the shared dict is only let go
+    assert held_by_a_route_job == {i: i for i in range(10)}
+    graveyard.dig(0.0)  # the graph's attributes split off
+    assert len(graveyard._items) == 2
+    graveyard.dig(1.0)
+    assert graveyard._items == []

@@ -37,7 +37,7 @@ from .. import chunk_worker, protocol
 from ..parent_watch import exit_with_parent
 from ..navigation_route import NavigationRoute
 from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, UNLOAD_RADIUS, ChunkIndex, cell_of, chunk_id, plan
-from ..performance import CollectorSchedule
+from ..performance import GRAVEYARD, CollectorSchedule
 from ..police import SpeedCameraSpawner
 from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer, prepare_initial_window
@@ -1176,6 +1176,7 @@ class SimulationServer:
         self._update_speed_cameras(dt)
         self._stream_map_chunks()
         self._free_retired()
+        GRAVEYARD.dig(0.002)  # replaced route graphs and indexes, a piece a tick
         self.navigation.update(self.world, self.car, self._current_way)
         self._broadcast_state(should_stop=result.should_stop, city_summary=result.city_summary, events=events)
 

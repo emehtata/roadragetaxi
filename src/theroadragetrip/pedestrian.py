@@ -11,7 +11,7 @@ from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Set, Tu
 from .osm import OPEN_ROOF_BUILDING_TYPES, BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
 from .geo import angle_diff, bbox_distance_sq, closest_point_and_dist_to_segment, compute_bbox, point_in_polygon
 from .npc import NPCState
-from .performance import advance_chunked
+from .performance import GRAVEYARD, advance_chunked
 from .physics import Car, is_pedestrian_way
 from .residents import MIN_UNACCOMPANIED_AGE, ResidentManager
 from .population import municipality_at, walkers_within
@@ -321,6 +321,9 @@ class PedestrianNetwork:
         self.set_ways(ways or [])
 
     def _commit(self, build: _PedestrianNetworkBuild) -> None:
+        GRAVEYARD.bury(*(getattr(self, name, None) for name in (
+            "ways", "nodes", "edges", "_segments", "_segment_grid", "_node_grid", "_street_node_grid",
+            "_component_parent", "_street_edges", "_nearest_node_cache")))  # the old graph, freed over the next ticks
         self.ways = build.ways
         self.nodes = build.nodes
         self.edges = build.edges
@@ -1923,6 +1926,9 @@ class PedestrianManager:
         return True
 
     def _commit_incremental_sync(self) -> None:
+        GRAVEYARD.bury(getattr(self, "_source_ways", None), getattr(self, "ped_ways", None),
+                       getattr(self, "_junction_grid", None), getattr(self, "_spawn_ways", None),
+                       getattr(self, "_ped_way_ids", None), getattr(self, "_way_grid", None))  # freed over the next ticks
         self._source_ways = self._sync_source_ways
         self.ped_ways = self._sync_safe_ways
         self._route_nodes = self.network.nodes

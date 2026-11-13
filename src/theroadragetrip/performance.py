@@ -57,6 +57,49 @@ class CollectorSchedule:
             gc.collect()
 
 
+class Graveyard:
+    """Replaced big structures (a whole route graph, its grids), freed in
+    budgeted steps on the tick instead of all at once where they are
+    replaced: dropping the last reference to one deallocated ~1e5 objects
+    (9-16 ms in a sync slice). An object another holder still uses (a
+    route job's graph) is only let go, never dismantled."""
+
+    STEP_ITEMS = 2000
+
+    def __init__(self) -> None:
+        self._items: list = []
+
+    def bury(self, *objects) -> None:
+        self._items.extend(obj for obj in objects if obj is not None)
+
+    def dig(self, budget_s: float) -> None:
+        deadline = time.perf_counter() + budget_s
+        first = True
+        while self._items and (first or time.perf_counter() < deadline):
+            first = False
+            obj = self._items[-1]
+            if sys.getrefcount(obj) > 3:  # this list, `obj`, the call's argument: anyone else still holds it
+                self._items.pop()
+            elif isinstance(obj, dict) and obj:
+                for _ in range(min(self.STEP_ITEMS, len(obj))):
+                    obj.popitem()
+            elif isinstance(obj, list) and obj:
+                del obj[-self.STEP_ITEMS:]
+            elif isinstance(obj, set) and obj:
+                for _ in range(min(self.STEP_ITEMS, len(obj))):
+                    obj.pop()
+            elif not isinstance(obj, (dict, list, set)) and hasattr(obj, "__dict__") and vars(obj):
+                self._items.pop()
+                attributes = vars(obj)
+                self._items.extend(value for value in attributes.values() if isinstance(value, (dict, list, set)))
+                attributes.clear()
+            else:
+                self._items.pop()
+
+
+GRAVEYARD = Graveyard()  # the simulation thread's: bury where replaced, dig once a tick
+
+
 def tune_interpreter() -> None:
     """The simulation server process's settings, before the world loads."""
     gc.set_threshold(*GC_THRESHOLDS)

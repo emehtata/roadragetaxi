@@ -9,7 +9,7 @@ import time
 from typing import Any, Generator, List, Optional, Tuple
 
 from .osm import TrafficLight, Way
-from .performance import advance_chunked
+from .performance import GRAVEYARD, advance_chunked
 from .map_level import SURFACE_LEVEL, on_map_level
 from .physics import is_car_road
 
@@ -547,6 +547,9 @@ class TrafficWorld:
         """Atomically swap in a finished graph; route_graph_revision
         identifies it - a route job planned against an older revision must
         not be applied (bin-loader-v12.md)."""
+        GRAVEYARD.bury(getattr(self, "_route_nodes", None), getattr(self, "_route_edges", None),
+                       getattr(self, "_route_node_grid", None), getattr(self, "_route_component_parent", None),
+                       getattr(self, "_bus_route_edges", None))  # freed over the next ticks, not here
         self._route_nodes = build.nodes
         self._route_edges = build.edges
         self._route_node_grid = build.node_grid
@@ -636,6 +639,8 @@ class TrafficWorld:
         motorway_build = self._pending_motorway_graph
         if motorway_build is not None and not motorway_build.advance(max(0.0, deadline - time.perf_counter())):
             return False
+        GRAVEYARD.bury(getattr(self, "ways", None), getattr(self, "cycle_graph", None) if cycle_build is not None else None,
+                       getattr(self, "motorway_graph", None) if motorway_build is not None else None)
         self.ways = build.ways
         if cycle_build is not None:
             self.cycle_graph = cycle_build
