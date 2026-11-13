@@ -660,7 +660,9 @@ func _set_windshield(on: bool, walking := false) -> void:
 	if walk_eye:
 		look_yaw = float(entities.shown_state().get("player_pedestrian", {}).get("heading", 0.0))
 		look_pitch = 0.0
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if walk_eye and DisplayServer.get_name() != "headless" else Input.MOUSE_MODE_VISIBLE
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if walk_eye and DisplayServer.get_name() != "headless" and _visual_test == null and _screenshot_path == "" else Input.MOUSE_MODE_VISIBLE
+	if _visual_test != null:
+		print("visual-test: mouse_mode=%d" % Input.mouse_mode)
 	if on and not switching:
 		_clear_focus()
 		_windshield_zoom = camera.zoom.x

@@ -130,7 +130,10 @@ func capture_mouse() -> void:
 	if visible and not get_tree().paused and not player.controls_enabled:
 		_look_motion = Vector2.ZERO
 		_discard_capture_motion = true
-		if _recenter_mouse:
+		var host := get_parent()
+		if host != null and (host.get("_visual_test") != null or host.get("_screenshot_path") != ""):
+			pass  # scripted runs never grab the user's cursor
+		elif _recenter_mouse:
 			# Bypass X11 raw deltas, which can be incorrect for absolute pointing devices.
 			Input.mouse_mode = Input.MOUSE_MODE_CONFINED_HIDDEN
 			DisplayServer.warp_mouse(Vector2(DisplayServer.window_get_size()) / 2.0)
