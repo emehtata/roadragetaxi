@@ -1,4 +1,4 @@
-"""Refresh the bundled Veikkausliiga schedule and results from its official tables."""
+"""Refresh the bundled Veikkausliiga start times from its official tables (timing only)."""
 from __future__ import annotations
 
 import gzip
@@ -14,20 +14,6 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "src/theroadragetrip/assets/sports_fixtures.json.gz"
 URL = "https://www.veikkausliiga.com/tilastot/2026/veikkausliiga/ottelut/?group={}"
-VENUES = {
-    "Veritas Stadion": ("Turku", 60.4426977, 22.2918553),
-    "Bolt Arena": ("Helsinki", 60.1876025, 24.9227359),
-    "Wiklöf Holding Arena": ("Mariehamn", 60.1039242, 19.9336205),
-    "Tammelan Stadion": ("Tampere", 61.5004530, 23.7853443),
-    "Project Liv Arena": ("Pietarsaari", 63.6721277, 22.6940523),
-    "Markku.fi Areena": ("Helsinki", 60.2346893, 24.9624973),
-    "OmaSp Stadion": ("Seinäjoki", 62.7787928, 22.8147745),
-    "Lemonsoft Stadion": ("Vaasa", 63.0853618, 21.6278755),
-    "Väre Areena": ("Kuopio", 62.8846496, 27.6715566),
-    "Lahden stadion": ("Lahti", 60.9829953, 25.6359598),
-    "Raatin Stadion": ("Oulu", 65.0197711, 25.4657839),
-    "OTC Stadion": ("Oulu", 65.0012140, 25.4527357),
-}
 
 
 class MatchRows(HTMLParser):
@@ -72,6 +58,12 @@ def fetch_group(group: int) -> list[dict]:
     return parser.rows
 
 
+def strip_to_timing(match: dict) -> None:
+    for key in ("home_team", "away_team", "result", "attendance"):
+        match.pop(key, None)
+    match["venue"].pop("name", None)
+
+
 def main() -> None:
     with gzip.open(FIXTURES, "rt", encoding="utf-8") as source:
         data = json.load(source)
@@ -94,23 +86,16 @@ def main() -> None:
         match["start"] = start.isoformat(timespec="seconds").replace("+00:00", "Z")
         match["crowd_start"] = (start - timedelta(hours=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
         match["crowd_end"] = (start + timedelta(minutes=150)).isoformat(timespec="seconds").replace("+00:00", "Z")
-        score = re.search(r"(\d+)\s*[—–-]\s*(\d+)", cells[-2])
-        attendance = re.search(r"\d+", cells[-1])
-        match["result"] = {"home": int(score[1]), "away": int(score[2])} if score else None
-        match["attendance"] = int(attendance[0]) if attendance else None
-        venue = match["venue"]
-        if venue["name"] not in VENUES:
-            raise RuntimeError(f"no mapped stadium location for {venue['name']}")
-        city, latitude, longitude = VENUES[venue["name"]]
-        venue.update(city=city, latitude=latitude, longitude=longitude)
         updated += 1
 
+    for match in data["matches"]:  # timing table only: no names, results or attendances
+        strip_to_timing(match)
     data["generated_at"] = datetime.now(timezone.utc).date().isoformat()
     temporary = FIXTURES.with_name(FIXTURES.name + ".tmp")
     with temporary.open("wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as compressed:
         compressed.write(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     temporary.replace(FIXTURES)
-    print(f"Updated official dates, results and attendances for {updated} Veikkausliiga 2026 matches")
+    print(f"Updated official start times for {updated} Veikkausliiga 2026 matches")
 
 
 if __name__ == "__main__":

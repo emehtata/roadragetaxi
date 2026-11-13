@@ -17,19 +17,13 @@ def test_committed_fixtures_cover_both_competitions_and_seasons():
         ("liiga", "2025-26"): 540, ("liiga", "2026-27"): 544,
         ("veikkausliiga", "2025"): 177, ("veikkausliiga", "2026"): 177,
     }
-    assert all(match["home_team"] and match["away_team"] and match["venue"]["name"] for match in matches)
+    forbidden = {"home_team", "away_team", "result", "attendance"}
+    assert not any(forbidden & match.keys() or "name" in match["venue"] for match in matches)
     football_2026 = [match for match in matches
                      if match["competition"] == "veikkausliiga" and match["season"] == "2026"]
-    assert sum(match["result"] is not None for match in football_2026) == 174
-    assert [match["id"] for match in football_2026 if match["result"] is None] == [
-        "veikkausliiga:2026:4353558", "veikkausliiga:2026:4353565", "veikkausliiga:2026:4353569",
-    ]
     assert all(match["venue"].get("city") and match["venue"].get("latitude") is not None
                and match["venue"].get("longitude") is not None for match in football_2026)
     by_id = {match["id"]: match for match in football_2026}
-    assert by_id["veikkausliiga:2026:4353548"]["result"] == {"home": 2, "away": 0}
-    assert by_id["veikkausliiga:2026:4353548"]["attendance"] == 2732
-    assert by_id["veikkausliiga:2026:4353557"]["result"] == {"home": 4, "away": 3}
     assert by_id["veikkausliiga:2026:4353558"]["start"] == "2026-11-08T13:00:00Z"
     hockey = next(match for match in matches if match["sport"] == "ice_hockey")
     start = datetime.fromisoformat(hockey["start"].replace("Z", "+00:00"))

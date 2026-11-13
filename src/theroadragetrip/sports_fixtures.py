@@ -1,8 +1,8 @@
 """Finnish major-league match times for stadium crowd simulation.
 
 Each match has UTC ``start``, ``crowd_start`` and ``crowd_end`` timestamps,
-teams, phase, venue name, nullable result and attendance. Liiga venues also
-carry coordinates supplied by Liiga.
+phase and venue city/coordinates: a timing table only (no team or venue
+names, results or attendances).
 """
 
 from __future__ import annotations
