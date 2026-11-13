@@ -12,6 +12,7 @@ chunks that changed.
 
 from __future__ import annotations
 
+import gc
 import logging
 import threading
 import time
@@ -280,6 +281,10 @@ class MapStreamer:
                 if not urgent and waited < SYNC_WAIT_FOR_FETCH_S and (waited < SYNC_SETTLE_S or manager.get_fetching()):
                     return
                 self._merged_since = None
+                # No cyclic GC inside the sync: its units allocate the new graphs, and a young
+                # collection starting there scanned them for 30-40 ms (611 ms worst) on the tick.
+                # Re-enabled, after a freeze, when the sync ends.
+                gc.disable()
                 self._sync_revision = manager.get_map_revision()
                 self._sync = map_sync_steps(self.world, lambda: min(
                     MAP_SYNC_BUDGET_S, max(0.0, self._sync_deadline - time.perf_counter())))
@@ -298,6 +303,23 @@ class MapStreamer:
         # let both consume 4 ms in the same tick.
         if started >= deadline:
             return
+        try:
+            stages = self._advance_sync(deadline, started, cpu_started)
+        except BaseException:
+            gc.enable()  # a failed sync never leaves the collector off
+            raise
+        if stages:
+            return
+        self._sync = None
+        # The new graphs and indexes are long-lived and acyclic: freeze them into the permanent
+        # generation unscanned, so later young collections skip them. ponytail: cyclic garbage made
+        # during the sync stays uncollected (~200 objects measured at the end of a bench run).
+        gc.freeze()
+        gc.enable()
+        self._finish_sync()
+
+    def _advance_sync(self, deadline: float, started: float, cpu_started: float) -> bool:
+        """Run sync stages until the deadline; True while stages remain."""
         for stage in self._sync:
             now, cpu_now = time.perf_counter(), time.thread_time()
             slice_ms = (now - started) * 1000.0
@@ -309,8 +331,10 @@ class MapStreamer:
             if stage == CHUNK_INPUTS_READY:
                 self._report_growth()
             if stage == TAXI_WAIT or time.perf_counter() >= deadline:
-                return
-        self._sync = None
+                return True
+        return False
+
+    def _finish_sync(self) -> None:
         if CHUNK_INPUTS_READY not in self.sync_stage_ms:
             self._report_growth()  # a sync without the marker still rebuilds the chunks, at its end
         self.sync_stage_ms.pop(CHUNK_INPUTS_READY, None)

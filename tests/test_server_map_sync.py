@@ -338,3 +338,28 @@ def test_a_settled_merge_waits_briefly_for_a_fetch_in_flight(monkeypatch):
     _, streamer = merged()
     streamer.tick(0, 0, 0, 0)
     assert streamer.syncing  # waited long enough: a slow fetch gets its own sync
+
+
+def test_no_cyclic_gc_inside_a_map_sync_and_its_result_is_frozen(monkeypatch):
+    import gc
+
+    seen = []
+
+    def steps(world, remaining_budget=None):
+        seen.append(gc.isenabled())
+        yield "traffic"
+        seen.append(gc.isenabled())
+
+    monkeypatch.setattr(map_sync, "map_sync_steps", steps)
+    monkeypatch.setattr(map_sync, "SYNC_SETTLE_S", 0.0)
+    frozen = []
+    monkeypatch.setattr(gc, "freeze", lambda: frozen.append(True))
+    manager = FakeManager()
+    streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=manager, ways=[]), lambda *a: None)
+    manager.revision, manager.bounds, manager.loaded_tiles = 2, (0.0, 0.0, 200.0, 100.0), {"a"}
+    try:
+        for _ in range(4):
+            streamer.tick(50, 50, 10, 0)
+        assert seen == [False, False] and frozen == [True] and gc.isenabled()
+    finally:
+        gc.enable()
