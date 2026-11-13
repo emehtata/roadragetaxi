@@ -379,6 +379,7 @@ class SimulationServer:
         if test_weather or getattr(args, "test_cloud", None) is not None:
             historical = False  # the test's weather, not the FMI's
         self.weather_history = None
+        self._test_snow_depth = getattr(args, "test_snow_depth", None)
         self._historical_weather = historical
         self.weather_city = self.chosen_city
         self._weather_latitude = self.calendar.latitude
@@ -632,7 +633,9 @@ class SimulationServer:
         look = self.calendar.seasonal_appearance  # continuous weights, for the client to blend
         self.world.fields_frozen = look.winter >= FIELDS_FROZEN_WINTER_WEIGHT
         observed = self.weather_history.get(self.calendar.current) if self.weather_history is not None else None
-        if observed is not None and observed.snow_depth_cm is not None:  # FMI's measured snow, over the date's guess
+        if getattr(self, "_test_snow_depth", None) is not None:
+            look = appearance_with_snow_depth(look, self._test_snow_depth)
+        elif observed is not None and observed.snow_depth_cm is not None:  # FMI's measured snow, over the date's guess
             look = appearance_with_snow_depth(look, observed.snow_depth_cm)
         season = [round(w * 20.0) / 20.0 for w in (look.winter, look.spring, look.summer, look.autumn)]
         return season
