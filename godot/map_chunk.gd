@@ -789,9 +789,8 @@ func _build_2_5d() -> void:
 			areas.append([_points(area[2]), color, false])
 		for space in _data.get("parking", []):
 			areas.append([_points(space), Color8(72, 75, 74), false])
-		var ice := water_ice()
 		for water in _data.get("waters", []):
-			areas.append([_points(water), Color(0.20, 0.26, 0.29).lerp(Color8(232, 240, 244), ice), ice < 0.5])
+			areas.append([_points(water), water_color(Color(0.20, 0.26, 0.29)), water_ice() < 0.5])
 		var bridges: Array = []  # step 5: the decks
 		for road in _data.get("roads", []):
 			if int(road.get("layer", 0)) > 0:
@@ -1130,6 +1129,11 @@ func water_ice() -> float:
 	return maxf(clampf(_season[0], 0.0, 1.0), 1.0 if fields_frozen() else 0.0)
 
 
+## Open water's colour, lerped to ice by water_ice().
+func water_color(open: Color) -> Color:
+	return open.lerp(Color8(232, 240, 244), water_ice())
+
+
 func set_fields_frozen(frozen: bool) -> void:
 	if _fields_frozen == frozen:
 		return
@@ -1328,13 +1332,12 @@ func _draw_shore_waves(node: Node2D) -> void:
 
 func _draw_water(node: Node2D) -> void:
 	# water freezes with the winter weight, or in snowless thermal winter.
-	var ice := water_ice()
 	# A humic base under the sky reflection; true-shore bands add the shallows.
-	var water_color := Color(0.15, 0.15, 0.12).lerp(Color8(232, 240, 244), ice)
+	var tint := water_color(Color(0.15, 0.15, 0.12))
 	for water in _data.get("waters", []):
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
-			node.draw_colored_polygon(polygon, water_color)
+			node.draw_colored_polygon(polygon, tint)
 	for water in _data.get("waters", []):
 		var polygon := _points(water)
 		if polygon.size() >= 3 and not Geometry2D.triangulate_polygon(polygon).is_empty():
@@ -1347,7 +1350,7 @@ func _draw_water(node: Node2D) -> void:
 	for line in _data.get("water_lines", []):  # a stream or river line, 3 m wide
 		var points := _points(line)
 		if points.size() >= 2:
-			node.draw_polyline(points, water_color, 3.0)
+			node.draw_polyline(points, tint, 3.0)
 
 
 ## Chunk preparation runs on the parsing worker; snowfall never resamples roads.

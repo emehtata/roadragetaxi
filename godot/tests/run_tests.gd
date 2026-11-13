@@ -3761,11 +3761,16 @@ func test_water_freezes_in_snowless_thermal_winter() -> void:
 	map.set_season([0.0, 0.0, 0.0, 1.0])
 	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 500, 500]})
 	var chunk = map._chunks["0_0"]
-	check(chunk.water_ice() == 0.0, "snowless autumn water stays open")
-	map.set_fields_frozen(true)
-	check(chunk.water_ice() == 1.0 and chunk._season[0] == 0.0, "snowless thermal winter freezes water, not ground")
-	map.set_fields_frozen(false)
-	check(chunk.water_ice() == 0.0, "thaw reopens the water")
+	check(chunk.has_method("water_ice") and chunk.has_method("water_color"), "map chunks expose the water ice state")
+	if chunk.has_method("water_ice") and chunk.has_method("water_color"):
+		var open := Color(0.15, 0.15, 0.12)
+		check(chunk.water_ice() == 0.0 and chunk.water_color(open) == open, "snowless autumn water stays open")
+		map.set_fields_frozen(true)
+		check(chunk.water_ice() == 1.0 and chunk._season[0] == 0.0, "snowless thermal winter freezes water, not ground")
+		check(chunk.water_color(open).is_equal_approx(Color8(232, 240, 244)), "frozen water is the ice colour")
+		check(1.0 - chunk.water_ice() <= 0.0, "frozen water has no liquid for shore waves")
+		map.set_fields_frozen(false)
+		check(chunk.water_ice() == 0.0 and chunk.water_color(open) == open, "thaw reopens the water")
 	map.free()
 
 
