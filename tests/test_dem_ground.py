@@ -5,17 +5,17 @@ from types import SimpleNamespace
 from theroadragetrip.map_chunks import CHUNK_SIZE_M, ChunkIndex
 from theroadragetrip.osm import elevation as el
 
-POINT = (427914.6, 7211061.3)
+POINT = (427666.0, 7210769.1)
 
 
 class MeasuredDem:
-    """Synthetic ground around Pokkitörmä: the measured ~10 m rise per 100 m eastwards."""
+    """Synthetic ground around the test hill: about 4 m rise per 100 m eastwards, as sampled."""
 
     def height_m(self, x, y):
-        return 2.5 + 0.1 * max(0.0, x - POINT[0] + 35.0)
+        return 6.4 + 0.043 * max(0.0, x - POINT[0] + 35.0)
 
 
-def test_pokkitorma_chunk_grid_not_flat():
+def test_testhill_chunk_grid_not_flat():
     ix, iy = int(POINT[0] // CHUNK_SIZE_M), int(POINT[1] // CHUNK_SIZE_M)
     grid = ChunkIndex._ground_heights(SimpleNamespace(size=CHUNK_SIZE_M, _dem=MeasuredDem()), ix, iy)
     assert grid is not None
