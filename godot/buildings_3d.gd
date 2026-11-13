@@ -1900,6 +1900,12 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 			for i in verts.size():
 				verts[i].y += ground_height(grid, Vector2(verts[i].x, verts[i].z))
 			out[key] = verts
+	# The per-vertex loops run here, on the worker, not in meshes() on the main thread.
+	var normals := {}
+	for key in ["verts", "shadow", "lit", "glass", "arena", "ground", "deck", "canopy", "road"]:
+		normals[key] = flat_normals(out[key])
+	out["normals"] = normals
+	out["lit_colors"] = lit_colors(out["lit"])
 	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size() + out["glass"].size() + out["ground"].size() + out["road"].size()) / 3
 	return out
 
@@ -1909,26 +1915,26 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 static func meshes(arrays: Dictionary) -> Array:
 	var instances: Array = []
 	if not arrays.get("ground", PackedVector3Array()).is_empty():
-		instances.append(_instance(_mesh(arrays["ground"], arrays["ground_colors"]), _shared["ground"], LAYER_BUILDINGS))
+		instances.append(_instance(_mesh(arrays["ground"], arrays["ground_colors"], PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "ground")), _shared["ground"], LAYER_BUILDINGS))
 	if not arrays.get("deck", PackedVector3Array()).is_empty():
-		var deck := _instance(_mesh(arrays["deck"], arrays["deck_colors"]), _shared["ground"], LAYER_BUILDINGS)
+		var deck := _instance(_mesh(arrays["deck"], arrays["deck_colors"], PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "deck")), _shared["ground"], LAYER_BUILDINGS)
 		deck.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		instances.append(deck)
 	if not arrays.get("canopy", PackedVector3Array()).is_empty():
-		var roof_mesh := _mesh(arrays["canopy"], arrays["canopy_colors"])
+		var roof_mesh := _mesh(arrays["canopy"], arrays["canopy_colors"], PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "canopy"))
 		instances.append(_instance(roof_mesh, _shared["glass"], LAYER_BUILDINGS))  # see-through: the taxi and the pumps show under it
 		var roof_shadow := _instance(roof_mesh, _shared["caster"], LAYER_BUILDINGS)  # but its shade is solid
 		roof_shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		instances.append(roof_shadow)
 	if not arrays.get("road", PackedVector3Array()).is_empty():
-		instances.append(_instance(_mesh(arrays["road"], arrays["road_colors"], arrays["road_uv"], PackedVector2Array(), PackedFloat32Array(), arrays["road_uv2"]),
+		instances.append(_instance(_mesh(arrays["road"], arrays["road_colors"], arrays["road_uv"], PackedVector2Array(), PackedFloat32Array(), arrays["road_uv2"], false, _n(arrays, "road")),
 			_shared.get("road", _shared["ground"]), LAYER_BUILDINGS))
 	if not arrays.get("glass", PackedVector3Array()).is_empty():
-		instances.append(_instance(_mesh(arrays["glass"], arrays["glass_colors"]), _shared["glass"], LAYER_BUILDINGS))
+		instances.append(_instance(_mesh(arrays["glass"], arrays["glass_colors"], PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "glass")), _shared["glass"], LAYER_BUILDINGS))
 	if arrays["verts"].is_empty():
 		return instances
 	var mesh := _mesh(arrays["verts"], arrays["colors"], arrays["roof_mask"], arrays.get("wall_uv", PackedVector2Array()),
-		arrays.get("window", PackedFloat32Array()))
+		arrays.get("window", PackedFloat32Array()), PackedVector2Array(), false, _n(arrays, "verts"))
 	var drawn := _instance(mesh, _shared["material"], LAYER_BUILDINGS)
 	instances.append(drawn)
 	if opaque:  # step 4: the buildings themselves cast and receive the sun's shadow; no shadows-only copies
@@ -1937,22 +1943,32 @@ static func meshes(arrays: Dictionary) -> Array:
 	# no windows or doors: a fifth of the triangles), not drawn, only casting
 	# the sun's shadow in the shadow view (its layer)
 	if not arrays["shadow"].is_empty() and not opaque:
-		var caster := _instance(_mesh(arrays["shadow"], PackedColorArray()), _shared["caster"], LAYER_SHADOW_GROUND)
+		var caster := _instance(_mesh(arrays["shadow"], PackedColorArray(), PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "shadow")), _shared["caster"], LAYER_SHADOW_GROUND)
 		caster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		instances.append(caster)
 	if not arrays["lit"].is_empty():
-		var colors := PackedColorArray()  # warm, each window a little brighter or dimmer (deterministic)
-		colors.resize(arrays["lit"].size())
-		for i in colors.size():
-			var shade := 0.82 + 0.18 * B25.unit(float(i / 6) * 0.61803 + arrays["lit"][i - i % 6].x * 0.013)
-			colors[i] = Color(WINDOW_LIT_NIGHT.r * shade, WINDOW_LIT_NIGHT.g * shade, WINDOW_LIT_NIGHT.b * shade)
-		instances.append(_instance(_mesh(arrays["lit"], colors), _shared["lit"], LAYER_BUILDINGS))
+		var colors: PackedColorArray = arrays["lit_colors"] if arrays.has("lit_colors") else lit_colors(arrays["lit"])
+		instances.append(_instance(_mesh(arrays["lit"], colors, PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "lit")), _shared["lit"], LAYER_BUILDINGS))
 	if not arrays["arena"].is_empty():
 		var colors := PackedColorArray()
 		colors.resize(arrays["arena"].size())
 		colors.fill(WINDOW_LIT_NIGHT)
-		instances.append(_instance(_mesh(arrays["arena"], colors), _shared["arena"], LAYER_BUILDINGS))
+		instances.append(_instance(_mesh(arrays["arena"], colors, PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _n(arrays, "arena")), _shared["arena"], LAYER_BUILDINGS))
 	return instances
+
+
+static func _n(arrays: Dictionary, key: String) -> PackedVector3Array:
+	return arrays.get("normals", {}).get(key, PackedVector3Array())
+
+
+## Lit windows: warm, each a little brighter or dimmer (deterministic).
+static func lit_colors(lit: PackedVector3Array) -> PackedColorArray:
+	var colors := PackedColorArray()
+	colors.resize(lit.size())
+	for i in colors.size():
+		var shade := 0.82 + 0.18 * B25.unit(float(i / 6) * 0.61803 + lit[i - i % 6].x * 0.013)
+		colors[i] = Color(WINDOW_LIT_NIGHT.r * shade, WINDOW_LIT_NIGHT.g * shade, WINDOW_LIT_NIGHT.b * shade)
+	return colors
 
 
 static var _shared := {"material": _make_material(), "lit": _make_material(true), "arena": _make_material(true),
@@ -1978,11 +1994,13 @@ static func _caster_material() -> StandardMaterial3D:
 
 
 static func _mesh(verts: PackedVector3Array, colors: PackedColorArray, roof_mask := PackedVector2Array(),
-		wall_uv := PackedVector2Array(), window := PackedFloat32Array(), part := PackedVector2Array(), smooth := false) -> ArrayMesh:
+		wall_uv := PackedVector2Array(), window := PackedFloat32Array(), part := PackedVector2Array(), smooth := false,
+		normals := PackedVector3Array()) -> ArrayMesh:
 	var surface := []
 	surface.resize(Mesh.ARRAY_MAX)
 	surface[Mesh.ARRAY_VERTEX] = verts
-	surface[Mesh.ARRAY_NORMAL] = smooth_normals(verts, colors) if smooth else flat_normals(verts)
+	surface[Mesh.ARRAY_NORMAL] = normals if normals.size() == verts.size() and not verts.is_empty() \
+		else smooth_normals(verts, colors) if smooth else flat_normals(verts)
 	if part.size() == verts.size():
 		surface[Mesh.ARRAY_TEX_UV2] = part
 	if not colors.is_empty():
