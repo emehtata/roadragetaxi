@@ -114,6 +114,7 @@ func _run() -> void:
 		p.walk(Vector2(-inward.x, inward.y), 1.0 / 60)
 	check((Vector2(p.position.x, -p.position.z) - entrance["middle"]).dot(inward) > 0.25 and p.position.y > -0.02, "front door threshold prevents falling into the exterior void")
 	view.capture_mouse()
+	print("home_first_person: display=%s mouse_mode=%d" % [DisplayServer.get_name(), Input.mouse_mode])
 	if DisplayServer.get_name() != "headless":
 		check(Input.mouse_mode == Input.MOUSE_MODE_CAPTURED, "entry captures cursor")
 		var capture_warp := InputEventMouseMotion.new()

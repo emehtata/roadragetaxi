@@ -40,13 +40,16 @@ def main(argv=None):
     parser.add_argument("--timeout", type=float, default=600.0, help="seconds per script")
     args = parser.parse_args(argv)
     included, _ = read_manifest(args.manifest)
+    # No display for the children: a script or its subprocess can never open a
+    # window, capture or warp the user's cursor, even without --headless.
+    env = {k: v for k, v in os.environ.items() if k not in ("DISPLAY", "WAYLAND_DISPLAY")}
     results = []
     for script in included:
         print(f"=== {script}", flush=True)
         started = time.monotonic()
         try:
             code = subprocess.run([args.godot, "--headless", "--path", str(ROOT / "godot"), "--script", script],
-                                  timeout=args.timeout).returncode
+                                  timeout=args.timeout, env=env).returncode
             status = "PASS" if code == 0 else f"FAIL (exit {code})"
         except subprocess.TimeoutExpired:
             status = f"FAIL (timeout {args.timeout:g} s)"
