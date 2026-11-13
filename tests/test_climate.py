@@ -4,6 +4,7 @@ import pytest
 
 from theroadragetrip.calendar import Season
 from theroadragetrip.climate import (
+    lake_ice_thickness_cm,
     seasonal_appearance_for_date,
     thermal_season_for_date,
     typical_daily_mean_temperature,
@@ -85,3 +86,26 @@ def test_thermal_transition_requires_seven_consecutive_days(
         lambda day, latitude: by_day[day],
     )
     assert thermal_season_for_date(anchor, 60.17) == expected
+
+
+def test_lake_ice_north_late_november_holds():
+    assert lake_ice_thickness_cm(date(2025, 11, 28), 67.5) >= 20.0
+
+
+def test_lake_ice_south_late_november_thin():
+    assert lake_ice_thickness_cm(date(2025, 11, 28), 60.2) < 20.0
+
+
+def test_lake_ice_north_may_leftover():
+    assert lake_ice_thickness_cm(date(2026, 5, 5), 67.5) >= 20.0
+
+
+def test_lake_ice_summer_zero():
+    assert lake_ice_thickness_cm(date(2026, 7, 1), 67.5) == 0.0
+
+
+def test_stefan_worked_example():
+    from theroadragetrip.climate import STEFAN_K_CM
+    assert abs(STEFAN_K_CM * 37.0 ** 0.5 - 20.0) <= 0.5
+    day = date(2026, 1, 15)
+    assert lake_ice_thickness_cm(day, 62.0, snow_factor=1.0) > lake_ice_thickness_cm(day, 62.0, snow_factor=0.5)

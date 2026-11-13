@@ -86,6 +86,26 @@ def typical_daily_mean_temperature(day: date, latitude: float) -> float:
     return annual_mean + amplitude * math.cos(phase)
 
 
+STEFAN_K_CM = 3.3  # cm/sqrt(°C·day), Stefan's law fitted at Pääjärvi, Finland (Wikipedia "Stefan's equation")
+LAKE_ICE_MELT_CM_PER_DEGREE_DAY = 0.5  # choice: simple degree-day erosion above 0 °C
+
+
+def lake_ice_thickness_cm(day: date, latitude: float, snow_factor: float = 0.5) -> float:
+    """Modelled lake ice on `day`: Stefan's law h = k*sqrt(s*FDD), grown
+    daily from 1 September on the typical daily means, melted by degree-days
+    above zero. `snow_factor` s scales the freezing degree-days: 0.5 under
+    snow (the default, climatological snow), 1.0 for clear ice."""
+    start = date(day.year if day.month >= 9 else day.year - 1, 9, 1)
+    h = 0.0
+    for offset in range((day - start).days + 1):  # at most 366 days
+        t = typical_daily_mean_temperature(start + timedelta(days=offset), latitude)
+        if t < 0.0:
+            h = math.sqrt(h * h + STEFAN_K_CM * STEFAN_K_CM * snow_factor * -t)
+        else:
+            h = max(0.0, h - LAKE_ICE_MELT_CM_PER_DEGREE_DAY * t)
+    return h
+
+
 def typical_temperature(moment: datetime, latitude: float) -> float:
     """Return typical temperature including a modest local-time cycle."""
     daily_mean = typical_daily_mean_temperature(moment.date(), latitude)
