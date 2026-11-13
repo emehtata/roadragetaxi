@@ -26,6 +26,10 @@ var _missing: Array = []
 var _measuring := false
 var _measure_left := 0.0
 var _frames := PackedFloat32Array()
+var _chunks_seen := -1  # chunks loaded + queued at the last check
+var _chunks_changed_msec := 0
+var _long_frames: Array = []  # frames over 33 ms with what ran in them and in the frame before (attribution)
+var _frame_work := [0, 0, 0]  # previous frame's [main_process usec total, chunk usec total, pipeline compilations]
 var _measure_failures: Array = []
 var _npc_max := 0
 var _npc_min_moving := 1 << 30  # fewest moving NPC cars in view during the drive
@@ -241,6 +245,11 @@ func _process(delta: float) -> void:
 		if driving and not scenario.has("walk"):  # full throttle down the street, straight on (as --screenshot-drive); a walk sends its own
 			main.send({"throttle": 1.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
 		_frames.append(delta * 1000.0)
+		var work := _work_totals()
+		if delta * 1000.0 > 33.3 and _long_frames.size() < 40:
+			_long_frames.append({"frame": _frames.size(), "ms": delta * 1000.0, "main_ms": (work[0] - _frame_work[0]) / 1000.0,
+				"chunk_ms": (work[1] - _frame_work[1]) / 1000.0, "pipelines_compiled": work[2] - _frame_work[2]})
+		_frame_work = work
 		var shown: Dictionary = main.entities.shown_state()
 		_npc_max = maxi(_npc_max, shown.get("npcs", []).size())
 		_npc_min_moving = mini(_npc_min_moving, _moving(shown))
@@ -415,6 +424,14 @@ func _check_map(centre: Vector2) -> Array:
 	var missing := []
 	if not main._chunk_queue.is_empty():
 		missing.append("%d chunks still queued" % main._chunk_queue.size())
+	# Before measuring only (a drive crosses tiles while measuring): the server still streams
+	# the outer chunks a while after the view is covered; wait until none came for a moment.
+	var arrived: int = main.map_layer.chunk_count() + main._chunk_queue.size()
+	if arrived != _chunks_seen:
+		_chunks_seen = arrived
+		_chunks_changed_msec = Time.get_ticks_msec()
+	if not _measuring and Time.get_ticks_msec() - _chunks_changed_msec < 1500:
+		missing.append("chunks still arriving")
 	var view: Rect2 = main.get_viewport().get_canvas_transform().affine_inverse() * main.get_viewport().get_visible_rect()
 	var corners := [view.position, view.end, Vector2(view.position.x, view.end.y), Vector2(view.end.x, view.position.y), centre]
 	var lamps := 0
@@ -625,10 +642,11 @@ func _finish() -> void:
 	var perf := preload("res://perf.gd")
 	var sections := {}
 	for name in ["render_3d_gpu", "render_3d_cpu", "render_gpu", "render_cpu",
-			"chunk_add", "chunk_prepare_main", "chunk_layers", "chunk_ground_dict", "chunk_lamps_3d", "chunk_lamps_main", "chunk_wildlife", "chunk_meshes_main", "chunk_build_worker", "chunk_buildings_build", "chunk_unload"]:
+			"chunk_add", "chunk_prepare_main", "chunk_layers", "chunk_ground_dict", "chunk_lamps_3d", "chunk_lamps_main", "chunk_wildlife", "chunk_meshes_main", "chunk_mesh_surface", "chunk_build_worker", "chunk_buildings_build", "chunk_unload"]:
 		if perf.sections.has(name):
 			var s: Array = perf.sections[name]
 			sections[name] = {"avg_ms": s[1] / 1000.0 / maxi(1, s[0]), "max_ms": s[2] / 1000.0}
+	sections["long_frames"] = _long_frames
 	var ok := _measure_failures.is_empty()
 	var traffic := {"npcs_max": _npc_max, "moving_min": _npc_min_moving if _npc_min_moving < (1 << 30) else 0, "speed_max": _speed_max, "spawn_rejections": rejections}
 	var lamps := {}
@@ -780,3 +798,17 @@ func _pitch_fits() -> Array:
 						fit[2] = maxf(fit[2], corner.distance_to(centre))
 		fits.append(fit)
 	return fits
+
+
+## Totals for long-frame attribution: main_process and chunk Perf usec, and
+## render pipelines compiled (a first-time shader variant stalls the frame).
+func _work_totals() -> Array:
+	var perf := preload("res://perf.gd")
+	var chunk := 0
+	for name in ["chunk_add", "chunk_unload", "chunk_mesh_surface", "chunk_meshes_main", "chunk_lamps_main"]:  # top level only: no nesting
+		chunk += perf.sections.get(name, [0, 0, 0])[1]
+	var pipelines := 0
+	for monitor in [Performance.PIPELINE_COMPILATIONS_CANVAS, Performance.PIPELINE_COMPILATIONS_MESH, Performance.PIPELINE_COMPILATIONS_SURFACE,
+			Performance.PIPELINE_COMPILATIONS_DRAW, Performance.PIPELINE_COMPILATIONS_SPECIALIZATION]:
+		pipelines += int(Performance.get_monitor(monitor))
+	return [perf.sections.get("main_process", [0, 0, 0])[1], chunk, pipelines]
