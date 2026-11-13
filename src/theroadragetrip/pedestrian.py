@@ -151,10 +151,15 @@ class _PedestrianNetworkBuild:
     whole-city brute-force scans, up to ~100 ms each per route)."""
 
     def __init__(self, ways: List[Way], streets: Sequence[Way] = ()) -> None:
-        self.ways = [way for way in ways if len(way.points_m) >= 2]
-        # Streets after the footways: their nodes join footway nodes within 3 m.
-        self.streets = {id(way) for way in streets if _walkable_street(way)} - {id(way) for way in self.ways}
-        self.ways += [way for way in streets if id(way) in self.streets]
+        # Which ways join is prepare()'s work, budgeted: over a whole city's
+        # streets (each read decodes the cached way) it took ~37 ms in one tick.
+        self._ways_in, self._streets_in = list(ways), list(streets)
+        self._prep_ways = self._prep_streets = 0
+        self._way_ids: Optional[Set[int]] = None
+        self._street_ways: List[Way] = []
+        self.prepared = False
+        self.ways: List[Way] = []
+        self.streets: Set[int] = set()
         self.street_edges: Set[Tuple[int, int]] = set()
         self.index = 0
         self.nodes: List[Tuple[float, float]] = []
@@ -170,6 +175,36 @@ class _PedestrianNetworkBuild:
         # reachability (bin-loader-v11.md). Lives and is committed with
         # this build's own node ids - never mixed across graph rebuilds.
         self.component_parent: List[int] = []
+
+    def prepare(self, budget_s: float) -> bool:
+        """The ways to add: footways first, then walkable streets not already
+        among them (their nodes join footway nodes within 3 m). True when done."""
+        if self.prepared:
+            return True
+        deadline = time.perf_counter() + budget_s
+        if self._prep_ways < len(self._ways_in):
+            self._prep_ways = advance_chunked(self._ways_in, self._prep_ways, budget_s, self._keep_way)
+            if self._prep_ways < len(self._ways_in):
+                return False
+        if self._way_ids is None:
+            self._way_ids = {id(way) for way in self.ways}
+        self._prep_streets = advance_chunked(self._streets_in, self._prep_streets,
+                                             max(0.0, deadline - time.perf_counter()), self._keep_street)
+        if self._prep_streets < len(self._streets_in):
+            return False
+        self.ways += self._street_ways
+        self._ways_in = self._streets_in = self._street_ways = self._way_ids = None
+        self.prepared = True
+        return True
+
+    def _keep_way(self, way: Way) -> None:
+        if len(way.points_m) >= 2:
+            self.ways.append(way)
+
+    def _keep_street(self, way: Way) -> None:
+        if id(way) not in self._way_ids and id(way) not in self.streets and _walkable_street(way):
+            self.streets.add(id(way))
+            self._street_ways.append(way)
 
     def node_id(self, point: Tuple[float, float], street: bool = False) -> int:
         bucket = (round(point[0] / 3.0), round(point[1] / 3.0))
@@ -299,6 +334,7 @@ class PedestrianNetwork:
 
     def set_ways(self, ways: List[Way], streets: Sequence[Way] = ()) -> None:
         build = _PedestrianNetworkBuild(ways, streets)
+        build.prepare(math.inf)
         for way in build.ways:
             build.add_way(way)
         self._commit(build)
@@ -316,7 +352,10 @@ class PedestrianNetwork:
         build = self._pending
         if build is None:
             return True
-        build.index = advance_chunked(build.ways, build.index, budget_s, build.add_way)
+        deadline = time.perf_counter() + budget_s
+        if not build.prepare(budget_s):
+            return False
+        build.index = advance_chunked(build.ways, build.index, max(0.0, deadline - time.perf_counter()), build.add_way)
         if build.index < len(build.ways):
             return False
         self._commit(build)
