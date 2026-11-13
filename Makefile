@@ -10,12 +10,13 @@ PRESET ?= Oulu
 BOT_MINUTES ?= 10
 BOT_OUT ?= /tmp/rrt-play-bot
 
-.PHONY: help venv install run run-2d run-rtx run-windows run-debug run-pbf index-pbf install-osmium run-server docker-build docker-run docker-start docker-stop docker-rm docker-rmi fetch-godot run-godot run-godot-all play-bot godot-selftest godot-selftest-sample godot-test audio-check test compile check clean stop
+.PHONY: help venv install dem80-windows run run-2d run-rtx run-windows run-debug run-pbf index-pbf install-osmium run-server docker-build docker-run docker-start docker-stop docker-rm docker-rmi fetch-godot run-godot run-godot-all play-bot godot-selftest godot-selftest-sample godot-test audio-check test compile check clean stop
 
 help:
 	@printf '%s\n' \
 		'install                Create .venv and install project dependencies' \
-		'run                    Start the game with the 3D outdoor view (native Windows Godot under WSL)' \
+		'dem80-windows          Copy ~/.cache/RoadRageTrip/dem80 to Windows %LOCALAPPDATA% (WSL)' \
+	'run                    Start the game with the 3D outdoor view (native Windows Godot under WSL)' \
 		'run-2d                 Start the game with the 2D outdoor view' \
 		'run-windows            Start native Windows Godot with its Windows Python server' \
 		'run-rtx                Experimental NVIDIA path tracing (WINDOWS_RTX_GODOT, RTX_QUALITY=native|quality)' \
@@ -51,7 +52,16 @@ install: venv
 	$(PIP) install -r requirements.txt
 
 ifneq ($(wildcard /proc/sys/fs/binfmt_misc/WSLInterop),)
-run:
+# The Windows server reads %LOCALAPPDATA%\RoadRageTrip, not ~/.cache: copy the 80 m DEM there once.
+dem80-windows:
+	@local="$$(wslpath "$$(cmd.exe /c echo %LOCALAPPDATA% 2>/dev/null | tr -d '\r')")"; \
+	src="$$HOME/.cache/RoadRageTrip/dem80"; dst="$$local/RoadRageTrip/dem80"; \
+	if [ ! -d "$$local" ]; then echo "dem80-windows: no %LOCALAPPDATA% folder ($$local)"; exit 1; fi; \
+	if [ ! -f "$$src/dem80.json" ]; then echo "dem80-windows: no $$src (make dem80 first); ground stays flat"; \
+	elif [ -f "$$dst/dem80.json" ]; then echo "dem80-windows: $$dst already there"; \
+	else mkdir -p "$$dst" && cp -r "$$src/." "$$dst/" && echo "dem80-windows: copied to $$dst"; fi
+
+run: dem80-windows
 	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w "$$PWD/tools/run-windows.ps1")" -Godot "$(WINDOWS_GODOT)"
 
 run-2d: run-windows
