@@ -453,6 +453,8 @@ class SimulationServer:
         self._chunks_index = ChunkIndex(self.world)
         self._camera_spawner = SpeedCameraSpawner()
         self._client_chunks: dict = {}
+        self._client_sent: dict = {}  # connection -> {chunk id: hash of the bytes it last got}
+        self.chunk_resends_skipped = 0  # byte-identical resends not sent (the client keeps its copy, no rebuild)
         self._map_streamer = MapStreamer(self.world, self._map_grew) if self._auto_fetch else None
         # The tiles the chunk index was built with (None: the map never grows). A chunk
         # beyond them would reach the client half-built and be resent when its tile merges.
@@ -906,6 +908,7 @@ class SimulationServer:
                 if connection.error is not None:
                     logger.info("Client dropped: %s", connection.error)
                 del self._client_chunks[connection]
+                self._client_sent.pop(connection, None)
                 self._client_views.pop(connection, None)
                 self._paused_clients.discard(connection)
             gone = len(self._clients) != before
@@ -1186,7 +1189,7 @@ class SimulationServer:
         with self._clients_lock:
             for connection, (loaded, _) in list(self._client_chunks.items()):
                 if cid in loaded:
-                    connection.send(self._chunks_index.encoded(cid))
+                    self._send_chunk(connection, cid, self._chunks_index.encoded(cid))
 
     def _prepare_home_map(self) -> None:
         """Once per home, while the map is idle: warm the cache for the area
@@ -1535,12 +1538,24 @@ class SimulationServer:
                 # Nearest first; a resent chunk replaces the client's copy as it is drawn (no unload, no hole).
                 for cid in sorted(loaded & changed, key=distance):
                     if distance(cid) <= 1 or index.is_encoded(cid):
-                        connection.send(index.encoded(cid))
+                        self._send_chunk(connection, cid, index.encoded(cid))
                     else:
                         loaded.discard(cid)  # _stream_map_chunks resends it within its encode budget
                 self._client_chunks[connection] = (loaded, None)  # replan: the new area may be in reach
-        logger.info("Map grew %s -> %s: %d chunks changed%s, built in %.0f ms", old_bounds, new_bounds, len(changed),
-                    "" if final else " around the player", build_s * 1000.0)
+        logger.info("Map grew %s -> %s: %d chunks changed%s, built in %.0f ms; %d identical resends skipped so far",
+                    old_bounds, new_bounds, len(changed), "" if final else " around the player", build_s * 1000.0,
+                    self.chunk_resends_skipped)
+
+    def _send_chunk(self, connection, cid: str, data: bytes) -> None:
+        """Send a chunk unless this client already got exactly these bytes:
+        a dirty area often covers chunks whose content did not change."""
+        sent = self._client_sent.setdefault(connection, {})
+        digest = hash(data)
+        if sent.get(cid) == digest:
+            self.chunk_resends_skipped += 1
+            return
+        sent[cid] = digest
+        connection.send(data)
 
     def _stream_map_chunks(self) -> None:
         """Each client gets the map chunks around the player it doesn't have
@@ -1566,6 +1581,7 @@ class SimulationServer:
             for cid in to_drop:
                 connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
                 loaded.discard(cid)
+                self._client_sent.get(connection, {}).pop(cid, None)
             for cid in to_load:
                 ix, iy = (int(part) for part in cid.split("_"))
                 if indexed is not None and max(abs(ix - cell[0]), abs(iy - cell[1])) > 1 \
@@ -1575,7 +1591,7 @@ class SimulationServer:
                         and time.perf_counter() - started > CHUNK_ENCODE_BUDGET_S:
                     complete = False  # the next tick goes on from here
                     break
-                connection.send(self._chunks_index.encoded(cid))
+                self._send_chunk(connection, cid, self._chunks_index.encoded(cid))
                 loaded.add(cid)
             self._client_chunks[connection] = (loaded, cell if complete else None)
 
