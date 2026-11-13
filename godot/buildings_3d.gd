@@ -1381,6 +1381,10 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 	var running := pose.begins_with("run_")
 	var phase := int(pose.split("_")[1]) if moving else 0
 	var swing := sin(float(phase) * TAU / 6.0) * (0.31 if running else 0.21) if moving else 0.0
+	# docs/specs/comic-animated-pedestrians.md: everything above the hips bobs (lowest mid-stride); standing_1 breathes in
+	var up := offset + ((absf(cos(float(phase) * TAU / 6.0)) - 1.0) * (0.06 if running else 0.045) if moving else 0.0)  # 6 phases: 2.2 cm walk
+	var breath := 0.012 if pose == "standing_1" else 0.0
+	const H := Vector3(1.45, 1.7, 1.7)  # comic head scale; shallower front-to-back to keep the old depth
 	if pose == "riding":
 		var mount := animal_arrays("horse", Color8(139, 91, 57), "stand", scale, detail)
 		for key in ["verts", "colors", "roof_mask", "shadow", "part"]:
@@ -1393,57 +1397,58 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 			if pose == "riding":
 				var j := riding_leg_joints(side)
 				_round_limb(out, j[0] * k, j[1] * k, 0.094 * k, 0.075 * k, trousers, 0, detail)
-				_round_part(out, j[1] * k, Vector3(0.076, 0.074, 0.075) * k, trousers, 0, detail)
+				_round_part(out, j[1] * k, Vector3(0.076, 0.074, 0.075) * 1.2 * k, trousers, 0, detail)
 				_round_limb(out, j[1] * k, j[2] * k, 0.073 * k, 0.046 * k, skin if shorts else trousers, 1 if shorts else 0, detail)
-				_round_part(out, j[2] * k + Vector3(0.06, -0.025, 0.0) * k, Vector3(0.12, 0.055, 0.072) * k, Color8(42, 42, 46), 4, detail)
+				_round_part(out, j[2] * k + Vector3(0.07, -0.003, 0.0) * k, Vector3(0.14, 0.077, 0.1) * k, Color8(42, 42, 46), 4, detail)
 				continue
 			var knee := Vector3((0.44 if pose == "sitting" else swing * side * 0.5), (0.85 if pose == "sitting" else 0.45 + lift * 0.3) + offset, z * 1.1) * k  # sitting: thighs level on the seat
 			var ankle := Vector3((0.47 if pose == "sitting" else swing * side), (0.09 if pose != "riding" else 0.82) + (0.0 if pose == "sitting" else lift), z * 1.1) * k
 			_round_limb(out, hip, knee, 0.094 * k, 0.075 * k, trousers, 0, detail)
-			_round_part(out, knee, Vector3(0.076, 0.074, 0.075) * k, trousers, 0, detail)
+			_round_part(out, knee, Vector3(0.076, 0.074, 0.075) * 1.2 * k, trousers, 0, detail)
 			_round_limb(out, knee, ankle, 0.073 * k, 0.046 * k, skin if shorts else trousers, 1 if shorts else 0, detail)
-			_round_part(out, ankle + Vector3(0.06, -0.025, 0.0) * k, Vector3(0.12, 0.055, 0.072) * k, Color8(42, 42, 46), 4, detail)
-	var torso_y := 1.14 + offset
-	_garment_torso(out, torso_y * k, k, fabric, jacket, 0.94 + 0.04 * (variant % 4), detail)
+			_round_part(out, ankle + Vector3(0.07, -0.003, 0.0) * k, Vector3(0.14, 0.077, 0.1) * k, Color8(42, 42, 46), 4, detail)  # chunky shoe, sole kept
+	var torso_y := 1.0965 + up + breath  # short round torso: 0.85 tall, its hem kept at 0.85
+	_garment_torso(out, torso_y * k, k, fabric, jacket, (0.94 + 0.04 * (variant % 4)) * 1.15, detail, 0.85)
 	if skirt:
 		_garment_skirt(out, offset * k, k, fabric.darkened(0.08), detail)
 	if jacket:
-		_round_limb(out, Vector3(0.168, 0.93 + offset, 0.0) * k, Vector3(0.17, 1.4 + offset, 0.0) * k,
+		_round_limb(out, Vector3(0.19, 0.93 + up, 0.0) * k, Vector3(0.19, 1.31 + up, 0.0) * k,
 			0.008 * k, 0.008 * k, fabric.darkened(0.22), 0, detail)
 	if style == 4:
-		for h in [1.05, 1.32]:
-			_round_limb(out, Vector3(0.17, h + offset, -0.17) * k, Vector3(0.17, h + offset, 0.17) * k,
+		for h in [1.03, 1.26]:
+			_round_limb(out, Vector3(0.19, h + up, -0.19) * k, Vector3(0.19, h + up, 0.19) * k,
 				0.015 * k, 0.015 * k, Color8(225, 230, 218), 0, detail)
 	for side: float in [-1.0, 1.0]:
-		var shoulder := Vector3(0.0, 1.37 + offset, side * 0.215) * k
-		var elbow := Vector3(0.06 if pose == "sitting" else -side * 0.045, 1.13 + offset, side * 0.245) * k
+		var shoulder := Vector3(0.0, 1.3 + up + breath * 0.83, side * 0.215) * k
+		var elbow := Vector3(0.06 if pose == "sitting" else -side * 0.045, 1.08 + up, side * 0.245) * k
 		var wrist := Vector3(0.3, 1.0 + offset, side * 0.16) * k if pose == "sitting" \
-			else Vector3(-swing * side * 0.75, 0.91 + offset, side * 0.24) * k  # sitting: hands on the thighs
+			else Vector3(-swing * side * 0.75, 0.91 + up, side * 0.24) * k  # sitting: hands on the thighs
 		_round_limb(out, shoulder, elbow, 0.072 * k, 0.057 * k, fabric, 0, detail)
-		_round_part(out, elbow, Vector3(0.058, 0.06, 0.058) * k, fabric, 0, detail)
+		_round_part(out, elbow, Vector3(0.058, 0.06, 0.058) * 1.2 * k, fabric, 0, detail)
 		_round_limb(out, elbow, wrist, 0.055 * k, 0.042 * k, fabric if jacket else skin, 0 if jacket else 1, detail)
-		_round_part(out, wrist, Vector3(0.045, 0.055, 0.045) * k, skin, 1, detail)
-	_round_limb(out, Vector3(0.0, 1.42 + offset, 0.0) * k, Vector3(0.0, 1.54 + offset, 0.0) * k,
-		0.055 * k, 0.05 * k, skin, 1, detail)
-	var head := Vector3(0.025, 1.61 + offset, 0.0) * k
-	_round_part(out, head, Vector3(0.118, 0.145, 0.112) * k, skin, 1, detail)
-	_round_part(out, head + Vector3(-0.015, 0.085, 0.0) * k, Vector3(0.122, 0.07, 0.115) * k, hair, 2, detail)
+		_round_part(out, wrist, Vector3(0.045, 0.055, 0.045) * 1.6 * k, skin, 1, detail)
+	_round_limb(out, Vector3(0.0, 1.3 + up, 0.0) * k, Vector3(0.0, 1.36 + up, 0.0) * k,
+		0.06 * k, 0.06 * k, skin, 1, detail)  # neck stub
+	var head := Vector3(0.0, 1.5015 + up, 0.0) * k  # big head, hair top kept at 1.765 m
+	var hk := k * H  # face parts scale with the head
+	_round_part(out, head, Vector3(0.118, 0.145, 0.112) * hk, skin, 1, detail)
+	_round_part(out, head + Vector3(-0.015, 0.085, 0.0) * hk, Vector3(0.122, 0.07, 0.115) * hk, hair, 2, detail)
 	if style == 1:
-		_round_part(out, head + Vector3(-0.07, -0.025, 0.0) * k, Vector3(0.09, 0.14, 0.14) * k, fabric.darkened(0.12), 0, detail)
+		_round_part(out, head + Vector3(-0.07, -0.025, 0.0) * hk, Vector3(0.09, 0.14, 0.14) * hk, fabric.darkened(0.12), 0, detail)
 	if variant % 3 == 1:
 		for side: float in [-1.0, 1.0]:
-			_round_part(out, head + Vector3(-0.04, -0.01, side * 0.1) * k, Vector3(0.05, 0.085, 0.028) * k, hair, 2, detail)
+			_round_part(out, head + Vector3(-0.04, -0.01, side * 0.1) * hk, Vector3(0.05, 0.085, 0.028) * hk, hair, 2, detail)
 	if detail > 0:
 		for side: float in [-1.0, 1.0]:
-			_round_part(out, head + Vector3(0.0, -0.01, side * 0.11) * k, Vector3(0.032, 0.045, 0.026) * k, skin, 1, detail)
-			_round_part(out, head + Vector3(0.105, 0.016, side * 0.047) * k, Vector3(0.014, 0.016, 0.015) * k, Color8(49, 42, 38), 3, detail)
-			_round_part(out, head + Vector3(0.112, 0.05, side * 0.048) * k, Vector3(0.013, 0.009, 0.026) * k, hair, 2, detail)
-		_round_part(out, head + Vector3(0.12, -0.022, 0.0) * k, Vector3(0.032, 0.038, 0.029) * k, skin, 1, detail)
-		_round_part(out, head + Vector3(0.113, -0.078, 0.0) * k, Vector3(0.012, 0.008, 0.031) * k, skin.darkened(0.3), 1, detail)
+			_round_part(out, head + Vector3(0.0, -0.01, side * 0.11) * hk, Vector3(0.032, 0.045, 0.026) * hk, skin, 1, detail)
+			_round_part(out, head + Vector3(0.105, 0.016, side * 0.047) * hk, Vector3(0.014, 0.016, 0.015) * hk, Color8(49, 42, 38), 3, detail)
+			_round_part(out, head + Vector3(0.112, 0.05, side * 0.048) * hk, Vector3(0.013, 0.009, 0.026) * hk, hair, 2, detail)
+		_round_part(out, head + Vector3(0.12, -0.022, 0.0) * hk, Vector3(0.032, 0.038, 0.029) * hk, skin, 1, detail)
+		_round_part(out, head + Vector3(0.113, -0.078, 0.0) * hk, Vector3(0.012, 0.008, 0.031) * hk, skin.darkened(0.3), 1, detail)
 	if costume in ["santa", "elf"]:
-		_round_part(out, head + Vector3(-0.025, 0.145, 0.0) * k, Vector3(0.14, 0.08, 0.13) * k, Color8(190, 30, 35), 0, detail)
-		_round_limb(out, head + Vector3(0.0, 0.18, 0.0) * k, head + Vector3(-0.04, 0.36, 0.0) * k,
-			0.10 * k, 0.015 * k, Color8(190, 30, 35), 0, detail)
+		_round_part(out, head + Vector3(-0.025, 0.145, 0.0) * hk, Vector3(0.14, 0.08, 0.13) * hk, Color8(190, 30, 35), 0, detail)
+		_round_limb(out, head + Vector3(0.0, 0.18, 0.0) * hk, head + Vector3(-0.04, 0.36, 0.0) * hk,
+			0.10 * hk.y, 0.015 * hk.y, Color8(190, 30, 35), 0, detail)
 	return out
 
 
@@ -1873,7 +1878,7 @@ static func _round_limb(out: Dictionary, start: Vector3, finish: Vector3, start_
 	out["part_now"] = previous
 
 
-static func _garment_torso(out: Dictionary, centre_y: float, scale: float, color: Color, jacket: bool, build: float, detail: int) -> void:
+static func _garment_torso(out: Dictionary, centre_y: float, scale: float, color: Color, jacket: bool, build: float, detail: int, tall := 1.0) -> void:
 	var sides := 12 if detail > 0 else 6
 	var rings := []
 	for profile in [[-0.29, 0.12, 0.17], [-0.2, 0.14, 0.19], [0.0, 0.17, 0.22], [0.18, 0.16, 0.24], [0.29, 0.10, 0.13]]:
@@ -1881,7 +1886,7 @@ static func _garment_torso(out: Dictionary, centre_y: float, scale: float, color
 		for i in sides:
 			var angle := TAU * float(i) / sides
 			ring.append(Vector3(cos(angle) * float(profile[1]) * scale * build * (1.12 if jacket else 1.0),
-				centre_y + float(profile[0]) * scale, sin(angle) * float(profile[2]) * scale * build * (1.09 if jacket else 1.0)))
+				centre_y + float(profile[0]) * scale * tall, sin(angle) * float(profile[2]) * scale * build * (1.09 if jacket else 1.0)))
 		rings.append(ring)
 	for key in ["verts", "shadow"]:
 		for r in rings.size() - 1:

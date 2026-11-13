@@ -143,6 +143,90 @@ func test_walk_pose_phase_changes_mesh() -> void:
 		"walk_0, walk_1 and walk_4 swing the legs differently")
 
 
+## docs/specs/comic-animated-pedestrians.md: the [lo, hi] corners of a person's vertices (variant 0, k 0.96).
+func _person_box(pose: String) -> AABB:
+	var v: PackedVector3Array = B3.person_arrays(Color.GRAY, pose, 1.0, "", 0)["verts"]
+	var box := AABB(v[0], Vector3.ZERO)
+	for p in v:
+		box = box.expand(p)
+	return box
+
+
+## Skin vertices (part 1) of a pose passing `keep`.
+func _person_skin(pose: String, keep: Callable) -> Array:
+	var a: Dictionary = B3.person_arrays(Color.GRAY, pose, 1.0, "", 0)
+	var out := []
+	for i in a["verts"].size():
+		if int(a["part"][i].x) == 1 and keep.call(a["verts"][i]):
+			out.append(a["verts"][i])
+	return out
+
+
+func test_person_comic_head_ratio() -> void:  # criterion 1: old head (ears) half-width 0.1306 m
+	var half: float = _person_skin("standing", func(p): return p.y > 1.3).map(func(p): return absf(p.z)).max()
+	check(half >= 0.1306 * 1.6 and half <= 0.1306 * 1.8, "a comic head is 1.6-1.8x the old one (%.3f m)" % half)
+
+
+func test_person_bbox_unchanged() -> void:  # criterion 2: the old standing box
+	var box := _person_box("standing")
+	check(absf(box.end.y - 1.6944) <= 0.03 and absf(box.position.y - 0.0096) <= 0.01, "a standing person stays 1.69 m tall (%.3f)" % box.end.y)
+	check(absf(box.position.x + 0.1534) <= 0.05 and absf(box.end.x - 0.1728) <= 0.05 and absf(box.end.z - 0.2909) <= 0.05
+		and absf(box.position.z + 0.2909) <= 0.05, "a standing person keeps its width and depth (%s)" % box)
+
+
+func test_person_seat_heights_kept() -> void:  # criterion 3: sitting and riding contact points
+	check(absf(_person_box("sitting").position.y - 0.0096) <= 0.01, "a sitter's feet stay on the ground")
+	var horse: int = B3.animal_arrays("horse", Color8(139, 91, 57), "stand", 1.0, 1)["verts"].size()
+	var rider: Array = Array(B3.person_arrays(Color.GRAY, "riding", 1.0, "", 0)["verts"].slice(horse))
+	check(absf(rider.map(func(p): return p.y).min() - 0.4992) <= 0.01, "a rider's feet hang where they did")
+	var seated: Array = Array(B3.person_arrays(Color.GRAY, "sitting", 1.0, "", 0)["verts"])
+	check(seated.all(func(v): return v.x < 0.05 or v.x > 0.24 or v.y > 0.38), "a sitter still rests on the seat")
+
+
+func test_walk_cycle_periodic() -> void:  # criterion 4
+	var walker := {"animation_state": "walking"}
+	for i in 12:
+		var t := 0.03 + i * 0.05
+		check(EntityLayer.person_pose(walker, t) == EntityLayer.person_pose(walker, t + 6.0 / EntityLayer.WALK_POSES_PER_S), "the walk cycle repeats every 6 poses")
+
+
+func test_walk_arms_oppose_legs() -> void:  # criterion 5: left side is -z
+	for phase in 6:
+		var swing := sin(phase * TAU / 6.0) * 0.21
+		if absf(swing) <= 0.05:
+			continue
+		var hand: Array = _person_skin("walk_%d" % phase, func(p): return p.z < 0.0 and p.y < 0.95)
+		var hand_x: float = hand.map(func(p): return p.x).reduce(func(a, b): return a + b) / hand.size()
+		var a: Dictionary = B3.person_arrays(Color.GRAY, "walk_%d" % phase, 1.0, "", 0)
+		var shoe := []
+		for i in a["verts"].size():
+			if int(a["part"][i].x) == 4 and a["verts"][i].z < 0.0:
+				shoe.append(a["verts"][i].x)
+		var shoe_x: float = (shoe.min() + shoe.max()) / 2.0 - 0.067
+		check(signf(hand_x) == -signf(shoe_x), "walk_%d: the left hand swings against the left foot" % phase)
+
+
+func test_walk_body_bob() -> void:  # criterion 6
+	var tops := []
+	var lows := []
+	for phase in 6:
+		var box := _person_box("walk_%d" % phase)
+		tops.append(box.end.y)
+		lows.append(box.position.y)
+	var bob: float = tops.max() - tops.min()
+	check(bob >= 0.02 and bob <= 0.06, "a walker's head bobs 2-6 cm (%.3f)" % bob)
+	check(lows.max() - lows.min() <= 0.01, "a walker's lowest foot stays on the ground")
+
+
+func test_idle_breathing_poses() -> void:  # criterion 7
+	check(B3.person_arrays(Color.GRAY, "standing_0", 1.0, "")["verts"] != B3.person_arrays(Color.GRAY, "standing_1", 1.0, "")["verts"],
+		"standing_1 breathes in")
+	var seen := {}
+	for i in 40:
+		seen[EntityLayer.person_pose({"animation_state": "standing", "id": 7}, i * 0.1)] = true
+	check(seen.has("standing_0") and seen.has("standing_1") and seen.size() == 2, "an idle person breathes through both poses in 4 s")
+
+
 ## Acceptance 4-5: the e-scooter rider stands on the deck on two bent legs, torso unchanged.
 ## Rules: hips at >= seat - 0.05 m and above the deck; lowest vertex within 0.02 m of SCOOTER_DECK_Y;
 ## ankles in x0..x1 (staggered, back foot x0, front x1); the shoes reach from x0 - 0.06 (back shoe's heel)
@@ -3697,8 +3781,8 @@ func test_buildings_3d() -> void:
 	check(EntityLayer.person_pose({"animation_state": "walking"}, 0.05) == "walk_0" and EntityLayer.person_pose({"animation_state": "walking"}, 0.4) == "walk_4"
 		and EntityLayer.person_pose({"animation_state": "walking", "speed": 2.4}, 0.1) == "run_1"
 		and EntityLayer.person_pose({"animation_state": "fallen"}, 0.0) == "lying" and EntityLayer.person_pose({"animation_state": "sitting"}, 0.0) == "sitting"
-		and EntityLayer.person_pose({"animation_state": "waiting"}, 0.0) == "standing", "a person's pose follows their animation state and gait")
-	check(EntityLayer.person_pose(EntityLayer.player_walker({"speed": 0.0}), 0.1) == "standing"
+		and EntityLayer.person_pose({"animation_state": "waiting"}, 0.0).begins_with("standing_"), "a person's pose follows their animation state and gait")
+	check(EntityLayer.person_pose(EntityLayer.player_walker({"speed": 0.0}), 0.1).begins_with("standing_")
 		and EntityLayer.person_pose(EntityLayer.player_walker({"speed": 1.5}), 0.1) == "walk_1"
 		and EntityLayer.person_pose(EntityLayer.player_walker({"speed": 5.5}), 0.1) == "run_1", "the player's figure stands, walks and sprints by its speed")
 	for species in WildlifeLayer.SPECIES + [&"dog"]:

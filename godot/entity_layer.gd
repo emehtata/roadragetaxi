@@ -2160,7 +2160,7 @@ static func person_pose(ped: Dictionary, animation_time: float) -> String:
 		"fallen", "sunbathing": return "lying"
 		"swimming": return "swimming"
 		"riding": return "riding"
-	return "standing"
+	return "standing_%d" % (floori(animation_time / 2.0 + hash(str(ped.get("id", ""))) % 2) % 2)  # idle breathing, a 4 s cycle
 
 
 ## This frame's lightning flash alpha (main.gd shows it above the night

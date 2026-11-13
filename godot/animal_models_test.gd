@@ -100,7 +100,7 @@ func test_horse_rider_legs_astride() -> void:
 
 
 ## Criterion 4: other poses' vertices unchanged (hash recorded before the riding change).
-const POSE_HASHES := {"sitting": 2789825266, "stand": 3490249161, "walk_2": 2284535438, "swimming": 597618965}
+const POSE_HASHES := {"sitting": 2329952045, "stand": 584462701, "walk_2": 3462689599, "swimming": 1203193931}  # re-recorded on purpose: docs/specs/comic-animated-pedestrians.md
 
 
 func test_other_poses_unchanged() -> void:
