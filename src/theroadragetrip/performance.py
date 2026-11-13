@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import gc
+import math
 import sys
 import time
 
@@ -15,6 +16,39 @@ GC_THRESHOLDS = (10000, 10, 1000)
 # A background map load or chunk rebuild hands the GIL back to the tick after
 # 0.5 ms instead of the default 5 ms (osm-stream-00).
 SWITCH_INTERVAL_S = 0.0005
+
+
+class CollectorSchedule:
+    """Cyclic GC between ticks instead of wherever an allocation trips it
+    (inside a map-sync unit, or on a background thread holding the GIL: 30-70
+    ms tick stalls measured). start() turns automatic collection off; the tick
+    loop calls after_tick() with the time left before the next tick. Young
+    passes run once GC_THRESHOLDS[0] allocations built up and there is room
+    (or regardless at 4x), every GC_THRESHOLDS[1]-th one also collecting the
+    middle generation; a full pass only while no one is playing (idle), so
+    every cycle is still collected, just never during a drive's tick."""
+
+    YOUNG_ROOM_S = 0.008  # a young pass needs this much of the gap to the next tick
+    FULL_EVERY_S = 60.0  # at most one full pass a minute while idle
+
+    def __init__(self) -> None:
+        self.young_passes = 0
+        self.full_passes = 0
+        self._last_full = -math.inf
+
+    def start(self) -> None:
+        gc.disable()
+
+    def after_tick(self, room_s: float, idle: bool, now: float) -> None:
+        pending = gc.get_count()[0]
+        young = GC_THRESHOLDS[0]
+        if pending >= young and (room_s >= self.YOUNG_ROOM_S or pending >= 4 * young):
+            self.young_passes += 1
+            gc.collect(1 if self.young_passes % GC_THRESHOLDS[1] == 0 else 0)
+        if idle and now - self._last_full >= self.FULL_EVERY_S:
+            self._last_full = now
+            self.full_passes += 1
+            gc.collect()
 
 
 def tune_interpreter() -> None:

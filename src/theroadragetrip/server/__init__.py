@@ -37,6 +37,7 @@ from .. import chunk_worker, protocol
 from ..parent_watch import exit_with_parent
 from ..navigation_route import NavigationRoute
 from ..map_chunks import CHUNK_SIZE_M, LOAD_RADIUS, UNLOAD_RADIUS, ChunkIndex, cell_of, chunk_id, plan
+from ..performance import CollectorSchedule
 from ..police import SpeedCameraSpawner
 from ..tile_streaming import world_to_tile
 from .map_sync import MapStreamer, prepare_initial_window
@@ -453,6 +454,7 @@ class SimulationServer:
         self._chunks_index = ChunkIndex(self.world)
         self._camera_spawner = SpeedCameraSpawner()
         self._client_chunks: dict = {}
+        self.collector = CollectorSchedule()
         self._map_streamer = MapStreamer(self.world, self._map_grew) if self._auto_fetch else None
         # The tiles the chunk index was built with (None: the map never grows). A chunk
         # beyond them would reach the client half-built and be resent when its tile merges.
@@ -1618,15 +1620,24 @@ class SimulationServer:
         for connection in clients:
             connection.send_state(message)  # never waits: a behind client gets the newest state
 
+    def collect_between_ticks(self, room_s: float) -> None:
+        """Cyclic GC in the gap before the next tick (performance.CollectorSchedule);
+        a full pass only while no client is playing."""
+        with self._clients_lock:
+            idle = not self._clients or len(self._paused_clients) >= len(self._clients)
+        self.collector.after_tick(room_s, idle, time.monotonic())
+
     def run_forever(self) -> None:
         """Blocking tick loop - the body of `python -m theroadragetrip.server`."""
         interval = 1.0 / self.tick_rate
         next_tick = time.perf_counter()
         window_start, durations = next_tick, []
+        self.collector.start()
         while True:
             started = time.perf_counter()
             self.tick(interval)
             durations.append(time.perf_counter() - started)
+            self.collect_between_ticks(next_tick + interval - time.perf_counter())
             if started - window_start >= 10.0:
                 rate = len(durations) / (started - window_start)
                 if rate < 0.9 * self.tick_rate:

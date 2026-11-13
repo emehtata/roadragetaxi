@@ -260,6 +260,9 @@ def main(argv=None) -> int:
 
     interval = 1.0 / server.tick_rate
     ticks = []
+    collect = hasattr(server, "collect_between_ticks")  # older revisions: automatic GC (A/B)
+    if collect:
+        server.collector.start()
 
     def run(seconds, move=None):
         next_tick = time.monotonic()
@@ -285,6 +288,8 @@ def main(argv=None) -> int:
                                  "chunks": len(server._chunks_index._chunks)}
             ticks.append(rec)
             next_tick += interval
+            if collect:
+                server.collect_between_ticks(next_tick - time.monotonic())  # as run_forever
             wait = next_tick - time.monotonic()
             if wait > 0:
                 time.sleep(wait)  # computed once: re-reading the clock could make it negative

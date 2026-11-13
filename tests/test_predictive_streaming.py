@@ -104,3 +104,23 @@ def test_hard_limit_ticks_counted():
     manager.loaded_tiles = set()
     manager.streaming_speed_cap_mps(500.0, 500.0, 30.0, 0.0)
     assert manager.hard_limit_ticks == 1
+
+
+def test_collector_runs_young_passes_between_ticks_and_full_only_when_idle(monkeypatch):
+    import gc
+
+    from theroadragetrip import performance
+
+    calls = []
+    counts = [(performance.GC_THRESHOLDS[0], 0, 0)]
+    monkeypatch.setattr(gc, "collect", lambda generation=2: calls.append(generation))
+    monkeypatch.setattr(gc, "get_count", lambda: counts[0])
+    schedule = performance.CollectorSchedule()
+    schedule.after_tick(0.001, idle=False, now=0.0)  # no room before the next tick: wait
+    schedule.after_tick(0.020, idle=False, now=0.0)
+    counts[0] = (4 * performance.GC_THRESHOLDS[0], 0, 0)
+    schedule.after_tick(0.0, idle=False, now=0.0)  # too much pending: collect anyway
+    assert calls == [0, 0]
+    schedule.after_tick(0.020, idle=True, now=100.0)
+    schedule.after_tick(0.020, idle=True, now=110.0)  # one full pass a minute at most
+    assert calls == [0, 0, 0, 2, 0]
