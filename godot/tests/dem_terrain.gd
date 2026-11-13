@@ -28,8 +28,18 @@ func _initialize() -> void:
 	var ground := B3.ground_height(with_grid["prepared"]["ground_heights"], taxi)
 	check(is_equal_approx(B3.top_camera_position(Vector2(15, -5), 300.0, ground).y - ground, 300.0), "camera: same height above the ground under the taxi")
 	check(B3.top_camera_position(Vector2(15, -5), 300.0, B3.ground_height({}, taxi)) == Vector3(15, 300.0, -5), "switch off: camera unchanged")
+	test_eye_follows_ground()
 	print("dem_terrain: ", "FAIL" if failed else "PASS")
 	quit(1 if failed else 0)
+
+## The first-person eye (car or on foot) sits eye_height above the DEM ground under it.
+func test_eye_follows_ground() -> void:
+	var grid := {"ground_heights": {"origin": [0, 0], "step": 100.0, "cols": 2, "heights": [6.0, 12.0, 6.0, 12.0]}}
+	MapChunk.prepare(grid, Vector2.ZERO)
+	for point in [[Vector2(0, 0), 6.0], [Vector2(100, 0), 12.0]]:
+		var elevation := B3.deck_height(point[0], 0, PackedVector2Array(), grid["prepared"]["ground_heights"])
+		var eye := B3.windshield_camera_position(point[0], 0.0, 1.7, elevation, 0.0)
+		check(absf(eye.y - (point[1] + 1.7)) < 0.01, "eye at %s follows the ground: %.2f" % [point[0], eye.y])
 
 func check(ok: bool, message: String) -> void:
 	if not ok:

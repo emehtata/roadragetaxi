@@ -288,6 +288,10 @@ static func project(p: Vector3, centre: Vector2, height: float) -> Vector2:
 
 ## The top-down camera above the view centre, `height` over the ground under the taxi
 ## (absolute DEM heights; flat ground: 0, as before).
+static func windshield_camera_position(at: Vector2, heading: float, eye: float, ground: float, ahead: float) -> Vector3:
+	return Vector3(at.x, eye + ground, at.y) + Vector3(cos(heading), 0.0, -sin(heading)) * ahead
+
+
 static func top_camera_position(centre: Vector2, height: float, ground: float) -> Vector3:
 	return Vector3(centre.x, height + ground, centre.y)
 
@@ -322,7 +326,7 @@ func _process(delta: float) -> void:
 		if opaque:
 			_camera.environment.background_mode = Environment.BG_SKY
 		var forward := Vector3(cos(windshield_heading), 0.0, -sin(windshield_heading))
-		_camera.position = Vector3(windshield_at.x, eye_height + windshield_elevation, windshield_at.y) + forward * eye_ahead
+		_camera.position = windshield_camera_position(windshield_at, windshield_heading, eye_height, windshield_elevation, eye_ahead)
 		forward = Vector3(forward.x * cos(eye_pitch), sin(eye_pitch), forward.z * cos(eye_pitch))
 		if not test_eye.is_empty():
 			var at: Vector2 = test_eye.get("at", windshield_at)
