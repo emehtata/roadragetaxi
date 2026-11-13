@@ -44,3 +44,25 @@ on one logical change, and run the relevant checks before committing.
 Project skills are registered in `.agents/skills/`: the Godot skill pack from
 `../godot-skills/skills/`, plus the local `godot-shot` and `repro-at` workflows.
 Read the relevant skill before applying its workflow.
+
+## Agent working rules
+
+### Commits and attribution
+- Commit atomically on the working branch when a change is verified. Push when the user asks, or when the /ship finalizer runs after a tester PASS.
+- Trailer on every commit: `Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>`. Do not substitute another model name.
+- Never commit a change that a tester has not passed, unless the user explicitly says so.
+
+### Shared working tree
+- Other sessions and agents share the tree. Stage only your own hunks. Never reset, clean, checkout or stash files you did not change.
+- If you need a clean state for a test, use a temporary git worktree, and remove it afterwards.
+- Never touch `master` directly.
+
+### Data sources and licence
+- Any new data source must have its licence text and attribution recorded in the docs and in the in-game credits, in every shipped language, before merge.
+- The Copernicus DEM notice is the reference example (docs/dem-terrain-80m.md).
+
+### Visual verification
+- A UI or rendering change is verified only by a passing named scenario in tools/visual_scenarios.json, with its screenshot inspected.
+
+### Handbacks
+- One report per task. If a report is refused, send the same content as a plain message instead.
