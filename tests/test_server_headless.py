@@ -1251,6 +1251,22 @@ def test_snowless_christmas_field_stays_frozen_and_never_opens_for_soccer(tmp_pa
     assert not server.world.fields_frozen and not manager.sports_ice_open and manager.soccer_open
 
 
+def test_snowless_thermal_winter_freezes_fields(tmp_path, monkeypatch):
+    """Measured 0 cm snow must not leak into the thermal ice flag (lakes and fields)."""
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    server.calendar.latitude = 66.7134  # Kemijärvi
+    server.weather_history = SimpleNamespace(get=lambda moment: SimpleNamespace(snow_depth_cm=0.0))
+    server.calendar.current = datetime(2026, 1, 15, 12)
+    state = server.calendar_state()
+    assert state["season"][0] == 0.0 and server.world.fields_frozen and state["fields_frozen"]
+    server.calendar.current = datetime(2026, 7, 15, 12)
+    server.season_weights()
+    assert not server.world.fields_frozen
+
+
 def test_no_tyre_marks_on_a_ferry_deck(tmp_path, monkeypatch):
     """The deck moves on with the taxi: a track laid there would be left behind on the water."""
     from theroadragetrip.ferries import FerryManager

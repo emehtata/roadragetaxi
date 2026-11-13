@@ -789,7 +789,7 @@ func _build_2_5d() -> void:
 			areas.append([_points(area[2]), color, false])
 		for space in _data.get("parking", []):
 			areas.append([_points(space), Color8(72, 75, 74), false])
-		var ice := clampf(_season[0], 0.0, 1.0)
+		var ice := water_ice()
 		for water in _data.get("waters", []):
 			areas.append([_points(water), Color(0.20, 0.26, 0.29).lerp(Color8(232, 240, 244), ice), ice < 0.5])
 		var bridges: Array = []  # step 5: the decks
@@ -1125,6 +1125,11 @@ func fields_frozen() -> bool:
 	return bool(_fields_frozen) if _fields_frozen != null else float(_season[0]) >= Detail.FIELDS_FROZEN_WINTER_WEIGHT
 
 
+## Lakes freeze with snow cover or, snowless, in thermal winter like the fields.
+func water_ice() -> float:
+	return maxf(clampf(_season[0], 0.0, 1.0), 1.0 if fields_frozen() else 0.0)
+
+
 func set_fields_frozen(frozen: bool) -> void:
 	if _fields_frozen == frozen:
 		return
@@ -1313,7 +1318,7 @@ static func _shore_material() -> ShaderMaterial:
 
 
 func _draw_shore_waves(node: Node2D) -> void:
-	var liquid := 1.0 - clampf(_season[0], 0.0, 1.0)
+	var liquid := 1.0 - water_ice()
 	if liquid <= 0.0:
 		return
 	for band in _data.get("shore_waves", []):
@@ -1322,8 +1327,8 @@ func _draw_shore_waves(node: Node2D) -> void:
 
 
 func _draw_water(node: Node2D) -> void:
-	# water freezes with the winter weight.
-	var ice := clampf(_season[0], 0.0, 1.0)
+	# water freezes with the winter weight, or in snowless thermal winter.
+	var ice := water_ice()
 	# A humic base under the sky reflection; true-shore bands add the shallows.
 	var water_color := Color(0.15, 0.15, 0.12).lerp(Color8(232, 240, 244), ice)
 	for water in _data.get("waters", []):
