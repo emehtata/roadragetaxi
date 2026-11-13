@@ -128,6 +128,27 @@ def _rss_mb() -> float:
     return 0.0
 
 
+def _place_collections(long: list, ticks: list) -> list:
+    """Each collection over 20 ms against the tick timeline: inside tick N, or
+    between ticks N and N+1, with the gap between those two ticks' starts
+    (the loop resets its schedule when behind, so tick_start_late misses it)."""
+    placed = []
+    for end, generation, ms, thread in long:
+        start = end - ms / 1000.0
+        where, tick, gap = "between", None, None
+        for i, t in enumerate(ticks):
+            if t["start"] <= start <= t["end"]:
+                where, tick = "inside", i
+                break
+            if t["end"] <= start and (i + 1 == len(ticks) or ticks[i + 1]["start"] >= start):
+                tick = i
+                gap = round((ticks[i + 1]["start"] - t["start"]) * 1000.0) if i + 1 < len(ticks) else None
+                break
+        placed.append({"ms": round(ms, 1), "generation": generation, "thread": thread, "where": where, "tick": tick,
+                       "next_tick_start_gap_ms": gap})
+    return placed[:40]
+
+
 def _memory_summary(samples: list) -> dict:
     if not samples:
         return {}
@@ -251,18 +272,23 @@ def main(argv=None) -> int:
                 time.sleep(0.01)
                 rec = current[0]
                 if rec is not None and "stack" not in rec and time.perf_counter() - rec["began"] > args.sample_ms / 1000.0:
-                    frame = sys._current_frames().get(main_id)
+                    frames = sys._current_frames()
+                    frame = frames.get(main_id)
                     if frame is not None:
                         rec["stack"] = " < ".join(f"{Path(f.filename).stem}:{f.name}:{f.lineno}"
                                                   for f in reversed(traceback.extract_stack(frame)[-12:]))
+                        # What the other threads run meanwhile: the GIL holder a waiting tick waits for.
+                        names = {t.ident: t.name for t in threading.enumerate()}
+                        rec["others"] = {names.get(ident, str(ident)): " < ".join(
+                            f"{Path(f.filename).stem}:{f.name}:{f.lineno}" for f in reversed(traceback.extract_stack(other)[-6:]))
+                            for ident, other in frames.items() if ident not in (main_id, threading.get_ident())
+                            and any(name in names.get(ident, "") for name in BACKGROUND)}
 
         threading.Thread(target=sampler, name="sampler", daemon=True).start()
 
     interval = 1.0 / server.tick_rate
     ticks = []
-    collect = hasattr(server, "collect_between_ticks")  # older revisions: automatic GC (A/B)
-    if collect:
-        server.collector.start()
+    collect = hasattr(server, "collect_between_ticks")  # as run_forever (older revisions lack it)
 
     def run(seconds, move=None):
         next_tick = time.monotonic()
@@ -396,6 +422,8 @@ def main(argv=None) -> int:
                                                 "max_ms": round(max((c[2] for c in in_window if c[1] == g), default=0.0))}
                                       for g in range(3)},
                     "longest_over_10ms": [[round(c[2], 1), c[1], c[3]] for c in sorted(in_window, key=lambda c: c[2], reverse=True)[:20]]},
+        "long_collections": _place_collections([c for c in in_window if c[2] > 20.0], ticks),
+        "tick_start_gap_max_ms": round(max(((b["start"] - a["start"]) * 1000.0 for a, b in zip(ticks, ticks[1:])), default=0.0)),
         "full_gc": {"count": len(full), "max_ms": round(max((c[2] for c in full), default=0.0)),
                     "total_ms": round(sum(c[2] for c in full)), "by_thread": sorted({c[3].split(" (")[0] for c in full}),
                     "tracked_objects_at_end": tracked, "frozen_at_end": frozen, "cyclic_garbage_at_end": garbage},
@@ -411,7 +439,7 @@ def main(argv=None) -> int:
                          "gc": overlapping(t), "sim_sections": t.get("sim_sections", {}),
                          "ped_internal": t.get("ped_internal", {}),
                          "population": t.get("population", {}),
-                         **({"stack": t["stack"]} if "stack" in t else {})}
+                         **({"stack": t["stack"]} if "stack" in t else {}), **({"others": t["others"]} if t.get("others") else {})}
                         for t in sorted(ticks, key=lambda t: -t["wall"])[:12]],
         "log": str(log_path),
     }
