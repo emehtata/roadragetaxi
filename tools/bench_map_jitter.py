@@ -351,7 +351,8 @@ def main(argv=None) -> int:
     def tick_stats(rows_):
         walls = [t["wall"] for t in rows_]
         return {"ticks": len(walls), "p50": pct(walls, .5), "p95": pct(walls, .95), "p99": pct(walls, .99),
-                "max": round(max(walls, default=0.0), 1), "over_50ms": sum(w > 50 for w in walls),
+                "max": round(max(walls, default=0.0), 1), "over_33ms": sum(w > 1000.0 / 30.0 for w in walls),
+                "over_50ms": sum(w > 50 for w in walls),
                 "over_100ms": sum(w > 100 for w in walls)}
 
     waits = {}
