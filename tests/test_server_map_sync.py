@@ -339,3 +339,20 @@ def test_a_settled_merge_waits_briefly_for_a_fetch_in_flight(monkeypatch):
     streamer.tick(0, 0, 0, 0)
     assert streamer.syncing  # waited long enough: a slow fetch gets its own sync
 
+
+
+def test_collector_stays_off_while_the_chunks_are_rebuilt(monkeypatch):
+    import gc
+
+    monkeypatch.setattr(gc, "freeze", lambda: None)
+    streamer = map_sync.MapStreamer(SimpleNamespace(auto_fetch_manager=FakeManager(), ways=[]), lambda *a: None)
+    try:
+        streamer.collector.begin_sync()  # a sync running
+        streamer.hold = True  # its chunk rebuild started meanwhile
+        streamer.collector.end_sync()  # the sync ended first
+        assert not gc.isenabled()
+        streamer.hold = True  # unchanged: no second hold
+        streamer.hold = False
+        assert gc.isenabled()
+    finally:
+        gc.enable()

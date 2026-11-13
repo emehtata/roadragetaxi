@@ -454,9 +454,9 @@ class SimulationServer:
         self._chunks_index = ChunkIndex(self.world)
         self._camera_spawner = SpeedCameraSpawner()
         self._client_chunks: dict = {}
-        self.collector = CollectorSchedule()
         self._retired_indexes: list = []  # replaced chunk indexes, freed in budgeted steps
         self._map_streamer = MapStreamer(self.world, self._map_grew) if self._auto_fetch else None
+        self.collector = self._map_streamer.collector if self._map_streamer is not None else CollectorSchedule()
         # The tiles the chunk index was built with (None: the map never grows). A chunk
         # beyond them would reach the client half-built and be resent when its tile merges.
         self._indexed_tiles = set(self._map_streamer.manager.loaded_tiles) if self._map_streamer is not None else None
@@ -1643,19 +1643,18 @@ class SimulationServer:
             else:
                 self._retired_indexes.pop(0)
 
-    def collect_between_ticks(self, room_s: float) -> None:
-        """Cyclic GC in the gap before the next tick (performance.CollectorSchedule);
-        a full pass only while no client is playing."""
+    def collect_between_ticks(self, room_s: float = 0.0) -> None:
+        """The idle full pass of performance.CollectorSchedule (unfreezing what map
+        syncs froze): only while no client is playing, never during a drive."""
         with self._clients_lock:
             idle = not self._clients or len(self._paused_clients) >= len(self._clients)
-        self.collector.after_tick(room_s, idle, time.monotonic())
+        self.collector.after_tick(idle, time.monotonic())
 
     def run_forever(self) -> None:
         """Blocking tick loop - the body of `python -m theroadragetrip.server`."""
         interval = 1.0 / self.tick_rate
         next_tick = time.perf_counter()
         window_start, durations = next_tick, []
-        self.collector.start()
         while True:
             started = time.perf_counter()
             self.tick(interval)

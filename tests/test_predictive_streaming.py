@@ -106,21 +106,27 @@ def test_hard_limit_ticks_counted():
     assert manager.hard_limit_ticks == 1
 
 
-def test_collector_runs_young_passes_between_ticks_and_full_only_when_idle(monkeypatch):
+
+def test_collector_is_off_in_a_sync_and_unfreezes_for_the_idle_full_pass(monkeypatch):
     import gc
 
     from theroadragetrip import performance
 
     calls = []
-    counts = [(performance.GC_THRESHOLDS[0], 0, 0)]
+    monkeypatch.setattr(gc, "freeze", lambda: calls.append("freeze"))
+    monkeypatch.setattr(gc, "unfreeze", lambda: calls.append("unfreeze"))
     monkeypatch.setattr(gc, "collect", lambda generation=2: calls.append(generation))
-    monkeypatch.setattr(gc, "get_count", lambda: counts[0])
     schedule = performance.CollectorSchedule()
-    schedule.after_tick(0.001, idle=False, now=0.0)  # no room before the next tick: wait
-    schedule.after_tick(0.020, idle=False, now=0.0)
-    counts[0] = (4 * performance.GC_THRESHOLDS[0], 0, 0)
-    schedule.after_tick(0.0, idle=False, now=0.0)  # too much pending: collect anyway
-    assert calls == [0, 0]
-    schedule.after_tick(0.020, idle=True, now=100.0)
-    schedule.after_tick(0.020, idle=True, now=110.0)  # one full pass a minute at most
-    assert calls == [0, 0, 0, 2, 0]
+    try:
+        schedule.begin_sync()
+        assert not gc.isenabled()
+        schedule.after_tick(idle=True, now=100.0)  # never during a sync
+        schedule.end_sync()
+        assert gc.isenabled() and calls == ["freeze"]
+        schedule.after_tick(idle=False, now=100.0)  # someone is driving: no full pass
+        schedule.after_tick(idle=True, now=100.0)
+        schedule.after_tick(idle=True, now=120.0)  # at most once a minute
+        assert calls == ["freeze", "unfreeze", 2]
+    finally:
+        gc.enable()
+

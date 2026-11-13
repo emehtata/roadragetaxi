@@ -19,35 +19,41 @@ SWITCH_INTERVAL_S = 0.0005
 
 
 class CollectorSchedule:
-    """Cyclic GC between ticks instead of wherever an allocation trips it
-    (inside a map-sync unit, or on a background thread holding the GIL: 30-70
-    ms tick stalls measured). start() turns automatic collection off; the tick
-    loop calls after_tick() with the time left before the next tick. Young
-    passes run once GC_THRESHOLDS[0] allocations built up and there is room
-    (or regardless at 4x), every GC_THRESHOLDS[1]-th one also collecting the
-    middle generation; a full pass only while no one is playing (idle), so
-    every cycle is still collected, just never during a drive's tick."""
+    """Cyclic GC kept out of the map sync, every cycle still collected.
 
-    YOUNG_ROOM_S = 0.008  # a young pass needs this much of the gap to the next tick
+    Measured: a collection over the sync's new graphs takes 20-116 ms whether
+    it runs inside a tick or between ticks (both stop the tick loop: tick
+    starts 133 ms apart). So the sync runs with the collector off
+    (begin_sync; the server's chunk rebuild too: a 48-54 ms collection on its
+    thread held the GIL against the tick), and its result is frozen at the end (end_sync): the next
+    young passes skip it. Outside syncs collection is automatic, as tuned.
+    Frozen objects are not lost to the collector: while no one is playing
+    (idle) after_tick() unfreezes and runs a full pass, at most once a minute,
+    so a cycle made during a sync is collected at the next pause."""
+
     FULL_EVERY_S = 60.0  # at most one full pass a minute while idle
 
     def __init__(self) -> None:
-        self.young_passes = 0
         self.full_passes = 0
         self._last_full = -math.inf
+        self._holders = 0  # a map sync and the chunk rebuild it starts overlap: off until both end
 
-    def start(self) -> None:
+    def begin_sync(self) -> None:
+        self._holders += 1
         gc.disable()
 
-    def after_tick(self, room_s: float, idle: bool, now: float) -> None:
-        pending = gc.get_count()[0]
-        young = GC_THRESHOLDS[0]
-        if pending >= young and (room_s >= self.YOUNG_ROOM_S or pending >= 4 * young):
-            self.young_passes += 1
-            gc.collect(1 if self.young_passes % GC_THRESHOLDS[1] == 0 else 0)
-        if idle and now - self._last_full >= self.FULL_EVERY_S:
+    def end_sync(self) -> None:
+        if self._holders > 0:
+            self._holders -= 1
+            if self._holders == 0:
+                gc.freeze()
+                gc.enable()
+
+    def after_tick(self, idle: bool, now: float) -> None:
+        if idle and self._holders == 0 and now - self._last_full >= self.FULL_EVERY_S:
             self._last_full = now
             self.full_passes += 1
+            gc.unfreeze()
             gc.collect()
 
 

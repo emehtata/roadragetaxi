@@ -19,7 +19,7 @@ import time
 from ..world_loader import level_structures as _level_structures
 from ..osm import TILE_MERGE_BUDGET_S, remove_trees_under_roads_steps
 from ..osm.build import FERRY_KIND
-from ..performance import MAP_SYNC_BUDGET_S, MAP_SYNC_URGENT_BUDGET_S
+from ..performance import MAP_SYNC_BUDGET_S, MAP_SYNC_URGENT_BUDGET_S, CollectorSchedule
 from ..parking import generate_detached_house_parking_chunk
 from ..physics import connected_drivable_ways
 from ..level_transitions import close_garage_roads
@@ -216,6 +216,7 @@ class MapStreamer:
         self.world = world
         self.manager = world.auto_fetch_manager
         self.manager.soft_boundary_enabled = True
+        self.collector = CollectorSchedule()  # no cyclic GC inside a sync (performance.py)
         self.on_synced = on_synced
         self._synced_revision = self.manager.get_map_revision()
         self._synced_bounds = self.manager.get_bounds()
@@ -230,7 +231,7 @@ class MapStreamer:
         self.sync_stage_ms: dict[str, float] = {}  # busy time per stage of the running (or last) sync
         self.sync_stage_max_ms: dict[str, tuple] = {}  # longest single slice per stage: (wall ms, thread CPU ms)
         self.last_sync = None  # (wall s, busy ms, ticks) of the last completed sync
-        self.hold = False  # the server rebuilds its chunks from the synced world: no merges meanwhile
+        self._hold = False  # the server rebuilds its chunks from the synced world: no merges meanwhile
 
     def _report_growth(self) -> None:
         old, new = self._synced_bounds, self.manager.get_bounds()
@@ -240,6 +241,20 @@ class MapStreamer:
     @property
     def syncing(self) -> bool:
         return self._sync is not None
+
+    @property
+    def hold(self) -> bool:
+        return self._hold
+
+    @hold.setter
+    def hold(self, value: bool) -> None:
+        """While the server rebuilds its chunks the collector stays off too: a 48-54 ms
+        collection on the rebuild thread held the GIL against the tick."""
+        if value and not self._hold:
+            self.collector.begin_sync()
+        elif self._hold and not value:
+            self.collector.end_sync()
+        self._hold = value
 
     def status(self) -> str:
         """What the map is doing, for the client's loading sign: "" settled,
@@ -280,6 +295,7 @@ class MapStreamer:
                 if not urgent and waited < SYNC_WAIT_FOR_FETCH_S and (waited < SYNC_SETTLE_S or manager.get_fetching()):
                     return
                 self._merged_since = None
+                self.collector.begin_sync()
                 self._sync_revision = manager.get_map_revision()
                 self._sync = map_sync_steps(self.world, lambda: min(
                     MAP_SYNC_BUDGET_S, max(0.0, self._sync_deadline - time.perf_counter())))
@@ -298,9 +314,14 @@ class MapStreamer:
         # let both consume 4 ms in the same tick.
         if started >= deadline:
             return
-        if self._advance_sync(deadline, started, cpu_started):
-            return
+        try:
+            if self._advance_sync(deadline, started, cpu_started):
+                return
+        except BaseException:
+            self.collector.end_sync()  # a failed sync never leaves the collector off
+            raise
         self._sync = None
+        self.collector.end_sync()
         self._finish_sync()
 
     def _advance_sync(self, deadline: float, started: float, cpu_started: float) -> bool:
