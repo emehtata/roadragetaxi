@@ -270,9 +270,25 @@
       "cloud": 0.2,
       "wetness": [0.0, 0.05],
       "sun_altitude_deg": [0, 20],
-      "zoom": 1.0,
+      "zoom": 0.5,
       "server_args": ["--test-snow-depth", "0"],
-      "measure_s": 3
+      "measure_s": 20
+    },
+    {
+      "id": "frozen_pond_snowless_winter_windshield",
+      "description": "frozen_pond_snowless_winter from the windshield: the 3D water area is ice in perspective",
+      "why": "Same pose and conditions; heading along Kaisaniemenranta keeps the bay on the right of the forward view.",
+      "city": "Helsinki",
+      "pose": [385901.0, 6672861.8, 2.396],
+      "start_time": "2026-01-15T12:00",
+      "weather": "clear",
+      "cloud": 0.2,
+      "wetness": [0.0, 0.05],
+      "sun_altitude_deg": [0, 20],
+      "zoom": 1.0,
+      "windshield": true,
+      "server_args": ["--test-snow-depth", "0"],
+      "measure_s": 20
     },
     {
       "id": "snow_street_day",
