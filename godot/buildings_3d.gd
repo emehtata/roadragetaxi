@@ -845,10 +845,10 @@ func puff(at: Vector2, height: float, radius: float, color: Color) -> void:
 ## A car at `at` (layer position) facing `heading` (as the 2D layer's):
 ## `shape` is entity_layer's CAR_SHAPES row; `sign` 0 none, 1 a taxi sign off, 2 lit;
 ## `lamps` the LAMPS_* lit now.
-func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0, elevation := 0.0) -> void:
+func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0, elevation := 0.0, tilt := Vector2.ZERO) -> void:
 	if opaque:
 		var kind := car_model_kind(shape, length)
-		place_model_car(kind, at, heading, length, width, color, elevation, lamps)
+		place_model_car(kind, at, heading, length, width, color, elevation, lamps, tilt)
 		var detail_key := "d|%s|%.2f|%.2f|%d|%d" % [kind, length, width, sign, lamps]
 		place_body(detail_key, func() -> Dictionary: return model_car_details(length, width, sign, lamps, 0.5, true,
 			2.26 if kind == "panel_van" else 1.41), at, heading, elevation)
@@ -856,6 +856,18 @@ func car(at: Vector2, heading: float, length: float, width: float, color: Color,
 	var detail := 0 if at.distance_to(windshield_at if windshield_on else view_centre) > 35.0 else 1
 	var key := "%s|%s|%.2f|%.2f|%d|%d|%d" % [color.to_html(false), shape, length, width, sign, lamps, detail]
 	place_body(key, func() -> Dictionary: return car_arrays(length, width, color, shape, sign, lamps, detail), at, heading, elevation)
+
+
+## [pitch, roll] in radians of a car `length` x `width` at `at` facing `heading` (layer heading: +x forward,
+## entity_layer's forward/right), from `height` (a Callable(at) -> road top) at its four wheels. Nose up: pitch > 0; left up: roll > 0.
+static func wheel_tilt(at: Vector2, heading: float, length: float, width: float, height: Callable) -> Vector2:
+	var f := Vector2(cos(heading), -sin(heading)) * length * 0.35  # entity_layer _forward/_right
+	var r := Vector2(sin(heading), cos(heading)) * width * 0.4
+	var fl: float = height.call(at + f - r)
+	var fr: float = height.call(at + f + r)
+	var bl: float = height.call(at - f - r)
+	var br: float = height.call(at - f + r)
+	return Vector2(atan2((fl + fr - bl - br) * 0.5, length * 0.7), atan2((fl + bl - fr - br) * 0.5, width * 0.8))
 
 
 static func car_model_kind(shape: Array, length: float) -> String:
@@ -869,7 +881,7 @@ static func car_model_kind(shape: Array, length: float) -> String:
 	return "hatchback" if shape[3] < -0.7 else "saloon"
 
 
-func place_model_car(kind: String, at: Vector2, heading: float, length: float, width: float, color: Color, elevation: float, lamps := 0) -> void:
+func place_model_car(kind: String, at: Vector2, heading: float, length: float, width: float, color: Color, elevation: float, lamps := 0, tilt := Vector2.ZERO) -> void:
 	if not _model_nodes.has(kind):
 		_model_nodes[kind] = []
 		_model_used[kind] = 0
@@ -926,7 +938,8 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 		car_node.set_meta("lamps", lamps)
 	var along_x := kind in ["city_bus", "train_locomotive", "train_coach"]
 	var turn := heading if along_x else heading + PI / 2.0
-	car_node.transform = Transform3D(Basis(Vector3.UP, turn).scaled_local(model_scale(kind, length, width)),
+	var stance := Basis(Vector3.UP, heading) * Basis(Vector3.BACK, tilt.x) * Basis(Vector3.RIGHT, tilt.y) * Basis(Vector3.UP, turn - heading)
+	car_node.transform = Transform3D(stance.scaled_local(model_scale(kind, length, width)),
 		to_3d(at, ROAD_M + 0.016 + elevation))
 	car_node.visible = true
 	_model_used[kind] = used + 1

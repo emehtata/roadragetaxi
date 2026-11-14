@@ -118,6 +118,7 @@ const CAR_SHAPES := [
 const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
 var _under := false  # the vehicle being drawn is under a bridge: 2D, below the deck (no 3D body) - not with --outdoor-3d
 var _layer := 0  # the vehicle being drawn's map layer: --outdoor-3d rides it at its deck height
+var _tilts := {}  # vehicle id (or "taxi") -> [pitch, roll] of its 3D car body, eased (Buildings3D.wheel_tilt)
 var deck_height := func(_at: Vector2, _layer: int) -> float: return 0.0  # map_layer.deck_height (main.gd)
 var taxi_sign_on := false  # the taxi being drawn is free for a fare (its roof light lit)
 var ploughing := false  # snowing: tractors carry a plough blade and a flashing beacon
@@ -1026,8 +1027,16 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 					return  # the camera is inside this body
 				var lit := engine_on and taxi_sign_on
 				var lamps := lamp_bits(engine_on, braking, reversing, turn_signal, signal_elapsed)
+				var tilt := Vector2.ZERO
+				if Buildings3D.opaque:  # visual stance from the road under the wheels, eased so it doesn't jitter
+					var id: Variant = "taxi" if is_taxi else vehicle_id
+					if _tilts.size() > 512:  # ponytail: forget all, prune by seen-this-frame if it ever pops visibly
+						_tilts.clear()
+					tilt = _tilts.get(id, Vector2.ZERO).lerp(Buildings3D.wheel_tilt(c, heading, length, width,
+						func(p: Vector2) -> float: return float(deck_height.call(p, _layer))), 0.25)
+					_tilts[id] = tilt
 				cars_3d.car(c, heading, length, width, color, shape, (2 if lit else 1) if is_taxi else 0, lamps,
-					float(deck_height.call(c, _layer)) if Buildings3D.opaque else 0.0)
+					float(deck_height.call(c, _layer)) if Buildings3D.opaque else 0.0, tilt)
 				if Buildings3D.opaque:  # --outdoor-3d: its lamps are emissive parts of the body, the beams 3D lights
 					return
 				if is_taxi and lit:

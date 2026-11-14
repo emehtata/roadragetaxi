@@ -32,6 +32,7 @@ func _initialize() -> void:
 	test_lamp_stands_on_ground()
 	test_car_base_on_road_slope()
 	test_car_base_on_bridge_deck()
+	test_car_tilt_follows_road()
 	test_road_lies_on_sloped_ground()
 	test_road_above_terrain_mesh_everywhere()
 	test_terrain_normals_smooth_and_continuous()
@@ -110,6 +111,22 @@ func test_car_base_on_bridge_deck() -> void:
 		var gap := B3.deck_height(at, 1, ends, grid) - _top_under(out["road"], at)
 		print("car-to-deck gap at %s: %.3f m" % [at, gap])
 		check(absf(gap) <= 0.05, "bridge at %s: car base %.3f m from the deck road" % [at, gap])
+
+## The car's stance: pitch matches a 10 % slope within 1 degree (nose uphill), roll 0; flat ground: both 0.
+func test_car_tilt_follows_road() -> void:
+	var heights := []
+	for r in 26:
+		for c in 26:
+			heights.append(c * 2.0)
+	var message := {"ground_heights": {"origin": [0, 0], "step": 20.0, "cols": 26, "heights": heights}}
+	MapChunk.prepare(message, Vector2.ZERO)
+	var grid: Dictionary = message["prepared"]["ground_heights"]
+	var on := func(g: Dictionary) -> Callable: return func(p: Vector2) -> float: return B3.road_surface_height(p, 0, PackedVector2Array(), g)
+	var up := B3.wheel_tilt(Vector2(200, -100), 0.0, 4.5, 1.8, on.call(grid))  # heading 0: +x, uphill
+	check(absf(rad_to_deg(up.x) - rad_to_deg(atan(0.1))) < 1.0 and absf(up.y) < 0.001, "slope: pitch %.2f deg roll %.3f" % [rad_to_deg(up.x), up.y])
+	var side := B3.wheel_tilt(Vector2(200, -100), PI / 2.0, 4.5, 1.8, on.call(grid))  # facing -y: uphill on its right
+	check(absf(side.x) < 0.001 and absf(rad_to_deg(side.y) + rad_to_deg(atan(0.1))) < 1.0, "slope sideways: roll %.2f deg" % rad_to_deg(side.y))
+	check(B3.wheel_tilt(Vector2(200, -100), 0.7, 4.5, 1.8, on.call({})) == Vector2.ZERO, "flat: no pitch or roll")
 
 ## A road across a slope lies on the ground: road within 0.1 m, grass within 0.05 m and under it.
 func test_road_lies_on_sloped_ground() -> void:
