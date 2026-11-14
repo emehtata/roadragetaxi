@@ -48,7 +48,7 @@ func run() -> void:
 	await key(KEY_ENTER)
 	await create_timer(0.1, true).timeout
 	assert(shell.saves == 1 and requests == 0, 'Save must not accept the phone offer')
-	for code in [KEY_1, KEY_X, KEY_P, KEY_KP_ENTER]:
+	for code in [KEY_8, KEY_X, KEY_P, KEY_KP_ENTER]:
 		await key(code)
 	assert(requests == 0 and phone.is_open, 'paused phone must ignore fare and toggle keys')
 	for pressed in [true, false]:

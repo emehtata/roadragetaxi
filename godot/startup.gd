@@ -1753,7 +1753,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_close_home_interior()
 	elif _panel.visible and _back_action.is_valid():
 		_back_action.call()
-	elif _game != null:  # the phone uses P/N, Enter, X and 1-3, never Esc
+	elif _game != null:  # the phone uses P/N, Enter, X and 8/9/0, never Esc
 		if get_tree().paused:
 			_resume()
 		else:

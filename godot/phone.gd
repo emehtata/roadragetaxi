@@ -3,7 +3,7 @@
 ## asks to accept or reject it; the simulation decides (a "phone_result"
 ## event answers) - this never decides whether an offer exists.
 ##
-## Keys (InputMap actions, added here): P/N open/close, 1-3 pick a
+## Keys (InputMap actions, added here): P/N open/close, 8/9/0 pick a
 ## row, Enter accept, X reject. None of them drive the taxi, and driving
 ## keys keep working while the phone is open (the simulation doesn't pause).
 class_name Phone
@@ -20,9 +20,9 @@ const ACTIONS := {
 	"phone_toggle": [KEY_P, KEY_N],
 	"phone_accept": [KEY_ENTER, KEY_KP_ENTER],
 	"phone_reject": [KEY_X],
-	"phone_pick_1": [KEY_1, KEY_KP_1],
-	"phone_pick_2": [KEY_2, KEY_KP_2],
-	"phone_pick_3": [KEY_3, KEY_KP_3],
+	"phone_pick_1": [KEY_8, KEY_KP_8],
+	"phone_pick_2": [KEY_9, KEY_KP_9],
+	"phone_pick_3": [KEY_0, KEY_KP_0],
 }
 const ANSWERABLE := ["AVAILABLE", "PENDING"]  # offer / booking statuses the simulation still takes an answer for
 
@@ -72,9 +72,9 @@ func _ready() -> void:
 			InputMap.add_action(action)
 			for key in ACTIONS[action]:
 				var event := InputEventKey.new()
-				# The keypad by what it types: with NumLock off its 2 is the Down arrow (a
+				# The keypad by what it types: with NumLock off its 8 is the Up arrow (a
 				# physical match accepted offer 2 while braking); the rest by position.
-				if key in [KEY_KP_1, KEY_KP_2, KEY_KP_3]:
+				if key in [KEY_KP_8, KEY_KP_9, KEY_KP_0]:
 					event.keycode = key
 				else:
 					event.physical_keycode = key
@@ -643,11 +643,16 @@ static func status_text(is_connected: bool, is_busy: bool, rows: Array, last_not
 	return T.text("phone_keys", language)
 
 
+## The key that accepts card `number` (1..3): 8, 9, 0 (1-3 are the camera's).
+static func key_label(number: int) -> String:
+	return ["8", "9", "0"][number - 1] if number >= 1 and number <= 3 else str(number)
+
+
 static func row_text(number: int, item: Dictionary, waiting: bool, language := "en") -> String:
 	var who: String = item.get("name", "") if item.get("name", "") != "" else T.text("phone_customer", language)
-	var head := "[%d] %s" % [number, who]
+	var head := "[%s] %s" % [key_label(number), who]
 	if item.get("kind") == "booking":
-		head = "[%d] %s" % [number, who]  # the card says it is pre-booked; the train is its badge
+		head = "[%s] %s" % [key_label(number), who]  # the card says it is pre-booked; the train is its badge
 	if waiting:
 		return head + T.text("phone_waiting", language)
 	if item.get("status", "") not in ANSWERABLE:

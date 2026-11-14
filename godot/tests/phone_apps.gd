@@ -47,6 +47,22 @@ func run() -> void:
 	assert(requests == [["accept", "offer-1", 1]], "compact accept button sends the selected offer")
 	assert(viewport.gui_get_focus_owner() == null, "clicking Accept must not capture driving keys")
 	phone.handle_result({"request_id": 1, "action": "accept", "ok": true})
+	for code in [KEY_1, KEY_2, KEY_3]:  # the camera keys, offers on screen: never the phone's
+		var camera_key := InputEventKey.new()
+		camera_key.keycode = code
+		camera_key.physical_keycode = code
+		camera_key.pressed = true
+		viewport.push_input(camera_key)
+		assert(not viewport.is_input_handled(), "camera key %d passes the phone" % code)
+	assert(requests.size() == 1, "1/2/3 accept no offer")
+	for i in 3:  # 8 / 9 / 0: offer 1 / 2 / 3
+		var offer_key := InputEventKey.new()
+		offer_key.keycode = [KEY_8, KEY_9, KEY_0][i]
+		offer_key.physical_keycode = offer_key.keycode
+		offer_key.pressed = true
+		viewport.push_input(offer_key)
+		assert(requests.size() == 2 + i and requests[-1][0] == "accept" and requests[-1][1] == "offer-%d" % i, "key %d accepts offer %d: %s" % [offer_key.keycode, i + 1, requests])
+		phone.handle_result({"request_id": requests[-1][2], "action": "accept", "ok": false})
 	assert(phone.is_open, "accepting a fare keeps the shared phone open")
 	var position := phone.position
 	phone.show_phone({"busy": true, "items": []})
