@@ -265,6 +265,20 @@ func test_person_beard_styles_differ() -> void:
 	check(hashes.size() == 5, "five beard styles look different")
 
 
+## supermarket-shoppers.md criterion 5: the cart's wheels stand on the ground, its basket ahead of the hands.
+func test_cart_sits_on_ground() -> void:
+	var plain: PackedVector3Array = B3.person_arrays(Color.GRAY, "walk_1", 1.0, "", 0, false, 1)["verts"]
+	var v: PackedVector3Array = B3.person_arrays(Color.GRAY, "walk_1", 1.0, "", 0, false, 1, 0, true)["verts"]
+	check(v.size() > plain.size(), "a cart adds parts")
+	var low := INF
+	var front := -INF
+	for p in v:
+		low = minf(low, p.y)
+		front = maxf(front, p.x)
+	check(absf(low) < 0.005, "cart wheels on the ground (lowest %.3f m)" % low)
+	check(front > 0.9, "cart reaches ahead of the hands (front %.2f m)" % front)
+
+
 ## Criterion 5: men get all six styles over ids 0..63; women and resident-less peds none.
 func test_person_beard_pick_by_gender() -> void:
 	var seen := {}
@@ -385,6 +399,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_person_arms_hang_in_idle_and_walk()
 	test_person_hood_clear_of_neck()
 	test_person_beard_styles_differ()
+	test_cart_sits_on_ground()
 	test_person_beard_pick_by_gender()
 	test_scooter_rider_feet_on_deck()
 	test_walk_pose_changes_every_step()

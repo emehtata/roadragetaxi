@@ -1346,11 +1346,11 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 ## their animation state; +x the way they face. Lying poses are rolled by
 ## place_body (fallen, sunbathing).
 func person(at: Vector2, heading: float, clothing: Color, pose: String, scale := 1.0, costume := "", elevation := 0.0,
-		variant := 0, winter := false, beard := 0) -> void:
+		variant := 0, winter := false, beard := 0, cart := false) -> void:
 	var detail := 0 if at.distance_to(windshield_at if windshield_on else view_centre) > 40.0 else 1
-	var key := "p|%s|%s|%.2f|%s|%d|%d|%d|%d" % [clothing.to_html(false), pose, scale, costume, variant, int(winter), detail, beard]
+	var key := "p|%s|%s|%.2f|%s|%d|%d|%d|%d|%d" % [clothing.to_html(false), pose, scale, costume, variant, int(winter), detail, beard, int(cart)]
 	var lying := pose == "lying"
-	place_body(key, func() -> Dictionary: return person_arrays(clothing, pose, scale, costume, variant, winter, detail, beard), at, heading,
+	place_body(key, func() -> Dictionary: return person_arrays(clothing, pose, scale, costume, variant, winter, detail, beard, cart), at, heading,
 		elevation + (0.2 * scale if lying else 0.0), PI / 2.0 if lying else 0.0, true)
 
 
@@ -1377,7 +1377,8 @@ static func riding_leg_joints(side: float) -> Array:
 		Vector3(0.05, HORSE_SADDLE_Y - 0.65, side * 0.27)]
 
 
-static func person_arrays(clothing: Color, pose: String, scale: float, costume: String, variant := 0, winter := false, detail := 1, beard := 0) -> Dictionary:
+static func person_arrays(clothing: Color, pose: String, scale: float, costume: String, variant := 0, winter := false, detail := 1, beard := 0,
+		cart := false) -> Dictionary:
 	var out := _empty_arrays()
 	var k := scale * (0.96 + 0.015 * (variant % 5))
 	var skin: Color = SKIN_TONES[variant % SKIN_TONES.size()]
@@ -1435,6 +1436,9 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 		var elbow := Vector3(0.06 if pose == "sitting" else -side * 0.045, 1.08 + up, side * 0.245) * k
 		var wrist := Vector3(0.3, 1.0 + offset, side * 0.16) * k if pose == "sitting" \
 			else Vector3(-swing * side * 0.75, 0.91 + up, side * 0.24) * k  # sitting: hands on the thighs
+		if cart and pose != "sitting":  # hands on the cart handle
+			elbow = Vector3(0.2, 1.06 + up, side * 0.25) * k
+			wrist = Vector3(CART_HANDLE_X - 0.03, CART_TOP_Y, side * 0.22)
 		_round_limb(out, shoulder, elbow, 0.072 * k, 0.057 * k, fabric, 0, detail)
 		_round_part(out, elbow, Vector3(0.058, 0.06, 0.058) * 1.2 * k, fabric, 0, detail)
 		_round_limb(out, elbow, wrist, 0.055 * k, 0.042 * k, fabric if jacket else skin, 0 if jacket else 1, detail)
@@ -1472,7 +1476,33 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 		_round_part(out, head + Vector3(-0.025, 0.145, 0.0) * hk, Vector3(0.14, 0.08, 0.13) * hk, Color8(190, 30, 35), 0, detail)
 		_round_limb(out, head + Vector3(0.0, 0.18, 0.0) * hk, head + Vector3(-0.04, 0.36, 0.0) * hk,
 			0.10 * hk.y, 0.015 * hk.y, Color8(190, 30, 35), 0, detail)
+	if cart:
+		_cart(out, detail)
 	return out
+
+
+const CART_HANDLE_X := 0.45
+const CART_TOP_Y := 0.95
+
+
+## docs/specs/supermarket-shoppers.md: a grey wire-box cart ahead of the hands, wheels on y = 0; no text.
+static func _cart(out: Dictionary, detail: int) -> void:
+	var grey := Color8(170, 174, 178)
+	var x0 := CART_HANDLE_X + 0.05
+	var x1 := x0 + 0.9
+	var corners := []
+	for y: float in [0.45, CART_TOP_Y]:
+		for c: Vector2 in [Vector2(x0, -0.275), Vector2(x1, -0.275), Vector2(x1, 0.275), Vector2(x0, 0.275)]:
+			corners.append(Vector3(c.x, y, c.y))
+	for i in 4:
+		for edge: Array in [[i, (i + 1) % 4], [i + 4, (i + 1) % 4 + 4], [i, i + 4]]:
+			_round_limb(out, corners[edge[0]], corners[edge[1]], 0.012, 0.012, grey, 0, detail)
+		var axle: Vector3 = corners[i] * Vector3(1, 0, 1) + Vector3(0, 0.05, 0)
+		_round_limb(out, corners[i], axle, 0.015, 0.015, grey, 0, detail)
+		_round_part(out, axle, Vector3(0.05, 0.05, 0.02), Color8(40, 40, 42), 0, detail)
+	_round_limb(out, Vector3(CART_HANDLE_X, CART_TOP_Y, -0.27), Vector3(CART_HANDLE_X, CART_TOP_Y, 0.27), 0.018, 0.018, grey, 0, detail)
+	for z: float in [-0.27, 0.27]:
+		_round_limb(out, Vector3(CART_HANDLE_X, CART_TOP_Y, z), Vector3(x0, CART_TOP_Y, z), 0.015, 0.015, grey, 0, detail)
 
 
 static var ANIMAL_MODELS := {  # species -> [CC0 GLB preloaded so exports pack it (assets/animals/SOURCES.md), yaw turning its nose to +x, body length m, its coat (no tint)]

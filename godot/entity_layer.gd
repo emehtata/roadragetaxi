@@ -2117,7 +2117,7 @@ func _people_3d() -> void:
 		var clothing: Color = Color8(190, 30, 35) if ped.get("costume", "") in ["santa", "elf"] else _rgb(ped.get("color", [200, 200, 200]))
 		b3.person(row[0], row[1], clothing, person_pose(ped, row[3]), clampf(float(ped.get("radius_m", 0.45)) / 0.45, 0.6, 1.2),
 			str(ped.get("costume", "")), float(deck_height.call(row[0], int(ped.get("layer", 0)))),
-			absi(hash(ped.get("id", ped.get("color", [])))) % 8, winter, beard_style(ped))
+			absi(hash(ped.get("id", ped.get("color", [])))) % 8, winter, beard_style(ped), bool(ped.get("cart", false)))
 	for at in elves:
 		b3.person(at, -PI / 2.0, Color8(190, 30, 35), "standing", ELF_RADIUS_M / 0.45, "elf")
 	for row in _dog_rows:
