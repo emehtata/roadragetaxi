@@ -95,14 +95,15 @@ Ei sankaripuheita. Taksamittari käy.
 | `F` | Enter/exit the taxi; greet a booked passenger |
 | `E` | Start/stop the engine; on foot at your home's front door, go in or out |
 | `P` / `N` | Close/reopen the shared phone (open from the start): offers when free, navigation during a fare |
-| `1`–`3` / `Enter` | Accept an offer by number / accept the selected phone offer |
+| `8` / `9` / `0` / `Enter` | Accept phone offer 1 / 2 / 3 / accept the selected phone offer |
 | `X` | Decline a phone offer, or cancel the active fare when not choosing an offer |
 | `Space` | Rage shout when enough rage is available; a punch in a brawl (`Shift` dodges) |
 | `G` | Refuel while stopped at a pump |
 | `K` / `V` / `B` | Toggle lane assist / speed limiter / traffic-light assist |
 | `C` | Toggle compass |
 | `J` | Toggle train arrivals/departures board |
-| `I` | Toggle the experimental view through the taxi windshield (3D mode) |
+| `1` / `2` / `3` | Driving camera (3D mode): third-person chase (default) / top-down map / driver-eye; never the phone |
+| `I` | On foot: toggle first-person walking (3D mode) |
 | `L` | Cycle labels: none, streets, all places |
 | `R` | Reset the taxi to a road; an onboard fare can incur a penalty |
 | `T` | Reset the trip meter |

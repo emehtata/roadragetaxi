@@ -59,7 +59,7 @@ serialized as-is.
 | `world` | server→client | once per connection, first | `center` (map origin), `chunk_size_m` (500), `player_id` |
 | `chunk` | server→client | when the player's chunk changes | `chunk_id` (`"ix_iy"`, ix = floor(x/500)), `bounds`, `roads` (`points`, `half_width_m`, `drivable`, `layer`), `railways`, `waters`, `buildings`; gameplay points, each in the one chunk containing it: `taxi_stands`, `fuel_stations` (incl. `price_cents`), `traffic_lights` (posts: `id`, `x`, `y`, `angle`), `roadworks`; obstacles the server collides with: `trees`, `construction_fences`, `bollards`; drawing only: `railings`, `scenery_objects`, `street_lights` (the server's placement); the rest of the static world (godot-16): `landuse`, `traffic_islands` (clipped per chunk), `parking`, `curbs`, `crossings`, `speed_bumps`, `signs`, `speed_cameras`, `bus_stops`, `labels`, `building_styles` (`[roof, gabled, height, entrances, wall, floors, category]`; buildings have one owner chunk, their centre's, since godot-17's building volumes; drawn as GTA1/GTA2-style screen-relative radial facade extrusion since godot-20), `canopies` (+ `canopy_heights`), `rail_bridges`, `rail_decks`, `guardrails`, `level_roads`; roads carry `color`, `center`, `oneway`, `bridge` |
 | `chunk_unload` | server→client | same | `chunk_id` |
-| `state` | server→client | every tick (30 Hz) | `tick`, `server_time` (simulation seconds), `state`: game time, `player`, `player_pedestrian`, `on_foot`, `npcs`, `pedestrians`, `trains` (`id`, `state`, `speed`, `cars` as `[x, y, heading, length, look]`), `weather` (incl. `lightning_intensity`; `is_thunderstorm` and the gusting `wind_vector_mps` `[east, north]` for the weather audio), `taxi` (incl. `speed_camera_notice`; the running fare `elapsed_time`, `live_fare_cents`, `fare_distance_m`, `passenger_happiness`, the last three null until the meter starts; `fuel_station_price_cents` of the pump in refuelling range, else null), `road` (`name`, `speed_limit_kmh`), `meet` (meet & greet panel lines and arrow target, or null), `navigation` (`points`: the server's route to the taxi target, `[[x, y], ...]` world metres, Douglas-Peucker 0.5 m, `[]` while none), `road_rage` (`{text, timer}` while the rage shout lasts, else null), `railway` (`stations` with `waiting`, `nearest_station`, its next five `arrivals`/`departures` as game-time `HH:MM`; `{}` without a railway), `traffic_lights` (`{post id: phase}` within 600 m), `fallen_trees`, `knocked_posts` (within 600 m), `calendar` (`date`, `time_scale`, Sun and Moon altitude/azimuth, Moon illumination, `darkness`, `season` weights), `tire_mark`, `speed_camera_flash`, `player.map_level`, `road.layer`/`road.bridge`, `events` (incl. `speech` lines and whole `station_announcement`s) |
+| `state` | server→client | every tick (30 Hz) | `tick`, `server_time` (simulation seconds), `state`: game time, `player`, `player_pedestrian`, `on_foot`, `npcs`, `pedestrians`, `trains` (`id`, `state`, `speed`, `cars` as `[x, y, heading, length, look]`), `weather` (incl. `lightning_intensity`; `is_thunderstorm` and the gusting `wind_vector_mps` `[east, north]` for the weather audio), `taxi` (incl. `speed_camera_notice`; the running fare `elapsed_time`, `live_fare_cents`, `fare_distance_m`, `passenger_happiness`, the last three null until the meter starts; `fuel_station_price_cents` of the pump in refuelling range, else null), `road` (`name`, `speed_limit_kmh`), `meet` (meet & greet panel lines and arrow target, or null), `navigation` (`points`: the server's route to the taxi target, `[[x, y, layer], ...]` world metres (layer: the road's bridge/tunnel layer, 0 ground; clients also accept `[x, y]`), Douglas-Peucker 0.5 m, `[]` while none), `road_rage` (`{text, timer}` while the rage shout lasts, else null), `railway` (`stations` with `waiting`, `nearest_station`, its next five `arrivals`/`departures` as game-time `HH:MM`; `{}` without a railway), `traffic_lights` (`{post id: phase}` within 600 m), `fallen_trees`, `knocked_posts` (within 600 m), `calendar` (`date`, `time_scale`, Sun and Moon altitude/azimuth, Moon illumination, `darkness`, `season` weights), `tire_mark`, `speed_camera_flash`, `player.map_level`, `road.layer`/`road.bridge`, `events` (incl. `speech` lines and whole `station_announcement`s) |
 | `command` | client→server | client-paced (Godot: 20 Hz) | `seq`, `player_id`, `command` (`throttle`, `brake`, `steer_*`, `forward`, `turn`, `engine_on`, `speed_limiter_enabled`, `red_light_assist_enabled`, ..., and the presses `interact`, `refuel`, `road_rage`, which the server applies once each), optional `phone` request |
 
 Commands also carry optional `command.view_bounds`: `[min_x, min_y, max_x,
@@ -303,7 +303,7 @@ release.
 
 **UI.** `phone.gd` is a `PanelContainer` on the right. The road stays
 visible, and the simulation does not pause, see below.
-- Keys are InputMap actions added by the phone: P toggles, Esc closes, 1–3
+- Keys are InputMap actions added by the phone: P toggles, Esc closes, 8, 9, 0
   pick a row, Enter accepts, X rejects. Buttons do the same.
 - No phone key is a driving, taxi or camera key, so driving keeps working
   with the phone open.
@@ -540,6 +540,29 @@ The game stays 2D. Only buildings are 3D (`buildings_3d.gd`):
 layer is accepted. The details and measurements are in the parity doc's
 godot-21 section.
 
+## Driving camera modes (`camera_modes.gd`, docs/specs/third-person-camera.md)
+
+`1` third-person chase (the default at first entry, kept when re-entering),
+`2` top-down map, `3` driver-eye; `I` is first person on foot only. 1 and 3
+show the 3D `SubViewport` full screen (the windshield path of `main.gd`);
+without the 3D world (2D view, underground) they stay top-down. The chase
+camera (`CameraModes.chase`) follows the same interpolated `player_body()`
+sample as the taxi model: 7.5 m back, 3.2 m up, aimed 6 m ahead, FOV 60,
+heading eased over 0.25 s, upright, kept 1.2 m over the ground and under a
+bridge deck above it. No physics or collision shapes. With phone offers on
+The phone takes offers on 8 / 9 / 0, so 1-3 always switch the camera.
+
+Frame times, native Windows GPU (RTX 5060, forward_plus, 1280x720), the
+windshield_oulu_day pose and time (2026-11-14; visual_test.py, 3 s each):
+
+| view (scenario) | avg | p50 | p95 | p99 |
+|---|---|---|---|---|
+| driver-eye (windshield_oulu_day) | 8.99 ms | 8.33 ms | 13.13 ms | 15.79 ms |
+| third-person (third_oulu_straight) | 9.50 ms | 9.09 ms | 13.66 ms | 16.70 ms |
+| top-down (top_after_third) | 4.07 ms | 3.70 ms | 6.06 ms | 10.74 ms |
+
+Third-person p95 is 4 % over driver-eye (the spec allows 10 %).
+
 ## Known limitations
 
 - **Spikes:** occasional 20–39 ms ticks, plus the unexplained 135–145 ms
@@ -563,7 +586,7 @@ godot-21 section.
   driver/passenger recordings use Finnish audio, retaining translated subtitles.
 - **Untested sound:** the pedestrian curse is generated and validated but
   isn't triggered in the scripted test.
-- **Native Windows** performance and audio were not measured.
+- **Native Windows** audio was not measured (frame times: the driving camera table above).
 - **3D buildings** cost about 8.6 ms a frame on software GL: the 3D pass
   (about 4.3 ms, mostly meshes) plus the full-screen composite (about 4.3 ms).
   The composite is inherent to the SubViewport design (godot-23 in the parity

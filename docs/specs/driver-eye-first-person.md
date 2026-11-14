@@ -1,7 +1,7 @@
 # Driver-eye first-person view with mouse free-look
 
 ## Goal
-One first-person view (key `I`) whose camera sits at the taxi driver's eyes when driving and at a
+One first-person view (key `3` driving, `I` on foot; docs/specs/third-person-camera.md) whose camera sits at the taxi driver's eyes when driving and at a
 standing eye when walking, with mouse free-look in both. Today it only works in the taxi, from a guessed point.
 
 ## Findings (current code)
