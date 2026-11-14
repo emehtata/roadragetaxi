@@ -71,6 +71,8 @@ def server(monkeypatch):
     monkeypatch.setattr(transport, "SEND_BUFFER_BYTES", 4096)
     monkeypatch.setattr(transport, "SEND_STALL_TIMEOUT_S", 0.5)
     monkeypatch.setattr(sys, "argv", ["prog", "--use-sample", "--no-menu"])
+    from theroadragetrip.osm import elevation
+    monkeypatch.setattr(elevation, "PACKAGED_DEM80", elevation.PACKAGED_DEM80 / "absent")  # flat, as before the packaged DEM
     from theroadragetrip.server import run_server
     from theroadragetrip.server.cli import parse_server_args
 

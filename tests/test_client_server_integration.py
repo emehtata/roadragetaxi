@@ -12,6 +12,8 @@ pytestmark = pytest.mark.timing  # wall-clock assertions: serial in make test (p
 
 def _start_server(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["prog", "--use-sample", "--no-menu"])
+    from theroadragetrip.osm import elevation
+    monkeypatch.setattr(elevation, "PACKAGED_DEM80", elevation.PACKAGED_DEM80 / "absent")  # flat, as before the packaged DEM
     from theroadragetrip.server.cli import parse_server_args
     from theroadragetrip.server import run_server
 
