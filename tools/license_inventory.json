@@ -33,6 +33,18 @@
       "remediation": "in-game attribution (Credits, map views: done); ODbL and Natural Earth notice in DATA_LICENSES.txt (present)"
     },
     {
+      "name": "Finland 80 m ground heights",
+      "paths": ["src/theroadragetrip/assets/dem80/**"],
+      "purpose": "render-only terrain heights for the whole of Finland", "shipped": true,
+      "origin": "Copernicus GLO-30 DEM (2021 release, copernicus-dem-30m.s3.amazonaws.com), 8x8-averaged to 80 m by tools/dem80.py",
+      "copyright": "DLR e.V. 2010-2014 and Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA",
+      "licence": "LicenseRef-Copernicus-DEM-GLO-30",
+      "evidence": "https://spacedata.copernicus.eu/documents/20123/121286/CSCDA_ESA_Mission-specific+Annex_31_Oct_22.pdf; attribution in dem80.json",
+      "obligations": "keep the Copernicus attribution with the data and in the credits",
+      "commercial": "yes, free use with attribution", "status": "conditional",
+      "remediation": "attribution in dem80.json (done); in-game credits line still to check"
+    },
+    {
       "name": "Sample OSM extract",
       "paths": ["sample_osm.json.gz"],
       "purpose": "offline sample map (--use-sample)", "shipped": true,
