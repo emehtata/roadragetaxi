@@ -114,13 +114,14 @@ class Dem80:
     """The 80 m tile set; tiles open lazily, a few kept (LRU)."""
     base = 0.0
 
-    def __init__(self, directory) -> None:
-        self.dir = Path(directory)
+    def __init__(self, directory, *more) -> None:
+        self.dirs = [Path(d) for d in (directory, *more)]  # each tile from the first folder that has it
+        self.dir = self.dirs[0]
         self._tile = lru_cache(maxsize=8)(self._load)
 
     def _load(self, i: int, j: int):
-        path = self.dir / f"dem80_{i}_{j}.bin"
-        if not path.is_file():
+        path = next((p for d in self.dirs if (p := d / f"dem80_{i}_{j}.bin").is_file()), None)
+        if path is None:
             return None
         try:
             return decode_tile(path.read_bytes())[2]
@@ -176,12 +177,15 @@ def missing_ground_message(cache_root, city: str) -> str:
 def load_ground(cache_root, city: str, dem80_enabled: bool):
     """The render-only ground: <cache>/dem80/ (or $THEROADRAGETRIP_DEM80_DIR) when enabled,
     else <city>.dem.json, else None (flat; logged as an error when terrain was asked for)."""
+    found = []
     for directory in dem80_dirs(cache_root) if dem80_enabled else []:
         try:
-            if ground := load_dem80(directory):
-                return ground
-        except (ValueError, OSError):  # corrupt dem80.json: try the next folder, else the error below
+            if load_dem80(directory):
+                found.append(directory)
+        except (ValueError, OSError):  # corrupt dem80.json: skip that folder, else the error below
             pass
+    if found:
+        return Dem80(*found)
     ground = load_dem(Path(cache_root) / f"{city}.dem.json")
     if ground is None and dem80_enabled:
         logging.getLogger(__name__).error(missing_ground_message(cache_root, city))

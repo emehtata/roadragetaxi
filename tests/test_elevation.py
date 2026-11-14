@@ -112,3 +112,23 @@ def test_dem80_corrupt_tile_logs_once_and_is_flat(tmp_path, caplog):
         assert dem.height_m(x + 80, y) is None
     errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
     assert len(errors) == 1 and tile.name in errors[0].getMessage()
+
+
+def _oulu_only_cache(tmp_path, monkeypatch):
+    monkeypatch.delenv(elevation.DEM80_ENV, raising=False)
+    (tmp_path / "dem80").mkdir()
+    return _copy_with_oulu_tile(tmp_path / "dem80")
+
+
+def test_packaged_tile_used_outside_oulu_only_cache(tmp_path, monkeypatch):
+    _oulu_only_cache(tmp_path, monkeypatch)
+    ground = elevation.load_ground(tmp_path, "Oulu", dem80_enabled=True)
+    assert ground.height_m(430800, 6819170) is not None  # Sysmä: only in the packaged set
+
+
+def test_cache_tile_wins_over_packaged(tmp_path, monkeypatch):
+    tile, x, y = _oulu_only_cache(tmp_path, monkeypatch)
+    i, j = elevation.tile_of(x, y)
+    tile.write_bytes(elevation.encode_tile(i, j, [[1234.5] * elevation.DEM80_SIZE] * elevation.DEM80_SIZE))
+    ground = elevation.load_ground(tmp_path, "Oulu", dem80_enabled=True)
+    assert abs(ground.height_m(x, y) - 1234.5) < 0.01
