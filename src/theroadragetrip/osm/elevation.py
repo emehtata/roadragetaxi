@@ -106,6 +106,10 @@ def validate_index(index: dict) -> None:
         raise ValueError("dem80.json: not EPSG:3067 80 m 256 tiles, scale 0.1, nodata -32768")
 
 
+_REPORTED: set = set()
+PACKAGED_DEM80 = Path(__file__).parent.parent / "assets" / "dem80"
+
+
 class Dem80:
     """The 80 m tile set; tiles open lazily, a few kept (LRU)."""
     base = 0.0
@@ -116,7 +120,15 @@ class Dem80:
 
     def _load(self, i: int, j: int):
         path = self.dir / f"dem80_{i}_{j}.bin"
-        return decode_tile(path.read_bytes())[2] if path.is_file() else None
+        if not path.is_file():
+            return None
+        try:
+            return decode_tile(path.read_bytes())[2]
+        except (ValueError, OSError, zlib.error) as error:  # corrupt tile: flat there, one error per file
+            if path not in _REPORTED:
+                _REPORTED.add(path)
+                logging.getLogger(__name__).error("dem80 tile %s unreadable, flat ground there: %s", path, error)
+            return None
 
     def _sample(self, gx: int, gy: int) -> float | None:
         h = self._tile(gx // DEM80_SIZE, gy // DEM80_SIZE)
@@ -152,7 +164,7 @@ def native_path(text: str) -> Path:
 
 
 def dem80_dirs(cache_root) -> list:
-    return [Path(cache_root) / "dem80"] + ([native_path(env)] if (env := os.environ.get(DEM80_ENV)) else [])
+    return [Path(cache_root) / "dem80"] + ([native_path(env)] if (env := os.environ.get(DEM80_ENV)) else []) + [PACKAGED_DEM80]
 
 
 def missing_ground_message(cache_root, city: str) -> str:
@@ -165,8 +177,11 @@ def load_ground(cache_root, city: str, dem80_enabled: bool):
     """The render-only ground: <cache>/dem80/ (or $THEROADRAGETRIP_DEM80_DIR) when enabled,
     else <city>.dem.json, else None (flat; logged as an error when terrain was asked for)."""
     for directory in dem80_dirs(cache_root) if dem80_enabled else []:
-        if ground := load_dem80(directory):
-            return ground
+        try:
+            if ground := load_dem80(directory):
+                return ground
+        except (ValueError, OSError):  # corrupt dem80.json: try the next folder, else the error below
+            pass
     ground = load_dem(Path(cache_root) / f"{city}.dem.json")
     if ground is None and dem80_enabled:
         logging.getLogger(__name__).error(missing_ground_message(cache_root, city))
