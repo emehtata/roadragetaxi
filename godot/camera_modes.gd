@@ -13,6 +13,11 @@ const CHASE_BACK_M := 7.5
 const CHASE_UP_M := 3.2
 const LOOK_AHEAD_M := 6.0
 const LOOK_UP_M := 1.0
+## On foot: a 1.75 m walker fills ~1/3 of the height at 3 m, FOV 60.
+const WALK_BACK_M := 3.0
+const WALK_UP_M := 1.8
+const WALK_LOOK_AHEAD_M := 3.0
+const WALK_LOOK_UP_M := 1.2
 const FOV := 60.0
 const HEADING_SMOOTH_S := 0.25
 const CLEARANCE_M := 1.2  # above the ground under the camera
@@ -48,11 +53,12 @@ func smooth_heading(target: float, delta: float) -> float:
 ## Behind and above `at` (2D map metres; heading as Buildings3D: forward is
 ## (cos, 0, -sin)), aimed ahead of it, upright. Never below `cam_ground` +
 ## CLEARANCE_M, and under `deck` (a bridge over the camera) when it can.
-static func chase_pose(at: Vector2, heading: float, ground: float, cam_ground: float, deck := INF) -> Transform3D:
+static func chase_pose(at: Vector2, heading: float, ground: float, cam_ground: float, deck := INF,
+		back := CHASE_BACK_M, up := CHASE_UP_M, ahead := LOOK_AHEAD_M, look_up := LOOK_UP_M) -> Transform3D:
 	var forward := Vector3(cos(heading), 0.0, -sin(heading))
-	var eye := Vector3(at.x, ground + CHASE_UP_M, at.y) - forward * CHASE_BACK_M
+	var eye := Vector3(at.x, ground + up, at.y) - forward * back
 	eye.y = maxf(minf(eye.y, deck - DECK_GAP_M), cam_ground + CLEARANCE_M)
-	var target := Vector3(at.x, ground + LOOK_UP_M, at.y) + forward * LOOK_AHEAD_M
+	var target := Vector3(at.x, ground + look_up, at.y) + forward * ahead
 	return Transform3D(Basis.looking_at(target - eye, Vector3.UP), eye)
 
 
@@ -60,9 +66,18 @@ static func chase_pose(at: Vector2, heading: float, ground: float, cam_ground: f
 ## interpolated sample as the car model). height: map_layer.deck_height;
 ## covered: map_layer.covered.
 func chase(body: Dictionary, delta: float, height: Callable, covered: Callable) -> Transform3D:
-	var heading := smooth_heading(float(body["heading"]), delta)
-	var at: Vector2 = body["position"]
-	var layer := int(body.get("layer", 0))
-	var cam: Vector2 = at - Vector2(cos(heading), -sin(heading)) * CHASE_BACK_M
+	return _follow(body["position"], float(body["heading"]), delta, height, covered, int(body.get("layer", 0)), CHASE_BACK_M, CHASE_UP_M, LOOK_AHEAD_M, LOOK_UP_M)
+
+
+## The chase camera behind the walking player (at: entity_layer.player_position,
+## heading: the figure's facing).
+func walk_chase(at: Vector2, heading: float, delta: float, height: Callable, covered: Callable, layer := 0) -> Transform3D:
+	return _follow(at, heading, delta, height, covered, layer, WALK_BACK_M, WALK_UP_M, WALK_LOOK_AHEAD_M, WALK_LOOK_UP_M)
+
+
+func _follow(at: Vector2, target_heading: float, delta: float, height: Callable, covered: Callable, layer: int,
+		back: float, up: float, ahead: float, look_up: float) -> Transform3D:
+	var heading := smooth_heading(target_heading, delta)
+	var cam: Vector2 = at - Vector2(cos(heading), -sin(heading)) * back
 	var deck: float = float(height.call(cam, layer + 1)) if layer <= 0 and covered.call(cam, layer) else INF
-	return chase_pose(at, heading, float(height.call(at, layer)), float(height.call(cam, layer)), deck)
+	return chase_pose(at, heading, float(height.call(at, layer)), float(height.call(cam, layer)), deck, back, up, ahead, look_up)

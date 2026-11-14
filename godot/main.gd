@@ -81,7 +81,8 @@ var _windshield: CanvasLayer
 var _windshield_view: TextureRect
 var _windshield_zoom := 0.0
 var _windshield_trims: Array[ColorRect] = []
-var walk_eye := false  # first-person walking: the windshield view at the walking player's eyes (keys 3 or 1 on foot)
+var walk_eye := false  # first-person walking: the windshield view at the walking player's eyes (key 3 on foot)
+var walk_chase := false  # on foot, key 1: the chase camera behind the walker
 var look_yaw := 0.0  # server heading convention (rad, counter-clockwise from east); the server walks this way
 var look_pitch := 0.0
 const WALK_EYE_HEIGHT_M := 1.7
@@ -554,7 +555,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3:  # the camera; on foot 3 (and 1) is first person, 2 the map; kept for the next drive
+			KEY_1, KEY_2, KEY_3:  # the camera; on foot 3 is first person, 1 behind the walker, 2 the map; kept for the next drive
 				if camera_modes.handle_key(event):
 					if entities.shown_state().get("on_foot", true):
 						_set_windshield(camera_modes.mode != CameraModes.Mode.TOP, true)
@@ -656,11 +657,12 @@ func _build_windshield() -> void:
 func _set_windshield(on: bool, walking := false) -> void:
 	if on and (not MapChunk.outdoor_3d or (entities.player_body().is_empty() and not walking)):
 		return
-	var chase := on and not walking and camera_modes.mode == CameraModes.Mode.THIRD
-	var switching: bool = on and _windshield.visible and (walk_eye != walking or chase != map_layer.buildings_3d.chase_on)  # out of the taxi or back in, 1/3: the eye glides over
+	var chase := on and camera_modes.mode == CameraModes.Mode.THIRD
+	var switching: bool = on and _windshield.visible and ((walk_eye or walk_chase) != walking or chase != map_layer.buildings_3d.chase_on)  # out of the taxi or back in, 1/3: the eye glides over
 	if switching:
 		map_layer.buildings_3d.begin_eye_transition()
-	walk_eye = on and walking
+	walk_eye = on and walking and camera_modes.mode == CameraModes.Mode.EYE
+	walk_chase = on and walking and chase
 	entities.first_person = walk_eye
 	for trim in _windshield_trims:
 		trim.visible = not walk_eye and not chase  # no car frame around a walker's eyes
@@ -782,10 +784,23 @@ func _process(delta: float) -> void:
 			map_layer.buildings_3d.windshield_at = at
 			map_layer.buildings_3d.windshield_heading = look_yaw
 			map_layer.buildings_3d.windshield_elevation = map_layer.deck_height(at, 0)
+	elif walk_chase:
+		if not state.get("on_foot", false):
+			_set_windshield(camera_modes.mode != CameraModes.Mode.TOP)  # back at the wheel: the driving camera
+			if walk_chase:  # no taxi body (underground): the map view
+				_set_windshield(false)
+		else:
+			var at: Vector2 = entities.player_position()  # the server's position, interpolated
+			var walker: Dictionary = entities.shown_state().get("player_pedestrian", {})
+			var heading := float(walker.get("facing", walker.get("heading", 0.0)))  # as the figure is drawn
+			map_layer.buildings_3d.chase_transform = camera_modes.walk_chase(at, heading, delta, map_layer.deck_height, map_layer.covered)
+			map_layer.buildings_3d.windshield_at = at
+			map_layer.buildings_3d.windshield_heading = heading
+			map_layer.buildings_3d.windshield_elevation = map_layer.deck_height(at, 0)
 	elif _windshield.visible:
 		var body: Dictionary = entities.player_body()
 		if state.get("on_foot", false):
-			_set_windshield(camera_modes.mode == CameraModes.Mode.EYE, true)  # out of the taxi from 3: walking in first person
+			_set_windshield(camera_modes.mode != CameraModes.Mode.TOP, true)  # out of the taxi: 1 behind the walker, 3 first person
 		elif body.is_empty() or camera_modes.mode == CameraModes.Mode.TOP:
 			_set_windshield(false)
 		else:

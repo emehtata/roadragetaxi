@@ -65,7 +65,7 @@ func _walk(delta: float) -> void:
 		main._interact_pending = true  # F: out of the taxi
 		_walk_phase = 1
 	elif _walk_phase == 1 and state.get("on_foot", false):
-		if not main.walk_eye and not walk.get("top_down", false):  # from the windshield view main.gd has switched by itself
+		if not main.walk_eye and not main.walk_chase and not walk.get("top_down", false):  # from the windshield view main.gd has switched by itself
 			var walk_key := InputEventKey.new()  # 3 on foot, as the player: first person
 			walk_key.keycode = KEY_3
 			walk_key.pressed = true
@@ -382,7 +382,7 @@ func check() -> Array:
 	elif walking:  # the taxi stays where it was parked (checked above); the walker moved away from it
 		var walker: Dictionary = state.get("player_pedestrian", {})
 		var walked := Vector2(float(walker.get("x", INF)), float(walker.get("y", INF))).distance_to(Vector2(pose[0], pose[1]))
-		if not state.get("on_foot", false) or main.walk_eye == bool(scenario["walk"].get("top_down", false)):
+		if not state.get("on_foot", false) or (main.walk_eye or main.walk_chase) == bool(scenario["walk"].get("top_down", false)):
 			missing.append("the player is not walking in the scenario's view")
 		elif scenario["walk"].has("expect") and state.get("interaction", {}).get("kind", "") != scenario["walk"]["expect"]:
 			missing.append("the server offers %s here, not %s" % [state.get("interaction", {}), scenario["walk"]["expect"]])

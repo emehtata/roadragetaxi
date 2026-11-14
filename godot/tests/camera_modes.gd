@@ -18,6 +18,8 @@ func _initialize() -> void:
 	test_chase_below_deck()
 	test_heading_smoothing()
 	test_route_heights_follow_deck()
+	test_walk_chase_pose_behind_walker()
+	test_chase_pose_defaults_unchanged()
 	print("camera_modes: ", "FAIL" if failed else "ok")
 	quit(1 if failed else 0)
 
@@ -97,3 +99,18 @@ func test_route_heights_follow_deck() -> void:
 		worst = maxf(worst, off)
 	check(worst < 1e-3, "route on the deck of its layer, %.3f m off" % worst)
 	check(vertices.size() > 6 * 2 * 4, "resampled every 2 m: %d vertices" % vertices.size())
+
+
+func test_walk_chase_pose_behind_walker() -> void:
+	var flat := func(_at: Vector2, _layer: int) -> float: return 5.0
+	var open := func(_at: Vector2, _layer: int) -> bool: return false
+	for heading: float in [0.0, PI / 2.0]:
+		var modes := CameraModes.new()
+		var pose: Transform3D = modes.walk_chase(Vector2(10, 20), heading, 0.016, flat, open)
+		var want := Vector3(10, 5.0 + 1.8, 20) - Vector3(cos(heading), 0.0, -sin(heading)) * 3.0
+		check(pose.origin.is_equal_approx(want), "walker chase 3 m behind, 1.8 m up at %f: %s" % [heading, pose.origin])
+
+
+func test_chase_pose_defaults_unchanged() -> void:
+	var pose := CameraModes.chase_pose(Vector2.ZERO, 0.0, 0.0, 0.0)
+	check(pose.origin.is_equal_approx(Vector3(-7.5, 3.2, 0)), "taxi chase still 7.5/3.2: %s" % pose.origin)
