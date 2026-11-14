@@ -251,6 +251,30 @@ func test_person_hood_clear_of_neck() -> void:
 	check(low < INF and low >= (1.36 + 0.02) * 0.975, "the hood clears the neck stub (lowest %.3f m)" % low)
 
 
+## Criteria 3-4: beard 0 is the old look; styles 1-5 add distinct parts on the lower face front.
+func test_person_beard_styles_differ() -> void:
+	var plain: PackedVector3Array = B3.person_arrays(Color.GRAY, "standing", 1.0, "", 0, false, 1)["verts"]
+	check(B3.person_arrays(Color.GRAY, "standing", 1.0, "", 0, false, 1, 0)["verts"] == plain, "beard 0 adds nothing")
+	var hashes := {}
+	for beard in range(1, 6):
+		var v: PackedVector3Array = B3.person_arrays(Color.GRAY, "standing", 1.0, "", 0, false, 1, beard)["verts"]
+		hashes[hash(v)] = true
+		var extra := Array(v.slice(plain.size()))
+		check(v.size() > plain.size() and extra.all(func(p): return p.x > 0.0 and p.y < (1.5015 + 0.016 * 1.7) * 0.96),
+			"beard %d adds parts on the lower face front" % beard)
+	check(hashes.size() == 5, "five beard styles look different")
+
+
+## Criterion 5: men get all six styles over ids 0..63; women and resident-less peds none.
+func test_person_beard_pick_by_gender() -> void:
+	var seen := {}
+	for id in 64:
+		seen[EntityLayer.beard_style({"id": id, "resident": {"gender": "male"}})] = true
+	check(seen.size() == 6, "men's beards cover all six styles (%d)" % seen.size())
+	var none := range(64).all(func(id): return EntityLayer.beard_style({"id": id, "resident": {"gender": "female"}}) + EntityLayer.beard_style({"id": id}) == 0)
+	check(none, "women and peds without a resident get no beard")
+
+
 ## Acceptance 4-5: the e-scooter rider stands on the deck on two bent legs, torso unchanged.
 ## Rules: hips at >= seat - 0.05 m and above the deck; lowest vertex within 0.02 m of SCOOTER_DECK_Y;
 ## ankles in x0..x1 (staggered, back foot x0, front x1); the shoes reach from x0 - 0.06 (back shoe's heel)
@@ -360,6 +384,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_walk_pose_phase_changes_mesh()
 	test_person_arms_hang_in_idle_and_walk()
 	test_person_hood_clear_of_neck()
+	test_person_beard_styles_differ()
+	test_person_beard_pick_by_gender()
 	test_scooter_rider_feet_on_deck()
 	test_walk_pose_changes_every_step()
 	test_model_variant_stable_and_covering()

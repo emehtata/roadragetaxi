@@ -1346,11 +1346,11 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 ## their animation state; +x the way they face. Lying poses are rolled by
 ## place_body (fallen, sunbathing).
 func person(at: Vector2, heading: float, clothing: Color, pose: String, scale := 1.0, costume := "", elevation := 0.0,
-		variant := 0, winter := false) -> void:
+		variant := 0, winter := false, beard := 0) -> void:
 	var detail := 0 if at.distance_to(windshield_at if windshield_on else view_centre) > 40.0 else 1
-	var key := "p|%s|%s|%.2f|%s|%d|%d|%d" % [clothing.to_html(false), pose, scale, costume, variant, int(winter), detail]
+	var key := "p|%s|%s|%.2f|%s|%d|%d|%d|%d" % [clothing.to_html(false), pose, scale, costume, variant, int(winter), detail, beard]
 	var lying := pose == "lying"
-	place_body(key, func() -> Dictionary: return person_arrays(clothing, pose, scale, costume, variant, winter, detail), at, heading,
+	place_body(key, func() -> Dictionary: return person_arrays(clothing, pose, scale, costume, variant, winter, detail, beard), at, heading,
 		elevation + (0.2 * scale if lying else 0.0), PI / 2.0 if lying else 0.0, true)
 
 
@@ -1377,7 +1377,7 @@ static func riding_leg_joints(side: float) -> Array:
 		Vector3(0.05, HORSE_SADDLE_Y - 0.65, side * 0.27)]
 
 
-static func person_arrays(clothing: Color, pose: String, scale: float, costume: String, variant := 0, winter := false, detail := 1) -> Dictionary:
+static func person_arrays(clothing: Color, pose: String, scale: float, costume: String, variant := 0, winter := false, detail := 1, beard := 0) -> Dictionary:
 	var out := _empty_arrays()
 	var k := scale * (0.96 + 0.015 * (variant % 5))
 	var skin: Color = SKIN_TONES[variant % SKIN_TONES.size()]
@@ -1457,6 +1457,17 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 			_round_part(out, head + Vector3(0.112, 0.05, side * 0.048) * hk, Vector3(0.013, 0.009, 0.026) * hk, hair, 2, detail)
 		_round_part(out, head + Vector3(0.12, -0.022, 0.0) * hk, Vector3(0.032, 0.038, 0.029) * hk, skin, 1, detail)
 		_round_part(out, head + Vector3(0.113, -0.078, 0.0) * hk, Vector3(0.012, 0.008, 0.031) * hk, skin.darkened(0.3), 1, detail)
+		# beard 1 short, 2 full, 3 moustache, 4 moustache + beard, 5 goatee (docs/specs/male-facial-hair-and-arm-fix.md)
+		if beard in [1, 4]:
+			_round_part(out, head + Vector3(0.09, -0.1, 0.0) * hk, Vector3(0.03, 0.03, 0.08) * hk, hair, 2, detail)
+		if beard == 2:
+			_round_part(out, head + Vector3(0.09, -0.12, 0.0) * hk, Vector3(0.035, 0.045, 0.085) * hk, hair, 2, detail)
+			for side: float in [-1.0, 1.0]:
+				_round_part(out, head + Vector3(0.08, -0.06, side * 0.07) * hk, Vector3(0.025, 0.04, 0.025) * hk, hair, 2, detail)
+		if beard in [3, 4]:
+			_round_part(out, head + Vector3(0.118, -0.055, 0.0) * hk, Vector3(0.014, 0.014, 0.04) * hk, hair, 2, detail)
+		if beard == 5:
+			_round_part(out, head + Vector3(0.1, -0.115, 0.0) * hk, Vector3(0.022, 0.03, 0.025) * hk, hair, 2, detail)
 	if costume in ["santa", "elf"]:
 		_round_part(out, head + Vector3(-0.025, 0.145, 0.0) * hk, Vector3(0.14, 0.08, 0.13) * hk, Color8(190, 30, 35), 0, detail)
 		_round_limb(out, head + Vector3(0.0, 0.18, 0.0) * hk, head + Vector3(-0.04, 0.36, 0.0) * hk,

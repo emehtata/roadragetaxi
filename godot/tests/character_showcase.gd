@@ -23,6 +23,10 @@ func capture() -> void:
 	camera.look_at(Vector3(0.0, 0.9, 0.0))
 	if group == "legs":
 		camera.size = 3.4
+	if group == "beards":  # docs/specs/male-facial-hair-and-arm-fix.md: three men's faces, beards 2, 3, 5
+		camera.size = 1.6
+		camera.position = Vector3(10.0, 1.6, 4.0)
+		camera.look_at(Vector3(0.0, 1.4, 0.0))
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_COLOR
 	environment.background_color = Color(0.36, 0.42, 0.48) * (0.45 if light == "night" else 0.75 if light == "evening" else 1.0)
@@ -62,7 +66,10 @@ func capture() -> void:
 		B3._rider(rider, -0.072, 0.168, B3.SCOOTER_RIDER_SEAT, Color8(60, 120, 220), Color8(236, 196, 160))
 		B3._rider_legs(rider, -0.072, 0.168, B3.SCOOTER_RIDER_SEAT, B3.SCOOTER_DECK_Y, Color8(48, 58, 74))
 		add_mesh(rider, Vector3(1.9, 0.0, 0.0), 0.0)
-	for i in (0 if group == "wildlife" else 2 if group in ["close", "legs"] else people.size()):
+	if group == "beards":
+		for i in 3:
+			add_mesh(B3.person_arrays(people[i][0], "standing", 1.0, "", [0, 2, 6][i], false, 1, [2, 3, 5][i]), Vector3(0.0, 0.0, (i - 1) * 0.75), 0.3)
+	for i in (0 if group in ["wildlife", "beards"] else 2 if group in ["close", "legs"] else people.size()):
 		var row: Array = people[i]
 		var arrays: Dictionary = B3.person_arrays(row[0], row[1], row[2], row[3], i + 1, group == "winter")
 		add_mesh(arrays, Vector3(-1.9 + i * 1.1, 0.0, 0.0) if group == "legs" else Vector3((i - 0.5) * 1.3 if group == "close" else (i - 3.5) * 1.08, 0.0, 0.0 if group == "close" else -1.8), -0.55)
@@ -78,7 +85,7 @@ func capture() -> void:
 			["crow", Color8(42, 43, 45), "fly_1", 1.0], ["duck", Color8(120, 98, 72), "stand", 1.0],
 			["gull", Color8(242, 243, 240), "fly_0", 1.0], ["fox", Color8(194, 91, 38), "stand", 1.0],
 			["roe_deer", Color8(151, 104, 62), "stand", 1.0], ["moose", Color8(91, 67, 48), "stand", 0.65]]
-	for i in (0 if group in ["close", "legs"] else animals.size()):
+	for i in (0 if group in ["close", "legs", "beards"] else animals.size()):
 		var row: Array = animals[i]
 		var arrays: Dictionary = B3.animal_arrays(row[0], row[1], row[2], row[3])
 		add_mesh(arrays, Vector3((i % 5 - 2) * 1.8, 0.0, (i / 5 - 0.5) * 2.0) if group == "wildlife" else Vector3((i - 1.5) * 2.1, 0.0, 1.5), -0.3)

@@ -2100,6 +2100,12 @@ var wildlife: Node = null  # main.gd's WildlifeLayer: its larger animals are 3D 
 ## Step 6 (--outdoor-3d): this frame's people (posed by their animation
 ## state), dogs, holiday elves and the larger wild animals as 3D bodies;
 ## their 2D drawing (_draw_people, wildlife) is left out.
+## docs/specs/male-facial-hair-and-arm-fix.md: a man's facial hair 0-5 by id (/ 8: apart from the clothing variant); others 0.
+static func beard_style(ped: Dictionary) -> int:
+	var gender := str(ped.get("resident", {}).get("gender", "")) if ped.get("resident") is Dictionary else ""
+	return (absi(hash(ped.get("id", ped.get("color", [])))) / 8) % 6 if gender in ["male", "man", "m"] and ped.get("costume", "") == "" else 0
+
+
 func _people_3d() -> void:
 	var b3: Node2D = Buildings3D.current
 	var season: Array = _frame["a"].get("calendar", {}).get("season", [])
@@ -2111,7 +2117,7 @@ func _people_3d() -> void:
 		var clothing: Color = Color8(190, 30, 35) if ped.get("costume", "") in ["santa", "elf"] else _rgb(ped.get("color", [200, 200, 200]))
 		b3.person(row[0], row[1], clothing, person_pose(ped, row[3]), clampf(float(ped.get("radius_m", 0.45)) / 0.45, 0.6, 1.2),
 			str(ped.get("costume", "")), float(deck_height.call(row[0], int(ped.get("layer", 0)))),
-			absi(hash(ped.get("id", ped.get("color", [])))) % 8, winter)
+			absi(hash(ped.get("id", ped.get("color", [])))) % 8, winter, beard_style(ped))
 	for at in elves:
 		b3.person(at, -PI / 2.0, Color8(190, 30, 35), "standing", ELF_RADIUS_M / 0.45, "elf")
 	for row in _dog_rows:
