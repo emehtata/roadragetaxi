@@ -20,6 +20,18 @@ func _initialize() -> void:
 	test_route_heights_follow_deck()
 	test_walk_chase_pose_behind_walker()
 	test_chase_pose_defaults_unchanged()
+	test_look_orbits_without_button()
+	test_pitch_clamped()
+	test_orbit_held_when_heading_turns()
+	test_reset_frame_rate_independent()
+	test_sensitivity_scales()
+	test_zoom_in_out_walk()
+	test_zoom_in_out_car()
+	test_zoom_limits()
+	test_zoom_smooth()
+	test_zoom_kept_while_rotating()
+	test_zoom_enter_exit_smooth()
+	test_zoom_clearance()
 	print("camera_modes: ", "FAIL" if failed else "ok")
 	quit(1 if failed else 0)
 
@@ -114,3 +126,190 @@ func test_walk_chase_pose_behind_walker() -> void:
 func test_chase_pose_defaults_unchanged() -> void:
 	var pose := CameraModes.chase_pose(Vector2.ZERO, 0.0, 0.0, 0.0)
 	check(pose.origin.is_equal_approx(Vector3(-7.5, 3.2, 0)), "taxi chase still 7.5/3.2: %s" % pose.origin)
+
+
+## docs/specs/3rd-person-mouse.md: the mouse orbits the chase camera.
+func _flat(_at: Vector2, _layer: int) -> float:
+	return 0.0
+
+
+func _open(_at: Vector2, _layer: int) -> bool:
+	return false
+
+
+func _taxi(heading: float) -> Dictionary:
+	return {"position": Vector2.ZERO, "heading": heading}
+
+
+## The eye's bearing seen from the taxi (radians, the heading convention).
+func _bearing(pose: Transform3D) -> float:
+	return atan2(-pose.origin.z, pose.origin.x)
+
+
+func test_look_orbits_without_button() -> void:
+	var modes := CameraModes.new()
+	var before := _bearing(modes.chase(_taxi(0.0), 0.016, _flat, _open))
+	modes.look(Vector2(100, 0), 0.01)
+	var after := _bearing(modes.chase(_taxi(0.0), 0.016, _flat, _open))
+	check(absf(angle_difference(before, after)) > 0.5, "mouse motion orbits: %f -> %f" % [before, after])
+
+
+func test_pitch_clamped() -> void:
+	var modes := CameraModes.new()
+	modes.look(Vector2(0, 100000), 0.01)
+	check(modes.orbit_pitch == CameraModes.PITCH_MAX, "pitch clamped high: %f" % modes.orbit_pitch)
+	modes.look(Vector2(0, -100000), 0.01)
+	check(modes.orbit_pitch == CameraModes.PITCH_MIN, "pitch clamped low: %f" % modes.orbit_pitch)
+
+
+func test_orbit_held_when_heading_turns() -> void:
+	var modes := CameraModes.new()
+	modes.chase(_taxi(0.0), 0.016, _flat, _open)
+	modes.look(Vector2(100, 0), 0.01)
+	var before := _bearing(modes.chase(_taxi(0.0), 0.016, _flat, _open))
+	var after := before
+	for i in 120:
+		after = _bearing(modes.chase(_taxi(PI / 2.0), 0.016, _flat, _open))
+	check(absf(angle_difference(before, after)) < 1e-4, "held in world space: %f -> %f" % [before, after])
+
+
+func _reset_yaw(fps: float) -> float:
+	var modes := CameraModes.new()
+	modes.chase(_taxi(0.0), 0.016, _flat, _open)
+	modes.look(Vector2(PI / 0.01 - 1.0, 0), 0.01)  # nearly behind the front
+	modes.reset_look()
+	var pose: Transform3D
+	for i in int(fps):
+		pose = modes.chase(_taxi(0.0), 1.0 / fps, _flat, _open)
+	return _bearing(pose)
+
+
+func test_reset_frame_rate_independent() -> void:
+	var slow := _reset_yaw(30.0)
+	var fast := _reset_yaw(144.0)
+	check(absf(angle_difference(slow, fast)) < deg_to_rad(1.0), "30 vs 144 fps: %f vs %f" % [slow, fast])
+	check(absf(angle_difference(slow, PI)) < deg_to_rad(1.0), "back behind the taxi within 1 deg after 1 s: %f" % slow)
+
+
+func test_sensitivity_scales() -> void:
+	var one := CameraModes.new()
+	var two := CameraModes.new()
+	one.look(Vector2(10, 0), 0.002)
+	two.look(Vector2(10, 0), 0.004)
+	check(is_equal_approx(two.orbit_yaw, 2.0 * one.orbit_yaw) and one.orbit_yaw != 0.0, "double sensitivity, double yaw: %f %f" % [one.orbit_yaw, two.orbit_yaw])
+
+
+## Section 9: wheel zoom. Distance = horizontal eye-to-entity distance.
+func _dist(pose: Transform3D) -> float:
+	return Vector2(pose.origin.x, pose.origin.z).length()
+
+
+func _car(modes: CameraModes, frames := 120, height := Callable(self, "_flat"), covered := Callable(self, "_open")) -> Transform3D:
+	var pose: Transform3D
+	for i in frames:
+		pose = modes.chase(_taxi(0.0), 1.0 / 60.0, height, covered)
+	return pose
+
+
+func _walk(modes: CameraModes, frames := 120) -> Transform3D:
+	var pose: Transform3D
+	for i in frames:
+		pose = modes.walk_chase(Vector2.ZERO, 0.0, 1.0 / 60.0, _flat, _open)
+	return pose
+
+
+func test_zoom_in_out_walk() -> void:
+	var modes := CameraModes.new()
+	var base := _dist(_walk(modes))
+	modes.zoom_step(1, 0.1)
+	var near := _dist(_walk(modes))
+	modes.zoom_step(-3, 0.1)
+	var far := _dist(_walk(modes))
+	check(near < base - 0.1 and far > base + 0.1, "walk zoom: %f %f %f" % [near, base, far])
+
+
+func test_zoom_in_out_car() -> void:
+	var modes := CameraModes.new()
+	var base := _dist(_car(modes))
+	modes.zoom_step(1, 0.1)
+	var near := _dist(_car(modes))
+	modes.zoom_step(-3, 0.1)
+	var far := _dist(_car(modes))
+	check(near < base - 0.1 and far > base + 0.1, "car zoom: %f %f %f" % [near, base, far])
+	var a := CameraModes.new()
+	var b := CameraModes.new()
+	a.zoom_step(1, 0.05)
+	b.zoom_step(1, 0.1)
+	check(is_equal_approx(1.0 - b.zoom_car, 2.0 * (1.0 - a.zoom_car)), "double zoom sensitivity, double step")
+
+
+func test_zoom_limits() -> void:
+	var modes := CameraModes.new()
+	_walk(modes, 1)
+	modes.zoom_step(100, 0.1)
+	check(absf(_dist(_walk(modes, 600)) - modes.walk_min_m) < 0.01, "walk min")
+	modes.zoom_step(-100, 0.1)
+	check(absf(_dist(_walk(modes, 600)) - modes.walk_max_m) < 0.01, "walk max")
+	_car(modes, 1)
+	modes.zoom_step(100, 0.1)
+	check(absf(_dist(_car(modes, 600)) - modes.car_min_m) < 0.01, "car min")
+	modes.zoom_step(-100, 0.1)
+	check(absf(_dist(_car(modes, 600)) - modes.car_max_m) < 0.01, "car max")
+
+
+func test_zoom_smooth() -> void:
+	var modes := CameraModes.new()
+	var before := _dist(_car(modes))
+	modes.zoom_step(-100, 0.1)
+	var first := _dist(_car(modes, 1))
+	check(first > before and first - before < 0.3 * (modes.car_max_m - before), "eased: %f -> %f" % [before, first])
+
+
+func test_zoom_kept_while_rotating() -> void:
+	var modes := CameraModes.new()
+	modes.zoom_step(2, 0.1)
+	var before := _dist(_car(modes))
+	modes.look(Vector2(150, 0), 0.01)
+	var after := _dist(_car(modes, 1))
+	check(absf(before - after) < 1e-3 and modes.orbit_pitch == 0.0, "look keeps distance: %f %f" % [before, after])
+	var yaw := modes.orbit_yaw
+	modes.zoom_step(1, 0.1)
+	check(modes.orbit_yaw == yaw, "zoom keeps yaw")
+
+
+func test_zoom_enter_exit_smooth() -> void:
+	for notches in [100, -100]:
+		var modes := CameraModes.new()
+		_walk(modes, 1)
+		modes.zoom_step(notches, 0.1)
+		var last := _dist(_walk(modes, 600))
+		var goal := _dist(_car(CameraModes.new()))
+		var worst := 0.0
+		for i in 120:
+			var d := _dist(_car(modes, 1))
+			worst = maxf(worst, absf(d - last))
+			last = d
+		check(worst < 0.3 * absf(goal - _dist(_walk(CameraModes.new()))) + 0.5 and absf(last - goal) < 0.05, "enter taxi at %d: worst step %f" % [notches, worst])
+
+
+func _hill(at: Vector2, _layer: int) -> float:
+	return 10.0 if at.x < -5.0 else 0.0
+
+
+func _bridge(_at: Vector2, layer: int) -> float:
+	return 5.0 if layer > 0 else 0.0
+
+
+func _under(_at: Vector2, _layer: int) -> bool:
+	return true
+
+
+func test_zoom_clearance() -> void:
+	var modes := CameraModes.new()
+	modes.zoom_step(-100, 0.1)
+	var pose := _car(modes, 600, _hill)
+	check(pose.origin.y >= 10.0 + CameraModes.CLEARANCE_M - 1e-3, "max zoom over hill: %f" % pose.origin.y)
+	var deck := CameraModes.new()
+	deck.zoom_step(-100, 0.1)
+	pose = _car(deck, 600, _bridge, _under)
+	check(pose.origin.y <= 5.0 - CameraModes.DECK_GAP_M + 1e-3, "max zoom under deck: %f" % pose.origin.y)

@@ -203,6 +203,10 @@ func _ready() -> void:
 	# The driving camera: "camera" (or the last of "switch"); without either the map view as before (3 for "windshield").
 	var walk_in: bool = scenario.get("walk", {}).get("back", "") == "in"
 	main.camera_modes.select(main.camera_modes.KEYS[CAMERA[scenario.get("camera", "eye" if walk_in else "top")]])
+	if scenario.has("orbit_deg"):  # docs/specs/3rd-person-mouse.md: the chase orbit as if the mouse had turned it
+		main.camera_modes.look(Vector2(-deg_to_rad(float(scenario["orbit_deg"])), 0.0), 1.0)
+	if scenario.has("chase_zoom"):  # "min" / "max": the taxi chase distance limit
+		main.camera_modes.zoom_step(100.0 if scenario["chase_zoom"] == "min" else -100.0, 1.0)
 	if scenario.get("lineup", "") is String and scenario.get("lineup", "") == "coach":  # one coach left of the taxi: its right side faces the camera
 		var coach: Array = scenario["lineup_coach"]
 		main.entities.extra_trains = [_lineup_train("train coach", coach[0], [coach[1]], coach[2], coach[1] * 0.5, LINEUP_LANE_M + 0.5)]

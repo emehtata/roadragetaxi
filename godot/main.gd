@@ -85,6 +85,8 @@ var walk_eye := false  # first-person walking: the windshield view at the walkin
 var walk_chase := false  # on foot, key 1: the chase camera behind the walker
 var look_yaw := 0.0  # server heading convention (rad, counter-clockwise from east); the server walks this way
 var look_pitch := 0.0
+var chase_mouse_sensitivity := 0.003  # settings: game/chase_mouse_sensitivity (rad per pixel)
+var chase_zoom_sensitivity := 0.1  # settings: game/chase_zoom_sensitivity (distance scale per wheel notch)
 const WALK_EYE_HEIGHT_M := 1.7
 const LOOK_PITCH_LIMIT := 1.35  # rad, about 77 degrees up or down
 const LEAD_S := 0.6  # look this far ahead of the taxi at its speed
@@ -284,6 +286,12 @@ func _ready() -> void:
 	sim.chunk_unloaded.connect(_queue_chunk_unload)
 	sim.connection_changed.connect(_on_connection)
 	phone.sound.connect(func(group: String, variation: int): audio.handle_event({"type": "sound", "group": group, "variation": variation}))
+	phone.sound.connect(func(group: String, _variation: int): if group == "ui.phone_open": _refresh_chase_mouse())  # variation 0 opens, 1 closes: free / recapture the cursor
+	if not InputMap.has_action("camera_reset"):  # the chase orbit back behind (docs/specs/3rd-person-mouse.md)
+		InputMap.add_action("camera_reset")
+		var reset_key := InputEventKey.new()
+		reset_key.keycode = KEY_C
+		InputMap.action_add_event("camera_reset", reset_key)
 	phone.request.connect(func(action: String, item_id: String, request_id: int): sim.send_phone(action, item_id, request_id))
 	phone.open()
 	if _audiotest:
@@ -487,6 +495,9 @@ func _input(event: InputEvent) -> void:
 	if walk_eye and _walk_look(event):
 		get_viewport().set_input_as_handled()
 		return
+	if _chase_live() and _chase_look(event):
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventMouseButton:
 		if event.pressed and _start_sign == null and not (phone.visible and phone.get_global_rect().has_point(event.position)) and (event.button_index == MOUSE_BUTTON_MIDDLE or (event.button_index == MOUSE_BUTTON_LEFT and event.ctrl_pressed)):
 			_pan_button = event.button_index
@@ -537,6 +548,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.pressed and _start_sign == null:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			if _chase_live():  # third person: the wheel zooms the chase distance, not while the phone or a menu is open
+				if chase_mouse_wanted() and _chase_captured():
+					camera_modes.walking = walk_chase
+					camera_modes.zoom_step(1.0 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0, chase_zoom_sensitivity)
+				get_viewport().set_input_as_handled()
+				return
 			_zoom(1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.9)
 			get_viewport().set_input_as_handled()
 			return
@@ -553,6 +570,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_start_sign = null
 		get_viewport().set_input_as_handled()
 		return
+	if event.is_action_pressed("camera_reset", false, true):
+		camera_modes.reset_look()
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_1, KEY_2, KEY_3:  # the camera; on foot 3 is first person, 1 behind the walker, 2 the map; kept for the next drive
@@ -669,9 +688,6 @@ func _set_windshield(on: bool, walking := false) -> void:
 	if walk_eye:
 		look_yaw = float(entities.shown_state().get("player_pedestrian", {}).get("heading", 0.0))
 		look_pitch = 0.0
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if walk_eye and DisplayServer.get_name() != "headless" and _visual_test == null and _screenshot_path == "" else Input.MOUSE_MODE_VISIBLE
-	if _visual_test != null:
-		print("visual-test: mouse_mode=%d" % Input.mouse_mode)
 	if on and not _windshield.visible:
 		_clear_focus()
 		_windshield_zoom = camera.zoom.x
@@ -686,6 +702,52 @@ func _set_windshield(on: bool, walking := false) -> void:
 		map_layer.buildings_3d.eye_height = WALK_EYE_HEIGHT_M if walk_eye else 1.35
 		map_layer.buildings_3d.eye_ahead = 0.0 if walk_eye else 0.55
 		map_layer.buildings_3d.eye_pitch = 0.0
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if (walk_eye or chase_mouse_wanted()) and _may_capture() else Input.MOUSE_MODE_VISIBLE
+	if _visual_test != null:
+		print("visual-test: mouse_mode=%d" % Input.mouse_mode)
+
+
+## The cursor is captured; headless cannot capture, so there Esc/click state stands in (test seam).
+var _cursor_freed := false
+func _chase_captured() -> bool:
+	return Input.mouse_mode == Input.MOUSE_MODE_CAPTURED if _may_capture() else not _cursor_freed
+
+
+func _may_capture() -> bool:
+	return DisplayServer.get_name() != "headless" and _visual_test == null and _screenshot_path == ""
+
+
+func _chase_live() -> bool:
+	return _windshield.visible and map_layer.buildings_3d != null and map_layer.buildings_3d.chase_on
+
+
+## Third person (taxi or walker): the mouse orbits unless the phone or a menu is open.
+func chase_mouse_wanted(paused := get_tree().paused) -> bool:
+	return _chase_live() and not phone.is_open and not paused
+
+
+## The phone or the pause menu opened or closed: free or take back the cursor.
+func _refresh_chase_mouse(paused := get_tree().paused) -> void:
+	if _chase_live():
+		_cursor_freed = not chase_mouse_wanted(paused)
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if chase_mouse_wanted(paused) and _may_capture() else Input.MOUSE_MODE_VISIBLE
+
+
+## Third person: mouse motion orbits the chase camera; Esc frees the cursor, a click takes it back.
+func _chase_look(event: InputEvent) -> bool:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		camera_modes.look(event.relative, chase_mouse_sensitivity)
+		return true
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_cursor_freed = true
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and chase_mouse_wanted():
+		_cursor_freed = false
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT \
+			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and chase_mouse_wanted() and _may_capture():
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		return true
+	return false
 
 
 ## First-person walking: the mouse looks around (yaw goes to the server
@@ -1070,7 +1132,8 @@ func _present(state: Dictionary) -> void:
 		_update_debug(state)
 
 
-func set_interior_options(first_person: bool, sensitivity: float) -> void:
+func set_interior_options(first_person: bool, sensitivity: float, chase_sensitivity := 0.003) -> void:
+	chase_mouse_sensitivity = clampf(chase_sensitivity, 0.0005, 0.006)
 	if interior_3d != first_person:
 		home_first_person.leave()
 		home_walk.leave()
@@ -1087,6 +1150,16 @@ func set_interior_paused(paused: bool) -> void:
 	sim.send_pause(paused)
 	sim.process_mode = Node.PROCESS_MODE_ALWAYS if paused else Node.PROCESS_MODE_INHERIT
 	home_first_person.set_paused(paused)
+	_refresh_chase_mouse(paused)
+
+
+## Settings: wheel zoom step and the per-mode chase distance limits (m).
+func set_chase_zoom(sensitivity: float, walk_min: float, walk_max: float, car_min: float, car_max: float) -> void:
+	chase_zoom_sensitivity = sensitivity
+	camera_modes.walk_min_m = walk_min
+	camera_modes.walk_max_m = maxf(walk_max, walk_min)
+	camera_modes.car_min_m = car_min
+	camera_modes.car_max_m = maxf(car_max, car_min)
 
 
 ## The server owns entry/exit; both indoor views consume the same freshly requested plan.

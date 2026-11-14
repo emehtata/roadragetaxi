@@ -1022,7 +1022,12 @@ func _general_menu() -> void:
 func _apply_interior_settings() -> void:
 	if is_instance_valid(_game) and _game.has_method("set_interior_options"):
 		_game.set_interior_options(_settings.get_value("experimental", "interior_3d", false),
-			_settings.get_value("game", "interior_mouse_sensitivity", 0.002))
+			_settings.get_value("game", "interior_mouse_sensitivity", 0.002),
+			_settings.get_value("game", "chase_mouse_sensitivity", 0.003))
+	if is_instance_valid(_game) and _game.has_method("set_chase_zoom"):
+		_game.set_chase_zoom(_settings.get_value("game", "chase_zoom_sensitivity", 0.1),
+			_settings.get_value("game", "chase_walk_min_m", 1.5), _settings.get_value("game", "chase_walk_max_m", 8.0),
+			_settings.get_value("game", "chase_car_min_m", 4.0), _settings.get_value("game", "chase_car_max_m", 20.0))
 
 
 func _gameplay_menu() -> void:
@@ -1110,6 +1115,24 @@ func _experimental_menu() -> void:
 	mouse_row.add_child(sensitivity)
 	_with_help(mouse_row, "help_interior_mouse_sensitivity")
 	_focusables.append(sensitivity)
+	var chase_row := HBoxContainer.new()
+	var chase_label := Label.new()
+	chase_label.text = _t("chase_mouse_sensitivity")
+	chase_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chase_row.add_child(chase_label)
+	var chase_slider := HSlider.new()
+	chase_slider.min_value = 0.5
+	chase_slider.max_value = 6.0
+	chase_slider.step = 0.1
+	chase_slider.custom_minimum_size.x = 240
+	chase_slider.value = _settings.get_value("game", "chase_mouse_sensitivity", 0.003) * 1000.0
+	chase_slider.value_changed.connect(func(value: float):
+		_settings.set_value("game", "chase_mouse_sensitivity", value / 1000.0)
+		_settings.save("user://settings.cfg")
+		_apply_interior_settings())
+	chase_row.add_child(chase_slider)
+	_with_help(chase_row, "help_chase_mouse_sensitivity")
+	_focusables.append(chase_slider)
 	_settings_back()
 	_focus_menu()
 
