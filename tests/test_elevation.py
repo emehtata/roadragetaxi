@@ -1,4 +1,7 @@
 import json
+import zipfile
+
+import pytest
 
 from theroadragetrip.osm import elevation
 
@@ -68,7 +71,8 @@ def test_packaged_dem80_loads_and_validates(tmp_path, monkeypatch):
     monkeypatch.delenv(elevation.DEM80_ENV, raising=False)
     ground = elevation.load_ground(tmp_path, "Oulu", dem80_enabled=True)
     assert isinstance(ground, elevation.Dem80) and ground.dir == elevation.PACKAGED_DEM80
-    index = json.loads((elevation.PACKAGED_DEM80 / "dem80.json").read_text())
+    with zipfile.ZipFile(elevation.open_parts(elevation.PACKAGED_DEM80)) as z:
+        index = json.loads(z.read("dem80.json"))
     elevation.validate_index(index)
     assert "Copernicus" in json.dumps(index) and len(index["tiles"]) > 100
 
@@ -84,11 +88,11 @@ def test_packaged_dem80_oulu_centre_not_flat():
 
 
 def _copy_with_oulu_tile(tmp_path):
-    import shutil
     x, y = _oulu_xy()
     i, j = elevation.tile_of(x, y)
-    shutil.copy(elevation.PACKAGED_DEM80 / "dem80.json", tmp_path)
-    shutil.copy(elevation.PACKAGED_DEM80 / f"dem80_{i}_{j}.bin", tmp_path)
+    with zipfile.ZipFile(elevation.open_parts(elevation.PACKAGED_DEM80)) as z:
+        z.extract("dem80.json", tmp_path)
+        z.extract(f"dem80_{i}_{j}.bin", tmp_path)
     return tmp_path / f"dem80_{i}_{j}.bin", x, y
 
 
@@ -132,3 +136,32 @@ def test_cache_tile_wins_over_packaged(tmp_path, monkeypatch):
     tile.write_bytes(elevation.encode_tile(i, j, [[1234.5] * elevation.DEM80_SIZE] * elevation.DEM80_SIZE))
     ground = elevation.load_ground(tmp_path, "Oulu", dem80_enabled=True)
     assert abs(ground.height_m(x, y) - 1234.5) < 0.01
+
+
+def test_packaged_dem80_is_one_zip_of_all_tiles():
+    assert elevation.PACKAGED_DEM80.name == "dem80.zip"
+    with zipfile.ZipFile(elevation.open_parts(elevation.PACKAGED_DEM80)) as z:
+        names = z.namelist()
+        index = json.loads(z.read("dem80.json"))
+    assert len(names) == 1808 and "dem80.json" in names
+    assert sorted(names) == names and len(index["tiles"]) == 1807
+
+
+def test_packaged_zip_sysma_has_height():
+    assert elevation.zip_parts(elevation.PACKAGED_DEM80)  # fails without the zip
+    assert elevation.load_dem80(elevation.PACKAGED_DEM80).height_m(429772.0, 6819445.0) is not None  # Sysmä
+
+
+def test_packaged_tile_from_zip_matches_loose_tile(tmp_path):
+    x, y = _oulu_xy()
+    i, j = elevation.tile_of(x, y)
+    loose = elevation.PACKAGED_DEM80.with_suffix("") / f"dem80_{i}_{j}.bin"
+    if not loose.is_file():
+        pytest.skip("loose tiles removed; the zip is the only packaged source")
+    import numpy as np
+    np.testing.assert_array_equal(elevation.Dem80(elevation.PACKAGED_DEM80)._tile(i, j), elevation.decode_tile(loose.read_bytes())[2])
+
+
+def test_packaged_zip_parts_under_100_mb():
+    parts = elevation.zip_parts(elevation.PACKAGED_DEM80)
+    assert len(parts) >= 2 and all(p.stat().st_size < 100_000_000 for p in parts)

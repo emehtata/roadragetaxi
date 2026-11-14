@@ -249,7 +249,21 @@ def test_pack_zip_stored_sorted_reproducible(tmp_path):
     assert dem80.pack(src, tmp_path / "a.zip") == 3
     (src / "dem80.json").touch()  # a newer mtime must not change the bytes
     dem80.pack(src, tmp_path / "b.zip")
-    assert (tmp_path / "a.zip").read_bytes() == (tmp_path / "b.zip").read_bytes()
-    with zipfile.ZipFile(tmp_path / "a.zip") as z:
+    assert (tmp_path / "a.zip.001").read_bytes() == (tmp_path / "b.zip.001").read_bytes()
+    with zipfile.ZipFile(el.open_parts(tmp_path / "a.zip")) as z:
         assert z.namelist() == ["dem80.json", "dem80_1_9.bin", "dem80_2_1.bin"]
         assert all(i.compress_type == zipfile.ZIP_STORED for i in z.infolist())
+
+
+def test_pack_splits_into_parts_read_as_one_zip(tmp_path, monkeypatch):
+    import zipfile
+    monkeypatch.setattr(el, "DEM80_PART", 100)
+    src = tmp_path / "src"
+    src.mkdir()
+    for k in range(5):
+        (src / f"dem80_{k}_0.bin").write_bytes(bytes([k]) * 70)
+    dem80.pack(src, tmp_path / "d.zip")
+    parts = el.zip_parts(tmp_path / "d.zip")
+    assert len(parts) > 3 and all(p.stat().st_size <= 100 for p in parts)
+    with zipfile.ZipFile(el.open_parts(tmp_path / "d.zip")) as z:
+        assert [z.read(f"dem80_{k}_0.bin") for k in range(5)] == [bytes([k]) * 70 for k in range(5)]

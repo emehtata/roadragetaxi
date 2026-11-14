@@ -81,7 +81,7 @@ home is https://github.com/osmcode/osmium-tool.
 
 ## Terrain heights: Copernicus DEM
 
-`src/theroadragetrip/assets/dem80/` holds the Copernicus GLO-30 DEM for Finland,
+`src/theroadragetrip/assets/dem80.zip.001`/`.002` (one split zip) holds the Copernicus GLO-30 DEM for Finland,
 averaged to 80 m by `tools/dem80.py` (data, not software; also in the in-game
 Credits under Terrain and in each `dem80.json`). Notice:
 

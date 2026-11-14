@@ -227,14 +227,22 @@ def download(bbox, out_dir, api_key):
 
 
 def pack(src_dir, out_zip):
-    """Loose dem80 folder -> one zip of ZIP_STORED entries (tiles are zlib already), sorted, fixed times: same bytes."""
+    """Loose dem80 folder -> one zip of ZIP_STORED entries (tiles are zlib already), sorted, fixed times: same bytes.
+    Written as out_zip.001, .002, ... of el.DEM80_PART bytes each (GitHub rejects files over 100 MB)."""
+    import io
     import zipfile
+    buf = io.BytesIO()
     names = sorted(p.name for p in Path(src_dir).iterdir() if p.name == "dem80.json" or p.suffix == ".bin")
-    with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_STORED) as z:
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
         for name in names:
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.external_attr = 0o644 << 16
             z.writestr(info, (Path(src_dir) / name).read_bytes())
+    for old in el.zip_parts(out_zip):
+        old.unlink()
+    data = buf.getvalue()
+    for n, start in enumerate(range(0, len(data), el.DEM80_PART), 1):
+        Path(f"{out_zip}.{n:03d}").write_bytes(data[start:start + el.DEM80_PART])
     return len(names)
 
 

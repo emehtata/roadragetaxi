@@ -8,12 +8,15 @@ OSM `ele` nodes are too sparse for ground and are not used. JSON `null` is NoDat
 `Dem80` reads the 80 m tile set (tools/dem80.py, docs/dem-terrain-80m.md):
 `<cache>/dem80/dem80.json` + `dem80_<i>_<j>.bin`, absolute EPSG:3067 / N2000.
 """
+import bisect
+import io
 import json
 import logging
 import math
 import os
 import re
 import struct
+import zipfile
 import zlib
 from functools import lru_cache
 from pathlib import Path
@@ -107,7 +110,67 @@ def validate_index(index: dict) -> None:
 
 
 _REPORTED: set = set()
-PACKAGED_DEM80 = Path(__file__).parent.parent / "assets" / "dem80"
+PACKAGED_DEM80 = Path(__file__).parent.parent / "assets" / "dem80.zip"  # as dem80.zip.001, .002, ...
+DEM80_PART = 64_000_000  # bytes per zip part: GitHub rejects files over 100 MB
+
+
+def zip_parts(path) -> list:
+    """The parts of a split zip: <name>.001, .002, ... in order (empty: no zip)."""
+    path = Path(path)
+    return sorted(path.parent.glob(path.name + ".[0-9][0-9][0-9]")) if path.parent.is_dir() else []
+
+
+class _Parts(io.RawIOBase):
+    """The parts of a split zip as one seekable file for zipfile."""
+
+    def __init__(self, parts) -> None:
+        self.files = [open(p, "rb") for p in parts]
+        self.starts = [0]
+        for f in self.files:
+            self.starts.append(self.starts[-1] + os.fstat(f.fileno()).st_size)
+        self.pos = 0
+
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return True
+
+    def tell(self) -> int:
+        return self.pos
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        self.pos = offset + (0, self.pos, self.starts[-1])[whence]
+        return self.pos
+
+    def readinto(self, b) -> int:
+        k = bisect.bisect_right(self.starts, self.pos) - 1
+        if k >= len(self.files):
+            return 0
+        f = self.files[k]
+        f.seek(self.pos - self.starts[k])
+        n = f.readinto(memoryview(b)[:self.starts[k + 1] - self.pos])
+        self.pos += n
+        return n
+
+    def close(self) -> None:
+        for f in self.files:
+            f.close()
+        super().close()
+
+
+def open_parts(path):
+    return io.BufferedReader(_Parts(zip_parts(path)))
+
+
+def _read(source: Path, name: str) -> bytes | None:
+    """A file from a folder, or an entry of a split zip (source ends .zip); None: not there."""
+    if source.suffix != ".zip":
+        return (source / name).read_bytes() if (source / name).is_file() else None
+    if not zip_parts(source):
+        return None
+    with zipfile.ZipFile(open_parts(source)) as z:
+        return z.read(name) if name in z.NameToInfo else None
 
 
 class Dem80:
@@ -120,16 +183,19 @@ class Dem80:
         self._tile = lru_cache(maxsize=8)(self._load)
 
     def _load(self, i: int, j: int):
-        path = next((p for d in self.dirs if (p := d / f"dem80_{i}_{j}.bin").is_file()), None)
-        if path is None:
-            return None
-        try:
-            return decode_tile(path.read_bytes())[2]
-        except (ValueError, OSError, zlib.error) as error:  # corrupt tile: flat there, one error per file
-            if path not in _REPORTED:
-                _REPORTED.add(path)
-                logging.getLogger(__name__).error("dem80 tile %s unreadable, flat ground there: %s", path, error)
-            return None
+        name = f"dem80_{i}_{j}.bin"
+        for d in self.dirs:  # ponytail: a zip is reopened per tile load; tiles are LRU-cached, so not per frame
+            path = d / name
+            try:
+                data = _read(d, name)
+                if data is not None:
+                    return decode_tile(data)[2]
+            except (ValueError, OSError, zlib.error, zipfile.BadZipFile) as error:  # corrupt tile: flat there, one error per file
+                if path not in _REPORTED:
+                    _REPORTED.add(path)
+                    logging.getLogger(__name__).error("dem80 tile %s unreadable, flat ground there: %s", path, error)
+                return None
+        return None
 
     def _sample(self, gx: int, gy: int) -> float | None:
         h = self._tile(gx // DEM80_SIZE, gy // DEM80_SIZE)
@@ -144,10 +210,10 @@ class Dem80:
 
 
 def load_dem80(directory) -> Dem80 | None:
-    index = Path(directory) / "dem80.json"
-    if not index.is_file():
+    index = _read(Path(directory), "dem80.json")
+    if index is None:
         return None
-    validate_index(json.loads(index.read_text()))
+    validate_index(json.loads(index))
     return Dem80(directory)
 
 

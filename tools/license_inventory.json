@@ -34,7 +34,7 @@
     },
     {
       "name": "Finland 80 m ground heights",
-      "paths": ["src/theroadragetrip/assets/dem80/**"],
+      "paths": ["src/theroadragetrip/assets/dem80.zip.*"],
       "purpose": "render-only terrain heights for the whole of Finland", "shipped": true,
       "origin": "Copernicus GLO-30 DEM (2021 release, copernicus-dem-30m.s3.amazonaws.com), 8x8-averaged to 80 m by tools/dem80.py",
       "copyright": "DLR e.V. 2010-2014 and Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA",
