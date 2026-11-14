@@ -21,7 +21,7 @@ them first. A missing or corrupt tile leaves that area flat and logs one error.
 - `tools/dem80.py`: add `FINLAND_BBOX = (50000, 6600000, 740000, 7800000)` and the
   `--bbox finland` alias. Reuse `fetch_copernicus` and `convert_copernicus`. Convert in
   latitude strips if memory needs it. `index_for` already writes COP_ATTRIBUTION into dem80.json.
-- `src/theroadragetrip/assets/dem80/`: the committed `dem80.json` and `dem80_<i>_<j>.bin` files.
+- `src/theroadragetrip/assets/dem80.zip.001` and `dem80.zip.002`: the packed `dem80.json` and `dem80_<i>_<j>.bin` tiles (one stored zip split in two, each under GitHub's 100 MB limit).
   `[tool.setuptools.package-data]` `"assets/**/*"` in pyproject.toml already ships them, so
   pyproject needs no change.
 - `src/theroadragetrip/osm/elevation.py`:
@@ -55,8 +55,8 @@ them first. A missing or corrupt tile leaves that area flat and logs one error.
 ## Commands
     .venv/bin/python tools/dem80.py download --source copernicus --bbox finland --out ~/.cache/copernicus-dem30
     /usr/bin/time -v .venv/bin/python tools/dem80.py convert --source copernicus --bbox finland \
-        ~/.cache/copernicus-dem30/*.tif --out src/theroadragetrip/assets/dem80
-    du -sb src/theroadragetrip/assets/dem80
+        ~/.cache/copernicus-dem30/*.tif --out <tmp dir>
+    du -sb src/theroadragetrip/assets/dem80.zip.001 src/theroadragetrip/assets/dem80.zip.002
     make check
     XDG_DATA_HOME=$(mktemp -d) make godot-test
 
@@ -65,8 +65,9 @@ them first. A missing or corrupt tile leaves that area flat and logs one error.
 - Sea-only tiles are not filled in. NoData stays flat.
 
 ## Status
-- Done: 155 land tiles packaged under `src/theroadragetrip/assets/dem80/` (124 MB of plain git files,
-  no LFS). Regenerating the set would add another 124 MB to git history.
+- Done: 155 land tiles packaged under `src/theroadragetrip/assets/dem80.zip.001` (64,000,000 B) and
+  `dem80.zip.002` (60,202,777 B), a reproducible stored zip, no LFS. Regenerating the set adds another 124 MB to git history.
+- Reopening the per-tile zip costs about 4 ms on an LRU miss.
 - Cold-tile first decode costs about 47 ms per 20 km tile. This is a one-time hitch on first load.
 - Packaged DEM is looked up last; a missing or corrupt tile is flat with one logged error.
 - Per-tile lookup (ddc846fa): each dem80 tile comes from the first folder that has it (cache, env,

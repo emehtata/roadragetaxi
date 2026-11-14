@@ -258,7 +258,7 @@ Do not claim success based solely on a terrain mesh appearing on screen. Geograp
   2,722,507,959 bytes in `~/.cache/copernicus-dem30` (not committed).
 - `tools/dem80.py convert --source copernicus --bbox finland`: 58 min 43 s wall clock,
   4.0 GB peak RSS (WSL, 15 GB RAM).
-- Output `src/theroadragetrip/assets/dem80/`: 1807 tiles + dem80.json, 124,008,031 bytes
-  (about 69 KB per tile; ratio about 22:1 against the source). Plain git, no LFS.
+- Output: 1807 tiles + dem80.json, 124,008,031 bytes (about 69 KB per tile; ratio about 22:1 against
+  the source). Now packed as `src/theroadragetrip/assets/dem80.zip.001` and `.002` (reproducible, no LFS).
 - Lookup order: `<cache>/dem80`, `$THEROADRAGETRIP_DEM80_DIR`, then the packaged folder.
 - Oulu city centre (65.0121 N, 25.4682 E): 13.9 m; the 1 km ring spans 0.0 to 20.4 m.
