@@ -10,10 +10,11 @@ import pytest
 pytestmark = pytest.mark.timing  # wall-clock assertions: serial in make test (pytest.ini)
 
 
-def _start_server(monkeypatch):
+def _start_server(monkeypatch, flat=True):
     monkeypatch.setattr(sys, "argv", ["prog", "--use-sample", "--no-menu"])
     from theroadragetrip.osm import elevation
-    monkeypatch.setattr(elevation, "PACKAGED_DEM80", elevation.PACKAGED_DEM80 / "absent")  # flat, as before the packaged DEM
+    if flat:
+        monkeypatch.setattr(elevation, "PACKAGED_DEM80", elevation.PACKAGED_DEM80 / "absent")  # flat, as before the packaged DEM
     from theroadragetrip.server.cli import parse_server_args
     from theroadragetrip.server import run_server
 
@@ -242,6 +243,28 @@ def test_map_chunks_follow_the_player_without_resending(monkeypatch):
     loaded, dropped = _chunk_messages(connection)
     assert len(loaded) == 7 and len(dropped) == 7 and set(dropped) <= set(first)
     connection.close()
+
+
+def test_map_chunks_stream_with_the_packaged_dem_on(monkeypatch):
+    """Terrain on (the default) with the packaged dem80: the 49 start chunks still arrive within a
+    few ticks and carry ground heights."""
+    from theroadragetrip import transport
+    from theroadragetrip.osm import elevation
+
+    packaged = elevation.PACKAGED_DEM80
+    server = _start_server(monkeypatch, flat=False)
+    assert isinstance(server.world.dem, elevation.Dem80) and server.world.dem.dir == packaged
+    connection = transport.connect(server.host, server.port)
+    time.sleep(0.05)
+    chunks, deadline = {}, time.monotonic() + 10.0
+    for _ in range(30):  # N ticks
+        server.tick(1.0 / 30.0)
+        chunks.update((m["chunk_id"], m) for m in _all_messages(connection) if m["type"] == "chunk")
+        if len(chunks) >= 49 or time.monotonic() > deadline:
+            break
+    connection.close()
+    assert len(chunks) == 49
+    assert any("ground_heights" in m for m in chunks.values())
 
 
 def test_commands_carry_the_player_id_and_others_are_ignored(monkeypatch):
