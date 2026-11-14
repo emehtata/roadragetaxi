@@ -262,3 +262,20 @@ def test_next_turn_gives_the_whole_remaining_driving_distance():
     points = [(0, 0), (40, 0), (100, 0), (100, 100)]
     assert next_turn(points, 20, 0)["total_m"] == 180  # 80 to the turn, then 100
     assert next_turn(points, 100, 30)["total_m"] == 70
+
+
+def test_route_points_carry_their_road_layer():
+    """third-person-camera.md: navigation.points [x, y, layer], so the 3D route rides
+    the bridge deck; the layer change points are kept by the simplification."""
+    ways = [Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="primary", half_width_m=4.0),
+            Way(points_m=[(100.0, 0.0), (150.0, 0.0), (200.0, 0.0)], highway="primary", half_width_m=4.0, layer=1),
+            Way(points_m=[(200.0, 0.0), (300.0, 0.0)], highway="primary", half_width_m=4.0),
+            Way(points_m=[(150.0, -50.0), (150.0, 50.0)], highway="residential", half_width_m=4.0)]  # under the bridge
+    nav = NavigationRoute()
+    world = _world(TrafficWorld(ways), TaxiTarget(280.0, 0.0, "pickup"))
+    _finish(nav, world, SimpleNamespace(x=20.0, y=0.0, heading=0.0))
+    layered = nav.layered_points()
+    assert [p[:2] for p in layered] == nav.points  # the same line
+    on_bridge = [p for p in layered if 100.0 < p[0] < 200.0]
+    assert on_bridge and all(p[2] == 1 for p in on_bridge)
+    assert layered[0][2] == 0 and layered[-1][2] == 0

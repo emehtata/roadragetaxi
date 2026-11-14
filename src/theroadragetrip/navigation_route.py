@@ -81,10 +81,66 @@ def simplify_polyline(points: Sequence[Tuple[float, float]], tolerance_m: float 
     return [p for p, kept in zip(points, keep) if kept]
 
 
+RAISED_CELL_M = 50.0
+
+
+def raised_cells(ways) -> dict:
+    """{(cell x, cell y): [raised or sunk drivable ways touching it]} for route_layers."""
+    cells = {}
+    for way in ways:
+        if getattr(way, "layer", 0) and getattr(way, "is_drivable", True) and len(way.points_m) > 1:
+            x0, y0, x1, y1 = _bounds(way.points_m, way.half_width_m)
+            for cx in range(int(x0 // RAISED_CELL_M), int(x1 // RAISED_CELL_M) + 1):
+                for cy in range(int(y0 // RAISED_CELL_M), int(y1 // RAISED_CELL_M) + 1):
+                    cells.setdefault((cx, cy), []).append(way)
+    return cells
+
+
+def route_layers(route, cells) -> List[int]:
+    """Each route point's road layer (bridge > 0, tunnel < 0): that of a
+    raised or sunk drivable way under it running along the route there (one
+    crossing above or below runs across it); else, and at a bridge's end node,
+    the ground's 0. Read from the map after the search: routing is unchanged."""
+    layers = []
+    for i, (x, y) in enumerate(route):
+        a, b = route[max(i - 1, 0)], route[min(i + 1, len(route) - 1)]
+        heading = math.atan2(b[1] - a[1], b[0] - a[0])
+        layer = 0
+        for way in cells.get((int(x // RAISED_CELL_M), int(y // RAISED_CELL_M)), ()):
+            if (x, y) in (tuple(way.points_m[0]), tuple(way.points_m[-1])):
+                continue
+            if any(dist_point_to_segment(x, y, *p, *q) <= way.half_width_m
+                   and abs(math.sin(math.atan2(q[1] - p[1], q[0] - p[0]) - heading)) <= .5
+                   for p, q in zip(way.points_m, way.points_m[1:])):
+                layer = way.layer
+                break
+        layers.append(layer)
+    return layers
+
+
+def _bounds(points, margin):
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    return min(xs) - margin, min(ys) - margin, max(xs) + margin, max(ys) + margin
+
+
+def simplify_layered(route, layers) -> List[list]:
+    """simplify_polyline per run of one layer, so every layer change stays a
+    point: [[x, y, layer], ...]."""
+    out, start = [], 0
+    for i in range(1, len(route) + 1):
+        if i == len(route) or layers[i] != layers[start]:
+            out += [[x, y, layers[start]] for x, y in simplify_polyline(route[start:i])]
+            start = i
+    return out
+
+
 class NavigationRoute:
     def __init__(self, budget_s: float = ROUTE_BUDGET_S) -> None:
         self.budget_s = budget_s
         self.points: list = []  # the published route, [[x, y], ...] in world metres
+        self.layers: list = []  # each point's road layer (layered_points), [] where unknown
+        self._raised_key = None
+        self._raised = {}
         self.worst_slice_s = 0.0  # longest single tick of route search so far
         self.plans_started = 0
         self._key = None  # (target, level, graph revision) the route and job belong to
@@ -221,7 +277,7 @@ class NavigationRoute:
         elif self._job is None and self._off_route(car):
             self._start(world, car, current_way, target, level, key)
         if self._job is not None:
-            self._advance()
+            self._advance(world)
         self._update_instruction(world, car, current_way)
 
     def _update_instruction(self, world, car, current_way):
@@ -282,9 +338,9 @@ class NavigationRoute:
         self._job = None
         level_routes = getattr(world, "level_routes", None)
         route = level_routes.plan(world.traffic_mgr.route_graph(), (car.x, car.y), level, (target.x, target.y)) if level_routes else None
-        self._publish(route.legs[0][1] if route and route.legs else None)
+        self._publish(route.legs[0][1] if route and route.legs else None, world)
 
-    def _advance(self) -> None:
+    def _advance(self, world=None) -> None:
         started = time.perf_counter()
         deadline = started + self.budget_s
         try:
@@ -294,9 +350,21 @@ class NavigationRoute:
                     break
         except StopIteration as finished:
             self._job = None
-            self._publish(finished.value)
+            self._publish(finished.value, world)
         self.worst_slice_s = max(self.worst_slice_s, time.perf_counter() - started)
 
-    def _publish(self, route: Optional[Sequence[Tuple[float, float]]]) -> None:
+    def _publish(self, route: Optional[Sequence[Tuple[float, float]]], world=None) -> None:
         self._street_names = {}
-        self.points = [[round(x, 2), round(y, 2)] for x, y in simplify_polyline(route)] if route and len(route) >= 2 else []
+        if not route or len(route) < 2:
+            self.points, self.layers = [], []
+            return
+        ways = getattr(getattr(world, "traffic_mgr", None), "ways", ())
+        if self._raised_key != (id(ways), len(ways)):  # the map's raised roads, indexed once per way list
+            self._raised_key, self._raised = (id(ways), len(ways)), raised_cells(ways)
+        kept = simplify_layered(route, route_layers(route, self._raised))
+        self.points = [[round(x, 2), round(y, 2)] for x, y, _layer in kept]
+        self.layers = [layer for _x, _y, layer in kept]
+
+    def layered_points(self) -> List[list]:
+        """navigation.points as sent: [x, y, layer] (layer 0 where unknown, as the intercity route)."""
+        return [[x, y, self.layers[i] if i < len(self.layers) else 0] for i, (x, y) in enumerate(self.points)]

@@ -697,7 +697,7 @@ def build_state_message(
         "abroad": _abroad_text(getattr(world, "border_watch", None), language),
         # osm_source=pbf fell back to Overpass: why and what to do (the HUD shows it ~15 s), else "".
         "data_source_notice": data_source_notice(language),
-        # The route to the taxi target, planned by the server (navigation_route.py): [[x, y], ...], [] while none.
+        # The route to the taxi target, planned by the server (navigation_route.py): [[x, y, layer], ...], [] while none.
         "navigation": navigation if navigation is not None else {"points": []},
         # The rage shout above the taxi while it lasts ({"text", "timer"} seconds left), else null.
         "road_rage": road_rage,
