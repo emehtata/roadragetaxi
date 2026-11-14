@@ -1445,8 +1445,8 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 	var hk := k * H  # face parts scale with the head
 	_round_part(out, head, Vector3(0.118, 0.145, 0.112) * hk, skin, 1, detail)
 	_round_part(out, head + Vector3(-0.015, 0.085, 0.0) * hk, Vector3(0.122, 0.07, 0.115) * hk, hair, 2, detail)
-	if style == 1:
-		_round_part(out, head + Vector3(-0.07, -0.025, 0.0) * hk, Vector3(0.09, 0.14, 0.14) * hk, fabric.darkened(0.12), 0, detail)
+	if style == 1:  # hood on the back of the head, its lowest point 3 cm above the neck stub
+		_round_part(out, head + Vector3(-0.06, 0.01, 0.0) * hk, Vector3(0.07, 0.075, 0.085) * hk, fabric.darkened(0.12), 0, detail)
 	if variant % 3 == 1:
 		for side: float in [-1.0, 1.0]:
 			_round_part(out, head + Vector3(-0.04, -0.01, side * 0.1) * hk, Vector3(0.05, 0.085, 0.028) * hk, hair, 2, detail)

@@ -227,6 +227,30 @@ func test_idle_breathing_poses() -> void:  # criterion 7
 	check(seen.has("standing_0") and seen.has("standing_1") and seen.size() == 2, "an idle person breathes through both poses in 4 s")
 
 
+## docs/specs/male-facial-hair-and-arm-fix.md criterion 1: hands hang at the sides (k 0.96, variant 0).
+func test_person_arms_hang_in_idle_and_walk() -> void:
+	for pose in ["standing", "standing_1", "walk_0", "walk_1", "walk_2", "walk_3", "walk_4", "walk_5"]:
+		for side: float in [-1.0, 1.0]:
+			var hand: Array = _person_skin(pose, func(p): return p.z * side > 0.12 and p.y < 1.0)  # a raised hand leaves none
+			var elbow: Array = Array(B3.person_arrays(Color.GRAY, pose, 1.0, "", 0)["verts"]).filter(
+				func(p): return p.z * side > 0.15 and absf(p.y - 1.08 * 0.96) < 0.03)
+			var hy: float = hand.map(func(p): return p.y).max() if hand.size() > 0 else INF
+			var hz: float = hand.map(func(p): return absf(p.z)).max() if hand.size() > 0 else 0.0
+			check(hy < 1.08 * 0.96 and elbow.size() > 0 and hz >= 0.15 * 0.96,
+				"%s side %d: the hand hangs below the elbow, at the side (top %.2f, z %.2f)" % [pose, side, hy, hz])
+
+
+## Criterion 2: the style 1 hood stays on the back of the head, above the neck stub.
+func test_person_hood_clear_of_neck() -> void:
+	var a: Dictionary = B3.person_arrays(Color.GRAY, "standing", 1.0, "", 1)
+	var hood := Color.GRAY.lerp(Color8(88, 91, 92), 0.22).darkened(0.12)
+	var low := INF
+	for i in a["verts"].size():
+		if a["colors"][i].is_equal_approx(hood):
+			low = minf(low, a["verts"][i].y)
+	check(low < INF and low >= (1.36 + 0.02) * 0.975, "the hood clears the neck stub (lowest %.3f m)" % low)
+
+
 ## Acceptance 4-5: the e-scooter rider stands on the deck on two bent legs, torso unchanged.
 ## Rules: hips at >= seat - 0.05 m and above the deck; lowest vertex within 0.02 m of SCOOTER_DECK_Y;
 ## ankles in x0..x1 (staggered, back foot x0, front x1); the shoes reach from x0 - 0.06 (back shoe's heel)
@@ -334,6 +358,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_model_sizes_match_sim()
 	test_mountain_bike_keeps_its_width()
 	test_walk_pose_phase_changes_mesh()
+	test_person_arms_hang_in_idle_and_walk()
+	test_person_hood_clear_of_neck()
 	test_scooter_rider_feet_on_deck()
 	test_walk_pose_changes_every_step()
 	test_model_variant_stable_and_covering()
