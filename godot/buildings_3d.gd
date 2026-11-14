@@ -2008,9 +2008,9 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 		# their corners; per-building base height and a gridded ground mesh if hills show it
 		# the flat layers span whole chunks and long road segments: split them to the DEM grid first, or
 		# the plane between far corners cuts over the roads in a dip
-		subdivide(out, "ground", ["ground_colors"], DEM_EDGE_M)
-		subdivide(out, "road", ["road_colors", "road_uv", "road_uv2"], DEM_EDGE_M)
-		_terrain_grid(out, ground["rect"])  # after subdivide: its cells are already grid-sized
+		split_to_terrain(out, "ground", ["ground_colors"], grid)
+		split_to_terrain(out, "road", ["road_colors", "road_uv", "road_uv2"], grid)
+		_terrain_grid(out, ground["rect"])  # after the split: its cells are already grid-sized
 		for key in ["verts", "shadow", "lit", "glass", "arena", "ground", "deck", "canopy", "road"]:
 			var verts: PackedVector3Array = out[key]
 			var spread: bool = key in ["ground", "road"]
@@ -2024,7 +2024,8 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 			for i in verts.size():
 				if spread:  # ponytail: the mm layer gaps x3 (roads 4-8 cm up) over the cm a 20 m facet misses the ground by; x4 if z-fighting
 					verts[i].y = verts[i].y * DEM_GAP_SCALE if verts[i].y < 0.05 else verts[i].y + DEM_GAP_LIFT
-				verts[i].y += ground_height(grid, Vector2(verts[i].x, verts[i].z))
+				var at := Vector2(verts[i].x, verts[i].z)
+				verts[i].y += terrain_mesh_height(grid, at) if spread else ground_height(grid, at)
 			out[key] = verts
 	# The per-vertex loops run here, on the worker, not in meshes() on the main thread.
 	var normals := {}
@@ -2573,43 +2574,64 @@ static func deck_height(at: Vector2, layer: int, ends: PackedVector2Array, grid 
 	return float(layer) * DECK_M * smoothstep(0.0, RAMP_M, nearest) + ground
 
 
-const DEM_EDGE_M := 20.0  # the ground grid's step (map_chunks.GROUND_STEP_M)
-
-
-## Split the triangles of out[key] (a triangle list) at the midpoint of their longest edge until
-## no edge is longer than `max_edge` m; the per-vertex arrays named in `extras` are interpolated alike.
-static func subdivide(out: Dictionary, key: String, extras: Array, max_edge: float) -> void:
+## Clip the triangles of out[key] along the terrain mesh's creases (grid lines and NE-SW cell diagonals of
+## `grid`), so each piece lies inside one terrain triangle; the per-vertex arrays in `extras` are interpolated.
+static func split_to_terrain(out: Dictionary, key: String, extras: Array, grid: Dictionary) -> void:
 	var src: PackedVector3Array = out[key]
+	var o: Vector2 = grid["origin"]
+	var step := float(grid["step"])
+	var lines := [func(p: Vector3) -> float: return (p.x - o.x) / step,
+		func(p: Vector3) -> float: return (-p.z - o.y) / step,
+		func(p: Vector3) -> float: return (p.x - o.x + p.z + o.y) / step]  # grid fx - fy: the diagonals
 	var verts := PackedVector3Array()
 	var attrs: Array = extras.map(func(e): return out[e].duplicate().slice(0, 0))
-	var stack: Array = []
 	for t in range(0, src.size() - 2, 3):
-		stack.append([[src[t], src[t + 1], src[t + 2]], extras.map(func(e): return [out[e][t], out[e][t + 1], out[e][t + 2]])])
-	while not stack.is_empty():
-		var tri: Array = stack.pop_back()
-		var v: Array = tri[0]
-		var lengths := [v[0].distance_squared_to(v[1]), v[1].distance_squared_to(v[2]), v[2].distance_squared_to(v[0])]
-		var k := lengths.find(lengths.max())
-		if lengths[k] <= max_edge * max_edge:
-			verts.append_array(PackedVector3Array(v))
-			for e in extras.size():
-				attrs[e].append_array(tri[1][e])
-			continue
-		var a := k
-		var b := (k + 1) % 3
-		var c := (k + 2) % 3
-		var mid: Vector3 = (v[a] + v[b]) / 2.0
-		var first := [[v[a], mid, v[c]], []]
-		var second := [[mid, v[b], v[c]], []]
-		for values: Array in tri[1]:
-			var m = values[a].lerp(values[b], 0.5)
-			first[1].append([values[a], m, values[c]])
-			second[1].append([m, values[b], values[c]])
-		stack.append(first)
-		stack.append(second)
+		var pieces := [[0, 1, 2].map(func(j): return [src[t + j]] + extras.map(func(e): return out[e][t + j]))]
+		for f: Callable in lines:
+			var cut := []
+			for poly: Array in pieces:
+				var values: Array = poly.map(func(v): return f.call(v[0]))
+				var rest := poly
+				for k in range(floori(values.min()) + 1, ceili(values.max())):
+					var halves := _clip(rest, f, float(k))
+					if halves[0].size() >= 3:
+						cut.append(halves[0])
+					rest = halves[1]
+				if rest.size() >= 3:
+					cut.append(rest)
+			pieces = cut
+		for poly: Array in pieces:  # convex: a fan
+			for i in range(1, poly.size() - 1):
+				for v in [poly[0], poly[i], poly[i + 1]]:
+					verts.append(v[0])
+					for e in extras.size():
+						attrs[e].append(v[e + 1])
 	out[key] = verts
 	for e in extras.size():
 		out[extras[e]] = attrs[e]
+
+
+## Polygon `poly` (vertex records [position, attributes...]) split at f(position) == k: [below, above].
+static func _clip(poly: Array, f: Callable, k: float) -> Array:
+	var below := []
+	var above := []
+	for i in poly.size():
+		var a: Array = poly[i]
+		var b: Array = poly[(i + 1) % poly.size()]
+		var fa: float = f.call(a[0]) - k
+		var fb: float = f.call(b[0]) - k
+		if fa <= 0.0:
+			below.append(a)
+		if fa >= 0.0:
+			above.append(a)
+		if fa * fb < 0.0:
+			var w := fa / (fa - fb)
+			var m := []
+			for j in a.size():
+				m.append(a[j].lerp(b[j], w))
+			below.append(m)
+			above.append(m)
+	return [below, above]
 
 
 const TERRAIN_STEP_M := 20.0  # the terrain mesh's cell; 10 m and 5 m only resample the bilinear cells
