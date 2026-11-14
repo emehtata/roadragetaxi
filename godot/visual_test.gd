@@ -415,6 +415,13 @@ func check() -> Array:
 		_counts["animals_in_view"] = seen
 		if seen < int(scenario["requires"]["animals_in_view"]):
 			missing.append("%d animals in view, the scenario needs %d" % [seen, scenario["requires"]["animals_in_view"]])
+	if scenario.get("requires", {}).has("carts_in_view"):  # shoppers pushing a cart within 25 m (supermarket-shoppers.md)
+		var shop_at := Vector2(float(scenario["pose"][0]), float(scenario["pose"][1]))
+		var seen: int = main.entities.shown_state().get("pedestrians", []).filter(
+			func(p): return p.get("cart", false) and shop_at.distance_to(Vector2(float(p["x"]), float(p["y"]))) < 25.0).size()
+		_counts["carts_in_view"] = seen
+		if seen < int(scenario["requires"]["carts_in_view"]):
+			missing.append("%d carts in view, the scenario needs %d" % [seen, scenario["requires"]["carts_in_view"]])
 	if scenario.get("requires", {}).get("dem_ground", false):  # DEM terrain loaded under the taxi; the camera rides on it
 		var ground: float = main.map_layer.deck_height(main.entities.player_position(), 0)
 		_counts["dem_ground_m"] = ground
