@@ -175,3 +175,91 @@ def test_initial_overlap_pole_drive_out():
     car.x, car.speed = 0.1, 2.0
     assert manager.check_post_collision(car, [post], 0.1, previous_position=(0.0, 0.0))
     assert (car.x, car.y) == (0.0, 0.0)
+
+
+# Phase 3: trees on the server (scenarios 4, 10).
+from theroadragetrip.taxi import TREE_RADIUS_M
+
+
+def _drive_at_tree(speed, tree_y=0.0, seconds=2.0, dt=1.0 / 30.0, level=0):
+    sceneries = [NS(trees=[(10.0, tree_y)])]
+    manager, car = TaxiManager(ways=[]), Car(x=0.0, y=0.0, heading=0.0, speed=speed)
+    car.map_level = level
+    felled = 0
+    for frame in range(int(seconds / dt)):
+        car.x += car.speed * dt
+        if car.map_level == 0:  # the simulation calls it only on the surface
+            felled += manager.check_tree_collision(car, sceneries, frame * dt)
+    return manager, car, felled
+
+
+def test_taxi_fells_tree_keeps_speed():
+    for speed in (8.0, 20.0):
+        manager, car, felled = _drive_at_tree(speed)
+        assert felled == 1 and len(manager.felled_trees) == 1
+        tree = manager.felled_trees[0]
+        assert (tree.x, tree.y, tree.kind) == (10.0, 0.0, "tree") and tree.knocked_angle == 0.0
+        assert abs(car.speed - speed) < 1e-6 and manager.total_score == 0
+
+
+def test_tree_miss_beyond_reach():
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=0.0)
+    manager, _, felled = _drive_at_tree(10.0, tree_y=car.width_m / 2 + TREE_RADIUS_M + 0.5)
+    assert felled == 0 and manager.felled_trees == []
+
+
+def test_tree_fast_no_tunnel():
+    manager, _, felled = _drive_at_tree(69.0, seconds=1.0)
+    assert felled == 1
+
+
+def test_tree_off_surface_ignored():
+    manager, _, felled = _drive_at_tree(10.0, level=-1)
+    assert felled == 0
+
+
+def test_tree_felling_deterministic():
+    runs = []
+    for _ in range(2):
+        sceneries = [NS(trees=[(10.0, 0.5), (20.0, -0.5)])]
+        manager, car = TaxiManager(ways=[]), Car(x=0.0, y=0.0, heading=0.0, speed=10.0)
+        for frame in range(90):
+            car.x += car.speed / 30.0
+            if frame == 10:
+                sceneries.append(NS(trees=[(25.0, 0.0)]))
+            manager.check_tree_collision(car, sceneries, frame / 30.0)
+        runs.append([(t.x, t.y, t.knocked_angle) for t in manager.felled_trees])
+        indexed = [t for cell in manager._post_grid.values() for t in cell]
+        assert len(indexed) == len({id(t) for t in indexed}) == 3
+    assert runs[0] == runs[1] and len(runs[0]) == 3
+
+
+def test_post_check_keeps_the_tree_index():
+    posts, sceneries = [NS(x=50.0, y=0.0, kind="bollard")], [NS(trees=[(10.0, 0.0)])]
+    manager, car = TaxiManager(ways=[]), Car(x=0.0, y=0.0, heading=0.0, speed=10.0)
+    felled = 0
+    for frame in range(60):  # the simulation's order: trees, then posts
+        car.x += car.speed / 30.0
+        felled += manager.check_tree_collision(car, sceneries, frame / 30.0)
+        manager.check_post_collision(car, posts, frame / 30.0)
+    assert felled == 1
+
+
+def test_unloaded_chunk_trees_stand_and_stay_up():
+    from theroadragetrip.map_chunks import cell_of
+    from theroadragetrip.protocol import _knocked_trees
+
+    sceneries = [NS(trees=[(10.0, 0.0), (300.0, 0.0)])]
+    manager, car = TaxiManager(ways=[]), Car(x=0.0, y=0.0, heading=0.0, speed=10.0)
+    for frame in range(60):
+        car.x += car.speed / 30.0
+        manager.check_tree_collision(car, sceneries, frame / 30.0)
+    assert [(t.x, t.y) for t in manager.felled_trees] == [(10.0, 0.0)]
+    manager.stand_trees_in(cell_of(10.0, 0.0), cell_of)  # the server unloads that chunk
+    world = NS(taxi_mgr=manager)
+    assert manager.felled_trees == [] and _knocked_trees(world, 10.0, 0.0) == []  # reloaded: standing
+    car.x, car.y = 285.0, 0.0  # a later felling elsewhere
+    for frame in range(60):
+        car.x += car.speed / 30.0
+        manager.check_tree_collision(car, sceneries, 2.0 + frame / 30.0)
+    assert _knocked_trees(world, 300.0, 0.0) == [[300.0, 0.0, 0.0]]  # the first does not fall again

@@ -41,6 +41,17 @@ MOTION_SICKNESS_THRESHOLD = 8.0
 POST_KINDS = ("bollard", "street_lamp")  # solid poles the taxi can hit
 POST_RADIUS_M = 0.15
 POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stopping the taxi
+TREE_RADIUS_M = 0.4  # a tree the taxi touches within this of its trunk falls (Godot TRUNK_RADIUS_M)
+
+
+@dataclass
+class FelledTree:
+    """A surveyed natural=tree point (scenery.trees) in the post grid; the
+    taxi fells it without stopping (check_tree_collision)."""
+    x: float
+    y: float
+    kind: str = "tree"
+    knocked_angle: Optional[float] = None
 # Long fares: a phone offer to another municipality. Only the town is known
 # at first (its map isn't loaded); the edge arrow points the way, and near
 # the town the street address is picked from the map streamed in by then.
@@ -268,6 +279,9 @@ class TaxiManager:
         self._post_grid: Dict[Tuple[int, int], List[Any]] = {}
         self._post_ref = None
         self._post_count = 0
+        self._tree_ref = None
+        self._tree_count = 0
+        self.felled_trees: List[FelledTree] = []  # only ever grows
         self.knocked_posts = 0  # how many bollards/lamps lie flat (render cache revision)
         self.broken_lamps: set = set()  # (x, y) of knocked-down street lamps: their light is off
         self._curb_bump_cooldowns: Dict[int, float] = {}  # curb id -> timestamp cooldown
@@ -1033,18 +1047,56 @@ class TaxiManager:
             logger.info("Player crashed into a tram: -%d pts", penalty)
         return True
 
-    def _nearby_posts(self, objects: List[Any], x: float, y: float):
-        """Bollards and lamp posts near (x, y) from a 20 m grid, indexing
-        only newly appended objects (the scenery list only grows, like the
+    def _nearby_posts(self, objects: List[Any], x: float, y: float, sceneries=None):
+        """Bollards, lamp posts and the sceneries' trees (FelledTree, surface
+        only, Category.POST) near (x, y) from a 20 m grid, indexing only newly
+        appended objects and sceneries (both lists only grow, like the
         building list in _nearby_collision_buildings)."""
         if objects is not self._post_ref or len(objects) < self._post_count:
             self._post_grid, self._post_ref, self._post_count = {}, objects, 0
-        for obj in objects[self._post_count:]:
-            if getattr(obj, "kind", None) in POST_KINDS:
-                self._post_grid.setdefault((math.floor(obj.x / 20.0), math.floor(obj.y / 20.0)), []).append(obj)
-        self._post_count = len(objects)
+            self._tree_ref, self._tree_count = None, 0
+        if sceneries is None:  # posts only: the trees indexed so far stay
+            sceneries = self._tree_ref if self._tree_ref is not None else ()
+        if sceneries is not self._tree_ref or len(sceneries) < self._tree_count:
+            if self._tree_ref is not None:  # a new scenery list: drop its trees, keep the posts
+                for key, cell in self._post_grid.items():
+                    self._post_grid[key] = [obj for obj in cell if not isinstance(obj, FelledTree)]
+            self._tree_ref, self._tree_count = sceneries, 0
+        new = [obj for obj in objects[self._post_count:] if getattr(obj, "kind", None) in POST_KINDS]
+        new += [FelledTree(tx, ty) for scenery in sceneries[self._tree_count:] for tx, ty in getattr(scenery, "trees", ())]
+        for obj in new:
+            self._post_grid.setdefault((math.floor(obj.x / 20.0), math.floor(obj.y / 20.0)), []).append(obj)
+        self._post_count, self._tree_count = len(objects), len(sceneries)
         cell_x, cell_y = math.floor(x / 20.0), math.floor(y / 20.0)
         return [obj for dx in (-1, 0, 1) for dy in (-1, 0, 1) for obj in self._post_grid.get((cell_x + dx, cell_y + dy), ())]
+
+    def check_tree_collision(self, player_car: Car, sceneries: List[Any], sim_time: float) -> int:
+        """Fell the standing trees the taxi touches, the way it is going.
+        Never stops the taxi; no score, happiness or penalty. Surface only
+        (the caller checks). Returns how many fell this tick."""
+        pose = (player_car.heading, player_car.length_m, player_car.width_m)
+        angle = player_car.heading if player_car.speed >= 0.0 else player_car.heading + math.pi
+        felled = 0
+        if self._post_ref is None:
+            self._post_ref = []  # no posts seen yet: a stable list, so the grid is not rebuilt each tick
+        for tree in self._nearby_posts(self._post_ref, player_car.x, player_car.y, sceneries):
+            if isinstance(tree, FelledTree) and tree.knocked_angle is None and post_box_depth(
+                    tree.x, tree.y, TREE_RADIUS_M, player_car.x, player_car.y, *pose) >= 0.0:
+                tree.knocked_angle = angle
+                self.felled_trees.append(tree)
+                felled += 1
+        return felled
+
+    def stand_trees_in(self, cell: Tuple[int, int], cell_of) -> None:
+        """A chunk unloaded: its felled trees stand again (and can fall again),
+        as the client redraws them standing when the chunk reloads."""
+        kept = []
+        for tree in self.felled_trees:
+            if cell_of(tree.x, tree.y) == cell:
+                tree.knocked_angle = None
+            else:
+                kept.append(tree)
+        self.felled_trees = kept
 
     def check_post_collision(
         self,
@@ -1064,6 +1116,8 @@ class TaxiManager:
         pose = (player_car.heading, player_car.length_m, player_car.width_m)
         reach = math.hypot(player_car.length_m / 2 + POST_RADIUS_M, player_car.width_m / 2 + POST_RADIUS_M)
         for post in self._nearby_posts(scenery_objects, player_car.x, player_car.y):
+            if isinstance(post, FelledTree):
+                continue  # trees: check_tree_collision
             if getattr(post, "knocked_angle", None) is not None:
                 continue  # already lying flat
             if abs(post.x - player_car.x) > reach or abs(post.y - player_car.y) > reach:

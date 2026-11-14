@@ -178,3 +178,19 @@ def test_residents_are_sent_only_for_the_inspected_entity():
     residents = {5: SimpleNamespace(resident_id=5, name="Test Person 3", birth_date="2000-01-01", gender="female", age=26,
                                     household_id=None, mode="walking", personality={})}
     assert _pedestrian_to_dict(ped, residents, person=False)["resident"] is None
+
+
+def test_state_has_knocked_trees_near_player():
+    from types import SimpleNamespace
+
+    from theroadragetrip.taxi import FelledTree
+
+    near, far = FelledTree(10.0, 0.0, knocked_angle=1.5), FelledTree(5000.0, 0.0, knocked_angle=0.0)
+    world = SimpleNamespace(taxi_mgr=SimpleNamespace(felled_trees=[near, far, FelledTree(1.0, 1.0)]))
+    assert protocol._knocked_trees(world, 0.0, 0.0) == [[10.0, 0.0, 1.5]]
+
+
+def test_protocol_v1_rejected():
+    assert protocol.PROTOCOL_VERSION == 2
+    with pytest.raises(protocol.ProtocolError):
+        protocol.decode(protocol.encode({"type": "command", "version": 1}).rstrip(b"\n"))

@@ -1107,10 +1107,7 @@ func _present(state: Dictionary) -> void:
 	map_layer.set_flash(state.get("speed_camera_flash"))
 	labels.update_view(get_viewport().get_canvas_transform(), map_layer.chunk_count(), level != 0)
 	map_layer.set_obstacles(state.get("knocked_posts", []))
-	var body: Dictionary = entities.player_body()
-	if not body.is_empty() and body["speed"] > 0.5 and map_layer.knock_trees(body) > 0:  # trees: the client's alone
-		audio.handle_event({"type": "sound", "group": "collision.tree"})
-		audio.handle_event({"type": "sound", "group": "collision.tree_fall"})
+	map_layer.set_knocked_trees(state.get("knocked_trees", []))  # the server fells them and sends the sound
 	map_layer.set_broken_hedges(state.get("broken_hedges", []))
 	phone.clock_text = hud._clock.text.get_slice(" ", 1) if hud._clock.text.contains(" ") else hud._clock.text
 	if state.has("game_time_seconds"):

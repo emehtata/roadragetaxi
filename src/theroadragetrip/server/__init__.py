@@ -1629,6 +1629,7 @@ class SimulationServer:
             for cid in to_drop:
                 connection.send({"type": "chunk_unload", "version": protocol.PROTOCOL_VERSION, "chunk_id": cid})
                 loaded.discard(cid)
+                self.world.taxi_mgr.stand_trees_in(tuple(int(part) for part in cid.split("_")), cell_of)
             for cid in to_load:
                 ix, iy = (int(part) for part in cid.split("_"))
                 if indexed is not None and max(abs(ix - cell[0]), abs(iy - cell[1])) > 1 \

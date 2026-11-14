@@ -653,8 +653,10 @@ def advance_simulation(
             car, buildings, traffic_mgr.sim_time, previous_position, ways=drive_ways,
             current_way=current_way, spatial_grid=drive_grid,
         )
-        # Trees: the client's alone (godot/map_chunk.gd knock_trees) - the taxi knocks them
-        # over without stopping, and a fallen tree stands again when its chunk reloads.
+        # Trees (surveyed natural=tree): the taxi fells them without stopping; the client only draws them.
+        if on_surface and taxi_mgr.check_tree_collision(car, sceneries, traffic_mgr.sim_time) > 0:
+            audio.play_group("collision.tree", at=(car.x, car.y))
+            audio.play_group("collision.tree_fall", at=(car.x, car.y))
         fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
         fence_group = "collision.fence"
         if not fence_crash and on_surface:

@@ -25,6 +25,8 @@ var _knocked_posts: Node2D  # drawn here, from the state: a lamp has no static d
 var broken_hedges: Dictionary = {}
 var _last_hedge_damage: Array = []
 var _last_obstacles := []
+var _last_trees := []
+var fallen_trees: Dictionary = {}  # obstacle_key -> angle (state "knocked_trees")
 var season := [0.0, 0.0, 1.0, 0.0]  # [winter, spring, summer, autumn] as last applied
 var lights_on := false
 var _pool_group: Node2D  # every loaded chunk's street-light pools (each chunk's: their union, added once)
@@ -345,6 +347,7 @@ func add_chunk(message: Dictionary) -> bool:
 	chunk.set_px_per_m(px_per_m)
 	chunk.set_phases(phases)
 	chunk.set_obstacles(knocked)
+	chunk.set_fallen(fallen_trees)
 	chunk.set_broken_hedges(broken_hedges)
 	chunk.set_season(season)
 	chunk.set_trees_leafless(_trees_leafless)
@@ -412,13 +415,18 @@ func set_obstacles(knocked_posts: Array) -> void:
 		_knocked_posts.queue_redraw()
 
 
-## The taxi knocks over the trees it touches (MapChunk.knock_trees, which
-## skips chunks far from it): the client's alone. Returns how many fell.
-func knock_trees(body: Dictionary) -> int:
-	var felled := 0
+## The simulation's felled trees ([x, y, angle], state "knocked_trees").
+## Pushed to the loaded chunks when it changes and to each chunk as it
+## loads; the server stands a chunk's trees up when it unloads the chunk.
+func set_knocked_trees(trees: Array) -> void:
+	if trees == _last_trees:
+		return
+	_last_trees = trees
+	fallen_trees = {}
+	for tree in trees:
+		fallen_trees[MapChunk.obstacle_key(tree[0], tree[1])] = float(tree[2])
 	for chunk in _chunks.values():
-		felled += chunk.knock_trees(body["position"], body["heading"], body["length"], body["width"])
-	return felled
+		chunk.set_fallen(fallen_trees)
 
 
 ## A post hit hard lies bent over the way the taxi went

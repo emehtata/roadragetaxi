@@ -204,7 +204,7 @@ def test_a_behind_client_gets_the_newest_state_with_every_event(monkeypatch):
     server_side, _ = listener.accept()
     listener.close()
     connection = transport.LineJSONConnection(server_side)
-    connection.send({"type": "chunk", "version": 1, "blob": "x" * 500_000})  # the sender is stuck on this
+    connection.send({"type": "chunk", "version": 2, "blob": "x" * 500_000})  # the sender is stuck on this
     assert _wait_for(lambda: connection.queued() == 1 and connection._writing)
 
     def state(tick, group):
@@ -243,7 +243,7 @@ def test_incoming_oversized_line_and_queue_overflow_are_dropped(server, monkeypa
     try:
         _connected(server)
         connection = server._clients[-1]
-        raw.sendall(b'{"type":"command","version":1,"command":{}}\n' * 4)
+        raw.sendall(b'{"type":"command","version":2,"command":{}}\n' * 4)
         assert _wait_for(lambda: connection.is_closed)
         assert connection._queue.qsize() <= 3
     finally:
@@ -256,7 +256,7 @@ def test_tick_consumes_only_a_bounded_batch_of_incoming_commands(server, monkeyp
     try:
         _connected(server)
         connection = server._clients[-1]
-        raw.sendall(b'{"type":"command","version":1,"command":{}}\n' * 128)
+        raw.sendall(b'{"type":"command","version":2,"command":{}}\n' * 128)
         assert _wait_for(lambda: connection._queue.qsize() == 128)
         calls = []
         original = protocol.command_from_message

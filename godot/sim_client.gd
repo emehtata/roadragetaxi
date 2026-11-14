@@ -12,7 +12,7 @@ signal chunk_received(message: Dictionary)
 signal chunk_unloaded(chunk_id: String)
 signal connection_changed(connected: bool)
 
-const PROTOCOL_VERSION := 1
+const PROTOCOL_VERSION := 2
 
 var host := "127.0.0.1"
 var port := 8765

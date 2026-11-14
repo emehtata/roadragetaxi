@@ -32,8 +32,6 @@ extends Node2D
 
 const CANOPY_KINDS := {"forest": 0, "wood": 0, "scrub": 1, "shrubbery": 1, "wetland": 2}  # forest.gdshader's kinds
 const CANOPY_MARGIN_M := 3.5  # the canopy drawn past the forest outline: room for its edge crowns
-const TRUNK_RADIUS_M := 0.4  # a tree the taxi touches within this of its trunk falls
-const TREE_CELL_M := 10.0  # knock_trees' lookup grid
 const RS := preload("res://render_style.gd")
 const Detail := preload("res://chunk_detail.gd")  # godot-16: the rest of the static world's drawing
 const B25 := preload("res://buildings_25d.gd")
@@ -84,9 +82,8 @@ var _lights: Node2D = null  # traffic-light posts, if this chunk has any
 var _phases: Dictionary = {}  # post id (String) -> phase as last drawn
 var _font: Font = ThemeDB.fallback_font
 var _trees: Node2D = null  # trees and bollards, if this chunk has any
-var _fallen: Dictionary = {}  # obstacle_key -> angle: trees the taxi knocked over (the client's alone: gone when the chunk reloads)
+var _fallen: Dictionary = {}  # obstacle_key -> angle: trees the server felled (set_fallen; standing again when the chunk reloads)
 var _wetland_spots: Dictionary = {}  # landuse index -> a bog's pools and tussocks (chunk_detail.wetland_spots)
-var _tree_grid: Dictionary = {}  # Vector2i cell -> [[point, tree index]]: built on the taxi's first visit (knock_trees)
 var _hedge_damage: Dictionary = {}
 var _railings: Node2D
 var _knocked: Dictionary = {}  # keys of this chunk's bollards lying flat
@@ -737,39 +734,19 @@ func set_obstacles(knocked: Dictionary) -> bool:
 	return true
 
 
-## Knock over the standing trees the taxi's body (centre, world heading,
-## length, width) touches: each falls the way the taxi was going. The client's
-## alone - the simulation never stops the taxi at a tree - and forgotten when
-## this chunk is unloaded. Returns how many fell.
-func knock_trees(at: Vector2, heading: float, length: float, width: float) -> int:
-	if _trees == null or not _bounds_rect.grow(length).has_point(at):
-		return 0
-	if _tree_grid.is_empty():  # once: the trees by TREE_CELL_M cell, so a frame tests only those around the taxi
-		var trees: Array = _data.get("trees", [])
-		for i in trees.size():
-			var p := MapMath.point(_origin, trees[i][0], trees[i][1])
-			var cell := Vector2i(floori(p.x / TREE_CELL_M), floori(p.y / TREE_CELL_M))
-			if not _tree_grid.has(cell):
-				_tree_grid[cell] = []
-			_tree_grid[cell].append([p, i])
-	var forward := Vector2(cos(heading), -sin(heading))
-	var reach := length * 0.5 + width + TRUNK_RADIUS_M
-	var felled := 0
-	for cx in range(floori((at.x - reach) / TREE_CELL_M), floori((at.x + reach) / TREE_CELL_M) + 1):
-		for cy in range(floori((at.y - reach) / TREE_CELL_M), floori((at.y + reach) / TREE_CELL_M) + 1):
-			for entry in _tree_grid.get(Vector2i(cx, cy), []):
-				var d: Vector2 = entry[0] - at
-				var outside := Vector2(maxf(0.0, absf(d.dot(forward)) - length * 0.5), maxf(0.0, absf(d.dot(forward.orthogonal())) - width * 0.5))
-				if outside.length() > TRUNK_RADIUS_M:
-					continue
-				var tree: Array = _data["trees"][entry[1]]
-				var key := obstacle_key(tree[0], tree[1])
-				if not _fallen.has(key):
-					_fallen[key] = heading
-					felled += 1
-	if felled > 0:
+## The simulation's felled trees ({obstacle_key: angle}): redraws the
+## trees only if one of this chunk's own changed.
+func set_fallen(fallen: Dictionary) -> void:
+	var own := {}
+	for tree in _data.get("trees", []):
+		var key := obstacle_key(tree[0], tree[1])
+		if fallen.has(key):
+			own[key] = fallen[key]
+	if own == _fallen:
+		return
+	_fallen = own
+	if _trees != null:
 		_trees.queue_redraw()
-	return felled
 
 
 var _elevated = null

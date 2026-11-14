@@ -238,8 +238,13 @@ def main(argv=None) -> int:
     from theroadragetrip.taxi import TaxiManager
 
     for helper in ("check_building_collision", "check_fence_collision", "check_barrier_collision",
-                   "check_tram_collision", "check_post_collision"):
-        setattr(TaxiManager, helper, timed("taxi." + helper, getattr(TaxiManager, helper)))
+                   "check_tram_collision", "check_post_collision", "check_tree_collision"):
+        if hasattr(TaxiManager, helper):  # check_tree_collision: phase 3 on
+            setattr(TaxiManager, helper, timed("taxi." + helper, getattr(TaxiManager, helper)))
+    from theroadragetrip import protocol as _protocol
+
+    if hasattr(_protocol, "_knocked_trees"):
+        _protocol._knocked_trees = timed("protocol._knocked_trees", _protocol._knocked_trees)
 
     class PedestrianProfiler:
         def record(self, name, elapsed_ms):
@@ -416,6 +421,11 @@ def main(argv=None) -> int:
         "map_busy": tick_stats([t for t in ticks if t["busy"]]),
         "busy_pct": round(100.0 * sum(t["busy"] for t in ticks) / len(ticks), 1),
         "waiting_ms_per_tick": {k: {"mean": round(sum(v) / len(v), 1), "p95": pct(v, .95), "ticks": len(v)} for k, v in waits.items()},
+        # every tick, not only slow ones: the collision spec's per-phase "collision tick" comparison
+        "collision_ms_per_tick": {
+            name: round(sum(t["phases"].get(name, (0.0, 0.0))[0] for t in ticks) / max(1, len(ticks)), 4)
+            for name in sorted({n for t in ticks for n in t["phases"] if n.startswith("taxi.check_") or n == "protocol._knocked_trees"})}
+        | {"collisions_section": round(sum(t.get("sim_sections", {}).get("collisions", 0.0) for t in ticks) / max(1, len(ticks)), 4)},
         "slow_ticks": {"count": len(slow), "wall_ms": round(sum(t["wall"] for t in slow)),
                        "waiting_ms": round(sum(t["wall"] - t["cpu"] for t in slow)),
                        "phases_ms": {k: round(v) for k, v in sorted(phases.items(), key=lambda kv: -kv[1])}},

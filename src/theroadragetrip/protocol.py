@@ -7,18 +7,18 @@ only touches this module. No pickle, no raw Python objects on the wire.
 
 Message shapes crossing the boundary:
 
-- client -> server: `{"type": "command", "version": 1, "seq": N, "player_id": ..., "command": {...}}`
+- client -> server: `{"type": "command", "version": 2, "seq": N, "player_id": ..., "command": {...}}`
   built by `build_command_message`. `command` mirrors
   `simulation.PlayerCommand`'s fields plus one edge-triggered
   `interact` flag for the discrete "enter/exit vehicle" action.
   `player_id` says whose input it is; there is one player today,
   `LOCAL_PLAYER_ID`, and a command without one means that player.
-- server -> client, once on connect: `{"type": "world", "version": 1, ...}`
+- server -> client, once on connect: `{"type": "world", "version": 2, ...}`
   built by `build_world_message`: the map origin, chunk size and the
   client's `player_id`.
 - server -> client: `{"type": "chunk", ...}` / `{"type": "chunk_unload", ...}`
   (map_chunks.py): the static map around the player, streamed as it moves.
-- server -> client: `{"type": "state", "version": 1, "tick": N, "server_time": s, "state": {...}}`
+- server -> client: `{"type": "state", "version": 2, "tick": N, "server_time": s, "state": {...}}`
   built by `build_state_message` every tick. Dynamic gameplay state, plus the tick's
   semantic `events` (sounds, train arrivals) for the client to present.
   `server_time` is simulation seconds since the server started - the
@@ -47,7 +47,7 @@ from .rail_bookings import PASSENGER_MET, PASSENGER_WAITING
 from .simulation import PlayerCommand
 from .taxi import TaxiPassenger
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2  # 2: the server fells trees (knocked_trees)
 LOCAL_PLAYER_ID = "local_player"  # the only player until there is multiplayer
 
 
@@ -445,12 +445,23 @@ def _broken_hedges(world, x, y):
 def _knocked(world, x: float, y: float) -> list:
     """Posts knocked over this session near (x, y), as [x, y, angle, kind] -
     matched by position to the chunks' bollards. Only ever grows (taxi.py),
-    so it stays small. (Felled trees are the client's own: map_chunk.gd.)"""
+    so it stays small. (Felled trees: _knocked_trees.)"""
     radius_sq = TRAFFIC_LIGHT_PHASE_RADIUS_M * TRAFFIC_LIGHT_PHASE_RADIUS_M
     return [
         [round(post.x, 1), round(post.y, 1), round(post.knocked_angle, 3), post.kind]
         for post in getattr(world, "scenery_objects", ())
         if getattr(post, "knocked_angle", None) is not None and (post.x - x) ** 2 + (post.y - y) ** 2 <= radius_sq
+    ]
+
+
+def _knocked_trees(world, x: float, y: float) -> list:
+    """Trees the taxi felled near (x, y), as [x, y, angle] - matched by
+    position to the chunks' trees (taxi.py check_tree_collision)."""
+    radius_sq = TRAFFIC_LIGHT_PHASE_RADIUS_M * TRAFFIC_LIGHT_PHASE_RADIUS_M
+    return [
+        [round(tree.x, 1), round(tree.y, 1), round(tree.knocked_angle, 3)]
+        for tree in getattr(getattr(world, "taxi_mgr", None), "felled_trees", ())
+        if tree.knocked_angle is not None and (tree.x - x) ** 2 + (tree.y - y) ** 2 <= radius_sq
     ]
 
 
@@ -619,6 +630,7 @@ def build_state_message(
         "protest_active": bool(getattr(getattr(world, "protests", None), "groups", ())),
         "broken_hedges": _broken_hedges(world, *player_at),
         "knocked_posts": knocked_posts,  # [x, y, angle, kind]: bollards and street lamps lying flat
+        "knocked_trees": _knocked_trees(world, *player_at),  # [x, y, angle]: felled trees
         "game_time_seconds": game_time_seconds,
         # {"date": "YYYY-MM-DD", "time_scale": game s per real s, "sun_altitude_deg",
         #  "moon_altitude_deg", "moon_azimuth_deg", "moon_illumination",

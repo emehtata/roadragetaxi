@@ -300,13 +300,6 @@ def test_building_collision_still_triggers_off_road():
     assert car.speed == 0.0
 
 
-def test_the_taxi_drives_through_a_tree_the_client_knocks_over():
-    """Trees are the client's alone (godot/map_chunk.gd knock_trees): the
-    simulation neither stops nor fines the taxi at one."""
-    taxi_manager = TaxiManager(ways=[])
-    assert not hasattr(taxi_manager, "check_tree_collision") and not hasattr(taxi_manager, "fallen_trees")
-
-
 def test_a_car_pressed_against_a_building_can_drive_away_from_it():
     """Reported: the taxi stuck at a wall - every move, away too, was undone
     because the body still touched the building at the new position."""

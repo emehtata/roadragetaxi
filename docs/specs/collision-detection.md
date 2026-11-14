@@ -114,6 +114,60 @@ Tests to add in tests/test_collision_scenarios.py (no map load, explicit poses):
 
 Out of scope: trees on the server (phase 3), merging the taxi grids (phase 4), NPC static collision (phase 6), and Godot changes.
 
+## Phase 3 (full): trees on the server
+Goal: the server decides which trees the taxi fells and sends them to Godot. Godot only draws fallen trees and plays the sound.
+Godot has no tree hit test left. Covers scenarios 4 (vehicle hits a tree) and 10 (fast vehicle, small obstacle).
+
+Tree data: the surveyed `natural=tree` points that `osm/trees.py plant_trees` attaches to each scenery
+(`scenery.trees`, `scenery.tree_kinds`, after `remove_trees_under_roads` in world_loader.py). These are the same points that
+map_chunks.py sends as chunk `trees`, so server and client keys match (`round(x, 1), round(y, 1)`). No new data source, so no licence change.
+
+Files:
+- `src/theroadragetrip/taxi.py`: new `TREE_RADIUS_M = 0.4` (Godot `TRUNK_RADIUS_M`). Add a `class FelledTree` record (`x, y, kind="tree",
+  knocked_angle=None`). The post grid also indexes trees: `_nearby_posts(objects, x, y, sceneries=())` adds each scenery's
+  new trees to the same 20 m `_post_grid`. Index them on append, the same way as posts. They are surface only (level SURFACE, layer 0) and
+  category `Category.POST`. A new `def check_tree_collision(self, player_car, sceneries, sim_time) -> int` returns the number felled
+  this tick. It uses `post_box_depth(..., TREE_RADIUS_M, ...) >= 0` and sets `knocked_angle` to the taxi heading (reversed when reversing).
+  It never stops the taxi, takes no score, no happiness and no penalty, the same as today. It adds the tree to `self.felled_trees` (a list, only ever grows).
+- `src/theroadragetrip/simulation.py` collisions section: if `on_surface`, call `check_tree_collision`. If it returns >0, play
+  `audio.play_group("collision.tree")` and `("collision.tree_fall")` at the car. Replace the "Trees: the client's alone" comment.
+- `src/theroadragetrip/protocol.py`: `_knocked_trees(world_or_taxi, x, y) -> list` returns `[x, y, angle]` within the same radius as
+  `_knocked`. The state field is `"knocked_trees"`. Bump `PROTOCOL_VERSION` to 2, because an old client would still fell trees on its own.
+- `godot/main.gd`: delete the `knock_trees(body)` call and its two sound events (the server sends the sound now, like `post_knock`).
+  Call `map_layer.set_knocked_trees(state.get("knocked_trees", []))`.
+- `godot/map_layer.gd`: `func set_knocked_trees(trees: Array) -> void` skips the call if the array has not changed. Otherwise it pushes the
+  `obstacle_key -> angle` dict to each chunk. Delete `knock_trees`.
+- `godot/map_chunk.gd`: delete `knock_trees`, `_tree_grid` and `TREE_CELL_M`. `func set_fallen(fallen: Dictionary) -> void` replaces
+  `_fallen` and redraws `_trees` when it changes. The drawing at ~1689 stays the same. Do the same in any 3D tree view that reads `_fallen`.
+- Godot protocol version constant (where it checks `version`): set it to 2.
+
+Must stay identical: a tree falls the way the taxi was heading and its tip is drawn 3.2 m away. The taxi keeps its speed. The sounds are
+`collision.tree` then `collision.tree_fall`, once per felling tick. No score, no penalty. Behaviour kept as today: a fallen tree stands up again when its chunk
+reloads. The server keeps felled trees only while their chunk is loaded (decided while the user was offline, to preserve existing gameplay).
+
+Acceptance:
+1. `grep -n "knock_trees\|_tree_grid" godot/` finds nothing. Godot has no tree distance test.
+2. Scenario 4 (tree): a taxi at 8 m/s and at 20 m/s drives at a tree 10 m ahead. Within 2 s the tree has `knocked_angle` equal to the
+   heading, the speed is unchanged (abs diff < 1e-6 from the physics without the tree), and `total_score` is unchanged.
+3. A taxi passing 0.5 m beyond the reach (`width/2 + 0.4 + 0.5` from the centreline) fells nothing.
+4. Scenario 10: at 69 m/s at 30 Hz (2.3 m per tick) a tree on the path is felled (no tunnelling at this speed, because the 4.5 m box > step).
+5. Deterministic: the same seed and the same world give the same felled list in the same order across two runs. The tree grid holds each tree once.
+6. A map level other than the surface, or `on_surface` False, fells nothing.
+7. State has `knocked_trees` only near the player. A message with version 1 is rejected.
+8. Visual: the named scenario `tree-knocked-topdown` (real map data, a park street with mapped `natural=tree` near
+   the city centre; it uses `--screenshot-drive` to drive the taxi through a tree) passes its readiness checks. The screenshot shows the fallen
+   trunk drawn from the server state. Inspect it.
+9. Full `pytest` and the Godot tests are green, nothing deselected. PBF bench at 69 m/s: collision tick within 5% of phase 2.
+
+Tests (tests/test_collision_scenarios.py, no map load, explicit poses and a stub scenery with `trees`):
+- test_taxi_fells_tree_keeps_speed (scenario 4). It fails because `check_tree_collision` does not exist.
+- test_tree_miss_beyond_reach, test_tree_fast_no_tunnel (scenario 10), test_tree_off_surface_ignored.
+- test_tree_felling_deterministic: two identical runs give equal `felled_trees` lists. Each tree is indexed once after the sceneries grow.
+- tests/test_protocol*.py: test_state_has_knocked_trees_near_player, test_protocol_v1_rejected.
+- tools/visual_scenarios.json: add `tree-knocked-topdown`.
+
+Out of scope: NPC vehicles felling trees (phase 6), trees in the shared static index (phase 4), and tree collision for the player on foot.
+
 ## Later phases (outline)
 2. Shared OBB-vs-polygon and circle-vs-box helpers in collision.py. Taxi, npc and trams use them. Scenarios 3, 4, 14.
 3. Move trees to the server: add trees to the taxi's post grid with the POST category, send `knocked_trees` in the protocol, and remove the collision from Godot `knock_trees` so Godot only draws it. Scenarios 4, 10.
