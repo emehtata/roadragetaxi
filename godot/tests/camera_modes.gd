@@ -13,7 +13,6 @@ var failed := false
 func _initialize() -> void:
 	test_default_third()
 	test_keys_select_deterministic()
-	test_i_on_foot_only()
 	test_chase_pose()
 	test_chase_clamped_above_ground()
 	test_chase_below_deck()
@@ -46,14 +45,8 @@ func test_keys_select_deterministic() -> void:
 	for code: Key in [KEY_3, KEY_3, KEY_2, KEY_2, KEY_1, KEY_1]:
 		check(modes.handle_key(key(code)), "key %d handled" % code)
 		check(modes.mode == CameraModes.KEYS[code], "key %d selects its mode, twice too" % code)
-	check(not modes.handle_key(key(KEY_I)), "I is not a driving camera key")
+	check(not modes.handle_key(key(KEY_I)), "I is no longer a camera key")
 	check(modes.mode == CameraModes.Mode.THIRD, "I leaves the mode")
-
-
-func test_i_on_foot_only() -> void:
-	check(CameraModes.walk_eye_key(key(KEY_I), true), "I on foot: first person")
-	check(not CameraModes.walk_eye_key(key(KEY_I), false), "I driving: nothing")
-	check(not CameraModes.walk_eye_key(key(KEY_3), true), "3 is not I")
 
 
 func test_chase_pose() -> void:

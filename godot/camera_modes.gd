@@ -35,11 +35,6 @@ func handle_key(event: InputEvent) -> bool:
 	return true
 
 
-## I: first person on foot only; driving it does nothing (3 is driver-eye).
-static func walk_eye_key(event: InputEvent, on_foot: bool) -> bool:
-	return on_foot and event is InputEventKey and event.keycode == KEY_I
-
-
 ## Only the heading lags (exponentially, HEADING_SMOOTH_S); a jump over 90 deg
 ## (respawn, first frame) snaps.
 func smooth_heading(target: float, delta: float) -> float:

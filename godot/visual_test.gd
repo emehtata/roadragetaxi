@@ -66,10 +66,10 @@ func _walk(delta: float) -> void:
 		_walk_phase = 1
 	elif _walk_phase == 1 and state.get("on_foot", false):
 		if not main.walk_eye and not walk.get("top_down", false):  # from the windshield view main.gd has switched by itself
-			var i_key := InputEventKey.new()  # I on foot, as the player
-			i_key.keycode = KEY_I
-			i_key.pressed = true
-			main._unhandled_input(i_key)
+			var walk_key := InputEventKey.new()  # 3 on foot, as the player: first person
+			walk_key.keycode = KEY_3
+			walk_key.pressed = true
+			main._unhandled_input(walk_key)
 		main.look_yaw = wrapf(float(pose[2]) + float(walk.get("yaw", 0.0)), -PI, PI)
 		main.look_pitch = float(walk.get("pitch", 0.0))
 		main.map_layer.buildings_3d.eye_pitch = main.look_pitch

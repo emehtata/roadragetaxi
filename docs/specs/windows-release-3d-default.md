@@ -1,5 +1,7 @@
 # Windows release: 3D view by default, animals packed, I key
 
+> Superseded (I key): the I walk-eye key is removed; on foot 1/3 walk first person and 2 is top-down. See [walk-keys-123.md](walk-keys-123.md).
+
 ## Goal
 A release started from the in-game menu, a shortcut or the exe shows the 3D outdoor
 view (3D cars, scenery, animals) with no flag, and the I (windshield) key works.

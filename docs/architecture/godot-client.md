@@ -543,7 +543,7 @@ godot-21 section.
 ## Driving camera modes (`camera_modes.gd`, docs/specs/third-person-camera.md)
 
 `1` third-person chase (the default at first entry, kept when re-entering),
-`2` top-down map, `3` driver-eye; `I` is first person on foot only. 1 and 3
+`2` top-down map, `3` driver-eye; on foot `3` (and `1`) is first person and `2` the map. 1 and 3
 show the 3D `SubViewport` full screen (the windshield path of `main.gd`);
 without the 3D world (2D view, underground) they stay top-down. The chase
 camera (`CameraModes.chase`) follows the same interpolated `player_body()`

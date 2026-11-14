@@ -1,4 +1,4 @@
-## The client starts in the 3D outdoor view with no flag; --outdoor-2d keeps the 2D view; 3 shows the driver-eye view, I does nothing driving.
+## The client starts in the 3D outdoor view with no flag; --outdoor-2d keeps the 2D view; 3 shows the driver-eye view, I does nothing driving or on foot; on foot 1/3 walk first person, 2 top.
 ## Run with `-- --outdoor-2d` (test_outdoor_2d_flag re-runs this script so) it only checks the 2D flag.
 extends SceneTree
 
@@ -27,6 +27,9 @@ func _run() -> void:
 		return
 	test_default_is_3d()
 	test_camera_keys(game)
+	test_on_foot_3_and_1_first_person(game)
+	test_on_foot_2_top_down(game)
+	test_on_foot_i_inert(game)
 	test_outdoor_2d_flag()
 	print("release_3d_default: %d failures" % failures)
 	quit(1 if failures else 0)
@@ -51,6 +54,42 @@ func test_camera_keys(game: Node) -> void:
 		game._unhandled_input(key)
 		check(game._windshield.visible == (code != KEY_2), "key %d: 3D view %s" % [code, code != KEY_2])
 		check(game.map_layer.buildings_3d.chase_on == (code == KEY_1), "key %d: chase camera only on 1" % code)
+
+func press(game: Node, code: Key) -> void:
+	var key := InputEventKey.new()
+	key.pressed = true
+	key.keycode = code
+	game._unhandled_input(key)
+
+
+func go_on_foot(game: Node) -> void:
+	game.entities._frame["a"]["on_foot"] = true
+	game.entities._frame["b"]["on_foot"] = true
+
+
+func test_on_foot_3_and_1_first_person(game: Node) -> void:
+	go_on_foot(game)
+	for code in [KEY_3, KEY_1]:
+		press(game, code)
+		check(game._windshield.visible, "on foot key %d: first-person walking" % code)
+
+
+func test_on_foot_2_top_down(game: Node) -> void:
+	go_on_foot(game)
+	press(game, KEY_3)
+	press(game, KEY_2)
+	check(not game._windshield.visible, "on foot key 2: top-down map")
+
+
+func test_on_foot_i_inert(game: Node) -> void:
+	go_on_foot(game)
+	for start in [KEY_3, KEY_2]:
+		press(game, start)
+		var shown: bool = game._windshield.visible
+		var mode: int = game.camera_modes.mode
+		press(game, KEY_I)
+		check(game._windshield.visible == shown and game.camera_modes.mode == mode, "on foot KEY_I after %d: inert" % start)
+
 
 func test_outdoor_2d_flag() -> void:
 	var out := []

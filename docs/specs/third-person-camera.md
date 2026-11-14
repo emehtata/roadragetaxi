@@ -1,5 +1,7 @@
 # Third-person driving camera (brief: docs/3rd-person.md, phase 1)
 
+> Superseded (I key): the I walk-eye key is removed; on foot 1/3 walk first person and 2 is top-down. See [walk-keys-123.md](walk-keys-123.md).
+
 ## Goal
 Third-person chase camera as the default driving view (key 1), top-down on 2, driver-eye on 3;
 the navigation route drawn on the road in the 3D world. Python stays authoritative.

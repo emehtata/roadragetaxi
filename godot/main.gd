@@ -81,7 +81,7 @@ var _windshield: CanvasLayer
 var _windshield_view: TextureRect
 var _windshield_zoom := 0.0
 var _windshield_trims: Array[ColorRect] = []
-var walk_eye := false  # first-person walking: the windshield view at the walking player's eyes (I on foot)
+var walk_eye := false  # first-person walking: the windshield view at the walking player's eyes (keys 3 or 1 on foot)
 var look_yaw := 0.0  # server heading convention (rad, counter-clockwise from east); the server walks this way
 var look_pitch := 0.0
 const WALK_EYE_HEIGHT_M := 1.7
@@ -554,12 +554,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_I:  # first person on foot only; driving: 3
-				if CameraModes.walk_eye_key(event, entities.shown_state().get("on_foot", false)):
-					_set_windshield(not _windshield.visible, true)
-			KEY_1, KEY_2, KEY_3:  # the driving camera; kept on foot for the next drive
-				if camera_modes.handle_key(event) and not entities.shown_state().get("on_foot", true):
-					_set_windshield(camera_modes.mode != CameraModes.Mode.TOP)
+			KEY_1, KEY_2, KEY_3:  # the camera; on foot 3 (and 1) is first person, 2 the map; kept for the next drive
+				if camera_modes.handle_key(event):
+					if entities.shown_state().get("on_foot", true):
+						_set_windshield(camera_modes.mode != CameraModes.Mode.TOP, true)
+					else:
+						_set_windshield(camera_modes.mode != CameraModes.Mode.TOP)
 			KEY_F12:
 				save_screenshot()
 			KEY_U, KEY_F2:  # the HUD layout back to default

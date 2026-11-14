@@ -102,8 +102,7 @@ Ei sankaripuheita. Taksamittari käy.
 | `K` / `V` / `B` | Toggle lane assist / speed limiter / traffic-light assist |
 | `C` | Toggle compass |
 | `J` | Toggle train arrivals/departures board |
-| `1` / `2` / `3` | Driving camera (3D mode): third-person chase (default) / top-down map / driver-eye; never the phone |
-| `I` | On foot: toggle first-person walking (3D mode) |
+| `1` / `2` / `3` | Camera (3D mode). Driving: third-person chase (default) / top-down map / driver-eye. On foot: `3` (or `1`) first-person walking, `2` top-down map; never the phone |
 | `L` | Cycle labels: none, streets, all places |
 | `R` | Reset the taxi to a road; an onboard fare can incur a penalty |
 | `T` | Reset the trip meter |
