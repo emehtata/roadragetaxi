@@ -10,6 +10,7 @@ The API key comes only from the MML_API_KEY environment variable; it is never
 printed or written. Heights stay absolute N2000; NoData stays NoData.
 """
 import argparse
+from functools import lru_cache
 import base64
 import json
 import os
@@ -26,6 +27,7 @@ from theroadragetrip.osm import elevation as el  # noqa: E402
 
 MML_OGC_PROCESSES = "https://avoin-paikkatieto.maanmittauslaitos.fi/tiedostopalvelu/ogcproc/v1/processes"
 OULU_BBOX = (400000.0, 7180000.0, 460000.0, 7240000.0)  # EPSG:3067 x0, y0, x1, y1
+FINLAND_BBOX = (50000.0, 6600000.0, 740000.0, 7800000.0)
 COP_URL = "https://copernicus-dem-30m.s3.amazonaws.com/{name}/{name}.tif"
 COP_ATTRIBUTION = ("produced using Copernicus WorldDEM-30 \u00a9 DLR e.V. 2010-2014 and \u00a9 Airbus Defence and Space GmbH "
                    "2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved")
@@ -123,6 +125,8 @@ def cop_name(lat, lon):
 def cop_tiles(bbox):
     """(lat, lon) of the 1x1 degree Copernicus tiles under an EPSG:3067 bbox."""
     from pyproj import Transformer
+    if tuple(bbox) == FINLAND_BBOX:  # the land tiles only, not the Swedish/Russian corners of the bbox
+        return [(lat, lon) for lat in range(59, 71) for lon in range(19, 32)]
     w, s, e, n = Transformer.from_crs(3067, 4326, always_xy=True).transform_bounds(*bbox, densify_pts=21)
     return [(lat, lon) for lat in range(int(np.floor(s)), int(np.floor(n)) + 1) for lon in range(int(np.floor(w)), int(np.floor(e)) + 1)]
 
@@ -177,7 +181,7 @@ def convert_copernicus(src_tifs, out_dir, bbox, source_date="2021 release"):
     """Copernicus GLO-30 -> nearest sample on the EPSG:3067 10 m grid -> the same 8x8 mean and tiles as KM10."""
     from pyproj import Transformer
     to_ll = Transformer.from_crs(3067, 4326, always_xy=True)
-    sheets = [read_copernicus(p) for p in src_tifs]
+    read = lru_cache(maxsize=40)(read_copernicus)  # strips run south to north: a latitude band of sheets in memory
     s80 = el.DEM80_STEP
     x0, y0 = bbox[0] // s80 * s80, bbox[1] // s80 * s80
     cols, rows = int(-(-(bbox[2] - x0) // s80)), int(-(-(bbox[3] - y0) // s80))
@@ -189,7 +193,12 @@ def convert_copernicus(src_tifs, out_dir, bbox, source_date="2021 release"):
         gx, gy = np.meshgrid(xs, ys)
         lon, lat = to_ll.transform(gx, gy)
         fine = np.full(gx.shape, np.nan)
-        for h, lon0, lat1, dlon, dlat in sheets:
+        for path in src_tifs:
+            name = Path(path).stem
+            lat0 = int(name[23:25]) * (1 if name[22] == "N" else -1)
+            if lat.min() >= lat0 + 1 or lat.max() < lat0:
+                continue
+            h, lon0, lat1, dlon, dlat = read(path)
             c = np.floor((lon - lon0) / dlon).astype(int)
             r = np.floor((lat1 - lat) / dlat).astype(int)
             inside = (c >= 0) & (c < h.shape[1]) & (r >= 0) & (r < h.shape[0])
@@ -227,8 +236,8 @@ def main(argv=None):
     c.add_argument("--source", choices=("mml", "copernicus"), default="mml")
     c.add_argument("--source-date", default=None, help="KM10 delivery MM/YYYY (attribution)")
     for p in (d, c):
-        p.add_argument("--bbox", type=lambda s: tuple(float(v) for v in s.split(",")), default=OULU_BBOX,
-                       help="EPSG:3067 x0,y0,x1,y1 (default Oulu)")
+        p.add_argument("--bbox", type=lambda s: FINLAND_BBOX if s == "finland" else tuple(float(v) for v in s.split(",")),
+                       default=OULU_BBOX, help="EPSG:3067 x0,y0,x1,y1 or finland (default Oulu)")
     args = parser.parse_args(argv)
     if args.cmd == "download" and args.source == "copernicus":
         fetch_copernicus(args.bbox, args.out)
