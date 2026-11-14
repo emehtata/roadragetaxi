@@ -27,6 +27,7 @@ from .activities import ActivityInstance, ActivityLocation
 from .competitor_taxis import COMPETITOR_TAXIS, CRUISE_DWELL_S, is_competitor, make_competitor, night_taxi_target
 from . import bus_lines
 from .bus_lines import is_line_bus
+from .collision import same_plane
 from .geo import angle_diff, bbox_distance_sq, box_contact_normal, boxes_intersect, clamp, closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
 from .osm import Curb, StopSign, Way
@@ -5192,8 +5193,7 @@ class NPCVehicleManager:
                     continue  # its own trailer
                 obstacle = tow
             other_car = getattr(obstacle, "car", obstacle)
-            if (vehicle.layer != getattr(other_car, "layer", 0)
-                    or vehicle.car.map_level != getattr(other_car, "map_level", 0)):
+            if not same_plane(vehicle.car, other_car):
                 continue  # Overlapping screen footprints on separate road/floor levels cannot collide.
             obstacle_is_npc = isinstance(obstacle, NPCVehicle)
             obstacle_already_crashed = obstacle_is_npc and obstacle.state == NPCState.CRASHED
