@@ -69,4 +69,7 @@ them first. A missing or corrupt tile leaves that area flat and logs one error.
   no LFS). Regenerating the set would add another 124 MB to git history.
 - Cold-tile first decode costs about 47 ms per 20 km tile. This is a one-time hitch on first load.
 - Packaged DEM is looked up last; a missing or corrupt tile is flat with one logged error.
+- Per-tile lookup (ddc846fa): each dem80 tile comes from the first folder that has it (cache, env,
+  then packaged). Sysmä gets terrain (80.78 m) where only the packaged set covers it. The cache
+  still wins for tiles it holds. A corrupt cache tile gives flat ground, not the packaged tile (by design).
 - Tester verdict: PASS, with the follow-up fixes (tests, licence notice, credits line).
