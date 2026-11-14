@@ -112,7 +112,8 @@ def _building_is_commercial(building: Building) -> bool:
 # get fewer, smaller windows than an apartment block or office of the same
 # height. Not exhaustive of every OSM house-ish tag, just the common ones.
 # terrace: a Finnish rivitalo, one storey under a pitched roof like a house.
-HOUSE_BUILDING_TYPES = {"house", "detached", "bungalow", "cabin", "semidetached_house", "farm", "terrace"}
+HOUSE_BUILDING_TYPES = {"house", "detached", "bungalow", "cabin", "hut", "semidetached_house", "farm", "terrace"}
+WOOD_BUILDING_TYPES = {"cabin", "hut"}  # house windows on plank walls (building_snow.gdshader category 5)
 # Typical Finnish buildings of a type, used when OSM gives no height or levels
 # (the footprint fallback made a garage ~6 m and a warehouse ~20 m tall).
 OUTBUILDING_TYPES = {"garage", "garages", "shed", "garbage_shed", "allotment_house", "service", "kiosk"}  # no windows
@@ -141,6 +142,8 @@ def _building_render_height(building: Building) -> float:
     """Without an OSM height or levels: a Finnish 1.5-storey house, else the
     type's typical height (TYPE_HEIGHT_M), else the footprint fallback."""
     if getattr(building, "levels", None) is None and not getattr(building, "height_is_explicit", False):
+        if _building_type(building) in WOOD_BUILDING_TYPES:
+            return 3.0  # a cabin or hut: one storey
         if _building_is_house_by_tag(building):
             return 4.5
         if _building_is_retail_hall(building):

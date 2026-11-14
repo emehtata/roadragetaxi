@@ -128,7 +128,15 @@ void fragment() {
 	if (count >= 1.0 && wall.y > 0.0) {
 		float category = mod(floor(wall.z / 1000.0 + 0.001), 10.0);
 		float shop_state = floor(wall.z / 10000.0) - 1.0;  // unknown / closed / open, from the server
-		bool house = abs(category - 1.0) < 0.5;
+		bool wood = abs(category - 5.0) < 0.5;  // CATEGORY_WOOD_HOUSE: a cabin's horizontal boards
+		bool house = abs(category - 1.0) < 0.5 || wood;
+		if (wood) {
+			float board = floor(UV2.y / 0.2);
+			float seam = fract(UV2.y / 0.2) < 0.12 ? 0.45 : 1.0;  // the dark gap under each board
+			float tint = 0.78 + 0.4 * window_hash(wall.w, board, 0.0, 12u);
+			float grain = 0.9 + 0.1 * sin(UV2.x * 5.0 + board * 2.3 + 2.0 * sin(UV2.x * 0.7 + board));
+			color *= seam * tint * grain;
+		}
 		bool retail_hall = abs(category - 4.0) < 0.5;
 		float storey = wall.y;
 		float f = floor(UV2.y / storey);

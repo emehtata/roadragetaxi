@@ -184,6 +184,7 @@ def building_style(building) -> list:
             [[round(x, 1), round(y, 1)] for x, y in getattr(building, "entrances", ())],
             _rgb(wall), rb._building_window_story_count(building),
             3 if rb._building_is_windowless(building) else 4 if rb._building_is_retail_hall(building)
+            else 5 if rb._building_type(building) in rb.WOOD_BUILDING_TYPES
             else 1 if rb._building_is_house(building)
             else 2 if rb._building_is_commercial(building) else 0] + \
         ([1] if getattr(building, "arena_windows", False) else [2] if is_glasshouse(building) else [])

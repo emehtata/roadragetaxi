@@ -734,3 +734,26 @@ def test_a_replaced_chunk_index_is_freed_in_budgeted_steps():
     assert len(old._chunks) == 4 and server._retired_indexes == [old]
     SimulationServer._free_retired(server, budget_s=1.0)
     assert server._retired_indexes == [] and not old._chunks and not old._encoded
+
+
+def test_cabin_and_hut_get_wood_category():
+    from theroadragetrip import static_world
+    from theroadragetrip.osm.models import Building
+    square = [(0.0, 0.0), (8.0, 0.0), (8.0, 6.0), (0.0, 6.0)]
+    assert [static_world.building_style(Building(square, building_type=t))[6] for t in ("cabin", "hut", "house")] == [5, 5, 1]
+
+
+def test_cabin_is_one_storey_unless_tagged():
+    from theroadragetrip import static_world
+    from theroadragetrip.osm.models import Building
+    square = [(0.0, 0.0), (8.0, 0.0), (8.0, 6.0), (0.0, 6.0)]
+    assert static_world.building_style(Building(square, building_type="cabin"))[2:6:3] == [3.0, 1]
+    assert static_world.building_style(Building(square, building_type="hut", levels=2))[2] > 3.0
+
+
+def test_cabin_explicit_height_wins():
+    from theroadragetrip import static_world
+    from theroadragetrip.osm.models import Building
+    square = [(0.0, 0.0), (8.0, 0.0), (8.0, 6.0), (0.0, 6.0)]
+    assert [static_world.building_style(Building(square, building_type="cabin", height_m=6.0, height_is_explicit=e))[2]
+            for e in (True, False)] == [6.0, 3.0]  # tagged: its height; untagged: one storey
