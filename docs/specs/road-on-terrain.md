@@ -1,5 +1,11 @@
 # Road on terrain: no gap under the road with DEM ground on
 
+## Status
+- Done in 576b4baa (x3 / +0.10 spread, test `test_road_lies_on_sloped_ground`).
+- Tester verdict: PASS. Side view shows the road meeting the ground flush; reverting the fix fails the test; no flicker in the stills.
+- Not checked: shimmer/z-fighting in motion (still images cannot show it).
+- Not checked: flat-ground before/after, checked by code reading only (spread runs only with a grid).
+
 ## Goal
 With DEM terrain on, the 3D road ribbon sits on the ground under it, not about 0.5 m above the grass
 (user screenshot 2026-11-14, forest road: a visible gap under the road edge).
