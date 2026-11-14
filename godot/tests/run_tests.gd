@@ -720,11 +720,11 @@ func test_roof_snow() -> void:
 func test_deck_height_adds_ground() -> void:
 	var grid := {"origin": Vector2.ZERO, "step": 20.0, "cols": 2, "heights": PackedFloat32Array([10.0, 10.0, 10.0, 10.0])}
 	check(is_equal_approx(MapChunk.ground_height(grid, Vector2(7.0, -3.0)), 10.0), "ground height on a 10 m grid")
-	check(is_equal_approx(B3.deck_height(Vector2(5.0, -5.0), 1, PackedVector2Array(), grid), 10.0 + B3.DECK_M), "layer-1 deck sits DECK_M above the ground")
+	check(is_equal_approx(B3.deck_base(Vector2(5.0, -5.0), 1, PackedVector2Array(), grid), 10.0 + B3.DECK_M), "layer-1 deck sits DECK_M above the ground")
 	var end := PackedVector2Array([Vector2(5.0, -5.0)])
-	check(is_equal_approx(B3.deck_height(Vector2(5.0, -5.0), 1, end, grid), 10.0), "a deck ramps to the ground at its end")
-	check(is_equal_approx(B3.deck_height(Vector2(5.0 + B3.RAMP_M, -5.0), 1, end, grid), 10.0 + B3.DECK_M), "full deck height RAMP_M from its end")
-	check(B3.deck_height(Vector2(5.0, -5.0), -1, PackedVector2Array(), grid) < 10.0, "a tunnel stays below the ground")
+	check(is_equal_approx(B3.deck_base(Vector2(5.0, -5.0), 1, end, grid), 10.0), "a deck ramps to the ground at its end")
+	check(is_equal_approx(B3.deck_base(Vector2(5.0 + B3.RAMP_M, -5.0), 1, end, grid), 10.0 + B3.DECK_M), "full deck height RAMP_M from its end")
+	check(B3.deck_base(Vector2(5.0, -5.0), -1, PackedVector2Array(), grid) < 10.0, "a tunnel stays below the ground")
 	check(MapChunk.ground_height({}, Vector2(5.0, 5.0)) == 0.0, "no grid: flat ground")
 
 

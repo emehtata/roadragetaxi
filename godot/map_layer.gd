@@ -605,7 +605,8 @@ func update_lights_3d(view: Rect2, level: float) -> void:
 
 ## Step 5 (--outdoor-3d): how high a vehicle on layer `layer` rides at `at`:
 ## its bridge deck (ramped toward the deck's ends), the ground, or below it in a tunnel.
-func deck_height(at: Vector2, layer: int) -> float:
+## `road` false: the plain ground/deck height, for things standing on terrain (lamps).
+func deck_height(at: Vector2, layer: int, road := true) -> float:
 	var grid := {}
 	var ends := PackedVector2Array()
 	for chunk in _chunks.values():
@@ -613,7 +614,7 @@ func deck_height(at: Vector2, layer: int) -> float:
 			grid = chunk.ground_heights
 		if layer > 0 and chunk._bounds_rect.grow(Buildings3D.RAMP_M).has_point(at):
 			ends.append_array(chunk.bridge_ends)
-	return Buildings3D.deck_height(at, layer, ends, grid)
+	return Buildings3D.road_surface_height(at, layer, ends, grid) if road else Buildings3D.deck_base(at, layer, ends, grid)
 
 
 ## Step 6: a train's height at `at`: up on a rail deck (a railway bridge), else the ground.

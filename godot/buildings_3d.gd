@@ -670,7 +670,7 @@ func set_area_lights(level: float, lamps: Array, shops: Array, floods: Array) ->
 		if reaches[i] > 0.0:
 			var lamp: SpotLight3D = _street_lights[i]
 			var reach: float = reaches[i] * 1.6
-			var ground: float = get_parent().deck_height(_lamp_keys[i], 0) if get_parent().has_method("deck_height") else 0.0
+			var ground: float = get_parent().deck_height(_lamp_keys[i], 0, false) if get_parent().has_method("deck_height") else 0.0
 			lamp.position = to_3d(_lamp_keys[i], ground + LAMP_HEIGHT_M - 0.2)  # the housing's underside, on the DEM ground
 			lamp.spot_range = Vector2(reach, LAMP_HEIGHT_M).length()
 			lamp.spot_angle = rad_to_deg(atan2(reach, LAMP_HEIGHT_M))
@@ -1982,6 +1982,11 @@ static func _garment_skirt(out: Dictionary, offset: float, scale: float, color: 
 const DEM_GAP_SCALE := 3.0  # DEM drape: flat-layer heights below 0.05 m scaled by this
 const DEM_GAP_LIFT := 0.10  # and those above lifted by this (continuous at 0.05)
 
+
+## The DEM drape's lift of a road-mesh height `y` (build() and road_surface_height share it).
+static func road_lift(y: float) -> float:
+	return y * DEM_GAP_SCALE if y < 0.05 else y + DEM_GAP_LIFT
+
 static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array = [], landmarks: Array = [], ground := {}) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "lit": PackedVector3Array(),
 		"wall_uv": PackedVector2Array(), "window": PackedFloat32Array(),  # the shader's windows (building_snow.gdshader)
@@ -2023,7 +2028,7 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 				smooth[key] = flat
 			for i in verts.size():
 				if spread:  # ponytail: the mm layer gaps x3 (roads 4-8 cm up) over the cm a 20 m facet misses the ground by; x4 if z-fighting
-					verts[i].y = verts[i].y * DEM_GAP_SCALE if verts[i].y < 0.05 else verts[i].y + DEM_GAP_LIFT
+					verts[i].y = road_lift(verts[i].y)
 				var at := Vector2(verts[i].x, verts[i].z)
 				verts[i].y += terrain_mesh_height(grid, at) if spread else ground_height(grid, at)
 			out[key] = verts
@@ -2565,6 +2570,21 @@ const BALLAST := Color8(120, 112, 100)
 ## meet a lower road, map_chunk.prepare). Negative layers: tunnels, below ground.
 ## `grid`: the chunk's ground_heights (map_chunk.prepare) - the deck rides on the DEM ground.
 static func deck_height(at: Vector2, layer: int, ends: PackedVector2Array, grid := {}) -> float:
+	return road_surface_height(at, layer, ends, grid)
+
+
+## The drawn road (or bridge deck road strip) top at `at`, as build() lifts and drapes it:
+## where vehicles and pedestrians on roads stand. Tunnels (layer < 0) keep deck_base.
+## ponytail: layer 0 uses a mid-rank road height (ranks differ by <= 0.016 m), the deck skips its rank lift too.
+static func road_surface_height(at: Vector2, layer: int, ends: PackedVector2Array, grid := {}) -> float:
+	if layer < 0:
+		return deck_base(at, layer, ends, grid)
+	var base := ROAD_M + 0.008 if layer == 0 else deck_base(at, layer, ends)
+	return base if grid.is_empty() else road_lift(base) + terrain_mesh_height(grid, at)  # flat: build() skips the drape
+
+
+## The raw deck/ramp height plus the bilinear ground (no road lift): the bridge mesh and things on terrain.
+static func deck_base(at: Vector2, layer: int, ends: PackedVector2Array, grid := {}) -> float:
 	var ground := ground_height(grid, at)
 	if layer <= 0:
 		return float(layer) * DECK_M + ground
@@ -2753,8 +2773,8 @@ static func _structures(out: Dictionary, ground: Dictionary) -> void:
 			for k in pieces:
 				var a := points[i].lerp(points[i + 1], float(k) / pieces)
 				var b := points[i].lerp(points[i + 1], float(k + 1) / pieces)
-				var ha := deck_height(a, bridge[3], ends)
-				var hb := deck_height(b, bridge[3], ends)
+				var ha := deck_base(a, bridge[3], ends)
+				var hb := deck_base(b, bridge[3], ends)
 				_deck_piece(out, a, b, half, ha, hb, bridge[2], 0.002 * clampi(bridge[4], 0, 8))
 				if bridge[5] != null and half >= 2.0 and (k % 2 == 0 or bridge[6]):  # its centre line, dashed by pieces
 					_sloped_strip(out, "road", a, b, MARKING_HALF_M, ha + 0.05, hb + 0.05, bridge[5], Vector2.ZERO, Vector2.ZERO)
@@ -2763,8 +2783,8 @@ static func _structures(out: Dictionary, ground: Dictionary) -> void:
 					since_pier = 0.0
 					_box3d(out, "deck", b, 0.5, 0.0, minf(ha, hb) - SLAB_M, DECK_COLOR.darkened(0.15))
 	for rail: Array in ground.get("guardrails", []):  # [from, to, layer]
-		var ha := deck_height(rail[0], rail[2], ends)
-		var hb := deck_height(rail[1], rail[2], ends)
+		var ha := deck_base(rail[0], rail[2], ends)
+		var hb := deck_base(rail[1], rail[2], ends)
 		_sloped_wall(out, rail[0], rail[1], 0.06, ha, hb, GUARDRAIL_M, Color8(170, 172, 168))
 	for deck: PackedVector2Array in ground.get("rail_decks", []):  # a railway bridge: a slab at deck height, ballast on top
 		_raised_polygon_at(out, "deck", deck, DECK_M - SLAB_M, DECK_M, BALLAST)
