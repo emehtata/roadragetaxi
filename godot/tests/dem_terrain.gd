@@ -31,6 +31,7 @@ func _initialize() -> void:
 	test_eye_follows_ground()
 	test_lamp_stands_on_ground()
 	test_road_lies_on_sloped_ground()
+	test_road_above_terrain_mesh_everywhere()
 	test_terrain_normals_smooth_and_continuous()
 	test_kerb_keeps_flat_normals()
 	print("dem_terrain: ", "FAIL" if failed else "PASS")
@@ -77,6 +78,33 @@ func test_road_lies_on_sloped_ground() -> void:
 	for v: Vector3 in out["ground"]:
 		worst = maxf(worst, absf(v.y - B3.ground_height(grid, Vector2(v.x, v.z))))
 	check(worst <= 0.05 and worst < top, "grass %.3f m off the ground, under the road %.3f" % [worst, top])
+
+## A curved road over a crest and twisted cells sits above the terrain mesh at every sample point
+## (vertices, edge midpoints, centroids, 1 m steps along the edges), not only at its vertices.
+func test_road_above_terrain_mesh_everywhere() -> void:
+	var heights := []
+	for r in 26:
+		for c in 26:
+			heights.append(5.0 * sin(c * 0.7) + r * c * 0.05)
+	var message := {"ground_heights": {"origin": [0, 0], "step": 20.0, "cols": 26, "heights": heights}}
+	MapChunk.prepare(message, Vector2.ZERO)
+	var grid: Dictionary = message["prepared"]["ground_heights"]
+	var road := [PackedVector2Array([Vector2(40, -40), Vector2(200, -100), Vector2(360, -260)]), 4.0, Color.GRAY, 8, null, false]
+	var out := B3.build([], [], Vector2.ZERO, [], [], {"rect": Rect2(0, -500, 500, 500), "roads": [road], "ground_heights": grid})
+	var verts: PackedVector3Array = out["road"]
+	var worst := INF
+	for t in range(0, verts.size(), 3):
+		var tri := [verts[t], verts[t + 1], verts[t + 2]]
+		var points := [(tri[0] + tri[1] + tri[2]) / 3.0]
+		for e in 3:
+			var a: Vector3 = tri[e]
+			var b: Vector3 = tri[(e + 1) % 3]
+			var n := maxi(2, ceili(a.distance_to(b)))
+			for s in n + 1:
+				points.append(a.lerp(b, float(s) / n))
+		for p: Vector3 in points:
+			worst = minf(worst, p.y - B3.terrain_mesh_height(grid, Vector2(p.x, p.z)))
+	check(worst >= 0.03, "road at least %.3f m above the terrain mesh everywhere" % worst)
 
 ## A curved slope over two neighbour chunks (server grids with their 1-sample apron): the ground's normals
 ## are one per position (smooth), mesh heights hit the grid nodes, and the shared edge matches.

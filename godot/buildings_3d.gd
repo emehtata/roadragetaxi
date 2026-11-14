@@ -2693,6 +2693,32 @@ static func ground_height(grid: Dictionary, at: Vector2) -> float:
 	return lerpf(low, high, ty)
 
 
+## The terrain mesh's height at layer point `at`: planar on the _terrain_grid triangle under it
+## (the same nodes and NE-SW diagonal), so it differs from the bilinear ground_height inside a cell.
+static func terrain_mesh_height(grid: Dictionary, at: Vector2) -> float:
+	if grid.is_empty():
+		return 0.0
+	var heights: PackedFloat32Array = grid["heights"]
+	var cols: int = grid["cols"]
+	var rows := heights.size() / cols
+	var o: Vector2 = grid["origin"]
+	var fx := clampf((at.x - o.x) / float(grid["step"]), 0.0, cols - 1)
+	var fy := clampf((-at.y - o.y) / float(grid["step"]), 0.0, rows - 1)
+	var ix := mini(int(fx), maxi(cols - 2, 0))
+	var iy := mini(int(fy), maxi(rows - 2, 0))
+	var ix1 := mini(ix + 1, cols - 1)
+	var iy1 := mini(iy + 1, rows - 1)
+	var tx := fx - ix
+	var ty := fy - iy
+	var h00 := heights[iy * cols + ix]
+	var h10 := heights[iy * cols + ix1]
+	var h01 := heights[iy1 * cols + ix]
+	var h11 := heights[iy1 * cols + ix1]
+	if ty >= tx:  # layer NW triangle (grid rows run along -layer y)
+		return h00 + tx * (h11 - h01) + ty * (h01 - h00)
+	return h00 + tx * (h10 - h00) + ty * (h11 - h10)
+
+
 static func _structures(out: Dictionary, ground: Dictionary) -> void:
 	var ends: PackedVector2Array = ground.get("bridge_ends", PackedVector2Array())
 	for bridge: Array in ground.get("bridges", []):  # [points, half width, colour, layer, rank, centre colour, solid]
