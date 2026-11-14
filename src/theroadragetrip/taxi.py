@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
+from .collision import box_hits_polygon, box_hits_polyline, post_box_depth
 from .map_level import SURFACE_LEVEL, on_map_level
 from .osm import OPEN_ROOF_BUILDING_TYPES, Building, Curb, Place, SpeedBump, TaxiStop, Way
 from .physics import (
@@ -686,8 +687,6 @@ class TaxiManager:
         car_corners = get_oriented_box_corners(
             player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
         )
-        car_min_x, car_max_x = min(x for x, _ in car_corners), max(x for x, _ in car_corners)
-        car_min_y, car_max_y = min(y for _, y in car_corners), max(y for _, y in car_corners)
 
         car_level = getattr(player_car, "map_level", SURFACE_LEVEL)
         # OSM bridge layers and logical garage floors are separate coordinates.
@@ -720,19 +719,7 @@ class TaxiManager:
                         or player_car.y < bbox[1] - car_radius or player_car.y > bbox[3] + car_radius):
                     continue
 
-            intersects = point_in_polygon(player_car.x, player_car.y, points)
-            if not intersects:
-                intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
-            if not intersects:  # an edge or corner poking into the car's side: it crosses the box (not its half-diagonal circle)
-                # Only the building edges reaching the car's own bounding box can cross it.
-                intersects = any(
-                    segments_intersect(a, b, p, q)
-                    for p, q in zip(points, points[1:] + points[:1])
-                    if max(p[0], q[0]) >= car_min_x and min(p[0], q[0]) <= car_max_x
-                    and max(p[1], q[1]) >= car_min_y and min(p[1], q[1]) <= car_max_y
-                    for a, b in zip(car_corners, car_corners[1:] + car_corners[:1])
-                )
-            if not intersects:
+            if not box_hits_polygon(car_corners, points, (player_car.x, player_car.y)):
                 continue
 
             # OSM occasionally contains building footprints crossed by mapped roads.
@@ -803,9 +790,7 @@ class TaxiManager:
 
         px, py = previous_position
         before = get_oriented_box_corners(px, py, car.heading, car.length_m, car.width_m)
-        touching = point_in_polygon(px, py, points) or any(point_in_polygon(x, y, points) for x, y in before) or any(
-            segments_intersect(a, b, points[i], points[(i + 1) % len(points)])
-            for a, b in zip(before, before[1:] + before[:1]) for i in range(len(points)))
+        touching = box_hits_polygon(before, points, (px, py))
         return touching and clearance(car.x, car.y) > clearance(px, py) + 1e-6
 
     @staticmethod
@@ -893,16 +878,7 @@ class TaxiManager:
                         or player_car.y < bbox[1] - car_radius or player_car.y > bbox[3] + car_radius):
                     continue
 
-            intersects = point_in_polygon(player_car.x, player_car.y, points)
-            if not intersects:
-                intersects = any(point_in_polygon(x, y, points) for x, y in car_corners)
-            if not intersects:  # an edge or corner poking into the car's side: it crosses the box (not its half-diagonal circle)
-                intersects = any(
-                    segments_intersect(a, b, points[i], points[(i + 1) % len(points)])
-                    for a, b in zip(car_corners, car_corners[1:] + car_corners[:1])
-                    for i in range(len(points))
-                )
-            if not intersects:
+            if not box_hits_polygon(car_corners, points, (player_car.x, player_car.y)):
                 continue
 
             if previous_position is not None:
@@ -965,7 +941,6 @@ class TaxiManager:
         corners = get_oriented_box_corners(
             player_car.x, player_car.y, player_car.heading, player_car.length_m, player_car.width_m
         )
-        edges = list(zip(corners, corners[1:] + corners[:1]))
         layer = getattr(player_car, "layer", 0)
         travel = math.dist(previous_position, (player_car.x, player_car.y)) if previous_position else 0.0
         radius = car_radius + travel
@@ -1005,12 +980,7 @@ class TaxiManager:
                     self.notification_timer = 3.5
                 self._crashed_fence_cooldowns[barrier_id] = sim_time
                 continue
-            hit = any(
-                point_in_polygon(a[0], a[1], corners)
-                or any(segments_intersect(a, b, c, d) for c, d in edges)
-                for a, b in zip(points, points[1:])
-            )
-            if not hit:
+            if not box_hits_polyline(corners, points):
                 continue
             if previous_position is not None:
                 from shapely.geometry import LineString, Point
@@ -1091,20 +1061,18 @@ class TaxiManager:
         and goes dark, and the taxi carries on slowed."""
         for key in [k for k, t in self._crashed_post_cooldowns.items() if sim_time - t > 3.0]:
             del self._crashed_post_cooldowns[key]
-        cos_h, sin_h = math.cos(player_car.heading), math.sin(player_car.heading)
-        half_l = player_car.length_m / 2 + POST_RADIUS_M
-        half_w = player_car.width_m / 2 + POST_RADIUS_M
+        pose = (player_car.heading, player_car.length_m, player_car.width_m)
+        reach = math.hypot(player_car.length_m / 2 + POST_RADIUS_M, player_car.width_m / 2 + POST_RADIUS_M)
         for post in self._nearby_posts(scenery_objects, player_car.x, player_car.y):
             if getattr(post, "knocked_angle", None) is not None:
                 continue  # already lying flat
-            dx, dy = post.x - player_car.x, post.y - player_car.y
-            along, across = abs(dx * cos_h + dy * sin_h), abs(-dx * sin_h + dy * cos_h)
-            if along > half_l or across > half_w:
+            if abs(post.x - player_car.x) > reach or abs(post.y - player_car.y) > reach:
+                continue  # outside the expanded box's circle: depth < 0 (exact prefilter)
+            depth = post_box_depth(post.x, post.y, POST_RADIUS_M, player_car.x, player_car.y, *pose)
+            if depth < 0.0:
                 continue
             if previous_position is not None:
-                px, py = post.x - previous_position[0], post.y - previous_position[1]
-                before = min(half_l - abs(px * cos_h + py * sin_h), half_w - abs(-px * sin_h + py * cos_h))
-                if min(half_l - along, half_w - across) < before:
+                if depth < post_box_depth(post.x, post.y, POST_RADIUS_M, *previous_position, *pose):
                     continue  # already touching: allow movement that reduces overlap
             if abs(player_car.speed) * 3.6 >= POST_KNOCK_DOWN_KMH:
                 post.knocked_angle = player_car.heading if player_car.speed >= 0.0 else player_car.heading + math.pi

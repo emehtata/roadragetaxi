@@ -235,6 +235,11 @@ def main(argv=None) -> int:
     for helper in ("rebuild_spatial_grid", "_update_bike_thefts", "_advance_route_jobs", "_run_population_tick",
                    "_check_vehicle_collision"):
         setattr(NPCVehicleManager, helper, timed("npc." + helper, getattr(NPCVehicleManager, helper)))
+    from theroadragetrip.taxi import TaxiManager
+
+    for helper in ("check_building_collision", "check_fence_collision", "check_barrier_collision",
+                   "check_tram_collision", "check_post_collision"):
+        setattr(TaxiManager, helper, timed("taxi." + helper, getattr(TaxiManager, helper)))
 
     class PedestrianProfiler:
         def record(self, name, elapsed_ms):

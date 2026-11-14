@@ -20,7 +20,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from .geo import dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
+from .collision import box_hits_polygon
+from .geo import dist_point_to_segment, get_oriented_box_corners
 from .osm.build import TRAM_KINDS
 from .trains import NODE_SPACING_M, build_rail_graph
 
@@ -236,7 +237,7 @@ class TramManager:
         self._measure(tram)
         tram.front_m = tram.cumulative[-1]
         self._extend(tram)
-        if any(_overlaps(self.footprints(tram), self.footprints(other)) for other in self.trams):
+        if any(box_hits_polygon(a, b) for other in self.trams for a in self.footprints(tram) for b in self.footprints(other)):
             return None
         return tram
 
@@ -357,20 +358,8 @@ class TramManager:
     # -- the taxi --------------------------------------------------------
     def hits(self, corners: Sequence[Tuple[float, float]]) -> bool:
         """Whether a vehicle footprint (its 4 corners) overlaps a tram."""
-        return any(_overlaps([list(corners)], self.footprints(tram)) for tram in self.trams)
+        return any(box_hits_polygon(corners, b) for tram in self.trams for b in self.footprints(tram))
 
 
 def _in_view(point: Tuple[float, float], view) -> bool:
     return view is not None and view[0] <= point[0] <= view[2] and view[1] <= point[1] <= view[3]
-
-
-def _overlaps(boxes_a: List[list], boxes_b: List[list]) -> bool:
-    """Whether any box of a overlaps any of b: a corner inside the other,
-    or edges crossing (two long boxes crossing like an X have no corner in)."""
-    for a in boxes_a:
-        for b in boxes_b:
-            if any(point_in_polygon(x, y, b) for x, y in a) or any(point_in_polygon(x, y, a) for x, y in b):
-                return True
-            if any(segments_intersect(p, q, r, s) for p, q in zip(a, a[1:] + a[:1]) for r, s in zip(b, b[1:] + b[:1])):
-                return True
-    return False
