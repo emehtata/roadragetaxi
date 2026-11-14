@@ -16,6 +16,7 @@ import time
 from types import SimpleNamespace
 
 from .arena_crowds import ArenaCrowds
+from .shopper_crowds import ShopperCrowds
 from .career import (load_career_balance, load_career_distance, load_gig_balance, load_gig_fuel,
                      load_gig_odometer, save_gig_odometer)
 from .level_routing import LevelRouteGraphs
@@ -493,6 +494,7 @@ def load_world(
     return SimpleNamespace(
         intercity_database=intercity_database,
         arena_crowds=arena_crowds,
+        shopper_crowds=ShopperCrowds(pedestrian_mgr, sceneries),
         railway_mgr=railway_mgr,
         tram_mgr=TramManager(railways, chosen_city),  # trams on their rails where the city has them (trams.py)
         ferry_mgr=ferry_mgr,

@@ -154,6 +154,8 @@ def map_sync_steps(world, remaining_budget=None):
     # gameplay graphs below are still being brought up to date.
     if getattr(w, "arena_crowds", None) is not None:
         w.arena_crowds.sync_buildings(w.buildings)
+    if getattr(w, "shopper_crowds", None) is not None:
+        w.shopper_crowds.sceneries = w.sceneries  # rescanned on its next update
     w.traffic_mgr.start_map_sync(
         w.ways, traffic_lights=w.traffic_lights, stop_signs=w.stop_signs, yield_signs=w.yield_signs, crossings=w.crossings,
         buildings=w.buildings, sceneries=w.sceneries, parking_spaces=w.parking_spaces,

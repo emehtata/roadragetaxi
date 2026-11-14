@@ -938,6 +938,9 @@ def advance_simulation(
     arena_crowds = getattr(world, "arena_crowds", None)
     if now is not None and arena_crowds is not None:
         arena_crowds.update(now, (car.x, car.y))
+    shopper_crowds = getattr(world, "shopper_crowds", None)
+    if now is not None and shopper_crowds is not None:
+        shopper_crowds.update(now, (car.x, car.y))
     pedestrian_mgr.ensure_sports_players(car, viewport_bounds)
     with frame_profiler.section("pedestrians"):
         pedestrian_previous = {id(p): (p.x, p.y) for p in pedestrian_mgr.pedestrians} if protests is not None and protests.groups else {}

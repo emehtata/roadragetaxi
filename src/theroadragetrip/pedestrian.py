@@ -555,6 +555,7 @@ class Pedestrian:
     curse_timer: float = 0.0
     stick_swing: float = 0.0  # ice hockey: seconds left of a stick swing (the client shows it)
     hockey_goalie: bool = False  # ice hockey: in goal (pads, a wide stick)
+    cart: bool = False  # a shopper pushing a cart (shopper_crowds.cart_for)
     curse_text: str = "@#*!%"
     # Dodging / evasive state
     dodge_vx: float = 0.0

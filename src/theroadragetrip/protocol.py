@@ -295,6 +295,8 @@ def _pedestrian_to_dict(ped, residents=None, santa_day=None, person: bool = True
         "stick_swing": getattr(ped, "stick_swing", 0.0),
         "hockey_goalie": getattr(ped, "hockey_goalie", False),
     }
+    if getattr(ped, "cart", False):
+        row["cart"] = True
     activity = getattr(ped, "activity", None)
     if activity is not None and activity.plugin_id in GOLF_ACTIVITIES and "ball" in activity.data:
         row["golf"] = {key: activity.data[key] for key in ("ball", "pin", "club", "phase", "swing", "strokes", "holed")}
