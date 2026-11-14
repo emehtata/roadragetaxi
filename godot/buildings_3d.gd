@@ -1970,6 +1970,9 @@ static func _garment_skirt(out: Dictionary, offset: float, scale: float, color: 
 
 ## One chunk's mesh arrays (any thread): {"verts", "colors", "lit" (the
 ## lit windows' verts), "stats"}.
+const DEM_GAP_SCALE := 3.0  # DEM drape: flat-layer heights below 0.05 m scaled by this
+const DEM_GAP_LIFT := 0.10  # and those above lifted by this (continuous at 0.05)
+
 static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array = [], landmarks: Array = [], ground := {}) -> Dictionary:
 	var out := {"verts": PackedVector3Array(), "colors": PackedColorArray(), "roof_mask": PackedVector2Array(), "lit": PackedVector3Array(),
 		"wall_uv": PackedVector2Array(), "window": PackedFloat32Array(),  # the shader's windows (building_snow.gdshader)
@@ -2001,8 +2004,8 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 			var verts: PackedVector3Array = out[key]
 			var spread: bool = key in ["ground", "road"]
 			for i in verts.size():
-				if spread:  # ponytail: the mm layer gaps x20 (to 1 m), over the cm a 20 m facet misses the bilinear ground by
-					verts[i].y = verts[i].y * 20.0 if verts[i].y < 0.05 else verts[i].y + 0.95
+				if spread:  # ponytail: the mm layer gaps x3 (roads 4-8 cm up) over the cm a 20 m facet misses the ground by; x4 if z-fighting
+					verts[i].y = verts[i].y * DEM_GAP_SCALE if verts[i].y < 0.05 else verts[i].y + DEM_GAP_LIFT
 				verts[i].y += ground_height(grid, Vector2(verts[i].x, verts[i].z))
 			out[key] = verts
 	# The per-vertex loops run here, on the worker, not in meshes() on the main thread.

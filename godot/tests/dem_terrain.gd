@@ -30,6 +30,7 @@ func _initialize() -> void:
 	check(B3.top_camera_position(Vector2(15, -5), 300.0, B3.ground_height({}, taxi)) == Vector3(15, 300.0, -5), "switch off: camera unchanged")
 	test_eye_follows_ground()
 	test_lamp_stands_on_ground()
+	test_road_lies_on_sloped_ground()
 	print("dem_terrain: ", "FAIL" if failed else "PASS")
 	quit(1 if failed else 0)
 
@@ -54,6 +55,26 @@ func test_lamp_stands_on_ground() -> void:
 		lowest = minf(lowest, v.y)
 	var pole := lamp - Vector2(1.2, 0)
 	check(absf(lowest - B3.ground_height(ground, pole)) < 0.01, "lamp base %.2f on the ground %.2f" % [lowest, B3.ground_height(ground, pole)])
+
+## A road across a slope lies on the ground: road within 0.1 m, grass within 0.05 m and under it.
+func test_road_lies_on_sloped_ground() -> void:
+	var heights := []
+	for r in 26:
+		for c in 26:
+			heights.append(c * 20.0 * 0.1)
+	var message := {"ground_heights": {"origin": [0, 0], "step": 20.0, "cols": 26, "heights": heights}}
+	MapChunk.prepare(message, Vector2.ZERO)
+	var grid: Dictionary = message["prepared"]["ground_heights"]
+	var road := [PackedVector2Array([Vector2(50, -100), Vector2(250, -100)]), 4.0, Color.GRAY, 8, null, false]
+	var out := B3.build([], [], Vector2.ZERO, [], [], {"rect": Rect2(0, -300, 400, 300), "roads": [road], "ground_heights": grid})
+	var top := -INF
+	for v: Vector3 in out["road"]:
+		top = maxf(top, v.y - B3.ground_height(grid, Vector2(v.x, v.z)))
+	check(top <= 0.1, "road %.3f m above the sloped ground" % top)
+	var worst := 0.0
+	for v: Vector3 in out["ground"]:
+		worst = maxf(worst, absf(v.y - B3.ground_height(grid, Vector2(v.x, v.z))))
+	check(worst <= 0.05 and worst < top, "grass %.3f m off the ground, under the road %.3f" % [worst, top])
 
 func check(ok: bool, message: String) -> void:
 	if not ok:
