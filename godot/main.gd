@@ -21,6 +21,7 @@ const NightclubAudio := preload("res://nightclub_audio.gd")
 const CarAudio := preload("res://car_audio.gd")
 const WildlifeLayer := preload("res://wildlife.gd")
 const Buildings3DScript := preload("res://buildings_3d.gd")
+const CameraModes := preload("res://camera_modes.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
@@ -74,6 +75,7 @@ var _entered_taxi := false  # the "Press F" hint until the driver first gets in
 var hud_layout = preload("res://hud_layout.gd").new()  # the movable panels, saved (U / F2 resets)
 var _start_sign: PanelContainer  # the start sign: city and forecast, any key starts
 var drive := DriveInput.new()  # the held driving keys (drive_input.gd)
+var camera_modes := CameraModes.new()  # 1/2/3: the driving camera
 var _lead := Vector2.ZERO  # camera look-ahead, metres
 var _windshield: CanvasLayer
 var _windshield_view: TextureRect
@@ -552,8 +554,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_I:
-				_set_windshield(not _windshield.visible, entities.shown_state().get("on_foot", false))
+			KEY_I:  # first person on foot only; driving: 3
+				if CameraModes.walk_eye_key(event, entities.shown_state().get("on_foot", false)):
+					_set_windshield(not _windshield.visible, true)
+			KEY_1, KEY_2, KEY_3:  # the driving camera; kept on foot for the next drive
+				if camera_modes.handle_key(event) and not entities.shown_state().get("on_foot", true):
+					_set_windshield(camera_modes.mode != CameraModes.Mode.TOP)
 			KEY_F12:
 				save_screenshot()
 			KEY_U, KEY_F2:  # the HUD layout back to default
@@ -650,20 +656,21 @@ func _build_windshield() -> void:
 func _set_windshield(on: bool, walking := false) -> void:
 	if on and (not MapChunk.outdoor_3d or (entities.player_body().is_empty() and not walking)):
 		return
-	var switching := on and _windshield.visible and walk_eye != walking  # out of the taxi or back in: the eye glides over
+	var chase := on and not walking and camera_modes.mode == CameraModes.Mode.THIRD
+	var switching: bool = on and _windshield.visible and (walk_eye != walking or chase != map_layer.buildings_3d.chase_on)  # out of the taxi or back in, 1/3: the eye glides over
 	if switching:
 		map_layer.buildings_3d.begin_eye_transition()
 	walk_eye = on and walking
 	entities.first_person = walk_eye
 	for trim in _windshield_trims:
-		trim.visible = not walk_eye  # no car frame around a walker's eyes
+		trim.visible = not walk_eye and not chase  # no car frame around a walker's eyes
 	if walk_eye:
 		look_yaw = float(entities.shown_state().get("player_pedestrian", {}).get("heading", 0.0))
 		look_pitch = 0.0
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if walk_eye and DisplayServer.get_name() != "headless" and _visual_test == null and _screenshot_path == "" else Input.MOUSE_MODE_VISIBLE
 	if _visual_test != null:
 		print("visual-test: mouse_mode=%d" % Input.mouse_mode)
-	if on and not switching:
+	if on and not _windshield.visible:
 		_clear_focus()
 		_windshield_zoom = camera.zoom.x
 		camera.zoom = Vector2.ONE * 3.0  # keep forward chunks and traffic available to the 3D view
@@ -673,6 +680,7 @@ func _set_windshield(on: bool, walking := false) -> void:
 	_windshield.visible = on
 	if map_layer.buildings_3d != null:
 		map_layer.buildings_3d.windshield_on = on
+		map_layer.buildings_3d.chase_on = chase
 		map_layer.buildings_3d.eye_height = WALK_EYE_HEIGHT_M if walk_eye else 1.35
 		map_layer.buildings_3d.eye_ahead = 0.0 if walk_eye else 0.55
 		map_layer.buildings_3d.eye_pitch = 0.0
@@ -762,9 +770,11 @@ func _process(delta: float) -> void:
 	camera.position = entities.player_position() + _camera_lead(delta)
 	if map_layer.buildings_3d != null:  # 2D view: no 3D camera
 		map_layer.buildings_3d.ground_elevation = map_layer.deck_height(entities.player_position(), 0)
+	if not walk_eye and not _windshield.visible and camera_modes.mode != CameraModes.Mode.TOP and not state.get("on_foot", true):
+		_set_windshield(true)  # 1/3 at the wheel (2D view, underground: stays top-down)
 	if walk_eye:
 		if not state.get("on_foot", false):
-			_set_windshield(true)  # back at the wheel: the driver's eyes
+			_set_windshield(camera_modes.mode != CameraModes.Mode.TOP)  # back at the wheel: the driving camera
 			if walk_eye:  # no taxi body (underground): the map view
 				_set_windshield(false)
 		else:
@@ -775,10 +785,13 @@ func _process(delta: float) -> void:
 	elif _windshield.visible:
 		var body: Dictionary = entities.player_body()
 		if state.get("on_foot", false):
-			_set_windshield(true, true)  # out of the taxi in the windshield view: walking in first person
-		elif body.is_empty():
+			_set_windshield(camera_modes.mode == CameraModes.Mode.EYE, true)  # out of the taxi from 3: walking in first person
+		elif body.is_empty() or camera_modes.mode == CameraModes.Mode.TOP:
 			_set_windshield(false)
 		else:
+			if map_layer.buildings_3d.chase_on != (camera_modes.mode == CameraModes.Mode.THIRD):
+				_set_windshield(true)  # 1 <-> 3
+			map_layer.buildings_3d.chase_transform = camera_modes.chase(body, delta, map_layer.deck_height, map_layer.covered)
 			map_layer.buildings_3d.windshield_at = body["position"]
 			map_layer.buildings_3d.windshield_heading = body["heading"]
 			map_layer.buildings_3d.windshield_elevation = map_layer.deck_height(body["position"], 0)
@@ -793,6 +806,9 @@ func _process(delta: float) -> void:
 	entities.px_per_m = camera.zoom.x
 	nav_overlay.show_route = phone.is_open and phone.busy
 	entities.show_route = nav_overlay.show_route
+	if map_layer.buildings_3d != null:  # the route on the road in 1/3, driving only (the top-down map draws its own)
+		map_layer.buildings_3d.route_3d.show_route(entities._route_source, entities.route_for(state) if _windshield.visible and not walk_eye else PackedVector2Array(),
+			entities.route_layers, map_layer.deck_height, map_layer.chunk_count(), entities.route_tint(entities.ambient))
 	if _selftest and _selftest_start != Vector2.INF and _selftest_time > 0.5:
 		var raw: float = entities.now()
 		var render: float = entities.buffer._clock_time
@@ -1033,7 +1049,8 @@ func _present(state: Dictionary) -> void:
 	if not target.is_empty():
 		target_screen = get_viewport().get_canvas_transform() * MapMath.point(entities.origin, target["x"], target["y"])
 	var camera_world := Vector2(camera.position.x + entities.origin.x, entities.origin.y - camera.position.y)
-	nav_overlay.update_view(target, target_screen, camera_world, state["player"].get("heading", 0.0))
+	nav_overlay.update_view({} if _windshield.visible else target,  # 3D views: the 2D-placed target arrow would point wrong
+		 target_screen, camera_world, state["player"].get("heading", 0.0))
 	if debug_label.visible:
 		_update_debug(state)
 

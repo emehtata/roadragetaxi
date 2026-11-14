@@ -1,4 +1,4 @@
-## The client starts in the 3D outdoor view with no flag; --outdoor-2d keeps the 2D view; I toggles the windshield.
+## The client starts in the 3D outdoor view with no flag; --outdoor-2d keeps the 2D view; 3 shows the driver-eye view, I does nothing driving.
 ## Run with `-- --outdoor-2d` (test_outdoor_2d_flag re-runs this script so) it only checks the 2D flag.
 extends SceneTree
 
@@ -26,7 +26,7 @@ func _run() -> void:
 		quit(failures)
 		return
 	test_default_is_3d()
-	test_i_key_toggles_windshield(game)
+	test_camera_keys(game)
 	test_outdoor_2d_flag()
 	print("release_3d_default: %d failures" % failures)
 	quit(1 if failures else 0)
@@ -37,17 +37,20 @@ func test_default_is_3d() -> void:
 	check(Buildings3D.opaque, "no args: Buildings3D.opaque is true")
 
 
-func test_i_key_toggles_windshield(game: Node) -> void:
+func test_camera_keys(game: Node) -> void:
 	var player := {"x": 0.0, "y": 0.0, "heading": 0.0, "speed": 8.0, "state": "DRIVING"}
 	game.entities._frame = {"a": {"player": player}, "b": {"player": player}, "t": 0.0}
+	game.entities._frame["a"]["on_foot"] = false
 	var key := InputEventKey.new()
-	key.keycode = KEY_I
 	key.pressed = true
+	key.keycode = KEY_I
 	game._unhandled_input(key)
-	check(game._windshield.visible, "KEY_I turns the windshield view on")
-	game._unhandled_input(key)
-	check(not game._windshield.visible, "KEY_I turns the windshield view off")
-
+	check(not game._windshield.visible, "KEY_I driving: no windshield view")
+	for code in [KEY_3, KEY_1, KEY_2]:
+		key.keycode = code
+		game._unhandled_input(key)
+		check(game._windshield.visible == (code != KEY_2), "key %d: 3D view %s" % [code, code != KEY_2])
+		check(game.map_layer.buildings_3d.chase_on == (code == KEY_1), "key %d: chase camera only on 1" % code)
 
 func test_outdoor_2d_flag() -> void:
 	var out := []

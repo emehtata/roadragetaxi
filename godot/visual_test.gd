@@ -37,6 +37,12 @@ var _speed_max := 0.0
 var driving := false  # measuring with `drive_s`: main.gd leaves the controls to this node
 var _windshield_pressed := false
 var _lane_assist_pressed := false
+const CAMERA := {"third": KEY_1, "top": KEY_2, "eye": KEY_3}  # scenario "camera" and "switch": the key that selects it
+var _switch_i := 0
+var _switch_at := 0.0
+var _chase_on_frames := 0
+var _chase_last := []  # [camera position, taxi position, camera yaw] last frame in third-person
+var _chase := {"max_excess_step_m": 0.0, "max_yaw_step_rad": 0.0, "frames": 0}  # acceptance 10: no camera jumps beyond the taxi's own
 var _walk_phase := 0  # "walk" scenarios: 0 in the taxi, 1 getting out, 2 walking, 3 walked, 4 back to the door, 5 getting in, 6 done
 var _walk_left := 0.0
 
@@ -60,7 +66,10 @@ func _walk(delta: float) -> void:
 		_walk_phase = 1
 	elif _walk_phase == 1 and state.get("on_foot", false):
 		if not main.walk_eye and not walk.get("top_down", false):  # from the windshield view main.gd has switched by itself
-			main._set_windshield(true, true)
+			var i_key := InputEventKey.new()  # I on foot, as the player
+			i_key.keycode = KEY_I
+			i_key.pressed = true
+			main._unhandled_input(i_key)
 		main.look_yaw = wrapf(float(pose[2]) + float(walk.get("yaw", 0.0)), -PI, PI)
 		main.look_pitch = float(walk.get("pitch", 0.0))
 		main.map_layer.buildings_3d.eye_pitch = main.look_pitch
@@ -191,6 +200,9 @@ func _lineup_train(name: String, look: String, lengths: Array, width: float, y: 
 
 
 func _ready() -> void:
+	# The driving camera: "camera" (or the last of "switch"); without either the map view as before (3 for "windshield").
+	var walk_in: bool = scenario.get("walk", {}).get("back", "") == "in"
+	main.camera_modes.select(main.camera_modes.KEYS[CAMERA[scenario.get("camera", "eye" if walk_in else "top")]])
 	if scenario.get("lineup", "") is String and scenario.get("lineup", "") == "coach":  # one coach left of the taxi: its right side faces the camera
 		var coach: Array = scenario["lineup_coach"]
 		main.entities.extra_trains = [_lineup_train("train coach", coach[0], [coach[1]], coach[2], coach[1] * 0.5, LINEUP_LANE_M + 0.5)]
@@ -218,11 +230,21 @@ func _process(delta: float) -> void:
 		_walk(delta)
 	if scenario.get("windshield", false) and not _windshield_pressed and not main.entities.player_body().is_empty():
 		var key := InputEventKey.new()
-		key.keycode = KEY_I
-		key.physical_keycode = KEY_I
+		key.keycode = KEY_3  # the driver's eyes
+		key.physical_keycode = KEY_3
 		key.pressed = true
 		Input.parse_input_event(key)
 		_windshield_pressed = true
+	if _switch_i < scenario.get("switch", []).size() and _elapsed >= _switch_at and not main.entities.player_body().is_empty():
+		var press := InputEventKey.new()  # 1/2/3 as the player, one a second
+		press.keycode = CAMERA[scenario["switch"][_switch_i]]
+		press.physical_keycode = press.keycode
+		press.pressed = true
+		Input.parse_input_event(press)
+		print("visual-test: camera key %s" % scenario["switch"][_switch_i])
+		_switch_i += 1
+		_switch_at = _elapsed + 1.0
+	_track_chase()
 	if scenario.has("eye") and Buildings3D.current != null:  # a camera on foot or turned to a side window
 		var eye: Dictionary = scenario["eye"]
 		var test_eye := {"height": float(eye.get("height", 1.35)), "yaw": float(eye.get("yaw", 0.0))}
@@ -238,7 +260,10 @@ func _process(delta: float) -> void:
 		lane_key.pressed = true
 		Input.parse_input_event(lane_key)
 		_lane_assist_pressed = true
-	if main.phone.is_open and not scenario.get("phone", false):  # ride offers open it: it would cover the scene
+	if scenario.get("accept_offer", false) and not main.phone.busy and not main.phone.items.is_empty() and main.phone.pending.is_empty():
+		main.phone.select(0)  # the first ride offer, as key 1 on the phone: a real fare and its route
+		main.phone.accept_selected()
+	if main.phone.is_open and not scenario.get("phone", false) and not scenario.get("accept_offer", false):  # ride offers open it: it would cover the scene
 		main.phone.close()
 	var missing := check()
 	if _measuring:
@@ -407,6 +432,16 @@ func check() -> Array:
 			missing.append("camera not on the vehicle yet")
 	if scenario.get("windshield", false) and not main._windshield.visible:
 		missing.append("windshield view not active yet")
+	if scenario.get("requires", {}).get("route_3d", false) and (main.map_layer.buildings_3d == null or not main.map_layer.buildings_3d.route_3d.visible):
+		missing.append("no navigation route in the 3D view yet")
+	if scenario.get("requires", {}).get("phone_offers", false) and (not main.phone.is_open or main.phone.items.is_empty()):
+		missing.append("no ride offers on the open phone yet")
+	if _switch_i < scenario.get("switch", []).size():
+		missing.append("still switching cameras")
+	var wanted: String = scenario["switch"][-1] if scenario.has("switch") else scenario.get("camera", "")
+	if wanted != "" and (main.camera_modes.mode != main.camera_modes.KEYS[CAMERA[wanted]] or main._windshield.visible != (wanted != "top")
+			or (main.map_layer.buildings_3d != null and main.map_layer.buildings_3d.chase_on != (wanted == "third"))):
+		missing.append("camera %s not shown yet" % wanted)
 	if scenario.get("requires", {}).has("lake_ice_holds") and calendar.get("lake_ice_holds", null) != scenario["requires"]["lake_ice_holds"]:
 		missing.append("lake_ice_holds %s (%s cm), the scenario needs %s" % [calendar.get("lake_ice_holds", "?"), calendar.get("lake_ice_cm", "?"), scenario["requires"]["lake_ice_holds"]])
 	if scenario.get("requires", {}).has("animals_in_view"):
@@ -753,6 +788,28 @@ func _forest_stats() -> Dictionary:
 		"render_3d_gpu_ms": RenderingServer.viewport_get_measured_render_time_gpu(view_3d) if view_3d.is_valid() else null}
 
 
+## Third-person: the camera's step per frame against the taxi's, and its yaw step.
+func _track_chase() -> void:
+	var layer = main.map_layer.buildings_3d
+	var body: Dictionary = main.entities.player_body()
+	if layer == null or not layer.chase_on or body.is_empty() or layer._eye_blend < 1.0:  # not during a 1/3 glide
+		_chase_on_frames = 0
+		return
+	_chase_on_frames += 1  # the switching frame still reads the previous camera: compared from the third on
+	var cam: Transform3D = layer._camera.global_transform
+	var yaw := atan2(-cam.basis.z.x, -cam.basis.z.z)
+	var at: Vector2 = body["position"]
+	var taxi := Vector3(at.x, main.map_layer.deck_height(at, int(body["layer"])), at.y)  # with its ground: DEM chunks arriving lift both
+	if _chase_on_frames >= 3:
+		var excess: float = cam.origin.distance_to(_chase_last[0]) - taxi.distance_to(_chase_last[1])
+		if excess > _chase["max_excess_step_m"]:
+			_chase["max_excess_step_m"] = excess
+			_chase["worst_at_s"] = _elapsed
+		_chase["max_yaw_step_rad"] = maxf(_chase["max_yaw_step_rad"], absf(angle_difference(_chase_last[2], yaw)))
+		_chase["frames"] += 1
+	_chase_last = [cam.origin, taxi, yaw]
+
+
 func _write(result: Dictionary) -> void:
 	var state: Dictionary = main.entities.shown_state()
 	var player: Dictionary = state.get("player", {})
@@ -764,7 +821,7 @@ func _write(result: Dictionary) -> void:
 		"weather": state.get("weather", {}).duplicate(), "vehicle": {"x": player.get("x"), "y": player.get("y"), "heading": player.get("heading")},
 		"walker": state.get("player_pedestrian", {}).duplicate() if state.get("on_foot", false) else {},
 		"camera": {"zoom": main.camera.zoom.x, "position": [main.camera.position.x, main.camera.position.y]},
-		"scene": _counts, "elapsed_s": _elapsed, "forest": _forest_stats(),
+		"scene": _counts, "elapsed_s": _elapsed, "chase": _chase, "route_3d_visible": main.map_layer.buildings_3d != null and main.map_layer.buildings_3d.route_3d.visible, "forest": _forest_stats(),
 		"lake_ice": {"cm": state.get("calendar", {}).get("lake_ice_cm") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null,
 			"holds": state.get("calendar", {}).get("lake_ice_holds") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null}})
 	result["weather"].erase("plowed_paths")

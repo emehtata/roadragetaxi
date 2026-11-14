@@ -15,6 +15,7 @@
 extends Node2D
 
 const B25 := preload("res://buildings_25d.gd")  # colours, window rules, unit()
+const CameraModes := preload("res://camera_modes.gd")
 const RS := preload("res://render_style.gd")  # the puddles' colour
 static var FOV := 30.0  # degrees, vertical; higher = deeper facades. godot-22: 40 let tall buildings swallow streets, 25 flattens low ones
 const LIGHT := Vector2(-0.6, -0.8)  # walls facing up-left are lit (2D screen direction)
@@ -54,6 +55,9 @@ var precip_intensity := 0.7
 var _precip: Precipitation3D
 var _sky_offset := Vector2.ZERO
 var windshield_on := false
+var route_3d := preload("res://route_3d.gd").new()  # the navigation route in 1/3 (main.gd)
+var chase_on := false  # with windshield_on: the third-person camera (camera_modes.gd) instead of the eye
+var chase_transform := Transform3D.IDENTITY  # main.gd, per frame: CameraModes.chase
 var windshield_at := Vector2.ZERO
 var windshield_heading := 0.0
 var windshield_elevation := 0.0
@@ -123,6 +127,7 @@ func _ready() -> void:
 	_view.add_child(_shadow_ground)
 	_cars_root = Node3D.new()
 	_view.add_child(_cars_root)
+	_cars_root.add_child(route_3d)
 	if opaque:
 		_make_lights()
 	_shadow_view = SubViewport.new()  # the same world: no building geometry twice
@@ -333,15 +338,19 @@ func _process(delta: float) -> void:
 			forward = forward.rotated(Vector3.UP, float(test_eye.get("yaw", 0.0)))
 			_camera.position = to_3d(at, float(test_eye.get("height", 1.35)) + float(test_eye.get("ground", windshield_elevation)))
 		_camera.look_at(_camera.position + forward * 100.0, Vector3.UP)
+		if chase_on:
+			_camera.transform = chase_transform
+		_camera.fov = CameraModes.FOV if chase_on else FOV
 		if _eye_blend < 1.0:
 			_eye_blend = minf(1.0, _eye_blend + delta / EYE_TRANSITION_S)
 			_camera.transform = _eye_from.interpolate_with(_camera.transform, smoothstep(0.0, 1.0, _eye_blend))
-		_camera.near = 0.08
+		_camera.near = 0.3 if chase_on else 0.08
 		_camera.far = 1200.0  # far enough to see a forest edge across an open field (the forest's far LOD starts at 400 m)
 	else:
 		if opaque:
 			_camera.environment.background_mode = Environment.BG_COLOR
 		_camera.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		_camera.fov = FOV
 	if _shadow_ground.visible:  # under the whole view; shadows only as far as the camera sees
 		if _shadow_view.size != size / SHADOW_VIEW_SCALE:
 			_shadow_view.size = size / SHADOW_VIEW_SCALE

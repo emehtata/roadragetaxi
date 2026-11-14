@@ -22,6 +22,7 @@ var origin := Vector2.ZERO
 var buffer := StateBuffer.new()
 var show_route := false  # N, from NavOverlay (main.gd)
 var _route_source = null  # the last state's navigation.points, as received
+var route_layers := PackedInt32Array()  # its points' road layers (route_3d.gd)
 var _route_points := PackedVector2Array()  # ... in layer coordinates
 var px_per_m := 9.0  # the camera's zoom (main.gd): screen pixels per metre
 var drawn_entities := 0  # last frame (performance readout)
@@ -247,7 +248,13 @@ func player_body() -> Dictionary:
 	var a: Dictionary = _frame["a"]["player"]
 	var p := StateBuffer.blend(a, _frame["b"].get("player", a), _frame["t"], origin)
 	return {"position": Vector2(p.x, p.y), "heading": p.z, "length": float(a.get("length_m", 4.0)),
-		"width": float(a.get("width_m", 1.8)), "speed": absf(float(a.get("speed", 0.0)))}
+		"width": float(a.get("width_m", 1.8)), "speed": absf(float(a.get("speed", 0.0))), "layer": taxi_layer(_frame["a"])}
+
+
+## The taxi model's map layer (a bridge's or a tunnel's; else the ground).
+static func taxi_layer(state: Dictionary) -> int:
+	var road: Dictionary = state.get("road", {}) if typeof(state.get("road")) == TYPE_DICTIONARY else {}
+	return int(road.get("layer", 0)) if road.get("bridge", false) or int(road.get("layer", 0)) < 0 else 0
 
 
 func entity_position(kind: String, id) -> Vector2:
@@ -1015,7 +1022,7 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			var shape: Array = VAN_SHAPE if kind == "van" else CAR_SHAPES[0 if is_taxi else body_style % CAR_SHAPES.size()]
 			var cars_3d: Node2D = Buildings3D.current
 			if cars_3d != null and not _under and not fallen:  # godot-cars-3d: the body in the 3D view
-				if is_taxi and cars_3d.windshield_on and not first_person:
+				if is_taxi and cars_3d.windshield_on and not cars_3d.chase_on and not first_person:
 					return  # the camera is inside this body
 				var lit := engine_on and taxi_sign_on
 				var lamps := lamp_bits(engine_on, braking, reversing, turn_signal, signal_elapsed)
@@ -1787,6 +1794,7 @@ func route_for(state: Dictionary) -> PackedVector2Array:
 	if source != _route_source:  # a new route (or the first): convert once
 		_route_source = source
 		_route_points = route_points(source, origin)
+		route_layers = route_layer_values(source)
 	return _route_points
 
 
@@ -1811,6 +1819,15 @@ static func route_points(source, world_origin: Vector2) -> PackedVector2Array:
 			return PackedVector2Array()
 		points.append(MapMath.point(world_origin, p[0], p[1]))
 	return points
+
+
+## Each route point's road layer: navigation.points [x, y, layer]; a 2-element point is the ground.
+static func route_layer_values(source) -> PackedInt32Array:
+	var layers := PackedInt32Array()
+	if typeof(source) == TYPE_ARRAY:
+		for p in source:
+			layers.append(int(p[2]) if typeof(p) == TYPE_ARRAY and p.size() > 2 and typeof(p[2]) in [TYPE_INT, TYPE_FLOAT] else 0)
+	return layers
 
 
 func _target(state: Dictionary) -> void:
@@ -1980,7 +1997,7 @@ func _draw() -> void:
 	taxi_sign_on = taxi_sign_lit(a.get("taxi", {}))
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
 		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under,
-		int(road.get("layer", 0)) if road.get("bridge", false) or int(road.get("layer", 0)) < 0 else 0)
+		taxi_layer(a))
 	taxi_sign_on = false
 	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
 	if smoke_timer > 0.0:
