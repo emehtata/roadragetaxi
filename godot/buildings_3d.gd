@@ -945,6 +945,8 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 	_model_used[kind] = used + 1
 
 
+const CAR_MODEL_KINDS := ["saloon", "city_car", "hatchback", "estate", "suv", "sports", "pickup", "panel_van"]  # car_model_kind()
+
 ## A GLB as one mesh, one surface per material, its node transforms baked in: a saloon's 23 mesh
 ## nodes draw (and cast) as 8 draw calls (docs/specs/glb-only-vehicles.md AC 7). Built once per kind.
 static var _merged_models := {}
@@ -963,6 +965,8 @@ static func merged_model(kind: String) -> ArrayMesh:
 			node = node.get_parent()
 		for surface in mi.mesh.get_surface_count():
 			var material: Material = mi.mesh.surface_get_material(surface)
+			if kind in CAR_MODEL_KINDS and material != null and material.resource_name == "interior":
+				continue  # seats show as grey blocks through the roof glass (docs/specs/taxi-model-seats.md)
 			if not tools.has(material):
 				tools[material] = SurfaceTool.new()
 			tools[material].append_from(mi.mesh, surface, xform)
