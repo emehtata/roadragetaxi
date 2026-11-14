@@ -151,3 +151,28 @@ def test_tick_restarts_a_failed_map_build_after_backoff(tmp_path, monkeypatch):
         assert server._map_growth_retry is None
     finally:
         server.close()
+
+
+def _worker_ground(dem):
+    from theroadragetrip.protocol import decode
+
+    world = _world()
+    world.dem = dem
+    area = (240000.0, 6710000.0, 240400.0, 6710400.0)  # far (> 3 km) from the start-area roads near 0, 0
+    _, built = chunk_worker.build_area(chunk_worker.snapshot(world, area, [], 400.0), area, 400.0, False)
+    return world, {cid: decode(wire).get("ground_heights") for cid, _, wire in built}
+
+
+def test_worker_chunks_keep_dem_ground_far_from_start():
+    from theroadragetrip.osm.elevation import PACKAGED_DEM80, Dem80
+
+    world, grounds = _worker_ground(Dem80(PACKAGED_DEM80))
+    assert grounds
+    for cid, ground in grounds.items():
+        assert ground and any(ground["heights"]) and len(set(ground["heights"])) > 1
+        assert ground == ChunkIndex(world, 400.0, [tuple(map(int, cid.split("_")[-2:]))]).message(cid)["ground_heights"]
+
+
+def test_worker_chunks_flat_without_dem():
+    _, grounds = _worker_ground(None)
+    assert grounds and all(g is None for g in grounds.values())

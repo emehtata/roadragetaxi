@@ -18,6 +18,7 @@ import time
 from types import SimpleNamespace
 
 from .map_chunks import _REGION_LISTS, REGION_MARGIN_M, ChunkIndex, _item_rect, cell_of, chunk_id
+from .osm.elevation import Dem80
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,9 @@ def snapshot(world, area, lights, size: float) -> list[bytes]:
             yield_gil()
         if not items:
             pieces.append(pickle.dumps((name, []), pickle.HIGHEST_PROTOCOL))
-    scalars = {"roadworks": list(getattr(world, "roadworks", ())), "speed_cameras": list(getattr(world, "speed_cameras", ()))}
+    scalars = {"roadworks": list(getattr(world, "roadworks", ())), "speed_cameras": list(getattr(world, "speed_cameras", ())),
+               # Dem80 holds an lru_cache (unpicklable): send its folders; the legacy .dem.json stays startup-only
+               "dem_dirs": [str(d) for d in dem.dirs] if isinstance(dem := getattr(world, "dem", None), Dem80) else None}
     pieces.append(pickle.dumps(("", scalars), pickle.HIGHEST_PROTOCOL))
     logger.info(
         "Chunk snapshot: select_ms=%.1f pickle_ms=%.1f cpu_ms=%.1f objects=%d pieces=%d bytes=%d",
@@ -109,6 +112,7 @@ def _world_from(pieces):
         else:
             getattr(world, name, None) or setattr(world, name, [])
             getattr(world, name).extend(items)
+    world.dem = Dem80(*world.dem_dirs) if getattr(world, "dem_dirs", None) else None
     world.traffic_mgr = SimpleNamespace(traffic_lights=world.traffic_lights)
     world.spatial_grid = SpatialWayGrid(map_level=SURFACE_LEVEL)
     world.spatial_grid.rebuild(world.ways)
