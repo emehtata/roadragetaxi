@@ -31,6 +31,8 @@ func _initialize() -> void:
 	test_eye_follows_ground()
 	test_lamp_stands_on_ground()
 	test_road_lies_on_sloped_ground()
+	test_terrain_normals_smooth_and_continuous()
+	test_kerb_keeps_flat_normals()
 	print("dem_terrain: ", "FAIL" if failed else "PASS")
 	quit(1 if failed else 0)
 
@@ -75,6 +77,68 @@ func test_road_lies_on_sloped_ground() -> void:
 	for v: Vector3 in out["ground"]:
 		worst = maxf(worst, absf(v.y - B3.ground_height(grid, Vector2(v.x, v.z))))
 	check(worst <= 0.05 and worst < top, "grass %.3f m off the ground, under the road %.3f" % [worst, top])
+
+## A curved slope over two neighbour chunks (server grids with their 1-sample apron): the ground's normals
+## are one per position (smooth), mesh heights hit the grid nodes, and the shared edge matches.
+func _apron_grid(ix: int) -> Dictionary:
+	var heights := []
+	for r in 28:
+		for c in 28:
+			var x := ix * 500.0 - 20.0 + c * 20.0
+			var y := -20.0 + r * 20.0
+			heights.append(0.00004 * x * x + 0.03 * y + 2.0 * sin(y * 0.02))
+	var message := {"ground_heights": {"origin": [ix * 500.0 - 20.0, -20.0], "step": 20.0, "cols": 28, "heights": heights}}
+	MapChunk.prepare(message, Vector2.ZERO)
+	return message["prepared"]["ground_heights"]
+
+func _ground_normals(ix: int) -> Dictionary:
+	var grid := _apron_grid(ix)
+	var out := B3.build([], [], Vector2.ZERO, [], [], {"rect": Rect2(ix * 500.0, -500, 500, 500), "ground_heights": grid})
+	var verts: PackedVector3Array = out["ground"]
+	var normals: PackedVector3Array = out["normals"]["ground"]
+	var at := {}  # rounded (x, z) -> [y, normal]
+	var smooth := true
+	var on_nodes := true
+	for i in verts.size():
+		var key := Vector2i(roundi(verts[i].x * 100.0), roundi(verts[i].z * 100.0))
+		if at.has(key) and (at[key][1] - normals[i]).length() > 1e-4:
+			smooth = false
+		at[key] = [verts[i].y, normals[i]]
+		if is_equal_approx(fmod(verts[i].x, 20.0), 0.0) and is_equal_approx(fmod(verts[i].z, 20.0), 0.0):
+			on_nodes = on_nodes and absf(verts[i].y - B3.ground_height(grid, Vector2(verts[i].x, verts[i].z))) < 0.001
+	check(verts.size() == 25 * 25 * 6, "terrain: a 20 m grid, %d vertices" % verts.size())
+	check(smooth, "terrain %d: one normal per vertex position" % ix)
+	check(on_nodes, "terrain %d: mesh height at the grid nodes" % ix)
+	return at
+
+func test_terrain_normals_smooth_and_continuous() -> void:
+	var left := _ground_normals(0)
+	var right := _ground_normals(1)
+	var shared := 0
+	var worst := 0.0
+	for key: Vector2i in left:
+		if key.x == 50000 and right.has(key):
+			shared += 1
+			worst = maxf(worst, maxf(absf(left[key][0] - right[key][0]), (left[key][1] - right[key][1]).length()))
+	check(shared == 26 and worst < 1e-4, "terrain: chunk edge %d shared vertices, worst %.6f" % [shared, worst])
+
+## Kerb side faces keep their flat (horizontal) normals on DEM terrain.
+func test_kerb_keeps_flat_normals() -> void:
+	var grid := _apron_grid(0)
+	var curb := PackedVector2Array([Vector2(100, -100), Vector2(200, -130)])
+	var out := B3.build([], [], Vector2.ZERO, [], [], {"rect": Rect2(0, -500, 500, 500), "curbs": [curb], "ground_heights": grid})
+	var verts: PackedVector3Array = out["ground"]
+	var normals: PackedVector3Array = out["normals"]["ground"]
+	var sides := 0
+	var bent := 0
+	for i in range(0, verts.size(), 3):
+		var flat := -(verts[i + 1] - verts[i]).cross(verts[i + 2] - verts[i]).normalized()
+		if absf(flat.y) < 0.5:
+			sides += 1
+			for k in 3:
+				if (normals[i + k] - flat).length() > 1e-4:
+					bent += 1
+	check(sides > 0 and bent == 0, "kerb: %d side faces, %d bent normals" % [sides, bent])
 
 func check(ok: bool, message: String) -> void:
 	if not ok:

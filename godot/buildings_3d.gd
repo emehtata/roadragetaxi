@@ -1993,6 +1993,7 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 	for landmark in landmarks:  # [layer position, angle, spec]
 		_landmark(out, landmark[0], landmark[1], landmark[2])
 	var grid: Dictionary = ground.get("ground_heights", {})
+	var smooth := {}  # key -> per-triangle flag: 1 = flat layer, terrain normals
 	if not grid.is_empty():  # DEM terrain: every vertex onto the ground under it (decks keep their DECK_M above it)
 		# ponytail: per vertex - a tall building's roof follows the slope and big flat areas stay planar between
 		# their corners; per-building base height and a gridded ground mesh if hills show it
@@ -2000,9 +2001,17 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 		# the plane between far corners cuts over the roads in a dip
 		subdivide(out, "ground", ["ground_colors"], DEM_EDGE_M)
 		subdivide(out, "road", ["road_colors", "road_uv", "road_uv2"], DEM_EDGE_M)
+		_terrain_grid(out, ground["rect"])  # after subdivide: its cells are already grid-sized
 		for key in ["verts", "shadow", "lit", "glass", "arena", "ground", "deck", "canopy", "road"]:
 			var verts: PackedVector3Array = out[key]
 			var spread: bool = key in ["ground", "road"]
+			if spread:  # flat-layer triangles (level, < 0.05 m up) take the terrain's smooth normals; kerb walls stay sharp
+				var flat := PackedByteArray()
+				flat.resize(verts.size() / 3)
+				for t in flat.size():
+					var y := verts[t * 3].y
+					flat[t] = 1 if y < 0.05 and verts[t * 3 + 1].y == y and verts[t * 3 + 2].y == y else 0
+				smooth[key] = flat
 			for i in verts.size():
 				if spread:  # ponytail: the mm layer gaps x3 (roads 4-8 cm up) over the cm a 20 m facet misses the ground by; x4 if z-fighting
 					verts[i].y = verts[i].y * DEM_GAP_SCALE if verts[i].y < 0.05 else verts[i].y + DEM_GAP_LIFT
@@ -2010,8 +2019,17 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 			out[key] = verts
 	# The per-vertex loops run here, on the worker, not in meshes() on the main thread.
 	var normals := {}
+	var gradients := PackedVector2Array() if smooth.is_empty() else terrain_gradients(grid)
 	for key in ["verts", "shadow", "lit", "glass", "arena", "ground", "deck", "canopy", "road"]:
 		normals[key] = flat_normals(out[key])
+		if smooth.has(key):
+			var verts: PackedVector3Array = out[key]
+			var flat: PackedByteArray = smooth[key]
+			var n: PackedVector3Array = normals[key]
+			for i in verts.size():
+				if flat[i / 3]:
+					n[i] = terrain_normal(grid, Vector2(verts[i].x, verts[i].z), gradients)
+			normals[key] = n
 	out["normals"] = normals
 	out["lit_colors"] = lit_colors(out["lit"])
 	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size() + out["glass"].size() + out["ground"].size() + out["road"].size()) / 3
@@ -2449,7 +2467,8 @@ enum { ROAD_SURFACE, ROAD_WATER, ROAD_PUDDLE, ROAD_FOAM }  # road.gdshader's UV.
 
 static func _ground(out: Dictionary, ground: Dictionary) -> void:
 	var rect: Rect2 = ground["rect"]
-	_ground_quad(out, rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y), 0.0, GROUND)
+	if ground.get("ground_heights", {}).is_empty():  # DEM terrain: build() adds the grid (_terrain_grid)
+		_ground_quad(out, rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y), 0.0, GROUND)
 	var areas: Array = ground.get("areas", [])
 	for i in areas.size():
 		var h := 0.002 + (AREAS_TOP_M - 0.002) * i / maxf(1.0, areas.size())
@@ -2582,6 +2601,64 @@ static func subdivide(out: Dictionary, key: String, extras: Array, max_edge: flo
 	out[key] = verts
 	for e in extras.size():
 		out[extras[e]] = attrs[e]
+
+
+const TERRAIN_STEP_M := 20.0  # the terrain mesh's cell; 10 m and 5 m only resample the bilinear cells
+
+
+## The DEM base ground as a regular grid on the ground_heights nodes (the chunk rect sits on them),
+## each cell split along its NE-SW diagonal.
+static func _terrain_grid(out: Dictionary, rect: Rect2) -> void:
+	var nx := maxi(1, roundi(rect.size.x / TERRAIN_STEP_M))
+	var ny := maxi(1, roundi(rect.size.y / TERRAIN_STEP_M))
+	for j in ny:
+		for i in nx:
+			var nw := rect.position + rect.size * Vector2(float(i) / nx, float(j) / ny)
+			var se := rect.position + rect.size * Vector2(float(i + 1) / nx, float(j + 1) / ny)
+			var ne := Vector2(se.x, nw.y)
+			var sw := Vector2(nw.x, se.y)
+			_ground_tri(out, nw, ne, sw, 0.0, GROUND)
+			_ground_tri(out, ne, se, sw, 0.0, GROUND)
+
+
+## The DEM ground's slope (dh/dx, dh/dy in map axes) at each grid node: central differences (the
+## server's apron gives border nodes both neighbours, so chunk edges match).
+static func terrain_gradients(grid: Dictionary) -> PackedVector2Array:
+	var heights: PackedFloat32Array = grid["heights"]
+	var cols: int = grid["cols"]
+	var rows := heights.size() / cols
+	var step := float(grid["step"])
+	var g := PackedVector2Array()
+	g.resize(heights.size())
+	for r in rows:
+		for c in cols:
+			var c0 := maxi(c - 1, 0)
+			var c1 := mini(c + 1, cols - 1)
+			var r0 := maxi(r - 1, 0)
+			var r1 := mini(r + 1, rows - 1)
+			g[r * cols + c] = Vector2((heights[r * cols + c1] - heights[r * cols + c0]) / (maxi(c1 - c0, 1) * step),
+				(heights[r1 * cols + c] - heights[r0 * cols + c]) / (maxi(r1 - r0, 1) * step))
+	return g
+
+
+## The DEM ground's normal at layer point `at`: the node slopes (terrain_gradients) bilinear between nodes.
+static func terrain_normal(grid: Dictionary, at: Vector2, gradients := PackedVector2Array()) -> Vector3:
+	if gradients.is_empty():
+		gradients = terrain_gradients(grid)
+	var cols: int = grid["cols"]
+	var rows := gradients.size() / cols
+	var o: Vector2 = grid["origin"]
+	var step := float(grid["step"])
+	var fx := clampf((at.x - o.x) / step, 0.0, cols - 1)
+	var fy := clampf((-at.y - o.y) / step, 0.0, rows - 1)
+	var ix := mini(int(fx), maxi(cols - 2, 0))
+	var iy := mini(int(fy), maxi(rows - 2, 0))
+	var ix1 := mini(ix + 1, cols - 1)
+	var iy1 := mini(iy + 1, rows - 1)
+	var low := gradients[iy * cols + ix].lerp(gradients[iy * cols + ix1], fx - ix)
+	var high := gradients[iy1 * cols + ix].lerp(gradients[iy1 * cols + ix1], fx - ix)
+	var g := low.lerp(high, fy - iy)
+	return Vector3(-g.x, 1.0, g.y).normalized()  # layer z = -map y
 
 
 ## The DEM ground's height at layer point `at`: bilinear on the chunk's grid

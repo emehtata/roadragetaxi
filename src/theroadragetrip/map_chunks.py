@@ -678,11 +678,12 @@ class ChunkIndex:
         }
 
     def _ground_heights(self, ix: int, iy: int) -> dict | None:
-        """The chunk's ground grid, corners included (shared with neighbours), rows along +y.
+        """The chunk's ground grid, corners included (shared with neighbours), rows along +y, plus a
+        one-sample apron outside the chunk (render normals at the border; nothing on the server reads it).
         NoData samples take the nearest valid one in the chunk; None if all are NoData (never 0 m)."""
-        cols = round(self.size / GROUND_STEP_M) + 1
-        step = self.size / (cols - 1)
-        x0, y0 = ix * self.size, iy * self.size
+        step = self.size / round(self.size / GROUND_STEP_M)
+        cols = round(self.size / step) + 3
+        x0, y0 = ix * self.size - step, iy * self.size - step
         heights = [self._dem.height_m(x0 + c * step, y0 + r * step) for r in range(cols) for c in range(cols)]
         valid = [k for k, h in enumerate(heights) if h is not None]
         if not valid:

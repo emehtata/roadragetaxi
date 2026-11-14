@@ -685,9 +685,17 @@ def test_ground_heights_shared_at_chunk_edge():
     index = map_chunks.ChunkIndex(world)
     left, right = index.message("0_0")["ground_heights"], index.message("1_0")["ground_heights"]
     cols = left["cols"]
-    assert left["origin"] == [0.0, 0.0] and right["origin"] == [500.0, 0.0]
+    assert left["origin"] == [-20.0, -20.0] and right["origin"] == [480.0, -20.0]
     rows = len(left["heights"]) // cols
-    assert [left["heights"][r * cols + cols - 1] for r in range(rows)] == [right["heights"][r * cols] for r in range(rows)]
+    assert [left["heights"][r * cols + cols - 2] for r in range(rows)] == [right["heights"][r * cols + 1] for r in range(rows)]
+
+
+def test_ground_heights_apron():
+    dem = SimpleNamespace(height_m=lambda x, y: 0.01 * x + 0.02 * y)
+    grid = map_chunks.ChunkIndex(SimpleNamespace(ways=[], railways=[], waters=[], buildings=[], dem=dem)).message("1_0")["ground_heights"]
+    assert grid["cols"] == 28 and len(grid["heights"]) == 28 * 28 and grid["step"] == 20.0
+    inner = [grid["heights"][(r + 1) * 28 + c + 1] for r in range(26) for c in range(26)]
+    assert inner == [round(0.01 * (500 + c * 20.0) + 0.02 * r * 20.0, 2) for r in range(26) for c in range(26)]
 
 
 def test_bare_rock_area_is_a_grey_landuse_fill():
