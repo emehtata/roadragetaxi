@@ -78,3 +78,13 @@ to the same GitHub release as the installer:
 
 Both are at https://github.com/emehtata/roadragetaxi/releases. The project's
 home is https://github.com/osmcode/osmium-tool.
+
+## Terrain heights: Copernicus DEM
+
+`src/theroadragetrip/assets/dem80/` holds the Copernicus GLO-30 DEM for Finland,
+averaged to 80 m by `tools/dem80.py` (data, not software; also in the in-game
+Credits under Terrain and in each `dem80.json`). Notice:
+
+produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+
+Citation: ESA, Copernicus DEM, https://doi.org/10.5270/ESA-c5d3d65.

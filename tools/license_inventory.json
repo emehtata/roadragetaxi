@@ -39,10 +39,10 @@
       "origin": "Copernicus GLO-30 DEM (2021 release, copernicus-dem-30m.s3.amazonaws.com), 8x8-averaged to 80 m by tools/dem80.py",
       "copyright": "DLR e.V. 2010-2014 and Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA",
       "licence": "LicenseRef-Copernicus-DEM-GLO-30",
-      "evidence": "https://spacedata.copernicus.eu/documents/20123/121286/CSCDA_ESA_Mission-specific+Annex_31_Oct_22.pdf; attribution in dem80.json",
+      "evidence": "https://doi.org/10.5270/ESA-c5d3d65; https://spacedata.copernicus.eu/documents/20123/121286/CSCDA_ESA_Mission-specific+Annex_31_Oct_22.pdf; attribution in dem80.json",
       "obligations": "keep the Copernicus attribution with the data and in the credits",
       "commercial": "yes, free use with attribution", "status": "conditional",
-      "remediation": "attribution in dem80.json (done); in-game credits line still to check"
+      "remediation": "attribution in dem80.json and in-game Credits, Terrain section (godot/startup.gd credits_text, i18n credits_terrain; done); THIRD_PARTY_LICENSES.md (present)"
     },
     {
       "name": "Sample OSM extract",
