@@ -236,3 +236,20 @@ def test_copernicus_notice_in_docs_tool_and_credits():
     i18n = (ROOT / "godot" / "i18n.gd").read_text(encoding="utf-8")
     entries = [line for line in i18n.split('"credits_terrain": ')[1:]]
     assert len(entries) == 3 and all(COP_NOTICE in e.split('",')[0] for e in entries)  # fi, en, de
+
+
+def test_pack_zip_stored_sorted_reproducible(tmp_path):
+    import zipfile
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "dem80.json").write_text("{}")
+    (src / "dem80_2_1.bin").write_bytes(b"b")
+    (src / "dem80_1_9.bin").write_bytes(b"a")
+    (src / "notes.txt").write_text("skip")
+    assert dem80.pack(src, tmp_path / "a.zip") == 3
+    (src / "dem80.json").touch()  # a newer mtime must not change the bytes
+    dem80.pack(src, tmp_path / "b.zip")
+    assert (tmp_path / "a.zip").read_bytes() == (tmp_path / "b.zip").read_bytes()
+    with zipfile.ZipFile(tmp_path / "a.zip") as z:
+        assert z.namelist() == ["dem80.json", "dem80_1_9.bin", "dem80_2_1.bin"]
+        assert all(i.compress_type == zipfile.ZIP_STORED for i in z.infolist())

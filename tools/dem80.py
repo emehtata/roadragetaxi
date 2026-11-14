@@ -5,6 +5,8 @@
 Test source (no key; WGS84, reprojected to EPSG:3067 on the 10 m grid):
     .venv/bin/python tools/dem80.py download --source copernicus --out ~/.cache/copernicus-dem30
     .venv/bin/python tools/dem80.py convert --source copernicus ~/.cache/copernicus-dem30/*.tif --out ...
+Ship as one archive (src/theroadragetrip/assets/dem80.zip):
+    .venv/bin/python tools/dem80.py pack <dem80 folder> --out src/theroadragetrip/assets/dem80.zip
 
 The API key comes only from the MML_API_KEY environment variable; it is never
 printed or written. Heights stay absolute N2000; NoData stays NoData.
@@ -224,6 +226,18 @@ def download(bbox, out_dir, api_key):
                      "(docs/dem-terrain-80m.md); executing it is not implemented until verified.")
 
 
+def pack(src_dir, out_zip):
+    """Loose dem80 folder -> one zip of ZIP_STORED entries (tiles are zlib already), sorted, fixed times: same bytes."""
+    import zipfile
+    names = sorted(p.name for p in Path(src_dir).iterdir() if p.name == "dem80.json" or p.suffix == ".bin")
+    with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_STORED) as z:
+        for name in names:
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.external_attr = 0o644 << 16
+            z.writestr(info, (Path(src_dir) / name).read_bytes())
+    return len(names)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -235,11 +249,16 @@ def main(argv=None):
     c.add_argument("--out", type=Path, required=True)
     c.add_argument("--source", choices=("mml", "copernicus"), default="mml")
     c.add_argument("--source-date", default=None, help="KM10 delivery MM/YYYY (attribution)")
+    k = sub.add_parser("pack", help="loose folder -> dem80.zip")
+    k.add_argument("src", type=Path)
+    k.add_argument("--out", type=Path, required=True)
     for p in (d, c):
         p.add_argument("--bbox", type=lambda s: FINLAND_BBOX if s == "finland" else tuple(float(v) for v in s.split(",")),
                        default=OULU_BBOX, help="EPSG:3067 x0,y0,x1,y1 or finland (default Oulu)")
     args = parser.parse_args(argv)
-    if args.cmd == "download" and args.source == "copernicus":
+    if args.cmd == "pack":
+        print(pack(args.src, args.out), "entries ->", args.out)
+    elif args.cmd == "download" and args.source == "copernicus":
         fetch_copernicus(args.bbox, args.out)
     elif args.cmd == "download":
         key = os.environ.get("MML_API_KEY", "")
