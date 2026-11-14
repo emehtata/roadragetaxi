@@ -2480,11 +2480,11 @@ static func _ground(out: Dictionary, ground: Dictionary) -> void:
 		var surface := Vector2(ROAD_SURFACE, float(road[6]) if road.size() > 6 else 0.0)
 		var drivable := Vector2(0.0, 1.0 if road.size() > 7 and road[7] else 0.0)
 		var carry := 0.0  # metres along the road, for the dashes
+		_road_strip(out, points, half, h, road[2], surface, drivable)
 		for i in points.size() - 1:
 			var length := points[i].distance_to(points[i + 1])
 			if length < 1e-3:
 				continue
-			_ribbon(out, points[i], points[i + 1], half, half, h, road[2], surface, drivable)
 			if road[4] != null and half >= 2.0:  # a centre line on a two-lane road
 				var u := (points[i + 1] - points[i]) / length
 				var s := 0.0
@@ -3362,6 +3362,39 @@ static func _ribbon(out: Dictionary, a: Vector2, b: Vector2, half: float, cap: f
 	a -= along * cap
 	b += along * cap
 	_ground_quad(out, a - side, b - side, b + side, a + side, h, color, "road", uv, uv2)
+
+
+## A road's asphalt as one strip along `points`, `half` either side, capped by `half` past both ends
+## (as _ribbon): joints mitre up to 2 x half out, sharper ones get a bevel triangle in each wedge.
+static func _road_strip(out: Dictionary, points: PackedVector2Array, half: float, h: float, color: Color,
+		uv := Vector2.ZERO, uv2 := Vector2.ZERO) -> void:
+	var p := PackedVector2Array()
+	for point in points:  # drop repeated points: they have no direction
+		if p.is_empty() or point.distance_to(p[-1]) >= 1e-3:
+			p.append(point)
+	if p.size() < 2:
+		return
+	var dirs := PackedVector2Array()
+	for i in p.size() - 1:
+		dirs.append((p[i + 1] - p[i]).normalized())
+	p[0] -= dirs[0] * half
+	p[-1] += dirs[-1] * half
+	var start := dirs[0].orthogonal() * half  # the current segment's start offset (one side; the other is -)
+	for i in dirs.size():
+		var end := dirs[i].orthogonal() * half
+		var next_start := end
+		if i + 1 < dirs.size():
+			var normal := dirs[i].orthogonal() + dirs[i + 1].orthogonal()
+			var cos_half := normal.length() / 2.0  # cos of half the turn
+			if cos_half > 0.5:  # the mitre stays within 2 x half
+				end = normal.normalized() * (half / cos_half)
+				next_start = end
+			else:  # bevel: fill both wedges at the joint
+				next_start = dirs[i + 1].orthogonal() * half
+				_ground_tri(out, p[i + 1], p[i + 1] + end, p[i + 1] + next_start, h, color, "road", uv, uv2)
+				_ground_tri(out, p[i + 1], p[i + 1] - end, p[i + 1] - next_start, h, color, "road", uv, uv2)
+		_ground_quad(out, p[i] - start, p[i + 1] - end, p[i + 1] + end, p[i] + start, h, color, "road", uv, uv2)
+		start = next_start
 
 
 static func _ground_quad(out: Dictionary, a: Vector2, b: Vector2, c: Vector2, d: Vector2, h: float, color: Color, key := "ground",

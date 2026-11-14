@@ -305,6 +305,18 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 		roads_by_z[z].append(road)
 	var puddles := puddle_spots(message.get("roads", []), bounds_rect, origin)  # from the raw coordinates
 	var bridge_ends := bridge_ends_of(message.get("roads", []), origin)  # whole ways: every chunk a bridge crosses agrees
+	var shared := {}  # world point -> true where two ways meet (or a way meets itself): smooth_road keeps them
+	var seen := {}
+	for road in message.get("roads", []):
+		var mine := {}
+		for point in road["points"]:
+			var key := Vector2(point[0], point[1])
+			if seen.has(key) or mine.has(key):
+				shared[key] = true
+			mine[key] = true
+		seen.merge(mine)
+	for road in message.get("roads", []):  # whole ways in world metres: every chunk smooths a way alike
+		road["points"] = smooth_road(road["points"], shared, minf(0.5, 0.25 * float(road.get("half_width_m", 1.5))))
 	var points := _compact(message, origin)
 	if not bounds.is_empty():
 		_clip_to_bounds(message, bounds, bounds_rect, roads_by_z)
@@ -379,6 +391,64 @@ static func forest_trees(mask: Image, bounds_rect: Rect2, origin: Vector2) -> Ar
 				kind = "pine" if roll < 0.4 else "spruce" if roll < 0.7 else "birch"
 			out.append([at, kind, _hash(i + 0.33, j + 0.47)])
 	return out
+
+
+const SMOOTH_MIN_BEND := 0.0523599  # 3 deg: straighter knots stay as they are
+const SMOOTH_MAX_BEND := 0.785398  # 45 deg: sharper bends are corners, kept sharp
+const SMOOTH_STEP_TURN := 0.0698132  # 4 deg per sample
+
+
+## A road's world points [[x, y], ...] with its gentle bends (3-45 deg) rounded by a centripetal
+## Catmull-Rom spline (render only: the server's road geometry is unchanged). The ends, the knots in
+## `fixed` (Vector2 keys: junctions), sharper corners and every original point stay bit-identical;
+## a segment whose curve would stray more than `max_off` m from it stays straight.
+static func smooth_road(points: Array, fixed: Dictionary, max_off := 0.5) -> Array:
+	var n := points.size()
+	if n < 3:
+		return points
+	var p := PackedVector2Array()
+	for q in points:
+		p.append(Vector2(q[0], q[1]))
+	var bend := PackedFloat32Array()
+	bend.resize(n)
+	var soft := PackedByteArray()
+	soft.resize(n)
+	for k in range(1, n - 1):
+		var a := p[k] - p[k - 1]
+		var b := p[k + 1] - p[k]
+		bend[k] = absf(a.angle_to(b)) if a.length() > 1e-3 and b.length() > 1e-3 else PI
+		soft[k] = 1 if bend[k] >= SMOOTH_MIN_BEND and bend[k] <= SMOOTH_MAX_BEND and not fixed.has(p[k]) else 0
+	var out := [points[0]]
+	for i in n - 1:
+		if soft[i] or soft[i + 1]:
+			var p0 := p[i - 1] if soft[i] else 2.0 * p[i] - p[i + 1]  # a kept knot: the curve leaves along its segment
+			var p3 := p[i + 2] if soft[i + 1] else 2.0 * p[i + 1] - p[i]
+			var turn := (bend[i] * soft[i] + bend[i + 1] * soft[i + 1]) / 2.0
+			var count := clampi(mini(ceili(turn / SMOOTH_STEP_TURN), ceili(p[i].distance_to(p[i + 1]) / 2.0)), 1, 16)
+			var samples := []
+			for s in range(1, count):
+				var at := _catmull_rom(p0, p[i], p[i + 1], p3, float(s) / count)
+				if at.distance_to(Geometry2D.get_closest_point_to_segment(at, p[i], p[i + 1])) > max_off:
+					samples.clear()  # it would overshoot: this segment stays straight
+					break
+				samples.append([at.x, at.y])
+			out.append_array(samples)
+		out.append(points[i + 1])
+	return out
+
+
+## Centripetal (alpha 0.5) Catmull-Rom between p1 and p2, u in 0..1 (Barry-Goldman).
+static func _catmull_rom(p0: Vector2, p1: Vector2, p2: Vector2, p3: Vector2, u: float) -> Vector2:
+	var t1 := sqrt(maxf(p0.distance_to(p1), 1e-4))
+	var t2 := t1 + sqrt(maxf(p1.distance_to(p2), 1e-4))
+	var t3 := t2 + sqrt(maxf(p2.distance_to(p3), 1e-4))
+	var t := lerpf(t1, t2, u)
+	var a1 := p0.lerp(p1, t / t1)
+	var a2 := p1.lerp(p2, (t - t1) / (t2 - t1))
+	var a3 := p2.lerp(p3, (t - t2) / (t3 - t2))
+	var b1 := a1.lerp(a2, t / t2)
+	var b2 := a2.lerp(a3, (t - t1) / (t3 - t1))
+	return b1.lerp(b2, (t - t1) / (t2 - t1))
 
 
 ## The DEM ground's height at layer point `at` on a prepared grid (0 without one).
