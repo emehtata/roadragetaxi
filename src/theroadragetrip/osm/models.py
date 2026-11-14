@@ -177,6 +177,13 @@ class ParkingGarage:
 
 
 @dataclass
+class Pier:
+    """man_made=pier: its deck outline (a line way widened to its width), drawn as a wood deck on posts; render only."""
+    points_m: list
+    id: Optional[int] = None
+
+
+@dataclass
 class LevelConnector:
     """A possible connection between map levels, recorded exactly as OSM
     states it (garage-07.md) - data only: never drawn, driven, routed or
@@ -575,10 +582,10 @@ class SceneryObject:
 class MapData(tuple):
     """Container tuple for build_ways results returning 6 elements for backward compatibility while providing traffic_lights and crossings via attributes and slicing."""
 
-    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None, level_connectors=None):
+    def __new__(cls, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None, level_connectors=None, piers=None):
         return super().__new__(cls, (ways, waters, buildings, sceneries, places, bounds))
 
-    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None, level_connectors=None):
+    def __init__(self, ways, waters, buildings, sceneries, places, bounds, traffic_lights=None, crossings=None, taxi_stops=None, bus_stops=None, parking_spaces=None, logical_intersections=None, stop_signs=None, yield_signs=None, curbs=None, scenery_objects=None, speed_bumps=None, railways=None, railings=None, parking_garages=None, level_ways=None, level_connectors=None, piers=None):
         self.ways = ways
         self.waters = waters
         self.buildings = buildings
@@ -603,6 +610,7 @@ class MapData(tuple):
         # filters out (underground service/track roads, garage-03.md).
         self.level_ways = level_ways if level_ways is not None else []
         self.level_connectors = level_connectors if level_connectors is not None else []
+        self.piers = piers if piers is not None else []  # man_made=pier deck outlines (render only)
 
     def __reduce__(self):
         # A process build worker returns its world by pickle (world_cache):
@@ -611,7 +619,7 @@ class MapData(tuple):
                          self.traffic_lights, self.crossings, self.taxi_stops, self.bus_stops, self.parking_spaces,
                          self.logical_intersections, self.stop_signs, self.yield_signs, self.curbs,
                          self.scenery_objects, self.speed_bumps, self.railways, self.railings,
-                         self.parking_garages, self.level_ways, self.level_connectors)
+                         self.parking_garages, self.level_ways, self.level_connectors, self.piers)
 
     @property
     def traffic_signals(self):

@@ -134,7 +134,8 @@ MAGIC = b"RWC\0"
 # 63: wooden fences (fence_type / material) as Railing.kind "wood_fence".
 # 64: car ferry routes (route=ferry) as Railway kind "ferry".
 # 65: bench SceneryObject.backrest (OSM backrest=*).
-FORMAT_VERSION = 65
+# 66: piers section (man_made=pier deck outlines).
+FORMAT_VERSION = 66
 COORDINATE_SYSTEM = "EPSG:3067"
 _HEADER = struct.Struct("<4sHHQQ32s12s")
 _DIRECTORY = struct.Struct("<8sQQI")
@@ -144,7 +145,7 @@ _TYPE_NAMES = {value: key for key, value in _TYPES.items()}
 _SECTIONS = ("ways", "waters", "buildings", "sceneries", "places", "traffic_lights",
              "crossings", "taxi_stops", "bus_stops", "parking_spaces", "logical_intersections",
              "stop_signs", "yield_signs", "curbs", "scenery_objects", "speed_bumps",
-             "railways", "railings", "parking_garages", "level_ways", "level_connectors", "metadata")
+             "railways", "railings", "parking_garages", "level_ways", "level_connectors", "piers", "metadata")
 _SECTION_CODES = {
     "buildings": "bldgs", "sceneries": "scenery",
     "traffic_lights": "signals", "crossings": "crossing",
@@ -355,7 +356,7 @@ class BinaryWorldCacheLoader:
             "stop_signs": "StopSign", "yield_signs": "YieldSign", "curbs": "Curb",
             "scenery_objects": "SceneryObject", "speed_bumps": "SpeedBump",
             "railways": "Railway", "railings": "Railing", "parking_garages": "ParkingGarage",
-            "level_ways": "Way", "level_connectors": "LevelConnector",
+            "level_ways": "Way", "level_connectors": "LevelConnector", "piers": "Pier",
         }
         import theroadragetrip.osm as osm
         # Every physical TrafficLight/IntersectionApproach on the same

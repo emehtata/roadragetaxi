@@ -45,6 +45,7 @@ from .models import (
     SpeedBump,
     MapData,
     LevelConnector,
+    Pier,
 )
 
 from .traffic_signals import (
@@ -804,6 +805,7 @@ def build_ways(
     tree_node_tags: Dict[int, dict] = {}
     scenery_object_nodes_raw: List[Tuple[dict, int]] = []
     equipment_ways_raw: List[Tuple[dict, int, list]] = []  # playground=* mapped as an area (a sandpit, ...)
+    pier_raw: List[Tuple[dict, int, list]] = []  # man_made=pier ways: drawn as wood decks (docs/specs/wood-cabins-and-piers.md)
     gap_ways_raw: List[Tuple[dict, int, list]] = []  # power lines, tree rows, man_made areas (osm-render-gaps.md)
     entrance_node_ids: set[int] = set()
     ways_by_id: Dict[int, dict] = {}
@@ -896,6 +898,8 @@ def build_ways(
             if tags.get("power") in ("line", "minor_line") or tags.get("natural") == "tree_row" or (
                     tags.get("man_made") in _SKYLINE_HEIGHTS_M and len(node_ids) >= 4 and node_ids[0] == node_ids[-1]):
                 gap_ways_raw.append((tags, el["id"], node_ids))
+            if tags.get("man_made") == "pier":
+                pier_raw.append((tags, el["id"], node_ids))
             way_id = el.get("id")
             if way_id is not None:
                 ways_by_id[way_id] = el
@@ -1817,6 +1821,20 @@ def build_ways(
         scenery_objects.append(SceneryObject(x=sum(x for x, _ in pts) / len(pts), y=sum(y for _, y in pts) / len(pts),
                                              kind=tags["man_made"], name=tags.get("name"), id=-way_id,
                                              height_m=_skyline_height(tags["man_made"], tags)))
+    piers = []
+    for tags, way_id, node_ids in pier_raw:  # an area as is; a line widened to its width=* (else 2.5 m)
+        pts = [nodes_m[n] for n in node_ids if n in nodes_m]
+        if len(pts) >= 4 and node_ids[0] == node_ids[-1]:
+            piers.append(Pier(pts[:-1], way_id))
+        elif len(pts) >= 2:
+            try:
+                width = float(str(tags.get("width", "")).replace("m", "").strip())
+            except ValueError:
+                width = 2.5
+            from shapely.geometry import LineString
+            deck = LineString(pts).buffer(max(0.5, width) / 2.0, cap_style="flat", join_style="mitre")
+            if deck.geom_type == "Polygon" and not deck.is_empty:
+                piers.append(Pier(list(deck.exterior.coords)[:-1], way_id))
     for tags, way_id, node_ids in equipment_ways_raw:  # at its centre, square to its longest edge
         pts = [nodes_m[n] for n in node_ids if n in nodes_m]
         if len(pts) >= 3:
@@ -2203,5 +2221,5 @@ def build_ways(
         traffic_lights, crossings, taxi_stops, bus_stops, parking_spaces, logical_intersections, stop_signs, yield_signs,
         curbs=curbs, scenery_objects=scenery_objects, speed_bumps=speed_bumps,
         railways=railways, railings=railings, parking_garages=parking_garages,
-        level_ways=level_ways, level_connectors=level_connectors,
+        level_ways=level_ways, level_connectors=level_connectors, piers=piers,
     )

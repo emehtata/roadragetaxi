@@ -242,6 +242,7 @@ def load_world(
     railings = getattr(res, "railings", [])
     parking_garages = getattr(res, "parking_garages", [])  # data only for now (garage-00.md)
     level_ways = getattr(res, "level_ways", [])  # underground roads for the level render gate (garage-03.md)
+    piers = getattr(res, "piers", [])  # man_made=pier decks, render only (map_chunks)
     level_connectors = getattr(res, "level_connectors", [])  # data only: parking entrances (garage-07.md)
     close_garage_roads((*ways, *level_ways))
     roadworks, roadwork_lights = create_roadworks(ways) if roadworks_enabled else ([], [])
@@ -456,6 +457,7 @@ def load_world(
         parking_garages=parking_garages,
         level_ways=level_ways,
         level_connectors=level_connectors,
+        piers=piers,
         fetch_func=resolve_osm_fetch_func(args, overpass_endpoints),
         build_func=build_ways,
         build_in_process=args.build_in_process,
@@ -525,6 +527,7 @@ def load_world(
         parking_garages=parking_garages,
         level_ways=level_ways,
         level_connectors=level_connectors,
+        piers=piers,
         # Off-surface driving networks (garage-05.md) and parking-entrance
         # level changes (garage-08.md); both rebuilt when map sync finishes.
         **level_structures(ways, level_ways, level_connectors),

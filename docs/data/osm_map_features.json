@@ -4233,9 +4233,9 @@
  {
   "key": "man_made",
   "value": "pier",
-  "geometry": [],
-  "handling": "ignored",
-  "notes": "not read by build_ways"
+  "geometry": ["way", "area"],
+  "handling": "structure",
+  "notes": "wood deck on posts, render only (line ways widened to width, else 2.5 m)"
  },
  {
   "key": "man_made",

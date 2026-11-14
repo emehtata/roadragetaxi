@@ -2804,6 +2804,8 @@ static func _structures(out: Dictionary, ground: Dictionary) -> void:
 		_sloped_wall(out, rail[0], rail[1], 0.06, ha, hb, GUARDRAIL_M, Color8(170, 172, 168))
 	for deck: PackedVector2Array in ground.get("rail_decks", []):  # a railway bridge: a slab at deck height, ballast on top
 		_raised_polygon_at(out, "deck", deck, DECK_M - SLAB_M, DECK_M, BALLAST)
+	for pier: PackedVector2Array in ground.get("piers", []):  # man_made=pier: a wood deck on posts (render only)
+		_pier(out, pier, Vector2.ZERO)
 	for line: PackedVector2Array in ground.get("rail_tracks", []):  # its rails, on the ballast
 		for i in line.size() - 1:
 			_sloped_strip(out, "deck", line[i], line[i + 1], 0.9, DECK_M + 0.03, DECK_M + 0.03, Color8(70, 66, 60), Vector2.ZERO, Vector2.ZERO)
@@ -3639,6 +3641,10 @@ static func _shadow_prism(verts: PackedVector3Array, footprint: PackedVector2Arr
 ## lit deterministically (LIT_PROBABILITY).
 const CATEGORY_WALL := 3  # a plain wall (a stadium's stands, map_chunks.stadium_stands): no window rows
 const CATEGORY_RETAIL_HALL := 4  # ground-level shop glazing, plain walls above
+const PIER_DECK_M := 1.0  # a pier's deck top above the water / ground
+const PIER_POST_EVERY_M := 3.0
+const PIER_POSTS_MAX := 400  # per chunk: bounded work on a long shoreline
+const PIER_WOOD := Color8(120, 95, 65)
 const CATEGORY_WOOD_HOUSE := 5  # a cabin or hut: house windows, plank walls (building_snow.gdshader)
 
 
@@ -3678,6 +3684,23 @@ static func _windows(out: Dictionary, a: Vector2, b: Vector2, normal: Vector2, h
 ## town (Oulu's Valkea talo), 4.5 m on a house; none on a short or plain wall.
 const WINDOW_BAY_M := 3.0
 const HOUSE_WINDOW_BAY_M := 4.5
+
+
+# A 0.25 m plank deck PIER_DECK_M up, 0.2 m posts every 3 m along its outline into the water.
+static func _pier(out: Dictionary, poly: PackedVector2Array, _origin: Vector2) -> void:
+	_raised_polygon_at(out, "deck", poly, PIER_DECK_M - 0.25, PIER_DECK_M, PIER_WOOD)
+	var since := PIER_POST_EVERY_M
+	for i in poly.size():
+		var a := poly[i]
+		var b := poly[(i + 1) % poly.size()]
+		var steps := floori(a.distance_to(b) / 0.5)
+		for k in steps:
+			since += 0.5
+			if since < PIER_POST_EVERY_M or int(out.get("pier_posts", 0)) >= PIER_POSTS_MAX:
+				continue
+			since = 0.0
+			out["pier_posts"] = int(out.get("pier_posts", 0)) + 1
+			_box3d(out, "deck", a.lerp(b, (k + 0.5) / steps), 0.1, -1.0, PIER_DECK_M - 0.25, PIER_WOOD.darkened(0.3))
 
 
 static func window_count(length: float, category: int) -> int:

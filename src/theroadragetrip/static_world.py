@@ -146,6 +146,21 @@ def rail_bridge_parts(railways, ways=()):
     return parts
 
 
+def piers_over_water(piers, waters) -> list:
+    """The pier decks' parts over water polygons: their posts stand in the water, not on a lawn."""
+    ponds = [Polygon(w.points_m).buffer(0) for w in waters if getattr(w, "is_polygon", False) and len(w.points_m) >= 3]
+    rings = []
+    for pier in piers:
+        deck = Polygon(pier.points_m).buffer(0)
+        area = box(*deck.bounds)
+        wet = [w for w in ponds if box(*w.bounds).intersects(area)]
+        part = deck.intersection(unary_union(wet)) if wet else None
+        for p in getattr(part, "geoms", [part]) if part is not None else ():
+            if p.geom_type == "Polygon" and p.area > 1.0:
+                rings.append(list(p.exterior.coords)[:-1])
+    return rings
+
+
 def rail_bridge_decks(railways, ways=(), bridge_parts=None):
     """Deck polygons (union of the bridge tracks' sleeper width + margin)
     for the rail bridges."""

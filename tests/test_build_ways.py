@@ -409,3 +409,20 @@ def test_level_crossing_takes_its_road_direction_and_barrier_or_crossbuck():
     for o in crossings.values():  # along the road (45 degrees), and left where it is mapped (on the road)
         assert abs(math.sin(o.direction_angle - math.pi / 4)) < 1e-6
         assert abs(o.x - 25000.0 - (o.id - 9) * 10) < 1e-6
+
+
+def test_pier_way_becomes_polygon():
+    # stub projection: 1 degree = 1000 m, so these piers are 10 m long
+    elements = [
+        {"type": "node", "id": 1, "lat": 60.0, "lon": 25.0},
+        {"type": "node", "id": 2, "lat": 60.0, "lon": 25.01},
+        {"type": "node", "id": 3, "lat": 60.01, "lon": 25.0},
+        {"type": "node", "id": 4, "lat": 60.01, "lon": 25.01},
+        {"type": "node", "id": 5, "lat": 60.02, "lon": 25.01},
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {"man_made": "pier", "width": "4"}},
+        {"type": "way", "id": 11, "nodes": [3, 4, 5, 3], "tags": {"man_made": "pier"}},
+        {"type": "way", "id": 12, "nodes": [1, 3], "tags": {"man_made": "pier"}},
+    ]
+    from shapely.geometry import Polygon
+    areas = sorted(round(Polygon(p.points_m).area, 1) for p in build_ways(elements).piers)
+    assert areas == [25.0, 40.0, 50.0]  # the default 2.5 m line, the 4 m wide line, the area as is

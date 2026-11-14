@@ -65,6 +65,7 @@ from .models import (
     MapData,
     ParkingGarage,
     ParkingSpace,
+    Pier,
     Place,
     Railing,
     Railway,

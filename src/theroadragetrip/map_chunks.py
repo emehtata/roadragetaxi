@@ -32,7 +32,7 @@ from .shop_lights import opening_state, retail_hours
 _KINDS = ("roads", "railways", "waters", "water_lines", "buildings", "taxi_stands", "fuel_stations", "traffic_lights", "roadworks",
           "trees", "construction_fences", "bollards", "railings", "scenery_objects", "street_lights",
           # godot-16 (static_world.py)
-          "building_styles", "canopies", "rail_bridges", "rail_decks", "guardrails", "landuse", "traffic_islands",
+          "building_styles", "canopies", "rail_bridges", "rail_decks", "piers", "guardrails", "landuse", "traffic_islands",
           "parking", "curbs", "crossings", "speed_bumps", "signs", "speed_cameras", "bus_stops", "labels", "level_roads",
           "canopy_heights", "floodlit", "rinks", "floodlight_poles", "soccer_pitches", "holiday_yards",
           "nightclubs", "attractions", "tennis_courts", "volleyball_courts", "shore_waves",
@@ -621,6 +621,9 @@ class ChunkIndex:
         for deck in static_world.rail_bridge_decks(world.railways, bridge_parts=bridge_parts):
             for cell, ring in static_world.clipped_pieces(deck, self.size):
                 self._chunk(cell)["rail_decks"].append(ring)
+        for ring in static_world.piers_over_water(getattr(world, "piers", ()), world.waters):  # wood decks on posts (buildings_3d._pier)
+            for cell, piece in static_world.clipped_pieces(ring, self.size):
+                self._chunk(cell)["piers"].append(piece)
         for a, b in static_world.bridge_guardrails(world.ways):
             self._add("guardrails", (((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0),), [round(a[0], 2), round(a[1], 2), round(b[0], 2), round(b[1], 2)])
         for space in getattr(world, "parking_spaces", ()):

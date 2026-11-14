@@ -743,6 +743,18 @@ def test_cabin_and_hut_get_wood_category():
     assert [static_world.building_style(Building(square, building_type=t))[6] for t in ("cabin", "hut", "house")] == [5, 5, 1]
 
 
+def test_chunk_ships_piers():
+    world = _obstacle_world()
+    from theroadragetrip.osm.models import Pier
+    from theroadragetrip.osm.models import Water
+    world.piers = [Pier([(100.0, 100.0), (120.0, 100.0), (120.0, 103.0), (100.0, 103.0)], 1),
+                   Pier([(300.0, 300.0), (310.0, 300.0), (310.0, 303.0), (300.0, 303.0)], 2)]  # on land: none
+    world.waters = [Water([(110.0, 90.0), (200.0, 90.0), (200.0, 200.0), (110.0, 200.0)], "lake", True)]
+    piers = map_chunks.ChunkIndex(world, size=500.0).message("0_0")["piers"]
+    xs = [x for x, _ in piers[0]]
+    assert len(piers) == 1 and min(xs) == 110.0 and max(xs) == 120.0  # only its part over the water
+
+
 def test_cabin_is_one_storey_unless_tagged():
     from theroadragetrip import static_world
     from theroadragetrip.osm.models import Building

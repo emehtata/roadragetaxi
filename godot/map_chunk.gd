@@ -496,7 +496,7 @@ static func _compact(data: Dictionary, origin: Vector2) -> int:
 	for road in data.get("roads", []):
 		road["points"] = _to_points(road["points"], origin)
 		count += road["points"].size()
-	for key in ["waters", "water_lines", "buildings", "parking", "curbs", "construction_fences", "railways", "rail_bridges", "rail_decks", "canopies", "floodlit"]:
+	for key in ["waters", "water_lines", "buildings", "parking", "curbs", "construction_fences", "railways", "rail_bridges", "rail_decks", "piers", "canopies", "floodlit"]:
 		var lines: Array = data.get(key, [])
 		for i in lines.size():
 			lines[i] = _to_points(lines[i], origin)
@@ -895,7 +895,8 @@ func _build_2_5d() -> void:
 				pumps.append([at + along * offset, along])
 		ground = {"rect": _bounds_rect, "roads": roads, "areas": areas, "islands": islands, "curbs": curbs, "stripes": stripes,
 			"bumps": bumps, "puddles": puddles, "bridges": bridges, "bridge_ends": bridge_ends, "guardrails": guardrails, "ground_heights": ground_heights,
-			"rail_decks": _data.get("rail_decks", []).map(func(d): return _points(d)), "rail_tracks": _data.get("rail_bridges", []).map(func(d): return _points(d)),
+			"rail_decks": _data.get("rail_decks", []).map(func(d): return _points(d)), "piers": _data.get("piers", []).map(func(d): return _points(d)),
+			"rail_tracks": _data.get("rail_bridges", []).map(func(d): return _points(d)),
 			"canopies": canopies, "site_fences": _data.get("construction_fences", []).map(func(d): return _points(d)),
 			"shelters": shelters, "pumps": pumps,
 			"props": _data.get("scenery_objects", []).filter(func(o): return B3.PROPS.has(str(o[2]))).map(

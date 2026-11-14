@@ -131,7 +131,7 @@ _WORLD_SECTIONS = (
     "ways", "waters", "buildings", "sceneries", "places",
     "traffic_lights", "crossings", "bus_stops", "taxi_stops", "parking_spaces",
     "logical_intersections", "stop_signs", "yield_signs", "curbs",
-    "scenery_objects", "speed_bumps", "railways", "railings", "parking_garages", "level_ways", "level_connectors",
+    "scenery_objects", "speed_bumps", "railways", "railings", "parking_garages", "level_ways", "level_connectors", "piers",
 )
 
 # Per-frame wall-clock budget for the incremental tile-world merge
@@ -259,6 +259,7 @@ class AutoFetchManager:
         parking_garages: Optional[list] = None,
         level_ways: Optional[List[Way]] = None,
         level_connectors: Optional[list] = None,
+        piers: Optional[list] = None,
         fetch_func=fetch_osm_ways,
         build_func=build_ways,
         cooldown_s: float = 5.0,
@@ -287,6 +288,7 @@ class AutoFetchManager:
         self.parking_garages = parking_garages if parking_garages is not None else []
         self.level_ways = level_ways if level_ways is not None else []
         self.level_connectors = level_connectors if level_connectors is not None else []
+        self.piers = piers if piers is not None else []
         self.bounds = bounds
         self.transformer = transformer
         self.fetch_func = fetch_func
