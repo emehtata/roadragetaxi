@@ -36,6 +36,7 @@ def test_load_ground_env_fallback_and_warning(tmp_path, monkeypatch, caplog):
     monkeypatch.setenv("THEROADRAGETRIP_DEM80_DIR", str(dem_dir))
     assert isinstance(el.load_ground(empty, "oulu", True), el.Dem80)
     monkeypatch.delenv("THEROADRAGETRIP_DEM80_DIR")
+    monkeypatch.setattr(el, "PACKAGED_DEM80", tmp_path / "none")  # no packaged tiles either
     with caplog.at_level(logging.WARNING):
         assert el.load_ground(empty, "oulu", True) is None
     assert len([r for r in caplog.records if r.levelno >= logging.WARNING]) == 1
