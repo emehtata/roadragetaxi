@@ -1,0 +1,96 @@
+{
+  "camera": {
+    "position": [
+      -0.0125000001862645,
+      0.100000001490116
+    ],
+    "zoom": 3.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "59fbc13c-dirty",
+  "elapsed_s": 74.736105740743,
+  "errors": [
+    "stalled: no readiness change for 60 s",
+    "windscreen target outside camera frustum",
+    "windscreen target outside camera frustum",
+    "windscreen target outside camera frustum",
+    "windscreen target outside camera frustum",
+    "windscreen target under HUD"
+  ],
+  "forest": {
+    "build_ms_max": 26.468,
+    "build_ms_total": 139.463,
+    "draw_calls": 1508.0,
+    "far_lod_crowns_loaded": 21750,
+    "forest_chunks": 31,
+    "objects": 2541.0,
+    "place_ms_max": 22.714,
+    "primitives": 954359.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 273.208944320679,
+    "trees_loaded": 10875,
+    "video_memory_mb": 878.362045288086
+  },
+  "game_time": [
+    "2026-06-20",
+    54000.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_lamps_motorcycle_day",
+  "scene": {
+    "buildings_in_view": 79,
+    "chunks": 49,
+    "lamps_in_view": 111,
+    "scenery_in_view": {},
+    "two_wheeler": {
+      "id": "lamp_attachment_0",
+      "kind": "motorcycle",
+      "lamps": 0,
+      "rect": [
+        -390.695129394531,
+        429.596862792969,
+        739.678344726563,
+        434.742004394531
+      ],
+      "riding": false,
+      "visible": true
+    }
+  },
+  "status": "failed",
+  "timestamp": "2026-11-15T12:47:15Z",
+  "vehicle": {
+    "heading": 2.555,
+    "x": 427897.3,
+    "y": 7210634.9
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-bioio0hr",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.4,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 17.14,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      0.591,
+      -1.03
+    ]
+  }
+}

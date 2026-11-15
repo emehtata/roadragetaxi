@@ -1,0 +1,602 @@
+[
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/motorcycle_parked_day_rear.png",
+    "rect": [
+      0,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/motorcycle_parked_day_rear_three_quarter.png",
+    "rect": [
+      400,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/motorcycle_parked_day_elevated.png",
+    "rect": [
+      800,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/motorcycle_ridden_day_rear.png",
+    "rect": [
+      0,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/motorcycle_ridden_day_rear_three_quarter.png",
+    "rect": [
+      400,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/motorcycle_ridden_day_elevated.png",
+    "rect": [
+      800,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/bicycle_parked_day_rear.png",
+    "rect": [
+      0,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/bicycle_parked_day_rear_three_quarter.png",
+    "rect": [
+      400,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/bicycle_parked_day_elevated.png",
+    "rect": [
+      800,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/bicycle_ridden_day_rear.png",
+    "rect": [
+      0,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/bicycle_ridden_day_rear_three_quarter.png",
+    "rect": [
+      400,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_01.png",
+    "source": "after/bicycle_ridden_day_elevated.png",
+    "rect": [
+      800,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/mountain_bike_parked_day_rear.png",
+    "rect": [
+      0,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/mountain_bike_parked_day_rear_three_quarter.png",
+    "rect": [
+      400,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/mountain_bike_parked_day_elevated.png",
+    "rect": [
+      800,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/mountain_bike_ridden_day_rear.png",
+    "rect": [
+      0,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/mountain_bike_ridden_day_rear_three_quarter.png",
+    "rect": [
+      400,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/mountain_bike_ridden_day_elevated.png",
+    "rect": [
+      800,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/e_scooter_parked_day_rear.png",
+    "rect": [
+      0,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/e_scooter_parked_day_rear_three_quarter.png",
+    "rect": [
+      400,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/e_scooter_parked_day_elevated.png",
+    "rect": [
+      800,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/e_scooter_ridden_day_rear.png",
+    "rect": [
+      0,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/e_scooter_ridden_day_rear_three_quarter.png",
+    "rect": [
+      400,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_02.png",
+    "source": "after/e_scooter_ridden_day_elevated.png",
+    "rect": [
+      800,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_parked_day_rear.png",
+    "rect": [
+      0,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_parked_day_rear_three_quarter.png",
+    "rect": [
+      400,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_parked_day_elevated.png",
+    "rect": [
+      800,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_ridden_day_rear.png",
+    "rect": [
+      0,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_ridden_day_rear_three_quarter.png",
+    "rect": [
+      400,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_day_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_ridden_day_elevated.png",
+    "rect": [
+      800,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/motorcycle_parked_night_rear.png",
+    "rect": [
+      0,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/motorcycle_parked_night_rear_three_quarter.png",
+    "rect": [
+      400,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/motorcycle_parked_night_elevated.png",
+    "rect": [
+      800,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/motorcycle_ridden_night_rear.png",
+    "rect": [
+      0,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/motorcycle_ridden_night_rear_three_quarter.png",
+    "rect": [
+      400,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/motorcycle_ridden_night_elevated.png",
+    "rect": [
+      800,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/bicycle_parked_night_rear.png",
+    "rect": [
+      0,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/bicycle_parked_night_rear_three_quarter.png",
+    "rect": [
+      400,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/bicycle_parked_night_elevated.png",
+    "rect": [
+      800,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/bicycle_ridden_night_rear.png",
+    "rect": [
+      0,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/bicycle_ridden_night_rear_three_quarter.png",
+    "rect": [
+      400,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_01.png",
+    "source": "after/bicycle_ridden_night_elevated.png",
+    "rect": [
+      800,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/mountain_bike_parked_night_rear.png",
+    "rect": [
+      0,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/mountain_bike_parked_night_rear_three_quarter.png",
+    "rect": [
+      400,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/mountain_bike_parked_night_elevated.png",
+    "rect": [
+      800,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/mountain_bike_ridden_night_rear.png",
+    "rect": [
+      0,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/mountain_bike_ridden_night_rear_three_quarter.png",
+    "rect": [
+      400,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/mountain_bike_ridden_night_elevated.png",
+    "rect": [
+      800,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/e_scooter_parked_night_rear.png",
+    "rect": [
+      0,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/e_scooter_parked_night_rear_three_quarter.png",
+    "rect": [
+      400,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/e_scooter_parked_night_elevated.png",
+    "rect": [
+      800,
+      770,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/e_scooter_ridden_night_rear.png",
+    "rect": [
+      0,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/e_scooter_ridden_night_rear_three_quarter.png",
+    "rect": [
+      400,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_02.png",
+    "source": "after/e_scooter_ridden_night_elevated.png",
+    "rect": [
+      800,
+      1140,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_parked_night_rear.png",
+    "rect": [
+      0,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_parked_night_rear_three_quarter.png",
+    "rect": [
+      400,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_parked_night_elevated.png",
+    "rect": [
+      800,
+      30,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_ridden_night_rear.png",
+    "rect": [
+      0,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_ridden_night_rear_three_quarter.png",
+    "rect": [
+      400,
+      400,
+      400,
+      340
+    ]
+  },
+  {
+    "sheet": "after_night_rear-elevated_03.png",
+    "source": "after/e_scooter_grab3d_ridden_night_elevated.png",
+    "rect": [
+      800,
+      400,
+      400,
+      340
+    ]
+  }
+]

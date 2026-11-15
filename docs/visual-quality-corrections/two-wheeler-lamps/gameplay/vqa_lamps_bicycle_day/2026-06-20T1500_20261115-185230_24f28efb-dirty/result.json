@@ -1,0 +1,169 @@
+{
+  "camera": {
+    "position": [
+      -0.0125000001862645,
+      0.100000001490116
+    ],
+    "zoom": 3.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "24f28efb-dirty",
+  "elapsed_s": 17.5356536666667,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 27.588,
+    "build_ms_total": 143.203,
+    "draw_calls": 965.0,
+    "far_lod_crowns_loaded": 21750,
+    "forest_chunks": 31,
+    "objects": 2000.0,
+    "place_ms_max": 28.781,
+    "primitives": 1105053.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 289.522789001465,
+    "trees_loaded": 10875,
+    "video_memory_mb": 841.787155151367
+  },
+  "frames": {
+    "avg_fps": 61.140471589309,
+    "avg_ms": 16.3557783249886,
+    "frames": 62,
+    "low_01pct_fps": 41.264340631037,
+    "low_1pct_fps": 41.264340631037,
+    "over_16ms": 14,
+    "over_33ms": 0,
+    "over_66ms": 0,
+    "p50_ms": 16.6666660308838,
+    "p95_ms": 21.5629997253418,
+    "p99_ms": 24.2339992523193,
+    "worst_ms": 24.2339992523193
+  },
+  "game_time": [
+    "2026-06-20",
+    54000.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 167
+  },
+  "render": {
+    "chunk_build_worker": {
+      "avg_ms": 1078.824,
+      "max_ms": 1360.684
+    },
+    "chunk_lamps_main": {
+      "avg_ms": 4.61575,
+      "max_ms": 5.938
+    },
+    "chunk_mesh_surface": {
+      "avg_ms": 1.30455813953488,
+      "max_ms": 2.198
+    },
+    "chunk_meshes_main": {
+      "avg_ms": 0.85925,
+      "max_ms": 0.986
+    },
+    "long_frames": [],
+    "state_timeline": {
+      "arrival_max_ms": 104.670997619629,
+      "arrival_over_66ms": 1,
+      "arrival_p50_ms": 32.4869995117188,
+      "arrival_p95_ms": 48.1669998168945,
+      "arrival_p99_ms": 104.670997619629,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 104.670997619629,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.095053
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 35,
+      "tile_events": 0,
+      "underrun_episodes": 1,
+      "underruns": 1
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_lamps_bicycle_day",
+  "scene": {
+    "buildings_in_view": 79,
+    "chunks": 49,
+    "lamps_in_view": 111,
+    "scenery_in_view": {},
+    "two_wheeler": {
+      "id": "lamp_attachment_0",
+      "kind": "bicycle",
+      "lamps": 0,
+      "rect": [
+        393.908966064453,
+        418.293853759766,
+        297.040924072266,
+        205.927215576172
+      ],
+      "riding": false,
+      "visible": true
+    }
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-corrections\\two-wheeler-lamps\\gameplay\\vqa_lamps_bicycle_day\\2026-06-20T1500_20261115-185230_24f28efb-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-15T16:53:15Z",
+  "traffic": {
+    "moving_min": 5,
+    "npcs_max": 15,
+    "spawn_rejections": {
+      "cyclist_spawn_unsafe": 1.0,
+      "job_invalid": 1.0,
+      "point_claimed": 2.0,
+      "share": {
+        "cyclist_spawn_unsafe": 0.25,
+        "job_invalid": 0.25,
+        "point_claimed": 0.5
+      },
+      "total": 4.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": 2.555,
+    "x": 427897.3,
+    "y": 7210634.9
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-zqk91xku",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.4,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 17.14,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      -1.535,
+      -4.701
+    ]
+  }
+}

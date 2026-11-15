@@ -1,0 +1,3700 @@
+{
+	"adapter": "NVIDIA GeForce RTX 5060",
+	"angles": [
+		"front",
+		"rear",
+		"left",
+		"right",
+		"front_three_quarter",
+		"rear_three_quarter",
+		"top",
+		"elevated"
+	],
+	"captures": [
+		{
+			"angle": "front",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				6.59966087341309,
+				0.568917751312256,
+				0.0
+			],
+			"camera_size": 1.27656590938568,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				-6.59948921203613,
+				0.568917751312256,
+				0.0
+			],
+			"camera_size": 1.27656590938568,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				0.568917751312256,
+				-6.59957504272461
+			],
+			"camera_size": 2.20645928382874,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				0.568917751312256,
+				6.59957504272461
+			],
+			"camera_size": 2.20645809173584,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				4.29604339599609,
+				3.14649248123169,
+				4.29595756530762
+			],
+			"camera_size": 2.1528000831604,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				-4.29587173461914,
+				3.14649248123169,
+				-4.29595756530762
+			],
+			"camera_size": 2.15279984474182,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				7.16848945617676,
+				0.00659957248717546
+			],
+			"camera_size": 2.20645809173584,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				3.20135021209717,
+				5.37081384658813,
+				-3.20126414299011
+			],
+			"camera_size": 2.69698596000671,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				6.59966087341309,
+				0.568917751312256,
+				0.0
+			],
+			"camera_size": 1.27656590938568,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_night_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				-6.59948921203613,
+				0.568917751312256,
+				0.0
+			],
+			"camera_size": 1.27656590938568,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_night_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				0.568917751312256,
+				-6.59957504272461
+			],
+			"camera_size": 2.20645928382874,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_night_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				0.568917751312256,
+				6.59957504272461
+			],
+			"camera_size": 2.20645809173584,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_night_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				4.29604339599609,
+				3.14649248123169,
+				4.29595756530762
+			],
+			"camera_size": 2.1528000831604,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_night_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				-4.29587173461914,
+				3.14649248123169,
+				-4.29595756530762
+			],
+			"camera_size": 2.15279984474182,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_night_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				7.16848945617676,
+				0.00659957248717546
+			],
+			"camera_size": 2.20645809173584,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_night_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "motorcycle_parked",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.08183550834656,
+				0.800065159797668
+			],
+			"camera_position": [
+				3.20135021209717,
+				5.37081384658813,
+				-3.20126414299011
+			],
+			"camera_size": 2.69698596000671,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_parked_night_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				6.59966087341309,
+				0.933000028133392,
+				0.0
+			],
+			"camera_size": 2.13580012321472,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				-6.59948921203613,
+				0.933000028133392,
+				0.0
+			],
+			"camera_size": 2.13580012321472,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				0.933000028133392,
+				-6.59957504272461
+			],
+			"camera_size": 2.20645928382874,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				0.933000028133392,
+				6.59957504272461
+			],
+			"camera_size": 2.20645809173584,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				4.29604339599609,
+				3.51057481765747,
+				4.29595756530762
+			],
+			"camera_size": 2.9437894821167,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				-4.29587173461914,
+				3.51057481765747,
+				-4.29595756530762
+			],
+			"camera_size": 2.94378900527954,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				7.53257179260254,
+				0.00659957248717546
+			],
+			"camera_size": 2.20645809173584,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				3.20135021209717,
+				5.73489618301392,
+				-3.20126414299011
+			],
+			"camera_size": 3.28641605377197,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				6.59966087341309,
+				0.933000028133392,
+				0.0
+			],
+			"camera_size": 2.13580012321472,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_night_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				-6.59948921203613,
+				0.933000028133392,
+				0.0
+			],
+			"camera_size": 2.13580012321472,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_night_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				0.933000028133392,
+				-6.59957504272461
+			],
+			"camera_size": 2.20645928382874,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_night_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				0.933000028133392,
+				6.59957504272461
+			],
+			"camera_size": 2.20645809173584,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_night_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				4.29604339599609,
+				3.51057481765747,
+				4.29595756530762
+			],
+			"camera_size": 2.9437894821167,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_night_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				-4.29587173461914,
+				3.51057481765747,
+				-4.29595756530762
+			],
+			"camera_size": 2.94378900527954,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_night_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				0.0000859498977661133,
+				7.53257179260254,
+				0.00659957248717546
+			],
+			"camera_size": 2.20645809173584,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_night_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "motorcycle_ridden",
+			"bounds": [
+				-1.0998432636261,
+				0.0280000008642673,
+				-0.400032579898834,
+				2.19985842704773,
+				1.81000006198883,
+				0.800065159797668
+			],
+			"camera_position": [
+				3.20135021209717,
+				5.73489618301392,
+				-3.20126414299011
+			],
+			"camera_size": 3.28641605377197,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "motorcycle_ridden_night_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				5.40161323547363,
+				0.579018115997314,
+				0.0000000298023223876953
+			],
+			"camera_size": 1.30040276050568,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_parked_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				-5.40161323547363,
+				0.579018115997314,
+				0.0000000298023223876953
+			],
+			"camera_size": 1.30040276050568,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_parked_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				0.579018115997314,
+				-5.40161323547363
+			],
+			"camera_size": 1.80594027042389,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_parked_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				0.579018115997314,
+				5.40161323547363
+			],
+			"camera_size": 1.80593931674957,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_parked_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				3.5161509513855,
+				2.68870878219604,
+				3.5161509513855
+			],
+			"camera_size": 1.97940671443939,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_parked_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				-3.5161509513855,
+				2.68870878219604,
+				-3.5161509513855
+			],
+			"camera_size": 1.97940671443939,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_parked_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				5.98062896728516,
+				0.0054016406647861
+			],
+			"camera_size": 1.80593931674957,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_parked_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				2.62016749382019,
+				4.50926923751831,
+				-2.62016749382019
+			],
+			"camera_size": 2.34943556785584,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_parked_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				5.40161323547363,
+				0.579018115997314,
+				0.0000000298023223876953
+			],
+			"camera_size": 1.30040276050568,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_parked_night_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				-5.40161323547363,
+				0.579018115997314,
+				0.0000000298023223876953
+			],
+			"camera_size": 1.30040276050568,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_parked_night_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				0.579018115997314,
+				-5.40161323547363
+			],
+			"camera_size": 1.80594027042389,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_parked_night_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				0.579018115997314,
+				5.40161323547363
+			],
+			"camera_size": 1.80593931674957,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_parked_night_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				3.5161509513855,
+				2.68870878219604,
+				3.5161509513855
+			],
+			"camera_size": 1.97940671443939,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_parked_night_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				-3.5161509513855,
+				2.68870878219604,
+				-3.5161509513855
+			],
+			"camera_size": 1.97940671443939,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_parked_night_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				5.98062896728516,
+				0.0054016406647861
+			],
+			"camera_size": 1.80593931674957,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_parked_night_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "bicycle_parked",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.10203623771667,
+				0.599978804588318
+			],
+			"camera_position": [
+				2.62016749382019,
+				4.50926923751831,
+				-2.62016749382019
+			],
+			"camera_size": 2.34943556785584,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_parked_night_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				5.40161323547363,
+				0.843999981880188,
+				0.0000000298023223876953
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				-5.40161323547363,
+				0.843999981880188,
+				0.0000000298023223876953
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				0.843999981880188,
+				-5.40161323547363
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				0.843999981880188,
+				5.40161323547363
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				3.5161509513855,
+				2.95369052886963,
+				3.5161509513855
+			],
+			"camera_size": 2.55509471893311,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				-3.5161509513855,
+				2.95369052886963,
+				-3.5161509513855
+			],
+			"camera_size": 2.55509471893311,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				6.24561071395874,
+				0.0054016406647861
+			],
+			"camera_size": 1.80593931674957,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				2.62016749382019,
+				4.77425098419189,
+				-2.62016749382019
+			],
+			"camera_size": 2.77842712402344,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				5.40161323547363,
+				0.843999981880188,
+				0.0000000298023223876953
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_night_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				-5.40161323547363,
+				0.843999981880188,
+				0.0000000298023223876953
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_night_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				0.843999981880188,
+				-5.40161323547363
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_night_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				0.843999981880188,
+				5.40161323547363
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_night_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				3.5161509513855,
+				2.95369052886963,
+				3.5161509513855
+			],
+			"camera_size": 2.55509471893311,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_night_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				-3.5161509513855,
+				2.95369052886963,
+				-3.5161509513855
+			],
+			"camera_size": 2.55509471893311,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_night_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				0.0,
+				6.24561071395874,
+				0.0054016406647861
+			],
+			"camera_size": 1.80593931674957,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_night_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "bicycle_ridden",
+			"bounds": [
+				-0.900268852710724,
+				0.0280000008642673,
+				-0.299989372491837,
+				1.80053770542145,
+				1.63199996948242,
+				0.599978804588318
+			],
+			"camera_position": [
+				2.62016749382019,
+				4.77425098419189,
+				-2.62016749382019
+			],
+			"camera_size": 2.77842712402344,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "bicycle_ridden_night_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				5.40000009536743,
+				0.569557189941406,
+				0.0
+			],
+			"camera_size": 1.2780749797821,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				-5.40000009536743,
+				0.569557189941406,
+				0.0
+			],
+			"camera_size": 1.2780749797821,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				0.569557189941406,
+				-5.40000009536743
+			],
+			"camera_size": 1.80540120601654,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				0.569557189941406,
+				5.40000009536743
+			],
+			"camera_size": 1.80540001392365,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				3.51510095596313,
+				2.67861771583557,
+				3.51510095596313
+			],
+			"camera_size": 2.01733660697937,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				-3.51510095596313,
+				2.67861771583557,
+				-3.51510095596313
+			],
+			"camera_size": 2.01733660697937,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				5.96955490112305,
+				0.00539999781176448
+			],
+			"camera_size": 1.80540001392365,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				2.61938500404358,
+				4.49863433837891,
+				-2.61938500404358
+			],
+			"camera_size": 2.44307112693787,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				5.40000009536743,
+				0.569557189941406,
+				0.0
+			],
+			"camera_size": 1.2780749797821,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_night_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				-5.40000009536743,
+				0.569557189941406,
+				0.0
+			],
+			"camera_size": 1.2780749797821,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_night_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				0.569557189941406,
+				-5.40000009536743
+			],
+			"camera_size": 1.80540120601654,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_night_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				0.569557189941406,
+				5.40000009536743
+			],
+			"camera_size": 1.80540001392365,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_night_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				3.51510095596313,
+				2.67861771583557,
+				3.51510095596313
+			],
+			"camera_size": 2.01733660697937,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_night_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				-3.51510095596313,
+				2.67861771583557,
+				-3.51510095596313
+			],
+			"camera_size": 2.01733660697937,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_night_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				5.96955490112305,
+				0.00539999781176448
+			],
+			"camera_size": 1.80540001392365,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_night_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "mountain_bike_parked",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.08311438560486,
+				0.779979526996613
+			],
+			"camera_position": [
+				2.61938500404358,
+				4.49863433837891,
+				-2.61938500404358
+			],
+			"camera_size": 2.44307112693787,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_parked_night_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				5.40000009536743,
+				0.843999981880188,
+				0.0
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				-5.40000009536743,
+				0.843999981880188,
+				0.0
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				0.843999981880188,
+				-5.40000009536743
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				0.843999981880188,
+				5.40000009536743
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				3.51510095596313,
+				2.95306062698364,
+				3.51510095596313
+			],
+			"camera_size": 2.61357855796814,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				-3.51510095596313,
+				2.95306062698364,
+				-3.51510095596313
+			],
+			"camera_size": 2.61357855796814,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				6.24399757385254,
+				0.00539999781176448
+			],
+			"camera_size": 1.80540001392365,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				2.61938500404358,
+				4.77307748794556,
+				-2.61938500404358
+			],
+			"camera_size": 2.88738012313843,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				5.40000009536743,
+				0.843999981880188,
+				0.0
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_night_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				-5.40000009536743,
+				0.843999981880188,
+				0.0
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_night_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				0.843999981880188,
+				-5.40000009536743
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_night_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				0.843999981880188,
+				5.40000009536743
+			],
+			"camera_size": 1.92575991153717,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_night_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				3.51510095596313,
+				2.95306062698364,
+				3.51510095596313
+			],
+			"camera_size": 2.61357855796814,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_night_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				-3.51510095596313,
+				2.95306062698364,
+				-3.51510095596313
+			],
+			"camera_size": 2.61357855796814,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_night_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				0.0,
+				6.24399757385254,
+				0.00539999781176448
+			],
+			"camera_size": 1.80540001392365,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_night_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "mountain_bike_ridden",
+			"bounds": [
+				-0.900000035762787,
+				0.0280000008642673,
+				-0.389989763498306,
+				1.80000007152557,
+				1.63199996948242,
+				0.779979526996613
+			],
+			"camera_position": [
+				2.61938500404358,
+				4.77307748794556,
+				-2.61938500404358
+			],
+			"camera_size": 2.88738012313843,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "mountain_bike_ridden_night_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				3.64353561401367,
+				0.627940833568573,
+				0.0
+			],
+			"camera_size": 1.415860414505,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				-3.55858039855957,
+				0.627940833568573,
+				0.0
+			],
+			"camera_size": 1.415860414505,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				0.627940833568573,
+				-3.60105800628662
+			],
+			"camera_size": 1.415860414505,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				0.627940833568573,
+				3.60105800628662
+			],
+			"camera_size": 1.415860414505,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				2.38656711578369,
+				2.03439450263977,
+				2.34408926963806
+			],
+			"camera_size": 1.85765731334686,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				-2.30161142349243,
+				2.03439450263977,
+				-2.34408926963806
+			],
+			"camera_size": 1.85765731334686,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				4.22899723052979,
+				0.00360105652362108
+			],
+			"camera_size": 1.20395374298096,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				1.78924751281738,
+				3.24809551239014,
+				-1.74676978588104
+			],
+			"camera_size": 2.00381779670715,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				3.64353561401367,
+				0.627940833568573,
+				0.0
+			],
+			"camera_size": 1.415860414505,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_night_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				-3.55858039855957,
+				0.627940833568573,
+				0.0
+			],
+			"camera_size": 1.415860414505,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_night_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				0.627940833568573,
+				-3.60105800628662
+			],
+			"camera_size": 1.415860414505,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_night_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				0.627940833568573,
+				3.60105800628662
+			],
+			"camera_size": 1.415860414505,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_night_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				2.38656711578369,
+				2.03439450263977,
+				2.34408926963806
+			],
+			"camera_size": 1.85765731334686,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_night_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				-2.30161142349243,
+				2.03439450263977,
+				-2.34408926963806
+			],
+			"camera_size": 1.85765731334686,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_night_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				4.22899723052979,
+				0.00360105652362108
+			],
+			"camera_size": 1.20395374298096,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_night_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "e_scooter_parked",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.19988167285919,
+				0.500415027141571
+			],
+			"camera_position": [
+				1.78924751281738,
+				3.24809551239014,
+				-1.74676978588104
+			],
+			"camera_size": 2.00381779670715,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_parked_night_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				5.08847761154175,
+				0.869000017642975,
+				0.0
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				-5.00352239608765,
+				0.869000017642975,
+				0.0
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				0.869000017642975,
+				-5.0460000038147
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				0.869000017642975,
+				5.0460000038147
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				3.32714414596558,
+				2.83979988098145,
+				3.28466629981995
+			],
+			"camera_size": 2.38137197494507,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				-3.24218845367432,
+				2.83979988098145,
+				-3.28466629981995
+			],
+			"camera_size": 2.38137149810791,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				5.91499757766724,
+				0.00504599791020155
+			],
+			"camera_size": 1.20395374298096,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				2.49014759063721,
+				4.54050445556641,
+				-2.44766974449158
+			],
+			"camera_size": 2.39407920837402,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				5.08847761154175,
+				0.869000017642975,
+				0.0
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_night_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				-5.00352239608765,
+				0.869000017642975,
+				0.0
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_night_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				0.869000017642975,
+				-5.0460000038147
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_night_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				0.869000017642975,
+				5.0460000038147
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_night_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				3.32714414596558,
+				2.83979988098145,
+				3.28466629981995
+			],
+			"camera_size": 2.38137197494507,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_night_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				-3.24218845367432,
+				2.83979988098145,
+				-3.28466629981995
+			],
+			"camera_size": 2.38137149810791,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_night_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				0.0424777269363403,
+				5.91499757766724,
+				0.00504599791020155
+			],
+			"camera_size": 1.20395374298096,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_night_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "e_scooter_ridden",
+			"bounds": [
+				-0.557698607444763,
+				0.0279999915510416,
+				-0.250207513570786,
+				1.20035266876221,
+				1.682000041008,
+				0.500415027141571
+			],
+			"camera_position": [
+				2.49014759063721,
+				4.54050445556641,
+				-2.44766974449158
+			],
+			"camera_size": 2.39407920837402,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_ridden_night_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				3.59986424446106,
+				0.58651202917099,
+				0.0
+			],
+			"camera_size": 1.31808841228485,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				-3.59986424446106,
+				0.58651202917099,
+				0.0
+			],
+			"camera_size": 1.31808841228485,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				0.58651202917099,
+				-3.59986424446106
+			],
+			"camera_size": 1.31808841228485,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				0.58651202917099,
+				3.59986424446106
+			],
+			"camera_size": 1.31808841228485,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				2.34331226348877,
+				1.99249935150146,
+				2.34331226348877
+			],
+			"camera_size": 1.76738607883453,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				-2.34331226348877,
+				1.99249935150146,
+				-2.34331226348877
+			],
+			"camera_size": 1.76738607883453,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				4.18637466430664,
+				0.00359986280091107
+			],
+			"camera_size": 1.20355463027954,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				1.74619078636169,
+				3.20579814910889,
+				-1.74619078636169
+			],
+			"camera_size": 1.93625283241272,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				3.59986424446106,
+				0.58651202917099,
+				0.0
+			],
+			"camera_size": 1.31808841228485,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_night_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				-3.59986424446106,
+				0.58651202917099,
+				0.0
+			],
+			"camera_size": 1.31808841228485,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_night_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				0.58651202917099,
+				-3.59986424446106
+			],
+			"camera_size": 1.31808841228485,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_night_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				0.58651202917099,
+				3.59986424446106
+			],
+			"camera_size": 1.31808841228485,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_night_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				2.34331226348877,
+				1.99249935150146,
+				2.34331226348877
+			],
+			"camera_size": 1.76738607883453,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_night_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				-2.34331226348877,
+				1.99249935150146,
+				-2.34331226348877
+			],
+			"camera_size": 1.76738607883453,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_night_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				4.18637466430664,
+				0.00359986280091107
+			],
+			"camera_size": 1.20355463027954,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_night_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "e_scooter_grab3d_parked",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.11702406406403,
+				0.500000059604645
+			],
+			"camera_position": [
+				1.74619078636169,
+				3.20579814910889,
+				-1.74619078636169
+			],
+			"camera_size": 1.93625283241272,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_parked_night_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				5.0460000038147,
+				0.869000017642975,
+				0.0
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				-5.0460000038147,
+				0.869000017642975,
+				0.0
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				0.869000017642975,
+				-5.0460000038147
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				0.869000017642975,
+				5.0460000038147
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				3.28466629981995,
+				2.83979988098145,
+				3.28466629981995
+			],
+			"camera_size": 2.38110709190369,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				-3.28466629981995,
+				2.83979988098145,
+				-3.28466629981995
+			],
+			"camera_size": 2.38110709190369,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				5.91499757766724,
+				0.00504599791020155
+			],
+			"camera_size": 1.20355463027954,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				2.44766974449158,
+				4.54050445556641,
+				-2.44766974449158
+			],
+			"camera_size": 2.39358639717102,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				5.0460000038147,
+				0.869000017642975,
+				0.0
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_night_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				-5.0460000038147,
+				0.869000017642975,
+				0.0
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_night_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				0.869000017642975,
+				-5.0460000038147
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_night_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				0.869000017642975,
+				5.0460000038147
+			],
+			"camera_size": 1.98476004600525,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_night_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				3.28466629981995,
+				2.83979988098145,
+				3.28466629981995
+			],
+			"camera_size": 2.38110709190369,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_night_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				-3.28466629981995,
+				2.83979988098145,
+				-3.28466629981995
+			],
+			"camera_size": 2.38110709190369,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_night_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				0.0,
+				5.91499757766724,
+				0.00504599791020155
+			],
+			"camera_size": 1.20355463027954,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_night_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "e_scooter_grab3d_ridden",
+			"bounds": [
+				-0.599977374076843,
+				0.0280000008642673,
+				-0.250000029802322,
+				1.19995474815369,
+				1.682000041008,
+				0.500000059604645
+			],
+			"camera_position": [
+				2.44766974449158,
+				4.54050445556641,
+				-2.44766974449158
+			],
+			"camera_size": 2.39358639717102,
+			"condition": "night",
+			"draw_frames": 3,
+			"file": "e_scooter_grab3d_ridden_night_elevated.png",
+			"framed": true,
+			"ready": true
+		}
+	],
+	"renderer": "forward_plus",
+	"resolution": [
+		400,
+		340
+	]
+}

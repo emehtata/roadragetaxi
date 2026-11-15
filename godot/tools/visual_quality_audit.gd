@@ -41,7 +41,9 @@ func build(row: Dictionary) -> Node3D:
 			body.add_child(mesh_node(B3.model_car_details(length,width,int(row.get("sign",0)),lamps,0.5,true,2.26 if kind == "panel_van" else 1.41)))
 		elif kind in ["e_scooter", "e_scooter_grab3d", "bicycle", "mountain_bike"]:
 			helper.place_model_car(kind,Vector2.ZERO,0,length,width,color,0,lamps)
-			body.add_child(mesh_node(B3.model_vehicle_details("bicycle" if kind in ["bicycle", "mountain_bike"] else "e_scooter",length,width,color,lamps,extra)))
+			var details := mesh_node(B3.model_vehicle_details("bicycle" if kind in ["bicycle", "mountain_bike"] else "e_scooter",length,width,color,lamps,extra,kind))
+			details.position.y = B3.ROAD_M + 0.016
+			body.add_child(details)
 		elif kind in ["city_bus", "box_truck", "caravan", "train_locomotive", "train_coach"]:
 			helper.place_model_car(kind,Vector2.ZERO,0,length,width,color,0,lamps)
 		else:

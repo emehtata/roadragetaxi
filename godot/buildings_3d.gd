@@ -1048,12 +1048,24 @@ static func model_car_details(length: float, width: float, sign: int, lamps: int
 
 
 ## A GLB vehicle's live lamps and rider (vehicle()); bikes and e-scooters get one front and one rear lamp.
-static func model_vehicle_details(kind: String, length: float, width: float, color: Color, lamps: int, extra: Dictionary) -> Dictionary:
+static func model_vehicle_details(kind: String, length: float, width: float, color: Color, lamps: int, extra: Dictionary, model_kind := "") -> Dictionary:
+	if model_kind.is_empty(): model_kind = kind
 	var bike := kind in ["bicycle", "e_scooter"]
-	var out := model_car_details(length, width, 0, lamps, 0.8,
+	var out := _empty_arrays() if kind == "motorcycle" else model_car_details(length, width, 0, lamps, 0.8,
 		bike or kind in ["truck", "motorcycle", "camper_van"], 1.41, bike)
 	if bike:
-		_bike_lamps(out, length * 0.5, lamps, SCOOTER_DECK_Y - 0.04 if kind == "e_scooter" else 0.72)
+		var mounts: Array = MODEL_BIKE_LAMPS[model_kind]
+		_model_lens(out, model_kind, length, width, mounts[0], lamps & LAMPS_ON != 0,
+			Color(1.0, 0.95, 0.78), Color8(190, 190, 183))
+		_model_lens(out, model_kind, length, width, mounts[1], lamps & (LAMPS_ON | LAMPS_BRAKE) != 0,
+			Color(1.0, 0.07, 0.04) if lamps & LAMPS_BRAKE else Color(0.55, 0.03, 0.02), Color8(120, 30, 25))
+	elif kind == "motorcycle":
+		# White/red native lenses already follow lamp/brake state in place_model_car().
+		for rear: bool in [false, true]:
+			for side: float in [-1.0, 1.0]:
+				var centre := Vector3(side * (0.16 if rear else 0.24), 0.6295 if rear else 1.0495, -0.69 if rear else 0.43)
+				_model_lens(out, model_kind, length, width, AABB(centre - Vector3.ONE * 0.026, Vector3.ONE * 0.052),
+					lamps & (LAMPS_LEFT if side > 0.0 else LAMPS_RIGHT) != 0, Color(1.0, 0.6, 0.05), Color8(150, 105, 40))
 	if kind == "motorcycle" and extra.get("riding", false):
 		_rider(out, -length * 0.15, length * 0.06, 0.95, Color8(34, 34, 38), color.lightened(0.15))
 	elif kind == "bicycle" and extra.get("riding", false):
@@ -1062,6 +1074,22 @@ static func model_vehicle_details(kind: String, length: float, width: float, col
 		_rider(out, -length * 0.06, length * 0.14, SCOOTER_RIDER_SEAT, color, Color8(236, 196, 160))
 		_rider_legs(out, -length * 0.06, length * 0.14, SCOOTER_RIDER_SEAT, SCOOTER_DECK_Y, Color8(48, 58, 74))
 	return out
+
+
+## Existing model-local lenses or stem/deck mounts; the model scale and +Z-to-+X turn also place their overlays.
+const MODEL_BIKE_LAMPS := {
+	"bicycle": [AABB(Vector3(-0.035, 0.704, 0.786), Vector3(0.07, 0.07, 0.016)), AABB(Vector3(-0.037, 0.69, -0.85), Vector3(0.074, 0.036, 0.018))],
+	"mountain_bike": [AABB(Vector3(-0.035, 1.015, 0.292), Vector3(0.07, 0.06, 0.04)), AABB(Vector3(-0.03, 0.982, -0.382), Vector3(0.06, 0.06, 0.04))],
+	"e_scooter": [AABB(Vector3(-0.035, 0.84, 0.378), Vector3(0.07, 0.065, 0.05)), AABB(Vector3(-0.045, 0.093, -0.322), Vector3(0.09, 0.045, 0.03))],
+	"e_scooter_grab3d": [AABB(Vector3(-0.03, 0.73, 0.276), Vector3(0.06, 0.055, 0.02)), AABB(Vector3(-0.035, 0.08, -0.32), Vector3(0.07, 0.04, 0.035))],
+}
+
+
+static func _model_lens(out: Dictionary, model: String, length: float, width: float, box: AABB, lit: bool, on: Color, off: Color) -> void:
+	var scale := model_scale(model, length, width)
+	var low := box.position * scale
+	var high := box.end * scale
+	_part(out, LAMP if lit else PAINT, low.z, high.z, -high.x, -low.x, low.y, high.y, on if lit else off)
 
 
 ## A bike's lamps (docs/specs/bicycle-rendering.md): white under the bars, red under the saddle, centred;
@@ -1168,8 +1196,8 @@ func vehicle(kind: String, at: Vector2, heading: float, length: float, width: fl
 	var model_kind := vehicle_model_kind(kind, id)
 	if opaque and has_model(kind) and (kind != "tractor" or not extra.get("plough", false)):
 		place_model_car(model_kind, at, heading, length, width, color, elevation, lamps)
-		var detail_key := "vd|%s|%.2f|%.2f|%d|%s" % [kind, length, width, lamps, str(extra)]
-		place_body(detail_key, model_vehicle_details.bind(kind, length, width, color, lamps, extra), at, heading, elevation)
+		var detail_key := "vd|%s|%.2f|%.2f|%d|%s" % [model_kind, length, width, lamps, str(extra)]
+		place_body(detail_key, model_vehicle_details.bind(kind, length, width, color, lamps, extra, model_kind), at, heading, elevation)
 		return
 	var key := "v|%s|%.2f|%.2f|%s|%d|%s" % [kind, length, width, color.to_html(false), lamps, extra]
 	var fallen: bool = extra.get("fallen", false)

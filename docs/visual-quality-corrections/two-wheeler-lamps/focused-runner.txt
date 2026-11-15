@@ -1,0 +1,16 @@
+extends "res://tests/run_tests.gd"
+func _initialize() -> void:
+	call_deferred("run_targeted")
+func _process(_delta: float) -> bool:
+	return false
+func run_targeted() -> void:
+	test_two_wheeler_model_lamp_attachments()
+	test_two_wheeler_variant_lamp_cache()
+	test_bicycle_lamps_single_pair()
+	test_bicycle_headlight_single_beam()
+	test_model_sizes_match_sim()
+	test_mountain_bike_keeps_its_width()
+	test_model_variant_stable_and_covering()
+	test_scooter_rider_feet_on_deck()
+	print("two-wheeler lamps: ",_checks," checks, ",_failures," failed")
+	quit(1 if _failures else 0)

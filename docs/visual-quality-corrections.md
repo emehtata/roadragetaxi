@@ -66,3 +66,7 @@ This correction does not verify smaller viewports, other audit defects, surveyed
 ## VQA-001–005: continuous vehicle windscreens
 
 Residual painted triangles were clipped from the existing front-glass footprint in the hatchback, estate, SUV, pickup and panel-van GLBs. Source-versus-pooled comparison confirms the artifacts were present in the imported geometry. Glass, materials, model transforms, other primitives and shared rendering/LOD behavior remain unchanged. [Correction notes, before/after contact sheets and five passing named gameplay captures](visual-quality-corrections/vehicle-windscreens/README.md) retain the diagnosis, deterministic repair, preservation checks and inspected evidence. The original audit remains historical.
+
+## VQA-006, VQA-009–011, VQA-013–015: attached two-wheeler lights
+
+The selected bicycle/scooter model now controls its live lens anchors and overlay cache key. Motorcycle white/red native lenses retain their existing state path; amber indicators sit in their native housings instead of inheriting detached generic car lamps. Existing models, rider geometry, fallback lamps and single-beam behavior are retained. [Diagnosis, before/after sheets, production regressions and exact-model named gameplay evidence](visual-quality-corrections/two-wheeler-lamps/README.md) cover the five source models, parked/ridden daylight and lit night states. Original audit findings remain historical; the independent ship review passed.

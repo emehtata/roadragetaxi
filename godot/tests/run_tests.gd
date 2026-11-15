@@ -84,8 +84,8 @@ func test_bicycle_lamps_single_pair() -> void:
 		for i in bike["verts"].size():
 			if int(bike["part"][i].x) == B3.LAMP:
 				lamps.append(bike["verts"][i])
-		check(lamps.size() == 2 * per_box and lamps.all(func(v): return absf(v.z) < 0.05)
-			and lamps.any(func(v): return v.x > 0.5) and lamps.any(func(v): return v.x < -0.5),
+		check(lamps.size() == 2 * per_box and lamps.all(func(v): return absf(v.z) < 0.065)
+			and lamps.any(func(v): return v.x > 0.0) and lamps.any(func(v): return v.x < 0.0),
 			"%s: one front and one rear lamp, centred (%d lamp vertices)" % [kind, lamps.size()])
 		if kind == "e_scooter":
 			var rear_top: float = lamps.filter(func(v): return v.x < -0.5).reduce(func(m, v): return maxf(m, v.y), -1.0)
@@ -93,6 +93,103 @@ func test_bicycle_lamps_single_pair() -> void:
 	var car := B3.model_vehicle_details("sedan", 4.4, 1.8, Color.RED, lit, {})
 	var car_lamps := Array(car["part"]).filter(func(v): return int(v.x) == B3.LAMP).size()
 	check(car_lamps == 2 * 2 * per_box + 2 * per_box + 2 * per_box, "a car keeps 2+2 lamps, reverse lamps and indicators (%d)" % car_lamps)
+
+
+## Recorded source-space housings/mounts, measured from the unmodified GLBs.
+const TWO_WHEELER_MOUNTS := {
+	"motorcycle": [AABB(Vector3(0.215, 1.0245, 0.405), Vector3(0.05, 0.05, 0.05)), AABB(Vector3(-0.265, 1.0245, 0.405), Vector3(0.05, 0.05, 0.05)),
+		AABB(Vector3(0.135, 0.6045, -0.715), Vector3(0.05, 0.05, 0.05)), AABB(Vector3(-0.185, 0.6045, -0.715), Vector3(0.05, 0.05, 0.05))],
+	"bicycle": [AABB(Vector3(-0.036, 0.703, 0.7891), Vector3(0.072, 0.072, 0.011)), AABB(Vector3(-0.046, 0.685, -0.8469), Vector3(0.092, 0.046, 0.034))],
+	"mountain_bike": [AABB(Vector3(-0.05, 1.0146, 0.2697), Vector3(0.1, 0.04, 0.04)), AABB(Vector3(-0.018, 0.9989, -0.3649), Vector3(0.036, 0.016, 0.048))],
+	"e_scooter": [AABB(Vector3(-0.024, 0.84, 0.38), Vector3(0.048, 0.08, 0.035)), AABB(Vector3(-0.057, 0.095, -0.30), Vector3(0.114, 0.005, 0.06))],
+	"e_scooter_grab3d": [AABB(Vector3(-0.031, 0.7275, 0.2714), Vector3(0.062, 0.0596, 0.0214)), AABB(Vector3(-0.0875, 0.068, -0.3043), Vector3(0.175, 0.064, 0.04))],
+}
+
+
+func _two_wheeler_id(kind: String, model: String) -> String:
+	for i in 100:
+		var id := "lamp_attachment_%d" % i
+		if B3.model_variant(kind, id) == model:
+			return id
+	return ""
+
+
+func _lamp_boxes(node: MeshInstance3D) -> Array:
+	var arrays: Array = node.mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var parts: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
+	var boxes := []
+	for i in range(0, verts.size(), 36):
+		if int(parts[i].x) != B3.LAMP: continue
+		var box := AABB(node.transform * verts[i], Vector3.ZERO)
+		for j in range(i + 1, i + 36): box = box.expand(node.transform * verts[j])
+		boxes.append(box)
+	return boxes
+
+
+func test_two_wheeler_model_lamp_attachments() -> void:
+	for model: String in TWO_WHEELER_MOUNTS:
+		var kind := "bicycle" if model == "mountain_bike" else "e_scooter" if model == "e_scooter_grab3d" else model
+		var length := 2.2 if kind == "motorcycle" else 1.8 if kind == "bicycle" else 1.2
+		var width := 0.8 if kind == "motorcycle" else 0.6 if kind == "bicycle" else 0.5
+		for heading: float in [0.0, 0.75, -1.7]:
+			for riding: bool in [false, true]:
+				var renderer := _model_frame(func(r): r.vehicle(kind, Vector2(13, -7), heading, length, width, Color.RED, 31, 2.3,
+					{"id": _two_wheeler_id(kind, model), "riding": riding}))
+				var source: Node3D = renderer._model_nodes[model][0]
+				var boxes := _lamp_boxes(renderer._car_nodes[0][0])
+				check(boxes.size() == TWO_WHEELER_MOUNTS[model].size(), "%s: no detached car/reverse lamp blocks" % model)
+				for box: AABB in boxes:
+					var matched := false
+					for mount: AABB in TWO_WHEELER_MOUNTS[model]:
+						var placed: AABB = source.transform * mount
+						matched = matched or placed.grow(0.02).intersects(box) and placed.grow(0.10).encloses(box)
+					check(matched, "%s lamps touch model mount within 2 cm at heading %.2f/riding %s: %s" % [model, heading, riding, box])
+				renderer.route_3d.free()
+				renderer.free()
+
+
+	for model: String in TWO_WHEELER_MOUNTS:
+		var kind := "bicycle" if model == "mountain_bike" else "e_scooter" if model == "e_scooter_grab3d" else model
+		for bits: int in [0, B3.LAMPS_ON, B3.LAMPS_BRAKE, B3.LAMPS_LEFT, B3.LAMPS_RIGHT, B3.LAMPS_REVERSE]:
+			var renderer := _model_frame(func(r): r.vehicle(kind, Vector2.ZERO, 0, 2.2 if kind == "motorcycle" else 1.8 if kind == "bicycle" else 1.2,
+				0.8 if kind == "motorcycle" else 0.6 if kind == "bicycle" else 0.5, Color.RED, bits, 0, {"id":_two_wheeler_id(kind, model)}))
+			var boxes := _lamp_boxes(renderer._car_nodes[0][0])
+			var want := (2 if bits & (B3.LAMPS_LEFT | B3.LAMPS_RIGHT) else 0) if kind == "motorcycle" else 2 if bits & B3.LAMPS_ON else 1 if bits & B3.LAMPS_BRAKE else 0
+			check(boxes.size() == want, "%s lamp state %d: %d overlay lenses, want %d" % [model, bits, boxes.size(), want])
+			if kind == "motorcycle":
+				for pair: Array in renderer._model_nodes[model][0].get_meta("light_materials"):
+					if pair[1] in ["lightWhite", "lightRed"]:
+						check(pair[0].emission_enabled == (bits & (B3.LAMPS_ON | B3.LAMPS_BRAKE if pair[1] == "lightRed" else B3.LAMPS_ON) != 0), "motorcycle native %s state %d" % [pair[1], bits])
+			renderer.route_3d.free()
+			renderer.free()
+
+
+func test_two_wheeler_variant_lamp_cache() -> void:
+	for kind: String in ["bicycle", "e_scooter"]:
+		var variants: Array = B3.MODEL_VARIANTS[kind]
+		var length := 1.8 if kind == "bicycle" else 1.2
+		var width := 0.6 if kind == "bicycle" else 0.5
+		var renderer := _model_frame(func(r): pass)
+		var old_opaque: bool = B3.opaque
+		B3.opaque = true
+		for order: Array in [variants, [variants[1], variants[0]], variants]:
+			renderer.begin_cars()
+			for model: String in order:
+				renderer.vehicle(kind, Vector2.ZERO, 0, length, width, Color.RED, 31, 0,
+					{"id":_two_wheeler_id(kind, model), "riding":false})
+			renderer.end_cars()
+			var first: Array = _lamp_boxes(renderer._car_nodes[0][0])
+			var second: Array = _lamp_boxes(renderer._car_nodes[1][0])
+			check(first != second, "%s variants keep distinct mount geometry in order %s" % [kind, order])
+			for i in 2:
+				var source: Node3D = renderer._model_nodes[order[i]][0]
+				for box: AABB in _lamp_boxes(renderer._car_nodes[i][0]):
+					check(TWO_WHEELER_MOUNTS[order[i]].any(func(m): return (source.transform * m).grow(0.02).intersects(box)),
+						"%s overlay cache uses selected model %s" % [kind, order[i]])
+		B3.opaque = old_opaque
+		renderer.route_3d.free()
+		renderer.free()
 
 
 ## docs/specs/bicycle-rendering.md AC 3: a riding bike casts one centred beam, not a pair.
@@ -389,6 +486,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	MapChunk.build_async = false  # check the buildings right after a chunk loads
 	MapChunk.buildings_3d = false  # the legacy 2D renderer's checks; test_buildings_3d switches it on
 	test_scripts_compile()
+	test_two_wheeler_model_lamp_attachments()
+	test_two_wheeler_variant_lamp_cache()
 	test_bicycle_lamps_single_pair()
 	test_bicycle_headlight_single_beam()
 	test_forest_canopy()
