@@ -168,6 +168,69 @@ Tests (tests/test_collision_scenarios.py, no map load, explicit poses and a stub
 
 Out of scope: NPC vehicles felling trees (phase 6), trees in the shared static index (phase 4), and tree collision for the player on foot.
 
+## Phase 4 (full): one static-obstacle index
+Goal: one level-aware static-obstacle index, built on SpatialWayGrid, replaces the taxi's 4 hand-made grids
+(`_building_collision_grid`, `_fence_collision_grid`, `_barrier_grid`, `_post_grid`). Streamed tiles add and remove entries
+without a full rebuild. Covers scenarios 9 (objects approaching from different chunks) and 12 (objects entering and leaving streamed chunks).
+
+Current state (what this replaces): each grid keeps its own `_ref`/`_count`, indexes the appended tail, and clears itself
+completely when the list is replaced or shrinks. That happens on every `autofetch._unload_tiles` (it filters every `_WORLD_SECTIONS` list),
+so one unloaded tile rebuilds all four grids on the next tick. The cell sizes are 100/100/50/20 m. `stand_trees_in` (client chunk unload)
+only resets felled trees and is not touched.
+
+Files:
+- `src/theroadragetrip/physics.py` `SpatialWayGrid`: add `def remove(self, item) -> None`. It removes the item from the cells its stored bbox
+  covers, without a scan of the whole grid. `insert` records the insertion order for every insert, not only in `rebuild`, so the
+  `ways_in_rect` order stays stable as items stream in. No other behaviour changes; the existing road grids stay byte-identical.
+- `src/theroadragetrip/collision.py`: `class StaticObstacleIndex` (the only static index; no second spatial structure):
+  - `__init__(self, cell_size: float = 50.0)` wraps one `SpatialWayGrid(cell_size, map_level=None)`.
+  - An entry is a `StaticEntry(obj, category: Category, layer: int, level, bbox)` with `__slots__`. `level` comes from the object's map level
+    (trees and posts: SURFACE_LEVEL), `layer` from `getattr(obj, "layer", 0)`, and `bbox` is set once at insert. The grid holds entries, not raw objects.
+  - `def sync(self, source: str, items: list, category: Category, accept=None, expand=None) -> None` handles the source lists
+    "buildings", "sceneries" (fences), "railings", "scenery_objects" (posts) and "sceneries.trees" (FelledTree via `expand`).
+    The same list with more items indexes only the new tail. `forget(section, removed)` (amended 2026-11-15): autofetch's
+    `_unload_tiles` hands the unloaded objects to its `unload_listeners` (world_loader registers the taxi's index), so the entries
+    leave queries at once at a cost proportional to what was removed, and the next sync of the in-place filtered list takes the tail path.
+    Otherwise a replaced or shrunk list does an id-set diff: it removes the entries that are gone
+    and adds the new ones. Survivors keep their entry and their FelledTree identity, so `felled_trees` stays valid.
+  - `def query(self, x, y, radius, categories: Category, level=None, layer=None) -> list[obj]` returns unique objects in a stable order
+    (source insertion order, the same as the old grids' cell scan for single-cell hits), filtered by category, and by `on_map_level` and `layer` when given.
+- `src/theroadragetrip/taxi.py`: delete the 4 grids, their `_ref`/`_count` fields and `_collision_cells`. Add `self.static_index`.
+  `_nearby_collision_buildings`, `_nearby_collision_fences`, `_nearby_barriers` and `_nearby_posts` keep their signatures
+  (protocol.py:438 calls `_nearby_barriers`) and become `sync(...)` + `query(...)`. Their accept rules stay the same
+  (OPEN_ROOF_BUILDING_TYPES skipped, SOLID_AREA_KINDS, POST_KINDS). `check_*` bodies do not change.
+- `tools/bench_map_jitter.py`: add `--compare-index` output fields `static_index_ms` (`build`, `update`, `query`), timed around `sync` and `query`.
+
+Must stay identical: every `check_*_collision` return value, its penalty, cooldown, stop, the knocked post and felled tree, and the road-overlap
+exemption, for the same inputs. Existing tests pass **unedited** (test_level_collision.py, test_crash_physics.py, test_collision_scenarios.py, protocol tests).
+Server authoritative and nothing new is sent to Godot. Map-layer separation: buildings stay level-filtered, and posts and trees stay surface only.
+
+Acceptance:
+1. `grep -n "_collision_grid\|_barrier_grid\|_post_grid" src/` finds nothing except read-only accessors kept for existing tests
+   (amended 2026-11-15: `TaxiManager._post_grid`, a property over the index that the unedited test_tree_felling_deterministic reads;
+   it holds no grid of its own). `StaticObstacleIndex` is the only static obstacle grid in taxi.py.
+2. Scenario 9: a building, a fence, a railing and a bollard each straddle a chunk boundary (`CHUNK_SIZE_M`), and the taxi approaches from the other chunk
+   at 15 m/s. Each check reports the hit on the same tick as with the phase 3 grids (recorded in the test as the expected tick).
+3. Scenario 12: after `sync` with a shrunk list (one tile's objects removed), a query at the removed spot returns nothing and the taxi passes through
+   with no collision. After they are added back, it collides again. The other entries are never re-inserted (`SpatialWayGrid.insert` call count == new items only).
+4. A level -1 building and a layer 1 railing are not returned for a surface, layer 0 query.
+5. Felled trees survive an unrelated tile unload (same object, `knocked_angle` kept).
+6. Bench budget (PBF bench at 69 m/s, the phase 3 drive): the static index work (`sync` + `query`, all four checks) is <= 0.30 ms per tick at p50
+   and <= 1.0 ms at p99, and a tile-unload tick's `sync` is <= 2.0 ms. Ratio: the `collisions_section` mean is <= 1.05x phase 3, judged on the median of
+   **7 interleaved runs** (A/B/A/B on the same machine, phase 3 from a temporary worktree, the first pair discarded as warm-up). If the 95% interval of the
+   ratio over the 7 pairs is wider than +-5%, the absolute budget decides; record both numbers in Progress.
+7. Full `pytest` and the Godot tests are green, nothing deselected.
+
+Tests:
+- tests/test_collision_scenarios.py: test_static_index_cross_chunk_approach (scenario 9; fails without a cross-chunk entry if bboxes are not spread over cells),
+  test_static_index_unload_and_reload (scenario 12; fails today because a shrink clears and rebuilds the whole grid, the insert count),
+  test_static_index_level_and_layer_filter, test_felled_tree_survives_tile_unload (fails today: a new scenery list drops and re-creates the trees).
+- tests/test_spatial_way_grid*.py (or the existing physics test): test_remove_drops_item_from_all_cells, test_insert_order_stable_without_rebuild.
+- Bench: `tools/bench_map_jitter.py --compare-index`, run as in acceptance 6.
+
+Out of scope: NPC vehicles and pedestrians querying the index (phases 5, 6), the vehicle grid (dynamic, it stays as it is), roadworks and
+bridge edges in the index, and the client-side chunk streaming.
+
 ## Later phases (outline)
 2. Shared OBB-vs-polygon and circle-vs-box helpers in collision.py. Taxi, npc and trams use them. Scenarios 3, 4, 14.
 3. Move trees to the server: add trees to the taxi's post grid with the POST category, send `knocked_trees` in the protocol, and remove the collision from Godot `knock_trees` so Godot only draws it. Scenarios 4, 10.
@@ -183,3 +246,4 @@ Animals on the server (wildlife.gd is decoration), and roadworks geometry before
 - [x] Audit, matrix, spec (2026-11-14)
 - [x] Phase 1 (2026-11-14): collision.py, npc.py uses `same_plane`, tests/test_collision_scenarios.py (5 tests); full suite green
 - [x] Phase 2 (2026-11-14): `box_hits_polygon`, `box_hits_polyline`, `post_box_depth` in collision.py; taxi.py and trams.py use them (`_overlaps` deleted); 6 new tests; full suite green; bench_map_jitter.py times the taxi checks
+- [x] Phase 4 (2026-11-15): `StaticObstacleIndex` in collision.py over `SpatialWayGrid` (`remove`, insert order); taxi.py's 4 grids gone; autofetch hands unloaded objects to `StaticObstacleIndex.forget` (`unload_listeners`, registered in world_loader); 8 new tests; full suite green (3003 passed, 3 skipped). Bench (Oulu, Overpass cache, no local PBF here, 69 m/s, 120 s, 3 runs, `--compare-index`): static index p50 0.033 ms, p99 0.83-0.92 ms per tick (pass); unload 1.35-1.47 ms per unload tick, 0.93-1.00 ms per call, no id-set diffs (pass, budget 2.0). collisions_section vs phase 3 after `forget`: median ratio 1.016, 95% interval +-6.3% (wider than the +-5% target, so the absolute budgets decide; they pass: static index p50 0.033 ms, p99 ~0.9 ms; unload tick <= 1.51 ms; forget <= 0.95 ms per call).

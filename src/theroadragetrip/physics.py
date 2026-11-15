@@ -896,6 +896,7 @@ class SpatialWayGrid:
         # which grid cell a query happens to reach an item through first
         # (see ways_in_rect's docstring for why that matters).
         self._insertion_order: dict[int, int] = {}
+        self._next_order = 0  # insert() numbers items rebuild() did not
         self._pending_ways: Optional[List] = None
         self._pending_index: int = 0
         self._pending_grid: Optional[dict] = None
@@ -912,7 +913,26 @@ class SpatialWayGrid:
             self.revision = 0
 
     def insert(self, way) -> None:
+        if self._insertion_order.setdefault(id(way), self._next_order) == self._next_order:
+            self._next_order += 1
         self._insert_into(self.grid, way)
+
+    def remove(self, item) -> None:
+        """Drop an inserted item from the cells its stored bbox covers."""
+        self._insertion_order.pop(id(item), None)
+        bbox = getattr(item, "bbox", None)
+        if not bbox:
+            return
+        hw = getattr(item, "half_width_m", 3.0)
+        for gx in range(int((bbox[0] - hw) // self.cell_size), int((bbox[2] + hw) // self.cell_size) + 1):
+            for gy in range(int((bbox[1] - hw) // self.cell_size), int((bbox[3] + hw) // self.cell_size) + 1):
+                cell = self.grid.get((gx, gy), ())
+                for index, way in enumerate(cell):
+                    if way is item:  # identity: dataclass ways compare equal by value
+                        del cell[index]
+                        if not cell:
+                            del self.grid[(gx, gy)]
+                        break
 
     def _insert_into(self, grid: dict, way) -> None:
         if self.map_level is not None and not on_map_level(way, self.map_level):
@@ -932,20 +952,17 @@ class SpatialWayGrid:
 
         hw = getattr(way, "half_width_m", 3.0)
         minx, miny, maxx, maxy = bbox
-        gx0 = int((minx - hw) // self.cell_size)
-        gx1 = int((maxx + hw) // self.cell_size)
-        gy0 = int((miny - hw) // self.cell_size)
-        gy1 = int((maxy + hw) // self.cell_size)
-        for gx in range(gx0, gx1 + 1):
+        size = self.cell_size
+        gy0 = int((miny - hw) // size)
+        gy1 = int((maxy + hw) // size)
+        for gx in range(int((minx - hw) // size), int((maxx + hw) // size) + 1):
             for gy in range(gy0, gy1 + 1):
-                cell = (gx, gy)
-                if cell not in grid:
-                    grid[cell] = []
-                grid[cell].append(way)
+                grid.setdefault((gx, gy), []).append(way)
 
     def rebuild(self, ways: List) -> None:
         self.grid.clear()
         self._insertion_order = {id(w): index for index, w in enumerate(ways)}
+        self._next_order = len(ways)
         for w in ways:
             self.insert(w)
         self.indexed_way_count = len(ways)
@@ -975,6 +992,7 @@ class SpatialWayGrid:
             return False
         self.grid = self._pending_grid
         self._insertion_order = {id(w): i for i, w in enumerate(self._pending_ways)}
+        self._next_order = len(self._pending_ways)
         self.indexed_way_count = len(self._pending_ways)
         self.revision += 1
         self._pending_ways = None

@@ -338,6 +338,8 @@ class AutoFetchManager:
         # hold a key twice), so an unload filters the list by identity:
         # recomputing every object's key took 55-65 ms a tick.
         self._live_items: dict[str, dict[tuple, list]] = {}
+        # (section, removed objects) after each unload: the taxi's StaticObstacleIndex.forget
+        self.unload_listeners: list = []
         # Tiles that left the active window but aren't unloaded yet - kept
         # resident (map_revision-cheap on their own, since staying loaded
         # touches nothing) so a player who immediately doubles back doesn't
@@ -1008,10 +1010,13 @@ class AutoFetchManager:
             live = self._live_items.get(section, {})
             gone = [live.pop(key, None) for key in keys]
             if any(items is None for items in gone):  # added some other way: by key
+                removed = [item for item in target if _map_object_key(item) in keys]
                 target[:] = [item for item in target if _map_object_key(item) not in keys]
             else:
-                ids = {id(item) for items in gone for item in items}
+                removed = [item for items in gone for item in items]
+                ids = {id(item) for item in removed}
                 target[:] = [item for item in target if id(item) not in ids]
+            self._notify_unloaded(section, removed)
             if before is not None:
                 removed_places = before - {id(item) for item in target}
         if removed_places:
@@ -1022,6 +1027,10 @@ class AutoFetchManager:
                     building.associated_places[:] = [
                         place for place in building.associated_places if id(place) not in removed_places
                     ]
+
+    def _notify_unloaded(self, section: str, removed: list) -> None:
+        for listener in getattr(self, "unload_listeners", ()):
+            listener(section, removed)
 
     def _evict_inactive_tiles(self, now: float) -> None:
         """Unload resident-but-inactive tiles once memory pressure - or,

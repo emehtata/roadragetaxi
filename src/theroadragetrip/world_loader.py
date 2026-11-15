@@ -468,6 +468,7 @@ def load_world(
         cooldown_s=0.0 if getattr(args, "osm_source", "overpass") == "pbf"
         and local_pbf_available(getattr(args, "osm_pbf_path", None)) else 5.0,
     )
+    auto_fetch_manager.unload_listeners.append(taxi_mgr.static_index.forget)  # the same lists the checks get
     auto_fetch_manager.initialize_player_tile(car.x, car.y, fetched_area_metres(bbox))
     prepare_initial_window(auto_fetch_manager, args, car.x, car.y)
     taxi_mgr.map_covers = auto_fetch_manager.covers

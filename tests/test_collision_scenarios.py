@@ -263,3 +263,123 @@ def test_unloaded_chunk_trees_stand_and_stay_up():
         car.x += car.speed / 30.0
         manager.check_tree_collision(car, sceneries, 2.0 + frame / 30.0)
     assert _knocked_trees(world, 300.0, 0.0) == [[300.0, 0.0, 0.0]]  # the first does not fall again
+
+
+# Phase 4: one static-obstacle index, scenarios 9 and 12.
+from theroadragetrip.collision import StaticObstacleIndex
+from theroadragetrip.map_chunks import CHUNK_SIZE_M
+from theroadragetrip.osm.models import Railing
+
+_EDGE = CHUNK_SIZE_M  # a chunk boundary at x = 500 m
+_STRADDLE = [(_EDGE - 5.0, -5.0), (_EDGE + 5.0, -5.0), (_EDGE + 5.0, 5.0), (_EDGE - 5.0, 5.0)]
+
+
+def _approach_from_next_chunk(check, objects, frames=120, dt=1.0 / 30.0):
+    manager, car = TaxiManager(ways=[]), Car(x=_EDGE + 30.0, y=0.0, heading=math.pi, speed=15.0)
+    for frame in range(frames):
+        prev = (car.x, car.y)
+        car.x -= car.speed * dt
+        if check(manager)(car, objects, frame * dt, prev):
+            return frame
+    return None
+
+
+def test_static_index_cross_chunk_approach():
+    bbox = (_EDGE - 5.0, -5.0, _EDGE + 5.0, 5.0)
+    cases = [  # expected tick: what the phase 3 grids reported
+        (lambda m: m.check_building_collision, [Building(points_m=_STRADDLE)], 45),
+        (lambda m: m.check_fence_collision, [NS(kind="construction", points_m=_STRADDLE, bbox=bbox)], 45),
+        (lambda m: m.check_barrier_collision,
+         [Railing(points_m=[(_EDGE - 3.0, -6.0), (_EDGE + 3.0, 6.0)], bbox=(_EDGE - 3.0, -6.0, _EDGE + 3.0, 6.0), kind="wall")], 55),
+        (lambda m: m.check_post_collision, [NS(x=_EDGE - 0.1, y=0.0, kind="bollard", knocked_angle=None)], 55),
+    ]
+    for check, objects, tick in cases:
+        assert _approach_from_next_chunk(check, objects) == tick
+    index = StaticObstacleIndex()
+    index.sync("buildings", [Building(points_m=_STRADDLE)], Category.BUILDING)
+    cells = [cell for cell, entries in index.grid.grid.items() if entries]
+    assert len(cells) >= 2  # the straddling bbox is spread over the cells of both chunks
+
+
+def test_static_index_unload_and_reload():
+    far = [Building(points_m=[(x, 200.0), (x + 8.0, 200.0), (x + 8.0, 208.0), (x, 208.0)]) for x in range(0, 400, 20)]
+    here = Building(points_m=[(10.0, -5.0), (20.0, -5.0), (20.0, 5.0), (10.0, 5.0)])
+    manager = TaxiManager(ways=[])
+    inserts = []
+    original = manager.static_index.grid.insert
+    manager.static_index.grid.insert = lambda item: (inserts.append(item), original(item))[1]
+
+    def drive(buildings):
+        car = Car(x=0.0, y=0.0, heading=0.0, speed=15.0)
+        for frame in range(60):
+            prev = (car.x, car.y)
+            car.x += car.speed / 30.0
+            if manager.check_building_collision(car, buildings, sim_time=100.0 * len(inserts) + frame, previous_position=prev):
+                return True
+        return False
+
+    assert drive(far + [here])
+    assert len(inserts) == len(far) + 1
+    inserts.clear()
+    assert drive(list(far)) is False  # the tile with `here` unloaded
+    assert manager.static_index.query(15.0, 0.0, 1.0, Category.BUILDING) == []
+    assert inserts == []
+    assert drive(far + [here])  # reloaded
+    assert [entry.obj for entry in inserts] == [here]
+
+
+def test_static_index_level_and_layer_filter():
+    index = StaticObstacleIndex()
+    garage = Building(points_m=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)], map_level=-1)
+    deck = Railing(points_m=[(0.0, 5.0), (10.0, 5.0)], bbox=(0.0, 5.0, 10.0, 5.0), layer=1)
+    index.sync("buildings", [garage], Category.BUILDING)
+    index.sync("railings", [deck], Category.BARRIER)
+    both = Category.BUILDING | Category.BARRIER
+    assert index.query(5.0, 5.0, 2.0, both, level=0, layer=0) == []
+    assert index.query(5.0, 5.0, 2.0, both) == [garage, deck]
+
+
+def test_felled_tree_survives_tile_unload():
+    near, far = NS(trees=[(10.0, 0.0)]), NS(trees=[(300.0, 0.0)])
+    manager = TaxiManager(ways=[])
+
+    def drive(sceneries, t0):
+        car, felled = Car(x=0.0, y=0.0, heading=0.0, speed=10.0), 0
+        for frame in range(60):
+            car.x += car.speed / 30.0
+            felled += manager.check_tree_collision(car, sceneries, t0 + frame / 30.0)
+        return felled
+
+    assert drive([near, far], 0.0) == 1
+    tree = manager.felled_trees[0]
+    angle = tree.knocked_angle
+    assert drive([near], 10.0) == 0  # the far tile unloaded: a new list, the near tree still lies felled
+    assert manager.felled_trees == [tree] and tree.knocked_angle == angle
+    assert tree in manager.static_index.query(10.0, 0.0, 1.0, Category.POST)
+
+
+def test_static_index_forget_is_proportional_to_the_removed():
+    """autofetch hands over the unloaded objects: the next sync of the same, in-place filtered
+    list needs no id-set diff, and the removed are gone from queries at once."""
+    keep = [Building(points_m=[(x, 200.0), (x + 8.0, 200.0), (x + 8.0, 208.0), (x, 208.0)]) for x in range(0, 400, 20)]
+    gone = Building(points_m=[(10.0, -5.0), (20.0, -5.0), (20.0, 5.0), (10.0, 5.0)])
+    buildings = keep[:5] + [gone] + keep[5:]
+    index = StaticObstacleIndex()
+    index.sync("buildings", buildings, Category.BUILDING)
+    buildings[:] = [b for b in buildings if b is not gone]  # autofetch filters in place
+    index.forget("buildings", [gone])
+    assert index.query(15.0, 0.0, 1.0, Category.BUILDING) == []
+    index._diff = None  # a diff now would fail
+    index.sync("buildings", buildings, Category.BUILDING)
+    assert index.query(4.0, 204.0, 1.0, Category.BUILDING) == [keep[0]]
+
+
+def test_autofetch_unload_hands_over_the_removed():
+    from theroadragetrip.osm.autofetch import AutoFetchManager
+
+    manager = AutoFetchManager.__new__(AutoFetchManager)
+    calls = []
+    manager.unload_listeners = [lambda section, removed: calls.append((section, removed))]
+    building = Building(points_m=_STRADDLE)
+    manager._notify_unloaded("buildings", [building])
+    assert calls == [("buildings", [building])]

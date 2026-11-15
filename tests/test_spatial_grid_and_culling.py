@@ -244,3 +244,27 @@ def test_incremental_rebuild_matches_synchronous_rebuild_exactly():
     sync_results = sorted(id(w) for w in sync_grid.ways_in_rect(-100, -100, 1000, 100))
     inc_results = sorted(id(w) for w in inc_grid.ways_in_rect(-100, -100, 1000, 100))
     assert sync_results == inc_results == sorted(id(w) for w in ways)
+
+
+def _box_item(minx, miny, maxx, maxy):
+    from types import SimpleNamespace
+    return SimpleNamespace(bbox=(minx, miny, maxx, maxy), half_width_m=0.0)
+
+
+def test_remove_drops_item_from_all_cells():
+    grid = SpatialWayGrid(50.0)
+    wide, other = _box_item(10.0, 10.0, 140.0, 90.0), _box_item(20.0, 20.0, 30.0, 30.0)
+    grid.insert(wide)
+    grid.insert(other)
+    grid.remove(wide)
+    assert not any(wide in cell for cell in grid.grid.values())
+    assert list(grid.ways_in_rect(0.0, 0.0, 200.0, 200.0)) == [other]
+
+
+def test_insert_order_stable_without_rebuild():
+    grid = SpatialWayGrid(50.0)
+    late, early = _box_item(40.0, 0.0, 60.0, 20.0), _box_item(70.0, 0.0, 90.0, 20.0)  # equal areas
+    grid.insert(early)
+    grid.insert(late)
+    assert list(grid.ways_in_rect(0.0, 0.0, 99.0, 20.0)) == [early, late]
+    assert list(grid.ways_in_rect(55.0, 0.0, 99.0, 20.0)) == [early, late]

@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
-from .collision import box_hits_polygon, box_hits_polyline, post_box_depth
+from .collision import Category, StaticObstacleIndex, box_hits_polygon, box_hits_polyline, post_box_depth
 from .map_level import SURFACE_LEVEL, on_map_level
 from .osm import OPEN_ROOF_BUILDING_TYPES, Building, Curb, Place, SpeedBump, TaxiStop, Way
 from .physics import (
@@ -41,6 +41,7 @@ MOTION_SICKNESS_THRESHOLD = 8.0
 POST_KINDS = ("bollard", "street_lamp")  # solid poles the taxi can hit
 POST_RADIUS_M = 0.15
 POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stopping the taxi
+POST_QUERY_RADIUS_M = 10.0  # beyond any car's half diagonal plus a tree trunk
 TREE_RADIUS_M = 0.4  # a tree the taxi touches within this of its trunk falls (Godot TRUNK_RADIUS_M)
 
 
@@ -68,6 +69,23 @@ LANDMARK_STAND_M = 800.0  # ...but first its taxi stand, this close (terminals s
 LANDMARK_WEIGHTS = {"airport": 100_000, "railway_station": 10_000}
 GREET_RADIUS_M = 2.0
 SOLID_AREA_KINDS = ("construction", "ice_rink", "stadium")  # fenced or walled all round: a crash, never a drive-in  # how close the driver on foot must be to greet a booked rail customer
+_BUILDING, _BARRIER, _POST = int(Category.BUILDING), int(Category.BARRIER), int(Category.POST)  # int: IntFlag ops are slow
+
+
+def _closed_building(building) -> bool:
+    return str(getattr(building, "building_type", "") or "").casefold() not in OPEN_ROOF_BUILDING_TYPES
+
+
+def _solid_area(scenery) -> bool:
+    return str(getattr(scenery, "kind", "")).lower() in SOLID_AREA_KINDS
+
+
+def _post(obj) -> bool:
+    return getattr(obj, "kind", None) in POST_KINDS
+
+
+def _felled_trees(scenery) -> list:
+    return [FelledTree(tx, ty) for tx, ty in getattr(scenery, "trees", ())]
 
 
 @dataclass
@@ -276,30 +294,17 @@ class TaxiManager:
         self._crashed_fence_cooldowns: Dict[int, float] = {}  # scenery id -> timestamp cooldown
         self._tram_crash_at = -1e9  # sim time of the last tram crash (one penalty an impact)
         self._crashed_post_cooldowns: Dict[int, float] = {}  # bollard/lamp id -> timestamp cooldown
-        self._post_grid: Dict[Tuple[int, int], List[Any]] = {}
-        self._post_ref = None
-        self._post_count = 0
-        self._tree_ref = None
-        self._tree_count = 0
+        self.static_index = StaticObstacleIndex()  # buildings, fences, railings, posts and trees
         self.felled_trees: List[FelledTree] = []  # only ever grows
         self.knocked_posts = 0  # how many bollards/lamps lie flat (render cache revision)
         self.broken_lamps: set = set()  # (x, y) of knocked-down street lamps: their light is off
         self._curb_bump_cooldowns: Dict[int, float] = {}  # curb id -> timestamp cooldown
         self._speed_bump_cooldowns: Dict[int, float] = {}  # speed bump id -> timestamp cooldown
         self._speed_camera_hits: set[int] = set()
-        self._building_collision_grid: Dict[Tuple[int, int], List[Building]] = {}
-        self._building_collision_ref = None
-        self._building_collision_count = 0
         self._roads_through_key = None  # (id, len) of the road list _roads_through_cache was made from
         self._roads_through_cache: Dict[int, list] = {}  # building id -> the car roads crossing it
-        self._fence_collision_grid: Dict[Tuple[int, int], List[Any]] = {}
-        self._fence_collision_ref = None
-        self._fence_collision_count = 0
         self.broken_hedges: Dict[Any, List[List[Tuple[float, float]]]] = {}  # session damage, keyed by original geometry and layer
         self.barrier_sound = "collision.fence"
-        self._barrier_grid: Dict[Tuple[int, int], List[Any]] = {}  # linear barriers (Railing), indexed as they stream in
-        self._barrier_ref = None
-        self._barrier_count = 0
         self.vomit_puddles: List[Tuple[float, float]] = []
         self.taxi_smoke_timer: float = 0.0
         self.speed_camera_flash_timer: float = 0.0
@@ -552,95 +557,22 @@ class TaxiManager:
         if is_sliding:
             self.adjust_passenger_happiness(-0.6 * dt)
 
-    @staticmethod
-    def _collision_cells(minx: float, miny: float, maxx: float, maxy: float, cell_size: float = 100.0):
-        for cell_x in range(math.floor(minx / cell_size), math.floor(maxx / cell_size) + 1):
-            for cell_y in range(math.floor(miny / cell_size), math.floor(maxy / cell_size) + 1):
-                yield cell_x, cell_y
+    @property
+    def _building_collision_ref(self):
+        return self.static_index.indexed("buildings")[0]
+
+    @property
+    def _building_collision_count(self):
+        return self.static_index.indexed("buildings")[1]
 
     def _nearby_collision_buildings(self, buildings: List[Building], x: float, y: float, radius: float):
-        # autofetch.py's _extend_unique() only ever grows this list in
-        # place (target.extend(...) - same list object, never reordered
-        # or shrunk) as new tiles stream in, so a real, growing city map
-        # made this fire on nearly every frame right after a tile
-        # integrated - and rebuilt the *entire* grid from every building
-        # ever loaded, not just the new ones, every single time. Confirmed
-        # via a real autofetch-enabled drive: "collisions" dominated 97%
-        # of frames that missed the 60fps budget, several ms each,
-        # clustered right around tile-integration frames, car speed
-        # irrelevant (0 m/s reproduced it too - this scales with total
-        # loaded map size, not how far the player has driven). Indexing
-        # only the newly appended tail is safe exactly because of that
-        # append-only guarantee; only fall back to a full rebuild for a
-        # genuinely different list (a new city) or the list somehow
-        # shrinking (defensive - autofetch never does this today).
-        if buildings is not self._building_collision_ref:
-            self._building_collision_grid.clear()
-            self._building_collision_ref = buildings
-            self._building_collision_count = 0
-        if len(buildings) < self._building_collision_count:
-            self._building_collision_grid.clear()
-            self._building_collision_count = 0
-        if len(buildings) > self._building_collision_count:
-            for building in buildings[self._building_collision_count:]:
-                if str(getattr(building, "building_type", "") or "").casefold() in OPEN_ROOF_BUILDING_TYPES:
-                    continue
-                bbox = getattr(building, "bbox", (0.0, 0.0, 0.0, 0.0))
-                if bbox == (0.0, 0.0, 0.0, 0.0):
-                    points = getattr(building, "points_m", [])
-                    if not points:
-                        continue
-                    xs, ys = zip(*points)
-                    bbox = (min(xs), min(ys), max(xs), max(ys))
-                    building.bbox = bbox
-                for cell in self._collision_cells(*bbox):
-                    self._building_collision_grid.setdefault(cell, []).append(building)
-            self._building_collision_count = len(buildings)
-        nearby = []
-        seen = set()
-        for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
-            for building in self._building_collision_grid.get(cell, ()):
-                building_id = id(building)
-                if building_id not in seen:
-                    seen.add(building_id)
-                    nearby.append(building)
-        return nearby
+        # A grown list indexes only its new tail; an unloaded tile removes just its entries.
+        self.static_index.sync("buildings", buildings, Category.BUILDING, accept=_closed_building)
+        return self.static_index.query(x, y, radius, _BUILDING)
 
     def _nearby_collision_fences(self, sceneries: List[Any], x: float, y: float, radius: float):
-        # Same fix, same reason, as _nearby_collision_buildings above -
-        # autofetch only ever appends to this list, so index just the new
-        # tail on growth instead of rebuilding from every scenery ever
-        # loaded.
-        if sceneries is not self._fence_collision_ref:
-            self._fence_collision_grid.clear()
-            self._fence_collision_ref = sceneries
-            self._fence_collision_count = 0
-        if len(sceneries) < self._fence_collision_count:
-            self._fence_collision_grid.clear()
-            self._fence_collision_count = 0
-        if len(sceneries) > self._fence_collision_count:
-            for scenery in sceneries[self._fence_collision_count:]:
-                if str(getattr(scenery, "kind", "")).lower() not in SOLID_AREA_KINDS:
-                    continue
-                bbox = getattr(scenery, "bbox", (0.0, 0.0, 0.0, 0.0))
-                if bbox == (0.0, 0.0, 0.0, 0.0):
-                    points = getattr(scenery, "points_m", [])
-                    if not points:
-                        continue
-                    xs, ys = zip(*points)
-                    bbox = (min(xs), min(ys), max(xs), max(ys))
-                for cell in self._collision_cells(*bbox):
-                    self._fence_collision_grid.setdefault(cell, []).append(scenery)
-            self._fence_collision_count = len(sceneries)
-        nearby = []
-        seen = set()
-        for cell in self._collision_cells(x - radius, y - radius, x + radius, y + radius):
-            for scenery in self._fence_collision_grid.get(cell, ()):
-                scenery_id = id(scenery)
-                if scenery_id not in seen:
-                    seen.add(scenery_id)
-                    nearby.append(scenery)
-        return nearby
+        self.static_index.sync("sceneries", sceneries, Category.BARRIER, accept=_solid_area)
+        return self.static_index.query(x, y, radius, _BARRIER, source="sceneries")
 
     def set_language(self, language: str) -> None:
         self.language = language
@@ -912,25 +844,9 @@ class TaxiManager:
         return False
 
     def _nearby_barriers(self, railings: List[Any], x: float, y: float, radius: float):
-        """Railings near (x, y): a 50 m grid, only its new tail indexed as
-        the streamed map appends (like _nearby_collision_fences)."""
-        if railings is not self._barrier_ref or len(railings) < self._barrier_count:
-            self._barrier_grid.clear()
-            self._barrier_ref = railings
-            self._barrier_count = 0
-        for railing in railings[self._barrier_count:]:
-            box = railing.bbox
-            for cx in range(int(box[0] // 50), int(box[2] // 50) + 1):
-                for cy in range(int(box[1] // 50), int(box[3] // 50) + 1):
-                    self._barrier_grid.setdefault((cx, cy), []).append(railing)
-        self._barrier_count = len(railings)
-        seen = set()
-        for cx in range(int((x - radius) // 50), int((x + radius) // 50) + 1):
-            for cy in range(int((y - radius) // 50), int((y + radius) // 50) + 1):
-                for railing in self._barrier_grid.get((cx, cy), ()):
-                    if id(railing) not in seen:
-                        seen.add(id(railing))
-                        yield railing
+        """Railings near (x, y) from the static index."""
+        self.static_index.sync("railings", railings, Category.BARRIER)
+        return self.static_index.query(x, y, radius, _BARRIER, source="railings")
 
     @staticmethod
     def hedge_key(railing):
@@ -1047,28 +963,18 @@ class TaxiManager:
             logger.info("Player crashed into a tram: -%d pts", penalty)
         return True
 
+    @property
+    def _post_grid(self):  # read-only view for tests written against the old 20 m post grid
+        return {None: self.static_index.objects("scenery_objects") + self.static_index.objects("sceneries.trees")}
+
     def _nearby_posts(self, objects: List[Any], x: float, y: float, sceneries=None):
         """Bollards, lamp posts and the sceneries' trees (FelledTree, surface
-        only, Category.POST) near (x, y) from a 20 m grid, indexing only newly
-        appended objects and sceneries (both lists only grow, like the
-        building list in _nearby_collision_buildings)."""
-        if objects is not self._post_ref or len(objects) < self._post_count:
-            self._post_grid, self._post_ref, self._post_count = {}, objects, 0
-            self._tree_ref, self._tree_count = None, 0
-        if sceneries is None:  # posts only: the trees indexed so far stay
-            sceneries = self._tree_ref if self._tree_ref is not None else ()
-        if sceneries is not self._tree_ref or len(sceneries) < self._tree_count:
-            if self._tree_ref is not None:  # a new scenery list: drop its trees, keep the posts
-                for key, cell in self._post_grid.items():
-                    self._post_grid[key] = [obj for obj in cell if not isinstance(obj, FelledTree)]
-            self._tree_ref, self._tree_count = sceneries, 0
-        new = [obj for obj in objects[self._post_count:] if getattr(obj, "kind", None) in POST_KINDS]
-        new += [FelledTree(tx, ty) for scenery in sceneries[self._tree_count:] for tx, ty in getattr(scenery, "trees", ())]
-        for obj in new:
-            self._post_grid.setdefault((math.floor(obj.x / 20.0), math.floor(obj.y / 20.0)), []).append(obj)
-        self._post_count, self._tree_count = len(objects), len(sceneries)
-        cell_x, cell_y = math.floor(x / 20.0), math.floor(y / 20.0)
-        return [obj for dx in (-1, 0, 1) for dy in (-1, 0, 1) for obj in self._post_grid.get((cell_x + dx, cell_y + dy), ())]
+        only, Category.POST) near (x, y). sceneries=None keeps the trees indexed so far."""
+        index = self.static_index
+        index.sync("scenery_objects", objects, Category.POST, accept=_post)
+        if sceneries is not None:
+            index.sync("sceneries.trees", sceneries, Category.POST, expand=_felled_trees)
+        return index.query(x, y, POST_QUERY_RADIUS_M, _POST)
 
     def check_tree_collision(self, player_car: Car, sceneries: List[Any], sim_time: float) -> int:
         """Fell the standing trees the taxi touches, the way it is going.
@@ -1077,9 +983,8 @@ class TaxiManager:
         pose = (player_car.heading, player_car.length_m, player_car.width_m)
         angle = player_car.heading if player_car.speed >= 0.0 else player_car.heading + math.pi
         felled = 0
-        if self._post_ref is None:
-            self._post_ref = []  # no posts seen yet: a stable list, so the grid is not rebuilt each tick
-        for tree in self._nearby_posts(self._post_ref, player_car.x, player_car.y, sceneries):
+        posts = self.static_index.indexed("scenery_objects")[0]  # the posts as last synced: no re-sync
+        for tree in self._nearby_posts(posts if posts is not None else (), player_car.x, player_car.y, sceneries):
             if isinstance(tree, FelledTree) and tree.knocked_angle is None and post_box_depth(
                     tree.x, tree.y, TREE_RADIUS_M, player_car.x, player_car.y, *pose) >= 0.0:
                 tree.knocked_angle = angle

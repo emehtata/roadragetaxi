@@ -72,9 +72,9 @@ def client(port: int, path: str) -> int:
     return 0
 
 
-def pct(values, p):
+def pct(values, p, digits=1):
     values = sorted(values)
-    return round(values[min(len(values) - 1, int(len(values) * p))], 1) if values else 0.0
+    return round(values[min(len(values) - 1, int(len(values) * p))], digits) if values else 0.0
 
 
 def replay(states) -> dict:
@@ -167,6 +167,8 @@ def main(argv=None) -> int:
     parser.add_argument("--speed", type=float, default=20.0, help="m/s (20: 72 km/h)")
     parser.add_argument("--heading", type=float, default=0.0, help="radians, 0 east, 1.5708 north")
     parser.add_argument("--sample-ms", type=float, default=0.0, help="record the stack of ticks running longer than this")
+    parser.add_argument("--compare-index", action="store_true",
+                        help="time the taxi's StaticObstacleIndex sync and query per tick (static_index_ms)")
     parser.add_argument("--json", type=Path, help="also write the result here (and the server log beside it)")
     parser.add_argument("--port", type=int, default=0,
                         help="listen here, for a Godot client to attach too (godot --headless --path godot -- "
@@ -241,6 +243,54 @@ def main(argv=None) -> int:
                    "check_tram_collision", "check_post_collision", "check_tree_collision"):
         if hasattr(TaxiManager, helper):  # check_tree_collision: phase 3 on
             setattr(TaxiManager, helper, timed("taxi." + helper, getattr(TaxiManager, helper)))
+    from theroadragetrip import collision as _collision
+
+    if args.compare_index and hasattr(_collision, "StaticObstacleIndex"):
+        index_cls = _collision.StaticObstacleIndex
+
+        in_check = [0]  # static_index_ms counts the taxi checks' calls (protocol's hedge scan is not one)
+        for helper in ("check_building_collision", "check_fence_collision", "check_barrier_collision",
+                       "check_post_collision", "check_tree_collision"):
+            def checked(fn):
+                def wrapper(*a, **k):
+                    in_check[0] += 1
+                    try:
+                        return fn(*a, **k)
+                    finally:
+                        in_check[0] -= 1
+                return wrapper
+            setattr(TaxiManager, helper, checked(getattr(TaxiManager, helper)))
+
+        def timed_index(fn, kind):
+            def wrapper(self, *a, **k):
+                if not in_check[0] and kind not in ("unload", "diff"):  # forget: from autofetch's unload, not a check
+                    return fn(self, *a, **k)
+                name = kind
+                if kind == "sync":  # build: a new or grown list; update: replaced or shrunk (a tile unloaded)
+                    ref, count = self.indexed(a[0])
+                    name = "build" if ref is None or (ref is a[1] and len(a[1]) >= count) else "update"
+                started, cpu = time.perf_counter(), time.thread_time()
+                try:
+                    return fn(self, *a, **k)
+                finally:
+                    rec = current[0]
+                    if rec is not None:  # wall includes GIL waits on the map threads; cpu does not
+                        values = rec.setdefault("static_index", {})
+                        values[name] = values.get(name, 0.0) + (time.perf_counter() - started) * 1000.0
+                        values[name + "_cpu"] = values.get(name + "_cpu", 0.0) + (time.thread_time() - cpu) * 1000.0
+                        if name in ("unload", "diff"):  # one call's cost, beside the tick's sum
+                            calls = rec.setdefault("static_index_update_calls", [])
+                            calls.append((time.perf_counter() - started) * 1000.0)
+            return wrapper
+
+        index_cls.sync = timed_index(index_cls.sync, "sync")
+        index_cls._diff = timed_index(index_cls._diff, "diff")  # inside update: the removal, not the new tile's inserts
+        if hasattr(index_cls, "forget"):
+            index_cls.forget = timed_index(index_cls.forget, "unload")  # autofetch hands over the removed
+            index = server.world.taxi_mgr.static_index  # world_loader registered the untimed bound method
+            streamer.manager.unload_listeners[:] = [index.forget if getattr(f, "__self__", None) is index else f
+                                                    for f in streamer.manager.unload_listeners]
+        index_cls.query = timed_index(index_cls.query, "query")
     from theroadragetrip import protocol as _protocol
 
     if hasattr(_protocol, "_knocked_trees"):
@@ -395,6 +445,9 @@ def main(argv=None) -> int:
                 "over_50ms": sum(w > 50 for w in walls),
                 "over_100ms": sum(w > 100 for w in walls)}
 
+    totals = [sum(v for k, v in t.get("static_index", {}).items() if k in ("build", "update", "query")) for t in ticks]
+    cpu_totals = [sum(v for k, v in t.get("static_index", {}).items() if k in ("build_cpu", "update_cpu", "query_cpu"))
+                  for t in ticks]
     waits = {}
     for t in ticks:
         waits.setdefault(",".join(t["background"]) or "-", []).append(t["wall"] - t["cpu"])
@@ -426,6 +479,15 @@ def main(argv=None) -> int:
             name: round(sum(t["phases"].get(name, (0.0, 0.0))[0] for t in ticks) / max(1, len(ticks)), 4)
             for name in sorted({n for t in ticks for n in t["phases"] if n.startswith("taxi.check_") or n == "protocol._knocked_trees"})}
         | {"collisions_section": round(sum(t.get("sim_sections", {}).get("collisions", 0.0) for t in ticks) / max(1, len(ticks)), 4)},
+        **({"static_index_ms": {
+            **{name: {"p50": pct(v, .5, 3), "p99": pct(v, .99, 3), "max": round(max(v, default=0.0), 3), "ticks": sum(x > 0 for x in v)}
+               for name in ("build", "update", "unload", "diff", "query", "build_cpu", "update_cpu", "unload_cpu", "diff_cpu", "query_cpu")
+               for v in [[t.get("static_index", {}).get(name, 0.0) for t in ticks]]},
+            "per_tick": {"p50": pct(totals, .5, 3), "p99": pct(totals, .99, 3), "max": round(max(totals, default=0.0), 3)},
+            "unload_call_max": round(max((c for t in ticks for c in t.get("static_index_update_calls", ())), default=0.0), 3),
+            "per_tick_cpu": {"p50": pct(cpu_totals, .5, 3), "p99": pct(cpu_totals, .99, 3),
+                             "max": round(max(cpu_totals, default=0.0), 3)},
+        }} if args.compare_index else {}),
         "slow_ticks": {"count": len(slow), "wall_ms": round(sum(t["wall"] for t in slow)),
                        "waiting_ms": round(sum(t["wall"] - t["cpu"] for t in slow)),
                        "phases_ms": {k: round(v) for k, v in sorted(phases.items(), key=lambda kv: -kv[1])}},
