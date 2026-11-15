@@ -1,0 +1,1494 @@
+{
+	"adapter": "NVIDIA GeForce RTX 5060",
+	"captures": [
+		{
+			"angle": "mesh_lod_007.4m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 7.4352126121521,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_007.4m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_014.9m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 14.8704252243042,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_014.9m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_029.7m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 29.7408504486084,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_029.7m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_059.5m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 59.4817008972168,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_059.5m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_119.0m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 118.963401794434,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_119.0m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_237.9m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 237.926803588867,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_237.9m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_006.7m",
+			"asset": "A-002",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 6.74891471862793,
+			"family": "runtime-lod",
+			"file": "A-002_mesh_lod_006.7m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_013.5m",
+			"asset": "A-002",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 13.4978294372559,
+			"family": "runtime-lod",
+			"file": "A-002_mesh_lod_013.5m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_027.0m",
+			"asset": "A-002",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 26.9956588745117,
+			"family": "runtime-lod",
+			"file": "A-002_mesh_lod_027.0m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_054.0m",
+			"asset": "A-002",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 53.9913177490234,
+			"family": "runtime-lod",
+			"file": "A-002_mesh_lod_054.0m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_108.0m",
+			"asset": "A-002",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 107.982635498047,
+			"family": "runtime-lod",
+			"file": "A-002_mesh_lod_108.0m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_216.0m",
+			"asset": "A-002",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 215.965270996094,
+			"family": "runtime-lod",
+			"file": "A-002_mesh_lod_216.0m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_008.1m",
+			"asset": "A-003",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 8.10183334350586,
+			"family": "runtime-lod",
+			"file": "A-003_mesh_lod_008.1m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_016.2m",
+			"asset": "A-003",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 16.2036666870117,
+			"family": "runtime-lod",
+			"file": "A-003_mesh_lod_016.2m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_032.4m",
+			"asset": "A-003",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 32.4073333740234,
+			"family": "runtime-lod",
+			"file": "A-003_mesh_lod_032.4m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_064.8m",
+			"asset": "A-003",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 64.8146667480469,
+			"family": "runtime-lod",
+			"file": "A-003_mesh_lod_064.8m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_129.6m",
+			"asset": "A-003",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 129.629333496094,
+			"family": "runtime-lod",
+			"file": "A-003_mesh_lod_129.6m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_259.3m",
+			"asset": "A-003",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 259.258666992188,
+			"family": "runtime-lod",
+			"file": "A-003_mesh_lod_259.3m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_008.2m",
+			"asset": "A-004",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 8.21124744415283,
+			"family": "runtime-lod",
+			"file": "A-004_mesh_lod_008.2m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_016.4m",
+			"asset": "A-004",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 16.4224948883057,
+			"family": "runtime-lod",
+			"file": "A-004_mesh_lod_016.4m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_032.8m",
+			"asset": "A-004",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 32.8449897766113,
+			"family": "runtime-lod",
+			"file": "A-004_mesh_lod_032.8m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_065.7m",
+			"asset": "A-004",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 65.6899795532227,
+			"family": "runtime-lod",
+			"file": "A-004_mesh_lod_065.7m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_131.4m",
+			"asset": "A-004",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 131.379959106445,
+			"family": "runtime-lod",
+			"file": "A-004_mesh_lod_131.4m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_262.8m",
+			"asset": "A-004",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 262.759918212891,
+			"family": "runtime-lod",
+			"file": "A-004_mesh_lod_262.8m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_008.5m",
+			"asset": "A-005",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 8.47230243682861,
+			"family": "runtime-lod",
+			"file": "A-005_mesh_lod_008.5m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_016.9m",
+			"asset": "A-005",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 16.9446048736572,
+			"family": "runtime-lod",
+			"file": "A-005_mesh_lod_016.9m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_033.9m",
+			"asset": "A-005",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 33.8892097473145,
+			"family": "runtime-lod",
+			"file": "A-005_mesh_lod_033.9m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_067.8m",
+			"asset": "A-005",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 67.7784194946289,
+			"family": "runtime-lod",
+			"file": "A-005_mesh_lod_067.8m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_135.6m",
+			"asset": "A-005",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 135.556838989258,
+			"family": "runtime-lod",
+			"file": "A-005_mesh_lod_135.6m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_271.1m",
+			"asset": "A-005",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 271.113677978516,
+			"family": "runtime-lod",
+			"file": "A-005_mesh_lod_271.1m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_008.9m",
+			"asset": "A-008",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 8.89080047607422,
+			"family": "runtime-lod",
+			"file": "A-008_mesh_lod_008.9m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_017.8m",
+			"asset": "A-008",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 17.7816009521484,
+			"family": "runtime-lod",
+			"file": "A-008_mesh_lod_017.8m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_035.6m",
+			"asset": "A-008",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 35.5632019042969,
+			"family": "runtime-lod",
+			"file": "A-008_mesh_lod_035.6m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_071.1m",
+			"asset": "A-008",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 71.1264038085938,
+			"family": "runtime-lod",
+			"file": "A-008_mesh_lod_071.1m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_142.3m",
+			"asset": "A-008",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 142.252807617188,
+			"family": "runtime-lod",
+			"file": "A-008_mesh_lod_142.3m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_284.5m",
+			"asset": "A-008",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 284.505615234375,
+			"family": "runtime-lod",
+			"file": "A-008_mesh_lod_284.5m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		}
+	],
+	"homes": [],
+	"lod": [
+		{
+			"asset": "A-001",
+			"samples": [
+				{
+					"distance_m": 7.4352126121521,
+					"primitives": 21280
+				},
+				{
+					"distance_m": 14.8704252243042,
+					"primitives": 20654
+				},
+				{
+					"distance_m": 29.7408504486084,
+					"primitives": 20340
+				},
+				{
+					"distance_m": 59.4817008972168,
+					"primitives": 19044
+				},
+				{
+					"distance_m": 118.963401794434,
+					"primitives": 18796
+				},
+				{
+					"distance_m": 237.926803588867,
+					"primitives": 12006
+				}
+			],
+			"surfaces": [
+				{
+					"base_indices": 12480,
+					"base_vertices": 8512,
+					"lods": [
+						{
+							"edge_length": 0.00569494161754847,
+							"index_bytes": 12480
+						},
+						{
+							"edge_length": 0.0878620222210884,
+							"index_bytes": 6240
+						},
+						{
+							"edge_length": 0.689413011074066,
+							"index_bytes": 3120
+						},
+						{
+							"edge_length": 4.70254850387573,
+							"index_bytes": 792
+						}
+					]
+				},
+				{
+					"base_indices": 40452,
+					"base_vertices": 27557,
+					"lods": [
+						{
+							"edge_length": 0.31851714849472,
+							"index_bytes": 40452
+						},
+						{
+							"edge_length": 4.61838626861572,
+							"index_bytes": 672
+						}
+					]
+				},
+				{
+					"base_indices": 2232,
+					"base_vertices": 1539,
+					"lods": [
+						{
+							"edge_length": 0.00702517479658127,
+							"index_bytes": 2232
+						},
+						{
+							"edge_length": 0.0668008923530579,
+							"index_bytes": 1116
+						},
+						{
+							"edge_length": 0.23484693467617,
+							"index_bytes": 468
+						},
+						{
+							"edge_length": 0.457096219062805,
+							"index_bytes": 228
+						},
+						{
+							"edge_length": 1.49087464809418,
+							"index_bytes": 108
+						}
+					]
+				},
+				{
+					"base_indices": 4152,
+					"base_vertices": 2456,
+					"lods": [
+						{
+							"edge_length": 0.00387500762008131,
+							"index_bytes": 4152
+						},
+						{
+							"edge_length": 0.0143754156306386,
+							"index_bytes": 2076
+						},
+						{
+							"edge_length": 0.0550096966326237,
+							"index_bytes": 1032
+						},
+						{
+							"edge_length": 0.168991699814796,
+							"index_bytes": 516
+						},
+						{
+							"edge_length": 0.774354994297028,
+							"index_bytes": 252
+						},
+						{
+							"edge_length": 1.73055386543274,
+							"index_bytes": 72
+						}
+					]
+				},
+				{
+					"base_indices": 9696,
+					"base_vertices": 6846,
+					"lods": [
+						{
+							"edge_length": 0.896982252597809,
+							"index_bytes": 8292
+						},
+						{
+							"edge_length": 1.34547340869904,
+							"index_bytes": 432
+						},
+						{
+							"edge_length": 2.0182101726532,
+							"index_bytes": 144
+						}
+					]
+				},
+				{
+					"base_indices": 3360,
+					"base_vertices": 2088,
+					"lods": [
+						{
+							"edge_length": 0.00602899491786957,
+							"index_bytes": 3360
+						},
+						{
+							"edge_length": 0.018316613510251,
+							"index_bytes": 1680
+						},
+						{
+							"edge_length": 0.0364361517131329,
+							"index_bytes": 840
+						},
+						{
+							"edge_length": 0.105275124311447,
+							"index_bytes": 420
+						},
+						{
+							"edge_length": 0.15791267156601,
+							"index_bytes": 204
+						},
+						{
+							"edge_length": 0.236869007349014,
+							"index_bytes": 96
+						},
+						{
+							"edge_length": 0.355303525924683,
+							"index_bytes": 48
+						}
+					]
+				},
+				{
+					"base_indices": 2364,
+					"base_vertices": 1328,
+					"lods": []
+				},
+				{
+					"base_indices": 0,
+					"base_vertices": 216,
+					"lods": []
+				}
+			],
+			"system": "generated imported mesh LOD"
+		},
+		{
+			"asset": "A-002",
+			"samples": [
+				{
+					"distance_m": 6.74891471862793,
+					"primitives": 21957
+				},
+				{
+					"distance_m": 13.4978294372559,
+					"primitives": 20815
+				},
+				{
+					"distance_m": 26.9956588745117,
+					"primitives": 20501
+				},
+				{
+					"distance_m": 53.9913177490234,
+					"primitives": 19381
+				},
+				{
+					"distance_m": 107.982635498047,
+					"primitives": 19193
+				},
+				{
+					"distance_m": 215.965270996094,
+					"primitives": 12415
+				}
+			],
+			"surfaces": [
+				{
+					"base_indices": 12585,
+					"base_vertices": 8719,
+					"lods": [
+						{
+							"edge_length": 0.00411404669284821,
+							"index_bytes": 12582
+						},
+						{
+							"edge_length": 0.0828233957290649,
+							"index_bytes": 6282
+						},
+						{
+							"edge_length": 1.55890226364136,
+							"index_bytes": 3132
+						},
+						{
+							"edge_length": 4.27988719940186,
+							"index_bytes": 1152
+						}
+					]
+				},
+				{
+					"base_indices": 40452,
+					"base_vertices": 27563,
+					"lods": [
+						{
+							"edge_length": 0.27462312579155,
+							"index_bytes": 40452
+						},
+						{
+							"edge_length": 3.2675473690033,
+							"index_bytes": 672
+						}
+					]
+				},
+				{
+					"base_indices": 3096,
+					"base_vertices": 2117,
+					"lods": [
+						{
+							"edge_length": 0.0177282579243183,
+							"index_bytes": 3096
+						},
+						{
+							"edge_length": 2.47969055175781,
+							"index_bytes": 120
+						}
+					]
+				},
+				{
+					"base_indices": 4152,
+					"base_vertices": 2456,
+					"lods": [
+						{
+							"edge_length": 0.00378623860888183,
+							"index_bytes": 4152
+						},
+						{
+							"edge_length": 0.0142998220399022,
+							"index_bytes": 2076
+						},
+						{
+							"edge_length": 0.0451096445322037,
+							"index_bytes": 1032
+						},
+						{
+							"edge_length": 0.156364619731903,
+							"index_bytes": 516
+						},
+						{
+							"edge_length": 0.234546944499016,
+							"index_bytes": 252
+						},
+						{
+							"edge_length": 0.427800536155701,
+							"index_bytes": 72
+						}
+					]
+				},
+				{
+					"base_indices": 9696,
+					"base_vertices": 6838,
+					"lods": [
+						{
+							"edge_length": 0.911168396472931,
+							"index_bytes": 8292
+						},
+						{
+							"edge_length": 1.36675250530243,
+							"index_bytes": 432
+						},
+						{
+							"edge_length": 2.050128698349,
+							"index_bytes": 144
+						}
+					]
+				},
+				{
+					"base_indices": 3360,
+					"base_vertices": 2088,
+					"lods": [
+						{
+							"edge_length": 0.00524189788848162,
+							"index_bytes": 3360
+						},
+						{
+							"edge_length": 0.015103766694665,
+							"index_bytes": 1680
+						},
+						{
+							"edge_length": 0.0372339077293873,
+							"index_bytes": 840
+						},
+						{
+							"edge_length": 0.0948353856801987,
+							"index_bytes": 420
+						},
+						{
+							"edge_length": 0.142253071069717,
+							"index_bytes": 156
+						},
+						{
+							"edge_length": 0.213379606604576,
+							"index_bytes": 72
+						},
+						{
+							"edge_length": 0.320069402456284,
+							"index_bytes": 36
+						}
+					]
+				},
+				{
+					"base_indices": 2364,
+					"base_vertices": 1328,
+					"lods": []
+				},
+				{
+					"base_indices": 0,
+					"base_vertices": 216,
+					"lods": []
+				}
+			],
+			"system": "generated imported mesh LOD"
+		},
+		{
+			"asset": "A-003",
+			"samples": [
+				{
+					"distance_m": 8.10183334350586,
+					"primitives": 22214
+				},
+				{
+					"distance_m": 16.2036666870117,
+					"primitives": 21588
+				},
+				{
+					"distance_m": 32.4073333740234,
+					"primitives": 21274
+				},
+				{
+					"distance_m": 64.8146667480469,
+					"primitives": 19464
+				},
+				{
+					"distance_m": 129.629333496094,
+					"primitives": 19410
+				},
+				{
+					"distance_m": 259.258666992188,
+					"primitives": 17562
+				}
+			],
+			"surfaces": [
+				{
+					"base_indices": 13650,
+					"base_vertices": 9438,
+					"lods": [
+						{
+							"edge_length": 0.00726996781304479,
+							"index_bytes": 13644
+						},
+						{
+							"edge_length": 0.114194981753826,
+							"index_bytes": 6816
+						},
+						{
+							"edge_length": 2.8350772857666,
+							"index_bytes": 3408
+						},
+						{
+							"edge_length": 4.2526159286499,
+							"index_bytes": 870
+						}
+					]
+				},
+				{
+					"base_indices": 40452,
+					"base_vertices": 27559,
+					"lods": [
+						{
+							"edge_length": 2.30513906478882,
+							"index_bytes": 38148
+						},
+						{
+							"edge_length": 4.50170135498047,
+							"index_bytes": 1656
+						}
+					]
+				},
+				{
+					"base_indices": 3096,
+					"base_vertices": 2128,
+					"lods": [
+						{
+							"edge_length": 0.100766777992249,
+							"index_bytes": 3096
+						},
+						{
+							"edge_length": 2.48318219184875,
+							"index_bytes": 108
+						}
+					]
+				},
+				{
+					"base_indices": 4152,
+					"base_vertices": 2456,
+					"lods": [
+						{
+							"edge_length": 0.00403693458065391,
+							"index_bytes": 4152
+						},
+						{
+							"edge_length": 0.0160637889057398,
+							"index_bytes": 2076
+						},
+						{
+							"edge_length": 0.0546005554497242,
+							"index_bytes": 1032
+						},
+						{
+							"edge_length": 0.105231106281281,
+							"index_bytes": 516
+						},
+						{
+							"edge_length": 3.54671454429626,
+							"index_bytes": 252
+						}
+					]
+				},
+				{
+					"base_indices": 9936,
+					"base_vertices": 7010,
+					"lods": [
+						{
+							"edge_length": 0.310578286647797,
+							"index_bytes": 8832
+						},
+						{
+							"edge_length": 1.98412239551544,
+							"index_bytes": 384
+						},
+						{
+							"edge_length": 2.97618365287781,
+							"index_bytes": 96
+						}
+					]
+				},
+				{
+					"base_indices": 3360,
+					"base_vertices": 2088,
+					"lods": [
+						{
+							"edge_length": 0.00591482361778617,
+							"index_bytes": 3360
+						},
+						{
+							"edge_length": 0.018074618652463,
+							"index_bytes": 1680
+						},
+						{
+							"edge_length": 0.037024762481451,
+							"index_bytes": 840
+						},
+						{
+							"edge_length": 0.116162613034248,
+							"index_bytes": 420
+						},
+						{
+							"edge_length": 0.174243927001953,
+							"index_bytes": 204
+						},
+						{
+							"edge_length": 0.26136589050293,
+							"index_bytes": 96
+						},
+						{
+							"edge_length": 0.392048835754395,
+							"index_bytes": 48
+						}
+					]
+				},
+				{
+					"base_indices": 2364,
+					"base_vertices": 1328,
+					"lods": []
+				},
+				{
+					"base_indices": 0,
+					"base_vertices": 216,
+					"lods": []
+				}
+			],
+			"system": "generated imported mesh LOD"
+		},
+		{
+			"asset": "A-004",
+			"samples": [
+				{
+					"distance_m": 8.21124744415283,
+					"primitives": 22085
+				},
+				{
+					"distance_m": 16.4224948883057,
+					"primitives": 21459
+				},
+				{
+					"distance_m": 32.8449897766113,
+					"primitives": 20629
+				},
+				{
+					"distance_m": 65.6899795532227,
+					"primitives": 19485
+				},
+				{
+					"distance_m": 131.379959106445,
+					"primitives": 19345
+				},
+				{
+					"distance_m": 262.759918212891,
+					"primitives": 10539
+				}
+			],
+			"surfaces": [
+				{
+					"base_indices": 12879,
+					"base_vertices": 8947,
+					"lods": [
+						{
+							"edge_length": 0.00475442130118608,
+							"index_bytes": 12870
+						},
+						{
+							"edge_length": 0.0856269150972366,
+							"index_bytes": 6426
+						},
+						{
+							"edge_length": 3.22876644134521,
+							"index_bytes": 3210
+						}
+					]
+				},
+				{
+					"base_indices": 40452,
+					"base_vertices": 27568,
+					"lods": [
+						{
+							"edge_length": 0.336948156356812,
+							"index_bytes": 39216
+						},
+						{
+							"edge_length": 4.22678995132446,
+							"index_bytes": 672
+						}
+					]
+				},
+				{
+					"base_indices": 3096,
+					"base_vertices": 2116,
+					"lods": [
+						{
+							"edge_length": 0.0484133847057819,
+							"index_bytes": 3096
+						},
+						{
+							"edge_length": 3.02213048934937,
+							"index_bytes": 96
+						}
+					]
+				},
+				{
+					"base_indices": 4152,
+					"base_vertices": 2456,
+					"lods": [
+						{
+							"edge_length": 0.00394241465255618,
+							"index_bytes": 4152
+						},
+						{
+							"edge_length": 0.0166127644479275,
+							"index_bytes": 2076
+						},
+						{
+							"edge_length": 0.048567708581686,
+							"index_bytes": 1032
+						},
+						{
+							"edge_length": 0.187103360891342,
+							"index_bytes": 516
+						},
+						{
+							"edge_length": 0.676880240440369,
+							"index_bytes": 252
+						},
+						{
+							"edge_length": 1.0153204202652,
+							"index_bytes": 72
+						}
+					]
+				},
+				{
+					"base_indices": 9936,
+					"base_vertices": 6994,
+					"lods": [
+						{
+							"edge_length": 0.392569273710251,
+							"index_bytes": 8772
+						},
+						{
+							"edge_length": 1.80241990089417,
+							"index_bytes": 384
+						},
+						{
+							"edge_length": 2.70362997055054,
+							"index_bytes": 96
+						}
+					]
+				},
+				{
+					"base_indices": 3360,
+					"base_vertices": 2088,
+					"lods": [
+						{
+							"edge_length": 0.00589805748313665,
+							"index_bytes": 3360
+						},
+						{
+							"edge_length": 0.0175251960754395,
+							"index_bytes": 1680
+						},
+						{
+							"edge_length": 0.0342205576598644,
+							"index_bytes": 840
+						},
+						{
+							"edge_length": 0.105327725410461,
+							"index_bytes": 420
+						},
+						{
+							"edge_length": 0.157991588115692,
+							"index_bytes": 192
+						},
+						{
+							"edge_length": 0.236987382173538,
+							"index_bytes": 96
+						},
+						{
+							"edge_length": 0.355481088161469,
+							"index_bytes": 48
+						}
+					]
+				},
+				{
+					"base_indices": 2364,
+					"base_vertices": 1328,
+					"lods": []
+				},
+				{
+					"base_indices": 0,
+					"base_vertices": 216,
+					"lods": []
+				}
+			],
+			"system": "generated imported mesh LOD"
+		},
+		{
+			"asset": "A-005",
+			"samples": [
+				{
+					"distance_m": 8.47230243682861,
+					"primitives": 21424
+				},
+				{
+					"distance_m": 16.9446048736572,
+					"primitives": 20798
+				},
+				{
+					"distance_m": 33.8892097473145,
+					"primitives": 20298
+				},
+				{
+					"distance_m": 67.7784194946289,
+					"primitives": 20142
+				},
+				{
+					"distance_m": 135.556838989258,
+					"primitives": 18912
+				},
+				{
+					"distance_m": 271.113677978516,
+					"primitives": 11972
+				}
+			],
+			"surfaces": [
+				{
+					"base_indices": 12993,
+					"base_vertices": 9078,
+					"lods": [
+						{
+							"edge_length": 0.0101421065628529,
+							"index_bytes": 12984
+						},
+						{
+							"edge_length": 0.170147001743317,
+							"index_bytes": 6492
+						},
+						{
+							"edge_length": 1.96455669403076,
+							"index_bytes": 3048
+						},
+						{
+							"edge_length": 4.86674213409424,
+							"index_bytes": 1428
+						}
+					]
+				},
+				{
+					"base_indices": 40632,
+					"base_vertices": 27678,
+					"lods": [
+						{
+							"edge_length": 0.354944288730621,
+							"index_bytes": 39672
+						},
+						{
+							"edge_length": 4.34808158874512,
+							"index_bytes": 984
+						}
+					]
+				},
+				{
+					"base_indices": 2232,
+					"base_vertices": 1519,
+					"lods": [
+						{
+							"edge_length": 0.00228678109124303,
+							"index_bytes": 2232
+						},
+						{
+							"edge_length": 0.0569122843444347,
+							"index_bytes": 1116
+						},
+						{
+							"edge_length": 0.176583454012871,
+							"index_bytes": 552
+						},
+						{
+							"edge_length": 1.18587982654572,
+							"index_bytes": 276
+						},
+						{
+							"edge_length": 1.77881968021393,
+							"index_bytes": 168
+						}
+					]
+				},
+				{
+					"base_indices": 4152,
+					"base_vertices": 2456,
+					"lods": [
+						{
+							"edge_length": 0.00442954432219267,
+							"index_bytes": 4152
+						},
+						{
+							"edge_length": 0.0164293721318245,
+							"index_bytes": 2076
+						},
+						{
+							"edge_length": 0.0616792105138302,
+							"index_bytes": 1032
+						},
+						{
+							"edge_length": 0.136665835976601,
+							"index_bytes": 516
+						},
+						{
+							"edge_length": 5.07796144485474,
+							"index_bytes": 252
+						}
+					]
+				},
+				{
+					"base_indices": 9696,
+					"base_vertices": 6838,
+					"lods": [
+						{
+							"edge_length": 0.926245748996735,
+							"index_bytes": 8292
+						},
+						{
+							"edge_length": 1.38936865329742,
+							"index_bytes": 432
+						},
+						{
+							"edge_length": 2.08405303955078,
+							"index_bytes": 144
+						}
+					]
+				},
+				{
+					"base_indices": 3360,
+					"base_vertices": 2088,
+					"lods": [
+						{
+							"edge_length": 0.00633096229285002,
+							"index_bytes": 3360
+						},
+						{
+							"edge_length": 0.018237354233861,
+							"index_bytes": 1680
+						},
+						{
+							"edge_length": 0.0406267158687115,
+							"index_bytes": 840
+						},
+						{
+							"edge_length": 0.123213119804859,
+							"index_bytes": 420
+						},
+						{
+							"edge_length": 0.184819668531418,
+							"index_bytes": 204
+						},
+						{
+							"edge_length": 0.277229487895966,
+							"index_bytes": 96
+						},
+						{
+							"edge_length": 0.415844261646271,
+							"index_bytes": 48
+						}
+					]
+				},
+				{
+					"base_indices": 2364,
+					"base_vertices": 1328,
+					"lods": []
+				},
+				{
+					"base_indices": 0,
+					"base_vertices": 216,
+					"lods": []
+				}
+			],
+			"system": "generated imported mesh LOD"
+		},
+		{
+			"asset": "A-008",
+			"samples": [
+				{
+					"distance_m": 8.89080047607422,
+					"primitives": 22516
+				},
+				{
+					"distance_m": 17.7816009521484,
+					"primitives": 20104
+				},
+				{
+					"distance_m": 35.5632019042969,
+					"primitives": 19790
+				},
+				{
+					"distance_m": 71.1264038085938,
+					"primitives": 18826
+				},
+				{
+					"distance_m": 142.252807617188,
+					"primitives": 18686
+				},
+				{
+					"distance_m": 284.505615234375,
+					"primitives": 11506
+				}
+			],
+			"surfaces": [
+				{
+					"base_indices": 10716,
+					"base_vertices": 7397,
+					"lods": [
+						{
+							"edge_length": 0.0193857364356518,
+							"index_bytes": 10716
+						},
+						{
+							"edge_length": 0.112341962754726,
+							"index_bytes": 5352
+						},
+						{
+							"edge_length": 0.494182288646698,
+							"index_bytes": 2676
+						},
+						{
+							"edge_length": 5.31947708129883,
+							"index_bytes": 1164
+						}
+					]
+				},
+				{
+					"base_indices": 40356,
+					"base_vertices": 27506,
+					"lods": [
+						{
+							"edge_length": 0.389111697673798,
+							"index_bytes": 40356
+						},
+						{
+							"edge_length": 5.13138818740845,
+							"index_bytes": 744
+						}
+					]
+				},
+				{
+					"base_indices": 444,
+					"base_vertices": 358,
+					"lods": [
+						{
+							"edge_length": 1.70152652263641,
+							"index_bytes": 432
+						},
+						{
+							"edge_length": 2.55228996276855,
+							"index_bytes": 144
+						}
+					]
+				},
+				{
+					"base_indices": 4152,
+					"base_vertices": 2456,
+					"lods": [
+						{
+							"edge_length": 0.00459310691803694,
+							"index_bytes": 4152
+						},
+						{
+							"edge_length": 0.0163505412638187,
+							"index_bytes": 2076
+						},
+						{
+							"edge_length": 0.0658641159534454,
+							"index_bytes": 1032
+						},
+						{
+							"edge_length": 0.208985045552254,
+							"index_bytes": 516
+						},
+						{
+							"edge_length": 0.911056399345398,
+							"index_bytes": 252
+						},
+						{
+							"edge_length": 2.08405137062073,
+							"index_bytes": 72
+						}
+					]
+				},
+				{
+					"base_indices": 9696,
+					"base_vertices": 6830,
+					"lods": [
+						{
+							"edge_length": 1.1604311466217,
+							"index_bytes": 8292
+						},
+						{
+							"edge_length": 1.74064671993256,
+							"index_bytes": 432
+						}
+					]
+				},
+				{
+					"base_indices": 3360,
+					"base_vertices": 2088,
+					"lods": [
+						{
+							"edge_length": 0.00678289402276278,
+							"index_bytes": 3360
+						},
+						{
+							"edge_length": 0.0198663435876369,
+							"index_bytes": 1680
+						},
+						{
+							"edge_length": 0.0410267151892185,
+							"index_bytes": 840
+						},
+						{
+							"edge_length": 0.124256372451782,
+							"index_bytes": 420
+						},
+						{
+							"edge_length": 0.186384558677673,
+							"index_bytes": 204
+						},
+						{
+							"edge_length": 0.27957683801651,
+							"index_bytes": 96
+						},
+						{
+							"edge_length": 0.419365227222443,
+							"index_bytes": 48
+						}
+					]
+				},
+				{
+					"base_indices": 2364,
+					"base_vertices": 1328,
+					"lods": []
+				},
+				{
+					"base_indices": 0,
+					"base_vertices": 216,
+					"lods": []
+				}
+			],
+			"system": "generated imported mesh LOD"
+		}
+	],
+	"lod_expected": [],
+	"renderer": "forward_plus"
+}

@@ -1,0 +1,27 @@
+{
+  "status": "passed",
+  "role": "implementer",
+  "independent_tester_rerun": "pending",
+  "timestamp_utc": "2026-11-15T12:28:27.017222+00:00",
+  "engine": "4.7.2.stable.official.ed1daf0bf",
+  "command": [
+    "/home/ubuntu/tools/godot/Godot_v4.7.2-stable_linux.x86_64",
+    "--headless",
+    "--path",
+    "/home/ubuntu/work/roadragetaxi/godot",
+    "--script",
+    "res://tests/vehicle_windscreens.gd"
+  ],
+  "exit_code": 0,
+  "log": "geometry-validation.log",
+  "script_sha256": "4480c312c7c331f231fbd0779a639d45b33f480882713ce87c5c3b2c962dccd4",
+  "asset_sha256": {
+    "saloon": "5ddf1b68bbca23e6a739d4c31d70e06405f0c6fa3f084bf739561a40c0d6b7c3",
+    "hatchback": "60f26300522b8ec782297f3160532c3139e4573da91c31e96548b3a4ed308dbd",
+    "estate": "6a26cd386e035d1552f32eda247ea8338ea9ddb96c5777ec773fc3ca2759f10e",
+    "suv": "d652ae83b203581da2317d1484e2d4d67e3efa349bfe6ec449ac0299551d7420",
+    "pickup": "9b5b641e15e0485ae54da95244d1cd74c2589d5f5f616637d0de5433efb9be67",
+    "panel_van": "99acbcef3e44d464f66679762252e9488e1fe4dbd9ca8a1c99df02a23c439a90"
+  },
+  "settings": "temporary XDG_DATA_HOME, removed after process exit"
+}

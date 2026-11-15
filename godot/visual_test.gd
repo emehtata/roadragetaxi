@@ -221,6 +221,16 @@ func _ready() -> void:
 		main.entities.extra_trains = [_lineup_train("train coach", coach[0], [coach[1]], coach[2], coach[1] * 0.5, LINEUP_LANE_M + 0.5)]
 	elif scenario.get("lineup", false):
 		main.entities.extra_npcs = _lineup()
+	if scenario.has("windscreen_model"):
+		var kind: String = scenario["windscreen_model"]
+		var id := ""
+		for i in 100:
+			id = "windscreen_%d" % i
+			var shape: Array = main.entities.VAN_SHAPE if kind == "panel_van" else main.entities.CAR_SHAPES[absi(hash(id)) % main.entities.CAR_SHAPES.size()]
+			if Buildings3D.car_model_kind(shape, 4.6) == kind: break
+		var at := _on_road(6.0, 3.5)
+		main.entities.extra_npcs = [{"id":id,"x":at.x,"y":at.y,"heading":float(scenario["pose"][2])+PI,"length_m":4.6,"width_m":1.8,
+			"color":[175,85,48],"vehicle_type":"van" if kind == "panel_van" else "car","state":"PARKED","speed":0.0,"is_taxi":false}]
 	if scenario.get("lineup", false) is bool and scenario.get("lineup", false) and not scenario.has("lineup_kinds"):  # a close lineup: its rows only
 		var tram: Array = scenario["lineup_tram"]  # [look, section lengths, width]
 		main.entities.extra_trains = [_lineup_train("tram section", tram[0], tram[1], tram[2], 27.0 if scenario.get("lineup_along_road", false) else 13.5)]
@@ -692,6 +702,7 @@ func _check_map(centre: Vector2) -> Array:
 			missing.append("%d %s in view, the scenario needs %d" % [int(seen.get(kind, 0)), kind, wanted[kind]])
 	var boxes := []  # [name, corners]: every lineup body, in view, clear of the HUD (and in 3D of the buildings)
 	for npc in main.entities.extra_npcs:
+		if scenario.has("windscreen_model"): continue  # checked below against its actual pooled mesh, not a 3.5 m truck envelope
 		boxes.append([npc["vehicle_type"], _corners(npc["x"], npc["y"], npc["heading"], npc["length_m"], npc["width_m"])])
 		if npc.has("trailer"):
 			var t: Array = npc["trailer"]
@@ -753,6 +764,32 @@ func _check_map(centre: Vector2) -> Array:
 				missing.append("lineup %s under the HUD at %s" % [row[0], rect])
 				_lineup_seen[key] = "under the HUD"
 				break
+	var windscreen := {}
+	if scenario.has("windscreen_model"):
+		var kind: String = scenario["windscreen_model"]
+		var pool: Array = [] if layer_3d_view() == null else layer_3d_view()._model_nodes.get(kind, [])
+		var target: Dictionary = main.entities.extra_npcs[0]
+		var local := MapMath.point(main.entities.origin, float(target.x), float(target.y))
+		var found := false
+		for node: Node3D in pool:
+			if not node.visible or Vector2(node.position.x,node.position.z).distance_to(local)>0.2: continue
+			found = true
+			var mesh: MeshInstance3D = node.get_child(0)
+			var rect := Rect2()
+			for corner in 8:
+				var point := mesh.global_transform * mesh.get_aabb().get_endpoint(corner)
+				if not camera_3d.is_position_in_frustum(point): missing.append("windscreen target outside camera frustum")
+				var pixel := camera_3d.unproject_position(point)
+				rect = Rect2(pixel,Vector2.ZERO) if corner==0 else rect.expand(pixel)
+			if minf(rect.size.x,rect.size.y)<80: missing.append("windscreen target too small: %s" % rect.size)
+			for panel: Rect2 in hud:
+				if panel.intersects(rect): missing.append("windscreen target under HUD")
+			for footprint: PackedVector2Array in footprints:
+				for corner: Vector2 in _corners(float(target.x),float(target.y),float(target.heading),float(target.length_m),float(target.width_m)):
+					if Geometry2D.is_point_in_polygon(corner,footprint): missing.append("windscreen target under building")
+			windscreen = {"kind":kind,"id":target.id,"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"visible":true}
+		if not found: missing.append("expected windscreen model %s not placed at target" % kind)
+
 	var needs: Dictionary = scenario.get("requires", {})
 	if lamps < int(needs.get("lamps_in_view", 0)):
 		missing.append("%d street lamps in view, the scenario needs %d" % [lamps, needs["lamps_in_view"]])
@@ -818,6 +855,8 @@ func _check_map(centre: Vector2) -> Array:
 			if absf(c[1] / c[0] - 1.0) > 0.1:
 				missing.append("camper drawn %.2f m, its row %.2f m (over 10 %%)" % [c[1], c[0]])
 	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count(), "scenery_in_view": seen}
+	if not windscreen.is_empty():
+		_counts["windscreen"] = windscreen
 	if not campers.is_empty():
 		_counts["campers"] = campers  # each: [row length m, drawn body m]
 	if scenario.has("pitches"):
@@ -986,6 +1025,8 @@ func _write(result: Dictionary) -> void:
 		"scene": _counts, "elapsed_s": _elapsed, "chase": _chase, "route_3d_visible": main.map_layer.buildings_3d != null and main.map_layer.buildings_3d.route_3d.visible, "forest": _forest_stats(),
 		"lake_ice": {"cm": state.get("calendar", {}).get("lake_ice_cm") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null,
 			"holds": state.get("calendar", {}).get("lake_ice_holds") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null}})
+	if scenario.get("isolated_settings", false):
+		result["verification_user_data_dir"] = OS.get_user_data_dir()
 	if scenario.has("indoor_hint"):
 		result["indoor_hint"] = _indoor_snapshot
 	if scenario.has("hud_fixture"):

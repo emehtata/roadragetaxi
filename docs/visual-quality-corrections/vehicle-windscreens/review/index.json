@@ -1,0 +1,1798 @@
+{
+  "status": "independent visual review complete; fresh independent test execution pending",
+  "basis": "New gallery composition only; implementer inspection does not supply independent tester approval.",
+  "pages": [
+    {
+      "file": "01_source-before-after_close.png",
+      "size": [
+        2000,
+        1110
+      ],
+      "scope": "Source versus pooled before, then pooled front / three-quarter / top after. Every screenshot pixel is retained at native scale.",
+      "independent_visual_review": "completed per parent-provided second tester verdict"
+    },
+    {
+      "file": "02_source-before-after_close.png",
+      "size": [
+        2000,
+        1110
+      ],
+      "scope": "Source versus pooled before, then pooled front / three-quarter / top after. Every screenshot pixel is retained at native scale.",
+      "independent_visual_review": "completed per parent-provided second tester verdict"
+    },
+    {
+      "file": "03_all-models_perspective-lod.png",
+      "size": [
+        1920,
+        1860
+      ],
+      "scope": "All 36 actual perspective/LOD frames, native scale. Crops remove only constant background; pixel-bounds assertion confirms every rendered object remains.",
+      "independent_visual_review": "completed per parent-provided second tester verdict"
+    },
+    {
+      "file": "04_gameplay_context-and-crops.png",
+      "size": [
+        1100,
+        1170
+      ],
+      "scope": "Accepted gameplay context thumbnails plus source crops. Corrected variants are enlarged 2x with nearest neighbour (no invented detail); the player saloon is native-scale rear-view context only.",
+      "independent_visual_review": "completed per parent-provided second tester verdict"
+    },
+    {
+      "file": "05_gameplay_context-and-crops.png",
+      "size": [
+        1100,
+        1170
+      ],
+      "scope": "Accepted gameplay context thumbnails plus source crops. Corrected variants are enlarged 2x with nearest neighbour (no invented detail); the player saloon is native-scale rear-view context only.",
+      "independent_visual_review": "completed per parent-provided second tester verdict"
+    }
+  ],
+  "panels": [
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "before/saloon_source_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "1f00f1dbcb8dccbbd803eb4b39111cf93ea47b33646ce66bd2175cd1ea24bc44",
+      "pixel_sha256": "59b86b2697a50b6815e2a466f647c5e0ad93a6b0b6e76cadb2580dd9c0c8c79f",
+      "destination_box": [
+        0,
+        30,
+        400,
+        370
+      ],
+      "scale": 1,
+      "label": "saloon: source front, before"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "before/saloon_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "90de1b612052918a566a2aa49fb591dcf63471b5fcdd192812d2d9b7e6e7c265",
+      "pixel_sha256": "0df7d53d5ca6bc0982d82080d2902b0857aaa03f78c6533b5c18a0ced7088a70",
+      "destination_box": [
+        400,
+        30,
+        800,
+        370
+      ],
+      "scale": 1,
+      "label": "saloon: pooled front, before"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "after/saloon_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "90de1b612052918a566a2aa49fb591dcf63471b5fcdd192812d2d9b7e6e7c265",
+      "pixel_sha256": "0df7d53d5ca6bc0982d82080d2902b0857aaa03f78c6533b5c18a0ced7088a70",
+      "destination_box": [
+        800,
+        30,
+        1200,
+        370
+      ],
+      "scale": 1,
+      "label": "saloon: pooled front, after"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "after/saloon_pooled_day_front_three_quarter.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "336da6b8e6a11f3a73848e5d891b5705dc1589ace3b9010a7a6741c69319c514",
+      "pixel_sha256": "76d6309c917503617e307c9777afbb91c452d5fd783272b8205fd3e572ce8570",
+      "destination_box": [
+        1200,
+        30,
+        1600,
+        370
+      ],
+      "scale": 1,
+      "label": "saloon: front three-quarter, after"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "after/saloon_pooled_day_top.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "0520e7efb06ae35762b2a7287b9724d13825950ca77240d8746beff136995b69",
+      "pixel_sha256": "ad313a83bd7b246ab1d0e717c828c8614ab477fb2899135ca140dbcba808b067",
+      "destination_box": [
+        1600,
+        30,
+        2000,
+        370
+      ],
+      "scale": 1,
+      "label": "saloon: top, after"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "before/hatchback_source_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "77dbc4ecd524304e908916bbf83fe110e8e9306d54ff032e32aa194c4ec1ed1f",
+      "pixel_sha256": "89b6f6e4754748e1ccdc4c9f9ef847a1f94d397b30e205e1c1e5a02909a410df",
+      "destination_box": [
+        0,
+        400,
+        400,
+        740
+      ],
+      "scale": 1,
+      "label": "hatchback: source front, before"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "before/hatchback_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "469e8f3f52303e6720cf3ecf14b2616615a9688a065840ba2bed63f8b8b037e8",
+      "pixel_sha256": "4fb30ef3e10015e1b06fb548a376b4c8f2c1014f9ce42076c25f6c932b4f819a",
+      "destination_box": [
+        400,
+        400,
+        800,
+        740
+      ],
+      "scale": 1,
+      "label": "hatchback: pooled front, before"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "after/hatchback_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "03dee9e462c606150f4ba6bb28e7723024801a2204b4364d7f31aa392cc15cf9",
+      "pixel_sha256": "1c6f4972800cb351ea3c83c76b97b484a9d40b4e2970af2c66edde86d266f377",
+      "destination_box": [
+        800,
+        400,
+        1200,
+        740
+      ],
+      "scale": 1,
+      "label": "hatchback: pooled front, after"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "after/hatchback_pooled_day_front_three_quarter.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "8e5dd68311a6e8b28ad3c37fcaf905ecba2aba7727749fd5e4260a04f2189a13",
+      "pixel_sha256": "f1f2ff2f064b21596c18034081f891ae29ef17039aeca14ffd2671bb5d8c8db3",
+      "destination_box": [
+        1200,
+        400,
+        1600,
+        740
+      ],
+      "scale": 1,
+      "label": "hatchback: front three-quarter, after"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "after/hatchback_pooled_day_top.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "bccec5b98dae76ee402a97f0d11ca70157f0ce3578929bc09fa473bd799b4b28",
+      "pixel_sha256": "78e04bdfd8e76fc76ad57f6acc3ad4fd7a22a085b62a6dfd50dd7bec59e23b26",
+      "destination_box": [
+        1600,
+        400,
+        2000,
+        740
+      ],
+      "scale": 1,
+      "label": "hatchback: top, after"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "before/estate_source_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "73e8e7b0e0d0c5ad7418b969451aba6af44005b49b0109004df3099c44383bc6",
+      "pixel_sha256": "30fbcea7b4832bee1cf4b79996cd914b9c410bf918e8ffb2a758dc0a3b635119",
+      "destination_box": [
+        0,
+        770,
+        400,
+        1110
+      ],
+      "scale": 1,
+      "label": "estate: source front, before"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "before/estate_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "44e1e74fbb4e69de2af97a4fb9ca6aac28affb53fc640e721ff23b11104d3dac",
+      "pixel_sha256": "9caf463b44178b3a1afe3f384f97a4e85ae11b29f1fa1d704f1695ac57931e4e",
+      "destination_box": [
+        400,
+        770,
+        800,
+        1110
+      ],
+      "scale": 1,
+      "label": "estate: pooled front, before"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "after/estate_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "dd9b50b4303b278414302a612d80026bbc1fb28a3f7b65aa53a62ce7b4adccfa",
+      "pixel_sha256": "c7571bc975f9b2443bd3f5cfd34a88690f11ba933fea644295aa1e129b817d1f",
+      "destination_box": [
+        800,
+        770,
+        1200,
+        1110
+      ],
+      "scale": 1,
+      "label": "estate: pooled front, after"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "after/estate_pooled_day_front_three_quarter.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "5f052bfa100020602d35dbc1e96e488837d18346e2f12fc856972e885dc18e51",
+      "pixel_sha256": "d18e7204145ce96d1e991a55b41c25aac937da97f58a9d1f9dbe7bebb6c745d3",
+      "destination_box": [
+        1200,
+        770,
+        1600,
+        1110
+      ],
+      "scale": 1,
+      "label": "estate: front three-quarter, after"
+    },
+    {
+      "page": "01_source-before-after_close.png",
+      "source": "after/estate_pooled_day_top.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "3027ec0a9649bb490035839530ec35765b6663e012590dccd597273e7c88f777",
+      "pixel_sha256": "db4847ee13b546138c0e422973e1589e8914c2846bb634e201f435b23fc77907",
+      "destination_box": [
+        1600,
+        770,
+        2000,
+        1110
+      ],
+      "scale": 1,
+      "label": "estate: top, after"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "before/suv_source_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "937cb12b374ad32b5f54f30d014d5cf8e0a6c09be1bc504cc8ba5c02f8b48717",
+      "pixel_sha256": "616331a3171081d604f1b454d5b0f5d30c32133c37b22fe3d9a427cd4ba43b52",
+      "destination_box": [
+        0,
+        30,
+        400,
+        370
+      ],
+      "scale": 1,
+      "label": "suv: source front, before"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "before/suv_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "0a7105d42e37432e5dac7250b001f9a91ded821401cf491de50fe1a33a34d4ef",
+      "pixel_sha256": "12e1f43d7ae717f53270b51a2e95cc88cb47519552d22059e63ae19da0dc5581",
+      "destination_box": [
+        400,
+        30,
+        800,
+        370
+      ],
+      "scale": 1,
+      "label": "suv: pooled front, before"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "after/suv_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "7c4db4043c92c37b24472a3fdf6108fa708f0690a0d9d7606031cfb569571369",
+      "pixel_sha256": "4b4ac845dc52951ae4f9d43adc7f02804b18e2e7221ce5ae553454d4d2652999",
+      "destination_box": [
+        800,
+        30,
+        1200,
+        370
+      ],
+      "scale": 1,
+      "label": "suv: pooled front, after"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "after/suv_pooled_day_front_three_quarter.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "d3fa3794474eefa97aa0f6defff7091b7ea460310ddad0072735661e1be3325e",
+      "pixel_sha256": "1df31a05a9c1df45106e6602cf8de8380c6855a377817500a607eacd19928a92",
+      "destination_box": [
+        1200,
+        30,
+        1600,
+        370
+      ],
+      "scale": 1,
+      "label": "suv: front three-quarter, after"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "after/suv_pooled_day_top.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "fc03dd717fda8ad5efbb293602833b0c38792428179004687d8a8d933ad01538",
+      "pixel_sha256": "ca97b2763909f654393e09cccaec2d3e4056407a194f93a69bd512a3e195a12c",
+      "destination_box": [
+        1600,
+        30,
+        2000,
+        370
+      ],
+      "scale": 1,
+      "label": "suv: top, after"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "before/pickup_source_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "6d867885224a0fe1f36c9ea33bbb756274023438900b7a07f504a96b7be50f34",
+      "pixel_sha256": "264ebc48c187796ad2424791ecdcc905ea3f167a32fded3cd1388482415dda32",
+      "destination_box": [
+        0,
+        400,
+        400,
+        740
+      ],
+      "scale": 1,
+      "label": "pickup: source front, before"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "before/pickup_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "58f4cc88c4613a515f4da7b5f4b4a36c9948e88dc33037fdd6066611295621e0",
+      "pixel_sha256": "81a5ca27cf72794f0fe6de6857b1e8b1c54eefe0a70dd2b4ffb8a110d3f591f1",
+      "destination_box": [
+        400,
+        400,
+        800,
+        740
+      ],
+      "scale": 1,
+      "label": "pickup: pooled front, before"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "after/pickup_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "5d0391f229c5a6326a5194a0b2b60bc90704280f4755d13b379dc3b003168652",
+      "pixel_sha256": "bb942c3a49b3bdc9c4b62f301ce9ad93064ca4e211b48449c4b0b015f5c8bc82",
+      "destination_box": [
+        800,
+        400,
+        1200,
+        740
+      ],
+      "scale": 1,
+      "label": "pickup: pooled front, after"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "after/pickup_pooled_day_front_three_quarter.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "981e0e37599ebab1a531812a9aae37ebfdac1b4bb7e6619926f0a36cacbdaa48",
+      "pixel_sha256": "2ffdb7926d62064cc384d1fd312d50de182d4ed9bc9bf5efba72c75789cf7c5a",
+      "destination_box": [
+        1200,
+        400,
+        1600,
+        740
+      ],
+      "scale": 1,
+      "label": "pickup: front three-quarter, after"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "after/pickup_pooled_day_top.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "a7b3521dea6f8ae93b46f01a4a46a6cd5b39f7292cdafb73cd5973b960a450c9",
+      "pixel_sha256": "fcf28b1033d4dad8dbe67fc4d9318d1245bb1ab4d5756ba4cb27473c616db075",
+      "destination_box": [
+        1600,
+        400,
+        2000,
+        740
+      ],
+      "scale": 1,
+      "label": "pickup: top, after"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "before/panel_van_source_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "cf54d37ce4552230f4e25b43f9a17fe39d1fd2903503ef7ee1e68c2d9ae27d06",
+      "pixel_sha256": "d0c0629ec5edc16a017d6a17f1798e5a9594a65398b6cf9c8c7bbeada5756b8a",
+      "destination_box": [
+        0,
+        770,
+        400,
+        1110
+      ],
+      "scale": 1,
+      "label": "panel_van: source front, before"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "before/panel_van_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "8bde0a4e17e00508ab92392594c3713871c2d0eec41bf47d0e1909ac266ed1d8",
+      "pixel_sha256": "cecb1683dc33d22be406449cbe0fc9bdf132e5f9301d1c1bd98562bd78569f66",
+      "destination_box": [
+        400,
+        770,
+        800,
+        1110
+      ],
+      "scale": 1,
+      "label": "panel_van: pooled front, before"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "after/panel_van_pooled_day_front.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "babc397ec47ca4a25d09fd335eadd5e64f2de78497b168186bf49c8c393e708a",
+      "pixel_sha256": "7b26750fa0202f621b7d9a78f4b96ef9735023ab10bd891ebd096fc8f4fa11ac",
+      "destination_box": [
+        800,
+        770,
+        1200,
+        1110
+      ],
+      "scale": 1,
+      "label": "panel_van: pooled front, after"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "after/panel_van_pooled_day_front_three_quarter.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "f4bb183d2b868ba09ad88a9a30c1f196a357e615589aba7f9d416929eba00d87",
+      "pixel_sha256": "abcbf9f4f97dff91e0d0dcdf015b577183c38c7018d1a9f040042b40cc411f35",
+      "destination_box": [
+        1200,
+        770,
+        1600,
+        1110
+      ],
+      "scale": 1,
+      "label": "panel_van: front three-quarter, after"
+    },
+    {
+      "page": "02_source-before-after_close.png",
+      "source": "after/panel_van_pooled_day_top.png",
+      "source_box": [
+        0,
+        0,
+        400,
+        340
+      ],
+      "source_sha256": "7ed1804c934e34cc0eccec1b7b4f94dd079c476ff188b1aaba1e92dd5c99ceac",
+      "pixel_sha256": "fc937695083fd7dd2973a50fad6c9e14ae4399ffd0f8deeaab8bcea7df25c2a7",
+      "destination_box": [
+        1600,
+        770,
+        2000,
+        1110
+      ],
+      "scale": 1,
+      "label": "panel_van: top, after"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-001_mesh_lod_007.4m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "bfb4f07864084009f3089968d5298a2849708b1653a07fc8769dfcfd2ddbc155",
+      "pixel_sha256": "e50de28ec1f1c86194f83ab14b3ccf074dffa2f251a7cb19f1cb195212053356",
+      "destination_box": [
+        0,
+        30,
+        320,
+        310
+      ],
+      "scale": 1,
+      "label": "saloon: actual perspective 7.435 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-001_mesh_lod_014.9m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "939629cf1270150c6b19fb67c753dea920844f22eb229e7420152d902aab28ff",
+      "pixel_sha256": "3c42edbab7c1fa405ca66469f46ecff493ad98bd620a7d3cc64109ef40013c02",
+      "destination_box": [
+        320,
+        30,
+        640,
+        310
+      ],
+      "scale": 1,
+      "label": "saloon: actual perspective 14.870 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-001_mesh_lod_029.7m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "955e3312ef509d9f1e6111b907410d39e3dc110a6e3e00053247d881bedae7ef",
+      "pixel_sha256": "f4c4d20dd0c822470e749af286e900c38e39ca6e260468c3694436114d8c1882",
+      "destination_box": [
+        640,
+        30,
+        960,
+        310
+      ],
+      "scale": 1,
+      "label": "saloon: actual perspective 29.741 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-001_mesh_lod_059.5m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "c260d693646e2e24466fc2674c018376ce4bb1b9aaf8d850f9aa9efdc4e1e5eb",
+      "pixel_sha256": "de77f7ec5ec90ab9024ea0844b680cbc4b7b0b5bd2817faafd0973dfc106889c",
+      "destination_box": [
+        960,
+        30,
+        1280,
+        310
+      ],
+      "scale": 1,
+      "label": "saloon: actual perspective 59.482 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-001_mesh_lod_119.0m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "e7e801b9f86a37f34b1ec5ca53ef436e96a866fd6245646fa76bc266b1e5e07a",
+      "pixel_sha256": "eb10f29894303a3645c9cbed8c8f4352903156208f8026338b63b8efab86bfdd",
+      "destination_box": [
+        1280,
+        30,
+        1600,
+        310
+      ],
+      "scale": 1,
+      "label": "saloon: actual perspective 118.963 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-001_mesh_lod_237.9m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "809adb141eda56605fccb5bf3d315cf79baa474ad55a30890ae965160ee228ff",
+      "pixel_sha256": "d76437b9e8155850d2b3b7ec816697a83d92721bbd2f2c724afc2642615fc379",
+      "destination_box": [
+        1600,
+        30,
+        1920,
+        310
+      ],
+      "scale": 1,
+      "label": "saloon: actual perspective 237.927 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-002_mesh_lod_006.7m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "6e40776b5d74e0430aa01af9d0fe8c5e52724b71bed3bbaeef1600594416ab7b",
+      "pixel_sha256": "918bf2fdc5a47bb45a9e600df3b00c68ae23e416b07a3e3c3bf24e173882ab89",
+      "destination_box": [
+        0,
+        340,
+        320,
+        620
+      ],
+      "scale": 1,
+      "label": "hatchback: actual perspective 6.749 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-002_mesh_lod_013.5m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "1240bdb7470a24d71743e8a8fd15216c4d28cea8ceef6517da1483f95a0b005b",
+      "pixel_sha256": "8212066a92c652b55c950295014b158a746354871def3bcc6c553b1f6b8abc9d",
+      "destination_box": [
+        320,
+        340,
+        640,
+        620
+      ],
+      "scale": 1,
+      "label": "hatchback: actual perspective 13.498 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-002_mesh_lod_027.0m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "5ed06616b6a7b2c9fed8f1203d5a630c5657c45aa6a85564c3166991a4c4d514",
+      "pixel_sha256": "4623f172a596aa3f3b538b7a10e5c29de77e6498a03bb730b0a2662d92f95cd1",
+      "destination_box": [
+        640,
+        340,
+        960,
+        620
+      ],
+      "scale": 1,
+      "label": "hatchback: actual perspective 26.996 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-002_mesh_lod_054.0m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "ca4a71b912054f7c389b7f6d4987e257838d1c3582f90b2feb183167e02caac6",
+      "pixel_sha256": "715eb8785fa8ac98f37d1775078c5214b5c82fe38b9decfd5f1119a9fe5172c3",
+      "destination_box": [
+        960,
+        340,
+        1280,
+        620
+      ],
+      "scale": 1,
+      "label": "hatchback: actual perspective 53.991 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-002_mesh_lod_108.0m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "c8473a2762fe0397978d6328a8930e019a0af3208d8199e6f7ec22dd312e2669",
+      "pixel_sha256": "381133e511007885f9cc1b1737def383bee647eaddb77b97f29f493f574a6d95",
+      "destination_box": [
+        1280,
+        340,
+        1600,
+        620
+      ],
+      "scale": 1,
+      "label": "hatchback: actual perspective 107.983 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-002_mesh_lod_216.0m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "12081ce67c33f6953f6f045b6de1473e5644353f8b1e748d486a7a1c3cce043e",
+      "pixel_sha256": "01622bc18b4bf4479086f31bc519150087b982bd5048d5e0ba088b68e2b3342e",
+      "destination_box": [
+        1600,
+        340,
+        1920,
+        620
+      ],
+      "scale": 1,
+      "label": "hatchback: actual perspective 215.965 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-003_mesh_lod_008.1m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "134015cab364eaf774d06ab0d51f7acb34e0e2137cdf8b1475d62fd3273ac9f0",
+      "pixel_sha256": "5e68da42d6cadb4f266c7bd857538521eedbb8aef525ee9bdf6c23955bb027b7",
+      "destination_box": [
+        0,
+        650,
+        320,
+        930
+      ],
+      "scale": 1,
+      "label": "estate: actual perspective 8.102 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-003_mesh_lod_016.2m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "53e34b92c489f95ec23e44935c939d55943117b60fb4ff593a41036f4793243b",
+      "pixel_sha256": "281b68eff48cc109dc187db1f188dfc5f888c0c2c9e4a56afad29909764e8d58",
+      "destination_box": [
+        320,
+        650,
+        640,
+        930
+      ],
+      "scale": 1,
+      "label": "estate: actual perspective 16.204 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-003_mesh_lod_032.4m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "96fa9bb22dc4c03789006645af63c6a218566df18d33f17833fc7edbb97adb2c",
+      "pixel_sha256": "3eb097d1d9406c4b73aa6c5a1734e004b08d19d3a199c96ed8b80b53b1464529",
+      "destination_box": [
+        640,
+        650,
+        960,
+        930
+      ],
+      "scale": 1,
+      "label": "estate: actual perspective 32.407 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-003_mesh_lod_064.8m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "bda5aef2d1bf5f4f96503302447a386e322bfae3329a1e9438b63f47cbf12da9",
+      "pixel_sha256": "ad9e212a93e1f0f1da08f07f6597f2d5a4f7d6d0961385f43de45ed7cb06e233",
+      "destination_box": [
+        960,
+        650,
+        1280,
+        930
+      ],
+      "scale": 1,
+      "label": "estate: actual perspective 64.815 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-003_mesh_lod_129.6m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "8a2c1ecb55a6f868776a335b476867e36b1946f4976da7c7a65106f5539b4e2f",
+      "pixel_sha256": "5bf298162e4fed659def7bb242856db933c23295364e12c1238d882f7e90ca2c",
+      "destination_box": [
+        1280,
+        650,
+        1600,
+        930
+      ],
+      "scale": 1,
+      "label": "estate: actual perspective 129.629 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-003_mesh_lod_259.3m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "daca1f1b8921d8cf2cdcd4a387df1f616e4af7140b5f2de2adb254917373146d",
+      "pixel_sha256": "db295d5bcdde2f79b3dc0bc3166dd66a72c63e073931efa2466255eb048870ca",
+      "destination_box": [
+        1600,
+        650,
+        1920,
+        930
+      ],
+      "scale": 1,
+      "label": "estate: actual perspective 259.259 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-004_mesh_lod_008.2m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "be5a7dcb316ac34926e5a6ac8e385ff6df131c2a26f7a5916cecc30dfa06b105",
+      "pixel_sha256": "0a79c436f4808b7d28a32b5d3c91490ff82fc15db240b7a214fb44fd89b711fe",
+      "destination_box": [
+        0,
+        960,
+        320,
+        1240
+      ],
+      "scale": 1,
+      "label": "suv: actual perspective 8.211 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-004_mesh_lod_016.4m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "5e1a865e25e16f653ec632fb05b0db21bb9e5b49f866288cb2a65ca933bcf337",
+      "pixel_sha256": "1d3ccf843b4a95a99a45b4decd8d3984f29590c74cf60bad4cedbda06e1ff9ba",
+      "destination_box": [
+        320,
+        960,
+        640,
+        1240
+      ],
+      "scale": 1,
+      "label": "suv: actual perspective 16.422 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-004_mesh_lod_032.8m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "85748b22973a459c1cf0798d67126f7c45d65e1cc0b962d67f2b593260e21c9f",
+      "pixel_sha256": "743d1c0e1baee3798658ba0abb165b12980e108ed0ec42f15341322cdbc68537",
+      "destination_box": [
+        640,
+        960,
+        960,
+        1240
+      ],
+      "scale": 1,
+      "label": "suv: actual perspective 32.845 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-004_mesh_lod_065.7m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "99c05d8eaa559b89c8ce0c0c1f3a3845be66be5a5164210fe0224bd5a7177ead",
+      "pixel_sha256": "ff7bcf49671b678d9aaae353f003ceead8296f58d3535229c1d3af6b95e7e119",
+      "destination_box": [
+        960,
+        960,
+        1280,
+        1240
+      ],
+      "scale": 1,
+      "label": "suv: actual perspective 65.690 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-004_mesh_lod_131.4m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "277c11b984a28fbf5d65cf29fd419632b6c68a0a5188d7cc45cd6802b190bb31",
+      "pixel_sha256": "9913afd4db4b55f0bb0a9831e51edf7d114d726512089b1b5eaa939f430c3c5d",
+      "destination_box": [
+        1280,
+        960,
+        1600,
+        1240
+      ],
+      "scale": 1,
+      "label": "suv: actual perspective 131.380 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-004_mesh_lod_262.8m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "9091a8270f08e73e02935267d1a9201c157ef1de78b5de05f6955e1999838052",
+      "pixel_sha256": "0ec9af3dc3551f394982dfda1f1a842ac0911c74f003f5586c6c2633c969c768",
+      "destination_box": [
+        1600,
+        960,
+        1920,
+        1240
+      ],
+      "scale": 1,
+      "label": "suv: actual perspective 262.760 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-005_mesh_lod_008.5m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "d62746b0eae403f8606c64024fa4eebf33e407418ed9692492f2726e85aed8d6",
+      "pixel_sha256": "7587746a375d330dd6d577796a893c30660734e5a0e648d817664e40296e82e1",
+      "destination_box": [
+        0,
+        1270,
+        320,
+        1550
+      ],
+      "scale": 1,
+      "label": "pickup: actual perspective 8.472 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-005_mesh_lod_016.9m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "33fd7fe8dd31765affe3385d067e5412e58ee23451f30380113609d67c0d13f5",
+      "pixel_sha256": "b1aef80bca00628955d5da3b9156b6eb7d457177f939a36a50023263c2427c8e",
+      "destination_box": [
+        320,
+        1270,
+        640,
+        1550
+      ],
+      "scale": 1,
+      "label": "pickup: actual perspective 16.945 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-005_mesh_lod_033.9m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "00ea8e43f657714884504ec51c6ae298f6e916918c04a97d1575611c260b9a70",
+      "pixel_sha256": "3b86bec2464dc1888fa1382f75882e2c62dfc7c1ca18cab7d1e9ba6dc71e65bb",
+      "destination_box": [
+        640,
+        1270,
+        960,
+        1550
+      ],
+      "scale": 1,
+      "label": "pickup: actual perspective 33.889 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-005_mesh_lod_067.8m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "f38b91ae3b3a33e94bd94d9407e4ec46869144fe50a7d278ac0fa618ed738466",
+      "pixel_sha256": "d3d86aec3d185e6b8c31fe597acac63b8846d74cfe7a7451d1d90fa1caeb75ca",
+      "destination_box": [
+        960,
+        1270,
+        1280,
+        1550
+      ],
+      "scale": 1,
+      "label": "pickup: actual perspective 67.778 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-005_mesh_lod_135.6m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "3799f669c212613a84c0791d539ed81e8b22632cc12b9609cde9f46c6e5d5d61",
+      "pixel_sha256": "73b3384522f214b65340cefc5a15af41f6200627ec9ea1ad29e6f352551e87d9",
+      "destination_box": [
+        1280,
+        1270,
+        1600,
+        1550
+      ],
+      "scale": 1,
+      "label": "pickup: actual perspective 135.557 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-005_mesh_lod_271.1m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "5ca5f290e0252e987dfb09182756a1d4e309e2b095f692224d27bdf3ed8913ee",
+      "pixel_sha256": "c8e645dc1b57e035d84fc120658e9f96b9dee8b51949912170d66bfb5ef90518",
+      "destination_box": [
+        1600,
+        1270,
+        1920,
+        1550
+      ],
+      "scale": 1,
+      "label": "pickup: actual perspective 271.114 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-008_mesh_lod_008.9m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "1c3a3d37145d5664d5c9e9c73fe7351885366bb32a06434d25b47e432e1b0274",
+      "pixel_sha256": "098ad7ab03ae5d37ba7df88b91aef3f9c9a072778d18a1f86aeb0d6251abdaa3",
+      "destination_box": [
+        0,
+        1580,
+        320,
+        1860
+      ],
+      "scale": 1,
+      "label": "panel_van: actual perspective 8.891 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-008_mesh_lod_017.8m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "2750adf80d26f6db4c0770df96fc6bc63d3ff1b46f5431c336ee5f6130f6f1ee",
+      "pixel_sha256": "8bd1977a00e59c4addeae2cd55bde4fadc508d624ac5bd13552523a890079605",
+      "destination_box": [
+        320,
+        1580,
+        640,
+        1860
+      ],
+      "scale": 1,
+      "label": "panel_van: actual perspective 17.782 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-008_mesh_lod_035.6m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "100d03baed4620d8a51feef4bcada015656efce71e92b057434de01706371b10",
+      "pixel_sha256": "a3316bac298828fc27e46f8c86168ecfb4d9efc388e258914194cd59f3ffe321",
+      "destination_box": [
+        640,
+        1580,
+        960,
+        1860
+      ],
+      "scale": 1,
+      "label": "panel_van: actual perspective 35.563 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-008_mesh_lod_071.1m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "5af56b784fe67959758496ac723418b15c4fbfc9bbc3554a255e8ed53810655b",
+      "pixel_sha256": "a5d01bc6e9cc29a223ee3a0ddecc089f364f5abbf6a12b1b5814b6ce91270866",
+      "destination_box": [
+        960,
+        1580,
+        1280,
+        1860
+      ],
+      "scale": 1,
+      "label": "panel_van: actual perspective 71.126 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-008_mesh_lod_142.3m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "9b5a13fcdabd1ebbeac3e894c3a21e86b357092d5d15e2fea1068e29f6194d53",
+      "pixel_sha256": "53b1082da1b5356ee8285d0354a9d636670722dc653b7ce70503ae02c1225fcf",
+      "destination_box": [
+        1280,
+        1580,
+        1600,
+        1860
+      ],
+      "scale": 1,
+      "label": "panel_van: actual perspective 142.253 m; full rendered body retained"
+    },
+    {
+      "page": "03_all-models_perspective-lod.png",
+      "source": "lod/A-008_mesh_lod_284.5m.png",
+      "source_box": [
+        160,
+        100,
+        480,
+        380
+      ],
+      "source_sha256": "739a7531aa69caf0969b494866154b19fb230af533031967d17f3545db3239a2",
+      "pixel_sha256": "e31c98a03449e66da2ae9b95bc3a46a94db8d34778cc0836f51a757611f188d5",
+      "destination_box": [
+        1600,
+        1580,
+        1920,
+        1860
+      ],
+      "scale": 1,
+      "label": "panel_van: actual perspective 284.506 m; full rendered body retained"
+    },
+    {
+      "page": "04_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_hatchback/2026-06-20T1500_20261115-140911_838cd590-dirty/screenshot.png",
+      "source_box": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "source_sha256": "acdaea98df7f123a20beea1ce8640d9b0a62cb1a9392c87667803934fd60b15e",
+      "pixel_sha256": "771607825f35e8d306778ae4683cae969535cfaa6e152af757a1008c23c06b9b",
+      "destination_box": [
+        0,
+        30,
+        640,
+        390
+      ],
+      "scale": 0.5,
+      "label": "hatchback gameplay context thumbnail; do not judge fine glazing from thumbnail",
+      "result": "gameplay/vqa_windscreen_hatchback/2026-06-20T1500_20261115-140911_838cd590-dirty/result.json"
+    },
+    {
+      "page": "04_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_hatchback/2026-06-20T1500_20261115-140911_838cd590-dirty/screenshot.png",
+      "source_box": [
+        398,
+        318,
+        559,
+        444
+      ],
+      "source_sha256": "acdaea98df7f123a20beea1ce8640d9b0a62cb1a9392c87667803934fd60b15e",
+      "pixel_sha256": "d0453161724fbf0a258d1705c2fc1d064da4d6e925bfbaaf22c1c03b0f828259",
+      "destination_box": [
+        665,
+        35,
+        987,
+        287
+      ],
+      "scale": 2,
+      "label": "hatchback: explicitly labelled inspection crop; saloon gameplay shows rear only"
+    },
+    {
+      "page": "04_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_estate/2026-06-20T1500_20261115-141019_838cd590-dirty/screenshot.png",
+      "source_box": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "source_sha256": "c3d6605c9dcf47cf352d8209fb748ac0a149c247aeed4b00a34598a5e7638147",
+      "pixel_sha256": "212428ca25e1f773a2093c98707af33c616556190979d832b53243774f72b4cc",
+      "destination_box": [
+        0,
+        420,
+        640,
+        780
+      ],
+      "scale": 0.5,
+      "label": "estate gameplay context thumbnail; do not judge fine glazing from thumbnail",
+      "result": "gameplay/vqa_windscreen_estate/2026-06-20T1500_20261115-141019_838cd590-dirty/result.json"
+    },
+    {
+      "page": "04_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_estate/2026-06-20T1500_20261115-141019_838cd590-dirty/screenshot.png",
+      "source_box": [
+        399,
+        313,
+        559,
+        443
+      ],
+      "source_sha256": "c3d6605c9dcf47cf352d8209fb748ac0a149c247aeed4b00a34598a5e7638147",
+      "pixel_sha256": "4001f477887bc73b08a46457d04edb25e4feae36d22484b859ed1c671c6280b9",
+      "destination_box": [
+        665,
+        425,
+        985,
+        685
+      ],
+      "scale": 2,
+      "label": "estate: explicitly labelled inspection crop; saloon gameplay shows rear only"
+    },
+    {
+      "page": "04_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_suv/2026-06-20T1500_20261115-141107_838cd590-dirty/screenshot.png",
+      "source_box": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "source_sha256": "7f6e6a075d3c234ccf1dc0eaaa14556faa5959b6c447bce74d119ea736428ef8",
+      "pixel_sha256": "cb1c47f9a23dc4ffe644c609a1edea97f5b2df907351eb1a561d4c1f92d4223e",
+      "destination_box": [
+        0,
+        810,
+        640,
+        1170
+      ],
+      "scale": 0.5,
+      "label": "suv gameplay context thumbnail; do not judge fine glazing from thumbnail",
+      "result": "gameplay/vqa_windscreen_suv/2026-06-20T1500_20261115-141107_838cd590-dirty/result.json"
+    },
+    {
+      "page": "04_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_suv/2026-06-20T1500_20261115-141107_838cd590-dirty/screenshot.png",
+      "source_box": [
+        398,
+        304,
+        559,
+        444
+      ],
+      "source_sha256": "7f6e6a075d3c234ccf1dc0eaaa14556faa5959b6c447bce74d119ea736428ef8",
+      "pixel_sha256": "bca8b2c0c6e5d4e91231f4cf9b942513bbbb8722e5549d7d357ce4fd0b73a7c9",
+      "destination_box": [
+        665,
+        815,
+        987,
+        1095
+      ],
+      "scale": 2,
+      "label": "suv: explicitly labelled inspection crop; saloon gameplay shows rear only"
+    },
+    {
+      "page": "05_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_pickup/2026-06-20T1500_20261115-141154_838cd590-dirty/screenshot.png",
+      "source_box": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "source_sha256": "d3f5404e93c9ef46b1549774d30138db70f1349b88e83f9da16abe0986647bb0",
+      "pixel_sha256": "c52f226d5320d191f45fe7334bf97f7a868af2220c389294cd596add1d8d4b5b",
+      "destination_box": [
+        0,
+        30,
+        640,
+        390
+      ],
+      "scale": 0.5,
+      "label": "pickup gameplay context thumbnail; do not judge fine glazing from thumbnail",
+      "result": "gameplay/vqa_windscreen_pickup/2026-06-20T1500_20261115-141154_838cd590-dirty/result.json"
+    },
+    {
+      "page": "05_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_pickup/2026-06-20T1500_20261115-141154_838cd590-dirty/screenshot.png",
+      "source_box": [
+        398,
+        305,
+        559,
+        444
+      ],
+      "source_sha256": "d3f5404e93c9ef46b1549774d30138db70f1349b88e83f9da16abe0986647bb0",
+      "pixel_sha256": "1f00793d48ee9b6a07b2d9ce2fbddc0fa69b598cb8f85452acb89a22dbc8b063",
+      "destination_box": [
+        665,
+        35,
+        987,
+        313
+      ],
+      "scale": 2,
+      "label": "pickup: explicitly labelled inspection crop; saloon gameplay shows rear only"
+    },
+    {
+      "page": "05_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_panel_van/2026-06-20T1500_20261115-141241_838cd590-dirty/screenshot.png",
+      "source_box": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "source_sha256": "bb2c031cdfaa23432ca032b8ae5ff14bcdd3e4b7eb6a4bf661006e1a0961c9b1",
+      "pixel_sha256": "8a3c942ae1e67bfec1688e880a182c1a40677cf7501a017538d7b14a84552176",
+      "destination_box": [
+        0,
+        420,
+        640,
+        780
+      ],
+      "scale": 0.5,
+      "label": "panel_van gameplay context thumbnail; do not judge fine glazing from thumbnail",
+      "result": "gameplay/vqa_windscreen_panel_van/2026-06-20T1500_20261115-141241_838cd590-dirty/result.json"
+    },
+    {
+      "page": "05_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_panel_van/2026-06-20T1500_20261115-141241_838cd590-dirty/screenshot.png",
+      "source_box": [
+        397,
+        287,
+        559,
+        444
+      ],
+      "source_sha256": "bb2c031cdfaa23432ca032b8ae5ff14bcdd3e4b7eb6a4bf661006e1a0961c9b1",
+      "pixel_sha256": "24065e3a2229417c96f8837bf3c3ad18e71ba6046f8b8bc5ffac630a00133bea",
+      "destination_box": [
+        665,
+        425,
+        989,
+        739
+      ],
+      "scale": 2,
+      "label": "panel_van: explicitly labelled inspection crop; saloon gameplay shows rear only"
+    },
+    {
+      "page": "05_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_hatchback/2026-06-20T1500_20261115-140911_838cd590-dirty/screenshot.png",
+      "source_box": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "source_sha256": "acdaea98df7f123a20beea1ce8640d9b0a62cb1a9392c87667803934fd60b15e",
+      "pixel_sha256": "771607825f35e8d306778ae4683cae969535cfaa6e152af757a1008c23c06b9b",
+      "destination_box": [
+        0,
+        810,
+        640,
+        1170
+      ],
+      "scale": 0.5,
+      "label": "saloon control (taxi rear view) gameplay context thumbnail; do not judge fine glazing from thumbnail",
+      "result": "gameplay/vqa_windscreen_hatchback/2026-06-20T1500_20261115-140911_838cd590-dirty/result.json"
+    },
+    {
+      "page": "05_gameplay_context-and-crops.png",
+      "source": "gameplay/vqa_windscreen_hatchback/2026-06-20T1500_20261115-140911_838cd590-dirty/screenshot.png",
+      "source_box": [
+        550,
+        380,
+        735,
+        600
+      ],
+      "source_sha256": "acdaea98df7f123a20beea1ce8640d9b0a62cb1a9392c87667803934fd60b15e",
+      "pixel_sha256": "a4b957512e07e949e5287254453ac2abe75a098f0dedb1f747c3b2efdf3c66b7",
+      "destination_box": [
+        665,
+        815,
+        850,
+        1035
+      ],
+      "scale": 1,
+      "label": "saloon control (taxi rear view): explicitly labelled inspection crop; saloon gameplay shows rear only"
+    }
+  ],
+  "preservation_checks": [
+    {
+      "kind": "saloon",
+      "nodes_unchanged": true,
+      "materials_unchanged": true,
+      "original_body_vertices_normals_unchanged": true,
+      "other_primitives_unchanged": true,
+      "other_primitive_count": 22,
+      "before_bounds": [
+        -2.2952299118042,
+        0.0280000008642673,
+        -0.900180101394653,
+        4.59999942779541,
+        1.40308809280396,
+        1.80036020278931
+      ],
+      "after_bounds": [
+        -2.2952299118042,
+        0.0280000008642673,
+        -0.900180101394653,
+        4.59999942779541,
+        1.40308809280396,
+        1.80036020278931
+      ],
+      "captured_pooled_bounds_unchanged": true,
+      "whole_glb_unchanged": true,
+      "baseline": "godot/tests/data/vehicle_windscreens.json"
+    },
+    {
+      "kind": "hatchback",
+      "nodes_unchanged": true,
+      "materials_unchanged": true,
+      "original_body_vertices_normals_unchanged": true,
+      "other_primitives_unchanged": true,
+      "other_primitive_count": 23,
+      "before_bounds": [
+        -2.29470276832581,
+        0.0280000008642673,
+        -0.900190353393555,
+        4.59999990463257,
+        1.46364712715149,
+        1.80038070678711
+      ],
+      "after_bounds": [
+        -2.29470276832581,
+        0.0280000008642673,
+        -0.900190353393555,
+        4.59999990463257,
+        1.46364712715149,
+        1.80038070678711
+      ],
+      "captured_pooled_bounds_unchanged": true,
+      "whole_glb_unchanged": false,
+      "baseline": "godot/tests/data/vehicle_windscreens.json"
+    },
+    {
+      "kind": "estate",
+      "nodes_unchanged": true,
+      "materials_unchanged": true,
+      "original_body_vertices_normals_unchanged": true,
+      "other_primitives_unchanged": true,
+      "other_primitive_count": 23,
+      "before_bounds": [
+        -2.34990215301514,
+        0.0280000008642673,
+        -0.89993417263031,
+        4.60017013549805,
+        1.58808875083923,
+        1.79986834526062
+      ],
+      "after_bounds": [
+        -2.34990215301514,
+        0.0280000008642673,
+        -0.89993417263031,
+        4.60017013549805,
+        1.58808875083923,
+        1.79986834526062
+      ],
+      "captured_pooled_bounds_unchanged": true,
+      "whole_glb_unchanged": false,
+      "baseline": "godot/tests/data/vehicle_windscreens.json"
+    },
+    {
+      "kind": "suv",
+      "nodes_unchanged": true,
+      "materials_unchanged": true,
+      "original_body_vertices_normals_unchanged": true,
+      "other_primitives_unchanged": true,
+      "other_primitive_count": 23,
+      "before_bounds": [
+        -2.29518985748291,
+        0.0280000008642673,
+        -0.900146901607513,
+        4.59999942779541,
+        1.82079744338989,
+        1.80029380321503
+      ],
+      "after_bounds": [
+        -2.29518985748291,
+        0.0280000008642673,
+        -0.900146901607513,
+        4.59999942779541,
+        1.82079744338989,
+        1.80029380321503
+      ],
+      "captured_pooled_bounds_unchanged": true,
+      "whole_glb_unchanged": false,
+      "baseline": "godot/tests/data/vehicle_windscreens.json"
+    },
+    {
+      "kind": "pickup",
+      "nodes_unchanged": true,
+      "materials_unchanged": true,
+      "original_body_vertices_normals_unchanged": true,
+      "other_primitives_unchanged": true,
+      "other_primitive_count": 22,
+      "before_bounds": [
+        -2.67003870010376,
+        0.027999971061945,
+        -0.90008682012558,
+        5.34999990463257,
+        1.8142466545105,
+        1.80017364025116
+      ],
+      "after_bounds": [
+        -2.67003870010376,
+        0.027999971061945,
+        -0.90008682012558,
+        5.34999990463257,
+        1.8142466545105,
+        1.80017364025116
+      ],
+      "captured_pooled_bounds_unchanged": true,
+      "whole_glb_unchanged": false,
+      "baseline": "godot/tests/data/vehicle_windscreens.json"
+    },
+    {
+      "kind": "panel_van",
+      "nodes_unchanged": true,
+      "materials_unchanged": true,
+      "original_body_vertices_normals_unchanged": true,
+      "other_primitives_unchanged": true,
+      "other_primitive_count": 25,
+      "before_bounds": [
+        -2.67003870010376,
+        0.0280000008642673,
+        -0.900000095367432,
+        5.34999990463257,
+        2.26311898231506,
+        1.80000019073486
+      ],
+      "after_bounds": [
+        -2.67003870010376,
+        0.0280000008642673,
+        -0.900000095367432,
+        5.34999990463257,
+        2.26311898231506,
+        1.80000019073486
+      ],
+      "captured_pooled_bounds_unchanged": true,
+      "whole_glb_unchanged": false,
+      "baseline": "godot/tests/data/vehicle_windscreens.json"
+    }
+  ],
+  "pixel_validation": "passed; exact source crops and nearest-neighbour enlargements checked byte-for-byte; every LOD object bbox enclosed",
+  "independent_review": {
+    "basis": "Parent-provided second tester VERDICT FAIL: visually reviewed pages 01\u201305, confirms clean windscreens, all 36 LOD frames within bounds, five visible/passed gameplay variants and valid preservation table; geometry script was not rerun.",
+    "visual_pages": {
+      "01_source-before-after_close.png": "reviewed",
+      "02_source-before-after_close.png": "reviewed",
+      "03_all-models_perspective-lod.png": "reviewed",
+      "04_gameplay_context-and-crops.png": "reviewed",
+      "05_gameplay_context-and-crops.png": "reviewed"
+    },
+    "new_visual_findings": [],
+    "fresh_geometry_execution": "pending independent tester rerun",
+    "preservation_test_execution": "pending independent tester confirmation",
+    "implementer_geometry_record": "geometry-validation.json"
+  }
+}

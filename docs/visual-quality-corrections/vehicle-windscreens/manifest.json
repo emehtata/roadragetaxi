@@ -1,0 +1,162 @@
+{
+  "source_revision": "838cd590aeaf6f8b999199e4dff8c1f2a7019ffe-dirty",
+  "renderer": "Godot 4.7.2 native Windows Vulkan Forward+ / NVIDIA GeForce RTX 5060",
+  "findings": [
+    "VQA-001",
+    "VQA-002",
+    "VQA-003",
+    "VQA-004",
+    "VQA-005"
+  ],
+  "preserved": "Glass/materials/node transforms/other primitive data and saloon control; baseline under godot/tests/data/vehicle_windscreens.json",
+  "assets": {
+    "hatchback": {
+      "sha256": "60f26300522b8ec782297f3160532c3139e4573da91c31e96548b3a4ed308dbd",
+      "clipped_paint_triangles": 90
+    },
+    "estate": {
+      "sha256": "6a26cd386e035d1552f32eda247ea8338ea9ddb96c5777ec773fc3ca2759f10e",
+      "clipped_paint_triangles": 77
+    },
+    "suv": {
+      "sha256": "d652ae83b203581da2317d1484e2d4d67e3efa349bfe6ec449ac0299551d7420",
+      "clipped_paint_triangles": 73
+    },
+    "pickup": {
+      "sha256": "9b5b641e15e0485ae54da95244d1cd74c2589d5f5f616637d0de5433efb9be67",
+      "clipped_paint_triangles": 91
+    },
+    "panel_van": {
+      "sha256": "99acbcef3e44d464f66679762252e9488e1fe4dbd9ca8a1c99df02a23c439a90",
+      "clipped_paint_triangles": 117
+    },
+    "saloon": {
+      "sha256": "5ddf1b68bbca23e6a739d4c31d70e06405f0c6fa3f084bf739561a40c0d6b7c3",
+      "clipped_paint_triangles": 0
+    }
+  },
+  "gameplay": [
+    {
+      "scenario": "vqa_windscreen_estate",
+      "result": "gameplay/vqa_windscreen_estate/2026-06-20T1500_20261115-141019_838cd590-dirty/result.json",
+      "status": "passed",
+      "target": {
+        "id": "windscreen_0",
+        "kind": "estate",
+        "rect": [
+          411.580841064453,
+          325.775360107422,
+          135.180450439453,
+          104.558288574219
+        ],
+        "visible": true
+      },
+      "errors": [],
+      "screenshot": "gameplay/vqa_windscreen_estate/2026-06-20T1500_20261115-141019_838cd590-dirty/screenshot.png",
+      "visually_inspected": true
+    },
+    {
+      "scenario": "vqa_windscreen_hatchback",
+      "result": "gameplay/vqa_windscreen_hatchback/2026-06-20T1500_20261115-140552_838cd590-dirty/result.json",
+      "status": "failed",
+      "target": null,
+      "errors": [
+        "stalled: no readiness change for 60 s",
+        "lineup car not in view"
+      ]
+    },
+    {
+      "scenario": "vqa_windscreen_hatchback",
+      "result": "gameplay/vqa_windscreen_hatchback/2026-06-20T1500_20261115-140911_838cd590-dirty/result.json",
+      "status": "passed",
+      "target": {
+        "id": "windscreen_6",
+        "kind": "hatchback",
+        "rect": [
+          410.723327636719,
+          330.7763671875,
+          135.733337402344,
+          100.274627685547
+        ],
+        "visible": true
+      },
+      "errors": [],
+      "screenshot": "gameplay/vqa_windscreen_hatchback/2026-06-20T1500_20261115-140911_838cd590-dirty/screenshot.png",
+      "visually_inspected": true
+    },
+    {
+      "scenario": "vqa_windscreen_panel_van",
+      "result": "gameplay/vqa_windscreen_panel_van/2026-06-20T1500_20261115-141241_838cd590-dirty/result.json",
+      "status": "passed",
+      "target": {
+        "id": "windscreen_0",
+        "kind": "panel_van",
+        "rect": [
+          409.169281005859,
+          299.542022705078,
+          137.285919189453,
+          131.495422363281
+        ],
+        "visible": true
+      },
+      "errors": [],
+      "screenshot": "gameplay/vqa_windscreen_panel_van/2026-06-20T1500_20261115-141241_838cd590-dirty/screenshot.png",
+      "visually_inspected": true
+    },
+    {
+      "scenario": "vqa_windscreen_pickup",
+      "result": "gameplay/vqa_windscreen_pickup/2026-06-20T1500_20261115-141154_838cd590-dirty/result.json",
+      "status": "passed",
+      "target": {
+        "id": "windscreen_2",
+        "kind": "pickup",
+        "rect": [
+          410.058013916016,
+          317.127716064453,
+          136.400543212891,
+          113.909698486328
+        ],
+        "visible": true
+      },
+      "errors": [],
+      "screenshot": "gameplay/vqa_windscreen_pickup/2026-06-20T1500_20261115-141154_838cd590-dirty/screenshot.png",
+      "visually_inspected": true
+    },
+    {
+      "scenario": "vqa_windscreen_suv",
+      "result": "gameplay/vqa_windscreen_suv/2026-06-20T1500_20261115-141107_838cd590-dirty/result.json",
+      "status": "passed",
+      "target": {
+        "id": "windscreen_1",
+        "kind": "suv",
+        "rect": [
+          410.030883789063,
+          316.873352050781,
+          136.426879882813,
+          114.171234130859
+        ],
+        "visible": true
+      },
+      "errors": [],
+      "screenshot": "gameplay/vqa_windscreen_suv/2026-06-20T1500_20261115-141107_838cd590-dirty/screenshot.png",
+      "visually_inspected": true
+    }
+  ],
+  "inspected_sheets": [
+    "before_source-versus-pooled_front.png",
+    "before_front_three-quarter_top.png",
+    "after_front_three-quarter_top.png",
+    "lod/A-001_perspective-lod.png",
+    "lod/A-002_perspective-lod.png",
+    "lod/A-003_perspective-lod.png",
+    "lod/A-004_perspective-lod.png",
+    "lod/A-005_perspective-lod.png",
+    "lod/A-008_perspective-lod.png"
+  ],
+  "lod": {
+    "manifest": "lod/results.json",
+    "samples": 36,
+    "default_viewport_lod_threshold": 1.0,
+    "geometric_test": "all base and generated paint LOD index sets tested against original glass rays"
+  }
+}

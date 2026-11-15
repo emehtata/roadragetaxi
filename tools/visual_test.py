@@ -120,10 +120,10 @@ def run_one(scenario: dict, start_time: str, out_root: Path) -> dict:
                   "--visual-test", _host_path(out / "scenario.json", godot), *scenario.get("godot_args", [])]
         if scenario.get("view", "3d") == "2d" and not scenario.get("no_view_flag"):  # 3D is the client's default
             client.append("--outdoor-2d")
-        # Indoor fixtures must not read the player's settings or saved HUD layout.
+        # Indoor and isolated verification fixtures use disposable settings before startup.
         with tempfile.TemporaryDirectory(prefix="rrt-indoor-hint-") as user_data, open(out / "godot.log", "w", encoding="utf-8") as godot_log:
             client_env = dict(os.environ)
-            if scenario.get("indoor_hint"):
+            if scenario.get("indoor_hint") or scenario.get("isolated_settings"):
                 client_env["XDG_DATA_HOME"] = user_data
                 verification_name = Path(user_data).name
                 spec["verification_user_dir"] = verification_name
@@ -131,9 +131,10 @@ def run_one(scenario: dict, start_time: str, out_root: Path) -> dict:
                 engine += ["--script", "res://tools/visual_test_indoor.gd"]
             subprocess.run([str(godot), "--path", project, *engine, "--", *client], cwd=REPO, stdout=godot_log,
                            stderr=subprocess.STDOUT, timeout=600, env=client_env)
-            if scenario.get("indoor_hint") and godot.suffix == ".exe" and (out / "result.json").exists():
+            if (scenario.get("indoor_hint") or scenario.get("isolated_settings")) and godot.suffix == ".exe" and (out / "result.json").exists():
                 import shutil
-                recorded = json.loads((out / "result.json").read_text()).get("indoor_hint", {}).get("verification_user_data_dir", "")
+                capture_result = json.loads((out / "result.json").read_text())
+                recorded = capture_result.get("verification_user_data_dir", capture_result.get("indoor_hint", {}).get("verification_user_data_dir", ""))
                 if recorded and Path(recorded).name == verification_name:
                     native = subprocess.run(["wslpath", "-u", recorded], capture_output=True, text=True, check=True).stdout.strip()
                     shutil.rmtree(native, ignore_errors=True)

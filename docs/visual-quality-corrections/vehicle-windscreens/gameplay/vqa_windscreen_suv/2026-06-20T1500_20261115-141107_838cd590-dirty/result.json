@@ -1,0 +1,165 @@
+{
+  "camera": {
+    "position": [
+      -0.0125000001862645,
+      0.100000001490116
+    ],
+    "zoom": 3.0
+  },
+  "chase": {
+    "frames": 1020,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "838cd590-dirty",
+  "elapsed_s": 16.9774356666668,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 30.398,
+    "build_ms_total": 132.856,
+    "draw_calls": 1023.0,
+    "far_lod_crowns_loaded": 21750,
+    "forest_chunks": 31,
+    "objects": 2024.0,
+    "place_ms_max": 29.384,
+    "primitives": 1774971.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 293.547378540039,
+    "trees_loaded": 10875,
+    "video_memory_mb": 833.997894287109
+  },
+  "frames": {
+    "avg_fps": 65.4870280438552,
+    "avg_ms": 15.2701997612462,
+    "frames": 66,
+    "low_01pct_fps": 41.6215782377752,
+    "low_1pct_fps": 41.6215782377752,
+    "over_16ms": 14,
+    "over_33ms": 0,
+    "over_66ms": 0,
+    "p50_ms": 14.8148145675659,
+    "p95_ms": 21.556999206543,
+    "p99_ms": 24.0259990692139,
+    "worst_ms": 24.0259990692139
+  },
+  "game_time": [
+    "2026-06-20",
+    54000.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 167
+  },
+  "render": {
+    "chunk_build_worker": {
+      "avg_ms": 1249.25333333333,
+      "max_ms": 1419.862
+    },
+    "chunk_lamps_main": {
+      "avg_ms": 4.10233333333333,
+      "max_ms": 4.883
+    },
+    "chunk_mesh_surface": {
+      "avg_ms": 1.29594285714286,
+      "max_ms": 1.89
+    },
+    "chunk_meshes_main": {
+      "avg_ms": 0.953,
+      "max_ms": 1.037
+    },
+    "long_frames": [],
+    "state_timeline": {
+      "arrival_max_ms": 96.0540008544922,
+      "arrival_over_66ms": 1,
+      "arrival_p50_ms": 30.7929992675781,
+      "arrival_p95_ms": 44.6990013122559,
+      "arrival_p99_ms": 96.0540008544922,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 96.0540008544922,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.052845
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 33,
+      "tile_events": 0,
+      "underrun_episodes": 1,
+      "underruns": 1
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_windscreen_suv",
+  "scene": {
+    "buildings_in_view": 79,
+    "chunks": 49,
+    "lamps_in_view": 111,
+    "scenery_in_view": {},
+    "windscreen": {
+      "id": "windscreen_1",
+      "kind": "suv",
+      "rect": [
+        410.030883789063,
+        316.873352050781,
+        136.426879882813,
+        114.171234130859
+      ],
+      "visible": true
+    }
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-corrections\\vehicle-windscreens\\gameplay\\vqa_windscreen_suv\\2026-06-20T1500_20261115-141107_838cd590-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-15T12:11:51Z",
+  "traffic": {
+    "moving_min": 6,
+    "npcs_max": 15,
+    "spawn_rejections": {
+      "job_invalid": 1.0,
+      "resident_busy": 1.0,
+      "share": {
+        "job_invalid": 0.5,
+        "resident_busy": 0.5
+      },
+      "total": 2.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": 2.555,
+    "x": 427897.3,
+    "y": 7210634.9
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-bfeyjhq2",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.4,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 17.14,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      -2.458,
+      -1.071
+    ]
+  }
+}

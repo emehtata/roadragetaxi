@@ -43,6 +43,18 @@ glass under them shows. The windscreen was painted body geometry that hid it.
 The removed triangles are forward-facing body faces inside the glass windscreen's
 bounds; the change was made with a script over the glTF index buffers.
 
+The VQA-001–005 follow-up repairs residual painted faces that still intersected
+front glass in `hatchback`, `estate`, `suv`, `pickup` and `panel_van`.
+`tools/repair_vehicle_windscreens.py` subtracts the existing front-glass projected
+footprint from nearby paint faces, retaining a 15 mm painted surround. It clips
+boundary triangles and interpolates only their added positions/normals; it does
+not move or replace glass, change materials, or alter other primitives. Existing
+vertices, node transforms and material data are preserved. The script uses the
+project's Shapely dependency (2.1+), is deterministic for these source files and
+leaves already repaired files unchanged. See
+[correction evidence](../../../docs/visual-quality-corrections/vehicle-windscreens/README.md)
+for source/pooled comparisons, preserved-data checks and gameplay screenshots.
+
 The rail models were welded, simplified (`--ratio 0.12 --error 0.1`), flattened,
 joined and resized to 256-pixel textures. Their close-range meshes are pooled;
 the procedural train mesh remains the distant LOD.
