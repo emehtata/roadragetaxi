@@ -1,0 +1,42 @@
+{
+  "id": "vqa_indoor_hint_640",
+  "description": "VQA-034: complete indoor control hint at 640\u00d7480",
+  "why": "Exterior readiness reuses sourced Oulu walk_bench_oulu_day city-centre pose. Client-only actual HomeFirstPerson/HomePlayer3D uses existing tests/data/home_plans.json index 32 (footprint:compact-L1), the recorded mapped compact L-house footprint from tests/test_home_interior.py::COMPACT_L_HOUSES[0], without disclosing a real address. The room plan is generated, not a surveyed interior. All four localized prompts shown at its entrance with mouse released.",
+  "city": "Oulu",
+  "pose": [
+    427897.3,
+    7210634.9,
+    2.555
+  ],
+  "requires": {
+    "buildings_in_view": 1
+  },
+  "start_time": "2026-06-20T15:00",
+  "weather": "clear",
+  "cloud": 0.4,
+  "wetness": [
+    0.0,
+    0.05
+  ],
+  "sun_altitude_deg": [
+    30,
+    90
+  ],
+  "zoom": 3.0,
+  "server_args": [
+    "--no-auto-fetch"
+  ],
+  "measure_s": 1,
+  "camera": "third",
+  "resolution": [
+    640,
+    480
+  ],
+  "indoor_hint": {
+    "plan_index": 32,
+    "building_id": "footprint:compact-L1",
+    "language": "de"
+  },
+  "commit": "169c2ecd-dirty",
+  "verification_user_dir": "rrt-indoor-hint-eadjtnns"
+}

@@ -90,8 +90,12 @@ func enter(plan: Dictionary) -> bool:
 	_viewport.add_child(light)
 	_hint = Label.new()
 	_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	_hint.offset_top = -48
+	_hint.offset_left = 12
+	_hint.offset_right = -12
+	_hint.offset_top = -12
 	_hint.offset_bottom = -12
+	_hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint.add_theme_color_override("font_shadow_color", Color.BLACK)
 	_hint.add_theme_constant_override("shadow_offset_x", 2)
@@ -206,6 +210,7 @@ func _process(delta: float) -> void:
 		_hint.text += " · " + T.text("home_choose_hint", language)
 	if not player.controls_enabled:
 		_hint.text += " · " + T.text("home_mouse_resume", language)
+	_hint.offset_top = -12.0 - _hint.get_minimum_size().y
 
 
 ## The preferred doorstep first, then inward offsets and room labels; source plans are connected.

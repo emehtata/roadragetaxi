@@ -48,6 +48,9 @@ var _walk_left := 0.0
 var _hud_configured := false
 var _hud_expected := ""
 var _hud_snapshot := {}
+var _indoor_hint: CanvasLayer
+var _indoor_draws := 0
+var _indoor_snapshot := {}
 
 
 ## A "walk" scenario (fps-3d-view phase 1): out of the parked taxi, first
@@ -203,6 +206,9 @@ func _lineup_train(name: String, look: String, lengths: Array, width: float, y: 
 
 
 func _ready() -> void:
+	if scenario.has("indoor_hint"):
+		main.get_window().mode = Window.MODE_WINDOWED
+		main.get_window().size = Vector2i(scenario["resolution"][0], scenario["resolution"][1])
 	# The driving camera: "camera" (or the last of "switch"); without either the map view as before (3 for "windshield").
 	var walk_in: bool = scenario.get("walk", {}).get("back", "") == "in"
 	main.camera_modes.select(main.camera_modes.KEYS[CAMERA[scenario.get("camera", "eye" if walk_in else "top")]])
@@ -274,7 +280,13 @@ func _process(delta: float) -> void:
 		main.phone.close()
 	if scenario.has("hud_fixture"):
 		_show_hud_fixture()
+	if scenario.has("indoor_hint"):
+		if not is_instance_valid(_indoor_hint) and check().is_empty():
+			_show_indoor_hint()
+		_indoor_draws += 1
 	var missing := check()
+	if scenario.has("indoor_hint"):
+		missing.append_array(_indoor_hint_readiness())
 	if _measuring:
 		if driving and not scenario.has("walk"):  # full throttle down the street, straight on (as --screenshot-drive); a walk sends its own
 			main.send({"throttle": 1.0, "brake": 0.0, "steer_left": 0.0, "steer_right": 0.0, "forward": 0.0, "turn": 0.0, "sprint": false})
@@ -321,6 +333,68 @@ func _process(delta: float) -> void:
 	elif _elapsed > TIMEOUT_S:
 		_write({"status": "failed", "errors": ["not ready after %d s" % TIMEOUT_S] + _missing})
 		main.get_tree().quit(1)
+
+
+## A recorded plan displayed by the existing indoor controller; server entry stays untouched.
+func _show_indoor_hint() -> void:
+	var fixture: Dictionary = scenario["indoor_hint"]
+	var plans: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/data/home_plans.json"))
+	_indoor_hint = preload("res://home_first_person.gd").new()
+	_indoor_hint.language = fixture["language"]
+	_indoor_hint._recenter_mouse = false
+	main.add_child(_indoor_hint)
+	if not _indoor_hint.enter(plans[int(fixture["plan_index"])]):
+		return
+	_indoor_hint.release_mouse()
+	_indoor_hint.is_home = false
+	_indoor_draws = 0
+
+
+func _indoor_hint_readiness() -> Array:
+	var missing := []
+	var requested := Vector2(scenario["resolution"][0], scenario["resolution"][1])
+	if OS.get_user_data_dir().get_file() != str(scenario.get("verification_user_dir", "")):
+		missing.append("indoor verification is not using isolated player settings")
+	if main.get_viewport().get_visible_rect().size != requested:
+		missing.append("indoor viewport size does not match scenario")
+	if not is_instance_valid(_indoor_hint) or not _indoor_hint.visible or not is_instance_valid(_indoor_hint.player):
+		return missing + ["indoor fixture not entered"]
+	var view = _indoor_hint
+	if not view.player.camera.current or view._viewport.get_camera_3d() != view.player.camera:
+		missing.append("existing indoor camera not current")
+	var surfaces: Array = view._viewport.find_children("Surfaces", "MeshInstance3D", true, false)
+	if surfaces.is_empty() or surfaces[0].mesh == null or surfaces[0].mesh.get_surface_count() == 0 or surfaces[0].mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX].is_empty():
+		missing.append("no loaded nonempty interior geometry")
+	if not view.player.is_on_floor() or absf(view.player.position.y) > 0.03:
+		missing.append("indoor player not settled on its floor")
+	if not view.at_exit() or view.is_home or view.player.controls_enabled:
+		missing.append("indoor longest hint state not active")
+	var expected: String = view.T.text("home_first_person_hint", view.language)
+	for key in ["house_leave_prompt", "home_choose_hint", "home_mouse_resume"]:
+		expected += " · " + view.T.text(key, view.language)
+	var hint: Label = view._hint
+	if hint.text != expected or not hint.is_visible_in_tree():
+		missing.append("complete localized indoor hint not shown")
+	var rect := hint.get_global_rect()
+	if rect.position.x < 12.0 or rect.end.x > requested.x - 12.0 + 0.1 or rect.position.y < 0.0 or rect.end.y > requested.y - 12.0 + 0.1:
+		missing.append("indoor hint exceeds viewport margins")
+	if hint.get_visible_line_count() != hint.get_line_count() or hint.size.y + 0.1 < hint.get_minimum_size().y:
+		missing.append("indoor hint lines clipped")
+	if _indoor_draws < 3:
+		missing.append("indoor draws not completed")
+	return missing
+
+
+func _indoor_hint_result() -> Dictionary:
+	var view = _indoor_hint
+	var rect: Rect2 = view._hint.get_global_rect()
+	return {"fixture": scenario["indoor_hint"], "language": view.language,
+		"text": view._hint.text, "line_count": view._hint.get_line_count(),
+		"visible_lines": view._hint.get_visible_line_count(),
+		"hint_rect": [rect.position.x, rect.position.y, rect.size.x, rect.size.y],
+		"on_floor": view.player.is_on_floor(), "camera": "HomeFirstPerson/HomePlayer3D",
+		"camera_position": [view.player.camera.global_position.x, view.player.camera.global_position.y, view.player.camera.global_position.z],
+		"completed_draw_frames": _indoor_draws, "verification_user_data_dir": OS.get_user_data_dir(), "readiness": _indoor_hint_readiness()}
 
 
 ## Display-only HUD fixtures leave the authoritative simulation state and commands untouched.
@@ -774,6 +848,8 @@ var _counts := {}
 
 
 func _finish() -> void:
+	if scenario.has("indoor_hint"):
+		_indoor_snapshot = _indoor_hint_result()
 	if scenario.has("hud_fixture"):
 		_hud_snapshot = _hud_result()  # keep capture-time state while the server debug request awaits
 	set_process(false)  # awaits below: finish once
@@ -910,6 +986,8 @@ func _write(result: Dictionary) -> void:
 		"scene": _counts, "elapsed_s": _elapsed, "chase": _chase, "route_3d_visible": main.map_layer.buildings_3d != null and main.map_layer.buildings_3d.route_3d.visible, "forest": _forest_stats(),
 		"lake_ice": {"cm": state.get("calendar", {}).get("lake_ice_cm") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null,
 			"holds": state.get("calendar", {}).get("lake_ice_holds") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null}})
+	if scenario.has("indoor_hint"):
+		result["indoor_hint"] = _indoor_snapshot
 	if scenario.has("hud_fixture"):
 		result["hud"] = _hud_snapshot
 	result["weather"].erase("plowed_paths")

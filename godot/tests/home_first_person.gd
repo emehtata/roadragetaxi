@@ -32,6 +32,68 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 
+func settle_hint(view) -> void:
+	for frame in 5:
+		view._process(0.0)
+		await process_frame
+
+
+func check_hint_bounds(view, expected: String) -> void:
+	var hint: Label = view._hint
+	var rect := hint.get_global_rect()
+	check(hint.text == expected, "complete localized hint and conditional prompts retained")
+	check(rect.position.x >= 12.0 and rect.end.x <= root.size.x - 12.0 + 0.1, "hint fits horizontal margins " + view.language + " " + str(root.size))
+	check(rect.position.y >= 0.0 and rect.end.y <= root.size.y - 12.0 + 0.1, "hint retains bottom clearance")
+	check(hint.get_visible_line_count() == hint.get_line_count(), "all hint lines visible")
+	check(hint.size.y + 0.1 >= hint.get_minimum_size().y, "hint has full text height")
+
+
+func test_hint_wraps_all_prompts(view) -> void:
+	var text := View.T
+	var near_door := Vector3(view._door.x, 0.01, -view._door.y)
+	for language in ["en", "fi", "de"]:
+		view.language = language
+		for dimensions in [Vector2i(640, 480), Vector2i(1280, 720)]:
+			root.size = dimensions
+			view.player.position = near_door
+			view.player.controls_enabled = false
+			view.is_home = false
+			await settle_hint(view)
+			check_hint_bounds(view, text.text("home_first_person_hint", language) + " · " + text.text("house_leave_prompt", language) + " · " + text.text("home_choose_hint", language) + " · " + text.text("home_mouse_resume", language))
+			for flags in 8:
+				view.player.position = near_door if flags & 1 else near_door + Vector3(20, 0, 0)
+				view.is_home = not bool(flags & 2)
+				view.player.controls_enabled = not bool(flags & 4)
+				await settle_hint(view)
+				var expected: String = text.text("home_first_person_hint", language)
+				for option in [[1, "house_leave_prompt"], [2, "home_choose_hint"], [4, "home_mouse_resume"]]:
+					if flags & option[0]:
+						expected += " · " + text.text(option[1], language)
+				check_hint_bounds(view, expected)
+
+
+
+func test_hint_resize_and_reset(view) -> void:
+	for language in ["en", "fi", "de"]:
+		view.language = language
+		for dimensions in [Vector2i(1280, 720), Vector2i(640, 480), Vector2i(1280, 720)]:
+			root.size = dimensions
+			view.player.position = Vector3(view._door.x, 0.01, -view._door.y)
+			view.player.controls_enabled = false
+			view.is_home = false
+			await settle_hint(view)
+			var long_height: float = view._hint.size.y
+			view.player.position += Vector3(20.0, 0.0, 0.0)
+			view.player.controls_enabled = true
+			view.is_home = true
+			await settle_hint(view)
+			check_hint_bounds(view, View.T.text("home_first_person_hint", language))
+			check(view._hint.get_line_count() == 1 and view._hint.size.y <= long_height, "short hint restores natural height")
+			var short_rect: Rect2 = view._hint.get_global_rect()
+			await settle_hint(view)
+			check(view._hint.get_global_rect().is_equal_approx(short_rect), "repeated layout does not drift")
+	view.player.controls_enabled = false
+
 func _run() -> void:
 	var plans: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/data/home_plans.json"))
 	var view := View.new()
@@ -63,6 +125,9 @@ func _run() -> void:
 	var p = view.player
 	p.controls_enabled = false
 	p.set_physics_process(false)
+	await test_hint_wraps_all_prompts(view)
+	await test_hint_resize_and_reset(view)
+	view.language = "en"
 	await physics_frame
 	await physics_frame
 	var hall: Array = plans[0]["rooms"][0]["label_at"]

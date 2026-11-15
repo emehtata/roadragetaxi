@@ -32,3 +32,33 @@ The new production-HUD regression script first failed with 33 layout failures on
 The headless script reports zero failures; targeted pytest reports three passed. Changed GDScripts pass Linux Godot `--check-only`, and `git diff --check` passes. Both window sizes use an unsaved `HudLayout.new(false)` for the assertions and display fixtures; no player layout file is saved or migrated.
 
 The initial capture-metadata attempt was discarded because the server debug wait let the live HUD replace fixture metadata after capture. The corrected sequential wrapper exited 143 after five successful cases; no child process remained, and the final 1280 hint case was rerun individually and passed. Native renderer/ObjectDB cleanup warnings are retained in logs after successful captures; no HUD runtime script error occurred. This slice does not verify unrelated rendering defects, arbitrary saved panel placements or window sizes below those specified.
+
+
+## VQA-034: responsive indoor control hint
+
+The shared HomeFirstPerson hint now wraps within 12-pixel horizontal margins and grows upward from its existing 12-pixel bottom clearance. Its natural minimum height is reapplied after each composed prompt update, so the shorter hint and wider window recover their height. Translations, font, shadow, alignment, mouse filtering, camera and input behavior are retained. The original audit evidence remains unchanged.
+
+The named `vqa_indoor_hint_640` and `vqa_indoor_hint_1280` scenarios first satisfy the existing Oulu pose/map/weather/camera checks, then instantiate the actual HomeFirstPerson/HomePlayer3D view over a recorded compact L-shaped house footprint. Fixture `footprint:compact-L1` is `tests/data/home_plans.json` index 32, generated from `tests/test_home_interior.py::COMPACT_L_HOUSES[0]`; the footprint is mapped, the interior is generated and the real address is withheld. No server entry request is fabricated. The player settles on the floor at the entrance, with choose-home and click-to-resume prompts active.
+
+Indoor readiness requires requested viewport size, loaded nonempty floor mesh, current existing indoor camera, floor contact, exact complete localized prompt, unclipped text bounds/lines and stable frames. A tiny verification bootstrap changes the project userdata name before startup instantiates, so player settings and saves are not read by the accepted captures. The Python runner deletes its disposable settings folder afterward. Results retain its unique name and capture-time hint/camera metadata while the exterior debug request completes.
+
+All four images were visually inspected on 2026-11-15. German is rendered at both sizes; English and Finnish wrapping at 640×480 is additionally rendered. At 640×480 the full prompt is two lines in all three locales; at 1280×720 German is one line. Headless assertions cover all locales at both sizes.
+
+| Named scenario | Locale | Viewport | Visible lines | Evidence |
+|---|---|---|---|---|
+| `vqa_indoor_hint_640` | en | 640×480 | 2 | [image](visual-quality-corrections/indoor-hint/accepted/en/vqa_indoor_hint_640/2026-06-20T1500_20261115-134529_169c2ecd-dirty/screenshot.png) · [readiness](visual-quality-corrections/indoor-hint/accepted/en/vqa_indoor_hint_640/2026-06-20T1500_20261115-134529_169c2ecd-dirty/result.json) |
+| `vqa_indoor_hint_640` | fi | 640×480 | 2 | [image](visual-quality-corrections/indoor-hint/accepted/fi/vqa_indoor_hint_640/2026-06-20T1500_20261115-134617_169c2ecd-dirty/screenshot.png) · [readiness](visual-quality-corrections/indoor-hint/accepted/fi/vqa_indoor_hint_640/2026-06-20T1500_20261115-134617_169c2ecd-dirty/result.json) |
+| `vqa_indoor_hint_1280` | de | 1280×720 | 1 | [image](visual-quality-corrections/indoor-hint/accepted/vqa_indoor_hint_1280/2026-06-20T1500_20261115-134429_169c2ecd-dirty/screenshot.png) · [readiness](visual-quality-corrections/indoor-hint/accepted/vqa_indoor_hint_1280/2026-06-20T1500_20261115-134429_169c2ecd-dirty/result.json) |
+| `vqa_indoor_hint_640` | de | 640×480 | 2 | [image](visual-quality-corrections/indoor-hint/accepted/vqa_indoor_hint_640/2026-06-20T1500_20261115-134340_169c2ecd-dirty/screenshot.png) · [readiness](visual-quality-corrections/indoor-hint/accepted/vqa_indoor_hint_640/2026-06-20T1500_20261115-134340_169c2ecd-dirty/result.json) |
+
+Verification: the new production-view checks first produced 15 failures on the original fixed-width hint. They now pass all eight exit/home/mouse prompt combinations for en/fi/de, repeated 1280→640→1280 resizing, long→short restoration and stable repeated layout. Existing lifecycle/controller checks across 35 plans also pass. Relevant manifest pytest passes three tests. Linux Godot imports and changed-script parsing pass.
+
+```sh
+/home/ubuntu/tools/godot/Godot_v4.7.2-stable_linux.x86_64 --headless --path godot --script res://tests/home_first_person.gd
+.venv/bin/python -m pytest -q -n auto tests/test_godot_manifest.py
+.venv/bin/python tools/visual_test.py run vqa_indoor_hint_640 vqa_indoor_hint_1280
+```
+
+The en/fi images use the same named 640 scenario with only `indoor_hint.language` changed via `tools.visual_test.run_one`; their exact resolved scenario JSON is retained alongside each result. The bootstrap uses disposable `rrt-indoor-hint-*` userdata, which causes native shader-cache write errors after the runtime name change; these affect cache persistence, and no hint script error or readiness failure occurred. Logs retain those errors. A preliminary APPDATA-based isolation was ineffective on Windows and was replaced; a linked temporary-project attempt could not load the scene through Windows UNC symlinks and is retained only as a failed startup log. None of those preliminary captures is accepted evidence. Headless shutdown retains existing fallback-test and ObjectDB warnings.
+
+This correction does not verify smaller viewports, other audit defects, surveyed interior layouts or runtime rendering performance.
