@@ -1,0 +1,459 @@
+{
+  "audit_forest": {
+    "chunks": 39,
+    "far_active_batches": 111,
+    "far_in_frustum": 17176,
+    "maximum_m": 1326.75061035156,
+    "minimum_m": 38.081958770752,
+    "near_active_batches": 8,
+    "near_in_frustum": 6828,
+    "outside_frustum": 380216,
+    "range_basis": "camera distance to batch AABB centre"
+  },
+  "camera": {
+    "position": [
+      -0.0125000001862645,
+      -0.200000002980232
+    ],
+    "zoom": 3.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "0ccad8cb-dirty",
+  "elapsed_s": 13.3828926666667,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 137.543,
+    "build_ms_total": 2832.519,
+    "draw_calls": 149.0,
+    "far_lod_crowns_loaded": 404220,
+    "forest_chunks": 39,
+    "objects": 422.0,
+    "place_ms_max": 38.228,
+    "primitives": 9846796.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 421.362899780273,
+    "trees_loaded": 202110,
+    "video_memory_mb": 360.151733398438
+  },
+  "frames": {
+    "avg_fps": 7.48680243378596,
+    "avg_ms": 133.568370321523,
+    "frames": 23,
+    "low_01pct_fps": 6.74611523982184,
+    "low_1pct_fps": 6.74611523982184,
+    "over_16ms": 23,
+    "over_33ms": 23,
+    "over_66ms": 23,
+    "p50_ms": 128.33332824707,
+    "p95_ms": 143.939392089844,
+    "p99_ms": 148.233459472656,
+    "worst_ms": 148.233459472656
+  },
+  "game_time": [
+    "2026-06-20",
+    46800.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 0
+  },
+  "render": {
+    "long_frames": [
+      {
+        "chunk_ms": 0.0,
+        "frame": 1,
+        "main_ms": 1.639,
+        "ms": 127.272727272727,
+        "pipelines_compiled": 65
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 2,
+        "main_ms": 1.389,
+        "ms": 143.939393939394,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 3,
+        "main_ms": 1.745,
+        "ms": 127.272727272727,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 4,
+        "main_ms": 1.367,
+        "ms": 127.272727272727,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 5,
+        "main_ms": 2.103,
+        "ms": 143.939393939394,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 6,
+        "main_ms": 1.621,
+        "ms": 127.272727272727,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 7,
+        "main_ms": 1.503,
+        "ms": 127.272727272727,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 8,
+        "main_ms": 1.345,
+        "ms": 148.233454545455,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 9,
+        "main_ms": 2.065,
+        "ms": 129.843,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 10,
+        "main_ms": 1.341,
+        "ms": 134.482,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 11,
+        "main_ms": 1.477,
+        "ms": 127.777777777778,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 12,
+        "main_ms": 1.633,
+        "ms": 141.267888888887,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 13,
+        "main_ms": 1.675,
+        "ms": 127.777777777778,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 14,
+        "main_ms": 1.358,
+        "ms": 128.333333333333,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 15,
+        "main_ms": 1.72,
+        "ms": 143.888888888889,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 16,
+        "main_ms": 1.339,
+        "ms": 128.333333333333,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 17,
+        "main_ms": 1.66,
+        "ms": 128.333333333333,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 18,
+        "main_ms": 1.592,
+        "ms": 143.333333333333,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 19,
+        "main_ms": 1.444,
+        "ms": 127.777777777778,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 20,
+        "main_ms": 1.431,
+        "ms": 127.777777777778,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 21,
+        "main_ms": 2.165,
+        "ms": 138.82377777778,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 22,
+        "main_ms": 1.491,
+        "ms": 138.513333333333,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 23,
+        "main_ms": 1.504,
+        "ms": 133.333333333333,
+        "pipelines_compiled": 0
+      }
+    ],
+    "state_timeline": {
+      "arrival_max_ms": 464.375,
+      "arrival_over_66ms": 23,
+      "arrival_p50_ms": 0.13400000333786,
+      "arrival_p95_ms": 376.716003417969,
+      "arrival_p99_ms": 401.028015136719,
+      "clock_snaps": 24,
+      "long_gaps": [
+        {
+          "arrival_ms": 375.213989257813,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 0.376562
+        },
+        {
+          "arrival_ms": 376.734008789063,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 0.754764000000002
+        },
+        {
+          "arrival_ms": 377.010986328125,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.133159
+        },
+        {
+          "arrival_ms": 378.860992431641,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.51334
+        },
+        {
+          "arrival_ms": 376.0830078125,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.890869
+        },
+        {
+          "arrival_ms": 376.997985839844,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 2.269211
+        },
+        {
+          "arrival_ms": 380.105987548828,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 2.650729
+        },
+        {
+          "arrival_ms": 379.016998291016,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 3.031283
+        },
+        {
+          "arrival_ms": 382.428985595703,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 3.41504
+        },
+        {
+          "arrival_ms": 371.804992675781,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 3.788298
+        },
+        {
+          "arrival_ms": 376.716003417969,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 4.166333
+        },
+        {
+          "arrival_ms": 375.783996582031,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 4.543437
+        },
+        {
+          "arrival_ms": 373.174011230469,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 4.91808
+        },
+        {
+          "arrival_ms": 379.723999023438,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 5.299122
+        },
+        {
+          "arrival_ms": 371.127990722656,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 5.671591
+        },
+        {
+          "arrival_ms": 377.2080078125,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 6.050233
+        },
+        {
+          "arrival_ms": 372.894989013672,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 6.424489
+        },
+        {
+          "arrival_ms": 374.795013427734,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 6.800863
+        },
+        {
+          "arrival_ms": 374.709014892578,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 7.176902
+        },
+        {
+          "arrival_ms": 401.028015136719,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 7.579378
+        },
+        {
+          "arrival_ms": 402.907989501953,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 7.983873
+        },
+        {
+          "arrival_ms": 376.815002441406,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 8.362135
+        },
+        {
+          "arrival_ms": 464.375,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 8.827831
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 277,
+      "tile_events": 0,
+      "underrun_episodes": 1,
+      "underruns": 24
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "audit_forest_sparse_windshield_day",
+  "scene": {
+    "buildings_in_view": 0,
+    "chunks": 49,
+    "lamps_in_view": 0,
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-audit\\gameplay_strict\\audit_forest_sparse_windshield_day\\20261115-111603_0ccad8cb-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-15T09:16:55Z",
+  "traffic": {
+    "moving_min": 0,
+    "npcs_max": 0,
+    "spawn_rejections": {
+      "share": {},
+      "total": 0.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": 1.542,
+    "x": 477828.8,
+    "y": 7172916.7
+  },
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.1,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 16.81,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      -2.471,
+      2.498
+    ]
+  }
+}

@@ -1,0 +1,685 @@
+{
+  "date": "2026-11-15",
+  "scope": "Finite presentation branches and representative natural-map follow-up; no production changes",
+  "families": [
+    {
+      "id": "HUD",
+      "assets": [
+        "A-261"
+      ],
+      "source": "godot/hud.gd",
+      "status": "completed",
+      "scope": "values/show_state, show_subtitle, summary_text: notification, camera notice, source wrap, engine/entry/fuel hints, meet, board, abroad, fare, subtitle, summaries",
+      "evidence": [
+        "runtime/A-261_hud_abroad.png",
+        "runtime/A-261_hud_building_hint.png",
+        "runtime/A-261_hud_engine_off.png",
+        "runtime/A-261_hud_fare.png",
+        "runtime/A-261_hud_fuel_active.png",
+        "runtime/A-261_hud_fuel_engine.png",
+        "runtime/A-261_hud_fuel_exit.png",
+        "runtime/A-261_hud_fuel_ready.png",
+        "runtime/A-261_hud_fuel_stop.png",
+        "runtime/A-261_hud_home_door.png",
+        "runtime/A-261_hud_house_door.png",
+        "runtime/A-261_hud_meet.png",
+        "runtime/A-261_hud_notice.png",
+        "runtime/A-261_hud_source_wrap.png",
+        "runtime/A-261_hud_speed_camera.png",
+        "runtime/A-261_hud_start_on_foot.png",
+        "runtime/A-261_hud_subtitle_wrap.png",
+        "runtime/A-261_hud_summary_final.png",
+        "runtime/A-261_hud_summary_next.png",
+        "runtime/A-261_hud_train_board.png"
+      ],
+      "expected_states": [
+        "hud_abroad",
+        "hud_building_hint",
+        "hud_engine_off",
+        "hud_fare",
+        "hud_fuel_active",
+        "hud_fuel_engine",
+        "hud_fuel_exit",
+        "hud_fuel_ready",
+        "hud_fuel_stop",
+        "hud_home_door",
+        "hud_house_door",
+        "hud_meet",
+        "hud_notice",
+        "hud_source_wrap",
+        "hud_speed_camera",
+        "hud_start_on_foot",
+        "hud_subtitle_wrap",
+        "hud_summary_final",
+        "hud_summary_next",
+        "hud_train_board"
+      ],
+      "captured_states": [
+        "hud_abroad",
+        "hud_building_hint",
+        "hud_engine_off",
+        "hud_fare",
+        "hud_fuel_active",
+        "hud_fuel_engine",
+        "hud_fuel_exit",
+        "hud_fuel_ready",
+        "hud_fuel_stop",
+        "hud_home_door",
+        "hud_house_door",
+        "hud_meet",
+        "hud_notice",
+        "hud_source_wrap",
+        "hud_speed_camera",
+        "hud_start_on_foot",
+        "hud_subtitle_wrap",
+        "hud_summary_final",
+        "hud_summary_next",
+        "hud_train_board"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "Phone",
+      "assets": [
+        "A-262"
+      ],
+      "source": "godot/phone.gd",
+      "status": "completed",
+      "scope": "show_phone/_fill_card/_ask/handle_result: offer/booking statuses, pending, failure and protest",
+      "evidence": [
+        "runtime/A-262_answer_failed.png",
+        "runtime/A-262_booking_ACCEPTED.png",
+        "runtime/A-262_booking_CANCELLED.png",
+        "runtime/A-262_booking_COMPLETED.png",
+        "runtime/A-262_booking_PENDING.png",
+        "runtime/A-262_phone_available.png",
+        "runtime/A-262_phone_busy.png",
+        "runtime/A-262_phone_disconnected.png",
+        "runtime/A-262_phone_empty.png",
+        "runtime/A-262_phone_gone.png",
+        "runtime/A-262_phone_language_de_low_battery.png",
+        "runtime/A-262_phone_language_fi_low_battery.png",
+        "runtime/A-262_phone_pending.png",
+        "runtime/A-262_protest_notice.png",
+        "runtime/A-262_three_offers_known_distances.png"
+      ],
+      "expected_states": [
+        "answer_failed",
+        "booking_ACCEPTED",
+        "booking_CANCELLED",
+        "booking_COMPLETED",
+        "booking_PENDING",
+        "phone_available",
+        "phone_busy",
+        "phone_disconnected",
+        "phone_empty",
+        "phone_gone",
+        "phone_language_de_low_battery",
+        "phone_language_fi_low_battery",
+        "phone_pending",
+        "protest_notice",
+        "three_offers_known_distances"
+      ],
+      "captured_states": [
+        "answer_failed",
+        "booking_ACCEPTED",
+        "booking_CANCELLED",
+        "booking_COMPLETED",
+        "booking_PENDING",
+        "phone_available",
+        "phone_busy",
+        "phone_disconnected",
+        "phone_empty",
+        "phone_gone",
+        "phone_language_de_low_battery",
+        "phone_language_fi_low_battery",
+        "phone_pending",
+        "protest_notice",
+        "three_offers_known_distances"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "Navigation",
+      "assets": [
+        "A-263"
+      ],
+      "source": "godot/phone.gd",
+      "status": "completed",
+      "scope": "show_navigation: directions, destination/task, battery/language layouts",
+      "evidence": [
+        "runtime/A-263_navigation_arrive.png",
+        "runtime/A-263_navigation_left.png",
+        "runtime/A-263_navigation_no_target.png",
+        "runtime/A-263_navigation_right.png",
+        "runtime/A-263_navigation_straight.png",
+        "runtime/A-263_navigation_uturn.png"
+      ],
+      "expected_states": [
+        "navigation_arrive",
+        "navigation_left",
+        "navigation_no_target",
+        "navigation_right",
+        "navigation_straight",
+        "navigation_uturn"
+      ],
+      "captured_states": [
+        "navigation_arrive",
+        "navigation_left",
+        "navigation_no_target",
+        "navigation_right",
+        "navigation_straight",
+        "navigation_uturn"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "Meter",
+      "assets": [
+        "A-264"
+      ],
+      "source": "godot/taxi_meter.gd",
+      "status": "completed",
+      "scope": "cents/format: all decimal digit shapes and negative clamp",
+      "evidence": [
+        "runtime/A-264_meter_digit_0.png",
+        "runtime/A-264_meter_digit_1.png",
+        "runtime/A-264_meter_digit_2.png",
+        "runtime/A-264_meter_digit_3.png",
+        "runtime/A-264_meter_digit_4.png",
+        "runtime/A-264_meter_digit_5.png",
+        "runtime/A-264_meter_digit_6.png",
+        "runtime/A-264_meter_digit_7.png",
+        "runtime/A-264_meter_digit_8.png",
+        "runtime/A-264_meter_digit_9.png",
+        "runtime/A-264_meter_negative_clamp.png"
+      ],
+      "expected_states": [
+        "meter_digit_0",
+        "meter_digit_1",
+        "meter_digit_2",
+        "meter_digit_3",
+        "meter_digit_4",
+        "meter_digit_5",
+        "meter_digit_6",
+        "meter_digit_7",
+        "meter_digit_8",
+        "meter_digit_9",
+        "meter_negative_clamp"
+      ],
+      "captured_states": [
+        "meter_digit_0",
+        "meter_digit_1",
+        "meter_digit_2",
+        "meter_digit_3",
+        "meter_digit_4",
+        "meter_digit_5",
+        "meter_digit_6",
+        "meter_digit_7",
+        "meter_digit_8",
+        "meter_digit_9",
+        "meter_negative_clamp"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "StartupSettings",
+      "assets": [
+        "A-265",
+        "A-274"
+      ],
+      "source": "godot/startup.gd",
+      "status": "completed",
+      "scope": "menu presentation methods, settings, 0/1/5 saved-slot fixture lists, replace/delete confirmations; callbacks not invoked",
+      "evidence": [
+        "runtime/A-265_delete_slot_list.png",
+        "runtime/A-265_menu_career_menu.png",
+        "runtime/A-265_menu_credits_menu.png",
+        "runtime/A-265_menu_language_menu.png",
+        "runtime/A-265_menu_time_menu.png",
+        "runtime/A-265_replace_slot_list.png",
+        "runtime/A-265_slots_0.png",
+        "runtime/A-265_slots_1.png",
+        "runtime/A-265_slots_5.png",
+        "runtime/A-274_menu_audio_menu.png",
+        "runtime/A-274_menu_city_menu.png",
+        "runtime/A-274_menu_confirm_clear_cache.png",
+        "runtime/A-274_menu_confirm_delete_pbf.png",
+        "runtime/A-274_menu_confirm_reset_career.png",
+        "runtime/A-274_menu_confirm_reset_home.png",
+        "runtime/A-274_menu_experimental_menu.png",
+        "runtime/A-274_menu_gameplay_menu.png",
+        "runtime/A-274_menu_general_menu.png",
+        "runtime/A-274_menu_graphics_menu.png",
+        "runtime/A-274_menu_main_menu.png",
+        "runtime/A-274_menu_maps_menu.png",
+        "runtime/A-274_menu_pause_menu.png",
+        "runtime/A-274_menu_pbf_menu.png",
+        "runtime/A-274_menu_settings_menu.png"
+      ],
+      "expected_states": [
+        "delete_slot_list",
+        "menu_audio_menu",
+        "menu_career_menu",
+        "menu_city_menu",
+        "menu_confirm_clear_cache",
+        "menu_confirm_delete_pbf",
+        "menu_confirm_reset_career",
+        "menu_confirm_reset_home",
+        "menu_credits_menu",
+        "menu_experimental_menu",
+        "menu_gameplay_menu",
+        "menu_general_menu",
+        "menu_graphics_menu",
+        "menu_language_menu",
+        "menu_main_menu",
+        "menu_maps_menu",
+        "menu_pause_menu",
+        "menu_pbf_menu",
+        "menu_settings_menu",
+        "menu_time_menu",
+        "replace_slot_list",
+        "slots_0",
+        "slots_1",
+        "slots_5"
+      ],
+      "captured_states": [
+        "delete_slot_list",
+        "menu_audio_menu",
+        "menu_career_menu",
+        "menu_city_menu",
+        "menu_confirm_clear_cache",
+        "menu_confirm_delete_pbf",
+        "menu_confirm_reset_career",
+        "menu_confirm_reset_home",
+        "menu_credits_menu",
+        "menu_experimental_menu",
+        "menu_gameplay_menu",
+        "menu_general_menu",
+        "menu_graphics_menu",
+        "menu_language_menu",
+        "menu_main_menu",
+        "menu_maps_menu",
+        "menu_pause_menu",
+        "menu_pbf_menu",
+        "menu_settings_menu",
+        "menu_time_menu",
+        "replace_slot_list",
+        "slots_0",
+        "slots_1",
+        "slots_5"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "MapBrowser",
+      "assets": [
+        "A-266"
+      ],
+      "source": "godot/map_browser.gd",
+      "status": "completed",
+      "scope": "production _draw/_zoom_at: loading/no-tile, pin, min/max zoom; previous contextual capture covers loaded map",
+      "evidence": [
+        "runtime/A-266_map_loading.png",
+        "runtime/A-266_map_maximum_zoom.png",
+        "runtime/A-266_map_minimum_zoom.png",
+        "runtime/A-266_map_pin.png"
+      ],
+      "expected_states": [
+        "map_loading",
+        "map_maximum_zoom",
+        "map_minimum_zoom",
+        "map_pin"
+      ],
+      "captured_states": [
+        "map_loading",
+        "map_maximum_zoom",
+        "map_minimum_zoom",
+        "map_pin"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "DatePicker",
+      "assets": [
+        "A-267"
+      ],
+      "source": "godot/date_picker.gd",
+      "status": "completed",
+      "scope": "configure/_move_month: earliest/latest bounds, focused day, month clamp",
+      "evidence": [
+        "runtime/A-267_date_2025_11_15.png",
+        "runtime/A-267_date_2026_10_31.png",
+        "runtime/A-267_date_2026_11_15.png",
+        "runtime/A-267_date_month_clamped_2025_11.png",
+        "runtime/A-267_date_month_clamped_2026_10.png",
+        "runtime/A-267_date_month_clamped_2026_11.png"
+      ],
+      "expected_states": [
+        "date_2025_11_15",
+        "date_2026_10_31",
+        "date_2026_11_15",
+        "date_month_clamped_2025_11",
+        "date_month_clamped_2026_10",
+        "date_month_clamped_2026_11"
+      ],
+      "captured_states": [
+        "date_2025_11_15",
+        "date_2026_10_31",
+        "date_2026_11_15",
+        "date_month_clamped_2025_11",
+        "date_month_clamped_2026_10",
+        "date_month_clamped_2026_11"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "Tutorial",
+      "assets": [
+        "A-268"
+      ],
+      "source": "godot/tutorial.gd",
+      "status": "completed",
+      "scope": "all 22 tutorial panels and three notices; supplied local progress state",
+      "evidence": [
+        "runtime/A-268_tut_nausea.png",
+        "runtime/A-268_tut_no_station.png",
+        "runtime/A-268_tut_no_trains.png",
+        "runtime/A-268_tutorial_step_00.png",
+        "runtime/A-268_tutorial_step_01.png",
+        "runtime/A-268_tutorial_step_02.png",
+        "runtime/A-268_tutorial_step_03.png",
+        "runtime/A-268_tutorial_step_04.png",
+        "runtime/A-268_tutorial_step_05.png",
+        "runtime/A-268_tutorial_step_06.png",
+        "runtime/A-268_tutorial_step_07.png",
+        "runtime/A-268_tutorial_step_08.png",
+        "runtime/A-268_tutorial_step_09.png",
+        "runtime/A-268_tutorial_step_10.png",
+        "runtime/A-268_tutorial_step_11.png",
+        "runtime/A-268_tutorial_step_12.png",
+        "runtime/A-268_tutorial_step_13.png",
+        "runtime/A-268_tutorial_step_14.png",
+        "runtime/A-268_tutorial_step_15.png",
+        "runtime/A-268_tutorial_step_16.png",
+        "runtime/A-268_tutorial_step_17.png",
+        "runtime/A-268_tutorial_step_18.png",
+        "runtime/A-268_tutorial_step_19.png",
+        "runtime/A-268_tutorial_step_20.png",
+        "runtime/A-268_tutorial_step_21.png"
+      ],
+      "expected_states": [
+        "tut_nausea",
+        "tut_no_station",
+        "tut_no_trains",
+        "tutorial_step_00",
+        "tutorial_step_01",
+        "tutorial_step_02",
+        "tutorial_step_03",
+        "tutorial_step_04",
+        "tutorial_step_05",
+        "tutorial_step_06",
+        "tutorial_step_07",
+        "tutorial_step_08",
+        "tutorial_step_09",
+        "tutorial_step_10",
+        "tutorial_step_11",
+        "tutorial_step_12",
+        "tutorial_step_13",
+        "tutorial_step_14",
+        "tutorial_step_15",
+        "tutorial_step_16",
+        "tutorial_step_17",
+        "tutorial_step_18",
+        "tutorial_step_19",
+        "tutorial_step_20",
+        "tutorial_step_21"
+      ],
+      "captured_states": [
+        "tut_nausea",
+        "tut_no_station",
+        "tut_no_trains",
+        "tutorial_step_00",
+        "tutorial_step_01",
+        "tutorial_step_02",
+        "tutorial_step_03",
+        "tutorial_step_04",
+        "tutorial_step_05",
+        "tutorial_step_06",
+        "tutorial_step_07",
+        "tutorial_step_08",
+        "tutorial_step_09",
+        "tutorial_step_10",
+        "tutorial_step_11",
+        "tutorial_step_12",
+        "tutorial_step_13",
+        "tutorial_step_14",
+        "tutorial_step_15",
+        "tutorial_step_16",
+        "tutorial_step_17",
+        "tutorial_step_18",
+        "tutorial_step_19",
+        "tutorial_step_20",
+        "tutorial_step_21"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "ElectronicSigns",
+      "assets": [
+        "A-269"
+      ],
+      "source": "godot/electronic_signs.gd",
+      "status": "completed",
+      "scope": "all 12 WARNINGS codes plus speed, bracketed route text and unknown code",
+      "evidence": [
+        "runtime/A-269_electronic_speed_text_unknown.png",
+        "runtime/A-269_warning_codes_0.png",
+        "runtime/A-269_warning_codes_3.png",
+        "runtime/A-269_warning_codes_6.png",
+        "runtime/A-269_warning_codes_9.png"
+      ],
+      "expected_states": [
+        "electronic_speed_text_unknown",
+        "warning_codes_0",
+        "warning_codes_3",
+        "warning_codes_6",
+        "warning_codes_9"
+      ],
+      "captured_states": [
+        "electronic_speed_text_unknown",
+        "warning_codes_0",
+        "warning_codes_3",
+        "warning_codes_6",
+        "warning_codes_9"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "DoorMarker",
+      "assets": [
+        "A-270"
+      ],
+      "source": "godot/door_marks.gd",
+      "status": "completed",
+      "scope": "home/non-home \u00d7 available/unavailable, active phase .4",
+      "evidence": [
+        "runtime/A-270_door_home_false_available_false.png",
+        "runtime/A-270_door_home_false_available_true.png",
+        "runtime/A-270_door_home_true_available_false.png",
+        "runtime/A-270_door_home_true_available_true.png"
+      ],
+      "expected_states": [
+        "door_home_false_available_false",
+        "door_home_false_available_true",
+        "door_home_true_available_false",
+        "door_home_true_available_true"
+      ],
+      "captured_states": [
+        "door_home_false_available_false",
+        "door_home_false_available_true",
+        "door_home_true_available_false",
+        "door_home_true_available_true"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "RouteRibbon",
+      "assets": [
+        "A-271"
+      ],
+      "source": "godot/route_3d.gd",
+      "status": "completed",
+      "scope": "ordinary ground and ground-to-raised-layer route rebuild; live third_oulu_route contextual view",
+      "evidence": [
+        "runtime/A-271_route_ground.png",
+        "runtime/A-271_route_layer_transition.png"
+      ],
+      "expected_states": [
+        "route_ground",
+        "route_layer_transition"
+      ],
+      "captured_states": [
+        "route_ground",
+        "route_layer_transition"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "MapLabels",
+      "assets": [
+        "A-272"
+      ],
+      "source": "godot/labels.gd",
+      "status": "completed",
+      "scope": "mode 1 road-only and mode 2 all five category styles",
+      "evidence": [
+        "runtime/A-272_labels_mode_1.png",
+        "runtime/A-272_labels_mode_2.png"
+      ],
+      "expected_states": [
+        "labels_mode_1",
+        "labels_mode_2"
+      ],
+      "captured_states": [
+        "labels_mode_1",
+        "labels_mode_2"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "Loading",
+      "assets": [
+        "A-273"
+      ],
+      "source": "godot/hud.gd",
+      "status": "completed",
+      "scope": "start/camera map loading banner with detail",
+      "evidence": [
+        "runtime/A-273_hud_loading_camera.png",
+        "runtime/A-273_hud_loading_start.png"
+      ],
+      "expected_states": [
+        "hud_loading_camera",
+        "hud_loading_start"
+      ],
+      "captured_states": [
+        "hud_loading_camera",
+        "hud_loading_start"
+      ],
+      "limitation": "Completed for these finite presentation branches at their recorded resolution; arbitrary input text, settings/overlay permutations, screen sizes and language combinations are not exhausted."
+    },
+    {
+      "id": "ForestNaturalMap",
+      "source": "godot/tools/visual_quality_audit_gameplay.gd (audit readiness); godot/buildings_3d.gd and godot/map_chunk.gd (production rendering)",
+      "status": "completed",
+      "scope": "Actual batch AABB-centre visibility range selection plus per-instance frustum sampling on natural-map near/far forest",
+      "evidence": [
+        "gameplay_strict/audit_forest_open_field_day/20261115-111509_0ccad8cb-dirty/result.json",
+        "gameplay_strict/audit_forest_sparse_windshield_day/20261115-111603_0ccad8cb-dirty/result.json"
+      ],
+      "reason": "",
+      "limitation": "Initial origin-distance attempts retained but rejected for stronger LOD-readiness credit; corrected batch-centre runs supersede them. This samples production range selection, not GPU occlusion or temporal streaming."
+    },
+    {
+      "id": "ShoreNaturalMap",
+      "source": "godot/tools/visual_quality_audit_gameplay.gd (audit readiness); godot/buildings_3d.gd and godot/map_chunk.gd (production rendering)",
+      "status": "completed",
+      "scope": "Real water, shoreline, piers, near roadway and distant mapped geometry",
+      "evidence": [
+        "gameplay_strict/oulu_pier/20261115-110714_0ccad8cb-dirty/result.json"
+      ],
+      "reason": "",
+      "limitation": "Representative contextual samples; does not establish every possible natural-map overlap or temporal streaming boundary."
+    },
+    {
+      "id": "SnowNight",
+      "source": "godot/tools/visual_quality_audit_gameplay.gd (audit readiness); godot/buildings_3d.gd and godot/map_chunk.gd (production rendering)",
+      "status": "completed",
+      "scope": "Negative appearance inspection in existing city day/night and dark-forest eye cameras; VQA-038",
+      "evidence": [
+        "gameplay_strict/audit_snow_forest_eye/20261115-112718_0ccad8cb-dirty/screenshot.png",
+        "gameplay_strict/audit_snow_forest_eye/20261115-112718_0ccad8cb-dirty/screenshot_2.png",
+        "gameplay_strict/audit_snow_forest_eye/20261115-112718_0ccad8cb-dirty/result.json",
+        "runtime/A-244_snow_3d_wind_00.png"
+      ],
+      "reason": "",
+      "limitation": "No quality pass: expected live flakes are not discernible; cause not established. GPU emission and temporal whole-frame differences alone do not prove visible flakes."
+    },
+    {
+      "id": "SoftwareOcclusionSystem",
+      "source": "godot/project.godot; repository rg use_occlusion_culling / OccluderInstance (no configured nodes/settings)",
+      "status": "unavailable",
+      "reason": "No configured software occlusion-culling system or OccluderInstance scene exists. Production depth testing and camera-frustum clipping are exercised by named city/bridge/forest/shore contexts. Repository searches inspect the actual configured system; no missing screenshot is required for a renderer feature that is not configured."
+    },
+    {
+      "id": "ExhaustiveUiAndMapPermutations",
+      "source": "godot/startup.gd; godot/hud.gd; godot/phone.gd; godot/map_browser.gd; server-supplied text/date/map/save-slot state",
+      "status": "unavailable",
+      "reason": "Arbitrary text, dates, tile datasets, player settings, saved-slot contents and overlay permutations have no finite exhaustive set. Finite visible branches are sampled above; actual destructive/save callbacks are not exercised by a visual audit. The 13 finite presentation families enumerate expected/captured branch names in this matrix; completed finite branch coverage does not imply every arbitrary combination."
+    },
+    {
+      "id": "RareNaturalMapOverlaps",
+      "source": "godot/map_layer.gd; godot/map_chunk.gd; godot/chunk_detail.gd; godot/buildings_3d.gd",
+      "status": "completed",
+      "reason": "",
+      "evidence": [
+        "gameplay_strict/audit_wet_bridge_layers/20261115-114159_0ccad8cb-dirty/result.json",
+        "gameplay_strict/audit_wet_bridge_layers/20261115-114159_0ccad8cb-dirty/screenshot.png",
+        "gameplay_strict/audit_natural_chunk_revisit/20261115-113802_0ccad8cb-dirty/result.json",
+        "gameplay_strict/audit_natural_chunk_revisit/20261115-113802_0ccad8cb-dirty/screenshot_start.png",
+        "gameplay_strict/audit_natural_chunk_revisit/20261115-113802_0ccad8cb-dirty/screenshot_turn.png",
+        "gameplay_strict/audit_natural_chunk_revisit/20261115-113802_0ccad8cb-dirty/screenshot.png",
+        "gameplay_strict/oulu_pier/20261115-110714_0ccad8cb-dirty/result.json"
+      ],
+      "scope": "Representative mapped depth/layer contexts: dry/wet raised bridge over railway, shore/pier, city streets, gravel road, forest edge and forest after natural chunk eviction/reload.",
+      "limitation": "All possible coordinates, OSM datasets, spatial overlaps and temporal trajectories are unbounded. Named contexts sample each implemented shared renderer/layer mechanism; they do not certify every map location."
+    },
+    {
+      "id": "OpenFieldRoadCandidate",
+      "source": "godot/map_chunk.gd; godot/buildings_3d.gd",
+      "status": "completed",
+      "reason": "",
+      "evidence": [
+        "gameplay_strict/audit_open_field_road_motion/20261115-112626_0ccad8cb-dirty/result.json",
+        "gameplay_strict/audit_open_field_road_motion/20261115-112626_0ccad8cb-dirty/screenshot_start.png"
+      ],
+      "scope": "Resolved as intentional production gravel colour",
+      "limitation": "Observed production road color [137,129,112], surface_texture 5, rank 8, drivable true, layer 0; exact gravel entry in src/theroadragetrip/map_style.py. No asphalt-covering defect is asserted."
+    },
+    {
+      "id": "NaturalChunkLoadContinuity",
+      "source": "godot/main.gd:chunk queue/drain; godot/map_layer.gd; src/theroadragetrip/map_chunks.py:LOAD_RADIUS=3,UNLOAD_RADIUS=4",
+      "status": "completed",
+      "scope": "Original 525 m load-only sample plus continuously ready 220 s natural excursion/revisit: 1199.21 m maximum excursion, 221 snapshots, 28 additions, 14 removals, seven same-chunk reloads.",
+      "evidence": [
+        "gameplay_strict/audit_natural_chunk_revisit/20261115-113802_0ccad8cb-dirty/result.json",
+        "gameplay_strict/audit_natural_chunk_revisit/20261115-113802_0ccad8cb-dirty/screenshot_start.png",
+        "gameplay_strict/audit_natural_chunk_revisit/20261115-113802_0ccad8cb-dirty/screenshot_turn.png",
+        "gameplay_strict/audit_natural_chunk_revisit/20261115-113802_0ccad8cb-dirty/screenshot.png",
+        "streaming-followup.json"
+      ],
+      "limitation": "Route leaves the mapped road and enters forest before reversing along recorded positions; no lane-following/traffic-law certification. This is a bounded representative lifecycle, not every natural-map placement."
+    }
+  ]
+}

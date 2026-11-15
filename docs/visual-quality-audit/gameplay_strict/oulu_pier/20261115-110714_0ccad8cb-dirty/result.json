@@ -1,0 +1,157 @@
+{
+  "camera": {
+    "position": [
+      -0.00625000009313226,
+      -0.200000002980232
+    ],
+    "zoom": 3.0
+  },
+  "chase": {
+    "frames": 1355,
+    "max_excess_step_m": 0.000000238418579101563,
+    "max_yaw_step_rad": 0.0,
+    "worst_at_s": 0.484877333333335
+  },
+  "commit": "0ccad8cb-dirty",
+  "elapsed_s": 9.61337727272721,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 17.195,
+    "build_ms_total": 78.023,
+    "draw_calls": 626.0,
+    "far_lod_crowns_loaded": 13994,
+    "forest_chunks": 18,
+    "objects": 914.0,
+    "place_ms_max": 23.123,
+    "primitives": 1721448.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 295.919341087341,
+    "trees_loaded": 6997,
+    "video_memory_mb": 681.423965454102
+  },
+  "frames": {
+    "avg_fps": 148.664490712755,
+    "avg_ms": 6.72655585207747,
+    "frames": 446,
+    "low_01pct_fps": 50.8052619680236,
+    "low_1pct_fps": 59.6784322596229,
+    "over_16ms": 2,
+    "over_33ms": 0,
+    "over_66ms": 0,
+    "p50_ms": 6.25,
+    "p95_ms": 10.83899974823,
+    "p99_ms": 14.1059999465942,
+    "worst_ms": 19.6830005645752
+  },
+  "game_time": [
+    "2026-10-21",
+    46800.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 97
+  },
+  "render": {
+    "chunk_build_worker": {
+      "avg_ms": 373.6635625,
+      "max_ms": 1819.559
+    },
+    "chunk_ground_dict": {
+      "avg_ms": 4.965,
+      "max_ms": 6.491
+    },
+    "chunk_lamps_3d": {
+      "avg_ms": 0.309666666666667,
+      "max_ms": 0.347
+    },
+    "chunk_lamps_main": {
+      "avg_ms": 0.936277777777778,
+      "max_ms": 6.416
+    },
+    "chunk_mesh_surface": {
+      "avg_ms": 1.23011538461538,
+      "max_ms": 2.015
+    },
+    "chunk_meshes_main": {
+      "avg_ms": 0.23875,
+      "max_ms": 0.933
+    },
+    "long_frames": [],
+    "state_timeline": {
+      "arrival_max_ms": 133.593002319336,
+      "arrival_over_66ms": 1,
+      "arrival_p50_ms": 33.4480018615723,
+      "arrival_p95_ms": 41.0929985046387,
+      "arrival_p99_ms": 133.593002319336,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 133.593002319336,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 3.097458
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 94,
+      "tile_events": 0,
+      "underrun_episodes": 1,
+      "underruns": 1
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "oulu_pier",
+  "scene": {
+    "buildings_in_view": 53,
+    "chunks": 49,
+    "lamps_in_view": 65,
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-audit\\gameplay_strict\\oulu_pier\\20261115-110714_0ccad8cb-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-15T09:07:45Z",
+  "traffic": {
+    "moving_min": 1,
+    "npcs_max": 13,
+    "spawn_rejections": {
+      "share": {},
+      "total": 0.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": 1.751,
+    "x": 427445.4,
+    "y": 7210845.7
+  },
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.1,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 5.93,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      -2.805,
+      1.512
+    ]
+  }
+}

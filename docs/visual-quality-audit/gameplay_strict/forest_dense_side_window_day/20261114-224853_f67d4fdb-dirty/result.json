@@ -1,0 +1,132 @@
+{
+  "camera": {
+    "position": [
+      0.0,
+      -0.200000002980232
+    ],
+    "zoom": 3.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "f67d4fdb-dirty",
+  "elapsed_s": 6.00339933333342,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 133.661,
+    "build_ms_total": 1777.947,
+    "draw_calls": 133.0,
+    "far_lod_crowns_loaded": 259612,
+    "forest_chunks": 31,
+    "objects": 406.0,
+    "place_ms_max": 37.577,
+    "primitives": 9875517.0,
+    "render_3d_cpu_ms": 0.186000004410744,
+    "render_3d_gpu_ms": 2.52099990844727,
+    "static_memory_mb": 339.080744743347,
+    "trees_loaded": 129806,
+    "video_memory_mb": 343.490600585938
+  },
+  "frames": {
+    "avg_fps": 340.642144004937,
+    "avg_ms": 2.93563206314691,
+    "frames": 1023,
+    "low_01pct_fps": 144.258507917959,
+    "low_1pct_fps": 165.225231560717,
+    "over_16ms": 0,
+    "over_33ms": 0,
+    "over_66ms": 0,
+    "p50_ms": 2.77777767181396,
+    "p95_ms": 3.70370364189148,
+    "p99_ms": 5.55555534362793,
+    "worst_ms": 6.93200016021729
+  },
+  "game_time": [
+    "2026-06-20",
+    46800.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 34
+  },
+  "render": {
+    "long_frames": [],
+    "state_timeline": {
+      "arrival_max_ms": 124.502998352051,
+      "arrival_over_66ms": 1,
+      "arrival_p50_ms": 33.0,
+      "arrival_p95_ms": 35.4269981384277,
+      "arrival_p99_ms": 124.502998352051,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 124.502998352051,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 3.122879
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 95,
+      "tile_events": 0,
+      "underrun_episodes": 1,
+      "underruns": 1
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "forest_dense_side_window_day",
+  "scene": {
+    "buildings_in_view": 1,
+    "chunks": 49,
+    "lamps_in_view": 21,
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-audit\\gameplay_strict\\forest_dense_side_window_day\\20261114-224853_f67d4fdb-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-14T20:49:11Z",
+  "traffic": {
+    "moving_min": 0,
+    "npcs_max": 3,
+    "spawn_rejections": {
+      "share": {},
+      "total": 0.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": 1.884,
+    "x": 479053.5,
+    "y": 7170311.2
+  },
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.1,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 16.81,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      -1.826,
+      3.173
+    ]
+  }
+}

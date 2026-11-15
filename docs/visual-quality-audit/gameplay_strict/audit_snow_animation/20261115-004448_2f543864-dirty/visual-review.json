@@ -1,0 +1,10 @@
+{
+  "reviewer": "implementer",
+  "accepted": true,
+  "scope": "Actual settled snowy street, snow-covered roofs, NPC vehicle motion between the two frames. Individual flakes are subpixel/small at this overhead height; no close snowfall assessment is claimed.",
+  "frames": [
+    "screenshot.png",
+    "screenshot_2.png"
+  ],
+  "additional_confirmed_findings": []
+}

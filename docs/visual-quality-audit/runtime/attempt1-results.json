@@ -1,0 +1,2657 @@
+{
+	"adapter": "NVIDIA GeForce RTX 5060",
+	"captures": [
+		{
+			"angle": "mesh_lod_007.4m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 7.4352126121521,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_007.4m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_014.9m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 14.8704252243042,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_014.9m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_029.7m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 29.7408504486084,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_029.7m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_059.5m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 59.4817008972168,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_059.5m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_119.0m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 118.963401794434,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_119.0m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_237.9m",
+			"asset": "A-001",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 237.926803588867,
+			"family": "runtime-lod",
+			"file": "A-001_mesh_lod_237.9m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_006.7m",
+			"asset": "A-007",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 6.65425109863281,
+			"family": "runtime-lod",
+			"file": "A-007_mesh_lod_006.7m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_013.3m",
+			"asset": "A-007",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 13.3085021972656,
+			"family": "runtime-lod",
+			"file": "A-007_mesh_lod_013.3m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_026.6m",
+			"asset": "A-007",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 26.6170043945313,
+			"family": "runtime-lod",
+			"file": "A-007_mesh_lod_026.6m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_053.2m",
+			"asset": "A-007",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 53.2340087890625,
+			"family": "runtime-lod",
+			"file": "A-007_mesh_lod_053.2m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_106.5m",
+			"asset": "A-007",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 106.468017578125,
+			"family": "runtime-lod",
+			"file": "A-007_mesh_lod_106.5m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_212.9m",
+			"asset": "A-007",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 212.93603515625,
+			"family": "runtime-lod",
+			"file": "A-007_mesh_lod_212.9m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_029.6m",
+			"asset": "A-019",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 29.6004428863525,
+			"family": "runtime-lod",
+			"file": "A-019_mesh_lod_029.6m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_059.2m",
+			"asset": "A-019",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 59.2008857727051,
+			"family": "runtime-lod",
+			"file": "A-019_mesh_lod_059.2m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_118.4m",
+			"asset": "A-019",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 118.40177154541,
+			"family": "runtime-lod",
+			"file": "A-019_mesh_lod_118.4m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_236.8m",
+			"asset": "A-019",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 236.80354309082,
+			"family": "runtime-lod",
+			"file": "A-019_mesh_lod_236.8m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_473.6m",
+			"asset": "A-019",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 473.607086181641,
+			"family": "runtime-lod",
+			"file": "A-019_mesh_lod_473.6m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_947.2m",
+			"asset": "A-019",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 947.214172363281,
+			"family": "runtime-lod",
+			"file": "A-019_mesh_lod_947.2m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_036.9m",
+			"asset": "A-020",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 36.8697052001953,
+			"family": "runtime-lod",
+			"file": "A-020_mesh_lod_036.9m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_073.7m",
+			"asset": "A-020",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 73.7394104003906,
+			"family": "runtime-lod",
+			"file": "A-020_mesh_lod_073.7m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_147.5m",
+			"asset": "A-020",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 147.478820800781,
+			"family": "runtime-lod",
+			"file": "A-020_mesh_lod_147.5m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_295.0m",
+			"asset": "A-020",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 294.957641601563,
+			"family": "runtime-lod",
+			"file": "A-020_mesh_lod_295.0m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_589.9m",
+			"asset": "A-020",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 589.915283203125,
+			"family": "runtime-lod",
+			"file": "A-020_mesh_lod_589.9m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "mesh_lod_1179.8m",
+			"asset": "A-020",
+			"camera_projection": "perspective 60 degrees",
+			"distance_m": 1179.83056640625,
+			"family": "runtime-lod",
+			"file": "A-020_mesh_lod_1179.8m.png",
+			"limitation": "Far silhouettes are small at actual gameplay projection; surface LOD metadata and primitive counts identify the transition.",
+			"mesh_lod_threshold": 1.0,
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_399.0m",
+			"asset": "A-070",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 399.0,
+			"family": "runtime-lod",
+			"file": "A-070_forest_boundary_399.0m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_399.9m",
+			"asset": "A-070",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 399.9,
+			"family": "runtime-lod",
+			"file": "A-070_forest_boundary_399.9m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_400.1m",
+			"asset": "A-070",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 400.1,
+			"family": "runtime-lod",
+			"file": "A-070_forest_boundary_400.1m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_401.0m",
+			"asset": "A-070",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 401.0,
+			"family": "runtime-lod",
+			"file": "A-070_forest_boundary_401.0m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_399.0m",
+			"asset": "A-071",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 399.0,
+			"family": "runtime-lod",
+			"file": "A-071_forest_boundary_399.0m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_399.9m",
+			"asset": "A-071",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 399.9,
+			"family": "runtime-lod",
+			"file": "A-071_forest_boundary_399.9m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_400.1m",
+			"asset": "A-071",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 400.1,
+			"family": "runtime-lod",
+			"file": "A-071_forest_boundary_400.1m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_401.0m",
+			"asset": "A-071",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 401.0,
+			"family": "runtime-lod",
+			"file": "A-071_forest_boundary_401.0m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_399.0m",
+			"asset": "A-072",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 399.0,
+			"family": "runtime-lod",
+			"file": "A-072_forest_boundary_399.0m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_399.9m",
+			"asset": "A-072",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 399.9,
+			"family": "runtime-lod",
+			"file": "A-072_forest_boundary_399.9m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_400.1m",
+			"asset": "A-072",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 400.1,
+			"family": "runtime-lod",
+			"file": "A-072_forest_boundary_400.1m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "forest_boundary_401.0m",
+			"asset": "A-072",
+			"camera_projection": "orthographic fixed 13 m span",
+			"distance_m": 401.0,
+			"family": "runtime-lod",
+			"file": "A-072_forest_boundary_401.0m.png",
+			"limitation": "Diagnostic enlargement at true camera range, not normal perspective appearance.",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "person_detail_selector_39.9m",
+			"asset": "A-032",
+			"camera_projection": "orthographic enlarged diagnostic; selector uses actual view distance",
+			"family": "runtime-lod",
+			"file": "A-032_person_detail_selector_39.9m.png",
+			"limitation": "Imported animals may share identical geometry across detail keys.",
+			"ready": true,
+			"selector_distance_m": 39.9,
+			"target_confirmed": true
+		},
+		{
+			"angle": "person_detail_selector_40.1m",
+			"asset": "A-032",
+			"camera_projection": "orthographic enlarged diagnostic; selector uses actual view distance",
+			"family": "runtime-lod",
+			"file": "A-032_person_detail_selector_40.1m.png",
+			"limitation": "Imported animals may share identical geometry across detail keys.",
+			"ready": true,
+			"selector_distance_m": 40.1,
+			"target_confirmed": true
+		},
+		{
+			"angle": "fox_detail_selector_39.9m",
+			"asset": "A-054",
+			"camera_projection": "orthographic enlarged diagnostic; selector uses actual view distance",
+			"family": "runtime-lod",
+			"file": "A-054_fox_detail_selector_39.9m.png",
+			"limitation": "Imported animals may share identical geometry across detail keys.",
+			"ready": true,
+			"selector_distance_m": 39.9,
+			"target_confirmed": true
+		},
+		{
+			"angle": "fox_detail_selector_40.1m",
+			"asset": "A-054",
+			"camera_projection": "orthographic enlarged diagnostic; selector uses actual view distance",
+			"family": "runtime-lod",
+			"file": "A-054_fox_detail_selector_40.1m.png",
+			"limitation": "Imported animals may share identical geometry across detail keys.",
+			"ready": true,
+			"selector_distance_m": 40.1,
+			"target_confirmed": true
+		},
+		{
+			"angle": "dog_detail_selector_39.9m",
+			"asset": "A-065",
+			"camera_projection": "orthographic enlarged diagnostic; selector uses actual view distance",
+			"family": "runtime-lod",
+			"file": "A-065_dog_detail_selector_39.9m.png",
+			"limitation": "Imported animals may share identical geometry across detail keys.",
+			"ready": true,
+			"selector_distance_m": 39.9,
+			"target_confirmed": true
+		},
+		{
+			"angle": "dog_detail_selector_40.1m",
+			"asset": "A-065",
+			"camera_projection": "orthographic enlarged diagnostic; selector uses actual view distance",
+			"family": "runtime-lod",
+			"file": "A-065_dog_detail_selector_40.1m.png",
+			"limitation": "Imported animals may share identical geometry across detail keys.",
+			"ready": true,
+			"selector_distance_m": 40.1,
+			"target_confirmed": true
+		},
+		{
+			"angle": "moose_detail_selector_39.9m",
+			"asset": "A-061",
+			"camera_projection": "orthographic enlarged diagnostic; selector uses actual view distance",
+			"family": "runtime-lod",
+			"file": "A-061_moose_detail_selector_39.9m.png",
+			"limitation": "Imported animals may share identical geometry across detail keys.",
+			"ready": true,
+			"selector_distance_m": 39.9,
+			"target_confirmed": true
+		},
+		{
+			"angle": "moose_detail_selector_40.1m",
+			"asset": "A-061",
+			"camera_projection": "orthographic enlarged diagnostic; selector uses actual view distance",
+			"family": "runtime-lod",
+			"file": "A-061_moose_detail_selector_40.1m.png",
+			"limitation": "Imported animals may share identical geometry across detail keys.",
+			"ready": true,
+			"selector_distance_m": 40.1,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-173",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.0609047524631023,
+				1.59952616691589,
+				-0.0753926262259483
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-173_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-174",
+			"camera_height": 1.6,
+			"camera_position": [
+				0.0726254135370255,
+				1.59991419315338,
+				0.239047572016716
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-174_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-175",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.385191977024078,
+				1.59948647022247,
+				0.0564311966300011
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-175_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-177",
+			"camera_height": 1.6,
+			"camera_position": [
+				0.808687388896942,
+				1.59918165206909,
+				-0.805478811264038
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-177_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_studio",
+			"asset": "A-179",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.0608802810311317,
+				1.59991538524628,
+				0.018843911588192
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-179_room_00_studio.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_studio",
+			"asset": "A-180",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.0424794517457485,
+				1.60008132457733,
+				0.0475082248449326
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-180_room_00_studio.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_studio",
+			"asset": "A-181",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.0611368156969547,
+				1.59988236427307,
+				0.00263169105164707
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-181_room_00_studio.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_studio",
+			"asset": "A-182",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.0537503659725189,
+				1.60008132457733,
+				0.0292268022894859
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-182_room_00_studio.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_studio",
+			"asset": "A-183",
+			"camera_height": 1.6,
+			"camera_position": [
+				-5.01588344573975,
+				1.59988987445831,
+				-2.14058971405029
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-183_room_00_studio.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_studio",
+			"asset": "A-184",
+			"camera_height": 1.6,
+			"camera_position": [
+				-5.4134349822998,
+				1.59992182254791,
+				0.741487562656403
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-184_room_00_studio.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-185",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.533759415149689,
+				1.6001193523407,
+				1.215989112854
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-185_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-186",
+			"camera_height": 1.6,
+			"camera_position": [
+				0.242291525006294,
+				1.59983229637146,
+				1.2448867559433
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-186_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_studio",
+			"asset": "A-187",
+			"camera_height": 1.6,
+			"camera_position": [
+				1.76185035705566,
+				1.6001193523407,
+				0.66217029094696
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-187_room_00_studio.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-188",
+			"camera_height": 1.6,
+			"camera_position": [
+				0.522279262542725,
+				1.60086989402771,
+				1.18499422073364
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-188_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-189",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.704573333263397,
+				1.60093593597412,
+				0.93154913187027
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-189_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-190",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.0781362652778625,
+				1.60084056854248,
+				1.10994434356689
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-190_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-191",
+			"camera_height": 1.6,
+			"camera_position": [
+				-1.18773746490479,
+				1.60093593597412,
+				-0.349063724279404
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-191_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-192",
+			"camera_height": 1.6,
+			"camera_position": [
+				-1.02937543392181,
+				1.6008392572403,
+				0.137255147099495
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-192_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-193",
+			"camera_height": 1.6,
+			"camera_position": [
+				-1.09650802612305,
+				1.60084128379822,
+				-0.406577557325363
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-193_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-194",
+			"camera_height": 1.6,
+			"camera_position": [
+				-1.1768114566803,
+				1.59941399097443,
+				0.262312978506088
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-194_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-195",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.900080025196075,
+				1.59980034828186,
+				-0.411473542451859
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-195_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-196",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.999148547649384,
+				1.59986925125122,
+				0.126837685704231
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-196_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-197",
+			"camera_height": 1.6,
+			"camera_position": [
+				-1.44469261169434,
+				1.59988987445831,
+				-0.361038953065872
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-197_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-198",
+			"camera_height": 1.6,
+			"camera_position": [
+				-1.24377131462097,
+				1.59962713718414,
+				0.0388088710606098
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-198_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-199",
+			"camera_height": 1.6,
+			"camera_position": [
+				0.0810176655650139,
+				1.59957087039948,
+				0.0588234625756741
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-199_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-200",
+			"camera_height": 1.6,
+			"camera_position": [
+				0.167925328016281,
+				1.59952294826508,
+				0.0757346004247665
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-200_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-201",
+			"camera_height": 1.6,
+			"camera_position": [
+				0.00452667754143476,
+				1.6001193523407,
+				0.251560986042023
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-201_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-202",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.0607516281306744,
+				1.59992790222168,
+				0.0347704738378525
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-202_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_vestibule",
+			"asset": "A-203",
+			"camera_height": 1.6,
+			"camera_position": [
+				3.35729622840881,
+				1.59986412525177,
+				-0.219686344265938
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-203_room_00_vestibule.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_vestibule",
+			"asset": "A-204",
+			"camera_height": 1.6,
+			"camera_position": [
+				2.76462244987488,
+				1.59988236427307,
+				-1.91744136810303
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-204_room_00_vestibule.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_vestibule",
+			"asset": "A-205",
+			"camera_height": 1.6,
+			"camera_position": [
+				-2.00451827049255,
+				1.60003232955933,
+				0.158991634845734
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-205_room_00_vestibule.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_vestibule",
+			"asset": "A-206",
+			"camera_height": 1.6,
+			"camera_position": [
+				-2.39186978340149,
+				1.6000736951828,
+				0.408867180347443
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-206_room_00_vestibule.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_vestibule",
+			"asset": "A-207",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.330222457647324,
+				1.59996497631073,
+				2.46561741828918
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-207_room_00_vestibule.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_00",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_00.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_01",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_01.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_02",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_02.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_03",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_03.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_04",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_04.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_05",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_05.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_06",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_06.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_07",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_07.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_08",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_08.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_09",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_09.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_10",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_10.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_11",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_11.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_12",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_12.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_13",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_13.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_14",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_14.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_15",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_15.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_16",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_16.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_17",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_17.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_18",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_18.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_19",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_19.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_20",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_20.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tutorial_step_21",
+			"asset": "A-268",
+			"condition": "actual tutorial step text/layout; fixture progression, no simulation completion credit",
+			"family": "runtime-ui",
+			"file": "A-268_tutorial_step_21.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tut_nausea",
+			"asset": "A-268",
+			"family": "runtime-ui",
+			"file": "A-268_tut_nausea.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tut_no_trains",
+			"asset": "A-268",
+			"family": "runtime-ui",
+			"file": "A-268_tut_no_trains.png",
+			"ready": true,
+			"target_confirmed": true
+		},
+		{
+			"angle": "tut_no_station",
+			"asset": "A-268",
+			"family": "runtime-ui",
+			"file": "A-268_tut_no_station.png",
+			"ready": true,
+			"target_confirmed": true
+		}
+	],
+	"homes": [
+		{
+			"asset": "A-173",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 7,
+			"failures": [],
+			"rooms_expected": 7,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-174",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 7,
+			"failures": [],
+			"rooms_expected": 7,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-175",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 6,
+			"failures": [],
+			"rooms_expected": 6,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-176",
+			"completed": false,
+			"doors_crossed": [],
+			"doors_expected": 7,
+			"failures": [
+				{
+					"stopped": [
+						-3.05391836166382,
+						-0.963247418403625
+					],
+					"target": [
+						-0.272123008966446,
+						-0.370391994714737
+					]
+				}
+			],
+			"rooms_expected": 7,
+			"rooms_visited": []
+		},
+		{
+			"asset": "A-177",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-178",
+			"completed": false,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [
+				{
+					"stopped": [
+						-0.181085720658302,
+						1.65684938430786
+					],
+					"target": [
+						0.392349988222122,
+						1.03537094593048
+					]
+				}
+			],
+			"rooms_expected": 5,
+			"rooms_visited": []
+		},
+		{
+			"asset": "A-179",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 1,
+			"failures": [],
+			"rooms_expected": 1,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-180",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 1,
+			"failures": [],
+			"rooms_expected": 1,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-181",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 1,
+			"failures": [],
+			"rooms_expected": 1,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-182",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 1,
+			"failures": [],
+			"rooms_expected": 1,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-183",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 1,
+			"failures": [],
+			"rooms_expected": 1,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-184",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 1,
+			"failures": [],
+			"rooms_expected": 1,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-185",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-186",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-187",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 1,
+			"failures": [],
+			"rooms_expected": 1,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-188",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 4,
+			"failures": [],
+			"rooms_expected": 4,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-189",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-190",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-191",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-192",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-193",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-194",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-195",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-196",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-197",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-198",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 4,
+			"failures": [],
+			"rooms_expected": 4,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-199",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-200",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-201",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-202",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-203",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 7,
+			"failures": [],
+			"rooms_expected": 7,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-204",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 7,
+			"failures": [],
+			"rooms_expected": 7,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-205",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-206",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		},
+		{
+			"asset": "A-207",
+			"completed": true,
+			"doors_crossed": [],
+			"doors_expected": 5,
+			"failures": [],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				0
+			]
+		}
+	],
+	"lod": [
+		{
+			"asset": "A-001",
+			"samples": [
+				{
+					"distance_m": 7.4352126121521,
+					"primitives": 21280
+				},
+				{
+					"distance_m": 14.8704252243042,
+					"primitives": 20654
+				},
+				{
+					"distance_m": 29.7408504486084,
+					"primitives": 20340
+				},
+				{
+					"distance_m": 59.4817008972168,
+					"primitives": 19044
+				},
+				{
+					"distance_m": 118.963401794434,
+					"primitives": 18796
+				},
+				{
+					"distance_m": 237.926803588867,
+					"primitives": 12006
+				}
+			],
+			"surfaces": [
+				{
+					"base_indices": 12480,
+					"base_vertices": 8512,
+					"lods": [
+						{
+							"edge_length": 0.00569494161754847,
+							"index_bytes": 12480
+						},
+						{
+							"edge_length": 0.0878620222210884,
+							"index_bytes": 6240
+						},
+						{
+							"edge_length": 0.689413011074066,
+							"index_bytes": 3120
+						},
+						{
+							"edge_length": 4.70254850387573,
+							"index_bytes": 792
+						}
+					]
+				},
+				{
+					"base_indices": 40452,
+					"base_vertices": 27557,
+					"lods": [
+						{
+							"edge_length": 0.31851714849472,
+							"index_bytes": 40452
+						},
+						{
+							"edge_length": 4.61838626861572,
+							"index_bytes": 672
+						}
+					]
+				},
+				{
+					"base_indices": 2232,
+					"base_vertices": 1539,
+					"lods": [
+						{
+							"edge_length": 0.00702517479658127,
+							"index_bytes": 2232
+						},
+						{
+							"edge_length": 0.0668008923530579,
+							"index_bytes": 1116
+						},
+						{
+							"edge_length": 0.23484693467617,
+							"index_bytes": 468
+						},
+						{
+							"edge_length": 0.457096219062805,
+							"index_bytes": 228
+						},
+						{
+							"edge_length": 1.49087464809418,
+							"index_bytes": 108
+						}
+					]
+				},
+				{
+					"base_indices": 4152,
+					"base_vertices": 2456,
+					"lods": [
+						{
+							"edge_length": 0.00387500762008131,
+							"index_bytes": 4152
+						},
+						{
+							"edge_length": 0.0143754156306386,
+							"index_bytes": 2076
+						},
+						{
+							"edge_length": 0.0550096966326237,
+							"index_bytes": 1032
+						},
+						{
+							"edge_length": 0.168991699814796,
+							"index_bytes": 516
+						},
+						{
+							"edge_length": 0.774354994297028,
+							"index_bytes": 252
+						},
+						{
+							"edge_length": 1.73055386543274,
+							"index_bytes": 72
+						}
+					]
+				},
+				{
+					"base_indices": 9696,
+					"base_vertices": 6846,
+					"lods": [
+						{
+							"edge_length": 0.896982252597809,
+							"index_bytes": 8292
+						},
+						{
+							"edge_length": 1.34547340869904,
+							"index_bytes": 432
+						},
+						{
+							"edge_length": 2.0182101726532,
+							"index_bytes": 144
+						}
+					]
+				},
+				{
+					"base_indices": 3360,
+					"base_vertices": 2088,
+					"lods": [
+						{
+							"edge_length": 0.00602899491786957,
+							"index_bytes": 3360
+						},
+						{
+							"edge_length": 0.018316613510251,
+							"index_bytes": 1680
+						},
+						{
+							"edge_length": 0.0364361517131329,
+							"index_bytes": 840
+						},
+						{
+							"edge_length": 0.105275124311447,
+							"index_bytes": 420
+						},
+						{
+							"edge_length": 0.15791267156601,
+							"index_bytes": 204
+						},
+						{
+							"edge_length": 0.236869007349014,
+							"index_bytes": 96
+						},
+						{
+							"edge_length": 0.355303525924683,
+							"index_bytes": 48
+						}
+					]
+				},
+				{
+					"base_indices": 2364,
+					"base_vertices": 1328,
+					"lods": []
+				},
+				{
+					"base_indices": 0,
+					"base_vertices": 216,
+					"lods": []
+				}
+			],
+			"system": "generated imported mesh LOD"
+		},
+		{
+			"asset": "A-007",
+			"samples": [
+				{
+					"distance_m": 6.65425109863281,
+					"primitives": 23488
+				},
+				{
+					"distance_m": 13.3085021972656,
+					"primitives": 22862
+				},
+				{
+					"distance_m": 26.6170043945313,
+					"primitives": 21550
+				},
+				{
+					"distance_m": 53.2340087890625,
+					"primitives": 21444
+				},
+				{
+					"distance_m": 106.468017578125,
+					"primitives": 11658
+				},
+				{
+					"distance_m": 212.93603515625,
+					"primitives": 11584
+				}
+			],
+			"surfaces": [
+				{
+					"base_indices": 11976,
+					"base_vertices": 8107,
+					"lods": [
+						{
+							"edge_length": 0.00249102967791259,
+							"index_bytes": 11976
+						},
+						{
+							"edge_length": 0.0272162016481161,
+							"index_bytes": 5988
+						},
+						{
+							"edge_length": 0.151122704148293,
+							"index_bytes": 2988
+						},
+						{
+							"edge_length": 3.36392331123352,
+							"index_bytes": 1488
+						}
+					]
+				},
+				{
+					"base_indices": 40308,
+					"base_vertices": 27460,
+					"lods": [
+						{
+							"edge_length": 0.215453043580055,
+							"index_bytes": 40308
+						},
+						{
+							"edge_length": 2.30674815177917,
+							"index_bytes": 672
+						},
+						{
+							"edge_length": 3.46012234687805,
+							"index_bytes": 216
+						}
+					]
+				},
+				{
+					"base_indices": 3096,
+					"base_vertices": 2117,
+					"lods": []
+				},
+				{
+					"base_indices": 4152,
+					"base_vertices": 2456,
+					"lods": [
+						{
+							"edge_length": 0.00335947377607226,
+							"index_bytes": 4152
+						},
+						{
+							"edge_length": 0.0112480204552412,
+							"index_bytes": 2076
+						},
+						{
+							"edge_length": 0.0311240795999765,
+							"index_bytes": 1032
+						},
+						{
+							"edge_length": 0.125552117824554,
+							"index_bytes": 516
+						},
+						{
+							"edge_length": 0.316910892724991,
+							"index_bytes": 252
+						},
+						{
+							"edge_length": 0.475366324186325,
+							"index_bytes": 72
+						}
+					]
+				},
+				{
+					"base_indices": 14736,
+					"base_vertices": 10262,
+					"lods": [
+						{
+							"edge_length": 0.206453248858452,
+							"index_bytes": 14736
+						},
+						{
+							"edge_length": 0.567873239517212,
+							"index_bytes": 432
+						},
+						{
+							"edge_length": 0.851809859275818,
+							"index_bytes": 144
+						}
+					]
+				},
+				{
+					"base_indices": 3360,
+					"base_vertices": 2088,
+					"lods": [
+						{
+							"edge_length": 0.00433253683149815,
+							"index_bytes": 3360
+						},
+						{
+							"edge_length": 0.0134224565699697,
+							"index_bytes": 1680
+						},
+						{
+							"edge_length": 0.0309128873050213,
+							"index_bytes": 840
+						},
+						{
+							"edge_length": 0.0766158476471901,
+							"index_bytes": 420
+						},
+						{
+							"edge_length": 0.114923767745495,
+							"index_bytes": 204
+						},
+						{
+							"edge_length": 0.172385647892952,
+							"index_bytes": 48
+						}
+					]
+				},
+				{
+					"base_indices": 2364,
+					"base_vertices": 1316,
+					"lods": []
+				},
+				{
+					"base_indices": 0,
+					"base_vertices": 216,
+					"lods": []
+				}
+			],
+			"system": "generated imported mesh LOD"
+		},
+		{
+			"asset": "A-019",
+			"samples": [
+				{
+					"distance_m": 29.6004428863525,
+					"primitives": 17504
+				},
+				{
+					"distance_m": 59.2008857727051,
+					"primitives": 11178
+				},
+				{
+					"distance_m": 118.40177154541,
+					"primitives": 8788
+				},
+				{
+					"distance_m": 236.80354309082,
+					"primitives": 7894
+				},
+				{
+					"distance_m": 473.607086181641,
+					"primitives": 6436
+				},
+				{
+					"distance_m": 947.214172363281,
+					"primitives": 3136
+				}
+			],
+			"surfaces": [
+				{
+					"base_indices": 26304,
+					"base_vertices": 7648,
+					"lods": [
+						{
+							"edge_length": 0.0925094932317734,
+							"index_bytes": 26232
+						},
+						{
+							"edge_length": 0.223141476511955,
+							"index_bytes": 12996
+						},
+						{
+							"edge_length": 0.4952532351017,
+							"index_bytes": 5040
+						},
+						{
+							"edge_length": 5.82748126983643,
+							"index_bytes": 1824
+						},
+						{
+							"edge_length": 8.7412223815918,
+							"index_bytes": 144
+						}
+					]
+				},
+				{
+					"base_indices": 10074,
+					"base_vertices": 6022,
+					"lods": [
+						{
+							"edge_length": 1.15323460102081,
+							"index_bytes": 456
+						},
+						{
+							"edge_length": 7.53703594207764,
+							"index_bytes": 228
+						},
+						{
+							"edge_length": 11.3055543899536,
+							"index_bytes": 144
+						}
+					]
+				},
+				{
+					"base_indices": 2706,
+					"base_vertices": 1515,
+					"lods": [
+						{
+							"edge_length": 4.76606559753418,
+							"index_bytes": 2196
+						}
+					]
+				},
+				{
+					"base_indices": 288,
+					"base_vertices": 192,
+					"lods": [
+						{
+							"edge_length": 0.475290834903717,
+							"index_bytes": 144
+						},
+						{
+							"edge_length": 1.90615546703339,
+							"index_bytes": 72
+						}
+					]
+				},
+				{
+					"base_indices": 600,
+					"base_vertices": 140,
+					"lods": [
+						{
+							"edge_length": 0.202549830079079,
+							"index_bytes": 600
+						},
+						{
+							"edge_length": 0.303824752569199,
+							"index_bytes": 300
+						},
+						{
+							"edge_length": 0.455737143754959,
+							"index_bytes": 144
+						},
+						{
+							"edge_length": 0.777918994426727,
+							"index_bytes": 72
+						},
+						{
+							"edge_length": 1.16687858104706,
+							"index_bytes": 36
+						}
+					]
+				},
+				{
+					"base_indices": 216,
+					"base_vertices": 144,
+					"lods": [
+						{
+							"edge_length": 0.786072611808777,
+							"index_bytes": 144
+						}
+					]
+				},
+				{
+					"base_indices": 540,
+					"base_vertices": 138,
+					"lods": [
+						{
+							"edge_length": 0.0459009073674679,
+							"index_bytes": 540
+						},
+						{
+							"edge_length": 0.109001457691193,
+							"index_bytes": 264
+						},
+						{
+							"edge_length": 0.163502186536789,
+							"index_bytes": 132
+						},
+						{
+							"edge_length": 0.245253264904022,
+							"index_bytes": 60
+						},
+						{
+							"edge_length": 0.367879897356033,
+							"index_bytes": 24
+						}
+					]
+				},
+				{
+					"base_indices": 870,
+					"base_vertices": 403,
+					"lods": [
+						{
+							"edge_length": 2.23130917549133,
+							"index_bytes": 864
+						}
+					]
+				},
+				{
+					"base_indices": 18960,
+					"base_vertices": 5681,
+					"lods": [
+						{
+							"edge_length": 0.0298046674579382,
+							"index_bytes": 18960
+						},
+						{
+							"edge_length": 0.0950693115592003,
+							"index_bytes": 9480
+						},
+						{
+							"edge_length": 0.446329563856125,
+							"index_bytes": 4680
+						}
+					]
+				},
+				{
+					"base_indices": 252,
+					"base_vertices": 100,
+					"lods": [
+						{
+							"edge_length": 0.0558045357465744,
+							"index_bytes": 252
+						},
+						{
+							"edge_length": 0.0859009325504303,
+							"index_bytes": 120
+						},
+						{
+							"edge_length": 0.128851398825645,
+							"index_bytes": 60
+						},
+						{
+							"edge_length": 0.193277105689049,
+							"index_bytes": 24
+						}
+					]
+				},
+				{
+					"base_indices": 912,
+					"base_vertices": 285,
+					"lods": [
+						{
+							"edge_length": 0.0706039369106293,
+							"index_bytes": 648
+						}
+					]
+				},
+				{
+					"base_indices": 456,
+					"base_vertices": 140,
+					"lods": [
+						{
+							"edge_length": 0.0264144632965326,
+							"index_bytes": 540
+						}
+					]
+				}
+			],
+			"system": "generated imported mesh LOD"
+		},
+		{
+			"asset": "A-020",
+			"samples": [
+				{
+					"distance_m": 36.8697052001953,
+					"primitives": 15620
+				},
+				{
+					"distance_m": 73.7394104003906,
+					"primitives": 13284
+				},
+				{
+					"distance_m": 147.478820800781,
+					"primitives": 8622
+				},
+				{
+					"distance_m": 294.957641601563,
+					"primitives": 8458
+				},
+				{
+					"distance_m": 589.915283203125,
+					"primitives": 8336
+				},
+				{
+					"distance_m": 1179.83056640625,
+					"primitives": 4782
+				}
+			],
+			"surfaces": [
+				{
+					"base_indices": 39564,
+					"base_vertices": 20722,
+					"lods": [
+						{
+							"edge_length": 0.0170233994722366,
+							"index_bytes": 39564
+						},
+						{
+							"edge_length": 0.1989506483078,
+							"index_bytes": 19776
+						},
+						{
+							"edge_length": 1.81829285621643,
+							"index_bytes": 1284
+						},
+						{
+							"edge_length": 2.72743940353394,
+							"index_bytes": 960
+						}
+					]
+				},
+				{
+					"base_indices": 21852,
+					"base_vertices": 6282,
+					"lods": [
+						{
+							"edge_length": 0.0346820652484894,
+							"index_bytes": 21852
+						},
+						{
+							"edge_length": 0.0979096740484238,
+							"index_bytes": 10764
+						},
+						{
+							"edge_length": 0.260248959064484,
+							"index_bytes": 5376
+						}
+					]
+				},
+				{
+					"base_indices": 5088,
+					"base_vertices": 2624,
+					"lods": []
+				},
+				{
+					"base_indices": 978,
+					"base_vertices": 244,
+					"lods": [
+						{
+							"edge_length": 0.42579048871994,
+							"index_bytes": 972
+						},
+						{
+							"edge_length": 0.638685703277588,
+							"index_bytes": 480
+						},
+						{
+							"edge_length": 0.958028614521027,
+							"index_bytes": 240
+						},
+						{
+							"edge_length": 1.43704283237457,
+							"index_bytes": 120
+						},
+						{
+							"edge_length": 2.1555643081665,
+							"index_bytes": 60
+						},
+						{
+							"edge_length": 10.3827638626099,
+							"index_bytes": 24
+						}
+					]
+				},
+				{
+					"base_indices": 11688,
+					"base_vertices": 6828,
+					"lods": [
+						{
+							"edge_length": 0.00281616975553334,
+							"index_bytes": 11688
+						},
+						{
+							"edge_length": 0.0515630841255188,
+							"index_bytes": 5844
+						},
+						{
+							"edge_length": 0.0957506000995636,
+							"index_bytes": 2916
+						}
+					]
+				},
+				{
+					"base_indices": 5592,
+					"base_vertices": 2976,
+					"lods": [
+						{
+							"edge_length": 0.00768448412418365,
+							"index_bytes": 5592
+						},
+						{
+							"edge_length": 0.18385349214077,
+							"index_bytes": 2796
+						},
+						{
+							"edge_length": 1.38536810874939,
+							"index_bytes": 144
+						}
+					]
+				},
+				{
+					"base_indices": 2184,
+					"base_vertices": 1248,
+					"lods": []
+				},
+				{
+					"base_indices": 2184,
+					"base_vertices": 1248,
+					"lods": []
+				}
+			],
+			"system": "generated imported mesh LOD"
+		},
+		{
+			"asset": "A-070",
+			"samples": [
+				{
+					"distance_m": 399.0,
+					"primitives": 196
+				},
+				{
+					"distance_m": 399.9,
+					"primitives": 196
+				},
+				{
+					"distance_m": 400.1,
+					"primitives": 76
+				},
+				{
+					"distance_m": 401.0,
+					"primitives": 76
+				}
+			],
+			"system": "forest visibility ranges at 400 m"
+		},
+		{
+			"asset": "A-071",
+			"samples": [
+				{
+					"distance_m": 399.0,
+					"primitives": 356
+				},
+				{
+					"distance_m": 399.9,
+					"primitives": 356
+				},
+				{
+					"distance_m": 400.1,
+					"primitives": 76
+				},
+				{
+					"distance_m": 401.0,
+					"primitives": 76
+				}
+			],
+			"system": "forest visibility ranges at 400 m"
+		},
+		{
+			"asset": "A-072",
+			"samples": [
+				{
+					"distance_m": 399.0,
+					"primitives": 276
+				},
+				{
+					"distance_m": 399.9,
+					"primitives": 276
+				},
+				{
+					"distance_m": 400.1,
+					"primitives": 116
+				},
+				{
+					"distance_m": 401.0,
+					"primitives": 116
+				}
+			],
+			"system": "forest visibility ranges at 400 m"
+		},
+		{
+			"asset": "A-032",
+			"samples": [
+				{
+					"distance_m": 39.9,
+					"keys": [
+						"p|417dbe|standing|1.00||0|0|1|0|0"
+					],
+					"surfaces": [
+						{
+							"base_indices": 0,
+							"base_vertices": 8136,
+							"lods": []
+						},
+						{
+							"base_indices": 0,
+							"base_vertices": 8136,
+							"lods": []
+						}
+					]
+				},
+				{
+					"distance_m": 40.1,
+					"keys": [
+						"p|417dbe|standing|1.00||0|0|1|0|0",
+						"p|417dbe|standing|1.00||0|0|0|0|0"
+					],
+					"surfaces": [
+						{
+							"base_indices": 0,
+							"base_vertices": 1548,
+							"lods": []
+						},
+						{
+							"base_indices": 0,
+							"base_vertices": 1548,
+							"lods": []
+						}
+					]
+				}
+			],
+			"system": "live 40 m detail selector"
+		},
+		{
+			"asset": "A-054",
+			"samples": [
+				{
+					"distance_m": 39.9,
+					"keys": [
+						"p|417dbe|standing|1.00||0|0|1|0|0",
+						"p|417dbe|standing|1.00||0|0|0|0|0",
+						"a|fox|7d5f41|stand|1.00|1"
+					],
+					"surfaces": [
+						{
+							"base_indices": 0,
+							"base_vertices": 8997,
+							"lods": []
+						}
+					]
+				},
+				{
+					"distance_m": 40.1,
+					"keys": [
+						"p|417dbe|standing|1.00||0|0|1|0|0",
+						"p|417dbe|standing|1.00||0|0|0|0|0",
+						"a|fox|7d5f41|stand|1.00|0"
+					],
+					"surfaces": [
+						{
+							"base_indices": 0,
+							"base_vertices": 8997,
+							"lods": []
+						}
+					]
+				}
+			],
+			"system": "live 40 m detail selector"
+		},
+		{
+			"asset": "A-065",
+			"samples": [
+				{
+					"distance_m": 39.9,
+					"keys": [
+						"p|417dbe|standing|1.00||0|0|1|0|0",
+						"p|417dbe|standing|1.00||0|0|0|0|0",
+						"a|dog|7d5f41|stand|1.00|1"
+					],
+					"surfaces": [
+						{
+							"base_indices": 0,
+							"base_vertices": 6768,
+							"lods": []
+						}
+					]
+				},
+				{
+					"distance_m": 40.1,
+					"keys": [
+						"p|417dbe|standing|1.00||0|0|1|0|0",
+						"p|417dbe|standing|1.00||0|0|0|0|0",
+						"a|dog|7d5f41|stand|1.00|0"
+					],
+					"surfaces": [
+						{
+							"base_indices": 0,
+							"base_vertices": 1728,
+							"lods": []
+						}
+					]
+				}
+			],
+			"system": "live 40 m detail selector"
+		},
+		{
+			"asset": "A-061",
+			"samples": [
+				{
+					"distance_m": 39.9,
+					"keys": [
+						"p|417dbe|standing|1.00||0|0|1|0|0",
+						"p|417dbe|standing|1.00||0|0|0|0|0",
+						"a|moose|7d5f41|stand|1.00|1"
+					],
+					"surfaces": [
+						{
+							"base_indices": 0,
+							"base_vertices": 7776,
+							"lods": []
+						}
+					]
+				},
+				{
+					"distance_m": 40.1,
+					"keys": [
+						"p|417dbe|standing|1.00||0|0|1|0|0",
+						"p|417dbe|standing|1.00||0|0|0|0|0",
+						"a|moose|7d5f41|stand|1.00|0"
+					],
+					"surfaces": [
+						{
+							"base_indices": 0,
+							"base_vertices": 2232,
+							"lods": []
+						}
+					]
+				}
+			],
+			"system": "live 40 m detail selector"
+		}
+	],
+	"renderer": "forward_plus"
+}

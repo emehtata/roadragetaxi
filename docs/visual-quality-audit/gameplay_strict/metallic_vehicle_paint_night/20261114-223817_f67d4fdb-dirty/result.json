@@ -1,0 +1,79 @@
+{
+  "camera": {
+    "position": [
+      -0.0125000001862645,
+      -0.100000001490116
+    ],
+    "zoom": 27.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "f67d4fdb-dirty",
+  "elapsed_s": 66.677412333345,
+  "errors": [
+    "stalled: no readiness change for 60 s",
+    "audit: server map loading still active",
+    "audit: map-loading banner still visible"
+  ],
+  "forest": {
+    "build_ms_max": 0.0,
+    "build_ms_total": 0.0,
+    "draw_calls": 282.0,
+    "far_lod_crowns_loaded": 0,
+    "forest_chunks": 0,
+    "objects": 862.0,
+    "place_ms_max": 0.0,
+    "primitives": 363191.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 212.867162704468,
+    "trees_loaded": 0,
+    "video_memory_mb": 432.39079284668
+  },
+  "game_time": [
+    "2026-10-20",
+    81000.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "metallic_vehicle_paint_night",
+  "scene": {
+    "buildings_in_view": 3,
+    "chunks": 9,
+    "lamps_in_view": 5,
+    "scenery_in_view": {}
+  },
+  "status": "failed",
+  "timestamp": "2026-11-14T20:43:37Z",
+  "vehicle": {
+    "heading": 0.59,
+    "x": 385325.8,
+    "y": 6671757.1
+  },
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.2,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 6.23,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      -2.506,
+      2.491
+    ]
+  }
+}

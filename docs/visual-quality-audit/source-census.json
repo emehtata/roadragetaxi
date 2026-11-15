@@ -1,0 +1,955 @@
+{
+  "note": "Source traversal aid, not proof of visual coverage. Hashes reflect final audit working tree, not archived capture source.",
+  "render_sources": [
+    {
+      "source": "godot/attraction_draw.gd",
+      "sha256": "f0953e56df6bd9f36449705b1d3fecf25c83511e3098546978ed6480e9931eab",
+      "entry_points": [
+        {
+          "line": 5,
+          "name": "draw_ride"
+        }
+      ]
+    },
+    {
+      "source": "godot/buildings_25d.gd",
+      "sha256": "6f70adee9972111371a413ce6ec479b22b5fefb74c4590d4dca154287c5994aa",
+      "entry_points": [
+        {
+          "line": 31,
+          "name": "build"
+        }
+      ]
+    },
+    {
+      "source": "godot/buildings_3d.gd",
+      "sha256": "fdd464886cc16d4c962b4bcb820f2205564f853dd209ac0caf22bb3018142e3c",
+      "entry_points": [
+        {
+          "line": 804,
+          "name": "vehicle_model_kind"
+        },
+        {
+          "line": 808,
+          "name": "begin_cars"
+        },
+        {
+          "line": 823,
+          "name": "puff"
+        },
+        {
+          "line": 848,
+          "name": "car"
+        },
+        {
+          "line": 873,
+          "name": "car_model_kind"
+        },
+        {
+          "line": 884,
+          "name": "place_model_car"
+        },
+        {
+          "line": 1000,
+          "name": "car_glazing"
+        },
+        {
+          "line": 1009,
+          "name": "model_car_details"
+        },
+        {
+          "line": 1039,
+          "name": "model_vehicle_details"
+        },
+        {
+          "line": 1098,
+          "name": "end_cars"
+        },
+        {
+          "line": 1112,
+          "name": "_flush_animals"
+        },
+        {
+          "line": 1146,
+          "name": "vehicle"
+        },
+        {
+          "line": 1211,
+          "name": "vehicle_arrays"
+        },
+        {
+          "line": 1374,
+          "name": "person"
+        },
+        {
+          "line": 1383,
+          "name": "animal"
+        },
+        {
+          "line": 1406,
+          "name": "person_arrays"
+        },
+        {
+          "line": 1515,
+          "name": "_cart"
+        },
+        {
+          "line": 1545,
+          "name": "_animal_model"
+        },
+        {
+          "line": 1627,
+          "name": "animal_arrays"
+        },
+        {
+          "line": 1720,
+          "name": "car_arrays"
+        },
+        {
+          "line": 1814,
+          "name": "_car_lamps"
+        },
+        {
+          "line": 1833,
+          "name": "_car_box"
+        },
+        {
+          "line": 1848,
+          "name": "_car_shell"
+        },
+        {
+          "line": 2007,
+          "name": "build"
+        },
+        {
+          "line": 2073,
+          "name": "meshes"
+        },
+        {
+          "line": 2082,
+          "name": "mesh_steps"
+        },
+        {
+          "line": 2193,
+          "name": "_mesh"
+        },
+        {
+          "line": 2300,
+          "name": "_building"
+        },
+        {
+          "line": 2760,
+          "name": "terrain_mesh_height"
+        },
+        {
+          "line": 2873,
+          "name": "_tree_mesh"
+        }
+      ]
+    },
+    {
+      "source": "godot/car_audio.gd",
+      "sha256": "7f6d5c7e41562355792916026fe663f0131b6e260fa5a41446cc46fba8bcef02",
+      "entry_points": [
+        {
+          "line": 79,
+          "name": "draw"
+        }
+      ]
+    },
+    {
+      "source": "godot/chunk_detail.gd",
+      "sha256": "2180e7ee6368a11dc3a75da2d85cc5725bab849534e99b339382291aa13f1ff5",
+      "entry_points": [
+        {
+          "line": 39,
+          "name": "draw_areas"
+        },
+        {
+          "line": 98,
+          "name": "draw_wetland_ground"
+        },
+        {
+          "line": 111,
+          "name": "draw_site_details"
+        },
+        {
+          "line": 151,
+          "name": "draw_site_detail"
+        },
+        {
+          "line": 187,
+          "name": "draw_rink_markings"
+        },
+        {
+          "line": 227,
+          "name": "draw_soccer_markings"
+        },
+        {
+          "line": 340,
+          "name": "draw_parking"
+        },
+        {
+          "line": 364,
+          "name": "draw_tracks"
+        },
+        {
+          "line": 398,
+          "name": "draw_rail_bridges"
+        },
+        {
+          "line": 410,
+          "name": "draw_guardrails"
+        },
+        {
+          "line": 420,
+          "name": "draw_canopy_shadows"
+        },
+        {
+          "line": 439,
+          "name": "draw_canopy_supports"
+        },
+        {
+          "line": 455,
+          "name": "draw_canopy_feet"
+        },
+        {
+          "line": 479,
+          "name": "draw_canopies"
+        },
+        {
+          "line": 494,
+          "name": "draw_road_features"
+        },
+        {
+          "line": 524,
+          "name": "draw_signs"
+        },
+        {
+          "line": 573,
+          "name": "draw_bus_stops"
+        },
+        {
+          "line": 606,
+          "name": "_draw_stop_sign"
+        },
+        {
+          "line": 656,
+          "name": "draw_volleyball_courts"
+        },
+        {
+          "line": 665,
+          "name": "draw_volleyball_nets"
+        },
+        {
+          "line": 681,
+          "name": "draw_tennis_courts"
+        }
+      ]
+    },
+    {
+      "source": "godot/door_marks.gd",
+      "sha256": "61bac08178b6aeb1882a6cf43913d24cd9c18ebf586764aa6e2254404d1c7d6e",
+      "entry_points": [
+        {
+          "line": 25,
+          "name": "show_doors"
+        },
+        {
+          "line": 41,
+          "name": "_draw"
+        }
+      ]
+    },
+    {
+      "source": "godot/electronic_signs.gd",
+      "sha256": "b84b9bb36772ed9d9b1530a25db2de3dad09266b2bea324bb626bef24cbe46bc",
+      "entry_points": [
+        {
+          "line": 47,
+          "name": "show_state"
+        }
+      ]
+    },
+    {
+      "source": "godot/entity_layer.gd",
+      "sha256": "9472f777b6efdce5a610e71811aff5a8c591b47fd8d389e808432c161845f3b0",
+      "entry_points": [
+        {
+          "line": 196,
+          "name": "shown_state"
+        },
+        {
+          "line": 448,
+          "name": "_draw_trail"
+        },
+        {
+          "line": 481,
+          "name": "_draw_reflectors"
+        },
+        {
+          "line": 524,
+          "name": "npc_cars"
+        },
+        {
+          "line": 695,
+          "name": "drawn_as_vehicle"
+        },
+        {
+          "line": 754,
+          "name": "vehicle_light"
+        },
+        {
+          "line": 775,
+          "name": "_vehicle"
+        },
+        {
+          "line": 827,
+          "name": "lamp_mesh"
+        },
+        {
+          "line": 850,
+          "name": "drawable"
+        },
+        {
+          "line": 908,
+          "name": "_vehicle_body"
+        },
+        {
+          "line": 1062,
+          "name": "_car_body_2d"
+        },
+        {
+          "line": 1096,
+          "name": "_vehicle_lamps"
+        },
+        {
+          "line": 1537,
+          "name": "_beach_person"
+        },
+        {
+          "line": 1734,
+          "name": "_person_lit"
+        },
+        {
+          "line": 1738,
+          "name": "_draw_people"
+        },
+        {
+          "line": 1785,
+          "name": "_draw_route"
+        },
+        {
+          "line": 1875,
+          "name": "_draw"
+        },
+        {
+          "line": 2073,
+          "name": "_draw_trains"
+        },
+        {
+          "line": 2079,
+          "name": "_draw_ferries"
+        },
+        {
+          "line": 2083,
+          "name": "_draw_train_cars"
+        },
+        {
+          "line": 2186,
+          "name": "person_pose"
+        },
+        {
+          "line": 2245,
+          "name": "_train_car"
+        }
+      ]
+    },
+    {
+      "source": "godot/holiday_layer.gd",
+      "sha256": "f6a8df3d78a2fc1439cb5de297acc485ab73389d4cdbeb1d9685e91c454e2610",
+      "entry_points": [
+        {
+          "line": 173,
+          "name": "_draw_decorations"
+        },
+        {
+          "line": 219,
+          "name": "_draw_christmas"
+        },
+        {
+          "line": 264,
+          "name": "_draw_flags"
+        },
+        {
+          "line": 275,
+          "name": "_draw_flag"
+        },
+        {
+          "line": 317,
+          "name": "_draw_bonfires"
+        },
+        {
+          "line": 339,
+          "name": "_draw_ghosts"
+        },
+        {
+          "line": 363,
+          "name": "_draw_elves"
+        },
+        {
+          "line": 436,
+          "name": "_draw_fireworks"
+        }
+      ]
+    },
+    {
+      "source": "godot/home_interior.gd",
+      "sha256": "098eccf507bb5f087b9578f81557ca7f902a87737b2281943c44f2880e92d0c8",
+      "entry_points": [
+        {
+          "line": 54,
+          "name": "show_plan"
+        }
+      ]
+    },
+    {
+      "source": "godot/hud.gd",
+      "sha256": "730935ed0fb37e684d94eab27c66a8f325de32a2033f350a5b16529567030354",
+      "entry_points": [
+        {
+          "line": 150,
+          "name": "show_state"
+        },
+        {
+          "line": 343,
+          "name": "show_subtitle"
+        },
+        {
+          "line": 400,
+          "name": "show_summary"
+        }
+      ]
+    },
+    {
+      "source": "godot/i18n.gd",
+      "sha256": "a1eac11501704b3aeccd581f9ced84defbef5395474b97b309d0b989b689fe99",
+      "entry_points": [
+        {
+          "line": 923,
+          "name": "sky_weather"
+        },
+        {
+          "line": 928,
+          "name": "weather"
+        }
+      ]
+    },
+    {
+      "source": "godot/instruments.gd",
+      "sha256": "9a1640e9258a175b54022248bca99cf7875bc4618121dc8c891a46a1051e0222",
+      "entry_points": [
+        {
+          "line": 71,
+          "name": "show_state"
+        },
+        {
+          "line": 118,
+          "name": "_draw_limit_sign"
+        },
+        {
+          "line": 212,
+          "name": "shows_car_ui"
+        },
+        {
+          "line": 216,
+          "name": "shows_water_warning"
+        },
+        {
+          "line": 220,
+          "name": "_draw"
+        },
+        {
+          "line": 262,
+          "name": "_draw_speedometer"
+        },
+        {
+          "line": 336,
+          "name": "_draw_fuel"
+        },
+        {
+          "line": 378,
+          "name": "_draw_rage"
+        }
+      ]
+    },
+    {
+      "source": "godot/labels.gd",
+      "sha256": "b7814faf9a236f214297a0840014361ca332317ce05ca77d76481fe8d81d21f2",
+      "entry_points": [
+        {
+          "line": 95,
+          "name": "_draw"
+        }
+      ]
+    },
+    {
+      "source": "godot/main.gd",
+      "sha256": "0e4c7a4c32a75989b46b5e4624e353a3db4267d2d605e49e7818b233f4b93b0c",
+      "entry_points": [
+        {
+          "line": 629,
+          "name": "_build_windshield"
+        },
+        {
+          "line": 1300,
+          "name": "show_summary"
+        },
+        {
+          "line": 1350,
+          "name": "weather_loops"
+        },
+        {
+          "line": 1454,
+          "name": "_build_help"
+        },
+        {
+          "line": 1468,
+          "name": "_build_inspector"
+        }
+      ]
+    },
+    {
+      "source": "godot/map_browser.gd",
+      "sha256": "c0264ca5a981d6de4836aca9c499a9f8ecb71bcb54667be5fe7e02df8ac95729",
+      "entry_points": [
+        {
+          "line": 65,
+          "name": "show_point"
+        },
+        {
+          "line": 119,
+          "name": "_draw"
+        }
+      ]
+    },
+    {
+      "source": "godot/map_chunk.gd",
+      "sha256": "4ea828cecc8a1b7ae2878482433af01ec06900af16d5f5090155106399ebbb2d",
+      "entry_points": [
+        {
+          "line": 527,
+          "name": "_drawn_before"
+        },
+        {
+          "line": 818,
+          "name": "_build_2_5d"
+        },
+        {
+          "line": 950,
+          "name": "drop_stale_buildings"
+        },
+        {
+          "line": 996,
+          "name": "_build_3d_timed"
+        },
+        {
+          "line": 1080,
+          "name": "_queue_meshes"
+        },
+        {
+          "line": 1097,
+          "name": "drain_ready_meshes"
+        },
+        {
+          "line": 1118,
+          "name": "_meshes_ready"
+        },
+        {
+          "line": 1122,
+          "name": "_meshes_done"
+        },
+        {
+          "line": 1140,
+          "name": "_build_timed"
+        },
+        {
+          "line": 1148,
+          "name": "_buildings_ready"
+        },
+        {
+          "line": 1178,
+          "name": "set_building_view"
+        },
+        {
+          "line": 1188,
+          "name": "_draw_volumes"
+        },
+        {
+          "line": 1225,
+          "name": "_draw_canopy_supports"
+        },
+        {
+          "line": 1374,
+          "name": "_draw_ice_floe"
+        },
+        {
+          "line": 1458,
+          "name": "_draw_shore_waves"
+        },
+        {
+          "line": 1467,
+          "name": "_draw_water"
+        },
+        {
+          "line": 1547,
+          "name": "redraw_road_snow"
+        },
+        {
+          "line": 1552,
+          "name": "_draw_roads"
+        },
+        {
+          "line": 1584,
+          "name": "_draw_road_markings"
+        },
+        {
+          "line": 1597,
+          "name": "_draw_wet"
+        },
+        {
+          "line": 1619,
+          "name": "_draw_puddles"
+        },
+        {
+          "line": 1670,
+          "name": "_draw_trees"
+        },
+        {
+          "line": 1722,
+          "name": "_draw_scenery"
+        },
+        {
+          "line": 1746,
+          "name": "draw_landmark"
+        },
+        {
+          "line": 1767,
+          "name": "_draw_scenery_object"
+        },
+        {
+          "line": 1869,
+          "name": "_draw_playground_item"
+        },
+        {
+          "line": 1910,
+          "name": "_draw_caravan"
+        },
+        {
+          "line": 2134,
+          "name": "_draw_railings"
+        },
+        {
+          "line": 2229,
+          "name": "_draw_floodlights"
+        },
+        {
+          "line": 2257,
+          "name": "_draw_light_pools"
+        },
+        {
+          "line": 2327,
+          "name": "_draw_lamp_heads"
+        },
+        {
+          "line": 2344,
+          "name": "_draw_fences"
+        },
+        {
+          "line": 2373,
+          "name": "_draw_fuel_pumps"
+        },
+        {
+          "line": 2390,
+          "name": "_draw_fuel_boards"
+        },
+        {
+          "line": 2414,
+          "name": "_draw_points"
+        },
+        {
+          "line": 2431,
+          "name": "draw_roadwork"
+        },
+        {
+          "line": 2457,
+          "name": "_draw_traffic_lights"
+        },
+        {
+          "line": 2528,
+          "name": "_draw_attractions"
+        }
+      ]
+    },
+    {
+      "source": "godot/map_layer.gd",
+      "sha256": "1bf2e6d9076e59bc9be62fbe4168ab42fdbf556de93cdb46660f3a9b71b0a9bf",
+      "entry_points": [
+        {
+          "line": 56,
+          "name": "_show_floods"
+        },
+        {
+          "line": 115,
+          "name": "add_building_meshes"
+        },
+        {
+          "line": 138,
+          "name": "_add_buildings"
+        },
+        {
+          "line": 150,
+          "name": "set_building_view"
+        },
+        {
+          "line": 426,
+          "name": "_draw_knocked_posts"
+        },
+        {
+          "line": 699,
+          "name": "_draw_ground"
+        },
+        {
+          "line": 712,
+          "name": "_draw_underground"
+        }
+      ]
+    },
+    {
+      "source": "godot/nav_overlay.gd",
+      "sha256": "a30eabeac0290807ddc17dae87f4e9df90d3ebaf621d6be547e60ff084d35ee0",
+      "entry_points": [
+        {
+          "line": 63,
+          "name": "_draw"
+        },
+        {
+          "line": 85,
+          "name": "_draw_compass"
+        }
+      ]
+    },
+    {
+      "source": "godot/navigation_phone.gd",
+      "sha256": "f684efaf6d566c64a21ae0cf1c97f2ff3a3556f3fb102c7dfbea1f6de735184a",
+      "entry_points": [
+        {
+          "line": 47,
+          "name": "show_navigation"
+        },
+        {
+          "line": 83,
+          "name": "_draw_arrow"
+        }
+      ]
+    },
+    {
+      "source": "godot/night_layer.gd",
+      "sha256": "c670e3ef527966f874133bbd5c47e03fccf93fe555224841c603fd5fe076b09d",
+      "entry_points": [
+        {
+          "line": 54,
+          "name": "show_lights"
+        },
+        {
+          "line": 88,
+          "name": "_draw_beams"
+        }
+      ]
+    },
+    {
+      "source": "godot/perf.gd",
+      "sha256": "9bdfddb8ee725da32f468a3f878868e5d83c7e3dd990b5a3fdf56b47fd0177b1",
+      "entry_points": [
+        {
+          "line": 67,
+          "name": "time_draws"
+        }
+      ]
+    },
+    {
+      "source": "godot/phone.gd",
+      "sha256": "b494e1d080ece0cf71d254239309466db3a74e759b5618f5f1edd4dae396f6e4",
+      "entry_points": [
+        {
+          "line": 183,
+          "name": "show_navigation"
+        },
+        {
+          "line": 344,
+          "name": "_draw_battery"
+        },
+        {
+          "line": 348,
+          "name": "draw_battery"
+        },
+        {
+          "line": 389,
+          "name": "show_phone"
+        },
+        {
+          "line": 534,
+          "name": "_card"
+        },
+        {
+          "line": 589,
+          "name": "_fill_card"
+        },
+        {
+          "line": 611,
+          "name": "card_text"
+        }
+      ]
+    },
+    {
+      "source": "godot/precipitation_3d.gd",
+      "sha256": "7b936a046c16494a4098d54591b5a8e3325e7ce0bebc2a05d506183dbfa9ba03",
+      "entry_points": [
+        {
+          "line": 117,
+          "name": "set_weather"
+        }
+      ]
+    },
+    {
+      "source": "godot/route_3d.gd",
+      "sha256": "4e7df7b5cdd0a6f0a52acafcfc16fecc0356722a7f0e380d094fa58f78ee2f5e",
+      "entry_points": [
+        {
+          "line": 28,
+          "name": "show_route"
+        },
+        {
+          "line": 41,
+          "name": "build"
+        }
+      ]
+    },
+    {
+      "source": "godot/startup.gd",
+      "sha256": "ad621a884ebf5fdc65243890fd303999fabafc3a0bb9701a91a90d437986b10d",
+      "entry_points": [
+        {
+          "line": 118,
+          "name": "_build_shell"
+        },
+        {
+          "line": 484,
+          "name": "_career_menu"
+        },
+        {
+          "line": 502,
+          "name": "_confirm_reset_career"
+        },
+        {
+          "line": 1715,
+          "name": "_career_summary_action"
+        }
+      ]
+    },
+    {
+      "source": "godot/taxi_meter.gd",
+      "sha256": "855aeb74e035880334e5235acaccf018ca6651eaab0d1b4d56c299c83d3e82b2",
+      "entry_points": [
+        {
+          "line": 38,
+          "name": "_draw"
+        }
+      ]
+    },
+    {
+      "source": "godot/tutorial.gd",
+      "sha256": "77b493c6c30880842fd63fdd64373532f7511deee89411b2408cf819a78a9614",
+      "entry_points": [
+        {
+          "line": 68,
+          "name": "_show"
+        }
+      ]
+    },
+    {
+      "source": "godot/visual_test.gd",
+      "sha256": "47009f4d747da3e79410a38b48f45f2d9761eaf629ffcbf5cdc7c98c0888523e",
+      "entry_points": [
+        {
+          "line": 322,
+          "name": "_place_animals"
+        }
+      ]
+    },
+    {
+      "source": "godot/weather_layer.gd",
+      "sha256": "a0130a21aa9101d9ca294cf201da75c7c02b75bac5e407debf80903b17b93c6d",
+      "entry_points": [
+        {
+          "line": 201,
+          "name": "_draw_precipitation"
+        },
+        {
+          "line": 242,
+          "name": "_draw_ripples"
+        },
+        {
+          "line": 296,
+          "name": "_draw_splashes"
+        }
+      ]
+    },
+    {
+      "source": "godot/wildlife.gd",
+      "sha256": "027c64b1ece6a6b08ec03cbcdc2810aea4c8b03239c8f38f2d7270f8540c69b3",
+      "entry_points": [
+        {
+          "line": 192,
+          "name": "building_grid"
+        },
+        {
+          "line": 209,
+          "name": "building_coverage"
+        },
+        {
+          "line": 220,
+          "name": "in_building"
+        },
+        {
+          "line": 237,
+          "name": "_animal"
+        },
+        {
+          "line": 292,
+          "name": "_nearest_vehicle"
+        },
+        {
+          "line": 325,
+          "name": "_draw"
+        },
+        {
+          "line": 345,
+          "name": "_draw_animal"
+        },
+        {
+          "line": 380,
+          "name": "_draw_flying"
+        },
+        {
+          "line": 405,
+          "name": "_draw_wings"
+        },
+        {
+          "line": 435,
+          "name": "_draw_body"
+        }
+      ]
+    }
+  ]
+}

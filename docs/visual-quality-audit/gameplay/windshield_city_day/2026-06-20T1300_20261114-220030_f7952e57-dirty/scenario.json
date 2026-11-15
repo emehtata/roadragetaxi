@@ -1,0 +1,32 @@
+{
+  "id": "windshield_city_day",
+  "description": "Straight ahead from the taxi interior on a city-centre street",
+  "why": "The existing city-centre street taxi pose faces a street with nearby 3D roads, facades, traffic and lights.",
+  "city": "Helsinki",
+  "pose": [
+    385325.8,
+    6671757.1,
+    0.59
+  ],
+  "start_time": "2026-06-20T13:00",
+  "weather": "clear",
+  "cloud": 0.1,
+  "wetness": [
+    0.0,
+    0.05
+  ],
+  "sun_altitude_deg": [
+    40,
+    90
+  ],
+  "zoom": 3.0,
+  "windshield": true,
+  "server_args": [
+    "--no-auto-fetch"
+  ],
+  "requires": {
+    "buildings_in_view": 3
+  },
+  "measure_s": 3,
+  "commit": "f7952e57-dirty"
+}

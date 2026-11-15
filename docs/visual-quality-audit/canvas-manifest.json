@@ -1,0 +1,523 @@
+{
+  "captures": [
+    {
+      "angle": "normal",
+      "asset": "A-208",
+      "condition": "canvas fixed palette",
+      "file": "A-208_canvas_normal.png",
+      "nonbackground_samples": 540,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-208",
+      "condition": "canvas fixed palette",
+      "file": "A-208_canvas_close.png",
+      "nonbackground_samples": 1215,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-211",
+      "condition": "canvas fixed palette",
+      "file": "A-211_canvas_normal.png",
+      "nonbackground_samples": 38,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-211",
+      "condition": "canvas fixed palette",
+      "file": "A-211_canvas_close.png",
+      "nonbackground_samples": 45,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-213",
+      "condition": "canvas fixed palette",
+      "file": "A-213_canvas_normal.png",
+      "nonbackground_samples": 41,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-213",
+      "condition": "canvas fixed palette",
+      "file": "A-213_canvas_close.png",
+      "nonbackground_samples": 48,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-214",
+      "condition": "canvas fixed palette",
+      "file": "A-214_canvas_normal.png",
+      "nonbackground_samples": 361,
+      "pixels_per_m": 36.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-214",
+      "condition": "canvas fixed palette",
+      "file": "A-214_canvas_close.png",
+      "nonbackground_samples": 841,
+      "pixels_per_m": 54.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-216",
+      "condition": "canvas fixed palette",
+      "file": "A-216_canvas_normal.png",
+      "nonbackground_samples": 338,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-216",
+      "condition": "canvas fixed palette",
+      "file": "A-216_canvas_close.png",
+      "nonbackground_samples": 741,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-217",
+      "condition": "canvas fixed palette",
+      "file": "A-217_canvas_normal.png",
+      "nonbackground_samples": 560,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-217",
+      "condition": "canvas fixed palette",
+      "file": "A-217_canvas_close.png",
+      "nonbackground_samples": 1325,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-218",
+      "condition": "canvas fixed palette",
+      "file": "A-218_canvas_normal.png",
+      "nonbackground_samples": 212,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-218",
+      "condition": "canvas fixed palette",
+      "file": "A-218_canvas_close.png",
+      "nonbackground_samples": 356,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-219",
+      "condition": "canvas fixed palette",
+      "file": "A-219_canvas_normal.png",
+      "nonbackground_samples": 82,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-219",
+      "condition": "canvas fixed palette",
+      "file": "A-219_canvas_close.png",
+      "nonbackground_samples": 173,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-221",
+      "condition": "canvas fixed palette",
+      "file": "A-221_canvas_normal.png",
+      "nonbackground_samples": 192,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-221",
+      "condition": "canvas fixed palette",
+      "file": "A-221_canvas_close.png",
+      "nonbackground_samples": 434,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-222",
+      "condition": "canvas fixed palette",
+      "file": "A-222_canvas_normal.png",
+      "nonbackground_samples": 488,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-222",
+      "condition": "canvas fixed palette",
+      "file": "A-222_canvas_close.png",
+      "nonbackground_samples": 1091,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-223",
+      "ready": false,
+      "reason": "empty supplemental canvas"
+    },
+    {
+      "angle": "close",
+      "asset": "A-223",
+      "condition": "canvas fixed palette",
+      "file": "A-223_canvas_close.png",
+      "nonbackground_samples": 12,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-252",
+      "condition": "canvas fixed palette",
+      "file": "A-252_canvas_normal.png",
+      "nonbackground_samples": 17,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-252",
+      "condition": "canvas fixed palette",
+      "file": "A-252_canvas_close.png",
+      "nonbackground_samples": 33,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-253",
+      "condition": "canvas fixed palette",
+      "file": "A-253_canvas_normal.png",
+      "nonbackground_samples": 8991,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-253",
+      "condition": "canvas fixed palette",
+      "file": "A-253_canvas_close.png",
+      "nonbackground_samples": 18858,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-254",
+      "condition": "canvas fixed palette",
+      "file": "A-254_canvas_normal.png",
+      "nonbackground_samples": 199,
+      "pixels_per_m": 36.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-254",
+      "condition": "canvas fixed palette",
+      "file": "A-254_canvas_close.png",
+      "nonbackground_samples": 441,
+      "pixels_per_m": 54.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-255",
+      "condition": "canvas fixed palette",
+      "file": "A-255_canvas_normal.png",
+      "nonbackground_samples": 127,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-255",
+      "condition": "canvas fixed palette",
+      "file": "A-255_canvas_close.png",
+      "nonbackground_samples": 227,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-256",
+      "condition": "canvas fixed palette",
+      "file": "A-256_canvas_normal.png",
+      "nonbackground_samples": 1404,
+      "pixels_per_m": 36.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-256",
+      "condition": "canvas fixed palette",
+      "file": "A-256_canvas_close.png",
+      "nonbackground_samples": 3154,
+      "pixels_per_m": 54.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-269",
+      "condition": "canvas fixed palette",
+      "file": "A-269_canvas_normal.png",
+      "nonbackground_samples": 4399,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-269",
+      "condition": "canvas fixed palette",
+      "file": "A-269_canvas_close.png",
+      "nonbackground_samples": 4399,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-275",
+      "condition": "canvas fixed palette",
+      "file": "A-275_canvas_normal.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-275",
+      "condition": "canvas fixed palette",
+      "file": "A-275_canvas_close.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-276",
+      "condition": "canvas fixed palette",
+      "file": "A-276_canvas_normal.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-276",
+      "condition": "canvas fixed palette",
+      "file": "A-276_canvas_close.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-277",
+      "condition": "canvas fixed palette",
+      "file": "A-277_canvas_normal.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-277",
+      "condition": "canvas fixed palette",
+      "file": "A-277_canvas_close.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-278",
+      "condition": "canvas fixed palette",
+      "file": "A-278_canvas_normal.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-278",
+      "condition": "canvas fixed palette",
+      "file": "A-278_canvas_close.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-279",
+      "condition": "canvas fixed palette",
+      "file": "A-279_canvas_normal.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-279",
+      "condition": "canvas fixed palette",
+      "file": "A-279_canvas_close.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-280",
+      "condition": "canvas fixed palette",
+      "file": "A-280_canvas_normal.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-280",
+      "condition": "canvas fixed palette",
+      "file": "A-280_canvas_close.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-281",
+      "condition": "canvas fixed palette",
+      "file": "A-281_canvas_normal.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-281",
+      "condition": "canvas fixed palette",
+      "file": "A-281_canvas_close.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-282",
+      "condition": "canvas fixed palette",
+      "file": "A-282_canvas_normal.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-282",
+      "condition": "canvas fixed palette",
+      "file": "A-282_canvas_close.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-283",
+      "condition": "canvas fixed palette",
+      "file": "A-283_canvas_normal.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-283",
+      "condition": "canvas fixed palette",
+      "file": "A-283_canvas_close.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-284",
+      "condition": "canvas fixed palette",
+      "file": "A-284_canvas_normal.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-284",
+      "condition": "canvas fixed palette",
+      "file": "A-284_canvas_close.png",
+      "nonbackground_samples": 23419,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-288",
+      "condition": "canvas fixed palette",
+      "file": "A-288_canvas_normal.png",
+      "nonbackground_samples": 41,
+      "pixels_per_m": 12.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-288",
+      "condition": "canvas fixed palette",
+      "file": "A-288_canvas_close.png",
+      "nonbackground_samples": 48,
+      "pixels_per_m": 18.0,
+      "ready": true
+    },
+    {
+      "angle": "normal",
+      "asset": "A-289",
+      "condition": "canvas fixed palette",
+      "file": "A-289_canvas_normal.png",
+      "nonbackground_samples": 134,
+      "pixels_per_m": 36.0,
+      "ready": true
+    },
+    {
+      "angle": "close",
+      "asset": "A-289",
+      "condition": "canvas fixed palette",
+      "file": "A-289_canvas_close.png",
+      "nonbackground_samples": 303,
+      "pixels_per_m": 54.0,
+      "ready": true
+    }
+  ]
+}

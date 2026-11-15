@@ -1,0 +1,45 @@
+{
+  "id": "walk_bench_oulu_day",
+  "description": "First-person walking: from the taxi on a service road to the mapped benches on an Oulu city-centre square, looking down at a bench (and its sitter, when one sits there)",
+  "why": "The user's screenshot 2026-11-08 15:55 (bench-sitter figure): OSM amenity=bench node 8878256629 (backrest=yes) among a row of benches, 16 m from this service road (the user's taxi stood 110 m away behind buildings).",
+  "city": "Oulu",
+  "pose": [
+    427897.3,
+    7210634.9,
+    2.555
+  ],
+  "walk": {
+    "s": 0.5,
+    "forward": 1.0,
+    "back": "point",
+    "target": [
+      427884.3,
+      7210625.9
+    ]
+  },
+  "bench_sitter": [
+    427884.3,
+    7210625.9
+  ],
+  "requires": {
+    "buildings_in_view": 1
+  },
+  "start_time": "2026-06-20T15:00",
+  "weather": "clear",
+  "cloud": 0.4,
+  "wetness": [
+    0.0,
+    0.05
+  ],
+  "sun_altitude_deg": [
+    30,
+    90
+  ],
+  "zoom": 3.0,
+  "server_args": [
+    "--no-auto-fetch"
+  ],
+  "measure_s": 3,
+  "commit": "75e6cd67-dirty",
+  "audit_readiness": "production readiness plus server map_loading empty and HUD banner hidden"
+}

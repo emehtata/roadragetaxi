@@ -1,0 +1,769 @@
+{
+	"adapter": "NVIDIA GeForce RTX 5060",
+	"captures": [
+		{
+			"angle": "hud_notice",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_notice.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_speed_camera",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_speed_camera.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_source_wrap",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_source_wrap.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_start_on_foot",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_start_on_foot.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_engine_off",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_engine_off.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_meet",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_meet.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_train_board",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_train_board.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_abroad",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_abroad.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_loading_start",
+			"asset": "A-273",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-273_hud_loading_start.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_loading_camera",
+			"asset": "A-273",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-273_hud_loading_camera.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_fare",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_fare.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_subtitle_wrap",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_subtitle_wrap.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_summary_next",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_summary_next.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_summary_final",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_summary_final.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_house_door",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_house_door.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_home_door",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_home_door.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_building_hint",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_building_hint.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_fuel_stop",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_fuel_stop.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_fuel_engine",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_fuel_engine.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_fuel_exit",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_fuel_exit.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_fuel_ready",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_fuel_ready.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "hud_fuel_active",
+			"asset": "A-261",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-261_hud_fuel_active.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "booking_PENDING",
+			"asset": "A-262",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-262_booking_PENDING.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "booking_ACCEPTED",
+			"asset": "A-262",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-262_booking_ACCEPTED.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "booking_CANCELLED",
+			"asset": "A-262",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-262_booking_CANCELLED.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "booking_COMPLETED",
+			"asset": "A-262",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-262_booking_COMPLETED.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "three_offers_known_distances",
+			"asset": "A-262",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-262_three_offers_known_distances.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "answer_failed",
+			"asset": "A-262",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-262_answer_failed.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "protest_notice",
+			"asset": "A-262",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-262_protest_notice.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_language_menu",
+			"asset": "A-265",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-265_menu_language_menu.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_career_menu",
+			"asset": "A-265",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-265_menu_career_menu.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_credits_menu",
+			"asset": "A-265",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-265_menu_credits_menu.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_general_menu",
+			"asset": "A-274",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-274_menu_general_menu.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_gameplay_menu",
+			"asset": "A-274",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-274_menu_gameplay_menu.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_experimental_menu",
+			"asset": "A-274",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-274_menu_experimental_menu.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_maps_menu",
+			"asset": "A-274",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-274_menu_maps_menu.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_audio_menu",
+			"asset": "A-274",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-274_menu_audio_menu.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_pbf_menu",
+			"asset": "A-274",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-274_menu_pbf_menu.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_time_menu",
+			"asset": "A-265",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-265_menu_time_menu.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_confirm_reset_career",
+			"asset": "A-274",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-274_menu_confirm_reset_career.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_confirm_clear_cache",
+			"asset": "A-274",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-274_menu_confirm_clear_cache.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_confirm_reset_home",
+			"asset": "A-274",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-274_menu_confirm_reset_home.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "menu_confirm_delete_pbf",
+			"asset": "A-274",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-274_menu_confirm_delete_pbf.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "slots_0",
+			"asset": "A-265",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-265_slots_0.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "slots_1",
+			"asset": "A-265",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-265_slots_1.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "slots_5",
+			"asset": "A-265",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-265_slots_5.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "replace_slot_list",
+			"asset": "A-265",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-265_replace_slot_list.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "delete_slot_list",
+			"asset": "A-265",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-265_delete_slot_list.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "meter_digit_0",
+			"asset": "A-264",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-264_meter_digit_0.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "meter_digit_1",
+			"asset": "A-264",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-264_meter_digit_1.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "meter_digit_2",
+			"asset": "A-264",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-264_meter_digit_2.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "meter_digit_3",
+			"asset": "A-264",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-264_meter_digit_3.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "meter_digit_4",
+			"asset": "A-264",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-264_meter_digit_4.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "meter_digit_5",
+			"asset": "A-264",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-264_meter_digit_5.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "meter_digit_6",
+			"asset": "A-264",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-264_meter_digit_6.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "meter_digit_7",
+			"asset": "A-264",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-264_meter_digit_7.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "meter_digit_8",
+			"asset": "A-264",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-264_meter_digit_8.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "meter_digit_9",
+			"asset": "A-264",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-264_meter_digit_9.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "meter_negative_clamp",
+			"asset": "A-264",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-264_meter_negative_clamp.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "date_2025_11_15",
+			"asset": "A-267",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-267_date_2025_11_15.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "date_2026_11_15",
+			"asset": "A-267",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-267_date_2026_11_15.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "date_2026_10_31",
+			"asset": "A-267",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-267_date_2026_10_31.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "date_month_clamped",
+			"asset": "A-267",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-267_date_month_clamped.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "warning_codes_0",
+			"asset": "A-269",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-269_warning_codes_0.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "warning_codes_3",
+			"asset": "A-269",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-269_warning_codes_3.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "warning_codes_6",
+			"asset": "A-269",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-269_warning_codes_6.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "warning_codes_9",
+			"asset": "A-269",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-269_warning_codes_9.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "electronic_speed_text_unknown",
+			"asset": "A-269",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-269_electronic_speed_text_unknown.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "door_home_false_available_false",
+			"asset": "A-270",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-270_door_home_false_available_false.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "door_home_false_available_true",
+			"asset": "A-270",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-270_door_home_false_available_true.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "door_home_true_available_false",
+			"asset": "A-270",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-270_door_home_true_available_false.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "door_home_true_available_true",
+			"asset": "A-270",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-270_door_home_true_available_true.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "map_loading",
+			"asset": "A-266",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-266_map_loading.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "map_pin",
+			"asset": "A-266",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-266_map_pin.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "map_minimum_zoom",
+			"asset": "A-266",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-266_map_minimum_zoom.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		},
+		{
+			"angle": "map_maximum_zoom",
+			"asset": "A-266",
+			"condition": "Actual production UI methods, isolated local state; no destructive/save callbacks invoked",
+			"family": "runtime-ui-branches",
+			"file": "A-266_map_maximum_zoom.png",
+			"ready": true,
+			"state_source": "Client/server inputs traced in gap-matrix.json",
+			"target_confirmed": true
+		}
+	],
+	"homes": [],
+	"lod": [],
+	"lod_expected": [],
+	"renderer": "forward_plus"
+}

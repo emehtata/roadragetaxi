@@ -1,0 +1,191 @@
+{
+	"adapter": "NVIDIA GeForce RTX 5060",
+	"captures": [
+		{
+			"angle": "room_04_bathroom",
+			"asset": "A-176",
+			"camera_height": 1.6,
+			"camera_position": [
+				-5.14836978912354,
+				1.6001068353653,
+				-0.0114521328359842
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-176_room_04_bathroom.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 4,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-176",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.40696382522583,
+				1.6001068353653,
+				0.454908967018127
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-176_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_01_bedroom",
+			"asset": "A-176",
+			"camera_height": 1.6,
+			"camera_position": [
+				-2.4492461681366,
+				1.60084068775177,
+				4.96355962753296
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-176_room_01_bedroom.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 1,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_02_bedroom",
+			"asset": "A-176",
+			"camera_height": 1.6,
+			"camera_position": [
+				1.35088431835175,
+				1.60084068775177,
+				2.21225738525391
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-176_room_02_bedroom.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 2,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_03_kitchen",
+			"asset": "A-176",
+			"camera_height": 1.6,
+			"camera_position": [
+				5.18162107467651,
+				1.60084068775177,
+				-0.560263693332672
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-176_room_03_kitchen.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 3,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_05_living",
+			"asset": "A-176",
+			"camera_height": 1.6,
+			"camera_position": [
+				-1.86571383476257,
+				1.60084068775177,
+				-2.10426473617554
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-176_room_05_living.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 5,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_06_bedroom",
+			"asset": "A-176",
+			"camera_height": 1.6,
+			"camera_position": [
+				1.71151578426361,
+				1.60084068775177,
+				-4.77448415756226
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-176_room_06_bedroom.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 6,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_04_living",
+			"asset": "A-191",
+			"camera_height": 1.6,
+			"camera_position": [
+				-3.67526793479919,
+				1.60001111030579,
+				4.20980167388916
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-191_room_04_living.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 4,
+			"target_confirmed": true
+		}
+	],
+	"homes": [
+		{
+			"asset": "A-176",
+			"completed": true,
+			"doors_crossed": [
+				4,
+				1,
+				2,
+				3,
+				5,
+				6
+			],
+			"doors_expected": 6,
+			"failures": [],
+			"rooms_expected": 7,
+			"rooms_visited": [
+				4,
+				0,
+				1,
+				2,
+				3,
+				5,
+				6
+			]
+		},
+		{
+			"asset": "A-191",
+			"completed": false,
+			"doors_crossed": [],
+			"doors_expected": 4,
+			"failures": [
+				{
+					"stopped": [
+						-2.41718769073486,
+						-1.44259464740753
+					],
+					"target": [
+						-2.43367481231689,
+						0.0153429359197617
+					]
+				}
+			],
+			"rooms_expected": 5,
+			"rooms_visited": [
+				4
+			]
+		}
+	],
+	"lod": [],
+	"renderer": "forward_plus"
+}

@@ -1,0 +1,187 @@
+{
+  "audit_temporal": {
+    "emitting": true,
+    "frames_differ": true,
+    "interval_s": 0.5,
+    "particle_count": 5600,
+    "precip_kind": "snow",
+    "second_frame_readiness": [],
+    "speed_scale": 1.0
+  },
+  "camera": {
+    "position": [
+      -0.0125000001862645,
+      -0.100000001490116
+    ],
+    "zoom": 18.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "2f543864-dirty",
+  "elapsed_s": 15.1090035757577,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 3.084,
+    "build_ms_total": 7.336,
+    "draw_calls": 246.0,
+    "far_lod_crowns_loaded": 1122,
+    "forest_chunks": 4,
+    "objects": 535.0,
+    "place_ms_max": 22.806,
+    "primitives": 221710.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 313.165475845337,
+    "trees_loaded": 561,
+    "video_memory_mb": 891.5048828125
+  },
+  "frames": {
+    "avg_fps": 153.440048208998,
+    "avg_ms": 6.5172033746882,
+    "frames": 768,
+    "low_01pct_fps": 28.6987220976131,
+    "low_1pct_fps": 39.9739392836196,
+    "over_16ms": 8,
+    "over_33ms": 1,
+    "over_66ms": 0,
+    "p50_ms": 5.55555534362793,
+    "p95_ms": 12.9300003051758,
+    "p99_ms": 16.7910003662109,
+    "worst_ms": 34.8447570800781
+  },
+  "game_time": [
+    "2026-01-15",
+    43200.0
+  ],
+  "lake_ice": {
+    "cm": 28.6,
+    "holds": true
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 23
+  },
+  "render": {
+    "chunk_build_worker": {
+      "avg_ms": 804.41935,
+      "max_ms": 2369.316
+    },
+    "chunk_ground_dict": {
+      "avg_ms": 4.464,
+      "max_ms": 7.687
+    },
+    "chunk_lamps_3d": {
+      "avg_ms": 0.2395,
+      "max_ms": 0.43
+    },
+    "chunk_lamps_main": {
+      "avg_ms": 1.90355,
+      "max_ms": 5.718
+    },
+    "chunk_mesh_surface": {
+      "avg_ms": 1.29014743589744,
+      "max_ms": 2.172
+    },
+    "chunk_meshes_main": {
+      "avg_ms": 0.5936,
+      "max_ms": 1.292
+    },
+    "long_frames": [
+      {
+        "chunk_ms": 0.0,
+        "frame": 286,
+        "main_ms": 1.764,
+        "ms": 34.8447575757576,
+        "pipelines_compiled": 0
+      }
+    ],
+    "state_timeline": {
+      "arrival_max_ms": 147.613006591797,
+      "arrival_over_66ms": 3,
+      "arrival_p50_ms": 33.0110015869141,
+      "arrival_p95_ms": 49.5740013122559,
+      "arrival_p99_ms": 136.330993652344,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 75.8509979248047,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.597762
+        },
+        {
+          "arrival_ms": 147.613006591797,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 5.141161
+        },
+        {
+          "arrival_ms": 136.330993652344,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 5.614961
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 170,
+      "tile_events": 0,
+      "underrun_episodes": 2,
+      "underruns": 5
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "audit_snow_animation",
+  "scene": {
+    "buildings_in_view": 7,
+    "chunks": 49,
+    "lamps_in_view": 9,
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-audit\\gameplay_strict\\audit_snow_animation\\20261115-004448_2f543864-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-14T22:46:11Z",
+  "traffic": {
+    "moving_min": 5,
+    "npcs_max": 8,
+    "spawn_rejections": {
+      "share": {},
+      "total": 0.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": 0.59,
+    "x": 385325.8,
+    "y": 6671757.1
+  },
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.9,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": -4.05,
+    "weather_type": "snow",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      -3.915,
+      -1.689
+    ]
+  }
+}

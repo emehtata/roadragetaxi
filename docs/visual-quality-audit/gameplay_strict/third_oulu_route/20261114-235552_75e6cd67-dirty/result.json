@@ -1,0 +1,175 @@
+{
+  "camera": {
+    "position": [
+      0.00827189348638058,
+      -0.188026323914528
+    ],
+    "zoom": 3.0
+  },
+  "chase": {
+    "frames": 380,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "75e6cd67-dirty",
+  "elapsed_s": 9.34594000000002,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 31.051,
+    "build_ms_total": 170.71,
+    "draw_calls": 729.0,
+    "far_lod_crowns_loaded": 21748,
+    "forest_chunks": 31,
+    "objects": 1760.0,
+    "place_ms_max": 27.751,
+    "primitives": 2025097.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 292.226658821106,
+    "trees_loaded": 10874,
+    "video_memory_mb": 824.585571289063
+  },
+  "frames": {
+    "avg_fps": 56.2005152429154,
+    "avg_ms": 17.7934311754563,
+    "frames": 170,
+    "low_01pct_fps": 25.7738602929429,
+    "low_1pct_fps": 25.7738602929429,
+    "over_16ms": 64,
+    "over_33ms": 1,
+    "over_66ms": 0,
+    "p50_ms": 16.6666660308838,
+    "p95_ms": 25.7840003967285,
+    "p99_ms": 32.9770011901855,
+    "worst_ms": 38.798999786377
+  },
+  "game_time": [
+    "2026-06-20",
+    52200.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 202
+  },
+  "render": {
+    "chunk_build_worker": {
+      "avg_ms": 750.969978723404,
+      "max_ms": 2427.765
+    },
+    "chunk_ground_dict": {
+      "avg_ms": 3.868,
+      "max_ms": 9.15
+    },
+    "chunk_lamps_3d": {
+      "avg_ms": 0.338090909090909,
+      "max_ms": 0.53
+    },
+    "chunk_lamps_main": {
+      "avg_ms": 2.8688085106383,
+      "max_ms": 7.425
+    },
+    "chunk_mesh_surface": {
+      "avg_ms": 1.27597360703812,
+      "max_ms": 9.488
+    },
+    "chunk_meshes_main": {
+      "avg_ms": 0.581042553191489,
+      "max_ms": 1.711
+    },
+    "long_frames": [
+      {
+        "chunk_ms": 5.882,
+        "frame": 85,
+        "main_ms": 2.695,
+        "ms": 38.799,
+        "pipelines_compiled": 0
+      }
+    ],
+    "state_timeline": {
+      "arrival_max_ms": 104.862998962402,
+      "arrival_over_66ms": 3,
+      "arrival_p50_ms": 32.1730003356934,
+      "arrival_p95_ms": 57.2960014343262,
+      "arrival_p99_ms": 65.8970031738281,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 104.862998962402,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 3.119474
+        },
+        {
+          "arrival_ms": 66.9100036621094,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 10.771931
+        },
+        {
+          "arrival_ms": 87.7919998168945,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 11.920532
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 378,
+      "tile_events": 0,
+      "underrun_episodes": 1,
+      "underruns": 2
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": true,
+  "scenario": "third_oulu_route",
+  "scene": {
+    "buildings_in_view": 81,
+    "chunks": 49,
+    "lamps_in_view": 135,
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-audit\\gameplay_strict\\third_oulu_route\\20261114-235552_75e6cd67-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-14T21:56:32Z",
+  "traffic": {
+    "moving_min": 11,
+    "npcs_max": 22,
+    "spawn_rejections": {},
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": -1.98723179611419,
+    "x": 427752.602021894,
+    "y": 7210620.18802632
+  },
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.1,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 17.11,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      1.686,
+      -4.709
+    ]
+  }
+}

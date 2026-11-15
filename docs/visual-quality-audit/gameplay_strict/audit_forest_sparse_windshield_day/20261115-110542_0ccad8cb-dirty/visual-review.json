@@ -1,0 +1,5 @@
+{
+  "accepted": false,
+  "reviewer": "implementer: screenshot personally inspected; independent review pending",
+  "notes": "Rejected as forest-LOD readiness proof: initial helper compared each tree origin to range; actual Godot ranges select whole batches by AABB-centre distance. Replaced by later corrected run."
+}

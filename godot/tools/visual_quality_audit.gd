@@ -1,0 +1,219 @@
+## Audit-only asset inspection. Uses production builders; never loaded by gameplay.
+extends SceneTree
+const B3 := preload("res://buildings_3d.gd")
+const EL := preload("res://entity_layer.gd")
+const ANGLES := ["front", "rear", "left", "right", "front_three_quarter", "rear_three_quarter", "top", "elevated"]
+const DIRECTIONS := [Vector3(1,0,0), Vector3(-1,0,0), Vector3(0,0,-1), Vector3(0,0,1), Vector3(1,0.6,1), Vector3(-1,0.6,-1), Vector3(0,1,0.001), Vector3(1,1.5,-1)]
+var viewport: SubViewport
+var camera: Camera3D
+var sun: DirectionalLight3D
+var lamp: OmniLight3D
+var environment: Environment
+var results: Array = []
+
+func _initialize() -> void:
+	create_timer(600).timeout.connect(func(): quit(1))
+	call_deferred("run")
+
+func rect(w: float, h: float) -> PackedVector2Array:
+	return PackedVector2Array([Vector2(-w,-h),Vector2(w,-h),Vector2(w,h),Vector2(-w,h)])
+
+func mesh_node(a: Dictionary, organic := false) -> MeshInstance3D:
+	assert(not a["verts"].is_empty(), "empty asset geometry")
+	var node := B3._instance(B3._mesh(a["verts"], a["colors"], a["roof_mask"], PackedVector2Array(), PackedFloat32Array(), a["part"], organic), B3._shared["organic" if organic else "car"], B3.LAYER_BUILDINGS)
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	return node
+
+func build(row: Dictionary) -> Node3D:
+	var body := Node3D.new()
+	var kind: String = row["kind"]
+	var mode: String = row["mode"]
+	if mode == "vehicle":
+		var helper := B3.new()
+		helper._cars_root = body
+		var length: float = row["length"]
+		var width: float = row["width"]
+		var color := Color8(175,85,48)
+		var extra: Dictionary = row.get("extra", {})
+		var lamps: int = int(row.get("lamps",1))
+		if kind in B3.CAR_MODEL_KINDS:
+			helper.place_model_car(kind,Vector2.ZERO,0,length,width,color,0,lamps)
+			body.add_child(mesh_node(B3.model_car_details(length,width,int(row.get("sign",0)),lamps,0.5,true,2.26 if kind == "panel_van" else 1.41)))
+		elif kind in ["e_scooter", "e_scooter_grab3d", "bicycle", "mountain_bike"]:
+			helper.place_model_car(kind,Vector2.ZERO,0,length,width,color,0,lamps)
+			body.add_child(mesh_node(B3.model_vehicle_details("bicycle" if kind in ["bicycle", "mountain_bike"] else "e_scooter",length,width,color,lamps,extra)))
+		elif kind in ["city_bus", "box_truck", "caravan", "train_locomotive", "train_coach"]:
+			helper.place_model_car(kind,Vector2.ZERO,0,length,width,color,0,lamps)
+		else:
+			helper.vehicle(kind,Vector2.ZERO,0,length,width,color,lamps,0,extra)
+		helper.route_3d.free()
+		helper.free()
+		return body
+	if mode == "person":
+		body.add_child(mesh_node(B3.person_arrays(Color8(65,125,190),row.get("pose","standing"),1.0,row.get("costume",""),int(row.get("variant",0)),row.get("winter",false),int(row.get("detail",1)),int(row.get("beard",0)),row.get("cart",false)),true))
+		return body
+	if mode == "animal":
+		body.add_child(mesh_node(B3.animal_arrays(kind,Color8(125,95,65),row.get("pose","stand"),1.0,int(row.get("detail",1))),true))
+		return body
+	if mode == "tree":
+		body.free()
+		return B3.trees_node([[Vector2.ZERO,kind,1.4,Color8(65,110,60),Color8(100,75,50),0.0 if row.get("felled",false) else NAN]],PackedVector2Array(),{},row.get("far",false))
+	if mode == "bollard":
+		body.free()
+		return B3.trees_node([],PackedVector2Array([Vector2.ZERO]))
+	if mode == "railing":
+		body.free()
+		return B3.railings_node([[kind,PackedVector2Array([Vector2(-2,0),Vector2(2,0)])]])
+	if mode == "lamp":
+		body.free()
+		return B3.lamp_posts_node([[Vector2.ZERO,Vector2.RIGHT]])
+	if mode == "signal":
+		body.free()
+		return B3.signals_node([[Vector2.ZERO,Vector2.RIGHT,[kind == "red",kind == "yellow",kind == "green"]]])
+	if mode == "interior":
+		var interior := preload("res://home_interior_3d.gd").new()
+		var plans = JSON.parse_string(FileAccess.get_file_as_string("res://tests/data/home_plans.json"))
+		assert(interior.load_plan(plans[int(row.get("index",0))]))
+		body.free()
+		return interior
+	var a := B3.build([],[],Vector2.ZERO)
+	if mode == "building":
+		var poly := rect(8,5)
+		if kind == "concave":
+			poly = PackedVector2Array([Vector2(-8,-5),Vector2(8,-5),Vector2(8,0),Vector2(0,0),Vector2(0,5),Vector2(-8,5)])
+		var height: float = row.get("height",9.0)
+		a = B3.build([poly],[[[95,75,65],int(row.get("roof",0)),height,[[-8,0]],[180,155,125],int(row.get("floors",3)),int(row.get("category_id",0)),int(row.get("special",0))]],Vector2.ZERO)
+	elif mode == "prop":
+		var spec: Array = B3.PROPS[kind]
+		B3.props(a,[[Vector2.ZERO,0.0,kind,row.get("size",6.0 if kind == "camper_van" else spec[2] if kind in B3.GAP_KINDS else spec[0]),not row.get("no_backrest",false)]])
+	elif mode == "attraction":
+		var loop := PackedVector2Array()
+		for i in 49:
+			loop.append(Vector2.from_angle(TAU*i/48.0)*8.0)
+		B3.attractions(a,[[kind,loop]])
+	elif mode == "site":
+		B3.site_details(a,[[Vector2.ZERO,kind]],float(row.get("snow",0)))
+	elif mode == "landmark":
+		B3._landmark(a,Vector2.ZERO,0,row["spec"])
+	elif mode == "crane":
+		B3._crane(a,rect(20,20),Vector2.ZERO)
+	elif mode == "cone" or mode == "barrier":
+		var helper := B3.new()
+		helper._cars_root = body
+		if mode == "cone": helper.roadwork_cone(Vector2.ZERO)
+		else: helper.roadwork_barrier(Vector2.ZERO,0,3.0)
+		helper.route_3d.free()
+		helper.free()
+		return body
+	elif mode == "ground" or mode == "structure":
+		var g := {"rect": Rect2(-8,-6,16,12)}
+		var line := PackedVector2Array([Vector2(-6,0),Vector2(6,0)])
+		match kind:
+			"road": g["roads"] = [[line,3.0,Color8(75,75,75),0,Color.WHITE,false,int(row.get("surface",0)),true]]
+			"water": g["areas"] = [[rect(6,4),Color8(65,100,125),true]]
+			"parking", "landuse": g["areas"] = [[rect(6,4),Color8(110,115,100),false]]
+			"rail": g["rail_lines"] = [line]
+			"bus_bay": g["bus_bays"] = [[rect(6,2),Color8(90,90,85)]]
+			"crossing": g["stripes"] = [[Vector2(-1,-3),Vector2(-1,3)],[Vector2(1,-3),Vector2(1,3)],[Vector2(3,-3),Vector2(3,3)]]
+			"bump": g["bumps"] = [[Vector2(0,-3),Vector2(0,3),0.5]]
+			"island": g["islands"] = [[rect(3,1),Color8(160,165,160)]]
+			"curb": g["curbs"] = [line]
+			"bridge": g["bridges"] = [[line,3.0,Color8(75,75,75),1,2,Color.WHITE,false]]
+			"guardrail": g["guardrails"] = [[Vector2(-6,0),Vector2(6,0),1]]
+			"rail_bridge": g["rail_decks"] = [rect(6,2)]; g["rail_tracks"] = [line]
+			"pier": g["piers"] = [rect(6,2)]
+			"canopy": g["canopies"] = [[rect(4,3),4.0]]
+			"site_fence": g["site_fences"] = [rect(5,4)]
+			"shelter", "stop_bench": g["shelters"] = [[rect(2,1),"shelter" if kind == "shelter" else "bench"]]
+			"net": g["nets"] = [[Vector2(-4,0),Vector2(4,0)]]
+			"sign_post": g["sign_posts"] = [Vector2.ZERO]
+			"pump": g["pumps"] = [[Vector2.ZERO,Vector2.RIGHT]]
+			"power_line": g["power_lines"] = [line]
+			"foam": g["areas"] = [[rect(6,4),Color8(65,100,125),true]]; g["shore_foam"] = [[line,0.5]]
+			"puddle": g["puddles"] = [[Vector2.ZERO,3.0,[1.0,0.8,1.1,0.9,1.0,0.8,1.1,0.9],1.0]]
+		a = B3.build([],[],Vector2.ZERO,[],[],g)
+		# Framing includes the target, not the surrounding ground plane.
+		if mode == "structure":
+			a["ground"] = PackedVector3Array(); a["ground_colors"] = PackedColorArray()
+	for node: Node3D in B3.meshes(a):
+		body.add_child(node)
+	return body
+
+func bounds(node: Node3D) -> AABB:
+	var box := AABB()
+	var found := false
+	for child in node.find_children("*","VisualInstance3D",true,false) + ([node] if node is VisualInstance3D else []):
+		var visual := child as VisualInstance3D
+		if visual is MeshInstance3D and (visual.mesh == null or visual.mesh.get_surface_count() == 0): continue
+		var b: AABB = visual.global_transform * visual.get_aabb()
+		box = box.merge(b) if found else b
+		found = true
+	assert(found and box.size.length() > 0.01,"expected nonempty visible asset")
+	return box
+
+func run() -> void:
+	var args := OS.get_cmdline_user_args()
+	assert(args.size() == 2,"usage: fixture.json output-directory")
+	var fixture = JSON.parse_string(FileAccess.get_file_as_string(args[0]))
+	assert(fixture is Dictionary)
+	B3.use_shaded()
+	viewport = SubViewport.new(); viewport.size = Vector2i(400,340)
+	viewport.own_world_3d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	root.add_child(viewport)
+	camera = Camera3D.new(); camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.near = 0.01; camera.far = 2000
+	viewport.add_child(camera); camera.current = true
+	environment = Environment.new(); environment.background_mode = Environment.BG_COLOR
+	environment.background_color = Color("303b46")
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color.WHITE
+	environment.sky = Sky.new(); environment.sky.sky_material = ProceduralSkyMaterial.new()
+	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	camera.environment = environment
+	sun = DirectionalLight3D.new(); sun.rotation_degrees = Vector3(-45,25,0)
+	sun.shadow_enabled = true; viewport.add_child(sun)
+	lamp = OmniLight3D.new(); lamp.light_color = Color8(255,205,140)
+	viewport.add_child(lamp)
+	var conditions: Array = fixture.get("conditions",["day"])
+	for row: Dictionary in fixture["assets"]:
+		if not row.has("mode") or row["mode"] == "uninspected": continue
+		var body := build(row); viewport.add_child(body)
+		await process_frame
+		var box := bounds(body)
+		var centre := box.get_center()
+		var span := maxf(box.size.x,maxf(box.size.y,box.size.z))
+		for condition: String in conditions:
+			environment.ambient_light_energy = 0.12 if condition == "night" else 0.75 if condition == "overcast" else 0.45
+			sun.light_energy = 0.02 if condition == "night" else 0.22 if condition == "overcast" else 1.0
+			lamp.light_energy = 3.0 if condition == "night" else 0.0
+			lamp.omni_range = span*5
+			lamp.position = centre + Vector3(0.4,1.4,0.7)*span
+			for angle in ANGLES.size():
+				var direction: Vector3 = DIRECTIONS[angle].normalized()
+				camera.position = centre + direction*maxf(3,span*3)
+				camera.look_at(centre)
+				# Fit all projected corners with an 8% border, retaining narrow end views.
+				var half_x := 0.0; var half_y := 0.0
+				for corner in 8:
+					var p := camera.global_transform.affine_inverse()*box.get_endpoint(corner)
+					half_x = maxf(half_x,absf(p.x)); half_y = maxf(half_y,absf(p.y))
+				camera.size = maxf(0.2,maxf(half_y*2,half_x*2/(400.0/340.0)))*1.18
+				B3._shared["road"].set_shader_parameter("surface_pixels_per_m",340.0/camera.size)
+				B3._shared["road"].set_shader_parameter("wetness",1.0 if row["kind"] == "puddle" else 0.0)
+				for frame in 3: await process_frame
+				await RenderingServer.frame_post_draw
+				var framed := true
+				for corner in 8:
+					framed = framed and camera.is_position_in_frustum(box.get_endpoint(corner))
+				assert(framed,"asset outside camera frustum")
+				var filename := "%s_%s_%s.png" % [row["id"],condition,ANGLES[angle]]
+				var error := viewport.get_texture().get_image().save_png(args[1].path_join(filename))
+				assert(error == OK,"capture save failed")
+				results.append({"asset":row["id"],"file":filename,"angle":ANGLES[angle],"condition":condition,"camera_position":[camera.position.x,camera.position.y,camera.position.z],"camera_size":camera.size,"bounds":[box.position.x,box.position.y,box.position.z,box.size.x,box.size.y,box.size.z],"ready":true,"draw_frames":3,"framed":framed})
+		body.free()
+		print("AUDIT captured ",row["id"]," ",row["name"])
+	var output := {"captures":results,"renderer":RenderingServer.get_current_rendering_method(),"adapter":RenderingServer.get_video_adapter_name(),"resolution":[400,340],"angles":ANGLES}
+	var file := FileAccess.open(args[1].path_join("capture-results.json"),FileAccess.WRITE)
+	file.store_string(JSON.stringify(output,"\t")); file.close()
+	quit()

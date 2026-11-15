@@ -1,0 +1,75 @@
+{
+	"adapter": "NVIDIA GeForce RTX 5060",
+	"captures": [
+		{
+			"angle": "room_04_bathroom",
+			"asset": "A-176",
+			"camera_height": 1.6,
+			"camera_position": [
+				-5.14836978912354,
+				1.6001068353653,
+				-0.0114521328359842
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-176_room_04_bathroom.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 4,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_00_hall",
+			"asset": "A-176",
+			"camera_height": 1.6,
+			"camera_position": [
+				-0.40696382522583,
+				1.6001068353653,
+				0.454908967018127
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-176_room_00_hall.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 0,
+			"target_confirmed": true
+		},
+		{
+			"angle": "room_01_bedroom",
+			"asset": "A-176",
+			"camera_height": 1.6,
+			"camera_position": [
+				-2.4492461681366,
+				1.60084068775177,
+				4.96355962753296
+			],
+			"condition": "production fixed interior lighting; actual capsule walk from front door",
+			"family": "runtime-rooms",
+			"file": "A-176_room_01_bedroom.png",
+			"on_floor": true,
+			"ready": true,
+			"room_index": 1,
+			"target_confirmed": true
+		}
+	],
+	"homes": [
+		{
+			"asset": "A-176",
+			"doors_crossed": [
+				4,
+				1
+			],
+			"doors_expected": 6,
+			"failures": [],
+			"rooms_expected": 7,
+			"rooms_visited": [
+				4,
+				0,
+				1
+			]
+		}
+	],
+	"lod": [],
+	"renderer": "forward_plus"
+}

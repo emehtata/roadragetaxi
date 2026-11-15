@@ -1,0 +1,441 @@
+{
+  "timestamp_ns": 1794733541456595702,
+  "car": {
+    "x": 477405.4,
+    "y": 7169824.6,
+    "heading": -2.329,
+    "speed": 0.0,
+    "layer": 0,
+    "map_level": 0,
+    "trip_m": 0.0,
+    "odometer_m": 1060975.9734095242,
+    "length_m": 4.0,
+    "width_m": 1.8,
+    "engine_on": true,
+    "throttle": 0.0,
+    "time_since_last_steer": 88.6666666666642,
+    "lane_assist_enabled": false,
+    "lane_assist_active": false,
+    "braking": false,
+    "forward_g": 0.0,
+    "lateral_g": 0.0,
+    "total_g": 0.0,
+    "raw_forward_g": -0.0,
+    "raw_lateral_g": 0.0,
+    "raw_total_g": 0.0,
+    "drift_angle": 0.0,
+    "is_sliding": false,
+    "max_grip_g": 0.75,
+    "grip_usage": 0.0,
+    "skid_amount": 0.0,
+    "front_lockup": false,
+    "ground_kind": "road",
+    "slip_amount": 0.0,
+    "slip_angle": 0.0,
+    "_prev_vx": 0.0,
+    "_prev_vy": 0.0,
+    "_g_force_initialized": true,
+    "fuel_capacity_l": 60.0,
+    "fuel_l": 34.56960928367303,
+    "fuel_consumption_l_per_100km": 0.0,
+    "idle_fuel_consumption_l_per_hour": 1.0,
+    "curb_mass_kg": 1400.0,
+    "driver_mass_kg": 90.0,
+    "passenger_mass_kg": 0.0
+  },
+  "taxi": {
+    "state": "PICKUP",
+    "scalar_properties": {
+      "min_distance_m": 300.0,
+      "max_distance_m": 2500.0,
+      "pickup_radius_m": 25.0,
+      "max_stop_speed_mps": 3.0,
+      "language": "en",
+      "game_time_seconds": 46800.0,
+      "current_passenger": null,
+      "driver_on_foot": false,
+      "fares_open": true,
+      "state": "PICKUP",
+      "total_score": 0,
+      "completed_fares": 0,
+      "elapsed_time": 0.0,
+      "trip_distance_m": 0.0,
+      "last_fare_points": 0,
+      "balance_cents": 75313,
+      "last_fare_cents": 0,
+      "last_tip_cents": 0,
+      "passenger_happiness": 50.0,
+      "fare_started_at": null,
+      "fare_start_odometer_m": null,
+      "fare_distance_m": 0.0,
+      "live_fare_cents": 0,
+      "notification_msg": "A new ride is waiting in the phone.",
+      "notification_timer": -0.033333333333325575,
+      "next_offer_timer": 15.252691730248374,
+      "stand_wait_timer": 88.6666666666642,
+      "long_fare_retry_timer": 0.0,
+      "intercity_fares_enabled": false,
+      "intercity_places": null,
+      "_tram_crash_at": -1000000000.0,
+      "knocked_posts": 0,
+      "_roads_through_key": null,
+      "barrier_sound": "collision.fence",
+      "taxi_smoke_timer": 0.0,
+      "speed_camera_flash_timer": 0.0,
+      "speed_camera_flash_index": null,
+      "speed_camera_notice_timer": 0.0,
+      "speed_camera_notice_msg": "",
+      "wrong_way_duration": 0.0,
+      "wrong_way_penalty_cooldown": 0.0,
+      "pedestrian_way_penalty_cooldown": 0.0,
+      "last_sweep_samples": 1
+    },
+    "current_passenger": null,
+    "offer_count": 1,
+    "vomit_puddle_count": 0
+  },
+  "live_roadworks": null,
+  "live_feed": null,
+  "brawls": {
+    "active": [],
+    "recent": [],
+    "rejected_triggers": 0
+  },
+  "world": {
+    "city": "Utajärvi",
+    "camera_city": "Utajärvi",
+    "game_mode": "gig_driver",
+    "initial_bbox": [
+      64.643607682335,
+      26.505947400431527,
+      64.66162570035301,
+      26.548035209869074
+    ],
+    "current_bounds": [
+      471903.97019464837,
+      7160042.704191088,
+      483672.5609331957,
+      7179129.927941419
+    ],
+    "viewport_bounds": [
+      477192.066665649,
+      7169704.59999084,
+      477618.733352661,
+      7169944.59999084
+    ],
+    "camera": {
+      "x": 477405.4,
+      "y": 7169824.6,
+      "px_per_m": 9.0
+    },
+    "feature_counts": {
+      "elements_loaded": 0,
+      "ways": 51,
+      "waters": 5,
+      "buildings": 309,
+      "sceneries": 133,
+      "places": 9,
+      "taxi_stops": 0,
+      "traffic_lights": 0,
+      "crossings": 0,
+      "scenery_objects": 2,
+      "speed_bumps": 0,
+      "railways": 3,
+      "railings": 0,
+      "pedestrians": 0
+    },
+    "current_way": {
+      "name": "Isoahontie",
+      "highway": "unclassified",
+      "layer": 0,
+      "speed_limit_kmh": 50
+    },
+    "spatial_grid": {
+      "indexed_way_count": 199
+    },
+    "map_sync_stage": 0,
+    "on_foot": false,
+    "lake_ice_cm": 0.0,
+    "lake_ice_holds": false
+  },
+  "npcs": [
+    {
+      "vehicle_id": 1,
+      "has_driver": true,
+      "resident_id": 14,
+      "state": "CRUISING",
+      "vehicle_type": "van",
+      "capacity": 8,
+      "occupant_count": 1,
+      "occupant_ids": [
+        14
+      ],
+      "x": 477221.6122530295,
+      "y": 7169571.097754009,
+      "heading": 4.097435325227849,
+      "layer": 0,
+      "map_level": 0,
+      "lod_level": 0,
+      "is_on_foot": false,
+      "speed_kmh": 50.0,
+      "target_speed_kmh": 50.0,
+      "way": {
+        "name": "Isoahontie",
+        "highway": "unclassified"
+      },
+      "next_way": {
+        "name": "Koskenniskantie",
+        "highway": "residential"
+      },
+      "route_index": 11,
+      "route_length": 46,
+      "route_progress": 0.2391304347826087,
+      "lookahead_distance_m": 4.0,
+      "steering_input": -0.0014444754133736898,
+      "maneuver": "left",
+      "lane_bias": null,
+      "traffic_action": "PROCEED",
+      "traffic_reason": "no relevant light ahead",
+      "stop_position": null,
+      "signal_id": null,
+      "destination": [
+        478358.8843547092,
+        7168479.088104464
+      ],
+      "destination_parking_space_id": null,
+      "is_taxi": false,
+      "is_police": false,
+      "fallen": false,
+      "crashed_timer": 0.0,
+      "debug_waiting_for": ""
+    },
+    {
+      "vehicle_id": 3,
+      "has_driver": true,
+      "resident_id": 6,
+      "state": "CRUISING",
+      "vehicle_type": "bicycle",
+      "capacity": 1,
+      "occupant_count": 1,
+      "occupant_ids": [
+        6
+      ],
+      "x": 477102.802574911,
+      "y": 7169921.326605073,
+      "heading": 2.5461150452129786,
+      "layer": 0,
+      "map_level": 0,
+      "lod_level": 0,
+      "is_on_foot": false,
+      "speed_kmh": 22.572827009539203,
+      "target_speed_kmh": 22.572827009539203,
+      "way": {
+        "name": null,
+        "highway": "service"
+      },
+      "next_way": {
+        "name": "Ahmastie",
+        "highway": "tertiary"
+      },
+      "route_index": 2,
+      "route_length": 20,
+      "route_progress": 0.1,
+      "lookahead_distance_m": 0.0,
+      "steering_input": 0.0,
+      "maneuver": "straight",
+      "lane_bias": null,
+      "traffic_action": "PROCEED",
+      "traffic_reason": "riding",
+      "stop_position": null,
+      "signal_id": null,
+      "destination": [
+        476767.7878208844,
+        7170306.9396560155
+      ],
+      "destination_parking_space_id": null,
+      "is_taxi": false,
+      "is_police": false,
+      "fallen": false,
+      "crashed_timer": 0.0,
+      "debug_waiting_for": ""
+    },
+    {
+      "vehicle_id": 4,
+      "has_driver": true,
+      "resident_id": 13,
+      "state": "CRUISING",
+      "vehicle_type": "e_scooter",
+      "capacity": 1,
+      "occupant_count": 1,
+      "occupant_ids": [
+        13
+      ],
+      "x": 477315.81603773223,
+      "y": 7169707.0425724955,
+      "heading": -2.18662945444907,
+      "layer": 0,
+      "map_level": 0,
+      "lod_level": 0,
+      "is_on_foot": false,
+      "speed_kmh": 21.848955289318127,
+      "target_speed_kmh": 21.848955289318127,
+      "way": {
+        "name": "Isoahontie",
+        "highway": "unclassified"
+      },
+      "next_way": {
+        "name": "Koskenniskantie",
+        "highway": "residential"
+      },
+      "route_index": 15,
+      "route_length": 20,
+      "route_progress": 0.75,
+      "lookahead_distance_m": 0.0,
+      "steering_input": 0.0,
+      "maneuver": "straight",
+      "lane_bias": null,
+      "traffic_action": "PROCEED",
+      "traffic_reason": "riding",
+      "stop_position": null,
+      "signal_id": null,
+      "destination": [
+        477020.6082145324,
+        7169699.43710695
+      ],
+      "destination_parking_space_id": null,
+      "is_taxi": false,
+      "is_police": false,
+      "fallen": false,
+      "crashed_timer": 0.0,
+      "debug_waiting_for": ""
+    }
+  ],
+  "npc_population": {
+    "total": 3,
+    "moving": 3,
+    "within_150m": 1,
+    "moving_target": 1,
+    "diagnostics": {
+      "trip_start_attempts": 1,
+      "successful_trip_starts": 1,
+      "route_generation_failures": 0,
+      "route_validation_failures": 0,
+      "vehicles_waiting_for_trips": 0,
+      "population_update_duration_s": 0.00010129099246114492,
+      "motorcycle_season_factor": 1.0,
+      "motorcycles_spawned": 0,
+      "motorcycles_retired_for_winter": 0,
+      "traffic_demand": {
+        "local": 0.020417887369791665,
+        "through": 0.0,
+        "hour": 0.6646277132161458,
+        "nightlife": 0.0,
+        "lam_station": null,
+        "demand": 0.01357029379128946,
+        "people": 31,
+        "highway": "unclassified",
+        "expected_moving": 0.555,
+        "moving_target": 1,
+        "night_taxi_target": 0,
+        "night_cruise_target": 0
+      },
+      "spawn": {
+        "moving_target": 1,
+        "moving": 0,
+        "candidates": 1,
+        "placed": 1,
+        "routes_walked": 1,
+        "routes_searched": 0,
+        "activated": 0,
+        "moving_after_10s": 0,
+        "stopped_after_10s": 0,
+        "search_ms": 2.6,
+        "jobs": {
+          "queued": 8,
+          "ready": 7,
+          "failed": 1,
+          "discarded": 0,
+          "stale": 0,
+          "replanned": 0
+        },
+        "queue_depth": 0,
+        "flow": {
+          "queue_clears_outside": 0,
+          "through_retired": 0,
+          "through_dead_end": 0,
+          "through_stuck_retired": 0,
+          "jobs_cleared": 0,
+          "route_graph_rebuilds": 0,
+          "activated_same_direction": 0,
+          "activated_opposite_direction": 0,
+          "last_activation_sim_time": null,
+          "transit_pending": 0,
+          "since_last_activation_s": null
+        },
+        "latency_frames_p50": 3,
+        "latency_frames_max": 8,
+        "discard_reasons": {
+          "total": 0,
+          "share": {}
+        },
+        "memory_good": 1,
+        "memory_hopeless": 0
+      },
+      "road_boundary_blocks": 5
+    }
+  },
+  "performance": null,
+  "auto_fetch": {
+    "configured_enabled": false,
+    "call_enabled": true,
+    "margin_m": 350.0,
+    "tile_size_m": 1000.0,
+    "build_in_process": true,
+    "osm_source": "overpass",
+    "manager_enabled_state": true,
+    "is_fetching": false,
+    "progress": 0.0,
+    "last_trigger_reason": "",
+    "last_fetch_time": 0.0,
+    "seconds_since_last_fetch": null,
+    "cooldown_s": 5.0,
+    "dead_end_count": 0,
+    "dead_ends": [],
+    "known_dead_end": {
+      "west": false,
+      "east": false,
+      "south": false,
+      "north": false
+    },
+    "distance_to_edges_m": {
+      "west": 5501.429805351654,
+      "east": 6267.1609331956715,
+      "south": 9781.895808911882,
+      "north": 9305.327941419557
+    },
+    "within_margin": {
+      "west": false,
+      "east": false,
+      "south": false,
+      "north": false
+    },
+    "endpoint_audit": {
+      "status": "evaluated",
+      "way": {
+        "osm_id": 169318836,
+        "highway": "unclassified",
+        "name": "Isoahontie"
+      },
+      "endpoint": [
+        477529.4795732235,
+        7169950.481612769
+      ],
+      "endpoint_distance_m": 176.75384274388188,
+      "lookahead_m": 350.0,
+      "heading_alignment": -0.9995093381741285,
+      "connected_to_drivable_road": true,
+      "already_attempted": false,
+      "known_dead_end": false
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "accepted": true,
+  "inspected": true,
+  "observation": "Existing debug side-window eye view shows dense forest trunks, crowns, grounding and HUD; no startup sign or map-loading banner.",
+  "limitation": "Representative real-map context only; not a per-type or LOD boundary pass."
+}
