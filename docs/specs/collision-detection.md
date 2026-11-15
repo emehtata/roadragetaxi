@@ -304,6 +304,70 @@ Amendments (2026-11-15, after implementation):
 
 Out of scope: NPC vehicles vs pedestrians (phase 6), merging the venue `_building_grid` (density and route uses) into the index, solid hit penalties for pedestrians, animals.
 
+## Phase 6 (full): NPC static collisions and swept taxi steps
+Goal: driving NPC vehicles never enter buildings, posts, trees or barriers, and the taxi cannot tunnel through a thin obstacle
+when one tick moves it far. Covers scenarios 2, 10, 13 and 15 of section 10. One index (the phase 4 `StaticObstacleIndex`), no new tick loop.
+
+Current state: a driving NPC checks curbs and buildings only through `is_vehicle_pose_valid` every `NPC_FOOTPRINT_CHECK_INTERVAL_S` (0.2 s), with
+clearance semantics, and only to gate arrival (`footprint_clear`). Posts, trees, fences and railings are ignored. A knocked NPC (`update_knocked`)
+stops at buildings only. Far NPCs step `FAR_TRAFFIC_STEP` x dt (4 x 33 ms). Taxi: one `update_car_physics` move per tick, then `check_*_collision` at the end
+pose against `previous_position`. At 30 Hz and 69 m/s the step is 2.3 m, shorter than the taxi (4.0 m), so a steady drive does not tunnel. It does tunnel when
+a tick's dt stretches (a 130 ms chunk-build stall at 69 m/s is a 9 m step) or when the car slides sideways (step > width + 2 x `POST_RADIUS_M`).
+
+Files:
+- `src/theroadragetrip/collision.py`:
+  - `def sweep_samples(travel_m: float, turn_rad: float, length_m: float, width_m: float) -> int`: `ceil((travel + |turn| x length/2) / (width/2))`,
+    min 1, max `SWEEP_MAX_SAMPLES = 16`. The width/2 spacing (0.9 m for the taxi) cannot skip a post (0.3 m) or a polyline in any direction. 2.3 m gives 3; a 9 m stall step gives 10.
+  - `def first_static_hit(index, prev_pose, pose, length_m, width_m, categories, level, layer) -> tuple[int, obj] | None`: one `query` around the
+    swept segment's midpoint (radius travel/2 + half diagonal + post radius), then tests the interpolated poses 1..n in order with `box_hits_polygon`,
+    `box_hits_polyline` and `post_box_depth`. It returns the first sample that hits and the object. Candidates already touched at `prev_pose` count only when depth grows (phase 2 rule).
+- `src/theroadragetrip/taxi.py` / `simulation.py` collisions section: before the `check_*` calls, run `first_static_hit` for BUILDING|BARRIER|POST on surface
+  (BUILDING only off surface). On a hit at sample k, move the car to sample k (the time-of-impact pose) and run the existing `check_*` calls there, so their stop,
+  penalty, cooldown, knock-down, felling and road-overlap exemption are unchanged. n == 1 is today's code path exactly. Trees still never stop the taxi.
+- `src/theroadragetrip/npc.py`:
+  - `NPCManager.static_index` (a reference, set in world_loader next to `pedestrian_mgr.static_index`; None keeps today's behaviour).
+  - In the post-physics collision phase (`update` ~7266), for each active vehicle that moved and is not knocked: `first_static_hit(...)` with BUILDING|BARRIER|POST,
+    the vehicle's `layer` and `map_level`. Posts and trees are surface only. Uses the same `previous_poses`, so far vehicles' 4 x steps are swept too.
+  - Response (`def _resolve_static_hit(vehicle, driver, sample_pose)`): place the vehicle at the last free sample (k-1, else previous pose), speed 0. No impulse:
+    static objects stay put, and an NPC never knocks a post or fells a tree (game policy: NPC travel stays on the carriageway, so a hit is a fault, not gameplay).
+    The driver gets `target_speed_mps = 0`, `debug_waiting_for = "static obstacle"`, `recovery_stage = "STUCK"`, the same path as `_enforce_npc_road_motion`
+    (manoeuvre, reroute, then the 2026-10-15 jam cleanup). That cleanup is what rules out a permanent stuck state.
+  - Anti-oscillation: motion that reduces depth is always allowed (an NPC spawned or knocked into overlap drives out). A hit counter per vehicle: 3 hits within
+    2 s without `NPC_RECOVERY_PROGRESS_M` of progress skip straight to reroute, no stop-start loop. No push-out for driving NPCs (it would move them off the road).
+  - `update_knocked`: replace the building-only `is_vehicle_pose_valid` with `first_static_hit` on the slide step when the index exists (a slide stops at posts and fences too).
+- `tools/bench_map_jitter.py`: fields `npc_static_ms`, `taxi_sweep_ms` and `taxi_sweep_samples` (p50 / p99 / max).
+
+Traffic law (docs/finnish-npc-traffic-law.md): § 3-5 "priority never authorizes a collision"; the off-road game policy (recovery may not bypass barriers or leave the
+carriageway); "a legal wait must not trigger stuck recovery": the static check never runs for a stationary vehicle, so a red-light or queue wait gets no hit.
+All decisions stay in npc.py on the server; nothing new is sent to Godot.
+
+Acceptance:
+1. Scenario 2: two NPCs meet at a 4-way junction at 12 m/s, perpendicular. The phase 1 vehicle response fires; the knocked slide then stops before a building
+   corner and a bollard placed in its slide path (no corner inside, post depth < 0 at rest). Neither gets stuck: within 20 s both have a route or are cleaned up.
+2. Scenario 10: taxi at 69 m/s, with dt 1/30 and with one dt of 0.13 s, at a bollard (r 0.15), a fence polyline and a tree. Each is hit (stop, or knock / fell as today);
+   with phase 5 code the 0.13 s case passes through. Sideways slide at 20 m/s past a bollard: hit. An NPC at the far-LOD step at 25 m/s is stopped before a bollard.
+3. Scenario 13: in one tick the taxi touches a post and an NPC, and that NPC is shoved toward a building. Each response fires once (one post penalty, one vehicle
+   impulse); the NPC ends outside the building; results are identical across two runs.
+4. Scenario 15: 150 NPCs on a placed 300 x 300 m grid of streets with buildings, 200 posts and fences along the kerbs, 60 s at 30 Hz, fixed seed. No NPC corner is ever
+   inside a building, no post depth > 0 after a resolution, no vehicle oscillates (no more than 3 static hits per vehicle per 10 s).
+5. Unchanged: with nothing within reach, NPC poses equal phase 5 bit for bit; taxi results for n == 1 equal phase 5. Existing tests pass unedited.
+   The flaky trip-cycle test: run 25 seeds alone, before and after; the pass count must not drop (report both counts in Progress).
+6. Budget (PBF bench, 69 m/s, 120 s, the phase 4/5 drive, recorded traffic population): `npc_static_ms` <= 0.50 ms p50 and <= 1.5 ms p99 per tick; `taxi_sweep_ms` <= 0.10 ms p50 and
+   <= 0.40 ms p99; total collision section stays under 3.0 ms p99. Cost model: taxi 3 samples x a handful of candidates per tick; NPC one query + about
+   1-2 samples per moved vehicle. Bench rules from phases 4/5: 5 runs, report each p50/p99 and the median; interleaved A/B vs phase 5 (7 runs, first pair discarded) is report-only; the absolute budget decides.
+7. Full `pytest` and the Godot tests are green, nothing deselected.
+
+Tests (tests/test_collision_scenarios.py, placed poses, fixed seed, no map load):
+- test_sweep_samples_counts (1 at 0.5 m, 3 at 2.3 m, 10 at 9 m, capped at 16): fails on import today.
+- test_scenario2_junction_crash_slide_stops_at_static (fails today: the slide passes the bollard).
+- test_scenario10_taxi_stall_step_hits_bollard, test_scenario10_taxi_sideways_hits_bollard, test_scenario10_far_npc_stops_at_bollard (fail today: tunnelling / NPCs ignore posts).
+- test_scenario13_simultaneous_post_vehicle_building (determinism and one response each).
+- test_scenario15_dense_traffic_no_static_overlap (fails today: NPCs drift into kerbside posts and fences).
+- test_npc_drives_out_of_initial_overlap, test_npc_static_hit_no_oscillation (repeated hits go to reroute, not stop-start).
+
+Out of scope: NPCs knocking posts or felling trees, pedestrians vs NPC vehicles (unchanged), roadworks and bridge edges in the index,
+taxi vs NPC sweeping (already swept in `_check_vehicle_collision`), collision counters (phase 7), Godot changes.
+
 ## Later phases (outline)
 2. Shared OBB-vs-polygon and circle-vs-box helpers in collision.py. Taxi, npc and trams use them. Scenarios 3, 4, 14.
 3. Move trees to the server: add trees to the taxi's post grid with the POST category, send `knocked_trees` in the protocol, and remove the collision from Godot `knock_trees` so Godot only draws it. Scenarios 4, 10.
@@ -321,3 +385,4 @@ Animals on the server (wildlife.gd is decoration), and roadworks geometry before
 - [x] Phase 2 (2026-11-14): `box_hits_polygon`, `box_hits_polyline`, `post_box_depth` in collision.py; taxi.py and trams.py use them (`_overlaps` deleted); 6 new tests; full suite green; bench_map_jitter.py times the taxi checks
 - [x] Phase 4 (2026-11-15): `StaticObstacleIndex` in collision.py over `SpatialWayGrid` (`remove`, insert order); taxi.py's 4 grids gone; autofetch hands unloaded objects to `StaticObstacleIndex.forget` (`unload_listeners`, registered in world_loader); 8 new tests; full suite green (3003 passed, 3 skipped). Bench (Oulu, Overpass cache, no local PBF here, 69 m/s, 120 s, 3 runs, `--compare-index`): static index p50 0.033 ms, p99 0.83-0.92 ms per tick (pass); unload 1.35-1.47 ms per unload tick, 0.93-1.00 ms per call, no id-set diffs (pass, budget 2.0). collisions_section vs phase 3 after `forget`: median ratio 1.016, 95% interval +-6.3% (wider than the +-5% target, so the absolute budgets decide; they pass: static index p50 0.033 ms, p99 ~0.9 ms; unload tick <= 1.51 ms; forget <= 0.95 ms per call).
 - [x] Phase 5 (2026-11-15): `PedestrianManager.spatial_grid` (10 m SpatialWayGrid, rebuilt once per update), `nearby_pedestrians_at`, avoidance trigger on grid candidates only, `_separate_pedestrians` (x-sorted sweep: each walker meets only those within 2 x radius in x and y, no grid query; the grid serves the taxi trigger only; half the overlap each plus an equal sidestep so head-on walkers pass), dodges and pushes rejected inside buildings (the taxi's `StaticObstacleIndex`, else `_point_inside_building`), `circle_hits_circle`, matrix PEDESTRIAN|PEDESTRIAN; 7 new tests, phase 1 matrix test amended; full suite green (3009 passed, 3 skipped), Godot tests 26/26. Fixed on the way: the avoidance forward vector was `(cos, -sin)` (skewed off the car's real `(cos, sin)` forward, triggering up to ~20 m away at diagonal headings; identical at 0 and pi); the taxi trigger also requires the same `map_level`. Bench (PBF finland-latest, 69 m/s, 120 s, ~129 pedestrians): grid + avoidance + separation p50 0.051 ms, p99 0.455 ms (pass, budget 0.40 / 1.2); Oulu Overpass cache runs before the separation rewrite: p50 0.07-0.10, p99 0.90-0.99. Synthetic 300 dense pedestrians: ~0.76 ms p50 (grid rebuild 0.28 + separation 0.42). Interleaved A/B vs phase 4 not run. After the layer filter (amendments): 3011 passed, 3 skipped; Godot 26/26; PBF rerun p50 0.064 ms, p99 0.879 ms, ~143 pedestrians. After the allocation cuts: 5 PBF runs, grid + avoidance + separation p50 0.040-0.043 ms, p99 0.213-0.288 ms (median 0.246 ms); tester's Oulu run p99 0.265 ms (pass, budget 0.40 / 1.2 ms).
+- [x] Phase 6 (2026-11-15): `sweep_samples`, `sweep_pose`, `first_static_hit` in collision.py (walls and lines outside at the previous pose are tested by their edges inside the swept square only: a big outline is scanned once, not per sample); `box_hits_polygon` tests edges first and then one point (same result, fewer point-in-polygon scans); `TaxiManager.sweep_static` before the taxi checks (simulation.py, `taxi_sweep` section); `NPCVehicleManager.static_index` (world_loader), `_static_collisions` / `_resolve_static_hit` (third hit within 2 s skips the manoeuvre: reroute), `_npc_blocked` shared with `_enforce_npc_road_motion`, `update_knocked(static_index=)`; a mapped road through a building is exempt for NPCs as for the taxi. 9 new tests; full suite green (3020 passed, 3 skipped; one gc-count flake in test_soak under -n auto on 1 of 4 runs, passes alone and in the other runs; it does not use the index). Flaky trip-cycle test, 25 seeds alone: 25/25 before, 25/25 after. PBF bench (finland-latest, 69 m/s, 120 s, 5 runs), p50 / p99 ms: npc_static 0.031/1.214, 0.027/0.789, 0.040/0.861, 0.027/0.847, 0.038/1.508 (median p99 0.861; budget 0.50/1.5); taxi_sweep 0.023/0.509, 0.024/0.303, 0.023/0.288, 0.024/0.295, 0.025/0.278 (median p99 0.295; budget 0.10/0.40; run 1's 0.509 wall is GIL wait, its CPU p99 0.217); collisions section p99 1.18-1.28 (budget 3.0); taxi samples 3 per tick. Scenario 15 is a placed-pose drift harness, not a routed 150-NPC run. Interleaved A/B vs phase 5 not run.

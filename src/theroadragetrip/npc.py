@@ -27,10 +27,11 @@ from .activities import ActivityInstance, ActivityLocation
 from .competitor_taxis import COMPETITOR_TAXIS, CRUISE_DWELL_S, is_competitor, make_competitor, night_taxi_target
 from . import bus_lines
 from .bus_lines import is_line_bus
-from .collision import same_plane
+from .collision import STATIC_HIT, first_static_hit, same_plane, sweep_pose
+from .map_level import SURFACE_LEVEL
 from .geo import angle_diff, bbox_distance_sq, box_contact_normal, boxes_intersect, clamp, closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
-from .osm import Curb, StopSign, Way
+from .osm import Building, Curb, StopSign, Way
 from .physics import GRAVITY_MPS2, Car, SpatialWayGrid, min_turn_radius, rear_axle_behind, get_road_layer_at_point, is_point_on_road, update_car_physics
 from .population import CLASS_DENSITIES, URBAN_PEOPLE_FRACTION, people_within, station_for_way, traffic_demand
 from .road_rage import RoadRageClearance
@@ -446,6 +447,7 @@ NPC_HOLD_RETRY_TICKS = 5
 NPC_HOLD_GIVE_UP_ATTEMPTS = 3
 NPC_RECOVERY_MAX_WITHOUT_PROGRESS = 3
 NPC_RECOVERY_PROGRESS_M = 5.0
+NPC_STATIC_HIT_WINDOW_S = 2.0  # collision phase 6: 3 static hits this close together go straight to reroute
 # A motorway through-trip (fast_through) STUCK or HOLD mid-route may not stand
 # on the carriageway (law § 37): after this many failed recovery/unhold routes,
 # or NPC_THROUGH_STUCK_MAX_TICKS population ticks without recovering, it is
@@ -876,7 +878,8 @@ def _vehicle_footprint_corners(
     ]
 
 
-def update_knocked(vehicle, dt: float, buildings=None, building_grid=None, ways=None, spatial_grid=None) -> None:
+def update_knocked(vehicle, dt: float, buildings=None, building_grid=None, ways=None, spatial_grid=None,
+                   static_index=None) -> None:
     """A collision-knocked vehicle slides on, slowing at KNOCK_DECEL_MPS2,
     until it stops, would slide into a building (it stops at the wall) or
     off its bridge or level (map layers stay apart)."""
@@ -887,7 +890,13 @@ def update_knocked(vehicle, dt: float, buildings=None, building_grid=None, ways=
         return
     x, y = vehicle.car.x + vehicle.knock_vx * dt, vehicle.car.y + vehicle.knock_vy * dt
     heading = vehicle.car.heading + vehicle.knock_spin * dt
-    if buildings is not None and not is_vehicle_pose_valid(x, y, heading, buildings=buildings,
+    if static_index is not None:  # collision phase 6: posts, fences and walls stop the slide
+        if first_static_hit(static_index, (vehicle.car.x, vehicle.car.y, vehicle.car.heading), (x, y, heading),
+                            vehicle.length_m, vehicle.width_m, STATIC_HIT,
+                            getattr(vehicle.car, "map_level", SURFACE_LEVEL), vehicle.layer) is not None:
+            vehicle.knock_vx = vehicle.knock_vy = vehicle.knock_spin = 0.0
+            return
+    elif buildings is not None and not is_vehicle_pose_valid(x, y, heading, buildings=buildings,
                                                            building_grid=building_grid, length_m=vehicle.length_m,
                                                            width_m=vehicle.width_m, clearance_m=0.05):
         vehicle.knock_vx = vehicle.knock_vy = vehicle.knock_spin = 0.0
@@ -1283,6 +1292,7 @@ class Driver:
     # field in this module (NPCState/NPCAvailability are the only "real"
     # enums here).
     recovery_stage: str = "NORMAL"
+    static_hits: Optional[Tuple[int, float, Tuple[float, float]]] = None  # (count, since, where): collision phase 6
     recovery_anchor: Optional[Tuple[float, float]] = None
     recovery_route_attempts: int = 0
     hold_retry_tick: int = 0  # HOLD: the population tick it replans to a new destination at
@@ -2987,7 +2997,22 @@ def _enforce_npc_road_motion(vehicle, driver, previous, traffic_world, spatial_g
         return
     vehicle.car.x, vehicle.car.y, vehicle.car.heading = previous
     vehicle.car.speed = 0.0
-    if driver.manoeuvre_zone is not None and driver.manoeuvre is None and driver.manoeuvres_tried < NPC_MANOEUVRE_TRIES:
+    if _npc_blocked(vehicle, driver, traffic_world, spatial_grid, buildings, building_grid,
+                    "road boundary - awaiting validated route") and manager is not None:
+        diagnostics = manager.population_diagnostics
+        diagnostics["road_boundary_blocks"] = diagnostics.get("road_boundary_blocks", 0) + 1
+
+
+def _road_crosses_building(way, building) -> bool:
+    """The taxi's road-overlap exemption: OSM roads mapped through a building (a passage)."""
+    from .taxi import TaxiManager  # taxi.py does not import npc.py; here only on a contact
+    return TaxiManager._road_overlaps_building(way, building.points_m, building.bbox)
+
+
+def _npc_blocked(vehicle, driver, traffic_world, spatial_grid, buildings, building_grid, reason, manoeuvre=True) -> bool:
+    """A stopped vehicle may not go on this way: a manoeuvre where it arrives or sets off,
+    else wait STUCK for the population tick's reroute. False when a manoeuvre took over."""
+    if manoeuvre and driver.manoeuvre_zone is not None and driver.manoeuvre is None and driver.manoeuvres_tried < NPC_MANOEUVRE_TRIES:
         # Arriving or setting off: the kerb is where to turn round, not a dead end.
         path = driver.path
         if driver.manoeuvre_zone == "arriving":
@@ -2995,20 +3020,18 @@ def _enforce_npc_road_motion(vehicle, driver, previous, traffic_world, spatial_g
         else:
             goal = _route_pose_beyond(path, driver.path_index, vehicle.car.x, vehicle.car.y, NPC_MANOEUVRE_DEPART_AIM_M)
         if _plan_manoeuvre(vehicle, driver, *goal, traffic_world.ways, spatial_grid, traffic_world, buildings, building_grid):
-            return
+            return False
         if driver.manoeuvre_zone == "arriving" and math.hypot(goal[0] - vehicle.car.x, goal[1] - vehicle.car.y) < NPC_MANOEUVRE_NO_PLAN_STOP_M \
                 and _may_stop_here(vehicle, traffic_world, spatial_grid):
             driver.path_index = len(path) - 1  # stopped short where no lawful manoeuvre reaches it: arrived
             driver.destination = (vehicle.car.x, vehicle.car.y)
             path[-1] = dataclasses.replace(path[-1], x=vehicle.car.x, y=vehicle.car.y)
-            return
+            return False
     vehicle.state = NPCState.WAITING
-    vehicle.debug_waiting_for = "road boundary - awaiting validated route"
+    vehicle.debug_waiting_for = reason
     driver.target_speed_mps = 0.0
     driver.recovery_stage = "STUCK"
-    if manager is not None:
-        diagnostics = manager.population_diagnostics
-        diagnostics["road_boundary_blocks"] = diagnostics.get("road_boundary_blocks", 0) + 1
+    return True
 
 
 def update_npc(
@@ -4598,6 +4621,7 @@ class NPCVehicleManager:
         self._local_road_cars = None  # peak_cars_on_roads around the taxi (set_local_density)
         self._spawn_memory = SpawnMemory()  # passing-traffic spawn points that worked, and ones that never do
         self._collision_buildings, self._collision_building_grid = None, None  # this update's, for collision pushes
+        self.static_index = None  # the taxi's StaticObstacleIndex (world_loader); None: no static checks while driving
         self._through_way, self._through_share = None, 0.0  # the player's road and its passing traffic's share of demand
         self.clock = None  # the game clock (a datetime), set by the simulation; None: demand ignores time
         self.motorcycle_season = motorcycle_season or MotorcycleSeason()
@@ -5161,6 +5185,47 @@ class NPCVehicleManager:
         vehicle.availability = NPCAvailability.AVAILABLE
         vehicle.owner_id = None
         vehicle.destination = None
+
+    def _static_collisions(self, active, previous_poses, traffic_world, spatial_grid, buildings=None, building_grid=None):
+        """Collision phase 6: a driving vehicle that moved this tick stops at its last free sweep sample
+        before a building, barrier, post or tree (law § 3-5: priority never authorizes a collision).
+        A stationary one is never checked, so a lawful wait gets no hit."""
+        index = self.static_index
+        for vehicle in active:
+            previous = previous_poses.get(id(vehicle))
+            car = vehicle.car
+            if previous is None or vehicle.knock_vx or vehicle.knock_vy or (car.x, car.y, car.heading) == previous:
+                continue
+            driver = self.drivers.get(vehicle.vehicle_id)
+            if driver is None:
+                continue
+            way = driver.current_way
+            ignore = None
+            if way is not None and getattr(way, "points_m", None):  # a mapped passage through a building is road
+                ignore = lambda obj: isinstance(obj, Building) and _road_crosses_building(way, obj)
+            hit = first_static_hit(index, previous, (car.x, car.y, car.heading), vehicle.length_m, vehicle.width_m,
+                                   STATIC_HIT, getattr(car, "map_level", SURFACE_LEVEL), vehicle.layer, ignore)
+            if hit is not None:
+                k, _, n = hit
+                self._resolve_static_hit(vehicle, driver, sweep_pose(previous, (car.x, car.y, car.heading), k - 1, n),
+                                         traffic_world, spatial_grid, buildings, building_grid)
+
+    def _resolve_static_hit(self, vehicle, driver, sample_pose, traffic_world, spatial_grid=None,
+                            buildings=None, building_grid=None):
+        """Stop at the last free sample, no impulse (static objects stay put). Three hits within
+        NPC_STATIC_HIT_WINDOW_S without NPC_RECOVERY_PROGRESS_M of progress go straight to reroute."""
+        car = vehicle.car
+        car.x, car.y, car.heading = sample_pose
+        car.speed = 0.0
+        now = traffic_world.sim_time
+        count, since, origin = driver.static_hits or (0, now, (car.x, car.y))
+        if now - since > NPC_STATIC_HIT_WINDOW_S or math.hypot(car.x - origin[0], car.y - origin[1]) >= NPC_RECOVERY_PROGRESS_M:
+            count, since, origin = 0, now, (car.x, car.y)
+        driver.static_hits = (count + 1, since, origin)
+        _npc_blocked(vehicle, driver, traffic_world, spatial_grid, buildings, building_grid,
+                     "static obstacle", manoeuvre=count + 1 < 3)
+        diagnostics = self.population_diagnostics
+        diagnostics["static_hits"] = diagnostics.get("static_hits", 0) + 1
 
     def _check_vehicle_collision(
         self,
@@ -7188,7 +7253,7 @@ class NPCVehicleManager:
         for vehicle in self.vehicles:
             if vehicle.knock_vx or vehicle.knock_vy:
                 if id(vehicle) in active_ids:
-                    update_knocked(vehicle, dt, buildings, building_grid, ways, spatial_grid)
+                    update_knocked(vehicle, dt, buildings, building_grid, ways, spatial_grid, self.static_index)
                 else:  # left the simulated area mid-slide: it has come to rest, its driver goes on later
                     vehicle.knock_vx = vehicle.knock_vy = vehicle.knock_spin = 0.0
         for vehicle in self.vehicles:
@@ -7258,6 +7323,9 @@ class NPCVehicleManager:
         for vehicle in active:  # trailers swing after where their vehicles drove (trailers.py)
             if vehicle.trailer_spec is not None:
                 vehicle.update_trailer()
+
+        if self.static_index is not None:
+            self._static_collisions(active, previous_poses, traffic_world, spatial_grid, buildings, building_grid)
 
         # Collision is a post-physics phase. Reindex moved vehicles, query a
         # swept local area, then test current and interpolated poses. This

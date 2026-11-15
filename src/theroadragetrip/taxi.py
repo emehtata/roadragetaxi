@@ -6,10 +6,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from .geo import clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
-from .collision import Category, StaticObstacleIndex, box_hits_polygon, box_hits_polyline, post_box_depth
+from .geo import angle_diff, clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
+from .collision import (POST_RADIUS_M, STATIC_HIT, TREE_RADIUS_M, Category, StaticObstacleIndex, box_hits_polygon,
+                        box_hits_polyline, first_static_hit, post_box_depth, sweep_pose, sweep_samples)
 from .map_level import SURFACE_LEVEL, on_map_level
 from .osm import OPEN_ROOF_BUILDING_TYPES, Building, Curb, Place, SpeedBump, TaxiStop, Way
+from .osm.models import Railing
 from .physics import (
     Car, SpatialWayGrid, connected_drivable_ways, is_car_road, is_point_on_light_traffic_way, is_point_on_road,
     is_violating_oneway,
@@ -39,10 +41,8 @@ NIGHTLIFE_VENUE_TYPES = {
 }
 MOTION_SICKNESS_THRESHOLD = 8.0
 POST_KINDS = ("bollard", "street_lamp")  # solid poles the taxi can hit
-POST_RADIUS_M = 0.15
 POST_KNOCK_DOWN_KMH = 50.0  # faster than this a post bends over instead of stopping the taxi
 POST_QUERY_RADIUS_M = 10.0  # beyond any car's half diagonal plus a tree trunk
-TREE_RADIUS_M = 0.4  # a tree the taxi touches within this of its trunk falls (Godot TRUNK_RADIUS_M)
 
 
 @dataclass
@@ -611,6 +611,46 @@ class TaxiManager:
             hit = True
         self._speed_camera_hits.intersection_update(visible_ids)
         return hit
+
+    def sweep_static(self, car: Car, previous_pose, buildings, sceneries, railings, scenery_objects,
+                     on_surface: bool = True, current_way=None) -> Tuple[float, float]:
+        """Collision phase 6: a step long enough to pass a thin obstacle is tested at sweep samples.
+        On a hit at sample k the car moves there (the time-of-impact pose); returns the position
+        the check_* calls then get as previous_position (sample k-1). One sample: today's path."""
+        index = self.static_index
+        # The checks below keep the index synced (last tick's lists); a source never synced yet is indexed here.
+        first = lambda source: index.indexed(source)[0] is None
+        if first("buildings"):
+            index.sync("buildings", buildings, Category.BUILDING, accept=_closed_building)
+        categories = _BUILDING
+        passage = current_way is not None and is_car_road(current_way)
+        # check_building_collision's road-overlap exemption: a road mapped through a building is no wall.
+        ignore = (lambda obj: isinstance(obj, Building) and self._road_overlaps_building(
+            current_way, obj.points_m, obj.bbox)) if passage else None
+        if on_surface:
+            categories = STATIC_HIT
+            if first("sceneries"):
+                index.sync("sceneries", sceneries, Category.BARRIER, accept=_solid_area)
+            if first("railings"):
+                index.sync("railings", railings, Category.BARRIER)
+            if first("scenery_objects"):
+                index.sync("scenery_objects", scenery_objects, Category.POST, accept=_post)
+            if first("sceneries.trees"):
+                index.sync("sceneries.trees", sceneries, Category.POST, expand=_felled_trees)
+            if passage:  # check_barrier_collision: no wall on a car road either
+                ignore = lambda obj: isinstance(obj, Railing) or (isinstance(obj, Building) and self._road_overlaps_building(
+                    current_way, obj.points_m, obj.bbox))
+        pose = (car.x, car.y, car.heading)
+        hit = first_static_hit(index, previous_pose, pose, car.length_m, car.width_m, categories,
+                               getattr(car, "map_level", SURFACE_LEVEL), getattr(car, "layer", 0), ignore)
+        self.last_sweep_samples = sweep_samples(math.hypot(car.x - previous_pose[0], car.y - previous_pose[1]),
+                                                angle_diff(car.heading, previous_pose[2]), car.length_m, car.width_m)
+        if hit is None:
+            return previous_pose[0], previous_pose[1]
+        k, _, n = hit
+        car.x, car.y, car.heading = sweep_pose(previous_pose, pose, k, n)
+        x, y, _ = sweep_pose(previous_pose, pose, k - 1, n)
+        return x, y
 
     def check_building_collision(
         self,

@@ -525,6 +525,7 @@ def advance_simulation(
                 throttle, brake = 0.0, 1.0
 
     previous_position = (car.x, car.y)
+    previous_heading = car.heading
     approach_way = current_way  # the road the car drove along into this frame's movement
     # Off-road driving is allowed at a reduced speed.
     if not on_foot:
@@ -649,26 +650,31 @@ def advance_simulation(
         # curbs and speed bumps have no level data, so they're surface-only
         # and not checked off the surface (their indexes stay untouched).
         # Road-overlap exemptions use the player's own level's roads.
+        # Collision phase 6: a long step (a stalled tick, a sideways slide) stops at its first touch.
+        with frame_profiler.section("taxi_sweep"):
+            static_previous = taxi_mgr.sweep_static(
+                car, (*previous_position, previous_heading), buildings, sceneries, getattr(world, "railings", ()),
+                scenery_objects, on_surface, current_way)
         building_crash = taxi_mgr.check_building_collision(
-            car, buildings, traffic_mgr.sim_time, previous_position, ways=drive_ways,
+            car, buildings, traffic_mgr.sim_time, static_previous, ways=drive_ways,
             current_way=current_way, spatial_grid=drive_grid,
         )
         # Trees (surveyed natural=tree): the taxi fells them without stopping; the client only draws them.
         if on_surface and taxi_mgr.check_tree_collision(car, sceneries, traffic_mgr.sim_time) > 0:
             audio.play_group("collision.tree", at=(car.x, car.y))
             audio.play_group("collision.tree_fall", at=(car.x, car.y))
-        fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, previous_position)
+        fence_crash = on_surface and taxi_mgr.check_fence_collision(car, sceneries, traffic_mgr.sim_time, static_previous)
         fence_group = "collision.fence"
         if not fence_crash and on_surface:
             fence_crash = taxi_mgr.check_barrier_collision(
-                car, getattr(world, "railings", ()), traffic_mgr.sim_time, previous_position, current_way)
+                car, getattr(world, "railings", ()), traffic_mgr.sim_time, static_previous, current_way)
             fence_group = taxi_mgr.barrier_sound
         tram_crash = on_surface and taxi_mgr.check_tram_collision(
-            car, getattr(world, "tram_mgr", None), traffic_mgr.sim_time, previous_position)
+            car, getattr(world, "tram_mgr", None), traffic_mgr.sim_time, static_previous)
         # Bollards and lamp posts are OSM nodes without a level: surface only.
         knocked_before = taxi_mgr.knocked_posts
         post_crash = on_surface and taxi_mgr.check_post_collision(
-            car, scenery_objects, traffic_mgr.sim_time, previous_position
+            car, scenery_objects, traffic_mgr.sim_time, static_previous
         )
         if taxi_mgr.knocked_posts > knocked_before:  # bent over, not just touched: the post goes down
             audio.play_group("collision.post_knock", at=(car.x, car.y))

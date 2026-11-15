@@ -212,7 +212,7 @@ def main(argv=None) -> int:
 
     @contextmanager
     def profile_section(name):
-        started = time.perf_counter()
+        started, cpu = time.perf_counter(), time.thread_time()
         try:
             yield
         finally:
@@ -220,6 +220,8 @@ def main(argv=None) -> int:
             if rec is not None:
                 elapsed = (time.perf_counter() - started) * 1000.0
                 rec.setdefault("sim_sections", {})[name] = rec.setdefault("sim_sections", {}).get(name, 0.0) + elapsed
+                cpus = rec.setdefault("sim_sections_cpu", {})  # without GIL waits on the map threads
+                cpus[name] = cpus.get(name, 0.0) + (time.thread_time() - cpu) * 1000.0
 
     class FrameProfiler:
         section = staticmethod(profile_section)
@@ -235,8 +237,9 @@ def main(argv=None) -> int:
         original = getattr(protocol, helper)
         setattr(protocol, helper, timed("state." + helper, original))
     for helper in ("rebuild_spatial_grid", "_update_bike_thefts", "_advance_route_jobs", "_run_population_tick",
-                   "_check_vehicle_collision"):
-        setattr(NPCVehicleManager, helper, timed("npc." + helper, getattr(NPCVehicleManager, helper)))
+                   "_check_vehicle_collision", "_static_collisions"):
+        if hasattr(NPCVehicleManager, helper):  # _static_collisions: collision phase 6 on
+            setattr(NPCVehicleManager, helper, timed("npc." + helper, getattr(NPCVehicleManager, helper)))
     from theroadragetrip.taxi import TaxiManager
 
     for helper in ("check_building_collision", "check_fence_collision", "check_barrier_collision",
@@ -368,6 +371,7 @@ def main(argv=None) -> int:
             rec["population"] = {"npcs": len(server.world.npc_manager.vehicles),
                                   "moving_npcs": sum(abs(v.speed) > 0.5 for v in server.world.npc_manager.vehicles),
                                   "pedestrians": len(server.world.pedestrian_mgr.pedestrians)}
+            rec["taxi_sweep_samples"] = getattr(server.world.taxi_mgr, "last_sweep_samples", 0)
             if len(ticks) % server.tick_rate == 0:  # once a second: resident memory and what is held
                 rec["memory"] = {"rss_mb": _rss_mb(), "tiles": len(streamer.manager.loaded_tiles),
                                  "chunks": len(server._chunks_index._chunks)}
@@ -489,6 +493,15 @@ def main(argv=None) -> int:
             "per_tick": {"p50": pct(ped_totals, .5, 3), "p99": pct(ped_totals, .99, 3), "max": round(max(ped_totals, default=0.0), 3)},
             "pedestrians_max": max((t.get("population", {}).get("pedestrians", 0) for t in ticks), default=0),
         },
+        # collision spec phase 6 budgets: NPC static checks and the taxi's swept step, per tick
+        **{name: {"p50": pct(v, .5, 3), "p99": pct(v, .99, 3), "max": round(max(v, default=0.0), 3)}
+           for name, v in (
+               ("npc_static_ms", [t["phases"].get("npc._static_collisions", (0.0, 0.0))[0] for t in ticks]),
+               ("taxi_sweep_ms", [t.get("sim_sections", {}).get("taxi_sweep", 0.0) for t in ticks]),
+               ("taxi_sweep_cpu_ms", [t.get("sim_sections_cpu", {}).get("taxi_sweep", 0.0) for t in ticks]),
+               ("npc_static_cpu_ms", [t["phases"].get("npc._static_collisions", (0.0, 0.0))[1] for t in ticks]),
+               ("taxi_sweep_samples", [t.get("taxi_sweep_samples", 0) for t in ticks]),
+               ("collisions_section_ms", [t.get("sim_sections", {}).get("collisions", 0.0) for t in ticks]))},
         **({"static_index_ms": {
             **{name: {"p50": pct(v, .5, 3), "p99": pct(v, .99, 3), "max": round(max(v, default=0.0), 3), "ticks": sum(x > 0 for x in v)}
                for name in ("build", "update", "unload", "diff", "query", "build_cpu", "update_cpu", "unload_cpu", "diff_cpu", "query_cpu")

@@ -586,3 +586,269 @@ def test_separation_only_on_one_layer():
     manager.rebuild_spatial_grid()
     manager._separate_pedestrians(1.0 / 30.0)
     assert (a.x, a.y, b.x, b.y) == (20.0, 0.0, 20.2, 0.0)
+
+
+# Phase 6: NPC static collisions and swept taxi steps (scenarios 2, 10, 13, 15).
+from theroadragetrip import npc as npc_module
+from theroadragetrip.collision import StaticObstacleIndex
+from theroadragetrip.npc import Driver, update_knocked
+from theroadragetrip.osm.models import Railing
+
+
+def _index(buildings=(), posts=(), railings=()):
+    index = StaticObstacleIndex()
+    index.sync("buildings", list(buildings), C.BUILDING)
+    index.sync("scenery_objects", list(posts), C.POST)
+    index.sync("railings", list(railings), C.BARRIER)
+    return index
+
+
+def _npc(vid, x, y, heading, speed=0.0):
+    v = place_parked_npc(vid, (x, y), None)
+    v.car.x, v.car.y, v.car.heading, v.car.speed = x, y, heading, speed
+    return v, Driver(resident_id=vid, vehicle_id=vid, path=[], destination=(x, y))
+
+
+def _corner_in(v, building):
+    return any(point_in_polygon(px, py, building.points_m)
+               for px, py in get_oriented_box_corners(v.x, v.y, v.heading, v.length_m, v.width_m))
+
+
+def _npc_depth(v, post):
+    return post_box_depth(post.x, post.y, POST_RADIUS_M, v.x, v.y, v.heading, v.length_m, v.width_m)
+
+
+def test_sweep_samples_counts():
+    from theroadragetrip.collision import sweep_samples
+    assert [sweep_samples(d, 0.0, 4.0, 1.8) for d in (0.5, 2.3, 9.0, 100.0)] == [1, 3, 10, 16]
+
+
+def test_scenario2_junction_crash_slide_stops_at_static():
+    residents, manager = ResidentManager(), NPCVehicleManager(target_count=2)
+    a, _ = _npc(1, -8.0, 0.0, 0.0, 12.0)
+    b, _ = _npc(2, 0.0, -8.0, math.pi / 2, 12.0)
+    manager.vehicles.extend([a, b])
+    peds, dt = PedestrianManager([], target_count=0), 1.0 / 30.0
+    for frame in range(60):
+        prev = {id(v): (v.x, v.y, v.heading) for v in (a, b)}
+        for v in (a, b):
+            v.car.x += math.cos(v.heading) * v.car.speed * dt
+            v.car.y += math.sin(v.heading) * v.car.speed * dt
+        manager._check_vehicle_collision(a, [b], residents, peds, frame * dt, prev[id(a)], prev)
+        if a.knock_vx or a.knock_vy:
+            break
+    assert (a.knock_vx or a.knock_vy) and (b.knock_vx or b.knock_vy)
+    # A bollard in a's slide path, a building corner in b's.
+    da = math.atan2(a.knock_vy, a.knock_vx)
+    post = NS(x=a.x + math.cos(da) * (a.length_m / 2 + 1.0), y=a.y + math.sin(da) * (a.length_m / 2 + 1.0), kind="bollard")
+    db = math.atan2(b.knock_vy, b.knock_vx)
+    bx, by = b.x + math.cos(db) * (b.length_m / 2 + 1.5), b.y + math.sin(db) * (b.length_m / 2 + 1.5)
+    building = Building(points_m=[(bx, by), (bx + 10 * math.cos(db - 0.6), by + 10 * math.sin(db - 0.6)),
+                                  (bx + 14 * math.cos(db), by + 14 * math.sin(db)),
+                                  (bx + 10 * math.cos(db + 0.6), by + 10 * math.sin(db + 0.6))])
+    index = _index([building], [post])
+    for _ in range(90):
+        for v in (a, b):
+            update_knocked(v, dt, static_index=index)
+    assert not (a.knock_vx or a.knock_vy or b.knock_vx or b.knock_vy)
+    assert _npc_depth(a, post) < 0.0 and not _corner_in(b, building)
+
+
+def _taxi_step(dt, speed=69.0, heading_v=0.0):
+    car = Car(x=0.0, y=0.0, heading=0.0, speed=speed)
+    prev = (car.x, car.y, car.heading)
+    car.x += math.cos(heading_v) * speed * dt
+    car.y += math.sin(heading_v) * speed * dt
+    return car, prev
+
+
+def test_scenario10_taxi_stall_step_hits_bollard():
+    for dt in (1.0 / 30.0, 0.13):
+        post = NS(x=2.1, y=0.0, kind="bollard")
+        car, prev = _taxi_step(dt)
+        manager = TaxiManager(ways=[])
+        previous = manager.sweep_static(car, prev, [], [], [], [post])
+        assert manager.check_post_collision(car, [post], 0.0, previous_position=previous), dt
+        assert post.knocked_angle is not None  # 69 m/s: knocked down as today
+        fence = Railing(points_m=[(2.1, -5.0), (2.1, 5.0)], bbox=(2.1, -5.0, 2.1, 5.0), kind="wall")
+        car, prev = _taxi_step(dt)
+        manager = TaxiManager(ways=[])
+        previous = manager.sweep_static(car, prev, [], [], [fence], [])
+        assert manager.check_barrier_collision(car, [fence], 0.0, previous_position=previous), dt
+        assert car.speed == 0.0 and car.x + car.length_m / 2 < 2.1 + 1.0
+        sceneries = [NS(trees=[(2.1, 0.0)])]
+        car, prev = _taxi_step(dt)
+        manager = TaxiManager(ways=[])
+        manager.sweep_static(car, prev, [], sceneries, [], [])
+        assert manager.check_tree_collision(car, sceneries, 0.0) == 1, dt
+        assert car.speed == 69.0  # trees never stop the taxi
+
+
+def test_scenario10_taxi_sideways_hits_bollard():
+    post = NS(x=0.0, y=1.3, kind="bollard")
+    car, prev = _taxi_step(0.13, speed=20.0, heading_v=math.pi / 2)
+    car.speed = 5.0  # sliding sideways, slow forwards: a stop, not a knock-down
+    manager = TaxiManager(ways=[])
+    assert _depth(car, post) < 0.0  # the end pose alone misses it
+    previous = manager.sweep_static(car, prev, [], [], [], [post])
+    assert manager.check_post_collision(car, [post], 0.0, previous_position=previous)
+    assert car.speed == 0.0 and _depth(car, post) < 0.0
+
+
+def test_scenario10_far_npc_stops_at_bollard():
+    manager = NPCVehicleManager(target_count=1)
+    v, driver = _npc(1, 0.0, 0.0, 0.0, 25.0)
+    manager.vehicles.append(v)
+    manager.drivers[1] = driver
+    post = NS(x=v.length_m / 2 + 1.0, y=0.0, kind="bollard")
+    manager.static_index = _index(posts=[post])
+    prev = (v.x, v.y, v.heading)
+    v.car.x += 25.0 * 4 / 30.0  # FAR_TRAFFIC_STEP x dt: 3.3 m, the post ends behind the front
+    manager._static_collisions([v], {id(v): prev}, NS(sim_time=0.0, ways=[]), None)
+    assert v.car.speed == 0.0 and _npc_depth(v, post) < 0.0
+    assert v.debug_waiting_for == "static obstacle" and driver.recovery_stage == "STUCK"
+
+
+def _scenario13():
+    residents, npcs = ResidentManager(), NPCVehicleManager(target_count=1)
+    peds, dt = PedestrianManager([], target_count=0), 1.0 / 30.0
+    taxi_mgr, car = TaxiManager(ways=[]), Car(x=0.0, y=0.0, heading=0.0, speed=12.0)
+    v, driver = _npc(1, car.length_m + 0.2, 0.0, math.pi / 2)
+    npcs.vehicles.append(v)
+    npcs.drivers[1] = driver
+    post = NS(x=car.length_m / 2 + 0.3, y=car.width_m / 2 + 0.05, kind="bollard")
+    building = Building(points_m=_square(v.x + v.length_m / 2 + 5.0, 0.0, 4.0))
+    index = _index([building], [post])
+    npcs.static_index = index
+    impulses, posts_hit = 0, 0
+    for frame in range(60):
+        prev_car = (car.x, car.y, car.heading)
+        car.x += car.speed * dt
+        previous = taxi_mgr.sweep_static(car, prev_car, [building], [], [], [post])
+        score = taxi_mgr.total_score
+        taxi_mgr.check_post_collision(car, [post], frame * dt, previous_position=previous)
+        posts_hit += taxi_mgr.total_score < score
+        knocked = bool(v.knock_vx or v.knock_vy)
+        npcs._check_vehicle_collision(v, [car], residents, peds, frame * dt, (v.x, v.y, v.heading),
+                                      {id(car): prev_car, id(v): (v.x, v.y, v.heading)})
+        impulses += not knocked and bool(v.knock_vx or v.knock_vy)
+        update_knocked(v, dt, static_index=index)
+    return posts_hit, impulses, (v.x, v.y, v.heading), (car.x, car.y), not _corner_in(v, building)
+
+
+def test_scenario13_simultaneous_post_vehicle_building():
+    first = _scenario13()
+    assert first == _scenario13()
+    posts_hit, impulses, _, _, outside = first
+    assert posts_hit == 1 and impulses <= 1 and outside
+
+
+def test_scenario15_dense_traffic_no_static_overlap():
+    rng, dt = random.Random(15), 1.0 / 30.0
+    streets = [i * 60.0 for i in range(6)]  # 300 x 300 m: streets every 60 m, 10 m wide
+    buildings = [Building(points_m=_square(sx + 30.0, sy + 30.0, 22.0)) for sx in streets[:-1] for sy in streets[:-1]]
+    posts, railings = [], []
+    while len(posts) < 200:
+        s, t = rng.choice(streets), rng.uniform(5.0, 295.0)
+        if min(abs(t - u) for u in streets) < 8.0:
+            continue  # kerbs only, not across a junction
+        side = rng.choice((-1, 1)) * 4.6
+        posts.append(NS(x=t, y=s + side, kind="bollard") if rng.random() < 0.5 else NS(x=s + side, y=t, kind="bollard"))
+    for s in streets:
+        for t in range(15, 290, 60):  # 15..35 m along each block's kerb
+            railings.append(Railing(points_m=[(t, s + 5.2), (t + 20.0, s + 5.2)], bbox=(t, s + 5.2, t + 20.0, s + 5.2)))
+    manager = NPCVehicleManager(target_count=150)
+    manager.static_index = _index(buildings, posts, railings)
+    world = NS(sim_time=0.0, ways=[])
+    lanes = []
+    for vid in range(150):
+        along_x, s = rng.random() < 0.5, rng.choice(streets)
+        heading = rng.choice((0.0, math.pi)) + (0.0 if along_x else math.pi / 2)
+        t = rng.uniform(0.0, 300.0)
+        s += rng.choice((-2.0, 2.0))  # in a lane
+        v, driver = _npc(vid, t if along_x else s, s if along_x else t, heading, rng.uniform(8.0, 14.0))
+        manager.vehicles.append(v)
+        manager.drivers[vid] = driver
+        lanes.append([rng.uniform(1.0, 2.0), rng.uniform(0.0, 6.0), 0.0, s])  # drift m/s, phase, waiting s, lane
+    hits = {v.vehicle_id: [] for v in manager.vehicles}
+    for frame in range(int(60 / dt)):
+        world.sim_time = frame * dt
+        prev = {id(v): (v.x, v.y, v.heading) for v in manager.vehicles}
+        for v, lane in zip(manager.vehicles, lanes):
+            if lane[2] > 0.0:
+                lane[2] -= dt
+                continue
+            fx, fy = math.cos(v.heading), math.sin(v.heading)
+            drift = lane[0] * math.sin(world.sim_time * 0.7 + lane[1])  # wanders toward a kerb and back
+            v.car.x = (v.car.x + (fx * 11.0 - fy * drift) * dt) % 300.0
+            v.car.y = (v.car.y + (fy * 11.0 + fx * drift) * dt) % 300.0
+            prev[id(v)] = (v.x - (fx * 11.0 - fy * drift) * dt, v.y - (fy * 11.0 + fx * drift) * dt, v.heading)
+        manager._static_collisions(manager.vehicles, prev, world, None)
+        for v, lane in zip(manager.vehicles, lanes):
+            if v.car.speed == 0.0 and lane[2] <= 0.0:  # stopped by a hit: the reroute takes a moment
+                hits[v.vehicle_id].append(world.sim_time)
+                assert not any(_npc_depth(v, p) > 0.0 for p in posts)
+                assert not any(_corner_in(v, b) for b in buildings)
+                lane[0], lane[2], v.car.speed = 0.0, 1.0, 11.0  # rerouted: back in its lane, no more wandering
+                if abs(math.sin(v.heading)) < 0.5:
+                    v.car.y = lane[3]
+                else:
+                    v.car.x = lane[3]
+    assert sum(map(len, hits.values())) > 0
+    for times in hits.values():
+        assert all(sum(1 for u in times if t <= u < t + 10.0) <= 3 for t in times), times
+
+
+def test_npc_drives_out_of_initial_overlap():
+    manager = NPCVehicleManager(target_count=1)
+    v, driver = _npc(1, 0.0, 0.0, 0.0, -2.0)
+    manager.vehicles.append(v)
+    manager.drivers[1] = driver
+    post = NS(x=v.length_m / 2 + POST_RADIUS_M - 0.1, y=0.0, kind="bollard")  # depth 0.1
+    building = Building(points_m=_square(0.0, v.width_m / 2 + 10.0 - 0.2, 10.0))  # side 0.2 m inside
+    manager.static_index = _index([building], [post])
+    world = NS(sim_time=0.0, ways=[])
+    v.car.x = -0.3  # backing away from both
+    manager._static_collisions([v], {id(v): (0.0, 0.0, 0.0)}, world, None)
+    assert v.car.x == -0.3 and v.car.speed == -2.0
+    v.car.x, v.car.speed = 0.3, 2.0  # deeper into the post
+    manager._static_collisions([v], {id(v): (0.0, 0.0, 0.0)}, world, None)
+    assert v.car.speed == 0.0 and v.car.x == 0.0
+
+
+def test_npc_static_hit_no_oscillation(monkeypatch):
+    calls = []
+    real = npc_module._npc_blocked
+    monkeypatch.setattr(npc_module, "_npc_blocked", lambda *a, **k: calls.append(k["manoeuvre"]) or real(*a, **k))
+    manager = NPCVehicleManager(target_count=1)
+    v, driver = _npc(1, 0.0, 0.0, 0.0, 5.0)
+    manager.vehicles.append(v)
+    manager.drivers[1] = driver
+    post = NS(x=v.length_m / 2 + 0.5, y=0.0, kind="bollard")
+    manager.static_index = _index(posts=[post])
+    world = NS(sim_time=0.0, ways=[])
+    for i in range(4):
+        world.sim_time = i * 0.5
+        v.car.x, v.car.speed = 1.0, 5.0
+        manager._static_collisions([v], {id(v): (0.0, 0.0, 0.0)}, world, None)
+        assert v.car.speed == 0.0 and driver.recovery_stage == "STUCK"
+    assert calls == [True, True, False, False]  # the third hit within 2 s skips the manoeuvre: reroute
+    world.sim_time = 10.0  # long after: counted afresh
+    v.car.x = 1.0
+    manager._static_collisions([v], {id(v): (0.0, 0.0, 0.0)}, world, None)
+    assert calls[-1] is True
+
+
+def test_taxi_sweep_passage_through_building_not_stopped():
+    from theroadragetrip.osm import Way
+    road = Way(points_m=[(-20.0, 0.0), (40.0, 0.0)], highway="residential", half_width_m=3.0)
+    building = Building(points_m=[(5.0, -8.0), (15.0, -8.0), (15.0, 8.0), (5.0, 8.0)], bbox=(5.0, -8.0, 15.0, 8.0))
+    car, prev = _taxi_step(1.0 / 30.0)  # 69 m/s: 2.3 m, the front reaches into the building
+    car.x += 1.2
+    prev = (1.2, 0.0, 0.0)
+    manager = TaxiManager(ways=[road])
+    end = car.x
+    previous = manager.sweep_static(car, prev, [building], [], [], [], current_way=road)
+    assert car.x == end and previous == prev[:2]
+    assert not manager.check_building_collision(car, [building], 0.0, previous, ways=[road], current_way=road)
+    assert car.x == end
