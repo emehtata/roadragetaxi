@@ -1,0 +1,17 @@
+{
+  "conditions": [
+    "day",
+    "night"
+  ],
+  "assets": [
+    {
+      "id": "city_bus",
+      "name": "City bus production vehicle path, lamps=31",
+      "kind": "city_bus",
+      "mode": "vehicle",
+      "length": 12,
+      "width": 2.55,
+      "lamps": 31
+    }
+  ]
+}

@@ -950,6 +950,7 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 		car_node.set_meta("lamps", lamps)
 	var along_x := kind in ["city_bus", "train_locomotive", "train_coach"]
 	var turn := heading if along_x else heading + PI / 2.0
+	if kind == "city_bus": turn += PI  # its destination display and windshield face source -X
 	var stance := Basis(Vector3.UP, heading) * Basis(Vector3.BACK, tilt.x) * Basis(Vector3.RIGHT, tilt.y) * Basis(Vector3.UP, turn - heading)
 	car_node.transform = Transform3D(stance.scaled_local(model_scale(kind, length, width)),
 		to_3d(at, ROAD_M + 0.016 + elevation))

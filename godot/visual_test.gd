@@ -231,6 +231,10 @@ func _ready() -> void:
 		var at := _on_road(6.0, 3.5)
 		main.entities.extra_npcs = [{"id":id,"x":at.x,"y":at.y,"heading":float(scenario["pose"][2])+PI,"length_m":4.6,"width_m":1.8,
 			"color":[175,85,48],"vehicle_type":"van" if kind == "panel_van" else "car","state":"PARKED","speed":0.0,"is_taxi":false}]
+	if scenario.get("city_bus_orientation", false):
+		var at := _on_road(28.0, 0.9)
+		main.entities.extra_npcs = [{"id":"vqa_city_bus","x":at.x,"y":at.y,"heading":float(scenario["pose"][2])+PI*0.95,
+			"length_m":12.0,"width_m":2.55,"color":[175,85,48],"vehicle_type":"bus","state":"DRIVING","speed":0.0,"is_taxi":false}]
 	if scenario.has("two_wheeler_model"):
 		var model: String = scenario["two_wheeler_model"]
 		var kind := "bicycle" if model == "mountain_bike" else "e_scooter" if model == "e_scooter_grab3d" else model
@@ -799,7 +803,7 @@ func _check_map(centre: Vector2) -> Array:
 			for footprint: PackedVector2Array in footprints:
 				for corner: Vector2 in _corners(float(target.x),float(target.y),float(target.heading),float(target.length_m),float(target.width_m)):
 					if Geometry2D.is_point_in_polygon(corner,footprint): missing.append("windscreen target under building")
-			if scenario.has("two_wheeler_model"):
+			if scenario.has("two_wheeler_model") or scenario.get("city_bus_orientation", false):
 				for pair: Array in layer_3d_view()._car_nodes:
 					var other: MeshInstance3D = pair[0]
 					if not other.visible or other.global_position.distance_to(node.global_position) < 0.2 or camera_3d.is_position_behind(other.global_position): continue
@@ -809,6 +813,10 @@ func _check_map(centre: Vector2) -> Array:
 						var pixel := camera_3d.unproject_position(other.global_transform * other.get_aabb().get_endpoint(corner))
 						occupied = Rect2(pixel, Vector2.ZERO) if corner == 0 else occupied.expand(pixel)
 					if occupied.intersects(rect): missing.append("two-wheeler target obscured by a nearer dynamic body")
+			if scenario.get("city_bus_orientation", false):
+				var forward := Vector3(cos(float(target.heading)), 0, -sin(float(target.heading)))
+				if (-node.basis.x.normalized()).dot(forward) < 0.999: missing.append("city bus nose does not match requested heading")
+				if int(node.get_meta("lamps",0)) != Buildings3D.LAMPS_ON: missing.append("city bus lamps are not lit")
 			if scenario.has("two_wheeler_model") and int(node.get_meta("lamps", 0)) != (Buildings3D.LAMPS_ON if scenario.get("riding", true) else 0):
 				missing.append("two-wheeler live lamp state does not match parked/ridden fixture")
 			windscreen = {"kind":kind,"id":target.id,"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"visible":true,"lamps":node.get_meta("lamps",0),"riding":target.state != "PARKED"}
@@ -887,7 +895,7 @@ func _check_map(centre: Vector2) -> Array:
 				missing.append("camper drawn %.2f m, its row %.2f m (over 10 %%)" % [c[1], c[0]])
 	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count(), "scenery_in_view": seen}
 	if not windscreen.is_empty():
-		_counts["two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
+		_counts["city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
 	if not campers.is_empty():
 		_counts["campers"] = campers  # each: [row length m, drawn body m]
 	if scenario.has("pitches"):

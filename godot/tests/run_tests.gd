@@ -72,6 +72,57 @@ func test_model_sizes_match_sim() -> void:
 		node.free()
 
 
+## VQA-007: the source destination display is at -X; its rear stop lens is at +X.
+func test_city_bus_model_faces_heading() -> void:
+	var renderer := _model_frame(func(r): pass)
+	var old_opaque: bool = B3.opaque
+	B3.opaque = true
+	var pooled: Node3D
+	for heading: float in [0.0, PI / 2.0, PI, 0.73]:
+		for lamps: int in [0, B3.LAMPS_ON, 31]:
+			renderer.begin_cars()
+			renderer.vehicle("bus", Vector2(7, -11), heading, 12.0, 2.55, Color.RED, lamps, 1.7, {})
+			renderer.end_cars()
+			var bus: Node3D = renderer._model_nodes["city_bus"][0]
+			check(pooled == null or pooled == bus, "city bus reuses pooled instance")
+			pooled = bus
+			var forward := Vector3(cos(heading), 0, -sin(heading))
+			var nose := bus.transform * Vector3(-5.9801464, 2.827, 0)
+			var rear := bus.transform * Vector3(5.936, 2.862, 0)
+			check((nose - bus.position).dot(forward) > 5.0 and (rear - bus.position).dot(forward) < -5.0,
+				"city bus destination display leads rear stop lens at heading %.2f" % heading)
+			check(bus.basis.determinant() > 0 and bus.position.is_equal_approx(B3.to_3d(Vector2(7,-11), B3.ROAD_M + 0.016 + 1.7)), "city bus keeps handedness and road/elevation position")
+			check(bus.get_meta("lamps") == lamps, "pooled city bus keeps live lamp state")
+			if lamps == B3.LAMPS_ON:
+				var overlay: MeshInstance3D = renderer._car_nodes[0][0]
+				var arrays: Array = overlay.mesh.surface_get_arrays(0)
+				for i in arrays[Mesh.ARRAY_VERTEX].size():
+					if int(arrays[Mesh.ARRAY_TEX_UV2][i].x) != B3.LAMP: continue
+					var colour: Color = arrays[Mesh.ARRAY_COLOR][i]
+					var along: float = (overlay.transform * arrays[Mesh.ARRAY_VERTEX][i] - bus.position).dot(forward)
+					check(along > 5.5 if colour.g > 0.5 else along < -5.5, "bus white front/red rear overlays agree with semantic nose")
+			for box: AABB in _lamp_boxes(renderer._car_nodes[0][0]):
+				check(absf((box.get_center() - bus.position).dot(forward)) > 5.5, "bus overlay lamps remain at nose/tail ends")
+	for kind: String in ["train_locomotive", "train_coach", "saloon"]:
+		renderer.begin_cars()
+		renderer.place_model_car(kind, Vector2.ZERO, 0.73, 12.0, 2.55, Color.RED, 0.0)
+		renderer.end_cars()
+		var node: Node3D = renderer._model_nodes[kind][0]
+		var expected := Basis(Vector3.UP, 0.73 if kind.begins_with("train_") else 0.73 + PI / 2).scaled_local(B3.model_scale(kind, 12.0, 2.55))
+		check(node.basis.is_equal_approx(expected), "%s source-axis transform is unchanged" % kind)
+	var layer := EntityLayer.new()
+	layer.view_rect = Rect2(-200, -200, 400, 400)
+	var state := {"player":{"x":0.0,"y":0.0,"heading":0.0,"engine_on":false},
+		"npcs":[{"id":"bus","x":7.0,"y":-11.0,"heading":0.73,"width_m":2.55,"length_m":12.0,"vehicle_type":"bus"}]}
+	layer._frame = {"a":state,"b":state,"t":0.0}
+	var beams := layer.headlight_sources()
+	check(beams.size() == 1 and is_equal_approx(beams[0][1],0.73) and beams[0][3] == 6.0 and not beams[0][7], "bus beam points along production heading from forward bumper")
+	layer.free()
+	B3.opaque = old_opaque
+	renderer.route_3d.free()
+	renderer.free()
+
+
 ## docs/specs/bicycle-rendering.md AC 1-2: a riding bike has one front and one rear lamp, centred; a car keeps its set.
 func test_bicycle_lamps_single_pair() -> void:
 	var lit := B3.LAMPS_ON | B3.LAMPS_BRAKE | B3.LAMPS_LEFT | B3.LAMPS_REVERSE
@@ -492,6 +543,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_bicycle_headlight_single_beam()
 	test_forest_canopy()
 	test_car_glazing_is_dark_and_reflective()
+	test_city_bus_model_faces_heading()
 	test_model_sizes_match_sim()
 	test_mountain_bike_keeps_its_width()
 	test_walk_pose_phase_changes_mesh()

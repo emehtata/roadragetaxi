@@ -1,0 +1,98 @@
+{
+  "finding": "VQA-007",
+  "source_revision": "a472816919435c42b0e11d01e9092215b335c56a-dirty",
+  "asset": "godot/assets/vehicles/city_bus.glb",
+  "sha256": "2d5a87584519c083677dc2460a51e53c284f250daf474cdd814f05859288401a",
+  "asset_unchanged": true,
+  "close_views": {
+    "panels": 32,
+    "inspected": true,
+    "renderer": "Native Windows Godot 4.7.2 Forward+ Vulkan / NVIDIA GeForce RTX 5060",
+    "resolution": [
+      400,
+      340
+    ]
+  },
+  "regression": {
+    "before_failures": 8,
+    "after_checks": 732,
+    "after_failures": 0,
+    "manifest_pytest": "3 passed"
+  },
+  "gameplay": [
+    {
+      "scenario": "vqa_city_bus_night",
+      "status": "passed",
+      "path": "gameplay/vqa_city_bus_night/2026-10-20T2250_20261115-191335_a4728169-dirty/result.json",
+      "errors": [],
+      "scene": {
+        "buildings_in_view": 95,
+        "chunks": 49,
+        "city_bus": {
+          "id": "vqa_city_bus",
+          "kind": "city_bus",
+          "lamps": 1,
+          "rect": [
+            470.263946533203,
+            70.7450866699219,
+            237.002044677734,
+            243.925628662109
+          ],
+          "riding": true,
+          "visible": true
+        },
+        "lamps_in_view": 176,
+        "scenery_in_view": {}
+      },
+      "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+      "resolution": [
+        1280.0,
+        720.0
+      ],
+      "inspected": true
+    },
+    {
+      "scenario": "vqa_city_bus_day",
+      "status": "passed",
+      "path": "gameplay/vqa_city_bus_day/2026-06-20T1500_20261115-191146_a4728169-dirty/result.json",
+      "errors": [],
+      "scene": {
+        "buildings_in_view": 95,
+        "chunks": 49,
+        "city_bus": {
+          "id": "vqa_city_bus",
+          "kind": "city_bus",
+          "lamps": 1,
+          "rect": [
+            470.263946533203,
+            70.7450866699219,
+            237.002044677734,
+            243.925628662109
+          ],
+          "riding": true,
+          "visible": true
+        },
+        "lamps_in_view": 176,
+        "scenery_in_view": {}
+      },
+      "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+      "resolution": [
+        1280.0,
+        720.0
+      ],
+      "inspected": true
+    },
+    {
+      "scenario": "vqa_city_bus_night",
+      "status": "interrupted/excluded",
+      "path": "gameplay/vqa_city_bus_night/2026-10-20T2250_20261115-191130_a4728169-dirty",
+      "inspected": false
+    },
+    {
+      "scenario": "vqa_city_bus_day",
+      "status": "interrupted/excluded",
+      "path": "gameplay/vqa_city_bus_day/2026-06-20T1500_20261115-191007_a4728169-dirty",
+      "inspected": false
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+{
+  "camera": {
+    "position": [
+      -0.0125000001862645,
+      -0.100000001490116
+    ],
+    "zoom": 3.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "a4728169-dirty",
+  "elapsed_s": 22.2068499629629,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 5.78,
+    "build_ms_total": 13.325,
+    "draw_calls": 624.0,
+    "far_lod_crowns_loaded": 1650,
+    "forest_chunks": 8,
+    "objects": 955.0,
+    "place_ms_max": 21.94,
+    "primitives": 1581452.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 347.067450523376,
+    "trees_loaded": 825,
+    "video_memory_mb": 1024.02900695801
+  },
+  "frames": {
+    "avg_fps": 63.9880368435566,
+    "avg_ms": 15.6279212385416,
+    "frames": 64,
+    "low_01pct_fps": 49.0701219012838,
+    "low_1pct_fps": 49.0701219012838,
+    "over_16ms": 15,
+    "over_33ms": 0,
+    "over_66ms": 0,
+    "p50_ms": 15.0,
+    "p95_ms": 20.0090007781982,
+    "p99_ms": 20.378999710083,
+    "worst_ms": 20.378999710083
+  },
+  "game_time": [
+    "2026-10-20",
+    82200.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 48,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 253
+  },
+  "render": {
+    "chunk_build_worker": {
+      "avg_ms": 1097.531,
+      "max_ms": 1251.648
+    },
+    "chunk_lamps_main": {
+      "avg_ms": 4.058,
+      "max_ms": 4.186
+    },
+    "chunk_mesh_surface": {
+      "avg_ms": 1.3428064516129,
+      "max_ms": 1.958
+    },
+    "chunk_meshes_main": {
+      "avg_ms": 0.9005,
+      "max_ms": 1.038
+    },
+    "long_frames": [],
+    "state_timeline": {
+      "arrival_max_ms": 115.723999023438,
+      "arrival_over_66ms": 1,
+      "arrival_p50_ms": 31.9810009002686,
+      "arrival_p95_ms": 49.2980003356934,
+      "arrival_p99_ms": 115.723999023438,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 115.723999023438,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.123608
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 34,
+      "tile_events": 0,
+      "underrun_episodes": 1,
+      "underruns": 2
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_city_bus_night",
+  "scene": {
+    "buildings_in_view": 95,
+    "chunks": 49,
+    "city_bus": {
+      "id": "vqa_city_bus",
+      "kind": "city_bus",
+      "lamps": 1,
+      "rect": [
+        470.263946533203,
+        70.7450866699219,
+        237.002044677734,
+        243.925628662109
+      ],
+      "riding": true,
+      "visible": true
+    },
+    "lamps_in_view": 176,
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-corrections\\city-bus-orientation\\gameplay\\vqa_city_bus_night\\2026-10-20T2250_20261115-191335_a4728169-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-15T17:15:05Z",
+  "traffic": {
+    "moving_min": 3,
+    "npcs_max": 14,
+    "spawn_rejections": {
+      "share": {},
+      "total": 0.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": 0.59,
+    "x": 385325.8,
+    "y": 6671757.1
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-7axtpyd9",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.4,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 6.04,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      2.418,
+      -4.132
+    ]
+  }
+}
