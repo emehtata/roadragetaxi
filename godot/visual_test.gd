@@ -45,6 +45,9 @@ var _chase_last := []  # [camera position, taxi position, camera yaw] last frame
 var _chase := {"max_excess_step_m": 0.0, "max_yaw_step_rad": 0.0, "frames": 0}  # acceptance 10: no camera jumps beyond the taxi's own
 var _walk_phase := 0  # "walk" scenarios: 0 in the taxi, 1 getting out, 2 walking, 3 walked, 4 back to the door, 5 getting in, 6 done
 var _walk_left := 0.0
+var _hud_configured := false
+var _hud_expected := ""
+var _hud_snapshot := {}
 
 
 ## A "walk" scenario (fps-3d-view phase 1): out of the parked taxi, first
@@ -269,6 +272,8 @@ func _process(delta: float) -> void:
 		main.phone.accept_selected()
 	if main.phone.is_open and not scenario.get("phone", false) and not scenario.get("accept_offer", false):  # ride offers open it: it would cover the scene
 		main.phone.close()
+	if scenario.has("hud_fixture"):
+		_show_hud_fixture()
 	var missing := check()
 	if _measuring:
 		if driving and not scenario.has("walk"):  # full throttle down the street, straight on (as --screenshot-drive); a walk sends its own
@@ -316,6 +321,81 @@ func _process(delta: float) -> void:
 	elif _elapsed > TIMEOUT_S:
 		_write({"status": "failed", "errors": ["not ready after %d s" % TIMEOUT_S] + _missing})
 		main.get_tree().quit(1)
+
+
+## Display-only HUD fixtures leave the authoritative simulation state and commands untouched.
+func _show_hud_fixture() -> void:
+	if not _hud_configured:
+		main.get_window().mode = Window.MODE_WINDOWED
+		main.get_window().size = Vector2i(scenario["resolution"][0], scenario["resolution"][1])
+		main.hud.layout = preload("res://hud_layout.gd").new(false)
+		_hud_configured = true
+	var state: Dictionary = main.entities.shown_state().duplicate(true)
+	if state.is_empty():
+		return
+	var taxi: Dictionary = state.get("taxi", {})
+	taxi.erase("live_fare_cents")
+	taxi.erase("fuel_station_price_cents")
+	taxi.erase("refueling")
+	taxi["notification_timer"] = 0.0
+	state["taxi"] = taxi
+	state["on_foot"] = false
+	state["home_door"] = {}
+	state["interaction"] = {}
+	state["data_source_notice"] = ""
+	state["player"]["engine_on"] = true
+	match scenario["hud_fixture"]:
+		"fare":
+			taxi.merge({"live_fare_cents":12345,"fare_distance_m":8200}, true)
+		"fuel_stop":
+			taxi["fuel_station_price_cents"] = 189
+			state["player"]["speed"] = 2.0
+		"house_hint":
+			state["on_foot"] = true
+			state["home_door"] = {"available":true,"is_home":false}
+	main.hud.show_state(state)
+	var text: Dictionary = main.hud.values(state, {}, main.hud.language)
+	_hud_expected = text["start_hint"] if scenario["hud_fixture"] == "fuel_stop" else text["hint"]
+
+
+func _hud_readiness() -> Array:
+	var missing := []
+	var screen := main.get_viewport().get_visible_rect()
+	if screen.size != Vector2(scenario["resolution"][0], scenario["resolution"][1]):
+		missing.append("HUD viewport does not match requested resolution")
+	if not _hud_configured:
+		missing.append("HUD fixture not configured")
+		return missing
+	var hud: Control = main.hud
+	if scenario["hud_fixture"] == "fare":
+		var meter: Rect2 = hud._meter.get_global_rect()
+		if not hud._meter.visible or hud._meter.cents != 12345 or hud._meter.info != hud.meter_info({"fare_distance_m":8200}):
+			missing.append("live fare meter fixture not visible")
+		if not screen.encloses(meter):
+			missing.append("fare meter clipped")
+		for label: Label in [hud._money, hud._clock, hud._weather]:
+			if meter.intersects(label.get_global_rect()):
+				missing.append("fare meter intersects " + label.name)
+	else:
+		var label: Label = hud._notice if scenario["hud_fixture"] == "fuel_stop" else hud._hint
+		if _hud_expected == "" or label.text != _hud_expected or not label.visible:
+			missing.append("exact HUD fixture text not visible")
+		if not Rect2(Vector2(20,0),screen.size-Vector2(40,0)).encloses(label.get_global_rect()):
+			missing.append("HUD fixture text clipped")
+		if scenario["hud_fixture"] == "house_hint" and label.get_global_rect().end.y + 4 > hud.osm_credit.get_global_rect().position.y:
+			missing.append("HUD hint overlaps attribution")
+	if not hud.osm_credit.visible or not screen.encloses(hud.osm_credit.get_global_rect()):
+		missing.append("OSM attribution clipped or hidden")
+	return missing
+
+
+func _hud_result() -> Dictionary:
+	var rectangles := {}
+	for name in ["_meter", "_money", "_clock", "_weather", "_notice", "_hint", "osm_credit"]:
+		var node: Control = main.hud.get(name)
+		var rect := node.get_global_rect()
+		rectangles[name] = [rect.position.x, rect.position.y, rect.size.x, rect.size.y]
+	return {"fixture":scenario["hud_fixture"], "expected_text":_hud_expected, "rectangles":rectangles, "readiness":_hud_readiness()}
 
 
 var _animals_placed := false
@@ -366,7 +446,7 @@ func check() -> Array:
 	var state: Dictionary = main.entities.shown_state()
 	if state.is_empty():
 		return ["no state from the server yet"]
-	var missing := []
+	var missing := _hud_readiness() if scenario.has("hud_fixture") else []
 	var pose: Array = scenario["pose"]
 	var player: Dictionary = state.get("player", {})
 	var at := Vector2(float(player.get("x", INF)), float(player.get("y", INF)))
@@ -694,6 +774,8 @@ var _counts := {}
 
 
 func _finish() -> void:
+	if scenario.has("hud_fixture"):
+		_hud_snapshot = _hud_result()  # keep capture-time state while the server debug request awaits
 	set_process(false)  # awaits below: finish once
 	var path := out_dir.path_join("screenshot.png")
 	main.get_viewport().get_texture().get_image().save_png(path)
@@ -828,6 +910,8 @@ func _write(result: Dictionary) -> void:
 		"scene": _counts, "elapsed_s": _elapsed, "chase": _chase, "route_3d_visible": main.map_layer.buildings_3d != null and main.map_layer.buildings_3d.route_3d.visible, "forest": _forest_stats(),
 		"lake_ice": {"cm": state.get("calendar", {}).get("lake_ice_cm") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null,
 			"holds": state.get("calendar", {}).get("lake_ice_holds") if typeof(state.get("calendar")) == TYPE_DICTIONARY else null}})
+	if scenario.has("hud_fixture"):
+		result["hud"] = _hud_snapshot
 	result["weather"].erase("plowed_paths")
 	if scenario.get("lineup", false) is bool and scenario.get("lineup", false):  # each lineup vehicle's close-range model
 		result["lineup_models"] = main.entities.extra_npcs.map(func(n: Dictionary) -> Array:

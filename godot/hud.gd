@@ -24,6 +24,7 @@ var _meter := preload("res://taxi_meter.gd").new()  # the seven-segment taximete
 var _summary := Label.new()  # the city summary: covers everything once the career city is done
 var _notice_style := StyleBoxFlat.new()
 var layout = preload("res://hud_layout.gd").new(false)  # main.gd gives the shared, saved one
+var _notice_width_limit := INF
 var _notice_mode := ""
 var _source_notice := ""  # state.data_source_notice: why osm_source=pbf fell back to Overpass
 var _source_notice_until := 0  # 0: the map still loading (shown, clock not started); then ~15 s
@@ -173,8 +174,7 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	var start_hint: bool = text["notice"] == "" and not source and text["start_hint"] != ""  # the start hint, blue
 	_notice.text = _source_notice if source else (text["start_hint"] if start_hint else text["notice"])
 	_notice.visible = _notice.text != ""
-	_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if source else TextServer.AUTOWRAP_OFF
-	_notice.custom_minimum_size.x = minf(760.0, size.x - 40.0) if source else 0.0
+	_notice_width_limit = 760.0 if source else INF
 	# A speed-camera hit is centred on screen with a red border, other notices at the top in amber.
 	_notice_style.border_color = Color8(255, 70, 45) if text["notice_camera"] else (Color8(100, 190, 240) if start_hint else Color8(255, 200, 50))
 	_notice_style.bg_color = Color8(16, 35, 55, 235) if start_hint else Color8(20, 30, 40, 235)
@@ -194,21 +194,23 @@ func show_state(state: Dictionary, toggles := {}) -> void:
 	_map_sign.visible = _map_sign.text != ""
 	_abroad_sign.text = str(state.get("abroad", ""))
 	_abroad_sign.visible = _abroad_sign.text != ""
-	_layout()
 	var railway = state.get("railway")
 	if not _timetable_hint_shown and railway is Dictionary and railway.get("stations") is Array and not railway["stations"].is_empty():
 		_timetable_hint_shown = true  # the client's own hint: it never overwrites the server's notices
 		_timetable_hint_until = Time.get_ticks_msec() + 6000
 	if Time.get_ticks_msec() < _timetable_hint_until and _hint.text != "":
 		_hint.text = T.text("train_hint", language) + _hint.text
+	_layout()
 
 
 ## Where everything goes, after the texts changed:
 ## nothing shares a row, so nothing can run into anything else.
 func _layout() -> void:
-	for label: Label in [_clock, _money, _weather, _notice, _hint]:
+	for label: Label in [_clock, _money, _weather]:
 		label.size = Vector2.ZERO
 		label.reset_size()
+	_fit_label(_notice, minf(_notice_width_limit, size.x - 40.0))
+	_fit_label(_hint, size.x - 40.0)
 	_clock.position = Vector2(size.x - 12.0 - _clock.size.x, 8.0)
 	_money.position = Vector2(_clock.position.x - 12.0 - _money.size.x, 6.0)
 	_weather.position = Vector2(size.x - 92.0 - _weather.size.x, 40.0)  # left of the limit sign
@@ -226,11 +228,17 @@ func _layout() -> void:
 	if _meter.visible:  # top middle by default
 		var meter_factor: float = layout.scale_of("meter")
 		_meter.scale = Vector2(meter_factor, meter_factor)
-		_meter.position = layout.place("meter", Rect2(Vector2((size.x - _meter.size.x * meter_factor) / 2.0, 8.0), _meter.size), size).position
+		var meter_size := _meter.size * meter_factor
+		var meter_at := Vector2((size.x - meter_size.x) / 2.0, 8.0)
+		if Rect2(meter_at, meter_size).intersects(placed):
+			meter_at.x = maxf(8.0, placed.position.x - meter_size.x - 12.0)
+			if Rect2(meter_at, meter_size).intersects(placed):
+				meter_at.y = placed.end.y + 8.0
+		_meter.position = layout.place("meter", Rect2(meter_at, _meter.size), size).position
 	else:
 		layout.rects.erase("meter")
 	_hint.visible = _hint.text != "" and not _notice.visible
-	_hint.position = Vector2((size.x - _hint.size.x) / 2.0, size.y - 30.0)
+	_hint.position = Vector2((size.x - _hint.size.x) / 2.0, osm_credit.position.y - 6.0 - _hint.size.y)
 	if _map_sign.visible:  # small, right under the weather line
 		_map_sign.size = Vector2.ZERO
 		_map_sign.reset_size()
@@ -247,6 +255,19 @@ func _layout() -> void:
 			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, 100.0)
 		_:  # the notification banner: low in the middle
 			_notice.position = Vector2((size.x - _notice.size.x) / 2.0, size.y - 45.0 - _notice.size.y / 2.0)
+
+
+## Reset wrapping before measuring, so shorter text and wider windows regain their natural size.
+static func _fit_label(label: Label, width: float) -> void:
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	label.custom_minimum_size = Vector2.ZERO
+	label.size = Vector2.ZERO
+	label.reset_size()
+	if label.size.x > width:
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.custom_minimum_size.x = width
+		label.size = Vector2(width, 0.0)
+		label.reset_size()
 
 
 ## The loading sign: "" when the map is settled, else a turning spinner,

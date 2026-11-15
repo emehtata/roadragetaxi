@@ -11,6 +11,7 @@ res://tests/camera_modes.gd
 res://tests/walk_camera_keys.gd
 res://tests/home_interior.gd
 res://tests/electronic_signs.gd
+res://tests/hud_responsive_layout.gd
 res://tests/surface_details.gd
 res://tests/forest_trees.gd
 res://tests/precipitation_3d.gd
