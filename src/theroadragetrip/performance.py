@@ -134,3 +134,40 @@ def advance_chunked(items, index: int, budget_s: float, process_item) -> int:
         if time.perf_counter() >= deadline:
             break
     return index
+
+
+class CollisionCounters:
+    """Collision work done this tick (spec phase 7). Plain int/float slots and one
+    fixed list, reset in place: nothing is allocated on the tick path. snapshot() is
+    for benches and tests only."""
+
+    __slots__ = ("broad_pairs", "narrow_checks", "hits", "resolve_ms", "index_update_ms", "_t0")
+
+    def __init__(self) -> None:
+        self.hits = [0] * len(HIT_PAIRS)
+        self.reset()
+
+    def reset(self) -> None:
+        self.broad_pairs = self.narrow_checks = 0
+        self.resolve_ms = self.index_update_ms = self._t0 = 0.0
+        hits = self.hits
+        for i in range(len(hits)):
+            hits[i] = 0
+
+    def snapshot(self) -> dict:
+        out = {"collisions:broad_pairs": self.broad_pairs, "collisions:narrow_checks": self.narrow_checks}
+        out.update(("collisions:hits:" + name, n) for name, n in zip(HIT_PAIRS, self.hits))
+        out["collisions:resolve_ms"] = self.resolve_ms
+        out["collisions:index_update_ms"] = self.index_update_ms
+        return out
+
+
+def _hit_pairs():
+    from .collision import COLLIDES, can_collide
+    cats = sorted(COLLIDES, key=int)
+    return [f"{a.name}|{b.name}" for i, a in enumerate(cats) for b in cats[i:] if can_collide(a, b)]
+
+
+HIT_PAIRS = _hit_pairs()  # the phase 1 matrix: "VEHICLE|POST", ... (lower category first)
+HIT_SLOT = {name: i for i, name in enumerate(HIT_PAIRS)}
+COLLISION_COUNTERS = CollisionCounters()

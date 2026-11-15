@@ -1,13 +1,12 @@
 """Collision categories and the shared pair filter (docs/specs/collision-detection.md)."""
 import math
+import time
 from collections import deque
 from enum import IntFlag
 from itertools import chain
 from typing import Optional, Sequence, Tuple
 
 from .geo import get_oriented_box_corners, point_in_polygon, segments_intersect
-from .osm.models import Railing
-
 from .map_level import SURFACE_LEVEL
 
 Point = Tuple[float, float]
@@ -41,6 +40,11 @@ COLLIDES: dict[Category, Category] = {
 
 def can_collide(a: Category, b: Category) -> bool:
     return bool(COLLIDES[a] & b)
+
+
+# After the matrix: osm imports performance, whose collision counters read COLLIDES.
+from .osm.models import Building, Railing  # noqa: E402
+from . import performance  # noqa: E402  (its counters are read at call time: performance imports this module)
 
 
 def same_plane(a, b) -> bool:
@@ -143,6 +147,7 @@ class StaticObstacleIndex:
         ref, count, entries = state
         if ref is items and len(items) == count and not self._dead:
             return  # every tick: nothing new
+        started = time.perf_counter()
         new = items[count:] if ref is items and len(items) >= count else self._diff(items, entries)
         if self._dead:
             self._drain()
@@ -165,12 +170,13 @@ class StaticObstacleIndex:
             if made:  # only indexed items: forget and query never touch the rejected
                 entries[id(item)] = made
         state[0], state[1] = items, len(items)
+        performance.COLLISION_COUNTERS.index_update_ms += (time.perf_counter() - started) * 1000.0
 
     def forget(self, section: str, removed: list) -> None:
         """autofetch unloaded `removed` from the world list `section` (filtered in place):
         their entries leave queries now, at a cost proportional to them, and the next sync
         of that list needs no diff. "sceneries" covers "sceneries.trees" too."""
-        removed_ids = None
+        removed_ids, started = None, time.perf_counter()
         for source, state in self._sources.items():
             if source.split(".")[0] != section:
                 continue
@@ -182,6 +188,7 @@ class StaticObstacleIndex:
             # The list lost exactly `removed`: the synced prefix shrinks by as many (one of them in the
             # unsynced tail only makes the tail start early; the duplicate check skips what is indexed).
             state[1] = max(0, state[1] - len(removed))
+        performance.COLLISION_COUNTERS.index_update_ms += (time.perf_counter() - started) * 1000.0
 
     def _diff(self, items: list, entries: dict) -> list:
         """A replaced or shrunk list (a tile unloaded): drop the entries of the items gone,
@@ -209,6 +216,7 @@ class StaticObstacleIndex:
                             and (layer is None or entry.layer == layer)
                             and (level is None or entry.level == level)):
                         found[id(entry)] = entry
+        performance.COLLISION_COUNTERS.broad_pairs += len(found)
         if len(found) < 2:
             return [entry.obj for entry in found.values()]
         order = self.grid._insertion_order
@@ -285,6 +293,7 @@ def first_static_hit(index, prev_pose, pose, length_m, width_m, categories, leve
     if not found:
         return None
     live, box = [], _box(x0, y0, h0, length_m, width_m)
+    performance.COLLISION_COUNTERS.narrow_checks += len(found)
     for obj in found:
         before = _static_contact(obj, x0, y0, h0, length_m, width_m, box)
         points = getattr(obj, "points_m", None)
@@ -303,12 +312,13 @@ def first_static_hit(index, prev_pose, pose, length_m, width_m, categories, leve
     if not live:
         return None
     n = sweep_samples(travel, turn, length_m, width_m)
-    k = 1
+    k, checks = 1, 0
     while k <= n:
         x, y, h = sweep_pose(prev_pose, pose, k, n)
         box = _box(x, y, h, length_m, width_m)
         corners, (ax0, ay0, ax1, ay1) = box
         box_edges = list(_edges(corners))
+        checks += len(live)
         for obj, before in live:
             if isinstance(before, list):  # a wall or line, by its near edges
                 hit = any((max(p[0], q[0]) >= ax0 and min(p[0], q[0]) <= ax1 and max(p[1], q[1]) >= ay0
@@ -324,7 +334,16 @@ def first_static_hit(index, prev_pose, pose, length_m, width_m, categories, leve
             if ignore is not None and ignore(obj):  # asked only on contact: it may be costly
                 live = [entry for entry in live if entry[0] is not obj]
                 break  # this sample again without it
+            performance.COLLISION_COUNTERS.narrow_checks += checks
             return k, obj, n
         else:
             k += 1
+    performance.COLLISION_COUNTERS.narrow_checks += checks
     return None
+
+
+def hit_slot(obj) -> int:
+    """The VEHICLE|<static> counter slot of an obstacle first_static_hit returned."""
+    if getattr(obj, "points_m", None) is None:
+        return performance.HIT_SLOT["VEHICLE|POST"]
+    return performance.HIT_SLOT["VEHICLE|BUILDING" if isinstance(obj, Building) else "VEHICLE|BARRIER"]

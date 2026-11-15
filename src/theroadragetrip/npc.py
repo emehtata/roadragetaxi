@@ -27,7 +27,8 @@ from .activities import ActivityInstance, ActivityLocation
 from .competitor_taxis import COMPETITOR_TAXIS, CRUISE_DWELL_S, is_competitor, make_competitor, night_taxi_target
 from . import bus_lines
 from .bus_lines import is_line_bus
-from .collision import STATIC_HIT, first_static_hit, same_plane, sweep_pose
+from .collision import STATIC_HIT, first_static_hit, hit_slot, same_plane, sweep_pose
+from .performance import COLLISION_COUNTERS, HIT_SLOT
 from .map_level import SURFACE_LEVEL
 from .geo import angle_diff, bbox_distance_sq, box_contact_normal, boxes_intersect, clamp, closest_point_and_dist_to_segment, dist_point_to_segment, point_in_polygon, segment_distance
 from .map_level import on_map_level
@@ -5206,9 +5207,13 @@ class NPCVehicleManager:
             hit = first_static_hit(index, previous, (car.x, car.y, car.heading), vehicle.length_m, vehicle.width_m,
                                    STATIC_HIT, getattr(car, "map_level", SURFACE_LEVEL), vehicle.layer, ignore)
             if hit is not None:
-                k, _, n = hit
+                k, obj, n = hit
+                counters = COLLISION_COUNTERS
+                counters.hits[hit_slot(obj)] += 1
+                started = time.perf_counter()
                 self._resolve_static_hit(vehicle, driver, sweep_pose(previous, (car.x, car.y, car.heading), k - 1, n),
                                          traffic_world, spatial_grid, buildings, building_grid)
+                counters.resolve_ms += (time.perf_counter() - started) * 1000.0
 
     def _resolve_static_hit(self, vehicle, driver, sample_pose, traffic_world, spatial_grid=None,
                             buildings=None, building_grid=None):
@@ -5248,6 +5253,7 @@ class NPCVehicleManager:
         accident/occupant processing without turning wrecks into ghosts."""
         vehicle_already_crashed = vehicle.state == NPCState.CRASHED
         own_trailer = vehicle.trailer_body()  # a towed trailer is a body of its own, hit like the vehicle
+        checked = 0  # narrow checks, added to the counters once on the way out
         for obstacle in nearby_obstacles:
             if obstacle is vehicle:
                 continue
@@ -5267,6 +5273,7 @@ class NPCVehicleManager:
             other_previous = (previous_obstacle_poses or {}).get(id(obstacle)) if body is obstacle else None
             body_length = getattr(body, "length_m", NPC_VEHICLE_LENGTH_M)
             body_width = getattr(body, "width_m", NPC_VEHICLE_WIDTH_M)
+            checked += 1
             hit = boxes_intersect(
                 vehicle.x, vehicle.y, vehicle.heading, vehicle.length_m, vehicle.width_m,
                 body.x, body.y, body.heading, body_length, body_width,
@@ -5307,6 +5314,11 @@ class NPCVehicleManager:
                 # posts): let it. Restoring the pose every frame kept it stuck inside
                 # a wreck for good (reported: stuck in a rival taxi on a bridge).
                 continue
+            counters = COLLISION_COUNTERS
+            counters.broad_pairs += len(nearby_obstacles)
+            counters.narrow_checks += checked
+            counters.hits[HIT_SLOT["VEHICLE|VEHICLE"]] += 1
+            counters._t0 = time.perf_counter()  # the caller adds resolve_ms: every path from here returns True
             velocity, other_velocity = collision_velocity(vehicle), collision_velocity(obstacle)
             closing_speed = math.hypot(velocity[0] - other_velocity[0], velocity[1] - other_velocity[1])
             # The contact's normal at the overlapping poses, before they are undone;
@@ -5393,6 +5405,9 @@ class NPCVehicleManager:
                     hit.stunned_timer = STUNNED_S
                     hit.shaken_timer = SHAKEN_S
             return True
+        counters = COLLISION_COUNTERS
+        counters.broad_pairs += len(nearby_obstacles)
+        counters.narrow_checks += checked
         return False
 
     def _trigger_vehicle_accident(
@@ -7349,10 +7364,11 @@ class NPCVehicleManager:
             collision_candidates = with_trailers(self.nearby_vehicles_at(mid_x, mid_y, radius))
             if player_car is not None:
                 collision_candidates.append(player_car)
-            self._check_vehicle_collision(
+            if self._check_vehicle_collision(
                 vehicle, collision_candidates, resident_manager, pedestrian_mgr, traffic_world.sim_time,
                 previous_vehicle_pose=previous, previous_obstacle_poses=obstacle_previous,
-            )
+            ):
+                COLLISION_COUNTERS.resolve_ms += (time.perf_counter() - COLLISION_COUNTERS._t0) * 1000.0
 
         self._advance_route_jobs(player_x, player_y, resident_manager, traffic_world, viewport_bounds)
         self._start_ferry_trips(resident_manager, traffic_world, ways, spatial_grid, parking_spaces, sceneries,

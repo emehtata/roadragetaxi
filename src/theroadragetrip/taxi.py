@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from .geo import angle_diff, clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, get_oriented_box_corners, point_in_polygon, segments_intersect
+from .performance import COLLISION_COUNTERS, HIT_SLOT
 from .collision import (POST_RADIUS_M, STATIC_HIT, TREE_RADIUS_M, Category, StaticObstacleIndex, box_hits_polygon,
                         box_hits_polyline, first_static_hit, post_box_depth, sweep_pose, sweep_samples)
 from .map_level import SURFACE_LEVEL, on_map_level
@@ -705,6 +706,7 @@ class TaxiManager:
                         or player_car.y < bbox[1] - car_radius or player_car.y > bbox[3] + car_radius):
                     continue
 
+            COLLISION_COUNTERS.narrow_checks += 1
             if not box_hits_polygon(car_corners, points, (player_car.x, player_car.y)):
                 continue
 
@@ -729,6 +731,7 @@ class TaxiManager:
 
             if previous_position is not None and self._backing_off(player_car, previous_position, points):
                 continue  # already against it and moving away: let the car get clear (undoing that move pinned it there)
+            COLLISION_COUNTERS.hits[HIT_SLOT["VEHICLE|BUILDING"]] += 1
             if previous_position is not None:
                 player_car.x, player_car.y = previous_position
             player_car.speed = 0.0
@@ -864,8 +867,10 @@ class TaxiManager:
                         or player_car.y < bbox[1] - car_radius or player_car.y > bbox[3] + car_radius):
                     continue
 
+            COLLISION_COUNTERS.narrow_checks += 1
             if not box_hits_polygon(car_corners, points, (player_car.x, player_car.y)):
                 continue
+            COLLISION_COUNTERS.hits[HIT_SLOT["VEHICLE|BARRIER"]] += 1
 
             if previous_position is not None:
                 player_car.x, player_car.y = previous_position
@@ -950,6 +955,7 @@ class TaxiManager:
                     self.notification_timer = 3.5
                 self._crashed_fence_cooldowns[barrier_id] = sim_time
                 continue
+            COLLISION_COUNTERS.narrow_checks += 1
             if not box_hits_polyline(corners, points):
                 continue
             if previous_position is not None:
@@ -958,6 +964,7 @@ class TaxiManager:
                 if line.distance(Point(player_car.x, player_car.y)) >= line.distance(Point(previous_position)):
                     continue  # already touching, backing away from it: let the car go
                 player_car.x, player_car.y = previous_position
+            COLLISION_COUNTERS.hits[HIT_SLOT["VEHICLE|BARRIER"]] += 1
             player_car.speed = 0.0
             barrier_id = id(railing)
             if barrier_id not in self._crashed_fence_cooldowns:
@@ -1025,8 +1032,11 @@ class TaxiManager:
         felled = 0
         posts = self.static_index.indexed("scenery_objects")[0]  # the posts as last synced: no re-sync
         for tree in self._nearby_posts(posts if posts is not None else (), player_car.x, player_car.y, sceneries):
-            if isinstance(tree, FelledTree) and tree.knocked_angle is None and post_box_depth(
-                    tree.x, tree.y, TREE_RADIUS_M, player_car.x, player_car.y, *pose) >= 0.0:
+            if not isinstance(tree, FelledTree) or tree.knocked_angle is not None:
+                continue
+            COLLISION_COUNTERS.narrow_checks += 1
+            if post_box_depth(tree.x, tree.y, TREE_RADIUS_M, player_car.x, player_car.y, *pose) >= 0.0:
+                COLLISION_COUNTERS.hits[HIT_SLOT["VEHICLE|POST"]] += 1
                 tree.knocked_angle = angle
                 self.felled_trees.append(tree)
                 felled += 1
@@ -1067,12 +1077,14 @@ class TaxiManager:
                 continue  # already lying flat
             if abs(post.x - player_car.x) > reach or abs(post.y - player_car.y) > reach:
                 continue  # outside the expanded box's circle: depth < 0 (exact prefilter)
+            COLLISION_COUNTERS.narrow_checks += 1
             depth = post_box_depth(post.x, post.y, POST_RADIUS_M, player_car.x, player_car.y, *pose)
             if depth < 0.0:
                 continue
             if previous_position is not None:
                 if depth < post_box_depth(post.x, post.y, POST_RADIUS_M, *previous_position, *pose):
                     continue  # already touching: allow movement that reduces overlap
+            COLLISION_COUNTERS.hits[HIT_SLOT["VEHICLE|POST"]] += 1
             if abs(player_car.speed) * 3.6 >= POST_KNOCK_DOWN_KMH:
                 post.knocked_angle = player_car.heading if player_car.speed >= 0.0 else player_car.heading + math.pi
                 self.knocked_posts += 1

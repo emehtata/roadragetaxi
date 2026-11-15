@@ -47,6 +47,10 @@ emits semantic events.
 **Godot:** drawing, camera, interpolation, sound, HUD, and turning keys into
 commands. Godot never decides a route, a collision, a fare, a schedule,
 the weather or the time. It only displays what the state says.
+The server owns every collision (taxi, NPCs, trams, pedestrians, felled
+trees and knocked posts; see [collision-detection.md](../collision-detection.md));
+`COLLISION_COUNTERS` in performance.py counts each tick's candidates, checks,
+hits and time for the benches.
 
 ## Protocol (version 1)
 

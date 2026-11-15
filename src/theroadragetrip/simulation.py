@@ -328,6 +328,8 @@ def advance_simulation(
 ) -> SimulationFrameResult:
     """Run one gameplay tick: physics, collisions, camera follow, and the
     taxi/NPC/traffic/pedestrian manager updates."""
+    from .performance import COLLISION_COUNTERS
+    COLLISION_COUNTERS.reset()  # this tick's collision work (phase 7)
 
     ways = world.ways
     spatial_grid = world.spatial_grid

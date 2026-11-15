@@ -77,6 +77,13 @@ def pct(values, p, digits=1):
     return round(values[min(len(values) - 1, int(len(values) * p))], digits) if values else 0.0
 
 
+def counter_stats(snapshots) -> dict:
+    """p50/p99/max per tick and the run total of each collision counter (collision spec phase 7)."""
+    names = list(snapshots[0]) if snapshots else []
+    return {name: {"p50": pct(v, .5, 3), "p99": pct(v, .99, 3), "max": round(max(v, default=0), 3), "total": round(sum(v), 3)}
+            for name in names for v in [[s.get(name, 0) for s in snapshots]]}
+
+
 def replay(states) -> dict:
     """state_buffer.gd sampled every 60 fps frame, each state pushed at the first frame after it arrived."""
     offset = clock = 0.0
@@ -184,7 +191,7 @@ def main(argv=None) -> int:
         ["--osm-source", args.osm_source] if args.osm_source else []) + (
         ["--osm-pbf-path", args.osm_pbf_path] if args.osm_pbf_path else [])
     import theroadragetrip.server as server_module
-    from theroadragetrip.performance import tune_interpreter
+    from theroadragetrip.performance import COLLISION_COUNTERS, tune_interpreter
     from theroadragetrip.server.cli import parse_server_args
 
     tune_interpreter()  # as server/__main__.py
@@ -372,6 +379,7 @@ def main(argv=None) -> int:
                                   "moving_npcs": sum(abs(v.speed) > 0.5 for v in server.world.npc_manager.vehicles),
                                   "pedestrians": len(server.world.pedestrian_mgr.pedestrians)}
             rec["taxi_sweep_samples"] = getattr(server.world.taxi_mgr, "last_sweep_samples", 0)
+            rec["collision_counters"] = COLLISION_COUNTERS.snapshot()
             if len(ticks) % server.tick_rate == 0:  # once a second: resident memory and what is held
                 rec["memory"] = {"rss_mb": _rss_mb(), "tiles": len(streamer.manager.loaded_tiles),
                                  "chunks": len(server._chunks_index._chunks)}
@@ -511,6 +519,7 @@ def main(argv=None) -> int:
             "per_tick_cpu": {"p50": pct(cpu_totals, .5, 3), "p99": pct(cpu_totals, .99, 3),
                              "max": round(max(cpu_totals, default=0.0), 3)},
         }} if args.compare_index else {}),
+        "collision_counters": counter_stats([t.get("collision_counters", {}) for t in ticks]),
         "slow_ticks": {"count": len(slow), "wall_ms": round(sum(t["wall"] for t in slow)),
                        "waiting_ms": round(sum(t["wall"] - t["cpu"] for t in slow)),
                        "phases_ms": {k: round(v) for k, v in sorted(phases.items(), key=lambda kv: -kv[1])}},

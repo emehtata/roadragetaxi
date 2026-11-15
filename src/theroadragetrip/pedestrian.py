@@ -12,7 +12,7 @@ from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Set, Tu
 from .osm import OPEN_ROOF_BUILDING_TYPES, BusStop, Crossing, LogicalIntersection, Scenery, SceneryObject, TrafficLight, Way
 from .geo import angle_diff, bbox_distance_sq, closest_point_and_dist_to_segment, compute_bbox, point_in_polygon
 from .npc import NPCState
-from .performance import GRAVEYARD, advance_chunked
+from .performance import COLLISION_COUNTERS, GRAVEYARD, HIT_SLOT, advance_chunked
 from .physics import Car, SpatialWayGrid, is_pedestrian_way
 from .collision import Category, can_collide, circle_hits_circle
 from .map_level import SURFACE_LEVEL
@@ -2724,6 +2724,7 @@ class PedestrianManager:
     def rebuild_spatial_grid(self) -> None:
         """SpatialWayGrid.rebuild for points with no padding (half_width_m 0): one cell each,
         filled directly - the generic insert's per-item getattr and range loops were the cost."""
+        started = time.perf_counter()
         grid, size, cells = self.spatial_grid, self.spatial_grid.cell_size, {}
         for ped in self.pedestrians:
             x, y = ped.x, ped.y
@@ -2738,6 +2739,7 @@ class PedestrianManager:
         grid._insertion_order = {id(ped): index for index, ped in enumerate(self.pedestrians)}
         grid._next_order = grid.indexed_way_count = len(self.pedestrians)
         grid.revision += 1
+        COLLISION_COUNTERS.index_update_ms += (time.perf_counter() - started) * 1000.0
 
     def nearby_pedestrians_at(self, x: float, y: float, radius_m: float) -> list:
         return self.spatial_grid.ways_in_rect(x - radius_m, y - radius_m, x + radius_m, y + radius_m)
@@ -2754,8 +2756,11 @@ class PedestrianManager:
         if self.static_index is None:
             return self._point_inside_building(x, y)
         level = getattr(ped, "map_level", SURFACE_LEVEL)
-        return any(point_in_polygon(x, y, b.points_m)
-                   for b in self.static_index.query(x, y, ped.radius_m, Category.BUILDING, level=level))
+        if any(point_in_polygon(x, y, b.points_m)
+               for b in self.static_index.query(x, y, ped.radius_m, Category.BUILDING, level=level)):
+            COLLISION_COUNTERS.hits[HIT_SLOT["PEDESTRIAN|BUILDING"]] += 1
+            return True
+        return False
 
     def _move_clear(self, ped, dx: float, dy: float) -> None:
         """Move by (dx, dy) unless that ends in a building; then slide along the free axis, or stay."""
@@ -2793,9 +2798,12 @@ class PedestrianManager:
         query_m = AVOID_QUERY_M + getattr(player_car, "length_m", 4.5) / 2.0 + 3.5 * dt
         car_plane = self._plane(player_car)
         cyclist_collision = False
+        counters = COLLISION_COUNTERS
         for ped in self.nearby_pedestrians_at(player_car.x, player_car.y, query_m):
+            counters.broad_pairs += 1
             if getattr(ped, "is_walking_to_taxi_stop", False) or self._plane(ped) != car_plane:
                 continue
+            counters.narrow_checks += 1
             if self._avoid_trigger(ped, frame, id(ped) in was_dodging):
                 cyclist_collision = True
         return cyclist_collision
@@ -2818,6 +2826,8 @@ class PedestrianManager:
             and lat_offset < 1.8       # Within vehicle width corridor
         )
         is_too_close = dist_sq < (1.25 * 1.25)  # Physical touch danger distance
+        if is_too_close:
+            COLLISION_COUNTERS.hits[HIT_SLOT["VEHICLE|PEDESTRIAN"]] += 1
         if not (is_directly_ahead or is_too_close):
             return False
         dist = math.sqrt(dist_sq) or 1.0
@@ -2849,18 +2859,25 @@ class PedestrianManager:
         walkers = sorted((p for p in self.pedestrians if p.state in _SEPARATED_STATES and p.activity is None
                           and getattr(p, "held_by", None) is None), key=_x_of)
         # Sweep along x (one C sort): each walker meets only those within `reach` in x.
-        n = len(walkers)
+        n, pairs, checks, hits = len(walkers), 0, 0, 0
         for i, p in enumerate(walkers):
             j = i + 1
             while j < n and walkers[j].x - p.x < reach:
                 q = walkers[j]
                 j += 1
+                pairs += 1
                 if abs(q.y - p.y) >= reach or self._plane(p) != self._plane(q):
                     continue
                 a, b = (p, q) if id(p) < id(q) else (q, p)  # lower id first
+                checks += 1
                 depth = circle_hits_circle(a.x, a.y, a.radius_m, b.x, b.y, b.radius_m)
                 if depth > 0.0:
+                    hits += 1
                     self._push_apart(a, b, depth)
+        counters = COLLISION_COUNTERS
+        counters.broad_pairs += pairs
+        counters.narrow_checks += checks
+        counters.hits[HIT_SLOT["PEDESTRIAN|PEDESTRIAN"]] += hits
 
     def _push_apart(self, a, b, depth: float) -> None:
         dist = math.hypot(b.x - a.x, b.y - a.y)

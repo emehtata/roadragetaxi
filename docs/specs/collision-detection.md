@@ -353,7 +353,7 @@ Acceptance:
 5. Unchanged: with nothing within reach, NPC poses equal phase 5 bit for bit; taxi results for n == 1 equal phase 5. Existing tests pass unedited.
    The flaky trip-cycle test: run 25 seeds alone, before and after; the pass count must not drop (report both counts in Progress).
 6. Budget (PBF bench, 69 m/s, 120 s, the phase 4/5 drive, recorded traffic population): `npc_static_ms` <= 0.50 ms p50 and <= 1.5 ms p99 per tick; `taxi_sweep_ms` <= 0.10 ms p50 and
-   <= 0.40 ms p99; total collision section stays under 3.0 ms p99. Cost model: taxi 3 samples x a handful of candidates per tick; NPC one query + about
+   <= 0.40 ms p99; the taxi collisions section (simulation.py `collisions`: sweep and taxi checks) stays under 3.0 ms p99. NPC collision work is timed in the `npc` section and has no phase 6 budget here (wording fixed in phase 7). Cost model: taxi 3 samples x a handful of candidates per tick; NPC one query + about
    1-2 samples per moved vehicle. Bench rules from phases 4/5: 5 runs, report each p50/p99 and the median; interleaved A/B vs phase 5 (7 runs, first pair discarded) is report-only; the absolute budget decides.
 7. Full `pytest` and the Godot tests are green, nothing deselected.
 
@@ -367,6 +367,55 @@ Tests (tests/test_collision_scenarios.py, placed poses, fixed seed, no map load)
 
 Out of scope: NPCs knocking posts or felling trees, pedestrians vs NPC vehicles (unchanged), roadworks and bridge edges in the index,
 taxi vs NPC sweeping (already swept in `_check_vehicle_collision`), collision counters (phase 7), Godot changes.
+
+## Phase 7 (full): collision counters and dense-city benchmark
+Goal: every collision tick reports how much work it did (candidates, checks, hits, time), and one deterministic dense-city run proves the
+collision section holds its 3.0 ms p99 budget at the scenario 15 load. Covers scenarios 11 and 15 of section 10. Last phase of the outline.
+
+Current state: performance.py has no counters (GC schedule, Graveyard, `advance_chunked` only). Timing exists as `frame_profiler.section`
+(`collisions`, `taxi_sweep`, NPC `npc_static`) and `PedestrianManager._record` (`pedestrians:grid`, `pedestrians:separation`); bench_map_jitter.py
+patches `_NullFrameProfiler.INSTANCE` to collect `sim_sections` and prints p50/p99/max per name. Candidate and hit counts are not recorded anywhere.
+
+Files:
+- `src/theroadragetrip/performance.py`: `class CollisionCounters` with `__slots__` int/float fields, reset in place each tick (no dict, no per-tick allocation):
+  `broad_pairs`, `narrow_checks`, `hits` (a fixed-size list indexed by category-pair slot, allocated once at import from the phase 1 matrix),
+  `resolve_ms`, `index_update_ms`. `def reset(self) -> None`, `def snapshot(self) -> dict` (bench and tests only, never on the tick path).
+  Module singleton `COLLISION_COUNTERS`. Names: `collisions:broad_pairs`, `collisions:narrow_checks`, `collisions:hits:<A>|<B>` (e.g. `VEHICLE|POST`),
+  `collisions:resolve_ms`, `collisions:index_update_ms`.
+- Where each is counted (integer `+=` on the singleton, local variable accumulated in loops and added once per call):
+  - broad_pairs: `StaticObstacleIndex.query` (candidates returned), the vehicle grid pair loop in npc.py, `nearby_pedestrians_at`, the x-sweep pairs in `_separate_pedestrians`.
+  - narrow_checks: `box_hits_polygon`, `box_hits_polyline`, `post_box_depth`, `circle_hits_circle` call sites in `first_static_hit`, taxi `check_*`, npc vehicle pairs.
+  - hits: where a response fires (taxi `check_*`, `_resolve_static_hit`, `_check_vehicle_collision`, pedestrian contact), slot from `same_plane`-filtered categories.
+  - resolve_ms: `perf_counter` around `_resolve_static_hit`, the vehicle impulse and the taxi stop/knock code. index_update_ms: `StaticObstacleIndex.sync`/`forget`, pedestrian grid rebuild.
+  - `simulation.py`: `COLLISION_COUNTERS.reset()` at the start of the tick, before physics.
+- `tools/bench_map_jitter.py`: after each tick copy `snapshot()` into the tick record; output `collision_counters` with p50/p99/max per name and per-run totals.
+- `tools/bench_dense_city.py` (new, headless, no map load, no Godot): builds the scenario 15 world from the phase 6 test harness (300 x 300 m street grid with
+  buildings, 150 NPCs, 200 posts and fences along kerbs, 60 pedestrians, a taxi driving the grid at 20 m/s), plus a two-level garage (level 0 and 1 stacked);
+  `--seed` (default 15), `--ticks` (default 1800 = 60 s at 30 Hz), `--json`. Prints the collisions section p50/p99/max and every counter. Reuses phase 6 builders; no new world code.
+
+Traffic law: counting only; no decision changes. Scenario 11 relies on the existing `map_level`/`same_plane` filter (guide: garage levels are separate planes).
+
+Acceptance:
+1. Scenario 15 placed run: each counter is > 0 except hits for pairs that cannot occur (listed as 0 in the output, not missing).
+2. Two runs with the same seed give identical counter totals and per-tick counts; a different seed changes at least `broad_pairs`.
+3. Scenario 11: taxi, NPC, pedestrian and a post on garage level 0 directly under the same set on level 1, moving into each other's footprints:
+   zero hits for any cross-level pair; same-level pairs still hit.
+4. Counter cost: dense-city run with counters on vs a build where the increments are stubbed: <= 0.05 ms per tick at p50 and <= 0.10 ms at p99 (5 runs, median decides).
+5. `bench_dense_city.py` reports every counter name above and the taxi `collisions` section stays <= 3.0 ms p99 (5 runs, each reported, median decides). The NPC-side collision work at scenario 15 density (p99 about 3.7 to 4.0 ms in the `npc` section, mostly the NPC grid's nearby-vehicle query) is reported, has no budget in this phase, and is a follow-up. The dense-city load is a placed harness, not a routed run.
+6. PBF bench (phase 6 drive) prints `collision_counters`; existing fields unchanged.
+7. Full `pytest` and the Godot tests green, nothing deselected.
+
+Tests (tests/test_collision_counters.py):
+- test_counters_increment_on_placed_scenarios: scenario 2 and 10 setups bump broad_pairs, narrow_checks and the right hit slot (fails today: no counters).
+- test_counters_deterministic_same_seed: two 300-tick dense runs, equal snapshots.
+- test_scenario11_garage_levels_no_cross_level_hits: cross-level hit slots stay 0, same-level > 0.
+- test_counters_reset_no_allocation: `tracemalloc` over 100 ticks of reset + increments shows no growth.
+
+Final documented state: Progress has a ticked line per phase 1-7 with dates, test counts and bench numbers; docs/collision-detection.md section 11 marks
+scenarios 1-15 covered with their test names; docs/architecture/godot-client.md collision paragraph (~line 44) notes the server owns every collision and the counters exist
+(a short server-collision note there, no new architecture doc).
+
+Out of scope: exposing counters to Godot or the debug overlay, per-object counters, changing any collision behaviour, a routed (map-loaded) 150-NPC run.
 
 ## Later phases (outline)
 2. Shared OBB-vs-polygon and circle-vs-box helpers in collision.py. Taxi, npc and trams use them. Scenarios 3, 4, 14.
@@ -383,6 +432,8 @@ Animals on the server (wildlife.gd is decoration), and roadworks geometry before
 - [x] Audit, matrix, spec (2026-11-14)
 - [x] Phase 1 (2026-11-14): collision.py, npc.py uses `same_plane`, tests/test_collision_scenarios.py (5 tests); full suite green
 - [x] Phase 2 (2026-11-14): `box_hits_polygon`, `box_hits_polyline`, `post_box_depth` in collision.py; taxi.py and trams.py use them (`_overlaps` deleted); 6 new tests; full suite green; bench_map_jitter.py times the taxi checks
+- [x] Phase 3 (2026-11-15): the taxi fells trees on the server (`check_tree_collision`, never stops it), the state sends `knocked_trees`, Godot only draws them; felled trees stand again when their chunk unloads; protocol v2; pytest 2992 passed twice (3 skipped), Godot 26/26; bench ~0.017 ms per tick (5% ratio not proven: HEAD runs differ 6% among themselves)
 - [x] Phase 4 (2026-11-15): `StaticObstacleIndex` in collision.py over `SpatialWayGrid` (`remove`, insert order); taxi.py's 4 grids gone; autofetch hands unloaded objects to `StaticObstacleIndex.forget` (`unload_listeners`, registered in world_loader); 8 new tests; full suite green (3003 passed, 3 skipped). Bench (Oulu, Overpass cache, no local PBF here, 69 m/s, 120 s, 3 runs, `--compare-index`): static index p50 0.033 ms, p99 0.83-0.92 ms per tick (pass); unload 1.35-1.47 ms per unload tick, 0.93-1.00 ms per call, no id-set diffs (pass, budget 2.0). collisions_section vs phase 3 after `forget`: median ratio 1.016, 95% interval +-6.3% (wider than the +-5% target, so the absolute budgets decide; they pass: static index p50 0.033 ms, p99 ~0.9 ms; unload tick <= 1.51 ms; forget <= 0.95 ms per call).
 - [x] Phase 5 (2026-11-15): `PedestrianManager.spatial_grid` (10 m SpatialWayGrid, rebuilt once per update), `nearby_pedestrians_at`, avoidance trigger on grid candidates only, `_separate_pedestrians` (x-sorted sweep: each walker meets only those within 2 x radius in x and y, no grid query; the grid serves the taxi trigger only; half the overlap each plus an equal sidestep so head-on walkers pass), dodges and pushes rejected inside buildings (the taxi's `StaticObstacleIndex`, else `_point_inside_building`), `circle_hits_circle`, matrix PEDESTRIAN|PEDESTRIAN; 7 new tests, phase 1 matrix test amended; full suite green (3009 passed, 3 skipped), Godot tests 26/26. Fixed on the way: the avoidance forward vector was `(cos, -sin)` (skewed off the car's real `(cos, sin)` forward, triggering up to ~20 m away at diagonal headings; identical at 0 and pi); the taxi trigger also requires the same `map_level`. Bench (PBF finland-latest, 69 m/s, 120 s, ~129 pedestrians): grid + avoidance + separation p50 0.051 ms, p99 0.455 ms (pass, budget 0.40 / 1.2); Oulu Overpass cache runs before the separation rewrite: p50 0.07-0.10, p99 0.90-0.99. Synthetic 300 dense pedestrians: ~0.76 ms p50 (grid rebuild 0.28 + separation 0.42). Interleaved A/B vs phase 4 not run. After the layer filter (amendments): 3011 passed, 3 skipped; Godot 26/26; PBF rerun p50 0.064 ms, p99 0.879 ms, ~143 pedestrians. After the allocation cuts: 5 PBF runs, grid + avoidance + separation p50 0.040-0.043 ms, p99 0.213-0.288 ms (median 0.246 ms); tester's Oulu run p99 0.265 ms (pass, budget 0.40 / 1.2 ms).
 - [x] Phase 6 (2026-11-15): `sweep_samples`, `sweep_pose`, `first_static_hit` in collision.py (walls and lines outside at the previous pose are tested by their edges inside the swept square only: a big outline is scanned once, not per sample); `box_hits_polygon` tests edges first and then one point (same result, fewer point-in-polygon scans); `TaxiManager.sweep_static` before the taxi checks (simulation.py, `taxi_sweep` section); `NPCVehicleManager.static_index` (world_loader), `_static_collisions` / `_resolve_static_hit` (third hit within 2 s skips the manoeuvre: reroute), `_npc_blocked` shared with `_enforce_npc_road_motion`, `update_knocked(static_index=)`; a mapped road through a building is exempt for NPCs as for the taxi. 9 new tests; full suite green (3020 passed, 3 skipped; one gc-count flake in test_soak under -n auto on 1 of 4 runs, passes alone and in the other runs; it does not use the index). Flaky trip-cycle test, 25 seeds alone: 25/25 before, 25/25 after. PBF bench (finland-latest, 69 m/s, 120 s, 5 runs), p50 / p99 ms: npc_static 0.031/1.214, 0.027/0.789, 0.040/0.861, 0.027/0.847, 0.038/1.508 (median p99 0.861; budget 0.50/1.5); taxi_sweep 0.023/0.509, 0.024/0.303, 0.023/0.288, 0.024/0.295, 0.025/0.278 (median p99 0.295; budget 0.10/0.40; run 1's 0.509 wall is GIL wait, its CPU p99 0.217); collisions section p99 1.18-1.28 (budget 3.0); taxi samples 3 per tick. Scenario 15 is a placed-pose drift harness, not a routed 150-NPC run. Interleaved A/B vs phase 5 not run.
+- [x] Phase 7 (2026-11-15): `CollisionCounters` / `COLLISION_COUNTERS` in performance.py (slots, `hits` list over the 10 matrix pairs, reset in place by simulation.py each tick); counted in `StaticObstacleIndex.query`/`sync`/`forget`, `first_static_hit`, taxi `check_*`, `_static_collisions` (with `hit_slot`), `_check_vehicle_collision`, pedestrian avoidance, separation, wall blocks and grid rebuild; bench_map_jitter.py prints `collision_counters`; tools/bench_dense_city.py (headless scenario 15 + two-level garage); tests/test_collision_counters.py (4 tests); pytest 3025 passed, 3 skipped, twice, no flake; Godot 26/26. Dense city (seed 15, 1800 ticks, 5 runs): collisions section p50 0.062-0.064, p99 0.101-0.109 ms (budget 3.0); NPC collision work (inside the `npc` section) p99 3.72-4.00 ms; pedestrian contact p99 0.107-0.123 ms; every counter > 0 except VEHICLE|ANIMAL, VEHICLE|ROADWORKS, PEDESTRIAN|BARRIER (nothing produces them; listed as 0). Counter cost vs increments stubbed (5 runs each, per-tick minimum): +0.028 ms p50, +0.039 ms p99 (budget 0.05/0.10); per-run p50 differences median +0.039 ms, per-run p99 differences are noise-bound (stub vs stub +-0.6 ms). Oulu Overpass drive (69 m/s, 40 s, 1 run): collisions section p99 2.52 ms, counters printed.
