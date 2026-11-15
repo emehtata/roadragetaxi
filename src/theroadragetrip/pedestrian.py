@@ -1,6 +1,7 @@
 import logging
 import heapq
 import math
+import operator
 import random
 import time
 from dataclasses import dataclass, field, replace
@@ -12,7 +13,9 @@ from .osm import OPEN_ROOF_BUILDING_TYPES, BusStop, Crossing, LogicalIntersectio
 from .geo import angle_diff, bbox_distance_sq, closest_point_and_dist_to_segment, compute_bbox, point_in_polygon
 from .npc import NPCState
 from .performance import GRAVEYARD, advance_chunked
-from .physics import Car, is_pedestrian_way
+from .physics import Car, SpatialWayGrid, is_pedestrian_way
+from .collision import Category, can_collide, circle_hits_circle
+from .map_level import SURFACE_LEVEL
 from .residents import MIN_UNACCOMPANIED_AGE, ResidentManager
 from .population import municipality_at, walkers_within
 from .activities import ActivityContext, ActivityInstance, ActivityLocation, ActivityManager
@@ -38,6 +41,9 @@ ICE_VIEW_MARGIN_M = 60.0  # ice sports run only on fields this near the viewport
 
 logger = logging.getLogger(__name__)
 
+AVOID_QUERY_M = 3.5 + 1.0  # plus the car half-length: the 3.5 m ahead and 1.25 m touch rules
+_SEPARATED_STATES = frozenset(("walking", "crossing"))
+_x_of = operator.attrgetter("x")
 CURSE_SYMBOLS = ["@#*!%", "#$@&!", "!%#&*", "%$!#@", "@!*#$"]
 VOMIT_STEP_RADIUS_M = 0.9  # a pedestrian this close to a vomit puddle has stepped in it
 DIRTY_FOOTPRINTS = 6  # footprints left by shoes that went through vomit
@@ -612,6 +618,7 @@ class Pedestrian:
     # clobber "annoyed" the moment the phone-checking activity starts).
     mood: str = "normal"
     thief_target: Optional[Tuple[float, float]] = None  # a bike thief runs here (npc.py _update_bike_thefts)
+    half_width_m = 0.0  # not a field: the pedestrian SpatialWayGrid pads cells by this
 
 
 @dataclass
@@ -651,6 +658,8 @@ class PedestrianManager:
         self.spawn_radius_m = spawn_radius_m
         self.despawn_radius_m = despawn_radius_m
         self.pedestrians: List[Pedestrian] = []
+        self.spatial_grid = SpatialWayGrid(10.0, map_level=None)  # rebuilt once per update
+        self.static_index = None  # the taxi's StaticObstacleIndex (world_loader); None: the venue building grid
         self.curses: List[Tuple[float, float]] = []  # where a startled pedestrian cursed; drained by the simulation
         self.sound_events: List[Tuple[str, Tuple[float, float]]] = []
         self.traffic_lights: List[TrafficLight] = traffic_lights or []
@@ -2712,70 +2721,155 @@ class PedestrianManager:
                 return False
         return True
 
-    def check_player_avoidance(self, player_car: Car, dt: float) -> bool:
+    def rebuild_spatial_grid(self) -> None:
+        """SpatialWayGrid.rebuild for points with no padding (half_width_m 0): one cell each,
+        filled directly - the generic insert's per-item getattr and range loops were the cost."""
+        grid, size, cells = self.spatial_grid, self.spatial_grid.cell_size, {}
+        for ped in self.pedestrians:
+            x, y = ped.x, ped.y
+            ped.bbox = (x, y, x, y)
+            key = (int(x // size), int(y // size))
+            cell = cells.get(key)
+            if cell is None:
+                cells[key] = [ped]
+            else:
+                cell.append(ped)
+        grid.grid = cells
+        grid._insertion_order = {id(ped): index for index, ped in enumerate(self.pedestrians)}
+        grid._next_order = grid.indexed_way_count = len(self.pedestrians)
+        grid.revision += 1
+
+    def nearby_pedestrians_at(self, x: float, y: float, radius_m: float) -> list:
+        return self.spatial_grid.ways_in_rect(x - radius_m, y - radius_m, x + radius_m, y + radius_m)
+
+    @staticmethod
+    def _plane(body) -> tuple:
+        """(layer, map_level): a walker's layer is its way's (a deck footway is layer 1)."""
+        way = getattr(body, "way", None)
+        layer = getattr(way, "layer", 0) if isinstance(body, Pedestrian) else getattr(body, "layer", 0)
+        return (layer or 0, getattr(body, "map_level", SURFACE_LEVEL))
+
+    def _blocked(self, ped, x: float, y: float) -> bool:
+        """The point is inside a building on the pedestrian's level."""
+        if self.static_index is None:
+            return self._point_inside_building(x, y)
+        level = getattr(ped, "map_level", SURFACE_LEVEL)
+        return any(point_in_polygon(x, y, b.points_m)
+                   for b in self.static_index.query(x, y, ped.radius_m, Category.BUILDING, level=level))
+
+    def _move_clear(self, ped, dx: float, dy: float) -> None:
+        """Move by (dx, dy) unless that ends in a building; then slide along the free axis, or stay."""
+        for mx, my in ((dx, dy), (dx, 0.0), (0.0, dy)):
+            if (mx or my) and not self._blocked(ped, ped.x + mx, ped.y + my):
+                ped.x += mx
+                ped.y += my
+                return
+
+    def check_player_avoidance(self, player_car: Car, dt: float, rebuild: bool = True) -> bool:
         """Detect close approach and trigger pedestrian or cyclist avoidance."""
+        if rebuild:  # update() rebuilt it already this tick
+            self.rebuild_spatial_grid()
+        was_dodging = set()
+        for ped in self.pedestrians:  # timers and dodge motion only
+            if getattr(ped, "is_walking_to_taxi_stop", False):
+                continue
+            if ped.curse_timer > 0.0:
+                ped.curse_timer = max(0.0, ped.curse_timer - dt)
+            if ped.dodge_timer > 0.0:
+                was_dodging.add(id(ped))
+                ped.dodge_timer = max(0.0, ped.dodge_timer - dt)
+                self._move_clear(ped, ped.dodge_vx * dt, ped.dodge_vy * dt)
+
         car_speed = player_car.speed
         car_moving = abs(car_speed) > 1.5
         # The way the taxi is actually going: backwards when reversing.
         travel = 1.0 if car_speed >= 0.0 else -1.0
-        car_dir_x = math.cos(player_car.heading) * travel
-        car_dir_y = -math.sin(player_car.heading) * travel
-        car_perp_x = math.sin(player_car.heading)
-        car_perp_y = -math.cos(player_car.heading)
+        frame = (
+            player_car.x, player_car.y, car_moving,
+            math.cos(player_car.heading) * travel, math.sin(player_car.heading) * travel,
+            math.sin(player_car.heading), -math.cos(player_car.heading),
+        )
+        # 3.5 m ahead and the 1.25 m touch, plus the dodge step since the grid was built
+        query_m = AVOID_QUERY_M + getattr(player_car, "length_m", 4.5) / 2.0 + 3.5 * dt
+        car_plane = self._plane(player_car)
         cyclist_collision = False
-
-        for ped in self.pedestrians:
-            if getattr(ped, "is_walking_to_taxi_stop", False):
+        for ped in self.nearby_pedestrians_at(player_car.x, player_car.y, query_m):
+            if getattr(ped, "is_walking_to_taxi_stop", False) or self._plane(ped) != car_plane:
                 continue
-            was_dodging = ped.dodge_timer > 0.0
-            # Update timers
-            if ped.curse_timer > 0.0:
-                ped.curse_timer = max(0.0, ped.curse_timer - dt)
-            if ped.dodge_timer > 0.0:
-                ped.dodge_timer = max(0.0, ped.dodge_timer - dt)
-                ped.x += ped.dodge_vx * dt
-                ped.y += ped.dodge_vy * dt
-
-            dx = ped.x - player_car.x
-            dy = ped.y - player_car.y
-            dist_sq = dx * dx + dy * dy
-
-            # Distance along the taxi's travel and lateral offset across its width
-            long_dist = dx * car_dir_x + dy * car_dir_y
-            lat_offset = abs(dx * car_perp_x + dy * car_perp_y)
-
-            # The taxi driving at them, near, in its path: the only reason to curse
-            is_directly_ahead = (
-                car_moving
-                and 0.0 < long_dist < 3.5  # Only when close ahead (within 3.5m)
-                and lat_offset < 1.8       # Within vehicle width corridor
-            )
-            is_too_close = dist_sq < (1.25 * 1.25)  # Physical touch danger distance
-
-            if is_directly_ahead or is_too_close:
-                dist = math.sqrt(dist_sq) or 1.0
-                to_ped_x = dx / dist
-                to_ped_y = dy / dist
-
-                side_sign = 1.0 if (dx * car_perp_x + dy * car_perp_y) >= 0 else -1.0
-                dodge_fx = to_ped_x * 0.3 + car_perp_x * side_sign * 1.0
-                dodge_fy = to_ped_y * 0.3 + car_perp_y * side_sign * 1.0
-                mag = math.hypot(dodge_fx, dodge_fy) or 1.0
-
-                dodge_speed = 3.5
-                ped.dodge_vx = (dodge_fx / mag) * dodge_speed
-                ped.dodge_vy = (dodge_fy / mag) * dodge_speed
-                ped.dodge_timer = 0.4
-                if getattr(ped, "is_cyclist", False) and not was_dodging:
-                    cyclist_collision = True
-
-                # Merely close (a stopped or passing taxi): step aside, no cursing.
-                if is_directly_ahead and ped.curse_timer <= 0.0:
-                    self.curses.append((ped.x, ped.y))  # for the sound, drained by the simulation
-                    ped.curse_timer = 2.0
-                    ped.curse_text = random.choice(CURSE_SYMBOLS)
-
+            if self._avoid_trigger(ped, frame, id(ped) in was_dodging):
+                cyclist_collision = True
         return cyclist_collision
+
+    def _avoid_trigger(self, ped, frame, was_dodging: bool) -> bool:
+        """Start a dodge (and maybe a curse) when the taxi is close; True for a cyclist's first hit."""
+        car_x, car_y, car_moving, car_dir_x, car_dir_y, car_perp_x, car_perp_y = frame
+        dx = ped.x - car_x
+        dy = ped.y - car_y
+        dist_sq = dx * dx + dy * dy
+
+        # Distance along the taxi's travel and lateral offset across its width
+        long_dist = dx * car_dir_x + dy * car_dir_y
+        lat_offset = abs(dx * car_perp_x + dy * car_perp_y)
+
+        # The taxi driving at them, near, in its path: the only reason to curse
+        is_directly_ahead = (
+            car_moving
+            and 0.0 < long_dist < 3.5  # Only when close ahead (within 3.5m)
+            and lat_offset < 1.8       # Within vehicle width corridor
+        )
+        is_too_close = dist_sq < (1.25 * 1.25)  # Physical touch danger distance
+        if not (is_directly_ahead or is_too_close):
+            return False
+        dist = math.sqrt(dist_sq) or 1.0
+        to_ped_x = dx / dist
+        to_ped_y = dy / dist
+
+        side_sign = 1.0 if (dx * car_perp_x + dy * car_perp_y) >= 0 else -1.0
+        dodge_fx = to_ped_x * 0.3 + car_perp_x * side_sign * 1.0
+        dodge_fy = to_ped_y * 0.3 + car_perp_y * side_sign * 1.0
+        mag = math.hypot(dodge_fx, dodge_fy) or 1.0
+
+        dodge_speed = 3.5
+        ped.dodge_vx = (dodge_fx / mag) * dodge_speed
+        ped.dodge_vy = (dodge_fy / mag) * dodge_speed
+        ped.dodge_timer = 0.4
+
+        # Merely close (a stopped or passing taxi): step aside, no cursing.
+        if is_directly_ahead and ped.curse_timer <= 0.0:
+            self.curses.append((ped.x, ped.y))  # for the sound, drained by the simulation
+            ped.curse_timer = 2.0
+            ped.curse_text = random.choice(CURSE_SYMBOLS)
+        return getattr(ped, "is_cyclist", False) and not was_dodging
+
+    def _separate_pedestrians(self, dt: float) -> None:
+        """Push overlapping walkers apart, half the overlap each (scenario 7); never into a building."""
+        if not can_collide(Category.PEDESTRIAN, Category.PEDESTRIAN):
+            return
+        reach = 2 * max((p.radius_m for p in self.pedestrians), default=0.0)
+        walkers = sorted((p for p in self.pedestrians if p.state in _SEPARATED_STATES and p.activity is None
+                          and getattr(p, "held_by", None) is None), key=_x_of)
+        # Sweep along x (one C sort): each walker meets only those within `reach` in x.
+        n = len(walkers)
+        for i, p in enumerate(walkers):
+            j = i + 1
+            while j < n and walkers[j].x - p.x < reach:
+                q = walkers[j]
+                j += 1
+                if abs(q.y - p.y) >= reach or self._plane(p) != self._plane(q):
+                    continue
+                a, b = (p, q) if id(p) < id(q) else (q, p)  # lower id first
+                depth = circle_hits_circle(a.x, a.y, a.radius_m, b.x, b.y, b.radius_m)
+                if depth > 0.0:
+                    self._push_apart(a, b, depth)
+
+    def _push_apart(self, a, b, depth: float) -> None:
+        dist = math.hypot(b.x - a.x, b.y - a.y)
+        nx, ny = ((b.x - a.x) / dist, (b.y - a.y) / dist) if dist > 1e-9 else (1.0, 0.0)
+        # ponytail: a fixed sidestep (as much again, sideways) so head-on walkers pass instead of stalling
+        half = depth / 2.0
+        px, py = (nx - ny) * half, (ny + nx) * half
+        self._move_clear(a, -px, -py)
+        self._move_clear(b, px, py)
 
     def update(
         self,
@@ -2953,7 +3047,10 @@ class PedestrianManager:
 
         # Check interaction and dodging with player car
         stage_started = (time.perf_counter(), time.thread_time())
-        cyclist_collision = self.check_player_avoidance(player_car, dt)
+        self.rebuild_spatial_grid()
+        self._record("pedestrians:grid", stage_started)
+        stage_started = (time.perf_counter(), time.thread_time())
+        cyclist_collision = self.check_player_avoidance(player_car, dt, rebuild=False)
         self._record("pedestrians:avoidance", stage_started)
         stage_started = (time.perf_counter(), time.thread_time())
 
@@ -3260,5 +3357,8 @@ class PedestrianManager:
                 ped.lod_update_due = False
                 ped.lod_update_dt = 0.0
         self._record("pedestrians:movement", stage_started)
+        stage_started = (time.perf_counter(), time.thread_time())
+        self._separate_pedestrians(dt)
+        self._record("pedestrians:separation", stage_started)
 
         return cyclist_collision

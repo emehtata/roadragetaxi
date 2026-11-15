@@ -448,6 +448,8 @@ def main(argv=None) -> int:
     totals = [sum(v for k, v in t.get("static_index", {}).items() if k in ("build", "update", "query")) for t in ticks]
     cpu_totals = [sum(v for k, v in t.get("static_index", {}).items() if k in ("build_cpu", "update_cpu", "query_cpu"))
                   for t in ticks]
+    ped_totals = [sum(t.get("ped_internal", {}).get(n, 0.0)
+                      for n in ("pedestrians:grid", "pedestrians:avoidance", "pedestrians:separation")) for t in ticks]
     waits = {}
     for t in ticks:
         waits.setdefault(",".join(t["background"]) or "-", []).append(t["wall"] - t["cpu"])
@@ -479,6 +481,14 @@ def main(argv=None) -> int:
             name: round(sum(t["phases"].get(name, (0.0, 0.0))[0] for t in ticks) / max(1, len(ticks)), 4)
             for name in sorted({n for t in ticks for n in t["phases"] if n.startswith("taxi.check_") or n == "protocol._knocked_trees"})}
         | {"collisions_section": round(sum(t.get("sim_sections", {}).get("collisions", 0.0) for t in ticks) / max(1, len(ticks)), 4)},
+        # collision spec phase 5 budget: pedestrian grid + avoidance + separation per tick
+        "ped_contact_ms": {
+            **{name: {"p50": pct(v, .5, 3), "p99": pct(v, .99, 3)}
+               for name in ("pedestrians:grid", "pedestrians:avoidance", "pedestrians:separation")
+               for v in [[t.get("ped_internal", {}).get(name, 0.0) for t in ticks]]},
+            "per_tick": {"p50": pct(ped_totals, .5, 3), "p99": pct(ped_totals, .99, 3), "max": round(max(ped_totals, default=0.0), 3)},
+            "pedestrians_max": max((t.get("population", {}).get("pedestrians", 0) for t in ticks), default=0),
+        },
         **({"static_index_ms": {
             **{name: {"p50": pct(v, .5, 3), "p99": pct(v, .99, 3), "max": round(max(v, default=0.0), 3), "ticks": sum(x > 0 for x in v)}
                for name in ("build", "update", "unload", "diff", "query", "build_cpu", "update_cpu", "unload_cpu", "diff_cpu", "query_cpu")

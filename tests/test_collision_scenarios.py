@@ -22,7 +22,8 @@ def test_matrix_symmetric():
             assert can_collide(a, b) == can_collide(b, a), (a, b)
     for b in (C.VEHICLE, C.PEDESTRIAN, C.ANIMAL, *SOLID_STATIC):
         assert can_collide(C.VEHICLE, b)
-    assert {b for b in cats if can_collide(C.PEDESTRIAN, b)} == {C.VEHICLE, C.BUILDING, C.BARRIER}
+    # Phase 5 amendment: crowds stop walking through each other (PEDESTRIAN with PEDESTRIAN).
+    assert {b for b in cats if can_collide(C.PEDESTRIAN, b)} == {C.VEHICLE, C.PEDESTRIAN, C.BUILDING, C.BARRIER}
     for a in SOLID_STATIC:
         for b in SOLID_STATIC:
             assert not can_collide(a, b)
@@ -383,3 +384,205 @@ def test_autofetch_unload_hands_over_the_removed():
     building = Building(points_m=_STRADDLE)
     manager._notify_unloaded("buildings", [building])
     assert calls == [("buildings", [building])]
+
+
+# Phase 5: pedestrians through their own grid, separation and walls (scenarios 5, 7, 8).
+import random  # noqa: E402
+
+from theroadragetrip.osm import Way  # noqa: E402
+from theroadragetrip.pedestrian import Pedestrian, CURSE_SYMBOLS  # noqa: E402
+
+_FOOTWAY = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5)
+
+
+def _ped(x, y, way=_FOOTWAY, direction=1):
+    return Pedestrian(x, y, 0.0 if direction == 1 else math.pi, 1.4, 1.4, way, 0, direction, (255, 0, 0))
+
+
+def _old_avoidance(peds, curses, player_car, dt):
+    """A reference copy of the pre-phase-5 loop over every pedestrian."""
+    car_speed = player_car.speed
+    car_moving = abs(car_speed) > 1.5
+    travel = 1.0 if car_speed >= 0.0 else -1.0
+    car_dir_x = math.cos(player_car.heading) * travel
+    # Car forward is (cos, sin) (physics.py); the old loop's -sin skewed this frame off the axes
+    # (a trigger 20 m away at 45 degrees), which no bounded query can reproduce: fixed in both.
+    car_dir_y = math.sin(player_car.heading) * travel
+    car_perp_x = math.sin(player_car.heading)
+    car_perp_y = -math.cos(player_car.heading)
+    cyclist_collision = False
+    for ped in peds:
+        if getattr(ped, "is_walking_to_taxi_stop", False):
+            continue
+        was_dodging = ped.dodge_timer > 0.0
+        if ped.curse_timer > 0.0:
+            ped.curse_timer = max(0.0, ped.curse_timer - dt)
+        if ped.dodge_timer > 0.0:
+            ped.dodge_timer = max(0.0, ped.dodge_timer - dt)
+            ped.x += ped.dodge_vx * dt
+            ped.y += ped.dodge_vy * dt
+        dx, dy = ped.x - player_car.x, ped.y - player_car.y
+        dist_sq = dx * dx + dy * dy
+        long_dist = dx * car_dir_x + dy * car_dir_y
+        lat_offset = abs(dx * car_perp_x + dy * car_perp_y)
+        is_directly_ahead = car_moving and 0.0 < long_dist < 3.5 and lat_offset < 1.8
+        if is_directly_ahead or dist_sq < 1.25 * 1.25:
+            dist = math.sqrt(dist_sq) or 1.0
+            side_sign = 1.0 if (dx * car_perp_x + dy * car_perp_y) >= 0 else -1.0
+            fx = dx / dist * 0.3 + car_perp_x * side_sign
+            fy = dy / dist * 0.3 + car_perp_y * side_sign
+            mag = math.hypot(fx, fy) or 1.0
+            ped.dodge_vx, ped.dodge_vy, ped.dodge_timer = fx / mag * 3.5, fy / mag * 3.5, 0.4
+            if getattr(ped, "is_cyclist", False) and not was_dodging:
+                cyclist_collision = True
+            if is_directly_ahead and ped.curse_timer <= 0.0:
+                curses.append((ped.x, ped.y))
+                ped.curse_timer = 2.0
+                ped.curse_text = random.choice(CURSE_SYMBOLS)
+    return cyclist_collision
+
+
+def test_taxi_avoidance_uses_pedestrian_grid():
+    manager = PedestrianManager([_FOOTWAY], target_count=0)
+    manager.pedestrians = [_ped(1000.0 + i * 3.0, 500.0) for i in range(500)]
+    calls = []
+    original = manager._avoid_trigger
+    manager._avoid_trigger = lambda *a: (calls.append(a), original(*a))[1]
+    manager.check_player_avoidance(Car(x=0.0, y=0.0, heading=0.0, speed=10.0), 1.0 / 30.0)
+    assert calls == []
+
+
+def _scenario5(level):
+    manager = PedestrianManager([_FOOTWAY], target_count=0)
+    ped = _ped(20.0, 0.0)
+    ped.map_level = level
+    manager.pedestrians = [ped]
+    car, dt, started = Car(x=0.0, y=0.0, heading=0.0, speed=10.0), 1.0 / 30.0, None
+    for tick in range(120):
+        car.x += car.speed * dt
+        manager.check_player_avoidance(car, dt)
+        if started is None and ped.dodge_timer > 0.0:
+            started = tick
+    return manager, ped, car, started
+
+
+def test_scenario5_taxi_approaches_pedestrian():
+    manager, ped, car, started = _scenario5(0)
+    assert started == 49  # the tick the old full scan started the dodge (car 3.33 m short)
+    corners = get_oriented_box_corners(car.x, car.y, car.heading, car.length_m, car.width_m)
+    assert not point_in_polygon(ped.x, ped.y, corners)
+    assert len(manager.curses) == 1
+
+
+def test_scenario5_other_level_no_dodge():
+    manager, ped, _, started = _scenario5(-1)
+    assert started is None and manager.curses == [] and (ped.x, ped.y) == (20.0, 0.0)
+
+
+def test_scenario7_pedestrians_cross_without_overlap():
+    random.seed(7)
+    way = Way(points_m=[(0.0, 0.0), (20.0, 0.0)], highway="footway", half_width_m=1.5)
+    manager = PedestrianManager([way], target_count=0)
+    a, b = _ped(2.0, 0.0, way, 1), _ped(18.0, 0.0, way, -1)
+    b.segment_idx = 0
+    for p in (a, b):
+        p.lateral_speed_mps = 0.0  # both stay on the one line
+    manager.pedestrians = [a, b]
+    manager._consider_activities = lambda: None  # just walking: no jog or bench picked up mid-test
+    far = Car(x=10.0, y=30.0, heading=0.0, speed=0.0)  # parked nearby: nobody despawns
+    closest, reached = 99.0, set()
+    for _ in range(600):
+        manager.update(far, 1.0 / 30.0)
+        closest = min(closest, math.hypot(a.x - b.x, a.y - b.y))
+        if a.x > 19.0:
+            reached.add("a")
+        if b.x < 1.0:
+            reached.add("b")
+    assert closest >= 2 * a.radius_m - 0.05
+    assert reached == {"a", "b"}
+
+
+_WALL = [(15.0, -6.0), (25.0, -6.0), (25.0, -1.0), (15.0, -1.0)]
+
+
+def _pedestrians_by_wall(with_index):
+    wall = Building(points_m=list(_WALL), bbox=(15.0, -6.0, 25.0, -1.0))
+    manager = PedestrianManager([_FOOTWAY], target_count=0)
+    if with_index:
+        taxi = TaxiManager(ways=[])
+        taxi.static_index.sync("buildings", [wall], Category.BUILDING)
+        manager.static_index = taxi.static_index
+    else:
+        manager.set_venue_buildings([wall])
+    return manager
+
+
+def test_scenario8_pedestrian_dodge_stops_at_wall():
+    for with_index in (True, False):
+        manager = _pedestrians_by_wall(with_index)
+        ped = _ped(20.0, -0.5)  # the dodge goes to the taxi's right: into the wall
+        manager.pedestrians = [ped]
+        car, dt = Car(x=10.0, y=0.0, heading=0.0, speed=10.0), 1.0 / 30.0
+        for _ in range(40):
+            car.x += car.speed * dt
+            manager.check_player_avoidance(car, dt)
+            assert not point_in_polygon(ped.x, ped.y, _WALL), with_index
+        assert ped.x != 20.0  # it slid along the wall
+        # Pushed toward the wall by an overlapping neighbour: stays out too.
+        manager = _pedestrians_by_wall(with_index)
+        a, b = _ped(20.0, -0.9), _ped(20.0, -0.5)
+        manager.pedestrians = [a, b]
+        manager.rebuild_spatial_grid()
+        manager._separate_pedestrians(dt)
+        assert not point_in_polygon(a.x, a.y, _WALL) and not point_in_polygon(b.x, b.y, _WALL), with_index
+
+
+def test_avoidance_identical_to_scan():
+    rng = random.Random(5)
+    poses = [(rng.uniform(-8.0, 8.0), rng.uniform(-8.0, 8.0), rng.random() < 0.2, rng.random() < 0.3) for _ in range(50)]
+
+    def crowd():
+        peds = []
+        for x, y, cyclist, dodging in poses:
+            p = _ped(x * 3.0, y * 3.0)  # spread out: no separation contacts
+            p.is_cyclist = cyclist
+            if dodging:
+                p.dodge_timer, p.dodge_vx, p.curse_timer = 0.2, 1.0, 0.5
+            peds.append(p)
+        return peds
+
+    manager = PedestrianManager([_FOOTWAY], target_count=0)
+    manager.pedestrians, reference, ref_curses = crowd(), crowd(), []
+    dt = 1.0 / 30.0
+    for tick in range(60):
+        car = Car(x=-30.0 + tick, y=tick * 0.3, heading=0.1 * tick, speed=10.0 if tick % 7 else -4.0)
+        random.seed(tick)
+        got = manager.check_player_avoidance(car, dt)
+        random.seed(tick)
+        want = _old_avoidance(reference, ref_curses, car, dt)
+        assert got == want
+    fields = lambda p: (p.x, p.y, p.dodge_vx, p.dodge_vy, p.dodge_timer, p.curse_timer, p.curse_text)
+    assert [fields(p) for p in manager.pedestrians] == [fields(p) for p in reference]
+    assert manager.curses == ref_curses
+
+
+def test_taxi_dodge_respects_way_layer():
+    deck = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5, layer=1)
+    for car_layer, dodger in ((1, "deck"), (0, "footway")):
+        manager = PedestrianManager([_FOOTWAY], target_count=0)
+        walkers = {"deck": _ped(20.0, 0.0, deck), "footway": _ped(20.0, 0.0)}
+        manager.pedestrians = list(walkers.values())
+        car = Car(x=17.0, y=0.0, heading=0.0, speed=10.0)
+        car.layer = car_layer
+        manager.check_player_avoidance(car, 1.0 / 30.0)
+        assert {k for k, p in walkers.items() if p.dodge_timer > 0.0} == {dodger}
+
+
+def test_separation_only_on_one_layer():
+    deck = Way(points_m=[(0.0, 0.0), (100.0, 0.0)], highway="footway", half_width_m=1.5, layer=1)
+    manager = PedestrianManager([_FOOTWAY], target_count=0)
+    a, b = _ped(20.0, 0.0, deck), _ped(20.2, 0.0)
+    manager.pedestrians = [a, b]
+    manager.rebuild_spatial_grid()
+    manager._separate_pedestrians(1.0 / 30.0)
+    assert (a.x, a.y, b.x, b.y) == (20.0, 0.0, 20.2, 0.0)

@@ -28,7 +28,7 @@ _SOLID = Category.VEHICLE | Category.PEDESTRIAN | Category.ANIMAL | Category.BUI
 _NONE = Category(0)
 COLLIDES: dict[Category, Category] = {
     Category.VEHICLE: _SOLID,
-    Category.PEDESTRIAN: Category.VEHICLE | Category.BUILDING | Category.BARRIER,
+    Category.PEDESTRIAN: Category.VEHICLE | Category.PEDESTRIAN | Category.BUILDING | Category.BARRIER,
     Category.ANIMAL: Category.VEHICLE,
     Category.BUILDING: Category.VEHICLE | Category.PEDESTRIAN,
     Category.POST: Category.VEHICLE,
@@ -79,6 +79,11 @@ def box_hits_polyline(corners: Sequence[Point], points: Sequence[Point]) -> bool
         point_in_polygon(a[0], a[1], corners) or any(segments_intersect(a, b, c, d) for c, d in edges)
         for a, b in zip(points, points[1:])
     )
+
+
+def circle_hits_circle(ax, ay, ar, bx, by, br) -> float:
+    """Overlap depth of two circles; 0 when apart."""
+    return max(0.0, ar + br - math.hypot(bx - ax, by - ay))
 
 
 def post_box_depth(px, py, radius, x, y, heading, length, width) -> float:

@@ -231,6 +231,79 @@ Tests:
 Out of scope: NPC vehicles and pedestrians querying the index (phases 5, 6), the vehicle grid (dynamic, it stays as it is), roadworks and
 bridge edges in the index, and the client-side chunk streaming.
 
+## Phase 5 (full): vehicle and pedestrian contact through the vehicle grid
+Goal: the taxi finds pedestrians and cyclists through a per-tick dynamic SpatialWayGrid (the same pattern as the NPC
+vehicle grid) instead of `check_player_avoidance` looping over every pedestrian. Add pedestrian-vs-pedestrian and
+pedestrian-vs-building contact. Covers scenarios 5, 7 and 8 of section 10. Today's dodge, curse and cyclist-hit results stay identical.
+
+Current state: pedestrian.py:2715 `check_player_avoidance` loops over all `self.pedestrians`. In that loop it also ticks
+`curse_timer`/`dodge_timer` and applies the dodge velocity. Pedestrians have no grid. NPC vehicles use `NPCManager.spatial_grid`
+(`rebuild_spatial_grid` refreshes the point bbox, then `nearby_vehicles_at`). The pedestrian `_building_grid` is a venue-built dict grid.
+
+Files:
+- `src/theroadragetrip/pedestrian.py` `PedestrianManager`:
+  - `self.spatial_grid = SpatialWayGrid(10.0, map_level=None)` and `def rebuild_spatial_grid(self) -> None`. It works like
+    `NPCManager.rebuild_spatial_grid`: refresh `ped.bbox`, then one `rebuild`. It runs once per `update`, after the despawn filter and
+    before avoidance. That is O(n) inserts and no per-pair work. It is the only pedestrian grid. Do not add a new class.
+  - `def nearby_pedestrians_at(self, x, y, radius_m) -> list` returns `spatial_grid.ways_in_rect(...)` (stable order).
+  - Split `check_player_avoidance`. Timer and dodge-motion ticking stays a plain loop. The taxi trigger test runs only on
+    `nearby_pedestrians_at(car.x, car.y, AVOID_QUERY_M)`. `AVOID_QUERY_M = 3.5 + car half-length + 1.0` covers the 3.5 m ahead and 1.25 m touch rules.
+    The thresholds, dodge vector, speed 3.5, timer 0.4, curse rule and the `cyclist_collision` return do not change.
+  - `def _separate_pedestrians(self, dt) -> None` (scenario 7): each walking pedestrian queries `nearby_pedestrians_at(x, y, 2 * radius_m)`.
+    Pairs whose circles overlap (`radius_m`, default 0.45) are pushed apart by half the overlap each, along the centre line.
+    Only pairs with `can_collide(PEDESTRIAN, PEDESTRIAN)` are handled. The matrix gets PEDESTRIAN|PEDESTRIAN, and the phase 1 matrix test is
+    updated (amendment: crowds stop walking through each other). Pairs must also pass `same_plane`. Skip pedestrians that are held, seated or in
+    an activity (ice_skating keeps its own `collide`). Each pair is handled once (lower id first).
+  - Scenario 8: the push and dodge steps are rejected when the new point is inside a building. Use `static_index.query(x, y, radius_m, BUILDING, level=ped level)`
+    plus `point_in_polygon` from the phase 2 helpers. In that case the pedestrian stays put, and dodges slide along the other axis if that axis is free.
+    `static_index` is the taxi's `StaticObstacleIndex`, handed in by world_loader (a reference, not a second index). With no index, fall back to `_point_inside_building`.
+- `src/theroadragetrip/collision.py`: add `def circle_hits_circle(ax, ay, ar, bx, by, br) -> float` (overlap depth, 0 when apart). Taxi contact stays
+  the existing trigger, so `post_box_depth` is not needed here.
+- `tools/bench_map_jitter.py`: report `ped_internal` `pedestrians:grid`, `pedestrians:avoidance` and `pedestrians:separation` (they already go through `_record`).
+
+Must stay identical: for the same pedestrians and car, every pedestrian's dodge_vx/vy, dodge_timer, curse_timer and `curses` entries, and the return value,
+for pedestrians more than 2 * radius from any other pedestrian (separation only touches overlapping pairs). Existing tests in
+tests/test_pedestrians.py (dodge, curse, cyclist) and test_cyclists.py pass unedited. Nothing new is sent to Godot. Python stays authoritative.
+
+Acceptance:
+1. `check_player_avoidance` reads `self.pedestrians` only for timer ticking. The trigger test runs on grid candidates (asserted by a spy: with 500 far pedestrians, 0 trigger evaluations).
+2. Scenario 5: a taxi at 10 m/s heads at a pedestrian 20 m ahead. The dodge starts on the same tick as before (the expected tick is recorded), the pedestrian ends outside the taxi's box,
+   and the curse is logged once. A pedestrian one map level below gets no dodge.
+3. Scenario 7: two pedestrians walk head-on along one line at 1.4 m/s. Their centres never come closer than `2 * radius_m - 0.05` m, and both reach their targets.
+4. Scenario 8: a pedestrian dodging or being pushed toward a square footprint never has its centre inside it, with or without the index.
+5. Budget (PBF bench at 69 m/s, the phase 4 drive, about 300 pedestrians): grid + avoidance + separation <= 0.40 ms per tick at p50 and <= 1.2 ms at p99.
+   Interleaved A/B against phase 4 (7 runs, first pair discarded) is reported as a check only. The absolute budget decides. Record both in Progress.
+6. Full `pytest` and the Godot tests are green, nothing deselected.
+
+Tests (tests/test_collision_scenarios.py, placed poses, fixed seed, no map load):
+- test_taxi_avoidance_uses_pedestrian_grid (fails today: the spy counts every pedestrian)
+- test_scenario5_taxi_approaches_pedestrian, test_scenario5_other_level_no_dodge
+- test_scenario7_pedestrians_cross_without_overlap (fails today: their centres pass through each other)
+- test_scenario8_pedestrian_dodge_stops_at_wall (fails today: the dodge velocity moves the pedestrian into the footprint)
+- test_avoidance_identical_to_scan: 50 random pedestrians, fixed seed; the grid path's results equal a reference copy of the old loop.
+
+Amendments (2026-11-15, after implementation):
+- Dodge direction, a deliberate bug fix. HEAD built the taxi's forward vector as `(cos h, -sin h)`, but the car moves along `(cos h, sin h)`
+  (physics.py). At diagonal headings HEAD therefore dodged the wrong pedestrians, for example one 21 m away at 0.79 rad. The fix uses `(cos h, sin h)`.
+  The only equivalence with HEAD is at headings 0 and pi, where both vectors agree. The reference copy of the old loop in
+  test_avoidance_identical_to_scan uses the fixed vector, so "identical" there means identical to the old loop with the fix.
+- Sideways step, the chosen behaviour. Every overlapping pair, not only head-on pairs, gets a sideways step as large as its push along the centre line,
+  so each walker moves about 0.7 x the overlap: half the overlap along the line plus the same amount sideways. Without it, walkers meeting head-on on one line stall.
+  The code keeps the `ponytail:` comment on this step.
+- Separation sorts the separable walkers by x (one C sort of current positions) and sweeps: each walker meets only those within 2 x radius in x and y. No grid query per walker and no second spatial structure; the grid serves the taxi trigger. `rebuild_spatial_grid` fills the SpatialWayGrid's cells directly (point items, no padding, one cell each) with the same cells and insertion order as `rebuild`.
+- Map layers (section 8). A walker's layer is its way's `layer` (`ped.way.layer`, missing = 0), and its level is `map_level`. The taxi trigger runs only when the
+  car's `layer` and `map_level` both match the walker's. Separation pairs only walkers on the same layer and level. A walker under a bridge deck is not dodged or pushed
+  by a taxi on the deck, and the reverse. Tests: test_taxi_dodge_respects_way_layer, test_separation_only_on_one_layer.
+- Acceptance 5, measured after the layer filter and the allocation cuts. The PBF bench (finland-latest, 69 m/s, 120 s, 5 runs) carries 129-151 pedestrians, not 300.
+  Budget 0.40 ms p50 and 1.2 ms p99. Per-tick p50 0.040-0.043 ms; p99 0.272, 0.288, 0.213, 0.231, 0.246 ms (median 0.246, worst 0.288): pass with margin.
+  Earlier p99 spikes (1.0-1.25 ms in tester runs; grid p99 0.84, separation p99 0.81) came from the generic SpatialWayGrid insert per walker and the
+  per-walker cell-neighbour scan with list slices, which allocated O(n) objects per tick and stretched under GC and GIL waits from the background map threads;
+  Python GC alone added about 0.07 ms p99 in a microbench. Isolated per-tick maxima (0.8-3.6 ms) are single ticks below the p99 and are GIL waits.
+  Dense-crowd ceiling, a separate accepted limit: 300 dense walkers (synthetic, 150 x 120 m) take about 0.29 ms p50, 0.37 ms p99 per tick, and that is accepted.
+  The interleaved A/B against phase 4 was not run (a report-only check).
+
+Out of scope: NPC vehicles vs pedestrians (phase 6), merging the venue `_building_grid` (density and route uses) into the index, solid hit penalties for pedestrians, animals.
+
 ## Later phases (outline)
 2. Shared OBB-vs-polygon and circle-vs-box helpers in collision.py. Taxi, npc and trams use them. Scenarios 3, 4, 14.
 3. Move trees to the server: add trees to the taxi's post grid with the POST category, send `knocked_trees` in the protocol, and remove the collision from Godot `knock_trees` so Godot only draws it. Scenarios 4, 10.
@@ -247,3 +320,4 @@ Animals on the server (wildlife.gd is decoration), and roadworks geometry before
 - [x] Phase 1 (2026-11-14): collision.py, npc.py uses `same_plane`, tests/test_collision_scenarios.py (5 tests); full suite green
 - [x] Phase 2 (2026-11-14): `box_hits_polygon`, `box_hits_polyline`, `post_box_depth` in collision.py; taxi.py and trams.py use them (`_overlaps` deleted); 6 new tests; full suite green; bench_map_jitter.py times the taxi checks
 - [x] Phase 4 (2026-11-15): `StaticObstacleIndex` in collision.py over `SpatialWayGrid` (`remove`, insert order); taxi.py's 4 grids gone; autofetch hands unloaded objects to `StaticObstacleIndex.forget` (`unload_listeners`, registered in world_loader); 8 new tests; full suite green (3003 passed, 3 skipped). Bench (Oulu, Overpass cache, no local PBF here, 69 m/s, 120 s, 3 runs, `--compare-index`): static index p50 0.033 ms, p99 0.83-0.92 ms per tick (pass); unload 1.35-1.47 ms per unload tick, 0.93-1.00 ms per call, no id-set diffs (pass, budget 2.0). collisions_section vs phase 3 after `forget`: median ratio 1.016, 95% interval +-6.3% (wider than the +-5% target, so the absolute budgets decide; they pass: static index p50 0.033 ms, p99 ~0.9 ms; unload tick <= 1.51 ms; forget <= 0.95 ms per call).
+- [x] Phase 5 (2026-11-15): `PedestrianManager.spatial_grid` (10 m SpatialWayGrid, rebuilt once per update), `nearby_pedestrians_at`, avoidance trigger on grid candidates only, `_separate_pedestrians` (x-sorted sweep: each walker meets only those within 2 x radius in x and y, no grid query; the grid serves the taxi trigger only; half the overlap each plus an equal sidestep so head-on walkers pass), dodges and pushes rejected inside buildings (the taxi's `StaticObstacleIndex`, else `_point_inside_building`), `circle_hits_circle`, matrix PEDESTRIAN|PEDESTRIAN; 7 new tests, phase 1 matrix test amended; full suite green (3009 passed, 3 skipped), Godot tests 26/26. Fixed on the way: the avoidance forward vector was `(cos, -sin)` (skewed off the car's real `(cos, sin)` forward, triggering up to ~20 m away at diagonal headings; identical at 0 and pi); the taxi trigger also requires the same `map_level`. Bench (PBF finland-latest, 69 m/s, 120 s, ~129 pedestrians): grid + avoidance + separation p50 0.051 ms, p99 0.455 ms (pass, budget 0.40 / 1.2); Oulu Overpass cache runs before the separation rewrite: p50 0.07-0.10, p99 0.90-0.99. Synthetic 300 dense pedestrians: ~0.76 ms p50 (grid rebuild 0.28 + separation 0.42). Interleaved A/B vs phase 4 not run. After the layer filter (amendments): 3011 passed, 3 skipped; Godot 26/26; PBF rerun p50 0.064 ms, p99 0.879 ms, ~143 pedestrians. After the allocation cuts: 5 PBF runs, grid + avoidance + separation p50 0.040-0.043 ms, p99 0.213-0.288 ms (median 0.246 ms); tester's Oulu run p99 0.265 ms (pass, budget 0.40 / 1.2 ms).
