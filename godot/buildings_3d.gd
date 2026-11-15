@@ -390,6 +390,18 @@ func set_sky_color(color: Color) -> void:
 		material.set_shader_parameter("sky_horizon_color", color.lightened(0.2))
 
 
+## docs/specs/sun-moon-in-sky.md: the sky's sun and moon discs at the server's alt/az (not the
+## light's direction, which follows the moon at night).
+func set_sky_bodies(sun_alt: float, sun_az: float, moon_alt: float, moon_az: float, moon_illum: float) -> void:
+	if opaque:
+		var material: ShaderMaterial = _camera.environment.sky.sky_material
+		material.set_shader_parameter("sun_dir", Daylight.sun_direction(sun_alt, sun_az, -90.0))
+		material.set_shader_parameter("moon_dir", Daylight.sun_direction(moon_alt, moon_az, -90.0))
+		material.set_shader_parameter("moon_illumination", moon_illum)
+		material.set_shader_parameter("sun_visible", 1.0 if sun_alt > -0.833 else 0.0)
+		material.set_shader_parameter("moon_visible", 1.0 if moon_alt > 0.0 else 0.0)
+
+
 func set_cloud_cover(cover: float) -> void:
 	if opaque:
 		_camera.environment.sky.sky_material.set_shader_parameter("coverage", Daylight.cloud_coverage(cover))

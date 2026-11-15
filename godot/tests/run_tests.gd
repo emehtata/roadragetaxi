@@ -505,6 +505,7 @@ func test_minimap_is_exported() -> void:
 	check(FileAccess.get_file_as_string("res://finland_minimap.svg.import").contains('importer="keep"'),
 		"the Finland minimap SVG is exported as a file (Keep File import)")
 
+	test_sky_bodies_uniforms()
 
 ## Licensing: the attributions players must be able to find (LICENSE_AUDIT.md).
 func test_credits() -> void:
@@ -4601,3 +4602,20 @@ func test_precipitation_3d() -> void:
 	tests.run()
 	check(tests.failures == 0, "precipitation_3d: %d failures (see FAIL lines above)" % tests.failures)
 	tests.free()
+## docs/specs/sun-moon-in-sky.md: the sun and moon discs' uniforms follow the server's alt/az.
+func test_sky_bodies_uniforms() -> void:
+	var old_opaque: bool = B3.opaque
+	B3.opaque = true
+	var r: Node2D = B3.new()
+	r._ready()
+	r.set_sky_bodies(30.0, 180.0, 10.0, 90.0, 0.5)
+	var material: ShaderMaterial = r._camera.environment.sky.sky_material
+	check(Vector3(material.get_shader_parameter("sun_dir")).is_equal_approx(Daylight.sun_direction(30.0, 180.0)), "the sun disc follows the sun's alt/az")
+	check(Vector3(material.get_shader_parameter("moon_dir")).is_equal_approx(Daylight.sun_direction(10.0, 90.0)), "the moon disc follows the moon's alt/az")
+	check(is_equal_approx(material.get_shader_parameter("moon_illumination"), 0.5) and material.get_shader_parameter("sun_visible") == 1.0, "illumination and visibility are set")
+	r.set_sky_bodies(-5.0, 0.0, -2.0, 0.0, 0.5)
+	check(material.get_shader_parameter("sun_visible") == 0.0 and material.get_shader_parameter("moon_visible") == 0.0, "bodies below the horizon are hidden")
+	B3.opaque = old_opaque
+	r.free()
+
+

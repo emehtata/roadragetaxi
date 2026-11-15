@@ -8,6 +8,14 @@ uniform vec3 sky_horizon_color : source_color = vec3(0.646, 0.656, 0.67);
 uniform float coverage = 1.0;
 uniform vec2 wind_offset = vec2(0.0);
 uniform float energy = 1.0;
+// sun-moon-in-sky: Buildings3D.set_sky_bodies; discs 2 deg wide (0.53 enlarged for readability)
+uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
+uniform vec3 moon_dir = vec3(0.0, 1.0, 0.0);
+uniform float moon_illumination = 0.0;
+uniform float sun_visible = 0.0;
+uniform float moon_visible = 0.0;
+
+const float DISC_COS = 0.99985;  // cos(1 deg): the discs' radius
 
 const vec3 GROUND = vec3(0.2, 0.169, 0.133);
 
@@ -45,6 +53,19 @@ void sky() {
 		float lit = clamp(n - fbm(uv - LIGHT0_DIRECTION.xz * 0.15), 0.0, 1.0) * 4.0;
 		vec3 base = sky_horizon_color * 1.1;
 		vec3 cloud = base * mix(1.0, 0.6, thickness) + base * (lit + pow(sun, 6.0) * (1.0 - thickness)) * 0.25;
-		COLOR = mix(sky, cloud, density) * energy;
+		// the discs sit behind the clouds and vanish under overcast (cloud cover 0.9: coverage 0.125)
+		float clear = (1.0 - density) * smoothstep(0.125, 0.25, coverage);
+		float s = dot(EYEDIR, sun_dir);
+		sky = sky * energy + vec3(1.0, 0.95, 0.8) * (smoothstep(DISC_COS - 0.00002, DISC_COS, s) * 2.0 + pow(max(s, 0.0), 400.0) * 0.3) * sun_visible * clear;
+		float m = dot(EYEDIR, moon_dir);
+		if (m > DISC_COS - 0.00002 && moon_visible > 0.0) {
+			// lit side towards the sun; the terminator as a straight chord at the lit fraction
+			vec3 side = normalize(sun_dir - moon_dir * dot(sun_dir, moon_dir) + vec3(1e-4, 0.0, 0.0));
+			float u = dot(EYEDIR - moon_dir, side) / sqrt(1.0 - DISC_COS * DISC_COS);
+			float lit = smoothstep(1.0 - 2.0 * moon_illumination - 0.05, 1.0 - 2.0 * moon_illumination + 0.05, u);
+			vec3 moon = mix(sky + vec3(0.03), vec3(1.6, 1.58, 1.5), lit);
+			sky = mix(sky, moon, smoothstep(DISC_COS - 0.00002, DISC_COS, m) * clear);
+		}
+		COLOR = mix(sky, cloud * energy, density);
 	}
 }

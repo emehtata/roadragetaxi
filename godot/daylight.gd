@@ -131,8 +131,9 @@ static func moon_shadow(strength: float, artificial_light: float) -> float:
 
 
 ## A unit vector towards the sun in the 3D building view's axes.
-static func sun_direction(altitude_deg: float, azimuth_deg: float) -> Vector3:
-	var elevation := deg_to_rad(maxf(altitude_deg, SHADOW_MIN_ELEVATION_DEG))
+## `min_elevation_deg`: the shadows' floor; the sky's discs pass -90 (sun-moon-in-sky).
+static func sun_direction(altitude_deg: float, azimuth_deg: float, min_elevation_deg := SHADOW_MIN_ELEVATION_DEG) -> Vector3:
+	var elevation := deg_to_rad(maxf(altitude_deg, min_elevation_deg))
 	var azimuth := deg_to_rad(azimuth_deg)
 	return Vector3(sin(azimuth) * cos(elevation), sin(elevation), -cos(azimuth) * cos(elevation))
 

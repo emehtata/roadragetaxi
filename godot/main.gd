@@ -135,6 +135,7 @@ var _bench_left := 0.0
 var _bench_hide: PackedStringArray = []
 var _bench_pre_draw := 0  # --bench: when the renderer started this frame (usec)
 var override_altitude := NAN  # --sun-altitude
+var _sky_bodies_key := Transform2D(Vector2.INF, Vector2.INF, Vector2.INF)  # the sky discs' last (sun alt, az, moon alt, az, illumination)
 var override_azimuth := NAN  # --sun-azimuth (degrees from grid north), for the shadow checks
 var override_cloud := NAN  # --cloud-cover (0 clear .. 1 overcast)
 var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
@@ -1032,6 +1033,13 @@ func _present(state: Dictionary) -> void:
 		world_light.color = ambient
 	map_layer.set_light(lights, ambient)
 	map_layer.set_shop_lights(state.get("shop_lights", {}))
+	var sun_azimuth := Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth
+	var moon_azimuth := Daylight.moon_value(state, "moon_azimuth_deg", 180.0)
+	var moon_illumination := Daylight.moon_value(state, "moon_illumination", 0.0)
+	var sky_key := Transform2D(Vector2(altitude, sun_azimuth), Vector2(moon_altitude, moon_azimuth), Vector2(moon_illumination, 0.0))
+	if sky_key != _sky_bodies_key:  # sun-moon-in-sky: the discs, only when a value changed
+		_sky_bodies_key = sky_key
+		map_layer.set_sky_bodies(altitude, sun_azimuth, moon_altitude, moon_azimuth, moon_illumination)
 	var sun_strength := Daylight.sunlight(altitude, cloud)
 	if sun_strength > 0.01:
 		map_layer.set_celestial_light(altitude, Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth, sun_strength)
