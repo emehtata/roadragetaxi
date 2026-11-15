@@ -1,0 +1,102 @@
+{
+  "finding": "VQA-016",
+  "base_revision": "f36c14c9",
+  "variant": 4,
+  "strip_color": [
+    225,
+    230,
+    218
+  ],
+  "physical_checks": {
+    "original_max_sampled_gap_m_at_scale1": 0.094,
+    "new_outward_lift_m_at_scale1": 0.001,
+    "scales": [
+      0.6,
+      1,
+      1.2
+    ],
+    "details": [
+      0,
+      1
+    ],
+    "poses": [
+      "standing",
+      "standing_0",
+      "standing_1",
+      "sitting",
+      "riding",
+      "walk_0",
+      "walk_1",
+      "walk_2",
+      "walk_3",
+      "walk_4",
+      "walk_5",
+      "run_0",
+      "run_1",
+      "run_2",
+      "run_3",
+      "run_4",
+      "run_5"
+    ],
+    "focused_checks": 393,
+    "before_failures": 102,
+    "after_failures": 0,
+    "preservation_fingerprints": 66
+  },
+  "close_views": {
+    "before": "before/capture-results.json",
+    "after": "after/capture-results.json",
+    "panels_total": 96,
+    "inspected": true,
+    "detail_levels": [
+      0,
+      1
+    ],
+    "poses": [
+      "standing_0",
+      "standing_1",
+      "walk_1"
+    ],
+    "resolution": [
+      400,
+      340
+    ],
+    "renderer": "Forward+ Vulkan",
+    "adapter": "NVIDIA GeForce RTX 5060"
+  },
+  "source_before_sha256": "f0f9928495fec9726ede6b6875c53e33a8e5a1e25482d6ddea9c4dfe8979523e",
+  "source_after_sha256": "6115b95263bea8d1bd814e2e918a5dfde7fcb7e1aa8d5f535b326b509d3116ec",
+  "scenario_id": "vqa_reflective_strips_day",
+  "named_gameplay": {
+    "accepted": "gameplay/vqa_reflective_strips_day/2026-06-20T1500_20261115-202717_f36c14c9-dirty",
+    "status": "passed",
+    "errors": [],
+    "scene": {
+      "active_3d": true,
+      "chest_rect": [
+        506.946807861328,
+        359.359497070313,
+        71.7033996582031,
+        45.7322998046875
+      ],
+      "ground_m": 0.0,
+      "id": "vqa_reflective_0",
+      "model_y_m": 0.0480000004172325,
+      "person_rect": [
+        488.943115234375,
+        283.0517578125,
+        116.228088378906,
+        287.98876953125
+      ],
+      "pose": "standing_1",
+      "variant": 4
+    },
+    "inspected": true,
+    "excluded": [
+      {
+        "path": "gameplay/vqa_reflective_strips_day/2026-06-20T1500_20261115-202414_f36c14c9-dirty",
+        "reason": "stopped after persistent HUD overlap; no accepted screenshot"
+      }
+    ]
+  }
+}

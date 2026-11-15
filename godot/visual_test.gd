@@ -221,6 +221,14 @@ func _ready() -> void:
 		main.entities.extra_trains = [_lineup_train("train coach", coach[0], [coach[1]], coach[2], coach[1] * 0.5, LINEUP_LANE_M + 0.5)]
 	elif scenario.get("lineup", false):
 		main.entities.extra_npcs = _lineup()
+	if scenario.get("reflective_strips", false):
+		var at := _on_road(9.0, 0.9)
+		var id := ""
+		for i in 100:
+			id = "vqa_reflective_%d" % i
+			if absi(hash(id)) % 8 == 4: break
+		main.entities.extra_pedestrians = [{"id":id,"x":at.x,"y":at.y,"heading":float(scenario["pose"][2])+PI-0.25,
+			"color":[65,125,190],"radius_m":0.45,"gender":"female","animation_state":"standing","pose":"standing_1"}]
 	if scenario.get("coach_roof_vent", false):
 		var at := _on_road(18.0, 0.9)
 		main.entities.extra_trains = [{"id":"vqa_coach_vent","name":"train coach","width_m":2.89,"state":"STOPPED","speed":0.0,"line":"",
@@ -785,6 +793,50 @@ func _check_map(centre: Vector2) -> Array:
 				missing.append("lineup %s under the HUD at %s" % [row[0], rect])
 				_lineup_seen[key] = "under the HUD"
 				break
+	var reflective := {}
+	if scenario.get("reflective_strips", false):
+		var target: Dictionary = main.entities.extra_pedestrians[0]
+		var local := MapMath.point(main.entities.origin, float(target.x), float(target.y))
+		var layer = layer_3d_view()
+		var key := "p|%s|standing_1|1.00||4|0|1|0|0" % Color8(65,125,190).to_html(false)
+		if absi(hash(target.id)) % 8 != 4: missing.append("reflective target is not clothing variant 4")
+		var found := false
+		for pair: Array in ([] if layer == null else layer._car_nodes):
+			var node: MeshInstance3D = pair[0]
+			if not node.visible or Vector2(node.position.x,node.position.z).distance_to(local)>0.2: continue
+			found = true
+			if not layer._car_meshes.has(key) or node.mesh != layer._car_meshes[key][0]: missing.append("reflective target mesh has wrong variant/pose/detail/winter state")
+			if not MapChunkScript.outdoor_3d or not Buildings3D.opaque or layer._view.get_camera_3d()!=camera_3d or not layer._sprite.is_visible_in_tree() or not node.is_visible_in_tree() or node.layers & camera_3d.cull_mask==0:
+				missing.append("reflective target 3D view is not actively displayed")
+			if node.global_position.y + node.get_aabb().position.y < main.map_layer.deck_height(local,0,false)-0.02: missing.append("reflective target buried below terrain")
+			var forward := Vector3(cos(float(target.heading)),0,-sin(float(target.heading)))
+			if node.basis.x.dot(forward)<0.999 or forward.dot((camera_3d.global_position-node.global_position).normalized())<0.5: missing.append("reflective target chest does not face camera")
+			var rects := []
+			for box: AABB in [node.get_aabb(), AABB(Vector3(0.0,1.02,-0.20)*1.02,Vector3(0.21,0.28,0.40)*1.02)]:
+				var rect := Rect2()
+				for corner in 8:
+					var point := node.global_transform*box.get_endpoint(corner)
+					if not camera_3d.is_position_in_frustum(point): missing.append("reflective target outside frustum")
+					var pixel := camera_3d.unproject_position(point)
+					rect=Rect2(pixel,Vector2.ZERO) if corner==0 else rect.expand(pixel)
+				rects.append(rect)
+			if rects[0].size.y<100 or minf(rects[1].size.x,rects[1].size.y)<15: missing.append("reflective target/chest too small")
+			for panel: Rect2 in hud:
+				if panel.intersects(rects[0]): missing.append("reflective target under HUD %s / person %s" % [panel,rects[0]])
+			for footprint: PackedVector2Array in footprints:
+				if Geometry2D.is_point_in_polygon(local,footprint): missing.append("reflective target under building")
+			for other_pair: Array in layer._car_nodes:
+				var other: MeshInstance3D=other_pair[0]
+				if other==node or not other.visible or camera_3d.is_position_behind(other.global_position): continue
+				if camera_3d.global_position.distance_to(other.global_position)>=camera_3d.global_position.distance_to(node.global_position): continue
+				var occupied:=Rect2()
+				for corner in 8:
+					var pixel:=camera_3d.unproject_position(other.global_transform*other.get_aabb().get_endpoint(corner))
+					occupied=Rect2(pixel,Vector2.ZERO) if corner==0 else occupied.expand(pixel)
+				if occupied.intersects(rects[1]): missing.append("reflective chest obscured by nearer dynamic body")
+			reflective={"id":target.id,"variant":4,"pose":"standing_1","active_3d":true,"ground_m":main.map_layer.deck_height(local,0,false),"model_y_m":node.global_position.y,
+				"person_rect":[rects[0].position.x,rects[0].position.y,rects[0].size.x,rects[0].size.y],"chest_rect":[rects[1].position.x,rects[1].position.y,rects[1].size.x,rects[1].size.y]}
+		if not found: missing.append("expected reflective pedestrian not drawn")
 	var windscreen := {}
 	if scenario.has("windscreen_model") or scenario.has("two_wheeler_model") or scenario.get("coach_roof_vent", false):
 		var kind: String = "train_coach" if scenario.get("coach_roof_vent", false) else scenario.get("windscreen_model", scenario.get("two_wheeler_model", ""))
@@ -929,6 +981,7 @@ func _check_map(centre: Vector2) -> Array:
 			if absf(c[1] / c[0] - 1.0) > 0.1:
 				missing.append("camper drawn %.2f m, its row %.2f m (over 10 %%)" % [c[1], c[0]])
 	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count(), "scenery_in_view": seen}
+	if not reflective.is_empty(): _counts["reflective_strips"] = reflective
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
 	if not campers.is_empty():

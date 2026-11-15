@@ -79,3 +79,7 @@ regressions pass. All 48 comparison panels and a passing named flat-terrain
 Helsinki gameplay capture are inspected. Earlier failed attempts and a buried
 coach false positive are explicitly excluded. See
 [diagnosis, evidence and coverage](visual-quality-corrections/train-coach-roof-vent/README.md).
+
+## Reflective chest bands (VQA-016)
+
+Variant 4 now clips its existing pale bands from the actual jacket triangles, removing the fixed-plane gap while retaining the cached body/shadow path. [Diagnosis, checks and visual evidence](visual-quality-corrections/pedestrian-reflective-strips/README.md) include 393 focused checks with zero failures (102 original failures), 66 preservation fingerprints, all 96 inspected before/after panels and the inspected passing `vqa_reflective_strips_day` gameplay capture. The historical audit is unchanged.

@@ -1,0 +1,158 @@
+{
+  "camera": {
+    "position": [
+      -0.0125000001862645,
+      0.100000001490116
+    ],
+    "zoom": 3.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "f36c14c9-dirty",
+  "elapsed_s": 6.68315533333334,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 22.323,
+    "build_ms_total": 114.499,
+    "draw_calls": 859.0,
+    "far_lod_crowns_loaded": 21750,
+    "forest_chunks": 31,
+    "objects": 1865.0,
+    "place_ms_max": 35.587,
+    "primitives": 903108.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 266.234038352966,
+    "trees_loaded": 10875,
+    "video_memory_mb": 727.457885742188
+  },
+  "frames": {
+    "avg_fps": 95.0506314008304,
+    "avg_ms": 10.5207086503506,
+    "frames": 96,
+    "low_01pct_fps": 82.5000007867813,
+    "low_1pct_fps": 82.5000007867813,
+    "over_16ms": 0,
+    "over_33ms": 0,
+    "over_66ms": 0,
+    "p50_ms": 10.6060609817505,
+    "p95_ms": 10.6060609817505,
+    "p99_ms": 12.1212120056152,
+    "worst_ms": 12.1212120056152
+  },
+  "game_time": [
+    "2026-06-20",
+    54000.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 167
+  },
+  "render": {
+    "long_frames": [],
+    "state_timeline": {
+      "arrival_max_ms": 78.7819976806641,
+      "arrival_over_66ms": 1,
+      "arrival_p50_ms": 32.0460014343262,
+      "arrival_p95_ms": 41.9199981689453,
+      "arrival_p99_ms": 78.7819976806641,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 78.7819976806641,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.044361
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 33,
+      "tile_events": 0,
+      "underrun_episodes": 0,
+      "underruns": 0
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_reflective_strips_day",
+  "scene": {
+    "buildings_in_view": 79,
+    "chunks": 49,
+    "lamps_in_view": 111,
+    "reflective_strips": {
+      "active_3d": true,
+      "chest_rect": [
+        506.946807861328,
+        359.359497070313,
+        71.7033996582031,
+        45.7322998046875
+      ],
+      "ground_m": 0.0,
+      "id": "vqa_reflective_0",
+      "model_y_m": 0.0480000004172325,
+      "person_rect": [
+        488.943115234375,
+        283.0517578125,
+        116.228088378906,
+        287.98876953125
+      ],
+      "pose": "standing_1",
+      "variant": 4
+    },
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-corrections\\pedestrian-reflective-strips\\gameplay\\vqa_reflective_strips_day\\2026-06-20T1500_20261115-202717_f36c14c9-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-15T18:27:50Z",
+  "traffic": {
+    "moving_min": 9,
+    "npcs_max": 20,
+    "spawn_rejections": {
+      "cyclist_spawn_unsafe": 2.0,
+      "in_view": 1.0,
+      "share": {
+        "cyclist_spawn_unsafe": 0.666666666666667,
+        "in_view": 0.333333333333333
+      },
+      "total": 3.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": 2.555,
+    "x": 427897.3,
+    "y": 7210634.9
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-vyksq419",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.4,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 17.14,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      4.162,
+      -2.354
+    ]
+  }
+}

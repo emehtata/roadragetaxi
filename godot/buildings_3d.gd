@@ -1488,16 +1488,15 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 			_round_limb(out, knee, ankle, 0.073 * k, 0.046 * k, skin if shorts else trousers, 1 if shorts else 0, detail)
 			_round_part(out, ankle + Vector3(0.07, -0.003, 0.0) * k, Vector3(0.14, 0.077, 0.1) * k, Color8(42, 42, 46), 4, detail)  # chunky shoe, sole kept
 	var torso_y := 1.0965 + up + breath  # short round torso: 0.85 tall, its hem kept at 0.85
+	var torso_start: int = out["verts"].size()
 	_garment_torso(out, torso_y * k, k, fabric, jacket, (0.94 + 0.04 * (variant % 4)) * 1.15, detail, 0.85)
+	if style == 4:
+		_reflective_strips(out, torso_start, k, up + breath)
 	if skirt:
 		_garment_skirt(out, offset * k, k, fabric.darkened(0.08), detail)
 	if jacket:
 		_round_limb(out, Vector3(0.19, 0.93 + up, 0.0) * k, Vector3(0.19, 1.31 + up, 0.0) * k,
 			0.008 * k, 0.008 * k, fabric.darkened(0.22), 0, detail)
-	if style == 4:
-		for h in [1.03, 1.26]:
-			_round_limb(out, Vector3(0.19, h + up, -0.19) * k, Vector3(0.19, h + up, 0.19) * k,
-				0.015 * k, 0.015 * k, Color8(225, 230, 218), 0, detail)
 	for side: float in [-1.0, 1.0]:
 		var shoulder := Vector3(0.0, 1.3 + up + breath * 0.83, side * 0.215) * k
 		var elbow := Vector3(0.06 if pose == "sitting" else -side * 0.045, 1.08 + up, side * 0.245) * k
@@ -1996,6 +1995,23 @@ static func _round_limb(out: Dictionary, start: Vector3, finish: Vector3, start_
 			_tri(out, start, start + b * start_radius, start + a * start_radius, color, -direction, key)
 			_tri(out, finish, finish + a * end_radius, finish + b * end_radius, color, direction, key)
 	out["part_now"] = previous
+
+
+## Clip bands from the built jacket triangles so their ends follow both detail levels and breathing.
+static func _reflective_strips(out: Dictionary, torso_start: int, scale: float, offset: float) -> void:
+	var torso_end: int = out["verts"].size()
+	for h: float in [1.03, 1.26]:
+		for i in range(torso_start, torso_end, 3):
+			var triangle: PackedVector3Array = out["verts"].slice(i, i + 3)
+			if minf(triangle[0].x, minf(triangle[1].x, triangle[2].x)) < -0.00001: continue
+			for plane: Plane in [Plane(Vector3.UP, (h + offset + 0.015) * scale), Plane(Vector3.DOWN, -(h + offset - 0.015) * scale),
+					Plane(Vector3.BACK, 0.19 * scale), Plane(Vector3.FORWARD, 0.19 * scale)]:
+				triangle = Geometry3D.clip_polygon(triangle, plane)
+				if triangle.size() < 3: break
+			for j in range(1, triangle.size() - 1):
+				for key in ["verts", "shadow"]:
+					_tri(out, triangle[0] + Vector3.RIGHT * 0.001 * scale, triangle[j] + Vector3.RIGHT * 0.001 * scale,
+						triangle[j + 1] + Vector3.RIGHT * 0.001 * scale, Color8(225, 230, 218), Vector3.RIGHT, key)
 
 
 static func _garment_torso(out: Dictionary, centre_y: float, scale: float, color: Color, jacket: bool, build: float, detail: int, tall := 1.0) -> void:

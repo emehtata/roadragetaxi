@@ -310,6 +310,86 @@ func _person_skin(pose: String, keep: Callable) -> Array:
 	return out
 
 
+## VQA-016: distance to independently extracted jacket triangles, including strip ends and faces.
+func test_reflective_strips_follow_jacket() -> void:
+	var poses := ["standing", "standing_0", "standing_1", "sitting", "riding"]
+	for phase in 6:
+		poses.append("walk_%d" % phase)
+		poses.append("run_%d" % phase)
+	for detail in [0, 1]:
+		for size: float in [0.6, 1.0, 1.2]:
+			for pose: String in poses:
+				var a := B3.person_arrays(Color.GRAY, pose, size, "", 4, false, detail)
+				var jacket := []
+				var strips := []
+				var torso_done := false
+				for i in range(0, a.verts.size(), 3):
+					if not jacket.is_empty() and not a.colors[i].is_equal_approx(Color8(224, 170, 54)): torso_done = true
+					if not torso_done and a.colors[i].is_equal_approx(Color8(224, 170, 54)):
+						jacket.append([a.verts[i], a.verts[i + 1], a.verts[i + 2]])
+					if a.colors[i].is_equal_approx(Color8(225, 230, 218)):
+						strips.append_array([a.verts[i], a.verts[i + 1], a.verts[i + 2], (a.verts[i] + a.verts[i + 1] + a.verts[i + 2]) / 3.0])
+				var gap := 0.0
+				var buried := false
+				for v: Vector3 in strips:
+					var front := -INF
+					for t: Array in jacket:
+						var a0 := Vector2(t[0].y, t[0].z)
+						var b := Vector2(t[1].y, t[1].z) - a0
+						var c := Vector2(t[2].y, t[2].z) - a0
+						var at := Vector2(v.y, v.z) - a0
+						var determinant := b.cross(c)
+						if absf(determinant) < 0.00000001: continue
+						var u := at.cross(c) / determinant
+						var w := b.cross(at) / determinant
+						if u >= -0.0001 and w >= -0.0001 and u + w <= 1.0001:
+							front = maxf(front, t[0].x + u * (t[1].x - t[0].x) + w * (t[2].x - t[0].x))
+					gap = maxf(gap, absf(v.x - front))
+					buried = buried or v.x < front - 0.0001 * size
+				check(not strips.is_empty() and gap <= 0.005 * size and not buried,
+					"reflective strip attachment %s/detail %d/scale %.1f: worst gap %.4f m, buried %s" % [pose, detail, size, gap, buried])
+				var box := AABB(strips[0], Vector3.ZERO) if not strips.is_empty() else AABB()
+				for v: Vector3 in strips: box = box.expand(v)
+				check(box.size.z >= 0.37 * size and box.size.z <= 0.40 * size and box.size.y >= 0.25 * size and box.size.y <= 0.28 * size,
+					"two visible reflective bands retain their width, height and separation: %s" % box)
+
+
+func _non_reflective_signature(a: Dictionary) -> int:
+	var clean := []
+	for i in a.verts.size():
+		if a.colors[i].is_equal_approx(Color8(225, 230, 218)): continue
+		clean.append([a.verts[i], a.colors[i], a.roof_mask[i], a.part[i], a.shadow[i]])
+	return hash(clean)
+
+
+## Recorded before VQA-016: exclude only the pale strips, retain all other mesh and shadow attributes.
+const REFLECTIVE_PRESERVATION := {"0|0|false": 59985771, "0|0|true": 1186067345, "0|1|false": 2053627934, "0|1|true": 3779441947, "0|2|false": 3808530734, "0|2|true": 2373230316, "0|3|false": 2216972914, "0|3|true": 2216972914, "0|4|false": 3875735909, "0|4|true": 949133724, "0|5|false": 73216529, "0|5|true": 3694381704, "0|6|false": 3613095147, "0|6|true": 3681011269, "0|7|false": 3960605546, "0|7|true": 2297961710, "0|riding": 2909220660, "0|run_0": 1739425214, "0|run_1": 1911975554, "0|run_2": 1683092872, "0|run_3": 1975077155, "0|run_4": 862778569, "0|run_5": 669652285, "0|sitting": 905252904, "0|standing": 3875735909, "0|standing_0": 3875735909, "0|standing_1": 1604744981, "0|walk_0": 1216247288, "0|walk_1": 3706671526, "0|walk_2": 377969895, "0|walk_3": 3390508041, "0|walk_4": 1774093693, "0|walk_5": 4087579480, "1|0|false": 3047988502, "1|0|true": 634569012, "1|1|false": 3262547151, "1|1|true": 3458489937, "1|2|false": 1062170477, "1|2|true": 2172957698, "1|3|false": 997625855, "1|3|true": 997625855, "1|4|false": 2249546500, "1|4|true": 2034702826, "1|5|false": 328045525, "1|5|true": 1913861064, "1|6|false": 140370454, "1|6|true": 1068881083, "1|7|false": 1220236358, "1|7|true": 634250376, "1|riding": 718126521, "1|run_0": 3996130169, "1|run_1": 1095298380, "1|run_2": 1856344803, "1|run_3": 436379338, "1|run_4": 2961687380, "1|run_5": 3735337056, "1|sitting": 866504390, "1|standing": 2249546500, "1|standing_0": 2249546500, "1|standing_1": 590215216, "1|walk_0": 1381508785, "1|walk_1": 1282051142, "1|walk_2": 2546884856, "1|walk_3": 3233550732, "1|walk_4": 3693865365, "1|walk_5": 1196614850}
+
+
+func test_reflective_strip_geometry_preserved() -> void:
+	var old_shading: bool = B3.opaque
+	B3.opaque = true
+	for key: String in REFLECTIVE_PRESERVATION:
+		var fields := key.split("|")
+		var variant := int(fields[1]) if fields.size() == 3 else 4
+		var pose := "standing_0" if fields.size() == 3 else fields[1]
+		var a := B3.person_arrays(Color.GRAY, pose, 1.0, "", variant, fields.size() == 3 and fields[2] == "true", int(fields[0]))
+		check(_non_reflective_signature(a) == REFLECTIVE_PRESERVATION[key], "unchanged person and shadow outside strips: %s" % key)
+		check(a.verts == a.shadow, "person body and shadow geometry agree: %s" % key)
+	var renderer := _model_frame(func(r): pass)
+	for heading: float in [0.0, 0.7, PI / 2.0, PI]:
+		renderer.begin_cars()
+		renderer.person(Vector2(13, -7), heading, Color.GRAY, "standing_1", 1.0, "", 2.3, 4)
+		renderer.end_cars()
+		var body: MeshInstance3D = renderer._car_nodes[0][0]
+		check(body.position.is_equal_approx(Vector3(13, B3.ROAD_M + 0.016 + 2.3, -7)) and body.basis.x.is_equal_approx(Vector3(cos(heading), 0, -sin(heading))),
+			"reflective person pool updates heading/elevation %.2f" % heading)
+	B3.opaque = old_shading
+	renderer.route_3d.free()
+	renderer.free()
+
+
+
 func test_person_comic_head_ratio() -> void:  # criterion 1: old head (ears) half-width 0.1306 m
 	var half: float = _person_skin("standing", func(p): return p.y > 1.3).map(func(p): return absf(p.z)).max()
 	check(half >= 0.1306 * 1.6 and half <= 0.1306 * 1.8, "a comic head is 1.6-1.8x the old one (%.3f m)" % half)
@@ -547,6 +627,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_model_sizes_match_sim()
 	test_mountain_bike_keeps_its_width()
 	test_walk_pose_phase_changes_mesh()
+	test_reflective_strips_follow_jacket()
+	test_reflective_strip_geometry_preserved()
 	test_person_arms_hang_in_idle_and_walk()
 	test_person_hood_clear_of_neck()
 	test_person_beard_styles_differ()

@@ -1,0 +1,61 @@
+{
+  "conditions": [
+    "day"
+  ],
+  "assets": [
+    {
+      "id": "detail0_standing_0",
+      "name": "Variant 4 standing_0, detail 0",
+      "mode": "person",
+      "kind": "person",
+      "variant": 4,
+      "detail": 0,
+      "pose": "standing_0"
+    },
+    {
+      "id": "detail0_standing_1",
+      "name": "Variant 4 standing_1, detail 0",
+      "mode": "person",
+      "kind": "person",
+      "variant": 4,
+      "detail": 0,
+      "pose": "standing_1"
+    },
+    {
+      "id": "detail0_walk_1",
+      "name": "Variant 4 walk_1, detail 0",
+      "mode": "person",
+      "kind": "person",
+      "variant": 4,
+      "detail": 0,
+      "pose": "walk_1"
+    },
+    {
+      "id": "detail1_standing_0",
+      "name": "Variant 4 standing_0, detail 1",
+      "mode": "person",
+      "kind": "person",
+      "variant": 4,
+      "detail": 1,
+      "pose": "standing_0"
+    },
+    {
+      "id": "detail1_standing_1",
+      "name": "Variant 4 standing_1, detail 1",
+      "mode": "person",
+      "kind": "person",
+      "variant": 4,
+      "detail": 1,
+      "pose": "standing_1"
+    },
+    {
+      "id": "detail1_walk_1",
+      "name": "Variant 4 walk_1, detail 1",
+      "mode": "person",
+      "kind": "person",
+      "variant": 4,
+      "detail": 1,
+      "pose": "walk_1"
+    }
+  ]
+}
