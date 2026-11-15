@@ -221,6 +221,10 @@ func _ready() -> void:
 		main.entities.extra_trains = [_lineup_train("train coach", coach[0], [coach[1]], coach[2], coach[1] * 0.5, LINEUP_LANE_M + 0.5)]
 	elif scenario.get("lineup", false):
 		main.entities.extra_npcs = _lineup()
+	if scenario.get("coach_roof_vent", false):
+		var at := _on_road(18.0, 0.9)
+		main.entities.extra_trains = [{"id":"vqa_coach_vent","name":"train coach","width_m":2.89,"state":"STOPPED","speed":0.0,"line":"",
+			"cars":[[at.x,at.y,float(scenario["pose"][2]),26.4,"standard"]]}]
 	if scenario.has("windscreen_model") or scenario.has("two_wheeler_model"):
 		var kind: String = scenario.get("windscreen_model", scenario.get("two_wheeler_model", ""))
 		var id := ""
@@ -724,6 +728,7 @@ func _check_map(centre: Vector2) -> Array:
 			var t: Array = npc["trailer"]
 			boxes.append(["caravan", _corners(t[0], t[1], t[2], t[3], t[4])])
 	for train in main.entities.extra_trains:
+		if scenario.get("coach_roof_vent", false): continue  # exact pooled roof bounds checked below
 		for car: Array in train["cars"]:
 			boxes.append([train["name"], _corners(car[0], car[1], car[2], car[3], train["width_m"])])
 	var to_screen: Transform2D = main.get_viewport().get_canvas_transform()
@@ -781,10 +786,15 @@ func _check_map(centre: Vector2) -> Array:
 				_lineup_seen[key] = "under the HUD"
 				break
 	var windscreen := {}
-	if scenario.has("windscreen_model") or scenario.has("two_wheeler_model"):
-		var kind: String = scenario.get("windscreen_model", scenario.get("two_wheeler_model", ""))
+	if scenario.has("windscreen_model") or scenario.has("two_wheeler_model") or scenario.get("coach_roof_vent", false):
+		var kind: String = "train_coach" if scenario.get("coach_roof_vent", false) else scenario.get("windscreen_model", scenario.get("two_wheeler_model", ""))
 		var pool: Array = [] if layer_3d_view() == null else layer_3d_view()._model_nodes.get(kind, [])
-		var target: Dictionary = main.entities.extra_npcs[0]
+		var target: Dictionary
+		if scenario.get("coach_roof_vent", false):
+			var car: Array = main.entities.extra_trains[0]["cars"][0]
+			target = {"id":"vqa_coach_vent","x":car[0],"y":car[1],"heading":car[2],"length_m":car[3],"width_m":2.89,"state":"PARKED"}
+		else:
+			target = main.entities.extra_npcs[0]
 		var local := MapMath.point(main.entities.origin, float(target.x), float(target.y))
 		var found := false
 		for node: Node3D in pool:
@@ -803,7 +813,26 @@ func _check_map(centre: Vector2) -> Array:
 			for footprint: PackedVector2Array in footprints:
 				for corner: Vector2 in _corners(float(target.x),float(target.y),float(target.heading),float(target.length_m),float(target.width_m)):
 					if Geometry2D.is_point_in_polygon(corner,footprint): missing.append("windscreen target under building")
-			if scenario.has("two_wheeler_model") or scenario.get("city_bus_orientation", false):
+			var focus_rect := rect
+			if scenario.get("coach_roof_vent", false):
+				var layer = layer_3d_view()
+				if not MapChunkScript.outdoor_3d or not Buildings3D.opaque or layer._view.get_camera_3d() != camera_3d or not layer._sprite.is_visible_in_tree() or not mesh.is_visible_in_tree() or mesh.layers & camera_3d.cull_mask == 0:
+					missing.append("coach 3D view is not actively displayed")
+				if node.global_position.y + mesh.get_aabb().position.y * node.scale.y < main.map_layer.deck_height(local,0,false) - 0.02:
+					missing.append("coach buried below terrain")
+				var forward := Vector3(cos(float(target.heading)),0,-sin(float(target.heading)))
+				if node.basis.x.normalized().dot(forward)<0.999: missing.append("coach heading differs from fixture")
+				var vent := AABB(Vector3(-1.275,3.57,-0.637),Vector3(2.55,0.345,1.274))
+				var vent_rect := Rect2()
+				for corner in 8:
+					var point := node.global_transform * vent.get_endpoint(corner)
+					if not camera_3d.is_position_in_frustum(point): missing.append("coach vent outside frustum")
+					var pixel := camera_3d.unproject_position(point)
+					vent_rect = Rect2(pixel,Vector2.ZERO) if corner==0 else vent_rect.expand(pixel)
+				if minf(vent_rect.size.x,vent_rect.size.y)<10: missing.append("coach vent too small")
+				if camera_3d.global_position.y < (node.global_transform * vent.end).y + 0.5: missing.append("coach roof not visible from above")
+				focus_rect = vent_rect
+			if scenario.has("two_wheeler_model") or scenario.get("city_bus_orientation", false) or scenario.get("coach_roof_vent", false):
 				for pair: Array in layer_3d_view()._car_nodes:
 					var other: MeshInstance3D = pair[0]
 					if not other.visible or other.global_position.distance_to(node.global_position) < 0.2 or camera_3d.is_position_behind(other.global_position): continue
@@ -812,7 +841,7 @@ func _check_map(centre: Vector2) -> Array:
 					for corner in 8:
 						var pixel := camera_3d.unproject_position(other.global_transform * other.get_aabb().get_endpoint(corner))
 						occupied = Rect2(pixel, Vector2.ZERO) if corner == 0 else occupied.expand(pixel)
-					if occupied.intersects(rect): missing.append("two-wheeler target obscured by a nearer dynamic body")
+					if occupied.intersects(focus_rect): missing.append("target obscured by a nearer dynamic body")
 			if scenario.get("city_bus_orientation", false):
 				var forward := Vector3(cos(float(target.heading)), 0, -sin(float(target.heading)))
 				if (-node.basis.x.normalized()).dot(forward) < 0.999: missing.append("city bus nose does not match requested heading")
@@ -820,6 +849,12 @@ func _check_map(centre: Vector2) -> Array:
 			if scenario.has("two_wheeler_model") and int(node.get_meta("lamps", 0)) != (Buildings3D.LAMPS_ON if scenario.get("riding", true) else 0):
 				missing.append("two-wheeler live lamp state does not match parked/ridden fixture")
 			windscreen = {"kind":kind,"id":target.id,"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"visible":true,"lamps":node.get_meta("lamps",0),"riding":target.state != "PARKED"}
+			if scenario.get("coach_roof_vent", false):
+				windscreen["vent_rect"] = [focus_rect.position.x,focus_rect.position.y,focus_rect.size.x,focus_rect.size.y]
+				windscreen["ground_m"] = main.map_layer.deck_height(local,0,false)
+				windscreen["model_origin_m"] = [node.global_position.x,node.global_position.y,node.global_position.z]
+				windscreen["camera_3d_m"] = [camera_3d.global_position.x,camera_3d.global_position.y,camera_3d.global_position.z]
+				windscreen["active_3d"] = layer_3d_view()._view.get_camera_3d() == camera_3d
 		if not found: missing.append("expected windscreen model %s not placed at target" % kind)
 
 	var needs: Dictionary = scenario.get("requires", {})
@@ -895,7 +930,7 @@ func _check_map(centre: Vector2) -> Array:
 				missing.append("camper drawn %.2f m, its row %.2f m (over 10 %%)" % [c[1], c[0]])
 	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count(), "scenery_in_view": seen}
 	if not windscreen.is_empty():
-		_counts["city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
+		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
 	if not campers.is_empty():
 		_counts["campers"] = campers  # each: [row length m, drawn body m]
 	if scenario.has("pitches"):

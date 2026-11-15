@@ -1,0 +1,171 @@
+{
+  "camera": {
+    "position": [
+      -0.0125000001862645,
+      -0.100000001490116
+    ],
+    "zoom": 14.4000005722046
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "3a3acf6b-dirty",
+  "elapsed_s": 8.15348833333335,
+  "errors": [
+    "conditions lost while measuring",
+    "target obscured by a nearer dynamic body"
+  ],
+  "forest": {
+    "build_ms_max": 0.0,
+    "build_ms_total": 0.0,
+    "draw_calls": 276.0,
+    "far_lod_crowns_loaded": 0,
+    "forest_chunks": 0,
+    "objects": 573.0,
+    "place_ms_max": 0.0,
+    "primitives": 353739.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 331.582269668579,
+    "trees_loaded": 0,
+    "video_memory_mb": 747.53938293457
+  },
+  "frames": {
+    "avg_fps": 115.597682744743,
+    "avg_ms": 8.65069243825715,
+    "frames": 116,
+    "low_01pct_fps": 49.1183278513102,
+    "low_1pct_fps": 49.1183278513102,
+    "over_16ms": 1,
+    "over_33ms": 0,
+    "over_66ms": 0,
+    "p50_ms": 8.33333301544189,
+    "p95_ms": 13.8888893127441,
+    "p99_ms": 15.6180000305176,
+    "worst_ms": 20.3589992523193
+  },
+  "game_time": [
+    "2026-06-20",
+    46800.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 28
+  },
+  "render": {
+    "chunk_build_worker": {
+      "avg_ms": 1724.197,
+      "max_ms": 1724.197
+    },
+    "chunk_lamps_main": {
+      "avg_ms": 3.158,
+      "max_ms": 3.617
+    },
+    "chunk_mesh_surface": {
+      "avg_ms": 1.57688888888889,
+      "max_ms": 2.434
+    },
+    "chunk_meshes_main": {
+      "avg_ms": 1.599,
+      "max_ms": 1.599
+    },
+    "long_frames": [],
+    "state_timeline": {
+      "arrival_max_ms": 91.5139999389648,
+      "arrival_over_66ms": 1,
+      "arrival_p50_ms": 31.8840007781982,
+      "arrival_p95_ms": 46.451000213623,
+      "arrival_p99_ms": 91.5139999389648,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 91.5139999389648,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.05378
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 33,
+      "tile_events": 0,
+      "underrun_episodes": 1,
+      "underruns": 1
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_train_coach_roof_vent_day",
+  "scene": {
+    "buildings_in_view": 10,
+    "chunks": 49,
+    "coach_vent": {
+      "id": "vqa_coach_vent",
+      "kind": "train_coach",
+      "lamps": 0,
+      "rect": [
+        669.731506347656,
+        136.390396118164,
+        279.066040039063,
+        204.036880493164
+      ],
+      "riding": false,
+      "vent_rect": [
+        792.294006347656,
+        222.886138916016,
+        34.5009765625,
+        30.6951904296875
+      ],
+      "visible": true
+    },
+    "lamps_in_view": 13,
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-corrections\\train-coach-roof-vent\\gameplay\\vqa_train_coach_roof_vent_day\\2026-06-20T1300_20261115-195325_3a3acf6b-dirty/screenshot.png",
+  "status": "failed",
+  "timestamp": "2026-11-15T17:54:43Z",
+  "traffic": {
+    "moving_min": 5,
+    "npcs_max": 9,
+    "spawn_rejections": {
+      "share": {},
+      "total": 0.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": 0.59,
+    "x": 385325.8,
+    "y": 6671757.1
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-wa030jxj",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.1,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 18.95,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      1.006,
+      -4.029
+    ]
+  }
+}

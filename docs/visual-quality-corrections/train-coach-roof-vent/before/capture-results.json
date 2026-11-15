@@ -1,0 +1,572 @@
+{
+	"adapter": "NVIDIA GeForce RTX 5060",
+	"angles": [
+		"front",
+		"rear",
+		"left",
+		"right",
+		"front_three_quarter",
+		"rear_three_quarter",
+		"top",
+		"elevated"
+	],
+	"captures": [
+		{
+			"angle": "front",
+			"asset": "train_coach",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				79.1999969482422,
+				2.14500021934509,
+				0.0
+			],
+			"camera_size": 4.99612045288086,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "train_coach",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				-79.1999969482422,
+				2.14500021934509,
+				0.0
+			],
+			"camera_size": 4.99612045288086,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "train_coach",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				0.0,
+				2.14500021934509,
+				-79.1999969482422
+			],
+			"camera_size": 26.4792137145996,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "train_coach",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				0.0,
+				2.14500021934509,
+				79.1999969482422
+			],
+			"camera_size": 26.4792003631592,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "train_coach",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				51.5548095703125,
+				33.0778846740723,
+				51.5548095703125
+			],
+			"camera_size": 20.7732906341553,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "train_coach",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				-51.5548095703125,
+				33.0778846740723,
+				-51.5548095703125
+			],
+			"camera_size": 20.7732906341553,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "train_coach",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				0.0,
+				81.3449554443359,
+				0.0791999623179436
+			],
+			"camera_size": 26.4792003631592,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "train_coach",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				38.4176445007324,
+				59.7714653015137,
+				-38.4176445007324
+			],
+			"camera_size": 21.2094249725342,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "train_coach_vent_close",
+			"bounds": [
+				-1.60000002384186,
+				3.20000004768372,
+				-1.60000002384186,
+				3.20000004768372,
+				1.29999995231628,
+				3.20000004768372
+			],
+			"camera_position": [
+				9.60000038146973,
+				3.84999990463257,
+				0.0
+			],
+			"camera_size": 3.20960116386414,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_vent_close_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "train_coach_vent_close",
+			"bounds": [
+				-1.60000002384186,
+				3.20000004768372,
+				-1.60000002384186,
+				3.20000004768372,
+				1.29999995231628,
+				3.20000004768372
+			],
+			"camera_position": [
+				-9.60000038146973,
+				3.84999990463257,
+				0.0
+			],
+			"camera_size": 3.20960116386414,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_vent_close_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "train_coach_vent_close",
+			"bounds": [
+				-1.60000002384186,
+				3.20000004768372,
+				-1.60000002384186,
+				3.20000004768372,
+				1.29999995231628,
+				3.20000004768372
+			],
+			"camera_position": [
+				0.0,
+				3.84999990463257,
+				-9.60000038146973
+			],
+			"camera_size": 3.20960187911987,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_vent_close_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "train_coach_vent_close",
+			"bounds": [
+				-1.60000002384186,
+				3.20000004768372,
+				-1.60000002384186,
+				3.20000004768372,
+				1.29999995231628,
+				3.20000004768372
+			],
+			"camera_position": [
+				0.0,
+				3.84999990463257,
+				9.60000038146973
+			],
+			"camera_size": 3.20959997177124,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_vent_close_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "train_coach_vent_close",
+			"bounds": [
+				-1.60000002384186,
+				3.20000004768372,
+				-1.60000002384186,
+				3.20000004768372,
+				1.29999995231628,
+				3.20000004768372
+			],
+			"camera_position": [
+				6.24906826019287,
+				7.59944105148315,
+				6.24906826019287
+			],
+			"camera_size": 4.53906011581421,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_vent_close_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "train_coach_vent_close",
+			"bounds": [
+				-1.60000002384186,
+				3.20000004768372,
+				-1.60000002384186,
+				3.20000004768372,
+				1.29999995231628,
+				3.20000004768372
+			],
+			"camera_position": [
+				-6.24906826019287,
+				7.59944105148315,
+				-6.24906826019287
+			],
+			"camera_size": 4.53906011581421,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_vent_close_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "train_coach_vent_close",
+			"bounds": [
+				-1.60000002384186,
+				3.20000004768372,
+				-1.60000002384186,
+				3.20000004768372,
+				1.29999995231628,
+				3.20000004768372
+			],
+			"camera_position": [
+				0.0,
+				13.4499950408936,
+				0.00959999673068523
+			],
+			"camera_size": 3.77753257751465,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_vent_close_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "train_coach_vent_close",
+			"bounds": [
+				-1.60000002384186,
+				3.20000004768372,
+				-1.60000002384186,
+				3.20000004768372,
+				1.29999995231628,
+				3.20000004768372
+			],
+			"camera_position": [
+				4.65668439865112,
+				10.8350257873535,
+				-4.65668439865112
+			],
+			"camera_size": 4.93778848648071,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_vent_close_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "train_coach_default_lod_80m",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				79.1999969482422,
+				2.14500021934509,
+				0.0
+			],
+			"camera_size": 4.99612045288086,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_default_lod_80m_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "train_coach_default_lod_80m",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				-79.1999969482422,
+				2.14500021934509,
+				0.0
+			],
+			"camera_size": 4.99612045288086,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_default_lod_80m_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "train_coach_default_lod_80m",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				0.0,
+				2.14500021934509,
+				-79.1999969482422
+			],
+			"camera_size": 26.4792137145996,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_default_lod_80m_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "train_coach_default_lod_80m",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				0.0,
+				2.14500021934509,
+				79.1999969482422
+			],
+			"camera_size": 26.4792003631592,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_default_lod_80m_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "train_coach_default_lod_80m",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				51.5548095703125,
+				33.0778846740723,
+				51.5548095703125
+			],
+			"camera_size": 20.7732906341553,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_default_lod_80m_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "train_coach_default_lod_80m",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				-51.5548095703125,
+				33.0778846740723,
+				-51.5548095703125
+			],
+			"camera_size": 20.7732906341553,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_default_lod_80m_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "train_coach_default_lod_80m",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				0.0,
+				81.3449554443359,
+				0.0791999623179436
+			],
+			"camera_size": 26.4792003631592,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_default_lod_80m_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "train_coach_default_lod_80m",
+			"bounds": [
+				-13.1999998092651,
+				0.0280000008642673,
+				-1.4449999332428,
+				26.3999996185303,
+				4.23400020599365,
+				2.8899998664856
+			],
+			"camera_position": [
+				38.4176445007324,
+				59.7714653015137,
+				-38.4176445007324
+			],
+			"camera_size": 21.2094249725342,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "train_coach_default_lod_80m_day_elevated.png",
+			"framed": true,
+			"ready": true
+		}
+	],
+	"renderer": "forward_plus",
+	"resolution": [
+		400,
+		340
+	]
+}

@@ -58,3 +58,11 @@ for source/pooled comparisons, preserved-data checks and gameplay screenshots.
 The rail models were welded, simplified (`--ratio 0.12 --error 0.1`), flattened,
 joined and resized to 256-pixel textures. Their close-range meshes are pooled;
 the procedural train mesh remains the distant LOD.
+
+The VQA-012 correction lowers only the existing regional coach HVAC assembly
+(its box, feet, grilles and fans) by 0.32 m, placing its feet on the 3.57 m roof.
+Run `tools/repair_train_coach_vent.py` with the project Python environment to
+reproduce it; an already repaired file is unchanged. All non-HVAC vertex data,
+normals, UVs, indices, textures, materials and node transforms are preserved.
+This is local processing of the same CC0 source above, with no new data source.
+See [correction evidence](../../../docs/visual-quality-corrections/train-coach-roof-vent/README.md).

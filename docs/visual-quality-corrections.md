@@ -70,3 +70,12 @@ Residual painted triangles were clipped from the existing front-glass footprint 
 ## VQA-006, VQA-009–011, VQA-013–015: attached two-wheeler lights
 
 The selected bicycle/scooter model now controls its live lens anchors and overlay cache key. Motorcycle white/red native lenses retain their existing state path; amber indicators sit in their native housings instead of inheriting detached generic car lamps. Existing models, rider geometry, fallback lamps and single-beam behavior are retained. [Diagnosis, before/after sheets, production regressions and exact-model named gameplay evidence](visual-quality-corrections/two-wheeler-lamps/README.md) cover the five source models, parked/ridden daylight and lit night states. Original audit findings remain historical; the independent ship review passed.
+
+## VQA-012 — train coach roof vent
+
+The existing source HVAC assembly was 0.32 m above its roof. Only its 914 vertex
+heights are lowered; preservation, attachment, pooled transforms and sampled LOD
+regressions pass. All 48 comparison panels and a passing named flat-terrain
+Helsinki gameplay capture are inspected. Earlier failed attempts and a buried
+coach false positive are explicitly excluded. See
+[diagnosis, evidence and coverage](visual-quality-corrections/train-coach-roof-vent/README.md).

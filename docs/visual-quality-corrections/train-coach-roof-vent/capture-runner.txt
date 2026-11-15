@@ -1,0 +1,39 @@
+extends "res://tools/visual_quality_audit.gd"
+var close_view := false
+func bounds(node: Node3D) -> AABB:
+	if close_view: return AABB(Vector3(-1.6,3.2,-1.6),Vector3(3.2,1.3,3.2))
+	return super.bounds(node)
+func build(row: Dictionary) -> Node3D:
+	close_view = row.get("close",false)
+	camera.projection = Camera3D.PROJECTION_PERSPECTIVE if row.get("distance_sample",false) else Camera3D.PROJECTION_ORTHOGONAL
+	camera.fov = 25.0
+	if OS.get_cmdline_user_args()[1].ends_with("before"):
+		var state := GLTFState.new()
+		var doc := GLTFDocument.new()
+		assert(doc.append_from_file("res://tools/_tmp_train_coach_before.glb",state)==OK)
+		var source: Node3D = doc.generate_scene(state)
+		var tools := {}
+		for mi: MeshInstance3D in source.find_children("*","MeshInstance3D",true,false):
+			var transform := Transform3D()
+			var node: Node = mi
+			while node!=source:
+				transform=(node as Node3D).transform*transform
+				node=node.get_parent()
+			for surface in mi.mesh.get_surface_count():
+				var material: Material=mi.mesh.surface_get_material(surface)
+				if not tools.has(material): tools[material]=SurfaceTool.new()
+				tools[material].append_from(mi.mesh,surface,transform)
+		var importer := ImporterMesh.new()
+		for material: Material in tools:
+			tools[material].index()
+			importer.add_surface(Mesh.PRIMITIVE_TRIANGLES,tools[material].commit_to_arrays(),[],{},material)
+		importer.generate_lods(25.0,60.0,[])
+		B3._merged_models["train_coach"]=importer.get_mesh()
+		source.free()
+	var body := Node3D.new()
+	var helper := B3.new()
+	helper._cars_root = body
+	helper.vehicle("train",Vector2.ZERO,0,26.4,2.89,Color8(175,85,48),1,0,{"profile":"standard"})
+	helper.route_3d.free()
+	helper.free()
+	return body

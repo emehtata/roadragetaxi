@@ -1,0 +1,191 @@
+{
+  "camera": {
+    "position": [
+      -0.0125000001862645,
+      -0.100000001490116
+    ],
+    "zoom": 14.4000005722046
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "3a3acf6b-dirty",
+  "elapsed_s": 6.15056855555554,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 4.605,
+    "build_ms_total": 11.504,
+    "draw_calls": 280.0,
+    "far_lod_crowns_loaded": 1650,
+    "forest_chunks": 8,
+    "objects": 575.0,
+    "place_ms_max": 23.873,
+    "primitives": 317731.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 301.966642379761,
+    "trees_loaded": 825,
+    "video_memory_mb": 842.377319335938
+  },
+  "frames": {
+    "avg_fps": 98.7837405230391,
+    "avg_ms": 10.1231234483045,
+    "frames": 99,
+    "low_01pct_fps": 35.5290273308029,
+    "low_1pct_fps": 35.5290273308029,
+    "over_16ms": 3,
+    "over_33ms": 0,
+    "over_66ms": 0,
+    "p50_ms": 9.72222232818604,
+    "p95_ms": 16.6666660308838,
+    "p99_ms": 28.1459999084473,
+    "worst_ms": 28.1459999084473
+  },
+  "game_time": [
+    "2026-06-20",
+    46800.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 28
+  },
+  "render": {
+    "chunk_build_worker": {
+      "avg_ms": 88.9460476190476,
+      "max_ms": 301.738
+    },
+    "chunk_ground_dict": {
+      "avg_ms": 2.65628571428571,
+      "max_ms": 5.194
+    },
+    "chunk_lamps_3d": {
+      "avg_ms": 0.568428571428571,
+      "max_ms": 2.711
+    },
+    "chunk_lamps_main": {
+      "avg_ms": 2.09890476190476,
+      "max_ms": 5.467
+    },
+    "chunk_mesh_surface": {
+      "avg_ms": 0.748915094339623,
+      "max_ms": 2.297
+    },
+    "chunk_meshes_main": {
+      "avg_ms": 0.501666666666667,
+      "max_ms": 1.168
+    },
+    "long_frames": [],
+    "state_timeline": {
+      "arrival_max_ms": 83.213996887207,
+      "arrival_over_66ms": 1,
+      "arrival_p50_ms": 33.3800010681152,
+      "arrival_p95_ms": 61.2729988098145,
+      "arrival_p99_ms": 83.213996887207,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 83.213996887207,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.059831
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 33,
+      "tile_events": 0,
+      "underrun_episodes": 1,
+      "underruns": 1
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_train_coach_roof_vent_day",
+  "scene": {
+    "buildings_in_view": 10,
+    "chunks": 49,
+    "coach_vent": {
+      "active_3d": true,
+      "camera_3d_m": [
+        -0.0125007629394531,
+        93.3212661743164,
+        -0.100000381469727
+      ],
+      "ground_m": 0.0,
+      "id": "vqa_coach_vent",
+      "kind": "train_coach",
+      "lamps": 0,
+      "model_origin_m": [
+        14.46875,
+        0.0280000008642673,
+        -10.5
+      ],
+      "rect": [
+        677.769470214844,
+        73.2898788452148,
+        358.167907714844,
+        261.845916748047
+      ],
+      "riding": false,
+      "vent_rect": [
+        835.105163574219,
+        184.193466186523,
+        44.4022216796875,
+        39.47265625
+      ],
+      "visible": true
+    },
+    "lamps_in_view": 13,
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-corrections\\train-coach-roof-vent\\gameplay\\flat-terrain\\vqa_train_coach_roof_vent_day\\2026-06-20T1300_20261115-200438_3a3acf6b-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-15T18:05:53Z",
+  "traffic": {
+    "moving_min": 5,
+    "npcs_max": 8,
+    "spawn_rejections": {
+      "destination_taken": 1.0,
+      "share": {
+        "destination_taken": 1.0
+      },
+      "total": 1.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": 0.59,
+    "x": 385325.8,
+    "y": 6671757.1
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-jhyumlrn",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.1,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 18.95,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      -2.518,
+      -4.309
+    ]
+  }
+}
