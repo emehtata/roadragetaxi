@@ -1,0 +1,76 @@
+{
+  "finding": "VQA-018",
+  "source_revision": "89f15dfa637fb4190f1c3edb469414e81c293422-dirty",
+  "spec": "docs/specs/audit-felled-tree-geometry.md",
+  "inspected_panels": 96,
+  "inspected_sheets": [
+    "review/birch_far_1.png",
+    "review/birch_far_2.png",
+    "review/birch_near_1.png",
+    "review/birch_near_2.png",
+    "review/pine_far_1.png",
+    "review/pine_far_2.png",
+    "review/pine_near_1.png",
+    "review/pine_near_2.png",
+    "review/spruce_far_1.png",
+    "review/spruce_far_2.png",
+    "review/spruce_near_1.png",
+    "review/spruce_near_2.png"
+  ],
+  "fixture": "fixture.json",
+  "before": "before/capture-results.json",
+  "after": "after/capture-results.json",
+  "regression": {
+    "original": {
+      "checks": 1202,
+      "failures": 576
+    },
+    "linux": {
+      "checks": 1202,
+      "failures": 0
+    },
+    "native": {
+      "checks": 1490,
+      "failures": 0
+    }
+  },
+  "named_acceptance": {
+    "scenario": "vqa_felled_tree_day",
+    "result": "gameplay/final/vqa_felled_tree_day/2026-06-20T1300_20261116-194504_89f15dfa-dirty/result.json",
+    "screenshot": "gameplay/final/vqa_felled_tree_day/2026-06-20T1300_20261116-194504_89f15dfa-dirty/screenshot.png",
+    "status": "passed",
+    "inspected": true,
+    "scene": {
+      "active_3d": true,
+      "angle": 0.58,
+      "crown_rect": [
+        906.324523925781,
+        64.8001708984375,
+        172.111022949219,
+        165.325073242188
+      ],
+      "ground_m": 0.0,
+      "key": "385679.6,6671613.9",
+      "kind": "birch",
+      "radius_m": 2.948,
+      "trunk_rect": [
+        825.525512695313,
+        177.848541259766,
+        116.500244140625,
+        82.0809326171875
+      ]
+    },
+    "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+    "resolution": [
+      1280.0,
+      720.0
+    ],
+    "ground_clearance_tolerance_m": 0.005
+  },
+  "excluded_attempts": [
+    "gameplay/retry/vqa_felled_tree_day/2026-06-20T1300_20261116-193654_89f15dfa-dirty",
+    "gameplay/diagnostic/vqa_felled_tree_day/2026-06-20T1300_20261116-193934_89f15dfa-dirty",
+    "gameplay/mesh-clearance/vqa_felled_tree_day/2026-06-20T1300_20261116-194230_89f15dfa-dirty",
+    "gameplay/vqa_felled_tree_day/2026-06-20T1300_20261116-193421_89f15dfa-dirty"
+  ]
+}

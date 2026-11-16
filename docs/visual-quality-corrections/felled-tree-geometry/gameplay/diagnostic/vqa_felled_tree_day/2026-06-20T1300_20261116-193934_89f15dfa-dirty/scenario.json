@@ -1,0 +1,42 @@
+{
+  "id": "vqa_felled_tree_day",
+  "description": "VQA-018 mapped felled tree has a horizontal attached trunk",
+  "why": "Reuse surveyed Bulevardi natural=tree at 385679.6,6671613.9 from tree-knocked-topdown. Fixed knocked_trees display fixture uses the same fall heading; existing 3D top camera exposes trunk and crown. Readiness identifies actual mesh transforms, ground, projected size and occlusion.",
+  "city": "Helsinki",
+  "pose": [
+    385672.6,
+    6671610.0,
+    0.58
+  ],
+  "start_time": "2026-06-20T13:00",
+  "weather": "clear",
+  "cloud": 0.1,
+  "wetness": [
+    0.0,
+    0.05
+  ],
+  "sun_altitude_deg": [
+    40,
+    90
+  ],
+  "zoom": 3.0,
+  "view": "3d",
+  "requires": {
+    "outdoor_3d": true,
+    "buildings_in_view": 1
+  },
+  "seed": 1,
+  "measure_s": 1,
+  "felled_tree": [
+    385679.6,
+    6671613.9,
+    0.58
+  ],
+  "isolated_settings": true,
+  "server_args": [
+    "--no-auto-fetch",
+    "--no-terrain-dem80"
+  ],
+  "commit": "89f15dfa-dirty",
+  "verification_user_dir": "rrt-indoor-hint-8j7m0zek"
+}

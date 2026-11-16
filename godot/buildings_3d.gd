@@ -3010,8 +3010,8 @@ static func tree_parts(rows: Array, bollards: PackedVector2Array, grid := {}, fa
 		if not is_nan(felled):  # lying along where it fell: trunk and crown on the ground
 			var along := Vector2(cos(felled), -sin(felled))
 			var lying := Basis.looking_at(to_3d(along), Vector3.UP) * Basis(Vector3.RIGHT, -PI / 2.0)
-			parts["trunk"].append([Transform3D(lying.scaled(Vector3(radius * 0.18, trunk_top, radius * 0.18)), to_3d(at + along * trunk_top * 0.5, ground + 0.25)), row[4]])
-			parts["crown"].append([Transform3D(Basis().scaled(Vector3(radius, radius * 0.5, radius)), to_3d(at + along * (trunk_top + radius), ground + radius * 0.4)), row[3]])
+			parts["trunk"].append([Transform3D(lying.scaled_local(Vector3(radius * 0.18, trunk_top, radius * 0.18)), to_3d(at + along * trunk_top * 0.5, ground + radius * 0.09)), row[4]])
+			parts["crown"].append([Transform3D(Basis().scaled(Vector3(radius, radius * 0.5, radius)), to_3d(at + along * (trunk_top + radius * 0.7), ground + radius * 0.4)), row[3]])
 			continue
 		parts["trunk"].append([Transform3D(Basis().scaled(Vector3(radius * 0.16, trunk_top + radius, radius * 0.16)), to_3d(at, ground + (trunk_top + radius) * 0.5)), row[4]])
 		if far:

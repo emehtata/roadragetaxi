@@ -87,3 +87,7 @@ Variant 4 now clips its existing pale bands from the actual jacket triangles, re
 ## Fox forward axis (VQA-017)
 
 The fox source yaw now turns its diagonal +X/+Z body/head direction onto local +X before the production heading. [Diagnosis, regression and visual evidence](visual-quality-corrections/fox-orientation/README.md) record 229 passing Linux animal checks, 225 passing native checks, 12 passing targeted Python tests, all 32 inspected comparison panels and an inspected passing `vqa_fox_orientation_day` capture. Source GLB bytes and shared animal code remain unchanged.
+
+## VQA-018: horizontal attached felled-tree trunk
+
+The felled-tree branch now scales its rotated cylinder on local axes, grounds its true radius and moves its existing crown 0.3 radii inward so the surfaces intersect. Standing trees and server fall decisions retain their existing paths. [Diagnosis, geometry/native regressions, 96 comparison panels and passing named Bulevardi capture](visual-quality-corrections/felled-tree-geometry/README.md) record the correction and sampled coverage.

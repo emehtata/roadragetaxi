@@ -1,0 +1,10 @@
+extends "res://tests/run_tests.gd"
+func _process(_delta: float) -> bool:
+ test_felled_tree_trunk_alignment()
+ test_felled_tree_geometry_preserved()
+ test_obstacles()
+ test_forest_canopy()
+ test_trees_unaffected_by_vehicle_models()
+ print("FELLED TREE: %d checks, %d failed" % [_checks,_failures])
+ quit(1 if _failures else 0)
+ return true

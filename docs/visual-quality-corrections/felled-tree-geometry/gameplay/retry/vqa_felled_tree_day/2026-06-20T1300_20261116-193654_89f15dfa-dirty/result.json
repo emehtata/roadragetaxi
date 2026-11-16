@@ -1,0 +1,99 @@
+{
+  "camera": {
+    "position": [
+      0.00625000009313226,
+      0.0
+    ],
+    "zoom": 27.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "89f15dfa-dirty",
+  "elapsed_s": 72.8204776666667,
+  "errors": [
+    "stalled: no readiness change for 60 s",
+    "felled tree sightline crosses building"
+  ],
+  "forest": {
+    "build_ms_max": 2.727,
+    "build_ms_total": 8.615,
+    "draw_calls": 303.0,
+    "far_lod_crowns_loaded": 1650,
+    "forest_chunks": 8,
+    "objects": 595.0,
+    "place_ms_max": 20.073,
+    "primitives": 297676.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 291.658661842346,
+    "trees_loaded": 825,
+    "video_memory_mb": 929.223083496094
+  },
+  "game_time": [
+    "2026-06-20",
+    46800.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_felled_tree_day",
+  "scene": {
+    "buildings_in_view": 2,
+    "chunks": 49,
+    "felled_tree": {
+      "active_3d": true,
+      "angle": 0.58,
+      "crown_rect": [
+        906.324523925781,
+        64.8001708984375,
+        172.111022949219,
+        165.325073242188
+      ],
+      "ground_m": 0.0,
+      "key": "385679.6,6671613.9",
+      "kind": "birch",
+      "radius_m": 2.948,
+      "trunk_rect": [
+        825.525512695313,
+        177.848541259766,
+        116.500244140625,
+        82.0809326171875
+      ]
+    },
+    "lamps_in_view": 3,
+    "scenery_in_view": {}
+  },
+  "status": "failed",
+  "timestamp": "2026-11-16T17:39:24Z",
+  "vehicle": {
+    "heading": 0.58,
+    "x": 385672.6,
+    "y": 6671610.0
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-vmnr93al",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.1,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 18.95,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      0.774,
+      -1.942
+    ]
+  }
+}

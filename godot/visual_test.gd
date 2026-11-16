@@ -51,6 +51,7 @@ var _hud_snapshot := {}
 var _indoor_hint: CanvasLayer
 var _indoor_draws := 0
 var _indoor_snapshot := {}
+var _felled_occluders := {}  # audit-only cached triangle BVHs for actual drawn buildings
 
 
 ## A "walk" scenario (fps-3d-view phase 1): out of the parked taxi, first
@@ -299,6 +300,8 @@ func _process(delta: float) -> void:
 		_switch_i += 1
 		_switch_at = _elapsed + 1.0
 	_track_chase()
+	if scenario.has("felled_tree"):
+		main.map_layer.set_knocked_trees([scenario["felled_tree"]])  # fixed server-state fixture at the sourced mapped tree
 	if scenario.has("eye") and Buildings3D.current != null:  # a camera on foot or turned to a side window
 		var eye: Dictionary = scenario["eye"]
 		var test_eye := {"height": float(eye.get("height", 1.35)), "yaw": float(eye.get("yaw", 0.0))}
@@ -796,6 +799,67 @@ func _check_map(centre: Vector2) -> Array:
 				missing.append("lineup %s under the HUD at %s" % [row[0], rect])
 				_lineup_seen[key] = "under the HUD"
 				break
+	var felled := {}
+	if scenario.has("felled_tree"):
+		var target: Array = scenario["felled_tree"]
+		var key := MapChunkScript.obstacle_key(target[0],target[1])
+		var layer = layer_3d_view()
+		var found := false
+		for chunk in main.map_layer._chunks.values():
+			if not chunk._fallen.has(key) or not chunk._dynamic_3d.has("trees"): continue
+			if absf(float(chunk._fallen[key])-float(target[2]))>0.001: missing.append("felled tree has wrong angle")
+			var at := MapMath.point(chunk._origin,target[0],target[1])
+			var rows := []
+			for tree: Array in chunk._data.get("trees",[]):
+				if MapChunkScript.obstacle_key(tree[0],tree[1])!=key: continue
+				var row: Array=chunk._tree_row(str(tree[2]),float(tree[3]))
+				row[0]=at; row[5]=float(target[2]); rows.append(row)
+			if rows.is_empty(): continue
+			var expected := Buildings3D.tree_parts(rows,PackedVector2Array(),chunk.ground_heights)
+			var rects := []
+			for name: String in ["trunk","crown"]:
+				var matched := false
+				for batch: MultiMeshInstance3D in chunk._dynamic_3d.trees.get_children():
+					if batch.multimesh.mesh!=Buildings3D._tree_mesh(name): continue
+					for i in batch.multimesh.instance_count:
+						var xf := batch.global_transform*batch.multimesh.get_instance_transform(i)
+						var want: Transform3D=expected[name][0][0]
+						if not xf.is_equal_approx(want): continue
+						matched=true
+						if not MapChunkScript.outdoor_3d or not Buildings3D.opaque or layer==null or layer._view.get_camera_3d()!=camera_3d or not layer._sprite.is_visible_in_tree() or not batch.is_visible_in_tree() or batch.layers & camera_3d.cull_mask==0:
+							missing.append("felled tree 3D view is not actively displayed")
+						var rect:=Rect2()
+						var lowest:=INF
+						for vertex: Vector3 in batch.multimesh.mesh.get_faces(): lowest=minf(lowest,(xf*vertex).y)
+						var ground: float=Buildings3D.ground_height(chunk.ground_heights,at)
+						if lowest<ground-0.005 or lowest>ground+0.005: missing.append("felled tree buried or floating")
+						for corner in 8:
+							var point:=xf*batch.multimesh.mesh.get_aabb().get_endpoint(corner)
+							if not camera_3d.is_position_in_frustum(point): missing.append("felled tree outside frustum")
+							var pixel:=camera_3d.unproject_position(point)
+							rect=Rect2(pixel,Vector2.ZERO) if corner==0 else rect.expand(pixel)
+						if rect.size.length()<(45 if name=="trunk" else 55): missing.append("felled tree %s too small" % name)
+						for panel: Rect2 in hud:
+							if panel.intersects(rect): missing.append("felled tree under HUD")
+						for occluder in main.map_layer._chunks.values():
+							for solid: MeshInstance3D in occluder.meshes_3d:
+								if not solid.is_visible_in_tree() or solid.material_override!=Buildings3D._shared["material"] or solid.layers & camera_3d.cull_mask==0: continue
+								if not _felled_occluders.has(solid.mesh): _felled_occluders[solid.mesh]=solid.mesh.generate_triangle_mesh()
+								var inverse:=solid.global_transform.affine_inverse()
+								var hit: Dictionary=_felled_occluders[solid.mesh].intersect_segment(inverse*camera_3d.global_position,inverse*xf.origin)
+								if not hit.is_empty(): missing.append("felled tree sightline crosses drawn building")
+						for other: MeshInstance3D in layer._cars_root.find_children("*","MeshInstance3D",true,false):
+							if not other.visible or camera_3d.is_position_behind(other.global_position) or camera_3d.global_position.distance_to(other.global_position)>=camera_3d.global_position.distance_to(xf.origin): continue
+							var occupied:=Rect2()
+							for corner in 8:
+								var pixel:=camera_3d.unproject_position(other.global_transform*other.get_aabb().get_endpoint(corner))
+								occupied=Rect2(pixel,Vector2.ZERO) if corner==0 else occupied.expand(pixel)
+							if occupied.intersects(rect): missing.append("felled tree obscured by nearer dynamic body")
+						rects.append([rect.position.x,rect.position.y,rect.size.x,rect.size.y])
+				if not matched: missing.append("expected felled %s instance not drawn" % name)
+			found=rects.size()==2
+			if found: felled={"key":key,"angle":target[2],"active_3d":true,"kind":rows[0][1],"radius_m":rows[0][2],"ground_m":Buildings3D.ground_height(chunk.ground_heights,at),"trunk_rect":rects[0],"crown_rect":rects[1]}
+		if not found: missing.append("expected mapped felled tree not drawn")
 	var fox := {}
 	if scenario.get("fox_orientation", false):
 		var target: Array = scenario["animals"][0]
@@ -1034,6 +1098,7 @@ func _check_map(centre: Vector2) -> Array:
 	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count(), "scenery_in_view": seen}
 	if not reflective.is_empty(): _counts["reflective_strips"] = reflective
 	if not fox.is_empty(): _counts["fox"] = fox
+	if not felled.is_empty(): _counts["felled_tree"] = felled
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
 	if not campers.is_empty():

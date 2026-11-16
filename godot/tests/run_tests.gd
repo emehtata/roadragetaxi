@@ -676,6 +676,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_mouse_inspection()
 	test_meet_road_camera_lightning()
 	test_gameplay_points()
+	test_felled_tree_trunk_alignment()
+	test_felled_tree_geometry_preserved()
 	test_obstacles()
 	test_day_night()
 	test_static_world()
@@ -3243,6 +3245,67 @@ func test_gameplay_points() -> void:
 func map_message_copy(message: Dictionary) -> Dictionary:
 	return message.duplicate(true)
 
+
+## VQA-018: exercise the unit cylinder and crown through their submitted instance transforms.
+func test_felled_tree_trunk_alignment() -> void:
+	var trunk_mesh := B3._tree_mesh("trunk")
+	var crown_mesh := B3._tree_mesh("crown")
+	var crown_faces := crown_mesh.get_faces()
+	for kind: String in ["birch", "pine", "spruce"]:
+		for radius: float in [0.6, 1.4, 2.5]:
+			for angle: float in [0.0, PI / 2.0, PI, 0.73]:
+				for height: float in [0.0, 17.0]:
+					for far: bool in [false, true]:
+						var at := Vector2(13, -7)
+						var grid := {"origin":Vector2.ZERO,"step":100.0,"cols":2,"heights":PackedFloat32Array([height,height,height,height])}
+						var row := [at, kind, radius, Color.GREEN, Color.BROWN, angle]
+						var parts := B3.tree_parts([row], PackedVector2Array(), grid, far)
+						var xf: Transform3D = parts.trunk[0][0]
+						var crown: Transform3D = parts.crown[0][0]
+						var start := xf * Vector3(0, -0.5, 0)
+						var end := xf * Vector3(0, 0.5, 0)
+						var length := radius * (2.6 if kind == "pine" else 1.0 if kind == "spruce" else 1.6)
+						var direction := Vector3(cos(angle), 0, -sin(angle))
+						check(absf(start.y-end.y)<0.001 and (end-start).normalized().dot(direction)>0.9999, "felled %s horizontal and points along fall %.2f" % [kind,angle])
+						check(is_equal_approx(start.distance_to(end),length) and Vector2(start.x,start.z).is_equal_approx(at), "felled trunk retains length and stump position")
+						check(is_equal_approx(xf.basis.x.length(), radius*0.18) and is_equal_approx(xf.basis.z.length(),radius*0.18), "felled trunk retains circular radius")
+						var lowest := INF
+						var attached := false
+						for v: Vector3 in trunk_mesh.get_faces():
+							var point := xf*v
+							lowest=minf(lowest,point.y)
+							if v.y<0.49: continue
+							# A cap-rim point inside the convex crown proves the actual surfaces intersect.
+							var local := crown.affine_inverse()*point
+							var inside := true
+							for t in range(0,crown_faces.size(),3):
+								var normal := (crown_faces[t+1]-crown_faces[t]).cross(crown_faces[t+2]-crown_faces[t]).normalized()
+								if normal.dot(crown_faces[t])<0: normal=-normal
+								if normal.dot(local-crown_faces[t])>0.0001: inside=false; break
+							attached=attached or inside
+						check(lowest>=height-0.001 and lowest<=height+0.001, "felled trunk rests on ground at %.1f" % height)
+						check(attached,"felled %s end intersects crown at radius %.1f" % [kind,radius])
+						var node := B3.trees_node([row],PackedVector2Array(),grid,far)
+						check(node.get_child_count()==2,"felled tree retains two instances in near/far")
+						for batch: MultiMeshInstance3D in node.get_children():
+							check(batch.multimesh.instance_count==1 and batch.cast_shadow==GeometryInstance3D.SHADOW_CASTING_SETTING_ON,"felled batch count/shadow preserved")
+							if DisplayServer.get_name()!="headless":
+								var expected: Transform3D = xf if batch.multimesh.mesh==trunk_mesh else crown
+								check(batch.multimesh.get_instance_transform(0).is_equal_approx(expected),"actual MultiMesh transform matches tested geometry")
+						node.free()
+
+func test_felled_tree_geometry_preserved() -> void:
+	for far: bool in [false,true]:
+		var rows := [[Vector2.ZERO,"birch",1.4,Color.GREEN,Color.WHITE,NAN],[Vector2(5,0),"pine",1.4,Color.GREEN,Color.BROWN,NAN],[Vector2(10,0),"spruce",1.4,Color.GREEN,Color.BROWN,NAN],[Vector2(15,0),"shrub",0.6,Color.GREEN,Color.BLACK,NAN]]
+		var before := B3.tree_parts(rows,PackedVector2Array([Vector2(20,0)]),{},far)
+		var fallen := rows.duplicate(true)
+		fallen[0][5]=0.73
+		var during := B3.tree_parts(fallen,PackedVector2Array([Vector2(20,0)]),{},far)
+		check(before.trunk.slice(1)==during.trunk.slice(1),"other standing trunks/bollard unchanged")
+		check(before.pine==during.pine and before.spruce==during.spruce and before.cone==during.cone,"other standing crowns unchanged")
+		check(before.crown[-1]==during.crown[-1],"shrub geometry/colour unchanged")
+		fallen[0][5]=NAN
+		check(B3.tree_parts(fallen,PackedVector2Array([Vector2(20,0)]),{},far).hash()==before.hash(),"fall/reset restores standing geometry")
 
 ## godot-13: trees, construction fences and bollards come and go with their
 ## chunk; felled trees and knocked posts are the server's state, matched by

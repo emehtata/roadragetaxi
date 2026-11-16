@@ -1,0 +1,308 @@
+{
+  "camera": {
+    "position": [
+      0.00625000009313226,
+      0.0
+    ],
+    "zoom": 27.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "89f15dfa-dirty",
+  "elapsed_s": 10.4356026666667,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 2.967,
+    "build_ms_total": 9.575,
+    "draw_calls": 270.0,
+    "far_lod_crowns_loaded": 1650,
+    "forest_chunks": 8,
+    "objects": 587.0,
+    "place_ms_max": 22.283,
+    "primitives": 247076.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 352.254940032959,
+    "trees_loaded": 825,
+    "video_memory_mb": 870.047622680664
+  },
+  "frames": {
+    "avg_fps": 19.4668356855902,
+    "avg_ms": 51.3694169998169,
+    "frames": 20,
+    "low_01pct_fps": 15.0761340629395,
+    "low_1pct_fps": 15.0761340629395,
+    "over_16ms": 20,
+    "over_33ms": 20,
+    "over_66ms": 0,
+    "p50_ms": 50.0,
+    "p95_ms": 62.2480010986328,
+    "p99_ms": 66.3300018310547,
+    "worst_ms": 66.3300018310547
+  },
+  "game_time": [
+    "2026-06-20",
+    46800.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 15
+  },
+  "render": {
+    "long_frames": [
+      {
+        "chunk_ms": 0.0,
+        "frame": 1,
+        "main_ms": 16.26,
+        "ms": 58.8636666666673,
+        "pipelines_compiled": 78
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 2,
+        "main_ms": 17.343,
+        "ms": 44.4444444444444,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 3,
+        "main_ms": 16.952,
+        "ms": 60.9575555555556,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 4,
+        "main_ms": 19.157,
+        "ms": 47.2222222222222,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 5,
+        "main_ms": 16.131,
+        "ms": 59.2577777777778,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 6,
+        "main_ms": 16.388,
+        "ms": 50.0,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 7,
+        "main_ms": 16.19,
+        "ms": 62.248,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 8,
+        "main_ms": 17.014,
+        "ms": 66.33,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 9,
+        "main_ms": 16.999,
+        "ms": 50.6763333333327,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 10,
+        "main_ms": 16.651,
+        "ms": 61.2966666666673,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 11,
+        "main_ms": 17.485,
+        "ms": 54.1666666666667,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 12,
+        "main_ms": 16.533,
+        "ms": 54.1666666666667,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 13,
+        "main_ms": 18.937,
+        "ms": 48.1063333333333,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 14,
+        "main_ms": 16.04,
+        "ms": 53.069,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 15,
+        "main_ms": 16.809,
+        "ms": 39.662,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 16,
+        "main_ms": 16.382,
+        "ms": 50.0,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 17,
+        "main_ms": 16.818,
+        "ms": 42.164,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 18,
+        "main_ms": 16.131,
+        "ms": 40.087,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 19,
+        "main_ms": 16.438,
+        "ms": 44.583,
+        "pipelines_compiled": 0
+      },
+      {
+        "chunk_ms": 0.0,
+        "frame": 20,
+        "main_ms": 17.236,
+        "ms": 40.087,
+        "pipelines_compiled": 0
+      }
+    ],
+    "state_timeline": {
+      "arrival_max_ms": 148.328994750977,
+      "arrival_over_66ms": 3,
+      "arrival_p50_ms": 41.007999420166,
+      "arrival_p95_ms": 67.4309997558594,
+      "arrival_p99_ms": 148.328994750977,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 67.306999206543,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 0.391362000000001
+        },
+        {
+          "arrival_ms": 67.4309997558594,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 0.502831
+        },
+        {
+          "arrival_ms": 148.328994750977,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.102532
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 35,
+      "tile_events": 0,
+      "underrun_episodes": 2,
+      "underruns": 4
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_felled_tree_day",
+  "scene": {
+    "buildings_in_view": 2,
+    "chunks": 49,
+    "felled_tree": {
+      "active_3d": true,
+      "angle": 0.58,
+      "crown_rect": [
+        906.324523925781,
+        64.8001708984375,
+        172.111022949219,
+        165.325073242188
+      ],
+      "ground_m": 0.0,
+      "key": "385679.6,6671613.9",
+      "kind": "birch",
+      "radius_m": 2.948,
+      "trunk_rect": [
+        825.525512695313,
+        177.848541259766,
+        116.500244140625,
+        82.0809326171875
+      ]
+    },
+    "lamps_in_view": 3,
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-corrections\\felled-tree-geometry\\gameplay\\final\\vqa_felled_tree_day\\2026-06-20T1300_20261116-194504_89f15dfa-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-16T17:46:19Z",
+  "traffic": {
+    "moving_min": 4,
+    "npcs_max": 10,
+    "spawn_rejections": {
+      "share": {},
+      "total": 0.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": 0.58,
+    "x": 385672.6,
+    "y": 6671610.0
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-tfp7_lq2",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.1,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 18.95,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      0.369,
+      1.116
+    ]
+  }
+}
