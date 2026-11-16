@@ -95,3 +95,7 @@ The felled-tree branch now scales its rotated cylinder on local axes, grounds it
 ## VQA-019: continuous power-tower legs
 
 The power-tower branch now shears one slender square support per corner from the existing feet to the existing top width, replacing disconnected vertical sections. Tower height, leg thickness, crossarms, colours and power lines retain their contracts. [Diagnosis, geometry/native checks, 64 comparison panels and passing mapped Oulu capture](visual-quality-corrections/power-tower-legs/README.md) record the correction and sampled coverage.
+
+## VQA-020: crossbucks face the road approaches
+
+The crossing branch now spans each X board across the road, aligning its broad face with approaching traffic while retaining the two post locations. [Diagnosis, geometry/native regressions, 32 comparison panels and passing mapped Oulu capture](visual-quality-corrections/crossbuck-orientation/README.md) record the focused display correction and sampled coverage. Server railway safety and crossing decisions retain their existing paths.

@@ -1,0 +1,13 @@
+extends "res://tests/run_tests.gd"
+func _process(_delta: float) -> bool:
+ test_crossbucks_face_road_approaches()
+ test_crossbuck_geometry_preserved()
+ var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+ B3.props(out,[[Vector2.ZERO,0.0,"level_crossing"]])
+ var values := PackedInt32Array()
+ for v: Vector3 in out.deck:values.append_array(PackedInt32Array([roundi(v.x*1000),roundi(v.y*1000),roundi(v.z*1000)]))
+ for c: Color in out.deck_colors:values.append(c.to_rgba32())
+ print("CROSSBUCK HASH ",values.to_byte_array().hex_encode().sha256_text())
+ print("CROSSBUCK: %d checks, %d failed" % [_checks,_failures])
+ quit(1 if _failures else 0)
+ return true

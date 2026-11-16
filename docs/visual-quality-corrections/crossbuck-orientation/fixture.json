@@ -1,0 +1,1 @@
+{"conditions":["day"],"assets":[{"id":"crossbuck_close","name":"Both crossbucks: road heading +X","mode":"prop","kind":"level_crossing"},{"id":"crossbuck_perspective","name":"Both crossbucks at 20 m perspective","mode":"prop","kind":"level_crossing","perspective":true}]}

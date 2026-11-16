@@ -1,0 +1,14 @@
+import sys,math
+sys.path.insert(0,'/home/ubuntu/work/roadragetaxi')
+from tools.visual_test import _bbox
+if __name__=='__main__':
+ sys.argv=['query','--preset','Oulu','--bbox',_bbox(428628.9,7210670.0,2),'--test-pose','428628.9,7210670.0,-0.909','--no-auto-fetch','--no-terrain-dem80','--no-historical-weather','--no-intercity-fares']
+ from theroadragetrip.server import SimulationServer
+ from theroadragetrip.server.cli import parse_server_args
+ args,config=parse_server_args();server=SimulationServer(args,config);world=server.world
+ from theroadragetrip.server.map_sync import prepare_initial_window
+ world.auto_fetch_manager.prepare_window(428628.9,7210670.0)
+ print('PREPARED',prepare_initial_window(world,timeout_s=120),flush=True)
+ for obj in world.scenery_objects:
+  if obj.kind.startswith('level_crossing'):print('CROSSING',vars(obj),flush=True)
+ server._close_chunk_executor()

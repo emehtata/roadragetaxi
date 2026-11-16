@@ -681,6 +681,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_crossbucks_face_road_approaches()
+	test_crossbuck_geometry_preserved()
 	test_power_tower_legs_connected()
 	test_power_tower_geometry_preserved()
 	test_fields_frozen()
@@ -4190,7 +4192,7 @@ func test_buildings_3d() -> void:
 	B3.props(crossing, [[Vector2.ZERO, 0.0, "level_crossing"]])  # the road along +x: posts either side of it, across
 	var xs: Array = Array(crossing["deck"]).map(func(v): return absf(v.x))
 	var zs: Array = Array(crossing["deck"]).map(func(v): return absf(v.z))
-	check(zs.max() > 3.9 and zs.max() < 4.2 and xs.max() < 0.7, "a crossbuck's posts stand either side of the road, its boards along it")
+	check(zs.max() > 4.5 and zs.max() < 4.7 and xs.max() < 0.06, "a crossbuck's posts and boards stand across the road")
 	var crossing_turned := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
 	B3.props(crossing_turned, [[Vector2.ZERO, PI / 2.0, "level_crossing_barrier"]])  # the road along z: the booms reach across x
 	check(Array(crossing_turned["deck"]).map(func(v): return absf(v.x)).max() > 3.9 and Array(crossing_turned["deck"]).map(func(v): return absf(v.z)).max() < 0.5, "a barrier pair turns with its road")
@@ -4218,6 +4220,91 @@ func test_buildings_3d() -> void:
 	B3._structures(foam, {"shore_foam": [[PackedVector2Array([Vector2(0, 0), Vector2(10, 0)]), 0.5]]})
 	check(foam["road"].size() == 6 and foam["road_uv"][0].x == B3.ROAD_FOAM and is_equal_approx(foam["road_uv2"][0].x, 0.5), "shore foam: a strip on the water, its shore distance")
 	MapChunk.buildings_3d = false
+
+
+## VQA-020: actual broad board triangles must face both directions of the road.
+func test_crossbucks_face_road_approaches() -> void:
+	for at: Vector2 in [Vector2.ZERO, Vector2(17,-23)]:
+		for angle: float in [0.0, PI/2.0, PI, 0.73]:
+			var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+			B3.props(out,[[at,angle,"level_crossing"]])
+			var along := Vector3(cos(angle),0,-sin(angle))
+			var across := Vector3(sin(angle),0,cos(angle))
+			var broad := [0,0]
+			for side: float in [-1.0,1.0]:
+				var post := B3.to_3d(at)+across*side*4.0
+				var boards := PackedVector3Array()
+				for i in range(0,out.deck.size(),3):
+					if out.deck_colors[i]!=Color8(235,235,235) or (out.deck[i]-post).dot(across)*side < -1.0 or (out.deck[i]-post).dot(across)*side > 1.0: continue
+					var a: Vector3=out.deck[i]; var b: Vector3=out.deck[i+1]; var c: Vector3=out.deck[i+2]
+					boards.append_array(PackedVector3Array([a,b,c]))
+					var normal := (b-a).cross(c-a).normalized()
+					if absf(normal.y)<0.00001:
+						check(absf(normal.dot(along))>0.99999,"crossbuck broad face normal follows approach %.2f"%angle)
+						broad[0 if normal.dot(along)>0 else 1]+=1
+				check(boards.size()==36,"each crossbuck retains two distinct board prisms")
+				var width := Vector2(INF,-INF); var depth:=Vector2(INF,-INF)
+				for v in boards:
+					width.x=minf(width.x,(v-post).dot(across)); width.y=maxf(width.y,(v-post).dot(across))
+					depth.x=minf(depth.x,(v-post).dot(along)); depth.y=maxf(depth.y,(v-post).dot(along))
+				check(absf(width.x+0.6)<0.0001 and absf(width.y-0.6)<0.0001 and absf(depth.y-depth.x-0.03)<0.0001,"crossbuck keeps 1.2 m width across road and .03 m thickness")
+				for end: float in [-0.6,0.6]:
+					var heights := []
+					for v in boards:
+						if absf((v-post).dot(across)-end)<0.0001: heights.append(v.y)
+					check(heights.any(func(y):return absf(y-1.8)<0.0001) and heights.any(func(y):return absf(y-2.65)<0.0001),"both X diagonals remain distinct at each end")
+				var centre_hits := 0
+				for i in range(0,boards.size(),3):
+					for edge in 3:
+						var a: Vector3=boards[i+edge]; var b: Vector3=boards[i+(edge+1)%3]
+						var u: float=(a-post).dot(across); var v: float=(b-post).dot(across)
+						if u*v<0.0:
+							var hit := a.lerp(b,-u/(v-u))
+							if absf((hit-post).dot(along))<=0.05 and hit.y>=2.14 and hit.y<=2.31: centre_hits+=1
+				check(centre_hits>=8,"both boards intersect the upright post at their shared centre")
+			check(broad==[8,8],"both road approaches have all four board faces")
+
+
+func test_crossbuck_geometry_preserved() -> void:
+	for angle: float in [0.0,PI/2.0,PI,0.73]:
+		for at: Vector2 in [Vector2.ZERO,Vector2(17,-23)]:
+			var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+			B3.props(out,[[at,angle,"level_crossing"]])
+			var posts := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+			var across := Vector2(cos(angle),-sin(angle)).orthogonal()
+			for side: float in [-1.0,1.0]: B3._box3d(posts,"deck",at+across*side*4.0,0.05,0,2.6,Color8(70,70,70))
+			var actual := PackedVector3Array()
+			for i in out.deck.size():
+				if out.deck_colors[i]==Color8(70,70,70): actual.append(out.deck[i])
+			check(actual==posts.deck,"crossbuck post centres, dimensions and colour unchanged")
+			for ground: float in [0.0,13.5]:
+				var grid := {} if ground==0 else {"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
+				var input := {"rect":Rect2(-50,-50,100,100),"props":[[at,angle,"level_crossing"]],"ground_heights":grid}
+				var built := B3.build([],[],Vector2.ZERO,[],[],input)
+				var shifted: PackedVector3Array=out.deck.duplicate()
+				for i in shifted.size():shifted[i].y+=ground
+				check(built.deck==shifted and built==B3.build([],[],Vector2.ZERO,[],[],input),"crossbuck final grounded build/rebuild preserved")
+				for i in range(0,built.deck.size(),3):
+					check((built.deck[i+1]-built.deck[i]).cross(built.deck[i+2]-built.deck[i]).length()>0.00001 and absf(built.normals.deck[i].length()-1.0)<0.0001,"crossbuck face winding/normals nondegenerate")
+	var flags := [MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
+	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
+	var map := MapLayer.new(); root.add_child(map)
+	var row := {"chunk_id":"0_0","bounds":[0,0,100,100],"scenery_objects":[[25.0,25.0,"level_crossing",0.73]]}
+	map.add_chunk(row.duplicate(true))
+	var faces := []
+	for mesh: MeshInstance3D in map._chunks["0_0"].meshes_3d:
+		faces.append(mesh.mesh.get_faces())
+		check(mesh.cast_shadow==(GeometryInstance3D.SHADOW_CASTING_SETTING_ON if mesh.mesh.get_aabb().size.y>2.0 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF),"crossbuck keeps production shadow settings")
+	map.replace_chunk(row.duplicate(true))
+	var replaced := []
+	for mesh: MeshInstance3D in map._chunks["0_0"].meshes_3d: replaced.append(mesh.mesh.get_faces())
+	check(faces==replaced,"crossbuck replacement stable")
+	map.clear();check(map._chunks.is_empty(),"crossbuck chunk unloaded")
+	map.add_chunk(row.duplicate(true));replaced.clear()
+	for mesh: MeshInstance3D in map._chunks["0_0"].meshes_3d:replaced.append(mesh.mesh.get_faces())
+	check(faces==replaced,"crossbuck reload stable")
+	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
+
 
 ## VQA-019: intersect actual leg triangles independently of the builder's section layout.
 func _tower_slice(vertices: PackedVector3Array, y: float, at: Vector2, corner: Vector2) -> Rect2:
@@ -4277,7 +4364,7 @@ func test_power_tower_geometry_preserved() -> void:
 				for i in range(0, built.deck.size(), 3):
 					var a: Vector3 = built.deck[i]; var b: Vector3 = built.deck[i+1]; var c: Vector3 = built.deck[i+2]
 					check((b-a).cross(c-a).length() > 0.00001 and is_equal_approx(built.normals.deck[i].length(),1.0), "tower triangles have nonzero area and unit face normals")
-	var original_hashes := {"bench": "b52d6f3e50b0aec3e4f622ea3a086a6b1effc43b64db23248494ac85c52b9498", "power_pole": "44bd29ce03367686137472bdbdef2f24cf083cebc9127a079e680fb44bdff987", "chimney": "deabb28c6a1b3df2fc08c237bf9eca065c76e5426ea331a93c982e2b40426ad3", "mast": "628d2b38c3ed309e902cd8d27be46bb51ed0d4b84b158db95043f0dcdf665b08", "tower": "feec9e5ab571f714072617b46d37b2f277321a696b965b6e56c2a914be7d62f4", "communications_tower": "7c13f84579e7e95db6846c0d101e8ae318d628d1cc89ed55714340d4b118c1c0", "water_tower": "de053c8ed3caf2d32d3ee7d226b92e0a4b0fac2bb0d9aa5ec8a240439ecca117", "boulder": "6bab96367b3c46c4c07001a328011926fed87e52901fd227cd66cb6a1b74f067", "level_crossing": "3af29c869eb143a37fba725b19e37516dd29b7e42b3c7271e9e9a073e9357147", "level_crossing_barrier": "a6d6e20ada8b8f534c6c83dd6955741ea313be61c8aca1c85f4b33c3993bac9a", "power_line": "5088e0614b149b56eb74d92f5df78c4045b0622ac1cb652a465900e71acf14b0"}
+	var original_hashes := {"bench": "b52d6f3e50b0aec3e4f622ea3a086a6b1effc43b64db23248494ac85c52b9498", "power_pole": "44bd29ce03367686137472bdbdef2f24cf083cebc9127a079e680fb44bdff987", "chimney": "deabb28c6a1b3df2fc08c237bf9eca065c76e5426ea331a93c982e2b40426ad3", "mast": "628d2b38c3ed309e902cd8d27be46bb51ed0d4b84b158db95043f0dcdf665b08", "tower": "feec9e5ab571f714072617b46d37b2f277321a696b965b6e56c2a914be7d62f4", "communications_tower": "7c13f84579e7e95db6846c0d101e8ae318d628d1cc89ed55714340d4b118c1c0", "water_tower": "de053c8ed3caf2d32d3ee7d226b92e0a4b0fac2bb0d9aa5ec8a240439ecca117", "boulder": "6bab96367b3c46c4c07001a328011926fed87e52901fd227cd66cb6a1b74f067", "level_crossing": "7cd2ffe11ad00c45bef3b3cf7245038d5519bd02b16e9740491bb9c9e6a3846e", "level_crossing_barrier": "a6d6e20ada8b8f534c6c83dd6955741ea313be61c8aca1c85f4b33c3993bac9a", "power_line": "5088e0614b149b56eb74d92f5df78c4045b0622ac1cb652a465900e71acf14b0"}
 	for kind: String in original_hashes:
 		var control := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
 		if kind == "power_line": B3.power_lines(control, [PackedVector2Array([Vector2.ZERO,Vector2(40,0)])])

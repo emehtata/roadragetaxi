@@ -3260,8 +3260,8 @@ static func _gap_prop(out: Dictionary, at: Vector2, angle: float, kind: String, 
 			for side in [-1.0, 1.0]:
 				var post: Vector2 = at + across * side * 4.0
 				_box3d(out, "deck", post, 0.05, 0.0, 2.6, Color8(70, 70, 70))
-				_sloped_wall(out, post - along * 0.6, post + along * 0.6, 0.03, 1.8, 2.5, 0.15, color)
-				_sloped_wall(out, post - along * 0.6, post + along * 0.6, 0.03, 2.5, 1.8, 0.15, color)
+				_sloped_wall(out, post - across * 0.6, post + across * 0.6, 0.03, 1.8, 2.5, 0.15, color)
+				_sloped_wall(out, post - across * 0.6, post + across * 0.6, 0.03, 2.5, 1.8, 0.15, color)
 		_:  # level_crossing_barrier: a lowered boom across each half of the road
 			for side in [-1.0, 1.0]:
 				var post: Vector2 = at + across * side * 4.0
