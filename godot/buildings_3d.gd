@@ -1572,7 +1572,7 @@ static func _cart(out: Dictionary, detail: int) -> void:
 
 
 static var ANIMAL_MODELS := {  # species -> [CC0 GLB preloaded so exports pack it (assets/animals/SOURCES.md), yaw turning its nose to +x, body length m, its coat (no tint)]
-	"fox": [preload("res://assets/animals/fox.glb"), 0.0, 0.9, Color8(194, 91, 38)],
+	"fox": [preload("res://assets/animals/fox.glb"), PI / 4.0, 0.9, Color8(194, 91, 38)],
 	"small_bird": [preload("res://assets/animals/small_bird.glb"), PI / 2.0, 0.3, Color.WHITE],  # untinted; the old 0.3 m bird size (a real robin is 0.14 m), to read on screen
 	"roe_deer": [preload("res://assets/animals/roe_deer.glb"), PI / 2.0, 1.2, Color8(151, 104, 62)],
 	"horse": [preload("res://assets/animals/horse.glb"), PI / 2.0, 2.0, Color8(139, 91, 57)],

@@ -83,3 +83,7 @@ coach false positive are explicitly excluded. See
 ## Reflective chest bands (VQA-016)
 
 Variant 4 now clips its existing pale bands from the actual jacket triangles, removing the fixed-plane gap while retaining the cached body/shadow path. [Diagnosis, checks and visual evidence](visual-quality-corrections/pedestrian-reflective-strips/README.md) include 393 focused checks with zero failures (102 original failures), 66 preservation fingerprints, all 96 inspected before/after panels and the inspected passing `vqa_reflective_strips_day` gameplay capture. The historical audit is unchanged.
+
+## Fox forward axis (VQA-017)
+
+The fox source yaw now turns its diagonal +X/+Z body/head direction onto local +X before the production heading. [Diagnosis, regression and visual evidence](visual-quality-corrections/fox-orientation/README.md) record 229 passing Linux animal checks, 225 passing native checks, 12 passing targeted Python tests, all 32 inspected comparison panels and an inspected passing `vqa_fox_orientation_day` capture. Source GLB bytes and shared animal code remain unchanged.

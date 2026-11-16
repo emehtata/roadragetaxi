@@ -1,0 +1,5 @@
+extends 'res://tools/visual_quality_audit.gd'
+func _initialize():
+ B3.ANIMAL_MODELS.fox[1]=0.0
+ B3._animal_models.erase('fox')
+ super._initialize()

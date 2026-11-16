@@ -221,6 +221,9 @@ func _ready() -> void:
 		main.entities.extra_trains = [_lineup_train("train coach", coach[0], [coach[1]], coach[2], coach[1] * 0.5, LINEUP_LANE_M + 0.5)]
 	elif scenario.get("lineup", false):
 		main.entities.extra_npcs = _lineup()
+	if scenario.get("fox_orientation", false):
+		var at := _on_road(9.0, 0.9)
+		scenario["animals"] = [["fox", at.x, at.y, float(scenario["pose"][2]) + PI - 0.3]]
 	if scenario.get("reflective_strips", false):
 		var at := _on_road(9.0, 0.9)
 		var id := ""
@@ -793,6 +796,54 @@ func _check_map(centre: Vector2) -> Array:
 				missing.append("lineup %s under the HUD at %s" % [row[0], rect])
 				_lineup_seen[key] = "under the HUD"
 				break
+	var fox := {}
+	if scenario.get("fox_orientation", false):
+		var target: Array = scenario["animals"][0]
+		var local := MapMath.point(main.entities.origin, float(target[1]), float(target[2]))
+		var layer = layer_3d_view()
+		var found := false
+		for key: String in ([] if layer == null else layer._animal_rows.keys()):
+			if not key.begins_with("a|fox|"): continue
+			if not key.ends_with("|stand|1.00|1"): missing.append("fox target has wrong pose/size/detail")
+			var node: MultiMeshInstance3D = layer._animal_batches[key]
+			for i in node.multimesh.visible_instance_count:
+				var xf := node.global_transform * node.multimesh.get_instance_transform(i)
+				if Vector2(xf.origin.x,xf.origin.z).distance_to(local)>0.1: continue
+				found = true
+				if not MapChunkScript.outdoor_3d or not Buildings3D.opaque or layer._view.get_camera_3d()!=camera_3d or not layer._sprite.is_visible_in_tree() or not node.is_visible_in_tree() or node.layers & camera_3d.cull_mask==0:
+					missing.append("fox target 3D view is not actively displayed")
+				var forward := Vector3(cos(float(target[3])),0,-sin(float(target[3])))
+				if xf.basis.x.dot(forward)<0.999: missing.append("fox instance has wrong heading")
+				var box := node.multimesh.mesh.get_aabb()
+				var ground: float = main.map_layer.deck_height(local,0,false)
+				if absf(xf.origin.y+box.position.y-ground)>0.05: missing.append("fox target not standing on visible ground")
+				var rects := []
+				for bounds: AABB in [box, AABB(Vector3(0.20,0.35,-0.12),Vector3(0.23,0.25,0.24))]:
+					var rect := Rect2()
+					for corner in 8:
+						var point := xf*bounds.get_endpoint(corner)
+						if not camera_3d.is_position_in_frustum(point): missing.append("fox target outside frustum")
+						var pixel := camera_3d.unproject_position(point)
+						rect=Rect2(pixel,Vector2.ZERO) if corner==0 else rect.expand(pixel)
+					rects.append(rect)
+				if rects[0].size.y<60 or minf(rects[1].size.x,rects[1].size.y)<15: missing.append("fox target/head too small")
+				for panel: Rect2 in hud:
+					if panel.intersects(rects[0]): missing.append("fox target under HUD")
+				for footprint: PackedVector2Array in footprints:
+					for step in 17:
+						var sight := Vector2(camera_3d.global_position.x,camera_3d.global_position.z).lerp(local,step/16.0)
+						if Geometry2D.is_point_in_polygon(sight,footprint): missing.append("fox target sightline crosses building")
+				for other: MeshInstance3D in layer._cars_root.find_children("*","MeshInstance3D",true,false):
+					if not other.visible or camera_3d.is_position_behind(other.global_position): continue
+					if camera_3d.global_position.distance_to(other.global_position)>=camera_3d.global_position.distance_to(xf.origin): continue
+					var occupied:=Rect2()
+					for corner in 8:
+						var pixel:=camera_3d.unproject_position(other.global_transform*other.get_aabb().get_endpoint(corner))
+						occupied=Rect2(pixel,Vector2.ZERO) if corner==0 else occupied.expand(pixel)
+					if occupied.intersects(rects[1]): missing.append("fox head obscured by nearer dynamic body")
+				fox={"species":"fox","heading":target[3],"pose":"stand","active_3d":true,"ground_m":ground,"model_y_m":xf.origin.y,
+					"rect":[rects[0].position.x,rects[0].position.y,rects[0].size.x,rects[0].size.y],"head_rect":[rects[1].position.x,rects[1].position.y,rects[1].size.x,rects[1].size.y]}
+		if not found: missing.append("expected fox instance not drawn")
 	var reflective := {}
 	if scenario.get("reflective_strips", false):
 		var target: Dictionary = main.entities.extra_pedestrians[0]
@@ -982,6 +1033,7 @@ func _check_map(centre: Vector2) -> Array:
 				missing.append("camper drawn %.2f m, its row %.2f m (over 10 %%)" % [c[1], c[0]])
 	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count(), "scenery_in_view": seen}
 	if not reflective.is_empty(): _counts["reflective_strips"] = reflective
+	if not fox.is_empty(): _counts["fox"] = fox
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
 	if not campers.is_empty():

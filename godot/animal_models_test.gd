@@ -162,8 +162,69 @@ func test_rows_batched_per_key() -> void:
 	layer.free()
 
 
+## Independently recorded flattened source vertices: chest, head and white tail tip.
+## The source fox faces diagonally +X/+Z; its old zero yaw passed the highest-quarter heuristic.
+const FOX_BODY := [1962, 1734, 1970]
+const FOX_HEAD := [3435, 3323, 3434]
+const FOX_TAIL := [0, 21, 229]
+
+
+static func _landmark(verts: PackedVector3Array, indices: Array) -> Vector3:
+	var centre := Vector3.ZERO
+	for index: int in indices: centre += verts[index]
+	return centre / indices.size()
+
+
+func test_fox_semantic_forward_axis() -> void:
+	check(FileAccess.get_sha256("res://assets/animals/fox.glb") == "f534388ca7d738eeb51a178ef4cddc28ce601cfcfae7e569e353420dbaa08da3", "fox source asset preserved")
+	for detail in [0, 1]:
+		for size in [0.6, 1.0, 1.2]:
+			for pose in ["stand", "feed", "walk_a", "walk_b"]:
+				var a := B3.animal_arrays("fox", B3.ANIMAL_MODELS.fox[3], pose, size, detail)
+				var verts: PackedVector3Array = a.verts
+				var body := _landmark(verts, FOX_BODY)
+				var head := _landmark(verts, FOX_HEAD)
+				var tail := _landmark(verts, FOX_TAIL)
+				var forward := (head - body) * Vector3(1,0,1)
+				check(forward.normalized().dot(Vector3.RIGHT) > 0.99, "fox semantic head faces +X: %s" % forward)
+				check(tail.x < body.x and absf(tail.z - body.z) < 0.15 * size, "fox tail stays behind its body")
+				var box := _box(verts)
+				check(is_equal_approx(box.size.x, 0.9 * size) and absf(box.position.y) < 0.001, "fox retains length and grounded feet")
+				check(a.shadow == verts, "fox shadow follows corrected geometry")
+				check(box.size.z < box.size.x * 0.4 and box.size.y > 0.45 * size, "fox source proportions after forward normalisation")
+
+
+func test_fox_batch_faces_heading() -> void:
+	var layer := B3.new()
+	layer._cars_root = Node3D.new()
+	root.add_child(layer._cars_root)
+	if not B3._shared.has("organic"): B3._shared["organic"] = ShaderMaterial.new()
+	var previous := {}
+	for frame in 2:
+		layer._animal_rows.clear()
+		for size in [0.6, 1.0, 1.2]:
+			for heading in [0.0, PI/2, PI, 0.73]:
+				layer.animal(Vector2(13+frame, -7), heading, "fox", Color.GRAY, "walk_a", size, 2.3)
+		layer._flush_animals()
+		for key: String in layer._animal_rows:
+			var node: MultiMeshInstance3D = layer._animal_batches[key]
+			if frame == 1: check(node == previous[key], "fox batch reused across frames")
+			previous[key] = node
+			var verts: PackedVector3Array = node.multimesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+			for i in 4:
+				var heading: float = [0.0, PI/2, PI, 0.73][i]
+				# Dummy rendering stores no MultiMesh transforms; native verification reads the uploaded instances.
+				var xf: Transform3D = layer._animal_rows[key][i][5] if DisplayServer.get_name() == "headless" else node.multimesh.get_instance_transform(i)
+				var direction := (xf * _landmark(verts, FOX_HEAD) - xf * _landmark(verts, FOX_BODY)) * Vector3(1,0,1)
+				check(direction.normalized().dot(Vector3(cos(heading),0,-sin(heading))) > 0.99, "batched fox faces heading %.2f" % heading)
+				check(xf.basis.determinant() > 0 and xf.origin.is_equal_approx(B3.to_3d(Vector2(13+frame,-7), B3.ROAD_M+0.016+2.3)), "fox proper rotation and elevated placement")
+	layer._cars_root.free()
+	layer.route_3d.free()
+	layer.free()
+
+
 func _initialize() -> void:
-	for test in ["test_model_aabb_scale", "test_model_faces_heading", "test_unmodelled_species_use_procedural",
+	for test in ["test_fox_semantic_forward_axis", "test_fox_batch_faces_heading", "test_model_aabb_scale", "test_model_faces_heading", "test_unmodelled_species_use_procedural",
 			"test_horse_saddle_height", "test_horse_rider_legs_astride", "test_other_poses_unchanged", "test_missing_glb_falls_back", "test_rows_batched_per_key"]:
 		call(test)
 	print("animal_models_test: %d checks, %d failed" % [_checks, _failures])
