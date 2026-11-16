@@ -91,3 +91,7 @@ The fox source yaw now turns its diagonal +X/+Z body/head direction onto local +
 ## VQA-018: horizontal attached felled-tree trunk
 
 The felled-tree branch now scales its rotated cylinder on local axes, grounds its true radius and moves its existing crown 0.3 radii inward so the surfaces intersect. Standing trees and server fall decisions retain their existing paths. [Diagnosis, geometry/native regressions, 96 comparison panels and passing named Bulevardi capture](visual-quality-corrections/felled-tree-geometry/README.md) record the correction and sampled coverage.
+
+## VQA-019: continuous power-tower legs
+
+The power-tower branch now shears one slender square support per corner from the existing feet to the existing top width, replacing disconnected vertical sections. Tower height, leg thickness, crossarms, colours and power lines retain their contracts. [Diagnosis, geometry/native checks, 64 comparison panels and passing mapped Oulu capture](visual-quality-corrections/power-tower-legs/README.md) record the correction and sampled coverage.

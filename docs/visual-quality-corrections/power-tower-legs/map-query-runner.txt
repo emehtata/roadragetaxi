@@ -1,0 +1,18 @@
+import sys,math
+sys.path.insert(0,'/home/ubuntu/work/roadragetaxi')
+from tools.visual_test import _bbox
+if __name__=='__main__':
+ sys.argv=['query','--preset','Oulu','--bbox',_bbox(426307.2,7209696.8,2),'--test-pose','426307.2,7209696.8,1.601','--no-auto-fetch','--no-terrain-dem80','--no-historical-weather','--no-intercity-fares']
+ from theroadragetrip.server import SimulationServer
+ from theroadragetrip.server.cli import parse_server_args
+ args,config=parse_server_args(); server=SimulationServer(args,config); world=server.world
+ from theroadragetrip.server.map_sync import prepare_initial_window
+ world.auto_fetch_manager.prepare_window(426307.2,7209696.8)
+ print('PREPARED',prepare_initial_window(world,timeout_s=120))
+ print('Objects',len(world.scenery_objects),'ways',len(world.ways),'bounds',world.bounds,'bbox',server.bbox)
+ from collections import Counter
+ print(Counter(o.kind for o in world.scenery_objects))
+ for obj in world.scenery_objects:
+  if obj.kind.startswith('power'):
+   print('TOWER',vars(obj))
+ server._close_chunk_executor()

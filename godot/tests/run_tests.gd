@@ -681,6 +681,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_power_tower_legs_connected()
+	test_power_tower_geometry_preserved()
 	test_fields_frozen()
 	test_water_freezes_in_snowless_thermal_winter()
 	test_water_ice_follows_lake_ice_holds()
@@ -4216,6 +4218,96 @@ func test_buildings_3d() -> void:
 	B3._structures(foam, {"shore_foam": [[PackedVector2Array([Vector2(0, 0), Vector2(10, 0)]), 0.5]]})
 	check(foam["road"].size() == 6 and foam["road_uv"][0].x == B3.ROAD_FOAM and is_equal_approx(foam["road_uv2"][0].x, 0.5), "shore foam: a strip on the water, its shore distance")
 	MapChunk.buildings_3d = false
+
+## VQA-019: intersect actual leg triangles independently of the builder's section layout.
+func _tower_slice(vertices: PackedVector3Array, y: float, at: Vector2, corner: Vector2) -> Rect2:
+	var points := PackedVector2Array()
+	for i in range(0, vertices.size(), 3):
+		for edge in 3:
+			var a := vertices[i + edge]
+			var b := vertices[i + (edge + 1) % 3]
+			if absf(a.y - b.y) < 0.000001 or y < minf(a.y, b.y) or y > maxf(a.y, b.y): continue
+			var q := a.lerp(b, (y - a.y) / (b.y - a.y))
+			var point := Vector2(q.x, q.z) - at
+			if point.x * corner.x > 0.0 and point.y * corner.y > 0.0: points.append(point)
+	if points.is_empty(): return Rect2()
+	var box := Rect2(points[0], Vector2.ZERO)
+	for point in points: box = box.expand(point)
+	return box
+
+
+func test_power_tower_legs_connected() -> void:
+	for height: float in [10.0, 22.0, 45.0]:
+		for at: Vector2 in [Vector2.ZERO, Vector2(17, -23)]:
+			for angle: float in [0.0, PI / 2.0, 0.73]:
+				var out := {"deck":PackedVector3Array(), "deck_colors":PackedColorArray()}
+				B3.props(out, [[at, angle, "power_tower", height]])
+				for corner: Vector2 in [Vector2(-1,-1), Vector2(1,-1), Vector2(1,1), Vector2(-1,1)]:
+					for fraction: float in [0.0001, 1.0/3.0-0.0001, 1.0/3.0, 1.0/3.0+0.0001, 2.0/3.0-0.0001, 2.0/3.0, 2.0/3.0+0.0001, 0.9999]:
+						var slice := _tower_slice(out.deck.slice(0, out.deck.size() - 36), height * fraction, at, corner)
+						check(slice.size.is_equal_approx(Vector2(0.24,0.24)), "tower: four slender .24 m legs at %.6f height" % fraction)
+						check(slice.get_center().distance_to(corner * (2.0 - 1.2 * fraction)) < 0.001, "tower: continuous taper through section boundary at %.6f" % fraction)
+				check(out.deck_colors.size() == out.deck.size() and Array(out.deck_colors).all(func(c): return c == Color8(140,145,150)), "tower retains every leg/crossarm colour")
+				check(is_equal_approx(Array(out.deck).map(func(v): return v.y).max(),height), "tower retains requested height")
+
+
+func test_power_tower_geometry_preserved() -> void:
+	var original := {"deck":PackedVector3Array(), "deck_colors":PackedColorArray()}
+	B3.props(original, [[Vector2.ZERO, 0.0, "power_tower"]])
+	var explicit := {"deck":PackedVector3Array(), "deck_colors":PackedColorArray()}
+	B3.props(explicit, [[Vector2.ZERO, 0.0, "power_tower", 22.0]])
+	check(original == explicit, "tower: default and explicit 22 m agree")
+	for height: float in [10.0, 22.0, 45.0]:
+		for angle: float in [0.0, PI / 2.0, 0.73]:
+			var out := {"deck":PackedVector3Array(), "deck_colors":PackedColorArray()}
+			B3.props(out, [[Vector2.ZERO, angle, "power_tower", height]])
+			var crossarms := {"deck":PackedVector3Array(), "deck_colors":PackedColorArray()}
+			var across := Vector2(cos(angle), -sin(angle)).orthogonal()
+			for y: float in [height * 0.75, height - 0.3]:
+				B3._sloped_wall(crossarms, -across * 5.0, across * 5.0, 0.3, y, y, 0.3, Color8(140,145,150))
+			check(out.deck.slice(out.deck.size()-crossarms.deck.size()) == crossarms.deck, "tower preserves both crossarms exactly")
+			for ground: float in [0.0, 13.5]:
+				var grid := {} if ground == 0.0 else {"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
+				var input := {"rect":Rect2(-50,-50,100,100),"props":[[Vector2.ZERO,angle,"power_tower",height]],"ground_heights":grid}
+				var built := B3.build([],[],Vector2.ZERO,[],[],input)
+				check(built == B3.build([],[],Vector2.ZERO,[],[],input), "tower chunk rebuild is deterministic")
+				var shifted: PackedVector3Array = out.deck.duplicate()
+				for i in shifted.size(): shifted[i].y += ground
+				check(built.deck == shifted, "tower final chunk keeps connected legs on constant ground")
+				for i in range(0, built.deck.size(), 3):
+					var a: Vector3 = built.deck[i]; var b: Vector3 = built.deck[i+1]; var c: Vector3 = built.deck[i+2]
+					check((b-a).cross(c-a).length() > 0.00001 and is_equal_approx(built.normals.deck[i].length(),1.0), "tower triangles have nonzero area and unit face normals")
+	var original_hashes := {"bench": "b52d6f3e50b0aec3e4f622ea3a086a6b1effc43b64db23248494ac85c52b9498", "power_pole": "44bd29ce03367686137472bdbdef2f24cf083cebc9127a079e680fb44bdff987", "chimney": "deabb28c6a1b3df2fc08c237bf9eca065c76e5426ea331a93c982e2b40426ad3", "mast": "628d2b38c3ed309e902cd8d27be46bb51ed0d4b84b158db95043f0dcdf665b08", "tower": "feec9e5ab571f714072617b46d37b2f277321a696b965b6e56c2a914be7d62f4", "communications_tower": "7c13f84579e7e95db6846c0d101e8ae318d628d1cc89ed55714340d4b118c1c0", "water_tower": "de053c8ed3caf2d32d3ee7d226b92e0a4b0fac2bb0d9aa5ec8a240439ecca117", "boulder": "6bab96367b3c46c4c07001a328011926fed87e52901fd227cd66cb6a1b74f067", "level_crossing": "3af29c869eb143a37fba725b19e37516dd29b7e42b3c7271e9e9a073e9357147", "level_crossing_barrier": "a6d6e20ada8b8f534c6c83dd6955741ea313be61c8aca1c85f4b33c3993bac9a", "power_line": "5088e0614b149b56eb74d92f5df78c4045b0622ac1cb652a465900e71acf14b0"}
+	for kind: String in original_hashes:
+		var control := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+		if kind == "power_line": B3.power_lines(control, [PackedVector2Array([Vector2.ZERO,Vector2(40,0)])])
+		else: B3.props(control, [[Vector2.ZERO,0.0,kind]])
+		var values := PackedInt32Array()
+		for v: Vector3 in control.deck: values.append_array(PackedInt32Array([roundi(v.x*1000),roundi(v.y*1000),roundi(v.z*1000)]))
+		for c: Color in control.deck_colors: values.append(c.to_rgba32())
+		check(values.to_byte_array().hex_encode().sha256_text() == original_hashes[kind], "unaffected %s geometry and colours preserved" % kind)
+	var old_flags := [MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
+	MapChunk.buildings_3d=true; MapChunk.outdoor_3d=true; MapChunk.build_async=false
+	var map := MapLayer.new()
+	root.add_child(map)
+	var row := {"chunk_id":"0_0","bounds":[0,0,100,100],"scenery_objects":[[25.0,25.0,"power_tower",0.73,22.0]]}
+	map.add_chunk(row.duplicate(true))
+	var chunk = map._chunks["0_0"]
+	var deck: MeshInstance3D = chunk.meshes_3d.filter(func(m): return m.mesh.get_aabb().size.y>20.0)[0]
+	var before: PackedVector3Array=deck.mesh.get_faces()
+	check(deck.cast_shadow==GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "tower production chunk casts shadows")
+	map.replace_chunk(row.duplicate(true))
+	var rebuilt: MeshInstance3D=map._chunks["0_0"].meshes_3d.filter(func(m): return m.mesh.get_aabb().size.y>20.0)[0]
+	check(rebuilt.mesh.get_faces()==before, "tower chunk replacement preserves geometry")
+	map.clear()
+	check(map._chunks.is_empty(), "tower chunk unload removes its geometry")
+	map.add_chunk(row.duplicate(true))
+	rebuilt=map._chunks["0_0"].meshes_3d.filter(func(m): return m.mesh.get_aabb().size.y>20.0)[0]
+	check(rebuilt.mesh.get_faces()==before, "tower chunk reload preserves geometry")
+	map.free()
+	MapChunk.buildings_3d=old_flags[0]; MapChunk.outdoor_3d=old_flags[1]; MapChunk.build_async=old_flags[2]
+
+
 
 
 func test_fields_frozen() -> void:

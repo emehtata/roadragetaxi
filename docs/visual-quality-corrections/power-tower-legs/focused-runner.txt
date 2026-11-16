@@ -1,0 +1,7 @@
+extends "res://tests/run_tests.gd"
+func _process(_delta: float) -> bool:
+ test_power_tower_legs_connected()
+ test_power_tower_geometry_preserved()
+ print("POWER TOWER: %d checks, %d failed" % [_checks,_failures])
+ quit(1 if _failures else 0)
+ return true

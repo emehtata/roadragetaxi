@@ -1,0 +1,88 @@
+{
+  "finding": "VQA-019",
+  "source_revision": "1e1e36e7dce01618c6ed6f70ea7c78d70f8b6de4-dirty",
+  "spec": "docs/specs/audit-power-tower-legs.md",
+  "inspected_panels": 64,
+  "inspected_sheets": [
+    "review/tower_10_1.png",
+    "review/tower_10_2.png",
+    "review/tower_22_1.png",
+    "review/tower_22_2.png",
+    "review/tower_22_perspective_1.png",
+    "review/tower_22_perspective_2.png",
+    "review/tower_45_1.png",
+    "review/tower_45_2.png"
+  ],
+  "fixture": "fixture.json",
+  "before": "before/capture-results.json",
+  "after": "after/capture-results.json",
+  "regression": {
+    "original": {
+      "checks": 3625,
+      "failures": 480
+    },
+    "linux": {
+      "checks": 2185,
+      "failures": 0
+    },
+    "native": {
+      "checks": 2185,
+      "failures": 0
+    },
+    "existing_controls": {
+      "checks": 216,
+      "failures": 0
+    },
+    "manifest_pytest": {
+      "passed": 3
+    }
+  },
+  "source_target": {
+    "osm_node": 3748249674,
+    "position": [
+      426325.0388322479,
+      7209689.282801469
+    ],
+    "wire_row_position": [
+      426325.0,
+      7209689.3
+    ],
+    "height_m": 22.0,
+    "height_source": "existing production default; no mapped height tag",
+    "map_query": "map-query.log"
+  },
+  "named_acceptance": {
+    "scenario": "vqa_power_tower_legs_day",
+    "status": "passed",
+    "inspected": true,
+    "result": "gameplay/accepted/vqa_power_tower_legs_day/2026-06-20T1500_20261116-220301_1e1e36e7-dirty/result.json",
+    "screenshot": "gameplay/accepted/vqa_power_tower_legs_day/2026-06-20T1500_20261116-220301_1e1e36e7-dirty/screenshot.png",
+    "scene": {
+      "active_3d": true,
+      "ground_m": 0.0,
+      "height_m": 22.0,
+      "joint_width_px": 5.30319309234619,
+      "matched_vertices": 156,
+      "position": [
+        426325.0,
+        7209689.3
+      ],
+      "rect": [
+        865.743591308594,
+        403.722778320313,
+        126.900695800781,
+        191.750061035156
+      ]
+    },
+    "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+    "resolution": [
+      1280.0,
+      720.0
+    ]
+  },
+  "excluded_attempts": [
+    "gameplay/final/vqa_power_tower_legs_day/2026-06-20T1500_20261116-220125_1e1e36e7-dirty",
+    "gameplay/retry/vqa_power_tower_legs_day/2026-06-20T1500_20261116-215946_1e1e36e7-dirty",
+    "gameplay/vqa_power_tower_legs_day/2026-06-20T1500_20261116-215719_1e1e36e7-dirty"
+  ]
+}

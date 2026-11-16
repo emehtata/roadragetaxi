@@ -3237,8 +3237,10 @@ static func _gap_prop(out: Dictionary, at: Vector2, angle: float, kind: String, 
 			_sloped_wall(out, at - across * 0.9, at + across * 0.9, 0.12, WIRE_M, WIRE_M, 0.12, color)
 		"power_tower":  # a lattice-style tower: four legs narrowing upwards, two crossarms
 			for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
-				for s in 3:
-					_box3d(out, "deck", at + corner * (2.0 - s * 0.6), 0.12, size * s / 3.0, size * (s + 1) / 3.0, color)
+				var first: int = out["deck"].size()
+				_box3d(out, "deck", at + corner * 2.0, 0.12, 0.0, size, color)
+				for i in range(first, out["deck"].size()):
+					out["deck"][i] -= to_3d(corner * (1.2 * out["deck"][i].y / size))
 			for z in [size * 0.75, size - 0.3]:
 				_sloped_wall(out, at - across * 5.0, at + across * 5.0, 0.3, z, z, 0.3, color)
 		"chimney":

@@ -51,6 +51,7 @@ var _hud_snapshot := {}
 var _indoor_hint: CanvasLayer
 var _indoor_draws := 0
 var _indoor_snapshot := {}
+var _tower_mesh_vertices := {}  # audit-only cached 1 mm membership checks against the actual mapped tower mesh
 var _felled_occluders := {}  # audit-only cached triangle BVHs for actual drawn buildings
 
 
@@ -799,6 +800,63 @@ func _check_map(centre: Vector2) -> Array:
 				missing.append("lineup %s under the HUD at %s" % [row[0], rect])
 				_lineup_seen[key] = "under the HUD"
 				break
+	var tower := {}
+	if scenario.has("power_tower_target"):
+		var target: Array = scenario["power_tower_target"]
+		var layer = layer_3d_view()
+		var found := false
+		for chunk in main.map_layer._chunks.values():
+			for row: Array in chunk._data.get("scenery_objects", []):
+				if row[2] != "power_tower" or Vector2(row[0],row[1]).distance_to(Vector2(target[0],target[1])) > 0.1: continue
+				var height: float = row[4] if row.size() > 4 else Buildings3D.PROPS.power_tower[2]
+				if absf(height-float(target[2]))>0.001: missing.append("mapped power tower has wrong height")
+				var at := MapMath.point(chunk._origin,row[0],row[1])
+				var expected := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+				Buildings3D.props(expected,[[at,float(row[3]),"power_tower",height]])
+				for i in expected.deck.size(): expected.deck[i].y += Buildings3D.ground_height(chunk.ground_heights,Vector2(expected.deck[i].x,expected.deck[i].z))
+				for mesh: MeshInstance3D in chunk.meshes_3d:
+					if mesh.material_override != Buildings3D._shared["ground"] or mesh.mesh == null: continue
+					if not _tower_mesh_vertices.has(mesh.mesh):
+						var faces := Array(mesh.mesh.get_faces())
+						_tower_mesh_vertices[mesh.mesh]=Array(expected.deck).all(func(w): return faces.any(func(v): return v.distance_squared_to(w)<0.000001))
+					if not _tower_mesh_vertices[mesh.mesh]: continue
+					found=true
+					if not MapChunkScript.outdoor_3d or not Buildings3D.opaque or layer==null or layer._view.get_camera_3d()!=camera_3d or not layer._sprite.is_visible_in_tree() or not mesh.is_visible_in_tree() or mesh.layers & camera_3d.cull_mask==0:
+						missing.append("power tower 3D view is not actively displayed")
+					var rect := Rect2()
+					for i in expected.deck.size():
+						var point: Vector3 = mesh.global_transform*expected.deck[i]
+						if not camera_3d.is_position_in_frustum(point): missing.append("power tower outside frustum")
+						var pixel := camera_3d.unproject_position(point)
+						rect=Rect2(pixel,Vector2.ZERO) if i==0 else rect.expand(pixel)
+					if not Rect2(Vector2.ZERO,screen_size).encloses(rect) or rect.size.x<75 or rect.size.y<75: missing.append("power tower too small or offscreen")
+					for panel: Rect2 in hud:
+						if panel.intersects(rect): missing.append("power tower under HUD")
+					var joint_pixels := INF
+					for corner: Vector2 in [Vector2(-1,-1),Vector2(1,-1),Vector2(1,1),Vector2(-1,1)]:
+						var foot := at+corner*2.0
+						var ground: float=Buildings3D.ground_height(chunk.ground_heights,foot)
+						var rendered_foot := mesh.global_transform*Buildings3D.to_3d(foot,ground)
+						if absf(rendered_foot.y-main.map_layer.deck_height(foot,0,false))>0.005: missing.append("power tower foot buried or floating")
+						for fraction: float in [1.0/3.0,2.0/3.0]:
+							var joint := mesh.global_transform*Buildings3D.to_3d(at+corner*(2.0-1.2*fraction),ground+height*fraction)
+							joint_pixels=minf(joint_pixels,camera_3d.unproject_position(joint).distance_to(camera_3d.unproject_position(joint+Vector3(0.24,0,0.24))))
+							for occluder in main.map_layer._chunks.values():
+								for solid: MeshInstance3D in occluder.meshes_3d:
+									if not solid.is_visible_in_tree() or solid.material_override!=Buildings3D._shared["material"] or solid.layers & camera_3d.cull_mask==0: continue
+									if not _felled_occluders.has(solid.mesh): _felled_occluders[solid.mesh]=solid.mesh.generate_triangle_mesh()
+									var inverse := solid.global_transform.affine_inverse()
+									if not _felled_occluders[solid.mesh].intersect_segment(inverse*camera_3d.global_position,inverse*joint).is_empty(): missing.append("power tower joint behind drawn building")
+					if joint_pixels<2.0: missing.append("power tower leg joints too small")
+					for other: MeshInstance3D in layer._cars_root.find_children("*","MeshInstance3D",true,false):
+						if not other.is_visible_in_tree() or camera_3d.is_position_behind(other.global_position) or camera_3d.global_position.distance_to(other.global_position)>=camera_3d.global_position.distance_to(mesh.global_transform*Buildings3D.to_3d(at,height*0.5)): continue
+						var occupied := Rect2()
+						for corner in 8:
+							var pixel := camera_3d.unproject_position(other.global_transform*other.get_aabb().get_endpoint(corner))
+							occupied=Rect2(pixel,Vector2.ZERO) if corner==0 else occupied.expand(pixel)
+						if occupied.intersects(rect): missing.append("power tower obscured by nearer dynamic body")
+					tower={"position":[row[0],row[1]],"height_m":height,"active_3d":true,"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"joint_width_px":joint_pixels,"ground_m":Buildings3D.ground_height(chunk.ground_heights,at),"matched_vertices":expected.deck.size()}
+		if not found: missing.append("expected mapped power tower not drawn")
 	var felled := {}
 	if scenario.has("felled_tree"):
 		var target: Array = scenario["felled_tree"]
@@ -1099,6 +1157,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not reflective.is_empty(): _counts["reflective_strips"] = reflective
 	if not fox.is_empty(): _counts["fox"] = fox
 	if not felled.is_empty(): _counts["felled_tree"] = felled
+	if not tower.is_empty(): _counts["power_tower"] = tower
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
 	if not campers.is_empty():

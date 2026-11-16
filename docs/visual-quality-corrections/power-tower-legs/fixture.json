@@ -1,0 +1,36 @@
+{
+  "conditions": [
+    "day"
+  ],
+  "assets": [
+    {
+      "id": "tower_10",
+      "name": "10 m power tower",
+      "mode": "prop",
+      "kind": "power_tower",
+      "size": 10
+    },
+    {
+      "id": "tower_22",
+      "name": "22 m power tower",
+      "mode": "prop",
+      "kind": "power_tower",
+      "size": 22
+    },
+    {
+      "id": "tower_45",
+      "name": "45 m power tower",
+      "mode": "prop",
+      "kind": "power_tower",
+      "size": 45
+    },
+    {
+      "id": "tower_22_perspective",
+      "name": "22 m tower at 80 m perspective",
+      "mode": "prop",
+      "kind": "power_tower",
+      "size": 22,
+      "perspective": true
+    }
+  ]
+}
