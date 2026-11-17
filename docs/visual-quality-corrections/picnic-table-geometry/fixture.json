@@ -1,0 +1,1 @@
+{"conditions": ["day"], "assets": [{"id": "picnic", "mode": "prop", "kind": "picnic_table", "name": "picnic table"}, {"id": "picnic_20m", "mode": "prop", "kind": "picnic_table", "name": "picnic table at20m", "perspective": true}]}

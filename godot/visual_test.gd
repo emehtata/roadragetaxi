@@ -930,10 +930,11 @@ func _check_map(centre: Vector2) -> Array:
 					coaster={("support" if ferris else "seat" if carousel else "seam"):[row[1][0][0],row[1][0][1]],"path_points":loop.size(),"active_3d":true,("support_rect" if carousel or ferris else "seam_rect"):[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"height_m":seam[2].y if ferris else 7.0 if swing else 0.9 if carousel else 4.5,"ground_m":Buildings3D.ground_height(chunk.ground_heights,loop[0]),"matched_vertices":expected.deck.size()}
 		if not found: missing.append("expected mapped attraction path not drawn")
 	var camp_pair := {}
-	if scenario.has("caravan_with_car_target") or scenario.has("tent_target") or scenario.has("bicycle_parking_target"):
+	if scenario.has("caravan_with_car_target") or scenario.has("tent_target") or scenario.has("bicycle_parking_target") or scenario.has("picnic_table_target"):
+		var picnic:=scenario.has("picnic_table_target")
 		var tent:=scenario.has("tent_target")
 		var rack:=scenario.has("bicycle_parking_target")
-		var kind:="bicycle_parking" if rack else "tent" if tent else "caravan_with_car"
+		var kind:="picnic_table" if picnic else "bicycle_parking" if rack else "tent" if tent else "caravan_with_car"
 		var target:Array=scenario[kind+"_target"]
 		var layer=layer_3d_view()
 		var found:=false
@@ -963,7 +964,10 @@ func _check_map(centre: Vector2) -> Array:
 					for panel:Rect2 in hud:
 						if panel.intersects(bounds):missing.append("camping combination under HUD")
 					var feet:=[Vector3(-1.2,0,-1),Vector3(-1.2,0,1),Vector3(1.2,0,-1),Vector3(1.2,0,1)] if tent else []
-					if rack:
+					if picnic:
+						for x:float in [-0.648,0.648]:
+							for z:float in [-0.625,-0.275,0.275,0.625]:feet.append(Vector3(x,0,z))
+					elif rack:
 						for x:float in [-1.2,-0.4,0.4,1.2]:
 							for side:float in [-1.0,1.0]:feet.append(Vector3(x,0,side*0.27))
 					elif not tent:
@@ -975,7 +979,12 @@ func _check_map(centre: Vector2) -> Array:
 						if absf((mesh.global_transform*foot).y-main.map_layer.deck_height(Vector2(foot.x,foot.z),0,false))>0.005:missing.append("camping base buried or floating")
 					var regions:=[]
 					var camp_regions:=[AABB(Vector3(1.2,0.03,-0.55),Vector3(0,0.92,1.1)),AABB(Vector3(-1.2,0.65,0),Vector3(2.4,0.65,0.5))] if tent else [AABB(Vector3(-4.6,2.4,-1.15),Vector3(4.8,0,2.3)),AABB(Vector3(2.2,1.5,-0.5),Vector3(0.8,0,1.0)),AABB(Vector3(0.3,0.5,-0.05),Vector3(0.7,0,0.1))]
-					if rack:
+					if picnic:
+						var local_eye:Vector3=placement.affine_inverse()*(mesh.global_transform.affine_inverse()*camera_3d.global_position)
+						var front:=1.0 if local_eye.x>0 else -1.0
+						var side:=1.0 if local_eye.z>0 else -1.0
+						camp_regions=[AABB(Vector3(front*0.91,0.06,-0.2),Vector3(0,0.27,0.4)),AABB(Vector3(front*0.648-0.035,0.25,minf(side*0.666,side*0.751)),Vector3(0.07,0.17,0.085)),AABB(Vector3(-0.8,0.751,-0.3),Vector3(1.6,0,0.6))]
+					elif rack:
 						var local_eye:Vector3=placement.affine_inverse()*(mesh.global_transform.affine_inverse()*camera_3d.global_position)
 						var front:=1.231 if local_eye.x>0 else -1.231
 						camp_regions=[AABB(Vector3(front,0.05,-0.175),Vector3(0,0.65,0.35)),AABB(Vector3(front,0.74,-0.3),Vector3(0,0.06,0.6))]
@@ -1004,10 +1013,12 @@ func _check_map(centre: Vector2) -> Array:
 								var pixel:=camera_3d.unproject_position(other.global_transform*other.get_aabb().get_endpoint(corner))
 								occupied=Rect2(pixel,Vector2.ZERO) if corner==0 else occupied.expand(pixel)
 							if occupied.intersects(rect):missing.append("camping combination obscured by dynamic body")
+						if picnic and regions.is_empty() and (rect.size.x<12 or rect.size.y<12):missing.append("picnic table opening too small or edge-on")
+						if picnic and regions.size()==1 and minf(rect.size.x,rect.size.y)<2:missing.append("picnic seat/support contact too small")
 						if rack and regions.is_empty() and (rect.size.x<12 or rect.size.y<12):missing.append("bicycle rack opening too small or edge-on")
 						if rack and regions.size()==1 and minf(rect.size.x,rect.size.y)<1.0:missing.append("bicycle rack member thinner than one pixel")
 						regions.append([rect.position.x,rect.position.y,rect.size.x,rect.size.y])
-					camp_pair={"position":[row[0],row[1]],"angle":row[3],"active_3d":true,"region_rects":regions,"rect":[bounds.position.x,bounds.position.y,bounds.size.x,bounds.size.y],"matched_vertices":expected.deck.size(),"ground_m":Buildings3D.ground_height(chunk.ground_heights,at),"envelope_m":[3.0,0.6] if rack else [3.2,2.4] if tent else [9.4,2.5]}
+					camp_pair={"position":[row[0],row[1]],"angle":row[3],"active_3d":true,"region_rects":regions,"rect":[bounds.position.x,bounds.position.y,bounds.size.x,bounds.size.y],"matched_vertices":expected.deck.size(),"ground_m":Buildings3D.ground_height(chunk.ground_heights,at),"envelope_m":[1.8,1.5] if picnic else [3.0,0.6] if rack else [3.2,2.4] if tent else [9.4,2.5]}
 		if not found:missing.append("expected mapped camping geometry not drawn")
 	var crossbuck := {}
 	if scenario.has("crossbuck_target"):
@@ -1425,7 +1436,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not tower.is_empty(): _counts["power_tower"] = tower
 	if not coaster.is_empty(): _counts["ferris_wheel" if scenario.has("ferris_supports") else "swing_carousel" if scenario.has("swing_supports") else "carousel" if scenario.has("carousel_supports") else "coaster"] = coaster
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
-	if not camp_pair.is_empty(): _counts["bicycle_parking" if scenario.has("bicycle_parking_target") else "tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
+	if not camp_pair.is_empty(): _counts["picnic_table" if scenario.has("picnic_table_target") else "bicycle_parking" if scenario.has("bicycle_parking_target") else "tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
 	if not campers.is_empty():

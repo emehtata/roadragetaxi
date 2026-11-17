@@ -1,0 +1,6 @@
+extends "res://tools/_tmp_picnic_suite_before.gd"
+func _process(_delta:float)->bool:
+ test_picnic_table_has_seats_and_open_supports()
+ test_picnic_table_geometry_preserved()
+ print("PICNIC: %d checks, %d failed"%[_checks,_failures])
+ quit(1 if _failures else 0);return true

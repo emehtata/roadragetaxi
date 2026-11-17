@@ -126,3 +126,8 @@ The static combination now renders a separate caravan and lower towing car with 
 ## VQA-026 — tent profile and entrance
 
 The tent now has pitched fabric panels, a longitudinal ridge and a dark forward entrance while retaining its 2.4×2.0×1.3 m dimensions inside the server 3.2×2.4 m camping envelope. [Diagnosis, regression and visual evidence](visual-quality-corrections/tent-geometry/README.md). Linux/native 225 focused checks and 352 controls pass; 12 targeted pytest tests pass. All 32 before/after panels and the named `vqa_tent_geometry_day` capture of actual Nallikari pitch OSM node 2450243261 were inspected. Gameplay evidence samples one daylight flat-terrain view; earlier obscured or diagnostic attempts are excluded.
+
+
+## VQA-028 — picnic-table geometry
+
+Replaced only the picnic-table cuboid with a thin tabletop, two bench seats and grounded open supports, retaining the original footprint/height/palette. Focused Linux/native regression passes 1,301 checks, existing controls 2,100, targeted pytest 31. All 32 comparison panels and the named real mapped Oulu table capture were inspected. [Diagnosis, checks and accepted evidence](visual-quality-corrections/picnic-table-geometry/README.md). Other props and seating behavior remain outside the correction.

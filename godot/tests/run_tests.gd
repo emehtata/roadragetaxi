@@ -681,6 +681,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_picnic_table_has_seats_and_open_supports()
+	test_picnic_table_geometry_preserved()
 	test_bicycle_parking_rack_is_open()
 	test_bicycle_parking_geometry_preserved()
 	test_tent_profile_and_entrance()
@@ -4256,6 +4258,75 @@ func _ferris_surface_crosses(vertices:PackedVector3Array, point:Vector3, directi
 	for i in range(0,vertices.size(),3):
 		if Geometry3D.segment_intersects_triangle(point-direction*half,point+direction*half,vertices[i],vertices[i+1],vertices[i+2])!=null:return true
 	return false
+
+func _picnic_table(at := Vector2.ZERO, angle := 0.0) -> Dictionary:
+	var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+	B3.props(out,[[at,angle,"picnic_table"]])
+	return out
+
+
+func test_picnic_table_has_seats_and_open_supports() -> void:
+	for angle:float in [0.0,PI/2.0,PI,0.73]:
+		for at:Vector2 in [Vector2.ZERO,Vector2(17,-23)]:
+			var out:=_picnic_table(at,angle)
+			var inverse:=Transform3D(Basis(Vector3.UP,angle),B3.to_3d(at)).affine_inverse()
+			var local:=PackedVector3Array()
+			for v:Vector3 in out.deck:local.append(inverse*v)
+			check(Array(local).all(func(v):return absf(v.x)<=0.901 and absf(v.z)<=0.751 and v.y>=-0.001 and v.y<=0.751),"picnic table retains1.8x1.5x0.75m envelope")
+			check(Array(local).all(func(v):return [0.0,0.38,0.44,0.69,0.75].any(func(y):return absf(v.y-y)<0.001)),"tabletop and bench slabs are6cm thick at preserved heights")
+			check(Array(local).all(func(v):return v.y<=0.001 or v.y>=0.38-0.001 or absf(absf(v.x)-0.648)<0.041),"only slender end supports reach below seats")
+			for x:float in [-0.648,0.648]:
+				for z:float in [-0.625,-0.275,0.275,0.625]:
+					var top:=0.38 if absf(z)>0.5 else 0.69
+					check(_ferris_surface_crosses(local,Vector3(x,top*0.5,z),Vector3.RIGHT,0.041),"each table/bench has grounded slender supports")
+					check(Array(local).any(func(v):return absf(v.x-x)<0.041 and absf(v.z-z)<0.041 and absf(v.y)<0.001),"all support feet meet ground")
+					check(_ferris_surface_crosses(local,Vector3(x,top,z),Vector3.UP,0.006),"every support meets its seat/table within5mm")
+			for x:float in [-0.8,0.0,0.8]:
+				check(_ferris_surface_crosses(local,Vector3(x,0.75,0.08),Vector3.UP,0.006),"raised tabletop spans row")
+				for side:float in [-1.0,1.0]:
+					check(_ferris_surface_crosses(local,Vector3(x,0.44,side*0.625),Vector3.UP,0.006),"two separate bench tops at44cm")
+			for y:float in [0.05,0.2,0.35,0.6]:
+				for z:float in [-0.225,0,0.225]:
+					check(not _ferris_surface_crosses(local,Vector3(0,y,z),Vector3.RIGHT,0.4),"central knee/leg space remains open")
+			for side:float in [-1.0,1.0]:
+				check(not _ferris_surface_crosses(local,Vector3(0,0.55,side*0.625),Vector3.UP,0.08),"clear gap above both seats")
+			for i in range(0,local.size(),3):
+				check((local[i+1]-local[i]).cross(local[i+2]-local[i]).length()>0.00001,"picnic triangles nondegenerate")
+			check(Array(out.deck_colors).all(func(c):return c==Color8(130,92,58)),"picnic wood palette retained")
+
+
+func test_picnic_table_geometry_preserved() -> void:
+	check(B3.PROPS.picnic_table==[1.8,1.5,0.75,Color8(130,92,58)],"picnic table dimensions retained")
+	check(_carousel_ride_hash(_bicycle_rack())=="a75f67ac93cad4b6277e292dd5068e50048f58e87a5e0d25a5360d8f5981eb9f","rack geometry unchanged")
+	check(_carousel_ride_hash(_tent_mesh())=="4229eff0efe46af8aa5439790f0438f30d92f4f528d4b7603fae8491c5ec0db5","tent geometry unchanged")
+	check(_carousel_ride_hash(_camp_pair())=="1e1bd10e564c5a037bacfef8e63959e2d3a40e4c6261d95c9f1889c6bc87dd38","caravan pair unchanged")
+	var bier:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+	B3.site_details(bier,[[Vector2.ZERO,"biergarten"]],0.0)
+	check(_carousel_ride_hash(bier)=="36a45f6c76879727235cb03f8142f770343ea39a47ab13561fdf7a18ce8a89a5","biergarten details unchanged")
+	for ground:float in [0.0,13.5]:
+		var grid:={"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
+		var input:={"rect":Rect2(-50,-50,100,100),"props":[[Vector2(17,-23),0.73,"picnic_table"]],"ground_heights":grid}
+		var expected:=_picnic_table(Vector2(17,-23),0.73)
+		for i in expected.deck.size():expected.deck[i].y+=ground
+		var built:=B3.build([],[],Vector2.ZERO,[],[],input)
+		check(built.deck==expected.deck and built.deck_colors==expected.deck_colors,"picnic final grounded geometry")
+		check(built==B3.build([],[],Vector2.ZERO,[],[],input),"picnic stable rebuild")
+	var flags:=[MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
+	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
+	var map:=MapLayer.new();root.add_child(map)
+	var row:={"chunk_id":"0_0","bounds":[0,0,100,100],"scenery_objects":[[25.0,25.0,"picnic_table",0.73]]}
+	map.add_chunk(row.duplicate(true));var faces:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:faces.append(mesh.mesh.get_faces())
+	map.replace_chunk(row.duplicate(true));var replacement:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"picnic chunk replacement stable")
+	map.clear();check(map._chunks.is_empty(),"picnic chunk unload")
+	map.add_chunk(row.duplicate(true));replacement.clear()
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"picnic chunk reload stable")
+	check(map._chunks["0_0"].meshes_3d.any(func(mesh):return mesh.cast_shadow==GeometryInstance3D.SHADOW_CASTING_SETTING_ON),"picnic deck casts shadows")
+	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
+
 
 
 func _bicycle_rack(at := Vector2.ZERO, angle := 0.0) -> Dictionary:

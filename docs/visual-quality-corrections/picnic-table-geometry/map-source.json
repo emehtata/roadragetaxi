@@ -1,0 +1,280 @@
+{
+  "cache": "bbox_65p00319_25p46437_65p02122_25p50704.json",
+  "targets": [
+    {
+      "row": {
+        "x": 427638.86694602616,
+        "y": 7210729.152871852,
+        "kind": "picnic_table",
+        "name": null,
+        "id": 8196632277,
+        "direction_angle": 0.9930967444921392,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8196632277,
+        "lat": 65.0125263,
+        "lon": 25.4646691,
+        "tags": {
+          "access": "private",
+          "leisure": "picnic_table"
+        }
+      },
+      "raw_m": [
+        427638.3957056678,
+        7210729.460066622
+      ]
+    },
+    {
+      "row": {
+        "x": 428396.1312703888,
+        "y": 7210908.088529841,
+        "kind": "picnic_table",
+        "name": null,
+        "id": 8168813971,
+        "direction_angle": 0.5029927445762867,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8168813971,
+        "lat": 65.0142858,
+        "lon": 25.4806866,
+        "tags": {
+          "access": "private",
+          "leisure": "picnic_table"
+        }
+      },
+      "raw_m": [
+        428397.9144917607,
+        7210907.267138034
+      ]
+    },
+    {
+      "row": {
+        "x": 427921.4612556725,
+        "y": 7209932.8798799105,
+        "kind": "picnic_table",
+        "name": null,
+        "id": 9575075592,
+        "direction_angle": 2.596093282359629,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 9575075592,
+        "lat": 65.0054491,
+        "lon": 25.4710896,
+        "tags": {
+          "access": "private",
+          "leisure": "picnic_table"
+        }
+      },
+      "raw_m": [
+        427921.8769109287,
+        7209933.564728887
+      ]
+    },
+    {
+      "row": {
+        "x": 428619.03439921257,
+        "y": 7210848.420022549,
+        "kind": "picnic_table",
+        "name": null,
+        "id": 8171255553,
+        "direction_angle": 2.185238990412602,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8171255553,
+        "lat": 65.0138071,
+        "lon": 25.4854113,
+        "tags": {
+          "access": "private",
+          "leisure": "picnic_table"
+        }
+      },
+      "raw_m": [
+        428619.2680689456,
+        7210848.584888779
+      ]
+    },
+    {
+      "row": {
+        "x": 428650.4975534305,
+        "y": 7210925.380210311,
+        "kind": "picnic_table",
+        "name": null,
+        "id": 10053759118,
+        "direction_angle": 0.019297309075672852,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 10053759118,
+        "lat": 65.0145209,
+        "lon": 25.4860926,
+        "tags": {
+          "leisure": "picnic_table"
+        }
+      },
+      "raw_m": [
+        428653.2773732978,
+        7210927.349539287
+      ]
+    },
+    {
+      "row": {
+        "x": 428169.1180445456,
+        "y": 7211398.260186961,
+        "kind": "picnic_table",
+        "name": null,
+        "id": 10007061000,
+        "direction_angle": 0.19560726394570338,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 10007061000,
+        "lat": 65.0186716,
+        "lon": 25.4755662,
+        "tags": {
+          "leisure": "picnic_table"
+        }
+      },
+      "raw_m": [
+        428168.4253834173,
+        7211401.755988962
+      ]
+    },
+    {
+      "row": {
+        "x": 428260.7414537972,
+        "y": 7211432.051891986,
+        "kind": "picnic_table",
+        "name": null,
+        "id": 10005250195,
+        "direction_angle": 2.263082816647189,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 10005250195,
+        "lat": 65.0189916,
+        "lon": 25.4775859,
+        "tags": {
+          "leisure": "picnic_table"
+        }
+      },
+      "raw_m": [
+        428264.4385403442,
+        7211435.117469494
+      ]
+    },
+    {
+      "row": {
+        "x": 428269.0905770687,
+        "y": 7211436.655418124,
+        "kind": "picnic_table",
+        "name": null,
+        "id": 10005250194,
+        "direction_angle": null,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 10005250194,
+        "lat": 65.0190064,
+        "lon": 25.4776838,
+        "tags": {
+          "leisure": "picnic_table"
+        }
+      },
+      "raw_m": [
+        428269.0905770687,
+        7211436.655418124
+      ]
+    },
+    {
+      "row": {
+        "x": 428248.6154372488,
+        "y": 7211466.475334017,
+        "kind": "picnic_table",
+        "name": null,
+        "id": 736626485,
+        "direction_angle": 0.7167870119774067,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 736626485,
+        "lat": 65.019256,
+        "lon": 25.4772633,
+        "tags": {
+          "covered": "no",
+          "leisure": "picnic_table"
+        }
+      },
+      "raw_m": [
+        428249.94993399206,
+        7211464.9438928375
+      ]
+    }
+  ]
+}

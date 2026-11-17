@@ -3226,6 +3226,19 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 					_raised_polygon_at(out, "deck", PackedVector2Array([centre - u + v * member[0], centre + u + v * member[0],
 						centre + u + v * member[1], centre - u + v * member[1]]), member[2], member[3], look[3])
 			continue
+		if row[2] == "picnic_table":
+			var u := along.normalized()
+			var v := across.normalized()
+			var piece := func(x: float, z: float, half_x: float, half_z: float, bottom: float, top: float) -> void:
+				var centre := at + u * x + v * z
+				_raised_polygon_at(out, "deck", PackedVector2Array([centre-u*half_x-v*half_z,centre+u*half_x-v*half_z,centre+u*half_x+v*half_z,centre-u*half_x+v*half_z]), bottom, top, look[3])
+			piece.call(0.0, 0.0, length * 0.5, 0.35, 0.69, 0.75)
+			for side: float in [-1.0, 1.0]:
+				piece.call(0.0, side * 0.625, length * 0.5, 0.125, 0.38, 0.44)
+				for end: float in [-1.0, 1.0]:
+					piece.call(end * length * 0.36, side * 0.275, 0.04, 0.04, 0.0, 0.69)
+					piece.call(end * length * 0.36, side * 0.625, 0.04, 0.04, 0.0, 0.38)
+			continue
 		if row[2] == "bench":
 			_bench(out, at, along, across, look[3], row.size() < 5 or bool(row[4]))
 			continue

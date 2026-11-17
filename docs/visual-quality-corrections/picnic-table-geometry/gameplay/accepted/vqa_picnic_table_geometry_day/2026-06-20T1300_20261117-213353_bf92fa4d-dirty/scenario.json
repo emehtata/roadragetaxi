@@ -1,0 +1,51 @@
+{
+  "id": "vqa_picnic_table_geometry_day",
+  "description": "VQA-028 raised picnic tabletop, benches and open supports",
+  "why": "Actual mapped Oulu picnic table OSM node10053759118, normal path-aligned build_ways row; representative simple wood geometry. Existing sourced Oulu road pose, existing eye camera beside actual table; exact mesh, ground, directly visible opening/seat contact/tabletop required.",
+  "city": "Oulu",
+  "pose": [
+    427897.3,
+    7210634.9,
+    2.555
+  ],
+  "camera_at": [
+    428650.4975534305,
+    7210925.380210311
+  ],
+  "start_time": "2026-06-20T13:00",
+  "weather": "clear",
+  "cloud": 0.1,
+  "wetness": [
+    0,
+    0.05
+  ],
+  "sun_altitude_deg": [
+    30,
+    90
+  ],
+  "zoom": 3,
+  "view": "3d",
+  "requires": {},
+  "measure_s": 1,
+  "server_args": [
+    "--no-auto-fetch",
+    "--no-terrain-dem80"
+  ],
+  "isolated_settings": true,
+  "picnic_table_target": [
+    428650.4975534305,
+    7210925.380210311,
+    0.019297309075672852
+  ],
+  "camera": "eye",
+  "eye": {
+    "at": [
+      428659.0040476812,
+      7210919.943340296
+    ],
+    "height": 1.15,
+    "yaw": 0.017887359117565005
+  },
+  "commit": "bf92fa4d-dirty",
+  "verification_user_dir": "rrt-indoor-hint-3x10siwm"
+}
