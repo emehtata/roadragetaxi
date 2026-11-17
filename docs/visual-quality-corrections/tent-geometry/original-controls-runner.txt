@@ -1,7 +1,0 @@
-extends "res://tests/run_tests.gd"
-const Original:=preload("res://tools/_tmp_tent_original.gd")
-func _process(_delta:float)->bool:
- var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
- Original.props(out,[[Vector2.ZERO,0.0,"caravan_with_car"]])
- print("ORIGINAL_PAIR_HASH ",_carousel_ride_hash(out))
- quit();return true

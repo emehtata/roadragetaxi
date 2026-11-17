@@ -1,9 +1,0 @@
-extends "res://tools/visual_quality_audit.gd"
-func build(row: Dictionary) -> Node3D:
-	var body := Node3D.new()
-	var helper := B3.new()
-	helper._cars_root = body
-	helper.vehicle("bus",Vector2.ZERO,0,12,2.55,Color8(175,85,48),31,0,{})
-	helper.route_3d.free()
-	helper.free()
-	return body

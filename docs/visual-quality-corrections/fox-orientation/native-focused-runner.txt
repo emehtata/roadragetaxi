@@ -1,5 +1,0 @@
-extends 'res://animal_models_test.gd'
-func _initialize():
- for test in ['test_fox_semantic_forward_axis','test_fox_batch_faces_heading','test_model_aabb_scale','test_model_faces_heading','test_unmodelled_species_use_procedural','test_horse_saddle_height','test_horse_rider_legs_astride','test_missing_glb_falls_back','test_rows_batched_per_key']:
-  call(test)
- print('fox_native: %d checks, %d failed' % [_checks,_failures]);quit(1 if _failures else 0)

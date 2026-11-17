@@ -72,6 +72,15 @@ tools/godot/Godot_v*-stable_linux.*
 visual-test-results/
 visual-test-compare.png
 
+# Keep visual quality audit plans and evidence local.
+docs/3d-render-audit.md
+docs/visual-quality-audit.md
+docs/visual-quality-audit/
+docs/visual-quality-corrections.md
+docs/visual-quality-corrections/
+docs/specs/audit-*.md
+docs/specs/complete-visual-quality-audit.md
+
 # Test and benchmark output: never commit it. Keep the scripts and the .md reports.
 .github/performance-analysis/**/*.json
 .github/performance-analysis/**/*.json.gz

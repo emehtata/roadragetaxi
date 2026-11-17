@@ -1,4 +1,0 @@
-{
-  "accepted": false,
-  "reason": "Initial audit runner omitted main.gd automation setup; startup sign occludes the inspected taxi. Readiness result alone did not establish a usable visual view."
-}

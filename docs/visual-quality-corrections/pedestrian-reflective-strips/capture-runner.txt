@@ -1,3 +1,0 @@
-extends 'res://tools/visual_quality_audit.gd'
-func bounds(node:Node3D)->AABB:
- return AABB(Vector3(-0.25,0.8,-0.32),Vector3(0.55,0.62,0.64))

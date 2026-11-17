@@ -1,6 +1,0 @@
-{
-  "accepted": true,
-  "scope": "ready gameplay context; no whole-asset quality pass",
-  "implementer_inspected": true,
-  "observation": "No discernible falling flakes in either dark-forest eye frame; VQA-038. Weather/map/GPU readiness passes; effect appearance is defective in this captured gameplay context."
-}

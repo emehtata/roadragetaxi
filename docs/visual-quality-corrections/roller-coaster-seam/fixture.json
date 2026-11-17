@@ -1,1 +1,0 @@
-{"assets": [{"id": "coaster", "name": "roller coaster", "kind": "roller_coaster", "mode": "attraction"}, {"id": "coaster_perspective", "name": "roller coaster 55m", "kind": "roller_coaster", "mode": "attraction", "perspective": true}], "conditions": ["day"]}

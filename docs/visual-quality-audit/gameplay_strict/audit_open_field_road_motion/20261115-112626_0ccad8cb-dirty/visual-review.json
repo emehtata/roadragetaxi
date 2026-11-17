@@ -1,6 +1,0 @@
-{
-  "accepted": true,
-  "scope": "ready gameplay context; no whole-asset quality pass",
-  "implementer_inspected": true,
-  "observation": "Start road is mapped gravel; end is off-road. Natural 525 m drive loaded seven additional chunks; no unload or reload assertion."
-}
