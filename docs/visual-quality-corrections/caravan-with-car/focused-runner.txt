@@ -1,0 +1,6 @@
+extends "res://tests/run_tests.gd"
+func _process(_delta:float)->bool:
+ test_caravan_with_car_recognizable_geometry()
+ test_caravan_with_car_geometry_preserved()
+ print("CAMP PAIR: %d checks, %d failed"%[_checks,_failures])
+ quit(1 if _failures else 0);return true

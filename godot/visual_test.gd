@@ -55,6 +55,7 @@ var _crossbuck_mesh_vertices := {}  # audit-only matching of the mapped crossing
 var _tower_mesh_vertices := {}  # audit-only cached 1 mm membership checks against the actual mapped tower mesh
 var _felled_occluders := {}  # audit-only cached triangle BVHs for actual drawn buildings
 var _coaster_mesh_vertices := {}  # audit-only actual mapped path matching
+var _camp_pair_mesh_vertices := {}  # audit-only actual mapped camping combination match
 
 
 ## A "walk" scenario (fps-3d-view phase 1): out of the parked taxi, first
@@ -928,6 +929,70 @@ func _check_map(centre: Vector2) -> Array:
 						if occupied.intersects(rect): missing.append(("carousel " if carousel else "coaster ")+"seam obscured by nearer dynamic body")
 					coaster={("support" if ferris else "seat" if carousel else "seam"):[row[1][0][0],row[1][0][1]],"path_points":loop.size(),"active_3d":true,("support_rect" if carousel or ferris else "seam_rect"):[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"height_m":seam[2].y if ferris else 7.0 if swing else 0.9 if carousel else 4.5,"ground_m":Buildings3D.ground_height(chunk.ground_heights,loop[0]),"matched_vertices":expected.deck.size()}
 		if not found: missing.append("expected mapped attraction path not drawn")
+	var camp_pair := {}
+	if scenario.has("caravan_with_car_target"):
+		var target:Array=scenario["caravan_with_car_target"]
+		var layer=layer_3d_view()
+		var found:=false
+		for chunk in main.map_layer._chunks.values():
+			if layer==null or camera_3d==null:break
+			for row:Array in chunk._data.get("scenery_objects",[]):
+				if row[2]!="caravan_with_car" or Vector2(row[0],row[1]).distance_to(Vector2(target[0],target[1]))>0.1:continue
+				if absf(angle_difference(float(row[3]),float(target[2])))>0.001:missing.append("camping combination has wrong heading")
+				var at:=MapMath.point(chunk._origin,row[0],row[1])
+				var expected:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+				Buildings3D.props(expected,[[at,float(row[3]),"caravan_with_car"]])
+				for i in expected.deck.size():expected.deck[i].y+=Buildings3D.ground_height(chunk.ground_heights,Vector2(expected.deck[i].x,expected.deck[i].z))
+				for mesh:MeshInstance3D in chunk.meshes_3d:
+					if mesh.material_override!=Buildings3D._shared["ground"] or mesh.mesh==null:continue
+					if not _camp_pair_mesh_vertices.has(mesh.mesh):
+						_camp_pair_mesh_vertices[mesh.mesh]=_camp_pair_matches(mesh.mesh.get_faces(),expected.deck)
+					if not _camp_pair_mesh_vertices[mesh.mesh]:continue
+					found=true
+					if not MapChunkScript.outdoor_3d or not Buildings3D.opaque or layer._view.get_camera_3d()!=camera_3d or not layer._sprite.is_visible_in_tree() or not mesh.is_visible_in_tree() or mesh.layers & camera_3d.cull_mask==0:missing.append("camping combination 3D view not actively displayed")
+					var placement:=Transform3D(Basis(Vector3.UP,float(row[3])),Buildings3D.to_3d(at))
+					var bounds:=Rect2();var first:=true
+					for v:Vector3 in expected.deck:
+						var point:Vector3=mesh.global_transform*v
+						if not camera_3d.is_position_in_frustum(point):missing.append("camping combination outside frustum");break
+						var pixel:=camera_3d.unproject_position(point)
+						bounds=Rect2(pixel,Vector2.ZERO) if first else bounds.expand(pixel);first=false
+					for panel:Rect2 in hud:
+						if panel.intersects(bounds):missing.append("camping combination under HUD")
+					for axle:float in [-2.6,1.78,4.02]:
+						for side:float in [-1.0,1.0]:
+							var foot:Vector3=placement*Vector3(axle,0,side*(1.14 if axle<0 else 0.781))
+							foot.y+=Buildings3D.ground_height(chunk.ground_heights,Vector2(foot.x,foot.z))
+							if absf((mesh.global_transform*foot).y-main.map_layer.deck_height(Vector2(foot.x,foot.z),0,false))>0.005:missing.append("camping wheel buried or floating")
+					var regions:=[]
+					for box:AABB in [AABB(Vector3(-4.6,2.4,-1.15),Vector3(4.8,0,2.3)),AABB(Vector3(2.2,1.5,-0.5),Vector3(0.8,0,1.0)),AABB(Vector3(0.3,0.5,-0.05),Vector3(0.7,0,0.1))]:
+						var rect:=Rect2();var points:=[]
+						for corner in 8:
+							var point:Vector3=placement*box.get_endpoint(corner)
+							point.y+=Buildings3D.ground_height(chunk.ground_heights,Vector2(point.x,point.z))
+							point=mesh.global_transform*point
+							points.append(point)
+							var pixel:=camera_3d.unproject_position(point)
+							rect=Rect2(pixel,Vector2.ZERO) if corner==0 else rect.expand(pixel)
+						if maxf(rect.size.x,rect.size.y)<8 or not Rect2(Vector2.ZERO,screen_size).encloses(rect):missing.append("camping car/caravan/hitch region too small or offscreen")
+						var probe:Vector3=(points[0]+points[-1])*0.5
+						for occluder in main.map_layer._chunks.values():
+							for solid:MeshInstance3D in occluder.meshes_3d:
+								if not solid.is_visible_in_tree() or solid.material_override not in [Buildings3D._shared["material"],Buildings3D._shared["ground"]] or solid.layers & camera_3d.cull_mask==0:continue
+								if not _felled_occluders.has(solid.mesh):_felled_occluders[solid.mesh]=solid.mesh.generate_triangle_mesh()
+								var inverse:=solid.global_transform.affine_inverse()
+								var end:=probe+(camera_3d.global_position-probe).normalized()*0.02
+								if not _felled_occluders[solid.mesh].intersect_segment(inverse*camera_3d.global_position,inverse*end).is_empty():missing.append("camping region %d hidden by drawn geometry"%regions.size())
+						for other:MeshInstance3D in layer._cars_root.find_children("*","MeshInstance3D",true,false):
+							if not other.is_visible_in_tree() or camera_3d.is_position_behind(other.global_position) or camera_3d.global_position.distance_to(other.global_position)>=camera_3d.global_position.distance_to(probe):continue
+							var occupied:=Rect2()
+							for corner in 8:
+								var pixel:=camera_3d.unproject_position(other.global_transform*other.get_aabb().get_endpoint(corner))
+								occupied=Rect2(pixel,Vector2.ZERO) if corner==0 else occupied.expand(pixel)
+							if occupied.intersects(rect):missing.append("camping combination obscured by dynamic body")
+						regions.append([rect.position.x,rect.position.y,rect.size.x,rect.size.y])
+					camp_pair={"position":[row[0],row[1]],"angle":row[3],"active_3d":true,"region_rects":regions,"rect":[bounds.position.x,bounds.position.y,bounds.size.x,bounds.size.y],"matched_vertices":expected.deck.size(),"ground_m":Buildings3D.ground_height(chunk.ground_heights,at),"envelope_m":[9.4,2.5]}
+		if not found:missing.append("expected mapped caravan-with-car geometry not drawn")
 	var crossbuck := {}
 	if scenario.has("crossbuck_target"):
 		var target: Array=scenario["crossbuck_target"]
@@ -1344,6 +1409,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not tower.is_empty(): _counts["power_tower"] = tower
 	if not coaster.is_empty(): _counts["ferris_wheel" if scenario.has("ferris_supports") else "swing_carousel" if scenario.has("swing_supports") else "carousel" if scenario.has("carousel_supports") else "coaster"] = coaster
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
+	if not camp_pair.is_empty(): _counts["caravan_with_car"] = camp_pair
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
 	if not campers.is_empty():
@@ -1368,6 +1434,24 @@ func _corners(x: float, y: float, heading: float, length: float, width: float) -
 	var f := Vector2(cos(heading), -sin(heading)) * length * 0.5
 	var r := Vector2(-f.y, f.x).normalized() * width * 0.5
 	return PackedVector2Array([c + f + r, c + f - r, c - f - r, c - f + r])
+
+
+## Audit-only spatial buckets keep large camping chunks from blocking readiness on every vertex pair.
+func _camp_pair_matches(faces:PackedVector3Array,wanted:PackedVector3Array)->bool:
+	var cells:={}
+	for v:Vector3 in faces:
+		var cell:=Vector3i((v*1000.0).floor())
+		if not cells.has(cell):cells[cell]=[]
+		cells[cell].append(v)
+	for v:Vector3 in wanted:
+		var cell:=Vector3i((v*1000.0).floor());var found:=false
+		for x in range(-1,2):
+			for y in range(-1,2):
+				for z in range(-1,2):
+					for other:Vector3 in cells.get(cell+Vector3i(x,y,z),[]):
+						if other.distance_squared_to(v)<0.000001:found=true
+		if not found:return false
+	return not wanted.is_empty()
 
 
 func layer_3d_view():

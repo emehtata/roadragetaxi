@@ -116,3 +116,9 @@ Added a slender inward-sloping hanger from each seat to the inset canopy. Origin
 ## VQA-024 — Ferris-wheel rim supports
 
 Added sixteen slender radial spokes and a shared axle joining both existing A-frame apexes, retaining the original rim/cabins/frame. Focused Linux/native checks pass 1,702/0; 6,386 repaired-attraction checks and 216 existing controls pass. All 32 comparison panels and the passing named `vqa_ferris_wheel_supports_day` capture were inspected. The wheel is representative geometry generated normally inside mapped Vauhtipuisto OSM relation 1300537. [Diagnosis, commands, sampled limits and evidence](visual-quality-corrections/ferris-wheel-supports/README.md).
+
+## Caravan with towing car (VQA-025)
+
+The static combination now renders a separate caravan and lower towing car with six grounded wheels, cabin/glazing, caravan window/roof hatch and an exposed connecting drawbar. Its complete geometry fits the authoritative **9.4 × 2.5 m** server camping envelope. The original 10.5 m solid box is replaced only for `caravan_with_car`; source row placement and other props/live vehicles are preserved.
+
+[Diagnosis, tests, comparisons and named Nallikari pitch148 capture](visual-quality-corrections/caravan-with-car/README.md): Linux/native **136/0**, existing controls **216/0**, targeted pytest **12 passed**. All **32** comparison panels and the passing named gameplay screenshot inspected; actual mapped pitch node2450243248, **1,818 matched vertices**, no readiness errors. Visual coverage samples daylight flat terrain.

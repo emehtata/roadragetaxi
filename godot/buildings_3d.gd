@@ -3150,7 +3150,7 @@ func roadwork_barrier(at: Vector2, heading: float, length: float) -> void:
 
 ## Step 6: scenery objects as simple shapes at their size and height:
 ## [length along its angle, width, height, colour]; the rest (shrubs, landmarks) elsewhere.
-const PROPS := {"caravan": [6.0, 2.3, 2.5, Color8(238, 234, 220)], "caravan_with_car": [10.5, 2.3, 2.5, Color8(238, 234, 220)],
+const PROPS := {"caravan": [6.0, 2.3, 2.5, Color8(238, 234, 220)], "caravan_with_car": [9.4, 2.5, 2.5, Color8(238, 234, 220)],
 	"tent": [2.4, 2.0, 1.3, Color8(70, 120, 90)], "camper_van": [0.0, 2.3, 2.9, Color8(238, 234, 220)],  # camper_van: no default length, the row carries vehicles/base.py's (props errors without)
 	"bench": [1.4, 0.45, 0.85, Color8(120, 82, 50)], "waste_basket": [0.4, 0.4, 0.9, Color8(60, 90, 60)],
 	"bicycle_parking": [3.0, 0.6, 0.8, Color8(150, 150, 150)], "charging_station": [0.5, 0.3, 1.5, Color8(40, 120, 70)],
@@ -3188,6 +3188,22 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 		var along: Vector2 = Vector2(cos(row[1]), -sin(row[1])) * length * 0.5
 		var across: Vector2 = along.orthogonal().normalized() * float(look[1]) * 0.5
 		var at: Vector2 = row[0]
+		if row[2] == "caravan_with_car":
+			var paint := Color8(76, 117, 155) if posmod(hash(at), 2) == 0 else Color8(169, 66, 54)
+			var body := car_arrays(3.5, 1.7, paint, [0.42, 0.12, -0.42, -0.62, 0.74, ""], 0, 0, 0)
+			for i in body.verts.size(): body.verts[i].x += 2.9
+			for side: float in [-1.0, 1.0]:
+				_wheel(body, -2.6, side * 1.14, 0.3, 0.2, Color8(28, 28, 28), 0)
+			_car_box(body, -4.6, 0.2, -1.15, 1.15, 0.35, 2.4, look[3])
+			_car_box(body, -3.5, -2.7, -0.4, 0.4, 2.4, 2.5, Color8(120, 150, 160))
+			for side: float in [-1.0, 1.0]:
+				_car_box(body, -3.4, -2.2, side * 1.15 - 0.01, side * 1.15 + 0.01, 1.35, 1.95, CAR_GLASS)
+			_car_box(body, 0.19, 1.4, -0.05, 0.05, 0.4, 0.5, Color8(165, 168, 162))
+			var placement := Transform3D(Basis(Vector3.UP, float(row[1])), to_3d(at))
+			for i in body.verts.size():
+				out["deck"].append(placement * body.verts[i])
+				out["deck_colors"].append(body.colors[i])
+			continue
 		if row[2] == "bench":
 			_bench(out, at, along, across, look[3], row.size() < 5 or bool(row[4]))
 			continue

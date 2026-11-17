@@ -681,6 +681,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_caravan_with_car_recognizable_geometry()
+	test_caravan_with_car_geometry_preserved()
 	test_ferris_wheel_rim_connected()
 	test_ferris_wheel_geometry_preserved()
 	test_swing_carousel_seats_connected()
@@ -4250,6 +4252,77 @@ func _ferris_surface_crosses(vertices:PackedVector3Array, point:Vector3, directi
 	for i in range(0,vertices.size(),3):
 		if Geometry3D.segment_intersects_triangle(point-direction*half,point+direction*half,vertices[i],vertices[i+1],vertices[i+2])!=null:return true
 	return false
+
+
+func _camp_pair(at := Vector2.ZERO, angle := 0.0) -> Dictionary:
+	var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+	B3.props(out,[[at,angle,"caravan_with_car"]])
+	return out
+
+
+func test_caravan_with_car_recognizable_geometry() -> void:
+	for angle:float in [0.0,PI/2.0,PI,0.73]:
+		for at:Vector2 in [Vector2.ZERO,Vector2(17,-23)]:
+			var out:=_camp_pair(at,angle)
+			var inverse:=Transform3D(Basis(Vector3.UP,angle),B3.to_3d(at)).affine_inverse()
+			var local:=PackedVector3Array()
+			for v:Vector3 in out.deck:local.append(inverse*v)
+			check(Array(local).all(func(v):return absf(v.x)<=4.7001 and absf(v.z)<=1.2501 and v.y>=-0.0001 and v.y<=2.5001),"combination inside server 9.4 x 2.5 m envelope")
+			check(Array(local).any(func(v):return v.x<0.2 and v.y>2.3) and Array(local).any(func(v):return v.x>1.5 and v.y>1.4 and v.y<1.6),"distinct tall caravan and low car roof")
+			check(not Array(local).any(func(v):return v.x>0.21 and v.x<1.05 and v.y>0.51),"open gap above the hitch")
+			check(not _ferris_surface_crosses(local,Vector3(0.65,1.0,0),Vector3.RIGHT,0.4),"no enclosing slab between bodies")
+			for axle:float in [-2.6,1.78,4.02]:
+				for side:float in [-1.0,1.0]:
+					var width:=1.14 if axle<0 else 0.781
+					check(Array(local).any(func(v):return absf(v.x-axle)<0.001 and absf(v.y)<0.001 and absf(v.z-side*width)<0.15),"six grounded tyre contacts")
+			var car:=PackedVector3Array();var hitch:=PackedVector3Array()
+			for i in range(0,local.size(),3):
+				var triangle:=local.slice(i,i+3)
+				if out.deck_colors[i].s>0.2 and Array(triangle).all(func(v):return v.x>1.0):car.append_array(triangle)
+				if Array(triangle).all(func(v):return v.x>=0.1899 and v.x<=1.4001 and v.y>=0.3999 and v.y<=0.5001 and absf(v.z)<=0.0501):hitch.append_array(triangle)
+			check(_ferris_surface_crosses(local,Vector3(0.2,0.45,0),Vector3.RIGHT,0.04) and _ferris_surface_crosses(car,Vector3(0.8,0.45,0),Vector3.RIGHT,0.6),"actual vehicle body faces intersect drawbar span")
+			check(_ferris_surface_crosses(hitch,Vector3(0.2,0.45,0),Vector3.FORWARD,0.1) and _ferris_surface_crosses(hitch,Vector3(1.2,0.45,0),Vector3.FORWARD,0.1),"thin hitch reaches inside both vehicle bodies")
+			check(Array(local).any(func(v):return v.x<0 and v.y>2.4) and Array(local).any(func(v):return v.x<0 and absf(v.z)>1.14 and v.y>1.4 and v.y<2.0),"caravan roof hatch and side window geometry")
+			check(Array(local).any(func(v):return v.x>1.5 and v.y>0.8 and v.y<1.4 and absf(v.z)>0.69),"car cabin glazing visible from sides")
+			check(out.deck.size()>500,"wheel and cabin geometry replaces cuboid")
+
+
+func test_caravan_with_car_geometry_preserved() -> void:
+	var originals:={"bench": "b52d6f3e50b0aec3e4f622ea3a086a6b1effc43b64db23248494ac85c52b9498", "camper_van": "ba9a514c541cbce14020f47f2634623347ed7d44ccd2a095678d8acce8eb81c6", "caravan": "e9ac57d9ded073a793cd11be117c3aeec77f9144bfa0cb875a6e3f3af2625ed8", "live_car": "ea429f027e99827285d7cc75b0dafab58a8b73ae0e568fd144e2b6c6a1f5cd2a", "live_trailer": "f6ec4517079da98029bf5648abb73fb1e4ed65fe57f517bd29645b5ff62d5b66", "tent": "db0e0f0248370e7507690ba42d2759e99469b8efe2bda7954e36af6d97807d5d"}
+	for kind:String in originals:
+		var control:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+		if kind.begins_with("live_"):
+			var body:=B3.car_arrays(4.4,1.8,Color.RED,[0.42,0.12,-0.42,-0.62,0.74,""],0,0,0) if kind=="live_car" else B3.vehicle_arrays("trailer",5.0,2.3,Color.RED,0,{})
+			control={"deck":body.verts,"deck_colors":body.colors}
+		else:B3.props(control,[[Vector2.ZERO,0.0,kind,6.2] if kind=="camper_van" else [Vector2.ZERO,0.0,kind]])
+		check(_carousel_ride_hash(control)==originals[kind],"unchanged non-combination output: "+kind)
+	var readiness:=preload("res://visual_test.gd").new()
+	check(readiness._camp_pair_matches(PackedVector3Array([Vector3(1,2,3)]),PackedVector3Array([Vector3(1.0005,2,3)])),"camping readiness tolerates sub-mm mesh roundtrip")
+	check(not readiness._camp_pair_matches(PackedVector3Array([Vector3(1,2,3)]),PackedVector3Array([Vector3(1.01,2,3)])),"camping readiness rejects wrong target geometry")
+	check(not readiness._camp_pair_matches(PackedVector3Array(),PackedVector3Array()),"camping readiness rejects empty target")
+	readiness.free()
+	for ground:float in [0.0,13.5]:
+		var grid:={"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
+		var input:={"rect":Rect2(-50,-50,100,100),"props":[[Vector2(17,-23),0.73,"caravan_with_car"]],"ground_heights":grid}
+		var expected:=_camp_pair(Vector2(17,-23),0.73)
+		for i in expected.deck.size():expected.deck[i].y+=ground
+		var built:=B3.build([],[],Vector2.ZERO,[],[],input)
+		check(built.deck==expected.deck and built.deck_colors==expected.deck_colors,"combination final ground placement")
+		check(built==B3.build([],[],Vector2.ZERO,[],[],input),"combination stable rebuild")
+	var flags:=[MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
+	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
+	var map:=MapLayer.new();root.add_child(map)
+	var row:={"chunk_id":"0_0","bounds":[0,0,100,100],"scenery_objects":[[25.0,25.0,"caravan_with_car",0.73]]}
+	map.add_chunk(row.duplicate(true));var faces:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:faces.append(mesh.mesh.get_faces())
+	map.replace_chunk(row.duplicate(true));var replacement:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"combination chunk replacement stable")
+	map.clear();check(map._chunks.is_empty(),"combination chunk unload")
+	map.add_chunk(row.duplicate(true));replacement.clear()
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"combination chunk reload stable")
+	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
 
 
 func test_ferris_wheel_rim_connected() -> void:

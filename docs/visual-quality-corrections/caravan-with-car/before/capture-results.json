@@ -1,0 +1,388 @@
+{
+	"adapter": "NVIDIA GeForce RTX 5060",
+	"angles": [
+		"front",
+		"rear",
+		"left",
+		"right",
+		"front_three_quarter",
+		"rear_three_quarter",
+		"top",
+		"elevated"
+	],
+	"captures": [
+		{
+			"angle": "front",
+			"asset": "caravan_with_car",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				31.5,
+				1.25,
+				0.0
+			],
+			"camera_size": 2.95000004768372,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "caravan_with_car",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				-31.5,
+				1.25,
+				0.0
+			],
+			"camera_size": 2.95000004768372,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "caravan_with_car",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				0.0,
+				1.25,
+				-31.5
+			],
+			"camera_size": 10.5315055847168,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "caravan_with_car",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				0.0,
+				1.25,
+				31.5
+			],
+			"camera_size": 10.5314998626709,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "caravan_with_car",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				20.5047550201416,
+				13.5528535842896,
+				20.5047550201416
+			],
+			"camera_size": 9.0781192779541,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "caravan_with_car",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				-20.5047550201416,
+				13.5528535842896,
+				-20.5047550201416
+			],
+			"camera_size": 9.0781192779541,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "caravan_with_car",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				0.0,
+				32.7499847412109,
+				0.0314999856054783
+			],
+			"camera_size": 10.5314998626709,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "caravan_with_car",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				15.2797451019287,
+				24.1696166992188,
+				-15.2797451019287
+			],
+			"camera_size": 9.79463386535645,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "caravan_with_car_55m",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				55.0,
+				1.25,
+				0.0
+			],
+			"camera_size": 2.95000004768372,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_55m_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "caravan_with_car_55m",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				-55.0,
+				1.25,
+				0.0
+			],
+			"camera_size": 2.95000004768372,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_55m_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "caravan_with_car_55m",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				0.0,
+				1.25,
+				-55.0
+			],
+			"camera_size": 10.5315093994141,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_55m_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "caravan_with_car_55m",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				0.0,
+				1.25,
+				55.0
+			],
+			"camera_size": 10.5314998626709,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_55m_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "caravan_with_car_55m",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				35.8019523620605,
+				22.7311725616455,
+				35.8019523620605
+			],
+			"camera_size": 9.0781192779541,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_55m_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "caravan_with_car_55m",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				-35.8019523620605,
+				22.7311725616455,
+				-35.8019523620605
+			],
+			"camera_size": 9.0781192779541,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_55m_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "caravan_with_car_55m",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				0.0,
+				56.2499732971191,
+				0.054999977350235
+			],
+			"camera_size": 10.5314998626709,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_55m_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "caravan_with_car_55m",
+			"bounds": [
+				-5.25,
+				0.0,
+				-1.14999997615814,
+				10.5,
+				2.5,
+				2.29999995231628
+			],
+			"camera_position": [
+				26.6789207458496,
+				41.2683792114258,
+				-26.6789207458496
+			],
+			"camera_size": 9.79463863372803,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "caravan_with_car_55m_day_elevated.png",
+			"framed": true,
+			"ready": true
+		}
+	],
+	"renderer": "forward_plus",
+	"resolution": [
+		400,
+		340
+	]
+}
