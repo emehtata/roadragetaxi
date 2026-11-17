@@ -803,11 +803,12 @@ func _check_map(centre: Vector2) -> Array:
 				_lineup_seen[key] = "under the HUD"
 				break
 	var coaster := {}
-	if scenario.has("coaster_seam") or scenario.has("carousel_supports") or scenario.has("swing_supports"):
+	if scenario.has("coaster_seam") or scenario.has("carousel_supports") or scenario.has("swing_supports") or scenario.has("ferris_supports"):
+		var ferris := scenario.has("ferris_supports")
 		var swing := scenario.has("swing_supports")
 		var carousel := scenario.has("carousel_supports") or swing
-		var kind := "swing_carousel" if swing else "carousel" if carousel else "roller_coaster"
-		var target: Array = scenario["swing_supports" if swing else "carousel_supports" if carousel else "coaster_seam"]
+		var kind := "ferris_wheel" if ferris else "swing_carousel" if swing else "carousel" if carousel else "roller_coaster"
+		var target: Array = scenario["ferris_supports" if ferris else "swing_supports" if swing else "carousel_supports" if carousel else "coaster_seam"]
 		if target.size()!=3: return missing+["mapped attraction target needs coordinates and path count"]
 		var layer = layer_3d_view()
 		var found := false
@@ -821,7 +822,7 @@ func _check_map(centre: Vector2) -> Array:
 				if loop.size() != int(target[2]) or not loop[0].is_equal_approx(loop[-1]):
 					missing.append(("carousel " if carousel else "coaster ")+"path differs from expected closed loop")
 					continue
-				var wanted_path: Array = scenario.get("swing_path" if swing else "carousel_path" if carousel else "coaster_path",[])
+				var wanted_path: Array = scenario.get("ferris_path" if ferris else "swing_path" if swing else "carousel_path" if carousel else "coaster_path",[])
 				if wanted_path.size() != row[1].size():
 					missing.append(("carousel " if carousel else "coaster ")+"path has wrong samples")
 					continue
@@ -853,8 +854,30 @@ func _check_map(centre: Vector2) -> Array:
 						for at:Vector2 in [loop[0]-Vector2(0.6,0.6),loop[0]+Vector2(0.6,0.6),loop[0]+inward*1.0]:
 							for height:float in [0.75,0.9,1.6]:
 								seam.append(mesh.global_transform*Buildings3D.to_3d(at,height+Buildings3D.ground_height(chunk.ground_heights,at)))
-					else:
+					elif not ferris:
 						for point: Vector3 in track.slice(0,6)+track.slice(track.size()-6): seam.append(mesh.global_transform*point)
+					if ferris:
+						var ride_centre:=Vector2.ZERO
+						for i in loop.size()-1:ride_centre+=loop[i]/(loop.size()-1)
+						var far:=loop[0]
+						for point:Vector2 in loop:
+							if point.distance_to(ride_centre)>far.distance_to(ride_centre):far=point
+						var radius:=maxf(far.distance_to(ride_centre),3.0)
+						var axis:=(far-ride_centre).normalized();var normal:=Buildings3D.to_3d(axis.orthogonal())
+						var hub:=Buildings3D.to_3d(ride_centre,radius+2.0)
+						var tip:=Buildings3D.to_3d(ride_centre+axis*radius*(1.0+cos(TAU/16.0))*0.5,radius+2.0+radius*sin(TAU/16.0)*0.5+0.1)
+						for point:Vector3 in [tip+normal*0.06,hub.lerp(tip,0.5)+normal*0.06,hub+normal*0.5+Buildings3D.to_3d(axis)*0.15+Vector3.UP*0.15]:
+							point.y+=Buildings3D.ground_height(chunk.ground_heights,Vector2(point.x,point.z))
+							seam.append(mesh.global_transform*point)
+						if absf(normal.dot((camera_3d.global_position-seam[1]).normalized()))<0.35:missing.append("Ferris wheel viewed edge-on")
+						for side:float in [-1.0,1.0]:
+							var foot:=ride_centre+axis.orthogonal()*2.0*side-axis*3.0
+							if absf((mesh.global_transform*Buildings3D.to_3d(foot,Buildings3D.ground_height(chunk.ground_heights,foot))).y-main.map_layer.deck_height(foot,0,false))>0.005:missing.append("Ferris wheel foot buried or floating")
+						if not _felled_occluders.has(mesh.mesh):_felled_occluders[mesh.mesh]=mesh.mesh.generate_triangle_mesh()
+						var inverse:=mesh.global_transform.affine_inverse()
+						for point:Vector3 in seam:
+							var end:=point+(camera_3d.global_position-point).normalized()*0.08
+							if not _felled_occluders[mesh.mesh].intersect_segment(inverse*camera_3d.global_position,inverse*end).is_empty():missing.append("Ferris spoke/rim/axle contact hidden by ride geometry")
 					if swing:
 						var ride_centre := Vector2.ZERO
 						for i in loop.size()-1: ride_centre += loop[i]/(loop.size()-1)
@@ -895,7 +918,7 @@ func _check_map(centre: Vector2) -> Array:
 					for panel: Rect2 in hud:
 						if panel.intersects(rect): missing.append(("carousel " if carousel else "coaster ")+"seam under HUD")
 					var seam_centre: Vector3 = (seam[0]+seam[1])*0.5
-					if not swing and camera_3d.global_position.y<=seam_centre.y+1.0: missing.append(("carousel " if carousel else "coaster ")+"top face not visible")
+					if not swing and not ferris and camera_3d.global_position.y<=seam_centre.y+1.0: missing.append(("carousel " if carousel else "coaster ")+"top face not visible")
 					for other: MeshInstance3D in layer._cars_root.find_children("*","MeshInstance3D",true,false):
 						if not other.is_visible_in_tree() or camera_3d.is_position_behind(other.global_position) or camera_3d.global_position.distance_to(other.global_position)>=camera_3d.global_position.distance_to(seam_centre): continue
 						var occupied := Rect2()
@@ -903,7 +926,7 @@ func _check_map(centre: Vector2) -> Array:
 							var pixel:=camera_3d.unproject_position(other.global_transform*other.get_aabb().get_endpoint(corner))
 							occupied=Rect2(pixel,Vector2.ZERO) if corner==0 else occupied.expand(pixel)
 						if occupied.intersects(rect): missing.append(("carousel " if carousel else "coaster ")+"seam obscured by nearer dynamic body")
-					coaster={("seat" if carousel else "seam"):[row[1][0][0],row[1][0][1]],"path_points":loop.size(),"active_3d":true,("support_rect" if carousel else "seam_rect"):[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"height_m":7.0 if swing else 0.9 if carousel else 4.5,"ground_m":Buildings3D.ground_height(chunk.ground_heights,loop[0]),"matched_vertices":expected.deck.size()}
+					coaster={("support" if ferris else "seat" if carousel else "seam"):[row[1][0][0],row[1][0][1]],"path_points":loop.size(),"active_3d":true,("support_rect" if carousel or ferris else "seam_rect"):[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"height_m":seam[2].y if ferris else 7.0 if swing else 0.9 if carousel else 4.5,"ground_m":Buildings3D.ground_height(chunk.ground_heights,loop[0]),"matched_vertices":expected.deck.size()}
 		if not found: missing.append("expected mapped attraction path not drawn")
 	var crossbuck := {}
 	if scenario.has("crossbuck_target"):
@@ -1319,7 +1342,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not fox.is_empty(): _counts["fox"] = fox
 	if not felled.is_empty(): _counts["felled_tree"] = felled
 	if not tower.is_empty(): _counts["power_tower"] = tower
-	if not coaster.is_empty(): _counts["swing_carousel" if scenario.has("swing_supports") else "carousel" if scenario.has("carousel_supports") else "coaster"] = coaster
+	if not coaster.is_empty(): _counts["ferris_wheel" if scenario.has("ferris_supports") else "swing_carousel" if scenario.has("swing_supports") else "carousel" if scenario.has("carousel_supports") else "coaster"] = coaster
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen

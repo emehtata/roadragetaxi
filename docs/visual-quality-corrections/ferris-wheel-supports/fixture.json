@@ -1,0 +1,21 @@
+{
+  "assets": [
+    {
+      "id": "ferris_wheel",
+      "name": "ferris_wheel",
+      "kind": "ferris_wheel",
+      "mode": "attraction"
+    },
+    {
+      "id": "ferris_wheel_perspective",
+      "name": "ferris_wheel55m",
+      "kind": "ferris_wheel",
+      "mode": "attraction",
+      "perspective": true
+    }
+  ],
+  "conditions": [
+    "day"
+  ],
+  "source_revision": "895be3e1-dirty"
+}

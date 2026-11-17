@@ -1,0 +1,12 @@
+extends "res://tests/run_tests.gd"
+func _process(_delta:float)->bool:
+ test_ferris_wheel_rim_connected()
+ test_ferris_wheel_geometry_preserved()
+ test_swing_carousel_seats_connected()
+ test_swing_carousel_geometry_preserved()
+ test_carousel_seats_connected()
+ test_carousel_geometry_preserved()
+ test_roller_coaster_track_closes()
+ test_roller_coaster_geometry_preserved()
+ print("FERRIS AND RIDE CONTROLS: %d checks, %d failed"%[_checks,_failures])
+ quit(1 if _failures else 0);return true

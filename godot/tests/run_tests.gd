@@ -681,6 +681,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_ferris_wheel_rim_connected()
+	test_ferris_wheel_geometry_preserved()
 	test_swing_carousel_seats_connected()
 	test_swing_carousel_geometry_preserved()
 	test_carousel_seats_connected()
@@ -4230,6 +4232,101 @@ func test_buildings_3d() -> void:
 
 ## VQA-022: the platform top must reach every seat base and the grounded mast.
 ## VQA-023: actual hanger triangles connect each seat to the inset canopy.
+## VQA-024: each spoke crosses the actual rim and a shared axle joins both A-frame apexes.
+const FERRIS_SUPPORT_COLOR := Color8(190,194,201)
+const FERRIS_ORIGINAL_HASHES := {"17/0.00/0.1":"01cdd409f1b1613698e46c58df5e4ae4bdea773202309fbec2aed30044a641c8","17/0.00/1.0":"f0650ebc61cace793c0687c2831fa1c15f0324dc45362c6fe28bcd566bab3e7d","17/0.73/0.1":"d3c42e4a71f2210df70d648d1a60180e181ef80e0cafb57ac7a302a338679731","17/0.73/1.0":"bcf95414171f1791efb8c77d4c2ba8f921db247286c3336f7760c853811819b4","4/0.00/0.1":"ad42e1cc31f16e5fd261fc15fdb41abdd3cbf69d045e968f843e8c6bc5de855c","4/0.00/1.0":"e6b7cb197a5f676f3a95b29b8c2babf326642f01c53cbf052d3016f4be32ef2e","4/0.73/0.1":"82e356a3c5085c35ff80a97b51d7914cc3ffa42fe7b0a4360d9f03232357f5f5","4/0.73/1.0":"d778990bb73cd50d7571396b65b3dc7f04c09870ba34e8c32b020da515d3b1ee","48/0.00/0.1":"01cdd409f1b1613698e46c58df5e4ae4bdea773202309fbec2aed30044a641c8","48/0.00/1.0":"f0650ebc61cace793c0687c2831fa1c15f0324dc45362c6fe28bcd566bab3e7d","48/0.73/0.1":"b56c7bbfdd0859de3995f8afce5b0509b023600260081f0bd2fbdf436dab183d","48/0.73/1.0":"90cc385fbde13e8c185cf1eda78775013b015d00691e80217fb11af9e2b6a00b"}
+
+
+func _ferris_layout(loop:PackedVector2Array) -> Array:
+	var centre:=Vector2.ZERO
+	for i in loop.size()-1:centre+=loop[i]/(loop.size()-1)
+	var far:=loop[0]
+	for point:Vector2 in loop:
+		if point.distance_to(centre)>far.distance_to(centre):far=point
+	return [centre,(far-centre).normalized(),maxf(far.distance_to(centre),3.0)]
+
+
+func _ferris_surface_crosses(vertices:PackedVector3Array, point:Vector3, direction:Vector3, half:float) -> bool:
+	for i in range(0,vertices.size(),3):
+		if Geometry3D.segment_intersects_triangle(point-direction*half,point+direction*half,vertices[i],vertices[i+1],vertices[i+2])!=null:return true
+	return false
+
+
+func test_ferris_wheel_rim_connected() -> void:
+	for count:int in [4,17,48]:
+		for angle:float in [0.0,0.73]:
+			for size:float in [0.1,1.0]:
+				var loop:=_coaster_test_loop(count)
+				for i in loop.size():loop[i]=loop[i].rotated(angle)*size+Vector2(17,-23)
+				var layout:=_ferris_layout(loop);var centre:Vector2=layout[0];var axis:Vector2=layout[1];var radius:float=layout[2]
+				var hub:=B3.to_3d(centre,radius+2.0);var normal:=B3.to_3d(axis.orthogonal())
+				var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(out,[["ferris_wheel",loop]])
+				var supports:=PackedVector3Array();var rim:=PackedVector3Array();var frame:=PackedVector3Array()
+				for i in out.deck.size():
+					if out.deck_colors[i]==FERRIS_SUPPORT_COLOR:supports.append(out.deck[i])
+					elif out.deck_colors[i]==Color8(233,229,208):rim.append(out.deck[i])
+					elif out.deck_colors[i]==Color8(77,99,124):frame.append(out.deck[i])
+				check(supports.size()==17*18,"sixteen slender spoke prisms and one axle, without disc or missing vertical spokes")
+				for k in 16:
+					var a:=TAU*k/16.0;var b:=TAU*(k+1)/16.0
+					var tip:=B3.to_3d(centre+axis*radius*(cos(a)+cos(b))*0.5,radius+2.0+radius*(sin(a)+sin(b))*0.5+0.1)
+					var continuous:=false
+					for i in range(0,supports.size(),3):
+						var triangle:=Array(supports.slice(i,i+3))
+						continuous=continuous or triangle.any(func(v):return v.distance_to(hub)<0.09) and triangle.any(func(v):return v.distance_to(tip)<0.09)
+					check(continuous,"a real nondegenerate spoke surface continuously spans hub to rim segment%d"%k)
+					check(_ferris_surface_crosses(supports,tip.move_toward(hub,0.001),normal,0.08) and _ferris_surface_crosses(rim,tip,normal,0.12),"spoke tip occupies actual rim cross-section%d"%k)
+				for side:float in [-1.0,1.0]:
+					var apex:=hub+normal*side*0.5+Vector3.UP*0.05
+					check(_ferris_surface_crosses(supports,apex,B3.to_3d(axis),0.2) and _ferris_surface_crosses(frame,apex,B3.to_3d(axis),0.5),"shared axle crosses actual A-frame apex")
+				for i in range(0,supports.size(),3):check((supports[i+1]-supports[i]).cross(supports[i+2]-supports[i]).length()>0.000001,"support triangle has real area")
+
+
+func test_ferris_wheel_geometry_preserved() -> void:
+	for count:int in [4,17,48]:
+		for angle:float in [0.0,0.73]:
+			for size:float in [0.1,1.0]:
+				var loop:=_coaster_test_loop(count)
+				for i in loop.size():loop[i]=loop[i].rotated(angle)*size+Vector2(17,-23)
+				var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(out,[["ferris_wheel",loop]])
+				var original:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+				for i in out.deck.size():
+					if out.deck_colors[i]!=FERRIS_SUPPORT_COLOR:original.deck.append(out.deck[i]);original.deck_colors.append(out.deck_colors[i])
+				check(_carousel_ride_hash(original)==FERRIS_ORIGINAL_HASHES["%d/%.2f/%.1f"%[count,angle,size]],"original rim/cabins/A-frame positions and colours preserved")
+				var bounds:=AABB(original.deck[0],Vector3.ZERO)
+				for v:Vector3 in original.deck:bounds=bounds.expand(v)
+				check(Array(out.deck).all(func(v):return bounds.grow(0.001).has_point(v)),"spokes/axle preserve overall bounds")
+				for ground:float in [0.0,13.5]:
+					var grid:={} if ground==0 else {"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
+					var input:={"rect":Rect2(-50,-50,100,100),"attractions":[["ferris_wheel",loop]],"ground_heights":grid}
+					var built:=B3.build([],[],Vector2.ZERO,[],[],input);var shifted:PackedVector3Array=out.deck.duplicate()
+					for i in shifted.size():shifted[i].y+=ground
+					check(built.deck==shifted and built==B3.build([],[],Vector2.ZERO,[],[],input),"wheel support terrain adaptation and rebuild stable")
+	for kind:String in ["carousel","swing_carousel","roller_coaster","drop_tower"]:
+		var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(out,[[kind,_coaster_test_loop(48)]])
+		check(_carousel_ride_hash(out)==FERRIS_OTHER_RIDE_HASHES[kind],"wheel fix preserves "+kind)
+	var empty:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(empty,[["ferris_wheel",PackedVector2Array([Vector2.ZERO,Vector2.ONE])]])
+	check(empty.deck.is_empty(),"wheel short-loop guard retained")
+	var flags:=[MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
+	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
+	var map:=MapLayer.new();root.add_child(map);var points:=[]
+	for point:Vector2 in _coaster_test_loop(48,Vector2(50,50)):points.append([point.x,point.y])
+	var row:={"chunk_id":"0_0","bounds":[0,0,100,100],"attractions":[["ferris_wheel",points]]}
+	map.add_chunk(row.duplicate(true));var faces:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:faces.append(mesh.mesh.get_faces());check(mesh.mesh.get_faces().size()<100 or mesh.cast_shadow==GeometryInstance3D.SHADOW_CASTING_SETTING_ON,"wheel chunk shadow settings retained")
+	map.replace_chunk(row.duplicate(true));var replacement:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"wheel chunk replacement stable")
+	map.clear();check(map._chunks.is_empty(),"wheel chunk unload")
+	map.add_chunk(row.duplicate(true));replacement.clear()
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"wheel chunk reload stable")
+	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
+
+
+const FERRIS_OTHER_RIDE_HASHES := {"carousel":"69cfd4b7864c910c7692660aba3cde4dd8f09befd46aafa03c72605a0e33eef4","swing_carousel":"bf9b221d3fa82f5c5d35a7a0725c657eeaae5194cdd9a91a94817d2891695ed7","roller_coaster":"4c75af577679af702c35587e1b67c34e29c9e8628a3eba3915248a4a711227a8","drop_tower":"718284d6205f488f2c5faf5694c591a26c1409b112eb2f39f22699c0166148bb"}
+
+
 func test_swing_carousel_seats_connected() -> void:
 	for count:int in [4,17,48]:
 		for angle:float in [0.0,0.73]:
@@ -4310,7 +4407,7 @@ func test_swing_carousel_geometry_preserved() -> void:
 	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
 
 
-const SWING_OTHER_RIDE_HASHES := {"carousel":"69cfd4b7864c910c7692660aba3cde4dd8f09befd46aafa03c72605a0e33eef4","roller_coaster":"4c75af577679af702c35587e1b67c34e29c9e8628a3eba3915248a4a711227a8","ferris_wheel":"121ff6e6f548994317569c78548c7ad023d03605526ad4e0892803e95b48358c","drop_tower":"718284d6205f488f2c5faf5694c591a26c1409b112eb2f39f22699c0166148bb"}
+const SWING_OTHER_RIDE_HASHES := {"carousel":"69cfd4b7864c910c7692660aba3cde4dd8f09befd46aafa03c72605a0e33eef4","roller_coaster":"4c75af577679af702c35587e1b67c34e29c9e8628a3eba3915248a4a711227a8","ferris_wheel":"fc998d7299d8f7421c6b621c7a71c35d760ea8d29f7f47a9767d7699438cff92","drop_tower":"718284d6205f488f2c5faf5694c591a26c1409b112eb2f39f22699c0166148bb"}
 
 
 func test_carousel_seats_connected() -> void:
@@ -4425,7 +4522,7 @@ func _carousel_ride_hash(out:Dictionary) -> String:
 	return values.to_byte_array().hex_encode().sha256_text()
 
 
-const CAROUSEL_OTHER_RIDE_HASHES := {"swing_carousel":"bf9b221d3fa82f5c5d35a7a0725c657eeaae5194cdd9a91a94817d2891695ed7","roller_coaster":"4c75af577679af702c35587e1b67c34e29c9e8628a3eba3915248a4a711227a8","ferris_wheel":"121ff6e6f548994317569c78548c7ad023d03605526ad4e0892803e95b48358c","drop_tower":"718284d6205f488f2c5faf5694c591a26c1409b112eb2f39f22699c0166148bb"}
+const CAROUSEL_OTHER_RIDE_HASHES := {"swing_carousel":"bf9b221d3fa82f5c5d35a7a0725c657eeaae5194cdd9a91a94817d2891695ed7","roller_coaster":"4c75af577679af702c35587e1b67c34e29c9e8628a3eba3915248a4a711227a8","ferris_wheel":"fc998d7299d8f7421c6b621c7a71c35d760ea8d29f7f47a9767d7699438cff92","drop_tower":"718284d6205f488f2c5faf5694c591a26c1409b112eb2f39f22699c0166148bb"}
 
 
 ## VQA-021: inspect the actual track triangles, including the duplicated closing endpoint.

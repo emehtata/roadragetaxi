@@ -1,0 +1,165 @@
+{
+  "camera": {
+    "position": [
+      153.48600769043,
+      18.9614276885986
+    ],
+    "zoom": 3.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "895be3e1-dirty",
+  "elapsed_s": 3.96693699999999,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 28.891,
+    "build_ms_total": 174.373,
+    "draw_calls": 194.0,
+    "far_lod_crowns_loaded": 31370,
+    "forest_chunks": 13,
+    "objects": 601.0,
+    "place_ms_max": 29.305,
+    "primitives": 3238950.0,
+    "render_3d_cpu_ms": 0.209000006318092,
+    "render_3d_gpu_ms": 1.00800001621246,
+    "static_memory_mb": 216.191158294678,
+    "trees_loaded": 15685,
+    "video_memory_mb": 377.70539855957
+  },
+  "frames": {
+    "avg_fps": 148.598176868967,
+    "avg_ms": 6.72955766396645,
+    "frames": 156,
+    "low_01pct_fps": 15.1009496966434,
+    "low_1pct_fps": 15.1009496966434,
+    "over_16ms": 1,
+    "over_33ms": 1,
+    "over_66ms": 0,
+    "p50_ms": 6.25,
+    "p95_ms": 6.94444465637207,
+    "p99_ms": 10.1697874069214,
+    "worst_ms": 66.2210006713867
+  },
+  "game_time": [
+    "2026-06-20",
+    46800.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 210
+  },
+  "render": {
+    "long_frames": [
+      {
+        "chunk_ms": 0.0,
+        "frame": 156,
+        "main_ms": 1.198,
+        "ms": 66.221,
+        "pipelines_compiled": 0
+      }
+    ],
+    "state_timeline": {
+      "arrival_max_ms": 73.2429962158203,
+      "arrival_over_66ms": 2,
+      "arrival_p50_ms": 32.2070007324219,
+      "arrival_p95_ms": 67.6159973144531,
+      "arrival_p99_ms": 73.2429962158203,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 67.6159973144531,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.034848
+        },
+        {
+          "arrival_ms": 73.2429962158203,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.108368
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 35,
+      "tile_events": 0,
+      "underrun_episodes": 1,
+      "underruns": 1
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_ferris_wheel_supports_day",
+  "scene": {
+    "buildings_in_view": 26,
+    "chunks": 49,
+    "ferris_wheel": {
+      "active_3d": true,
+      "ground_m": 0.0,
+      "height_m": 8.64821434020996,
+      "matched_vertices": 1146,
+      "path_points": 49,
+      "support": [
+        425590.515446349,
+        7212598.53857255
+      ],
+      "support_rect": [
+        366.138793945313,
+        369.467987060547,
+        281.142456054688,
+        55.5527648925781
+      ]
+    },
+    "lamps_in_view": 127,
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-corrections\\ferris-wheel-supports\\gameplay\\first\\vqa_ferris_wheel_supports_day\\2026-06-20T1300_20261117-163325_895be3e1-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-17T14:33:53Z",
+  "traffic": {
+    "moving_min": 1,
+    "npcs_max": 4,
+    "spawn_rejections": {
+      "share": {},
+      "total": 0.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": -0.2308,
+    "x": 425430.537875009,
+    "y": 7212617.60742018
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-xyohvsi2",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.1,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 16.69,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      7.326,
+      -3.434
+    ]
+  }
+}

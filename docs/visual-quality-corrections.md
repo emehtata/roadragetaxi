@@ -112,3 +112,7 @@ A thin platform now joins every standard-carousel seat to its grounded central m
 ## VQA-023 — Swing-carousel seat supports
 
 Added a slender inward-sloping hanger from each seat to the inset canopy. Original seats/mast/canopy and other rides remain unchanged. Linux/native focused checks **125/0**, controls **216/0**, targeted pytest **7 passed**; all **32 comparison panels** and the accepted named Vauhtipuisto capture were inspected. [Diagnosis, reproduction and visual evidence](visual-quality-corrections/swing-carousel-seat-supports/README.md). Gameplay coverage samples one daylight flat-terrain view.
+
+## VQA-024 — Ferris-wheel rim supports
+
+Added sixteen slender radial spokes and a shared axle joining both existing A-frame apexes, retaining the original rim/cabins/frame. Focused Linux/native checks pass 1,702/0; 6,386 repaired-attraction checks and 216 existing controls pass. All 32 comparison panels and the passing named `vqa_ferris_wheel_supports_day` capture were inspected. The wheel is representative geometry generated normally inside mapped Vauhtipuisto OSM relation 1300537. [Diagnosis, commands, sampled limits and evidence](visual-quality-corrections/ferris-wheel-supports/README.md).

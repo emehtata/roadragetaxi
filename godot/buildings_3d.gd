@@ -3340,6 +3340,7 @@ static func attractions(out: Dictionary, rows: Array) -> void:
 					var foot := centre + axis.orthogonal() * 2.0 * side
 					_sloped_wall(out, foot - axis * 3.0, centre + axis.orthogonal() * 0.5 * side, 0.4, 0.0, hub, 0.4, Color8(77, 99, 124))
 					_sloped_wall(out, foot + axis * 3.0, centre + axis.orthogonal() * 0.5 * side, 0.4, 0.0, hub, 0.4, Color8(77, 99, 124))
+				_sloped_wall(out, centre - axis.orthogonal() * 0.6, centre + axis.orthogonal() * 0.6, 0.3, hub - 0.15, hub - 0.15, 0.3, Color8(190, 194, 201))
 				for k in 16:
 					var t := TAU * k / 16.0
 					var at := centre + axis * radius * cos(t)
@@ -3347,6 +3348,8 @@ static func attractions(out: Dictionary, rows: Array) -> void:
 					_box3d(out, "deck", at, 0.6, h - 0.7, h + 0.7, RIDE_COLORS[k % 4])
 					var next := TAU * (k + 1) / 16.0
 					_sloped_wall(out, at, centre + axis * radius * cos(next), 0.2, h, hub + radius * sin(next), 0.2, Color8(233, 229, 208))
+					# Mid-segment anchors avoid purely vertical spokes, which _sloped_wall cannot build.
+					_sloped_wall(out, centre, centre + axis * radius * (cos(t) + cos(next)) * 0.5, 0.12, hub - 0.06, hub + radius * (sin(t) + sin(next)) * 0.5 + 0.04, 0.12, Color8(190, 194, 201))
 
 
 ## Step 6: a biergarten's tables (benches either side, now and then an
