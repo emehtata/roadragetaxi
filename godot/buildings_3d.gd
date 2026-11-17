@@ -3306,7 +3306,7 @@ static func attractions(out: Dictionary, rows: Array) -> void:
 			"roller_coaster":
 				var height := func(i: int) -> float: return 3.0 + 3.0 * (0.5 + 0.5 * sin(i * 0.4))
 				for i in loop.size() - 1:
-					_sloped_strip(out, "deck", loop[i], loop[i + 1], 0.6, height.call(i), height.call(i + 1), Color8(211, 70, 55))
+					_sloped_strip(out, "deck", loop[i], loop[i + 1], 0.6, height.call(i), height.call((i + 1) % (loop.size() - 1)), Color8(211, 70, 55))
 					if i % 3 == 0:
 						_box3d(out, "deck", loop[i], 0.12, 0.0, height.call(i), Color8(104, 79, 65))
 			"drop_tower":

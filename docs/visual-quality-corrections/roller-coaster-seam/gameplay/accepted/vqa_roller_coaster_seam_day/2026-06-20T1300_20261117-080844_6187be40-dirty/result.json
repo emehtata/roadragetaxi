@@ -1,0 +1,179 @@
+{
+  "camera": {
+    "position": [
+      -139.18147277832,
+      190.746124267578
+    ],
+    "zoom": 27.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "6187be40-dirty",
+  "elapsed_s": 4.66617422222223,
+  "errors": [],
+  "forest": {
+    "build_ms_max": 45.142,
+    "build_ms_total": 313.194,
+    "draw_calls": 108.0,
+    "far_lod_crowns_loaded": 62498,
+    "forest_chunks": 31,
+    "objects": 378.0,
+    "place_ms_max": 30.5,
+    "primitives": 564127.0,
+    "render_3d_cpu_ms": 0.0,
+    "render_3d_gpu_ms": 0.0,
+    "static_memory_mb": 346.257656097412,
+    "trees_loaded": 31249,
+    "video_memory_mb": 1116.09481811523
+  },
+  "frames": {
+    "avg_fps": 109.531195908366,
+    "avg_ms": 9.12981905937195,
+    "frames": 110,
+    "low_01pct_fps": 57.9710144927536,
+    "low_1pct_fps": 57.9710144927536,
+    "over_16ms": 2,
+    "over_33ms": 0,
+    "over_66ms": 0,
+    "p50_ms": 8.33333301544189,
+    "p95_ms": 11.6946668624878,
+    "p99_ms": 17.0060005187988,
+    "worst_ms": 17.25
+  },
+  "game_time": [
+    "2026-06-20",
+    46800.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "lamps": {
+    "lamp_lights_max": 0,
+    "lamp_moved_lit": 0,
+    "lamp_reassigned": 0,
+    "lamps_offered_max": 0
+  },
+  "render": {
+    "chunk_build_worker": {
+      "avg_ms": 120.408625,
+      "max_ms": 290.171
+    },
+    "chunk_ground_dict": {
+      "avg_ms": 3.426,
+      "max_ms": 3.426
+    },
+    "chunk_lamps_3d": {
+      "avg_ms": 0.129,
+      "max_ms": 0.129
+    },
+    "chunk_lamps_main": {
+      "avg_ms": 2.998,
+      "max_ms": 5.644
+    },
+    "chunk_mesh_surface": {
+      "avg_ms": 0.880355769230769,
+      "max_ms": 2.937
+    },
+    "chunk_meshes_main": {
+      "avg_ms": 0.6869375,
+      "max_ms": 1.174
+    },
+    "long_frames": [],
+    "state_timeline": {
+      "arrival_max_ms": 77.6470031738281,
+      "arrival_over_66ms": 1,
+      "arrival_p50_ms": 33.3279991149902,
+      "arrival_p95_ms": 41.931999206543,
+      "arrival_p99_ms": 77.6470031738281,
+      "clock_snaps": 0,
+      "long_gaps": [
+        {
+          "arrival_ms": 77.6470031738281,
+          "map_loading": "",
+          "near_tile_event": false,
+          "server_ms": 33.3333320617676,
+          "t_s": 1.037462
+        }
+      ],
+      "long_gaps_near_tile_events": 0,
+      "render_backsteps": 0,
+      "server_gap_max_ms": 33.3333320617676,
+      "states": 32,
+      "tile_events": 0,
+      "underrun_episodes": 1,
+      "underruns": 1
+    }
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_roller_coaster_seam_day",
+  "scene": {
+    "buildings_in_view": 0,
+    "chunks": 49,
+    "coaster": {
+      "active_3d": true,
+      "ground_m": 0.0,
+      "height_m": 4.5,
+      "matched_vertices": 768,
+      "path_points": 49,
+      "seam": [
+        385678.910470424,
+        6674083.75387927
+      ],
+      "seam_rect": [
+        783.580017089844,
+        337.458343505859,
+        38.0881958007813,
+        45.4152526855469
+      ]
+    },
+    "lamps_in_view": 0,
+    "scenery_in_view": {}
+  },
+  "screenshot": "\\\\wsl.localhost\\Ubuntu-24.04\\home\\ubuntu\\work\\roadragetaxi\\docs\\visual-quality-corrections\\roller-coaster-seam\\gameplay\\accepted\\vqa_roller_coaster_seam_day\\2026-06-20T1300_20261117-080844_6187be40-dirty/screenshot.png",
+  "status": "passed",
+  "timestamp": "2026-11-17T06:09:56Z",
+  "traffic": {
+    "moving_min": 0,
+    "npcs_max": 0,
+    "spawn_rejections": {
+      "point_claimed": 2.0,
+      "resident_busy": 1.0,
+      "share": {
+        "point_claimed": 0.666666666666667,
+        "resident_busy": 0.333333333333333
+      },
+      "total": 3.0
+    },
+    "speed_max": 0.0
+  },
+  "vehicle": {
+    "heading": -1.5262,
+    "x": 385812.6,
+    "y": 6674274.7
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-1_nw4iwb",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.1,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 18.95,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      -4.977,
+      0.272
+    ]
+  }
+}

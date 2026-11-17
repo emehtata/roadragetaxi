@@ -1,0 +1,27 @@
+import json,sys,math
+from pathlib import Path
+sys.path.insert(0,'/home/ubuntu/work/roadragetaxi/src')
+from pyproj import Transformer
+from theroadragetrip.osm import build_ways
+p=Path.home()/'.cache/RoadRageTrip/osm_cache/bbox_60p13_24p85_60p23_25p05.json'
+d=json.loads(p.read_text())['elements']
+nodes=[e for e in d if e['type']=='node' and 60.187<e['lat']<60.1905 and 24.935<e['lon']<24.946]
+ids={e['id'] for e in nodes};ways=[e for e in d if e['type']=='way' and any(n in ids for n in e.get('nodes',[]))]
+needed={n for e in ways for n in e.get('nodes',[])}
+nodes=[e for e in d if e['type']=='node' and (e['id'] in needed or e['id'] in ids)]
+els=nodes+ways
+world=build_ways(els)
+rides=[s for s in world.sceneries if s.kind=='attraction_roller_coaster']
+print('COUNTS',len(els),len(rides),flush=True)
+result={'source_cache':p.name,'rides':[{'name':s.name,'bbox':s.bbox,'path':s.attraction_path} for s in rides]}
+for r in rides:
+ seam=r.attraction_path[0];print('RIDE',r.name,'SEAM',seam,'BBOX',r.bbox,flush=True)
+ candidates=[]
+ for w in world.ways:
+  if not w.is_drivable or w.layer!=0:continue
+  for a,b in zip(w.points_m,w.points_m[1:]):
+   x,y=(a[0]+b[0])/2,(a[1]+b[1])/2
+   dist=math.dist(seam,(x,y))
+   if dist<75:candidates.append([dist,x,y,math.atan2(seam[1]-y,seam[0]-x),w.name or w.highway])
+ print('POSES',sorted(candidates)[:10],flush=True)
+Path('/tmp/coaster_map.json').write_text(json.dumps(result))

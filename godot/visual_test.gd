@@ -54,6 +54,7 @@ var _indoor_snapshot := {}
 var _crossbuck_mesh_vertices := {}  # audit-only matching of the mapped crossing mesh
 var _tower_mesh_vertices := {}  # audit-only cached 1 mm membership checks against the actual mapped tower mesh
 var _felled_occluders := {}  # audit-only cached triangle BVHs for actual drawn buildings
+var _coaster_mesh_vertices := {}  # audit-only actual mapped path matching
 
 
 ## A "walk" scenario (fps-3d-view phase 1): out of the parked taxi, first
@@ -801,6 +802,70 @@ func _check_map(centre: Vector2) -> Array:
 				missing.append("lineup %s under the HUD at %s" % [row[0], rect])
 				_lineup_seen[key] = "under the HUD"
 				break
+	var coaster := {}
+	if scenario.has("coaster_seam"):
+		var target: Array = scenario["coaster_seam"]
+		var layer = layer_3d_view()
+		var found := false
+		for chunk in main.map_layer._chunks.values():
+			if layer==null or camera_3d==null: break
+			for row: Array in chunk._data.get("attractions", []):
+				if row[0] != "roller_coaster" or row[1].is_empty(): continue
+				if Vector2(row[1][0][0],row[1][0][1]).distance_to(Vector2(target[0],target[1])) > 0.1: continue
+				var loop := PackedVector2Array()
+				for point: Array in row[1]: loop.append(MapMath.point(chunk._origin,point[0],point[1]))
+				if loop.size() != int(target[2]) or not loop[0].is_equal_approx(loop[-1]):
+					missing.append("coaster path differs from expected closed loop")
+					continue
+				var wanted_path: Array = scenario.get("coaster_path",[])
+				if wanted_path.size() != row[1].size():
+					missing.append("coaster path has wrong samples")
+					continue
+				else:
+					for i in wanted_path.size():
+						if Vector2(float(wanted_path[i][0])-float(row[1][i][0]),float(wanted_path[i][1])-float(row[1][i][1])).length()>0.001: missing.append("coaster path sample differs from mapped source")
+				var expected := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+				Buildings3D.attractions(expected,[["roller_coaster",loop]])
+				for i in expected.deck.size(): expected.deck[i].y += Buildings3D.ground_height(chunk.ground_heights,Vector2(expected.deck[i].x,expected.deck[i].z))
+				for mesh: MeshInstance3D in chunk.meshes_3d:
+					if mesh.material_override != Buildings3D._shared["ground"] or mesh.mesh == null: continue
+					if not _coaster_mesh_vertices.has(mesh.mesh):
+						var faces := Array(mesh.mesh.get_faces())
+						_coaster_mesh_vertices[mesh.mesh] = Array(expected.deck).all(func(w): return faces.any(func(v): return v.distance_squared_to(w)<0.000001))
+					if not _coaster_mesh_vertices[mesh.mesh]: continue
+					found = true
+					if not MapChunkScript.outdoor_3d or not Buildings3D.opaque or layer==null or layer._view.get_camera_3d()!=camera_3d or not layer._sprite.is_visible_in_tree() or not mesh.is_visible_in_tree() or mesh.layers & camera_3d.cull_mask==0: missing.append("coaster 3D view not actively displayed")
+					var track := PackedVector3Array()
+					for i in expected.deck.size():
+						if expected.deck_colors[i]==Color8(211,70,55): track.append(expected.deck[i])
+					var seam := []
+					for point: Vector3 in track.slice(0,6)+track.slice(track.size()-6): seam.append(mesh.global_transform*point)
+					var rect := Rect2(); var first := true
+					for point: Vector3 in seam:
+						if not camera_3d.is_position_in_frustum(point): missing.append("coaster seam outside frustum")
+						var pixel := camera_3d.unproject_position(point)
+						rect = Rect2(pixel,Vector2.ZERO) if first else rect.expand(pixel); first=false
+						if point.y-main.map_layer.deck_height(Vector2(point.x,point.z),0,false)<3.0: missing.append("coaster seam buried")
+						for occluder in main.map_layer._chunks.values():
+							for solid: MeshInstance3D in occluder.meshes_3d:
+								if not solid.is_visible_in_tree() or solid.material_override!=Buildings3D._shared["material"] or solid.layers & camera_3d.cull_mask==0: continue
+								if not _felled_occluders.has(solid.mesh): _felled_occluders[solid.mesh]=solid.mesh.generate_triangle_mesh()
+								var inverse := solid.global_transform.affine_inverse()
+								if not _felled_occluders[solid.mesh].intersect_segment(inverse*camera_3d.global_position,inverse*point).is_empty(): missing.append("coaster seam behind drawn building")
+					if not Rect2(Vector2.ZERO,screen_size).encloses(rect) or rect.size.x<12 or rect.size.y<4: missing.append("coaster seam too small or offscreen")
+					for panel: Rect2 in hud:
+						if panel.intersects(rect): missing.append("coaster seam under HUD")
+					var seam_centre: Vector3 = (seam[0]+seam[1])*0.5
+					if camera_3d.global_position.y<=seam_centre.y+1.0: missing.append("coaster top face not visible")
+					for other: MeshInstance3D in layer._cars_root.find_children("*","MeshInstance3D",true,false):
+						if not other.is_visible_in_tree() or camera_3d.is_position_behind(other.global_position) or camera_3d.global_position.distance_to(other.global_position)>=camera_3d.global_position.distance_to(seam_centre): continue
+						var occupied := Rect2()
+						for corner in 8:
+							var pixel:=camera_3d.unproject_position(other.global_transform*other.get_aabb().get_endpoint(corner))
+							occupied=Rect2(pixel,Vector2.ZERO) if corner==0 else occupied.expand(pixel)
+						if occupied.intersects(rect): missing.append("coaster seam obscured by nearer dynamic body")
+					coaster={"seam":[row[1][0][0],row[1][0][1]],"path_points":loop.size(),"active_3d":true,"seam_rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"height_m":4.5,"ground_m":Buildings3D.ground_height(chunk.ground_heights,loop[0]),"matched_vertices":expected.deck.size()}
+		if not found: missing.append("expected mapped coaster path not drawn")
 	var crossbuck := {}
 	if scenario.has("crossbuck_target"):
 		var target: Array=scenario["crossbuck_target"]
@@ -1215,6 +1280,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not fox.is_empty(): _counts["fox"] = fox
 	if not felled.is_empty(): _counts["felled_tree"] = felled
 	if not tower.is_empty(): _counts["power_tower"] = tower
+	if not coaster.is_empty(): _counts["coaster"] = coaster
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen

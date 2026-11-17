@@ -99,3 +99,8 @@ The power-tower branch now shears one slender square support per corner from the
 ## VQA-020: crossbucks face the road approaches
 
 The crossing branch now spans each X board across the road, aligning its broad face with approaching traffic while retaining the two post locations. [Diagnosis, geometry/native regressions, 32 comparison panels and passing mapped Oulu capture](visual-quality-corrections/crossbuck-orientation/README.md) record the focused display correction and sampled coverage. Server railway safety and crossing decisions retain their existing paths.
+
+
+## VQA-021: closed roller-coaster track height
+
+The closing track strip now reuses the start point’s height sample, removing the 0.515 m seam opening while retaining every intermediate strip and support. [Diagnosis, geometry/native checks, 32 comparison panels and passing mapped Linnanmäki capture](visual-quality-corrections/roller-coaster-seam/README.md) record the correction and sampled coverage. The named target is the normal representative path from an actual Pikajuna OSM node, rather than a reconstruction of the real ride.

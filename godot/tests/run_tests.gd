@@ -681,6 +681,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_roller_coaster_track_closes()
+	test_roller_coaster_geometry_preserved()
 	test_crossbucks_face_road_approaches()
 	test_crossbuck_geometry_preserved()
 	test_power_tower_legs_connected()
@@ -4220,6 +4222,96 @@ func test_buildings_3d() -> void:
 	B3._structures(foam, {"shore_foam": [[PackedVector2Array([Vector2(0, 0), Vector2(10, 0)]), 0.5]]})
 	check(foam["road"].size() == 6 and foam["road_uv"][0].x == B3.ROAD_FOAM and is_equal_approx(foam["road_uv2"][0].x, 0.5), "shore foam: a strip on the water, its shore distance")
 	MapChunk.buildings_3d = false
+
+
+## VQA-021: inspect the actual track triangles, including the duplicated closing endpoint.
+func _coaster_test_loop(count: int, at := Vector2.ZERO, angle := 0.0) -> PackedVector2Array:
+	var loop := PackedVector2Array()
+	for i in count:
+		var t := TAU * i / count
+		loop.append(at + Vector2(cos(t) * 14.0, sin(t) * (6.0 + 0.6 * sin(t * 3.0))).rotated(angle))
+	loop.append(loop[0])
+	return loop
+
+
+func test_roller_coaster_track_closes() -> void:
+	for count: int in [4, 17, 48, 64]:
+		for angle: float in [0.0, 0.73]:
+			var loop := _coaster_test_loop(count, Vector2(17, -23), angle)
+			var out := {"deck":PackedVector3Array(), "deck_colors":PackedColorArray()}
+			B3.attractions(out, [["roller_coaster", loop]])
+			var track := PackedVector3Array()
+			for i in out.deck.size():
+				if out.deck_colors[i] == Color8(211,70,55): track.append(out.deck[i])
+			check(track.size() == count * 6, "coaster retains every track segment")
+			var starts := []; var ends := []
+			for i in count:
+				var points := []
+				for v: Vector3 in track.slice(i * 6, (i + 1) * 6):
+					if not points.has(v): points.append(v)
+				check(points.size() == 4, "coaster strip has four corners")
+				var endpoints := []
+				for at: Vector2 in [loop[i],loop[i+1]]:
+					var pair := points.filter(func(v): return Vector2(v.x,v.z).distance_to(at) < 0.601)
+					check(pair.size() == 2, "track endpoint retains 1.2 m width")
+					if pair.size() == 2:
+						check(absf(pair[0].distance_to(pair[1])-1.2) < 0.001, "track width preserved")
+						endpoints.append((pair[0]+pair[1])*0.5)
+				if endpoints.size() == 2: starts.append(endpoints[0]); ends.append(endpoints[1])
+				for t in range(i*6,i*6+6,3):
+					check((track[t+1]-track[t]).cross(track[t+2]-track[t]).y < -0.001, "track front faces stay upward")
+			if starts.size() == count and ends.size() == count:
+				for i in count: check(ends[i].distance_to(starts[(i+1)%count]) < 0.001, "all track centreline endpoints meet, including seam")
+				check(absf(starts[0].y-4.5) < 0.001, "coaster start height retained")
+
+
+func test_roller_coaster_geometry_preserved() -> void:
+	for count: int in [4,17,48,64]:
+		var loop := _coaster_test_loop(count,Vector2(17,-23),0.73)
+		var expected := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+		var original := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+		B3.attractions(expected,[["roller_coaster",loop]])
+		for i in count:
+			B3._sloped_strip(original,"deck",loop[i],loop[i+1],0.6,4.5+1.5*sin(i*0.4),4.5+1.5*sin((i+1)*0.4),Color8(211,70,55))
+			if i%3==0: B3._box3d(original,"deck",loop[i],0.12,0,4.5+1.5*sin(i*0.4),Color8(104,79,65))
+		check(expected.deck.size()==original.deck.size() and expected.deck_colors==original.deck_colors,"track/support counts and colours preserved")
+		# Identify final strip by its colour/order; only its final endpoint heights may change.
+		var segment := 0; var red_in_segment := 0
+		for i in expected.deck.size():
+			if expected.deck_colors[i] != Color8(211,70,55):
+				check(expected.deck[i] == original.deck[i],"support geometry unchanged")
+				continue
+			if segment < count-1: check(expected.deck[i].distance_to(original.deck[i])<0.00001,"intermediate track geometry unchanged")
+			else: check(Vector2(expected.deck[i].x,expected.deck[i].z)==Vector2(original.deck[i].x,original.deck[i].z),"closing footprint unchanged")
+			red_in_segment+=1
+			if red_in_segment==6:segment+=1;red_in_segment=0
+		for ground: float in [0.0,13.5]:
+			var grid := {} if ground==0 else {"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
+			var input := {"rect":Rect2(-50,-50,100,100),"attractions":[["roller_coaster",loop]],"ground_heights":grid}
+			var built := B3.build([],[],Vector2.ZERO,[],[],input)
+			var shifted: PackedVector3Array=expected.deck.duplicate()
+			for i in shifted.size():shifted[i].y+=ground
+			check(built.deck==shifted and built==B3.build([],[],Vector2.ZERO,[],[],input),"coaster grounded chunk build stable")
+	var empty := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+	B3.attractions(empty,[["roller_coaster",PackedVector2Array([Vector2.ZERO,Vector2.ONE])]])
+	check(empty.deck.is_empty(),"short-loop guard retained")
+	var flags := [MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
+	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
+	var map := MapLayer.new();root.add_child(map)
+	var points := []
+	for p: Vector2 in _coaster_test_loop(48,Vector2(50,50)):points.append([p.x,p.y])
+	var row := {"chunk_id":"0_0","bounds":[0,0,100,100],"attractions":[["roller_coaster",points]]}
+	map.add_chunk(row.duplicate(true))
+	var faces := []
+	for mesh: MeshInstance3D in map._chunks["0_0"].meshes_3d:faces.append(mesh.mesh.get_faces())
+	map.replace_chunk(row.duplicate(true));var replaced := []
+	for mesh: MeshInstance3D in map._chunks["0_0"].meshes_3d:replaced.append(mesh.mesh.get_faces())
+	check(faces==replaced,"coaster chunk replacement stable")
+	map.clear();check(map._chunks.is_empty(),"coaster chunk unloaded")
+	map.add_chunk(row.duplicate(true));replaced.clear()
+	for mesh: MeshInstance3D in map._chunks["0_0"].meshes_3d:replaced.append(mesh.mesh.get_faces())
+	check(faces==replaced,"coaster chunk reload stable")
+	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
 
 
 ## VQA-020: actual broad board triangles must face both directions of the road.
