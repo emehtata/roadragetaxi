@@ -681,6 +681,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_swing_carousel_seats_connected()
+	test_swing_carousel_geometry_preserved()
 	test_carousel_seats_connected()
 	test_carousel_geometry_preserved()
 	test_roller_coaster_track_closes()
@@ -4227,6 +4229,90 @@ func test_buildings_3d() -> void:
 
 
 ## VQA-022: the platform top must reach every seat base and the grounded mast.
+## VQA-023: actual hanger triangles connect each seat to the inset canopy.
+func test_swing_carousel_seats_connected() -> void:
+	for count:int in [4,17,48]:
+		for angle:float in [0.0,0.73]:
+			var loop:=_coaster_test_loop(count,Vector2(17,-23),angle)
+			var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+			B3.attractions(out,[["swing_carousel",loop]])
+			var rods:=PackedVector3Array();var canopy:=PackedVector3Array()
+			for i in range(0,out.deck.size(),3):
+				if out.deck_colors[i]==Color8(210,210,215):rods.append_array(out.deck.slice(i,i+3))
+				elif out.deck[i].y>=6.999 and out.deck[i+1].y>=6.999 and out.deck[i+2].y>=6.999 and out.deck[i].y<=7.401 and out.deck[i+1].y<=7.401 and out.deck[i+2].y<=7.401:canopy.append_array(out.deck.slice(i,i+3))
+			check(rods.size()==ceili(count/6.0)*18,"one slender18-vertex hanger for every swing seat")
+			for seat in range(0,count,6):
+				var at:=loop[seat]
+				var lower:=PackedVector3Array();var upper:=PackedVector3Array()
+				for v:Vector3 in rods:
+					if v.y<3.65 and Vector2(v.x,v.z).distance_to(at)<0.1:lower.append(v)
+				check(not lower.is_empty(),"hanger reaches actual seat top, rather than a platform or floating rod")
+				if lower.is_empty():continue
+				var start:=lower[0]
+				# The triangles sharing this lower endpoint must carry a real surface up to the canopy.
+				for i in range(0,rods.size(),3):
+					if Array(rods.slice(i,i+3)).any(func(v):return v.distance_to(start)<0.001):
+						for v:Vector3 in rods.slice(i,i+3):
+							if v.y>=6.99:upper.append(v)
+				check(not upper.is_empty(),"seat hanger is one continuous surface to canopy")
+				var touches:=false
+				for v:Vector3 in upper:
+					for i in range(0,canopy.size(),3):
+						var poly:=PackedVector2Array([Vector2(canopy[i].x,canopy[i].z),Vector2(canopy[i+1].x,canopy[i+1].z),Vector2(canopy[i+2].x,canopy[i+2].z)])
+						touches=touches or Geometry2D.is_point_in_polygon(Vector2(v.x,v.z),poly) and v.y>=6.995 and v.y<=7.055
+				check(touches,"hanger upper end intersects actual canopy triangle footprint")
+				check(Array(lower).all(func(v):return v.y<=3.605 and v.y>=3.565 or v.y>=3.625 and v.y<=3.635),"hanger overlaps seat top by3cm while leaving seat exposed")
+			check(rods.is_empty() or Array(rods).all(func(v):return v.y>=3.569 and v.y<=7.051),"no platform, ground pedestal or taller silhouette introduced")
+
+
+func test_swing_carousel_geometry_preserved() -> void:
+	for count:int in [4,17,48]:
+		var loop:=_coaster_test_loop(count,Vector2(17,-23),0.73)
+		var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+		B3.attractions(out,[["swing_carousel",loop]])
+		var original:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+		var centre:=Vector2.ZERO
+		for i in count:centre+=loop[i]/count
+		B3._box3d(original,"deck",centre,0.3,0,7.6,Color8(248,213,93))
+		for i in count:B3._raised_polygon_at(original,"deck",PackedVector2Array([centre,centre+(loop[i]-centre)*0.45,centre+(loop[(i+1)%count]-centre)*0.45]),7.0,7.4,B3.RIDE_COLORS[(i/6)%4])
+		for i in range(0,count,6):B3._box3d(original,"deck",loop[i],0.6,3.0,3.6,B3.RIDE_COLORS[(i/6)%4])
+		var vertices:=PackedVector3Array();var colors:=PackedColorArray()
+		for i in out.deck.size():
+			if out.deck_colors[i]!=Color8(210,210,215):vertices.append(out.deck[i]);colors.append(out.deck_colors[i])
+		check(vertices==original.deck and colors==original.deck_colors,"swing original seats/mast/canopy preserved exactly")
+		for ground:float in [0.0,13.5]:
+			var grid:={} if ground==0 else {"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
+			var input:={"rect":Rect2(-50,-50,100,100),"attractions":[["swing_carousel",loop]],"ground_heights":grid}
+			var built:=B3.build([],[],Vector2.ZERO,[],[],input)
+			var shifted:PackedVector3Array=out.deck.duplicate()
+			for i in shifted.size():shifted[i].y+=ground
+			check(built.deck==shifted and built==B3.build([],[],Vector2.ZERO,[],[],input),"swing hanger terrain build/contact stable")
+	for kind:String in ["carousel","roller_coaster","ferris_wheel","drop_tower"]:
+		var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(out,[[kind,_coaster_test_loop(48)]])
+		check(_carousel_ride_hash(out)==SWING_OTHER_RIDE_HASHES[kind],"swing fix preserves "+kind)
+	var empty:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(empty,[["swing_carousel",PackedVector2Array([Vector2.ZERO,Vector2.ONE])]])
+	check(empty.deck.is_empty(),"swing short-loop guard retained")
+	var flags:=[MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
+	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
+	var map:=MapLayer.new();root.add_child(map)
+	var points:=[]
+	for point:Vector2 in _coaster_test_loop(48,Vector2(50,50)):points.append([point.x,point.y])
+	var row:={"chunk_id":"0_0","bounds":[0,0,100,100],"attractions":[["swing_carousel",points]]}
+	map.add_chunk(row.duplicate(true));var faces:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:faces.append(mesh.mesh.get_faces())
+	map.replace_chunk(row.duplicate(true));var replacement:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"swing chunk replacement stable")
+	map.clear();check(map._chunks.is_empty(),"swing chunk unload")
+	map.add_chunk(row.duplicate(true));replacement.clear()
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"swing chunk reload stable")
+	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
+
+
+const SWING_OTHER_RIDE_HASHES := {"carousel":"69cfd4b7864c910c7692660aba3cde4dd8f09befd46aafa03c72605a0e33eef4","roller_coaster":"4c75af577679af702c35587e1b67c34e29c9e8628a3eba3915248a4a711227a8","ferris_wheel":"121ff6e6f548994317569c78548c7ad023d03605526ad4e0892803e95b48358c","drop_tower":"718284d6205f488f2c5faf5694c591a26c1409b112eb2f39f22699c0166148bb"}
+
+
 func test_carousel_seats_connected() -> void:
 	for count: int in [4,17,48]:
 		for angle: float in [0.0,0.73]:
@@ -4339,7 +4425,7 @@ func _carousel_ride_hash(out:Dictionary) -> String:
 	return values.to_byte_array().hex_encode().sha256_text()
 
 
-const CAROUSEL_OTHER_RIDE_HASHES := {"swing_carousel":"174bd6fb7f7eb4a251d5e71e9c5a7a95ee4974c0adc31ccdf1792bb7a1f2a64d","roller_coaster":"4c75af577679af702c35587e1b67c34e29c9e8628a3eba3915248a4a711227a8","ferris_wheel":"121ff6e6f548994317569c78548c7ad023d03605526ad4e0892803e95b48358c","drop_tower":"718284d6205f488f2c5faf5694c591a26c1409b112eb2f39f22699c0166148bb"}
+const CAROUSEL_OTHER_RIDE_HASHES := {"swing_carousel":"bf9b221d3fa82f5c5d35a7a0725c657eeaae5194cdd9a91a94817d2891695ed7","roller_coaster":"4c75af577679af702c35587e1b67c34e29c9e8628a3eba3915248a4a711227a8","ferris_wheel":"121ff6e6f548994317569c78548c7ad023d03605526ad4e0892803e95b48358c","drop_tower":"718284d6205f488f2c5faf5694c591a26c1409b112eb2f39f22699c0166148bb"}
 
 
 ## VQA-021: inspect the actual track triangles, including the duplicated closing endpoint.

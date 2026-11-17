@@ -3326,6 +3326,8 @@ static func attractions(out: Dictionary, rows: Array) -> void:
 					_raised_polygon_at(out, "deck", loop.slice(0, loop.size() - 1), 0.75, 0.9, Color8(165, 120, 65))
 				for i in range(0, loop.size() - 1, 6):  # the seats out at the rim
 					_box3d(out, "deck", loop[i], 0.6, 0.9 if not swing else 3.0, 1.6 if not swing else 3.6, RIDE_COLORS[(i / 6) % 4])
+					if swing:
+						_sloped_wall(out, loop[i], centre + (loop[i] - centre) * 0.4, 0.06, 3.57, 6.99, 0.06, Color8(210, 210, 215))
 			_:  # a Ferris wheel: across its loop's longest axis, cabins in a vertical ring
 				var far := loop[0]
 				for p in loop:

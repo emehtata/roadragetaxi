@@ -1,0 +1,388 @@
+{
+	"adapter": "NVIDIA GeForce RTX 5060",
+	"angles": [
+		"front",
+		"rear",
+		"left",
+		"right",
+		"front_three_quarter",
+		"rear_three_quarter",
+		"top",
+		"elevated"
+	],
+	"captures": [
+		{
+			"angle": "front",
+			"asset": "swing_carousel",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				51.6000022888184,
+				3.79999995231628,
+				0.0
+			],
+			"camera_size": 17.2516040802002,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "swing_carousel",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				-51.6000022888184,
+				3.79999995231628,
+				0.0
+			],
+			"camera_size": 17.2516040802002,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "swing_carousel",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				0.0,
+				3.79999995231628,
+				-51.6000022888184
+			],
+			"camera_size": 17.2516117095947,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "swing_carousel",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				0.0,
+				3.79999995231628,
+				51.6000022888184
+			],
+			"camera_size": 17.2516002655029,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "swing_carousel",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				33.5887413024902,
+				23.9532451629639,
+				33.5887413024902
+			],
+			"camera_size": 24.3974475860596,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "swing_carousel",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				-33.5887413024902,
+				23.9532451629639,
+				-33.5887413024902
+			],
+			"camera_size": 24.3974475860596,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "swing_carousel",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				0.0,
+				55.3999786376953,
+				0.0515999794006348
+			],
+			"camera_size": 20.3049602508545,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "swing_carousel",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				25.0296783447266,
+				41.3445167541504,
+				-25.0296783447266
+			],
+			"camera_size": 27.0364189147949,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "swing_carousel_perspective",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				55.0,
+				3.79999995231628,
+				0.0
+			],
+			"camera_size": 17.2516059875488,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_perspective_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "swing_carousel_perspective",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				-55.0,
+				3.79999995231628,
+				0.0
+			],
+			"camera_size": 17.2516059875488,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_perspective_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "swing_carousel_perspective",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				0.0,
+				3.79999995231628,
+				-55.0
+			],
+			"camera_size": 17.2516117095947,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_perspective_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "swing_carousel_perspective",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				0.0,
+				3.79999995231628,
+				55.0
+			],
+			"camera_size": 17.2516002655029,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_perspective_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "swing_carousel_perspective",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				35.8019523620605,
+				25.2811717987061,
+				35.8019523620605
+			],
+			"camera_size": 24.3974475860596,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_perspective_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "swing_carousel_perspective",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				-35.8019523620605,
+				25.2811717987061,
+				-35.8019523620605
+			],
+			"camera_size": 24.3974475860596,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_perspective_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "swing_carousel_perspective",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				0.0,
+				58.7999725341797,
+				0.054999977350235
+			],
+			"camera_size": 20.3049602508545,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_perspective_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "swing_carousel_perspective",
+			"bounds": [
+				-8.60000038146973,
+				0.0,
+				-8.60000038146973,
+				17.2000007629395,
+				7.59999990463257,
+				17.2000007629395
+			],
+			"camera_position": [
+				26.6789207458496,
+				43.8183784484863,
+				-26.6789207458496
+			],
+			"camera_size": 27.0364189147949,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "swing_carousel_perspective_day_elevated.png",
+			"framed": true,
+			"ready": true
+		}
+	],
+	"renderer": "forward_plus",
+	"resolution": [
+		400,
+		340
+	]
+}

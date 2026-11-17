@@ -803,10 +803,12 @@ func _check_map(centre: Vector2) -> Array:
 				_lineup_seen[key] = "under the HUD"
 				break
 	var coaster := {}
-	if scenario.has("coaster_seam") or scenario.has("carousel_supports"):
-		var carousel := scenario.has("carousel_supports")
-		var kind := "carousel" if carousel else "roller_coaster"
-		var target: Array = scenario["carousel_supports" if carousel else "coaster_seam"]
+	if scenario.has("coaster_seam") or scenario.has("carousel_supports") or scenario.has("swing_supports"):
+		var swing := scenario.has("swing_supports")
+		var carousel := scenario.has("carousel_supports") or swing
+		var kind := "swing_carousel" if swing else "carousel" if carousel else "roller_coaster"
+		var target: Array = scenario["swing_supports" if swing else "carousel_supports" if carousel else "coaster_seam"]
+		if target.size()!=3: return missing+["mapped attraction target needs coordinates and path count"]
 		var layer = layer_3d_view()
 		var found := false
 		for chunk in main.map_layer._chunks.values():
@@ -819,9 +821,12 @@ func _check_map(centre: Vector2) -> Array:
 				if loop.size() != int(target[2]) or not loop[0].is_equal_approx(loop[-1]):
 					missing.append(("carousel " if carousel else "coaster ")+"path differs from expected closed loop")
 					continue
-				var wanted_path: Array = scenario.get("carousel_path" if carousel else "coaster_path",[])
+				var wanted_path: Array = scenario.get("swing_path" if swing else "carousel_path" if carousel else "coaster_path",[])
 				if wanted_path.size() != row[1].size():
 					missing.append(("carousel " if carousel else "coaster ")+"path has wrong samples")
+					continue
+				elif not wanted_path.all(func(point):return point is Array and point.size()==2 and (point[0] is float or point[0] is int) and (point[1] is float or point[1] is int)):
+					missing.append("mapped attraction path has malformed samples")
 					continue
 				else:
 					for i in wanted_path.size():
@@ -850,7 +855,23 @@ func _check_map(centre: Vector2) -> Array:
 								seam.append(mesh.global_transform*Buildings3D.to_3d(at,height+Buildings3D.ground_height(chunk.ground_heights,at)))
 					else:
 						for point: Vector3 in track.slice(0,6)+track.slice(track.size()-6): seam.append(mesh.global_transform*point)
-					if carousel:
+					if swing:
+						var ride_centre := Vector2.ZERO
+						for i in loop.size()-1: ride_centre += loop[i]/(loop.size()-1)
+						seam.clear()
+						var upper := ride_centre+(loop[0]-ride_centre)*0.4
+						for t:float in [0.0,0.5,1.0]:
+							var at:Vector2=loop[0].lerp(upper,t)
+							seam.append(mesh.global_transform*Buildings3D.to_3d(at,lerpf(3.6,7.0,t)+Buildings3D.ground_height(chunk.ground_heights,at)))
+						if not _felled_occluders.has(mesh.mesh): _felled_occluders[mesh.mesh]=mesh.mesh.generate_triangle_mesh()
+						var inverse:=mesh.global_transform.affine_inverse()
+						for point:Vector3 in seam:
+							var end:=point+(camera_3d.global_position-point).normalized()*0.08
+							if not _felled_occluders[mesh.mesh].intersect_segment(inverse*camera_3d.global_position,inverse*end).is_empty():missing.append("swing seat/hanger/canopy contact hidden by ride geometry")
+						for side:float in [-1.0,1.0]:
+							seam.append(seam[0]+Vector3(0,0,0.6*side))
+							seam.append(seam[2]+Vector3(0,0,0.03*side))
+					if carousel and not swing:
 						# Reject a platform hidden under the ride's own canopy or another ground prop.
 						if not _felled_occluders.has(mesh.mesh): _felled_occluders[mesh.mesh]=mesh.mesh.generate_triangle_mesh()
 						var inverse := mesh.global_transform.affine_inverse()
@@ -874,7 +895,7 @@ func _check_map(centre: Vector2) -> Array:
 					for panel: Rect2 in hud:
 						if panel.intersects(rect): missing.append(("carousel " if carousel else "coaster ")+"seam under HUD")
 					var seam_centre: Vector3 = (seam[0]+seam[1])*0.5
-					if camera_3d.global_position.y<=seam_centre.y+1.0: missing.append(("carousel " if carousel else "coaster ")+"top face not visible")
+					if not swing and camera_3d.global_position.y<=seam_centre.y+1.0: missing.append(("carousel " if carousel else "coaster ")+"top face not visible")
 					for other: MeshInstance3D in layer._cars_root.find_children("*","MeshInstance3D",true,false):
 						if not other.is_visible_in_tree() or camera_3d.is_position_behind(other.global_position) or camera_3d.global_position.distance_to(other.global_position)>=camera_3d.global_position.distance_to(seam_centre): continue
 						var occupied := Rect2()
@@ -882,7 +903,7 @@ func _check_map(centre: Vector2) -> Array:
 							var pixel:=camera_3d.unproject_position(other.global_transform*other.get_aabb().get_endpoint(corner))
 							occupied=Rect2(pixel,Vector2.ZERO) if corner==0 else occupied.expand(pixel)
 						if occupied.intersects(rect): missing.append(("carousel " if carousel else "coaster ")+"seam obscured by nearer dynamic body")
-					coaster={("seat" if carousel else "seam"):[row[1][0][0],row[1][0][1]],"path_points":loop.size(),"active_3d":true,("support_rect" if carousel else "seam_rect"):[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"height_m":0.9 if carousel else 4.5,"ground_m":Buildings3D.ground_height(chunk.ground_heights,loop[0]),"matched_vertices":expected.deck.size()}
+					coaster={("seat" if carousel else "seam"):[row[1][0][0],row[1][0][1]],"path_points":loop.size(),"active_3d":true,("support_rect" if carousel else "seam_rect"):[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"height_m":7.0 if swing else 0.9 if carousel else 4.5,"ground_m":Buildings3D.ground_height(chunk.ground_heights,loop[0]),"matched_vertices":expected.deck.size()}
 		if not found: missing.append("expected mapped attraction path not drawn")
 	var crossbuck := {}
 	if scenario.has("crossbuck_target"):
@@ -1298,7 +1319,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not fox.is_empty(): _counts["fox"] = fox
 	if not felled.is_empty(): _counts["felled_tree"] = felled
 	if not tower.is_empty(): _counts["power_tower"] = tower
-	if not coaster.is_empty(): _counts["carousel" if scenario.has("carousel_supports") else "coaster"] = coaster
+	if not coaster.is_empty(): _counts["swing_carousel" if scenario.has("swing_supports") else "carousel" if scenario.has("carousel_supports") else "coaster"] = coaster
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen

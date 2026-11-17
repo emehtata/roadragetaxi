@@ -108,3 +108,7 @@ The closing track strip now reuses the start point’s height sample, removing t
 ## Carousel seat platform (VQA-022)
 
 A thin platform now joins every standard-carousel seat to its grounded central mast. Existing seats/canopy and other ride kinds are preserved. Focused Linux/native geometry checks and the named Vauhtipuisto normal-pipeline scenario pass; all32 comparison panels and the final screenshot were inspected. See [diagnosis, checks and evidence](visual-quality-corrections/carousel-seat-supports/README.md). VQA-023 remains separate.
+
+## VQA-023 — Swing-carousel seat supports
+
+Added a slender inward-sloping hanger from each seat to the inset canopy. Original seats/mast/canopy and other rides remain unchanged. Linux/native focused checks **125/0**, controls **216/0**, targeted pytest **7 passed**; all **32 comparison panels** and the accepted named Vauhtipuisto capture were inspected. [Diagnosis, reproduction and visual evidence](visual-quality-corrections/swing-carousel-seat-supports/README.md). Gameplay coverage samples one daylight flat-terrain view.

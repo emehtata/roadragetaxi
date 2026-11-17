@@ -1,0 +1,21 @@
+{
+  "assets": [
+    {
+      "id": "swing_carousel",
+      "name": "swing_carousel",
+      "kind": "swing_carousel",
+      "mode": "attraction"
+    },
+    {
+      "id": "swing_carousel_perspective",
+      "name": "swing_carousel55m",
+      "kind": "swing_carousel",
+      "mode": "attraction",
+      "perspective": true
+    }
+  ],
+  "conditions": [
+    "day"
+  ],
+  "source_revision": "938d6e26-dirty"
+}
