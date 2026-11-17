@@ -1,0 +1,14 @@
+import json,math,sys
+from pathlib import Path
+sys.path.insert(0,str(Path.cwd()/'src'))
+from theroadragetrip.osm import build_ways
+p=Path.home()/'.cache/RoadRageTrip/osm_cache/bbox_65p02199_25p39565_65p04001_25p43835.json'
+els=json.loads(p.read_text())['elements'];w=build_ways(els)
+rows=[o for o in w.scenery_objects if o.kind=='tent']
+print('COMBINATIONS',len(rows),flush=True)
+out=[]
+for o in rows:
+ pitch=next((e for e in els if e['id']==-o.id and e.get('tags',{}).get('tourism')=='camp_pitch'),None)
+ out.append({'row':vars(o),'pitch':pitch})
+print(json.dumps(out[:15]),flush=True)
+Path('docs/visual-quality-corrections/tent-geometry/map-source.json').write_text(json.dumps({'cache':p.name,'targets':out},default=str))

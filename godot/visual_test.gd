@@ -930,18 +930,20 @@ func _check_map(centre: Vector2) -> Array:
 					coaster={("support" if ferris else "seat" if carousel else "seam"):[row[1][0][0],row[1][0][1]],"path_points":loop.size(),"active_3d":true,("support_rect" if carousel or ferris else "seam_rect"):[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"height_m":seam[2].y if ferris else 7.0 if swing else 0.9 if carousel else 4.5,"ground_m":Buildings3D.ground_height(chunk.ground_heights,loop[0]),"matched_vertices":expected.deck.size()}
 		if not found: missing.append("expected mapped attraction path not drawn")
 	var camp_pair := {}
-	if scenario.has("caravan_with_car_target"):
-		var target:Array=scenario["caravan_with_car_target"]
+	if scenario.has("caravan_with_car_target") or scenario.has("tent_target"):
+		var tent:=scenario.has("tent_target")
+		var kind:="tent" if tent else "caravan_with_car"
+		var target:Array=scenario["tent_target" if tent else "caravan_with_car_target"]
 		var layer=layer_3d_view()
 		var found:=false
 		for chunk in main.map_layer._chunks.values():
 			if layer==null or camera_3d==null:break
 			for row:Array in chunk._data.get("scenery_objects",[]):
-				if row[2]!="caravan_with_car" or Vector2(row[0],row[1]).distance_to(Vector2(target[0],target[1]))>0.1:continue
+				if row[2]!=kind or Vector2(row[0],row[1]).distance_to(Vector2(target[0],target[1]))>0.1:continue
 				if absf(angle_difference(float(row[3]),float(target[2])))>0.001:missing.append("camping combination has wrong heading")
 				var at:=MapMath.point(chunk._origin,row[0],row[1])
 				var expected:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
-				Buildings3D.props(expected,[[at,float(row[3]),"caravan_with_car"]])
+				Buildings3D.props(expected,[[at,float(row[3]),kind]])
 				for i in expected.deck.size():expected.deck[i].y+=Buildings3D.ground_height(chunk.ground_heights,Vector2(expected.deck[i].x,expected.deck[i].z))
 				for mesh:MeshInstance3D in chunk.meshes_3d:
 					if mesh.material_override!=Buildings3D._shared["ground"] or mesh.mesh==null:continue
@@ -959,13 +961,17 @@ func _check_map(centre: Vector2) -> Array:
 						bounds=Rect2(pixel,Vector2.ZERO) if first else bounds.expand(pixel);first=false
 					for panel:Rect2 in hud:
 						if panel.intersects(bounds):missing.append("camping combination under HUD")
-					for axle:float in [-2.6,1.78,4.02]:
-						for side:float in [-1.0,1.0]:
-							var foot:Vector3=placement*Vector3(axle,0,side*(1.14 if axle<0 else 0.781))
-							foot.y+=Buildings3D.ground_height(chunk.ground_heights,Vector2(foot.x,foot.z))
-							if absf((mesh.global_transform*foot).y-main.map_layer.deck_height(Vector2(foot.x,foot.z),0,false))>0.005:missing.append("camping wheel buried or floating")
+					var feet:=[Vector3(-1.2,0,-1),Vector3(-1.2,0,1),Vector3(1.2,0,-1),Vector3(1.2,0,1)] if tent else []
+					if not tent:
+						for axle:float in [-2.6,1.78,4.02]:
+							for side:float in [-1.0,1.0]:feet.append(Vector3(axle,0,side*(1.14 if axle<0 else 0.781)))
+					for local:Vector3 in feet:
+						var foot:Vector3=placement*local
+						foot.y+=Buildings3D.ground_height(chunk.ground_heights,Vector2(foot.x,foot.z))
+						if absf((mesh.global_transform*foot).y-main.map_layer.deck_height(Vector2(foot.x,foot.z),0,false))>0.005:missing.append("camping base buried or floating")
 					var regions:=[]
-					for box:AABB in [AABB(Vector3(-4.6,2.4,-1.15),Vector3(4.8,0,2.3)),AABB(Vector3(2.2,1.5,-0.5),Vector3(0.8,0,1.0)),AABB(Vector3(0.3,0.5,-0.05),Vector3(0.7,0,0.1))]:
+					var camp_regions:=[AABB(Vector3(1.2,0.03,-0.55),Vector3(0,0.92,1.1)),AABB(Vector3(-1.2,0.65,0),Vector3(2.4,0.65,0.5))] if tent else [AABB(Vector3(-4.6,2.4,-1.15),Vector3(4.8,0,2.3)),AABB(Vector3(2.2,1.5,-0.5),Vector3(0.8,0,1.0)),AABB(Vector3(0.3,0.5,-0.05),Vector3(0.7,0,0.1))]
+					for box:AABB in camp_regions:
 						var rect:=Rect2();var points:=[]
 						for corner in 8:
 							var point:Vector3=placement*box.get_endpoint(corner)
@@ -991,8 +997,8 @@ func _check_map(centre: Vector2) -> Array:
 								occupied=Rect2(pixel,Vector2.ZERO) if corner==0 else occupied.expand(pixel)
 							if occupied.intersects(rect):missing.append("camping combination obscured by dynamic body")
 						regions.append([rect.position.x,rect.position.y,rect.size.x,rect.size.y])
-					camp_pair={"position":[row[0],row[1]],"angle":row[3],"active_3d":true,"region_rects":regions,"rect":[bounds.position.x,bounds.position.y,bounds.size.x,bounds.size.y],"matched_vertices":expected.deck.size(),"ground_m":Buildings3D.ground_height(chunk.ground_heights,at),"envelope_m":[9.4,2.5]}
-		if not found:missing.append("expected mapped caravan-with-car geometry not drawn")
+					camp_pair={"position":[row[0],row[1]],"angle":row[3],"active_3d":true,"region_rects":regions,"rect":[bounds.position.x,bounds.position.y,bounds.size.x,bounds.size.y],"matched_vertices":expected.deck.size(),"ground_m":Buildings3D.ground_height(chunk.ground_heights,at),"envelope_m":[3.2,2.4] if tent else [9.4,2.5]}
+		if not found:missing.append("expected mapped camping geometry not drawn")
 	var crossbuck := {}
 	if scenario.has("crossbuck_target"):
 		var target: Array=scenario["crossbuck_target"]
@@ -1409,7 +1415,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not tower.is_empty(): _counts["power_tower"] = tower
 	if not coaster.is_empty(): _counts["ferris_wheel" if scenario.has("ferris_supports") else "swing_carousel" if scenario.has("swing_supports") else "carousel" if scenario.has("carousel_supports") else "coaster"] = coaster
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
-	if not camp_pair.is_empty(): _counts["caravan_with_car"] = camp_pair
+	if not camp_pair.is_empty(): _counts["tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
 	if not campers.is_empty():

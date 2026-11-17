@@ -122,3 +122,7 @@ Added sixteen slender radial spokes and a shared axle joining both existing A-fr
 The static combination now renders a separate caravan and lower towing car with six grounded wheels, cabin/glazing, caravan window/roof hatch and an exposed connecting drawbar. Its complete geometry fits the authoritative **9.4 × 2.5 m** server camping envelope. The original 10.5 m solid box is replaced only for `caravan_with_car`; source row placement and other props/live vehicles are preserved.
 
 [Diagnosis, tests, comparisons and named Nallikari pitch148 capture](visual-quality-corrections/caravan-with-car/README.md): Linux/native **136/0**, existing controls **216/0**, targeted pytest **12 passed**. All **32** comparison panels and the passing named gameplay screenshot inspected; actual mapped pitch node2450243248, **1,818 matched vertices**, no readiness errors. Visual coverage samples daylight flat terrain.
+
+## VQA-026 — tent profile and entrance
+
+The tent now has pitched fabric panels, a longitudinal ridge and a dark forward entrance while retaining its 2.4×2.0×1.3 m dimensions inside the server 3.2×2.4 m camping envelope. [Diagnosis, regression and visual evidence](visual-quality-corrections/tent-geometry/README.md). Linux/native 225 focused checks and 352 controls pass; 12 targeted pytest tests pass. All 32 before/after panels and the named `vqa_tent_geometry_day` capture of actual Nallikari pitch OSM node 2450243261 were inspected. Gameplay evidence samples one daylight flat-terrain view; earlier obscured or diagnostic attempts are excluded.

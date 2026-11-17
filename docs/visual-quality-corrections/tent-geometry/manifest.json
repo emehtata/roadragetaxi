@@ -1,0 +1,116 @@
+{
+  "finding": "VQA-026",
+  "revision": "b5970bcc-dirty",
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "target": {
+    "row": {
+      "x": 425633.3762166767,
+      "y": 7212633.827008173,
+      "kind": "tent",
+      "name": null,
+      "id": -2450243261,
+      "direction_angle": 4.418927605526749,
+      "is_area": false,
+      "opening_hours": null,
+      "capacity": null,
+      "level": null,
+      "backrest": null,
+      "height_m": null,
+      "points_m": null
+    },
+    "pitch": {
+      "type": "node",
+      "id": 2450243261,
+      "lat": 65.0291643,
+      "lon": 25.4211379,
+      "tags": {
+        "addr:housenumber": "147",
+        "tourism": "camp_pitch"
+      }
+    }
+  },
+  "scenario_id": "vqa_tent_geometry_day",
+  "accepted_capture": "gameplay/accepted/vqa_tent_geometry_day/2026-06-20T1300_20261117-194350_b5970bcc-dirty",
+  "accepted_result": {
+    "active_3d": true,
+    "angle": 4.419,
+    "envelope_m": [
+      3.2,
+      2.4
+    ],
+    "ground_m": 0.0,
+    "matched_vertices": 21,
+    "position": [
+      425633.4,
+      7212633.8
+    ],
+    "rect": [
+      594.165771484375,
+      400.794342041016,
+      95.8502807617188,
+      49.298828125
+    ],
+    "region_rects": [
+      [
+        640.163635253906,
+        415.229248046875,
+        35.5438232421875,
+        33.3721008300781
+      ],
+      [
+        609.826232910156,
+        400.794342041016,
+        48.211181640625,
+        25.7108154296875
+      ]
+    ]
+  },
+  "close_views": {
+    "before": "before/capture-results.json",
+    "after": "after/capture-results.json",
+    "inspected_panels": 32,
+    "review_sheets": [
+      "review/tent_1.png",
+      "review/tent_2.png",
+      "review/tent_20m_1.png",
+      "review/tent_20m_2.png"
+    ]
+  },
+  "checks": {
+    "initial": [
+      144,
+      32
+    ],
+    "linux": [
+      225,
+      0
+    ],
+    "native": [
+      225,
+      0
+    ],
+    "controls": [
+      352,
+      0
+    ],
+    "pytest_passed": 12
+  },
+  "excluded_gameplay": [
+    "gameplay/marker-diagnostic-early",
+    "gameplay/clear-target",
+    "gameplay/relative-yaw",
+    "gameplay/marker-diagnostic",
+    "gameplay/first",
+    "gameplay/occlusion-diagnostic",
+    "gameplay/wider-view",
+    "gameplay/camera-diagnostic"
+  ],
+  "limits": [
+    "one daylight flat-terrain gameplay scenario",
+    "20m perspective sample; unrecorded map/light/slope combinations not certified"
+  ]
+}

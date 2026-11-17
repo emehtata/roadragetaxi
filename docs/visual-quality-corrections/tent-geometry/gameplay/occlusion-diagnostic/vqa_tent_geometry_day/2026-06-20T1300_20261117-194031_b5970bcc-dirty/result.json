@@ -1,0 +1,124 @@
+{
+  "camera": {
+    "position": [
+      -28.3111896514893,
+      1.90774714946747
+    ],
+    "zoom": 3.0
+  },
+  "chase": {
+    "frames": 0,
+    "max_excess_step_m": 0.0,
+    "max_yaw_step_rad": 0.0
+  },
+  "commit": "b5970bcc-dirty",
+  "elapsed_s": 0.849631666666666,
+  "errors": [
+    "excluded marker diagnostic"
+  ],
+  "forest": {
+    "build_ms_max": 22.615,
+    "build_ms_total": 68.346,
+    "draw_calls": 164.0,
+    "far_lod_crowns_loaded": 13474,
+    "forest_chunks": 5,
+    "objects": 530.0,
+    "place_ms_max": 29.827,
+    "primitives": 1817390.0,
+    "render_3d_cpu_ms": 0.386999994516373,
+    "render_3d_gpu_ms": 1.557000041008,
+    "static_memory_mb": 210.104046821594,
+    "trees_loaded": 6737,
+    "video_memory_mb": 303.679611206055
+  },
+  "game_time": [
+    "2026-06-20",
+    46800.0
+  ],
+  "lake_ice": {
+    "cm": 0.0,
+    "holds": false
+  },
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "route_3d_visible": false,
+  "scenario": "vqa_tent_geometry_day",
+  "scene": {
+    "buildings_in_view": 29,
+    "chunks": 7,
+    "lamps_in_view": 122,
+    "pitches": [
+      [
+        [
+          425618.001311009,
+          7212615.59225285,
+          5.0
+        ],
+        "tent",
+        2.00772714614868,
+        5.0
+      ]
+    ],
+    "scenery_in_view": {},
+    "tent": {
+      "active_3d": true,
+      "angle": 4.419,
+      "envelope_m": [
+        3.2,
+        2.4
+      ],
+      "ground_m": 0.0,
+      "matched_vertices": 21,
+      "position": [
+        425618.0,
+        7212615.6
+      ],
+      "rect": [
+        522.217590332031,
+        402.757537841797,
+        245.953552246094,
+        135.211212158203
+      ],
+      "region_rects": [
+        [
+          636.262512207031,
+          441.452728271484,
+          94.7691040039063,
+          91.3526306152344
+        ],
+        [
+          561.903625488281,
+          402.757537841797,
+          122.469787597656,
+          70.0338134765625
+        ]
+      ]
+    }
+  },
+  "status": "failed",
+  "timestamp": "2026-11-17T17:40:52Z",
+  "vehicle": {
+    "heading": 2.848,
+    "x": 425646.3,
+    "y": 7212617.6
+  },
+  "verification_user_data_dir": "C:/Users/esame/AppData/Roaming/Godot/app_userdata/rrt-indoor-hint-f62a4xci",
+  "walker": {},
+  "weather": {
+    "cloud_cover": 0.1,
+    "is_thunderstorm": false,
+    "lightning_intensity": 0.0,
+    "road_snow": 0.0,
+    "source": "generated",
+    "temperature_c": 16.69,
+    "weather_type": "clear",
+    "wetness": 0.0,
+    "wind_vector_mps": [
+      1.951,
+      4.208
+    ]
+  }
+}

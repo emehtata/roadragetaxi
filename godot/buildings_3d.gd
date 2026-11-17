@@ -3204,6 +3204,19 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 				out["deck"].append(placement * body.verts[i])
 				out["deck_colors"].append(body.colors[i])
 			continue
+		if row[2] == "tent":
+			var body := _empty_arrays()
+			for side: float in [-1.0, 1.0]:
+				_quad(body, Vector3(-length*0.5,0,side), Vector3(length*0.5,0,side), Vector3(length*0.5,1.3,0), Vector3(-length*0.5,1.3,0), look[3], Vector3(0,1,side))
+			for end: float in [-1.0, 1.0]:
+				var x := end * (length*0.5 - (0.002 if end > 0 else 0.0))
+				_tri(body, Vector3(x,0,-1), Vector3(x,0,1), Vector3(x,1.3,0), look[3], Vector3(end,0,0))
+			_tri(body, Vector3(length*0.5,0.03,-0.55), Vector3(length*0.5,0.03,0.55), Vector3(length*0.5,0.95,0), Color8(28,49,51), Vector3.RIGHT)
+			var placement := Transform3D(Basis(Vector3.UP, float(row[1])), to_3d(at))
+			for i in body.verts.size():
+				out["deck"].append(placement * body.verts[i])
+				out["deck_colors"].append(body.colors[i])
+			continue
 		if row[2] == "bench":
 			_bench(out, at, along, across, look[3], row.size() < 5 or bool(row[4]))
 			continue
