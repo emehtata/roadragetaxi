@@ -104,3 +104,7 @@ The crossing branch now spans each X board across the road, aligning its broad f
 ## VQA-021: closed roller-coaster track height
 
 The closing track strip now reuses the start point’s height sample, removing the 0.515 m seam opening while retaining every intermediate strip and support. [Diagnosis, geometry/native checks, 32 comparison panels and passing mapped Linnanmäki capture](visual-quality-corrections/roller-coaster-seam/README.md) record the correction and sampled coverage. The named target is the normal representative path from an actual Pikajuna OSM node, rather than a reconstruction of the real ride.
+
+## Carousel seat platform (VQA-022)
+
+A thin platform now joins every standard-carousel seat to its grounded central mast. Existing seats/canopy and other ride kinds are preserved. Focused Linux/native geometry checks and the named Vauhtipuisto normal-pipeline scenario pass; all32 comparison panels and the final screenshot were inspected. See [diagnosis, checks and evidence](visual-quality-corrections/carousel-seat-supports/README.md). VQA-023 remains separate.

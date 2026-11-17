@@ -1,0 +1,9 @@
+extends "res://tests/run_tests.gd"
+func _process(_delta: float) -> bool:
+ MapChunk.build_async=false
+ test_buildings_3d()
+ test_resent_chunk_buildings()
+ test_deck_height_adds_ground()
+ print("COASTER CONTROLS: %d checks, %d failed" % [_checks,_failures])
+ quit(1 if _failures else 0)
+ return true

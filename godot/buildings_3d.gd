@@ -3322,6 +3322,8 @@ static func attractions(out: Dictionary, rows: Array) -> void:
 				for i in rim.size():  # coloured wedges of the canopy
 					var wedge := PackedVector2Array([centre, rim[i], rim[(i + 1) % rim.size()]])
 					_raised_polygon_at(out, "deck", wedge, top, top + 0.4, RIDE_COLORS[(i / 6) % 4])
+				if not swing:
+					_raised_polygon_at(out, "deck", loop.slice(0, loop.size() - 1), 0.75, 0.9, Color8(165, 120, 65))
 				for i in range(0, loop.size() - 1, 6):  # the seats out at the rim
 					_box3d(out, "deck", loop[i], 0.6, 0.9 if not swing else 3.0, 1.6 if not swing else 3.6, RIDE_COLORS[(i / 6) % 4])
 			_:  # a Ferris wheel: across its loop's longest axis, cabins in a vertical ring

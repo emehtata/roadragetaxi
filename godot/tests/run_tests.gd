@@ -681,6 +681,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_carousel_seats_connected()
+	test_carousel_geometry_preserved()
 	test_roller_coaster_track_closes()
 	test_roller_coaster_geometry_preserved()
 	test_crossbucks_face_road_approaches()
@@ -4222,6 +4224,122 @@ func test_buildings_3d() -> void:
 	B3._structures(foam, {"shore_foam": [[PackedVector2Array([Vector2(0, 0), Vector2(10, 0)]), 0.5]]})
 	check(foam["road"].size() == 6 and foam["road_uv"][0].x == B3.ROAD_FOAM and is_equal_approx(foam["road_uv2"][0].x, 0.5), "shore foam: a strip on the water, its shore distance")
 	MapChunk.buildings_3d = false
+
+
+## VQA-022: the platform top must reach every seat base and the grounded mast.
+func test_carousel_seats_connected() -> void:
+	for count: int in [4,17,48]:
+		for angle: float in [0.0,0.73]:
+			var loop := _coaster_test_loop(count,Vector2(17,-23),angle)
+			var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+			B3.attractions(out,[["carousel",loop]])
+			var top := PackedVector3Array()
+			var supports := PackedVector3Array()
+			for i in range(0,out.deck.size(),3):
+				if out.deck_colors[i] != Color8(165,120,65): continue
+				supports.append_array(out.deck.slice(i,i+3))
+				if absf(out.deck[i].y-0.9)<0.00001 and absf(out.deck[i+1].y-0.9)<0.00001 and absf(out.deck[i+2].y-0.9)<0.00001:
+					top.append_array(out.deck.slice(i,i+3))
+			check(not top.is_empty(),"carousel has a thin support top at seat base")
+			var area := 0.0
+			for i in range(0,top.size(),3):
+				var normal := (top[i+1]-top[i]).cross(top[i+2]-top[i])
+				check(normal.y < -0.00001,"carousel platform top front faces upward")
+				area += absf(normal.y)*0.5
+			check(absf(area-absf(B3._signed_area(loop)))<0.001,"platform spans full footprint without holes or oversized slabs")
+			var connected := {0:true} if not top.is_empty() else {}
+			for pass_index in top.size()/3:
+				for triangle_index in top.size()/3:
+					if connected.has(triangle_index): continue
+					for other_index in connected.keys():
+						var shared := 0
+						for vertex in top.slice(triangle_index*3,triangle_index*3+3):
+							if Array(top.slice(other_index*3,other_index*3+3)).any(func(v):return v.distance_to(vertex)<0.001): shared+=1
+						if shared>=2: connected[triangle_index]=true;break
+			check(not top.is_empty() and connected.size()==top.size()/3,"platform triangles form one connected surface from mast to all seats")
+			var centre := Vector2.ZERO
+			for i in count: centre += loop[i]/count
+			var contacts := [[centre+Vector2(0.3,0)]]  # actual central mast side at platform height
+			for seat in range(0,count,6):
+				var base := []
+				for i in out.deck.size():
+					if out.deck_colors[i] != Color8(165,120,65) and absf(out.deck[i].y-0.9)<0.00001:
+						var at := Vector2(out.deck[i].x,out.deck[i].z)
+						if at.distance_to(loop[seat])<0.85: base.append(at)
+				check(not base.is_empty(),"seat base wall vertices retained")
+				var edge_midpoints := []
+				for a:Vector2 in base:
+					for b:Vector2 in base:
+						if absf(a.distance_to(b)-1.2)<0.001: edge_midpoints.append((a+b)*0.5)
+				contacts.append(base+edge_midpoints)
+			for group:Array in contacts:
+				var touches := false
+				for contact:Vector2 in group:
+					for i in range(0,top.size(),3):
+						var triangle := PackedVector2Array([Vector2(top[i].x,top[i].z),Vector2(top[i+1].x,top[i+1].z),Vector2(top[i+2].x,top[i+2].z)])
+						touches = touches or Geometry2D.is_point_in_polygon(contact,triangle)
+						for edge in 3: touches = touches or Geometry2D.get_closest_point_to_segment(contact,triangle[edge],triangle[(edge+1)%3]).distance_to(contact)<0.005
+				check(touches,"every actual seat base and mast side contact continuous platform")
+			check(not supports.is_empty() and Array(supports).all(func(v):return v.y>=0.74999 and v.y<=0.90001),"support is a thin15cm platform, not buried seats or a solid pedestal")
+
+
+func test_carousel_geometry_preserved() -> void:
+	for count: int in [4,17,48]:
+		var loop := _coaster_test_loop(count,Vector2(17,-23),0.73)
+		var expected := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+		B3.attractions(expected,[["carousel",loop]])
+		var original := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+		var centre := Vector2.ZERO
+		for i in count: centre+=loop[i]/count
+		B3._box3d(original,"deck",centre,0.3,0,5.1,Color8(248,213,93))
+		for i in count:
+			B3._raised_polygon_at(original,"deck",PackedVector2Array([centre,centre+(loop[i]-centre)*0.72,centre+(loop[(i+1)%count]-centre)*0.72]),4.5,4.9,B3.RIDE_COLORS[(i/6)%4])
+		for i in range(0,count,6): B3._box3d(original,"deck",loop[i],0.6,0.9,1.6,B3.RIDE_COLORS[(i/6)%4])
+		var unchanged := PackedVector3Array();var colors:=PackedColorArray()
+		for i in expected.deck.size():
+			if expected.deck_colors[i] != Color8(165,120,65): unchanged.append(expected.deck[i]);colors.append(expected.deck_colors[i])
+		check(unchanged==original.deck and colors==original.deck_colors,"original seats/mast/canopy vertices and colours unchanged")
+		for ground: float in [0.0,13.5]:
+			var grid := {} if ground==0 else {"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
+			var input := {"rect":Rect2(-50,-50,100,100),"attractions":[["carousel",loop]],"ground_heights":grid}
+			var built := B3.build([],[],Vector2.ZERO,[],[],input)
+			var shifted:PackedVector3Array=expected.deck.duplicate()
+			for i in shifted.size(): shifted[i].y+=ground
+			check(built.deck==shifted and built==B3.build([],[],Vector2.ZERO,[],[],input),"carousel support grounded build stable")
+	var original_hashes := CAROUSEL_OTHER_RIDE_HASHES
+	for kind: String in original_hashes:
+		var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+		B3.attractions(out,[[kind,_coaster_test_loop(48)]])
+		check(_carousel_ride_hash(out)==original_hashes[kind],"other attraction unchanged: "+kind)
+	var empty := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+	B3.attractions(empty,[["carousel",PackedVector2Array([Vector2.ZERO,Vector2.ONE])]])
+	check(empty.deck.is_empty(),"carousel short-loop guard retained")
+	var flags := [MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
+	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
+	var map := MapLayer.new();root.add_child(map)
+	var points := []
+	for point:Vector2 in _coaster_test_loop(48,Vector2(50,50)):points.append([point.x,point.y])
+	var row := {"chunk_id":"0_0","bounds":[0,0,100,100],"attractions":[["carousel",points]]}
+	map.add_chunk(row.duplicate(true));var faces:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:faces.append(mesh.mesh.get_faces())
+	map.replace_chunk(row.duplicate(true));var replacement:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"carousel chunk replacement stable")
+	map.clear();check(map._chunks.is_empty(),"carousel chunk unloaded")
+	map.add_chunk(row.duplicate(true));replacement.clear()
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"carousel chunk reload stable")
+	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
+
+
+func _carousel_ride_hash(out:Dictionary) -> String:
+	var values := PackedInt32Array()
+	for v:Vector3 in out.deck:values.append_array(PackedInt32Array([roundi(v.x*1000),roundi(v.y*1000),roundi(v.z*1000)]))
+	for c:Color in out.deck_colors:values.append(c.to_rgba32())
+	return values.to_byte_array().hex_encode().sha256_text()
+
+
+const CAROUSEL_OTHER_RIDE_HASHES := {"swing_carousel":"174bd6fb7f7eb4a251d5e71e9c5a7a95ee4974c0adc31ccdf1792bb7a1f2a64d","roller_coaster":"4c75af577679af702c35587e1b67c34e29c9e8628a3eba3915248a4a711227a8","ferris_wheel":"121ff6e6f548994317569c78548c7ad023d03605526ad4e0892803e95b48358c","drop_tower":"718284d6205f488f2c5faf5694c591a26c1409b112eb2f39f22699c0166148bb"}
 
 
 ## VQA-021: inspect the actual track triangles, including the duplicated closing endpoint.

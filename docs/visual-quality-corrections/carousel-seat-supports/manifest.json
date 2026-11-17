@@ -1,0 +1,61 @@
+{
+  "finding": "VQA-022",
+  "source_revision": "ff579489-dirty",
+  "production_change": "standard carousel only, add a 0.75\u20130.9m polygon platform; seats/mast/canopy unchanged",
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "capture_panels": 32,
+  "comparison_resolution": [
+    400,
+    340
+  ],
+  "panel_inspection": "all32 before/after close and55m perspective panels inspected",
+  "accepted_gameplay": "gameplay/accepted/vqa_carousel_seat_supports_day/2026-06-20T1300_20261117-122902_ff579489-dirty",
+  "gameplay_resolution": [
+    1280.0,
+    720.0
+  ],
+  "gameplay_scene": {
+    "active_3d": true,
+    "ground_m": 0.0,
+    "height_m": 0.9,
+    "matched_vertices": 1704,
+    "path_points": 49,
+    "seat": [
+      425511.675270087,
+      7212598.53857255
+    ],
+    "support_rect": [
+      790.661376953125,
+      343.268676757813,
+      47.2745971679688,
+      33.4625244140625
+    ]
+  },
+  "ground": "flat, DEM disabled",
+  "excluded": [
+    "gameplay/vqa_carousel_seat_supports_day: preliminary pass before self-occlusion guard; superseded",
+    "gameplay/final: correctly failed when support probe lay on seat boundary",
+    "gameplay/visibility: diagnostic/no-hit pass; superseded by clean accepted run"
+  ],
+  "source": "existing attributed OSM cache; mapped Vauhtipuisto relation1300537; normal generated representative carousel",
+  "visual_limitations": "one daylight flat-terrain named sample; every camera/park/terrain condition not certified",
+  "focused_results": {
+    "before": {
+      "checks": 95,
+      "failed": 54
+    },
+    "linux": {
+      "checks": 221,
+      "failed": 0
+    },
+    "native": {
+      "checks": 221,
+      "failed": 0
+    },
+    "existing_controls": {
+      "checks": 216,
+      "failed": 0
+    },
+    "pytest_passed": 7
+  }
+}
